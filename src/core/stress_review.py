@@ -37,6 +37,7 @@ import csv
 import hashlib
 import json
 import logging
+import time
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import datetime
@@ -46,14 +47,14 @@ from django.conf import settings
 from django.contrib.gis.db.models.functions import AsGeoJSON
 from django.contrib.gis.geos import Polygon
 from django.db import connection, transaction
-from django.db.models import Count, Exists, OuterRef, Q
+from django.db.models import BooleanField, Count, Exists, ExpressionWrapper, F, OuterRef, Q
 from django.utils import timezone
 
 from pipeline.schema import validate_schema_name
 from routemaker import agency_lts
 from routemaker.stress import NARROW_ROAD_RULE, NARROW_RURAL_ROAD_MPH
 
-from . import audit, segment_info, stress_changes, stress_edits
+from . import audit, road_names, segment_info, stress_changes, stress_edits
 from .models import AuditLogEntry, Override, ReviewItem, ReviewRuling, StressSuggestion
 
 logger = logging.getLogger(__name__)
@@ -315,14 +316,329 @@ def _item(queue: str, way: int, **fields) -> ReviewItem:
 
 
 def _replace(queue: str, items: list[ReviewItem], schema: str | None, build_id: str = "") -> int:
-    """The queue's rows replaced whole, their facts read from `schema`, and its map written."""
+    """The queue's rows replaced whole, their facts read from `schema`, its stretches grouped,
+    and its map written."""
     with transaction.atomic():
         ReviewItem.objects.filter(queue=queue).delete()
         ReviewItem.objects.bulk_create(items, batch_size=2000)
         if schema:
             _fill_facts(queue, schema)
+            group_stretches(queue, schema)
         write_state(queue, build_id)
     return len(items)
+
+
+# --- Stretches ------------------------------------------------------------------------------
+#
+# The owner, 2026-10-17: "Also, for review, merge stretches. Go at least from major intersection
+# to major intersection". A stretch is the listed ways that join end to end, are one road (the
+# same name, or both unnamed and of the same class) and have the same change for their list
+# (`_change_key`); it ends at a major junction, where the road meets another of tertiary class
+# or bigger (`MAJOR_CLASSES`, their links included) that is not the road itself. A side street
+# or a driveway does not end it. Grouped when the queue is computed (`_replace`,
+# `compute_rebuild`), from the segment table the queue was read from: which ways meet (their
+# ends within `road_names.TOUCH_M`, as OSM ways share a node) is the table's; their names and
+# classes are the router's (`segment_info.locate_edges`, as the road panel reads them), the
+# table's name where it is silent. With no class known for a road at a junction, the stress
+# editor's own reading of a busy junction stands (`stress_edits.STRETCH_BREAK_STEP`).
+
+# The queues grouped into stretches: those whose rows are a way each of the whole map. The
+# report lists (side paths, closures, overrides not re-matched) stay a row a way.
+STRETCH_QUEUES = (Queue.REBUILD, Queue.DISAGREEMENT, Queue.NARROW_RURAL, Queue.PAINTED_LANE)
+# Valhalla's classes of a major road (OSM tertiary or bigger; a link takes its road's class).
+MAJOR_CLASSES = frozenset({"motorway", "trunk", "primary", "secondary", "tertiary"})
+# The most ways one stretch holds (the stress editor's own stretch's), so one ruling on it is
+# always one stress edit.
+STRETCH_MAX_WAYS = stress_edits.MAX_STRETCH_WAYS
+# The most time the router may take over one queue's names and classes: past it, the table's.
+ROUTER_BUDGET_S = 600.0
+_STRETCH_COSTINGS = ("auto", "bicycle", "pedestrian")
+
+
+def _change_key(item: ReviewItem) -> tuple:
+    """What two ways of a stretch share: the rebuild's old and new level and access; a
+    disagreement's level now and every source's level; elsewhere the level now and the reason."""
+    if item.queue == Queue.REBUILD:
+        return (item.old_step, item.new_step, item.old_closed, item.new_closed)
+    if item.queue == Queue.DISAGREEMENT:
+        held = (item.details or {}).get("sources") or []
+        levels = sorted(
+            (str(s.get("key")), s.get("level"), bool(s.get("pending")))
+            for s in held
+            if isinstance(s, dict)
+        )
+        return (item.new_step, item.new_closed, tuple(levels))
+    return (item.new_step, item.new_closed, item.kind, item.reason)
+
+
+class _Router:
+    """The router's name and class of the ways at a spot (`segment_info.locate_edges`), within
+    one budget for the whole queue; silent from its first failure on."""
+
+    def __init__(self, budget_s: float = ROUTER_BUDGET_S) -> None:
+        self.silent = False
+        self._until = time.monotonic() + budget_s
+        self._seen: dict[tuple, dict[int, dict]] = {}
+        self._asked: dict[tuple, set[str]] = {}
+
+    def at(self, point: tuple[float, float], wanted: Iterable[int]) -> dict[int, dict]:
+        """{way: {name, classification}} at `point`, asked of each costing in turn until every
+        way of `wanted` is known."""
+        spot = (round(point[0], 6), round(point[1], 6))
+        found = self._seen.setdefault(spot, {})
+        asked = self._asked.setdefault(spot, set())
+        wanted = set(wanted)
+        for costing in _STRETCH_COSTINGS:
+            if wanted <= set(found) or self.silent:
+                break
+            if costing in asked:
+                continue
+            asked.add(costing)
+            if time.monotonic() > self._until:
+                self.silent = True
+                break
+            try:
+                edges = segment_info.locate_edges(point[1], point[0], costing)
+            except segment_info.RouterSilent:
+                self.silent = True
+                break
+            for edge in edges:
+                way = (edge.get("edge_info") or {}).get("way_id")
+                if isinstance(way, int) and way not in found:
+                    facts = segment_info.edge_facts([edge], way)
+                    if facts:
+                        found[way] = facts
+        return found
+
+
+def _stretch_ends(schema: str, ways: list[int]) -> list[tuple[int, int, float, float]]:
+    """(way, way, lon, lat): two listed ways whose ends meet, and where."""
+    with connection.cursor() as cursor:
+        cursor.execute("DROP TABLE IF EXISTS review_stretch_end")
+        cursor.execute(
+            f"""
+            CREATE TEMP TABLE review_stretch_end ON COMMIT DROP AS
+            SELECT * FROM (
+                SELECT DISTINCT ON (osm_way_id) osm_way_id AS way, ST_StartPoint(geometry) AS p
+                FROM {schema}.segment WHERE osm_way_id = ANY(%s) ORDER BY osm_way_id, ordinal
+            ) first_piece
+            UNION ALL
+            SELECT * FROM (
+                SELECT DISTINCT ON (osm_way_id) osm_way_id AS way, ST_EndPoint(geometry) AS p
+                FROM {schema}.segment WHERE osm_way_id = ANY(%s)
+                ORDER BY osm_way_id, ordinal DESC
+            ) last_piece
+            """,
+            [ways, ways],
+        )
+        cursor.execute("CREATE INDEX ON review_stretch_end USING gist (p)")
+        cursor.execute("ANALYZE review_stretch_end")
+        cursor.execute(
+            """
+            SELECT x.way, y.way, ST_X(x.p), ST_Y(x.p)
+            FROM review_stretch_end x JOIN review_stretch_end y
+              ON x.way < y.way AND x.p && ST_Expand(y.p, 0.0001)
+             AND ST_DWithin(x.p::geography, y.p::geography, %s)
+            """,
+            [road_names.TOUCH_M],
+        )
+        found = [(int(a), int(b), float(x), float(y)) for a, b, x, y in cursor.fetchall()]
+        cursor.execute("DROP TABLE IF EXISTS review_stretch_end")
+    return found
+
+
+def _meeting(schema: str, points: list[tuple[float, float]]) -> list[dict[int, tuple]]:
+    """For each point, the ways of the table that touch it: {way: (level, the table's name)},
+    the level the junction model reads (`road_names.touching`)."""
+    columns = _columns(schema)
+    unsmoothed = (
+        "COALESCE(s.stress_unsmoothed_tier, 0)" if "stress_unsmoothed_tier" in columns else "0"
+    )
+    half = "s.stress_half IS TRUE" if "stress_half" in columns else "false"
+    names = [f"s.{c}" for c in ("trail_name", "sidepath_name", "mtb_name") if c in columns]
+    name = f"max(COALESCE({', '.join(names)}))" if names else "NULL"
+    out: list[dict[int, tuple]] = [{} for _ in points]
+    if not points:
+        return out
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"""
+            SELECT c.n, s.osm_way_id,
+                   max(GREATEST(s.stress_tier, {unsmoothed})
+                       + CASE WHEN {half} THEN 0.5 ELSE 0 END),
+                   {name}
+            FROM unnest(%s::float8[], %s::float8[]) WITH ORDINALITY AS c(x, y, n)
+            JOIN {schema}.segment s
+              ON s.geometry && ST_Expand(ST_SetSRID(ST_MakePoint(c.x, c.y), 4326), 0.0001)
+             AND ST_DWithin(s.geometry::geography,
+                            ST_SetSRID(ST_MakePoint(c.x, c.y), 4326)::geography, %s)
+            GROUP BY c.n, s.osm_way_id
+            """,
+            [[p[0] for p in points], [p[1] for p in points], road_names.TOUCH_M],
+        )
+        for n, way, level, table_name in cursor.fetchall():
+            out[int(n) - 1][int(way)] = (float(level or 0), (table_name or "").strip())
+    return out
+
+
+def _joins_here(
+    a: int, b: int, meeting: dict[int, tuple], facts: dict[int, dict], listed: dict[int, str]
+) -> tuple[bool, str]:
+    """Whether ways `a` and `b`, meeting at a point, are one stretch there, and the road's name:
+    one road (the same name, or both unnamed and of one class) at a junction with no major road
+    but itself."""
+
+    def name(way: int) -> str:
+        said = (facts.get(way) or {}).get("name")
+        if said:
+            return said
+        return (meeting.get(way, (0, ""))[1] or listed.get(way, "")).strip()
+
+    def kind(way: int) -> str:
+        return str((facts.get(way) or {}).get("classification") or "")
+
+    road = road_names.key(name(a))
+    if road or road_names.key(name(b)):
+        if road != road_names.key(name(b)):
+            return False, ""
+    elif not kind(a) or kind(a) != kind(b):
+        return False, ""
+    for way, (level, _table_name) in meeting.items():
+        if way in (a, b) or (road and road_names.key(name(way)) == road):
+            continue
+        if kind(way):
+            if kind(way) in MAJOR_CLASSES:
+                return False, ""
+        elif level >= stress_edits.STRETCH_BREAK_STEP:
+            return False, ""
+    return True, name(a)
+
+
+def group_stretches(queue: str, schema: str, build_id: str = "") -> int:
+    """Group the queue's ways into stretches (above), each listed as one row: its lead (the
+    longest way) carries the stretch's ways, length, score and lines, and every way of it its
+    `stretch`. Where the router names a road the queue had no name for, the name is kept.
+    Returns how many stretches of two ways or more there are."""
+    if queue not in STRETCH_QUEUES or not _table_exists(schema):
+        return 0
+    rows = {
+        i.osm_way_id: i
+        for i in ReviewItem.objects.filter(queue=queue, build_id=build_id).only(
+            "osm_way_id",
+            "queue",
+            "name",
+            "kind",
+            "reason",
+            "old_step",
+            "new_step",
+            "old_closed",
+            "new_closed",
+            "details",
+            "length_m",
+            "point",
+        )
+    }
+    if not rows:
+        return 0
+    router = _Router()
+    with transaction.atomic():
+        pairs = [
+            (a, b, (x, y))
+            for a, b, x, y in _stretch_ends(schema, sorted(rows))
+            if _change_key(rows[a]) == _change_key(rows[b])
+        ]
+        points = sorted({p for _a, _b, p in pairs})
+        meetings = dict(zip(points, _meeting(schema, points), strict=True))
+        listed = {w: i.name for w, i in rows.items()}
+        named: dict[int, str] = {}
+        parent = {w: w for w in rows}
+        size = dict.fromkeys(rows, 1)
+
+        def root(way: int) -> int:
+            while parent[way] != way:
+                parent[way] = parent[parent[way]]
+                way = parent[way]
+            return way
+
+        for a, b, point in sorted(pairs):
+            ra, rb = root(a), root(b)
+            if ra == rb or size[ra] + size[rb] > STRETCH_MAX_WAYS:
+                continue
+            meeting = meetings[point]
+            facts = router.at(point, set(meeting) | {a, b})
+            joined, road = _joins_here(a, b, meeting, facts, listed)
+            if not joined:
+                continue
+            if road:
+                named.setdefault(a, road)
+                named.setdefault(b, road)
+            parent[rb] = ra
+            size[ra] += size[rb]
+        groups: dict[int, list[int]] = {}
+        for way in rows:
+            groups.setdefault(root(way), []).append(way)
+        stretches = 0
+        with connection.cursor() as cursor:
+            for ways in groups.values():
+                lead = max(ways, key=lambda w: (rows[w].length_m, -w))
+                name = rows[lead].name or named.get(lead, "")
+                if not name:
+                    name = next((named[w] for w in sorted(ways) if w in named), "")
+                if len(ways) < 2:
+                    if not name and rows[lead].point is not None:
+                        # A road alone: its name from the router at its own point.
+                        x, y = rows[lead].point.coords
+                        name = (router.at((x, y), [lead]).get(lead) or {}).get("name") or ""
+                    if name and not rows[lead].name:
+                        cursor.execute(
+                            "UPDATE review_item SET name = %s "
+                            "WHERE queue = %s AND build_id = %s AND osm_way_id = %s",
+                            [name[:300], queue, build_id, lead],
+                        )
+                    continue
+                stretches += 1
+                ways = sorted(ways)
+                cursor.execute(
+                    "UPDATE review_item SET stretch = %s "
+                    "WHERE queue = %s AND build_id = %s AND osm_way_id = ANY(%s)",
+                    [lead, queue, build_id, ways],
+                )
+                cursor.execute(
+                    """
+                    UPDATE review_item l
+                    SET ways = %s::jsonb, length_m = a.length_m, score = a.score,
+                        aadt = a.aadt, geometry = a.geometry, simple = a.simple,
+                        name = CASE WHEN l.name = '' THEN %s ELSE l.name END
+                    FROM (
+                        SELECT sum(length_m) AS length_m, sum(score) AS score,
+                               max(aadt) AS aadt,
+                               (SELECT ST_Multi(ST_Collect(g.geom)) FROM review_item m,
+                                       ST_Dump(m.geometry) g
+                                WHERE m.queue = %s AND m.build_id = %s AND m.stretch = %s)
+                                   AS geometry,
+                               (SELECT ST_Multi(ST_Collect(g.geom)) FROM review_item m,
+                                       ST_Dump(m.simple) g
+                                WHERE m.queue = %s AND m.build_id = %s AND m.stretch = %s)
+                                   AS simple
+                        FROM review_item
+                        WHERE queue = %s AND build_id = %s AND stretch = %s
+                    ) a
+                    WHERE l.queue = %s AND l.build_id = %s AND l.osm_way_id = %s
+                    """,
+                    [
+                        json.dumps(ways),
+                        name[:300],
+                        *(queue, build_id, lead) * 4,
+                    ],
+                )
+    if router.silent:
+        logger.info("Review's %s stretches: the router was silent; the table's names", queue)
+    return stretches
+
+
+def _listed_rows():
+    """The rows a list shows: a way alone, or a stretch's lead."""
+    return Q(stretch__isnull=True) | Q(stretch=F("osm_way_id"))
 
 
 # --- The queues -----------------------------------------------------------------------------
@@ -360,7 +676,7 @@ def compute_rebuild(build_id: str, live: str, staging: str) -> int:
                 INSERT INTO review_item (
                     queue, build_id, osm_way_id, name, area, reason, kind, old_step, new_step,
                     old_closed, new_closed, details, sources, spread, length_m, aadt, score,
-                    inputs, computed_at)
+                    inputs, ways, computed_at)
                 SELECT %s, %s, n.osm_way_id, '', '', '',
                        CASE WHEN n.closed AND NOT o.closed THEN 'closed'
                             WHEN o.closed AND NOT n.closed THEN 'reopened'
@@ -368,7 +684,7 @@ def compute_rebuild(build_id: str, live: str, staging: str) -> int:
                                  || COALESCE(n.step::float8::text, '') END,
                        o.step, n.step, o.closed, n.closed,
                        jsonb_build_object('old', {side("o")}, 'new', {side("n")}),
-                       '[]'::jsonb, NULL, 0, NULL, 0, '', %s
+                       '[]'::jsonb, NULL, 0, NULL, 0, '', '[]'::jsonb, %s
                 FROM ({_agg_sql(live)}) o JOIN ({_agg_sql(staging)}) n
                   ON o.osm_way_id = n.osm_way_id
                 WHERE o.step IS DISTINCT FROM n.step OR o.closed IS DISTINCT FROM n.closed
@@ -377,6 +693,7 @@ def compute_rebuild(build_id: str, live: str, staging: str) -> int:
             )
             count = cursor.rowcount
         _fill_facts(Queue.REBUILD, staging, build_id)
+        group_stretches(Queue.REBUILD, staging, build_id)
         write_state(Queue.REBUILD, build_id)
     return count
 
@@ -864,10 +1181,29 @@ def _ruled_filter(queue: str):
     return Exists(_standing(rulings, queue, OuterRef("inputs")))
 
 
+def _stretch_ruled(queue: str):
+    """For a listed row: it has a standing ruling, and so has every other way of its stretch."""
+    open_ways = (
+        ReviewItem.objects.filter(
+            queue=queue, build_id=OuterRef("build_id"), stretch=OuterRef("osm_way_id")
+        )
+        .exclude(osm_way_id=OuterRef("osm_way_id"))
+        .filter(~_ruled_filter(queue))
+    )
+    return ExpressionWrapper(_ruled_filter(queue) & ~Exists(open_ways), output_field=BooleanField())
+
+
 def items_of(
-    queue: str, *, kind: str = "", source: str = "", area: str = "", build: str | None = None
+    queue: str,
+    *,
+    kind: str = "",
+    source: str = "",
+    area: str = "",
+    build: str | None = None,
+    listed: bool = True,
 ):
-    """A list's items now (the rebuild's: of `build`, else its current build, read here)."""
+    """A list's items now (the rebuild's: of `build`, else its current build, read here): its
+    rows (a way alone or a stretch's lead) where `listed`, else every way."""
     query = ReviewItem.objects.filter(queue=queue)
     if queue == Queue.REBUILD:
         query = query.filter(build_id=current_build(queue) if build is None else build)
@@ -877,7 +1213,14 @@ def items_of(
         query = query.filter(sources__contains=[source])
     if area:
         query = query.filter(area=area)
-    return query.annotate(ruled=_ruled_filter(queue))
+    if not listed:
+        return query.annotate(ruled=_ruled_filter(queue))
+    return query.filter(_listed_rows()).annotate(ruled=_stretch_ruled(queue))
+
+
+def _row_of(way: int) -> Q:
+    """The listed row that holds `way`: its own, or its stretch's lead."""
+    return Q(osm_way_id=way) | Q(ways__contains=[way])
 
 
 def queue_summary() -> list[dict]:
@@ -898,7 +1241,8 @@ def queue_summary() -> list[dict]:
             with connection.cursor() as cursor:
                 cursor.execute(
                     "SELECT s, count(*) FROM review_item, jsonb_array_elements_text(sources) s "
-                    "WHERE queue = %s GROUP BY s ORDER BY s",
+                    "WHERE queue = %s AND (stretch IS NULL OR stretch = osm_way_id) "
+                    "GROUP BY s ORDER BY s",
                     [queue],
                 )
                 sources = cursor.fetchall()
@@ -953,6 +1297,7 @@ def ruling_out(ruling: ReviewRuling, now: datetime | None = None) -> dict:
         "id": ruling.pk,
         "queue": ruling.queue,
         "osm_way_id": ruling.osm_way_id,
+        "stretch": ruling.stretch,
         "decision": ruling.decision,
         "step": ruling.step,
         "reason": ruling.reason,
@@ -1001,6 +1346,9 @@ def item_out(item: ReviewItem, ruling: ReviewRuling | None = None, name: str | N
         "spread": item.spread,
         "length_m": round(item.length_m, 1),
         "length": length_text(item.length_m),
+        # A stretch's ways, in way order, or the one way alone.
+        "ways": list(item.ways or [item.osm_way_id]),
+        "pieces": len(item.ways or [item.osm_way_id]),
         "aadt": item.aadt,
         "bbox": list(item.geometry.extent) if item.geometry is not None else None,
         "geometry": geometry,
@@ -1021,7 +1369,7 @@ def page(
     number = max(1, int(number))
     query = items_of(queue, kind=kind, source=source, area=area)
     if way is not None:
-        query = query.filter(osm_way_id=way)
+        query = query.filter(_row_of(way))
     if open_only:
         query = query.filter(ruled=False)
     total = query.count()
@@ -1128,7 +1476,8 @@ def map_view(queues: list[str], bbox: tuple[float, float, float, float], zoom: f
                 SELECT count(*), ST_X(ST_Centroid(ST_Collect(point))),
                        ST_Y(ST_Centroid(ST_Collect(point))), min(queue), min(osm_way_id)
                 FROM review_item
-                WHERE {where} AND point && ST_MakeEnvelope(%s, %s, %s, %s, 4326)
+                WHERE {where} AND (stretch IS NULL OR stretch = osm_way_id)
+                  AND point && ST_MakeEnvelope(%s, %s, %s, %s, 4326)
                 GROUP BY ST_SnapToGrid(ST_Transform(point, 3857), %s)
                 """,
                 [*params, west, south, east, north, cell],
@@ -1224,7 +1573,7 @@ def next_road(
     if not lists:
         return None
     start = lists.index(queue) if queue in lists else 0
-    current = items_of(queue).filter(osm_way_id=way).first() if way is not None else None
+    current = items_of(queue).filter(_row_of(way)).first() if way is not None else None
     order = ("-score", "osm_way_id") if direction > 0 else ("score", "-osm_way_id")
     rounds = len(lists) + 1 if wrap else 1
     for step in range(rounds):
@@ -1249,7 +1598,7 @@ def next_road(
 
 def unruled_rebuild_changes() -> tuple[int, int, str]:
     """(changed roads with no ruling yet, changed roads, build) for the swap's report."""
-    query = items_of(Queue.REBUILD)
+    query = items_of(Queue.REBUILD, listed=False)
     total = query.count()
     return query.filter(ruled=False).count(), total, current_build(Queue.REBUILD)
 
@@ -1300,6 +1649,7 @@ def _record(actor, item: ReviewItem, decision: str, target, reason: str, now, ed
         edit=edit,
         access_override=access,
         inputs=item.inputs,
+        stretch=item.stretch,
     )
     audit.record(
         actor,
@@ -1309,6 +1659,7 @@ def _record(actor, item: ReviewItem, decision: str, target, reason: str, now, ed
         AuditLogEntry.Outcome.ALLOWED,
         detail=(
             f"{item.queue} {item.build_id} way {item.osm_way_id}: {ruling_words(ruling)}"
+            + (f"; stretch {item.stretch}" if item.stretch else "")
             + (f"; edit {edit.pk}" if edit else "")
             + (f"; access override {access.pk}" if access else "")
         )[:2000],
@@ -1389,10 +1740,11 @@ def rule(
         stress_edits.split_step(step)
     text = _reason(reason)
     now = now or timezone.now()
-    items = {i.osm_way_id: i for i in items_of(queue).filter(osm_way_id__in=ways)}
+    asked = {i.osm_way_id: i for i in items_of(queue, listed=False).filter(osm_way_id__in=ways)}
     evidence = EVIDENCE
     if source:
-        evidence = _evidence_of(source, decision, step, [items.get(w) for w in ways])
+        evidence = _evidence_of(source, decision, step, [asked.get(w) for w in ways])
+    ways, items = _with_stretches(queue, ways, asked)
     made: list[ReviewRuling] = []
     refused: list[dict] = []
     levels: dict[float, list[ReviewItem]] = {}
@@ -1421,6 +1773,40 @@ def rule(
     order = {w: n for n, w in enumerate(ways)}
     made.sort(key=lambda r: order[r.osm_way_id])
     return made, refused
+
+
+def _with_stretches(
+    queue: str, ways: list[int], asked: dict[int, ReviewItem]
+) -> tuple[list[int], dict[int, ReviewItem]]:
+    """The ways asked for with every other way of their stretches, each stretch's lead first
+    then its ways in order, and their items: a ruling on a stretch is a ruling on each way."""
+    leads = sorted({i.stretch for i in asked.values() if i.stretch is not None})
+    if not leads:
+        return ways, asked
+    items = dict(asked)
+    for item in items_of(queue, listed=False).filter(stretch__in=leads):
+        items.setdefault(item.osm_way_id, item)
+    members: dict[int, list[int]] = {}
+    for way, item in sorted(items.items()):
+        if item.stretch is not None:
+            members.setdefault(item.stretch, []).append(way)
+    out: list[int] = []
+    for way in ways:
+        item = asked.get(way)
+        group = [way]
+        if item is not None and item.stretch is not None:
+            lead = item.stretch
+            group = [lead] + [w for w in members.get(lead, []) if w != lead]
+            if way not in group:
+                group.insert(0, way)
+        out += [w for w in group if w not in out]
+    if len(out) > stress_edits.MAX_BATCH_WAYS:
+        raise stress_edits.Invalid(
+            f"Those roads are {len(out)} road pieces in all; rule on at most "
+            f"{stress_edits.MAX_BATCH_WAYS} at a time.",
+            "osm_way_ids",
+        )
+    return out, items
 
 
 def _evidence_of(source: str, decision: str, step, items: list) -> str:
@@ -1466,8 +1852,25 @@ def undo(actor, ruling_id: int, *, now: datetime | None = None) -> tuple[ReviewR
                 .filter(edit_id=ruling.edit_id, undone_at__isnull=True)
                 .exclude(pk=ruling.pk)
             )
-        if ruling.access_override_id:
-            Override.objects.filter(pk=ruling.access_override_id).update(
+        if ruling.stretch is not None:
+            # The stretch's other ways, ruled with it at once (an Accept or a reopening a way;
+            # its levels share one edit, undone above).
+            seen = {one.pk for one in together}
+            together += [
+                one
+                for one in ReviewRuling.objects.select_for_update().filter(
+                    queue=ruling.queue,
+                    build_id=ruling.build_id,
+                    stretch=ruling.stretch,
+                    at=ruling.at,
+                    actor_user_id=ruling.actor_user_id,
+                    undone_at__isnull=True,
+                )
+                if one.pk not in seen
+            ]
+        access = [one.access_override_id for one in together if one.access_override_id]
+        if access:
+            Override.objects.filter(pk__in=access).update(
                 approved=False, approved_at=None, approved_by=None, approved_by_user_id=None
             )
         for one in together:

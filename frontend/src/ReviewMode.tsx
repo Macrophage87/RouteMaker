@@ -56,8 +56,10 @@ import {
   fetchRoads,
   isQueue,
   makeAnnouncer,
+  piecesText,
   progressText,
   roadHeading,
+  roadRowLabel,
   ruledSaid,
   sendRuling,
   sortRoads,
@@ -702,11 +704,14 @@ function QueueView({ queue, label, summary, getMap, say, asked, onCurrent, onStr
     const after = shown.slice(index + 1).find((r) => !ruled.has(r.osm_way_id)) ?? rest[0] ?? null;
     if (all) setRoads((old) => old?.map((r) => (ruled.has(r.osm_way_id) ? { ...r, ruling: rulings.find((x) => x.osm_way_id === r.osm_way_id) ?? r.ruling } : r)) ?? old);
     else setRoads(rest);
-    setTotal((t) => (all ? t : Math.max(0, t - ruled.size)));
+    // A row is a stretch of ways, each with its own ruling: the rows ruled, not the rulings, leave the count.
+    const rowsRuled = shown.filter((r) => ruled.has(r.osm_way_id)).length;
+    setTotal((t) => (all ? t : Math.max(0, t - rowsRuled)));
     setSelected(new Set());
     onRuled();
     const road = current && ruled.has(current.osm_way_id) ? current : null;
-    if (ways.length === 1 && road && rulings[0]) tell(ruledSaid(road, rulings[0], after ? after.name || `way ${after.osm_way_id}` : null));
+    const own = road ? (rulings.find((r) => r.osm_way_id === road.osm_way_id) ?? rulings[0]) : null;
+    if (ways.length === 1 && road && own) tell(ruledSaid(road, own, after ? after.name || `way ${after.osm_way_id}` : null));
     else tell(answer.body.message);
     if (refused.length && ways.length === 1) tell(refused[0].error);
     if (after) pick(after);
@@ -862,6 +867,7 @@ function QueueView({ queue, label, summary, getMap, say, asked, onCurrent, onStr
                           type="button"
                           id={id(`r${road.osm_way_id}`)}
                           className="link review-road"
+                          aria-label={roadRowLabel(road)}
                           onClick={() => pick(road)}
                           onKeyDown={(event) => {
                             const next = event.key === "ArrowDown" ? shown[i + 1] : event.key === "ArrowUp" ? shown[i - 1] : null;
@@ -873,6 +879,12 @@ function QueueView({ queue, label, summary, getMap, say, asked, onCurrent, onStr
                         >
                           {name}
                         </button>
+                        {road.pieces > 1 && (
+                          <span className="hint" aria-hidden="true">
+                            {" "}
+                            ({piecesText(road)})
+                          </span>
+                        )}
                       </td>
                       <td>{road.area}</td>
                       {queue === "rebuild" && (
@@ -949,7 +961,10 @@ function QueueView({ queue, label, summary, getMap, say, asked, onCurrent, onStr
               {current.new_source ? ` (decided by ${current.new_source})` : ""}
             </dd>
             <dt>Length</dt>
-            <dd>{current.length}</dd>
+            <dd>
+              {current.length}
+              {current.pieces > 1 ? `, ${piecesText(current)} ruled together` : ""}
+            </dd>
             <dt>Traffic</dt>
             <dd>{trafficText(current.aadt)}</dd>
           </dl>
