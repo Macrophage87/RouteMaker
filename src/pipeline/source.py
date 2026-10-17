@@ -15,6 +15,22 @@ PLAN:13 is the specification and it is exact about the order:
     Admin data is built with `valhalla_build_admins` from the merged extract
     before clipping.
 
+The order is followed; the `-S` option is narrowed, deliberately. PLAN:13 gives
+the purpose - "so boundary relations stay complete" - and `types=any` does more
+than that: it completes *every* relation type with a member in the region, route
+relations included. The East Coast Greenway and the US Bicycle Routes are
+relations hundreds of miles long, so a box touching them took in their whole
+length - about 5,100 mi of route outside the 38.2-39.72 N, 78.05-76.02 W box in
+the v0.8.0 rebuild (southwest Virginia, Pennsylvania, Delmarva), every way of it
+built into the graph as if it were in the region. The clip is
+`-S types=boundary,multipolygon` (`CLIP_RELATION_TYPES`): the boundary
+relations PLAN:13 names, and the multipolygons that are osmium's default and are
+what large areas such as a military site or a park are drawn with. A route
+relation that reaches into the region is still in the extract with its whole
+member list; only its members outside the region are not, so a way inside the
+region still reads as a member of it (`pipeline.route_relations`,
+`pipeline.trail_routes` and `pipeline.scenic_layer` read member ids only).
+
 So two files come out of this stage and both are kept:
 
     <extracts>/merged.osm.pbf   the three states, merged, *not* clipped
@@ -22,13 +38,13 @@ So two files come out of this stage and both are kept:
 
 The merged one is what `valhalla_build_admins` reads. That is not a detail: an
 admin polygon is a boundary relation, the clip cuts relations at the region's
-edge even under `-s smart -S types=any` (which keeps *referenced* members
-complete, not members outside the region), and an admin database built from the
-clipped file describes administrative areas that stop at the bounding box. The
-tile build then charges a country- or state-crossing cost wherever a real
-boundary was truncated. `pipeline/tiles.py` already said the admin build must
-not read a variant extract; it read the clipped one instead, and cited PLAN:13
-as endorsing that.
+edge even under `-s smart` with boundaries among its types (which keeps
+*referenced* members complete, not members outside the region), and an admin
+database built from the clipped file describes administrative areas that stop
+at the bounding box. The tile build then charges a country- or state-crossing
+cost wherever a real boundary was truncated. `pipeline/tiles.py` already said
+the admin build must not read a variant extract; it read the clipped one
+instead, and cited PLAN:13 as endorsing that.
 
 ONE POINT IN TIME, ASSUMED. `osmium merge` is for files from the same moment:
 its man page says "Do not use this command to merge non-history files with data
@@ -91,11 +107,21 @@ GEOFABRIK_EXTRACTS = tuple(
 # the last one put them.
 MERGED_NAME = "merged.osm.pbf"
 CLIPPED_NAME = "source.osm.pbf"
-# What the two files were made from: the download URLs and the clip area, written last.
+# What the two files were made from: the download URLs, the clip area and the clip's
+# relation types, written last.
 # A recent extract made from other regions or another area (v0.7.0 added West Virginia and
 # moved the west edge) is rebuilt rather than kept for its age; one without this record,
-# from before it was written, is rebuilt once.
+# from before it was written, is rebuilt once. The relation types joined the record when
+# the clip stopped keeping route relations whole, so an extract clipped with
+# `types=any` is rebuilt rather than kept for its age.
 MADE_FROM_NAME = "source.made-from.json"
+
+# The relation types `-s smart` keeps complete across the clip's edge (`clip_command`):
+# boundaries for the admin and state lookups, multipolygons for the areas (military
+# sites, parks) ways are tested against. Not `any`: that takes in the whole length of
+# every long-distance route relation touching the region.
+CLIP_RELATION_TYPES = ("boundary", "multipolygon")
+CLIP_STRATEGY_OPTION = "types=" + ",".join(CLIP_RELATION_TYPES)
 
 # Every osmium output here is written to `<name>.part` and renamed on success,
 # and osmium cannot guess a format from that name - so each one says `-f pbf`.
@@ -317,14 +343,19 @@ def merge(inputs: Sequence[Path], merged: Path, run: Callable[[Sequence[str]], o
 
 
 def clip_command(merged: Path, output: Path, region: Path | Sequence[float]) -> list[str]:
-    """PLAN:13's clip, verbatim: `-s smart -S types=any`.
+    """PLAN:13's clip, with its relation types narrowed: `-s smart -S
+    types=boundary,multipolygon`.
 
     The strategy is what keeps boundary relations usable. `complete_ways` alone
-    cuts a relation at the region's edge; `smart` keeps multipolygons and
-    boundaries whose members reach outside, and `types=any` says which relation
-    types that applies to rather than osmium's default of multipolygons only -
-    without it the administrative boundaries this project cares about are
-    exactly the relations that get cut.
+    cuts a relation at the region's edge; `smart` completes the relations of the
+    types `-S types=` names whose members reach outside, and osmium's default is
+    multipolygons only - without `boundary` among them the administrative
+    boundaries this project cares about are exactly the relations that get cut.
+    PLAN:13 writes `types=any`, which completes route relations as well and so
+    pulled the whole East Coast Greenway and every US Bicycle Route touching the
+    region into the extract (the module docstring has the figure); the two types
+    named here are the ones the clip means to keep whole. osmium takes the list
+    as one comma-separated value.
 
     A coverage polygon is preferred over the bounding box when there is one:
     the plan's region is a polygon - Frederick and western Loudoun, Baltimore and the
@@ -348,7 +379,7 @@ def clip_command(merged: Path, output: Path, region: Path | Sequence[float]) -> 
         "-s",
         "smart",
         "-S",
-        "types=any",
+        CLIP_STRATEGY_OPTION,
         *bounds,
         "-o",
         str(output),
@@ -382,13 +413,16 @@ def age(path: Path, now: datetime) -> timedelta | None:
 
 
 def made_from(urls: Sequence[str], region: Path | Sequence[float]) -> str:
-    """The record of what an extract is made from: the URLs, and the clip box or the
-    polygon file's contents (its hash, so an edited polygon counts as another area)."""
+    """The record of what an extract is made from: the URLs, the clip box or the
+    polygon file's contents (its hash, so an edited polygon counts as another area),
+    and the relation types the clip keeps whole."""
     if isinstance(region, (str, Path)):
         area: object = {"polygon": hashlib.sha256(Path(region).read_bytes()).hexdigest()}
     else:
         area = {"bbox": [float(v) for v in region]}
-    return json.dumps({"urls": list(urls), "area": area}, sort_keys=True)
+    return json.dumps(
+        {"urls": list(urls), "area": area, "clip": CLIP_STRATEGY_OPTION}, sort_keys=True
+    )
 
 
 def write_made_from(directory: Path, urls: Sequence[str], region: Path | Sequence[float]) -> Path:
@@ -438,7 +472,7 @@ def refresh_reason(
         except FileNotFoundError:
             return f"the extract has no record of what it was made from ({record})"
         if held != made_from(urls, region):
-            return "the extract was made from other regions or another clip area"
+            return "the extract was made from other regions or another clip area or strategy"
     return None
 
 
