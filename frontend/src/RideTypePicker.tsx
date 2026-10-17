@@ -34,6 +34,9 @@ export function RideTypePicker({ preset, dials, onChoose }: Props) {
   const openerRef = useRef<HTMLButtonElement>(null);
   const cardRefs = useRef(new Map<PresetId, HTMLButtonElement>());
   const [query, setQuery] = useState("");
+  // Plan streamline (Stephen 2026-10-17): each card shows its one-line gist; "What each does" shows the full words.
+  // A screen reader hears the full words either way.
+  const [full, setFull] = useState(false);
   const groups = filterRideGroups(query);
   const current = PRESETS.find((p) => p.id === preset);
   const carrying = CARRYINGS.find((c) => c.id === dials.carrying);
@@ -100,7 +103,8 @@ export function RideTypePicker({ preset, dials, onChoose }: Props) {
             {dials.assist ? ", electric assist" : ""}
             {dials.bike ? `, ${bikeLabel(dials.bike).toLowerCase()}` : ""}
           </strong>
-          <span className="hint">{current?.description}</span>
+          <span className="hint">{current?.summary}</span>
+          {current && <span className="visually-hidden"> {current.description}</span>}
         </p>
         <button type="button" ref={openerRef} onClick={open} aria-haspopup="dialog">
           Change
@@ -123,7 +127,12 @@ export function RideTypePicker({ preset, dials, onChoose }: Props) {
               Close
             </button>
           </header>
-          <p className="hint">Choosing one moves the traffic and hills sliders to where it starts them.</p>
+          <p className="hint">
+            Choosing one moves the traffic and hills sliders to where it starts them.{" "}
+            <button type="button" className="link ride-types-full" aria-pressed={full} onClick={() => setFull(!full)}>
+              What each does
+            </button>
+          </p>
           <RideTypeSearch id="ride-types-search" query={query} onQuery={setQuery} count={rideTypeCount(groups)} />
           {groups.map((group) => (
             <section key={group.id} className="ride-type-group" aria-labelledby={`ride-types-${group.id}`}>
@@ -143,7 +152,16 @@ export function RideTypePicker({ preset, dials, onChoose }: Props) {
                       <strong>
                         <PresetName id={option.id} />
                       </strong>
-                      <span className="hint">{option.description}</span>
+                      {full ? (
+                        <span className="hint">{option.description}</span>
+                      ) : (
+                        <>
+                          <span className="hint" aria-hidden="true">
+                            {option.summary}
+                          </span>
+                          <span className="visually-hidden">{option.description}</span>
+                        </>
+                      )}
                     </button>
                     {carries(option.id) && (
                       <div className="ride-type-loads" role="group" aria-label={`${presetSaid(option.id)}: cargo or passengers`}>
