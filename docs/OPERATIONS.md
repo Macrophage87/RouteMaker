@@ -3949,7 +3949,7 @@ things beyond the tags, and none of them comes from the reference install:
 - **`fixtures/circle_parks/`** (the NPS circle parks from DC GIS's National
   Parks layer, CC BY 4.0, credited by routing's "DC Open Data" line): their
   walkways open to bicycles (`routemaker.circleparks`; the owner, 2026-10-17),
-  logged as "N walkways inside DC's circle parks opened to bicycles". Baked into
+  logged as "N walkways and crossings of DC's circle parks opened to bicycles". Baked into
   the pipeline image like the two above; the planner reads the same polygons to
   keep a trip point inside a circle off the underpass below it.
 

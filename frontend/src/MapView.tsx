@@ -95,6 +95,7 @@ import {
   bikeshareOf,
   dockMarkers,
   walkFeatures,
+  routeWalkFeatures,
 } from "./lib/bikeshare.ts";
 import {
   RIDE_COLOUR,
@@ -326,6 +327,9 @@ const CLOSURE_SOURCE = "closures";
 // source's attribution, so the attribution control shows it exactly while a bikeshare plan's
 // layer is visible and never otherwise (OWNER-DECISIONS 301).
 const WALK_SOURCE = "bikeshare-walk";
+// The walks at a route's ends where the ride stops short (`walk_in`): drawn as Bikeshare's walks are, from a
+// source of their own, so Bikeshare's credit shows only with a Bikeshare plan.
+const WALK_IN_SOURCE = "walk-in";
 // A transit ride type's trip past its first ride (lib/transit.ts): Metro and bus dashed, walks
 // dotted, the far end's ride solid and thin, with the schedule's source citation as the source's
 // attribution, shown while the trip is (OWNER-DECISIONS 301).
@@ -1117,6 +1121,21 @@ export function MapView(props: Props) {
         type: "line",
         source: WALK_SOURCE,
         layout: { "line-join": "round", "line-cap": "round", visibility: "none" },
+        paint: { "line-color": WALK_COLOUR, "line-width": WALK_LINE_WIDTH, "line-dasharray": WALK_DASH },
+      });
+      map.addSource(WALK_IN_SOURCE, { type: "geojson", data: routeWalkFeatures(null) });
+      map.addLayer({
+        id: "walk-in-casing",
+        type: "line",
+        source: WALK_IN_SOURCE,
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: { "line-color": WALK_CASING, "line-width": WALK_CASING_WIDTH, "line-opacity": 0.95 },
+      });
+      map.addLayer({
+        id: "walk-in",
+        type: "line",
+        source: WALK_IN_SOURCE,
+        layout: { "line-join": "round", "line-cap": "round" },
         paint: { "line-color": WALK_COLOUR, "line-width": WALK_LINE_WIDTH, "line-dasharray": WALK_DASH },
       });
       syncBikeshare(map, callbacks.current.route);
@@ -2221,6 +2240,8 @@ function syncBikeshare(map: MapLibreMap, route: RouteResponse | null): void {
   for (const id of ["bikeshare-walk-casing", "bikeshare-walk"]) {
     if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", visibility);
   }
+  const walkIn = map.getSource(WALK_IN_SOURCE) as GeoJSONSource | undefined;
+  walkIn?.setData(plan ? routeWalkFeatures(null) : routeWalkFeatures(route));
 }
 
 /** A transit trip's lines on the map, and the layers' visibility, which is what shows the source citation. */

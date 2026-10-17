@@ -23,6 +23,7 @@ class FakeWay:
     osm_id: int
     tags: dict
     coordinates: list = field(default_factory=list)
+    node_ids: list = field(default_factory=list)
 
 
 class TestTheFixture:
@@ -51,15 +52,19 @@ class TestOpens:
     def test_a_bicycle_tag_already_there_stands(self) -> None:
         for value in ("no", "dismount", "designated", "yes"):
             assert not circleparks.opens({**WALKWAY, "bicycle": value}, line(*DUPONT))
+        for key in ("bicycle:forward", "bicycle:conditional", "vehicle"):
+            assert not circleparks.opens({**WALKWAY, key: "no"}, line(*DUPONT)), key
 
     def test_a_closed_access_stands(self) -> None:
         assert not circleparks.opens({**WALKWAY, "access": "no"}, line(*DUPONT))
         assert not circleparks.opens({**WALKWAY, "access": "private"}, line(*DUPONT))
         assert circleparks.opens({**WALKWAY, "access": "yes"}, line(*DUPONT))
 
-    def test_sidewalks_crossings_steps_and_roads_are_not_walkways(self) -> None:
+    def test_the_sidewalk_round_the_edge_is_the_parks_own(self) -> None:
+        assert circleparks.opens({"highway": "footway", "footway": "sidewalk"}, line(*DUPONT))
+
+    def test_crossings_steps_and_roads_are_not_walkways(self) -> None:
         for tags in (
-            {"highway": "footway", "footway": "sidewalk"},
             {"highway": "footway", "footway": "crossing"},
             {"highway": "steps"},
             {"highway": "service"},
@@ -84,6 +89,17 @@ class TestOpenWays:
         assert inside.tags["bicycle"] == "yes"
         assert refused.tags["bicycle"] == "no"
         assert "bicycle" not in outside.tags
+
+    def test_a_crossing_touching_an_opened_walkway_opens_so_the_park_meets_the_street(self) -> None:
+        walkway = FakeWay(1, dict(WALKWAY), line(*DUPONT), [10, 11, 12])
+        crossing = {"highway": "footway", "footway": "crossing"}
+        touching = FakeWay(2, dict(crossing), line(*OUTSIDE), [12, 13])
+        apart = FakeWay(3, dict(crossing), line(*OUTSIDE), [20, 21])
+        signed = FakeWay(4, {**crossing, "bicycle": "no"}, line(*OUTSIDE), [12, 14])
+        opened = circleparks.open_ways([walkway, touching, apart, signed])
+        assert opened == {1, 2}
+        assert touching.tags["bicycle"] == "yes" and "bicycle" not in apart.tags
+        assert signed.tags["bicycle"] == "no"
 
 
 class TestTripPoints:

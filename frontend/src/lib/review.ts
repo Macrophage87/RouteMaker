@@ -13,7 +13,7 @@ import { streetViewUrl } from "./roadInfo.ts";
 
 type Fetch = typeof fetch;
 
-export type QueueKey = "rebuild" | "disagreement" | "sidepath" | "narrow_rural" | "works_closure" | "rematch" | "painted_lane";
+export type QueueKey = "rebuild" | "disagreement" | "sidepath" | "narrow_rural" | "works_closure" | "rematch" | "painted_lane" | "dc_no_bike";
 /** Review's own lists: its queues, then the reviews that were in Settings. */
 export type ListKey = QueueKey | "suggestions" | "hazards" | "closures";
 export type Decision = "accept" | "reject" | "set";
@@ -138,6 +138,7 @@ export const LISTS: { key: ListKey; label: string }[] = [
   { key: "works_closure", label: "Industrial-area closures" },
   { key: "rematch", label: "Overrides not re-matched" },
   { key: "painted_lane", label: "Painted lanes, agency against formula" },
+  { key: "dc_no_bike", label: "DC ways closed to bikes" },
   { key: "suggestions", label: "Rider suggestions" },
   { key: "hazards", label: "Mass Ride hazard reports" },
   { key: "closures", label: "Closure reports" },
@@ -153,7 +154,7 @@ export function isQueue(key: ListKey): key is QueueKey {
 export function decisionLabel(queue: QueueKey, decision: Decision): string {
   if (decision === "set") return "Set LTS";
   if (queue === "rebuild") return decision === "accept" ? "Keep new" : "Keep old";
-  if (queue === "works_closure") return decision === "accept" ? "Keep closed" : "Reopen";
+  if (queue === "works_closure" || queue === "dc_no_bike") return decision === "accept" ? "Keep closed" : "Reopen";
   if (queue === "disagreement") return "Keep current";
   return decision === "accept" ? "Accept" : "Reject";
 }
@@ -264,9 +265,10 @@ export const QUEUE_STYLE: Record<QueueKey, { colour: string; colourName: string;
   works_closure: { colour: "#56B4E9", colourName: "sky blue", dash: [3, 1, 1, 1], pattern: "dash and dot" },
   rematch: { colour: "#E69F00", colourName: "orange", dash: [0.5, 1], pattern: "dots" },
   painted_lane: { colour: "#000000", colourName: "black", dash: [4, 1, 1, 1, 1, 1], pattern: "dash and two dots" },
+  dc_no_bike: { colour: "#F0E442", colourName: "yellow", dash: [3, 2], pattern: "spaced dashes" },
 };
 
-export const QUEUES: QueueKey[] = ["rebuild", "disagreement", "narrow_rural", "sidepath", "works_closure", "rematch", "painted_lane"];
+export const QUEUES: QueueKey[] = ["rebuild", "disagreement", "narrow_rural", "sidepath", "works_closure", "rematch", "painted_lane", "dc_no_bike"];
 
 /**
  * What Review's map shows of the view (GET /api/review/map): the roads of the lists switched on inside it, up to the

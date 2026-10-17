@@ -102,6 +102,8 @@ test("the lists, Rebuild changes first, and the ruling buttons' names", () => {
   assert.equal(decisionLabel("rebuild", "reject"), "Keep old");
   assert.equal(decisionLabel("rebuild", "set"), "Set LTS");
   assert.equal(decisionLabel("works_closure", "reject"), "Reopen");
+  assert.equal(decisionLabel("dc_no_bike", "accept"), "Keep closed");
+  assert.equal(decisionLabel("dc_no_bike", "reject"), "Reopen");
   assert.equal(decisionLabel("disagreement", "accept"), "Keep current");
   // A road's own buttons name the level each keeps; the batch's keep the bare words.
   const rebuild = { queue: "rebuild" as const, old_step: 2, old_closed: false, new_step: 4, new_closed: false };

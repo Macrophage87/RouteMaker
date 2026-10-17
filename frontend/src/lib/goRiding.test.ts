@@ -133,6 +133,6 @@ test("End ride keeps the plan and its routes; part way it starts where the rider
   assert.match(endRide, /commit\(from, ride\.dials\.loop \? \{ \.\.\.ride, dials: \{ \.\.\.ride\.dials, loop: false \} \} : undefined\);/);
   assert.match(endRide, /announce\(from \? RIDE_ENDED_FROM_HERE_SAID : after === "no-fix" \? RIDE_ENDED_NO_FIX_SAID : RIDE_ENDED_SAID\);/);
   // The ride's own fix (planAfterEnd), never a trip's riding leg.
-  assert.match(ride, /onEnd\(trip \? null : planAfterEnd\(modelRef\.current, rideRef\.current, plan\.current\.points, plan\.current\.loop, Date\.now\(\)\)\);/);
+  assert.match(ride, /onEnd\(trip && !trip\.asPlanned \? null : planAfterEnd\(modelRef\.current, rideRef\.current, plan\.current\.points, plan\.current\.loop, Date\.now\(\)\)\);/);
   assert.match(app, /if \(ended\.from && pointsRef\.current === ended\.from\) edits\.retract\(\);/);
 });

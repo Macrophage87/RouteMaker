@@ -37,6 +37,7 @@ from typing import TypeVar
 from routemaker import (
     agency_lts,
     agency_roads,
+    bike_bans,
     bike_lanes,
     cbd,
     circleparks,
@@ -2677,7 +2678,7 @@ def build_handlers(
             # value stands (`routemaker.circleparks`, owner 2026-10-17).
             context.circle_park_ways = circleparks.open_ways(context.ways)
             logger.info(
-                "%d walkways inside DC's circle parks opened to bicycles",
+                "%d walkways and crossings of DC's circle parks opened to bicycles",
                 len(context.circle_park_ways),
             )
         except overrides.OverrideRefused as refused:
@@ -2889,6 +2890,7 @@ def build_handlers(
             works=works_closed,
         )
         context.no_bicycle = nobike.reasons
+        write_bike_bans(placed, areas[restricted_areas.PARK])
         context.walk_bike = nobike.walk_bike
         context.destination_only = nobike.destination_only
         context.mtb_only = nobike.mtb_only()
@@ -2939,6 +2941,40 @@ def build_handlers(
             dict(sorted(nobike.counts().items())),
             len(nobike.walk_bike),
             len(nobike.destination_only),
+        )
+
+    def write_bike_bans(placed, parks) -> None:
+        """`dc-bike-bans.csv`, the ways in the District a bicycle is kept off, for
+        Review's "DC no-bike ways" queue (`routemaker.bike_bans`; the owner, 2026-10-17)."""
+        dc = bike_bans.dc_polygons()
+        in_park = restricted_areas.ways_inside(
+            placed, parks, lambda tags: tags.get("highway") in bike_bans.CLASS_CLOSED_HIGHWAY
+        )
+        listed = []
+        for way in context.ways:
+            why = bike_bans.reason(
+                way.tags, context.no_bicycle.get(way.osm_id), way.osm_id in in_park
+            )
+            if why is None or not bike_bans.inside(way.coordinates, dc):
+                continue
+            listed.append(
+                bike_bans.Listed(
+                    way.osm_id,
+                    way.tags.get("highway", ""),
+                    way.tags.get("name", ""),
+                    facility._length_m(way.coordinates),
+                    why,
+                )
+            )
+        write_reports(
+            context.work_dir,
+            {bike_bans.REPORT_NAME: bike_bans.report_csv(listed)},
+            "DC no-bike ways",
+        )
+        logger.info(
+            "DC no-bike ways listed for Review: %d ways, %s",
+            len(listed),
+            dict(sorted(Counter(row.reason for row in listed).items())) or "none",
         )
 
     def routing_tags(way: extract.Way, variant: variants.Variant) -> dict[str, str]:

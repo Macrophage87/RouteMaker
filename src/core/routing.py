@@ -2594,6 +2594,86 @@ def move_zoo_points(points: list[list[float]]) -> tuple[list[list[float]], list[
     return out, moved
 
 
+# A stop the bike cannot be ridden to the door of (the owner, 2026-10-17: "There are some
+# cases where people could mark stops on a bike trip that should have a dismount like the
+# MLK or FDR memorial. In those cases, we should let them route there, but switch to walk
+# mode. You're almost always able to portage your bike."): where the ride ends farther than
+# WALK_IN_MIN_M from the point the rider put, the walk from the ride's end to it, on foot,
+# is answered beside the route (`walk_in`), up to WALK_IN_MAX_M. Below the minimum the
+# rider is there; past the maximum the walk is not the last few steps, and is not offered.
+WALK_IN_MIN_M = 25.0
+WALK_IN_MAX_M = 800.0
+WALK_IN_SPEED_KMH = 4.8  # bikeshare.WALK_SPEED_KMH: walking beside a bike
+# The least of the budget a walk-in may start with; it is a few hundred metres on foot.
+WALK_IN_MIN_LEFT_S = 1.0
+
+
+def walk_leg(a: list[float], b: list[float], deadline: Deadline) -> dict | None:
+    """The walk from `a` to `b` on the standard graph's pedestrian costing, as the answer
+    carries it, or None where there is none on foot, it is too long, or no time is left."""
+    if deadline.at - clock() < WALK_IN_MIN_LEFT_S:
+        return None
+    payload = {
+        "locations": [{"lon": p[0], "lat": p[1], "type": "break"} for p in (a, b)],
+        "costing": "pedestrian",
+        "costing_options": {"pedestrian": {"walking_speed": WALK_IN_SPEED_KMH}},
+        "directions_type": "none",
+        "units": "kilometers",
+    }
+    try:
+        answer = _call(Variant.STANDARD.value, "route", payload, deadline)
+    except RouterRefused as refusal:
+        if refusal.code not in NO_PATH_CODES | NO_EDGE_CODES:
+            logger.warning("a walk-in was refused: %s", refusal)
+        return None
+    except (DeadlineExceeded, RouterUnavailable):
+        return None
+    legs = (answer.get("trip") or {}).get("legs") or []
+    if not legs:
+        return None
+    metres = float((legs[0].get("summary") or {}).get("length", 0.0)) * 1000.0
+    if metres > WALK_IN_MAX_M:
+        return None
+    shape = decode_polyline6(legs[0].get("shape", ""))
+    return {
+        "geometry": {
+            "type": "LineString",
+            "coordinates": [[round(lon, 6), round(lat, 6)] for lon, lat in shape],
+        },
+        "distance_m": round(metres, 1),
+        "duration_s": round(float((legs[0].get("summary") or {}).get("time", 0.0)), 1),
+    }
+
+
+def walk_in(
+    asked_start: list[float] | None,
+    asked_end: list[float] | None,
+    line: list,
+    deadline: Deadline,
+) -> dict | None:
+    """The walks at either end of a route whose ride stops short of the point asked
+    (`WALK_IN_MIN_M`): from the start asked to where the ride begins, and from where it
+    ends to the end asked. None where neither end needs one. A point the planner moved
+    (the Zoo's racks) is passed as None: the route goes where it was moved to."""
+    if len(line) < 2:
+        return None
+    found: dict[str, dict | None] = {"start": None, "end": None}
+    for key, asked, ride_end, a_to_b in (
+        ("start", asked_start, line[0], False),
+        ("end", asked_end, line[-1], True),
+    ):
+        if asked is None:
+            continue
+        gap = haversine(Point(*asked[:2]), Point(*ride_end[:2]))
+        if gap < WALK_IN_MIN_M:
+            continue
+        a, b = (list(ride_end), list(asked)) if a_to_b else (list(asked), list(ride_end))
+        leg = walk_leg(a, b, deadline)
+        if leg is not None:
+            found[key] = {**leg, "to": "your destination" if a_to_b else "the route"}
+    return found if any(found.values()) else None
+
+
 def circle_park_filter(lon: float, lat: float) -> dict:
     """A trip point inside one of DC's circle parks is never matched to a tunnel
     (`routemaker.circleparks`, owner 2026-10-17): Dupont, Scott and Thomas Circles
@@ -2631,7 +2711,9 @@ def plan(
         started = clock()
     timing.restart()
     dials = dials or Dials()
+    asked_points = [list(p) for p in points]
     points, moved_points = move_zoo_points(points)
+    moved_indices = {m["index"] for m in moved_points}
     preset = presets.PRESETS[preset_name]
     stress_dial = (
         presets.stress_start(preset_name, dials.carrying) if dials.stress is None else dials.stress
@@ -3498,6 +3580,13 @@ def plan(
         }
 
     answered = _answer(trip, refined, dodges_of=dodges)
+    end_index = 0 if loop else len(asked_points) - 1
+    answered["walk_in"] = walk_in(
+        None if 0 in moved_indices else asked_points[0],
+        None if end_index in moved_indices else asked_points[end_index],
+        answered["geometry"]["coordinates"],
+        deadline,
+    )
     _wait_for_delays(delays)
     body = work_zones.with_work_zones(answered, zones_plan)
     body["provisional"] = quick
