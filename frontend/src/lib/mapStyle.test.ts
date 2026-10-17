@@ -72,7 +72,7 @@ test("the stress source starts and ends where the zoom levels say", () => {
   const source = stressSource("https://example.test");
   assert.equal(source.minzoom, STRESS_ZOOMS.min);
   assert.equal(source.maxzoom, STRESS_ZOOMS.max);
-  assert.ok(STRESS_ZOOMS.min < STRESS_ZOOMS.ride && STRESS_ZOOMS.ride < STRESS_ZOOMS.quiet);
+  assert.ok(STRESS_ZOOMS.min < STRESS_ZOOMS.quiet);
   assert.ok(STRESS_ZOOMS.quiet <= STRESS_ZOOMS.max);
 });
 
@@ -82,7 +82,9 @@ test("the map asks for no stress tile past z14: z15-16 are drawn from it (owner,
   assert.equal(stressSource("https://example.test").maxzoom, 14);
   // "Zoom less than 12, show just bike paths and the metro/MARC. 12 and 13,
   // show LTS 3+, 14+ show show the quiet streets." (OWNER-DECISIONS 73), and from
-  // 2026-10-05 12 and 13 are the where-to-ride layer, with the busy roads from 14 (391).
-  assert.equal(STRESS_ZOOMS.ride, 12);
-  assert.equal(STRESS_ZOOMS.quiet, 14);
+  // 2026-10-05 12 and 13 were the where-to-ride layer, with the busy roads from 14 (391),
+  // until the owner, 2026-10-17: "Show traffic stress a couple more zoom levels up", then,
+  // of the busy roads and every street, "Both from 12".
+  assert.equal(STRESS_ZOOMS.quiet, 12);
+  assert.deepEqual(Object.keys(STRESS_ZOOMS), ["min", "quiet", "max"]);
 });

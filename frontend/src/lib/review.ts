@@ -47,6 +47,8 @@ export interface Ruling {
   id: number;
   queue: QueueKey;
   osm_way_id: number;
+  /** The lead way of the stretch it was made on (every way of it was ruled together), or null. */
+  stretch: number | null;
   decision: Decision;
   step: number | null;
   reason: string;
@@ -77,8 +79,13 @@ export interface ReviewRoad {
   sources: RatingSource[];
   ratings: { label: string; value: string; source: string | null }[];
   spread: number | null;
+  /** A stretch's: every way's together (core.stress_review.group_stretches). */
   length_m: number;
   length: string;
+  /** The ways the row is: a stretch of one road between major junctions with one change, or one way alone. A ruling
+   * on the row is a ruling on each. */
+  ways: number[];
+  pieces: number;
   aadt: number | null;
   bbox: [number, number, number, number] | null;
   geometry: { type: string; coordinates: unknown } | null;
@@ -186,6 +193,20 @@ export function progressText(reviewed: number, total: number): string {
 export function roadHeading(road: Pick<ReviewRoad, "name" | "osm_way_id" | "area" | "kind_label">): string {
   const name = road.name || `Unnamed way ${road.osm_way_id}`;
   return `${name}${road.area ? `, ${road.area}` : ""}: ${road.kind_label}`;
+}
+
+/** "3 road pieces" for a stretch of more than one way, else "". */
+export function piecesText(road: Pick<ReviewRoad, "pieces">): string {
+  return road.pieces > 1 ? `${road.pieces.toLocaleString("en-US")} road pieces` : "";
+}
+
+/** A row's accessible name (the road's button): its name first, as shown, then how many pieces, its length (miles
+ * first, kilometres in brackets) and its change: "Oak Street, 3 road pieces, 0.32 mi (0.52 km): LTS 2 to LTS 4". */
+export function roadRowLabel(road: Pick<ReviewRoad, "name" | "osm_way_id" | "queue" | "kind_label" | "reason" | "length" | "pieces">): string {
+  const name = road.name || `Way ${road.osm_way_id}`;
+  const pieces = piecesText(road);
+  const change = road.queue === "rebuild" ? road.kind_label : road.reason || road.kind_label;
+  return `${name}${pieces ? `, ${pieces}` : ""}, ${road.length}${change ? `: ${change}` : ""}`;
 }
 
 /** Cars a day in US style, or "No count". */

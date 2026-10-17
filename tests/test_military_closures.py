@@ -488,6 +488,55 @@ def test_overlapping_areas_count_a_stretch_once_and_holes_are_outside():
     assert twice.share([(-77.015, 38.845)]) == (1.0, BASE)
 
 
+def _island_base():
+    """A base whose outline holds water (a hole) with an island in it, mapped as a
+    second outer ring inside the hole: the shape a proving ground on a bay takes
+    when its outline follows the shore (Spesutie Island at Aberdeen Proving Ground,
+    whose roads the v0.8.0 rebuild rated rather than closed)."""
+    outer = [(-77.02, 38.84), (-77.01, 38.84), (-77.01, 38.85), (-77.02, 38.85)]
+    water = [(-77.018, 38.841), (-77.012, 38.841), (-77.012, 38.849), (-77.018, 38.849)]
+    island = [(-77.016, 38.843), (-77.014, 38.843), (-77.014, 38.847), (-77.016, 38.847)]
+    return ra.named_area(
+        ((-77.02, 38.84, -77.01, 38.85), [outer, island], [water]),
+        "Island Proving Ground",
+        "r5",
+    )
+
+
+def test_an_island_inside_a_bases_water_is_inside_the_base():
+    """A hole takes out what its own outer ring holds, not every outer ring: the
+    island's road closes, the water around it stays outside, the mainland stays in."""
+    base = _island_base()
+    on_island = [(-77.0155, 38.845), (-77.0145, 38.845)]
+    on_water = [(-77.0175, 38.845), (-77.0165, 38.845)]
+    on_mainland = [(-77.0195, 38.845), (-77.0185, 38.845)]
+
+    shapes = ra._Shapes([base])
+    assert shapes.share(on_island)[0] == pytest.approx(1.0)
+    assert shapes.share(on_water)[0] == 0.0
+    assert shapes.share(on_mainland)[0] == pytest.approx(1.0)
+    assert ra._in_area((-77.015, 38.845), base)
+    assert not ra._in_area((-77.017, 38.845), base)
+    assert ra._in_area((-77.019, 38.845), base)
+
+    found = ra.military_closures(
+        [
+            (1, {"highway": "secondary", "name": "Island Road"}, on_island),
+            (2, {"highway": "secondary", "name": "Causeway"}, on_water),
+        ],
+        [base],
+    )
+    assert {m.way_id: m.status for m in found} == {1: ra.CLOSED}
+    assert found[0].installation == "Island Proving Ground"
+
+
+def test_a_military_relation_the_area_assembly_dropped_is_named():
+    """osmium assembles nothing from a multipolygon whose ring does not close, and
+    says nothing, so every way inside that base would be rated as a public road."""
+    relations = {5: "Island Proving Ground", 6: "Broken Range"}
+    assert ra.unassembled_military(relations, [_island_base()]) == [(6, "Broken Range")]
+
+
 # --- No open network passes through a base (437) ----------------------------------
 
 
