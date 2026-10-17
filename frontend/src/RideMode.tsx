@@ -73,15 +73,14 @@ import {
   OUTPUT_LABELS,
   ScreenWake,
   Voice,
-  browserSpeech,
-  browserWake,
   toScreenReader,
   toVoice,
   type CueOutput,
   type RidePrefs,
   type Said,
 } from "./lib/rideOutput.ts";
-import { WAITING_FOR_GPS, browserRideEnv, watchRide, type RideGeoEnv } from "./lib/rideWatch.ts";
+import { WAITING_FOR_GPS, watchRide, type RideGeoEnv } from "./lib/rideWatch.ts";
+import { rideGeoEnv, rideSpeech, rideWake, ridesHidden, showCue, speaksAloud } from "./lib/nativeShell.ts";
 import {
   DETOUR_BUSY,
   DETOUR_FULL,
@@ -103,6 +102,7 @@ import {
   type NearestKind,
 } from "./lib/nearest.ts";
 import type { WaterPoint } from "./lib/waterRestrooms.ts";
+import type { TrailMiles } from "./lib/trailMiles.ts";
 import { WATER_CAUTION } from "./lib/waterRestrooms.ts";
 import { corridorNote, type PrefetchResult } from "./lib/corridor.ts";
 import { clearCorridor, copyCorridor, keepCorridor } from "./lib/corridorStore.ts";
@@ -152,8 +152,11 @@ import {
   type RideTrip,
 } from "./lib/rideTrip.ts";
 
-/** One voice for the page: the Start ride press unlocks it (iOS speaks only after a gesture has). */
-export const rideVoice = new Voice(browserSpeech());
+/**
+ * One voice for the page: the Start ride press unlocks it (iOS speaks only after a gesture has). Web
+ * Speech in a browser; in the phone app (v0.8.0), the native voice, which goes on with the screen locked.
+ */
+export const rideVoice = new Voice(rideSpeech());
 
 /** Said as the ride starts, inside the Start press, so the voice is unlocked by it. */
 export const RIDE_STARTED = "Ride started.";
@@ -213,8 +216,12 @@ export const GPS_LOST_MS = 30_000;
 export const GPS_LOST_SAID = "No GPS signal: the cues are paused until it comes back.";
 
 /** The rider's responsibility and the battery, said before the first ride (plan sections 5 and 10). */
-export const RIDE_SAFETY =
+export const RIDE_SAFETY_BROWSER =
   "Ride mode guides you along the planned route; you stay responsible for riding safely and obeying the rules of the road, and the route can be wrong. It needs the screen on and this page in front, and GPS with a lit screen drains the battery quickly.";
+/** In the phone app (v0.8.0) the cues go on with the screen locked, so the screen sentence is not said. */
+export const RIDE_SAFETY_APP =
+  "Ride mode guides you along the planned route; you stay responsible for riding safely and obeying the rules of the road, and the route can be wrong. In this app the cues go on with the screen locked until you end the ride, and GPS drains the battery.";
+export const RIDE_SAFETY = ridesHidden() ? RIDE_SAFETY_APP : RIDE_SAFETY_BROWSER;
 
 /** Called inside the Start ride press: unlock the voice with the first sentence, where the rider chose it. */
 export function startRideGesture(prefs: RidePrefs): void {
@@ -349,6 +356,7 @@ function Report311({
   summaryRef,
   noteRef,
   serverOn = false,
+  miles = null,
 }: {
   model: RideModel;
   progressM: number | null;
@@ -363,11 +371,13 @@ function Report311({
   noteRef?: RefObject<HTMLInputElement | null>;
   /** The server sends reports to DC 311 itself (it has DC's key): the privacy line says so. */
   serverOn?: boolean;
+  /** The trail mile markers (lib/trailMiles.ts): on a trail the place names its mile. */
+  miles?: TrailMiles | null;
 }) {
   const setKind = onKind;
   const [note, setNote] = useState("");
   const [copied, setCopied] = useState("");
-  const place = progressM === null ? null : reportPlace(model, progressM);
+  const place = progressM === null ? null : reportPlace(model, progressM, miles);
   const outside = progressM !== null && !inDc(pointAt(model, progressM));
   // The words for DC 311 online (shown and copied), and the text message, which starts with DC's keyword.
   const text = outside ? null : reportText(kind, place, note);
@@ -454,6 +464,7 @@ export function RideMode({
   onView,
   onEnd,
   water,
+  trailMiles = null,
   geoEnv,
   keepLastRide = false,
   trip = null,
@@ -479,6 +490,11 @@ export function RideMode({
   onEnd: (after: EndedPlan) => void;
   /** The water layer's points, loaded if they are not yet (App's ensureWater); for the detours. */
   water?: () => Promise<WaterPoint[] | null>;
+  /**
+   * The trail mile markers (lib/trailMiles.ts; OWNER-DECISIONS 465), once App has them: the 311 report and
+   * "Where am I?" name a trail's mile with them, on the device. Null before, or with none.
+   */
+  trailMiles?: TrailMiles | null;
   geoEnv?: RideGeoEnv;
   /**
    * The installed app (OWNER-DECISIONS 465a; lib/offlineKeep.ts): at End ride the map the ride kept is
@@ -500,6 +516,8 @@ export function RideMode({
   const model = useMemo(() => rideModel(route, viaIndices(plan.current.points, VIA_MARKS.isVia)), [route]);
   const modelRef = useRef(model);
   modelRef.current = model;
+  const milesRef = useRef(trailMiles);
+  milesRef.current = trailMiles;
   const [ride, setRide] = useState<RideState>(startState);
   // A Bikeshare or transit plan's walk to its first dock (lib/rideTrip.ts): until the rider reaches the
   // line's start, the walk is said and shown, and no fix is taken as off route.
@@ -615,7 +633,7 @@ export function RideMode({
     setReportKind(kind);
     setMenu311(false);
     const progress = rideRef.current.off ? null : rideRef.current.progressM;
-    const place = progress === null ? null : reportPlace(modelRef.current, progress);
+    const place = progress === null ? null : reportPlace(modelRef.current, progress, milesRef.current);
     if (!place || !inDc(place.point)) {
       openReport();
       return;
@@ -664,14 +682,18 @@ export function RideMode({
     noteInput.current?.focus();
   }, [reportOpen]);
   const gate = useRef(new ReplanGate()).current;
-  const wake = useRef(new ScreenWake(browserWake())).current;
-  const env = useRef(geoEnv ?? browserRideEnv()).current;
+  // In the phone app (lib/nativeShell.ts) the lock and the watch are the native ones; in a browser, the browser's.
+  const wake = useRef(new ScreenWake(rideWake())).current;
+  const env = useRef(geoEnv ?? rideGeoEnv()).current;
 
   // The outputs: the screen reader's regions and the voice, as the rider chose; through the throttle.
   const deliver = useCallback((said: Said) => {
     const output = prefsRef.current.output;
     if (toScreenReader(output)) (said.urgent ? setAssertive : setPolite)((s) => ({ text: said.text, count: s.count + 1 }));
-    if (toVoice(output)) rideVoice.speak(said.text, said.urgent);
+    // The voice as chosen; in the phone app also "my screen reader" while the page is hidden (nativeShell.ts).
+    if (speaksAloud(output, document.visibilityState === "hidden")) rideVoice.speak(said.text, said.urgent);
+    // The phone app's cue notification on Android (nothing in a browser).
+    showCue(said.text);
   }, []);
   const announcer = useRef<Announcer | null>(null);
   if (announcer.current === null) announcer.current = new Announcer(deliver);
@@ -838,7 +860,7 @@ export function RideMode({
       if (out.state.off && auto && !gate.busy && fix.accuracyM <= POOR_FIX_M && out.state.goodFix) void replan(out.state.goodFix.point);
       if (sayWhereNext.current && out.state.progressM !== null) {
         sayWhereNext.current = false;
-        announcer.current?.answer(whereAmI(modelRef.current, out.state));
+        announcer.current?.answer(whereAmI(modelRef.current, out.state, false, milesRef.current));
       }
     },
     [gate, replan, say, notify, checkCueSheet, approach, trip],
@@ -901,6 +923,8 @@ export function RideMode({
     let timer: number | undefined;
     const onVisibility = () => {
       if (document.visibilityState === "hidden") {
+        // The phone app keeps the ride going with the screen locked (lib/nativeShell.ts): no pause there.
+        if (ridesHidden()) return;
         timer = window.setTimeout(() => {
           stopWatch.current?.();
           stopWatch.current = null;
@@ -989,8 +1013,8 @@ export function RideMode({
   const askWhere = useCallback(() => {
     // Walking to the dock: the walk, from here.
     const walk = tripRef.current.walking && approach ? approachWords(approach, rideRef.current.fix?.point ?? null) : null;
-    const spoken = walk ? walk.spoken : whereAmI(modelRef.current, rideRef.current);
-    setWhere(walk ? walk.shown : whereAmI(modelRef.current, rideRef.current, true));
+    const spoken = walk ? walk.spoken : whereAmI(modelRef.current, rideRef.current, false, milesRef.current);
+    setWhere(walk ? walk.shown : whereAmI(modelRef.current, rideRef.current, true, milesRef.current));
     // On demand: through the chosen outputs; with neither chosen, through the polite region too, since
     // the rider asked (the answer is also on screen).
     announcer.current?.answer(spoken);
@@ -1156,7 +1180,7 @@ export function RideMode({
   const back = ride.off ? wayBack(model, ride) : null;
   const shape = arrowFor(cue);
   const show311 = ride311Shown({ off: ride.off, progressM: progress, insideDc: (m) => inDc(pointAt(model, m)) });
-  const place311 = show311 && progress !== null ? reportPlace(model, progress) : null;
+  const place311 = show311 && progress !== null ? reportPlace(model, progress, trailMiles) : null;
 
   // Off route, back on, or out of DC: the off-route buttons or the 311 block go, and a focus that was in
   // the one that went goes to Where am I?, so W and C keep working (review a11y-3; lib/rideFocus.ts). A
@@ -1267,7 +1291,7 @@ export function RideMode({
             <div>
               {/* Greyed while GPS is weak or lost (any GPS note): the distance is from an old fix, not where the rider is. */}
               <p className={gps ? "cue-distance cue-distance-weak" : "cue-distance"}>In {formatDistance(cue.atM - progress)}</p>
-              <p className="cue-text">{cue.text}</p>
+              <p className="cue-text">{cue.rideText ?? cue.text}</p>
             </div>
           </div>
         ) : (
@@ -1439,6 +1463,7 @@ export function RideMode({
           summaryRef={reportSummary}
           noteRef={noteInput}
           serverOn={serverOn311}
+          miles={trailMiles}
         />
       </div>
     </section>

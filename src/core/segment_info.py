@@ -31,8 +31,9 @@ from django.core.signals import request_finished, request_started
 from django.db import connection
 
 from pipeline.schema import validate_schema_name
-from routemaker import agency_lts, flow, more_links
+from routemaker import agency_lts, flow, more_links, scenic
 from routemaker.describe import UNNAMED_PATH, UNNAMED_ROAD
+from routemaker.stress import USE_SIDEPATH_RULE
 
 # How far from the spot a way may be and still be the one the rider meant: a
 # right-click on a drawn road lands within a few metres of its centre line at
@@ -135,7 +136,10 @@ ATTR_SOURCES = {
     "osm": OSM,
     "dc-roadway-block": "DC Roadway Block (DDOT / DC GIS), DC Open Data (CC BY 4.0, adapted)",
     "baltimore-centerline": "Open Baltimore street centerline",
+    "alexandria-transport-streets": "City of Alexandria Transport Streets",
 }
+# The sources whose speed is the city's record for the street rather than a posted sign.
+CITY_RECORDED = frozenset({"alexandria-transport-streets"})
 
 FACILITY_WORDS = {
     "path": "Traffic-free path",
@@ -207,7 +211,9 @@ ACCESS_WORDS = {
         " (closed unless there is evidence bikes are allowed)",
     ),
     "bicycle_no": (False, "Closed: no bicycles (a no-bike sign or rule, as mapped)"),
-    "bicycle_use_sidepath": (False, "Closed: bicycles must use the side path"),
+    # Legal, rated Avoid, where a side path is mapped beside it (review RL-1; the owner,
+    # 2026-10-16: "It's very much not recommended, but I believe still legal").
+    "bicycle_use_sidepath": (True, "Open: legal, but riders are asked to use the side path"),
     "motorway": (False, "Closed: a freeway"),
     "motorroad": (False, "Closed: a motor-vehicle-only road"),
     "private": (False, "Closed: private, or no public access"),
@@ -239,6 +245,7 @@ ACCESS_WORDS = {
 # Every column this endpoint reads that an older live table may lack.
 OPTIONAL_COLUMNS = (
     "facility",
+    "facility_shown",
     "car_free_when",
     "map_class",
     "road_speed_mph",
@@ -263,6 +270,7 @@ OPTIONAL_COLUMNS = (
     "mtb_name",
     "stress_ratings",
     "sidepath_name",
+    "scenic",
 )
 REQUIRED_COLUMNS = (
     "osm_way_id",
@@ -552,6 +560,8 @@ def _rule_words(rule: str) -> str:
         return "Owner-rated corridor"
     if "curated lane at" in rule:
         return "Owner-rated: a bike lane on a road this busy is LTS 4"
+    if rule.startswith(USE_SIDEPATH_RULE):
+        return "Avoid: riders are asked to use the side path"
     if rule.startswith("legal but avoid"):
         posted = _SPEED.search(rule)
         return "Avoid: highway-like road" + (f", posted {posted.group(0)}" if posted else "")
@@ -730,6 +740,12 @@ def _attr(row: dict, key: str) -> str | None:
     return None
 
 
+def _speed_how(row: dict) -> str:
+    """How a known speed is known: "posted", or "recorded by the city" where it is
+    Alexandria's street record rather than a sign seen (PLAN.md item 183)."""
+    return "recorded by the city" if _attr(row, "maxspeed") in CITY_RECORDED else "posted"
+
+
 def traffic_rows(row: dict) -> list[dict]:
     rows = []
     path = bool(row.get("is_trail_class"))
@@ -754,7 +770,9 @@ def traffic_rows(row: dict) -> list[dict]:
         speed = row.get("road_speed_mph")
         if speed is not None:
             source = ATTR_SOURCES.get(_attr(row, "maxspeed") or "osm", OSM)
-            rows.append(_row("Speed limit", f"{mph_and_kmh(float(speed))}, posted", source))
+            rows.append(
+                _row("Speed limit", f"{mph_and_kmh(float(speed))}, {_speed_how(row)}", source)
+            )
         elif "maxspeed" in assumed:
             found = _SPEED.search(str(row.get("stress_rule") or ""))
             value = (
@@ -787,11 +805,19 @@ def traffic_rows(row: dict) -> list[dict]:
     return rows
 
 
+# A lane against a one-way's traffic only (`segment.facility_shown`; the review of
+# 17f69082): shown as the lane it is, and said to be for the other direction alone.
+CONTRAFLOW_WORDS = ", against the one-way traffic only"
+
+
 def riding_rows(row: dict) -> list[dict]:
     rows = []
     facility = row.get("facility")
+    shown = row.get("facility_shown")
     if facility in FACILITY_WORDS:
         value = FACILITY_WORDS[facility]
+        if shown in FACILITY_WORDS:
+            value = FACILITY_WORDS[shown] + CONTRAFLOW_WORDS
         if facility == "none" and row.get("is_trail_class"):
             # A path the classifier does not count as a bike facility: a footway, a
             # sidewalk, a path not open to bicycles. It is not "shared with traffic".
@@ -883,6 +909,18 @@ def surface_words(row: dict) -> str:
     return words
 
 
+# A `bicycle=use_sidepath` road with a side path mapped beside it (review RL-1).
+USE_SIDEPATH_REASON = "bicycle_use_sidepath"
+
+
+def use_sidepath_words(row: dict) -> str:
+    """The owner's words for a `bicycle=use_sidepath` road (2026-10-16), naming the side
+    path where it has a name (`segment.sidepath_name` on a road)."""
+    words = "Legal, but riders are asked to use the side path"
+    name = row.get("sidepath_name") if not row.get("is_trail_class") else None
+    return f"{words}: {name}" if name else words
+
+
 def access_rows(row: dict, bicycle: bool | None) -> tuple[bool | None, list[dict]]:
     """Whether a bicycle may use the way, and the rows saying so and why."""
     have_reason = "bike_access_reason" in row
@@ -900,6 +938,8 @@ def access_rows(row: dict, bicycle: bool | None) -> tuple[bool | None, list[dict
     if bicycle is None:
         return None, [_row("Bike access", "Not known right now (the router did not answer)", None)]
     if bicycle:
+        if reason == USE_SIDEPATH_REASON:
+            return True, [_row("Bike access", use_sidepath_words(row), OSM)]
         if known is not None and known[0]:
             return True, [
                 _row("Bike access", known[1], OWNER if reason.startswith("override") else OSM)
@@ -964,7 +1004,6 @@ ACCESS_SHORT = {
     "secured": "secure government site",
     "works": "quarry, landfill or industrial site",
     "bicycle_no": "no-bike rule",
-    "bicycle_use_sidepath": "use the side path",
     "motorway": "freeway",
     "motorroad": "motor vehicles only",
     "private": "private",
@@ -1075,7 +1114,7 @@ def summary_rows(row: dict, router: dict, open_: bool | None) -> list[dict]:
     if not path:
         speed = row.get("road_speed_mph")
         if speed is not None:
-            add("speed", "Speed", f"{mph_and_kmh(float(speed))}, posted")
+            add("speed", "Speed", f"{mph_and_kmh(float(speed))}, {_speed_how(row)}")
         elif "maxspeed" in assumed:
             found = _SPEED.search(str(row.get("stress_rule") or ""))
             if found:
@@ -1096,15 +1135,22 @@ def summary_rows(row: dict, router: dict, open_: bool | None) -> list[dict]:
         credit = " ".join(str(x) for x in (who, year) if x)
         add("traffic", "Traffic", f"{int(aadt):,} a day" + (f" ({credit})" if credit else ""))
     facility = row.get("facility")
+    against = " (against traffic only)" if row.get("facility_shown") else ""
+    facility = row.get("facility_shown") or facility
     if facility == "protected":
-        add("bike_lane", "Bike lane", "Protected")
+        add("bike_lane", "Bike lane", "Protected" + against)
     elif facility == "lane":
-        add("bike_lane", "Bike lane", "Painted")
+        add("bike_lane", "Bike lane", "Painted" + against)
     elif facility == "path" and not path:
         add("bike_lane", "Bike lane", "Traffic-free path")
     when = [w.replace("_", " ") for w in row.get("car_free_when") or [] if isinstance(w, str)]
     if when:
         add("car_free", "Car-free", ", ".join(when))
+    # v0.8.0's Scenic layer: the designations in words, so the map's casing is never the
+    # only cue ("Rustic Road (Montgomery County)", "East Coast Greenway · USBR 50").
+    designations = scenic_text(row)
+    if designations:
+        add("scenic", "Scenic", designations)
     unpaved = row.get("is_unpaved")
     rough = bool(row.get("is_rough"))
     if unpaved is not None and (unpaved or rough or path):
@@ -1119,6 +1165,8 @@ def summary_rows(row: dict, router: dict, open_: bool | None) -> list[dict]:
         # OWNER-DECISIONS 452a: said as the map draws it, with its level (456); the off-road
         # graph's ride types do use it, unless it is rated singletrack.
         add("bikes", "Bikes", mtb_summary(row))
+    elif open_ is True and reason == USE_SIDEPATH_REASON:
+        add("bikes", "Bikes", use_sidepath_words(row))
     elif open_ is True:
         add("bikes", "Bikes", "Allowed")
     elif open_ is False:
@@ -1133,6 +1181,18 @@ def summary_rows(row: dict, router: dict, open_: bool | None) -> list[dict]:
     return rows
 
 
+def scenic_text(row: dict) -> str | None:
+    """The way's scenic designations (`segment.scenic`, v0.8.0), or None."""
+    return (row.get("scenic") or "").strip() or None
+
+
+def scenic_rows(row: dict) -> list[dict]:
+    """The Road or path section's Scenic row, with who designates it (`routemaker.scenic`):
+    a fact about the road, not a stress input, so it is said beside its name."""
+    text = scenic_text(row)
+    return [_row("Scenic", text, scenic.credits(text))] if text else []
+
+
 def describe(row: dict, router: dict) -> dict:
     """The panel's answer for one row and the router's facts about its way."""
     path = bool(row.get("is_trail_class"))
@@ -1141,11 +1201,13 @@ def describe(row: dict, router: dict) -> dict:
     # And an unnamed bike way beside a named street, that street's bike lane ("9th Street
     # Northwest protected bike lane"; v0.7.0 "Go riding fixes" item 4), as the route
     # description names it.
+    # On a road, `sidepath_name` is the side path it asks riders to use (review RL-1),
+    # never the road's own name.
     name = (
         router.get("name")
         or row.get("trail_name")
         or row.get("mtb_name")
-        or row.get("sidepath_name")
+        or (row.get("sidepath_name") if path else None)
     )
     name_source = ROUTER if router.get("name") else (OSM if name else None)
     kind, kind_source = road_kind(router, row)
@@ -1160,6 +1222,7 @@ def describe(row: dict, router: dict) -> dict:
             "rows": [
                 _row("Name", name or "No name mapped", name_source),
                 _row("Kind", kind, kind_source),
+                *scenic_rows(row),
             ],
         },
         {"id": "stress", "heading": "Traffic stress", "rows": stress_rows(row)},
