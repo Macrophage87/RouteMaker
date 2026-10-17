@@ -187,6 +187,36 @@ const pressRoute = async (p) => {
   await p.close();
 }
 
+// ---- 1b. Plan's bar at the top of the map (the owner, 2026-10-17): Route or Update route big, only while there is
+// something to route; Undo, Redo and Clear small beside it ----
+for (const [label, size] of [["phone", { width: 390, height: 844, mobile: true }], ["computer", { width: 1280, height: 900 }]]) {
+  const p = await open({ ...size, ride: false });
+  const bar = () => p.eval(`(() => { const g = document.querySelector('.plan-map-bar'); if (!g) return null; const r = g.getBoundingClientRect();
+    return { r: [Math.round(r.top), Math.round(r.left), Math.round(r.right)], buttons: [...g.querySelectorAll('button')].map((b) => { const q = b.getBoundingClientRect(); return { name: b.getAttribute('aria-label') || b.textContent.trim(), h: Math.round(q.height), w: Math.round(q.width), top: Math.round(q.top), right: Math.round(q.right) }; }) }; })()`);
+  const upToDate = await bar();
+  check(`plan bar (${label}): with the route up to date there is no big button, only Clear (small, named, 44 px)`,
+    upToDate && JSON.stringify(upToDate.buttons.map((x) => x.name)) === JSON.stringify(["Clear the plan"]) && upToDate.buttons.every((x) => x.h >= 44 && x.w >= 44), JSON.stringify(upToDate));
+  const before = p.routeRequests;
+  // A slider moved (set as a rider's drag would: the phone's sheet may have it out of view).
+  await p.eval("(() => { const i = document.querySelector('.dial input[type=range]'); const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; const d = Number(i.step || 1) * 5; const v = Number(i.value); i.focus(); set.call(i, String(v - d >= Number(i.min) ? v - d : v + d)); i.dispatchEvent(new Event('input', { bubbles: true })); i.dispatchEvent(new FocusEvent('focusout', { bubbles: true })); return true; })()");
+  await sleep(600);
+  const changed = await bar();
+  const zoom = await p.eval("(() => { const z = document.querySelector('.maplibregl-ctrl-top-right'); return z ? Math.round(z.getBoundingClientRect().left) : 9999; })()");
+  const big = changed?.buttons.find((x) => x.name === "Update route");
+  check(`plan bar (${label}): a change shows Update route big at the top of the map, with Undo and Clear small, clear of the zoom buttons`,
+    !!big && big.h >= 52 && big.top <= 16 && JSON.stringify(changed.buttons.map((x) => x.name)) === JSON.stringify(["Undo", "Update route", "Clear the plan"]) && changed.buttons.every((x) => x.right <= zoom),
+    JSON.stringify({ changed, zoom }));
+  await p.shot(`${SHOTS}/plan_bar_${label}.png`);
+  await p.eval("[...document.querySelectorAll('.plan-map-bar button')].find((b) => b.textContent.trim() === 'Update route').focus(); true");
+  await p.enter();
+  await sleep(3500);
+  const after = await bar();
+  const focus = await p.eval("(() => { const e = document.activeElement; return e?.getAttribute('aria-label') || e?.textContent?.trim() || e?.tagName; })()");
+  check(`plan bar (${label}): pressing it routes once, it goes once the route is up to date, and the focus stays in the bar`,
+    p.routeRequests - before === 1 && after && !after.buttons.some((x) => /route|Routing/.test(x.name)) && focus === "Undo", JSON.stringify({ plans: p.routeRequests - before, after, focus }));
+  await p.close();
+}
+
 // ---- 2. The card from the list: focus stays, Escape closes it ----
 {
   const p = await open();
@@ -2695,7 +2725,7 @@ const levelSlider = `${EDITOR} input[type=range]`;
   const ax311 = await axNode(p, ".ride-311-button");
   check("ride 311 button: inside DC, a round button of about 60 px at the right edge, in the lower half (thumb height), named Report to DC 311 with its visible 311, closed",
     !!b311 && b311.w >= 56 && b311.w <= 72 && b311.h >= 56 && b311.round && b311.right <= 24 && b311.mid >= 45 && b311.mid <= 96 && b311.text === "311" && b311.expanded === "false" && ax311?.role === "button" && ax311?.name === "Report to DC 311" &&
-      JSON.stringify(rail.map((x) => x.name)) === JSON.stringify(["Where am I?", "Re-centre", "Big text", "Road closed ahead", "Detour: water or restroom", "Report to DC 311"]) && rail.every((x) => x.round && x.w >= 44),
+      JSON.stringify(rail.map((x) => x.name)) === JSON.stringify(["Where am I?", "Re-centre", "Road closed ahead", "Detour: water or restroom", "Report to DC 311"]) && rail.every((x) => x.round && x.w >= 44),
     JSON.stringify({ b311, ax311, rail }));
   await p.eval("document.querySelector('.ride-311-button').focus(); true");
   await p.enter();
@@ -2770,11 +2800,24 @@ const levelSlider = `${EDITOR} input[type=range]`;
   await sleep(300);
   const narrowFit = await p.eval("(() => ({ scroll: document.documentElement.scrollWidth, w: innerWidth, over: [...document.querySelectorAll('.ride button')].filter((b) => b.getClientRects().length > 0).filter((b) => b.getBoundingClientRect().right > innerWidth + 1 || b.getBoundingClientRect().height < 43.5).map((b) => b.textContent) }))()");
   check("ride: at 320 px nothing overflows and every ride button is at least 44 px tall", narrowFit.scroll <= narrowFit.w && narrowFit.over.length === 0, JSON.stringify(narrowFit));
-  await p.eval("document.querySelector('.ride-rail .big-text').click(); true");
+  // The scales and credits at the bottom of the screen, left of the side buttons, just above the bottom panel
+  // when it shows (the owner, 2026-10-17).
+  const corner = await p.eval("(() => { const c = document.querySelector('.maplibregl-ctrl-bottom-right').getBoundingClientRect(); const sheet = document.querySelector('.ride-controls'); const floor = sheet ? sheet.getBoundingClientRect().top : innerHeight; const rail = document.querySelector('.ride-rail').getBoundingClientRect(); return { bottom: c.bottom, left: c.left, right: c.right, floor, railLeft: rail.left }; })()");
+  check("ride: the map's scales and credits sit at the bottom left, clear of the side buttons",
+    Math.abs(corner.bottom - corner.floor) <= 2 && corner.left <= 1 && corner.right <= corner.railLeft, JSON.stringify(corner));
+  await p.shot(`${SHOTS}/ride_corner_320.png`);
+  // Big text is a setting (the ride's Settings, and the Settings page), not a side button.
+  const noBigButton = await p.eval("!document.querySelector('.ride-rail .big-text')");
+  check("ride: Big text is not a side button", noBigButton, String(noBigButton));
+  await p.eval("document.querySelector('.ride .ride-settings-button').click(); true");
+  await sleep(200);
+  await p.eval("document.querySelector('.ride-mode-settings .big-text-setting input').click(); true");
   await sleep(300);
-  const big = await p.eval("({ map: getComputedStyle(document.querySelector('.map')).display, pressed: document.querySelector('.ride-rail .big-text').getAttribute('aria-pressed') })");
-  check("ride: Big text hides the map and says it is on", big.map === "none" && big.pressed === "true", JSON.stringify(big));
+  const big = await p.eval("({ map: getComputedStyle(document.querySelector('.map')).display, on: document.querySelector('.ride-mode-settings .big-text-setting input').checked, kept: localStorage.getItem('routemaker.ride.bigText') })");
+  check("ride: Big text in the ride's Settings hides the map and is kept on this device", big.map === "none" && big.on === true && big.kept === "1", JSON.stringify(big));
   await p.shot(`${SHOTS}/ride_big_320.png`);
+  await p.eval("document.querySelector('.ride-mode-settings .big-text-setting input').click(); document.querySelector('.ride .ride-settings-button').click(); true");
+  await sleep(200);
 
   // End ride: the planner again, the focus on Start ride, the lock let go. A base-map range is put in
   // the ride's IndexedDB store first (the mock serves no archive), to see End ride empty it.
@@ -4714,6 +4757,13 @@ const PICK_OPEN_IN_GO = "(() => { const s = document.querySelector('#sheet-setti
   const rideKept = await p.eval("localStorage.getItem('routemaker.ride')");
   check("settings: Ride mode is two pickers, Say cues with (4 choices) and How much to say (Full, Stoker, Quiet); a pick is kept as chosen",
     ride.out?.length === 4 && JSON.stringify(ride.lvl) === JSON.stringify(["Full", "Stoker", "Quiet"]) && /"verbosity":"quiet"/.test(rideKept ?? "") && /"chosen":true/.test(rideKept ?? ""), JSON.stringify({ ride, rideKept }));
+  // Big text moved here from the ride's side buttons (the owner, 2026-10-17): a switch in Ride mode, kept on this device.
+  const bigBefore = await p.eval("(() => { const b = document.querySelector('#sheet-settings .big-text-row [role=switch]'); return b && { checked: b.getAttribute('aria-checked'), h: b.getBoundingClientRect().height, group: b.closest('section')?.querySelector('h3')?.textContent }; })()");
+  await p.eval("document.querySelector('#sheet-settings .big-text-row [role=switch]').click(); true");
+  await sleep(200);
+  const bigAfter = await p.eval("({ checked: document.querySelector('#sheet-settings .big-text-row [role=switch]').getAttribute('aria-checked'), kept: localStorage.getItem('routemaker.ride.bigText') })");
+  check("settings: Ride mode has a Big text switch, off at first and 44 px tall; turning it on is kept on this device",
+    bigBefore?.checked === "false" && bigBefore.h >= 44 && bigBefore.group === "Ride mode" && bigAfter.checked === "true" && bigAfter.kept === "1", JSON.stringify({ bigBefore, bigAfter }));
   await p.close();
 }
 {
@@ -4850,7 +4900,7 @@ const failed = results.filter((r) => !r.ok);
 // returns early) fails here rather than passing green (the mutation review of the release).
 // The transit blocks (#108) and the Go press checks (#116) were added without raising it; they run since #127.
 // Review mode's own lists (22c2) add six.
-const EXPECTED = 645;
+const EXPECTED = 654;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

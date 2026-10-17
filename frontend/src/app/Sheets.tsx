@@ -25,6 +25,7 @@ import { LayerSection } from "../lib/layerSection.ts";
 import { AccessibilitySwitch } from "../lib/accessibilitySwitch.ts";
 import { ACCESS_HELP, ACCESS_LABEL } from "../lib/accessMode.ts";
 import { RideSettingsFields } from "../RideMode.tsx";
+import { BIG_TEXT_HELP, BIG_TEXT_LABEL } from "../lib/rideOutput.ts";
 import type { RidePrefs } from "../lib/rideOutput.ts";
 import type { RailVisibility } from "../lib/railStations.ts";
 import { RailStationsLegend, RailStationsSection } from "../RailStations.tsx";
@@ -404,6 +405,8 @@ export interface SettingsSheetProps {
   settingsHeadingRef: RefObject<HTMLHeadingElement | null>;
   ridePrefs: RidePrefs;
   changeRidePrefs: (next: RidePrefs) => void;
+  /** Big text in a ride: a setting here, not a ride button (the owner, 2026-10-17). */
+  bigText: { on: boolean; onChange: (on: boolean) => void };
   keepShown: boolean;
   keptVersion: number;
   openKept: (kept: KeptRoute) => void;
@@ -529,6 +532,25 @@ export function SettingsSheet(props: SettingsSheetProps) {
       <section aria-labelledby="settings-ride-heading" className="settings-group">
         <h3 id="settings-ride-heading">Ride mode</h3>
         <RideSettingsFields prefs={ridePrefs} onChange={changeRidePrefs} idBase="settings-ride" compact />
+        {/* Big text: a setting here, not a ride button (the owner, 2026-10-17: "not something people will fiddle with mid ride"). */}
+        <SettingRow infoId="settings-big-text-info" about="big text" info={BIG_TEXT_HELP} className="big-text-row">
+          <button
+            type="button"
+            role="switch"
+            className="switch"
+            aria-checked={props.bigText.on}
+            aria-labelledby="settings-big-text-label"
+            aria-describedby="settings-big-text-info"
+            onClick={() => props.bigText.onChange(!props.bigText.on)}
+          >
+            <span id="settings-big-text-label" className="switch-label">
+              {BIG_TEXT_LABEL}
+            </span>
+            <span className="switch-state" aria-hidden="true">
+              {props.bigText.on ? "On" : "Off"}
+            </span>
+          </button>
+        </SettingRow>
       </section>
       {/* The installable app (WEB-NAV-plan.md section 8, P3 and P4): the routes kept on this device, and the install offer. */}
       <section aria-labelledby="settings-device-heading" className="settings-group">

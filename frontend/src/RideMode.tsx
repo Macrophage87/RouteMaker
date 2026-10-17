@@ -14,14 +14,15 @@
  * - Off route: re-planned automatically after the gate (plan Q5), or "Keep the planned route", which
  *   shows the way back. A re-plan never touches the plan in the address bar (plan Q2): it is the ride's
  *   own route, held here and in App's ride state only.
- * - Big text (map hidden), Re-centre (and the C key), heading-up (track-up by default since v0.7.0); and
+ * - Big text (map hidden; a setting, in the ride's Settings and the Settings page), Re-centre (and the C key), heading-up (track-up by default since v0.7.0); and
  *   Settings and End ride always in view at the top of the card (Settings opens the ride's settings just
  *   under it), with Undo after End ride. End ride part way leaves the plan starting where the rider is.
  * - The map along the route, kept for dead spots (lib/corridor.ts, N5), and Report a problem to DC 311
  *   with the place in the route's street names (lib/report311.ts, N6; OWNER-DECISIONS 369, 465).
  * - The side buttons (the owner, 2026-10-17: "Remove that bottom part when routing by default. instead put
- *   these as circle icons on the side"): Where am I?, Re-centre, Big text, Detour (water or restroom), on a
- *   share bike the dock button with the time undocked (lib/rideDock.ts), and 311 inside DC; each a round
+ *   these as circle icons on the side"): Where am I?, Re-centre, Road closed ahead, Detour (water or restroom), on a
+ *   share bike the dock button with the time undocked (lib/rideDock.ts), and 311 inside DC (Big text moved to
+ *   Settings, the owner, 2026-10-17: "not something people will fiddle with mid ride"); each a round
  *   icon with its name for screen readers, its menu opening beside it. The bottom panel shows only when it
  *   has something to say or ask: GPS and screen notes, off route, Ride the rest, the full 311 report.
  *   Answers asked for (Where am I?, a detour's progress) show for a few seconds by the buttons.
@@ -30,7 +31,7 @@
  * ones sent are a re-plan's start point and, when the rider asks for the nearest water or restroom, the
  * search's own (POST /api/nearest), each in a POST body, as planning with "Use my location" sends it.
  */
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type FocusEvent, type PointerEvent, type RefObject } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FocusEvent, type PointerEvent, type RefObject } from "react";
 import { HoldTimer } from "./lib/holdTimer.ts";
 import { startsWayBack, wayBackRoute } from "./lib/rejoin.ts";
 import {
@@ -89,6 +90,7 @@ import {
 } from "./lib/navigate.ts";
 import {
   Announcer,
+  BIG_TEXT_NAME,
   OUTPUT_LABELS,
   ScreenWake,
   Voice,
@@ -414,6 +416,16 @@ export function RideSettingsFields({
         ))}
       </fieldset>
     </>
+  );
+}
+
+/** Big text (the cue card large, the map hidden): in Settings, not on the ride screen (the owner, 2026-10-17). */
+export function BigTextField({ on, onChange }: { on: boolean; onChange: (on: boolean) => void }) {
+  return (
+    <label className="toggle ride-toggle big-text-setting">
+      <input type="checkbox" checked={on} onChange={(event) => onChange(event.target.checked)} />
+      {BIG_TEXT_NAME}
+    </label>
   );
 }
 
@@ -1544,6 +1556,22 @@ export function RideMode({
   }, [replanNote, offNow, showToast]);
   const notesShown = !!((gps && ride.fix) || paused || wakeNote || (ride.off && replanNote) || corridorText);
   const sheetShown = notesShown || ride.off || restShown || reportOpen;
+  // The map's scales and credits sit at the bottom of the screen in a ride (the owner, 2026-10-17: "on the bottom
+  // of the page in a ride"), just above the bottom panel while it shows (styles.css --ride-sheet-h).
+  const sheetRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    const sheet = sheetRef.current;
+    const set = () => root.style.setProperty("--ride-sheet-h", `${sheet ? Math.round(sheet.getBoundingClientRect().height) : 0}px`);
+    set();
+    if (!sheet || typeof ResizeObserver === "undefined") return () => root.style.removeProperty("--ride-sheet-h");
+    const observer = new ResizeObserver(set);
+    observer.observe(sheet);
+    return () => {
+      observer.disconnect();
+      root.style.removeProperty("--ride-sheet-h");
+    };
+  }, [sheetShown]);
 
   // Off route, back on, or out of DC: the off-route buttons or the 311 block go, and a focus that was in
   // the one that went goes to Where am I?, so W and C keep working (review a11y-3; lib/rideFocus.ts). A
@@ -1611,6 +1639,7 @@ export function RideMode({
             <input type="checkbox" checked={headingUp} onChange={(event) => onHeadingUp(event.target.checked)} />
             Turn the map to my heading
           </label>
+          <BigTextField on={big} onChange={onBig} />
         </div>
         {ride.arrived ? (
           <>
@@ -1706,9 +1735,6 @@ export function RideMode({
             hidden={big}
           >
             <Icon name="locate" size={24} />
-          </button>
-          <button type="button" className="ride-round big-text" onClick={() => onBig(!big)} aria-pressed={big} aria-label="Big text" title="Big text">
-            <Icon name="textsize" size={24} />
           </button>
           {/* Road closed (v0.8.2, the owner's ask by name): one press while riding, no menu. */}
           {!walking && !ride.arrived && (
@@ -1917,7 +1943,7 @@ export function RideMode({
       {/* The bottom panel, only when it has something to say or ask (the owner: "Remove that bottom part when
           routing by default"): the notes, off route, Ride the rest, and the full 311 report once asked for. */}
       {sheetShown && (
-        <div className="ride-controls">
+        <div ref={sheetRef} className="ride-controls">
           {notesShown && (
             <div className="ride-notes">
               {gps && ride.fix && <p className="hint">{gps}</p>}
