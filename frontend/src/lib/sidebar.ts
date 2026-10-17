@@ -60,7 +60,7 @@ export const BAR_ITEMS: readonly BarItem[] = [
   { id: "plan", label: "Plan", opens: "planner", description: "Shows the planner: the points, the ride settings and the route." },
   { id: "layers", label: "Layers", opens: "layers", description: "Opens the map layers and their switches; the legend is behind its Legend button." },
   { id: "suggest", label: "Suggest", opens: "suggest", description: "Opens the ways to suggest a change to the map, or report a problem to DC 311." },
-  { id: "gpx", label: "Export", opens: "gpx", description: "Opens the route file tools: open a GPX file, or download the route." },
+  { id: "gpx", label: "Files", opens: "gpx", description: "Opens the route file tools: import a GPX file, or export the route." },
   { id: "settings", label: "Settings", opens: "settings", description: "Opens the settings: display, Ride mode, this device and your account." },
 ];
 
