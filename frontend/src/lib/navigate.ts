@@ -264,7 +264,7 @@ const CROSSING_CONTROL_WORDS: Partial<Record<NonNullable<NonNullable<Description
  * where unknown.
  */
 export function crossingWords(street: string | null, control: NonNullable<DescriptionEntry["turn"]>["control"] | undefined): string {
-  const where = street && !isUnnamed(street) ? `: ${street}` : "";
+  const where = street && !isUnnamed(street) ? ` at ${street}` : "";
   const how = control ? CROSSING_CONTROL_WORDS[control] : undefined;
   return `Busy crossing${where}${how ? `, ${how}` : ""}.`;
 }

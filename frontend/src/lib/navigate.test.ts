@@ -261,7 +261,7 @@ test("Stoker: one warning ahead and now at a turn; the red crossing; arrival", (
   );
   assert.equal(state.arrived, true);
   assert.equal(events[3].spoken, "You have arrived at the end of the route.");
-  assert.match(events[2].spoken, /^In \d+ feet, busy crossing: C Street, no signal\.$/);
+  assert.match(events[2].spoken, /^In \d+ feet, busy crossing at C Street, no signal\.$/);
 });
 
 test("Quiet: nothing but arrival", () => {
@@ -286,15 +286,15 @@ test("a flagged crossing is one short line: the street and its control, no LTS o
   const { events } = ride(signal, "full", 0, 2000);
   const crossing = events.filter((e) => e.cue?.kind === "hazard");
   assert.equal(crossing.length, 1);
-  assert.match(crossing[0].spoken, /^In \d+ feet, busy crossing: C Street, signal\.$/);
+  assert.match(crossing[0].spoken, /^In \d+ feet, busy crossing at C Street, signal\.$/);
   const hazard = signal.cues.find((c) => c.kind === "hazard");
-  assert.equal(hazard?.rideText, "Busy crossing: C Street, signal.");
+  assert.equal(hazard?.rideText, "Busy crossing at C Street, signal.");
   assert.equal(hazard?.text, "Cross C Street (LTS 4), no signal mapped (Very high stress junction).");
   const none = ride(rideModel(busyRoute("none")), "full", 0, 2000).events.find((e) => e.cue?.kind === "hazard");
-  assert.match(none?.spoken ?? "", /^In \d+ feet, busy crossing: C Street, no signal\.$/);
-  assert.equal(rideModel(busyRoute("stop")).cues.find((c) => c.kind === "hazard")?.rideText, "Busy crossing: C Street, stop sign.");
-  assert.equal(rideModel(busyRoute("all_stop")).cues.find((c) => c.kind === "hazard")?.rideText, "Busy crossing: C Street, stop sign.");
-  assert.equal(rideModel(busyRoute(null)).cues.find((c) => c.kind === "hazard")?.rideText, "Busy crossing: C Street.");
+  assert.match(none?.spoken ?? "", /^In \d+ feet, busy crossing at C Street, no signal\.$/);
+  assert.equal(rideModel(busyRoute("stop")).cues.find((c) => c.kind === "hazard")?.rideText, "Busy crossing at C Street, stop sign.");
+  assert.equal(rideModel(busyRoute("all_stop")).cues.find((c) => c.kind === "hazard")?.rideText, "Busy crossing at C Street, stop sign.");
+  assert.equal(rideModel(busyRoute(null)).cues.find((c) => c.kind === "hazard")?.rideText, "Busy crossing at C Street.");
   for (const e of events) assert.doesNotMatch(e.spoken, /LTS|stress junction/, e.spoken);
 });
 
@@ -867,7 +867,7 @@ test("placeOnRoute: the nearest junction on a street; on a trail far from one, t
 test("whereAmI on a long trail says the trail marker, US units spoken and metric on screen", () => {
   const model = rideModel(trailRoute());
   const state = { ...startState(), progressM: 1300 };
-  assert.match(whereAmI(model, state), /^On the Capital Crescent Trail, about 0\.6 miles north of A Street\. Next, in 0\.7 miles: busy crossing: River Road, no signal\./);
+  assert.match(whereAmI(model, state), /^On the Capital Crescent Trail, about 0\.6 miles north of A Street\. Next, in 0\.7 miles: busy crossing at River Road, no signal\./);
   assert.match(whereAmI(model, state, true), /^On the Capital Crescent Trail, about 0\.6 mi \(1\.0 km\) north of A Street\./);
   // On a street, as before.
   assert.match(whereAmI(model, { ...startState(), progressM: 100 }), /^On A Street\. /);
@@ -879,7 +879,7 @@ test("whereAmI on a long trail the mile file knows: its mile marker, posted or c
   // The trail's line from mile 0, a mile south of where the route meets it.
   const line = { n: "Capital Crescent Trail", s: 1609, l: [at(300, 0), at(300, 3000)] };
   const computed = parseTrailMiles({ trails: [line], markers: [] });
-  assert.match(whereAmI(model, state, false, computed), /^On the Capital Crescent Trail, at about mile 1\.6\. Next, in 0\.7 miles: busy crossing: River Road, no signal\./);
+  assert.match(whereAmI(model, state, false, computed), /^On the Capital Crescent Trail, at about mile 1\.6\. Next, in 0\.7 miles: busy crossing at River Road, no signal\./);
   assert.match(whereAmI(model, state, true, computed), /^On the Capital Crescent Trail, at about mile 1\.6\. /);
   const [x, y] = at(300, 1050);
   const posted = parseTrailMiles({ trails: [line], markers: [{ id: "n1", x, y, t: "Capital Crescent Trail", m: 2 }] });
