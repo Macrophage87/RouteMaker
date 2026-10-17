@@ -6858,14 +6858,24 @@ details.fold > summary .icon {
   pointer-events: auto;
 }
 
-/* North up on: the ring takes the accent, as a pressed round button does. */
+/* North up on: filled with the accent, as a pressed round button is. */
 .ride .ride-compass[aria-pressed="true"] {
-  border: 2px solid var(--accent);
+  background: var(--accent);
+  border-color: var(--accent);
 }
 
+.ride .ride-compass[aria-pressed="true"] .ride-compass-north {
+  fill: var(--accent-text);
+}
+
+.ride .ride-compass[aria-pressed="true"] .ride-compass-south {
+  stroke: var(--accent-text);
+}
+
+/* No transition: the bearing is set every frame of the map's own turn, and it wraps at 180 (a transition would
+   spin the needle round when riding south). */
 .ride-compass svg {
   transform: rotate(calc(-1deg * var(--map-bearing, 0)));
-  transition: transform 0.2s linear;
 }
 
 .ride-compass-north {
@@ -6880,12 +6890,6 @@ details.fold > summary .icon {
   stroke-linejoin: round;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .ride-compass svg {
-    transition: none;
-  }
-}
-
 @media (forced-colors: active) {
   .ride-compass-north {
     fill: CanvasText;
@@ -6893,5 +6897,16 @@ details.fold > summary .icon {
 
   .ride-compass-south {
     stroke: CanvasText;
+  }
+
+  .ride .ride-compass[aria-pressed="true"] {
+    forced-color-adjust: none;
+    background: Highlight;
+    border-color: Highlight;
+  }
+
+  .ride .ride-compass[aria-pressed="true"] path {
+    fill: HighlightText;
+    stroke: HighlightText;
   }
 }
