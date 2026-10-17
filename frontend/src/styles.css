@@ -4677,6 +4677,26 @@ details.zoom-notes {
   }
 }
 
+/* An admin's switch has Review too (Go, Plan, Review): on the narrowest phones it and the gaps tighten so the bar fits. */
+@media (max-width: 374px) {
+  .go-top-row:has(.mode-button:nth-child(3)),
+  .go-top-row:has(.mode-button:nth-child(3)) .go-top-end {
+    gap: 4px;
+  }
+
+  .go-top-row:has(.mode-button:nth-child(3)) .mode-button {
+    min-width: 44px;
+    padding: 0 8px;
+  }
+}
+
+@media (max-width: 340px) {
+  .go-top-row:has(.mode-button:nth-child(3)) .icon-button {
+    width: 44px;
+    height: 44px;
+  }
+}
+
 /* Go's sheet */
 .go-sheet {
   display: flex;
