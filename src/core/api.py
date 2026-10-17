@@ -5149,9 +5149,11 @@ def saved_routes_add(request):
     problem = accounts.inputs_problem(inputs)
     if problem:
         return _stress_error(400, problem, field="inputs")
+    # An opened file keeps the route shown for it too (v0.9.0, "share the exact route"), so it
+    # reopens as that line, followed by the rules or exactly (`follows_exactly`).
     answer = body.get("answer")
-    if answer is not None and (source != SavedRoute.Source.PLAN or not isinstance(answer, dict)):
-        return _stress_error(400, "Only a planned route keeps its answer.", field="answer")
+    if answer is not None and not isinstance(answer, dict):
+        return _stress_error(400, "Send the route's answer as an object.", field="answer")
     if answer is not None:
         answer, problem = _clean_answer(answer)
         if problem:

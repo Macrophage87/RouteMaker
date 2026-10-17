@@ -5026,6 +5026,28 @@ details.fold > summary .icon {
   display: none;
 }
 
+/* Save route, then Share, in the Files sheet (v0.9.0): under the file's own controls, a line apart. */
+.share-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.share-controls > .share-route {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+.share-controls > .link-note,
+.share-controls > .share-said {
+  flex-basis: 100%;
+  margin: 0;
+}
+
 /* How long a shared link is kept, under Share: its own line so the select and the date stay readable. */
 .share-keep {
   display: flex;

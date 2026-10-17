@@ -4106,10 +4106,12 @@ const JUNCTION_BUTTON = "Suggest a junction change";
 }
 
 // ---- Share (owner, 2026-10-10; lib/share.ts): the share sheet for Copy link's link, where there is one ----
+// Since v0.9.0 it is in the Files sheet, after Save route (the owner, 2026-10-17: "Basically you save then you share").
 {
   // No share sheet: no Share button, and Copy link is still there.
   const p = await open({ init: "delete Navigator.prototype.share; delete Navigator.prototype.canShare;" });
-  const none = await p.eval("({ share: !!document.querySelector('.route-actions .share-route'), copy: !!document.querySelector('.route-actions .copy-link') })");
+  await openSheet(p, "Files");
+  const none = await p.eval("({ share: !!document.querySelector('.share-route'), copy: !!document.querySelector('.route-actions .copy-link') })");
   check("share: hidden where the browser has no share sheet, and Copy link stays", !none.share && none.copy, JSON.stringify(none));
   await p.close();
 }
@@ -4125,17 +4127,19 @@ const SHARE_STUB = `window.__shared = []; window.__shareMode = "ok"; window.__no
     if (mode === "hold") { window.__open = true; return new Promise((done) => { window.__release = () => { window.__open = false; done(); }; }); }
     return mode === "ok" ? Promise.resolve() : Promise.reject(new DOMException("stub", mode === "abort" ? "AbortError" : "DataError")); } });
   Object.defineProperty(Navigator.prototype, "canShare", { configurable: true, value: function (d) { return !!d && typeof d.url === "string"; } });`;
-// UI-CLEANUP (the owner's choice 8): Share is behind More, beside Copy link; MARK_SHARE opens More.
-const MARK_SHARE = "(() => { const m = document.querySelector('.route-actions .route-more'); if (m && m.getAttribute('aria-expanded') !== 'true') m.click(); const c = document.querySelector('.route-actions .copy-link'); const s = document.querySelector('.route-actions .share-route'); if (m) m.id = '__more'; if (c) c.id = '__copy'; if (s) s.id = '__share'; return true; })()";
+// MARK_SHARE marks the Files sheet's Share (open it first: openSheet(p, "Files")).
+const MARK_SHARE = "(() => { const s = document.querySelector('#sheet-gpx .share-controls .share-route'); if (s) s.id = '__share'; return true; })()";
 {
   const p = await open({ init: SHARE_STUB });
+  await openSheet(p, "Files");
   await p.eval(MARK_SHARE);
   const ax = await axNode(p, "#__share");
-  const box = await p.eval("(() => { const s = document.getElementById('__share'); if (!s) return null; const r = s.getBoundingClientRect(); const m = document.getElementById('__more'); return { w: r.width, h: r.height, after: document.getElementById('__copy')?.nextElementSibling === m && s.parentElement.id === m.getAttribute('aria-controls') && s.parentElement.firstElementChild === s }; })()");
-  check("share: a button named Share route, first behind More (which follows Copy link), 44 px or more each way", ax?.role === "button" && ax?.name === "Share route" && box?.after && box.w >= 44 && box.h >= 44, JSON.stringify({ ax, box }));
-  await p.eval("document.getElementById('__more').focus(); true");
+  const box = await p.eval("(() => { const s = document.getElementById('__share'); if (!s) return null; const r = s.getBoundingClientRect(); return { w: r.width, h: r.height, more: !!document.querySelector('.route-more-body .share-route') }; })()");
+  check("share: a button named Share route in the Files sheet (no longer behind More), 44 px or more each way", ax?.role === "button" && ax?.name === "Share route" && box && !box.more && box.w >= 44 && box.h >= 44, JSON.stringify({ ax, box }));
+  await p.eval("document.getElementById('__share').focus(); true");
   await p.tab();
-  check("share: the next Tab stop after More, open", await p.eval("document.activeElement?.id === '__share'"), await p.eval("document.activeElement?.outerHTML.slice(0, 120)"));
+  check("share: the next Tab stop after Share is how long its link is kept", await p.eval("!!document.activeElement?.closest('#sheet-gpx .share-keep') && document.activeElement.tagName === 'SELECT'"), await p.eval("document.activeElement?.outerHTML.slice(0, 120)"));
+  await p.eval("document.getElementById('__share').focus(); true");
   await p.enter();
   await sleep(600);
   const sent = await p.eval("({ shared: window.__shared, href: location.href, noActivation: window.__noActivation })");
@@ -4145,7 +4149,7 @@ const MARK_SHARE = "(() => { const m = document.querySelector('.route-actions .r
   const sharedId = /^http:\/\/127\.0\.0\.1:\d+\/s\/([0-9a-f]{32})#/.exec(one.url ?? "")?.[1];
   check("share: Enter hands the sheet this page's link (its plan, and the kept line's id), the title, and a plain US-first text, within the press", sent.noActivation === 0 && sent.shared.length === 1 && !!sharedId &&
     one.url === `${new URL(sent.href).origin}/s/${sharedId}${new URL(sent.href).hash}&route=${sharedId}` && p.sharedRequests?.[0]?.id === sharedId && one.title === "RouteMaker route" && /^\d[\d.,]* (mi|ft) \(\d[\d.,]* (km|m)\) bike route\. Ride type: Default\.$/.test(one.text ?? "") && !/weight|kg|lb/i.test(JSON.stringify(one)), JSON.stringify(sent));
-  const status = "(() => ({ spoken: document.querySelector('.route-actions [role=status]')?.textContent.trim() ?? '', shown: document.querySelector('.route-actions .link-said')?.textContent.trim() ?? '', shared: window.__shared.length, noActivation: window.__noActivation }))()";
+  const status = "(() => ({ spoken: document.querySelector('.share-controls [role=status]')?.textContent.trim() ?? '', shown: document.querySelector('.share-controls .share-said')?.textContent.trim() ?? '', shared: window.__shared.length, noActivation: window.__noActivation }))()";
   const afterOk = await p.eval(status);
   check("share: nothing is said once the sheet opened (the browser does not say where the link went)", afterOk.spoken === "" && afterOk.shown === "", JSON.stringify(afterOk));
   // Each press is a real key press on the focused button, so it carries user activation.
@@ -4169,7 +4173,7 @@ const MARK_SHARE = "(() => { const m = document.querySelector('.route-actions .r
   await pressShare();
   await sleep(600);
   const afterFail = await p.eval(status);
-  const polite = await p.eval("document.querySelector('.route-actions [role=status]')?.getAttribute('aria-live') !== 'assertive'");
+  const polite = await p.eval("document.querySelector('.share-controls [role=status]')?.getAttribute('aria-live') !== 'assertive'");
   check("share: another failure is said politely, shown, and offers Copy link", afterFail.spoken === "Could not open the share sheet. Use Copy link instead." && afterFail.shown === afterFail.spoken && polite && afterFail.noActivation === 0, JSON.stringify({ afterFail, polite }));
   // The stub's own guard: a script click carries no user activation, and share() refuses it, as a browser does.
   // (The last key press's transient activation lasts about 5 s: wait for it to lapse first.)
@@ -4181,11 +4185,12 @@ const MARK_SHARE = "(() => { const m = document.querySelector('.route-actions .r
   await p.close();
 }
 {
-  // On a 320 px phone the three route actions share the row; Share is still 44 px each way and nothing spills.
+  // On a 320 px phone, in the Files sheet: Share is still 44 px each way and nothing spills.
   const p = await open({ init: SHARE_STUB, width: 320, height: 800, mobile: true });
+  await openSheet(p, "Files");
   await p.eval(MARK_SHARE);
   const fit = await p.eval("(() => { const s = document.getElementById('__share'); if (!s) return null; const r = s.getBoundingClientRect(); const row = s.parentElement.getBoundingClientRect(); return { w: r.width, h: r.height, inRow: r.left >= row.left - 1 && r.right <= row.right + 1, over: s.scrollWidth > s.clientWidth + 1, page: document.documentElement.scrollWidth > innerWidth }; })()");
-  check("share at 320 px: 44 px or more each way, inside the actions row, no overflow", !!fit && fit.w >= 44 && fit.h >= 44 && fit.inRow && !fit.over && !fit.page, JSON.stringify(fit));
+  check("share at 320 px: 44 px or more each way, inside the Files sheet, no overflow", !!fit && fit.w >= 44 && fit.h >= 44 && fit.inRow && !fit.over && !fit.page, JSON.stringify(fit));
   await p.close();
 }
 

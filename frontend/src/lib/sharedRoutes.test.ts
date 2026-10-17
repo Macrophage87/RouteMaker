@@ -233,10 +233,10 @@ test("a shared line is kept a year by default; permanently or until a date if th
   assert.equal(keepMod.sharedBody("0".repeat(32), save, { keep: "until", deleteAfter: "2999-01-01" })!.body.delete_after, "2999-01-01");
 });
 
-test("the keeping is chosen under Share in Plan's More only; a different keeping is a new line", () => {
+test("the keeping is chosen under Share in the Files sheet only; a different keeping is a new line", () => {
   const panel = readFileSync(new URL("../app/RoutePanel.tsx", import.meta.url), "utf8");
-  assert.match(panel, /\{canShare && <ShareKeepField value=\{shareKeep\} onChange=\{onShareKeep\} \/>\}/);
-  assert.equal(panel.match(/<ShareKeepField /g)?.length, 1, "one place: Plan's More, not Go");
+  assert.match(panel, /\{canShare && ready && onShareKeep && <ShareKeepField value=\{shareKeep\} onChange=\{onShareKeep\} \/>\}/);
+  assert.equal(panel.match(/<ShareKeepField /g)?.length, 1, "one place: under Share, in the Files sheet");
   assert.match(panel, /value\.keep === "until" && \(/);
   assert.match(app, /sharedLine\.current\?\.of === exact\.of && sharedLine\.current\.keep === keep/);
   assert.match(app, /sharedBody\(id, exact\.save, shareKeep, /);
