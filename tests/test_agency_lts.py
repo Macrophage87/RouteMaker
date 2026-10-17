@@ -388,6 +388,17 @@ def test_the_ddot_reader_refuses_a_level_off_the_scale(tmp_path):
         list(module.ddot(tmp_path, Counter()))
 
 
+def test_the_ddot_reader_leaves_100_out_as_not_rated(tmp_path):
+    """The owner's ruling, 2026-10-17: "DDOT 100 as not rated"."""
+    from collections import Counter
+
+    module = _installer()
+    _layer(tmp_path, "ddot-lts-2020", [{"OBJECTID": 1, "LTS": 100}, {"OBJECTID": 2, "LTS": 2}])
+    dropped = Counter()
+    assert [r["id"] for r in module.ddot(tmp_path, dropped)] == ["ddot-2-0"]
+    assert dropped["ddot: not rated (100)"] == 1
+
+
 def test_the_mdot_sha_reader_maps_its_scale(tmp_path):
     """LTS_ADJUSTED: 0 a shared-use path and 9 missing data are no rating; 1 to 4 as they
     are; 5, bicycle access prohibited, is our 5 (Avoid)."""

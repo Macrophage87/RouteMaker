@@ -60,6 +60,15 @@ class TestPermits:
         }
         (permit,) = dc.parse_permits(document, NOW)
         assert permit.end == datetime(2026, 10, 20, 4, tzinfo=UTC)  # midnight in DC
+        # The link opens this permit's own record, by the answer's own spelling of the field.
+        assert permit.url == (
+            f"{dc.TOPS_LAYER}/query?where=PermitNumber%3D%27X1%27&outFields=%2A&f=html"
+        )
+        assert dc.permit_zone(permit, ((-77.02, 38.9), (-77.01, 38.9))).url == permit.url
+
+    def test_a_permit_known_only_by_its_object_id_links_by_it(self) -> None:
+        assert dc.permit_url(None, 42) == f"{dc.TOPS_LAYER}/query?objectIds=42&outFields=%2A&f=html"
+        assert "O%27%27BRIEN" in dc.permit_url("PERMITNUMBER", "O'BRIEN")
         with pytest.raises(ValueError):
             dc.parse_permits({"error": {"code": 400}}, NOW)
 
