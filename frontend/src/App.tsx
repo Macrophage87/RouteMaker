@@ -193,6 +193,7 @@ import { KEEPING_SAID, keepOffered, keepSaid, keptPlanKey, offlineRouteNotice, r
 import { askPersist } from "./lib/offlineRouteStore.ts";
 import { namesToKeep, rideAfterImport, type Ride } from "./lib/gpxEdit.ts";
 import { fetchHazards, type HazardCollection } from "./lib/massHazards.ts";
+import { visibleCentreOffset } from "./lib/visibleCentre.ts";
 import { NARROW, useLongerThan, useMinute, useNarrow, useSettled } from "./app/hooks.ts";
 import { routeLightMarks, sameLightMarks, type LightMark } from "./lib/lightTimes.ts";
 import { PointsSection, RideSection } from "./app/Planner.tsx";
@@ -1738,6 +1739,35 @@ export function App() {
   // the notice says why; Plan sets a start by hand.
   // Go's one look-up (Where to?, the Home chip and Locate), through Use my location's gate: null when
   // another look-up is under way or a later one replaced it. The fix is kept only as Use my location's is.
+  // Go centres the rider's location in the open part of the map, between Go's bar and the panel (lib/visibleCentre.ts).
+  // The panel's height, for what sits on the map just above Go's sheet (the attribution, the Beta chip; styles.css
+  // --go-sheet-h): the sheet is as tall as its content, so a fixed share of the screen left them floating.
+  useLayoutEffect(() => {
+    const panel = panelRef.current;
+    if (!panel || typeof ResizeObserver === "undefined") return;
+    const root = document.documentElement;
+    // A hidden panel (a ride) keeps the last height, so the map's corners stay where they were.
+    const observer = new ResizeObserver(() => {
+      const height = Math.round(panel.getBoundingClientRect().height);
+      if (height > 0) root.style.setProperty("--go-sheet-h", `${height}px`);
+    });
+    observer.observe(panel);
+    return () => {
+      observer.disconnect();
+      root.style.removeProperty("--go-sheet-h");
+    };
+  }, []);
+  // A location found before the map is ready is centred once it is (onReady).
+  const centreWhenReady = useRef<LonLat | null>(null);
+  const flyToInView = (point: LonLat, zoom: number) => {
+    const map = mapRef.current;
+    centreWhenReady.current = map ? null : point;
+    if (!map) return;
+    const bar = document.querySelector(".go-top")?.getBoundingClientRect().bottom ?? 0;
+    const panel = panelRef.current?.getBoundingClientRect() ?? null;
+    const offset = visibleCentreOffset(map.getContainer().getBoundingClientRect(), bar, panel, window.matchMedia(NARROW).matches);
+    map.flyTo({ center: point, zoom: Math.max(map.getZoom(), zoom), offset });
+  };
   const locateForGo = async (): Promise<LocateResult | null> => {
     const press = gate.begin();
     announceExtra(FINDING_LOCATION);
@@ -1779,7 +1809,11 @@ export function App() {
       if (pending) {
         clearGoPending();
         routeGoRef.current(result.fix.point, true, pending.dest, pending.name, !!pending.pressed && !pending.said, pending.vias);
-      } else announce(GO_START_SAID);
+      } else {
+        // Go opens on the rider (the owner, 2026-10-17): the location, centred above the sheet.
+        flyToInView(result.fix.point, 15);
+        announce(GO_START_SAID);
+      }
     })();
     // Once per page, when Go is first shown (locateForGo reads only refs and stable setters).
   }, [mode]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -2008,7 +2042,7 @@ export function App() {
     setHere(result.fix);
     if (!insideCoverage(result.fix.point)) setNotice(LOCATION_OUTSIDE);
     else announceExtra("The map is at your location.");
-    mapRef.current?.flyTo({ center: result.fix.point, zoom: Math.max(mapRef.current.getZoom(), 15) });
+    flyToInView(result.fix.point, 15);
   };
   // A ride type chip (Go's quick three, or the Ride sheet's): as the ride type dialog picks one.
   const pickRide = (id: PresetId) => {
@@ -3753,6 +3787,9 @@ export function App() {
         markerReset={markerReset}
         accuracy={riding ? rideCircle : hereCircle}
         rider={riding && rideView?.rider ? rideView.rider : null}
+        // Go, before a destination: its start, the location found, drawn as the ride's still dot (the owner,
+        // 2026-10-17: the location centred, so it is seen). With a route its start pin marks it.
+        youDot={!riding && mode === "go" && points.length === 0 && goStart.kind === "here" ? goStart.point : null}
         follow={riding && follow && !bigText /* Big text hides the map: no camera work for it */}
         headingUp={headingUp}
         onFollowBroken={() => setFollow(false)}
@@ -3766,6 +3803,7 @@ export function App() {
         }}
         onReady={(map) => {
           mapRef.current = map;
+          if (centreWhenReady.current) flyToInView(centreWhenReady.current, 15);
           void fetchCoverage(window.location.origin).then((coverage) => {
             if (coverage && mapRef.current === map && addCoverageMask(map, coverage)) setCoverageShown(true);
           });
