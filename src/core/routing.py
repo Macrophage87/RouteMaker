@@ -1611,6 +1611,8 @@ def _followed(variant: str, request: dict, deadline: Deadline) -> dict:
         follow.against_traffic(_trip_line(joined["trip"]), trace_attributes, options)
         if exact
         else around
+        if around is None
+        else follow.gone_round(around, _trip_line(joined["trip"]))
     )
     return joined
 

@@ -61,6 +61,10 @@ AGAINST_MIN_M = 15.0
 # this close to a vertex of it takes that vertex.
 NEAR_M = 25.0
 SAME_M = 1.0
+# A stretch against one-way traffic the route passes this close to all along is the other half
+# of a divided road (`gone_round`): the two carriageways of most are 10 to 30 m apart, and
+# the way round a wrong-way block is a block away.
+DIVIDED_M = 40.0
 # The most breaks in a match joined by the router's own route: more, and the file is planned
 # through its points instead (each join is a router call).
 MAX_BRIDGES = 20
@@ -295,8 +299,9 @@ def is_exact(costing_options: dict) -> bool:
     )
 
 
-def _stretches(edges: list[dict]) -> list[dict]:
-    """The runs of `edges` ridden against one-way traffic, by street, at least AGAINST_MIN_M."""
+def _stretches(edges: list[dict], shape=None) -> list[dict]:
+    """The runs of `edges` ridden against one-way traffic, by street, at least AGAINST_MIN_M;
+    with `shape` (the match's line), each with the middle of every edge in it (`at`)."""
     stretches: list[dict] = []
     joined_on = False
     for edge in edges:
@@ -306,15 +311,53 @@ def _stretches(edges: list[dict]) -> list[dict]:
         names = [n for n in edge.get("names") or () if isinstance(n, str) and n.strip()]
         name = names[0] if names else None
         metres = float(edge.get("length") or 0.0) * 1000.0
-        if joined_on and stretches[-1]["name"] == name:
-            stretches[-1]["distance_m"] += metres
-        else:
-            stretches.append({"name": name, "distance_m": metres})
+        if not (joined_on and stretches[-1]["name"] == name):
+            stretches.append({"name": name, "distance_m": 0.0, "at": []})
+        stretches[-1]["distance_m"] += metres
+        begin, end = edge.get("begin_shape_index"), edge.get("end_shape_index")
+        if (
+            shape
+            and isinstance(begin, int)
+            and isinstance(end, int)
+            and 0 <= begin <= end < len(shape)
+        ):
+            stretches[-1]["at"].append(_middle(shape[begin : end + 1]))
         joined_on = True
     return [
         {"name": s["name"], "distance_m": round(s["distance_m"], 1)}
+        | ({"at": s["at"]} if shape is not None else {})
         for s in stretches
         if s["distance_m"] >= AGAINST_MIN_M
+    ]
+
+
+def _middle(points) -> tuple[float, float]:
+    """The point halfway along `points` (a line)."""
+    steps = [haversine(Point(*a), Point(*b)) for a, b in zip(points, points[1:], strict=False)]
+    half = sum(steps) / 2.0
+    for (a, b), step in zip(zip(points, points[1:], strict=False), steps, strict=True):
+        if step >= half and step > 0:
+            t = half / step
+            return (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t)
+        half -= step
+    return tuple(points[0])
+
+
+def gone_round(stretches: list[dict], route_line) -> list[dict]:
+    """Of `stretches` (`wrong_way`'s), those the route really leaves: one whose every edge
+    the route passes within DIVIDED_M of is the file's GPS on the other half of a divided road
+    (the matcher, one-ways ignored, may take either), not a stretch ridden wrong way."""
+    route = list(route_line)
+
+    def near(p) -> bool:
+        return any(
+            _projected(p, a, b)[1] <= DIVIDED_M for a, b in zip(route, route[1:], strict=False)
+        )
+
+    return [
+        {"name": s["name"], "distance_m": s["distance_m"]}
+        for s in stretches
+        if not s.get("at") or not all(near(p) for p in s["at"])
     ]
 
 
@@ -323,8 +366,9 @@ def wrong_way(
 ) -> tuple[set[int], list[dict]] | None:
     """Where `line` rides against one-way traffic, matched as ridden: the indexes of its
     points on such a way (never those in `keep`, the plan's points), to leave out of the
-    match so the router goes round, and the stretches (`against_traffic`). None where the
-    router could not say."""
+    match so the router goes round, and the stretches (`against_traffic`), each with the
+    middle of every edge in it (`at`, for `gone_round`). None where the router refused the
+    line; a router that does not answer is raised, as the trace after it would be."""
     if len(line) < 2:
         return set(), []
     payload = {
@@ -343,6 +387,8 @@ def wrong_way(
                 "edge.names",
                 "edge.traversability",
                 "edge.forward",
+                "edge.begin_shape_index",
+                "edge.end_shape_index",
                 "matched.edge_index",
             ],
             "action": "include",
@@ -350,7 +396,7 @@ def wrong_way(
     }
     try:
         answer = trace_attributes(payload)
-    except (routing.RouterRefused, routing.RouterUnavailable, routing.DeadlineExceeded):
+    except routing.RouterRefused:
         return None
     edges = answer.get("edges") or []
     against = {i for i, edge in enumerate(edges) if _against(edge)}
@@ -361,7 +407,8 @@ def wrong_way(
         for i, point in enumerate(answer.get("matched_points") or [])
         if i not in keep and (point or {}).get("edge_index") in against
     }
-    return dropped, _stretches(edges)
+    shape = routing.decode_polyline6(answer.get("shape") or "")
+    return dropped, _stretches(edges, shape)
 
 
 def against_traffic(line, trace_attributes, costing_options: dict) -> list[dict] | None:

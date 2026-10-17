@@ -859,8 +859,9 @@ export function App() {
         }
         // An opened file not edited since follows its line exactly (core/follow.py), whatever the ride type.
         const follow = followLine(importBase.current, plan.points, plan.dials.loop);
-        // Its manual mode (Plan's "Follow the file exactly"): rules or not, as for a road closed for a parade.
-        const followExact = follow !== undefined && importBase.current?.exact === true;
+        // Its manual mode (Plan's "Follow the file exactly"): rules or not, as for a road closed for a parade. Plan
+        // only, where the switch is: Go keeps to the rules.
+        const followExact = follow !== undefined && importBase.current?.exact === true && modeRef.current === "plan";
         const asked = { confirmLong: plan.confirmLong, dials: plan.dials, vias: viaIndices(plan.points, VIA_MARKS.isVia), quick: plan.quick, follow, followExact };
         // Asked for already, before the tap (Go's early start): that request's answer, not a second request.
         const early = earlyStart.current?.take(routeRequestBody(plan.points, plan.preset, asked)) ?? null;
@@ -870,7 +871,8 @@ export function App() {
         // The API could not follow this file (core/follow.py): its fitting rounds are planned, not traced again.
         if (follow && result.ok && !result.route.follows_file && importBase.current) importBase.current.unfollowed = true;
         keptShown.current = null;
-        if (result.ok || result.error.kind !== "network") return result;
+        // A kept route is keyed by the plan alone, not the manual mode: none stands in for one followed exactly.
+        if (result.ok || result.error.kind !== "network" || followExact) return result;
         const kept = await keptAnswerFor<RouteResponse>(keptPlanKey(plan.points, plan.preset, plan.dials, viaIndices(plan.points, VIA_MARKS.isVia))).catch(() => undefined);
         if (!kept) return result;
         keptShown.current = kept;

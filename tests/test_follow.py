@@ -279,21 +279,36 @@ class TestWrongWay:
             VERTICES, {0, 2, 4}, trace_attributes, {"bicycle": {"use_roads": 0.2}}
         )
         assert dropped == {1, 3}
-        assert stretches == [{"name": "Row 2", "distance_m": 300.0}]
+        assert stretches == [{"name": "Row 2", "distance_m": 300.0, "at": []}]
         # Matched as ridden to find them, with the ride type's own options beside.
         assert asked[0]["costing_options"] == {"bicycle": {"use_roads": 0.2, **follow.IGNORED}}
         assert asked[0]["shape_match"] == "map_snap"
 
-    def test_none_against_traffic_leaves_the_line_and_a_router_gone_says_nothing(self) -> None:
+    def test_none_against_traffic_leaves_the_line_and_a_refusal_says_nothing(self) -> None:
         def fine(payload):
             return {"edges": self.EDGES[:1], "matched_points": [{"edge_index": 0}] * 5}
 
         assert follow.wrong_way(VERTICES, set(), fine, {}) == (set(), [])
 
+        def refused(payload):
+            raise routing.RouterRefused(400, 442, "no match")
+
+        assert follow.wrong_way(VERTICES, set(), refused, {}) is None
+
+        # A router that does not answer is raised: the trace after it would wait on it again.
         def gone(payload):
             raise routing.RouterUnavailable("down")
 
-        assert follow.wrong_way(VERTICES, set(), gone, {}) is None
+        with pytest.raises(routing.RouterUnavailable):
+            follow.wrong_way(VERTICES, set(), gone, {})
+
+    def test_a_stretch_the_route_runs_beside_is_a_divided_road_not_a_wrong_way(self) -> None:
+        stretch = [{"name": "Row 2", "distance_m": 300.0, "at": [(-77.0, 38.9)]}]
+        # The route on the other carriageway, about 20 m away: not said.
+        assert follow.gone_round(stretch, [(-77.001, 38.90018), (-76.999, 38.90018)]) == []
+        # The route a block away: said, without its points.
+        said = follow.gone_round(stretch, [(-77.001, 38.901), (-76.999, 38.901)])
+        assert said == [{"name": "Row 2", "distance_m": 300.0}]
 
     def test_by_default_the_router_goes_round_the_stretches_the_file_rides_wrong_way(
         self, monkeypatch

@@ -93,7 +93,8 @@ test("App sends an opened file's line with every plan of it, and the panel stops
 
 test("Plan offers the manual mode while the opened file is not edited, and each change plans it again", () => {
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
-  assert.match(app, /const followExact = follow !== undefined && importBase\.current\?\.exact === true;/);
+  assert.match(app, /const followExact = follow !== undefined && importBase\.current\?\.exact === true && modeRef\.current === "plan";/);
+  assert.match(app, /if \(result\.ok \|\| result\.error\.kind !== "network" \|\| followExact\) return result;/);
   assert.match(app, /importBase\.current && !importEdited \? \{ exact: importBase\.current\.exact === true, onExact: setFollowExact \}/);
   assert.match(app, /importBase\.current = \{ \.\.\.importBase\.current, exact: on, unfollowed: false \};\s*setRouteAsk/);
   const panel = readFileSync(new URL("../GpxPanel.tsx", import.meta.url), "utf8");
