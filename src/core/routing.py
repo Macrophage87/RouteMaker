@@ -89,6 +89,7 @@ from pipeline.variants import Variant
 from routemaker import avoid_junctions as avoid_rules
 from routemaker import (
     calm,
+    circleparks,
     climbs,
     describe,
     flow,
@@ -2593,6 +2594,18 @@ def move_zoo_points(points: list[list[float]]) -> tuple[list[list[float]], list[
     return out, moved
 
 
+def circle_park_filter(lon: float, lat: float) -> dict:
+    """A trip point inside one of DC's circle parks is never matched to a tunnel
+    (`routemaker.circleparks`, owner 2026-10-17): Dupont, Scott and Thomas Circles
+    each sit over a road underpass, so a point in the middle of one can lie nearer
+    the tunnel below it than the walkways it stands on, and the route would end in
+    the underpass instead of in the park. Valhalla's `search_filter` keeps it to
+    the ways at street level."""
+    if circleparks.contains((lon, lat)):
+        return {"search_filter": {"exclude_tunnel": True}}
+    return {}
+
+
 @_own_context
 def plan(
     points: list[list[float]],
@@ -2700,6 +2713,7 @@ def plan(
                 "lat": lat,
                 "type": location_type(index, len(points), dials.vias),
                 "radius": STOP_RADIUS_M,
+                **circle_park_filter(lon, lat),
             }
             for index, (lon, lat) in enumerate(points)
         ],

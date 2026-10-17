@@ -39,6 +39,7 @@ from routemaker import (
     agency_roads,
     bike_lanes,
     cbd,
+    circleparks,
     corridors,
     divided,
     facility,
@@ -807,6 +808,8 @@ class RebuildContext:
     # The ways an approved access override wrote a bicycle key on (APPLY_OVERRIDES):
     # inside a military area, only these reopen by evidence (OWNER-DECISIONS 330, 437).
     bicycle_override_ways: frozenset[int] = frozenset()
+    # The circle parks' walkways opened to bicycles (`routemaker.circleparks`).
+    circle_park_ways: set[int] = field(default_factory=set)
     # Open networks inside a base that meet the outside network at two or more points
     # for no listed reason (`restricted_areas.through_networks`); VALIDATE_SEGMENTS
     # refuses any.
@@ -2656,6 +2659,13 @@ def build_handlers(
             stress, stress_missing = overrides.apply_stress(context.stress_by_way, rows)
             jurisdiction, jurisdiction_missing = overrides.apply_jurisdiction(context.ways, rows)
             surfaces, surface_missing = overrides.apply_surface(context.ways_by_id, rows)
+            # The circle parks' walkways, after the overrides so a reviewed bicycle
+            # value stands (`routemaker.circleparks`, owner 2026-10-17).
+            context.circle_park_ways = circleparks.open_ways(context.ways)
+            logger.info(
+                "%d walkways inside DC's circle parks opened to bicycles",
+                len(context.circle_park_ways),
+            )
         except overrides.OverrideRefused as refused:
             # The same door as the unhandled kind above and it has to close the
             # same way: an approved row asking for something an override may not
