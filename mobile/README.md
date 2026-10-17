@@ -19,8 +19,9 @@ opens the live site in a WebView and gives Ride mode three native things while a
 
 One more native thing, outside a ride: **Send to Garmin** (the site's GPX sheet, v0.9.0 site and app). The
 site makes the FIT course and hands it to `FilesPlugin.java` ("RouteMakerFiles"), which writes it to the app's
-cache and offers it with Android's "Open with", so the rider picks Garmin Connect. A WebView can neither share
-nor download a file a page makes, so without the plugin (an older app) the site says to update the app.
+cache and hands it to Garmin Connect when Connect takes it (the manifest's one `<queries>` entry names it),
+otherwise to Android's "Open with" list. A WebView can neither share nor download a file a page makes, so an
+older app without the plugin shows no Send to Garmin button.
 
 There are no new buttons: Start ride, Go and End work as on the website. Distances are the site's
 own (feet and miles).

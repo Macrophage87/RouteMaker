@@ -61,6 +61,12 @@
             tools:node="remove" />
     </application>
 
+    <!-- Send to Garmin (FilesPlugin.java) looks for Garmin Connect alone, to hand it the course directly
+         (Android 11+ shows an app only what it names here). -->
+    <queries>
+        <package android:name="com.garmin.android.apps.connectmobile" />
+    </queries>
+
     <!-- Permissions: the network for the site, the location for a ride, and notifications (Android 13+)
          for the ride's notifications. Nothing else (mobile/README.md). -->
     <uses-permission android:name="android.permission.INTERNET" />

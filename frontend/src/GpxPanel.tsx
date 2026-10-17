@@ -15,7 +15,7 @@ import { compileCourse, courseFileName, courseLine, type CourseFormat } from "./
 import { DEFAULT_PROFILE, DEVICE_PROFILES, deviceProfile, type DeviceProfileId } from "./lib/deviceProfiles.ts";
 import { writeFit } from "./lib/fit.ts";
 import { writeTcx } from "./lib/tcx.ts";
-import { SEND_LABEL, browserSendEnv, courseTrimmed, sendCourse } from "./lib/sendToGarmin.ts";
+import { SEND_LABEL, browserSendEnv, canSendToGarmin, courseTrimmed, sendCourse } from "./lib/sendToGarmin.ts";
 import { cueSheetDocument, cueSheetFileName, cueSheetLine, type CueSheetKind } from "./lib/cueSheetPdf.ts";
 import { lockCancelledLine, lockPartButton, lockPartLine, lockScreenFileNames, lockScreenLine, lockSharedLine } from "./lib/lockScreen.ts";
 import { renderLockScreens } from "./app/lockScreenRender.ts";
@@ -191,10 +191,12 @@ export function downloadCourse(route: RouteResponse, routedPoints: LonLat[], for
 
 /**
  * Send to Garmin (lib/sendToGarmin.ts): the route shown as a FIT course for a Garmin Edge, handed to the phone for
- * Garmin Connect; the line says what happened, with what fitting it left out, if anything.
+ * Garmin Connect; the line says what happened, with what fitting it left out, if anything. A course with more cues
+ * it must keep than the unit shows is not sent: its line says to split the route.
  */
 export async function sendCourseToGarmin(route: RouteResponse, routedPoints: LonLat[]): Promise<string> {
   const course = compileCourse(route, deviceProfile("garmin-edge"), "fit", viaIndices(routedPoints, VIA_MARKS.isVia));
+  if (course.trim.protectedOver) return courseLine(course);
   const line = await sendCourse(writeFit(course), courseFileName(route, "fit"), browserSendEnv((bytes, type, name) => saveFile(bytes, type, name)));
   return courseTrimmed(course) ? `${line} ${courseLine(course)}` : line;
 }
@@ -461,7 +463,7 @@ export function GpxPanel(props: Props) {
         <button type="button" onClick={download} disabled={choice.format === "gpx" ? !route && !imported?.verbatim : !route}>
           {parts ? lockPartButton(parts.next, parts.blobs.length) : `Download ${FORMAT_WORDS[choice.format]}`}
         </button>
-        {onSendToGarmin && (
+        {onSendToGarmin && canSendToGarmin() && (
           <button type="button" onClick={() => onSendToGarmin(sayCourse)} disabled={!route}>
             {SEND_LABEL}
           </button>

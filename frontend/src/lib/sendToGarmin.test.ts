@@ -6,9 +6,11 @@ import {
   FIT_TYPE,
   SEND_CANCELLED,
   SEND_FAILED,
-  SEND_OLD_APP,
-  SENT_APP,
+  SENT_CHOOSER,
+  SENT_GARMIN,
   SENT_SAVED,
+  SENT_SAVED_COMPUTER,
+  canSendToGarmin,
   SENT_SHARE,
   courseTrimmed,
   sendCourse,
@@ -44,34 +46,41 @@ test("toBase64: the bytes as the bridge carries them, past one chunk too", () =>
   assert.equal(toBase64(big), Buffer.from(big).toString("base64"));
 });
 
-test("in the phone app: the file goes to the plugin's Open with, and nothing is saved or shared", async () => {
-  const { b, calls } = bridge(true);
+test("in the phone app: the file goes to the plugin, and nothing is saved or shared", async () => {
+  const { b, calls } = bridge(true, async () => ({ app: "garmin-connect" }));
   const { saved, save } = saver();
   let shared = false;
-  const env: SendEnv = { bridge: b, nav: { canShare: () => true, share: async () => void (shared = true) }, save };
-  assert.equal(await sendCourse(BYTES, NAME, env), SENT_APP);
+  const env: SendEnv = { bridge: b, nav: { canShare: () => true, share: async () => void (shared = true) }, save, phone: true };
+  assert.equal(await sendCourse(BYTES, NAME, env), SENT_GARMIN);
   assert.deepEqual(calls, [[FILES_PLUGIN, "openWith", { name: NAME, data: toBase64(BYTES) }]]);
   assert.equal(saved.length, 0);
   assert.equal(shared, false);
 });
 
-test("in the phone app: a refusal is said, not hidden", async () => {
-  const { b } = bridge(true, () => Promise.reject(new Error("no")));
-  assert.equal(await sendCourse(BYTES, NAME, { bridge: b, nav: undefined, save: saver().save }), SEND_FAILED);
+test("in the phone app without Garmin Connect taking it: the phone's list, and the line says what to pick", async () => {
+  for (const answer of [{ app: "chooser" }, {}, null]) {
+    const { b } = bridge(true, async () => answer);
+    assert.equal(await sendCourse(BYTES, NAME, { bridge: b, nav: undefined, save: saver().save, phone: true }), SENT_CHOOSER);
+  }
 });
 
-test("an app without the plugin says to update it, and tries no download (a WebView saves nothing)", async () => {
-  const { b, calls } = bridge(false);
-  const { saved, save } = saver();
-  assert.equal(await sendCourse(BYTES, NAME, { bridge: b, nav: undefined, save }), SEND_OLD_APP);
-  assert.equal(calls.length, 0);
-  assert.equal(saved.length, 0);
+test("in the phone app: a refusal is said, not hidden", async () => {
+  const { b } = bridge(true, () => Promise.reject(new Error("no")));
+  assert.equal(await sendCourse(BYTES, NAME, { bridge: b, nav: undefined, save: saver().save, phone: true }), SEND_FAILED);
+});
+
+test("canSendToGarmin: a browser, or the app with the plugin; never an app from before it (a WebView can't hand a file on)", () => {
+  assert.equal(canSendToGarmin(null), true);
+  assert.equal(canSendToGarmin(bridge(true).b), true);
+  assert.equal(canSendToGarmin(bridge(false).b), false);
+  const old: CapacitorBridge = { ...bridge(true).b, isPluginAvailable: undefined };
+  assert.equal(canSendToGarmin(old), false);
 });
 
 test("a browser that can share the file: the share sheet, with the FIT file", async () => {
   let got: File[] = [];
   const { saved, save } = saver();
-  const env: SendEnv = { bridge: null, nav: { canShare: () => true, share: async ({ files }) => void (got = files) }, save };
+  const env: SendEnv = { bridge: null, nav: { canShare: () => true, share: async ({ files }) => void (got = files) }, save, phone: true };
   assert.equal(await sendCourse(BYTES, NAME, env), SENT_SHARE);
   assert.equal(got.length, 1);
   assert.equal(got[0].name, NAME);
@@ -83,7 +92,7 @@ test("a browser that can share the file: the share sheet, with the FIT file", as
 test("the share sheet closed: not sent, and nothing saved", async () => {
   const { saved, save } = saver();
   const abort = Object.assign(new Error("closed"), { name: "AbortError" });
-  const env: SendEnv = { bridge: null, nav: { canShare: () => true, share: () => Promise.reject(abort) }, save };
+  const env: SendEnv = { bridge: null, nav: { canShare: () => true, share: () => Promise.reject(abort) }, save, phone: true };
   assert.equal(await sendCourse(BYTES, NAME, env), SEND_CANCELLED);
   assert.equal(saved.length, 0);
 });
@@ -91,9 +100,15 @@ test("the share sheet closed: not sent, and nothing saved", async () => {
 test("a browser that cannot share a .fit (Chrome on Android), or refuses: the file is saved and the line says what next", async () => {
   for (const nav of [undefined, { canShare: () => false, share: async () => {} }, { canShare: () => true, share: () => Promise.reject(new Error("NotAllowedError")) }]) {
     const { saved, save } = saver();
-    assert.equal(await sendCourse(BYTES, NAME, { bridge: null, nav, save }), SENT_SAVED);
+    assert.equal(await sendCourse(BYTES, NAME, { bridge: null, nav, save, phone: true }), SENT_SAVED);
     assert.deepEqual(saved, [[BYTES, FIT_TYPE, NAME]]);
   }
+});
+
+test("on a computer the saved file goes to Garmin Connect's website (there is no desktop app)", async () => {
+  const { saved, save } = saver();
+  assert.equal(await sendCourse(BYTES, NAME, { bridge: null, nav: undefined, save, phone: false }), SENT_SAVED_COMPUTER);
+  assert.equal(saved.length, 1);
 });
 
 test("courseTrimmed: only when fitting left something out", () => {
