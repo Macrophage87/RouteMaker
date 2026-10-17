@@ -86,5 +86,5 @@ test("the panel: the plan in words as Route's description, Route with Enter or C
   assert.match(panel, /<progress className="planning" aria-label=\{`Planning route: \$\{routing\.step\}`\} \/>/);
   assert.match(panel, /Cancel/);
   // It follows the points and the ride, above the route; on a phone with a route, where the route comes first, on top.
-  assert.match(app, /\{order\[0\] === "route" && planPanel\}\s*\{order\.map\(\(id\) => \(id === "route" && order\[0\] !== "route" \? \[planPanel, sections\[id\]\] : sections\[id\]\)\)\}/);
+  assert.match(app, /\{\(order\[0\] === "route" \? \[planPanel, \.\.\.order\.map\(\(id\) => sections\[id\]\)\] : order\.flatMap\(\(id\) => \(id === "route" \? \[planPanel, sections\[id\]\] : \[sections\[id\]\]\)\)\)\}/);
 });

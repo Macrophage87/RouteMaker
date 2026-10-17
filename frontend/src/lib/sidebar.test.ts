@@ -186,7 +186,7 @@ test("App puts the ride type and every dial behind the Ride line, in the mockup'
     assert.ok(i > 0, text);
     return i;
   };
-  const steps = ['{showFrom && search("from")}', "{searchLede(loopVias, accessMode)}", "<PointsList", '{showTo && search("to")}', '{search("add")}', "{BEST_ORDER_LABEL}"].map(inBoxes);
+  const steps = ['{showFrom && search("from")}', "{searchLede(loopVias, accessMode)}", "<PointsList", '{showTo && search("to")}', 'search("add")}', "{BEST_ORDER_LABEL}"].map(inBoxes);
   assert.deepEqual(steps, [...steps].sort((a, b) => a - b), "From, the points, To, Add a stop, Best order");
   // The map-center actions are in Map tools by the zoom buttons, not the planner (OWNER-DECISIONS 450).
   assert.doesNotMatch(points, /Add point at map center|Road info at map center/);

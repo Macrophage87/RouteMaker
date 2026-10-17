@@ -4055,8 +4055,8 @@ export function App() {
                 <>
                   {/* Route (the plan panel) after the points and the ride, above the route, as a form's button follows its
                       fields (Plan streamline, Stephen 2026-10-17); on a phone with a route, where the route comes first, on top. */}
-                  {order[0] === "route" && planPanel}
-                  {order.map((id) => (id === "route" && order[0] !== "route" ? [planPanel, sections[id]] : sections[id]))}
+                  {/* One flat keyed list, so a change of order moves the panel rather than remounting it. */}
+                  {(order[0] === "route" ? [planPanel, ...order.map((id) => sections[id])] : order.flatMap((id) => (id === "route" ? [planPanel, sections[id]] : [sections[id]])))}
                 </>
               )}
             </div>

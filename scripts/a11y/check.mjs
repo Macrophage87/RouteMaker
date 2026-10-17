@@ -1180,7 +1180,8 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
     if (!secure) await p.s("Page.addScriptToEvaluateOnNewDocument", { source: "Object.defineProperty(window, 'isSecureContext', { value: false })" });
     if (script) await p.s("Page.addScriptToEvaluateOnNewDocument", { source: script });
     await p.s("Page.navigate", { url: `${ORIGIN}/${hash}` });
-    if (!(await p.waitFor("!!document.querySelector('.locate-button')", 30000))) throw new Error("no Use my location button");
+    // Plan's boxes (Plan streamline, 2026-10-17): Use my location sits on From (an empty plan) and To; a fuller plan has Add a stop.
+    if (!(await p.waitFor("!!document.querySelector('.locate-button, #points-search .place-search input')", 30000))) throw new Error("no Use my location button");
     await sleep(500);
     return p;
   }
@@ -1305,16 +1306,14 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
     await p.close();
   }
   {
-    // A two-point plan, Start chosen, then Your location: it replaces the start (the choice reaches placeFix).
+    // A two-point plan, the start's Change, then Your location: it replaces the start (the choice reaches placeFix).
+    // Plan streamline (2026-10-17): Change on the Start row opens the From box, with the focus in it.
     const p = await emptyPlan({ hash: "#p=-77.04000,38.91000;-77.01000,38.89000&preset=default&v=2&stress=70&hills=0" });
     await p.waitFor("document.querySelectorAll('.points > li').length === 2", 20000);
-    // With a route shown the points are compact: Edit points opens the search, as a rider would.
-    await p.waitFor("!![...document.querySelectorAll('button')].find((e) => e.textContent.trim() === 'Edit points')", 20000);
-    await p.eval("[...document.querySelectorAll('button')].find((e) => e.textContent.trim() === 'Edit points')?.click(); true");
+    await p.eval("document.querySelector('.point-change[aria-label=\"Change Start\"]')?.click(); true");
     await sleep(500);
-    const chose = await p.eval("(() => { const r = document.querySelector('.place-choice input[type=radio][value=start]'); if (!r) return false; r.click(); return r.checked; })()");
+    const chose = await p.eval("(() => { const i = document.activeElement; return !!i && i.matches('#points-search .place-search input') && i.closest('.place-search').querySelector('label').textContent.startsWith('From'); })()");
     await sleep(300);
-    await p.eval("document.querySelector('.place-search input').focus(); true");
     await sleep(300);
     const line = await p.eval("[...document.querySelectorAll('.place-results [role=option]')][0]?.textContent ?? ''");
     await p.eval(countSaid("Start set to your location"));

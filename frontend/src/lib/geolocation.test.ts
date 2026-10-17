@@ -694,7 +694,7 @@ test("App: the look-up's answer is placed with the ride read after the wait and 
     "the fresh points, the fresh loop flag and the choice (S3, AW3)",
   );
   // Plan's From and To put their box away first (Plan streamline, 2026-10-17).
-  assert.match(app, /onLocate: \(choice\) => \{\s*setChanging\(null\);\s*void useMyLocation\(choice\);\s*\},/, "App passes the list's choice on (P6)");
+  assert.match(app, /onLocate: \(choice\) => \{\s*setChanging\(null\);\s*afterPick\.current = variant;\s*void useMyLocation\(choice\);\s*\},/, "App passes the list's choice on (P6)");
   // A press while busy is answered (AW8); a refusal is cleared and set again, so a repeat is said again (N4).
   assert.match(useMy, /if \(press === null\) \{\s*announce\(FINDING_LOCATION\);\s*return;\s*\}/);
   assert.match(

@@ -53,6 +53,8 @@ export interface LocateControl {
    * Stop choice in force (it goes in like a picked place).
    */
   onLocate: (choice?: PlaceChoice) => void;
+  /** "Your location" in the list only, no button (Plan's Add a stop: the button sits on From and To). */
+  listOnly?: boolean;
 }
 
 /** What a Go or Home search does with the place picked (UI-CLEANUP). */
@@ -287,6 +289,12 @@ export function PlaceSearch({
       expanded,
       hasQuery: query !== "",
     });
+    // Escape on an empty, closed box opened by a Change puts the box away (Plan streamline).
+    if (event.key === "Escape" && query === "" && !expanded && onDismiss) {
+      event.preventDefault();
+      onDismiss();
+      return;
+    }
     if (action.kind === "none") return;
     event.preventDefault();
     if (action.kind === "move") {
@@ -302,8 +310,6 @@ export function PlaceSearch({
     } else if (action.kind === "close") {
       setOpen(false);
       setActive(-1);
-    } else if (query === "" && onDismiss) {
-      onDismiss();
     } else {
       change("");
     }
@@ -315,7 +321,7 @@ export function PlaceSearch({
         {variant === "go" ? "Where to?" : variant === "home" ? "Find your Home" : variant === "start" ? "Start from" : variant === "stop" || variant === "add" ? "Add a stop" : variant === "from" ? "From" : variant === "to" ? "To" : "Find a place"}
         {current && <span className="place-search-current">{` (now ${current})`}</span>}
       </label>
-      <div className={locate || variant === "go" ? "place-search-row" : undefined}>
+      <div className={(locate && !locate.listOnly) || variant === "go" ? "place-search-row" : undefined}>
       {variant === "go" && <Icon name="search" className="search-icon" />}
       <input
         id={`${id}-input`}
@@ -363,7 +369,7 @@ export function PlaceSearch({
           }
         }}
       />
-      {locate && (
+      {locate && !locate.listOnly && (
         <button
           type="button"
           className="secondary locate-button"
@@ -380,7 +386,7 @@ export function PlaceSearch({
         </button>
       )}
       </div>
-      {locate && !locate.support.available && (
+      {locate && !locate.listOnly && !locate.support.available && (
         <p id={`${id}-locate-why`} className="hint">
           {locate.support.reason}
         </p>
@@ -390,7 +396,7 @@ export function PlaceSearch({
           {FINDING_LOCATION}
         </p>
       )}
-      {locate && !locate.busy && locate.note && <p className="hint">{locate.note}</p>}
+      {locate && !locate.listOnly && !locate.busy && locate.note && <p className="hint">{locate.note}</p>}
       <ul id={listId} role="listbox" aria-label={empty ? "Your location and recent places" : "Places found"} className="place-results" hidden={!expanded}>
         {items.map((item, i) =>
           item === HERE ? (

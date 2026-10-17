@@ -134,7 +134,7 @@ export function PointsSection(props: PointsSectionProps) {
             </label>
           )}
           {/* No "Edit points" any more (v0.7.0): with a route the search and the point tools stay in view, and the
-              plan panel above holds the plan in words, with Route, Reset and Clear. */}
+              plan panel holds Route, Reset and Clear, and says the plan in words to a screen reader. */}
           {/* Undo and Redo, beside Swap and Loop (Plan streamline, Stephen 2026-10-17); a phone has Undo in its notices. */}
           {!narrow && (
             <button type="button" className="secondary icon-button" data-history="undo" onClick={undo} disabled={!can.undo} aria-keyshortcuts="Control+Z Meta+Z">
@@ -261,10 +261,14 @@ function PointBoxes(props: PointBoxesProps) {
   const { pointsSearchRef, points, loopVias, geoGate, searchBias, pickPlace, locateReady, locating, locateNote, useMyLocation, accessMode, namer, removeAt, pointWarnings, removeRefs, orderShown, bestOrder, orderFocused, ordering } = props;
   // The point a "Change" opened a box for (the start or the destination), until a pick, Escape or a removal.
   const [changing, setChanging] = useState<"from" | "to" | null>(null);
-  const boxRef = useRef<HTMLInputElement | null>(null);
+  const boxRefs = { from: useRef<HTMLInputElement | null>(null), to: useRef<HTMLInputElement | null>(null), add: useRef<HTMLInputElement | null>(null) };
   useEffect(() => {
-    if (changing) boxRef.current?.focus();
+    if (changing) boxRefs[changing].current?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the refs are stable
   }, [changing]);
+  // A pick puts its box away (From once there is a start, To once there is a destination): the focus goes on to the
+  // next box shown, as a form's does, so a keyboard or screen reader is not left on the page.
+  const afterPick = useRef<"from" | "to" | "add" | null>(null);
   const hasEnd = !loopVias && points.length >= 2;
   useEffect(() => {
     // The point being changed went (Remove, Undo, Clear): its box goes with it.
@@ -273,6 +277,17 @@ function PointBoxes(props: PointBoxesProps) {
   const showFrom = points.length === 0 || changing === "from";
   const showTo = !showFrom && !loopVias && (points.length === 1 || changing === "to");
   const showAdd = !showFrom && !showTo && (loopVias ? points.length >= 1 : points.length >= 2);
+  useEffect(() => {
+    const from = afterPick.current;
+    if (from === null) return;
+    afterPick.current = null;
+    const active = document.activeElement;
+    if (active && active !== document.body && active.isConnected) return;
+    const next = showTo ? boxRefs.to : showAdd ? boxRefs.add : showFrom ? boxRefs.from : null;
+    next?.current?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per pick, after the plan it made
+  }, [points]);
+  const full = points.length >= MAX_POINTS;
   const placeName = (index: number) => (points[index] ? (namer.name(points[index])?.name ?? "a point on the map") : undefined);
   const search = (variant: "from" | "to" | "add") => (
     <PlaceSearch
@@ -280,11 +295,11 @@ function PointBoxes(props: PointBoxesProps) {
       variant={variant}
       pointCount={points.length}
       loop={loopVias}
-      full={points.length >= MAX_POINTS}
+      full={full}
       gate={geoGate}
       bias={searchBias}
       current={variant === "from" && changing === "from" ? placeName(0) : variant === "to" && changing === "to" ? placeName(points.length - 1) : undefined}
-      inputRef={variant === changing ? boxRef : undefined}
+      inputRef={boxRefs[variant]}
       onDismiss={
         variant === changing
           ? () => {
@@ -297,22 +312,21 @@ function PointBoxes(props: PointBoxesProps) {
       }
       onPick={(place, choice) => {
         setChanging(null);
+        afterPick.current = variant;
         pickPlace(place, choice);
       }}
-      // "Use my location" beside the first box a plan needs (From, then To); Add a stop lists "Your location" alone.
-      locate={
-        variant === "add"
-          ? undefined
-          : {
-              support: locateReady,
-              busy: locating,
-              note: locateNote,
-              onLocate: (choice) => {
-                setChanging(null);
-                void useMyLocation(choice);
-              },
-            }
-      }
+      // "Use my location" beside the first box a plan needs (From, then To); Add a stop has "Your location" in its list.
+      locate={{
+        support: locateReady,
+        busy: locating,
+        note: locateNote,
+        listOnly: variant === "add",
+        onLocate: (choice) => {
+          setChanging(null);
+          afterPick.current = variant;
+          void useMyLocation(choice);
+        },
+      }}
     />
   );
   return (
@@ -328,14 +342,16 @@ function PointBoxes(props: PointBoxesProps) {
           removeRef={(index, button) => {
             removeRefs.current[index] = button;
           }}
-          onChange={(index) => setChanging(index === 0 ? "from" : "to")}
+          // A second press puts the box away again (as Escape in the empty box does).
+          onChange={(index) => setChanging((now) => (now === (index === 0 ? "from" : "to") ? null : index === 0 ? "from" : "to"))}
           changeable={(index) => index === 0 || (!loopVias && index === points.length - 1 && points.length >= 2)}
         />
       )}
       {showTo && search("to")}
       {showAdd && (
         <div className="add-stop-row">
-          {search("add")}
+          {/* A full plan: the reason in place of the box, whose pick could add nothing (Best order still works). */}
+          {full ? <p className="hint">The route has as many points as it can take, so no stop can be added.</p> : search("add")}
           {/* Best order (OWNER-DECISIONS 449), beside Add a stop (Stephen 2026-10-17), with two or more stops to order;
               aria-disabled while the order is found (the focus stays on it, a press says it is still working),
               with the same label, so the row does not reflow under a finger. */}
