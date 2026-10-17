@@ -297,13 +297,13 @@ export interface GpxSheetProps {
   sendToGarmin?: (said: Said) => void;
   /** Plan only: snap an opened track to the map's ways (GpxPanel, lib/gpxMatch.ts); absent in Go. */
   match?: GpxPanelProps["match"];
-  /** Signed in: Save route for an opened file (its own text, verbatim); null signed out. */
-  saveControl: ReactNode;
+  /** Save route (signed in) and Share, for the route shown or the file opened (RoutePanel.tsx ShareControls); null with neither. */
+  shareControls: ReactNode;
 }
 
 /** The GPX sheet. */
 export function GpxSheet(props: GpxSheetProps) {
-  const { nav, shown, routedPoints, routedLoop, federalRoute, points, status, imported, openImported, refineImported, getMap, downloadRoute, downloadCourse, sendToGarmin, match, saveControl } = props;
+  const { nav, shown, routedPoints, routedLoop, federalRoute, points, status, imported, openImported, refineImported, getMap, downloadRoute, downloadCourse, sendToGarmin, match, shareControls } = props;
   return (
     <SheetFrame id="sheet-gpx" title={SHEET_TITLES.gpx} open={nav.view === "gpx"} onBack={nav.back} backLabel={nav.backLabel("gpx")}>
       <GpxPanel
@@ -322,7 +322,7 @@ export function GpxSheet(props: GpxSheetProps) {
         onSendToGarmin={sendToGarmin}
         match={match}
       />
-      {imported?.verbatim && saveControl}
+      {shareControls}
     </SheetFrame>
   );
 }

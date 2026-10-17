@@ -84,12 +84,7 @@ export interface RouteActionsProps {
   federalRoute: readonly string[];
   copyLink: () => void;
   linkNote: string;
-  canShare: boolean;
-  shareRoute: () => void;
-  /** How long the server keeps a shared line, chosen under Share (lib/sharedRoutes.ts ShareKeep). */
-  shareKeep: ShareKeep;
-  onShareKeep: (keep: ShareKeep) => void;
-  /** Opens Share as image (ShareCardDialog), beside Share in Plan's More. */
+  /** Opens Share as image (ShareCardDialog), in Plan's More. */
   shareImage: () => void;
   linkSpoken: string;
   keepShown: boolean;
@@ -99,7 +94,7 @@ export interface RouteActionsProps {
   linkSaid: string;
   /** Download GPX through the page: closures checked first, an unedited opened file as it came (v0.7.0). */
   downloadRoute: () => void;
-  /** Save route (signed in), beside Share; null signed out. */
+  /** Save route (signed in): Go's Save chip (Plan's is in the Route file sheet, ShareControls); null signed out. */
   save: Omit<SaveRouteProps, "label" | "chip"> | null;
   /** A reopened saved route's line about today's map, with Update route; null otherwise. */
   savedNote: ReactNode;
@@ -406,7 +401,7 @@ export function RouteSection(props: RouteSectionProps) {
 }
 
 /**
- * Under Share in Plan's More: how long the shared link's exact line is kept. A year after it was last opened is the
+ * Under Share in the Route file sheet: how long the shared link's exact line is kept. A year after it was last opened is the
  * default; "Until a date" shows the date, starting a month out (the owner, 2026-10-16).
  */
 function ShareKeepField({ value, onChange }: { value: ShareKeep; onChange: (keep: ShareKeep) => void }) {
@@ -434,12 +429,53 @@ function ShareKeepField({ value, onChange }: { value: ShareKeep; onChange: (keep
 }
 
 /**
+ * Save route, then Share (the owner, 2026-10-17: "the share button should be in files. Basically you save then you
+ * share"): in the Route file sheet, under the file's own controls, for a planned route and an opened file alike. Share
+ * is there only where the browser has a share sheet (Copy link, in Plan's route row, is always there); how long its
+ * exact line is kept is chosen under it. What Share did (only a failure, or a line not kept) is said here, politely.
+ */
+export function ShareControls(props: {
+  save: ReactNode;
+  canShare: boolean;
+  shareRoute: () => void;
+  shareKeep: ShareKeep;
+  onShareKeep: (keep: ShareKeep) => void;
+  shareSaid: { text: string; count: number };
+  /** The location line (OWNER-DECISIONS 395): it describes Share, so it is read before the sheet opens. */
+  linkNote: string;
+}) {
+  const { save, canShare, shareRoute, shareKeep, onShareKeep, shareSaid, linkNote } = props;
+  return (
+    <div className="share-controls">
+      {save}
+      {canShare && (
+        <button type="button" className="secondary share-route" onClick={shareRoute} aria-label={SHARE_NAME} aria-describedby={linkNote ? "share-link-note" : undefined}>
+          {SHARE_LABEL}
+        </button>
+      )}
+      {canShare && linkNote && (
+        <p id="share-link-note" className="hint link-note">
+          {linkNote}
+        </p>
+      )}
+      {canShare && <ShareKeepField value={shareKeep} onChange={onShareKeep} />}
+      {canShare && (
+        <p className="hint share-said" role="status">
+          {shareSaid.text}
+          {shareSaid.count % 2 === 1 ? " " : ""}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
  * Start's row in Plan: Download GPX and Copy link as icon buttons beside it, and More (a disclosure)
- * holding Share and Keep for offline (the owner's choice 8). The said lines stay outside More, so a
- * press is heard however More stands.
+ * holding Share as image and Keep for offline (the owner's choice 8; Save route and Share are in the Route file
+ * sheet, ShareControls). The said lines stay outside More, so a press is heard however More stands.
  */
 function RouteActions(props: RouteActionsProps & { start: ReactNode }) {
-  const { copyLink, linkNote, canShare, shareRoute, shareKeep, onShareKeep, shareImage, linkSpoken, keepShown, keepForOffline, keeping, keepSpoken, linkSaid, start, downloadRoute, save } = props;
+  const { copyLink, linkNote, shareImage, linkSpoken, keepShown, keepForOffline, keeping, keepSpoken, linkSaid, start, downloadRoute } = props;
   const [more, setMore] = useState(false);
   const moreId = useId();
   return (
@@ -461,17 +497,10 @@ function RouteActions(props: RouteActionsProps & { start: ReactNode }) {
         </button>
       </div>
       <div id={moreId} className="route-more-body" hidden={!more}>
-        {canShare && (
-          <button type="button" className="secondary share-route" onClick={shareRoute} aria-label={SHARE_NAME} aria-describedby={linkNote ? "link-note" : undefined}>
-            {SHARE_LABEL}
-          </button>
-        )}
-        {canShare && <ShareKeepField value={shareKeep} onChange={onShareKeep} />}
-        {/* Its QR code's link keeps as chosen above. */}
+        {/* Its QR code's link keeps as chosen under Share (the Route file sheet). */}
         <button type="button" className="secondary share-image" onClick={shareImage} aria-haspopup="dialog">
           {SHARE_IMAGE_LABEL}
         </button>
-        {save && <SaveRoute {...save} label={SAVE_ROUTE} />}
         {keepShown && (
           <button type="button" className="secondary keep-offline" onClick={() => void keepForOffline()} aria-disabled={keeping} aria-describedby="keep-offline-said">
             {KEEP_LABEL}

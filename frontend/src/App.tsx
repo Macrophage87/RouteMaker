@@ -192,14 +192,14 @@ import { isStandalone } from "./lib/installOffer.ts";
 import { keepLastRide, keepRoute, keptAnswerFor, sweepKept } from "./lib/offlineKeep.ts";
 import { KEEPING_SAID, keepOffered, keepSaid, keptPlanKey, offlineRouteNotice, routeTitle, type KeptRoute } from "./lib/offlineRoutes.ts";
 import { askPersist } from "./lib/offlineRouteStore.ts";
-import { namesToKeep, rideAfterImport, type Ride } from "./lib/gpxEdit.ts";
+import { asKept, namesToKeep, rideAfterImport, type Ride } from "./lib/gpxEdit.ts";
 import { followLine } from "./lib/gpxMatch.ts";
 import { fetchHazards, type HazardCollection } from "./lib/massHazards.ts";
 import { visibleCentreOffset } from "./lib/visibleCentre.ts";
 import { NARROW, useLongerThan, useMinute, useNarrow, useSettled } from "./app/hooks.ts";
 import { routeLightMarks, sameLightMarks, type LightMark } from "./lib/lightTimes.ts";
 import { PointsSection, RideSection } from "./app/Planner.tsx";
-import { RouteSection, type Status } from "./app/RoutePanel.tsx";
+import { RouteSection, ShareControls, type Status } from "./app/RoutePanel.tsx";
 import { FoodSheet, GpxSheet, LayersSheet, LegendSheet, NearestSheet, RideChips, RideGroupChips, RideSheet, SettingsSheet, SuggestSheet, type SheetNav } from "./app/Sheets.tsx";
 import { GoAddStop, GoSheet, GoTopBar, ModeSwitch, PlanMapChips } from "./app/Go.tsx";
 import { useSharedLaunch } from "./app/sharedLaunch.ts";
@@ -2381,15 +2381,21 @@ export function App() {
   }, setNotice);
   // "Copy link": this page with the plan's fragment from encodePlan, which never holds the weight
   // (OWNER-DECISIONS 313). Cleared first and set again a moment later, so a second press is said again.
+  // v0.9.0, "share the exact route": it names the exact line shown too, as Share's does (sharedLinkNow), so a link copied
+  // into a group chat opens the identical route; a line that could not be kept is said after the copy.
   const copyLink = async () => {
     const press = ++linkPresses.current;
     setLinkSaid("");
     setLinkSpoken("");
     const note = linkNote;
-    const done = await copyText(linkToCopy(window.location, points, preset, dials, viaIndices(points, VIA_MARKS.isVia)), navigator.clipboard, selectionCopy);
+    const { link, kept } = sharedLinkNow();
+    const done = await copyText(link, navigator.clipboard, selectionCopy);
+    const lost = done && kept !== null && !(await kept);
+    if (lost && sharedLine.current?.kept === kept) sharedLine.current = null;
+    const after = lost ? ` ${SHARED_INPUTS_ONLY}` : "";
     window.setTimeout(() => {
-      if (press === linkPresses.current) setLinkSaid(linkSaidFor(done));
-      if (press === linkPresses.current) setLinkSpoken(linkSpokenFor(done, note));
+      if (press === linkPresses.current) setLinkSaid(linkSaidFor(done) + after);
+      if (press === linkPresses.current) setLinkSpoken(linkSpokenFor(done, note) + after);
     }, 150);
   };
   // "Share": Copy link's link, to the phone's share sheet. The location line describes the button,
@@ -2403,6 +2409,9 @@ export function App() {
   // would save where the browser can share files. A route shared again keeps its first id. A line too big to
   // keep, or one that could not be sent, leaves the link with the inputs only, said in one line.
   const sharing = useRef(false);
+  // What Share said, in the Route file sheet beside it (RoutePanel.tsx ShareControls); the count makes a line said
+  // again heard again.
+  const [shareSaid, setShareSaid] = useState({ text: "", count: 0 });
   const sharedLine = useRef<{ of: unknown; keep: string; id: string; kept: Promise<boolean> } | null>(null);
   // How long the server keeps the shared line, chosen beside Share in Plan (lib/sharedRoutes.ts ShareKeep). A
   // route shared again with another keeping is a new line under a new id.
@@ -2415,9 +2424,12 @@ export function App() {
     const verbatim = imported?.verbatim;
     if (verbatim && !importEdited) {
       const name = fileName();
+      // The route shown for the file, once settled (v0.9.0, "share the exact route"): the link opens that very line,
+      // followed by the rules or exactly, not the file planned again. A new line (the other mode) is a new link.
+      const settled = fileShown();
       return {
-        of: verbatim,
-        save: gpxSave(name, verbatim.text ?? trackGpx(name, verbatim.track), verbatim.track, points, preset, dials),
+        of: settled ?? verbatim,
+        save: gpxSave(name, verbatim.text ?? trackGpx(name, verbatim.track), verbatim.track, points, preset, dials, settled),
         file: verbatimDownload(verbatim, importEdited, imported?.name),
       };
     }
@@ -2457,8 +2469,7 @@ export function App() {
     if (!shown || sharing.current) return;
     sharing.current = true;
     const press = ++linkPresses.current;
-    setLinkSaid("");
-    setLinkSpoken("");
+    setShareSaid((before) => ({ text: "", count: before.count }));
     const distanceM = !stale && routedPoints === points ? shown.distance_m : null;
     const { link, kept, exact } = sharedLinkNow();
     const file = exact?.file ? gpxShareFile(exact.file.text, exact.file.fileName) : null;
@@ -2479,8 +2490,7 @@ export function App() {
     }
     if (!said) return;
     window.setTimeout(() => {
-      if (press === linkPresses.current) setLinkSaid(said);
-      if (press === linkPresses.current) setLinkSpoken(said);
+      if (press === linkPresses.current) setShareSaid((before) => ({ text: said, count: before.count + 1 }));
     }, 150);
   };
 
@@ -2579,16 +2589,20 @@ export function App() {
   // the base with it, refineImported).
   const importBase = useRef<{ imported: ImportedPlan; points: LonLat[]; preset: PresetId; unfollowed?: boolean; exact?: boolean } | null>(null);
   if (!imported) importBase.current = null;
-  else if (importBase.current?.imported !== imported) importBase.current = { imported, points, preset };
+  else if (importBase.current?.imported !== imported) importBase.current = { imported, points, preset, exact: imported.exact === true };
   const importEdited = !imported || importBase.current?.points !== points || importBase.current?.preset !== preset;
   // "Follow the file exactly" (Stephen 2026-10-17, "give a manual mode option"): the file planned again, followed as
   // ridden. Off for each file opened; offered while it is not edited (its line is what is followed).
   const setFollowExact = (on: boolean) => {
     if (!importBase.current) return;
     importBase.current = { ...importBase.current, exact: on, unfollowed: false };
+    // A saved or shared file's line stands for its own mode only: the other is planned.
+    savedShown.current = null;
     setRouteAsk((n) => n + 1);
   };
   const fileName = () => imported?.name || keptTitle();
+  // The route on screen for an opened file, once it answers the file's plan as it stands; null while one is planned.
+  const fileShown = () => (shown && !stale && routedPoints === points ? shown : null);
   // A saved route's line about today's map (more than 5% apart in distance), with Update route.
   const [savedNote, setSavedNote] = useState<{ key: string; savedM: number; todayM: number } | null>(null);
   const [myRoutesVersion, setMyRoutesVersion] = useState(0);
@@ -2599,7 +2613,7 @@ export function App() {
     const verbatim = imported?.verbatim;
     const body =
       verbatim && !importEdited
-        ? gpxSave(name, verbatim.text ?? trackGpx(name, verbatim.track), verbatim.track, points, preset, dials)
+        ? gpxSave(name, verbatim.text ?? trackGpx(name, verbatim.track), verbatim.track, points, preset, dials, fileShown())
         : shown
           ? planSave(name, shown, routedPoints, preset, dials)
           : null;
@@ -2869,12 +2883,22 @@ export function App() {
     const own: OpenSaved | null = typeof saved.id === "number" ? { id: saved.id, name: saved.name } : null;
     openSavedRoute.current = own;
     if (saved.source === "gpx" && saved.gpx) {
+      // Kept with the route shown for it (v0.9.0, "share the exact route"): the file opens on the plan it was kept
+      // with (its points, ride type and sliders) and that very line answers it, in the mode it was followed in.
+      const answer = saved.answer ?? null;
+      const at = answer ? decodePlan(saved.inputs.hash) : null;
+      const keepShown = () => {
+        if (answer && at) savedShown.current = { key: keptPlanKey(at.points, at.preset, at.dials), answer };
+      };
+      // The link's own plan (the same points) is answered by that line too while the file is read.
+      keepShown();
       void readGpx(new Blob([saved.gpx])).then((outcome) => {
         if (!outcome.ok) {
           announce(outcome.message);
           return;
         }
-        openImportedChecked({ ...outcome.plan, name: saved.name });
+        keepShown();
+        openImportedChecked(asKept({ ...outcome.plan, name: saved.name }, at, answer));
         openSavedRoute.current = own;
         announce(said);
       });
@@ -3688,7 +3712,7 @@ export function App() {
       </Fold>
     ) : null;
   const actions = {
-    routedLoop, copyLink, linkNote, canShare, shareRoute, shareKeep, onShareKeep: setShareKeep, shareImage: () => setShareCardOpen(true), linkSpoken, keepShown, keepForOffline, keeping, keepSpoken, linkSaid,
+    routedLoop, copyLink, linkNote, shareImage: () => setShareCardOpen(true), linkSpoken, keepShown, keepForOffline, keeping, keepSpoken, linkSaid,
     downloadRoute, save: saveProps, savedNote: savedNoteShown,
   };
   const go = {
@@ -4195,7 +4219,20 @@ export function App() {
                     ...(importBase.current && !importEdited ? { exact: importBase.current.exact === true, onExact: setFollowExact } : {}),
                   },
                 }),
-                saveControl: saveProps && !importEdited ? <SaveRoute {...saveProps} label={SAVE_ROUTE} /> : null,
+                // Save route, then Share (the owner, 2026-10-17: "Basically you save then you share"), for the route shown
+                // or the file opened.
+                shareControls:
+                  shown || (imported?.verbatim && !importEdited) ? (
+                    <ShareControls
+                      save={saveProps ? <SaveRoute {...saveProps} label={SAVE_ROUTE} /> : null}
+                      canShare={canShare && !!shown}
+                      shareRoute={() => void shareRoute()}
+                      shareKeep={shareKeep}
+                      onShareKeep={setShareKeep}
+                      shareSaid={shareSaid}
+                      linkNote={linkNote}
+                    />
+                  ) : null,
               }}
             />
             <SettingsSheet

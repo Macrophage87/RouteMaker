@@ -562,17 +562,18 @@ test("Start, GPX, Link and More are one row under the route's figures (UI-CLEANU
     "Link copied. This link includes your location as the start.",
   );
   assert.equal(linkSpokenFor(false, "This link includes your location as the start."), COPY_LINK_FAILED);
-  assert.match(app, /if \(press === linkPresses\.current\) setLinkSpoken\(linkSpokenFor\(done, note\)\);/);
+  assert.match(app, /if \(press === linkPresses\.current\) setLinkSpoken\(linkSpokenFor\(done, note\) \+ after\);/);
   // "Link" shown, "Copy link" heard: the visible word is in the name (label in name).
   assert.match(app, /onClick=\{copyLink\} aria-label=\{COPY_LINK\} aria-describedby=\{linkNote \? "link-note" : undefined\}>\s*<Icon name="link" \/>\s*<span aria-hidden="true">Link<\/span>/);
   assert.match(app, /<p id="link-note" className="hint link-note">/);
   // More holds Share and Keep for offline, a disclosure.
   assert.match(app, /className="secondary icon-button route-more" aria-expanded=\{more\} aria-controls=\{moreId\}/);
   // The link is this page and encodePlan's fragment, which never carries the weight (313).
-  assert.match(app, /copyText\(linkToCopy\(window\.location, points, preset, dials, viaIndices\(points, VIA_MARKS\.isVia\)\), navigator\.clipboard, selectionCopy\)/);
+  // v0.9.0, "share the exact route": the link Share makes, naming the exact line shown (lib/sharedRoutes.ts).
+  assert.match(app, /const \{ link, kept \} = sharedLinkNow\(\);\s*const done = await copyText\(link, navigator\.clipboard, selectionCopy\);/);
   assert.equal(linkSaidFor(true), COPY_LINK_DONE);
   assert.equal(linkSaidFor(false), COPY_LINK_FAILED);
-  assert.match(app, /if \(press === linkPresses\.current\) setLinkSaid\(linkSaidFor\(done\)\);/);
+  assert.match(app, /if \(press === linkPresses\.current\) setLinkSaid\(linkSaidFor\(done\) \+ after\);/);
   // Cleared first, so a second press is said again.
   assert.match(app, /const press = \+\+linkPresses\.current;\s*setLinkSaid\(""\);/);
 });

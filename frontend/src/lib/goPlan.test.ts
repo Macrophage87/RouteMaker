@@ -264,9 +264,10 @@ test("the Avoid notice is one line: the first junction and how many more, with A
 test("a route's notes are one line each with an icon; their full words are in Info (the owner's choice 5)", () => {
   assert.match(app, /<li key=\{note\.key\} className=\{`note-line \$\{note\.className\}`\}>\s*<Icon name=\{note\.icon\} size=\{16\} \/>\s*<span className="note-text">\{note\.text\}<\/span>/);
   assert.match(app, /\{notes\.map\(\(note\) => \(\s*<p key=\{note\.key\} className="hint note-full">/);
-  // The four quick figures are in Stress and facilities (choice 4); Share and Keep for offline behind More (choice 8).
+  // The four quick figures are in Stress and facilities (choice 4); Share as image and Keep for offline behind More
+  // (choice 8; Share itself is in the Route file sheet since v0.9.0).
   assert.match(app, /\{\/\* The four quick figures, first in the fold \(the owner's choice 4\)\. \*\/\}\s*<QuickFigures/);
-  assert.match(app, /<div id=\{moreId\} className="route-more-body" hidden=\{!more\}>[\s\S]*?share-route[\s\S]*?keep-offline/);
+  assert.match(app, /<div id=\{moreId\} className="route-more-body" hidden=\{!more\}>[\s\S]*?share-image[\s\S]*?keep-offline/);
 });
 
 // ---- Ride mode's 311 button (the owner's choice 9) and Big text's icon (choice 11) ----------------------
