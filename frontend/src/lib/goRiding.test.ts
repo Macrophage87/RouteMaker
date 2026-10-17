@@ -19,7 +19,7 @@ test("1. track-up by default, the ride settings' switch remembered on this devic
   assert.match(ride, /checked=\{headingUp\} onChange=\{\(event\) => onHeadingUp\(event\.target\.checked\)\}/);
   // North-up until a heading comes; north-up again once the ride is over.
   assert.match(map, /props\.headingUp && following\.current \? map\.getBearing\(\) : 0/);
-  assert.match(map, /if \(following\.current && map\.getBearing\(\) !== 0\) map\.easeTo\(\{ bearing: 0, duration: 0 \}\)/);
+  assert.match(map, /if \(following\.current && map\.getBearing\(\) !== 0\) map\.easeTo\(\{ bearing: 0, padding: NO_PADDING, duration: 0 \}\)/);
   // Turning the map never moves the keyboard focus: the follow camera calls no focus().
   const follow = map.slice(map.indexOf("// Ride mode's \"you\" marker and the follow camera."), map.indexOf("// A pan or a turn of the map by hand"));
   assert.ok(follow.length > 100);

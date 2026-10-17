@@ -2582,8 +2582,8 @@ const levelSlider = `${EDITOR} input[type=range]`;
   // Track-up (the default), the rider sits about two thirds of the way down the map, more of the road ahead
   // showing, and the marker is a little larger (v0.9.0, the owner, 2026-10-17).
   await sleep(600);
-  const you = await p.eval("(() => { const m = document.querySelector('.rider-marker').getBoundingClientRect(); const c = document.querySelector('.map').getBoundingClientRect(); return { down: Math.round(((m.top + m.height / 2 - c.top) / c.height) * 100) / 100, w: Math.round(m.width) }; })()");
-  check("ride: following track-up, the rider is about two thirds of the way down the map, the marker at least 26 px",
+  const you = await p.eval("(() => { const m = document.querySelector('.rider-marker').getBoundingClientRect(); const c = document.querySelector('.map').getBoundingClientRect(); const top = document.querySelector('.ride .cue-card').getBoundingClientRect().bottom; const bottom = document.querySelector('.ride .ride-controls')?.getBoundingClientRect().top ?? c.bottom; return { down: Math.round(((m.top + m.height / 2 - top) / (bottom - top)) * 100) / 100, w: Math.round(m.width) }; })()");
+  check("ride: following track-up, the rider is about two thirds of the way down the map in view (under the cue card, above any bottom panel), the marker at least 26 px",
     you.down >= 0.6 && you.down <= 0.73 && you.w >= 26, JSON.stringify(you));
 
   // Where am I? on demand.

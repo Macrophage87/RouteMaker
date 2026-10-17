@@ -208,8 +208,9 @@ test("RideMode: round side buttons with names; the bottom panel only when it has
 
 test("following track-up, the rider is held two thirds of the way down the map, and the marker is a little larger (v0.9.0)", () => {
   const map = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
-  assert.match(map, /export const RIDER_DOWN = 1 \/ 6;/);
-  assert.match(map, /const ahead = props\.headingUp \? Math\.round\(map\.getContainer\(\)\.clientHeight \* RIDER_DOWN\) : 0;/);
-  assert.match(map, /map\.easeTo\(\{ center: rider\.point, bearing, zoom, offset: \[0, ahead\], duration: still \? 0 : 400 \}\);/);
+  assert.match(map, /export const RIDER_AT = 2 \/ 3;/);
+  assert.match(map, /return Math\.round\(top \+ Math\.max\(0, bottom - top\) \* RIDER_AT - box\.height \/ 2\);/);
+  assert.match(map, /const ahead = props\.headingUp \? riderOffset\(map\.getContainer\(\)\) : 0;/);
+  assert.match(map, /map\.easeTo\(\{ center: rider\.point, bearing, zoom, offset: \[0, ahead\], padding: NO_PADDING, duration: still \? 0 : 400 \}\);/);
   assert.match(css, /\.rider-marker \{\s*width: 36px;\s*height: 36px;/);
 });
