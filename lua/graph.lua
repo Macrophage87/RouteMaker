@@ -127,6 +127,9 @@ local function apply(kv, changes, allowed)
     if remap.FORBIDDEN_KEYS[key] and not (allowed and allowed[key] == value) then
       -- `highway` and `maxspeed` set hierarchy level, shortcut building, the
       -- road-class factor, A* pruning and whether Odin emits a maneuver at all.
+      -- (The rebuild, not the remap, makes a bare `maxspeed` an explicit mph in the
+      -- extract, `pipeline.variants.with_speed_units`, review RL-5: such ways' edge
+      -- speeds rise about 1.6 times on every graph, Mass Ride's included.)
       -- The write is dropped and the way keeps the class it arrived with.
       remap.record_violation(
         kv,

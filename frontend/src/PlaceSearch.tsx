@@ -436,7 +436,8 @@ export function PlaceSearch({
           ))}
         </fieldset>
       )}
-      <p id={`${id}-hint`} className={variant === "go" ? "hint go-from" : "hint"}>
+      {/* Go's hint is said with the box and kept out of sight, so Go's sheet fits one phone screen (the owner, 2026-10-17). */}
+      <p id={`${id}-hint`} className={variant === "go" ? "visually-hidden go-from" : "hint"}>
         {variant === "plan" ? <>{placeEffectHint(effect, loop)}</> : SINGLE_HINT[variant]}
         {!single && full && " The route has as many points as it can take, so no stop can be added."}
       </p>

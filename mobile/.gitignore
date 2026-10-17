@@ -1,0 +1,5 @@
+node_modules/
+# Release keys never belong in the repository: the workflow writes the key from a secret at build time.
+*.jks
+*.keystore
+keystore.properties
