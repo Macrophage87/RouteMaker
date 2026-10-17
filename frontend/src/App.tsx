@@ -49,7 +49,6 @@ import {
   routeButton,
   routingStep,
   type DrawnPlan,
-  type PhraseTarget,
 } from "./lib/planFirst.ts";
 import { PlanPanel } from "./app/PlanPanel.tsx";
 import { useHighStressLanes, useMtbTrails } from "./useStressStyle.ts";
@@ -3583,26 +3582,6 @@ export function App() {
     setChangeDetails([]);
     clearAll();
   };
-  // A phrase of the plan opens its editor: a point's row (and the map goes to it), the ride type or a slider.
-  const openPhrase = (target: PhraseTarget) => {
-    if (target.kind === "point") {
-      const point = pointsRef.current[target.index];
-      if (point) mapRef.current?.flyTo({ center: point, zoom: Math.max(mapRef.current.getZoom(), 14) });
-      removeRefs.current[target.index]?.focus();
-      return;
-    }
-    const line = document.querySelector<HTMLButtonElement>("#ride-settings-heading button");
-    if (line?.getAttribute("aria-expanded") === "false") line.click();
-    window.setTimeout(() => {
-      const body = document.querySelector(".ride-settings-body");
-      const editor =
-        target.kind === "ride"
-          ? body?.querySelector<HTMLElement>("input[type=radio]:checked, button, input")
-          : body?.querySelectorAll<HTMLElement>('.dials input[type="range"]')[target.kind === "traffic" ? 0 : 1];
-      editor?.focus();
-      editor?.scrollIntoView?.({ block: "center" });
-    }, 0);
-  };
   const planPanel = (
     <PlanPanel
       key="plan"
@@ -3611,7 +3590,6 @@ export function App() {
         traffic: stressMax(preset) > 0 ? stressWords(dials.stress) : null,
         hills: hillsWords(dials.hills, seeksClimbs(preset)),
       })}
-      onPhrase={openPhrase}
       button={routeButton({ points: points.length, drawn: drawn !== null, changed: planEdited, routeShown: shown !== null })}
       onRoute={pressRoute}
       routing={routingNow ? { step: routingStep(routingTick - routingSince), elapsed: elapsedText(routingTick - routingSince) } : null}
@@ -4075,8 +4053,10 @@ export function App() {
                 />
               ) : (
                 <>
-                  {planPanel}
-                  {order.map((id) => sections[id])}
+                  {/* Route (the plan panel) after the points and the ride, above the route, as a form's button follows its
+                      fields (Plan streamline, Stephen 2026-10-17); on a phone with a route, where the route comes first, on top. */}
+                  {order[0] === "route" && planPanel}
+                  {order.map((id) => (id === "route" && order[0] !== "route" ? [planPanel, sections[id]] : sections[id]))}
                 </>
               )}
             </div>

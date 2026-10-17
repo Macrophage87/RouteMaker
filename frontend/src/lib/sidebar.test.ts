@@ -177,15 +177,20 @@ test("App puts the ride type and every dial behind the Ride line, in the mockup'
     return i;
   };
   // UI-CLEANUP (the mockup's "Points Swap Loop Edit Info"): the loop box in the Points heading's row, then the
-  // search, then the points and their tools.
-  assert.deepEqual(
-    ["{loop && (", "<PlaceSearch", "{searchLede(loopVias, accessMode)}", 'className="actions point-tools"'].map(inPoints),
-    ["{loop && (", "<PlaceSearch", "{searchLede(loopVias, accessMode)}", 'className="actions point-tools"'].map(inPoints).sort((a, b) => a - b),
-    "the loop box, then the search, then the points and their tools",
-  );
+  // boxes and the points (Plan streamline, 2026-10-17: From, the points, To, then Add a stop with Best order).
+  assert.ok(inPoints("{loop && (") < inPoints("<PointBoxes"), "the loop box, then the boxes and the points");
+  const planner = src("../app/Planner.tsx");
+  const boxes = planner.slice(planner.indexOf("function PointBoxes("), planner.indexOf("export interface RideSectionProps"));
+  const inBoxes = (text: string) => {
+    const i = boxes.indexOf(text);
+    assert.ok(i > 0, text);
+    return i;
+  };
+  const steps = ['{showFrom && search("from")}', "{searchLede(loopVias, accessMode)}", "<PointsList", '{showTo && search("to")}', '{search("add")}', "{BEST_ORDER_LABEL}"].map(inBoxes);
+  assert.deepEqual(steps, [...steps].sort((a, b) => a - b), "From, the points, To, Add a stop, Best order");
   // The map-center actions are in Map tools by the zoom buttons, not the planner (OWNER-DECISIONS 450).
   assert.doesNotMatch(points, /Add point at map center|Road info at map center/);
-  assert.ok(inPoints("{loop && (") < inPoints('id="points-search"'), "outside the part that hides while the points compact");
+  assert.ok(inPoints("{loop && (") < src("../app/Planner.tsx").indexOf('<div id="points-search"'), "outside the part that hides while the points compact");
   assert.match(points, /aria-describedby=\{loopHintId\}/);
   assert.match(app, /const loopHintId = useId\(\);/, "a generated id, not a fixed one");
   // The hint is plain visible text: a paragraph with the id the box points at, and no live region or hidden class on it.
@@ -199,7 +204,7 @@ test("App puts the ride type and every dial behind the Ride line, in the mockup'
 
 // ---- points first ------------------------------------------------------------
 
-test("the points come first, the how-to is behind Points' Info, Swap beside the heading, and Undo and Clear share a row", () => {
+test("the points come first, the how-to is behind Points' Info, Swap and Undo beside the heading, and Clear behind More", () => {
   assert.equal(MORE_TIPS, "More tips");
   assert.equal(FEWER_TIPS, "Fewer tips");
   // The keyboard's way in stays in view (the a11y review's S6).
@@ -212,12 +217,14 @@ test("the points come first, the how-to is behind Points' Info, Swap beside the 
     /className="tips-body more-tips" hidden=\{!tips\}>[\s\S]{0,400}\{points\.length > 0 \? <p className="hint">\{editingTips\(accessMode\)\}<\/p> : <p className="hint">\{emptyPlanHint\(preset, loopVias, accessMode\)\}<\/p>\}/,
   );
   assert.match(app, /className="secondary icon-button tips-toggle" aria-expanded=\{tips\} aria-controls=\{tipsId\} onClick=\{\(\) => setTips\(!tips\)\}/);
-  // The compact row; every existing button is still there (Reverse is Swap, in the heading's row). Add point
-  // at map center is in Map tools (450).
-  assert.ok(app.indexOf("swap-points") > 0 && app.indexOf("swap-points") < app.indexOf('className="actions point-tools"'));
-  const labels = ["Undo", "Redo", "Clear"].map((t) => app.indexOf(t, app.indexOf('className="actions point-tools"')));
-  assert.ok(labels.every((i) => i > 0));
-  assert.deepEqual(labels, [...labels].sort((a, b) => a - b));
+  // Every existing button is still there: Swap, Undo and Redo in the heading's row, Info last (Plan streamline,
+  // 2026-10-17); Reset and Clear behind the plan panel's More. Add point at map center is in Map tools (450).
+  const row = ["swap-points", 'data-history="undo"', 'data-history="redo"', "tips-toggle"].map((t) => app.indexOf(t));
+  assert.ok(row.every((i) => i > 0));
+  assert.deepEqual(row, [...row].sort((a, b) => a - b));
+  const panel = src("../app/PlanPanel.tsx");
+  assert.ok(panel.indexOf('className="actions plan-reset-clear" hidden={!moreOpen}') > panel.indexOf('aria-label="More: Reset and Clear"'));
+  assert.ok(panel.indexOf("{RESET_LABEL}") < panel.indexOf("{CLEAR_LABEL}"));
   assert.doesNotMatch(app, /className="actions point-add"|ref=\{addRef\}/);
   assert.match(app, /accessMode && !riding \? \(\s*<MapTools\s+toggleRef=\{toolsToggleRef\}\s+onAddPoint=\{addAtCentre\}/);
   assert.equal(
@@ -243,8 +250,13 @@ test("with a route shown Plan's search and point tools stay in view (v0.7.0), an
   // "Keep adding stops by search": no compacting and no Edit points; the plan panel holds the plan in words.
   assert.match(app, /const compactPoints = false;/);
   assert.doesNotMatch(app, /className="secondary icon-button edit-points"/);
-  // The search is never hidden, so more stops can be added by search (v0.6.1 as well).
-  assert.match(app, /<div id="points-search" ref=\{pointsSearchRef\} className="points-controls">\s*<PlaceSearch/);
+  // The boxes are never hidden, so more stops can be added by search (v0.6.1 as well): From with no start, To with a
+  // lone start, else Add a stop (Plan streamline, 2026-10-17).
+  const planner = src("../app/Planner.tsx");
+  assert.match(planner, /<div id="points-search" ref=\{pointsSearchRef\} className="points-controls plan-points">\s*\{showFrom && search\("from"\)\}/);
+  assert.match(planner, /const showFrom = points\.length === 0 \|\| changing === "from";/);
+  assert.match(planner, /const showTo = !showFrom && !loopVias && \(points\.length === 1 \|\| changing === "to"\);/);
+  assert.match(planner, /const showAdd = !showFrom && !showTo && \(loopVias \? points\.length >= 1 : points\.length >= 2\);/);
   assert.match(app, /<div id="points-edit" ref=\{pointsEditRef\} hidden=\{compactPoints\}>/);
   // Clear, a plan from a link, or fewer than two points: the next route opens compact again (N1).
   assert.match(app, /const clearAll = \(\) => \{\s*setConfirmedKm\(null\);\s*setEditPoints\(false\);/);
@@ -327,7 +339,9 @@ test("Mass Ride's points on federal land: a warning on each row and marker, and 
   assert.match(points, /area \? stopWarningShort\(area\) : null/);
   assert.match(points, /federalAreas\.every\(\(area\) => area === null\) && \(\s*<p className="hint federal-points">\{FEDERAL_POINTS_NONE\}<\/p>/);
   assert.match(points, /\{federalPlanner\}/);
-  assert.match(points, /onRemove=\{removeAt\}\s+warnings=\{pointWarnings\}/);
+  // Handed on to Plan's point boxes, which list them (Plan streamline, 2026-10-17).
+  assert.match(points, /pointWarnings=\{pointWarnings\}/);
+  assert.match(src("../app/Planner.tsx"), /onRemove=\{removeAt\}\s+warnings=\{pointWarnings\}/);
   assert.match(app, /pointWarnings=\{riding \|\| reviewing \? undefined : pointWarnings\}/);
   // The Map layers sheet keeps its own list.
   const html = renderToStaticMarkup(
