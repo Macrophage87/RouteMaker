@@ -224,8 +224,10 @@ COVERAGE_POLYGON = Path(_coverage_polygon) if _coverage_polygon else None
 
 # The source extract, which the rebuild's first stage now produces rather than
 # expecting to find. PLAN:13: the three Geofabrik state extracts, merged, then
-# clipped with `osmium extract -s smart -S types=any`, with the admin database
-# built from the merged file before the clip. `pipeline.source` is the stage and
+# clipped with `osmium extract -s smart`, with the admin database built from the
+# merged file before the clip. PLAN:13 writes `-S types=any`; the clip names
+# `types=boundary,multipolygon` instead, so a long-distance route relation does not
+# drag its whole length in (`pipeline.source` says why). `pipeline.source` is the stage and
 # carries the reasoning; these are the three knobs a deployment has.
 #
 # The URLs come from that module rather than being restated here, so there is
