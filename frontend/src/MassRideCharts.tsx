@@ -209,12 +209,16 @@ export function MassRideCharts({
           </ul>
         </div>
       ))}
-      <p className="hint pc-keys" id={`${uid}-keys`}>
+      {/* The keys are said with the charts, out of sight; the method behind How these are worked out (Plan streamline). */}
+      <p className="visually-hidden pc-keys" id={`${uid}-keys`}>
         {keys}
       </p>
-      <p className="hint pc-source">
-        Riders per minute: estimated from road widths (in DC, DC Open Data, Roadway Block, CC BY 4.0, adapted; elsewhere OpenStreetMap) and DC Bike Party counts; indicative (level roads about ±25%; hill adjustment not yet checked). Dashed line: the riders a minute the ride size needs for the group to pass a junction within {RIDE_HOLD_MINUTES} minutes (a proposal). Corker load: the major intersections that cross or join an LTS 3 or worse road, one corker for each approach lane of that road, or one an approach at a traffic signal (2 approaches, 1 on a one-way road; 1 lane where not known), held from when the group's head reaches one until its tail passes; the group's length is the ride size over the riders a road this wide carries at cruise{profile.flow?.cruise_pace_ms ? ` (${formatSpeed(profile.flow.cruise_pace_ms * 3.6)})` : ""}, read at each point. Elevation: USGS 3DEP.
-      </p>
+      <details className="pc-source-fold">
+        <summary>How these are worked out</summary>
+        <p className="hint pc-source">
+          Riders per minute: estimated from road widths (in DC, DC Open Data, Roadway Block, CC BY 4.0, adapted; elsewhere OpenStreetMap) and DC Bike Party counts; indicative (level roads about ±25%; hill adjustment not yet checked). Dashed line: the riders a minute the ride size needs for the group to pass a junction within {RIDE_HOLD_MINUTES} minutes (a proposal). Corker load: the major intersections that cross or join an LTS 3 or worse road, one corker for each approach lane of that road, or one an approach at a traffic signal (2 approaches, 1 on a one-way road; 1 lane where not known), held from when the group's head reaches one until its tail passes; the group's length is the ride size over the riders a road this wide carries at cruise{profile.flow?.cruise_pace_ms ? ` (${formatSpeed(profile.flow.cruise_pace_ms * 3.6)})` : ""}, read at each point. Elevation: USGS 3DEP.
+        </p>
+      </details>
       <details className="pc-table-fold">
         <summary>Climbs, bottlenecks and intersections as tables</summary>
         <Tables profile={profile} kind="mass" spans={route.stress_spans} total={total} load={load} />

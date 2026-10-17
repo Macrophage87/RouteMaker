@@ -14,7 +14,7 @@
  * (lib/sharedLocation.ts, v0.7.0 "Open shared locations"): it leads the list as one option, and a short
  * link is followed by the server first.
  */
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type RefObject } from "react";
 import {
   MAX_QUERY_CHARS,
   MIN_QUERY_CHARS,
@@ -53,6 +53,8 @@ export interface LocateControl {
    * Stop choice in force (it goes in like a picked place).
    */
   onLocate: (choice?: PlaceChoice) => void;
+  /** "Your location" in the list only, no button (Plan's Add a stop: the button sits on From and To). */
+  listOnly?: boolean;
 }
 
 /** What a Go or Home search does with the place picked (UI-CLEANUP). */
@@ -61,7 +63,18 @@ const SINGLE_HINT = {
   home: "The place you pick is kept as your Home.",
   start: "The place you pick is where the route starts, in place of your location.",
   stop: "The place you pick is a stop, where it adds the least distance.",
+  from: "The place you pick becomes the start.",
+  to: "The place you pick becomes the destination.",
+  add: "The place you pick is added as a stop, where it adds the least distance.",
 } as const;
+
+/**
+ * Plan's own boxes (Plan streamline, Stephen 2026-10-17): From, To and Add a stop, each with one job, in place of
+ * one "Find a place" box and its Start / Destination / Stop choice. What each box's pick (and its "Your location") is.
+ */
+const PLAN_BOX_CHOICE = { from: "start", to: "end", add: "via" } as const satisfies Record<string, PlaceChoice>;
+type PlanBox = keyof typeof PLAN_BOX_CHOICE;
+const isPlanBox = (variant: string): variant is PlanBox => variant in PLAN_BOX_CHOICE;
 
 /** The "Your location" choice in the list, ahead of the places found. */
 const HERE = "here" as const;
@@ -97,12 +110,15 @@ export function PlaceSearch({
   locate,
   variant = "plan",
   onTopPlace,
+  current,
+  inputRef,
+  onDismiss,
 }: {
   /**
    * "plan": the Points search, with Start / Destination / Stop. "go" (UI-CLEANUP): Go's one Where to? box,
    * whose place is the destination, from the rider's location. "home": My Go's Home, a place and no more.
    */
-  variant?: "plan" | "go" | "home" | "start" | "stop";
+  variant?: "plan" | "go" | "home" | "start" | "stop" | PlanBox;
   /** Absent: no "Use my location" (a test or a build without it). */
   locate?: LocateControl;
   /** "Make it a loop" is on: a place is the start or a stop, never a destination (OWNER-DECISIONS 374). */
@@ -116,9 +132,17 @@ export function PlaceSearch({
   onPick: (place: Place, choice: PlaceChoice) => void;
   /** The first place listed, each time another leads the list (Go's early start; v0.7.0, "Faster routing"). */
   onTopPlace?: (place: Place) => void;
+  /** Plan's From and To: the place the box changes, named under its label ("Now: Union Station"), or absent. */
+  current?: string;
+  /** A ref to the input, so a "Change" can put the focus in the box. */
+  inputRef?: RefObject<HTMLInputElement | null>;
+  /** Escape on an empty box (Plan's From or To while changing a point): the box is put away. */
+  onDismiss?: () => void;
 }) {
   const id = useId();
   const single = variant !== "plan";
+  const planBox = isPlanBox(variant) ? variant : null;
+  const boxChoice: PlaceChoice | undefined = planBox ? PLAN_BOX_CHOICE[planBox] : undefined;
   const [query, setQuery] = useState("");
   const [result, setResult] = useState<GeoResult | null>(null);
   const [answered, setAnswered] = useState("");
@@ -163,14 +187,15 @@ export function PlaceSearch({
     open,
     pointCount,
     full,
-    chosen,
+    chosen: chosen ?? boxChoice ?? null,
     loop,
   });
   // "Your location" leads the list while the box is empty or says so; it is never the Enter default.
   const showHere = locate?.support.available === true && locationMatches(query);
   // A pick that adds a stop (Plan with a start and an end) offers the place as the destination too, on a row
   // of its own under it, so it is an option a keyboard and a screen reader reach like any other.
-  const offersDestination = variant === "plan" && !loop && effect === "via";
+  // Plan's Add a stop keeps it too (Plan streamline).
+  const offersDestination = (variant === "plan" || variant === "add") && !loop && effect === "via";
   const sharedItems: Place[] = shared && "place" in shared ? [shared.place] : [];
   const sharedSaid = shared && "said" in shared ? shared.said : "";
   // The empty box lists the last places picked (v0.6.1), under "Your location".
@@ -236,7 +261,7 @@ export function PlaceSearch({
   };
 
   const pick = (place: Place, as?: PlaceChoice) => {
-    onPick(place, as ?? (variant === "stop" ? "via" : single ? "end" : choice));
+    onPick(place, as ?? boxChoice ?? (variant === "stop" ? "via" : single ? "end" : choice));
     sharedTurn.current += 1;
     setShared(null);
     // A Home is not a recent place: it would outlast Clear Home and sign-out on a shared phone (review privacy-1).
@@ -254,7 +279,7 @@ export function PlaceSearch({
     setOpen(false);
     setActive(-1);
     runner.current?.clear();
-    locate?.onLocate(choice);
+    locate?.onLocate(boxChoice ?? choice);
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
@@ -264,6 +289,12 @@ export function PlaceSearch({
       expanded,
       hasQuery: query !== "",
     });
+    // Escape on an empty, closed box opened by a Change puts the box away (Plan streamline).
+    if (event.key === "Escape" && query === "" && !expanded && onDismiss) {
+      event.preventDefault();
+      onDismiss();
+      return;
+    }
     if (action.kind === "none") return;
     event.preventDefault();
     if (action.kind === "move") {
@@ -287,9 +318,10 @@ export function PlaceSearch({
   return (
     <div className={variant === "go" ? "place-search go-search" : "place-search"}>
       <label htmlFor={`${id}-input`} className={variant === "go" ? "place-search-label visually-hidden" : "place-search-label"}>
-        {variant === "go" ? "Where to?" : variant === "home" ? "Find your Home" : variant === "start" ? "Start from" : variant === "stop" ? "Add a stop" : "Find a place"}
+        {variant === "go" ? "Where to?" : variant === "home" ? "Find your Home" : variant === "start" ? "Start from" : variant === "stop" || variant === "add" ? "Add a stop" : variant === "from" ? "From" : variant === "to" ? "To" : "Find a place"}
+        {current && <span className="place-search-current">{` (now ${current})`}</span>}
       </label>
-      <div className={locate || variant === "go" ? "place-search-row" : undefined}>
+      <div className={(locate && !locate.listOnly) || variant === "go" ? "place-search-row" : undefined}>
       {variant === "go" && <Icon name="search" className="search-icon" />}
       <input
         id={`${id}-input`}
@@ -305,7 +337,10 @@ export function PlaceSearch({
         spellCheck={false}
         enterKeyHint="search"
         maxLength={MAX_QUERY_CHARS}
-        placeholder={variant === "go" ? "Where to?" : variant === "start" ? "Type a start" : variant === "stop" ? "Add a stop" : "A place, an address or a street"}
+        ref={inputRef}
+        placeholder={
+          variant === "go" ? "Where to?" : variant === "start" ? "Type a start" : variant === "stop" || variant === "add" ? "Add a stop" : variant === "from" ? "Search for a start" : variant === "to" ? "Search for a destination" : "A place, an address or a street"
+        }
         value={query}
         onChange={(event) => change(event.target.value)}
         onPaste={(event) => {
@@ -334,7 +369,7 @@ export function PlaceSearch({
           }
         }}
       />
-      {locate && (
+      {locate && !locate.listOnly && (
         <button
           type="button"
           className="secondary locate-button"
@@ -344,14 +379,14 @@ export function PlaceSearch({
           aria-disabled={!locate.support.available || locate.busy || undefined}
           aria-describedby={!locate.support.available ? `${id}-locate-why` : locate.busy ? `${id}-locate-busy` : undefined}
           onClick={() => {
-            if (locate.support.available) locate.onLocate();
+            if (locate.support.available) locate.onLocate(boxChoice);
           }}
         >
           Use my location
         </button>
       )}
       </div>
-      {locate && !locate.support.available && (
+      {locate && !locate.listOnly && !locate.support.available && (
         <p id={`${id}-locate-why`} className="hint">
           {locate.support.reason}
         </p>
@@ -361,7 +396,7 @@ export function PlaceSearch({
           {FINDING_LOCATION}
         </p>
       )}
-      {locate && !locate.busy && locate.note && <p className="hint">{locate.note}</p>}
+      {locate && !locate.listOnly && !locate.busy && locate.note && <p className="hint">{locate.note}</p>}
       <ul id={listId} role="listbox" aria-label={empty ? "Your location and recent places" : "Places found"} className="place-results" hidden={!expanded}>
         {items.map((item, i) =>
           item === HERE ? (
@@ -437,9 +472,11 @@ export function PlaceSearch({
         </fieldset>
       )}
       {/* Go's hint is said with the box and kept out of sight, so Go's sheet fits one phone screen (the owner, 2026-10-17). */}
-      <p id={`${id}-hint`} className={variant === "go" ? "visually-hidden go-from" : "hint"}>
-        {variant === "plan" ? <>{placeEffectHint(effect, loop)}</> : SINGLE_HINT[variant]}
-        {!single && full && " The route has as many points as it can take, so no stop can be added."}
+      {/* Go's hint is said with the box and kept out of sight (above); so are Plan's From, To and Add a stop,
+          whose labels say what a pick does (Plan streamline): only the full plan's reason shows. */}
+      <p id={`${id}-hint`} className={variant === "go" ? "visually-hidden go-from" : planBox ? (full && planBox === "add" ? "hint" : "visually-hidden") : "hint"}>
+        {variant === "plan" ? <>{placeEffectHint(effect, loop)}</> : planBox === "from" && loop ? placeEffectHint("start", true) : SINGLE_HINT[variant]}
+        {(!single || planBox === "add") && full && " The route has as many points as it can take, so no stop can be added."}
       </p>
       <p className="visually-hidden" role="status" aria-live="polite">
         {answeredNow ? searchStatusWithHere(searchStatus(result, answered), expanded && showHere) : ""}

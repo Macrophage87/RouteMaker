@@ -73,12 +73,19 @@ test("the change line's Details opens the per-leg changes, a disclosure for the 
   assert.match(app, /details=\{changeDetails\}/);
 });
 
-test("the panel: sentences of links, Route with Enter or Ctrl+Enter, progress with its step, seconds and Cancel", () => {
-  assert.match(panel, /className="link plan-phrase" onClick=\{\(\) => onPhrase\(phrase\.target as PhraseTarget\)\}/);
+test("the panel: the plan in words as Route's description, Route with Enter or Ctrl+Enter, progress with its step, seconds and Cancel", () => {
+  // Plan streamline (2026-10-17): the sentences are out of sight, the Route button's description; the points
+  // and the ride chips show the plan.
+  assert.match(panel, /<p id=\{planId\} className="visually-hidden plan-sentences">/);
+  assert.match(panel, /aria-describedby=\{button\.unavailable \? `\$\{routeWhy\} \$\{planId\}` : planId\}/);
+  // "Up to date" on the button itself; Reset and Clear behind More.
+  assert.match(panel, /✓ up to date/);
+  assert.match(panel, /aria-label="More: Reset and Clear"/);
+  assert.match(panel, /<div id=\{moreId\} className="actions plan-reset-clear" hidden=\{!moreOpen\}>/);
   assert.match(panel, /aria-keyshortcuts="Control\+Enter Meta\+Enter"/);
   assert.match(panel, /if \(!\(event\.ctrlKey \|\| event\.metaKey\) && event\.target !== event\.currentTarget\) return;/);
   assert.match(panel, /<progress className="planning" aria-label=\{`Planning route: \$\{routing\.step\}`\} \/>/);
   assert.match(panel, /Cancel/);
-  // It leads Plan's sheet.
-  assert.match(app, /\{planPanel\}\s*\{order\.map\(\(id\) => sections\[id\]\)\}/);
+  // It follows the points and the ride, above the route; on a phone with a route, where the route comes first, on top.
+  assert.match(app, /\{\(order\[0\] === "route" \? \[planPanel, \.\.\.order\.map\(\(id\) => sections\[id\]\)\] : order\.flatMap\(\(id\) => \(id === "route" \? \[planPanel, sections\[id\]\] : \[sections\[id\]\]\)\)\)\}/);
 });
