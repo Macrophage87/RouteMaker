@@ -434,8 +434,9 @@ class ReferenceData:
     # OSM's smoothness reading, as before, and the load logs that it is absent.
     pavement_blocks: tuple[pavement.Block, ...] = ()
     # Agency bicycle stress layers (`pipeline.agency_ratings`, v0.7.0), from
-    # `agency-lts.json`: each record's line and its level. Optional like
-    # `roadway.json`: without it every way keeps the classifier's tier.
+    # `agency-lts.json`: each record's line and its level. Required by the weekly
+    # rebuild (`RebuildContext.require_agency_lts`): v0.8.0 was built without it and
+    # every way kept the classifier's tier unnoticed. Optional for other callers.
     agency_lts_features: tuple[conflation.RoadFeature, ...] = ()
     agency_lts_ratings: dict = field(default_factory=dict)
     # Scenic designations from agency lines (`pipeline.scenic_layer`, v0.8.0):
@@ -453,6 +454,7 @@ class ReferenceData:
         ways: Sequence[extract.Way] = (),
         *,
         checked_in_crossings: Path | None = None,
+        require_agency_lts: bool = False,
     ) -> ReferenceData:
         """Read the three files; with `checked_in_crossings`, refuse a stale copy.
 
@@ -463,6 +465,10 @@ class ReferenceData:
         parsed JSON, so re-indenting is not a difference and any value is - or
         the load is refused with the command that fixes it. None skips the
         check, for callers that install their own synthetic rows.
+
+        `require_agency_lts` refuses an absent or empty `agency-lts.json`, or one
+        lacking an approved agency (`agency_ratings.load`); the weekly task passes it
+        unless `REBUILD_ALLOW_NO_AGENCY_LTS` is set.
         """
         urban = directory / "urban-areas.json"
         crossings = directory / "crossings.json"
@@ -558,7 +564,9 @@ class ReferenceData:
             **dict(
                 zip(
                     ("agency_lts_features", "agency_lts_ratings"),
-                    agency_ratings.load(directory / agency_ratings.FILE_NAME),
+                    agency_ratings.load(
+                        directory / agency_ratings.FILE_NAME, required=require_agency_lts
+                    ),
                     strict=True,
                 )
             ),
@@ -637,6 +645,11 @@ class RebuildContext:
     # the weekly task passes `settings.REBUILD_CROSSINGS_FIXTURE`. Not a
     # settings default because every test context installs synthetic rows.
     checked_in_crossings: Path | None = None
+    # Refuse the rebuild without every approved agency's ratings in
+    # `agency-lts.json` (`agency_ratings.load`). False, the default, only warns; the
+    # weekly task passes `not settings.REBUILD_ALLOW_NO_AGENCY_LTS`. Not a settings
+    # default because every test context installs synthetic reference rows.
+    require_agency_lts: bool = False
     staging_schema: str = field(default_factory=lambda: _setting("SEGMENT_SCHEMA_STAGING"))
     tiles_dir: Path = field(default_factory=lambda: _setting("TILES_DIR"))
     elevation_dir: Path = field(default_factory=lambda: _setting("ELEVATION_DIR"))
@@ -2038,6 +2051,7 @@ def build_handlers(
             context.reference_dir,
             context.ways,
             checked_in_crossings=context.checked_in_crossings,
+            require_agency_lts=context.require_agency_lts,
         )
 
     def ensure_elevation() -> None:

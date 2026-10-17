@@ -2158,6 +2158,61 @@ def test_every_class_of_the_avoid_rule_takes_it(highway):
     assert legal_but_avoid(tags) == "legal but avoid: expressway posted 50 mph"
 
 
+# --- A rural expressway is LTS 4.5 (the owner, 2026-10-17) ----------------------
+# "The rural road LTS 5s should be LTS4.5 they might be high stress, but there's
+# often no way to avoid them."
+
+
+def test_a_rural_expressway_is_lts4_and_a_half():
+    from routemaker.stress import RURAL_EXPRESSWAY_PREFIX, Stress, legal_but_avoid
+
+    tags = {**AVOID_BASE, "maxspeed": "55 mph"}
+    result = classify_rural(tags)
+    assert result.tier is Stress.LTS4 and result.half
+    assert result.rule.startswith(f"{RURAL_EXPRESSWAY_PREFIX} 55 mph, often no way around")
+    assert "Furth" in result.rule and "legal but avoid" not in result.rule
+    assert legal_but_avoid(tags, urban=False) is None
+
+
+def test_an_urban_expressway_is_still_avoid():
+    from routemaker.stress import Stress, classify
+
+    result = classify({**AVOID_BASE, "maxspeed": "55 mph"}, urban=True)
+    assert result.tier is Stress.AVOID and not result.half
+    assert result.rule.startswith("legal but avoid: expressway posted 55 mph")
+
+
+def test_a_rural_motorway_open_to_bicycles_is_still_avoid():
+    from routemaker.stress import MOTORWAY_AVOID_RULE, Stress
+
+    result = classify_rural({"highway": "motorway", "maxspeed": "65 mph", "bicycle": "yes"})
+    assert result.tier is Stress.AVOID and not result.half
+    assert result.rule.startswith(MOTORWAY_AVOID_RULE)
+
+
+def test_a_rural_expressway_with_its_side_path_is_still_avoid():
+    from routemaker.stress import USE_SIDEPATH_RULE, Stress
+
+    tags = {**AVOID_BASE, "maxspeed": "55 mph", "bicycle": "use_sidepath"}
+    result = classify_rural(tags, side_path=True)
+    assert result.tier is Stress.AVOID and not result.half
+    assert result.rule.startswith(USE_SIDEPATH_RULE)
+
+
+def test_the_rural_floor_leaves_a_rural_expressway_at_four_and_a_half():
+    from routemaker.stress import Stress, rural_floor
+
+    tags = {**AVOID_BASE, "maxspeed": "55 mph"}
+    result = rural_floor(classify_rural(tags), tags, urban=False)
+    assert result.tier is Stress.LTS4 and result.half
+
+
+@pytest.mark.parametrize("tags", [{**AVOID_BASE, "maxspeed": "45 mph"}, {**AVOID_BASE}])
+def test_a_slow_or_unposted_rural_expressway_keeps_its_furth_tier(tags):
+    result = classify_rural(tags)
+    assert not result.half and result == _classify_rural(tags)
+
+
 # --- OWNER-DECISIONS 87 and 101: lane count in an urban area ------------------
 
 
