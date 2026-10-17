@@ -469,7 +469,17 @@ class RouteIn(Schema):
             " search beside it; where the ride type cannot ride the line, the router's own way"
             " joins the parts it can (`follows_file`). Ignored on a loop and the two-point ride"
             " types. A line past those limits, or that matches no way at all, is planned"
-            " through `points` instead."
+            " through `points` instead. Where the line breaks the ride type's rules the route"
+            " keeps to them and goes round, unless `follow_exact`."
+        ),
+    )
+    follow_exact: bool = Field(
+        default=False,
+        description=(
+            "The manual mode of `follow`: the line is followed as ridden, against one-way"
+            " traffic, through restricted turns and along ways closed to bicycles (a road the"
+            " police close for a parade). False (the default): the route keeps to the ride"
+            " type's rules and goes round where the line breaks them. Ignored without `follow`."
         ),
     )
 
@@ -2319,8 +2329,16 @@ class RouteOut(RouteBody):
         default=None,
         description=(
             "On a route that follows a file (`follows_file`): the stretches where the file rides"
-            " against one-way traffic, which the route follows as the file goes, in order; empty"
-            " where there are none, null on every other route and where it could not be read."
+            " against one-way traffic, in order, which the route goes round (or follows as the"
+            " file goes, `follows_exactly`); empty where there are none, null on every other"
+            " route and where it could not be read."
+        ),
+    )
+    follows_exactly: bool = Field(
+        default=False,
+        description=(
+            "True where the route follows the file in the manual mode (`follow_exact`), rules"
+            " or not; false on every other route."
         ),
     )
     provisional: bool = Field(
@@ -3756,6 +3774,7 @@ def _bike_dials(body: RouteIn) -> routing.Dials:
         mtb_preferred=body.mtb_preferred,
         vias=tuple(body.via_points),
         follow=_follow_line(body),
+        follow_exact=body.follow_exact,
     )
 
 

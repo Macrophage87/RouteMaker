@@ -10,14 +10,18 @@ route is the file's own ways, rated, timed and described like any route. The pla
 still split it into legs (`break_through`, as `routing.VIA_LOCATION_TYPE`), each at the vertex
 of the line nearest to it, so the front end's stops and legs read as they do on a plan.
 
-The file is matched the way it was ridden: a one-way ridden against its traffic is followed,
-not looped round block by block (the matcher's way of keeping to it otherwise), and each such
-stretch is said (`against_traffic`). Where the ride type cannot ride the file at all (a trail
-on Mass Ride's no-trail graph, a way closed to bicycles or not on the map) the matcher breaks
-the line into pieces; each gap is joined by the router's own
-route between the pieces' ends (`joined`), and the page says how closely the route follows the
-file (frontend lib/trackMatch.ts `fidelity`), as before. A line nothing of which matches is
-refused, and the plan is made without it (`api._planned`).
+Where the file breaks the map's rules, the route keeps to them by default (Stephen
+2026-10-17: "if imported and there are issues, the default is to not include it, but give a
+manual mode option"): a stretch the file rides against one-way traffic is left out of the
+match (`wrong_way`) and the router goes round it, each such stretch said (`against_traffic`);
+a way closed to bicycles is not matched at all. With the manual mode asked for (`EXACT`: "when
+the police close a road for a parade or procession") the file is followed as ridden, against
+one-way traffic, through restricted turns and along ways closed to bicycles. Where the ride
+type cannot ride the file at all (a trail on Mass Ride's no-trail graph, a way closed to
+bicycles or not on the map) the matcher breaks the line into pieces; each gap is joined by the
+router's own route between the pieces' ends (`joined`), and the page says how closely the
+route follows the file (frontend lib/trackMatch.ts `fidelity`), as before. A line nothing of
+which matches is refused, and the plan is made without it (`api._planned`).
 """
 
 from __future__ import annotations
@@ -43,9 +47,13 @@ MAX_DISTANCE_M = 200_000
 END_GAP_M = 60.0
 
 
-# The costing options a followed line is matched with beside the ride type's own: the file's
-# one-ways ridden against their traffic and its restricted turns are followed as ridden.
+# The costing options a line is matched with to find where the file rides against one-way
+# traffic (`wrong_way`): matched with the ride type's own, the matcher loops round such a
+# one-way block by block rather than leave it.
 IGNORED = {"ignore_oneways": True, "ignore_restrictions": True}
+# The manual mode's (`routing.Dials.follow_exact`): the file followed as ridden, also along
+# ways closed to bicycles and through closures.
+EXACT = {**IGNORED, "ignore_access": True, "ignore_closures": True}
 # A stretch against one-way traffic shorter than this is not said: a matched point a few
 # metres past a corner, or a cut across a junction's corner.
 AGAINST_MIN_M = 15.0
@@ -261,9 +269,9 @@ def joined(answer: dict, line, route_between, interval_m: float | None) -> dict:
 
 
 def without_ignored(costing_options: dict) -> dict:
-    """`costing_options` with `IGNORED` taken out of every costing's options."""
+    """`costing_options` with `EXACT` (and so `IGNORED`) taken out of every costing's options."""
     return {
-        name: {k: v for k, v in options.items() if k not in IGNORED}
+        name: {k: v for k, v in options.items() if k not in EXACT}
         if isinstance(options, dict)
         else options
         for name, options in costing_options.items()
@@ -277,6 +285,83 @@ def _against(edge: dict) -> bool:
     if not isinstance(forward, bool):
         return False
     return (allowed == "forward" and not forward) or (allowed == "backward" and forward)
+
+
+def is_exact(costing_options: dict) -> bool:
+    """Whether `costing_options` are the manual mode's (`EXACT`)."""
+    return any(
+        isinstance(options, dict) and options.get("ignore_oneways") is True
+        for options in costing_options.values()
+    )
+
+
+def _stretches(edges: list[dict]) -> list[dict]:
+    """The runs of `edges` ridden against one-way traffic, by street, at least AGAINST_MIN_M."""
+    stretches: list[dict] = []
+    joined_on = False
+    for edge in edges:
+        if not _against(edge):
+            joined_on = False
+            continue
+        names = [n for n in edge.get("names") or () if isinstance(n, str) and n.strip()]
+        name = names[0] if names else None
+        metres = float(edge.get("length") or 0.0) * 1000.0
+        if joined_on and stretches[-1]["name"] == name:
+            stretches[-1]["distance_m"] += metres
+        else:
+            stretches.append({"name": name, "distance_m": metres})
+        joined_on = True
+    return [
+        {"name": s["name"], "distance_m": round(s["distance_m"], 1)}
+        for s in stretches
+        if s["distance_m"] >= AGAINST_MIN_M
+    ]
+
+
+def wrong_way(
+    line, keep, trace_attributes, costing_options: dict
+) -> tuple[set[int], list[dict]] | None:
+    """Where `line` rides against one-way traffic, matched as ridden: the indexes of its
+    points on such a way (never those in `keep`, the plan's points), to leave out of the
+    match so the router goes round, and the stretches (`against_traffic`). None where the
+    router could not say."""
+    if len(line) < 2:
+        return set(), []
+    payload = {
+        "encoded_polyline": _encode(line),
+        "costing": "bicycle",
+        "costing_options": {
+            name: {**options, **IGNORED} if isinstance(options, dict) else options
+            for name, options in (costing_options or {"bicycle": {}}).items()
+        },
+        "units": "kilometers",
+        "shape_match": "map_snap",
+        "trace_options": {"search_radius": SEARCH_RADIUS_M},
+        "filters": {
+            "attributes": [
+                "edge.length",
+                "edge.names",
+                "edge.traversability",
+                "edge.forward",
+                "matched.edge_index",
+            ],
+            "action": "include",
+        },
+    }
+    try:
+        answer = trace_attributes(payload)
+    except (routing.RouterRefused, routing.RouterUnavailable, routing.DeadlineExceeded):
+        return None
+    edges = answer.get("edges") or []
+    against = {i for i, edge in enumerate(edges) if _against(edge)}
+    if not against:
+        return set(), []
+    dropped = {
+        i
+        for i, point in enumerate(answer.get("matched_points") or [])
+        if i not in keep and (point or {}).get("edge_index") in against
+    }
+    return dropped, _stretches(edges)
 
 
 def against_traffic(line, trace_attributes, costing_options: dict) -> list[dict] | None:
@@ -306,22 +391,4 @@ def against_traffic(line, trace_attributes, costing_options: dict) -> list[dict]
             return None
     else:
         return None
-    stretches: list[dict] = []
-    joined_on = False
-    for edge in edges:
-        if not _against(edge):
-            joined_on = False
-            continue
-        names = [n for n in edge.get("names") or () if isinstance(n, str) and n.strip()]
-        name = names[0] if names else None
-        metres = float(edge.get("length") or 0.0) * 1000.0
-        if joined_on and stretches[-1]["name"] == name:
-            stretches[-1]["distance_m"] += metres
-        else:
-            stretches.append({"name": name, "distance_m": metres})
-        joined_on = True
-    return [
-        {"name": s["name"], "distance_m": round(s["distance_m"], 1)}
-        for s in stretches
-        if s["distance_m"] >= AGAINST_MIN_M
-    ]
+    return _stretches(edges)

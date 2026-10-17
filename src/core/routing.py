@@ -913,11 +913,13 @@ class Dials:
     # own. Set only by a transit trip's lines priced as Novice on a share bike (`api._transit_body`,
     # `novice_legs` on Bikeshare + Transit), so the lines are timed as its candidates were.
     cycling_speed_kmh: float | None = None
+    # An opened file's line to follow exactly, [(lon, lat), ...] (`core.follow`); None: plan.
+    follow: tuple[tuple[float, float], ...] | None = None
+    # Follow it exactly, rules or not (`core.follow.EXACT`): the manual mode.
+    follow_exact: bool = False
     # "Make it a loop" (OWNER-DECISIONS 266): return to the start by a different way.
     # A ride whose last point is its first is a loop whatever this says.
     loop: bool = False
-    # An opened file's line to follow exactly, [(lon, lat), ...] (`core.follow`); None: plan.
-    follow: tuple[tuple[float, float], ...] | None = None
 
 
 def _same_pace(options: dict, request: dict) -> dict:
@@ -1563,8 +1565,26 @@ def _followed(variant: str, request: dict, deadline: Deadline) -> dict:
     its breaks, and its ends where the match stops short of the line's, joined by routes."""
     from . import follow
 
-    answer = _call(variant, "trace_route", request, deadline)
     line = [(p["lon"], p["lat"]) for p in request["shape"]]
+    options = request.get("costing_options") or {}
+    exact = follow.is_exact(options)
+
+    def trace_attributes(payload: dict) -> dict:
+        return _call(variant, "trace_attributes", payload, deadline)
+
+    around = None
+    if not exact:
+        # By default the file's stretches against one-way traffic are left out of the match,
+        # and the router goes round them (`follow.wrong_way`).
+        keep = {i for i, p in enumerate(request["shape"]) if p.get("type") == VIA_LOCATION_TYPE}
+        keep |= {0, len(line) - 1}
+        found = follow.wrong_way(line, keep, trace_attributes, options)
+        if found is not None:
+            dropped, around = found
+            if dropped:
+                shape = [p for i, p in enumerate(request["shape"]) if i not in dropped]
+                request = {**request, "shape": shape}
+    answer = _call(variant, "trace_route", request, deadline)
     # The router's own way across a gap keeps every rule the ride type rides by.
     bridge = {k: v for k, v in request.items() if k not in follow.TRACE_ONLY}
     bridge["costing_options"] = follow.without_ignored(request.get("costing_options") or {})
@@ -1584,10 +1604,10 @@ def _followed(variant: str, request: dict, deadline: Deadline) -> dict:
         return legs[0] if len(legs) == 1 else None
 
     joined = follow.joined(answer, line, route_between, request.get("elevation_interval"))
-    joined["against_traffic"] = follow.against_traffic(
-        _trip_line(joined["trip"]),
-        lambda payload: _call(variant, "trace_attributes", payload, deadline),
-        request.get("costing_options") or {},
+    joined["against_traffic"] = (
+        follow.against_traffic(_trip_line(joined["trip"]), trace_attributes, options)
+        if exact
+        else around
     )
     return joined
 
@@ -2743,12 +2763,12 @@ def plan(
     )
     if dials.cycling_speed_kmh is not None:
         costing["bicycle"]["cycling_speed"] = float(dials.cycling_speed_kmh)
-    if following:
-        # The file is followed the way it goes: a one-way ridden against its traffic, or a
-        # turn the map restricts, is matched as ridden (and said, `follow.against_traffic`),
-        # not looped round block by block. Access is not ignored: a way closed to bicycles
-        # is left to the router's own way round it.
-        costing["bicycle"].update(follow.IGNORED)
+    if following and dials.follow_exact:
+        # The manual mode: the file is followed the way it goes, a one-way ridden against its
+        # traffic, a turn the map restricts and a way closed to bicycles (a road the police
+        # close for a parade) matched as ridden. Otherwise the ride type's rules hold, and
+        # the router goes round where the file breaks them (`_followed`).
+        costing["bicycle"].update(follow.EXACT)
     request = {
         "locations": [
             {
@@ -3557,6 +3577,7 @@ def plan(
     body["provisional"] = quick
     body["follows_file"] = following
     body["against_traffic"] = answer.get("against_traffic") if following else None
+    body["follows_exactly"] = following and dials.follow_exact
     timing.mark("answer")
 
     def _with_mtb(answered: dict, info: dict | None) -> dict:

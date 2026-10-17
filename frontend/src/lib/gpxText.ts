@@ -227,7 +227,7 @@ export interface FidelityNotice {
   text: string;
 }
 
-export function fidelityNotice(f: Fidelity, followedAs?: PresetId): FidelityNotice {
+export function fidelityNotice(f: Fidelity, followedAs?: PresetId, exactly = false): FidelityNotice {
   const followed = percent(f.trackCovered);
   const onTrack = percent(f.routeOnTrack);
   const head = `The route follows ${followed}% of the file's track to within ${feetText(FIDELITY_WITHIN_M)}`;
@@ -236,7 +236,8 @@ export function fidelityNotice(f: Fidelity, followedAs?: PresetId): FidelityNoti
   if (followedAs) {
     const as = presetSaid(followedAs);
     if (close) return { warn: false, text: `The route follows the file's track, rated for ${as}.` };
-    return { warn: true, text: `${head}, rated for ${as}; where the faint line parts from it, the map has no way there for ${as}.` };
+    const why = exactly ? `the map has no way there for ${as}` : `the map has no way there for ${as}, or bikes may not ride it`;
+    return { warn: true, text: `${head}, rated for ${as}; where the faint line parts from it, ${why}.` };
   }
   if (close) return { warn: false, text: `${head}.` };
   const extra = f.routeOnTrack < FIDELITY_WARN_BELOW ? `, and ${100 - onTrack}% of the route is off it` : "";
@@ -249,16 +250,25 @@ export function fidelityNotice(f: Fidelity, followedAs?: PresetId): FidelityNoti
 }
 
 /**
- * Where a followed file rides against one-way traffic (core/follow.py `against_traffic`): the route follows it there,
- * so it is said, by street, the first three named. Null where there is none.
+ * Where a followed file rides against one-way traffic (core/follow.py `against_traffic`), by street, the first three
+ * named: the route goes round it there, or follows it in the manual mode (`exactly`). Null where there is none.
  */
-export function againstTrafficNotice(stretches: readonly { name: string | null; distance_m: number }[] | null | undefined): string | null {
+export function againstTrafficNotice(
+  stretches: readonly { name: string | null; distance_m: number }[] | null | undefined,
+  exactly = true,
+): string | null {
   if (!stretches?.length) return null;
   const said = stretches.slice(0, 3).map((s) => `${s.name ?? "an unnamed street"} (${formatDistance(s.distance_m)})`);
   if (stretches.length > 3) said.push(`${stretches.length - 3} more`);
   const list = said.length > 1 ? `${said.slice(0, -1).join(", ")} and ${said.at(-1)}` : said[0];
-  return `The file rides against one-way traffic on ${list}. The route follows it there, so take care.`;
+  if (exactly) return `The file rides against one-way traffic on ${list}. The route follows it there, so take care.`;
+  return `The file rides against one-way traffic on ${list}. The route goes round it there.`;
 }
+
+/** Plan's manual mode for an opened file (Stephen 2026-10-17, a road the police close for a parade). */
+export const FOLLOW_EXACT_SAID = "Follow the file exactly, even where bikes may not ride";
+export const FOLLOW_EXACT_HINT =
+  "The route rides one-ways against traffic and roads closed to bikes where the file does. Use it only where those roads are closed for your ride, such as a police-escorted parade.";
 
 /**
  * What fitting took out (gpxPlan.ts, nextFitStep): points the route could

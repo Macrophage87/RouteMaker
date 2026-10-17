@@ -254,8 +254,82 @@ class TestAgainstTraffic:
         assert follow.against_traffic(VERTICES, late, {}) is None
 
     def test_the_ignored_rules_are_taken_out_for_the_routers_own_way(self) -> None:
-        options = {"bicycle": {"use_roads": 0.2, **follow.IGNORED}}
+        options = {"bicycle": {"use_roads": 0.2, **follow.EXACT}}
         assert follow.without_ignored(options) == {"bicycle": {"use_roads": 0.2}}
+        assert follow.is_exact(options) and not follow.is_exact({"bicycle": {"use_roads": 0.2}})
+
+
+class TestWrongWay:
+    EDGES = [
+        {"names": ["Row 0"], "length": 0.2, "traversability": "both", "forward": True},
+        {"names": ["Row 2"], "length": 0.3, "traversability": "forward", "forward": False},
+        {"names": ["Row 4"], "length": 0.2, "traversability": "forward", "forward": True},
+    ]
+    # VERTICES' points matched to those edges: the middle three ride Row 2 the wrong way.
+    MATCHED = [{"edge_index": i} for i in (0, 1, 1, 1, 2)]
+
+    def test_points_against_one_way_traffic_are_left_out_but_never_a_plans_point(self) -> None:
+        asked = []
+
+        def trace_attributes(payload):
+            asked.append(payload)
+            return {"edges": self.EDGES, "matched_points": self.MATCHED}
+
+        dropped, stretches = follow.wrong_way(
+            VERTICES, {0, 2, 4}, trace_attributes, {"bicycle": {"use_roads": 0.2}}
+        )
+        assert dropped == {1, 3}
+        assert stretches == [{"name": "Row 2", "distance_m": 300.0}]
+        # Matched as ridden to find them, with the ride type's own options beside.
+        assert asked[0]["costing_options"] == {"bicycle": {"use_roads": 0.2, **follow.IGNORED}}
+        assert asked[0]["shape_match"] == "map_snap"
+
+    def test_none_against_traffic_leaves_the_line_and_a_router_gone_says_nothing(self) -> None:
+        def fine(payload):
+            return {"edges": self.EDGES[:1], "matched_points": [{"edge_index": 0}] * 5}
+
+        assert follow.wrong_way(VERTICES, set(), fine, {}) == (set(), [])
+
+        def gone(payload):
+            raise routing.RouterUnavailable("down")
+
+        assert follow.wrong_way(VERTICES, set(), gone, {}) is None
+
+    def test_by_default_the_router_goes_round_the_stretches_the_file_rides_wrong_way(
+        self, monkeypatch
+    ) -> None:
+        calls = []
+
+        def fake(variant, endpoint, payload, deadline):
+            calls.append((endpoint, payload))
+            if endpoint == "trace_attributes":
+                return {"edges": self.EDGES, "matched_points": self.MATCHED}
+            return {"trip": {"legs": [leg(VERTICES, 1.0)]}}
+
+        monkeypatch.setattr(routing, "_call", fake)
+        asked = follow.request_for(VERTICES, VERTICES[:1] + VERTICES[-1:], {"costing_options": {}})
+        answer = routing._followed("standard", asked, routing.Deadline(1e12, 10))
+        traced = [p for endpoint, p in calls if endpoint == "trace_route"]
+        assert [(p["lon"], p["lat"]) for p in traced[0]["shape"]] == [VERTICES[0], VERTICES[4]]
+        assert answer["against_traffic"] == [{"name": "Row 2", "distance_m": 300.0}]
+
+    def test_in_the_manual_mode_the_file_is_followed_as_ridden(self, monkeypatch) -> None:
+        calls = []
+
+        def fake(variant, endpoint, payload, deadline):
+            calls.append((endpoint, payload))
+            if endpoint == "trace_attributes":
+                return {"edges": self.EDGES}
+            return {"trip": {"legs": [leg(VERTICES, 1.0)]}}
+
+        monkeypatch.setattr(routing, "_call", fake)
+        asked = follow.request_for(
+            VERTICES, VERTICES[:1] + VERTICES[-1:], {"costing_options": {"bicycle": follow.EXACT}}
+        )
+        answer = routing._followed("standard", asked, routing.Deadline(1e12, 10))
+        traced = [p for endpoint, p in calls if endpoint == "trace_route"]
+        assert len(traced[0]["shape"]) == len(VERTICES)
+        assert answer["against_traffic"] == [{"name": "Row 2", "distance_m": 300.0}]
 
 
 def follow_body(preset: str = "mass-ride", **extra) -> dict:
@@ -304,12 +378,23 @@ class TestFollowedRoute:
             None,
         ]
         assert body["leg_ends"] == [2, 4]
-        # Matched as ridden: one-ways and turn restrictions are not looped round.
-        assert traced[0]["costing_options"]["bicycle"]["ignore_oneways"] is True
-        assert body["against_traffic"] == []
+        # By default the ride type's rules hold; the manual mode is asked for on its own.
+        assert "ignore_oneways" not in traced[0]["costing_options"]["bicycle"]
+        assert body["against_traffic"] == [] and body["follows_exactly"] is False
         assert body["geometry"]["coordinates"] == [[lon, lat] for lon, lat in VERTICES]
         # Nothing searched beside it: no detour check, calm search or candidates.
         assert body["detour"] is None and body["calm_search"] is None and body["candidates"] is None
+
+    def test_the_manual_mode_follows_the_file_rules_or_not(self, client, segments, router) -> None:
+        fake = router(traced_router())
+        body = post(client, follow_body(follow_exact=True)).json()
+        traced = [p for url, p in fake.calls if url.endswith("/trace_route")]
+        assert {k: traced[0]["costing_options"]["bicycle"][k] for k in follow.EXACT} == follow.EXACT
+        assert body["follows_file"] is True and body["follows_exactly"] is True
+        # Without a line it is nothing.
+        router(traced_router())
+        plain = post(client, {**follow_body(follow_exact=True), "follow": None}).json()
+        assert plain["follows_exactly"] is False
 
     def test_a_first_route_is_not_asked_for_a_followed_line(self, client, segments, router) -> None:
         router(traced_router())

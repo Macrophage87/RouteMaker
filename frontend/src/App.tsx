@@ -854,7 +854,9 @@ export function App() {
         }
         // An opened file not edited since follows its line exactly (core/follow.py), whatever the ride type.
         const follow = followLine(importBase.current, plan.points, plan.dials.loop);
-        const asked = { confirmLong: plan.confirmLong, dials: plan.dials, vias: viaIndices(plan.points, VIA_MARKS.isVia), quick: plan.quick, follow };
+        // Its manual mode (Plan's "Follow the file exactly"): rules or not, as for a road closed for a parade.
+        const followExact = follow !== undefined && importBase.current?.exact === true;
+        const asked = { confirmLong: plan.confirmLong, dials: plan.dials, vias: viaIndices(plan.points, VIA_MARKS.isVia), quick: plan.quick, follow, followExact };
         // Asked for already, before the tap (Go's early start): that request's answer, not a second request.
         const early = earlyStart.current?.take(routeRequestBody(plan.points, plan.preset, asked)) ?? null;
         const result = early
@@ -2562,10 +2564,17 @@ export function App() {
   };
   // An opened file not edited since: its points and ride type as the import left them (a fitting round moves
   // the base with it, refineImported).
-  const importBase = useRef<{ imported: ImportedPlan; points: LonLat[]; preset: PresetId; unfollowed?: boolean } | null>(null);
+  const importBase = useRef<{ imported: ImportedPlan; points: LonLat[]; preset: PresetId; unfollowed?: boolean; exact?: boolean } | null>(null);
   if (!imported) importBase.current = null;
   else if (importBase.current?.imported !== imported) importBase.current = { imported, points, preset };
   const importEdited = !imported || importBase.current?.points !== points || importBase.current?.preset !== preset;
+  // "Follow the file exactly" (Stephen 2026-10-17, "give a manual mode option"): the file planned again, followed as
+  // ridden. Off for each file opened; offered while it is not edited (its line is what is followed).
+  const setFollowExact = (on: boolean) => {
+    if (!importBase.current) return;
+    importBase.current = { ...importBase.current, exact: on, unfollowed: false };
+    setRouteAsk((n) => n + 1);
+  };
   const fileName = () => imported?.name || keptTitle();
   // A saved route's line about today's map (more than 5% apart in distance), with Update route.
   const [savedNote, setSavedNote] = useState<{ key: string; savedM: number; todayM: number } | null>(null);
@@ -4118,7 +4127,12 @@ export function App() {
                 openImported: openImportedChecked, refineImported, getMap, downloadRoute,
                 ...(mode === "go" ? {} : { downloadCourse: downloadCourseRoute }),
                 // Snapping an opened track (lib/gpxMatch.ts) opens the plan along the snapped line: one edit, like the file.
-                ...(mode === "go" ? {} : { match: { preset, trailsOff: trailsAreOff(preset, dials), assist: dials.assist === true, onMatched: openImported } }),
+                ...(mode === "go" ? {} : {
+                  match: {
+                    preset, trailsOff: trailsAreOff(preset, dials), assist: dials.assist === true, onMatched: openImported,
+                    ...(importBase.current && !importEdited ? { exact: importBase.current.exact === true, onExact: setFollowExact } : {}),
+                  },
+                }),
                 saveControl: saveProps && !importEdited ? <SaveRoute {...saveProps} label={SAVE_ROUTE} /> : null,
               }}
             />

@@ -763,7 +763,9 @@ export interface RouteResponse {
    * own ways, not a plan through its points. Absent or false otherwise, and where the line matched no way.
    */
   follows_file?: boolean;
-  /** On a route that follows a file: where the file rides against one-way traffic, which the route follows as it goes. */
+  /** True where the route follows the file in the manual mode (`follow_exact`): against one-way traffic and on roads closed to bikes too. */
+  follows_exactly?: boolean;
+  /** On a route that follows a file: where the file rides against one-way traffic, which the route goes round (or follows, `follows_exactly`). */
   against_traffic?: { name: string | null; distance_m: number }[] | null;
   /** A Mass Ride's rider-marked hazards it passes, in riding order (325); null or absent on other ride types. */
   mass_hazards?: MassHazardSpan[] | null;
@@ -1187,6 +1189,8 @@ export interface RouteRequestOptions {
   routeOnly?: boolean;
   /** An opened file's line to follow exactly (core/follow.py), at most FOLLOW_MAX_POINTS points. Never on a two-point ride type. */
   follow?: readonly LonLat[];
+  /** The manual mode of `follow` (core/follow.py EXACT): the line followed as ridden, rules or not. */
+  followExact?: boolean;
 }
 
 /** Most points of a line to follow (core/follow.py MAX_POINTS). */
@@ -1216,7 +1220,9 @@ export function routeRequestBody(points: readonly LonLat[], preset: PresetId, op
     // A ride's re-plan takes the first route only, so the API does not look for others to choose from.
     ...(options.routeOnly ? { candidates: false } : {}),
     // An opened file's line, followed rather than planned through its points.
-    ...(options.follow && options.follow.length >= 2 && !twoPointsOnly(preset) ? { follow: encodePolyline6(options.follow) } : {}),
+    ...(options.follow && options.follow.length >= 2 && !twoPointsOnly(preset)
+      ? { follow: encodePolyline6(options.follow), ...(options.followExact ? { follow_exact: true } : {}) }
+      : {}),
   });
 }
 
