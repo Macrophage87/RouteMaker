@@ -49,7 +49,6 @@ import {
   routeButton,
   routingStep,
   type DrawnPlan,
-  type PhraseTarget,
 } from "./lib/planFirst.ts";
 import { PlanPanel } from "./app/PlanPanel.tsx";
 import { useHighStressLanes, useMtbTrails } from "./useStressStyle.ts";
@@ -509,21 +508,27 @@ export function App() {
   useEffect(() => {
     if (waterOn) ensureRepair();
   }, [waterOn, ensureRepair]);
-  // Bikeshare docks and free e-bikes (v0.7.0; BikeshareDocks.tsx): shown in the bikeshare ride types, with
-  // Capital Bikeshare's switch in Layers (on by default), the choice kept on this device.
-  const docksActive = usesBikeshare(preset) || preset === "bikeshare-transit";
+  // Bikeshare docks and free e-bikes (v0.7.0; BikeshareDocks.tsx): shown while Capital Bikeshare's switch in
+  // Layers is on. It is on by default in the bikeshare ride types and off in the others (the owner, 2026-10-17),
+  // each choice kept on this device apart.
+  const bikeshareRide = usesBikeshare(preset) || preset === "bikeshare-transit";
   const [docksOperators, setDocksOperators] = useState<OperatorInfo[]>(() => [...KNOWN_OPERATORS]);
-  const [docksChoices, setDocksChoices] = useState<Record<string, boolean>>(() => readOperatorChoices());
+  const [docksChoicesByRide, setDocksChoicesByRide] = useState(() => ({
+    bikeshare: readOperatorChoices(KNOWN_OPERATORS, undefined, true),
+    other: readOperatorChoices(KNOWN_OPERATORS, undefined, false),
+  }));
+  const docksChoices = bikeshareRide ? docksChoicesByRide.bikeshare : docksChoicesByRide.other;
   const [docksReport, setDocksReport] = useState<DocksReport>({ answer: null, asked: false, zoom: 0 });
   const changeDocksChoices = (next: Record<string, boolean>) => {
-    setDocksChoices(next);
-    saveOperatorChoices(next);
+    setDocksChoicesByRide((all) => (bikeshareRide ? { ...all, bikeshare: next } : { ...all, other: next }));
+    saveOperatorChoices(next, undefined, bikeshareRide);
   };
   const onDocksReport = useCallback((report: DocksReport) => {
     setDocksReport(report);
     if (report.answer) setDocksOperators((known) => mergeOperators(known, report.answer!.operators));
   }, []);
   const docksAsk = useMemo(() => operatorsToAsk(docksChoices, docksOperators), [docksChoices, docksOperators]);
+  const docksActive = docksAsk.length > 0;
   const [placesOn, setPlacesOnState] = useState<boolean>(() => readPlacesLayer());
   const changePlacesOn = (on: boolean) => {
     setPlacesOnState(on);
@@ -3597,26 +3602,6 @@ export function App() {
     setChangeDetails([]);
     clearAll();
   };
-  // A phrase of the plan opens its editor: a point's row (and the map goes to it), the ride type or a slider.
-  const openPhrase = (target: PhraseTarget) => {
-    if (target.kind === "point") {
-      const point = pointsRef.current[target.index];
-      if (point) mapRef.current?.flyTo({ center: point, zoom: Math.max(mapRef.current.getZoom(), 14) });
-      removeRefs.current[target.index]?.focus();
-      return;
-    }
-    const line = document.querySelector<HTMLButtonElement>("#ride-settings-heading button");
-    if (line?.getAttribute("aria-expanded") === "false") line.click();
-    window.setTimeout(() => {
-      const body = document.querySelector(".ride-settings-body");
-      const editor =
-        target.kind === "ride"
-          ? body?.querySelector<HTMLElement>("input[type=radio]:checked, button, input")
-          : body?.querySelectorAll<HTMLElement>('.dials input[type="range"]')[target.kind === "traffic" ? 0 : 1];
-      editor?.focus();
-      editor?.scrollIntoView?.({ block: "center" });
-    }, 0);
-  };
   const planPanel = (
     <PlanPanel
       key="plan"
@@ -3625,7 +3610,6 @@ export function App() {
         traffic: stressMax(preset) > 0 ? stressWords(dials.stress) : null,
         hills: hillsWords(dials.hills, seeksClimbs(preset)),
       })}
-      onPhrase={openPhrase}
       button={routeButton({ points: points.length, drawn: drawn !== null, changed: planEdited, routeShown: shown !== null })}
       onRoute={pressRoute}
       routing={routingNow ? { step: routingStep(routingTick - routingSince), elapsed: elapsedText(routingTick - routingSince) } : null}
@@ -3785,7 +3769,9 @@ export function App() {
         pointWarnings={riding || reviewing ? undefined : pointWarnings}
         route={riding && rideView ? rideView.route : reviewing ? null : shown}
         stale={riding ? false : stale || planEdited}
-        ghost={riding || reviewing ? null : ghost}
+        // Plan's ghost of the last route; else the standard way through a closure the route goes round, dashed
+        // beside it (v0.8.2), in Go and Plan, and on the ride the line not being followed.
+        ghost={riding ? (rideView?.other ?? null) : reviewing ? null : (ghost ?? shown?.closure_through?.geometry.coordinates ?? null)}
         lightMarks={riding || mode !== "plan" ? null : light}
         stressVisible={stressVisible && stress === "available"}
         when={mapWhen(dials.when ?? null)}
@@ -4089,8 +4075,10 @@ export function App() {
                 />
               ) : (
                 <>
-                  {planPanel}
-                  {order.map((id) => sections[id])}
+                  {/* Route (the plan panel) after the points and the ride, above the route, as a form's button follows its
+                      fields (Plan streamline, Stephen 2026-10-17); on a phone with a route, where the route comes first, on top. */}
+                  {/* One flat keyed list, so a change of order moves the panel rather than remounting it. */}
+                  {(order[0] === "route" ? [planPanel, ...order.map((id) => sections[id])] : order.flatMap((id) => (id === "route" ? [planPanel, sections[id]] : [sections[id]])))}
                 </>
               )}
             </div>
@@ -4109,7 +4097,7 @@ export function App() {
                   operators: docksOperators,
                   choices: docksChoices,
                   onChange: changeDocksChoices,
-                  status: docksActive ? docksStatus(docksReport.answer, docksReport.asked, docksReport.zoom, docksAsk.length > 0) : "",
+                  status: bikeshareRide || docksActive ? docksStatus(docksReport.answer, docksReport.asked, docksReport.zoom, docksActive) : "",
                 },
               }}
             />

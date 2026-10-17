@@ -74,7 +74,7 @@ export function defaultRouteName(start: string | null | undefined, end: string |
 
 /** A planned route's save: the line exactly as on screen, its answer without the other candidates. */
 export function planSave(name: string, route: RouteResponse, points: readonly LonLat[], preset: PresetId, dials: Dials): SaveBody {
-  const answer: RouteResponse = { ...route, candidates: null, avoid_alternate: null };
+  const answer: RouteResponse = { ...route, candidates: null, avoid_alternate: null, closure_through: null };
   return {
     name: name.trim().slice(0, NAME_MAX),
     source: "plan",

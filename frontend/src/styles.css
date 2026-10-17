@@ -119,6 +119,9 @@ body {
 .map {
   position: absolute;
   inset: 0;
+  /* Its own stacking context (the owner, 2026-10-17: "the closures are on top of the rest of the map"): a
+     marker's z-index (closures, junctions) orders it among the map's markers only, never over the panels. */
+  isolation: isolate;
 }
 
 :focus-visible {
@@ -2559,20 +2562,44 @@ button.secondary,
   margin-top: 0;
 }
 
-/* When: two to a row, so the four choices take two lines */
+/* When: a row of chips (Plan streamline, Stephen 2026-10-17), each a real radio button in a pill */
 .dials fieldset.when {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
   margin: 8px 0;
 }
 
 .dials fieldset.when legend {
-  grid-column: 1 / -1;
+  width: 100%;
 }
 
-.dials fieldset.when .hint {
-  grid-column: 1 / -1;
+.dials fieldset.when > label.toggle {
+  min-height: 36px;
+  padding: 2px 12px 2px 8px;
+  border: 1px solid var(--swatch-border);
+  border-radius: 999px;
+}
+
+.dials fieldset.when > label.toggle:has(input:checked) {
+  border: 2px solid var(--accent);
+  font-weight: 700;
+}
+
+.dials fieldset.when .hint,
+.dials fieldset.when .how {
+  flex-basis: 100%;
+  margin: 2px 0 0;
+}
+
+/* Plan's ride type dialog: two cards to a row where there is room, each with its one-line gist */
+.ride-types .ride-type-cards {
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  gap: 8px;
+}
+
+.ride-types .ride-type-card > button {
+  padding: 10px 12px;
 }
 
 /* The route summary: the totals line, the bar, the quick figures */
@@ -6205,8 +6232,28 @@ details.fold > summary .icon {
   outline: 3px solid #1d4ed8;
   outline-offset: 2px;
 }
+/* In the panel's theme, as the station cards are: maplibre's own white card left dark-theme text unreadable. */
 .closure-popup .maplibregl-popup-content {
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: var(--shadow);
   border-left: 4px solid #c62828;
+}
+.closure-popup.maplibregl-popup-anchor-top .maplibregl-popup-tip,
+.closure-popup.maplibregl-popup-anchor-top-left .maplibregl-popup-tip,
+.closure-popup.maplibregl-popup-anchor-top-right .maplibregl-popup-tip {
+  border-bottom-color: var(--bg);
+}
+.closure-popup.maplibregl-popup-anchor-bottom .maplibregl-popup-tip,
+.closure-popup.maplibregl-popup-anchor-bottom-left .maplibregl-popup-tip,
+.closure-popup.maplibregl-popup-anchor-bottom-right .maplibregl-popup-tip {
+  border-top-color: var(--bg);
+}
+.closure-popup.maplibregl-popup-anchor-left .maplibregl-popup-tip {
+  border-right-color: var(--bg);
+}
+.closure-popup.maplibregl-popup-anchor-right .maplibregl-popup-tip {
+  border-left-color: var(--bg);
 }
 .closure-popup .maplibregl-popup-close-button {
   color: var(--text);
@@ -6491,4 +6538,88 @@ details.fold > summary .icon {
   .review-layout {
     grid-template-columns: 1fr;
   }
+}
+
+/* v0.8.2: a closure's source and until when, in small print under its one short line (never said). */
+.description-citation,
+.cue-citation {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin: 2px 0 0;
+}
+
+/* Plan streamline (Stephen 2026-10-17): From, the points, To, Add a stop with Best order beside it; Route says "up to
+   date" on itself, with Reset and Clear behind its More button. */
+.plan-points {
+  display: grid;
+  gap: 8px;
+}
+
+.plan-points .place-search-label {
+  font-weight: 700;
+}
+
+.place-search-current {
+  font-weight: 400;
+}
+
+.add-stop-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.add-stop-row .place-search {
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+
+.add-stop-row .best-order {
+  min-height: 44px;
+}
+
+.point-change {
+  margin-left: auto;
+}
+
+.route-state {
+  font-weight: 400;
+}
+
+.route-button[aria-disabled="true"]:has(.route-state) {
+  opacity: 1;
+  background: var(--bg-soft);
+  color: var(--accent);
+  border: 1px solid var(--border);
+}
+
+.plan-route .route-button {
+  flex: 1 1 auto;
+}
+
+.plan-more {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+.plan-reset-clear[hidden] {
+  display: none;
+}
+
+/* Plan's route totals on one line (Plan streamline, Stephen 2026-10-17): time, distance, climb and descent. */
+.summary:not(.go-summary) .stats.totals .stat-distance {
+  flex: 0 1 auto;
+}
+
+.summary:not(.go-summary) .stats.totals dd,
+.summary:not(.go-summary) .stats.totals .stat-distance dd {
+  font-size: 1.05rem;
+  line-height: 1.3;
+}
+
+.summary:not(.go-summary) .stats.totals .total-time dd {
+  font-size: 1.5rem;
+  font-weight: 700;
 }

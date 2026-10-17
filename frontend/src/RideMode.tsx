@@ -33,6 +33,16 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type FocusEvent, type PointerEvent, type RefObject } from "react";
 import { HoldTimer } from "./lib/holdTimer.ts";
 import { startsWayBack, wayBackRoute } from "./lib/rejoin.ts";
+import {
+  ON_DETOUR_SAID,
+  ON_STANDARD_SAID,
+  ROAD_CLOSED_FINDING,
+  ROAD_CLOSED_NAME,
+  ROAD_CLOSED_NO_PLACE,
+  closedAhead,
+  onOtherLine,
+  withClosed,
+} from "./lib/roadClosed.ts";
 import { requestRoute, type RouteResponse } from "./lib/api.ts";
 import { VIA_MARKS, viaIndices } from "./lib/pointKinds.ts";
 import type { Dials } from "./lib/dials.ts";
@@ -282,6 +292,8 @@ export const CLOSURE_SLOW_MS = 600;
 /** What App shows on the map for the ride. */
 export interface RideView {
   route: RouteResponse;
+  /** The other line (v0.8.2): the standard way through a marked closure, or its detour while on the standard way. */
+  other?: LonLat[] | null;
   rider: { point: LonLat; headingDeg: number | null; accuracyM: number } | null;
 }
 
@@ -552,6 +564,20 @@ export function RideMode({
   const model = useMemo(() => rideModel(route, viaIndices(plan.current.points, VIA_MARKS.isVia)), [route]);
   const modelRef = useRef(model);
   modelRef.current = model;
+  // v0.8.2 (lib/roadClosed.ts): the other line beside the ride's route, the standard way through a marked closure
+  // (or the detour, on the standard way), which the rider is followed onto if they take it.
+  const [other, setOther] = useState<RouteResponse | null>(plannedRoute.closure_through ?? null);
+  const otherRef = useRef(other);
+  otherRef.current = other;
+  const otherModel = useMemo(() => (other ? rideModel(other, viaIndices(plan.current.points, VIA_MARKS.isVia)) : null), [other]);
+  const otherModelRef = useRef(otherModel);
+  otherModelRef.current = otherModel;
+  const onStandard = useRef(false);
+  // Road closed (lib/roadClosed.ts): the stretches the rider marked closed, left out of every re-plan of this ride;
+  // where the last ends on the route it was marked on; and a press while a re-plan was under way.
+  const blockedRef = useRef<LonLat[][]>([]);
+  const blockedUntil = useRef<{ model: RideModel; untilM: number } | null>(null);
+  const closedPending = useRef(false);
   const milesRef = useRef(trailMiles);
   milesRef.current = trailMiles;
   const [ride, setRide] = useState<RideState>(startState);
@@ -900,7 +926,8 @@ export function RideMode({
       }, REPLAN_TIMEOUT_MS);
       // The rider is riding a plan already made: a long one is not asked to be confirmed again (a signed-out
       // rider's re-plan of a long ride was refused for want of it).
-      const ask = (to: LonLat[]) => requestRoute(to, preset, { dials: { ...dials, loop: false }, vias: viaIndices(to, VIA_MARKS.isVia), routeOnly: true, confirmLong: true });
+      const ask = (to: LonLat[]) =>
+        requestRoute(to, preset, { dials: { ...dials, loop: false }, vias: viaIndices(to, VIA_MARKS.isVia), routeOnly: true, confirmLong: true, blocked: blockedRef.current });
       const result = await ask(points);
       // No new route to the end: the way back to the planned route, which goes on from there (lib/rejoin.ts;
       // the owner, 2026-10-17). Not for a detour, whose place the planned route does not pass. The no-signal
@@ -911,13 +938,23 @@ export function RideMode({
       const voided = () => ended.current || ticket !== replanTicket.current;
       if (!result.ok && !via && startsWayBack(result.error.kind) && !voided()) {
         const kept = replanKept(modelRef.current, current.progressM ?? 0, plan.current.points, plan.current.loop);
-        const back = await wayBackRoute(routeRef.current, modelRef.current, current.progressM ?? 0, here, kept, ask, voided);
+        // Never back onto a road the rider marked closed: the way back joins the route past it.
+        const closed = blockedUntil.current?.model === modelRef.current ? blockedUntil.current.untilM : -Infinity;
+        const back = await wayBackRoute(routeRef.current, modelRef.current, current.progressM ?? 0, here, kept, ask, voided, closed);
         if ("route" in back) found = back.route;
         else if (back.failed) failed = back.failed;
         note = REPLAN_REJOIN;
       }
       window.clearTimeout(timer);
       gate.finish(found !== null);
+      // Road closed pressed while this one was under way: this answer did not leave that road out, so it is
+      // dropped (the press voided it) and the ride is planned again from where the rider is now.
+      if (closedPending.current && !ended.current) {
+        closedPending.current = false;
+        gate.online();
+        void replanRef.current(rideRef.current.goodFix?.point ?? here, undefined, true);
+        return;
+      }
       if (voided()) return;
       setReplanning(false);
       if (!found) {
@@ -932,6 +969,11 @@ export function RideMode({
       const model = rideModel(found, viaIndices(points, VIA_MARKS.isVia));
       modelRef.current = model;
       setRoute(found);
+      // The new route's own standard way through a closure it goes round, if any (none past a road marked closed).
+      const through = blockedRef.current.length ? null : (found.closure_through ?? null);
+      otherRef.current = through;
+      setOther(through);
+      onStandard.current = false;
       // The rider stays where they are on the map until the next fix places them on the new route.
       const fresh = { ...startState(), fix: rideRef.current.fix, goodFix: rideRef.current.goodFix };
       rideRef.current = fresh;
@@ -942,6 +984,33 @@ export function RideMode({
     },
     [dials, preset, gate, sayDetour],
   );
+  const replanRef = useRef(replan);
+  replanRef.current = replan;
+
+  // The rider took the other line (lib/roadClosed.ts onOtherLine): it is the ride's route from here, the one left
+  // the other line, with no re-plan and no "off route" (the owner, 2026-10-17: "If you take the standard route, just
+  // keep going, if you move to the detour take that").
+  const takeOther = useCallback((alongM: number, fix: RideFix) => {
+    const was = routeRef.current;
+    const next = otherRef.current;
+    const nextModel = otherModelRef.current;
+    if (!next || !nextModel) return;
+    replanTicket.current += 1;
+    onStandard.current = !onStandard.current;
+    announcer.current?.drop();
+    routeRef.current = next;
+    modelRef.current = nextModel;
+    otherRef.current = was;
+    setRoute(next);
+    setOther(was);
+    const fresh: RideState = { ...startState(), fix, goodFix: fix, goodAt: fix.at, progressM: alongM, speedMs: rideRef.current.speedMs };
+    rideRef.current = fresh;
+    setRide(fresh);
+    setReplanning(false);
+    setReplanNote("");
+    setKeepPlanned(false);
+    if (prefsRef.current.verbosity !== "quiet") announcer.current?.say(onStandard.current ? ON_STANDARD_SAID : ON_DETOUR_SAID, false);
+  }, []);
 
   // No good fix for a minute, or for longer than the next turn is away: the turns ahead as a list, said
   // once; a good fix brings the turn-by-turn card back (the owner, 2026-10-16). Asked on each fix and on
@@ -1014,6 +1083,14 @@ export function RideMode({
       rideRef.current = out.state;
       setRide(out.state);
       if (stepped.state.walking) return;
+      // Off this line but on the other one (the standard way, or the detour): followed there, not re-planned.
+      if (out.state.off && fix.accuracyM <= POOR_FIX_M) {
+        const at = onOtherLine(otherModelRef.current, fix.point, fix.accuracyM, out.state.progressM ?? -Infinity);
+        if (at !== null) {
+          takeOther(at, fix);
+          return;
+        }
+      }
       say(out.events);
       // Back on the planned route: "Keep" has done its work; leaving it again re-plans as usual.
       if (out.events.some((e) => e.kind === "back-on-route") || (keepRef.current && !out.state.off)) setKeepPlanned(false);
@@ -1024,7 +1101,7 @@ export function RideMode({
         announcer.current?.answer(whereAmI(modelRef.current, out.state, false, milesRef.current));
       }
     },
-    [gate, replan, say, notify, checkCueSheet, approach, trip],
+    [gate, replan, say, notify, checkCueSheet, approach, trip, takeOther],
   );
   const onFixRef = useRef(onFix);
   onFixRef.current = onFix;
@@ -1126,8 +1203,8 @@ export function RideMode({
   // The map's view of the ride.
   const fix = ride.fix;
   useEffect(() => {
-    onView({ route, rider: fix ? { point: fix.point, headingDeg: fix.headingDeg, accuracyM: fix.accuracyM } : null });
-  }, [route, fix, onView]);
+    onView({ route, other: other?.geometry.coordinates ?? null, rider: fix ? { point: fix.point, headingDeg: fix.headingDeg, accuracyM: fix.accuracyM } : null });
+  }, [route, other, fix, onView]);
 
   // The map along the route, kept for dead spots (lib/corridor.ts, plan section 6): fetched at Start ride
   // and again for a re-plan's new route (only the tiles the first did not cover), cleared at End ride.
@@ -1225,11 +1302,38 @@ export function RideMode({
       return;
     }
     replanTicket.current += 1;
+    // Keep wins over a Road closed press still waiting on a re-plan.
+    closedPending.current = false;
     setReplanning(false);
     setKeepPlanned(true);
     setReplanNote("");
     const back = wayBack(modelRef.current, rideRef.current);
     if (back) announcer.current?.answer(`The planned route is ${spokenDistance(back.metres)} to the ${back.direction}.`);
+  };
+  // Road closed (lib/roadClosed.ts): one press, no menu. The road ahead is marked closed for this ride and the ride
+  // planned again round it; the standard way beside a marked closure goes too, as it may run along it.
+  const roadClosed = () => {
+    const state = rideRef.current;
+    const fix = state.goodFix ?? state.fix;
+    const stretch = fix ? closedAhead(modelRef.current, state.progressM, state.off, fix.point, fix.headingDeg) : null;
+    if (!fix || !stretch) {
+      sayDetour(ROAD_CLOSED_NO_PLACE);
+      return;
+    }
+    blockedRef.current = withClosed(blockedRef.current, stretch.line);
+    blockedUntil.current = stretch.untilM === null ? null : { model: modelRef.current, untilM: stretch.untilM };
+    otherRef.current = null;
+    setOther(null);
+    setKeepPlanned(false);
+    sayDetour(ROAD_CLOSED_FINDING);
+    if (gate.busy) {
+      // The re-plan under way does not leave it out: it is voided, and the ride planned again once it settles.
+      closedPending.current = true;
+      replanTicket.current += 1;
+      return;
+    }
+    gate.online();
+    void replan(fix.point, undefined, true);
   };
   const replanNow = () => {
     // The rider asked, so the press is answered, as Detour's is (review RIDE-5): through the rider's
@@ -1512,6 +1616,7 @@ export function RideMode({
               {/* Greyed while GPS is weak or lost (any GPS note): the distance is from an old fix, not where the rider is. */}
               <p className={gps ? "cue-distance cue-distance-weak" : "cue-distance"}>In {formatDistance(cue.atM - progress)}</p>
               <p className="cue-text">{cue.rideText ?? cue.text}</p>
+              {cue.citation && <p className="cue-citation">{cue.citation}</p>}
             </div>
           </div>
         ) : (
@@ -1566,6 +1671,12 @@ export function RideMode({
           <button type="button" className="ride-round big-text" onClick={() => onBig(!big)} aria-pressed={big} aria-label="Big text" title="Big text">
             <Icon name="textsize" size={24} />
           </button>
+          {/* Road closed (v0.8.2, the owner's ask by name): one press while riding, no menu. */}
+          {!walking && !ride.arrived && (
+            <button type="button" className="ride-round ride-road-closed" onClick={roadClosed} aria-label={ROAD_CLOSED_NAME} title={ROAD_CLOSED_NAME}>
+              <Icon name="barrier" size={24} />
+            </button>
+          )}
           {water && (
             <div
               className="ride-pop ride-detour"

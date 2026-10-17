@@ -905,6 +905,9 @@ class Dials:
     mtb_preferred: int | None = None
     # v0.7.0 "Route through anyway": the closures this plan routes through (their ids).
     closure_bypass: tuple[str, ...] = ()
+    # v0.8.2, Ride's "Road closed" button: stretches of road the rider found closed on this
+    # ride, each a line of (lon, lat), left out of every request the plan makes.
+    blocked: tuple[tuple[tuple[float, float], ...], ...] = ()
     # Via points (v0.7.0, "Via points vs stops"): the indices of the rider's points that
     # only shape the route. The router passes them without a U-turn or a stop
     # (`VIA_LOCATION_TYPE`); every other point is a stop ("break"), as before.
@@ -2792,12 +2795,26 @@ def plan(
     # to bicycles is left out of every request this plan makes (the derived requests
     # copy this one), and the zones a rider may pass are weighed once the router has
     # answered (`work_zones.settle_penalties`). None where no refresh has ever run.
-    zones_plan = work_zones.plan_zones(points, when, bypass=dials.closure_bypass)
+    # The roads the rider marked closed on this ride (v0.8.2): left out as a closure is,
+    # after the closures' own rings, and kept out where those are let back in. They take
+    # the router's polygon budget first (the latest kept), and the closures fit the rest.
+    blocked = work_zones.blocked_rings(dials.blocked)
+    zones_plan = work_zones.plan_zones(
+        points,
+        when,
+        bypass=dials.closure_bypass,
+        reserve=work_zones.rules.budget_used(blocked),
+    )
+    if zones_plan is not None:
+        zones_plan.blocked = blocked
+        zones_plan.exclude = list(zones_plan.exclude) + blocked
     if zones_plan is not None and following:
         # The file's line is followed through them: each is warned of in red instead.
         work_zones.drop_exclusions(request, zones_plan)
     elif zones_plan is not None and zones_plan.exclude:
         request["exclude_polygons"] = list(zones_plan.exclude)
+    elif blocked:
+        request["exclude_polygons"] = list(blocked)
     # Past the detent the hills slider is a climb search among the router's
     # alternatives. Valhalla computes alternatives only between two locations,
     # and not inside a long ride's budget, so anything else keeps the route
@@ -2879,7 +2896,8 @@ def plan(
                 refusal.code,
                 refusal,
             )
-        if not (zones_plan is not None and zones_plan.exclude and refusal.code in NO_PATH_CODES):
+        closures_left_out = zones_plan is not None and len(zones_plan.exclude) > len(blocked)
+        if not (closures_left_out and refusal.code in NO_PATH_CODES):
             raise NoRoute(str(refusal), no_path=refusal.code in NO_PATH_CODES) from refusal
         # No way round the work zones closed to bicycles: plan through them, each one
         # warned of in red, rather than answer no route (the rider can walk through or
@@ -3624,6 +3642,22 @@ def plan(
                 avoid_info["alternate"] = "time"
         else:
             avoid_info["alternate"] = "time"
+    # The standard way through the closures this route goes round (v0.8.2; the owner,
+    # 2026-10-17: "several closures marked that aren't actually closed. We should have
+    # both the standard route and the detour"): a whole route of its own, drawn beside
+    # it, which Ride follows where the rider takes it.
+    body["closure_through"] = None
+    through = None if zones_plan is None else zones_plan.through
+    if through is not None and deadline.at - clock() >= ALTERNATE_MIN_S:
+        try:
+            standard = work_zones.with_work_zones(_answer(through, None, True), zones_plan)
+            _with_mtb(standard, _offered_mtb(through))
+            standard["extra_distance_m"] = round(standard["distance_m"] - body["distance_m"], 1)
+            standard["extra_duration_s"] = round(standard["duration_s"] - body["duration_s"], 1)
+            standard["closure_ids"] = sorted(zones_plan.affecting)
+            body["closure_through"] = standard
+        except (DeadlineExceeded, RouterUnavailable, NoRoute):
+            pass
     candidates = []
     # The candidates' traces at once (v0.7.0 step 3); each is read in full below, in order.
     prefetch_traces(
