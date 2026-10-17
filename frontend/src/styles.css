@@ -6208,8 +6208,28 @@ details.fold > summary .icon {
   outline: 3px solid #1d4ed8;
   outline-offset: 2px;
 }
+/* In the panel's theme, as the station cards are: maplibre's own white card left dark-theme text unreadable. */
 .closure-popup .maplibregl-popup-content {
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: var(--shadow);
   border-left: 4px solid #c62828;
+}
+.closure-popup.maplibregl-popup-anchor-top .maplibregl-popup-tip,
+.closure-popup.maplibregl-popup-anchor-top-left .maplibregl-popup-tip,
+.closure-popup.maplibregl-popup-anchor-top-right .maplibregl-popup-tip {
+  border-bottom-color: var(--bg);
+}
+.closure-popup.maplibregl-popup-anchor-bottom .maplibregl-popup-tip,
+.closure-popup.maplibregl-popup-anchor-bottom-left .maplibregl-popup-tip,
+.closure-popup.maplibregl-popup-anchor-bottom-right .maplibregl-popup-tip {
+  border-top-color: var(--bg);
+}
+.closure-popup.maplibregl-popup-anchor-left .maplibregl-popup-tip {
+  border-right-color: var(--bg);
+}
+.closure-popup.maplibregl-popup-anchor-right .maplibregl-popup-tip {
+  border-left-color: var(--bg);
 }
 .closure-popup .maplibregl-popup-close-button {
   color: var(--text);
