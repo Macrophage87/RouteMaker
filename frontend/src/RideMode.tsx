@@ -157,6 +157,8 @@ import {
   dockFinding,
   fetchDocks,
   findDock,
+  CHOSEN_STILL_MS,
+  DOCKED_M,
   stillAtLength,
   stillStep,
   undockedMinutes,
@@ -763,6 +765,8 @@ export function RideMode({
   const [docked, setDocked] = useState<string | null>(null);
   const dockedRef = useRef<LonLat | null>(null);
   const still = useRef<Still | null>(null);
+  // The dock the rider chose with the dock button: stopped there a short while is enough.
+  const chosenDock = useRef<{ point: LonLat; name: string } | null>(null);
   const restartTime = () => {
     dockedRef.current = null;
     still.current = null;
@@ -770,6 +774,13 @@ export function RideMode({
     setUndockAt(Date.now());
   };
   const arrived = ride.arrived;
+  // At the end the dock button goes: a focus in it (or its menu) goes to Where am I?.
+  useEffect(() => {
+    if (!arrived) return;
+    setDockOpen(false);
+    const active = document.activeElement;
+    if (!active || active === document.body || !active.isConnected) whereRef.current?.focus({ preventScroll: true });
+  }, [arrived]);
   useEffect(() => {
     if (undockAt === null || docked || arrived || ended.current) return;
     const mark = warningDue(undockedMinutes(undockAt, now), warnedAt.current);
@@ -961,7 +972,14 @@ export function RideMode({
           if (haversineM(fix.point, at) > LEFT_DOCK_M) restartTime();
         } else {
           still.current = stillStep(still.current, fix.point, fix.at);
-          if (stillAtLength(still.current, fix.at)) {
+          const chosen = chosenDock.current;
+          if (chosen && haversineM(still.current.point, chosen.point) <= DOCKED_M && stillAtLength(still.current, fix.at, CHOSEN_STILL_MS)) {
+            still.current = { ...still.current, checked: true };
+            chosenDock.current = null;
+            dockedRef.current = chosen.point;
+            setDocked(chosen.name);
+            notify(dockedSaid(chosen.name));
+          } else if (stillAtLength(still.current, fix.at)) {
             still.current = { ...still.current, checked: true };
             const where = still.current.point;
             void docksAround(where, fetchDocks).then((docks) => {
@@ -1321,6 +1339,7 @@ export function RideMode({
       if (!outcome.ok) return;
       setKeepPlanned(false);
       gate.online();
+      chosenDock.current = { point: outcome.dock.place.point, name: outcome.dock.place.title };
       void replan(here, outcome.dock.place.point);
     } finally {
       dockBusy.current = false;
@@ -1776,7 +1795,11 @@ export function RideMode({
               kind={reportKind}
               onKind={setReportKind}
               open={reportOpen}
-              onOpen={setReportOpen}
+              onOpen={(open) => {
+                setReportOpen(open);
+                // Closed, the report goes from the page: the focus goes to Where am I?, not to the page's top.
+                if (!open) whereRef.current?.focus({ preventScroll: true });
+              }}
               summaryRef={reportSummary}
               noteRef={noteInput}
               serverOn={serverOn311}

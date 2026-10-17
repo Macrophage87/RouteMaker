@@ -133,6 +133,21 @@ test("shortest detour: the dock that adds least to the ride (here to dock, dock 
   );
   assert.equal(out.ok && out.dock.place.title, "Dock ahead");
   assert.match(out.said, /It adds about .* to the ride\./);
+  // The ride's own end dock adds nothing, but riding on to it is no detour: it is left out.
+  const withEnd = await findDock(
+    {
+      here,
+      end,
+      remainingM: 2200,
+      docks: async () => answer([...docks, dock("end", end[0], end[1], 9)]),
+      request: async (from, places: readonly NearestPlace[]) => ({
+        ok: true,
+        answer: { by: "riding", places: places.map((p) => (p.id === "dock-end" ? { distance_m: from === here ? 2200 : 0, time_s: 1 } : { distance_m: from === here ? distances[p.id].fromHere : distances[p.id].fromEnd, time_s: 100 })) },
+      }),
+    },
+    "detour",
+  );
+  assert.equal(withEnd.ok && withEnd.dock.place.title, "Dock ahead");
   assert.deepEqual(addedByBike({ by: "riding", places: [{ distance_m: 100, time_s: 1 }, { distance_m: null, time_s: null }] }, { by: "riding", places: [{ distance_m: 50, time_s: 1 }, { distance_m: 1, time_s: 1 }] }, 120), [30, null]);
   // The straight-line pick favours the docks on the way.
   const picked = onTheWay(here, end, docksWithRoom([dock("off", -77.05, 38.9, 2), dock("on", -77.03, 38.91, 2)]), 1);
@@ -147,6 +162,8 @@ test("docked: still for long enough within a few metres of a dock; moving starts
   assert.equal(stillAtLength(s, DOCK_STILL_MS - 1), false);
   assert.equal(stillAtLength(s, DOCK_STILL_MS), true);
   assert.equal(stillAtLength({ ...s, checked: true }, DOCK_STILL_MS * 2), false, "asked once per stop");
+  assert.ok(DOCK_STILL_MS >= 120_000, "longer than a red light at a corner dock");
+  assert.equal(stillAtLength(s, 20_000, 20_000), true, "the dock chosen with the button: a short stop is enough");
   assert.equal(stillStep(s, [here[0] + 0.001, here[1]], 30_000).since, 30_000, "moved on: afresh");
   assert.equal(dockAt(here, [dock("a", here[0] + 0.0002, here[1], 3)])?.id, "a");
   assert.equal(dockAt(here, [dock("a", here[0] + 0.001, here[1], 3)]), null, `beyond ${DOCKED_M} m`);

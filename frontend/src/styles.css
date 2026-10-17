@@ -5127,14 +5127,24 @@ details.fold > summary .icon {
   pointer-events: none;
 }
 
+/* Short of room (the bottom panel up on a small phone), the buttons wrap into a second column to the left
+   rather than over the cue card. */
 .ride-rail {
   position: absolute;
   right: 12px;
   bottom: 16px;
+  top: 8px;
   display: flex;
   flex-direction: column;
+  flex-wrap: wrap-reverse;
+  justify-content: flex-end;
+  align-content: flex-start;
   align-items: center;
   gap: 10px;
+  pointer-events: none;
+}
+
+.ride-rail > * {
   pointer-events: auto;
 }
 

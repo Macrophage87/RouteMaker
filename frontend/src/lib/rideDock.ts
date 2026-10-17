@@ -5,8 +5,9 @@
  *
  * - The time: counted up from the undock, which the ride takes as the moment the rider reaches the first dock
  *   (or the ride's start, where the plan has no walk to it). Docked again (the owner: "Restart the docked timer
- *   if they dock"): stopped for DOCK_STILL_MS within DOCKED_M of a dock, the button says Docked, and the time
- *   starts again from 0 as the rider leaves that dock with a bike. "Restart the time" in its menu does it by
+ *   if they dock"): stopped within DOCKED_M of a dock, the button says Docked, and the time starts again from 0
+ *   as the rider leaves that dock. At the dock the rider chose with this button, CHOSEN_STILL_MS stopped is
+ *   enough; at any other, DOCK_STILL_MS, longer than a red light on a corner with a dock (the review). "Restart the time" in its menu does it by
  *   hand. Rough: the app cannot see the dock's own clock, so it says "about".
  * - Two ways (the owner: "give options for closest or shortest detour"): the closest dock by bike, or the one
  *   that adds least to the ride. The Capital Bikeshare docks near the rider with room to dock (GET
@@ -28,7 +29,10 @@ export const dockFinding = (way: "closest" | "detour"): string =>
 export const DOCK_NONE = "No Capital Bikeshare dock with room was found nearby.";
 export const DOCK_UNAVAILABLE = "Bikeshare docks are unavailable for now; try again shortly.";
 /** Stopped this long within DOCKED_M of a dock (moving under DOCK_STILL_M): taken as docked. */
-export const DOCK_STILL_MS = 45_000;
+export const DOCK_STILL_MS = 150_000;
+export const CHOSEN_STILL_MS = 20_000;
+/** A dock this near the ride's end is not a detour (the shortest detour would otherwise be the end itself). */
+export const NOT_THE_END_M = 400;
 export const DOCK_STILL_M = 15;
 export const DOCKED_M = 30;
 /** Docked, then this far from the dock: a bike taken again, so the time starts from 0. */
@@ -51,9 +55,9 @@ export function stillStep(s: Still | null, point: LonLat, at: number): Still {
   return { point, since: at, checked: false };
 }
 
-/** Still long enough, not yet looked at: time to ask whether this is a dock. */
-export function stillAtLength(s: Still, at: number): boolean {
-  return !s.checked && at - s.since >= DOCK_STILL_MS;
+/** Still long enough (DOCK_STILL_MS, or `ms`), not yet looked at: time to ask whether this is a dock. */
+export function stillAtLength(s: Still, at: number, ms = DOCK_STILL_MS): boolean {
+  return !s.checked && at - s.since >= ms;
 }
 
 /** The open dock within DOCKED_M of `point`, nearest first; null if none. */
@@ -199,9 +203,12 @@ export function addedByBike(toDock: NearestAnswer, fromEnd: NearestAnswer, remai
 
 /** The dock to ride to, the closest by bike or the one that adds least to the ride. */
 export async function findDock(deps: DockDeps, way: DockWay = "closest"): Promise<DockOutcome> {
-  const places = await docksNear(deps, way === "detour");
-  if (places === null) return { ok: false, said: DOCK_UNAVAILABLE };
-  if (places.length === 0) return { ok: false, said: DOCK_NONE };
+  const near = await docksNear(deps, false);
+  if (near === null) return { ok: false, said: DOCK_UNAVAILABLE };
+  if (near.length === 0) return { ok: false, said: DOCK_NONE };
+  // The shortest detour leaves out the docks at the ride's end: riding on to them is no detour (the review).
+  const notEnd = near.filter((place) => haversineM(place.point, deps.end) >= NOT_THE_END_M);
+  const places = way === "detour" && notEnd.length > 0 ? notEnd : near;
   const straight = (place: NearestPlace): Nearby => ({ place, distanceM: haversineM(deps.here, place.point), timeS: null, byBike: false });
   if (way === "closest") {
     const candidates = nearestInStraightLine(deps.here, places);
@@ -220,9 +227,13 @@ export async function findDock(deps: DockDeps, way: DockWay = "closest"): Promis
     return { ok: true, dock: straight(first), said: dockSaid(straight(first), "detour", added) };
   }
   const added = addedByBike(toDock.answer, fromEnd.answer, deps.remainingM);
+  // Least added, to the nearest 100 m (the router's noise); among those the nearer dock.
+  const score = (i: number) => Math.round((added[i] as number) / 100);
+  const reach = (i: number) => toDock.answer.places[i]?.distance_m ?? Infinity;
   let best = -1;
   added.forEach((m, i) => {
-    if (m !== null && (best < 0 || m < (added[best] as number))) best = i;
+    if (m === null) return;
+    if (best < 0 || score(i) < score(best) || (score(i) === score(best) && reach(i) < reach(best))) best = i;
   });
   if (best < 0) return { ok: false, said: DOCK_NONE };
   const cell = toDock.answer.places[best];
