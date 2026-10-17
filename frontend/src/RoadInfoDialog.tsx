@@ -79,6 +79,7 @@ import { ClosureEntry } from "./ClosureEntry.tsx";
 import { MARK_CLOSED_TEXT } from "./lib/closureReview.ts";
 import { climbLabel, type Climb } from "./lib/climbs.ts";
 import { CLIMB_DETAILS_TEXT } from "./lib/climbCard.ts";
+import { milePanelRow, type TrailMiles } from "./lib/trailMiles.ts";
 import { HAZARD_REPORT_TEXT, hazardOnPiece, hazardPanelText, hazardSaid, type HazardCollection } from "./lib/massHazards.ts";
 
 interface Props {
@@ -115,6 +116,11 @@ interface Props {
    */
   climb?: Climb | null;
   onShowClimb?: (climb: Climb) => void;
+  /**
+   * The trail mile markers (lib/trailMiles.ts; OWNER-DECISIONS 465), once App has them: for a trail way the
+   * summary names the nearest posted marker, or the computed mile, worked out here. Null before, or with none.
+   */
+  trailMiles?: TrailMiles | null;
   /** The dialog closed while showing `closed` (the App keeps a newer request: requestAfterClose). */
   onClose: (closed: InfoRequest | null) => void;
   /**
@@ -190,7 +196,7 @@ function StationTimesList({ station, rail, closed }: { station: Station; rail: R
   );
 }
 
-export function RoadInfoDialog({ request, hazards = null, massRide, station, rail = ALL_RAIL, stationClosed, avoid = null, junctionShown = null, federal = null, climb = null, onShowClimb, onClose, fallbackFocus, onStressChanged, plan, onPlace, onSetHome }: Props) {
+export function RoadInfoDialog({ request, hazards = null, massRide, station, rail = ALL_RAIL, stationClosed, avoid = null, junctionShown = null, federal = null, climb = null, onShowClimb, trailMiles = null, onClose, fallbackFocus, onStressChanged, plan, onPlace, onSetHome }: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const returnTo = useRef<Element | null>(null);
@@ -472,7 +478,9 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
 
   const ready = state.kind === "ready" && state.info.found ? state.info : null;
   const sections = ready ? shownSections(ready, massRide) : [];
-  const summary = ready ? shownSummary(ready, massRide) : [];
+  // On a trail, its mile at the nearest place on the way (465), after the server's lines.
+  const mileRow = ready && request ? milePanelRow(trailMiles, ready.title, ready.on_way ?? request.point) : null;
+  const summary = ready ? [...shownSummary(ready, massRide), ...(mileRow ? [mileRow] : [])] : [];
   const links = station ? stationLinks(station, WMATA_SLUGS) : [];
   const where = request ? subtitle(state, request.origin) : "";
   const osmEdit = ready ? osmEditUrl(ready) : null;

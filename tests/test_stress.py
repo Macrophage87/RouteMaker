@@ -1519,10 +1519,15 @@ class TestTheCyclewayWidthIsTheCyclewaysOwn:
     backwards, and it is the more common tag of the two in this region.
     """
 
+    # One-way, two lanes: the bike-lane table's multilane row, where the lane's
+    # width decides between LTS 3 and LTS 2. On a two-way street with two lanes
+    # each way the owner's RL-3 floor holds a painted lane at LTS 3 whatever
+    # its width (`TestAPaintedLaneOnAWideTwoWayStreet`).
     ARTERIAL = {
         "highway": "primary",
         "maxspeed": "25 mph",
-        "lanes": "4",
+        "lanes": "2",
+        "oneway": "yes",
         "cycleway": "lane",
         "parking:lane:both": "no",
     }
@@ -1764,10 +1769,24 @@ class TestTheCyclewayValueSets:
     # value `opposite_lane` exists for.
     ONE_SIDED_KEYS = ("cycleway:left", "cycleway:right")
 
+    #
+    # Except an `opposite*` value: on a one-way street it is the contraflow
+    # rider's alone and the with-flow rider is scored (review RL-2), so a
+    # one-sided key carrying one is put on a two-way street with the value on
+    # both sides, each key form still read on its own side.
     @classmethod
-    def way(cls, base: dict[str, str], key: str, value: str) -> dict[str, str]:
+    def way(
+        cls, base: dict[str, str], key: str, value: str, width: str | None = None
+    ) -> dict[str, str]:
         tagged = {**base, key: value}
-        if key in cls.ONE_SIDED_KEYS:
+        if width is not None:
+            tagged[f"{key}:width"] = width
+        if key in cls.ONE_SIDED_KEYS and value.startswith("opposite"):
+            for side in cls.ONE_SIDED_KEYS:
+                tagged[side] = value
+                if width is not None:
+                    tagged[f"{side}:width"] = width
+        elif key in cls.ONE_SIDED_KEYS:
             tagged["oneway"] = "yes"
         return tagged
 
@@ -1834,7 +1853,7 @@ class TestTheCyclewayValueSets:
         `cycleway:left:width` - which is how a mapper writes a one-sided lane.
         """
         street = {"highway": "residential", "maxspeed": "25 mph", "parking:both": "no"}
-        result = classify_rural({**self.way(street, key, value), f"{key}:width": "2.0"})
+        result = classify_rural(self.way(street, key, value, width="2.0"))
         assert result.tier is Stress.LTS1, f"{key}={value} did not read as a painted lane"
         assert "bike lane" in result.rule
         fast = {"highway": "primary", "maxspeed": "50 mph"}
@@ -2053,14 +2072,17 @@ class TestTheWorstSideIsTheOneScored:
         of travel to strand, so the one-sided reading is the correct one."""
         oneway = {"highway": "tertiary", "maxspeed": "25 mph", "oneway": "yes", "lanes": "2"}
         assert classify_rural(oneway).tier is Stress.LTS3
-        assert classify_rural({**oneway, "cycleway:left": "opposite_track"}).tier is Stress.LTS1
+        assert classify_rural({**oneway, "cycleway:left": "track"}).tier is Stress.LTS1
         single = {**oneway, "lanes": "1", "parking:both": "no"}
         assert classify_rural(single).tier is Stress.LTS2
-        contraflow = classify_rural(
-            {**single, "cycleway:left": "opposite_lane", "cycleway:left:width": "2.0"}
+        one_side = classify_rural({**single, "cycleway:left": "lane", "cycleway:left:width": "2.0"})
+        assert one_side.tier is Stress.LTS1
+        assert "bike lane" in one_side.rule
+        # But a contraflow facility is the contraflow rider's alone: the with-flow
+        # rider has nothing, however it is tagged (review RL-2).
+        assert classify_rural({**oneway, "cycleway:left": "opposite_track"}) == classify_rural(
+            oneway
         )
-        assert contraflow.tier is Stress.LTS1
-        assert "bike lane" in contraflow.rule
         # `oneway=-1` is the same street drawn the other way round.
         assert (
             classify_rural({**oneway, "oneway": "-1", "cycleway:right": "track"}).tier
@@ -2182,9 +2204,15 @@ class TestUrbanMultilane:
             "shoulder": "both",
             "shoulder:width": "2.0",
         }
-        assert classify(road, urban=True).tier is Stress.LTS1
-        assert "paved shoulder" in classify(road, urban=True).rule
-        assert classify(road, urban=False).tier is Stress.LTS2
+        one_way = {**road, "lanes": "2", "oneway": "yes"}
+        assert classify(one_way, urban=True).tier is Stress.LTS1
+        assert "paved shoulder" in classify(one_way, urban=True).rule
+        assert classify(one_way, urban=False).tier is Stress.LTS2
+        # On a two-way street with two lanes each way a shoulder takes a painted
+        # lane's RL-3 floor (the owner, 2026-10-16), so it never rates the road
+        # below the same road with a lane.
+        assert classify(road, urban=True).tier is Stress.LTS3
+        assert classify(road, urban=False).tier is Stress.LTS3
 
     def test_a_single_lane_street_is_unchanged(self) -> None:
         one = {**self.street, "lanes": "1"}

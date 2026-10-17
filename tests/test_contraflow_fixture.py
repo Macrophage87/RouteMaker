@@ -23,7 +23,7 @@ import pytest
 from test_lua_remap import CONTRAFLOW_WRITES, _bike_access
 
 from pipeline.variants import Variant, has_contraflow_tag, inject
-from routemaker.facility import facility
+from routemaker.facility import facility, shown_facility
 
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "contraflow"
 WAYS = json.loads((FIXTURE / "dc-contraflow-streets.json").read_text())["ways"]
@@ -67,13 +67,27 @@ def test_the_closure_writes_only_the_contraflow_keys(way) -> None:
 SOURCE_FACILITY = {
     112192545: "none",  # R Street NE: a contraflow lane is no facility with the traffic
     130927103: "none",
-    29235004: "lane",  # 11th Street NW: a lane on the left, with a sharrow on the right
+    # 11th Street NW: the contraflow lane on the left in OSM's current form
+    # (`cycleway:left:oneway=-1`), a sharrow with the traffic: no facility with the
+    # traffic, as 8th Street NW's `opposite_lane` is (review RL-2).
+    29235004: "none",
     6257737: "lane",
     6061168: "lane",
     6052569: "none",
     50511364: "none",
     131463016: "lane",
     50797092: "none",
+}
+
+# What the map draws instead, where the only lane runs against the traffic
+# (`facility.shown_facility`, the segment's `facility_shown`): the best direction's
+# class, marked one-direction in the tiles and the road panel. The routing price
+# (`rm:facility`) stays on SOURCE_FACILITY, the rider with the traffic.
+SHOWN_FACILITY = {
+    112192545: "lane",  # R Street NE
+    130927103: "lane",
+    29235004: "lane",  # 11th Street NW
+    50511364: "lane",
 }
 
 
@@ -89,13 +103,38 @@ def test_the_map_and_stress_classification_are_not_the_variants(way) -> None:
     inject(Variant.NO_TRAIL, tags, way["osm_way_id"])
     assert tags == before, "the injection handed back a copy; the source tags are untouched"
     assert facility(tags).value == SOURCE_FACILITY[way["osm_way_id"]]
+    shown = shown_facility(tags)
+    assert (shown and shown.value) == SHOWN_FACILITY.get(way["osm_way_id"])
 
 
-def test_the_classifier_would_answer_differently_on_the_closed_tags() -> None:
-    """Why the order matters: 11th Street NW is a lane on the map and, read
-    from its no-trail routing tags, no longer one. The pipeline never does the
-    second."""
-    way = next(w for w in WAYS if w["osm_way_id"] == 29235004)
-    closed = inject(Variant.NO_TRAIL, dict(way["tags"]), way["osm_way_id"])
-    assert facility(way["tags"]).value == "lane"
-    assert facility(closed).value == "none"
+def test_the_classifier_reads_the_with_flow_rider_on_either_tags() -> None:
+    """11th Street NW was a lane on the map and, read from its no-trail routing
+    tags, no longer one. Since review RL-2 the classifier scores the rider with
+    the traffic however the contraflow lane is tagged, which is what the
+    no-trail graph's closure leaves, so the two readings agree on every street
+    here; the pipeline still classifies from the source tags."""
+    for way in WAYS:
+        closed = inject(Variant.NO_TRAIL, dict(way["tags"]), way["osm_way_id"])
+        assert facility(closed).value == facility(way["tags"]).value, way["osm_way_id"]
+
+
+def test_a_two_way_road_with_a_lane_on_one_side_shows_nothing_new() -> None:
+    """On a two-way road the weaker side is a rider's own direction, not a contraflow,
+    so `shown_facility` adds nothing (a lane on one side only, uphill lanes)."""
+    for tags in (
+        {"highway": "residential", "cycleway:right": "lane"},
+        {"highway": "residential", "cycleway:right": "lane", "cycleway:left": "no"},
+        {"highway": "tertiary", "cycleway:left": "lane", "oneway": "no"},
+    ):
+        assert shown_facility(tags) is None, tags
+    assert (
+        shown_facility(
+            {
+                "highway": "residential",
+                "oneway": "yes",
+                "cycleway:left": "lane",
+                "cycleway:left:oneway": "-1",
+            }
+        )
+        is not None
+    )
