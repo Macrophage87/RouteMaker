@@ -976,7 +976,7 @@ way the zoomed-out map draws, and `derive_trail_runs` ANALYZEs the staging
 table, chains the runs and judges the bridges (10 s on the full
 table). VALIDATE_SEGMENTS then refuses a build whose columns came out wrong
 (`pipeline.run.assert_long_trails`): the Washington & Old Dominion Trail
-(OSM way 8810729) and the C&O Canal towpath (10595312),
+(OSM way 8810729) and the C&O Canal towpath by Fletcher's Cove (74843009),
 `settings.REBUILD_SENTINEL_LONG_TRAIL_WAYS`, must each be on a long bicycle
 route in a run of 8 mi (12.9 km) or more; at least
 `settings.REBUILD_LONG_TRAIL_FLOORS` rows, 6,000 and 2,200,
@@ -1149,7 +1149,7 @@ ft, 0.5 mi), against the busy roads it replaced, for the record:
 
 **VALIDATE_SEGMENTS** (`pipeline.run.assert_calm_runs`, following `assert_long_trails`):
 no named candidate may be left at 0 (the derive ran to the end); the path
-sentinels, the W&OD (OSM way 8810729) and the C&O towpath (10595312),
+sentinels, the W&OD (OSM way 8810729) and the C&O towpath by Fletcher's Cove (74843009),
 `settings.REBUILD_SENTINEL_CALM_PATH_WAYS`, must each be in a network of 8 mi
 (12.9 km) or more; the road sentinel, Elmer School Road in Montgomery County's
 Agricultural Reserve (OSM way 5968951, in a 3.2 mi calm run),
