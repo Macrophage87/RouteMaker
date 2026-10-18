@@ -275,6 +275,20 @@ export function restOffered(trip: RideTrip | null, maxM: number = rideMaxM()): t
 }
 
 /**
+ * Whether a ride keeps to its line, never re-planned on its own: a link shared as a ride, opened unchanged
+ * (`opened`), or a Mass Ride or Group Ride unless shared as a route. A Bikeshare or transit leg, or Ride the
+ * rest (`rest`), re-plans as before; a route with walks at its ends (`walk_in`, asPlanned) is still the route.
+ */
+export function fixedRide(
+  leg: { preset: PresetId; trip: RideTrip | null },
+  opened: { ride?: boolean; own?: boolean } | null,
+  rest: boolean,
+): boolean {
+  if (rest || (leg.trip && !leg.trip.asPlanned)) return false;
+  return opened ? !!opened.ride && !opened.own : leg.preset === "mass-ride" || leg.preset === "group-ride";
+}
+
+/**
  * What a ride on this route follows and re-plans with: a Bikeshare or transit plan's leg is the line
  * itself, from its start to its end, re-planned on a plain ride type (the plan's own would plan the
  * whole trip again: a new dock, or transit); any other route as it was planned.

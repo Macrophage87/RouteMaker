@@ -5486,6 +5486,30 @@ planner and front-end release" (below), `docker compose build api` then `up -d -
 refuses a reference folder without `scenic.json` ("The Scenic layer (v0.8.0)", steps 1 and 2).
 The beta takes it through its CD agent.
 
+## Deploying v0.9.0
+
+Two migrations (`0034_review_dc_no_bike_queue`, `0035_assistant_key`), both plain schema changes
+that reverse cleanly; no new tile format and no rebuild. Deploy it as "Deploying a planner and
+front-end release" (below). No new settings: live Metrobus and train positions reuse
+`WMATA_API_KEY` and `api.wmata.com`.
+
+- **Needs a rebuild to take effect:** bike-signed parking aisles and driveways open to through
+  routes (`lua/routemaker_remap.lua`), the DC circle parks and NPS land in the CBD, and the
+  Review queue of suspected no-bike paths (it reads "not wired" until a rebuild writes its report).
+  On the current map nothing changes and nothing breaks.
+- **Needs a new phone app build:** Send to Garmin, a link shared to the app, and the new icon.
+- **Beta alerts** (`scripts/beta/alert.sh`) post from the server's login user, not a container:
+  `discord.com:443` must be allowed for the host itself. Install them and re-run
+  `auto-release.sh install` as BETA-RUNBOOK.md's "Alerts" says, so the agent's installed copy
+  can post too.
+- **AI assistant key** (`assistant_key` table, `core.models.AssistantKey`): one per account, only
+  its SHA-256 kept. An assistant's MCP server (mcp/README.md) sends it in `X-RouteMaker-Key` to
+  `POST /api/keyed/routes`, which only adds a route to that account's My routes, under the
+  address limit, then the account's write limit. The rider removes it in Settings > Account;
+  deleting or banning the account deletes it. Behind the
+  beta's password gate the server needs `ROUTEMAKER_BASIC_AUTH` as well: the key travels in its
+  own header.
+
 ## Deploying a planner and front-end release: rollback points and verification
 
 A release that changes the planner and the front end, with no migration and no graph, is deployed

@@ -80,6 +80,10 @@ keeps the key off the command line:
 }
 ```
 
+For a site behind a password (a beta), add `"ROUTEMAKER_BASIC_AUTH": "user:password"` to `env`
+and `:ROUTEMAKER_BASIC_AUTH` to the end of `WSLENV`: a setting `WSLENV` does not name never
+reaches WSL.
+
 Restart Claude Desktop. RouteMaker's tools appear under the tools button in a new chat.
 
 ### Claude Code
