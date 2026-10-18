@@ -250,12 +250,14 @@ export interface RideModel {
 /**
  * A turn's cue (v0.7.0, "Go riding fixes" item 2): the turn and the street, nothing else. "Left onto R
  * Street Northwest."; "Right onto the path." for a path with no name; "Left." where the street has none;
- * "Bear right onto ..." for a bear.
+ * "Bear right onto ..." for a bear; "Bear right to stay on Paint Branch Trail." at a fork along one way
+ * (`stay`, describe.fork_movement).
  */
-export function turnWords(movement: TurnMovement, street: string | null): string {
+export function turnWords(movement: TurnMovement, street: string | null, stay = false): string {
   const turn = MOVEMENT_WORDS[movement];
-  if (street && /^(?:unnamed )?path$/i.test(street.trim())) return `${turn} onto the path.`;
-  return street && !isUnnamed(street) ? `${turn} onto ${street}.` : `${turn}.`;
+  const onto = stay ? "to stay on" : "onto";
+  if (street && /^(?:unnamed )?path$/i.test(street.trim())) return `${turn} ${onto} the path.`;
+  return street && !isUnnamed(street) ? `${turn} ${onto} ${street}.` : `${turn}.`;
 }
 
 const CROSSING_CONTROL_WORDS: Partial<Record<NonNullable<NonNullable<DescriptionEntry["turn"]>["control"]>, string>> = {
@@ -455,7 +457,7 @@ export function rideModel(route: RouteResponse, vias: readonly number[] = []): R
           kind === "stop"
             ? `Stop ${entry.via ?? cues.filter((c) => c.kind === "stop").length + 1}.`
             : kind === "turn"
-              ? turnWords(entry.turn?.movement as TurnMovement, entry.turn?.onto ?? entry.street ?? null)
+              ? turnWords(entry.turn?.movement as TurnMovement, entry.turn?.onto ?? entry.street ?? null, entry.turn?.stay === true)
               : kind === "onto"
                 ? ontoWords(entry.street as string)
                 : sentenceOf(entry),

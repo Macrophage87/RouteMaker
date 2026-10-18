@@ -416,6 +416,10 @@ class Piece:
     # prices each road by (docs/stress/stress-number.md section 4); None from a trace that
     # has none.
     road: calm.Road | None = field(default=None, compare=False)
+    # Where the piece's edge begins at a fork the route leaves the straight-ahead way
+    # by (`describe.fork_movement`): the movement to say there; None elsewhere, and on
+    # every piece of an edge but its first.
+    fork: str | None = field(default=None, compare=False)
 
 
 def _heading(value) -> float | None:
@@ -427,6 +431,8 @@ def pieces_of_trace(trace: dict) -> list[Piece]:
     shape = decode_polyline6(trace.get("shape", ""))
     to_metres = 1609.344 if trace.get("units") == "miles" else 1000.0
     pieces: list[Piece] = []
+    # The last edge kept: the node a fork is read at is where it ends.
+    before: dict | None = None
     for edge in trace.get("edges", []):
         length = float(edge.get("length") or 0.0) * to_metres
         begin, end = edge.get("begin_shape_index"), edge.get("end_shape_index")
@@ -446,6 +452,8 @@ def pieces_of_trace(trace: dict) -> list[Piece]:
             "heading_out": _heading(edge.get("end_heading")),
             "road": calm.road_of_edge(edge, miles=trace.get("units") == "miles"),
         }
+        fork = _fork_of(before, edge)
+        before = edge
         stretches = []
         for a, b in zip(shape[begin:end], shape[begin + 1 : end + 1], strict=True):
             stretches.append((a, b, haversine(Point(*a), Point(*b))))
@@ -453,14 +461,36 @@ def pieces_of_trace(trace: dict) -> list[Piece]:
         if ground <= 0:
             # A degenerate edge: all its length on its first vertex.
             (lon, lat) = shape[begin]
-            pieces.append(Piece(way_id, lon, lat, length, **info))
+            pieces.append(Piece(way_id, lon, lat, length, **info, fork=fork))
             continue
         for a, b, d in stretches:
             if d > 0:
                 pieces.append(
-                    Piece(way_id, (a[0] + b[0]) / 2, (a[1] + b[1]) / 2, length * d / ground, **info)
+                    Piece(
+                        way_id,
+                        (a[0] + b[0]) / 2,
+                        (a[1] + b[1]) / 2,
+                        length * d / ground,
+                        **info,
+                        fork=fork,
+                    )
                 )
+                fork = None
     return pieces
+
+
+def _fork_of(before: dict | None, edge: dict) -> str | None:
+    """`describe.fork_movement` at the node between two traced edges: the other
+    ways there are the first edge's `end_node.intersecting_edges`."""
+    if before is None:
+        return None
+    others = [
+        (_heading(other.get("begin_heading")), other.get("use"), other.get("cyclability"))
+        for other in (before.get("end_node") or {}).get("intersecting_edges") or []
+    ]
+    return describe.fork_movement(
+        _heading(before.get("end_heading")), _heading(edge.get("begin_heading")), others
+    )
 
 
 # One row per piece, in the pieces' order: the tier and facility class of the
@@ -2251,6 +2281,7 @@ def describe_route(
                             pieces[i].heading_out,
                             getattr(classes[i], "unpaved", None),
                             bool(pieces[i].road and pieces[i].road.roundabout),
+                            pieces[i].fork,
                         )
                         for i in range(run[0], run[1])
                     ]

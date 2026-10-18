@@ -1419,3 +1419,22 @@ test("jog: a flagged junction between two close turns keeps them apart (pinned)"
     ],
   );
 });
+
+test("a fork along one trail is a turn cue to stay on it (the owner, 2026-10-18, Paint Branch Trail)", () => {
+  assert.equal(turnWords("bear_right", "Paint Branch Trail", true), "Bear right to stay on Paint Branch Trail.");
+  assert.equal(turnWords("left", "path", true), "Left to stay on the path.");
+  const route = lRoute();
+  route.description = [
+    stretch(0, 1000, "0.0 to 0.6 mi (0.0 to 1.0 km): Paint Branch Trail, traffic-free path.", { street: "Paint Branch Trail", facility: "path" }),
+    stretch(1000, 2000, "0.6 to 1.2 mi (1.0 to 2.0 km): Left to stay on Paint Branch Trail, traffic-free path.", {
+      street: "Paint Branch Trail",
+      facility: "path",
+      turn: { movement: "left", onto: "Paint Branch Trail", control: null, severity: null, stay: true },
+    }),
+  ];
+  const turns = rideModel(route).cues.filter((c) => c.kind === "turn");
+  assert.deepEqual(
+    turns.map((c) => [c.movement, c.text]),
+    [["left", "Left to stay on Paint Branch Trail."]],
+  );
+});
