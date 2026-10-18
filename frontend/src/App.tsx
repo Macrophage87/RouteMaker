@@ -747,6 +747,8 @@ export function App() {
     dials: Dials;
     preset: PresetId;
     trip: RideTrip | null;
+    /** The route everyone shares: never re-planned on its own during the ride (RideMode `fixed`). */
+    fixed: boolean;
     n: number;
   } | null>(null);
   const [rideAsk, setRideAsk] = useState(false);
@@ -2511,7 +2513,11 @@ export function App() {
     const leg = rideLegOf(route, rest?.points ?? routedPoints, rest ? false : routedLoop);
     // A More direct or Calmer chosen rides at its own traffic setting, so a re-route keeps to it; the plan's dials and
     // the saved default stay the rider's (lib/neighbours.ts rideDials).
-    setRideStart((before) => ({ route, ...leg, dials: rideDials(planDials, rest ? null : route), n: (before?.n ?? 0) + 1 }));
+    // A route everyone shares stays fixed (the owner, 2026-10-18: "For sharing mass rides and group rides, rerouting
+    // defeats the purpose"): a Mass Ride or Group Ride, a shared or saved route opened unchanged, an opened file.
+    const fixed =
+      !rest && !leg.trip && (leg.preset === "mass-ride" || leg.preset === "group-ride" || savedShown.current?.answer === route || (!!imported?.verbatim && !importEdited));
+    setRideStart((before) => ({ route, ...leg, dials: rideDials(planDials, rest ? null : route), fixed, n: (before?.n ?? 0) + 1 }));
     // The installed app keeps the ride's route as the last ride (OWNER-DECISIONS 465a); End ride gives it
     // the map the ride kept. A browser tab keeps nothing unless the rider presses Keep for offline.
     // A Keep for offline still fetching stops: the ride keeps its own corridor, and two walks would share the page's queue.
@@ -4076,6 +4082,7 @@ export function App() {
           water={ensureWater}
           trailMiles={trailMiles}
           keepLastRide={isStandalone()}
+          fixed={rideStart.fixed}
         />
       )}
       {/* Hidden, not removed, during a ride: the planner keeps its state, and Sign in is out of reach (plan section 7). */}

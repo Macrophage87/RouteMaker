@@ -126,3 +126,22 @@ test("a line the server does not answer for is given up on, so Share and Copy li
   const copy = app.slice(app.indexOf("const copyLink = async () => {"), app.indexOf("\n  };\n", app.indexOf("const copyLink = async () => {")));
   assert.ok(copy.indexOf("setLinkSaid(linkSaidFor(done))") < copy.indexOf("await kept"));
 });
+
+test("a route everyone shares stays fixed on the ride: off route, the way back, never re-planned on its own", () => {
+  const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
+  // Mass Ride, Group Ride, a shared or saved route opened unchanged, an opened file; not Ride the rest or a trip.
+  assert.match(
+    app,
+    /const fixed =\s*!rest && !leg\.trip && \(leg\.preset === "mass-ride" \|\| leg\.preset === "group-ride" \|\| savedShown\.current\?\.answer === route \|\| \(!!imported\?\.verbatim && !importEdited\)\);/,
+  );
+  assert.match(app, /fixed=\{rideStart\.fixed\}/);
+  // No automatic re-plan, from a fix or when the signal comes back.
+  assert.match(ride, /const auto = !keepRef\.current && !fixedRef\.current;/);
+  assert.match(ride, /if \(state\.off && !keepRef\.current && !fixedRef\.current && state\.goodFix\) void replan/);
+  // The way back is said once on leaving it and shown while off; Keep is not offered (it is always kept).
+  assert.match(ride, /if \(fixedRef\.current && out\.events\.some\(\(e\) => e\.kind === "off-route"\)\) \{\s*const back = wayBack\(modelRef\.current, out\.state\);\s*if \(back\) announcer\.current\?\.answer\(wayBackSaid\(back\)\);/);
+  assert.match(ride, /\{\(keepPlanned \|\| fixedRef\.current\) && back && \(/);
+  assert.match(ride, /\{!fixedRef\.current && \(\s*<button type="button" className="secondary" onClick=\{keep\}/);
+  // Re-plan from here stays, the rider's own choice.
+  assert.match(ride, /<button type="button" onClick=\{replanNow\} aria-disabled=\{replanning\}>\s*Re-plan from here/);
+});
