@@ -11,7 +11,7 @@ import { EditHistory, isRedoKey, isUndoKey, typesText } from "./lib/editHistory.
 import { requestNeighbours, requestRoute, routeRequestBody, type NeighbourOption, type NeighboursResult, type RouteResponse, type RouteResult } from "./lib/api.ts";
 import { keptNeighbours, neighbourDials, neighboursSaid, offersNeighbours, rideDials, withNeighbours } from "./lib/neighbours.ts";
 import { betterRouteSaid, EarlyStart, takesRefined } from "./lib/progressive.ts";
-import { RAIL_STATUS_MS, closedReason, matchAlerts, matchClosures, requestClosures, type RailStatus } from "./lib/railClosures.ts";
+import { RAIL_STATUS_MS, closedReason, matchAlerts, withMetroClosed, matchClosures, requestClosures, type RailStatus } from "./lib/railClosures.ts";
 import { COVERAGE_BBOX, MAX_POINTS, addPoint, insideCoverage, type LonLat } from "./lib/geo.ts";
 import { formatSeconds } from "./lib/format.ts";
 import { presetSaid, twoPointsOnly, usesBikeshare, type PresetId } from "./lib/presets.ts";
@@ -467,7 +467,10 @@ export function App() {
   const railClosures = useMemo(() => matchClosures(RAIL_STATIONS, railStatus.stations), [railStatus]);
   const railBadges = useMemo(() => matchAlerts(RAIL_STATIONS, railStatus.alerts), [railStatus]);
   const railClosedReason = useCallback((station: Station) => closedReason(station, rail, railClosures), [rail, railClosures]);
-  const railBadgesOf = useCallback((station: Station) => railBadges.get(station.id) ?? null, [railBadges]);
+  const railBadgesOf = useCallback(
+    (station: Station) => withMetroClosed(railBadges.get(station.id) ?? null, station, rail, railClosures),
+    [railBadges, rail, railClosures],
+  );
   // The Mass Ride map's federal-land shading (lib/federalLand.ts): the rider's
   // own switch, on by default, and whether its data has arrived.
   const [federalOn, setFederalOn] = useState(true);

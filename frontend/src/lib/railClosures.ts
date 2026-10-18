@@ -101,6 +101,16 @@ export function closedReason(station: Station, visibility: RailVisibility, closu
   return reasons.join(" and ");
 }
 
+/**
+ * A station's badges with the alert added where its Metro is closed but it is not struck through, as at
+ * Union Station with MARC still running: the map then still says something is wrong there.
+ */
+export function withMetroClosed(badges: StationBadges | null, station: Station, visibility: RailVisibility, closures: RailClosures): StationBadges | null {
+  if (!closures.get(station.id)?.metro || closedReason(station, visibility, closures) !== null) return badges;
+  if (!visibleLines(station, visibility).some((line) => line !== "penn")) return badges;
+  return { alert: true, elevatorOut: badges?.elevatorOut === true };
+}
+
 /** The map's label for a closed station: words, so colour is not the only cue. */
 export function closedLabel(name: string): string {
   return `${name} (closed)`;

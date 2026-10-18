@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import type { ClosedStation, StationAlert } from "./api.ts";
-import { MATCH_M, RAIL_STATUS_MS, closedLabel, closedReason, matchAlerts, matchClosures, requestClosures } from "./railClosures.ts";
+import { MATCH_M, RAIL_STATUS_MS, closedLabel, closedReason, matchAlerts, matchClosures, requestClosures, withMetroClosed } from "./railClosures.ts";
 import { ALERT_BADGE_ICON, ELEVATOR_OUT_ICON, railFeatures, closedIconId, type Station } from "./railStations.ts";
 import { railHitFrom, railImages, railLayers, RAIL_LAYERS } from "./railLayer.ts";
 import { ALERT_FILL, CLOSED_STRIKE, OUT_STRIKE, alertBadgeIcon, closedStationIcon, elevatorOutIcon, hexToRgb } from "./stationIcons.ts";
@@ -187,4 +187,14 @@ test("the alert badge is an amber triangle with a dark '!'; the elevator-out bad
   const out = elevatorOutIcon(1, 14);
   assert.deepEqual(at(out, 7, 7).slice(0, 3), hexToRgb(OUT_STRIKE));
   assert.deepEqual(at(out, 2, 2).slice(0, 3), hexToRgb(OUT_STRIKE));
+});
+
+test("Metro closed at a station MARC still serves: not struck through, but badged", () => {
+  const closures = matchClosures(STATIONS, [closed("Union Station", "Metro", UNION.point, "WMATA service alert")]);
+  assert.equal(closedReason(UNION, BOTH, closures), null);
+  assert.deepEqual(withMetroClosed(null, UNION, BOTH, closures), { alert: true, elevatorOut: false });
+  // Metro alone shown: struck through instead; MARC alone shown: Metro's closure is not this map's.
+  assert.equal(withMetroClosed(null, UNION, { metro: true, marc: false }, closures), null);
+  assert.equal(withMetroClosed(null, UNION, { metro: false, marc: true }, closures), null);
+  assert.equal(withMetroClosed(null, EASTERN, BOTH, closures), null);
 });
