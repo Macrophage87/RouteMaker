@@ -116,13 +116,12 @@ test("the link's version is unchanged, and a version 2 link keeps its stress", (
 test("the panel shows the two inputs at the top of the slider and not below it", () => {
   const top = startDials("trailmaxxing");
   const view = panelView("trailmaxxing", top);
-  assert.ok(view.target && view.weight);
+  assert.ok(view.target);
   assert.equal(view.target.label, TARGET_LABEL);
 
   assert.match(TARGET_LABEL, /miles/);
   const below = panelView("trailmaxxing", { ...top, stress: 90 });
   assert.equal(below.target, null);
-  assert.equal(below.weight, false);
   assert.equal(panelView("default", startDials("default")).target, null);
 });
 

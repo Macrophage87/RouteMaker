@@ -971,6 +971,32 @@ check("only a service road is an alley: service=alley on a track is not",
   M.remap_way({ highway = "track", service = "alley" }, { stress_tier = 1 }).bicycle == nil)
 check("an alley a bicycle may not ride stays closed",
   M.remap_way({ highway = "service", service = "alley", bicycle = "no" }, { stress_tier = 1 }).bicycle == nil)
+
+-- A parking aisle, driveway or drive-through open to bicycles by its own tags
+-- loses upstream's destination-only use (M.bicycle_link_service).
+for _, service in ipairs({ "parking_aisle", "driveway", "drive-through" }) do
+  for _, grant in ipairs({ "yes", "designated", "permissive" }) do
+    check(service .. " with bicycle=" .. grant .. " becomes a plain service road",
+      M.remap_way({ highway = "service", service = service, bicycle = grant }, { stress_tier = 1 }).service
+        == M.REMOVE)
+  end
+end
+check("an aisle with no bicycle tag keeps its use",
+  M.remap_way({ highway = "service", service = "parking_aisle" }, { stress_tier = 1 }).service == nil)
+check("an aisle with bicycle=destination keeps its use",
+  M.remap_way({ highway = "service", service = "parking_aisle", bicycle = "destination" }, {}).service == nil)
+for _, restriction in ipairs({ { access = "private" }, { access = "customers" }, { vehicle = "private" },
+    { access = "destination" } }) do
+  local tags = { highway = "service", service = "parking_aisle", bicycle = "yes" }
+  local key, value = next(restriction)
+  tags[key] = value
+  check("an aisle with " .. key .. "=" .. value .. " keeps its use", M.remap_way(tags, {}).service == nil)
+end
+check("an aisle with access=yes is still a link",
+  M.remap_way({ highway = "service", service = "parking_aisle", bicycle = "yes", access = "yes" }, {}).service
+    == M.REMOVE)
+check("a parking aisle off a service highway is not touched",
+  M.remap_way({ highway = "track", service = "parking_aisle", bicycle = "yes" }, {}).service == nil)
 check("a tier-5 road still gets the entry charge",
   M.remap_way({ highway = "primary" }, { stress_tier = 5 }).service == M.AVOID_SERVICE)
 

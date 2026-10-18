@@ -54,6 +54,8 @@ CONTRACT_KEYS = {
     "stress_adjustments",
     # Additive, NO-BIKE-PATHS: the trip points the planner moved (the Zoo's).
     "moved_points",
+    # Additive, circle parks: the walk to an end the bike route cannot reach.
+    "walk_in",
     "dials",
     "hills_seek",
     "hills_avoid",
