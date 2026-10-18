@@ -1240,6 +1240,8 @@ export interface RouteRequestOptions {
   followExact?: boolean;
   /** v0.8.2, Ride's Road closed: the stretches the rider found closed on this ride, left out of the plan. */
   blocked?: readonly (readonly LonLat[])[];
+  /** A ride's re-route: the rider's heading at the first point (degrees), so a U-turn is taken only where it saves half a mile. */
+  heading?: number | null;
 }
 
 /** Most points of a line to follow (core/follow.py MAX_POINTS). */
@@ -1274,6 +1276,8 @@ export function routeRequestBody(points: readonly LonLat[], preset: PresetId, op
       : {}),
     // The roads the rider marked closed on this ride (Ride's Road closed): sent with its re-plans only.
     ...(options.blocked?.length ? { blocked_lines: options.blocked.map((line) => line.map((p) => [p[0], p[1]])) } : {}),
+    // The way the rider is going, for a ride's re-route: the API weighs a U-turn against the way ahead.
+    ...(options.heading != null && Number.isFinite(options.heading) ? { heading: ((options.heading % 360) + 360) % 360 } : {}),
   });
 }
 

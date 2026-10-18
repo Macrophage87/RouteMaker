@@ -2748,8 +2748,13 @@ const levelSlider = `${EDITOR} input[type=range]`;
   const ax311 = await axNode(p, ".ride-311-button");
   check("ride 311 button: inside DC, a round button of about 60 px at the right edge, in the lower half (thumb height), named Report to DC 311 with its visible 311, closed",
     !!b311 && b311.w >= 56 && b311.w <= 72 && b311.h >= 56 && b311.round && b311.right <= 24 && b311.mid >= 45 && b311.mid <= 96 && b311.text === "311" && b311.expanded === "false" && ax311?.role === "button" && ax311?.name === "Report to DC 311" &&
-      JSON.stringify(rail.map((x) => x.name)) === JSON.stringify(["Where am I?", "Re-centre", "Road closed ahead", "Detour: water or restroom", "Report to DC 311"]) && rail.every((x) => x.round && x.w >= 44),
+      JSON.stringify(rail.map((x) => x.name)) === JSON.stringify(["Where am I?", "Re-centre", "Detour: water or restroom", "Report to DC 311", "Settings"]) && rail.every((x) => x.round && x.w >= 44),
     JSON.stringify({ b311, ax311, rail }));
+  // The top row (the owner, 2026-10-18): Road closed ahead where Settings was, End ride to its right, one line.
+  const topRow = await p.eval(`(() => { const c = document.querySelector('.ride-top .ride-road-closed'); const e = document.querySelector('.ride-top .ride-end'); if (!c || !e) return null; const a = c.getBoundingClientRect(); const b = e.getBoundingClientRect();
+    return { name: c.getAttribute('aria-label'), text: c.textContent, beside: a.right <= b.left && Math.abs(a.top - b.top) <= 2, h: Math.round(Math.min(a.height, b.height)), settingsInTop: !!document.querySelector('.ride-top .ride-settings-button') }; })()`);
+  check("ride top row: Road closed ahead (shown as Road closed) with End ride to its right, both 44 px or taller, Settings no longer there",
+    !!topRow && topRow.name === "Road closed ahead" && topRow.text === "Road closed" && topRow.beside && topRow.h >= 44 && !topRow.settingsInTop, JSON.stringify(topRow));
   await p.eval("document.querySelector('.ride-311-button').focus(); true");
   await p.enter();
   await sleep(300);
@@ -2834,6 +2839,12 @@ const levelSlider = `${EDITOR} input[type=range]`;
   check("ride: Big text is not a side button", noBigButton, String(noBigButton));
   await p.eval("document.querySelector('.ride .ride-settings-button').click(); true");
   await sleep(200);
+  // The gear (the owner, 2026-10-18): it opens the panel under the top row and the focus goes into it; at 320 px
+  // the top row is Road closed's icon (still named in full) and End ride, on one line.
+  const gear = await p.eval(`(() => { const g = document.querySelector('.ride .ride-settings-button'); const panel = document.querySelector('.ride-mode-settings'); const c = document.querySelector('.ride-top .ride-road-closed'); const e = document.querySelector('.ride-top .ride-end'); const a = c.getBoundingClientRect(); const b = e.getBoundingClientRect();
+    return { expanded: g.getAttribute('aria-expanded'), shown: !panel.hidden, focusIn: panel.contains(document.activeElement), width: innerWidth, name: c.getAttribute('aria-label'), oneLine: Math.abs(a.top - b.top) <= 2, w: Math.round(a.width), h: Math.round(a.height) }; })()`);
+  check("ride: the Settings gear opens the ride's settings with the focus in them; at 320 px Road closed is its icon, named in full, beside End ride",
+    gear.expanded === "true" && gear.shown && gear.focusIn && gear.width <= 379 && gear.name === "Road closed ahead" && gear.oneLine && gear.w >= 44 && gear.h >= 44, JSON.stringify(gear));
   await p.eval("document.querySelector('.ride-mode-settings .big-text-setting input').click(); true");
   await sleep(300);
   const big = await p.eval("({ map: getComputedStyle(document.querySelector('.map')).display, on: document.querySelector('.ride-mode-settings .big-text-setting input').checked, kept: localStorage.getItem('routemaker.ride.bigText') })");
@@ -4965,7 +4976,7 @@ const failed = results.filter((r) => !r.ok);
 // returns early) fails here rather than passing green (the mutation review of the release).
 // The transit blocks (#108) and the Go press checks (#116) were added without raising it; they run since #127.
 // Review mode's own lists (22c2) add six.
-const EXPECTED = 660;
+const EXPECTED = 662;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);
