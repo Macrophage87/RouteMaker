@@ -95,7 +95,7 @@ A long loop can take a few minutes to plan (each plan of a long ride can take up
 and `plan_metro_loop` makes up to three by default). If the client gives up first, raise its tool
 timeout (Claude Code: `MCP_TOOL_TIMEOUT=600000`; other clients have their own setting) or ask for
 fewer plans (`max_plans`). A call the client gives up on stops at its next step and saves
-nothing.
+nothing, unless the save was already under way.
 
 ### Other assistants
 
