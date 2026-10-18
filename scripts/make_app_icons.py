@@ -52,7 +52,7 @@ RES = REPO / "mobile" / "android" / "app" / "src" / "main" / "res"
 
 MASKABLE = 0.75  # the drawing reaches 42 % of its side from the centre: 32 % here, inside 40 %
 APPLE = 0.85
-ADAPTIVE = 0.72  # 31 dp from the centre on the 108 dp canvas, inside the 33 dp safe circle
+ADAPTIVE = 0.70  # 32 dp from the centre on the 108 dp canvas, inside the 33 dp safe circle
 ROUND = 0.75
 SPLASH = 0.4  # of the screen's shorter side
 DENSITIES = {"mdpi": 48, "hdpi": 72, "xhdpi": 96, "xxhdpi": 144, "xxxhdpi": 192}

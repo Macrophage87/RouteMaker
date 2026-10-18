@@ -7740,7 +7740,8 @@ so a launcher's circle or squircle cuts nothing. The same run draws the Android 
 favicon: the adaptive icon's vector foreground (also its monochrome layer, for Android 13 themed icons)
 inside the 66 dp safe circle, its blue background, the round and square PNGs for Android 7, and the
 launch screens (`mobile/android/app/src/main/res/`). The icon is the owner's design of 2026-10-18 (a
-route line running into a bicycle with a map pin in the front wheel), redrawn by hand as strokes. `index.html` links the manifest with
+route line running into a bicycle with a map pin in the front wheel), redrawn by hand as strokes.
+`index.html` links the manifest with
 `crossorigin="use-credentials"` (so the beta's password is sent with it), carries the light and dark
 theme colours and the Apple tags.
 
