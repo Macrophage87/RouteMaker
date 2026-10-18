@@ -16,13 +16,13 @@
  *   is never re-planned on its own: everyone on it stays on the same line, and the way back is shown instead. A re-plan never touches the plan in the address bar (plan Q2): it is the ride's
  *   own route, held here and in App's ride state only.
  * - Big text (map hidden; a setting, in the ride's Settings and the Settings page), Re-centre (and the C key), heading-up (track-up by default since v0.7.0); and
- *   Settings and End ride always in view at the top of the card (Settings opens the ride's settings just
- *   under it), with Undo after End ride. End ride part way leaves the plan starting where the rider is.
+ *   Road closed ahead and End ride always in view at the top of the card (since v0.9.0; Settings is a gear in the
+ *   side buttons, opening the ride's settings under that row), with Undo after End ride. End ride part way leaves the plan starting where the rider is.
  * - The map along the route, kept for dead spots (lib/corridor.ts, N5), and Report a problem to DC 311
  *   with the place in the route's street names (lib/report311.ts, N6; OWNER-DECISIONS 369, 465).
  * - The side buttons (the owner, 2026-10-17: "Remove that bottom part when routing by default. instead put
- *   these as circle icons on the side"): Where am I?, Re-centre, Road closed ahead, Detour (water or restroom), on a
- *   share bike the dock button with the time undocked (lib/rideDock.ts), and 311 inside DC (Big text moved to
+ *   these as circle icons on the side"): Where am I?, Re-centre, Detour (water or restroom), on a
+ *   share bike the dock button with the time undocked (lib/rideDock.ts), 311 inside DC, and the Settings gear (Big text moved to
  *   Settings, the owner, 2026-10-17: "not something people will fiddle with mid ride"); each a round
  *   icon with its name for screen readers, its menu opening beside it. The bottom panel shows only when it
  *   has something to say or ask: GPS and screen notes, off route, Ride the rest, the full 311 report.
@@ -40,6 +40,7 @@ import {
   ON_STANDARD_SAID,
   ROAD_CLOSED_FINDING,
   ROAD_CLOSED_NAME,
+  ROAD_CLOSED_TEXT,
   ROAD_CLOSED_NO_PLACE,
   closedAhead,
   onOtherLine,
@@ -214,7 +215,7 @@ export const RIDE_STARTED = "Ride started.";
 export const RIDE_ENDED = "Ride ended.";
 /** The always-visible End ride button's words (the owner, 2026-10-16: "add a method of ending navigation"). */
 export const END_RIDE_NAME = "End ride";
-/** The top row's Settings button opens these, just under it (the owner, 2026-10-16: "the buttons to change the settings seem hidden"). */
+/** The side buttons' gear opens these, under the top row (the owner, 2026-10-16: "the buttons to change the settings seem hidden"; a gear in the rack since v0.9.0). */
 export const RIDE_SETTINGS_TEXT = "Settings";
 export const RIDE_SETTINGS_TITLE = "Ride settings";
 /** What End ride leaves behind (lib/navigate.ts planAfterEnd): the plan from here, or as it was. */
@@ -695,12 +696,16 @@ export function RideMode({
   // Each re-plan's ticket: "Keep the planned route" or a newer re-plan voids an older one's answer.
   const replanTicket = useRef(0);
   const settingsId = useId();
-  // The ride's settings, opened from the top row's Settings (closed at Start).
+  // The ride's settings, opened from the side buttons' gear (closed at Start).
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsPanel = useRef<HTMLDivElement>(null);
-  // Opened, the panel is brought into view (the row above it is sticky; the card may be scrolled).
+  const settingsButton = useRef<HTMLButtonElement>(null);
+  // Opened, the panel is brought into view (the row above it is sticky; the card may be scrolled) and the focus
+  // goes into it: the gear is the last side button, after the panel, so Tab alone would never reach it.
   useEffect(() => {
-    if (settingsOpen) settingsPanel.current?.scrollIntoView?.({ block: "nearest" });
+    if (!settingsOpen) return;
+    settingsPanel.current?.scrollIntoView?.({ block: "nearest" });
+    settingsPanel.current?.focus({ preventScroll: true });
   }, [settingsOpen]);
   // The 311 button's menu (lib/ride311.ts; the owner's choice 9) and the report it continues into.
   const [reportKind, setReportKind] = useState<ReportKind>("pothole");
@@ -1644,30 +1649,44 @@ export function RideMode({
       <div className="cue-card">
         {/* End ride (v0.7.0, "Go riding fixes" item 6): always in view, at the top of the card, which stays at
             every size and in Big text; one tap ends the ride, and the page offers Undo for a few seconds
-            (RideEnded). Settings beside it opens the ride's settings just under the row (the owner, 2026-10-16). */}
+            (RideEnded). The ride's settings open just under the row, from the side buttons' gear. */}
         <div className="ride-top">
           <h2 id="ride-heading" ref={headingRef} tabIndex={-1} className="ride-heading">
             Ride mode
           </h2>
           <div className="ride-top-actions">
-            <button
-              type="button"
-              className="secondary ride-settings-button"
-              aria-expanded={settingsOpen}
-              aria-controls={`${settingsId}-settings`}
-              onClick={() => setSettingsOpen(!settingsOpen)}
-            >
-              <Icon name="gear" size={18} />
-              {/* Shown where there is room; on the narrowest phones the gear alone, its name still "Settings". */}
-              <span className="ride-settings-label">{RIDE_SETTINGS_TEXT}</span>
-            </button>
+            {/* Road closed (v0.8.2; in the top row since v0.9.0, the owner, 2026-10-18: "a button you'd want to hit
+                on the fly"): one press while riding, no menu; End ride to its right. */}
+            {!walking && !ride.arrived && (
+              <button type="button" className="secondary ride-road-closed" onClick={roadClosed} aria-label={ROAD_CLOSED_NAME} title={ROAD_CLOSED_NAME}>
+                <Icon name="barrier" size={18} />
+                {/* Shown where there is room; on the narrowest phones the icon alone, its name kept. */}
+                <span className="ride-top-label">{ROAD_CLOSED_TEXT}</span>
+              </button>
+            )}
             <button type="button" className="danger ride-end" onClick={end}>
               <Icon name="stop" size={18} />
               {END_RIDE_NAME}
             </button>
           </div>
         </div>
-        <div ref={settingsPanel} id={`${settingsId}-settings`} className="ride-mode-settings" role="group" aria-label={RIDE_SETTINGS_TITLE} hidden={!settingsOpen}>
+        <div
+          ref={settingsPanel}
+          id={`${settingsId}-settings`}
+          className="ride-mode-settings"
+          role="group"
+          aria-label={RIDE_SETTINGS_TITLE}
+          hidden={!settingsOpen}
+          tabIndex={-1}
+          onKeyDown={(event) => {
+            // Escape closes it, back to the gear.
+            if (event.key === "Escape") {
+              event.preventDefault();
+              setSettingsOpen(false);
+              settingsButton.current?.focus();
+            }
+          }}
+        >
           <RideSettingsFields prefs={prefs} onChange={onPrefs} idBase={settingsId} />
           <p className="hint">{RIDE_SAFETY}</p>
           <label className="toggle ride-toggle">
@@ -1783,12 +1802,6 @@ export function RideMode({
           >
             <Icon name="locate" size={24} />
           </button>
-          {/* Road closed (v0.8.2, the owner's ask by name): one press while riding, no menu. */}
-          {!walking && !ride.arrived && (
-            <button type="button" className="ride-round ride-road-closed" onClick={roadClosed} aria-label={ROAD_CLOSED_NAME} title={ROAD_CLOSED_NAME}>
-              <Icon name="barrier" size={24} />
-            </button>
-          )}
           {water && (
             <div
               className="ride-pop ride-detour"
@@ -1984,6 +1997,20 @@ export function RideMode({
               )}
             </div>
           )}
+          {/* Settings, a gear at the end of the side buttons since v0.9.0 (the owner, 2026-10-18: "Move settings to
+              a gear icon in the rack"); it opens the ride's settings under the top row. */}
+          <button
+            type="button"
+            ref={settingsButton}
+            className="ride-round ride-settings-button"
+            aria-label={RIDE_SETTINGS_TEXT}
+            title={RIDE_SETTINGS_TEXT}
+            aria-expanded={settingsOpen}
+            aria-controls={`${settingsId}-settings`}
+            onClick={() => setSettingsOpen(!settingsOpen)}
+          >
+            <Icon name="gear" size={24} />
+          </button>
         </div>
       </div>
 
