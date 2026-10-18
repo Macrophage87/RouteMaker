@@ -255,11 +255,19 @@ test("the check is a POST of the line, and a failure never holds the route up", 
   assert.equal(await checkClosures("https://x.test", LINE, offline), null);
 });
 
-test("Save route sits beside Share in Plan's and Go's route sheet, and My routes in Plan's menu and Go's More", () => {
+test("Save route sits beside Share; My routes is in Save and load, in Plan and Go, with the routes kept for offline", () => {
   const panel = readFileSync(new URL("../app/RoutePanel.tsx", import.meta.url), "utf8");
   assert.match(panel, /SAVE_ROUTE/);
   const sheets = readFileSync(new URL("../app/Sheets.tsx", import.meta.url), "utf8");
-  assert.match(sheets, /<MyRoutes /);
+  // The owner, 2026-10-18: "the files tab (maybe call it save or load) is where we should save the routes and search for them".
+  assert.doesNotMatch(sheets, /<MyRoutes |<KeptRoutes /);
+  assert.match(sheets, /\{shareControls\}\s*\{routes\}\s*<GpxPanel/);
+  const your = readFileSync(new URL("../YourRoutes.tsx", import.meta.url), "utf8");
+  assert.match(your, /<MyRoutes \{\.\.\.myRoutes\} filter=\{filter\} \/>/);
+  assert.match(your, /<KeptRoutes [^>]*filter=\{filter\}/);
+  assert.match(your, /type="search"/);
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  assert.match(app, /<YourRoutes\s/);
 });
 
 test("Settings' Account has Sign out under 'Signed in with Discord.': a form POST to /auth/logout with the CSRF token", () => {

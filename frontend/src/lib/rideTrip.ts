@@ -14,6 +14,7 @@
  *
  * Rides longer than RIDE_MAX_M go to a bike computer, as ever: the rule is the riding leg's.
  */
+import { askOf, type NextVehicleAsk } from "./nextVehicle.ts";
 import type { RouteResponse, TransitDeparture, TransitPlan, TransitStep } from "./api.ts";
 import { bikeshareOf, dockCountWords } from "./bikeshare.ts";
 import { formatDistance, spokenDistance } from "./format.ts";
@@ -63,6 +64,8 @@ export interface RideTrip {
   finish: TripWords | null;
   /** The departure the finish leads to (DepartureTimer), where the plan has one. */
   departure: TransitDeparture | null;
+  /** The Metro or Metrobus boarding the finish leads to: where its next train or bus is, while waiting (lib/nextVehicle.ts). */
+  boarding?: NextVehicleAsk | null;
   rest: RideRest | null;
   /** The line is ridden on a share bike (Ride mode's dock button and undocked time, lib/rideDock.ts). */
   shareBike?: boolean;
@@ -232,7 +235,8 @@ function transitTrip(route: RouteResponse, destination: LonLat | null): RideTrip
       metres: step.coordinates.length >= 2 ? pathLengthM(step.coordinates) : null,
     };
   }
-  return { approach, finish, departure, rest, shareBike: lineStep.mode === "bikeshare" };
+  const boarding = boardAt > line ? askOf(steps[boardAt]) : null;
+  return { approach, finish, departure, boarding, rest, shareBike: lineStep.mode === "bikeshare" };
 }
 
 /** A plain ride whose ride stops short of its start or end (the API's `walk_in`): the walk to the line first, and the walk on at the finish. */

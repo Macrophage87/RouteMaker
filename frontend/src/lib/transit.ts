@@ -50,6 +50,18 @@ export function timesFromText(plan: Pick<TransitPlan, "credits" | "day_type" | "
   return typical > 0 ? `${published} ${metro("")}` : published;
 }
 
+/**
+ * The plan's last word on its times: which are live (WMATA's next trains, and from v0.9.0 Metrobus's next
+ * buses), or that none are.
+ */
+export function liveTimesText(plan: Pick<TransitPlan, "live" | "steps">): string {
+  if (!plan.live) return "Not live arrivals.";
+  const bus = plan.steps.some((s) => s.mode === "bus" && s.live);
+  const train = plan.steps.some((s) => s.mode !== "bus" && s.live);
+  const what = bus && train ? "next trains and buses" : bus ? "next buses" : "next trains";
+  return `Times marked live are WMATA's ${what}.`;
+}
+
 /** Whether an option's row shows its legs as marks: a trip with a transit leg (Stephen, 2026-10-12). */
 function marked(option: Pick<TransitOption, "legs">): boolean {
   return (option.legs ?? []).some((leg) => leg.mode !== "walk" && leg.mode !== "ride" && leg.mode !== "bikeshare");

@@ -34,9 +34,10 @@ export type NearestKind = "water" | "restroom" | "metro";
 
 /** The finder's buttons, in order. */
 export const NEAREST_KINDS: ReadonlyArray<{ kind: NearestKind; label: string; noun: string; one: string }> = [
-  { kind: "water", label: "Nearest water", noun: "water", one: "water" },
-  { kind: "restroom", label: "Nearest restroom", noun: "restrooms", one: "restroom" },
-  { kind: "metro", label: "Nearest Metro", noun: "Metro stations", one: "Metro station" },
+  // Short, under the sheet's "Nearest" heading (the owner, 2026-10-18: "reduce the verbosity").
+  { kind: "water", label: "Water", noun: "water", one: "water" },
+  { kind: "restroom", label: "Restroom", noun: "restrooms", one: "restroom" },
+  { kind: "metro", label: "Metro", noun: "Metro stations", one: "Metro station" },
 ];
 
 /** "restrooms", or with `count` 1, "restroom". */
@@ -219,7 +220,12 @@ export function howFar(item: Nearby): string {
 
 /** One line of the list: "Drinking water, Peirce Mill: 0.6 mi (1.0 km) by bike, about 4 min. Bottle filler. Free." */
 export function nearbyText(item: Nearby): string {
-  return [`${item.place.title}: ${howFar(item)}.`, ...item.place.details].join(" ");
+  return [nearbyShort(item), ...item.place.details].join(" ");
+}
+
+/** The row shown: the place and how far; its details are one tap away (the owner, 2026-10-18: "a wall of text"). */
+export function nearbyShort(item: Nearby): string {
+  return `${item.place.title}: ${howFar(item)}.`;
 }
 
 export const STRAIGHT_LINE_NOTE = "The router's riding distances were not available, so these are by straight-line distance.";
@@ -246,8 +252,8 @@ export function foundSaid(kind: NearestKind, from: NearestFrom, items: readonly 
     items.length === 1
       ? `The nearest ${nounOf(kind, 1)} ${how} from ${FROM_WORDS[from]}.`
       : `The ${items.length} nearest ${noun} ${how} from ${FROM_WORDS[from]}, nearest first.`;
-  const first = ` Nearest: ${items[0].place.title}, ${howFar(items[0])}.`;
-  return items[0].byBike ? `${lead}${first}` : `${lead}${first} ${STRAIGHT_LINE_NOTE}`;
+  // The nearest is the list's first row, so the line does not say it again.
+  return items[0].byBike ? lead : `${lead} ${STRAIGHT_LINE_NOTE}`;
 }
 
 export const findingSaid = (kind: NearestKind): string => `Finding the nearest ${nounOf(kind)}.`;

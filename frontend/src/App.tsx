@@ -6,12 +6,13 @@ import { MapTools } from "./MapTools.tsx";
 import { ACCESS_LABEL, accessModeToggle, readAccessMode, writeAccessMode } from "./lib/accessMode.ts";
 import { placeAtSpot, requestAfterClose, type InfoRequest } from "./lib/roadInfo.ts";
 import { stationNearSpot } from "./lib/stationLinks.ts";
+import { reorder } from "./lib/pointMover.ts";
 import { canDragLine, dropStillValid, insertIntoRide, legEnds, legPoints } from "./lib/lineEdit.ts";
 import { EditHistory, isRedoKey, isUndoKey, typesText } from "./lib/editHistory.ts";
-import { requestNeighbours, requestRoute, routeRequestBody, type ClosedStation, type NeighbourOption, type NeighboursResult, type RouteResponse, type RouteResult } from "./lib/api.ts";
+import { requestNeighbours, requestRoute, routeRequestBody, type NeighbourOption, type NeighboursResult, type RouteResponse, type RouteResult } from "./lib/api.ts";
 import { keptNeighbours, neighbourDials, neighboursSaid, offersNeighbours, rideDials, withNeighbours } from "./lib/neighbours.ts";
 import { betterRouteSaid, EarlyStart, takesRefined } from "./lib/progressive.ts";
-import { closedReason, closuresDayOf, matchClosures, requestClosures } from "./lib/railClosures.ts";
+import { RAIL_STATUS_MS, closedReason, matchAlerts, withMetroClosed, matchClosures, requestClosures, type RailStatus } from "./lib/railClosures.ts";
 import { COVERAGE_BBOX, MAX_POINTS, addPoint, insideCoverage, type LonLat } from "./lib/geo.ts";
 import { formatSeconds } from "./lib/format.ts";
 import { presetSaid, twoPointsOnly, usesBikeshare, type PresetId } from "./lib/presets.ts";
@@ -71,6 +72,7 @@ import {
   namePoints,
   stopAddedSaid,
   stopsOnly,
+  withVias,
   viaIndices,
   viaPointsNamed,
 } from "./lib/pointKinds.ts";
@@ -83,7 +85,7 @@ import { readBigText, readHeadingUp, readRidePrefs, writeBigText, writeHeadingUp
 import { activePins, chosenSaid, withStations, type NearbyStation, type Pins, type StationAction } from "./lib/stations.ts";
 import { bikeshareOf } from "./lib/bikeshare.ts";
 import { carries, hillsWords, seeksClimbs, startDials, stressMax, stressWords, trailsAreOff, type Dials } from "./lib/dials.ts";
-import { WeightStore, withWeight, type StoredWeight } from "./lib/weight.ts";
+import { WeightStore, defaultSplit, withWeight, type StoredWeight } from "./lib/weight.ts";
 import { stationEdit, type RailVisibility, type Station, type StationRole } from "./lib/railStations.ts";
 import { RAIL_STATIONS, WMATA_SLUGS, stationEntranceForPlace } from "./lib/railData.ts";
 import { federalShown, type FederalData } from "./lib/federalLand.ts";
@@ -191,7 +193,8 @@ import { AppStatusBar, useAppStatus } from "./InstallableApp.tsx";
 import { isStandalone } from "./lib/installOffer.ts";
 import { keepLastRide, keepRoute, keptAnswerFor, sweepKept } from "./lib/offlineKeep.ts";
 import { KEEPING_SAID, keepOffered, keepSaid, keptPlanKey, offlineRouteNotice, routeTitle, type KeptRoute } from "./lib/offlineRoutes.ts";
-import { askPersist } from "./lib/offlineRouteStore.ts";
+import { anyKept, askPersist } from "./lib/offlineRouteStore.ts";
+import { YourRoutes } from "./YourRoutes.tsx";
 import { asKept, namesToKeep, rideAfterImport, type Ride } from "./lib/gpxEdit.ts";
 import { followLine } from "./lib/gpxMatch.ts";
 import { fetchHazards, type HazardCollection } from "./lib/massHazards.ts";
@@ -434,35 +437,42 @@ export function App() {
   }, [showTopoLines]);
   const [rail, setRail] = useState<RailVisibility>({ metro: true, marc: true });
   // The rail stations with no service all day (railClosures.ts): struck through and greyed on the
-  // map, and "closed" in their cards and lists. Asked again when the service day turns over, and at
-  // midnight (closuresDayOf).
-  const [closedToday, setClosedToday] = useState<ClosedStation[]>([]);
+  // map, and "closed" in their cards and lists; with WMATA's live closures and its badges (a station an
+  // alert names, an elevator out). Asked every few minutes while the page is in view, since WMATA's
+  // change within the day, and as soon as it is back in view.
+  const [railStatus, setRailStatus] = useState<RailStatus>({ stations: [], alerts: [] });
   useEffect(() => {
-    let day = "";
     const controller = new AbortController();
     let asking = false;
+    let askedAt = 0;
     const check = () => {
-      const today = closuresDayOf(Date.now());
-      if (today === day || asking) return;
+      if (asking || document.visibilityState === "hidden" || Date.now() - askedAt < RAIL_STATUS_MS - 1000) return;
       asking = true;
-      void requestClosures({ signal: controller.signal }).then((stations) => {
+      void requestClosures({ signal: controller.signal }).then((status) => {
         asking = false;
         if (controller.signal.aborted) return;
-        // Only an answer settles the day: a failure is asked again at the next check.
-        if (stations === null) return;
-        day = today;
-        setClosedToday(stations);
+        // Only an answer counts: a failure is asked again at the next check, the last answer kept.
+        if (status === null) return;
+        askedAt = Date.now();
+        setRailStatus(status);
       });
     };
     check();
-    const timer = window.setInterval(check, 10 * 60 * 1000);
+    const timer = window.setInterval(check, 60 * 1000);
+    document.addEventListener("visibilitychange", check);
     return () => {
       controller.abort();
       window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", check);
     };
   }, []);
-  const railClosures = useMemo(() => matchClosures(RAIL_STATIONS, closedToday), [closedToday]);
+  const railClosures = useMemo(() => matchClosures(RAIL_STATIONS, railStatus.stations), [railStatus]);
+  const railBadges = useMemo(() => matchAlerts(RAIL_STATIONS, railStatus.alerts), [railStatus]);
   const railClosedReason = useCallback((station: Station) => closedReason(station, rail, railClosures), [rail, railClosures]);
+  const railBadgesOf = useCallback(
+    (station: Station) => withMetroClosed(railBadges.get(station.id) ?? null, station, rail, railClosures),
+    [railBadges, rail, railClosures],
+  );
   // The Mass Ride map's federal-land shading (lib/federalLand.ts): the rider's
   // own switch, on by default, and whether its data has arrived.
   const [federalOn, setFederalOn] = useState(true);
@@ -2088,6 +2098,25 @@ export function App() {
   const removeAt = (index: number) => {
     focusAfterRemove.current = index;
     commit(pointsRef.current.filter((_, i) => i !== index));
+  };
+  // A stop dragged to another stop's place in the points list (lib/pointMover.ts; Stephen 2026-10-18, beside Best
+  // order): `from` and `to` are the two stops' points. Only stops move, as Best order moves them: the start and the end
+  // stay, and each via point goes with the stop it leads to. One edit, so Undo puts it back; the same pairs, so each
+  // keeps its kind, its name and whether it is the location. A drag is said ("Union Market is now Stop 1."); after a
+  // key the focus is on the moved stop's grip, whose new name says it.
+  const reorderPoint = (from: number, to: number, by: "drag" | "key") => {
+    const current = pointsRef.current;
+    const split = stopsOnly(current, VIA_MARKS.isVia, loopVias);
+    const a = split.points.indexOf(current[from]);
+    const b = split.points.indexOf(current[to]);
+    if (a < 1 || b < 1 || a === b) return;
+    const next = withVias(reorder(split.points.map((_, i) => i), a, b), split);
+    commit(next);
+    if (by !== "drag") return;
+    const moved = next.indexOf(current[from]);
+    const role = namePoints(next, VIA_MARKS.isVia, loopVias)[moved]?.name ?? "";
+    const name = fromHere.includes(current[from]) ? YOUR_LOCATION : namer.name(current[from])?.name;
+    announce(name ? `${name} is now ${role}.` : `Moved to ${role}.`);
   };
   // From the map: the focus stays where it was (on a phone the sheet may be
   // hidden), and the removal is said instead.
@@ -3727,7 +3756,7 @@ export function App() {
       {...{
         pointsHeadingRef, zoom, stressVisible, stress, pointsSearchRef, compactPoints, points, loopVias, geoGate,
         searchBias, pickPlace, locateReady, locating, hereInPlan, here, useMyLocation, loop, loopHintId, commitDials,
-        dials, accessMode, namer, located: fromHere, removeAt, pointWarnings, removeRefs, preset, stationChoice, chooseStation,
+        dials, accessMode, namer, located: fromHere, removeAt, reorderPoint, pointWarnings, removeRefs, preset, stationChoice, chooseStation,
         federalPlanner,
         pointsEditRef, reverseButton, reverse, reverseHint, orderShown, bestOrder, orderFocused, ordering, narrow,
         undo, can, redo, coverageShown, toggleAccessMode, announce, notice, noticeLive: mode !== "go", tips, setTips, tipsId,
@@ -3822,8 +3851,7 @@ export function App() {
     presets: (
       <RideSection key="presets"
         {...{
-          preset, dials, choosePreset, commitDials, weight, weightRemembered, weightStore, setWeightRemembered,
-          setWeight, route, typeCard: mode !== "go",
+          preset, dials, choosePreset, commitDials, route, typeCard: mode !== "go",
         }}
       />
     ),
@@ -3900,6 +3928,7 @@ export function App() {
         markerReset={markerReset}
         accuracy={riding ? rideCircle : hereCircle}
         rider={riding && rideView?.rider ? rideView.rider : null}
+        nextVehicle={riding ? (rideView?.vehicle ?? null) : null}
         // Go, before a destination: its start, the location found, drawn as the ride's still dot (the owner,
         // 2026-10-17: the location centred, so it is seen). With a route its start pin marks it.
         youDot={!riding && mode === "go" && points.length === 0 && goStart.kind === "here" ? goStart.point : null}
@@ -3930,6 +3959,7 @@ export function App() {
         onCanvasFocus={(focused) => setCrosshair((c) => ({ ...c, canvas: focused }))}
         rail={rail}
         railClosedReason={railClosedReason}
+        railBadges={railBadgesOf}
         massCapacity={massMap}
         massArea={isMassRide(preset)}
         massHazards={massHazards}
@@ -4276,6 +4306,22 @@ export function App() {
                     ...(importBase.current && !importEdited ? { exact: importBase.current.exact === true, onExact: setFollowExact } : {}),
                   },
                 }),
+                // Your routes, saved and kept for offline, with a search (the owner, 2026-10-18); versions in Plan only.
+                routes: (
+                  <YourRoutes
+                    signedIn={myGoControls.signedIn}
+                    kept={{ shown: keepShown || anyKept(), version: keptVersion, onOpen: openKept, onSay: announce }}
+                    myRoutes={{ ...{ version: myRoutesVersion, onOpen: openSaved, onExport: exportSaved, announce, sharedLinks: mode === "plan", onSharedChange: forgetSharedLine,
+                      // The saved route on screen follows a rename, and is forgotten once deleted (the next save is new).
+                      onRenamed: (id: number, name: string) => {
+                        openSavedRoute.current = afterRename(openSavedRoute.current, id, name);
+                      },
+                      onDeleted: (id: number) => {
+                        openSavedRoute.current = afterDelete(openSavedRoute.current, id);
+                      },
+                    }, versions: mode !== "go" }}
+                  />
+                ),
                 // Save route, then Share (the owner, 2026-10-17: "Basically you save then you share"), for the route shown
                 // or the file opened.
                 shareControls:
@@ -4296,20 +4342,26 @@ export function App() {
             <SettingsSheet
               {...{
                 bigText: { on: bigText, onChange: setBigText },
-                nav: sheetNav, settingsHeadingRef, ridePrefs, changeRidePrefs, keepShown, keptVersion, openKept, announce,
+                // The rider and bike weight (OWNER-DECISIONS 313-318), in Settings (the owner, 2026-10-18).
+                weight: {
+                  saved: weight,
+                  remembered: weightRemembered,
+                  split: defaultSplit(dials.carrying),
+                  onSave: (next: StoredWeight, remember: boolean) => {
+                    weightStore.current?.save(next, remember);
+                    setWeightRemembered(remember && (weightStore.current?.remembered() ?? false));
+                    setWeight(next);
+                  },
+                  onClear: () => {
+                    weightStore.current?.clear();
+                    setWeightRemembered(false);
+                    setWeight(null);
+                  },
+                },
+                nav: sheetNav, settingsHeadingRef, ridePrefs, changeRidePrefs, announce,
                 linkNote, accessMode, toggleAccessMode, mode, myGo: myGoControls, menu,
                 announcements: { level: announceLevel(announceChoice, mode), choose: chooseAnnounce },
                 signInAvailable: me.sign_in,
-                // Shared links are managed in Plan only (lib/sharedRoutes.ts listSharedLinks).
-                myRoutes: { version: myRoutesVersion, onOpen: openSaved, onExport: exportSaved, announce, sharedLinks: mode === "plan", onSharedChange: forgetSharedLine,
-                  // The saved route on screen follows a rename, and is forgotten once deleted (the next save is new).
-                  onRenamed: (id: number, name: string) => {
-                    openSavedRoute.current = afterRename(openSavedRoute.current, id, name);
-                  },
-                  onDeleted: (id: number) => {
-                    openSavedRoute.current = afterDelete(openSavedRoute.current, id);
-                  },
-                },
               }}
             />
             <NearestSheet nav={sheetNav}>

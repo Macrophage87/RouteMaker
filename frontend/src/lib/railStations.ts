@@ -421,17 +421,36 @@ export interface EntranceFeatureProps {
   id: string;
   name: string;
 }
+/** A badge beside a station: a WMATA alert names it, or an elevator there is out (railClosures.ts). */
+export interface BadgeFeatureProps {
+  kind: "badge";
+  id: string;
+  name: string;
+  icon: string;
+  /** Pixels from the station's centre: the alert up and right, the elevator up and left. */
+  offset: [number, number];
+}
 export interface RailFeature {
   type: "Feature";
   geometry: { type: "Point"; coordinates: LonLat };
-  properties: StationFeatureProps | EntranceFeatureProps;
+  properties: StationFeatureProps | EntranceFeatureProps | BadgeFeatureProps;
 }
+
+/** Which badges a station wears (the owner, 2026-10-18). */
+export interface StationBadges {
+  alert: boolean;
+  elevatorOut: boolean;
+}
+export const ALERT_BADGE_ICON = "rail-badge-alert";
+export const ELEVATOR_OUT_ICON = "rail-badge-elevator-out";
+export const BADGE_OFFSET_PX = 10;
 
 /** What the map's rail source holds for the toggles as they are. */
 export function railFeatures(
   stations: readonly Station[],
   visibility: RailVisibility,
   isClosed: (station: Station) => boolean = () => false,
+  badges: (station: Station) => StationBadges | null = () => null,
 ): { type: "FeatureCollection"; features: RailFeature[] } {
   const features: RailFeature[] = [];
   for (const station of stations) {
@@ -452,6 +471,19 @@ export function railFeatures(
         closed,
       },
     });
+    // WMATA's badges, on an open station shown with a Metro line: a closed one is struck through instead.
+    const worn = closed || !lines.some((line) => line !== "penn") ? null : badges(station);
+    for (const [on, icon, side] of [
+      [worn?.alert, ALERT_BADGE_ICON, 1],
+      [worn?.elevatorOut, ELEVATOR_OUT_ICON, -1],
+    ] as const) {
+      if (!on) continue;
+      features.push({
+        type: "Feature",
+        geometry: { type: "Point", coordinates: station.point },
+        properties: { kind: "badge", id: station.id, name: station.name, icon, offset: [side * BADGE_OFFSET_PX, -BADGE_OFFSET_PX] },
+      });
+    }
     for (const [kind, points] of [
       ["elevator", [...station.elevators, ...station.osmElevators]],
       ["entrance", station.entrances],

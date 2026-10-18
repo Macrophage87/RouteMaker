@@ -29,6 +29,10 @@ import { SEND_LABEL, browserSendEnv, canSendToGarmin, courseTrimmed, sendCourse 
 import { cueSheetDocument, cueSheetFileName, cueSheetLine, type CueSheetKind } from "./lib/cueSheetPdf.ts";
 import { lockCancelledLine, lockPartButton, lockPartLine, lockScreenFileNames, lockScreenLine, lockSharedLine } from "./lib/lockScreen.ts";
 import { renderLockScreens } from "./app/lockScreenRender.ts";
+import { InfoButton } from "./SettingRow.tsx";
+
+/** The file line shown; the whole of it is behind its (i). */
+export const FILE_PRIVACY_SHORT = "A file you open stays in this browser.";
 
 export type GpxPanelProps = Props;
 
@@ -281,6 +285,7 @@ export function GpxPanel(props: Props) {
   };
   // What the last course download fitted to the device, said in the status region below; a new route, another
   // file type or another device clears it.
+  const [privacyOpen, setPrivacyOpen] = useState(false);
   const [courseSaid, setCourseSaid] = useState<{ text: string; count: number } | null>(null);
   // Lock-screen images still to save, one per press of the same button ("Download part 2 of 6").
   const [parts, setParts] = useState<PartQueue | null>(null);
@@ -574,7 +579,12 @@ export function GpxPanel(props: Props) {
           </p>
         </div>
       )}
-      <p className="hint">
+      {/* One line, the rest behind an (i) (the owner, 2026-10-18: "still a wall of text"). */}
+      <div className="setting-line gpx-privacy">
+        <p className="hint">{FILE_PRIVACY_SHORT}</p>
+        <InfoButton open={privacyOpen} onToggle={() => setPrivacyOpen((was) => !was)} controls="gpx-privacy-info" about="route files" />
+      </div>
+      <p className="hint setting-info" id="gpx-privacy-info" hidden={!privacyOpen}>
         A file you open is read in this browser and never uploaded (unless you save it to your account, or snap it to
         the map's streets, which sends its line alone). Opened and not
         edited, the download is that file as it came; otherwise it is the route shown, with its credits: ©
