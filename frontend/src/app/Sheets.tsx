@@ -15,6 +15,7 @@ import { filterRideGroups, rideSections, rideTypeCount, RideTypeSearch } from ".
 import { RideTypeCards } from "../lib/rideTypeCards.ts";
 import { isPlainClick, rememberPlanForSignIn, tabSession } from "../lib/signIn.ts";
 import { SignOutForm } from "../SignOut.tsx";
+import { AssistantKeySetting } from "../AssistantKey.tsx";
 import { pointName } from "../lib/summary.ts";
 import { accessibilityOn, accessibilitySource, paletteSetByAddress, setAccessibility, setHighStressLanes, setMtbTrails } from "../stressStyle.js";
 import { HighStressLanesSwitch } from "../lib/highStressLanesSwitch.ts";
@@ -579,6 +580,8 @@ export function SettingsSheet(props: SettingsSheetProps) {
           </p>
         ) : null}
         <MyGoSection controls={myGo} />
+        {/* The save-only key an AI assistant's MCP server saves routes with (the owner, 2026-10-18). */}
+        {myGo.signedIn && <AssistantKeySetting />}
       </section>
     </SheetFrame>
   );
