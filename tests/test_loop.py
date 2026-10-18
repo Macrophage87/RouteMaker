@@ -419,3 +419,117 @@ def test_the_overlap_threshold_is_below_the_search_alternates_overlap() -> None:
     # A loop's way back and a candidate's overlap are different things, both documented.
     assert refine.LOOP_OVERLAP_OK < refine.ALT_OVERLAP
     assert presets.PRESETS["mass-ride"].name == "mass-ride"
+
+
+# --- Fewer repeats (the owner, 2026-10-18) --------------------------------------------
+
+
+def legs_read(*legs: list[int], tiers: str | None = None) -> refine.Analysis:
+    """A plan's reading over these legs, each a list of ways, 100 m a piece."""
+    ways = [w for leg in legs for w in leg]
+    read = loop_read(ways, [], tiers)
+    edges, along = [], 0.0
+    for leg in legs[:-1]:
+        along += 100.0 * len(leg)
+        edges.append(along)
+    read.via_m = edges
+    return read
+
+
+A_LEG = list(range(1, 21))  # 2 km
+B_LEG = list(range(21, 41))
+
+
+class TestRepeats:
+    def test_a_leg_on_an_earlier_leg_s_ways_repeats_them(self) -> None:
+        read = legs_read(A_LEG, B_LEG, [50, *A_LEG[5:15], 51])
+        assert refine.repeated_by_leg(read) == [0.0, 0.0, 1000.0]
+
+    def test_the_ends_of_a_leg_are_how_a_stop_is_reached(self) -> None:
+        # Out along 20 and back along it: the stop's spur is not a repeat.
+        read = legs_read(A_LEG, [20, *B_LEG])
+        assert refine.repeated_by_leg(read) == [0.0, 0.0]
+
+    def test_a_repeat_may_buy_half_its_length_of_equally_calm_riding(self) -> None:
+        ctx = context(rate=10.0, maxcalm=True)
+        repeats = legs_read(A_LEG, B_LEG, A_LEG)  # 2 km ridden twice
+        assert sum(refine.repeated_by_leg(repeats)) == 1800.0
+        fresh = legs_read(A_LEG, B_LEG, list(range(100, 128)))  # 2.8 km, nothing repeated
+        assert refine.fewer_repeats_better(fresh, repeats, ctx)
+        longer = legs_read(A_LEG, B_LEG, list(range(100, 130)))  # 3 km: 1 km more for 0.9
+        assert not refine.fewer_repeats_better(longer, repeats, ctx)
+
+    def test_a_repeat_never_buys_busier_riding(self) -> None:
+        ctx = context(rate=10.0, maxcalm=True)
+        repeats = legs_read(A_LEG, B_LEG, A_LEG)
+        fresh = list(range(100, 120))
+        assert refine.fewer_repeats_better(legs_read(A_LEG, B_LEG, fresh), repeats, ctx)
+        lts4 = legs_read(A_LEG, B_LEG, fresh, tiers="1" * 40 + "4" + "1" * 19)
+        assert not refine.fewer_repeats_better(lts4, repeats, ctx)
+        lts3 = legs_read(A_LEG, B_LEG, fresh, tiers="1" * 40 + "3" + "1" * 19)
+        assert not refine.fewer_repeats_better(lts3, repeats, ctx)
+
+    def test_the_numbers_are_the_documented_ones(self) -> None:
+        assert refine.REPEAT_WEIGHT == 0.5
+        assert refine.REPEAT_STOP_M == 100.0
+
+
+def three_leg_trip(last: str = "again") -> dict:
+    summary = {"length": 2.0, "time": 100.0, "cost": 100.0}
+    return {
+        "legs": [
+            {"shape": "a", "summary": dict(summary)},
+            {"shape": "b", "summary": dict(summary)},
+            {"shape": last, "summary": dict(summary)},
+        ],
+        "summary": {"length": 6.0, "time": 300.0, "cost": 300.0},
+    }
+
+
+def three_leg_context(group: bool = False) -> refine.Context:
+    ctx = context(rate=10.0, maxcalm=True, group=group)
+    ctx.request = {
+        "locations": [
+            {"lon": BASE[0] + i * 0.02, "lat": BASE[1], "type": "break"} for i in range(4)
+        ],
+        "costing": "bicycle",
+    }
+    return ctx
+
+
+def three_leg_readings(**lasts) -> dict:
+    out = {("a", "b", "again"): legs_read(A_LEG, B_LEG, A_LEG)}
+    for name, ways in lasts.items():
+        out[("a", "b", name)] = legs_read(A_LEG, B_LEG, ways)
+    return out
+
+
+class TestFewerRepeats:
+    def test_a_leg_that_repeats_is_asked_again_and_a_fresh_way_kept(self, monkeypatch) -> None:
+        world = LoopWorld(monkeypatch, three_leg_readings(R1=list(range(100, 124))), [("R1", 2.4)])
+        trip, info = refine.fewer_repeats(three_leg_trip(), three_leg_context())
+        assert [leg["shape"] for leg in trip["legs"]] == ["a", "b", "R1"]
+        assert info["changed"] == 1 and info["was_m"] == 1800.0 and info["repeated_m"] == 0.0
+        assert world.excluded(0), "the repeated stretch is excluded"
+        locations = world.requests[0]["locations"]
+        assert [loc["lon"] for loc in locations] == pytest.approx([BASE[0] + 0.04, BASE[0] + 0.06])
+
+    def test_a_busier_way_is_not_taken(self, monkeypatch) -> None:
+        busy = legs_read(A_LEG, B_LEG, list(range(100, 120)), tiers="1" * 40 + "4" * 20)
+        readings_ = three_leg_readings()
+        readings_[("a", "b", "busy")] = busy
+        LoopWorld(monkeypatch, readings_, [("busy", 2.0), ("busy", 2.0)])
+        trip, info = refine.fewer_repeats(three_leg_trip(), three_leg_context())
+        assert [leg["shape"] for leg in trip["legs"]] == ["a", "b", "again"]
+        assert info["changed"] == 0 and info["tried"] == len(refine.REPEAT_THINNING)
+
+    def test_a_mass_ride_keeps_its_route(self, monkeypatch) -> None:
+        world = LoopWorld(monkeypatch, three_leg_readings(), [])
+        trip, info = refine.fewer_repeats(three_leg_trip(), three_leg_context(group=True))
+        assert trip == three_leg_trip() and info["tried"] == 0 and not world.requests
+
+    def test_a_plan_without_repeats_asks_nothing(self, monkeypatch) -> None:
+        readings_ = {("a", "b", "fresh"): legs_read(A_LEG, B_LEG, list(range(100, 120)))}
+        world = LoopWorld(monkeypatch, readings_, [])
+        _trip, info = refine.fewer_repeats(three_leg_trip("fresh"), three_leg_context())
+        assert info["tried"] == 0 and not world.requests
