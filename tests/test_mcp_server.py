@@ -348,10 +348,11 @@ def test_plan_route_answers_a_draft_and_keeps_nothing(tools, stand_in, tmp_path)
     assert out["metro_check"]["ok"]
     assert out["link"].startswith(stand_in + "/#p=")
     # A draft: nothing saved and no file written until the rider says so.
-    assert out["draft_id"] == "d1" and out["saved"] is False
+    assert out["draft_id"] in tools.drafts and out["saved"] is False
     assert not list(tmp_path.iterdir())
     kept = tools.call(
-        "save_route", {"draft_id": "d1", "name": "Takoma", "my_routes": False, "gpx_file": True}
+        "save_route",
+        {"draft_id": out["draft_id"], "name": "Takoma", "my_routes": False, "gpx_file": True},
     )
     gpx = Path(kept["gpx_file"])
     assert gpx.parent == tmp_path and "<trkpt" in gpx.read_text() and "saved" not in kept
@@ -547,40 +548,36 @@ def test_a_loop_whose_first_plan_fails_says_why(tools) -> None:
     assert "plan it in two halves" in out["result"]["content"][0]["text"]
 
 
-def test_a_cancelled_call_is_not_answered_and_saves_nothing(tools) -> None:
-    calls: dict = {}
-
+def test_a_cancelled_call_is_not_answered_and_saves_nothing(tools, tmp_path) -> None:
     class Saving(mcp.Api):
         def save(self, body):  # pragma: no cover - must not be reached
             raise AssertionError("saved after the client gave up")
 
     draft = tools.call("plan_route", {"points": [[-77.03, 38.9], [-77.02, 38.91]]})
     tools._api = Saving(tools.api.base, save_key="rmk_x")
-
-    class Gone(mcp.Call):
-        def __init__(self, progress=None):
-            super().__init__(progress)
-            self.cancelled.set()  # the client gave up before the save
-
-    original = mcp.Call
-    mcp.Call = Gone
-    try:
-        out = mcp.handle(
-            tools,
-            {
-                "jsonrpc": "2.0",
-                "id": 9,
-                "method": "tools/call",
-                "params": {
-                    "name": "save_route",
-                    "arguments": {"draft_id": draft["draft_id"], "name": "x"},
-                },
+    # main() registers the call before its thread starts, so a cancellation read straight
+    # after it still reaches it.
+    calls = {9: mcp.Call()}
+    mcp.handle(
+        tools,
+        {"jsonrpc": "2.0", "method": "notifications/cancelled", "params": {"requestId": 9}},
+        calls=calls,
+    )
+    out = mcp.handle(
+        tools,
+        {
+            "jsonrpc": "2.0",
+            "id": 9,
+            "method": "tools/call",
+            "params": {
+                "name": "save_route",
+                "arguments": {"draft_id": draft["draft_id"], "name": "x", "gpx_file": True},
             },
-            calls=calls,
-        )
-    finally:
-        mcp.Call = original
+        },
+        calls=calls,
+    )
     assert out is None and not calls
+    assert not list(tmp_path.glob("*.gpx"))
 
 
 def test_a_cancellation_reaches_the_call_it_names(tools) -> None:
@@ -675,7 +672,9 @@ def test_a_link_the_rider_changed_in_the_app_becomes_a_draft(tools) -> None:
     sent = StandIn.routes[-1]
     assert sent["points"] == [[-77.03, 38.9], [-77.01, 38.93], [-77.02, 38.91]]
     assert sent["preset"] == "cargo" and sent["carrying"] == "people" and sent["stress"] == 60
-    assert out["draft_id"] == "d2" and out["link"].split("#")[1] == edited.split("#")[1]
+    assert (
+        out["draft_id"] != first["draft_id"] and out["link"].split("#")[1] == edited.split("#")[1]
+    )
 
 
 def test_a_shared_route_s_link_is_opened_by_its_plan(tools, monkeypatch) -> None:
@@ -694,3 +693,59 @@ def test_a_shared_route_s_link_is_opened_by_its_plan(tools, monkeypatch) -> None
 def test_a_link_with_no_route_is_refused(tools) -> None:
     out = rpc(tools, "tools/call", {"name": "open_link", "arguments": {"link": "https://x/#at=1"}})
     assert out["result"]["isError"] and not StandIn.routes
+
+
+def test_points_added_and_removed_together_are_named_by_the_draft_s_numbers(tools) -> None:
+    first = tools.call(
+        "plan_route",
+        {
+            "points": [[-77.03, 38.90], [-77.00, 38.95], [-77.01, 38.96], [-77.02, 38.91]],
+            "via_points": [1],
+        },
+    )
+    tools.call(
+        "revise_route",
+        {
+            "draft_id": first["draft_id"],
+            "add_points": [{"point": [-77.05, 38.92], "after": 0, "via": False}],
+            "remove_points": [2],
+        },
+    )
+    sent = StandIn.routes[-1]
+    # Point 2 of the draft goes; the via point B stays a via point, one place on.
+    assert sent["points"] == [[-77.03, 38.90], [-77.05, 38.92], [-77.00, 38.95], [-77.02, 38.91]]
+    assert sent["via_points"] == [2]
+
+
+def test_a_new_ride_type_starts_from_its_own_settings(tools) -> None:
+    first = tools.call(
+        "plan_route",
+        {
+            "points": [[-77.03, 38.9], [-77.02, 38.91]],
+            "preset": "mountain-bike",
+            "mtb_level": 3,
+            "stress": 100,
+            "when": "weekend",
+        },
+    )
+    tools.call("revise_route", {"draft_id": first["draft_id"], "preset": "fast"})
+    sent = StandIn.routes[-1]
+    assert sent["preset"] == "fast" and sent["when"] == "weekend"
+    assert "mtb_level" not in sent and sent.get("stress") is None
+
+
+@pytest.mark.parametrize(
+    "fragment, stress, hills",
+    [
+        # An old (v1) link's stress moves onto the new slider, as the page's stressFromV1.
+        ("p=-77.03,38.9;-77.02,38.91&preset=trailmaxxing&stress=100", 80, None),
+        ("p=-77.03,38.9;-77.02,38.91&stress=45", 35, None),
+        # A ride type since renamed opens at the new one's own start.
+        ("p=-77.03,38.9;-77.02,38.91&preset=kids&v=2&stress=85&hills=-40", None, None),
+        ("p=-77.03,38.9;-77.02,38.91&v=2&stress=inf", None, None),
+    ],
+)
+def test_old_and_renamed_links_open_as_the_page_opens_them(fragment, stress, hills) -> None:
+    points, _, preset, options = mcp.parse_fragment(fragment)
+    assert options["stress"] == stress and options["hills"] == hills
+    assert len(points) == 2

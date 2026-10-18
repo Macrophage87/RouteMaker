@@ -28,6 +28,7 @@ import json
 import math
 import os
 import re
+import secrets
 import sys
 import threading
 import time
@@ -50,6 +51,7 @@ EARTH_RADIUS_MI = 3958.7613
 DC_CENTRE = (-77.0365, 38.8949)
 # The site's own limits (core/api.py MAX_POINTS, COVERAGE_BBOX).
 MAX_POINTS = 25
+MAX_DRAFTS = 200  # drafts kept in memory
 COVERAGE_BBOX = (-78.05, 38.2, -76.02, 39.72)
 # A long ride's plan may take the site's whole long budget (core/routing.py LONG_PLAN_BUDGET_S,
 # 50 s) after a wait for its one long slot.
@@ -447,6 +449,18 @@ def page_dials(dials: dict, sent: dict) -> dict:
     return kept
 
 
+PRESET_ALIASES = {"kids": "novice"}  # planHash.ts PRESET_ALIASES
+STRESS_DEFAULT_AT = 70  # dials.ts: the stress slider's Default
+
+
+def stress_from_v1(old: float) -> int:
+    """An old (v1) link's stress on the new slider, as planHash.ts `stressFromV1`: old x 70/90
+    up to 90, then 70 + (old - 90)."""
+    if old <= 90:
+        return round(old * STRESS_DEFAULT_AT / 90)
+    return STRESS_DEFAULT_AT + round(old - 90)
+
+
 def parse_fragment(fragment: str) -> tuple[list, list[int], str, dict]:
     """A plan link's fragment as the page reads it (planHash.ts `decodePlan`): the points, the
     via points, the ride type and POST /api/route's options."""
@@ -464,6 +478,7 @@ def parse_fragment(fragment: str) -> tuple[list, list[int], str, dict]:
             continue
         if inside_coverage((lon, lat)):
             points.append((lon, lat))
+    points = points[:MAX_POINTS]  # the page opens the first 25 too
     if len(points) < 2:
         raise ToolError("that link holds no route (it needs at least a start and an end)")
     vias = sorted(
@@ -471,19 +486,24 @@ def parse_fragment(fragment: str) -> tuple[list, list[int], str, dict]:
         for i in (one("via") or "").split(",")
         if i.isdigit() and 0 < int(i) < len(points) - 1
     )
-    preset = {"kids": "novice"}.get(one("preset") or "", one("preset") or "default")
+    # A ride type since renamed opens the new one at its own start, as the page does.
+    renamed = one("preset") in PRESET_ALIASES
+    preset = PRESET_ALIASES.get(one("preset") or "", one("preset") or "default")
     if preset not in PRESETS:
         preset = "default"
 
     def number(key):
         try:
             return int(float(one(key))) if one(key) is not None else None
-        except ValueError:
+        except (ValueError, OverflowError):
             return None
 
+    stress = None if renamed else number("stress")
+    if stress is not None and one("v") != "2":
+        stress = stress_from_v1(stress)
     options = {
-        "stress": number("stress") if one("v") == "2" else None,
-        "hills": number("hills"),
+        "stress": stress,
+        "hills": None if renamed else number("hills"),
         "when": one("when")
         if one("when") in ("weekend", "weekday_rush", "weekday_offpeak", "night")
         else None,
@@ -1037,9 +1057,17 @@ TOOLS = [
                 "remove_points": {
                     "type": "array",
                     "items": {"type": "integer"},
-                    "description": "Indices of the draft's points to drop.",
+                    "description": (
+                        "Indices of the draft's points to drop (the same numbering as"
+                        " move_points and add_points' after, before any change)."
+                    ),
                 },
-                "via_points": {"type": "array", "items": {"type": "integer"}},
+                "via_points": {
+                    "type": "array",
+                    "items": {"type": "integer"},
+                    "description": "Which points of the revised route are via points, numbered"
+                    " after the additions and removals.",
+                },
                 "loop": {"type": "boolean"},
                 "fix_metro_rounds": {"type": "integer", "minimum": 0, "maximum": 4},
                 **{
@@ -1111,7 +1139,6 @@ class Server:
         # revisions to make and only save it ... when committed"), by id. Held in memory only:
         # nothing reaches the site until save_route.
         self.drafts: dict[str, Draft] = {}
-        self._next_draft = 1
 
     @property
     def api(self) -> Api:
@@ -1196,9 +1223,11 @@ class Server:
     ) -> dict:
         """Keep the plan as a draft and describe it: nothing is saved or written."""
         with self._lock:
-            draft_id = f"d{self._next_draft}"
-            self._next_draft += 1
+            # Random, so an id from before a restart finds nothing rather than another route.
+            draft_id = f"d{secrets.token_hex(4)}"
             self.drafts[draft_id] = Draft(plan, dict(options), limit, name)
+            while len(self.drafts) > MAX_DRAFTS:  # the oldest go first
+                del self.drafts[next(iter(self.drafts))]
         fragment = plan_fragment(plan.points, plan.vias, plan.preset, self._dials(plan), plan.sent)
         out = {
             "draft_id": draft_id,
@@ -1254,6 +1283,7 @@ class Server:
         fragment = plan_fragment(plan.points, plan.vias, plan.preset, dials, plan.sent)
         out: dict = {"draft_id": args["draft_id"], "name": name}
         notes: list[str] = []
+        call.check()
         if args.get("gpx_file"):
             try:
                 out["gpx_file"] = str(write_gpx(name, plan.line, self.out_dir))
@@ -1300,15 +1330,20 @@ class Server:
         link = str(args["link"]).strip()
         url = urllib.parse.urlparse(link)
         fragment = url.fragment
-        shared = re.match(r"^/s/([A-Za-z0-9_-]{4,64})$", url.path or "")
+        shared = re.match(r"^/s/([A-Za-z0-9_-]{4,64})/?$", url.path or "")
         shared_id = shared.group(1) if shared else None
         if not shared_id:
             named = urllib.parse.parse_qs(fragment).get("route")
             shared_id = named[0] if named else None
-        if shared_id and "p=" not in fragment:
+        if not shared_id:
+            named = urllib.parse.parse_qs(url.query).get("route")
+            shared_id = named[0] if named else None
+        has_points = "p" in urllib.parse.parse_qs(fragment)
+        if shared_id and not has_points:
             fragment = self.api.shared_fragment(shared_id)
-        if not fragment and "p=" in link:
-            fragment = link[link.index("p=") :]
+        if not fragment:
+            match = re.search(r"(?:^|[#&?])(p=.*)$", link)
+            fragment = match.group(1) if match else ""
         points, vias, preset, options = parse_fragment(fragment)
         limit = args.get("max_miles_from_metro")
         plan, notes = self._plan_and_fix(call, points, vias, preset, options, limit, 0)
@@ -1326,30 +1361,43 @@ class Server:
         if args.get("points"):
             points = [as_point(p, self.api, self.stations)[0] for p in args["points"]]
             vias = set()
+        # Moves, additions and removals all name points by their place in the draft (or in
+        # `points` when given): each point keeps its first index until the new list is built.
+        rows = [[i, point, i in vias] for i, point in enumerate(points)]  # index, point, via
+        count = len(rows)
         for move in args.get("move_points") or []:
             index = int(move["index"])
-            if not 0 <= index < len(points):
+            if not 0 <= index < count:
                 raise ToolError(f"no point {index} to move")
-            points[index] = as_point(move["to"], self.api, self.stations)[0]
-        for add in sorted(args.get("add_points") or [], key=lambda a: -int(a["after"])):
-            after = int(add["after"])
-            if not 0 <= after < len(points):
-                raise ToolError(f"no point {after} to add after")
-            points.insert(after + 1, as_point(add["point"], self.api, self.stations)[0])
-            vias = {i + 1 if i > after else i for i in vias}
-            if add.get("via", True):
-                vias.add(after + 1)
-        for index in sorted({int(i) for i in args.get("remove_points") or []}, reverse=True):
-            if not 0 <= index < len(points):
+            rows[index][1] = as_point(move["to"], self.api, self.stations)[0]
+        removed = {int(i) for i in args.get("remove_points") or []}
+        for index in removed:
+            if not 0 <= index < count:
                 raise ToolError(f"no point {index} to remove")
-            del points[index]
-            vias = {i - 1 if i > index else i for i in vias if i != index}
+        added: dict[int, list] = {}
+        for add in args.get("add_points") or []:
+            after = int(add["after"])
+            if not 0 <= after < count:
+                raise ToolError(f"no point {after} to add after")
+            point = as_point(add["point"], self.api, self.stations)[0]
+            added.setdefault(after, []).append([None, point, add.get("via", True)])
+        built = []
+        for row in rows:
+            if row[0] not in removed:
+                built.append(row)
+            built.extend(added.get(row[0], []))
+        points = [row[1] for row in built]
+        vias = {i for i, row in enumerate(built) if row[2]}
         if args.get("via_points") is not None:
             vias = {int(i) for i in args["via_points"]}
         # A via point is never the first or the last.
         vias = sorted(i for i in vias if 0 < i < len(points) - 1)
         preset = args.get("preset") or plan.preset
         options = dict(draft.options)
+        if preset != plan.preset:
+            # A new ride type starts from its own settings, as in the app; keep the shape of the
+            # ride (a loop, the ride time) and what this call sets.
+            options = {k: v for k, v in options.items() if k in ("loop", "when")}
         options.update({k: v for k, v in self._options(args).items() if k in args})
         if "target_miles" in args:
             options["target_distance_m"] = self._options(args).get("target_distance_m")
@@ -1548,7 +1596,8 @@ def handle(server: Server, message, send=_send, calls: dict | None = None) -> di
                     }
                 )
 
-        call = Call(progress)
+        call = calls.get(msg_id) or Call()  # main() registers it first, so no cancel is missed
+        call.progress = progress
         calls[msg_id] = call
         try:
             payload = server.call(name, params.get("arguments") or {}, call)
@@ -1557,12 +1606,14 @@ def handle(server: Server, message, send=_send, calls: dict | None = None) -> di
                 "structuredContent": payload,
                 "isError": False,
             }
+        except Cancelled:
+            return None  # the protocol: a cancelled request gets no answer
         except ToolError as error:
             result = {"content": [{"type": "text", "text": str(error)}], "isError": True}
         finally:
             calls.pop(msg_id, None)
-        if call.cancelled.is_set():
-            return None
+        # A call cancelled too late to stop is answered anyway: the client may drop it, but
+        # if it reads it, it knows a save went through and need not ask again.
     else:
         return _error(msg_id, -32601, f"method not found: {method}")
     return {"jsonrpc": "2.0", "id": msg_id, "result": result}
@@ -1595,6 +1646,8 @@ def main() -> None:
             _send(_error(None, -32700, "parse error"))
             continue
         if isinstance(message, dict) and message.get("method") == "tools/call":
+            if message.get("id") is not None:
+                calls[message["id"]] = Call()  # before a cancellation for it can be read
             worker = threading.Thread(target=_answer, args=(server, message, calls), daemon=True)
             worker.start()
             workers.append(worker)
