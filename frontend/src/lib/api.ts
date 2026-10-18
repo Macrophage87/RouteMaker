@@ -472,7 +472,10 @@ export interface TransitStep {
   /** Where a transit step's times are from: "scheduled" now; "live" from v0.7. Null off transit. */
   source?: TimeSource | null;
   with_bike: boolean;
-  /** A Metro step's next trains its way now, from WMATA: "Live: Red Line toward Shady Grove in 3 min, 11 min." */
+  /**
+   * A Metro step's next trains its way now, from WMATA: "Live: Red Line toward Shady Grove in 3 min, 11 min."; a
+   * Metrobus step's next buses (v0.9.0): "Live: bus 52 in 4 min, 13 min."
+   */
   live?: { text: string; minutes: number[]; source: "live" } | null;
   /** This step is the route's own line (drawn as the route); its coordinates are empty. */
   route_line: boolean;
@@ -543,6 +546,15 @@ export interface ClosedStation {
   lat: number;
   /** "no MARC weekend service". */
   reason: string;
+}
+
+/** An open Metro station a WMATA incident names, or with an elevator out (GET /api/transit/closures). */
+export interface StationAlert {
+  name: string;
+  lon: number;
+  lat: number;
+  alert: boolean;
+  elevator_out: boolean;
 }
 
 /** One line's times at a station now (GET /api/transit/station-times; core.transit.station_times). */
@@ -618,6 +630,24 @@ export interface TransitPlan {
    * avoidance), rail incidents on the lines used, the credit and when it was read. Null with none.
    */
   live?: TransitLive | null;
+}
+
+/**
+ * Where the next train or bus is for a rider waiting to board (GET /api/transit/next-vehicle, v0.9.0;
+ * lib/nextVehicle.ts), credited "Data: WMATA".
+ */
+export interface NextVehicle {
+  kind: "train" | "bus";
+  /** "Next Red Line train is at Dupont Circle, 2 stations away."; "Bus 52 is 0.8 mi away (1.3 km), 3 stops back." */
+  text: string;
+  /** The map mark's name. */
+  label: string;
+  point: LonLat;
+  /** Stations (or stops) before the rider's; null where not known. Said again only when it changes. */
+  away: number | null;
+  credit: string;
+  source: "live";
+  as_of: string;
 }
 
 export interface TransitLive {

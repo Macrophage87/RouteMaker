@@ -186,6 +186,8 @@ import {
 } from "./lib/rideDock.ts";
 import { Icon } from "./Icon.tsx";
 import { DepartureTimer } from "./DepartureTimer.tsx";
+import { NextVehicleLine } from "./NextVehicleLine.tsx";
+import type { VehicleMark } from "./lib/nextVehicle.ts";
 import { SettingRow, SettingSelect } from "./SettingRow.tsx";
 import { shortLabel } from "./lib/shortLabel.ts";
 import {
@@ -300,6 +302,8 @@ export interface RideView {
   /** The other line (v0.8.2): the standard way through a marked closure, or its detour while on the standard way. */
   other?: LonLat[] | null;
   rider: { point: LonLat; headingDeg: number | null; accuracyM: number } | null;
+  /** Where the next train or bus is while the rider waits at a Metro or Metrobus boarding (v0.9.0). */
+  vehicle?: VehicleMark | null;
 }
 
 function arrowFor(cue: Cue | null): "left" | "right" | "bear_left" | "bear_right" | "straight" | "stop" | "end" | "warn" {
@@ -1277,9 +1281,16 @@ export function RideMode({
 
   // The map's view of the ride.
   const fix = ride.fix;
+  // Where the next train or bus is, while the rider waits at the boarding (NextVehicleLine).
+  const [vehicle, setVehicle] = useState<VehicleMark | null>(null);
   useEffect(() => {
-    onView({ route, other: other?.geometry.coordinates ?? null, rider: fix ? { point: fix.point, headingDeg: fix.headingDeg, accuracyM: fix.accuracyM } : null });
-  }, [route, other, fix, onView]);
+    onView({
+      route,
+      other: other?.geometry.coordinates ?? null,
+      rider: fix ? { point: fix.point, headingDeg: fix.headingDeg, accuracyM: fix.accuracyM } : null,
+      vehicle,
+    });
+  }, [route, other, fix, onView, vehicle]);
 
   // The map along the route, kept for dead spots (lib/corridor.ts, plan section 6): fetched at Start ride
   // and again for a re-plan's new route (only the tiles the first did not cover), cleared at End ride.
@@ -1670,6 +1681,8 @@ export function RideMode({
             <p className="cue-text">{trip?.finish?.shown ?? cueSpoken(model.cues[model.cues.length - 1], "arrive", 0)}</p>
             {/* The boarding's departure, its countdown and milestones as in the trip's panel (said through the ride's outputs). */}
             {trip?.departure && <DepartureTimer departure={trip.departure} announce={notify} />}
+            {/* Where the next Metro train or Metrobus is while waiting there (v0.9.0), its mark on the map. */}
+            <NextVehicleLine ask={trip?.boarding ?? null} waiting={ride.arrived} announce={notify} onMark={setVehicle} />
           </>
         ) : walking && approach ? (
           <p className="cue-text">{approachWords(approach, ride.fix?.point ?? null).shown}</p>
