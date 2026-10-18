@@ -128,7 +128,7 @@ test("App hands the toggle to the search, the map, the points list and the GPX",
   // Plan's From, To and Add a stop (Plan streamline, 2026-10-17).
   assert.match(app, /<PlaceSearch\s+key=\{variant\}\s+variant=\{variant\}\s+pointCount=\{points\.length\}\s+loop=\{loopVias\}/);
   assert.match(app, /<MapView\s+points=\{riding \|\| reviewing \? NO_POINTS : points\}\s+loopVias=\{loopVias\}/);
-  assert.match(app, /rows=\{pointRows\(points, namer, loopVias, VIA_MARKS\.isVia\)\}/);
+  assert.match(app, /rows=\{pointRows\(points, names, loopVias, VIA_MARKS\.isVia\)\}/);
 });
 
 test("App: the GPX names the route shown as it was planned, not as the toggle is now", () => {

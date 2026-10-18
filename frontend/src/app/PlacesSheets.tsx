@@ -8,7 +8,6 @@ import { setSource, tapCard, useMap } from "./mapOverlay.ts";
 import { Icon } from "../Icon.tsx";
 import { SheetFrame } from "../Sidebar.tsx";
 import { placeLetter } from "../lib/letteredPlaces.ts";
-import { formatDistance } from "../lib/format.ts";
 import {
   REPAIR_ICON_ID,
   REPAIR_LAYER,
@@ -16,6 +15,7 @@ import {
   REPAIR_SOURCE_ID,
   repairDetails,
   repairGeoJson,
+  repairHowFar,
   repairIcon,
   repairLayer,
   repairTitle,
@@ -38,6 +38,7 @@ import {
   type SightResult,
 } from "../lib/places.ts";
 import { WATER_MIN_ZOOM } from "../lib/waterRestrooms.ts";
+import { FOOD_LAYER, FOOD_SOURCE_ID, foodGeoJson, foodHoursText, foodHowFar, foodKindText, foodLayer, type FoodResult } from "../lib/food.ts";
 import { ROUTE_BOTTOM_LAYER } from "../lib/railLayer.ts";
 import { SHEET_TITLES, type PanelView } from "../lib/sidebar.ts";
 import type { SheetNav } from "./Sheets.tsx";
@@ -60,7 +61,7 @@ export function RepairSheet({ nav, status, items, at, onRide }: { nav: SheetNav;
                   type="button"
                   className="secondary place-row"
                   onClick={() => onRide(item)}
-                  aria-label={`${placeLetter(i)}: Ride to ${repairTitle(item.place)}, ${formatDistance(item.metres)}`}
+                  aria-label={`${placeLetter(i)}: Ride to ${repairTitle(item.place)}, ${repairHowFar(item)}`}
                   aria-describedby={`${rowId}-${i}`}
                 >
                   <Icon name={item.place.kind === "stand" ? "wrench" : "shop"} size={18} />
@@ -68,7 +69,7 @@ export function RepairSheet({ nav, status, items, at, onRide }: { nav: SheetNav;
                     <strong>
                       {placeLetter(i)}. {repairTitle(item.place)}
                     </strong>{" "}
-                    {formatDistance(item.metres)}. <span id={`${rowId}-${i}`}>{repairDetails(item.place, at).join(" ")}</span>
+                    {repairHowFar(item)}. <span id={`${rowId}-${i}`}>{repairDetails(item.place, at).join(" ")}</span>
                   </span>
                 </button>
               </li>
@@ -240,6 +241,34 @@ export function PlacesOverlay({ getMap, places, on }: { getMap: () => MapLibreMa
       });
     },
     [places, on],
+  );
+  return null;
+}
+
+/** Every food place a search found, as dots under the lettered pins, while the Food sheet is open. */
+export function FoodOverlay({ getMap, results, on }: { getMap: () => MapLibreMap | null; results: readonly FoodResult[] | null; on: boolean }) {
+  useMap(
+    getMap,
+    (map) => {
+      if (!on || !results || results.length === 0) {
+        if (map.getLayer(FOOD_LAYER)) map.setLayoutProperty(FOOD_LAYER, "visibility", "none");
+        return;
+      }
+      setSource(map, FOOD_SOURCE_ID, foodGeoJson(results));
+      if (!map.getLayer(FOOD_LAYER)) map.addLayer(foodLayer() as never, map.getLayer(ROUTE_BOTTOM_LAYER) ? ROUTE_BOTTOM_LAYER : undefined);
+      map.setLayoutProperty(FOOD_LAYER, "visibility", "visible");
+      const byId = new Map(results.map((r) => [r.place.id, r]));
+      return tapCard(map, FOOD_LAYER, (id) => {
+        const r = byId.get(id);
+        if (!r) return null;
+        const hours = foodHoursText(r.place);
+        return [r.place.name, `${foodKindText(r.place)}.`, foodHowFar(r), ...(hours ? [hours] : []), "From OpenStreetMap."];
+      }, (id) => {
+        const place = byId.get(id)?.place;
+        return place?.website ? { href: place.website, text: "Website", label: `Website: ${place.name} (opens in a new tab)` } : null;
+      });
+    },
+    [results, on],
   );
   return null;
 }

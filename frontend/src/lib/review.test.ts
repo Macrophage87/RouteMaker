@@ -102,6 +102,8 @@ test("the lists, Rebuild changes first, and the ruling buttons' names", () => {
   assert.equal(decisionLabel("rebuild", "reject"), "Keep old");
   assert.equal(decisionLabel("rebuild", "set"), "Set LTS");
   assert.equal(decisionLabel("works_closure", "reject"), "Reopen");
+  assert.equal(decisionLabel("dc_no_bike", "accept"), "Keep closed");
+  assert.equal(decisionLabel("dc_no_bike", "reject"), "Reopen");
   assert.equal(decisionLabel("disagreement", "accept"), "Keep current");
   // A road's own buttons name the level each keeps; the batch's keep the bare words.
   const rebuild = { queue: "rebuild" as const, old_step: 2, old_closed: false, new_step: 4, new_closed: false };
@@ -215,6 +217,8 @@ test("each list's map style is its own colour and its own line, from the colour-
   // The two solid lines are the palette's most distinct pair; every other list is told by its dashes as well.
   const patterns = QUEUES.map((q) => `${QUEUE_STYLE[q].colourName} ${QUEUE_STYLE[q].pattern}`);
   assert.equal(new Set(patterns).size, QUEUES.length);
+  // Yellow alone sits on a dark halo, so it stands off the light basemap.
+  assert.deepEqual(QUEUES.filter((q) => QUEUE_STYLE[q].halo), ["dc_no_bike"]);
 });
 
 test("the map is asked for the view alone, at its zoom, and the road's facts with the new build's for a rebuild", async () => {

@@ -142,6 +142,10 @@ COVERAGE = Limit(scope="coverage", requests=60, window_s=60)
 # each cached by the browser for a minute, so PLAN's figure for unauthenticated paths.
 STATION_TIMES = Limit(scope="station-times", requests=60, window_s=60)
 
+# Where the next train or bus is (GET /api/transit/next-vehicle, v0.9.0): asked about every 25 s
+# by a page whose rider is waiting at a boarding, so a few a minute; room for a second tab.
+NEXT_VEHICLE = Limit(scope="next-vehicle", requests=12, window_s=60)
+
 # Place search (GET /api/geocode), signed out by the owner's decision of
 # 2026-09-27. PLAN.md:65's figures for the geocoding proxy: "roughly 5 requests
 # per second burst and 60 per minute", "since ... a typeahead box does not need

@@ -154,11 +154,11 @@ test("the status line says how many, of what, from where, and how they were meas
   });
   assert.equal(
     foundSaid("water", "location", byBike),
-    "The 3 nearest water by bike from your location, nearest first. Nearest: Place a, 0.6 mi (1.0 km) by bike, about 2 min.",
+    "The 3 nearest water by bike from your location, nearest first.",
   );
   assert.equal(
     foundSaid("metro", "centre", byBike.slice(0, 1)),
-    "The nearest Metro station by bike from the map's center. Nearest: Place a, 0.6 mi (1.0 km) by bike, about 2 min.",
+    "The nearest Metro station by bike from the map's center.",
   );
   const straight = byBike.map((r) => ({ ...r, byBike: false, timeS: null }));
   assert.ok(foundSaid("restroom", "start", straight).endsWith(STRAIGHT_LINE_NOTE));
@@ -233,7 +233,11 @@ test("the panel: a fold with where from, three buttons and a status line that is
   assert.ok(html.startsWith('<details class="fold nearest"><summary>' + NEAREST_SUMMARY));
   assert.match(html, /<legend>Search from<\/legend>/);
   assert.match(html, /type="radio" name="nearest-from" checked="" value="location"/);
-  for (const label of ["Nearest water", "Nearest restroom", "Nearest Metro"]) assert.ok(html.includes(`>${label}</button>`), label);
+  // Short labels, first (the owner, 2026-10-18); each button's name still says "Nearest".
+  for (const [label, name] of [["Water", "Nearest water"], ["Restroom", "Nearest restroom"], ["Metro", "Nearest Metro"]]) {
+    assert.ok(html.includes(`aria-label="${name}"`) && html.includes(`>${label}</button>`), label);
+  }
+  assert.ok(html.indexOf("nearest-kinds") < html.indexOf("<legend>Search from</legend>"), "the choices before where from");
   assert.match(html, /<p class="hint nearest-status" role="status"><\/p>/);
   assert.ok(!html.includes("<ol"));
   assert.ok(!html.includes("aria-disabled"));
@@ -248,6 +252,15 @@ test("the list: each place in words with Ride here, and Add as stop for water in
   assert.equal((html.match(/>Add as stop</g) ?? []).length, 3);
   assert.ok(html.includes('aria-label="Ride here: Place a"'));
   assert.ok(html.includes(WATER_CAUTION));
+  // Each row is the place and how far; its details are behind a fold (the owner, 2026-10-18: "a wall of text").
+  assert.ok(!html.includes("nearest-details"), "no details, no fold");
+  const detailed = items.map((r) => ({ ...r, place: { ...r.place, details: ["Free.", "Wheelchair accessible."] } }));
+  const withDetails = renderToStaticMarkup(createElement(NearestFinder, props({ list: { kind: "restroom", items: detailed } })));
+  assert.match(
+    withDetails,
+    /Place a: 0\.3 mi \(0\.5 km\) by bike, about 1 min\.<details class="nearest-details"><summary>Details<span class="visually-hidden"> of Place a<\/span><\/summary><p class="hint">Free\. Wheelchair accessible\.<\/p><\/details>/,
+  );
+  assert.match(html, /<details class="nearest-help"><summary>How this works<\/summary>/);
   const noPlan = renderToStaticMarkup(createElement(NearestFinder, props({ list: { kind: "water", items } })));
   assert.ok(!noPlan.includes(">Add as stop<"), "no plan, nothing to add a stop to");
   const metro = renderToStaticMarkup(createElement(NearestFinder, props({ list: { kind: "metro", items }, canAddStop: true })));
@@ -388,4 +401,15 @@ test("Ride mode wires the detour: the ride's fix, the ride's settings without th
   assert.match(ride, /whereRef\.current\?\.focus\(\);\s*sayDetour\(`Finding a way to/);
   const app = appSource();
   assert.match(app, /water=\{ensureWater\}/);
+});
+
+test("with a route shown: the least detour off it, no router call, in words (the owner, 2026-10-18)", async () => {
+  const d = deps({ route: { line: [HERE, [HERE[0] + 0.05, HERE[1]]], speedMps: 4 } });
+  const outcome = await searchNearest(d);
+  assert.equal(d.asked.length, 0, "the router is not asked");
+  const items = outcome.found!.items;
+  assert.ok(items.length > 0 && items.every((i) => i.detour));
+  for (let i = 1; i < items.length; i += 1) assert.ok(items[i - 1].detour!.extraM <= items[i].detour!.extraM);
+  assert.match(outcome.said, /least detour off your route/);
+  assert.match(howFar(items[0]), /^(on your route at|\+[\d.]+ mi \([\d.]+ km\) detour, about \d+ min, turning off at)/);
 });
