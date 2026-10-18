@@ -258,7 +258,8 @@ Such an APK names the server: keep it off public places. `ROUTEMAKER_APP_ID` set
   address into Capacitor's config, registers the plugin below), `SiteWebViewClient.java` (the basic-auth
   sign-in box, `res/layout/dialog_site_login.xml`, and which page is on top), `GuardedBridge.java`
   (the native bridge for the site only) and `RideCompatPlugin.java`;
-  `assets/routemaker-compat.js`, `res/drawable/ic_ride.xml` (the notifications' icon), the manifest and
+  `assets/routemaker-compat.js`, `res/drawable/ic_ride.xml` (the notifications' icon), the launcher icons
+  and launch screens (drawn from the site's favicon by `scripts/make_app_icons.py`), the manifest and
   `app/build.gradle` (store id, version and release signing from the environment).
 - `test/`: `npm test` (node's test runner): the config, the manifest, the workflow (its triggers, no
   repository variables, no address), the first-launch screen's labels, the bridge guard, and the
