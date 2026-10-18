@@ -25,7 +25,7 @@ import { PlaceSearch } from "../PlaceSearch.tsx";
 import { approximateHint, type Fix, type locateSupport } from "../lib/geolocation.ts";
 import type { usePlaceNames } from "../usePlaceNames.ts";
 import { pointRows, type Place, type PlaceChoice } from "../lib/geocode.ts";
-import { VIA_MARKS } from "../lib/pointKinds.ts";
+import { VIA_MARKS, namePoints } from "../lib/pointKinds.ts";
 import { HighContrastShortcut, PlannerZoomNotice, RideSettings } from "../Sidebar.tsx";
 import { Icon } from "../Icon.tsx";
 import { PLANNER_EXTRAS, searchLede } from "../lib/sidebar.ts";
@@ -60,8 +60,8 @@ export interface PointsSectionProps {
   /** The points that are the rider's location (App's fromHere): named "Your location" in the list (edit-route redesign). */
   located: readonly LonLat[];
   removeAt: (index: number) => void;
-  /** A point dragged (or moved by the arrows) to another place in the list: one edit (App.tsx reorderPoint). */
-  reorderPoint: (from: number, to: number) => void;
+  /** A stop (point `from`) dragged, or moved by a key, to stop `to`'s place: one edit (App.tsx reorderPoint). */
+  reorderPoint: (from: number, to: number, by: "drag" | "key") => void;
   pointWarnings: (string | null)[];
   removeRefs: RefObject<Array<HTMLButtonElement | null>>;
   preset: PresetId;
@@ -274,8 +274,10 @@ type PointBoxesProps = Pick<
  */
 function PointBoxes(props: PointBoxesProps) {
   const { pointsSearchRef, points, loopVias, geoGate, searchBias, pickPlace, locateReady, locating, locateNote, useMyLocation, accessMode, namer, located, removeAt, reorderPoint, pointWarnings, removeRefs, orderShown, bestOrder, orderFocused, ordering } = props;
-  // Each row's grip (lib/pointMover.ts): drag, the arrows, or a press for Up and Down.
-  const mover = usePointMover(points.length, reorderPoint);
+  // Each stop's grip (lib/pointMover.ts): drag, the arrows, or a press for Up and Down. Only the stops move, as with
+  // Best order: the start and the end stay, and a via point goes with the stop it leads to (App.tsx reorderPoint).
+  const slots = namePoints(points, VIA_MARKS.isVia, loopVias).flatMap((n, i) => (n.role === "stop" ? [i] : []));
+  const mover = usePointMover(slots, (from, to, by) => reorderPoint(slots[from], slots[to], by), points);
   // A point that is the rider's location is named so, as Go's route card names it, not by its coordinates.
   const names = {
     name: (point: LonLat) => (located.includes(point) ? { name: YOUR_LOCATION, label: YOUR_LOCATION } : namer.name(point)),
@@ -363,6 +365,7 @@ function PointBoxes(props: PointBoxesProps) {
           onRemove={removeAt}
           warnings={pointWarnings}
           mover={mover}
+          slots={slots}
           removeRef={(index, button) => {
             removeRefs.current[index] = button;
           }}

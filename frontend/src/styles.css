@@ -7100,11 +7100,21 @@ details.fold > summary .icon {
   border-radius: 6px;
 }
 
-.points .point-steps {
-  display: inline-flex;
+.points .point-grip-space {
+  flex: none;
+  width: 34px;
+}
+
+/* Up, Down and Done on a line of their own under the stop, so its place keeps its width on a narrow phone. */
+.points li.point-moving {
   flex-wrap: wrap;
-  gap: 4px;
-  margin-left: auto;
+}
+
+.points .point-steps {
+  display: flex;
+  flex: 1 0 100%;
+  gap: 16px;
+  padding-left: 34px;
 }
 
 .points .point-steps button {

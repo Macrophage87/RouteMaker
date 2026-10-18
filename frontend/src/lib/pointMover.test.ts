@@ -8,6 +8,8 @@ import { dropIndex, reorder, rowShift, type PointMover } from "./pointMover.ts";
 import { MOVE_HINT, PointsList } from "./pointsList.ts";
 import type { PointRow } from "./geocode.ts";
 import { appSource } from "../testSupport/appSource.mjs";
+import { ViaMarks, stopsOnly, withVias } from "./pointKinds.ts";
+import type { LonLat } from "./geo.ts";
 
 const ROWS: PointRow[] = [
   { role: "Start", place: { name: "Union Market", label: "Union Market" }, coords: "38.9080, -76.9970" },
@@ -26,10 +28,6 @@ function mover(over: Partial<PointMover> = {}): PointMover {
     done: () => {},
     ...over,
   };
-}
-
-function render(rows: readonly PointRow[], m: PointMover | null): string {
-  return renderToStaticMarkup(createElement(PointsList, { rows, onRemove: () => {}, removeRef: () => {}, mover: m }));
 }
 
 test("reorder takes the item out and puts it back at its new place, the same objects, the list untouched", () => {
@@ -52,51 +50,70 @@ test("a dragged row lands past every other row whose middle it has passed", () =
   assert.equal(dropIndex(rows, 3, 60), 1);
 });
 
-test("while a row is dragged, it follows the pointer and the rows it passes slide aside by its height", () => {
-  const down = { from: 1, over: 3, dy: 110, height: 50 };
-  assert.deepEqual([0, 1, 2, 3].map((i) => rowShift(i, down)), [0, 110, -50, -50]);
-  const up = { from: 3, over: 1, dy: -100, height: 50 };
-  assert.deepEqual([0, 1, 2, 3].map((i) => rowShift(i, up)), [0, 50, 50, -100]);
+test("while a stop is dragged, it follows the pointer and the stops it passes slide to their neighbour's place", () => {
+  // Stops at 0, 60, 100 and 150 (a via point's row between the first two): each passed stop takes the next one's top.
+  const tops = [0, 60, 100, 150];
+  const down = { from: 1, over: 3, dy: 95, tops };
+  assert.deepEqual([0, 1, 2, 3].map((i) => rowShift(i, down)), [0, 95, -40, -50]);
+  const up = { from: 3, over: 1, dy: -100, tops };
+  assert.deepEqual([0, 1, 2, 3].map((i) => rowShift(i, up)), [0, 40, 50, -100]);
 });
 
-test("each row has a grip named for its point, described by the three ways, with three points or more", () => {
-  const html = render(ROWS, mover());
+const STOPS = [1, 2];
+
+function list(m: PointMover | null, slots: readonly number[] = STOPS, rows: readonly PointRow[] = ROWS): string {
+  return renderToStaticMarkup(createElement(PointsList, { rows, onRemove: () => {}, removeRef: () => {}, mover: m, slots }));
+}
+
+test("only the stops have a grip, named for the stop and described in a few words, with two stops or more", () => {
+  const html = list(mover());
   assert.deepEqual([...html.matchAll(/<button type="button" class="point-grip" aria-label="([^"]*)" aria-describedby="point-move-hint" aria-expanded="false"/g)].map((m) => m[1]), [
-    "Move Start",
     "Move Stop 1",
     "Move Stop 2",
-    "Move End",
   ]);
+  // The start and the end keep their place: a blank the grip's width, so the roles line up.
+  assert.equal((html.match(/<span class="point-grip-space" aria-hidden="true"><\/span>/g) ?? []).length, 2);
   assert.match(html, new RegExp(`<span id="point-move-hint" hidden="">${MOVE_HINT}</span>$`));
-  // Two points have Reverse; no mover, no grips.
-  assert.doesNotMatch(render(ROWS.slice(0, 2), mover()), /point-grip/);
-  assert.doesNotMatch(render(ROWS, null), /point-grip|point-move-hint/);
+  assert.ok(MOVE_HINT.split(" ").length <= 8, "short, as it is read on every grip");
+  // One stop has nothing to reorder; no mover, no grips.
+  assert.doesNotMatch(list(mover(), [1]), /point-grip/);
+  assert.doesNotMatch(list(null), /point-grip|point-move-hint/);
 });
 
-test("a grip's press shows Move up, Move down and Done in place of Remove; the top row has no Move up", () => {
-  const second = render(ROWS, mover({ moving: 1 }));
-  assert.match(second, /aria-label="Move Stop 1" aria-describedby="point-move-hint" aria-expanded="true"/);
-  assert.match(second, /<span class="point-steps"><button type="button" class="link" aria-label="Move Stop 1 up">Up<\/button><button type="button" class="link" aria-label="Move Stop 1 down">Down<\/button><button type="button" class="link">Done<\/button><\/span><\/li>/);
-  assert.doesNotMatch(second, /aria-label="Remove Stop 1"/);
-  assert.match(second, /aria-label="Remove Stop 2"/);
-  const top = render(ROWS, mover({ moving: 0 }));
-  assert.doesNotMatch(top, /Move Start up/);
-  assert.match(top, /Move Start down/);
-  const bottom = render(ROWS, mover({ moving: 3 }));
-  assert.doesNotMatch(bottom, /Move End down/);
+test("a grip's press shows Up, Down and Done on a line under its stop, in place of Remove; the first stop has no Up", () => {
+  const first = list(mover({ moving: 0 }));
+  assert.match(first, /<li class="point-moving"><button type="button" class="point-grip" aria-label="Move Stop 1" aria-describedby="point-move-hint" aria-expanded="true"/);
+  assert.match(first, /<span class="point-steps"><button type="button" class="link" aria-label="Move Stop 1 down">Down<\/button><button type="button" class="link">Done<\/button><\/span><\/li>/);
+  assert.doesNotMatch(first, /aria-label="Remove Stop 1"/);
+  assert.match(first, /aria-label="Remove Stop 2"/);
+  const last = list(mover({ moving: 1 }));
+  assert.match(last, /<span class="point-steps"><button type="button" class="link" aria-label="Move Stop 2 up">Up<\/button><button type="button" class="link">Done<\/button><\/span>/);
 });
 
-test("mid-drag the dragged row is lifted and moved, and the rows it passed are shifted", () => {
-  const html = render(ROWS, mover({ drag: { from: 1, over: 2, dy: 60, height: 44 } }));
+test("mid-drag the dragged stop is lifted and moved, and the stop it passed slides; the start and the end stay", () => {
+  const html = list(mover({ drag: { from: 0, over: 1, dy: 60, tops: [100, 150] } }));
   assert.match(html, /^<ol class="points points-dragging">/);
-  assert.match(html, /<li class="point-dragged" style="transform:translateY\(60px\)">/);
-  assert.match(html, /<li style="transform:translateY\(-44px\)"><button type="button" class="point-grip" aria-label="Move Stop 2"/);
+  assert.match(html, /<li class="point-dragged" style="transform:translateY\(60px\)"><button type="button" class="point-grip" aria-label="Move Stop 1"/);
+  assert.match(html, /<li style="transform:translateY\(-50px\)"><button type="button" class="point-grip" aria-label="Move Stop 2"/);
+  assert.match(html, /<li><span class="point-grip-space" aria-hidden="true"><\/span><span class="point-name">Start/);
 });
 
-test("App: a reorder is one edit of the same pairs, said with the point's new role; the list's grips come from Planner", () => {
+test("App: only stops move, each with the via points leading to it, as one edit; a drag is said, a key's focus says it", () => {
   const app = appSource();
-  assert.match(app, /const next = reorder\(current, from, to\);\s*commit\(next\);/);
+  assert.match(app, /const split = stopsOnly\(current, VIA_MARKS\.isVia, loopVias\);/);
+  assert.match(app, /if \(a < 1 \|\| b < 1 \|\| a === b\) return;/);
+  assert.match(app, /const next = withVias\(reorder\(split\.points\.map\(\(_, i\) => i\), a, b\), split\);\s*commit\(next\);\s*if \(by !== "drag"\) return;/);
   assert.match(app, /announce\(name \? `\$\{name\} is now \$\{role\}\.` : `Moved to \$\{role\}\.`\);/);
-  assert.match(app, /const mover = usePointMover\(points\.length, reorderPoint\);/);
-  assert.match(app, /warnings=\{pointWarnings\}\s+mover=\{mover\}/);
+  assert.match(app, /const slots = namePoints\(points, VIA_MARKS\.isVia, loopVias\)\.flatMap\(\(n, i\) => \(n\.role === "stop" \? \[i\] : \[\]\)\);/);
+  assert.match(app, /const mover = usePointMover\(slots, \(from, to, by\) => reorderPoint\(slots\[from\], slots\[to\], by\), points\);/);
+  assert.match(app, /warnings=\{pointWarnings\}\s+mover=\{mover\}\s+slots=\{slots\}/);
+});
+
+test("a stop moved past another takes its via points with it, and the start and the end stay (lib/pointKinds.ts)", () => {
+  const marks = new ViaMarks();
+  const start: LonLat = [0, 0], via: LonLat = marks.via([1, 1]), s1: LonLat = [2, 2], s2: LonLat = [3, 3], end: LonLat = [4, 4];
+  const points = [start, via, s1, s2, end];
+  const split = stopsOnly(points, marks.isVia);
+  const next = withVias(reorder(split.points.map((_, i) => i), split.points.indexOf(s1), split.points.indexOf(s2)), split);
+  assert.deepEqual(next, [start, s2, via, s1, end]);
 });

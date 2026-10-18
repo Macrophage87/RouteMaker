@@ -72,6 +72,7 @@ import {
   namePoints,
   stopAddedSaid,
   stopsOnly,
+  withVias,
   viaIndices,
   viaPointsNamed,
 } from "./lib/pointKinds.ts";
@@ -2090,16 +2091,23 @@ export function App() {
     focusAfterRemove.current = index;
     commit(pointsRef.current.filter((_, i) => i !== index));
   };
-  // A point dragged to another place in the points list (lib/pointMover.ts; Stephen 2026-10-18, beside Best order):
-  // one edit, so Undo puts it back. The same pairs, so each keeps its kind, its name and whether it is the location.
-  // Said, as the list's roles change with it: "Union Market is now Stop 1."
-  const reorderPoint = (from: number, to: number) => {
+  // A stop dragged to another stop's place in the points list (lib/pointMover.ts; Stephen 2026-10-18, beside Best
+  // order): `from` and `to` are the two stops' points. Only stops move, as Best order moves them: the start and the end
+  // stay, and each via point goes with the stop it leads to. One edit, so Undo puts it back; the same pairs, so each
+  // keeps its kind, its name and whether it is the location. A drag is said ("Union Market is now Stop 1."); after a
+  // key the focus is on the moved stop's grip, whose new name says it.
+  const reorderPoint = (from: number, to: number, by: "drag" | "key") => {
     const current = pointsRef.current;
-    if (from === to || from < 0 || to < 0 || from >= current.length || to >= current.length) return;
-    const next = reorder(current, from, to);
+    const split = stopsOnly(current, VIA_MARKS.isVia, loopVias);
+    const a = split.points.indexOf(current[from]);
+    const b = split.points.indexOf(current[to]);
+    if (a < 1 || b < 1 || a === b) return;
+    const next = withVias(reorder(split.points.map((_, i) => i), a, b), split);
     commit(next);
-    const role = namePoints(next, VIA_MARKS.isVia, loopVias)[to]?.name ?? "";
-    const name = fromHere.includes(next[to]) ? YOUR_LOCATION : namer.name(next[to])?.name;
+    if (by !== "drag") return;
+    const moved = next.indexOf(current[from]);
+    const role = namePoints(next, VIA_MARKS.isVia, loopVias)[moved]?.name ?? "";
+    const name = fromHere.includes(current[from]) ? YOUR_LOCATION : namer.name(current[from])?.name;
     announce(name ? `${name} is now ${role}.` : `Moved to ${role}.`);
   };
   // From the map: the focus stays where it was (on a phone the sheet may be

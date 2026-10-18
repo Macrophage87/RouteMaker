@@ -13,7 +13,7 @@ import { ICON_PATHS } from "./iconPaths.ts";
 import { rowShift, type PointMover } from "./pointMover.ts";
 
 /** The grip's description, read after its name (lib/pointMover.ts says the three ways). */
-export const MOVE_HINT = "Drag to reorder, or use the up and down arrows. Press for Up and Down.";
+export const MOVE_HINT = "Drag, or press for Up and Down.";
 
 export interface PointsListProps {
   rows: readonly PointRow[];
@@ -38,14 +38,15 @@ export interface PointsListProps {
    */
   editor?: { index: number; node: ReactElement } | null;
   /**
-   * Reordering by hand (lib/pointMover.ts, Stephen 2026-10-18): a grip on each row, with three points or more (two
-   * have Reverse). Absent: no grips.
+   * Reordering the stops by hand (lib/pointMover.ts, Stephen 2026-10-18): a grip on each stop's row, with two stops
+   * or more, as Best order. `slots`: each stop's row, in order. Absent: no grips.
    */
   mover?: PointMover | null;
+  slots?: readonly number[];
 }
 
-export function PointsList({ rows, warnings, onRemove, removeRef, onChange, changeable, editor, mover }: PointsListProps): ReactElement {
-  const grips = mover && rows.length >= 3 && !editor ? mover : null;
+export function PointsList({ rows, warnings, onRemove, removeRef, onChange, changeable, editor, mover, slots = [] }: PointsListProps): ReactElement {
+  const grips = mover && slots.length >= 2 && !editor ? mover : null;
   const list = h(
     "ol",
     { className: grips?.drag ? "points points-dragging" : "points" },
@@ -65,9 +66,16 @@ export function PointsList({ rows, warnings, onRemove, removeRef, onChange, chan
       // The start and the destination: the place itself is the Change button (edit-route redesign), named
       // "Change Start: <place>" so its shown words are in its name.
       const change = onChange && changeable?.(index);
-      const shift = grips?.drag ? rowShift(index, grips.drag) : 0;
-      const classes = [federal ? "point-on-federal" : "", grips?.drag?.from === index ? "point-dragged" : ""].filter(Boolean).join(" ");
-      const grip = grips
+      const slot = grips ? slots.indexOf(index) : -1;
+      const shift = slot >= 0 && grips?.drag ? rowShift(slot, grips.drag) : 0;
+      const classes = [
+        federal ? "point-on-federal" : "",
+        slot >= 0 && grips?.drag?.from === slot ? "point-dragged" : "",
+        slot >= 0 && grips?.moving === slot ? "point-moving" : "",
+      ]
+        .filter(Boolean)
+        .join(" ");
+      const grip = grips && slot >= 0
         ? h(
             "button",
             {
@@ -75,25 +83,27 @@ export function PointsList({ rows, warnings, onRemove, removeRef, onChange, chan
               className: "point-grip",
               "aria-label": `Move ${role}`,
               "aria-describedby": "point-move-hint",
-              "aria-expanded": grips.moving === index,
-              ...grips.grip(index),
+              "aria-expanded": grips.moving === slot,
+              ...grips.grip(slot),
             },
             h("svg", { className: "icon", width: 20, height: 20, viewBox: "0 0 24 24", "aria-hidden": "true", focusable: "false", dangerouslySetInnerHTML: { __html: ICON_PATHS.grip } }),
           )
-        : null;
-      // Move up, Move down and Done in place of Remove, while the grip's press has them out.
+        : grips
+          ? h("span", { className: "point-grip-space", "aria-hidden": "true" })
+          : null;
+      // Up, Down and Done in place of Remove, while the grip's press has them out (on a line of their own).
       const steps =
-        grips && grips.moving === index
+        grips && slot >= 0 && grips.moving === slot
           ? h(
               "span",
               { className: "point-steps" },
-              index > 0
-                ? h("button", { type: "button", className: "link", ref: (b: HTMLButtonElement | null) => grips.stepRef(index, -1, b), onClick: () => grips.step(index, -1), "aria-label": `Move ${role} up` }, "Up")
+              slot > 0
+                ? h("button", { type: "button", className: "link", ref: (b: HTMLButtonElement | null) => grips.stepRef(slot, -1, b), onClick: () => grips.step(slot, -1), "aria-label": `Move ${role} up` }, "Up")
                 : null,
-              index < rows.length - 1
-                ? h("button", { type: "button", className: "link", ref: (b: HTMLButtonElement | null) => grips.stepRef(index, 1, b), onClick: () => grips.step(index, 1), "aria-label": `Move ${role} down` }, "Down")
+              slot < slots.length - 1
+                ? h("button", { type: "button", className: "link", ref: (b: HTMLButtonElement | null) => grips.stepRef(slot, 1, b), onClick: () => grips.step(slot, 1), "aria-label": `Move ${role} down` }, "Down")
                 : null,
-              h("button", { type: "button", className: "link", onClick: () => grips.done(index) }, "Done"),
+              h("button", { type: "button", className: "link", onClick: () => grips.done(slot) }, "Done"),
             )
           : null;
       return h(
