@@ -517,14 +517,17 @@ REBUILD_SENTINEL_LONG_TRAIL_WAYS = (8810729, 74843009)
 REBUILD_LONG_TRAIL_FLOORS = (6000, 2200)
 # The ride layer's runs (OWNER-DECISIONS 391, 402a; `pipeline.run.assert_calm_runs`): the two
 # long trails above are paths in a connected network of 8 mi or more, so they are the path
-# sentinels; and a calm road (the road sentinel: Elmer School Road in Montgomery County's
-# Agricultural Reserve, OSM way 5968951, in a 3.2 mi calm run in the 2026-10-03 extract) must
-# come out at the ride layer's road bar. The floors are the path rows in a run of
+# sentinels; and a calm road (the road sentinel: Gambrill Park Road in Frederick County, OSM
+# way 11560982, paved, LTS 2 from MDOT SHA's LTS 1 and the rural floor, in a 14.8 mi calm run
+# in the v0.8.3 ratings build's table, 2026-10-18) must come out at the ride layer's road bar.
+# It was Elmer School Road (way 5968951) until Montgomery Planning's LTS 4 for it won over the
+# formula's LTS 2 (the owner accepted the county's rating, 2026-10-18). The sentinel leans on
+# agency-lts.json: without it the formula's 50 mph rural default would rate the road higher. The floors are the path rows in a run of
 # RIDE_PATH_RUN_MI and the road rows in a calm run of RIDE_ROAD_RUN_MI, about half of what that
 # extract gives (30,972 and 2,398 rows, measured on a copy of the live table's rows;
 # docs/OPERATIONS.md, "The ride layer (z12-13)"). The setting keeps its STREET name.
 REBUILD_SENTINEL_CALM_PATH_WAYS = (8810729, 74843009)
-REBUILD_SENTINEL_CALM_STREET_WAYS = (5968951,)
+REBUILD_SENTINEL_CALM_STREET_WAYS = (11560982,)
 REBUILD_CALM_RUN_FLOORS = (15000, 1200)
 # The Mass Ride capacity column (OWNER-DECISIONS 325-327, 387;
 # `pipeline.run.assert_mass_capacity`): VALIDATE_SEGMENTS reads it back, and the median road
