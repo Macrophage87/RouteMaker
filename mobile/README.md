@@ -23,6 +23,13 @@ cache and hands it to Garmin Connect when Connect takes it (the manifest's one `
 otherwise to Android's "Open with" list. A WebView can neither share nor download a file a page makes, so an
 older app without the plugin shows no Send to Garmin button.
 
+**Opening a RouteMaker link in the app** (v0.9.0 app): in any app, Share the link and pick RouteMaker.
+`SharedLink.java` takes the first https link in the shared text and opens it only when it is on the site kept
+on this phone; any other link is refused with a short message. A tapped link still opens the browser:
+Android opens a tapped web link in an app only for an address built into the APK (verified App Links, plus
+a file on the server naming the app's signing key), and no build carries one. That can come with a
+production address. Opening a shared link replaces the page shown, a ride in progress included.
+
 There are no new buttons: Start ride, Go and End work as on the website. Distances are the site's
 own (feet and miles).
 

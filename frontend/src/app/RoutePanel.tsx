@@ -30,6 +30,7 @@ import { RouteDescription } from "../RouteDescription.tsx";
 import { RIDE_SAFETY, RideSettingsFields } from "../RideMode.tsx";
 import type { RidePrefs } from "../lib/rideOutput.ts";
 import { RIDE_TOO_LONG } from "../lib/navigate.ts";
+import { ridesHidden } from "../lib/nativeShell.ts";
 import { restOffered, rideTripOf, rideable as rideableRoute, ridesLine } from "../lib/rideTrip.ts";
 import { BikeshareSummary } from "../BikeshareSummary.tsx";
 import { TransitSummary } from "../TransitSummary.tsx";
@@ -761,7 +762,7 @@ export function RouteSummary({
   const goMode = mode === "go";
   // "Elevation and climbs" (the mockup); a Mass Ride's three charts keep their own name.
   const elevationTitle = profile && chartKind(route) === "mass" ? foldName("mass") : ROUTE_FOLDS.elevation.title;
-  // Start: the big button (Go), or the first of its row (Plan). Short rides only; a longer one goes to a bike computer (OD 255).
+  // Start: the big button (Go), or the first of its row (Plan). In a browser, short rides only; a longer one goes to a bike computer (OD 255). The phone app rides any length.
   const start = rideable ? (
     <button type="button" className="start-button" ref={ride.startRef} onClick={ride.onStart} aria-describedby="start-ride-hint">
       <Icon name="play" />
@@ -770,7 +771,7 @@ export function RouteSummary({
   ) : null;
   const startHint = rideable ? (
     <p id="start-ride-hint" className="hint start-ride-hint">
-      Turn-by-turn directions on this phone, said as you chose. Keep the screen on and this page in front.
+      Turn-by-turn directions on this phone, said as you chose.{ridesHidden() ? "" : " Keep the screen on and this page in front."}
     </p>
   ) : !ridesLine(route) ? null : (
     <p className="hint start-ride-long">{RIDE_TOO_LONG}</p>
