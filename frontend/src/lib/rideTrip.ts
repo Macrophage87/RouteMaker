@@ -12,7 +12,8 @@
  *   the rider is to the destination as a normal route request, on the leg's ride type. A later
  *   step's line has no turn-by-turn words, so it is never ridden as it is.
  *
- * Rides longer than RIDE_MAX_M go to a bike computer, as ever: the rule is the riding leg's.
+ * In a browser, rides longer than RIDE_MAX_M go to a bike computer: the rule is the riding leg's. The
+ * phone app, which rides with the screen locked, has no limit (`rideMaxM`).
  */
 import { askOf, type NextVehicleAsk } from "./nextVehicle.ts";
 import type { RouteResponse, TransitDeparture, TransitPlan, TransitStep } from "./api.ts";
@@ -21,6 +22,7 @@ import { formatDistance, spokenDistance } from "./format.ts";
 import { haversineM, pathLengthM, type LonLat } from "./geo.ts";
 import { POOR_FIX_M, RIDE_MAX_M, START_M, WINDOW_AHEAD_M, offThreshold, snap, startState, step, type RideEvent, type RideFix, type RideModel, type RideState, type Verbosity } from "./navigate.ts";
 import type { PresetId } from "./presets.ts";
+import { ridesHidden } from "./nativeShell.ts";
 import { drawOf, transitOf } from "./transit.ts";
 
 /** A sentence for the screen (US units, metric in brackets) and the same for speech (US units only). */
@@ -104,12 +106,17 @@ function lineIndex(plan: TransitPlan): number {
   return plan.steps.findIndex((s) => s.route_line);
 }
 
+/** The longest ride Start ride is offered for: RIDE_MAX_M in a browser, none in the phone app (screen locked is fine). */
+export function rideMaxM(hidden: boolean = ridesHidden()): number {
+  return hidden ? Infinity : RIDE_MAX_M;
+}
+
 /**
- * Whether Start ride is offered: the line is a riding leg no longer than RIDE_MAX_M. A Bikeshare plan's
+ * Whether Start ride is offered: the line is a riding leg no longer than `rideMaxM`. A Bikeshare plan's
  * line is its ride between the docks; a transit plan's is its first ride (not a walk).
  */
-export function rideable(route: Pick<RouteResponse, "distance_m" | "transit">): boolean {
-  if (route.distance_m > RIDE_MAX_M) return false;
+export function rideable(route: Pick<RouteResponse, "distance_m" | "transit">, maxM: number = rideMaxM()): boolean {
+  if (route.distance_m > maxM) return false;
   const plan = transitOf(route);
   if (!plan) return true;
   const index = lineIndex(plan);
@@ -263,8 +270,8 @@ export function rideTripOf(route: RouteResponse, points: readonly LonLat[]): Rid
 }
 
 /** Whether the panel offers Ride the rest: a riding leg after transit, not known to be too long to ride here. */
-export function restOffered(trip: RideTrip | null): trip is RideTrip & { rest: RideRest } {
-  return !!trip?.rest && (trip.rest.metres === null || trip.rest.metres <= RIDE_MAX_M);
+export function restOffered(trip: RideTrip | null, maxM: number = rideMaxM()): trip is RideTrip & { rest: RideRest } {
+  return !!trip?.rest && (trip.rest.metres === null || trip.rest.metres <= maxM);
 }
 
 /**

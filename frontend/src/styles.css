@@ -4649,39 +4649,18 @@ details.zoom-notes {
   box-shadow: var(--shadow);
 }
 
+/* Go's bar under the top row (the owner, 2026-10-18: "mirror what plan does"): Plan's bar, with Start ride for Route. */
 .go-destination {
   display: flex;
   align-items: center;
-  gap: 8px;
-  align-self: flex-start;
-  max-width: 100%;
-  min-height: 44px;
-  padding: 0 0 0 14px;
-  background: var(--bg);
-  color: var(--text);
-  border: 1px solid var(--swatch-border);
-  border-radius: 999px;
-  box-shadow: var(--shadow);
-}
-
-.go-destination-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-weight: 700;
-}
-
-.go-destination .go-clear {
-  min-width: 44px;
-  min-height: 44px;
-  padding: 0;
-  display: inline-flex;
-  align-items: center;
   justify-content: center;
-  background: transparent;
-  color: var(--text);
-  border: 0;
-  border-radius: 999px;
+  gap: 8px;
+  max-width: 100%;
+  min-height: 52px;
+}
+
+.go-destination > button {
+  box-shadow: var(--shadow);
 }
 
 /* The map's zoom buttons and Undo / Redo sit under Go's bar. */
@@ -5543,14 +5522,6 @@ details.fold > summary .icon {
   z-index: 10;
 }
 
-.go-destination {
-  width: max-content;
-}
-
-.go-destination-name {
-  flex: 0 1 auto;
-  min-width: 0;
-}
 
 .chip,
 .panel .chip {
@@ -6915,7 +6886,8 @@ details.fold > summary .icon {
   box-shadow: var(--shadow);
 }
 
-.plan-map-bar .plan-bar-small {
+.plan-map-bar .plan-bar-small,
+.go-destination .plan-bar-small {
   width: 44px;
   min-height: 44px;
   padding: 0;
@@ -6925,7 +6897,8 @@ details.fold > summary .icon {
   background: var(--bg);
 }
 
-.plan-map-bar .plan-bar-route {
+.plan-map-bar .plan-bar-route,
+.go-destination .plan-bar-route {
   min-height: 52px;
   padding: 0 22px;
   display: inline-flex;
@@ -6936,7 +6909,8 @@ details.fold > summary .icon {
   border-radius: 999px;
 }
 
-.plan-map-bar .plan-bar-route[aria-disabled="true"] {
+.plan-map-bar .plan-bar-route[aria-disabled="true"],
+.go-destination .plan-bar-route[aria-disabled="true"] {
   opacity: 0.85;
   cursor: progress;
 }

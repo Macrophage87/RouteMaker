@@ -54,6 +54,19 @@ public class MainActivity extends BridgeActivity {
         bridge.setWebViewClient(client);
         // Same UI turn as the bridge's first load, so before any page commits: bridge calls from the site only.
         GuardedBridge.install(bridge, client);
+        openShared(getIntent());
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        openShared(intent);
+    }
+
+    /** A link shared to the app (SetupActivity, SharedLink): already checked to be on the kept site. */
+    private void openShared(Intent intent) {
+        String link = intent == null ? null : intent.getStringExtra(SetupActivity.EXTRA_LINK);
+        if (link != null && bridge != null) bridge.getWebView().loadUrl(link);
     }
 
     @Override

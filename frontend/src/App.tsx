@@ -3804,6 +3804,21 @@ export function App() {
     const route = document.querySelector<HTMLElement>(".plan-panel .route-button");
     (route?.offsetParent ? route : document.querySelector<HTMLElement>(".maplibregl-canvas"))?.focus();
   });
+  // Go's bar mirrors Plan's (the owner, 2026-10-18: "mirror what plan does in general, but instead of route, we
+  // start the ride"): Undo, Redo, the big button and Clear, each while it has something to do. The big button is
+  // Start ride on a route ready to ride, else Route while the plan has changed, as Plan's.
+  const goReady = !!shown && !stale && routedPoints === points && rideableRoute(shown);
+  const goBig = routingNow
+    ? { label: ROUTING_LABEL, start: false, busy: true, onPress: () => {} }
+    : goReady
+      ? { label: "Start ride", start: true, busy: false, onPress: startRideChecked }
+      : points.length >= 2 && routeNow.unavailable === null
+        ? { label: routeNow.label, start: false, busy: false, onPress: pressRoute }
+        : null;
+  const goBar =
+    mode === "go" && !riding && (goBig !== null || can.undo || can.redo || points.length > 0)
+      ? { onUndo: can.undo ? undo : null, onRedo: can.redo ? redo : null, big: goBig, onClear: points.length > 0 ? clearPlan : null }
+      : null;
   const planPanel = (
     <PlanPanel
       key="plan"
@@ -3977,8 +3992,8 @@ export function App() {
           onLayers={(button) => openView("layers", button)}
           onLocate={() => void goLocate()}
           locating={locating}
-          destination={shown && points.length >= 2 ? goPlaceName(namer.name(points[points.length - 1])?.name, points[points.length - 1]) : null}
-          onClear={clearAll}
+          destination={points.length > 0 ? goPlaceName(namer.name(points[points.length - 1])?.name, points[points.length - 1]) : null}
+          bar={goBar}
         />
       )}
       <MapView
@@ -4163,7 +4178,7 @@ export function App() {
       )}
       {!riding && !goMode && <PlanMapChips onFood={(chip) => openView("food", chip)} onWater={(chip) => openView("nearest", chip)} onPlaces={openPlaces} />}
       {/* In Plan, Undo and Redo are in the plan's bar at the top of the map instead. */}
-      {!riding && narrow && !planFirst && (can.undo || can.redo) && (
+      {!riding && narrow && !planFirst && !goMode && (can.undo || can.redo) && (
         // On a phone the sheet may be hidden while the rider edits the map,
         // so Undo and Redo sit on the map there (and only there: one of each
         // per layout), each shown while it has something to give back.

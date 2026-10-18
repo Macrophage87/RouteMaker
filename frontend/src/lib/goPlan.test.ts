@@ -363,7 +363,7 @@ test("go tap: a press on the map in Go is the destination, routed as a picked on
   // The same name on the sheet's "To …": the place name once looked up, else the coordinates that were said (review of #116).
   assert.equal(goPlaceName(undefined, [-77.0365, 38.9055]), "38.9055, -77.0365");
   assert.equal(goPlaceName("Dupont Circle", [-77.0434, 38.9096]), "Dupont Circle");
-  assert.match(appFile, /destination=\{shown && points\.length >= 2 \? goPlaceName\(namer\.name\(points\[points\.length - 1\]\)\?\.name, points\[points\.length - 1\]\) : null\}/);
+  assert.match(appFile, /destination=\{points\.length > 0 \? goPlaceName\(namer\.name\(points\[points\.length - 1\]\)\?\.name, points\[points\.length - 1\]\) : null\}/);
   assert.doesNotMatch(appFile, /\?\? "Destination"/);
   assert.ok(place.indexOf("goTapSetsEnd") > place.indexOf("if (!insideCoverage(point))"), "a press outside the area is refused first");
   assert.ok(place.indexOf("goTapSetsEnd") < place.indexOf("MAX_POINTS"), "Go's press is never refused for the points limit");

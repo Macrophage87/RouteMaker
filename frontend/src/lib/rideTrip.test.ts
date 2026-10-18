@@ -19,6 +19,7 @@ import {
   tripStep,
   restNear,
   restOffered,
+  rideMaxM,
   restReadySaid,
   restRequest,
   rideLegOf,
@@ -105,6 +106,17 @@ test("Start ride is offered on a Bikeshare plan and on a transit plan's riding l
   assert.equal(rideable(line({ transit: PLAN, distance_m: RIDE_MAX_M + 1 })), false);
   const panel = readFileSync(new URL("../app/RoutePanel.tsx", import.meta.url), "utf8");
   assert.match(panel, /const rideable = rideableRoute\(route\);/);
+});
+
+test("the phone app offers Start ride at any length; a browser stops at RIDE_MAX_M (Stephen, 2026-10-18: a 37 mi saved route)", () => {
+  assert.equal(rideMaxM(false), RIDE_MAX_M);
+  assert.equal(rideMaxM(true), Infinity);
+  const long = line({ distance_m: 37 * 1609.344 });
+  assert.equal(rideable(long, rideMaxM(false)), false);
+  assert.equal(rideable(long, rideMaxM(true)), true);
+  // In node there is no shell, so the default is the browser's limit.
+  assert.equal(rideable(long), false);
+  assert.equal(rideable(line({ bikeshare: SHARE, distance_m: RIDE_MAX_M * 3 }), rideMaxM(true)), true);
 });
 
 test("the ride follows the leg: from the line's start to its end, re-planned on a plain ride type", () => {
