@@ -457,6 +457,35 @@ end
 -- What a way inside a cemetery is made (remap_way): destination-only.
 M.CEMETERY_ACCESS = "destination"
 
+-- A parking aisle, driveway or drive-through that its own tags open to bicycles
+-- is a link in the bicycle network, not a local-access road. Valhalla's parser
+-- (3.6 to 3.9.1, `pbfgraphparser.cc`) makes every edge of those three uses
+-- destination-only, and bicycle costing charges `destination_only_penalty` (600 s)
+-- on entering one. So the Rhode Island Avenue Trolley Trail's only link past
+-- Queensbury Rd in Riverdale Park, a 19 m aisle (way 967106155,
+-- `service=parking_aisle` + `bicycle=yes`) to the East-West Highway underpass,
+-- cost as much as 1.3 km of side streets, and routes left the trail there (owner
+-- report, 2026-10-18). On such a way the service value is removed: it becomes the
+-- service road it is, priced by `service_penalty`. Only where nothing in its own
+-- tags restricts access, so a private lot's aisle keeps upstream's flag.
+M.BICYCLE_LINK_SERVICES = { parking_aisle = true, driveway = true, ["drive-through"] = true }
+M.BICYCLE_LINK_GRANTS = { yes = true, designated = true, permissive = true }
+
+function M.bicycle_link_service(tags)
+  if tags.highway ~= "service" or not M.BICYCLE_LINK_SERVICES[tags.service] then
+    return false
+  end
+  if not M.BICYCLE_LINK_GRANTS[tags.bicycle] then
+    return false
+  end
+  for _, key in ipairs({ "access", "vehicle" }) do
+    if tags[key] ~= nil and not M.PERMISSIVE_ACCESS[tags[key]] then
+      return false
+    end
+  end
+  return true
+end
+
 function M.remap_way(tags, derived)
   derived = derived or {}
   local out = {}
@@ -777,6 +806,8 @@ function M.remap_way(tags, derived)
   then
     out.service = M.AVOID_SERVICE
   elseif tags.service == M.AVOID_SERVICE and tags.highway == "service" then
+    out.service = M.REMOVE
+  elseif M.bicycle_link_service(tags) then
     out.service = M.REMOVE
   end
 

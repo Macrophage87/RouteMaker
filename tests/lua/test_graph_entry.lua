@@ -798,6 +798,21 @@ check("a local-access street stays destination-only, as before", local_out.priva
   local_out.private)
 check("and is no alley", tonumber(local_out.use) == 0, local_out.use)
 
+-- A parking aisle a bicycle is invited onto is a service road in the graph, not
+-- upstream's parking aisle (use 6), which Valhalla's parser makes destination-only
+-- (the Trolley Trail's link at Queensbury Rd, way 967106155, owner report
+-- 2026-10-18). Without the grant, or behind a closed gate, it stays an aisle.
+local _, link_aisle = transform_way({ highway = "service", service = "parking_aisle", bicycle = "yes" })
+check("a bike-open parking aisle is a service road in the graph", tonumber(link_aisle.use) == 11,
+  link_aisle.use)
+check("and is open both ways", link_aisle.bike_forward == "true" and link_aisle.bike_backward == "true")
+local _, plain_aisle = transform_way({ highway = "service", service = "parking_aisle" })
+check("an aisle that says nothing of bicycles stays an aisle", tonumber(plain_aisle.use) == 6,
+  plain_aisle.use)
+local _, private_aisle = transform_way({ highway = "service", service = "parking_aisle",
+  bicycle = "yes", access = "private" })
+check("a private lot's aisle stays an aisle", tonumber(private_aisle.use) == 6, private_aisle.use)
+
 -- Graded: upstream reads the tier-4 marks as the edge's speed and lanes, and
 -- nothing about access.
 local plain4 = { highway = "secondary", maxspeed = "35 mph", lanes = "2" }
