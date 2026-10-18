@@ -14,8 +14,8 @@ import type { LonLat } from "../lib/geo.ts";
 import type { GeoGate, Place, PlaceChoice } from "../lib/geocode.ts";
 import { MODE_LABEL, MODE_SWITCH_HINT, MODE_SWITCH_HINT_REVIEW, MODE_SWITCH_NAME, type AppMode } from "../lib/appMode.ts";
 import { HOME_NOT_SET, type Home } from "../lib/myGo.ts";
-import { CHANGE_HOME_TEXT, CLEAR_HOME_TEXT, HOME_PICK_LINE, PICK_ON_MAP_TEXT, homeClosesSheet, homeName, homeSetKey } from "../lib/homeSet.ts";
 import { BEST_ORDER_LABEL } from "../lib/stopOrder.ts";
+import { CHANGE_HOME_TEXT, CLEAR_HOME_TEXT, HOME_PICK_LINE, PICK_ON_MAP_TEXT, homeClosesSheet, homeName, homeSetKey } from "../lib/homeSet.ts";
 
 export type GoSheetSize = "peek" | "half" | "full";
 
@@ -197,8 +197,8 @@ export function HomeSetter({
 }
 
 /**
- * Go's "Add a stop" (v0.7.0, "Keep adding stops by search"): one field in the route sheet, under Start; a
- * place picked is a stop where it adds the least distance, routed at once (Undo removes it). Best order sits
+ * Go's "Add a stop" (v0.7.0, "Keep adding stops by search"): one field in the route sheet, under the route card
+ * (kept there one tap away, Stephen 2026-10-18); a place picked is a stop where it adds the least distance, routed at once (Undo removes it). Best order sits
  * beside it with two or more stops; it is the field's only company, so Go stays one control per feature.
  */
 export function GoAddStop({
@@ -230,6 +230,35 @@ export function GoAddStop({
   );
 }
 
+/**
+ * Go's route card (edit-route redesign, Stephen 2026-10-18): the start and the destination, and the stops between
+ * them counted, on one button that opens Edit route (Plan's points in a sheet: change the start or the destination,
+ * add or remove a stop, Swap, Loop). It replaced "Add a stop" under Start, and with a route the start was not shown.
+ */
+export function GoRouteCard({ start, destination, stops, onEdit }: { start: string; destination: string; stops: number; onEdit: (opener: HTMLButtonElement) => void }) {
+  return (
+    <button type="button" className="go-route-card" onClick={(event) => onEdit(event.currentTarget)}>
+      <span className="go-route-ends">
+        <span className="go-route-end">
+          <Icon name="play" size={16} />
+          <span className="visually-hidden">From </span>
+          {start}
+        </span>
+        {stops > 0 && <span className="go-route-stops">{stops === 1 ? "1 stop" : `${stops} stops`}</span>}
+        <span className="go-route-end go-route-to">
+          <Icon name="pin" size={16} />
+          <span className="visually-hidden">to </span>
+          {destination}
+        </span>
+      </span>
+      <span className="go-route-edit">
+        <Icon name="edit" size={16} />
+        Edit route
+      </span>
+    </button>
+  );
+}
+
 /** Go's sheet: the handle, Where to?, the place chips, the ride types, the notice and the route. */
 export function GoSheet({
   size,
@@ -256,7 +285,7 @@ export function GoSheet({
   /** The top result of Where to? while the rider looks at it: Go starts routing there early (v0.7.0, "Faster routing"). */
   onTopPlace?: (place: Place) => void;
   places: GoPlaces;
-  /** The ride type chips (RideChips). */
+  /** The ride type chips (RideChips), before there is a route; with one, the route holds them. */
   rides: ReactNode;
   notice: string | null;
   /** The Route section, Go's variant, or null before there are points. */
@@ -401,9 +430,7 @@ export function GoSheet({
         )}
         {!routeShown && rides}
       </div>
-      {/* With a route, the ride types follow it (bigger than peek): one press re-plans, and Bikeshare names
-          its pick-up and drop-off stations in the route's Bikeshare plan (only in Bikeshare: the owner's word). */}
-      {routeShown && size !== "peek" && <div className="go-route-rides">{rides}</div>}
+      {/* With a route, the ride types are in it, under the route card (edit-route redesign, Stephen 2026-10-18). */}
       {/* Said by the app's own region (Go has no Points section's status line; App noticeSaidElsewhere). */}
       {notice && <p className="go-notice notice">{notice}</p>}
     </div>
