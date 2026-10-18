@@ -339,6 +339,12 @@ class _Failures:
             self.messages.append(str(failed))
             return None
 
+    def note_on(self, error: BaseException) -> None:
+        """Another kind of error ended the group early: keep the failures already
+        found on it, so they are not lost behind it."""
+        for message in self.messages:
+            error.add_note(f"an earlier check had also failed: {message}")
+
     def raise_if_any(self) -> None:
         if len(self.messages) == 1:
             raise ValidationFailed(self.messages[0])
@@ -1198,7 +1204,7 @@ def assert_calm_runs(
             "the ride layer did not come out of the rebuild"
         )
     if problems:
-        raise ValidationFailed("; and ".join(problems))
+        raise ValidationFailed("; ".join(problems))
 
 
 def assert_long_trails(summary, sentinel_ways: Sequence[int], floors: Sequence[int]) -> None:
@@ -1211,16 +1217,19 @@ def assert_long_trails(summary, sentinel_ways: Sequence[int], floors: Sequence[i
             f"{summary.unjudged_bridges} bridge candidates are still at trail_bridge 3: "
             "the bridge judging did not run to the end"
         )
+    # Every sentinel and the floors are checked before raising, as in assert_calm_runs.
+    problems = []
     for way in sentinel_ways:
         if way not in summary.sentinels:
-            raise ValidationFailed(
+            problems.append(
                 f"the long-trail sentinel way {way} is not in the segment table; if the "
                 "extract split or replaced it, move the sentinel "
                 "(settings.REBUILD_SENTINEL_LONG_TRAIL_WAYS), don't drop it"
             )
+            continue
         route, run = summary.sentinels[way]
         if route < LONG_TRAIL_SENTINEL_ROUTE or run < LONG_TRAIL_SENTINEL_RUN_M:
-            raise ValidationFailed(
+            problems.append(
                 f"the long-trail sentinel way {way} came out at route level {route} and a "
                 f"run of {run} m, not a long bicycle route ({LONG_TRAIL_SENTINEL_ROUTE}) in a "
                 f"run of {LONG_TRAIL_SENTINEL_RUN_M} m or more: the route relations or the "
@@ -1228,12 +1237,14 @@ def assert_long_trails(summary, sentinel_ways: Sequence[int], floors: Sequence[i
             )
     route_floor, run_floor = floors
     if summary.on_long_route < route_floor or summary.in_long_run < run_floor:
-        raise ValidationFailed(
+        problems.append(
             f"{summary.on_long_route} rows are on a long route and {summary.in_long_run} in "
             f"a run of {LONG_TRAIL_FLOOR_RUN_M} m or more, under the floors of {route_floor} "
             f"and {run_floor} (settings.REBUILD_LONG_TRAIL_FLOORS): the long trails did not "
             "come out of the rebuild"
         )
+    if problems:
+        raise ValidationFailed("; ".join(problems))
 
 
 def is_rated_osm_closure(tags: dict[str, str]) -> bool:
@@ -3582,35 +3593,40 @@ def build_handlers(
         own = failures is None
         if own:
             failures = _Failures()
-        failures.check(
-            assert_mass_capacity,
-            mass_capacity.capacity_summary(context.staging_schema),
-            median_range=_setting("REBUILD_MASS_CAPACITY_MEDIAN_RANGE"),
-        )
-        sentinel_ways = tuple(_setting("REBUILD_SENTINEL_LONG_TRAIL_WAYS"))
-        failures.check(
-            assert_long_trails,
-            trail_routes.long_trail_summary(
-                context.staging_schema, sentinel_ways, LONG_TRAIL_FLOOR_RUN_M
-            ),
-            sentinel_ways,
-            _setting("REBUILD_LONG_TRAIL_FLOORS"),
-        )
+        try:
+            failures.check(
+                assert_mass_capacity,
+                mass_capacity.capacity_summary(context.staging_schema),
+                median_range=_setting("REBUILD_MASS_CAPACITY_MEDIAN_RANGE"),
+            )
+            sentinel_ways = tuple(_setting("REBUILD_SENTINEL_LONG_TRAIL_WAYS"))
+            failures.check(
+                assert_long_trails,
+                trail_routes.long_trail_summary(
+                    context.staging_schema, sentinel_ways, LONG_TRAIL_FLOOR_RUN_M
+                ),
+                sentinel_ways,
+                _setting("REBUILD_LONG_TRAIL_FLOORS"),
+            )
 
-        calm_path_sentinels = tuple(_setting("REBUILD_SENTINEL_CALM_PATH_WAYS"))
-        calm_street_sentinels = tuple(_setting("REBUILD_SENTINEL_CALM_STREET_WAYS"))
-        failures.check(
-            assert_calm_runs,
-            trail_routes.calm_run_summary(
-                context.staging_schema,
-                (*calm_path_sentinels, *calm_street_sentinels),
-                CALM_PATH_RUN_M,
-                CALM_ROAD_RUN_M,
-            ),
-            calm_path_sentinels,
-            calm_street_sentinels,
-            _setting("REBUILD_CALM_RUN_FLOORS"),
-        )
+            calm_path_sentinels = tuple(_setting("REBUILD_SENTINEL_CALM_PATH_WAYS"))
+            calm_street_sentinels = tuple(_setting("REBUILD_SENTINEL_CALM_STREET_WAYS"))
+            failures.check(
+                assert_calm_runs,
+                trail_routes.calm_run_summary(
+                    context.staging_schema,
+                    (*calm_path_sentinels, *calm_street_sentinels),
+                    CALM_PATH_RUN_M,
+                    CALM_ROAD_RUN_M,
+                ),
+                calm_path_sentinels,
+                calm_street_sentinels,
+                _setting("REBUILD_CALM_RUN_FLOORS"),
+            )
+        except Exception as error:
+            if own and not isinstance(error, ValidationFailed):
+                failures.note_on(error)
+            raise
         if own:
             failures.raise_if_any()
 
@@ -3632,34 +3648,39 @@ def build_handlers(
                     bookkeeping_failed("recording the new validation numbers")
             return
         failures = _Failures()
-        failures.check(
-            assert_reference_lts4_street,
-            context,
-            _setting("REBUILD_SENTINEL_LTS4_STREET"),
-            _setting("REBUILD_SENTINEL_LTS4_MIN_SHARE"),
-            _setting("REBUILD_SENTINEL_LTS4_NORTH_OF_LAT"),
-            _setting("REBUILD_SENTINEL_LTS4_NORTH_MIN_SHARE"),
-        )
-        failures.check(assert_owner_stretches, context, _setting("REBUILD_SENTINEL_STRETCHES"))
-        failures.check(
-            assert_military_closures,
-            context,
-            _setting("REBUILD_SENTINEL_MILITARY_CLOSED_WAYS"),
-            _setting("REBUILD_SENTINEL_MILITARY_MIN_CLOSED"),
-        )
-        failures.check(
-            assert_secured_closures,
-            context,
-            _setting("REBUILD_SENTINEL_SECURED_CLOSED_WAYS"),
-            _setting("REBUILD_SENTINEL_SECURED_MIN_CLOSED"),
-        )
-        failures.check(
-            assert_works_closures,
-            context,
-            _setting("REBUILD_SENTINEL_WORKS_CLOSED_RANGE"),
-            _setting("REBUILD_SENTINEL_WORKS_MIN_IN_RANGE"),
-        )
-        staging_checks(failures)
+        try:
+            failures.check(
+                assert_reference_lts4_street,
+                context,
+                _setting("REBUILD_SENTINEL_LTS4_STREET"),
+                _setting("REBUILD_SENTINEL_LTS4_MIN_SHARE"),
+                _setting("REBUILD_SENTINEL_LTS4_NORTH_OF_LAT"),
+                _setting("REBUILD_SENTINEL_LTS4_NORTH_MIN_SHARE"),
+            )
+            failures.check(assert_owner_stretches, context, _setting("REBUILD_SENTINEL_STRETCHES"))
+            failures.check(
+                assert_military_closures,
+                context,
+                _setting("REBUILD_SENTINEL_MILITARY_CLOSED_WAYS"),
+                _setting("REBUILD_SENTINEL_MILITARY_MIN_CLOSED"),
+            )
+            failures.check(
+                assert_secured_closures,
+                context,
+                _setting("REBUILD_SENTINEL_SECURED_CLOSED_WAYS"),
+                _setting("REBUILD_SENTINEL_SECURED_MIN_CLOSED"),
+            )
+            failures.check(
+                assert_works_closures,
+                context,
+                _setting("REBUILD_SENTINEL_WORKS_CLOSED_RANGE"),
+                _setting("REBUILD_SENTINEL_WORKS_MIN_IN_RANGE"),
+            )
+            staging_checks(failures)
+        except Exception as error:
+            if not isinstance(error, ValidationFailed):
+                failures.note_on(error)
+            raise
         failures.raise_if_any()
         # Computed here, where the ways are, and held (and checkpointed) for
         # VALIDATE_TILES, which reads the graphs and needs no ways.

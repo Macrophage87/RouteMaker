@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from pipeline.run import ValidationFailed, _Failures, assert_calm_runs
+from pipeline.run import ValidationFailed, _Failures, assert_calm_runs, assert_long_trails
 
 
 def _fail(message: str) -> None:
@@ -49,4 +49,24 @@ def test_the_calm_runs_name_every_short_sentinel_and_the_floors() -> None:
     message = str(raised.value)
     assert "path sentinel way 9 is not in the segment table" in message
     assert "road sentinel way 8 came out at a run of 0 m" in message
+    assert "floors of 1 and 1" in message
+
+
+def test_an_error_after_a_failed_check_keeps_the_failure_on_it() -> None:
+    failures = _Failures()
+    failures.check(_fail, "the road sentinel")
+    error = KeyError("a later query broke")
+    failures.note_on(error)
+    assert error.__notes__ == ["an earlier check had also failed: the road sentinel"]
+
+
+def test_the_long_trails_name_every_short_sentinel_and_the_floors() -> None:
+    summary = SimpleNamespace(
+        unjudged_bridges=0, sentinels={7: (0, 0)}, on_long_route=0, in_long_run=0
+    )
+    with pytest.raises(ValidationFailed) as raised:
+        assert_long_trails(summary, (9, 7), (1, 1))
+    message = str(raised.value)
+    assert "long-trail sentinel way 9 is not in the segment table" in message
+    assert "long-trail sentinel way 7 came out at route level 0" in message
     assert "floors of 1 and 1" in message
