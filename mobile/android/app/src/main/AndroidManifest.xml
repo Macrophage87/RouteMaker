@@ -28,6 +28,14 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!-- Share a RouteMaker link to the app from any app's Share sheet (SharedLink.java). A tapped
+                 link cannot open the app: that needs the site's address in the APK, and no build has one. -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+
         </activity>
 
         <activity
@@ -60,6 +68,12 @@
             android:name="com.capacitorjs.plugins.localnotifications.LocalNotificationRestoreReceiver"
             tools:node="remove" />
     </application>
+
+    <!-- Send to Garmin (FilesPlugin.java) looks for Garmin Connect alone, to hand it the course directly
+         (Android 11+ shows an app only what it names here). -->
+    <queries>
+        <package android:name="com.garmin.android.apps.connectmobile" />
+    </queries>
 
     <!-- Permissions: the network for the site, the location for a ride, and notifications (Android 13+)
          for the ride's notifications. Nothing else (mobile/README.md). -->

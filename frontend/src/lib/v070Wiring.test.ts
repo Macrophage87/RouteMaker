@@ -55,7 +55,9 @@ test("signed in: account settings win on sign-in, changes save once they settle,
 });
 
 test("the others on the route show on a Mass Ride or Group Ride link only, in Go or riding", () => {
-  assert.match(app, /\(goMode \|\| riding\) && isRideLink\(preset, rideGroupPoints\)/);
+  assert.match(app, /const rideGroupLine = \(goMode \|\| riding\) && rideGroupType && rideGroupRoute/);
+  // A Mass Ride or Group Ride, unless shared as a route; any route shared as a ride.
+  assert.match(app, /onShared && !onShared\.ride \? null : isRideLink\(preset, rideGroupPoints\) \? preset : onShared && rideGroupPoints\.length >= 2 \? "group-ride" : null;/);
   const group = source("../RideGroup.tsx");
   // Ride mode's one watcher, while sharing and in front only; nothing stored or logged.
   assert.match(group, /watchRide\(browserRideEnv\(\)/);

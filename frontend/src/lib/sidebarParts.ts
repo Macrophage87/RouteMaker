@@ -8,7 +8,7 @@
  * and its words in text; none depends on colour.
  */
 import { Fragment, createElement as h, useId, useState, type ReactElement, type ReactNode } from "react";
-import { RIDE_ACTION_SPOKEN, foldTitle, rideActionLabel } from "./sidebar.ts";
+import { RIDE_ACTION_SPOKEN, RIDE_SETTINGS_LABEL, foldTitle, rideActionLabel } from "./sidebar.ts";
 import { SEVERITY_COLOURS, warningIconSvg, type Severity } from "./intersectionMarkers.ts";
 import { stressZoomNotice } from "./stressLegend.ts";
 import { ACCESSIBILITY_ADDRESS_NOTE, ACCESSIBILITY_HINT, ACCESSIBILITY_LABEL } from "./accessibilitySwitch.ts";
@@ -33,22 +33,34 @@ export function lineIcon(name: IconName, size = 18): ReactElement {
 }
 
 /**
- * The Ride line: one line saying how the ride is set, and Edit, which opens the controls
- * (`children`). A heading holds the button, so a screen reader can jump to it. The controls stay in
- * the page while closed (hidden), so nothing they hold is lost. The region is named "Ride" alone:
- * the button's name holds the summary, which changes with every edit (the a11y review's N4). The
- * action is shown as Edit or Done but heard as Edit, its state in aria-expanded, so a screen reader
- * does not say "Done, expanded" (N8).
+ * The Ride section (edit-route redesign, Stephen 2026-10-18): the ride type's own button first (`typeCard`, Plan's
+ * RideTypePicker; Go's Ride sheet lists the ride types itself and passes none), then the Ride settings line: its
+ * label, the sliders' summary as chips, and Adjust, which opens the controls (`children`). A heading holds the
+ * line's button, so a screen reader can jump to it. The controls stay in the page while closed (hidden), so nothing
+ * they hold is lost. The region is named "Ride" alone: the button's name holds the summary, which changes with every
+ * edit (the a11y review's N4). The action is shown as Adjust or Done but heard as Adjust, its state in
+ * aria-expanded, so a screen reader does not say "Done, expanded" (N8).
  */
-export function RideSettings({ summary, spoken, children }: { summary: string; spoken: string; children?: ReactNode }): ReactElement {
+export function RideSettings({
+  summary,
+  spoken,
+  typeCard,
+  children,
+}: {
+  summary: string;
+  spoken: string;
+  typeCard?: ReactNode;
+  children?: ReactNode;
+}): ReactElement {
   const [open, setOpen] = useState(false);
   const bodyId = useId();
-  // UI-CLEANUP (the approved mockup's Plan): the summary's parts as a row of chips (type, traffic,
-  // hills, when, then anything else set), all one button, so the row is one press and one name.
-  const chips = summary.split(" · ");
+  // UI-CLEANUP (the approved mockup's Plan): the summary's parts as a row of chips (traffic, hills, when, then
+  // anything else set), all one button, so the row is one press and one name.
+  const chips = summary === "" ? [] : summary.split(" · ");
   return h(
     "section",
     { className: "ride-settings", "aria-label": "Ride" },
+    typeCard ?? null,
     h(
       "h2",
       { id: "ride-settings-heading", className: "ride-line" },
@@ -58,11 +70,11 @@ export function RideSettings({ summary, spoken, children }: { summary: string; s
         h(
           "span",
           { className: "ride-line-text" },
-          h("span", { className: "ride-line-label visually-hidden" }, "Ride"),
+          h("span", { className: "ride-line-label" }, RIDE_SETTINGS_LABEL),
           h(
             "span",
             { className: "ride-line-summary", "aria-hidden": "true" },
-            ...chips.map((chip, i) => h("span", { key: i, className: "ride-chip" }, i === 0 ? lineIcon("bike", 16) : null, chip)),
+            ...chips.map((chip, i) => h("span", { key: i, className: "ride-chip" }, chip)),
           ),
           h("span", { className: "visually-hidden" }, `: ${spoken}.`),
         ),

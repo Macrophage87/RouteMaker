@@ -147,6 +147,11 @@ export interface ImportedPlan {
    * route, and the closure check. Absent on a plan not opened from a file.
    */
   verbatim?: Verbatim;
+  /**
+   * Opened from a saved route or a shared link that followed the file exactly (v0.9.0, "share the exact route"):
+   * Plan's "Follow the file exactly" starts on, as the sharer had it.
+   */
+  exact?: boolean;
 }
 
 /** An opened file's own text and line, unchanged. */

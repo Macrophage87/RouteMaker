@@ -17,6 +17,19 @@ opens the live site in a WebView and gives Ride mode three native things while a
 - **The latest cue on the notification shade** (v0.8.0 site only). `@capacitor/local-notifications`
   shows a second, silent "Latest cue" notification, replaced as each cue is said, cleared at End ride.
 
+One more native thing, outside a ride: **Send to Garmin** (the site's GPX sheet, v0.9.0 site and app). The
+site makes the FIT course and hands it to `FilesPlugin.java` ("RouteMakerFiles"), which writes it to the app's
+cache and hands it to Garmin Connect when Connect takes it (the manifest's one `<queries>` entry names it),
+otherwise to Android's "Open with" list. A WebView can neither share nor download a file a page makes, so an
+older app without the plugin shows no Send to Garmin button.
+
+**Opening a RouteMaker link in the app** (v0.9.0 app): in any app, Share the link and pick RouteMaker.
+`SharedLink.java` takes the first https link in the shared text and opens it only when it is on the site kept
+on this phone; any other link is refused with a short message. A tapped link still opens the browser:
+Android opens a tapped web link in an app only for an address built into the APK (verified App Links, plus
+a file on the server naming the app's signing key), and no build carries one. That can come with a
+production address. Opening a shared link replaces the page shown, a ride in progress included.
+
 There are no new buttons: Start ride, Go and End work as on the website. Distances are the site's
 own (feet and miles).
 
@@ -245,7 +258,8 @@ Such an APK names the server: keep it off public places. `ROUTEMAKER_APP_ID` set
   address into Capacitor's config, registers the plugin below), `SiteWebViewClient.java` (the basic-auth
   sign-in box, `res/layout/dialog_site_login.xml`, and which page is on top), `GuardedBridge.java`
   (the native bridge for the site only) and `RideCompatPlugin.java`;
-  `assets/routemaker-compat.js`, `res/drawable/ic_ride.xml` (the notifications' icon), the manifest and
+  `assets/routemaker-compat.js`, `res/drawable/ic_ride.xml` (the notifications' icon), the launcher icons
+  and launch screens (drawn from the site's favicon by `scripts/make_app_icons.py`), the manifest and
   `app/build.gradle` (store id, version and release signing from the environment).
 - `test/`: `npm test` (node's test runner): the config, the manifest, the workflow (its triggers, no
   repository variables, no address), the first-launch screen's labels, the bridge guard, and the

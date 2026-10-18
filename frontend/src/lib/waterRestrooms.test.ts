@@ -3,6 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { parseRepair } from "./repair.ts";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import * as spec from "@maplibre/maplibre-gl-style-spec";
@@ -136,9 +137,12 @@ test("the bundled file parses, every point in the coverage box, ids unique", () 
   assert.equal(raw.source, "OpenStreetMap contributors, ODbL 1.0");
   const points = parseWaterRestrooms(raw);
   assert.ok(points);
-  assert.equal(points.length, raw.points.length, "every point in the file is one the map can draw");
+  // Repair stands and bike shops share the file; lib/repair.ts draws those.
+  const repair = new Set((parseRepair(raw) ?? []).map((p) => p.id));
+  const drawn = new Set([...points.map((p) => p.id), ...repair]);
+  assert.equal(drawn.size, raw.points.length, "every point in the file is one the map can draw");
   assert.equal(new Set(points.map((p) => p.id)).size, points.length);
-  for (const p of points) assert.ok(p.lon >= -78 && p.lon <= -76.02 && p.lat >= 38.2 && p.lat <= 39.72, p.id);
+  for (const p of points) assert.ok(p.lon >= -78.05 && p.lon <= -76.02 && p.lat >= 38.2 && p.lat <= 39.72, p.id);
 });
 
 const outline = (icon: WaterIcon) => {

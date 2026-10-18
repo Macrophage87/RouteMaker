@@ -13,11 +13,15 @@
  * data is never copied. The file is fetched the first time the rider searches.
  *
  * A search matches the rider's words against each place's name and cuisine, widened by a short
- * list of words that mean the same food (FOOD_SYNONYMS: "crab" finds seafood places too). The
- * results are the matches in the map's view, or in the whole area when the rider asks; with a
+ * list of words that mean the same food (FOOD_SYNONYMS: "crab" finds seafood places too). An empty
+ * search, or a word for food in general (ALL_FOOD_WORDS: "food", "eat", "lunch"), finds every place
+ * (the owner, 2026-10-18: "when searching for food, all food should be shown up"). The results are
+ * every match in the whole area (the default, "Near you") or only those in the map's view; with a
  * route shown, each says its detour, the extra distance and time to ride there and back to the
- * route, and the list is sorted by it, with no distance cap. Without a route, by distance from
- * the map's center.
+ * route, and the list is sorted by it, least first, with no distance cap (the owner, 2026-10-18:
+ * "if on a route we'd want to sort by miles of detour too"). Without a route, by distance from the
+ * rider's location where the app has one (the owner, 2026-10-18: "The default for search should be
+ * the current location"), else from the map's center.
  *
  * The detour is an estimate, worked out here with no router call, so a search over hundreds of
  * places is instant and costs the server nothing: the straight-line distance from the place to
@@ -172,7 +176,38 @@ export const FOOD_SYNONYMS: Readonly<Record<string, readonly string[]>> = {
   market: ["kind:m"],
   "farmers market": ["kind:m", "kind:fs"],
   "farmer's market": ["kind:m", "kind:fs"],
+  // A kind by its own name: "restaurant" finds every restaurant, not only those named one.
+  restaurant: ["kind:r"],
+  "fast food": ["kind:f"],
+  "food court": ["kind:fc"],
+  "beer garden": ["kind:b"],
+  biergarten: ["kind:b"],
 };
+
+/** Words for food in general: each, like an empty search, finds every place (the owner, 2026-10-18). */
+export const ALL_FOOD_WORDS: ReadonlySet<string> = new Set([
+  "food",
+  "foods",
+  "all",
+  "all food",
+  "any",
+  "anything",
+  "everything",
+  "eat",
+  "eats",
+  "eating",
+  "something to eat",
+  "place to eat",
+  "places to eat",
+  "meal",
+  "meals",
+  "lunch",
+  "dinner",
+  "supper",
+  "snack",
+  "snacks",
+  "hungry",
+]);
 
 /** Lower case, punctuation but ' & - dropped, spaces squeezed: "  Crab-House! " is "crab-house". */
 export function normaliseQuery(query: string): string {
@@ -192,7 +227,9 @@ function singulars(word: string): string[] {
 }
 
 export interface FoodTerms {
-  /** The words as typed, normalised, for the name. */
+  /** Every place matches: an empty search or an ALL_FOOD_WORDS word. */
+  all: boolean;
+  /** The words as typed, normalised, for the name ("" for every place). */
   text: string;
   /** Cuisine values that match. */
   cuisines: Set<string>;
@@ -200,10 +237,10 @@ export interface FoodTerms {
   kinds: Set<FoodKind>;
 }
 
-/** What a query finds: its own words for names, and its cuisine values and kinds with the synonyms. */
-export function foodTerms(query: string): FoodTerms | null {
+/** What a query finds: its own words for names, and its cuisine values and kinds with the synonyms; every place for an empty query. */
+export function foodTerms(query: string): FoodTerms {
   const q = normaliseQuery(query);
-  if (!q) return null;
+  if (!q || ALL_FOOD_WORDS.has(q)) return { all: true, text: q, cuisines: new Set(), kinds: new Set() };
   const cuisines = new Set<string>();
   const kinds = new Set<FoodKind>();
   for (const form of singulars(q)) {
@@ -215,11 +252,12 @@ export function foodTerms(query: string): FoodTerms | null {
       } else cuisines.add(value);
     }
   }
-  return { text: q, cuisines, kinds };
+  return { all: false, text: q, cuisines, kinds };
 }
 
 /** Whether a place matches: its name holds the words, or a cuisine value (or a part of one) or its kind is one asked for. */
 export function matchesFood(place: FoodPlace, terms: FoodTerms): boolean {
+  if (terms.all) return true;
   if (terms.kinds.has(place.kind)) return true;
   if (normaliseQuery(place.name).includes(terms.text)) return true;
   // "fried_chicken" is chicken; "seafood" is not "food" (a part, not a substring).
@@ -298,27 +336,32 @@ export function detourOf(offM: number, speedMps: number): { extraM: number; extr
 
 export interface FoodResult {
   place: FoodPlace;
-  /** From the map's center, straight line, metres (the sort without a route). */
+  /** From where the search was made (the rider, or the map's center), straight line, metres (the sort without a route). */
   fromCentreM: number;
+  /** The search was from the rider's location, not the map's center (the words say "from you"). */
+  fromRider?: boolean;
   /** With a route: the detour and where on the route to turn off. */
   detour?: { offM: number; alongM: number; extraM: number; extraS: number };
 }
 
-export type FoodScope = "view" | "area";
+/** "near": the whole area, nearest the rider (or the map's center) first, the default; "view": the map's view only. */
+export type FoodScope = "near" | "view";
 
 export interface FoodSearch {
   query: string;
   scope: FoodScope;
   /** The map's view (scope "view"). */
   bounds: Bounds | null;
+  /** Where distances are from without a route: the rider's location where known, else the map's center. */
   centre: LonLat;
+  /** `centre` is the rider's location. */
+  fromRider?: boolean;
   route: RouteForDetour | null;
 }
 
 /** Every match, sorted: by detour with a route (then by where on the route), else by distance from the center. */
 export function searchFood(places: readonly FoodPlace[], search: FoodSearch): FoodResult[] {
   const terms = foodTerms(search.query);
-  if (!terms) return [];
   const bounds = search.scope === "view" ? search.bounds : null;
   const project = search.route ? projector(search.route.line) : null;
   const out: FoodResult[] = [];
@@ -327,6 +370,7 @@ export function searchFood(places: readonly FoodPlace[], search: FoodSearch): Fo
     if (!matchesFood(place, terms)) continue;
     const point: LonLat = [place.lon, place.lat];
     const result: FoodResult = { place, fromCentreM: flatM(search.centre, point) };
+    if (search.fromRider) result.fromRider = true;
     if (project && search.route) {
       const { offM, alongM } = project(point);
       result.detour = { offM, alongM, ...detourOf(offM, search.route.speedMps) };
@@ -335,7 +379,8 @@ export function searchFood(places: readonly FoodPlace[], search: FoodSearch): Fo
   }
   return out.sort((a, b) =>
     a.detour && b.detour
-      ? a.detour.extraM - b.detour.extraM || a.detour.alongM - b.detour.alongM || a.place.id.localeCompare(b.place.id)
+      ? // A tie (several on the route) nearest the rider first, so the first pins are not all behind them.
+        a.detour.extraM - b.detour.extraM || (search.fromRider ? a.fromCentreM - b.fromCentreM : 0) || a.detour.alongM - b.detour.alongM || a.place.id.localeCompare(b.place.id)
       : a.fromCentreM - b.fromCentreM || a.place.id.localeCompare(b.place.id),
   );
 }
@@ -355,7 +400,7 @@ export function foodKindText(place: FoodPlace): string {
  */
 export function foodHowFar(result: FoodResult): string {
   const d = result.detour;
-  if (!d) return `${formatDistance(result.fromCentreM)} from the map's center in a straight line.`;
+  if (!d) return `${formatDistance(result.fromCentreM)} ${result.fromRider ? "from you" : "from the map's center"} in a straight line.`;
   const at = formatDistance(d.alongM);
   if (d.extraM === 0 || milesFigure(d.extraM) === "0.0") return `On your route at ${at}.`;
   return `Detour about ${formatExtra(d.extraM)} and ${formatDuration(d.extraS)} there and back, turning off at ${at} on your route.`;
@@ -378,18 +423,23 @@ export function foodHoursText(place: FoodPlace): string {
 export const FOOD_PAGE = 10;
 export const NO_FOOD_DATA = "No food data yet: the places to eat arrive with the next map data update.";
 export const FOOD_NOT_LOADED = "The places to eat are unavailable for now; try again shortly.";
-export const FOOD_EMPTY_QUERY = "Type a food or a name to search for, such as crab, pizza or coffee.";
 export const FOOD_DETOUR_NOTE =
   `Detours are estimates: the straight-line distance off your route, there and back, times ${CIRCUITY} for the streets, at your route's average speed. ` +
   "From OpenStreetMap: check the hours before you count on them. No ratings.";
 
-/** The status line after a search. */
-export function foodFoundSaid(query: string, scope: FoodScope, total: number, shown: number, sortedByDetour: boolean): string {
+/** The status line after a search: "1,234 places to eat in the whole area" for every place, else what matched. */
+export function foodFoundSaid(query: string, scope: FoodScope, total: number, shown: number, sortedByDetour: boolean, fromRider = false): string {
   const where = scope === "view" ? "in the map view" : "in the whole area";
+  const all = foodTerms(query).all;
   const q = `“${normaliseQuery(query)}”`;
-  if (total === 0) return `No places match ${q} ${where}.${scope === "view" ? " Try Search the whole area, or move the map." : ""}`;
-  const count = `${total.toLocaleString("en-US")} ${total === 1 ? "place matches" : "places match"} ${q} ${where}`;
-  const order = sortedByDetour ? "least detour first" : "nearest the map's center first";
+  if (total === 0)
+    return all
+      ? `No places to eat ${where}.${scope === "view" ? " Try Near you, or move the map." : ""}`
+      : `No places match ${q} ${where}.${scope === "view" ? " Try Near you, or move the map." : ""}`;
+  const count = all
+    ? `${total.toLocaleString("en-US")} ${total === 1 ? "place" : "places"} to eat ${where}`
+    : `${total.toLocaleString("en-US")} ${total === 1 ? "place matches" : "places match"} ${q} ${where}`;
+  const order = sortedByDetour ? "least detour first" : fromRider ? "nearest you first" : "nearest the map's center first";
   const showing = shown < total ? ` Showing the first ${shown}.` : "";
   return `${count}, ${order}.${showing}`;
 }
@@ -400,3 +450,31 @@ export const foodMoreSaid = (shown: number, total: number): string => `Showing $
 
 // The results' map markers are the lettered places' buttons (lib/letteredPlaces.ts, MapView `lettered`),
 // lettered as the list: the owner's lettered places of 2026-10-11 (they were a numbered circle layer).
+
+// Every match beyond the lettered page is a small dot (FoodOverlay in app/PlacesSheets.tsx), so the map shows
+// all the food found (the owner, 2026-10-18: "all food should be shown up"); a tap names the place in words.
+export const FOOD_SOURCE_ID = "food-found";
+export const FOOD_LAYER = "food-found";
+export const FOOD_COLOUR = "#b0441c";
+
+export function foodGeoJson(results: readonly FoodResult[]): object {
+  return {
+    type: "FeatureCollection",
+    features: results.map((r) => ({ type: "Feature", properties: { id: r.place.id }, geometry: { type: "Point", coordinates: [r.place.lon, r.place.lat] } })),
+  };
+}
+
+/** A rust dot with a white ring, small at a wide zoom; the lettered pins sit over the first page. */
+export function foodLayer(): Record<string, unknown> {
+  return {
+    id: FOOD_LAYER,
+    type: "circle",
+    source: FOOD_SOURCE_ID,
+    paint: {
+      "circle-radius": ["interpolate", ["linear"], ["zoom"], 7, 2, 11, 3.5, 15, 6],
+      "circle-color": FOOD_COLOUR,
+      "circle-stroke-color": "#ffffff",
+      "circle-stroke-width": ["interpolate", ["linear"], ["zoom"], 7, 0.75, 11, 1.5],
+    },
+  };
+}

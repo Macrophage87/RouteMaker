@@ -22,7 +22,7 @@ export const CHECK_EVERY_MS = 60 * 60_000;
 export const UPDATE_READY = "A new version of RouteMaker is ready.";
 export const UPDATE_RELOAD = "Reload";
 export const UPDATE_RELOAD_NAME = "Reload RouteMaker to use the new version";
-export const OFFLINE_SAID = "You are offline. RouteMaker still opens, and routes you kept for offline open from Settings.";
+export const OFFLINE_SAID = "You are offline. RouteMaker still opens, and routes you kept for offline open from Save & load.";
 export const ONLINE_SAID = "Back online.";
 
 /** Whether the update offer shows: a worker waiting, and no ride under way. */
