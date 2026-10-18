@@ -34,7 +34,7 @@ import { copyText, selectionCopy } from "./lib/sidebar.ts";
 import { NEW_LINK, SHARED_LINKS, TURN_OFF, keepSaid, listSharedLinks, regenerateSharedLink, revokeSharedLink, type SharedLink } from "./lib/sharedRoutes.ts";
 import { formatDistance } from "./lib/format.ts";
 import { alertLine } from "./lib/closureReview.ts";
-import { matching, noMatch } from "./lib/routeSearch.ts";
+import { matchSaid, matching } from "./lib/routeSearch.ts";
 
 export interface MyRoutesProps {
   /** Bumped by the page after a save, so the list is read again. */
@@ -115,7 +115,9 @@ export function MyRoutes({ version, onOpen, onExport, announce, versions = false
       {routes && routes.length > 0 && (
         <>
           <p className="hint">{countLine(routes.length, MAX_SAVED)}</p>
-          {matching(routes, filter, (r) => r.name).length === 0 && <p className="hint">{noMatch(filter)}</p>}
+          <p className="hint" role="status">
+            {matchSaid(matching(routes, filter, (r) => r.name).length, routes.length, filter)}
+          </p>
           <ul role="list" className="my-routes-list">
             {matching(routes, filter, (r) => r.name).map((r) => (
               <li key={r.id} className="my-route">

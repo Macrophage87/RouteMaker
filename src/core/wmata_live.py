@@ -252,11 +252,12 @@ class Snapshot:
         closed starting Monday") is left out; one that names no station closes nothing."""
         out: dict[str, str] = {}
         for incident in self.incidents:
-            for sentence in re.split(r"(?<=[.!?])\s+", incident.text):
+            # Clauses, not only sentences: "Rosslyn is closed; parking is free at Ballston-MU."
+            for sentence in re.split(r"(?<=[.!?;])\s+", incident.text):
                 words = sentence.lower()
                 if not CLOSED_WORDS.search(words) or OPEN_WORDS.search(words):
                     continue
-                if FUTURE_WORDS.search(words) or PART_WORDS.search(words):
+                if FUTURE_WORDS.search(words) or PART_CLOSED.search(words):
                     continue
                 for station in self._named_in(words):
                     for code in self.codes(station):
@@ -298,7 +299,7 @@ class Snapshot:
                 continue
             if any(s <= start and end <= e for s, e in passing):
                 continue
-            if TOWARD.search(words[max(0, start - 12) : start]):
+            if TOWARD.search(words[max(0, start - 20) : start]):
                 continue
             if station not in out:
                 out.append(station)
@@ -314,16 +315,21 @@ class Snapshot:
 
 
 # What makes an incident's sentence close the stations it names (`Snapshot.closed`).
-CLOSED_WORDS = re.compile(r"\b(closed|closes|closure of)\b")
-# A part of a station closed (an entrance, an elevator, a garage) leaves the station open.
-PART_WORDS = re.compile(
-    r"\b(entrances?|exits?|elevators?|escalators?|garages?|parking|lots?|mezzanines?|kiosks?)\b"
+CLOSED_WORDS = re.compile(r"\b(closed|closes|closures?)\b")
+# A part of a station that is closed (an entrance, an elevator, a garage) leaves the station
+# open: the part is what "is closed" ("The L Street entrance at Farragut North is closed").
+PART_CLOSED = re.compile(
+    r"\b(?:entrances?|exits?|elevators?|escalators?|garages?|parking|lots?|mezzanines?|kiosks?)\b"
+    r"(?:(?!\bstations?\b)[^,]){0,60}?\b(?:is|are)\s+(?:temporarily\s+)?closed\b"
 )
-# A stretch of line between two stations, and a train's way, name stations only in passing.
+# A stretch of line between two stations names its ends only in passing (the shuttles stop
+# there); the second end is a few words at most.
 BETWEEN = re.compile(
-    r"\bbetween\b[^.;:]*?\band\b[^.;:,]*?(?=\s+(?:due|because|stations?)\b|[.;:,]|$)"
+    r"\bbetween\b[^.;:]*?\band\b\s+[^.;:,]*?"
+    r"(?=\s+(?:due|because|stations?|and|is|are|was|were)\b|[.;:,]|$)"
 )
-TOWARD = re.compile(r"\b(to|toward|towards|for)\s+$")
+# So does a train's way ("Silver Line trains to Ashburn are delayed").
+TOWARD = re.compile(r"\btrains?\s+(?:to|toward|towards|for)\s+$")
 OPEN_WORDS = re.compile(r"\b(open|opens|reopen|reopens|reopened)\b")
 FUTURE_WORDS = re.compile(r"\b(will|beginning|starting)\b")
 

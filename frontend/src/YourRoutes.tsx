@@ -29,7 +29,7 @@ export function YourRoutes({
       <h3 id={`${id}-heading`}>{YOUR_ROUTES}</h3>
       <input type="search" className="route-search" aria-label={SEARCH_ROUTES} placeholder={SEARCH_ROUTES} value={filter} onChange={(event) => setFilter(event.target.value)} />
       {signedIn && <MyRoutes {...myRoutes} filter={filter} />}
-      {kept.shown && <KeptRoutes version={kept.version} onOpen={kept.onOpen} onSay={kept.onSay} compact filter={filter} />}
+      {kept.shown && <KeptRoutes version={kept.version} onOpen={kept.onOpen} onSay={kept.onSay} compact filter={filter} level={4} />}
     </section>
   );
 }

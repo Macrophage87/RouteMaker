@@ -117,8 +117,8 @@ export function NearestFinder(props: FinderProps): ReactElement {
               // The letter is the map marker's (lib/letteredPlaces.ts): seen in its pin, heard before the place.
               h("span", { className: "place-letter", "aria-hidden": "true" }, h("span", null, placeLetter(index))),
               h(
-                "span",
-                null,
+                "div",
+                { className: "nearest-place" },
                 h("span", { className: "visually-hidden" }, `${placeLetter(index)}: `),
                 nearbyShort(item),
                 // Its details (how to open a Throne, opening hours, access) behind a native fold.

@@ -20,6 +20,13 @@ export function matching<T>(items: readonly T[], filter: string, nameOf: (item: 
   });
 }
 
+/** What a list says while searched, politely: how many of its routes match, or none; nothing when blank. */
+export function matchSaid(shown: number, total: number, filter: string): string {
+  if (!filter.trim()) return "";
+  if (shown === 0) return noMatch(filter);
+  return `${shown} of ${total} match "${filter.trim()}".`;
+}
+
 /** What a list says when the search hides every route in it. */
 export function noMatch(filter: string): string {
   return `No routes match "${filter.trim()}".`;

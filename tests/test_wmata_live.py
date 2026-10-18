@@ -534,3 +534,42 @@ def test_a_stretch_a_trains_way_or_a_closed_entrance_closes_no_station() -> None
         ),
     )
     assert delays.named() == set()
+
+
+def test_real_closures_worded_other_ways_still_close() -> None:
+    from dataclasses import replace
+
+    base = snapshot()
+    stations = {**base.stations}
+    for code, name in {
+        "C05": "Rosslyn",
+        "K01": "Court House",
+        "K04": "Ballston-MU",
+        "C04": "Foggy Bottom-GWU",
+    }.items():
+        stations[code] = wmata_live.Station(code, name, -77.07, 38.89)
+    live = replace(base, stations=stations)
+
+    def closed(text: str) -> set[str]:
+        return set(
+            replace(
+                live, incidents=(wmata_live.Incident(("Orange Line",), "Alert", text),)
+            ).closed()
+        )
+
+    assert closed("Rosslyn station closure due to a fire.") == {"C05"}
+    assert closed("Closures at Rosslyn and Court House.") == {"C05", "K01"}
+    assert closed(
+        "Rosslyn station is closed due to a fire; shuttle buses board at the N Moore St entrance."
+    ) == {"C05"}
+    assert closed(
+        "Rosslyn and Court House stations are closed until further notice; parking is free at"
+        " Ballston-MU."
+    ) == {"C05", "K01"}
+    assert closed("Due to a fire, service to Rosslyn is suspended and the station is closed.") == {
+        "C05"
+    }
+    assert closed("Stations are closed from Rosslyn to Ballston-MU.") == {"C05", "K04"}
+    assert closed(
+        "Single tracking between Ballston-MU and Foggy Bottom-GWU and Rosslyn is closed."
+    ) == {"C05"}

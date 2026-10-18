@@ -14,7 +14,7 @@
  * focus goes to the next sensible place (the next row's Remove, or the section's heading), never to the
  * page's top. What changes is said once, politely, through `onSay` (App's live region with its count).
  */
-import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore, type RefObject } from "react";
+import { createElement, useCallback, useEffect, useId, useRef, useState, useSyncExternalStore, type RefObject } from "react";
 import { AppWorker, OFFLINE_SAID, ONLINE_SAID, UPDATE_READY, UPDATE_RELOAD, UPDATE_RELOAD_NAME, browserWorkerEnv, updateOffered } from "./lib/appWorker.ts";
 import {
   DISMISSED_SAID,
@@ -31,7 +31,7 @@ import {
   subscribeInstall,
 } from "./lib/installOffer.ts";
 import { removeKept } from "./lib/offlineKeep.ts";
-import { matching, noMatch } from "./lib/routeSearch.ts";
+import { matchSaid, matching } from "./lib/routeSearch.ts";
 import { KEPT_HEADING, KEPT_HOW, KEPT_NONE, KEPT_NONE_SHORT, KEPT_PRIVATE, focusAfterRemove, keptDetail, removeFailedSaid, removedSaid, sortKept, storageNote, type KeptRoute } from "./lib/offlineRoutes.ts";
 import { listKept, persisted } from "./lib/offlineRouteStore.ts";
 import { InfoButton } from "./SettingRow.tsx";
@@ -232,6 +232,7 @@ export function KeptRoutes({
   headingRef,
   compact = false,
   filter = "",
+  level = 3,
 }: {
   version: number;
   onOpen: (route: KeptRoute) => void;
@@ -241,6 +242,8 @@ export function KeptRoutes({
   compact?: boolean;
   /** Words from the sheet's search: only the routes whose titles hold them are listed. */
   filter?: string;
+  /** Its heading's level: 4 under Your routes' heading. */
+  level?: 3 | 4;
 }) {
   const [infoOpen, setInfoOpen] = useState(false);
   const [routes, setRoutes] = useState<KeptRoute[] | null>(null);
@@ -284,9 +287,7 @@ export function KeptRoutes({
   return (
     <section aria-labelledby={`${id}-heading`} className="kept-routes">
       <div className="setting-line">
-        <h3 id={`${id}-heading`} ref={heading} tabIndex={-1}>
-          {KEPT_HEADING}
-        </h3>
+        {createElement(level === 4 ? "h4" : "h3", { id: `${id}-heading`, ref: heading, tabIndex: -1 }, KEPT_HEADING)}
         {compact && <InfoButton open={infoOpen} onToggle={() => setInfoOpen((was) => !was)} controls={`${id}-info`} about="routes kept for offline" />}
       </div>
       {compact && (
@@ -294,13 +295,16 @@ export function KeptRoutes({
           {KEPT_HOW} {KEPT_PRIVATE} {storageNote(kept, isStandalone())}
         </p>
       )}
+      {routes !== null && routes.length > 0 && (
+        <p className="hint" role="status">
+          {matchSaid(matching(routes, filter, (r) => r.title).length, routes.length, filter)}
+        </p>
+      )}
       {routes === null ? (
         <p className="hint">Reading the routes kept on this device…</p>
       ) : routes.length === 0 ? (
         <p className="hint">{compact ? KEPT_NONE_SHORT : KEPT_NONE}</p>
-      ) : matching(routes, filter, (r) => r.title).length === 0 ? (
-        <p className="hint">{noMatch(filter)}</p>
-      ) : (
+      ) : matching(routes, filter, (r) => r.title).length === 0 ? null : (
         <ul className="kept-list">
           {matching(routes, filter, (r) => r.title).map((route, index) => (
             <li key={route.id} className="kept-route">
