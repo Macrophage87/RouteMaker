@@ -978,7 +978,6 @@ button.secondary {
   font-size: 0.9em;
 }
 
-/* Go's "Add a stop" with Best order beside it (v0.7.0), under Start in the route sheet. */
 .go-add-stop {
   display: flex;
   flex-wrap: wrap;
@@ -1268,17 +1267,44 @@ button.secondary {
 
 /* --- Ride type, its dialog, and the sliders (RideTypePicker, DialsPanel) --- */
 
-.ride-type-current {
-  display: flex;
-  gap: 12px;
-  align-items: flex-start;
-  justify-content: space-between;
+/* The ride type: one card button that opens the ride types (edit-route redesign, Stephen 2026-10-18). */
+.ride-settings .ride-type {
+  padding: 10px 14px 0;
 }
 
-.ride-type-current p {
-  margin: 0;
+.ride-settings .ride-type .ride-type-label {
+  margin: 0 0 4px;
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.ride-type-current > button {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 56px;
+  padding: 8px 12px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--swatch-border);
+  border-radius: 10px;
+  text-align: left;
+  font-weight: 400;
+}
+
+.ride-type-text {
   display: grid;
   gap: 2px;
+  min-width: 0;
+}
+
+.ride-type-change {
+  color: var(--accent);
+  font-weight: 700;
+  white-space: nowrap;
 }
 
 dialog.ride-types {
@@ -2509,19 +2535,21 @@ button.secondary,
 
 .ride-settings h2.ride-line {
   margin: 0;
+  padding: 8px 14px;
 }
 
+/* A card like the ride type's above it (edit-route redesign), so both read as buttons. */
 .ride-line-button {
   display: flex;
   align-items: center;
   gap: 12px;
   width: 100%;
   min-height: 56px;
-  padding: 6px 14px;
-  background: transparent;
+  padding: 6px 12px;
+  background: var(--bg);
   color: var(--text);
-  border: 0;
-  border-radius: 0;
+  border: 1px solid var(--swatch-border);
+  border-radius: 10px;
   text-align: left;
   font-weight: 400;
 }
@@ -2547,7 +2575,6 @@ button.secondary,
 .ride-line-action {
   color: var(--accent);
   font-weight: 700;
-  text-decoration: underline;
 }
 
 .ride-settings-body {
@@ -6214,8 +6241,8 @@ details.fold > summary .icon {
   display: none;
 }
 
-/* Go's route chips (review F15): one row at 390 px. The ride type's chip takes what is left and cuts a long name
-   short; Save's name form and its line go under the row, each on a line of its own. */
+/* Go's route chips (review F15): one row at 390 px, the routes and Save; Save's name form and its line go under the
+   row, each on a line of its own. */
 .go-chips {
   display: flex;
   flex-wrap: wrap;
@@ -6226,17 +6253,6 @@ details.fold > summary .icon {
 .go-chips > .chip {
   flex: none;
   padding: 0 10px;
-}
-.go-chips > .go-ride-chip {
-  flex: 1 1 0;
-  min-width: 0;
-  max-width: max-content;
-}
-.go-chip-name {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .go-chips > .save-route {
   display: contents;
@@ -6638,8 +6654,34 @@ details.fold > summary .icon {
   min-height: 44px;
 }
 
-.point-change {
-  margin-left: auto;
+/* The start's and destination's place is its own Change button, drawn as a box (edit-route redesign, Stephen
+   2026-10-18); its search box opens in that row (li.point-editing). */
+.points button.point-change {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  padding: 4px 10px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--swatch-border);
+  border-radius: 8px;
+  text-align: left;
+  font-weight: 400;
+}
+
+.points button.point-change .coords {
+  flex: 1;
+}
+
+.points li.point-editing > .point-editor {
+  flex: 1;
+  min-width: 0;
+}
+
+.point-editor .point-cancel {
+  min-height: 44px;
 }
 
 .route-state {
@@ -6948,4 +6990,68 @@ details.fold > summary .icon {
     fill: HighlightText;
     stroke: HighlightText;
   }
+}
+
+/* Go's route card (edit-route redesign, Stephen 2026-10-18): the start and the destination on one button that opens
+   Edit route; the ride type chips follow it, both above Start. */
+.go-route-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 56px;
+  margin: 10px 0 0;
+  padding: 8px 12px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--swatch-border);
+  border-radius: 10px;
+  text-align: left;
+  font-weight: 400;
+}
+
+.go-route-ends {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.go-route-end {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.go-route-to {
+  font-weight: 700;
+}
+
+.go-route-stops {
+  padding-left: 24px;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.go-route-edit {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--accent);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.go-summary .go-route-rides {
+  margin-top: 10px;
+}
+
+.go-rides-label {
+  margin: 0 0 4px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-muted);
 }

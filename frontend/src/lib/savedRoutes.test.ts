@@ -273,7 +273,7 @@ test("Settings' Account has Sign out under 'Signed in with Discord.': a form POS
   assert.match(form, /<button type="submit" className="secondary">\s*Sign out\s*<\/button>/);
 });
 
-test("F15. Go's route chips stay one row at 390 px: Save shown short, the ride type's name cut short, never the actions", () => {
+test("F15. Go's route chips stay one row at 390 px: Save shown short, no icons, never the actions", () => {
   const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
   const panel = read("../app/RoutePanel.tsx");
   const chips = panel.slice(panel.indexOf('<div className="go-chips"'), panel.indexOf("{/* The elevation chart"));
@@ -282,19 +282,11 @@ test("F15. Go's route chips stay one row at 390 px: Save shown short, the ride t
   const save = read("../SaveRoute.tsx");
   assert.match(save, /aria-label=\{shown \? label : undefined\}/);
   assert.match(save, /\{shown \?\? label\}/);
-  // Only the ride type keeps an icon (four icons and their padding were what made the row wrap).
-  assert.equal((chips.match(/<Icon /g) ?? []).length, 1, "the ride type's bike");
+  // The ride type and Plan left the row (edit-route redesign): the routes and Save, without icons.
+  assert.equal((chips.match(/<Icon /g) ?? []).length, 0);
+  assert.doesNotMatch(chips, /go-ride-chip|go-plan-chip/);
   assert.match(save, /\{chip && !shown && <Icon name="download" size=\{18\} \/>\}/);
-  assert.match(chips, /<span className="go-chip-name">\s*<PresetName id=\{preset\} \/>\s*<\/span>/);
   const css = read("../styles.css");
-  assert.match(css, /\.go-chips > \.go-ride-chip \{\s*flex: 1 1 0;\s*min-width: 0;\s*max-width: max-content;/);
-  assert.match(css, /\.go-chip-name \{[^}]*text-overflow: ellipsis;/);
   // Save's form and its line take lines of their own under the row.
   assert.match(css, /\.go-chips \.save-route-form,\s*\.go-chips \.save-route-said \{\s*flex: 1 0 100%;/);
-  // An estimate at Go's chip size (0.95rem, about 8.5 px a character; 10 px padding and a 1 px border each side;
-  // the bike icon 18 px and its 6 px gap): "3 routes", "Plan", "Save" and three 6 px gaps leave the ride type 142 of
-  // the 362 px a 390 px phone's sheet holds, so Default, Bikeshare and Cargo Bike show whole; longer names end "…".
-  const chip = (text: string, icon: boolean) => 22 + text.length * 8.5 + (icon ? 24 : 0);
-  const left = 362 - (chip("3 routes", false) + chip("Plan", false) + chip("Save", false) + 3 * 6);
-  for (const name of ["Default", "Bikeshare", "Cargo Bike"]) assert.ok(chip(name, true) <= left, `${name}: ${chip(name, true)} of ${left} px`);
 });

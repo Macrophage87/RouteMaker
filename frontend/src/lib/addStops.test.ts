@@ -37,14 +37,17 @@ test("each result row offers 'Make this the destination' as an option of its own
   assert.match(search, /onPick\(place, as \?\? boxChoice \?\? \(variant === "stop" \? "via" : single \? "end" : choice\)\);/);
 });
 
-test("Go's route sheet has one 'Add a stop' field under Start, with Best order, never during a ride", () => {
+test("Go's route sheet keeps one 'Add a stop' field, under the route card, with Best order, never during a ride", () => {
   const go = source("../app/Go.tsx");
   assert.match(go, /<PlaceSearch variant="stop"/);
-  // Review F2: the field moved from above the route to under Start, so the sheet leads with the time and Start.
   assert.doesNotMatch(go, /addStop/);
+  // The edit-route redesign (Stephen 2026-10-18, "Keep stop box in Go"): the field stays one tap away, under the
+  // route card, whose Edit route holds the rest (change the start or the destination, remove a stop).
   const panel = source("../app/RoutePanel.tsx");
-  assert.match(panel, /<div className="actions start-ride go-start">\s*\{start\}\s*\{startHint\}\s*<\/div>\s*\)\}\s*\{\/\*[^*]*\*\/\}\s*\{!go\.peek && go\.addStop\}/);
+  assert.match(panel, /\{!go\.peek && go\.routeCard\}\s*\{!go\.peek && go\.addStop\}/);
   assert.match(source("../App.tsx"), /addStop: goStops \? \(\s*<GoAddStop/);
+  assert.match(source("../App.tsx"), /routeCard:\s*!riding && points\.length >= 2 \? \(\s*<GoRouteCard/);
+  assert.match(source("../App.tsx"), /onEdit=\{\(opener\) => openView\("points", opener\)\}/);
   assert.match(go, /\{orderShown && \(\s*<button[^>]*onClick=\{onBestOrder\}/);
   const app = source("../App.tsx");
   assert.match(app, /const goStops = mode === "go" && !riding && points\.length >= 2 && !twoPointsOnly\(preset\) && !isMassRide\(preset\);/);

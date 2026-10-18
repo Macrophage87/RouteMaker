@@ -7,6 +7,7 @@ import { ACCESS_HELP, ACCESS_LABEL } from "../lib/accessMode.ts";
 import { infoHelp } from "../lib/roadInfo.ts";
 import type { RouteResponse } from "../lib/api.ts";
 import { MAX_POINTS, type LonLat } from "../lib/geo.ts";
+import { YOUR_LOCATION } from "../lib/appMode.ts";
 import { usesBikeshare, type PresetId } from "../lib/presets.ts";
 import { accessibilityOn, paletteSetByAddress, setAccessibility } from "../stressStyle.js";
 import { DialsPanel } from "../DialsPanel.tsx";
@@ -27,7 +28,7 @@ import { VIA_MARKS } from "../lib/pointKinds.ts";
 import { HighContrastShortcut, PlannerZoomNotice, RideSettings } from "../Sidebar.tsx";
 import { Icon } from "../Icon.tsx";
 import { PLANNER_EXTRAS, searchLede } from "../lib/sidebar.ts";
-import { rideSummary, rideSummarySpoken } from "../lib/rideSummary.ts";
+import { settingsSummary, settingsSummarySpoken } from "../lib/rideSummary.ts";
 import { InstallOffer } from "../InstallableApp.tsx";
 
 type PlaceNames = ReturnType<typeof usePlaceNames>;
@@ -55,6 +56,8 @@ export interface PointsSectionProps {
   dials: Dials;
   accessMode: boolean;
   namer: PlaceNames["namer"];
+  /** The points that are the rider's location (App's fromHere): named "Your location" in the list (edit-route redesign). */
+  located: readonly LonLat[];
   removeAt: (index: number) => void;
   pointWarnings: (string | null)[];
   removeRefs: RefObject<Array<HTMLButtonElement | null>>;
@@ -77,6 +80,11 @@ export interface PointsSectionProps {
   toggleAccessMode: (focusTools: boolean) => void;
   announce: (text: string) => void;
   notice: string | null;
+  /**
+   * Whether the notice line is a live region: not in Go's Edit route, where the app's own region says it already
+   * (App noticeSaidElsewhere), so it is not said twice.
+   */
+  noticeLive: boolean;
   /** Points' Info (the how-to, behind one button): open or not, and its body's id; App's state. */
   tips: boolean;
   setTips: Dispatch<SetStateAction<boolean>>;
@@ -90,7 +98,7 @@ export interface PointsSectionProps {
  * route's "Choose a station" fold.
  */
 export function PointsSection(props: PointsSectionProps) {
-  const { pointsHeadingRef, zoom, stressVisible, stress, pointsSearchRef, compactPoints, points, loopVias, geoGate, searchBias, pickPlace, locateReady, locating, hereInPlan, here, useMyLocation, loop, loopHintId, commitDials, dials, accessMode, namer, removeAt, pointWarnings, removeRefs, preset, federalPlanner, pointsEditRef, reverseButton, reverse, reverseHint, orderShown, bestOrder, orderFocused, ordering, narrow, undo, can, redo, coverageShown, toggleAccessMode, announce, notice, tips, setTips, tipsId } = props;
+  const { pointsHeadingRef, zoom, stressVisible, stress, pointsSearchRef, compactPoints, points, loopVias, geoGate, searchBias, pickPlace, locateReady, locating, hereInPlan, here, useMyLocation, loop, loopHintId, commitDials, dials, accessMode, namer, located, removeAt, pointWarnings, removeRefs, preset, federalPlanner, pointsEditRef, reverseButton, reverse, reverseHint, orderShown, bestOrder, orderFocused, ordering, narrow, undo, can, redo, coverageShown, toggleAccessMode, announce, notice, noticeLive, tips, setTips, tipsId } = props;
   return (
     <section key="points" aria-labelledby="points-heading" className="points-section">
       <div className="section-head">
@@ -195,6 +203,7 @@ export function PointsSection(props: PointsSectionProps) {
         useMyLocation={useMyLocation}
         accessMode={accessMode}
         namer={namer}
+        located={located}
         removeAt={removeAt}
         pointWarnings={pointWarnings}
         removeRefs={removeRefs}
@@ -220,7 +229,7 @@ export function PointsSection(props: PointsSectionProps) {
       </div>
       {/* Always rendered, empty when there is no notice: a live region that is created already holding
           its text is often not spoken (VoiceOver with Safari, NVDA with Firefox). */}
-      <p className={notice ? "notice" : "notice notice-empty"} role="status">
+      <p className={notice ? "notice" : "notice notice-empty"} role={noticeLive ? "status" : undefined}>
         {notice ?? ""}
       </p>
     </section>
@@ -240,6 +249,7 @@ type PointBoxesProps = Pick<
   | "useMyLocation"
   | "accessMode"
   | "namer"
+  | "located"
   | "removeAt"
   | "pointWarnings"
   | "removeRefs"
@@ -258,7 +268,11 @@ type PointBoxesProps = Pick<
  * Start / Destination / Stop choice. It keeps which point a Change opened a box for; App keeps the plan.
  */
 function PointBoxes(props: PointBoxesProps) {
-  const { pointsSearchRef, points, loopVias, geoGate, searchBias, pickPlace, locateReady, locating, locateNote, useMyLocation, accessMode, namer, removeAt, pointWarnings, removeRefs, orderShown, bestOrder, orderFocused, ordering } = props;
+  const { pointsSearchRef, points, loopVias, geoGate, searchBias, pickPlace, locateReady, locating, locateNote, useMyLocation, accessMode, namer, located, removeAt, pointWarnings, removeRefs, orderShown, bestOrder, orderFocused, ordering } = props;
+  // A point that is the rider's location is named so, as Go's route card names it, not by its coordinates.
+  const names = {
+    name: (point: LonLat) => (located.includes(point) ? { name: YOUR_LOCATION, label: YOUR_LOCATION } : namer.name(point)),
+  };
   // The point a "Change" opened a box for (the start or the destination), until a pick, Escape or a removal.
   const [changing, setChanging] = useState<"from" | "to" | null>(null);
   const boxRefs = { from: useRef<HTMLInputElement | null>(null), to: useRef<HTMLInputElement | null>(null), add: useRef<HTMLInputElement | null>(null) };
@@ -288,7 +302,7 @@ function PointBoxes(props: PointBoxesProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once per pick, after the plan it made
   }, [points]);
   const full = points.length >= MAX_POINTS;
-  const placeName = (index: number) => (points[index] ? (namer.name(points[index])?.name ?? "a point on the map") : undefined);
+  const placeName = (index: number) => (points[index] ? (names.name(points[index])?.name ?? "a point on the map") : undefined);
   const search = (variant: "from" | "to" | "add") => (
     <PlaceSearch
       key={variant}
@@ -329,14 +343,16 @@ function PointBoxes(props: PointBoxesProps) {
       }}
     />
   );
+  // A Change opens its box in that point's row (edit-route redesign, Stephen 2026-10-18), not above the list.
+  const editing = changing === "from" && points.length > 0 ? 0 : changing === "to" && hasEnd ? points.length - 1 : null;
   return (
     <div id="points-search" ref={pointsSearchRef} className="points-controls plan-points">
-      {showFrom && search("from")}
+      {showFrom && editing === null && search("from")}
       {points.length === 0 ? (
         <p className="hint">{searchLede(loopVias, accessMode)}</p>
       ) : (
         <PointsList
-          rows={pointRows(points, namer, loopVias, VIA_MARKS.isVia)}
+          rows={pointRows(points, names, loopVias, VIA_MARKS.isVia)}
           onRemove={removeAt}
           warnings={pointWarnings}
           removeRef={(index, button) => {
@@ -345,9 +361,32 @@ function PointBoxes(props: PointBoxesProps) {
           // A second press puts the box away again (as Escape in the empty box does).
           onChange={(index) => setChanging((now) => (now === (index === 0 ? "from" : "to") ? null : index === 0 ? "from" : "to"))}
           changeable={(index) => index === 0 || (!loopVias && index === points.length - 1 && points.length >= 2)}
+          editor={
+            editing === null
+              ? null
+              : {
+                  index: editing,
+                  node: (
+                    <div className="point-editor">
+                      {search(changing === "from" ? "from" : "to")}
+                      {/* The way out on a touch screen (Escape on a keyboard): the row's place and Remove come back. */}
+                      <button
+                        type="button"
+                        className="link point-cancel"
+                        onClick={() => {
+                          setChanging(null);
+                          window.setTimeout(() => removeRefs.current[editing]?.focus(), 0);
+                        }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ),
+                }
+          }
         />
       )}
-      {showTo && search("to")}
+      {showTo && editing === null && search("to")}
       {showAdd && (
         <div className="add-stop-row">
           {/* A full plan: the reason in place of the box, whose pick could add nothing (Best order still works). */}
@@ -389,15 +428,19 @@ export interface RideSectionProps {
   setWeight: Dispatch<SetStateAction<StoredWeight | null>>;
   /** The route shown (its resolved "now"), or null. */
   route: RouteResponse | null;
+  /** Plan: the ride type's own button, first. Go's Ride sheet lists the ride types itself (RideGroupChips). */
+  typeCard: boolean;
 }
 
-/** The Ride line and, behind its Edit, the ride type and every dial (OWNER-DECISIONS 312). */
+/**
+ * The ride type's button, which opens the ride types at once, and the Ride settings line, which opens every dial
+ * (OWNER-DECISIONS 312; edit-route redesign, Stephen 2026-10-18: one press to the ride types, not Edit then Change).
+ */
 export function RideSection(props: RideSectionProps) {
-  const { preset, dials, choosePreset, commitDials, weight, weightRemembered, weightStore, setWeightRemembered, setWeight, route } = props;
-  const presetsSection = <RideTypePicker key="presets" preset={preset} dials={dials} onChoose={choosePreset} />;
+  const { preset, dials, choosePreset, commitDials, weight, weightRemembered, weightStore, setWeightRemembered, setWeight, route, typeCard } = props;
+  const presetsSection = typeCard ? <RideTypePicker key="presets" preset={preset} dials={dials} onChoose={choosePreset} /> : null;
   return (
-    <RideSettings key="presets" summary={rideSummary(preset, dials)} spoken={rideSummarySpoken(preset, dials)}>
-      {presetsSection}
+    <RideSettings key="presets" summary={settingsSummary(preset, dials)} spoken={settingsSummarySpoken(preset, dials)} typeCard={presetsSection}>
       <DialsPanel
         preset={preset}
         dials={dials}
