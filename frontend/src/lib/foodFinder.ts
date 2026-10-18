@@ -1,6 +1,6 @@
 /**
- * The planner's "Find food" panel (lib/food.ts): a search box for a food or a name, where to
- * search (the map's view or the whole area), one persistent status line, and the results as a
+ * The planner's "Find food" panel (lib/food.ts): a search box for a food or a name (blank for all
+ * food), where to search (near you, the default, or the map's view), one persistent status line, and the results as a
  * numbered list whose numbers are the map's markers. Each result has Show on map and, with a
  * plan to add it to, Add as stop; a website where one is mapped. Written with createElement so a
  * test renders it (as nearestFinder.ts).
@@ -17,10 +17,10 @@ import { ICON_PATHS } from "./iconPaths.ts";
 
 export const FOOD_SUMMARY = "Find food";
 export const FOOD_HELP =
-  "Search by food (crab, pizza, coffee, ice cream) or by a place's name. With a route shown, results are sorted by detour; Add as stop puts a place into your plan.";
+  "Search by food (crab, pizza, coffee) or a place's name, or leave it blank for all food. With a route shown, results are sorted by detour; Add as stop puts a place into your plan.";
 export const FOOD_SCOPE_LABEL: Record<FoodScope, string> = {
+  near: "Near you",
   view: "In the map view",
-  area: "Search the whole area",
 };
 
 export interface FoodFinderProps {
@@ -95,7 +95,7 @@ export function FoodFinder(props: FoodFinderProps): ReactElement {
           "fieldset",
           { className: "food-scope" },
           h("legend", null, "Where"),
-          ...(["view", "area"] as const).map((option) =>
+          ...(["near", "view"] as const).map((option) =>
             h(
               "label",
               { key: option, className: "toggle" },

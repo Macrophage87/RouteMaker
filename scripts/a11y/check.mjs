@@ -3584,7 +3584,7 @@ const JUNCTION_BUTTON = "Suggest a junction change";
   const openFood = "(() => { if (document.getElementById('sheet-food')?.hidden !== false) [...document.querySelectorAll('.map-chip')].find((c) => c.textContent.trim() === 'Food')?.click(); const d = document.querySelector('.food-sheet'); return !!d; })()";
   await p.eval(openFood);
   await sleep(200);
-  await p.eval("document.querySelector('.food-scope input[value=area]').click(); document.getElementById('food-query').focus(); true");
+  await p.eval("document.querySelector('.food-scope input[value=near]').click(); document.getElementById('food-query').focus(); true");
   await p.type("crab");
   await p.enter();
   await p.waitFor("document.querySelectorAll('.food-list li').length > 0 && /^[\\d,]+ places? match/.test(document.querySelector('.food-status')?.textContent ?? '')", 15000);
@@ -3623,10 +3623,13 @@ const JUNCTION_BUTTON = "Suggest a junction change";
   const form = await axNode(p, "form.food-search");
   const input = await axNode(p, "#food-query");
   check("food: the search is a search landmark named Find food, its box named Food or name", form?.role === "search" && form?.name === "Find food" && input?.name === "Food or name", JSON.stringify({ form, input }));
-  await p.eval("document.querySelector('.food-scope input[value=area]').click(); document.getElementById('food-query').focus(); true");
+  // The owner, 2026-10-18: "when searching for food, all food should be shown up": opening the sheet lists it all, untyped.
+  const allShown = await p.waitFor("document.querySelectorAll('.food-list li').length === 10 && /^12 places to eat in the whole area/.test(document.querySelector('.food-status')?.textContent ?? '')", 8000);
+  check("food: opening the Food sheet lists all food near you with nothing typed, Near you chosen", allShown && (await p.eval("document.querySelector('.food-scope input[value=near]').checked")), await p.eval("document.querySelector('.food-status')?.textContent ?? ''"));
+  await p.eval("document.querySelector('.food-scope input[value=near]').click(); document.getElementById('food-query').focus(); true");
   await p.type("crab");
   await p.enter();
-  await p.waitFor("document.querySelectorAll('.food-list li').length > 0 && /^12 places/.test(document.querySelector('.food-status')?.textContent ?? '')", 8000);
+  await p.waitFor("document.querySelectorAll('.food-list li').length > 0 && /^12 places match/.test(document.querySelector('.food-status')?.textContent ?? '')", 8000);
   const listed = await p.eval(`(() => ({
     status: document.querySelector('.food-status')?.textContent ?? '',
     items: document.querySelectorAll('.food-list ol[role=list] > li').length,
@@ -3670,7 +3673,7 @@ const JUNCTION_BUTTON = "Suggest a junction change";
     window.fetch = (input, init) => /food[^/]*\.json/.test(String(input?.url ?? input)) ? Promise.resolve(new Response(JSON.stringify({ source: "test", points }), { headers: { "Content-Type": "application/json" } })) : real(input, init);
   })();`;
   const p = await open({ ride: false, junctions: false, init: FOOD_STUB, width: 320, height: 800, mobile: true });
-  await p.eval("(() => { if (document.getElementById('sheet-food')?.hidden !== false) [...document.querySelectorAll('.map-chip')].find((c) => c.textContent.trim() === 'Food')?.click(); const d = document.querySelector('.food-sheet'); document.querySelector('.food-scope input[value=area]').click(); document.getElementById('food-query').focus(); return true; })()");
+  await p.eval("(() => { if (document.getElementById('sheet-food')?.hidden !== false) [...document.querySelectorAll('.map-chip')].find((c) => c.textContent.trim() === 'Food')?.click(); const d = document.querySelector('.food-sheet'); document.querySelector('.food-scope input[value=near]').click(); document.getElementById('food-query').focus(); return true; })()");
   await p.type("coffee");
   await p.enter();
   await p.waitFor("document.querySelectorAll('.food-list li').length === 4", 8000);
@@ -4962,7 +4965,7 @@ const failed = results.filter((r) => !r.ok);
 // returns early) fails here rather than passing green (the mutation review of the release).
 // The transit blocks (#108) and the Go press checks (#116) were added without raising it; they run since #127.
 // Review mode's own lists (22c2) add six.
-const EXPECTED = 659;
+const EXPECTED = 660;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);
