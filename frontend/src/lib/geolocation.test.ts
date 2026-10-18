@@ -632,6 +632,9 @@ test("privacy: nothing in the feature's code stores, logs or sends the position"
   assert.equal((app.match(/locate\(/g) ?? []).length, 4, "four look-up paths");
   const fresh = body(app, "const freshHere", "const foodSeq");
   assert.match(fresh, /const press = gate\.begin\(\);[\s\S]*await locate\(geoEnv\);\s*if \(!gate\.finish\(press\)\) return null;/);
+  // A Go destination waiting on the gate is settled by this answer too (the review of PR #208).
+  assert.match(fresh, /if \(goWaiting\(\)\) \{\s*settleGoWaiting\(result\);/);
+  assert.match(fresh, /if \(!result\.ok \|\| !insideCoverage\(result\.fix\.point\)\) return null;/);
   assert.doesNotMatch(fresh, LEAKS);
   const go = body(app, "const locateForGo", "const goTo");
   assert.match(go, /const press = gate\.begin\(\);[\s\S]*await locate\(geoEnv\);\s*if \(!gate\.finish\(press\)\) return null;/);
@@ -664,6 +667,8 @@ test("privacy: the location state reaches only the note, the hint and the circle
     // Search's bias: the point, rounded to about 1 km in searchBiasPoint, never the accuracy or the flag.
     /return searchBiasPoint\(here\?\.point, centre \? \[centre\.lng, centre\.lat\] : undefined, view\);/,
     // Go's Repair and Sights (v0.7.0): the nearest worked out on the device from the location Go has; the point goes nowhere.
+    // A fresh look-up for the lists leaves a plan's located start its own fix (only whether it is in the plan).
+    /if \(!\(here && pointsRef\.current\.includes\(here\.point\)\)\) setHere\(result\.fix\);/,
     /const lastHere = \(\): LonLat \| null => here\?\.point \?\? \(goStartRef\.current\.kind === "here" \? goStartRef\.current\.point : null\);/,
     // A Mass Ride or Group Ride link (v0.7.0): the others on the route, shared only after the rider says yes there.
     /<RideGroup type=\{rideGroupType \?\? "group-ride"\} points=\{rideGroupPoints\} line=\{rideGroupLine\} getMap=\{getMap\} here=\{rideView\?\.rider\?\.point \?\? \(here \? here\.point : null\)\} \/>/,

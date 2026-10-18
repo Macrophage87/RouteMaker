@@ -1731,7 +1731,7 @@ export function App() {
       if (outcome.fix) {
         setHere(outcome.fix);
         // Go's start, the location before a destination, moves with the new look-up (freshHere, below).
-        if (goStartRef.current.kind === "here" && pointsRef.current.length === 0) setGoStart({ kind: "here", point: outcome.fix.point });
+        if (goStartRef.current.kind === "here" && pointsRef.current.length === 0 && insideCoverage(outcome.fix.point)) setGoStart({ kind: "here", point: outcome.fix.point });
       }
       if (outcome.found && epoch !== nearestEpoch.current) {
         sayNearest(NEAREST_STALE);
@@ -3272,7 +3272,12 @@ export function App() {
     [foodAsked, foodPlaces, foodRoute],
   );
   const foodResults = useMemo(() => foodAll?.slice(0, foodCount) ?? null, [foodAll, foodCount]);
+  const foodRecentred = useRef(false);
   useEffect(() => {
+    if (foodRecentred.current) {
+      foodRecentred.current = false;
+      return;
+    }
     if (foodAll && foodAsked) sayFood(foodFoundSaid(foodAsked.query, foodAsked.scope, foodAll.length, Math.min(foodCount, foodAll.length), foodRoute !== null, foodAsked.fromRider));
     // Said for a new search or a new route, not for Show more (which says its own words).
   }, [foodAll]);
@@ -3289,11 +3294,19 @@ export function App() {
     const result = await locate(geoEnv);
     if (!gate.finish(press)) return null;
     setLocating(false);
-    if (!result.ok) return null;
-    setHere(result.fix);
+    // A Go destination that found the gate busy waits on this look-up: its answer settles it, as the others' do.
+    if (goWaiting()) {
+      settleGoWaiting(result);
+      return result.ok && insideCoverage(result.fix.point) ? result.fix.point : null;
+    }
+    if (!result.ok || !insideCoverage(result.fix.point)) return null;
+    // A plan's located start keeps its own fix: its note and accuracy circle are that point's.
+    if (!(here && pointsRef.current.includes(here.point))) setHere(result.fix);
     if (goStartRef.current.kind === "here" && pointsRef.current.length === 0) setGoStart({ kind: "here", point: result.fix.point });
     return result.fix.point;
   };
+  // Only with no route (a route's lists go by least detour off it) and outside a ride (whose watch has the location).
+  const freshWanted = () => nearestRoute.current === null && !ridingNow.current;
   // The latest search wins: a chip tapped while the opening search is still loading the file is not lost.
   const foodSeq = useRef(0);
   const searchFoodNow = async (asked?: string) => {
@@ -3333,10 +3346,15 @@ export function App() {
     });
     // Near you: the list again from where the rider is now, once the look-up answers (whichever search asked it: a
     // second one while it is under way finds the gate busy and is answered by the first's).
-    if (fix === null || foodScope !== "near") return;
+    if (fix === null || foodScope !== "near" || !freshWanted()) return;
     const now = await freshHere();
-    if (!now || haversineM(now, fix) < MOVED_M) return;
-    setFoodAsked((asked) => (asked?.scope === "near" && asked.fromRider ? { ...asked, centre: now } : asked));
+    if (!now || haversineM(now, fix) < MOVED_M || viewNow.current !== "food") return;
+    setFoodAsked((asked) => {
+      if (asked?.scope !== "near" || !asked.fromRider) return asked;
+      // The same words as the list just said: shown again, not said again (foodRecentred).
+      foodRecentred.current = true;
+      return { ...asked, centre: now };
+    });
   };
   // Opening the Food sheet with nothing typed shows all food at once (the owner, 2026-10-18: "when searching
   // for food, all food should be shown up"), so a hungry rider needs no typing; each opening is from where the
@@ -3401,7 +3419,7 @@ export function App() {
   // Each opening lists from the last location at once, then from a fresh one where the rider has moved (freshHere).
   const placesFromNow = () => {
     const fix = lastHere();
-    if (!fix) return;
+    if (!fix || !freshWanted()) return;
     void freshHere().then((now) => {
       if (now && haversineM(now, fix) >= MOVED_M) setPlacesAsked((n) => n + 1);
     });
