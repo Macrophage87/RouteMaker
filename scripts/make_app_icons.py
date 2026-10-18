@@ -12,7 +12,9 @@ drawing, screenshotted at the icon's size with a transparent background. (A full
 `--headless=new` screenshot is the window, not the page, and cuts the bottom off; the size
 check below refuses nothing in that case, so look at the PNGs.)
 
-The favicon is a background square (its first `<rect>`) and, after it, the drawing.
+The favicon is a background square (its first `<rect>`) and, after it, the drawing. Its
+`<style>` thickens the strokes when it is drawn 40 px or smaller (a browser tab), where the
+full-size lines would blur; every icon drawn here is larger, so none of them uses it.
 
 Web, under frontend/public/icons/:
 - icon-192.png, icon-512.png ("any"): the favicon as it is, rounded corners and all.
@@ -140,6 +142,8 @@ def vector(svg: str) -> str:
                 walk(child, attrs, tx + float(move[1]), ty + float(move[2]))
             elif tag == "path":
                 paths.append((attrs, tx, ty))
+            elif tag == "style":
+                pass  # the favicon's heavier strokes for a browser tab; not drawn here
             elif tag != "rect" or node is not root:
                 raise SystemExit(
                     f"favicon: only <g> and <path> are handled in the drawing, not <{tag}>"
