@@ -1,0 +1,45 @@
+{
+ "Predictions": [
+  {
+   "DirectionNum": "0",
+   "DirectionText": "East to Lincoln Park Loop",
+   "Minutes": 2,
+   "RouteID": "B10",
+   "TripID": "B10_E_1",
+   "VehicleID": "7100"
+  },
+  {
+   "DirectionNum": "1",
+   "DirectionText": "West to Union Station",
+   "Minutes": 4,
+   "RouteID": "B10",
+   "TripID": "B10_W_1",
+   "VehicleID": "7203"
+  },
+  {
+   "DirectionNum": "0",
+   "DirectionText": "North to Takoma",
+   "Minutes": 6,
+   "RouteID": "90",
+   "TripID": "90_N_1",
+   "VehicleID": "6001"
+  },
+  {
+   "DirectionNum": "1",
+   "DirectionText": "West to Union Station",
+   "Minutes": 13,
+   "RouteID": "B10v1",
+   "TripID": "B10_W_2",
+   "VehicleID": "7210"
+  },
+  {
+   "DirectionNum": "1",
+   "DirectionText": "West to Union Station",
+   "Minutes": 27,
+   "RouteID": "B10",
+   "TripID": "B10_W_3",
+   "VehicleID": "7211"
+  }
+ ],
+ "StopName": "Lincoln Park + E Capitol St NE"
+}

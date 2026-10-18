@@ -75,11 +75,6 @@ export interface PanelView {
   rideSize: SliderView | null;
   /** The "Target distance" number input, or null where the traffic slider is not at the top. */
   target: TargetView | null;
-  /**
-   * Whether the rider and bike weight is offered, with the target distance: its line
-   * and Change button, never the number (OWNER-DECISIONS 313; lib/weightDialog.ts).
-   */
-  weight: boolean;
   /** The "Keep to roads, not trails" switch (OWNER-DECISIONS 463, 463b), on every ride type. */
   trailsOff: TrailsOffView;
   /** Where "Back to this ride type's settings" goes, or null when already there. */
@@ -294,7 +289,6 @@ export function panelView(preset: PresetId, dials: Dials, draft: Dials = dials):
     },
     rideSize: offersRideSize(preset) ? rideSizeView(rideSizeOf(draft)) : null,
     target: offersTargetDistance(preset, dials.stress) ? targetView(dials) : null,
-    weight: offersTargetDistance(preset, dials.stress),
     trailsOff: {
       label: TRAILS_OFF_LABEL,
       checked: trailsAreOff(preset, dials),

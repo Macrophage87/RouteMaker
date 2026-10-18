@@ -766,25 +766,59 @@ map credits:
 - Credit: Data: WMATA. Shown with every live value (v0.7.0, below): a Metro station card's next
   trains, an elevator out, a rail incident, and a plan's live lines.
 
-### WMATA live data (v0.7.0)
+### WMATA live data (v0.7.0; Metrobus and vehicle positions v0.9.0)
 
 - **Data:** WMATA's developer API, <https://developer.wmata.com/>: `Rail.svc/json/jStations`
   (stations, codes and points; read once a day), `StationPrediction.svc/json/GetPrediction/All`
   (next trains), `Incidents.svc/json/Incidents` (rail incidents) and
-  `Incidents.svc/json/ElevatorIncidents` (elevators and escalators out).
+  `Incidents.svc/json/ElevatorIncidents` (elevators and escalators out). From v0.9.0, for
+  Metrobus: `NextBusService.svc/json/jPredictions?StopID=<7-digit stop id>` (a stop's next buses,
+  by route and direction, each with its bus), `Bus.svc/json/jStops?Lat=&Lon=&Radius=` (the stops
+  near a point, with WMATA's StopID and their routes) and `Bus.svc/json/jBusPositions?RouteID=`
+  (a route's buses and their points); and for where Metro's next train is,
+  `TrainPositions/TrainPositions?contentType=json` (each train's track circuit, line and
+  direction) and `TrainPositions/StandardRoutes?contentType=json` (each line's circuits in order
+  along each track, the station named at a station's circuits; read once a day).
+- **The bus stop.** The installed timetable keeps no GTFS stop code: a bus stop there is a name and
+  a point (`scripts/build_transit_schedule.py`), and carrying WMATA's 7-digit StopID would need
+  the schedule file rebuilt. So the boarding stop is found by its point: `jStops` within 120 m,
+  the nearest stop within 60 m that the step's route serves (WMATA's variants, "52v1", count as
+  the timetable's "52"). Each point's answer is kept a day.
 - **Terms:** WMATA Transit Data Terms of Use, <https://developer.wmata.com/license>. A developer
   key is required (`WMATA_API_KEY` on the server, the same key as the static GTFS fetch); it is
-  sent only in WMATA's `api_key` header, never in a URL, a log line or a page. Limits: 10 calls a
-  second, 50,000 a day; RouteMaker makes at most three calls every 45 s, and only while someone is
-  asking.
+  sent only in WMATA's `api_key` header, never in a URL, a log line or a page (a URL whose query
+  names a key is refused before it is sent; a log line names the path, never the query). Limits:
+  10 calls a second, 50,000 a day. RouteMaker's calls, all only while someone is asking:
+  - Metro's reading: at most three calls every 45 s (5,760 a day), shared by every worker.
+  - Train positions: at most one call every 20 s (4,320 a day), shared by every worker, and only
+    while a rider is waiting at a Metro boarding; the standard routes once a day.
+  - Metrobus (next buses, stops, bus positions): every call counted deployment-wide in one row of
+    `bikeshare_feed_cache` (key `wmata-budget`), at most 18 a minute (25,920 a day) and 4 a second;
+    a call over that is not made, and nothing live is shown for it. A plan asks only for its
+    chosen trip's bus steps, at most 4 stops, at once, and waits for them at most 1.5 s. Each
+    stop's next buses are kept 40 s and each route's bus positions 20 s in each worker.
+  - **Worst case:** about 36,000 calls a day and 9 a second (3 + 2 + 4), under WMATA's 50,000
+    and 10, however many riders and workers. A rider waiting at a boarding asks the server
+    every 25 s (Ride mode, GET /api/transit/next-vehicle), and stops when they board or leave.
 - **Kept:** the latest reading only, one row of `bikeshare_feed_cache` (key `wmata`), replaced
-  in place; no history.
+  in place; no history. The train positions likewise (key `wmata-trains`); the call count's
+  row holds this minute's and this second's counts only (key `wmata-budget`). Bus answers are
+  kept in each worker's memory for under a minute (a stop's place, a day), never stored.
 - **Shown:** each live time says "live", each timetable time "scheduled"; with no reading the
   timetable is shown alone. An elevator out where a rider takes their own bike is a warning
   ("Elevator out at X: carry your bike on the stairs."), never an avoidance; it costs the trip 2
-  minutes in the ranking only.
-- Code: `src/core/wmata_live.py`, `src/core/transit_live.py`; fixtures shaped as WMATA documents
-  the answers in `tests/data/wmata/`.
+  minutes in the ranking only. A Metrobus step adds its route's next buses its way, as a Metro
+  step adds its trains: "Live: bus 52 in 4 min, 13 min." (the way: the stop's only one for the
+  route, or where it sees both, the one whose compass word, "North to ...", is nearest the
+  step's heading). While a rider waits at a Metro or Metrobus boarding in Ride mode, where the next
+  one is: "Next Red Line train is at Dupont Circle, 2 stations away." (WMATA gives trains no map
+  point: the train is placed by its circuit between the stations, and marked at the station or
+  halfway between the two) or "Bus 52 is 0.8 mi away (1.3 km), 3 stops back." (the bus by its
+  VehicleID from the next-bus answer; the stops back from the timetable's stop sequence, else the
+  distance alone), with a mark on the map named in the same words. Every value: "Data: WMATA".
+- Code: `src/core/wmata_live.py`, `src/core/transit_live.py`, `src/core/wmata_bus.py`,
+  `src/core/wmata_trains.py`; fixtures shaped as WMATA documents the answers in
+  `tests/data/wmata/`.
 
 ### MDOT MTA and VRE real-time feeds (checked 2026-10-15, not used)
 

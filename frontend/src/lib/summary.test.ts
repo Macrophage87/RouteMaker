@@ -348,3 +348,15 @@ test("a point the planner moved into the Zoo's bike racks is said with the route
   // UI-CLEANUP (the owner's choice 5): one line with an icon, its full words in Info.
   assert.match(app, /if \(moved\) lines\.push\(\{ key: "moved", className: "notice moved-points", icon: "pin", text: moved \}\);/);
 });
+
+test("a ride that stops short of the destination says to walk the bike the rest (walk_in; the owner, 2026-10-17)", async () => {
+  const { walkInNote } = await import("./summary.ts");
+  const walk = (m: number) => ({ geometry: { type: "LineString", coordinates: [[-77.04, 38.88], [-77.041, 38.881]] }, distance_m: m, duration_s: m / 1.3, to: "" });
+  const route = { distance_m: 5000, duration_s: 1200, climb_m: 10, preset: "default", walk_in: { start: null, end: walk(90) } } as unknown as RouteResponse;
+  assert.match(walkInNote(route) ?? "", /^Walk your bike the last 300 ft \(90 m\) to your destination\.$/);
+  assert.ok(announceRoute(route, [[-77.03, 38.9], [-77.041, 38.881]]).includes("Walk your bike the last"));
+  const both = { walk_in: { start: walk(40), end: walk(90) } } as unknown as RouteResponse;
+  assert.match(walkInNote(both) ?? "", /^Walk your bike .* to where the ride starts\. Walk your bike the last/);
+  assert.equal(walkInNote({ walk_in: null } as never), null);
+  assert.equal(walkInNote({} as never), null);
+});

@@ -10,6 +10,7 @@
  * no longer offers opens as Default (gpxPlan.ts, with a note the panel shows).
  * A file from elsewhere names none, and the ride type stays as it is.
  */
+import type { RouteResponse } from "./api.ts";
 import { fitDials, type Dials } from "./dials.ts";
 import type { LonLat } from "./geo.ts";
 import type { ImportedPlan } from "./gpxPlan.ts";
@@ -50,4 +51,15 @@ export function namesToKeep(plan: Pick<ImportedPlan, "points" | "pointNames">): 
     if (name && !isRoleName(name)) kept.push([point, name]);
   });
   return kept;
+}
+
+/**
+ * An opened file as it was kept with its route (v0.9.0, "share the exact route"): the kept plan's points, ride type and
+ * sliders, and "Follow the file exactly" as the route was followed. The file's names for its points stay only where
+ * the points are the file's own. Without a kept route, the file as it opens.
+ */
+export function asKept(plan: ImportedPlan, at: { points: LonLat[]; preset: PresetId; dials: Dials } | null, answer: RouteResponse | null): ImportedPlan {
+  if (!at || !answer || at.points.length < 2) return plan;
+  const same = at.points.length === plan.points.length && at.points.every((p, i) => p[0] === plan.points[i][0] && p[1] === plan.points[i][1]);
+  return { ...plan, points: at.points, pointNames: same ? plan.pointNames : undefined, preset: at.preset, dials: at.dials, exact: answer.follows_exactly === true };
 }

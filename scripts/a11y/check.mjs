@@ -66,7 +66,7 @@ async function open({ route = S_DEFAULT, hash = hashFor("default", 70), width = 
 }
 
 /**
- * Opens a bottom-bar sheet by its button's label ("Layers", "Suggest", "Files", "Settings"; Plan's GPX was Export from 5efab18a, Files since v0.8.2). UI-CLEANUP: "Map
+ * Opens a bottom-bar sheet by its button's label ("Layers", "Suggest", "Save & load", "Settings"; Plan's GPX was Export from 5efab18a, Files in v0.8.2, Save & load since v0.9.0). UI-CLEANUP: "Map
  * layers" is "Layers", and "Legend" is the Legend sheet, one step in from Layers (its Legend button). "Review" is the admin's Review mode
  * (ReviewMode.tsx), opened from Suggest's Review button on its Rider suggestions list; "Review hazards" is the same mode on its Mass Ride
  * hazard reports list.
@@ -800,9 +800,10 @@ const federalFetched = (p) =>
   await p.close();
 }
 
-// ---- 15. The rider and bike weight's dialog (OWNER-DECISIONS 313-318) ----
+// ---- 15. The rider and bike weight's dialog (OWNER-DECISIONS 313-318), in Settings > Riding since v0.9.0 ----
 {
   const p = await open({ route: S_TRAIL, hash: hashFor("trailmaxxing", 100) });
+  await openSheet(p, "Settings");
   const change = await axNode(p, ".weight-setting > button");
   check("weight: Change is a button named for what it changes, described by the line", change?.role === "button" && change?.name === "Change rider and bike weight" && change?.description === "Rider and bike weight: not set, defaults used", JSON.stringify(change));
   await p.eval("document.querySelector('.weight-setting > button').focus(); true");
@@ -830,8 +831,11 @@ const federalFetched = (p) =>
   const after = await p.eval("({ open: document.querySelector('dialog.weight-dialog').open, focus: document.activeElement === document.querySelector('.weight-setting > button'), line: document.querySelector('.weight-line').textContent, hash: location.hash, stored: localStorage.getItem('routemaker.weight') !== null })");
   // Plan-first (see pressRoute): Save plans nothing; Route plans once.
   after.savePlans = p.routeRequests - before;
+  await p.eval("document.querySelector('#bar-plan').click(); true");
+  await sleep(300);
   await pressRoute(p);
   await sleep(1500);
+  await openSheet(p, "Settings");
   check("weight: Save closes it, the focus is back on Change, the line says set today, Save plans nothing and Route plans once, and the link has no weight", !after.open && after.focus && after.line === "Rider and bike weight: set today" && after.savePlans === 0 && p.routeRequests - before === 1 && !/weight|207|94/.test(after.hash) && after.stored, JSON.stringify({ ...after, plans: p.routeRequests - before }));
   // The closed <dialog> is still in the DOM: nothing typed stays in it (the review's S2).
   const closedDom = await p.eval("({ text: document.querySelector('dialog.weight-dialog').textContent, values: [...document.querySelectorAll('dialog.weight-dialog input[type=text]')].map((e) => e.value) })");
@@ -968,7 +972,7 @@ for (const mobile of [false, true]) {
 {
   const p = await open();
   const bar = await p.eval("[...document.querySelectorAll('.bar-button')].map((x) => x.querySelector('span').textContent)");
-  check("settings: the bottom bar is Plan, Layers, Suggest, Files, Settings (UI-CLEANUP, the owner's choice 6; GPX renamed Export in 5efab18a, then Files in v0.8.2)", JSON.stringify(bar) === JSON.stringify(["Plan", "Layers", "Suggest", "Files", "Settings"]), JSON.stringify(bar));
+  check("settings: the bottom bar is Plan, Layers, Suggest, Save & load, Settings (UI-CLEANUP, the owner's choice 6; GPX renamed Export in 5efab18a, Files in v0.8.2, then Save & load in v0.9.0)", JSON.stringify(bar) === JSON.stringify(["Plan", "Layers", "Suggest", "Save & load", "Settings"]), JSON.stringify(bar));
   await openSheet(p, "Settings");
   check("settings: opening it puts the focus on its heading, \"Settings\"", (await p.eval("document.activeElement?.textContent")) === "Settings" && (await p.eval("document.activeElement?.tagName")) === "H2", await focused(p));
   const inSettings = await axNode(p, "#settings-contrast-switch");
@@ -978,7 +982,7 @@ for (const mobile of [false, true]) {
   check("settings: Layers has no second High contrast switch (UI-CLEANUP: Settings only)", !inLayers, JSON.stringify(inLayers));
   check("settings: no id is used twice in the page", await p.eval("(() => { const ids = [...document.querySelectorAll('[id]')].map((e) => e.id); return ids.length === new Set(ids).size; })()"));
   const heads = await p.eval("[...document.querySelectorAll('#sheet-settings h3')].map((h) => h.textContent)");
-  check("settings: the sheet's headings are Display, Ride mode, This device and Account, as the mockup groups them (with Routes kept for offline and Install the app when offered), so the sign-in note is not filed under Display", JSON.stringify(heads.filter((h) => h !== "Install the app" && h !== "Routes kept for offline")) === JSON.stringify(["Display", "Ride mode", "This device", "Account"]), JSON.stringify(heads));
+  check("settings: the sheet's headings are Display, Riding and Account (v0.9.0: Ride mode and This device became Riding, and the routes kept for offline moved to Save & load; with Install the app when offered), so the sign-in note is not filed under Display", JSON.stringify(heads.filter((h) => h !== "Install the app")) === JSON.stringify(["Display", "Riding", "Account"]), JSON.stringify(heads));
   const axSwitches = (await p.s("Accessibility.getFullAXTree", {})).nodes.filter((n) => !n.ignored && /^High contrast/.test(n.name?.value ?? "") && ["switch", "button"].includes(n.role?.value));
   check("settings: exactly one High contrast switch is in the accessibility tree (said once, not twice)", axSwitches.length === 1 && axSwitches[0].role.value === "switch", JSON.stringify(axSwitches.map((n) => [n.role?.value, n.name?.value])));
   check("settings: the Settings bar button is the current one (aria-current)", await p.eval("(() => { const b = [...document.querySelectorAll('.bar-button')].find((x) => x.textContent.startsWith('Settings')); const others = [...document.querySelectorAll('.bar-button')].filter((x) => x !== b && x.getAttribute('aria-current')); return b.getAttribute('aria-current') === 'true' && others.length === 0; })()"));
@@ -1102,14 +1106,14 @@ const FIRST_HINT = "Place the starting point, then a stop or two along the way."
     const ax = await axNode(p, `#bar-${id}`);
     names.push([ax?.role, ax?.name]);
   }
-  check("plan: the five bar buttons are named exactly Plan, Layers, Suggest, Files, Settings", JSON.stringify(names) === JSON.stringify([["button", "Plan"], ["button", "Layers"], ["button", "Suggest"], ["button", "Files"], ["button", "Settings"]]), JSON.stringify(names));
+  check("plan: the five bar buttons are named exactly Plan, Layers, Suggest, Save & load, Settings", JSON.stringify(names) === JSON.stringify([["button", "Plan"], ["button", "Layers"], ["button", "Suggest"], ["button", "Save & load"], ["button", "Settings"]]), JSON.stringify(names));
   const hints = await p.eval("[...document.querySelectorAll('.bar-button')].map((x) => { const h = document.getElementById(x.getAttribute('aria-describedby')); return { hidden: h.hidden && h.getBoundingClientRect().height === 0, inButton: x.contains(h), text: h.textContent.length > 0 }; })");
   const described = [];
   for (const id of ["plan", "layers", "suggest", "gpx", "settings"]) described.push((await axNode(p, `#bar-${id}`))?.description?.length > 0);
   check("plan: each bar hint is a hidden sibling, off the screen, and still the button's description", hints.length === 5 && hints.every((h) => h.hidden && !h.inButton && h.text) && described.every(Boolean), JSON.stringify({ hints, described }));
   const planAx = await axNode(p, "#bar-plan");
   check("plan: its description says where it goes, in the Back label's words", /^Shows the planner: /.test(planAx?.description ?? ""), JSON.stringify(planAx?.description));
-  await openSheet(p, "Files");
+  await openSheet(p, "Save & load");
   const during = await p.eval("[...document.querySelectorAll('.bar-button')].map((x) => x.getAttribute('aria-current'))");
   check("plan: on a sheet the Plan button is not current and that sheet's is", during[0] === null && during[3] === "true", JSON.stringify(during));
   const backText = await p.eval("document.querySelector('#sheet-gpx .sheet-back').textContent.trim()");
@@ -1158,7 +1162,7 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   const p = await open({ width: 375, height: 812, mobile: true, ride: false });
   const first = await p.eval("(() => { const t = document.querySelector('.panel-toggle'); return { text: t.textContent, expanded: t.getAttribute('aria-expanded'), controls: t.getAttribute('aria-controls') }; })()");
   check("toggle: the phone header's button reads Hide planner, with aria-expanded and aria-controls", first.text === "Hide planner" && first.expanded === "true" && first.controls === "panel-body", JSON.stringify(first));
-  await openSheet(p, "Files");
+  await openSheet(p, "Save & load");
   await p.eval("document.querySelector('.panel-toggle').focus(); document.querySelector('.panel-toggle').click(); true");
   await sleep(200);
   const hidden = await p.eval("({ text: document.querySelector('.panel-toggle').textContent, expanded: document.querySelector('.panel-toggle').getAttribute('aria-expanded'), hidden: document.getElementById('panel-body').hidden })");
@@ -1340,7 +1344,8 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
     // Plan streamline (2026-10-17): Change on the Start row opens the From box, with the focus in it.
     const p = await emptyPlan({ hash: "#p=-77.04000,38.91000;-77.01000,38.89000&preset=default&v=2&stress=70&hills=0" });
     await p.waitFor("document.querySelectorAll('.points > li').length === 2", 20000);
-    await p.eval("document.querySelector('.point-change[aria-label=\"Change Start\"]')?.click(); true");
+    // Edit-route redesign (2026-10-18): the start's place is the Change button, named "Change Start: <place>".
+    await p.eval("document.querySelector('.point-change[aria-label^=\"Change Start\"]')?.click(); true");
     await sleep(500);
     const chose = await p.eval("(() => { const i = document.activeElement; return !!i && i.matches('#points-search .place-search input') && i.closest('.place-search').querySelector('label').textContent.startsWith('From'); })()");
     await sleep(300);
@@ -2609,6 +2614,24 @@ const levelSlider = `${EDITOR} input[type=range]`;
   const speech = await p.eval("window.__speech.slice()");
   check("ride: the voice says the same cues", speech.some((t) => /^In .*left onto R Street Northwest/.test(t)) && speech.includes("Left now onto R Street Northwest."), JSON.stringify(speech));
   await p.shot(`${SHOTS}/ride_cue.png`);
+  // Track-up (the default), the rider sits about two thirds of the way down the map, more of the road ahead
+  // showing, and the marker is a little larger (v0.9.0, the owner, 2026-10-17).
+  await sleep(600);
+  const you = await p.eval("(() => { const m = document.querySelector('.rider-marker').getBoundingClientRect(); const c = document.querySelector('.map').getBoundingClientRect(); const top = document.querySelector('.ride .cue-card').getBoundingClientRect().bottom; const bottom = document.querySelector('.ride .ride-controls')?.getBoundingClientRect().top ?? c.bottom; return { down: Math.round(((m.top + m.height / 2 - top) / (bottom - top)) * 100) / 100, w: Math.round(m.width) }; })()");
+  check("ride: following track-up, the rider is about two thirds of the way down the map in view (under the cue card, above any bottom panel), the marker at least 26 px",
+    you.down >= 0.6 && you.down <= 0.73 && you.w >= 26, JSON.stringify(you));
+  // The compass (the owner, 2026-10-17): a round button named North up at the map's top left, not pressed track-up;
+  // a press turns the map north up, and a second press back to track-up.
+  const compass = () => p.eval("(() => { const b = document.querySelector('.ride .ride-compass'); const r = b.getBoundingClientRect(); return { name: b.getAttribute('aria-label'), pressed: b.getAttribute('aria-pressed'), w: Math.round(r.width), left: Math.round(r.left), bearing: getComputedStyle(document.documentElement).getPropertyValue('--map-bearing').trim() }; })()");
+  const c0 = await compass();
+  await p.eval("document.querySelector('.ride .ride-compass').click(); true");
+  await sleep(700);
+  const c1 = await compass();
+  await p.eval("document.querySelector('.ride .ride-compass').click(); true");
+  await sleep(300);
+  const c2 = await compass();
+  check("ride: the compass is a 44 px button named North up at the map's left; a press turns the map north up, another back",
+    c0.name === "North up" && c0.pressed === "false" && c0.w >= 44 && c0.left <= 20 && c1.pressed === "true" && Number(c1.bearing) === 0 && c2.pressed === "false", JSON.stringify({ c0, c1, c2 }));
 
   // Where am I? on demand.
   // The side buttons (the owner, 2026-10-17): round icons, each named.
@@ -2725,8 +2748,13 @@ const levelSlider = `${EDITOR} input[type=range]`;
   const ax311 = await axNode(p, ".ride-311-button");
   check("ride 311 button: inside DC, a round button of about 60 px at the right edge, in the lower half (thumb height), named Report to DC 311 with its visible 311, closed",
     !!b311 && b311.w >= 56 && b311.w <= 72 && b311.h >= 56 && b311.round && b311.right <= 24 && b311.mid >= 45 && b311.mid <= 96 && b311.text === "311" && b311.expanded === "false" && ax311?.role === "button" && ax311?.name === "Report to DC 311" &&
-      JSON.stringify(rail.map((x) => x.name)) === JSON.stringify(["Where am I?", "Re-centre", "Road closed ahead", "Detour: water or restroom", "Report to DC 311"]) && rail.every((x) => x.round && x.w >= 44),
+      JSON.stringify(rail.map((x) => x.name)) === JSON.stringify(["Where am I?", "Re-centre", "Detour: water or restroom", "Report to DC 311", "Settings"]) && rail.every((x) => x.round && x.w >= 44),
     JSON.stringify({ b311, ax311, rail }));
+  // The top row (the owner, 2026-10-18): Road closed ahead where Settings was, End ride to its right, one line.
+  const topRow = await p.eval(`(() => { const c = document.querySelector('.ride-top .ride-road-closed'); const e = document.querySelector('.ride-top .ride-end'); if (!c || !e) return null; const a = c.getBoundingClientRect(); const b = e.getBoundingClientRect();
+    return { name: c.getAttribute('aria-label'), text: c.textContent, beside: a.right <= b.left && Math.abs(a.top - b.top) <= 2, h: Math.round(Math.min(a.height, b.height)), settingsInTop: !!document.querySelector('.ride-top .ride-settings-button') }; })()`);
+  check("ride top row: Road closed ahead (shown as Road closed) with End ride to its right, both 44 px or taller, Settings no longer there",
+    !!topRow && topRow.name === "Road closed ahead" && topRow.text === "Road closed" && topRow.beside && topRow.h >= 44 && !topRow.settingsInTop, JSON.stringify(topRow));
   await p.eval("document.querySelector('.ride-311-button').focus(); true");
   await p.enter();
   await sleep(300);
@@ -2811,6 +2839,12 @@ const levelSlider = `${EDITOR} input[type=range]`;
   check("ride: Big text is not a side button", noBigButton, String(noBigButton));
   await p.eval("document.querySelector('.ride .ride-settings-button').click(); true");
   await sleep(200);
+  // The gear (the owner, 2026-10-18): it opens the panel under the top row and the focus goes into it; at 320 px
+  // the top row is Road closed's icon (still named in full) and End ride, on one line.
+  const gear = await p.eval(`(() => { const g = document.querySelector('.ride .ride-settings-button'); const panel = document.querySelector('.ride-mode-settings'); const c = document.querySelector('.ride-top .ride-road-closed'); const e = document.querySelector('.ride-top .ride-end'); const a = c.getBoundingClientRect(); const b = e.getBoundingClientRect();
+    return { expanded: g.getAttribute('aria-expanded'), shown: !panel.hidden, focusIn: panel.contains(document.activeElement), width: innerWidth, name: c.getAttribute('aria-label'), oneLine: Math.abs(a.top - b.top) <= 2, w: Math.round(a.width), h: Math.round(a.height) }; })()`);
+  check("ride: the Settings gear opens the ride's settings with the focus in them; at 320 px Road closed is its icon, named in full, beside End ride",
+    gear.expanded === "true" && gear.shown && gear.focusIn && gear.width <= 379 && gear.name === "Road closed ahead" && gear.oneLine && gear.w >= 44 && gear.h >= 44, JSON.stringify(gear));
   await p.eval("document.querySelector('.ride-mode-settings .big-text-setting input').click(); true");
   await sleep(300);
   const big = await p.eval("({ map: getComputedStyle(document.querySelector('.map')).display, on: document.querySelector('.ride-mode-settings .big-text-setting input').checked, kept: localStorage.getItem('routemaker.ride.bigText') })");
@@ -3561,7 +3595,7 @@ const JUNCTION_BUTTON = "Suggest a junction change";
   const openFood = "(() => { if (document.getElementById('sheet-food')?.hidden !== false) [...document.querySelectorAll('.map-chip')].find((c) => c.textContent.trim() === 'Food')?.click(); const d = document.querySelector('.food-sheet'); return !!d; })()";
   await p.eval(openFood);
   await sleep(200);
-  await p.eval("document.querySelector('.food-scope input[value=area]').click(); document.getElementById('food-query').focus(); true");
+  await p.eval("document.querySelector('.food-scope input[value=near]').click(); document.getElementById('food-query').focus(); true");
   await p.type("crab");
   await p.enter();
   await p.waitFor("document.querySelectorAll('.food-list li').length > 0 && /^[\\d,]+ places? match/.test(document.querySelector('.food-status')?.textContent ?? '')", 15000);
@@ -3600,10 +3634,13 @@ const JUNCTION_BUTTON = "Suggest a junction change";
   const form = await axNode(p, "form.food-search");
   const input = await axNode(p, "#food-query");
   check("food: the search is a search landmark named Find food, its box named Food or name", form?.role === "search" && form?.name === "Find food" && input?.name === "Food or name", JSON.stringify({ form, input }));
-  await p.eval("document.querySelector('.food-scope input[value=area]').click(); document.getElementById('food-query').focus(); true");
+  // The owner, 2026-10-18: "when searching for food, all food should be shown up": opening the sheet lists it all, untyped.
+  const allShown = await p.waitFor("document.querySelectorAll('.food-list li').length === 10 && /^12 places to eat in the whole area/.test(document.querySelector('.food-status')?.textContent ?? '')", 8000);
+  check("food: opening the Food sheet lists all food near you with nothing typed, Near you chosen", allShown && (await p.eval("document.querySelector('.food-scope input[value=near]').checked")), await p.eval("document.querySelector('.food-status')?.textContent ?? ''"));
+  await p.eval("document.querySelector('.food-scope input[value=near]').click(); document.getElementById('food-query').focus(); true");
   await p.type("crab");
   await p.enter();
-  await p.waitFor("document.querySelectorAll('.food-list li').length > 0 && /^12 places/.test(document.querySelector('.food-status')?.textContent ?? '')", 8000);
+  await p.waitFor("document.querySelectorAll('.food-list li').length > 0 && /^12 places match/.test(document.querySelector('.food-status')?.textContent ?? '')", 8000);
   const listed = await p.eval(`(() => ({
     status: document.querySelector('.food-status')?.textContent ?? '',
     items: document.querySelectorAll('.food-list ol[role=list] > li').length,
@@ -3647,7 +3684,7 @@ const JUNCTION_BUTTON = "Suggest a junction change";
     window.fetch = (input, init) => /food[^/]*\.json/.test(String(input?.url ?? input)) ? Promise.resolve(new Response(JSON.stringify({ source: "test", points }), { headers: { "Content-Type": "application/json" } })) : real(input, init);
   })();`;
   const p = await open({ ride: false, junctions: false, init: FOOD_STUB, width: 320, height: 800, mobile: true });
-  await p.eval("(() => { if (document.getElementById('sheet-food')?.hidden !== false) [...document.querySelectorAll('.map-chip')].find((c) => c.textContent.trim() === 'Food')?.click(); const d = document.querySelector('.food-sheet'); document.querySelector('.food-scope input[value=area]').click(); document.getElementById('food-query').focus(); return true; })()");
+  await p.eval("(() => { if (document.getElementById('sheet-food')?.hidden !== false) [...document.querySelectorAll('.map-chip')].find((c) => c.textContent.trim() === 'Food')?.click(); const d = document.querySelector('.food-sheet'); document.querySelector('.food-scope input[value=near]').click(); document.getElementById('food-query').focus(); return true; })()");
   await p.type("coffee");
   await p.enter();
   await p.waitFor("document.querySelectorAll('.food-list li').length === 4", 8000);
@@ -3745,7 +3782,7 @@ const JUNCTION_BUTTON = "Suggest a junction change";
   await p.enter();
   const kept = await p.waitFor("/^Kept for offline: /.test(document.querySelector('#keep-offline-said')?.textContent ?? '')", 90000);
   const keptSaid = await p.eval("document.querySelector('#keep-offline-said').textContent.trim()");
-  check("keep for offline: Enter keeps it and says so, naming the route and where to open it", kept && /Open it from Settings when there is no signal\.$/.test(keptSaid), keptSaid);
+  check("keep for offline: Enter keeps it and says so, naming the route and where to open it", kept && /Open it from Save & load when there is no signal\.$/.test(keptSaid), keptSaid);
   const stored = await p.eval(`(async () => { const keys = await caches.keys(); const tiles = keys.includes('routemaker-offline-v1') ? (await (await caches.open('routemaker-offline-v1')).keys()).map((q) => new URL(q.url).pathname) : [];
     return { tiles: tiles.filter((t) => t.startsWith('/tiles/stress/')).length, positions: tiles.filter((t) => /lat=|lon=/.test(t)).length }; })()`);
   check("keep for offline: the stress tiles along the route are kept in the kept routes' bucket, and no URL with a position", stored.tiles > 0 && stored.positions === 0, JSON.stringify(stored));
@@ -3770,22 +3807,22 @@ const JUNCTION_BUTTON = "Suggest a junction change";
     said: [...document.querySelectorAll('.visually-hidden[role=status]')].map((r) => r.textContent.trim()).filter(Boolean) }))()`);
   check("offline: the installed app's shell opens with no network, from the worker", shell && workers.length === 1, JSON.stringify({ shell, workers: workers.length }));
   check("offline: the top of the planner says so, and it is said once, politely",
-    off.online === false && /^You are offline\. RouteMaker still opens, and routes you kept for offline open from Settings\.$/.test(off.bar ?? "") && off.said.filter((t) => t.startsWith("You are offline.")).length === 1, JSON.stringify(off));
+    off.online === false && /^You are offline\. RouteMaker still opens, and routes you kept for offline open from Save & load\.$/.test(off.bar ?? "") && off.said.filter((t) => t.startsWith("You are offline.")).length === 1, JSON.stringify(off));
 
-  // Settings lists the kept route; Open (by keyboard) shows it with no signal, with the planner's notice.
-  await openSheet(p, "Settings");
-  const list = await p.eval(`(() => { const s = document.querySelector('#sheet-settings .kept-routes'); const rows = [...s.querySelectorAll('li.kept-route')];
-    return { heading: s.querySelector('h3')?.textContent, labelled: s.getAttribute('aria-labelledby') === s.querySelector('h3')?.id, list: s.querySelector('ul')?.tagName,
+  // Save & load lists the kept route (in Settings until v0.9.0); Open (by keyboard) shows it with no signal, with the planner's notice.
+  await openSheet(p, "Save & load");
+  const list = await p.eval(`(() => { const s = document.querySelector('#sheet-gpx .kept-routes'); const rows = [...s.querySelectorAll('li.kept-route')];
+    return { heading: s.querySelector('h4')?.textContent, labelled: s.getAttribute('aria-labelledby') === s.querySelector('h4')?.id, list: s.querySelector('ul')?.tagName,
       rows: rows.map((r) => ({ title: r.querySelector('.kept-title')?.textContent, detail: r.querySelector('.kept-detail')?.textContent, buttons: [...r.querySelectorAll('button')].map((b) => ({ text: b.textContent, h: b.getBoundingClientRect().height, type: b.type })) })),
       note: s.querySelector('.setting-info')?.textContent, noteHidden: s.querySelector('.setting-info')?.hidden, tip: s.querySelector('.info-tip')?.textContent }; })()`);
   const row = list.rows[0];
-  check("kept routes: Settings lists it in a real list under the heading \"Routes kept for offline\", with its distance in miles first and kilometres in brackets",
+  check("kept routes: Save & load lists it in a real list under the heading \"Routes kept for offline\", with its distance in miles first and kilometres in brackets",
     list.heading === "Routes kept for offline" && list.labelled && list.list === "UL" && list.rows.length === 1 && / mi \([0-9.]+ km\)\. Kept [A-Z][a-z]{2} \d+\./.test(row?.detail ?? ""), JSON.stringify(list));
   check("kept routes: each row has Open and Remove, real buttons 44 px tall whose names include the route", row && row.buttons.length === 2 && row.buttons[0].text === `Open ${row.title}` && row.buttons[1].text === `Remove ${row.title}` && row.buttons.every((x) => x.h >= 44 && x.type === "button"), JSON.stringify(row));
   check("kept routes: behind the heading's (i) (\"About routes kept for offline\"), the list says they stay on this device and are never sent", /Kept on this device only, until you remove them; never sent anywhere\./.test(list.note ?? "") && list.noteHidden === true && list.tip === "About routes kept for offline", JSON.stringify({ note: list.note, hidden: list.noteHidden, tip: list.tip }));
-  const openAx = await axNode(p, "#sheet-settings .kept-route button");
+  const openAx = await axNode(p, "#sheet-gpx .kept-route button");
   check("kept routes: Open's accessible name names the route and its description gives the details", openAx?.name === `Open ${row?.title}` && / mi \(/.test(openAx?.description ?? ""), JSON.stringify(openAx));
-  await p.eval("document.querySelector('#sheet-settings .kept-route button').focus(); true");
+  await p.eval("document.querySelector('#sheet-gpx .kept-route button').focus(); true");
   await p.enter();
   const shown = await p.waitFor("!!document.querySelector('.summary')", 20000);
   await sleep(1200);
@@ -3795,12 +3832,12 @@ const JUNCTION_BUTTON = "Suggest a junction change";
   await p.shot(`${SHOTS}/kept_offline.png`);
 
   // Remove, by keyboard: said, and the focus goes to the heading when none is left.
-  await openSheet(p, "Settings");
-  await p.eval("document.querySelectorAll('#sheet-settings .kept-route button')[1].focus(); true");
+  await openSheet(p, "Save & load");
+  await p.eval("document.querySelectorAll('#sheet-gpx .kept-route button')[1].focus(); true");
   await p.enter();
-  await p.waitFor("document.querySelectorAll('#sheet-settings .kept-route').length === 0", 10000);
+  await p.waitFor("document.querySelectorAll('#sheet-gpx .kept-route').length === 0", 10000);
   await sleep(300);
-  const removed = await p.eval("({ focus: document.activeElement?.textContent, empty: document.querySelector('#sheet-settings .kept-routes > p.hint:not(.setting-info)')?.textContent, said: [...document.querySelectorAll('.visually-hidden[role=status]')].map((r) => r.textContent.trim()).filter(Boolean) })");
+  const removed = await p.eval("({ focus: document.activeElement?.textContent, empty: document.querySelector('#sheet-gpx .kept-routes > p.hint:not(.setting-info):not([role=status])')?.textContent, said: [...document.querySelectorAll('.visually-hidden[role=status]')].map((r) => r.textContent.trim()).filter(Boolean) })");
   check("kept routes: Remove by keyboard removes it, says so, and puts the focus on the list's heading when none is left",
     removed.focus === "Routes kept for offline" && removed.said.some((t) => t.startsWith(`Removed ${row?.title}. No routes are kept.`)) && /^No routes are kept\./.test(removed.empty ?? ""), JSON.stringify(removed));
   // The freeing follows the removal once the kept routes' lock is free (no keep runs here: at once).
@@ -3946,7 +3983,7 @@ const JUNCTION_BUTTON = "Suggest a junction change";
   await p.eval(`${kidsCard}.focus(); true`);
   await p.enter();
   await sleep(2500);
-  const chosen = await p.eval("(() => ({ open: document.querySelector('dialog.ride-types').open, focus: document.activeElement === document.querySelector('.ride-type-current button'), ride: document.querySelector('.ride-type-current strong')?.textContent, hint: document.querySelector('.ride-type-current .hint')?.textContent, said: document.querySelector('.ride-type-current p')?.textContent }))()");
+  const chosen = await p.eval("(() => ({ open: document.querySelector('dialog.ride-types').open, focus: document.activeElement === document.querySelector('.ride-type-current button'), ride: document.querySelector('.ride-type-current strong')?.textContent, hint: document.querySelector('.ride-type-current .hint')?.textContent, said: document.getElementById('ride-type-gist')?.textContent }))()");
   // Plan-first (see pressRoute): the choice plans nothing until Route.
   const pickPlans = p.routeRequests - before;
   await pressRoute(p);
@@ -3963,8 +4000,11 @@ const JUNCTION_BUTTON = "Suggest a junction change";
   check("kids: the sliders moved to its start and say so in words",
     sliders[0]?.value === 100 && sliders[1]?.value === -60 && traffic?.name === "Traffic" && /^Calmest: /.test(traffic?.valuetext ?? "") && sliders[1]?.words === "Gentler grades" /* -60, Novice's start */,
     JSON.stringify({ sliders, traffic }));
+  // Edit-route redesign (2026-10-18): the ride type's own button says the type; the Ride settings line, the sliders.
   const line = await axNode(p, ".ride-line-button");
-  check("kids: the Ride line's spoken name says the ride type and where the sliders are", /^Ride\s*:\s*Novice and Nervous, calmest, gentler hills\b/.test(line?.name ?? ""), JSON.stringify(line?.name));
+  const typeButton = await axNode(p, ".ride-type-current button");
+  check("kids: the ride type's button says Novice and Nervous, and the Ride settings line where the sliders are",
+    /^Novice and Nervous\b[\s\S]*Change$/.test(typeButton?.name ?? "") && /^Ride settings\s*:\s*calmest, gentler hills\b/.test(line?.name ?? ""), JSON.stringify({ type: typeButton?.name, line: line?.name }));
   check("kids: the target distance is offered, as at the top of the traffic slider", (await p.eval("document.querySelectorAll('input[placeholder=Default]').length")) === 1);
   await p.eval("document.querySelector('.ride-type-current button').focus(); true");
   await p.enter();
@@ -4088,10 +4128,12 @@ const JUNCTION_BUTTON = "Suggest a junction change";
 }
 
 // ---- Share (owner, 2026-10-10; lib/share.ts): the share sheet for Copy link's link, where there is one ----
+// Since v0.9.0 it is in the Save & load sheet, after Save route (the owner, 2026-10-17: "Basically you save then you share").
 {
   // No share sheet: no Share button, and Copy link is still there.
   const p = await open({ init: "delete Navigator.prototype.share; delete Navigator.prototype.canShare;" });
-  const none = await p.eval("({ share: !!document.querySelector('.route-actions .share-route'), copy: !!document.querySelector('.route-actions .copy-link') })");
+  await openSheet(p, "Save & load");
+  const none = await p.eval("({ share: !!document.querySelector('.share-route'), copy: !!document.querySelector('.route-actions .copy-link') })");
   check("share: hidden where the browser has no share sheet, and Copy link stays", !none.share && none.copy, JSON.stringify(none));
   await p.close();
 }
@@ -4107,17 +4149,50 @@ const SHARE_STUB = `window.__shared = []; window.__shareMode = "ok"; window.__no
     if (mode === "hold") { window.__open = true; return new Promise((done) => { window.__release = () => { window.__open = false; done(); }; }); }
     return mode === "ok" ? Promise.resolve() : Promise.reject(new DOMException("stub", mode === "abort" ? "AbortError" : "DataError")); } });
   Object.defineProperty(Navigator.prototype, "canShare", { configurable: true, value: function (d) { return !!d && typeof d.url === "string"; } });`;
-// UI-CLEANUP (the owner's choice 8): Share is behind More, beside Copy link; MARK_SHARE opens More.
-const MARK_SHARE = "(() => { const m = document.querySelector('.route-actions .route-more'); if (m && m.getAttribute('aria-expanded') !== 'true') m.click(); const c = document.querySelector('.route-actions .copy-link'); const s = document.querySelector('.route-actions .share-route'); if (m) m.id = '__more'; if (c) c.id = '__copy'; if (s) s.id = '__share'; return true; })()";
+// ---- Share ride (the owner, 2026-10-18: "There should be the option for sharing the route or sharing a ride ... ride is
+// the fixed one with optional location sharing ... route is so people can review or do it themselves separately ...
+// Make that clear in a tooltip"; lib/sharedRoutes.ts RIDE_PARAM) ----
 {
   const p = await open({ init: SHARE_STUB });
+  await openSheet(p, "Save & load");
+  await p.eval("(() => { const s = document.querySelector('#sheet-gpx .share-controls .share-ride'); if (s) s.id = '__ride'; const i = document.querySelector('#sheet-gpx .share-about-button'); if (i) i.id = '__about'; return true; })()");
+  const ax = await axNode(p, "#__ride");
+  const box = await p.eval("(() => { const s = document.getElementById('__ride'); if (!s) return null; const r = s.getBoundingClientRect(); return { w: r.width, h: r.height }; })()");
+  check("share ride: a button named Share ride beside Share route, described by what it does, 44 px or more each way",
+    ax?.role === "button" && ax?.name === "Share ride" && /never re-routed/.test(ax?.description ?? "") && box && box.w >= 44 && box.h >= 44, JSON.stringify({ ax, box }));
+  const info = async () => p.eval("(() => { const b = document.getElementById('__about'); const box = document.getElementById(b?.getAttribute('aria-controls') ?? ''); return { expanded: b?.getAttribute('aria-expanded'), shown: !!box && !box.hidden && box.getBoundingClientRect().height > 0, text: box?.textContent ?? '' }; })()");
+  const infoAx = await axNode(p, "#__about");
+  const closed = await info();
+  await p.eval("document.getElementById('__about').focus(); true");
+  await p.enter();
+  await sleep(200);
+  const opened = await info();
+  check("share ride: Info (named, collapsed at first) shows what Share route and Share ride each do",
+    infoAx?.role === "button" && infoAx?.name === "About sharing" && closed.expanded === "false" && !closed.shown && opened.expanded === "true" && opened.shown && /Share route:/.test(opened.text) && /Share ride:/.test(opened.text), JSON.stringify({ infoAx, closed, opened }));
+  await p.eval("document.getElementById('__ride').focus(); true");
+  await p.enter();
+  await sleep(600);
+  const sent = await p.eval("({ shared: window.__shared, noActivation: window.__noActivation })");
+  const url = sent.shared[0]?.url ?? "";
+  check("share ride: Enter hands the sheet the kept line's link, marked as a ride, within the press",
+    sent.noActivation === 0 && sent.shared.length === 1 && /\/s\/[0-9a-f]{32}#.*&route=[0-9a-f]{32}&ride=1$/.test(url), JSON.stringify(sent));
+  await p.close();
+}
+// MARK_SHARE marks the Save & load sheet's Share (open it first: openSheet(p, "Save & load")).
+const MARK_SHARE = "(() => { const s = document.querySelector('#sheet-gpx .share-controls .share-route'); if (s) s.id = '__share'; return true; })()";
+{
+  const p = await open({ init: SHARE_STUB });
+  await openSheet(p, "Save & load");
   await p.eval(MARK_SHARE);
   const ax = await axNode(p, "#__share");
-  const box = await p.eval("(() => { const s = document.getElementById('__share'); if (!s) return null; const r = s.getBoundingClientRect(); const m = document.getElementById('__more'); return { w: r.width, h: r.height, after: document.getElementById('__copy')?.nextElementSibling === m && s.parentElement.id === m.getAttribute('aria-controls') && s.parentElement.firstElementChild === s }; })()");
-  check("share: a button named Share route, first behind More (which follows Copy link), 44 px or more each way", ax?.role === "button" && ax?.name === "Share route" && box?.after && box.w >= 44 && box.h >= 44, JSON.stringify({ ax, box }));
-  await p.eval("document.getElementById('__more').focus(); true");
+  const box = await p.eval("(() => { const s = document.getElementById('__share'); if (!s) return null; const r = s.getBoundingClientRect(); return { w: r.width, h: r.height, more: !!document.querySelector('.route-more-body .share-route') }; })()");
+  check("share: a button named Share route in the Save & load sheet (no longer behind More), 44 px or more each way", ax?.role === "button" && ax?.name === "Share route" && box && !box.more && box.w >= 44 && box.h >= 44, JSON.stringify({ ax, box }));
+  await p.eval("document.getElementById('__share').focus(); true");
   await p.tab();
-  check("share: the next Tab stop after More, open", await p.eval("document.activeElement?.id === '__share'"), await p.eval("document.activeElement?.outerHTML.slice(0, 120)"));
+  await p.tab();
+  await p.tab();
+  check("share: after Share route come Share ride and its Info, then how long the link is kept", await p.eval("!!document.activeElement?.closest('#sheet-gpx .share-keep') && document.activeElement.tagName === 'SELECT'"), await p.eval("document.activeElement?.outerHTML.slice(0, 120)"));
+  await p.eval("document.getElementById('__share').focus(); true");
   await p.enter();
   await sleep(600);
   const sent = await p.eval("({ shared: window.__shared, href: location.href, noActivation: window.__noActivation })");
@@ -4127,7 +4202,7 @@ const MARK_SHARE = "(() => { const m = document.querySelector('.route-actions .r
   const sharedId = /^http:\/\/127\.0\.0\.1:\d+\/s\/([0-9a-f]{32})#/.exec(one.url ?? "")?.[1];
   check("share: Enter hands the sheet this page's link (its plan, and the kept line's id), the title, and a plain US-first text, within the press", sent.noActivation === 0 && sent.shared.length === 1 && !!sharedId &&
     one.url === `${new URL(sent.href).origin}/s/${sharedId}${new URL(sent.href).hash}&route=${sharedId}` && p.sharedRequests?.[0]?.id === sharedId && one.title === "RouteMaker route" && /^\d[\d.,]* (mi|ft) \(\d[\d.,]* (km|m)\) bike route\. Ride type: Default\.$/.test(one.text ?? "") && !/weight|kg|lb/i.test(JSON.stringify(one)), JSON.stringify(sent));
-  const status = "(() => ({ spoken: document.querySelector('.route-actions [role=status]')?.textContent.trim() ?? '', shown: document.querySelector('.route-actions .link-said')?.textContent.trim() ?? '', shared: window.__shared.length, noActivation: window.__noActivation }))()";
+  const status = "(() => ({ spoken: document.querySelector('.share-controls [role=status]')?.textContent.trim() ?? '', shown: document.querySelector('.share-controls .share-said')?.textContent.trim() ?? '', shared: window.__shared.length, noActivation: window.__noActivation }))()";
   const afterOk = await p.eval(status);
   check("share: nothing is said once the sheet opened (the browser does not say where the link went)", afterOk.spoken === "" && afterOk.shown === "", JSON.stringify(afterOk));
   // Each press is a real key press on the focused button, so it carries user activation.
@@ -4151,7 +4226,7 @@ const MARK_SHARE = "(() => { const m = document.querySelector('.route-actions .r
   await pressShare();
   await sleep(600);
   const afterFail = await p.eval(status);
-  const polite = await p.eval("document.querySelector('.route-actions [role=status]')?.getAttribute('aria-live') !== 'assertive'");
+  const polite = await p.eval("document.querySelector('.share-controls [role=status]')?.getAttribute('aria-live') !== 'assertive'");
   check("share: another failure is said politely, shown, and offers Copy link", afterFail.spoken === "Could not open the share sheet. Use Copy link instead." && afterFail.shown === afterFail.spoken && polite && afterFail.noActivation === 0, JSON.stringify({ afterFail, polite }));
   // The stub's own guard: a script click carries no user activation, and share() refuses it, as a browser does.
   // (The last key press's transient activation lasts about 5 s: wait for it to lapse first.)
@@ -4163,11 +4238,12 @@ const MARK_SHARE = "(() => { const m = document.querySelector('.route-actions .r
   await p.close();
 }
 {
-  // On a 320 px phone the three route actions share the row; Share is still 44 px each way and nothing spills.
+  // On a 320 px phone, in the Save & load sheet: Share is still 44 px each way and nothing spills.
   const p = await open({ init: SHARE_STUB, width: 320, height: 800, mobile: true });
+  await openSheet(p, "Save & load");
   await p.eval(MARK_SHARE);
   const fit = await p.eval("(() => { const s = document.getElementById('__share'); if (!s) return null; const r = s.getBoundingClientRect(); const row = s.parentElement.getBoundingClientRect(); return { w: r.width, h: r.height, inRow: r.left >= row.left - 1 && r.right <= row.right + 1, over: s.scrollWidth > s.clientWidth + 1, page: document.documentElement.scrollWidth > innerWidth }; })()");
-  check("share at 320 px: 44 px or more each way, inside the actions row, no overflow", !!fit && fit.w >= 44 && fit.h >= 44 && fit.inRow && !fit.over && !fit.page, JSON.stringify(fit));
+  check("share at 320 px: 44 px or more each way, inside the Save & load sheet, no overflow", !!fit && fit.w >= 44 && fit.h >= 44 && fit.inRow && !fit.over && !fit.page, JSON.stringify(fit));
   await p.close();
 }
 
@@ -4234,7 +4310,7 @@ const modeNow = "(() => [...document.querySelectorAll('.mode-switch')].filter((g
   await p.eval("document.querySelector('.go-menu').click(); true");
   await sleep(400);
   const menu = await p.eval("({ shown: !document.getElementById('sheet-settings').hidden, pages: [...document.querySelectorAll('#sheet-settings .menu-page')].map((x) => x.textContent.trim()), back: document.querySelector('#sheet-settings .sheet-back')?.textContent.trim() })");
-  check("go: Menu opens the Settings sheet as Go's menu, with Plan, Suggest and GPX first, and a Close button", menu.shown && ["Plan", "Suggest", "GPX"].every((x) => menu.pages.includes(x)) && menu.back === "Close", JSON.stringify(menu));
+  check("go: Menu opens the Settings sheet as Go's menu, with Plan, Suggest and Save & load first, and a Close button", menu.shown && ["Plan", "Suggest", "Save & load"].every((x) => menu.pages.includes(x)) && menu.back === "Close", JSON.stringify(menu));
   await p.eval("document.querySelector('#sheet-settings .sheet-back').click(); true");
   await sleep(300);
   await p.eval("document.querySelector('.go-sheet .ride-more').click(); true");
@@ -4762,8 +4838,8 @@ const PICK_OPEN_IN_GO = "(() => { const s = document.querySelector('#sheet-setti
   await p.eval("document.querySelector('#sheet-settings .big-text-row [role=switch]').click(); true");
   await sleep(200);
   const bigAfter = await p.eval("({ checked: document.querySelector('#sheet-settings .big-text-row [role=switch]').getAttribute('aria-checked'), kept: localStorage.getItem('routemaker.ride.bigText') })");
-  check("settings: Ride mode has a Big text switch, off at first and 44 px tall; turning it on is kept on this device",
-    bigBefore?.checked === "false" && bigBefore.h >= 44 && bigBefore.group === "Ride mode" && bigAfter.checked === "true" && bigAfter.kept === "1", JSON.stringify({ bigBefore, bigAfter }));
+  check("settings: Riding has a Big text switch, off at first and 44 px tall; turning it on is kept on this device",
+    bigBefore?.checked === "false" && bigBefore.h >= 44 && bigBefore.group === "Riding" && bigAfter.checked === "true" && bigAfter.kept === "1", JSON.stringify({ bigBefore, bigAfter }));
   await p.close();
 }
 {
@@ -4900,7 +4976,7 @@ const failed = results.filter((r) => !r.ok);
 // returns early) fails here rather than passing green (the mutation review of the release).
 // The transit blocks (#108) and the Go press checks (#116) were added without raising it; they run since #127.
 // Review mode's own lists (22c2) add six.
-const EXPECTED = 654;
+const EXPECTED = 662;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

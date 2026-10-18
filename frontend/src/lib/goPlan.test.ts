@@ -264,9 +264,10 @@ test("the Avoid notice is one line: the first junction and how many more, with A
 test("a route's notes are one line each with an icon; their full words are in Info (the owner's choice 5)", () => {
   assert.match(app, /<li key=\{note\.key\} className=\{`note-line \$\{note\.className\}`\}>\s*<Icon name=\{note\.icon\} size=\{16\} \/>\s*<span className="note-text">\{note\.text\}<\/span>/);
   assert.match(app, /\{notes\.map\(\(note\) => \(\s*<p key=\{note\.key\} className="hint note-full">/);
-  // The four quick figures are in Stress and facilities (choice 4); Share and Keep for offline behind More (choice 8).
+  // The four quick figures are in Stress and facilities (choice 4); Share as image and Keep for offline behind More
+  // (choice 8; Share itself is in the Route file sheet since v0.9.0).
   assert.match(app, /\{\/\* The four quick figures, first in the fold \(the owner's choice 4\)\. \*\/\}\s*<QuickFigures/);
-  assert.match(app, /<div id=\{moreId\} className="route-more-body" hidden=\{!more\}>[\s\S]*?share-route[\s\S]*?keep-offline/);
+  assert.match(app, /<div id=\{moreId\} className="route-more-body" hidden=\{!more\}>[\s\S]*?share-image[\s\S]*?keep-offline/);
 });
 
 // ---- Ride mode's 311 button (the owner's choice 9) and Big text's icon (choice 11) ----------------------
@@ -362,7 +363,7 @@ test("go tap: a press on the map in Go is the destination, routed as a picked on
   // The same name on the sheet's "To …": the place name once looked up, else the coordinates that were said (review of #116).
   assert.equal(goPlaceName(undefined, [-77.0365, 38.9055]), "38.9055, -77.0365");
   assert.equal(goPlaceName("Dupont Circle", [-77.0434, 38.9096]), "Dupont Circle");
-  assert.match(appFile, /destination=\{shown && points\.length >= 2 \? goPlaceName\(namer\.name\(points\[points\.length - 1\]\)\?\.name, points\[points\.length - 1\]\) : null\}/);
+  assert.match(appFile, /destination=\{points\.length > 0 \? goPlaceName\(namer\.name\(points\[points\.length - 1\]\)\?\.name, points\[points\.length - 1\]\) : null\}/);
   assert.doesNotMatch(appFile, /\?\? "Destination"/);
   assert.ok(place.indexOf("goTapSetsEnd") > place.indexOf("if (!insideCoverage(point))"), "a press outside the area is refused first");
   assert.ok(place.indexOf("goTapSetsEnd") < place.indexOf("MAX_POINTS"), "Go's press is never refused for the points limit");

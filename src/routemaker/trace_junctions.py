@@ -31,6 +31,9 @@ TRACE_ATTRIBUTES = (
     "node.intersecting_edge.road_class",
     "node.intersecting_edge.use",
     "node.intersecting_edge.driveability",
+    # Whether a bicycle may ride each other way away from the node: a fork is a
+    # choice only between rideable ways (`describe.fork_movement`).
+    "node.intersecting_edge.cyclability",
 )
 
 # The road classes (Valhalla's, from OSM `highway`) on which a way can be LTS 3

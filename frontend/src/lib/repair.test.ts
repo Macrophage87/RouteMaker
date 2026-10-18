@@ -11,10 +11,12 @@ import {
   repairDetails,
   repairFoundSaid,
   repairGeoJson,
+  repairHowFar,
   repairText,
   repairTitle,
   type RepairPlace,
 } from "./repair.ts";
+import type { LonLat } from "./geo.ts";
 
 const file = {
   source: "OpenStreetMap contributors, ODbL 1.0",
@@ -115,8 +117,23 @@ test("Go: Repair and Sights sit behind More, with its expanded state said", () =
 test("F13. a Repair row is named by its place and distance; its details are its description", () => {
   const sheet = readFileSync(new URL("../app/PlacesSheets.tsx", import.meta.url), "utf8");
   const repair = sheet.slice(sheet.indexOf("export function RepairSheet("), sheet.indexOf("function SightRow("));
-  assert.match(repair, /aria-label=\{`\$\{placeLetter\(i\)\}: Ride to \$\{repairTitle\(item\.place\)\}, \$\{formatDistance\(item\.metres\)\}`\}\s*aria-describedby=\{`\$\{rowId\}-\$\{i\}`\}/);
+  assert.match(repair, /aria-label=\{`\$\{placeLetter\(i\)\}: Ride to \$\{repairTitle\(item\.place\)\}, \$\{repairHowFar\(item\)\}`\}\s*aria-describedby=\{`\$\{rowId\}-\$\{i\}`\}/);
   assert.match(repair, /<span id=\{`\$\{rowId\}-\$\{i\}`\}>\{repairDetails\(item\.place, at\)\.join\(" "\)\}<\/span>/);
   // The name no longer repeats the details.
   assert.doesNotMatch(repair, /aria-label=\{[^}]*repairDetails/);
+});
+
+test("with a route: the least detour off it first, in words (the owner, 2026-10-18)", () => {
+  const places = [
+    { id: "n1", lon: -77.0, lat: 38.95, kind: "stand", name: "Far stand" },
+    { id: "n2", lon: -76.95, lat: 38.9001, kind: "stand", name: "Route stand" },
+    { id: "n3", lon: -76.98, lat: 38.91, kind: "shop", name: "Near shop" },
+  ] as unknown as RepairPlace[];
+  const route = { line: [[-77.0, 38.9], [-76.9, 38.9]] as LonLat[], speedMps: 4 };
+  const items = nearestRepair([-77.0, 38.9], places, 2, 2, route);
+  assert.deepEqual(items.map((i) => i.place.id), ["n2", "n3", "n1"]);
+  assert.match(repairHowFar(items[0]), /^on your route at /);
+  assert.match(repairHowFar(items[1]), /^\+[\d.]+ mi \([\d.]+ km\) detour, turning off at /);
+  assert.match(repairFoundSaid(items, true), /^Least detour off your route: /);
+  assert.equal(nearestRepair([-77.0, 38.9], places)[0].detour, undefined);
 });
