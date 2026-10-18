@@ -1418,12 +1418,15 @@ class TestForks:
     def test_a_y_is_a_bear_to_the_route_s_side_of_the_other_branch(self):
         assert d.fork_movement(0, 20, [(340, "cycleway", "both")]) == "bear_right"
         assert d.fork_movement(0, 340, [(20, "footway", None)]) == "bear_left"
-        # Straight on, with a branch a little right: keep left.
-        assert d.fork_movement(0, 0, [(15, "path", "both")]) == "bear_left"
+        # A little right of straight on, with a way straighter still: keep right.
+        assert d.fork_movement(0, 10, [(2, "path", "both")]) == "bear_right"
 
     def test_plainly_straight_on_is_no_fork(self):
         # The branch is 30 degrees off, the route's way straight: nothing to choose.
         assert d.fork_movement(0, 0, [(30, "cycleway", "both")]) is None
+        # Nor is a spur a little off a trail carried straight on.
+        assert d.fork_movement(0, 0, [(15, "footway", "both")]) is None
+        assert d.fork_movement(0, 5, [(350, "footway", "both")]) is None
         # A cross street at a right angle is not a way on.
         assert d.fork_movement(0, 0, [(90, "road", "both"), (270, "road", "both")]) is None
 
@@ -1433,6 +1436,7 @@ class TestForks:
             ("steps", None),
             ("footway", "none"),
             ("road", "backward"),
+            ("pedestrian_crossing", "both"),
         ):
             assert d.fork_movement(0, 270, [(0, use, cyclability)]) is None, use
         assert d.fork_movement(None, 270, [(0, "path", "both")]) is None
@@ -1499,3 +1503,74 @@ class TestForks:
             )
         ]
         assert len(d.describe(legs)) == 1
+
+
+class TestTheLastTurn:
+    """The owner, 2026-10-18: "Same with destinations". North on the trolley trail,
+    then right onto Berwyn Road 50 m before the end: the turn is said, not folded into
+    the trail."""
+
+    def test_a_short_last_street_turned_onto_is_kept(self):
+        legs = [
+            flat(
+                road(
+                    "Rhode Island Avenue Trolley Trail",
+                    1,
+                    900,
+                    0,
+                    0,
+                    facility="path",
+                    use="cycleway",
+                ),
+                road("Berwyn Road", 1, 50, 90, 90),
+            )
+        ]
+        entries = d.describe(legs)
+        assert entries[-1]["street"] == "Berwyn Road"
+        assert entries[-1]["turn"]["movement"] == "right"
+
+    def test_before_a_stop_too(self):
+        legs = [
+            flat(road("Path A", 1, 900, 0, 0), road("Baltimore Avenue", 2, 60, 270, 270)),
+            road("Path A", 1, 900, 90, 90),
+        ]
+        entries = d.describe(legs)
+        streets = [e.get("street") for e in entries if e["kind"] == "stretch"]
+        assert streets[:2] == ["Path A", "Baltimore Avenue"]
+
+    def test_straight_on_or_a_few_metres_is_still_folded(self):
+        straight = [flat(road("Main St", 1, 900, 0, 0), road("Oak St", 1, 50, 5, 5))]
+        assert len(d.describe(straight)) == 1
+        stub = [flat(road("Main St", 1, 900, 0, 0), road("Oak St", 1, 10, 90, 90))]
+        assert len(d.describe(stub)) == 1
+
+
+class TestForksAreKeptEverywhere:
+    def test_a_tiny_start_before_a_fork_is_folded_into_it_with_the_fork_kept(self):
+        legs = [
+            flat(
+                road("Driveway Lane", 1, 30, 0, 0),
+                forked(
+                    road("Paint Branch Trail", 1, 600, 0, 0, facility="path", use="cycleway"),
+                    "bear_left",
+                ),
+                road("Other Rd", 1, 600, 90, 90),
+            )
+        ]
+        entries = d.describe(legs)
+        assert entries[0]["street"] == "Paint Branch Trail"
+        assert entries[0]["from_m"] == 0
+
+    def test_the_overview_never_merges_a_fork_away(self):
+        legs = [
+            flat(
+                road("Paint Branch Trail", 1, 900, 0, 0, facility="path", use="cycleway"),
+                forked(
+                    road("Paint Branch Trail", 1, 150, 270, 270, facility="path", use="cycleway"),
+                    "left",
+                ),
+                road("Paint Branch Trail", 1, 900, 270, 270, facility="path", use="cycleway"),
+            )
+        ]
+        _full, overview = d.describe_both(legs)
+        assert any(e["turn"] and e["turn"].get("stay") for e in overview)

@@ -431,9 +431,9 @@ def pieces_of_trace(trace: dict) -> list[Piece]:
     shape = decode_polyline6(trace.get("shape", ""))
     to_metres = 1609.344 if trace.get("units") == "miles" else 1000.0
     pieces: list[Piece] = []
-    previous: dict | None = None
+    # The last edge kept: the node a fork is read at is where it ends.
+    before: dict | None = None
     for edge in trace.get("edges", []):
-        before, previous = previous, edge
         length = float(edge.get("length") or 0.0) * to_metres
         begin, end = edge.get("begin_shape_index"), edge.get("end_shape_index")
         # An index past the shape is a response this module does not
@@ -453,6 +453,7 @@ def pieces_of_trace(trace: dict) -> list[Piece]:
             "road": calm.road_of_edge(edge, miles=trace.get("units") == "miles"),
         }
         fork = _fork_of(before, edge)
+        before = edge
         stretches = []
         for a, b in zip(shape[begin:end], shape[begin + 1 : end + 1], strict=True):
             stretches.append((a, b, haversine(Point(*a), Point(*b))))

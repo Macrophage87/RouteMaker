@@ -28,6 +28,9 @@ The rules:
   straight is a bear ("Bear right onto ..."); under it, straight on; past it, a
   left or a right. A bend along one street is never a turn. (The routing model's
   own STRAIGHT_MAX_DEG, `intersections.movement_of`, is not this.)
+- Nor is the street a leg ends on, under TINY_M, where it is turned onto
+  (`_last_turn`): the turn onto the destination's street is said before the
+  arrival.
 - A fork (`fork_movement`) is a turn even on one street or straight on: where
   another rideable way at the node is as near straight ahead as the route's, or
   nearer, the rider is told which to take ("Bear right to stay on Paint Branch
@@ -117,7 +120,18 @@ FORK_CLEAR_DEG = 20.0
 # Other ways at a node that never look like the way on: a driveway or a parking
 # aisle off a road, steps, a lift.
 FORK_IGNORED_USES = frozenset(
-    {"driveway", "parking_aisle", "drive_through", "steps", "elevator", "rest_area", "service_area"}
+    {
+        "driveway",
+        "parking_aisle",
+        "drive_through",
+        "steps",
+        "elevator",
+        "escalator",
+        "rest_area",
+        "service_area",
+        # A crosswalk is a way across a road, not a way on.
+        "pedestrian_crossing",
+    }
 )
 # How far from a change of street an event still is that junction.
 MATCH_M = 30.0
@@ -347,6 +361,19 @@ def _circle(run: _Run) -> bool:
     return on or any(CIRCLE_NAME.search(name) for name in run.names)
 
 
+def _last_turn(before: _Run | None, run: _Run, after: _Run | None) -> bool:
+    """Whether `run` is the street a leg ends on, turned onto: another street than
+    the one before, at least JOG_MIN_M long, entered by a turn or a bear. Folded
+    away, the turn would go unsaid and the ride would say only the arrival (the
+    owner, 2026-10-18, at Berwyn Road and at Baltimore Avenue: "Same with
+    destinations")."""
+    if before is None or after is not None or run.metres < JOG_MIN_M:
+        return False
+    if _same_street(before, run):
+        return False
+    return _movement_between(before, run) in TURN_WORDS
+
+
 def _jog(before: _Run | None, run: _Run, after: _Run | None) -> bool:
     """Whether `run` is a jog's middle: a named street, not a roundabout or circle,
     at least JOG_MIN_M long, other than both neighbours, entered and left by a turn
@@ -385,13 +412,21 @@ def _absorb_tiny(runs: list[_Run]) -> list[_Run]:
             before = runs[i - 1] if i > 0 else None
             after = runs[i + 1] if i + 1 < len(runs) else None
             # A stretch begun at a fork is kept: folded, its fork would go unsaid.
-            if run.metres >= TINY_M or _forks(run) or _jog(before, run, after):
+            if (
+                run.metres >= TINY_M
+                or _forks(run)
+                or _jog(before, run, after)
+                or _last_turn(before, run, after)
+            ):
                 i += 1
                 continue
-            # Nor is a tiny one folded into a stretch begun at a fork: the fork would
-            # move to where the tiny one begins.
+            # Nor is a tiny one folded into a stretch begun at a fork, which would
+            # then begin where the tiny one does; but at a leg's start, with nothing
+            # before it, it is, the fork kept as that stretch's turn.
             options = [
-                n for n in (before, after) if n is not None and not (n is after and _forks(n))
+                n
+                for n in (before, after)
+                if n is not None and not (n is after and _forks(n) and before is not None)
             ]
             if run.tier in NEVER_HIDDEN:
                 options = [n for n in options if _rank(n) >= _rank(run)]
@@ -409,7 +444,8 @@ def _absorb_tiny(runs: list[_Run]) -> list[_Run]:
                     target.label = target.label or run.label
                     target.path = target.path or run.path
                     # The turn into the stretch is where its own street begins.
-                    target.first = run.first
+                    if not _forks(target):
+                        target.first = run.first
                 target.metres += run.metres
                 target.unpaved_m += run.unpaved_m
             del runs[i]
@@ -678,7 +714,11 @@ def fork_movement(
     the router did not say). A way a bicycle may not ride away on, or one of
     FORK_IGNORED_USES, is not a choice. The node is a fork where a choice lies
     within FORK_AHEAD_DEG of straight ahead and the route's own way is not nearer
-    straight by FORK_CLEAR_DEG. Then: past BEAR_MAX_DEG the route's way is a left
+    straight by FORK_CLEAR_DEG; where the route's way is itself within
+    SLIGHT_MIN_DEG of straight, only a choice straighter still makes a fork (a spur
+    a little off a trail carried straight on is no question). A way whose
+    cyclability the router did not give (an older router) is taken as a choice.
+    Then: past BEAR_MAX_DEG the route's way is a left
     or a right; else it is a bear to the side the route's way lies of the nearest
     choice ("bear_right" where it is the right-hand branch of a Y)."""
     if heading_in is None or heading_out is None:
@@ -695,6 +735,8 @@ def fork_movement(
     if not ahead:
         return None
     nearest = min(ahead, key=abs)
+    if abs(ours) < SLIGHT_MIN_DEG and abs(nearest) > abs(ours):
+        return None
     if abs(ours) + FORK_CLEAR_DEG <= abs(nearest):
         return None
     if abs(ours) > BEAR_MAX_DEG:
@@ -825,7 +867,7 @@ def _overview_groups(runs: list[_Run], turns: dict[int, _Turn]) -> list[list[int
         candidates = [
             (metres(g), n)
             for n, g in enumerate(groups)
-            if metres(g) < OVERVIEW_M and not _flagged_turn(turns, g[0])
+            if metres(g) < OVERVIEW_M and not _flagged_turn(turns, g[0]) and not _forks(runs[g[0]])
         ]
         folded = False
         for _size, n in sorted(candidates):
@@ -835,7 +877,12 @@ def _overview_groups(runs: list[_Run], turns: dict[int, _Turn]) -> list[list[int
             options = []
             if before is not None and joinable(before, group):
                 options.append(before)
-            if after is not None and joinable(group, after) and not _flagged_turn(turns, after[0]):
+            if (
+                after is not None
+                and joinable(group, after)
+                and not _flagged_turn(turns, after[0])
+                and not _forks(runs[after[0]])
+            ):
                 options.append(after)
             # LTS 3 has no calmer busy neighbour: only LTS 4 and Avoid need this.
             if rank(group) > 3:
