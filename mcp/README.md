@@ -8,7 +8,12 @@ others.
 Ask things like:
 
 > Make me a 100 mile route that goes around DC using low stress roads and doesn't stray more than
-> 5 miles from a Metro station. Save it as "Metro century".
+> 5 miles from a Metro station.
+
+Then look at it (the answer has a link that opens it in the app), and either tell the assistant
+what to change ("go by the Capital Crescent Trail instead", "make it calmer") or change it in the
+app yourself and paste the page's address back. When it is right, say "save it as Metro
+century".
 
 ## What it can do
 
@@ -17,6 +22,9 @@ Ask things like:
 | `find_place` | Searches RouteMaker's place search for a place, address or street. |
 | `metro_stations` | Lists the 98 Metrorail stations, or those near a point, with miles and bearing. |
 | `plan_route` | Plans through 2 to 25 points (places, station names or `[lon, lat]`), on any ride type with any of its settings, as a loop if asked; reports distance, time, climbing and the share on each traffic-stress level (and the bikeshare or transit plan on those ride types); checks the distance from Metro; can add stations as via points where it strays. |
+| `open_link` | Picks up a route from a RouteMaker link you paste: the page's address after you changed the route in the app, one of your saved routes opened in the app, or a shared route's link. |
+| `revise_route` | Changes a draft (add, move or remove points; any ride type or setting) and plans it again as a new draft; the old one stays to go back to. |
+| `save_route` | Keeps a draft, only when you say so: in your My routes on the site, and/or as a GPX file. |
 | `plan_metro_loop` | Builds a loop of about the target length around DC (or another centre) through waypoints at or just beyond Metro stations, rescales it once towards the target, and repairs stretches past the Metro limit. |
 
 The assistant picks the ride type and settings that fit what you ask: every ride type the app
@@ -24,9 +32,10 @@ has (bikeshare and bike plus transit included) and every setting (traffic stress
 time, gravel, trails, target distance, rider weight, cargo load and assist, trail levels, the
 bikeshare bike and ending, departure time).
 
-Every planned route comes back with a link that opens it in the app and a GPX file. With
-`save_as` (and a key, below) it is also saved to My routes, where it opens like any route you
-saved yourself.
+Every planned route is a draft: it comes back with a link that opens it in the app, and
+nothing is saved. Drafts last while the assistant's session does. `save_route` (with a key,
+below) puts one in My routes, where it opens like any route you saved yourself; you can also
+open the link and press Save in the app.
 
 It plans through the site's own API (`POST /api/route`), so a route is exactly what the app would
 plan. It changes nothing on the site except adding the routes you ask it to save. Metro distances
@@ -86,7 +95,7 @@ A long loop can take a few minutes to plan (each plan of a long ride can take up
 and `plan_metro_loop` makes up to three by default). If the client gives up first, raise its tool
 timeout (Claude Code: `MCP_TOOL_TIMEOUT=600000`; other clients have their own setting) or ask for
 fewer plans (`max_plans`). A call the client gives up on stops at its next step and saves
-nothing, so asking again does not save the route twice.
+nothing.
 
 ### Other assistants
 

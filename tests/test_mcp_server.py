@@ -63,6 +63,9 @@ def straight_answer(body: dict) -> dict:
             **ANSWER["dials"],
             "stress": body.get("stress", 70),
             "loop": bool(body.get("loop")),
+            "carrying": body.get("carrying"),
+            "assist": bool(body.get("assist")),
+            "hills": body.get("hills", 0),
         },
         "loop": {"overlap_pct": 4.0} if body.get("loop") else None,
     }
@@ -161,7 +164,19 @@ def test_it_introduces_itself_and_lists_its_tools(tools) -> None:
     )
     assert mcp.handle(tools, {"jsonrpc": "2.0", "method": "notifications/initialized"}) is None
     names = [t["name"] for t in rpc(tools, "tools/list")["result"]["tools"]]
-    assert names == ["find_place", "metro_stations", "plan_route", "plan_metro_loop"]
+    assert names == [
+        "find_place",
+        "metro_stations",
+        "plan_route",
+        "plan_metro_loop",
+        "open_link",
+        "revise_route",
+        "save_route",
+    ]
+    # Only save_route changes anything: the rest plan drafts.
+    tools_listed = rpc(tools, "tools/list")["result"]["tools"]
+    writers = [t["name"] for t in tools_listed if not t["annotations"]["readOnlyHint"]]
+    assert writers == ["save_route"]
     assert rpc(tools, "nope")["error"]["code"] == -32601
     # An unknown tool is the caller's mistake in the request, not a tool's refusal.
     assert rpc(tools, "tools/call", {"name": "nope"})["error"]["code"] == -32602
@@ -322,7 +337,7 @@ def test_the_page_reads_the_link_as_the_plan_it_was(tmp_path, preset, dials, sen
 # --- Planning against the stand-in ----------------------------------------------------------
 
 
-def test_plan_route_summarises_links_and_writes_a_gpx(tools, stand_in, tmp_path) -> None:
+def test_plan_route_answers_a_draft_and_keeps_nothing(tools, stand_in, tmp_path) -> None:
     out = tools.call(
         "plan_route",
         {"points": ["Union Market", "Takoma"], "stress": 80, "max_miles_from_metro": 5},
@@ -332,9 +347,14 @@ def test_plan_route_summarises_links_and_writes_a_gpx(tools, stand_in, tmp_path)
     assert out["summary"]["traffic_stress"]["LTS 1"].startswith("60%")
     assert out["metro_check"]["ok"]
     assert out["link"].startswith(stand_in + "/#p=")
-    gpx = Path(out["gpx_file"])
-    assert gpx.parent == tmp_path and "<trkpt" in gpx.read_text()
-    assert "saved" not in out
+    # A draft: nothing saved and no file written until the rider says so.
+    assert out["draft_id"] == "d1" and out["saved"] is False
+    assert not list(tmp_path.iterdir())
+    kept = tools.call(
+        "save_route", {"draft_id": "d1", "name": "Takoma", "my_routes": False, "gpx_file": True}
+    )
+    gpx = Path(kept["gpx_file"])
+    assert gpx.parent == tmp_path and "<trkpt" in gpx.read_text() and "saved" not in kept
 
 
 def test_plan_route_fixes_a_stray_by_way_of_the_nearest_station(tools) -> None:
@@ -422,8 +442,13 @@ def test_saving_without_a_key_says_how_to_get_one(tools) -> None:
         tools,
         "tools/call",
         {
-            "name": "plan_route",
-            "arguments": {"points": [[-77.03, 38.9], [-77.02, 38.91]], "save_as": "Lunch ride"},
+            "name": "save_route",
+            "arguments": {
+                "draft_id": tools.call("plan_route", {"points": [[-77.03, 38.9], [-77.02, 38.91]]})[
+                    "draft_id"
+                ],
+                "name": "Lunch ride",
+            },
         },
     )
     assert out["result"]["isError"] is True
@@ -448,16 +473,15 @@ def test_a_planned_route_lands_in_my_routes(live_server, stand_in, tmp_path) -> 
             return mcp.Api(stand_in, save_key="").route(body)
 
     server = mcp.Server(Both, STATIONS, out_dir=tmp_path)
-    out = server.call(
+    draft = server.call(
         "plan_route",
-        {
-            "points": [[-77.0365, 38.8977], [-77.0091, 38.8899]],
-            "loop": True,
-            "stress": 80,
-            "save_as": "MCP loop",
-        },
+        {"points": [[-77.0365, 38.8977], [-77.0091, 38.8899]], "loop": True, "stress": 75},
     )
-    assert out["saved"]["name"] == "MCP loop"
+    assert not SavedRoute.objects.exists()
+    out = server.call("revise_route", {"draft_id": draft["draft_id"], "stress": 80})
+    assert not SavedRoute.objects.exists()
+    saved = server.call("save_route", {"draft_id": out["draft_id"], "name": "MCP loop"})
+    assert saved["saved"]["name"] == "MCP loop"
     row = SavedRoute.objects.get(user=user)
     assert row.name == "MCP loop" and row.source == "plan"
     assert row.inputs["hash"] == out["link"][len(live_server.url) + 1 :]
@@ -523,35 +547,39 @@ def test_a_loop_whose_first_plan_fails_says_why(tools) -> None:
     assert "plan it in two halves" in out["result"]["content"][0]["text"]
 
 
-def test_a_cancelled_call_saves_nothing_and_is_not_answered(tools) -> None:
+def test_a_cancelled_call_is_not_answered_and_saves_nothing(tools) -> None:
     calls: dict = {}
 
     class Saving(mcp.Api):
         def save(self, body):  # pragma: no cover - must not be reached
             raise AssertionError("saved after the client gave up")
 
+    draft = tools.call("plan_route", {"points": [[-77.03, 38.9], [-77.02, 38.91]]})
     tools._api = Saving(tools.api.base, save_key="rmk_x")
-    original = tools._plan
 
-    def plan_then_cancel(call, *args):
-        plan = original(call, *args)
-        calls[9].cancelled.set()  # the client gives up while the plan runs
-        return plan
+    class Gone(mcp.Call):
+        def __init__(self, progress=None):
+            super().__init__(progress)
+            self.cancelled.set()  # the client gave up before the save
 
-    tools._plan = plan_then_cancel
-    out = mcp.handle(
-        tools,
-        {
-            "jsonrpc": "2.0",
-            "id": 9,
-            "method": "tools/call",
-            "params": {
-                "name": "plan_route",
-                "arguments": {"points": [[-77.03, 38.9], [-77.02, 38.91]], "save_as": "x"},
+    original = mcp.Call
+    mcp.Call = Gone
+    try:
+        out = mcp.handle(
+            tools,
+            {
+                "jsonrpc": "2.0",
+                "id": 9,
+                "method": "tools/call",
+                "params": {
+                    "name": "save_route",
+                    "arguments": {"draft_id": draft["draft_id"], "name": "x"},
+                },
             },
-        },
-        calls=calls,
-    )
+            calls=calls,
+        )
+    finally:
+        mcp.Call = original
     assert out is None and not calls
 
 
@@ -578,3 +606,91 @@ def test_a_password_gated_site_gets_its_password_and_the_key_its_own_header(
         assert seen["authorization"] == "Basic cmlkZXI6c2VjcmV0"
     assert StandIn.headers_seen[0]["x-routemaker-key"] == "rmk_abc"
     assert "x-routemaker-key" not in StandIn.headers_seen[1]
+
+
+# --- Drafts: revise, open from a link, save ------------------------------------------------
+
+
+def test_a_draft_is_revised_point_by_point_and_setting_by_setting(tools) -> None:
+    first = tools.call(
+        "plan_route",
+        {
+            "points": [[-77.03, 38.90], [-77.00, 38.95], [-77.02, 38.91]],
+            "via_points": [1],
+            "stress": 70,
+            "when": "weekend",
+            "loop": True,
+        },
+    )
+    out = tools.call(
+        "revise_route",
+        {
+            "draft_id": first["draft_id"],
+            "add_points": [{"point": "Union Market", "after": 0}],
+            "move_points": [{"index": 2, "to": [-77.01, 38.96]}],
+            "stress": 90,
+            "clear_settings": ["when"],
+        },
+    )
+    sent = StandIn.routes[-1]
+    assert out["revised_from"] == first["draft_id"] and out["draft_id"] != first["draft_id"]
+    # Moved before the insert's shift: point 2 of the draft, now point 3.
+    assert sent["points"] == [
+        [-77.03, 38.90],
+        [-77.0091, 38.8899],
+        [-77.00, 38.95],
+        [-77.01, 38.96],
+    ]
+    assert sent["via_points"] == [1, 2]
+    assert sent["stress"] == 90 and "when" not in sent and sent["loop"] is True
+    # The first draft is still there to go back to.
+    back = tools.call("revise_route", {"draft_id": first["draft_id"], "remove_points": [1]})
+    assert StandIn.routes[-1]["points"] == [[-77.03, 38.90], [-77.02, 38.91]]
+    assert "via_points" not in StandIn.routes[-1] and StandIn.routes[-1]["stress"] == 70
+    assert back["revised_from"] == first["draft_id"]
+
+
+def test_an_unknown_draft_says_so(tools) -> None:
+    out = rpc(tools, "tools/call", {"name": "revise_route", "arguments": {"draft_id": "d99"}})
+    assert out["result"]["isError"] and "no draft d99" in out["result"]["content"][0]["text"]
+
+
+def test_a_link_the_rider_changed_in_the_app_becomes_a_draft(tools) -> None:
+    """The owner, 2026-10-18: "clicking on the link ... they can make changes and save or they
+    can tell the server to adjust, possibly from that saved change"."""
+    first = tools.call(
+        "plan_route",
+        {
+            "points": [[-77.03, 38.9], [-77.02, 38.91]],
+            "preset": "cargo",
+            "carrying": "people",
+            "stress": 60,
+        },
+    )
+    # The rider opens it, adds a stop in the app, and pastes the page's address back.
+    edited = first["link"].replace(
+        "p=-77.03000,38.90000;", "p=-77.03000,38.90000;-77.01000,38.93000;"
+    )
+    out = tools.call("open_link", {"link": edited})
+    sent = StandIn.routes[-1]
+    assert sent["points"] == [[-77.03, 38.9], [-77.01, 38.93], [-77.02, 38.91]]
+    assert sent["preset"] == "cargo" and sent["carrying"] == "people" and sent["stress"] == 60
+    assert out["draft_id"] == "d2" and out["link"].split("#")[1] == edited.split("#")[1]
+
+
+def test_a_shared_route_s_link_is_opened_by_its_plan(tools, monkeypatch) -> None:
+    asked = []
+
+    def shared(route_id):
+        asked.append(route_id)
+        return "#p=-77.03000,38.90000;-77.02000,38.91000&preset=gravel&v=2&stress=50&hills=0"
+
+    monkeypatch.setattr(tools.api, "shared_fragment", shared)
+    tools.call("open_link", {"link": "https://routes.example.org/s/Ab12Cd34"})
+    assert asked == ["Ab12Cd34"]
+    assert StandIn.routes[-1]["preset"] == "gravel" and StandIn.routes[-1]["stress"] == 50
+
+
+def test_a_link_with_no_route_is_refused(tools) -> None:
+    out = rpc(tools, "tools/call", {"name": "open_link", "arguments": {"link": "https://x/#at=1"}})
+    assert out["result"]["isError"] and not StandIn.routes
