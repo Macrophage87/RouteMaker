@@ -57,6 +57,15 @@ export function ModeSwitch({
 }
 
 /** Go's bar over the map: Menu, the switch, Layers and Locate, and the destination once there is one. */
+/** Go's bar: Undo and Redo, the big button (Start ride, or Route while the plan has changed), and Clear. */
+export interface GoBar {
+  onUndo: (() => void) | null;
+  onRedo: (() => void) | null;
+  /** Start ride on a route ready to ride; Route (or Routing…) otherwise; null when neither applies. */
+  big: { label: string; start: boolean; busy: boolean; onPress: () => void } | null;
+  onClear: (() => void) | null;
+}
+
 export function GoTopBar({
   mode,
   onMode,
@@ -66,7 +75,7 @@ export function GoTopBar({
   onLocate,
   locating,
   destination,
-  onClear,
+  bar,
 }: {
   mode: AppMode;
   onMode: (next: AppMode) => void;
@@ -76,9 +85,11 @@ export function GoTopBar({
   onLayers: (button: HTMLButtonElement) => void;
   onLocate: () => void;
   locating: boolean;
-  /** The plan's destination's name, routed or not (so it can always be cleared), or null with no plan. */
+  /** The plan's destination's name, or null with no plan (names the bar's group for a screen reader). */
   destination: string | null;
-  onClear: () => void;
+  /** Go's bar under the top row, as Plan's over the map (the owner, 2026-10-18: "mirror what plan does in general,
+   * but instead of route, we start the ride"); null when it has nothing to offer. */
+  bar: GoBar | null;
 }) {
   return (
     <nav className="go-top" aria-label="Go">
@@ -99,16 +110,38 @@ export function GoTopBar({
           </button>
         </span>
       </div>
-      {destination !== null && (
-        <div className="go-destination">
-          <Icon name="pin" size={18} />
-          <span className="go-destination-name">
-            <span className="visually-hidden">To </span>
-            {destination}
-          </span>
-          <button type="button" className="go-clear" onClick={onClear} aria-label={`Clear the route to ${destination}`}>
-            <Icon name="x" size={18} />
-          </button>
+      {bar !== null && (
+        <div className="go-destination" role="group" aria-label="Route and edits">
+          {/* The route card shows where to; said here too, as the bar starts the ride there. */}
+          {destination !== null && <span className="go-destination-name visually-hidden">To {destination}</span>}
+          {bar.onUndo && (
+            <button type="button" className="secondary plan-bar-small" data-history="undo" onClick={bar.onUndo} aria-label="Undo" title="Undo">
+              <Icon name="undo" size={20} />
+            </button>
+          )}
+          {bar.onRedo && (
+            <button type="button" className="secondary plan-bar-small" data-history="redo" onClick={bar.onRedo} aria-label="Redo" title="Redo">
+              <Icon name="redo" size={20} />
+            </button>
+          )}
+          {bar.big && (
+            <button
+              type="button"
+              className={bar.big.start ? "plan-bar-route go-bar-start" : "plan-bar-route"}
+              aria-disabled={bar.big.busy ? true : undefined}
+              onClick={() => {
+                if (!bar.big?.busy) bar.big?.onPress();
+              }}
+            >
+              <Icon name={bar.big.start ? "play" : "routes"} size={20} />
+              {bar.big.label}
+            </button>
+          )}
+          {bar.onClear && destination !== null && (
+            <button type="button" className="secondary plan-bar-small go-clear" onClick={bar.onClear} aria-label={`Clear the route to ${destination}`} title="Clear">
+              <Icon name="trash" size={20} />
+            </button>
+          )}
         </div>
       )}
     </nav>

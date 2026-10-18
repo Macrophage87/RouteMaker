@@ -338,6 +338,8 @@ test("App: Go's controls are unchanged: no new button or field for any of it", (
   // None is on Go until asked for: the sheet opens from the Home chip, Change Home is behind More
   // (lib/homeSet.test.ts holds Go's always-shown row at five chips).
   // The edit-route redesign (Stephen 2026-10-18): one more, the route card's button (Edit route); Add a stop stays.
-  assert.equal((go.match(/<button/g) ?? []).length, 22, "the same buttons as before, the Home sheet's and the route card's");
+  // Go's bar mirroring Plan's (Stephen 2026-10-18: "mirror what plan does in general, but instead of route, we start
+  // the ride"): three more, Undo, Redo and the big Start ride / Route, beside the Clear that was the destination's X.
+  assert.equal((go.match(/<button/g) ?? []).length, 25, "the same buttons as before, the Home sheet's, the route card's and Go's bar");
   assert.equal((go.match(/<PlaceSearch/g) ?? []).length, 4, "the same search fields as before, and the Home sheet's");
 });
