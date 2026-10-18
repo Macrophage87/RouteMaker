@@ -2379,10 +2379,12 @@ def _pct(shared: float, back: float) -> float | None:
 # stretch excluded, and the new leg is kept where it is no busier and the distance it adds is
 # at most REPEAT_WEIGHT of the repeated metres it saves: a repeated metre counts as 1.5 of
 # a fresh one, so a repeat of a mile is worth up to half a mile more of equally calm riding,
-# and never a metre more of LTS 4, LTS 3 or a busier junction (the two stress levels of
-# `Analysis.key` within their tie steps, `MAXCALM_STEPS`). Not on a Mass Ride (its route
-# keeps its own rules) and not near a leg's ends: the last REPEAT_STOP_M of a leg into a
-# stop and the first of the leg out of it are how the rider reaches it.
+# and never a metre more of LTS 4, Avoid or a red junction, nor more LTS 3 or orange
+# junctions than the second level's tie step (`MAXCALM_STEPS`). The search after it
+# (`refine`, `refine_long`) does not price repeats, so a calmer route it finds may
+# repeat. Not on a Mass Ride (its route keeps its own rules) and not near a leg's ends:
+# the last REPEAT_STOP_M of a leg into a stop and the first of the leg out of it are how
+# the rider reaches it.
 REPEAT_WEIGHT = 0.5
 # Below this many metres repeated on a leg nothing is asked.
 REPEAT_MIN_M = 300.0
@@ -2425,10 +2427,13 @@ def repeat_charged_m(read: Analysis, ctx: Context) -> float:
 
 
 def fewer_repeats_better(read: Analysis, best: Analysis, ctx: Context) -> bool:
-    """Whether `read` repeats less than `best` at a price the rider takes: no busier at
-    either stress level, and shorter once its repeats are charged."""
-    top_step, second_step, _ = MAXCALM_STEPS
-    if read.top_m > best.top_m + top_step or read.second_m > best.second_m + second_step:
+    """Whether `read` repeats less than `best` at a price the rider takes: not a metre
+    more of LTS 4, Avoid or a red junction (`LTS4_SLACK_M`), no more LTS 3 than the
+    tie step, no out-and-back of its own, and shorter once its repeats are charged."""
+    if read.top_m > best.top_m + LTS4_SLACK_M or read.second_m > best.second_m + MAXCALM_STEPS[1]:
+        return False
+    if doubles_back(read, retrace_m(best)):
+        # Out and back within a leg is a repeat too.
         return False
     return repeat_charged_m(read, ctx) < repeat_charged_m(best, ctx) - 1.0
 
@@ -2479,7 +2484,9 @@ def fewer_repeats(trip: dict, ctx: Context) -> tuple[dict, dict]:
         return trip, info
     info["was_m"] = info["repeated_m"] = round(sum(repeated_by_leg(best)), 1)
     stop_at = min(routing.clock() + REPEAT_BUDGET_S, ctx.deadline.at - REFINE_TRACE_RESERVE_S)
-    for leg in range(1, len(legs)):
+    # A loop's way back is `make_loop`'s, already asked for.
+    last = len(legs) - 1 if ctx.loop_overlap is not None else len(legs)
+    for leg in range(1, last):
         if repeated_by_leg(best)[leg] < REPEAT_MIN_M:
             continue
         points = _repeat_points(best, leg)

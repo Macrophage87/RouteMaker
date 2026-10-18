@@ -469,6 +469,13 @@ class TestRepeats:
         lts3 = legs_read(A_LEG, B_LEG, fresh, tiers="1" * 40 + "3" + "1" * 19)
         assert not refine.fewer_repeats_better(lts3, repeats, ctx)
 
+    def test_not_even_a_few_metres_of_lts4(self) -> None:
+        ctx = context(rate=10.0, maxcalm=True)
+        repeats = legs_read(A_LEG, B_LEG, A_LEG)
+        fresh = legs_read(A_LEG, B_LEG, list(range(100, 120)))
+        fresh.lts4_m = 10.0  # inside the ranking's 15 m tie step, past the hold's 1 m
+        assert not refine.fewer_repeats_better(fresh, repeats, ctx)
+
     def test_the_numbers_are_the_documented_ones(self) -> None:
         assert refine.REPEAT_WEIGHT == 0.5
         assert refine.REPEAT_STOP_M == 100.0
@@ -532,4 +539,11 @@ class TestFewerRepeats:
         readings_ = {("a", "b", "fresh"): legs_read(A_LEG, B_LEG, list(range(100, 120)))}
         world = LoopWorld(monkeypatch, readings_, [])
         _trip, info = refine.fewer_repeats(three_leg_trip("fresh"), three_leg_context())
+        assert info["tried"] == 0 and not world.requests
+
+    def test_a_loop_s_way_back_is_left_to_make_loop(self, monkeypatch) -> None:
+        world = LoopWorld(monkeypatch, three_leg_readings(), [])
+        ctx = three_leg_context()
+        ctx.loop_overlap = 0.9
+        _trip, info = refine.fewer_repeats(three_leg_trip(), ctx)
         assert info["tried"] == 0 and not world.requests
