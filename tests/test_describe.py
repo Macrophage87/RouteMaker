@@ -1398,3 +1398,104 @@ class TestTheMergedGroupsCarryWhatTheirMembersDo:
         )
         _full, short = both(leg)
         assert short[0]["surface"] == "unpaved", [(e["text"], e["surface"]) for e in short]
+
+
+def forked(atoms, movement):
+    """`atoms` with the first marked as begun at a fork (`describe.fork_movement`)."""
+    return [replace(atoms[0], fork=movement), *atoms[1:]]
+
+
+class TestForks:
+    """The owner, 2026-10-18, riding the Paint Branch Trail in College Park: "still
+    missing some important turns, especially when it seems straight is the default".
+    Where another rideable way at a node is as near straight ahead as the route's, the
+    route's way is said, even along one trail or straight on."""
+
+    def test_a_branch_straight_ahead_while_the_route_bends_is_a_fork(self):
+        # North on the trail, which turns left at a T; a path runs on north.
+        assert d.fork_movement(0, 270, [(2, "cycleway", "both")]) == "left"
+
+    def test_a_y_is_a_bear_to_the_route_s_side_of_the_other_branch(self):
+        assert d.fork_movement(0, 20, [(340, "cycleway", "both")]) == "bear_right"
+        assert d.fork_movement(0, 340, [(20, "footway", None)]) == "bear_left"
+        # Straight on, with a branch a little right: keep left.
+        assert d.fork_movement(0, 0, [(15, "path", "both")]) == "bear_left"
+
+    def test_plainly_straight_on_is_no_fork(self):
+        # The branch is 30 degrees off, the route's way straight: nothing to choose.
+        assert d.fork_movement(0, 0, [(30, "cycleway", "both")]) is None
+        # A cross street at a right angle is not a way on.
+        assert d.fork_movement(0, 0, [(90, "road", "both"), (270, "road", "both")]) is None
+
+    def test_ways_that_are_no_choice_are_left_out(self):
+        for use, cyclability in (
+            ("driveway", "both"),
+            ("steps", None),
+            ("footway", "none"),
+            ("road", "backward"),
+        ):
+            assert d.fork_movement(0, 270, [(0, use, cyclability)]) is None, use
+        assert d.fork_movement(None, 270, [(0, "path", "both")]) is None
+
+    def test_a_fork_along_one_trail_is_a_turn_to_stay_on_it(self):
+        legs = [
+            flat(
+                road("Paint Branch Trail", 1, 600, 0, 0, facility="path", use="cycleway"),
+                forked(
+                    road("Paint Branch Trail", 1, 600, 270, 270, facility="path", use="cycleway"),
+                    "left",
+                ),
+            )
+        ]
+        entries = d.describe(legs)
+        assert len(entries) == 2
+        assert entries[1]["turn"]["movement"] == "left"
+        assert entries[1]["turn"]["stay"] is True
+        assert "Left to stay on Paint Branch Trail," in entries[1]["text"]
+
+    def test_a_new_name_straight_on_at_a_fork_is_a_bear(self):
+        legs = [
+            flat(
+                road("Paint Branch Trail", 1, 600, 0, 0, facility="path", use="cycleway"),
+                forked(
+                    road(
+                        "Rhode Island Avenue Trolley Trail",
+                        1,
+                        600,
+                        5,
+                        5,
+                        facility="path",
+                        use="cycleway",
+                    ),
+                    "bear_right",
+                ),
+            )
+        ]
+        entries = d.describe(legs)
+        assert entries[1]["turn"]["movement"] == "bear_right"
+        assert "stay" not in entries[1]["turn"]
+        assert "Bear right onto Rhode Island Avenue Trolley Trail," in entries[1]["text"]
+
+    def test_a_short_stretch_begun_at_a_fork_is_never_folded_away(self):
+        legs = [
+            flat(
+                road(None, 1, 400, 0, 0, facility="path", use="footway"),
+                forked(road(None, 1, 40, 300, 300, facility="path", use="footway"), "bear_left"),
+                road("Lake Artemesia Trail", 1, 400, 300, 300, facility="path", use="cycleway"),
+            )
+        ]
+        entries = d.describe(legs)
+        assert [e["turn"]["movement"] if e["turn"] else None for e in entries] == [
+            None,
+            "bear_left",
+            "straight",
+        ]
+
+    def test_without_a_fork_a_bend_along_one_trail_is_still_no_turn(self):
+        legs = [
+            flat(
+                road("Paint Branch Trail", 1, 600, 0, 0, facility="path", use="cycleway"),
+                road("Paint Branch Trail", 1, 600, 270, 270, facility="path", use="cycleway"),
+            )
+        ]
+        assert len(d.describe(legs)) == 1

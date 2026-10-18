@@ -266,6 +266,8 @@ export interface DescriptionEntry {
     onto: string | null;
     control: "signal" | "stop" | "cross_stop" | "all_stop" | "none" | null;
     severity: "orange" | "red" | null;
+    /** A fork along one way (describe.fork_movement): "Bear right to stay on ...". */
+    stay?: boolean;
   } | null;
   severity?: "orange" | "red" | "avoid" | null;
   via?: number | null;

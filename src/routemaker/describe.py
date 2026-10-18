@@ -28,6 +28,11 @@ The rules:
   straight is a bear ("Bear right onto ..."); under it, straight on; past it, a
   left or a right. A bend along one street is never a turn. (The routing model's
   own STRAIGHT_MAX_DEG, `intersections.movement_of`, is not this.)
+- A fork (`fork_movement`) is a turn even on one street or straight on: where
+  another rideable way at the node is as near straight ahead as the route's, or
+  nearer, the rider is told which to take ("Bear right to stay on Paint Branch
+  Trail": the owner, 2026-10-18, "missing some important turns, especially when it
+  seems straight is the default"). A stretch begun at a fork is never folded away.
 - A leg boundary (a via point, named "Stop N") is its own entry, and a stretch
   never spans it.
 - A turn names the street it turns onto and, where the junction model has read
@@ -104,6 +109,16 @@ TURN_WORDS = {
     "bear_left": "Bear left",
     "bear_right": "Bear right",
 }
+# A fork: another rideable way at a node within FORK_AHEAD_DEG of straight ahead is
+# one a rider could take for the way on, unless the route's own way is nearer
+# straight by at least FORK_CLEAR_DEG (then straight on is plainly the route).
+FORK_AHEAD_DEG = 45.0
+FORK_CLEAR_DEG = 20.0
+# Other ways at a node that never look like the way on: a driveway or a parking
+# aisle off a road, steps, a lift.
+FORK_IGNORED_USES = frozenset(
+    {"driveway", "parking_aisle", "drive_through", "steps", "elevator", "rest_area", "service_area"}
+)
 # How far from a change of street an event still is that junction.
 MATCH_M = 30.0
 # Tiers that are never folded into a neighbour.
@@ -217,6 +232,9 @@ class Atom:
     unpaved: bool | None = None
     # On a roundabout or circular junction (Valhalla's `edge.roundabout`).
     roundabout: bool = False
+    # Where the piece begins at a fork the route leaves the straight-ahead way by
+    # (`fork_movement`): the movement to say there, else None.
+    fork: str | None = None
 
 
 @dataclass
@@ -264,6 +282,7 @@ def _runs_of(atoms: list[Atom], leg: int) -> list[_Run]:
             and atom.names == previous.names
             and atom.tier == previous.tier
             and atom.facility == previous.facility
+            and not atom.fork
         ):
             run = runs[-1]
             run.metres += atom.metres
@@ -282,8 +301,13 @@ def _same_street(a: _Run, b: _Run) -> bool:
     return bool(a.names & b.names)
 
 
+def _forks(run: _Run) -> bool:
+    """Whether `run` begins at a fork (`fork_movement`): its start is a turn to say."""
+    return run.first is not None and run.first.fork is not None
+
+
 def _same(a: _Run, b: _Run) -> bool:
-    return a.tier == b.tier and a.facility == b.facility and _same_street(a, b)
+    return a.tier == b.tier and a.facility == b.facility and _same_street(a, b) and not _forks(b)
 
 
 def _join(a: _Run, b: _Run) -> None:
@@ -360,10 +384,15 @@ def _absorb_tiny(runs: list[_Run]) -> list[_Run]:
             run = runs[i]
             before = runs[i - 1] if i > 0 else None
             after = runs[i + 1] if i + 1 < len(runs) else None
-            if run.metres >= TINY_M or _jog(before, run, after):
+            # A stretch begun at a fork is kept: folded, its fork would go unsaid.
+            if run.metres >= TINY_M or _forks(run) or _jog(before, run, after):
                 i += 1
                 continue
-            options = [n for n in (before, after) if n is not None]
+            # Nor is a tiny one folded into a stretch begun at a fork: the fork would
+            # move to where the tiny one begins.
+            options = [
+                n for n in (before, after) if n is not None and not (n is after and _forks(n))
+            ]
             if run.tier in NEVER_HIDDEN:
                 options = [n for n in options if _rank(n) >= _rank(run)]
             if not options:
@@ -610,6 +639,8 @@ def group_sentence(group: CrossingGroup, start_m: float, end_m: float) -> str:
 class _Turn:
     movement: str | None
     event: object | None = None
+    # A fork along one street: "Bear right to stay on ...".
+    stay: bool = False
 
 
 def _turn_deg(heading_in: float, heading_out: float) -> float:
@@ -632,6 +663,43 @@ def _movement_between(before: _Run, after: _Run) -> str | None:
     if abs(turn) <= BEAR_MAX_DEG:
         return "bear_right" if turn > 0 else "bear_left"
     return movement_of(a, b).value
+
+
+def fork_movement(
+    heading_in: float | None,
+    heading_out: float | None,
+    others: list[tuple[float | None, str | None, str | None]],
+) -> str | None:
+    """The movement to say where the route leaves a node that is a fork, else None.
+
+    `heading_in` is the compass heading the route arrives on, `heading_out` the one
+    it leaves on, and `others` each other way at the node: (its heading away from
+    the node, Valhalla's `use`, its `cyclability` away from the node, or None where
+    the router did not say). A way a bicycle may not ride away on, or one of
+    FORK_IGNORED_USES, is not a choice. The node is a fork where a choice lies
+    within FORK_AHEAD_DEG of straight ahead and the route's own way is not nearer
+    straight by FORK_CLEAR_DEG. Then: past BEAR_MAX_DEG the route's way is a left
+    or a right; else it is a bear to the side the route's way lies of the nearest
+    choice ("bear_right" where it is the right-hand branch of a Y)."""
+    if heading_in is None or heading_out is None:
+        return None
+    ours = _turn_deg(heading_in, heading_out)
+    choices = [
+        _turn_deg(heading_in, heading)
+        for heading, use, cyclability in others
+        if heading is not None
+        and use not in FORK_IGNORED_USES
+        and cyclability not in ("none", "backward")
+    ]
+    ahead = [d for d in choices if abs(d) <= FORK_AHEAD_DEG]
+    if not ahead:
+        return None
+    nearest = min(ahead, key=abs)
+    if abs(ours) + FORK_CLEAR_DEG <= abs(nearest):
+        return None
+    if abs(ours) > BEAR_MAX_DEG:
+        return "right" if ours > 0 else "left"
+    return "bear_right" if ours > nearest else "bear_left"
 
 
 def _street_words(run: _Run) -> str:
@@ -663,7 +731,9 @@ def _stretch_sentence(
     event = turn.event if turn else None
     if turn is not None:
         movement = turn.movement
-        if movement in TURN_WORDS:
+        if movement in TURN_WORDS and turn.stay:
+            lead = f"{TURN_WORDS[movement]} to stay on {_in_sentence(street)}"
+        elif movement in TURN_WORDS:
             lead = f"{TURN_WORDS[movement]} onto {_in_sentence(street)}"
         else:
             lead = f"Continue onto {_in_sentence(street)}"
@@ -925,16 +995,21 @@ def describe_both(
         if i == 0 or runs[i - 1].leg != run.leg:
             continue
         before = runs[i - 1]
-        if before.untraced or run.untraced or _same_street(before, run):
+        same = _same_street(before, run)
+        if before.untraced or run.untraced or (same and not _forks(run)):
             continue
         found = _nearest_event(events, starts[i], used)
         if found is not None:
             used.add(found)
         movement = _movement_between(before, run)
+        # At a fork the route's way is said beside the other branch, whatever the
+        # street (a bend along one street, or a new name straight on, says nothing).
+        if _forks(run):
+            movement = run.first.fork
         event = events[found] if found is not None else None
         if movement is None and event is not None:
             movement = event.movement.value
-        turns[i] = _Turn(movement, event)
+        turns[i] = _Turn(movement, event, same)
 
     entries: list[tuple[tuple[float, int, int], dict]] = []
     shared: list[tuple[tuple[float, int, int], dict]] = []
@@ -988,6 +1063,7 @@ def describe_both(
                         "onto": _street_words(run),
                         "control": turn.event.control.value if turn.event is not None else None,
                         "severity": severity,
+                        **({"stay": True} if turn.stay else {}),
                     },
                     severity=severity,
                 ),
@@ -1102,6 +1178,7 @@ def describe_both(
                         "onto": _street_words(runs[first]),
                         "control": turn.event.control.value if turn.event is not None else None,
                         "severity": severity,
+                        **({"stay": True} if turn.stay else {}),
                     },
                     severity=severity,
                 ),
