@@ -255,6 +255,7 @@
  "loop": null,
  "mass_hazards": null,
  "moved_points": [],
+ "walk_in": null,
  "mtb": null,
  "novice": null,
  "preset": "default",

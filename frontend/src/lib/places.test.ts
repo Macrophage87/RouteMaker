@@ -49,14 +49,12 @@ test("with no route: nearest first, and a category filter", () => {
   assert.equal(sightsForGo(places, [-77.0, 38.9], null, 2).length, 2);
 });
 
-test("along a route: within half a mile, in riding order, with a detour", () => {
+test("along a route: every place, least detour first, with a detour", () => {
   const places = parsePlaces(file)!;
   const along = placesToSee(places, [-77.0, 38.9], route);
-  assert.deepEqual(
-    along.map((r) => r.place.id),
-    ["n1", "n2", "n3"],
-    "the far viewpoint (over 3 mi off) is left out",
-  );
+  assert.equal(along.length, places.length, "a far place is listed too, last");
+  for (let i = 1; i < along.length; i += 1) assert.ok(along[i - 1].detour!.extraM <= along[i].detour!.extraM);
+  along.splice(3);
   assert.equal(sightHowFar(along[0]), "On your route");
   assert.match(sightHowFar(along[2]), /^\+\d+\.\d mi \(\d+\.\d km\)$/);
   assert.match(sightText(along[2]), /^Rose Garden\. Garden\. \+.* there and back, turning off at .* on your route\.$/);
@@ -64,9 +62,10 @@ test("along a route: within half a mile, in riding order, with a detour", () => 
 });
 
 test("the status line says how many, and from where", () => {
-  assert.equal(placesSaid(0, "all", true), "No places to see within half a mile (0.8 km) of your route.");
+  assert.equal(placesSaid(0, "all", true), "No places to see found.");
   assert.equal(placesSaid(3, "lighthouse", false), "3 lighthouses, nearest the map's center first.");
-  assert.equal(placesSaid(2, "all", true), "2 places to see within half a mile (0.8 km) of your route, in riding order.");
+  assert.equal(placesSaid(3, "lighthouse", false, true), "3 lighthouses, nearest you first.");
+  assert.equal(placesSaid(2, "all", true), "2 places to see, least detour off your route first.");
 });
 
 test("the layer's switch: off by default, kept on the device, and safe when storage throws", () => {

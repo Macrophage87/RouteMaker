@@ -1351,6 +1351,8 @@ class TestTrafficWinsOverHills:
 
         def transport(url, payload, timeout):
             if url.endswith("/route"):
+                if payload["costing"] == "pedestrian":
+                    raise routing.RouterRefused(400, 442, "no walk-in in this test")
                 use_hills = payload["costing_options"]["bicycle"]["use_hills"]
                 calls.append((use_hills, "alternates" in payload, timeout))
                 if use_hills == 1.0:
@@ -1480,6 +1482,8 @@ class TestTrafficWinsOverHills:
 
         def transport(url, payload, timeout):
             if url.endswith("/route"):
+                if payload["costing"] == "pedestrian":
+                    raise routing.RouterRefused(400, 442, "no walk-in in this test")
                 if payload["costing_options"]["bicycle"]["use_hills"] == 1.0:
                     return {"trip": own}
                 return {"trip": own, "alternates": [{"trip": alternative}]}

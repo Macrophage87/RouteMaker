@@ -7735,8 +7735,15 @@ standalone (Q8, 465) with scope `/`, and lists four icons: 192 and 512 px, `any`
 The icons, and the 180 px `apple-touch-icon.png`, are drawn from `frontend/public/favicon.svg` (Q10,
 465b) by `python3 scripts/make_app_icons.py`, which renders the SVG with Chromium's headless shell
 (full Chrome's `--headless=new` crops the bottom of a small window) and is run again only when the
-favicon changes; the PNGs are committed. The maskable icons draw the glyph at 60 % on full-bleed blue,
-so a launcher's circle or squircle cuts nothing. `index.html` links the manifest with
+favicon changes; the PNGs are committed. The maskable icons draw the glyph at 75 % on full-bleed blue,
+so a launcher's circle or squircle cuts nothing. The same run draws the Android app's icons from the
+favicon: the adaptive icon's vector foreground (also its monochrome layer, for Android 13 themed icons)
+inside the 66 dp safe circle, its blue background, the round and square PNGs for Android 7, and the
+launch screens (`mobile/android/app/src/main/res/`). The icon is the owner's design of 2026-10-18 (a
+route line running into a bicycle with a map pin in the front wheel), redrawn by hand as strokes.
+The favicon's own `<style>` doubles the stroke widths when it is drawn 40 px or smaller (a browser
+tab), where the full-size lines blurred.
+`index.html` links the manifest with
 `crossorigin="use-credentials"` (so the beta's password is sent with it), carries the light and dark
 theme colours and the Apple tags.
 

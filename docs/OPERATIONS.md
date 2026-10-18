@@ -2219,7 +2219,20 @@ server's `.env`; the owner sets it, nobody else handles it), the api reads WMATA
 rail incidents and elevator outages (`core.wmata_live`): at most three calls every 45 s for the
 whole deployment, only while someone plans a transit trip or opens a Metro station's card, shared
 through one row of `bikeshare_feed_cache` (key `wmata`, replaced in place, no history). Outbound
-host: `api.wmata.com` (add it to the beta's egress list). With no key, or WMATA not answering for
+host: `api.wmata.com`, already on the beta's egress list (docs/BETA-RUNBOOK.md, "Outbound hosts";
+`deploy/beta/env.beta.template`); v0.9.0's calls below use the same host and need no change.
+
+**Live Metrobus and where the next vehicle is (v0.9.0).** With the same key, a plan's Metrobus
+step says its route's next buses ("Live: bus 52 in 4 min, 13 min.") and, while a rider waits at a
+Metro or Metrobus boarding in Ride mode, the page asks `GET /api/transit/next-vehicle` every 25 s
+for where the next train or bus is (`core.wmata_bus`, `core.wmata_trains`). The bus calls are
+counted for the whole deployment in the row `wmata-budget` of `bikeshare_feed_cache` (18 a
+minute, 4 a second at most); the train positions are one shared reading every 20 s at most
+(row `wmata-trains`). Worst case with Metro's reading: about 36,000 calls a day and 9 a second,
+under WMATA's 50,000 and 10 (docs/SOURCES.md). The log says `wmata bus: ...`, `wmata trains: ...`
+or `wmata budget: ...` (never the key, never a stop or route) when a call fails. The new path's
+query holds a place, so nginx logs it at `crit` only, as `/api/transit/station-times`. To check
+it is working: plan Own Bike + 🚆🚌 to a trip with a Metrobus step; the step says "Live: bus ...". With no key, or WMATA not answering for
 about three minutes, everything is the timetable's and says "scheduled". An elevator out where a
 rider takes their bike is a warning on the plan and the station card, never an avoidance. To check
 it is working: open a Metro station's card on the map; its Metro lines say "live" and the card ends
@@ -3432,7 +3445,7 @@ carries the edge changes they need; **the owner ships them by hand**, as every
    offers "Install RouteMaker" (Android) or the Share line (iPhone), that the installed
    app opens (it may ask for the password once more: an installed app keeps its own
    sign-ins), and that, in airplane mode, the installed app still opens and a route
-   kept with "Keep for offline" opens from Settings with its map.
+   kept with "Keep for offline" opens from Save & load with its map.
 
 The Content-Security-Policy needs no change: `worker-src 'self'` allows the worker,
 and `manifest-src` falls back to `default-src 'self'`.
@@ -3947,6 +3960,12 @@ things beyond the tags, and none of them comes from the reference install:
   limits, OWNER-DECISIONS 131), both baked into the pipeline image
   (`COPY fixtures` in `docker/pipeline.Dockerfile`). A change to either is a
   rebuild-image deploy; there is nothing to reinstall.
+- **`fixtures/circle_parks/`** (the NPS circle parks from DC GIS's National
+  Parks layer, CC BY 4.0, credited by routing's "DC Open Data" line): their
+  walkways open to bicycles (`routemaker.circleparks`; the owner, 2026-10-17),
+  logged as "N walkways and crossings of DC's circle parks opened to bicycles". Baked into
+  the pipeline image like the two above; the planner reads the same polygons to
+  keep a trip point inside a circle off the underpass below it.
 
 The rebuild refuses, terminally (not retried), when the District, Maryland or
 Virginia has no closed boundary in the merged extract, or holds no way:
@@ -5466,6 +5485,30 @@ planner and front-end release" (below), `docker compose build api` then `up -d -
 --no-build api worker` and the front end, after v0.8.1 is deployed. `send-inputs.sh` now
 refuses a reference folder without `scenic.json` ("The Scenic layer (v0.8.0)", steps 1 and 2).
 The beta takes it through its CD agent.
+
+## Deploying v0.9.0
+
+Two migrations (`0034_review_dc_no_bike_queue`, `0035_assistant_key`), both plain schema changes
+that reverse cleanly; no new tile format and no rebuild. Deploy it as "Deploying a planner and
+front-end release" (below). No new settings: live Metrobus and train positions reuse
+`WMATA_API_KEY` and `api.wmata.com`.
+
+- **Needs a rebuild to take effect:** bike-signed parking aisles and driveways open to through
+  routes (`lua/routemaker_remap.lua`), the DC circle parks and NPS land in the CBD, and the
+  Review queue of suspected no-bike paths (it reads "not wired" until a rebuild writes its report).
+  On the current map nothing changes and nothing breaks.
+- **Needs a new phone app build:** Send to Garmin, a link shared to the app, and the new icon.
+- **Beta alerts** (`scripts/beta/alert.sh`) post from the server's login user, not a container:
+  `discord.com:443` must be allowed for the host itself. Install them and re-run
+  `auto-release.sh install` as BETA-RUNBOOK.md's "Alerts" says, so the agent's installed copy
+  can post too.
+- **AI assistant key** (`assistant_key` table, `core.models.AssistantKey`): one per account, only
+  its SHA-256 kept. An assistant's MCP server (mcp/README.md) sends it in `X-RouteMaker-Key` to
+  `POST /api/keyed/routes`, which only adds a route to that account's My routes, under the
+  address limit, then the account's write limit. The rider removes it in Settings > Account;
+  deleting or banning the account deletes it. Behind the
+  beta's password gate the MCP server (not the site) needs `ROUTEMAKER_BASIC_AUTH` as well: the key travels in its
+  own header.
 
 ## Deploying a planner and front-end release: rollback points and verification
 

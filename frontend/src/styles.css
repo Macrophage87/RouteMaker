@@ -978,7 +978,6 @@ button.secondary {
   font-size: 0.9em;
 }
 
-/* Go's "Add a stop" with Best order beside it (v0.7.0), under Start in the route sheet. */
 .go-add-stop {
   display: flex;
   flex-wrap: wrap;
@@ -1268,17 +1267,44 @@ button.secondary {
 
 /* --- Ride type, its dialog, and the sliders (RideTypePicker, DialsPanel) --- */
 
-.ride-type-current {
-  display: flex;
-  gap: 12px;
-  align-items: flex-start;
-  justify-content: space-between;
+/* The ride type: one card button that opens the ride types (edit-route redesign, Stephen 2026-10-18). */
+.ride-settings .ride-type {
+  padding: 10px 14px 0;
 }
 
-.ride-type-current p {
-  margin: 0;
+.ride-settings .ride-type .ride-type-label {
+  margin: 0 0 4px;
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.ride-type-current > button {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 56px;
+  padding: 8px 12px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--swatch-border);
+  border-radius: 10px;
+  text-align: left;
+  font-weight: 400;
+}
+
+.ride-type-text {
   display: grid;
   gap: 2px;
+  min-width: 0;
+}
+
+.ride-type-change {
+  color: var(--accent);
+  font-weight: 700;
+  white-space: nowrap;
 }
 
 dialog.ride-types {
@@ -2509,19 +2535,21 @@ button.secondary,
 
 .ride-settings h2.ride-line {
   margin: 0;
+  padding: 8px 14px;
 }
 
+/* A card like the ride type's above it (edit-route redesign), so both read as buttons. */
 .ride-line-button {
   display: flex;
   align-items: center;
   gap: 12px;
   width: 100%;
   min-height: 56px;
-  padding: 6px 14px;
-  background: transparent;
+  padding: 6px 12px;
+  background: var(--bg);
   color: var(--text);
-  border: 0;
-  border-radius: 0;
+  border: 1px solid var(--swatch-border);
+  border-radius: 10px;
   text-align: left;
   font-weight: 400;
 }
@@ -2547,7 +2575,6 @@ button.secondary,
 .ride-line-action {
   color: var(--accent);
   font-weight: 700;
-  text-decoration: underline;
 }
 
 .ride-settings-body {
@@ -3333,19 +3360,19 @@ details.zoom-notes {
   pointer-events: none;
 }
 
-/* Ride mode's "you" marker (WEB-NAV-plan.md section 1): an arrow, a different shape from the chart's
+/* Ride mode's "you" marker (WEB-NAV-plan.md section 1; a little larger since v0.9.0, the owner's ask): an arrow, a different shape from the chart's
    ring, pointing the way the rider is heading; a plain dot while the heading is not known. */
 .rider-marker {
-  width: 30px;
-  height: 30px;
+  width: 36px;
+  height: 36px;
   pointer-events: none;
   background: no-repeat center / contain
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3E%3Cpath d='M15 2 L26 27 L15 21 L4 27 Z' fill='%231d4ed8' stroke='white' stroke-width='2.5' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 
 .rider-marker.rider-marker-still {
-  width: 22px;
-  height: 22px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
   background: #1d4ed8;
   border: 3px solid white;
@@ -3784,7 +3811,7 @@ details.zoom-notes {
 }
 
 /*
- * The heading, Settings and the always-visible End ride (Go riding fixes item 6): kept at the top of the
+ * The heading, Road closed ahead and the always-visible End ride (Go riding fixes item 6): kept at the top of the
  * card as it scrolls, so End ride is in view at every size, in Big text and at 200% text. On a narrow
  * screen the two buttons wrap under the heading rather than overflow.
  */
@@ -3813,9 +3840,9 @@ details.zoom-notes {
   margin-left: auto;
 }
 
-/* The narrowest phones: Settings is its gear alone (its name stays "Settings"), so the top row stays one line. */
-@media (max-width: 359px) {
-  .ride-settings-label {
+/* Narrow phones: Road closed is its icon alone (its name stays "Road closed ahead"), so the top row stays one line. */
+@media (max-width: 379px) {
+  .ride-top-label {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -3830,14 +3857,14 @@ details.zoom-notes {
   margin-top: 16px;
 }
 
-/* The ride's settings, opened by the top row's Settings, just under it. */
+/* The ride's settings, opened by the side buttons' gear, just under the top row. */
 .ride-mode-settings {
   margin: 4px 0 10px;
   padding-bottom: 8px;
   border-bottom: 1px solid var(--border);
 }
 
-.ride .ride-settings-button,
+.ride .ride-road-closed,
 .ride .ride-end {
   flex: none;
   min-height: 44px;
@@ -4152,6 +4179,21 @@ details.zoom-notes {
   font-weight: 700;
   line-height: 1.3;
   filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.45));
+}
+/* Where the next train or bus is while waiting to board (v0.9.0): a dark, square-cornered tag with its
+   kind in words, so it differs from the rider's round arrow and the white line markers by shape and words. */
+.next-vehicle-marker span {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 2px;
+  background: #1e1b4b;
+  color: #ffffff;
+  border: 2px solid #ffffff;
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.3;
+  white-space: nowrap;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
 }
 .transit {
   margin: 0 0 12px;
@@ -4607,39 +4649,18 @@ details.zoom-notes {
   box-shadow: var(--shadow);
 }
 
+/* Go's bar under the top row (the owner, 2026-10-18: "mirror what plan does"): Plan's bar, with Start ride for Route. */
 .go-destination {
   display: flex;
   align-items: center;
-  gap: 8px;
-  align-self: flex-start;
-  max-width: 100%;
-  min-height: 44px;
-  padding: 0 0 0 14px;
-  background: var(--bg);
-  color: var(--text);
-  border: 1px solid var(--swatch-border);
-  border-radius: 999px;
-  box-shadow: var(--shadow);
-}
-
-.go-destination-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-weight: 700;
-}
-
-.go-destination .go-clear {
-  min-width: 44px;
-  min-height: 44px;
-  padding: 0;
-  display: inline-flex;
-  align-items: center;
   justify-content: center;
-  background: transparent;
-  color: var(--text);
-  border: 0;
-  border-radius: 999px;
+  gap: 8px;
+  max-width: 100%;
+  min-height: 52px;
+}
+
+.go-destination > button {
+  box-shadow: var(--shadow);
 }
 
 /* The map's zoom buttons and Undo / Redo sit under Go's bar. */
@@ -5024,6 +5045,45 @@ details.fold > summary .icon {
 
 .route-more-body[hidden] {
   display: none;
+}
+
+/* Save route, then Share, in the Files sheet (v0.9.0): under the file's own controls, a line apart. */
+.share-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+/* Share route, Share ride and their Info, on one line where they fit (the owner, 2026-10-18). */
+.share-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  flex-basis: 100%;
+}
+
+.share-buttons > button {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+.share-about {
+  flex-basis: 100%;
+}
+
+.share-about p {
+  margin: 0 0 4px;
+}
+
+.share-controls > .link-note,
+.share-controls > .share-said {
+  flex-basis: 100%;
+  margin: 0;
 }
 
 /* How long a shared link is kept, under Share: its own line so the select and the date stay readable. */
@@ -5462,14 +5522,6 @@ details.fold > summary .icon {
   z-index: 10;
 }
 
-.go-destination {
-  width: max-content;
-}
-
-.go-destination-name {
-  flex: 0 1 auto;
-  min-width: 0;
-}
 
 .chip,
 .panel .chip {
@@ -5740,8 +5792,17 @@ details.fold > summary .icon {
   flex: none;
 }
 
-.nearest-list li.lettered-row > span:nth-child(2) {
+.nearest-list li.lettered-row > span:nth-child(2),
+.nearest-list li.lettered-row > .nearest-place {
   flex: 1 1 12em;
+}
+
+.nearest-details summary,
+.nearest-help summary {
+  cursor: pointer;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
 }
 
 /* Go's Bikeshare options (lib/bikeshareOptions.ts): lettered as on the map; the planned one has a thicker
@@ -6175,8 +6236,8 @@ details.fold > summary .icon {
   display: none;
 }
 
-/* Go's route chips (review F15): one row at 390 px. The ride type's chip takes what is left and cuts a long name
-   short; Save's name form and its line go under the row, each on a line of its own. */
+/* Go's route chips (review F15): one row at 390 px, the routes and Save; Save's name form and its line go under the
+   row, each on a line of its own. */
 .go-chips {
   display: flex;
   flex-wrap: wrap;
@@ -6187,17 +6248,6 @@ details.fold > summary .icon {
 .go-chips > .chip {
   flex: none;
   padding: 0 10px;
-}
-.go-chips > .go-ride-chip {
-  flex: 1 1 0;
-  min-width: 0;
-  max-width: max-content;
-}
-.go-chip-name {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .go-chips > .save-route {
   display: contents;
@@ -6599,8 +6649,34 @@ details.fold > summary .icon {
   min-height: 44px;
 }
 
-.point-change {
-  margin-left: auto;
+/* The start's and destination's place is its own Change button, drawn as a box (edit-route redesign, Stephen
+   2026-10-18); its search box opens in that row (li.point-editing). */
+.points button.point-change {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  padding: 4px 10px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--swatch-border);
+  border-radius: 8px;
+  text-align: left;
+  font-weight: 400;
+}
+
+.points button.point-change .coords {
+  flex: 1;
+}
+
+.points li.point-editing > .point-editor {
+  flex: 1;
+  min-width: 0;
+}
+
+.point-editor .point-cancel {
+  min-height: 44px;
 }
 
 .route-state {
@@ -6767,9 +6843,23 @@ details.fold > summary .icon {
   justify-self: end;
   margin-left: 0;
 }
-.my-go .setting-value {
+.my-go .setting-value,
+.assistant-key .setting-value {
   margin-left: 0.4em;
   font-weight: normal;
+}
+/* The AI assistant key (the owner, 2026-10-18): the new key on one line with Copy, then Make or Replace, and Remove. */
+.assistant-key-secret,
+.assistant-key-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 6px 0;
+}
+.assistant-key-secret input {
+  flex: 1 1 12em;
+  min-width: 0;
+  font-family: monospace;
 }
 .settings-group > h3 {
   margin-bottom: 6px;
@@ -6796,7 +6886,8 @@ details.fold > summary .icon {
   box-shadow: var(--shadow);
 }
 
-.plan-map-bar .plan-bar-small {
+.plan-map-bar .plan-bar-small,
+.go-destination .plan-bar-small {
   width: 44px;
   min-height: 44px;
   padding: 0;
@@ -6806,7 +6897,8 @@ details.fold > summary .icon {
   background: var(--bg);
 }
 
-.plan-map-bar .plan-bar-route {
+.plan-map-bar .plan-bar-route,
+.go-destination .plan-bar-route {
   min-height: 52px;
   padding: 0 22px;
   display: inline-flex;
@@ -6817,7 +6909,8 @@ details.fold > summary .icon {
   border-radius: 999px;
 }
 
-.plan-map-bar .plan-bar-route[aria-disabled="true"] {
+.plan-map-bar .plan-bar-route[aria-disabled="true"],
+.go-destination .plan-bar-route[aria-disabled="true"] {
   opacity: 0.85;
   cursor: progress;
 }
@@ -6835,4 +6928,224 @@ details.fold > summary .icon {
   .app:has(.plan-map-bar) .map-chips {
     top: 72px;
   }
+}
+
+/* Ride mode's compass (the owner, 2026-10-17: "a minimalist compass rose"): a needle at the map's top left
+   under the cue card, turned by the map's bearing (--map-bearing, MapView), on the page's own background; a press
+   switches north up and track-up. */
+.ride .ride-compass {
+  position: absolute;
+  top: 8px;
+  left: 12px;
+  width: 48px;
+  height: 48px;
+  min-height: 48px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--bg);
+  box-shadow: var(--shadow);
+  pointer-events: auto;
+}
+
+/* North up on: filled with the accent, as a pressed round button is. */
+.ride .ride-compass[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.ride .ride-compass[aria-pressed="true"] .ride-compass-north {
+  fill: var(--accent-text);
+}
+
+.ride .ride-compass[aria-pressed="true"] .ride-compass-south {
+  stroke: var(--accent-text);
+}
+
+/* No transition: the bearing is set every frame of the map's own turn, and it wraps at 180 (a transition would
+   spin the needle round when riding south). */
+.ride-compass svg {
+  transform: rotate(calc(-1deg * var(--map-bearing, 0)));
+}
+
+.ride-compass-north {
+  fill: #c0392b;
+}
+
+/* North solid, south hollow: told apart by shape as well as colour. */
+.ride-compass-south {
+  fill: none;
+  stroke: var(--text-muted);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}
+
+@media (forced-colors: active) {
+  .ride-compass-north {
+    fill: CanvasText;
+  }
+
+  .ride-compass-south {
+    stroke: CanvasText;
+  }
+
+  .ride .ride-compass[aria-pressed="true"] {
+    forced-color-adjust: none;
+    background: Highlight;
+    border-color: Highlight;
+  }
+
+  .ride .ride-compass[aria-pressed="true"] path {
+    fill: HighlightText;
+    stroke: HighlightText;
+  }
+}
+
+/* Go's route card (edit-route redesign, Stephen 2026-10-18): the start and the destination on one button that opens
+   Edit route; the ride type chips follow it, both above Start. */
+.go-route-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 56px;
+  margin: 10px 0 0;
+  padding: 8px 12px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--swatch-border);
+  border-radius: 10px;
+  text-align: left;
+  font-weight: 400;
+}
+
+.go-route-ends {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.go-route-end {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.go-route-to {
+  font-weight: 700;
+}
+
+.go-route-stops {
+  padding-left: 24px;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.go-route-edit {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--accent);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.go-summary .go-route-rides {
+  margin-top: 10px;
+}
+
+.go-rides-label {
+  margin: 0 0 4px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+/* The points list's grip (drag to reorder, Stephen 2026-10-18): a 44 px target at the row's start. touch-action
+   none keeps a finger's drag on the grip from scrolling the sheet instead. */
+.points .point-grip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  margin-left: -10px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+  cursor: grab;
+  touch-action: none;
+}
+
+.points .point-grip[aria-expanded="true"] {
+  color: var(--accent);
+}
+
+.points-dragging {
+  user-select: none;
+}
+
+.points-dragging .point-grip {
+  cursor: grabbing;
+}
+
+/* The others slide aside as the dragged row passes; the dragged row follows the finger, above them. */
+.points-dragging li {
+  transition: transform 120ms ease;
+}
+
+.points li.point-dragged {
+  position: relative;
+  z-index: 1;
+  transition: none;
+  background: var(--bg);
+  box-shadow: var(--shadow);
+  border-radius: 6px;
+}
+
+.points .point-grip-space {
+  flex: none;
+  width: 34px;
+}
+
+/* Up, Down and Done on a line of their own under the stop, so its place keeps its width on a narrow phone. */
+.points li.point-moving {
+  flex-wrap: wrap;
+}
+
+.points .point-steps {
+  display: flex;
+  flex: 1 0 100%;
+  gap: 16px;
+  padding-left: 34px;
+}
+
+.points .point-steps button {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .points-dragging li {
+    transition: none;
+  }
+}
+
+/* Your routes in Save and load (the owner, 2026-10-18): one search over the saved and the kept routes. */
+.your-routes .route-search {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0.25rem 0 0.5rem;
+  min-height: 44px;
+  padding: 0.4rem 0.6rem;
+  font: inherit;
 }

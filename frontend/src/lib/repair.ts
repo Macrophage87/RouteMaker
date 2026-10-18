@@ -7,13 +7,16 @@
  * Both are in amenity-data/water-restrooms.json (scripts/build_water_restrooms.py: `rs` a public repair stand
  * with its kit, `bs` a bike shop), so the Repair chip works offline once the map has loaded the file. Go's
  * Repair chip (behind More) lists the nearest REPAIR_STANDS stands and REPAIR_SHOPS shops together, nearest
- * first, lettered as the other chips' lists; a stand says what it has ("Pump and tools"), a shop its hours and
+ * first, lettered as the other chips' lists (with a route shown, those with the least detour off it, least first:
+ * the owner, 2026-10-18, "if on a route we'd want to sort by miles of detour too", "Same for the other detour
+ * types"); a stand says what it has ("Pump and tools"), a shop its hours and
  * "Closed now" when its OSM hours say so. Stands are drawn on the map with the Water and restrooms layer (a
  * wrench); shops never are.
  *
  * Plain data in, plain data out, so node --test runs all of it.
  */
-import { formatDistance } from "./format.ts";
+import { detourOf, projector, type RouteForDetour } from "./food.ts";
+import { formatDistance, formatExtra, milesFigure } from "./format.ts";
 import { haversineM, type LonLat } from "./geo.ts";
 import { hexToRgb, rasterise, type Raster, type Rgb } from "./stationIcons.ts";
 
@@ -184,29 +187,62 @@ export interface RepairNearby {
   place: RepairPlace;
   /** Straight line from where the search was from, metres. */
   metres: number;
+  /** With a route: the estimated detour there and back (lib/food.ts), and where on the route to turn off. */
+  detour?: { alongM: number; extraM: number };
 }
 
-/** The nearest `stands` repair stands and `shops` bike shops to `from`, together, nearest first. */
-export function nearestRepair(from: LonLat, places: readonly RepairPlace[], stands = REPAIR_STANDS, shops = REPAIR_SHOPS): RepairNearby[] {
-  const ranked = places.map((place) => ({ place, metres: haversineM(from, [place.lon, place.lat]) })).sort((a, b) => a.metres - b.metres || a.place.id.localeCompare(b.place.id));
+/**
+ * The nearest `stands` repair stands and `shops` bike shops to `from`, together, nearest first; with a route,
+ * those with the least detour off it, least first (a tie, such as two on the route, nearest `from` first).
+ */
+export function nearestRepair(
+  from: LonLat,
+  places: readonly RepairPlace[],
+  stands = REPAIR_STANDS,
+  shops = REPAIR_SHOPS,
+  route: RouteForDetour | null = null,
+): RepairNearby[] {
+  const project = route ? projector(route.line) : null;
+  const order = (a: RepairNearby, b: RepairNearby) =>
+    (a.detour && b.detour ? a.detour.extraM - b.detour.extraM : 0) || a.metres - b.metres || a.place.id.localeCompare(b.place.id);
+  const ranked = places
+    .map((place): RepairNearby => {
+      const point: LonLat = [place.lon, place.lat];
+      const item: RepairNearby = { place, metres: haversineM(from, point) };
+      if (project && route) {
+        const { offM, alongM } = project(point);
+        item.detour = { alongM, extraM: detourOf(offM, route.speedMps).extraM };
+      }
+      return item;
+    })
+    .sort(order);
   const pick = (kind: RepairPlace["kind"], n: number) => ranked.filter((r) => r.place.kind === kind).slice(0, n);
-  return [...pick("stand", stands), ...pick("shop", shops)].sort((a, b) => a.metres - b.metres || a.place.id.localeCompare(b.place.id));
+  return [...pick("stand", stands), ...pick("shop", shops)].sort(order);
+}
+
+/** How far, short: "0.3 mi (0.5 km) away", or with a route "+0.4 mi (0.6 km) detour, turning off at …" or "on your route at …". */
+export function repairHowFar(item: RepairNearby): string {
+  const d = item.detour;
+  if (!d) return `${formatDistance(item.metres)} away`;
+  if (d.extraM === 0 || milesFigure(d.extraM) === "0.0") return `on your route at ${formatDistance(d.alongM)}`;
+  return `${formatExtra(d.extraM)} detour, turning off at ${formatDistance(d.alongM)}`;
 }
 
 /** One line of the list: "Repair stand, Union Station: 0.3 mi (0.5 km) away. Pump and tools. Free." */
 export function repairText(item: RepairNearby, at: Date): string {
-  return [`${repairTitle(item.place)}: ${formatDistance(item.metres)} away.`, ...repairDetails(item.place, at)].join(" ");
+  return [`${repairTitle(item.place)}: ${repairHowFar(item)}.`, ...repairDetails(item.place, at)].join(" ");
 }
 
 export const REPAIR_NONE = "No repair stands or bike shops known yet: they arrive with the next map data update.";
 export const REPAIR_UNAVAILABLE = "Repair stands and bike shops are unavailable for now; try again shortly.";
 export const REPAIR_NO_ORIGIN = "Location unknown: press Locate, or move the map.";
-export const REPAIR_NOTE = "Straight-line distances; check hours (OpenStreetMap).";
+export const REPAIR_NOTE = "Straight-line distances, or estimated detours with a route; check hours (OpenStreetMap).";
 
 /** The status line once the list is in. */
 export function repairFoundSaid(items: readonly RepairNearby[], fromHere: boolean): string {
   const from = fromHere ? "you" : "the map's center";
   if (items.length === 0) return REPAIR_NONE;
+  if (items[0].detour) return `Least detour off your route: ${repairTitle(items[0].place)}, ${repairHowFar(items[0])}.`;
   return `Nearest to ${from}: ${repairTitle(items[0].place)}, ${formatDistance(items[0].metres)}.`;
 }
 

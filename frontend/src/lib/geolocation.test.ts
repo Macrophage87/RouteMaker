@@ -627,7 +627,15 @@ test("privacy: nothing in the feature's code stores, logs or sends the position"
   // the rider's location (lib/nearest.ts), whose position goes only in its own request, as a route's points do.
   // A third, Go's (UI-CLEANUP: Where to?, Home and Locate), through the same gate, whose fix goes to the plan
   // as Use my location's does, and to the map's camera.
-  assert.equal((app.match(/locate\(/g) ?? []).length, 3, "three look-up paths");
+  // A fourth (the owner, 2026-10-18, food "near you" with a stale location): the place lists' fresh look-up, through
+  // the same gate, whose fix stays on the device for their nearest-first order, Go's start and the dot.
+  assert.equal((app.match(/locate\(/g) ?? []).length, 4, "four look-up paths");
+  const fresh = body(app, "const freshHere", "const foodSeq");
+  assert.match(fresh, /const press = gate\.begin\(\);[\s\S]*await locate\(geoEnv\);\s*if \(!gate\.finish\(press\)\) return null;/);
+  // A Go destination waiting on the gate is settled by this answer too (the review of PR #208).
+  assert.match(fresh, /if \(goWaiting\(\)\) \{\s*settleGoWaiting\(result\);/);
+  assert.match(fresh, /if \(!result\.ok \|\| !insideCoverage\(result\.fix\.point\)\) return null;/);
+  assert.doesNotMatch(fresh, LEAKS);
   const go = body(app, "const locateForGo", "const goTo");
   assert.match(go, /const press = gate\.begin\(\);[\s\S]*await locate\(geoEnv\);\s*if \(!gate\.finish\(press\)\) return null;/);
   assert.doesNotMatch(body(app, "const locateForGo", "const goToPlace"), LEAKS);
@@ -643,27 +651,33 @@ test("privacy: the location state reaches only the note, the hint and the circle
   // An alias counts too: "= here", "here;", "(here)" (the mutation re-review's A28).
   const lines = app
     .split("\n")
-    .filter((line) => /\bhere(\.|(?= !==| \?|,|\]|\)|;|\s*$))|[=(]\s*here\b|\bfromHere\b/.test(line));
+    .filter((line) => /\bhere(\.|(?= !==| \?|,|\]|\)|;|\s*$))|[=(>]\s*here\b|\bfromHere\b/.test(line));
   const allowed = [
     /const \[here, setHere\] = useState<Fix \| null>\(null\);/,
     /const \[fromHere, setFromHere\] = useState<LonLat\[\]>\(\[\]\);/,
     /const hereInPlan = here !== null && points\.includes\(here\.point\);/,
     /const linkNote = linkLocationNote\(points, fromHere, myGo\.home\?\.point \?\? null\);/,
+    // A point dragged in the list (reorderPoint): only whether it is the location, said as "Your location".
+    /const name = fromHere\.includes\(current\[from\]\) \? YOUR_LOCATION : namer\.name\(current\[from\]\)\?\.name;/,
+    // Go's route card (edit-route redesign): only whether the start is the location, shown as "Your location".
+    /start=\{fromHere\.includes\(points\[0\]\) \? YOUR_LOCATION : goPlaceName\(namer\.name\(points\[0\]\)\?\.name, points\[0\]\)\}/,
     // The note, handed to Plan's From and To boxes (Plan streamline, 2026-10-17).
     /locateNote=\{hereInPlan && here \? approximateHint\(here\.accuracyM\) : ""\}/,
     /const hereCircle = hereInPlan && here \? \{ centre: here\.point, radiusM: here\.accuracyM \} : null;/,
     // Search's bias: the point, rounded to about 1 km in searchBiasPoint, never the accuracy or the flag.
     /return searchBiasPoint\(here\?\.point, centre \? \[centre\.lng, centre\.lat\] : undefined, view\);/,
     // Go's Repair and Sights (v0.7.0): the nearest worked out on the device from the location Go has; the point goes nowhere.
-    /const fix = here\?\.point \?\? \(goStart\.kind === "here" \? goStart\.point : null\);/,
+    // A fresh look-up for the lists leaves a plan's located start its own fix (only whether it is in the plan).
+    /if \(!\(here && pointsRef\.current\.includes\(here\.point\)\)\) setHere\(result\.fix\);/,
+    /const lastHere = \(\): LonLat \| null => here\?\.point \?\? \(goStartRef\.current\.kind === "here" \? goStartRef\.current\.point : null\);/,
     // A Mass Ride or Group Ride link (v0.7.0): the others on the route, shared only after the rider says yes there.
-    /<RideGroup type=\{preset as "mass-ride" \| "group-ride"\} points=\{rideGroupPoints\} line=\{rideGroupLine\} getMap=\{getMap\} here=\{rideView\?\.rider\?\.point \?\? \(here \? here\.point : null\)\} \/>/,
+    /<RideGroup type=\{rideGroupType \?\? "group-ride"\} points=\{rideGroupPoints\} line=\{rideGroupLine\} getMap=\{getMap\} here=\{rideView\?\.rider\?\.point \?\? \(here \? here\.point : null\)\} \/>/,
   ];
-  assert.ok(lines.length >= allowed.length);
+  for (const rule of allowed) assert.ok(lines.some((line) => rule.test(line)), `still used: ${rule.source}`);
   for (const line of lines) assert.ok(allowed.some((rule) => rule.test(line)), `unexpected use: ${line.trim()}`);
   // The note's own uses: shown, described, said on Copy link, and (as a yes/no) the sign-in exception.
   const noteUse =
-    /const linkNote =|const note = linkNote;|linkNote \? "link-note"|\{linkNote && \(|\{linkNote\}|isPlainClick\(e\) && rememberPlanForSignIn\(tabSession\(\), window\.location\.hash, linkNote !== ""\)|^\s*routedLoop, copyLink, linkNote, canShare,|const \{ copyLink, linkNote, canShare,/;
+    /const linkNote =|const note = linkNote;|linkNote \? "link-note"|\{linkNote && \(|\{linkNote\}|isPlainClick\(e\) && rememberPlanForSignIn\(tabSession\(\), window\.location\.hash, linkNote !== ""\)|^\s*routedLoop, copyLink, linkNote, shareImage|const \{ copyLink, linkNote, shareImage,|linkNote: string;|const \{ save, canShare, ready, shareRoute, shareKeep, onShareKeep, shareSaid, linkNote \} = props;|linkNote \? "share-link-note"|const note = linkNote \? " share-link-note" : "";|\{canShare && ready && linkNote && \(|linkNote=\{linkNote\}/;
   for (const line of app.split("\n").filter((l) => /\blinkNote\b/.test(l))) assert.match(line, noteUse, line.trim());
   // The circle round the located point goes to the map's accuracy prop and nowhere else.
   const circleUse = /const hereCircle =|accuracy=\{riding \? rideCircle : hereCircle\}/;

@@ -12,14 +12,17 @@
  *   the rider is to the destination as a normal route request, on the leg's ride type. A later
  *   step's line has no turn-by-turn words, so it is never ridden as it is.
  *
- * Rides longer than RIDE_MAX_M go to a bike computer, as ever: the rule is the riding leg's.
+ * In a browser, rides longer than RIDE_MAX_M go to a bike computer: the rule is the riding leg's. The
+ * phone app, which rides with the screen locked, has no limit (`rideMaxM`).
  */
+import { askOf, type NextVehicleAsk } from "./nextVehicle.ts";
 import type { RouteResponse, TransitDeparture, TransitPlan, TransitStep } from "./api.ts";
 import { bikeshareOf, dockCountWords } from "./bikeshare.ts";
 import { formatDistance, spokenDistance } from "./format.ts";
 import { haversineM, pathLengthM, type LonLat } from "./geo.ts";
 import { POOR_FIX_M, RIDE_MAX_M, START_M, WINDOW_AHEAD_M, offThreshold, snap, startState, step, type RideEvent, type RideFix, type RideModel, type RideState, type Verbosity } from "./navigate.ts";
 import type { PresetId } from "./presets.ts";
+import { ridesHidden } from "./nativeShell.ts";
 import { drawOf, transitOf } from "./transit.ts";
 
 /** A sentence for the screen (US units, metric in brackets) and the same for speech (US units only). */
@@ -63,9 +66,13 @@ export interface RideTrip {
   finish: TripWords | null;
   /** The departure the finish leads to (DepartureTimer), where the plan has one. */
   departure: TransitDeparture | null;
+  /** The Metro or Metrobus boarding the finish leads to: where its next train or bus is, while waiting (lib/nextVehicle.ts). */
+  boarding?: NextVehicleAsk | null;
   rest: RideRest | null;
   /** The line is ridden on a share bike (Ride mode's dock button and undocked time, lib/rideDock.ts). */
   shareBike?: boolean;
+  /** The route is ridden as it was planned, its walks only at the ends (`walk_in`), not a leg of a bigger trip. */
+  asPlanned?: boolean;
 }
 
 export const RIDE_REST = "Ride the rest";
@@ -99,12 +106,17 @@ function lineIndex(plan: TransitPlan): number {
   return plan.steps.findIndex((s) => s.route_line);
 }
 
+/** The longest ride Start ride is offered for: RIDE_MAX_M in a browser, none in the phone app (screen locked is fine). */
+export function rideMaxM(hidden: boolean = ridesHidden()): number {
+  return hidden ? Infinity : RIDE_MAX_M;
+}
+
 /**
- * Whether Start ride is offered: the line is a riding leg no longer than RIDE_MAX_M. A Bikeshare plan's
+ * Whether Start ride is offered: the line is a riding leg no longer than `rideMaxM`. A Bikeshare plan's
  * line is its ride between the docks; a transit plan's is its first ride (not a walk).
  */
-export function rideable(route: Pick<RouteResponse, "distance_m" | "transit">): boolean {
-  if (route.distance_m > RIDE_MAX_M) return false;
+export function rideable(route: Pick<RouteResponse, "distance_m" | "transit">, maxM: number = rideMaxM()): boolean {
+  if (route.distance_m > maxM) return false;
   const plan = transitOf(route);
   if (!plan) return true;
   const index = lineIndex(plan);
@@ -230,17 +242,50 @@ function transitTrip(route: RouteResponse, destination: LonLat | null): RideTrip
       metres: step.coordinates.length >= 2 ? pathLengthM(step.coordinates) : null,
     };
   }
-  return { approach, finish, departure, rest, shareBike: lineStep.mode === "bikeshare" };
+  const boarding = boardAt > line ? askOf(steps[boardAt]) : null;
+  return { approach, finish, departure, boarding, rest, shareBike: lineStep.mode === "bikeshare" };
 }
 
-/** What comes either side of the line on a Bikeshare or transit plan; null for any other route. */
+/** A plain ride whose ride stops short of its start or end (the API's `walk_in`): the walk to the line first, and the walk on at the finish. */
+function walkInTrip(route: RouteResponse): RideTrip | null {
+  const walks = route.walk_in;
+  if (!walks || (!walks.start && !walks.end)) return null;
+  const at = route.geometry.coordinates[0] as LonLat | undefined;
+  const approach: RideApproach | null =
+    at && walks.start
+      ? { at, name: "the start of the ride", metres: walks.start.distance_m, extra: "", first: "", reached: "At the start of the ride. Ride on." }
+      : null;
+  const finish: TripWords | null = walks.end
+    ? {
+        shown: `The ride ends here. Walk your bike ${formatDistance(walks.end.distance_m)} to your destination.`,
+        spoken: `The ride ends here. Walk your bike ${spokenDistance(walks.end.distance_m)} to your destination.`,
+      }
+    : null;
+  return { approach, finish, departure: null, rest: null, asPlanned: true };
+}
+
+/** What comes either side of the line on a Bikeshare or transit plan, or a plain ride's walk-in; null for any other route. */
 export function rideTripOf(route: RouteResponse, points: readonly LonLat[]): RideTrip | null {
-  return bikeshareTrip(route) ?? transitTrip(route, points.length > 0 ? points[points.length - 1] : null);
+  return bikeshareTrip(route) ?? transitTrip(route, points.length > 0 ? points[points.length - 1] : null) ?? walkInTrip(route);
 }
 
 /** Whether the panel offers Ride the rest: a riding leg after transit, not known to be too long to ride here. */
-export function restOffered(trip: RideTrip | null): trip is RideTrip & { rest: RideRest } {
-  return !!trip?.rest && (trip.rest.metres === null || trip.rest.metres <= RIDE_MAX_M);
+export function restOffered(trip: RideTrip | null, maxM: number = rideMaxM()): trip is RideTrip & { rest: RideRest } {
+  return !!trip?.rest && (trip.rest.metres === null || trip.rest.metres <= maxM);
+}
+
+/**
+ * Whether a ride keeps to its line, never re-planned on its own: a link shared as a ride, opened unchanged
+ * (`opened`), or a Mass Ride or Group Ride unless shared as a route. A Bikeshare or transit leg, or Ride the
+ * rest (`rest`), re-plans as before; a route with walks at its ends (`walk_in`, asPlanned) is still the route.
+ */
+export function fixedRide(
+  leg: { preset: PresetId; trip: RideTrip | null },
+  opened: { ride?: boolean; own?: boolean } | null,
+  rest: boolean,
+): boolean {
+  if (rest || (leg.trip && !leg.trip.asPlanned)) return false;
+  return opened ? !!opened.ride && !opened.own : leg.preset === "mass-ride" || leg.preset === "group-ride";
 }
 
 /**
@@ -255,7 +300,7 @@ export function rideLegOf(
 ): { points: LonLat[]; loop: boolean; preset: PresetId; trip: RideTrip | null } {
   const trip = rideTripOf(route, points);
   const line = route.geometry.coordinates as LonLat[];
-  if (!trip || line.length < 2) return { points, loop, preset: route.preset, trip };
+  if (!trip || trip.asPlanned || line.length < 2) return { points, loop, preset: route.preset, trip };
   // Bikeshare + transit's share bike is a classic one ("take a classic bike").
   const ebike = bikeshareOf(route)?.bike === "ebike";
   return { points: [line[0], line[line.length - 1]], loop: false, preset: ebike ? "ebike" : "default", trip };

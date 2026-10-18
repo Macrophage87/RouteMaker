@@ -12,16 +12,17 @@
  *   moves the focus.
  * - Where am I? (a button, and the W key): said on demand, outside the throttle.
  * - Off route: re-planned automatically after the gate (plan Q5), or "Keep the planned route", which
- *   shows the way back. A re-plan never touches the plan in the address bar (plan Q2): it is the ride's
+ *   shows the way back. A fixed route (`fixed`: a link shared as a ride, or a Mass Ride or Group Ride not shared as a route)
+ *   is never re-planned on its own: everyone on it stays on the same line, and the way back is shown instead. A re-plan never touches the plan in the address bar (plan Q2): it is the ride's
  *   own route, held here and in App's ride state only.
  * - Big text (map hidden; a setting, in the ride's Settings and the Settings page), Re-centre (and the C key), heading-up (track-up by default since v0.7.0); and
- *   Settings and End ride always in view at the top of the card (Settings opens the ride's settings just
- *   under it), with Undo after End ride. End ride part way leaves the plan starting where the rider is.
+ *   Road closed ahead and End ride always in view at the top of the card (since v0.9.0; Settings is a gear in the
+ *   side buttons, opening the ride's settings under that row), with Undo after End ride. End ride part way leaves the plan starting where the rider is.
  * - The map along the route, kept for dead spots (lib/corridor.ts, N5), and Report a problem to DC 311
  *   with the place in the route's street names (lib/report311.ts, N6; OWNER-DECISIONS 369, 465).
  * - The side buttons (the owner, 2026-10-17: "Remove that bottom part when routing by default. instead put
- *   these as circle icons on the side"): Where am I?, Re-centre, Road closed ahead, Detour (water or restroom), on a
- *   share bike the dock button with the time undocked (lib/rideDock.ts), and 311 inside DC (Big text moved to
+ *   these as circle icons on the side"): Where am I?, Re-centre, Detour (water or restroom), on a
+ *   share bike the dock button with the time undocked (lib/rideDock.ts), 311 inside DC, and the Settings gear (Big text moved to
  *   Settings, the owner, 2026-10-17: "not something people will fiddle with mid ride"); each a round
  *   icon with its name for screen readers, its menu opening beside it. The bottom panel shows only when it
  *   has something to say or ask: GPS and screen notes, off route, Ride the rest, the full 311 report.
@@ -39,6 +40,7 @@ import {
   ON_STANDARD_SAID,
   ROAD_CLOSED_FINDING,
   ROAD_CLOSED_NAME,
+  ROAD_CLOSED_TEXT,
   ROAD_CLOSED_NO_PLACE,
   closedAhead,
   onOtherLine,
@@ -63,6 +65,9 @@ import {
   type GpsWeakness,
   REPLAN_FAILED,
   REPLAN_FOUND,
+  REPLAN_UTURN,
+  setsOffBack,
+  withUTurn,
   REPLAN_NO_SIGNAL,
   REPLAN_REJOIN,
   REPLAN_FINDING,
@@ -185,6 +190,8 @@ import {
 } from "./lib/rideDock.ts";
 import { Icon } from "./Icon.tsx";
 import { DepartureTimer } from "./DepartureTimer.tsx";
+import { NextVehicleLine } from "./NextVehicleLine.tsx";
+import type { VehicleMark } from "./lib/nextVehicle.ts";
 import { SettingRow, SettingSelect } from "./SettingRow.tsx";
 import { shortLabel } from "./lib/shortLabel.ts";
 import {
@@ -211,7 +218,7 @@ export const RIDE_STARTED = "Ride started.";
 export const RIDE_ENDED = "Ride ended.";
 /** The always-visible End ride button's words (the owner, 2026-10-16: "add a method of ending navigation"). */
 export const END_RIDE_NAME = "End ride";
-/** The top row's Settings button opens these, just under it (the owner, 2026-10-16: "the buttons to change the settings seem hidden"). */
+/** The side buttons' gear opens these, under the top row (the owner, 2026-10-16: "the buttons to change the settings seem hidden"; a gear in the rack since v0.9.0). */
 export const RIDE_SETTINGS_TEXT = "Settings";
 export const RIDE_SETTINGS_TITLE = "Ride settings";
 /** What End ride leaves behind (lib/navigate.ts planAfterEnd): the plan from here, or as it was. */
@@ -299,9 +306,11 @@ export interface RideView {
   /** The other line (v0.8.2): the standard way through a marked closure, or its detour while on the standard way. */
   other?: LonLat[] | null;
   rider: { point: LonLat; headingDeg: number | null; accuracyM: number } | null;
+  /** Where the next train or bus is while the rider waits at a Metro or Metrobus boarding (v0.9.0). */
+  vehicle?: VehicleMark | null;
 }
 
-function arrowFor(cue: Cue | null): "left" | "right" | "bear_left" | "bear_right" | "straight" | "stop" | "end" | "warn" {
+function arrowFor(cue: Cue | null): "left" | "right" | "bear_left" | "bear_right" | "uturn" | "straight" | "stop" | "end" | "warn" {
   if (!cue) return "straight";
   if (cue.kind === "end") return "end";
   if (cue.kind === "stop") return "stop";
@@ -317,6 +326,7 @@ function CueShape({ shape }: { shape: ReturnType<typeof arrowFor> }) {
     right: "M18 52 V28 H34 M26 18 L36 28 L26 38",
     bear_left: "M30 52 V30 L14 14 M14 26 V14 H26",
     bear_right: "M18 52 V30 L34 14 M22 14 H34 V26",
+    uturn: "M32 52 V22 A10 10 0 0 0 12 22 V38 M4 30 L12 40 L20 30",
     straight: "M24 52 V10 M14 20 L24 10 L34 20",
     stop: "M14 10 V52 M14 12 H38 L32 20 L38 28 H14",
     end: "M14 10 V52 M14 12 H38 V28 H14 M26 12 V28 M14 20 H38",
@@ -544,6 +554,14 @@ function Report311({
   );
 }
 
+/** The way back to the planned route, said: "The planned route is 300 feet to the left." */
+/** Said off a fixed route, before the way back: it is not re-routed (the review of #191). */
+export const FIXED_SAID = "This ride stays on its route, never re-routed.";
+
+function wayBackSaid(back: { metres: number; direction: string }): string {
+  return `The planned route is ${spokenDistance(back.metres)} to the ${back.direction}.`;
+}
+
 export function RideMode({
   route: plannedRoute,
   points: plannedPoints,
@@ -566,6 +584,7 @@ export function RideMode({
   keepLastRide = false,
   trip = null,
   onRideRest,
+  fixed = false,
 }: {
   route: RouteResponse;
   /** The points the route was planned with, and whether it is a loop: what a re-plan builds on. */
@@ -605,6 +624,13 @@ export function RideMode({
   trip?: RideTrip | null;
   /** Ride the rest: plans the trip's last riding leg from `here` and starts it; else the words to say why not. */
   onRideRest?: (here: LonLat | null) => Promise<string | null>;
+  /**
+   * The route everyone shares (the owner, 2026-10-18: "For sharing mass rides and group rides, rerouting defeats the
+   * purpose. It should be fixed as everyone is using the same route"): off route, it is kept as Keep the planned route
+   * keeps it, with the way back said and shown, never re-planned unless the rider presses Re-plan from here or Road
+   * closed ahead. Read once, at Start ride.
+   */
+  fixed?: boolean;
 }) {
   const [route, setRoute] = useState(plannedRoute);
   const routeRef = useRef(route);
@@ -612,7 +638,13 @@ export function RideMode({
   // What a re-plan builds on: the plan's points at first, then the last re-plan's (never a loop: its end is sent).
   const plan = useRef({ points: plannedPoints, loop: plannedLoop });
   // The via points are not announced (v0.7.0): the model leaves them out of its cues.
-  const model = useMemo(() => rideModel(route, viaIndices(plan.current.points, VIA_MARKS.isVia)), [route]);
+  // A re-route that turns the rider round starts with "Make a U-turn." (lib/navigate.ts withUTurn).
+  const uturnRoute = useRef<RouteResponse | null>(null);
+  const modelOf = (r: RouteResponse, points: readonly LonLat[]) => {
+    const built = rideModel(r, viaIndices(points, VIA_MARKS.isVia));
+    return r === uturnRoute.current ? withUTurn(built) : built;
+  };
+  const model = useMemo(() => modelOf(route, plan.current.points), [route]);
   const modelRef = useRef(model);
   modelRef.current = model;
   // v0.8.2 (lib/roadClosed.ts): the other line beside the ride's route, the standard way through a marked closure
@@ -649,6 +681,8 @@ export function RideMode({
   const [replanNote, setReplanNote] = useState("");
   // "Keep the planned route": no automatic re-plan until the rider is back on it (or presses it again).
   const [keepPlanned, setKeepPlanned] = useState(false);
+  // A fixed route (`fixed`) is kept always: its own ref, so a Keep press or back on route does not undo it.
+  const fixedRef = useRef(fixed);
   const keepRef = useRef(keepPlanned);
   keepRef.current = keepPlanned;
   const [paused, setPaused] = useState(false);
@@ -672,12 +706,16 @@ export function RideMode({
   // Each re-plan's ticket: "Keep the planned route" or a newer re-plan voids an older one's answer.
   const replanTicket = useRef(0);
   const settingsId = useId();
-  // The ride's settings, opened from the top row's Settings (closed at Start).
+  // The ride's settings, opened from the side buttons' gear (closed at Start).
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsPanel = useRef<HTMLDivElement>(null);
-  // Opened, the panel is brought into view (the row above it is sticky; the card may be scrolled).
+  const settingsButton = useRef<HTMLButtonElement>(null);
+  // Opened, the panel is brought into view (the row above it is sticky; the card may be scrolled) and the focus
+  // goes into it: the gear is the last side button, after the panel, so Tab alone would never reach it.
   useEffect(() => {
-    if (settingsOpen) settingsPanel.current?.scrollIntoView?.({ block: "nearest" });
+    if (!settingsOpen) return;
+    settingsPanel.current?.scrollIntoView?.({ block: "nearest" });
+    settingsPanel.current?.focus({ preventScroll: true });
   }, [settingsOpen]);
   // The 311 button's menu (lib/ride311.ts; the owner's choice 9) and the report it continues into.
   const [reportKind, setReportKind] = useState<ReportKind>("pothole");
@@ -935,9 +973,12 @@ export function RideMode({
   // With `via`, a detour: from here to that place first, then on through what was left (the nearest water
   // or restroom, below). A detour's place becomes a stop of the new route, so it is cued and arrived at.
   const replan = useCallback(
-    async (here: LonLat, via?: LonLat, asked = false) => {
+    async (here: LonLat, via?: LonLat, asked = false, turnRound = false) => {
       if (ended.current) return;
       const current = rideRef.current;
+      // The way the rider is going (the owner, 2026-10-18: "Penalize U turns", "For rerouting"): the new route sets
+      // off ahead unless turning round saves half a mile. Not after Road closed, where turning round is the point.
+      const heading = turnRound ? null : (current.goodFix?.headingDeg ?? null);
       const left = replanPoints(modelRef.current, current.progressM ?? 0, here, plan.current.points, plan.current.loop);
       const points = via ? detourPoints(left, via) : left;
       if (!points) {
@@ -978,7 +1019,7 @@ export function RideMode({
       // The rider is riding a plan already made: a long one is not asked to be confirmed again (a signed-out
       // rider's re-plan of a long ride was refused for want of it).
       const ask = (to: LonLat[]) =>
-        requestRoute(to, preset, { dials: { ...dials, loop: false }, vias: viaIndices(to, VIA_MARKS.isVia), routeOnly: true, confirmLong: true, blocked: blockedRef.current });
+        requestRoute(to, preset, { dials: { ...dials, loop: false }, vias: viaIndices(to, VIA_MARKS.isVia), routeOnly: true, confirmLong: true, blocked: blockedRef.current, heading });
       const result = await ask(points);
       // No new route to the end: the way back to the planned route, which goes on from there (lib/rejoin.ts;
       // the owner, 2026-10-17). Not for a detour, whose place the planned route does not pass. The no-signal
@@ -1003,7 +1044,7 @@ export function RideMode({
       if (closedPending.current && !ended.current) {
         closedPending.current = false;
         gate.online();
-        void replanRef.current(rideRef.current.goodFix?.point ?? here, undefined, true);
+        void replanRef.current(rideRef.current.goodFix?.point ?? here, undefined, true, true);
         return;
       }
       if (voided()) return;
@@ -1017,7 +1058,11 @@ export function RideMode({
       plan.current = { points, loop: false };
       // The first route, without the picker, during a ride (plan section 4).
       announcer.current?.drop();
-      const model = rideModel(found, viaIndices(points, VIA_MARKS.isVia));
+      // Turned round (the API keeps a U-turn only where it saves half a mile): said plainly, and the first cue.
+      const turned = heading !== null && setsOffBack(found.geometry.coordinates, heading);
+      uturnRoute.current = turned ? found : null;
+      if (turned && note === REPLAN_FOUND) note = REPLAN_UTURN;
+      const model = modelOf(found, points);
       modelRef.current = model;
       setRoute(found);
       // The new route's own standard way through a closure it goes round, if any (none past a road marked closed).
@@ -1093,7 +1138,7 @@ export function RideMode({
       if (weighed.sayNow) notify(GPS_WEAK_SAID);
       setGps(weighed.weak ? GPS_WEAK_SAID : "");
       checkCueSheet(lastFixAt.current);
-      const auto = !keepRef.current;
+      const auto = !keepRef.current && !fixedRef.current;
       // Walking to the dock, nothing is placed on the line or taken as off route (lib/rideTrip.ts).
       const wasWalking = tripRef.current.walking;
       const stepped = tripStep(modelRef.current, trip, { ...tripRef.current, ride: rideRef.current }, fix, prefsRef.current.verbosity, auto);
@@ -1143,6 +1188,11 @@ export function RideMode({
         }
       }
       say(out.events);
+      // A fixed route: leaving it says the way back, once, as Keep the planned route does.
+      if (fixedRef.current && out.events.some((e) => e.kind === "off-route")) {
+        const back = wayBack(modelRef.current, out.state);
+        if (back) announcer.current?.answer(`${FIXED_SAID} ${wayBackSaid(back)}`);
+      }
       // Back on the planned route: "Keep" has done its work; leaving it again re-plans as usual.
       if (out.events.some((e) => e.kind === "back-on-route") || (keepRef.current && !out.state.off)) setKeepPlanned(false);
       // Never from a poor fix: a re-plan from a Wi-Fi guess 300 m out would be wrong at once.
@@ -1245,7 +1295,7 @@ export function RideMode({
     const onOnline = () => {
       gate.online();
       const state = rideRef.current;
-      if (state.off && !keepRef.current && state.goodFix) void replan(state.goodFix.point);
+      if (state.off && !keepRef.current && !fixedRef.current && state.goodFix) void replan(state.goodFix.point);
     };
     window.addEventListener("online", onOnline);
     return () => window.removeEventListener("online", onOnline);
@@ -1253,9 +1303,16 @@ export function RideMode({
 
   // The map's view of the ride.
   const fix = ride.fix;
+  // Where the next train or bus is, while the rider waits at the boarding (NextVehicleLine).
+  const [vehicle, setVehicle] = useState<VehicleMark | null>(null);
   useEffect(() => {
-    onView({ route, other: other?.geometry.coordinates ?? null, rider: fix ? { point: fix.point, headingDeg: fix.headingDeg, accuracyM: fix.accuracyM } : null });
-  }, [route, other, fix, onView]);
+    onView({
+      route,
+      other: other?.geometry.coordinates ?? null,
+      rider: fix ? { point: fix.point, headingDeg: fix.headingDeg, accuracyM: fix.accuracyM } : null,
+      vehicle,
+    });
+  }, [route, other, fix, onView, vehicle]);
 
   // The map along the route, kept for dead spots (lib/corridor.ts, plan section 6): fetched at Start ride
   // and again for a re-plan's new route (only the tiles the first did not cover), cleared at End ride.
@@ -1343,7 +1400,7 @@ export function RideMode({
     rideVoice.stop();
     if (toVoice(prefsRef.current.output)) rideVoice.speak(RIDE_ENDED, true);
     // A Bikeshare or transit trip's riding leg is not the plan: the plan stays as it was.
-    onEnd(trip ? null : planAfterEnd(modelRef.current, rideRef.current, plan.current.points, plan.current.loop, Date.now()));
+    onEnd(trip && !trip.asPlanned ? null : planAfterEnd(modelRef.current, rideRef.current, plan.current.points, plan.current.loop, Date.now()));
   };
   // A toggle: pressed, no automatic re-plan (one in flight is voided) and the way back is said once;
   // pressed again, re-planning is back on.
@@ -1359,7 +1416,7 @@ export function RideMode({
     setKeepPlanned(true);
     setReplanNote("");
     const back = wayBack(modelRef.current, rideRef.current);
-    if (back) announcer.current?.answer(`The planned route is ${spokenDistance(back.metres)} to the ${back.direction}.`);
+    if (back) announcer.current?.answer(wayBackSaid(back));
   };
   // Road closed (lib/roadClosed.ts): one press, no menu. The road ahead is marked closed for this ride and the ride
   // planned again round it; the standard way beside a marked closure goes too, as it may run along it.
@@ -1384,7 +1441,7 @@ export function RideMode({
       return;
     }
     gate.online();
-    void replan(fix.point, undefined, true);
+    void replan(fix.point, undefined, true, true);
   };
   const replanNow = () => {
     // The rider asked, so the press is answered, as Detour's is (review RIDE-5): through the rider's
@@ -1609,30 +1666,44 @@ export function RideMode({
       <div className="cue-card">
         {/* End ride (v0.7.0, "Go riding fixes" item 6): always in view, at the top of the card, which stays at
             every size and in Big text; one tap ends the ride, and the page offers Undo for a few seconds
-            (RideEnded). Settings beside it opens the ride's settings just under the row (the owner, 2026-10-16). */}
+            (RideEnded). The ride's settings open just under the row, from the side buttons' gear. */}
         <div className="ride-top">
           <h2 id="ride-heading" ref={headingRef} tabIndex={-1} className="ride-heading">
             Ride mode
           </h2>
           <div className="ride-top-actions">
-            <button
-              type="button"
-              className="secondary ride-settings-button"
-              aria-expanded={settingsOpen}
-              aria-controls={`${settingsId}-settings`}
-              onClick={() => setSettingsOpen(!settingsOpen)}
-            >
-              <Icon name="gear" size={18} />
-              {/* Shown where there is room; on the narrowest phones the gear alone, its name still "Settings". */}
-              <span className="ride-settings-label">{RIDE_SETTINGS_TEXT}</span>
-            </button>
+            {/* Road closed (v0.8.2; in the top row since v0.9.0, the owner, 2026-10-18: "a button you'd want to hit
+                on the fly"): one press while riding, no menu; End ride to its right. */}
+            {!walking && !ride.arrived && (
+              <button type="button" className="secondary ride-road-closed" onClick={roadClosed} aria-label={ROAD_CLOSED_NAME} title={ROAD_CLOSED_NAME}>
+                <Icon name="barrier" size={18} />
+                {/* Shown where there is room; on the narrowest phones the icon alone, its name kept. */}
+                <span className="ride-top-label">{ROAD_CLOSED_TEXT}</span>
+              </button>
+            )}
             <button type="button" className="danger ride-end" onClick={end}>
               <Icon name="stop" size={18} />
               {END_RIDE_NAME}
             </button>
           </div>
         </div>
-        <div ref={settingsPanel} id={`${settingsId}-settings`} className="ride-mode-settings" role="group" aria-label={RIDE_SETTINGS_TITLE} hidden={!settingsOpen}>
+        <div
+          ref={settingsPanel}
+          id={`${settingsId}-settings`}
+          className="ride-mode-settings"
+          role="group"
+          aria-label={RIDE_SETTINGS_TITLE}
+          hidden={!settingsOpen}
+          tabIndex={-1}
+          onKeyDown={(event) => {
+            // Escape closes it, back to the gear.
+            if (event.key === "Escape") {
+              event.preventDefault();
+              setSettingsOpen(false);
+              settingsButton.current?.focus();
+            }
+          }}
+        >
           <RideSettingsFields prefs={prefs} onChange={onPrefs} idBase={settingsId} />
           <p className="hint">{RIDE_SAFETY}</p>
           <label className="toggle ride-toggle">
@@ -1646,6 +1717,8 @@ export function RideMode({
             <p className="cue-text">{trip?.finish?.shown ?? cueSpoken(model.cues[model.cues.length - 1], "arrive", 0)}</p>
             {/* The boarding's departure, its countdown and milestones as in the trip's panel (said through the ride's outputs). */}
             {trip?.departure && <DepartureTimer departure={trip.departure} announce={notify} />}
+            {/* Where the next Metro train or Metrobus is while waiting there (v0.9.0), its mark on the map. */}
+            <NextVehicleLine ask={trip?.boarding ?? null} waiting={ride.arrived} announce={notify} onMark={setVehicle} />
           </>
         ) : walking && approach ? (
           <p className="cue-text">{approachWords(approach, ride.fix?.point ?? null).shown}</p>
@@ -1655,7 +1728,7 @@ export function RideMode({
             <div>
               <p className="cue-text">Off the planned route.</p>
               {replanning && <p className="cue-then">Finding a new way from here…</p>}
-              {keepPlanned && back && (
+              {(keepPlanned || fixedRef.current) && back && (
                 <p className="cue-then">
                   The planned route is {formatDistance(back.metres)} to the {back.direction}.
                 </p>
@@ -1715,6 +1788,16 @@ export function RideMode({
       {/* The side buttons (the owner, 2026-10-17: "put these as circle icons on the side"), over the map on the
           right at thumb height; each menu opens beside them. An answer the rider asked for shows to their left. */}
       <div className="ride-middle">
+        {/* A minimalist compass (the owner, 2026-10-17), turned with the map; a press switches north-up and track-up
+            ("maybe clicking on it changes to north up"), the same choice as the ride settings' switch. */}
+        {!big && (
+          <button type="button" className="ride-compass" aria-pressed={!headingUp} aria-label="North up" title="North up" onClick={() => onHeadingUp(!headingUp)}>
+            <svg viewBox="0 0 40 40" width="40" height="40" aria-hidden="true">
+              <path d="M20 5 L25 20 L20 17 L15 20 Z" className="ride-compass-north" />
+              <path d="M20 35 L15 20 L20 23 L25 20 Z" className="ride-compass-south" />
+            </svg>
+          </button>
+        )}
         {toast.text && !detourOpen && !dockOpen && !menu311 && (
           <div className="ride-toast" {...toastTimer.hold}>
             {/* Shown, not a live region: it is said through the rider's own outputs. */}
@@ -1736,12 +1819,6 @@ export function RideMode({
           >
             <Icon name="locate" size={24} />
           </button>
-          {/* Road closed (v0.8.2, the owner's ask by name): one press while riding, no menu. */}
-          {!walking && !ride.arrived && (
-            <button type="button" className="ride-round ride-road-closed" onClick={roadClosed} aria-label={ROAD_CLOSED_NAME} title={ROAD_CLOSED_NAME}>
-              <Icon name="barrier" size={24} />
-            </button>
-          )}
           {water && (
             <div
               className="ride-pop ride-detour"
@@ -1937,6 +2014,20 @@ export function RideMode({
               )}
             </div>
           )}
+          {/* Settings, a gear at the end of the side buttons since v0.9.0 (the owner, 2026-10-18: "Move settings to
+              a gear icon in the rack"); it opens the ride's settings under the top row. */}
+          <button
+            type="button"
+            ref={settingsButton}
+            className="ride-round ride-settings-button"
+            aria-label={RIDE_SETTINGS_TEXT}
+            title={RIDE_SETTINGS_TEXT}
+            aria-expanded={settingsOpen}
+            aria-controls={`${settingsId}-settings`}
+            onClick={() => setSettingsOpen(!settingsOpen)}
+          >
+            <Icon name="gear" size={24} />
+          </button>
         </div>
       </div>
 
@@ -1965,9 +2056,12 @@ export function RideMode({
               <button type="button" onClick={replanNow} aria-disabled={replanning}>
                 Re-plan from here
               </button>
-              <button type="button" className="secondary" onClick={keep} aria-pressed={keepPlanned}>
-                Keep the planned route
-              </button>
+              {/* A fixed route is always kept: no Keep to press. */}
+              {!fixedRef.current && (
+                <button type="button" className="secondary" onClick={keep} aria-pressed={keepPlanned}>
+                  Keep the planned route
+                </button>
+              )}
             </div>
           )}
           {restShown && (

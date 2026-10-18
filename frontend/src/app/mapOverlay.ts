@@ -27,8 +27,13 @@ export function useMap(getMap: () => MapLibreMap | null, draw: (map: MapLibreMap
   }, [map, ...deps]);
 }
 
-/** A small card on a tap, in words; the same facts are in the lists. */
-export function tapCard(map: MapLibreMap, layer: string, words: (id: string) => string[] | null): () => void {
+/** A small card on a tap, in words; the same facts are in the lists. `link`, where given, adds a web link under them. */
+export function tapCard(
+  map: MapLibreMap,
+  layer: string,
+  words: (id: string) => string[] | null,
+  link?: (id: string) => { href: string; text: string; label: string } | null,
+): () => void {
   let popup: Popup | null = null;
   const onClick = (event: MapMouseEvent & { features?: Array<{ properties?: Record<string, unknown> }> }) => {
     const id = event.features?.[0]?.properties?.id;
@@ -41,6 +46,16 @@ export function tapCard(map: MapLibreMap, layer: string, words: (id: string) => 
       const p = document.createElement(i === 0 ? "strong" : "p");
       p.textContent = line;
       body.appendChild(p);
+    }
+    const web = typeof id === "string" ? link?.(id) : null;
+    if (web) {
+      const a = document.createElement("a");
+      a.href = web.href;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      a.textContent = web.text;
+      a.setAttribute("aria-label", web.label);
+      body.appendChild(a);
     }
     popup = new Popup({ closeButton: true, maxWidth: "260px", className: "rail-popup place-popup" }).setLngLat(event.lngLat).setDOMContent(body).addTo(map);
   };
