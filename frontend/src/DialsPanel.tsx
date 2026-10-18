@@ -30,8 +30,6 @@ import {
   withMtbPreferred,
 } from "./lib/mtbMode.ts";
 import { RIDE_SIZE_LABEL, panelView, parseTarget, type SliderView } from "./lib/dialsPanel.ts";
-import { defaultSplit, type StoredWeight } from "./lib/weight.ts";
-import { WeightSetting } from "./lib/weightDialog.ts";
 import { Debounce, KEY_SETTLE_MS } from "./lib/settle.ts";
 
 interface Props {
@@ -40,13 +38,6 @@ interface Props {
   onCommit: (dials: Dials) => void;
   /** What "Now" came to on the last route: one of the three settings. */
   resolvedWhen?: When | null;
-  /** The rider and bike weight, kept by App (lib/weight.ts WeightStore): never in `dials` or the link. */
-  weight?: {
-    saved: StoredWeight | null;
-    remembered: boolean;
-    onSave: (weight: StoredWeight, remember: boolean) => void;
-    onClear: () => void;
-  };
 }
 
 function Slider(props: {
@@ -223,7 +214,7 @@ function withBike(dials: Dials, bike: Bike): Dials {
   return next;
 }
 
-export function DialsPanel({ preset, dials, onCommit, resolvedWhen, weight }: Props) {
+export function DialsPanel({ preset, dials, onCommit, resolvedWhen }: Props) {
   const [draft, setDraft] = useState(dials);
   useEffect(() => setDraft(dials), [dials]);
   // The latest of each, for a release that runs after the keys rest.
@@ -256,7 +247,10 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, weight }: Pr
       {/* Inside the Ride line's settings (Sidebar.tsx RideSettings), which is the h2. In the order of the
           sidebar redesign (OWNER-DECISIONS 312): Traffic and Hills, When, target distance, weight, keep to
           roads (OWNER-DECISIONS 463, 463b), avoid gravel; "Make it a loop" moved to the Points section (OWNER-DECISIONS 388). Every control and its behaviour is as before. */}
-      <h3 id="dials-heading">Ride settings</h3>
+      {/* Shown on the Ride settings line that opens it (edit-route redesign); kept for a screen reader's heading list. */}
+      <h3 id="dials-heading" className="visually-hidden">
+        Ride settings
+      </h3>
       {offersBike(preset) && (
         <fieldset className="bikeshare-bike">
           <legend>Bike</legend>
@@ -425,16 +419,7 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, weight }: Pr
           onCommit={(targetDistanceM) => onCommit(withField(dials, "targetDistanceM", targetDistanceM))}
         />
       )}
-      {/* The rider and bike weight: the line and Change, never the number (OWNER-DECISIONS 313-318). */}
-      {view.weight && weight && (
-        <WeightSetting
-          saved={weight.saved}
-          remembered={weight.remembered}
-          split={defaultSplit(dials.carrying)}
-          onSave={weight.onSave}
-          onClear={weight.onClear}
-        />
-      )}
+      {/* The rider and bike weight is in Settings (the owner, 2026-10-18: "somewhere hidden, and probably belongs in settings"). */}
       <div className="dial trails-off">
         <label className="toggle">
           {/* aria-disabled, not disabled, when always on (Mass Ride): it stays in the Tab order with its

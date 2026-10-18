@@ -94,6 +94,7 @@ test("the stations go over the base map and its labels, directly under the route
     RAIL_LAYERS.entrances,
     RAIL_LAYERS.stations,
     RAIL_LAYERS.elevators,
+    RAIL_LAYERS.badges,
     ...ROUTE.map((l) => l.id),
   ]);
 });
@@ -166,8 +167,8 @@ test("added before the route exists, the stations go on top rather than failing"
   const { map, layers } = fakeMap(BASE);
   addRailStations(map, STATIONS, ALL, PENN_COLOUR, 1);
   assert.deepEqual(
-    layers.slice(-3).map((l) => l.id),
-    [RAIL_LAYERS.entrances, RAIL_LAYERS.stations, RAIL_LAYERS.elevators],
+    layers.slice(-4).map((l) => l.id),
+    [RAIL_LAYERS.entrances, RAIL_LAYERS.stations, RAIL_LAYERS.elevators, RAIL_LAYERS.badges],
   );
 });
 

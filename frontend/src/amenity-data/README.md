@@ -130,23 +130,23 @@ The file also has `"also"`, naming the Throne list as the second source.
 
 ## Status
 
-Generated on the build host on 2026-10-11 for the v0.5.0 rebuild, from the
-2026-10-09 extract that rebuild builds from (`<DATA_ROOT>/extracts/source.osm.pbf`),
-with the 2026-10-10 rules and the 2026-10-11 secured-site rule above: 2,152
-points, 134,834 bytes, sha256
-`d4f4d7bf71275dabc9cba3c318deb33b7b1162e004d37e07fedc1eeaeccbc9d0`. 106 left
-out inside airports, military sites and prisons (airport 91, military 15).
-Throne: 6 units added from the list and 4 matched to OSM restrooms (the
-`operator=Throne` merge above); 7 listed units not open or not confirmed are
-left off the map.
+Generated on the build host on 2026-10-18 for v0.9.0, from the 2026-10-09 extract
+(`<DATA_ROOT>/extracts/source.osm.pbf`), with the rules above and the v0.7.0 stands
+and shops: 2,442 points, 162,605 bytes, sha256
+`002888ea89425f139146b7931b7205fe7dfb6d480fe5371b0c8af9eda8dbb92f`. 109 left out
+inside airports, military sites and prisons (airport 92, military 17). Throne: 6
+units added from the list and 4 matched to OSM restrooms (the `operator=Throne`
+merge above); 7 listed units not open or not confirmed are left off the map.
 
 | Kind | Points |
 | --- | --- |
-| drinking water | 734 (20 of them at a restroom, so the rows add to 2,172) |
-| untreated water | 174 |
+| drinking water | 734 (20 of them at a restroom, so the rows add to 2,462) |
+| untreated water | 176 |
 | flush restroom | 173 |
 | portable, pit or composting toilet | 284 |
 | restroom, type not mapped | 807 |
+| bike repair stand | 161 |
+| bike shop | 127 |
 
 To rebuild, from the repository root on that host:
 
@@ -167,10 +167,8 @@ marked as a Throne by its own tags in a full build is matched again only within
 ### Repair stands and bike shops (v0.7.0)
 
 The v0.7.0 build reads `amenity=bicycle_repair_station` and `shop=bicycle` too
-(the rules are in the script's docstring). The committed file predates that
-change, so it has no stands or shops until the next full build on the build
-host (the command above); until then Go's Repair chip says none are known.
-Record the stand and shop counts the build prints here.
+(the rules are in the script's docstring). The 2026-10-18 build above is the
+first with them: 161 stands and 127 shops, in the table.
 
 ## Refresh
 
@@ -205,12 +203,11 @@ One place per line, short keys:
 
 ### Status
 
-Generated on the build host on 2026-10-11 for the v0.5.0 rebuild, from the
-2026-10-09 extract that rebuild builds from (`<DATA_ROOT>/extracts/source.osm.pbf`):
-15,480 places, 12,940 of them with a cuisine; 197 left out inside airports,
-military sites and prisons (airport 133, military 63, prison 1).
-2,262,385 bytes (555,199 with `gzip -9`), sha256
-`e02ac7c38d7dc963048dffb8e07e6880427a1459e165b213c744c500ebcc508f`.
+Generated on the build host on 2026-10-18 for v0.9.0, from the 2026-10-09
+extract (`<DATA_ROOT>/extracts/source.osm.pbf`): 15,663 places, 12,940 of them
+with a cuisine; 197 left out inside airports, military sites and prisons
+(airport 133, military 63, prison 1). 2,284,887 bytes (562,745 with `gzip -9`),
+sha256 `89956469a3819fa1ceeffed7c75955399fcfdf7bd3dd536b3aa709997a1b4cd4`.
 
 | Kind | Places |
 | --- | --- |
@@ -219,6 +216,8 @@ military sites and prisons (airport 133, military 63, prison 1).
 | cafe | 1,537 |
 | ice cream | 496 |
 | pub | 300 |
+| market | 116 |
+| farm stand | 67 |
 | food court | 34 |
 | beer garden | 12 |
 
@@ -234,8 +233,8 @@ search). Record the counts, size and sha256 here and commit the file. `test_bund
 `tests/test_build_food.py` checks it.
 
 The v0.7.0 build adds farm stands (`shop=farm`, `fs`) and markets
-(`amenity=marketplace`, `m`). The committed file predates that change: the
-next build on the build host adds them; record the counts here.
+(`amenity=marketplace`, `m`); the 2026-10-18 build above is the first with them
+(67 farm stands, 116 markets).
 
 ## Places to see
 
@@ -260,9 +259,26 @@ One place per line, short keys:
 
 ### Status
 
-Not built yet: the committed file has no places (the cloud cannot reach the
-extract). The tab, Sights and the layer say so until it is built. On the
-build host, from the repository root:
+Generated on the build host on 2026-10-18 for v0.9.0, from the 2026-10-09
+extract (`<DATA_ROOT>/extracts/source.osm.pbf`): 2,105 places; 154 left out
+inside airports, military sites and prisons (airport 11, military 143).
+220,768 bytes, sha256
+`81325c2ec570034b2a86dd08dec67aa08d5bca2f55341f633996f94581171c76`.
+
+| Category | Places |
+| --- | --- |
+| historic sites and monuments | 810 |
+| museums and galleries | 416 |
+| gardens and arboretums | 260 |
+| waterfalls and peaks | 211 |
+| farmers markets and farm stands | 184 |
+| viewpoints | 154 |
+| lighthouses | 25 |
+| covered and notable bridges | 16 |
+| breweries, wineries and cideries | 15 |
+| zoos, aquariums and nature centers | 14 |
+
+To rebuild, on the build host, from the repository root:
 
     .venv311/bin/python scripts/build_places.py \
         --pbf <DATA_ROOT>/extracts/source.osm.pbf

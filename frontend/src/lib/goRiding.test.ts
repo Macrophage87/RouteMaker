@@ -19,7 +19,7 @@ test("1. track-up by default, the ride settings' switch remembered on this devic
   assert.match(ride, /checked=\{headingUp\} onChange=\{\(event\) => onHeadingUp\(event\.target\.checked\)\}/);
   // North-up until a heading comes; north-up again once the ride is over.
   assert.match(map, /props\.headingUp && following\.current \? map\.getBearing\(\) : 0/);
-  assert.match(map, /if \(following\.current && map\.getBearing\(\) !== 0\) map\.easeTo\(\{ bearing: 0, duration: 0 \}\)/);
+  assert.match(map, /if \(following\.current && map\.getBearing\(\) !== 0\) map\.easeTo\(\{ bearing: 0, padding: NO_PADDING, duration: 0 \}\)/);
   // Turning the map never moves the keyboard focus: the follow camera calls no focus().
   const follow = map.slice(map.indexOf("// Ride mode's \"you\" marker and the follow camera."), map.indexOf("// A pan or a turn of the map by hand"));
   assert.ok(follow.length > 100);
@@ -97,19 +97,27 @@ test("F1. Start unlocks the voice synchronously in the press, before the closure
   assert.match(ride, /export const CHECKING_CLOSURES = "Checking closures…";/);
 });
 
-test("Ride settings in reach (the owner, 2026-10-16): a Settings button beside End ride opens them just under the top row", () => {
+test("Ride settings in reach: a gear at the end of the side buttons opens them just under the top row (the owner, 2026-10-18)", () => {
   const top = ride.slice(ride.indexOf('<div className="ride-top">'), ride.indexOf("{ride.arrived ? ("));
-  // Settings, then End ride, in the always-visible row; Settings is a disclosure of the panel under it.
-  assert.ok(top.indexOf("RIDE_SETTINGS_TEXT") > 0 && top.indexOf("RIDE_SETTINGS_TEXT") < top.indexOf("END_RIDE_NAME"));
-  assert.match(top, /aria-expanded=\{settingsOpen\}\s*aria-controls=\{`\$\{settingsId\}-settings`\}/);
-  assert.match(top, /<Icon name="gear" size=\{18\} \/>/);
-  assert.match(top, /<div ref=\{settingsPanel\} id=\{`\$\{settingsId\}-settings`\} className="ride-mode-settings" role="group" aria-label=\{RIDE_SETTINGS_TITLE\} hidden=\{!settingsOpen\}>/);
-  // Opened, it is scrolled into view.
-  assert.match(ride, /if \(settingsOpen\) settingsPanel\.current\?\.scrollIntoView\?\.\(\{ block: "nearest" \}\);/);
-  // On the narrowest phones the gear alone, the word kept for its name (visually hidden, not removed).
-  assert.match(top, /<span className="ride-settings-label">\{RIDE_SETTINGS_TEXT\}<\/span>/);
-  assert.match(css, /@media \(max-width: 359px\) \{\s*\.ride-settings-label \{\s*position: absolute;/);
+  // The top row: Road closed ahead, then End ride; Settings is no longer there.
+  assert.doesNotMatch(top, /RIDE_SETTINGS_TEXT/);
+  assert.ok(top.indexOf("ROAD_CLOSED_NAME") > 0 && top.indexOf("ROAD_CLOSED_NAME") < top.indexOf("END_RIDE_NAME"));
+  assert.match(top, /\{!walking && !ride\.arrived && \(\s*<button type="button" className="secondary ride-road-closed" onClick=\{roadClosed\} aria-label=\{ROAD_CLOSED_NAME\} title=\{ROAD_CLOSED_NAME\}>/);
+  // On the narrowest phones the icon alone, the words kept for its name (visually hidden, not removed).
+  assert.match(top, /<span className="ride-top-label">\{ROAD_CLOSED_TEXT\}<\/span>/);
+  assert.match(css, /@media \(max-width: 379px\) \{\s*\.ride-top-label \{\s*position: absolute;/);
+  assert.match(top, /ref=\{settingsPanel\}\s+id=\{`\$\{settingsId\}-settings`\}\s+className="ride-mode-settings"\s+role="group"\s+aria-label=\{RIDE_SETTINGS_TITLE\}\s+hidden=\{!settingsOpen\}\s+tabIndex=\{-1\}/);
+  // The gear comes after the panel: opened, the focus goes into it; Escape there closes it, back to the gear.
+  assert.match(ride, /settingsPanel\.current\?\.focus\(\{ preventScroll: true \}\);/);
+  assert.match(top, /if \(event\.key === "Escape"\) \{\s*event\.preventDefault\(\);\s*setSettingsOpen\(false\);\s*settingsButton\.current\?\.focus\(\);/);
   assert.match(top, /<RideSettingsFields prefs=\{prefs\} onChange=\{onPrefs\}/);
+  // The gear: the last side button, a disclosure of that panel, named Settings.
+  const rail = ride.slice(ride.indexOf('<div className="ride-rail"'), ride.indexOf("{/* The bottom panel"));
+  assert.match(rail, /ref=\{settingsButton\}\s+className="ride-round ride-settings-button"\s+aria-label=\{RIDE_SETTINGS_TEXT\}\s+title=\{RIDE_SETTINGS_TEXT\}\s+aria-expanded=\{settingsOpen\}\s+aria-controls=\{`\$\{settingsId\}-settings`\}/);
+  assert.match(rail, /<Icon name="gear" size=\{24\} \/>\s*<\/button>\s*<\/div>\s*<\/div>\s*$/);
+  assert.doesNotMatch(rail, /ride-round ride-road-closed/);
+  // Opened, it is scrolled into view.
+  assert.match(ride, /if \(!settingsOpen\) return;\s*settingsPanel\.current\?\.scrollIntoView\?\.\(\{ block: "nearest" \}\);/);
   // One copy of the settings: the fold at the bottom is gone.
   assert.equal(ride.match(/<RideSettingsFields prefs=\{prefs\}/g)?.length, 1);
   assert.doesNotMatch(ride, /<summary>Ride settings<\/summary>/);
@@ -133,6 +141,6 @@ test("End ride keeps the plan and its routes; part way it starts where the rider
   assert.match(endRide, /commit\(from, ride\.dials\.loop \? \{ \.\.\.ride, dials: \{ \.\.\.ride\.dials, loop: false \} \} : undefined\);/);
   assert.match(endRide, /announce\(from \? RIDE_ENDED_FROM_HERE_SAID : after === "no-fix" \? RIDE_ENDED_NO_FIX_SAID : RIDE_ENDED_SAID\);/);
   // The ride's own fix (planAfterEnd), never a trip's riding leg.
-  assert.match(ride, /onEnd\(trip \? null : planAfterEnd\(modelRef\.current, rideRef\.current, plan\.current\.points, plan\.current\.loop, Date\.now\(\)\)\);/);
+  assert.match(ride, /onEnd\(trip && !trip\.asPlanned \? null : planAfterEnd\(modelRef\.current, rideRef\.current, plan\.current\.points, plan\.current\.loop, Date\.now\(\)\)\);/);
   assert.match(app, /if \(ended\.from && pointsRef\.current === ended\.from\) edits\.retract\(\);/);
 });

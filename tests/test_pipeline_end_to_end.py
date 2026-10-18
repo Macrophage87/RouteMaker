@@ -38,6 +38,8 @@ from rebuild_fixtures import (
     BESIDE_TRAIL_ID,
     CBD_CYCLE_TRACK_ID,
     CBD_SIDEWALK_ID,
+    CIRCLE_CROSSING_ID,
+    CIRCLE_WALKWAY_ID,
     CONTRAFLOW_ONE_WAY_ID,
     CONTRAFLOW_ROUNDABOUT_ID,
     CONTRAFLOW_TWO_WAY_ID,
@@ -604,6 +606,28 @@ def test_a_road_closed_every_weekend_is_a_path_on_the_weekend_graph_only(
         else:
             assert tags.get("rm:stress_tier") == str(tier), variant.value
             assert tags.get("rm:facility") != "path", variant.value
+
+
+def test_a_circle_parks_walkway_and_its_crossing_open_to_bicycles(
+    tmp_path, segment_schemas, states
+) -> None:
+    """The owner, 2026-10-17: the circle parks are open to bikes. An untagged footway
+    inside Dupont Circle, and the crossing from it to the street, carry bicycle=yes into
+    every graph that keeps footways, and no closure puts them back."""
+    from pipeline.extract import read_ways
+
+    context, _stored = run_dials_extract(tmp_path)
+    assert context.circle_park_ways == {CIRCLE_WALKWAY_ID, CIRCLE_CROSSING_ID}
+    seen = 0
+    for variant in Variant:
+        tags = {w.osm_id: w.tags for w in read_ways(context.variant_pbf(variant))}
+        for way_id in (CIRCLE_WALKWAY_ID, CIRCLE_CROSSING_ID):
+            if way_id in tags:
+                seen += 1
+                assert tags[way_id].get("bicycle") == "yes", (variant.value, way_id)
+                assert tags[way_id].get("rm:no_bicycle") is None, (variant.value, way_id)
+    assert seen
+    assert CIRCLE_WALKWAY_ID not in context.no_bicycle
 
 
 def test_a_downtown_sidewalk_is_barred_to_bicycles_in_every_graph(
