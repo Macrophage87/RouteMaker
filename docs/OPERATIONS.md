@@ -5507,7 +5507,7 @@ front-end release" (below). No new settings: live Metrobus and train positions r
   `POST /api/keyed/routes`, which only adds a route to that account's My routes, under the
   address limit, then the account's write limit. The rider removes it in Settings > Account;
   deleting or banning the account deletes it. Behind the
-  beta's password gate the server needs `ROUTEMAKER_BASIC_AUTH` as well: the key travels in its
+  beta's password gate the MCP server (not the site) needs `ROUTEMAKER_BASIC_AUTH` as well: the key travels in its
   own header.
 
 ## Deploying a planner and front-end release: rollback points and verification
