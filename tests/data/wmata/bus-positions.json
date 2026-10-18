@@ -1,0 +1,32 @@
+{
+ "BusPositions": [
+  {
+   "DateTime": "2026-09-30T07:56:10",
+   "Deviation": 1.0,
+   "DirectionNum": 1,
+   "DirectionText": "WEST",
+   "Lat": 38.8892,
+   "Lon": -76.9802,
+   "RouteID": "B10",
+   "TripEndTime": "2026-09-30T08:20:00",
+   "TripHeadsign": "UNION STATION",
+   "TripID": "B10_W_1",
+   "TripStartTime": "2026-09-30T07:50:00",
+   "VehicleID": "7203"
+  },
+  {
+   "DateTime": "2026-09-30T07:56:12",
+   "Deviation": 0.0,
+   "DirectionNum": 1,
+   "DirectionText": "WEST",
+   "Lat": 38.885,
+   "Lon": -76.96,
+   "RouteID": "B10",
+   "TripEndTime": "2026-09-30T08:35:00",
+   "TripHeadsign": "UNION STATION",
+   "TripID": "B10_W_2",
+   "TripStartTime": "2026-09-30T08:05:00",
+   "VehicleID": "7210"
+  }
+ ]
+}

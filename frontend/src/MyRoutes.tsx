@@ -34,6 +34,7 @@ import { copyText, selectionCopy } from "./lib/sidebar.ts";
 import { NEW_LINK, SHARED_LINKS, TURN_OFF, keepSaid, listSharedLinks, regenerateSharedLink, revokeSharedLink, type SharedLink } from "./lib/sharedRoutes.ts";
 import { formatDistance } from "./lib/format.ts";
 import { alertLine } from "./lib/closureReview.ts";
+import { matchSaid, matching } from "./lib/routeSearch.ts";
 
 export interface MyRoutesProps {
   /** Bumped by the page after a save, so the list is read again. */
@@ -51,9 +52,11 @@ export interface MyRoutesProps {
   /** A route renamed or deleted here: the page's Save follows it (its next save is a version of the renamed one, or new). */
   onRenamed?: (id: number, name: string) => void;
   onDeleted?: (id: number) => void;
+  /** Words from the Save and load sheet's search: only the routes whose names hold them are listed. */
+  filter?: string;
 }
 
-export function MyRoutes({ version, onOpen, onExport, announce, versions = false, sharedLinks = false, onSharedChange = () => {}, onRenamed = () => {}, onDeleted = () => {} }: MyRoutesProps) {
+export function MyRoutes({ version, onOpen, onExport, announce, versions = false, sharedLinks = false, onSharedChange = () => {}, onRenamed = () => {}, onDeleted = () => {}, filter = "" }: MyRoutesProps) {
   const headingId = useId();
   const [routes, setRoutes] = useState<SavedSummary[] | null>(null);
   const [failed, setFailed] = useState(false);
@@ -112,8 +115,11 @@ export function MyRoutes({ version, onOpen, onExport, announce, versions = false
       {routes && routes.length > 0 && (
         <>
           <p className="hint">{countLine(routes.length, MAX_SAVED)}</p>
+          <p className="hint" role="status">
+            {matchSaid(matching(routes, filter, (r) => r.name).length, routes.length, filter)}
+          </p>
           <ul role="list" className="my-routes-list">
-            {routes.map((r) => (
+            {matching(routes, filter, (r) => r.name).map((r) => (
               <li key={r.id} className="my-route">
                 {renaming === r.id ? (
                   <form

@@ -148,7 +148,25 @@ finish() { # word message
 		[ -z "$report" ] || cp "$report" "$cd_dir/last-report.txt"
 		# The last pass that did something about a release, kept past the idle passes after it.
 		case "$word" in deployed | rolled-back | failed | broken | held | interrupted) [ -z "$report" ] || cp "$report" "$cd_dir/last-release-report.txt" ;; esac
+		notify "$word" "$*"
 	fi
+}
+# The owner's alert channel (alert.sh, review OPS-1): a result that needs the owner is posted once
+# (again once a day while it lasts), a deploy always. alert.sh posts nothing without a webhook and
+# never fails, and a slow channel cannot hold a pass for long (its curl has a 20 s limit).
+notify() { # word message
+	local word=$1 message=$2 alert="$cd_dir/bin/alert.sh" id
+	[ -x "$alert" ] || return 0
+	id=${message%%[ :]*}
+	case "$word" in
+		deployed) "$alert" note "deployed $message" && "$alert" clear deploy "the release agent is working again (deployed ${message%% *})" ;;
+		up-to-date) "$alert" clear deploy "the release agent is working again ($message deployed)" ;;
+		rolled-back | failed) "$alert" send deploy "failed $id" "$word: $message" ;;
+		held | interrupted) "$alert" send deploy "$word $id" "$word: $message" ;;
+		broken | error | drift) "$alert" send deploy "$word $(printf '%s' "$message" | sed 's/[0-9][0-9.]*/N/g' | sha256sum | cut -c1-12)" "$word: $message" ;;
+		waiting) case "$message" in *" free "*) "$alert" send deploy "disk" "waiting: $message" ;; esac ;;
+	esac >>"$run_log" 2>&1 </dev/null
+	return 0
 }
 # A release that needs the owner: kept in hold/<tag>, so later passes do not retry it.
 hold() { # tag message
@@ -1004,6 +1022,7 @@ cmd_install() {
 	install -m 600 "$here/cd_logic.py" "$cd_dir/bin/cd_logic.py"
 	install -m 700 "$here/receive-data.sh" "$cd_dir/bin/receive-data.sh"
 	install -m 700 "$here/frontend-build.sh" "$cd_dir/bin/frontend-build.sh"
+	[ ! -f "$here/alert.sh" ] || install -m 700 "$here/alert.sh" "$cd_dir/bin/alert.sh"
 	printf '%s\n' "$(gitc rev-parse HEAD)" >"$cd_dir/bin/FROM"
 	[ -f "$cd_dir/deployed-tag" ] || record_deployed "$tag" "$sha"
 	if [ "$url" = __unset__ ]; then

@@ -1,0 +1,81 @@
+{
+ "TrainPositions": [
+  {
+   "CarCount": 8,
+   "CircuitId": 1005,
+   "DestinationStationCode": "B11",
+   "DirectionNum": 1,
+   "LineCode": "RD",
+   "SecondsAtLocation": 12,
+   "ServiceType": "Normal",
+   "TrainId": "100",
+   "TrainNumber": "100"
+  },
+  {
+   "CarCount": 8,
+   "CircuitId": 1002,
+   "DestinationStationCode": "B11",
+   "DirectionNum": 1,
+   "LineCode": "RD",
+   "SecondsAtLocation": 12,
+   "ServiceType": "Normal",
+   "TrainId": "101",
+   "TrainNumber": "101"
+  },
+  {
+   "CarCount": 8,
+   "CircuitId": 1014,
+   "DestinationStationCode": "B11",
+   "DirectionNum": 1,
+   "LineCode": "RD",
+   "SecondsAtLocation": 12,
+   "ServiceType": "Normal",
+   "TrainId": "102",
+   "TrainNumber": "102"
+  },
+  {
+   "CarCount": 8,
+   "CircuitId": 2005,
+   "DestinationStationCode": "A15",
+   "DirectionNum": 2,
+   "LineCode": "RD",
+   "SecondsAtLocation": 12,
+   "ServiceType": "Normal",
+   "TrainId": "103",
+   "TrainNumber": "103"
+  },
+  {
+   "CarCount": 8,
+   "CircuitId": 2010,
+   "DestinationStationCode": "A15",
+   "DirectionNum": 2,
+   "LineCode": "RD",
+   "SecondsAtLocation": 12,
+   "ServiceType": "Normal",
+   "TrainId": "104",
+   "TrainNumber": "104"
+  },
+  {
+   "CarCount": 8,
+   "CircuitId": 1008,
+   "DestinationStationCode": null,
+   "DirectionNum": 1,
+   "LineCode": null,
+   "SecondsAtLocation": 12,
+   "ServiceType": "NoPassengers",
+   "TrainId": "105",
+   "TrainNumber": "105"
+  },
+  {
+   "CarCount": 8,
+   "CircuitId": 3002,
+   "DestinationStationCode": "D13",
+   "DirectionNum": 1,
+   "LineCode": "OR",
+   "SecondsAtLocation": 12,
+   "ServiceType": "Normal",
+   "TrainId": "106",
+   "TrainNumber": "106"
+  }
+ ]
+}

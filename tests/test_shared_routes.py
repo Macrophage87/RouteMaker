@@ -166,6 +166,21 @@ class TestSharedRoutes:
         assert out["line"] == line and out["gpx"] == text and out["answer"] is None
         assert post(client, body(gpx=text)).status_code == 400
 
+    def test_a_gpx_file_keeps_the_route_shown_for_it(self) -> None:
+        # v0.9.0, "share the exact route": the file's text byte for byte, and the route shown for it
+        # (followed exactly here), so the link opens that line rather than following the file again.
+        client = Client()
+        text = '<?xml version="1.0"?>\n<gpx version="1.1"><trk><trkseg/></trk></gpx>\n'
+        sent = body(source="gpx", gpx=text, answer=planned(follows_file=True, follows_exactly=True))
+        assert post(client, sent).status_code == 201
+        out = client.get(f"{URL}/{sent['id']}", **addr()).json()
+        assert out["gpx"] == text
+        assert out["answer"]["follows_exactly"] is True and out["answer"]["follows_file"] is True
+        assert (
+            out["answer"]["dials"]["system_weight_kg"] is None and out["answer"]["effort_m"] is None
+        )
+        assert post(client, body(source="gpx", gpx=text, answer=[1])).status_code == 400
+
     def test_a_taken_id_is_never_replaced(self) -> None:
         client = Client()
         sent = body()

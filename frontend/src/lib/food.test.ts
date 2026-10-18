@@ -74,7 +74,19 @@ test("loading: an empty file is an empty list (No food data yet), a failure is n
 test("queries are normalised", () => {
   assert.equal(normaliseQuery("  Crab-House!  "), "crab-house");
   assert.equal(normaliseQuery("Ben's   Chili Bowl"), "ben's chili bowl");
-  assert.equal(foodTerms("   "), null);
+});
+
+test("an empty search or a word for food in general finds every place (the owner, 2026-10-18)", () => {
+  for (const q of ["", "   ", "food", "Food!", "all", "eat", "lunch", "places to eat"]) {
+    const terms = foodTerms(q);
+    assert.equal(terms.all, true, q);
+    assert.ok(matchesFood(place("n1", "Trattoria", ["italian"]), terms), q);
+    assert.ok(matchesFood(place("n2", "Scoops", [], -77, 38.9, "i"), terms), q);
+  }
+  assert.equal(foodTerms("crab").all, false);
+  // A kind by its own name finds every place of that kind, whatever its name.
+  assert.ok(matchesFood(place("n3", "Trattoria", ["italian"]), foodTerms("restaurants")));
+  assert.ok(!matchesFood(place("n4", "Scoops", [], -77, 38.9, "i"), foodTerms("restaurant")));
 });
 
 test("crab finds seafood places, and pizza places by cuisine or name", () => {
@@ -93,8 +105,8 @@ test("plurals, parts of a cuisine value and kinds", () => {
   assert.ok(matchesFood(place("n1", "A", ["crab"]), foodTerms("crabs")!));
   assert.ok(matchesFood(place("n1", "A", ["sandwich"]), foodTerms("sandwiches")!));
   assert.ok(matchesFood(place("n1", "A", ["fried_chicken"]), foodTerms("chicken")!));
-  // "food" is not a part of "seafood".
-  assert.ok(!matchesFood(place("n1", "A", ["seafood"]), foodTerms("food")!));
+  // "sea" is not a part of "seafood".
+  assert.ok(!matchesFood(place("n1", "A", ["seafood"]), foodTerms("sea")!));
   assert.ok(matchesFood(place("n1", "Corner", [], -77, 38.9, "c"), foodTerms("coffee")!));
   assert.ok(matchesFood(place("n1", "Scoops", [], -77, 38.9, "i"), foodTerms("ice cream")!));
   assert.ok(matchesFood(place("n1", "A", ["ice_cream"]), foodTerms("ice cream")!));
@@ -154,15 +166,24 @@ test("search: in the view, sorted by detour with a route, no distance cap", () =
   assert.deepEqual(results.map((r) => r.place.id), ["n4", "n2", "n1"]);
   assert.equal(results[0].detour?.extraM, 0);
   // The whole area adds the one out of view, last (the biggest detour), however far.
-  const all = searchFood(PLACES, { query: "crab", scope: "area", bounds: [-77.2, 38.8, -76.9, 39.0], centre: [-77.0, 38.9], route });
+  const all = searchFood(PLACES, { query: "crab", scope: "near", bounds: [-77.2, 38.8, -76.9, 39.0], centre: [-77.0, 38.9], route });
   assert.deepEqual(all.map((r) => r.place.id), ["n4", "n2", "n1", "n5"]);
 });
 
 test("search without a route: by distance from the map's center, no detour", () => {
-  const results = searchFood(PLACES, { query: "crab", scope: "area", bounds: null, centre: [-77.0, 38.9], route: null });
+  const results = searchFood(PLACES, { query: "crab", scope: "near", bounds: null, centre: [-77.0, 38.9], route: null });
   assert.deepEqual(results.map((r) => r.place.id), ["n2", "n4", "n1", "n5"]);
   assert.equal(results[0].detour, undefined);
-  assert.deepEqual(searchFood(PLACES, { query: " ", scope: "area", bounds: null, centre: [-77, 38.9], route: null }), []);
+  assert.equal(results[0].fromRider, undefined);
+  // A blank search lists every place, nearest first.
+  assert.equal(searchFood(PLACES, { query: " ", scope: "near", bounds: null, centre: [-77, 38.9], route: null }).length, PLACES.length);
+});
+
+test("search from the rider's location: nearest you first, in words", () => {
+  const results = searchFood(PLACES, { query: "crab", scope: "near", bounds: null, centre: [-77.0, 38.9], fromRider: true, route: null });
+  assert.equal(results[0].fromRider, true);
+  assert.equal(foodHowFar({ place: results[0].place, fromCentreM: 800, fromRider: true }), "0.5 mi (0.8 km) from you in a straight line.");
+  assert.equal(foodFoundSaid("crab", "near", 4, 4, false, true), "4 places match “crab” in the whole area, nearest you first.");
 });
 
 test("words: US units first with metric in brackets; the detour, the turn-off and the hours", () => {
@@ -187,16 +208,18 @@ test("words: US units first with metric in brackets; the detour, the turn-off an
 
 test("the status line says the count, where and the order", () => {
   assert.equal(foodFoundSaid(" Crab ", "view", 12, 10, true), "12 places match “crab” in the map view, least detour first. Showing the first 10.");
-  assert.equal(foodFoundSaid("pizza", "area", 1, 1, false), "1 place matches “pizza” in the whole area, nearest the map's center first.");
-  assert.equal(foodFoundSaid("crab", "view", 0, 0, true), "No places match “crab” in the map view. Try Search the whole area, or move the map.");
-  assert.equal(foodFoundSaid("crab", "area", 0, 0, true), "No places match “crab” in the whole area.");
+  assert.equal(foodFoundSaid("pizza", "near", 1, 1, false), "1 place matches “pizza” in the whole area, nearest the map's center first.");
+  assert.equal(foodFoundSaid("crab", "view", 0, 0, true), "No places match “crab” in the map view. Try Near you, or move the map.");
+  assert.equal(foodFoundSaid("crab", "near", 0, 0, true), "No places match “crab” in the whole area.");
+  assert.equal(foodFoundSaid("", "near", 15480, 10, false, true), "15,480 places to eat in the whole area, nearest you first. Showing the first 10.");
+  assert.equal(foodFoundSaid("food", "view", 3, 3, true), "3 places to eat in the map view, least detour first.");
 });
 
 const noop = () => {};
 const baseProps: FoodFinderProps = {
   query: "crab",
   onQuery: noop,
-  scope: "view",
+  scope: "near",
   onScope: noop,
   onSearch: noop,
   busy: false,
@@ -216,8 +239,8 @@ test("the panel: a labelled search, the two scopes, a status line, collapsed", (
   assert.match(html, /<form role="search" aria-label="Find food"/);
   assert.match(html, /<label for="food-query"[^>]*>Food or name<\/label>/);
   assert.match(html, /<input id="food-query" type="search"/);
+  assert.match(html, /<input type="radio" name="food-scope" checked="" value="near"\/>Near you/);
   assert.match(html, /In the map view/);
-  assert.match(html, /Search the whole area/);
   assert.match(html, /<p class="hint food-status" role="status"><\/p>/);
   assert.doesNotMatch(html, /<ol/);
 });

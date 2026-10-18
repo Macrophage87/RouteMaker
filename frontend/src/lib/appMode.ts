@@ -252,6 +252,9 @@ export function goTapSetsEnd(mode: AppMode): boolean {
   return mode === "go";
 }
 
+/** A point that is the rider's location, as Go's route card and the points list name it (edit-route redesign). */
+export const YOUR_LOCATION = "Your location";
+
 /**
  * Go's name for a destination, the same in what is said and on the sheet's "To …": its place name once known (a
  * pressed spot's is looked up after it is placed, and the sheet takes it when it comes), else its coordinates.

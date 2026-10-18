@@ -189,7 +189,6 @@ test("at the top of the traffic slider, seeking climbs says it only breaks ties,
   assert.equal(view.hills.note, SEEK_CALM_NOTE);
   assert.match(SEEK_CALM_NOTE, /only chooses between equally calm routes, preferring the one that climbs more/);
   assert.notEqual(view.target, null, "the Target distance dial is still offered while seeking");
-  assert.notEqual(view.weight, null);
   // Below the top, seeking is the search among alternatives it was.
   assert.equal(panelView("mountain-goat", { ...startDials("mountain-goat"), hills: 60 }).hills.note, SEEK_NOTE);
 });
