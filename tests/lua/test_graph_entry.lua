@@ -806,6 +806,11 @@ local _, link_aisle = transform_way({ highway = "service", service = "parking_ai
 check("a bike-open parking aisle is a service road in the graph", tonumber(link_aisle.use) == 11,
   link_aisle.use)
 check("and is open both ways", link_aisle.bike_forward == "true" and link_aisle.bike_backward == "true")
+check("and is not destination-only", link_aisle.private == "false", link_aisle.private)
+local _, motor_private = transform_way({ highway = "service", service = "parking_aisle", bicycle = "yes",
+  motor_vehicle = "private" })
+check("a motor_vehicle=private aisle stays destination-only (upstream's flag)",
+  motor_private.private == "true", motor_private.private)
 local _, plain_aisle = transform_way({ highway = "service", service = "parking_aisle" })
 check("an aisle that says nothing of bicycles stays an aisle", tonumber(plain_aisle.use) == 6,
   plain_aisle.use)

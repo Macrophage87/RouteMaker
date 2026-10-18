@@ -466,8 +466,9 @@ M.CEMETERY_ACCESS = "destination"
 -- `service=parking_aisle` + `bicycle=yes`) to the East-West Highway underpass,
 -- cost as much as 1.3 km of side streets, and routes left the trail there (owner
 -- report, 2026-10-18). On such a way the service value is removed: it becomes the
--- service road it is, priced by `service_penalty`. Only where nothing in its own
--- tags restricts access, so a private lot's aisle keeps upstream's flag.
+-- service road it is, priced by `service_penalty`. Only where its own `access`
+-- and `vehicle` leave it open, so a private lot's aisle keeps upstream's flag
+-- (and a `motor_vehicle=private` one keeps it through upstream's own `private`).
 M.BICYCLE_LINK_SERVICES = { parking_aisle = true, driveway = true, ["drive-through"] = true }
 M.BICYCLE_LINK_GRANTS = { yes = true, designated = true, permissive = true }
 
