@@ -9,6 +9,9 @@
  * goes back to the Change button. On a phone it is a full-height sheet
  * (styles.css, `.ride-types`).
  *
+ * The current ride type is one button with its name, gist and Change on it, which opens the dialog
+ * (edit-route redesign, Stephen 2026-10-18).
+ *
  * RIDE-TYPE-ORGANISE (Stephen, 2026-10-12): a search box over the cards, and the
  * cards under their group's heading (lib/rideTypeGroups.ts).
  */
@@ -88,27 +91,38 @@ export function RideTypePicker({ preset, dials, onChoose }: Props) {
 
   return (
     <section key="presets" className="ride-type" aria-labelledby="ride-type-heading">
-      <h3 id="ride-type-heading">Ride type</h3>
+      {/* A label, not a heading: the Ride settings h2 follows it in the outline (the review of the redesign). */}
+      <p id="ride-type-heading" className="ride-type-label">
+        Ride type
+      </p>
+      {/* One button, the ride type and its gist on it, that opens the ride types (edit-route redesign, Stephen
+          2026-10-18): it was a line of chips with Edit, then this line's Change, two presses to the list. */}
       <div className="ride-type-current">
-        <p>
-          <strong>
-            {custom ? (
-              <>
-                Custom (based on <PresetName id={preset} />)
-              </>
-            ) : (
-              <PresetName id={preset} />
-            )}
-            {carrying ? `, ${carrying.label.toLowerCase()}` : ""}
-            {dials.assist ? ", electric assist" : ""}
-            {dials.bike ? `, ${bikeLabel(dials.bike).toLowerCase()}` : ""}
-          </strong>
-          <span className="hint">{current?.summary}</span>
-          {current && <span className="visually-hidden"> {current.description}</span>}
-        </p>
-        <button type="button" ref={openerRef} onClick={open} aria-haspopup="dialog">
-          Change
+        <button type="button" ref={openerRef} onClick={open} aria-haspopup="dialog" aria-describedby={current ? "ride-type-gist" : undefined}>
+          <span className="ride-type-text">
+            <strong>
+              {custom ? (
+                <>
+                  Custom (based on <PresetName id={preset} />)
+                </>
+              ) : (
+                <PresetName id={preset} />
+              )}
+              {carrying ? `, ${carrying.label.toLowerCase()}` : ""}
+              {dials.assist ? ", electric assist" : ""}
+              {dials.bike ? `, ${bikeLabel(dials.bike).toLowerCase()}` : ""}
+            </strong>
+            <span className="hint" aria-hidden="true">
+              {current?.summary}
+            </span>
+          </span>
+          <span className="ride-type-change">Change</span>
         </button>
+        {current && (
+          <span id="ride-type-gist" hidden>
+            {current.description}
+          </span>
+        )}
       </div>
       <dialog
         ref={dialogRef}

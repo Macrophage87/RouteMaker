@@ -1340,7 +1340,8 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
     // Plan streamline (2026-10-17): Change on the Start row opens the From box, with the focus in it.
     const p = await emptyPlan({ hash: "#p=-77.04000,38.91000;-77.01000,38.89000&preset=default&v=2&stress=70&hills=0" });
     await p.waitFor("document.querySelectorAll('.points > li').length === 2", 20000);
-    await p.eval("document.querySelector('.point-change[aria-label=\"Change Start\"]')?.click(); true");
+    // Edit-route redesign (2026-10-18): the start's place is the Change button, named "Change Start: <place>".
+    await p.eval("document.querySelector('.point-change[aria-label^=\"Change Start\"]')?.click(); true");
     await sleep(500);
     const chose = await p.eval("(() => { const i = document.activeElement; return !!i && i.matches('#points-search .place-search input') && i.closest('.place-search').querySelector('label').textContent.startsWith('From'); })()");
     await sleep(300);
@@ -3964,7 +3965,7 @@ const JUNCTION_BUTTON = "Suggest a junction change";
   await p.eval(`${kidsCard}.focus(); true`);
   await p.enter();
   await sleep(2500);
-  const chosen = await p.eval("(() => ({ open: document.querySelector('dialog.ride-types').open, focus: document.activeElement === document.querySelector('.ride-type-current button'), ride: document.querySelector('.ride-type-current strong')?.textContent, hint: document.querySelector('.ride-type-current .hint')?.textContent, said: document.querySelector('.ride-type-current p')?.textContent }))()");
+  const chosen = await p.eval("(() => ({ open: document.querySelector('dialog.ride-types').open, focus: document.activeElement === document.querySelector('.ride-type-current button'), ride: document.querySelector('.ride-type-current strong')?.textContent, hint: document.querySelector('.ride-type-current .hint')?.textContent, said: document.getElementById('ride-type-gist')?.textContent }))()");
   // Plan-first (see pressRoute): the choice plans nothing until Route.
   const pickPlans = p.routeRequests - before;
   await pressRoute(p);
@@ -3981,8 +3982,11 @@ const JUNCTION_BUTTON = "Suggest a junction change";
   check("kids: the sliders moved to its start and say so in words",
     sliders[0]?.value === 100 && sliders[1]?.value === -60 && traffic?.name === "Traffic" && /^Calmest: /.test(traffic?.valuetext ?? "") && sliders[1]?.words === "Gentler grades" /* -60, Novice's start */,
     JSON.stringify({ sliders, traffic }));
+  // Edit-route redesign (2026-10-18): the ride type's own button says the type; the Ride settings line, the sliders.
   const line = await axNode(p, ".ride-line-button");
-  check("kids: the Ride line's spoken name says the ride type and where the sliders are", /^Ride\s*:\s*Novice and Nervous, calmest, gentler hills\b/.test(line?.name ?? ""), JSON.stringify(line?.name));
+  const typeButton = await axNode(p, ".ride-type-current button");
+  check("kids: the ride type's button says Novice and Nervous, and the Ride settings line where the sliders are",
+    /^Novice and Nervous\b[\s\S]*Change$/.test(typeButton?.name ?? "") && /^Ride settings\s*:\s*calmest, gentler hills\b/.test(line?.name ?? ""), JSON.stringify({ type: typeButton?.name, line: line?.name }));
   check("kids: the target distance is offered, as at the top of the traffic slider", (await p.eval("document.querySelectorAll('input[placeholder=Default]').length")) === 1);
   await p.eval("document.querySelector('.ride-type-current button').focus(); true");
   await p.enter();

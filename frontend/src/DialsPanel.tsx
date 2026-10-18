@@ -256,7 +256,10 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, weight }: Pr
       {/* Inside the Ride line's settings (Sidebar.tsx RideSettings), which is the h2. In the order of the
           sidebar redesign (OWNER-DECISIONS 312): Traffic and Hills, When, target distance, weight, keep to
           roads (OWNER-DECISIONS 463, 463b), avoid gravel; "Make it a loop" moved to the Points section (OWNER-DECISIONS 388). Every control and its behaviour is as before. */}
-      <h3 id="dials-heading">Ride settings</h3>
+      {/* Shown on the Ride settings line that opens it (edit-route redesign); kept for a screen reader's heading list. */}
+      <h3 id="dials-heading" className="visually-hidden">
+        Ride settings
+      </h3>
       {offersBike(preset) && (
         <fieldset className="bikeshare-bike">
           <legend>Bike</legend>

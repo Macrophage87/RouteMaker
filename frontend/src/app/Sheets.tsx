@@ -668,6 +668,15 @@ export function FoodSheet({ nav, onChip, children }: { nav: SheetNav; onChip: (f
   );
 }
 
+/** Go's Edit route sheet (edit-route redesign, Stephen 2026-10-18): Plan's points, opened from Go's route card. */
+export function EditRouteSheet({ nav, children }: { nav: SheetNav; children: ReactNode }) {
+  return (
+    <SheetFrame id="sheet-points" title={SHEET_TITLES.points} open={nav.view === "points"} onBack={nav.back} backLabel={nav.backLabel("points")}>
+      {children}
+    </SheetFrame>
+  );
+}
+
 /** Go's Ride sheet: every ride type as a chip and every dial (the Ride line's controls, which Plan keeps in the panel). */
 export function RideSheet({ nav, children }: { nav: SheetNav; children: ReactNode }) {
   return (

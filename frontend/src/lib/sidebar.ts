@@ -16,7 +16,7 @@ import type { PresetId } from "./presets.ts";
  * the bottom bar, the map's chips, Go's Menu and the Layers sheet's Legend button open (UI-CLEANUP,
  * the approved mockup of 2026-10-11).
  */
-export type PanelView = "planner" | "layers" | "legend" | "suggest" | "review" | "gpx" | "settings" | "nearest" | "food" | "ride" | "repair" | "places";
+export type PanelView = "planner" | "layers" | "legend" | "suggest" | "review" | "gpx" | "settings" | "nearest" | "food" | "ride" | "repair" | "places" | "points";
 
 /** The planner's own heading, where the focus goes when the Plan button returns to it (OWNER-DECISIONS 392). */
 export const PLANNER_TITLE = "RouteMaker";
@@ -35,6 +35,8 @@ export const SHEET_TITLES: Record<Exclude<PanelView, "planner">, string> = {
   // v0.7.0: Go's Repair (behind More), and Plan's Places to see (Go calls it Sights).
   repair: "Repair stands and bike shops",
   places: "Places to see",
+  // Go's Edit route (edit-route redesign, Stephen 2026-10-18): Plan's points, from the route card.
+  points: "Edit route",
 };
 
 /** Go's Menu (the mockup's Menu sheet): Settings, with Plan, Suggest, GPX and Review above them. */
@@ -115,13 +117,19 @@ export function searchLede(loop: boolean, accessMode = false): string {
   return `${how}: ${end}${accessMode ? "" : ` ${ACCESS_SENTENCE_WHERE}`}`;
 }
 
-/** The Ride line's visible action: Edit while closed, Done while open. Its state is read from aria-expanded. */
+/**
+ * The Ride settings line's visible action: Adjust while closed, Done while open (edit-route redesign, Stephen
+ * 2026-10-18: "Edit" beside a row of chips read as a tag, not a button). Its state is read from aria-expanded.
+ */
 export function rideActionLabel(open: boolean): string {
-  return open ? "Done" : "Edit";
+  return open ? "Done" : "Adjust";
 }
 
-/** The Ride line's action as a screen reader hears it: the same word whatever the state (aria-expanded says that). */
-export const RIDE_ACTION_SPOKEN = "Edit";
+/** The Ride settings line's action as a screen reader hears it: the same word whatever the state (aria-expanded says that). */
+export const RIDE_ACTION_SPOKEN = "Adjust";
+
+/** The Ride settings line's label, over its summary. */
+export const RIDE_SETTINGS_LABEL = "Ride settings";
 
 export const COPY_LINK = "Copy link";
 export const COPY_LINK_DONE = "Link copied.";

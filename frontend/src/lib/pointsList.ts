@@ -27,36 +27,47 @@ export interface PointsListProps {
   onChange?(index: number): void;
   /** Which rows have Change (the start, and the destination of a plan that is not a loop). */
   changeable?(index: number): boolean;
+  /**
+   * The point being changed and its search box, shown in that point's row in place of its place and buttons
+   * (edit-route redesign, Stephen 2026-10-18: the box had opened above the list, away from the point).
+   */
+  editor?: { index: number; node: ReactElement } | null;
 }
 
-export function PointsList({ rows, warnings, onRemove, removeRef, onChange, changeable }: PointsListProps): ReactElement {
+export function PointsList({ rows, warnings, onRemove, removeRef, onChange, changeable, editor }: PointsListProps): ReactElement {
   return h(
     "ol",
     { className: "points" },
     rows.map(({ role, place, coords }, index) => {
       const federal = warnings?.[index] ?? null;
+      if (editor && editor.index === index) {
+        return h("li", { key: index, className: "point-editing" }, h("span", { className: "point-name" }, role), editor.node);
+      }
+      const shown = place
+        ? h(
+            "span",
+            { className: "point-place", title: `${place.label} (${coords})` },
+            h("span", { className: "place-name" }, place.name),
+            h("span", { className: "coords" }, coords),
+          )
+        : h("span", { className: "coords" }, coords);
+      // The start and the destination: the place itself is the Change button (edit-route redesign), named
+      // "Change Start: <place>" so its shown words are in its name.
+      const change = onChange && changeable?.(index);
       return h(
         "li",
         { key: index, className: federal ? "point-on-federal" : undefined },
         h("span", { className: "point-name" }, role),
-        place
+        change
           ? h(
-              "span",
-              { className: "point-place", title: `${place.label} (${coords})` },
-              h("span", { className: "place-name" }, place.name),
-              h("span", { className: "coords" }, coords),
+              "button",
+              { type: "button", className: "point-change", onClick: () => onChange(index), "aria-label": `Change ${role}: ${place ? place.name : coords}` },
+              shown,
             )
-          : h("span", { className: "coords" }, coords),
+          : shown,
         // On its own line, after the place and before Remove, so it is read with the point it is about
         // (item 239: a stop on federal land, in the stop list as well as the map and the description).
         federal ? h("span", { className: "point-federal" }, federal) : null,
-        onChange && changeable?.(index)
-          ? h(
-              "button",
-              { type: "button", className: "link point-change", onClick: () => onChange(index), "aria-label": `Change ${role}` },
-              "Change",
-            )
-          : null,
         h(
           "button",
           {
