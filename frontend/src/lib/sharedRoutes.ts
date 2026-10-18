@@ -39,6 +39,8 @@ export const SHARED_PARAM = "route";
 /** The most a shared route may be (core.shared_routes.MAX_BYTES). */
 export const SHARED_MAX_BYTES = 2 * 1024 * 1024;
 const ID_RE = /^[0-9a-f]{32}$/;
+/** How long Share and Copy link wait for the server to keep a line before saying it was not kept. */
+export const SHARED_STORE_TIMEOUT_MS = 8000;
 /** How long the page waits for a shared line before planning the link's inputs instead. */
 export const SHARED_READ_TIMEOUT_MS = 8000;
 
@@ -49,6 +51,28 @@ export const SHARED_OPENED = (name: string) => `Opened "${name}", as it was shar
 export const SHARED_REVOKED = "This link was turned off by its owner.";
 /** How the page shows it: as a plan's error, in the route's place (never sent again). */
 export const SHARED_REVOKED_ERROR: RouteError = { kind: "no-route", status: 410, title: "Link turned off", message: SHARED_REVOKED, noAutoResend: true };
+/**
+ * A link shared as a ride, not only a route (the owner, 2026-10-18: "There should be the option for sharing the route
+ * or sharing a ride ... ride is the fixed one with optional location sharing ... route is so people can review or do
+ * it themselves separately"): its fragment carries `ride=1` beside the line's id. Opened, the route is ridden as it
+ * is, never re-planned on its own, and those on it can choose to show where they are (RideGroup).
+ */
+export const RIDE_PARAM = "ride";
+/** What each Share button does, said by the info beside them (the owner: "Make that clear in a tooltip"). */
+export const SHARE_ROUTE_ABOUT = "Share route: others can look it over, change it or ride it on their own.";
+export const SHARE_RIDE_WAIT = "Share ride needs the route ready. Try again once it shows.";
+export const SHARE_RIDE_ABOUT = "Share ride: everyone rides this exact route, never re-routed, and each can choose to show where they are.";
+
+/** The link, shared as a ride. */
+export function asRideLink(link: string): string {
+  return `${link}${link.includes("#") ? "&" : "#"}${RIDE_PARAM}=1`;
+}
+
+/** Whether the page was opened from a link shared as a ride (its fragment, or its query sent on from `/s/<id>`). */
+export function rideLinkFrom(hash: string, search = ""): boolean {
+  return [hash.replace(/^#/, ""), search.replace(/^\?/, "")].some((part) => new URLSearchParams(part).get(RIDE_PARAM) === "1");
+}
+
 /** The path a shared link's preview is fetched at (core.share_preview). */
 export const SHARED_PATH = "/s/";
 
@@ -181,17 +205,22 @@ export function sharedBody(id: string, save: SaveBody, keep: ShareKeep = SHARE_K
 type Fetch = typeof fetch;
 
 /** Send the line; true once it is kept. */
-export async function storeShared(origin: string, json: string, post: Fetch = fetch): Promise<boolean> {
+export async function storeShared(origin: string, json: string, post: Fetch = fetch, timeoutMs = SHARED_STORE_TIMEOUT_MS): Promise<boolean> {
+  const abort = typeof AbortController === "undefined" ? null : new AbortController();
+  const timer = abort ? setTimeout(() => abort.abort(), timeoutMs) : null;
   try {
     const response = await post(`${origin}/api/shared-routes`, {
       method: "POST",
       credentials: "same-origin",
       headers: { Accept: "application/json", "Content-Type": "application/json" },
       body: json,
+      signal: abort?.signal,
     });
     return response.status === 201;
   } catch {
     return false;
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 }
 

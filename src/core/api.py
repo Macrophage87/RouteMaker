@@ -57,11 +57,13 @@ A malformed JSON body is counted, because only a script can send one.
 from __future__ import annotations
 
 import dataclasses
+import hashlib
 import json
 import logging
+import secrets
 import time
 from collections.abc import Callable
-from concurrent.futures import Future
+from concurrent.futures import Future, ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
 from datetime import datetime, timedelta
 from functools import partial, wraps
@@ -107,7 +109,9 @@ from . import (
     timing,
     transit,
     transit_live,
+    wmata_bus,
     wmata_live,
+    wmata_trains,
 )
 
 logger = logging.getLogger(__name__)
@@ -323,6 +327,18 @@ class RouteIn(Schema):
             'v0.8.2, Ride\'s "Road closed" button: stretches of road the rider found closed on'
             " this ride, each a line of [lon, lat] pairs, left out of the plan as a closure is."
             " Sent with the ride's re-plans only; never remembered by the server."
+        ),
+    )
+    heading: float | None = Field(
+        default=None,
+        ge=0,
+        lt=360,
+        description=(
+            "A ride's re-route: the way the rider is going at the first point, in degrees"
+            " clockwise from north. A route that sets off back the other way (a U-turn) is"
+            " answered only where it is at least half a mile (805 m) shorter than the best one"
+            " that sets off ahead. Absent: either way, as before. Ignored on a followed line,"
+            " a loop, Bikeshare and the transit ride types."
         ),
     )
     loop: StrictBool = Field(
@@ -1591,6 +1607,18 @@ class BikeshareWalkOut(Schema):
     to: str = Field(description="Where it goes: a dock's name, or `your destination`.")
 
 
+class WalkInOut(Schema):
+    """The walks at a route's ends where the ride stops short of the point asked (the
+    owner, 2026-10-17: a memorial a bike is walked through; `routing.walk_in`)."""
+
+    start: BikeshareWalkOut | None = Field(
+        default=None, description="From the start asked to where the ride begins."
+    )
+    end: BikeshareWalkOut | None = Field(
+        default=None, description="From where the ride ends to the end asked."
+    )
+
+
 class BikeshareFeeOut(Schema):
     name: str
     price: str = Field(description="As the operator publishes it, a decimal string.")
@@ -2002,6 +2030,7 @@ class RouteBody(Schema):
     # without a second request and the merged sentences are worded in one place.
     description_overview: list[DescriptionEntryOut] | None = None
     moved_points: list[MovedPointOut] = Field(default_factory=list)
+    walk_in: WalkInOut | None = None
     # The Avoid-rated junctions it passes, in route order (FOLLOWUP-ISECT-AVOID, 307-310),
     # and the notice the panel shows first and announces (335). Additive: empty and null
     # where it passes none, which is nearly always (the list ships empty).
@@ -2150,7 +2179,10 @@ class ClosureThroughOut(RouteBody):
 
 
 class TransitStepLiveOut(Schema):
-    text: str = Field(description='"Live: Red Line toward Shady Grove in 3 min, 11 min."')
+    text: str = Field(
+        description='"Live: Red Line toward Shady Grove in 3 min, 11 min."; "Live: bus 52 in 4 min,'
+        ' 13 min."'
+    )
     minutes: list[int]
     source: Literal["live"] = "live"
 
@@ -2221,7 +2253,10 @@ class TransitStepOut(Schema):
     )
     live: TransitStepLiveOut | None = Field(
         default=None,
-        description="A Metro step's next trains its way now, from WMATA (core.transit_live).",
+        description=(
+            "A Metro step's next trains, or a Metrobus step's next buses, its way now, from"
+            " WMATA (core.transit_live, core.wmata_bus)."
+        ),
     )
 
 
@@ -2501,6 +2536,7 @@ def unexpected(request, exc: Exception):
 GEOCODE_PATHS = ("/api/geocode", "/api/reverse")
 # The road panel's stress editor, whose answers are private and name the form field.
 STRESS_EDIT_PATHS = (
+    "/api/keyed",
     "/api/stress-edits",
     "/api/stress-suggestions",
     "/api/junction-suggestions",
@@ -3306,8 +3342,11 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
     # WMATA's live reading (core.wmata_live), if any: an elevator out on the way costs the trip
     # a little in the ranking, and the block says the live values (core.transit_live).
     live = wmata_live.client.snapshot()
-    found = transit_live.rank(found, live)
+    found = transit_live.rank(transit_live.skip_closed(found, live), live)
     found = transit.choose(found, body.transit_option)
+    # The chosen trip's Metrobus steps' next buses (core.wmata_bus, v0.9.0), asked now, beside
+    # the routing, so the answer waits for them little if at all.
+    bus_ask = _ask_buses(found)
     # The trip's other walks and rides are routed for the map in what is left of the budget.
     draw = transit.RoutingServices(
         min(
@@ -3324,7 +3363,8 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
         # The later rides routed for their stress colours (`lines`) are drawn as routed; the
         # trip's other walks and rides are routed for the map (transit.drawn).
         lines = lines or {}
-        block = _transit_block(transit.drawn(plan, draw, skip=lines), schedule, live)
+        buses = _buses_for(plan, bus_ask)
+        block = _transit_block(transit.drawn(plan, draw, skip=lines), schedule, live, buses)
         answer["transit"] = _with_leg_lines(block, lines)
         return answer
 
@@ -3516,9 +3556,35 @@ def _with_leg_lines(block: dict, lines: dict[int, dict]) -> dict:
     return block
 
 
-def _transit_block(plan: transit.Plan, schedule, live) -> dict:
+def _transit_block(plan: transit.Plan, schedule, live, buses=None) -> dict:
     """The answer's `transit` block, with WMATA's live values where there are any."""
-    return transit_live.annotate(transit.block(plan, schedule), plan, live)
+    return transit_live.annotate(transit.block(plan, schedule), plan, live, buses)
+
+
+# Two threads for the plans' bus questions (core.wmata_bus.lives, which asks its stops at once).
+_BUS_POOL = ThreadPoolExecutor(max_workers=2, thread_name_prefix="wmata-bus")
+
+
+def _ask_buses(plan: transit.Plan) -> tuple[str, Future] | None:
+    """The chosen trip's live bus lines, asked in the background; None with nothing to ask."""
+    legs = transit_live.bus_legs(plan)
+    if not legs or not wmata_live.configured():
+        return None
+    return plan.option.key, _BUS_POOL.submit(wmata_bus.client.lives, legs)
+
+
+def _buses_for(plan: transit.Plan, asked) -> wmata_bus.StepLives | None:
+    """The live bus lines for the trip answered: the ones asked, if it is still the trip asked
+    about (else asked again), within `wmata_bus.PLAN_BUDGET_S`."""
+    if asked is not None and asked[0] == plan.option.key:
+        try:
+            return asked[1].result(timeout=wmata_bus.PLAN_BUDGET_S)
+        except Exception:  # noqa: BLE001 - a bus line is never worth a plan
+            return None
+    legs = transit_live.bus_legs(plan)
+    if not legs or not wmata_live.configured():
+        return None
+    return wmata_bus.client.lives(legs)
 
 
 def _transit_refusal(message: str, code: str, status: int):
@@ -3558,9 +3624,21 @@ class ClosedStationOut(Schema):
     reason: str = Field(description='"no MARC weekend service"')
 
 
+class StationAlertOut(Schema):
+    name: str
+    lon: float
+    lat: float
+    alert: bool = Field(description="A WMATA incident names this station.")
+    elevator_out: bool = Field(description="WMATA lists an elevator out here.")
+
+
 class ClosuresOut(Schema):
     service_day: str = Field(description="The GTFS service day (before 3 am, the day before).")
     stations: list[ClosedStationOut]
+    alerts: list[StationAlertOut] = Field(
+        default_factory=list,
+        description="Asked for now only: open Metro stations with a WMATA alert or elevator out.",
+    )
 
 
 @api.get(
@@ -3582,20 +3660,71 @@ def transit_closures(request, params: Query[ClosuresIn], response: HttpResponse)
             "Transit times are not available on this server right now.", "transit_unavailable", 503
         )
     moment = transit.moment_of(when)
-    response["Cache-Control"] = "public, max-age=300"
+    stations = [
+        {
+            "name": c.stop.name,
+            "system": c.system.name,
+            "lon": c.stop.point[0],
+            "lat": c.stop.point[1],
+            "reason": c.reason,
+        }
+        for c in transit.closed_stations(schedule, moment)
+    ]
+    # Asked for now (no `at`): the Metro stations WMATA's incidents say are closed (the owner,
+    # 2026-10-18), struck through on the map as a timetable closure is. Short-lived, so cached
+    # for a minute, not five.
+    live = wmata_live.client.snapshot() if params.at is None else None
+    named = {s["name"] for s in stations}
+    seen: set[str] = set()
+    for code in live.closed() if live is not None else {}:
+        station = live.stations.get(code)
+        if station is None or station.name in named or station.name in seen:
+            continue
+        seen.add(station.name)
+        stations.append(
+            {
+                "name": station.name,
+                "system": transit_live.METRO,
+                "lon": station.lon,
+                "lat": station.lat,
+                "reason": "WMATA service alert",
+            }
+        )
+    response["Cache-Control"] = f"public, max-age={60 if live is not None else 300}"
     return {
         "service_day": moment.service_day.isoformat(),
-        "stations": [
-            {
-                "name": c.stop.name,
-                "system": c.system.name,
-                "lon": c.stop.point[0],
-                "lat": c.stop.point[1],
-                "reason": c.reason,
-            }
-            for c in transit.closed_stations(schedule, moment)
-        ],
+        "stations": stations,
+        "alerts": _station_alerts(live, {s["name"] for s in stations}),
     }
+
+
+def _station_alerts(live, closed_names: set[str]) -> list[dict]:
+    """The Metro stations a WMATA incident names, and those with an elevator out, for their
+    small badges on the map (the owner, 2026-10-18: "Put a little notice marker on all the
+    stations that have alerts", "For elevator out, use an X'd out elevator icon"). A closed
+    station is struck through instead; a line-wide incident badges no station."""
+    if live is None:
+        return []
+    named = live.named()
+    lifts = live.elevator_out_codes()
+    out: dict[str, dict] = {}
+    for code in sorted(named | lifts):
+        station = live.stations.get(code)
+        if station is None or station.name in closed_names:
+            continue
+        item = out.setdefault(
+            station.name,
+            {
+                "name": station.name,
+                "lon": station.lon,
+                "lat": station.lat,
+                "alert": False,
+                "elevator_out": False,
+            },
+        )
+        item["alert"] = item["alert"] or code in named
+        item["elevator_out"] = item["elevator_out"] or code in lifts
+    return list(out.values())
 
 
 # --- A station's times, for its card (the owner, 2026-10-12) -------------------------------
@@ -3710,6 +3839,71 @@ def transit_station_times(request, params: Query[StationTimesIn], response: Http
     }
 
 
+class NextVehicleIn(Schema):
+    system: Literal["Metro", "Metrobus"] = Field(description="The step's system.")
+    line: str = Field(
+        min_length=1, max_length=40, description='The step\'s line: "Red Line"; a route: "52".'
+    )
+    lon: float = Field(ge=-180, le=180, description="The boarding station or stop's point.")
+    lat: float = Field(ge=-90, le=90)
+    to_lon: float = Field(ge=-180, le=180, description="The step's last stop: its way.")
+    to_lat: float = Field(ge=-90, le=90)
+
+
+class NextVehicleOut(Schema):
+    kind: Literal["train", "bus"]
+    text: str = Field(
+        description=(
+            '"Next Red Line train is at Dupont Circle, 2 stations away."; "Bus 52 is 0.8 mi'
+            ' away (1.3 km), 3 stops back."'
+        )
+    )
+    label: str = Field(description="The map mark's name, for a screen reader.")
+    point: list[float] = Field(description="[lon, lat] for the map's mark.")
+    away: int | None = Field(
+        description="Stations (or stops) before the rider's, for saying it again on a change."
+    )
+    credit: str = Field(description='"Data: WMATA".')
+    source: Literal["live"] = "live"
+    as_of: str = Field(description="When WMATA was read, local ISO time.")
+
+
+class NextVehicleAnswer(Schema):
+    vehicle: NextVehicleOut | None = Field(
+        description="Where the next one the step's way is; null with no reading or none coming."
+    )
+
+
+@api.get(
+    "/transit/next-vehicle",
+    response={200: NextVehicleAnswer, 400: ErrorOut, 429: ErrorOut, 500: ErrorOut},
+    summary="Where the next Metro train or Metrobus is, for a rider waiting to board it",
+)
+@decorate_view(ratelimit.rate_limited(ratelimit.NEXT_VEHICLE), errors_as_json)
+def transit_next_vehicle(request, params: Query[NextVehicleIn], response: HttpResponse):
+    """Asked about every 25 s by the page while its rider waits at a boarding (Ride mode, at the
+    end of the ride to it), and never otherwise. With no WMATA key, WMATA not answering, or
+    nothing matched, `vehicle` is null and the page shows nothing (core.wmata_trains,
+    core.wmata_bus)."""
+    board, alight = (params.lon, params.lat), (params.to_lon, params.to_lat)
+    response["Cache-Control"] = "private, max-age=15"
+    if not wmata_live.configured():
+        return {"vehicle": None}
+    if params.system == "Metro":
+        found = transit_live.train_where(
+            wmata_live.client.snapshot(), board, alight, params.line, wmata_trains.client.snapshot()
+        )
+        return {"vehicle": transit_live.vehicle_out("train", found)}
+    try:
+        today = timezone.now().astimezone(ridetime.ZONE).date()
+        schedule = transit.load(settings.TRANSIT_SCHEDULE_PATH, today)
+    except transit.Unavailable:
+        schedule = None
+    back = transit_live.bus_stops_back(schedule, params.line, board, alight)
+    found = wmata_bus.client.where(params.line, board, alight, back)
+    return {"vehicle": transit_live.vehicle_out("bus", found)}
+
+
 def _line_time(t: transit.LineTime, service_day) -> dict:
     # After midnight, a way's next train may be the new day's first: its own service day.
     service_day = t.service_day or service_day
@@ -3819,6 +4013,7 @@ def _bike_dials(body: RouteIn) -> routing.Dials:
         vias=tuple(body.via_points),
         follow=_follow_line(body),
         follow_exact=body.follow_exact,
+        heading=body.heading,
     )
 
 
@@ -3858,7 +4053,7 @@ def _planned(body: RouteIn, dials, started: float | None, long_ride: bool, long_
         timings.note("cache", "miss" if key is not None else "off")
     failures_before = timings.failures if timings is not None else 0
     try:
-        answered = routing.plan(
+        answered = routing.plan_onward(
             body.points,
             body.preset,
             long_ride=long_ride,
@@ -3876,7 +4071,7 @@ def _planned(body: RouteIn, dials, started: float | None, long_ride: bool, long_
             "a followed line matched no way on %s; planning through its points", body.preset
         )
         dials = dataclasses.replace(dials, follow=None)
-        answered = routing.plan(
+        answered = routing.plan_onward(
             body.points,
             body.preset,
             long_ride=long_ride,
@@ -5107,6 +5302,11 @@ def saved_routes_list(request):
     errors_as_json,
 )
 def saved_routes_add(request):
+    return _add_saved_route(request)
+
+
+def _add_saved_route(request, versions: bool = True):
+    """POST /api/me/routes, and /api/keyed/routes with `versions` False (a key only adds)."""
     from django.db import transaction
 
     from . import accounts
@@ -5136,9 +5336,11 @@ def saved_routes_add(request):
     problem = accounts.inputs_problem(inputs)
     if problem:
         return _stress_error(400, problem, field="inputs")
+    # An opened file keeps the route shown for it too (v0.9.0, "share the exact route"), so it
+    # reopens as that line, followed by the rules or exactly (`follows_exactly`).
     answer = body.get("answer")
-    if answer is not None and (source != SavedRoute.Source.PLAN or not isinstance(answer, dict)):
-        return _stress_error(400, "Only a planned route keeps its answer.", field="answer")
+    if answer is not None and not isinstance(answer, dict):
+        return _stress_error(400, "Send the route's answer as an object.", field="answer")
     if answer is not None:
         answer, problem = _clean_answer(answer)
         if problem:
@@ -5147,6 +5349,8 @@ def saved_routes_add(request):
     if not isinstance(gpx, str) or (gpx and source != SavedRoute.Source.GPX):
         return _stress_error(400, "Only an opened GPX file keeps its text.", field="gpx")
     version_of = body.get("version_of")
+    if version_of is not None and not versions:
+        return _stress_error(400, "An AI assistant key only adds routes.", field="version_of")
     if version_of is not None:
         # Saved again: a new latest version of that route, not another route (so not counted
         # toward the account's cap).
@@ -5185,6 +5389,125 @@ def saved_routes_add(request):
 
     saved_route_alerts.check(row)
     return _private(JsonResponse(_route_summary(row), status=201))
+
+
+# The AI assistant key (core.models.AssistantKey; the owner, 2026-10-18): Settings makes,
+# shows once and removes the account's one key, and an assistant's MCP server (mcp/) sends it in
+# X-RouteMaker-Key to POST /api/keyed/routes, which adds a route to the account's My routes and does
+# nothing else. The key never signs in: the endpoint reads no session, and the session endpoints
+# read no key.
+ASSISTANT_KEY_PREFIX = "rmk_"
+ASSISTANT_KEY_HEADER = "HTTP_X_ROUTEMAKER_KEY"
+ASSISTANT_KEY_REFUSED = "That AI assistant key is not valid. Make a new one in Settings."
+
+
+def _key_digest(key: str) -> str:
+    return hashlib.sha256(key.encode()).hexdigest()
+
+
+def _assistant_key_out(row) -> dict:
+    return {
+        "key": None
+        if row is None
+        else {
+            "hint": row.hint,
+            "created_at": row.created_at.isoformat(),
+            "last_used_at": row.last_used_at.isoformat() if row.last_used_at else None,
+        }
+    }
+
+
+@api.get("/me/assistant-key", summary="The signed-in rider's AI assistant key, without the key")
+@decorate_view(
+    signed_in_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.ME),
+    errors_as_json,
+)
+def assistant_key_read(request):
+    from .models import AssistantKey
+
+    return _private(
+        JsonResponse(_assistant_key_out(AssistantKey.objects.filter(user=request.user).first()))
+    )
+
+
+@api.post("/me/assistant-key", summary="Make the rider's AI assistant key, replacing any other")
+@decorate_view(
+    ratelimit.user_rate_limited(ratelimit.ACCOUNT_WRITES),
+    csrf_protected,
+    signed_in_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+def assistant_key_make(request):
+    from django.db import transaction
+
+    from .models import AssistantKey, User
+
+    key = ASSISTANT_KEY_PREFIX + secrets.token_urlsafe(32)
+    with transaction.atomic():
+        # Taken in turn per account, so two presses at once leave one key, not an error.
+        User.objects.select_for_update().filter(pk=request.user.pk).first()
+        AssistantKey.objects.filter(user=request.user).delete()
+        row = AssistantKey.objects.create(user=request.user, digest=_key_digest(key), hint=key[-4:])
+    body = _assistant_key_out(row)
+    # The key itself, this once: only its digest is kept.
+    body["secret"] = key
+    return _private(JsonResponse(body, status=201))
+
+
+@api.post("/me/assistant-key/delete", summary="Remove the rider's AI assistant key")
+@decorate_view(
+    ratelimit.user_rate_limited(ratelimit.ACCOUNT_WRITES),
+    csrf_protected,
+    signed_in_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+def assistant_key_delete(request):
+    from .models import AssistantKey
+
+    AssistantKey.objects.filter(user=request.user).delete()
+    return _private(JsonResponse(_assistant_key_out(None)))
+
+
+def keyed_account(view):
+    """The account the AI assistant key in `X-RouteMaker-Key` names, as `request.user`, or 401.
+    Its own header, not `Authorization`, which the beta's password gate already uses. Whatever
+    session cookie came with the request is set aside: only the key counts."""
+
+    @wraps(view)
+    def wrapped(request, *args, **kwargs):
+        from .models import AssistantKey
+
+        key = request.META.get(ASSISTANT_KEY_HEADER, "").strip()
+        row = None
+        if key.startswith(ASSISTANT_KEY_PREFIX) and len(key) < 100:
+            row = (
+                AssistantKey.objects.select_related("user").filter(digest=_key_digest(key)).first()
+            )
+        if row is None or not getattr(row.user, "is_active", False):
+            return _stress_error(401, ASSISTANT_KEY_REFUSED, code="bad_key")
+        AssistantKey.objects.filter(pk=row.pk).update(last_used_at=timezone.now())
+        request.user = row.user
+        return view(request, *args, **kwargs)
+
+    return wrapped
+
+
+@api.post("/keyed/routes", summary="Add a route to My routes with an AI assistant key")
+# Run from the bottom up, as above: the address's own limit, the key, then the account's writes.
+@decorate_view(
+    ratelimit.user_rate_limited(ratelimit.ACCOUNT_WRITES),
+    keyed_account,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+def keyed_routes_add(request):
+    return _add_saved_route(request, versions=False)
 
 
 # Saved-route versions (core.models.SavedRouteVersion): a save naming `version_of` replaces that
@@ -7379,6 +7702,7 @@ REVIEW_QUEUES = Literal[
     "works_closure",
     "rematch",
     "painted_lane",
+    "dc_no_bike",
 ]
 
 

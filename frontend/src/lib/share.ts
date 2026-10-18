@@ -10,8 +10,10 @@
 import { formatDistance } from "./format.ts";
 
 /** The button's visible word and its accessible name (the name holds the word: WCAG 2.5.3). */
-export const SHARE_LABEL = "Share";
+export const SHARE_LABEL = "Share route";
 export const SHARE_NAME = "Share route";
+/** Share ride (lib/sharedRoutes.ts RIDE_PARAM): the same link, ridden fixed, with location sharing offered. */
+export const SHARE_RIDE_LABEL = "Share ride";
 export const SHARE_TITLE = "RouteMaker route";
 export const SHARE_FAILED = "Could not open the share sheet. Use Copy link instead.";
 

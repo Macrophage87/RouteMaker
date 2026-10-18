@@ -89,6 +89,7 @@ from pipeline.variants import Variant
 from routemaker import avoid_junctions as avoid_rules
 from routemaker import (
     calm,
+    circleparks,
     climbs,
     describe,
     flow,
@@ -103,7 +104,7 @@ from routemaker import (
 from routemaker import detour as detour_rules
 from routemaker import profile as profile_rules
 from routemaker.facility import FACILITIES
-from routemaker.geo import Point, haversine
+from routemaker.geo import Point, bearing, bearing_delta, haversine
 from routemaker.massflow import band_of
 from routemaker.measure import elevation_gain
 
@@ -415,6 +416,10 @@ class Piece:
     # prices each road by (docs/stress/stress-number.md section 4); None from a trace that
     # has none.
     road: calm.Road | None = field(default=None, compare=False)
+    # Where the piece's edge begins at a fork the route leaves the straight-ahead way
+    # by (`describe.fork_movement`): the movement to say there; None elsewhere, and on
+    # every piece of an edge but its first.
+    fork: str | None = field(default=None, compare=False)
 
 
 def _heading(value) -> float | None:
@@ -426,6 +431,8 @@ def pieces_of_trace(trace: dict) -> list[Piece]:
     shape = decode_polyline6(trace.get("shape", ""))
     to_metres = 1609.344 if trace.get("units") == "miles" else 1000.0
     pieces: list[Piece] = []
+    # The last edge kept: the node a fork is read at is where it ends.
+    before: dict | None = None
     for edge in trace.get("edges", []):
         length = float(edge.get("length") or 0.0) * to_metres
         begin, end = edge.get("begin_shape_index"), edge.get("end_shape_index")
@@ -445,6 +452,8 @@ def pieces_of_trace(trace: dict) -> list[Piece]:
             "heading_out": _heading(edge.get("end_heading")),
             "road": calm.road_of_edge(edge, miles=trace.get("units") == "miles"),
         }
+        fork = _fork_of(before, edge)
+        before = edge
         stretches = []
         for a, b in zip(shape[begin:end], shape[begin + 1 : end + 1], strict=True):
             stretches.append((a, b, haversine(Point(*a), Point(*b))))
@@ -452,14 +461,36 @@ def pieces_of_trace(trace: dict) -> list[Piece]:
         if ground <= 0:
             # A degenerate edge: all its length on its first vertex.
             (lon, lat) = shape[begin]
-            pieces.append(Piece(way_id, lon, lat, length, **info))
+            pieces.append(Piece(way_id, lon, lat, length, **info, fork=fork))
             continue
         for a, b, d in stretches:
             if d > 0:
                 pieces.append(
-                    Piece(way_id, (a[0] + b[0]) / 2, (a[1] + b[1]) / 2, length * d / ground, **info)
+                    Piece(
+                        way_id,
+                        (a[0] + b[0]) / 2,
+                        (a[1] + b[1]) / 2,
+                        length * d / ground,
+                        **info,
+                        fork=fork,
+                    )
                 )
+                fork = None
     return pieces
+
+
+def _fork_of(before: dict | None, edge: dict) -> str | None:
+    """`describe.fork_movement` at the node between two traced edges: the other
+    ways there are the first edge's `end_node.intersecting_edges`."""
+    if before is None:
+        return None
+    others = [
+        (_heading(other.get("begin_heading")), other.get("use"), other.get("cyclability"))
+        for other in (before.get("end_node") or {}).get("intersecting_edges") or []
+    ]
+    return describe.fork_movement(
+        _heading(before.get("end_heading")), _heading(edge.get("begin_heading")), others
+    )
 
 
 # One row per piece, in the pieces' order: the tier and facility class of the
@@ -923,6 +954,10 @@ class Dials:
     # "Make it a loop" (OWNER-DECISIONS 266): return to the start by a different way.
     # A ride whose last point is its first is a loop whatever this says.
     loop: bool = False
+    # A ride's re-route: the way the rider is going at the first point (degrees clockwise from
+    # north), so the route sets off that way rather than turning round (`plan_onward`); None:
+    # either way.
+    heading: float | None = None
 
 
 def _same_pace(options: dict, request: dict) -> dict:
@@ -2250,6 +2285,7 @@ def describe_route(
                             pieces[i].heading_out,
                             getattr(classes[i], "unpaved", None),
                             bool(pieces[i].road and pieces[i].road.roundabout),
+                            pieces[i].fork,
                         )
                         for i in range(run[0], run[1])
                     ]
@@ -2656,6 +2692,122 @@ def move_zoo_points(points: list[list[float]]) -> tuple[list[list[float]], list[
     return out, moved
 
 
+# A stop the bike cannot be ridden to the door of (the owner, 2026-10-17: "There are some
+# cases where people could mark stops on a bike trip that should have a dismount like the
+# MLK or FDR memorial. In those cases, we should let them route there, but switch to walk
+# mode. You're almost always able to portage your bike."): where the ride ends farther than
+# WALK_IN_MIN_M from the point the rider put, the walk from the ride's end to it, on foot,
+# is answered beside the route (`walk_in`), up to WALK_IN_MAX_M. Below the minimum the
+# rider is there; past the maximum the walk is not the last few steps, and is not offered.
+# 60 m (about 200 ft): a geocoded address or a map tap often sits 25-60 m off the street,
+# and that is not a walk.
+WALK_IN_MIN_M = 60.0
+WALK_IN_MAX_M = 800.0
+WALK_IN_SPEED_KMH = 4.8  # bikeshare.WALK_SPEED_KMH: walking beside a bike
+# The least of the budget a walk-in may start with; it is a few hundred metres on foot.
+WALK_IN_MIN_LEFT_S = 1.0
+# The most one walk-in call may take, so a slow one leaves the candidates their time.
+WALK_IN_CALL_S = 2.0
+
+
+def walk_leg(a: list[float], b: list[float], deadline: Deadline) -> dict | None:
+    """The walk from `a` to `b` on the standard graph's pedestrian costing, as the answer
+    carries it, or None where there is none on foot, it is too long, or no time is left."""
+    if deadline.at - clock() < WALK_IN_MIN_LEFT_S:
+        return None
+    payload = {
+        "locations": [{"lon": p[0], "lat": p[1], "type": "break"} for p in (a, b)],
+        "costing": "pedestrian",
+        "costing_options": {"pedestrian": {"walking_speed": WALK_IN_SPEED_KMH}},
+        "directions_type": "none",
+        "units": "kilometers",
+    }
+    try:
+        answer = _call(
+            Variant.STANDARD.value,
+            "route",
+            payload,
+            Deadline(deadline.at, min(deadline.per_call_s, WALK_IN_CALL_S)),
+        )
+    except RouterRefused as refusal:
+        if refusal.code not in NO_PATH_CODES | NO_EDGE_CODES:
+            logger.warning("a walk-in was refused: %s", refusal)
+        return None
+    except (DeadlineExceeded, RouterUnavailable):
+        return None
+    legs = (answer.get("trip") or {}).get("legs") or []
+    if not legs:
+        return None
+    metres = float((legs[0].get("summary") or {}).get("length", 0.0)) * 1000.0
+    if metres > WALK_IN_MAX_M:
+        return None
+    shape = decode_polyline6(legs[0].get("shape", ""))
+    return {
+        "geometry": {
+            "type": "LineString",
+            "coordinates": [[round(lon, 6), round(lat, 6)] for lon, lat in shape],
+        },
+        "distance_m": round(metres, 1),
+        "duration_s": round(float((legs[0].get("summary") or {}).get("time", 0.0)), 1),
+    }
+
+
+def walk_in(
+    asked_start: list[float] | None,
+    asked_end: list[float] | None,
+    line: list,
+    deadline: Deadline,
+) -> dict | None:
+    """The walks at either end of a route whose ride stops short of the point asked
+    (`WALK_IN_MIN_M`): from the start asked to where the ride begins, and from where it
+    ends to the end asked. None where neither end needs one. A point the planner moved
+    (the Zoo's racks) is passed as None: the route goes where it was moved to."""
+    if len(line) < 2:
+        return None
+    found: dict[str, dict | None] = {"start": None, "end": None}
+    for key, asked, ride_end, a_to_b in (
+        ("start", asked_start, line[0], False),
+        ("end", asked_end, line[-1], True),
+    ):
+        if asked is None:
+            continue
+        gap = haversine(Point(*asked[:2]), Point(*ride_end[:2]))
+        if gap < WALK_IN_MIN_M:
+            continue
+        a, b = (list(ride_end), list(asked)) if a_to_b else (list(asked), list(ride_end))
+        leg = walk_leg(a, b, deadline)
+        if leg is not None:
+            found[key] = {**leg, "to": "your destination" if a_to_b else "the route"}
+    return found if any(found.values()) else None
+
+
+def walk_in_for(offered: dict, answer: dict) -> dict | None:
+    """The answer's walk-in on a route offered beside it (a candidate, the way round an
+    Avoid-rated junction) whose ride starts and ends where the answer's does, so the
+    walk stays when the rider picks it; None where an end differs (no second walk is
+    asked for: the answer's own budget is spent on the candidates)."""
+    walk = answer.get("walk_in")
+    line, own = offered["geometry"]["coordinates"], answer["geometry"]["coordinates"]
+    if not walk or len(line) < 2 or len(own) < 2:
+        return None
+    for i in (0, -1):
+        if haversine(Point(*line[i][:2]), Point(*own[i][:2])) >= WALK_IN_MIN_M:
+            return None
+    return walk
+
+
+def circle_park_filter(lon: float, lat: float) -> dict:
+    """A trip point inside one of DC's circle parks is never matched to a tunnel
+    (`routemaker.circleparks`, owner 2026-10-17): Dupont, Scott and Thomas Circles
+    each sit over a road underpass, so a point in the middle of one can lie nearer
+    the tunnel below it than the walkways it stands on, and the route would end in
+    the underpass instead of in the park. Valhalla's `search_filter` keeps it to
+    the ways at street level."""
+    if circleparks.contains((lon, lat)):
+        return {"search_filter": {"exclude_tunnel": True}}
+    return {}
+
+
 @_own_context
 def plan(
     points: list[list[float]],
@@ -2681,7 +2833,9 @@ def plan(
         started = clock()
     timing.restart()
     dials = dials or Dials()
+    asked_points = [list(p) for p in points]
     points, moved_points = move_zoo_points(points)
+    moved_indices = {m["index"] for m in moved_points}
     preset = presets.PRESETS[preset_name]
     stress_dial = (
         presets.stress_start(preset_name, dials.carrying) if dials.stress is None else dials.stress
@@ -2781,6 +2935,7 @@ def plan(
                 "lat": lat,
                 "type": location_type(index, len(points), dials.vias),
                 "radius": STOP_RADIUS_M,
+                **circle_park_filter(lon, lat),
             }
             for index, (lon, lat) in enumerate(points)
         ],
@@ -2793,6 +2948,11 @@ def plan(
         "directions_type": "maneuvers",
         "units": "kilometers",
     }
+    if dials.heading is not None and not following and not loop:
+        # Only the ways that set off within HEADING_TOLERANCE_DEG of the rider's heading.
+        request["locations"][0].update(
+            heading=round(dials.heading) % 360, heading_tolerance=HEADING_TOLERANCE_DEG
+        )
     # Live work zones (FOLLOWUP-WORKZONES, 341-349), in force at the ride time: a closure
     # to bicycles is left out of every request this plan makes (the derived requests
     # copy this one), and the zones a rider may pass are weighed once the router has
@@ -3092,6 +3252,11 @@ def plan(
         trip, loop_info = refine.make_loop(trip, refine_context)
         if loop_info["fallback"] is None and loop_info["overlap_pct"] is not None:
             refine_context.loop_overlap = loop_info["overlap_pct"] / 100.0
+    if len(trip.get("legs") or []) > 1 and not quick and not following:
+        # A slight price on riding a way twice (the owner, 2026-10-18): each later leg that
+        # repeats an earlier one's ways is asked for again (`refine.fewer_repeats`).
+        trip, repeat_info = refine.fewer_repeats(trip, refine_context)
+        logger.info("fewer repeats: %s", repeat_info)
     refined = None
     if refine_limited is None:
         if past and fit is None:
@@ -3592,6 +3757,13 @@ def plan(
         }
 
     answered = _answer(trip, refined, dodges_of=dodges)
+    end_index = 0 if loop else len(asked_points) - 1
+    answered["walk_in"] = walk_in(
+        None if 0 in moved_indices else asked_points[0],
+        None if end_index in moved_indices else asked_points[end_index],
+        answered["geometry"]["coordinates"],
+        deadline,
+    )
     _wait_for_delays(delays)
     body = work_zones.with_work_zones(answered, zones_plan)
     body["provisional"] = quick
@@ -3637,6 +3809,7 @@ def plan(
             try:
                 around = work_zones.with_work_zones(_answer(avoid_trip, None, True), zones_plan)
                 _with_mtb(around, _offered_mtb(avoid_trip))
+                around["walk_in"] = walk_in_for(around, body)
                 around["extra_distance_m"] = round(around["distance_m"] - body["distance_m"], 1)
                 around["extra_duration_s"] = round(around["duration_s"] - body["duration_s"], 1)
                 body["avoid_alternate"] = around
@@ -3680,6 +3853,7 @@ def plan(
             refine.analyse(found, refine_context, deadline)
             candidate = work_zones.with_work_zones(_answer(found, None, True), zones_plan)
             _with_mtb(candidate, _offered_mtb(found))
+            candidate["walk_in"] = walk_in_for(candidate, body)
             if maxcalm and target_m:
                 candidate["over_target_m"] = target_fields(
                     _trip_length_m(found), target_m, ceiling
@@ -3691,6 +3865,76 @@ def plan(
     body["rank"] = 1 if candidates else None
     timing.mark("more")
     return body
+
+
+# A re-route's U-turn (the owner, 2026-10-18: "Penalize U turns. Basically you'd have to save
+# about half a mile on that road for it to make sense", "For rerouting"). A route that sets off
+# back the way the rider is going is kept only where it is at least UTURN_SAVING_M shorter than
+# the best one that sets off ahead.
+UTURN_SAVING_M = 1609.344 / 2
+# A start this far from the rider's heading is a U-turn.
+UTURN_MIN_DEG = 120.0
+# How far along the route its setting-off direction is read: past the snap to the road.
+UTURN_READ_M = 25.0
+# Valhalla's `heading_tolerance` for the route that sets off ahead: wide enough for a GPS
+# heading's wobble and a bend, never wide enough to take the way back.
+HEADING_TOLERANCE_DEG = 75
+
+
+def sets_off_back(answer: dict, heading: float) -> bool:
+    """Whether the route in `answer` (`plan`'s body) sets off back the way the rider is heading."""
+    line = [Point(lon, lat) for lon, lat in answer["geometry"]["coordinates"]]
+    if len(line) < 2:
+        return False
+    along = 0.0
+    for a, b in zip(line, line[1:], strict=False):
+        along += haversine(a, b)
+        if along >= UTURN_READ_M:
+            break
+    if along < 1.0:
+        return False
+    return bearing_delta(bearing(line[0], b), heading) >= UTURN_MIN_DEG
+
+
+def plan_onward(
+    points: list[list[float]],
+    preset_name: str,
+    long_ride: bool = False,
+    started: float | None = None,
+    dials: Dials | None = None,
+    quick: bool = False,
+    candidates: bool = True,
+) -> dict:
+    """`plan`, with a re-route's U-turn penalised: where `dials.heading` is given and the route
+    sets off back the other way, the best route that sets off ahead is planned too, and the
+    U-turn kept only where it saves UTURN_SAVING_M. Anything that stops the second plan (no
+    route ahead, no time left) keeps the first: the rider is never left without one."""
+    dials = dials or Dials()
+    heading = dials.heading
+    asked = dict(long_ride=long_ride, started=started, quick=quick, candidates=candidates)
+    answered = plan(points, preset_name, dials=dataclasses.replace(dials, heading=None), **asked)
+    # `plan` sets no heading on a followed line or a loop: a second plan would be the same.
+    if (
+        heading is None
+        or dials.follow is not None
+        or loop_wanted(points, dials.loop, preset_name)
+        or not sets_off_back(answered, heading)
+    ):
+        return answered
+    timings = timing.current()
+    if timings is not None:
+        timings.note("uturn", "replanned")
+    try:
+        ahead = plan(points, preset_name, dials=dials, **asked)
+    except (NoRoute, TooLong, RouterUnavailable, DeadlineExceeded) as error:
+        logger.info("a re-route turns round: no route ahead (%s)", type(error).__name__)
+        return answered
+    saving = float(ahead["distance_m"]) - float(answered["distance_m"])
+    # The router takes the way back where it has no way ahead within its tolerance.
+    if saving >= UTURN_SAVING_M or sets_off_back(ahead, heading):
+        logger.info("a re-route turns round: it saves %.0f m", saving)
+        return answered
+    return ahead
 
 
 def quick_applies(preset_name: str, loop: bool, long_ride: bool, long_calm: bool) -> bool:

@@ -1,11 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import type { ClosedStation } from "./api.ts";
-import { MATCH_M, closedLabel, closedReason, closuresDayOf, matchClosures, requestClosures, serviceDayOf } from "./railClosures.ts";
-import { railFeatures, closedIconId, type Station } from "./railStations.ts";
-import { railImages, railLayers, RAIL_LAYERS } from "./railLayer.ts";
-import { CLOSED_STRIKE, closedStationIcon, hexToRgb } from "./stationIcons.ts";
+import type { ClosedStation, StationAlert } from "./api.ts";
+import { MATCH_M, RAIL_STATUS_MS, closedLabel, closedReason, matchAlerts, matchClosures, requestClosures, withMetroClosed } from "./railClosures.ts";
+import { ALERT_BADGE_ICON, ELEVATOR_OUT_ICON, railFeatures, closedIconId, type Station } from "./railStations.ts";
+import { railHitFrom, railImages, railLayers, RAIL_LAYERS } from "./railLayer.ts";
+import { ALERT_FILL, CLOSED_STRIKE, OUT_STRIKE, alertBadgeIcon, closedStationIcon, elevatorOutIcon, hexToRgb } from "./stationIcons.ts";
 import { metroPlaces } from "./nearest.ts";
 
 const SRC = new URL("../", import.meta.url);
@@ -104,24 +104,14 @@ test("the station's card and the nearest list say 'closed' in words", () => {
   assert.equal(metroPlaces([EASTERN])[0].title, "Eastern Market Metro station");
 });
 
-test("the service day turns over at 3 am in Washington", () => {
-  assert.equal(serviceDayOf(Date.parse("2026-10-17T02:59:00-04:00")), "2026-10-16");
-  assert.equal(serviceDayOf(Date.parse("2026-10-17T03:00:00-04:00")), "2026-10-17");
-  assert.equal(serviceDayOf(Date.parse("2026-12-31T23:30:00-05:00")), "2026-12-31");
-});
-
-test("the closures are asked again at midnight, when a line running on the new date opens, and at 3 am", () => {
-  const sunday = closuresDayOf(Date.parse("2026-10-18T23:59:00-04:00"));
-  const night = closuresDayOf(Date.parse("2026-10-19T00:00:00-04:00"));
-  const monday = closuresDayOf(Date.parse("2026-10-19T03:00:00-04:00"));
-  assert.equal(new Set([sunday, night, monday]).size, 3);
-  assert.equal(night, closuresDayOf(Date.parse("2026-10-19T02:59:00-04:00")));
-});
-
 test("the closures are asked for; a server without timetables, or no answer, greys nothing and is asked again", async () => {
   const body = { service_day: "2026-10-17", stations: [closed("Odenton", "MARC", ODENTON.point, "no MARC weekend service")] };
   const ok = async () => new Response(JSON.stringify(body), { status: 200 });
-  assert.equal((await requestClosures({ fetchImpl: ok })).length, 1);
+  assert.deepEqual(await requestClosures({ fetchImpl: ok }), { stations: body.stations, alerts: [] });
+  const withAlerts = { ...body, alerts: [alertAt(EASTERN.point, true, false), { name: "x" }] };
+  const okAlerts = async () => new Response(JSON.stringify(withAlerts), { status: 200 });
+  // A malformed badge is left out, not the answer.
+  assert.deepEqual((await requestClosures({ fetchImpl: okAlerts }))?.alerts, [alertAt(EASTERN.point, true, false)]);
   const down = async () => new Response(JSON.stringify({ error: "x", code: "transit_unavailable" }), { status: 503 });
   assert.equal(await requestClosures({ fetchImpl: down }), null);
   const broken = async () => new Response(JSON.stringify({ stations: [{ name: 1 }] }), { status: 200 });
@@ -130,6 +120,81 @@ test("the closures are asked for; a server without timetables, or no answer, gre
     throw new Error("offline");
   };
   assert.equal(await requestClosures({ fetchImpl: offline }), null);
-  // App sets the day it has asked for only on an answer, so a failure is retried at the next check.
-  assert.match(src("App.tsx"), /if \(stations === null\) return;\s*day = today;/);
+  // App counts only an answer as asked, so a failure is retried at the next check; asked again every
+  // few minutes while in view (WMATA's closures and badges change within the day) and when back in view.
+  const app = src("App.tsx");
+  assert.match(app, /if \(status === null\) return;\s*askedAt = Date\.now\(\);/);
+  assert.match(app, /document\.visibilityState === "hidden"/);
+  assert.match(app, /addEventListener\("visibilitychange", check\)/);
+  assert.equal(RAIL_STATUS_MS, 5 * 60_000);
+});
+
+// --- WMATA's badges (the owner, 2026-10-18: "Put a little notice marker on all the stations that have
+// alerts", "For elevator out, use an X'd out elevator icon") ---------------------------------------
+
+const alertAt = (point: [number, number], alert: boolean, elevatorOut: boolean): StationAlert => ({
+  name: "x",
+  lon: point[0],
+  lat: point[1],
+  alert,
+  elevator_out: elevatorOut,
+});
+
+test("a badge goes to the nearest Metro station within reach; two for one station are merged", () => {
+  const badges = matchAlerts(STATIONS, [
+    alertAt(EASTERN.point, true, false),
+    alertAt([EASTERN.point[0] + 0.001, EASTERN.point[1]], false, true),
+    // Odenton has no Metro lines; a point nowhere near a station matches nothing.
+    alertAt(ODENTON.point, true, true),
+    alertAt([-77.5, 38.5], true, true),
+  ]);
+  assert.deepEqual([...badges], [["eastern", { alert: true, elevatorOut: true }]]);
+});
+
+test("on the map: the alert up and right, the elevator out up and left; none on a closed or MARC-only station", () => {
+  const badges = (s: Station) => (s.id === "eastern" || s.id === "union" ? { alert: true, elevatorOut: true } : null);
+  const shown = (visibility: { metro: boolean; marc: boolean }, isClosed: (s: Station) => boolean = () => false) =>
+    railFeatures(STATIONS, visibility, isClosed, badges).features.filter((f) => f.properties.kind === "badge").map((f) => f.properties);
+  assert.deepEqual(
+    shown(BOTH).filter((p) => p.id === "eastern"),
+    [
+      { kind: "badge", id: "eastern", name: "Eastern Market", icon: ALERT_BADGE_ICON, offset: [10, -10] },
+      { kind: "badge", id: "eastern", name: "Eastern Market", icon: ELEVATOR_OUT_ICON, offset: [-10, -10] },
+    ],
+  );
+  // Struck through instead.
+  assert.equal(shown(BOTH, (s) => s.id === "eastern").filter((p) => p.id === "eastern").length, 0);
+  // Union Station shown for MARC alone: WMATA's badges are Metro's.
+  assert.equal(shown({ metro: false, marc: true }).length, 0);
+  // Made at load, drawn from street level, and a tap on one opens its station's card (which says it in words).
+  const ids = railImages(STATIONS, "#8a6500", 1).map((image) => image.id);
+  assert.ok(ids.includes(ALERT_BADGE_ICON) && ids.includes(ELEVATOR_OUT_ICON));
+  const layer = railLayers().find((l) => l.id === RAIL_LAYERS.badges) as { layout: Record<string, unknown>; minzoom: number };
+  assert.deepEqual(layer.layout["icon-offset"], ["get", "offset"]);
+  assert.equal(layer.minzoom, 12);
+  assert.deepEqual(railHitFrom([{ properties: { kind: "badge", id: "eastern" } }]), { id: "eastern" });
+  assert.match(src("railInteraction.ts"), /RAIL_LAYERS\.badges/);
+  assert.match(src("MapView.tsx"), /railBadges/);
+});
+
+test("the alert badge is an amber triangle with a dark '!'; the elevator-out badge is struck through in red", () => {
+  const at = (icon: { data: Uint8Array; width: number }, x: number, y: number) =>
+    Array.from(icon.data.slice((y * icon.width + x) * 4, (y * icon.width + x) * 4 + 4));
+  const alert = alertBadgeIcon(1, 13);
+  assert.deepEqual(at(alert, 6, 6).slice(0, 3), hexToRgb("#1f2937")); // the "!"
+  assert.deepEqual(at(alert, 4, 9).slice(0, 3), hexToRgb(ALERT_FILL));
+  assert.equal(at(alert, 0, 0)[3], 0); // outside the triangle
+  const out = elevatorOutIcon(1, 14);
+  assert.deepEqual(at(out, 7, 7).slice(0, 3), hexToRgb(OUT_STRIKE));
+  assert.deepEqual(at(out, 2, 2).slice(0, 3), hexToRgb(OUT_STRIKE));
+});
+
+test("Metro closed at a station MARC still serves: not struck through, but badged", () => {
+  const closures = matchClosures(STATIONS, [closed("Union Station", "Metro", UNION.point, "WMATA service alert")]);
+  assert.equal(closedReason(UNION, BOTH, closures), null);
+  assert.deepEqual(withMetroClosed(null, UNION, BOTH, closures), { alert: true, elevatorOut: false });
+  // Metro alone shown: struck through instead; MARC alone shown: Metro's closure is not this map's.
+  assert.equal(withMetroClosed(null, UNION, { metro: true, marc: false }, closures), null);
+  assert.equal(withMetroClosed(null, UNION, { metro: false, marc: true }, closures), null);
+  assert.equal(withMetroClosed(null, EASTERN, BOTH, closures), null);
 });

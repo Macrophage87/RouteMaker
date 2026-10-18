@@ -159,8 +159,22 @@ class TestRoutes:
         assert full["line"] == line and full["source"] == "gpx" and full["answer"] is None
         # The file's own text, byte for byte, for a verbatim export.
         assert full["gpx"] == text
-        refused = send(client, "post", "/api/me/routes", route_body(source="gpx"), csrf)
+        refused = send(
+            client, "post", "/api/me/routes", route_body(source="gpx", gpx=text, answer=[1]), csrf
+        )
         assert refused.status_code == 400
+
+    def test_a_gpx_file_keeps_the_route_shown_for_it(self) -> None:
+        # v0.9.0, "share the exact route": saved with the route shown for it, the file reopens
+        # as that line (followed exactly here), not followed again.
+        client, _user, csrf = signed_in()
+        text = '<?xml version="1.0"?>\n<gpx version="1.1"><trk><trkseg/></trk></gpx>\n'
+        body = route_body(source="gpx", name="Parade", gpx=text)
+        body["answer"] = {**body["answer"], "follows_file": True, "follows_exactly": True}
+        r = send(client, "post", "/api/me/routes", body, csrf)
+        assert r.status_code == 201
+        full = client.get(f"/api/me/routes/{r.json()['id']}", **addr()).json()
+        assert full["gpx"] == text and full["answer"]["follows_exactly"] is True
 
     @pytest.mark.parametrize(
         "changes",
