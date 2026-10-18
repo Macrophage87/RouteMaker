@@ -22,7 +22,7 @@ def make_key(client, csrf) -> str:
 
 
 def keyed(key: str | None, payload, client: Client | None = None):
-    extra = {"HTTP_AUTHORIZATION": f"Bearer {key}"} if key else {}
+    extra = {"HTTP_X_ROUTEMAKER_KEY": key} if key else {}
     return (client or Client()).post(
         "/api/keyed/routes",
         data=json.dumps(payload),
@@ -103,7 +103,7 @@ class TestAssistantKey:
         client, _user, csrf = signed_in()
         secret = make_key(client, csrf)
         other = Client()
-        auth = {"HTTP_AUTHORIZATION": f"Bearer {secret}"}
+        auth = {"HTTP_X_ROUTEMAKER_KEY": secret, "HTTP_AUTHORIZATION": f"Bearer {secret}"}
         assert other.get("/api/me/routes", **auth, **addr()).status_code == 401
         assert other.get("/api/me/assistant-key", **auth, **addr()).status_code == 401
 
@@ -115,12 +115,46 @@ class TestAssistantKey:
         assert r.status_code == 400
         assert SavedRoute.objects.get(user=user).name == "mine"
 
-    def test_an_account_no_longer_active_saves_nothing(self) -> None:
+    @pytest.mark.parametrize("field", ["is_banned", "is_deleted"])
+    def test_a_ban_or_deletion_ends_the_key_for_good(self, field) -> None:
         client, user, csrf = signed_in()
         secret = make_key(client, csrf)
-        user.is_banned = True
-        user.save(update_fields=["is_banned"])
+        setattr(user, field, True)
+        user.save(update_fields=[field])
         assert keyed(secret, route_body()).status_code == 401
+        assert not AssistantKey.objects.filter(user=user).exists()
+        # Lifting a ban does not bring the key back.
+        setattr(user, field, False)
+        user.save(update_fields=[field])
+        assert keyed(secret, route_body()).status_code == 401
+
+    def test_the_beta_s_password_gate_and_the_key_travel_together(self) -> None:
+        """The beta's nginx asks for Basic credentials in Authorization; the key has its own
+        header, so a request can carry both."""
+        client, user, csrf = signed_in()
+        secret = make_key(client, csrf)
+        r = Client().post(
+            "/api/keyed/routes",
+            data=json.dumps(route_body()),
+            content_type="application/json",
+            HTTP_AUTHORIZATION="Basic cmlkZXI6cGFzcw==",
+            HTTP_X_ROUTEMAKER_KEY=secret,
+            **addr(),
+        )
+        assert r.status_code == 201 and SavedRoute.objects.filter(user=user).count() == 1
+
+    def test_a_failure_is_worded_as_a_save_not_a_route_plan(self, monkeypatch) -> None:
+        import core.api
+
+        client, _user, csrf = signed_in()
+        secret = make_key(client, csrf)
+
+        def broken(request, versions=True):
+            raise RuntimeError("boom")
+
+        monkeypatch.setattr(core.api, "_add_saved_route", broken)
+        r = keyed(secret, route_body())
+        assert r.status_code == 500 and "nothing was changed" in r.json()["error"]
 
     def test_the_key_goes_with_the_account(self) -> None:
         client, user, csrf = signed_in()

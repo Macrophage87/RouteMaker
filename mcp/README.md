@@ -16,8 +16,13 @@ Ask things like:
 | --- | --- |
 | `find_place` | Searches RouteMaker's place search for a place, address or street. |
 | `metro_stations` | Lists the 98 Metrorail stations, or those near a point, with miles and bearing. |
-| `plan_route` | Plans through 2 to 25 points (places, station names or `[lon, lat]`), as a loop if asked; reports distance, time, climbing and the share on each traffic-stress level; checks the distance from Metro; can add stations as via points where it strays. |
+| `plan_route` | Plans through 2 to 25 points (places, station names or `[lon, lat]`), on any ride type with any of its settings, as a loop if asked; reports distance, time, climbing and the share on each traffic-stress level (and the bikeshare or transit plan on those ride types); checks the distance from Metro; can add stations as via points where it strays. |
 | `plan_metro_loop` | Builds a loop of about the target length around DC (or another centre) through waypoints at or just beyond Metro stations, rescales it once towards the target, and repairs stretches past the Metro limit. |
+
+The assistant picks the ride type and settings that fit what you ask: every ride type the app
+has (bikeshare and bike plus transit included) and every setting (traffic stress, hills, ride
+time, gravel, trails, target distance, rider weight, cargo load and assist, trail levels, the
+bikeshare bike and ending, departure time).
 
 Every planned route comes back with a link that opens it in the app and a GPX file. With
 `save_as` (and a key, below) it is also saved to My routes, where it opens like any route you
@@ -41,24 +46,26 @@ standard library only.
      for a local stack.
    - `ROUTEMAKER_SAVE_KEY`: the key from step 1 (leave it out to plan without saving).
    - `ROUTEMAKER_ROUTES_DIR` (optional): where GPX files go; default `~/RouteMaker-routes`.
+   - `ROUTEMAKER_BASIC_AUTH` (optional): `user:password` for a site behind a password, such as
+     a beta. The key travels in its own header, so both work together.
 
 ### Claude Desktop on Windows, with the checkout in WSL
 
 Settings > Developer > Edit Config opens `claude_desktop_config.json`. Add (with your own WSL
-distribution, path, address and key):
+distribution, path, address and key). `WSLENV` passes the settings from Windows into WSL, and
+keeps the key off the command line:
 
 ```json
 {
   "mcpServers": {
     "routemaker": {
       "command": "wsl",
-      "args": [
-        "-d", "Ubuntu",
-        "--", "env",
-        "ROUTEMAKER_BASE_URL=http://localhost",
-        "ROUTEMAKER_SAVE_KEY=rmk_your_key_here",
-        "python3", "/home/you/src/RouteMaker/mcp/routemaker_mcp.py"
-      ]
+      "args": ["-d", "Ubuntu", "--", "python3", "/home/you/src/RouteMaker/mcp/routemaker_mcp.py"],
+      "env": {
+        "ROUTEMAKER_BASE_URL": "http://localhost",
+        "ROUTEMAKER_SAVE_KEY": "rmk_your_key_here",
+        "WSLENV": "ROUTEMAKER_BASE_URL:ROUTEMAKER_SAVE_KEY"
+      }
     }
   }
 }
@@ -75,9 +82,11 @@ claude mcp add routemaker \
   -- python3 /path/to/RouteMaker/mcp/routemaker_mcp.py
 ```
 
-A long loop can take a few minutes to plan (each plan of a long ride can take up to a minute).
-If the client gives up first, raise its tool timeout (Claude Code: `MCP_TOOL_TIMEOUT=600000`) or
-ask for fewer plans (`max_plans`).
+A long loop can take a few minutes to plan (each plan of a long ride can take up to a minute,
+and `plan_metro_loop` makes up to three by default). If the client gives up first, raise its tool
+timeout (Claude Code: `MCP_TOOL_TIMEOUT=600000`; other clients have their own setting) or ask for
+fewer plans (`max_plans`). A call the client gives up on stops at its next step and saves
+nothing, so asking again does not save the route twice.
 
 ### Other assistants
 

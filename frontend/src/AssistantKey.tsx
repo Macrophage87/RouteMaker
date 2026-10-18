@@ -1,10 +1,11 @@
 /**
- * Settings > Account's AI assistant key (lib/assistantKey.ts): one line naming the key, its (i), and one button to
- * make (or replace) it; the new key is shown once with Copy, and Remove sits beside a key that exists.
+ * Settings > Account's AI assistant key (lib/assistantKey.ts), folded to one line naming the key so Settings stays
+ * short for the many riders who never use it. Open, it says what the key does and offers one button to make (or
+ * replace) it; the new key is shown once with Copy, and Remove sits beside a key that exists. Replacing or removing
+ * asks first: either stops an assistant that uses the key.
  */
 import { useEffect, useState } from "react";
-import { InfoButton } from "./SettingRow.tsx";
-import { KEY_FAILED, KEY_HELP, KEY_LABEL, KEY_REMOVED, KEY_SHOWN_ONCE, keySummary, makeKey, readKey, removeKey, type KeyInfo } from "./lib/assistantKey.ts";
+import { KEY_FAILED, KEY_HELP, KEY_LABEL, KEY_READ_FAILED, KEY_REMOVED, KEY_SHOWN_ONCE, REMOVE_ASK, REPLACE_ASK, keySummary, makeKey, readKey, removeKey, type KeyInfo } from "./lib/assistantKey.ts";
 import { copyText, selectionCopy } from "./lib/sidebar.ts";
 
 export function AssistantKeySetting({ origin = window.location.origin }: { origin?: string }) {
@@ -12,26 +13,37 @@ export function AssistantKeySetting({ origin = window.location.origin }: { origi
   const [secret, setSecret] = useState<string | null>(null);
   const [said, setSaid] = useState("");
   const [busy, setBusy] = useState(false);
-  const [infoOpen, setInfoOpen] = useState(false);
+  const [unread, setUnread] = useState(false);
 
   useEffect(() => {
     let live = true;
-    void readKey(origin).then((read) => live && setKey(read));
+    void readKey(origin).then((read) => {
+      if (!live) return;
+      if (read === undefined) {
+        // Not read (offline, or too many requests): offer Make a key all the same, and say so.
+        setUnread(true);
+        setSaid(KEY_READ_FAILED);
+        setKey(null);
+      } else setKey(read);
+    });
     return () => {
       live = false;
     };
   }, [origin]);
 
   const make = async () => {
+    if ((key || unread) && !window.confirm(REPLACE_ASK)) return;
     setBusy(true);
     const made = await makeKey(origin);
     setBusy(false);
     if (!made) return setSaid(KEY_FAILED);
     setKey(made.key);
+    setUnread(false);
     setSecret(made.secret);
     setSaid(KEY_SHOWN_ONCE);
   };
   const remove = async () => {
+    if (!window.confirm(REMOVE_ASK)) return;
     setBusy(true);
     const done = await removeKey(origin);
     setBusy(false);
@@ -47,20 +59,15 @@ export function AssistantKeySetting({ origin = window.location.origin }: { origi
   };
 
   return (
-    <section aria-labelledby="settings-assistant-key-heading" className="assistant-key">
-      <div className="setting-line">
-        <h4 id="settings-assistant-key-heading">
-          {KEY_LABEL}
-          <span className="setting-value">
-            <span className="visually-hidden">: </span>
-            {key === undefined ? "…" : keySummary(key)}
-          </span>
-        </h4>
-        <InfoButton open={infoOpen} onToggle={() => setInfoOpen((was) => !was)} controls="settings-assistant-key-info" about={KEY_LABEL} />
-      </div>
-      <p className="hint setting-info" id="settings-assistant-key-info" hidden={!infoOpen}>
-        {KEY_HELP}
-      </p>
+    <details className="assistant-key">
+      <summary>
+        {KEY_LABEL}
+        <span className="setting-value">
+          <span className="visually-hidden">: </span>
+          {key === undefined ? "…" : keySummary(key)}
+        </span>
+      </summary>
+      <p className="hint">{KEY_HELP}</p>
       {secret && (
         <div className="assistant-key-secret">
           <input type="text" readOnly value={secret} aria-label="Your new AI assistant key" onFocus={(e) => e.currentTarget.select()} />
@@ -82,6 +89,6 @@ export function AssistantKeySetting({ origin = window.location.origin }: { origi
       <p className="hint" role="status">
         {said}
       </p>
-    </section>
+    </details>
   );
 }

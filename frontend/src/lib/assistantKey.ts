@@ -13,6 +13,9 @@ export const KEY_NONE = "None";
 export const KEY_SHOWN_ONCE = "Copy it into your assistant's RouteMaker server settings now: it is shown only this once.";
 export const KEY_FAILED = "That did not work; try again shortly.";
 export const KEY_REMOVED = "Key removed. An assistant using it can no longer save routes.";
+export const KEY_READ_FAILED = "Your key could not be checked just now.";
+export const REPLACE_ASK = "Make a new key? The one your assistant uses now stops working.";
+export const REMOVE_ASK = "Remove the key? An assistant using it can no longer save routes.";
 
 export interface KeyInfo {
   hint: string;
@@ -20,7 +23,7 @@ export interface KeyInfo {
   last_used_at: string | null;
 }
 
-/** The key's line in Settings: "Ends …abcd, last used 18 Oct" or "None". */
+/** The key's line in Settings: "Ends …abcd, last used Oct 18" or "None". */
 export function keySummary(key: KeyInfo | null): string {
   if (!key) return KEY_NONE;
   const used = key.last_used_at ? `last used ${shortDate(key.last_used_at)}` : "not used yet";

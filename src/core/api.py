@@ -2524,6 +2524,7 @@ def unexpected(request, exc: Exception):
 GEOCODE_PATHS = ("/api/geocode", "/api/reverse")
 # The road panel's stress editor, whose answers are private and name the form field.
 STRESS_EDIT_PATHS = (
+    "/api/keyed",
     "/api/stress-edits",
     "/api/stress-suggestions",
     "/api/junction-suggestions",
@@ -5378,11 +5379,12 @@ def _add_saved_route(request, versions: bool = True):
 
 
 # The AI assistant key (core.models.AssistantKey; the owner, 2026-10-18): Settings makes,
-# shows once and removes the account's one key, and an assistant's MCP server (mcp/) sends it as
-# a bearer token to POST /api/keyed/routes, which adds a route to the account's My routes and does
+# shows once and removes the account's one key, and an assistant's MCP server (mcp/) sends it in
+# X-RouteMaker-Key to POST /api/keyed/routes, which adds a route to the account's My routes and does
 # nothing else. The key never signs in: the endpoint reads no session, and the session endpoints
 # read no key.
 ASSISTANT_KEY_PREFIX = "rmk_"
+ASSISTANT_KEY_HEADER = "HTTP_X_ROUTEMAKER_KEY"
 ASSISTANT_KEY_REFUSED = "That AI assistant key is not valid. Make a new one in Settings."
 
 
@@ -5429,10 +5431,12 @@ def assistant_key_read(request):
 def assistant_key_make(request):
     from django.db import transaction
 
-    from .models import AssistantKey
+    from .models import AssistantKey, User
 
     key = ASSISTANT_KEY_PREFIX + secrets.token_urlsafe(32)
     with transaction.atomic():
+        # Taken in turn per account, so two presses at once leave one key, not an error.
+        User.objects.select_for_update().filter(pk=request.user.pk).first()
         AssistantKey.objects.filter(user=request.user).delete()
         row = AssistantKey.objects.create(user=request.user, digest=_key_digest(key), hint=key[-4:])
     body = _assistant_key_out(row)
@@ -5458,17 +5462,17 @@ def assistant_key_delete(request):
 
 
 def keyed_account(view):
-    """The account an `Authorization: Bearer` AI assistant key names, as `request.user`, or 401.
-    Whatever session cookie came with the request is set aside: only the key counts."""
+    """The account the AI assistant key in `X-RouteMaker-Key` names, as `request.user`, or 401.
+    Its own header, not `Authorization`, which the beta's password gate already uses. Whatever
+    session cookie came with the request is set aside: only the key counts."""
 
     @wraps(view)
     def wrapped(request, *args, **kwargs):
         from .models import AssistantKey
 
-        scheme, _, key = request.META.get("HTTP_AUTHORIZATION", "").partition(" ")
-        key = key.strip()
+        key = request.META.get(ASSISTANT_KEY_HEADER, "").strip()
         row = None
-        if scheme.lower() == "bearer" and key.startswith(ASSISTANT_KEY_PREFIX) and len(key) < 100:
+        if key.startswith(ASSISTANT_KEY_PREFIX) and len(key) < 100:
             row = (
                 AssistantKey.objects.select_related("user").filter(digest=_key_digest(key)).first()
             )

@@ -23,11 +23,13 @@ Configuration, all from the environment:
 
 from __future__ import annotations
 
+import base64
 import json
 import math
 import os
 import re
 import sys
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -55,21 +57,28 @@ ROUTE_TIMEOUT_S = 120
 # How much longer a planned loop is than its waypoints in straight lines, for a first guess at
 # the ring's radius; the loop is then rescaled by what the router answered.
 ROAD_FACTOR = 1.3
-# The ride types this planner takes from points alone (the transit and bikeshare ride types plan
-# from two points with options of their own and are left to the site).
+# Every ride type the site plans (frontend/src/lib/presets.ts; the owner, 2026-10-18: "Allow the
+# MCP server to pick whatever mode makes sense for this and to adjust any parameters"). The
+# bikeshare and transit ride types take a start and an end only.
 PRESETS = (
     "default",
     "trailmaxxing",
     "novice",
     "group-ride",
+    "mass-ride",
     "mountain-goat",
     "mountain-bike",
     "gravel",
     "fast",
     "cargo",
     "ebike",
-    "mass-ride",
+    "bikeshare",
+    "rebalance",
+    "bike-transit",
+    "bikeshare-transit",
 )
+TWO_POINT_PRESETS = ("bikeshare", "rebalance", "bike-transit", "bikeshare-transit")
+KG_PER_LB = 0.45359237
 # Densify the route line to this spacing for the Metro check, so a long straight segment
 # cannot hide a stretch past the limit between its two vertices.
 CHECK_STEP_MI = 0.1
@@ -246,14 +255,19 @@ class Api:
             raise ToolError("ROUTEMAKER_BASE_URL must start with http:// or https://")
         self.base = base
         self.save_key = save_key if save_key is not None else os.environ.get("ROUTEMAKER_SAVE_KEY")
+        # A site behind a password (the beta's nginx gate): "user:password", sent on every request.
+        basic = os.environ.get("ROUTEMAKER_BASIC_AUTH", "")
+        self.basic = "Basic " + base64.b64encode(basic.encode()).decode() if ":" in basic else None
 
     def _request(self, method: str, path: str, body=None, headers=None, timeout=30):
-        data = None if body is None else json.dumps(body).encode()
+        data = None if body is None else json.dumps(body, separators=(",", ":")).encode()
         request = urllib.request.Request(self.base + path, data=data, method=method)
         request.add_header("Accept", "application/json")
         request.add_header("User-Agent", f"routemaker-mcp/{SERVER_VERSION}")
         if data is not None:
             request.add_header("Content-Type", "application/json")
+        if self.basic:
+            request.add_header("Authorization", self.basic)
         for key, value in (headers or {}).items():
             request.add_header(key, value)
         try:
@@ -315,7 +329,8 @@ class Api:
             "POST",
             "/api/keyed/routes",
             body,
-            headers={"Authorization": f"Bearer {self.save_key}"},
+            # Its own header: Authorization may be the site's password gate's.
+            headers={"X-RouteMaker-Key": self.save_key},
         )
         if status == 201 and isinstance(payload, dict):
             return payload
@@ -357,8 +372,9 @@ def as_point(value, api: Api | None, stations: list[Station]) -> tuple[tuple[flo
     raise ToolError(f"not a point: {value!r}")
 
 
-def plan_fragment(points, vias, preset: str, dials: dict) -> str:
-    """The page's own plan link fragment (frontend/src/lib/planHash.ts `encodePlan`)."""
+def plan_fragment(points, vias, preset: str, dials: dict, sent: dict) -> str:
+    """The page's own plan link fragment (frontend/src/lib/planHash.ts `encodePlan`): the
+    answer's `dials`, and what only the request carried (`sent`, the POST /api/route body)."""
     parts = ["p=" + ";".join(f"{lon:.5f},{lat:.5f}" for lon, lat in points)]
     if vias:
         parts.append("via=" + ",".join(str(i) for i in vias))
@@ -366,31 +382,55 @@ def plan_fragment(points, vias, preset: str, dials: dict) -> str:
     parts.append("v=2")
     parts.append(f"stress={dials['stress']}")
     parts.append(f"hills={dials['hills']}")
+    # "when I'm planning" unless the ride time was asked for.
+    if sent.get("when"):
+        parts.append(f"when={sent['when']}")
+    if dials.get("carrying"):
+        parts.append(f"carrying={dials['carrying']}")
+    if dials.get("assist"):
+        parts.append("assist=1")
     if dials.get("avoid_gravel"):
         parts.append("avoidgravel=1")
     if dials.get("trails_off"):
         parts.append("trailsoff=1")
+    if sent.get("novice_legs"):
+        parts.append("novice=1")
     if dials.get("target_distance_m"):
         parts.append(f"targetmi={dials['target_distance_m'] / METRES_PER_MILE:.1f}")
     if dials.get("loop"):
         parts.append("loop=1")
+    if sent.get("bike"):
+        parts.append(f"bike={sent['bike']}")
+        if sent["bike"] == "ebike" and sent.get("ending") == "outside_dock":
+            parts.append("ending=outside")
+    if sent.get("mtb_level"):
+        parts.append(f"level={sent['mtb_level']}")
+    if sent.get("mtb_preferred"):
+        parts.append(f"prefer={sent['mtb_preferred']}")
     return "#" + "&".join(parts)
 
 
-def page_dials(dials: dict) -> dict:
-    """The answer's dials as the page keeps them in a saved route (frontend lib/dials.ts)."""
+def page_dials(dials: dict, sent: dict) -> dict:
+    """The plan's dials as the page keeps them in a saved route (frontend lib/dials.ts)."""
     kept = {
         "stress": dials["stress"],
         "hills": dials["hills"],
-        "when": None,
+        "when": sent.get("when"),
         "carrying": dials.get("carrying"),
         "assist": bool(dials.get("assist")),
         "avoidGravel": bool(dials.get("avoid_gravel")),
         "trailsOff": bool(dials.get("trails_off")),
         "loop": bool(dials.get("loop")),
     }
-    if dials.get("target_distance_m"):
-        kept["targetDistanceM"] = dials["target_distance_m"]
+    optional = {
+        "targetDistanceM": dials.get("target_distance_m"),
+        "noviceLegs": sent.get("novice_legs"),
+        "bike": sent.get("bike"),
+        "ending": sent.get("ending"),
+        "mtbLevel": sent.get("mtb_level"),
+        "mtbPreferred": sent.get("mtb_preferred"),
+    }
+    kept.update({k: v for k, v in optional.items() if v})
     return kept
 
 
@@ -470,6 +510,16 @@ def summary(answer: dict) -> dict:
         out["avoid_notice"] = answer["avoid_notice"]
     if answer.get("moved_points"):
         out["moved_points"] = len(answer["moved_points"])
+    share = answer.get("bikeshare")
+    if isinstance(share, dict):
+        out["bikeshare"] = {k: share.get(k) for k in ("summary", "notes", "pricing_note")}
+    transit = answer.get("transit")
+    if isinstance(transit, dict):
+        out["transit"] = {k: transit.get(k) for k in ("summary", "comparison", "notes")}
+        out["transit"]["options"] = [
+            {k: o.get(k) for k in ("key", "label", "minutes", "chosen")}
+            for o in transit.get("options") or []
+        ]
     return out
 
 
@@ -480,15 +530,15 @@ class Plan:
     preset: str
     answer: dict
     check: dict | None
+    sent: dict
 
     @property
     def line(self) -> list[list[float]]:
         return self.answer["geometry"]["coordinates"]
 
 
-def request_body(
-    points, vias, preset, *, stress, hills, loop, avoid_gravel, trails_off, target_miles
-) -> dict:
+def request_body(points, vias, preset: str, options: dict) -> dict:
+    """POST /api/route's body: the points, and every option that was set (`Server._options`)."""
     body: dict = {
         "points": [list(p) for p in points],
         "preset": preset,
@@ -498,18 +548,7 @@ def request_body(
     }
     if vias:
         body["via_points"] = list(vias)
-    if stress is not None:
-        body["stress"] = int(stress)
-    if hills is not None:
-        body["hills"] = int(hills)
-    if loop:
-        body["loop"] = True
-    if avoid_gravel:
-        body["avoid_gravel"] = True
-    if trails_off:
-        body["trails_off"] = True
-    if target_miles:
-        body["target_distance_m"] = int(target_miles * METRES_PER_MILE)
+    body.update({k: v for k, v in options.items() if v is not None and v is not False})
     return body
 
 
@@ -518,9 +557,12 @@ def plan_once(api, stations, points, vias, preset, options, limit_mi) -> Plan:
         raise ToolError(f"preset is one of {', '.join(PRESETS)}")
     if not 2 <= len(points) <= MAX_POINTS:
         raise ToolError(f"a route has 2 to {MAX_POINTS} points")
-    answer = api.route(request_body(points, vias, preset, **options))
+    if preset in TWO_POINT_PRESETS and len(points) != 2:
+        raise ToolError(f"{preset} plans from a start and an end only")
+    sent = request_body(points, vias, preset, options)
+    answer = api.route(sent)
     check = metro_check(answer["geometry"]["coordinates"], limit_mi, stations) if limit_mi else None
-    return Plan(list(points), list(vias), preset, answer, check)
+    return Plan(list(points), list(vias), preset, answer, check, sent)
 
 
 def leg_of(plan: Plan, at_mile: float) -> int:
@@ -563,7 +605,6 @@ def ring_waypoints(
     limit_mi: float,
     stations: list[Station],
     sectors: int = 12,
-    forced: tuple[tuple[float, float], ...] = (),
 ) -> list[tuple[float, float]]:
     """Waypoints around `centre`, one per sector of the compass where a Metro station lies, at
     the station whose distance out is nearest `radius_mi`, moved straight out from the centre
@@ -572,7 +613,7 @@ def ring_waypoints(
     moves least. A waypoint within `MIN_GAP_MI` of another is left out. Sorted clockwise from
     north."""
     reach = 0.6 * limit_mi
-    chosen: list[tuple[float, float]] = list(forced)
+    chosen: list[tuple[float, float]] = []
     width = 360 / sectors
 
     def score(t):
@@ -638,9 +679,15 @@ RIDE_OPTIONS = {
         "enum": list(PRESETS),
         "default": "default",
         "description": (
-            "The ride type. default: everyday riding. trailmaxxing: the calmest route,"
-            " directness second. novice: Novice and Nervous, every road read one stress level up."
-            " fast, gravel, mountain-goat (seeks climbs), ebike, cargo, group-ride."
+            "The ride type; pick the one that fits the ask. default: everyday riding."
+            " trailmaxxing: the calmest route, directness second (stress 100, honours"
+            " target_miles). novice: Novice and Nervous, every road read one stress level up."
+            " group-ride: a club ride. mass-ride: a large group on the direct roadway (no loops,"
+            " stress and hills held low). mountain-goat: seeks climbs. mountain-bike: trails by"
+            " IMBA level. gravel: unpaved welcome. fast: direct, traffic tolerant. cargo: cargo"
+            " bike (carrying, assist). ebike: e-bike rules and pace. bikeshare and rebalance:"
+            " Capital Bikeshare dock to dock (two points). bike-transit and bikeshare-transit:"
+            " bike plus Metro and bus (two points; depart_at, transit_option)."
         ),
     },
     "stress": {
@@ -661,6 +708,57 @@ RIDE_OPTIONS = {
         "description": (
             "The hills slider: -100 avoids climbing, 0 fastest. Absent: the ride type's own."
         ),
+    },
+    "when": {
+        "type": "string",
+        "enum": ["weekend", "weekday_rush", "weekday_offpeak", "night"],
+        "description": "When the ride is, for traffic. Absent: now.",
+    },
+    "rider_weight_lb": {
+        "type": "number",
+        "description": (
+            "Rider, bike and load together, pounds; weighs climbs at the top of the stress slider."
+        ),
+    },
+    "target_miles": {
+        "type": "number",
+        "description": "At stress 100 (Trailmaxxing) only: a soft target distance, miles.",
+    },
+    "carrying": {"type": "string", "enum": ["cargo", "people"], "description": "Cargo only."},
+    "assist": {"type": "boolean", "description": "Cargo only: electric assist."},
+    "mtb_level": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 4,
+        "description": "Mountain Bike only: the hardest trail level, 1 (green) to 4 (red).",
+    },
+    "mtb_preferred": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 4,
+        "description": "Mountain Bike only: the trail level preferred.",
+    },
+    "bike": {
+        "type": "string",
+        "enum": ["classic", "ebike"],
+        "description": "Bikeshare and Rebalance only.",
+    },
+    "ending": {
+        "type": "string",
+        "enum": ["dock", "outside_dock"],
+        "description": "Bikeshare e-bike only: end at a dock or at the destination itself.",
+    },
+    "depart_at": {
+        "type": "string",
+        "description": "Transit ride types only: ISO 8601 departure time. Absent: now.",
+    },
+    "transit_option": {
+        "type": "string",
+        "description": "Transit ride types only: an option's key from an earlier answer.",
+    },
+    "novice_legs": {
+        "type": "boolean",
+        "description": "Transit ride types only: plan the bike legs as Novice and Nervous.",
     },
     "avoid_gravel": {"type": "boolean", "default": False},
     "trails_off": {
@@ -747,10 +845,6 @@ TOOLS = [
                     "default": False,
                     "description": "Come back to the start by a different way.",
                 },
-                "target_miles": {
-                    "type": "number",
-                    "description": "Only at stress 100: a soft target distance.",
-                },
                 "fix_metro_rounds": {"type": "integer", "minimum": 0, "maximum": 4, "default": 0},
                 "name": {"type": "string", "description": "A name for the GPX file and link."},
                 **RIDE_OPTIONS,
@@ -787,32 +881,71 @@ TOOLS = [
 ]
 
 
+class Call:
+    """One tools/call in flight: its progress reports and whether the client cancelled it."""
+
+    def __init__(self, progress=None):
+        self.progress = progress  # function(done, total, message), or None
+        self.cancelled = threading.Event()
+
+    def report(self, done, total, message) -> None:
+        if self.progress:
+            self.progress(done, total, message)
+
+    def check(self) -> None:
+        """Stop before the next plan or save once the client has given up on the call: a save
+        it no longer waits for would be a second copy when it asks again."""
+        if self.cancelled.is_set():
+            raise Cancelled()
+
+
+class Cancelled(ToolError):
+    pass
+
+
+# The plan tools' options, as POST /api/route names them (all optional).
+PASSED_OPTIONS = (
+    "stress",
+    "hills",
+    "when",
+    "carrying",
+    "assist",
+    "avoid_gravel",
+    "trails_off",
+    "mtb_level",
+    "mtb_preferred",
+    "bike",
+    "ending",
+    "depart_at",
+    "transit_option",
+    "novice_legs",
+)
+
+
 class Server:
     def __init__(self, api_factory=Api, stations: list[Station] | None = None, out_dir=None):
         self._api_factory = api_factory
         self._api: Api | None = None
         self._stations = stations
         self.out_dir = out_dir
-        self.progress = None  # set per call: a function(done, total, message)
+        self._lock = threading.Lock()
 
     @property
     def api(self) -> Api:
-        if self._api is None:
-            self._api = self._api_factory()
-        return self._api
+        with self._lock:
+            if self._api is None:
+                self._api = self._api_factory()
+            return self._api
 
     @property
     def stations(self) -> list[Station]:
-        if self._stations is None:
-            self._stations = load_stations()
-        return self._stations
-
-    def _report(self, done, total, message):
-        if self.progress:
-            self.progress(done, total, message)
+        with self._lock:
+            if self._stations is None:
+                self._stations = load_stations()
+            return self._stations
 
     # find_place
-    def find_place(self, args: dict) -> dict:
+    def find_place(self, args: dict, call: Call) -> dict:
         results = self.api.geocode(str(args["query"]))
         return {
             "results": [
@@ -827,7 +960,7 @@ class Server:
         }
 
     # metro_stations
-    def metro_stations(self, args: dict) -> dict:
+    def metro_stations(self, args: dict, call: Call) -> dict:
         near = None
         if args.get("near") is not None:
             near, _ = as_point(args["near"], self.api, self.stations)
@@ -845,22 +978,27 @@ class Server:
         return {"stations": rows, "source": "DC Open Data, Metro Stations Regional (CC BY 4.0)"}
 
     def _options(self, args: dict) -> dict:
-        return {
-            "stress": args.get("stress"),
-            "hills": args.get("hills"),
-            "loop": bool(args.get("loop")),
-            "avoid_gravel": bool(args.get("avoid_gravel")),
-            "trails_off": bool(args.get("trails_off")),
-            "target_miles": args.get("target_miles"),
-        }
+        options = {key: args.get(key) for key in PASSED_OPTIONS}
+        options["loop"] = bool(args.get("loop"))
+        if args.get("target_miles"):
+            options["target_distance_m"] = int(float(args["target_miles"]) * METRES_PER_MILE)
+        if args.get("rider_weight_lb"):
+            options["system_weight_kg"] = round(float(args["rider_weight_lb"]) * KG_PER_LB)
+        return options
 
-    def _deliver(self, plan: Plan, name: str, save_as: str | None, notes: list[str]) -> dict:
-        dials = plan.answer.get("dials") or {}
+    def _plan(self, call: Call, points, vias, preset, options, limit) -> Plan:
+        call.check()
+        return plan_once(self.api, self.stations, points, vias, preset, options, limit)
+
+    def _deliver(
+        self, plan: Plan, name: str, save_as: str | None, notes: list[str], call: Call
+    ) -> dict:
+        answered = plan.answer.get("dials") or {}
         dials = {
-            "stress": dials.get("stress", 70),
-            "hills": dials.get("hills", 0),
+            "stress": answered.get("stress", 70),
+            "hills": answered.get("hills", 0),
             **{
-                k: dials.get(k)
+                k: answered.get(k)
                 for k in (
                     "avoid_gravel",
                     "trails_off",
@@ -871,13 +1009,13 @@ class Server:
                 )
             },
         }
-        fragment = plan_fragment(plan.points, plan.vias, plan.preset, dials)
+        fragment = plan_fragment(plan.points, plan.vias, plan.preset, dials, plan.sent)
         out = {
             "summary": summary(plan.answer),
             "points": [list(p) for p in plan.points],
             "via_points": plan.vias,
             "preset": plan.preset,
-            "stress": dials["stress"],
+            "settings_used": {k: v for k, v in plan.sent.items() if k not in ("points",)},
             "link": f"{self.api.base}/{fragment}",
         }
         if plan.check is not None:
@@ -887,6 +1025,7 @@ class Server:
         except OSError as error:
             notes.append(f"GPX not written: {error}")
         if save_as:
+            call.check()
             saved = self.api.save(
                 {
                     "name": save_as.strip()[:120],
@@ -897,7 +1036,7 @@ class Server:
                         "hash": fragment,
                         "points": [list(p) for p in plan.points],
                         "preset": plan.preset,
-                        "dials": page_dials(dials),
+                        "dials": page_dials(dials, plan.sent),
                     },
                     "answer": {
                         **plan.answer,
@@ -912,13 +1051,18 @@ class Server:
                 "name": saved.get("name"),
                 "where": "My routes on the site",
             }
+            if plan.check is not None and not plan.check["ok"]:
+                notes.append(
+                    f"saved although {plan.check['miles_over_limit']} mi of it is more than"
+                    f" {plan.check['limit_mi']:g} mi from Metro"
+                )
         if notes:
             out["notes"] = notes
         out["credit"] = plan.answer.get("attribution", [])
         return out
 
     # plan_route
-    def plan_route(self, args: dict) -> dict:
+    def plan_route(self, args: dict, call: Call) -> dict:
         points = [as_point(p, self.api, self.stations)[0] for p in args["points"]]
         vias = [int(i) for i in args.get("via_points") or []]
         preset = args.get("preset") or "default"
@@ -926,15 +1070,15 @@ class Server:
         rounds = int(args.get("fix_metro_rounds") or 0) if limit else 0
         options = self._options(args)
         notes: list[str] = []
-        self._report(0, rounds + 1, "planning the route")
-        plan = plan_once(self.api, self.stations, points, vias, preset, options, limit)
+        call.report(0, rounds + 1, "planning the route")
+        plan = self._plan(call, points, vias, preset, options, limit)
         for done in range(rounds):
             fix = with_metro_fix(plan, self.stations)
             if fix is None:
                 break
             new_points, new_vias, station = fix
-            self._report(done + 1, rounds + 1, f"replanning by way of {station}")
-            again = plan_once(self.api, self.stations, new_points, new_vias, preset, options, limit)
+            call.report(done + 1, rounds + 1, f"replanning by way of {station}")
+            again = self._plan(call, new_points, new_vias, preset, options, limit)
             notes.append(
                 f"added {station} as a via point: {plan.check['miles_over_limit']} -> "
                 f"{again.check['miles_over_limit']} mi over the limit"
@@ -942,10 +1086,10 @@ class Server:
             if again.check["miles_over_limit"] <= plan.check["miles_over_limit"]:
                 plan = again
         name = args.get("name") or "RouteMaker route"
-        return self._deliver(plan, name, args.get("save_as"), notes)
+        return self._deliver(plan, name, args.get("save_as"), notes, call)
 
     # plan_metro_loop
-    def plan_metro_loop(self, args: dict) -> dict:
+    def plan_metro_loop(self, args: dict, call: Call) -> dict:
         target = float(args["target_miles"])
         limit = float(args.get("max_miles_from_metro") or 5)
         centre = (
@@ -959,25 +1103,31 @@ class Server:
             else None
         )
         preset = args.get("preset") or "default"
-        max_plans = int(args.get("max_plans") or 4)
+        if preset in TWO_POINT_PRESETS or preset == "mass-ride":
+            raise ToolError(f"{preset} does not plan loops")
+        max_plans = int(args.get("max_plans") or 3)
         options = {**self._options(args), "loop": True}
-        options["stress"] = 80 if args.get("stress") is None else args["stress"]
+        if options["stress"] is None and preset == "default":
+            # "Low stress" on everyday riding: low-stress ways unless much longer. Every other
+            # ride type keeps its own start, which the assistant can override.
+            options["stress"] = 80
         radius = target / (2 * math.pi * ROAD_FACTOR)
-        forced: tuple = ()
         rescaled = False
         notes: list[str] = []
         best: Plan | None = None
         points, vias = loop_points_from(
-            start, ring_waypoints(centre, radius, limit, self.stations, forced=forced), centre
+            start, ring_waypoints(centre, radius, limit, self.stations), centre
         )
         for attempt in range(max_plans):
-            self._report(attempt, max_plans, f"planning loop {attempt + 1} ({len(points)} points)")
+            call.report(attempt, max_plans, f"planning loop {attempt + 1} ({len(points)} points)")
             try:
-                plan = plan_once(self.api, self.stations, points, vias, preset, options, limit)
+                plan = self._plan(call, points, vias, preset, options, limit)
+            except Cancelled:
+                raise
             except ToolError as error:
-                notes.append(f"plan {attempt + 1} failed: {error}")
-                if best is None and attempt + 1 == max_plans:
+                if best is None:
                     raise
+                notes.append(f"plan {attempt + 1} failed: {error}")
                 break
             miles = plan.answer["distance_m"] / METRES_PER_MILE
             notes.append(
@@ -991,19 +1141,14 @@ class Server:
                 rescaled = True
                 radius = max(1.5, radius / off)
                 points, vias = loop_points_from(
-                    start,
-                    ring_waypoints(centre, radius, limit, self.stations, forced=forced),
-                    centre,
+                    start, ring_waypoints(centre, radius, limit, self.stations), centre
                 )
                 continue
             fix = with_metro_fix(plan, self.stations)
             if fix is None:
                 break
-            new_points, new_vias, station = fix
-            forced = (*forced, _added(new_points, plan))
-            points, vias = new_points, new_vias
+            points, vias, station = fix
             notes.append(f"adding {station} where the loop strayed")
-        assert best is not None
         miles = best.answer["distance_m"] / METRES_PER_MILE
         if not 0.85 <= miles / target <= 1.15:
             notes.append(
@@ -1011,23 +1156,26 @@ class Server:
                 f" {limit:g} mi of Metro, the ring could not be made closer"
             )
         name = args.get("name") or f"{target:.0f} mi Metro loop"
-        return self._deliver(best, name, args.get("save_as"), notes)
+        return self._deliver(best, name, args.get("save_as"), notes, call)
 
-    def call(self, name: str, args: dict) -> dict:
-        handler = {
+    def handler(self, name: str):
+        return {
             "find_place": self.find_place,
             "metro_stations": self.metro_stations,
             "plan_route": self.plan_route,
             "plan_metro_loop": self.plan_metro_loop,
         }.get(name)
+
+    def call(self, name: str, args: dict, call: Call | None = None) -> dict:
+        handler = self.handler(name)
         if handler is None:
             raise ToolError(f"no tool named {name}")
-        return handler(args or {})
-
-
-def _added(points: list, plan: Plan):
-    """The one point `with_metro_fix` added to the plan's points."""
-    return next(p for p in points if p not in plan.points)
+        try:
+            return handler(args or {}, call or Call())
+        except KeyError as missing:
+            raise ToolError(f"missing argument {missing}") from None
+        except (TypeError, ValueError) as wrong:
+            raise ToolError(f"an argument is not in the expected form: {wrong}") from None
 
 
 def _better(plan: Plan, best: Plan, target: float) -> bool:
@@ -1040,19 +1188,36 @@ def _better(plan: Plan, best: Plan, target: float) -> bool:
 # --- MCP over stdio -------------------------------------------------------------------------
 
 
+_write_lock = threading.Lock()
+
+
 def _send(message: dict, out=None) -> None:
     out = out or sys.stdout
-    out.write(json.dumps(message, separators=(",", ":")) + "\n")
-    out.flush()
+    with _write_lock:
+        out.write(json.dumps(message, separators=(",", ":")) + "\n")
+        out.flush()
 
 
-def handle(server: Server, message: dict, send=_send) -> dict | None:
-    """One JSON-RPC message in; the response out (None for a notification)."""
+def _error(msg_id, code: int, message: str) -> dict:
+    return {"jsonrpc": "2.0", "id": msg_id, "error": {"code": code, "message": message}}
+
+
+def handle(server: Server, message, send=_send, calls: dict | None = None) -> dict | None:
+    """One JSON-RPC message in; the response out (None for a notification, or for a call the
+    client cancelled, which the protocol says not to answer). `calls` holds the tools/calls in
+    flight by request id, so a cancellation can reach one."""
+    calls = {} if calls is None else calls
+    if not isinstance(message, dict):
+        return _error(None, -32600, "a request is one JSON object")
     method = message.get("method")
     msg_id = message.get("id")
     params = message.get("params") or {}
     if msg_id is None:
-        return None  # notifications/initialized, cancelled: nothing to answer
+        if method == "notifications/cancelled":
+            running = calls.get(params.get("requestId"))
+            if running is not None:
+                running.cancelled.set()
+        return None  # notifications/initialized and the rest: nothing to answer
     if method == "initialize":
         asked = params.get("protocolVersion")
         version = asked if asked in PROTOCOL_VERSIONS else PROTOCOL_VERSIONS[0]
@@ -1062,9 +1227,9 @@ def handle(server: Server, message: dict, send=_send) -> dict | None:
             "serverInfo": {"name": SERVER_NAME, "version": SERVER_VERSION},
             "instructions": (
                 "RouteMaker plans bike routes from DC to Baltimore, rated by traffic stress (LTS 1"
-                " calmest to 4, plus Avoid). Give distances in miles first, km in brackets. Share"
-                " the link so the rider can open the route in the app; save to My routes only when"
-                " asked."
+                " calmest to 4, plus Avoid). Pick the ride type and settings that fit the ask."
+                " Give distances in miles first, km in brackets. Share the link so the rider can"
+                " open the route in the app; save to My routes only when asked."
             ),
         }
     elif method == "ping":
@@ -1072,22 +1237,31 @@ def handle(server: Server, message: dict, send=_send) -> dict | None:
     elif method == "tools/list":
         result = {"tools": TOOLS}
     elif method == "tools/call":
+        name = params.get("name")
+        if server.handler(name) is None:
+            return _error(msg_id, -32602, f"no tool named {name}")
         token = (params.get("_meta") or {}).get("progressToken")
+        progress = None
         if token is not None:
-            server.progress = lambda done, total, text: send(
-                {
-                    "jsonrpc": "2.0",
-                    "method": "notifications/progress",
-                    "params": {
-                        "progressToken": token,
-                        "progress": done,
-                        "total": total,
-                        "message": text,
-                    },
-                }
-            )
+
+            def progress(done, total, text):
+                send(
+                    {
+                        "jsonrpc": "2.0",
+                        "method": "notifications/progress",
+                        "params": {
+                            "progressToken": token,
+                            "progress": done,
+                            "total": total,
+                            "message": text,
+                        },
+                    }
+                )
+
+        call = Call(progress)
+        calls[msg_id] = call
         try:
-            payload = server.call(params.get("name"), params.get("arguments") or {})
+            payload = server.call(name, params.get("arguments") or {}, call)
             result = {
                 "content": [{"type": "text", "text": json.dumps(payload, indent=1)}],
                 "structuredContent": payload,
@@ -1096,18 +1270,31 @@ def handle(server: Server, message: dict, send=_send) -> dict | None:
         except ToolError as error:
             result = {"content": [{"type": "text", "text": str(error)}], "isError": True}
         finally:
-            server.progress = None
+            calls.pop(msg_id, None)
+        if call.cancelled.is_set():
+            return None
     else:
-        return {
-            "jsonrpc": "2.0",
-            "id": msg_id,
-            "error": {"code": -32601, "message": f"method not found: {method}"},
-        }
+        return _error(msg_id, -32601, f"method not found: {method}")
     return {"jsonrpc": "2.0", "id": msg_id, "result": result}
 
 
+def _answer(server: Server, message, calls: dict) -> None:
+    try:
+        response = handle(server, message, calls=calls)
+    except Exception as error:  # a bug, not a refusal: say so and keep serving
+        print(f"routemaker-mcp: {type(error).__name__}: {error}", file=sys.stderr)
+        msg_id = message.get("id") if isinstance(message, dict) else None
+        response = _error(msg_id, -32603, f"internal error: {type(error).__name__}: {error}")
+    if response is not None:
+        _send(response)
+
+
 def main() -> None:
+    """Read requests line by line. A tool call runs on its own thread, so a ping or a
+    cancellation is read while a long plan runs; everything else is answered in turn."""
     server = Server()
+    calls: dict = {}
+    workers: list[threading.Thread] = []
     for raw in sys.stdin:
         raw = raw.strip()
         if not raw:
@@ -1115,21 +1302,17 @@ def main() -> None:
         try:
             message = json.loads(raw)
         except ValueError:
-            _send(
-                {"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "parse error"}}
-            )
+            _send(_error(None, -32700, "parse error"))
             continue
-        try:
-            response = handle(server, message)
-        except Exception as error:  # a bug, not a refusal: say so and keep serving
-            print(f"routemaker-mcp: {type(error).__name__}: {error}", file=sys.stderr)
-            response = {
-                "jsonrpc": "2.0",
-                "id": message.get("id"),
-                "error": {"code": -32603, "message": f"internal error: {error}"},
-            }
-        if response is not None:
-            _send(response)
+        if isinstance(message, dict) and message.get("method") == "tools/call":
+            worker = threading.Thread(target=_answer, args=(server, message, calls), daemon=True)
+            worker.start()
+            workers.append(worker)
+        else:
+            _answer(server, message, calls)
+    # The client closed the input: finish what is in flight, then stop.
+    for worker in workers:
+        worker.join()
 
 
 if __name__ == "__main__":

@@ -331,6 +331,9 @@ class User(AbstractBaseUser):
                 or (self.is_deleted and not previous.is_deleted)
             ):
                 self.session_epoch += 1
+                # A ban or deletion ends the AI assistant key as it ends the sessions: an unban
+                # does not bring it back.
+                AssistantKey.objects.filter(user_id=self.pk).delete()
                 update_fields = kwargs.get("update_fields")
                 if update_fields is not None:
                     kwargs["update_fields"] = {*update_fields, "session_epoch"}

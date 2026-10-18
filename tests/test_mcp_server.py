@@ -7,6 +7,8 @@ import importlib.util
 import io
 import json
 import math
+import shutil
+import subprocess
 import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -68,6 +70,8 @@ def straight_answer(body: dict) -> dict:
 
 class StandIn(BaseHTTPRequestHandler):
     routes: list[dict] = []
+    headers_seen: list[dict] = []
+    fail: bool = False
 
     def log_message(self, *args) -> None:
         pass
@@ -82,8 +86,11 @@ class StandIn(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        StandIn.headers_seen.append({k.lower(): v for k, v in self.headers.items()})
         if self.path == "/api/route":
             StandIn.routes.append(body)
+            if StandIn.fail:
+                return self._answer(503, {"error": "took too long", "code": "long_ride_timed_out"})
             return self._answer(200, straight_answer(body))
         self._answer(404, {"error": "not here"})
 
@@ -112,6 +119,8 @@ class StandIn(BaseHTTPRequestHandler):
 @pytest.fixture
 def stand_in():
     StandIn.routes = []
+    StandIn.headers_seen = []
+    StandIn.fail = False
     server = ThreadingHTTPServer(("127.0.0.1", 0), StandIn)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -154,6 +163,18 @@ def test_it_introduces_itself_and_lists_its_tools(tools) -> None:
     names = [t["name"] for t in rpc(tools, "tools/list")["result"]["tools"]]
     assert names == ["find_place", "metro_stations", "plan_route", "plan_metro_loop"]
     assert rpc(tools, "nope")["error"]["code"] == -32601
+    # An unknown tool is the caller's mistake in the request, not a tool's refusal.
+    assert rpc(tools, "tools/call", {"name": "nope"})["error"]["code"] == -32602
+    # Neither is a message that is no request at all (a batch, say): answered, not fatal.
+    assert (
+        mcp.handle(tools, [{"jsonrpc": "2.0", "id": 1, "method": "ping"}])["error"]["code"]
+        == -32600
+    )
+
+
+def test_a_missing_argument_is_a_tool_error(tools) -> None:
+    out = rpc(tools, "tools/call", {"name": "find_place", "arguments": {}})
+    assert out["result"]["isError"] is True and "query" in out["result"]["content"][0]["text"]
 
 
 def test_a_refusal_is_a_tool_error_not_a_crash(tools) -> None:
@@ -224,12 +245,78 @@ def test_the_link_is_the_page_s_own_fragment() -> None:
         [1],
         "default",
         {"stress": 80, "hills": 0, "loop": True, "trails_off": True},
+        {},
     )
     # As frontend/src/lib/planHash.ts encodePlan writes it, so the page opens the same plan.
     assert fragment == (
         "#p=-77.03651,38.89768;-77.02101,38.90455;-77.03651,38.89768&via=1&preset=default"
         "&v=2&stress=80&hills=0&trailsoff=1&loop=1"
     )
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="needs Node for the page's own code")
+@pytest.mark.parametrize(
+    ("preset", "dials", "sent", "expected"),
+    [
+        (
+            "default",
+            {"stress": 85, "hills": -40, "loop": True, "avoid_gravel": True},
+            {"when": "weekend"},
+            {"stress": 85, "hills": -40, "loop": True, "avoidGravel": True, "when": "weekend"},
+        ),
+        (
+            "trailmaxxing",
+            {"stress": 100, "hills": 0, "target_distance_m": 160934},
+            {},
+            {"stress": 100, "targetDistanceM": 160934},
+        ),
+        (
+            "cargo",
+            {"stress": 75, "hills": -60, "carrying": "people", "assist": True},
+            {},
+            {"carrying": "people", "assist": True},
+        ),
+        (
+            "mountain-bike",
+            {"stress": 70, "hills": 0},
+            {"mtb_level": 3, "mtb_preferred": 1},
+            {"mtbLevel": 3, "mtbPreferred": 1},
+        ),
+        (
+            "bikeshare",
+            {"stress": 80, "hills": -20},
+            {"bike": "ebike", "ending": "outside_dock"},
+            {"bike": "ebike", "ending": "outside_dock"},
+        ),
+        ("bike-transit", {"stress": 70, "hills": 0}, {"novice_legs": True}, {"noviceLegs": True}),
+    ],
+)
+def test_the_page_reads_the_link_as_the_plan_it_was(tmp_path, preset, dials, sent, expected):
+    """The page's own decodePlan, run on the link: same points, via points, ride type and
+    settings, so the link opens the route that was planned."""
+    points = [(-77.03651, 38.89768), (-77.00911, 38.88990), (-77.02101, 38.90455)]
+    if preset in mcp.TWO_POINT_PRESETS:
+        points = points[:2]
+    vias = [1] if len(points) == 3 else []
+    fragment = mcp.plan_fragment(points, vias, preset, dials, sent)
+    script = tmp_path / "decode.mts"
+    plan_hash = Path(__file__).resolve().parents[1] / "frontend/src/lib/planHash.ts"
+    script.write_text(
+        f"import {{ decodePlan }} from {json.dumps(str(plan_hash))};\n"
+        "console.log(JSON.stringify(decodePlan(process.argv[2])));\n"
+    )
+    done = subprocess.run(
+        ["node", str(script), fragment], capture_output=True, text=True, timeout=60, check=True
+    )
+    plan = json.loads(done.stdout.strip().splitlines()[-1])
+    assert plan["points"] == [list(p) for p in points]
+    assert plan["vias"] == vias and plan["preset"] == preset
+    for key, value in expected.items():
+        assert plan["dials"].get(key) == value, (key, plan["dials"])
+    # And the saved route's dials say the same.
+    kept = mcp.page_dials(dials, sent)
+    for key, value in expected.items():
+        assert kept.get(key) == value, (key, kept)
 
 
 # --- Planning against the stand-in ----------------------------------------------------------
@@ -379,3 +466,115 @@ def test_a_planned_route_lands_in_my_routes(live_server, stand_in, tmp_path) -> 
     # The rider sees it in My routes, and opens it as the page opens any saved route.
     listed = client.get("/api/me/routes").json()["routes"]
     assert [r["name"] for r in listed] == ["MCP loop"]
+
+
+def test_the_assistant_picks_the_ride_type_and_any_setting(tools) -> None:
+    """The owner, 2026-10-18: "Allow the MCP server to pick whatever mode makes sense for this
+    and to adjust any parameters"."""
+    names = {t["name"]: t for t in mcp.TOOLS}
+    offered = names["plan_route"]["inputSchema"]["properties"]
+    assert set(offered["preset"]["enum"]) == set(mcp.PRESETS)
+    assert "bike-transit" in mcp.PRESETS and "rebalance" in mcp.PRESETS
+    for setting in mcp.PASSED_OPTIONS:
+        assert setting in offered, setting
+    tools.call(
+        "plan_route",
+        {
+            "points": [[-77.03, 38.9], [-77.02, 38.91]],
+            "preset": "mountain-bike",
+            "hills": 40,
+            "when": "weekend",
+            "mtb_level": 3,
+            "mtb_preferred": 2,
+            "rider_weight_lb": 200,
+            "trails_off": False,
+        },
+    )
+    sent = StandIn.routes[-1]
+    assert sent["preset"] == "mountain-bike" and sent["hills"] == 40 and sent["when"] == "weekend"
+    assert sent["mtb_level"] == 3 and sent["mtb_preferred"] == 2
+    assert sent["system_weight_kg"] == 91 and "trails_off" not in sent
+
+
+def test_a_two_point_ride_type_is_refused_more_points_before_asking(tools) -> None:
+    out = rpc(
+        tools,
+        "tools/call",
+        {
+            "name": "plan_route",
+            "arguments": {
+                "points": [[-77.03, 38.9], [-77.02, 38.91], [-77.01, 38.92]],
+                "preset": "bike-transit",
+            },
+        },
+    )
+    assert out["result"]["isError"] and not StandIn.routes
+
+
+def test_the_loop_keeps_another_ride_type_s_own_stress(tools) -> None:
+    tools.call("plan_metro_loop", {"target_miles": 30, "preset": "trailmaxxing", "max_plans": 1})
+    assert "stress" not in StandIn.routes[0] and StandIn.routes[0]["preset"] == "trailmaxxing"
+
+
+def test_a_loop_whose_first_plan_fails_says_why(tools) -> None:
+    StandIn.fail = True
+    out = rpc(tools, "tools/call", {"name": "plan_metro_loop", "arguments": {"target_miles": 100}})
+    assert out["result"]["isError"] is True
+    assert "plan it in two halves" in out["result"]["content"][0]["text"]
+
+
+def test_a_cancelled_call_saves_nothing_and_is_not_answered(tools) -> None:
+    calls: dict = {}
+
+    class Saving(mcp.Api):
+        def save(self, body):  # pragma: no cover - must not be reached
+            raise AssertionError("saved after the client gave up")
+
+    tools._api = Saving(tools.api.base, save_key="rmk_x")
+    original = tools._plan
+
+    def plan_then_cancel(call, *args):
+        plan = original(call, *args)
+        calls[9].cancelled.set()  # the client gives up while the plan runs
+        return plan
+
+    tools._plan = plan_then_cancel
+    out = mcp.handle(
+        tools,
+        {
+            "jsonrpc": "2.0",
+            "id": 9,
+            "method": "tools/call",
+            "params": {
+                "name": "plan_route",
+                "arguments": {"points": [[-77.03, 38.9], [-77.02, 38.91]], "save_as": "x"},
+            },
+        },
+        calls=calls,
+    )
+    assert out is None and not calls
+
+
+def test_a_cancellation_reaches_the_call_it_names(tools) -> None:
+    running = mcp.Call()
+    calls = {4: running}
+    mcp.handle(
+        tools,
+        {"jsonrpc": "2.0", "method": "notifications/cancelled", "params": {"requestId": 4}},
+        calls=calls,
+    )
+    assert running.cancelled.is_set()
+
+
+def test_a_password_gated_site_gets_its_password_and_the_key_its_own_header(
+    tools, stand_in, monkeypatch
+) -> None:
+    monkeypatch.setenv("ROUTEMAKER_BASIC_AUTH", "rider:secret")
+    api = mcp.Api(stand_in, save_key="rmk_abc")
+    with pytest.raises(mcp.ToolError):
+        api.save({"name": "x"})  # the stand-in has no save endpoint
+    api.route({"points": [[-77.03, 38.9], [-77.02, 38.91]], "preset": "default"})
+    for seen in StandIn.headers_seen:
+        assert seen["authorization"] == "Basic cmlkZXI6c2VjcmV0"
+    assert StandIn.headers_seen[0]["x-routemaker-key"] == "rmk_abc"
+    assert "x-routemaker-key" not in StandIn.headers_seen[1]
