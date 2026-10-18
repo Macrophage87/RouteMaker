@@ -7164,6 +7164,7 @@ details.fold > summary .icon {
   .points-dragging li {
     transition: none;
   }
+}
 
 /* Your routes in Save and load (the owner, 2026-10-18): one search over the saved and the kept routes. */
 .your-routes .route-search {
