@@ -7070,3 +7070,13 @@ details.fold > summary .icon {
   font-weight: 700;
   color: var(--text-muted);
 }
+
+/* Your routes in Save and load (the owner, 2026-10-18): one search over the saved and the kept routes. */
+.your-routes .route-search {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0.25rem 0 0.5rem;
+  min-height: 44px;
+  padding: 0.4rem 0.6rem;
+  font: inherit;
+}

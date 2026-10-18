@@ -107,17 +107,25 @@ def skip_closed(plan: transit.Plan, live: wmata_live.Snapshot | None) -> transit
     if live is None or plan.mode != presets.BIKE_TRANSIT or not plan.options:
         return plan
     kept = [o for o in plan.options if not closed_on(o, live)]
-    if len(kept) == len(plan.options) or not kept:
+    if len(kept) == len(plan.options):
         return plan
-    chosen = plan.options[plan.chosen].key
-    index = next((i for i, o in enumerate(kept) if o.key == chosen), 0)
     names = list(dict.fromkeys(n for o in plan.options for n in closed_on(o, live)))
     one = len(names) == 1
-    note = (
-        f"{_and(names)} {'is' if one else 'are'} closed (WMATA): trips taking a bike through"
-        f" {'it' if one else 'them'} are left out."
-    )
+    said = f"{_and(names)} {'is' if one else 'are'} closed (WMATA)"
+    if not kept:
+        # Nothing else to offer: the trips stay, and the rider is told.
+        return replace(
+            plan,
+            notes=[*plan.notes, f"{said}: every trip here takes a bike through {_it(one)}."],
+        )
+    chosen = plan.options[plan.chosen].key
+    index = next((i for i, o in enumerate(kept) if o.key == chosen), 0)
+    note = f"{said}: trips taking a bike through {'it' if one else 'them'} are left out."
     return replace(plan, options=kept, chosen=index, notes=[*plan.notes, note])
+
+
+def _it(one: bool) -> str:
+    return "it" if one else "them"
 
 
 def _and(names: list[str]) -> str:

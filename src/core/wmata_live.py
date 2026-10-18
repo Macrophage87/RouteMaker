@@ -256,7 +256,7 @@ class Snapshot:
                 words = sentence.lower()
                 if not CLOSED_WORDS.search(words) or OPEN_WORDS.search(words):
                     continue
-                if FUTURE_WORDS.search(words):
+                if FUTURE_WORDS.search(words) or PART_WORDS.search(words):
                     continue
                 for station in self._named_in(words):
                     for code in self.codes(station):
@@ -289,11 +289,20 @@ class Snapshot:
         for station in self.stations.values():
             for match in _matches(station.name, words):
                 spans.append((match.start(), match.end(), station))
-        return [
-            station
-            for start, end, station in spans
-            if not any(s <= start and end <= e and (e - s) > (end - start) for s, e, _ in spans)
-        ]
+        # A name only in passing is not about the station: a stretch's ends ("between Foggy Bottom
+        # and Clarendon", where the shuttles stop) or a train's way ("trains to Ashburn").
+        passing = [m.span() for m in BETWEEN.finditer(words)]
+        out: list[Station] = []
+        for start, end, station in spans:
+            if any(s <= start and end <= e and (e - s) > (end - start) for s, e, _ in spans):
+                continue
+            if any(s <= start and end <= e for s, e in passing):
+                continue
+            if TOWARD.search(words[max(0, start - 12) : start]):
+                continue
+            if station not in out:
+                out.append(station)
+        return out
 
     def is_closed(self, station: Station) -> bool:
         closed = self.closed()
@@ -305,7 +314,16 @@ class Snapshot:
 
 
 # What makes an incident's sentence close the stations it names (`Snapshot.closed`).
-CLOSED_WORDS = re.compile(r"\b(closed|closes|closure)\b")
+CLOSED_WORDS = re.compile(r"\b(closed|closes|closure of)\b")
+# A part of a station closed (an entrance, an elevator, a garage) leaves the station open.
+PART_WORDS = re.compile(
+    r"\b(entrances?|exits?|elevators?|escalators?|garages?|parking|lots?|mezzanines?|kiosks?)\b"
+)
+# A stretch of line between two stations, and a train's way, name stations only in passing.
+BETWEEN = re.compile(
+    r"\bbetween\b[^.;:]*?\band\b[^.;:,]*?(?=\s+(?:due|because|stations?)\b|[.;:,]|$)"
+)
+TOWARD = re.compile(r"\b(to|toward|towards|for)\s+$")
 OPEN_WORDS = re.compile(r"\b(open|opens|reopen|reopens|reopened)\b")
 FUTURE_WORDS = re.compile(r"\b(will|beginning|starting)\b")
 

@@ -360,6 +360,12 @@ def test_a_station_both_platforms_close_together() -> None:
     assert {"A01", "C01"} <= set(live.closed())
 
 
+def replace_options(plan: transit.Plan, options: list) -> transit.Plan:
+    from dataclasses import replace
+
+    return replace(plan, options=options, chosen=0)
+
+
 def test_own_bike_trips_through_a_closed_station_are_left_out(schedule) -> None:
     plan = plan_bike(schedule, CAPITOL_HILL, DOWNTOWN, at(2026, 9, 30, 8, 0))
     metro = metro_option(plan)
@@ -375,6 +381,13 @@ def test_own_bike_trips_through_a_closed_station_are_left_out(schedule) -> None:
     # Nothing closed, or no reading: the plan as it was.
     assert transit_live.skip_closed(plan, snapshot()) is plan
     assert transit_live.skip_closed(plan, None) is plan
+    # Every trip through it: they stay, and the note says so.
+    through = replace_options(plan, [metro])
+    left = transit_live.skip_closed(through, live)
+    assert [o.key for o in left.options] == [metro.key]
+    assert left.notes[-1] == (
+        "Smithsonian is closed (WMATA): every trip here takes a bike through it."
+    )
 
 
 def test_bikeshare_and_transit_keeps_its_trips_through_a_closed_station(schedule) -> None:
@@ -473,3 +486,51 @@ class TestStationAlertsApi:
         assert later["alerts"] == []
         monkeypatch.setattr(wmata_live.client, "snapshot", lambda: None)
         assert client.get("/api/transit/closures").json()["alerts"] == []
+
+
+def test_a_stretch_a_trains_way_or_a_closed_entrance_closes_no_station() -> None:
+    from dataclasses import replace
+
+    base = snapshot()
+    extra = {
+        "C05": ("Rosslyn", -77.0716, 38.8962),
+        "C06": ("Arlington Cemetery", -77.0632, 38.8846),
+        "K01": ("Court House", -77.0855, 38.8907),
+        "K04": ("Ballston-MU", -77.1112, 38.8820),
+        "C04": ("Foggy Bottom-GWU", -77.0502, 38.9009),
+        "A02": ("Farragut North", -77.0397, 38.9032),
+    }
+    stations = {**base.stations}
+    for code, (name, lon, lat) in extra.items():
+        stations[code] = wmata_live.Station(code, name, lon, lat)
+    live = replace(base, stations=stations)
+
+    def closed(text: str) -> set[str]:
+        return set(
+            replace(
+                live, incidents=(wmata_live.Incident(("Orange Line",), "Alert", text),)
+            ).closed()
+        )
+
+    assert (
+        closed(
+            "Trains single tracking between Rosslyn and Arlington Cemetery due to a track closure."
+        )
+        == set()
+    )
+    # The shuttle's ends stay open; the stations closed between them are closed.
+    assert closed(
+        "Shuttle buses replace trains between Ballston-MU and Foggy Bottom-GWU due to the"
+        " closure of Rosslyn and Court House."
+    ) == {"C05", "K01"}
+    assert closed("The L Street entrance at Farragut North is closed.") == set()
+    # A train's way names its end in passing: no badge.
+    delays = replace(
+        live,
+        incidents=(
+            wmata_live.Incident(
+                ("Orange Line",), "Delay", "Trains to Vienna/Fairfax-GMU are delayed."
+            ),
+        ),
+    )
+    assert delays.named() == set()

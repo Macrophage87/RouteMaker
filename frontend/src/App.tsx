@@ -83,7 +83,7 @@ import { readBigText, readHeadingUp, readRidePrefs, writeBigText, writeHeadingUp
 import { activePins, chosenSaid, withStations, type NearbyStation, type Pins, type StationAction } from "./lib/stations.ts";
 import { bikeshareOf } from "./lib/bikeshare.ts";
 import { carries, hillsWords, seeksClimbs, startDials, stressMax, stressWords, trailsAreOff, type Dials } from "./lib/dials.ts";
-import { WeightStore, withWeight, type StoredWeight } from "./lib/weight.ts";
+import { WeightStore, defaultSplit, withWeight, type StoredWeight } from "./lib/weight.ts";
 import { stationEdit, type RailVisibility, type Station, type StationRole } from "./lib/railStations.ts";
 import { RAIL_STATIONS, WMATA_SLUGS, stationEntranceForPlace } from "./lib/railData.ts";
 import { federalShown, type FederalData } from "./lib/federalLand.ts";
@@ -191,7 +191,8 @@ import { AppStatusBar, useAppStatus } from "./InstallableApp.tsx";
 import { isStandalone } from "./lib/installOffer.ts";
 import { keepLastRide, keepRoute, keptAnswerFor, sweepKept } from "./lib/offlineKeep.ts";
 import { KEEPING_SAID, keepOffered, keepSaid, keptPlanKey, offlineRouteNotice, routeTitle, type KeptRoute } from "./lib/offlineRoutes.ts";
-import { askPersist } from "./lib/offlineRouteStore.ts";
+import { anyKept, askPersist } from "./lib/offlineRouteStore.ts";
+import { YourRoutes } from "./YourRoutes.tsx";
 import { asKept, namesToKeep, rideAfterImport, type Ride } from "./lib/gpxEdit.ts";
 import { followLine } from "./lib/gpxMatch.ts";
 import { fetchHazards, type HazardCollection } from "./lib/massHazards.ts";
@@ -3826,8 +3827,7 @@ export function App() {
     presets: (
       <RideSection key="presets"
         {...{
-          preset, dials, choosePreset, commitDials, weight, weightRemembered, weightStore, setWeightRemembered,
-          setWeight, route, typeCard: mode !== "go",
+          preset, dials, choosePreset, commitDials, route, typeCard: mode !== "go",
         }}
       />
     ),
@@ -4282,6 +4282,22 @@ export function App() {
                     ...(importBase.current && !importEdited ? { exact: importBase.current.exact === true, onExact: setFollowExact } : {}),
                   },
                 }),
+                // Your routes, saved and kept for offline, with a search (the owner, 2026-10-18); versions in Plan only.
+                routes: (
+                  <YourRoutes
+                    signedIn={myGoControls.signedIn}
+                    kept={{ shown: keepShown || anyKept(), version: keptVersion, onOpen: openKept, onSay: announce }}
+                    myRoutes={{ ...{ version: myRoutesVersion, onOpen: openSaved, onExport: exportSaved, announce, sharedLinks: mode === "plan", onSharedChange: forgetSharedLine,
+                      // The saved route on screen follows a rename, and is forgotten once deleted (the next save is new).
+                      onRenamed: (id: number, name: string) => {
+                        openSavedRoute.current = afterRename(openSavedRoute.current, id, name);
+                      },
+                      onDeleted: (id: number) => {
+                        openSavedRoute.current = afterDelete(openSavedRoute.current, id);
+                      },
+                    }, versions: mode !== "go" }}
+                  />
+                ),
                 // Save route, then Share (the owner, 2026-10-17: "Basically you save then you share"), for the route shown
                 // or the file opened.
                 shareControls:
@@ -4302,20 +4318,26 @@ export function App() {
             <SettingsSheet
               {...{
                 bigText: { on: bigText, onChange: setBigText },
-                nav: sheetNav, settingsHeadingRef, ridePrefs, changeRidePrefs, keepShown, keptVersion, openKept, announce,
+                // The rider and bike weight (OWNER-DECISIONS 313-318), in Settings (the owner, 2026-10-18).
+                weight: {
+                  saved: weight,
+                  remembered: weightRemembered,
+                  split: defaultSplit(dials.carrying),
+                  onSave: (next: StoredWeight, remember: boolean) => {
+                    weightStore.current?.save(next, remember);
+                    setWeightRemembered(remember && (weightStore.current?.remembered() ?? false));
+                    setWeight(next);
+                  },
+                  onClear: () => {
+                    weightStore.current?.clear();
+                    setWeightRemembered(false);
+                    setWeight(null);
+                  },
+                },
+                nav: sheetNav, settingsHeadingRef, ridePrefs, changeRidePrefs, announce,
                 linkNote, accessMode, toggleAccessMode, mode, myGo: myGoControls, menu,
                 announcements: { level: announceLevel(announceChoice, mode), choose: chooseAnnounce },
                 signInAvailable: me.sign_in,
-                // Shared links are managed in Plan only (lib/sharedRoutes.ts listSharedLinks).
-                myRoutes: { version: myRoutesVersion, onOpen: openSaved, onExport: exportSaved, announce, sharedLinks: mode === "plan", onSharedChange: forgetSharedLine,
-                  // The saved route on screen follows a rename, and is forgotten once deleted (the next save is new).
-                  onRenamed: (id: number, name: string) => {
-                    openSavedRoute.current = afterRename(openSavedRoute.current, id, name);
-                  },
-                  onDeleted: (id: number) => {
-                    openSavedRoute.current = afterDelete(openSavedRoute.current, id);
-                  },
-                },
               }}
             />
             <NearestSheet nav={sheetNav}>

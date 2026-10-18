@@ -27,9 +27,10 @@ export const SHEET_TITLES: Record<Exclude<PanelView, "planner">, string> = {
   legend: "Legend",
   suggest: "Suggest a change",
   review: "Review",
-  gpx: "Route file",
+  // Save and load (the owner, 2026-10-18: "the files tab (maybe call it save or load)"): files, Save, Share, your routes.
+  gpx: "Save and load",
   settings: "Settings",
-  nearest: "Nearest water, restroom or Metro",
+  nearest: "Nearest",
   food: "Find food",
   ride: "Ride",
   // v0.7.0: Go's Repair (behind More), and Plan's Places to see (Go calls it Sights).
@@ -38,6 +39,9 @@ export const SHEET_TITLES: Record<Exclude<PanelView, "planner">, string> = {
   // Go's Edit route (edit-route redesign, Stephen 2026-10-18): Plan's points, from the route card.
   points: "Edit route",
 };
+
+/** The Files sheet's name on its buttons (the owner, 2026-10-18), short enough for the bar. */
+export const SAVE_LOAD = "Save & load";
 
 /** Go's Menu (the mockup's Menu sheet): Settings, with Plan, Suggest, GPX and Review above them. */
 export const MENU_TITLE = "Menu";
@@ -62,8 +66,8 @@ export const BAR_ITEMS: readonly BarItem[] = [
   { id: "plan", label: "Plan", opens: "planner", description: "Shows the planner: the points, the ride settings and the route." },
   { id: "layers", label: "Layers", opens: "layers", description: "Opens the map layers and their switches; the legend is behind its Legend button." },
   { id: "suggest", label: "Suggest", opens: "suggest", description: "Opens the ways to suggest a change to the map, or report a problem to DC 311." },
-  { id: "gpx", label: "Files", opens: "gpx", description: "Opens the route file tools: import a GPX file, or export the route." },
-  { id: "settings", label: "Settings", opens: "settings", description: "Opens the settings: display, Ride mode, this device and your account." },
+  { id: "gpx", label: SAVE_LOAD, opens: "gpx", description: "Opens Save and load: save or share the route, find your routes, or open or export a route file." },
+  { id: "settings", label: "Settings", opens: "settings", description: "Opens the settings: display, Ride mode and your account." },
 ];
 
 /** The sheets a bar button counts as its own: Layers holds the legend, Suggest the review. */

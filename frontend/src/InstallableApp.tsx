@@ -31,6 +31,7 @@ import {
   subscribeInstall,
 } from "./lib/installOffer.ts";
 import { removeKept } from "./lib/offlineKeep.ts";
+import { matching, noMatch } from "./lib/routeSearch.ts";
 import { KEPT_HEADING, KEPT_HOW, KEPT_NONE, KEPT_NONE_SHORT, KEPT_PRIVATE, focusAfterRemove, keptDetail, removeFailedSaid, removedSaid, sortKept, storageNote, type KeptRoute } from "./lib/offlineRoutes.ts";
 import { listKept, persisted } from "./lib/offlineRouteStore.ts";
 import { InfoButton } from "./SettingRow.tsx";
@@ -230,13 +231,16 @@ export function KeptRoutes({
   onSay,
   headingRef,
   compact = false,
+  filter = "",
 }: {
   version: number;
   onOpen: (route: KeptRoute) => void;
   onSay: (text: string) => void;
   headingRef?: RefObject<HTMLHeadingElement | null>;
-  /** Settings: the how and the privacy note behind an (i) by the heading. */
+  /** The Save and load sheet: the how and the privacy note behind an (i) by the heading. */
   compact?: boolean;
+  /** Words from the sheet's search: only the routes whose titles hold them are listed. */
+  filter?: string;
 }) {
   const [infoOpen, setInfoOpen] = useState(false);
   const [routes, setRoutes] = useState<KeptRoute[] | null>(null);
@@ -272,9 +276,9 @@ export function KeptRoutes({
       onSay(removeFailedSaid(route.title));
       return;
     }
-    const left = (routes?.length ?? 1) - 1;
-    focusNext.current = focusAfterRemove(index, left);
-    onSay(removedSaid(route.title, left));
+    // The focus goes by the rows shown (the search may hide some); the count said is of every kept route.
+    focusNext.current = focusAfterRemove(index, matching(routes ?? [route], filter, (r) => r.title).length - 1);
+    onSay(removedSaid(route.title, (routes?.length ?? 1) - 1));
     setRemoved((n) => n + 1);
   };
   return (
@@ -294,9 +298,11 @@ export function KeptRoutes({
         <p className="hint">Reading the routes kept on this device…</p>
       ) : routes.length === 0 ? (
         <p className="hint">{compact ? KEPT_NONE_SHORT : KEPT_NONE}</p>
+      ) : matching(routes, filter, (r) => r.title).length === 0 ? (
+        <p className="hint">{noMatch(filter)}</p>
       ) : (
         <ul className="kept-list">
-          {routes.map((route, index) => (
+          {matching(routes, filter, (r) => r.title).map((route, index) => (
             <li key={route.id} className="kept-route">
               <p className="kept-title" id={`${id}-title-${index}`}>
                 {route.title}
