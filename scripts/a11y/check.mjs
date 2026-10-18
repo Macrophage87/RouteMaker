@@ -982,7 +982,7 @@ for (const mobile of [false, true]) {
   check("settings: Layers has no second High contrast switch (UI-CLEANUP: Settings only)", !inLayers, JSON.stringify(inLayers));
   check("settings: no id is used twice in the page", await p.eval("(() => { const ids = [...document.querySelectorAll('[id]')].map((e) => e.id); return ids.length === new Set(ids).size; })()"));
   const heads = await p.eval("[...document.querySelectorAll('#sheet-settings h3')].map((h) => h.textContent)");
-  check("settings: the sheet's headings are Display, Riding and Account (v0.9.0: Ride mode and This device became Riding; with Routes kept for offline and Install the app when offered), so the sign-in note is not filed under Display", JSON.stringify(heads.filter((h) => h !== "Install the app" && h !== "Routes kept for offline")) === JSON.stringify(["Display", "Riding", "Account"]), JSON.stringify(heads));
+  check("settings: the sheet's headings are Display, Riding and Account (v0.9.0: Ride mode and This device became Riding, and the routes kept for offline moved to Save & load; with Install the app when offered), so the sign-in note is not filed under Display", JSON.stringify(heads.filter((h) => h !== "Install the app")) === JSON.stringify(["Display", "Riding", "Account"]), JSON.stringify(heads));
   const axSwitches = (await p.s("Accessibility.getFullAXTree", {})).nodes.filter((n) => !n.ignored && /^High contrast/.test(n.name?.value ?? "") && ["switch", "button"].includes(n.role?.value));
   check("settings: exactly one High contrast switch is in the accessibility tree (said once, not twice)", axSwitches.length === 1 && axSwitches[0].role.value === "switch", JSON.stringify(axSwitches.map((n) => [n.role?.value, n.name?.value])));
   check("settings: the Settings bar button is the current one (aria-current)", await p.eval("(() => { const b = [...document.querySelectorAll('.bar-button')].find((x) => x.textContent.startsWith('Settings')); const others = [...document.querySelectorAll('.bar-button')].filter((x) => x !== b && x.getAttribute('aria-current')); return b.getAttribute('aria-current') === 'true' && others.length === 0; })()"));
@@ -4114,7 +4114,7 @@ const JUNCTION_BUTTON = "Suggest a junction change";
 }
 
 // ---- Share (owner, 2026-10-10; lib/share.ts): the share sheet for Copy link's link, where there is one ----
-// Since v0.9.0 it is in the Files sheet, after Save route (the owner, 2026-10-17: "Basically you save then you share").
+// Since v0.9.0 it is in the Save & load sheet, after Save route (the owner, 2026-10-17: "Basically you save then you share").
 {
   // No share sheet: no Share button, and Copy link is still there.
   const p = await open({ init: "delete Navigator.prototype.share; delete Navigator.prototype.canShare;" });
@@ -4164,7 +4164,7 @@ const SHARE_STUB = `window.__shared = []; window.__shareMode = "ok"; window.__no
     sent.noActivation === 0 && sent.shared.length === 1 && /\/s\/[0-9a-f]{32}#.*&route=[0-9a-f]{32}&ride=1$/.test(url), JSON.stringify(sent));
   await p.close();
 }
-// MARK_SHARE marks the Files sheet's Share (open it first: openSheet(p, "Save & load")).
+// MARK_SHARE marks the Save & load sheet's Share (open it first: openSheet(p, "Save & load")).
 const MARK_SHARE = "(() => { const s = document.querySelector('#sheet-gpx .share-controls .share-route'); if (s) s.id = '__share'; return true; })()";
 {
   const p = await open({ init: SHARE_STUB });
@@ -4172,7 +4172,7 @@ const MARK_SHARE = "(() => { const s = document.querySelector('#sheet-gpx .share
   await p.eval(MARK_SHARE);
   const ax = await axNode(p, "#__share");
   const box = await p.eval("(() => { const s = document.getElementById('__share'); if (!s) return null; const r = s.getBoundingClientRect(); return { w: r.width, h: r.height, more: !!document.querySelector('.route-more-body .share-route') }; })()");
-  check("share: a button named Share route in the Files sheet (no longer behind More), 44 px or more each way", ax?.role === "button" && ax?.name === "Share route" && box && !box.more && box.w >= 44 && box.h >= 44, JSON.stringify({ ax, box }));
+  check("share: a button named Share route in the Save & load sheet (no longer behind More), 44 px or more each way", ax?.role === "button" && ax?.name === "Share route" && box && !box.more && box.w >= 44 && box.h >= 44, JSON.stringify({ ax, box }));
   await p.eval("document.getElementById('__share').focus(); true");
   await p.tab();
   await p.tab();
@@ -4224,12 +4224,12 @@ const MARK_SHARE = "(() => { const s = document.querySelector('#sheet-gpx .share
   await p.close();
 }
 {
-  // On a 320 px phone, in the Files sheet: Share is still 44 px each way and nothing spills.
+  // On a 320 px phone, in the Save & load sheet: Share is still 44 px each way and nothing spills.
   const p = await open({ init: SHARE_STUB, width: 320, height: 800, mobile: true });
   await openSheet(p, "Save & load");
   await p.eval(MARK_SHARE);
   const fit = await p.eval("(() => { const s = document.getElementById('__share'); if (!s) return null; const r = s.getBoundingClientRect(); const row = s.parentElement.getBoundingClientRect(); return { w: r.width, h: r.height, inRow: r.left >= row.left - 1 && r.right <= row.right + 1, over: s.scrollWidth > s.clientWidth + 1, page: document.documentElement.scrollWidth > innerWidth }; })()");
-  check("share at 320 px: 44 px or more each way, inside the Files sheet, no overflow", !!fit && fit.w >= 44 && fit.h >= 44 && fit.inRow && !fit.over && !fit.page, JSON.stringify(fit));
+  check("share at 320 px: 44 px or more each way, inside the Save & load sheet, no overflow", !!fit && fit.w >= 44 && fit.h >= 44 && fit.inRow && !fit.over && !fit.page, JSON.stringify(fit));
   await p.close();
 }
 
