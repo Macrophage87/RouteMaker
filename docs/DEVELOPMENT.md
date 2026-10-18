@@ -7741,6 +7741,8 @@ favicon: the adaptive icon's vector foreground (also its monochrome layer, for A
 inside the 66 dp safe circle, its blue background, the round and square PNGs for Android 7, and the
 launch screens (`mobile/android/app/src/main/res/`). The icon is the owner's design of 2026-10-18 (a
 route line running into a bicycle with a map pin in the front wheel), redrawn by hand as strokes.
+The favicon's own `<style>` doubles the stroke widths when it is drawn 40 px or smaller (a browser
+tab), where the full-size lines blurred.
 `index.html` links the manifest with
 `crossorigin="use-credentials"` (so the beta's password is sent with it), carries the light and dark
 theme colours and the Apple tags.
