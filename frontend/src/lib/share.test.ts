@@ -90,7 +90,7 @@ test("the rider closing the sheet is silent; any other failure says so and offer
 });
 
 test("App shows Share beside Copy link only where it is supported, named Share route, described by the location line", () => {
-  assert.equal(SHARE_LABEL, "Share");
+  assert.equal(SHARE_LABEL, "Share route");
   assert.equal(SHARE_NAME, "Share route");
   assert.ok(SHARE_NAME.startsWith(SHARE_LABEL), "the accessible name holds the visible word");
   assert.match(app, /const \[canShare\] = useState\(\(\) => canShareLink\(navigator, window\.location\.href\)\);/);
@@ -99,7 +99,7 @@ test("App shows Share beside Copy link only where it is supported, named Share r
   const controls = app.slice(app.indexOf("export function ShareControls"), app.indexOf("function RouteActions("));
   assert.match(
     controls,
-    /\{save\}\s*\{canShare && ready && \(\s*<button type="button" className="secondary share-route" onClick=\{shareRoute\} aria-label=\{SHARE_NAME\} aria-describedby=\{linkNote \? "share-link-note" : undefined\}>\s*\{SHARE_LABEL\}/,
+    /\{save\}\s*\{canShare && ready && \(\s*<div className="share-buttons">\s*<button\s*type="button"\s*className="secondary share-route"\s*onClick=\{\(\) => shareRoute\(false\)\}\s*aria-label=\{SHARE_NAME\}\s*aria-describedby=\{`share-route-about\$\{note\}`\}/,
   );
   assert.match(controls, /\{canShare && ready && linkNote && \(\s*<p id="share-link-note" className="hint link-note">/);
   assert.match(controls, /\{canShare && ready && onShareKeep && <ShareKeepField value=\{shareKeep\} onChange=\{onShareKeep\} \/>\}/);
@@ -121,7 +121,7 @@ test("share() is called within the press: synchronously in shareLink, and before
   void shareLink({ share: async () => void (called = true) }, shareContent("https://x.test/", 1, "Default"));
   assert.equal(called, true, "share() called synchronously");
   // App's handler: no await before shareLink(...), and a press while a sheet is open is skipped.
-  const start = app.indexOf("const shareRoute = async () => {");
+  const start = app.indexOf("const shareRoute = async (ride = false) => {");
   assert.ok(start > 0);
   const body = app.slice(start, app.indexOf("\n  };\n", start));
   const call = body.indexOf("shareLink(navigator, content)");

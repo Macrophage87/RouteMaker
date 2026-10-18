@@ -45,12 +45,14 @@ import { SaveRoute, type SaveRouteProps } from "../SaveRoute.tsx";
 import { SAVE_ROUTE, SAVE_SHORT } from "../lib/savedRoutes.ts";
 import { Fold, QuickFigures } from "../Sidebar.tsx";
 import { COPY_LINK, ROUTE_FOLDS, chartFoldOpen } from "../lib/sidebar.ts";
-import { SHARE_LABEL, SHARE_NAME } from "../lib/share.ts";
+import { SHARE_LABEL, SHARE_NAME, SHARE_RIDE_LABEL } from "../lib/share.ts";
 import { SHARE_IMAGE_LABEL } from "../lib/shareCard.ts";
 import {
   SHARE_DELETE_AFTER_LABEL,
   SHARE_KEEP_LABEL,
   SHARE_KEEP_OPTIONS,
+  SHARE_RIDE_ABOUT,
+  SHARE_ROUTE_ABOUT,
   SHARE_UNTIL_DAYS,
   dayFromToday,
   type ShareKeep,
@@ -438,9 +440,10 @@ export function ShareControls(props: {
   save: ReactNode;
   /** The browser has a share sheet: Share's keeping and its status line are there. */
   canShare: boolean;
-  /** A route to share is shown: the Share button is there. */
+  /** A route to share is shown: the Share buttons are there. */
   ready: boolean;
-  shareRoute: () => void;
+  /** Share route, or (ride) Share ride: the same link, ridden fixed with location sharing offered (RIDE_PARAM). */
+  shareRoute: (ride: boolean) => void;
   shareKeep: ShareKeep;
   /** Plan only (Go keeps the default, one control per feature): how long the link is kept. */
   onShareKeep: ((keep: ShareKeep) => void) | null;
@@ -449,13 +452,51 @@ export function ShareControls(props: {
   linkNote: string;
 }) {
   const { save, canShare, ready, shareRoute, shareKeep, onShareKeep, shareSaid, linkNote } = props;
+  // What each button does (the owner, 2026-10-18: "Make that clear in a tooltip"): a phone has no hover, so Info
+  // shows it; it is each button's description too, so a screen reader hears it on the button, and a mouse sees it
+  // on hover (title).
+  const [about, setAbout] = useState(false);
+  const aboutId = useId();
+  const note = linkNote ? " share-link-note" : "";
   return (
     <div className="share-controls">
       {save}
       {canShare && ready && (
-        <button type="button" className="secondary share-route" onClick={shareRoute} aria-label={SHARE_NAME} aria-describedby={linkNote ? "share-link-note" : undefined}>
-          {SHARE_LABEL}
-        </button>
+        <div className="share-buttons">
+          <button
+            type="button"
+            className="secondary share-route"
+            onClick={() => shareRoute(false)}
+            aria-label={SHARE_NAME}
+            aria-describedby={`share-route-about${note}`}
+            title={SHARE_ROUTE_ABOUT}
+          >
+            {SHARE_LABEL}
+          </button>
+          <button
+            type="button"
+            className="secondary share-ride"
+            onClick={() => shareRoute(true)}
+            aria-describedby={`share-ride-about${note}`}
+            title={SHARE_RIDE_ABOUT}
+          >
+            {SHARE_RIDE_LABEL}
+          </button>
+          <button type="button" className="link icon-button info-button share-about-button" aria-expanded={about} aria-controls={aboutId} onClick={() => setAbout(!about)}>
+            <Icon name="info" />
+            <span className="visually-hidden">About sharing</span>
+          </button>
+        </div>
+      )}
+      {canShare && ready && (
+        <div id={aboutId} className="share-about" hidden={!about}>
+          <p id="share-route-about" className="hint">
+            {SHARE_ROUTE_ABOUT}
+          </p>
+          <p id="share-ride-about" className="hint">
+            {SHARE_RIDE_ABOUT}
+          </p>
+        </div>
       )}
       {canShare && ready && linkNote && (
         <p id="share-link-note" className="hint link-note">
