@@ -371,7 +371,8 @@ server {
     # /api/segment-info?lat=..&lon=.. (OWNER-DECISIONS 441a), and /api/street-photo?lon=..&lat=..
     # (v0.7.0), and from v0.7.0 too /api/junction-suggestions/at?lat=..&lon=..,
     # /api/stress-suggestions/ticket?way=.., /api/stress-suggestions/mine?way=..,
-    # /api/transit/station-times?lon=..&lat=.., /api/bikeshare/docks?bbox=.., and Review's
+    # /api/transit/station-times?lon=..&lat=.., /api/transit/next-vehicle?lon=..&lat=.. (v0.9.0),
+    # /api/bikeshare/docks?bbox=.., and Review's
     # /api/review/items?way=.., /api/review/map?west=.., /api/review/next?way=..,
     # /api/review/road/<way> and /api/review/street-photo?lon=..&lat=.. (a way, a point or the
     # area viewed). An upstream error line (a
@@ -379,7 +380,7 @@ server {
     # request with its query, so these log only `crit` errors, to their own file
     # (OWNER-DECISIONS 395). This loses their upstream diagnostics; the api's own log still
     # has its side. The proxy settings are location /'s below, line for line.
-    location ~ ^/api/(reverse|geocode|segment-info|street-photo|junction-suggestions/at|stress-suggestions/ticket|stress-suggestions/mine|transit/station-times|bikeshare/docks|review/items|review/map|review/next|review/road/[0-9]+|review/street-photo)/?$ {
+    location ~ ^/api/(reverse|geocode|segment-info|street-photo|junction-suggestions/at|stress-suggestions/ticket|stress-suggestions/mine|transit/station-times|transit/next-vehicle|bikeshare/docks|review/items|review/map|review/next|review/road/[0-9]+|review/street-photo)/?$ {
         error_log /var/log/nginx/rmbeta-error.log crit;
         proxy_pass http://rmbeta_api;
         proxy_http_version 1.1;
@@ -392,11 +393,11 @@ server {
         proxy_read_timeout 75s;
     }
 
-    # --- saved and shared routes, and the account's own paths: larger bodies ------------
+    # --- saved and shared routes, the account's own paths and keyed saves: larger bodies ------------
     # A saved route is up to 4 MB (core.accounts.ROUTE_MAX_BYTES), a shared one 2 MB; the
     # server's 1m would refuse them with nginx's own 413. 5m, as the Caddyfile's @routes_body
     # and Django's DATA_UPLOAD_MAX_MEMORY_SIZE. The proxy settings are location /'s below.
-    location ~ ^/api/(shared-routes|me)(/|$) {
+    location ~ ^/api/(shared-routes|me|keyed)(/|$) {
         client_max_body_size 5m;
         proxy_pass http://rmbeta_api;
         proxy_http_version 1.1;

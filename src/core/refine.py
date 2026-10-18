@@ -2370,6 +2370,153 @@ def _pct(shared: float, back: float) -> float | None:
     return round(100.0 * shared / back, 1) if back > 0 else None
 
 
+# --- Fewer repeats ------------------------------------------------------------------------
+#
+# The owner, 2026-10-18: "Put a slight penalty on repeats. For instance, I'd probably not do
+# a mile on a LTS4 road to avoid it, but I perfer to not repeat in most cases." A leg that
+# rides a way an earlier leg of the plan already rode (the loop's way back is `make_loop`'s;
+# this is every leg's, a stop's too) is asked for again with points along its repeated
+# stretch excluded, and the new leg is kept where it is no busier and the distance it adds is
+# at most REPEAT_WEIGHT of the repeated metres it saves: a repeated metre counts as 1.5 of
+# a fresh one, so a repeat of a mile is worth up to half a mile more of equally calm riding,
+# and never a metre more of LTS 4, Avoid or a red junction, nor more LTS 3 or orange
+# junctions than the second level's tie step (`MAXCALM_STEPS`). The search after it
+# (`refine`, `refine_long`) does not price repeats, so a calmer route it finds may
+# repeat. Not on a Mass Ride (its route keeps its own rules) and not near a leg's ends:
+# the last REPEAT_STOP_M of a leg into a stop and the first of the leg out of it are how
+# the rider reaches it.
+REPEAT_WEIGHT = 0.5
+# Below this many metres repeated on a leg nothing is asked.
+REPEAT_MIN_M = 300.0
+REPEAT_STOP_M = 100.0
+# The exclusions' thinning at each ask, and the time the whole step may take (seconds).
+REPEAT_THINNING = (1, 3)
+REPEAT_BUDGET_S = 8.0
+
+
+def repeated_by_leg(read: Analysis) -> list[float]:
+    """Each leg's metres on a way an earlier leg rides, but for the first and last
+    REPEAT_STOP_M of the leg."""
+    bounds = leg_bounds(read)
+    out = [0.0] * len(bounds)
+    ridden: set[int] = set()
+    along, leg = 0.0, 0
+    mine: set[int] = set()
+    for piece in read.pieces:
+        middle = along + piece.metres / 2
+        while leg < len(bounds) - 1 and middle >= bounds[leg][1]:
+            ridden |= mine
+            mine = set()
+            leg += 1
+        start, end = bounds[leg]
+        if (
+            piece.way_id
+            and piece.way_id in ridden
+            and start + REPEAT_STOP_M <= middle <= end - REPEAT_STOP_M
+        ):
+            out[leg] += piece.metres
+        if piece.way_id:
+            mine.add(piece.way_id)
+        along += piece.metres
+    return out
+
+
+def repeat_charged_m(read: Analysis, ctx: Context) -> float:
+    """`level3` with each repeated metre (`repeated_by_leg`) counted REPEAT_WEIGHT more."""
+    return level3(read, ctx) + REPEAT_WEIGHT * sum(repeated_by_leg(read))
+
+
+def fewer_repeats_better(read: Analysis, best: Analysis, ctx: Context) -> bool:
+    """Whether `read` repeats less than `best` at a price the rider takes: not a metre
+    more of LTS 4, Avoid or a red junction (`LTS4_SLACK_M`), no more LTS 3 than the
+    tie step, no out-and-back of its own, and shorter once its repeats are charged."""
+    if read.top_m > best.top_m + LTS4_SLACK_M or read.second_m > best.second_m + MAXCALM_STEPS[1]:
+        return False
+    if doubles_back(read, retrace_m(best)):
+        # Out and back within a leg is a repeat too.
+        return False
+    return repeat_charged_m(read, ctx) < repeat_charged_m(best, ctx) - 1.0
+
+
+def _repeat_points(read: Analysis, leg: int) -> list[tuple[float, float]]:
+    """Points along `leg`'s repeated stretch, LOOP_SAMPLE_M apart, none within
+    ENDPOINT_CLEARANCE_M of the leg's ends."""
+    bounds = leg_bounds(read)
+    start, end = bounds[leg]
+    ridden: set[int] = set()
+    along = 0.0
+    for piece in read.pieces:
+        if along + piece.metres / 2 >= start:
+            break
+        if piece.way_id:
+            ridden.add(piece.way_id)
+        along += piece.metres
+    points: list[tuple[float, float]] = []
+    along = 0.0
+    for piece in read.pieces:
+        middle = along + piece.metres / 2
+        along += piece.metres
+        if not start + ENDPOINT_CLEARANCE_M <= middle <= end - ENDPOINT_CLEARANCE_M:
+            continue
+        if piece.way_id not in ridden or piece.metres < CALM_MIN_EDGE_M:
+            continue
+        if points and haversine(Point(*points[-1]), Point(piece.lon, piece.lat)) < LOOP_SAMPLE_M:
+            continue
+        points.append((piece.lon, piece.lat))
+    return points[:MAX_EXCLUDES]
+
+
+def fewer_repeats(trip: dict, ctx: Context) -> tuple[dict, dict]:
+    """The plan with each leg that repeats an earlier one's ways asked for again
+    (`fewer_repeats_better`), first leg to last, within REPEAT_BUDGET_S. Returns (trip,
+    info): `repeated_m` before and after, `tried` (routes asked for) and `changed` (legs
+    replaced)."""
+    info: dict = {"repeated_m": None, "was_m": None, "tried": 0, "changed": 0}
+    legs = trip.get("legs") or []
+    locations = ctx.request.get("locations") or []
+    if ctx.group or len(legs) < 2 or len(locations) != len(legs) + 1:
+        return trip, info
+    try:
+        best = analyse(trip, ctx, ctx.deadline)
+    except (routing.DeadlineExceeded, routing.RouterUnavailable):
+        return trip, info
+    if best is None or best.events is None:
+        return trip, info
+    info["was_m"] = info["repeated_m"] = round(sum(repeated_by_leg(best)), 1)
+    stop_at = min(routing.clock() + REPEAT_BUDGET_S, ctx.deadline.at - REFINE_TRACE_RESERVE_S)
+    # A loop's way back is `make_loop`'s, already asked for.
+    last = len(legs) - 1 if ctx.loop_overlap is not None else len(legs)
+    for leg in range(1, last):
+        if repeated_by_leg(best)[leg] < REPEAT_MIN_M:
+            continue
+        points = _repeat_points(best, leg)
+        if not points:
+            continue
+        for step in REPEAT_THINNING:
+            if stop_at - routing.clock() < REFINE_ROUND_MIN_S:
+                break
+            info["tried"] += 1
+            read, leg_trip = _through((), stop_at, ctx, points[::step], leg)
+            if read == "time":
+                break
+            if read is None:
+                continue
+            joined = _splice(
+                trip, leg, {"legs": leg_trip["legs"], "summary": leg_trip.get("summary") or {}}
+            )
+            if too_long(_trip_m(joined), ctx):
+                continue
+            whole = analyse(joined, ctx, routing.Deadline(stop_at, ctx.deadline.per_call_s))
+            if whole is None or whole.events is None or loop_refused(whole, ctx):
+                continue
+            if fewer_repeats_better(whole, best, ctx):
+                trip, best = joined, whole
+                info["changed"] += 1
+                break
+    info["repeated_m"] = round(sum(repeated_by_leg(best)), 1)
+    return trip, info
+
+
 # The routes offered (OWNER-DECISIONS 265: "return up to 3-4 candidate routes, not one,
 # so the rider can pick the one they like"). There is no score for scenery: the rider
 # judges that from the map. A candidate must be within the ceiling (and, where the rider

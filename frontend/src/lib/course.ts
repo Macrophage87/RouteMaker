@@ -150,6 +150,8 @@ function fromRide(cue: Cue): { type: CourseCueType; name: string; priority: numb
   const street = named(cue.street);
   switch (cue.kind) {
     case "turn": {
+      // A re-route's U-turn (Ride only): a left, by its name.
+      if (cue.movement === "uturn") return { type: "left", name: "U-turn", priority: 4 };
       const turn = TURN_TYPES[cue.movement ?? "right"];
       return { type: turn, name: street ? abbreviateStreet(street) : TURN_NAMES[turn], priority: street ? 4 : 3 };
     }

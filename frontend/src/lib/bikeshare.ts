@@ -111,6 +111,18 @@ export function walkFeatures(plan: BikesharePlan | null): WalkFeatureCollection 
   return { type: "FeatureCollection", features };
 }
 
+/** The walk legs a route draws: a Bikeshare plan's, else the walks at its ends where the ride stops short (`walk_in`). */
+export function routeWalkFeatures(route: RouteResponse | null): WalkFeatureCollection {
+  const plan = bikeshareOf(route);
+  if (plan) return walkFeatures(plan);
+  const features: WalkFeatureCollection["features"] = [];
+  for (const leg of ["start", "end"] as const) {
+    const walk = route?.walk_in?.[leg];
+    if (walk && walk.geometry.coordinates.length >= 2) features.push({ type: "Feature", properties: { leg }, geometry: walk.geometry });
+  }
+  return { type: "FeatureCollection", features };
+}
+
 export interface DockMarker {
   role: "take" | "return";
   lon: number;

@@ -1703,3 +1703,36 @@ def test_the_handout_and_runbook_say_what_a_deploy_looks_like() -> None:
     cd = runbook[runbook.index("## Continuous deployment") :]
     assert "10-20 minutes" in cd and "a few minutes of downtime" not in cd
     assert "resend the\n  handout" in cd or "resend the handout" in cd
+
+
+# --- the owner's alerts (alert.sh, review OPS-1) ---
+
+STUB_ALERT = """#!/bin/sh
+printf '%s|' "$@" >> "$STUB_ALERTS"; echo >> "$STUB_ALERTS"
+"""
+
+
+def _alerts(beta: Beta) -> list[str]:
+    path = beta.tmp / "alerts.log"
+    return path.read_text().splitlines() if path.exists() else []
+
+
+def test_a_held_release_is_sent_to_the_owner_once_per_tag(beta: Beta) -> None:
+    (beta.cd / "bin" / "alert.sh").write_text(STUB_ALERT)
+    (beta.cd / "bin" / "alert.sh").chmod(0o755)
+    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"}, annotated=False)
+    for _ in range(2):
+        beta.agent("run", STUB_ALERTS=str(beta.tmp / "alerts.log"))
+    sent = _alerts(beta)
+    assert len(sent) == 2  # alert.sh itself drops the repeat by its id
+    assert all(line.startswith("send|deploy|held v0.2.0|held: v0.2.0") for line in sent)
+
+
+def test_a_quiet_pass_sends_nothing_and_a_missing_alert_script_is_fine(beta: Beta) -> None:
+    done = beta.agent("run")
+    assert done.returncode == 0, done.stdout + done.stderr
+    (beta.cd / "bin" / "alert.sh").write_text(STUB_ALERT)
+    (beta.cd / "bin" / "alert.sh").chmod(0o755)
+    beta.agent("run", STUB_ALERTS=str(beta.tmp / "alerts.log"))
+    # Up to date only clears an earlier alert (alert.sh posts "working again" only after one).
+    assert _alerts(beta) == ["clear|deploy|the release agent is working again (v0.1.0 deployed)|"]
