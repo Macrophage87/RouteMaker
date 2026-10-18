@@ -145,15 +145,14 @@ import { climbEndName, climbEnds, climbNearSpot, rideClimbEdit } from "./lib/cli
 // refused by the edge's connect-src 'self' (Caddyfile), so it stays its own hashed file under /assets/.
 import climbsUrl from "./climb-data/climbs.json?url&no-inline";
 import {
-  FOOD_EMPTY_QUERY,
   FOOD_NOT_LOADED,
   FOOD_PAGE,
   NO_FOOD_DATA,
   foodFoundSaid,
   loadFood,
   foodMoreSaid,
-  foodTerms,
   routeForDetour,
+  type RouteForDetour,
   searchFood,
   type Bounds,
   type FoodPlace,
@@ -174,7 +173,7 @@ import { loadTrailMiles, MILE_MIN_ZOOM, type TrailMiles } from "./lib/trailMiles
 import { TrailMilesOverlay } from "./app/trailMilesOverlay.ts";
 import { loadRepair, nearestRepair, repairFoundSaid, repairTitle, REPAIR_NO_ORIGIN, REPAIR_UNAVAILABLE, type RepairNearby, type RepairPlace } from "./lib/repair.ts";
 import { loadPlaces, placesSaid, placesToSee, readPlacesLayer, savePlacesLayer, sightsForGo, PLACES_NONE, PLACES_PAGE, PLACES_UNAVAILABLE, type PlaceFilter, type SightPlace, type SightResult } from "./lib/places.ts";
-import { PlacesOverlay, PlacesSheet, RepairSheet, RepairStandsOverlay } from "./app/PlacesSheets.tsx";
+import { FoodOverlay, PlacesOverlay, PlacesSheet, RepairSheet, RepairStandsOverlay } from "./app/PlacesSheets.tsx";
 import { ScenicOverlay } from "./app/ScenicOverlay.tsx";
 import { readScenicLayer, saveScenicLayer, scenicShown, scenicStatus } from "./lib/scenicLayer.ts";
 import {
@@ -1663,6 +1662,8 @@ export function App() {
   // under way when one changes is thrown away when it answers (the epoch).
   const nearestKey = JSON.stringify([preset, { ...routeDials, loop: false }, nearestFrom]);
   const nearestEpoch = useRef(0);
+  // The route shown (set where Find food works it out, below): with one, the list is by least detour off it.
+  const nearestRoute = useRef<RouteForDetour | null>(null);
   useEffect(() => {
     nearestEpoch.current += 1;
     setNearestList(null);
@@ -1723,6 +1724,7 @@ export function App() {
         stations: RAIL_STATIONS,
         closedReason: (station) => closedReason(station, { metro: true, marc: false }, railClosures),
         request: (from, places) => requestNearest(from, places, ride.preset, ride.dials),
+        route: nearestRoute.current,
       });
       if (outcome.fix) setHere(outcome.fix);
       if (outcome.found && epoch !== nearestEpoch.current) {
@@ -3231,13 +3233,14 @@ export function App() {
         : null,
     [climbsOn, climbsData, shown, climbsFrom],
   );
-  // Find food (lib/food.ts; FOOD-SEARCH, owner 2026-10-11): a map search by cuisine or name, in the
-  // map's view or the whole area. The places file is fetched on the first search. The results are
-  // worked out again when the route changes, so each detour is off the route shown (and the list is
-  // sorted by it); without a route, by distance from the map's center where the search was made.
+  // Find food (lib/food.ts; FOOD-SEARCH, owner 2026-10-11): a map search by cuisine or name (blank for all
+  // food), near the rider (the whole area, the default) or in the map's view. The places file is fetched on
+  // the first search. The results are worked out again when the route changes, so each detour is off the
+  // route shown (and the list is sorted by it); without a route, by distance from the rider's location where
+  // the app has one (the owner, 2026-10-18), else from the map's center where the search was made.
   const [foodQuery, setFoodQuery] = useState("");
-  const [foodScope, setFoodScope] = useState<FoodScope>("view");
-  const [foodAsked, setFoodAsked] = useState<{ query: string; scope: FoodScope; bounds: Bounds | null; centre: LonLat } | null>(null);
+  const [foodScope, setFoodScope] = useState<FoodScope>("near");
+  const [foodAsked, setFoodAsked] = useState<{ query: string; scope: FoodScope; bounds: Bounds | null; centre: LonLat; fromRider: boolean } | null>(null);
   const [foodPlaces, setFoodPlaces] = useState<FoodPlace[] | null>(null);
   const [foodCount, setFoodCount] = useState(FOOD_PAGE);
   const [foodBusy, setFoodBusy] = useState(false);
@@ -3253,23 +3256,25 @@ export function App() {
     if (!(viewNow.current === "food" && panelOpen)) announce(text);
   };
   const foodRoute = useMemo(() => routeForDetour(shown), [shown]);
+  nearestRoute.current = foodRoute;
+  // A Water sheet list ranked by detour is for the route it was found on: a new route puts it away.
+  useEffect(() => {
+    setNearestList((list) => (list?.items[0]?.detour ? null : list));
+  }, [foodRoute]);
   const foodAll = useMemo(
     () => (foodAsked && foodPlaces ? searchFood(foodPlaces, { ...foodAsked, route: foodRoute }) : null),
     [foodAsked, foodPlaces, foodRoute],
   );
   const foodResults = useMemo(() => foodAll?.slice(0, foodCount) ?? null, [foodAll, foodCount]);
   useEffect(() => {
-    if (foodAll && foodAsked) sayFood(foodFoundSaid(foodAsked.query, foodAsked.scope, foodAll.length, Math.min(foodCount, foodAll.length), foodRoute !== null));
+    if (foodAll && foodAsked) sayFood(foodFoundSaid(foodAsked.query, foodAsked.scope, foodAll.length, Math.min(foodCount, foodAll.length), foodRoute !== null, foodAsked.fromRider));
     // Said for a new search or a new route, not for Show more (which says its own words).
   }, [foodAll]);
+  // The latest search wins: a chip tapped while the opening search is still loading the file is not lost.
+  const foodSeq = useRef(0);
   const searchFoodNow = async (asked?: string) => {
-    if (foodBusy) return;
+    const seq = ++foodSeq.current;
     const query = asked ?? foodQuery;
-    if (!foodTerms(query)) {
-      setFoodAsked(null);
-      sayFood(FOOD_EMPTY_QUERY);
-      return;
-    }
     if (!foodLoad.current) {
       foodLoad.current = loadFood(foodUrl).then((data) => {
         if (!data) foodLoad.current = null;
@@ -3278,6 +3283,7 @@ export function App() {
     }
     setFoodBusy(true);
     const places = await foodLoad.current;
+    if (seq !== foodSeq.current) return;
     setFoodBusy(false);
     if (!places) {
       sayFood(FOOD_NOT_LOADED);
@@ -3290,15 +3296,26 @@ export function App() {
     const map = mapRef.current;
     const b = map?.getBounds();
     const c = map?.getCenter();
+    // From the rider where the app has a location (Go's fix, or the GPS dot), as the place sheets do.
+    const fix = here?.point ?? (goStart.kind === "here" ? goStart.point : null);
     setFoodPlaces(places);
     setFoodCount(FOOD_PAGE);
     setFoodAsked({
       query,
       scope: foodScope,
       bounds: b ? [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()] : null,
-      centre: c ? [c.lng, c.lat] : [(COVERAGE_BBOX[0] + COVERAGE_BBOX[2]) / 2, (COVERAGE_BBOX[1] + COVERAGE_BBOX[3]) / 2],
+      centre: fix ?? (c ? [c.lng, c.lat] : [(COVERAGE_BBOX[0] + COVERAGE_BBOX[2]) / 2, (COVERAGE_BBOX[1] + COVERAGE_BBOX[3]) / 2]),
+      fromRider: fix !== null,
     });
   };
+  // Opening the Food sheet with nothing typed shows all food at once (the owner, 2026-10-18: "when searching
+  // for food, all food should be shown up"), so a hungry rider needs no typing; each opening is from where the
+  // rider is then.
+  useEffect(() => {
+    if (view === "food" && panelOpen && !foodQuery.trim()) void searchFoodNow("");
+    // Only on opening the sheet.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, panelOpen]);
   const showFood = (result: FoodResult) => {
     const map = mapRef.current;
     const n = foodResults?.indexOf(result) ?? -1;
@@ -3311,13 +3328,13 @@ export function App() {
     placeSpot("via", point);
   };
   // v0.7.0's place sheets (app/PlacesSheets.tsx): Go's Repair and Sights behind More, Plan's Places to see.
-  // Go lists from the rider (the location Go found), Plan from the map's center.
+  // Both list from the rider's location where the app has one (the owner, 2026-10-18: "The default for search
+  // should be the current location"), else from the map's center.
   const placesOrigin = (): { point: LonLat; fromRider: boolean } | null => {
     const fix = here?.point ?? (goStart.kind === "here" ? goStart.point : null);
-    if (mode === "go" && fix) return { point: fix, fromRider: true };
+    if (fix) return { point: fix, fromRider: true };
     const c = mapRef.current?.getCenter();
-    if (c) return { point: [c.lng, c.lat], fromRider: false };
-    return fix ? { point: fix, fromRider: true } : null;
+    return c ? { point: [c.lng, c.lat], fromRider: false } : null;
   };
   const repairList = useMemo(() => {
     if (view !== "repair") return null;
@@ -3325,18 +3342,21 @@ export function App() {
     if (repairData === "unavailable") return { items: [] as RepairNearby[], said: REPAIR_UNAVAILABLE };
     const from = placesOrigin();
     if (!from) return { items: [] as RepairNearby[], said: REPAIR_NO_ORIGIN };
-    const items = nearestRepair(from.point, repairData);
+    // With a route shown, the least detour off it first (the owner, 2026-10-18: "Same for the other detour types").
+    const items = nearestRepair(from.point, repairData, undefined, undefined, foodRoute);
     return { items, said: repairFoundSaid(items, from.fromRider) };
     // placesAsked: a new press is a new list from where the rider is now.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view, repairData, placesAsked]);
-  const placesAll = useMemo((): SightResult[] | null => {
+  }, [view, repairData, placesAsked, foodRoute]);
+  const placesFound = useMemo((): { list: SightResult[]; fromRider: boolean } | null => {
     if (view !== "places" || !Array.isArray(placesData)) return null;
     const from = placesOrigin();
-    if (!from) return [];
-    return mode === "go" ? sightsForGo(placesData, from.point, foodRoute) : placesToSee(placesData, from.point, foodRoute, placesFilter);
+    if (!from) return { list: [], fromRider: false };
+    const list = mode === "go" ? sightsForGo(placesData, from.point, foodRoute) : placesToSee(placesData, from.point, foodRoute, placesFilter);
+    return { list, fromRider: from.fromRider };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, placesData, foodRoute, placesFilter, mode, placesAsked]);
+  const placesAll = placesFound?.list ?? null;
   const placesShown = placesAll && mode !== "go" ? placesAll.slice(0, placesCount) : placesAll;
   const placesStatus =
     placesData === null
@@ -3346,7 +3366,7 @@ export function App() {
         : placesData.length === 0
           ? PLACES_NONE
           : placesAll
-            ? placesSaid(placesAll.length, mode === "go" ? "all" : placesFilter, foodRoute !== null)
+            ? placesSaid(placesAll.length, mode === "go" ? "all" : placesFilter, foodRoute !== null, placesFound?.fromRider ?? false)
             : "";
   const openRepair = (chip: HTMLElement) => {
     ensureRepair();
@@ -3421,7 +3441,7 @@ export function App() {
   const lettered = useMemo(
     () =>
       letteredOf === "nearest" && nearestList
-        ? letterPlaces(nearestList.items, (item) => ({ point: item.place.point, title: item.place.title, metres: item.distanceM }))
+        ? letterPlaces(nearestList.items, (item) => ({ point: item.place.point, title: item.place.title, metres: item.detour ? null : item.distanceM }))
         : letteredOf === "food" && foodResults
           ? letterPlaces(foodResults, (r) => ({ point: [r.place.lon, r.place.lat] as LonLat, title: r.place.name, metres: r.detour ? null : r.fromCentreM }))
           : letteredOf === "repair" && repairList
@@ -3992,6 +4012,7 @@ export function App() {
       />
       <RepairStandsOverlay getMap={getMap} places={Array.isArray(repairData) ? repairData : null} on={waterPrefs.on && !riding} pixelRatio={Math.min(2, Math.max(1, Math.round(window.devicePixelRatio || 1)))} />
       <PlacesOverlay getMap={getMap} places={Array.isArray(placesData) ? placesData : null} on={placesOn && !riding} />
+      <FoodOverlay getMap={getMap} results={foodAll} on={letteredOf === "food" && !riding} />
       <TrailMilesOverlay getMap={getMap} data={trailMiles} />
       {/* Not in Go, and not on the Mass Ride map (lib/scenicLayer.ts scenicShown). */}
       <ScenicOverlay getMap={getMap} places={Array.isArray(placesData) ? placesData : null} on={scenicShown(scenicOn, mode, massMap)} placesOn={placesOn && !riding} />

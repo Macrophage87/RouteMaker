@@ -23,7 +23,8 @@
  */
 import { describeError } from "./api.ts";
 import { dialFields, type Dials } from "./dials.ts";
-import { formatDistance, formatDuration } from "./format.ts";
+import { detourOf, projector, type RouteForDetour } from "./food.ts";
+import { formatDistance, formatDuration, formatExtra, milesFigure } from "./format.ts";
 import { MAX_POINTS, haversineM, type LonLat } from "./geo.ts";
 import { LOCATE_MESSAGES, LOCATION_OUTSIDE, type Fix, type LocateResult } from "./geolocation.ts";
 import { twoPointsOnly, type PresetId } from "./presets.ts";
@@ -189,6 +190,8 @@ export interface Nearby {
   /** Riding time, seconds; null in a straight line. */
   timeS: number | null;
   byBike: boolean;
+  /** With a route shown: the estimated detour off it there and back (lib/food.ts) and where to turn off. */
+  detour?: { alongM: number; extraM: number; extraS: number };
 }
 
 /**
@@ -211,8 +214,27 @@ export function rankNearest(places: readonly NearestPlace[], answer: NearestAnsw
     .map(({ index: _index, ...rest }) => rest);
 }
 
+/** The `n` places with the least estimated detour off the route, least first; a tie (several on it) nearest `from` first. */
+export function leastDetour(from: LonLat, places: readonly NearestPlace[], route: RouteForDetour, n = NEAREST_SHOWN): Nearby[] {
+  const project = projector(route.line);
+  return places
+    .map((place) => {
+      const { offM, alongM } = project(place.point);
+      const { extraM, extraS } = detourOf(offM, route.speedMps);
+      return { place, m: haversineM(from, place.point), item: { place, distanceM: extraM, timeS: null, byBike: false, detour: { alongM, extraM, extraS } } as Nearby };
+    })
+    .sort((a, b) => a.item.detour!.extraM - b.item.detour!.extraM || a.m - b.m)
+    .slice(0, n)
+    .map(({ item }) => item);
+}
+
 /** How far, in words: "0.6 mi (1.0 km) by bike, about 4 min" or "0.4 mi (0.6 km) in a straight line". */
 export function howFar(item: Nearby): string {
+  const d = item.detour;
+  if (d) {
+    if (d.extraM === 0 || milesFigure(d.extraM) === "0.0") return `on your route at ${formatDistance(d.alongM)}`;
+    return `${formatExtra(d.extraM)} detour, about ${formatDuration(d.extraS)}, turning off at ${formatDistance(d.alongM)}`;
+  }
   if (!item.byBike) return `${formatDistance(item.distanceM)} in a straight line`;
   const time = item.timeS === null ? "" : `, about ${formatDuration(item.timeS)}`;
   return `${formatDistance(item.distanceM)} by bike${time}`;
@@ -246,6 +268,8 @@ const FROM_WORDS: Record<NearestFrom, string> = {
 /** The status line once the list is in: how many, of what, from where, how measured, and the nearest. */
 export function foundSaid(kind: NearestKind, from: NearestFrom, items: readonly Nearby[]): string {
   const noun = nounOf(kind);
+  if (items[0]?.detour)
+    return items.length === 1 ? `The ${nounOf(kind, 1)} with the least detour off your route.` : `The ${items.length} ${noun} with the least detour off your route, least first.`;
   if (items.length === 0) return `No ${noun} could be reached by bike from ${FROM_WORDS[from]}.`;
   const how = items[0].byBike ? "by bike" : "in a straight line";
   const lead =
@@ -311,6 +335,12 @@ export interface SearchDeps {
   stations: readonly Station[];
   /** Why a station is closed today, or null (railClosures.ts): a closed one says so in the list. */
   closedReason?: (station: Station) => string | null;
+  /**
+   * The route shown, if any: then the list is the places with the least detour off it, by the same estimate as
+   * Find food's, with no router call (the owner, 2026-10-18: "if on a route we'd want to sort by miles of detour
+   * too", "Same for the other detour types").
+   */
+  route?: RouteForDetour | null;
   request: (from: LonLat, places: readonly NearestPlace[]) => Promise<NearestResult>;
 }
 
@@ -357,6 +387,10 @@ export async function searchNearest(deps: SearchDeps): Promise<SearchOutcome> {
     places = waterPlaces(data, kind);
   }
   if (places.length === 0) return withFix({ said: noneKnownSaid(kind) });
+  if (deps.route) {
+    const items = leastDetour(origin, places, deps.route);
+    return withFix({ said: foundSaid(kind, from, items), found: { kind, items, origin, from } });
+  }
   const candidates = nearestInStraightLine(origin, places);
   const result = await deps.request(origin, candidates);
   if (!result.ok) return withFix({ said: `The search failed. ${result.message}` });
