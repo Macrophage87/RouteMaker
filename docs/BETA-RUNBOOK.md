@@ -1285,6 +1285,7 @@ Integrations, Webhooks, New Webhook, Copy Webhook URL. Then on the server:
 
 ```sh
 . "$HOME/routemaker-beta-state/vars.sh"
+cd "$RM_SRC"
 "$RM_SRC/scripts/beta/alert.sh" set-webhook   # paste the address, Enter, Ctrl-D; it is never an argument, so it is in no history
 "$RM_SRC/scripts/beta/alert.sh" install       # copies alert.sh into $RM_STATE/cd/bin and enables the 10-minute timer
 "$RM_STATE/cd/bin/alert.sh" test              # one test message in the channel
