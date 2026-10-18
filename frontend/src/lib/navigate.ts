@@ -43,10 +43,15 @@ export const VERBOSITY_LABELS: Record<Verbosity, string> = {
   quiet: "Quiet: only arrival; ask Where am I? any time",
 };
 
-/** Rides at most this long get Start ride; longer ones go to a bike computer (OD 255, plan Q1). */
+/**
+ * In a browser, rides at most this long get Start ride: a browser ride needs the screen on and the page
+ * in front, so a longer one goes to a bike computer (OD 255, plan Q1). The phone app rides with the
+ * screen locked and has no limit (lib/rideTrip.ts `rideMaxM`; Stephen, 2026-10-18, a 37 mi saved route
+ * with no Start ride).
+ */
 export const RIDE_MAX_M = 30 * METRES_PER_MILE;
 export const RIDE_TOO_LONG =
-  `Ride mode is for rides up to ${formatRoughDistance(RIDE_MAX_M)}. For a longer ride, use Download GPX with a bike computer, which keeps going with the screen off.`;
+  `Start ride in a browser is for rides up to ${formatRoughDistance(RIDE_MAX_M)}. Use the phone app, or Download GPX for a bike computer.`;
 
 // ---- Thresholds (plan sections 2 and 4) ---------------------------------------------------------
 
