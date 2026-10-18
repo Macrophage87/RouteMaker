@@ -3444,7 +3444,7 @@ carries the edge changes they need; **the owner ships them by hand**, as every
    offers "Install RouteMaker" (Android) or the Share line (iPhone), that the installed
    app opens (it may ask for the password once more: an installed app keeps its own
    sign-ins), and that, in airplane mode, the installed app still opens and a route
-   kept with "Keep for offline" opens from Settings with its map.
+   kept with "Keep for offline" opens from Save & load with its map.
 
 The Content-Security-Policy needs no change: `worker-src 'self'` allows the worker,
 and `manifest-src` falls back to `default-src 'self'`.
