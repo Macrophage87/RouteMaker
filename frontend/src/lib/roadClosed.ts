@@ -20,6 +20,8 @@ import { offThreshold, pointAt, snap, type RideModel } from "./navigate.ts";
 
 /** The side button's name, for screen readers and as its tooltip. */
 export const ROAD_CLOSED_NAME = "Road closed ahead";
+/** Its shown words in the ride's top row (the name keeps "ahead"; WCAG 2.5.3, the words start the name). */
+export const ROAD_CLOSED_TEXT = "Road closed";
 /** Said on the press, while the way round is looked for. */
 export const ROAD_CLOSED_FINDING = "Road closed. Finding a way round.";
 /** Said where there is no place on the route or heading to tell which road is meant. */

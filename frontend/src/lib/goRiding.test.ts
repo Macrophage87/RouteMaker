@@ -97,19 +97,24 @@ test("F1. Start unlocks the voice synchronously in the press, before the closure
   assert.match(ride, /export const CHECKING_CLOSURES = "Checking closures…";/);
 });
 
-test("Ride settings in reach (the owner, 2026-10-16): a Settings button beside End ride opens them just under the top row", () => {
+test("Ride settings in reach: a gear at the end of the side buttons opens them just under the top row (the owner, 2026-10-18)", () => {
   const top = ride.slice(ride.indexOf('<div className="ride-top">'), ride.indexOf("{ride.arrived ? ("));
-  // Settings, then End ride, in the always-visible row; Settings is a disclosure of the panel under it.
-  assert.ok(top.indexOf("RIDE_SETTINGS_TEXT") > 0 && top.indexOf("RIDE_SETTINGS_TEXT") < top.indexOf("END_RIDE_NAME"));
-  assert.match(top, /aria-expanded=\{settingsOpen\}\s*aria-controls=\{`\$\{settingsId\}-settings`\}/);
-  assert.match(top, /<Icon name="gear" size=\{18\} \/>/);
+  // The top row: Road closed ahead, then End ride; Settings is no longer there.
+  assert.doesNotMatch(top, /RIDE_SETTINGS_TEXT/);
+  assert.ok(top.indexOf("ROAD_CLOSED_NAME") > 0 && top.indexOf("ROAD_CLOSED_NAME") < top.indexOf("END_RIDE_NAME"));
+  assert.match(top, /\{!walking && !ride\.arrived && \(\s*<button type="button" className="secondary ride-road-closed" onClick=\{roadClosed\} aria-label=\{ROAD_CLOSED_NAME\} title=\{ROAD_CLOSED_NAME\}>/);
+  // On the narrowest phones the icon alone, the words kept for its name (visually hidden, not removed).
+  assert.match(top, /<span className="ride-top-label">\{ROAD_CLOSED_TEXT\}<\/span>/);
+  assert.match(css, /@media \(max-width: 359px\) \{\s*\.ride-top-label \{\s*position: absolute;/);
   assert.match(top, /<div ref=\{settingsPanel\} id=\{`\$\{settingsId\}-settings`\} className="ride-mode-settings" role="group" aria-label=\{RIDE_SETTINGS_TITLE\} hidden=\{!settingsOpen\}>/);
+  assert.match(top, /<RideSettingsFields prefs=\{prefs\} onChange=\{onPrefs\}/);
+  // The gear: the last side button, a disclosure of that panel, named Settings.
+  const rail = ride.slice(ride.indexOf('<div className="ride-rail"'), ride.indexOf("{/* The bottom panel"));
+  assert.match(rail, /className="ride-round ride-settings-button"\s+aria-label=\{RIDE_SETTINGS_TEXT\}\s+title=\{RIDE_SETTINGS_TEXT\}\s+aria-expanded=\{settingsOpen\}\s+aria-controls=\{`\$\{settingsId\}-settings`\}/);
+  assert.match(rail, /<Icon name="gear" size=\{24\} \/>\s*<\/button>\s*<\/div>\s*<\/div>\s*$/);
+  assert.doesNotMatch(rail, /ride-round ride-road-closed/);
   // Opened, it is scrolled into view.
   assert.match(ride, /if \(settingsOpen\) settingsPanel\.current\?\.scrollIntoView\?\.\(\{ block: "nearest" \}\);/);
-  // On the narrowest phones the gear alone, the word kept for its name (visually hidden, not removed).
-  assert.match(top, /<span className="ride-settings-label">\{RIDE_SETTINGS_TEXT\}<\/span>/);
-  assert.match(css, /@media \(max-width: 359px\) \{\s*\.ride-settings-label \{\s*position: absolute;/);
-  assert.match(top, /<RideSettingsFields prefs=\{prefs\} onChange=\{onPrefs\}/);
   // One copy of the settings: the fold at the bottom is gone.
   assert.equal(ride.match(/<RideSettingsFields prefs=\{prefs\}/g)?.length, 1);
   assert.doesNotMatch(ride, /<summary>Ride settings<\/summary>/);

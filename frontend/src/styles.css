@@ -3840,9 +3840,9 @@ details.zoom-notes {
   margin-left: auto;
 }
 
-/* The narrowest phones: Settings is its gear alone (its name stays "Settings"), so the top row stays one line. */
+/* The narrowest phones: Road closed is its icon alone (its name stays "Road closed ahead"), so the top row stays one line. */
 @media (max-width: 359px) {
-  .ride-settings-label {
+  .ride-top-label {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -3857,14 +3857,14 @@ details.zoom-notes {
   margin-top: 16px;
 }
 
-/* The ride's settings, opened by the top row's Settings, just under it. */
+/* The ride's settings, opened by the side buttons' gear, just under the top row. */
 .ride-mode-settings {
   margin: 4px 0 10px;
   padding-bottom: 8px;
   border-bottom: 1px solid var(--border);
 }
 
-.ride .ride-settings-button,
+.ride .ride-road-closed,
 .ride .ride-end {
   flex: none;
   min-height: 44px;
