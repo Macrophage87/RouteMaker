@@ -76,7 +76,7 @@ export function GoTopBar({
   onLayers: (button: HTMLButtonElement) => void;
   onLocate: () => void;
   locating: boolean;
-  /** The route's destination's name, or null before there is a route. */
+  /** The plan's destination's name, routed or not (so it can always be cleared), or null with no plan. */
   destination: string | null;
   onClear: () => void;
 }) {

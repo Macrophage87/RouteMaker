@@ -3899,7 +3899,8 @@ export function App() {
           onLayers={(button) => openView("layers", button)}
           onLocate={() => void goLocate()}
           locating={locating}
-          destination={shown && points.length >= 2 ? goPlaceName(namer.name(points[points.length - 1])?.name, points[points.length - 1]) : null}
+          // With any plan, routed or not (a route that failed or went stale still needs its X; Stephen, 2026-10-18).
+          destination={points.length > 0 ? goPlaceName(namer.name(points[points.length - 1])?.name, points[points.length - 1]) : null}
           onClear={clearAll}
         />
       )}
