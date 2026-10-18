@@ -13,7 +13,7 @@ import { requestNeighbours, requestRoute, routeRequestBody, type NeighbourOption
 import { keptNeighbours, neighbourDials, neighboursSaid, offersNeighbours, rideDials, withNeighbours } from "./lib/neighbours.ts";
 import { betterRouteSaid, EarlyStart, takesRefined } from "./lib/progressive.ts";
 import { RAIL_STATUS_MS, closedReason, matchAlerts, withMetroClosed, matchClosures, requestClosures, type RailStatus } from "./lib/railClosures.ts";
-import { COVERAGE_BBOX, MAX_POINTS, addPoint, insideCoverage, type LonLat } from "./lib/geo.ts";
+import { COVERAGE_BBOX, MAX_POINTS, addPoint, haversineM, insideCoverage, type LonLat } from "./lib/geo.ts";
 import { formatSeconds } from "./lib/format.ts";
 import { presetSaid, twoPointsOnly, usesBikeshare, type PresetId } from "./lib/presets.ts";
 import { atFromHash, decodePlan, encodePlan } from "./lib/planHash.ts";
@@ -282,6 +282,8 @@ const START_MY_GO = readStartMyGo();
 const GO_CLOSE_LABEL = "Close";
 /** Go's early start (v0.7.0, "Faster routing" step 4) asks only for trips up to this straight-line length (25 mi). */
 const GO_EARLY_MAX_KM = 40;
+/** A fresh location this far (about 80 ft) from the last one lists the places near you again from it. */
+const MOVED_M = 25;
 const PLAN_LINK = hasPlanLink(window.location.hash) || initialPlan.points.length > 0;
 const OPENING = openingMode({ tab: readTabMode(), planLink: PLAN_LINK, openIn: START_MY_GO.myGo.openIn, wide: !window.matchMedia(NARROW).matches });
 // Go with nothing linked starts on My Go's ride type (the rider's saved settings, used as they are).
@@ -1726,7 +1728,11 @@ export function App() {
         request: (from, places) => requestNearest(from, places, ride.preset, ride.dials),
         route: nearestRoute.current,
       });
-      if (outcome.fix) setHere(outcome.fix);
+      if (outcome.fix) {
+        setHere(outcome.fix);
+        // Go's start, the location before a destination, moves with the new look-up (freshHere, below).
+        if (goStartRef.current.kind === "here" && pointsRef.current.length === 0 && insideCoverage(outcome.fix.point)) setGoStart({ kind: "here", point: outcome.fix.point });
+      }
       if (outcome.found && epoch !== nearestEpoch.current) {
         sayNearest(NEAREST_STALE);
         return;
@@ -3266,10 +3272,41 @@ export function App() {
     [foodAsked, foodPlaces, foodRoute],
   );
   const foodResults = useMemo(() => foodAll?.slice(0, foodCount) ?? null, [foodAll, foodCount]);
+  const foodRecentred = useRef(false);
   useEffect(() => {
+    if (foodRecentred.current) {
+      foodRecentred.current = false;
+      return;
+    }
     if (foodAll && foodAsked) sayFood(foodFoundSaid(foodAsked.query, foodAsked.scope, foodAll.length, Math.min(foodCount, foodAll.length), foodRoute !== null, foodAsked.fromRider));
     // Said for a new search or a new route, not for Show more (which says its own words).
   }, [foodAll]);
+  // A list "near you" is from where the rider is now, not where the app last looked (the owner, 2026-10-18: "I was
+  // trying to find food when there was no route yet" and the location did not update). Where the app already has a
+  // location, an opening or a search shows its list from it at once and asks once more (one look-up, never a watch:
+  // OWNER-DECISIONS 395); a new place answers with the list again from there. With none yet, nothing is asked: the
+  // map's center stands in, as before. Go's start (the location, before a destination) moves with it.
+  const lastHere = (): LonLat | null => here?.point ?? (goStartRef.current.kind === "here" ? goStartRef.current.point : null);
+  const freshHere = async (): Promise<LonLat | null> => {
+    const press = gate.begin();
+    if (press === null) return null;
+    setLocating(true);
+    const result = await locate(geoEnv);
+    if (!gate.finish(press)) return null;
+    setLocating(false);
+    // A Go destination that found the gate busy waits on this look-up: its answer settles it, as the others' do.
+    if (goWaiting()) {
+      settleGoWaiting(result);
+      return result.ok && insideCoverage(result.fix.point) ? result.fix.point : null;
+    }
+    if (!result.ok || !insideCoverage(result.fix.point)) return null;
+    // A plan's located start keeps its own fix: its note and accuracy circle are that point's.
+    if (!(here && pointsRef.current.includes(here.point))) setHere(result.fix);
+    if (goStartRef.current.kind === "here" && pointsRef.current.length === 0) setGoStart({ kind: "here", point: result.fix.point });
+    return result.fix.point;
+  };
+  // Only with no route (a route's lists go by least detour off it) and outside a ride (whose watch has the location).
+  const freshWanted = () => nearestRoute.current === null && !ridingNow.current;
   // The latest search wins: a chip tapped while the opening search is still loading the file is not lost.
   const foodSeq = useRef(0);
   const searchFoodNow = async (asked?: string) => {
@@ -3297,7 +3334,7 @@ export function App() {
     const b = map?.getBounds();
     const c = map?.getCenter();
     // From the rider where the app has a location (Go's fix, or the GPS dot), as the place sheets do.
-    const fix = here?.point ?? (goStart.kind === "here" ? goStart.point : null);
+    const fix = lastHere();
     setFoodPlaces(places);
     setFoodCount(FOOD_PAGE);
     setFoodAsked({
@@ -3306,6 +3343,17 @@ export function App() {
       bounds: b ? [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()] : null,
       centre: fix ?? (c ? [c.lng, c.lat] : [(COVERAGE_BBOX[0] + COVERAGE_BBOX[2]) / 2, (COVERAGE_BBOX[1] + COVERAGE_BBOX[3]) / 2]),
       fromRider: fix !== null,
+    });
+    // Near you: the list again from where the rider is now, once the look-up answers (whichever search asked it: a
+    // second one while it is under way finds the gate busy and is answered by the first's).
+    if (fix === null || foodScope !== "near" || !freshWanted()) return;
+    const now = await freshHere();
+    if (!now || haversineM(now, fix) < MOVED_M || viewNow.current !== "food") return;
+    setFoodAsked((asked) => {
+      if (asked?.scope !== "near" || !asked.fromRider) return asked;
+      // The same words as the list just said: shown again, not said again (foodRecentred).
+      foodRecentred.current = true;
+      return { ...asked, centre: now };
     });
   };
   // Opening the Food sheet with nothing typed shows all food at once (the owner, 2026-10-18: "when searching
@@ -3331,7 +3379,7 @@ export function App() {
   // Both list from the rider's location where the app has one (the owner, 2026-10-18: "The default for search
   // should be the current location"), else from the map's center.
   const placesOrigin = (): { point: LonLat; fromRider: boolean } | null => {
-    const fix = here?.point ?? (goStart.kind === "here" ? goStart.point : null);
+    const fix = lastHere();
     if (fix) return { point: fix, fromRider: true };
     const c = mapRef.current?.getCenter();
     return c ? { point: [c.lng, c.lat], fromRider: false } : null;
@@ -3368,16 +3416,26 @@ export function App() {
           : placesAll
             ? placesSaid(placesAll.length, mode === "go" ? "all" : placesFilter, foodRoute !== null, placesFound?.fromRider ?? false)
             : "";
+  // Each opening lists from the last location at once, then from a fresh one where the rider has moved (freshHere).
+  const placesFromNow = () => {
+    const fix = lastHere();
+    if (!fix || !freshWanted()) return;
+    void freshHere().then((now) => {
+      if (now && haversineM(now, fix) >= MOVED_M) setPlacesAsked((n) => n + 1);
+    });
+  };
   const openRepair = (chip: HTMLElement) => {
     ensureRepair();
     setPlacesAsked((n) => n + 1);
     openView("repair", chip);
+    placesFromNow();
   };
   const openPlaces = (chip: HTMLElement) => {
     ensurePlaces();
     setPlacesAsked((n) => n + 1);
     setPlacesCount(PLACES_PAGE);
     openView("places", chip);
+    placesFromNow();
   };
   const rideToRepair = (item: RepairNearby) => goToLettered([item.place.lon, item.place.lat], repairTitle(item.place));
   const showSight = (r: SightResult) => {
