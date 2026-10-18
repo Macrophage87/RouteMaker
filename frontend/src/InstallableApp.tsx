@@ -14,7 +14,7 @@
  * focus goes to the next sensible place (the next row's Remove, or the section's heading), never to the
  * page's top. What changes is said once, politely, through `onSay` (App's live region with its count).
  */
-import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore, type RefObject } from "react";
+import { createElement, useCallback, useEffect, useId, useRef, useState, useSyncExternalStore, type RefObject } from "react";
 import { AppWorker, OFFLINE_SAID, ONLINE_SAID, UPDATE_READY, UPDATE_RELOAD, UPDATE_RELOAD_NAME, browserWorkerEnv, updateOffered } from "./lib/appWorker.ts";
 import {
   DISMISSED_SAID,
@@ -31,6 +31,7 @@ import {
   subscribeInstall,
 } from "./lib/installOffer.ts";
 import { removeKept } from "./lib/offlineKeep.ts";
+import { matchSaid, matching } from "./lib/routeSearch.ts";
 import { KEPT_HEADING, KEPT_HOW, KEPT_NONE, KEPT_NONE_SHORT, KEPT_PRIVATE, focusAfterRemove, keptDetail, removeFailedSaid, removedSaid, sortKept, storageNote, type KeptRoute } from "./lib/offlineRoutes.ts";
 import { listKept, persisted } from "./lib/offlineRouteStore.ts";
 import { InfoButton } from "./SettingRow.tsx";
@@ -230,13 +231,19 @@ export function KeptRoutes({
   onSay,
   headingRef,
   compact = false,
+  filter = "",
+  level = 3,
 }: {
   version: number;
   onOpen: (route: KeptRoute) => void;
   onSay: (text: string) => void;
   headingRef?: RefObject<HTMLHeadingElement | null>;
-  /** Settings: the how and the privacy note behind an (i) by the heading. */
+  /** The Save and load sheet: the how and the privacy note behind an (i) by the heading. */
   compact?: boolean;
+  /** Words from the sheet's search: only the routes whose titles hold them are listed. */
+  filter?: string;
+  /** Its heading's level: 4 under Your routes' heading. */
+  level?: 3 | 4;
 }) {
   const [infoOpen, setInfoOpen] = useState(false);
   const [routes, setRoutes] = useState<KeptRoute[] | null>(null);
@@ -272,17 +279,15 @@ export function KeptRoutes({
       onSay(removeFailedSaid(route.title));
       return;
     }
-    const left = (routes?.length ?? 1) - 1;
-    focusNext.current = focusAfterRemove(index, left);
-    onSay(removedSaid(route.title, left));
+    // The focus goes by the rows shown (the search may hide some); the count said is of every kept route.
+    focusNext.current = focusAfterRemove(index, matching(routes ?? [route], filter, (r) => r.title).length - 1);
+    onSay(removedSaid(route.title, (routes?.length ?? 1) - 1));
     setRemoved((n) => n + 1);
   };
   return (
     <section aria-labelledby={`${id}-heading`} className="kept-routes">
       <div className="setting-line">
-        <h3 id={`${id}-heading`} ref={heading} tabIndex={-1}>
-          {KEPT_HEADING}
-        </h3>
+        {createElement(level === 4 ? "h4" : "h3", { id: `${id}-heading`, ref: heading, tabIndex: -1 }, KEPT_HEADING)}
         {compact && <InfoButton open={infoOpen} onToggle={() => setInfoOpen((was) => !was)} controls={`${id}-info`} about="routes kept for offline" />}
       </div>
       {compact && (
@@ -290,13 +295,18 @@ export function KeptRoutes({
           {KEPT_HOW} {KEPT_PRIVATE} {storageNote(kept, isStandalone())}
         </p>
       )}
+      {routes !== null && routes.length > 0 && (
+        <p className="hint" role="status">
+          {matchSaid(matching(routes, filter, (r) => r.title).length, routes.length, filter)}
+        </p>
+      )}
       {routes === null ? (
         <p className="hint">Reading the routes kept on this device…</p>
       ) : routes.length === 0 ? (
         <p className="hint">{compact ? KEPT_NONE_SHORT : KEPT_NONE}</p>
-      ) : (
+      ) : matching(routes, filter, (r) => r.title).length === 0 ? null : (
         <ul className="kept-list">
-          {routes.map((route, index) => (
+          {matching(routes, filter, (r) => r.title).map((route, index) => (
             <li key={route.id} className="kept-route">
               <p className="kept-title" id={`${id}-title-${index}`}>
                 {route.title}

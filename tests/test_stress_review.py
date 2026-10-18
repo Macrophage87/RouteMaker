@@ -509,6 +509,30 @@ class TestRulings:
         made, refused = stress_review.rule(admin, "rebuild", [CLOSED], "set", step=2)
         assert made == [] and "not offered" in refused[0]["error"]
 
+    def test_a_dc_no_bike_way_is_kept_closed_or_reopened(self, tables, tmp_path) -> None:
+        """The rebuild's list of DC ways closed to bicycles (routemaker.bike_bans; the owner,
+        2026-10-17): Keep closed records only, Reopen is a bicycle=yes access override."""
+        from routemaker import bike_bans
+
+        live, staging = tables
+        rows = [
+            bike_bans.Listed(CLOSED, "footway", "", 80.0, "footway"),
+            bike_bans.Listed(SAME, "path", "Park Path", 120.0, "bicycle_no"),
+        ]
+        (tmp_path / bike_bans.REPORT_NAME).write_text(bike_bans.report_csv(rows))
+        counts = stress_review.compute_all(BUILD, live, staging, tmp_path)
+        assert counts["dc_no_bike"] == 2
+        found = items("dc_no_bike")
+        assert found[SAME].reason == "OSM: bicycle=no" and found[SAME].new_closed
+        assert stress_review.actions(found[CLOSED]) == ["accept", "reject"]
+        admin = make_user()
+        made, refused = stress_review.rule(admin, "dc_no_bike", [CLOSED], "reject")
+        assert refused == []
+        assert made[0].access_override.value == {"bicycle": "yes"}
+        made, _ = stress_review.rule(admin, "dc_no_bike", [SAME], "accept")
+        assert made[0].access_override is None
+        assert not Override.objects.filter(osm_way_id=SAME, kind="access").exists()
+
     def test_a_batch_and_what_it_cannot_rule_on(self, queued) -> None:
         admin = make_user()
         made, refused = stress_review.rule(admin, "rebuild", [DROP, RISE, NEW_ONLY], "accept")

@@ -23,6 +23,7 @@ public class MainActivity extends BridgeActivity {
         cancelCueNotice();
         // Before super.onCreate: the bridge loads its plugins, then the site.
         registerPlugin(RideCompatPlugin.class);
+        registerPlugin(FilesPlugin.class);
         JSONObject json = SiteStore.readConfig(this);
         String address = SiteStore.address(this, json);
         if (json == null) {
@@ -53,6 +54,21 @@ public class MainActivity extends BridgeActivity {
         bridge.setWebViewClient(client);
         // Same UI turn as the bridge's first load, so before any page commits: bridge calls from the site only.
         GuardedBridge.install(bridge, client);
+        // A recreated activity (back from recents after the process was killed, say) keeps its
+        // first intent: the shared link was opened then, and the page the rider has moved on to stays.
+        if (savedInstanceState == null) openShared(getIntent());
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        openShared(intent);
+    }
+
+    /** A link shared to the app (SetupActivity, SharedLink): already checked to be on the kept site. */
+    private void openShared(Intent intent) {
+        String link = intent == null ? null : intent.getStringExtra(SetupActivity.EXTRA_LINK);
+        if (link != null && bridge != null) bridge.getWebView().loadUrl(link);
     }
 
     @Override

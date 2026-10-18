@@ -271,7 +271,7 @@ export function announceRoute(route: RouteResponse, points: readonly LonLat[] = 
     `${formatDuration(route.duration_s)} moving time, climb ${formatClimb(route.climb_m)}.`;
   const others = !how.chosen && how.others ? othersSaid(how.others) : null;
   // A Mass Ride's rider-marked hazards (FOLLOWUP-MASSRIDE-MAP part 3, 325: "announced"), after the junctions.
-  return [figures, movedPointsNote(route, points.length), outsideDcNote(route), detourSaid(route, points), redJunctionsSaid(route), hazardsSaid(route), targetSaid(route), loopNote(route), mtbSaid(route.mtb), others]
+  return [figures, movedPointsNote(route, points.length), walkInNote(route), outsideDcNote(route), detourSaid(route, points), redJunctionsSaid(route), hazardsSaid(route), targetSaid(route), loopNote(route), mtbSaid(route.mtb), others]
     .filter(Boolean)
     .join(" ");
 }
@@ -287,6 +287,20 @@ export function movedPointsNote(route: Pick<RouteResponse, "moved_points">, coun
   if (moved.length === 0) return null;
   const n = Math.max(count, ...moved.map((m) => m.index + 1));
   return moved.map((m) => `${pointName(m.index, n)}: ${m.note}`).join(" ");
+}
+
+/**
+ * What the planner says of the walks at the route's ends where the ride stops short of the point (the API's
+ * `walk_in`; the owner, 2026-10-17: "let them route there, but switch to walk mode"): "Walk your bike the last
+ * 300 ft (90 m) to your destination." Null where the ride reaches both ends.
+ */
+export function walkInNote(route: Pick<RouteResponse, "walk_in">): string | null {
+  const walks = route.walk_in;
+  if (!walks) return null;
+  const said: string[] = [];
+  if (walks.start) said.push(`Walk your bike ${formatDistance(walks.start.distance_m)} to where the ride starts.`);
+  if (walks.end) said.push(`Walk your bike the last ${formatDistance(walks.end.distance_m)} to your destination.`);
+  return said.length ? said.join(" ") : null;
 }
 
 /** "2 other routes to choose from, under Routes to choose from." */

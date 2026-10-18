@@ -63,6 +63,14 @@ test("the ride's closed roads go in its re-plans' requests", () => {
   assert.equal(JSON.parse(routeRequestBody([at(0, 0), at(1000, 0)], "default")).blocked_lines, undefined);
 });
 
+test("a re-plan sends the rider's heading, kept in 0-360, and nothing without one", () => {
+  const sent = (heading: number | null) => JSON.parse(routeRequestBody([at(0, 0), at(1000, 0)], "default", { heading })).heading;
+  assert.equal(sent(90), 90);
+  assert.equal(sent(-90), 270);
+  assert.equal(sent(null), undefined);
+  assert.equal(sent(Number.NaN), undefined);
+});
+
 test("a curvy stretch is sent as a few points, never one per vertex", () => {
   const wiggle: LonLat[] = [];
   for (let i = 0; i <= 200; i += 1) wiggle.push(at(i * 5, i % 2 ? 2 : 0));

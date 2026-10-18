@@ -11,10 +11,9 @@ import type { LonLat } from "../lib/geo.ts";
 import { formatClimb, formatDistance, formatDuration } from "../lib/format.ts";
 import { presetLabel, presetSaid, type PresetId } from "../lib/presets.ts";
 import { NOVICE_TRANSIT_CHOICES, noviceOfferText, noviceTripLine, noviceTripShort, type NoviceTrip } from "../lib/noviceOffer.ts";
-import { PresetName } from "../lib/presetName.ts";
 import { stressSegments, type StressSegment } from "../lib/stressBar.ts";
 import { lightLine, type LightMark } from "../lib/lightTimes.ts";
-import { calmSearchNote, detourView, paceText, stillPlanningSaid, movedPointsNote } from "../lib/summary.ts";
+import { calmSearchNote, detourView, paceText, stillPlanningSaid, movedPointsNote, walkInNote } from "../lib/summary.ts";
 import { isCancelKey } from "../lib/sheet.ts";
 import { useStressStyle } from "../useStressStyle.ts";
 import { CandidatePicker } from "../lib/candidatePicker.ts";
@@ -31,6 +30,7 @@ import { RouteDescription } from "../RouteDescription.tsx";
 import { RIDE_SAFETY, RideSettingsFields } from "../RideMode.tsx";
 import type { RidePrefs } from "../lib/rideOutput.ts";
 import { RIDE_TOO_LONG } from "../lib/navigate.ts";
+import { ridesHidden } from "../lib/nativeShell.ts";
 import { restOffered, rideTripOf, rideable as rideableRoute, ridesLine } from "../lib/rideTrip.ts";
 import { BikeshareSummary } from "../BikeshareSummary.tsx";
 import { TransitSummary } from "../TransitSummary.tsx";
@@ -45,12 +45,14 @@ import { SaveRoute, type SaveRouteProps } from "../SaveRoute.tsx";
 import { SAVE_ROUTE, SAVE_SHORT } from "../lib/savedRoutes.ts";
 import { Fold, QuickFigures } from "../Sidebar.tsx";
 import { COPY_LINK, ROUTE_FOLDS, chartFoldOpen } from "../lib/sidebar.ts";
-import { SHARE_LABEL, SHARE_NAME } from "../lib/share.ts";
+import { SHARE_LABEL, SHARE_RIDE_LABEL } from "../lib/share.ts";
 import { SHARE_IMAGE_LABEL } from "../lib/shareCard.ts";
 import {
   SHARE_DELETE_AFTER_LABEL,
   SHARE_KEEP_LABEL,
   SHARE_KEEP_OPTIONS,
+  SHARE_RIDE_ABOUT,
+  SHARE_ROUTE_ABOUT,
   SHARE_UNTIL_DAYS,
   dayFromToday,
   type ShareKeep,
@@ -84,12 +86,7 @@ export interface RouteActionsProps {
   federalRoute: readonly string[];
   copyLink: () => void;
   linkNote: string;
-  canShare: boolean;
-  shareRoute: () => void;
-  /** How long the server keeps a shared line, chosen under Share (lib/sharedRoutes.ts ShareKeep). */
-  shareKeep: ShareKeep;
-  onShareKeep: (keep: ShareKeep) => void;
-  /** Opens Share as image (ShareCardDialog), beside Share in Plan's More. */
+  /** Opens Share as image (ShareCardDialog), in Plan's More. */
   shareImage: () => void;
   linkSpoken: string;
   keepShown: boolean;
@@ -99,18 +96,14 @@ export interface RouteActionsProps {
   linkSaid: string;
   /** Download GPX through the page: closures checked first, an unedited opened file as it came (v0.7.0). */
   downloadRoute: () => void;
-  /** Save route (signed in), beside Share; null signed out. */
+  /** Save route (signed in): Go's Save chip (Plan's is in the Route file sheet, ShareControls); null signed out. */
   save: Omit<SaveRouteProps, "label" | "chip"> | null;
   /** A reopened saved route's line about today's map, with Update route; null otherwise. */
   savedNote: ReactNode;
 }
 
-/** Go's few extra controls on the route: its ride chip, the Routes chip and Plan in detail. */
+/** Go's few extra controls on the route: its route card, its ride types and the Routes chip. */
 export interface GoRouteControls {
-  /** Opens the Ride sheet. */
-  onRide: () => void;
-  /** Switches to Plan, the route kept. */
-  onPlan: () => void;
   /** The sheet is at its smallest (peek): the route's time, Start and the stress bar only. */
   peek: boolean;
   /** The sheet is at full height (or the page is wide, with no sheet): the elevation chart shows (review F8). */
@@ -124,7 +117,13 @@ export interface GoRouteControls {
   onNoviceTransit?: (preset: PresetId) => void;
   /** Each offered option's trip, found in the background as the offer shows (App), by ride type. */
   noviceTrips?: Partial<Record<PresetId, NoviceTrip>>;
-  /** Go's "Add a stop" (Go.tsx GoAddStop), or null: shown under Start, so the sheet leads with the time and Start. */
+  /**
+   * Go's route card (Go.tsx GoRouteCard) and its ride type chips, under the time and the stress bar and above Start
+   * (edit-route redesign, Stephen 2026-10-18): what the route is and how it is ridden, each one press to change.
+   */
+  routeCard?: ReactNode;
+  rides?: ReactNode;
+  /** Go's "Add a stop" (Go.tsx GoAddStop), or null: under the route card, one tap away (Stephen 2026-10-18). */
   addStop?: ReactNode;
 }
 
@@ -406,7 +405,7 @@ export function RouteSection(props: RouteSectionProps) {
 }
 
 /**
- * Under Share in Plan's More: how long the shared link's exact line is kept. A year after it was last opened is the
+ * Under Share in the Route file sheet: how long the shared link's exact line is kept. A year after it was last opened is the
  * default; "Until a date" shows the date, starting a month out (the owner, 2026-10-16).
  */
 function ShareKeepField({ value, onChange }: { value: ShareKeep; onChange: (keep: ShareKeep) => void }) {
@@ -434,12 +433,95 @@ function ShareKeepField({ value, onChange }: { value: ShareKeep; onChange: (keep
 }
 
 /**
+ * Save route, then Share (the owner, 2026-10-17: "the share button should be in files. Basically you save then you
+ * share"): in the Route file sheet, under the file's own controls, for a planned route and an opened file alike. Share
+ * is there only where the browser has a share sheet (Copy link, in Plan's route row, is always there); how long its
+ * exact line is kept is chosen under it. What Share did (only a failure, or a line not kept) is said here, politely.
+ */
+export function ShareControls(props: {
+  save: ReactNode;
+  /** The browser has a share sheet: Share's keeping and its status line are there. */
+  canShare: boolean;
+  /** A route to share is shown: the Share buttons are there. */
+  ready: boolean;
+  /** Share route, or (ride) Share ride: the same link, ridden fixed with location sharing offered (RIDE_PARAM). */
+  shareRoute: (ride: boolean) => void;
+  shareKeep: ShareKeep;
+  /** Plan only (Go keeps the default, one control per feature): how long the link is kept. */
+  onShareKeep: ((keep: ShareKeep) => void) | null;
+  shareSaid: { text: string; count: number };
+  /** The location line (OWNER-DECISIONS 395): it describes Share, so it is read before the sheet opens. */
+  linkNote: string;
+}) {
+  const { save, canShare, ready, shareRoute, shareKeep, onShareKeep, shareSaid, linkNote } = props;
+  // What each button does (the owner, 2026-10-18: "Make that clear in a tooltip"): a phone has no hover, so Info
+  // shows it; it is each button's description too, so a screen reader hears it on the button, and a mouse sees it
+  // on hover (title).
+  const [about, setAbout] = useState(false);
+  const aboutId = useId();
+  const note = linkNote ? " share-link-note" : "";
+  return (
+    <div className="share-controls">
+      {save}
+      {canShare && ready && (
+        <div className="share-buttons">
+          <button
+            type="button"
+            className="secondary share-route"
+            onClick={() => shareRoute(false)}
+            aria-describedby={`share-route-about${note}`}
+            title={SHARE_ROUTE_ABOUT}
+          >
+            {SHARE_LABEL}
+          </button>
+          <button
+            type="button"
+            className="secondary share-ride"
+            onClick={() => shareRoute(true)}
+            aria-describedby={`share-ride-about${note}`}
+            title={SHARE_RIDE_ABOUT}
+          >
+            {SHARE_RIDE_LABEL}
+          </button>
+          <button type="button" className="link icon-button info-button share-about-button" aria-expanded={about} aria-controls={aboutId} onClick={() => setAbout(!about)}>
+            <Icon name="info" />
+            <span className="visually-hidden">About sharing</span>
+          </button>
+        </div>
+      )}
+      {canShare && ready && (
+        <div id={aboutId} className="share-about" hidden={!about}>
+          <p id="share-route-about" className="hint">
+            {SHARE_ROUTE_ABOUT}
+          </p>
+          <p id="share-ride-about" className="hint">
+            {SHARE_RIDE_ABOUT}
+          </p>
+        </div>
+      )}
+      {canShare && ready && linkNote && (
+        <p id="share-link-note" className="hint link-note">
+          {linkNote}
+        </p>
+      )}
+      {canShare && ready && onShareKeep && <ShareKeepField value={shareKeep} onChange={onShareKeep} />}
+      {canShare && (
+        <p className="hint share-said" role="status">
+          {shareSaid.text}
+          {shareSaid.count % 2 === 1 ? " " : ""}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
  * Start's row in Plan: Download GPX and Copy link as icon buttons beside it, and More (a disclosure)
- * holding Share and Keep for offline (the owner's choice 8). The said lines stay outside More, so a
- * press is heard however More stands.
+ * holding Share as image and Keep for offline (the owner's choice 8; Save route and Share are in the Route file
+ * sheet, ShareControls). The said lines stay outside More, so a press is heard however More stands.
  */
 function RouteActions(props: RouteActionsProps & { start: ReactNode }) {
-  const { copyLink, linkNote, canShare, shareRoute, shareKeep, onShareKeep, shareImage, linkSpoken, keepShown, keepForOffline, keeping, keepSpoken, linkSaid, start, downloadRoute, save } = props;
+  const { copyLink, linkNote, shareImage, linkSpoken, keepShown, keepForOffline, keeping, keepSpoken, linkSaid, start, downloadRoute } = props;
   const [more, setMore] = useState(false);
   const moreId = useId();
   return (
@@ -461,17 +543,10 @@ function RouteActions(props: RouteActionsProps & { start: ReactNode }) {
         </button>
       </div>
       <div id={moreId} className="route-more-body" hidden={!more}>
-        {canShare && (
-          <button type="button" className="secondary share-route" onClick={shareRoute} aria-label={SHARE_NAME} aria-describedby={linkNote ? "link-note" : undefined}>
-            {SHARE_LABEL}
-          </button>
-        )}
-        {canShare && <ShareKeepField value={shareKeep} onChange={onShareKeep} />}
-        {/* Its QR code's link keeps as chosen above. */}
+        {/* Its QR code's link keeps as chosen under Share (the Route file sheet). */}
         <button type="button" className="secondary share-image" onClick={shareImage} aria-haspopup="dialog">
           {SHARE_IMAGE_LABEL}
         </button>
-        {save && <SaveRoute {...save} label={SAVE_ROUTE} />}
         {keepShown && (
           <button type="button" className="secondary keep-offline" onClick={() => void keepForOffline()} aria-disabled={keeping} aria-describedby="keep-offline-said">
             {KEEP_LABEL}
@@ -514,6 +589,9 @@ function noteLines(route: RouteResponse, points: LonLat[], light: readonly Light
   // A point inside the National Zoo was moved to its bike racks (291(4)): shown here, and said with the route.
   const moved = movedPointsNote(route, points.length);
   if (moved) lines.push({ key: "moved", className: "notice moved-points", icon: "pin", text: moved });
+  // The ride stops short of a point, and the rider walks the bike the rest (the API's `walk_in`).
+  const walkIn = walkInNote(route);
+  if (walkIn) lines.push({ key: "walk-in", className: "notice walk-in", icon: "pin", text: walkIn });
   // A Mass Ride that leaves the District (OWNER-DECISIONS 418a): shown here, and said in the route's
   // live region with the rest of the route's sentence (lib/summary.ts announceRoute).
   const outsideDc = outsideDcNote(route);
@@ -684,7 +762,7 @@ export function RouteSummary({
   const goMode = mode === "go";
   // "Elevation and climbs" (the mockup); a Mass Ride's three charts keep their own name.
   const elevationTitle = profile && chartKind(route) === "mass" ? foldName("mass") : ROUTE_FOLDS.elevation.title;
-  // Start: the big button (Go), or the first of its row (Plan). Short rides only; a longer one goes to a bike computer (OD 255).
+  // Start: the big button (Go), or the first of its row (Plan). In a browser, short rides only; a longer one goes to a bike computer (OD 255). The phone app rides any length.
   const start = rideable ? (
     <button type="button" className="start-button" ref={ride.startRef} onClick={ride.onStart} aria-describedby="start-ride-hint">
       <Icon name="play" />
@@ -693,7 +771,7 @@ export function RouteSummary({
   ) : null;
   const startHint = rideable ? (
     <p id="start-ride-hint" className="hint start-ride-hint">
-      Turn-by-turn directions on this phone, said as you chose. Keep the screen on and this page in front.
+      Turn-by-turn directions on this phone, said as you chose.{ridesHidden() ? "" : " Keep the screen on and this page in front."}
     </p>
   ) : !ridesLine(route) ? null : (
     <p className="hint start-ride-long">{RIDE_TOO_LONG}</p>
@@ -819,6 +897,17 @@ export function RouteSummary({
         )}
         {segments.length > 0 && <StressFigure segments={segments} />}
         {!go.peek && <CapacityStats route={route} corkers={corkerFigure(route, profile, rideSize)} />}
+        {!go.peek && go.routeCard}
+        {!go.peek && go.addStop}
+        {!go.peek && go.rides && (
+          <div className="go-route-rides">
+            {/* Shown, as the route card says what it edits; the chips' group is named "Ride type" for a screen reader. */}
+            <p className="go-rides-label" aria-hidden="true">
+              Ride type
+            </p>
+            {go.rides}
+          </div>
+        )}
         {!go.peek && alerts}
         {!go.peek && noteList}
         {!go.peek && actions.savedNote}
@@ -828,31 +917,15 @@ export function RouteSummary({
             {startHint}
           </div>
         )}
-        {/* "Add a stop" under Start (review F2): one tap away, never above the time and Start. */}
-        {!go.peek && go.addStop}
-        {!go.peek && (
+        {/* The routes and Save; the ride type and Plan in detail moved (edit-route redesign): the ride types sit
+            under the route card, and the Go/Plan switch at the top is Plan in detail. */}
+        {!go.peek && (picker || actions.save) && (
           <div className="go-chips" role="group" aria-label="Route options">
-            <button type="button" className="chip go-ride-chip" onClick={go.onRide} aria-describedby="go-ride-hint">
-              <Icon name="bike" size={18} />
-              {/* A long name is cut short with an ellipsis (its accessible name is whole), so the row never wraps. */}
-              <span className="go-chip-name">
-                <PresetName id={preset} />
-              </span>
-            </button>
-            <span id="go-ride-hint" hidden>
-              Opens the ride settings.
-            </span>
             {picker && (
               <button type="button" className="chip go-routes-chip" aria-expanded={routesOpen} aria-controls={routesId} onClick={() => setRoutesOpen(!routesOpen)}>
                 {`${pickerCount} routes`}
               </button>
             )}
-            <button type="button" className="chip go-plan-chip" onClick={go.onPlan} aria-describedby="go-plan-hint">
-              Plan
-            </button>
-            <span id="go-plan-hint" hidden>
-              Plan in detail: the full planner, with this route.
-            </span>
             {/* Shown "Save", named "Save route" (review F15: one row at 390 px with the ride type, the routes and Plan). */}
             {actions.save && <SaveRoute {...actions.save} label={SAVE_ROUTE} shown={SAVE_SHORT} chip />}
           </div>

@@ -1,0 +1,34 @@
+{
+ "Stops": [
+  {
+   "Lat": 38.88972,
+   "Lon": -76.98952,
+   "Name": "LINCOLN PARK + E CAPITOL ST NE",
+   "Routes": [
+    "B10",
+    "B10v1",
+    "90"
+   ],
+   "StopID": "1001195"
+  },
+  {
+   "Lat": 38.88995,
+   "Lon": -76.9892,
+   "Name": "E CAPITOL ST NE + 13TH ST NE",
+   "Routes": [
+    "90",
+    "92"
+   ],
+   "StopID": "1001196"
+  },
+  {
+   "Lat": 38.8905,
+   "Lon": -76.988,
+   "Name": "14TH ST NE + E CAPITOL ST NE",
+   "Routes": [
+    "B10"
+   ],
+   "StopID": "1001240"
+  }
+ ]
+}

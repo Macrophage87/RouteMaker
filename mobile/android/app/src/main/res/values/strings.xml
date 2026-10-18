@@ -17,6 +17,7 @@
     <string name="setup_go">Continue</string>
     <string name="setup_checking">Checking the site…</string>
     <string name="setup_change">To change it later, touch and hold the RouteMaker icon and choose Site address, or clear the app\'s storage in Android\'s settings.</string>
+    <string name="share_not_site">That is not a link to your RouteMaker site.</string>
     <string name="setup_built_fixed">This build was made with its own site address, which it keeps using.</string>
     <string name="shortcut_site_short">Site address</string>
     <string name="shortcut_site_long">Change the site address</string>

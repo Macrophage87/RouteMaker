@@ -1,7 +1,7 @@
 // The panel's sheets (moved out of App.tsx in UI-CLEANUP step 4, docs/DEVELOPMENT.md "The App.tsx split"),
 // arranged as the approved UI mockup of 2026-10-11 has them (reports/v0.5.0/ui-mockup.html): Layers is its
 // switches, with the legend behind a Legend button at its top (the owner's choice 6); Suggest is the one way
-// in to the suggest tools, and Review is an admin's; Settings is Display, Ride mode, This device and Account
+// in to the suggest tools, and Review is an admin's; Settings is Display, Riding and Account
 // with My Go; and the map's Water and Food chips open the nearest finder and Find food. In Go, Settings is
 // the Menu, with Plan, Suggest, GPX and Review above it. App.tsx keeps the state and the effects.
 import { useEffect, useState, type ReactNode, type RefObject } from "react";
@@ -15,6 +15,7 @@ import { filterRideGroups, rideSections, rideTypeCount, RideTypeSearch } from ".
 import { RideTypeCards } from "../lib/rideTypeCards.ts";
 import { isPlainClick, rememberPlanForSignIn, tabSession } from "../lib/signIn.ts";
 import { SignOutForm } from "../SignOut.tsx";
+import { AssistantKeySetting } from "../AssistantKey.tsx";
 import { pointName } from "../lib/summary.ts";
 import { accessibilityOn, accessibilitySource, paletteSetByAddress, setAccessibility, setHighStressLanes, setMtbTrails } from "../stressStyle.js";
 import { HighStressLanesSwitch } from "../lib/highStressLanesSwitch.ts";
@@ -41,23 +42,22 @@ import { MtbTrailLegend, StressLegend } from "../lib/stressLegend.ts";
 import { GpxPanel, type FileFormat, type GpxPanelProps, type Said } from "../GpxPanel.tsx";
 import type { DeviceProfileId } from "../lib/deviceProfiles.ts";
 import { JunctionLegend, SheetFrame } from "../Sidebar.tsx";
-import { MASS_RIDE_LAYERS_NOTE, MENU_TITLE, SHEET_TITLES, STRESS_CHECKING, STRESS_UNAVAILABLE, type PanelView } from "../lib/sidebar.ts";
+import { MASS_RIDE_LAYERS_NOTE, MENU_TITLE, SAVE_LOAD, SHEET_TITLES, STRESS_CHECKING, STRESS_UNAVAILABLE, type PanelView } from "../lib/sidebar.ts";
 import type { ImportedPlan } from "../lib/gpxPlan.ts";
 import type { WaterPrefs, WaterStatus } from "../lib/waterRestrooms.ts";
 import { WaterLegend, WaterLegendNotes, WaterSection } from "../lib/waterLegend.ts";
 import type { ClimbAlong, ClimbCategory, ClimbsStatus } from "../lib/climbs.ts";
 import { CLIMBS_HELP, ClimbsLayerControls, ClimbsLegend } from "../lib/climbsLegend.ts";
 import { ScenicLegend, ScenicSection } from "../lib/scenicLayer.ts";
-import { InstallOffer, KeptRoutes } from "../InstallableApp.tsx";
-import type { KeptRoute } from "../lib/offlineRoutes.ts";
-import { anyKept } from "../lib/offlineRouteStore.ts";
+import { InstallOffer } from "../InstallableApp.tsx";
+import type { Split, StoredWeight } from "../lib/weight.ts";
+import { WeightSetting } from "../lib/weightDialog.ts";
 import { DC_311_ONLINE, REPORT_KINDS } from "../lib/report311.ts";
 import { OPEN_IN_HINT, OPEN_IN_LABEL, type AppMode, type OpenIn } from "../lib/appMode.ts";
 import { myGoSummary, type Home, type MyGo } from "../lib/myGo.ts";
 import { homeFromPlace } from "../lib/homeSet.ts";
 import { HomeSetter } from "./Go.tsx";
 import { SIGN_IN_LINE } from "../lib/accountSettings.ts";
-import { MyRoutes, type MyRoutesProps } from "../MyRoutes.tsx";
 import type { GeoGate, Place } from "../lib/geocode.ts";
 import type { IconName } from "../lib/iconPaths.ts";
 import { Icon } from "../Icon.tsx";
@@ -293,17 +293,24 @@ export interface GpxSheetProps {
   downloadRoute: (said?: (line: string) => void) => void;
   /** Plan only: download a FIT or TCX course or a PDF cue sheet (GpxPanel); absent in Go, which offers GPX alone. */
   downloadCourse?: (format: FileFormat, profile: DeviceProfileId, said: Said) => void;
+  /** Send to Garmin: the route shown as a FIT course, handed to the phone for Garmin Connect (GpxPanel). */
+  sendToGarmin?: (said: Said) => void;
   /** Plan only: snap an opened track to the map's ways (GpxPanel, lib/gpxMatch.ts); absent in Go. */
   match?: GpxPanelProps["match"];
-  /** Signed in: Save route for an opened file (its own text, verbatim); null signed out. */
-  saveControl: ReactNode;
+  /** Save route (signed in) and Share, for the route shown or the file opened (RoutePanel.tsx ShareControls); null with neither. */
+  shareControls: ReactNode;
+  /** Your routes: the saved ones and the ones kept for offline, with a search (YourRoutes.tsx); null with neither. */
+  routes: ReactNode;
 }
 
 /** The GPX sheet. */
 export function GpxSheet(props: GpxSheetProps) {
-  const { nav, shown, routedPoints, routedLoop, federalRoute, points, status, imported, openImported, refineImported, getMap, downloadRoute, downloadCourse, match, saveControl } = props;
+  const { nav, shown, routedPoints, routedLoop, federalRoute, points, status, imported, openImported, refineImported, getMap, downloadRoute, downloadCourse, sendToGarmin, match, shareControls, routes } = props;
   return (
     <SheetFrame id="sheet-gpx" title={SHEET_TITLES.gpx} open={nav.view === "gpx"} onBack={nav.back} backLabel={nav.backLabel("gpx")}>
+      {/* Save and Share first, then your routes to load (in Go, the way to start a saved route), then the files. */}
+      {shareControls}
+      {routes}
       <GpxPanel
         route={shown}
         routedPoints={routedPoints}
@@ -317,9 +324,9 @@ export function GpxSheet(props: GpxSheetProps) {
         getMap={getMap}
         onDownload={downloadRoute}
         onDownloadCourse={downloadCourse}
+        onSendToGarmin={sendToGarmin}
         match={match}
       />
-      {imported?.verbatim && saveControl}
     </SheetFrame>
   );
 }
@@ -407,9 +414,8 @@ export interface SettingsSheetProps {
   changeRidePrefs: (next: RidePrefs) => void;
   /** Big text in a ride: a setting here, not a ride button (the owner, 2026-10-17). */
   bigText: { on: boolean; onChange: (on: boolean) => void };
-  keepShown: boolean;
-  keptVersion: number;
-  openKept: (kept: KeptRoute) => void;
+  /** The rider and bike weight: its line and Change, never the number (lib/weightDialog.ts). */
+  weight: { saved: StoredWeight | null; remembered: boolean; split: Split; onSave: (weight: StoredWeight, remember: boolean) => void; onClear: () => void };
   announce: (text: string) => void;
   linkNote: string;
   accessMode: boolean;
@@ -421,8 +427,6 @@ export interface SettingsSheetProps {
   mode: AppMode;
   /** Whether this server can sign anyone in (GET /api/me's sign_in): the sign-in line is shown only then. */
   signInAvailable: boolean;
-  /** My routes (signed in only): the saved routes, to open, rename, export or delete. */
-  myRoutes: MyRoutesProps;
   menu: { onPlan: () => void; onSuggest: (opener: HTMLElement) => void; onGpx: (opener: HTMLElement) => void; onReview: ((opener: HTMLElement) => void) | null };
 }
 
@@ -444,9 +448,9 @@ function ContrastRow() {
   );
 }
 
-/** The Settings sheet (Go's Menu): Display, Ride mode, This device and Account, as the mockup groups them. */
+/** The Settings sheet (Go's Menu): Display, Riding and Account, as the mockup groups them. */
 export function SettingsSheet(props: SettingsSheetProps) {
-  const { nav, settingsHeadingRef, ridePrefs, changeRidePrefs, keepShown, keptVersion, openKept, announce, linkNote, accessMode, toggleAccessMode, myGo, mode, menu, announcements, signInAvailable, myRoutes } = props;
+  const { nav, settingsHeadingRef, ridePrefs, changeRidePrefs, announce, linkNote, accessMode, toggleAccessMode, myGo, mode, menu, announcements, signInAvailable } = props;
   const go = mode === "go";
   return (
     <SheetFrame
@@ -469,7 +473,7 @@ export function SettingsSheet(props: SettingsSheetProps) {
           </button>
           <button type="button" className="secondary menu-page" onClick={(event) => menu.onGpx(event.currentTarget)}>
             <Icon name="file" />
-            GPX
+            {SAVE_LOAD}
           </button>
           {menu.onReview && (
             <button type="button" className="secondary menu-page" onClick={(event) => menu.onReview?.(event.currentTarget)}>
@@ -530,7 +534,9 @@ export function SettingsSheet(props: SettingsSheetProps) {
       </section>
       {/* Ride mode's choices (WEB-NAV-plan.md section 3): the same ones the first Start ride asks, kept on this device. */}
       <section aria-labelledby="settings-ride-heading" className="settings-group">
-        <h3 id="settings-ride-heading">Ride mode</h3>
+        <h3 id="settings-ride-heading">Riding</h3>
+        {/* Rider and bike weight, for how hard hills feel (the owner, 2026-10-18: "probably belongs in settings"). */}
+        <WeightSetting {...props.weight} />
         <RideSettingsFields prefs={ridePrefs} onChange={changeRidePrefs} idBase="settings-ride" compact />
         {/* Big text: a setting here, not a ride button (the owner, 2026-10-17: "not something people will fiddle with mid ride"). */}
         <SettingRow infoId="settings-big-text-info" about="big text" info={BIG_TEXT_HELP} className="big-text-row">
@@ -552,12 +558,9 @@ export function SettingsSheet(props: SettingsSheetProps) {
           </button>
         </SettingRow>
       </section>
-      {/* The installable app (WEB-NAV-plan.md section 8, P3 and P4): the routes kept on this device, and the install offer. */}
-      <section aria-labelledby="settings-device-heading" className="settings-group">
-        <h3 id="settings-device-heading">This device</h3>
-        {keepShown || anyKept() ? <KeptRoutes version={keptVersion} onOpen={openKept} onSay={announce} compact /> : <p className="hint">Offline routes: none kept yet.</p>}
-        <InstallOffer idBase="settings-install" onSay={announce} />
-      </section>
+      {/* The installable app (WEB-NAV-plan.md section 8, P4), under its own heading when the browser offers it. The
+          routes saved and kept for offline are in Save and load (YourRoutes.tsx; the owner, 2026-10-18). */}
+      <InstallOffer idBase="settings-install" onSay={announce} />
       <section aria-labelledby="settings-signin-heading" className="settings-group">
         <h3 id="settings-signin-heading">Account</h3>
         {myGo.signedIn ? (
@@ -576,9 +579,9 @@ export function SettingsSheet(props: SettingsSheetProps) {
             {SIGN_IN_LINE.slice("Sign in with Discord".length)}
           </p>
         ) : null}
-        {/* Versions in Plan only: Go's Menu is unchanged. */}
-        {myGo.signedIn && <MyRoutes {...myRoutes} versions={!go} />}
         <MyGoSection controls={myGo} />
+        {/* The save-only key an AI assistant's MCP server saves routes with (the owner, 2026-10-18). */}
+        {myGo.signedIn && <AssistantKeySetting />}
       </section>
     </SheetFrame>
   );
@@ -660,6 +663,15 @@ export function FoodSheet({ nav, onChip, children }: { nav: SheetNav; onChip: (f
           </button>
         ))}
       </div>
+      {children}
+    </SheetFrame>
+  );
+}
+
+/** Go's Edit route sheet (edit-route redesign, Stephen 2026-10-18): Plan's points, opened from Go's route card. */
+export function EditRouteSheet({ nav, children }: { nav: SheetNav; children: ReactNode }) {
+  return (
+    <SheetFrame id="sheet-points" title={SHEET_TITLES.points} open={nav.view === "points"} onBack={nav.back} backLabel={nav.backLabel("points")}>
       {children}
     </SheetFrame>
   );

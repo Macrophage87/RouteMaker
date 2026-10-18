@@ -15,6 +15,13 @@ grounds and the buildings around them (OWNER-DECISIONS 113: "The capitol
 grounds are a very good place to ride and avoid some major roads, so
 definitely include.").
 
+And every National Park Service property inside it (fixtures/cbd/nps-land.geojson,
+from DC GIS's National Parks layer as the federal-land overlay carries it): DDOT's
+own DC Bike Law Pocket Guide (October 2012) says "Within the CBD, bicycling is
+allowed on lands under the jurisdiction of the National Park Service including
+places like Lafayette Park, Farragut Square Park, the National Mall and Dupont
+Circle." (the owner, 2026-10-17, citing it).
+
 A sidewalk is a way mapped as one (`footway`, `path` or `cycleway` =
 `sidewalk`), and only where it is not signed for bicycles: a way tagged
 `bicycle=designated` is a bike path or cycle track, whatever else it says, and
@@ -33,6 +40,7 @@ FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "cbd"
 CBD_FILE = FIXTURES / "dc-central-business-district.geojson"
 EXEMPT_FILE = FIXTURES / "federal-exempt.geojson"
 AOC_FILE = FIXTURES / "architect-of-the-capitol.geojson"
+NPS_FILE = FIXTURES / "nps-land.geojson"
 
 SIDEWALK_KEYS = ("footway", "path", "cycleway")
 SIDEWALK_HIGHWAY = frozenset({"footway", "path", "cycleway"})
@@ -60,7 +68,7 @@ def load(path: Path) -> list[Polygon]:
 @lru_cache(maxsize=1)
 def areas() -> tuple[list[Polygon], list[Polygon]]:
     """The CBD and the exempt federal areas, read once."""
-    return load(CBD_FILE), load(EXEMPT_FILE) + load(AOC_FILE)
+    return load(CBD_FILE), load(EXEMPT_FILE) + load(AOC_FILE) + load(NPS_FILE)
 
 
 # Each ring's bounding box, by the ring's identity; the ring is kept beside its
