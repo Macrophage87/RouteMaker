@@ -7,8 +7,13 @@
  * (MERGE-SEARCH re-check R16: a list that showed the coordinates where the
  * role belongs passed every test).
  */
-import { createElement as h, type ReactElement } from "react";
+import { createElement as h, Fragment, type ReactElement } from "react";
 import type { PointRow } from "./geocode.ts";
+import { ICON_PATHS } from "./iconPaths.ts";
+import { rowShift, type PointMover } from "./pointMover.ts";
+
+/** The grip's description, read after its name (lib/pointMover.ts says the three ways). */
+export const MOVE_HINT = "Drag to reorder, or use the up and down arrows. Press for Up and Down.";
 
 export interface PointsListProps {
   rows: readonly PointRow[];
@@ -32,12 +37,18 @@ export interface PointsListProps {
    * (edit-route redesign, Stephen 2026-10-18: the box had opened above the list, away from the point).
    */
   editor?: { index: number; node: ReactElement } | null;
+  /**
+   * Reordering by hand (lib/pointMover.ts, Stephen 2026-10-18): a grip on each row, with three points or more (two
+   * have Reverse). Absent: no grips.
+   */
+  mover?: PointMover | null;
 }
 
-export function PointsList({ rows, warnings, onRemove, removeRef, onChange, changeable, editor }: PointsListProps): ReactElement {
-  return h(
+export function PointsList({ rows, warnings, onRemove, removeRef, onChange, changeable, editor, mover }: PointsListProps): ReactElement {
+  const grips = mover && rows.length >= 3 && !editor ? mover : null;
+  const list = h(
     "ol",
-    { className: "points" },
+    { className: grips?.drag ? "points points-dragging" : "points" },
     rows.map(({ role, place, coords }, index) => {
       const federal = warnings?.[index] ?? null;
       if (editor && editor.index === index) {
@@ -54,9 +65,41 @@ export function PointsList({ rows, warnings, onRemove, removeRef, onChange, chan
       // The start and the destination: the place itself is the Change button (edit-route redesign), named
       // "Change Start: <place>" so its shown words are in its name.
       const change = onChange && changeable?.(index);
+      const shift = grips?.drag ? rowShift(index, grips.drag) : 0;
+      const classes = [federal ? "point-on-federal" : "", grips?.drag?.from === index ? "point-dragged" : ""].filter(Boolean).join(" ");
+      const grip = grips
+        ? h(
+            "button",
+            {
+              type: "button",
+              className: "point-grip",
+              "aria-label": `Move ${role}`,
+              "aria-describedby": "point-move-hint",
+              "aria-expanded": grips.moving === index,
+              ...grips.grip(index),
+            },
+            h("svg", { className: "icon", width: 20, height: 20, viewBox: "0 0 24 24", "aria-hidden": "true", focusable: "false", dangerouslySetInnerHTML: { __html: ICON_PATHS.grip } }),
+          )
+        : null;
+      // Move up, Move down and Done in place of Remove, while the grip's press has them out.
+      const steps =
+        grips && grips.moving === index
+          ? h(
+              "span",
+              { className: "point-steps" },
+              index > 0
+                ? h("button", { type: "button", className: "link", ref: (b: HTMLButtonElement | null) => grips.stepRef(index, -1, b), onClick: () => grips.step(index, -1), "aria-label": `Move ${role} up` }, "Up")
+                : null,
+              index < rows.length - 1
+                ? h("button", { type: "button", className: "link", ref: (b: HTMLButtonElement | null) => grips.stepRef(index, 1, b), onClick: () => grips.step(index, 1), "aria-label": `Move ${role} down` }, "Down")
+                : null,
+              h("button", { type: "button", className: "link", onClick: () => grips.done(index) }, "Done"),
+            )
+          : null;
       return h(
         "li",
-        { key: index, className: federal ? "point-on-federal" : undefined },
+        { key: index, className: classes || undefined, style: shift ? { transform: `translateY(${shift}px)` } : undefined },
+        grip,
         h("span", { className: "point-name" }, role),
         change
           ? h(
@@ -68,6 +111,7 @@ export function PointsList({ rows, warnings, onRemove, removeRef, onChange, chan
         // On its own line, after the place and before Remove, so it is read with the point it is about
         // (item 239: a stop on federal land, in the stop list as well as the map and the description).
         federal ? h("span", { className: "point-federal" }, federal) : null,
+        steps ??
         h(
           "button",
           {
@@ -82,4 +126,7 @@ export function PointsList({ rows, warnings, onRemove, removeRef, onChange, chan
       );
     }),
   );
+  return grips
+    ? h(Fragment, null, list, h("span", { id: "point-move-hint", hidden: true }, MOVE_HINT))
+    : list;
 }

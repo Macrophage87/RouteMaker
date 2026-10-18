@@ -20,6 +20,7 @@ import type { StoredWeight, WeightStore } from "../lib/weight.ts";
 import { isMassRide } from "../lib/massCapacity.ts";
 import { MASS_DC_ONLY } from "../lib/dcBoundary.ts";
 import { PointsList } from "../lib/pointsList.ts";
+import { usePointMover } from "../lib/pointMover.ts";
 import { PlaceSearch } from "../PlaceSearch.tsx";
 import { approximateHint, type Fix, type locateSupport } from "../lib/geolocation.ts";
 import type { usePlaceNames } from "../usePlaceNames.ts";
@@ -59,6 +60,8 @@ export interface PointsSectionProps {
   /** The points that are the rider's location (App's fromHere): named "Your location" in the list (edit-route redesign). */
   located: readonly LonLat[];
   removeAt: (index: number) => void;
+  /** A point dragged (or moved by the arrows) to another place in the list: one edit (App.tsx reorderPoint). */
+  reorderPoint: (from: number, to: number) => void;
   pointWarnings: (string | null)[];
   removeRefs: RefObject<Array<HTMLButtonElement | null>>;
   preset: PresetId;
@@ -98,7 +101,7 @@ export interface PointsSectionProps {
  * route's "Choose a station" fold.
  */
 export function PointsSection(props: PointsSectionProps) {
-  const { pointsHeadingRef, zoom, stressVisible, stress, pointsSearchRef, compactPoints, points, loopVias, geoGate, searchBias, pickPlace, locateReady, locating, hereInPlan, here, useMyLocation, loop, loopHintId, commitDials, dials, accessMode, namer, located, removeAt, pointWarnings, removeRefs, preset, federalPlanner, pointsEditRef, reverseButton, reverse, reverseHint, orderShown, bestOrder, orderFocused, ordering, narrow, undo, can, redo, coverageShown, toggleAccessMode, announce, notice, noticeLive, tips, setTips, tipsId } = props;
+  const { pointsHeadingRef, zoom, stressVisible, stress, pointsSearchRef, compactPoints, points, loopVias, geoGate, searchBias, pickPlace, locateReady, locating, hereInPlan, here, useMyLocation, loop, loopHintId, commitDials, dials, accessMode, namer, located, removeAt, reorderPoint, pointWarnings, removeRefs, preset, federalPlanner, pointsEditRef, reverseButton, reverse, reverseHint, orderShown, bestOrder, orderFocused, ordering, narrow, undo, can, redo, coverageShown, toggleAccessMode, announce, notice, noticeLive, tips, setTips, tipsId } = props;
   return (
     <section key="points" aria-labelledby="points-heading" className="points-section">
       <div className="section-head">
@@ -205,6 +208,7 @@ export function PointsSection(props: PointsSectionProps) {
         namer={namer}
         located={located}
         removeAt={removeAt}
+        reorderPoint={reorderPoint}
         pointWarnings={pointWarnings}
         removeRefs={removeRefs}
         orderShown={orderShown}
@@ -251,6 +255,7 @@ type PointBoxesProps = Pick<
   | "namer"
   | "located"
   | "removeAt"
+  | "reorderPoint"
   | "pointWarnings"
   | "removeRefs"
   | "orderShown"
@@ -268,7 +273,9 @@ type PointBoxesProps = Pick<
  * Start / Destination / Stop choice. It keeps which point a Change opened a box for; App keeps the plan.
  */
 function PointBoxes(props: PointBoxesProps) {
-  const { pointsSearchRef, points, loopVias, geoGate, searchBias, pickPlace, locateReady, locating, locateNote, useMyLocation, accessMode, namer, located, removeAt, pointWarnings, removeRefs, orderShown, bestOrder, orderFocused, ordering } = props;
+  const { pointsSearchRef, points, loopVias, geoGate, searchBias, pickPlace, locateReady, locating, locateNote, useMyLocation, accessMode, namer, located, removeAt, reorderPoint, pointWarnings, removeRefs, orderShown, bestOrder, orderFocused, ordering } = props;
+  // Each row's grip (lib/pointMover.ts): drag, the arrows, or a press for Up and Down.
+  const mover = usePointMover(points.length, reorderPoint);
   // A point that is the rider's location is named so, as Go's route card names it, not by its coordinates.
   const names = {
     name: (point: LonLat) => (located.includes(point) ? { name: YOUR_LOCATION, label: YOUR_LOCATION } : namer.name(point)),
@@ -355,6 +362,7 @@ function PointBoxes(props: PointBoxesProps) {
           rows={pointRows(points, names, loopVias, VIA_MARKS.isVia)}
           onRemove={removeAt}
           warnings={pointWarnings}
+          mover={mover}
           removeRef={(index, button) => {
             removeRefs.current[index] = button;
           }}

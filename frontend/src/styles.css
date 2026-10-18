@@ -7055,3 +7055,65 @@ details.fold > summary .icon {
   font-weight: 700;
   color: var(--text-muted);
 }
+
+/* The points list's grip (drag to reorder, Stephen 2026-10-18): a 44 px target at the row's start. touch-action
+   none keeps a finger's drag on the grip from scrolling the sheet instead. */
+.points .point-grip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  margin-left: -10px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+  cursor: grab;
+  touch-action: none;
+}
+
+.points .point-grip[aria-expanded="true"] {
+  color: var(--accent);
+}
+
+.points-dragging {
+  user-select: none;
+}
+
+.points-dragging .point-grip {
+  cursor: grabbing;
+}
+
+/* The others slide aside as the dragged row passes; the dragged row follows the finger, above them. */
+.points-dragging li {
+  transition: transform 120ms ease;
+}
+
+.points li.point-dragged {
+  position: relative;
+  z-index: 1;
+  transition: none;
+  background: var(--bg);
+  box-shadow: var(--shadow);
+  border-radius: 6px;
+}
+
+.points .point-steps {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.points .point-steps button {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .points-dragging li {
+    transition: none;
+  }
+}

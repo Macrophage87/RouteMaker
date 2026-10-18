@@ -6,6 +6,7 @@ import { MapTools } from "./MapTools.tsx";
 import { ACCESS_LABEL, accessModeToggle, readAccessMode, writeAccessMode } from "./lib/accessMode.ts";
 import { placeAtSpot, requestAfterClose, type InfoRequest } from "./lib/roadInfo.ts";
 import { stationNearSpot } from "./lib/stationLinks.ts";
+import { reorder } from "./lib/pointMover.ts";
 import { canDragLine, dropStillValid, insertIntoRide, legEnds, legPoints } from "./lib/lineEdit.ts";
 import { EditHistory, isRedoKey, isUndoKey, typesText } from "./lib/editHistory.ts";
 import { requestNeighbours, requestRoute, routeRequestBody, type ClosedStation, type NeighbourOption, type NeighboursResult, type RouteResponse, type RouteResult } from "./lib/api.ts";
@@ -2089,6 +2090,18 @@ export function App() {
     focusAfterRemove.current = index;
     commit(pointsRef.current.filter((_, i) => i !== index));
   };
+  // A point dragged to another place in the points list (lib/pointMover.ts; Stephen 2026-10-18, beside Best order):
+  // one edit, so Undo puts it back. The same pairs, so each keeps its kind, its name and whether it is the location.
+  // Said, as the list's roles change with it: "Union Market is now Stop 1."
+  const reorderPoint = (from: number, to: number) => {
+    const current = pointsRef.current;
+    if (from === to || from < 0 || to < 0 || from >= current.length || to >= current.length) return;
+    const next = reorder(current, from, to);
+    commit(next);
+    const role = namePoints(next, VIA_MARKS.isVia, loopVias)[to]?.name ?? "";
+    const name = fromHere.includes(next[to]) ? YOUR_LOCATION : namer.name(next[to])?.name;
+    announce(name ? `${name} is now ${role}.` : `Moved to ${role}.`);
+  };
   // From the map: the focus stays where it was (on a phone the sheet may be
   // hidden), and the removal is said instead.
   const removeFromMap = useCallback(
@@ -3727,7 +3740,7 @@ export function App() {
       {...{
         pointsHeadingRef, zoom, stressVisible, stress, pointsSearchRef, compactPoints, points, loopVias, geoGate,
         searchBias, pickPlace, locateReady, locating, hereInPlan, here, useMyLocation, loop, loopHintId, commitDials,
-        dials, accessMode, namer, located: fromHere, removeAt, pointWarnings, removeRefs, preset, stationChoice, chooseStation,
+        dials, accessMode, namer, located: fromHere, removeAt, reorderPoint, pointWarnings, removeRefs, preset, stationChoice, chooseStation,
         federalPlanner,
         pointsEditRef, reverseButton, reverse, reverseHint, orderShown, bestOrder, orderFocused, ordering, narrow,
         undo, can, redo, coverageShown, toggleAccessMode, announce, notice, noticeLive: mode !== "go", tips, setTips, tipsId,
