@@ -504,11 +504,16 @@ REBUILD_SENTINEL_WEEKEND_EDGE = ((-77.005773, 38.989038), (-77.006179, 38.989341
 # VALIDATE_SEGMENTS reads back from the staging table, each of which must be on a long
 # bicycle route in a named run of 8 mi or more. Washington & Old Dominion Trail,
 # OSM way 8810729 (rcn), and the Chesapeake and Ohio Canal Trail, OSM way
-# 10595312 (ncn, USBR 50), both so in the 2026-10-03 extract (ZOOMED-TRAILS
-# revision). And the floors: at least this many rows on a long route
+# 74843009 by Fletcher's Cove (ncn, USBR 50; in a 14,009 m run in the live
+# table, 2026-10-18). The C&O sentinel was way 10595312 by Paw Paw (78.3 W),
+# west of COVERAGE_BBOX: since v0.8.1 the clip completes boundary and
+# multipolygon relations only, not route relations, so that way is no longer
+# in the extract. And the floors: at least this many rows on a long route
 # (trail_route 2 or more) and in a named run of 2.5 mi or more, about half of
-# what that extract gives (12,503 and 4,402 rows, measured on a full-size copy).
-REBUILD_SENTINEL_LONG_TRAIL_WAYS = (8810729, 10595312)
+# what the 2026-10-03 extract gave (12,503 and 4,402 rows, measured on a
+# full-size copy). The live table's rows inside the box alone are 9,090 and
+# 3,624 (2026-10-18).
+REBUILD_SENTINEL_LONG_TRAIL_WAYS = (8810729, 74843009)
 REBUILD_LONG_TRAIL_FLOORS = (6000, 2200)
 # The ride layer's runs (OWNER-DECISIONS 391, 402a; `pipeline.run.assert_calm_runs`): the two
 # long trails above are paths in a connected network of 8 mi or more, so they are the path
@@ -518,7 +523,7 @@ REBUILD_LONG_TRAIL_FLOORS = (6000, 2200)
 # RIDE_PATH_RUN_MI and the road rows in a calm run of RIDE_ROAD_RUN_MI, about half of what that
 # extract gives (30,972 and 2,398 rows, measured on a copy of the live table's rows;
 # docs/OPERATIONS.md, "The ride layer (z12-13)"). The setting keeps its STREET name.
-REBUILD_SENTINEL_CALM_PATH_WAYS = (8810729, 10595312)
+REBUILD_SENTINEL_CALM_PATH_WAYS = (8810729, 74843009)
 REBUILD_SENTINEL_CALM_STREET_WAYS = (5968951,)
 REBUILD_CALM_RUN_FLOORS = (15000, 1200)
 # The Mass Ride capacity column (OWNER-DECISIONS 325-327, 387;
