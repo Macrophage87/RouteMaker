@@ -104,7 +104,7 @@ from routemaker import (
 from routemaker import detour as detour_rules
 from routemaker import profile as profile_rules
 from routemaker.facility import FACILITIES
-from routemaker.geo import Point, haversine
+from routemaker.geo import Point, bearing, bearing_delta, haversine
 from routemaker.massflow import band_of
 from routemaker.measure import elevation_gain
 
@@ -954,6 +954,10 @@ class Dials:
     # "Make it a loop" (OWNER-DECISIONS 266): return to the start by a different way.
     # A ride whose last point is its first is a loop whatever this says.
     loop: bool = False
+    # A ride's re-route: the way the rider is going at the first point (degrees clockwise from
+    # north), so the route sets off that way rather than turning round (`plan_onward`); None:
+    # either way.
+    heading: float | None = None
 
 
 def _same_pace(options: dict, request: dict) -> dict:
@@ -2944,6 +2948,11 @@ def plan(
         "directions_type": "maneuvers",
         "units": "kilometers",
     }
+    if dials.heading is not None and not following and not loop:
+        # Only the ways that set off within HEADING_TOLERANCE_DEG of the rider's heading.
+        request["locations"][0].update(
+            heading=round(dials.heading) % 360, heading_tolerance=HEADING_TOLERANCE_DEG
+        )
     # Live work zones (FOLLOWUP-WORKZONES, 341-349), in force at the ride time: a closure
     # to bicycles is left out of every request this plan makes (the derived requests
     # copy this one), and the zones a rider may pass are weighed once the router has
@@ -3856,6 +3865,76 @@ def plan(
     body["rank"] = 1 if candidates else None
     timing.mark("more")
     return body
+
+
+# A re-route's U-turn (the owner, 2026-10-18: "Penalize U turns. Basically you'd have to save
+# about half a mile on that road for it to make sense", "For rerouting"). A route that sets off
+# back the way the rider is going is kept only where it is at least UTURN_SAVING_M shorter than
+# the best one that sets off ahead.
+UTURN_SAVING_M = 1609.344 / 2
+# A start this far from the rider's heading is a U-turn.
+UTURN_MIN_DEG = 120.0
+# How far along the route its setting-off direction is read: past the snap to the road.
+UTURN_READ_M = 25.0
+# Valhalla's `heading_tolerance` for the route that sets off ahead: wide enough for a GPS
+# heading's wobble and a bend, never wide enough to take the way back.
+HEADING_TOLERANCE_DEG = 75
+
+
+def sets_off_back(answer: dict, heading: float) -> bool:
+    """Whether the route in `answer` (`plan`'s body) sets off back the way the rider is heading."""
+    line = [Point(lon, lat) for lon, lat in answer["geometry"]["coordinates"]]
+    if len(line) < 2:
+        return False
+    along = 0.0
+    for a, b in zip(line, line[1:], strict=False):
+        along += haversine(a, b)
+        if along >= UTURN_READ_M:
+            break
+    if along < 1.0:
+        return False
+    return bearing_delta(bearing(line[0], b), heading) >= UTURN_MIN_DEG
+
+
+def plan_onward(
+    points: list[list[float]],
+    preset_name: str,
+    long_ride: bool = False,
+    started: float | None = None,
+    dials: Dials | None = None,
+    quick: bool = False,
+    candidates: bool = True,
+) -> dict:
+    """`plan`, with a re-route's U-turn penalised: where `dials.heading` is given and the route
+    sets off back the other way, the best route that sets off ahead is planned too, and the
+    U-turn kept only where it saves UTURN_SAVING_M. Anything that stops the second plan (no
+    route ahead, no time left) keeps the first: the rider is never left without one."""
+    dials = dials or Dials()
+    heading = dials.heading
+    asked = dict(long_ride=long_ride, started=started, quick=quick, candidates=candidates)
+    answered = plan(points, preset_name, dials=dataclasses.replace(dials, heading=None), **asked)
+    # `plan` sets no heading on a followed line or a loop: a second plan would be the same.
+    if (
+        heading is None
+        or dials.follow is not None
+        or loop_wanted(points, dials.loop, preset_name)
+        or not sets_off_back(answered, heading)
+    ):
+        return answered
+    timings = timing.current()
+    if timings is not None:
+        timings.note("uturn", "replanned")
+    try:
+        ahead = plan(points, preset_name, dials=dials, **asked)
+    except (NoRoute, TooLong, RouterUnavailable, DeadlineExceeded) as error:
+        logger.info("a re-route turns round: no route ahead (%s)", type(error).__name__)
+        return answered
+    saving = float(ahead["distance_m"]) - float(answered["distance_m"])
+    # The router takes the way back where it has no way ahead within its tolerance.
+    if saving >= UTURN_SAVING_M or sets_off_back(ahead, heading):
+        logger.info("a re-route turns round: it saves %.0f m", saving)
+        return answered
+    return ahead
 
 
 def quick_applies(preset_name: str, loop: bool, long_ride: bool, long_calm: bool) -> bool:
