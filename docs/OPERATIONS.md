@@ -976,7 +976,7 @@ way the zoomed-out map draws, and `derive_trail_runs` ANALYZEs the staging
 table, chains the runs and judges the bridges (10 s on the full
 table). VALIDATE_SEGMENTS then refuses a build whose columns came out wrong
 (`pipeline.run.assert_long_trails`): the Washington & Old Dominion Trail
-(OSM way 8810729) and the C&O Canal towpath (10595312),
+(OSM way 8810729) and the C&O Canal towpath by Fletcher's Cove (74843009),
 `settings.REBUILD_SENTINEL_LONG_TRAIL_WAYS`, must each be on a long bicycle
 route in a run of 8 mi (12.9 km) or more; at least
 `settings.REBUILD_LONG_TRAIL_FLOORS` rows, 6,000 and 2,200,
@@ -1149,10 +1149,11 @@ ft, 0.5 mi), against the busy roads it replaced, for the record:
 
 **VALIDATE_SEGMENTS** (`pipeline.run.assert_calm_runs`, following `assert_long_trails`):
 no named candidate may be left at 0 (the derive ran to the end); the path
-sentinels, the W&OD (OSM way 8810729) and the C&O towpath (10595312),
+sentinels, the W&OD (OSM way 8810729) and the C&O towpath by Fletcher's Cove (74843009),
 `settings.REBUILD_SENTINEL_CALM_PATH_WAYS`, must each be in a network of 8 mi
-(12.9 km) or more; the road sentinel, Elmer School Road in Montgomery County's
-Agricultural Reserve (OSM way 5968951, in a 3.2 mi calm run),
+(12.9 km) or more; the road sentinel, Gambrill Park Road in Frederick County (OSM
+way 11560982, LTS 2 from MDOT SHA's rating, in a 14.8 mi calm run; it was Elmer School
+Road until Montgomery Planning's LTS 4 for that road was accepted, 2026-10-18),
 `settings.REBUILD_SENTINEL_CALM_STREET_WAYS` (the setting keeps its first name), must
 be in a calm run of 2 mi or more; and at least `settings.REBUILD_CALM_RUN_FLOORS`
 rows, 15,000 path rows in a run of 0.25 mi and 1,200 road rows in a calm run of 2 mi
@@ -5485,6 +5486,30 @@ planner and front-end release" (below), `docker compose build api` then `up -d -
 refuses a reference folder without `scenic.json` ("The Scenic layer (v0.8.0)", steps 1 and 2).
 The beta takes it through its CD agent.
 
+## Deploying v0.9.0
+
+Two migrations (`0034_review_dc_no_bike_queue`, `0035_assistant_key`), both plain schema changes
+that reverse cleanly; no new tile format and no rebuild. Deploy it as "Deploying a planner and
+front-end release" (below). No new settings: live Metrobus and train positions reuse
+`WMATA_API_KEY` and `api.wmata.com`.
+
+- **Needs a rebuild to take effect:** bike-signed parking aisles and driveways open to through
+  routes (`lua/routemaker_remap.lua`), the DC circle parks and NPS land in the CBD, and the
+  Review queue of suspected no-bike paths (it reads "not wired" until a rebuild writes its report).
+  On the current map nothing changes and nothing breaks.
+- **Needs a new phone app build:** Send to Garmin, a link shared to the app, and the new icon.
+- **Beta alerts** (`scripts/beta/alert.sh`) post from the server's login user, not a container:
+  `discord.com:443` must be allowed for the host itself. Install them and re-run
+  `auto-release.sh install` as BETA-RUNBOOK.md's "Alerts" says, so the agent's installed copy
+  can post too.
+- **AI assistant key** (`assistant_key` table, `core.models.AssistantKey`): one per account, only
+  its SHA-256 kept. An assistant's MCP server (mcp/README.md) sends it in `X-RouteMaker-Key` to
+  `POST /api/keyed/routes`, which only adds a route to that account's My routes, under the
+  address limit, then the account's write limit. The rider removes it in Settings > Account;
+  deleting or banning the account deletes it. Behind the
+  beta's password gate the MCP server (not the site) needs `ROUTEMAKER_BASIC_AUTH` as well: the key travels in its
+  own header.
+
 ## Deploying a planner and front-end release: rollback points and verification
 
 A release that changes the planner and the front end, with no migration and no graph, is deployed
@@ -6374,7 +6399,7 @@ reason a way in a compound stays open is one of its exceptions), no warning
 100% at tier 4`, `facility classes:`, `AADT smoothing`, `named corridors` (three corridors),
 `override re-match`, `CONNECTICUT AVE NW: N% LTS 4` (at least 60% overall and 95% north of
 R St NW), the Mass Ride width line (at least 98% of road and path rows with a width, the
-median road 60-200 riders a minute), the calm-run floors (Elmer School Road at 2 mi), the
+median road 60-200 riders a minute), the calm-run floors (Gambrill Park Road at 2 mi), the
 long trails, the closure readback on **five** graphs, and `Stress tile cache pre-drawn:
 11255 drawn` (11,068 stress tiles and 187 Mass Ride tiles at 2026-10-03's counts). A
 VALIDATE_SEGMENTS refusal is terminal and nothing is promoted: keep the code (the new api is safe on

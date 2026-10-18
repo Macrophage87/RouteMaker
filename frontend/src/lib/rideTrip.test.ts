@@ -13,6 +13,7 @@ import {
   approachReached,
   approachStartSaid,
   approachWords,
+  fixedRide,
   restClosedSaid,
   restFrom,
   tripRideStart,
@@ -27,6 +28,7 @@ import {
   rideable,
   ridesLine,
   withFinish,
+  type RideTrip,
 } from "./rideTrip.ts";
 
 const M_PER_DEG = 111_195;
@@ -380,4 +382,20 @@ test("a ride that stops short walks to the line first and says the walk on at th
   assert.deepEqual(leg.points, [at(0, -40), at(500, 90)]);
   const plain = { ...route, walk_in: null } as unknown as RouteResponse;
   assert.equal(rideTripOf(plain, []), null);
+});
+
+test("a shared ride or Mass Ride stays fixed with walks at its ends; a Bikeshare or transit leg and Ride the rest do not", () => {
+  const line = [at(0, 0), at(500, 0)];
+  const walk = (m: number) => ({ geometry: { type: "LineString" as const, coordinates: [at(500, 0), at(500, m)] }, distance_m: m, duration_s: m, to: "" });
+  const route = { preset: "mass-ride", geometry: { type: "LineString", coordinates: line }, walk_in: { start: walk(40), end: walk(90) } } as unknown as RouteResponse;
+  const leg = rideLegOf(route, [at(0, -40), at(500, 90)], false);
+  assert.ok(leg.trip?.asPlanned);
+  assert.equal(fixedRide(leg, null, false), true);
+  assert.equal(fixedRide({ ...leg, preset: "commute" }, { ride: true }, false), true);
+  assert.equal(fixedRide({ ...leg, preset: "commute" }, { ride: true, own: true }, false), false);
+  assert.equal(fixedRide(leg, { ride: false }, false), false);
+  assert.equal(fixedRide({ ...leg, preset: "commute" }, null, false), false);
+  assert.equal(fixedRide(leg, null, true), false);
+  const transit = { approach: null, finish: null, departure: null, rest: null } as RideTrip;
+  assert.equal(fixedRide({ ...leg, trip: transit }, { ride: true }, false), false);
 });
