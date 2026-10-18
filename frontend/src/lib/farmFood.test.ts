@@ -49,12 +49,12 @@ test("apples, farm stands and farmers markets find them by kind", () => {
 
 test("the list draws the apple beside a farm stand, hidden from screen readers, with its kind in words", () => {
   const places = parseFood(file)!;
-  const results = searchFood(places, { query: "apple", scope: "area", bounds: null, centre: [-77, 38.9], route: null });
+  const results = searchFood(places, { query: "apple", scope: "near", bounds: null, centre: [-77, 38.9], route: null });
   const html = renderToStaticMarkup(
     createElement(FoodFinder, {
       query: "apple",
       onQuery: () => {},
-      scope: "area",
+      scope: "near",
       onScope: () => {},
       onSearch: () => {},
       busy: false,

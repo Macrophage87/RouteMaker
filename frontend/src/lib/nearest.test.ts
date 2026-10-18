@@ -402,3 +402,14 @@ test("Ride mode wires the detour: the ride's fix, the ride's settings without th
   const app = appSource();
   assert.match(app, /water=\{ensureWater\}/);
 });
+
+test("with a route shown: the least detour off it, no router call, in words (the owner, 2026-10-18)", async () => {
+  const d = deps({ route: { line: [HERE, [HERE[0] + 0.05, HERE[1]]], speedMps: 4 } });
+  const outcome = await searchNearest(d);
+  assert.equal(d.asked.length, 0, "the router is not asked");
+  const items = outcome.found!.items;
+  assert.ok(items.length > 0 && items.every((i) => i.detour));
+  for (let i = 1; i < items.length; i += 1) assert.ok(items[i - 1].detour!.extraM <= items[i].detour!.extraM);
+  assert.match(outcome.said, /least detour off your route/);
+  assert.match(howFar(items[0]), /^(on your route at|\+[\d.]+ mi \([\d.]+ km\) detour, about \d+ min, turning off at)/);
+});
