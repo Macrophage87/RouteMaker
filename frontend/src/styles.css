@@ -5037,9 +5037,26 @@ details.fold > summary .icon {
   border-top: 1px solid var(--border);
 }
 
-.share-controls > .share-route {
+/* Share route, Share ride and their Info, on one line where they fit (the owner, 2026-10-18). */
+.share-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  flex-basis: 100%;
+}
+
+.share-buttons > button {
   min-height: 44px;
   min-width: 44px;
+}
+
+.share-about {
+  flex-basis: 100%;
+}
+
+.share-about p {
+  margin: 0 0 4px;
 }
 
 .share-controls > .link-note,

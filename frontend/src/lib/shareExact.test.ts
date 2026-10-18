@@ -126,3 +126,42 @@ test("a line the server does not answer for is given up on, so Share and Copy li
   const copy = app.slice(app.indexOf("const copyLink = async () => {"), app.indexOf("\n  };\n", app.indexOf("const copyLink = async () => {")));
   assert.ok(copy.indexOf("setLinkSaid(linkSaidFor(done))") < copy.indexOf("await kept"));
 });
+
+test("a route everyone shares stays fixed on the ride: off route, the way back, never re-planned on its own", () => {
+  const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
+  // A link shared as a ride; a Mass Ride or Group Ride unless shared as a route; not Ride the rest or a trip.
+  assert.match(app, /const opened = sharedOpen\?\.answer === route \? sharedOpen : null;/);
+  assert.match(app, /const fixed = !rest && !leg\.trip && \(opened \? opened\.ride : leg\.preset === "mass-ride" \|\| leg\.preset === "group-ride"\);/);
+  assert.match(app, /fixed=\{rideStart\.fixed\}/);
+  // No automatic re-plan, from a fix or when the signal comes back.
+  assert.match(ride, /const auto = !keepRef\.current && !fixedRef\.current;/);
+  assert.match(ride, /if \(state\.off && !keepRef\.current && !fixedRef\.current && state\.goodFix\) void replan/);
+  // The way back is said once on leaving it and shown while off; Keep is not offered (it is always kept).
+  assert.match(ride, /if \(fixedRef\.current && out\.events\.some\(\(e\) => e\.kind === "off-route"\)\) \{\s*const back = wayBack\(modelRef\.current, out\.state\);\s*if \(back\) announcer\.current\?\.answer\(`\$\{FIXED_SAID\} \$\{wayBackSaid\(back\)\}`\);/);
+  assert.match(ride, /\{\(keepPlanned \|\| fixedRef\.current\) && back && \(/);
+  assert.match(ride, /\{!fixedRef\.current && \(\s*<button type="button" className="secondary" onClick=\{keep\}/);
+  // Re-plan from here stays, the rider's own choice.
+  assert.match(ride, /<button type="button" onClick=\{replanNow\} aria-disabled=\{replanning\}>\s*Re-plan from here/);
+});
+
+test("Share route or Share ride: a ride's link opens fixed, with location sharing offered, on any ride type", async () => {
+  // The owner, 2026-10-18: "There should be the option for sharing the route or sharing a ride ... ride is the fixed
+  // one with optional location sharing ... route is so people can review or do it themselves separately".
+  const { asRideLink, rideLinkFrom, withSharedId } = await import("./sharedRoutes.ts");
+  const link = asRideLink(withSharedId(`https://x.test/${encodePlan(FILE_POINTS, "default", startDials("default", null))}`, "a".repeat(32)));
+  const hash = link.slice(link.indexOf("#"));
+  assert.equal(rideLinkFrom(hash), true);
+  assert.deepEqual(decodePlan(hash).points, FILE_POINTS, "the plan's inputs read as before");
+  assert.equal(rideLinkFrom(hash.replace("&ride=1", "")), false);
+  assert.equal(rideLinkFrom("", "?route=x&ride=1"), true);
+  // Only with its exact line kept is a link a ride; the sharer rides it as its openers do.
+  assert.match(app, /const link = ride && kept \? asRideLink\(now\.link\) : now\.link;/);
+  // Only once the sheet shared it with the line kept; while the route is still planned, Share ride says to wait.
+  assert.match(app, /\} else if \(ride && kept && done === "shared"\) \{\s*\/\/[^\n]*\n\s*setSharedOpen\(\{ answer: shown, ride: true \}\);/);
+  assert.match(app, /if \(ride && !shareExact\(\)\?\.save\.answer\) \{\s*setShareSaid\(\(before\) => \(\{ text: SHARE_RIDE_WAIT, count: before\.count \+ 1 \}\)\);\s*return;\s*\}/);
+  assert.match(app, /if \(shared\.answer\) setSharedOpen\(\{ answer: shared\.answer, ride: SHARED_RIDE \}\);/);
+  // What each does, on an Info button beside them (a phone has no hover) and as each button's description.
+  const panel = readFileSync(new URL("../app/RoutePanel.tsx", import.meta.url), "utf8");
+  assert.match(panel, /className="link icon-button info-button share-about-button" aria-expanded=\{about\} aria-controls=\{aboutId\}/);
+  assert.match(panel, /<p id="share-ride-about" className="hint">\s*\{SHARE_RIDE_ABOUT\}/);
+});

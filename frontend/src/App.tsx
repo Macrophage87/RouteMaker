@@ -226,7 +226,7 @@ import { downloadText, trackGpx, verbatimDownload, verbatimFileName } from "./li
 import { readGpx } from "./lib/gpxImport.ts";
 import { GPX_SAID_OPENED, GPX_SAID_ROUTE, GPX_SAID_TRACK, downloadCourse, downloadGpx, routeGpxFile, sendCourseToGarmin, type FileFormat, type Said } from "./GpxPanel.tsx";
 import type { DeviceProfileId } from "./lib/deviceProfiles.ts";
-import { SHARED_GONE, SHARED_INPUTS_ONLY, SHARED_OPENED, SHARED_PATH, SHARED_REVOKED, SHARED_REVOKED_ERROR, SHARE_KEEP_DEFAULT, gpxShareFile, keepFields, newSharedId, previewImageOk, readShared, sharedBody, sharedIdFrom, storeShared, withSharedId, type ShareKeep } from "./lib/sharedRoutes.ts";
+import { SHARED_GONE, SHARED_INPUTS_ONLY, SHARED_OPENED, SHARED_PATH, SHARED_REVOKED, SHARED_REVOKED_ERROR, SHARE_KEEP_DEFAULT, SHARE_RIDE_WAIT, asRideLink, gpxShareFile, keepFields, newSharedId, previewImageOk, readShared, rideLinkFrom, sharedBody, sharedIdFrom, storeShared, withSharedId, type ShareKeep } from "./lib/sharedRoutes.ts";
 import { ClosureDialog, type ClosureAsk } from "./ClosureDialog.tsx";
 import { ShareCardDialog, type ShareCardSource } from "./ShareCardDialog.tsx";
 import { usableProfile } from "./lib/profileChart.ts";
@@ -236,7 +236,7 @@ import { BikeshareDocksOverlay, type DocksReport } from "./BikeshareDocks.tsx";
 import { KNOWN_OPERATORS, docksStatus, mergeOperators, operatorsToAsk, readOperatorChoices, saveOperatorChoices, type OperatorInfo } from "./lib/bikeshareDocks.ts";
 import { SaveRoute } from "./SaveRoute.tsx";
 import { SAVE_ROUTE } from "./lib/savedRoutes.ts";
-import { isRideLink } from "./lib/rideGroup.ts";
+import { isRideLink, type RideLinkType } from "./lib/rideGroup.ts";
 
 // Before the map adds the stress source (MapView, after its first probe).
 // With Ride mode's kept tiles behind the network, for dead spots (lib/corridorStore.ts).
@@ -291,6 +291,8 @@ const OPEN_AT = atFromHash(window.location.hash);
 // A link opened at its preview path (`/s/<id>`) or sent on from it (`/?route=<id>`) names the id there; the address
 // then becomes the page's own, so a link copied later is the plan's, not the old shared one.
 const SHARED_ID = sharedIdFrom(window.location.hash, window.location.search, window.location.pathname);
+// Shared as a ride (Share ride; lib/sharedRoutes.ts RIDE_PARAM), not only as a route.
+const SHARED_RIDE = SHARED_ID !== null && rideLinkFrom(window.location.hash, window.location.search);
 if (SHARED_ID && (window.location.pathname.startsWith(SHARED_PATH) || new URLSearchParams(window.location.search).has("route"))) {
   const query = new URLSearchParams(window.location.search);
   query.delete("route");
@@ -747,6 +749,8 @@ export function App() {
     dials: Dials;
     preset: PresetId;
     trip: RideTrip | null;
+    /** The route everyone shares: never re-planned on its own during the ride (RideMode `fixed`). */
+    fixed: boolean;
     n: number;
   } | null>(null);
   const [rideAsk, setRideAsk] = useState(false);
@@ -2471,13 +2475,22 @@ export function App() {
     if (sharedLine.current?.kept === kept) sharedLine.current = null;
     return null;
   };
-  const shareRoute = async () => {
+  // Share ride: the same link marked as a ride (lib/sharedRoutes.ts RIDE_PARAM), opened fixed with location sharing.
+  const shareRoute = async (ride = false) => {
     if (!shown || sharing.current) return;
-    sharing.current = true;
     const press = ++sharePresses.current;
+    // A ride only with its exact line, kept with the route shown for it: while the route is still being planned the
+    // link would plan again, a route, so it is said rather than shared.
+    if (ride && !shareExact()?.save.answer) {
+      setShareSaid((before) => ({ text: SHARE_RIDE_WAIT, count: before.count + 1 }));
+      return;
+    }
+    sharing.current = true;
     setShareSaid((before) => ({ text: "", count: before.count }));
     const distanceM = !stale && routedPoints === points ? shown.distance_m : null;
-    const { link, kept, exact } = sharedLinkNow();
+    const now = sharedLinkNow();
+    const { kept, exact } = now;
+    const link = ride && kept ? asRideLink(now.link) : now.link;
     const file = exact?.file ? gpxShareFile(exact.file.text, exact.file.fileName) : null;
     const content = withGpxFile(navigator, shareContent(link, distanceM, presetSaid(preset)), file);
     const outcome = shareLink(navigator, content);
@@ -2490,6 +2503,9 @@ export function App() {
       if (kept && !(await kept)) {
         if (sharedLine.current?.kept === kept) sharedLine.current = null;
         if (done !== "failed" && done !== "cancelled") said = SHARED_INPUTS_ONLY;
+      } else if (ride && kept && done === "shared") {
+        // The one who shared a ride rides it as those who open it do: fixed, with the same location sharing.
+        setSharedOpen({ answer: shown, ride: true });
       }
     } finally {
       sharing.current = false;
@@ -2511,7 +2527,12 @@ export function App() {
     const leg = rideLegOf(route, rest?.points ?? routedPoints, rest ? false : routedLoop);
     // A More direct or Calmer chosen rides at its own traffic setting, so a re-route keeps to it; the plan's dials and
     // the saved default stay the rider's (lib/neighbours.ts rideDials).
-    setRideStart((before) => ({ route, ...leg, dials: rideDials(planDials, rest ? null : route), n: (before?.n ?? 0) + 1 }));
+    // A route everyone shares stays fixed (the owner, 2026-10-18: "For sharing mass rides and group rides, rerouting
+    // defeats the purpose"; "ride is the fixed one ... route is so people can review or do it themselves
+    // separately"): a link shared as a ride, opened unchanged; a Mass Ride or Group Ride, unless shared as a route.
+    const opened = sharedOpen?.answer === route ? sharedOpen : null;
+    const fixed = !rest && !leg.trip && (opened ? opened.ride : leg.preset === "mass-ride" || leg.preset === "group-ride");
+    setRideStart((before) => ({ route, ...leg, dials: rideDials(planDials, rest ? null : route), fixed, n: (before?.n ?? 0) + 1 }));
     // The installed app keeps the ride's route as the last ride (OWNER-DECISIONS 465a); End ride gives it
     // the map the ride kept. A browser tab keeps nothing unless the rider presses Keep for offline.
     // A Keep for offline still fetching stops: the ride keeps its own corridor, and two walks would share the page's queue.
@@ -2942,6 +2963,10 @@ export function App() {
   // A shared route's link (lib/sharedRoutes.ts): its exact line opens as a saved route does (the closure check,
   // Update route); a line no longer kept leaves the link's inputs planned again, said in one line.
   const [sharedNote, setSharedNote] = useState<string | null>(null);
+  // The route a shared link opened as (its kept answer), and whether it was shared as a ride (Share ride) or as a
+  // route: while it is the route shown or ridden, a ride is ridden fixed with location sharing offered (RideGroup),
+  // and a route is the opener's own to change and ride, even a Mass Ride's.
+  const [sharedOpen, setSharedOpen] = useState<{ answer: RouteResponse; ride: boolean } | null>(null);
   // The "planned again" line is about the plan the link named: a change to the plan clears it.
   useEffect(() => setSharedNote(null), [points, preset, dials]);
   useEffect(() => {
@@ -2961,6 +2986,7 @@ export function App() {
         // The open's own check stands for the link's first-answer check.
         checkFirstAnswer.current = false;
         openSaved(shared, SHARED_OPENED(shared.name));
+        if (shared.answer) setSharedOpen({ answer: shared.answer, ride: SHARED_RIDE });
       } else {
         setSharedNote(SHARED_GONE);
         announce(SHARED_GONE);
@@ -3790,11 +3816,15 @@ export function App() {
     route: routeSection,
   };
 
-  // A Mass Ride or Group Ride link, in Go or riding: the others on the route (RideGroup), by the link's points.
+  // A Mass Ride or Group Ride link, in Go or riding: the others on the route (RideGroup), by the link's points. A
+  // link shared as a ride (Share ride), any ride type, while its route is the one shown or ridden: as a Group Ride
+  // where it is not a Mass Ride. One shared as a route has none.
   const rideGroupPoints = riding && rideStart ? rideStart.points : points;
   const rideGroupRoute = riding && rideView ? rideView.route : shown;
-  const rideGroupLine =
-    (goMode || riding) && isRideLink(preset, rideGroupPoints) && rideGroupRoute ? (rideGroupRoute.geometry.coordinates as LonLat[]) : null;
+  const onShared = sharedOpen !== null && (riding ? rideStart?.route : shown) === sharedOpen.answer ? sharedOpen : null;
+  const rideGroupType: RideLinkType | null =
+    onShared && !onShared.ride ? null : isRideLink(preset, rideGroupPoints) ? preset : onShared && rideGroupPoints.length >= 2 ? "group-ride" : null;
+  const rideGroupLine = (goMode || riding) && rideGroupType && rideGroupRoute ? (rideGroupRoute.geometry.coordinates as LonLat[]) : null;
 
   return (
     <div className={`app${riding ? " riding" : ""}${riding && bigText ? " riding-big" : ""}${goMode && !riding ? " go-mode" : ""}`}>
@@ -3928,7 +3958,7 @@ export function App() {
         onReport={onDocksReport}
       />
       {rideGroupLine && (
-        <RideGroup type={preset as "mass-ride" | "group-ride"} points={rideGroupPoints} line={rideGroupLine} getMap={getMap} here={rideView?.rider?.point ?? (here ? here.point : null)} />
+        <RideGroup type={rideGroupType ?? "group-ride"} points={rideGroupPoints} line={rideGroupLine} getMap={getMap} here={rideView?.rider?.point ?? (here ? here.point : null)} />
       )}
       <ClosureDialog ask={closureAsk} onReroute={() => void closureReroute()} onAnyway={closureAnyway} onCancel={closureCancel} />
       <ShareCardDialog
@@ -4076,6 +4106,7 @@ export function App() {
           water={ensureWater}
           trailMiles={trailMiles}
           keepLastRide={isStandalone()}
+          fixed={rideStart.fixed}
         />
       )}
       {/* Hidden, not removed, during a ride: the planner keeps its state, and Sign in is out of reach (plan section 7). */}
@@ -4237,7 +4268,7 @@ export function App() {
                       save={saveProps ? <SaveRoute {...saveProps} label={SAVE_ROUTE} /> : null}
                       canShare={canShare}
                       ready={!!shown}
-                      shareRoute={() => void shareRoute()}
+                      shareRoute={(ride) => void shareRoute(ride)}
                       shareKeep={shareKeep}
                       onShareKeep={mode === "plan" ? setShareKeep : null}
                       shareSaid={shareSaid}

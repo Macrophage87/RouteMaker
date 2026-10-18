@@ -4127,6 +4127,35 @@ const SHARE_STUB = `window.__shared = []; window.__shareMode = "ok"; window.__no
     if (mode === "hold") { window.__open = true; return new Promise((done) => { window.__release = () => { window.__open = false; done(); }; }); }
     return mode === "ok" ? Promise.resolve() : Promise.reject(new DOMException("stub", mode === "abort" ? "AbortError" : "DataError")); } });
   Object.defineProperty(Navigator.prototype, "canShare", { configurable: true, value: function (d) { return !!d && typeof d.url === "string"; } });`;
+// ---- Share ride (the owner, 2026-10-18: "There should be the option for sharing the route or sharing a ride ... ride is
+// the fixed one with optional location sharing ... route is so people can review or do it themselves separately ...
+// Make that clear in a tooltip"; lib/sharedRoutes.ts RIDE_PARAM) ----
+{
+  const p = await open({ init: SHARE_STUB });
+  await openSheet(p, "Files");
+  await p.eval("(() => { const s = document.querySelector('#sheet-gpx .share-controls .share-ride'); if (s) s.id = '__ride'; const i = document.querySelector('#sheet-gpx .share-about-button'); if (i) i.id = '__about'; return true; })()");
+  const ax = await axNode(p, "#__ride");
+  const box = await p.eval("(() => { const s = document.getElementById('__ride'); if (!s) return null; const r = s.getBoundingClientRect(); return { w: r.width, h: r.height }; })()");
+  check("share ride: a button named Share ride beside Share route, described by what it does, 44 px or more each way",
+    ax?.role === "button" && ax?.name === "Share ride" && /never re-routed/.test(ax?.description ?? "") && box && box.w >= 44 && box.h >= 44, JSON.stringify({ ax, box }));
+  const info = async () => p.eval("(() => { const b = document.getElementById('__about'); const box = document.getElementById(b?.getAttribute('aria-controls') ?? ''); return { expanded: b?.getAttribute('aria-expanded'), shown: !!box && !box.hidden && box.getBoundingClientRect().height > 0, text: box?.textContent ?? '' }; })()");
+  const infoAx = await axNode(p, "#__about");
+  const closed = await info();
+  await p.eval("document.getElementById('__about').focus(); true");
+  await p.enter();
+  await sleep(200);
+  const opened = await info();
+  check("share ride: Info (named, collapsed at first) shows what Share route and Share ride each do",
+    infoAx?.role === "button" && infoAx?.name === "About sharing" && closed.expanded === "false" && !closed.shown && opened.expanded === "true" && opened.shown && /Share route:/.test(opened.text) && /Share ride:/.test(opened.text), JSON.stringify({ infoAx, closed, opened }));
+  await p.eval("document.getElementById('__ride').focus(); true");
+  await p.enter();
+  await sleep(600);
+  const sent = await p.eval("({ shared: window.__shared, noActivation: window.__noActivation })");
+  const url = sent.shared[0]?.url ?? "";
+  check("share ride: Enter hands the sheet the kept line's link, marked as a ride, within the press",
+    sent.noActivation === 0 && sent.shared.length === 1 && /\/s\/[0-9a-f]{32}#.*&route=[0-9a-f]{32}&ride=1$/.test(url), JSON.stringify(sent));
+  await p.close();
+}
 // MARK_SHARE marks the Files sheet's Share (open it first: openSheet(p, "Files")).
 const MARK_SHARE = "(() => { const s = document.querySelector('#sheet-gpx .share-controls .share-route'); if (s) s.id = '__share'; return true; })()";
 {
@@ -4138,7 +4167,9 @@ const MARK_SHARE = "(() => { const s = document.querySelector('#sheet-gpx .share
   check("share: a button named Share route in the Files sheet (no longer behind More), 44 px or more each way", ax?.role === "button" && ax?.name === "Share route" && box && !box.more && box.w >= 44 && box.h >= 44, JSON.stringify({ ax, box }));
   await p.eval("document.getElementById('__share').focus(); true");
   await p.tab();
-  check("share: the next Tab stop after Share is how long its link is kept", await p.eval("!!document.activeElement?.closest('#sheet-gpx .share-keep') && document.activeElement.tagName === 'SELECT'"), await p.eval("document.activeElement?.outerHTML.slice(0, 120)"));
+  await p.tab();
+  await p.tab();
+  check("share: after Share route come Share ride and its Info, then how long the link is kept", await p.eval("!!document.activeElement?.closest('#sheet-gpx .share-keep') && document.activeElement.tagName === 'SELECT'"), await p.eval("document.activeElement?.outerHTML.slice(0, 120)"));
   await p.eval("document.getElementById('__share').focus(); true");
   await p.enter();
   await sleep(600);
@@ -4923,7 +4954,7 @@ const failed = results.filter((r) => !r.ok);
 // returns early) fails here rather than passing green (the mutation review of the release).
 // The transit blocks (#108) and the Go press checks (#116) were added without raising it; they run since #127.
 // Review mode's own lists (22c2) add six.
-const EXPECTED = 656;
+const EXPECTED = 659;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

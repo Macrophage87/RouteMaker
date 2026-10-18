@@ -12,7 +12,8 @@
  *   moves the focus.
  * - Where am I? (a button, and the W key): said on demand, outside the throttle.
  * - Off route: re-planned automatically after the gate (plan Q5), or "Keep the planned route", which
- *   shows the way back. A re-plan never touches the plan in the address bar (plan Q2): it is the ride's
+ *   shows the way back. A fixed route (`fixed`: a link shared as a ride, or a Mass Ride or Group Ride not shared as a route)
+ *   is never re-planned on its own: everyone on it stays on the same line, and the way back is shown instead. A re-plan never touches the plan in the address bar (plan Q2): it is the ride's
  *   own route, held here and in App's ride state only.
  * - Big text (map hidden; a setting, in the ride's Settings and the Settings page), Re-centre (and the C key), heading-up (track-up by default since v0.7.0); and
  *   Settings and End ride always in view at the top of the card (Settings opens the ride's settings just
@@ -544,6 +545,14 @@ function Report311({
   );
 }
 
+/** The way back to the planned route, said: "The planned route is 300 feet to the left." */
+/** Said off a fixed route, before the way back: it is not re-routed (the review of #191). */
+export const FIXED_SAID = "This ride stays on its route, never re-routed.";
+
+function wayBackSaid(back: { metres: number; direction: string }): string {
+  return `The planned route is ${spokenDistance(back.metres)} to the ${back.direction}.`;
+}
+
 export function RideMode({
   route: plannedRoute,
   points: plannedPoints,
@@ -566,6 +575,7 @@ export function RideMode({
   keepLastRide = false,
   trip = null,
   onRideRest,
+  fixed = false,
 }: {
   route: RouteResponse;
   /** The points the route was planned with, and whether it is a loop: what a re-plan builds on. */
@@ -605,6 +615,13 @@ export function RideMode({
   trip?: RideTrip | null;
   /** Ride the rest: plans the trip's last riding leg from `here` and starts it; else the words to say why not. */
   onRideRest?: (here: LonLat | null) => Promise<string | null>;
+  /**
+   * The route everyone shares (the owner, 2026-10-18: "For sharing mass rides and group rides, rerouting defeats the
+   * purpose. It should be fixed as everyone is using the same route"): off route, it is kept as Keep the planned route
+   * keeps it, with the way back said and shown, never re-planned unless the rider presses Re-plan from here or Road
+   * closed ahead. Read once, at Start ride.
+   */
+  fixed?: boolean;
 }) {
   const [route, setRoute] = useState(plannedRoute);
   const routeRef = useRef(route);
@@ -649,6 +666,8 @@ export function RideMode({
   const [replanNote, setReplanNote] = useState("");
   // "Keep the planned route": no automatic re-plan until the rider is back on it (or presses it again).
   const [keepPlanned, setKeepPlanned] = useState(false);
+  // A fixed route (`fixed`) is kept always: its own ref, so a Keep press or back on route does not undo it.
+  const fixedRef = useRef(fixed);
   const keepRef = useRef(keepPlanned);
   keepRef.current = keepPlanned;
   const [paused, setPaused] = useState(false);
@@ -1093,7 +1112,7 @@ export function RideMode({
       if (weighed.sayNow) notify(GPS_WEAK_SAID);
       setGps(weighed.weak ? GPS_WEAK_SAID : "");
       checkCueSheet(lastFixAt.current);
-      const auto = !keepRef.current;
+      const auto = !keepRef.current && !fixedRef.current;
       // Walking to the dock, nothing is placed on the line or taken as off route (lib/rideTrip.ts).
       const wasWalking = tripRef.current.walking;
       const stepped = tripStep(modelRef.current, trip, { ...tripRef.current, ride: rideRef.current }, fix, prefsRef.current.verbosity, auto);
@@ -1143,6 +1162,11 @@ export function RideMode({
         }
       }
       say(out.events);
+      // A fixed route: leaving it says the way back, once, as Keep the planned route does.
+      if (fixedRef.current && out.events.some((e) => e.kind === "off-route")) {
+        const back = wayBack(modelRef.current, out.state);
+        if (back) announcer.current?.answer(`${FIXED_SAID} ${wayBackSaid(back)}`);
+      }
       // Back on the planned route: "Keep" has done its work; leaving it again re-plans as usual.
       if (out.events.some((e) => e.kind === "back-on-route") || (keepRef.current && !out.state.off)) setKeepPlanned(false);
       // Never from a poor fix: a re-plan from a Wi-Fi guess 300 m out would be wrong at once.
@@ -1245,7 +1269,7 @@ export function RideMode({
     const onOnline = () => {
       gate.online();
       const state = rideRef.current;
-      if (state.off && !keepRef.current && state.goodFix) void replan(state.goodFix.point);
+      if (state.off && !keepRef.current && !fixedRef.current && state.goodFix) void replan(state.goodFix.point);
     };
     window.addEventListener("online", onOnline);
     return () => window.removeEventListener("online", onOnline);
@@ -1359,7 +1383,7 @@ export function RideMode({
     setKeepPlanned(true);
     setReplanNote("");
     const back = wayBack(modelRef.current, rideRef.current);
-    if (back) announcer.current?.answer(`The planned route is ${spokenDistance(back.metres)} to the ${back.direction}.`);
+    if (back) announcer.current?.answer(wayBackSaid(back));
   };
   // Road closed (lib/roadClosed.ts): one press, no menu. The road ahead is marked closed for this ride and the ride
   // planned again round it; the standard way beside a marked closure goes too, as it may run along it.
@@ -1655,7 +1679,7 @@ export function RideMode({
             <div>
               <p className="cue-text">Off the planned route.</p>
               {replanning && <p className="cue-then">Finding a new way from here…</p>}
-              {keepPlanned && back && (
+              {(keepPlanned || fixedRef.current) && back && (
                 <p className="cue-then">
                   The planned route is {formatDistance(back.metres)} to the {back.direction}.
                 </p>
@@ -1975,9 +1999,12 @@ export function RideMode({
               <button type="button" onClick={replanNow} aria-disabled={replanning}>
                 Re-plan from here
               </button>
-              <button type="button" className="secondary" onClick={keep} aria-pressed={keepPlanned}>
-                Keep the planned route
-              </button>
+              {/* A fixed route is always kept: no Keep to press. */}
+              {!fixedRef.current && (
+                <button type="button" className="secondary" onClick={keep} aria-pressed={keepPlanned}>
+                  Keep the planned route
+                </button>
+              )}
             </div>
           )}
           {restShown && (
