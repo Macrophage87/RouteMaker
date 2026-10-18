@@ -3257,6 +3257,10 @@ export function App() {
   };
   const foodRoute = useMemo(() => routeForDetour(shown), [shown]);
   nearestRoute.current = foodRoute;
+  // A Water sheet list ranked by detour is for the route it was found on: a new route puts it away.
+  useEffect(() => {
+    setNearestList((list) => (list?.items[0]?.detour ? null : list));
+  }, [foodRoute]);
   const foodAll = useMemo(
     () => (foodAsked && foodPlaces ? searchFood(foodPlaces, { ...foodAsked, route: foodRoute }) : null),
     [foodAsked, foodPlaces, foodRoute],
@@ -3344,15 +3348,15 @@ export function App() {
     // placesAsked: a new press is a new list from where the rider is now.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, repairData, placesAsked, foodRoute]);
-  const placesFromRider = useRef(false);
-  const placesAll = useMemo((): SightResult[] | null => {
+  const placesFound = useMemo((): { list: SightResult[]; fromRider: boolean } | null => {
     if (view !== "places" || !Array.isArray(placesData)) return null;
     const from = placesOrigin();
-    if (!from) return [];
-    placesFromRider.current = from.fromRider;
-    return mode === "go" ? sightsForGo(placesData, from.point, foodRoute) : placesToSee(placesData, from.point, foodRoute, placesFilter);
+    if (!from) return { list: [], fromRider: false };
+    const list = mode === "go" ? sightsForGo(placesData, from.point, foodRoute) : placesToSee(placesData, from.point, foodRoute, placesFilter);
+    return { list, fromRider: from.fromRider };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, placesData, foodRoute, placesFilter, mode, placesAsked]);
+  const placesAll = placesFound?.list ?? null;
   const placesShown = placesAll && mode !== "go" ? placesAll.slice(0, placesCount) : placesAll;
   const placesStatus =
     placesData === null
@@ -3362,7 +3366,7 @@ export function App() {
         : placesData.length === 0
           ? PLACES_NONE
           : placesAll
-            ? placesSaid(placesAll.length, mode === "go" ? "all" : placesFilter, foodRoute !== null, placesFromRider.current)
+            ? placesSaid(placesAll.length, mode === "go" ? "all" : placesFilter, foodRoute !== null, placesFound?.fromRider ?? false)
             : "";
   const openRepair = (chip: HTMLElement) => {
     ensureRepair();

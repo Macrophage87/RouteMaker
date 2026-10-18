@@ -132,7 +132,7 @@ test("with a route: the least detour off it first, in words (the owner, 2026-10-
   const route = { line: [[-77.0, 38.9], [-76.9, 38.9]] as LonLat[], speedMps: 4 };
   const items = nearestRepair([-77.0, 38.9], places, 2, 2, route);
   assert.deepEqual(items.map((i) => i.place.id), ["n2", "n3", "n1"]);
-  assert.match(repairHowFar(items[0]), /^On your route at /);
+  assert.match(repairHowFar(items[0]), /^on your route at /);
   assert.match(repairHowFar(items[1]), /^\+[\d.]+ mi \([\d.]+ km\) detour, turning off at /);
   assert.match(repairFoundSaid(items, true), /^Least detour off your route: /);
   assert.equal(nearestRepair([-77.0, 38.9], places)[0].detour, undefined);

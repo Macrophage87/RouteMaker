@@ -411,5 +411,5 @@ test("with a route shown: the least detour off it, no router call, in words (the
   assert.ok(items.length > 0 && items.every((i) => i.detour));
   for (let i = 1; i < items.length; i += 1) assert.ok(items[i - 1].detour!.extraM <= items[i].detour!.extraM);
   assert.match(outcome.said, /least detour off your route/);
-  assert.match(howFar(items[0]), /^(on your route at|detour about \+)/);
+  assert.match(howFar(items[0]), /^(on your route at|\+[\d.]+ mi \([\d.]+ km\) detour, about \d+ min, turning off at)/);
 });

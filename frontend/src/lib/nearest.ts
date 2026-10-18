@@ -233,7 +233,7 @@ export function howFar(item: Nearby): string {
   const d = item.detour;
   if (d) {
     if (d.extraM === 0 || milesFigure(d.extraM) === "0.0") return `on your route at ${formatDistance(d.alongM)}`;
-    return `detour about ${formatExtra(d.extraM)} and ${formatDuration(d.extraS)} there and back, turning off at ${formatDistance(d.alongM)}`;
+    return `${formatExtra(d.extraM)} detour, about ${formatDuration(d.extraS)}, turning off at ${formatDistance(d.alongM)}`;
   }
   if (!item.byBike) return `${formatDistance(item.distanceM)} in a straight line`;
   const time = item.timeS === null ? "" : `, about ${formatDuration(item.timeS)}`;

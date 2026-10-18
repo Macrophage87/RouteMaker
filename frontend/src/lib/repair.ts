@@ -220,11 +220,11 @@ export function nearestRepair(
   return [...pick("stand", stands), ...pick("shop", shops)].sort(order);
 }
 
-/** How far, short: "0.3 mi (0.5 km) away", or with a route "+0.4 mi (0.6 km) detour" or "On your route". */
+/** How far, short: "0.3 mi (0.5 km) away", or with a route "+0.4 mi (0.6 km) detour, turning off at …" or "on your route at …". */
 export function repairHowFar(item: RepairNearby): string {
   const d = item.detour;
   if (!d) return `${formatDistance(item.metres)} away`;
-  if (d.extraM === 0 || milesFigure(d.extraM) === "0.0") return `On your route at ${formatDistance(d.alongM)}`;
+  if (d.extraM === 0 || milesFigure(d.extraM) === "0.0") return `on your route at ${formatDistance(d.alongM)}`;
   return `${formatExtra(d.extraM)} detour, turning off at ${formatDistance(d.alongM)}`;
 }
 
@@ -236,13 +236,13 @@ export function repairText(item: RepairNearby, at: Date): string {
 export const REPAIR_NONE = "No repair stands or bike shops known yet: they arrive with the next map data update.";
 export const REPAIR_UNAVAILABLE = "Repair stands and bike shops are unavailable for now; try again shortly.";
 export const REPAIR_NO_ORIGIN = "Location unknown: press Locate, or move the map.";
-export const REPAIR_NOTE = "Straight-line distances; check hours (OpenStreetMap).";
+export const REPAIR_NOTE = "Straight-line distances, or estimated detours with a route; check hours (OpenStreetMap).";
 
 /** The status line once the list is in. */
 export function repairFoundSaid(items: readonly RepairNearby[], fromHere: boolean): string {
   const from = fromHere ? "you" : "the map's center";
   if (items.length === 0) return REPAIR_NONE;
-  if (items[0].detour) return `Least detour off your route: ${repairTitle(items[0].place)}, ${repairHowFar(items[0]).replace(/^On/, "on")}.`;
+  if (items[0].detour) return `Least detour off your route: ${repairTitle(items[0].place)}, ${repairHowFar(items[0])}.`;
   return `Nearest to ${from}: ${repairTitle(items[0].place)}, ${formatDistance(items[0].metres)}.`;
 }
 
