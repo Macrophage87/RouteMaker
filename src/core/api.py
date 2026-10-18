@@ -61,7 +61,7 @@ import json
 import logging
 import time
 from collections.abc import Callable
-from concurrent.futures import Future
+from concurrent.futures import Future, ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
 from datetime import datetime, timedelta
 from functools import partial, wraps
@@ -107,7 +107,9 @@ from . import (
     timing,
     transit,
     transit_live,
+    wmata_bus,
     wmata_live,
+    wmata_trains,
 )
 
 logger = logging.getLogger(__name__)
@@ -2163,7 +2165,10 @@ class ClosureThroughOut(RouteBody):
 
 
 class TransitStepLiveOut(Schema):
-    text: str = Field(description='"Live: Red Line toward Shady Grove in 3 min, 11 min."')
+    text: str = Field(
+        description='"Live: Red Line toward Shady Grove in 3 min, 11 min."; "Live: bus 52 in 4 min,'
+        ' 13 min."'
+    )
     minutes: list[int]
     source: Literal["live"] = "live"
 
@@ -2234,7 +2239,10 @@ class TransitStepOut(Schema):
     )
     live: TransitStepLiveOut | None = Field(
         default=None,
-        description="A Metro step's next trains its way now, from WMATA (core.transit_live).",
+        description=(
+            "A Metro step's next trains, or a Metrobus step's next buses, its way now, from"
+            " WMATA (core.transit_live, core.wmata_bus)."
+        ),
     )
 
 
@@ -3321,6 +3329,9 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
     live = wmata_live.client.snapshot()
     found = transit_live.rank(found, live)
     found = transit.choose(found, body.transit_option)
+    # The chosen trip's Metrobus steps' next buses (core.wmata_bus, v0.9.0), asked now, beside
+    # the routing, so the answer waits for them little if at all.
+    bus_ask = _ask_buses(found)
     # The trip's other walks and rides are routed for the map in what is left of the budget.
     draw = transit.RoutingServices(
         min(
@@ -3337,7 +3348,8 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
         # The later rides routed for their stress colours (`lines`) are drawn as routed; the
         # trip's other walks and rides are routed for the map (transit.drawn).
         lines = lines or {}
-        block = _transit_block(transit.drawn(plan, draw, skip=lines), schedule, live)
+        buses = _buses_for(plan, bus_ask)
+        block = _transit_block(transit.drawn(plan, draw, skip=lines), schedule, live, buses)
         answer["transit"] = _with_leg_lines(block, lines)
         return answer
 
@@ -3529,9 +3541,35 @@ def _with_leg_lines(block: dict, lines: dict[int, dict]) -> dict:
     return block
 
 
-def _transit_block(plan: transit.Plan, schedule, live) -> dict:
+def _transit_block(plan: transit.Plan, schedule, live, buses=None) -> dict:
     """The answer's `transit` block, with WMATA's live values where there are any."""
-    return transit_live.annotate(transit.block(plan, schedule), plan, live)
+    return transit_live.annotate(transit.block(plan, schedule), plan, live, buses)
+
+
+# Two threads for the plans' bus questions (core.wmata_bus.lives, which asks its stops at once).
+_BUS_POOL = ThreadPoolExecutor(max_workers=2, thread_name_prefix="wmata-bus")
+
+
+def _ask_buses(plan: transit.Plan) -> tuple[str, Future] | None:
+    """The chosen trip's live bus lines, asked in the background; None with nothing to ask."""
+    legs = transit_live.bus_legs(plan)
+    if not legs or not wmata_live.configured():
+        return None
+    return plan.option.key, _BUS_POOL.submit(wmata_bus.client.lives, legs)
+
+
+def _buses_for(plan: transit.Plan, asked) -> wmata_bus.StepLives | None:
+    """The live bus lines for the trip answered: the ones asked, if it is still the trip asked
+    about (else asked again), within `wmata_bus.PLAN_BUDGET_S`."""
+    if asked is not None and asked[0] == plan.option.key:
+        try:
+            return asked[1].result(timeout=wmata_bus.PLAN_BUDGET_S)
+        except Exception:  # noqa: BLE001 - a bus line is never worth a plan
+            return None
+    legs = transit_live.bus_legs(plan)
+    if not legs or not wmata_live.configured():
+        return None
+    return wmata_bus.client.lives(legs)
 
 
 def _transit_refusal(message: str, code: str, status: int):
@@ -3721,6 +3759,71 @@ def transit_station_times(request, params: Query[StationTimesIn], response: Http
         "lines": [_line_time(t, moment.service_day) for t in found],
         "live": live,
     }
+
+
+class NextVehicleIn(Schema):
+    system: Literal["Metro", "Metrobus"] = Field(description="The step's system.")
+    line: str = Field(
+        min_length=1, max_length=40, description='The step\'s line: "Red Line"; a route: "52".'
+    )
+    lon: float = Field(ge=-180, le=180, description="The boarding station or stop's point.")
+    lat: float = Field(ge=-90, le=90)
+    to_lon: float = Field(ge=-180, le=180, description="The step's last stop: its way.")
+    to_lat: float = Field(ge=-90, le=90)
+
+
+class NextVehicleOut(Schema):
+    kind: Literal["train", "bus"]
+    text: str = Field(
+        description=(
+            '"Next Red Line train is at Dupont Circle, 2 stations away."; "Bus 52 is 0.8 mi'
+            ' away (1.3 km), 3 stops back."'
+        )
+    )
+    label: str = Field(description="The map mark's name, for a screen reader.")
+    point: list[float] = Field(description="[lon, lat] for the map's mark.")
+    away: int | None = Field(
+        description="Stations (or stops) before the rider's, for saying it again on a change."
+    )
+    credit: str = Field(description='"Data: WMATA".')
+    source: Literal["live"] = "live"
+    as_of: str = Field(description="When WMATA was read, local ISO time.")
+
+
+class NextVehicleAnswer(Schema):
+    vehicle: NextVehicleOut | None = Field(
+        description="Where the next one the step's way is; null with no reading or none coming."
+    )
+
+
+@api.get(
+    "/transit/next-vehicle",
+    response={200: NextVehicleAnswer, 400: ErrorOut, 429: ErrorOut, 500: ErrorOut},
+    summary="Where the next Metro train or Metrobus is, for a rider waiting to board it",
+)
+@decorate_view(ratelimit.rate_limited(ratelimit.NEXT_VEHICLE), errors_as_json)
+def transit_next_vehicle(request, params: Query[NextVehicleIn], response: HttpResponse):
+    """Asked about every 25 s by the page while its rider waits at a boarding (Ride mode, at the
+    end of the ride to it), and never otherwise. With no WMATA key, WMATA not answering, or
+    nothing matched, `vehicle` is null and the page shows nothing (core.wmata_trains,
+    core.wmata_bus)."""
+    board, alight = (params.lon, params.lat), (params.to_lon, params.to_lat)
+    response["Cache-Control"] = "private, max-age=15"
+    if not wmata_live.configured():
+        return {"vehicle": None}
+    if params.system == "Metro":
+        found = transit_live.train_where(
+            wmata_live.client.snapshot(), board, alight, params.line, wmata_trains.client.snapshot()
+        )
+        return {"vehicle": transit_live.vehicle_out("train", found)}
+    try:
+        today = timezone.now().astimezone(ridetime.ZONE).date()
+        schedule = transit.load(settings.TRANSIT_SCHEDULE_PATH, today)
+    except transit.Unavailable:
+        schedule = None
+    back = transit_live.bus_stops_back(schedule, params.line, board, alight)
+    found = wmata_bus.client.where(params.line, board, alight, back)
+    return {"vehicle": transit_live.vehicle_out("bus", found)}
 
 
 def _line_time(t: transit.LineTime, service_day) -> dict:

@@ -2218,7 +2218,20 @@ server's `.env`; the owner sets it, nobody else handles it), the api reads WMATA
 rail incidents and elevator outages (`core.wmata_live`): at most three calls every 45 s for the
 whole deployment, only while someone plans a transit trip or opens a Metro station's card, shared
 through one row of `bikeshare_feed_cache` (key `wmata`, replaced in place, no history). Outbound
-host: `api.wmata.com` (add it to the beta's egress list). With no key, or WMATA not answering for
+host: `api.wmata.com`, already on the beta's egress list (docs/BETA-RUNBOOK.md, "Outbound hosts";
+`deploy/beta/env.beta.template`); v0.9.0's calls below use the same host and need no change.
+
+**Live Metrobus and where the next vehicle is (v0.9.0).** With the same key, a plan's Metrobus
+step says its route's next buses ("Live: bus 52 in 4 min, 13 min.") and, while a rider waits at a
+Metro or Metrobus boarding in Ride mode, the page asks `GET /api/transit/next-vehicle` every 25 s
+for where the next train or bus is (`core.wmata_bus`, `core.wmata_trains`). The bus calls are
+counted for the whole deployment in the row `wmata-budget` of `bikeshare_feed_cache` (18 a
+minute, 4 a second at most); the train positions are one shared reading every 20 s at most
+(row `wmata-trains`). Worst case with Metro's reading: about 36,000 calls a day and 9 a second,
+under WMATA's 50,000 and 10 (docs/SOURCES.md). The log says `wmata bus: ...`, `wmata trains: ...`
+or `wmata budget: ...` (never the key, never a stop or route) when a call fails. The new path's
+query holds a place, so nginx logs it at `crit` only, as `/api/transit/station-times`. To check
+it is working: plan Own Bike + 🚆🚌 to a trip with a Metrobus step; the step says "Live: bus ...". With no key, or WMATA not answering for
 about three minutes, everything is the timetable's and says "scheduled". An elevator out where a
 rider takes their bike is a warning on the plan and the station card, never an avoidance. To check
 it is working: open a Metro station's card on the map; its Metro lines say "live" and the card ends

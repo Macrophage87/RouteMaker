@@ -3888,6 +3888,7 @@ export function App() {
         markerReset={markerReset}
         accuracy={riding ? rideCircle : hereCircle}
         rider={riding && rideView?.rider ? rideView.rider : null}
+        nextVehicle={riding ? (rideView?.vehicle ?? null) : null}
         // Go, before a destination: its start, the location found, drawn as the ride's still dot (the owner,
         // 2026-10-17: the location centred, so it is seen). With a route its start pin marks it.
         youDot={!riding && mode === "go" && points.length === 0 && goStart.kind === "here" ? goStart.point : null}
