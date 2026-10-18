@@ -9,6 +9,8 @@
  * over everything the base map and the overlay draw and under the ride.
  */
 import {
+  ALERT_BADGE_ICON,
+  ELEVATOR_OUT_ICON,
   allIconLines,
   closedIconId,
   iconId,
@@ -18,14 +20,16 @@ import {
   visibleLines,
   type RailVisibility,
   type Station,
+  type StationBadges,
 } from "./railStations.ts";
-import { closedStationIcon, elevatorIcon, stationIcon, type Raster } from "./stationIcons.ts";
+import { alertBadgeIcon, closedStationIcon, elevatorIcon, elevatorOutIcon, stationIcon, type Raster } from "./stationIcons.ts";
 
 export const RAIL_SOURCE_ID = "rail";
 export const RAIL_LAYERS = {
   entrances: "rail-entrances",
   stations: "rail-stations",
   elevators: "rail-elevators",
+  badges: "rail-badges",
 } as const;
 export const ELEVATOR_ICON = "rail-elevator";
 /** The route's lowest layer (MapView); the stations go directly under it. */
@@ -38,6 +42,8 @@ export const ELEVATOR_MIN_ZOOM = 15;
 export const ENTRANCE_MIN_ZOOM = 16;
 export const NAME_MIN_ZOOM = 13;
 export const STATION_MIN_ZOOM = 8;
+/** WMATA's badges from where a station's name would nearly show: further out they would crowd the lines. */
+export const BADGE_MIN_ZOOM = 12;
 
 const byKind = (kind: string) => ["==", ["get", "kind"], kind];
 
@@ -101,6 +107,21 @@ export function railLayers(sourceId = RAIL_SOURCE_ID) {
         "icon-ignore-placement": true,
       },
     },
+    {
+      // A WMATA alert names the station (amber "!"), or an elevator there is out (crossed-out lift):
+      // beside the station's icon, its card says which in words (lib/stationTimes.ts).
+      id: RAIL_LAYERS.badges,
+      type: "symbol",
+      source: sourceId,
+      minzoom: BADGE_MIN_ZOOM,
+      filter: byKind("badge"),
+      layout: {
+        "icon-image": ["get", "icon"],
+        "icon-offset": ["get", "offset"],
+        "icon-allow-overlap": true,
+        "icon-ignore-placement": true,
+      },
+    },
   ];
 }
 
@@ -125,6 +146,8 @@ export function railImages(stations: readonly Station[], pennColour: string, pix
     ),
   }));
   images.push({ id: ELEVATOR_ICON, raster: elevatorIcon(pixelRatio) });
+  images.push({ id: ALERT_BADGE_ICON, raster: alertBadgeIcon(pixelRatio) });
+  images.push({ id: ELEVATOR_OUT_ICON, raster: elevatorOutIcon(pixelRatio) });
   for (const shape of ["circle", "square"] as const) images.push({ id: closedIconId(shape), raster: closedStationIcon(shape, pixelRatio) });
   return images;
 }
@@ -141,6 +164,7 @@ export function addRailStations(
   pennColour: string,
   pixelRatio: number,
   isClosed?: (station: Station) => boolean,
+  badges?: (station: Station) => StationBadges | null,
 ): boolean {
   if (map.getSource(RAIL_SOURCE_ID)) return false;
   for (const { id, raster } of railImages(stations, pennColour, pixelRatio)) {
@@ -148,21 +172,22 @@ export function addRailStations(
     const { width, height, data } = raster;
     map.addImage(id, { width, height, data }, { pixelRatio: raster.pixelRatio });
   }
-  map.addSource(RAIL_SOURCE_ID, { type: "geojson", data: railFeatures(stations, visibility, isClosed) });
+  map.addSource(RAIL_SOURCE_ID, { type: "geojson", data: railFeatures(stations, visibility, isClosed, badges) });
   const before = map.getLayer(ROUTE_BOTTOM_LAYER) ? ROUTE_BOTTOM_LAYER : undefined;
   for (const layer of railLayers()) map.addLayer(layer, before);
   return true;
 }
 
-/** Show the stations the toggles ask for, the day's closed ones struck through. */
+/** Show the stations the toggles ask for, the day's closed ones struck through and WMATA's badges beside. */
 export function setRailVisibility(
   map: RailMap,
   stations: readonly Station[],
   visibility: RailVisibility,
   isClosed?: (station: Station) => boolean,
+  badges?: (station: Station) => StationBadges | null,
 ): void {
   const source = map.getSource(RAIL_SOURCE_ID) as { setData?: (data: unknown) => void } | undefined;
-  source?.setData?.(railFeatures(stations, visibility, isClosed));
+  source?.setData?.(railFeatures(stations, visibility, isClosed, badges));
 }
 
 /** The rail feature under a click, if any: a station, or one of its elevators. */
@@ -182,7 +207,7 @@ export function railHitFrom(
       const [lon, lat] = feature.geometry.coordinates as number[];
       return { id: props.id, elevator: [lon, lat] };
     }
-    if (props.kind === "station") return { id: props.id };
+    if (props.kind === "station" || props.kind === "badge") return { id: props.id };
   }
   return null;
 }

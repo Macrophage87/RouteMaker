@@ -156,6 +156,10 @@ function insideTriangle(x: number, y: number, a: number[], b: number[], c: numbe
 /** An elevator: the lift sign, white up and down arrows on a near-black square with a white edge. */
 export function elevatorIcon(pixelRatio = 2, cssSize = ELEVATOR_ICON_PX): Raster {
   const size = Math.round(cssSize * pixelRatio);
+  return rasterise(size, pixelRatio, elevatorAt(size, pixelRatio));
+}
+
+function elevatorAt(size: number, pixelRatio: number): (x: number, y: number) => Rgb {
   const dark = hexToRgb(OUTLINE);
   const white = hexToRgb(SEPARATOR);
   const edge = 1 * pixelRatio;
@@ -171,9 +175,61 @@ export function elevatorIcon(pixelRatio = 2, cssSize = ELEVATOR_ICON_PX): Raster
     [c - w, size * 0.56],
     [c + w, size * 0.56],
   ];
-  return rasterise(size, pixelRatio, (x, y) => {
+  return (x, y) => {
     if (x < edge || y < edge || x > size - edge || y > size - edge) return white;
     if (insideTriangle(x, y, up[0], up[1], up[2]) || insideTriangle(x, y, down[0], down[1], down[2])) return white;
     return dark;
+  };
+}
+
+/** The badges on a station with a WMATA alert or an elevator out (the owner, 2026-10-18), in CSS pixels. */
+export const BADGE_ICON_PX = 13;
+export const ALERT_FILL = "#f59e0b";
+export const OUT_STRIKE = "#dc2626";
+
+/**
+ * A notice: a near-black "!" in an amber triangle with a near-black edge, the usual warning sign. A shape
+ * as well as a colour; the station's card says the alert in words.
+ */
+export function alertBadgeIcon(pixelRatio = 2, cssSize = BADGE_ICON_PX): Raster {
+  const size = Math.round(cssSize * pixelRatio);
+  const dark = hexToRgb(OUTLINE);
+  const amber = hexToRgb(ALERT_FILL);
+  const edge = 1.2 * pixelRatio;
+  const outer = [
+    [size / 2, 0.5],
+    [0.5, size - 0.5],
+    [size - 0.5, size - 0.5],
+  ];
+  const inner = [
+    [size / 2, edge * 2.2],
+    [edge * 1.3, size - edge],
+    [size - edge * 1.3, size - edge],
+  ];
+  const c = size / 2;
+  const bar = size * 0.07;
+  return rasterise(size, pixelRatio, (x, y) => {
+    if (!insideTriangle(x, y, outer[0], outer[1], outer[2])) return null;
+    if (!insideTriangle(x, y, inner[0], inner[1], inner[2])) return dark;
+    if (Math.abs(x - c) <= bar && y >= size * 0.36 && y <= size * 0.68) return dark;
+    if (Math.hypot(x - c, y - size * 0.8) <= bar * 1.2) return dark;
+    return amber;
+  });
+}
+
+/** An elevator out: the lift sign crossed out corner to corner in red, cased in white so it reads on the dark square. */
+export function elevatorOutIcon(pixelRatio = 2, cssSize = BADGE_ICON_PX + 1): Raster {
+  const size = Math.round(cssSize * pixelRatio);
+  const lift = elevatorAt(size, pixelRatio);
+  const red = hexToRgb(OUT_STRIKE);
+  const white = hexToRgb(SEPARATOR);
+  const half = 1.1 * pixelRatio;
+  const casing = half + 0.8 * pixelRatio;
+  return rasterise(size, pixelRatio, (x, y) => {
+    // From top left to bottom right, as a "no" sign's bar runs.
+    const across = Math.abs(x - y) / Math.SQRT2;
+    if (across <= half) return red;
+    if (across <= casing) return white;
+    return lift(x, y);
   });
 }

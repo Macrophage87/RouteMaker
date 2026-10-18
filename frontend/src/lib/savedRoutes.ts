@@ -72,9 +72,14 @@ export function defaultRouteName(start: string | null | undefined, end: string |
   return `${start?.trim() || "Start"} to ${end?.trim() || "End"}`.slice(0, NAME_MAX);
 }
 
+/** A route's answer as a save keeps it: without the other candidates. */
+export function keptAnswer(route: RouteResponse): RouteResponse {
+  return { ...route, candidates: null, avoid_alternate: null, closure_through: null };
+}
+
 /** A planned route's save: the line exactly as on screen, its answer without the other candidates. */
 export function planSave(name: string, route: RouteResponse, points: readonly LonLat[], preset: PresetId, dials: Dials): SaveBody {
-  const answer: RouteResponse = { ...route, candidates: null, avoid_alternate: null, closure_through: null };
+  const answer = keptAnswer(route);
   return {
     name: name.trim().slice(0, NAME_MAX),
     source: "plan",
@@ -85,8 +90,12 @@ export function planSave(name: string, route: RouteResponse, points: readonly Lo
   };
 }
 
-/** An opened GPX file's save: its own text and its whole track, verbatim; the plan it opened as for inputs. */
-export function gpxSave(name: string, text: string, track: readonly SavedVertex[], points: readonly LonLat[], preset: PresetId, dials: Dials): SaveBody {
+/**
+ * An opened GPX file's save: its own text and its whole track, verbatim; the plan it opened as for inputs. `shown`,
+ * the route on screen for it once settled (v0.9.0, "share the exact route"): kept as its answer, so the file reopens
+ * (or its shared link opens) as that very line, followed by the ride type's rules or exactly, never planned again.
+ */
+export function gpxSave(name: string, text: string, track: readonly SavedVertex[], points: readonly LonLat[], preset: PresetId, dials: Dials, shown: RouteResponse | null = null): SaveBody {
   let m = 0;
   for (let i = 1; i < track.length; i += 1) m += metres(track[i - 1], track[i]);
   return {
@@ -96,6 +105,7 @@ export function gpxSave(name: string, text: string, track: readonly SavedVertex[
     distance_m: m,
     inputs: { hash: encodePlan(points, preset, dials), points: points.map(([lon, lat]) => [lon, lat] as LonLat), preset, dials },
     gpx: text,
+    ...(shown ? { answer: keptAnswer(shown) } : {}),
   };
 }
 

@@ -23,6 +23,9 @@ NATIONAL_MALL = (-77.0250, 38.8895)
 CAPITOL_GROUNDS = (-77.0070, 38.8900)
 ELLIPSE = (-77.0366, 38.8950)
 WASHINGTON_MONUMENT = (-77.0353, 38.8895)
+# National Park Service land inside the CBD (DDOT's DC Bike Law Pocket Guide, 2012).
+FARRAGUT_SQUARE = (-77.0390, 38.9020)
+DUPONT_CIRCLE = (-77.04339, 38.90968)
 
 
 class TestTheFixtures:
@@ -64,7 +67,15 @@ class TestTheRule:
         assert not cbd.barred_sidewalk(SIDEWALK, line(*NAVY_YARD))
 
     @pytest.mark.parametrize(
-        "point", [NATIONAL_MALL, CAPITOL_GROUNDS, ELLIPSE, WASHINGTON_MONUMENT]
+        "point",
+        [
+            NATIONAL_MALL,
+            CAPITOL_GROUNDS,
+            ELLIPSE,
+            WASHINGTON_MONUMENT,
+            FARRAGUT_SQUARE,
+            DUPONT_CIRCLE,
+        ],
     )
     def test_on_the_federal_areas_it_is_not(self, point) -> None:
         assert not cbd.barred_sidewalk(SIDEWALK, line(*point))

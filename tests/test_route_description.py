@@ -667,3 +667,45 @@ class TestRollingStressFromTheTrace:
         router(named_world())
         body = post(client, good_body()).json()
         assert body["profile"]["calm"]["estimate"] is True
+
+
+class TestForksFromTheTrace:
+    """`routing.pieces_of_trace` marks the first piece of an edge that leaves a fork
+    (`describe.fork_movement`), from the other ways at the node the trace names."""
+
+    def test_the_edge_after_a_fork_begins_with_its_movement(self):
+        from test_route_api import encode_polyline6
+
+        points = [(-76.92, 38.99), (-76.92, 38.995), (-76.925, 38.995), (-76.93, 38.995)]
+        trace = {
+            "units": "kilometers",
+            "shape": encode_polyline6(points),
+            "edges": [
+                {
+                    "way_id": 1,
+                    "length": 0.55,
+                    "begin_shape_index": 0,
+                    "end_shape_index": 1,
+                    "names": ["Paint Branch Trail"],
+                    "begin_heading": 0,
+                    "end_heading": 0,
+                    # A path runs on north: the trail itself turns left.
+                    "end_node": {
+                        "intersecting_edges": [
+                            {"begin_heading": 3, "use": "cycleway", "cyclability": "both"}
+                        ]
+                    },
+                },
+                {
+                    "way_id": 2,
+                    "length": 0.86,
+                    "begin_shape_index": 1,
+                    "end_shape_index": 3,
+                    "names": ["Paint Branch Trail"],
+                    "begin_heading": 270,
+                    "end_heading": 270,
+                },
+            ],
+        }
+        pieces = routing.pieces_of_trace(trace)
+        assert [p.fork for p in pieces] == [None, "left", None]

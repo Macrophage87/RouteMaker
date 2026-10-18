@@ -14,7 +14,7 @@ import { createElement as h, type ReactElement } from "react";
 import {
   FROM_LABEL,
   NEAREST_KINDS,
-  nearbyText,
+  nearbyShort,
   nounOf,
   stopsOnTheWay,
   type Nearby,
@@ -61,6 +61,25 @@ export function NearestFinder(props: FinderProps): ReactElement {
     h(
       "div",
       { className: "fold-body" },
+    // The three choices first (the owner, 2026-10-18: "the three choices make more sense to be up front"), then where from.
+    h(
+      "div",
+      { className: "actions nearest-kinds" },
+      ...NEAREST_KINDS.map(({ kind, label }) =>
+        h(
+          "button",
+          {
+            key: kind,
+            type: "button",
+            className: "secondary",
+            "aria-label": `Nearest ${label === "Metro" ? "Metro" : label.toLowerCase()}`,
+            "aria-disabled": busy ? true : undefined,
+            onClick: () => onFind(kind),
+          },
+          label,
+        ),
+      ),
+    ),
     h(
       "fieldset",
       { className: "nearest-from" },
@@ -77,23 +96,6 @@ export function NearestFinder(props: FinderProps): ReactElement {
             onChange: () => onFrom(option),
           }),
           FROM_LABEL[option],
-        ),
-      ),
-    ),
-    h(
-      "div",
-      { className: "actions nearest-kinds" },
-      ...NEAREST_KINDS.map(({ kind, label }) =>
-        h(
-          "button",
-          {
-            key: kind,
-            type: "button",
-            className: "secondary",
-            "aria-disabled": busy ? true : undefined,
-            onClick: () => onFind(kind),
-          },
-          label,
         ),
       ),
     ),
@@ -114,7 +116,15 @@ export function NearestFinder(props: FinderProps): ReactElement {
               { key: item.place.id, className: "lettered-row" },
               // The letter is the map marker's (lib/letteredPlaces.ts): seen in its pin, heard before the place.
               h("span", { className: "place-letter", "aria-hidden": "true" }, h("span", null, placeLetter(index))),
-              h("span", null, h("span", { className: "visually-hidden" }, `${placeLetter(index)}: `), nearbyText(item)),
+              h(
+                "div",
+                { className: "nearest-place" },
+                h("span", { className: "visually-hidden" }, `${placeLetter(index)}: `),
+                nearbyShort(item),
+                // Its details (how to open a Throne, opening hours, access) behind a native fold.
+                item.place.details.length > 0 &&
+                  h("details", { className: "nearest-details" }, h("summary", null, "Details", h("span", { className: "visually-hidden" }, ` of ${item.place.title}`)), h("p", { className: "hint" }, item.place.details.join(" "))),
+              ),
               h(
                 "span",
                 { className: "actions" },
@@ -135,7 +145,7 @@ export function NearestFinder(props: FinderProps): ReactElement {
         ),
         stopsOnTheWay(list.kind) && h("p", { className: "hint" }, WATER_CAUTION),
       ),
-    h("p", { className: "hint" }, NEAREST_HELP),
+    h("details", { className: "nearest-help" }, h("summary", null, "How this works"), h("p", { className: "hint" }, NEAREST_HELP)),
     ),
   );
 }

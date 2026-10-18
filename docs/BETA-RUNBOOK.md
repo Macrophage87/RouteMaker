@@ -24,6 +24,7 @@ a message naming `RM_BETA_HOST` when it is missing; on a server set up before v0
 | `~/routemaker-beta-state` | Mode 700: the before/after copies of `nginx -T` and the other sites' status codes | `rm -rf` it |
 | `~/routemaker-beta-passwords.txt` | Mode 600: the testers' passwords, for the owner to read and hand out | the owner deletes it (`shred -u`) |
 | `~/routemaker-beta-state/cd`, `~/.config/systemd/user/routemaker-beta-cd.*` | Only once continuous deployment is installed ("Continuous deployment", below): the release agent, its state, logs and pre-release snapshots, and its user timer | `auto-release.sh uninstall`, then `rm -rf` the `cd` directory |
+| `~/routemaker-beta-state/alert-webhook`, `~/routemaker-beta-state/alerts`, `~/.config/systemd/user/routemaker-beta-alert.*` | Only once alerts are installed ("Alerts", below): the Discord webhook address (mode 600), what was last posted, and the check timer | `alert.sh uninstall`, then `rm` the webhook file and the `alerts` directory |
 
 Every RouteMaker path above is created only after a check that it **does not exist yet**; if one
 does, stop and ask the owner. Nothing here changes the owner, group or mode of a directory that
@@ -1256,6 +1257,47 @@ old `$RM_STATE/cd/node_modules/<hash>` directories. The agent keeps `RM_CD_KEEP`
 **Uninstall:** `"$A" uninstall` stops and removes the timer and units; `rm -rf "$RM_STATE/cd"`
 removes the agent, its logs and its snapshots (owner's say-so: they hold database dumps).
 
+## Alerts
+
+`scripts/beta/alert.sh` (review OPS-1) posts to a Discord channel the owner reads when the beta
+needs him. Nothing else reaches him: without it a broken router, a failed rollback or a timetable
+about to run out is found only by riding.
+
+What is posted, each as one short message starting "RouteMaker beta:":
+
+- **The site:** every 10 minutes a user timer runs the local smoke tests (`smoke-test.sh --local`:
+  health, a route, place search, a tile) and `manage.py check_operations` in the worker (backups,
+  failed or wedged jobs, disk, the transit timetable's end). A failure seen twice in a row is
+  posted with its FAIL lines or the check's report; the same failure is posted again only once a
+  day while it lasts, and "working again" when it clears. No check runs while a deploy pass holds
+  the agent's lock (a deploy stops the api on purpose). The weekly rebuild's waiting job is
+  reported as paused, not stale (above), so it never posts.
+- **Releases:** the release agent posts each deploy, and a rollback, a failure, a hold, an
+  interrupted pass, BROKEN, a setting error, checkout drift or a disk stall once per tag (again
+  once a day while it lasts). Idle passes post nothing.
+
+Messages carry release tags, step names, the smoke tests' FAIL lines and `check_operations`' own
+report: no secret, no address and no rider's data. Mentions are switched off in every message.
+Outbound: `discord.com` from the host (the webhook is posted by the login user, not a container).
+
+**Install (once, as the beta's login user; no sudo).** In Discord: the channel's settings,
+Integrations, Webhooks, New Webhook, Copy Webhook URL. Then on the server:
+
+```sh
+. "$HOME/routemaker-beta-state/vars.sh"
+cd "$RM_SRC"
+"$RM_SRC/scripts/beta/alert.sh" set-webhook   # paste the address, Enter, Ctrl-D; it is never an argument, so it is in no history
+"$RM_SRC/scripts/beta/alert.sh" install       # copies alert.sh into $RM_STATE/cd/bin and enables the 10-minute timer
+"$RM_STATE/cd/bin/alert.sh" test              # one test message in the channel
+"$RM_SRC/scripts/beta/auto-release.sh" install  # once, so the agent's installed copy posts its results too
+```
+
+Day to day: `journalctl --user -u routemaker-beta-alert --since today` shows each check;
+`ls "$RM_STATE/alerts"` shows what is currently posted (a `.strike` file is a failure seen once).
+`alert.sh uninstall` stops the checks; the agent then posts only its own results while a webhook
+is set, and nothing once `alert-webhook` is removed. An off-host uptime check of the public URL is
+not part of this: if the whole server is down, nothing on it can post.
+
 ## Operating notes
 
 - **Memory events:** `docker inspect -f '{{.Name}} {{.State.OOMKilled}} {{.RestartCount}}' $(docker ps -q --filter label=com.docker.compose.project=routemaker-beta)`.
@@ -1311,7 +1353,7 @@ removes the agent, its logs and its snapshots (owner's say-so: they hold databas
   the api's gunicorn log and nginx's `/var/log/nginx/rmbeta-access.log` keep the method, the path, the status and the time,
   with no query string, no client address and no tester name. The paths whose queries hold a place (`/api/reverse`,
   `/api/geocode`, `/api/segment-info`, `/api/street-photo`, `/api/junction-suggestions/at`,
-  `/api/stress-suggestions/ticket`, `/api/stress-suggestions/mine`, `/api/transit/station-times`, `/api/bikeshare/docks`,
+  `/api/stress-suggestions/ticket`, `/api/stress-suggestions/mine`, `/api/transit/station-times`, `/api/transit/next-vehicle`, `/api/bikeshare/docks`,
   and Review's `/api/review/items`, `/api/review/map`, `/api/review/next`, `/api/review/road/<way>` and `/api/review/street-photo`) log nginx errors at `crit` only, to `/var/log/nginx/rmbeta-error.log`, so
   a 502 or 504 there leaves no error-log line; `rmbeta-access.log` still shows the status and the time (about 0 s:
   the api was down; about 75 s: it timed out), and for a 502 the api's own log usually has nothing, because the

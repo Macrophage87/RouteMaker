@@ -6,15 +6,16 @@
  *
  * The places are amenity-data/places.json, built from the project's extract by scripts/build_places.py (what
  * counts, by category, is in its docstring). Plan's "Places to see" sheet filters by category and, along a
- * planned route, lists the places within half a mile (0.8 km) of it in riding order, each with its detour;
- * with no route, nearest the map's center first. Go's Sights (behind More) lists the nearest SIGHTS_SHOWN, no
- * filters. The map layer is one switch in Layers, off by default.
+ * planned route, lists every place least detour first, each with its detour (the owner, 2026-10-18: "if on a
+ * route we'd want to sort by miles of detour too", "Same for the other detour types"); with no route, nearest
+ * the rider's location first, or the map's center without one ("The default for search should be the current
+ * location"). Go's Sights (behind More) lists the first SIGHTS_SHOWN of the same order, no filters. The map layer is one switch in Layers, off by default.
  *
  * The detour is food's estimate (lib/food.ts: straight line off the route, there and back, times CIRCUITY).
  * Plain data in, plain data out, so node --test runs all of it.
  */
 import { detourOf, projector, type RouteForDetour } from "./food.ts";
-import { formatDistance, formatExtra, HALF_MILE, milesFigure } from "./format.ts";
+import { formatDistance, formatExtra, milesFigure } from "./format.ts";
 import { haversineM, type LonLat } from "./geo.ts";
 
 export type PlaceCategory = "museum" | "historic" | "lighthouse" | "garden" | "viewpoint" | "market" | "zoo" | "nature" | "bridge" | "drink";
@@ -91,9 +92,6 @@ export async function loadPlaces(
 
 // --- Which and in what order -------------------------------------------------
 
-/** Along a route, places within this of it: half a mile. */
-export const ALONG_M = 804.672;
-export const ALONG_TEXT = HALF_MILE;
 /** Go's Sights: how many. */
 export const SIGHTS_SHOWN = 5;
 export const PLACES_PAGE = 10;
@@ -109,8 +107,8 @@ export interface SightResult {
 export type PlaceFilter = PlaceCategory | "all";
 
 /**
- * Plan's list: along a route, the places within ALONG_M of it in riding order; with none, every place nearest
- * `from` first. `filter` keeps one category.
+ * Plan's list: along a route, every place least detour first (then in riding order); with none, every place
+ * nearest `from` first. `filter` keeps one category.
  */
 export function placesToSee(places: readonly SightPlace[], from: LonLat, route: RouteForDetour | null, filter: PlaceFilter = "all"): SightResult[] {
   const kept = filter === "all" ? places : places.filter((p) => p.category === filter);
@@ -120,24 +118,19 @@ export function placesToSee(places: readonly SightPlace[], from: LonLat, route: 
     for (const place of kept) {
       const point: LonLat = [place.lon, place.lat];
       const { offM, alongM } = project(point);
-      if (offM > ALONG_M) continue;
       out.push({ place, metres: haversineM(from, point), detour: { alongM, offM, extraM: detourOf(offM, route.speedMps).extraM } });
     }
-    return out.sort((a, b) => a.detour!.alongM - b.detour!.alongM || a.place.id.localeCompare(b.place.id));
+    // A tie (several on the route) nearest `from` first.
+    return out.sort((a, b) => a.detour!.extraM - b.detour!.extraM || a.metres - b.metres || a.place.id.localeCompare(b.place.id));
   }
   return kept
     .map((place) => ({ place, metres: haversineM(from, [place.lon, place.lat]) }))
     .sort((a, b) => a.metres - b.metres || a.place.id.localeCompare(b.place.id));
 }
 
-/** Go's Sights: the SIGHTS_SHOWN with the least detour along the route, in riding order; or the nearest to `from`. */
+/** Go's Sights: the SIGHTS_SHOWN with the least detour off the route, least first; or the nearest to `from`. */
 export function sightsForGo(places: readonly SightPlace[], from: LonLat, route: RouteForDetour | null, n = SIGHTS_SHOWN): SightResult[] {
-  const all = placesToSee(places, from, route);
-  if (!route) return all.slice(0, n);
-  return [...all]
-    .sort((a, b) => a.detour!.extraM - b.detour!.extraM || a.detour!.alongM - b.detour!.alongM)
-    .slice(0, n)
-    .sort((a, b) => a.detour!.alongM - b.detour!.alongM);
+  return placesToSee(places, from, route).slice(0, n);
 }
 
 // --- Words -------------------------------------------------------------------
@@ -170,11 +163,12 @@ export const PLACES_UNAVAILABLE = "Places to see are unavailable for now; try ag
 export const PLACES_NOTE = "Detours are estimates; check hours (OpenStreetMap).";
 
 /** The status line for Plan's list. */
-export function placesSaid(count: number, filter: PlaceFilter, alongRoute: boolean): string {
+export function placesSaid(count: number, filter: PlaceFilter, alongRoute: boolean, fromRider = false): string {
   const what = filter === "all" ? "places to see" : CATEGORIES.find((c) => c.id === filter)!.label.toLowerCase();
-  if (count === 0) return alongRoute ? `No ${what} within ${ALONG_TEXT} of your route.` : `No ${what} found.`;
+  if (count === 0) return `No ${what} found.`;
   const n = count.toLocaleString("en-US");
-  return alongRoute ? `${n} ${what} within ${ALONG_TEXT} of your route, in riding order.` : `${n} ${what}, nearest the map's center first.`;
+  if (alongRoute) return `${n} ${what}, least detour off your route first.`;
+  return `${n} ${what}, nearest ${fromRider ? "you" : "the map's center"} first.`;
 }
 
 // --- The map's layer (one switch, off by default) -------------------------------------------

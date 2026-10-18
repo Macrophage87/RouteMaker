@@ -165,7 +165,7 @@ test("TB-13: the times are said as published timetables, Metro's typical service
   const both = timesFromText({ ...base, credits: [marc, typical] });
   assert.match(both, /published timetables for this weekday: [\s\S]* Metro's times are its typical service from wmata\.com/);
   assert.match(timesFromText({ day_type: "sunday", holiday: true, credits: [typical] }), /typical sunday \(a holiday\) service/);
-  assert.match(src("TransitSummary.tsx"), /\{TRACK_WORK\} \{timesFromText\(plan\)\} \{plan\.live \?/);
+  assert.match(src("TransitSummary.tsx"), /\{TRACK_WORK\} \{timesFromText\(plan\)\} \{liveTimesText\(plan\)\}/);
 });
 
 test("a chosen option goes with the request on a transit ride type, for the same trip only", () => {

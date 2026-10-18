@@ -8,6 +8,7 @@ import android.view.inputmethod.EditorInfo;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
+import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.pm.ShortcutInfoCompat;
 import androidx.core.content.pm.ShortcutManagerCompat;
@@ -33,6 +34,8 @@ import java.util.concurrent.Executors;
 public class SetupActivity extends AppCompatActivity {
 
     static final String EXTRA_CHANGE = "org.routemaker.phone.CHANGE_SITE";
+    /** A link to the kept site, shared to the app (SharedLink): MainActivity opens it. */
+    static final String EXTRA_LINK = "org.routemaker.phone.LINK";
 
     private final ExecutorService probes = Executors.newSingleThreadExecutor();
     private EditText field;
@@ -45,6 +48,18 @@ public class SetupActivity extends AppCompatActivity {
         boolean change = getIntent() != null && getIntent().getBooleanExtra(EXTRA_CHANGE, false);
         String address = SiteStore.address(this, SiteStore.readConfig(this));
         if (address != null && !change) {
+            Intent shared = getIntent();
+            if (shared != null && Intent.ACTION_SEND.equals(shared.getAction())) {
+                String link = SharedLink.find(shared.getStringExtra(Intent.EXTRA_TEXT), address);
+                if (link == null) {
+                    Toast.makeText(this, R.string.share_not_site, Toast.LENGTH_LONG).show();
+                    finish();
+                    return;
+                }
+                startActivity(new Intent(this, MainActivity.class).putExtra(EXTRA_LINK, link).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                finish();
+                return;
+            }
             open();
             return;
         }
