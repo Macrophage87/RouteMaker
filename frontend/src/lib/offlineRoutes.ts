@@ -218,13 +218,13 @@ export type KeepOutcome = "kept" | "partial" | "no-map" | "full" | "failed";
 export function keepSaid(outcome: KeepOutcome, title: string): string {
   switch (outcome) {
     case "kept":
-      return `Kept for offline: ${title}, with the map along it. Open it from Settings when there is no signal.`;
+      return `Kept for offline: ${title}, with the map along it. Open it from Save & load when there is no signal.`;
     case "partial":
-      return `Kept for offline: ${title}, with the map along the first part of it. Open it from Settings when there is no signal.`;
+      return `Kept for offline: ${title}, with the map along the first part of it. Open it from Save & load when there is no signal.`;
     case "no-map":
       return `Kept ${title} for offline, but the map along it could not be saved; it needs a signal to show the map.`;
     case "full":
-      return `${MAX_KEPT} routes are kept, the most this app keeps. Remove one in Settings first.`;
+      return `${MAX_KEPT} routes are kept, the most this app keeps. Remove one in Save & load first.`;
     default:
       return "The route could not be kept: this browser refused to store it.";
   }

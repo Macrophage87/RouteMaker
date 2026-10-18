@@ -253,7 +253,11 @@ export function ReviewMode({ getMap, announce, onStressChanged, onHazardsChanged
             type: "line",
             source: LINES,
             layout: { "line-cap": "round", "line-join": "round" },
-            paint: { "line-color": "#ffffff", "line-opacity": 0.9, "line-width": ["interpolate", ["linear"], ["zoom"], 5, 6, 12, 9, 16, 13] },
+            paint: {
+              "line-color": ["match", ["get", "queue"], ...QUEUES.flatMap((q) => (QUEUE_STYLE[q].halo ? [q, QUEUE_STYLE[q].halo] : [])), "#ffffff"],
+              "line-opacity": 0.9,
+              "line-width": ["interpolate", ["linear"], ["zoom"], 5, 6, 12, 9, 16, 13],
+            },
           } as never,
           before,
         );

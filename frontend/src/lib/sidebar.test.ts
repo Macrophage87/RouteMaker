@@ -9,7 +9,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { startDials, type Dials } from "./dials.ts";
-import { hillsShort, rideSummary, rideSummarySpoken, targetShort, trafficShort, whenShort } from "./rideSummary.ts";
+import { hillsShort, rideSummary, rideSummarySpoken, settingsSummary, settingsSummarySpoken, targetShort, trafficShort, whenShort } from "./rideSummary.ts";
 import { NOT_AVAILABLE, calmPercent, heavyMetres, junctionFigure, quickFigures, stressBarKey, stressBarLabel } from "./quickFigures.ts";
 import {
   BACK_LABEL,
@@ -129,30 +129,43 @@ test("the Ride line never carries the rider and bike weight (313-314): not a fig
 
 test("the Ride line is a heading holding a button with aria-expanded, whose words are read with commas", () => {
   const html = renderToStaticMarkup(
-    createElement(RideSettings, { summary: "Default · now", spoken: "Default, now", children: createElement("p", null, "controls") }),
+    createElement(RideSettings, {
+      summary: "quiet streets · now",
+      spoken: "quiet streets, now",
+      typeCard: createElement("div", { className: "type-card" }, "Default"),
+      children: createElement("p", null, "controls"),
+    }),
   );
-  // The region is named "Ride" alone, not by the whole button (the a11y review's N4).
+  // The region is named "Ride" alone, not by the whole button (the a11y review's N4); the ride type's own button
+  // comes first (edit-route redesign, Stephen 2026-10-18), then the line.
   assert.match(
     html,
-    /^<section class="ride-settings" aria-label="Ride"><h2 id="ride-settings-heading" class="ride-line"><button type="button" class="ride-line-button" aria-expanded="false" aria-controls="[^"]+">/,
+    /^<section class="ride-settings" aria-label="Ride"><div class="type-card">Default<\/div><h2 id="ride-settings-heading" class="ride-line"><button type="button" class="ride-line-button" aria-expanded="false" aria-controls="[^"]+">/,
   );
-  // UI-CLEANUP: the summary shown as chips (the mockup's "Default Quiet Balanced Now"), the ride type's with
-  // its icon; heard as one sentence with commas.
+  // Labelled Ride settings; the sliders' summary shown as chips and heard as one sentence with commas.
   assert.match(
     html,
-    /<span class="ride-line-summary" aria-hidden="true"><span class="ride-chip"><svg[^>]*aria-hidden="true"[^>]*>[\s\S]*?<\/svg>Default<\/span><span class="ride-chip">now<\/span><\/span><span class="visually-hidden">: Default, now\.<\/span>/,
+    /<span class="ride-line-label">Ride settings<\/span><span class="ride-line-summary" aria-hidden="true"><span class="ride-chip">quiet streets<\/span><span class="ride-chip">now<\/span><\/span><span class="visually-hidden">: quiet streets, now\.<\/span>/,
   );
-  // Shown Edit or Done, heard Edit whatever the state: aria-expanded says it (no "Done, expanded": N8).
-  assert.match(html, /<span class="ride-line-action" aria-hidden="true">Edit<\/span><span class="visually-hidden"> Edit<\/span>/);
-  assert.equal(rideActionLabel(false), "Edit");
+  // Shown Adjust or Done, heard Adjust whatever the state: aria-expanded says it (no "Done, expanded": N8).
+  assert.match(html, /<span class="ride-line-action" aria-hidden="true">Adjust<\/span><span class="visually-hidden"> Adjust<\/span>/);
+  assert.equal(rideActionLabel(false), "Adjust");
   assert.equal(rideActionLabel(true), "Done");
-  assert.equal(RIDE_ACTION_SPOKEN, "Edit");
+  assert.equal(RIDE_ACTION_SPOKEN, "Adjust");
   // The controls stay in the page while closed, so nothing they hold is lost.
   assert.match(html, /<div id="[^"]+" class="ride-settings-body" hidden=""><p>controls<\/p><\/div>/);
 });
 
-test("App puts the ride type and every dial behind the Ride line, in the mockup's order", () => {
-  assert.match(app, /<RideSettings key="presets" summary=\{rideSummary\(preset, dials\)\} spoken=\{rideSummarySpoken\(preset, dials\)\}>\s*\{presetsSection\}\s*<DialsPanel/);
+test("App puts the ride type's button first and every dial behind the Ride settings line, in the mockup's order", () => {
+  // The ride type is one press from its list (edit-route redesign); Go's Ride sheet lists them itself (typeCard false).
+  assert.match(
+    app,
+    /<RideSettings key="presets" summary=\{settingsSummary\(preset, dials\)\} spoken=\{settingsSummarySpoken\(preset, dials\)\} typeCard=\{presetsSection\}>\s*<DialsPanel/,
+  );
+  assert.match(app, /const presetsSection = typeCard \? <RideTypePicker key="presets" preset=\{preset\} dials=\{dials\} onChoose=\{choosePreset\} \/> : null;/);
+  assert.match(src("../App.tsx"), /typeCard: mode !== "go",/);
+  assert.equal(settingsSummary("default", startDials("default")), "quiet streets · balanced hills · now");
+  assert.equal(settingsSummarySpoken("default", startDials("default")), "quiet streets, balanced hills, now");
   const dials = src("../DialsPanel.tsx");
   const at = (text: string) => {
     const i = dials.indexOf(text);
@@ -164,10 +177,9 @@ test("App puts the ride type and every dial behind the Ride line, in the mockup'
     'label="Hills"',
     "<legend>When</legend>",
     "{view.target && (",
-    "<WeightSetting",
     "Avoid gravel",
   ].map(at);
-  assert.deepEqual(order, [...order].sort((a, b) => a - b), "Traffic, Hills, When, target distance, weight, gravel");
+  assert.deepEqual(order, [...order].sort((a, b) => a - b), "Traffic, Hills, When, target distance, gravel");
   // "Make it a loop" is no longer behind the Edit button (OWNER-DECISIONS 388): it is by the search, in the Points section.
   assert.doesNotMatch(dials, /loopView|withLoop|type="checkbox"\s+checked=\{loop/, "the dials panel has no loop toggle");
   const points = app.slice(app.indexOf("const pointsSection ="), app.indexOf("const routeSection ="));
@@ -186,7 +198,7 @@ test("App puts the ride type and every dial behind the Ride line, in the mockup'
     assert.ok(i > 0, text);
     return i;
   };
-  const steps = ['{showFrom && search("from")}', "{searchLede(loopVias, accessMode)}", "<PointsList", '{showTo && search("to")}', 'search("add")}', "{BEST_ORDER_LABEL}"].map(inBoxes);
+  const steps = ['{showFrom && editing === null && search("from")}', "{searchLede(loopVias, accessMode)}", "<PointsList", '{showTo && editing === null && search("to")}', 'search("add")}', "{BEST_ORDER_LABEL}"].map(inBoxes);
   assert.deepEqual(steps, [...steps].sort((a, b) => a - b), "From, the points, To, Add a stop, Best order");
   // The map-center actions are in Map tools by the zoom buttons, not the planner (OWNER-DECISIONS 450).
   assert.doesNotMatch(points, /Add point at map center|Road info at map center/);
@@ -198,8 +210,9 @@ test("App puts the ride type and every dial behind the Ride line, in the mockup'
   assert.match(points, /<p className="hint loop-hint" id=\{loopHintId\} hidden=\{!loop\.checked\}>\s*\{loop\.hint\}\s*<\/p>/);
   assert.match(points, /commitDials\(withLoop\(dials, event\.target\.checked\)\)/, "its change goes through the announcing commit");
   assert.match(app, /const loop = loopView\(preset, dials\.loop, points\);/);
-  // The weight row is the existing one: status only, Change opening the private dialog (weightDialog.ts).
-  assert.match(dials, /import \{ WeightSetting \} from "\.\/lib\/weightDialog\.ts";/);
+  // The weight row moved to Settings (the owner, 2026-10-18): status only, Change opening the private dialog.
+  assert.doesNotMatch(dials, /WeightSetting/);
+  assert.match(src("../app/Sheets.tsx"), /<WeightSetting \{\.\.\.props\.weight\} \/>/);
 });
 
 // ---- points first ------------------------------------------------------------
@@ -253,7 +266,11 @@ test("with a route shown Plan's search and point tools stay in view (v0.7.0), an
   // The boxes are never hidden, so more stops can be added by search (v0.6.1 as well): From with no start, To with a
   // lone start, else Add a stop (Plan streamline, 2026-10-17).
   const planner = src("../app/Planner.tsx");
-  assert.match(planner, /<div id="points-search" ref=\{pointsSearchRef\} className="points-controls plan-points">\s*\{showFrom && search\("from"\)\}/);
+  assert.match(planner, /<div id="points-search" ref=\{pointsSearchRef\} className="points-controls plan-points">\s*\{showFrom && editing === null && search\("from"\)\}/);
+  // A Change opens its box in that point's row (edit-route redesign, Stephen 2026-10-18).
+  assert.match(planner, /index: editing,\s*node: \(\s*<div className="point-editor">\s*\{search\(changing === "from" \? "from" : "to"\)\}/);
+  // Cancel puts the box away on a touch screen, as Escape does on a keyboard, and gives the focus to the row's Remove.
+  assert.match(planner, /className="link point-cancel"\s*onClick=\{\(\) => \{\s*setChanging\(null\);\s*window\.setTimeout\(\(\) => removeRefs\.current\[editing\]\?\.focus\(\), 0\);/);
   assert.match(planner, /const showFrom = points\.length === 0 \|\| changing === "from";/);
   assert.match(planner, /const showTo = !showFrom && !loopVias && \(points\.length === 1 \|\| changing === "to"\);/);
   assert.match(planner, /const showAdd = !showFrom && !showTo && \(loopVias \? points\.length >= 1 : points\.length >= 2\);/);
@@ -537,7 +554,9 @@ test("Directions as a fold: an h3 first, a closed details named with its steps, 
 test("the Points notice is a live region that is always there, empty when there is no notice (395, a11y S2)", () => {
   // Created already holding its text, a live region is often not spoken (VoiceOver with Safari, NVDA with
   // Firefox), so it is rendered empty first and filled later (the mutation re-review's N1).
-  assert.match(app, /<p className=\{notice \? "notice" : "notice notice-empty"\} role="status">\s*\{notice \?\? ""\}\s*<\/p>/);
+  // A live region in Plan; in Go's Edit route the app's own region says the notice, so it is not said twice.
+  assert.match(app, /<p className=\{notice \? "notice" : "notice notice-empty"\} role=\{noticeLive \? "status" : undefined\}>\s*\{notice \?\? ""\}\s*<\/p>/);
+  assert.match(src("../App.tsx"), /notice, noticeLive: mode !== "go",/);
   assert.doesNotMatch(app, /\{notice && \(?\s*<p className="notice"/);
   // The empty one stays in the accessibility tree: no rule takes it out (N3).
   const rules = [...css.matchAll(/([^{}]*\.notice-empty[^{}]*)\{([^}]*)\}/g)];
@@ -569,7 +588,8 @@ test("Start, GPX, Link and More are one row under the route's figures (UI-CLEANU
   // More holds Share and Keep for offline, a disclosure.
   assert.match(app, /className="secondary icon-button route-more" aria-expanded=\{more\} aria-controls=\{moreId\}/);
   // The link is this page and encodePlan's fragment, which never carries the weight (313).
-  assert.match(app, /copyText\(linkToCopy\(window\.location, points, preset, dials, viaIndices\(points, VIA_MARKS\.isVia\)\), navigator\.clipboard, selectionCopy\)/);
+  // v0.9.0, "share the exact route": the link Share makes, naming the exact line shown (lib/sharedRoutes.ts).
+  assert.match(app, /const \{ link, kept \} = sharedLinkNow\(\);\s*const done = await copyText\(link, navigator\.clipboard, selectionCopy\);/);
   assert.equal(linkSaidFor(true), COPY_LINK_DONE);
   assert.equal(linkSaidFor(false), COPY_LINK_FAILED);
   assert.match(app, /if \(press === linkPresses\.current\) setLinkSaid\(linkSaidFor\(done\)\);/);
@@ -621,12 +641,12 @@ test("copyText uses the clipboard, falls back to the selection method, and says 
 
 // ---- the bottom bar and its sheets ------------------------------------------------
 
-test("the bottom bar is Plan, Layers, Suggest, Files and Settings: real buttons, each with words (the owner's choice 6)", () => {
-  assert.deepEqual(BAR_ITEMS.map((i) => i.label), ["Plan", "Layers", "Suggest", "Files", "Settings"]);
+test("the bottom bar is Plan, Layers, Suggest, Save & load and Settings: real buttons, each with words (the owner's choice 6)", () => {
+  assert.deepEqual(BAR_ITEMS.map((i) => i.label), ["Plan", "Layers", "Suggest", "Save & load", "Settings"]);
   assert.deepEqual(BAR_ITEMS.map((i) => i.opens), ["planner", "layers", "suggest", "gpx", "settings"]);
   assert.equal(BAR_ITEMS[0].id, "plan", "Plan is first (OWNER-DECISIONS 392, 393)");
   assert.ok(BAR_ITEMS.every((i) => i.description.length > 0));
-  assert.equal(BAR_ITEMS[4].description, "Opens the settings: display, Ride mode, this device and your account.");
+  assert.equal(BAR_ITEMS[4].description, "Opens the settings: display, Ride mode and your account.");
   assert.equal(BAR_NAME, "Panel pages", "a landmark name that says what the bar is (the a11y review's N3)");
   assert.match(sidebar, /<nav aria-label=\{BAR_NAME\} className="bottom-bar">/);
   assert.match(sidebar, /<Fragment key=\{item\.id\}>\s*<button\s+id=\{`bar-\$\{item\.id\}`\}\s+type="button"/);
@@ -644,7 +664,7 @@ test("the bottom bar is Plan, Layers, Suggest, Files and Settings: real buttons,
 });
 
 test("a sheet: Back is a labelled button, its heading takes the focus, Escape goes back", () => {
-  assert.deepEqual(Object.values(SHEET_TITLES), ["Layers", "Legend", "Suggest a change", "Review", "Route file", "Settings", "Nearest water, restroom or Metro", "Find food", "Ride", "Repair stands and bike shops", "Places to see"]);
+  assert.deepEqual(Object.values(SHEET_TITLES), ["Layers", "Legend", "Suggest a change", "Review", "Save and load", "Settings", "Nearest", "Find food", "Ride", "Repair stands and bike shops", "Places to see", "Edit route"]);
   // In visible words, not only an arrow, so the name and the label are one (OWNER-DECISIONS 393).
   assert.equal(BACK_LABEL, "Back to planner");
   assert.doesNotMatch(sidebar, /aria-label="Back to the planner"/);
@@ -947,10 +967,12 @@ test("the bar's current button: the sheet showing, or one opened from it (Layers
   assert.match(sidebar, /aria-current=\{current \? "true" : undefined\}/);
 });
 
-test("the Settings sheet (384): Display, Ride mode, This device and Account, as the mockup groups them; one state, unique ids", () => {
+test("the Settings sheet (384): Display, Ride mode and Account, as the mockup groups them; one state, unique ids", () => {
   const sheet = app.slice(app.indexOf('id="sheet-settings"'), app.indexOf("export interface SuggestSheetProps"));
   assert.match(sheet, /title=\{go \? MENU_TITLE : SHEET_TITLES\.settings\}\s+open=\{nav\.view === "settings"\}\s+onBack=\{nav\.back\}\s+backLabel=\{nav\.backLabel\("settings"\)\}\s+headingRef=\{settingsHeadingRef\}/);
-  const order = ["settings-display-heading", "settings-ride-heading", "settings-device-heading", "settings-signin-heading"].map((id) => sheet.indexOf(`<h3 id="${id}">`));
+  // This device's routes moved to Save and load (the owner, 2026-10-18); the install offer has its own heading.
+  assert.doesNotMatch(sheet, /settings-device-heading/);
+  const order = ["settings-display-heading", "settings-ride-heading", "settings-signin-heading"].map((id) => sheet.indexOf(`<h3 id="${id}">`));
   assert.ok(order.every((i) => i > 0), JSON.stringify(order));
   assert.deepEqual(order, [...order].sort((a, b) => a - b));
   assert.match(sheet, /<section aria-labelledby="settings-display-heading" className="settings-group">\s*<h3 id="settings-display-heading">Display<\/h3>/);
