@@ -6872,9 +6872,23 @@ details.fold > summary .icon {
   justify-self: end;
   margin-left: 0;
 }
-.my-go .setting-value {
+.my-go .setting-value,
+.assistant-key .setting-value {
   margin-left: 0.4em;
   font-weight: normal;
+}
+/* The AI assistant key (the owner, 2026-10-18): the new key on one line with Copy, then Make or Replace, and Remove. */
+.assistant-key-secret,
+.assistant-key-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 6px 0;
+}
+.assistant-key-secret input {
+  flex: 1 1 12em;
+  min-width: 0;
+  font-family: monospace;
 }
 .settings-group > h3 {
   margin-bottom: 6px;
