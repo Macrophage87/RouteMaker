@@ -958,9 +958,12 @@ export function RideMode({
   // With `via`, a detour: from here to that place first, then on through what was left (the nearest water
   // or restroom, below). A detour's place becomes a stop of the new route, so it is cued and arrived at.
   const replan = useCallback(
-    async (here: LonLat, via?: LonLat, asked = false) => {
+    async (here: LonLat, via?: LonLat, asked = false, turnRound = false) => {
       if (ended.current) return;
       const current = rideRef.current;
+      // The way the rider is going (the owner, 2026-10-18: "Penalize U turns", "For rerouting"): the new route sets
+      // off ahead unless turning round saves half a mile. Not after Road closed, where turning round is the point.
+      const heading = turnRound ? null : (current.goodFix?.headingDeg ?? null);
       const left = replanPoints(modelRef.current, current.progressM ?? 0, here, plan.current.points, plan.current.loop);
       const points = via ? detourPoints(left, via) : left;
       if (!points) {
@@ -1001,7 +1004,7 @@ export function RideMode({
       // The rider is riding a plan already made: a long one is not asked to be confirmed again (a signed-out
       // rider's re-plan of a long ride was refused for want of it).
       const ask = (to: LonLat[]) =>
-        requestRoute(to, preset, { dials: { ...dials, loop: false }, vias: viaIndices(to, VIA_MARKS.isVia), routeOnly: true, confirmLong: true, blocked: blockedRef.current });
+        requestRoute(to, preset, { dials: { ...dials, loop: false }, vias: viaIndices(to, VIA_MARKS.isVia), routeOnly: true, confirmLong: true, blocked: blockedRef.current, heading });
       const result = await ask(points);
       // No new route to the end: the way back to the planned route, which goes on from there (lib/rejoin.ts;
       // the owner, 2026-10-17). Not for a detour, whose place the planned route does not pass. The no-signal
@@ -1419,7 +1422,7 @@ export function RideMode({
       return;
     }
     gate.online();
-    void replan(fix.point, undefined, true);
+    void replan(fix.point, undefined, true, true);
   };
   const replanNow = () => {
     // The rider asked, so the press is answered, as Detour's is (review RIDE-5): through the rider's

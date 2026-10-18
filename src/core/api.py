@@ -329,6 +329,18 @@ class RouteIn(Schema):
             " Sent with the ride's re-plans only; never remembered by the server."
         ),
     )
+    heading: float | None = Field(
+        default=None,
+        ge=0,
+        lt=360,
+        description=(
+            "A ride's re-route: the way the rider is going at the first point, in degrees"
+            " clockwise from north. A route that sets off back the other way (a U-turn) is"
+            " answered only where it is at least half a mile (805 m) shorter than the best one"
+            " that sets off ahead. Absent: either way, as before. Ignored on a followed line"
+            " and a loop."
+        ),
+    )
     loop: StrictBool = Field(
         default=False,
         description=(
@@ -4001,6 +4013,7 @@ def _bike_dials(body: RouteIn) -> routing.Dials:
         vias=tuple(body.via_points),
         follow=_follow_line(body),
         follow_exact=body.follow_exact,
+        heading=body.heading,
     )
 
 
@@ -4040,7 +4053,7 @@ def _planned(body: RouteIn, dials, started: float | None, long_ride: bool, long_
         timings.note("cache", "miss" if key is not None else "off")
     failures_before = timings.failures if timings is not None else 0
     try:
-        answered = routing.plan(
+        answered = routing.plan_onward(
             body.points,
             body.preset,
             long_ride=long_ride,
@@ -4058,7 +4071,7 @@ def _planned(body: RouteIn, dials, started: float | None, long_ride: bool, long_
             "a followed line matched no way on %s; planning through its points", body.preset
         )
         dials = dataclasses.replace(dials, follow=None)
-        answered = routing.plan(
+        answered = routing.plan_onward(
             body.points,
             body.preset,
             long_ride=long_ride,
