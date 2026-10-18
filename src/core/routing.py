@@ -3212,6 +3212,11 @@ def plan(
         trip, loop_info = refine.make_loop(trip, refine_context)
         if loop_info["fallback"] is None and loop_info["overlap_pct"] is not None:
             refine_context.loop_overlap = loop_info["overlap_pct"] / 100.0
+    if len(trip.get("legs") or []) > 1 and not quick and not following:
+        # A slight price on riding a way twice (the owner, 2026-10-18): each later leg that
+        # repeats an earlier one's ways is asked for again (`refine.fewer_repeats`).
+        trip, repeat_info = refine.fewer_repeats(trip, refine_context)
+        logger.info("fewer repeats: %s", repeat_info)
     refined = None
     if refine_limited is None:
         if past and fit is None:
