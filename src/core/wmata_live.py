@@ -37,6 +37,7 @@ from __future__ import annotations
 import json
 import logging
 import math
+import re
 import threading
 import time
 import urllib.error
@@ -242,9 +243,45 @@ class Snapshot:
                     out.append(line)
         return out
 
+    def closed(self) -> dict[str, str]:
+        """The stations WMATA's incidents say are closed now: {code: the sentence that says so}.
+
+        Rail incidents carry no station codes, only words ("As a result, Rosslyn and Court House
+        stations are closed."), so a station counts as closed when a sentence that says
+        "closed" (and not "open" or "reopen") names it. A sentence about the future ("will be
+        closed starting Monday") is left out; one that names no station closes nothing."""
+        out: dict[str, str] = {}
+        for incident in self.incidents:
+            for sentence in re.split(r"(?<=[.!?])\s+", incident.text):
+                words = sentence.lower()
+                if not CLOSED_WORDS.search(words) or OPEN_WORDS.search(words):
+                    continue
+                if FUTURE_WORDS.search(words):
+                    continue
+                for station in self.stations.values():
+                    if _names(station.name, words):
+                        for code in self.codes(station):
+                            out.setdefault(code, sentence)
+        return out
+
+    def is_closed(self, station: Station) -> bool:
+        closed = self.closed()
+        return any(code in closed for code in self.codes(station))
+
     def incidents_on(self, lines) -> list[Incident]:
         """WMATA's incidents on any of `lines` (by colour: "Red Line" is "Metrorail Red")."""
         return [i for i in self.incidents if any(same_line(a, b) for a in lines for b in i.lines)]
+
+
+# What makes an incident's sentence close the stations it names (`Snapshot.closed`).
+CLOSED_WORDS = re.compile(r"\b(closed|closes|closure)\b")
+OPEN_WORDS = re.compile(r"\b(open|opens|reopen|reopens|reopened)\b")
+FUTURE_WORDS = re.compile(r"\b(will|beginning|starting)\b")
+
+
+def _names(name: str, words: str) -> bool:
+    """Whether lower-case `words` names the station `name` as a whole phrase."""
+    return re.search(rf"(?<![\w-]){re.escape(name.lower())}(?![\w-])", words) is not None
 
 
 def same_line(a: str, b: str) -> bool:

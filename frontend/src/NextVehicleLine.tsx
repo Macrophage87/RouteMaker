@@ -7,7 +7,19 @@
  */
 import { useEffect, useRef, useState } from "react";
 import type { NextVehicle } from "./lib/api.ts";
-import { POLL_MS, requestNextVehicle, shouldPoll, vehicleMark, vehicleSaid, vehicleShown, type NextVehicleAsk, type VehicleMark } from "./lib/nextVehicle.ts";
+import {
+  MAX_WAIT_MS,
+  MISSES_KEPT,
+  POLL_MS,
+  boarded,
+  requestNextVehicle,
+  shouldPoll,
+  vehicleMark,
+  vehicleSaid,
+  vehicleShown,
+  type NextVehicleAsk,
+  type VehicleMark,
+} from "./lib/nextVehicle.ts";
 
 export function NextVehicleLine({
   ask,
@@ -43,19 +55,36 @@ export function NextVehicleLine({
     }
     let live = true;
     let controller: AbortController | null = null;
+    let misses = 0;
+    const started = Date.now();
+    const stop = () => {
+      window.clearInterval(timer);
+      last.current = null;
+      setVehicle(null);
+      onMark?.(null);
+    };
     const poll = async () => {
+      if (Date.now() - started > MAX_WAIT_MS) return stop();
       controller?.abort();
       controller = new AbortController();
       const found = await requestNextVehicle(ask, { signal: controller.signal });
       if (!live) return;
+      if (!found) {
+        // One or two missed answers keep the last one shown (and the next one compared with it).
+        misses += 1;
+        if (misses <= MISSES_KEPT && last.current) return;
+      } else {
+        misses = 0;
+      }
+      if (boarded(last.current, found)) return stop();
       const said = vehicleSaid(last.current, found);
       last.current = found;
       setVehicle(found);
       onMark?.(vehicleMark(found));
       if (said) announce?.(said);
     };
-    void poll();
     const timer = window.setInterval(() => void poll(), POLL_MS);
+    void poll();
     return () => {
       live = false;
       window.clearInterval(timer);

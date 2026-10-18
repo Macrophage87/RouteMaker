@@ -1734,4 +1734,5 @@ def test_a_quiet_pass_sends_nothing_and_a_missing_alert_script_is_fine(beta: Bet
     (beta.cd / "bin" / "alert.sh").write_text(STUB_ALERT)
     (beta.cd / "bin" / "alert.sh").chmod(0o755)
     beta.agent("run", STUB_ALERTS=str(beta.tmp / "alerts.log"))
-    assert _alerts(beta) == []
+    # Up to date only clears an earlier alert (alert.sh posts "working again" only after one).
+    assert _alerts(beta) == ["clear|deploy|the release agent is working again (v0.1.0 deployed)|"]

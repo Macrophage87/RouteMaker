@@ -160,9 +160,10 @@ notify() { # word message
 	id=${message%%[ :]*}
 	case "$word" in
 		deployed) "$alert" note "deployed $message" && "$alert" clear deploy "the release agent is working again (deployed ${message%% *})" ;;
+		up-to-date) "$alert" clear deploy "the release agent is working again ($message deployed)" ;;
 		rolled-back | failed) "$alert" send deploy "failed $id" "$word: $message" ;;
 		held | interrupted) "$alert" send deploy "$word $id" "$word: $message" ;;
-		broken | error | drift) "$alert" send deploy "$word" "$word: $message" ;;
+		broken | error | drift) "$alert" send deploy "$word $(printf '%s' "$message" | sed 's/[0-9][0-9.]*/N/g' | sha256sum | cut -c1-12)" "$word: $message" ;;
 		waiting) case "$message" in *" free "*) "$alert" send deploy "disk" "waiting: $message" ;; esac ;;
 	esac >>"$run_log" 2>&1 </dev/null
 	return 0

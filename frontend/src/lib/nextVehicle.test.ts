@@ -4,11 +4,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import type { NextVehicle, TransitPlan, TransitStep } from "./api.ts";
+import type { NextVehicle, TransitStep } from "./api.ts";
 import {
   POLL_MS,
   askOf,
-  boardingAsk,
+  boarded,
+  MAX_WAIT_MS,
+  MISSES_KEPT,
   nextVehicleUrl,
   requestNextVehicle,
   shouldPoll,
@@ -66,11 +68,25 @@ test("the question: a Metro or Metrobus step's line, its first stop and its last
   assert.deepEqual(askOf(METRO), { system: "Metro", line: "Red Line", from: [-77.0064, 38.8977], to: [-77.0281, 38.8983] });
   assert.equal(askOf(MARC), null);
   assert.equal(askOf(step({ mode: "bus", system: "Metrobus", lines: ["52"], coordinates: [[-77, 38.9]] })), null);
-  // The boarding after the ridden line (index 0): the first transit step, and only if it is WMATA's.
-  const plan = { steps: [step({ mode: "ride", route_line: true }), step({ mode: "walk" }), BUS, METRO] } as Pick<TransitPlan, "steps">;
-  assert.deepEqual(boardingAsk(plan, 0), ASK);
-  assert.equal(boardingAsk({ steps: [step({ mode: "ride" }), MARC, METRO] }, 0), null);
-  assert.equal(boardingAsk({ steps: [step({ mode: "ride" })] }, 0), null);
+});
+
+test("asking stops once the vehicle at the boarding has gone (boarded), or after the longest wait", () => {
+  assert.equal(boarded(vehicle({ away: 0 }), vehicle({ away: 4 })), true);
+  assert.equal(boarded(vehicle({ away: 1 }), vehicle({ away: 0 })), false);
+  assert.equal(boarded(vehicle({ away: 0 }), vehicle({ away: 0 })), false);
+  assert.equal(boarded(null, vehicle({ away: 4 })), false);
+  assert.equal(boarded(vehicle({ away: 0 }), null), false);
+  assert.equal(MAX_WAIT_MS, 20 * 60_000);
+  const line = src("NextVehicleLine.tsx");
+  assert.match(line, /Date\.now\(\) - started > MAX_WAIT_MS\) return stop\(\)/);
+  assert.match(line, /if \(boarded\(last\.current, found\)\) return stop\(\)/);
+});
+
+test("a missed answer or two keeps the last one shown, so the same count is not said again", () => {
+  assert.equal(MISSES_KEPT, 2);
+  assert.match(src("NextVehicleLine.tsx"), /if \(misses <= MISSES_KEPT && last\.current\) return;/);
+  // Compared with the last answer kept, the same count after a miss is not said.
+  assert.equal(vehicleSaid(vehicle({ away: 3 }), vehicle({ away: 3 })), null);
 });
 
 test("the URL names the step, never a key; the answer is taken only when it is one", async () => {

@@ -168,6 +168,8 @@ def parse_positions(doc) -> tuple[BusAt, ...]:
 
 # --- Matching -------------------------------------------------------------------------------
 
+# The stop search centre's grid: 0.0005 degrees is about 55 m north-south, 43 m east-west here.
+STOP_GRID_DEG = 0.0005
 COMPASS = {"north": (0.0, 1.0), "south": (0.0, -1.0), "east": (1.0, 0.0), "west": (-1.0, 0.0)}
 
 
@@ -192,27 +194,41 @@ def stop_for(stops, point, route: str) -> BusStop | None:
     return None if best is None else best[1]
 
 
+def _score(direction_text: str, board, alight) -> float | None:
+    """How well a direction's compass word ("North to ...") fits the step's heading, board to
+    alight: 1 the same way, -1 the opposite; None where either is unknown."""
+    heading = _heading(direction_text)
+    if heading is None or alight is None:
+        return None
+    lat = math.radians((board[1] + alight[1]) / 2)
+    dx, dy = (alight[0] - board[0]) * math.cos(lat), alight[1] - board[1]
+    size = math.hypot(dx, dy)
+    if size == 0:
+        return None
+    return (heading[0] * dx + heading[1] * dy) / size
+
+
 def coming(predictions, route: str, board, alight) -> list[Prediction]:
-    """The next buses of `route` the step's way, soonest first. A stop that sees the route one
-    way only needs no more; where it sees both, the way is the one whose compass word ("North to
-    ...") is nearest the step's own heading, board to alight. None matched: an empty list."""
+    """The next buses of `route` the step's way, soonest first. Where the stop sees the route
+    both ways, the way is the one whose compass word ("North to ...") is nearest the step's own
+    heading; where it sees one way only, that way unless its compass word is plainly the
+    opposite (the nearest stop that serves the route can be the one across the street). None
+    matched: an empty list."""
     mine = [p for p in predictions if same_route(p.route, route)]
     ways: dict[str, list[Prediction]] = {}
     for p in mine:
         ways.setdefault(p.direction, []).append(p)
-    if len(ways) > 1:
-        if alight is None:
+    if len(ways) == 1:
+        only = next(iter(ways.values()))
+        score = _score(only[0].direction_text, board, alight)
+        if score is not None and score < -0.3:
             return []
-        lat = math.radians((board[1] + alight[1]) / 2)
-        dx, dy = (alight[0] - board[0]) * math.cos(lat), alight[1] - board[1]
-        size = math.hypot(dx, dy)
-        if size == 0:
-            return []
-        scored = []
-        for key, group in ways.items():
-            heading = _heading(group[0].direction_text)
-            if heading is not None:
-                scored.append(((heading[0] * dx + heading[1] * dy) / size, key))
+    elif len(ways) > 1:
+        scored = [
+            (score, key)
+            for key, group in ways.items()
+            if (score := _score(group[0].direction_text, board, alight)) is not None
+        ]
         if not scored:
             return []
         score, key = max(scored)
@@ -340,12 +356,15 @@ class Buses:
         return reading
 
     def stop(self, point, route: str) -> BusStop | None:
-        lon, lat = round(point[0], 5), round(point[1], 5)
+        # The search's centre on a grid of about 50 m (`STOP_GRID_DEG`), so riders near one stop
+        # share one lookup in the budget; the nearest stop is still measured from `point`.
+        lon = round(round(point[0] / STOP_GRID_DEG) * STOP_GRID_DEG, 5)
+        lat = round(round(point[1] / STOP_GRID_DEG) * STOP_GRID_DEG, 5)
         query = urllib.parse.urlencode(
             {"Lat": f"{lat:.5f}", "Lon": f"{lon:.5f}", "Radius": STOP_SEARCH_M}
         )
         got = self._get(f"{STOPS_URL}?{query}", ("stops", lon, lat), STOPS_TTL_S, parse_stops)
-        return None if got is None else stop_for(got.value, (lon, lat), route)
+        return None if got is None else stop_for(got.value, point, route)
 
     def predictions(self, stop_id: str) -> Reading | None:
         query = urllib.parse.urlencode({"StopID": stop_id})

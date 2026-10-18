@@ -117,6 +117,15 @@ def test_a_stop_one_way_needs_no_compass_and_two_ways_without_one_match_nothing(
     assert wmata_bus.coming(across, "52", (0, 0), (0, 0.01)) == []
 
 
+def test_a_stop_that_sees_the_route_one_way_only_the_wrong_way_matches_nothing() -> None:
+    """The nearest stop serving the route can be the one across the street (review #2)."""
+    south = [wmata_bus.Prediction("52", "1", "South to L'Enfant Plaza", 4, "7")]
+    assert wmata_bus.coming(south, "52", (0, 0), (0, 0.01)) == []  # the step goes north
+    assert [p.minutes for p in wmata_bus.coming(south, "52", (0, 0.01), (0, 0))] == [4]
+    # Unknown compass words, or no alighting point: taken as before.
+    assert wmata_bus.coming(south, "52", (0, 0), None) == south
+
+
 def test_the_boarding_stop_is_the_nearest_wmata_stop_the_route_serves() -> None:
     stops = wmata_bus.parse_stops(doc("bus-stops.json"))
     assert wmata_bus.stop_for(stops, LINCOLN_STOP, "B10").stop_id == "1001195"
@@ -424,7 +433,7 @@ def test_train_where_from_the_steps_points(schedule) -> None:
     )
     out = transit_live.vehicle_out("train", found)
     assert out["credit"] == "Data: WMATA" and out["source"] == "live"
-    assert out["label"].startswith("Next train: Next Red Line train is between")
+    assert out["label"].startswith("Next Red Line train is between")
 
 
 def test_train_positions_are_kept_20_seconds_and_never_served_stale() -> None:

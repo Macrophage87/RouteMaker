@@ -9,11 +9,15 @@
  * region; it is said politely only when the count of stations or stops away changes (`vehicleSaid`),
  * never at every poll. No answer, no line and no mark. No button or switch.
  */
-import type { NextVehicle, TransitPlan, TransitStep } from "./api.ts";
+import type { NextVehicle, TransitStep } from "./api.ts";
 import type { LonLat } from "./geo.ts";
 
 /** How often the page asks while its rider waits: the server keeps train positions 20 s, bus positions 20 s. */
 export const POLL_MS = 25_000;
+/** The longest the page asks for one boarding: the arrived state stays on after the rider boards. */
+export const MAX_WAIT_MS = 20 * 60_000;
+/** Missed answers (a budget refusal, a failed read) that keep the last answer shown rather than blink out. */
+export const MISSES_KEPT = 2;
 /** The systems WMATA says where the vehicles are for. */
 export const LIVE_SYSTEMS = ["Metro", "Metrobus"] as const;
 
@@ -23,17 +27,6 @@ export interface NextVehicleAsk {
   line: string;
   from: LonLat;
   to: LonLat;
-}
-
-/** The boarding a rider waits at: the first transit step after `after` (the ridden line), if WMATA's. */
-export function boardingAsk(plan: Pick<TransitPlan, "steps">, after: number): NextVehicleAsk | null {
-  const step = plan.steps.find((s, i) => i > after && (s.mode === "metro" || s.mode === "bus" || isTransitMode(s)));
-  if (!step) return null;
-  return askOf(step);
-}
-
-function isTransitMode(step: Pick<TransitStep, "mode">): boolean {
-  return step.mode === "rail" || step.mode === "light-rail" || step.mode === "subway";
 }
 
 /** One step's question, or null where it is not a Metro or Metrobus ride with its stops drawn. */
@@ -91,6 +84,15 @@ export async function requestNextVehicle(
 /** Whether to keep asking: a WMATA boarding, the rider waiting at it, and the page in view. */
 export function shouldPoll(state: { ask: NextVehicleAsk | null; waiting: boolean; hidden: boolean }): boolean {
   return state.ask !== null && state.waiting && !state.hidden;
+}
+
+/**
+ * Whether the rider has most likely boarded: the vehicle that was at the boarding (0 away) has gone and
+ * the next one is further out. The arrived state cannot say so (it stops taking fixes), so asking stops
+ * here, or at `MAX_WAIT_MS`, whichever comes first; the departure timer stays for a rider who missed it.
+ */
+export function boarded(before: NextVehicle | null, now: NextVehicle | null): boolean {
+  return !!before && !!now && before.away === 0 && (now.away ?? 0) > 0;
 }
 
 /** The line shown: the words, then the credit as the Metro live lines carry it. */

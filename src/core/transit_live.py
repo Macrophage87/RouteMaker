@@ -22,6 +22,7 @@ is the fallback, and it says "scheduled" as before.
 
 from __future__ import annotations
 
+import math
 import time
 from dataclasses import replace
 
@@ -52,6 +53,75 @@ def _outage_stations(option: transit.Option, live: wmata_live.Snapshot) -> list[
             if station is not None and live.elevators_out(station) and station.name not in out:
                 out.append(station.name)
     return out
+
+
+# A closed station this near a Metro leg's drawn line is on it: the train passes it.
+CLOSED_ON_LINE_M = 120.0
+
+
+def _near_line(point, coordinates) -> bool:
+    """Whether `point` ([lon, lat]) is within `CLOSED_ON_LINE_M` of the drawn line."""
+    lat0 = math.radians(point[1])
+    kx, ky = 111_320.0 * math.cos(lat0), 110_540.0
+
+    def xy(p):
+        return ((p[0] - point[0]) * kx, (p[1] - point[1]) * ky)
+
+    pts = [xy(p) for p in coordinates]
+    if len(pts) == 1:
+        return math.hypot(*pts[0]) <= CLOSED_ON_LINE_M
+    for (ax, ay), (bx, by) in zip(pts, pts[1:], strict=False):
+        dx, dy = bx - ax, by - ay
+        length = dx * dx + dy * dy
+        t = 0.0 if length == 0 else max(0.0, min(1.0, -(ax * dx + ay * dy) / length))
+        if math.hypot(ax + t * dx, ay + t * dy) <= CLOSED_ON_LINE_M:
+            return True
+    return False
+
+
+def closed_on(option: transit.Option, live: wmata_live.Snapshot) -> list[str]:
+    """The closed stations (WMATA's incidents, `Snapshot.closed`) a trip's Metro legs board at,
+    leave at or pass through with the rider's own bike, in trip order."""
+    closed = live.closed()
+    if not closed:
+        return []
+    out: list[str] = []
+    for leg in option.legs:
+        if not leg.bike or not leg.transit or leg.system != METRO or not leg.coordinates:
+            continue
+        for code in closed:
+            station = live.stations.get(code)
+            if station is None or station.name in out:
+                continue
+            if _near_line((station.lon, station.lat), leg.coordinates):
+                out.append(station.name)
+    return out
+
+
+def skip_closed(plan: transit.Plan, live: wmata_live.Snapshot | None) -> transit.Plan:
+    """Own Bike + 🚆🚌 without the trips that take the bike through a station WMATA says is
+    closed. The owner, 2026-10-18: "typically the shuttles don't allow bikes, so own bike is
+    affected" and "There is the option to ride through the closure as well": the direct ride is
+    always an option, so a plan is never left empty. Bikeshare + 🚶🚆🚌 keeps its trips (a rider
+    without a bike can take the shuttle); the step's WMATA alert says so."""
+    if live is None or plan.mode != presets.BIKE_TRANSIT or not plan.options:
+        return plan
+    kept = [o for o in plan.options if not closed_on(o, live)]
+    if len(kept) == len(plan.options) or not kept:
+        return plan
+    chosen = plan.options[plan.chosen].key
+    index = next((i for i, o in enumerate(kept) if o.key == chosen), 0)
+    names = list(dict.fromkeys(n for o in plan.options for n in closed_on(o, live)))
+    one = len(names) == 1
+    note = (
+        f"{_and(names)} {'is' if one else 'are'} closed (WMATA): trips taking a bike through"
+        f" {'it' if one else 'them'} are left out."
+    )
+    return replace(plan, options=kept, chosen=index, notes=[*plan.notes, note])
+
+
+def _and(names: list[str]) -> str:
+    return names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
 
 
 def rank(plan: transit.Plan, live: wmata_live.Snapshot | None) -> transit.Plan:
@@ -295,7 +365,9 @@ def vehicle_out(kind: str, found: dict | None) -> dict | None:
     return {
         "kind": kind,
         "text": found["text"],
-        "label": f"Next {noun}: {found['text'].rstrip('.')} ({wmata_live.CREDIT}, live)",
+        # A train's words already say "Next Red Line train ..."; a bus's start "Bus 52 is ...".
+        "label": f"{'Next bus: ' if noun == 'bus' else ''}{found['text'].rstrip('.')}"
+        f" ({wmata_live.CREDIT}, live)",
         "point": found["point"],
         "away": found["away"],
         "credit": wmata_live.CREDIT,

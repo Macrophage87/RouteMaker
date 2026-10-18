@@ -83,6 +83,10 @@ post() { # message
 	return 1
 }
 
+# A failure's repeat-check id: its words without their numbers, so "running for 610s" and "12
+# GiB free" are the same failure at the next check, not a new one to post.
+same_id() { printf '%s' "$1" | sed 's/[0-9][0-9.]*/N/g' | sha256sum | cut -c1-16; }
+
 key_ok() { [[ $1 =~ ^[a-z0-9-]+$ ]] || die "a key is lower-case letters, digits and dashes ('$1')"; }
 
 cmd_send() { # key id message
@@ -120,17 +124,18 @@ failing() { # key id message
 cmd_watch() {
 	local out rc fails
 	# A deploy stops the api on purpose: no alert for that (the agent reports its own result).
+	# The lock is held for the whole check, so a deploy cannot start under it (its pass waits
+	# for the next timer tick).
 	if [ -f "$cd_dir/lock" ]; then
 		exec 9<"$cd_dir/lock"
 		flock -n 9 || { echo "alert: a deploy pass is running; skipped"; return 0; }
-		exec 9<&-
 	fi
 	out=$("${RM_ALERT_SMOKE:-$RM_SRC/scripts/beta/smoke-test.sh}" --local 2>&1 </dev/null); rc=$?
 	if [ "$rc" = 0 ]; then
 		cmd_clear site "working again: the local smoke tests pass"
 	else
 		fails=$(printf '%s\n' "$out" | grep -E '^(FAIL|smoke-test:)' | head -n 8)
-		failing site "$(printf '%s' "$fails" | sha256sum | cut -c1-16)" \
+		failing site "$(same_id "$fails")" \
 			"the local smoke tests fail:"$'\n'"${fails:-$(printf '%s\n' "$out" | tail -n 4)}"
 	fi
 	out=$("${RM_ALERT_COMPOSE:-$RM_SRC/scripts/beta/beta-compose.sh}" exec -T worker ./manage.py check_operations 2>&1 </dev/null); rc=$?
@@ -138,7 +143,7 @@ cmd_watch() {
 		cmd_clear operations "check_operations is clear again"
 	else
 		out=$(printf '%s\n' "$out" | grep -v '^[[:space:]]*$' | head -n 12)
-		failing operations "$(printf '%s' "$out" | sha256sum | cut -c1-16)" "check_operations reports:"$'\n'"$out"
+		failing operations "$(same_id "$out")" "check_operations reports:"$'\n'"$out"
 	fi
 	return 0
 }

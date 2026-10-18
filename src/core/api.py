@@ -3327,7 +3327,7 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
     # WMATA's live reading (core.wmata_live), if any: an elevator out on the way costs the trip
     # a little in the ranking, and the block says the live values (core.transit_live).
     live = wmata_live.client.snapshot()
-    found = transit_live.rank(found, live)
+    found = transit_live.rank(transit_live.skip_closed(found, live), live)
     found = transit.choose(found, body.transit_option)
     # The chosen trip's Metrobus steps' next buses (core.wmata_bus, v0.9.0), asked now, beside
     # the routing, so the answer waits for them little if at all.
@@ -3633,20 +3633,38 @@ def transit_closures(request, params: Query[ClosuresIn], response: HttpResponse)
             "Transit times are not available on this server right now.", "transit_unavailable", 503
         )
     moment = transit.moment_of(when)
-    response["Cache-Control"] = "public, max-age=300"
-    return {
-        "service_day": moment.service_day.isoformat(),
-        "stations": [
+    stations = [
+        {
+            "name": c.stop.name,
+            "system": c.system.name,
+            "lon": c.stop.point[0],
+            "lat": c.stop.point[1],
+            "reason": c.reason,
+        }
+        for c in transit.closed_stations(schedule, moment)
+    ]
+    # Asked for now (no `at`): the Metro stations WMATA's incidents say are closed (the owner,
+    # 2026-10-18), struck through on the map as a timetable closure is. Short-lived, so cached
+    # for a minute, not five.
+    live = wmata_live.client.snapshot() if params.at is None else None
+    named = {s["name"] for s in stations}
+    seen: set[str] = set()
+    for code in live.closed() if live is not None else {}:
+        station = live.stations.get(code)
+        if station is None or station.name in named or station.name in seen:
+            continue
+        seen.add(station.name)
+        stations.append(
             {
-                "name": c.stop.name,
-                "system": c.system.name,
-                "lon": c.stop.point[0],
-                "lat": c.stop.point[1],
-                "reason": c.reason,
+                "name": station.name,
+                "system": transit_live.METRO,
+                "lon": station.lon,
+                "lat": station.lat,
+                "reason": "WMATA service alert",
             }
-            for c in transit.closed_stations(schedule, moment)
-        ],
-    }
+        )
+    response["Cache-Control"] = f"public, max-age={60 if live is not None else 300}"
+    return {"service_day": moment.service_day.isoformat(), "stations": stations}
 
 
 # --- A station's times, for its card (the owner, 2026-10-12) -------------------------------

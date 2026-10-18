@@ -213,3 +213,16 @@ def test_a_long_message_is_cut_to_what_discord_takes(box: Box) -> None:
     box.hook()
     box.run("note", "x" * 5000)
     assert len(box.posts()[0]) <= 2000
+
+
+def test_a_report_whose_numbers_change_is_still_the_same_failure(box: Box) -> None:
+    """check_operations says "running for 610s", then "620s": one failure, posted once."""
+    box.hook()
+    for seconds in (600, 610, 620, 630):
+        (box.tmp / "ops-fails").write_text(
+            f"job 12 has been running for {seconds}s, past its budget\n7.5 GiB free\n"
+        )
+        box.run("watch")
+    posts = box.posts()
+    assert len(posts) == 1
+    assert "running for 610s" in posts[0]
