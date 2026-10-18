@@ -131,6 +131,8 @@ test("a route everyone shares stays fixed on the ride: off route, the way back, 
   const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
   // A link shared as a ride; a Mass Ride or Group Ride unless shared as a route; not Ride the rest or a trip.
   assert.match(app, /const opened = sharedOpen\?\.answer === route \? sharedOpen : null;/);
+  // Others are placed along the shared line, not the sharer's re-route off it.
+  assert.match(app, /const rideGroupRoute = onShared \? onShared\.answer : riding && rideView \? rideView\.route : shown;/);
   // Its sharer is not held to it (the owner, 2026-10-18: "Maybe make the sharer able to reroute").
   assert.match(app, /const fixed = !rest && !leg\.trip && \(opened \? opened\.ride && !opened\.own : leg\.preset === "mass-ride" \|\| leg\.preset === "group-ride"\);/);
   assert.match(app, /fixed=\{rideStart\.fixed\}/);

@@ -3823,8 +3823,9 @@ export function App() {
   // link shared as a ride (Share ride), any ride type, while its route is the one shown or ridden: as a Group Ride
   // where it is not a Mass Ride. One shared as a route has none.
   const rideGroupPoints = riding && rideStart ? rideStart.points : points;
-  const rideGroupRoute = riding && rideView ? rideView.route : shown;
   const onShared = sharedOpen !== null && (riding ? rideStart?.route : shown) === sharedOpen.answer ? sharedOpen : null;
+  // The shared line itself, not a re-route its sharer took off it: everyone is placed along the one route.
+  const rideGroupRoute = onShared ? onShared.answer : riding && rideView ? rideView.route : shown;
   const rideGroupType: RideLinkType | null =
     onShared && !onShared.ride ? null : isRideLink(preset, rideGroupPoints) ? preset : onShared && rideGroupPoints.length >= 2 ? "group-ride" : null;
   const rideGroupLine = (goMode || riding) && rideGroupType && rideGroupRoute ? (rideGroupRoute.geometry.coordinates as LonLat[]) : null;
