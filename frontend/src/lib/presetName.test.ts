@@ -24,7 +24,8 @@ test("everywhere a ride type's name shows, it goes through PresetName or the spo
   // A native picker (VoiceOver, TalkBack) reads an option's text, not its aria-label: plain words there.
   assert.match(read("../app/Sheets.tsx"), /options=\{PRESETS\.filter\(\(p\) => p\.id !== "mass-ride"\)\.map\(\(p\) => \[p\.id, presetSaid\(p\.id\)\] as const\)\}/);
   assert.doesNotMatch(read("../app/Sheets.tsx"), /<option[^>]*aria-label/);
-  assert.match(read("../app/RoutePanel.tsx"), /<PresetName id=\{preset\} \/>/);
+  // Go's ride chip went with the edit-route redesign; Go's chips (Sheets.tsx) and Plan's card name it.
+  assert.match(read("../RideTypePicker.tsx"), /<PresetName id=\{preset\} \/>/);
   assert.match(read("../app/RoutePanel.tsx"), /said=\{`\$\{presetSaid\(preset\)\} trip`\}/);
   assert.match(read("../RideTypePicker.tsx"), /<PresetName id=\{option\.id\} \/>/);
   assert.match(read("../TransitSummary.tsx"), /<PresetName id=\{preset\} suffix=/);

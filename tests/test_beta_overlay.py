@@ -733,7 +733,8 @@ def test_the_access_log_never_records_a_query_string() -> None:
 # The api paths whose query carries a place, logged only at `crit` (privacy-6).
 QUERY_PATHS = (
     "reverse|geocode|segment-info|street-photo|junction-suggestions/at"
-    "|stress-suggestions/ticket|stress-suggestions/mine|transit/station-times|bikeshare/docks"
+    "|stress-suggestions/ticket|stress-suggestions/mine|transit/station-times|transit/next-vehicle"
+    "|bikeshare/docks"
     "|review/items|review/map|review/next|review/road/[0-9]+|review/street-photo"
 )
 
@@ -774,6 +775,7 @@ def test_reverse_and_geocode_log_errors_at_crit_only_with_the_api_proxy_settings
         "/api/stress-suggestions/ticket",
         "/api/stress-suggestions/mine",
         "/api/transit/station-times",
+        "/api/transit/next-vehicle",
         "/api/bikeshare/docks",
         # Review (an instance admin's): a way, an area's name, a point on a road
         "/api/review/items",
@@ -891,7 +893,7 @@ def test_the_body_size_caps_agree_at_every_layer() -> None:
     from config import settings as config
     from core import accounts, shared_routes
 
-    pattern = "^/api/(shared-routes|me)(/|$)"
+    pattern = "^/api/(shared-routes|me|keyed)(/|$)"
     big = dict(locations(stage("full")))[f"~ {pattern}"]
     assert "client_max_body_size 5m;" in big
     assert re.search(r"^\s*client_max_body_size 1m;", stage("full"), re.M)
@@ -906,7 +908,13 @@ def test_the_body_size_caps_agree_at_every_layer() -> None:
     five_mib = 5 * 1024 * 1024
     assert config.DATA_UPLOAD_MAX_MEMORY_SIZE == five_mib
     assert accounts.ROUTE_MAX_BYTES <= five_mib and shared_routes.MAX_BYTES <= five_mib
-    for path in ("/api/shared-routes", "/api/shared-routes/ab", "/api/me/routes", "/api/me"):
+    for path in (
+        "/api/shared-routes",
+        "/api/shared-routes/ab",
+        "/api/me/routes",
+        "/api/me",
+        "/api/keyed/routes",
+    ):
         assert re.match(pattern, path), path
     assert not re.match(pattern, "/api/meta") and not re.match(pattern, "/api/route")
 

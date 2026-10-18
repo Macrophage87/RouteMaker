@@ -36,7 +36,7 @@ test("each Remove button says which point it removes", () => {
 
 test("App shows the list from pointRows, with its removal and focus wiring", () => {
   const app = appSource();
-  assert.match(app, /<PointsList\s+rows=\{pointRows\(points, namer, loopVias, VIA_MARKS\.isVia\)\}\s+onRemove=\{removeAt\}/);
+  assert.match(app, /<PointsList\s+rows=\{pointRows\(points, names, loopVias, VIA_MARKS\.isVia\)\}\s+onRemove=\{removeAt\}/);
   assert.match(app, /removeRefs\.current\[index\] = button;/);
 });
 
@@ -61,4 +61,32 @@ test("each Remove button removes its own point, and hands its own row's button f
     assert.deepEqual(refs.at(-1), [index, stand_in]);
   });
   assert.deepEqual(removed, [0, 1, 2]);
+});
+
+test("the start's and the end's place is its own Change button, its shown words in its name; a stop's is plain text", () => {
+  // Edit-route redesign (Stephen 2026-10-18): the place drawn as a box is what to press, not a Change link beside it.
+  const changed: number[] = [];
+  const html = renderToStaticMarkup(
+    createElement(PointsList, { rows: ROWS, onRemove: () => {}, removeRef: () => {}, onChange: (i: number) => changed.push(i), changeable: (i: number) => i !== 1 }),
+  );
+  const buttons = [...html.matchAll(/<button type="button" class="point-change" aria-label="([^"]*)">/g)].map((m) => m[1]);
+  assert.deepEqual(buttons, ["Change Start: Lincoln Memorial", "Change End: 38.8978, -77.0074"]);
+  assert.doesNotMatch(html, />Change</, "no separate Change link");
+  // The stop's place is not a button.
+  assert.match(html, /<li><span class="point-name">Stop 1<\/span><span class="coords">38\.9000, -77\.0200<\/span><button/);
+});
+
+test("the point being changed shows its search box in its own row, in place of its place and Remove", () => {
+  const html = renderToStaticMarkup(
+    createElement(PointsList, {
+      rows: ROWS,
+      onRemove: () => {},
+      removeRef: () => {},
+      onChange: () => {},
+      changeable: () => true,
+      editor: { index: 2, node: createElement("div", { className: "box" }, "search") },
+    }),
+  );
+  assert.match(html, /<li class="point-editing"><span class="point-name">End<\/span><div class="box">search<\/div><\/li><\/ol>$/);
+  assert.deepEqual([...html.matchAll(/aria-label="(Remove [^"]*)"/g)].map((m) => m[1]), ["Remove Start", "Remove Stop 1"]);
 });

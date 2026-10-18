@@ -190,9 +190,11 @@ def body_problem(body, today: date | None = None) -> tuple[str, str | None] | No
     problem = accounts.inputs_problem(body.get("inputs", {}))
     if problem:
         return problem, "inputs"
+    # An opened file keeps its answer too (v0.9.0, "share the exact route"): the route shown for it,
+    # followed by its ride type's rules or exactly (`follows_exactly`), so the link opens that line.
     answer = body.get("answer")
-    if answer is not None and (source != "plan" or not isinstance(answer, dict)):
-        return "Only a planned route keeps its answer.", "answer"
+    if answer is not None and not isinstance(answer, dict):
+        return "Send the route's answer as an object.", "answer"
     gpx = body.get("gpx", "") or ""
     if not isinstance(gpx, str) or (gpx and source != "gpx"):
         return "Only an opened GPX file keeps its text.", "gpx"

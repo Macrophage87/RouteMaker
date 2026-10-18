@@ -266,6 +266,8 @@ export interface DescriptionEntry {
     onto: string | null;
     control: "signal" | "stop" | "cross_stop" | "all_stop" | "none" | null;
     severity: "orange" | "red" | null;
+    /** A fork along one way (describe.fork_movement): "Bear right to stay on ...". */
+    stay?: boolean;
   } | null;
   severity?: "orange" | "red" | "avoid" | null;
   via?: number | null;
@@ -472,7 +474,10 @@ export interface TransitStep {
   /** Where a transit step's times are from: "scheduled" now; "live" from v0.7. Null off transit. */
   source?: TimeSource | null;
   with_bike: boolean;
-  /** A Metro step's next trains its way now, from WMATA: "Live: Red Line toward Shady Grove in 3 min, 11 min." */
+  /**
+   * A Metro step's next trains its way now, from WMATA: "Live: Red Line toward Shady Grove in 3 min, 11 min."; a
+   * Metrobus step's next buses (v0.9.0): "Live: bus 52 in 4 min, 13 min."
+   */
   live?: { text: string; minutes: number[]; source: "live" } | null;
   /** This step is the route's own line (drawn as the route); its coordinates are empty. */
   route_line: boolean;
@@ -543,6 +548,15 @@ export interface ClosedStation {
   lat: number;
   /** "no MARC weekend service". */
   reason: string;
+}
+
+/** An open Metro station a WMATA incident names, or with an elevator out (GET /api/transit/closures). */
+export interface StationAlert {
+  name: string;
+  lon: number;
+  lat: number;
+  alert: boolean;
+  elevator_out: boolean;
 }
 
 /** One line's times at a station now (GET /api/transit/station-times; core.transit.station_times). */
@@ -618,6 +632,24 @@ export interface TransitPlan {
    * avoidance), rail incidents on the lines used, the credit and when it was read. Null with none.
    */
   live?: TransitLive | null;
+}
+
+/**
+ * Where the next train or bus is for a rider waiting to board (GET /api/transit/next-vehicle, v0.9.0;
+ * lib/nextVehicle.ts), credited "Data: WMATA".
+ */
+export interface NextVehicle {
+  kind: "train" | "bus";
+  /** "Next Red Line train is at Dupont Circle, 2 stations away."; "Bus 52 is 0.8 mi away (1.3 km), 3 stops back." */
+  text: string;
+  /** The map mark's name. */
+  label: string;
+  point: LonLat;
+  /** Stations (or stops) before the rider's; null where not known. Said again only when it changes. */
+  away: number | null;
+  credit: string;
+  source: "live";
+  as_of: string;
 }
 
 export interface TransitLive {
@@ -817,6 +849,11 @@ export interface RouteResponse {
   variant: "standard" | "no-trail" | "ebike" | "weekend" | "offroad" | "mtb";
   /** Trip points the planner moved: one inside the National Zoo goes to its bike racks. */
   moved_points?: { index: number; asked: LonLat; routed: LonLat; reason: "zoo_racks"; note: string }[];
+  /**
+   * The walks at the route's ends where the ride stops short of the point asked (core.api.WalkInOut; the owner,
+   * 2026-10-17: a stop at a memorial a bike is walked through). Null or absent where the ride reaches both.
+   */
+  walk_in?: { start: BikeshareWalk | null; end: BikeshareWalk | null } | null;
   geometry: { type: "LineString"; coordinates: LonLat[] };
   distance_m: number;
   duration_s: number;
@@ -1203,6 +1240,8 @@ export interface RouteRequestOptions {
   followExact?: boolean;
   /** v0.8.2, Ride's Road closed: the stretches the rider found closed on this ride, left out of the plan. */
   blocked?: readonly (readonly LonLat[])[];
+  /** A ride's re-route: the rider's heading at the first point (degrees), so a U-turn is taken only where it saves half a mile. */
+  heading?: number | null;
 }
 
 /** Most points of a line to follow (core/follow.py MAX_POINTS). */
@@ -1237,6 +1276,8 @@ export function routeRequestBody(points: readonly LonLat[], preset: PresetId, op
       : {}),
     // The roads the rider marked closed on this ride (Ride's Road closed): sent with its re-plans only.
     ...(options.blocked?.length ? { blocked_lines: options.blocked.map((line) => line.map((p) => [p[0], p[1]])) } : {}),
+    // The way the rider is going, for a ride's re-route: the API weighs a U-turn against the way ahead.
+    ...(options.heading != null && Number.isFinite(options.heading) ? { heading: ((options.heading % 360) + 360) % 360 } : {}),
   });
 }
 

@@ -17,8 +17,8 @@ heaviest compares two whole segment tables:
   outside the repository (`pending_ratings`): shown and counted in the spread, never deciding a
   level and never on a public surface;
 - `narrow_rural`: ways the owner's narrow-rural-road rule read at 25 mph with no posted speed;
-- `sidepath`, `works_closure`, `rematch`: read from the rebuild's reports where they exist
-  (`FILE_QUEUES`); a queue whose report is not there is listed as not wired;
+- `sidepath`, `works_closure`, `rematch`, `dc_no_bike`: read from the rebuild's reports where
+  they exist (`FILE_QUEUES`); a queue whose report is not there is listed as not wired;
 - `painted_lane`: the rebuild's RL-3 report, painted lanes on two-way roads with two or more
   lanes each way, DDOT's or Montgomery's level beside the formula's, and Arlington's from the
   pending file for comparison (`compute_painted_lane`).
@@ -51,7 +51,7 @@ from django.db.models import BooleanField, Count, Exists, ExpressionWrapper, F, 
 from django.utils import timezone
 
 from pipeline.schema import validate_schema_name
-from routemaker import agency_lts
+from routemaker import agency_lts, bike_bans
 from routemaker.stress import NARROW_ROAD_RULE, NARROW_RURAL_ROAD_MPH
 
 from . import audit, road_names, segment_info, stress_changes, stress_edits
@@ -983,6 +983,16 @@ FILE_QUEUES = (
         lambda r: r.get("outcome") == "failed",
         lambda r: f"A {r.get('kind') or ''} override did not re-match: {r.get('reason') or ''}",
     ),
+    # The ways in the District a bicycle is kept off (`routemaker.bike_bans`; the owner,
+    # 2026-10-17: "Add to the review map places you think that bikes are not allowed in DC").
+    FileQueue(
+        Queue.DC_NO_BIKE,
+        bike_bans.REPORT_NAME,
+        ("way_id",),
+        lambda r: (r.get("status") or "closed") == "closed",
+        lambda r: r.get("why") or r.get("reason") or "Closed to bicycles",
+        closed=True,
+    ),
 )
 
 
@@ -1190,7 +1200,7 @@ def length_text(metres: float) -> str:
 
 
 def is_closure(item: ReviewItem) -> bool:
-    return item.queue == Queue.WORKS_CLOSURE or (
+    return item.queue in (Queue.WORKS_CLOSURE, Queue.DC_NO_BIKE) or (
         item.queue == Queue.REBUILD and item.new_closed and not item.old_closed
     )
 

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { vehicleBadge, type VehicleMark } from "./lib/nextVehicle.ts";
 import { createPortal } from "react-dom";
 import * as maplibregl from "maplibre-gl";
 import type { GeoJSONSource, Map as MapLibreMap, Marker, Popup } from "maplibre-gl";
@@ -66,7 +67,7 @@ import { dragPreview, legOfSegment, nearestOnPath } from "./lib/lineEdit.ts";
 import { LineGesture } from "./lib/lineGesture.ts";
 import { PENN_COLOUR, RAIL_STATIONS, stationById } from "./lib/railData.ts";
 import { addRailStations, ROUTE_BOTTOM_LAYER, setRailVisibility } from "./lib/railLayer.ts";
-import type { RailVisibility, Station, StationRole } from "./lib/railStations.ts";
+import type { RailVisibility, Station, StationBadges, StationRole } from "./lib/railStations.ts";
 import { attachRailInteraction, type StationFound } from "./railInteraction.ts";
 import { stressProbe } from "./lib/stressProtocol.ts";
 import federalLandUrl from "./federal-data/federal-land.json?url";
@@ -95,6 +96,7 @@ import {
   bikeshareOf,
   dockMarkers,
   walkFeatures,
+  routeWalkFeatures,
 } from "./lib/bikeshare.ts";
 import {
   RIDE_COLOUR,
@@ -221,6 +223,11 @@ interface Props {
    * re-framed when it changes (a re-plan).
    */
   rider?: { point: LonLat; headingDeg: number | null } | null;
+  /**
+   * Where the next train or bus is while the rider waits at a Metro or Metrobus boarding (v0.9.0,
+   * lib/nextVehicle.ts): a labelled mark, its kind's badge on it, unlike the rider's arrow. Null: none.
+   */
+  nextVehicle?: VehicleMark | null;
   /** Go outside a ride (the owner, 2026-10-17): the location found, drawn as the ride's still dot; no camera work, and the route is framed as ever. */
   youDot?: LonLat | null;
   follow?: boolean;
@@ -232,6 +239,8 @@ interface Props {
   rail: RailVisibility;
   /** Why a station is closed all day with the toggles as they are, or null (railClosures.ts). */
   railClosedReason?: (station: Station) => string | null;
+  /** WMATA's badges on a station: an alert names it, an elevator there is out (railClosures.ts). */
+  railBadges?: (station: Station) => StationBadges | null;
   /**
    * The map is coloured by carrying capacity, riders per minute, not by traffic stress
    * (OWNER-DECISIONS 325-327; massStyle.js): a Mass Ride on tiles that carry a capacity (App's
@@ -320,12 +329,28 @@ const ROUTE_STRESS_SOURCE = ROUTE_STRESS_SOURCE_ID;
 /** The handle and the dashed preview of a drag of the line. */
 const EDIT_SOURCE = "route-edit";
 const ACCURACY_SOURCE = "location-accuracy";
+/** Where a ride holds the rider while following track-up: two thirds of the way down the map the rider can see,
+ *  between the cue card and the bottom panel or the screen's foot (v0.9.0, the owner, 2026-10-17). */
+export const RIDER_AT = 2 / 3;
+const NO_PADDING = { top: 0, bottom: 0, left: 0, right: 0 };
+const reducedMotion = () => typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/** The follow camera's offset from the map's middle that puts the rider RIDER_AT down the open band. */
+function riderOffset(container: HTMLElement): number {
+  const box = container.getBoundingClientRect();
+  const top = (document.querySelector(".ride .cue-card")?.getBoundingClientRect().bottom ?? box.top) - box.top;
+  const bottom = (document.querySelector(".ride .ride-controls")?.getBoundingClientRect().top ?? box.bottom) - box.top;
+  return Math.round(top + Math.max(0, bottom - top) * RIDER_AT - box.height / 2);
+}
 /** The closures in force at the ride (v0.7.0, lib/closureMap.ts). */
 const CLOSURE_SOURCE = "closures";
 // Bikeshare's walk legs (lib/bikeshare.ts): dotted, with the operator's source citation as the
 // source's attribution, so the attribution control shows it exactly while a bikeshare plan's
 // layer is visible and never otherwise (OWNER-DECISIONS 301).
 const WALK_SOURCE = "bikeshare-walk";
+// The walks at a route's ends where the ride stops short (`walk_in`): drawn as Bikeshare's walks are, from a
+// source of their own, so Bikeshare's credit shows only with a Bikeshare plan.
+const WALK_IN_SOURCE = "walk-in";
 // A transit ride type's trip past its first ride (lib/transit.ts): Metro and bus dashed, walks
 // dotted, the far end's ride solid and thin, with the schedule's source citation as the source's
 // attribution, shown while the trip is (OWNER-DECISIONS 301).
@@ -982,6 +1007,10 @@ export function MapView(props: Props) {
 
     // A pan or zoom that got under way is not a long press.
     map.on("movestart", () => longPress.cancel());
+    // The map's bearing as a CSS variable, for the ride's compass (styles.css .ride-compass): no React render per frame.
+    const bearingVar = () => document.documentElement.style.setProperty("--map-bearing", `${map.getBearing()}`);
+    bearingVar();
+    map.on("rotate", bearingVar);
 
     map.on("load", () => {
       loaded.current = true;
@@ -1119,6 +1148,21 @@ export function MapView(props: Props) {
         layout: { "line-join": "round", "line-cap": "round", visibility: "none" },
         paint: { "line-color": WALK_COLOUR, "line-width": WALK_LINE_WIDTH, "line-dasharray": WALK_DASH },
       });
+      map.addSource(WALK_IN_SOURCE, { type: "geojson", data: routeWalkFeatures(null) });
+      map.addLayer({
+        id: "walk-in-casing",
+        type: "line",
+        source: WALK_IN_SOURCE,
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: { "line-color": WALK_CASING, "line-width": WALK_CASING_WIDTH, "line-opacity": 0.95 },
+      });
+      map.addLayer({
+        id: "walk-in",
+        type: "line",
+        source: WALK_IN_SOURCE,
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: { "line-color": WALK_COLOUR, "line-width": WALK_LINE_WIDTH, "line-dasharray": WALK_DASH },
+      });
       syncBikeshare(map, callbacks.current.route);
       // The attribution is the plan's own credits (WMATA's, MDOT MTA's, or both), set by syncTransit.
       map.addSource(TRANSIT_SOURCE, { type: "geojson", data: transitFeatures(null), attribution: "" });
@@ -1181,6 +1225,7 @@ export function MapView(props: Props) {
       if (RAIL_STATIONS.length > 0) {
         addRailStations(map, RAIL_STATIONS, callbacks.current.rail, PENN_COLOUR, iconPixelRatio(), (station) =>
           Boolean(callbacks.current.railClosedReason?.(station)),
+          (station) => callbacks.current.railBadges?.(station) ?? null,
         );
       }
       rail = attachRailInteraction(map, {
@@ -1819,6 +1864,41 @@ export function MapView(props: Props) {
     }
   }, [props.route, props.stale]);
 
+  // Where the next train or bus is (v0.9.0): a mark named in words ("Next bus: Bus 52 is 0.8 mi away (1.3 km), 3
+  // stops back (Data: WMATA, live)"), not a button (it does nothing when pressed); moved in place at each answer.
+  const vehicleMarker = useRef<Marker | null>(null);
+  useEffect(() => {
+    const map = mapRef.current;
+    const mark = props.nextVehicle ?? null;
+    if (!map || !mark) {
+      vehicleMarker.current?.remove();
+      vehicleMarker.current = null;
+      return;
+    }
+    if (!vehicleMarker.current) {
+      const element = document.createElement("div");
+      element.setAttribute("role", "img");
+      const badge = document.createElement("span");
+      badge.setAttribute("aria-hidden", "true");
+      element.appendChild(badge);
+      element.addEventListener("click", (event) => event.stopPropagation());
+      vehicleMarker.current = new maplibregl.Marker({ element, anchor: "center" }).setLngLat(mark.point).addTo(map);
+    } else {
+      vehicleMarker.current.setLngLat(mark.point);
+    }
+    const element = vehicleMarker.current.getElement();
+    element.className = `next-vehicle-marker next-vehicle-${mark.kind}`;
+    element.setAttribute("aria-label", mark.label);
+    const badge = element.firstElementChild;
+    if (badge) badge.textContent = vehicleBadge(mark.kind);
+  }, [props.nextVehicle]);
+  useEffect(
+    () => () => {
+      vehicleMarker.current?.remove();
+    },
+    [],
+  );
+
   // The lettered places (the owner, 2026-10-11 21:04 UTC): each a real button in a pin, its letter on it and its
   // name the letter, the place and how far; a press picks it as the list's row would.
   const letteredMarkers = useRef<Marker[]>([]);
@@ -1949,7 +2029,7 @@ export function MapView(props: Props) {
       riderMarker.current?.remove();
       riderMarker.current = null;
       // The ride over: a map turned to the rider's heading (track-up, the default) is north-up again.
-      if (following.current && map.getBearing() !== 0) map.easeTo({ bearing: 0, duration: 0 });
+      if (following.current && map.getBearing() !== 0) map.easeTo({ bearing: 0, padding: NO_PADDING, duration: 0 });
       following.current = false;
       return;
     }
@@ -1968,6 +2048,8 @@ export function MapView(props: Props) {
     riderMarker.current.getElement().classList.toggle("rider-marker-still", rider.headingDeg === null);
     if (!props.follow) {
       following.current = false;
+      // North up chosen (the compass or the settings' switch) while the map is not following: it turns north at once.
+      if (!props.headingUp && map.getBearing() !== 0) map.easeTo({ bearing: 0, padding: NO_PADDING, duration: reducedMotion() ? 0 : 300 });
       return;
     }
     // Track-up: the rider's heading; with none yet, north-up, and with none for now (stopped at a light),
@@ -1977,8 +2059,12 @@ export function MapView(props: Props) {
     const zoom = following.current ? map.getZoom() : Math.max(map.getZoom(), 16);
     following.current = true;
     // A moving map once a second is too much for some: with reduced motion asked for, it jumps.
-    const still = typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    map.easeTo({ center: rider.point, bearing, zoom, duration: still ? 0 : 400 });
+    const still = reducedMotion();
+    // Track-up, the rider sits about two thirds of the way down the map, so more of the road ahead shows (the owner,
+    // 2026-10-17: "You care more about what's ahead of you than behind"); north-up, ahead is any way, so centred.
+    // Padding left by the planner's framing (a junction or the chart's scrub) is cleared, so the offset is from the middle.
+    const ahead = props.headingUp ? riderOffset(map.getContainer()) : 0;
+    map.easeTo({ center: rider.point, bearing, zoom, offset: [0, ahead], padding: NO_PADDING, duration: still ? 0 : 400 });
   }, [props.rider, props.follow, props.headingUp]);
   useEffect(() => () => void riderMarker.current?.remove(), []);
   // Go's "you" dot: a marker only (aria-hidden: Go's start line says where the rider is).
@@ -2020,8 +2106,14 @@ export function MapView(props: Props) {
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loaded.current) return;
-    setRailVisibility(map, RAIL_STATIONS, props.rail, (station) => Boolean(props.railClosedReason?.(station)));
-  }, [props.rail.metro, props.rail.marc, props.railClosedReason]);
+    setRailVisibility(
+      map,
+      RAIL_STATIONS,
+      props.rail,
+      (station) => Boolean(props.railClosedReason?.(station)),
+      (station) => props.railBadges?.(station) ?? null,
+    );
+  }, [props.rail.metro, props.rail.marc, props.railClosedReason, props.railBadges]);
 
   // The federal-land shading: on for a Mass Ride, off for any other ride type.
   useEffect(() => {
@@ -2221,6 +2313,8 @@ function syncBikeshare(map: MapLibreMap, route: RouteResponse | null): void {
   for (const id of ["bikeshare-walk-casing", "bikeshare-walk"]) {
     if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", visibility);
   }
+  const walkIn = map.getSource(WALK_IN_SOURCE) as GeoJSONSource | undefined;
+  walkIn?.setData(plan ? routeWalkFeatures(null) : routeWalkFeatures(route));
 }
 
 /** A transit trip's lines on the map, and the layers' visibility, which is what shows the source citation. */
