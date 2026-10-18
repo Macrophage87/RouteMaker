@@ -324,6 +324,29 @@ class ValidationFailed(RuntimeError):
     """A pre-swap check did not pass, so the swap must not happen."""
 
 
+class _Failures:
+    """Runs a group of checks to the end and raises one ValidationFailed naming
+    every check that failed: a rebuild costs hours, so it should not take one run
+    per failing sentinel to find them all."""
+
+    def __init__(self) -> None:
+        self.messages: list[str] = []
+
+    def check(self, fn, *args, **kwargs):
+        try:
+            return fn(*args, **kwargs)
+        except ValidationFailed as failed:
+            self.messages.append(str(failed))
+            return None
+
+    def raise_if_any(self) -> None:
+        if len(self.messages) == 1:
+            raise ValidationFailed(self.messages[0])
+        if self.messages:
+            numbered = "\n".join(f"  {i}. {m}" for i, m in enumerate(self.messages, 1))
+            raise ValidationFailed(f"{len(self.messages)} checks failed:\n{numbered}")
+
+
 class CommandFailed(RuntimeError):
     """A binary the rebuild shells out to exited non-zero, with what it said.
 
@@ -1150,27 +1173,32 @@ def assert_calm_runs(
         )
     wanted = [(way, LONG_TRAIL_SENTINEL_RUN_M, "path") for way in path_sentinels]
     wanted += [(way, CALM_ROAD_RUN_M, "road") for way in street_sentinels]
+    # Every sentinel and the floors are checked before raising, so one cloud run
+    # names every one that fails rather than the first.
+    problems = []
     for way, minimum, kind in wanted:
         if way not in summary.sentinels:
-            raise ValidationFailed(
+            problems.append(
                 f"the calm-run {kind} sentinel way {way} is not in the segment table; if the "
                 "extract split or replaced it, move the sentinel "
                 "(settings.REBUILD_SENTINEL_CALM_PATH_WAYS or _STREET_WAYS), don't drop it"
             )
-        if summary.sentinels[way] < minimum:
-            raise ValidationFailed(
+        elif summary.sentinels[way] < minimum:
+            problems.append(
                 f"the calm-run {kind} sentinel way {way} came out at a run of "
                 f"{summary.sentinels[way]} m, not {minimum} m or more: the names or the "
                 "geometry were lost, and z12-13 would drop the long paths and calm roads"
             )
     path_floor, street_floor = floors
     if summary.path_rows < path_floor or summary.street_rows < street_floor:
-        raise ValidationFailed(
+        problems.append(
             f"{summary.path_rows} path rows are in a run of {CALM_PATH_RUN_M} m or more and "
             f"{summary.street_rows} road rows in a calm run of {CALM_ROAD_RUN_M} m or more, under "
             f"the floors of {path_floor} and {street_floor} (settings.REBUILD_CALM_RUN_FLOORS): "
             "the ride layer did not come out of the rebuild"
         )
+    if problems:
+        raise ValidationFailed("; and ".join(problems))
 
 
 def assert_long_trails(summary, sentinel_ways: Sequence[int], floors: Sequence[int]) -> None:
@@ -3547,15 +3575,21 @@ def build_handlers(
             mountain_bike_ways,
         )
 
-    def staging_checks() -> None:
+    def staging_checks(failures: _Failures | None = None) -> None:
         """The VALIDATE_SEGMENTS checks that read the staging schema alone, which is
-        why a resumed attempt can run them again."""
-        assert_mass_capacity(
+        why a resumed attempt can run them again. Each runs even when an earlier one
+        failed; the failures are raised together at the end."""
+        own = failures is None
+        if own:
+            failures = _Failures()
+        failures.check(
+            assert_mass_capacity,
             mass_capacity.capacity_summary(context.staging_schema),
             median_range=_setting("REBUILD_MASS_CAPACITY_MEDIAN_RANGE"),
         )
         sentinel_ways = tuple(_setting("REBUILD_SENTINEL_LONG_TRAIL_WAYS"))
-        assert_long_trails(
+        failures.check(
+            assert_long_trails,
             trail_routes.long_trail_summary(
                 context.staging_schema, sentinel_ways, LONG_TRAIL_FLOOR_RUN_M
             ),
@@ -3565,7 +3599,8 @@ def build_handlers(
 
         calm_path_sentinels = tuple(_setting("REBUILD_SENTINEL_CALM_PATH_WAYS"))
         calm_street_sentinels = tuple(_setting("REBUILD_SENTINEL_CALM_STREET_WAYS"))
-        assert_calm_runs(
+        failures.check(
+            assert_calm_runs,
             trail_routes.calm_run_summary(
                 context.staging_schema,
                 (*calm_path_sentinels, *calm_street_sentinels),
@@ -3576,6 +3611,8 @@ def build_handlers(
             calm_street_sentinels,
             _setting("REBUILD_CALM_RUN_FLOORS"),
         )
+        if own:
+            failures.raise_if_any()
 
     def validate_segments() -> None:
         """Everything that needs no graph: the segment rows and the in-memory
@@ -3594,30 +3631,36 @@ def build_handlers(
                 except Exception:  # noqa: BLE001 - checkpoints are best effort
                     bookkeeping_failed("recording the new validation numbers")
             return
-        assert_reference_lts4_street(
+        failures = _Failures()
+        failures.check(
+            assert_reference_lts4_street,
             context,
             _setting("REBUILD_SENTINEL_LTS4_STREET"),
             _setting("REBUILD_SENTINEL_LTS4_MIN_SHARE"),
             _setting("REBUILD_SENTINEL_LTS4_NORTH_OF_LAT"),
             _setting("REBUILD_SENTINEL_LTS4_NORTH_MIN_SHARE"),
         )
-        assert_owner_stretches(context, _setting("REBUILD_SENTINEL_STRETCHES"))
-        assert_military_closures(
+        failures.check(assert_owner_stretches, context, _setting("REBUILD_SENTINEL_STRETCHES"))
+        failures.check(
+            assert_military_closures,
             context,
             _setting("REBUILD_SENTINEL_MILITARY_CLOSED_WAYS"),
             _setting("REBUILD_SENTINEL_MILITARY_MIN_CLOSED"),
         )
-        assert_secured_closures(
+        failures.check(
+            assert_secured_closures,
             context,
             _setting("REBUILD_SENTINEL_SECURED_CLOSED_WAYS"),
             _setting("REBUILD_SENTINEL_SECURED_MIN_CLOSED"),
         )
-        assert_works_closures(
+        failures.check(
+            assert_works_closures,
             context,
             _setting("REBUILD_SENTINEL_WORKS_CLOSED_RANGE"),
             _setting("REBUILD_SENTINEL_WORKS_MIN_IN_RANGE"),
         )
-        staging_checks()
+        staging_checks(failures)
+        failures.raise_if_any()
         # Computed here, where the ways are, and held (and checkpointed) for
         # VALIDATE_TILES, which reads the graphs and needs no ways.
         context.closure_probes = closure_probes(context)
