@@ -18,7 +18,7 @@
 import type { LonLat } from "./geo.ts";
 import { offThreshold, pointAt, snap, type RideModel } from "./navigate.ts";
 
-/** The side button's name, for screen readers and as its tooltip. */
+/** The ride top row's button's name, for screen readers and as its tooltip. */
 export const ROAD_CLOSED_NAME = "Road closed ahead";
 /** Its shown words in the ride's top row (the name keeps "ahead"; WCAG 2.5.3, the words start the name). */
 export const ROAD_CLOSED_TEXT = "Road closed";

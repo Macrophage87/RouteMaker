@@ -105,16 +105,19 @@ test("Ride settings in reach: a gear at the end of the side buttons opens them j
   assert.match(top, /\{!walking && !ride\.arrived && \(\s*<button type="button" className="secondary ride-road-closed" onClick=\{roadClosed\} aria-label=\{ROAD_CLOSED_NAME\} title=\{ROAD_CLOSED_NAME\}>/);
   // On the narrowest phones the icon alone, the words kept for its name (visually hidden, not removed).
   assert.match(top, /<span className="ride-top-label">\{ROAD_CLOSED_TEXT\}<\/span>/);
-  assert.match(css, /@media \(max-width: 359px\) \{\s*\.ride-top-label \{\s*position: absolute;/);
-  assert.match(top, /<div ref=\{settingsPanel\} id=\{`\$\{settingsId\}-settings`\} className="ride-mode-settings" role="group" aria-label=\{RIDE_SETTINGS_TITLE\} hidden=\{!settingsOpen\}>/);
+  assert.match(css, /@media \(max-width: 379px\) \{\s*\.ride-top-label \{\s*position: absolute;/);
+  assert.match(top, /ref=\{settingsPanel\}\s+id=\{`\$\{settingsId\}-settings`\}\s+className="ride-mode-settings"\s+role="group"\s+aria-label=\{RIDE_SETTINGS_TITLE\}\s+hidden=\{!settingsOpen\}\s+tabIndex=\{-1\}/);
+  // The gear comes after the panel: opened, the focus goes into it; Escape there closes it, back to the gear.
+  assert.match(ride, /settingsPanel\.current\?\.focus\(\{ preventScroll: true \}\);/);
+  assert.match(top, /if \(event\.key === "Escape"\) \{\s*event\.preventDefault\(\);\s*setSettingsOpen\(false\);\s*settingsButton\.current\?\.focus\(\);/);
   assert.match(top, /<RideSettingsFields prefs=\{prefs\} onChange=\{onPrefs\}/);
   // The gear: the last side button, a disclosure of that panel, named Settings.
   const rail = ride.slice(ride.indexOf('<div className="ride-rail"'), ride.indexOf("{/* The bottom panel"));
-  assert.match(rail, /className="ride-round ride-settings-button"\s+aria-label=\{RIDE_SETTINGS_TEXT\}\s+title=\{RIDE_SETTINGS_TEXT\}\s+aria-expanded=\{settingsOpen\}\s+aria-controls=\{`\$\{settingsId\}-settings`\}/);
+  assert.match(rail, /ref=\{settingsButton\}\s+className="ride-round ride-settings-button"\s+aria-label=\{RIDE_SETTINGS_TEXT\}\s+title=\{RIDE_SETTINGS_TEXT\}\s+aria-expanded=\{settingsOpen\}\s+aria-controls=\{`\$\{settingsId\}-settings`\}/);
   assert.match(rail, /<Icon name="gear" size=\{24\} \/>\s*<\/button>\s*<\/div>\s*<\/div>\s*$/);
   assert.doesNotMatch(rail, /ride-round ride-road-closed/);
   // Opened, it is scrolled into view.
-  assert.match(ride, /if \(settingsOpen\) settingsPanel\.current\?\.scrollIntoView\?\.\(\{ block: "nearest" \}\);/);
+  assert.match(ride, /if \(!settingsOpen\) return;\s*settingsPanel\.current\?\.scrollIntoView\?\.\(\{ block: "nearest" \}\);/);
   // One copy of the settings: the fold at the bottom is gone.
   assert.equal(ride.match(/<RideSettingsFields prefs=\{prefs\}/g)?.length, 1);
   assert.doesNotMatch(ride, /<summary>Ride settings<\/summary>/);

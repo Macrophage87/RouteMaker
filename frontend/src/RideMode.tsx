@@ -696,12 +696,16 @@ export function RideMode({
   // Each re-plan's ticket: "Keep the planned route" or a newer re-plan voids an older one's answer.
   const replanTicket = useRef(0);
   const settingsId = useId();
-  // The ride's settings, opened from the top row's Settings (closed at Start).
+  // The ride's settings, opened from the side buttons' gear (closed at Start).
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsPanel = useRef<HTMLDivElement>(null);
-  // Opened, the panel is brought into view (the row above it is sticky; the card may be scrolled).
+  const settingsButton = useRef<HTMLButtonElement>(null);
+  // Opened, the panel is brought into view (the row above it is sticky; the card may be scrolled) and the focus
+  // goes into it: the gear is the last side button, after the panel, so Tab alone would never reach it.
   useEffect(() => {
-    if (settingsOpen) settingsPanel.current?.scrollIntoView?.({ block: "nearest" });
+    if (!settingsOpen) return;
+    settingsPanel.current?.scrollIntoView?.({ block: "nearest" });
+    settingsPanel.current?.focus({ preventScroll: true });
   }, [settingsOpen]);
   // The 311 button's menu (lib/ride311.ts; the owner's choice 9) and the report it continues into.
   const [reportKind, setReportKind] = useState<ReportKind>("pothole");
@@ -1666,7 +1670,23 @@ export function RideMode({
             </button>
           </div>
         </div>
-        <div ref={settingsPanel} id={`${settingsId}-settings`} className="ride-mode-settings" role="group" aria-label={RIDE_SETTINGS_TITLE} hidden={!settingsOpen}>
+        <div
+          ref={settingsPanel}
+          id={`${settingsId}-settings`}
+          className="ride-mode-settings"
+          role="group"
+          aria-label={RIDE_SETTINGS_TITLE}
+          hidden={!settingsOpen}
+          tabIndex={-1}
+          onKeyDown={(event) => {
+            // Escape closes it, back to the gear.
+            if (event.key === "Escape") {
+              event.preventDefault();
+              setSettingsOpen(false);
+              settingsButton.current?.focus();
+            }
+          }}
+        >
           <RideSettingsFields prefs={prefs} onChange={onPrefs} idBase={settingsId} />
           <p className="hint">{RIDE_SAFETY}</p>
           <label className="toggle ride-toggle">
@@ -1981,6 +2001,7 @@ export function RideMode({
               a gear icon in the rack"); it opens the ride's settings under the top row. */}
           <button
             type="button"
+            ref={settingsButton}
             className="ride-round ride-settings-button"
             aria-label={RIDE_SETTINGS_TEXT}
             title={RIDE_SETTINGS_TEXT}

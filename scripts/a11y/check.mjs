@@ -2839,6 +2839,12 @@ const levelSlider = `${EDITOR} input[type=range]`;
   check("ride: Big text is not a side button", noBigButton, String(noBigButton));
   await p.eval("document.querySelector('.ride .ride-settings-button').click(); true");
   await sleep(200);
+  // The gear (the owner, 2026-10-18): it opens the panel under the top row and the focus goes into it; at 320 px
+  // the top row is Road closed's icon (still named in full) and End ride, on one line.
+  const gear = await p.eval(`(() => { const g = document.querySelector('.ride .ride-settings-button'); const panel = document.querySelector('.ride-mode-settings'); const c = document.querySelector('.ride-top .ride-road-closed'); const e = document.querySelector('.ride-top .ride-end'); const a = c.getBoundingClientRect(); const b = e.getBoundingClientRect();
+    return { expanded: g.getAttribute('aria-expanded'), shown: !panel.hidden, focusIn: panel.contains(document.activeElement), width: innerWidth, name: c.getAttribute('aria-label'), oneLine: Math.abs(a.top - b.top) <= 2, w: Math.round(a.width), h: Math.round(a.height) }; })()`);
+  check("ride: the Settings gear opens the ride's settings with the focus in them; at 320 px Road closed is its icon, named in full, beside End ride",
+    gear.expanded === "true" && gear.shown && gear.focusIn && gear.width <= 379 && gear.name === "Road closed ahead" && gear.oneLine && gear.w >= 44 && gear.h >= 44, JSON.stringify(gear));
   await p.eval("document.querySelector('.ride-mode-settings .big-text-setting input').click(); true");
   await sleep(300);
   const big = await p.eval("({ map: getComputedStyle(document.querySelector('.map')).display, on: document.querySelector('.ride-mode-settings .big-text-setting input').checked, kept: localStorage.getItem('routemaker.ride.bigText') })");
@@ -4970,7 +4976,7 @@ const failed = results.filter((r) => !r.ok);
 // returns early) fails here rather than passing green (the mutation review of the release).
 // The transit blocks (#108) and the Go press checks (#116) were added without raising it; they run since #127.
 // Review mode's own lists (22c2) add six.
-const EXPECTED = 661;
+const EXPECTED = 662;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);
