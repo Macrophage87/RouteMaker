@@ -13,7 +13,7 @@ reconsidered and why.
 
 ## Status
 
-Release 0.8.3. The planner (the map, the ride types, transit and bikeshare
+Release 0.8.4. The planner (the map, the ride types, transit and bikeshare
 trips, saved and shared routes, Discord sign-in) runs as a private beta for
 invited riders; [docs/BETA-RUNBOOK.md](docs/BETA-RUNBOOK.md) is how that server
 is set up and updated. Decisions live in [PLAN.md](PLAN.md): its "Implemented
