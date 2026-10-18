@@ -99,7 +99,7 @@ test("App shows Share beside Copy link only where it is supported, named Share r
   const controls = app.slice(app.indexOf("export function ShareControls"), app.indexOf("function RouteActions("));
   assert.match(
     controls,
-    /\{save\}\s*\{canShare && ready && \(\s*<div className="share-buttons">\s*<button\s*type="button"\s*className="secondary share-route"\s*onClick=\{\(\) => shareRoute\(false\)\}\s*aria-label=\{SHARE_NAME\}\s*aria-describedby=\{`share-route-about\$\{note\}`\}/,
+    /\{save\}\s*\{canShare && ready && \(\s*<div className="share-buttons">\s*<button\s*type="button"\s*className="secondary share-route"\s*onClick=\{\(\) => shareRoute\(false\)\}\s*aria-describedby=\{`share-route-about\$\{note\}`\}/,
   );
   assert.match(controls, /\{canShare && ready && linkNote && \(\s*<p id="share-link-note" className="hint link-note">/);
   assert.match(controls, /\{canShare && ready && onShareKeep && <ShareKeepField value=\{shareKeep\} onChange=\{onShareKeep\} \/>\}/);
@@ -127,6 +127,7 @@ test("share() is called within the press: synchronously in shareLink, and before
   const call = body.indexOf("shareLink(navigator, content)");
   assert.ok(call > 0, "shareRoute calls shareLink");
   assert.doesNotMatch(body.slice(0, call).replace(/\/\/[^\n]*/g, ""), /\bawait\b/, "no await before shareLink");
-  assert.match(body, /if \(!shown \|\| sharing\.current\) return;\s*sharing\.current = true;/);
+  assert.match(body, /if \(!shown \|\| sharing\.current\) return;/);
+  assert.match(body, /return;\s*\}\s*sharing\.current = true;/);
   assert.match(body, /finally \{\s*sharing\.current = false;\s*\}/);
 });

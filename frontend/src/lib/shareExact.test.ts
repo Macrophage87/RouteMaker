@@ -137,7 +137,7 @@ test("a route everyone shares stays fixed on the ride: off route, the way back, 
   assert.match(ride, /const auto = !keepRef\.current && !fixedRef\.current;/);
   assert.match(ride, /if \(state\.off && !keepRef\.current && !fixedRef\.current && state\.goodFix\) void replan/);
   // The way back is said once on leaving it and shown while off; Keep is not offered (it is always kept).
-  assert.match(ride, /if \(fixedRef\.current && out\.events\.some\(\(e\) => e\.kind === "off-route"\)\) \{\s*const back = wayBack\(modelRef\.current, out\.state\);\s*if \(back\) announcer\.current\?\.answer\(wayBackSaid\(back\)\);/);
+  assert.match(ride, /if \(fixedRef\.current && out\.events\.some\(\(e\) => e\.kind === "off-route"\)\) \{\s*const back = wayBack\(modelRef\.current, out\.state\);\s*if \(back\) announcer\.current\?\.answer\(`\$\{FIXED_SAID\} \$\{wayBackSaid\(back\)\}`\);/);
   assert.match(ride, /\{\(keepPlanned \|\| fixedRef\.current\) && back && \(/);
   assert.match(ride, /\{!fixedRef\.current && \(\s*<button type="button" className="secondary" onClick=\{keep\}/);
   // Re-plan from here stays, the rider's own choice.
@@ -156,7 +156,9 @@ test("Share route or Share ride: a ride's link opens fixed, with location sharin
   assert.equal(rideLinkFrom("", "?route=x&ride=1"), true);
   // Only with its exact line kept is a link a ride; the sharer rides it as its openers do.
   assert.match(app, /const link = ride && kept \? asRideLink\(now\.link\) : now\.link;/);
-  assert.match(app, /if \(ride && kept\) setSharedOpen\(\{ answer: shown, ride: true \}\);/);
+  // Only once the sheet shared it with the line kept; while the route is still planned, Share ride says to wait.
+  assert.match(app, /\} else if \(ride && kept && done === "shared"\) \{\s*\/\/[^\n]*\n\s*setSharedOpen\(\{ answer: shown, ride: true \}\);/);
+  assert.match(app, /if \(ride && !shareExact\(\)\?\.save\.answer\) \{\s*setShareSaid\(\(before\) => \(\{ text: SHARE_RIDE_WAIT, count: before\.count \+ 1 \}\)\);\s*return;\s*\}/);
   assert.match(app, /if \(shared\.answer\) setSharedOpen\(\{ answer: shared\.answer, ride: SHARED_RIDE \}\);/);
   // What each does, on an Info button beside them (a phone has no hover) and as each button's description.
   const panel = readFileSync(new URL("../app/RoutePanel.tsx", import.meta.url), "utf8");

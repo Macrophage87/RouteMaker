@@ -12,7 +12,7 @@
  *   moves the focus.
  * - Where am I? (a button, and the W key): said on demand, outside the throttle.
  * - Off route: re-planned automatically after the gate (plan Q5), or "Keep the planned route", which
- *   shows the way back. A fixed route (`fixed`: a Mass Ride or Group Ride, a shared or saved route, an opened file)
+ *   shows the way back. A fixed route (`fixed`: a link shared as a ride, or a Mass Ride or Group Ride not shared as a route)
  *   is never re-planned on its own: everyone on it stays on the same line, and the way back is shown instead. A re-plan never touches the plan in the address bar (plan Q2): it is the ride's
  *   own route, held here and in App's ride state only.
  * - Big text (map hidden; a setting, in the ride's Settings and the Settings page), Re-centre (and the C key), heading-up (track-up by default since v0.7.0); and
@@ -546,6 +546,9 @@ function Report311({
 }
 
 /** The way back to the planned route, said: "The planned route is 300 feet to the left." */
+/** Said off a fixed route, before the way back: it is not re-routed (the review of #191). */
+export const FIXED_SAID = "This ride stays on its route, never re-routed.";
+
 function wayBackSaid(back: { metres: number; direction: string }): string {
   return `The planned route is ${spokenDistance(back.metres)} to the ${back.direction}.`;
 }
@@ -1162,7 +1165,7 @@ export function RideMode({
       // A fixed route: leaving it says the way back, once, as Keep the planned route does.
       if (fixedRef.current && out.events.some((e) => e.kind === "off-route")) {
         const back = wayBack(modelRef.current, out.state);
-        if (back) announcer.current?.answer(wayBackSaid(back));
+        if (back) announcer.current?.answer(`${FIXED_SAID} ${wayBackSaid(back)}`);
       }
       // Back on the planned route: "Keep" has done its work; leaving it again re-plans as usual.
       if (out.events.some((e) => e.kind === "back-on-route") || (keepRef.current && !out.state.off)) setKeepPlanned(false);

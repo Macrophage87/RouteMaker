@@ -45,7 +45,7 @@ import { SaveRoute, type SaveRouteProps } from "../SaveRoute.tsx";
 import { SAVE_ROUTE, SAVE_SHORT } from "../lib/savedRoutes.ts";
 import { Fold, QuickFigures } from "../Sidebar.tsx";
 import { COPY_LINK, ROUTE_FOLDS, chartFoldOpen } from "../lib/sidebar.ts";
-import { SHARE_LABEL, SHARE_NAME, SHARE_RIDE_LABEL } from "../lib/share.ts";
+import { SHARE_LABEL, SHARE_RIDE_LABEL } from "../lib/share.ts";
 import { SHARE_IMAGE_LABEL } from "../lib/shareCard.ts";
 import {
   SHARE_DELETE_AFTER_LABEL,
@@ -467,7 +467,6 @@ export function ShareControls(props: {
             type="button"
             className="secondary share-route"
             onClick={() => shareRoute(false)}
-            aria-label={SHARE_NAME}
             aria-describedby={`share-route-about${note}`}
             title={SHARE_ROUTE_ABOUT}
           >

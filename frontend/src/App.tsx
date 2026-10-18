@@ -226,7 +226,7 @@ import { downloadText, trackGpx, verbatimDownload, verbatimFileName } from "./li
 import { readGpx } from "./lib/gpxImport.ts";
 import { GPX_SAID_OPENED, GPX_SAID_ROUTE, GPX_SAID_TRACK, downloadCourse, downloadGpx, routeGpxFile, sendCourseToGarmin, type FileFormat, type Said } from "./GpxPanel.tsx";
 import type { DeviceProfileId } from "./lib/deviceProfiles.ts";
-import { SHARED_GONE, SHARED_INPUTS_ONLY, SHARED_OPENED, SHARED_PATH, SHARED_REVOKED, SHARED_REVOKED_ERROR, SHARE_KEEP_DEFAULT, asRideLink, gpxShareFile, keepFields, newSharedId, previewImageOk, readShared, rideLinkFrom, sharedBody, sharedIdFrom, storeShared, withSharedId, type ShareKeep } from "./lib/sharedRoutes.ts";
+import { SHARED_GONE, SHARED_INPUTS_ONLY, SHARED_OPENED, SHARED_PATH, SHARED_REVOKED, SHARED_REVOKED_ERROR, SHARE_KEEP_DEFAULT, SHARE_RIDE_WAIT, asRideLink, gpxShareFile, keepFields, newSharedId, previewImageOk, readShared, rideLinkFrom, sharedBody, sharedIdFrom, storeShared, withSharedId, type ShareKeep } from "./lib/sharedRoutes.ts";
 import { ClosureDialog, type ClosureAsk } from "./ClosureDialog.tsx";
 import { ShareCardDialog, type ShareCardSource } from "./ShareCardDialog.tsx";
 import { usableProfile } from "./lib/profileChart.ts";
@@ -2478,16 +2478,19 @@ export function App() {
   // Share ride: the same link marked as a ride (lib/sharedRoutes.ts RIDE_PARAM), opened fixed with location sharing.
   const shareRoute = async (ride = false) => {
     if (!shown || sharing.current) return;
-    sharing.current = true;
     const press = ++sharePresses.current;
+    // A ride only with its exact line, kept with the route shown for it: while the route is still being planned the
+    // link would plan again, a route, so it is said rather than shared.
+    if (ride && !shareExact()?.save.answer) {
+      setShareSaid((before) => ({ text: SHARE_RIDE_WAIT, count: before.count + 1 }));
+      return;
+    }
+    sharing.current = true;
     setShareSaid((before) => ({ text: "", count: before.count }));
     const distanceM = !stale && routedPoints === points ? shown.distance_m : null;
     const now = sharedLinkNow();
     const { kept, exact } = now;
-    // A ride only with its exact line: without one, the link plans again and is a route.
     const link = ride && kept ? asRideLink(now.link) : now.link;
-    // The one who shares a ride rides it as those who open it do: fixed, with the same location sharing.
-    if (ride && kept) setSharedOpen({ answer: shown, ride: true });
     const file = exact?.file ? gpxShareFile(exact.file.text, exact.file.fileName) : null;
     const content = withGpxFile(navigator, shareContent(link, distanceM, presetSaid(preset)), file);
     const outcome = shareLink(navigator, content);
@@ -2500,6 +2503,9 @@ export function App() {
       if (kept && !(await kept)) {
         if (sharedLine.current?.kept === kept) sharedLine.current = null;
         if (done !== "failed" && done !== "cancelled") said = SHARED_INPUTS_ONLY;
+      } else if (ride && kept && done === "shared") {
+        // The one who shared a ride rides it as those who open it do: fixed, with the same location sharing.
+        setSharedOpen({ answer: shown, ride: true });
       }
     } finally {
       sharing.current = false;

@@ -60,6 +60,7 @@ export const SHARED_REVOKED_ERROR: RouteError = { kind: "no-route", status: 410,
 export const RIDE_PARAM = "ride";
 /** What each Share button does, said by the info beside them (the owner: "Make that clear in a tooltip"). */
 export const SHARE_ROUTE_ABOUT = "Share route: others can look it over, change it or ride it on their own.";
+export const SHARE_RIDE_WAIT = "Share ride needs the route ready. Try again once it shows.";
 export const SHARE_RIDE_ABOUT = "Share ride: everyone rides this exact route, never re-routed, and each can choose to show where they are.";
 
 /** The link, shared as a ride. */
