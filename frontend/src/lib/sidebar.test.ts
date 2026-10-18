@@ -177,10 +177,9 @@ test("App puts the ride type's button first and every dial behind the Ride setti
     'label="Hills"',
     "<legend>When</legend>",
     "{view.target && (",
-    "<WeightSetting",
     "Avoid gravel",
   ].map(at);
-  assert.deepEqual(order, [...order].sort((a, b) => a - b), "Traffic, Hills, When, target distance, weight, gravel");
+  assert.deepEqual(order, [...order].sort((a, b) => a - b), "Traffic, Hills, When, target distance, gravel");
   // "Make it a loop" is no longer behind the Edit button (OWNER-DECISIONS 388): it is by the search, in the Points section.
   assert.doesNotMatch(dials, /loopView|withLoop|type="checkbox"\s+checked=\{loop/, "the dials panel has no loop toggle");
   const points = app.slice(app.indexOf("const pointsSection ="), app.indexOf("const routeSection ="));
@@ -211,8 +210,9 @@ test("App puts the ride type's button first and every dial behind the Ride setti
   assert.match(points, /<p className="hint loop-hint" id=\{loopHintId\} hidden=\{!loop\.checked\}>\s*\{loop\.hint\}\s*<\/p>/);
   assert.match(points, /commitDials\(withLoop\(dials, event\.target\.checked\)\)/, "its change goes through the announcing commit");
   assert.match(app, /const loop = loopView\(preset, dials\.loop, points\);/);
-  // The weight row is the existing one: status only, Change opening the private dialog (weightDialog.ts).
-  assert.match(dials, /import \{ WeightSetting \} from "\.\/lib\/weightDialog\.ts";/);
+  // The weight row moved to Settings (the owner, 2026-10-18): status only, Change opening the private dialog.
+  assert.doesNotMatch(dials, /WeightSetting/);
+  assert.match(src("../app/Sheets.tsx"), /<WeightSetting \{\.\.\.props\.weight\} \/>/);
 });
 
 // ---- points first ------------------------------------------------------------
@@ -641,12 +641,12 @@ test("copyText uses the clipboard, falls back to the selection method, and says 
 
 // ---- the bottom bar and its sheets ------------------------------------------------
 
-test("the bottom bar is Plan, Layers, Suggest, Files and Settings: real buttons, each with words (the owner's choice 6)", () => {
-  assert.deepEqual(BAR_ITEMS.map((i) => i.label), ["Plan", "Layers", "Suggest", "Files", "Settings"]);
+test("the bottom bar is Plan, Layers, Suggest, Save & load and Settings: real buttons, each with words (the owner's choice 6)", () => {
+  assert.deepEqual(BAR_ITEMS.map((i) => i.label), ["Plan", "Layers", "Suggest", "Save & load", "Settings"]);
   assert.deepEqual(BAR_ITEMS.map((i) => i.opens), ["planner", "layers", "suggest", "gpx", "settings"]);
   assert.equal(BAR_ITEMS[0].id, "plan", "Plan is first (OWNER-DECISIONS 392, 393)");
   assert.ok(BAR_ITEMS.every((i) => i.description.length > 0));
-  assert.equal(BAR_ITEMS[4].description, "Opens the settings: display, Ride mode, this device and your account.");
+  assert.equal(BAR_ITEMS[4].description, "Opens the settings: display, Ride mode and your account.");
   assert.equal(BAR_NAME, "Panel pages", "a landmark name that says what the bar is (the a11y review's N3)");
   assert.match(sidebar, /<nav aria-label=\{BAR_NAME\} className="bottom-bar">/);
   assert.match(sidebar, /<Fragment key=\{item\.id\}>\s*<button\s+id=\{`bar-\$\{item\.id\}`\}\s+type="button"/);
@@ -664,7 +664,7 @@ test("the bottom bar is Plan, Layers, Suggest, Files and Settings: real buttons,
 });
 
 test("a sheet: Back is a labelled button, its heading takes the focus, Escape goes back", () => {
-  assert.deepEqual(Object.values(SHEET_TITLES), ["Layers", "Legend", "Suggest a change", "Review", "Route file", "Settings", "Nearest water, restroom or Metro", "Find food", "Ride", "Repair stands and bike shops", "Places to see", "Edit route"]);
+  assert.deepEqual(Object.values(SHEET_TITLES), ["Layers", "Legend", "Suggest a change", "Review", "Save and load", "Settings", "Nearest", "Find food", "Ride", "Repair stands and bike shops", "Places to see", "Edit route"]);
   // In visible words, not only an arrow, so the name and the label are one (OWNER-DECISIONS 393).
   assert.equal(BACK_LABEL, "Back to planner");
   assert.doesNotMatch(sidebar, /aria-label="Back to the planner"/);
@@ -967,10 +967,12 @@ test("the bar's current button: the sheet showing, or one opened from it (Layers
   assert.match(sidebar, /aria-current=\{current \? "true" : undefined\}/);
 });
 
-test("the Settings sheet (384): Display, Ride mode, This device and Account, as the mockup groups them; one state, unique ids", () => {
+test("the Settings sheet (384): Display, Ride mode and Account, as the mockup groups them; one state, unique ids", () => {
   const sheet = app.slice(app.indexOf('id="sheet-settings"'), app.indexOf("export interface SuggestSheetProps"));
   assert.match(sheet, /title=\{go \? MENU_TITLE : SHEET_TITLES\.settings\}\s+open=\{nav\.view === "settings"\}\s+onBack=\{nav\.back\}\s+backLabel=\{nav\.backLabel\("settings"\)\}\s+headingRef=\{settingsHeadingRef\}/);
-  const order = ["settings-display-heading", "settings-ride-heading", "settings-device-heading", "settings-signin-heading"].map((id) => sheet.indexOf(`<h3 id="${id}">`));
+  // This device's routes moved to Save and load (the owner, 2026-10-18); the install offer has its own heading.
+  assert.doesNotMatch(sheet, /settings-device-heading/);
+  const order = ["settings-display-heading", "settings-ride-heading", "settings-signin-heading"].map((id) => sheet.indexOf(`<h3 id="${id}">`));
   assert.ok(order.every((i) => i > 0), JSON.stringify(order));
   assert.deepEqual(order, [...order].sort((a, b) => a - b));
   assert.match(sheet, /<section aria-labelledby="settings-display-heading" className="settings-group">\s*<h3 id="settings-display-heading">Display<\/h3>/);

@@ -1,0 +1,232 @@
+{
+ "StandardRoutes": [
+  {
+   "LineCode": "RD",
+   "TrackNum": 1,
+   "TrackCircuits": [
+    {
+     "SeqNum": 1,
+     "CircuitId": 1001,
+     "StationCode": "A15"
+    },
+    {
+     "SeqNum": 2,
+     "CircuitId": 1002,
+     "StationCode": null
+    },
+    {
+     "SeqNum": 3,
+     "CircuitId": 1003,
+     "StationCode": null
+    },
+    {
+     "SeqNum": 4,
+     "CircuitId": 1004,
+     "StationCode": "A01"
+    },
+    {
+     "SeqNum": 5,
+     "CircuitId": 1005,
+     "StationCode": null
+    },
+    {
+     "SeqNum": 6,
+     "CircuitId": 1006,
+     "StationCode": null
+    },
+    {
+     "SeqNum": 7,
+     "CircuitId": 1007,
+     "StationCode": "B01"
+    },
+    {
+     "SeqNum": 8,
+     "CircuitId": 1008,
+     "StationCode": null
+    },
+    {
+     "SeqNum": 9,
+     "CircuitId": 1009,
+     "StationCode": null
+    },
+    {
+     "SeqNum": 10,
+     "CircuitId": 1010,
+     "StationCode": "B02"
+    },
+    {
+     "SeqNum": 11,
+     "CircuitId": 1011,
+     "StationCode": null
+    },
+    {
+     "SeqNum": 12,
+     "CircuitId": 1012,
+     "StationCode": null
+    },
+    {
+     "SeqNum": 13,
+     "CircuitId": 1013,
+     "StationCode": "B03"
+    },
+    {
+     "SeqNum": 14,
+     "CircuitId": 1014,
+     "StationCode": null
+    },
+    {
+     "SeqNum": 15,
+     "CircuitId": 1015,
+     "StationCode": null
+    },
+    {
+     "SeqNum": 16,
+     "CircuitId": 1016,
+     "StationCode": "B11"
+    }
+   ]
+  },
+  {
+   "LineCode": "RD",
+   "TrackNum": 2,
+   "TrackCircuits": [
+    {
+     "SeqNum": 1,
+     "CircuitId": 2001,
+     "StationCode": "B11"
+    },
+    {
+     "SeqNum": 2,
+     "CircuitId": 2002,
+     "StationCode": null
+    },
+    {
+     "SeqNum": 3,
+     "CircuitId": 2003,
+     "StationCode": null
+    },
+    {
+     "SeqNum": 4,
+     "CircuitId": 2004,
+     "StationCode": "B03"
+    },
+    {
+     "SeqNum": 5,
+     "CircuitId": 2005,
+     "StationCode": null
+    },
+    {
+     "SeqNum": 6,
+     "CircuitId": 2006,
+     "StationCode": null
+    },
+    {
+     "SeqNum": 7,
+     "CircuitId": 2007,
+     "StationCode": "B02"
+    },
+    {
+     "SeqNum": 8,
+     "CircuitId": 2008,
+     "StationCode": null
+    },
+    {
+     "SeqNum": 9,
+     "CircuitId": 2009,
+     "StationCode": null
+    },
+    {
+     "SeqNum": 10,
+     "CircuitId": 2010,
+     "StationCode": "B01"
+    },
+    {
+     "SeqNum": 11,
+     "CircuitId": 2011,
+     "StationCode": null
+    },
+    {
+     "SeqNum": 12,
+     "CircuitId": 2012,
+     "StationCode": null
+    },
+    {
+     "SeqNum": 13,
+     "CircuitId": 2013,
+     "StationCode": "A01"
+    },
+    {
+     "SeqNum": 14,
+     "CircuitId": 2014,
+     "StationCode": null
+    },
+    {
+     "SeqNum": 15,
+     "CircuitId": 2015,
+     "StationCode": null
+    },
+    {
+     "SeqNum": 16,
+     "CircuitId": 2016,
+     "StationCode": "A15"
+    }
+   ]
+  },
+  {
+   "LineCode": "OR",
+   "TrackNum": 1,
+   "TrackCircuits": [
+    {
+     "SeqNum": 1,
+     "CircuitId": 3001,
+     "StationCode": "K08"
+    },
+    {
+     "SeqNum": 2,
+     "CircuitId": 3002,
+     "StationCode": null
+    },
+    {
+     "SeqNum": 3,
+     "CircuitId": 3003,
+     "StationCode": null
+    },
+    {
+     "SeqNum": 4,
+     "CircuitId": 3004,
+     "StationCode": "D01"
+    },
+    {
+     "SeqNum": 5,
+     "CircuitId": 3005,
+     "StationCode": null
+    },
+    {
+     "SeqNum": 6,
+     "CircuitId": 3006,
+     "StationCode": null
+    },
+    {
+     "SeqNum": 7,
+     "CircuitId": 3007,
+     "StationCode": "D06"
+    },
+    {
+     "SeqNum": 8,
+     "CircuitId": 3008,
+     "StationCode": null
+    },
+    {
+     "SeqNum": 9,
+     "CircuitId": 3009,
+     "StationCode": null
+    },
+    {
+     "SeqNum": 10,
+     "CircuitId": 3010,
+     "StationCode": "D13"
+    }
+   ]
+  }
+ ]
+}

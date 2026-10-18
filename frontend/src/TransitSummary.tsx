@@ -19,6 +19,7 @@ import {
   TRANSIT_COLOUR,
   TRANSIT_DASH,
   TRANSIT_LINE_WIDTH,
+  liveTimesText,
   optionSaid,
   optionText,
   stepIcon,
@@ -149,7 +150,7 @@ export function TransitSummary({
             <Swatch colour={WALK_COLOUR} dash={WALK_DASH} width={WALK_LINE_WIDTH} /> A dotted line is a walk. {RIDES_LEGEND}
           </p>
           <p className="hint transit-scheduled">
-            {TRACK_WORK} {timesFromText(plan)} {plan.live ? "Times marked live are WMATA's next trains." : "Not live arrivals."}
+            {TRACK_WORK} {timesFromText(plan)} {liveTimesText(plan)}
           </p>
         </>
       )}

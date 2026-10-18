@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { vehicleBadge, type VehicleMark } from "./lib/nextVehicle.ts";
 import { createPortal } from "react-dom";
 import * as maplibregl from "maplibre-gl";
 import type { GeoJSONSource, Map as MapLibreMap, Marker, Popup } from "maplibre-gl";
@@ -66,7 +67,7 @@ import { dragPreview, legOfSegment, nearestOnPath } from "./lib/lineEdit.ts";
 import { LineGesture } from "./lib/lineGesture.ts";
 import { PENN_COLOUR, RAIL_STATIONS, stationById } from "./lib/railData.ts";
 import { addRailStations, ROUTE_BOTTOM_LAYER, setRailVisibility } from "./lib/railLayer.ts";
-import type { RailVisibility, Station, StationRole } from "./lib/railStations.ts";
+import type { RailVisibility, Station, StationBadges, StationRole } from "./lib/railStations.ts";
 import { attachRailInteraction, type StationFound } from "./railInteraction.ts";
 import { stressProbe } from "./lib/stressProtocol.ts";
 import federalLandUrl from "./federal-data/federal-land.json?url";
@@ -222,6 +223,11 @@ interface Props {
    * re-framed when it changes (a re-plan).
    */
   rider?: { point: LonLat; headingDeg: number | null } | null;
+  /**
+   * Where the next train or bus is while the rider waits at a Metro or Metrobus boarding (v0.9.0,
+   * lib/nextVehicle.ts): a labelled mark, its kind's badge on it, unlike the rider's arrow. Null: none.
+   */
+  nextVehicle?: VehicleMark | null;
   /** Go outside a ride (the owner, 2026-10-17): the location found, drawn as the ride's still dot; no camera work, and the route is framed as ever. */
   youDot?: LonLat | null;
   follow?: boolean;
@@ -233,6 +239,8 @@ interface Props {
   rail: RailVisibility;
   /** Why a station is closed all day with the toggles as they are, or null (railClosures.ts). */
   railClosedReason?: (station: Station) => string | null;
+  /** WMATA's badges on a station: an alert names it, an elevator there is out (railClosures.ts). */
+  railBadges?: (station: Station) => StationBadges | null;
   /**
    * The map is coloured by carrying capacity, riders per minute, not by traffic stress
    * (OWNER-DECISIONS 325-327; massStyle.js): a Mass Ride on tiles that carry a capacity (App's
@@ -1217,6 +1225,7 @@ export function MapView(props: Props) {
       if (RAIL_STATIONS.length > 0) {
         addRailStations(map, RAIL_STATIONS, callbacks.current.rail, PENN_COLOUR, iconPixelRatio(), (station) =>
           Boolean(callbacks.current.railClosedReason?.(station)),
+          (station) => callbacks.current.railBadges?.(station) ?? null,
         );
       }
       rail = attachRailInteraction(map, {
@@ -1855,6 +1864,41 @@ export function MapView(props: Props) {
     }
   }, [props.route, props.stale]);
 
+  // Where the next train or bus is (v0.9.0): a mark named in words ("Next bus: Bus 52 is 0.8 mi away (1.3 km), 3
+  // stops back (Data: WMATA, live)"), not a button (it does nothing when pressed); moved in place at each answer.
+  const vehicleMarker = useRef<Marker | null>(null);
+  useEffect(() => {
+    const map = mapRef.current;
+    const mark = props.nextVehicle ?? null;
+    if (!map || !mark) {
+      vehicleMarker.current?.remove();
+      vehicleMarker.current = null;
+      return;
+    }
+    if (!vehicleMarker.current) {
+      const element = document.createElement("div");
+      element.setAttribute("role", "img");
+      const badge = document.createElement("span");
+      badge.setAttribute("aria-hidden", "true");
+      element.appendChild(badge);
+      element.addEventListener("click", (event) => event.stopPropagation());
+      vehicleMarker.current = new maplibregl.Marker({ element, anchor: "center" }).setLngLat(mark.point).addTo(map);
+    } else {
+      vehicleMarker.current.setLngLat(mark.point);
+    }
+    const element = vehicleMarker.current.getElement();
+    element.className = `next-vehicle-marker next-vehicle-${mark.kind}`;
+    element.setAttribute("aria-label", mark.label);
+    const badge = element.firstElementChild;
+    if (badge) badge.textContent = vehicleBadge(mark.kind);
+  }, [props.nextVehicle]);
+  useEffect(
+    () => () => {
+      vehicleMarker.current?.remove();
+    },
+    [],
+  );
+
   // The lettered places (the owner, 2026-10-11 21:04 UTC): each a real button in a pin, its letter on it and its
   // name the letter, the place and how far; a press picks it as the list's row would.
   const letteredMarkers = useRef<Marker[]>([]);
@@ -2062,8 +2106,14 @@ export function MapView(props: Props) {
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loaded.current) return;
-    setRailVisibility(map, RAIL_STATIONS, props.rail, (station) => Boolean(props.railClosedReason?.(station)));
-  }, [props.rail.metro, props.rail.marc, props.railClosedReason]);
+    setRailVisibility(
+      map,
+      RAIL_STATIONS,
+      props.rail,
+      (station) => Boolean(props.railClosedReason?.(station)),
+      (station) => props.railBadges?.(station) ?? null,
+    );
+  }, [props.rail.metro, props.rail.marc, props.railClosedReason, props.railBadges]);
 
   // The federal-land shading: on for a Mass Ride, off for any other ride type.
   useEffect(() => {

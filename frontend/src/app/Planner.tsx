@@ -16,7 +16,6 @@ import { BEST_ORDER_LABEL } from "../lib/stopOrder.ts";
 import { editingTips, emptyPlanHint, loneStartHint } from "../lib/pointText.ts";
 import { RideTypePicker } from "../RideTypePicker.tsx";
 import type { Dials } from "../lib/dials.ts";
-import type { StoredWeight, WeightStore } from "../lib/weight.ts";
 import { isMassRide } from "../lib/massCapacity.ts";
 import { MASS_DC_ONLY } from "../lib/dcBoundary.ts";
 import { PointsList } from "../lib/pointsList.ts";
@@ -432,11 +431,6 @@ export interface RideSectionProps {
   dials: Dials;
   choosePreset: (id: PresetId, next: Dials) => void;
   commitDials: (next: Dials) => void;
-  weight: StoredWeight | null;
-  weightRemembered: boolean;
-  weightStore: RefObject<WeightStore | null>;
-  setWeightRemembered: Dispatch<SetStateAction<boolean>>;
-  setWeight: Dispatch<SetStateAction<StoredWeight | null>>;
   /** The route shown (its resolved "now"), or null. */
   route: RouteResponse | null;
   /** Plan: the ride type's own button, first. Go's Ride sheet lists the ride types itself (RideGroupChips). */
@@ -448,7 +442,7 @@ export interface RideSectionProps {
  * (OWNER-DECISIONS 312; edit-route redesign, Stephen 2026-10-18: one press to the ride types, not Edit then Change).
  */
 export function RideSection(props: RideSectionProps) {
-  const { preset, dials, choosePreset, commitDials, weight, weightRemembered, weightStore, setWeightRemembered, setWeight, route, typeCard } = props;
+  const { preset, dials, choosePreset, commitDials, route, typeCard } = props;
   const presetsSection = typeCard ? <RideTypePicker key="presets" preset={preset} dials={dials} onChoose={choosePreset} /> : null;
   return (
     <RideSettings key="presets" summary={settingsSummary(preset, dials)} spoken={settingsSummarySpoken(preset, dials)} typeCard={presetsSection}>
@@ -456,20 +450,6 @@ export function RideSection(props: RideSectionProps) {
         preset={preset}
         dials={dials}
         onCommit={commitDials}
-        weight={{
-          saved: weight,
-          remembered: weightRemembered,
-          onSave: (next, remember) => {
-            weightStore.current?.save(next, remember);
-            setWeightRemembered(remember && (weightStore.current?.remembered() ?? false));
-            setWeight(next);
-          },
-          onClear: () => {
-            weightStore.current?.clear();
-            setWeightRemembered(false);
-            setWeight(null);
-          },
-        }}
         resolvedWhen={route?.dials?.when ?? null}
       />
     </RideSettings>
