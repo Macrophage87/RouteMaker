@@ -176,7 +176,7 @@ const MAX_SPEED_MS = 20;
 export type CueKind = "turn" | "onto" | "hazard" | "walk" | "busy" | "calmer" | "unpaved" | "stop" | "end";
 
 /** A turn's movement: a bear is a change of street a little off straight (the API's describe.SLIGHT_MIN_DEG). */
-export type TurnMovement = "left" | "right" | "bear_left" | "bear_right";
+export type TurnMovement = "left" | "right" | "bear_left" | "bear_right" | "uturn";
 
 function isTurnMovement(movement: string | null | undefined): movement is TurnMovement {
   return movement === "left" || movement === "right" || movement === "bear_left" || movement === "bear_right";
@@ -254,6 +254,7 @@ export interface RideModel {
  * (`stay`, describe.fork_movement).
  */
 export function turnWords(movement: TurnMovement, street: string | null, stay = false): string {
+  if (movement === "uturn") return UTURN_SAID;
   const turn = MOVEMENT_WORDS[movement];
   const onto = stay ? "to stay on" : "onto";
   if (street && /^(?:unnamed )?path$/i.test(street.trim())) return `${turn} ${onto} the path.`;
@@ -667,7 +668,7 @@ export function withoutMetric(text: string): string {
   return text.replace(/\s\((?:about )?[\d.,]+(?: to [\d.,]+)? (?:km|m|km\/h)\)/g, "");
 }
 
-const MOVEMENT_WORDS = { left: "Left", right: "Right", bear_left: "Bear left", bear_right: "Bear right" } as const;
+const MOVEMENT_WORDS = { left: "Left", right: "Right", bear_left: "Bear left", bear_right: "Bear right", uturn: "Make a U-turn" } as const;
 
 /**
  * What is said for a cue at a phase, `distanceM` before it (US units only). `first`: nothing was said for this cue
@@ -683,6 +684,7 @@ export function cueSpoken(cue: Cue, phase: Phase, distanceM: number, first = pha
   if (phase === "now" && cue.movement) {
     // A jog's "now" is short, the second turn being only seconds on: "Right now, then bear left onto ...".
     if (cue.then) return `${MOVEMENT_WORDS[cue.movement]} now, then ${lowerFirst(turnWords(cue.then.movement, cue.then.street))}`;
+    if (cue.movement === "uturn") return "Make a U-turn now.";
     return `${MOVEMENT_WORDS[cue.movement]} now${cue.street ? ` onto ${cue.street}` : ""}.`;
   }
   // A turn at a flagged junction says so in its first warning only; "now" is the turn alone.
@@ -1183,6 +1185,38 @@ export class ReplanGate {
 }
 
 export const REPLAN_FOUND = "New route found.";
+/** A re-route that sets off back the way the rider came (the owner, 2026-10-18: "clearly announce make a u turn"). */
+export const REPLAN_UTURN = "New route found. Make a U-turn.";
+export const UTURN_SAID = "Make a U-turn.";
+/** A start this far off the rider's heading is a U-turn (the API's routing.UTURN_MIN_DEG). */
+export const UTURN_MIN_DEG = 120;
+/** How far along the line its setting-off direction is read: past the snap to the road (routing.UTURN_READ_M). */
+export const UTURN_READ_M = 25;
+
+/** Whether a route's line sets off back against the rider's heading (degrees), as the API judges a re-route's U-turn. */
+export function setsOffBack(coordinates: readonly LonLat[], headingDeg: number | null): boolean {
+  if (headingDeg === null || !Number.isFinite(headingDeg) || coordinates.length < 2) return false;
+  let along = 0;
+  let to = coordinates[0];
+  for (let i = 1; i < coordinates.length && along < UTURN_READ_M; i += 1) {
+    along += haversineM(coordinates[i - 1], coordinates[i]);
+    to = coordinates[i];
+  }
+  if (along < 1) return false;
+  const [lon1, lat1] = coordinates[0].map((v) => (v * Math.PI) / 180);
+  const [lon2, lat2] = to.map((v) => (v * Math.PI) / 180);
+  const y = Math.sin(lon2 - lon1) * Math.cos(lat2);
+  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(lon2 - lon1);
+  const bearing = (Math.atan2(y, x) * 180) / Math.PI;
+  const delta = Math.abs(((((bearing - headingDeg) % 360) + 540) % 360) - 180);
+  return delta >= UTURN_MIN_DEG;
+}
+
+/** The model with "Make a U-turn." as its first cue, at the start of the line: the card shows it and Ride says it at once. */
+export function withUTurn(model: RideModel): RideModel {
+  const uturn: Cue = { index: 0, kind: "turn", atM: 0, text: UTURN_SAID, movement: "uturn", street: null, severity: null, tier: null, stop: null };
+  return { ...model, cues: [uturn, ...model.cues.map((cue) => ({ ...cue, index: cue.index + 1 }))] };
+}
 export const REPLAN_NO_SIGNAL = "No signal: the planned route is still shown.";
 export const REPLAN_FAILED = "No new route was found; the planned route is still shown.";
 /** No new route to the end, but one back to the planned route (lib/rejoin.ts), which goes on from there. */

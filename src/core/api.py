@@ -337,8 +337,8 @@ class RouteIn(Schema):
             "A ride's re-route: the way the rider is going at the first point, in degrees"
             " clockwise from north. A route that sets off back the other way (a U-turn) is"
             " answered only where it is at least half a mile (805 m) shorter than the best one"
-            " that sets off ahead. Absent: either way, as before. Ignored on a followed line"
-            " and a loop."
+            " that sets off ahead. Absent: either way, as before. Ignored on a followed line,"
+            " a loop, Bikeshare and the transit ride types."
         ),
     )
     loop: StrictBool = Field(

@@ -112,6 +112,18 @@ class TestPlanOnward:
         assert self.onward(heading=None)["geometry"]["coordinates"][1] == list(WEST[1])
         assert len(asked) == 1
 
+    def test_a_loop_is_one_plan(self, planned) -> None:
+        asked = planned(answer(EAST, 1.0))
+        dials = routing.Dials(heading=90.0, loop=True)
+        routing.plan_onward([[-77.05, 38.9], [-77.06, 38.9]], "default", dials=dials)
+        assert len(asked) == 1
+
+    def test_a_followed_line_is_one_plan(self, planned) -> None:
+        asked = planned(answer(EAST, 1.0))
+        dials = routing.Dials(heading=90.0, follow=((-77.05, 38.9), (-77.06, 38.9)))
+        routing.plan_onward([[-77.05, 38.9], [-77.06, 38.9]], "default", dials=dials)
+        assert len(asked) == 1
+
 
 class TestSetsOffBack:
     def test_reads_past_the_snap(self) -> None:

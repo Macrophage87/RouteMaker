@@ -3913,8 +3913,17 @@ def plan_onward(
     heading = dials.heading
     asked = dict(long_ride=long_ride, started=started, quick=quick, candidates=candidates)
     answered = plan(points, preset_name, dials=dataclasses.replace(dials, heading=None), **asked)
-    if heading is None or dials.follow is not None or not sets_off_back(answered, heading):
+    # `plan` sets no heading on a followed line or a loop: a second plan would be the same.
+    if (
+        heading is None
+        or dials.follow is not None
+        or loop_wanted(points, dials.loop, preset_name)
+        or not sets_off_back(answered, heading)
+    ):
         return answered
+    timings = timing.current()
+    if timings is not None:
+        timings.note("uturn", "replanned")
     try:
         ahead = plan(points, preset_name, dials=dials, **asked)
     except (NoRoute, TooLong, RouterUnavailable, DeadlineExceeded) as error:

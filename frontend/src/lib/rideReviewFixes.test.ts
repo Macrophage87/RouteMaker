@@ -108,3 +108,9 @@ test("RIDE-5: the outcome of a re-plan the rider asked for is answered at every 
   // Re-plan from here, and Road closed (v0.8.2).
   assert.equal(ride.match(/void replan\([^)]*\)\)?;/g)?.filter((call) => call.includes("true")).length, 2);
 });
+
+test("a re-plan after Road closed turns round freely: both of its calls leave the heading out", () => {
+  assert.match(ride, /void replan\(fix\.point, undefined, true, true\);/);
+  assert.match(ride, /void replanRef\.current\(rideRef\.current\.goodFix\?\.point \?\? here, undefined, true, true\);/);
+  assert.match(ride, /const heading = turnRound \? null : \(current\.goodFix\?\.headingDeg \?\? null\);/);
+});

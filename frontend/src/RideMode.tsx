@@ -64,6 +64,9 @@ import {
   type GpsWeakness,
   REPLAN_FAILED,
   REPLAN_FOUND,
+  REPLAN_UTURN,
+  setsOffBack,
+  withUTurn,
   REPLAN_NO_SIGNAL,
   REPLAN_REJOIN,
   REPLAN_FINDING,
@@ -306,7 +309,7 @@ export interface RideView {
   vehicle?: VehicleMark | null;
 }
 
-function arrowFor(cue: Cue | null): "left" | "right" | "bear_left" | "bear_right" | "straight" | "stop" | "end" | "warn" {
+function arrowFor(cue: Cue | null): "left" | "right" | "bear_left" | "bear_right" | "uturn" | "straight" | "stop" | "end" | "warn" {
   if (!cue) return "straight";
   if (cue.kind === "end") return "end";
   if (cue.kind === "stop") return "stop";
@@ -322,6 +325,7 @@ function CueShape({ shape }: { shape: ReturnType<typeof arrowFor> }) {
     right: "M18 52 V28 H34 M26 18 L36 28 L26 38",
     bear_left: "M30 52 V30 L14 14 M14 26 V14 H26",
     bear_right: "M18 52 V30 L34 14 M22 14 H34 V26",
+    uturn: "M32 52 V22 A10 10 0 0 0 12 22 V38 M4 30 L12 40 L20 30",
     straight: "M24 52 V10 M14 20 L24 10 L34 20",
     stop: "M14 10 V52 M14 12 H38 L32 20 L38 28 H14",
     end: "M14 10 V52 M14 12 H38 V28 H14 M26 12 V28 M14 20 H38",
@@ -633,7 +637,13 @@ export function RideMode({
   // What a re-plan builds on: the plan's points at first, then the last re-plan's (never a loop: its end is sent).
   const plan = useRef({ points: plannedPoints, loop: plannedLoop });
   // The via points are not announced (v0.7.0): the model leaves them out of its cues.
-  const model = useMemo(() => rideModel(route, viaIndices(plan.current.points, VIA_MARKS.isVia)), [route]);
+  // A re-route that turns the rider round starts with "Make a U-turn." (lib/navigate.ts withUTurn).
+  const uturnRoute = useRef<RouteResponse | null>(null);
+  const modelOf = (r: RouteResponse, points: readonly LonLat[]) => {
+    const built = rideModel(r, viaIndices(points, VIA_MARKS.isVia));
+    return r === uturnRoute.current ? withUTurn(built) : built;
+  };
+  const model = useMemo(() => modelOf(route, plan.current.points), [route]);
   const modelRef = useRef(model);
   modelRef.current = model;
   // v0.8.2 (lib/roadClosed.ts): the other line beside the ride's route, the standard way through a marked closure
@@ -1029,7 +1039,7 @@ export function RideMode({
       if (closedPending.current && !ended.current) {
         closedPending.current = false;
         gate.online();
-        void replanRef.current(rideRef.current.goodFix?.point ?? here, undefined, true);
+        void replanRef.current(rideRef.current.goodFix?.point ?? here, undefined, true, true);
         return;
       }
       if (voided()) return;
@@ -1043,7 +1053,11 @@ export function RideMode({
       plan.current = { points, loop: false };
       // The first route, without the picker, during a ride (plan section 4).
       announcer.current?.drop();
-      const model = rideModel(found, viaIndices(points, VIA_MARKS.isVia));
+      // Turned round (the API keeps a U-turn only where it saves half a mile): said plainly, and the first cue.
+      const turned = heading !== null && setsOffBack(found.geometry.coordinates, heading);
+      uturnRoute.current = turned ? found : null;
+      if (turned && note === REPLAN_FOUND) note = REPLAN_UTURN;
+      const model = modelOf(found, points);
       modelRef.current = model;
       setRoute(found);
       // The new route's own standard way through a closure it goes round, if any (none past a road marked closed).

@@ -45,7 +45,11 @@ import {
   TRAIL_MARKER_M,
   replanPoints,
   rideModel,
+  REPLAN_UTURN,
   says,
+  setsOffBack,
+  UTURN_SAID,
+  withUTurn,
   sentenceOf,
   snap,
   startState,
@@ -1437,4 +1441,29 @@ test("a fork along one trail is a turn cue to stay on it (the owner, 2026-10-18,
     turns.map((c) => [c.movement, c.text]),
     [["left", "Left to stay on Paint Branch Trail."]],
   );
+});
+
+test("a re-route that turns the rider round: judged from the line's first 25 m against the heading", () => {
+  const east = lRoute().geometry.coordinates;
+  assert.equal(setsOffBack(east, 270), true);
+  assert.equal(setsOffBack(east, 90), false);
+  // A turn is not a U-turn; no heading, no U-turn.
+  assert.equal(setsOffBack(east, 180), false);
+  assert.equal(setsOffBack(east, null), false);
+  // The snap's metre of wiggle is read past.
+  assert.equal(setsOffBack([at(0, 0), at(-1, 0), at(100, 0)], 270), true);
+});
+
+test("a U-turn re-route says it plainly: first on the card, said at once, then the turns as before", () => {
+  assert.equal(REPLAN_UTURN, "New route found. Make a U-turn.");
+  const model = withUTurn(rideModel(lRoute()));
+  assert.equal(model.cues[0].text, UTURN_SAID);
+  assert.equal(model.cues[0].movement, "uturn");
+  assert.deepEqual(model.cues.map((c) => c.index), model.cues.map((_, i) => i));
+  assert.equal(model.cues[1].text, "Left onto B Street.");
+  const out = step(model, startState(), fix(at(0, 0)), "full");
+  assert.ok(out.events.some((e) => e.spoken === "Make a U-turn now."), JSON.stringify(out.events.map((e) => e.spoken)));
+  const { events } = ride(model, "full", 0, 1100, 20);
+  assert.equal(events.filter((e) => e.spoken.includes("U-turn")).length, 1);
+  assert.ok(events.some((e) => e.spoken === "Left now onto B Street."));
 });
