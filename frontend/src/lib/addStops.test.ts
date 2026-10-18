@@ -37,15 +37,17 @@ test("each result row offers 'Make this the destination' as an option of its own
   assert.match(search, /onPick\(place, as \?\? boxChoice \?\? \(variant === "stop" \? "via" : single \? "end" : choice\)\);/);
 });
 
-test("Go's route sheet has one 'Add a stop' field under Start, with Best order, never during a ride", () => {
+test("Go adds stops in Edit route, Plan's points in a sheet opened from the route card; never during a ride", () => {
   const go = source("../app/Go.tsx");
-  assert.match(go, /<PlaceSearch variant="stop"/);
-  // Review F2: the field moved from above the route to under Start, so the sheet leads with the time and Start.
-  assert.doesNotMatch(go, /addStop/);
+  // The edit-route redesign (Stephen 2026-10-18): the route sheet's own Add a stop field went into Edit route, which
+  // holds Plan's From, To, Add a stop and Best order, so Go and Plan edit a route the same way.
+  assert.doesNotMatch(go, /<PlaceSearch variant="stop"/);
+  assert.match(go, /export function GoRouteCard\(/);
   const panel = source("../app/RoutePanel.tsx");
-  assert.match(panel, /<div className="actions start-ride go-start">\s*\{start\}\s*\{startHint\}\s*<\/div>\s*\)\}\s*\{\/\*[^*]*\*\/\}\s*\{!go\.peek && go\.addStop\}/);
-  assert.match(source("../App.tsx"), /addStop: goStops \? \(\s*<GoAddStop/);
-  assert.match(go, /\{orderShown && \(\s*<button[^>]*onClick=\{onBestOrder\}/);
+  assert.match(panel, /\{!go\.peek && go\.routeCard\}/);
+  assert.match(source("../App.tsx"), /routeCard:\s*!riding && points\.length >= 2 \? \(\s*<GoRouteCard/);
+  assert.match(source("../App.tsx"), /onEdit=\{\(opener\) => openView\("points", opener\)\}/);
+  assert.match(source("../App.tsx"), /<EditRouteSheet nav=\{sheetNav\}>\{goMode && view === "points" && sections\.points\}<\/EditRouteSheet>/);
   const app = source("../App.tsx");
   assert.match(app, /const goStops = mode === "go" && !riding && points\.length >= 2 && !twoPointsOnly\(preset\) && !isMassRide\(preset\);/);
   // One edit, so Undo removes it; the route follows at once, as every Go edit does.

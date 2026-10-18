@@ -11,7 +11,6 @@ import type { LonLat } from "../lib/geo.ts";
 import { formatClimb, formatDistance, formatDuration } from "../lib/format.ts";
 import { presetLabel, presetSaid, type PresetId } from "../lib/presets.ts";
 import { NOVICE_TRANSIT_CHOICES, noviceOfferText, noviceTripLine, noviceTripShort, type NoviceTrip } from "../lib/noviceOffer.ts";
-import { PresetName } from "../lib/presetName.ts";
 import { stressSegments, type StressSegment } from "../lib/stressBar.ts";
 import { lightLine, type LightMark } from "../lib/lightTimes.ts";
 import { calmSearchNote, detourView, paceText, stillPlanningSaid, movedPointsNote, walkInNote } from "../lib/summary.ts";
@@ -102,12 +101,8 @@ export interface RouteActionsProps {
   savedNote: ReactNode;
 }
 
-/** Go's few extra controls on the route: its ride chip, the Routes chip and Plan in detail. */
+/** Go's few extra controls on the route: its route card, its ride types and the Routes chip. */
 export interface GoRouteControls {
-  /** Opens the Ride sheet. */
-  onRide: () => void;
-  /** Switches to Plan, the route kept. */
-  onPlan: () => void;
   /** The sheet is at its smallest (peek): the route's time, Start and the stress bar only. */
   peek: boolean;
   /** The sheet is at full height (or the page is wide, with no sheet): the elevation chart shows (review F8). */
@@ -121,8 +116,12 @@ export interface GoRouteControls {
   onNoviceTransit?: (preset: PresetId) => void;
   /** Each offered option's trip, found in the background as the offer shows (App), by ride type. */
   noviceTrips?: Partial<Record<PresetId, NoviceTrip>>;
-  /** Go's "Add a stop" (Go.tsx GoAddStop), or null: shown under Start, so the sheet leads with the time and Start. */
-  addStop?: ReactNode;
+  /**
+   * Go's route card (Go.tsx GoRouteCard) and its ride type chips, under the time and the stress bar and above Start
+   * (edit-route redesign, Stephen 2026-10-18): what the route is and how it is ridden, each one press to change.
+   */
+  routeCard?: ReactNode;
+  rides?: ReactNode;
 }
 
 /**
@@ -895,6 +894,16 @@ export function RouteSummary({
         )}
         {segments.length > 0 && <StressFigure segments={segments} />}
         {!go.peek && <CapacityStats route={route} corkers={corkerFigure(route, profile, rideSize)} />}
+        {!go.peek && go.routeCard}
+        {!go.peek && go.rides && (
+          <div className="go-route-rides">
+            {/* Shown, as the route card says what it edits; the chips' group is named "Ride type" for a screen reader. */}
+            <p className="go-rides-label" aria-hidden="true">
+              Ride type
+            </p>
+            {go.rides}
+          </div>
+        )}
         {!go.peek && alerts}
         {!go.peek && noteList}
         {!go.peek && actions.savedNote}
@@ -904,31 +913,15 @@ export function RouteSummary({
             {startHint}
           </div>
         )}
-        {/* "Add a stop" under Start (review F2): one tap away, never above the time and Start. */}
-        {!go.peek && go.addStop}
-        {!go.peek && (
+        {/* The routes and Save; the ride type and Plan in detail moved (edit-route redesign): the ride types sit
+            under the route card, and the Go/Plan switch at the top is Plan in detail. */}
+        {!go.peek && (picker || actions.save) && (
           <div className="go-chips" role="group" aria-label="Route options">
-            <button type="button" className="chip go-ride-chip" onClick={go.onRide} aria-describedby="go-ride-hint">
-              <Icon name="bike" size={18} />
-              {/* A long name is cut short with an ellipsis (its accessible name is whole), so the row never wraps. */}
-              <span className="go-chip-name">
-                <PresetName id={preset} />
-              </span>
-            </button>
-            <span id="go-ride-hint" hidden>
-              Opens the ride settings.
-            </span>
             {picker && (
               <button type="button" className="chip go-routes-chip" aria-expanded={routesOpen} aria-controls={routesId} onClick={() => setRoutesOpen(!routesOpen)}>
                 {`${pickerCount} routes`}
               </button>
             )}
-            <button type="button" className="chip go-plan-chip" onClick={go.onPlan} aria-describedby="go-plan-hint">
-              Plan
-            </button>
-            <span id="go-plan-hint" hidden>
-              Plan in detail: the full planner, with this route.
-            </span>
             {/* Shown "Save", named "Save route" (review F15: one row at 390 px with the ride type, the routes and Plan). */}
             {actions.save && <SaveRoute {...actions.save} label={SAVE_ROUTE} shown={SAVE_SHORT} chip />}
           </div>
