@@ -1,7 +1,7 @@
 // The panel's sheets (moved out of App.tsx in UI-CLEANUP step 4, docs/DEVELOPMENT.md "The App.tsx split"),
 // arranged as the approved UI mockup of 2026-10-11 has them (reports/v0.5.0/ui-mockup.html): Layers is its
 // switches, with the legend behind a Legend button at its top (the owner's choice 6); Suggest is the one way
-// in to the suggest tools, and Review is an admin's; Settings is Display, Ride mode, This device and Account
+// in to the suggest tools, and Review is an admin's; Settings is Display, Riding and Account
 // with My Go; and the map's Water and Food chips open the nearest finder and Find food. In Go, Settings is
 // the Menu, with Plan, Suggest, GPX and Review above it. App.tsx keeps the state and the effects.
 import { useEffect, useState, type ReactNode, type RefObject } from "react";
@@ -448,7 +448,7 @@ function ContrastRow() {
   );
 }
 
-/** The Settings sheet (Go's Menu): Display, Ride mode, This device and Account, as the mockup groups them. */
+/** The Settings sheet (Go's Menu): Display, Riding and Account, as the mockup groups them. */
 export function SettingsSheet(props: SettingsSheetProps) {
   const { nav, settingsHeadingRef, ridePrefs, changeRidePrefs, announce, linkNote, accessMode, toggleAccessMode, myGo, mode, menu, announcements, signInAvailable } = props;
   const go = mode === "go";

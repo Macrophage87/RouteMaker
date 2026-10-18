@@ -114,10 +114,10 @@ test("the row's details: miles first with kilometres in brackets, when, and abou
 });
 
 test("what a keep press says, for each outcome", () => {
-  assert.match(keepSaid("kept", "A to B"), /^Kept for offline: A to B, with the map along it\. Open it from Settings/);
+  assert.match(keepSaid("kept", "A to B"), /^Kept for offline: A to B, with the map along it\. Open it from Save & load/);
   assert.match(keepSaid("partial", "A to B"), /first part/);
   assert.match(keepSaid("no-map", "A to B"), /map along it could not be saved/);
-  assert.match(keepSaid("full", "A to B"), /^10 routes are kept, the most this app keeps\. Remove one in Settings first\.$/);
+  assert.match(keepSaid("full", "A to B"), /^10 routes are kept, the most this app keeps\. Remove one in Save & load first\.$/);
   assert.match(keepSaid("failed", "A to B"), /refused/);
 });
 
