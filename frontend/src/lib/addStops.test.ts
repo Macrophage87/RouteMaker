@@ -37,17 +37,18 @@ test("each result row offers 'Make this the destination' as an option of its own
   assert.match(search, /onPick\(place, as \?\? boxChoice \?\? \(variant === "stop" \? "via" : single \? "end" : choice\)\);/);
 });
 
-test("Go adds stops in Edit route, Plan's points in a sheet opened from the route card; never during a ride", () => {
+test("Go's route sheet keeps one 'Add a stop' field, under the route card, with Best order, never during a ride", () => {
   const go = source("../app/Go.tsx");
-  // The edit-route redesign (Stephen 2026-10-18): the route sheet's own Add a stop field went into Edit route, which
-  // holds Plan's From, To, Add a stop and Best order, so Go and Plan edit a route the same way.
-  assert.doesNotMatch(go, /<PlaceSearch variant="stop"/);
-  assert.match(go, /export function GoRouteCard\(/);
+  assert.match(go, /<PlaceSearch variant="stop"/);
+  assert.doesNotMatch(go, /addStop/);
+  // The edit-route redesign (Stephen 2026-10-18, "Keep stop box in Go"): the field stays one tap away, under the
+  // route card, whose Edit route holds the rest (change the start or the destination, remove a stop).
   const panel = source("../app/RoutePanel.tsx");
-  assert.match(panel, /\{!go\.peek && go\.routeCard\}/);
+  assert.match(panel, /\{!go\.peek && go\.routeCard\}\s*\{!go\.peek && go\.addStop\}/);
+  assert.match(source("../App.tsx"), /addStop: goStops \? \(\s*<GoAddStop/);
   assert.match(source("../App.tsx"), /routeCard:\s*!riding && points\.length >= 2 \? \(\s*<GoRouteCard/);
   assert.match(source("../App.tsx"), /onEdit=\{\(opener\) => openView\("points", opener\)\}/);
-  assert.match(source("../App.tsx"), /<EditRouteSheet nav=\{sheetNav\}>\{goMode && view === "points" && sections\.points\}<\/EditRouteSheet>/);
+  assert.match(go, /\{orderShown && \(\s*<button[^>]*onClick=\{onBestOrder\}/);
   const app = source("../App.tsx");
   assert.match(app, /const goStops = mode === "go" && !riding && points\.length >= 2 && !twoPointsOnly\(preset\) && !isMassRide\(preset\);/);
   // One edit, so Undo removes it; the route follows at once, as every Go edit does.

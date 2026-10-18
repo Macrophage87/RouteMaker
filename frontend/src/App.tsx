@@ -201,7 +201,7 @@ import { routeLightMarks, sameLightMarks, type LightMark } from "./lib/lightTime
 import { PointsSection, RideSection } from "./app/Planner.tsx";
 import { RouteSection, ShareControls, type Status } from "./app/RoutePanel.tsx";
 import { EditRouteSheet, FoodSheet, GpxSheet, LayersSheet, LegendSheet, NearestSheet, RideChips, RideGroupChips, RideSheet, SettingsSheet, SuggestSheet, type SheetNav } from "./app/Sheets.tsx";
-import { GoRouteCard, GoSheet, GoTopBar, ModeSwitch, PlanMapChips } from "./app/Go.tsx";
+import { GoAddStop, GoRouteCard, GoSheet, GoTopBar, ModeSwitch, PlanMapChips } from "./app/Go.tsx";
 import { useSharedLaunch } from "./app/sharedLaunch.ts";
 import { NearestFinder } from "./lib/nearestFinder.ts";
 import { NearbyStations } from "./NearbyStations.tsx";
@@ -1984,7 +1984,7 @@ export function App() {
     const point = placeFromSearch(found, () => undefined, stationEntranceForPlace);
     if (point) goEarly(point);
   };
-  // A stop added in Go (v0.7.0, "Keep adding stops by search"; now from the nearest and Sights sheets): with a route, a place is a stop where it adds the
+  // Go's "Add a stop" (v0.7.0, "Keep adding stops by search"; also the nearest and Sights sheets): with a route, a place is a stop where it adds the
   // least distance, routed at once as any Go edit is; one edit, so Undo removes it. Without a route it is the
   // destination, as Where to? makes it.
   const goAddStopAt = (point: LonLat, name: string) => {
@@ -2003,6 +2003,14 @@ export function App() {
     setNotice(null);
     commit(added.points);
     announce(stopAddedSaid(added.points, added.index, VIA_MARKS.isVia, loop, name));
+  };
+  const goAddStop = (found: Place) => {
+    const point = placeFromSearch(found, (p, name, label) => namer.remember(p, name, label), stationEntranceForPlace);
+    if (point === null) {
+      setNotice(OUTSIDE_NOTICE);
+      return;
+    }
+    goAddStopAt(point, found.name);
   };
   // Go's Home chip: with a Home (the account's, or this device's when signed out), ride there. Without one the chip
   // opens Go's Home sheet (app/Go.tsx HomeSetter) in place, so it never comes here.
@@ -3772,6 +3780,18 @@ export function App() {
         />
       ) : null,
     rides: goRides,
+    // "Add a stop", under the route card (Stephen 2026-10-18: kept one tap away); only with a route, never riding.
+    addStop: goStops ? (
+      <GoAddStop
+        geoGate={geoGate}
+        searchBias={searchBias}
+        onPick={goAddStop}
+        full={points.length >= MAX_POINTS}
+        orderShown={orderShown}
+        ordering={ordering}
+        onBestOrder={() => void bestOrder()}
+      />
+    ) : null,
   };
   // A transit plan's options (lib/transit.ts): a press plans that one, for this trip; a departure the
   // rider would miss plans again, which takes the next one (lib/departure.ts).

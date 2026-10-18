@@ -122,6 +122,8 @@ export interface GoRouteControls {
    */
   routeCard?: ReactNode;
   rides?: ReactNode;
+  /** Go's "Add a stop" (Go.tsx GoAddStop), or null: under the route card, one tap away (Stephen 2026-10-18). */
+  addStop?: ReactNode;
 }
 
 /**
@@ -895,6 +897,7 @@ export function RouteSummary({
         {segments.length > 0 && <StressFigure segments={segments} />}
         {!go.peek && <CapacityStats route={route} corkers={corkerFigure(route, profile, rideSize)} />}
         {!go.peek && go.routeCard}
+        {!go.peek && go.addStop}
         {!go.peek && go.rides && (
           <div className="go-route-rides">
             {/* Shown, as the route card says what it edits; the chips' group is named "Ride type" for a screen reader. */}

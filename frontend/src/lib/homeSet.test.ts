@@ -73,7 +73,7 @@ test("F3. the Home sheet closes once a Home is set from it, never on a clear or 
 
 test("the Home sheet offers exactly the two ways: the search and Pick on the map; with a Home, its name and Clear", () => {
   // Node runs no .tsx (the suite reads components as source): the sheet's parts and when each shows.
-  const setter = go.slice(go.indexOf("export function HomeSetter"), go.indexOf("export function GoRouteCard"));
+  const setter = go.slice(go.indexOf("export function HomeSetter"), go.indexOf("export function GoAddStop"));
   assert.equal((setter.match(/<PlaceSearch variant="home"/g) ?? []).length, 1, "the app's search box, as Settings had it");
   assert.equal((setter.match(/<button/g) ?? []).length, 2, "Pick on the map and Clear Home, nothing else");
   assert.match(setter, /\{onPickOnMap && \(\s*<button type="button" className="secondary" aria-pressed=\{picking\} onClick=\{onPickOnMap\}>[\s\S]*?\{PICK_ON_MAP_TEXT\}/);
@@ -88,7 +88,7 @@ test("the Home sheet offers exactly the two ways: the search and Pick on the map
 });
 
 test("the focus is never taken: only Clear Home moves it, to the search box, since the button goes with the Home", () => {
-  const setter = go.slice(go.indexOf("export function HomeSetter"), go.indexOf("export function GoRouteCard"));
+  const setter = go.slice(go.indexOf("export function HomeSetter"), go.indexOf("export function GoAddStop"));
   assert.equal((setter.match(/\.focus\(/g) ?? []).length, 1);
   assert.match(setter, /onClear\(\);\s*\/\/[^\n]*\n\s*box\.current\?\.querySelector<HTMLInputElement>\("input"\)\?\.focus\(\);/);
   const setHome = app.slice(app.indexOf("const setHome = "), app.indexOf("// Saved settings (v0.7.0)"));

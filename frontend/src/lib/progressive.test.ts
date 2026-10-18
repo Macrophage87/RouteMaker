@@ -337,8 +337,7 @@ test("App: Go's controls are unchanged: no new button or field for any of it", (
   // Pick on the map, Clear Home and the Home search (which moved here from Settings), and More has Change Home.
   // None is on Go until asked for: the sheet opens from the Home chip, Change Home is behind More
   // (lib/homeSet.test.ts holds Go's always-shown row at five chips).
-  // The edit-route redesign (Stephen 2026-10-18): the route card's button in place of Add a stop's Best order, and Add a
-  // stop's field gone from the route sheet (Edit route holds Plan's, Planner.tsx).
-  assert.equal((go.match(/<button/g) ?? []).length, 21, "the same buttons as before, and the Home sheet's");
-  assert.equal((go.match(/<PlaceSearch/g) ?? []).length, 3, "the same search fields as before but Add a stop, and the Home sheet's");
+  // The edit-route redesign (Stephen 2026-10-18): one more, the route card's button (Edit route); Add a stop stays.
+  assert.equal((go.match(/<button/g) ?? []).length, 22, "the same buttons as before, the Home sheet's and the route card's");
+  assert.equal((go.match(/<PlaceSearch/g) ?? []).length, 4, "the same search fields as before, and the Home sheet's");
 });

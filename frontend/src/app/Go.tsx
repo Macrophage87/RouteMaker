@@ -14,6 +14,7 @@ import type { LonLat } from "../lib/geo.ts";
 import type { GeoGate, Place, PlaceChoice } from "../lib/geocode.ts";
 import { MODE_LABEL, MODE_SWITCH_HINT, MODE_SWITCH_HINT_REVIEW, MODE_SWITCH_NAME, type AppMode } from "../lib/appMode.ts";
 import { HOME_NOT_SET, type Home } from "../lib/myGo.ts";
+import { BEST_ORDER_LABEL } from "../lib/stopOrder.ts";
 import { CHANGE_HOME_TEXT, CLEAR_HOME_TEXT, HOME_PICK_LINE, PICK_ON_MAP_TEXT, homeClosesSheet, homeName, homeSetKey } from "../lib/homeSet.ts";
 
 export type GoSheetSize = "peek" | "half" | "full";
@@ -191,6 +192,40 @@ export function HomeSetter({
         )}
       </div>
       {picking && <p className="hint home-pick-line">{HOME_PICK_LINE}</p>}
+    </div>
+  );
+}
+
+/**
+ * Go's "Add a stop" (v0.7.0, "Keep adding stops by search"): one field in the route sheet, under the route card
+ * (kept there one tap away, Stephen 2026-10-18); a place picked is a stop where it adds the least distance, routed at once (Undo removes it). Best order sits
+ * beside it with two or more stops; it is the field's only company, so Go stays one control per feature.
+ */
+export function GoAddStop({
+  geoGate,
+  searchBias,
+  onPick,
+  full,
+  orderShown,
+  ordering,
+  onBestOrder,
+}: {
+  geoGate: GeoGate;
+  searchBias: () => LonLat | undefined;
+  onPick: (place: Place) => void;
+  full: boolean;
+  orderShown: boolean;
+  ordering: boolean;
+  onBestOrder: () => void;
+}) {
+  return (
+    <div className="go-add-stop">
+      <PlaceSearch variant="stop" pointCount={2} full={full} gate={geoGate} bias={searchBias} onPick={(place: Place) => onPick(place)} />
+      {orderShown && (
+        <button type="button" className="secondary" onClick={onBestOrder} aria-disabled={ordering ? true : undefined}>
+          {BEST_ORDER_LABEL}
+        </button>
+      )}
     </div>
   );
 }
