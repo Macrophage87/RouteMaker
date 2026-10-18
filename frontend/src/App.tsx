@@ -2504,8 +2504,9 @@ export function App() {
         if (sharedLine.current?.kept === kept) sharedLine.current = null;
         if (done !== "failed" && done !== "cancelled") said = SHARED_INPUTS_ONLY;
       } else if (ride && kept && done === "shared") {
-        // The one who shared a ride rides it as those who open it do: fixed, with the same location sharing.
-        setSharedOpen({ answer: shown, ride: true });
+        // The one who shared a ride has the same location sharing, but leads it: re-routed off it as any ride is (the
+        // owner, 2026-10-18: "Maybe make the sharer able to reroute").
+        setSharedOpen({ answer: shown, ride: true, own: true });
       }
     } finally {
       sharing.current = false;
@@ -2530,8 +2531,9 @@ export function App() {
     // A route everyone shares stays fixed (the owner, 2026-10-18: "For sharing mass rides and group rides, rerouting
     // defeats the purpose"; "ride is the fixed one ... route is so people can review or do it themselves
     // separately"): a link shared as a ride, opened unchanged; a Mass Ride or Group Ride, unless shared as a route.
+    // Its sharer is not held to it ("Maybe make the sharer able to reroute").
     const opened = sharedOpen?.answer === route ? sharedOpen : null;
-    const fixed = !rest && !leg.trip && (opened ? opened.ride : leg.preset === "mass-ride" || leg.preset === "group-ride");
+    const fixed = !rest && !leg.trip && (opened ? opened.ride && !opened.own : leg.preset === "mass-ride" || leg.preset === "group-ride");
     setRideStart((before) => ({ route, ...leg, dials: rideDials(planDials, rest ? null : route), fixed, n: (before?.n ?? 0) + 1 }));
     // The installed app keeps the ride's route as the last ride (OWNER-DECISIONS 465a); End ride gives it
     // the map the ride kept. A browser tab keeps nothing unless the rider presses Keep for offline.
@@ -2965,8 +2967,9 @@ export function App() {
   const [sharedNote, setSharedNote] = useState<string | null>(null);
   // The route a shared link opened as (its kept answer), and whether it was shared as a ride (Share ride) or as a
   // route: while it is the route shown or ridden, a ride is ridden fixed with location sharing offered (RideGroup),
-  // and a route is the opener's own to change and ride, even a Mass Ride's.
-  const [sharedOpen, setSharedOpen] = useState<{ answer: RouteResponse; ride: boolean } | null>(null);
+  // and a route is the opener's own to change and ride, even a Mass Ride's. `own`: the ride this rider shared, not
+  // held to it.
+  const [sharedOpen, setSharedOpen] = useState<{ answer: RouteResponse; ride: boolean; own?: boolean } | null>(null);
   // The "planned again" line is about the plan the link named: a change to the plan clears it.
   useEffect(() => setSharedNote(null), [points, preset, dials]);
   useEffect(() => {

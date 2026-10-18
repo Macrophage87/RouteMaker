@@ -131,7 +131,8 @@ test("a route everyone shares stays fixed on the ride: off route, the way back, 
   const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
   // A link shared as a ride; a Mass Ride or Group Ride unless shared as a route; not Ride the rest or a trip.
   assert.match(app, /const opened = sharedOpen\?\.answer === route \? sharedOpen : null;/);
-  assert.match(app, /const fixed = !rest && !leg\.trip && \(opened \? opened\.ride : leg\.preset === "mass-ride" \|\| leg\.preset === "group-ride"\);/);
+  // Its sharer is not held to it (the owner, 2026-10-18: "Maybe make the sharer able to reroute").
+  assert.match(app, /const fixed = !rest && !leg\.trip && \(opened \? opened\.ride && !opened\.own : leg\.preset === "mass-ride" \|\| leg\.preset === "group-ride"\);/);
   assert.match(app, /fixed=\{rideStart\.fixed\}/);
   // No automatic re-plan, from a fix or when the signal comes back.
   assert.match(ride, /const auto = !keepRef\.current && !fixedRef\.current;/);
@@ -157,7 +158,7 @@ test("Share route or Share ride: a ride's link opens fixed, with location sharin
   // Only with its exact line kept is a link a ride; the sharer rides it as its openers do.
   assert.match(app, /const link = ride && kept \? asRideLink\(now\.link\) : now\.link;/);
   // Only once the sheet shared it with the line kept; while the route is still planned, Share ride says to wait.
-  assert.match(app, /\} else if \(ride && kept && done === "shared"\) \{\s*\/\/[^\n]*\n\s*setSharedOpen\(\{ answer: shown, ride: true \}\);/);
+  assert.match(app, /\} else if \(ride && kept && done === "shared"\) \{(\s*\/\/[^\n]*\n)+\s*setSharedOpen\(\{ answer: shown, ride: true, own: true \}\);/);
   assert.match(app, /if \(ride && !shareExact\(\)\?\.save\.answer\) \{\s*setShareSaid\(\(before\) => \(\{ text: SHARE_RIDE_WAIT, count: before\.count \+ 1 \}\)\);\s*return;\s*\}/);
   assert.match(app, /if \(shared\.answer\) setSharedOpen\(\{ answer: shared\.answer, ride: SHARED_RIDE \}\);/);
   // What each does, on an Info button beside them (a phone has no hover) and as each button's description.
