@@ -16,7 +16,7 @@ import type { PresetId } from "./presets.ts";
  * the bottom bar, the map's chips, Go's Menu and the Layers sheet's Legend button open (UI-CLEANUP,
  * the approved mockup of 2026-10-11).
  */
-export type PanelView = "planner" | "layers" | "legend" | "suggest" | "review" | "gpx" | "settings" | "nearest" | "food" | "ride" | "repair" | "places";
+export type PanelView = "planner" | "layers" | "legend" | "suggest" | "review" | "gpx" | "settings" | "nearest" | "food" | "ride" | "repair" | "places" | "points";
 
 /** The planner's own heading, where the focus goes when the Plan button returns to it (OWNER-DECISIONS 392). */
 export const PLANNER_TITLE = "RouteMaker";
@@ -27,15 +27,21 @@ export const SHEET_TITLES: Record<Exclude<PanelView, "planner">, string> = {
   legend: "Legend",
   suggest: "Suggest a change",
   review: "Review",
-  gpx: "Route file",
+  // Save and load (the owner, 2026-10-18: "the files tab (maybe call it save or load)"): files, Save, Share, your routes.
+  gpx: "Save and load",
   settings: "Settings",
-  nearest: "Nearest water, restroom or Metro",
+  nearest: "Nearest",
   food: "Find food",
   ride: "Ride",
   // v0.7.0: Go's Repair (behind More), and Plan's Places to see (Go calls it Sights).
   repair: "Repair stands and bike shops",
   places: "Places to see",
+  // Go's Edit route (edit-route redesign, Stephen 2026-10-18): Plan's points, from the route card.
+  points: "Edit route",
 };
+
+/** The Files sheet's name on its buttons (the owner, 2026-10-18), short enough for the bar. */
+export const SAVE_LOAD = "Save & load";
 
 /** Go's Menu (the mockup's Menu sheet): Settings, with Plan, Suggest, GPX and Review above them. */
 export const MENU_TITLE = "Menu";
@@ -60,8 +66,8 @@ export const BAR_ITEMS: readonly BarItem[] = [
   { id: "plan", label: "Plan", opens: "planner", description: "Shows the planner: the points, the ride settings and the route." },
   { id: "layers", label: "Layers", opens: "layers", description: "Opens the map layers and their switches; the legend is behind its Legend button." },
   { id: "suggest", label: "Suggest", opens: "suggest", description: "Opens the ways to suggest a change to the map, or report a problem to DC 311." },
-  { id: "gpx", label: "Files", opens: "gpx", description: "Opens the route file tools: import a GPX file, or export the route." },
-  { id: "settings", label: "Settings", opens: "settings", description: "Opens the settings: display, Ride mode, this device and your account." },
+  { id: "gpx", label: SAVE_LOAD, opens: "gpx", description: "Opens Save and load: save or share the route, find your routes, or open or export a route file." },
+  { id: "settings", label: "Settings", opens: "settings", description: "Opens the settings: display, Ride mode and your account." },
 ];
 
 /** The sheets a bar button counts as its own: Layers holds the legend, Suggest the review. */
@@ -115,13 +121,19 @@ export function searchLede(loop: boolean, accessMode = false): string {
   return `${how}: ${end}${accessMode ? "" : ` ${ACCESS_SENTENCE_WHERE}`}`;
 }
 
-/** The Ride line's visible action: Edit while closed, Done while open. Its state is read from aria-expanded. */
+/**
+ * The Ride settings line's visible action: Adjust while closed, Done while open (edit-route redesign, Stephen
+ * 2026-10-18: "Edit" beside a row of chips read as a tag, not a button). Its state is read from aria-expanded.
+ */
 export function rideActionLabel(open: boolean): string {
-  return open ? "Done" : "Edit";
+  return open ? "Done" : "Adjust";
 }
 
-/** The Ride line's action as a screen reader hears it: the same word whatever the state (aria-expanded says that). */
-export const RIDE_ACTION_SPOKEN = "Edit";
+/** The Ride settings line's action as a screen reader hears it: the same word whatever the state (aria-expanded says that). */
+export const RIDE_ACTION_SPOKEN = "Adjust";
+
+/** The Ride settings line's label, over its summary. */
+export const RIDE_SETTINGS_LABEL = "Ride settings";
 
 export const COPY_LINK = "Copy link";
 export const COPY_LINK_DONE = "Link copied.";

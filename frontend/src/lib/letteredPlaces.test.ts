@@ -47,7 +47,7 @@ test("the nearest list: each row has its letter, seen in a pin and heard first, 
       folded: false,
     }),
   );
-  assert.match(html, /<li class="lettered-row"><span class="place-letter" aria-hidden="true"><span>A<\/span><\/span><span><span class="visually-hidden">A: <\/span>Drinking water, Garfield Park:/);
+  assert.match(html, /<li class="lettered-row"><span class="place-letter" aria-hidden="true"><span>A<\/span><\/span><div class="nearest-place"><span class="visually-hidden">A: <\/span>Drinking water, Garfield Park:/);
   assert.match(html, /<span>B<\/span>/);
   assert.match(html, /aria-label="Ride here: Drinking water, Lincoln Park"/);
   assert.match(html, /a tap on its marker, or its letter(&#x27;|')s key, is the same as Ride here/);

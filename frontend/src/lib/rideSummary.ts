@@ -84,3 +84,16 @@ export function rideSummary(preset: PresetId, dials: Dials): string {
 export function rideSummarySpoken(preset: PresetId, dials: Dials): string {
   return rideSummaryParts(preset, dials, presetSaid).join(", ");
 }
+
+/**
+ * The Ride settings line's words (edit-route redesign, Stephen 2026-10-18): the summary without the ride type, which
+ * has its own button above it ("quiet streets · balanced hills · now").
+ */
+export function settingsSummary(preset: PresetId, dials: Dials): string {
+  return rideSummaryParts(preset, dials).slice(1).join(" · ");
+}
+
+/** The same, as read: joined with commas. */
+export function settingsSummarySpoken(preset: PresetId, dials: Dials): string {
+  return rideSummaryParts(preset, dials, presetSaid).slice(1).join(", ");
+}

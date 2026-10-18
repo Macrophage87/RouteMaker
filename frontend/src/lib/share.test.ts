@@ -68,7 +68,8 @@ test("the shared URL is Copy link's, at its full precision and without the weigh
   assert.match(app, /let link = linkToCopy\(window\.location, points, preset, dials, viaIndices\(points, VIA_MARKS\.isVia\)\);/);
   assert.match(app, /link = withSharedId\(link, id\);/);
   assert.match(app, /shareContent\(link, distanceM, presetSaid\(preset\)\)/);
-  assert.match(app, /copyText\(linkToCopy\(window\.location, points, preset, dials, viaIndices\(points, VIA_MARKS\.isVia\)\), navigator\.clipboard, selectionCopy\)/);
+  // Copy link copies that same link, the exact line's id and all (v0.9.0, "share the exact route").
+  assert.match(app, /const \{ link, kept \} = sharedLinkNow\(\);\s*const done = await copyText\(link, navigator\.clipboard, selectionCopy\);/);
 });
 
 test("the rider closing the sheet is silent; any other failure says so and offers Copy link", async () => {
@@ -89,28 +90,29 @@ test("the rider closing the sheet is silent; any other failure says so and offer
 });
 
 test("App shows Share beside Copy link only where it is supported, named Share route, described by the location line", () => {
-  assert.equal(SHARE_LABEL, "Share");
+  assert.equal(SHARE_LABEL, "Share route");
   assert.equal(SHARE_NAME, "Share route");
   assert.ok(SHARE_NAME.startsWith(SHARE_LABEL), "the accessible name holds the visible word");
   assert.match(app, /const \[canShare\] = useState\(\(\) => canShareLink\(navigator, window\.location\.href\)\);/);
-  // UI-CLEANUP (the owner's choice 8): Share is behind More, beside Start, GPX and Link; first in it.
-  const copy = app.indexOf("aria-label={COPY_LINK}");
-  const share = app.indexOf("{canShare && (");
-  assert.ok(copy > 0 && share > copy && share - copy < 700, "in More, after Link");
-  // More is always there: Share as image is in it, after Share and its keeping (lib/shareCard.ts).
-  assert.doesNotMatch(app, /hasMore/);
+  // The owner, 2026-10-17 ("the share button should be in files. Basically you save then you share"): in the Route
+  // file sheet, Save route first, then Share and its keeping; Plan's More keeps Share as image, not Share.
+  const controls = app.slice(app.indexOf("export function ShareControls"), app.indexOf("function RouteActions("));
   assert.match(
-    app,
-    /\{canShare && <ShareKeepField value=\{shareKeep\} onChange=\{onShareKeep\} \/>\}\s*\{\/\*[^*]*\*\/\}\s*<button type="button" className="secondary share-image" onClick=\{shareImage\} aria-haspopup="dialog">\s*\{SHARE_IMAGE_LABEL\}/,
+    controls,
+    /\{save\}\s*\{canShare && ready && \(\s*<div className="share-buttons">\s*<button\s*type="button"\s*className="secondary share-route"\s*onClick=\{\(\) => shareRoute\(false\)\}\s*aria-describedby=\{`share-route-about\$\{note\}`\}/,
   );
-  assert.match(
-    app,
-    /<div id=\{moreId\} className="route-more-body" hidden=\{!more\}>\s*\{canShare && \(\s*<button type="button" className="secondary share-route" onClick=\{shareRoute\} aria-label=\{SHARE_NAME\} aria-describedby=\{linkNote \? "link-note" : undefined\}>\s*\{SHARE_LABEL\}/,
-  );
-  // A failure is said in the polite status Copy link uses, and shown; success and cancel say nothing.
+  assert.match(controls, /\{canShare && ready && linkNote && \(\s*<p id="share-link-note" className="hint link-note">/);
+  assert.match(controls, /\{canShare && ready && onShareKeep && <ShareKeepField value=\{shareKeep\} onChange=\{onShareKeep\} \/>\}/);
+  const more = app.slice(app.indexOf('<div id={moreId} className="route-more-body"'), app.indexOf("</div>", app.indexOf('<div id={moreId} className="route-more-body"')));
+  assert.doesNotMatch(more, /share-route|SaveRoute/);
+  assert.match(more, /className="secondary share-image" onClick=\{shareImage\} aria-haspopup="dialog"/);
+  const appFile = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  assert.match(appFile, /<ShareControls\s*save=\{saveProps \? <SaveRoute \{\.\.\.saveProps\} label=\{SAVE_ROUTE\} \/> : null\}\s*canShare=\{canShare\}\s*ready=\{!!shown\}/);
+  // A failure is said in the sheet's polite status beside Share, and shown; success and cancel say nothing.
   assert.match(app, /const done = await outcome;\s*said = shareSaidFor\(done\);/);
   assert.match(app, /if \(!said\) return;\s*window\.setTimeout/);
-  assert.match(app, /if \(press === linkPresses\.current\) setLinkSpoken\(said\);/);
+  assert.match(app, /if \(press === sharePresses\.current\) setShareSaid\(\(before\) => \(\{ text: said, count: before\.count \+ 1 \}\)\);/);
+  assert.match(controls, /<p className="hint share-said" role="status">/);
 });
 
 test("share() is called within the press: synchronously in shareLink, and before any await in shareRoute", () => {
@@ -119,12 +121,13 @@ test("share() is called within the press: synchronously in shareLink, and before
   void shareLink({ share: async () => void (called = true) }, shareContent("https://x.test/", 1, "Default"));
   assert.equal(called, true, "share() called synchronously");
   // App's handler: no await before shareLink(...), and a press while a sheet is open is skipped.
-  const start = app.indexOf("const shareRoute = async () => {");
+  const start = app.indexOf("const shareRoute = async (ride = false) => {");
   assert.ok(start > 0);
   const body = app.slice(start, app.indexOf("\n  };\n", start));
   const call = body.indexOf("shareLink(navigator, content)");
   assert.ok(call > 0, "shareRoute calls shareLink");
   assert.doesNotMatch(body.slice(0, call).replace(/\/\/[^\n]*/g, ""), /\bawait\b/, "no await before shareLink");
-  assert.match(body, /if \(!shown \|\| sharing\.current\) return;\s*sharing\.current = true;/);
+  assert.match(body, /if \(!shown \|\| sharing\.current\) return;/);
+  assert.match(body, /return;\s*\}\s*sharing\.current = true;/);
   assert.match(body, /finally \{\s*sharing\.current = false;\s*\}/);
 });
