@@ -414,3 +414,62 @@ class TestClosedStationsApi:
         # A day asked for is the timetable's alone.
         later = client.get("/api/transit/closures", {"at": "2026-09-30T12:00:00"}).json()
         assert all(s["name"] != "Smithsonian" for s in later["stations"])
+
+
+# --- Badges on stations with an alert or an elevator out (the owner, 2026-10-18) -------------
+
+
+def test_stations_an_incident_names_get_a_badge_and_line_wide_ones_none() -> None:
+    live = snapshot()
+    # "an earlier equipment problem at Eastern Market"; Takoma and Silver Spring are not in
+    # the fixture.
+    assert live.named() == {"D06"}
+    assert _with_incidents("Orange Line: expect delays in both directions.").named() == set()
+    # Elevators only, both platforms of a station.
+    assert live.elevator_out_codes() == {"D01"}
+
+
+def test_a_name_inside_a_longer_named_station_is_not_named_too() -> None:
+    from dataclasses import replace
+
+    base = snapshot()
+    stations = {
+        **base.stations,
+        "C07": wmata_live.Station("C07", "Pentagon", -77.054, 38.869),
+        "C08": wmata_live.Station("C08", "Pentagon City", -77.059, 38.863),
+    }
+    live = replace(base, stations=stations)
+    words = "elevator work at pentagon city."
+    assert [s.code for s in live._named_in(words)] == ["C08"]
+    assert {s.code for s in live._named_in("pentagon and pentagon city.")} == {"C07", "C08"}
+
+
+@db
+@pytest.mark.usefixtures("weekday_clock")
+class TestStationAlertsApi:
+    def test_the_map_badges_alerts_and_elevators_out_but_not_closed_stations(
+        self, client, installed, monkeypatch
+    ) -> None:
+        from dataclasses import replace
+
+        live = replace(
+            _with_incidents(
+                "Delays due to an equipment problem at Eastern Market.",
+                "Smithsonian station is closed.",
+            ),
+            outages=(
+                wmata_live.Outage("D01", "Federal Triangle", "ELEVATOR", "Street", None),
+                wmata_live.Outage("D02", "Smithsonian", "ELEVATOR", "Street", None),
+                wmata_live.Outage("B03", "Union Station", "ESCALATOR", "Mezzanine", None),
+            ),
+        )
+        monkeypatch.setattr(wmata_live.client, "snapshot", lambda: live)
+        body = client.get("/api/transit/closures").json()
+        alerts = {a["name"]: (a["alert"], a["elevator_out"]) for a in body["alerts"]}
+        # Smithsonian is struck through instead; an escalator out is no badge.
+        assert alerts == {"Eastern Market": (True, False), "Federal Triangle": (False, True)}
+        # A day asked for, or no reading: no badges.
+        later = client.get("/api/transit/closures", {"at": "2026-09-30T12:00:00"}).json()
+        assert later["alerts"] == []
+        monkeypatch.setattr(wmata_live.client, "snapshot", lambda: None)
+        assert client.get("/api/transit/closures").json()["alerts"] == []

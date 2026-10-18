@@ -11,9 +11,9 @@
  * Colour is never the only cue: the icon is struck through and the name reads "(closed)", and the
  * station's card and lists say "Camden Station, closed: no MARC weekend service".
  */
-import type { ClosedStation } from "./api.ts";
+import type { ClosedStation, StationAlert } from "./api.ts";
 import { haversineM } from "./geo.ts";
-import { visibleLines, type RailVisibility, type Station } from "./railStations.ts";
+import { visibleLines, type RailVisibility, type Station, type StationBadges } from "./railStations.ts";
 
 /** A closure further than this from every station of its system is not one the map draws. */
 export const MATCH_M = 400;
@@ -56,6 +56,31 @@ export function matchClosures(stations: readonly Station[], closed: readonly Clo
 }
 
 /**
+ * WMATA's badges, keyed by the map's station ids (the owner, 2026-10-18: "Put a little notice marker on
+ * all the stations that have alerts", "For elevator out, use an X'd out elevator icon"): each to the
+ * nearest station with Metro lines within MATCH_M.
+ */
+export function matchAlerts(stations: readonly Station[], alerts: readonly StationAlert[]): ReadonlyMap<string, StationBadges> {
+  const out = new Map<string, StationBadges>();
+  for (const item of alerts) {
+    let best: Station | null = null;
+    let bestM = MATCH_M;
+    for (const station of stations) {
+      if (station.metro.length === 0) continue;
+      const m = haversineM(station.point, [item.lon, item.lat]);
+      if (m <= bestM) {
+        best = station;
+        bestM = m;
+      }
+    }
+    if (!best) continue;
+    const had = out.get(best.id);
+    out.set(best.id, { alert: item.alert || had?.alert === true, elevatorOut: item.elevator_out || had?.elevatorOut === true });
+  }
+  return out;
+}
+
+/**
  * Why a station is closed with the toggles as they are, or null when it is open: every system it
  * shows must be closed ("no MARC weekend service"; two systems' reasons joined by "and").
  */
@@ -81,35 +106,11 @@ export function closedLabel(name: string): string {
   return `${name} (closed)`;
 }
 
-function washingtonParts(nowMs: number): { day: Date; hour: number } {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/New_York",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(new Date(nowMs));
-  const get = (type: string) => Number(parts.find((p) => p.type === type)?.value);
-  return { day: new Date(Date.UTC(get("year"), get("month") - 1, get("day"))), hour: get("hour") };
-}
-
-/** The service day a closure list is for, in Washington: before 3 am it is still the day before. */
-export function serviceDayOf(nowMs: number): string {
-  const { day, hour } = washingtonParts(nowMs);
-  if (hour < 3) day.setUTCDate(day.getUTCDate() - 1);
-  return day.toISOString().slice(0, 10);
-}
-
 /**
- * When the closure list is asked again: at 3 am, when the service day turns over, and at midnight
- * too, since from then a station whose line runs on the new date is not closed (its first train is
- * on its card; core.transit.closed_stations).
+ * How often the page asks again while in view: WMATA's closures and badges change within the day (the
+ * server keeps its reading a minute), and the timetable's day turns over at midnight and 3 am.
  */
-export function closuresDayOf(nowMs: number): string {
-  const { day } = washingtonParts(nowMs);
-  return `${serviceDayOf(nowMs)} ${day.toISOString().slice(0, 10)}`;
-}
+export const RAIL_STATUS_MS = 5 * 60_000;
 
 type FetchLike = (url: string, init?: RequestInit) => Promise<Response>;
 
@@ -130,17 +131,37 @@ function looksLikeClosures(body: unknown): body is { service_day: string; statio
   );
 }
 
+/** The answer's badges, the well-formed ones; none from an older server that sends no list. */
+function alertsOf(body: unknown): StationAlert[] {
+  const alerts = (body as { alerts?: unknown }).alerts;
+  if (!Array.isArray(alerts)) return [];
+  return alerts.filter(
+    (a): a is StationAlert =>
+      !!a &&
+      typeof a.name === "string" &&
+      typeof a.alert === "boolean" &&
+      typeof a.elevator_out === "boolean" &&
+      Number.isFinite(a.lon) &&
+      Number.isFinite(a.lat),
+  );
+}
+
+export interface RailStatus {
+  stations: ClosedStation[];
+  alerts: StationAlert[];
+}
+
 /**
- * Today's closed stations, or null when the server has no timetables or does not answer: nothing
- * is greyed, and the caller asks again later (a failure is not "no station closed today").
+ * Today's closed stations and WMATA's badges, or null when the server has no timetables or does not
+ * answer: nothing is greyed, and the caller asks again later (a failure is not "no station closed today").
  */
-export async function requestClosures(options: { fetchImpl?: FetchLike; signal?: AbortSignal } = {}): Promise<ClosedStation[] | null> {
+export async function requestClosures(options: { fetchImpl?: FetchLike; signal?: AbortSignal } = {}): Promise<RailStatus | null> {
   const fetchImpl: FetchLike = options.fetchImpl ?? ((url, init) => fetch(url, init));
   try {
     const response = await fetchImpl("/api/transit/closures", { headers: { Accept: "application/json" }, signal: options.signal });
     if (!response.ok) return null;
     const body: unknown = await response.json();
-    return looksLikeClosures(body) ? body.stations : null;
+    return looksLikeClosures(body) ? { stations: body.stations, alerts: alertsOf(body) } : null;
   } catch {
     return null;
   }

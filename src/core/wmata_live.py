@@ -258,11 +258,42 @@ class Snapshot:
                     continue
                 if FUTURE_WORDS.search(words):
                     continue
-                for station in self.stations.values():
-                    if _names(station.name, words):
-                        for code in self.codes(station):
-                            out.setdefault(code, sentence)
+                for station in self._named_in(words):
+                    for code in self.codes(station):
+                        out.setdefault(code, sentence)
         return out
+
+    def named(self) -> set[str]:
+        """The codes of every station an incident names, closed or not (the owner, 2026-10-18:
+        "Put a little notice marker on all the stations that have alerts"). A line-wide
+        incident that names no station marks none."""
+        out: set[str] = set()
+        for incident in self.incidents:
+            for station in self._named_in(incident.text.lower()):
+                out.update(self.codes(station))
+        return out
+
+    def elevator_out_codes(self) -> set[str]:
+        """The codes of every station with an elevator out, its other platforms' too."""
+        out: set[str] = set()
+        for outage in self.outages:
+            station = self.stations.get(outage.station)
+            if outage.unit == "ELEVATOR" and station is not None:
+                out.update(self.codes(station))
+        return out
+
+    def _named_in(self, words: str) -> list[Station]:
+        """The stations lower-case `words` names, each as a whole phrase; a name inside a
+        longer station's name where that one is named ("Pentagon" in "Pentagon City") is not."""
+        spans: list[tuple[int, int, Station]] = []
+        for station in self.stations.values():
+            for match in _matches(station.name, words):
+                spans.append((match.start(), match.end(), station))
+        return [
+            station
+            for start, end, station in spans
+            if not any(s <= start and end <= e and (e - s) > (end - start) for s, e, _ in spans)
+        ]
 
     def is_closed(self, station: Station) -> bool:
         closed = self.closed()
@@ -279,9 +310,9 @@ OPEN_WORDS = re.compile(r"\b(open|opens|reopen|reopens|reopened)\b")
 FUTURE_WORDS = re.compile(r"\b(will|beginning|starting)\b")
 
 
-def _names(name: str, words: str) -> bool:
-    """Whether lower-case `words` names the station `name` as a whole phrase."""
-    return re.search(rf"(?<![\w-]){re.escape(name.lower())}(?![\w-])", words) is not None
+def _matches(name: str, words: str):
+    """Where lower-case `words` names the station `name` as a whole phrase."""
+    return re.finditer(rf"(?<![\w-]){re.escape(name.lower())}(?![\w-])", words)
 
 
 def same_line(a: str, b: str) -> bool:

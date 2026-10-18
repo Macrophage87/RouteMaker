@@ -3609,9 +3609,21 @@ class ClosedStationOut(Schema):
     reason: str = Field(description='"no MARC weekend service"')
 
 
+class StationAlertOut(Schema):
+    name: str
+    lon: float
+    lat: float
+    alert: bool = Field(description="A WMATA incident names this station.")
+    elevator_out: bool = Field(description="WMATA lists an elevator out here.")
+
+
 class ClosuresOut(Schema):
     service_day: str = Field(description="The GTFS service day (before 3 am, the day before).")
     stations: list[ClosedStationOut]
+    alerts: list[StationAlertOut] = Field(
+        default_factory=list,
+        description="Asked for now only: open Metro stations with a WMATA alert or elevator out.",
+    )
 
 
 @api.get(
@@ -3664,7 +3676,40 @@ def transit_closures(request, params: Query[ClosuresIn], response: HttpResponse)
             }
         )
     response["Cache-Control"] = f"public, max-age={60 if live is not None else 300}"
-    return {"service_day": moment.service_day.isoformat(), "stations": stations}
+    return {
+        "service_day": moment.service_day.isoformat(),
+        "stations": stations,
+        "alerts": _station_alerts(live, {s["name"] for s in stations}),
+    }
+
+
+def _station_alerts(live, closed_names: set[str]) -> list[dict]:
+    """The Metro stations a WMATA incident names, and those with an elevator out, for their
+    small badges on the map (the owner, 2026-10-18: "Put a little notice marker on all the
+    stations that have alerts", "For elevator out, use an X'd out elevator icon"). A closed
+    station is struck through instead; a line-wide incident badges no station."""
+    if live is None:
+        return []
+    named = live.named()
+    lifts = live.elevator_out_codes()
+    out: dict[str, dict] = {}
+    for code in sorted(named | lifts):
+        station = live.stations.get(code)
+        if station is None or station.name in closed_names:
+            continue
+        item = out.setdefault(
+            station.name,
+            {
+                "name": station.name,
+                "lon": station.lon,
+                "lat": station.lat,
+                "alert": False,
+                "elevator_out": False,
+            },
+        )
+        item["alert"] = item["alert"] or code in named
+        item["elevator_out"] = item["elevator_out"] or code in lifts
+    return list(out.values())
 
 
 # --- A station's times, for its card (the owner, 2026-10-12) -------------------------------

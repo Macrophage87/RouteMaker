@@ -67,7 +67,7 @@ import { dragPreview, legOfSegment, nearestOnPath } from "./lib/lineEdit.ts";
 import { LineGesture } from "./lib/lineGesture.ts";
 import { PENN_COLOUR, RAIL_STATIONS, stationById } from "./lib/railData.ts";
 import { addRailStations, ROUTE_BOTTOM_LAYER, setRailVisibility } from "./lib/railLayer.ts";
-import type { RailVisibility, Station, StationRole } from "./lib/railStations.ts";
+import type { RailVisibility, Station, StationBadges, StationRole } from "./lib/railStations.ts";
 import { attachRailInteraction, type StationFound } from "./railInteraction.ts";
 import { stressProbe } from "./lib/stressProtocol.ts";
 import federalLandUrl from "./federal-data/federal-land.json?url";
@@ -239,6 +239,8 @@ interface Props {
   rail: RailVisibility;
   /** Why a station is closed all day with the toggles as they are, or null (railClosures.ts). */
   railClosedReason?: (station: Station) => string | null;
+  /** WMATA's badges on a station: an alert names it, an elevator there is out (railClosures.ts). */
+  railBadges?: (station: Station) => StationBadges | null;
   /**
    * The map is coloured by carrying capacity, riders per minute, not by traffic stress
    * (OWNER-DECISIONS 325-327; massStyle.js): a Mass Ride on tiles that carry a capacity (App's
@@ -1223,6 +1225,7 @@ export function MapView(props: Props) {
       if (RAIL_STATIONS.length > 0) {
         addRailStations(map, RAIL_STATIONS, callbacks.current.rail, PENN_COLOUR, iconPixelRatio(), (station) =>
           Boolean(callbacks.current.railClosedReason?.(station)),
+          (station) => callbacks.current.railBadges?.(station) ?? null,
         );
       }
       rail = attachRailInteraction(map, {
@@ -2103,8 +2106,14 @@ export function MapView(props: Props) {
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loaded.current) return;
-    setRailVisibility(map, RAIL_STATIONS, props.rail, (station) => Boolean(props.railClosedReason?.(station)));
-  }, [props.rail.metro, props.rail.marc, props.railClosedReason]);
+    setRailVisibility(
+      map,
+      RAIL_STATIONS,
+      props.rail,
+      (station) => Boolean(props.railClosedReason?.(station)),
+      (station) => props.railBadges?.(station) ?? null,
+    );
+  }, [props.rail.metro, props.rail.marc, props.railClosedReason, props.railBadges]);
 
   // The federal-land shading: on for a Mass Ride, off for any other ride type.
   useEffect(() => {

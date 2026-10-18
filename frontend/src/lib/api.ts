@@ -548,6 +548,15 @@ export interface ClosedStation {
   reason: string;
 }
 
+/** An open Metro station a WMATA incident names, or with an elevator out (GET /api/transit/closures). */
+export interface StationAlert {
+  name: string;
+  lon: number;
+  lat: number;
+  alert: boolean;
+  elevator_out: boolean;
+}
+
 /** One line's times at a station now (GET /api/transit/station-times; core.transit.station_times). */
 export interface StationLineTime {
   /** "Metro", "MARC", "VRE", "Light RailLink". */

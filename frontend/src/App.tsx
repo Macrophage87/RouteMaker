@@ -8,10 +8,10 @@ import { placeAtSpot, requestAfterClose, type InfoRequest } from "./lib/roadInfo
 import { stationNearSpot } from "./lib/stationLinks.ts";
 import { canDragLine, dropStillValid, insertIntoRide, legEnds, legPoints } from "./lib/lineEdit.ts";
 import { EditHistory, isRedoKey, isUndoKey, typesText } from "./lib/editHistory.ts";
-import { requestNeighbours, requestRoute, routeRequestBody, type ClosedStation, type NeighbourOption, type NeighboursResult, type RouteResponse, type RouteResult } from "./lib/api.ts";
+import { requestNeighbours, requestRoute, routeRequestBody, type NeighbourOption, type NeighboursResult, type RouteResponse, type RouteResult } from "./lib/api.ts";
 import { keptNeighbours, neighbourDials, neighboursSaid, offersNeighbours, rideDials, withNeighbours } from "./lib/neighbours.ts";
 import { betterRouteSaid, EarlyStart, takesRefined } from "./lib/progressive.ts";
-import { closedReason, closuresDayOf, matchClosures, requestClosures } from "./lib/railClosures.ts";
+import { RAIL_STATUS_MS, closedReason, matchAlerts, matchClosures, requestClosures, type RailStatus } from "./lib/railClosures.ts";
 import { COVERAGE_BBOX, MAX_POINTS, addPoint, insideCoverage, type LonLat } from "./lib/geo.ts";
 import { formatSeconds } from "./lib/format.ts";
 import { presetSaid, twoPointsOnly, usesBikeshare, type PresetId } from "./lib/presets.ts";
@@ -434,35 +434,39 @@ export function App() {
   }, [showTopoLines]);
   const [rail, setRail] = useState<RailVisibility>({ metro: true, marc: true });
   // The rail stations with no service all day (railClosures.ts): struck through and greyed on the
-  // map, and "closed" in their cards and lists. Asked again when the service day turns over, and at
-  // midnight (closuresDayOf).
-  const [closedToday, setClosedToday] = useState<ClosedStation[]>([]);
+  // map, and "closed" in their cards and lists; with WMATA's live closures and its badges (a station an
+  // alert names, an elevator out). Asked every few minutes while the page is in view, since WMATA's
+  // change within the day, and as soon as it is back in view.
+  const [railStatus, setRailStatus] = useState<RailStatus>({ stations: [], alerts: [] });
   useEffect(() => {
-    let day = "";
     const controller = new AbortController();
     let asking = false;
+    let askedAt = 0;
     const check = () => {
-      const today = closuresDayOf(Date.now());
-      if (today === day || asking) return;
+      if (asking || document.visibilityState === "hidden" || Date.now() - askedAt < RAIL_STATUS_MS - 1000) return;
       asking = true;
-      void requestClosures({ signal: controller.signal }).then((stations) => {
+      void requestClosures({ signal: controller.signal }).then((status) => {
         asking = false;
         if (controller.signal.aborted) return;
-        // Only an answer settles the day: a failure is asked again at the next check.
-        if (stations === null) return;
-        day = today;
-        setClosedToday(stations);
+        // Only an answer counts: a failure is asked again at the next check, the last answer kept.
+        if (status === null) return;
+        askedAt = Date.now();
+        setRailStatus(status);
       });
     };
     check();
-    const timer = window.setInterval(check, 10 * 60 * 1000);
+    const timer = window.setInterval(check, 60 * 1000);
+    document.addEventListener("visibilitychange", check);
     return () => {
       controller.abort();
       window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", check);
     };
   }, []);
-  const railClosures = useMemo(() => matchClosures(RAIL_STATIONS, closedToday), [closedToday]);
+  const railClosures = useMemo(() => matchClosures(RAIL_STATIONS, railStatus.stations), [railStatus]);
+  const railBadges = useMemo(() => matchAlerts(RAIL_STATIONS, railStatus.alerts), [railStatus]);
   const railClosedReason = useCallback((station: Station) => closedReason(station, rail, railClosures), [rail, railClosures]);
+  const railBadgesOf = useCallback((station: Station) => railBadges.get(station.id) ?? null, [railBadges]);
   // The Mass Ride map's federal-land shading (lib/federalLand.ts): the rider's
   // own switch, on by default, and whether its data has arrived.
   const [federalOn, setFederalOn] = useState(true);
@@ -3931,6 +3935,7 @@ export function App() {
         onCanvasFocus={(focused) => setCrosshair((c) => ({ ...c, canvas: focused }))}
         rail={rail}
         railClosedReason={railClosedReason}
+        railBadges={railBadgesOf}
         massCapacity={massMap}
         massArea={isMassRide(preset)}
         massHazards={massHazards}
