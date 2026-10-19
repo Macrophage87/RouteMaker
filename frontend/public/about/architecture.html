@@ -88,6 +88,12 @@
     th, td { padding: 0.35rem 0.4rem; }
     figure { padding: 0.4rem; }
   }
+
+  details.more { margin: 0.5rem 0 1rem; border: 1px solid var(--line); border-radius: 6px; }
+  details.more > summary { cursor: pointer; padding: 0.55rem 0.8rem; font-weight: 600; color: var(--link); }
+  details.more > summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+  details.more[open] > summary { border-bottom: 1px solid var(--line); }
+  details.more > .more-body { padding: 0 0.8rem 0.4rem; }
 </style>
 </head>
 <body>
@@ -195,6 +201,9 @@ Discord token.</li>
 </div>
 <figcaption>Everything runs as Docker containers on one machine. Only the web server is reachable from the internet.<sup class="cite"><a href="#ref-1" aria-label="source 1">[1]</a></sup></figcaption>
 </figure>
+<details class="more"><summary>More: The running system</summary>
+<div class="more-body">
+
 <ul>
 <li><strong>Web server:</strong> Caddy<sup class="cite"><a href="#ref-12" aria-label="source 12">[12]</a></sup> handles encryption, serves the app's files and
 the map archives, and passes everything else to the app server. It refuses to be framed by other
@@ -224,6 +233,7 @@ never leave the server.</li>
 </table>
 </div>
 
+</div></details>
 <h2 id="rebuild">The weekly rebuild</h2>
 <figure id="fig-rebuild">
 <div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
@@ -271,6 +281,9 @@ never leave the server.</li>
 </div>
 <figcaption>The rebuild runs weekly, or on a rented cloud machine when needed<sup class="cite"><a href="#ref-1" aria-label="source 1">[1]</a><a href="#ref-3" aria-label="source 3">[3]</a><a href="#ref-4" aria-label="source 4">[4]</a><a href="#ref-5" aria-label="source 5">[5]</a><a href="#ref-2" aria-label="source 2">[2]</a></sup>.</figcaption>
 </figure>
+<details class="more"><summary>More: The weekly rebuild</summary>
+<div class="more-body">
+
 <p>The rebuild downloads OpenStreetMap extracts<sup class="cite"><a href="#ref-3" aria-label="source 3">[3]</a></sup>, merges and clips them to the coverage
 area with Osmium<sup class="cite"><a href="#ref-4" aria-label="source 4">[4]</a></sup>, and converts USGS elevation<sup class="cite"><a href="#ref-5" aria-label="source 5">[5]</a></sup> into the height files Valhalla
 reads. It then rates every road (see <a href="/about/stress.html#which-rating">Which rating
@@ -300,6 +313,7 @@ county, has been checked; the old map is kept so a bad build can be rolled back.
 less often. Contours are drawn at 20, 40 and 100 ft [6, 12 and 30 m] from USGS 1/3 arc-second
 elevation with GDAL<sup class="cite"><a href="#ref-14" aria-label="source 14">[14]</a></sup>.</p>
 
+</div></details>
 <h2 id="request">Planning a route</h2>
 <figure id="fig-request">
 <div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
@@ -336,10 +350,14 @@ elevation with GDAL<sup class="cite"><a href="#ref-14" aria-label="source 14">[1
 </div>
 <figcaption>Solid arrows are requests; dashed arrows are answers. Signed-out plans are never stored.</figcaption>
 </figure>
+<details class="more"><summary>More: Planning a route</summary>
+<div class="more-body">
+
 <p>Each request has a time budget, a rate limit and a cap on plans in flight, so one busy rider cannot
 slow everyone else. Trips over about 19 mi [30 km] are refined leg by leg. A route can have 2 to 25
 points; very long plans over 93 mi [150 km] ask for confirmation when signed out.</p>
 
+</div></details>
 <h2 id="map">Drawing the map</h2>
 <figure id="fig-layers">
 <div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
@@ -410,6 +428,9 @@ lists each connected assistant with a Disconnect button.</li>
 <p>RouteMaker speaks the Model Context Protocol<sup class="cite"><a href="#ref-16" aria-label="source 16">[16]</a></sup>, an open standard, so any assistant app
 that supports it can plan routes with RouteMaker's own planner. A route planned this way is exactly
 what the app would plan, because the assistant goes through the same route request as the app.</p>
+<details class="more"><summary>More: Connecting an AI assistant</summary>
+<div class="more-body">
+
 <div class="table-wrap" tabindex="0" role="region" aria-label="What an assistant can do">
 <table>
 <caption>What an assistant can do</caption>
@@ -458,6 +479,7 @@ configuration; the
 has a Claude Desktop example, including Windows with the copy in WSL<sup class="cite"><a href="#ref-1" aria-label="source 1">[1]</a></sup>. A long loop can
 take a few minutes on your own computer; raise the client's tool timeout if it gives up first.</p>
 
+</div></details>
 <h2 id="quality">Accessibility and testing</h2>
 <ul>
 <li><strong>Accessibility</strong> is a requirement, not an extra: WCAG 2.2 AA<sup class="cite"><a href="#ref-17" aria-label="source 17">[17]</a></sup> for

@@ -88,6 +88,12 @@
     th, td { padding: 0.35rem 0.4rem; }
     figure { padding: 0.4rem; }
   }
+
+  details.more { margin: 0.5rem 0 1rem; border: 1px solid var(--line); border-radius: 6px; }
+  details.more > summary { cursor: pointer; padding: 0.55rem 0.8rem; font-weight: 600; color: var(--link); }
+  details.more > summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+  details.more[open] > summary { border-bottom: 1px solid var(--line); }
+  details.more > .more-body { padding: 0 0.8rem 0.4rem; }
 </style>
 </head>
 <body>
@@ -167,6 +173,9 @@ then looks for the route with the least stress for the kind of ride you chose.</
 Mekuria, Furth and Nixon<sup class="cite"><a href="#ref-1" aria-label="source 1">[1]</a></sup> and refined by Furth<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup>. LTS 1 suits children and LTS 4
 only the most traffic-tolerant riders. RouteMaker adds LTS 4.5 and Avoid for the worst roads, and half
 steps for roads between two levels.</p>
+<details class="more"><summary>More: Every road gets a stress level</summary>
+<div class="more-body">
+
 <div class="table-wrap" tabindex="0" role="region" aria-label="The levels, their words and their map colours">
 <table>
 <caption>The levels, their words and their map colours</caption>
@@ -187,6 +196,7 @@ steps for roads between two levels.</p>
 <a href="/about/stress.html#formula">the formula in detail</a> and
 <a href="/about/stress.html#special">special cases</a>.</p>
 
+</div></details>
 <h2 id="which-rating">Which rating wins</h2>
 <p>A road's level comes from the first of these that rates it: community corrections, approved by hand;
 a local agency (Montgomery County or the District); a state agency (Maryland's State Highway
@@ -209,6 +219,9 @@ extra too, so a quiet street that crosses a highway at a stop sign is not treate
 you are assumed to ride, and how hills and surfaces count. They change the costs, never the ratings.
 More: <a href="/about/ride-types.html">every ride type compared</a>. Three ride types use methods of
 their own:</p>
+<details class="more"><summary>More: Ride types</summary>
+<div class="more-body">
+
 <ul>
 <li><a href="/about/mass-ride.html">Mass Ride</a>, for a large group that takes the lane, plans by how
 many riders a road can carry and where corkers are needed, not by traffic stress.</li>
@@ -216,6 +229,7 @@ many riders a road can carry and where corkers are needed, not by traffic stress
 unpaved roads, using trail ratings and elevation.</li>
 </ul>
 
+</div></details>
 <h2 id="closures">Closures</h2>
 <p>Real closures move a route: state work zones, police and city alerts, and closures a reviewer has
 confirmed. DC's planned-work permits never do. More: <a href="/about/routing.html#closures">closures</a>.</p>

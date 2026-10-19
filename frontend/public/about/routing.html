@@ -88,6 +88,12 @@
     th, td { padding: 0.35rem 0.4rem; }
     figure { padding: 0.4rem; }
   }
+
+  details.more { margin: 0.5rem 0 1rem; border: 1px solid var(--line); border-radius: 6px; }
+  details.more > summary { cursor: pointer; padding: 0.55rem 0.8rem; font-weight: 600; color: var(--link); }
+  details.more > summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+  details.more[open] > summary { border-bottom: 1px solid var(--line); }
+  details.more > .more-body { padding: 0 0.8rem 0.4rem; }
 </style>
 </head>
 <body>
@@ -192,6 +198,10 @@ wider roads of the same level cost more.</p>
 </div>
 <figcaption>Each bar is a range because faster and wider roads of the same level cost more. LTS 1 and 2 cost 1 (except on the ride types below that lean toward LTS 1). Trailmaxxing and Novice and Nervous also rank LTS 4 and Avoid ahead of everything else, so these figures understate how hard they avoid them.<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup></figcaption>
 </figure>
+<details class="more"><summary>More: What each level costs</summary>
+<div class="more-body">
+
+
 <p>The traffic slider sets how much more. The ride type sets where the slider starts:</p>
 <figure id="fig-slider">
 <div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
@@ -259,6 +269,7 @@ wider roads of the same level cost more.</p>
 <figcaption>The left half of the slider tunes the router itself (Valhalla's <code>use_roads</code><sup class="cite"><a href="#ref-1" aria-label="source 1">[1]</a></sup>). Past 80 the router is already as calm as it goes, so RouteMaker's own calm search takes over and trades real extra distance for less traffic. At 100 it ranks routes by the least LTS 4 and Avoid first, then the least LTS 3, then distance.</figcaption>
 </figure>
 
+</div></details>
 <h2 id="penalties">Everything a route pays for</h2>
 <ul>
 <li><strong>Each stretch</strong>, by its stress level: the calm-mile costs above. Faster and wider
@@ -314,6 +325,10 @@ Quiet streets meeting quiet streets cost almost nothing.</p>
 </div>
 <figcaption>Base costs, then multiplied by the crossed road's speed, lanes and traffic, and by the time of day (rush hour 1.25 times, weekends 0.85, night 0.5 in towns). A median refuge cuts a crossing to 0.75 times and a marked trail crossing to half. No junction costs more than 2 calm miles [3.2 km]. Derived from the crossing tables of Oregon DOT and the Mineta report<sup class="cite"><a href="#ref-4" aria-label="source 4">[4]</a><a href="#ref-5" aria-label="source 5">[5]</a></sup> and the route-choice studies<sup class="cite"><a href="#ref-6" aria-label="source 6">[6]</a><a href="#ref-7" aria-label="source 7">[7]</a><a href="#ref-8" aria-label="source 8">[8]</a><a href="#ref-9" aria-label="source 9">[9]</a></sup>.</figcaption>
 </figure>
+<details class="more"><summary>More: Junctions</summary>
+<div class="more-body">
+
+
 <p>Junctions costing at least 800 ft [244 m] are marked orange in the route description, and
 those costing at least 3,100 ft [945 m] are marked red. Each warning describes the road, the
 movement and the control in words.</p>
@@ -323,6 +338,7 @@ Administration, Virginia's DOT and Alexandria fill the gaps: a junction where th
 signal and OpenStreetMap maps none is treated as signalled. Virginia's list is a snapshot from
 October 2023, so a signal built since then is not in it.</p>
 
+</div></details>
 <h2 id="ride-types">How a ride type changes the costs</h2>
 <p>Choosing a ride type changes these numbers, not the ratings. It sets where the traffic slider
 starts, how much each level costs per mile, how fast you are assumed to ride, how hills and surfaces
@@ -357,6 +373,10 @@ them work quite differently: <a href="/about/mass-ride.html">Mass Ride</a> and
 </div>
 <figcaption>Planned by RouteMaker's own route request on 19 October 2026 and drawn on the app's map of that week, with the stress map underneath in its usual colours. North is up. Routes change as the map and the ratings do. Base map &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>, drawn with <a href="https://protomaps.com">Protomaps</a>.</figcaption>
 </figure>
+<details class="more"><summary>More: A worked example</summary>
+<div class="more-body">
+
+
 <div class="table-wrap" tabindex="0" role="region" aria-label="Dupont Circle to Nationals Park, by ride type">
 <table>
 <caption>Dupont Circle to Nationals Park, by ride type</caption>
@@ -388,6 +408,7 @@ when it buys enough calm, up to a limit, and keeps Default's route when it finds
 other trips tried the same day, the two ride types gave the same route.</li>
 </ul>
 
+</div></details>
 <h2 id="closures">Closures</h2>
 <p>Only Maryland and Virginia publish work-zone feeds in the national Work Zone Data Exchange
 format<sup class="cite"><a href="#ref-11" aria-label="source 11">[11]</a></sup>: dated, mapped closures in force, with whether bikes can pass. The District publishes
@@ -441,6 +462,10 @@ where one is set up.</p>
 </div>
 <figcaption>DDOT permits<sup class="cite"><a href="#ref-13" aria-label="source 13">[13]</a></sup> are listed apart because they are not closures in force. The other feeds describe closures in force<sup class="cite"><a href="#ref-11" aria-label="source 11">[11]</a><a href="#ref-12" aria-label="source 12">[12]</a></sup>.</figcaption>
 </figure>
+<details class="more"><summary>More: Closures</summary>
+<div class="more-body">
+
+
 <ul>
 <li><strong>State work zones</strong> from Maryland's and Virginia's feeds<sup class="cite"><a href="#ref-11" aria-label="source 11">[11]</a></sup>: a road closed to
 bikes is left out; a closure that does not mention bikes costs about 10 minutes and gets a warning;
@@ -459,20 +484,8 @@ has a DC permits layer, off by default, for anyone who wants to look.</li>
 on a route through the park, never as closures.</li>
 </ul>
 
+</div></details>
 <h2 id="riding">While you ride</h2>
-<ul>
-<li><strong>Cues.</strong> The first cue comes about 27 seconds before a turn, the second about 10
-seconds before, and "now" at the turn. Cues say only the turn and the street. You choose screen
-reader, RouteMaker's voice, both or neither.</li>
-<li><strong>Off route.</strong> You are off route when you are more than 100 ft [30 m] from the line
-(more when GPS is poor, up to 330 ft [100 m]) for three readings over 8 seconds. Readings less accurate
-than 160 ft [50 m] are not used.</li>
-<li><strong>Re-routing</strong> plans on from where you are, in the direction you are heading.</li>
-<li><strong>Stops.</strong> Tapping a food, sight, repair or water stop, or a lettered stop, opens a card
-with what is there, whether it is open now (where its mapped hours can be read), how far it is or the
-detour, and a Website link when one is mapped. A tap never changes the route: only Route here or Add as
-stop does. Stops come from OpenStreetMap, so check a repair stand works before you count on it.</li>
-</ul>
 <figure id="fig-uturn">
 <div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 760 220" role="img" aria-labelledby="fig-uturn-t fig-uturn-d" focusable="false" style="min-width:547px">
@@ -493,7 +506,24 @@ stop does. Stops come from OpenStreetMap, so check a repair stand works before y
 </div>
 <figcaption>Re-routing keeps your heading. A U-turn is offered only when it saves at least 0.5 mi [0.8 km], and the cue says so plainly.</figcaption>
 </figure>
+<details class="more"><summary>More: While you ride</summary>
+<div class="more-body">
+<ul>
+<li><strong>Cues.</strong> The first cue comes about 27 seconds before a turn, the second about 10
+seconds before, and "now" at the turn. Cues say only the turn and the street. You choose screen
+reader, RouteMaker's voice, both or neither.</li>
+<li><strong>Off route.</strong> You are off route when you are more than 100 ft [30 m] from the line
+(more when GPS is poor, up to 330 ft [100 m]) for three readings over 8 seconds. Readings less accurate
+than 160 ft [50 m] are not used.</li>
+<li><strong>Re-routing</strong> plans on from where you are, in the direction you are heading.</li>
+<li><strong>Stops.</strong> Tapping a food, sight, repair or water stop, or a lettered stop, opens a card
+with what is there, whether it is open now (where its mapped hours can be read), how far it is or the
+detour, and a Website link when one is mapped. A tap never changes the route: only Route here or Add as
+stop does. Stops come from OpenStreetMap, so check a repair stand works before you count on it.</li>
+</ul>
 
+
+</div></details>
 <h2 id="sources">Sources</h2>
 <ol class="refs">
   <li id="ref-1">Valhalla, open source routing engine (MIT), bicycle costing. <a href="https://github.com/valhalla/valhalla">github.com/valhalla/valhalla</a>; <a href="https://valhalla.github.io/valhalla/api/turn-by-turn/api-reference/#bicycle-costing-options">bicycle costing options</a></li>

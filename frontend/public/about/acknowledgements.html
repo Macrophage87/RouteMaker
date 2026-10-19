@@ -88,6 +88,12 @@
     th, td { padding: 0.35rem 0.4rem; }
     figure { padding: 0.4rem; }
   }
+
+  details.more { margin: 0.5rem 0 1rem; border: 1px solid var(--line); border-radius: 6px; }
+  details.more > summary { cursor: pointer; padding: 0.55rem 0.8rem; font-weight: 600; color: var(--link); }
+  details.more > summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+  details.more[open] > summary { border-bottom: 1px solid var(--line); }
+  details.more > .more-body { padding: 0 0.8rem 0.4rem; }
 </style>
 </head>
 <body>

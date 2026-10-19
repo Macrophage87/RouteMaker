@@ -88,6 +88,12 @@
     th, td { padding: 0.35rem 0.4rem; }
     figure { padding: 0.4rem; }
   }
+
+  details.more { margin: 0.5rem 0 1rem; border: 1px solid var(--line); border-radius: 6px; }
+  details.more > summary { cursor: pointer; padding: 0.55rem 0.8rem; font-weight: 600; color: var(--link); }
+  details.more > summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+  details.more[open] > summary { border-bottom: 1px solid var(--line); }
+  details.more > .more-body { padding: 0 0.8rem 0.4rem; }
 </style>
 </head>
 <body>
@@ -143,31 +149,6 @@ transit.</li>
 </nav>
 
 <h2 id="compare">Ride types compared</h2>
-<div class="table-wrap" tabindex="0" role="region" aria-label="Ride types compared">
-<table>
-<caption>Ride types compared</caption>
-<thead><tr><th scope="col">Ride type</th><th scope="col">Traffic slider starts</th><th scope="col">Hills</th><th scope="col">Surfaces</th><th scope="col">Pace (for times)</th><th scope="col">Map used</th></tr></thead>
-<tbody>
-<tr><th scope="row">Default</th><td>70</td><td>Neutral</td><td>Prefers pavement a little</td><td>Valhalla's hybrid bike, 11 mph [18 km/h]</td><td>Standard</td></tr>
-<tr><th scope="row">Novice and Nervous</th><td>100, every road read one level busier</td><td>Avoids hills</td><td>Prefers pavement a little</td><td>11 mph [18 km/h]</td><td>Standard</td></tr>
-<tr><th scope="row">E-bike</th><td>70</td><td>Fine with hills</td><td>Prefers pavement a little</td><td>15 mph [24 km/h]</td><td>E-bike (leaves out ways closed to e-bikes)</td></tr>
-<tr><th scope="row">Cargo Bike</th><td>70 carrying cargo, 80 with passengers</td><td>Avoids hills</td><td>Avoids rough surfaces</td><td>8.7 mph [14 km/h]; assist 11 mph [18 km/h]</td><td>Standard (e-bike with assist)</td></tr>
-<tr><th scope="row">Fast</th><td>10</td><td>Neutral</td><td>Strongly prefers pavement</td><td>11 mph [18 km/h]</td><td>Standard</td></tr>
-<tr><th scope="row">Group Ride</th><td>40</td><td>Avoids hills somewhat</td><td>Prefers pavement a little</td><td>12.4 mph [20 km/h]</td><td>Standard</td></tr>
-<tr><th scope="row">Mass Ride</th><td>0, locked</td><td>Avoids hills strongly</td><td>Prefers pavement a little</td><td>6 mph [9.7 km/h]</td><td>Roads only, no trails</td></tr>
-<tr><th scope="row">Trailmaxxing</th><td>100</td><td>Neutral</td><td>Gravel is fine</td><td>12.4 mph [20 km/h]</td><td>Standard</td></tr>
-<tr><th scope="row">Gravel</th><td>40</td><td>Neutral</td><td>Unpaved costs nothing extra</td><td>12.4 mph [20 km/h]</td><td>Off-road</td></tr>
-<tr><th scope="row">Mountain Goat</th><td>40</td><td>Seeks climbs</td><td>Gravel is fine</td><td>12.4 mph [20 km/h]</td><td>Off-road</td></tr>
-<tr><th scope="row">Mountain Bike</th><td>80</td><td>Fine with hills</td><td>Unpaved costs nothing extra</td><td>10 mph [16 km/h]; 6.2 mph [10 km/h] on singletrack</td><td>Mountain-bike trails</td></tr>
-<tr><th scope="row">Bikeshare</th><td>80</td><td>Avoids hills (classic bike)</td><td>Avoids rough surfaces</td><td>8 mph [13 km/h] classic; 12.4 mph [20 km/h] e-bike</td><td>Standard</td></tr>
-<tr><th scope="row">Rebalance Ride</th><td>80</td><td>Avoids hills</td><td>Avoids rough surfaces</td><td>As Bikeshare</td><td>Standard</td></tr>
-<tr><th scope="row">Own Bike + transit</th><td>70</td><td>Neutral</td><td>Prefers pavement a little</td><td>11 mph [18 km/h]</td><td>Standard</td></tr>
-<tr><th scope="row">Bikeshare + transit</th><td>80</td><td>Avoids hills</td><td>Avoids rough surfaces</td><td>8 mph [13 km/h]</td><td>Standard</td></tr>
-</tbody>
-</table>
-</div>
-<p>Paces are only for estimating times. "Hills" and "Surfaces" describe Valhalla's bike costing
-settings<sup class="cite"><a href="#ref-1" aria-label="source 1">[1]</a></sup> that each ride type sends<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup>.</p>
 <figure id="fig-starts">
 <div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 800 412" role="img" aria-labelledby="fig-starts-t fig-starts-d" focusable="false" style="min-width:576px">
@@ -234,14 +215,41 @@ settings<sup class="cite"><a href="#ref-1" aria-label="source 1">[1]</a></sup> t
 </div>
 <figcaption>You can move the slider on every ride type except Mass Ride.<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup></figcaption>
 </figure>
+<details class="more"><summary>More: Ride types compared</summary>
+<div class="more-body">
+<div class="table-wrap" tabindex="0" role="region" aria-label="Ride types compared">
+<table>
+<caption>Ride types compared</caption>
+<thead><tr><th scope="col">Ride type</th><th scope="col">Traffic slider starts</th><th scope="col">Hills</th><th scope="col">Surfaces</th><th scope="col">Pace (for times)</th><th scope="col">Map used</th></tr></thead>
+<tbody>
+<tr><th scope="row">Default</th><td>70</td><td>Neutral</td><td>Prefers pavement a little</td><td>Valhalla's hybrid bike, 11 mph [18 km/h]</td><td>Standard</td></tr>
+<tr><th scope="row">Novice and Nervous</th><td>100, every road read one level busier</td><td>Avoids hills</td><td>Prefers pavement a little</td><td>11 mph [18 km/h]</td><td>Standard</td></tr>
+<tr><th scope="row">E-bike</th><td>70</td><td>Fine with hills</td><td>Prefers pavement a little</td><td>15 mph [24 km/h]</td><td>E-bike (leaves out ways closed to e-bikes)</td></tr>
+<tr><th scope="row">Cargo Bike</th><td>70 carrying cargo, 80 with passengers</td><td>Avoids hills</td><td>Avoids rough surfaces</td><td>8.7 mph [14 km/h]; assist 11 mph [18 km/h]</td><td>Standard (e-bike with assist)</td></tr>
+<tr><th scope="row">Fast</th><td>10</td><td>Neutral</td><td>Strongly prefers pavement</td><td>11 mph [18 km/h]</td><td>Standard</td></tr>
+<tr><th scope="row">Group Ride</th><td>40</td><td>Avoids hills somewhat</td><td>Prefers pavement a little</td><td>12.4 mph [20 km/h]</td><td>Standard</td></tr>
+<tr><th scope="row">Mass Ride</th><td>0, locked</td><td>Avoids hills strongly</td><td>Prefers pavement a little</td><td>6 mph [9.7 km/h]</td><td>Roads only, no trails</td></tr>
+<tr><th scope="row">Trailmaxxing</th><td>100</td><td>Neutral</td><td>Gravel is fine</td><td>12.4 mph [20 km/h]</td><td>Standard</td></tr>
+<tr><th scope="row">Gravel</th><td>40</td><td>Neutral</td><td>Unpaved costs nothing extra</td><td>12.4 mph [20 km/h]</td><td>Off-road</td></tr>
+<tr><th scope="row">Mountain Goat</th><td>40</td><td>Seeks climbs</td><td>Gravel is fine</td><td>12.4 mph [20 km/h]</td><td>Off-road</td></tr>
+<tr><th scope="row">Mountain Bike</th><td>80</td><td>Fine with hills</td><td>Unpaved costs nothing extra</td><td>10 mph [16 km/h]; 6.2 mph [10 km/h] on singletrack</td><td>Mountain-bike trails</td></tr>
+<tr><th scope="row">Bikeshare</th><td>80</td><td>Avoids hills (classic bike)</td><td>Avoids rough surfaces</td><td>8 mph [13 km/h] classic; 12.4 mph [20 km/h] e-bike</td><td>Standard</td></tr>
+<tr><th scope="row">Rebalance Ride</th><td>80</td><td>Avoids hills</td><td>Avoids rough surfaces</td><td>As Bikeshare</td><td>Standard</td></tr>
+<tr><th scope="row">Own Bike + transit</th><td>70</td><td>Neutral</td><td>Prefers pavement a little</td><td>11 mph [18 km/h]</td><td>Standard</td></tr>
+<tr><th scope="row">Bikeshare + transit</th><td>80</td><td>Avoids hills</td><td>Avoids rough surfaces</td><td>8 mph [13 km/h]</td><td>Standard</td></tr>
+</tbody>
+</table>
+</div>
+<p>Paces are only for estimating times. "Hills" and "Surfaces" describe Valhalla's bike costing
+settings<sup class="cite"><a href="#ref-1" aria-label="source 1">[1]</a></sup> that each ride type sends<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup>.</p>
 
+
+</div></details>
 <h2 id="costs">How much a busy road costs</h2>
 <p>RouteMaker compares routes in calm miles: a mile of quiet street counts as 1, and a busier mile
 counts as more, as if it were longer. The traffic slider and the ride type together decide how
 much more. <a href="/about/routing.html#costs">Routing</a> has the cost of each level on every ride
 type, and everything else a route pays for.</p>
-<p>Above 80 on the slider, RouteMaker's own search also weighs each route's exposure to busy roads.
-Ride types differ in how heavily they count LTS 4 and Avoid:</p>
 <figure id="fig-weights">
 <div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 800 336" role="img" aria-labelledby="fig-weights-t fig-weights-d" focusable="false" style="min-width:576px">
@@ -300,7 +308,14 @@ Ride types differ in how heavily they count LTS 4 and Avoid:</p>
 </div>
 <figcaption>Stress-averse and not-in-control ride types also never accept more LTS 4 or Avoid than the router's own first route. Novice and Nervous uses the not-in-control weights and reads every road and junction one level busier than it is.<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup></figcaption>
 </figure>
+<details class="more"><summary>More: How much a busy road costs</summary>
+<div class="more-body">
 
+<p>Above 80 on the slider, RouteMaker's own search also weighs each route's exposure to busy roads.
+Ride types differ in how heavily they count LTS 4 and Avoid:</p>
+
+
+</div></details>
 <h2 id="transportation">Transportation ride types</h2>
 <h3>Default</h3>
 <p>Everyday riding that prefers paths and quiet streets, even when a busier road would be faster. The
@@ -322,7 +337,6 @@ start the slider at 80 and count LTS 2 streets a little, so routes lean toward L
 switches to the e-bike map and a faster pace, but hills still count.</p>
 
 <h2 id="transit">Bikeshare and transit</h2>
-<h3>Bikeshare</h3>
 <figure id="fig-bikeshare">
 <div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 930 125" role="img" aria-labelledby="fig-bikeshare-t fig-bikeshare-d" focusable="false" style="min-width:600px">
@@ -351,6 +365,10 @@ switches to the e-bike map and a faster pace, but hills still count.</p>
 </div>
 <figcaption>Capital Bikeshare's live station feed<sup class="cite"><a href="#ref-3" aria-label="source 3">[3]</a></sup>. The e-bike option can end outside a dock where that is allowed.</figcaption>
 </figure>
+<details class="more"><summary>More: Bikeshare and transit</summary>
+<div class="more-body">
+<h3>Bikeshare</h3>
+
 <p>Capital Bikeshare only. Choose a classic bike (slower, avoids hills) or an e-bike. Walking speed is
 3 mph [4.8 km/h]. Stations that have not reported for 30 minutes are ignored. A dock that adds less than
 165 ft [50 m] of riding counts as "on your way". The station lists always show the three best stations,
@@ -403,6 +421,7 @@ trains, such as July 4.</li>
 board.</li>
 </ul>
 
+</div></details>
 <h2 id="adventure">Adventure ride types</h2>
 <h3>Fast</h3>
 <p>Direct roads, few turns and smooth pavement, whatever the traffic. The slider starts at 10, so a mile
