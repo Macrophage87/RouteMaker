@@ -352,26 +352,32 @@ export function stationEntrance(station: Station, onFoot: boolean, from: LonLat 
 /** A point this close to one of a station's ways in is at that station (a shared link keeps 5 decimals, about 1 m). */
 const AT_ENTRANCE_M = 3;
 
+/** A point of the plan moved to its station's way in for the new ride type (stationMoves). */
+export interface StationMove {
+  index: number;
+  station: Station;
+  /** The way in for the new ride: a new pair, never the station data's own, so marks on it stay the point's. */
+  to: LonLat;
+  kind: BikeEntrance["kind"];
+}
+
 /**
- * The plan with each point placed at a station moved to that station's way in for this ride (Stephen 2026-10-19,
- * a station picked on Bikeshare must not keep a bike at the stairs on the next ride type): on foot its nearest
- * entrance (from the next point for a start, else from the start, as App's walkFrom), with a bike its elevator.
- * The same list when nothing moves.
+ * The points placed at a station that move to the station's way in for this ride (Stephen 2026-10-19, a station
+ * picked on Bikeshare must not keep a bike at the stairs on the next ride type): on foot its nearest entrance (from
+ * the next point for a start, else from the start, as App's walkFrom), with a bike its elevator. Empty when none.
  */
-export function stationPointsFor(points: readonly LonLat[], stations: readonly Station[], onFoot: boolean): LonLat[] {
-  let moved = false;
-  const next = points.map((point, index) => {
+export function stationMoves(points: readonly LonLat[], stations: readonly Station[], onFoot: boolean): StationMove[] {
+  const moves: StationMove[] = [];
+  points.forEach((point, index) => {
     const station = stations.find((s) =>
       [...s.elevators, ...s.osmElevators, ...s.entrances].some((way) => haversineM(way, point) <= AT_ENTRANCE_M),
     );
-    if (!station) return point;
+    if (!station) return;
     const from = index === 0 ? (points[1] ?? null) : points[0];
-    const way = stationEntrance(station, onFoot, from).point;
-    if (haversineM(way, point) <= AT_ENTRANCE_M) return point;
-    moved = true;
-    return way;
+    const way = stationEntrance(station, onFoot, from);
+    if (haversineM(way.point, point) > AT_ENTRANCE_M) moves.push({ index, station, to: [way.point[0], way.point[1]], kind: way.kind });
   });
-  return moved ? next : [...points];
+  return moves;
 }
 
 /** What a station's card says about where routes to it go. */

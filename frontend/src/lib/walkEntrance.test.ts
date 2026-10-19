@@ -68,22 +68,38 @@ test("App wires the ride type to the map card, the Nearest search and the place 
 });
 
 test("a new ride type moves a station's point to its way in for that ride, and leaves other points", async () => {
-  const { stationPointsFor } = await import("./railStations.ts");
+  const { stationMoves } = await import("./railStations.ts");
   const elevator: [number, number] = [-77.0944, 38.9846];
   const away: [number, number] = [-77.0942, 38.97];
   // Own bike, to Bethesda's elevator from the south; then Bikeshare: the south entrance.
-  assert.deepEqual(stationPointsFor([away, elevator], [station], true), [away, [-77.0942, 38.9836]]);
+  const toFoot = stationMoves([away, elevator], [station], true);
+  assert.deepEqual(toFoot.map((m) => [m.index, m.to, m.kind]), [[1, [-77.0942, 38.9836], "walk"]]);
+  // A new pair, not the station data's own (marks on it stay the point's).
+  assert.notEqual(toFoot[0].to, station.entrances[1]);
   // And back with a bike: the elevator again.
-  assert.deepEqual(stationPointsFor([away, [-77.0942, 38.9836]], [station], false), [away, elevator]);
+  assert.deepEqual(stationMoves([away, [-77.0942, 38.9836]], [station], false).map((m) => m.to), [elevator]);
   // A start at the station walks out toward the next point.
-  assert.deepEqual(stationPointsFor([elevator, [-77.0942, 38.99]], [station], true)[0], [-77.0942, 38.9852]);
-  // Nothing at a station: the same points.
-  assert.deepEqual(stationPointsFor([away, [-77.03, 38.9]], [station], true), [away, [-77.03, 38.9]]);
+  assert.deepEqual(stationMoves([elevator, [-77.0942, 38.99]], [station], true)[0].to, [-77.0942, 38.9852]);
+  // Nothing at a station, or already at the right way in: nothing moves.
+  assert.deepEqual(stationMoves([away, [-77.03, 38.9]], [station], true), []);
+  assert.deepEqual(stationMoves([away, elevator], [station], false), []);
 });
 
-test("App moves them in the same edit as the ride type, so Undo puts both back", () => {
+test("a moved point keeps its kind: a via stays a via, a drawn leg stays drawn", async () => {
+  const { stationMoves } = await import("./railStations.ts");
+  const { ViaMarks } = await import("./pointKinds.ts");
+  const marks = new ViaMarks();
+  const via = marks.drawn(marks.via([-77.0944, 38.9846]));
+  const move = stationMoves([[-77.0942, 38.97], via, [-77.0942, 38.95]], [station], true)[0];
+  const moved = marks.moved(via, move.to);
+  assert.ok(marks.isVia(moved) && marks.isDrawn(moved));
+});
+
+test("App moves them in the same edit as the ride type, with the station's name, and says so", () => {
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   const choose = app.slice(app.indexOf("const choosePreset = "), app.indexOf("const chooseStation = "));
-  assert.match(choose, /endsOnFoot\(id\) === endsOnFoot\(preset\) \? null : stationPointsFor\(pointsRef\.current, RAIL_STATIONS, endsOnFoot\(id\)\)/);
-  assert.match(choose, /commit\(moved, \{ \.\.\.rideRef\.current, preset: id, dials: next \}\)/);
+  assert.match(choose, /stationMoves\(current, RAIL_STATIONS, onFoot\)/);
+  assert.match(choose, /moved\[move\.index\] = VIA_MARKS\.moved\(current\[move\.index\], move\.to\)/);
+  assert.match(choose, /namer\.remember\(move\.to, stationPlaceName\(move\.station\), stationPlaceLabel\(move\.station, move\.kind\)\)/);
+  assert.match(choose, /commit\(moved, \{ \.\.\.rideRef\.current, preset: id, dials: next \}\);\s*announce\(said\.join\(" "\)\)/);
 });
