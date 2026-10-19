@@ -5485,6 +5485,58 @@ def assistant_key_delete(request):
     return _private(JsonResponse(_assistant_key_out(None)))
 
 
+# Assistant apps the rider connected through the site's own MCP connector (core.connector; the
+# owner, 2026-10-19: "Sure, add that in"): listed beside the AI assistant key, each with
+# Disconnect, which ends that app's access at once.
+
+
+def _connected_app_out(grant) -> dict:
+    return {
+        "id": grant.pk,
+        "name": grant.client.name or "An assistant app",
+        "created_at": grant.created_at.isoformat(),
+        "last_used_at": grant.last_used_at.isoformat() if grant.last_used_at else None,
+    }
+
+
+def _connected_apps(user) -> list[dict]:
+    from .models import ConnectorGrant
+
+    rows = (
+        ConnectorGrant.objects.select_related("client")
+        .filter(user=user, refresh_digest__isnull=False)
+        .order_by("-created_at")
+    )
+    return [_connected_app_out(g) for g in rows]
+
+
+@api.get("/me/connected-apps", summary="Assistant apps connected to the rider's account")
+@decorate_view(
+    signed_in_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.ME),
+    errors_as_json,
+)
+def connected_apps_read(request):
+    return _private(JsonResponse({"apps": _connected_apps(request.user)}))
+
+
+@api.post("/me/connected-apps/{grant_id}/delete", summary="Disconnect one assistant app")
+@decorate_view(
+    ratelimit.user_rate_limited(ratelimit.ACCOUNT_WRITES),
+    csrf_protected,
+    signed_in_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+def connected_app_delete(request, grant_id: int):
+    from .models import ConnectorGrant
+
+    ConnectorGrant.objects.filter(user=request.user, pk=grant_id).delete()
+    return _private(JsonResponse({"apps": _connected_apps(request.user)}))
+
+
 def keyed_account(view):
     """The account the AI assistant key in `X-RouteMaker-Key` names, as `request.user`, or 401.
     Its own header, not `Authorization`, which the beta's password gate already uses. Whatever

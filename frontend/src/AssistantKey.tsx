@@ -1,11 +1,35 @@
 /**
- * Settings > Account's AI assistant key (lib/assistantKey.ts), folded to one line naming the key so Settings stays
- * short for the many riders who never use it. Open, it says what the key does and offers one button to make (or
+ * Settings > Account's AI assistants (lib/assistantKey.ts): the AI assistant key, and the apps connected through the
+ * site's own connector, each with Disconnect (the owner, 2026-10-19). Folded to one line so Settings stays short for
+ * the many riders who never use it. Open, it says what the key does and offers one button to make (or
  * replace) it; the new key is shown once with Copy, and Remove sits beside a key that exists. Replacing or removing
  * asks first: either stops an assistant that uses the key.
  */
 import { useEffect, useState } from "react";
-import { KEY_FAILED, KEY_HELP, KEY_LABEL, KEY_READ_FAILED, KEY_REMOVED, KEY_SHOWN_ONCE, REMOVE_ASK, REPLACE_ASK, keySummary, makeKey, readKey, removeKey, type KeyInfo } from "./lib/assistantKey.ts";
+import {
+  APPS_HEADING,
+  APPS_HELP,
+  APPS_NONE,
+  DISCONNECT_ASK,
+  DISCONNECTED,
+  KEY_FAILED,
+  KEY_HELP,
+  KEY_LABEL,
+  KEY_READ_FAILED,
+  KEY_REMOVED,
+  KEY_SHOWN_ONCE,
+  REMOVE_ASK,
+  REPLACE_ASK,
+  appSummary,
+  assistantsSummary,
+  disconnectApp,
+  makeKey,
+  readApps,
+  readKey,
+  removeKey,
+  type ConnectedApp,
+  type KeyInfo,
+} from "./lib/assistantKey.ts";
 import { copyText, selectionCopy } from "./lib/sidebar.ts";
 
 export function AssistantKeySetting({ origin = window.location.origin }: { origin?: string }) {
@@ -14,9 +38,13 @@ export function AssistantKeySetting({ origin = window.location.origin }: { origi
   const [said, setSaid] = useState("");
   const [busy, setBusy] = useState(false);
   const [unread, setUnread] = useState(false);
+  const [apps, setApps] = useState<ConnectedApp[]>([]);
 
   useEffect(() => {
     let live = true;
+    void readApps(origin).then((read) => {
+      if (live && read) setApps(read);
+    });
     void readKey(origin).then((read) => {
       if (!live) return;
       if (read === undefined) {
@@ -52,6 +80,15 @@ export function AssistantKeySetting({ origin = window.location.origin }: { origi
     setSecret(null);
     setSaid(KEY_REMOVED);
   };
+  const disconnect = async (app: ConnectedApp) => {
+    if (!window.confirm(DISCONNECT_ASK)) return;
+    setBusy(true);
+    const left = await disconnectApp(origin, app.id);
+    setBusy(false);
+    if (!left) return setSaid(KEY_FAILED);
+    setApps(left);
+    setSaid(DISCONNECTED);
+  };
   const copy = async () => {
     if (!secret) return;
     const copied = await copyText(secret, navigator.clipboard, selectionCopy);
@@ -64,7 +101,7 @@ export function AssistantKeySetting({ origin = window.location.origin }: { origi
         {KEY_LABEL}
         <span className="setting-value">
           <span className="visually-hidden">: </span>
-          {key === undefined ? "…" : keySummary(key)}
+          {key === undefined ? "…" : assistantsSummary(key, apps)}
         </span>
       </summary>
       <p className="hint">{KEY_HELP}</p>
@@ -86,6 +123,22 @@ export function AssistantKeySetting({ origin = window.location.origin }: { origi
           </button>
         )}
       </div>
+      <h4 className="assistant-apps-heading">{APPS_HEADING}</h4>
+      <p className="hint">{APPS_HELP}</p>
+      {apps.length === 0 ? (
+        <p className="hint">{APPS_NONE}</p>
+      ) : (
+        <ul className="assistant-apps">
+          {apps.map((app) => (
+            <li key={app.id}>
+              <span>{appSummary(app)}</span>
+              <button type="button" className="secondary" disabled={busy} aria-label={`Disconnect ${app.name}`} onClick={() => void disconnect(app)}>
+                Disconnect
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
       <p className="hint" role="status">
         {said}
       </p>

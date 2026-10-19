@@ -12,7 +12,7 @@ import urllib.parse
 
 import pytest
 from django.test import Client
-from test_accounts import addr, make_user, signed_in
+from test_accounts import addr, make_user, send, signed_in
 from test_mcp_server import straight_answer
 from test_route_api import VERTICES, router, segments, standard_router
 
@@ -530,3 +530,36 @@ class TestGpx:
         user.is_banned = True
         user.save()
         assert Client().get(urllib.parse.urlsplit(link).path, **addr()).status_code == 404
+
+
+@db
+class TestConnectedApps:
+    """Settings lists the apps a rider connected, each with Disconnect (the owner, 2026-10-19)."""
+
+    def test_the_rider_sees_their_apps_and_disconnects_one(self) -> None:
+        browser, user, query, client_id, verifier = allow()
+        tokens = trade(
+            grant_type="authorization_code",
+            code=query["code"],
+            redirect_uri=REDIRECT,
+            client_id=client_id,
+            code_verifier=verifier,
+        ).json()
+        _other, _other_tokens, _ = tokens_for()  # another rider's app: not listed here
+        apps = browser.get("/api/me/connected-apps", **addr()).json()["apps"]
+        assert [a["name"] for a in apps] == ["Claude"]
+        csrf = browser.cookies["csrftoken"].value
+        r = send(browser, "post", f"/api/me/connected-apps/{apps[0]['id']}/delete", {}, csrf)
+        assert r.status_code == 200 and r.json() == {"apps": []}
+        assert mcp(tokens["access_token"], "ping").status_code == 401
+        assert ConnectorGrant.objects.exclude(user=user).count() == 1
+
+    def test_another_rider_s_app_cannot_be_disconnected(self) -> None:
+        _user, tokens, _ = tokens_for()
+        grant = ConnectorGrant.objects.get()
+        browser, _me, csrf = signed_in()
+        send(browser, "post", f"/api/me/connected-apps/{grant.pk}/delete", {}, csrf)
+        assert mcp(tokens["access_token"], "ping").status_code == 200
+
+    def test_signed_out_sees_nothing(self) -> None:
+        assert Client().get("/api/me/connected-apps", **addr()).status_code == 401
