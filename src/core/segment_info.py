@@ -516,6 +516,10 @@ def road_kind(router: dict, row: dict) -> tuple[str, str]:
     return "Road", OSM
 
 
+# Montgomery's 5 as the panel reads it (the owner, 2026-10-19: "MoCo's mean very high stress,
+# what our 4.5 means"): beside the county's 5, wherever the map uses it.
+COUNTY_FIVE_WORDS = "which means very high stress: LTS 4.5 here"
+
 _MIXED_PARTS = {
     "single lane": "one lane each way",
     "urban multilane": "several lanes, city street",
@@ -532,6 +536,7 @@ _MIXED_PARTS = {
     "shoulder read as a lane": "the shoulder read as a bike lane",
     "narrow rural road": "a narrow or winding rural road",
     "rural road floor": "a rural road open to cars, so rated at least LTS 2",
+    agency_lts.READ_AS_REASON: COUNTY_FIVE_WORDS,
 }
 _TRAIL_KINDS = {
     "open to bicycles": "open to bicycles",
@@ -562,7 +567,8 @@ def _rule_words(rule: str) -> str:
     rule = (rule or "").strip()
     rule = re.sub(r"\s*\(Furth: [^)]*\)", "", rule)
     if rule.startswith(f"override: stress adjustment {COUNTY_ADJUSTMENT_PREFIX}"):
-        return "Montgomery County rates it LTS 5"
+        # The county's 5 is very high stress, our 4.5 (`agency_lts.READ_AS`).
+        return f"Montgomery County rates it LTS 5, {COUNTY_FIVE_WORDS}"
     if rule.startswith("override: stress adjustment") or rule.startswith("named corridor:"):
         return "Owner-rated corridor"
     if "curated lane at" in rule:
@@ -722,11 +728,14 @@ def rating_rows(row: dict) -> list[dict]:
             value += " (used: owner and community ratings come first)"
         rows.append(_row(label, value, named))
     for rating in held["agencies"]:
-        value = (
-            PROHIBITED_LEVEL_WORDS
-            if agency_lts.PROHIBITING_LEVELS.get(rating.get("agency")) == float(rating["level"])
-            else _level_text(rating["level"])
-        )
+        level = float(rating["level"])
+        if agency_lts.PROHIBITING_LEVELS.get(rating.get("agency")) == level:
+            value = PROHIBITED_LEVEL_WORDS
+        elif agency_lts.map_level(str(rating.get("agency")), level) != level:
+            # Montgomery's 5: the county's number, and the level the map uses for it.
+            value = f"LTS {level:g}, {COUNTY_FIVE_WORDS}"
+        else:
+            value = _level_text(level)
         if rating.get("agency") == used:
             value += " (used: the most local agency's rating)"
         rows.append(_row(f"{rating['name']} rates it", value, rating["name"]))

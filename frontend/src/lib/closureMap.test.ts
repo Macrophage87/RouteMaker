@@ -188,3 +188,27 @@ test("a closure check with no answer in its time gives up: null, so Start ride a
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   assert.match(app, /if \(pressed && closureChecking\.current\) return;/);
 });
+
+test("DDOT's permits are flagged only: drawn behind Plan's DC permits switch, off by default, with no Route through", async () => {
+  // Stephen, 2026-10-19: "We should flag, but not necessarily stop anyone", "And turn the notices off", "off by default too".
+  const { readPermitsLayer, savePermitsLayer, permitsShown } = await import("./permitLayer.ts");
+  const permit = item({ id: "dc-1", source: "dc", effect: "possible", can_bypass: false });
+  const route = { work_zones: { closures: [item(), permit] } };
+  assert.deepEqual(closuresOf(route).map((c) => c.id), ["mpd-1845231-0"]);
+  assert.deepEqual(closuresOf(route, true).map((c) => c.id), ["mpd-1845231-0", "dc-1"]);
+  assert.equal(closureFeatures([permit]).features[0].properties.maybe, 1, "dashed");
+  const card = closureCard(permit);
+  assert.equal(card.heading, "Possible closure (permit)");
+  assert.equal(card.action, null);
+  assert.match(closureMarkerName(permit), /^Possible closure: /);
+  const kept = new Map<string, string>();
+  const store = { getItem: (k: string) => kept.get(k) ?? null, setItem: (k: string, v: string) => void kept.set(k, v) };
+  assert.equal(readPermitsLayer(store), false, "off by default");
+  savePermitsLayer(true, store);
+  assert.equal(readPermitsLayer(store), true);
+  assert.equal(permitsShown(true, "plan"), true);
+  assert.equal(permitsShown(true, "go"), false, "Go never shows them");
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  assert.match(app, /permitsOn=\{!riding && permitsShown\(permitsOn, mode\)\}/);
+  assert.match(app, /permits: mode === "go" \? null : \{ on: permitsOn, onChange: changePermitsOn \}/);
+});

@@ -47,11 +47,13 @@ import {
   withClosed,
 } from "./lib/roadClosed.ts";
 import { requestRoute, type RouteResponse } from "./lib/api.ts";
-import { VIA_MARKS, viaIndices } from "./lib/pointKinds.ts";
+import { VIA_MARKS, drawnLegs, viaIndices } from "./lib/pointKinds.ts";
 import type { Dials } from "./lib/dials.ts";
 import { haversineM, insideCoverage, type LonLat } from "./lib/geo.ts";
 import type { PresetId } from "./lib/presets.ts";
 import { formatDistance, formatDuration, spokenDistance } from "./lib/format.ts";
+import { cueParts } from "./lib/cueShown.ts";
+import { rideLightCorner } from "./lib/lightTimes.ts";
 import { LOCATE_MESSAGES } from "./lib/geolocation.ts";
 import {
   POOR_FIX_M,
@@ -218,6 +220,14 @@ export const RIDE_STARTED = "Ride started.";
 export const RIDE_ENDED = "Ride ended.";
 /** The always-visible End ride button's words (the owner, 2026-10-16: "add a method of ending navigation"). */
 export const END_RIDE_NAME = "End ride";
+/** End ride is a slide to end until the rider has arrived (the owner, 2026-10-19: "Add a swipe confirmation on ending the ride unless at the destination"). */
+export const SLIDE_TO_END = "Move it to the end to end the ride";
+/** The keys that move a range: only these count as a step of End ride's slide. */
+const SLIDE_KEYS = new Set(["ArrowRight", "ArrowUp", "ArrowLeft", "ArrowDown", "PageUp", "PageDown", "Home", "End"]);
+/** End ride's slide left part way goes back after this long. */
+const SLIDE_BACK_MS = 4_000;
+/** Said and shown when End ride is tapped rather than slid. */
+export const SLIDE_TO_END_HINT = "Slide End ride to the right to end the ride.";
 /** The side buttons' gear opens these, under the top row (the owner, 2026-10-16: "the buttons to change the settings seem hidden"; a gear in the rack since v0.9.0). */
 export const RIDE_SETTINGS_TEXT = "Settings";
 export const RIDE_SETTINGS_TITLE = "Ride settings";
@@ -336,6 +346,74 @@ function CueShape({ shape }: { shape: ReturnType<typeof arrowFor> }) {
     <svg className="cue-shape" viewBox="0 0 48 56" aria-hidden="true" focusable="false">
       <path d={paths[shape]} fill="none" stroke="currentColor" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
+  );
+}
+
+/**
+ * End ride as a slide (the owner, 2026-10-19), so a bump while riding does not end it: a range from 0 to
+ * 100 in quarters, the ride ended when it reaches the end. A native range, so the keyboard's arrows and a
+ * screen reader's adjust gestures move it too. A tap on the track that jumps it more than half way is a
+ * tap, not a slide: it springs back and says how. Let go short of the end, or left part way, it springs back.
+ */
+function SlideToEnd({ onEnd, onTap }: { onEnd: () => void; onTap: () => void }) {
+  const [value, setValue] = useState(0);
+  const last = useRef(0);
+  const key = useRef(false);
+  const back = () => {
+    key.current = false;
+    last.current = 0;
+    setValue(0);
+  };
+  // Left part way (a screen reader's adjust gestures move it without the focus, so no blur comes): back after a few seconds.
+  useEffect(() => {
+    if (value === 0 || value >= 100) return;
+    const timer = window.setTimeout(back, SLIDE_BACK_MS);
+    return () => window.clearTimeout(timer);
+  }, [value]);
+  return (
+    <div className="ride-end ride-slide">
+      <span className="ride-slide-text" aria-hidden="true">
+        {END_RIDE_NAME}
+        <span className="ride-slide-arrows">››</span>
+      </span>
+      <input
+        type="range"
+        className="ride-slide-range"
+        min={0}
+        max={100}
+        step={25}
+        value={value}
+        aria-label={END_RIDE_NAME}
+        aria-valuetext={value === 0 ? SLIDE_TO_END : `${value}%`}
+        onKeyDown={(event) => {
+          // Only the keys that move a range count as a step, so a stray key never lets a tap through.
+          key.current = SLIDE_KEYS.has(event.key);
+        }}
+        onPointerDown={() => {
+          key.current = false;
+        }}
+        onChange={(event) => {
+          const next = Number(event.currentTarget.value);
+          const byKey = key.current;
+          key.current = false;
+          if (!byKey && next - last.current > 50) {
+            back();
+            onTap();
+            return;
+          }
+          last.current = next;
+          setValue(next);
+          if (next >= 100) onEnd();
+        }}
+        onPointerUp={() => {
+          if (last.current < 100) back();
+        }}
+        onPointerCancel={back}
+        onBlur={() => {
+          if (last.current < 100) back();
+        }}
+      />
+    </div>
   );
 }
 
@@ -1019,7 +1097,7 @@ export function RideMode({
       // The rider is riding a plan already made: a long one is not asked to be confirmed again (a signed-out
       // rider's re-plan of a long ride was refused for want of it).
       const ask = (to: LonLat[]) =>
-        requestRoute(to, preset, { dials: { ...dials, loop: false }, vias: viaIndices(to, VIA_MARKS.isVia), routeOnly: true, confirmLong: true, blocked: blockedRef.current, heading });
+        requestRoute(to, preset, { dials: { ...dials, loop: false }, vias: viaIndices(to, VIA_MARKS.isVia), straight: drawnLegs(to), routeOnly: true, confirmLong: true, blocked: blockedRef.current, heading });
       const result = await ask(points);
       // No new route to the end: the way back to the planned route, which goes on from there (lib/rejoin.ts;
       // the owner, 2026-10-17). Not for a detour, whose place the planned route does not pass. The no-signal
@@ -1418,6 +1496,12 @@ export function RideMode({
     const back = wayBack(modelRef.current, rideRef.current);
     if (back) announcer.current?.answer(wayBackSaid(back));
   };
+  // End ride tapped, not slid: the hint by the side buttons, and through the rider's outputs.
+  const slideHint = () => {
+    showToast(SLIDE_TO_END_HINT);
+    announcer.current?.answer(SLIDE_TO_END_HINT);
+    if (prefsRef.current.output === "neither") setPolite((s) => ({ text: SLIDE_TO_END_HINT, count: s.count + 1 }));
+  };
   // Road closed (lib/roadClosed.ts): one press, no menu. The road ahead is marked closed for this ride and the ride
   // planned again round it; the standard way beside a marked closure goes too, as it may run along it.
   const roadClosed = () => {
@@ -1583,7 +1667,9 @@ export function RideMode({
       if (event.altKey || event.ctrlKey || event.metaKey || event.repeat) return;
       const target = event.target as HTMLElement | null;
       if (!target || !sectionRef.current?.contains(target)) return;
-      if (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
+      // End ride's slide is a range: W and C still work there, as they did on its button.
+      const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName) && (target as HTMLInputElement).type !== "range";
+      if (target.isContentEditable || typing) return;
       if (event.key === "w" || event.key === "W") {
         event.preventDefault();
         askWhere();
@@ -1599,6 +1685,19 @@ export function RideMode({
   const progress = ride.progressM;
   const cue = progress === null ? null : nextAction(model, progress);
   const togo = progress === null ? null : toGo(model, progress);
+  const cueShown = cueParts(cue ? (cue.rideText ?? cue.text) : "");
+  // The distance's metric in brackets a size smaller, so the line stays one line with large text.
+  const distanceWords = cue && progress !== null ? formatDistance(cue.atM - progress) : "";
+  const metricAt = distanceWords.indexOf(" (");
+  const distanceShown = metricAt < 0 ? { us: distanceWords, metric: "" } : { us: distanceWords.slice(0, metricAt), metric: distanceWords.slice(metricAt + 1) };
+  // The light times for the corner, worked out once a minute and every tenth of a mile or so.
+  const minute = Math.floor(Date.now() / 60_000);
+  const lightStep = progress === null ? null : Math.round(progress / 160);
+  const togoS = togo?.end.seconds ?? null;
+  const light = useMemo(
+    () => (lightStep === null || ride.arrived ? null : rideLightCorner(model, lightStep * 160, togoS, minute * 60_000)),
+    [model, lightStep, togoS === null ? null : Math.round(togoS / 60), ride.arrived, minute], // eslint-disable-line react-hooks/exhaustive-deps
+  );
   const back = ride.off ? wayBack(model, ride) : null;
   const shape = arrowFor(cue);
   const show311 = ride311Shown({ off: ride.off, progressM: progress, insideDc: (m) => inDc(pointAt(model, m)) });
@@ -1665,26 +1764,46 @@ export function RideMode({
       <LiveRegion said={assertive} urgent />
       <div className="cue-card">
         {/* End ride (v0.7.0, "Go riding fixes" item 6): always in view, at the top of the card, which stays at
-            every size and in Big text; one tap ends the ride, and the page offers Undo for a few seconds
+            every size and in Big text; one slide ends the ride (a tap once arrived), and the page offers Undo for a few seconds
             (RideEnded). The ride's settings open just under the row, from the side buttons' gear. */}
         <div className="ride-top">
-          <h2 id="ride-heading" ref={headingRef} tabIndex={-1} className="ride-heading">
-            Ride mode
+          {/* "Ride mode" in the corner; near dawn or dusk the light times in its place (the owner, 2026-10-19),
+              the heading kept for screen readers. */}
+          <h2 id="ride-heading" ref={headingRef} tabIndex={-1} className={light ? "ride-heading ride-light" : "ride-heading"}>
+            {light ? (
+              <>
+                <span className="visually-hidden">Ride mode</span>
+                <span className="ride-light-lines" aria-hidden="true">
+                  {light.shown.map((line) => (
+                    <span key={line}>{line}</span>
+                  ))}
+                </span>
+              </>
+            ) : (
+              "Ride mode"
+            )}
           </h2>
+          {light && <p className="visually-hidden">{light.said}</p>}
           <div className="ride-top-actions">
+            {/* End ride first, then Road closed (the owner, 2026-10-19: "switch end ride and road closed"). Until the
+                rider has arrived, End ride is slid, not tapped. */}
+            {ride.arrived ? (
+              <button type="button" className="danger ride-end" onClick={end}>
+                <Icon name="stop" size={18} />
+                {END_RIDE_NAME}
+              </button>
+            ) : (
+              <SlideToEnd onEnd={end} onTap={slideHint} />
+            )}
             {/* Road closed (v0.8.2; in the top row since v0.9.0, the owner, 2026-10-18: "a button you'd want to hit
-                on the fly"): one press while riding, no menu; End ride to its right. */}
+                on the fly"): one press while riding, no menu. */}
             {!walking && !ride.arrived && (
               <button type="button" className="secondary ride-road-closed" onClick={roadClosed} aria-label={ROAD_CLOSED_NAME} title={ROAD_CLOSED_NAME}>
                 <Icon name="barrier" size={18} />
-                {/* Shown where there is room; on the narrowest phones the icon alone, its name kept. */}
+                {/* Shown where there is room; on narrow phones and with large text the icon alone, its name kept. */}
                 <span className="ride-top-label">{ROAD_CLOSED_TEXT}</span>
               </button>
             )}
-            <button type="button" className="danger ride-end" onClick={end}>
-              <Icon name="stop" size={18} />
-              {END_RIDE_NAME}
-            </button>
           </div>
         </div>
         <div
@@ -1755,8 +1874,20 @@ export function RideMode({
             <CueShape shape={shape} />
             <div>
               {/* Greyed while GPS is weak or lost (any GPS note): the distance is from an old fix, not where the rider is. */}
-              <p className={gps ? "cue-distance cue-distance-weak" : "cue-distance"}>In {formatDistance(cue.atM - progress)}</p>
-              <p className="cue-text">{cue.rideText ?? cue.text}</p>
+              <p className={gps ? "cue-distance cue-distance-weak" : "cue-distance"}>
+                In {distanceShown.us}
+                {distanceShown.metric && <span className="cue-distance-metric"> {distanceShown.metric}</span>}
+              </p>
+              {/* The instruction large, the rest in small print, street words shortened; the whole sentence for screen readers. */}
+              <p className="cue-text">
+                <span aria-hidden="true">{cueShown.head}</span>
+                <span className="visually-hidden">{cue.rideText ?? cue.text}</span>
+              </p>
+              {cueShown.rest && (
+                <p className="cue-more" aria-hidden="true">
+                  {cueShown.rest}
+                </p>
+              )}
               {cue.citation && <p className="cue-citation">{cue.citation}</p>}
             </div>
           </div>

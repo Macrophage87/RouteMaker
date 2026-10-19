@@ -307,9 +307,9 @@ def plan_zones(
 
     Closures follow the ride, not today (v0.7.0): they are matched against the dial's
     moment, and one with no end given "may still apply" on a later ride and is not
-    routed round. `bypass` names the closures the rider chose to route through. `now_only`
-    (Go and a ride, v0.9.1) leaves out the closures that may happen: DDOT's permits
-    (`rules.possible`)."""
+    routed round. `bypass` names the closures the rider chose to route through. DDOT's
+    permits (`rules.possible`) are never routed round, only flagged on the plan's map;
+    `now_only` (Go and a ride, v0.9.1) leaves them out altogether."""
     found = snapshot()
     if not found.status:
         return None
@@ -718,6 +718,8 @@ def _route_box(coordinates, margin_m: float):
 
 def _effect(zone: rules.Zone, plan: rules.PlanZones, on_route: set[str]) -> str:
     zone_id = zone.zone_id
+    if any(z.zone_id == zone_id for z in plan.possible):
+        return rules.POSSIBLE
     if any(z.zone_id == zone_id for z in plan.bypassed):
         return rules.BYPASSED
     if any(z.zone_id == zone_id for z in plan.uncertain):
@@ -749,21 +751,28 @@ def closure_row(
         "url": zone.url or rules.SOURCE_LINKS.get(zone.source),
         "kind": zone.kind,
         "severity": "amber" if zone.kind == rules.LANE else "red",
-        "title": zone.title or _title(zone),
+        "title": _possible_title(zone) if effect == rules.POSSIBLE else zone.title or _title(zone),
         "road": zone.road,
-        "when_text": rules.when_text(zone, now, future),
+        "when_text": rules.when_text(zone, now, future, possible=effect == rules.POSSIBLE),
         "start": None if zone.start is None else zone.start.isoformat(),
         "end": None if zone.end is None else zone.end.isoformat(),
         "effect": effect,
         "delay_s": None if delay_s is None else round(delay_s),
         "effect_text": rules.effect_text(zone, effect, delay_s),
-        "can_bypass": zone.kind in (rules.CLOSED, rules.UNKNOWN),
+        "can_bypass": zone.kind in (rules.CLOSED, rules.UNKNOWN) and effect != rules.POSSIBLE,
         "bypassed": effect == rules.BYPASSED,
         "from_m": None if passage is None else round(passage.from_m * scale),
         "to_m": None if passage is None else round(passage.to_m * scale),
         "point": [round(middle[0], 6), round(middle[1], 6)],
         "line": [[round(p[0], 6), round(p[1], 6)] for p in zone.line],
     }
+
+
+def _possible_title(zone: rules.Zone) -> str:
+    """A permit's title (v0.9.1): what it may close, never "closed"; the stored title says
+    "road closed", so it is not used."""
+    road = zone.road or "Road"
+    return f"{road}: bike lane may be blocked" if zone.kind == rules.LANE else f"{road}: may close"
 
 
 def _title(zone: rules.Zone) -> str:
@@ -819,7 +828,9 @@ def map_rows(coordinates, plan: rules.PlanZones, passages, scale: float, now) ->
             scale,
         )
         rows.append((near, row))
-    rows.sort(key=lambda r: (r[0], r[1]["id"]))
+    # DDOT's permits after every other closure, so the ones a layer may hide never crowd a
+    # real closure out of the map's MAP_MOST (v0.9.1).
+    rows.sort(key=lambda r: (r[1]["effect"] == rules.POSSIBLE, r[0], r[1]["id"]))
     return [row for _near, row in rows[:MAP_MOST]]
 
 
@@ -967,8 +978,9 @@ def closures_on(
     line (`from_m`, `to_m`, on the line as sent) and one line of words: street, from and to
     along the route, until when. One with no end given, on a ride later than now, says it
     "may still apply" (`may_still_apply`). The ids in `bypass` are left out of `closures`
-    and listed in `bypassed`. `now_only` (Go and a ride, v0.9.1) leaves out the closures
-    that may happen: DDOT's permits (`rules.possible`).
+    and listed in `bypassed`. The closures that may happen, DDOT's permits
+    (`rules.possible`), are never asked about (v0.9.1, the owner: "flag, but not necessarily
+    stop anyone"); `now_only` is accepted and changes nothing more.
 
     Additive to the dialog's first contract (v0.7.0): each closure's card fields (`title`,
     `source_key`, `source_name`, `url`, `when_text`, `line`), `lanes` (blocked bike lanes
@@ -985,7 +997,7 @@ def closures_on(
     zones = [
         z
         for z in found.zones
-        if z.kind in MAP_KINDS and rules.active(z, moment) and not (now_only and rules.possible(z))
+        if z.kind in MAP_KINDS and rules.active(z, moment) and not rules.possible(z)
     ]
     passages = rules.along(line, zones) if zones else []
     closures, bypassed, lanes = [], [], []

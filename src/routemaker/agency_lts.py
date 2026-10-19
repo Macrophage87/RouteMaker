@@ -15,7 +15,8 @@ panel lists each, with which one the map uses and why.
 
 Levels are the agency's own numbers on our scale: 1 to 4 with half steps, and 5
 for an agency's highest level, which is Avoid ("if any ratings agency has it as
-LTS5. We should keep that unless there's a clear case for downgrading").
+LTS5. We should keep that unless there's a clear case for downgrading"), except
+Montgomery's 5, which means very high stress and is our 4.5 (`READ_AS`).
 Montgomery's 0.5 ("None") is no rating and is dropped before it gets here. MDOT SHA's
 5 is a ban, not a level: it also closes the way to bicycles (`PROHIBITING_LEVELS`).
 """
@@ -57,11 +58,37 @@ AGENCY_RULE = "agency rating"
 # consider them for routing."). MDOT SHA's 5 is "Bicycle access is prohibited by managing
 # roadway agency" (its LTS methodology; `scripts/install_agency_lts.py`). So any such
 # rating closes the way to bicycles whichever agency's level the map uses
-# (`pipeline.agency_ratings.prohibited_closures`); Montgomery's and DDOT's 5 stay Avoid.
+# (`pipeline.agency_ratings.prohibited_closures`); DDOT's 5 stays Avoid, and Montgomery's
+# is our 4.5 (`READ_AS`).
 PROHIBITING_LEVELS: dict[str, float] = {"mdot-sha": 5.0}
 # The way's `rm:no_bicycle` reason, and the road panel's code for it
 # (`core.segment_info.ACCESS_WORDS`).
 PROHIBITED_NO_BICYCLE = "mdot_prohibited"
+
+# An agency level that means something else on our scale, as the level the map uses. The owner,
+# 2026-10-19: "5 in our case means technically legal, but not a real option. MoCo's mean very
+# high stress, what our 4.5 means." (and of Darnestown Road at Dawsonville: "While it can be very
+# high stress, it's not a complete No, as there's no real alternatives"). So Montgomery's 5 is our
+# 4.5, urban and rural alike, and so are its LTS 5 rows of 2026-10-01 (`row_level`). Our
+# own 5, Avoid, stays for roads that are legal but not a real option: motorway-like roads, a
+# hand-set Avoid, a side path riders are asked to use. MDOT SHA's 5 is a ban and DDOT's 5 Avoid.
+READ_AS: dict[str, dict[float, float]] = {"moco": {5.0: 4.5}}
+# The reason after the agency's level in the rule (`apply`), read back by the road panel
+# (`core.segment_info`). No comma: the rule's commas separate its reasons.
+READ_AS_REASON = "our LTS 4.5"
+
+
+def map_level(agency: str, level: float) -> float:
+    """An agency's level as the map uses it: its own, except where `READ_AS` says otherwise."""
+    return READ_AS.get(agency, {}).get(float(level), level)
+
+
+def row_level(adjustment_id: str | None, level: float) -> float:
+    """An override row's level as the map uses it: an agency's rating loaded as a row
+    (`adjustment_source`; Montgomery's `moco-lts5-*`) reads as that agency's level does
+    (`map_level`), and the owner's and the community's rows are their own."""
+    source = adjustment_source(adjustment_id)
+    return map_level(source, level) if source in AGENCIES else level
 
 
 def prohibiting(ratings: Iterable[AgencyRating]) -> AgencyRating | None:
@@ -184,7 +211,7 @@ def chosen(ratings: Iterable[AgencyRating]) -> AgencyRating | None:
     """The rating the map uses: the most local agency's. Two agencies at the same
     rank on one way (two counties meeting at a line) take the higher level, the
     stress-averse reading."""
-    ranked = sorted(ratings, key=lambda r: (r.rank, -r.level))
+    ranked = sorted(ratings, key=lambda r: (r.rank, -map_level(r.agency, r.level)))
     return ranked[0] if ranked else None
 
 
@@ -193,15 +220,24 @@ def apply(result: StressResult, ratings: Iterable[AgencyRating]) -> StressResult
 
     The classifier's tier is kept (`formula_tier`, `formula_rule`) and every
     rating is recorded (`agency_ratings`), for the road panel. An agency rating
-    replaces the formula's only; a tier the owner set comes later and wins."""
+    replaces the formula's only; a tier the owner set comes later and wins.
+    The level used is `map_level`'s: Montgomery's 5 is LTS 4.5."""
     ratings = tuple(ratings)
     pick = chosen(ratings)
     if pick is None:
         return result
-    tier, half = tier_of(pick.level)
+    level = map_level(pick.agency, pick.level)
+    if level < pick.level and result.tier is Stress.AVOID:
+        # A level read as a lower one (Montgomery's 5 as 4.5) does not lower the
+        # formula's own Avoid (a bike-legal motorway, a side path's road): the
+        # agency's highest level agrees with it. The rating is still recorded.
+        return replace(result, agency_ratings=tuple(sorted(ratings, key=lambda r: r.rank)))
+    tier, half = tier_of(level)
     # The other agencies' levels are in `agency_ratings`, not the rule: the
     # rule's commas separate the reasons appended after it (`stress.rural_floor`).
     why = f"{AGENCY_RULE}: {pick.name} LTS {pick.level:g}"
+    if level != pick.level:
+        why += f", {READ_AS_REASON}"
     return replace(
         result,
         tier=tier,
@@ -254,6 +290,7 @@ def painted_lane_row(
         scope = PAINTED_LANE_COMPARISON
     else:
         return None
+    level = map_level(pick.agency, pick.level) if pick else None
     formula = result.formula_tier if result.formula_tier is not None else result.tier
     rule = result.formula_rule if result.formula_rule is not None else result.rule
     return {
@@ -262,10 +299,10 @@ def painted_lane_row(
         "state": state,
         "scope": scope,
         "agency": pick.agency if pick else "",
-        "agency_level": f"{pick.level:g}" if pick else "",
+        "agency_level": f"{level:g}" if pick else "",
         "formula_level": str(int(formula)),
         "formula_rule": rule,
-        "differs": ("yes" if pick.level != int(formula) else "no") if pick else "",
+        "differs": ("yes" if level != int(formula) else "no") if pick else "",
     }
 
 
