@@ -1312,6 +1312,21 @@ do
     not signal({ highway = "give_way", crossing = "traffic_signals" }))
   check("a crossing whose bicycle=no upstream reopens keeps its class",
     not signal({ highway = "crossing", crossing = "traffic_signals", bicycle = "no" }))
+  local agency = M.AGENCY_SIGNAL_MARK
+  check("a junction an agency lists as a signal becomes one",
+    signal({ [agency] = "yes" }))
+  check("the agency's signal overrides an uncontrolled crosswalk (a HAWK)",
+    signal({ highway = "crossing", crossing = "uncontrolled", [agency] = "yes" }))
+  check("and an unmarked one",
+    signal({ highway = "crossing", crossing = "unmarked", [agency] = "yes" }))
+  check("and a stop sign mapped on the junction",
+    signal({ highway = "stop", [agency] = "yes" }))
+  check("and a give-way sign",
+    signal({ highway = "give_way", [agency] = "yes" }))
+  check("but not a crossing whose bicycle=no upstream reopens",
+    not signal({ highway = "crossing", bicycle = "no", [agency] = "yes" }))
+  check("nor any other node class",
+    not signal({ highway = "motorway_junction", [agency] = "yes" }))
   check("a crossing with no signal tag is untouched",
     next(M.remap_node({ highway = "crossing", crossing = "marked" })) == nil)
   check("a bare node with no mark is untouched", next(M.remap_node({ name = "x" })) == nil)

@@ -69,6 +69,7 @@ from routemaker.stress import (
 from . import (
     aadt_smoothing,
     agency_ratings,
+    agency_signals,
     borders,
     checkpoint,
     conflation,
@@ -121,6 +122,9 @@ CORRIDOR_REPORT_NAME = "named-corridors.md"
 USE_SIDEPATH_REPORT_NAME = "use-sidepath-no-path.csv"
 # DDOT's PCI per District street it reached, and whether it was applied (DC-PCI).
 PAVEMENT_REPORT_NAME = "dc-pavement-pci.csv"
+# Each agency signal and what the rebuild did with it: added, already in OSM, or
+# no junction in reach (`pipeline.agency_signals`).
+AGENCY_SIGNALS_REPORT_NAME = "agency-signals.csv"
 # Every way inside a military area, closed or left open, for the owner (owner report
 # 2026-10-05; `restricted_areas.military_report_csv`).
 MILITARY_REPORT_NAME = "military-closures.csv"
@@ -476,6 +480,11 @@ class ReferenceData:
     # bridges only. Never read by the classifier.
     scenic_features: tuple[conflation.RoadFeature, ...] = ()
     scenic_labels: dict[str, str] = field(default_factory=dict)
+    # Agency traffic signal lists (`pipeline.agency_signals`, v0.10.0): DDOT's, MDOT
+    # SHA's and Alexandria's (and Arlington's once its licence is confirmed), from
+    # `signals.json`. Optional like `roadway.json`: without it the map
+    # keeps OSM's signals only, and the load logs that it is absent.
+    agency_signal_list: tuple[agency_signals.Signal, ...] = ()
 
     @classmethod
     def load(
@@ -600,6 +609,7 @@ class ReferenceData:
                     strict=True,
                 )
             ),
+            agency_signal_list=agency_signals.load(directory / agency_signals.FILE_NAME),
             **dict(
                 zip(
                     ("scenic_features", "scenic_labels"),
@@ -3107,6 +3117,25 @@ def build_handlers(
         logger.info(
             "%d signalised trail crossings marked from their crossing ways", len(signal_tags)
         )
+        # And the junctions at an agency's signal that OSM does not map as one
+        # (`pipeline.agency_signals`; DC data beats OSM, the owner 2026-10-11).
+        if reference.agency_signal_list:
+            osm_signals = agency_signals.read_osm_signals(
+                context.source_pbf, agency_signals.bounds(reference.agency_signal_list)
+            )
+            matched = agency_signals.match(reference.agency_signal_list, context.ways, osm_signals)
+            logger.info(
+                "agency signals: %s; %d nodes marked",
+                agency_signals.summary(matched),
+                len(matched.nodes),
+            )
+            for node, tags in agency_signals.node_tags(matched.nodes).items():
+                signal_tags[node] = {**signal_tags.get(node, {}), **tags}
+            write_reports(
+                context.work_dir,
+                {AGENCY_SIGNALS_REPORT_NAME: agency_signals.report_csv(matched)},
+                "agency signals",
+            )
 
         # Review RL-5: the ways whose posted speed every variant's extract carries as an
         # explicit mph (`variants.with_speed_units`), so the change shows in the
