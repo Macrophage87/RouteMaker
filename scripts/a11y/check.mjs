@@ -983,7 +983,7 @@ for (const mobile of [false, true]) {
   check("settings: Layers has no second High contrast switch (UI-CLEANUP: Settings only)", !inLayers, JSON.stringify(inLayers));
   check("settings: no id is used twice in the page", await p.eval("(() => { const ids = [...document.querySelectorAll('[id]')].map((e) => e.id); return ids.length === new Set(ids).size; })()"));
   const heads = await p.eval("[...document.querySelectorAll('#sheet-settings h3')].map((h) => h.textContent)");
-  check("settings: the sheet's headings are Display, Riding, Account and About (v0.9.0: Ride mode and This device became Riding, and the routes kept for offline moved to Save & load; with Install the app when offered; v0.10.0: About, the documentation link, last), so the sign-in note is not filed under Display", JSON.stringify(heads.filter((h) => h !== "Install the app")) === JSON.stringify(["Display", "Riding", "Account", "About"]), JSON.stringify(heads));
+  check("settings: the sheet's headings are My Go, Riding, Display and Account, most used first, then About, the documentation link (Settings tidy, 2026-10-19; v0.10.0 docs; v0.9.0: Ride mode and This device became Riding, and the routes kept for offline moved to Save & load; with Install the app when offered), so the sign-in note is not filed under Display; signed out on a server that cannot sign anyone in, Account has nothing to hold and is left out rather than an empty heading", JSON.stringify(heads.filter((h) => h !== "Install the app")) === JSON.stringify(["My Go", "Riding", "Display", "About"]), JSON.stringify(heads));
   const axSwitches = (await p.s("Accessibility.getFullAXTree", {})).nodes.filter((n) => !n.ignored && /^High contrast/.test(n.name?.value ?? "") && ["switch", "button"].includes(n.role?.value));
   check("settings: exactly one High contrast switch is in the accessibility tree (said once, not twice)", axSwitches.length === 1 && axSwitches[0].role.value === "switch", JSON.stringify(axSwitches.map((n) => [n.role?.value, n.name?.value])));
   check("settings: the Settings bar button is the current one (aria-current)", await p.eval("(() => { const b = [...document.querySelectorAll('.bar-button')].find((x) => x.textContent.startsWith('Settings')); const others = [...document.querySelectorAll('.bar-button')].filter((x) => x !== b && x.getAttribute('aria-current')); return b.getAttribute('aria-current') === 'true' && others.length === 0; })()"));
@@ -4895,7 +4895,7 @@ const PICK_OPEN_IN_GO = "(() => { const s = document.querySelector('#sheet-setti
   // My Go signed out: kept on this device.
   const p = await bare({ width: 1280, height: 900, mobile: false });
   await openSheet(p, "Settings");
-  const section = await p.eval("(() => { const s = document.querySelector('#sheet-settings .my-go'); return s ? { heading: s.querySelector('h4')?.textContent, options: [...s.querySelectorAll('.open-in select option')].map((o) => o.textContent), status: s.querySelector('.my-go-said')?.getAttribute('role') } : null; })()");
+  const section = await p.eval("(() => { const s = document.querySelector('#sheet-settings .my-go'); return s ? { heading: s.querySelector('h3')?.textContent, options: [...s.querySelectorAll('.open-in select option')].map((o) => o.textContent), status: s.querySelector('.my-go-said')?.getAttribute('role') } : null; })()");
   const openInAx = await axNode(p, "#sheet-settings .open-in select");
   await p.eval(PICK_OPEN_IN_GO);
   await sleep(500);
