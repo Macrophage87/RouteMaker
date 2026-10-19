@@ -31,7 +31,8 @@ const LITERATURE_URL = "https://github.com/Macrophage87/RouteMaker/blob/main/doc
 test("it runs no script and loads nothing from another host (the app's content security policy)", () => {
   assert.doesNotMatch(page, /<script/i);
   assert.doesNotMatch(page, /\bsrc="(https?:)?\/\//i);
-  assert.doesNotMatch(page, /@import|url\(/i);
+  // url(#...) is an SVG marker inside the page itself; nothing else may be fetched by CSS.
+  assert.doesNotMatch(page, /@import|url\(\s*['"]?(?!#)/i);
   const external = [...page.matchAll(/\bhref="((?:https?:)?\/\/[^"]*)"/gi)].map((m) => m[1]);
   assert.deepEqual(external, [LITERATURE_URL], "exactly one external href, the sources page on GitHub");
 });
@@ -70,7 +71,9 @@ const MAP_WORDS = [
 ];
 
 test("every swatch is hidden from a screen reader, and each level is named in the road panel's words beside it", () => {
-  const swatches = [...page.matchAll(/<svg[^>]*>/g)].map((m) => m[0]);
+  // The levels' swatches; the page's diagrams are images with a title and a description instead.
+  const levels = page.match(/<ul class="levels">[\s\S]*?<\/ul>/)?.[0] ?? "";
+  const swatches = [...levels.matchAll(/<svg[^>]*>/g)].map((m) => m[0]);
   assert.equal(swatches.length, 5);
   for (const svg of swatches) assert.match(svg, /aria-hidden="true"/);
   for (const words of PANEL_WORDS) assert.ok(text.includes(words), words);
@@ -100,8 +103,10 @@ test("closed ways: rated singletrack everywhere, other mountain-bike trails open
 
 test("the cost table: one short-named region, a short caption, and LTS 1 and 2 said once above it", () => {
   assert.doesNotMatch(page, /<section [^>]*aria-labelledby/, "plain sections: the h2s give the headings, not 10 more regions");
+  // One region per wide table, each named by its caption; the cost table's name is kept short.
   const regions = [...page.matchAll(/<div [^>]*role="region"[^>]*>/g)].map((m) => m[0]);
-  assert.deepEqual(regions, ['<div class="table-wrap" tabindex="0" role="region" aria-label="Cost table, scrolls sideways">']);
+  assert.ok(regions.includes('<div class="table-wrap" tabindex="0" role="region" aria-label="Cost table, scrolls sideways">'), regions.join(" | "));
+  for (const r of regions) assert.match(r, /^<div class="table-wrap" tabindex="0" role="region" aria-label="[^"]{3,90}">$/);
   assert.match(page, /<caption>Calm miles per mile, at each ride type's starting slider<\/caption>/);
   assert.match(text, /Their level adds nothing at LTS 1 or 2, except on Trailmaxxing, Cargo with passengers and Novice and Nervous, where low-stress streets \(LTS 2\) count a little extra\. A quiet street counts as 1\./);
   assert.match(text, /Traffic-free paths and protected bike lanes count for less, and painted bike lanes a little less \(except on Mass Ride\)/);

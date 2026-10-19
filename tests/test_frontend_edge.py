@@ -39,7 +39,9 @@ SCRIPT = b"console.log('app');\n" * 200
 LICENCES = b"# Licenses\n"
 STRESS_PAGE = b"<!doctype html><title>How traffic stress ratings work</title>"
 # The rest of the rider-facing documentation (the owner, 2026-10-19), beside the stress page.
-DOC_PAGES = ("how-it-works", "ride-types", "architecture", "acknowledgements")
+DOC_PAGES = ("how-it-works", "routing", "ride-types", "mass-ride", "trails", "architecture", "acknowledgements")
+# The worked example's map on the routing page.
+EXAMPLE_MAP = b"RIFF\x00\x00\x00\x00WEBPVP8 "
 
 
 def doc_page(name: str) -> bytes:
@@ -95,6 +97,7 @@ def edge(tmp_path_factory):
     (frontend / "about" / "stress.html").write_bytes(STRESS_PAGE)
     for name in DOC_PAGES:
         (frontend / "about" / f"{name}.html").write_bytes(doc_page(name))
+    (frontend / "about" / "route-example.webp").write_bytes(EXAMPLE_MAP)
     (frontend / "sw.js").write_bytes(WORKER)
     (frontend / "sw-kill.js").write_bytes(b"// kill\n")
     (frontend / "manifest.webmanifest").write_bytes(MANIFEST)
@@ -234,6 +237,9 @@ def test_the_documentation_pages_are_served_with_the_apps_policy(edge) -> None:
         assert headers.get("Content-Type", "").startswith("text/html"), headers
         assert "no-cache" in headers.get("Cache-Control", ""), headers
         assert "default-src 'self'" in headers.get("Content-Security-Policy", ""), headers
+    status, headers, body = get(edge, "/about/route-example.webp")
+    assert (status, body) == (200, EXAMPLE_MAP), (status, headers)
+    assert headers.get("Content-Type", "").startswith("image/webp"), headers
     for near in ("/about/how-it-works", "/about/other.html", "/about/how-it-works.html/"):
         status, _, _ = get(edge, near)
         assert status == 502, (near, status)

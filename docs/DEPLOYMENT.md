@@ -1110,7 +1110,7 @@ docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD/frontend:/app" -v "
 docker run --rm -u 10001:10001 \
   -v "$PWD/frontend/dist:/dist:ro" -v <DATA_ROOT>/frontend:/out \
   docker.io/library/busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662 \
-  sh -c 'mkdir -p /out/assets && cp -n /dist/assets/* /out/assets/ && cp /dist/favicon.svg /dist/licenses.txt /out/ && cp /dist/manifest.webmanifest /out/ && cp /dist/sw-kill.js /out/ && mkdir -p /out/icons && cp /dist/icons/apple-touch-icon.png /out/icons/ && cp /dist/icons/icon-192.png /out/icons/ && cp /dist/icons/icon-512.png /out/icons/ && cp /dist/icons/icon-maskable-192.png /out/icons/ && cp /dist/icons/icon-maskable-512.png /out/icons/ && mkdir -p /out/about && cp /dist/about/stress.html /out/about/.stress.html.new && mv /out/about/.stress.html.new /out/about/stress.html && cp /dist/about/route-example.webp /out/about/ && cp /dist/about/how-it-works.html /out/about/.how-it-works.html.new && mv /out/about/.how-it-works.html.new /out/about/how-it-works.html && cp /dist/about/ride-types.html /out/about/.ride-types.html.new && mv /out/about/.ride-types.html.new /out/about/ride-types.html && cp /dist/about/architecture.html /out/about/.architecture.html.new && mv /out/about/.architecture.html.new /out/about/architecture.html && cp /dist/about/acknowledgements.html /out/about/.acknowledgements.html.new && mv /out/about/.acknowledgements.html.new /out/about/acknowledgements.html && cp /dist/sw.js /out/.sw.js.new && mv /out/.sw.js.new /out/sw.js && cp /dist/index.html /out/.index.html.new && mv /out/.index.html.new /out/index.html'
+  sh -c 'mkdir -p /out/assets && cp -n /dist/assets/* /out/assets/ && cp /dist/favicon.svg /dist/licenses.txt /out/ && cp /dist/manifest.webmanifest /out/ && cp /dist/sw-kill.js /out/ && mkdir -p /out/icons && cp /dist/icons/apple-touch-icon.png /out/icons/ && cp /dist/icons/icon-192.png /out/icons/ && cp /dist/icons/icon-512.png /out/icons/ && cp /dist/icons/icon-maskable-192.png /out/icons/ && cp /dist/icons/icon-maskable-512.png /out/icons/ && mkdir -p /out/about && cp /dist/about/stress.html /out/about/.stress.html.new && mv /out/about/.stress.html.new /out/about/stress.html && cp /dist/about/route-example.webp /out/about/ && cp /dist/about/how-it-works.html /out/about/.how-it-works.html.new && mv /out/about/.how-it-works.html.new /out/about/how-it-works.html && cp /dist/about/routing.html /out/about/.routing.html.new && mv /out/about/.routing.html.new /out/about/routing.html && cp /dist/about/mass-ride.html /out/about/.mass-ride.html.new && mv /out/about/.mass-ride.html.new /out/about/mass-ride.html && cp /dist/about/trails.html /out/about/.trails.html.new && mv /out/about/.trails.html.new /out/about/trails.html && cp /dist/about/ride-types.html /out/about/.ride-types.html.new && mv /out/about/.ride-types.html.new /out/about/ride-types.html && cp /dist/about/architecture.html /out/about/.architecture.html.new && mv /out/about/.architecture.html.new /out/about/architecture.html && cp /dist/about/acknowledgements.html /out/about/.acknowledgements.html.new && mv /out/about/.acknowledgements.html.new /out/about/acknowledgements.html && cp /dist/sw.js /out/.sw.js.new && mv /out/.sw.js.new /out/sw.js && cp /dist/index.html /out/.index.html.new && mv /out/.index.html.new /out/index.html'
 ```
 
 `npm ci` installs exactly what `frontend/package-lock.json` names (every direct
@@ -1172,10 +1172,11 @@ What the edge does with it (Caddyfile, `@frontend`):
   with the app's headers and `no-cache`; `/about/stress` and `/about/stress/`
   redirect to it (302, as the preset links, so a browser keeps nothing for
   good). The beta's nginx template serves it the same way.
-- `/about/how-it-works.html`, `/about/ride-types.html`,
-  `/about/architecture.html` and `/about/acknowledgements.html` are the rest of
-  the rider-facing documentation (the owner, 2026-10-19), served like the
-  stress page and replaced by a rename like it. Settings links to the first,
+- `/about/how-it-works.html`, `/about/routing.html`, `/about/ride-types.html`,
+  `/about/mass-ride.html`, `/about/trails.html`, `/about/architecture.html` and
+  `/about/acknowledgements.html` are the rest of the rider-facing documentation
+  (the owner, 2026-10-19), served like the stress page and replaced by a rename
+  like it; `/about/route-example.webp` is the routing page's example map. Settings links to the first,
   the map's credits to the last. A new page under `about/` has to be added to
   `@frontend`, the beta template's `/about/` location and the publish command
   above (`tests/test_deploy_docs.py` and `tests/test_beta_overlay.py` check).

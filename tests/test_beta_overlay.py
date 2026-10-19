@@ -959,7 +959,7 @@ def test_json_is_gzipped() -> None:
     assert "application/json" in re.search(r"gzip_types[^;]*;", full).group(0)
 
 
-ABOUT_LOCATION = r"~ ^/about/(stress|how-it-works|ride-types|architecture|acknowledgements)\.html$"
+ABOUT_LOCATION = r"~ ^/about/((stress|how-it-works|routing|ride-types|mass-ride|trails|architecture|acknowledgements)\.html|route-example\.webp)$"
 
 
 def test_the_template_serves_what_the_caddyfile_serves() -> None:
@@ -1024,13 +1024,14 @@ def test_the_about_location_names_exactly_the_documentation_pages_the_caddyfile_
     """The owner, 2026-10-19: the rider-facing documentation under /about/. The template's
     one location names the same pages as the Caddyfile's @frontend and as frontend/public/about,
     so a new page cannot be served by one edge and not the other."""
-    names = set(re.search(r"\^/about/\(([^)]*)\)", ABOUT_LOCATION).group(1).split("|"))
-    frontend = re.search(r"^\s*@frontend path (.+)$", CADDYFILE, re.M).group(1).split()
-    caddy = {
-        p.removeprefix("/about/").removesuffix(".html") for p in frontend if p.startswith("/about/")
+    pages = re.search(r"\^/about/\(\(([^)]*)\)\\.html\|([^)]*)\)", ABOUT_LOCATION)
+    names = {f"{n}.html" for n in pages.group(1).split("|")} | {
+        n.replace("\\.", ".") for n in pages.group(2).split("|")
     }
+    frontend = re.search(r"^\s*@frontend path (.+)$", CADDYFILE, re.M).group(1).split()
+    caddy = {p.removeprefix("/about/") for p in frontend if p.startswith("/about/")}
     public = Path(__file__).resolve().parent.parent / "frontend" / "public" / "about"
-    files = {p.stem for p in public.glob("*.html")}
+    files = {p.name for p in public.iterdir() if p.is_file()}
     assert names == caddy == files, (names, caddy, files)
 
 

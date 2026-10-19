@@ -17,7 +17,7 @@
       --bg: #1c1917; --fg: #f5f5f4; --muted: #c4c7ce; --line: #57534e;
       --panel: #292524; --link: #93c5fd; --focus: #93c5fd; --accent: #93c5fd; --accent-bg: #1e3a5f;
     }
-    /* Outline the stress colours in light ink so Avoid's black reads on the dark page. */
+    /* Outline the stress colors in light ink so Avoid's black reads on the dark page. */
     :root:not([data-theme="light"]) svg rect[stroke="#1c1917"] { stroke: #d6d3d1; }
   }
   * { box-sizing: border-box; }
@@ -97,8 +97,11 @@
   <nav class="docs" aria-label="RouteMaker documentation">
   <ul>
     <li><a href="/about/how-it-works.html">How RouteMaker works</a></li>
+    <li><a href="/about/stress.html">Stress ratings</a></li>
+    <li><a href="/about/routing.html">Routing</a></li>
     <li><a href="/about/ride-types.html" aria-current="page">Ride types</a></li>
-    <li><a href="/about/stress.html">Stress ratings in detail</a></li>
+    <li><a href="/about/mass-ride.html">Mass Ride</a></li>
+    <li><a href="/about/trails.html">Mountain Bike, Mountain Goat and Gravel</a></li>
     <li><a href="/about/architecture.html">Architecture</a></li>
     <li><a href="/about/acknowledgements.html">Acknowledgements</a></li>
   </ul>
@@ -109,7 +112,7 @@
 
 <p class="lead">A ride type tells RouteMaker what kind of trip you are making. Each one sets how much
 extra distance a calmer road is worth, how it treats hills and unpaved surfaces, and how fast you are
-likely to ride. All of them use the same <a href="/about/how-it-works.html#levels">stress
+likely to ride. All of them use the same <a href="/about/stress.html#levels">stress
 ratings</a>.</p>
 
 <div class="short">
@@ -235,58 +238,8 @@ settings<sup class="cite"><a href="#ref-1" aria-label="source 1">[1]</a></sup> t
 <h2 id="costs">How much a busy road costs</h2>
 <p>RouteMaker compares routes in calm miles: a mile of quiet street counts as 1, and a busier mile
 counts as more, as if it were longer. The traffic slider and the ride type together decide how
-much more.</p>
-<figure id="fig-costs">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
-<svg viewBox="0 0 800 360" role="img" aria-labelledby="fig-costs-t fig-costs-d" focusable="false" style="min-width:576px">
-<title id="fig-costs-t">What a mile of busy road costs, by ride type</title>
-<desc id="fig-costs-d">Range bars of calm miles per mile at each ride type&#x27;s starting slider. Mass Ride: LTS 3 and LTS 4 both 1. Fast: LTS 3 1.22 to 1.36, LTS 4 2.11 to 2.34. Group Ride, Gravel and Mountain Goat: 1.93 to 2.85 and 5.38 to 6.25. Default, E-bike and Cargo Bike carrying cargo: 2.88 to 5.79 and 12.85 to 15.83. Cargo Bike with passengers: 3.16 to 6.84 and 15.61 to 19.42. Trailmaxxing with no target distance: 6 and 11.</desc>
-<defs><marker id="ah-costs" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
-<line class="grid" x1="280.0" y1="8" x2="280.0" y2="314"/>
-<text class="ts" x="280.0" y="330" text-anchor="middle">0</text>
-<line class="grid" x1="370.0" y1="8" x2="370.0" y2="314"/>
-<text class="ts" x="370.0" y="330" text-anchor="middle">5</text>
-<line class="grid" x1="460.0" y1="8" x2="460.0" y2="314"/>
-<text class="ts" x="460.0" y="330" text-anchor="middle">10</text>
-<line class="grid" x1="550.0" y1="8" x2="550.0" y2="314"/>
-<text class="ts" x="550.0" y="330" text-anchor="middle">15</text>
-<line class="grid" x1="640.0" y1="8" x2="640.0" y2="314"/>
-<text class="ts" x="640.0" y="330" text-anchor="middle">20</text>
-<text class="t" x="270" y="36" text-anchor="end">Mass Ride</text>
-<rect x="295.0" y="18" width="6.0" height="14" fill="#f3c81a" stroke="#1c1917" stroke-width="0.8"/>
-<text class="ts" x="306.0" y="29" text-anchor="start">LTS 3: 1</text>
-<rect x="295.0" y="38" width="6.0" height="14" fill="#f28c28" stroke="#1c1917" stroke-width="0.8"/>
-<text class="ts" x="306.0" y="49" text-anchor="start">LTS 4: 1</text>
-<text class="t" x="270" y="86" text-anchor="end">Fast</text>
-<rect x="299.0" y="68" width="6.0" height="14" fill="#f3c81a" stroke="#1c1917" stroke-width="0.8"/>
-<text class="ts" x="312.48" y="79" text-anchor="start">LTS 3: 1.22 to 1.36</text>
-<rect x="315.0" y="88" width="6.0" height="14" fill="#f28c28" stroke="#1c1917" stroke-width="0.8"/>
-<text class="ts" x="330.12" y="99" text-anchor="start">LTS 4: 2.11 to 2.34</text>
-<text class="t" x="270" y="136" text-anchor="end">Group Ride, Gravel, Mountain Goat</text>
-<rect x="314.7" y="118" width="16.6" height="14" fill="#f3c81a" stroke="#1c1917" stroke-width="0.8"/>
-<text class="ts" x="339.3" y="129" text-anchor="start">LTS 3: 1.93 to 2.85</text>
-<rect x="376.8" y="138" width="15.7" height="14" fill="#f28c28" stroke="#1c1917" stroke-width="0.8"/>
-<text class="ts" x="400.5" y="149" text-anchor="start">LTS 4: 5.38 to 6.25</text>
-<text class="t" x="270" y="186" text-anchor="end">Default, E-bike, Cargo (cargo)</text>
-<rect x="331.8" y="168" width="52.4" height="14" fill="#f3c81a" stroke="#1c1917" stroke-width="0.8"/>
-<text class="ts" x="392.22" y="179" text-anchor="start">LTS 3: 2.88 to 5.79</text>
-<rect x="511.3" y="188" width="53.6" height="14" fill="#f28c28" stroke="#1c1917" stroke-width="0.8"/>
-<text class="ts" x="572.94" y="199" text-anchor="start">LTS 4: 12.85 to 15.83</text>
-<text class="t" x="270" y="236" text-anchor="end">Cargo with passengers</text>
-<rect x="336.9" y="218" width="66.2" height="14" fill="#f3c81a" stroke="#1c1917" stroke-width="0.8"/>
-<text class="ts" x="411.12" y="229" text-anchor="start">LTS 3: 3.16 to 6.84</text>
-<rect x="561.0" y="238" width="68.6" height="14" fill="#f28c28" stroke="#1c1917" stroke-width="0.8"/>
-<text class="ts" x="637.5600000000001" y="249" text-anchor="start">LTS 4: 15.61 to 19.42</text>
-<text class="t" x="270" y="286" text-anchor="end">Trailmaxxing (no target)</text>
-<rect x="385.0" y="268" width="6.0" height="14" fill="#f3c81a" stroke="#1c1917" stroke-width="0.8"/>
-<text class="ts" x="396.0" y="279" text-anchor="start">LTS 3: 6</text>
-<rect x="475.0" y="288" width="6.0" height="14" fill="#f28c28" stroke="#1c1917" stroke-width="0.8"/>
-<text class="ts" x="486.0" y="299" text-anchor="start">LTS 4: 11</text>
-<text class="ts" x="460.0" y="350" text-anchor="middle">Calm miles per mile ridden (a quiet street = 1)</text>
-</svg>
-</div>
-<figcaption>Each bar is a range because faster and wider roads of the same level cost more. LTS 1 and 2 cost 1 (except on the ride types below that lean toward LTS 1). Trailmaxxing and Novice and Nervous also rank LTS 4 and Avoid ahead of everything else, so these figures understate how hard they avoid them.<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup></figcaption>
-</figure>
+much more. <a href="/about/routing.html#costs">Routing</a> has the cost of each level on every ride
+type, and everything else a route pays for.</p>
 <p>Above 80 on the slider, RouteMaker's own search also weighs each route's exposure to busy roads.
 Ride types differ in how heavily they count LTS 4 and Avoid:</p>
 <figure id="fig-weights">
@@ -471,6 +424,8 @@ joined by calm roads: LTS 2 freely, LTS 3 only for gaps under 0.5 mi [0.8 km]. A
 half a road mile, or 0.4 at your preferred level. It plans a loop from your start unless you turn the
 loop off, never uses trails closed to bikes or mapped closed when wet, and links to MORE's trail
 conditions<sup class="cite"><a href="#ref-7" aria-label="source 7">[7]</a></sup>.</p>
+<p>Mountain Bike, Mountain Goat and Gravel each work differently from the road ride types:
+<a href="/about/trails.html">Mountain Bike, Mountain Goat and Gravel</a> explains how.</p>
 
 <h2 id="group">Group ride types</h2>
 <h3>Group Ride</h3>
@@ -481,7 +436,8 @@ seconds, against 5 on Default) and fewer gates.</p>
 preference, never against a one-way street's traffic, few turns, at a parade pace of 6 mph
 [9.7 km/h]. No loops. The slider is locked at 0, because a group of hundreds controls its lane. Its
 map shows how many riders a minute each road can carry instead of traffic stress, for a ride of 100 to
-2,000 riders<sup class="cite"><a href="#ref-8" aria-label="source 8">[8]</a></sup>, along with notes on federal land and reviewed hazard reports.</p>
+2,000 riders<sup class="cite"><a href="#ref-8" aria-label="source 8">[8]</a></sup>, along with notes on federal land and reviewed hazard reports. Its method is
+unlike any other ride type's: <a href="/about/mass-ride.html">Mass Ride</a> explains it.</p>
 
 <h2 id="options">Options for any ride type</h2>
 <ul>
