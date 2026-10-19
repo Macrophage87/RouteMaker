@@ -17,7 +17,15 @@ from pathlib import Path
 import pytest
 
 ABOUT = Path(__file__).resolve().parent.parent / "frontend" / "public" / "about"
-DOCS = ("how-it-works", "routing", "ride-types", "mass-ride", "trails", "architecture", "acknowledgements")
+DOCS = (
+    "how-it-works",
+    "routing",
+    "ride-types",
+    "mass-ride",
+    "trails",
+    "architecture",
+    "acknowledgements",
+)
 SET = (*DOCS, "stress")
 
 
@@ -92,7 +100,10 @@ def test_every_diagram_is_an_image_with_a_title_and_a_description(name: str) -> 
     assert page.count('<div class="fig-scroll" tabindex="0"') == len(svgs)
 
 
-@pytest.mark.parametrize("name", ("how-it-works", "routing", "ride-types", "mass-ride", "trails", "architecture", "stress"))
+CITED = ("how-it-works", "routing", "ride-types", "mass-ride", "trails", "architecture", "stress")
+
+
+@pytest.mark.parametrize("name", CITED)
 def test_every_citation_has_its_source_and_every_source_is_cited(name: str) -> None:
     page = read(name)
     cited = {int(n) for n in re.findall(r'<a href="#ref-(\d+)"', page)}

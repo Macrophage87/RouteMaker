@@ -39,7 +39,15 @@ SCRIPT = b"console.log('app');\n" * 200
 LICENCES = b"# Licenses\n"
 STRESS_PAGE = b"<!doctype html><title>How traffic stress ratings work</title>"
 # The rest of the rider-facing documentation (the owner, 2026-10-19), beside the stress page.
-DOC_PAGES = ("how-it-works", "routing", "ride-types", "mass-ride", "trails", "architecture", "acknowledgements")
+DOC_PAGES = (
+    "how-it-works",
+    "routing",
+    "ride-types",
+    "mass-ride",
+    "trails",
+    "architecture",
+    "acknowledgements",
+)
 # The worked example's map on the routing page.
 EXAMPLE_MAP = b"RIFF\x00\x00\x00\x00WEBPVP8 "
 

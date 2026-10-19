@@ -959,7 +959,10 @@ def test_json_is_gzipped() -> None:
     assert "application/json" in re.search(r"gzip_types[^;]*;", full).group(0)
 
 
-ABOUT_LOCATION = r"~ ^/about/((stress|how-it-works|routing|ride-types|mass-ride|trails|architecture|acknowledgements)\.html|route-example\.webp)$"
+ABOUT_LOCATION = (
+    r"~ ^/about/((stress|how-it-works|routing|ride-types|mass-ride|trails|architecture"
+    r"|acknowledgements)\.html|route-example\.webp)$"
+)
 
 
 def test_the_template_serves_what_the_caddyfile_serves() -> None:
