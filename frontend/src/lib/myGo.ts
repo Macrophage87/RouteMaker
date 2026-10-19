@@ -13,7 +13,7 @@
  */
 import { isOpenIn, type OpenIn } from "./appMode.ts";
 import type { LonLat } from "./geo.ts";
-import { presetSaid, resolvePreset, type PresetId } from "./presets.ts";
+import { resolvePreset, type PresetId } from "./presets.ts";
 import { csrfFromCookie } from "./stressEditor.ts";
 
 export interface Home {
@@ -56,12 +56,6 @@ export function goRideChips(myRide: PresetId | null): PresetId[] {
 
 /** The first chip's description: it is the rider's own, set in Settings. */
 export const OWN_RIDE_HINT = "Your ride type. Change it in Settings, under My Go.";
-
-/** My Go in a few words, the Settings row's value: "Go · Default", "By screen size · Cargo Bike". */
-export function myGoSummary(myGo: MyGo): string {
-  const where = myGo.openIn === "go" ? "Go" : myGo.openIn === "plan" ? "Plan" : "By screen size";
-  return `${where} · ${presetSaid(myGo.ride ?? "default")}`;
-}
 
 /** The parts of a stored or answered My Go that make sense; anything else is left at its default. */
 export function parseMyGo(raw: unknown): MyGo {
