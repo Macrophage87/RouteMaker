@@ -1,9 +1,9 @@
 // The panel's sheets (moved out of App.tsx in UI-CLEANUP step 4, docs/DEVELOPMENT.md "The App.tsx split"),
 // arranged as the approved UI mockup of 2026-10-11 has them (reports/v0.5.0/ui-mockup.html): Layers is its
 // switches, with the legend behind a Legend button at its top (the owner's choice 6); Suggest is the one way
-// in to the suggest tools, and Review is an admin's; Settings is Display, Riding and Account
-// with My Go; and the map's Water and Food chips open the nearest finder and Find food. In Go, Settings is
-// the Menu, with Plan, Suggest, GPX and Review above it. App.tsx keeps the state and the effects.
+// in to the suggest tools, and Review is an admin's; Settings is My Go, Riding, Display and Account; and the
+// map's Water and Food chips open the nearest finder and Find food. In Go, Settings is the Menu, with Plan,
+// Suggest, GPX and Review above it. App.tsx keeps the state and the effects.
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import type { Map as MapLibreMap } from "maplibre-gl";
 import type { StressAvailability } from "../MapView.tsx";
@@ -57,7 +57,7 @@ import type { Split, StoredWeight } from "../lib/weight.ts";
 import { WeightSetting } from "../lib/weightDialog.ts";
 import { DC_311_ONLINE, REPORT_KINDS } from "../lib/report311.ts";
 import { OPEN_IN_HINT, OPEN_IN_LABEL, type AppMode, type OpenIn } from "../lib/appMode.ts";
-import { myGoSummary, type Home, type MyGo } from "../lib/myGo.ts";
+import type { Home, MyGo } from "../lib/myGo.ts";
 import { homeFromPlace } from "../lib/homeSet.ts";
 import { HomeSetter } from "./Go.tsx";
 import { SIGN_IN_LINE } from "../lib/accountSettings.ts";
@@ -369,37 +369,22 @@ function OpenInChoice({ value, onChange, idBase, hint }: { value: OpenIn; onChan
 }
 
 /**
- * My Go (the owner's choice 2): where the app opens and Go's ride type, saved to the account when signed
- * in and on this device when not; signed in, the Home that Go's Home chip rides to.
+ * My Go (the owner's choice 2): the Home that Go's Home chip rides to, Go's ride type and where the app opens,
+ * saved to the account when signed in and on this device when not. First in Settings: Home is what a rider
+ * comes here to set (Settings tidy, Stephen 2026-10-19: "still very clunky").
  */
 function MyGoSection({ controls }: { controls: MyGoControls }) {
   const { myGo, signedIn, save, setHome, said, geoGate, searchBias } = controls;
   const [infoOpen, setInfoOpen] = useState(false);
   return (
-    <section aria-labelledby="settings-my-go-heading" className="my-go">
+    <section aria-labelledby="settings-my-go-heading" className="settings-group my-go">
       <div className="setting-line">
-        <h4 id="settings-my-go-heading">
-          <Icon name="star" size={18} />
-          My Go
-          <span className="setting-value">
-            <span className="visually-hidden">: </span>
-            {myGoSummary(myGo)}
-          </span>
-        </h4>
+        <h3 id="settings-my-go-heading">My Go</h3>
         <InfoButton open={infoOpen} onToggle={() => setInfoOpen((was) => !was)} controls="settings-my-go-info" about="My Go" />
       </div>
       <p className="hint setting-info" id="settings-my-go-info" hidden={!infoOpen}>
         {signedIn ? "Kept with your Discord account, on every device you sign in on." : "Kept on this device. Sign in to keep it with your account."}
       </p>
-      <OpenInChoice value={myGo.openIn} onChange={(openIn) => save({ ...myGo, openIn })} idBase="my-go" hint={OPEN_IN_HINT} />
-      <SettingRow infoId="settings-go-ride-info" about="Go's ride type">
-        <SettingSelect
-          label="Go's ride type"
-          value={myGo.ride ?? "default"}
-          options={PRESETS.filter((p) => p.id !== "mass-ride").map((p) => [p.id, presetSaid(p.id)] as const)}
-          onChange={(ride) => save({ ...myGo, ride: ride === "default" ? null : ride })}
-        />
-      </SettingRow>
       {/* The same Home sheet as Go's (lib/homeSet.ts), without the map way: the map is behind Settings. */}
       <div className="my-go-home">
         {!myGo.home && (
@@ -409,6 +394,15 @@ function MyGoSection({ controls }: { controls: MyGoControls }) {
         )}
         <HomeSetter home={myGo.home} geoGate={geoGate} searchBias={searchBias} onPlace={(place: Place) => setHome(homeFromPlace(place))} onClear={() => setHome(null)} />
       </div>
+      <SettingRow infoId="settings-go-ride-info" about="Go's ride type">
+        <SettingSelect
+          label="Go's ride type"
+          value={myGo.ride ?? "default"}
+          options={PRESETS.filter((p) => p.id !== "mass-ride").map((p) => [p.id, presetSaid(p.id)] as const)}
+          onChange={(ride) => save({ ...myGo, ride: ride === "default" ? null : ride })}
+        />
+      </SettingRow>
+      <OpenInChoice value={myGo.openIn} onChange={(openIn) => save({ ...myGo, openIn })} idBase="my-go" hint={OPEN_IN_HINT} />
       <p className="hint my-go-said" role="status">
         {said}
       </p>
@@ -457,7 +451,7 @@ function ContrastRow() {
   );
 }
 
-/** The Settings sheet (Go's Menu): Display, Riding and Account, as the mockup groups them. */
+/** The Settings sheet (Go's Menu): My Go, Riding, Display and Account, most used first. */
 export function SettingsSheet(props: SettingsSheetProps) {
   const { nav, settingsHeadingRef, ridePrefs, changeRidePrefs, announce, linkNote, accessMode, toggleAccessMode, myGo, mode, menu, announcements, signInAvailable } = props;
   const go = mode === "go";
@@ -492,6 +486,39 @@ export function SettingsSheet(props: SettingsSheetProps) {
           )}
         </nav>
       )}
+      {/* Most used first (Settings tidy, Stephen 2026-10-19): My Go with Home, then Riding, Display and Account. */}
+      <MyGoSection controls={myGo} />
+      {/* Ride mode's choices (WEB-NAV-plan.md section 3): the same ones the first Start ride asks, kept on this device. */}
+      <section aria-labelledby="settings-ride-heading" className="settings-group">
+        <h3 id="settings-ride-heading">Riding</h3>
+        <RideSettingsFields prefs={ridePrefs} onChange={changeRidePrefs} idBase="settings-ride" compact />
+        {/* Big text: a setting here, not a ride button (the owner, 2026-10-17: "not something people will fiddle with mid ride"). */}
+        <SettingRow infoId="settings-big-text-info" about="big text" info={BIG_TEXT_HELP} className="big-text-row">
+          <button
+            type="button"
+            role="switch"
+            className="switch"
+            aria-checked={props.bigText.on}
+            aria-labelledby="settings-big-text-label"
+            aria-describedby="settings-big-text-info"
+            onClick={() => props.bigText.onChange(!props.bigText.on)}
+          >
+            <span id="settings-big-text-label" className="switch-label">
+              {BIG_TEXT_LABEL}
+            </span>
+            <span className="switch-state" aria-hidden="true">
+              {props.bigText.on ? "On" : "Off"}
+            </span>
+          </button>
+        </SettingRow>
+        {/* Rider and bike weight, for how hard hills feel (the owner, 2026-10-18: "probably belongs in settings"); set once, so last. */}
+        <div className="setting-row weight-row">
+          <div className="setting-line">
+            <WeightSetting {...props.weight} />
+            <span className="info-spacer" aria-hidden="true" />
+          </div>
+        </div>
+      </section>
       <section aria-labelledby="settings-display-heading" className="settings-group">
         <h3 id="settings-display-heading">Display</h3>
         <ContrastRow />
@@ -539,64 +566,42 @@ export function SettingsSheet(props: SettingsSheetProps) {
             describedBy="settings-announce-info"
           />
         </SettingRow>
-        {/* Open in Go or Plan is My Go's, under Account, signed in or out: one control, not two (Plan streamline). */}
-      </section>
-      {/* Ride mode's choices (WEB-NAV-plan.md section 3): the same ones the first Start ride asks, kept on this device. */}
-      <section aria-labelledby="settings-ride-heading" className="settings-group">
-        <h3 id="settings-ride-heading">Riding</h3>
-        {/* Rider and bike weight, for how hard hills feel (the owner, 2026-10-18: "probably belongs in settings"). */}
-        <WeightSetting {...props.weight} />
-        <RideSettingsFields prefs={ridePrefs} onChange={changeRidePrefs} idBase="settings-ride" compact />
-        {/* Big text: a setting here, not a ride button (the owner, 2026-10-17: "not something people will fiddle with mid ride"). */}
-        <SettingRow infoId="settings-big-text-info" about="big text" info={BIG_TEXT_HELP} className="big-text-row">
-          <button
-            type="button"
-            role="switch"
-            className="switch"
-            aria-checked={props.bigText.on}
-            aria-labelledby="settings-big-text-label"
-            aria-describedby="settings-big-text-info"
-            onClick={() => props.bigText.onChange(!props.bigText.on)}
-          >
-            <span id="settings-big-text-label" className="switch-label">
-              {BIG_TEXT_LABEL}
-            </span>
-            <span className="switch-state" aria-hidden="true">
-              {props.bigText.on ? "On" : "Off"}
-            </span>
-          </button>
-        </SettingRow>
       </section>
       {/* The installable app (WEB-NAV-plan.md section 8, P4), under its own heading when the browser offers it. The
           routes saved and kept for offline are in Save and load (YourRoutes.tsx; the owner, 2026-10-18). */}
       <InstallOffer idBase="settings-install" onSay={announce} />
-      <section aria-labelledby="settings-signin-heading" className="settings-group">
-        <h3 id="settings-signin-heading">Account</h3>
-        {myGo.signedIn ? (
-          <>
-            <p className="hint signed-in">
-              <Icon name="user" size={16} /> Signed in with Discord.
+      {/* Account: never an empty heading (signed out on a server that cannot sign anyone in, it has nothing to hold). */}
+      {(myGo.signedIn || signInAvailable) && (
+        <section aria-labelledby="settings-signin-heading" className="settings-group">
+          <h3 id="settings-signin-heading">Account</h3>
+          {myGo.signedIn ? (
+            <div className="account-line">
+              <p className="hint signed-in">
+                <Icon name="user" size={16} /> Signed in with Discord.
+              </p>
+              <SignOutForm />
+              <span className="info-spacer" aria-hidden="true" />
+            </div>
+          ) : signInAvailable ? (
+            // The plan's one line (item 4); the link is its first words. The plan in hand is kept across the round trip.
+            <p className="hint sign-in-line">
+              <a href="/auth/login" onClick={(e) => isPlainClick(e) && rememberPlanForSignIn(tabSession(), window.location.hash, linkNote !== "")}>
+                Sign in with Discord
+              </a>
+              {SIGN_IN_LINE.slice("Sign in with Discord".length)}
             </p>
-            <SignOutForm />
-            {/* A page of its own (core.account_deletion), the same one the web offers without the app: it says what goes
-                and what is kept, and asks once. */}
+          ) : null}
+          {/* The save-only key an AI assistant's MCP server saves routes with (the owner, 2026-10-18). */}
+          {myGo.signedIn && <AssistantKeySetting />}
+          {/* A page of its own (core.account_deletion), the same one the web offers without the app: it says what goes
+              and what is kept, and asks once. Last: nobody needs it often. */}
+          {myGo.signedIn && (
             <p className="delete-account">
               <a href={DELETE_ACCOUNT_PAGE}>Delete account</a>
             </p>
-          </>
-        ) : signInAvailable ? (
-          // The plan's one line (item 4); the link is its first words. The plan in hand is kept across the round trip.
-          <p className="hint sign-in-line">
-            <a href="/auth/login" onClick={(e) => isPlainClick(e) && rememberPlanForSignIn(tabSession(), window.location.hash, linkNote !== "")}>
-              Sign in with Discord
-            </a>
-            {SIGN_IN_LINE.slice("Sign in with Discord".length)}
-          </p>
-        ) : null}
-        <MyGoSection controls={myGo} />
-        {/* The save-only key an AI assistant's MCP server saves routes with (the owner, 2026-10-18). */}
-        {myGo.signedIn && <AssistantKeySetting />}
-      </section>
+          )}
+        </section>
+      )}
     </SheetFrame>
   );
 }

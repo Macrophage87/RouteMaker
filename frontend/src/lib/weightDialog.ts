@@ -120,7 +120,7 @@ export function weightDialogBody(
     );
   };
   return [
-    h("h2", { key: "t", id: `${id}-title` }, WEIGHT_DIALOG_TITLE),
+    h("h2", { key: "t", id: `${id}-title`, tabIndex: -1 }, WEIGHT_DIALOG_TITLE),
     h("p", { key: "d1", id: `${id}-purpose` }, WEIGHT_PURPOSE),
     h("p", { key: "d2", id: `${id}-rough` }, WEIGHT_ROUGH),
     props.saved ? h("p", { key: "s", className: "notice", id: `${id}-saved` }, savedNotice(props.saved, now())) : null,
@@ -174,7 +174,13 @@ export function WeightDialog(props: DialogProps): ReactElement {
       const start = openedState();
       setSheet(start.sheet);
       setRefused(start.refused);
-      if (!dialog.open) dialog.showModal?.();
+      if (!dialog.open) {
+        dialog.showModal?.();
+        // The focus starts on the heading, not the first box (showModal's own choice): a box would open a phone's
+        // keyboard, which resizes the page and leaves the sheet behind scrolled when it closes (Stephen 2026-10-19:
+        // "opening a dialog often causes the text to shift"). The heading is read first, then Tab goes to Rider.
+        dialog.querySelector<HTMLElement>("h2")?.focus();
+      }
     } else {
       // Closed (Save, Cancel, Clear, Escape): blank, so nothing typed stays in the page (S2).
       const end = closedState();

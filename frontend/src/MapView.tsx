@@ -66,7 +66,7 @@ import {
 import { dragPreview, legOfSegment, nearestOnPath } from "./lib/lineEdit.ts";
 import { LineGesture } from "./lib/lineGesture.ts";
 import { PENN_COLOUR, RAIL_STATIONS, stationById } from "./lib/railData.ts";
-import { addRailStations, ROUTE_BOTTOM_LAYER, setRailVisibility } from "./lib/railLayer.ts";
+import { addRailStations, LABEL_FONT, ROUTE_BOTTOM_LAYER, setRailVisibility } from "./lib/railLayer.ts";
 import { ROUTE_HAZARD_ICON, ROUTE_HAZARD_SOURCE, routeHazardFeatures, routeHazardIcon, routeHazardLayer, routeHazardRepeatLayer } from "./lib/routeHazards.ts";
 import type { RailVisibility, Station, StationBadges, StationRole } from "./lib/railStations.ts";
 import { attachRailInteraction, type StationFound } from "./railInteraction.ts";
@@ -199,6 +199,14 @@ interface Props {
   onMovePoint: (index: number, point: LonLat) => void;
   /** The route line, when it is the current points' route and can be dragged; null otherwise. */
   lineEdit: LineEdit | null;
+  /**
+   * Go's routes to choose from that are not the one shown (lib/routeChoice.ts choiceFeatures): each drawn fainter in
+   * its colour and named, and a press on one chooses it (`onPickRoute`). Empty or absent draws none.
+   */
+  choices?: object | null;
+  /** The shown route's casing colour where it is not the rider's own route (lib/routeChoice.ts); else the route's own. */
+  routeColour?: string | null;
+  onPickRoute?: (index: number) => void;
   /** The line was dragged (or clicked) to `point` from leg `leg` of the route through `points`. */
   onLineDrop: (leg: number, point: LonLat, points: LonLat[]) => void;
   /**
@@ -330,6 +338,8 @@ function registerPmtiles(): void {
 const DC_CENTRE: LonLat = [-77.03, 38.9];
 const ROUTE_SOURCE = "route";
 const GHOST_SOURCE = "route-ghost";
+const CHOICE_SOURCE = "route-choice";
+const NO_CHOICES = { type: "FeatureCollection", features: [] };
 
 /** The ghost line's data: the old route's line, or nothing. */
 function ghostData(line: readonly LonLat[] | null | undefined): object {
@@ -371,6 +381,8 @@ const TRANSIT_SOURCE = "transit-trip";
 const TRANSIT_LAYERS = ["transit-casing", "transit-ride", "transit-walk", "transit-line"];
 /** How far from the line's centre a mouse, or a finger, still grabs it. */
 const MOUSE_HIT_PX = 8;
+/** The line layer of Go's other routes to choose from, which a press is tested against (lib/routeChoice.ts). */
+const CHOICE_LINE_LAYER = "route-choice-line";
 const TOUCH_HIT_PX = 18;
 /** Near a marker, the marker is what the pointer is on, not the line. */
 const MARKER_CLEAR_PX = 14;
@@ -985,6 +997,22 @@ export function MapView(props: Props) {
       // press on one is the card's in Plan too (Stephen 2026-10-19: "don't auto route").
       const stops = [water, stopCards(map)];
       const forCard = featureCardPress(goPress ? [...stops, climbCard, federal] : stops, event.point) !== null;
+      // Go's other routes to choose from (lib/routeChoice.ts): a press on one chooses it. Not a press on the route
+      // shown (they share its ends and often more), on a station, a card's feature, or the click that ends a drag.
+      const pick = callbacks.current.onPickRoute;
+      if (pick && onCanvas && !under.station && !under.line && !forCard && !anyPopupOpen() && performance.now() >= clickSuppressedUntil) {
+        const pad = touch ? TOUCH_HIT_PX : MOUSE_HIT_PX;
+        const box: [[number, number], [number, number]] = [
+          [event.point.x - pad, event.point.y - pad],
+          [event.point.x + pad, event.point.y + pad],
+        ];
+        const hit = map.getLayer(CHOICE_LINE_LAYER) ? map.queryRenderedFeatures(box, { layers: [CHOICE_LINE_LAYER] })[0] : undefined;
+        const index = hit?.properties?.index;
+        if (typeof index === "number") {
+          pick(index);
+          return;
+        }
+      }
       runClick(under, { popupOpen: anyPopupOpen() || forCard, afterDrag: performance.now() < clickSuppressedUntil, lineTapIsPoint: goPress }, {
         closePopups: () => {
           closePopup(false);
@@ -1041,6 +1069,25 @@ export function MapView(props: Props) {
         source: GHOST_SOURCE,
         layout: { "line-join": "round", "line-cap": "butt" },
         paint: { "line-color": "#4b5563", "line-width": 4, "line-opacity": 0.8, "line-dasharray": [2, 1.5] },
+      });
+      // Go's other routes to choose from (lib/routeChoice.ts): under the route, fainter, each in its colour on a
+      // white edge so it reads over the roads; a press on one chooses it (the click handler above).
+      map.addSource(CHOICE_SOURCE, { type: "geojson", data: (callbacks.current.choices ?? NO_CHOICES) as never });
+      map.addLayer({
+        id: "route-choice-casing",
+        type: "line",
+        source: CHOICE_SOURCE,
+        filter: ["==", ["geometry-type"], "LineString"],
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: { "line-color": "#ffffff", "line-width": 10, "line-opacity": 0.7 },
+      });
+      map.addLayer({
+        id: CHOICE_LINE_LAYER,
+        type: "line",
+        source: CHOICE_SOURCE,
+        filter: ["==", ["geometry-type"], "LineString"],
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: { "line-color": ["get", "color"], "line-width": 6, "line-opacity": 0.55 },
       });
       map.addSource(ROUTE_SOURCE, { type: "geojson", data: { type: "FeatureCollection", features: [] } });
       map.addLayer({
@@ -1116,6 +1163,23 @@ export function MapView(props: Props) {
       map.addSource(ROUTE_HAZARD_SOURCE, { type: "geojson", data: routeHazardFeatures(callbacks.current.route ?? null) });
       map.addLayer(routeHazardLayer() as never);
       map.addLayer(routeHazardRepeatLayer() as never);
+      // The other routes' names, over the route so a name where they part is not hidden under it.
+      map.addLayer({
+        id: "route-choice-name",
+        type: "symbol",
+        source: CHOICE_SOURCE,
+        filter: ["==", ["geometry-type"], "Point"],
+        layout: {
+          "text-field": ["get", "name"],
+          "text-font": [LABEL_FONT],
+          "text-size": 13,
+          "text-anchor": "bottom",
+          "text-offset": [0, -0.6],
+          "text-max-width": 16,
+          "text-allow-overlap": true,
+        },
+        paint: { "text-color": ["get", "color"], "text-halo-color": "#ffffff", "text-halo-width": 2 },
+      });
       // Closures in force at the ride (v0.7.0, lib/closureMap.ts): over the route, so a closed stretch on it shows.
       // A white casing, then red (closed) or amber (bike lane blocked); dashed where it "may still apply". Their
       // markers (buttons) carry the names and open the cards.
@@ -1500,7 +1564,14 @@ export function MapView(props: Props) {
     const map = mapRef.current;
     if (!map || !loaded.current) return;
     syncRoute(map, callbacks.current, fitted);
-  }, [props.route, props.stale]);
+  }, [props.route, props.stale, props.routeColour]);
+
+  // Go's other routes to choose from (lib/routeChoice.ts).
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loaded.current) return;
+    (map.getSource(CHOICE_SOURCE) as GeoJSONSource | undefined)?.setData((props.choices ?? NO_CHOICES) as never);
+  }, [props.choices]);
 
   // Plan mode's ghost of the route before the last update (v0.7.0).
   useEffect(() => {
@@ -1668,7 +1739,7 @@ export function MapView(props: Props) {
         const map = mapRef.current;
         if (!map || !loaded.current) return;
         setStressPalette(map, callbacks.current.when);
-        setRouteSections(map, callbacks.current.route, callbacks.current.stale);
+        setRouteSections(map, callbacks.current.route, callbacks.current.stale, callbacks.current.routeColour ?? undefined);
       }),
     [],
   );
@@ -2373,7 +2444,7 @@ function syncRoute(map: MapLibreMap, props: Props, fitted: { current: boolean })
   if (!source) return;
   // The route, and a transit trip's later rides drawn in its colours (lib/mapGlue.ts, routeLineData).
   source.setData(routeLineData(route) as never);
-  setRouteSections(map, route, stale);
+  setRouteSections(map, route, stale, props.routeColour ?? undefined);
   (map.getSource(ROUTE_HAZARD_SOURCE) as GeoJSONSource | undefined)?.setData(routeHazardFeatures(stale ? null : route) as never);
   // A ride's camera follows the rider; a re-planned route is not framed over it.
   if (!route || stale || route.geometry.coordinates.length < 2 || props.rider) return;

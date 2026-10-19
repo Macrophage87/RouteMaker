@@ -2796,14 +2796,19 @@ def _route_answer(request, body: RouteIn, response: HttpResponse):
 # routes it shows and keeps those that differ enough (frontend lib/neighbours.ts).
 
 # The seconds the two plans may take together, inside the request's own budget.
-NEIGHBOURS_BUDGET_S = 15
+# 25 since the calmer option became the trailmaxxed route (2026-10-19): the top of the slider
+# runs the calm search at its full rate, which took longer than the old notch's one call.
+NEIGHBOURS_BUDGET_S = 25
 # What the request counts against the routing limit: one for each plan.
 NEIGHBOURS_COST = 2
 
 
 class NeighbourOut(Schema):
     kind: Literal["direct", "calmer"] = Field(
-        description="`direct`: two notches more traffic tolerant. `calmer`: one notch calmer."
+        description=(
+            "`direct`: two notches more traffic tolerant. `calmer`: the top of the slider"
+            " (Go's Trailmaxxed)."
+        )
     )
     stress: int = Field(description="The traffic slider's position it was planned at.")
     route: RouteOut
@@ -2832,7 +2837,7 @@ class NeighboursOut(Schema):
         500: ErrorOut,
         503: BusyOut,
     },
-    summary="The same trip a step more direct and a step calmer (Go's route options)",
+    summary="The same trip more direct and trailmaxxed (Go's route options)",
     by_alias=True,
 )
 @decorate_view(
