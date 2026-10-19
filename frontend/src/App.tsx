@@ -180,6 +180,9 @@ import { TrailMilesOverlay } from "./app/trailMilesOverlay.ts";
 import { loadRepair, nearestRepair, repairFoundSaid, repairTitle, REPAIR_NO_ORIGIN, REPAIR_UNAVAILABLE, type RepairNearby, type RepairPlace } from "./lib/repair.ts";
 import { loadPlaces, placesSaid, placesToSee, readPlacesLayer, savePlacesLayer, sightsForGo, PLACES_NONE, PLACES_PAGE, PLACES_UNAVAILABLE, type PlaceFilter, type SightPlace, type SightResult } from "./lib/places.ts";
 import { FoodOverlay, PlacesOverlay, PlacesSheet, RepairSheet, RepairStandsOverlay } from "./app/PlacesSheets.tsx";
+import { closeStopCard, openStopCard, setStopCardFrame } from "./app/mapOverlay.ts";
+import { ADD_AS_STOP, ROUTE_HERE, type StopActionFor, type StopCardWords } from "./lib/stopCard.ts";
+import { foodWords, nearbyWords, repairWords, sightWords } from "./lib/stopWords.ts";
 import { ScenicOverlay } from "./app/ScenicOverlay.tsx";
 import { readScenicLayer, saveScenicLayer, scenicShown, scenicStatus } from "./lib/scenicLayer.ts";
 import {
@@ -362,7 +365,6 @@ export function App() {
   const weightStore = useRef<WeightStore | null>(null);
   if (weightStore.current === null) weightStore.current = new WeightStore();
   const [weight, setWeight] = useState<StoredWeight | null>(() => weightStore.current?.load() ?? null);
-  const [weightRemembered, setWeightRemembered] = useState(() => weightStore.current?.remembered() ?? false);
   // The stations the rider chose from the nearest-stations lists (OWNER-DECISIONS 466a), each
   // forgotten when its point moves; added to the request only, never to the link.
   const [stationPins, setStationPins] = useState<Pins>({});
@@ -1315,7 +1317,7 @@ export function App() {
   const syncSettingsOnSignIn = async (origin: string, live: () => boolean) => {
     const account = await fetchSettings(origin);
     if (!live() || account === undefined) return;
-    const device = deviceSettings({ preset: rideRef.current.preset, dials: rideRef.current.dials });
+    const device = deviceSettings({ preset: rideRef.current.preset, dials: rideRef.current.dials }, undefined, weightStore.current?.setting());
     const step = onSignIn(account, device);
     if (step.kind === "push-device") {
       lastSettings.current = device;
@@ -1323,6 +1325,15 @@ export function App() {
     } else {
       applyToDevice(step.doc);
       reloadFavorites();
+      // The account's weight, or cleared when it was cleared elsewhere; an account from before it kept one
+      // leaves this device's, which the save below then puts in the account.
+      if (step.doc.weight === null) {
+        weightStore.current?.clear();
+        setWeight(null);
+      } else if (step.doc.weight) {
+        weightStore.current?.save(step.doc.weight);
+        setWeight(step.doc.weight);
+      }
       lastSettings.current = step.doc;
       setWaterPrefsState(readWaterPrefs());
       setClimbsOnState(readClimbsOn());
@@ -2838,13 +2849,13 @@ export function App() {
   useEffect(() => {
     if (!me.signed_in || !settingsSynced) return;
     const timer = window.setTimeout(() => {
-      const doc = deviceSettings({ preset, dials });
+      const doc = deviceSettings({ preset, dials }, undefined, weightStore.current?.setting());
       if (sameSettings(doc, lastSettings.current)) return;
       lastSettings.current = doc;
       void saveSettings(window.location.origin, doc);
     }, SAVE_SETTLE_MS);
     return () => window.clearTimeout(timer);
-  }, [me.signed_in, settingsSynced, preset, dials, waterPrefs, climbsOn, climbsFrom, showTopoLines, favoriteRides]);
+  }, [me.signed_in, settingsSynced, preset, dials, waterPrefs, climbsOn, climbsFrom, showTopoLines, favoriteRides, weight]);
   const answerHome = (move: boolean) => {
     const offer = homeAsk;
     if (!offer) return;
@@ -3646,7 +3657,6 @@ export function App() {
     openView("places", chip);
     placesFromNow();
   };
-  const rideToRepair = (item: RepairNearby) => goToLettered([item.place.lon, item.place.lat], repairTitle(item.place));
   const showSight = (r: SightResult) => {
     const map = mapRef.current;
     const n = placesShown?.indexOf(r) ?? -1;
@@ -3658,8 +3668,6 @@ export function App() {
     namer.remember(point, r.place.name);
     placeSpot("via", point);
   };
-  // Go's Sights: one tap; a stop on the route when there is one (the owner: "a tap to add as a stop"), else the destination.
-  const goPickSight = (r: SightResult) => (points.length >= 2 ? addSightStop(r) : goToLettered([r.place.lon, r.place.lat], r.place.name));
   // The nearest finder (Plan's Water chip, Go's Water and Restroom chips): its own sheet now.
   const nearestProps = {
     from: nearestFrom,
@@ -3691,8 +3699,8 @@ export function App() {
   };
   // The lettered places (the owner, 2026-10-11 21:04 UTC; lib/letteredPlaces.ts): the list on the sheet open,
   // the nearest water, restrooms or Metro, or the food found, lettered on the map as in the list. A pick (its
-  // marker, Ride here in Go, or its letter's key) is the destination in Go, straight to the route options;
-  // in Plan, the nearest's Ride here, and food's Show on map.
+  // marker, its letter's key, or a row of Go's Repair or Sights) opens the place's card (pickLettered); the lists'
+  // own Ride here and Add as stop buttons act at once.
   const letteredOf: "nearest" | "food" | "repair" | "places" | "bikeshare" | null =
     view === "nearest" && nearestList && nearestList.items.length > 0
       ? "nearest"
@@ -3726,38 +3734,80 @@ export function App() {
     showPlanner(true);
     void goTo(point, title);
   };
-  const pickLettered = (index: number) => {
+  // A stop's card (lib/stopCard.ts; Stephen 2026-10-19: "provide information on what's there including a link to
+  // the website if available. Then offer a route/detour here", and "don't auto route"): one action, Route here
+  // before there is a route and Add as stop (the detour) with one; nothing while riding.
+  const routeHereInPlan = (point: LonLat, name: string) => {
+    namer.remember(point, name);
+    const fix = pointsRef.current.length === 0 ? lastHere() : null;
+    if (!fix || !insideCoverage(point)) {
+      placeSpot("end", point);
+      return;
+    }
+    // From the rider, as the nearest's Ride here: one edit, a loop turned off in it.
+    const ride = rideRef.current;
+    commit([fix, point], ride.dials.loop ? { ...ride, dials: { ...ride.dials, loop: false } } : undefined);
+    setFromHere((prior) => [...prior, fix]);
+    setNotice(null);
+    announce(`Planning a route to ${name}.`);
+  };
+  const stopActionNow = useRef<StopActionFor>(() => null);
+  stopActionNow.current = (point, name) => {
+    if (riding) return null;
+    if (mode === "go") {
+      if (!goStops) return { text: ROUTE_HERE, run: () => goToLettered(point, name) };
+      return {
+        text: ADD_AS_STOP,
+        run: () => {
+          namer.remember(point, name);
+          showPlanner(true);
+          goAddStopAt(point, name);
+        },
+      };
+    }
+    if (pointsRef.current.length < 2) return { text: ROUTE_HERE, run: () => routeHereInPlan(point, name) };
+    return {
+      text: ADD_AS_STOP,
+      run: () => {
+        namer.remember(point, name);
+        placeSpot("via", point);
+      },
+    };
+  };
+  const stopActionFor = useCallback<StopActionFor>((point, name) => stopActionNow.current(point, name), []);
+  // A card's action is for the state it opened in: a ride starting or Go and Plan swapping closes it.
+  useEffect(() => closeStopCard(), [riding, mode]);
+  /** The lettered place at `index`, as its card shows it. */
+  const letteredStop = (index: number): { point: LonLat; words: StopCardWords } | null => {
+    const at = new Date();
     if (letteredOf === "nearest" && nearestList) {
       const item = nearestList.items[index];
-      if (!item) return;
-      // With a route in Go, a chip's place is a stop on it (v0.7.0); before one, the destination.
-      if (mode === "go" && goStops) {
-        namer.remember(item.place.point, item.place.title);
-        showPlanner(true);
-        goAddStopAt(item.place.point, item.place.title);
-      } else if (mode === "go") goToLettered(item.place.point, item.place.title);
-      else rideToNearest(item);
-    } else if (letteredOf === "food" && foodResults) {
-      const r = foodResults[index];
-      if (!r) return;
-      if (mode === "go" && goStops) {
-        const point: LonLat = [r.place.lon, r.place.lat];
-        namer.remember(point, r.place.name);
-        showPlanner(true);
-        goAddStopAt(point, r.place.name);
-      } else if (mode === "go") goToLettered([r.place.lon, r.place.lat], r.place.name);
-      else showFood(r);
-    } else if (letteredOf === "repair" && repairList) {
-      const item = repairList.items[index];
-      if (item) rideToRepair(item);
-    } else if (letteredOf === "places" && placesShown) {
-      const r = placesShown[index];
-      if (!r) return;
-      if (mode === "go") goPickSight(r);
-      else showSight(r);
-    } else if (letteredOf === "bikeshare") {
-      pickOption(index);
+      return item ? { point: item.place.point, words: nearbyWords(item) } : null;
     }
+    if (letteredOf === "food" && foodResults) {
+      const r = foodResults[index];
+      return r ? { point: [r.place.lon, r.place.lat], words: foodWords(r, at) } : null;
+    }
+    if (letteredOf === "repair" && repairList) {
+      const item = repairList.items[index];
+      return item ? { point: [item.place.lon, item.place.lat], words: repairWords(item.place, at, item) } : null;
+    }
+    if (letteredOf === "places" && placesShown) {
+      const r = placesShown[index];
+      return r ? { point: [r.place.lon, r.place.lat], words: sightWords(r.place, at, r) } : null;
+    }
+    return null;
+  };
+  // A lettered pin, its letter's key, or a row of Go's Repair or Sights: the place's card, never a route by itself.
+  const pickLettered = (index: number) => {
+    if (letteredOf === "bikeshare") {
+      pickOption(index);
+      return;
+    }
+    const stop = letteredStop(index);
+    const map = mapRef.current;
+    if (!stop || !map) return;
+    openStopCard(map, stop.point, stop.words, stopActionFor(stop.point, stop.words.title), true);
   };
   const pickLetteredRef = useRef(pickLettered);
   pickLetteredRef.current = pickLettered;
@@ -4242,12 +4292,14 @@ export function App() {
         scrubPoint={scrubPoint}
         lettered={riding ? null : lettered}
         onLettered={pickLettered}
+        stopActionFor={stopActionFor}
         onClosureBypass={(item, on) => {
           setClosureBypass((now) => toggleBypass(now, bypassPlan, item.id, on));
           announce(bypassSaid(item, on));
         }}
         onReady={(map) => {
           mapRef.current = map;
+          setStopCardFrame({ padding: framePadding, instant: () => window.matchMedia("(prefers-reduced-motion: reduce)").matches });
           if (centreWhenReady.current) flyToInView(centreWhenReady.current, 15);
           void fetchCoverage(window.location.origin).then((coverage) => {
             if (coverage && mapRef.current === map && addCoverageMask(map, coverage)) setCoverageShown(true);
@@ -4296,9 +4348,9 @@ export function App() {
           ) : null
         }
       />
-      <RepairStandsOverlay getMap={getMap} places={Array.isArray(repairData) ? repairData : null} on={waterPrefs.on && !riding} pixelRatio={Math.min(2, Math.max(1, Math.round(window.devicePixelRatio || 1)))} />
-      <PlacesOverlay getMap={getMap} places={Array.isArray(placesData) ? placesData : null} on={placesOn && !riding} />
-      <FoodOverlay getMap={getMap} results={foodAll} on={letteredOf === "food" && !riding} />
+      <RepairStandsOverlay getMap={getMap} places={Array.isArray(repairData) ? repairData : null} on={waterPrefs.on && !riding} pixelRatio={Math.min(2, Math.max(1, Math.round(window.devicePixelRatio || 1)))} actionFor={stopActionFor} />
+      <PlacesOverlay getMap={getMap} places={Array.isArray(placesData) ? placesData : null} on={placesOn && !riding} actionFor={stopActionFor} />
+      <FoodOverlay getMap={getMap} results={foodAll} on={letteredOf === "food" && !riding} actionFor={stopActionFor} />
       <TrailMilesOverlay getMap={getMap} data={trailMiles} />
       {/* Not in Go, and not on the Mass Ride map (lib/scenicLayer.ts scenicShown). */}
       <ScenicOverlay getMap={getMap} places={Array.isArray(placesData) ? placesData : null} on={scenicShown(scenicOn, mode, massMap)} placesOn={placesOn && !riding} />
@@ -4672,16 +4724,13 @@ export function App() {
                 // The rider and bike weight (OWNER-DECISIONS 313-318), in Settings (the owner, 2026-10-18).
                 weight: {
                   saved: weight,
-                  remembered: weightRemembered,
                   split: defaultSplit(dials.carrying),
-                  onSave: (next: StoredWeight, remember: boolean) => {
-                    weightStore.current?.save(next, remember);
-                    setWeightRemembered(remember && (weightStore.current?.remembered() ?? false));
+                  onSave: (next: StoredWeight) => {
+                    weightStore.current?.save(next);
                     setWeight(next);
                   },
                   onClear: () => {
                     weightStore.current?.clear();
-                    setWeightRemembered(false);
                     setWeight(null);
                   },
                 },
@@ -4703,7 +4752,7 @@ export function App() {
             >
               {foodFinder}
             </FoodSheet>
-            <RepairSheet nav={sheetNav} status={repairList?.said ?? ""} items={repairList?.items ?? null} at={new Date()} onRide={rideToRepair} />
+            <RepairSheet nav={sheetNav} status={repairList?.said ?? ""} items={repairList?.items ?? null} at={new Date()} onPick={(item) => pickLettered(repairList?.items.indexOf(item) ?? -1)} />
             <PlacesSheet
               nav={sheetNav}
               go={goMode}
@@ -4719,7 +4768,7 @@ export function App() {
               canAddStop={points.length >= 2}
               onShow={showSight}
               onAddStop={addSightStop}
-              onGoPick={goPickSight}
+              onGoPick={(r) => pickLettered(placesShown?.indexOf(r) ?? -1)}
             />
             {/* Go's Edit route: Plan's points, the one copy in the page while Go shows (Plan's panel holds it otherwise). */}
             <EditRouteSheet nav={sheetNav}>{goMode && view === "points" && sections.points}</EditRouteSheet>

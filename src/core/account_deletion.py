@@ -52,8 +52,8 @@ KEPT = [
     "Database backups, until they age out, usually within a week",
 ]
 ON_DEVICE = (
-    "Routes kept for offline use and choices made while signed out stay in your browser or the "
-    "app until you clear its storage."
+    "Routes kept for offline use, your settings and your rider and bike weight stay in each "
+    "browser or app you used until you clear its storage."
 )
 BANNED = (
     "A banned account cannot sign in, so it cannot use this page: ask the map's admin on Discord "
