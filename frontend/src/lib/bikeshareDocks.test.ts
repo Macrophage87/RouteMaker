@@ -230,7 +230,7 @@ test("each dock sits on a white bubble that holds the dot, under the dot, and is
   assert.equal(layout["icon-text-fit"], "both");
   const [, , , left] = layout["icon-text-fit-padding"] as number[];
   // The label starts 0.9em (12 px text) right of the dock; the bubble must reach past the dot's 7 px radius and 3 px ring.
-  assert.ok(left >= 0.9 * 12 + 7, `left padding ${left}`);
+  assert.ok(left >= 0.9 * 12 + 7 + 3, `left padding ${left}`);
   assert.notEqual(layout["text-optional"], true, "never a bubble without its counts");
   assert.equal(layout["icon-allow-overlap"], false);
   for (const id of [DOCK_POINTS, DOCK_CLUSTERS]) {

@@ -5,7 +5,7 @@
  * the page is hidden, zoomed out past zoom 11, or every service is off.
  */
 import { useEffect, useRef } from "react";
-import type { GeoJSONSource, Map as MapLibreMap, MapLayerMouseEvent, StyleImageMetadata } from "maplibre-gl";
+import type { GeoJSONSource, Map as MapLibreMap, MapLayerMouseEvent } from "maplibre-gl";
 import { setSource, tapCard, useMap } from "./app/mapOverlay.ts";
 import {
   DOCKS_POLL_MS,
@@ -70,9 +70,8 @@ export function BikeshareDocksOverlay({
         hide();
         return;
       }
-      for (const [id, raster] of docksImages(operators, pixelRatio)) {
-        // The bubble also says which rows and columns the map may stretch around the label.
-        const { pixelRatio: ratio, stretchX, stretchY, ...image } = raster as typeof raster & Pick<StyleImageMetadata, "stretchX" | "stretchY">;
+      // The bubble also says which rows and columns the map may stretch around the label.
+      for (const [id, { pixelRatio: ratio, stretchX, stretchY, ...image }] of docksImages(operators, pixelRatio)) {
         if (!map.hasImage(id)) map.addImage(id, image, { pixelRatio: ratio, stretchX, stretchY });
       }
       if (!map.getSource(DOCKS_SOURCE)) map.addSource(DOCKS_SOURCE, docksSource(EMPTY) as never);

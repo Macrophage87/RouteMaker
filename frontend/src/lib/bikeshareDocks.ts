@@ -341,9 +341,9 @@ const notCluster = ["!", ["has", "point_count"]];
 const HALO = { "text-halo-color": "#ffffff", "text-halo-width": 1.5 };
 /**
  * Around the label's box: top, right, bottom, left in CSS pixels. The label starts 0.9em (about 11 px) right of
- * the dock; the left side reaches about 10 px past the dock's centre so the dot (7 px with its ring) sits inside.
+ * the dock; the left side reaches about 12 px past the dock's centre so the dot (7 px, 10 px with its ring) sits inside.
  */
-export const BUBBLE_PADDING = [3, 4, 3, 21];
+export const BUBBLE_PADDING = [3, 4, 3, 23];
 
 /** The layers, bottom to top. */
 export function docksLayers(): Array<Record<string, unknown>> {
@@ -389,7 +389,8 @@ export function docksLayers(): Array<Record<string, unknown>> {
         "text-allow-overlap": false,
         "icon-allow-overlap": false,
       },
-      paint: { "text-color": ["case", ["get", "closed"], CLOSED_COLOUR, "#111827"], ...HALO },
+      // No halo: the bubble behind the counts is white already.
+      paint: { "text-color": ["case", ["get", "closed"], CLOSED_COLOUR, "#111827"] },
     },
     {
       id: DOCK_POINTS,
@@ -520,7 +521,7 @@ export function freeBikeIcon(colour: string, pixelRatio = 2, cssSize = FREE_ICON
   });
 }
 
-/** The dock's bubble: 3 px corners and a 1 px grey edge on white, stretched by the map along its middle. */
+/** The dock's bubble: 4 px corners and a 1 px grey edge on white, stretched by the map along its middle. */
 export const BUBBLE_PX = 12;
 export function bubbleIcon(pixelRatio = 2): Raster & { stretchX: Array<[number, number]>; stretchY: Array<[number, number]> } {
   const size = Math.round(BUBBLE_PX * pixelRatio);
@@ -540,7 +541,7 @@ export function bubbleIcon(pixelRatio = 2): Raster & { stretchX: Array<[number, 
 }
 
 /** Every image the layers name, by id. */
-export function docksImages(operators: readonly OperatorInfo[], pixelRatio = 2): Array<[string, Raster]> {
+export function docksImages(operators: readonly OperatorInfo[], pixelRatio = 2): Array<[string, Raster & Partial<Pick<ReturnType<typeof bubbleIcon>, "stretchX" | "stretchY">>]> {
   return [
     [BIKE_ICON, signIcon(bikeGlyph, SIGN_COLOURS.bike, pixelRatio)],
     [BOLT_ICON, signIcon(boltGlyph, SIGN_COLOURS.bolt, pixelRatio)],
