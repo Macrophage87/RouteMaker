@@ -154,8 +154,9 @@ function checkbox(checked: boolean, onChange: (on: boolean) => void, label: stri
 /**
  * The section in the Layers sheet (lib/layerSection.ts): one row, its switch the layer's, and inside, the two
  * kinds a rider may not want (basic toilets, untreated water) and one line. The status line is the section's,
- * said open or closed. The list along the route is the route's "Water and restrooms" fold; the legend and the
- * longer help are behind Layers' Legend button (WaterLegendNotes).
+ * said open or closed. The list along the route is the route's "Water and restrooms" fold; the key and the
+ * longer help sit inside while the layer is on (the owner, 2026-10-19: "include the legend within the accordion
+ * settings in layers").
  */
 export function WaterSection({ prefs, onChange, status }: SectionProps): ReactElement {
   return h(
@@ -177,10 +178,12 @@ export function WaterSection({ prefs, onChange, status }: SectionProps): ReactEl
       checkbox(prefs.untreated, (untreated) => onChange({ ...prefs, untreated }), WATER_UNTREATED_SWITCH),
     ),
     h("p", { className: "hint" }, WATER_HINT),
+    prefs.on && status === "ready" && h(WaterLegend, { prefs }),
+    prefs.on && h(WaterLegendNotes, { prefs }),
   );
 }
 
-/** The Legend sheet's words under the water legend: what is drawn and left out, and what untreated means. */
+/** The words under the water key: what is drawn and left out, and what untreated means. */
 export function WaterLegendNotes({ prefs }: { prefs: WaterPrefs }): ReactElement {
   return h(
     "div",

@@ -61,8 +61,8 @@ export const RAIL_HELP =
 
 /**
  * The Layers sheet's rail stations section (lib/layerSection.ts): one row, its switch for Metro and MARC
- * together, and inside, each one's own checkbox and one line. The legend and the longer help are behind
- * Layers' Legend button (RailStationsLegend).
+ * together, and inside, each one's own checkbox and one line, then the key and the longer help while either
+ * is on (RailStationsLegend; the owner, 2026-10-19: "include the legend within the accordion settings in layers").
  */
 export function RailStationsSection({ visibility, onChange }: Props) {
   return (
@@ -93,11 +93,12 @@ export function RailStationsSection({ visibility, onChange }: Props) {
         {PENN_LABEL}, Washington to Baltimore
       </label>
       <p className="hint">{RAIL_HINT}</p>
+      {(visibility.metro || visibility.marc) && <RailStationsLegend />}
     </LayerSection>
   );
 }
 
-/** The Legend sheet's rail stations rows and help (moved from Layers, the owner's "less wordy", 2026-10-12). */
+/** The rail stations section's key and help (moved from Layers, the owner's "less wordy", 2026-10-12). */
 export function RailStationsLegend() {
   const metro = Object.values(METRO_LINES);
   return (

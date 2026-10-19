@@ -454,7 +454,7 @@ export function mtbMapKeyRows(): { key: string; name: string }[] {
  * The mountain-bike trails' key on the map itself (the owner, 2026-10-19: "Mountain bike trails need to have a
  * key on the map"): while their layer is on and the map is close enough in to draw them (`drawn`), a small box
  * in the map's corner with each look (the unrated grey dashes, then each level) and its short name, and that a
- * tap on a trail tells more. Not a control: it has nothing to press. The Legend sheet keeps the long words.
+ * tap on a trail tells more. Not a control: it has nothing to press. Layers keeps the long words.
  */
 export function MtbMapKey({ drawn }: { drawn: boolean }): ReactElement | null {
   useStressStyle();

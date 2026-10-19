@@ -269,9 +269,9 @@ interface SectionProps {
  * "Trails and terrain" section, so it has no heading of its own above the list's.
  */
 export function ClimbsLayerControls({ on, onChange, status, items, from, onFromChange, along = true, legend = true }: SectionProps & { along?: boolean; legend?: boolean }): ReactElement {
-  // UI-CLEANUP: the climbs on the route are in the Elevation and climbs fold (along false in Layers), with
-  // CLIMBS_HELP behind Layers' Legend button. The key is under the switch in Layers too (the owner, 2026-10-19:
-  // "Make sure there's a key in layers" and "shapes should have a key too").
+  // UI-CLEANUP: the climbs on the route are in the Elevation and climbs fold (along false in Layers). The key and
+  // CLIMBS_HELP are under the switch in Layers (the owner, 2026-10-19: "Make sure there's a key in layers",
+  // "shapes should have a key too" and "include the legend within the accordion settings in layers").
   const ready = on && status === "ready";
   return h(
     "div",
@@ -281,6 +281,7 @@ export function ClimbsLayerControls({ on, onChange, status, items, from, onFromC
     on && from !== undefined && onFromChange && h(ClimbsHideBusySwitch, null),
     h("p", { className: "hint climbs-status", role: "status" }, climbsStatusText(on, status)),
     ready && legend && h(ClimbsLegend, null),
+    on && legend && h("p", { className: "hint climbs-help" }, CLIMBS_HELP),
     ready && along && h(ClimbsAlongList, { items, headingId: "climbs-along-layers-heading" }),
   );
 }

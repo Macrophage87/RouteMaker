@@ -353,7 +353,7 @@ test("the panel places the switch just before the High contrast switch, outside 
   // Settings, Display (UI-CLEANUP, the approved mockup's Layers and Menu).
   assert.match(
     app,
-    /status=\{stress === "checking" \? STRESS_CHECKING : stress === "unavailable" \? STRESS_UNAVAILABLE : ""\}\s*>\s*(?:\{\/\*[\s\S]*?\*\/\}\s*)?<HighStressLanesSwitch on=\{showHighLanes\} onChange=\{\(on\) => setHighStressLanes\(on\)\} overlay=\{stress === "available"\} massMap=\{massMap\} \/>\s*(?:\{\/\*[\s\S]*?\*\/\}\s*<RouteHazardKey \/>\s*)?<\/LayerSection>/,
+    /status=\{stress === "checking" \? STRESS_CHECKING : stress === "unavailable" \? STRESS_UNAVAILABLE : ""\}\s*>\s*(?:\{\/\*[\s\S]*?\*\/\}\s*)?<HighStressLanesSwitch on=\{showHighLanes\} onChange=\{\(on\) => setHighStressLanes\(on\)\} overlay=\{stress === "available"\} massMap=\{massMap\} \/>\s*(?:\{\/\*[\s\S]*?\*\/\}\s*<RouteHazardKey \/>\s*)?\{\/\*[\s\S]*?\*\/\}\s*<StressSectionKey /,
   );
   assert.equal((app.match(/<HighStressLanesSwitch /g) ?? []).length, 1, "drawn in one place only");
   assert.ok(FACILITIES.length === 3);

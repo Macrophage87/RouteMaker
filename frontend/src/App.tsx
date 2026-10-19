@@ -214,7 +214,7 @@ import { NARROW, useLongerThan, useMinute, useNarrow, useSettled } from "./app/h
 import { routeLightMarks, sameLightMarks, type LightMark } from "./lib/lightTimes.ts";
 import { PointsSection, RideSection } from "./app/Planner.tsx";
 import { RouteSection, ShareControls, type Status } from "./app/RoutePanel.tsx";
-import { EditRouteSheet, FoodSheet, GpxSheet, LayersSheet, LegendSheet, NearestSheet, RideChips, RideGroupChips, RideSheet, SettingsSheet, SuggestSheet, type SheetNav } from "./app/Sheets.tsx";
+import { EditRouteSheet, FoodSheet, GpxSheet, LayersSheet, NearestSheet, RideChips, RideGroupChips, RideSheet, SettingsSheet, SuggestSheet, type SheetNav } from "./app/Sheets.tsx";
 import { GoAddStop, GoRouteCard, GoSheet, GoTopBar, ModeSwitch, PlanMapChips } from "./app/Go.tsx";
 import { useSharedLaunch } from "./app/sharedLaunch.ts";
 import { NearestFinder } from "./lib/nearestFinder.ts";
@@ -690,7 +690,7 @@ export function App() {
   const [, setEditPoints] = useState(false);
   const barButtons = useRef<Partial<Record<BarItem["id"], HTMLButtonElement | null>>>({});
   // The way back through the sheets (lib/sidebar.ts openOnto, backFrom): each step is the view that was
-  // showing and what opened the next sheet (a bar button, a map chip, Go's Menu, Layers' Legend button).
+  // showing and what opened the next sheet (a bar button, a map chip, Go's Menu).
   const opened = useRef<Opened<HTMLElement>[]>([]);
   // Where Back from the top sheet gives the focus: what opened it.
   const backTo = useRef<HTMLElement | null>(null);
@@ -703,7 +703,6 @@ export function App() {
   const pointsEditRef = useRef<HTMLDivElement>(null);
   const editPointsRef = useRef<HTMLButtonElement>(null);
   const wasCompact = useRef(false);
-  const legendHeadingRef = useRef<HTMLHeadingElement>(null);
   const plannerHeadingRef = useRef<HTMLHeadingElement>(null);
   const settingsHeadingRef = useRef<HTMLHeadingElement>(null);
   // What "Copy link" answered: said politely, and again for a second press. The spoken one adds the
@@ -1470,18 +1469,19 @@ export function App() {
   };
 
   // Which bands the Mass Ride map shows changes with the zoom (OWNER-DECISIONS 421). The legend's status
-  // line says it; while the Legend sheet (UI-CLEANUP: behind Layers' Legend button) is not on screen it is
-  // said through the app-level region instead, and only when the set of bands changes (not at every zoom
-  // step, nor on coming to the map).
+  // line says it; while that key (in Layers' traffic stress section, the owner's 2026-10-19 "include the legend
+  // within the accordion settings in layers") is not on screen it is said through the app-level region
+  // instead, and only when the set of bands changes (not at every zoom step, nor on coming to the map).
   const massBands = massMap && stressVisible ? massBandsSaid(zoom) : null;
   const massBandsBefore = useRef<string | null>(null);
   const legendShownNow = useRef(false);
-  legendShownNow.current = view === "legend" && panelOpen;
+  legendShownNow.current = view === "layers" && panelOpen;
+  const massKeyOnScreen = () => legendShownNow.current && document.getElementById("stress-section-body")?.hidden === false;
   // Only for a zoom the rider made: after the first fit to a route, or a place search's fly-to, the
   // route's or the place's own sentence is what matters (accessibility review S4).
   const zoomByRider = useRef(false);
   useEffect(() => {
-    const said = massBandsChangeSaid(massBandsBefore.current, massBands, legendShownNow.current);
+    const said = massBandsChangeSaid(massBandsBefore.current, massBands, massKeyOnScreen());
     massBandsBefore.current = massBands;
     if (said && zoomByRider.current) announce(said);
   }, [massBands, announce]);
@@ -4678,7 +4678,7 @@ export function App() {
                 nav: sheetNav, massMap, stress, stressVisible, setStressVisible, showHighLanes, preset, federalOn,
                 setFederalOn, federalStatus, federalData, points, waterPrefs, changeWaterPrefs, waterStatus,
                 rail, setRail, showMtbTrails, showTopoLines, topoReady, climbsOn, changeClimbsOn, climbsFrom, changeClimbsFrom,
-                climbsStatus, climbsAlong, openLegend: (opener: HTMLElement) => openView("legend", opener, true),
+                climbsStatus, climbsAlong, zoom, facilitiesShown, scenicDrawn: scenicShown(scenicOn, mode, massMap),
                 placesOn, changePlacesOn, placesStatus: placesData === "unavailable" ? PLACES_UNAVAILABLE : Array.isArray(placesData) && placesData.length === 0 ? PLACES_NONE : "",
                 // Plan's alone (the brief: "not in Go"); null leaves the section out of Go's Layers.
                 scenic: mode === "go" ? null : { on: scenicOn, onChange: changeScenicOn, status: scenicStatus(scenicOn, stress !== "unavailable", placesData ?? "loading") },
@@ -4689,13 +4689,6 @@ export function App() {
                   onChange: changeDocksChoices,
                   status: bikeshareRide || docksActive ? docksStatus(docksReport.answer, docksReport.asked, docksReport.zoom, docksActive) : "",
                 },
-              }}
-            />
-            <LegendSheet
-              {...{
-                nav: sheetNav, legendHeadingRef, massMap, stress, stressVisible, preset, zoom, facilitiesShown, waterPrefs,
-                waterStatus, climbsOn, climbsStatus, federalOn, federalStatus, rail,
-                scenicOn: scenicShown(scenicOn, mode, massMap),
               }}
             />
             <SuggestSheet nav={sheetNav} roadInfoAtCentre={roadInfoAtCentre} onReview={reviewOpener} />
