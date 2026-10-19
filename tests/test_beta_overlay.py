@@ -793,6 +793,12 @@ def test_reverse_and_geocode_log_errors_at_crit_only_with_the_api_proxy_settings
     assert not covered.fullmatch("/api/review/rulings")
 
 
+CONNECTOR_PATHS = (
+    r"~ ^/(mcp|oauth/(register|token)|\.well-known/oauth-(protected-resource(/mcp)?"
+    r"|authorization-server))$"
+)
+
+
 def test_basic_auth_is_on_for_the_whole_https_server_and_off_only_for_robots_and_acme() -> None:
     full = stage("full")
     https = full[full.index("listen 443") :]
@@ -804,6 +810,9 @@ def test_basic_auth_is_on_for_the_whole_https_server_and_off_only_for_robots_and
             "^~ /.well-known/acme-challenge/",
             "= /robots.txt",
             "= /rmbeta-401.html",
+            # The MCP connector (core.connector), which an assistant's servers call with the
+            # rider's token: never the rider's own sign-in pages.
+            CONNECTOR_PATHS,
             "= /delete-account",
         ]
     ), exempt
@@ -817,6 +826,21 @@ def test_basic_auth_is_on_for_the_whole_https_server_and_off_only_for_robots_and
     assert re.search(r"^\s*internal;", page, re.M), page
     assert "error_page 401 /rmbeta-401.html;" in https
     assert "alias @PAGES_DIR@/401.html;" in page
+
+
+def test_only_the_connector_s_machine_paths_skip_the_password() -> None:
+    covered = re.compile(CONNECTOR_PATHS.removeprefix("~ "))
+    for path in (
+        "/mcp",
+        "/oauth/register",
+        "/oauth/token",
+        "/.well-known/oauth-protected-resource",
+        "/.well-known/oauth-protected-resource/mcp",
+        "/.well-known/oauth-authorization-server",
+    ):
+        assert covered.fullmatch(path), path
+    for path in ("/oauth/authorize", "/auth/login", "/mcp/x", "/api/route", "/oauth/token/x"):
+        assert not covered.fullmatch(path), path
 
 
 def test_the_back_soon_page_replaces_only_nginxs_own_502_and_stays_behind_the_password() -> None:

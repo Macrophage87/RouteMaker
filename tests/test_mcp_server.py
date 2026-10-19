@@ -18,7 +18,7 @@ from urllib.parse import parse_qs, urlparse
 import pytest
 from test_accounts import send, signed_in
 
-from core.models import SavedRoute
+from core.models import SavedRoute, SharedRoute
 
 _spec = importlib.util.spec_from_file_location(
     "routemaker_mcp", Path(__file__).resolve().parents[1] / "mcp" / "routemaker_mcp.py"
@@ -73,6 +73,7 @@ def straight_answer(body: dict) -> dict:
 
 class StandIn(BaseHTTPRequestHandler):
     routes: list[dict] = []
+    shared: dict[str, dict] = {}
     headers_seen: list[dict] = []
     fail: bool = False
 
@@ -95,10 +96,16 @@ class StandIn(BaseHTTPRequestHandler):
             if StandIn.fail:
                 return self._answer(503, {"error": "took too long", "code": "long_ride_timed_out"})
             return self._answer(200, straight_answer(body))
+        if self.path == "/api/shared-routes":
+            StandIn.shared[body["id"]] = body
+            return self._answer(201, {"id": body["id"]})
         self._answer(404, {"error": "not here"})
 
     def do_GET(self) -> None:
         url = urlparse(self.path)
+        if url.path.startswith("/api/shared-routes/"):
+            kept = StandIn.shared.get(url.path.rsplit("/", 1)[1])
+            return self._answer(200, kept) if kept else self._answer(404, {"error": "gone"})
         if url.path == "/api/geocode":
             q = parse_qs(url.query)["q"][0]
             return self._answer(
@@ -122,6 +129,7 @@ class StandIn(BaseHTTPRequestHandler):
 @pytest.fixture
 def stand_in():
     StandIn.routes = []
+    StandIn.shared = {}
     StandIn.headers_seen = []
     StandIn.fail = False
     server = ThreadingHTTPServer(("127.0.0.1", 0), StandIn)
@@ -172,6 +180,7 @@ def test_it_introduces_itself_and_lists_its_tools(tools) -> None:
         "open_link",
         "revise_route",
         "save_route",
+        "gpx_route",
     ]
     # Only save_route changes anything: the rest plan drafts.
     tools_listed = rpc(tools, "tools/list")["result"]["tools"]
@@ -346,7 +355,7 @@ def test_plan_route_answers_a_draft_and_keeps_nothing(tools, stand_in, tmp_path)
     assert sent["confirm_long"] is True and sent["stress"] == 80 and sent["preset"] == "default"
     assert out["summary"]["traffic_stress"]["LTS 1"].startswith("60%")
     assert out["metro_check"]["ok"]
-    assert out["link"].startswith(stand_in + "/#p=")
+    assert out["link"].startswith(stand_in + "/s/") and "#p=" in out["link"]
     # A draft: nothing saved and no file written until the rider says so.
     assert out["draft_id"] in tools.drafts and out["saved"] is False
     assert not list(tmp_path.iterdir())
@@ -485,7 +494,12 @@ def test_a_planned_route_lands_in_my_routes(live_server, stand_in, tmp_path) -> 
     assert saved["saved"]["name"] == "MCP loop"
     row = SavedRoute.objects.get(user=user)
     assert row.name == "MCP loop" and row.source == "plan"
-    assert row.inputs["hash"] == out["link"][len(live_server.url) + 1 :]
+    assert row.inputs["hash"] + "&route=" in out["link"]
+    # The link opens the exact route: the site keeps its line under the link's id.
+    route_id = out["link"].rsplit("route=", 1)[1]
+    shared = SharedRoute.objects.get(pk=route_id)
+    assert out["link"].startswith(f"{live_server.url}/s/{route_id}#p=")
+    assert [v[:2] for v in shared.line] == [v[:2] for v in row.line]
     assert row.inputs["dials"]["stress"] == 80 and row.inputs["dials"]["loop"] is True
     assert row.answer["candidates"] is None
     # The rider sees it in My routes, and opens it as the page opens any saved route.
@@ -672,9 +686,11 @@ def test_a_link_the_rider_changed_in_the_app_becomes_a_draft(tools) -> None:
     sent = StandIn.routes[-1]
     assert sent["points"] == [[-77.03, 38.9], [-77.01, 38.93], [-77.02, 38.91]]
     assert sent["preset"] == "cargo" and sent["carrying"] == "people" and sent["stress"] == 60
-    assert (
-        out["draft_id"] != first["draft_id"] and out["link"].split("#")[1] == edited.split("#")[1]
-    )
+
+    def plan_of(link):
+        return link.split("#")[1].rsplit("&route=", 1)[0]
+
+    assert out["draft_id"] != first["draft_id"] and plan_of(out["link"]) == plan_of(edited)
 
 
 def test_a_shared_route_s_link_is_opened_by_its_plan(tools, monkeypatch) -> None:
@@ -682,9 +698,10 @@ def test_a_shared_route_s_link_is_opened_by_its_plan(tools, monkeypatch) -> None
 
     def shared(route_id):
         asked.append(route_id)
-        return "#p=-77.03000,38.90000;-77.02000,38.91000&preset=gravel&v=2&stress=50&hills=0"
+        hash_ = "#p=-77.03000,38.90000;-77.02000,38.91000&preset=gravel&v=2&stress=50&hills=0"
+        return {"inputs": {"hash": hash_}, "answer": None}
 
-    monkeypatch.setattr(tools.api, "shared_fragment", shared)
+    monkeypatch.setattr(tools.api, "shared_route", shared)
     tools.call("open_link", {"link": "https://routes.example.org/s/Ab12Cd34"})
     assert asked == ["Ab12Cd34"]
     assert StandIn.routes[-1]["preset"] == "gravel" and StandIn.routes[-1]["stress"] == 50
@@ -749,3 +766,137 @@ def test_old_and_renamed_links_open_as_the_page_opens_them(fragment, stress, hil
     points, _, preset, options = mcp.parse_fragment(fragment)
     assert options["stress"] == stress and options["hills"] == hills
     assert len(points) == 2
+
+
+def test_a_call_with_a_deadline_stops_planning_while_another_plan_would_not_fit(
+    tools, monkeypatch
+) -> None:
+    """The site's own connector answers inside one web request (core.connector): the loop plans
+    once more only while a long plan still fits, and says it stopped."""
+    clock = iter(range(0, 10_000, 10))
+    monkeypatch.setattr(mcp.time, "monotonic", lambda: next(clock))
+    call = mcp.Call(deadline=45)  # less than one long plan (48 s) is left after the first
+    out = tools.call("plan_metro_loop", {"target_miles": 200, "max_plans": 3}, call)
+    assert len(StandIn.routes) == 1
+    assert mcp.OUT_OF_TIME in out["notes"]
+    assert mcp.Call().time_for_another_plan()  # no deadline: a computer of the rider's own
+
+
+# --- The independent tester's findings (2026-10-19) -----------------------------------------
+
+
+@pytest.mark.parametrize(
+    "said, station",
+    [
+        ("Navy Yard", "Navy Yard-Ballpark"),
+        ("navy yard metro", "Navy Yard-Ballpark"),
+        ("Union Station", "Union Station"),
+        ("Gallery Place", "Gallery Pl-Chinatown"),
+        ("Mount Vernon Square", "Mt Vernon Sq 7th St-Convention Center"),
+        ("Ronald Reagan", "Ronald Reagan Washington National Airport"),
+        ("Farragut", None),  # North or West: place search decides
+        ("Adams Morgan", None),  # a neighbourhood, not Woodley Park's station
+    ],
+)
+def test_a_station_is_found_by_the_name_riders_use(said, station) -> None:
+    found = mcp.find_station(said, STATIONS)
+    assert (found.name if found else None) == station
+
+
+def test_the_answer_says_what_each_named_point_was_taken_as(tools) -> None:
+    out = tools.call("plan_route", {"points": ["Navy Yard", "Union Market"]})
+    assert [t["taken_as"] for t in out["points_taken_as"]] == [
+        "Navy Yard-Ballpark Metro",
+        "Union Market, Washington",
+    ]
+    revised = tools.call(
+        "revise_route",
+        {"draft_id": out["draft_id"], "add_points": [{"after": 0, "point": "Takoma"}]},
+    )
+    assert revised["points_taken_as"][0]["taken_as"] == "Takoma Metro"
+
+
+def test_a_server_error_with_no_message_says_what_to_try() -> None:
+    text = mcp.refusal(500, None)
+    assert "None" not in text and "time limit" in text and "shorter" in text
+    assert mcp.refusal(400, "too long") == "the site refused the route (400): too long"
+
+
+def test_the_loop_s_length_is_not_sent_as_the_calm_search_target(tools) -> None:
+    tools.call("plan_metro_loop", {"target_miles": 60, "preset": "trailmaxxing", "max_plans": 1})
+    assert "target_distance_m" not in StandIn.routes[0]
+
+
+def test_a_calm_loop_s_first_ring_allows_for_winding_roads() -> None:
+    assert mcp.road_factor(None) == mcp.ROAD_FACTOR == mcp.road_factor(40)
+    assert mcp.road_factor(80) == mcp.CALM_ROAD_FACTOR == mcp.road_factor(100)
+
+
+def test_a_long_loop_is_kept_inside_what_the_site_plans(tools) -> None:
+    asked = {"target_miles": 200, "stress": 40, "max_miles_from_metro": 10, "max_plans": 1}
+    out = tools.call("plan_metro_loop", asked)
+    points = [tuple(p) for p in StandIn.routes[0]["points"]]
+    span = sum(mcp.haversine_mi(a, b) for a, b in zip(points, points[1:], strict=False))
+    assert span <= mcp.LOOP_SPAN_MI
+    assert any("at most 124 mi" in note for note in out["notes"])
+
+
+def test_a_loop_with_no_start_says_where_it_starts(tools) -> None:
+    out = tools.call("plan_metro_loop", {"target_miles": 60, "max_plans": 1})
+    assert out["notes"][0].startswith("no start was given") and "Metro" in out["notes"][0]
+
+
+def test_the_answer_leaves_out_empty_rows_and_internal_flags(tools) -> None:
+    answer = {"distance_m": 1609.344, "stress_m": {"1": 1600.0, "2": 9.344}, "facility_m": {}}
+    assert list(mcp.summary(answer)["traffic_stress"]) == ["LTS 1"]
+    out = tools.call("plan_route", {"points": ["Union Market", "Takoma"]})
+    used = out["settings_used"]
+    assert "confirm_long" not in used and "candidates" not in used
+    assert {"stress", "hills"} <= set(used)
+
+
+def test_a_draft_becomes_a_gpx_file_on_the_rider_s_computer(tools, tmp_path) -> None:
+    out = tools.call("plan_route", {"points": ["Union Market", "Takoma"]})
+    gpx = tools.call("gpx_route", {"draft_id": out["draft_id"], "name": "To Takoma"})
+    text = Path(gpx["gpx_file"]).read_text()
+    assert "<trkpt" in text and "To Takoma" in text and gpx["gpx_file"].endswith("to-takoma.gpx")
+
+
+def test_an_out_and_back_to_a_loop_waypoint_is_found_and_moved_to_its_junction() -> None:
+    # East along a street, then 0.5 mi north up a dead end and back, then on east.
+    east = [[-77.0 + i * 0.001, 38.9] for i in range(20)]
+    up = [[east[-1][0], 38.9 + j * 0.0005] for j in range(1, 15)]
+    line = (
+        east
+        + up
+        + up[-2::-1]
+        + [[east[-1][0], 38.9]]
+        + [[east[-1][0] + i * 0.001, 38.9] for i in range(1, 20)]
+    )
+    length, junction = mcp.spur_at(line, tuple(up[-1]))
+    assert 0.4 <= length <= 0.5
+    assert mcp.haversine_mi(junction, tuple(east[-1])) < 0.03
+    through, _ = mcp.spur_at(line, tuple(east[5]))
+    assert through < mcp.SPUR_MI
+
+
+def test_the_link_opens_the_exact_route_and_reads_back_unplanned(tools) -> None:
+    out = tools.call("plan_route", {"points": ["Union Market", "Takoma"]})
+    route_id = out["link"].rsplit("route=", 1)[1]
+    assert f"/s/{route_id}#p=" in out["link"]
+    kept = StandIn.shared[route_id]
+    assert kept["answer"]["geometry"]["coordinates"] and kept["inputs"]["hash"].startswith("#p=")
+    planned = len(StandIn.routes)
+    opened = tools.call("open_link", {"link": out["link"]})
+    assert len(StandIn.routes) == planned  # kept as it is, not planned again
+    assert opened["summary"]["distance_mi"] == out["summary"]["distance_mi"]
+
+
+def test_a_link_still_comes_back_when_the_exact_route_is_not_kept(tools, monkeypatch) -> None:
+    def refuse(_body):
+        raise mcp.ToolError("the exact route was not kept (429): slow down")
+
+    monkeypatch.setattr(tools.api, "share", refuse)
+    out = tools.call("plan_route", {"points": ["Union Market", "Takoma"]})
+    assert out["link"].startswith(tools.api.base + "/#p=")
+    assert "plans the route again" in out["notes"][-1]
