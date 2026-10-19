@@ -4203,6 +4203,33 @@ rails, added under the lowest stress layer; and the covered bridges and viewpoin
 `amenity-data/places.json` (`build_places.py` marks a covered bridge `cv`). The switch is
 in Plan's Layers only (`LayersSheetProps.scenic` is null in Go).
 
+### Agency traffic signals: `signals.json` (v0.10.0)
+
+Signals an agency lists and OSM does not map (the owner, 2026-10-19: "I noticed some
+traffic signals weren't marked, however, DC has a full listing of them"). DC data beats
+OSM (2026-10-11), and so do the other agencies' lists where OSM says nothing or says
+less.
+
+- `reference/signals.json`, optional, from `install_reference_data.py --dc-signals
+  --md-signals --arlington-signals --alexandria-signals --alexandria-hawks`
+  (`pipeline.agency_signals.ddot_rows`, `mdot_sha_rows`, `arlington_rows`,
+  `alexandria_rows`; field names read in any case): one row a signal,
+  `{"id", "source", "lon", "lat", "kind"}`, `kind` `signal` or `hawk`. Each source's
+  licence is in `LICENCE_CONFIRMED`; a row of a source not confirmed (Arlington, for now)
+  is installed but not read.
+- `INJECT_TAGS` matches them (`agency_signals.match`): a signal with an OSM signal within
+  30 m whose nearest junction is the one the agency point marks is "in OSM"; otherwise
+  every road junction node within 20 m (three or more road arms; alleys, parking aisles
+  and driveways are not arms) is marked `rm:agency_signal=yes`, and a HAWK marks its
+  nearest crosswalk node. Only way nodes near a listed signal are indexed, and the
+  extract's OSM signals are read in one more pass over its `highway` nodes.
+- The transform (`remap.derives_signal`) turns the mark into `highway=traffic_signals`
+  over an `uncontrolled` or `unmarked` crossing and a stop or give-way sign on the node;
+  a crossing whose `bicycle=no` upstream reopens keeps its class.
+- The log line `agency signals: ddot: N added, N already in OSM, N with no junction in
+  reach` and `reports/agency-signals.csv` (one row a signal) say what happened. Tests:
+  `tests/test_agency_signals.py`, `tests/lua/test_remap.lua`.
+
 ## Tiles and the swap
 
 Each variant's tiles live under `<DATA_ROOT>/tiles/<variant>/`: a dated build

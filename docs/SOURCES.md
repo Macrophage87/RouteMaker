@@ -283,13 +283,19 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
 - Licence: Maryland iMAP's terms, as for the counts above: "The Data can be freely
   distributed as long as the metadata entry is not modified or deleted." The download's
   README keeps the item's metadata unedited.
-- Dataset, **not yet read** (v0.10.0): **MDOT SHA Traffic Signals**
+- Dataset: **MDOT SHA Traffic Signals** (v0.10.0), ArcGIS service
+  `UtilitiesCommunication/TrafficSignals_Maryland_MDOTSHA`, layer 0
   (<https://gisportalapps.sha.maryland.gov/arcgis/rest/services/UtilitiesCommunication/TrafficSignals_Maryland_MDOTSHA/MapServer/0>),
-  5,803 traffic control devices, 3,403 of them signals (`TCD_Type` 1), county and city
-  signals included but none in Baltimore City; updated weekly (2026-10-19). Its licence
-  field is empty and it was not found on Maryland iMAP, so iMAP's terms are not known to
-  cover it: `pipeline.agency_signals.LICENCE_CONFIRMED` keeps it out of the map until
-  the licence is confirmed.
+  owned by the MDOT SHA Office of Traffic & Safety, updated weekly (Friday evenings).
+  5,803 traffic control devices on 2026-10-19, 3,403 of them traffic control signals
+  (`TCD_Type` 1, the only ones read; `OWNER_DESC` Proposed left out); county and city
+  signals included, none in Baltimore City. Marks the junctions at a Maryland signal OSM
+  does not map as one (`pipeline.agency_signals`). Fetched at rebuild time; size and
+  sha256: the download's README, to be copied here.
+- Licence: Maryland iMAP's terms, as for the counts above. The layer is on SHA's own map
+  server rather than iMAP and its `licenseInfo` is empty, as the counts' is; the same
+  publisher (MDOT SHA OIT Enterprise Information Services), so the owner took it under the
+  same terms (2026-10-19).
 
 ## Open Baltimore
 

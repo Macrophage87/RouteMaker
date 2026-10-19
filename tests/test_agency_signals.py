@@ -96,6 +96,19 @@ def test_a_signal_osm_maps_on_a_stop_line_is_left_alone() -> None:
     assert result.already_in_osm == {"ddot": 1}
 
 
+def test_a_signal_osm_maps_at_the_next_junction_is_not_this_ones() -> None:
+    """Two junctions 26 m apart along the avenue (a diagonal's offset): OSM maps a
+    signal only at the far one, so the agency's signal at the near one is added."""
+    ways = [
+        way(10, AVENUE, {2: (-100, 0), 1: (0, 0), 6: (26, 0), 3: (100, 0)}),
+        way(11, STREET, {4: (0, -100), 1: (0, 0), 5: (0, 100)}),
+        way(12, STREET, {7: (26, -100), 6: (26, 0), 8: (26, 100)}),
+    ]
+    result = agency_signals.match([signal()], ways, {99: at(26, 0)})
+    assert result.nodes == {1}
+    assert result.added == {"ddot": 1}
+
+
 def test_an_osm_signal_beyond_the_approach_does_not_count() -> None:
     osm = {99: at(-60, 0)}
     assert agency_signals.match([signal()], crossroads(), osm).nodes == {1}
@@ -322,6 +335,42 @@ def test_a_source_without_a_confirmed_licence_is_installed_but_not_read(tmp_path
     assert "licence not yet confirmed" in caplog.text
 
 
+def test_field_names_are_read_in_any_case() -> None:
+    """A hosted layer may name its fields `objectid`, `GlobalID`, `trafficcontroltype`."""
+    doc = {
+        "features": [
+            point_feature({"objectid": 3, "TrafficControlType": "Signalized"}),
+            point_feature({"GlobalID": "{X}", "trafficcontroltype": "Signalized"}),
+        ]
+    }
+    rows, _dropped = agency_signals.arlington_rows(doc)
+    assert [row["id"] for row in rows] == ["arlington:3", "arlington:{X}"]
+
+
+def test_the_two_alexandria_layers_numbered_alike_do_not_clash(tmp_path) -> None:
+    """Layer 9 and the HAWK layer both number from OBJECTID 1."""
+    signals_file = tmp_path / "alexandria-signals.geojson"
+    signals_file.write_text(json.dumps({"features": [point_feature({"OBJECTID": 1})]}))
+    hawks = tmp_path / "alexandria-hawks.geojson"
+    hawks.write_text(json.dumps({"features": [point_feature({"OBJECTID": 1})]}))
+    done = subprocess.run(
+        [sys.executable, str(REPO / "scripts" / "install_reference_data.py"),
+         "--data-root", str(tmp_path), "--alexandria-signals", str(signals_file),
+         "--alexandria-hawks", str(hawks)],
+        check=False, capture_output=True, text=True,
+    )  # fmt: skip
+    assert done.returncode in (0, 1), done.stderr  # 1: the required files are missing
+    rows = json.loads((tmp_path / "reference" / agency_signals.FILE_NAME).read_text())
+    assert [row["id"] for row in rows] == ["alexandria:1", "alexandria-hawk:1"]
+
+
+def test_node_tags_carry_the_mark_the_transform_reads() -> None:
+    assert agency_signals.node_tags({11}) == {11: {"rm:agency_signal": "yes"}}
+    remap = (REPO / "lua" / "routemaker_remap.lua").read_text()
+    assert f'M.AGENCY_SIGNAL_MARK = "{agency_signals.NODE_TAG}"' in remap
+    assert agency_signals.NODE_TAG.startswith("rm:")
+
+
 def test_the_installer_writes_every_source_into_one_file(tmp_path) -> None:
     dc = tmp_path / "dc.geojson"
     dc.write_text(json.dumps({"features": [ddot_feature(1)]}))
@@ -336,5 +385,5 @@ def test_the_installer_writes_every_source_into_one_file(tmp_path) -> None:
     rows = json.loads((tmp_path / "reference" / agency_signals.FILE_NAME).read_text())
     assert [(row["id"], row["kind"]) for row in rows] == [
         ("ddot:{G1}", "signal"),
-        ("alexandria:9", "hawk"),
+        ("alexandria-hawk:9", "hawk"),
     ]

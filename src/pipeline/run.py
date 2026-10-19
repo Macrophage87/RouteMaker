@@ -480,9 +480,9 @@ class ReferenceData:
     # bridges only. Never read by the classifier.
     scenic_features: tuple[conflation.RoadFeature, ...] = ()
     scenic_labels: dict[str, str] = field(default_factory=dict)
-    # Agency traffic signal lists (`pipeline.agency_signals`, v0.10.0): DDOT's,
-    # Alexandria's (and MDOT SHA's and Arlington's once their licences are confirmed),
-    # from `signals.json`. Optional like `roadway.json`: without it the map
+    # Agency traffic signal lists (`pipeline.agency_signals`, v0.10.0): DDOT's, MDOT
+    # SHA's and Alexandria's (and Arlington's once its licence is confirmed), from
+    # `signals.json`. Optional like `roadway.json`: without it the map
     # keeps OSM's signals only, and the load logs that it is absent.
     agency_signal_list: tuple[agency_signals.Signal, ...] = ()
 
@@ -3113,9 +3113,9 @@ def build_handlers(
         # signalised meets a road, marked so the transform makes them signals
         # (`pipeline.signals`). Every variant: the signal stands on the road
         # whether or not the variant keeps the trail that crosses it.
-        signal_nodes = set(signals.signal_nodes(context.ways))
+        signal_tags = signals.node_tags(signals.signal_nodes(context.ways))
         logger.info(
-            "%d signalised trail crossings marked from their crossing ways", len(signal_nodes)
+            "%d signalised trail crossings marked from their crossing ways", len(signal_tags)
         )
         # And the junctions at an agency's signal that OSM does not map as one
         # (`pipeline.agency_signals`; DC data beats OSM, the owner 2026-10-11).
@@ -3125,17 +3125,17 @@ def build_handlers(
             )
             matched = agency_signals.match(reference.agency_signal_list, context.ways, osm_signals)
             logger.info(
-                "agency signals: %s; %d junction nodes marked",
+                "agency signals: %s; %d nodes marked",
                 agency_signals.summary(matched),
-                len(matched.nodes - signal_nodes),
+                len(matched.nodes),
             )
-            signal_nodes |= matched.nodes
+            for node, tags in agency_signals.node_tags(matched.nodes).items():
+                signal_tags[node] = {**signal_tags.get(node, {}), **tags}
             write_reports(
                 context.work_dir,
                 {AGENCY_SIGNALS_REPORT_NAME: agency_signals.report_csv(matched)},
                 "agency signals",
             )
-        signal_tags = signals.node_tags(signal_nodes)
 
         # Review RL-5: the ways whose posted speed every variant's extract carries as an
         # explicit mph (`variants.with_speed_units`), so the change shows in the

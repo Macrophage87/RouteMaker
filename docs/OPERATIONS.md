@@ -4762,7 +4762,7 @@ map servers. Four lists, one file (`reference/signals.json`):
 | DDOT Traffic Signals (item `ca6ad078a6f6415389e220704b7698ac`) | `https://maps2.dcgis.dc.gov/DCGIS/rest/services/DCGIS_DATA/Transportation_Signs_Signals_Lights_WebMercator/MapServer/170` | yes (CC BY 4.0) |
 | City of Alexandria, signalised intersections | `https://geoportal.alexandriava.gov/server/rest/services/Hosted/Smart_Mobility_Data/FeatureServer/9` | yes (CC0) |
 | City of Alexandria, HAWKs | the same service, layer `0` | yes (CC0) |
-| MDOT SHA Traffic Signals (all of Maryland but Baltimore City) | `https://gisportalapps.sha.maryland.gov/arcgis/rest/services/UtilitiesCommunication/TrafficSignals_Maryland_MDOTSHA/MapServer/0` | not until its licence is confirmed |
+| MDOT SHA Traffic Signals (all of Maryland but Baltimore City) | `https://gisportalapps.sha.maryland.gov/arcgis/rest/services/UtilitiesCommunication/TrafficSignals_Maryland_MDOTSHA/MapServer/0` | yes (Maryland iMAP's terms, the owner 2026-10-19) |
 | Arlington County Intersection Points | `https://arlgis.arlingtonva.us/arcgis/rest/services/Open_Data/od_Intersection_Points/FeatureServer/0` | not until Arlington's terms are confirmed |
 
 A list whose licence is not confirmed (`agency_signals.LICENCE_CONFIRMED`) may be
@@ -4776,13 +4776,16 @@ installed; the rebuild logs `... signals installed but not read` and leaves it o
        --item ca6ad078a6f6415389e220704b7698ac \
        --layer https://maps2.dcgis.dc.gov/DCGIS/rest/services/DCGIS_DATA/Transportation_Signs_Signals_Lights_WebMercator/MapServer/170 \
        --out-dir ~/rmdata/datasets --credit "DC Open Data (CC BY 4.0, adapted)"
+   python3 scripts/fetch_agency_layer.py --slug md-traffic-signals \
+       --layer https://gisportalapps.sha.maryland.gov/arcgis/rest/services/UtilitiesCommunication/TrafficSignals_Maryland_MDOTSHA/MapServer/0 \
+       --out-dir ~/rmdata/datasets --credit "State of Maryland (MDOT SHA)"
    python3 scripts/fetch_agency_layer.py --slug alexandria-signals \
        --layer https://geoportal.alexandriava.gov/server/rest/services/Hosted/Smart_Mobility_Data/FeatureServer/9 \
        --out-dir ~/rmdata/datasets --credit "City of Alexandria"
    python3 scripts/fetch_agency_layer.py --slug alexandria-hawks \
        --layer https://geoportal.alexandriava.gov/server/rest/services/Hosted/Smart_Mobility_Data/FeatureServer/0 \
        --out-dir ~/rmdata/datasets --credit "City of Alexandria"
-   for slug in dc-traffic-signals alexandria-signals alexandria-hawks; do
+   for slug in dc-traffic-signals md-traffic-signals alexandria-signals alexandria-hawks; do
      sudo mkdir -p "$DATA_ROOT/reference/inputs/$slug"
      sudo cp ~/rmdata/datasets/$slug/* "$DATA_ROOT/reference/inputs/$slug/"
      sudo chown -R 10001:10001 "$DATA_ROOT/reference/inputs/$slug" && sudo chmod 644 "$DATA_ROOT/reference/inputs/$slug/"*
@@ -4800,6 +4803,7 @@ installed; the rebuild logs `... signals installed but not read` and leaves it o
    docker compose exec -T rebuild python3 scripts/install_reference_data.py \
        --data-root /data \
        --dc-signals /data/reference/inputs/dc-traffic-signals/dc-traffic-signals.geojson \
+       --md-signals /data/reference/inputs/md-traffic-signals/md-traffic-signals.geojson \
        --alexandria-signals /data/reference/inputs/alexandria-signals/alexandria-signals.geojson \
        --alexandria-hawks /data/reference/inputs/alexandria-hawks/alexandria-hawks.geojson
    ```
@@ -4813,6 +4817,12 @@ installed; the rebuild logs `... signals installed but not read` and leaves it o
    |---|---|
    | `agency signals: ddot: N added, N already in OSM, N with no junction in reach; ...` | "added" is how many signals OSM was missing; "no junction in reach" should be small (beyond the extract, or the junction mapped more than 20 m from the agency's point) |
    | `.../signals.json is absent, so no agency signal list is read` | should not appear once step 2 has run |
+   | `... arlington signals installed but not read, their licence not yet confirmed` | expected while Arlington's terms are pending |
+
+   The match reads the extract's OSM signals in one more pass over its `highway`
+   nodes (a minute or two on the region's extract). An agency signal marks the node
+   over a crosswalk OSM tags `uncontrolled` and over a stop or give-way sign mapped
+   on the junction (DC data beats OSM).
 
    `${DATA_ROOT}/rebuild/reports/agency-signals.csv` has one line per signal: its
    id, point, outcome (`added`, `in OSM`, `unmatched`) and the OSM nodes marked.

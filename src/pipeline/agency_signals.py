@@ -20,10 +20,13 @@ is absent.
 
 Matching, per signal:
 
-- A signal OSM already has is left alone: any OSM node within `OSM_SIGNAL_M` that
+- A signal OSM already has is left alone: an OSM node within `OSM_SIGNAL_M` that
   says signal (`highway=traffic_signals`, or a crossing node tagged with one).
   OSM often puts it on the stop lines 7-30 m before the junction node, which the
-  junction model reads up each arm for the same distance (`APPROACH_M`).
+  junction model reads up each arm for the same distance (`APPROACH_M`). An OSM
+  signal whose nearest junction is another junction, one the agency point does not
+  reach, is that junction's (a diagonal avenue's junctions 20-30 m apart) and does
+  not count.
 - Otherwise every road junction node within `JUNCTION_M` is marked: a node where
   three or more road arms meet (two ways crossing, or one ending on another), not
   counting alleys, parking aisles and driveways, so a junction that is only an
@@ -34,10 +37,11 @@ Matching, per signal:
 - No node in reach: the signal is counted as unmatched (beyond the extract, or
   the street is mapped differently) and nothing is marked.
 
-The mark is `pipeline.signals.NODE_TAG`, which the transform turns into
-`highway=traffic_signals` where the node says nothing else about its control
-(lua/routemaker_remap.lua, `derives_signal`): a stop or give-way sign mapped on
-the node itself is left alone.
+The mark is `NODE_TAG`, which the transform turns into `highway=traffic_signals`
+(lua/routemaker_remap.lua, `derives_signal`) over what the node itself says, since
+DC data beats OSM: an `uncontrolled` or `unmarked` crosswalk (a HAWK's, as OSM often
+still tags it) and a stop or give-way sign mapped on the junction become the
+signal. A crossing whose `bicycle=no` upstream reopens keeps its class.
 """
 
 from __future__ import annotations
@@ -55,6 +59,9 @@ from . import signals
 logger = logging.getLogger(__name__)
 
 FILE_NAME = "signals.json"
+# The derived node tag, in the `rm:` namespace lua/graph.lua strips; its own, not
+# `signals.NODE_TAG`, because the transform reads the two marks differently.
+NODE_TAG = "rm:agency_signal"
 KINDS = frozenset({"signal", "hawk"})
 # Each source, and whether its licence is confirmed. A source whose licence is not
 # confirmed may be installed but is not read: the load logs it and the map keeps
@@ -65,9 +72,9 @@ LICENCE_CONFIRMED = {
     "ddot": True,
     # City of Alexandria OpenData portal: CC0 (Alex311, 2026-10-16).
     "alexandria": True,
-    # MDOT SHA Traffic Signals: the service's licence field is empty and the layer
-    # is not found on Maryland iMAP, whose terms cover the other MDOT SHA layers.
-    "mdot-sha": False,
+    # MDOT SHA Traffic Signals: Maryland iMAP's terms, as for MDOT SHA's other layers
+    # (same publisher, the same empty licence field; the owner, 2026-10-19).
+    "mdot-sha": True,
     # Arlington County: "Please review the Arlington County data disclaimer"; the
     # county's terms are pending (docs/SOURCES.md, Bike Comfort Index).
     "arlington": False,
@@ -134,15 +141,19 @@ def _rows(
     keep=lambda props: (True, ""),
     kind=lambda props: "signal",
     id_fields: Sequence[str] = ("GLOBALID", "OBJECTID"),
+    id_prefix: str | None = None,
 ) -> tuple[list[dict], dict[str, int]]:
     """A layer (GeoJSON as fetched) as installed rows, and how many records each
     reason left out. `keep` says whether a record is a running signal (and why
-    not); `kind` names a HAWK."""
+    not); `kind` names a HAWK. Field names are read in upper case whatever case the
+    layer gives them (a hosted layer's `objectid`, `GlobalID`). Each id is
+    `<id_prefix>:<the first id field with a value>`, the prefix the source unless
+    given: two layers of one source number their records from 1 alike."""
     rows: list[dict] = []
     dropped: dict[str, int] = defaultdict(int)
     seen: set[str] = set()
     for feature in doc.get("features", []):
-        props = feature.get("properties") or {}
+        props = {str(k).upper(): v for k, v in (feature.get("properties") or {}).items()}
         geometry = feature.get("geometry") or {}
         if geometry.get("type") != "Point" or not geometry.get("coordinates"):
             dropped["no point"] += 1
@@ -152,7 +163,7 @@ def _rows(
             dropped[reason] += 1
             continue
         key = next((props[f] for f in id_fields if props.get(f) not in (None, "")), None)
-        feature_id = f"{source}:{key}"
+        feature_id = f"{id_prefix or source}:{key}"
         if key is None or feature_id in seen:
             dropped["no id or a repeated id"] += 1
             continue
@@ -189,12 +200,12 @@ def mdot_sha_rows(doc: Mapping) -> tuple[list[dict], dict[str, int]]:
     state's, except Baltimore City's."""
 
     def keep(props: Mapping) -> tuple[bool, str]:
-        device = str(props.get("TCD_Type") or props.get("TCD_TYPE") or "").strip()
+        device = str(props.get("TCD_TYPE") or "").strip()
         if device != MDOT_SIGNAL_TYPE:
             return False, f"device type {device or 'none'}"
         return _status(props, "OWNER_DESC")
 
-    return _rows(doc, "mdot-sha", keep=keep)
+    return _rows(doc, "mdot-sha", keep=keep, id_fields=("SIGNAL_ID", "OBJECTID"))
 
 
 def arlington_rows(doc: Mapping) -> tuple[list[dict], dict[str, int]]:
@@ -203,15 +214,15 @@ def arlington_rows(doc: Mapping) -> tuple[list[dict], dict[str, int]]:
     field named for retirement with a value)."""
 
     def keep(props: Mapping) -> tuple[bool, str]:
-        control = str(props.get("TrafficControlType") or "")
+        control = str(props.get("TRAFFICCONTROLTYPE") or "")
         if control.strip().lower() != "signalized":
             return False, f"control {control or 'none'}"
         retired = [k for k, v in props.items() if "retire" in k.lower() and v not in (None, "")]
         if retired:
             return False, "retired"
-        status = str(props.get("ActiveProjectStatus") or "").strip().lower()
+        status = str(props.get("ACTIVEPROJECTSTATUS") or "").strip().lower()
         if status in {"design", "construction"}:
-            return False, f"ActiveProjectStatus {props.get('ActiveProjectStatus')}"
+            return False, f"ActiveProjectStatus {props.get('ACTIVEPROJECTSTATUS')}"
         return True, ""
 
     return _rows(doc, "arlington", keep=keep)
@@ -220,7 +231,12 @@ def arlington_rows(doc: Mapping) -> tuple[list[dict], dict[str, int]]:
 def alexandria_rows(doc: Mapping, kind: str = "signal") -> tuple[list[dict], dict[str, int]]:
     """City of Alexandria Smart Mobility Data: the signalised intersections layer
     (every record a signal) or the HAWK layer (`kind` "hawk")."""
-    return _rows(doc, "alexandria", kind=lambda props: kind)
+    return _rows(
+        doc,
+        "alexandria",
+        kind=lambda props: kind,
+        id_prefix="alexandria-hawk" if kind == "hawk" else None,
+    )
 
 
 def load(path: Path) -> tuple[Signal, ...]:
@@ -396,15 +412,18 @@ def match(
     crossings = _Grid(crossing_nodes(ways, located), JUNCTION_M)
     osm = _Grid(osm_signals, OSM_SIGNAL_M)
     for signal in agency:
-        if osm.within(signal.lon, signal.lat, OSM_SIGNAL_M):
-            result.already_in_osm[signal.source] += 1
-            result.rows.append((signal.feature_id, signal.lon, signal.lat, "in OSM", ()))
-            continue
         if signal.kind == "hawk":
             near = crossings.within(signal.lon, signal.lat, JUNCTION_M)[:1]
         else:
             near = junctions.within(signal.lon, signal.lat, JUNCTION_M)
         marked = tuple(node for _distance, node in near)
+        if any(
+            _osm_signal_is_ours(osm.points[key], marked, junctions)
+            for _distance, key in osm.within(signal.lon, signal.lat, OSM_SIGNAL_M)
+        ):
+            result.already_in_osm[signal.source] += 1
+            result.rows.append((signal.feature_id, signal.lon, signal.lat, "in OSM", ()))
+            continue
         if not marked:
             result.unmatched[signal.source] += 1
             result.rows.append((signal.feature_id, signal.lon, signal.lat, "unmatched", ()))
@@ -413,6 +432,21 @@ def match(
         result.nodes.update(marked)
         result.rows.append((signal.feature_id, signal.lon, signal.lat, "added", marked))
     return result
+
+
+def _osm_signal_is_ours(point: tuple[float, float], ours: tuple[int, ...], junctions) -> bool:
+    """Whether an OSM signal near an agency point is that point's: its nearest
+    junction node is one the point marks, or none is in the approach's reach of it
+    (a stop line out on an arm), or the point marks none."""
+    if not ours:
+        return True
+    nearest = junctions.within(point[0], point[1], OSM_SIGNAL_M)[:1]
+    return not nearest or nearest[0][1] in ours
+
+
+def node_tags(nodes: Iterable[int]) -> dict[int, dict[str, str]]:
+    """The extract's node tags for the nodes `match` marks."""
+    return {node: {NODE_TAG: "yes"} for node in nodes}
 
 
 def is_osm_signal(tags: Mapping[str, str]) -> bool:
