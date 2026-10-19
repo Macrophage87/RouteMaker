@@ -814,17 +814,17 @@ const federalFetched = (p) =>
   check("weight: Change opens a modal dialog and the focus moves into it", inside.open && inside.modal && inside.focusIn, JSON.stringify(inside));
   check("weight: the dialog is named by its heading and described by its two lines (318)",
     dialog?.role === "dialog" && dialog?.name === "Rider and bike weight" &&
-      /^Optional\. Used only to work out your route, for how hard hills feel\. It is never displayed, and never put in shared links or downloads\. A rough estimate is fine\. Within 20 lb \(10 kg\) or so makes no real difference\.$/.test(dialog?.description ?? ""),
+      /^Optional\. Used only for how hard hills feel; never shown or shared\. A rough guess is fine\.$/.test(dialog?.description ?? ""),
     JSON.stringify(dialog));
   const fields = await p.eval("[...document.querySelectorAll('dialog.weight-dialog input[type=text]')].map((e) => ({ label: e.labels?.[0]?.textContent, value: e.value }))");
   check("weight: Rider, Bike, Cargo and Total are labelled pounds first, kilograms in brackets, and start blank (316)", JSON.stringify(fields.map((f) => f.label)) === JSON.stringify(["Rider, lb (kg)", "Bike, lb (kg)", "Cargo, lb (kg)", "Total, lb (kg)"]) && fields.every((f) => f.value === ""), JSON.stringify(fields));
-  // Type a total of 207 lb and save it, remembered.
+  // Type a total of 207 lb and save it: it is always kept on the device, with no checkbox (the owner, 2026-10-19).
   await p.eval("document.querySelectorAll('dialog.weight-dialog input[type=text]')[3].focus(); true");
   await p.type("207");
   await sleep(1000); // the polite total waits 700 ms after the last key (N-A)
   const total = await p.eval("document.querySelector('dialog.weight-dialog .weight-total').textContent");
   check("weight: the total is said politely as it changes, pounds first", /^Total: 207 lb \(94 kg\)\.$/.test(total) && (await p.eval("document.querySelector('dialog.weight-dialog .weight-total').getAttribute('aria-live')")) === "polite", total);
-  await p.eval("document.querySelector('dialog.weight-dialog input[type=checkbox]').click(); true");
+  check("weight: no Remember checkbox", (await p.eval("document.querySelector('dialog.weight-dialog input[type=checkbox]') === null")) === true, "");
   const before = p.routeRequests;
   await p.eval("[...document.querySelectorAll('dialog.weight-dialog button')].find((b) => b.textContent === 'Save').click(); true");
   await sleep(1500);
@@ -846,7 +846,7 @@ const federalFetched = (p) =>
   const again = await p.eval("({ values: [...document.querySelectorAll('dialog.weight-dialog input[type=text]')].map((e) => e.value), text: document.body.innerText, saved: document.querySelector('dialog.weight-dialog .notice')?.textContent })");
   const { nodes } = await p.s("Accessibility.getFullAXTree", {});
   const axText = JSON.stringify(nodes.map((n) => [n.name?.value, n.description?.value, n.value?.value]));
-  check("weight: reopened, every field is blank and it says a weight is saved, without the numbers (317(b))", again.values.every((v) => v === "") && /^A weight is saved \(set today\)\. Enter new values to replace it, or Clear to use the defaults\.$/.test(again.saved ?? ""), JSON.stringify({ values: again.values, saved: again.saved }));
+  check("weight: reopened, every field is blank and it says a weight is saved, without the numbers (317(b))", again.values.every((v) => v === "") && /^A weight is saved \(set today\)\. Type new values to replace it\.$/.test(again.saved ?? ""), JSON.stringify({ values: again.values, saved: again.saved }));
   check("weight: the saved number is nowhere in the page's text or its accessibility tree", !/\b207\b|\b93\.9\b|\b94 kg/.test(again.text) && !/\b207\b|93\.9|94 kg/.test(axText), "");
   await p.escape();
   await sleep(300);

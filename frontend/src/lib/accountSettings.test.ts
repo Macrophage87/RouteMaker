@@ -18,6 +18,7 @@ import {
 import { startDials } from "./dials.ts";
 import { HOME_OFFER_KEY, answerHomeOffer, deviceHome, homeOffer } from "./homeMove.ts";
 import { DEVICE_KEY } from "./myGo.ts";
+import { WEIGHT_STORAGE_KEY, WeightStore } from "./weight.ts";
 
 class Memory {
   map = new Map<string, string>();
@@ -119,4 +120,27 @@ test("Plan's Settings sheet says the one line, and only where sign-in is on", ()
   assert.doesNotMatch(sheets, /Saving routes and\s+peer review are coming/);
   assert.equal(SIGN_IN_LINE, "Sign in with Discord to save routes and sync settings across devices.");
   assert.match(sheets, /signInAvailable/);
+});
+
+test("signed in, the rider and bike weight goes with the account and comes back on another device (the owner, 2026-10-19)", () => {
+  const weight = { name: "My weight", totalKg: 93.4, parts: { riderKg: 78.4, bikeKg: 15, cargoKg: 0 }, setAt: 1_760_000_000_000 };
+  const phone = new Memory();
+  phone.setItem(WEIGHT_STORAGE_KEY, JSON.stringify(weight));
+  const doc = deviceSettings(null, phone);
+  assert.deepEqual(doc.weight, weight);
+  // Never in the plan setting.
+  assert.equal(doc.plan, undefined);
+  // An answered document keeps a usable weight and drops one that is not.
+  assert.deepEqual(parseSettings({ v: 1, weight })?.weight, weight);
+  assert.equal(parseSettings({ v: 1, weight: { totalKg: "heavy" } })?.weight, undefined);
+  assert.equal(parseSettings({ v: 1, weight: { totalKg: 5000 } })?.weight, undefined);
+  // Another device, signed in: the account's weight is put where the weight dialog reads it.
+  const laptop = new Memory();
+  const step = onSignIn(parseSettings(JSON.parse(JSON.stringify(doc))), deviceSettings(null, laptop));
+  assert.equal(step.kind, "use-account");
+  applyToDevice(step.doc, laptop);
+  assert.deepEqual(new WeightStore(laptop).load(), weight);
+  // Cleared on the device: the next save carries none, so the account's is cleared too.
+  new WeightStore(laptop).clear();
+  assert.equal(deviceSettings(null, laptop).weight, undefined);
 });

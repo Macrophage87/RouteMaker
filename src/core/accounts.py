@@ -30,12 +30,19 @@ SETTINGS_KEYS = frozenset(
         "sections",  # which Layers sections' switches were on
         "bikeshare",  # the bikeshare and micromobility service switches
         "favorites",  # the favorite ride types, listed first in the ride type pickers
+        "weight",  # the rider and bike weight (frontend lib/weight.ts); personal, never logged
     }
 )
 SETTINGS_MAX_BYTES = 16 * 1024
 SETTINGS_MAX_DEPTH = 4
 # A list of short ride type names, each once; room for every ride type and some to come.
 FAVORITES_MAX = 32
+# The rider and bike weight's total, as the planner takes it (frontend lib/dials.ts
+# SYSTEM_WEIGHT_MIN_KG and SYSTEM_WEIGHT_MAX_KG), and its parts' keys.
+WEIGHT_MIN_KG = 25
+WEIGHT_MAX_KG = 700
+WEIGHT_PARTS = ("riderKg", "bikeKg", "cargoKg")
+WEIGHT_KEYS = frozenset({"name", "totalKg", "parts", "setAt"})
 
 # A saved route.
 NAME_MAX = 120
@@ -80,7 +87,33 @@ def settings_problem(data) -> str | None:
         or len(set(favorites)) != len(favorites)
     ):
         return "The favorite ride types are not in the expected form."
+    weight = data.get("weight")
+    if weight is not None and not _weight_ok(weight):
+        # Never echo the value: the weight is personal.
+        return "The saved weight is not in the expected form."
     return None
+
+
+def _weight_ok(weight) -> bool:
+    if not isinstance(weight, dict) or set(weight) - WEIGHT_KEYS:
+        return False
+    total = weight.get("totalKg")
+    if not _finite(total) or not WEIGHT_MIN_KG <= total <= WEIGHT_MAX_KG:
+        return False
+    name = weight.get("name")
+    if name is not None and (not isinstance(name, str) or len(name) > NAME_MAX):
+        return False
+    set_at = weight.get("setAt")
+    if set_at is not None and not _finite(set_at):
+        return False
+    parts = weight.get("parts")
+    if parts is not None and (
+        not isinstance(parts, dict)
+        or set(parts) != set(WEIGHT_PARTS)
+        or not all(_finite(parts[k]) and 0 <= parts[k] <= WEIGHT_MAX_KG for k in WEIGHT_PARTS)
+    ):
+        return False
+    return True
 
 
 def _finite(value) -> bool:

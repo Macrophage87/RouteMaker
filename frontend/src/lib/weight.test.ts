@@ -141,17 +141,17 @@ test("after every Save and Cancel the fields are blank again, and no typed figur
       let sheet = editPart(BLANK, "rider", typed, SPLIT);
       let said = "x";
       let closed = 0;
-      const props = { open: true, saved: null, remembered: false, split: SPLIT, onSave: (w: StoredWeight) => void calls.push(w), onClear: () => {}, onClose: () => void (closed += 1), now: () => NOW };
-      const set = { sheet: (s: typeof sheet) => void (sheet = s), remember: () => {}, refused: (t: string) => void (said = t) };
-      const before = renderToStaticMarkup(createElement("dialog", null, ...weightDialogBody("w", props, { sheet, remember: false, refused: "" }, set)));
+      const props = { open: true, saved: null, split: SPLIT, onSave: (w: StoredWeight) => void calls.push(w), onClear: () => {}, onClose: () => void (closed += 1), now: () => NOW };
+      const set = { sheet: (s: typeof sheet) => void (sheet = s), refused: (t: string) => void (said = t) };
+      const before = renderToStaticMarkup(createElement("dialog", null, ...weightDialogBody("w", props, { sheet, refused: "" }, set)));
       assert.ok(before.includes(typed), "the premise: while typing, the figure is in the dialog");
-      buttons(weightDialogBody("w", props, { sheet, remember: false, refused: "" }, set))(press)();
+      buttons(weightDialogBody("w", props, { sheet, refused: "" }, set))(press)();
       assert.deepEqual(sheet, BLANK, `${press}: the fields are blank again`);
       assert.equal(said, "", `${press}: and nothing is said, no limit either (352)`);
       if (press === "Save") assert.equal(calls.length, 1);
       else assert.equal(closed, 1);
       const saved = calls[0] ?? null;
-      const after = renderToStaticMarkup(createElement("dialog", null, ...weightDialogBody("w", { ...props, saved }, { sheet, remember: false, refused: said }, set)));
+      const after = renderToStaticMarkup(createElement("dialog", null, ...weightDialogBody("w", { ...props, saved }, { sheet, refused: said }, set)));
       for (const n of kgs) assert.ok(!after.includes(n), `${press} ${typed} lb: ${n} is not in the dialog`);
       assert.doesNotMatch(after, /plan with|designed for/, "no limit note anywhere");
     }
@@ -159,7 +159,7 @@ test("after every Save and Cancel the fields are blank again, and no typed figur
 });
 
 test("the polite total says what the worksheet comes to, pounds first", () => {
-  assert.equal(totalSaid(BLANK, SPLIT), "Total: nothing entered; the defaults, 198 lb (90 kg), are used.");
+  assert.equal(totalSaid(BLANK, SPLIT), "Total: default, 198 lb (90 kg).");
   assert.equal(totalSaid(editTotal("200"), SPLIT), "Total: 200 lb (91 kg).");
   assert.equal(totalSaid(editTotal("x"), SPLIT), "Total: not a number yet.");
 });
@@ -167,18 +167,19 @@ test("the polite total says what the worksheet comes to, pounds first", () => {
 // ---- 317(b), 318: the dialog never shows a saved number --------------------------
 
 function dialogHtml(saved: StoredWeight | null, sheet = BLANK) {
-  const props = { open: true, saved, remembered: true, split: SPLIT, onSave: () => {}, onClear: () => {}, onClose: () => {}, now: () => NOW };
-  const body = weightDialogBody("w", props, { sheet, remember: true, refused: "" }, { sheet: () => {}, remember: () => {}, refused: () => {} });
+  const props = { open: true, saved, split: SPLIT, onSave: () => {}, onClear: () => {}, onClose: () => {}, now: () => NOW };
+  const body = weightDialogBody("w", props, { sheet, refused: "" }, { sheet: () => {}, refused: () => {} });
   return renderToStaticMarkup(createElement("dialog", { "aria-labelledby": "w-title", "aria-describedby": "w-purpose w-rough" }, ...body));
 }
 
 test("the dialog leads with the two lines that are its description, and labels every field (318)", () => {
   const html = dialogHtml(null);
-  assert.equal(WEIGHT_PURPOSE, "Optional. Used only to work out your route, for how hard hills feel. It is never displayed, and never put in shared links or downloads.");
-  assert.equal(WEIGHT_ROUGH, "A rough estimate is fine. Within 20 lb (10 kg) or so makes no real difference.");
+  // Short, so the dialog fits a phone without scrolling (the owner, 2026-10-19).
+  assert.equal(WEIGHT_PURPOSE, "Optional. Used only for how hard hills feel; never shown or shared.");
+  assert.equal(WEIGHT_ROUGH, "A rough guess is fine.");
   assert.ok(html.indexOf(WEIGHT_PURPOSE) < html.indexOf("Rider, lb (kg)"), "the lines come first");
   assert.match(html, /<p id="w-purpose">Optional\./);
-  assert.match(html, /<p id="w-rough">A rough estimate/);
+  assert.match(html, /<p id="w-rough">A rough guess/);
   // Pounds first, kilograms in brackets (316), and the kilograms a figure comes to in the field's description.
   for (const [id, label] of [["w-rider", "Rider, lb (kg)"], ["w-bike", "Bike, lb (kg)"], ["w-cargo", "Cargo, lb (kg)"], ["w-total", "Total, lb (kg)"]]) {
     assert.ok(html.includes(`<label for="${id}">${label}</label><input id="${id}"`), label);
@@ -186,7 +187,11 @@ test("the dialog leads with the two lines that are its description, and labels e
     assert.match(html, new RegExp(`<span class="weight-kg" id="${id}-kg">`), `${label}: not hidden from a screen reader`);
   }
   assert.match(html, /<p class="weight-total" role="status" aria-live="polite">Total: /);
-  assert.match(html, /Remember on this device/);
+  // No "remember" choice: it is always kept (the owner, 2026-10-19: "no need to have the remember").
+  assert.doesNotMatch(html, /Remember|checkbox/);
+  // A part's default is its placeholder on screen; the hint, for a screen reader, takes no row.
+  assert.match(html, /id="w-rider"[^>]*placeholder="165"/);
+  assert.match(html, /<p class="hint visually-hidden" id="w-rider-hint">Blank: 165 lb \(75 kg\)\.<\/p>/);
   assert.match(html, /<p id="w-rule" class="dial-rule" aria-live="assertive"><\/p>/);
   assert.doesNotMatch(html, />Clear</, "nothing saved: nothing to clear");
 });
@@ -194,7 +199,7 @@ test("the dialog leads with the two lines that are its description, and labels e
 test("a saved weight is said to exist, with its date, and its numbers are never in the dialog (317(b))", () => {
   const html = dialogHtml(SAVED);
   assert.ok(html.includes(savedNotice(SAVED, NOW)));
-  assert.equal(savedNotice(SAVED, NOW), "A weight is saved (set 3 days ago). Enter new values to replace it, or Clear to use the defaults.");
+  assert.equal(savedNotice(SAVED, NOW), "A weight is saved (set 3 days ago). Type new values to replace it.");
   for (const id of ["w-rider", "w-bike", "w-cargo", "w-total"]) assert.match(html, new RegExp(`id="${id}"[^>]*value=""`), `${id} starts blank`);
   for (const n of ["93.4", "93", "206", "78.4", "173"]) assert.ok(!html.includes(n), `the saved ${n} is not in the dialog`);
   assert.match(html, />Save</);
@@ -203,7 +208,7 @@ test("a saved weight is said to exist, with its date, and its numbers are never 
 });
 
 test("the panel shows the line and Change, never the number, and the closed dialog holds no saved value", () => {
-  const html = renderToStaticMarkup(createElement(WeightSetting, { saved: SAVED, remembered: true, split: SPLIT, onSave: () => {}, onClear: () => {}, now: () => NOW }));
+  const html = renderToStaticMarkup(createElement(WeightSetting, { saved: SAVED, split: SPLIT, onSave: () => {}, onClear: () => {}, now: () => NOW }));
   assert.match(html, /<p class="weight-line" id="[^"]+-line">Rider and bike weight: set 3 days ago<\/p>/);
   assert.match(html, /<button type="button" class="secondary" aria-label="Change rider and bike weight" aria-describedby="[^"]+-line">Change<\/button>/);
   assert.match(html, /<dialog class="weight-dialog" aria-modal="true" aria-labelledby="[^"]+-title" aria-describedby="[^"]+-purpose [^"]+-rough">/);
@@ -216,15 +221,14 @@ test("Save, Clear and Cancel call through; Save refuses in words and keeps the d
   const props = {
     open: true,
     saved: SAVED,
-    remembered: false,
     split: SPLIT,
-    onSave: (w: StoredWeight, remember: boolean) => void calls.push(`save ${w.totalKg} ${remember}`),
+    onSave: (w: StoredWeight) => void calls.push(`save ${w.totalKg}`),
     onClear: () => void calls.push("clear"),
     onClose: () => void calls.push("cancel"),
     now: () => NOW,
   };
   const buttons = (sheet: typeof BLANK) =>
-    (weightDialogBody("w", props, { sheet, remember: true, refused: "" }, { sheet: () => {}, remember: () => {}, refused: (t) => void (refusedWith = t) }).at(-1) as { props: { children: Array<{ props: { onClick: () => void; children: string } } | null> } }).props.children.filter(Boolean) as Array<{ props: { onClick: () => void; children: string } }>;
+    (weightDialogBody("w", props, { sheet, refused: "" }, { sheet: () => {}, refused: (t) => void (refusedWith = t) }).at(-1) as { props: { children: Array<{ props: { onClick: () => void; children: string } } | null> } }).props.children.filter(Boolean) as Array<{ props: { onClick: () => void; children: string } }>;
   const click = (sheet: typeof BLANK, name: string) => buttons(sheet).find((b) => b.props.children === name)!.props.onClick();
   click(BLANK, "Save");
   assert.equal(refusedWith, WEIGHT_NOTHING);
@@ -232,26 +236,19 @@ test("Save, Clear and Cancel call through; Save refuses in words and keeps the d
   click(editTotal("200"), "Save");
   click(BLANK, "Clear");
   click(BLANK, "Cancel");
-  assert.deepEqual(calls, ["save 90.7 true", "clear", "cancel"]);
+  assert.deepEqual(calls, ["save 90.7", "clear", "cancel"]);
 });
 
 // ---- where it is kept ------------------------------------------------------------
 
-test("signed out, it is kept in this browser only when the rider ticks Remember, else for this visit; Clear forgets it", () => {
+test("it is always kept in this browser, with no remember choice; Clear forgets it", () => {
   const storage = memory();
   const store = new WeightStore(storage);
   assert.equal(store.load(NOW), null);
-  store.save(SAVED, false);
+  assert.equal(store.save(SAVED), true);
   assert.deepEqual(store.load(NOW), SAVED, "this visit");
-  assert.equal(storage.data.has(WEIGHT_STORAGE_KEY), false, "not in the browser");
-  assert.equal(new WeightStore(storage).load(NOW), null, "a new visit has none");
-  store.save(SAVED, true);
   assert.deepEqual(JSON.parse(storage.data.get(WEIGHT_STORAGE_KEY)!), SAVED);
   assert.deepEqual(new WeightStore(storage).load(NOW), SAVED, "a new visit finds it");
-  assert.equal(new WeightStore(storage).remembered(), true);
-  store.save(SAVED, false);
-  assert.equal(storage.data.has(WEIGHT_STORAGE_KEY), false, "unchecked: taken out of the browser");
-  store.save(SAVED, true);
   store.clear();
   assert.equal(store.load(NOW), null);
   assert.equal(storage.data.has(WEIGHT_STORAGE_KEY), false);
@@ -311,10 +308,9 @@ test("the weight is never in a downloaded GPX file, even from a route planned wi
   assert.doesNotMatch(gpx, /weight|93\b|kg/i);
 });
 
-test("every open starts blank, whatever is saved, with the Remember checkbox as this browser has it (317(b))", async () => {
+test("every open starts blank, whatever is saved (317(b))", async () => {
   const { openedState } = await import("./weightDialog.ts");
-  assert.deepEqual(openedState({ saved: SAVED, remembered: true }), { sheet: BLANK, remember: true, refused: "" });
-  assert.deepEqual(openedState({ saved: null, remembered: false }), { sheet: BLANK, remember: false, refused: "" });
+  assert.deepEqual(openedState(), { sheet: BLANK, refused: "" });
 });
 
 test("the Cargo field takes a large load: a trailer of 400 lb is fine, and only the total is capped (OWNER-DECISIONS 339)", () => {
@@ -356,22 +352,22 @@ test("no part has a limit of its own, only that it is a non-negative number; onl
 });
 
 test("a refused entry marks the field that is not a number and points it at the rule (the re-check's N-C)", () => {
-  const props = { open: true, saved: null, remembered: false, split: SPLIT, onSave: () => {}, onClear: () => {}, onClose: () => {}, now: () => NOW };
+  const props = { open: true, saved: null, split: SPLIT, onSave: () => {}, onClear: () => {}, onClose: () => {}, now: () => NOW };
   const sheet = editPart(BLANK, "rider", "abc", SPLIT);
-  const html = renderToStaticMarkup(createElement("dialog", null, ...weightDialogBody("w", props, { sheet, remember: false, refused: WEIGHT_NOT_A_NUMBER }, { sheet: () => {}, remember: () => {}, refused: () => {} })));
+  const html = renderToStaticMarkup(createElement("dialog", null, ...weightDialogBody("w", props, { sheet, refused: WEIGHT_NOT_A_NUMBER }, { sheet: () => {}, refused: () => {} })));
   assert.match(html, /id="w-rider"[^>]*aria-describedby="w-rider-kg w-rider-hint w-rule"[^>]*aria-invalid="true"/);
   assert.doesNotMatch(html.match(/<input id="w-bike"[^>]*>/)![0], /aria-invalid/, "a blank field is not marked");
   assert.match(html, /<p id="w-rule" class="notice dial-rule" aria-live="assertive">/);
   // Nothing refused: nothing marked.
-  const calm = renderToStaticMarkup(createElement("dialog", null, ...weightDialogBody("w", props, { sheet, remember: false, refused: "" }, { sheet: () => {}, remember: () => {}, refused: () => {} })));
+  const calm = renderToStaticMarkup(createElement("dialog", null, ...weightDialogBody("w", props, { sheet, refused: "" }, { sheet: () => {}, refused: () => {} })));
   assert.doesNotMatch(calm, /aria-invalid/);
 });
 
 test("the polite total says what it was given while the typing settles, and the delay is about 700 ms (the re-check's N-A)", async () => {
   const { TOTAL_SAID_DELAY_MS } = await import("./weightDialog.ts");
   assert.ok(TOTAL_SAID_DELAY_MS >= 500 && TOTAL_SAID_DELAY_MS <= 1000);
-  const props = { open: true, saved: null, remembered: false, split: SPLIT, onSave: () => {}, onClear: () => {}, onClose: () => {}, now: () => NOW };
-  const html = renderToStaticMarkup(createElement("dialog", null, ...weightDialogBody("w", props, { sheet: editTotal("18"), remember: false, refused: "", said: "Total: 1 lb (0 kg)." }, { sheet: () => {}, remember: () => {}, refused: () => {} })));
+  const props = { open: true, saved: null, split: SPLIT, onSave: () => {}, onClear: () => {}, onClose: () => {}, now: () => NOW };
+  const html = renderToStaticMarkup(createElement("dialog", null, ...weightDialogBody("w", props, { sheet: editTotal("18"), refused: "", said: "Total: 1 lb (0 kg)." }, { sheet: () => {}, refused: () => {} })));
   assert.match(html, /aria-live="polite">Total: 1 lb \(0 kg\)\.<\/p>/, "the region holds the settled figure, not each keystroke's");
   const src = (await import("node:fs")).readFileSync(new URL("./weightDialog.ts", import.meta.url), "utf8");
   assert.match(src, /setTimeout\(\(\) => setSaid\(live\), TOTAL_SAID_DELAY_MS\)/);
@@ -385,7 +381,7 @@ test("every way the dialog closes leaves it blank: closedState, and Save, Cancel
   assert.match(src, /const end = closedState\(\);\s*setSheet\(end\.sheet\);\s*setRefused\(end\.refused\);/);
   // Escape (the dialog's cancel and close events) and Cancel reach onClose; Save and Clear close too.
   assert.match(src, /onClose: \(\) => props\.onClose\(\),\s*onCancel: \(\) => props\.onClose\(\),/);
-  assert.match(src, /onSave: \(weight, remember\) => \{\s*props\.onSave\(weight, remember\);\s*close\(\);/);
+  assert.match(src, /onSave: \(weight\) => \{\s*props\.onSave\(weight\);\s*close\(\);/);
   assert.match(src, /onClear: \(\) => \{\s*props\.onClear\(\);\s*close\(\);/);
   assert.match(src, /onClose: close,/);
 });

@@ -6040,11 +6040,15 @@ kilograms (`system_weight_kg`, `lib/weight.ts` `withWeight` and `dials.ts` `dial
   The effort model stays well-behaved to the top: an 8% climb's factor is 6.5 at 90 kg, 11.3
   at 450 and 12.2 at 700, flattening towards 1 + grade / CRR (14.3), so above about 450 kg
   routes barely change (337's "any end where routes stop changing"; tests/test_effort.py).
-- **Where it is kept** (`WeightStore`): signed out, in this browser (localStorage,
-  `routemaker.weight`) only when "Remember on this device" is ticked, else for the visit.
-  The shape is `{name, totalKg, parts?, setAt}`, ready for named loadouts (315); `migrate`
-  reads earlier shapes. Signed in, saving it to the rider's profile is the accounts work's:
-  `WeightStore` is where it goes in.
+- **Where it is kept** (`WeightStore`): always in this browser (localStorage,
+  `routemaker.weight`; for the visit only if storage refuses). There is no "remember"
+  checkbox (the owner, 2026-10-19). Signed in it is also the `weight` key of the account's
+  settings (`lib/accountSettings.ts`, checked by `core.accounts.settings_problem`, which never
+  echoes it), so it follows the rider to another device; account settings win on sign-in as
+  for the rest, Clear clears it from the account with the next save, and Delete account
+  erases it with the `AccountSettings` row. It is never in the plan setting, a link, a log or
+  MCP output. The shape is `{name, totalKg, parts?, setAt}`, ready for named loadouts (315);
+  `migrate` reads earlier shapes.
 - **Tests**: `lib/weight.test.ts` (the line, the worksheet, storage, migration, never in a
   link or a GPX file, the saved number in no markup), the a11y harness's section 15 (focus
   in and back, the name and description, Escape, the saved number absent from the page and
