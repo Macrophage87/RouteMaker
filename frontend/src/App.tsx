@@ -92,7 +92,7 @@ import { activePins, chosenSaid, withStations, type NearbyStation, type Pins, ty
 import { bikeshareOf } from "./lib/bikeshare.ts";
 import { carries, hillsWords, seeksClimbs, startDials, stressMax, stressWords, trailsAreOff, type Dials } from "./lib/dials.ts";
 import { WeightStore, defaultSplit, withWeight, type StoredWeight } from "./lib/weight.ts";
-import { stationEdit, type RailVisibility, type Station, type StationRole } from "./lib/railStations.ts";
+import { stationEdit, stationMoves, stationPlaceLabel, stationPlaceName, type RailVisibility, type Station, type StationRole } from "./lib/railStations.ts";
 import { RAIL_STATIONS, WMATA_SLUGS, stationEntranceForPlace } from "./lib/railData.ts";
 import { federalShown, type FederalData } from "./lib/federalLand.ts";
 import { FEDERAL_POINTS_NONE, type FederalStatus } from "./lib/federalLegend.ts";
@@ -2491,8 +2491,7 @@ export function App() {
   // and keeps Make it a loop (rideTypeDialog.choose). Mass Ride has no loop, so
   // into or out of it renames the points; between two others nothing is said.
   const choosePreset = (id: PresetId, next: Dials) => {
-    const said = loopChangeSaid({ preset, dials }, { preset: id, dials: next }, points.length);
-    if (said) announce(said);
+    const loopSaid = loopChangeSaid({ preset, dials }, { preset: id, dials: next }, points.length);
     rideTouched.current = true;
     // Mountain Bike (slice 6) turns the mountain-bike and contour layers on (the owner's defaults of
     // 2026-10-11), not remembered as the rider's own choice; its loop is on in `next` (mtbChosen).
@@ -2500,8 +2499,29 @@ export function App() {
       setMtbTrails(true, { remember: false });
       setTopoLines(true, { remember: false });
     }
-    setPreset(id);
-    setDials(next);
+    // Into or out of riding on foot, a point at a Metro station moves to the way in for the new ride type: its
+    // elevator with a bike, its nearest entrance on foot (railStations.ts, stationMoves). One edit with the ride
+    // type, so Undo puts both back; the point keeps its kind (a via, a drawn leg) and its station's name, and is said.
+    const current = pointsRef.current;
+    const onFoot = endsOnFoot(id);
+    const moves = onFoot === endsOnFoot(rideRef.current.preset) ? [] : stationMoves(current, RAIL_STATIONS, onFoot);
+    if (moves.length > 0) {
+      const moved = [...current];
+      const naming = namePoints(current, VIA_MARKS.isVia, loopVias);
+      const said: string[] = loopSaid ? [loopSaid] : [];
+      for (const move of moves) {
+        moved[move.index] = VIA_MARKS.moved(current[move.index], move.to);
+        namer.remember(move.to, stationPlaceName(move.station), stationPlaceLabel(move.station, move.kind));
+        // "End moved to Bethesda Metro station's nearest entrance."
+        said.push(`${naming[move.index]?.name ?? "A point"} moved to ${stationPlaceName(move.station)}'s ${move.kind === "elevator" || move.kind === "osm-elevator" ? "elevator" : "nearest entrance"}.`);
+      }
+      commit(moved, { ...rideRef.current, preset: id, dials: next });
+      announce(said.join(" "));
+    } else {
+      if (loopSaid) announce(loopSaid);
+      setPreset(id);
+      setDials(next);
+    }
     // A station chosen on Bikeshare is not carried to the next ride type, or back (OWNER-DECISIONS 466a).
     setStationPins({});
   };

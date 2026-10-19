@@ -98,7 +98,8 @@ test("App: the toggle, the ride type and undo or redo say when they rename the p
   );
   assert.match(
     app,
-    /const choosePreset = \(id: PresetId, next: Dials\) => \{\s+const said = loopChangeSaid\(\{ preset, dials \}, \{ preset: id, dials: next \}, points\.length\);\s+if \(said\) announce\(said\);/,
+    // Said with a station point's move when one moves (walkEntrance.test.ts), else alone.
+    /const choosePreset = \(id: PresetId, next: Dials\) => \{\s+const loopSaid = loopChangeSaid\(\{ preset, dials \}, \{ preset: id, dials: next \}, points\.length\);[\s\S]*?const said: string\[\] = loopSaid \? \[loopSaid\] : \[\];[\s\S]*?if \(loopSaid\) announce\(loopSaid\);/,
   );
   assert.match(
     app,
