@@ -576,7 +576,7 @@ export function SettingsSheet(props: SettingsSheetProps) {
             <SignOutForm />
             {/* A page of its own (core.account_deletion), the same one the web offers without the app: it says what goes
                 and what is kept, and asks once. */}
-            <p className="hint">
+            <p className="delete-account">
               <a href={DELETE_ACCOUNT_PAGE}>Delete account</a>
             </p>
           </>

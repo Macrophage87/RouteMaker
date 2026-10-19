@@ -22,6 +22,7 @@ from core.models import (
     AuditLogEntry,
     CachedMembership,
     ConfiguredGuild,
+    JunctionSuggestion,
     MassHazard,
     MyGo,
     SavedRoute,
@@ -82,6 +83,14 @@ class TestPage:
         assert delete(client, None).status_code in (401, 403)
         assert User.objects.filter(pk=user.pk).exists()
 
+    def test_signed_out_post_with_a_token_is_401(self) -> None:
+        client = Client(enforce_csrf_checks=True)
+        user = make_user()
+        token = "a" * 32  # a CSRF secret, as the cookie and the form both carry it
+        client.cookies["csrftoken"] = token
+        r = delete(client, token)
+        assert r.status_code == 401 and User.objects.filter(pk=user.pk).exists()
+
     def test_signed_in_it_offers_the_one_button(self) -> None:
         client, _user, _csrf = signed_in()
         body = client.get(account_deletion.PATH, **addr()).content.decode()
@@ -140,8 +149,23 @@ class TestDeletion:
         )
         hazard = MassHazard.objects.create(reporter=user, reporter_user_id=user.pk, osm_way_id=5,
                                            level="warning", reason="potholes")  # fmt: skip
+        kept_hazard = MassHazard.objects.create(reporter=user, reporter_user_id=user.pk,
+                                                osm_way_id=6, level="warning", reason="sand",
+                                                status="approved")  # fmt: skip
+        junction = JunctionSuggestion.objects.create(
+            suggester=user, suggester_user_id=user.pk, lon=-77.0, lat=38.9, node="n1",
+            current_level=2, target_level=5, reason="r",
+        )  # fmt: skip
+        # A row whose link was already cleared still carries the number: it goes as well.
+        unlinked = suggestion(user, "pending", 7)
+        StressSuggestion.objects.filter(pk=unlinked.pk).update(suggester=None)
         delete(client, page_csrf(client))
-        assert not StressSuggestion.objects.filter(pk__in=[waiting.pk, sent.pk]).exists()
+        assert not StressSuggestion.objects.filter(
+            pk__in=[waiting.pk, sent.pk, unlinked.pk]
+        ).exists()
+        assert not JunctionSuggestion.objects.filter(pk=junction.pk).exists()
+        hazard_kept = MassHazard.objects.get(pk=kept_hazard.pk)
+        assert hazard_kept.reporter_id is None and hazard_kept.reporter_user_id is None
         assert not MassHazard.objects.filter(pk=hazard.pk).exists()
         kept = StressSuggestion.objects.get(pk=decided.pk)
         assert kept.suggester_id is None and kept.suggester_user_id is None

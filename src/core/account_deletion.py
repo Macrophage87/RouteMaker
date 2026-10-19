@@ -24,6 +24,7 @@ from html import escape
 
 from django.contrib.auth import logout as django_logout
 from django.db import transaction
+from django.db.models import Q
 from django.http import HttpResponse
 from django.middleware.csrf import get_token
 from django.utils import timezone
@@ -45,15 +46,18 @@ DELETED = [
     "on other riders' suggestions",
 ]
 KEPT = [
-    "Suggestions already approved or declined, and map changes made from them, with nothing "
-    "linking them to you",
-    "A note that an account was deleted, and when, under an account number, never your Discord "
-    "name",
-    "Database backups, until they age out, usually within 7 days",
+    "Suggestions already approved or declined, and map changes made from them, as part of the "
+    "map's history, with nothing linking them to you",
+    "A note that an account was deleted, and when, under an account number",
+    "Database backups, until they age out, usually within a week",
 ]
 ON_DEVICE = (
     "Routes kept for offline use and choices made while signed out stay in your browser or the "
     "app until you clear its storage."
+)
+BANNED = (
+    "A banned account cannot sign in, so it cannot use this page: ask the map's admin on Discord "
+    "to delete it."
 )
 AGAIN = "You can sign in with Discord again later; you start with a new, empty account."
 LAST_ADMIN = (
@@ -90,8 +94,15 @@ def delete_account(user) -> None:
 
     now = timezone.now()
     with transaction.atomic():
-        # Taken in turn, so an appointment or a removal in flight is seen.
-        user = User.objects.select_for_update().get(pk=user.pk)
+        # Every live admin row is locked, in one order, before the count: two admins deleting at
+        # once would otherwise each see the other and leave none.
+        list(
+            User.objects.select_for_update()
+            .filter(Q(is_instance_admin=True) | Q(pk=user.pk))
+            .order_by("pk")
+            .values_list("pk", flat=True)
+        )
+        user = User.objects.get(pk=user.pk)
         try:
             check_last_instance_admin(user, removing=True)
         except LastInstanceAdmin as error:
@@ -111,8 +122,9 @@ def delete_account(user) -> None:
             (MassHazard, "reporter"),
             (JunctionSuggestion, "suggester"),
         ):
-            model.objects.filter(**{field: user, "status__in": waiting}).delete()
-            model.objects.filter(**{field: user}).update(**{field: None, f"{field}_user_id": None})
+            theirs = Q(**{field: user}) | Q(**{f"{field}_user_id": user.pk})
+            model.objects.filter(theirs, status__in=waiting).delete()
+            model.objects.filter(theirs).update(**{field: None, f"{field}_user_id": None})
         StressSuggestionReview.objects.filter(reviewer_user_id=user.pk).delete()
 
         # The bot's view of this person's Discord roles; it names who belongs to which club.
@@ -173,6 +185,7 @@ def _explanation() -> str:
         + "<h2>On your phone or computer</h2>"
         + f"<p>{escape(ON_DEVICE)}</p>"
         + f"<p>{escape(AGAIN)}</p>"
+        + f"<p>{escape(BANNED)}</p>"
     )
 
 

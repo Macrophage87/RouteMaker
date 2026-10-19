@@ -7156,3 +7156,10 @@ details.fold > summary .icon {
   padding: 0.4rem 0.6rem;
   font: inherit;
 }
+
+/* Settings > Account's Delete account link (core.account_deletion): a full-size target, not hint text. */
+.delete-account a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
