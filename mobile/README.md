@@ -126,9 +126,11 @@ it; that is the rider's choice and outside the app.
 4. Plan a route, press Go and Start ride. Android asks for location ("While using the app"), then for
    notifications (Android 13+), both at Start ride and never mid-ride. Lock the phone and ride.
 
-Each workflow run signs its debug build with a fresh debug key, so a newer debug APK will not install
-over an older one: uninstall first (the site's data in the app, such as a Home, goes with it, and the
-next install asks for the site address again).
+With the `ROUTEMAKER_DEBUG_KEYSTORE_BASE64` secret set (Building, below), every debug build carries the
+same key and a newer one installs over the last, keeping the app's data. Without it, each run signs
+with a fresh debug key and a newer APK will not install over an older one ("App not installed"):
+uninstall first (the site's data in the app, such as a Home, goes with it, and the next install asks
+for the site address again). The first build after the secret is added also needs one uninstall.
 
 What to check on the first ride (none of this could be tried here: there is no Android SDK or phone
 in the build environment):
@@ -218,6 +220,14 @@ so it is fine as a public artifact. It uses no repository variables: the build n
 | `ROUTEMAKER_KEYSTORE_PASSWORD` | secret | its password |
 | `ROUTEMAKER_KEY_ALIAS` | secret | the key's alias |
 | `ROUTEMAKER_KEY_PASSWORD` | secret | the key's password |
+| `ROUTEMAKER_DEBUG_KEYSTORE_BASE64` | secret | optional: a steady key for debug builds only, `base64 -w0 debug.keystore` |
+
+The debug key uses Android's standard debug passwords (`android`) and alias (`androiddebugkey`), so it
+is one secret. Make it once with
+`keytool -genkeypair -v -keystore debug.keystore -storepass android -keypass android -alias androiddebugkey -dname "CN=Android Debug,O=Android,C=US" -keyalg RSA -keysize 2048 -validity 10000`.
+It never signs a release. Pull request builds use it too, so it is only as private as the branches
+that can open pull requests here; anyone holding it could make an APK that installs over a test
+build, so sideload only the workflow's own artifacts.
 
 A `release` run fails at once without the four secrets, writes the key to the runner's temporary
 directory only, and uploads a signed APK and an `.aab` for Play. Make the keystore once, keep it and
