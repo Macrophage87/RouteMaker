@@ -219,8 +219,8 @@ compared. A mile at your preferred level counts as 0.4, and one level away as 0.
 <a href="/about/stress.html">stress ratings in detail</a>.</li>
 <li><strong>Loop:</strong> plans a loop from your start, unless you turn the loop off.</li>
 <li><strong>Unrated trails</strong> count as level 2.</li>
-<li><strong>Wet trails:</strong> a trail mapped as closed when wet<sup class="cite"><a href="#ref-4" aria-label="source 4">[4]</a></sup> is never used. RouteMaker
-cannot know today's ground, so the trail panel links to MORE's trail conditions<sup class="cite"><a href="#ref-5" aria-label="source 5">[5]</a></sup>.</li>
+<li><strong>Wet trails:</strong> a trail mapped as closed when wet<sup class="cite"><a href="#ref-5" aria-label="source 5">[5]</a></sup> is never used. RouteMaker
+cannot know today's ground, so the trail panel links to MORE's trail conditions<sup class="cite"><a href="#ref-6" aria-label="source 6">[6]</a></sup>.</li>
 <li>One-way trails are ridden one way only.</li>
 </ul>
 <p>In Mountain Bike, trails up to your hardest level are drawn as lines to ride. Harder ones keep
@@ -305,7 +305,7 @@ busier roads than Default.</p>
 <text class="ts" x="470" y="410" text-anchor="middle">Both tagged: the harder level wins. Neither tagged: Not rated.</text>
 </svg>
 </div>
-<figcaption>S1 matches IMBA 1, S2 matches IMBA 2, and so on; the steepest three steps of mtb:scale share level 4<sup class="cite"><a href="#ref-1" aria-label="source 1">[1]</a><a href="#ref-2" aria-label="source 2">[2]</a><a href="#ref-10" aria-label="source 10">[10]</a></sup>.</figcaption>
+<figcaption>S1 matches IMBA 1, S2 matches IMBA 2, and so on; the steepest three steps of mtb:scale share level 4<sup class="cite"><a href="#ref-1" aria-label="source 1">[1]</a><a href="#ref-2" aria-label="source 2">[2]</a><a href="#ref-12" aria-label="source 12">[12]</a></sup>.</figcaption>
 </figure>
 <details class="more"><summary>More: Trail ratings and who may ride them</summary>
 <div class="more-body">
@@ -319,6 +319,23 @@ difficulty<sup class="cite"><a href="#ref-1" aria-label="source 1">[1]</a></sup>
 Association's trail difficulty ratings, the green, blue and black symbols seen at
 trailheads<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup>.</li>
 </ul>
+<h3 id="two-scales">Why there are two scales, and why they are merged</h3>
+<p>The two scales were made for different jobs:</p>
+<ul>
+<li><strong>mtb:scale</strong> comes from the Singletrail-Skala, a European scale for alpine
+singletrack<sup class="cite"><a href="#ref-1" aria-label="source 1">[1]</a></sup>. It rates only how technical the riding surface is in dry weather: S0 is a
+smooth gravel or dirt path, S1 has roots and loose stones, S2 bigger roots, steps and tight turns, and
+S3 to S6 are blocky, steep or exposed ground that few riders can ride. It says nothing about a trail's
+length, climbing or how easy it is to get lost.</li>
+<li><strong>The IMBA rating</strong> is the American trailhead system, borrowed from ski slopes: a
+green circle (easy), a blue square (more difficult), a black diamond (very difficult) and a double
+black diamond (extremely difficult)<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup>. It rates the whole trail as a ride, taking in its
+width, grade, surface and obstacles. It is what the signs at local trail systems show.</li>
+</ul>
+<p>Mappers around here use one tag, the other, or both, and they do not always agree. A route needs one
+answer to "is this trail within the hardest level I chose?", and the map needs one color per trail. So
+RouteMaker reads both onto one four-step scale, and when they disagree it takes the harder one, so a
+trail is never shown easier than a mapper rated it.</p>
 <p>The two scales overlap step for step at the easy end. The project compared them and set S0 equal
 to IMBA 0, S1 to IMBA 1, and so on up to S4 and IMBA 4. mtb:scale has two harder steps, S5 and S6,
 which IMBA does not, so S4 to S6 all become level 4.</p>
@@ -431,7 +448,7 @@ bikes are allowed is closed. The panel shows both, where mapped<sup class="cite"
 <text class="ts" x="508" y="320" text-anchor="middle">Unrated and Green trails: open to all three off-road ride types. Blue, Black, Red: Mountain Bike only.</text>
 </svg>
 </div>
-<figcaption>Each level has its own color and its own dash pattern, so color is never the only cue. A rating comes from OpenStreetMap's mtb:scale<sup class="cite"><a href="#ref-1" aria-label="source 1">[1]</a></sup> or IMBA rating<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup>, whichever is harder.<sup class="cite"><a href="#ref-10" aria-label="source 10">[10]</a></sup></figcaption>
+<figcaption>Each level has its own color and its own dash pattern, so color is never the only cue. A rating comes from OpenStreetMap's mtb:scale<sup class="cite"><a href="#ref-1" aria-label="source 1">[1]</a></sup> or IMBA rating<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup>, whichever is harder.<sup class="cite"><a href="#ref-12" aria-label="source 12">[12]</a></sup></figcaption>
 </figure>
 <p>Some trails stay closed to every ride type:</p>
 <ul>
@@ -487,12 +504,12 @@ show, a small key under the zoom buttons lists each look: Unrated, 1 Green, 2 Bl
 how easy the trail is to follow, its climbing rating and its hiking scale, where mapped<sup class="cite"><a href="#ref-3" aria-label="source 3">[3]</a></sup>.</li>
 <li><strong>Difficulty:</strong> its level, or "Not rated: no difficulty is mapped for this trail."</li>
 <li><strong>Elevation profile:</strong> heights every 98 ft [30 m] along this section (further
-apart on a long one), from USGS elevation data<sup class="cite"><a href="#ref-6" aria-label="source 6">[6]</a></sup>. It gives the length, the height gained and lost, and the steepest grade.</li>
+apart on a long one), from USGS elevation data<sup class="cite"><a href="#ref-7" aria-label="source 7">[7]</a></sup>. It gives the length, the height gained and lost, and the steepest grade.</li>
 <li><strong>Route through this trail:</strong> adds a via point on the trail. It is offered only when
 your ride type uses the trail. Otherwise the panel says which ride types do.</li>
 <li><strong>No traffic stress:</strong> a trail has no traffic, so its panel has no stress level and
 no way to suggest one.</li>
-<li>Where MORE has a page for the trail system, the panel links to it<sup class="cite"><a href="#ref-5" aria-label="source 5">[5]</a></sup>.</li>
+<li>Where MORE has a page for the trail system, the panel links to it<sup class="cite"><a href="#ref-6" aria-label="source 6">[6]</a></sup>.</li>
 </ul>
 
 </div></details>
@@ -528,7 +545,7 @@ the layer on, and its climb search uses the same climbs.</p>
 <text class="ts" x="20" y="262" text-anchor="start">The number is the climb&#x27;s category: 5 (smallest) to 1, then HC.</text>
 </svg>
 </div>
-<figcaption>The climb card and the list of climbs on your route say the surface and the steepness in words too.<sup class="cite"><a href="#ref-7" aria-label="source 7">[7]</a><a href="#ref-10" aria-label="source 10">[10]</a></sup></figcaption>
+<figcaption>The climb card and the list of climbs on your route say the surface and the steepness in words too.<sup class="cite"><a href="#ref-8" aria-label="source 8">[8]</a><a href="#ref-12" aria-label="source 12">[12]</a></sup></figcaption>
 </figure>
 <details class="more"><summary>More: The Climbs layer</summary>
 <div class="more-body">
@@ -545,6 +562,21 @@ trail is checked first, then gravel or dirt, then a paved path with no traffic. 
 road. The color says what bike suits it; it never changes the category.</li>
 <li><strong>The dashed line</strong> from zoom 12 is the climb itself, from its start to the top, in
 the same color. Summit symbols show from zoom 9.</li>
+</ul>
+<h3 id="climb-names">How a climb is named</h3>
+<p>Each climb is named from OpenStreetMap<sup class="cite"><a href="#ref-4" aria-label="source 4">[4]</a></sup> when the map is built: by its roads and, where
+it has one, the named hill or gap it climbs.</p>
+<ul>
+<li><strong>Roads:</strong> any named road (or route number, such as MD 77) that carries at least a
+quarter of the climb, in the order you ride them, at most two: "Snider Lane", "Hollow Road and Ridge
+Road".</li>
+<li><strong>The hill:</strong> a named gap, peak, hill or ridge the climb runs up, when its top is near
+the climb and the climb gets at least half way up to it. A gap wins over a peak, and a peak over a
+ridge.</li>
+<li><strong>Put together:</strong> "Foxville Road up Catoctin Mountain", or "Gapland Road to Crampton
+Gap" for a gap. The hill is left off when the road's name already says it.</li>
+<li><strong>Without a road name:</strong> "Sugarloaf Mountain climb", else "Climb near Thurmont" for
+the nearest town within 3 mi [5 km], else just its category, such as "Category 4 climb".</li>
 </ul>
 <h3 id="climb-counts">How many there are, with examples</h3>
 <p>The climbs data built on October 12, 2026 has 3,750 climbs. Most are small: nine in ten are
@@ -571,7 +603,7 @@ nearly all Category 5, many of them short climbs out of Rock Creek Park.</p>
 <h3>How a climb is found</h3>
 <ul>
 <li><strong>Heights:</strong> every way is sampled every 98 ft [30 m] on USGS 1 arc-second elevation
-data<sup class="cite"><a href="#ref-6" aria-label="source 6">[6]</a></sup>. Each way is read in both directions, and a climb against a one-way street is
+data<sup class="cite"><a href="#ref-7" aria-label="source 7">[7]</a></sup>. Each way is read in both directions, and a climb against a one-way street is
 dropped.</li>
 <li><strong>Breaks, not tops:</strong> a short dip or a flat stretch does not end a climb. A dip ends
 it only past a fifth of the height gained so far (at least 33 ft [10 m], at most 165 ft [50 m]). A
@@ -583,8 +615,13 @@ flat is listed as the wall.</li>
 can count. Garmin's minimum grade is 3%.</li>
 </ul>
 <h3>How a climb is rated</h3>
+<p>Climb categories come from bike racing. The Tour de France ranks the climbs on each stage,
+from Category 4, the smallest, to Category 1, and above those "hors catégorie" (HC), French for beyond
+category<sup class="cite"><a href="#ref-9" aria-label="source 9">[9]</a></sup>. Race organizers choose each climb's category by judgement. Strava and Garmin turned
+the idea into a formula, so that any climb anywhere can be categorized the same way, and RouteMaker
+uses their formula.</p>
 <p>A climb's score is its length in meters times its average grade in percent. This is the scale
-Strava and Garmin use; RouteMaker adds a Category 5<sup class="cite"><a href="#ref-7" aria-label="source 7">[7]</a></sup>. Length times grade comes to 100
+Strava and Garmin use; RouteMaker adds a Category 5<sup class="cite"><a href="#ref-8" aria-label="source 8">[8]</a></sup>. Length times grade comes to 100
 times the height gained in meters, so the category depends on the net gain. A climb scoring under
 4,000 is not a climb. For example, a climb of 1 mi [1.6 km] at 5% scores about 8,050: Category 4.</p>
 <figure id="fig-cats">
@@ -634,7 +671,7 @@ times the height gained in meters, so the category depends on the net gain. A cl
 <text class="ts" x="420.0" y="130" text-anchor="middle">Bottom: score = length in meters x average grade in percent. Top: height gained.</text>
 </svg>
 </div>
-<figcaption>Each category needs double the score of the one below it, except HC, which starts at 80,000. The dashed box is too small to be a climb<sup class="cite"><a href="#ref-7" aria-label="source 7">[7]</a></sup>.</figcaption>
+<figcaption>Each category needs double the score of the one below it, except HC, which starts at 80,000. The dashed box is too small to be a climb<sup class="cite"><a href="#ref-8" aria-label="source 8">[8]</a></sup>.</figcaption>
 </figure>
 <div class="table-wrap" tabindex="0" role="region" aria-label="Climb categories">
 <table>
@@ -663,7 +700,7 @@ on, or on Mountain Bike.</li>
 
 </div></details>
 <h2 id="topo">Topo lines</h2>
-<p>Topo lines are contour lines over the map, from USGS 1/3 arc-second elevation<sup class="cite"><a href="#ref-6" aria-label="source 6">[6]</a></sup>. They
+<p>Topo lines are contour lines over the map, from USGS 1/3 arc-second elevation<sup class="cite"><a href="#ref-7" aria-label="source 7">[7]</a></sup>. They
 show from zoom 10. The spacing follows the zoom:</p>
 <details class="more"><summary>More: Topo lines</summary>
 <div class="more-body">
@@ -674,7 +711,7 @@ show from zoom 10. The spacing follows the zoom:</p>
 <li>every 20 ft [6 m] from zoom 14.</li>
 </ul>
 <p>Every fifth line is a heavier index line, labeled in feet with meters in brackets. The brown look follows
-OpenTopoMap<sup class="cite"><a href="#ref-8" aria-label="source 8">[8]</a></sup>.</p>
+OpenTopoMap<sup class="cite"><a href="#ref-10" aria-label="source 10">[10]</a></sup>.</p>
 
 </div></details>
 <h2 id="layers">Layers each ride type turns on</h2>
@@ -717,7 +754,7 @@ OpenTopoMap<sup class="cite"><a href="#ref-8" aria-label="source 8">[8]</a></sup
 <text class="ts" x="670.0" y="207.5" text-anchor="middle">Off until you turn it on</text>
 </svg>
 </div>
-<figcaption>A ride type turns a layer on when you switch to it from a ride type that does not. You can still turn the layer off, and RouteMaker does not save that as your own choice.<sup class="cite"><a href="#ref-10" aria-label="source 10">[10]</a></sup></figcaption>
+<figcaption>A ride type turns a layer on when you switch to it from a ride type that does not. You can still turn the layer off, and RouteMaker does not save that as your own choice.<sup class="cite"><a href="#ref-12" aria-label="source 12">[12]</a></sup></figcaption>
 </figure>
 <p>All three layers are under Layers, Trails and terrain, for every ride type. Each has its key
 under its switch.</p>
@@ -783,7 +820,7 @@ the roles above stay the same.</p>
 <text class="ts" x="246.0" y="248" text-anchor="start">Mountain Bike 0</text>
 </svg>
 </div>
-<figcaption>Where each ride type starts. You can move both sliders. Gravel and Mountain Goat plan as a cyclocross bike, which takes gravel in its stride; Mountain Bike plans as a mountain bike, which takes every surface<sup class="cite"><a href="#ref-9" aria-label="source 9">[9]</a><a href="#ref-10" aria-label="source 10">[10]</a></sup>.</figcaption>
+<figcaption>Where each ride type starts. You can move both sliders. Gravel and Mountain Goat plan as a cyclocross bike, which takes gravel in its stride; Mountain Bike plans as a mountain bike, which takes every surface<sup class="cite"><a href="#ref-11" aria-label="source 11">[11]</a><a href="#ref-12" aria-label="source 12">[12]</a></sup>.</figcaption>
 </figure>
 <details class="more"><summary>More: Starting settings and sliders</summary>
 <div class="more-body">
@@ -819,13 +856,15 @@ draws in the road color.</p>
   <li id="ref-1">OpenStreetMap wiki, Key:mtb:scale, the mountain-bike difficulty scale S0 to S6. <a href="https://wiki.openstreetmap.org/wiki/Key:mtb:scale">wiki.openstreetmap.org</a></li>
   <li id="ref-2">OpenStreetMap wiki, Key:mtb:scale:imba, the International Mountain Bicycling Association (IMBA) trail difficulty rating as mapped in OpenStreetMap. <a href="https://wiki.openstreetmap.org/wiki/Key:mtb:scale:imba">wiki.openstreetmap.org</a>; IMBA: <a href="https://www.imba.com/">imba.com</a></li>
   <li id="ref-3">OpenStreetMap wiki pages for the trail details RouteMaker reads: <a href="https://wiki.openstreetmap.org/wiki/Key:surface">surface</a>, <a href="https://wiki.openstreetmap.org/wiki/Key:smoothness">smoothness</a>, <a href="https://wiki.openstreetmap.org/wiki/Key:width">width</a>, <a href="https://wiki.openstreetmap.org/wiki/Key:trail_visibility">trail_visibility</a>, <a href="https://wiki.openstreetmap.org/wiki/Key:mtb:scale">mtb:scale:uphill</a> and <a href="https://wiki.openstreetmap.org/wiki/Key:sac_scale">sac_scale</a></li>
-  <li id="ref-4">OpenStreetMap wiki, Conditional restrictions (for example <code>bicycle:conditional=no @ wet</code>). <a href="https://wiki.openstreetmap.org/wiki/Conditional_restrictions">wiki.openstreetmap.org</a></li>
-  <li id="ref-5">Mid-Atlantic Off-Road Enthusiasts (MORE), trail guide and trail conditions. <a href="https://more-mtb.org/collections/trails">more-mtb.org</a></li>
-  <li id="ref-6">U.S. Geological Survey, 3D Elevation Program (3DEP), public domain. Route and trail heights and climbs use the 1 arc-second tiles; the topo lines use the 1/3 arc-second tiles. <a href="https://www.usgs.gov/3d-elevation-program">usgs.gov/3d-elevation-program</a></li>
-  <li id="ref-7">Climb categories by length times grade, the scale Strava and Garmin ClimbPro use, with a Category 5 added. <a href="https://support.strava.com/hc/en-us/articles/216917057-Climb-Categorization">Strava: Climb Categorization</a>; <a href="https://www8.garmin.com/manuals/webhelp/GUID-08ACA9FC-DEE6-4C8D-8A95-F62181C512E9/EN-US/GUID-EBAEC138-B55A-4730-8C10-DF21A40302A9.html">Garmin ClimbPro manual</a></li>
-  <li id="ref-8">OpenTopoMap, the look the topo lines follow (brown contours, heavier index lines). Nothing of its style code is copied. <a href="https://opentopomap.org/">opentopomap.org</a></li>
-  <li id="ref-9">Valhalla bicycle costing options (<code>bicycle_type</code>, <code>use_roads</code>, <code>use_hills</code>, <code>avoid_bad_surfaces</code>). <a href="https://valhalla.github.io/valhalla/api/turn-by-turn/api-reference/#bicycle-costing-options">valhalla.github.io</a></li>
-  <li id="ref-10">RouteMaker's plan and code for mountain biking, topo and climbs: <a href="https://github.com/Macrophage87/RouteMaker/blob/main/docs/MTB-TOPO-PLAN.md">docs/MTB-TOPO-PLAN.md</a>; ride type settings in <a href="https://github.com/Macrophage87/RouteMaker/blob/main/src/core/presets.py">src/core/presets.py</a></li>
+  <li id="ref-4">OpenStreetMap wiki pages for the names climbs are given: <a href="https://wiki.openstreetmap.org/wiki/Key:natural">natural</a> (peaks, hills, ridges and gaps), <a href="https://wiki.openstreetmap.org/wiki/Key:mountain_pass">mountain_pass</a> and <a href="https://wiki.openstreetmap.org/wiki/Key:place">place</a></li>
+  <li id="ref-5">OpenStreetMap wiki, Conditional restrictions (for example <code>bicycle:conditional=no @ wet</code>). <a href="https://wiki.openstreetmap.org/wiki/Conditional_restrictions">wiki.openstreetmap.org</a></li>
+  <li id="ref-6">Mid-Atlantic Off-Road Enthusiasts (MORE), trail guide and trail conditions. <a href="https://more-mtb.org/collections/trails">more-mtb.org</a></li>
+  <li id="ref-7">U.S. Geological Survey, 3D Elevation Program (3DEP), public domain. Route and trail heights and climbs use the 1 arc-second tiles; the topo lines use the 1/3 arc-second tiles. <a href="https://www.usgs.gov/3d-elevation-program">usgs.gov/3d-elevation-program</a></li>
+  <li id="ref-8">Climb categories by length times grade, the scale Strava and Garmin ClimbPro use, with a Category 5 added. <a href="https://support.strava.com/hc/en-us/articles/216917057-Climb-Categorization">Strava: Climb Categorization</a>; <a href="https://www8.garmin.com/manuals/webhelp/GUID-08ACA9FC-DEE6-4C8D-8A95-F62181C512E9/EN-US/GUID-EBAEC138-B55A-4730-8C10-DF21A40302A9.html">Garmin ClimbPro manual</a></li>
+  <li id="ref-9">Mountains classification in the Tour de France, and hors catégorie, Wikipedia. <a href="https://en.wikipedia.org/wiki/Mountains_classification_in_the_Tour_de_France">en.wikipedia.org</a>; <a href="https://en.wikipedia.org/wiki/Hors_cat%C3%A9gorie">en.wikipedia.org</a></li>
+  <li id="ref-10">OpenTopoMap, the look the topo lines follow (brown contours, heavier index lines). Nothing of its style code is copied. <a href="https://opentopomap.org/">opentopomap.org</a></li>
+  <li id="ref-11">Valhalla bicycle costing options (<code>bicycle_type</code>, <code>use_roads</code>, <code>use_hills</code>, <code>avoid_bad_surfaces</code>). <a href="https://valhalla.github.io/valhalla/api/turn-by-turn/api-reference/#bicycle-costing-options">valhalla.github.io</a></li>
+  <li id="ref-12">RouteMaker's plan and code for mountain biking, topo and climbs: <a href="https://github.com/Macrophage87/RouteMaker/blob/main/docs/MTB-TOPO-PLAN.md">docs/MTB-TOPO-PLAN.md</a>; ride type settings in <a href="https://github.com/Macrophage87/RouteMaker/blob/main/src/core/presets.py">src/core/presets.py</a></li>
 </ol>
 </main>
 <footer>
