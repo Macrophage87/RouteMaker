@@ -111,8 +111,9 @@ function stable(value: unknown): unknown {
  * the first answer. Unlike the link's key it holds the stations, so a pinned re-plan never matches it.
  */
 export function sentPlanKey(points: readonly LonLat[], preset: string, dials: object): string {
-  // A dock ending is the default, sent or not (an option's press sets it), so it is the same plan either way.
-  const { ending, ...rest } = dials as { ending?: unknown };
+  // A dock ending is the default, sent or not (an option's press sets it), so it is the same plan either way. Go's
+  // closuresNow (v0.9.1) is left out as the plan's key leaves it out: a plan made in Plan is the same plan in Go.
+  const { ending, closuresNow: _now, ...rest } = dials as { ending?: unknown; closuresNow?: unknown };
   return JSON.stringify(stable([points, preset, ending === undefined || ending === "dock" ? rest : { ...rest, ending }]));
 }
 
