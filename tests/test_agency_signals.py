@@ -433,3 +433,14 @@ def test_vdot_rows_read_the_coded_values_names_too() -> None:
     rows, dropped = agency_signals.vdot_rows(doc)
     assert [row["id"] for row in rows] == ["vdot:1"]
     assert dropped == {"STATUS 4-Retired": 1}
+
+
+def test_a_report_only_source_is_counted_but_never_marked() -> None:
+    """VDOT's 2023 snapshot: OSM is likely the better record (the owner, 2026-10-19)."""
+    assert "vdot" in agency_signals.REPORT_ONLY
+    stale = Signal("vdot:1", "vdot", *at(0, 0))
+    result = agency_signals.match([stale], crossroads(), {})
+    assert result.nodes == set()
+    assert result.would_add == {"vdot": 1} and result.added == {}
+    assert agency_signals.report_csv(result).splitlines()[1].split(",")[3] == "would add"
+    assert "vdot (report only): 1 OSM lacks" in agency_signals.summary(result)

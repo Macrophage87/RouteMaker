@@ -4760,7 +4760,7 @@ map servers. Five lists, one file (`reference/signals.json`):
 | Source | Layer | Read by the rebuild |
 |---|---|---|
 | DDOT Traffic Signals (item `ca6ad078a6f6415389e220704b7698ac`) | `https://maps2.dcgis.dc.gov/DCGIS/rest/services/DCGIS_DATA/Transportation_Signs_Signals_Lights_WebMercator/MapServer/170` | yes (CC BY 4.0) |
-| VDOT HMMS Traffic Signals, 2023 snapshot (item `0d4c36cd061f4be280691d9ff6d36419`; all of Virginia, Fairfax included) | `https://services.arcgis.com/p5v98VHDX9Atv3l7/arcgis/rest/services/HMMS_Traffic_Signals_Flat_NEW/FeatureServer/0` | yes (VDOT's portal terms, the owner 2026-10-19) |
+| VDOT HMMS Traffic Signals, 2023 snapshot (item `0d4c36cd061f4be280691d9ff6d36419`; all of Virginia, Fairfax included) | `https://services.arcgis.com/p5v98VHDX9Atv3l7/arcgis/rest/services/HMMS_Traffic_Signals_Flat_NEW/FeatureServer/0` | report only: listed in the report, never marked (2023 snapshot; OSM likely better, the owner 2026-10-19) |
 | City of Alexandria, signalised intersections | `https://geoportal.alexandriava.gov/server/rest/services/Hosted/Smart_Mobility_Data/FeatureServer/9` | yes (CC0) |
 | City of Alexandria, HAWKs | the same service, layer `0` | yes (CC0) |
 | MDOT SHA Traffic Signals (all of Maryland but Baltimore City) | `https://gisportalapps.sha.maryland.gov/arcgis/rest/services/UtilitiesCommunication/TrafficSignals_Maryland_MDOTSHA/MapServer/0` | yes (Maryland iMAP's terms, the owner 2026-10-19) |
@@ -4822,6 +4822,7 @@ installed; the rebuild logs `... signals installed but not read` and leaves it o
    | Line | What to look for |
    |---|---|
    | `agency signals: ddot: N added, N already in OSM, N with no junction in reach; ...` | "added" is how many signals OSM was missing; "no junction in reach" should be small (beyond the extract, or the junction mapped more than 20 m from the agency's point) |
+   | `vdot (report only): N OSM lacks, ...` | for comparison only; VDOT's rows read `would add` in the report and nothing is marked |
    | `.../signals.json is absent, so no agency signal list is read` | should not appear once step 2 has run |
    | `... arlington signals installed but not read, their licence not yet confirmed` | expected while Arlington's terms are pending |
 
