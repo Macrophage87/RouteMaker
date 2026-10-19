@@ -10,6 +10,7 @@ import { startDials } from "./dials.ts";
 import {
   differsEnough,
   keptNeighbours,
+  MAX_ROWS,
   MIN_MOVED_M,
   movedBetweenTiers,
   neighbourDials,
@@ -77,14 +78,20 @@ test("an option the same as one of the routes to choose from is dropped, and the
   const answer = { ...OWN, candidates: [{ ...DIRECT }] };
   assert.deepEqual(keptNeighbours(answer, [option("direct", DIRECT)], "default"), [], "already in the choice");
   const calmer = route({ duration_s: 1980, s: [4448, 2000, 0, 0] });
-  const three = { ...OWN, candidates: [route({ duration_s: 2400 }), route({ duration_s: 2600 })] };
-  assert.deepEqual(
-    keptNeighbours(three, [option("direct", DIRECT), option("calmer", calmer)], "default").map((r) => r.neighbour?.kind),
-    ["direct"],
-    "three routes already: one option",
-  );
-  const four = { ...three, candidates: [...(three.candidates ?? []), route({ duration_s: 2800 })] };
-  assert.deepEqual(keptNeighbours(four, [option("direct", DIRECT), option("calmer", calmer)], "default"), [], "four already: none");
+  const both = [option("direct", DIRECT), option("calmer", calmer)];
+  const [r2, r3, r4] = [route({ duration_s: 2400 }), route({ duration_s: 2600 }), route({ duration_s: 2800 })];
+  // The owner, 2026-10-19 ("I never see the options"): a full choice makes room for them, from its last routes.
+  const four = { ...OWN, candidates: [r2, r3, r4] };
+  const kept = keptNeighbours(four, both, "default");
+  assert.deepEqual(kept.map((r) => r.neighbour?.kind), ["direct", "calmer"], "four already: both still offered");
+  const picked = withNeighbours(four, kept);
+  assert.equal(picked?.candidates?.length, MAX_ROWS - 1);
+  assert.deepEqual(picked?.candidates?.slice(0, 1), [r2], "the router's first other route stays, the last two give way");
+  // A route the rider has already chosen stays where it is, and the rows before it: only what is left goes to them.
+  const chosenThird = keptNeighbours(four, both, "default", undefined, 2);
+  assert.deepEqual(chosenThird.map((r) => r.neighbour?.kind), ["direct"]);
+  assert.deepEqual(withNeighbours(four, chosenThird)?.candidates?.slice(0, 2), [r2, r3]);
+  assert.deepEqual(keptNeighbours(four, both, "default", undefined, 3), [], "the last chosen: nothing gives way");
 });
 
 test("a route that gains nothing has no line, and is not offered", () => {

@@ -405,9 +405,19 @@ export function App() {
   // Go's More direct and Calmer (lib/neighbours.ts): asked for once the route shown is final, kept with the answer they
   // are for, and offered after its own routes to choose from. The answer itself never changes for them, so its route
   // is not said again and the choice is not reset when they come.
-  const [neighbours, setNeighbours] = useState<{ answer: RouteResponse; preset: PresetId; dials: Dials; options: NeighbourOption[] } | null>(null);
+  // `keepRouter`: the routes to choose from the rider had already chosen among when they came, which stay in place.
+  const [neighbours, setNeighbours] = useState<{
+    answer: RouteResponse;
+    preset: PresetId;
+    dials: Dials;
+    options: NeighbourOption[];
+    keepRouter: number;
+  } | null>(null);
   const kept = useMemo(
-    () => (neighbours && answer && neighbours.answer === answer ? keptNeighbours(answer, neighbours.options, neighbours.preset, neighbours.dials) : []),
+    () =>
+      neighbours && answer && neighbours.answer === answer
+        ? keptNeighbours(answer, neighbours.options, neighbours.preset, neighbours.dials, neighbours.keepRouter)
+        : [],
     [neighbours, answer],
   );
   const picked = useMemo(() => withNeighbours(answer, kept), [answer, kept]);
@@ -851,8 +861,13 @@ export function App() {
   // Go's first route, then a better one (v0.7.0, "Faster routing"; lib/progressive.ts): what the full plan reads when
   // it comes (the route shown, and whether the rider has pressed Start), and the route sentence held while a full
   // plan replaces its first route, so the swap is said once, by its own line.
-  const shownNow = useRef<{ answer: RouteResponse | null; riding: boolean; startAsked: boolean }>({ answer: null, riding: false, startAsked: false });
-  shownNow.current = { answer, riding, startAsked: rideAsk };
+  const shownNow = useRef<{ answer: RouteResponse | null; riding: boolean; startAsked: boolean; choice: number }>({
+    answer: null,
+    riding: false,
+    startAsked: false,
+    choice: 0,
+  });
+  shownNow.current = { answer, riding, startAsked: rideAsk, choice };
   const routeSaidNow = useRef("");
   const [refinedHeld, setRefinedHeld] = useState<{ route: RouteResponse; said: string } | null>(null);
   // Go's early start (step 4): a request made before the tap, kept for the tap that makes the same request.
@@ -986,7 +1001,7 @@ export function App() {
       onAfter: (plan: Plan, result: NeighboursResult) => {
         const now = shownNow.current;
         if (!result.ok || !now.answer || now.answer.provisional || now.riding) return;
-        setNeighbours({ answer: now.answer, preset: plan.preset, dials: plan.dials, options: result.options });
+        setNeighbours({ answer: now.answer, preset: plan.preset, dials: plan.dials, options: result.options, keepRouter: now.choice });
       },
     });
   }

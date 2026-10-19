@@ -2728,8 +2728,8 @@ def _route_answer(request, body: RouteIn, response: HttpResponse):
 
 # --- Go's "More direct" and "Calmer" (the owner, 2026-10-16) --------------------------------
 #
-# POST /api/route/neighbours plans the rider's trip one notch more traffic tolerant and one
-# notch calmer than the rider's own setting (`presets.stress_notches`), for Go to offer beside
+# POST /api/route/neighbours plans the rider's trip a step more traffic tolerant and a step
+# calmer than the rider's own setting (`presets.stress_notches`), for Go to offer beside
 # the rider's own route. Go asks once its own route is shown, and never waits on the answer:
 # a plan or a ride's re-route asked for meanwhile is sent at once (frontend
 # lib/routeScheduler.ts). So this request never takes a slot a plan needs: it has routing's
@@ -2750,7 +2750,7 @@ NEIGHBOURS_COST = 2
 
 class NeighbourOut(Schema):
     kind: Literal["direct", "calmer"] = Field(
-        description="`direct`: one notch more traffic tolerant. `calmer`: one notch calmer."
+        description="`direct`: two notches more traffic tolerant. `calmer`: one notch calmer."
     )
     stress: int = Field(description="The traffic slider's position it was planned at.")
     route: RouteOut
@@ -2779,7 +2779,7 @@ class NeighboursOut(Schema):
         500: ErrorOut,
         503: BusyOut,
     },
-    summary="The same trip one notch more direct and one notch calmer (Go's route options)",
+    summary="The same trip a step more direct and a step calmer (Go's route options)",
     by_alias=True,
 )
 @decorate_view(
