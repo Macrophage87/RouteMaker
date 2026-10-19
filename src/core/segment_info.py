@@ -31,7 +31,16 @@ from django.core.signals import request_finished, request_started
 from django.db import connection
 
 from pipeline.schema import validate_schema_name
-from routemaker import agency_lts, flow, more_links, mtbmode, scenic, singletrack, trail_facts
+from routemaker import (
+    agency_lts,
+    flow,
+    hazards,
+    more_links,
+    mtbmode,
+    scenic,
+    singletrack,
+    trail_facts,
+)
 from routemaker.describe import UNNAMED_PATH, UNNAMED_ROAD
 from routemaker.stress import RURAL_EXPRESSWAY_PREFIX, USE_SIDEPATH_RULE
 
@@ -279,6 +288,7 @@ OPTIONAL_COLUMNS = (
     "stress_ratings",
     "sidepath_name",
     "scenic",
+    "hazard",
     "trail_tags",
 )
 REQUIRED_COLUMNS = (
@@ -875,6 +885,9 @@ def riding_rows(row: dict) -> list[dict]:
             )
         )
     rows.append(_row("Surface", surface_words(row), OSM))
+    hazard = hazards.words(row.get("hazard"))
+    if hazard:
+        rows.append(_row("Watch for", hazard, hazards.credits(row.get("hazard"))))
     penalty = surface_penalty_words(row)
     if penalty:
         rows.append(_row("Surface penalty", penalty, OWNER))
@@ -1242,6 +1255,10 @@ def _summary_rows(row: dict, router: dict, open_: bool | None) -> list[dict]:
     designations = scenic_text(row)
     if designations:
         add("scenic", "Scenic", designations)
+    # v0.10.0's hazard symbols, in words, so the map's symbol is never the only cue.
+    hazard = hazards.words(row.get("hazard"))
+    if hazard:
+        add("hazard", "Watch for", hazard)
     unpaved = row.get("is_unpaved")
     rough = bool(row.get("is_rough"))
     # A mountain-bike trail says its surface as mapped ("Dirt", "Rock"), and how smooth,

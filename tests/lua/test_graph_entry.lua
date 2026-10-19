@@ -1006,6 +1006,15 @@ check("and the derived tag is stripped", pci_poor["rm:pci"] == nil)
 local _, pci_none = transform_way({ highway = "residential", surface = "asphalt" })
 check("a street with no rm:pci keeps its surface", pci_none.surface == "asphalt", pci_none.surface)
 
+-- `rm:hazard` (v0.10.0): a cobbled or railed street reaches the graph priced as LTS 4.
+local _, hazard_way = transform_way({ highway = "residential", maxspeed = "25 mph",
+  ["rm:stress_tier"] = "1", ["rm:hazard"] = "yes" })
+local _, calm_way = transform_way({ highway = "residential", maxspeed = "25 mph", ["rm:stress_tier"] = "1" })
+check("rm:hazard=yes reaches the graph with the stress penalty",
+  hazard_way.bicycle == remap.STRESS_PENALTY_BICYCLE and calm_way.bicycle ~= remap.STRESS_PENALTY_BICYCLE,
+  hazard_way.bicycle)
+check("and the derived tag is stripped", hazard_way["rm:hazard"] == nil)
+
 -- FOLLOWUP-SIGNAL-DERIVE, through the entry point: the remap's one permitted
 -- node class write lands, and the mark that asked for it does not reach upstream.
 local signalled = transform_node({ highway = "crossing", crossing = "traffic_signals" })

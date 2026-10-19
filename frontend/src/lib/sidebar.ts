@@ -67,7 +67,7 @@ export const BAR_ITEMS: readonly BarItem[] = [
   { id: "layers", label: "Layers", opens: "layers", description: "Opens the map layers and their switches; the legend is behind its Legend button." },
   { id: "suggest", label: "Suggest", opens: "suggest", description: "Opens the ways to suggest a change to the map, or report a problem to DC 311." },
   { id: "gpx", label: SAVE_LOAD, opens: "gpx", description: "Opens Save and load: save or share the route, find your routes, or open or export a route file." },
-  { id: "settings", label: "Settings", opens: "settings", description: "Opens the settings: display, Ride mode and your account." },
+  { id: "settings", label: "Settings", opens: "settings", description: "Opens the settings: My Go (Home, ride type, Open in), riding, display and your account." },
 ];
 
 /** The sheets a bar button counts as its own: Layers holds the legend, Suggest the review. */

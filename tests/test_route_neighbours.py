@@ -29,24 +29,22 @@ PATH = "/api/route/neighbours"
 
 
 class TestNotches:
-    def test_default_goes_two_bands_more_direct_and_onto_the_calm_search_calmer(self) -> None:
-        # The owner, 2026-10-19: "maybe the steps need to be increased". Low-stress (80) plans
-        # what Default (70) does, so Calmer steps over it.
-        assert presets.stress_notches("default", 70) == (25, 90)
+    def test_default_goes_two_bands_more_direct_and_to_the_top_calmer(self) -> None:
+        # The owner, 2026-10-19: "the main route, then the more direct route, and the
+        # trailmaxxed route (use the highest setting, but pick one)".
+        assert presets.stress_notches("default", 70) == (25, 100)
 
-    def test_no_option_is_planned_at_low_stress_from_default_or_the_other_way(self) -> None:
-        assert presets.STRESS_TODAYS_TOP not in presets.stress_notches("default", 70)
-        assert presets.STRESS_DEFAULT_AT not in presets.stress_notches("bikeshare", 80)
+    def test_no_more_direct_is_planned_at_low_stress_from_default_or_the_other_way(self) -> None:
+        assert presets.stress_notches("default", 70)[0] != presets.STRESS_TODAYS_TOP
+        assert presets.stress_notches("bikeshare", 80)[0] != presets.STRESS_DEFAULT_AT
 
-    def test_a_position_between_notches_takes_the_notch_on_each_side(self) -> None:
-        assert presets.stress_notches("default", 55) == (25, 70)
+    def test_a_position_between_notches(self) -> None:
+        assert presets.stress_notches("default", 55) == (25, 100)
         assert presets.stress_notches("default", 97) == (90, 100)
 
     def test_the_most_tolerant_end_has_no_more_direct(self) -> None:
-        assert presets.stress_notches("default", 0) == (None, 25)
-        # Below the lowest notch counts as it: the calmer side is a real step up, not 10.
-        assert presets.stress_notches("default", 5) == (None, 25)
-        assert presets.stress_notches("default", 10) == (None, 25)
+        assert presets.stress_notches("default", 0) == (None, 100)
+        assert presets.stress_notches("default", 10) == (None, 100)
 
     def test_the_calmest_end_has_no_calmer(self) -> None:
         assert presets.stress_notches("trailmaxxing", 100) == (90, None)
@@ -55,20 +53,20 @@ class TestNotches:
     def test_more_direct_steps_one_notch_off_the_calm_search(self) -> None:
         # Two from Default would skip it: the calm search's own steps are large already.
         assert presets.stress_notches("default", 90) == (70, 100)
-        assert presets.stress_notches("default", 85) == (70, 90)
+        assert presets.stress_notches("default", 85) == (70, 100)
 
     def test_more_direct_takes_the_farthest_notch_where_fewer_than_two_are_left(self) -> None:
-        assert presets.stress_notches("default", 25) == (10, 40)
+        assert presets.stress_notches("default", 25) == (10, 100)
 
     def test_novice_never_goes_more_direct_than_low_stress(self) -> None:
         assert presets.stress_notches(presets.NOVICE, 100) == (90, None)
         assert presets.stress_notches(presets.NOVICE, 90) == (80, 100)
-        assert presets.stress_notches(presets.NOVICE, 80) == (None, 90)
+        assert presets.stress_notches(presets.NOVICE, 80) == (None, 100)
         # A Novice rider who moved the slider lower is offered nothing more direct still.
         assert presets.stress_notches(presets.NOVICE, 40)[0] is None
 
-    def test_fast_never_goes_calmer_than_direct(self) -> None:
-        assert presets.stress_notches("fast", 10) == (None, 25)
+    def test_fast_has_no_trailmaxxed(self) -> None:
+        assert presets.stress_notches("fast", 10) == (None, None)
         assert presets.stress_notches("fast", 25) == (10, None)
         assert presets.stress_notches("fast", 70) == (25, None)
 
@@ -81,7 +79,7 @@ class TestNotches:
     def test_plain_bikeshare_has_notches(self) -> None:
         # The owner, 21:21: "You can put it on bikeshare, but the multimodal trips will have
         # way too many options".
-        assert presets.stress_notches("bikeshare", presets.BIKESHARE_STRESS) == (40, 90)
+        assert presets.stress_notches("bikeshare", presets.BIKESHARE_STRESS) == (40, 100)
 
     def test_every_notch_is_a_slider_step_inside_the_slider(self) -> None:
         for notch in presets.STRESS_NOTCHES:
@@ -117,14 +115,14 @@ class TestEndpoint:
         assert answer["stress"] == 70
         assert [(o["kind"], o["stress"]) for o in answer["options"]] == [
             ("direct", 25),
-            ("calmer", 90),
+            ("calmer", 100),
         ]
         for option in answer["options"]:
             assert option["route"]["geometry"]["type"] == "LineString"
             # A route alone: no routes to choose from looked for, never a first route.
             assert option["route"]["candidates"] is None
             assert option["route"]["provisional"] is False
-        assert use_roads_sent(fake) == [presets.use_roads_for(90), presets.use_roads_for(25)]
+        assert use_roads_sent(fake) == [presets.use_roads_for(100), presets.use_roads_for(25)]
 
     def test_the_riders_own_setting_is_not_planned_again(self, client, segments, router) -> None:  # noqa: F811
         fake = router(standard_router())
@@ -134,7 +132,7 @@ class TestEndpoint:
     def test_an_end_of_the_slider_has_one_option(self, client, segments, router) -> None:  # noqa: F811
         router(standard_router())
         answer = post(client, body_for(stress=0)).json()
-        assert [(o["kind"], o["stress"]) for o in answer["options"]] == [("calmer", 25)]
+        assert [(o["kind"], o["stress"]) for o in answer["options"]] == [("calmer", 100)]
 
     @pytest.mark.parametrize("preset", ["mass-ride", "bike-transit"])
     def test_no_options_and_no_router_call_where_none_are_offered(
@@ -161,7 +159,7 @@ class TestEndpoint:
         planned = api._planned
 
         def failing(body, *args):
-            if body.stress == 90:
+            if body.stress == 100:
                 raise RuntimeError("router down")
             return planned(body, *args)
 
@@ -183,7 +181,7 @@ class TestBikeshare:
         response = post(client, bikeshare_body(**docks))
         assert response.status_code == 200, response.content
         options = response.json()["options"]
-        assert [(o["kind"], o["stress"]) for o in options] == [("direct", 40), ("calmer", 90)]
+        assert [(o["kind"], o["stress"]) for o in options] == [("direct", 40), ("calmer", 100)]
         for option in options:
             plan = option["route"]["bikeshare"]
             assert plan["start"]["station_id"] == docks["pickup_station"]

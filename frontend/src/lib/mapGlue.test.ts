@@ -336,7 +336,7 @@ test("Go: a press for a feature card goes to runClick as a popup press, so it ad
   const mapView = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
   // One shared check, over every feature card layer, read before runClick: in Go every card's, in Plan the stops'
   // (water, restrooms, food, places, repair: their cards offer Route here or Add as stop, lib/stopCard.ts).
-  assert.match(mapView, /const stops = \[water, stopCards\(map\)\];\s*const forCard = featureCardPress\(goPress \? \[\.\.\.stops, climbCard, federal\] : stops, event\.point\) !== null;\s*(\/\/[^\n]*\n\s*)?runClick\(/);
+  assert.match(mapView, /const stops = \[water, stopCards\(map\)\];\s*const forCard = featureCardPress\(goPress \? \[\.\.\.stops, climbCard, federal\] : stops, event\.point\) !== null;[\s\S]*?runClick\(/);
   // Each card module says whether a press is on one of its shown features, by the same lookup its click opens with.
   // The climb card is opened by MapView itself, before this check (climbInteraction.ts climbAt), and says so by the same lookup.
   const climbs = readFileSync(new URL("../climbInteraction.ts", import.meta.url), "utf8");

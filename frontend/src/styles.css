@@ -240,6 +240,9 @@ button.access-link {
   min-height: 0;
   overflow-y: auto;
   padding: 4px 14px 10px;
+  /* A sheet's header sticks to the top: a control the focus returns to (a dialog's opener) is scrolled clear of it,
+     not left half under it. */
+  scroll-padding-top: 64px;
 }
 
 .panel-body[hidden] {
@@ -1238,6 +1241,11 @@ button.secondary {
 
   .panel.closed {
     max-height: none;
+  }
+
+  /* Settings on a phone: the whole height, not half of it (Settings tidy, 2026-10-19); the map is not used there. */
+  .panel.open:not(.go-panel):has(#sheet-settings:not([hidden])) {
+    max-height: calc(100% - 8px);
   }
 
   .panel-toggle {
@@ -2354,6 +2362,16 @@ fieldset.candidates legend {
 
 .candidate-name {
   font-weight: 600;
+}
+
+/* Go: the route's colour on the map (lib/routeChoice.ts), a short thick line before its name. */
+.candidate-swatch {
+  display: inline-block;
+  width: 18px;
+  height: 6px;
+  margin-right: 6px;
+  vertical-align: middle;
+  border-radius: 3px;
 }
 
 .candidate-line {
@@ -4952,6 +4970,20 @@ details.zoom-notes {
     max-height: calc(100% - 64px);
   }
 
+  /* Go's Menu (the Settings sheet) opens at full height unless the rider shrank the sheet to a peek. */
+  .panel.go-panel.go-half:has(#sheet-settings:not([hidden])) {
+    max-height: calc(100% - 64px);
+  }
+
+  .app.go-mode:has(.go-destination) .panel.go-panel.go-half:has(#sheet-settings:not([hidden])) {
+    max-height: calc(100% - 114px);
+  }
+
+  /* The map's credits and scale sit on the panel's top edge: with Settings covering the map, they are not shown. */
+  .app:has(.panel.open:not(.go-peek) #sheet-settings:not([hidden])) .maplibregl-ctrl-bottom-right {
+    visibility: hidden;
+  }
+
   /* With the destination line under Go's bar, the bar is taller (review UI-3; the desktop rule below). */
   .app.go-mode:has(.go-destination) .panel.go-panel.go-full {
     max-height: calc(100% - 114px);
@@ -7021,7 +7053,6 @@ details.fold > summary .icon {
   justify-self: end;
   margin-left: 0;
 }
-.my-go .setting-value,
 .assistant-key .setting-value {
   margin-left: 0.4em;
   font-weight: normal;
@@ -7059,6 +7090,81 @@ details.fold > summary .icon {
 }
 .settings-group > h3 {
   margin-bottom: 6px;
+}
+
+/*
+ * Settings tidy (Stephen 2026-10-19: "still very clunky"): every setting is one row, its name on the left and its
+ * control in one column on the right (a switch's On/Off, a picker of one width, Change), the (i) or its spacer at
+ * the end, so the controls line up down the sheet. Each group is set off by a rule.
+ */
+#sheet-settings :is(.settings-group, .install-offer, .menu-pages) + :is(.settings-group, .install-offer) {
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+#sheet-settings :is(.settings-group, .install-offer) h3 {
+  margin: 4px 0;
+  font-size: 0.85rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+#sheet-settings .setting-row {
+  margin-bottom: 4px;
+}
+#sheet-settings .weight-row .setting-line {
+  flex-wrap: nowrap;
+}
+#sheet-settings .delete-account {
+  margin: 4px 0;
+}
+#sheet-settings .setting-row .switch {
+  flex: 1 1 auto;
+  justify-content: space-between;
+  padding: 4px 0;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  text-align: start;
+}
+#sheet-settings .setting-row .select-setting select {
+  flex: 0 0 11rem;
+  width: 11rem;
+}
+#sheet-settings .contrast-row {
+  grid-template-columns: 1fr auto;
+}
+#sheet-settings .contrast-row .switch {
+  width: 100%;
+}
+#sheet-settings .weight-row .weight-setting {
+  flex: 1 1 auto;
+  flex-wrap: nowrap;
+}
+#sheet-settings .weight-row .weight-line {
+  flex: 1 1 auto;
+  font-weight: 600;
+}
+#sheet-settings .weight-row .weight-setting button {
+  flex: 0 0 auto;
+}
+#sheet-settings .account-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+#sheet-settings .account-line .signed-in {
+  margin: 0;
+}
+#sheet-settings .account-line .sign-out {
+  margin-left: auto;
+}
+#sheet-settings .my-go-home p {
+  margin: 4px 0;
+}
+/* Kept in the page while empty: a live region that appears with its words is not always read. */
+#sheet-settings .my-go-said {
+  margin: 0;
 }
 
 /* Plan's bar at the top of the map (the owner, 2026-10-17): Route or Update route big while there is something to

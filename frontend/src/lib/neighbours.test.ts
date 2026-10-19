@@ -102,10 +102,10 @@ test("an option the same as one of the routes to choose from is dropped, and the
   const pickedThree = withNeighbours(three, keptThree);
   assert.deepEqual(pickedThree?.candidates?.slice(0, 1), [r2]);
   assert.equal(displacedBy(three, pickedThree, keptThree), 1);
-  assert.equal(neighboursSaid(keptThree, 1), "More direct and Calmer replace the last route.");
+  assert.equal(neighboursSaid(keptThree, 1), "More direct and Trailmaxxed replace the last route.");
   assert.equal(displacedBy(four, picked, kept), 2);
-  assert.equal(neighboursSaid(kept, 2), "More direct and Calmer replace the last 2 routes.");
-  assert.equal(neighboursSaid(kept.slice(1), 1), "Calmer replaces the last route.");
+  assert.equal(neighboursSaid(kept, 2), "More direct and Trailmaxxed replace the last 2 routes.");
+  assert.equal(neighboursSaid(kept.slice(1), 1), "Trailmaxxed replaces the last route.");
   assert.equal(displacedBy(OWN, withNeighbours(OWN, keptThree), keptThree), 0, "room for them: none gives way");
 });
 
@@ -185,7 +185,7 @@ test("Go's route choice: the rider's own first, then More direct and Calmer, eac
   assert.equal(rows[0].name, `${YOUR_SETTING} 3.7 mi (6.0 km)`);
   assert.deepEqual(rows.slice(1), [
     { name: "More direct", line: "4 min faster, 0.6 mi (1.0 km) more on busier streets" },
-    { name: "Calmer", line: "0.6 mi (1.0 km) less on busy streets, 3 min longer" },
+    { name: "Trailmaxxed", line: "0.6 mi (1.0 km) less on busy streets, 3 min longer" },
   ]);
   assert.equal(candidatesHint(picked), `${NEIGHBOURS_HINT} The map shows the one chosen, and the route description below follows it.`);
   // The same radio group the routes to choose from use, the rider's own checked.
@@ -203,17 +203,17 @@ test("calm candidates keep their names, with More direct after them", () => {
   assert.match(rows[0].name, /^Route 1/);
   assert.match(rows[1].name, /^Route 2:/);
   assert.equal(rows[2].name, "More direct");
-  assert.match(candidatesHint(picked), /^Each is about as calm as the first\. More direct and Calmer/);
+  assert.match(candidatesHint(picked), /^Each is about as calm as the first\. More direct is planned/);
 });
 
 test("said once on arrival in a short line, and a choice is said by its name", () => {
   const kept = keptNeighbours(OWN, [option("direct", DIRECT), option("calmer", route({ duration_s: 1980, s: [4448, 2000, 0, 0] }))], "default");
-  assert.equal(neighboursSaid(kept), "More direct and Calmer added to the route choice.");
-  assert.equal(neighboursSaid(kept.slice(1)), "Calmer added to the route choice.");
+  assert.equal(neighboursSaid(kept), "More direct and Trailmaxxed added to the route choice.");
+  assert.equal(neighboursSaid(kept.slice(1)), "Trailmaxxed added to the route choice.");
   assert.equal(neighboursSaid([]), "");
   const picked = withNeighbours(OWN, kept);
-  assert.deepEqual(announceHow(picked, 2, true), { chosen: { rank: 3, of: 3, name: "Calmer" } });
-  assert.match(announceRoute(candidateRoute(picked, 2)!, [], announceHow(picked, 2, true)), /^Calmer route chosen: /);
+  assert.deepEqual(announceHow(picked, 2, true), { chosen: { rank: 3, of: 3, name: "Trailmaxxed" } });
+  assert.match(announceRoute(candidateRoute(picked, 2)!, [], announceHow(picked, 2, true)), /^Trailmaxxed route chosen: /);
   // The answer's own arrival sentence does not change when they come: it is said from the answer, not the picked list.
   assert.deepEqual(announceHow(OWN, 0, false), {});
 });
