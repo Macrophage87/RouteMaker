@@ -230,8 +230,13 @@ def stress_value_problem(value: object) -> str | None:
     return None
 
 
-def stress_adjustment(override: Override, computed):
+def stress_adjustment(override: Override, computed, own_avoid: bool = False):
     """The row's adjustment, for a way the classifier gave `computed`.
+
+    `own_avoid`: our own rules (the formula, before any agency's level) put the way at
+    Avoid. A row read as a lower level than its own (Montgomery's 5 as 4.5) then keeps
+    Avoid, as `routemaker.agency_lts.apply` keeps the formula's Avoid against the same
+    rating: the agency's highest level agrees with it.
 
     A row without an adjustment id predates the adjustment fields (typed into
     the admin as `{"tier": n}`). It still sets the tier, and is carried as a
@@ -265,7 +270,10 @@ def stress_adjustment(override: Override, computed):
         raise OverrideRefused(f"stress override on way {override.osm_way_id}: {problem}")
     # An agency's rating loaded as a row reads as that agency's level does: Montgomery's
     # LTS 5 rows (`moco-lts5-*`) are our 4.5 (`routemaker.agency_lts.READ_AS`).
-    level = row_level(value["adjustment_id"], step_of(value))
+    raw = step_of(value)
+    level = row_level(value["adjustment_id"], raw)
+    if own_avoid and level < raw:
+        level = raw
     return StressAdjustment(
         adjustment_id=value["adjustment_id"],
         tier=Stress(int(level)),
@@ -477,12 +485,15 @@ def apply_stress(stress_by_way: dict, overrides: Iterable[Override]) -> tuple[in
     adjustment, and the row is not counted as applied. So a floor written
     against one extract stays right when a later extract rates the road higher.
     """
-    from routemaker.stress import StressResult
+    from routemaker.stress import Stress, StressResult
 
     applied = 0
     unmatched: list[int] = []
     # The classifier's tier, before any row on the way replaced it.
     computed: dict[int, object] = {}
+    # Whether our own rules put the way at Avoid (the formula's tier where an agency's
+    # level replaced it), before any row on the way.
+    own_avoid: dict[int, bool] = {}
 
     for override in overrides:
         if override.kind != "stress":
@@ -492,7 +503,13 @@ def apply_stress(stress_by_way: dict, overrides: Iterable[Override]) -> tuple[in
             unmatched.append(override.osm_way_id)
             continue
         computed.setdefault(override.osm_way_id, current.tier)
-        adjustment = stress_adjustment(override, computed[override.osm_way_id])
+        formula = getattr(current, "formula_tier", None)
+        own_avoid.setdefault(
+            override.osm_way_id, (current.tier if formula is None else formula) is Stress.AVOID
+        )
+        adjustment = stress_adjustment(
+            override, computed[override.osm_way_id], own_avoid[override.osm_way_id]
+        )
         if (
             override.value.get("at_least") is True
             and current.tier is not None

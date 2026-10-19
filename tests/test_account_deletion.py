@@ -8,6 +8,7 @@ device is signed out, and the last instance admin is refused with nothing change
 from __future__ import annotations
 
 import re
+from html import escape
 from pathlib import Path
 
 import pytest
@@ -77,6 +78,7 @@ class TestPage:
         assert "/auth/login?next=/delete-account" in body
         assert "Your saved routes" in body and "Kept" in body
         assert "<form" not in body
+        assert escape(account_deletion.BANNED) in body
 
     def test_signed_out_post_deletes_nothing(self, client) -> None:
         user = make_user()
@@ -95,6 +97,9 @@ class TestPage:
         client, _user, _csrf = signed_in()
         body = client.get(account_deletion.PATH, **addr()).content.decode()
         assert "Delete my account" in body and "required" in body
+        # The form comes first, then what deletion does; a signed-in rider is not banned.
+        assert body.index("<form") < body.index("Deleted at once")
+        assert escape(account_deletion.BANNED) not in body
 
     def test_it_needs_the_csrf_token(self) -> None:
         client, user, _csrf = signed_in()
