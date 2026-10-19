@@ -28,7 +28,7 @@ import { formatDistance, formatDuration, formatExtra, milesFigure } from "./form
 import { MAX_POINTS, haversineM, type LonLat } from "./geo.ts";
 import { LOCATE_MESSAGES, LOCATION_OUTSIDE, type Fix, type LocateResult } from "./geolocation.ts";
 import { twoPointsOnly, type PresetId } from "./presets.ts";
-import { bikeEntrance, entranceNote, linesLabel, type Station } from "./railStations.ts";
+import { entranceNote, stationEntrance, linesLabel, type Station } from "./railStations.ts";
 import { waterDetails, waterTitle, type WaterPoint } from "./waterRestrooms.ts";
 
 export type NearestKind = "water" | "restroom" | "metro";
@@ -81,12 +81,20 @@ export function waterPlaces(points: readonly WaterPoint[], kind: "water" | "rest
   }));
 }
 
-/** The Metro's stations, each at its bike entrance; MARC-only stations are left out. */
-export function metroPlaces(stations: readonly Station[], closedReason: (station: Station) => string | null = () => null): NearestPlace[] {
+/**
+ * The Metro's stations, each at its bike entrance, or on foot its entrance nearest `from` (walkEntrance); MARC-only
+ * stations are left out.
+ */
+export function metroPlaces(
+  stations: readonly Station[],
+  closedReason: (station: Station) => string | null = () => null,
+  onFoot = false,
+  from: LonLat | null = null,
+): NearestPlace[] {
   return stations
     .filter((station) => station.metro.length > 0)
     .map((station) => {
-      const entrance = bikeEntrance(station);
+      const entrance = stationEntrance(station, onFoot, from);
       return {
         id: station.id,
         kind: "metro" as const,
@@ -335,6 +343,8 @@ export interface SearchDeps {
   stations: readonly Station[];
   /** Why a station is closed today, or null (railClosures.ts): a closed one says so in the list. */
   closedReason?: (station: Station) => string | null;
+  /** The ride reaches places on foot (presets.ts, endsOnFoot): a station's nearest entrance, not its elevator. */
+  onFoot?: () => boolean;
   /**
    * The route shown, if any: then the list is the places with the least detour off it, by the same estimate as
    * Find food's, with no router call (the owner, 2026-10-18: "if on a route we'd want to sort by miles of detour
@@ -380,7 +390,7 @@ export async function searchNearest(deps: SearchDeps): Promise<SearchOutcome> {
   }
   let places: NearestPlace[];
   if (kind === "metro") {
-    places = metroPlaces(deps.stations, deps.closedReason);
+    places = metroPlaces(deps.stations, deps.closedReason, deps.onFoot?.() === true, origin);
   } else {
     const data = await deps.water();
     if (!data) return withFix({ said: WATER_NOT_LOADED });

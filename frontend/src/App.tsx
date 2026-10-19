@@ -15,7 +15,7 @@ import { betterRouteSaid, EarlyStart, takesRefined } from "./lib/progressive.ts"
 import { RAIL_STATUS_MS, closedReason, matchAlerts, withMetroClosed, matchClosures, requestClosures, type RailStatus } from "./lib/railClosures.ts";
 import { COVERAGE_BBOX, MAX_POINTS, addPoint, haversineM, insideCoverage, type LonLat } from "./lib/geo.ts";
 import { formatSeconds } from "./lib/format.ts";
-import { presetSaid, twoPointsOnly, usesBikeshare, type PresetId } from "./lib/presets.ts";
+import { endsOnFoot, presetSaid, twoPointsOnly, usesBikeshare, type PresetId } from "./lib/presets.ts";
 import { atFromHash, decodePlan, encodePlan } from "./lib/planHash.ts";
 import { RouteScheduler, type SchedulerState } from "./lib/routeScheduler.ts";
 import { confirmedUpTo, sendsConfirmation, spanKm } from "./lib/longRide.ts";
@@ -789,6 +789,15 @@ export function App() {
   // undo history (kept current at once by applyRide, like pointsRef).
   const rideRef = useRef<Ride>({ preset, dials, imported });
   rideRef.current = { preset, dials, imported };
+  // A Metro station on foot (presets.ts, endsOnFoot; Stephen 2026-10-19) is reached by its entrance nearest where the
+  // rider comes from: as an end or a stop, the plan's start, else Go's location; as a start, the rider walks out
+  // toward the next point, else the destination Go is waiting to route to. The search's station results go there too.
+  const walkFrom = (role: StationRole = "end"): LonLat | null =>
+    role === "start"
+      ? (pointsRef.current[1] ?? goPending.current?.dest ?? null)
+      : (pointsRef.current[0] ?? (goStartRef.current.kind === "here" ? goStartRef.current.point : null));
+  const entranceForPlace = (place: Parameters<typeof stationEntranceForPlace>[0], role: StationRole = "end") =>
+    stationEntranceForPlace(place, endsOnFoot(rideRef.current.preset), walkFrom(role));
   const narrow = useNarrow();
   // Ride mode (WEB-NAV-plan.md; RideMode.tsx): whether a ride is on, the Start ride question, the ride's
   // own route and the rider for the map (in memory only: never the link, storage or a log), the camera.
@@ -1814,6 +1823,7 @@ export function App() {
         water: ensureWater,
         stations: RAIL_STATIONS,
         closedReason: (station) => closedReason(station, { metro: true, marc: false }, railClosures),
+        onFoot: () => endsOnFoot(ride.preset),
         request: (from, places) => requestNearest(from, places, ride.preset, ride.dials),
         route: nearestRoute.current,
       });
@@ -1859,7 +1869,7 @@ export function App() {
       commit,
       loop: loopVias,
       remember: (p, name, label) => namer.remember(p, name, label),
-      entrance: stationEntranceForPlace,
+      entrance: (place) => entranceForPlace(place, choice),
     });
     if (point === null) return;
     setNotice(null);
@@ -1977,7 +1987,7 @@ export function App() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   // A start typed into Go's start box: the plan's first point, in place of the location.
   const goStartPick = (found: Place) => {
-    const point = placeFromSearch(found, (p, name, label) => namer.remember(p, name, label), stationEntranceForPlace);
+    const point = placeFromSearch(found, (p, name, label) => namer.remember(p, name, label), (place) => entranceForPlace(place, "start"));
     if (point === null) {
       setNotice(OUTSIDE_NOTICE);
       return;
@@ -2091,7 +2101,7 @@ export function App() {
   const goToRef = useRef(goTo);
   goToRef.current = goTo;
   const goToPlace = (found: Place) => {
-    const point = placeFromSearch(found, (p, name, label) => namer.remember(p, name, label), stationEntranceForPlace);
+    const point = placeFromSearch(found, (p, name, label) => namer.remember(p, name, label), entranceForPlace);
     if (point === null) {
       setNotice(OUTSIDE_NOTICE);
       return;
@@ -2114,7 +2124,7 @@ export function App() {
     earlyStart.current?.start(routeRequestBody(ends, ridePreset, asked), () => requestRoute(ends, ridePreset, asked));
   };
   const goEarlyToPlace = (found: Place) => {
-    const point = placeFromSearch(found, () => undefined, stationEntranceForPlace);
+    const point = placeFromSearch(found, () => undefined, entranceForPlace);
     if (point) goEarly(point);
   };
   // Go's "Add a stop" (v0.7.0, "Keep adding stops by search"; also the nearest and Sights sheets): with a route, a place is a stop where it adds the
@@ -2138,7 +2148,7 @@ export function App() {
     announce(stopAddedSaid(added.points, added.index, VIA_MARKS.isVia, loop, name));
   };
   const goAddStop = (found: Place) => {
-    const point = placeFromSearch(found, (p, name, label) => namer.remember(p, name, label), stationEntranceForPlace);
+    const point = placeFromSearch(found, (p, name, label) => namer.remember(p, name, label), entranceForPlace);
     if (point === null) {
       setNotice(OUTSIDE_NOTICE);
       return;
@@ -4198,6 +4208,8 @@ export function App() {
         onFederalData={setFederalData}
         onStationPoint={riding ? ignore : placeStation}
         stationEndFromHere={mode === "go" && !riding}
+        stationOnFoot={endsOnFoot(preset)}
+        stationFrom={walkFrom}
         onRoadInfo={riding ? ignore : setRoadInfo /* no road panel (and its Add a stop) during a ride */}
         tools={
           accessMode && !riding ? (

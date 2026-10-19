@@ -294,8 +294,11 @@ export function linesLabel(lines: readonly LineKey[]): string {
 
 export interface BikeEntrance {
   point: LonLat;
-  /** Which it is: DC's elevator, OSM's elevator, DC's (or OSM's) other entrance, or the station itself. */
-  kind: "elevator" | "osm-elevator" | "entrance" | "station";
+  /**
+   * Which it is: DC's elevator, OSM's elevator, DC's (or OSM's) other entrance, the station itself, or for a rider
+   * on foot the nearest way in of any kind (walkEntrance).
+   */
+  kind: "elevator" | "osm-elevator" | "entrance" | "station" | "walk";
 }
 
 function nearestTo(from: LonLat, points: readonly LonLat[]): LonLat | null {
@@ -331,6 +334,21 @@ export function bikeEntrance(station: Station): BikeEntrance {
   return { point: station.point, kind: "station" };
 }
 
+/**
+ * Where a rider on foot goes in (Stephen 2026-10-19: "if on walk mode, you can route people to the main entrance on
+ * the metro"): any way in, stairs, escalator or elevator, the one nearest `from` (where they come from), else the one
+ * nearest the station's own point. A station with none listed is the station itself.
+ */
+export function walkEntrance(station: Station, from: LonLat | null = null): BikeEntrance {
+  const point = nearestTo(from ?? station.point, [...station.entrances, ...station.elevators, ...station.osmElevators]);
+  return point ? { point, kind: "walk" } : { point: station.point, kind: "station" };
+}
+
+/** A station's way in for this ride: on foot (endsOnFoot), the nearest of any kind; with a bike, its elevator. */
+export function stationEntrance(station: Station, onFoot: boolean, from: LonLat | null = null): BikeEntrance {
+  return onFoot ? walkEntrance(station, from) : bikeEntrance(station);
+}
+
 /** What a station's card says about where routes to it go. */
 export function entranceNote(kind: BikeEntrance["kind"]): string {
   switch (kind) {
@@ -342,6 +360,8 @@ export function entranceNote(kind: BikeEntrance["kind"]): string {
       return "No elevator listed; routes use its nearest entrance.";
     case "station":
       return "No elevator or entrance listed; routes use the station itself.";
+    case "walk":
+      return "On foot, routes use its nearest entrance.";
   }
 }
 
@@ -365,6 +385,7 @@ export function stationPlaceLabel(station: Pick<Station, "name" | "metro">, kind
     case "osm-elevator":
       return `${name}, at its elevator`;
     case "entrance":
+    case "walk":
       return `${name}, at its nearest entrance`;
     case "station":
       return name;

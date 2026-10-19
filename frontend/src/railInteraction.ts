@@ -20,7 +20,7 @@ import { TIMES_LABEL, cachedStationTimes, requestStationTimes, stationCardRows, 
 import { WMATA_SLUGS } from "./lib/railData.ts";
 import { RAIL_LAYERS, STATION_MIN_ZOOM, railHitFrom, stationNear, type RailHit } from "./lib/railLayer.ts";
 import {
-  bikeEntrance,
+  stationEntrance,
   entranceNote,
   lineStyle,
   linesLabel,
@@ -51,6 +51,9 @@ export interface RailInteractionOptions {
    * is offered with no points, and App routes there from Go's start.
    */
   endFromHere?(): boolean;
+  /** The ride reaches places on foot (presets.ts, endsOnFoot): its nearest entrance (walkEntrance), from `from`. */
+  onFoot?(): boolean;
+  from?(role: StationRole): LonLat | null;
   /** The map's part the panel does not cover (App's framePadding): an opened card is panned into it (lib/popupFit.ts). */
   framePadding?(): { top: number; left: number; bottom: number; right: number };
   /** The pan is instant with reduced motion. */
@@ -122,7 +125,9 @@ function summary(station: Station, options: RailInteractionOptions, elevatorTapp
   }
   const entrance = document.createElement("p");
   entrance.className = "station-entrance";
-  entrance.textContent = elevatorTapped ? "Elevator: a way in with a bike." : entranceNote(bikeEntrance(station).kind);
+  entrance.textContent = elevatorTapped
+    ? "Elevator: a way in with a bike."
+    : entranceNote(stationEntrance(station, options.onFoot?.() === true).kind);
   root.append(entrance);
   return root;
 }
@@ -191,11 +196,13 @@ export function attachRailInteraction(map: MapLibreMap, options: RailInteraction
     openCard({ hit, station }) {
       // Where the focus goes back to on Escape, as for a via's Remove.
       const returnTo = document.activeElement;
-      const entrance = bikeEntrance(station);
-      const point: LonLat = hit.elevator ?? entrance.point;
-      const place = {
-        name: stationPlaceName(station),
-        label: stationPlaceLabel(station, hit.elevator ? "elevator" : entrance.kind),
+      // On foot the way in depends on the role: an end or a stop is reached from the start, a start walks out toward
+      // the next point (App's walkFrom).
+      const pointFor = (role: StationRole) => {
+        const entrance = stationEntrance(station, options.onFoot?.() === true, options.from?.(role) ?? null);
+        const point: LonLat = hit.elevator ?? entrance.point;
+        const place = { name: stationPlaceName(station), label: stationPlaceLabel(station, hit.elevator ? "elevator" : entrance.kind) };
+        return { point, place };
       };
       const content = summary(station, options, hit.elevator !== undefined);
       const actions = document.createElement("div");
@@ -208,6 +215,7 @@ export function attachRailInteraction(map: MapLibreMap, options: RailInteraction
         button.textContent = ROLE_TEXT[role];
         button.addEventListener("click", () => {
           popup.remove();
+          const { point, place } = pointFor(role);
           options.onStationPoint(role, point, place);
         });
         actions.append(button);

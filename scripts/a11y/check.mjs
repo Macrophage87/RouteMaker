@@ -4275,9 +4275,10 @@ const modeNow = "(() => [...document.querySelectorAll('.mode-switch')].filter((g
   check("go: a phone with no link opens in Go: Menu, the Go/Plan switch (Go pressed), Layers and Locate over the map, and no bottom bar",
     go.mode === "Go" && go.top && !go.bar && JSON.stringify(go.topButtons) === JSON.stringify(["Menu", "Go", "Plan", "Layers", "Locate"]), JSON.stringify(go));
   // The owner, 2026-10-12: the rider's own ride type first (My Go; Default until set), then the two transit types.
-  // More, with Repair and Sights behind it, follow the four since 2b38bf1c ("Go: Repair and Sights behind More").
-  check("go: the sheet has Where to?, the place chips Home, Food, Water and Restroom (no Work), then More with Repair and Sights, and the ride types Default, Own Bike + 🚆🚌, Bikeshare + 🚶🚆🚌 and More ride types",
-    go.search && JSON.stringify(go.chips) === JSON.stringify(["Home", "Food", "Water", "Restroom", "More", "Repair", "Sights"]) && JSON.stringify(go.rides) === JSON.stringify(["Default", "Own Bike + 🚆🚌Own bike plus train or bus", "Bikeshare + 🚶🚆🚌Bikeshare plus walk, train or bus", "More ride types"]), JSON.stringify(go));
+  // More, with Repair and Sights behind it, follow the four since 2b38bf1c ("Go: Repair and Sights behind More"),
+  // and Metro first behind it since Stephen 2026-10-19 ("Metro stops should be on the list in more").
+  check("go: the sheet has Where to?, the place chips Home, Food, Water and Restroom (no Work), then More with Metro, Repair and Sights, and the ride types Default, Own Bike + 🚆🚌, Bikeshare + 🚶🚆🚌 and More ride types",
+    go.search && JSON.stringify(go.chips) === JSON.stringify(["Home", "Food", "Water", "Restroom", "More", "Metro", "Repair", "Sights"]) && JSON.stringify(go.rides) === JSON.stringify(["Default", "Own Bike + 🚆🚌Own bike plus train or bus", "Bikeshare + 🚶🚆🚌Bikeshare plus walk, train or bus", "More ride types"]), JSON.stringify(go));
   const own = await axNode(p, ".go-sheet .ride-chips .ride-type-chip");
   check("go: the first ride type is described as the rider's own, set in Settings", own?.name === "Default" && /^Your ride type\. Change it in Settings, under My Go\.$/.test(own?.description ?? ""), JSON.stringify(own));
   check("go: every control in the top bar and the sheet is 44 px or more each way, and nothing scrolls sideways at 390 px", go.small.length === 0 && !go.scroll, JSON.stringify(go.small));
