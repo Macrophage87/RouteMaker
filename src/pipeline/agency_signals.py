@@ -244,28 +244,35 @@ def alexandria_rows(doc: Mapping, kind: str = "signal") -> tuple[list[dict], dic
     )
 
 
-# VDOT's asset subtypes: a signal, a HAWK, and a flasher that is neither.
-VDOT_KINDS = {"traffic signal": "signal", "pedestrian hybrid beacon": "hawk"}
+def _vdot_kind(subtype: object) -> str | None:
+    """VDOT's `ASSET_SUBTYPE` as a kind: a Pedestrian Hybrid Beacon is a HAWK, a
+    Traffic Signal a signal, an Intersection Flasher neither. Read by its words, so
+    the coded value's name ("1-Traffic Signal") and its description both read."""
+    text = str(subtype or "").strip().lower()
+    if "hybrid" in text or "beacon" in text:
+        return "hawk"
+    if "signal" in text and "flash" not in text:
+        return "signal"
+    return None
 
 
 def vdot_rows(doc: Mapping) -> tuple[list[dict], dict[str, int]]:
     """VDOT HMMS Traffic Signals (2023 Snapshot): `ASSET_SUBTYPE` Traffic Signal
     or Pedestrian Hybrid Beacon (an Intersection Flasher is left out) whose
-    `STATUS` is Active. Every Virginia signal VDOT kept in HMMS up to October 2023,
-    Fairfax's and the other counties' included; the snapshot is not updated."""
-
-    def subtype(props: Mapping) -> str:
-        return str(props.get("ASSET_SUBTYPE") or "").strip().lower()
+    `STATUS` is Active (code `Active`, name `3-Active`). Every Virginia signal VDOT
+    kept in HMMS up to October 2023, Fairfax's and the other counties' included; the
+    snapshot is not updated. A record whose subtype reads as neither is counted by
+    its value, so a layer coded otherwise shows in the installer's output."""
 
     def keep(props: Mapping) -> tuple[bool, str]:
-        if subtype(props) not in VDOT_KINDS:
+        if _vdot_kind(props.get("ASSET_SUBTYPE")) is None:
             return False, f"subtype {props.get('ASSET_SUBTYPE') or 'none'}"
         status = str(props.get("STATUS") or "").strip().lower()
         if "active" not in status:
             return False, f"STATUS {props.get('STATUS') or 'none'}"
         return True, ""
 
-    return _rows(doc, "vdot", keep=keep, kind=lambda props: VDOT_KINDS[subtype(props)])
+    return _rows(doc, "vdot", keep=keep, kind=lambda props: _vdot_kind(props["ASSET_SUBTYPE"]))
 
 
 def load(path: Path) -> tuple[Signal, ...]:

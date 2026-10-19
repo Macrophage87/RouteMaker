@@ -376,15 +376,20 @@ def test_the_installer_writes_every_source_into_one_file(tmp_path) -> None:
     dc.write_text(json.dumps({"features": [ddot_feature(1)]}))
     hawks = tmp_path / "alexandria-hawks.geojson"
     hawks.write_text(json.dumps({"features": [point_feature({"OBJECTID": 9})]}))
+    va = tmp_path / "va.geojson"
+    va_signal = {"OBJECTID": 4, "ASSET_SUBTYPE": "Traffic Signal", "STATUS": "Active"}
+    va.write_text(json.dumps({"features": [point_feature(va_signal)]}))
     done = subprocess.run(
         [sys.executable, str(REPO / "scripts" / "install_reference_data.py"),
-         "--data-root", str(tmp_path), "--dc-signals", str(dc), "--alexandria-hawks", str(hawks)],
+         "--data-root", str(tmp_path), "--dc-signals", str(dc), "--alexandria-hawks", str(hawks),
+         "--va-signals", str(va)],
         check=False, capture_output=True, text=True,
     )  # fmt: skip
-    assert "2 signals (1 HAWKs)" in done.stdout, done.stderr
+    assert "3 signals (1 HAWKs)" in done.stdout, done.stderr
     rows = json.loads((tmp_path / "reference" / agency_signals.FILE_NAME).read_text())
     assert [(row["id"], row["kind"]) for row in rows] == [
         ("ddot:{G1}", "signal"),
+        ("vdot:4", "signal"),
         ("alexandria-hawk:9", "hawk"),
     ]
 
@@ -412,3 +417,19 @@ def test_vdot_rows_keep_active_signals_and_hawks() -> None:
         "STATUS Proposed": 1,
         "STATUS Deleted": 1,
     }
+
+
+def test_vdot_rows_read_the_coded_values_names_too() -> None:
+    doc = {
+        "features": [
+            point_feature(
+                {"OBJECTID": 1, "ASSET_SUBTYPE": "1-Traffic Signal", "STATUS": "3-Active"}
+            ),
+            point_feature(
+                {"OBJECTID": 2, "ASSET_SUBTYPE": "Traffic Signal", "STATUS": "4-Retired"}
+            ),
+        ]
+    }
+    rows, dropped = agency_signals.vdot_rows(doc)
+    assert [row["id"] for row in rows] == ["vdot:1"]
+    assert dropped == {"STATUS 4-Retired": 1}

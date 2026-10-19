@@ -4755,7 +4755,7 @@ The agencies' signal lists mark the junctions OSM has no signal at (v0.10.0;
 junction with a signal on the street and none on the map is priced as unsignalised
 and gets the cue "no signal mapped (Higher stress junction)". The downloads run on the
 home PC or the beta server at rebuild time: the cloud proxy cannot reach the agencies'
-map servers. Four lists, one file (`reference/signals.json`):
+map servers. Five lists, one file (`reference/signals.json`):
 
 | Source | Layer | Read by the rebuild |
 |---|---|---|
