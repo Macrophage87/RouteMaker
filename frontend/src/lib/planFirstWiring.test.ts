@@ -57,8 +57,8 @@ test("Clear says so and hands the focus to the place search; Plan's Clear stays 
 });
 
 test("in Plan a station or a transit option is an edit like any other: it marks the plan changed and waits for Route", () => {
-  // Both are part of planDials, so of planKey, which the drawn plan is compared by.
-  assert.match(app, /const planKey = JSON\.stringify\(planDials\);/);
+  // Both are part of planDials, so of planKey, which the drawn plan is compared by (all but Go's closuresNow).
+  assert.match(app, /const \{ closuresNow: _now, \.\.\.keyed \} = planDials;\s*return JSON\.stringify\(keyed\);/);
   assert.match(app, /pins: stationPins, transitPick \}/);
   // No exception lets them route at once: only the Route button, or going back to the drawn plan.
   assert.doesNotMatch(app, /if \(planFirst && !pressed[^\n]*samePlan/);

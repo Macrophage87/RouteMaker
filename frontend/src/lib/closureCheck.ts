@@ -53,6 +53,8 @@ export interface ClosureAnswer {
 export interface CheckAt {
   when?: When | null;
   bypass?: readonly string[];
+  /** v0.9.1, Go and a ride: only the closures known to be on, not DDOT's permits (lib/dials.ts closuresNow). */
+  nowOnly?: boolean;
 }
 
 /** Most points the check takes; a longer line is thinned (every k-th point), keeping where each came from. */
@@ -100,7 +102,12 @@ export async function checkClosures(
       headers: { "Content-Type": "application/json", Accept: "application/json" },
       signal: stop.signal,
       // The plan's When, so a closure is matched at the ride and not today; and its "Route through anyway" ids.
-      body: JSON.stringify({ line: thin.line, ...(at.when ? { when: at.when } : {}), ...(at.bypass?.length ? { bypass: at.bypass } : {}) }),
+      body: JSON.stringify({
+        line: thin.line,
+        ...(at.when ? { when: at.when } : {}),
+        ...(at.bypass?.length ? { bypass: at.bypass } : {}),
+        ...(at.nowOnly ? { now_only: true } : {}),
+      }),
     });
     if (!response.ok) return null;
     const body = (await response.json()) as Partial<ClosureAnswer>;

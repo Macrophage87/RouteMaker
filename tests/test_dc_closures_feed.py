@@ -276,6 +276,40 @@ def test_the_endpoint_takes_when_and_bypass(client, snap) -> None:
     assert post({"line": LINE, "bypass": "mpd-1"}).status_code == 400
 
 
+def test_go_and_a_ride_leave_out_ddots_permits_plan_keeps_them(snap) -> None:
+    # The owner, 2026-10-19: permits are roads that "could potentially be closed in the near
+    # future", not useful on the go, "worth keeping for future ride planning".
+    permit = zone("dc-1", source="dc", end=NOW + timedelta(days=30))
+    lane = zone("dc-2", source="dc", kind=wz.LANE, end=NOW + timedelta(days=30))
+    snap(permit, lane, zone("mpd-1", end=NOW + timedelta(hours=3)))
+    planned = workzones.closures_on(LINE, at=NOW, now=NOW)
+    assert [c["id"] for c in planned["closures"]] == ["dc-1", "mpd-1"]
+    assert [x["id"] for x in planned["lanes"]] == ["dc-2"]
+    now = workzones.closures_on(LINE, at=NOW, now=NOW, now_only=True)
+    assert [c["id"] for c in now["closures"]] == ["mpd-1"]
+    assert now["lanes"] == []
+    plan = wz.for_plan([permit, lane], NOW, [LINE[0], LINE[-1]], {}, now=NOW)
+    assert [z.zone_id for z in plan.excluded] == ["dc-1"] and plan.lanes == [lane]
+    go = wz.for_plan([permit, lane], NOW, [LINE[0], LINE[-1]], {}, now=NOW, now_only=True)
+    assert go.excluded == [] and go.exclude == [] and go.lanes == []
+
+
+@pytest.mark.django_db
+def test_the_endpoint_takes_now_only(client, snap) -> None:
+    snap(zone("dc-1", source="dc", end=NOW + timedelta(days=400)))
+    headers = {"HTTP_X_FORWARDED_FOR": "198.51.100.13"}
+
+    def post(body):
+        return client.post(
+            "/api/closures/check", data=json.dumps(body), content_type="application/json", **headers
+        )
+
+    line = {"line": LINE}
+    assert [c["id"] for c in post(line).json()["closures"]] == ["dc-1"]
+    assert post({**line, "now_only": True}).json()["closures"] == []
+    assert post({**line, "now_only": "yes"}).status_code == 400
+
+
 # --- The route's map: its closures, their effect and delay -----------------------------
 
 

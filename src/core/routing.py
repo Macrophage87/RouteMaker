@@ -936,6 +936,9 @@ class Dials:
     mtb_preferred: int | None = None
     # v0.7.0 "Route through anyway": the closures this plan routes through (their ids).
     closure_bypass: tuple[str, ...] = ()
+    # v0.9.1, Go and a ride: only the closures known to be on, not DDOT's permits, which say
+    # a road may be closed (`routemaker.workzones.possible`). Plan keeps them, for planning.
+    closures_now: bool = False
     # v0.8.2, Ride's "Road closed" button: stretches of road the rider found closed on this
     # ride, each a line of (lon, lat), left out of every request the plan makes.
     blocked: tuple[tuple[tuple[float, float], ...], ...] = ()
@@ -2966,6 +2969,7 @@ def plan(
         when,
         bypass=dials.closure_bypass,
         reserve=work_zones.rules.budget_used(blocked),
+        now_only=dials.closures_now,
     )
     if zones_plan is not None:
         zones_plan.blocked = blocked

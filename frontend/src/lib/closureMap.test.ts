@@ -19,7 +19,15 @@ import {
   type ClosureNotice,
 } from "./closureMap.ts";
 import { CHECK_TIMEOUT_MS, checkClosures } from "./closureCheck.ts";
+import { routeRequestBody } from "./api.ts";
+import type { Dials } from "./dials.ts";
+import type { LonLat } from "./geo.ts";
 import { readFileSync } from "node:fs";
+
+const LINE2: LonLat[] = [
+  [-77.05, 38.9],
+  [-77.0, 38.95],
+];
 
 function item(over: Partial<ClosureItem> = {}): ClosureItem {
   return {
@@ -143,6 +151,25 @@ test("the closure check sends the plan's When and its bypassed closures, and rea
   assert.equal(found?.notices?.[0].id, "nps-1");
   await checkClosures("https://x.example", line, post);
   assert.deepEqual(sent, { line }, "the first contract's body where there is nothing to add");
+  // Go and a ride (v0.9.1): only the closures known to be on, not DDOT's permits.
+  await checkClosures("https://x.example", line, post, { nowOnly: true });
+  assert.deepEqual(sent, { line, now_only: true });
+});
+
+test("Go and a ride ask for the closures known to be on; Plan keeps DDOT's permits for planning", () => {
+  // Stephen, 2026-10-19: permits "aren't as useful for on the go routing, but worth keeping for future ride planning".
+  const plan = JSON.parse(routeRequestBody(LINE2, "default", { dials: { stress: 50, hills: 50 } as Dials }));
+  assert.equal(plan.closures_now, undefined);
+  const go = JSON.parse(routeRequestBody(LINE2, "default", { dials: { stress: 50, hills: 50, closuresNow: true } as Dials }));
+  assert.equal(go.closures_now, true);
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  assert.match(app, /const goNow = mode === "go";/);
+  assert.match(app, /goNow \? \{ \.\.\.made, closuresNow: true \}/);
+  // Start ride, from Go or Plan, and a ride's re-plans.
+  assert.match(app, /nowOnly = !!planDials\.closuresNow \|\| why === "ride"/);
+  assert.match(app, /rideDials\(\{ \.\.\.planDials, closuresNow: true \}/);
+  // Switching views keeps the route: the plan's key leaves closuresNow out.
+  assert.match(app, /const \{ closuresNow: _now, \.\.\.keyed \} = planDials;/);
 });
 
 test("a closure check with no answer in its time gives up: null, so Start ride and a download go ahead", async () => {

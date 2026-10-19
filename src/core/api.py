@@ -320,6 +320,14 @@ class RouteIn(Schema):
             " each is marked `bypassed` on the answer. Never remembered by the server."
         ),
     )
+    closures_now: StrictBool = Field(
+        default=False,
+        description=(
+            "v0.9.1, Go and a ride: route round only the closures known to be on, leaving out"
+            " DDOT's occupancy permits, which say a road may be closed in their window. Plan"
+            " sends nothing and keeps them, for planning a later ride."
+        ),
+    )
     blocked_lines: list[Annotated[list[LonLat], Field(min_length=2, max_length=50)]] = Field(
         default_factory=list,
         max_length=10,
@@ -3162,6 +3170,7 @@ def _bikeshare_body(body: RouteIn, started: float | None) -> dict:
         hills=profile.hills if body.hills is None else body.hills,
         when=body.when,
         closure_bypass=tuple(body.closure_bypass),
+        closures_now=body.closures_now,
         blocked=_blocked(body),
         assist=profile.assist,
         avoid_gravel=body.avoid_gravel,
@@ -3329,6 +3338,7 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
         hills=body.hills,
         when=body.when,
         closure_bypass=tuple(body.closure_bypass),
+        closures_now=body.closures_now,
         blocked=_blocked(body),
         avoid_gravel=body.avoid_gravel,
         trails_off=body.trails_off,
@@ -3999,6 +4009,7 @@ def _bike_dials(body: RouteIn) -> routing.Dials:
         hills=body.hills,
         when=body.when,
         closure_bypass=tuple(body.closure_bypass),
+        closures_now=body.closures_now,
         blocked=_blocked(body),
         carrying=body.carrying,
         assist=body.assist,
@@ -6064,9 +6075,13 @@ def closures_check(request):
         or not all(isinstance(b, str) and 0 < len(b) <= 200 for b in bypass)
     ):
         problem = f"bypass is a list of at most {CLOSURE_BYPASS_MAX} closure ids."
+    # v0.9.1, Go and a ride: only the closures known to be on, not DDOT's permits.
+    now_only = extra.get("now_only", False)
+    if problem is None and not isinstance(now_only, bool):
+        problem = "now_only is true or false."
     if problem:
         return _error(400, problem)
-    return JsonResponse(work_zones.closures_on(line, when=when, bypass=bypass))
+    return JsonResponse(work_zones.closures_on(line, when=when, bypass=bypass, now_only=now_only))
 
 
 # Ride mode's 311 (v0.7.0 "Go riding fixes" item 3; core.dc311): whether the server sends a

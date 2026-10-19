@@ -234,7 +234,7 @@ test("choosing one rides it and changes no setting: the plan's dials and the sav
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   const choose = app.slice(app.indexOf("const choose = useCallback("), app.indexOf("}, []);", app.indexOf("const choose = useCallback(")));
   assert.doesNotMatch(choose, /setDials|saveSettings|setDefault/);
-  assert.match(app, /dials: rideDials\(planDials, rest \? null : route\)/);
+  assert.match(app, /dials: rideDials\(\{ \.\.\.planDials, closuresNow: true \}, rest \? null : route\)/);
 });
 
 test("one request for both, with the plan's own body (so the route cache and one count of the limit serve it)", async () => {

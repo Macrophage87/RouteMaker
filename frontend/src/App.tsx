@@ -371,14 +371,22 @@ export function App() {
   const bypassPlan = bypassPlanKey(points);
   const bypassIds = bypassFor(closureBypass, bypassPlan);
   const bypassKey = bypassIds.join(",");
+  // Go routes round only the closures known to be on, not DDOT's permits, which say a road may be closed (v0.9.1,
+  // lib/dials.ts closuresNow); Plan keeps them, for planning a later ride. Start ride and a ride's re-plans set it too.
+  const goNow = mode === "go";
   const planDials = useMemo(() => {
     const made = withTransitOption(withStations(withWeight(routeDials, weight), stationChoice), preset, transitPick, trip);
-    return bypassIds.length ? { ...made, closureBypass: bypassIds } : made;
+    const now = goNow ? { ...made, closuresNow: true } : made;
+    return bypassIds.length ? { ...now, closureBypass: bypassIds } : now;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the ids' text, not the array
-  }, [routeKey, weight, stationChoice, preset, transitPick, trip, bypassKey]);
+  }, [routeKey, weight, stationChoice, preset, transitPick, trip, bypassKey, goNow]);
   // Everything the request is made from, as a key (v0.7.0): in Plan a station or a transit option chosen, a
   // weight or a slider moved, all mark the plan changed until Route or Update route.
-  const planKey = JSON.stringify(planDials);
+  // The key leaves closuresNow out: switching between Go and Plan keeps the route (changeMode), not marked changed.
+  const planKey = useMemo(() => {
+    const { closuresNow: _now, ...keyed } = planDials;
+    return JSON.stringify(keyed);
+  }, [planDials]);
   // The dials as they are, for Go's early start (v0.7.0, "Faster routing" step 4), which asks before the tap.
   const planDialsNow = useRef(planDials);
   planDialsNow.current = planDials;
@@ -1078,7 +1086,7 @@ export function App() {
   const planFirst = mode === "plan" && !riding;
   const [routeAsk, setRouteAsk] = useState(initialPlan.points.length >= 2 ? 1 : 0);
   const routedAsk = useRef(0);
-  const asked = useRef<{ points: LonLat[]; preset: PresetId; routeKey: string; planDials: Dials; confirmedKm: number | null } | null>(null);
+  const asked = useRef<{ points: LonLat[]; preset: PresetId; routeKey: string; planKey: string; confirmedKm: number | null } | null>(null);
   const drawnRef = useRef<Drawn | null>(null);
   const [drawn, setDrawn] = useState<Drawn | null>(null);
   const [changeDetails, setChangeDetails] = useState<string[]>([]);
@@ -1108,11 +1116,11 @@ export function App() {
     routedAsk.current = routeAsk;
     const last = asked.current;
     const samePlan = last !== null && last.points === points && last.preset === preset && last.routeKey === routeKey;
-    if (!pressed && samePlan && last.planDials === planDials && last.confirmedKm === confirmedKm) return;
+    if (!pressed && samePlan && last.planKey === planKey && last.confirmedKm === confirmedKm) return;
     // In Plan every change waits for Route, the stations and a transit option too (they are part of planKey).
     const backToDrawn = answer === null && drawnRef.current !== null && !planChanged(drawnRef.current, points, preset, planKey);
     if (planFirst && !pressed && !backToDrawn) return;
-    asked.current = { points, preset, routeKey, planDials, confirmedKm };
+    asked.current = { points, preset, routeKey, planKey, confirmedKm };
     scheduler.current?.request({
       points,
       preset,
@@ -2595,7 +2603,7 @@ export function App() {
     // Its sharer is not held to it ("Maybe make the sharer able to reroute").
     const opened = sharedOpen?.answer === route ? sharedOpen : null;
     const fixed = fixedRide(leg, opened, !!rest);
-    setRideStart((before) => ({ route, ...leg, dials: rideDials(planDials, rest ? null : route), fixed, n: (before?.n ?? 0) + 1 }));
+    setRideStart((before) => ({ route, ...leg, dials: rideDials({ ...planDials, closuresNow: true }, rest ? null : route), fixed, n: (before?.n ?? 0) + 1 }));
     // The installed app keeps the ride's route as the last ride (OWNER-DECISIONS 465a); End ride gives it
     // the map the ride kept. A browser tab keeps nothing unless the rider presses Keep for offline.
     // A Keep for offline still fetching stops: the ride keeps its own corridor, and two walks would share the page's queue.
@@ -2733,7 +2741,7 @@ export function App() {
   // The closure check (v0.7.0, "closure warning first", and its correction): a route opened, Start ride, and a
   // download are checked against the closures in force now; any hit asks in the major dialog.
   const [closureAsk, setClosureAsk] = useState<ClosureAsk | null>(null);
-  const closurePending = useRef<{ line: number[][]; index: number[]; closures: Closure[]; gpx: boolean; proceed: () => void; afterGpx?: (track: number[][]) => void } | null>(null);
+  const closurePending = useRef<{ line: number[][]; index: number[]; closures: Closure[]; gpx: boolean; nowOnly: boolean; proceed: () => void; afterGpx?: (track: number[][]) => void } | null>(null);
   // A line the rider chose to ride anyway is not asked about again (on Start ride, say).
   const closureLetGo = useRef<string | null>(null);
   const lineKey = (line: readonly (readonly number[])[]) => `${line.length}:${line[0]?.join(",")}:${line[line.length - 1]?.join(",")}`;
@@ -2749,7 +2757,9 @@ export function App() {
     if (pressed && closureChecking.current) return;
     if (pressed) closureChecking.current = true;
     // At the plan's ride time (its When), with the closures it routes through anyway (v0.7.0).
-    const found = await checkClosures(origin, line, fetch, { when: planDials.when, bypass: planDials.closureBypass }).finally(() => {
+    // Go, and Start ride from either view, check only the closures known to be on (v0.9.1, lib/dials.ts closuresNow).
+    const nowOnly = !!planDials.closuresNow || why === "ride";
+    const found = await checkClosures(origin, line, fetch, { when: planDials.when, bypass: planDials.closureBypass, nowOnly }).finally(() => {
       if (pressed) closureChecking.current = false;
     });
     if (!found || found.closures.length === 0) {
@@ -2757,7 +2767,7 @@ export function App() {
       return;
     }
     onAsk?.();
-    closurePending.current = { line: line.map((v) => [...v]), index: found.index, closures: found.closures, gpx, proceed, afterGpx };
+    closurePending.current = { line: line.map((v) => [...v]), index: found.index, closures: found.closures, gpx, nowOnly, proceed, afterGpx };
     setClosureAsk({ why, closures: found.closures, unchecked: found.unchecked, notices: found.notices });
   };
   const closureAnyway = () => {
@@ -2797,7 +2807,9 @@ export function App() {
           [pending.line[after][0], pending.line[after][1]],
         ];
         // The detour's line alone is used: no routes to choose from (review speed-5).
-        const result = await requestRoute(ends, rideRef.current.preset, { dials: planDials, routeOnly: true });
+        // The detours go round what the check found: on Start ride, only the closures known to be on.
+        const dials = pending.nowOnly ? { ...planDials, closuresNow: true } : planDials;
+        const result = await requestRoute(ends, rideRef.current.preset, { dials, routeOnly: true });
         return result.ok ? result.route.geometry.coordinates.map(([lon, lat]) => [lon, lat] as LonLat) : null;
       }),
     );
@@ -2916,7 +2928,7 @@ export function App() {
     if (!rest) return null;
     const asked = restRequest(rest, riderAt);
     if (!asked) return NO_FIX_YET;
-    const result = await requestRoute(asked.points, asked.preset, { dials: { ...planDials, loop: false }, routeOnly: true });
+    const result = await requestRoute(asked.points, asked.preset, { dials: { ...planDials, loop: false, closuresNow: true }, routeOnly: true });
     if (!stillOn()) return null;
     if (!result.ok) return `${result.error.title}. ${result.error.message}`;
     if (!rideableRoute(result.route)) return RIDE_TOO_LONG;
@@ -2928,7 +2940,7 @@ export function App() {
       void checkThen("ride", line, false, go);
       return null;
     }
-    const found = closureLetGo.current === lineKey(line) ? null : await checkClosures(origin, line, fetch, { when: planDials.when, bypass: planDials.closureBypass });
+    const found = closureLetGo.current === lineKey(line) ? null : await checkClosures(origin, line, fetch, { when: planDials.when, bypass: planDials.closureBypass, nowOnly: true });
     if (!stillOn()) return null;
     if (found && found.closures.length > 0) {
       restHeld.current = { route: result.route, points: asked.points, n, at: Date.now() };
