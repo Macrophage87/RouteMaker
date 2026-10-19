@@ -925,6 +925,9 @@ def test_json_is_gzipped() -> None:
     assert "application/json" in re.search(r"gzip_types[^;]*;", full).group(0)
 
 
+ABOUT_LOCATION = r"~ ^/about/(stress|how-it-works|ride-types|architecture|acknowledgements)\.html$"
+
+
 def test_the_template_serves_what_the_caddyfile_serves() -> None:
     full = stage("full")
     paths = [p for p, _ in locations(full)]
@@ -933,7 +936,7 @@ def test_the_template_serves_what_the_caddyfile_serves() -> None:
         "= /index.html",
         "= /favicon.svg",
         "= /licenses.txt",
-        "= /about/stress.html",
+        ABOUT_LOCATION,
         "= /sw.js",
         "= /manifest.webmanifest",
         "^~ /icons/",
@@ -968,7 +971,7 @@ def test_the_stress_page_and_its_short_paths_are_served_as_the_caddyfile_serves_
     with the Caddyfile's status, as case-insensitively as Caddy's `path` matcher."""
     full = stage("full")
     by_path = dict(locations(full))
-    page = by_path["= /about/stress.html"]
+    page = by_path[ABOUT_LOCATION]
     caddy_csp = re.search(r'header Content-Security-Policy "([^"]+)"', CADDYFILE).group(1)
     assert f'add_header Content-Security-Policy "{caddy_csp}" always;' in page
     assert 'add_header Cache-Control "no-cache" always;' in page
@@ -981,6 +984,18 @@ def test_the_stress_page_and_its_short_paths_are_served_as_the_caddyfile_serves_
     target, status = caddy.groups()
     assert target == "/about/stress.html"
     assert by_path["~* ^/about/stress/?$"].strip() == f"return {status} {target};"
+
+
+def test_the_about_location_names_exactly_the_documentation_pages_the_caddyfile_serves() -> None:
+    """The owner, 2026-10-19: the rider-facing documentation under /about/. The template's
+    one location names the same pages as the Caddyfile's @frontend and as frontend/public/about,
+    so a new page cannot be served by one edge and not the other."""
+    names = set(re.search(r"\^/about/\(([^)]*)\)", ABOUT_LOCATION).group(1).split("|"))
+    frontend = re.search(r"^\s*@frontend path (.+)$", CADDYFILE, re.M).group(1).split()
+    caddy = {p.removeprefix("/about/").removesuffix(".html") for p in frontend if p.startswith("/about/")}
+    public = Path(__file__).resolve().parent.parent / "frontend" / "public" / "about"
+    files = {p.stem for p in public.glob("*.html")}
+    assert names == caddy == files, (names, caddy, files)
 
 
 def test_the_installable_app_is_served_as_the_caddyfile_serves_it() -> None:

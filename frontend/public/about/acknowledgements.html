@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="description" content="The data sources, open source projects and research RouteMaker is built on, with links and licences.">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<title>Acknowledgements - RouteMaker</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1c1917; --muted: #4b5260; --line: #d6d3d1;
+    --panel: #f5f5f4; --link: #1d4ed8; --focus: #1d4ed8; --accent: #1d4ed8; --accent-bg: #dbeafe;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #1c1917; --fg: #f5f5f4; --muted: #c4c7ce; --line: #57534e;
+      --panel: #292524; --link: #93c5fd; --focus: #93c5fd; --accent: #93c5fd; --accent-bg: #1e3a5f;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    font-size: 1.0625rem; line-height: 1.6; overflow-wrap: break-word;
+  }
+  .skip { position: absolute; left: -9999px; top: 0; }
+  .skip:focus { left: 1rem; top: 1rem; background: var(--bg); padding: 0.5rem 0.75rem; border: 2px solid var(--focus); z-index: 1; }
+  header, main, footer { max-width: 48rem; margin: 0 auto; padding: 0 1rem; }
+  header { padding-top: 1.25rem; }
+  footer { padding-bottom: 2rem; border-top: 1px solid var(--line); margin-top: 2.5rem; color: var(--muted); font-size: 0.95rem; }
+  h1 { font-size: 1.75rem; line-height: 1.25; margin: 0.5rem 0 0.75rem; }
+  h2 { font-size: 1.35rem; line-height: 1.3; margin: 2.5rem 0 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--line); }
+  h3 { font-size: 1.1rem; margin: 1.5rem 0 0.4rem; }
+  a { color: var(--link); text-underline-offset: 0.15em; }
+  a:focus-visible, summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+  .back { display: inline-block; margin-bottom: 0.25rem; }
+  .lead { font-size: 1.1rem; }
+  .note { background: var(--panel); border-left: 4px solid var(--muted); padding: 0.6rem 0.9rem; margin: 1rem 0; }
+  .short { background: var(--accent-bg); border-left: 4px solid var(--accent); padding: 0.6rem 0.9rem; margin: 1rem 0; }
+  .short > :first-child { margin-top: 0; }
+  .short > :last-child { margin-bottom: 0; }
+  nav.docs ul { list-style: none; padding: 0; margin: 0.25rem 0 0.75rem; display: flex; flex-wrap: wrap; gap: 0.35rem 1rem; }
+  nav.docs a[aria-current="page"] { font-weight: 700; color: var(--fg); text-decoration: none; }
+  nav.toc ul { padding-left: 1.25rem; margin: 0.25rem 0; }
+  .table-wrap { overflow-x: auto; margin: 0.75rem 0; }
+  .table-wrap:focus-visible { outline: 3px solid var(--focus); }
+  table { border-collapse: collapse; width: 100%; font-size: 0.97rem; }
+  caption { text-align: left; font-weight: 600; padding-bottom: 0.4rem; }
+  th, td { border: 1px solid var(--line); padding: 0.4rem 0.5rem; text-align: left; vertical-align: top; }
+  thead th { background: var(--panel); }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .sw { display: inline-block; width: 1.6em; height: 0.8em; border: 1px solid var(--fg); vertical-align: middle; margin-right: 0.35em; border-radius: 2px; }
+  figure { margin: 1.25rem 0; padding: 0.75rem; border: 1px solid var(--line); border-radius: 6px; }
+  .fig-scroll { overflow-x: auto; }
+  .fig-scroll:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+  figure svg { display: block; width: 100%; height: auto; }
+  figcaption { font-size: 0.95rem; color: var(--muted); margin-top: 0.5rem; }
+  details { margin: 0.75rem 0; }
+  summary { cursor: pointer; font-weight: 600; }
+  sup.cite a { text-decoration: none; }
+  ol.refs li { margin-bottom: 0.4rem; }
+  .t { fill: var(--fg); font: 13px system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  .ts { fill: var(--muted); font: 11.5px system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  .tb { fill: var(--fg); font: 600 13px system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  .tk { fill: #1c1917; font: 600 12.5px system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  .tw { fill: #ffffff; font: 600 12.5px system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  .bx { fill: var(--panel); stroke: var(--line); stroke-width: 1.5; }
+  .bxa { fill: var(--accent-bg); stroke: var(--accent); stroke-width: 1.5; }
+  .ar { stroke: var(--muted); stroke-width: 1.6; fill: none; }
+  .ard { stroke: var(--muted); stroke-width: 1.4; fill: none; stroke-dasharray: 5 4; }
+  .ah { fill: var(--muted); }
+  .grid { stroke: var(--line); stroke-width: 1; }
+  .axis { stroke: var(--fg); stroke-width: 1.2; }
+  .ln { stroke: var(--accent); stroke-width: 2.5; fill: none; }
+  .ln2 { stroke: #c2410c; stroke-width: 2.5; fill: none; stroke-dasharray: 7 4; }
+  .fillacc { fill: var(--accent); }
+  @media (max-width: 30rem) {
+    body { font-size: 1rem; }
+    h1 { font-size: 1.5rem; }
+    th, td { padding: 0.35rem 0.4rem; }
+    figure { padding: 0.4rem; }
+  }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to the content</a>
+<header>
+  <p><a class="back" href="/">Back to the map</a></p>
+  <nav class="docs" aria-label="RouteMaker documentation">
+  <ul>
+    <li><a href="/about/how-it-works.html">How RouteMaker works</a></li>
+    <li><a href="/about/ride-types.html">Ride types</a></li>
+    <li><a href="/about/stress.html">Stress ratings in detail</a></li>
+    <li><a href="/about/architecture.html">Architecture</a></li>
+    <li><a href="/about/acknowledgements.html" aria-current="page">Acknowledgements</a></li>
+  </ul>
+  </nav>
+  <h1>Acknowledgements</h1>
+</header>
+<main id="main">
+
+<p class="lead">RouteMaker stands on other people's work: the volunteers who map the region in
+OpenStreetMap, the public agencies that publish their data, the researchers whose methods it follows,
+and the open source projects it is built from. Thank you.</p>
+
+<div class="short">
+<p>Every source below is listed with what RouteMaker uses it for and its licence. The full record, with
+dataset ids, download dates and checksums, is in
+<a href="https://github.com/Macrophage87/RouteMaker/blob/main/docs/SOURCES.md">docs/SOURCES.md</a>.
+The licence texts of the software bundled into the app are in
+<a href="/licenses.txt">Software licences</a>.</p>
+</div>
+
+<nav class="toc" aria-label="On this page">
+<p><strong>On this page</strong></p>
+<ul>
+<li><a href="#data">Map and road data</a></li>
+<li><a href="#live">Live and transit data</a></li>
+<li><a href="#software">Open source software</a></li>
+<li><a href="#research">Research</a></li>
+<li><a href="#notes">Notes</a></li>
+</ul>
+</nav>
+
+<h2 id="data">Map and road data</h2>
+<div class="table-wrap" tabindex="0" role="region" aria-label="Map and road data">
+<table>
+<caption>Map and road data</caption>
+<thead><tr><th scope="col">Source</th><th scope="col">What RouteMaker uses it for</th><th scope="col">Licence</th></tr></thead>
+<tbody>
+<tr><th scope="row"><a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a></th><td>Every road, path and place; the base of the whole map</td><td><a href="https://opendatacommons.org/licenses/odbl/1-0/">ODbL 1.0</a></td></tr>
+<tr><th scope="row"><a href="https://download.geofabrik.de/">Geofabrik</a></th><td>Daily OpenStreetMap extracts for DC, Maryland, Virginia and West Virginia</td><td>ODbL (OpenStreetMap data)</td></tr>
+<tr><th scope="row"><a href="https://protomaps.com/">Protomaps</a></th><td>The base map, from OpenStreetMap and Natural Earth</td><td>ODbL; Natural Earth public domain</td></tr>
+<tr><th scope="row"><a href="https://opendata.dc.gov/">Open Data DC</a> (DDOT, DC GIS)</th><td>Bicycle LTS 2020, Roadway Block (speeds, lanes, bike lanes, parking), traffic volume, Central Business District, Capitol grounds, metro stations</td><td><a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>, adapted</td></tr>
+<tr><th scope="row"><a href="https://rh.dcgis.dc.gov/dcgis/rest/services/DDOT/PavementConditionIndex/FeatureServer/5">DDOT Pavement Condition Index</a></th><td>A small extra cost on rough DC streets</td><td>DC terms of use</td></tr>
+<tr><th scope="row"><a href="https://www.arcgis.com/home/item.html?id=fb903d1ffbc84b219bdb47629bd02b82">Montgomery County Planning Department</a></th><td>Bicycle Level of Traffic Stress; Rustic Roads for the Scenic layer</td><td>Open, with attribution</td></tr>
+<tr><th scope="row"><a href="https://www.arcgis.com/home/item.html?id=fc3c7b650076475ba9a4b0232f6d8655">Maryland DOT State Highway Administration</a></th><td>Bicycle LTS 2022, traffic counts, Scenic Byways, work zones</td><td>Maryland iMAP terms; work zones CC0</td></tr>
+<tr><th scope="row"><a href="https://www.virginiaroads.org/">Virginia DOT</a></th><td>Traffic counts; work zones through SmarterRoads</td><td>Open; SmarterRoads use agreement</td></tr>
+<tr><th scope="row"><a href="https://www.alexandriava.gov/gis/open-data">City of Alexandria</a></th><td>Recorded speed limits</td><td>CC0</td></tr>
+<tr><th scope="row"><a href="https://data.baltimorecity.gov/">Open Baltimore</a></th><td>Bike facilities in Baltimore</td><td>Open under City Code</td></tr>
+<tr><th scope="row"><a href="https://www.usgs.gov/3d-elevation-program">USGS 3D Elevation Program</a></th><td>Elevation, climbs, the Hills slider, contour lines</td><td>U.S. public domain</td></tr>
+<tr><th scope="row"><a href="https://www.census.gov/geographies/mapping-files/time-series/geo/tiger-line-file.html">U.S. Census Bureau TIGER/Line</a></th><td>Urban areas (for default speeds) and counties (for change reports)</td><td>U.S. public domain</td></tr>
+<tr><th scope="row"><a href="https://www.mapillary.com/">Mapillary</a></th><td>Street photos in the road panel</td><td>CC BY-SA 4.0</td></tr>
+<tr><th scope="row"><a href="https://greenway.org/">East Coast Greenway</a> and <a href="https://wiki.openstreetmap.org/wiki/WikiProject_U.S._Bicycle_Route_System">U.S. Bicycle Route System</a></th><td>Scenic layer routes, as mapped in OpenStreetMap</td><td>ODbL (OpenStreetMap data)</td></tr>
+</tbody>
+</table>
+</div>
+
+<h2 id="live">Live and transit data</h2>
+<div class="table-wrap" tabindex="0" role="region" aria-label="Live and transit data">
+<table>
+<caption>Live and transit data</caption>
+<thead><tr><th scope="col">Source</th><th scope="col">What RouteMaker uses it for</th><th scope="col">Licence</th></tr></thead>
+<tbody>
+<tr><th scope="row"><a href="https://capitalbikeshare.com/system-data">Capital Bikeshare</a></th><td>Live docks, bikes and e-bikes</td><td><a href="https://capitalbikeshare.com/data-license-agreement">Data License Agreement</a></td></tr>
+<tr><th scope="row"><a href="https://developer.wmata.com/">WMATA</a></th><td>Metro and Metrobus timetables, arrivals, incidents, elevator outages</td><td><a href="https://developer.wmata.com/license">Transit Data Terms of Use</a></td></tr>
+<tr><th scope="row"><a href="https://www.mta.maryland.gov/developer-resources">Maryland Transit Administration</a></th><td>MARC, Light RailLink and Metro SubwayLink timetables</td><td><a href="https://www.mta.maryland.gov/terms-conditions">MTA terms</a></td></tr>
+<tr><th scope="row"><a href="https://www.vre.org/">Virginia Railway Express</a></th><td>VRE timetables</td><td>VRE developer terms</td></tr>
+<tr><th scope="row"><a href="https://catalog.data.gov/dataset/occupancy-permits-via-ddot-tops">DDOT TOPS permits</a></th><td>Plan's DC permits layer</td><td>CC BY 4.0</td></tr>
+<tr><th scope="row"><a href="https://mpdc.dc.gov/newsroom">Metropolitan Police Department</a></th><td>Traffic advisories and road closures</td><td>Public notices</td></tr>
+<tr><th scope="row"><a href="https://hsema.dc.gov/">DC HSEMA (AlertDC)</a></th><td>Emergency road closures</td><td>Public notices</td></tr>
+<tr><th scope="row"><a href="https://www.nps.gov/subjects/developer/">National Park Service</a></th><td>Park alerts, shown as notes</td><td>Public domain</td></tr>
+<tr><th scope="row"><a href="https://311.dc.gov/">DC 311</a></th><td>Reports you choose to send from a ride</td><td>Your report, sent by you</td></tr>
+<tr><th scope="row"><a href="https://more-mtb.org/">Mid-Atlantic Off-Road Enthusiasts (MORE)</a></th><td>Links to trail conditions</td><td>Links only</td></tr>
+</tbody>
+</table>
+</div>
+
+<h2 id="software">Open source software</h2>
+<div class="table-wrap" tabindex="0" role="region" aria-label="Open source software">
+<table>
+<caption>Open source software</caption>
+<thead><tr><th scope="col">Project</th><th scope="col">Role in RouteMaker</th><th scope="col">Licence</th></tr></thead>
+<tbody>
+<tr><th scope="row"><a href="https://github.com/valhalla/valhalla">Valhalla</a></th><td>Routing engine and graph builder</td><td>MIT</td></tr>
+<tr><th scope="row"><a href="https://www.postgresql.org/">PostgreSQL</a> and <a href="https://postgis.net/">PostGIS</a></th><td>Database, spatial queries, stress vector tiles</td><td>PostgreSQL licence; GPL 2</td></tr>
+<tr><th scope="row"><a href="https://www.djangoproject.com/">Django</a> and <a href="https://django-ninja.dev/">Django Ninja</a></th><td>App server and API</td><td>BSD-3-Clause; MIT</td></tr>
+<tr><th scope="row"><a href="https://procrastinate.readthedocs.io/">Procrastinate</a></th><td>Background jobs and the weekly rebuild</td><td>MIT</td></tr>
+<tr><th scope="row"><a href="https://www.psycopg.org/">Psycopg</a></th><td>Database driver</td><td>LGPL 3</td></tr>
+<tr><th scope="row"><a href="https://osmcode.org/">Osmium and PyOsmium</a></th><td>Reading, merging and clipping OpenStreetMap</td><td>GPL 3 (tool); BSD-2-Clause (PyOsmium)</td></tr>
+<tr><th scope="row"><a href="https://shapely.readthedocs.io/">Shapely</a></th><td>Geometry in the rebuild</td><td>BSD-3-Clause</td></tr>
+<tr><th scope="row"><a href="https://gdal.org/">GDAL</a></th><td>Elevation and contour lines</td><td>MIT</td></tr>
+<tr><th scope="row"><a href="https://github.com/komoot/photon">Photon</a></th><td>Place search</td><td>Apache 2.0</td></tr>
+<tr><th scope="row"><a href="https://caddyserver.com/">Caddy</a></th><td>Web server</td><td>Apache 2.0</td></tr>
+<tr><th scope="row"><a href="https://gunicorn.org/">Gunicorn</a></th><td>Runs the app server</td><td>MIT</td></tr>
+<tr><th scope="row"><a href="https://react.dev/">React</a></th><td>The app's interface</td><td>MIT</td></tr>
+<tr><th scope="row"><a href="https://maplibre.org/">MapLibre GL JS</a></th><td>Draws the map</td><td>BSD-3-Clause</td></tr>
+<tr><th scope="row"><a href="https://github.com/protomaps/PMTiles">PMTiles</a> and <a href="https://github.com/protomaps/basemaps">Protomaps basemaps</a></th><td>Single-file map archives and the base map style</td><td>BSD-3-Clause</td></tr>
+<tr><th scope="row"><a href="https://vite.dev/">Vite</a> and <a href="https://www.typescriptlang.org/">TypeScript</a></th><td>Building the app</td><td>MIT; Apache 2.0</td></tr>
+<tr><th scope="row"><a href="https://github.com/kazuhikoarase/qrcode-generator">qrcode-generator</a></th><td>QR codes for shared routes</td><td>MIT</td></tr>
+<tr><th scope="row"><a href="https://github.com/perezd/murmurhash-js">murmurhash-js</a></th><td>Inside MapLibre</td><td>MIT</td></tr>
+<tr><th scope="row"><a href="https://capacitorjs.com/">Capacitor</a></th><td>The Android app shell, with community plugins for background location and speech</td><td>MIT</td></tr>
+<tr><th scope="row"><a href="https://www.docker.com/">Docker</a></th><td>Packaging and running every service</td><td>Apache 2.0</td></tr>
+<tr><th scope="row"><a href="https://www.brailleinstitute.org/freefont/">Atkinson Hyperlegible</a></th><td>The app's font, designed for low-vision readers by the Braille Institute</td><td>SIL Open Font License 1.1</td></tr>
+<tr><th scope="row"><a href="https://github.com/googlefonts/noto-emoji">Noto Emoji</a></th><td>The skull and crossbones marking Avoid-rated junctions</td><td>Apache 2.0</td></tr>
+<tr><th scope="row"><a href="https://modelcontextprotocol.io/">Model Context Protocol</a></th><td>How AI assistants talk to RouteMaker</td><td>Open specification</td></tr>
+</tbody>
+</table>
+</div>
+<p>RouteMaker itself is open source under the MIT licence:
+<a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
+
+<h2 id="research">Research</h2>
+<div class="table-wrap" tabindex="0" role="region" aria-label="Research the methods build on">
+<table>
+<caption>Research the methods build on</caption>
+<thead><tr><th scope="col">Work</th><th scope="col">What it informs</th></tr></thead>
+<tbody>
+<tr><th scope="row"><a href="https://transweb.sjsu.edu/sites/default/files/1005-low-stress-bicycling-network-connectivity.pdf">Mekuria, Furth and Nixon (2012), Mineta Transportation Institute</a></th><td>The Level of Traffic Stress scale</td></tr>
+<tr><th scope="row"><a href="https://peterfurth.sites.northeastern.edu/level-of-traffic-stress/">Peter Furth, LTS criteria 2.0 and 2.2</a></th><td>The formula's tables</td></tr>
+<tr><th scope="row"><a href="https://www.oregon.gov/odot/Planning/Documents/APMv2_Ch14.pdf">Oregon DOT Analysis Procedures Manual, chapter 14</a></th><td>Crossings and left turns</td></tr>
+<tr><th scope="row"><a href="https://montgomeryplanning.org/wp-content/uploads/2017/11/Appendix-D.pdf">Montgomery County Bicycle Master Plan, Appendix D</a></th><td>Local LTS practice</td></tr>
+<tr><th scope="row"><a href="https://www.mdot.maryland.gov/OPCP/MDOT_LTS_Metadata_Methodology_Full.pdf">MDOT LTS methodology</a></th><td>Reading Maryland's ratings</td></tr>
+<tr><th scope="row"><a href="https://ppms.trec.pdx.edu/media/1307553839HIVYEAW.pdf">Broach, Dill and Gliebe (2012)</a></th><td>How riders trade distance for comfort; junction costs</td></tr>
+<tr><th scope="row"><a href="https://doi.org/10.1016/j.trc.2016.12.009">Zimmermann, Mai and Frejinger (2017)</a></th><td>Route choice and turn costs</td></tr>
+<tr><th scope="row"><a href="https://repository.up.ac.za/bitstream/handle/2263/65159/SkovPetersen_How_2018.pdf?sequence=1">Skov-Petersen and others (2018)</a></th><td>Turns and route choice in Copenhagen</td></tr>
+<tr><th scope="row"><a href="https://doi.org/10.1016/j.trf.2018.06.032">Caviedes and Figliozzi (2018)</a></th><td>Stress at rush hour</td></tr>
+<tr><th scope="row"><a href="https://transweb.sjsu.edu/sites/default/files/1711-Fang-Bicycle-Level-of-Stress-Crowdsourced-Route-Satisfaction.pdf">Harvey, Fang and Rodriguez (2019)</a></th><td>Why LTS levels are never averaged</td></tr>
+<tr><th scope="row"><a href="https://doi.org/10.17226/22350">NCHRP Report 766 and the bicycle-flow studies</a></th><td>Mass Ride capacity</td></tr>
+</tbody>
+</table>
+</div>
+
+<h2 id="notes">Notes</h2>
+<ul>
+<li>RouteMaker is an independent project. It is not affiliated with or endorsed by any agency,
+transit system or bikeshare operator listed here.</li>
+<li>Map data © OpenStreetMap contributors, available under the Open Database License. Where RouteMaker
+adapts agency data (for example, matching DC's street records onto OpenStreetMap roads), the credit
+says "adapted".</li>
+<li>Data used only for comparison inside the project, such as Arlington's comfort map, is not listed
+because it is not shown or used for routing.</li>
+</ul>
+
+</main>
+<footer>
+  <p>Part of RouteMaker's documentation. It describes version 0.10.0. The code is
+  open source under the MIT licence:
+  <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
+  <p><a href="/">Back to the map</a></p>
+</footer>
+</body>
+</html>

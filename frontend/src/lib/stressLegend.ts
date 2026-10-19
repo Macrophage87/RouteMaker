@@ -183,6 +183,26 @@ export const STRESS_PAGE = "/about/stress.html";
 export const STRESS_PAGE_TEXT = "How stress ratings work";
 
 /**
+ * The hub of the rider-facing documentation (the owner, 2026-10-19: "a full set of documentation
+ * ... linked within the app"): how ratings, ride types and closures work, the architecture and the
+ * acknowledgements, static pages in public/about/ beside STRESS_PAGE. Settings links to it, once.
+ */
+export const DOCS_PAGE = "/about/how-it-works.html";
+export const DOCS_PAGE_TEXT = "How RouteMaker works";
+
+/**
+ * The link to DOCS_PAGE, at the end of Settings. Like StressPageLink it keeps the plan for the
+ * page's "Back to the map" links.
+ */
+export function DocsPageLink(): ReactElement {
+  return h(
+    "p",
+    { className: "hint docs-page-link" },
+    h("a", { href: DOCS_PAGE, onClick: (e) => isPlainClick(e) && rememberPlanForPage(tabSession(), window.location.hash) }, DOCS_PAGE_TEXT),
+  );
+}
+
+/**
  * The link to STRESS_PAGE, as the legend and the road panel show it. Following it keeps the
  * plan for the page's "Back to the map" links, which go to a bare "/" (`rememberPlanForPage`).
  */

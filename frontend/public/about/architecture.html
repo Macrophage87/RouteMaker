@@ -1,0 +1,442 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="description" content="How RouteMaker is built: the running system, the weekly map rebuild, how a route is planned and how the map is drawn.">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<title>Architecture - RouteMaker</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1c1917; --muted: #4b5260; --line: #d6d3d1;
+    --panel: #f5f5f4; --link: #1d4ed8; --focus: #1d4ed8; --accent: #1d4ed8; --accent-bg: #dbeafe;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #1c1917; --fg: #f5f5f4; --muted: #c4c7ce; --line: #57534e;
+      --panel: #292524; --link: #93c5fd; --focus: #93c5fd; --accent: #93c5fd; --accent-bg: #1e3a5f;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    font-size: 1.0625rem; line-height: 1.6; overflow-wrap: break-word;
+  }
+  .skip { position: absolute; left: -9999px; top: 0; }
+  .skip:focus { left: 1rem; top: 1rem; background: var(--bg); padding: 0.5rem 0.75rem; border: 2px solid var(--focus); z-index: 1; }
+  header, main, footer { max-width: 48rem; margin: 0 auto; padding: 0 1rem; }
+  header { padding-top: 1.25rem; }
+  footer { padding-bottom: 2rem; border-top: 1px solid var(--line); margin-top: 2.5rem; color: var(--muted); font-size: 0.95rem; }
+  h1 { font-size: 1.75rem; line-height: 1.25; margin: 0.5rem 0 0.75rem; }
+  h2 { font-size: 1.35rem; line-height: 1.3; margin: 2.5rem 0 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--line); }
+  h3 { font-size: 1.1rem; margin: 1.5rem 0 0.4rem; }
+  a { color: var(--link); text-underline-offset: 0.15em; }
+  a:focus-visible, summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+  .back { display: inline-block; margin-bottom: 0.25rem; }
+  .lead { font-size: 1.1rem; }
+  .note { background: var(--panel); border-left: 4px solid var(--muted); padding: 0.6rem 0.9rem; margin: 1rem 0; }
+  .short { background: var(--accent-bg); border-left: 4px solid var(--accent); padding: 0.6rem 0.9rem; margin: 1rem 0; }
+  .short > :first-child { margin-top: 0; }
+  .short > :last-child { margin-bottom: 0; }
+  nav.docs ul { list-style: none; padding: 0; margin: 0.25rem 0 0.75rem; display: flex; flex-wrap: wrap; gap: 0.35rem 1rem; }
+  nav.docs a[aria-current="page"] { font-weight: 700; color: var(--fg); text-decoration: none; }
+  nav.toc ul { padding-left: 1.25rem; margin: 0.25rem 0; }
+  .table-wrap { overflow-x: auto; margin: 0.75rem 0; }
+  .table-wrap:focus-visible { outline: 3px solid var(--focus); }
+  table { border-collapse: collapse; width: 100%; font-size: 0.97rem; }
+  caption { text-align: left; font-weight: 600; padding-bottom: 0.4rem; }
+  th, td { border: 1px solid var(--line); padding: 0.4rem 0.5rem; text-align: left; vertical-align: top; }
+  thead th { background: var(--panel); }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .sw { display: inline-block; width: 1.6em; height: 0.8em; border: 1px solid var(--fg); vertical-align: middle; margin-right: 0.35em; border-radius: 2px; }
+  figure { margin: 1.25rem 0; padding: 0.75rem; border: 1px solid var(--line); border-radius: 6px; }
+  .fig-scroll { overflow-x: auto; }
+  .fig-scroll:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+  figure svg { display: block; width: 100%; height: auto; }
+  figcaption { font-size: 0.95rem; color: var(--muted); margin-top: 0.5rem; }
+  details { margin: 0.75rem 0; }
+  summary { cursor: pointer; font-weight: 600; }
+  sup.cite a { text-decoration: none; }
+  ol.refs li { margin-bottom: 0.4rem; }
+  .t { fill: var(--fg); font: 13px system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  .ts { fill: var(--muted); font: 11.5px system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  .tb { fill: var(--fg); font: 600 13px system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  .tk { fill: #1c1917; font: 600 12.5px system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  .tw { fill: #ffffff; font: 600 12.5px system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  .bx { fill: var(--panel); stroke: var(--line); stroke-width: 1.5; }
+  .bxa { fill: var(--accent-bg); stroke: var(--accent); stroke-width: 1.5; }
+  .ar { stroke: var(--muted); stroke-width: 1.6; fill: none; }
+  .ard { stroke: var(--muted); stroke-width: 1.4; fill: none; stroke-dasharray: 5 4; }
+  .ah { fill: var(--muted); }
+  .grid { stroke: var(--line); stroke-width: 1; }
+  .axis { stroke: var(--fg); stroke-width: 1.2; }
+  .ln { stroke: var(--accent); stroke-width: 2.5; fill: none; }
+  .ln2 { stroke: #c2410c; stroke-width: 2.5; fill: none; stroke-dasharray: 7 4; }
+  .fillacc { fill: var(--accent); }
+  @media (max-width: 30rem) {
+    body { font-size: 1rem; }
+    h1 { font-size: 1.5rem; }
+    th, td { padding: 0.35rem 0.4rem; }
+    figure { padding: 0.4rem; }
+  }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to the content</a>
+<header>
+  <p><a class="back" href="/">Back to the map</a></p>
+  <nav class="docs" aria-label="RouteMaker documentation">
+  <ul>
+    <li><a href="/about/how-it-works.html">How RouteMaker works</a></li>
+    <li><a href="/about/ride-types.html">Ride types</a></li>
+    <li><a href="/about/stress.html">Stress ratings in detail</a></li>
+    <li><a href="/about/architecture.html" aria-current="page">Architecture</a></li>
+    <li><a href="/about/acknowledgements.html">Acknowledgements</a></li>
+  </ul>
+  </nav>
+  <h1>Architecture</h1>
+</header>
+<main id="main">
+
+<p class="lead">RouteMaker is a web app backed by one server. A weekly rebuild turns OpenStreetMap and
+public agency data into a rated road network and routing graphs; the app server plans routes on them
+and adds live data such as closures, bikeshare and transit. Everything is open source<sup class="cite"><a href="#ref-1" aria-label="source 1">[1]</a></sup>.</p>
+
+<div class="short">
+<p><strong>In short</strong></p>
+<ul>
+<li><strong>Front end:</strong> React and MapLibre in the browser, installable as an app, plus a thin
+Android shell.</li>
+<li><strong>Back end:</strong> Django on PostgreSQL with PostGIS, Valhalla for routing, Photon for place
+search, all behind one Caddy web server.</li>
+<li><strong>Data:</strong> rebuilt weekly from OpenStreetMap and agency data; live feeds read every
+few minutes.</li>
+<li><strong>Privacy:</strong> signed-out plans are never stored; sign-in is through Discord and keeps no
+Discord token.</li>
+</ul>
+</div>
+
+<nav class="toc" aria-label="On this page">
+<p><strong>On this page</strong></p>
+<ul>
+<li><a href="#runtime">The running system</a></li>
+<li><a href="#rebuild">The weekly rebuild</a></li>
+<li><a href="#request">Planning a route</a></li>
+<li><a href="#map">Drawing the map</a></li>
+<li><a href="#live">Live data</a></li>
+<li><a href="#apps">Apps, accounts and AI assistants</a></li>
+<li><a href="#quality">Accessibility and testing</a></li>
+<li><a href="#sources">Sources</a></li>
+</ul>
+</nav>
+
+<h2 id="runtime">The running system</h2>
+<figure id="fig-runtime">
+<div class="fig-scroll" tabindex="0" role="group" aria-label="The parts of the running system, scrolls sideways on a narrow screen">
+<svg viewBox="0 0 960 400" role="img" aria-labelledby="fig-runtime-t fig-runtime-d" focusable="false" style="min-width:600px">
+<title id="fig-runtime-t">The parts of the running system</title>
+<desc id="fig-runtime-d">Your browser or the Android app talks only to the web server, Caddy. Caddy serves the app&#x27;s files, the base map and the contours itself and passes everything else to the app server, Django. The app server asks the Valhalla routers for routes, Photon for place search and the PostGIS database for ratings and saved routes, and reads live data such as bikeshare and transit. A background worker keeps closures and feeds up to date in the database. A weekly rebuild writes a new database table and new router tiles.</desc>
+<defs><marker id="ah-runtime" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<rect class="bxa" x="10" y="150" width="150" height="70" rx="6"/>
+<text class="tb" x="85.0" y="181.5" text-anchor="middle">Your browser</text>
+<text class="ts" x="85.0" y="197.5" text-anchor="middle">or the Android app</text>
+<rect class="bx" x="220" y="150" width="140" height="70" rx="6"/>
+<text class="tb" x="290.0" y="181.5" text-anchor="middle">Web server</text>
+<text class="ts" x="290.0" y="197.5" text-anchor="middle">Caddy: TLS, files</text>
+<rect class="bxa" x="420" y="150" width="160" height="70" rx="6"/>
+<text class="tb" x="500.0" y="181.5" text-anchor="middle">App server</text>
+<text class="ts" x="500.0" y="197.5" text-anchor="middle">Django + Ninja</text>
+<rect class="bx" x="420" y="20" width="160" height="60" rx="6"/>
+<text class="tb" x="500.0" y="46.5" text-anchor="middle">Static files</text>
+<text class="ts" x="500.0" y="62.5" text-anchor="middle">app, base map, contours</text>
+<rect class="bx" x="660" y="20" width="190" height="60" rx="6"/>
+<text class="tb" x="755.0" y="46.5" text-anchor="middle">Routers: Valhalla</text>
+<text class="ts" x="755.0" y="62.5" text-anchor="middle">six map variants</text>
+<rect class="bx" x="660" y="100" width="190" height="50" rx="6"/>
+<text class="tb" x="755.0" y="121.5" text-anchor="middle">Place search</text>
+<text class="ts" x="755.0" y="137.5" text-anchor="middle">Photon</text>
+<rect class="bx" x="660" y="170" width="190" height="60" rx="6"/>
+<text class="tb" x="755.0" y="196.5" text-anchor="middle">Database</text>
+<text class="ts" x="755.0" y="212.5" text-anchor="middle">PostgreSQL + PostGIS</text>
+<rect class="bx" x="660" y="250" width="190" height="60" rx="6"/>
+<text class="tb" x="755.0" y="276.5" text-anchor="middle">Background worker</text>
+<text class="ts" x="755.0" y="292.5" text-anchor="middle">closures, feeds, backups</text>
+<rect class="bx" x="420" y="280" width="160" height="60" rx="6"/>
+<text class="tb" x="500.0" y="306.5" text-anchor="middle">Live data</text>
+<text class="ts" x="500.0" y="322.5" text-anchor="middle">bikeshare, transit, alerts</text>
+<rect class="bx" x="660" y="330" width="190" height="60" rx="6"/>
+<text class="tb" x="755.0" y="356.5" text-anchor="middle">Weekly rebuild</text>
+<text class="ts" x="755.0" y="372.5" text-anchor="middle">new map every week</text>
+<path class="ar" d="M162,185 L218,185" marker-end="url(#ah-runtime)"/>
+<path class="ar" d="M362,185 L418,185" marker-end="url(#ah-runtime)"/>
+<path class="ar" d="M290,148 L290,50 L418,50" marker-end="url(#ah-runtime)"/>
+<path class="ar" d="M582,165 L620,165 L620,50 L658,50" marker-end="url(#ah-runtime)"/>
+<path class="ar" d="M582,175 L658,125" marker-end="url(#ah-runtime)"/>
+<path class="ar" d="M582,195 L658,200" marker-end="url(#ah-runtime)"/>
+<path class="ar" d="M500,222 L500,278" marker-end="url(#ah-runtime)"/>
+<path class="ar" d="M755,248 L755,232" marker-end="url(#ah-runtime)"/>
+<path class="ard" d="M852,360 L890,360 L890,50 L852,50" marker-end="url(#ah-runtime)"/>
+<path class="ard" d="M890,200 L852,200" marker-end="url(#ah-runtime)"/>
+<text class="ts" x="898" y="280" text-anchor="start">new map</text>
+</svg>
+</div>
+<figcaption>Everything runs as Docker containers on one machine. Only the web server is reachable from the internet.<sup class="cite"><a href="#ref-1" aria-label="source 1">[1]</a></sup></figcaption>
+</figure>
+<ul>
+<li><strong>Web server:</strong> Caddy<sup class="cite"><a href="#ref-12" aria-label="source 12">[12]</a></sup> handles encryption, serves the app's files and
+the map archives, and passes everything else to the app server. It refuses to be framed by other
+sites and sends a strict content security policy.</li>
+<li><strong>App server:</strong> Django and Django Ninja<sup class="cite"><a href="#ref-10" aria-label="source 10">[10]</a></sup>, the planning API, accounts,
+saved and shared routes, and the stress tiles.</li>
+<li><strong>Routers:</strong> one Valhalla<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup> process per graph variant (below).</li>
+<li><strong>Database:</strong> PostgreSQL with PostGIS<sup class="cite"><a href="#ref-6" aria-label="source 6">[6]</a></sup>: every rated road segment,
+accounts, saved routes, closures and the job queue.</li>
+<li><strong>Background worker:</strong> Procrastinate<sup class="cite"><a href="#ref-11" aria-label="source 11">[11]</a></sup>, a job queue kept in the same
+database, for closures, feeds, alerts on saved routes and backups.</li>
+<li><strong>Place search:</strong> a self-hosted Photon<sup class="cite"><a href="#ref-13" aria-label="source 13">[13]</a></sup> index of the region, so searches
+never leave the server.</li>
+</ul>
+<div class="table-wrap" tabindex="0" role="region" aria-label="The six router graphs">
+<table>
+<caption>The six router graphs</caption>
+<thead><tr><th scope="col">Graph</th><th scope="col">What is different</th><th scope="col">Used by</th></tr></thead>
+<tbody>
+<tr><th scope="row">Standard</th><td>Every legal way, with stress written in</td><td>Most ride types</td></tr>
+<tr><th scope="row">Roads only</th><td>No trails or paths</td><td>Mass Ride; Keep to roads, not trails</td></tr>
+<tr><th scope="row">E-bike</th><td>Leaves out ways closed to e-bikes</td><td>E-bike; Cargo and Bikeshare with assist</td></tr>
+<tr><th scope="row">Weekend</th><td>Roads closed to cars at weekends count as paths</td><td>Weekend rides on the standard graph</td></tr>
+<tr><th scope="row">Off-road</th><td>Unpaved roads and trails open</td><td>Gravel, Mountain Goat</td></tr>
+<tr><th scope="row">Mountain bike</th><td>Rated mountain-bike trails open by level</td><td>Mountain Bike</td></tr>
+</tbody>
+</table>
+</div>
+
+<h2 id="rebuild">The weekly rebuild</h2>
+<figure id="fig-rebuild">
+<div class="fig-scroll" tabindex="0" role="group" aria-label="The weekly map rebuild, scrolls sideways on a narrow screen">
+<svg viewBox="0 0 900 310" role="img" aria-labelledby="fig-rebuild-t fig-rebuild-d" focusable="false" style="min-width:600px">
+<title id="fig-rebuild-t">The weekly map rebuild</title>
+<desc id="fig-rebuild-d">Nine stages in order. 1 Fetch OpenStreetMap for DC, Maryland, Virginia and West Virginia. 2 Load reference data: traffic counts and agency ratings. 3 Elevation from USGS 3DEP. 4 Rate every road: traffic counts, then LTS. 5 Apply approved corrections. 6 Tag the stress levels into the map data. 7 Write and check road segments. 8 Build tiles for six Valhalla graphs. 9 Swap the new map live, keeping the old one. A change report by county is checked before the swap.</desc>
+<defs><marker id="ah-rebuild" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<rect class="bx" x="10" y="10" width="240" height="58" rx="6"/>
+<text class="tb" x="130.0" y="35.5" text-anchor="middle">1. Fetch</text>
+<text class="ts" x="130.0" y="51.5" text-anchor="middle">OSM for DC, MD, VA, WV</text>
+<path class="ar" d="M250,39 L308,39" marker-end="url(#ah-rebuild)"/>
+<rect class="bx" x="310" y="10" width="240" height="58" rx="6"/>
+<text class="tb" x="430.0" y="35.5" text-anchor="middle">2. Reference</text>
+<text class="ts" x="430.0" y="51.5" text-anchor="middle">counts, agency ratings</text>
+<path class="ar" d="M550,39 L608,39" marker-end="url(#ah-rebuild)"/>
+<rect class="bx" x="610" y="10" width="240" height="58" rx="6"/>
+<text class="tb" x="730.0" y="35.5" text-anchor="middle">3. Elevation</text>
+<text class="ts" x="730.0" y="51.5" text-anchor="middle">USGS 3DEP heights</text>
+<path class="ar" d="M730,68 L730,84 L130,84 L130,98" marker-end="url(#ah-rebuild)"/>
+<rect class="bxa" x="10" y="100" width="240" height="58" rx="6"/>
+<text class="tb" x="130.0" y="125.5" text-anchor="middle">4. Rate</text>
+<text class="ts" x="130.0" y="141.5" text-anchor="middle">traffic counts, then LTS</text>
+<path class="ar" d="M250,129 L308,129" marker-end="url(#ah-rebuild)"/>
+<rect class="bx" x="310" y="100" width="240" height="58" rx="6"/>
+<text class="tb" x="430.0" y="125.5" text-anchor="middle">5. Corrections</text>
+<text class="ts" x="430.0" y="141.5" text-anchor="middle">approved overrides</text>
+<path class="ar" d="M550,129 L608,129" marker-end="url(#ah-rebuild)"/>
+<rect class="bx" x="610" y="100" width="240" height="58" rx="6"/>
+<text class="tb" x="730.0" y="125.5" text-anchor="middle">6. Tag</text>
+<text class="ts" x="730.0" y="141.5" text-anchor="middle">stress into the map</text>
+<path class="ar" d="M730,158 L730,174 L130,174 L130,188" marker-end="url(#ah-rebuild)"/>
+<rect class="bx" x="10" y="190" width="240" height="58" rx="6"/>
+<text class="tb" x="130.0" y="215.5" text-anchor="middle">7. Segments</text>
+<text class="ts" x="130.0" y="231.5" text-anchor="middle">write and check</text>
+<path class="ar" d="M250,219 L308,219" marker-end="url(#ah-rebuild)"/>
+<rect class="bx" x="310" y="190" width="240" height="58" rx="6"/>
+<text class="tb" x="430.0" y="215.5" text-anchor="middle">8. Router tiles</text>
+<text class="ts" x="430.0" y="231.5" text-anchor="middle">six Valhalla graphs</text>
+<path class="ar" d="M550,219 L608,219" marker-end="url(#ah-rebuild)"/>
+<rect class="bxa" x="610" y="190" width="240" height="58" rx="6"/>
+<text class="tb" x="730.0" y="215.5" text-anchor="middle">9. Swap</text>
+<text class="ts" x="730.0" y="231.5" text-anchor="middle">go live, keep the old</text>
+<text class="ts" x="450" y="296" text-anchor="middle">A change report by county is checked before the swap; the previous map is kept for rollback.</text>
+</svg>
+</div>
+<figcaption>The rebuild runs weekly, or on a rented cloud machine when the home server is busy<sup class="cite"><a href="#ref-1" aria-label="source 1">[1]</a><a href="#ref-3" aria-label="source 3">[3]</a><a href="#ref-4" aria-label="source 4">[4]</a><a href="#ref-5" aria-label="source 5">[5]</a><a href="#ref-2" aria-label="source 2">[2]</a></sup>.</figcaption>
+</figure>
+<p>The rebuild downloads OpenStreetMap extracts<sup class="cite"><a href="#ref-3" aria-label="source 3">[3]</a></sup>, merges and clips them to the coverage
+area with Osmium<sup class="cite"><a href="#ref-4" aria-label="source 4">[4]</a></sup>, and converts USGS elevation<sup class="cite"><a href="#ref-5" aria-label="source 5">[5]</a></sup> into the height files Valhalla
+reads. It then rates every road (see <a href="/about/how-it-works.html#which-rating">Which rating
+wins</a>), writes the levels into the map data with a Lua script that Valhalla's graph builder runs, and
+builds each router graph. A new map goes live only after a report of every rating that changed, by
+county, has been checked; the old map is kept so a bad build can be rolled back.</p>
+<figure id="fig-time">
+<div class="fig-scroll" tabindex="0" role="group" aria-label="How long a rebuild takes, scrolls sideways on a narrow screen">
+<svg viewBox="0 0 860 95" role="img" aria-labelledby="fig-time-t fig-time-d" focusable="false" style="min-width:600px">
+<title id="fig-time-t">How long a rebuild takes</title>
+<desc id="fig-time-d">A stacked bar of about 4.3 hours with four threads: 2 hours 37 minutes preparing data and rating roads, 1 hour 15 minutes building router tiles, 27 minutes checking.</desc>
+<defs><marker id="ah-time" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<rect class="bx" x="20.0" y="20" width="497.1" height="40"/>
+<text class="tb" x="268.5328185328185" y="45" text-anchor="middle">2 h 37 min</text>
+<text class="ts" x="24" y="80" text-anchor="start">Preparing data and rating roads</text>
+<rect class="bx" x="517.1" y="20" width="237.5" height="40"/>
+<text class="tb" x="635.7915057915058" y="45" text-anchor="middle">1 h 15 min</text>
+<text class="ts" x="521.065637065637" y="80" text-anchor="start">Building router tiles</text>
+<rect class="bx" x="754.5" y="20" width="85.5" height="40"/>
+<text class="tb" x="797.2586872586872" y="45" text-anchor="middle">27 min</text>
+<text class="ts" x="758.5173745173745" y="80" text-anchor="start">Checking</text>
+</svg>
+</div>
+<figcaption>About 1.36 million road segments on 1.34 million OpenStreetMap ways. Each router graph is about 1.1 GB on disk.</figcaption>
+</figure>
+<p>The base map, contour lines, place search index and transit timetables are refreshed on their own,
+less often. Contours are drawn at 20, 40 and 100 ft [6, 12 and 30 m] from USGS 1/3 arc-second
+elevation with GDAL<sup class="cite"><a href="#ref-14" aria-label="source 14">[14]</a></sup>.</p>
+
+<h2 id="request">Planning a route</h2>
+<figure id="fig-request">
+<div class="fig-scroll" tabindex="0" role="group" aria-label="What happens when you plan a route, scrolls sideways on a narrow screen">
+<svg viewBox="0 0 880 475" role="img" aria-labelledby="fig-request-t fig-request-d" focusable="false" style="min-width:600px">
+<title id="fig-request-t">What happens when you plan a route</title>
+<desc id="fig-request-d">A sequence between you, the web server, the app server, Valhalla and the database. You ask for a route; the web server passes it to the app server. 1: the app server asks Valhalla for a route with this ride type&#x27;s costing and gets a line and alternatives. 2: it asks which roads were used and gets map-matched road ids. 3: it asks the database for those roads&#x27; stress, facilities and junctions. 4: the calm search asks Valhalla again, avoiding the worst stretches, up to five rounds. 5: it scores the candidates, picks one and writes cues. The route, its stress breakdown and cues go back to you. The whole plan has a 40-second budget and an answer is cached for 10 minutes.</desc>
+<defs><marker id="ah-request" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<text class="tb" x="60" y="22" text-anchor="middle">You</text>
+<line class="grid" x1="60" y1="32" x2="60" y2="470"/>
+<text class="tb" x="230" y="22" text-anchor="middle">Web server</text>
+<line class="grid" x1="230" y1="32" x2="230" y2="470"/>
+<text class="tb" x="420" y="22" text-anchor="middle">App server</text>
+<line class="grid" x1="420" y1="32" x2="420" y2="470"/>
+<text class="tb" x="620" y="22" text-anchor="middle">Valhalla</text>
+<line class="grid" x1="620" y1="32" x2="620" y2="470"/>
+<text class="tb" x="800" y="22" text-anchor="middle">Database</text>
+<line class="grid" x1="800" y1="32" x2="800" y2="470"/>
+<path class="ar" d="M60,55 L226,55" marker-end="url(#ah-request)"/><text class="ts" x="143.0" y="51.0" text-anchor="middle">Plan this route</text>
+<path class="ar" d="M230,80 L416,80" marker-end="url(#ah-request)"/><text class="ts" x="323.0" y="76.0" text-anchor="middle">passes it on</text>
+<path class="ar" d="M420,110 L616,110" marker-end="url(#ah-request)"/><text class="ts" x="518.0" y="106.0" text-anchor="middle">1. route, with this ride type&#x27;s costing</text>
+<path class="ard" d="M620,135 L424,135" marker-end="url(#ah-request)"/><text class="ts" x="522.0" y="131.0" text-anchor="middle">a line and alternatives</text>
+<path class="ar" d="M420,165 L616,165" marker-end="url(#ah-request)"/><text class="ts" x="518.0" y="161.0" text-anchor="middle">2. which roads did it use?</text>
+<path class="ard" d="M620,190 L424,190" marker-end="url(#ah-request)"/><text class="ts" x="522.0" y="186.0" text-anchor="middle">map-matched road ids</text>
+<path class="ar" d="M420,220 L796,220" marker-end="url(#ah-request)"/><text class="ts" x="608.0" y="216.0" text-anchor="middle">3. stress of those roads</text>
+<path class="ard" d="M800,245 L424,245" marker-end="url(#ah-request)"/><text class="ts" x="612.0" y="241.0" text-anchor="middle">levels, facilities, junctions</text>
+<path class="ar" d="M420,285 L616,285" marker-end="url(#ah-request)"/><text class="ts" x="518.0" y="281.0" text-anchor="middle">4. calm search: ask again, avoiding the worst</text>
+<path class="ard" d="M620,310 L424,310" marker-end="url(#ah-request)"/><text class="ts" x="522.0" y="306.0" text-anchor="middle">up to five rounds</text>
+<rect class="bxa" x="300" y="329" width="240" height="30" rx="6"/>
+<text class="t" x="420.0" y="348.5" text-anchor="middle">5. score, pick, write cues</text>
+<path class="ard" d="M420,395 L234,395" marker-end="url(#ah-request)"/><text class="ts" x="327.0" y="391.0" text-anchor="middle">route, stress breakdown, cues</text>
+<path class="ard" d="M230,420 L64,420" marker-end="url(#ah-request)"/><text class="ts" x="147.0" y="416.0" text-anchor="middle">shown on the map</text>
+<text class="ts" x="430" y="460" text-anchor="middle">A 40-second budget for the whole plan; an answer is cached for 10 minutes.</text>
+</svg>
+</div>
+<figcaption>Solid arrows are requests; dashed arrows are answers. Signed-out plans are never stored.</figcaption>
+</figure>
+<p>Each request has a time budget, a rate limit and a cap on plans in flight, so one busy rider cannot
+slow everyone else. Trips over about 19 mi [30 km] are refined leg by leg. A route can have 2 to 25
+points; very long plans over 93 mi [150 km] ask for confirmation when signed out.</p>
+
+<h2 id="map">Drawing the map</h2>
+<figure id="fig-layers">
+<div class="fig-scroll" tabindex="0" role="group" aria-label="How the map is layered, scrolls sideways on a narrow screen">
+<svg viewBox="0 0 720 280" role="img" aria-labelledby="fig-layers-t fig-layers-d" focusable="false" style="min-width:518px">
+<title id="fig-layers-t">How the map is layered</title>
+<desc id="fig-layers-d">Five layers, bottom to top: the Protomaps base map, contour lines from USGS heights, traffic stress lines as vector tiles from PostGIS, live closures, docks, water and stations from the app server, and your route and its cues drawn by the app.</desc>
+<defs><marker id="ah-layers" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<rect class="bxa" x="40" y="12" width="520" height="44" rx="6"/>
+<text class="tb" x="300.0" y="30.5" text-anchor="middle">Your route and its cues</text>
+<text class="ts" x="300.0" y="46.5" text-anchor="middle">drawn by the app</text>
+<rect class="bx" x="60" y="64" width="520" height="44" rx="6"/>
+<text class="tb" x="320.0" y="82.5" text-anchor="middle">Closures, docks, water, stations</text>
+<text class="ts" x="320.0" y="98.5" text-anchor="middle">from the app server, live</text>
+<rect class="bxa" x="80" y="116" width="520" height="44" rx="6"/>
+<text class="tb" x="340.0" y="134.5" text-anchor="middle">Traffic stress lines</text>
+<text class="ts" x="340.0" y="150.5" text-anchor="middle">vector tiles from PostGIS, cached</text>
+<rect class="bx" x="100" y="168" width="520" height="44" rx="6"/>
+<text class="tb" x="360.0" y="186.5" text-anchor="middle">Contour lines</text>
+<text class="ts" x="360.0" y="202.5" text-anchor="middle">PMTiles archive from USGS heights</text>
+<rect class="bx" x="120" y="220" width="520" height="44" rx="6"/>
+<text class="tb" x="380.0" y="238.5" text-anchor="middle">Base map</text>
+<text class="ts" x="380.0" y="254.5" text-anchor="middle">Protomaps PMTiles archive</text>
+<text class="tb" x="640" y="40" text-anchor="start">Top</text>
+<text class="tb" x="640" y="250" text-anchor="start">Bottom</text>
+<path class="ar" d="M652,230 L652,60" marker-end="url(#ah-layers)"/>
+</svg>
+</div>
+<figcaption>MapLibre draws every layer in the browser<sup class="cite"><a href="#ref-9" aria-label="source 9">[9]</a></sup>. The base map and contours are single files read a piece at a time with range requests<sup class="cite"><a href="#ref-8" aria-label="source 8">[8]</a></sup>; the stress lines are vector tiles<sup class="cite"><a href="#ref-7" aria-label="source 7">[7]</a></sup> made by PostGIS<sup class="cite"><a href="#ref-6" aria-label="source 6">[6]</a></sup> and cached.</figcaption>
+</figure>
+
+<h2 id="live">Live data</h2>
+<div class="table-wrap" tabindex="0" role="region" aria-label="Live data and how often it is read">
+<table>
+<caption>Live data and how often it is read</caption>
+<thead><tr><th scope="col">Feed</th><th scope="col">Read</th><th scope="col">Used for</th></tr></thead>
+<tbody>
+<tr><th scope="row">Capital Bikeshare (GBFS)<sup class="cite"><a href="#ref-19" aria-label="source 19">[19]</a></sup></th><td>About every minute</td><td>Docks, bikes and e-bikes available</td></tr>
+<tr><th scope="row">WMATA<sup class="cite"><a href="#ref-18" aria-label="source 18">[18]</a></sup></th><td>Every 45 seconds, when asked</td><td>Next trains and buses, incidents, elevator outages</td></tr>
+<tr><th scope="row">Maryland and Virginia work zones (WZDx)</th><td>Every 5 minutes</td><td>Closures and lane closures</td></tr>
+<tr><th scope="row">MPD and AlertDC</th><td>Every 15 minutes</td><td>Closures in the District</td></tr>
+<tr><th scope="row">DDOT TOPS permits</th><td>Every hour</td><td>Plan's DC permits layer only</td></tr>
+<tr><th scope="row">National Park Service alerts</th><td>Every 30 minutes</td><td>Park notes</td></tr>
+<tr><th scope="row">Transit timetables (GTFS)</th><td>Refreshed about every 45 days</td><td>Scheduled transit times</td></tr>
+</tbody>
+</table>
+</div>
+<p>Feeds are read by the server and cached, so your browser contacts only RouteMaker. Feeds that need a
+key keep it on the server. Street photos from Mapillary are fetched through the server too.</p>
+
+<h2 id="apps">Apps, accounts and AI assistants</h2>
+<ul>
+<li><strong>Installable app.</strong> The site installs as an app. Its service worker keeps the app's
+own files for offline starts but never caches routes, tiles or account data unless you choose Keep for
+offline on a saved route.</li>
+<li><strong>Android app.</strong> A thin Capacitor<sup class="cite"><a href="#ref-15" aria-label="source 15">[15]</a></sup> shell around the site that adds
+background location, a screen wake lock and spoken cues during a ride.</li>
+<li><strong>Accounts.</strong> Sign-in uses Discord with the narrowest permission (your user id).
+RouteMaker exchanges the sign-in code once and keeps no Discord token.</li>
+<li><strong>Sharing.</strong> A shared route stores the exact line under a random link, kept for a year
+after it was last opened. Its preview image hides the area around Home.</li>
+<li><strong>AI assistants.</strong> RouteMaker has a Model Context Protocol<sup class="cite"><a href="#ref-16" aria-label="source 16">[16]</a></sup> server, so an AI
+assistant can find places, plan and revise routes and save them to your account with a save-only key.
+From version 0.10.0 assistants can also connect to the site directly after you sign in, and Settings
+lists each connected assistant with a Disconnect button.</li>
+</ul>
+
+<h2 id="quality">Accessibility and testing</h2>
+<ul>
+<li><strong>Accessibility</strong> is a requirement, not an extra: WCAG 2.2 AA<sup class="cite"><a href="#ref-17" aria-label="source 17">[17]</a></sup> for
+everything outside the map canvas, nothing shown by colour alone, and a non-map way to do every
+route-shaping action. Screen-reader users and blind stokers on tandems are part of the intended
+audience. Accessibility mode adds keyboard map tools.</li>
+<li><strong>Tests:</strong> thousands of Python tests run against a real PostGIS database, frontend
+tests run in Node, and a browser check drives the app in Chromium for focus order, contrast and
+screen-reader names. Reference routes are the quality bar for routing changes.</li>
+<li><strong>Releases</strong> ship on release branches, are tested as a whole, and are tagged. Each
+release has short rider-facing notes.</li>
+</ul>
+
+<h2 id="sources">Sources</h2>
+<ol class="refs">
+  <li id="ref-1">RouteMaker source code, MIT licence. <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>; the original specification: <a href="https://github.com/Macrophage87/RouteMaker/blob/main/PLAN.md">PLAN.md</a>; operations guide: <a href="https://github.com/Macrophage87/RouteMaker/blob/main/docs/OPERATIONS.md">docs/OPERATIONS.md</a></li>
+  <li id="ref-2">Valhalla routing engine, version 3.9.1. <a href="https://github.com/valhalla/valhalla">github.com/valhalla/valhalla</a>; Lua tag transform and graph build: <a href="https://valhalla.github.io/valhalla/">valhalla.github.io</a></li>
+  <li id="ref-3">Geofabrik OpenStreetMap extracts. <a href="https://download.geofabrik.de/">download.geofabrik.de</a>; OpenStreetMap data © OpenStreetMap contributors, ODbL. <a href="https://www.openstreetmap.org/copyright">openstreetmap.org/copyright</a></li>
+  <li id="ref-4">Osmium tool and PyOsmium, for merging, clipping and reading OpenStreetMap files. <a href="https://osmcode.org/">osmcode.org</a></li>
+  <li id="ref-5">USGS 3D Elevation Program. <a href="https://www.usgs.gov/3d-elevation-program">usgs.gov/3d-elevation-program</a></li>
+  <li id="ref-6">PostgreSQL and PostGIS, including <code>ST_AsMVT</code> for vector tiles. <a href="https://postgis.net/docs/ST_AsMVT.html">postgis.net</a></li>
+  <li id="ref-7">Mapbox Vector Tile specification. <a href="https://github.com/mapbox/vector-tile-spec">github.com/mapbox/vector-tile-spec</a></li>
+  <li id="ref-8">PMTiles, a single-file tile archive read with HTTP range requests, and the Protomaps base map. <a href="https://docs.protomaps.com/pmtiles/">docs.protomaps.com/pmtiles</a>; <a href="https://protomaps.com/">protomaps.com</a></li>
+  <li id="ref-9">MapLibre GL JS. <a href="https://maplibre.org/">maplibre.org</a></li>
+  <li id="ref-10">Django and Django Ninja. <a href="https://www.djangoproject.com/">djangoproject.com</a>; <a href="https://django-ninja.dev/">django-ninja.dev</a></li>
+  <li id="ref-11">Procrastinate, a PostgreSQL-backed task queue. <a href="https://procrastinate.readthedocs.io/">procrastinate.readthedocs.io</a></li>
+  <li id="ref-12">Caddy web server. <a href="https://caddyserver.com/">caddyserver.com</a></li>
+  <li id="ref-13">Photon geocoder by komoot. <a href="https://github.com/komoot/photon">github.com/komoot/photon</a></li>
+  <li id="ref-14">GDAL, including <code>gdal_contour</code>. <a href="https://gdal.org/">gdal.org</a></li>
+  <li id="ref-15">Capacitor, the Android app shell. <a href="https://capacitorjs.com/">capacitorjs.com</a></li>
+  <li id="ref-16">Model Context Protocol. <a href="https://modelcontextprotocol.io/">modelcontextprotocol.io</a></li>
+  <li id="ref-17">W3C, Web Content Accessibility Guidelines 2.2. <a href="https://www.w3.org/TR/WCAG22/">w3.org/TR/WCAG22</a></li>
+  <li id="ref-18">GTFS static and realtime transit data. <a href="https://gtfs.org/">gtfs.org</a></li>
+  <li id="ref-19">General Bikeshare Feed Specification. <a href="https://gbfs.org/">gbfs.org</a></li>
+</ol>
+</main>
+<footer>
+  <p>Part of RouteMaker's documentation. It describes version 0.10.0. The code is
+  open source under the MIT licence:
+  <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
+  <p><a href="/">Back to the map</a></p>
+</footer>
+</body>
+</html>

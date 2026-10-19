@@ -8,6 +8,9 @@ import { STRESS_ZOOMS } from "./mapStyle.ts";
 import { PLAN_KEY, forgetPlan, isPlainClick, planToOpen, rememberPlan, rememberPlanForPage } from "./signIn.ts";
 import {
   CAR_FREE_NOTE,
+  DOCS_PAGE,
+  DOCS_PAGE_TEXT,
+  DocsPageLink,
   LTS_MEANS,
   STRESS_PAGE,
   STRESS_PAGE_TEXT,
@@ -479,4 +482,18 @@ test("the road panel shows the same link at the end of Details and sources (corr
   assert.equal((inside.match(/<StressPageLink\b/g) ?? []).length, 1);
   assert.match(inside, /<StressPageLink className="road-info-how" \/>\s*$/, "its last item");
   assert.equal((panel.match(/<StressPageLink\b/g) ?? []).length, 1, "once in the panel");
+});
+
+test("Settings links once to the documentation hub, which is a page of the app's (the owner, 2026-10-19)", () => {
+  assert.equal(DOCS_PAGE, "/about/how-it-works.html");
+  const html = renderToStaticMarkup(createElement(DocsPageLink));
+  assert.equal(html, `<p class="hint docs-page-link"><a href="${DOCS_PAGE}">${DOCS_PAGE_TEXT}</a></p>`);
+  const sheets = readFileSync(new URL("../app/Sheets.tsx", import.meta.url), "utf8");
+  assert.equal((sheets.match(/<DocsPageLink \/>/g) ?? []).length, 1, "once, in Settings");
+  const page = readFileSync(new URL(`../../public${DOCS_PAGE}`, import.meta.url), "utf8");
+  assert.deepEqual(
+    [...page.matchAll(/<a [^>]*>Back to the map<\/a>/g)].map((m) => m[0]),
+    ['<a class="back" href="/">Back to the map</a>', '<a href="/">Back to the map</a>'],
+    "both go to a bare /, where planToOpen reads the kept plan",
+  );
 });

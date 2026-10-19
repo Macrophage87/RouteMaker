@@ -38,6 +38,14 @@ INDEX = b"<!doctype html><title>RouteMaker</title><div id=root></div>"
 SCRIPT = b"console.log('app');\n" * 200
 LICENCES = b"# Licenses\n"
 STRESS_PAGE = b"<!doctype html><title>How traffic stress ratings work</title>"
+# The rest of the rider-facing documentation (the owner, 2026-10-19), beside the stress page.
+DOC_PAGES = ("how-it-works", "ride-types", "architecture", "acknowledgements")
+
+
+def doc_page(name: str) -> bytes:
+    return f"<!doctype html><title>{name}</title>".encode()
+
+
 STATIC = b"body{}"
 WORKER = b"// RouteMaker's service worker\n"
 MANIFEST = b'{"name": "RouteMaker"}'
@@ -85,6 +93,8 @@ def edge(tmp_path_factory):
     (frontend / "licenses.txt").write_bytes(LICENCES)
     (frontend / "about").mkdir()
     (frontend / "about" / "stress.html").write_bytes(STRESS_PAGE)
+    for name in DOC_PAGES:
+        (frontend / "about" / f"{name}.html").write_bytes(doc_page(name))
     (frontend / "sw.js").write_bytes(WORKER)
     (frontend / "sw-kill.js").write_bytes(b"// kill\n")
     (frontend / "manifest.webmanifest").write_bytes(MANIFEST)
@@ -211,6 +221,20 @@ def test_the_stress_page_is_served_with_the_apps_policy_and_its_short_paths_redi
         assert (status, body) == (200, STRESS_PAGE), short
     # Its neighbours are not the page's: they still reach the API.
     for near in ("/about", "/about/", "/about/stressx", "/about/stress.html/"):
+        status, _, _ = get(edge, near)
+        assert status == 502, (near, status)
+
+
+def test_the_documentation_pages_are_served_with_the_apps_policy(edge) -> None:
+    """The owner, 2026-10-19: documentation linked from the app, served as the stress page is;
+    a name that is not one of them still reaches the API."""
+    for name in DOC_PAGES:
+        status, headers, body = get(edge, f"/about/{name}.html")
+        assert (status, body) == (200, doc_page(name)), (name, status, headers)
+        assert headers.get("Content-Type", "").startswith("text/html"), headers
+        assert "no-cache" in headers.get("Cache-Control", ""), headers
+        assert "default-src 'self'" in headers.get("Content-Security-Policy", ""), headers
+    for near in ("/about/how-it-works", "/about/other.html", "/about/how-it-works.html/"):
         status, _, _ = get(edge, near)
         assert status == 502, (near, status)
 

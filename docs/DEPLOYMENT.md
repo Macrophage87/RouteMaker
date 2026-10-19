@@ -1110,7 +1110,7 @@ docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD/frontend:/app" -v "
 docker run --rm -u 10001:10001 \
   -v "$PWD/frontend/dist:/dist:ro" -v <DATA_ROOT>/frontend:/out \
   docker.io/library/busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662 \
-  sh -c 'mkdir -p /out/assets && cp -n /dist/assets/* /out/assets/ && cp /dist/favicon.svg /dist/licenses.txt /out/ && cp /dist/manifest.webmanifest /out/ && cp /dist/sw-kill.js /out/ && mkdir -p /out/icons && cp /dist/icons/apple-touch-icon.png /out/icons/ && cp /dist/icons/icon-192.png /out/icons/ && cp /dist/icons/icon-512.png /out/icons/ && cp /dist/icons/icon-maskable-192.png /out/icons/ && cp /dist/icons/icon-maskable-512.png /out/icons/ && mkdir -p /out/about && cp /dist/about/stress.html /out/about/.stress.html.new && mv /out/about/.stress.html.new /out/about/stress.html && cp /dist/sw.js /out/.sw.js.new && mv /out/.sw.js.new /out/sw.js && cp /dist/index.html /out/.index.html.new && mv /out/.index.html.new /out/index.html'
+  sh -c 'mkdir -p /out/assets && cp -n /dist/assets/* /out/assets/ && cp /dist/favicon.svg /dist/licenses.txt /out/ && cp /dist/manifest.webmanifest /out/ && cp /dist/sw-kill.js /out/ && mkdir -p /out/icons && cp /dist/icons/apple-touch-icon.png /out/icons/ && cp /dist/icons/icon-192.png /out/icons/ && cp /dist/icons/icon-512.png /out/icons/ && cp /dist/icons/icon-maskable-192.png /out/icons/ && cp /dist/icons/icon-maskable-512.png /out/icons/ && mkdir -p /out/about && cp /dist/about/stress.html /out/about/.stress.html.new && mv /out/about/.stress.html.new /out/about/stress.html && cp /dist/about/how-it-works.html /out/about/.how-it-works.html.new && mv /out/about/.how-it-works.html.new /out/about/how-it-works.html && cp /dist/about/ride-types.html /out/about/.ride-types.html.new && mv /out/about/.ride-types.html.new /out/about/ride-types.html && cp /dist/about/architecture.html /out/about/.architecture.html.new && mv /out/about/.architecture.html.new /out/about/architecture.html && cp /dist/about/acknowledgements.html /out/about/.acknowledgements.html.new && mv /out/about/.acknowledgements.html.new /out/about/acknowledgements.html && cp /dist/sw.js /out/.sw.js.new && mv /out/.sw.js.new /out/sw.js && cp /dist/index.html /out/.index.html.new && mv /out/.index.html.new /out/index.html'
 ```
 
 `npm ci` installs exactly what `frontend/package-lock.json` names (every direct
@@ -1118,7 +1118,8 @@ dependency is pinned to an exact version in `package.json` too). The publish
 copies the hashed files under `assets/` first and replaces `index.html` last,
 by a rename, so a page loaded mid-deploy gets either the old app or the new
 one and never an `index.html` naming files that are not there yet. The page
-on how stress ratings work, `about/stress.html`, is replaced by a rename too,
+on how stress ratings work, `about/stress.html`, and the other documentation
+pages under `about/` are replaced by a rename too,
 so nobody reads it half written, and so is the installable app's service
 worker, `sw.js` (docs/DEVELOPMENT.md, "The installable app"); the app's
 manifest, its icons under `icons/` and the worker's kill switch `sw-kill.js`
@@ -1158,8 +1159,8 @@ script afterwards repairs the ownership, and step 2 then succeeds.
 
 What the edge does with it (Caddyfile, `@frontend`):
 
-- `/`, `/index.html`, `/favicon.svg`, `/licenses.txt`, `/about/stress.html`
-  and `/assets/*` are the app. The app's
+- `/`, `/index.html`, `/favicon.svg`, `/licenses.txt`, the pages under
+  `/about/` named below and `/assets/*` are the app. The app's
   paths are listed rather than the API's, so the Caddyfile never names the
   admin path, and every other path - `/api/*`, `/tiles/*`, `/auth/*`,
   `<DJANGO_ADMIN_PATH>`, `/healthz` - reaches the API exactly as before
@@ -1171,6 +1172,13 @@ What the edge does with it (Caddyfile, `@frontend`):
   with the app's headers and `no-cache`; `/about/stress` and `/about/stress/`
   redirect to it (302, as the preset links, so a browser keeps nothing for
   good). The beta's nginx template serves it the same way.
+- `/about/how-it-works.html`, `/about/ride-types.html`,
+  `/about/architecture.html` and `/about/acknowledgements.html` are the rest of
+  the rider-facing documentation (the owner, 2026-10-19), served like the
+  stress page and replaced by a rename like it. Settings links to the first,
+  the map's credits to the last. A new page under `about/` has to be added to
+  `@frontend`, the beta template's `/about/` location and the publish command
+  above (`tests/test_deploy_docs.py` and `tests/test_beta_overlay.py` check).
 - `index.html` and `licenses.txt` are `Cache-Control: no-cache`, so a deploy
   is seen on the next load; the files under `assets/` are content-hashed and
   `max-age=31536000, immutable` - only files that exist, so a 404 is not
