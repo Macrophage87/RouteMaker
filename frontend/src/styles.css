@@ -6521,6 +6521,19 @@ details.fold > summary .icon {
 .place-card p {
   margin: 4px 0 0;
 }
+/* A stop's card (lib/stopCard.ts): its Route here or Add as stop, and the website, each a 44 px target. */
+.place-card-actions {
+  align-items: center;
+}
+.place-card-actions button,
+.place-card-actions a {
+  min-height: 44px;
+}
+.place-card-actions a {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 8px;
+}
 .bikeshare-operator .toggle {
   display: flex;
   align-items: center;

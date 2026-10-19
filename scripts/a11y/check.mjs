@@ -4712,7 +4712,8 @@ async function goPressMap(p) {
 }
 {
   // Lettered places (the owner, 2026-10-11 21:04 UTC): the nearest listed are lettered in the list and on the
-  // map; a marker's tap or the letter's key picks one as Go's destination, straight to the route options.
+  // map; a marker's tap or the letter's key opens the place's card (Stephen 2026-10-19: "don't auto route"), whose
+  // Route here (no route yet) or Add as stop (with one) acts.
   const p = await goWith("granted");
   const openMetro = async () => {
     await p.eval("[...document.querySelectorAll('.go-places .place-chip')].find((c) => c.textContent.trim() === 'Water').click(); true");
@@ -4729,19 +4730,28 @@ async function goPressMap(p) {
       lettered.markers.every((m, i) => m.tag === "BUTTON" && m.letter === "ABC"[i] && m.name.startsWith(`${"ABC"[i]}: `) && / mi \([0-9.]+ km\)$/.test(m.name) && m.w >= 44 && m.h >= 44) &&
       ax?.role === "button" && /^A: .+ Metro station, /.test(ax?.name ?? ""), JSON.stringify({ lettered, ax }));
   await p.eval("document.querySelectorAll('.lettered-marker')[0].click(); true");
+  await sleep(600);
+  const card = await p.eval(`({ title: document.querySelector('.place-popup .place-card strong')?.textContent ?? '', action: document.querySelector('.place-popup .place-card-actions button')?.textContent ?? '',
+    focused: !!document.activeElement?.closest('.place-popup'), routed: !!document.querySelector('.go-summary .start-button'), points: (location.hash.match(/p=([^&]*)/)?.[1] ?? '').split(';').filter(Boolean).length })`);
+  check("lettered places: a tap on marker A opens its card (name, Route here, the focus in it) and does not route by itself", /Metro station$/.test(card.title) && card.action === "Route here" && card.focused && !card.routed && card.points === 0, JSON.stringify(card));
+  await p.eval("document.querySelector('.place-popup .place-card-actions button').click(); true");
   const byTap = await p.waitFor("!!document.querySelector('.go-summary .start-button')", 20000);
-  const tapped = await p.eval("({ sheet: document.getElementById('sheet-nearest').hidden, dest: document.querySelector('.go-destination-name')?.textContent ?? '', markers: document.querySelectorAll('.lettered-marker').length })");
-  check("lettered places: a tap on marker A makes it Go's destination and shows the route at once (the sheet closes, the markers go)", byTap && tapped.sheet && /Metro station$/.test(tapped.dest) && tapped.markers === 0, JSON.stringify(tapped));
+  const tapped = await p.eval("({ sheet: document.getElementById('sheet-nearest').hidden, dest: document.querySelector('.go-destination-name')?.textContent ?? '', markers: document.querySelectorAll('.lettered-marker').length, card: !!document.querySelector('.place-popup') })");
+  check("lettered places: the card's Route here makes it Go's destination and shows the route (the sheet closes, the markers go, the card closes)", byTap && tapped.sheet && /Metro station$/.test(tapped.dest) && tapped.markers === 0 && !tapped.card, JSON.stringify(tapped));
   await openMetro();
   const second = await p.eval("document.querySelectorAll('.lettered-marker')[1].getAttribute('aria-label').replace(/^B: /, '').replace(/, [0-9.]+ mi.*$/, '')");
   await p.eval("document.getElementById('sheet-nearest-title').focus(); true");
   const saidBefore = await p.eval("window.__said.length");
   await p.key("b", "KeyB", 66);
+  await sleep(600);
+  const keyCard = await p.eval(`({ action: document.querySelector('.place-popup .place-card-actions button')?.textContent ?? '', focused: document.activeElement?.textContent ?? '', points: (location.hash.match(/p=([^&]*)/)?.[1] ?? '').split(';').filter(Boolean).length })`);
+  check("lettered places: the B key opens B's card with the focus on Add as stop (a route is shown), and adds nothing by itself", keyCard.action === "Add as stop" && keyCard.focused === "Add as stop" && keyCard.points === 2, JSON.stringify(keyCard));
+  await p.key("Enter", "Enter", 13);
   await sleep(2500);
   const keyed = await p.eval(`({ sheet: document.getElementById('sheet-nearest').hidden, dest: document.querySelector('.go-destination-name')?.textContent ?? '', points: (location.hash.match(/p=([^&]*)/)?.[1] ?? '').split(';').filter(Boolean).length, said: window.__said.slice(${saidBefore}) })`);
   // With a route in Go a chip's place is a stop on it since b51ec7f7 ("Keep adding stops by search, in Plan and in
-  // Go"): B is added as a stop, said, and the destination stays A.
-  check("lettered places: pressing the B key picks option B, a stop on the route shown, and says so", keyed.sheet && keyed.dest === tapped.dest && keyed.points === 3 && keyed.said.some((t) => t.includes(second)), JSON.stringify({ keyed, second }));
+  // Go"): the card's Add as stop adds B, said, and the destination stays A.
+  check("lettered places: B's Add as stop puts it on the route shown as a stop, and says so", keyed.sheet && keyed.dest === tapped.dest && keyed.points === 3 && keyed.said.some((t) => t.includes(second)), JSON.stringify({ keyed, second }));
   await p.close();
 }
 {
@@ -5004,7 +5014,8 @@ const failed = results.filter((r) => !r.ok);
 // returns early) fails here rather than passing green (the mutation review of the release).
 // The transit blocks (#108) and the Go press checks (#116) were added without raising it; they run since #127.
 // Review mode's own lists (22c2) add six. End ride's slide (#235) adds two: a tap springs back, a slide ends the ride.
-const EXPECTED = 664;
+// A lettered pin's card (no auto route, 2026-10-19) adds two: the card a tap opens, and the card the B key opens.
+const EXPECTED = 666;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);
