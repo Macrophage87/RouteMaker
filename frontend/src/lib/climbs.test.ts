@@ -26,6 +26,7 @@ import {
   climbIcon,
   climbIconId,
   climbLabel,
+  climbNamedLabel,
   climbLength,
   climbLineLayer,
   climbDetails,
@@ -137,10 +138,16 @@ test("the accessible name spells it out, as the owner's example", () => {
   assert.equal(categoryName("1"), "Category 1");
 });
 
-test("the card says the climb, the gain, the trail and the surface", () => {
+test("the card says the climb's name, the gain and the surface", () => {
   const card = climbCard(climb({ name: "Example Trail", unpaved: true }));
-  assert.equal(card.title, "Category 4 climb, 0.6 miles (1.0 km) at 9.0%");
-  assert.deepEqual(card.details, ["295 ft (90 m) gained.", "On the Example Trail.", "Mostly unpaved."]);
+  assert.equal(card.title, "Example Trail, Category 4 climb, 0.6 miles (1.0 km) at 9.0%");
+  assert.deepEqual(card.details, ["295 ft (90 m) gained.", "Mostly unpaved."]);
+  assert.equal(climbCard(climb()).title, "Category 4 climb, 0.6 miles (1.0 km) at 9.0%");
+});
+
+test("a named climb's accessible name leads with its name", () => {
+  assert.equal(climbNamedLabel(climb({ name: "Snider Lane" })), "Snider Lane, Category 4 climb, 0.6 miles (1.0 km) at 9.0%");
+  assert.equal(climbNamedLabel(climb()), "Category 4 climb, 0.6 miles (1.0 km) at 9.0%");
 });
 
 // --- The file and the switch -----------------------------------------------------------

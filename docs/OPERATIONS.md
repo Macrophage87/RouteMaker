@@ -6055,20 +6055,33 @@ running container with `exec`, not `run` (a `run` starts a second rebuild contai
     free -m    # "available" at least 3,000 MB; else stop
     flock <the host's heavy.lock> docker compose exec -T rebuild ./manage.py build_climbs </dev/null
 
-It prints `climbs: read N segments from live.segment`, then `climbs: M written to
+It prints `climbs: read N segments from live.segment`, `climbs: names from
+/data/extracts/source.osm.pbf: W ways, H hills, P places`, `climbs: K of F found named`, then
+`climbs: M written to
 /data/rebuild/climbs.json (HC 0, 1 0, 2 2, 3 54, 4 367, 5 3,327)` (the committed file's counts,
 from staging build 20261011T215845Z on 2026-10-12: 484,351 segments read, 3,750 climbs, 85 s). It only reads
 and is safe to re-run. It refuses, writing nothing, when the table has no routable rows or no
 elevation tile could be read under `--elevation-dir` (a wrong directory, or tiles not in skadi's
-`N38/N38W077.hgt` layout), and names on stderr any tile that was missing or the wrong size (the
-climbs there are left out). Options: `--out`, `--elevation-dir`, `--schema` (default the live
-schema). Then:
+`N38/N38W077.hgt` layout), or there is no extract to name the climbs from (a file without names
+would replace a named one), and names on stderr any tile that was missing or the wrong size (the
+climbs there are left out). Options: `--out`, `--elevation-dir`, `--pbf` (default the rebuild's
+own extract, `/data/extracts/source.osm.pbf`, which the `rebuild` container mounts), `--schema`
+(default the live schema). Then:
 
     cp <DATA_ROOT>/rebuild/climbs.json frontend/src/climb-data/climbs.json
     git add frontend/src/climb-data/climbs.json   # and update the counts in climb-data/README.md
 
 and deploy the front end as usual. `tests/test_climb_layer.py::test_bundled_file_is_well_formed`
 and `climbs.test.ts` check the committed file.
+
+**Names (the owner, 2026-10-19: "have them named, by a combination of road names and mountain
+names (if named)").** Each climb is named at build time from the extract (`pipeline.climb_names`):
+the OSM `name` (else `ref`) of the roads carrying at least a quarter of it, at most two, in the
+order ridden, then the named gap, peak or ridge it runs up ("Foxville Road up Catoctin Mountain",
+"Gapland Road to Crampton Gap"); with no road name, "<hill> climb", else "Climb near <place>"
+(a city, town, village, hamlet, suburb or neighbourhood within 3 mi (5 km) of its foot), else no
+name. The file's `n`; the map's climb card, the climb's label and the hill seek's route
+description lead with it. Reading the names adds two passes over the extract (no location index).
 
 **What it reads.** Ways with `map_class = 'road'`, less `mtb_only` and `walk_bike`: access is the
 rebuild's, overrides included, so a barred, hidden or err-closed way never carries a climb. And

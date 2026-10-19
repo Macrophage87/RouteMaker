@@ -4,7 +4,7 @@
  * marker or its line, opens it (climbInteraction.ts); so does the road panel's "Climb details" for the
  * keyboard (RoadInfoDialog.tsx, the climb at the map's center).
  *
- * It says the climb: its name ("Climb on Ridge Road", else "Category 4 climb"), category, length (miles
+ * It says the climb: its name ("Foxville Road up Catoctin Mountain", else "Category 4 climb"), category, length (miles
  * first, km in brackets), gain (feet first), the average grade beside the map's own shape for it with the
  * shape's meaning ("Moderate: 4 to 7.9%"; the owner: "note that the icon means steepness on the map") and
  * the steepest grade; and its elevation profile, drawn with the route chart's own parts
@@ -54,14 +54,22 @@ export const PROFILE_ERROR = "The elevation profile is not available right now."
 
 // --- Words -----------------------------------------------------------------------
 
-/** "Climb on Ridge Road" (the road it climbs), else "Category 4 climb". */
+/**
+ * The climb's own name from its roads and hill (pipeline.climb_names: "Foxville Road up Catoctin Mountain",
+ * "Sugarloaf Mountain climb", "Climb near Thurmont"), else "Category 4 climb".
+ */
 export function climbTitle(c: Pick<Climb, "name" | "category">): string {
-  return c.name ? `Climb on ${c.name}` : `${categoryName(c.category)} climb`;
+  return c.name ?? `${categoryName(c.category)} climb`;
 }
 
-/** A climb's end as a place in the plan: "Top of the climb on Ridge Road", "Bottom of a Category 4 climb". */
+/**
+ * A climb's end as a place in the plan: "Top of Foxville Road up Catoctin Mountain", "Top of the Sugarloaf
+ * Mountain climb", "Bottom of the climb near Thurmont", "Bottom of a Category 4 climb".
+ */
 export function climbEndName(c: Pick<Climb, "name" | "category">, end: string): string {
-  return c.name ? `${end} of the climb on ${c.name}` : `${end} of a ${categoryName(c.category)} climb`;
+  if (!c.name) return `${end} of a ${categoryName(c.category)} climb`;
+  if (c.name.startsWith("Climb ")) return `${end} of the c${c.name.slice(1)}`;
+  return c.name.endsWith(" climb") ? `${end} of the ${c.name}` : `${end} of ${c.name}`;
 }
 
 /** A grade to a tenth, without a needless ".0": "9%", "5.4%". */

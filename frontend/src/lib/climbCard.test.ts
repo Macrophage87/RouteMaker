@@ -72,10 +72,12 @@ const PROFILE: ClimbProfile = {
 
 // --- Words -----------------------------------------------------------------------
 
-test("named by its road where it has one, else by its category", () => {
-  assert.equal(climbTitle(climb({ name: "Ridge Road" })), "Climb on Ridge Road");
+test("named by its roads and hill where it has a name, else by its category", () => {
+  assert.equal(climbTitle(climb({ name: "Foxville Road up Catoctin Mountain" })), "Foxville Road up Catoctin Mountain");
   assert.equal(climbTitle(climb()), "Category 4 climb");
-  assert.equal(climbEndName(climb({ name: "Ridge Road" }), "Top"), "Top of the climb on Ridge Road");
+  assert.equal(climbEndName(climb({ name: "Ridge Road" }), "Top"), "Top of Ridge Road");
+  assert.equal(climbEndName(climb({ name: "Sugarloaf Mountain climb" }), "Top"), "Top of the Sugarloaf Mountain climb");
+  assert.equal(climbEndName(climb({ name: "Climb near Thurmont" }), "the top"), "the top of the climb near Thurmont");
   assert.equal(climbEndName(climb({ category: "HC" }), "Bottom"), "Bottom of a Hors catégorie (HC) climb");
 });
 
@@ -207,7 +209,7 @@ test("the card: name, facts, the map's shape with its meaning, one button", () =
   const html = renderToStaticMarkup(
     createElement(ClimbCardView, { climb: climb({ name: "Ridge Road", unpaved: true }), state: { kind: "loading" }, uid: "u", onRide: () => {} }),
   );
-  assert.ok(html.includes(">Climb on Ridge Road<"));
+  assert.ok(html.includes(">Ridge Road<"));
   assert.ok(html.includes('aria-labelledby="u-title"'));
   assert.ok(html.includes("<dt>Length</dt><dd>0.6 mi (1.0 km)</dd>"));
   assert.ok(html.includes("<dt>Elevation gain</dt><dd>240 ft (73 m)</dd>"));
