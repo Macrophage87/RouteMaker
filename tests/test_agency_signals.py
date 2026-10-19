@@ -387,3 +387,28 @@ def test_the_installer_writes_every_source_into_one_file(tmp_path) -> None:
         ("ddot:{G1}", "signal"),
         ("alexandria-hawk:9", "hawk"),
     ]
+
+
+def test_vdot_rows_keep_active_signals_and_hawks() -> None:
+    doc = {
+        "features": [
+            point_feature({"OBJECTID": 1, "ASSET_SUBTYPE": "Traffic Signal", "STATUS": "Active"}),
+            point_feature(
+                {"OBJECTID": 2, "ASSET_SUBTYPE": "Pedestrian Hybrid Beacon", "STATUS": "Active"}
+            ),
+            point_feature(
+                {"OBJECTID": 3, "ASSET_SUBTYPE": "Intersection Flasher", "STATUS": "Active"}
+            ),
+            point_feature({"OBJECTID": 4, "ASSET_SUBTYPE": "Traffic Signal", "STATUS": "Retired"}),
+            point_feature({"OBJECTID": 5, "ASSET_SUBTYPE": "Traffic Signal", "STATUS": "Proposed"}),
+            point_feature({"OBJECTID": 6, "ASSET_SUBTYPE": "Traffic Signal", "STATUS": "Deleted"}),
+        ]
+    }
+    rows, dropped = agency_signals.vdot_rows(doc)
+    assert [(row["id"], row["kind"]) for row in rows] == [("vdot:1", "signal"), ("vdot:2", "hawk")]
+    assert dropped == {
+        "subtype Intersection Flasher": 1,
+        "STATUS Retired": 1,
+        "STATUS Proposed": 1,
+        "STATUS Deleted": 1,
+    }

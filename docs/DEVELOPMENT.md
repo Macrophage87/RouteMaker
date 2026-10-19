@@ -4211,8 +4211,8 @@ OSM (2026-10-11), and so do the other agencies' lists where OSM says nothing or 
 less.
 
 - `reference/signals.json`, optional, from `install_reference_data.py --dc-signals
-  --md-signals --arlington-signals --alexandria-signals --alexandria-hawks`
-  (`pipeline.agency_signals.ddot_rows`, `mdot_sha_rows`, `arlington_rows`,
+  --md-signals --va-signals --arlington-signals --alexandria-signals --alexandria-hawks`
+  (`pipeline.agency_signals.ddot_rows`, `mdot_sha_rows`, `vdot_rows`, `arlington_rows`,
   `alexandria_rows`; field names read in any case): one row a signal,
   `{"id", "source", "lon", "lat", "kind"}`, `kind` `signal` or `hawk`. Each source's
   licence is in `LICENCE_CONFIRMED`; a row of a source not confirmed (Arlington, for now)

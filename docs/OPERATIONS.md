@@ -4760,6 +4760,7 @@ map servers. Four lists, one file (`reference/signals.json`):
 | Source | Layer | Read by the rebuild |
 |---|---|---|
 | DDOT Traffic Signals (item `ca6ad078a6f6415389e220704b7698ac`) | `https://maps2.dcgis.dc.gov/DCGIS/rest/services/DCGIS_DATA/Transportation_Signs_Signals_Lights_WebMercator/MapServer/170` | yes (CC BY 4.0) |
+| VDOT HMMS Traffic Signals, 2023 snapshot (item `0d4c36cd061f4be280691d9ff6d36419`; all of Virginia, Fairfax included) | `https://services.arcgis.com/p5v98VHDX9Atv3l7/arcgis/rest/services/HMMS_Traffic_Signals_Flat_NEW/FeatureServer/0` | yes (VDOT's portal terms, the owner 2026-10-19) |
 | City of Alexandria, signalised intersections | `https://geoportal.alexandriava.gov/server/rest/services/Hosted/Smart_Mobility_Data/FeatureServer/9` | yes (CC0) |
 | City of Alexandria, HAWKs | the same service, layer `0` | yes (CC0) |
 | MDOT SHA Traffic Signals (all of Maryland but Baltimore City) | `https://gisportalapps.sha.maryland.gov/arcgis/rest/services/UtilitiesCommunication/TrafficSignals_Maryland_MDOTSHA/MapServer/0` | yes (Maryland iMAP's terms, the owner 2026-10-19) |
@@ -4779,13 +4780,17 @@ installed; the rebuild logs `... signals installed but not read` and leaves it o
    python3 scripts/fetch_agency_layer.py --slug md-traffic-signals \
        --layer https://gisportalapps.sha.maryland.gov/arcgis/rest/services/UtilitiesCommunication/TrafficSignals_Maryland_MDOTSHA/MapServer/0 \
        --out-dir ~/rmdata/datasets --credit "State of Maryland (MDOT SHA)"
+   python3 scripts/fetch_agency_layer.py --slug va-traffic-signals \
+       --item 0d4c36cd061f4be280691d9ff6d36419 \
+       --layer https://services.arcgis.com/p5v98VHDX9Atv3l7/arcgis/rest/services/HMMS_Traffic_Signals_Flat_NEW/FeatureServer/0 \
+       --out-dir ~/rmdata/datasets --credit "VDOT"
    python3 scripts/fetch_agency_layer.py --slug alexandria-signals \
        --layer https://geoportal.alexandriava.gov/server/rest/services/Hosted/Smart_Mobility_Data/FeatureServer/9 \
        --out-dir ~/rmdata/datasets --credit "City of Alexandria"
    python3 scripts/fetch_agency_layer.py --slug alexandria-hawks \
        --layer https://geoportal.alexandriava.gov/server/rest/services/Hosted/Smart_Mobility_Data/FeatureServer/0 \
        --out-dir ~/rmdata/datasets --credit "City of Alexandria"
-   for slug in dc-traffic-signals md-traffic-signals alexandria-signals alexandria-hawks; do
+   for slug in dc-traffic-signals md-traffic-signals va-traffic-signals alexandria-signals alexandria-hawks; do
      sudo mkdir -p "$DATA_ROOT/reference/inputs/$slug"
      sudo cp ~/rmdata/datasets/$slug/* "$DATA_ROOT/reference/inputs/$slug/"
      sudo chown -R 10001:10001 "$DATA_ROOT/reference/inputs/$slug" && sudo chmod 644 "$DATA_ROOT/reference/inputs/$slug/"*
@@ -4804,6 +4809,7 @@ installed; the rebuild logs `... signals installed but not read` and leaves it o
        --data-root /data \
        --dc-signals /data/reference/inputs/dc-traffic-signals/dc-traffic-signals.geojson \
        --md-signals /data/reference/inputs/md-traffic-signals/md-traffic-signals.geojson \
+       --va-signals /data/reference/inputs/va-traffic-signals/va-traffic-signals.geojson \
        --alexandria-signals /data/reference/inputs/alexandria-signals/alexandria-signals.geojson \
        --alexandria-hawks /data/reference/inputs/alexandria-hawks/alexandria-hawks.geojson
    ```
