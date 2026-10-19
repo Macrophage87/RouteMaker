@@ -95,6 +95,13 @@ class TestSettings:
         assert r["Cache-Control"] == "no-store"
         assert AccountSettings.objects.get(user=user).data == doc
 
+    def test_favorite_ride_types_are_kept(self) -> None:
+        client, user, csrf = signed_in()
+        doc = {"v": 1, "favorites": ["cargo", "gravel"]}
+        r = send(client, "post", "/api/me/settings", {"settings": doc}, csrf)
+        assert r.status_code == 200
+        assert AccountSettings.objects.get(user=user).data == doc
+
     def test_last_write_wins(self) -> None:
         client, user, csrf = signed_in()
         send(client, "post", "/api/me/settings", {"settings": {"v": 1, "topo": True}}, csrf)
@@ -116,6 +123,10 @@ class TestSettings:
             {"v": 1, "sections": {"a": {"b": {"c": {"d": 1}}}}},
             {"v": 1, "weight": {"total_kg": 80}},
             {"v": 1, "bikeshare": {"name": "x" * (accounts.SETTINGS_MAX_BYTES + 1)}},
+            {"v": 1, "favorites": "cargo"},
+            {"v": 1, "favorites": [{"id": "cargo"}]},
+            {"v": 1, "favorites": ["cargo", "cargo"]},
+            {"v": 1, "favorites": ["cargo"] * (accounts.FAVORITES_MAX + 1)},
         ],
     )
     def test_only_the_planner_s_own_settings_are_kept(self, doc) -> None:
