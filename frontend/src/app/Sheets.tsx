@@ -2,7 +2,8 @@
 // arranged as the approved UI mockup of 2026-10-11 has them (reports/v0.5.0/ui-mockup.html): Layers is its
 // switches, with the legend behind a Legend button at its top (the owner's choice 6); Suggest is the one way
 // in to the suggest tools, and Review is an admin's; Settings is My Go, Riding, Display and Account; and the
-// map's Water and Food chips open the nearest finder and Find food. In Go, Settings is the Menu, with Plan, Suggest, GPX and Review above it. App.tsx keeps the state and the effects.
+// map's Water and Food chips open the nearest finder and Find food. In Go, Settings is the Menu, with Plan,
+// Suggest, GPX and Review above it. App.tsx keeps the state and the effects.
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import type { Map as MapLibreMap } from "maplibre-gl";
 import type { StressAvailability } from "../MapView.tsx";
@@ -566,34 +567,38 @@ export function SettingsSheet(props: SettingsSheetProps) {
       {/* The installable app (WEB-NAV-plan.md section 8, P4), under its own heading when the browser offers it. The
           routes saved and kept for offline are in Save and load (YourRoutes.tsx; the owner, 2026-10-18). */}
       <InstallOffer idBase="settings-install" onSay={announce} />
-      <section aria-labelledby="settings-signin-heading" className="settings-group">
-        <h3 id="settings-signin-heading">Account</h3>
-        {myGo.signedIn ? (
-          <div className="account-line">
-            <p className="hint signed-in">
-              <Icon name="user" size={16} /> Signed in with Discord.
+      {/* Account: never an empty heading (signed out on a server that cannot sign anyone in, it has nothing to hold). */}
+      {(myGo.signedIn || signInAvailable) && (
+        <section aria-labelledby="settings-signin-heading" className="settings-group">
+          <h3 id="settings-signin-heading">Account</h3>
+          {myGo.signedIn ? (
+            <div className="account-line">
+              <p className="hint signed-in">
+                <Icon name="user" size={16} /> Signed in with Discord.
+              </p>
+              <SignOutForm />
+              <span className="info-spacer" aria-hidden="true" />
+            </div>
+          ) : signInAvailable ? (
+            // The plan's one line (item 4); the link is its first words. The plan in hand is kept across the round trip.
+            <p className="hint sign-in-line">
+              <a href="/auth/login" onClick={(e) => isPlainClick(e) && rememberPlanForSignIn(tabSession(), window.location.hash, linkNote !== "")}>
+                Sign in with Discord
+              </a>
+              {SIGN_IN_LINE.slice("Sign in with Discord".length)}
             </p>
-            <SignOutForm />
-          </div>
-        ) : signInAvailable ? (
-          // The plan's one line (item 4); the link is its first words. The plan in hand is kept across the round trip.
-          <p className="hint sign-in-line">
-            <a href="/auth/login" onClick={(e) => isPlainClick(e) && rememberPlanForSignIn(tabSession(), window.location.hash, linkNote !== "")}>
-              Sign in with Discord
-            </a>
-            {SIGN_IN_LINE.slice("Sign in with Discord".length)}
-          </p>
-        ) : null}
-        {/* The save-only key an AI assistant's MCP server saves routes with (the owner, 2026-10-18). */}
-        {myGo.signedIn && <AssistantKeySetting />}
-        {/* A page of its own (core.account_deletion), the same one the web offers without the app: it says what goes
-            and what is kept, and asks once. Last: nobody needs it often. */}
-        {myGo.signedIn && (
-          <p className="delete-account">
-            <a href={DELETE_ACCOUNT_PAGE}>Delete account</a>
-          </p>
-        )}
-      </section>
+          ) : null}
+          {/* The save-only key an AI assistant's MCP server saves routes with (the owner, 2026-10-18). */}
+          {myGo.signedIn && <AssistantKeySetting />}
+          {/* A page of its own (core.account_deletion), the same one the web offers without the app: it says what goes
+              and what is kept, and asks once. Last: nobody needs it often. */}
+          {myGo.signedIn && (
+            <p className="delete-account">
+              <a href={DELETE_ACCOUNT_PAGE}>Delete account</a>
+            </p>
+          )}
+        </section>
+      )}
     </SheetFrame>
   );
 }
