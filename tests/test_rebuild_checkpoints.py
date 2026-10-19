@@ -1263,6 +1263,10 @@ def test_the_closure_probes_are_computed_before_the_tiles_and_survive_a_resume(e
     # The singletrack is rated, so the mtb graph rides it and has no closure to read
     # back; every other graph, the reused ones too, was read.
     assert second.context.drawn_singletracks == {SINGLETRACK_ID}
+    # Both lists are written by name, so a resume reads back what the first attempt chose.
+    written = checkpoint.read_classification(env.work)
+    assert written["drawn_singletracks"] == [SINGLETRACK_ID]
+    assert set(written["offroad_singletracks"]) == second.context.offroad_singletracks
     assert len(reads) == len(Variant) - 1, "every graph that keeps it closed was read back"
 
 
