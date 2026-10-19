@@ -63,6 +63,9 @@
   sup.cite a { text-decoration: none; }
   ol.refs li { margin-bottom: 0.4rem; }
   .t { fill: var(--fg); font: 13px system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  .maplbl { fill: #111; stroke: #fff; stroke-width: 6px; stroke-linejoin: round; paint-order: stroke; font: 600 24px system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  .mapbig { font-size: 28px; font-weight: 700; }
+  .mapbar { fill: #111; stroke: #fff; stroke-width: 2px; }
   .ts { fill: var(--muted); font: 11.5px system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
   .tb { fill: var(--fg); font: 600 13px system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
   .tk { fill: #1c1917; font: 600 12.5px system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
@@ -667,26 +670,25 @@ for it, up to a limit. <a href="/about/ride-types.html">Ride types</a> has the d
 <p>The same trip, Dupont Circle to Nationals Park, planned on two ride types on 19 October 2026:</p>
 <figure id="fig-example">
 <div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
-<svg viewBox="0 0 751 520" role="img" aria-labelledby="fig-example-t fig-example-d" focusable="false" style="min-width:540px">
-<title id="fig-example-t">One trip, two ride types</title>
-<desc id="fig-example-d">A map sketch of two routes from Dupont Circle to Nationals Park, planned on 19 October 2026. Both start on Massachusetts Avenue and 18th Street and finish on the Pennsylvania Avenue cycle track and 4th Street. Default goes up to Q Street and down the 15th Street cycle track and 9th Street: 4.7 miles. Trailmaxxing goes down 17th Street, L Street and 11th Street: 4.4 miles, with more of it on LTS 1.</desc>
+<svg viewBox="0 0 1200 1100" role="img" aria-labelledby="fig-example-t fig-example-d" focusable="false" style="min-width:600px">
+<title id="fig-example-t">One trip, two ride types, on the app&#x27;s map</title>
+<desc id="fig-example-d">A map of central Washington with two routes from Dupont Circle to Nationals Park, planned on 19 October 2026, drawn over the stress map. Both start on Massachusetts Avenue and 18th Street and finish on the Pennsylvania Avenue cycle track and 4th Street. Default, a solid blue line, goes up to Q Street and down the 15th Street cycle track and 9th Street: 4.7 miles [7.5 km]. Trailmaxxing, a dashed orange line, goes down 17th Street, L Street and 11th Street: 4.4 miles [7.0 km], with more of it on LTS 1.</desc>
 <defs><marker id="ah-example" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
-<polyline class="ln" points="200.0,70.5 201.5,69.8 203.8,69.6 205.3,70.0 211.3,72.7 211.4,50.0 270.5,50.0 270.2,92.0 360.7,92.0 360.4,104.8 360.8,108.1 360.7,167.0 360.5,167.9 360.7,173.4 360.7,235.1 361.1,236.6 414.6,255.9 413.9,258.2 413.9,271.7 413.3,271.7 413.2,392.9 413.4,394.4 511.2,394.6 511.2,425.6 511.0,426.5 511.0,441.8 511.2,443.1 511.2,445.4 511.0,446.1 511.0,460.0"/>
-<polyline class="ln2" points="200.0,70.5 201.5,69.8 203.8,69.6 205.3,70.0 211.3,72.7 211.3,92.0 237.2,92.0 237.1,105.1 237.9,105.9 237.9,108.2 237.2,110.2 237.1,129.2 319.3,129.2 324.5,129.5 324.5,129.9 334.3,129.8 333.3,130.9 333.3,210.2 333.2,213.7 333.4,225.9 334.1,227.0 414.6,255.9 413.9,258.2 413.9,271.7 413.3,271.7 413.2,392.9 413.4,394.4 511.2,394.6 511.2,425.6 511.0,426.5 511.0,441.8 511.2,443.1 511.2,445.4 511.0,446.1 511.0,460.0"/>
-<circle cx="200.0" cy="70.5" r="6" class="bxa"/>
-<rect x="505.0" y="454.0" width="12" height="12" class="bxa"/>
-<text class="t" x="188.0" y="75.5" text-anchor="end">Dupont Circle (start)</text>
-<text class="t" x="523.0" y="465.0" text-anchor="start">Nationals Park (end)</text>
-<text class="ts" x="278.7" y="40.4" text-anchor="start">Default: solid, by Q St</text>
-<text class="ts" x="278.7" y="55.4" text-anchor="start">and the 15th St cycle track</text>
-<text class="ts" x="227.1" y="181.1" text-anchor="end">Trailmaxxing: dashed,</text>
-<text class="ts" x="227.1" y="196.1" text-anchor="end">by 17th St, L St and 11th St</text>
-<text class="ts" x="423.6" y="321.4" text-anchor="start">Both: Pennsylvania Ave cycle track, 4th St</text>
-<line class="axis" x1="531.0" y1="495" x2="687.5" y2="495"/>
-<text class="ts" x="609.2" y="489" text-anchor="middle">1 mi [1.6 km]</text>
+<image href="/about/route-example.webp" x="0" y="0" width="1200" height="1100"/>
+<text class="maplbl mapbig" x="150" y="68" text-anchor="start">Dupont Circle (start)</text>
+<text class="maplbl mapbig" x="928" y="1020" text-anchor="end">Nationals Park (end)</text>
+<text class="maplbl" x="625" y="222" text-anchor="start">Default, solid blue:</text>
+<text class="maplbl" x="625" y="252" text-anchor="start">Q St, 15th St, 9th St</text>
+<text class="maplbl" x="532" y="352" text-anchor="end">Trailmaxxing, dashed orange:</text>
+<text class="maplbl" x="532" y="382" text-anchor="end">17th St, L St, 11th St</text>
+<text class="maplbl" x="748" y="752" text-anchor="start">Both: Pennsylvania Ave</text>
+<text class="maplbl" x="748" y="782" text-anchor="start">cycle track, then 4th St</text>
+<rect x="30" y="1046" width="352" height="8" class="mapbar"/>
+<text class="maplbl" x="30" y="1036" text-anchor="start">1 mi [1.6 km]</text>
+<text class="maplbl" x="1190" y="1090" text-anchor="end">© OpenStreetMap contributors, Protomaps</text>
 </svg>
 </div>
-<figcaption>Planned by RouteMaker's own route request on 19 October 2026, on the map of that week. North is up; the lines are simplified. Routes change as the map and the ratings do.</figcaption>
+<figcaption>Planned by RouteMaker's own route request on 19 October 2026 and drawn on the app's map of that week, with the stress map underneath in its usual colours. North is up. Routes change as the map and the ratings do. Base map &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>, drawn with <a href="https://protomaps.com">Protomaps</a>.</figcaption>
 </figure>
 <div class="table-wrap" tabindex="0" role="region" aria-label="Dupont Circle to Nationals Park, by ride type">
 <table>
