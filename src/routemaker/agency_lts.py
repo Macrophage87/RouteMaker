@@ -227,6 +227,11 @@ def apply(result: StressResult, ratings: Iterable[AgencyRating]) -> StressResult
     if pick is None:
         return result
     level = map_level(pick.agency, pick.level)
+    if level < pick.level and result.tier is Stress.AVOID:
+        # A level read as a lower one (Montgomery's 5 as 4.5) does not lower the
+        # formula's own Avoid (a bike-legal motorway, a side path's road): the
+        # agency's highest level agrees with it. The rating is still recorded.
+        return replace(result, agency_ratings=tuple(sorted(ratings, key=lambda r: r.rank)))
     tier, half = tier_of(level)
     # The other agencies' levels are in `agency_ratings`, not the rule: the
     # rule's commas separate the reasons appended after it (`stress.rural_floor`).
@@ -285,6 +290,7 @@ def painted_lane_row(
         scope = PAINTED_LANE_COMPARISON
     else:
         return None
+    level = map_level(pick.agency, pick.level) if pick else None
     formula = result.formula_tier if result.formula_tier is not None else result.tier
     rule = result.formula_rule if result.formula_rule is not None else result.rule
     return {
@@ -293,10 +299,10 @@ def painted_lane_row(
         "state": state,
         "scope": scope,
         "agency": pick.agency if pick else "",
-        "agency_level": f"{pick.level:g}" if pick else "",
+        "agency_level": f"{level:g}" if pick else "",
         "formula_level": str(int(formula)),
         "formula_rule": rule,
-        "differs": ("yes" if pick.level != int(formula) else "no") if pick else "",
+        "differs": ("yes" if level != int(formula) else "no") if pick else "",
     }
 
 

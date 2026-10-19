@@ -615,6 +615,23 @@ class TestRulings:
         assert any("Review" in h["what"] for h in detail["history"])
         assert detail["new_facts"] == []
 
+    def test_the_history_reads_a_county_5_row_as_45(self, queued) -> None:
+        rows = [
+            Override.objects.create(
+                kind="stress",
+                osm_way_id=DROP,
+                value={"tier": 5, "adjustment_id": adjustment_id},
+                reason="r",
+                evidence="e",
+                approved=adjustment_id.startswith("owner"),
+            )
+            for adjustment_id in ("moco-lts5-darnestown-road", "owner-hand-set")
+        ]
+        Override.objects.filter(pk=rows[0].pk).update(superseded_by=rows[1])
+        said = [h["what"] for h in stress_review.road_detail(DROP)["history"]]
+        assert any(w.endswith(": LTS 4.5") for w in said)
+        assert any(w.endswith(": Avoid") for w in said)
+
     def test_a_rebuild_change_shows_the_new_builds_facts_beside_lives(self, queued) -> None:
         detail = stress_review.road_detail(RISE, "rebuild")
         level = {f["label"]: f["value"] for f in detail["facts"]}["Level"]
@@ -641,6 +658,24 @@ class TestPendingAgenciesStayPrivate:
         )
         pending = {s["key"]: s["pending"] for s in sources}
         assert pending == {"formula": False, "alexandria": False, "arlington": True}
+
+    def test_a_county_5_counts_as_45_in_the_spread_and_use_this_level(self) -> None:
+        # Montgomery's 5 is our 4.5: half a step from the formula's LTS 4 is no disagreement,
+        # and "Use this level" offers the 4.5 the map would use, naming the county's 5.
+        sources = stress_review.rating_sources(
+            {"step": 4.0, "ratings": {"formula": 4.0, "agencies": [{"agency": "moco", "level": 5}]}}
+        )
+        moco = next(s for s in sources if s["key"] == "moco")
+        assert moco["level"] == 4.5
+        assert moco["name"] == "Montgomery County Planning (rated LTS 5)"
+        assert stress_review.disagreement(sources) is None
+        item = type("Item", (), {"details": {"sources": sources}})()
+        assert stress_review._evidence_of("moco", stress_review.Decision.SET, 4.5, [item])
+        with pytest.raises(stress_review.stress_edits.Invalid):
+            stress_review._evidence_of("moco", stress_review.Decision.SET, 5, [item])
+        assert stress_review.painted_lane_levels(
+            {"agency": "moco", "agency_level": "5", "formula_level": "4"}
+        ) == ("moco", 4.5, 4.0)
 
     def test_the_public_road_panel_never_names_them(self, queued, client, tmp_path) -> None:
         (tmp_path / "arlington-ratings.csv").write_text(f"osm_way_id,level\n{SAME},4\n")

@@ -3195,6 +3195,7 @@ in `routing.ATTRIBUTION` and `VOLUME_CREDITS`:
   `fixtures/datasets/README.md` and PLAN.md. **The credit and the rows travel
   together**: deleting the rows does not make the credit wrong for the graph
   until the next rebuild, but a rebuild without them should drop the line.
+  From v0.9.1 the map reads those rows as LTS 4.5, not Avoid (`agency_lts.row_level`).
 
 Arlington's Bike Comfort Index is internal comparison only and is never
 credited because nothing of it is published. Alexandria's Transport Streets was
@@ -6285,7 +6286,7 @@ the dry run each prints after `grep -v '^present:'`:
    (`bicycle=no`). Dry: 2 retire `{'bicycle': 'designated'}`, 2 create `{'bicycle': 'no'}`.
 4. `2026-10-01-owner-moco-lts5-avoid.json`, the Montgomery Planning LTS 5 file (433):
    retires the 23 Veirs Mill Rd Avoid rows and keeps the other 386. Dry: 23 retire, 386
-   present.
+   present. From v0.9.1 the map reads these rows as LTS 4.5, not Avoid (`agency_lts.row_level`).
 5. `2026-10-06-owner-military-reopenings.json`, the military reopenings (437.6, 437a-c,
    438.2, 439b): `bicycle=yes` on Jeff Todd Way (10 ways), Russell Rd (32), Saint
    Elizabeths Rd SE (2) and its side path (11) and Pentagon Connector Road (25), LTS 4 on

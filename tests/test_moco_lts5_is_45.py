@@ -17,7 +17,7 @@ from pipeline.extract import Way
 from pipeline.overrides import Override
 from routemaker import agency_lts
 from routemaker.agency_lts import PROHIBITED_NO_BICYCLE, AgencyRating
-from routemaker.stress import Stress, StressResult, rural_floor
+from routemaker.stress import Stress, StressResult, classify, rural_floor
 
 FORMULA = StressResult(Stress.LTS4, "mixed traffic, 35 mph or above", ("maxspeed",))
 OVERRIDES = Path(__file__).resolve().parents[1] / "fixtures" / "overrides"
@@ -119,3 +119,33 @@ def test_the_panel_says_the_county_rates_it_5_and_the_map_uses_45():
     assert segment_info.rule_words(rule) == (
         "Rated LTS 5 by Montgomery County Planning, which means very high stress: LTS 4.5 here"
     )
+
+
+@pytest.mark.parametrize(
+    "tags,side_path",
+    [
+        ({"highway": "primary", "expressway": "yes", "maxspeed": "55 mph"}, False),
+        ({"highway": "primary", "bicycle": "use_sidepath", "maxspeed": "40 mph"}, True),
+    ],
+)
+def test_a_county_5_never_lowers_the_formulas_own_avoid(tags, side_path):
+    # An urban expressway posted 50 mph or more, and a side path's road, are Avoid by our own
+    # rule; the county's 5 agrees with that, so it does not lower them to 4.5.
+    formula = classify(tags, urban=True, side_path=side_path)
+    assert formula.tier is Stress.AVOID
+    result = agency_lts.apply(formula, [AgencyRating("moco", 5)])
+    assert result.tier is Stress.AVOID and not result.half
+    assert result.rule == formula.rule
+    assert result.agency_ratings == (AgencyRating("moco", 5),)
+
+
+def test_a_county_4_still_sets_the_level_on_an_avoid_road():
+    # Only a level read as a lower one keeps the formula's Avoid; the county's own 4 decides.
+    formula = classify({"highway": "primary", "expressway": "yes", "maxspeed": "55 mph"})
+    assert agency_lts.apply(formula, [AgencyRating("moco", 4)]).tier is Stress.LTS4
+
+
+def test_the_painted_lane_report_uses_45():
+    result = agency_lts.apply(FORMULA, [AgencyRating("moco", 5)])
+    row = agency_lts.painted_lane_row(1, "Darnestown Rd", "MD", result)
+    assert row["agency_level"] == "4.5" and row["differs"] == "yes"
