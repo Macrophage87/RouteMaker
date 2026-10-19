@@ -7016,7 +7016,8 @@ To ship it to a host:
    host, or after adding a ratings file (step 3):
    `docker compose exec -T api python manage.py compute_review_queue` (the live table and
    this host's own `rebuild/reports`), with `--build-id <id>` before a swap to list the
-   rebuild's changes against `staging`, and `--reports-dir <dir>` for another build's
+   rebuild's changes against `staging`, `--build-id <id> --old-schema <live>_old
+   --new-schema <live>` after a swap, and `--reports-dir <dir>` for another build's
    reports. Each list it computes replaces its rows, with each road's simplified line and
    point for the map; the rulings stay. `0030_review_map_by_view` gives the roads already
    listed theirs, so the map needs no recomputation after it. Review's map asks for the view
