@@ -157,7 +157,7 @@ You stay responsible for riding safely; the route can be wrong.
   the planned route" says which way the route is instead.
 - At Start ride the map along the route, about 1,000 ft (300 m) either side, is saved on the
   phone, so it still shows in a dead spot with no signal. A line under the buttons says what was
-  saved. It lasts for this ride only: it is cleared when you end the ride, when the next
+  saved. It lasts for this ride only: it is cleared at "End ride", when the next
   ride starts, and if you reload or reopen the page (a ride does not carry on after a reload).
   Finding a new way off the route still needs a signal.
 - "Report a problem to DC 311" (Washington, DC only) writes a report for a pothole (chosen
@@ -204,7 +204,7 @@ RouteMaker can be installed like an app: it then opens from your home screen in 
   installed app keeps them.
 - When a new version is ready, a line at the top of the planner says "A new version of
   RouteMaker is ready." with a "Reload" button. It never interrupts a ride: it waits until you
-  end it. With no signal, a line there says you are offline.
+  use "End ride". With no signal, a line there says you are offline.
 
 11. Bike and transit together
 -----------------------------
