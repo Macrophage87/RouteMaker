@@ -126,6 +126,7 @@ sign is not treated as quiet.</li>
 <ul>
 <li><a href="#levels">The stress levels</a></li>
 <li><a href="#which-rating">Which rating wins</a></li>
+<li><a href="#places">What each place tells us</a></li>
 <li><a href="#formula">The formula</a></li>
 <li><a href="#special">Special cases</a></li>
 <li><a href="#junctions">Junctions</a></li>
@@ -353,6 +354,40 @@ the county the county's level is used in every case.</p>
 </div>
 <p>Arlington's and Alexandria's maps are used for comparison only. Alexandria's recorded speed limits
 (CC0) feed the formula as street facts.</p>
+
+<h2 id="places">What each place tells us</h2>
+<p>Every jurisdiction publishes different data, so the evidence behind a rating changes when you cross
+a line. The District publishes the most: its own stress ratings, street-by-street records of speed,
+lanes and bike lanes, traffic counts, pavement condition and its own closure
+feeds. Montgomery County publishes its own ratings. The rest of Maryland has the state's ratings on
+state roads only. Virginia publishes no stress ratings RouteMaker can use, so every Virginia road is
+rated by the formula from OpenStreetMap and traffic counts.</p>
+<div class="table-wrap" tabindex="0" role="region" aria-label="What each place&#x27;s data covers">
+<table>
+<caption>What each place's data covers</caption>
+<thead><tr><th scope="col">Place</th><th scope="col">Stress rating</th><th scope="col">Street facts</th><th scope="col">Traffic counts</th><th scope="col">Closures</th><th scope="col">Also</th></tr></thead>
+<tbody>
+<tr><th scope="row">District of Columbia</th><td>DDOT's LTS<sup class="cite"><a href="#ref-4" aria-label="source 4">[4]</a></sup></td><td>DC's street records: speed, lanes, one-way, bike lanes, parking</td><td>DDOT<sup class="cite"><a href="#ref-10" aria-label="source 10">[10]</a></sup></td><td>DDOT permits (Plan layer only), police and AlertDC closures, park notes<sup class="cite"><a href="#ref-16" aria-label="source 16">[16]</a><a href="#ref-18" aria-label="source 18">[18]</a></sup></td><td>Pavement condition<sup class="cite"><a href="#ref-19" aria-label="source 19">[19]</a></sup>; 20 mph [32 km/h] default<sup class="cite"><a href="#ref-9" aria-label="source 9">[9]</a></sup></td></tr>
+<tr><th scope="row">Montgomery County</th><td>The county's LTS<sup class="cite"><a href="#ref-3" aria-label="source 3">[3]</a></sup>; Maryland's on state roads, shown in the road panel</td><td>OpenStreetMap<sup class="cite"><a href="#ref-6" aria-label="source 6">[6]</a></sup></td><td>Maryland, state roads<sup class="cite"><a href="#ref-10" aria-label="source 10">[10]</a></sup></td><td>Maryland work zones<sup class="cite"><a href="#ref-17" aria-label="source 17">[17]</a></sup></td><td>Rustic Roads on the Scenic layer</td></tr>
+<tr><th scope="row">Other Maryland counties, such as Prince George's, Howard and Anne Arundel</th><td>Maryland's LTS on state roads<sup class="cite"><a href="#ref-5" aria-label="source 5">[5]</a></sup>; the formula elsewhere</td><td>OpenStreetMap</td><td>Maryland, state roads</td><td>Maryland work zones</td><td>Scenic Byways on the Scenic layer</td></tr>
+<tr><th scope="row">Baltimore City</th><td>Maryland's LTS on state roads; the formula elsewhere</td><td>OpenStreetMap, with the city's speeds, one-way streets, bike lanes and trails<sup class="cite"><a href="#ref-21" aria-label="source 21">[21]</a></sup></td><td>Maryland, state roads</td><td>Maryland work zones</td><td></td></tr>
+<tr><th scope="row">Virginia: Arlington, Fairfax and others</th><td>The formula</td><td>OpenStreetMap</td><td>VDOT</td><td>VDOT work zones</td><td>Arlington's and Fairfax's maps for comparison only</td></tr>
+<tr><th scope="row">City of Alexandria</th><td>The formula</td><td>OpenStreetMap, with the city's recorded speed limits<sup class="cite"><a href="#ref-22" aria-label="source 22">[22]</a></sup></td><td>VDOT</td><td>VDOT work zones</td><td></td></tr>
+</tbody>
+</table>
+</div>
+<p>What this means for a ride:</p>
+<ul>
+<li>The source can change mid-street. On Connecticut Avenue, DDOT's rating stops at the District line
+and the county's starts; the road panel names the source of each piece.</li>
+<li>Where there is less agency data, ratings lean on OpenStreetMap tags and the cautious defaults
+above, so a rating there is likelier to be a little strict, and corrections from riders matter
+more.</li>
+<li>Closures are uneven too: only Maryland and Virginia publish work-zone feeds; the District has
+police and emergency advisories and permits instead (see <a href="#closures">Closures</a>).</li>
+<li>DC's records win over OpenStreetMap for the same fact in the District, because the District
+updates them, many weekly.</li>
+</ul>
 
 <h2 id="formula">The formula</h2>
 <p>Where no correction or agency rates a road, RouteMaker rates it from the published LTS
@@ -606,6 +641,15 @@ the same level cost more. Each entry onto an Avoid road adds about 2.5 calm mile
 </figure>
 
 <h2 id="closures">Closures</h2>
+<p>Only Maryland and Virginia publish work-zone feeds in the national Work Zone Data Exchange
+format<sup class="cite"><a href="#ref-17" aria-label="source 17">[17]</a></sup>: dated, mapped closures in force, with whether bikes can pass. The District publishes
+no such feed. What it has instead is a mix: police traffic advisories and AlertDC emergency
+closures<sup class="cite"><a href="#ref-18" aria-label="source 18">[18]</a></sup>, which name streets in words and are matched to the map; DDOT's TOPS permits<sup class="cite"><a href="#ref-16" aria-label="source 16">[16]</a></sup>,
+which say a street may be occupied some time in the coming month, not that it is closed now; and
+National Park Service alerts for the parks. So a closure in the District is usually known from an
+advisory or a reviewer, not from an official work-zone record, and planned roadwork in the District
+can be missing until someone reports it. Virginia's feed also needs an access key, so it is read only
+where one is set up.</p>
 <figure id="fig-closures">
 <div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 800 385" role="img" aria-labelledby="fig-closures-t fig-closures-d" focusable="false" style="min-width:576px">
@@ -719,7 +763,7 @@ road and its traffic, never a neighbourhood or its people.</p>
 map goes live. To report a wrong rating, open the road panel on the map and use Suggest a change. For
 DC streets, the ride screen can also send a report to DC 311.</p>
 <p>The developer notes behind this page, with every threshold and the reasons for each, are in the
-repository<sup class="cite"><a href="#ref-21" aria-label="source 21">[21]</a></sup>.</p>
+repository<sup class="cite"><a href="#ref-23" aria-label="source 23">[23]</a></sup>.</p>
 
 <h2 id="sources">Sources</h2>
 <ol class="refs">
@@ -743,7 +787,9 @@ repository<sup class="cite"><a href="#ref-21" aria-label="source 21">[21]</a></s
   <li id="ref-18">Metropolitan Police Department traffic advisories (<a href="https://mpdc.dc.gov/newsroom">mpdc.dc.gov/newsroom</a>), AlertDC from DC HSEMA, and the National Park Service alerts API (<a href="https://www.nps.gov/subjects/developer/api-documentation.htm">nps.gov developer</a>)</li>
   <li id="ref-19">DDOT Pavement Condition Index, FY 2025. <a href="https://rh.dcgis.dc.gov/dcgis/rest/services/DDOT/PavementConditionIndex/FeatureServer/5">DC GIS</a></li>
   <li id="ref-20">Harvey, Fang and Rodriguez, "Bicycle Level of Stress, Crowdsourced Route Satisfaction", Mineta Transportation Institute (2019), on why LTS is an ordinal scale. <a href="https://transweb.sjsu.edu/sites/default/files/1711-Fang-Bicycle-Level-of-Stress-Crowdsourced-Route-Satisfaction.pdf">transweb.sjsu.edu (PDF)</a></li>
-  <li id="ref-21">RouteMaker's full list of data sources with licences and download records: <a href="https://github.com/Macrophage87/RouteMaker/blob/main/docs/SOURCES.md">docs/SOURCES.md</a>; developer notes on the stress method: <a href="https://github.com/Macrophage87/RouteMaker/tree/main/docs/stress">docs/stress</a></li>
+  <li id="ref-21">City of Baltimore, Open Baltimore: Street Centerline, DOT BMC Bike Facilities and Multiuse Trails (open under Baltimore City Code Art. 1 §9-1(h)). <a href="https://data.baltimorecity.gov/">data.baltimorecity.gov</a></li>
+  <li id="ref-22">City of Alexandria GIS, Transport Streets (CC0). <a href="https://cityofalexandria-alexgis.opendata.arcgis.com/">Alexandria OpenData</a></li>
+  <li id="ref-23">RouteMaker's full list of data sources with licences and download records: <a href="https://github.com/Macrophage87/RouteMaker/blob/main/docs/SOURCES.md">docs/SOURCES.md</a>; developer notes on the stress method: <a href="https://github.com/Macrophage87/RouteMaker/tree/main/docs/stress">docs/stress</a></li>
 </ol>
 </main>
 <footer>
