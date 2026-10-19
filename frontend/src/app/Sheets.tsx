@@ -13,7 +13,7 @@ import { PRESETS, presetSaid, type PresetId } from "../lib/presets.ts";
 import { PresetName } from "../lib/presetName.ts";
 import { filterRideGroups, rideSections, rideTypeCount, RideTypeSearch } from "../lib/rideTypeGroups.ts";
 import { RideTypeCards } from "../lib/rideTypeCards.ts";
-import { isPlainClick, rememberPlanForSignIn, tabSession } from "../lib/signIn.ts";
+import { DELETE_ACCOUNT_PAGE, isPlainClick, rememberPlanForSignIn, tabSession } from "../lib/signIn.ts";
 import { SignOutForm } from "../SignOut.tsx";
 import { AssistantKeySetting } from "../AssistantKey.tsx";
 import { pointName } from "../lib/summary.ts";
@@ -574,6 +574,11 @@ export function SettingsSheet(props: SettingsSheetProps) {
               <Icon name="user" size={16} /> Signed in with Discord.
             </p>
             <SignOutForm />
+            {/* A page of its own (core.account_deletion), the same one the web offers without the app: it says what goes
+                and what is kept, and asks once. */}
+            <p className="hint">
+              <a href={DELETE_ACCOUNT_PAGE}>Delete account</a>
+            </p>
           </>
         ) : signInAvailable ? (
           // The plan's one line (item 4); the link is its first words. The plan in hand is kept across the round trip.
