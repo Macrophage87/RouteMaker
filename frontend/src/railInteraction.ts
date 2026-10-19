@@ -46,13 +46,14 @@ export interface RailInteractionOptions {
   closedReason?(station: Station): string | null;
   /** `place` is the name the point carries: the station's, not its entrance's street (stationPlaceName). */
   onStationPoint(role: StationRole, point: LonLat, place: { name: string; label: string }): void;
-  /** The map's part the panel does not cover (App's framePadding): an opened card is panned into it (lib/popupFit.ts). */
   /**
    * Go with no route yet (Stephen 2026-10-19: "Ending at a metro assumes going from the current location"): End here
    * is offered with no points, and App routes there from Go's start.
    */
   endFromHere?(): boolean;
+  /** The map's part the panel does not cover (App's framePadding): an opened card is panned into it (lib/popupFit.ts). */
   framePadding?(): { top: number; left: number; bottom: number; right: number };
+  /** The pan is instant with reduced motion. */
   reducedMotion?(): boolean;
 }
 

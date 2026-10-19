@@ -1678,17 +1678,16 @@ export function App() {
   );
 
   // A station's Start here / End here / Add as stop (railStations.ts): an
-  // edit of the points like any other, so it can be undone and redone.
-  // Go's ride to a place from its start (goTo, below), for a station card's End here with no route yet.
-  const goToNow = useRef<((dest: LonLat, name: string) => Promise<void>) | null>(null);
+  // edit of the points like any other, so it can be undone and redone. In Go with no route yet, End here rides
+  // there from Go's start (goTo, said as a pressed destination is: "Destination set").
   const placeStation = useCallback((role: StationRole, point: LonLat, place: { name: string; label: string }) => {
     if (!insideCoverage(point)) {
       setNotice("That station is outside the area this map covers.");
       return;
     }
-    if (role === "end" && modeRef.current === "go" && pointsRef.current.length === 0 && goToNow.current) {
+    if (role === "end" && modeRef.current === "go" && pointsRef.current.length === 0) {
       namer.remember(point, place.name, place.label);
-      void goToNow.current(point, place.name);
+      void goToRef.current(point, place.name, true);
       return;
     }
     const edit = stationEdit(pointsRef.current, point, role, loopVias);
@@ -2032,7 +2031,6 @@ export function App() {
     }
     settleGoWaiting(result);
   };
-  goToNow.current = (dest, name) => goTo(dest, name);
   // A Go look-up's answer for the destination waiting on it (the latest one picked or pressed): found, Go's start
   // is the location and the destination is routed from it; not, the start box asks for a start, shown and said.
   // Either way only while the plan has no start (one typed meanwhile is routed from, as Go's opening look-up does).
@@ -2063,7 +2061,7 @@ export function App() {
   goWaitingRef.current = goWaiting;
   const goSettleRef = useRef(settleGoWaiting);
   goSettleRef.current = settleGoWaiting;
-  // A map press (place, a callback kept across renders) goes through the current goTo.
+  // A map press and a station's End here (place, placeStation: callbacks kept across renders) go through the current goTo.
   const goToRef = useRef(goTo);
   goToRef.current = goTo;
   const goToPlace = (found: Place) => {
