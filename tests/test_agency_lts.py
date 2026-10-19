@@ -27,9 +27,16 @@ def test_a_half_level_is_kept():
     assert (result.tier, result.half) == (Stress.LTS2, True)
 
 
-def test_an_agency_lts5_is_avoid():
+def test_montgomerys_lts5_is_our_45():
+    """The owner, 2026-10-19: "MoCo's mean very high stress, what our 4.5 means"."""
     result = agency_lts.apply(FORMULA, [AgencyRating("moco", 5)])
-    assert result.tier is Stress.AVOID
+    assert (result.tier, result.half) == (Stress.LTS4, True)
+    assert result.rule == "agency rating: Montgomery County Planning LTS 5, our LTS 4.5"
+
+
+def test_a_ddot_lts5_is_avoid():
+    result = agency_lts.apply(FORMULA, [AgencyRating("ddot", 5)])
+    assert (result.tier, result.half) == (Stress.AVOID, False)
 
 
 def test_no_rating_leaves_the_formula():
@@ -166,14 +173,14 @@ def _stress_row(way, tier, adjustment_id, **extra):
     return Override(kind="stress", osm_way_id=way, value=value, reason="r")
 
 
-def test_an_owner_row_outranks_a_county_avoid_and_keeps_every_rating():
+def test_an_owner_row_outranks_a_county_5_and_keeps_every_rating():
     """Darnestown Rd (the owner, 2026-10-14: "LTS 4" over Montgomery's LTS 5)."""
     import json
 
     from pipeline import overrides, writers
 
     rated = agency_lts.apply(FORMULA, [AgencyRating("moco", 5), AgencyRating("mdot-sha", 4)])
-    assert rated.tier is Stress.AVOID
+    assert (rated.tier, rated.half) == (Stress.LTS4, True)
     by_way = {5970658: rated}
     applied, _ = overrides.apply_stress(by_way, [_stress_row(5970658, 4, "darnestown-road-lts4")])
     assert applied == 1
@@ -255,7 +262,7 @@ def test_a_state_avoid_under_a_county_rating_takes_the_county():
 
 
 def test_the_rural_floor_never_lowers_an_agency_avoid():
-    rated = agency_lts.apply(FORMULA, [AgencyRating("moco", 5)])
+    rated = agency_lts.apply(FORMULA, [AgencyRating("ddot", 5)])
     assert rural_floor(rated, {"highway": "unclassified"}, urban=False).tier is Stress.AVOID
 
 
