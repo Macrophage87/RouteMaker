@@ -4,12 +4,15 @@
 rebuild run on this host (`--staging` before its swap, or the live table alone after it), or after
 the owner adds a pending agency's ratings file. Each queue it computes replaces its old rows; the
 rulings stay.
+
+After a swap the build is live and the one it replaced is in the retired schema (`<live>_old`):
+`--build-id <id> --old-schema live_old --new-schema live` lists that build's changes then.
 """
 
 from __future__ import annotations
 
 from django.conf import settings
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 
 from core import stress_review
 
@@ -31,13 +34,35 @@ class Command(BaseCommand):
                 "Without it, the work directory's own: a rebuild run on this host."
             ),
         )
+        parser.add_argument(
+            "--old-schema",
+            default="",
+            help=(
+                "The schema holding the map before the build (default: the live schema). After "
+                "a swap, the retired one (<live>_old)."
+            ),
+        )
+        parser.add_argument(
+            "--new-schema",
+            default="",
+            help=(
+                "The schema holding the build (default: the staging schema). After a swap, the "
+                "live one."
+            ),
+        )
 
     def handle(self, *args, **options) -> None:
         build = options["build_id"]
+        old = options["old_schema"] or settings.SEGMENT_SCHEMA_LIVE
+        new = options["new_schema"] or settings.SEGMENT_SCHEMA_STAGING
+        if not build and (options["old_schema"] or options["new_schema"]):
+            raise CommandError(
+                "--old-schema and --new-schema list a build's changes: give --build-id"
+            )
         counts = stress_review.compute_all(
             build,
-            settings.SEGMENT_SCHEMA_LIVE,
-            settings.SEGMENT_SCHEMA_STAGING if build else None,
+            old,
+            new if build else None,
             stress_review.reports_dir(options["reports_dir"], own=True),
         )
         for queue, count in counts.items():

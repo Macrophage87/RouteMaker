@@ -213,34 +213,75 @@ def _counties() -> list[tuple[str, str]]:
 
 
 def _write_facts(queue: str, schema: str, build_id: str) -> None:
+    """The facts made a batch of ways at a time (`CHUNK`) into a temporary table keyed on the
+    way, then written to the queue's rows a batch at a time by that key.
+
+    Never one `UPDATE review_item ... FROM (the segments' aggregate)`: the rows were inserted
+    in this same transaction, so the planner holds no statistics for them, guesses one row, and
+    may join by a nested loop that runs the whole aggregate again for every row. On the owner's
+    PC (2026-10-19) a build of about 107,000 changed ways ran that join for over ten hours. Each
+    statement here is bounded by a batch and every join is on an index (the temporary table's
+    key, the segment table's `segment_way_idx`, review_item's `review_item_one_a_way`), so no
+    plan can make it quadratic."""
     columns = _columns(schema)
     names = [c for c in ("trail_name", "sidepath_name", "mtb_name") if c in columns]
     name = f"max(COALESCE({', '.join(names)}))" if names else "NULL"
     aadt = "max(volume_aadt)" if "volume_aadt" in columns else "NULL"
-    county = stress_changes.county_of("ST_ClosestPoint(f.geom, ST_Centroid(f.geom))")
+    county = stress_changes.county_of("p.point")
     with connection.cursor() as cursor:
         cursor.execute(
-            f"""
-            UPDATE review_item i
-            SET name = CASE WHEN i.name = '' THEN COALESCE(f.name, '') ELSE i.name END,
-                length_m = COALESCE(f.length_m, 0), aadt = f.aadt, geometry = f.geom,
-                simple = ST_Multi(ST_SimplifyPreserveTopology(f.geom, {LOW_TOLERANCE})),
-                point = ST_ClosestPoint(f.geom, ST_Centroid(f.geom)),
-                area = COALESCE({county}, '')
-            FROM (
-                SELECT osm_way_id, {name} AS name,
-                       sum(ST_Length(geometry::geography)) AS length_m, {aadt} AS aadt,
-                       ST_Multi(ST_Collect(geometry ORDER BY ordinal)) AS geom
-                FROM {schema}.segment
-                WHERE osm_way_id IN (
-                    SELECT osm_way_id FROM review_item WHERE queue = %s AND build_id = %s
-                )
-                GROUP BY osm_way_id
-            ) f
-            WHERE i.queue = %s AND i.build_id = %s AND i.osm_way_id = f.osm_way_id
-            """,
-            [queue, build_id, queue, build_id],
+            "SELECT osm_way_id FROM review_item WHERE queue = %s AND build_id = %s "
+            "ORDER BY osm_way_id",
+            [queue, build_id],
         )
+        ways = [int(r[0]) for r in cursor.fetchall()]
+        cursor.execute("DROP TABLE IF EXISTS review_fact")
+        cursor.execute(
+            "CREATE TEMP TABLE review_fact (osm_way_id bigint PRIMARY KEY, name text, "
+            "length_m float8, aadt integer, geom geometry, simple geometry, point geometry, "
+            "area text)"
+        )
+        for start in range(0, len(ways), CHUNK):
+            batch = ways[start : start + CHUNK]
+            cursor.execute(
+                f"""
+                INSERT INTO review_fact
+                SELECT f.osm_way_id, f.name, f.length_m, f.aadt, f.geom,
+                       ST_Multi(ST_SimplifyPreserveTopology(f.geom, {LOW_TOLERANCE})),
+                       p.point, COALESCE({county}, '')
+                FROM (
+                    SELECT osm_way_id, {name} AS name,
+                           sum(ST_Length(geometry::geography)) AS length_m, {aadt} AS aadt,
+                           ST_Multi(ST_Collect(geometry ORDER BY ordinal)) AS geom
+                    FROM {schema}.segment
+                    WHERE osm_way_id = ANY(%s::bigint[])
+                    GROUP BY osm_way_id
+                ) f,
+                LATERAL (SELECT ST_ClosestPoint(f.geom, ST_Centroid(f.geom)) AS point) p
+                """,
+                [batch],
+            )
+            cursor.execute(
+                """
+                UPDATE review_item i
+                SET name = CASE WHEN i.name = '' THEN COALESCE(f.name, '') ELSE i.name END,
+                    length_m = COALESCE(f.length_m, 0), aadt = f.aadt, geometry = f.geom,
+                    simple = f.simple, point = f.point, area = f.area
+                FROM review_fact f
+                WHERE i.queue = %s AND i.build_id = %s AND i.osm_way_id = f.osm_way_id
+                  AND i.osm_way_id = ANY(%s::bigint[]) AND f.osm_way_id = ANY(%s::bigint[])
+                """,
+                [queue, build_id, batch, batch],
+            )
+            cursor.execute("TRUNCATE review_fact")
+            if len(ways) > CHUNK:
+                logger.info(
+                    "Review's %s list: facts for %d of %d ways",
+                    queue,
+                    min(start + CHUNK, len(ways)),
+                    len(ways),
+                )
+        cursor.execute("DROP TABLE review_fact")
         # The queue's order (`page`): the size of the change or disagreement along the road,
         # times its traffic for a disagreement (per thousand cars a day, at least 1).
         cursor.execute(
