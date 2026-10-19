@@ -100,7 +100,9 @@ needed; reload the page to get the box back.
   starts. While it is on, the skip link says "Skip to ride mode" and the planner is hidden. Cues
   never move your focus: they are said through two live regions (the urgent ones, such as
   "Left now" and leaving the route, interrupt), or by RouteMaker's own voice, as you chose. With
-  the focus anywhere in Ride mode, W says where you are and C puts the map back on you.
+  the focus anywhere in Ride mode, W says where you are and C puts the map back on you. "End
+  ride" is a slider until you arrive: move it to the end (the arrow keys or End, or your screen
+  reader's adjust gesture) to end the ride.
 - Installing and offline (section 10): "Install the app" and "Routes kept for offline" are
   headings on the Settings page. Each kept route has an "Open" and a "Remove" button that name
   the route. Remove says what it removed and puts the focus on the next route's Remove, or on
@@ -148,11 +150,14 @@ You stay responsible for riding safely; the route can be wrong.
 - "Where am I?" says the street you are on, the next turn and the distance to the next stop
   and the end. On a long trail away from roads it says the trail and a distance from its last
   junction, for example "On the Capital Crescent Trail, about 1.2 miles northwest of ...".
+- End ride is a slide: slide it to the right to end the ride, so a bump doesn't end it. Once you
+  have arrived it is a plain button. Near sunrise or sunset, the top corner shows the sunrise or
+  sunset and civil twilight times.
 - Off the route for a few seconds, it says so and finds a new way from where you are. "Keep
   the planned route" says which way the route is instead.
 - At Start ride the map along the route, about 1,000 ft (300 m) either side, is saved on the
   phone, so it still shows in a dead spot with no signal. A line under the buttons says what was
-  saved. It lasts for this ride only: it is cleared when you press "End ride", when the next
+  saved. It lasts for this ride only: it is cleared when you end the ride, when the next
   ride starts, and if you reload or reopen the page (a ride does not carry on after a reload).
   Finding a new way off the route still needs a signal.
 - "Report a problem to DC 311" (Washington, DC only) writes a report for a pothole (chosen
@@ -172,7 +177,7 @@ You stay responsible for riding safely; the route can be wrong.
 - Keep the screen on. If the browser cannot keep it on, Ride mode says so; on an iPhone set
   Settings, Display and Brightness, Auto-Lock to Never for the ride. In the background for more
   than 10 minutes, the ride pauses; press Resume.
-- "Big text during a ride" (in Settings, and in the ride's own Settings) hides the map and shows the next cue large. "End ride" goes back to the planner.
+- "Big text during a ride" (in Settings, and in the ride's own Settings) hides the map and shows the next cue large. Ending the ride goes back to the planner.
 
 
 10. Installing RouteMaker, and routes for places with no signal
@@ -199,7 +204,7 @@ RouteMaker can be installed like an app: it then opens from your home screen in 
   installed app keeps them.
 - When a new version is ready, a line at the top of the planner says "A new version of
   RouteMaker is ready." with a "Reload" button. It never interrupts a ride: it waits until you
-  press "End ride". With no signal, a line there says you are offline.
+  end it. With no signal, a line there says you are offline.
 
 11. Bike and transit together
 -----------------------------

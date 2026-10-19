@@ -2751,11 +2751,35 @@ const levelSlider = `${EDITOR} input[type=range]`;
     !!b311 && b311.w >= 56 && b311.w <= 72 && b311.h >= 56 && b311.round && b311.right <= 24 && b311.mid >= 45 && b311.mid <= 96 && b311.text === "311" && b311.expanded === "false" && ax311?.role === "button" && ax311?.name === "Report to DC 311" &&
       JSON.stringify(rail.map((x) => x.name)) === JSON.stringify(["Where am I?", "Re-centre", "Detour: water or restroom", "Report to DC 311", "Settings"]) && rail.every((x) => x.round && x.w >= 44),
     JSON.stringify({ b311, ax311, rail }));
-  // The top row (the owner, 2026-10-18): Road closed ahead where Settings was, End ride to its right, one line.
+  // The top row (the owner, 2026-10-19: "switch end ride and road closed"): End ride, then Road closed ahead, one line.
   const topRow = await p.eval(`(() => { const c = document.querySelector('.ride-top .ride-road-closed'); const e = document.querySelector('.ride-top .ride-end'); if (!c || !e) return null; const a = c.getBoundingClientRect(); const b = e.getBoundingClientRect();
-    return { name: c.getAttribute('aria-label'), text: c.textContent, beside: a.right <= b.left && Math.abs(a.top - b.top) <= 2, h: Math.round(Math.min(a.height, b.height)), settingsInTop: !!document.querySelector('.ride-top .ride-settings-button') }; })()`);
-  check("ride top row: Road closed ahead (shown as Road closed) with End ride to its right, both 44 px or taller, Settings no longer there",
+    return { name: c.getAttribute('aria-label'), text: c.textContent, beside: b.right <= a.left && Math.abs(a.top - b.top) <= 2, h: Math.round(Math.min(a.height, b.height)), settingsInTop: !!document.querySelector('.ride-top .ride-settings-button') }; })()`);
+  check("ride top row: End ride with Road closed ahead (its words Road closed) to its right, both 44 px or taller, Settings no longer there",
     !!topRow && topRow.name === "Road closed ahead" && topRow.text === "Road closed" && topRow.beside && topRow.h >= 44 && !topRow.settingsInTop, JSON.stringify(topRow));
+  // End ride is slid until the rider has arrived (the owner, 2026-10-19): a slider named End ride; a tap at its right end
+  // does not end the ride, it springs back and says how.
+  const slide = await p.eval(`(() => { const r = document.querySelector('.ride-top .ride-slide-range'); const box = r.getBoundingClientRect(); return { x: box.right - 6, y: box.top + box.height / 2 }; })()`);
+  await p.s("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: slide.x, y: slide.y }] });
+  await p.s("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await sleep(300);
+  const slideTap = await p.eval(`(() => ({ riding: !!document.querySelector('section.ride'), value: document.querySelector('.ride-slide-range')?.value, toast: document.querySelector('.ride-toast')?.textContent ?? '' }))()`);
+  const axSlide = await axNode(p, ".ride-top .ride-slide-range");
+  check("ride: End ride is a slider named End ride; a tap at its end leaves the ride on, springs back and says to slide it",
+    slideTap.riding && slideTap.value === "0" && /Slide End ride/.test(slideTap.toast) && axSlide?.role === "slider" && axSlide?.name === "End ride", JSON.stringify({ slideTap, axSlide }));
+  // A real slide from the thumb to the end ends the ride (review: no check dragged it); Undo brings the ride back.
+  const thumb = await p.eval(`(() => { const r = document.querySelector('.ride-top .ride-slide-range').getBoundingClientRect(); return { x0: r.left + 18, x1: r.right - 2, y: r.top + r.height / 2 }; })()`);
+  await p.s("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: thumb.x0, y: thumb.y }] });
+  for (let i = 1; i <= 12; i += 1) {
+    await p.s("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: thumb.x0 + ((thumb.x1 - thumb.x0) * i) / 12, y: thumb.y }] });
+    await sleep(30);
+  }
+  await p.s("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await sleep(500);
+  const slid = await p.eval("({ ride: !!document.querySelector('section.ride'), undo: !!document.querySelector('.ride-ended') })");
+  await p.eval("[...document.querySelectorAll('.ride-ended button')].find((b) => b.textContent === 'Undo')?.click(); true");
+  await sleep(1200);
+  const undone = await p.eval("!!document.querySelector('section.ride')");
+  check("ride: sliding End ride from its thumb to the end ends the ride, and Undo brings it back", !slid.ride && slid.undo && undone, JSON.stringify({ slid, undone }));
   await p.eval("document.querySelector('.ride-311-button').focus(); true");
   await p.enter();
   await sleep(300);
@@ -2841,7 +2865,7 @@ const levelSlider = `${EDITOR} input[type=range]`;
   await p.eval("document.querySelector('.ride .ride-settings-button').click(); true");
   await sleep(200);
   // The gear (the owner, 2026-10-18): it opens the panel under the top row and the focus goes into it; at 320 px
-  // the top row is Road closed's icon (still named in full) and End ride, on one line.
+  // the top row is End ride and Road closed's icon (still named in full), on one line.
   const gear = await p.eval(`(() => { const g = document.querySelector('.ride .ride-settings-button'); const panel = document.querySelector('.ride-mode-settings'); const c = document.querySelector('.ride-top .ride-road-closed'); const e = document.querySelector('.ride-top .ride-end'); const a = c.getBoundingClientRect(); const b = e.getBoundingClientRect();
     return { expanded: g.getAttribute('aria-expanded'), shown: !panel.hidden, focusIn: panel.contains(document.activeElement), width: innerWidth, name: c.getAttribute('aria-label'), oneLine: Math.abs(a.top - b.top) <= 2, w: Math.round(a.width), h: Math.round(a.height) }; })()`);
   check("ride: the Settings gear opens the ride's settings with the focus in them; at 320 px Road closed is its icon, named in full, beside End ride",
@@ -2859,7 +2883,9 @@ const levelSlider = `${EDITOR} input[type=range]`;
   const idb = (act) => `new Promise((resolve, reject) => { const r = indexedDB.open('routemaker-corridor', 1); r.onupgradeneeded = () => r.result.createObjectStore('ranges', { keyPath: 'key' }); r.onerror = () => reject(r.error); r.onsuccess = () => { const db = r.result; const tx = db.transaction('ranges', 'readwrite'); const store = tx.objectStore('ranges'); const q = ${act}; tx.oncomplete = () => { db.close(); resolve(q.result); }; tx.onabort = () => reject(tx.error); }; })`;
   const sentinel = await p.eval(`(async () => { await ${idb("store.put({ key: '0:16384', etag: 'test', data: new ArrayBuffer(4) })")}; return ${idb("store.count()")}; })()`);
   // The one End ride is the sticky top End, named End ride (464f0594, "Ride: drop the duplicate bottom End ride").
-  await p.eval("document.querySelector('.ride .ride-end').click(); true");
+  // Slid to the end from the keyboard (its End key; a screen reader's adjust gestures step it the same way).
+  await p.eval("document.querySelector('.ride .ride-slide-range').focus(); true");
+  await p.key("End", "End", 35);
   await sleep(500);
   const ended = await p.eval("({ ride: !!document.querySelector('section.ride'), planner: getComputedStyle(document.querySelector('#route-planner')).display === 'none', focus: document.activeElement?.textContent, wake: window.__wake.slice(-1)[0], map: getComputedStyle(document.querySelector('.map')).display })");
   // The focus goes to the "Ride ended." bar's Undo since f60b7610 ("End always in view with Undo").
