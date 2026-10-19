@@ -81,11 +81,12 @@ def along(leg_runs: list, pieces: list, kinds: list[tuple[str, ...]] | None = No
     kinds = kinds_of(pieces) if kinds is None else kinds
     if not any(kinds):
         return []
-    out: list[dict] = []
+    out: list[dict | None] = []
     at = 0.0
     for run in leg_runs:
         if not isinstance(run, tuple):
             at += float(run)
+            out.append(None)  # a walk between: never joined across
             continue
         for i in range(run[0], run[1]):
             piece = pieces[i]
@@ -106,9 +107,10 @@ def along(leg_runs: list, pieces: list, kinds: list[tuple[str, ...]] | None = No
             out.append(
                 {"from_m": round(start), "to_m": round(at), "kinds": list(found), "road": road}
             )
-    for entry in out:
+    found_ = [entry for entry in out if entry is not None]
+    for entry in found_:
         entry["text"] = line(entry)
-    return out
+    return found_
 
 
 def _miles(metres: float) -> str:
@@ -126,37 +128,45 @@ def line(entry: dict) -> str:
     """The directions' line: "Cobblestones on O Street Northwest, 1.2 to 1.4 mi (1.9 to
     2.3 km): bumpy, and slippery when wet." US units first, metric in brackets."""
     what = " and ".join(SHORT_WORDS[k] for k in entry["kinds"]).capitalize()
-    where = (
-        f"{_miles(entry['from_m'])} to {_miles(entry['to_m'])} mi "
-        f"({_km(entry['from_m'])} to {_km(entry['to_m'])} km)"
-    )
+    if (_miles(entry["from_m"]), _km(entry["from_m"])) == (
+        _miles(entry["to_m"]),
+        _km(entry["to_m"]),
+    ):
+        where = f"at {_miles(entry['from_m'])} mi ({_km(entry['from_m'])} km)"
+    else:
+        where = (
+            f"{_miles(entry['from_m'])} to {_miles(entry['to_m'])} mi "
+            f"({_km(entry['from_m'])} to {_km(entry['to_m'])} km)"
+        )
     why = "; ".join(hazards.WORDS[k].split(": ", 1)[1] for k in entry["kinds"])
     return f"{what} on {entry['road']}, {where}: {why}."
 
 
 def entries(found: list[dict]) -> list[dict]:
     """The description's entries for the hazards (`routemaker.describe._entry`'s shape,
-    kind "hazard"), so the directions list them in place and the ride says them ahead."""
-    return [
-        {
-            "kind": "hazard",
-            "from_m": entry["from_m"],
-            "to_m": entry["to_m"],
-            "from_mi": round(entry["from_m"] / 1609.344, 2),
-            "to_mi": round(entry["to_m"] / 1609.344, 2),
-            "street": entry["road"],
-            "tier": None,
-            "facility": None,
-            "turn": None,
-            "severity": None,
-            "via": None,
-            "group": None,
-            "surface": None,
-            "text": entry["text"],
-            "text_lanes_hidden": None,
-        }
-        for entry in found
-    ]
+    kind "hazard"), so the directions list them in place and the ride says them ahead. The
+    pieces carry the router's own edge lengths, so these are in the description's metres."""
+    return [_entry(entry) for entry in found]
+
+
+def _entry(entry: dict) -> dict:
+    return {
+        "kind": "hazard",
+        "from_m": entry["from_m"],
+        "to_m": entry["to_m"],
+        "from_mi": round(entry["from_m"] / 1609.344, 2),
+        "to_mi": round(entry["to_m"] / 1609.344, 2),
+        "street": entry["road"],
+        "tier": None,
+        "facility": None,
+        "turn": None,
+        "severity": None,
+        "via": None,
+        "group": None,
+        "surface": None,
+        "text": entry["text"],
+        "text_lanes_hidden": None,
+    }
 
 
 def with_entries(description: list[dict] | None, found: list[dict]) -> list[dict] | None:

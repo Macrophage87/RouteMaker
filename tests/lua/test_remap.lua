@@ -1359,6 +1359,16 @@ do
   M.hazard_priced(derived)
   check("the derived table passed in is not changed", derived.stress_tier == 2)
   check("a hazard never rewrites road class or speed", not writes_forbidden(cobbled))
+  check("a hazard LTS 3 street is priced as LTS 4",
+    M.remap_way(street, { stress_tier = 3, hazard = true })["lanes:forward"] == M.GRADED_LANES)
+  local alley = { highway = "service", service = "alley" }
+  local hazard_alley = M.remap_way(alley, { stress_tier = 2, hazard = true })
+  local plain_alley = M.remap_way(alley, { stress_tier = 2 })
+  check("a hazard alley keeps its alley use and adds the graded marks",
+    hazard_alley.service == plain_alley.service and hazard_alley["lanes:forward"] == M.GRADED_LANES)
+  check("Mass Ride's no-trail variant gets no graded marks for a hazard",
+    M.remap_way(street, { stress_tier = 1, hazard = true, facility_neutral = true })["lanes:forward"]
+      ~= M.GRADED_LANES)
 end
 
 io.write(string.format("%d checks, %d failures\n", checks, failures))

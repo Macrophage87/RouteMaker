@@ -1,15 +1,17 @@
 # Hazard list
 
-Known road hazards OpenStreetMap misses or may lose, added to the map's hazard symbols and the
-road panel's "Watch for" row when the rebuild writes the segments (`src/routemaker/hazards.py`,
-`src/pipeline/hazard_layer.py`). Display only: no entry changes a stress rating or a route.
+Known road hazards OpenStreetMap misses or may lose, read when the rebuild writes the segments
+and the route network (`src/routemaker/hazards.py`, `src/pipeline/hazard_layer.py`). A road on
+the list keeps its stress rating, but routes price it as LTS 4 (paths aren't priced); a route
+that still rides it marks it and names it, and the road panel's "Watch for" row says it.
 A broken file stops the rebuild (`HazardListRefused`); a street whose cross streets are not
 found in the extract is logged and left out, never guessed.
 
 Each entry has an `id`, its `kinds` (`cobbles`, `rails`), a `source`, and where it is: OSM
 `ways` (way ids), or a `street` by its OSM name `between` two cross streets, or both. A street
-entry marks each segment piece of that street whose middle lies in the box round the two
-junctions (30 m [100 ft] wider each way), so it suits a straight street.
+entry marks each segment piece of that street lying along the line between the two junctions,
+within 20 m [65 ft] either side of it and never past either junction: 20 m [65 ft] of a piece
+on that stretch, or half of it, marks the piece. It suits a straight street.
 
 | File | Entries |
 | --- | --- |

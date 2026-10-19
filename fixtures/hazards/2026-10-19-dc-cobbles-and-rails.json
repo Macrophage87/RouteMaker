@@ -2,7 +2,7 @@
   "version": 1,
   "decided": "2026-10-19",
   "decided_by": "the deployment owner",
-  "status": "Read by the rebuild from its image (routemaker.hazards, pipeline.hazard_layer) when the segments are written. Display only: the map's hazard symbol and the road panel's Watch for row; never a stress or routing input.",
+  "status": "Read by the rebuild from its image (routemaker.hazards, pipeline.hazard_layer) when the segments and the route network are written. Routes price these roads as LTS 4 (never a path); a route that rides one marks and names it; the road keeps its stress rating.",
   "hazards": [
     {
       "id": "georgetown-o-street-wisconsin-to-35th",

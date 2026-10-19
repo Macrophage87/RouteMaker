@@ -22,6 +22,7 @@ import logging
 import math
 from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
 import osmium
@@ -33,9 +34,12 @@ from . import conflation, extract
 logger = logging.getLogger(__name__)
 
 RAIL_AGENCY = "osm-street-rail"
-# The box round two junctions is widened by this much, so a straight street's pieces
-# between them are inside it however it is drawn.
-BETWEEN_MARGIN_M = 30.0
+# A listed stretch reaches this far either side of the line between its two junctions,
+# so a street drawn with a bend is still inside it; never along it, past a junction.
+STRETCH_WIDTH_M = 20.0
+# A piece is on the stretch when this much of it is, or half of it.
+ON_STRETCH_M = 20.0
+SAMPLES = 8
 
 
 class _Rails(osmium.SimpleHandler):
@@ -95,18 +99,47 @@ def rail_ways(
     return set(result.matched)
 
 
-Box = tuple[float, float, float, float]
+@dataclass(frozen=True)
+class Stretch:
+    """The listed stretch of a street: from one junction to the other, and this far either
+    side of the line between them. Never past either junction, so the block beyond is not
+    marked."""
+
+    a: tuple[float, float]
+    b: tuple[float, float]
+    width_m: float = STRETCH_WIDTH_M
+
+    def _local(self, point: Sequence[float]) -> tuple[float, float]:
+        scale = 111_320.0 * max(0.1, math.cos(math.radians(self.a[1])))
+        return ((point[0] - self.a[0]) * scale, (point[1] - self.a[1]) * 111_320.0)
+
+    def holds(self, point: Sequence[float]) -> bool:
+        bx, by = self._local(self.b)
+        px, py = self._local(point)
+        length2 = bx * bx + by * by
+        if length2 == 0:
+            return math.hypot(px, py) <= self.width_m
+        t = (px * bx + py * by) / length2
+        return 0.0 <= t <= 1.0 and abs(px * by - py * bx) / math.sqrt(length2) <= self.width_m
 
 
-def _box(a: tuple[float, float], b: tuple[float, float], margin_m: float) -> Box:
-    dlat = margin_m / 111_320.0
-    dlon = margin_m / (111_320.0 * max(0.1, math.cos(math.radians((a[1] + b[1]) / 2))))
-    return (
-        min(a[0], b[0]) - dlon,
-        min(a[1], b[1]) - dlat,
-        max(a[0], b[0]) + dlon,
-        max(a[1], b[1]) + dlat,
-    )
+def _metres(a: Sequence[float], b: Sequence[float]) -> float:
+    scale = math.cos(math.radians((a[1] + b[1]) / 2))
+    return math.hypot((b[0] - a[0]) * 111_320.0 * scale, (b[1] - a[1]) * 111_320.0)
+
+
+def _inside_m(stretch: Stretch, piece: Sequence[Sequence[float]]) -> tuple[float, float]:
+    """(metres of the piece inside the stretch, the piece's metres), sampled along it."""
+    inside = total = 0.0
+    for a, b in zip(piece, piece[1:], strict=False):
+        metres = _metres(a, b)
+        total += metres
+        held = sum(
+            stretch.holds((a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t))
+            for t in (i / SAMPLES + 0.5 / SAMPLES for i in range(SAMPLES))
+        )
+        inside += metres * held / SAMPLES
+    return inside, total
 
 
 def _junction(street_ways: Sequence, cross_ways: Sequence) -> tuple[float, float] | None:
@@ -128,14 +161,14 @@ def _junction(street_ways: Sequence, cross_ways: Sequence) -> tuple[float, float
 
 def listed_by_way(
     ways: Sequence, entries: Iterable[hazards.ListedHazard]
-) -> dict[int, list[tuple[Box | None, tuple[str, ...]]]]:
-    """Each listed way's (box or None for the whole way, kinds). A street whose cross
+) -> dict[int, list[tuple[Stretch | None, tuple[str, ...]]]]:
+    """Each listed way's (stretch, or None for the whole way, kinds). A street whose cross
     street is not found is logged and left out, never guessed."""
     by_name: dict[str, list] = defaultdict(list)
     for way in ways:
         if way.name:
             by_name[way.name].append(way)
-    out: dict[int, list[tuple[Box | None, tuple[str, ...]]]] = defaultdict(list)
+    out: dict[int, list[tuple[Stretch | None, tuple[str, ...]]]] = defaultdict(list)
     for entry in entries:
         for way_id in entry.ways:
             out[way_id].append((None, entry.kinds))
@@ -151,24 +184,16 @@ def listed_by_way(
                 *entry.between,
             )
             continue
-        box = _box(ends[0], ends[1], BETWEEN_MARGIN_M)  # type: ignore[arg-type]
+        stretch = Stretch(ends[0], ends[1])  # type: ignore[arg-type]
         for way in street:
-            out[way.osm_id].append((box, entry.kinds))
+            out[way.osm_id].append((stretch, entry.kinds))
     return dict(out)
-
-
-def _in(box: Box, point: Sequence[float]) -> bool:
-    return box[0] <= point[0] <= box[2] and box[1] <= point[1] <= box[3]
-
-
-def _middle(piece: Sequence[tuple[float, float]]) -> tuple[float, float]:
-    return (sum(p[0] for p in piece) / len(piece), sum(p[1] for p in piece) / len(piece))
 
 
 def piece_hazard(
     tags: Mapping[str, str],
     on_rails: bool,
-    listed: Sequence[tuple[Box | None, tuple[str, ...]]],
+    listed: Sequence[tuple[Stretch | None, tuple[str, ...]]],
     piece: Sequence[tuple[float, float]],
 ) -> str | None:
     """`segment.hazard` for one piece of a way."""
@@ -176,27 +201,23 @@ def piece_hazard(
     if on_rails:
         osm.add(hazards.RAILS)
     hand: set[str] = set()
-    if listed:
-        middle = _middle(piece)
-        for box, kinds in listed:
-            # Its middle in the box, or half its vertices: a long piece the box covers half of.
-            inside = sum(_in(box, p) for p in piece) if box is not None else 0
-            if box is None or _in(box, middle) or inside * 2 >= len(piece):
-                hand.update(kinds)
+    for stretch, kinds in listed:
+        if stretch is None:
+            hand.update(kinds)
+            continue
+        inside, total = _inside_m(stretch, piece)
+        if inside > 0 and (inside >= ON_STRETCH_M or inside * 2 >= total):
+            hand.update(kinds)
     return hazards.encode(osm, hand)
 
 
 def way_has_hazard(
-    way, on_rails: bool, listed: Sequence[tuple[Box | None, tuple[str, ...]]]
+    way, on_rails: bool, listed: Sequence[tuple[Stretch | None, tuple[str, ...]]]
 ) -> bool:
     """Whether any piece of the way has a hazard: what the graph prices (`rm:hazard`)."""
     if on_rails or hazards.way_kinds(way.tags):
         return True
-    if not listed:
-        return False
-    # Or any vertex inside a box but the way's two ends: an edge the street's listed stretch
-    # runs along is priced, one that only meets it at a junction is not.
-    inner = way.coordinates[1:-1]
-    if any(box is not None and any(_in(box, p) for p in inner) for box, _ in listed):
-        return True
-    return any(piece_hazard({}, False, listed, piece) for _, piece in extract.iter_segments(way))
+    # The same pieces the segment table marks: a way is priced where a route on it is marked.
+    return bool(listed) and any(
+        piece_hazard({}, False, listed, piece) for _, piece in extract.iter_segments(way)
+    )

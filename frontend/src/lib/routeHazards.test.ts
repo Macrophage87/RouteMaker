@@ -43,6 +43,14 @@ test("each hazard stretch is cut from the route's own line, scaled to it", () =>
   assert.equal(out.features[0].properties.kinds, "rails");
 });
 
+test("the stress sections' traced length scales it where the route has them", () => {
+  // The traced route twice the line's length: a stretch from 1,730 m traced starts at the line's middle.
+  const out = routeHazardFeatures(route({ road_hazards: [{ ...RAILS, from_m: 1730, to_m: 3000 }], stress_spans: [{ from_m: 0, to_m: 3460 }] } as unknown as Partial<RouteResponse>));
+  const coordinates = out.features[0].geometry.coordinates;
+  assert.ok(Math.abs(coordinates[0][0] - -76.99) < 0.0015, `starts near the middle vertex, ${coordinates[0][0]}`);
+  assert.ok(coordinates[coordinates.length - 1][0] < -76.98, "ends before the line does");
+});
+
 test("no hazards, or no route, draws nothing", () => {
   assert.deepEqual(routeHazardFeatures(route()).features, []);
   assert.deepEqual(routeHazardFeatures(route({ road_hazards: [] })).features, []);
@@ -81,6 +89,7 @@ test("the key says what the mark means, in words", () => {
 
 test("Ride says a hazard ahead, shortly, at every level but Quiet", () => {
   assert.equal(roadHazardWords(RAILS.text), "Rails in the road on H Street Northeast. Cross them square on, a wheel can drop into the groove.");
+  assert.equal(roadHazardWords("Cobblestones on O Street Northwest, at 0.4 mi (0.6 km): bumpy, and slippery when wet."), "Cobblestones on O Street Northwest. Bumpy, and slippery when wet.");
   assert.equal(roadHazardWords("Something else."), "Something else.");
   const entry: DescriptionEntry = { kind: "hazard", from_m: 400, to_m: 900, from_mi: 0.25, to_mi: 0.56, street: "H Street Northeast", tier: null, facility: null, turn: null, text: RAILS.text };
   const model = rideModel(route({ description: [entry], duration_s: 300, leg_ends: [2] }));

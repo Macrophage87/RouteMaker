@@ -518,7 +518,7 @@ function joinJogs(cues: Cue[]): void {
  * Cross them square on, a wheel can drop into the groove.", said "In 500 feet, rails in the road on ...".
  */
 export function roadHazardWords(text: string): string {
-  const m = /^(.*?) on (.*?), [\d.]+ to [\d.]+ mi \([^)]*\): (.*)$/.exec(text);
+  const m = /^(.*?) on (.*?), (?:at [\d.]+|[\d.]+ to [\d.]+) mi \([^)]*\): (.*)$/.exec(text);
   if (!m) return text;
   return `${m[1]} on ${m[2]}. ${m[3].charAt(0).toUpperCase()}${m[3].slice(1)}`;
 }

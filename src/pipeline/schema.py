@@ -472,8 +472,8 @@ SIDEPATH_NAME_COLUMN = "sidepath_name"
 SCENIC_COLUMN = "scenic"
 # The way's known hazards (`routemaker.hazards`, `pipeline.hazard_layer`; v0.10.0):
 # "cobbles", "rails", comma-separated, a hand-listed one marked "/list". Read by the road
-# panel and carried in a stress tile as `hazard` for the map's symbols. Never a stress or
-# routing input.
+# panel and by a route that rides it (`core.route_hazards`), never by the tiles. Never a
+# stress input: the graph is told by `rm:hazard` and prices the way as LTS 4.
 HAZARD_COLUMN = "hazard"
 WALK_BIKE_COLUMN = "walk_bike"
 ROUGH_COLUMN = "is_rough"
@@ -618,8 +618,9 @@ CREATE TABLE {schema}.segment (
     -- The way's known hazards (`routemaker.hazards`; v0.10.0, the owner, 2026-10-19: "a
     -- symbol for roads with known other hazards"): "cobbles", "rails" or both, comma-
     -- separated, "/list" on a kind only the reviewed list (`fixtures/hazards/`) gives.
-    -- The map draws a symbol along the way and the road panel says it. Never read by the
-    -- classifier or the graph. Null on every other way and on a table built before it.
+    -- A route that rides it marks and names it, and the road panel says it; the graph
+    -- prices the way as LTS 4 (`rm:hazard`). Never read by the classifier. Null on every
+    -- other way and on a table built before it.
     hazard          text,
     -- What the classifier read the road at, for the intersection model
     -- (`routemaker.intersections`; OWNER-DECISIONS 165-167, 172): the speed and

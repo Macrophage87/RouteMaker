@@ -1,10 +1,11 @@
 """v0.10.0's hazard symbols: the kinds from tags and street rails (`routemaker.hazards`,
-`pipeline.hazard_layer`), the reviewed list (`fixtures/hazards/`), the tile property and
-the road panel.
+`pipeline.hazard_layer`), the reviewed list (`fixtures/hazards/`), the graph's price, the
+route's marks and the road panel.
 
 The owner, 2026-10-19: "We should have a symbol for roads with known other hazards on the
 map. One example is the cobblestones in Georgetown or the streetcar rails on H street".
-A hazard never changes a way's stress.
+Then: "Roads with hazards like this should get a major penalty. You only need to show it
+if it's routed on". A hazard never changes a way's stress rating; the graph prices it.
 """
 
 from __future__ import annotations
@@ -194,10 +195,29 @@ def test_the_graph_is_told_of_a_hazard_anywhere_on_the_way():
     assert not hazard_layer.way_has_hazard(street, False, ())
     assert hazard_layer.way_has_hazard(street, True, ())
     assert hazard_layer.way_has_hazard(_way(2, STREET, surface="sett"), False, ())
-    box = (STREET[3][0] - 0.0001, STREET[3][1] - 0.001, STREET[4][0], STREET[4][1] + 0.001)
-    assert hazard_layer.way_has_hazard(street, False, [(box, (hazards.RAILS,))])
-    far = (-76.0, 39.0, -75.9, 39.1)
+    stretch = hazard_layer.Stretch(STREET[3], STREET[4])
+    assert hazard_layer.way_has_hazard(street, False, [(stretch, (hazards.RAILS,))])
+    far = hazard_layer.Stretch((-76.0, 39.0), (-75.9, 39.0))
     assert not hazard_layer.way_has_hazard(street, False, [(far, (hazards.RAILS,))])
+
+
+def test_the_blocks_beyond_the_junctions_are_neither_marked_nor_priced():
+    """A way that only leaves a junction outward is not on the stretch, however short."""
+    from pipeline import extract, hazard_layer
+
+    stretch = hazard_layer.Stretch(STREET[2], STREET[6])
+    listed = [(stretch, (hazards.COBBLES,))]
+    for coords in ([STREET[6], STREET[7]], STREET[6:], [STREET[1], STREET[2]], STREET[:3]):
+        beyond = _way(7, coords, name="O Street Northwest")
+        assert not hazard_layer.way_has_hazard(beyond, False, listed), coords
+        for _, piece in extract.iter_segments(beyond):
+            assert hazard_layer.piece_hazard(beyond.tags, False, listed, piece) is None
+    block = _way(8, STREET[2:7], name="O Street Northwest")
+    assert hazard_layer.way_has_hazard(block, False, listed)
+    # A short piece wholly on the stretch is marked too.
+    assert hazard_layer.piece_hazard(
+        {}, False, listed, [STREET[3], (STREET[3][0] + 0.0001, STREET[3][1])]
+    )
 
 
 def _piece(way_id, metres, name=None):
@@ -286,3 +306,34 @@ def test_the_road_panel_says_the_hazard_in_words():
     riding = segment_info.riding_rows(row)
     assert any(r["label"] == "Watch for" and "RouteMaker" in r["source"] for r in riding)
     assert not any(r["id"] == "hazard" for r in segment_info.summary_rows(_row(), {}, True))
+
+
+def test_the_calm_search_reads_a_hazard_as_lts_4_and_shows_its_own_rating():
+    from core import refine, routing
+
+    classes = [
+        routing.PieceClass("1", "none"),
+        routing.PieceClass("2", "path"),
+        routing.PieceClass("3", "lane", half=True),
+        routing.PieceClass("4", "none"),
+    ]
+    kinds = [(hazards.COBBLES,), (hazards.RAILS,), (hazards.RAILS,), (hazards.RAILS,)]
+    priced = refine.hazard_priced(classes, kinds)
+    assert [(c[0], getattr(c, "half", False)) for c in priced] == [
+        ("4", False),
+        ("2", False),  # a path is never priced, as the graph never prices a trail
+        ("4", False),
+        ("4", False),
+    ]
+    assert refine.hazard_priced(classes, [()] * 4) is classes
+
+
+def test_a_short_stretch_is_said_at_one_place_and_a_walk_is_never_joined_across():
+    from core import route_hazards
+
+    pieces = [_piece(2, 10.0, "H Street Northeast"), _piece(2, 10.0, "H Street Northeast")]
+    found = route_hazards.along([(0, 1), 5.0, (1, 2)], pieces, [("rails",), ("rails",)])
+    assert [(f["from_m"], f["to_m"]) for f in found] == [(0, 10), (15, 25)]
+    assert found[0]["text"].startswith(
+        "Rails in the road on H Street Northeast, at 0.0 mi (0.0 km): "
+    )

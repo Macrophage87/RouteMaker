@@ -15,11 +15,13 @@ Two kinds, each a fact a rider wants to know before reaching it:
 
 Where OSM misses one, a reviewed entry in `fixtures/hazards/` adds it (`load`).
 
-Display only: nothing here is read by the classifier or the graph, so a marked road keeps
-its stress and its routing (`segment.is_rough` and the surface pricing already treat
-cobblestones as they always have). The map draws a symbol along the way
-(frontend/src/lib/hazardLayer.ts) and the road panel says the hazard in words
-(`core.segment_info`).
+Never a classifier input, so a marked road keeps its stress rating. The owner, 2026-10-19:
+"Roads with hazards like this should get a major penalty. You only need to show it if it's
+routed on". So the graph prices a road with one as LTS 4 (`rm:hazard`,
+lua/routemaker_remap.lua `hazard_priced`; never a path), the calm search reads it so
+(`core.refine.hazard_priced`), a route that still rides one marks and names it
+(`core.route_hazards`, frontend/src/lib/routeHazards.ts), and the road panel says it in
+words (`core.segment_info`). The rest of the map never draws it.
 """
 
 from __future__ import annotations
