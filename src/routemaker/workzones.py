@@ -796,12 +796,17 @@ def day_text(moment: datetime, now: datetime | None) -> str:
     return f"{_DAYS[local.weekday()]}, {date_text(moment)}"
 
 
-def when_text(zone: Zone, now: datetime | None, future: bool) -> str:
+def when_text(zone: Zone, now: datetime | None, future: bool, possible: bool = False) -> str:
     """When the closure applies, as the card says it: "Closed today 4:30 am to 1:30 pm",
     "Permit: road closed until Oct 20", "May still apply: no end time given"."""
     verb = "Bike lane blocked" if zone.kind == LANE else "Closed"
     if zone.source == "dc":
         verb = "Permit: bike lane blocked" if zone.kind == LANE else "Permit: road closed"
+    if possible:
+        # v0.9.1: a permit flagged only says what it allows, never that the road is closed.
+        verb = (
+            "Permit allows blocking the bike lane" if zone.kind == LANE else "Permit allows closing"
+        )
     start, end = zone.start, zone.end
     if end is None:
         lead = f"{verb} from {day_text(start, now)} {clock_text(start)}" if start else verb

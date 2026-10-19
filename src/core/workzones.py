@@ -751,9 +751,9 @@ def closure_row(
         "url": zone.url or rules.SOURCE_LINKS.get(zone.source),
         "kind": zone.kind,
         "severity": "amber" if zone.kind == rules.LANE else "red",
-        "title": zone.title or _title(zone),
+        "title": _possible_title(zone) if effect == rules.POSSIBLE else zone.title or _title(zone),
         "road": zone.road,
-        "when_text": rules.when_text(zone, now, future),
+        "when_text": rules.when_text(zone, now, future, possible=effect == rules.POSSIBLE),
         "start": None if zone.start is None else zone.start.isoformat(),
         "end": None if zone.end is None else zone.end.isoformat(),
         "effect": effect,
@@ -766,6 +766,13 @@ def closure_row(
         "point": [round(middle[0], 6), round(middle[1], 6)],
         "line": [[round(p[0], 6), round(p[1], 6)] for p in zone.line],
     }
+
+
+def _possible_title(zone: rules.Zone) -> str:
+    """A permit's title (v0.9.1): what it may close, never "closed"; the stored title says
+    "road closed", so it is not used."""
+    road = zone.road or "Road"
+    return f"{road}: bike lane may be blocked" if zone.kind == rules.LANE else f"{road}: may close"
 
 
 def _title(zone: rules.Zone) -> str:
@@ -821,7 +828,9 @@ def map_rows(coordinates, plan: rules.PlanZones, passages, scale: float, now) ->
             scale,
         )
         rows.append((near, row))
-    rows.sort(key=lambda r: (r[0], r[1]["id"]))
+    # DDOT's permits after every other closure, so the ones a layer may hide never crowd a
+    # real closure out of the map's MAP_MOST (v0.9.1).
+    rows.sort(key=lambda r: (r[1]["effect"] == rules.POSSIBLE, r[0], r[1]["id"]))
     return [row for _near, row in rows[:MAP_MOST]]
 
 

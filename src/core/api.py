@@ -1927,7 +1927,8 @@ class ClosureOut(Schema):
         description=(
             '"on_route": the route runs along it; "routed_round": the route goes round it;'
             ' "bypassed": routed through by the rider\'s choice; "may_still_apply": on the route,'
-            ' no end given on a later ride, not routed round; "none": no effect on the route.'
+            ' no end given on a later ride, not routed round; "possible" (v0.9.1): a DDOT permit,'
+            ' flagged only, never routed round; "none": no effect on the route.'
         )
     )
     delay_s: int | None = Field(

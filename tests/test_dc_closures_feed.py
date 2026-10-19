@@ -303,8 +303,34 @@ def test_a_flagged_permit_is_drawn_with_no_heading_or_spoken_cue() -> None:
     (row,) = out["work_zones"]["closures"]
     assert row["effect"] == "possible" and not row["can_bypass"]
     assert row["effect_text"].startswith("A permit allows closing the road")
+    # Its card never says the road is closed (the stored title does).
+    assert row["title"] == "K Street NW: may close"
+    assert row["when_text"].startswith("Permit allows closing")
     assert out["work_zones"]["on_route"] == [] and out["work_zones"]["routed_round"] == 0
-    assert not any("K Street" in (e.get("text") or "") for e in out["description"])
+    assert out["description"] == [], "no heading, disclaimer or cue"
+    # Named in `bypass`, it is still only flagged.
+    bypassed = wz.for_plan([permit], NOW, [LINE[0], LINE[-1]], {}, now=NOW, bypass=["dc-1"])
+    assert bypassed.possible == [permit] and bypassed.bypassed == []
+
+
+def test_permits_never_crowd_a_real_closure_off_the_map(monkeypatch) -> None:
+    monkeypatch.setattr(workzones, "MAP_MOST", 2)
+    permits = [zone(f"dc-{i}", source="dc", end=NOW + timedelta(days=30)) for i in range(3)]
+    far = wz.Zone(
+        "mpd-9",
+        "mpd",
+        wz.CLOSED,
+        0,
+        ((-77.03, 38.9025), (-77.028, 38.9025)),
+        None,
+        None,
+        None,
+        None,
+    )
+    plan = wz.for_plan([*permits, far], NOW, [LINE[0], LINE[-1]], {}, now=NOW)
+    body = {"geometry": {"coordinates": LINE}, "distance_m": 1700.0, "description": []}
+    rows = workzones.with_work_zones(body, plan, now=NOW)["work_zones"]["closures"]
+    assert [r["id"] for r in rows][0] == "mpd-9"
 
 
 @pytest.mark.django_db
