@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { GO_START_SAID, GO_START_UNAVAILABLE, GO_START_MAX_AGE_MS, goHereStart, goStartStale, MODE_LABEL, goDestinationLocating, goDestinationNeedsStart, goPickAction, goTapSetsEnd, goDestinationSet, goPressLocatingSaid, goPressNeedsStartSaid, GO_PRESS_LOCATING_SAY_MS, goStartFailedReason, goDestinationNeedsStartBecause, goPressNeedsStartBecause, goTapRoutedSaid, goPlaceName, OPEN_IN_LABEL, TAB_MODE_KEY, goRouteStart, goStartLine, hasPlanLink, shouldAskGoStart, laterMyGoApplies, modeSaid, openingMode, readTabMode, writeTabMode } from "./appMode.ts";
+import { GO_START_SAID, GO_START_UNAVAILABLE, GO_START_MAX_AGE_MS, GO_PICK_MOVED_M, goPickStart, goHereStart, goStartStale, MODE_LABEL, goDestinationLocating, goDestinationNeedsStart, goPickAction, goTapSetsEnd, goDestinationSet, goPressLocatingSaid, goPressNeedsStartSaid, GO_PRESS_LOCATING_SAY_MS, goStartFailedReason, goDestinationNeedsStartBecause, goPressNeedsStartBecause, goTapRoutedSaid, goPlaceName, OPEN_IN_LABEL, TAB_MODE_KEY, goRouteStart, goStartLine, hasPlanLink, shouldAskGoStart, laterMyGoApplies, modeSaid, openingMode, readTabMode, writeTabMode } from "./appMode.ts";
 import {
   ACCOUNT_COPY_KEY,
   DEVICE_KEY,
@@ -206,7 +206,7 @@ test("Go's Where to? is the destination from the rider's location, in one edit, 
   const routeGo = appFile.slice(appFile.indexOf("const routeGo = ("), appFile.indexOf("const routeGoRef"));
   assert.match(routeGo, /commit\(\[start, \.\.\.vias, dest\], ride\.dials\.loop \? \{ \.\.\.ride, dials: \{ \.\.\.ride\.dials, loop: false \} \} : undefined\);/);
   const goTo = appFile.slice(appFile.indexOf("const goTo = async"), appFile.indexOf("const goToPlace"));
-  assert.match(goTo, /const action = goPickAction\(pointsRef\.current, prior, Date\.now\(\), true\);/);
+  assert.match(goTo, /const action = goPickAction\(pointsRef\.current, goStartRef\.current\);/);
   // Never the destination alone (it would become the start), and never dropped while the location is found.
   assert.doesNotMatch(goTo, /commit\(\[dest\]/);
   assert.match(goTo, /goPending\.current = \{ dest, name, vias, pressed, said: pressed && action\.kind === "wait" \};\s*if \(action\.kind === "wait"\) \{\s*if \(pressed\) setNoticeSaying\(goDestinationLocating\(name\), goPressLocatingSaid\(name\)\);\s*else setNotice\(goDestinationLocating\(name\)\);/);
@@ -386,7 +386,7 @@ test("go tap: a press on the map in Go is the destination, routed as a picked on
   const locatePath = appFile.slice(appFile.indexOf("const mine = goPending.current;"), appFile.indexOf("setHere(result.fix);", appFile.indexOf("const mine = goPending.current;")));
   assert.match(locatePath, /const sayLocating = \(\) => \{\s*if \(!mine \|\| goPending\.current !== mine \|\| mine\.said\) return;\s*mine\.said = true;\s*setNoticeSaying\(goDestinationLocating\(name\), goPressLocatingSaid\(name\)\);\s*\};/);
   assert.match(locatePath, /const slow = pressed \? window\.setTimeout\(sayLocating, GO_PRESS_LOCATING_SAY_MS\) : undefined;\s*const result = await locateForGo\(\);\s*window\.clearTimeout\(slow\);/);
-  assert.match(locatePath, /if \(result === null\) \{[\s\S]*?if \(pressed\) sayLocating\(\);\s*goAwaiting\.current = true;\s*return;\s*\}\s*if \(!result\.ok && prior\.kind === "here"[\s\S]*?\}\s*settleGoWaiting\(result\);/);
+  assert.match(locatePath, /if \(result === null\) \{[\s\S]*?if \(pressed\) sayLocating\(\);\s*goAwaiting\.current = true;\s*return;\s*\}\s*settleGoWaiting\(result\);/);
   // The gate busy: the look-up under way settles the destination when it answers, whoever asked for it (review after
   // #127: Go's Locate, Use my location and the nearest finder left a press told "Finding…" and never routed it).
   assert.match(appFile, /const goLocate = async \(\) => \{\s*const result = await locateForGo\(\);\s*if \(result === null\) return;\s*\/\/[^\n]*\n\s*\/\/[^\n]*\n\s*if \(goWaiting\(\)\) \{\s*settleGoWaiting\(result, true\);\s*return;\s*\}/);
@@ -485,15 +485,18 @@ test("go start: Go looks a stale start up again when the page comes back into vi
   assert.doesNotMatch(app, /setGoStart\(\{ kind: "here"/, "every found start is stamped (goHereStart)");
 });
 
-test("go pick: a destination set in Go looks the location up again, however recent (the owner, 2026-10-19)", () => {
-  const found = 1_000_000;
-  const here = goHereStart([-77.03, 38.9], found);
-  assert.deepEqual(goPickAction([], here, found + 1_000, true), { kind: "locate" });
-  assert.deepEqual(goPickAction([[-77.0, 38.89]], here, found + 1_000, true), { kind: "route", point: [-77.0, 38.89], located: false }, "a start in the plan routes at once");
-  assert.deepEqual(goPickAction([], { kind: "locating" }, found, true), { kind: "wait" });
-  assert.deepEqual(goPickAction([], here, found + 1_000), { kind: "route", point: [-77.03, 38.9], located: true }, "Go's early route still uses the start it has");
+test("go pick: a destination set in Go routes from a fresh fix once the rider has moved (the owner, 2026-10-19)", () => {
+  const prior: [number, number] = [-77.07, 38.905];
+  assert.deepEqual(goPickStart(prior, null), { point: prior, moved: false }, "no fix in time: the start Go had (under 2 min old)");
+  assert.deepEqual(goPickStart(prior, { point: [-77.0701, 38.905] }), { point: prior, moved: false }, "about 9 m: not moved, the early route still matches");
+  assert.deepEqual(goPickStart(prior, { point: [-76.99, 38.91] }), { point: [-76.99, 38.91], moved: true });
+  assert.deepEqual(goPickStart(prior, { point: [-80, 38.9] }), { point: prior, moved: false }, "a fix outside the map is not the start");
+  assert.equal(GO_PICK_MOVED_M, 25);
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
-  assert.match(app, /const action = goPickAction\(pointsRef\.current, prior, Date\.now\(\), true\);/);
-  // A failed look-up falls back to a location found in the last two minutes, never an older one.
-  assert.match(app, /if \(!result\.ok && prior\.kind === "here" && !goStartStale\(prior\)/);
+  const goTo = app.slice(app.indexOf("const goTo = async"), app.indexOf("const settleGoWaiting"));
+  assert.match(goTo, /const fix = await goPickFix\(\);\s*\/\/[^\n]*\n\s*if \(pick !== goPickSeq\.current \|\| pointsRef\.current\.length > 0 \|\| modeRef\.current !== "go"\) return;\s*routeGo\(goPickStart\(action\.point, fix\)\.point, true,/);
+  // The look-up is bounded and settles a destination waiting on the gate, as every look-up does.
+  const fix = app.slice(app.indexOf("const goPickFix"), app.indexOf("const goTo = async"));
+  assert.match(fix, /window\.setTimeout\(\(\) => resolve\(null\), GO_PICK_LOOK_MS\)/);
+  assert.match(fix, /if \(result && goWaitingRef\.current\(\)\) \{\s*goSettleRef\.current\(result\);/);
 });
