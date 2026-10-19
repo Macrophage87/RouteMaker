@@ -181,7 +181,7 @@ test("MapView: a climb press opens its card before the click can place a point, 
   assert.match(click, /const shownId = climbCard\.shown\(\);\s*climbCard\.close\(\);/);
   assert.match(click, /const next = climbCardAfterClose\(shownId, /);
   // And before Go's feature-card check, which lists the climb card too.
-  assert.ok(climbAt < click.indexOf("featureCardPress(["));
+  assert.ok(climbAt < click.indexOf("featureCardPress("));
   const interaction = readFileSync(new URL("../climbInteraction.ts", import.meta.url), "utf8");
   assert.match(interaction, /if \(marker \|\| !withLine\) return marker;/);
   assert.doesNotMatch(interaction, /map\.on\("click"/, "no click of its own: MapView's decides");

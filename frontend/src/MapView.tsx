@@ -137,6 +137,8 @@ import {
 } from "./lib/intersectionMarkers.ts";
 import { avoidItems, avoidMarkerName } from "./lib/avoidJunctions.ts";
 import type { LetteredPlace } from "./lib/letteredPlaces.ts";
+import type { StopActionFor } from "./lib/stopCard.ts";
+import { stopCards } from "./app/mapOverlay.ts";
 import { avoidMarkerSvg } from "./lib/avoidIcon.ts";
 import {
   CLOSED_RED,
@@ -301,6 +303,8 @@ interface Props {
   tools?: ReactNode;
   /** The lettered places (lib/letteredPlaces.ts): the nearest or the food listed, each a button marker. */
   lettered?: readonly LetteredPlace[] | null;
+  /** A stop card's Route here or Add as stop (lib/stopCard.ts), for the water and restrooms card. */
+  stopActionFor?: StopActionFor;
   /** A lettered marker pressed: its index in the list. */
   onLettered?: (index: number) => void;
   /** A closure card's "Route through anyway" (true) or Undo (false), for this plan (lib/closureMap.ts). */
@@ -991,7 +995,7 @@ export function MapView(props: Props) {
         !under.station &&
         !(under.line && !goPress) &&
         !anyPopupOpen() &&
-        !water?.hits(event.point) &&
+        featureCardPress([water, stopCards(map)], event.point) === null &&
         performance.now() >= clickSuppressedUntil
           ? mtbTrailPressed(map, event.point, touch ? TOUCH_HIT_PX : MOUSE_HIT_PX, overlayLayerIds())
           : null;
@@ -999,8 +1003,11 @@ export function MapView(props: Props) {
         callbacks.current.onRoadInfo?.({ point: trailAt, origin: "spot", trail: true });
         return;
       }
-      // Go: read before the cards' own click handlers (attached after this one) open or close them.
-      const forCard = goPress && featureCardPress([water, climbCard, federal], event.point) !== null;
+      // Go: read before the cards' own click handlers (attached after this one) open or close them. A stop's card
+      // (water, restrooms, food, places, repair; lib/stopCard.ts) offers its own Route here or Add as stop, so a
+      // press on one is the card's in Plan too (Stephen 2026-10-19: "don't auto route").
+      const stops = [water, stopCards(map)];
+      const forCard = featureCardPress(goPress ? [...stops, climbCard, federal] : stops, event.point) !== null;
       runClick(under, { popupOpen: anyPopupOpen() || forCard, afterDrag: performance.now() < clickSuppressedUntil, lineTapIsPoint: goPress }, {
         closePopups: () => {
           closePopup(false);
@@ -1282,6 +1289,7 @@ export function MapView(props: Props) {
         visible: () => callbacks.current.waterPrefs?.on === true,
         otherPopupOpen: () => anyPopupOpen() || climbClosing,
         point: (id) => waterById.get(id),
+        actionFor: (point, name) => callbacks.current.stopActionFor?.(point, name) ?? null,
       });
       waterSync.current = () => syncWater();
       syncWater();
