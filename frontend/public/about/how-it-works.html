@@ -640,6 +640,81 @@ the same level cost more. Each entry onto an Avoid road adds about 2.5 calm mile
 </div>
 <figcaption>The left half of the slider tunes the router itself (Valhalla's <code>use_roads</code><sup class="cite"><a href="#ref-7" aria-label="source 7">[7]</a></sup>). Past 80 the router is already as calm as it goes, so RouteMaker's own calm search takes over and trades real extra distance for less traffic. At 100 it ranks routes by the least LTS 4 and Avoid first, then the least LTS 3, then distance.</figcaption>
 </figure>
+<h3 id="penalties">What a route pays for</h3>
+<ul>
+<li><strong>Each stretch</strong>, by its stress level: the calm-mile costs above. Faster and wider
+roads of the same level cost more.</li>
+<li><strong>Each junction</strong>, by what you cross or turn across and what controls it: see
+<a href="#junctions">Junctions</a>.</li>
+<li><strong>Each entry onto an Avoid road</strong>: about 2.5 calm miles [4 km] more.</li>
+<li><strong>Riding the same road twice</strong>: a repeated stretch counts 1.5 times, but never at the
+price of more busy road.</li>
+<li><strong>Hills</strong>, by the Hills slider, and <strong>surface</strong>, by the ride type: rough DC
+pavement costs a little more, and each ride type has its own view of gravel and trails.</li>
+<li><strong>Closures</strong>: see <a href="#closures">Closures</a>.</li>
+</ul>
+<p>Choosing a ride type changes these numbers, not the ratings. It sets where the traffic slider
+starts, how much each level costs per mile, how fast you are assumed to ride, how hills and surfaces
+count, and for some types which ways are left out. Novice and Nervous reads every road and junction one
+level busier. Above 80 on the slider a second search looks for a calmer route and accepts a longer ride
+for it, up to a limit. <a href="/about/ride-types.html">Ride types</a> has the detail.</p>
+
+<h3 id="example">A worked example</h3>
+<p>The same trip, Silver Spring Metro to Bethesda Metro, planned on three ride types on 19 October 2026:</p>
+<figure id="fig-example">
+<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<svg viewBox="0 0 820 463" role="img" aria-labelledby="fig-example-t fig-example-d" focusable="false" style="min-width:590px">
+<title id="fig-example-t">One trip, two ride types</title>
+<desc id="fig-example-d">A map sketch of two routes from Silver Spring Metro to Bethesda Metro, planned on 19 October 2026. Default, and Trailmaxxing, which gave the same line, go north and west by the Georgetown Branch Trail: 6.0 miles, about 35 minutes, 1.5 percent of it on LTS 4. Fast goes south of them by Beach Drive, Leland Street and Connecticut Avenue: 4.5 miles, about 26 minutes, 14.7 percent of it on LTS 4.</desc>
+<defs><marker id="ah-example" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<polyline class="ln" points="628.0,196.3 640.0,185.3 632.0,180.8 618.6,159.7 607.6,152.1 543.5,60.0 516.7,87.2 510.9,85.3 506.3,88.5 497.2,81.9 483.5,126.2 479.3,129.5 478.8,140.1 473.1,161.5 464.4,151.5 454.7,147.8 446.4,174.5 432.7,195.1 412.2,205.9 388.8,208.4 376.4,205.2 370.6,218.2 374.4,236.4 374.9,253.9 379.1,264.4 361.1,265.9 359.4,271.5 373.4,283.1 376.3,290.3 376.2,295.5 368.9,303.0 369.4,308.4 365.1,315.5 349.9,289.5 349.0,279.3 335.4,290.7 304.8,306.1 299.2,301.9 279.1,298.9 274.2,295.3 252.2,295.2 224.7,313.2 208.7,313.2 200.9,309.1 173.9,311.4 169.6,315.6 167.5,314.4 161.7,329.1 153.9,339.7 127.8,361.4 99.9,366.3 85.9,372.3 69.0,373.1 62.0,362.1 60.0,341.0 74.7,340.4 92.6,334.4 90.5,321.1 77.2,322.6"/>
+<polyline class="ln2" points="628.0,196.3 640.0,185.3 638.3,184.6 621.7,199.7 606.9,209.8 595.7,214.7 583.3,217.7 582.9,221.8 539.3,272.2 531.0,279.1 530.4,280.6 533.0,294.0 534.9,298.3 529.0,301.2 527.1,337.0 522.8,335.6 512.3,336.6 504.2,334.4 496.8,330.9 480.7,316.6 462.1,314.7 448.8,305.4 431.3,299.7 418.4,298.3 412.8,299.6 391.3,309.9 376.1,319.0 368.6,318.2 362.1,311.1 360.1,317.9 347.2,333.1 326.1,330.1 319.8,327.3 309.7,318.6 307.2,314.5 304.8,306.1 299.2,301.9 279.1,298.9 272.5,295.1 252.2,295.2 247.3,297.1 224.7,313.2 208.7,313.2 200.9,309.1 174.8,311.1 169.6,315.6 167.5,314.4 163.2,326.2 157.5,324.9 152.7,326.7 143.5,331.8 139.9,337.5 126.0,346.1 86.3,356.5 77.3,323.2"/>
+<circle cx="628.0" cy="196.3" r="6" class="bxa"/>
+<rect x="71.2" y="316.6" width="12" height="12" class="bxa"/>
+<text class="t" x="640" y="192" text-anchor="start">Silver Spring Metro</text>
+<text class="t" x="640" y="208" text-anchor="start">(start)</text>
+<text class="t" x="80.7" y="306.6" text-anchor="middle">Bethesda Metro (end)</text>
+<text class="ts" x="310" y="34" text-anchor="middle">Default and Trailmaxxing: solid line, north, by the Georgetown Branch Trail</text>
+<text class="ts" x="310" y="449" text-anchor="middle">Fast: dashed line, south, by Beach Drive and Connecticut Avenue</text>
+<line class="axis" x1="596.4" y1="423" x2="760" y2="423"/>
+<text class="ts" x="678.2" y="417" text-anchor="middle">1 mi [1.6 km]</text>
+</svg>
+</div>
+<figcaption>Planned by RouteMaker's own route request on 19 October 2026, on the map of that week. North is up; the lines are simplified. Routes change as the map and the ratings do.</figcaption>
+</figure>
+<div class="table-wrap" tabindex="0" role="region" aria-label="Silver Spring Metro to Bethesda Metro, by ride type">
+<table>
+<caption>Silver Spring Metro to Bethesda Metro, by ride type</caption>
+<thead><tr><th scope="col"></th><th scope="col">Default (slider 70)</th><th scope="col">Trailmaxxing (slider 100)</th><th scope="col">Fast (slider 10)</th></tr></thead>
+<tbody>
+<tr><th scope="row">Distance</th><td>6.0 mi [9.7 km]</td><td>6.0 mi [9.7 km], the same route</td><td>4.5 mi [7.2 km]</td></tr>
+<tr><th scope="row">Moving time</th><td>35 min</td><td>32 min (its own speed)</td><td>26 min</td></tr>
+<tr><th scope="row">Climb</th><td>424 ft [129 m]</td><td>424 ft [129 m]</td><td>341 ft [104 m]</td></tr>
+<tr><th scope="row">Traffic-free path</th><td>18.5%</td><td>18.5%</td><td>14.7%</td></tr>
+<tr><th scope="row">LTS 1</th><td>17.0%</td><td>17.0%</td><td>20.1%</td></tr>
+<tr><th scope="row">LTS 2</th><td>58.0%</td><td>58.0%</td><td>43.8%</td></tr>
+<tr><th scope="row">LTS 3</th><td>4.9%</td><td>4.9%</td><td>6.7%</td></tr>
+<tr><th scope="row">LTS 4</th><td>1.5% (150 m [490 ft])</td><td>1.5%</td><td>14.7% (1,057 m [0.66 mi])</td></tr>
+<tr><th scope="row">Warned junctions</th><td>2 orange, 1 red</td><td>2 orange, 1 red</td><td>3 orange, 1 red</td></tr>
+<tr><th scope="row">Cost in calm miles</th><td>10.3</td><td>21.0 (it prices busy roads far higher)</td><td>6.4</td></tr>
+</tbody>
+</table>
+</div>
+<p>What the comparison shows:</p>
+<ul>
+<li><strong>Fast</strong> (slider 10) prices a mile of LTS 4 at only about 2.1 to 2.3 calm miles, so a
+shorter way through busier streets wins: 1.5 mi [2.4 km] shorter and 9 minutes quicker, with ten
+times as much LTS 4.</li>
+<li><strong>Default</strong> (slider 70) prices that LTS 4 mile at about 13 to 16, so it rides
+1.5 mi [2.4 km] further on the Georgetown Branch Trail and quiet streets, keeping LTS 4 to 150 m
+[490 ft].</li>
+<li><strong>Trailmaxxing</strong> (slider 100) searched for anything calmer for five rounds and found
+nothing better, so it kept Default's route. In two other trips tried the same day (Columbia Heights to
+Union Station, Dupont Circle to Nationals Park) the two gave the same or nearly the same route: Default
+already keeps to calm ways, and the higher settings matter where a calmer route exists but is longer.</li>
+<li>Each route has one red junction, a crossing of a three-lane 30 mph [48 km/h] road from a stop
+sign, which the search could not avoid without a much longer ride.</li>
+</ul>
 
 <h2 id="closures">Closures</h2>
 <p>Only Maryland and Virginia publish work-zone feeds in the national Work Zone Data Exchange
