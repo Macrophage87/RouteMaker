@@ -147,6 +147,15 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
     `332ef7bb9b1d62b27e980304636bfa13683a2699a5037e2f2433bab42341bd34`; the station and
     entrance markers. The ArcGIS item ids were not recorded; the layer paths above are
     what was queried. `frontend/src/rail-data/README.md`.
+  - **Traffic Signals** (District Department of Transportation; the layer's own name is
+    "DDOT Traffic Signals"), item `ca6ad078a6f6415389e220704b7698ac`, ArcGIS layer
+    `DCGIS_DATA/Transportation_Signs_Signals_Lights_WebMercator/MapServer/170`
+    (<https://opendata.dc.gov/datasets/traffic-signal>); licence CC BY 4.0 (the item's,
+    read 2026-10-19), item modified 2026-10-05, 1,597 signals, every `STATUS` Active.
+    Marks the junctions at a District signal OSM does not map as one (v0.10.0;
+    `pipeline.agency_signals`, docs/OPERATIONS.md "Agency traffic signals"); a record
+    with `HAWK` yes marks the crosswalk it stands at. Fetched at rebuild time; size and
+    sha256: the download's README, to be copied here.
   - **National Parks** (NPS Map A: Park Service and other government-owned land; DC
     GIS), item `14eb1c6b576940c7b876ebafb227febe`, retrieved 2026-10-03, sha256
     `d2038ab8bb43ab947c8b377e01f47fb58e4b2cd16acd6d6dfe992a66b9184310`;
@@ -274,6 +283,13 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
 - Licence: Maryland iMAP's terms, as for the counts above: "The Data can be freely
   distributed as long as the metadata entry is not modified or deleted." The download's
   README keeps the item's metadata unedited.
+- Dataset, **not yet read** (v0.10.0): **MDOT SHA Traffic Signals**
+  (<https://gisportalapps.sha.maryland.gov/arcgis/rest/services/UtilitiesCommunication/TrafficSignals_Maryland_MDOTSHA/MapServer/0>),
+  5,803 traffic control devices, 3,403 of them signals (`TCD_Type` 1), county and city
+  signals included but none in Baltimore City; updated weekly (2026-10-19). Its licence
+  field is empty and it was not found on Maryland iMAP, so iMAP's terms are not known to
+  cover it: `pipeline.agency_signals.LICENCE_CONFIRMED` keeps it out of the map until
+  the licence is confirmed.
 
 ## Open Baltimore
 
@@ -322,6 +338,14 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
     licence field is "cc0", and it is on the same portal. A cross-check of OSM's bike
     lanes (`reports/data-comparison/alexandria-bike-lanes-check.md`); nothing in the
     map is read from it.
+  - **Smart Mobility Data**, layers 9 (signalised intersections, "Single point file
+    representing intersections with signals throughout the city") and 0 (HAWKs)
+    (<https://geoportal.alexandriava.gov/server/rest/services/Hosted/Smart_Mobility_Data/FeatureServer>),
+    on the city's GIS portal; 257 signalised intersections (2026-10-19). Marks the
+    junctions at a city signal OSM does not map as one (v0.10.0;
+    `pipeline.agency_signals`). Its item licence field is empty; the portal's CC0
+    reply above covers it. Fetched at rebuild time; size and sha256: the download's
+    README, to be copied here.
 - Records: `fixtures/datasets/README.md`.
 
 ## Montgomery County Planning
@@ -1001,6 +1025,11 @@ them (OWNER-DECISIONS 152, 155, 162).
 
 - Arlington County's Bike Comfort Index: internal comparison only, held outside the
   repository, while Arlington's terms are pending.
+- Arlington County's Intersection Points
+  (<https://arlgis.arlingtonva.us/arcgis/rest/services/Open_Data/od_Intersection_Points/FeatureServer/0>),
+  319 signalised intersections (2026-10-19): installable as a signal list
+  (`pipeline.agency_signals`) but not read while Arlington's terms are pending (its
+  item says only "Please review the Arlington County data disclaimer").
 - MDOT's Road Separated Bike Routes web map: check-only (its terms bar trip-planning
   use).
 

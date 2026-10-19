@@ -65,6 +65,21 @@ each as `scripts/fetch_agency_layer.py` stored it; `--byway-name-field` names th
 byway layer's name field, and `--rustic-name-field` the rustic roads' road-name field,
 where it is not one `routemaker.scenic` looks for (a layer with none is refused).
 
+The agencies' traffic signal lists go to `signals.json`, optional, read by the
+rebuild's tag stage (`pipeline.agency_signals`; v0.10.0) to mark the junctions at a
+signal OSM does not map:
+
+    --dc-signals dc-traffic-signals.geojson          DDOT / DC GIS, Traffic Signals
+    --md-signals md-traffic-signals.geojson          MDOT SHA, Traffic Signals
+    --arlington-signals arlington-intersections.geojson
+                                                     Arlington, Intersection Points
+    --alexandria-signals alexandria-signals.geojson  Alexandria, Smart Mobility layer 9
+    --alexandria-hawks alexandria-hawks.geojson      Alexandria, Smart Mobility layer 0
+
+each as `scripts/fetch_agency_layer.py` stored it, all in one file written whole: a
+rerun with one flag replaces the others' rows, so give them all each time. A record
+that is not a running signal is left out, and the count of each reason is printed.
+
 Run with only --data-root it installs the crossings and reports which of the
 other two are still missing, exiting non-zero while any is. See
 docs/DEVELOPMENT.md, "Reference data", for where each input comes from.
@@ -563,6 +578,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--scenic-byways", type=Path, help="MDOT SHA Scenic Byways (MD iMAP), GeoJSON as fetched"
     )
+    parser.add_argument(
+        "--dc-signals", type=Path, help="DDOT Traffic Signals (DC GIS), GeoJSON as fetched"
+    )
+    parser.add_argument("--md-signals", type=Path, help="MDOT SHA Traffic Signals, GeoJSON")
+    parser.add_argument(
+        "--arlington-signals", type=Path, help="Arlington Intersection Points, GeoJSON"
+    )
+    parser.add_argument(
+        "--alexandria-signals", type=Path, help="Alexandria signalised intersections, GeoJSON"
+    )
+    parser.add_argument("--alexandria-hawks", type=Path, help="Alexandria HAWKs, GeoJSON")
     parser.add_argument("--byway-name-field", default=None)
     parser.add_argument("--rustic-name-field", default=None)
     args = parser.parse_args(argv)
@@ -588,6 +614,11 @@ def main(argv: list[str] | None = None) -> int:
         args.dc_pci,
         args.rustic_roads,
         args.scenic_byways,
+        args.dc_signals,
+        args.md_signals,
+        args.arlington_signals,
+        args.alexandria_signals,
+        args.alexandria_hawks,
     )
     for path in (*inputs, *args.volume):
         if path is None:
@@ -694,6 +725,34 @@ def main(argv: list[str] | None = None) -> int:
             parser.error("two scenic lines share an id")
         (reference / "scenic.json").write_text(json.dumps(rows, separators=(",", ":")))
         print(f"wrote {reference / 'scenic.json'}: {len(rows)} scenic lines")
+
+    signal_inputs = (
+        (args.dc_signals, "ddot_rows", {}),
+        (args.md_signals, "mdot_sha_rows", {}),
+        (args.arlington_signals, "arlington_rows", {}),
+        (args.alexandria_signals, "alexandria_rows", {}),
+        (args.alexandria_hawks, "alexandria_rows", {"kind": "hawk"}),
+    )
+    if any(path for path, _parse, _options in signal_inputs):
+        from pipeline import agency_signals
+
+        rows = []
+        for path, parse, options in signal_inputs:
+            if path is None:
+                continue
+            produced, dropped = getattr(agency_signals, parse)(
+                json.loads(path.read_text()), **options
+            )
+            for reason, count in sorted(dropped.items()):
+                print(f"  {path}: {count} records left out ({reason})")
+            print(f"  {path}: {len(produced)} signals")
+            rows.extend(produced)
+        if len({row["id"] for row in rows}) != len(rows):
+            parser.error("two signals share an id; was a signal file given twice?")
+        hawks = sum(1 for row in rows if row["kind"] == "hawk")
+        target = reference / agency_signals.FILE_NAME
+        target.write_text(json.dumps(rows, separators=(",", ":")))
+        print(f"wrote {target}: {len(rows)} signals ({hawks} HAWKs)")
 
     missing = [name for name in REQUIRED if not (reference / name).exists()]
     for name in missing:
