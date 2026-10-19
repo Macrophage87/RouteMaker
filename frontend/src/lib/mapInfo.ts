@@ -4,16 +4,17 @@
  * panel, so Plan scrolls less; a screen reader still hears it there (Planner.tsx). Then the documentation's
  * "In short", most important first, with links to the pages for the rest, then the credits.
  *
- * MapLibre shows it as the attribution control's one entry, through its own sanitizer (p, ul, li, strong
- * and a survive), so it is plain markup with no handlers.
+ * It is its own element in the attribution control, over MapLibre's credits (wrapCredits), not an
+ * attribution entry: MapLibre sorts entries by length, so a shorter source credit would come first.
  */
 import { searchLede } from "./sidebar.ts";
+import { STRESS_PAGE } from "./stressLegend.ts";
 
-/** The rider-facing documentation pages (public/about/), in the order the hub lists them. */
+/** The rider-facing documentation pages (public/about/), in the hub's order; Acknowledgements is in the credits. */
 export const DOCS_LINKS: ReadonlyArray<{ href: string; text: string }> = [
   { href: "/about/how-it-works.html", text: "How RouteMaker works" },
   { href: "/about/ride-types.html", text: "Ride types" },
-  { href: "/about/stress.html", text: "Stress ratings" },
+  { href: STRESS_PAGE, text: "Stress ratings" },
   { href: "/about/architecture.html", text: "Architecture" },
 ];
 
@@ -25,12 +26,33 @@ export const INFO_POINTS: readonly string[] = [
   "Real closures move a route. DC's planned-work permits never do.",
 ];
 
-/** The panel's markup, before the credits. */
+/** The panel's markup (our own constant, no rider text), before the credits. */
 export const MAP_INFO: string = [
-  '<div class="map-info">',
   `<p><strong>Plan a route.</strong> ${searchLede(false)}</p>`,
   `<ul>${INFO_POINTS.map((point) => `<li>${point}</li>`).join("")}</ul>`,
   `<p>More: ${DOCS_LINKS.map((link) => `<a href="${link.href}">${link.text}</a>`).join(" · ")}</p>`,
   "<p><strong>Credits.</strong></p>",
-  "</div>",
 ].join("");
+
+/** The parts of the DOM wrapCredits touches. */
+export interface WrapDocument {
+  createElement(tag: "div"): HTMLDivElement;
+}
+
+/**
+ * Put the info panel over MapLibre's credits, both in one body that shows only while the "i" is open
+ * and scrolls as one (styles.css). MapLibre keeps its own reference to the credits' element and only
+ * replaces its children, so moving it into the body is safe. Whether it did.
+ */
+export function wrapCredits(control: HTMLElement | null, doc: WrapDocument = document): boolean {
+  const inner = control?.querySelector(".maplibregl-ctrl-attrib-inner");
+  if (!control || !inner || control.querySelector(".map-info-body")) return false;
+  const body = doc.createElement("div");
+  body.className = "map-info-body";
+  const info = doc.createElement("div");
+  info.className = "map-info";
+  info.innerHTML = MAP_INFO;
+  inner.replaceWith(body);
+  body.append(info, inner);
+  return true;
+}

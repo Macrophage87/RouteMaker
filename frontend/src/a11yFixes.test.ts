@@ -116,7 +116,7 @@ test("the credits: the OpenStreetMap credit shows beside the collapsed i, and op
   const collapsed = declared(".maplibregl-ctrl-attrib.maplibregl-compact:not(.maplibregl-compact-show)::before");
   assert.match(collapsed, /content:\s*"© OpenStreetMap"/);
   const phone = mediaBody(css, "(max-width: 720px)");
-  const open = rules(phone).find((r) => r.selectors.includes(".maplibregl-ctrl-attrib.maplibregl-compact-show .maplibregl-ctrl-attrib-inner"));
+  const open = rules(phone).find((r) => r.selectors.includes(".maplibregl-ctrl-attrib.maplibregl-compact-show .map-info-body"));
   assert.ok(open, "a rule for the opened credits on a phone");
   assert.match(open.declarations, /max-height:/);
   assert.match(open.declarations, /overflow-y:\s*auto/);

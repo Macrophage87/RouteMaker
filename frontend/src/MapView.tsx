@@ -123,7 +123,7 @@ import {
   groupHolding,
   type CardOpener,
 } from "./lib/junctionCard.ts";
-import { MAP_INFO } from "./lib/mapInfo.ts";
+import { wrapCredits } from "./lib/mapInfo.ts";
 import { isPlainClick, rememberPlanForPage, tabSession } from "./lib/signIn.ts";
 import {
   MAP_MAX_ZOOM,
@@ -571,14 +571,15 @@ export function MapView(props: Props) {
     toolsControl.className = "maplibregl-ctrl map-tools-ctrl";
     map.addControl({ onAdd: () => toolsControl, onRemove: () => toolsControl.remove() }, "top-right");
     setToolsHost(toolsControl);
-    // One entry: the info panel (lib/mapInfo.ts), then the credits, OpenStreetMap first (mapStyle.ts says
-    // why). Added before the scales, so it is the bottom of the corner's stack. It starts as the "i" button
-    // with the OpenStreetMap credit beside it, as MapLibre's own first drag leaves it (lib/junctionCard.ts
-    // collapseCredits).
-    map.addControl(new maplibregl.AttributionControl({ compact: true, customAttribution: MAP_INFO + MAP_ATTRIBUTION }), "bottom-right");
+    // One entry, OpenStreetMap first (mapStyle.ts says why). Added before the scales, so it is the
+    // bottom of the corner's stack. It starts as the "i" button with the OpenStreetMap credit beside it,
+    // as MapLibre's own first drag leaves it (lib/junctionCard.ts collapseCredits).
+    map.addControl(new maplibregl.AttributionControl({ compact: true, customAttribution: MAP_ATTRIBUTION }), "bottom-right");
     const credits = container.current.querySelector<HTMLElement>(".maplibregl-ctrl-attrib");
     collapseCredits(credits);
-    // The documentation pages' "Back to the map" goes to a bare "/": keep the plan, as StressPageLink does.
+    // The info panel (lib/mapInfo.ts) goes over the credits in one scrolling body. Its own element, not an
+    // attribution entry, so a source's credit (the contours') never sorts above it.
+    wrapCredits(credits);
     credits?.addEventListener("click", (e) => {
       const link = (e.target as Element).closest?.('a[href^="/about/"]');
       if (link && isPlainClick(e)) rememberPlanForPage(tabSession(), window.location.hash);

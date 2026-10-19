@@ -127,8 +127,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "credits added after the scales",
         MV,
-        'map.addControl(new maplibregl.AttributionControl({ compact: true, customAttribution: MAP_ATTRIBUTION }), "bottom-right");\n    collapseCredits',
-        "collapseCredits",
+        'map.addControl(new maplibregl.AttributionControl({ compact: true, customAttribution: MAP_ATTRIBUTION }), "bottom-right");\n    const credits',
+        "const credits",
         FIXES,
     ),
     ("no short credit", CSS, 'content: "© OpenStreetMap" / "";', 'content: "";', FIXES),
