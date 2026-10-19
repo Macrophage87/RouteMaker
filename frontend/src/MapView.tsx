@@ -67,6 +67,7 @@ import { dragPreview, legOfSegment, nearestOnPath } from "./lib/lineEdit.ts";
 import { LineGesture } from "./lib/lineGesture.ts";
 import { PENN_COLOUR, RAIL_STATIONS, stationById } from "./lib/railData.ts";
 import { addRailStations, ROUTE_BOTTOM_LAYER, setRailVisibility } from "./lib/railLayer.ts";
+import { ROUTE_HAZARD_ICON, ROUTE_HAZARD_SOURCE, routeHazardFeatures, routeHazardIcon, routeHazardLayer, routeHazardRepeatLayer } from "./lib/routeHazards.ts";
 import type { RailVisibility, Station, StationBadges, StationRole } from "./lib/railStations.ts";
 import { attachRailInteraction, type StationFound } from "./railInteraction.ts";
 import { stressProbe } from "./lib/stressProtocol.ts";
@@ -1100,6 +1101,14 @@ export function MapView(props: Props) {
         layout: { "line-join": "round", "line-cap": "round" },
         paint: { "line-color": ROUTE_BLUE, "line-width": ROUTE_LINE_WIDTH },
       });
+      // The known hazards the route rides (v0.10.0, lib/routeHazards.ts): amber triangles over the route only.
+      if (!map.hasImage(ROUTE_HAZARD_ICON)) {
+        const { pixelRatio: ratio, ...icon } = routeHazardIcon(iconPixelRatio());
+        map.addImage(ROUTE_HAZARD_ICON, icon, { pixelRatio: ratio });
+      }
+      map.addSource(ROUTE_HAZARD_SOURCE, { type: "geojson", data: routeHazardFeatures(callbacks.current.route ?? null) });
+      map.addLayer(routeHazardLayer() as never);
+      map.addLayer(routeHazardRepeatLayer() as never);
       // Closures in force at the ride (v0.7.0, lib/closureMap.ts): over the route, so a closed stretch on it shows.
       // A white casing, then red (closed) or amber (bike lane blocked); dashed where it "may still apply". Their
       // markers (buttons) carry the names and open the cards.
@@ -2357,6 +2366,7 @@ function syncRoute(map: MapLibreMap, props: Props, fitted: { current: boolean })
   // The route, and a transit trip's later rides drawn in its colours (lib/mapGlue.ts, routeLineData).
   source.setData(routeLineData(route) as never);
   setRouteSections(map, route, stale);
+  (map.getSource(ROUTE_HAZARD_SOURCE) as GeoJSONSource | undefined)?.setData(routeHazardFeatures(stale ? null : route) as never);
   // A ride's camera follows the rider; a re-planned route is not framed over it.
   if (!route || stale || route.geometry.coordinates.length < 2 || props.rider) return;
   const padding = props.framePadding();

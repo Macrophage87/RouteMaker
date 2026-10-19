@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "decided": "2026-10-19",
+  "decided_by": "the deployment owner",
+  "status": "Read by the rebuild from its image (routemaker.hazards, pipeline.hazard_layer) when the segments are written. Display only: the map's hazard symbol and the road panel's Watch for row; never a stress or routing input.",
+  "hazards": [
+    {
+      "id": "georgetown-o-street-wisconsin-to-35th",
+      "kinds": ["cobbles", "rails"],
+      "street": "O Street Northwest",
+      "between": ["Wisconsin Avenue Northwest", "35th Street Northwest"],
+      "source": "The owner, 2026-10-19 (\"the cobblestones in Georgetown\"). The Georgetowner, \"O and P Streets Project to Mark Completion in a Few Weeks\" (https://georgetowner.com/?p=93557): \"O Street and P Street, west of Wisconsin Avenue to 35th Street, are the last spots in Washington when trolley tracks can be seen\"; DDOT's O and P Streets Rehabilitation Project relaid the granite setts and refitted the tracks."
+    },
+    {
+      "id": "georgetown-p-street-wisconsin-to-35th",
+      "kinds": ["cobbles", "rails"],
+      "street": "P Street Northwest",
+      "between": ["Wisconsin Avenue Northwest", "35th Street Northwest"],
+      "source": "As georgetown-o-street-wisconsin-to-35th (https://georgetowner.com/?p=93557)."
+    },
+    {
+      "id": "h-street-ne-streetcar-rails",
+      "kinds": ["rails"],
+      "street": "H Street Northeast",
+      "between": ["3rd Street Northeast", "15th Street Northeast"],
+      "source": "The owner, 2026-10-19 (\"the streetcar rails on H street\"). DC Streetcar's H Street/Benning Road line ran from Union Station along H Street NE and Benning Road NE to Oklahoma Avenue and ceased operations on 31 March 2026 (https://en.wikipedia.org/wiki/H_Street/Benning_Road_Line); its rails stay in the street. A backstop for OSM's tram lines, which the rebuild also matches onto the road."
+    },
+    {
+      "id": "benning-road-ne-streetcar-rails",
+      "kinds": ["rails"],
+      "street": "Benning Road Northeast",
+      "between": ["15th Street Northeast", "Oklahoma Avenue Northeast"],
+      "source": "As h-street-ne-streetcar-rails (https://en.wikipedia.org/wiki/H_Street/Benning_Road_Line)."
+    }
+  ]
+}

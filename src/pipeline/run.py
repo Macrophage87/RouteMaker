@@ -44,6 +44,7 @@ from routemaker import (
     corridors,
     divided,
     facility,
+    hazards,
     lane_overrides,
     massflow,
     mdot_aadt,
@@ -76,6 +77,7 @@ from . import (
     discrepancies,
     elevation,
     extract,
+    hazard_layer,
     lts_sentinels,
     mass_capacity,
     overrides,
@@ -823,6 +825,12 @@ class RebuildContext:
     # The East Coast Greenway and US Bicycle Route designations of each way in one
     # (`pipeline.scenic_layer.read_routes`; v0.8.0's Scenic layer, never a stress input).
     scenic_routes: dict[int, set[str]] = field(default_factory=dict)
+    # The street-running rail lines of the extract (`pipeline.hazard_layer.read_rails`;
+    # v0.10.0's hazard symbols, never a stress input).
+    street_rails: list = field(default_factory=list)
+    # (the roads they lie along, the reviewed list by way), worked out once
+    # (`hazard_inputs`); None until then.
+    hazard_inputs: tuple | None = None
     # Sidewalks bicycles may not ride: the CBD rule (routemaker.cbd).
     cbd_sidewalks: set[int] = field(default_factory=set)
     # Mountain-bike singletrack, which every ride type avoids (routemaker.singletrack).
@@ -959,6 +967,8 @@ class RebuildContext:
             "trail_routes",
             "route_names",
             "scenic_routes",
+            "street_rails",
+            "hazard_inputs",
             "no_bicycle",
             "border_nodes_by_way",
             "reviewer_surface_by_way",
@@ -2094,6 +2104,8 @@ def build_handlers(
         context.route_names = routes.names
         # The scenic routes (v0.8.0), for the Scenic layer and the road panel alone.
         context.scenic_routes = scenic_layer.read_routes(context.source_pbf)
+        # The street-running rails (v0.10.0), for the hazard symbols and the road panel alone.
+        context.street_rails = hazard_layer.read_rails(context.source_pbf)
         # Indexed once. The first version scanned the whole way list inside a
         # loop over every border node inside a loop over every variant.
         context.ways_by_id = {way.osm_id: way for way in context.ways}
@@ -3105,6 +3117,17 @@ def build_handlers(
             }
         return {**way.tags, **routed}
 
+    def hazard_inputs() -> tuple[set[int], dict]:
+        """The roads the street rails lie along and the reviewed list's ways (v0.10.0's
+        hazards; `pipeline.hazard_layer`), worked out once for the graph and the segments."""
+        if context.hazard_inputs is None:
+            trail_ids = frozenset(w.osm_id for w in context.ways if variants.is_trail_class(w.tags))
+            context.hazard_inputs = (
+                hazard_layer.rail_ways(context.ways, context.street_rails, trail_ids),
+                hazard_layer.listed_by_way(context.ways, hazards.load()),
+            )
+        return context.hazard_inputs
+
     def inject_tags() -> None:
         reference = context.require_reference()
         context.work_dir.mkdir(parents=True, exist_ok=True)
@@ -3145,7 +3168,9 @@ def build_handlers(
             "upper-case MPH, read as km/h by the router before): %d ways",
             sum(1 for way in context.ways if variants.with_speed_units(way.tags) is not way.tags),
         )
+        rail_roads, listed_hazards = hazard_inputs()
         for variant in variants.Variant:
+            hazard_ways = 0
             per_way_tags: dict[int, dict[str, str]] = {}
             node_lists: dict[int, list[int]] = {}
             dropped: set[int] = set()
@@ -3300,6 +3325,14 @@ def build_handlers(
                     derived["no_bicycle"] = reason
                 if way.osm_id in context.destination_only:
                     derived["destination_only"] = zoo.DESTINATION_ONLY
+                # A known hazard (v0.10.0; the owner, 2026-10-19: "Roads with hazards like
+                # this should get a major penalty"): cobbles or rails anywhere on the way,
+                # which lua/routemaker_remap.lua prices as LTS 4 without changing its rating.
+                if hazard_layer.way_has_hazard(
+                    way, way.osm_id in rail_roads, listed_hazards.get(way.osm_id, ())
+                ):
+                    derived["hazard"] = True
+                    hazard_ways += 1
 
                 per_way_tags[way.osm_id] = {**changes, **extract.derived_tags(derived)}
 
@@ -3316,6 +3349,7 @@ def build_handlers(
                     context.ways_by_id[way_id].node_ids, nodes
                 )
 
+            logger.info("%s: ways priced for a known hazard: %d", variant.value, hazard_ways)
             extract.write_extract(
                 context.source_pbf,
                 context.variant_pbf(variant),
@@ -3582,9 +3616,15 @@ def build_handlers(
         logger.info(
             "scenic ways (designated, covered bridges, scenic routes): %d", len(scenic_text)
         )
+        # The known hazards (v0.10.0): cobbles and rails, from the tags, the street rails
+        # and the reviewed list, for the road panel and the route's hazard marks.
+        rail_roads, listed_hazards = hazard_inputs()
+        hazard_ways = 0
         for way in context.ways:
             stress = context.stress_by_way[way.osm_id]
             trail = variants.is_trail_class(way.tags, way.osm_id, reference.sidepath_bridge_ids)
+            on_rails = way.osm_id in rail_roads
+            way_listed = listed_hazards.get(way.osm_id, ())
             # A mountain-bike trail never qualifies as a long trail (OWNER-DECISIONS
             # 378): it has no route level and no name to chain a run by. A way on a
             # national bicycle route is never one (the C&O towpath, 2026-10-09).
@@ -3687,8 +3727,11 @@ def build_handlers(
                         bike_access_reason=access_reason,
                         sidepath_name=side_name,
                         scenic=scenic_text.get(way.osm_id),
+                        hazard=hazard_layer.piece_hazard(way.tags, on_rails, way_listed, piece),
                     )
                 )
+                hazard_ways += rows[-1]["hazard"] is not None
+        logger.info("segments marked with a hazard (cobbles, rails): %d", hazard_ways)
         writers.write_segments(context.staging_schema, rows)
         # Not kept on the context any more: this stage runs before the tile build
         # now, and millions of row dicts held through it are memory the host does

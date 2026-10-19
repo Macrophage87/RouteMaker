@@ -1039,6 +1039,23 @@ needs no bike access.
 - Code: `src/core/street_photo.py`, `frontend/src/lib/streetPhoto.ts`; fixture
   `tests/data/mapillary/`.
 
+## Known road hazards (v0.10.0: cobblestones, rails in the road)
+
+Read from OpenStreetMap (credited there): `surface=sett`, `cobblestone`,
+`cobblestone:flattened` or `unhewn_cobblestone`; `embedded_rails`; and `railway=tram`, an
+`embedded=yes` railway or a disused tram line matched onto the road it lies along
+(`src/routemaker/hazards.py`, `src/pipeline/hazard_layer.py`). A short reviewed list adds
+what OSM may miss (`fixtures/hazards/`), each entry with its source:
+
+- Georgetown's O and P Streets NW, Wisconsin Ave to 35th St, setts and streetcar tracks:
+  The Georgetowner, "O and P Streets Project to Mark Completion in a Few Weeks"
+  (<https://georgetowner.com/?p=93557>), on DDOT's O and P Streets Rehabilitation Project.
+- DC Streetcar's H Street NE and Benning Road NE rails: the line closed on 31 March 2026
+  and its rails stay in the street (<https://en.wikipedia.org/wiki/H_Street/Benning_Road_Line>).
+
+Facts only, no data copied. The route network prices a hazard road as LTS 4; its rating is
+unchanged, and the map marks it only on a route that rides it.
+
 ## Used inside the project only (no credit)
 
 These are shown nowhere: no tile, route, fixture or page carries anything read from

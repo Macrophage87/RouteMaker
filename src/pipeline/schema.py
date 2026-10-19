@@ -470,6 +470,11 @@ SIDEPATH_NAME_COLUMN = "sidepath_name"
 # v0.8.0): read by the road panel, and carried in a stress tile as `scenic` (true or left
 # out) for the Scenic layer's casing. Never a stress or routing input.
 SCENIC_COLUMN = "scenic"
+# The way's known hazards (`routemaker.hazards`, `pipeline.hazard_layer`; v0.10.0):
+# "cobbles", "rails", comma-separated, a hand-listed one marked "/list". Read by the road
+# panel and carried in a stress tile as `hazard` for the map's symbols. Never a stress or
+# routing input.
+HAZARD_COLUMN = "hazard"
 WALK_BIKE_COLUMN = "walk_bike"
 ROUGH_COLUMN = "is_rough"
 ROAD_TRAIT_COLUMNS = ("road_speed_mph", "road_lanes", "road_oneway")
@@ -610,6 +615,12 @@ CREATE TABLE {schema}.segment (
     -- Scenic layer draws a casing where it is set. Never read by the classifier or the
     -- graph. Null on every other way and on a table built before the column existed.
     scenic          text,
+    -- The way's known hazards (`routemaker.hazards`; v0.10.0, the owner, 2026-10-19: "a
+    -- symbol for roads with known other hazards"): "cobbles", "rails" or both, comma-
+    -- separated, "/list" on a kind only the reviewed list (`fixtures/hazards/`) gives.
+    -- The map draws a symbol along the way and the road panel says it. Never read by the
+    -- classifier or the graph. Null on every other way and on a table built before it.
+    hazard          text,
     -- What the classifier read the road at, for the intersection model
     -- (`routemaker.intersections`; OWNER-DECISIONS 165-167, 172): the speed and
     -- through lanes a direction as read (tags, an agency's record, a curated

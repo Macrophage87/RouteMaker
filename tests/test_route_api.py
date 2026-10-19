@@ -78,6 +78,7 @@ CONTRACT_KEYS = {
     # Additive, FOLLOWUP-MASSRIDE-MAP part 3 (OWNER-DECISIONS 325-327): approved rider-marked
     # hazards along a Mass Ride; null on other ride types.
     "mass_hazards",
+    "road_hazards",
     "calm_search",
     "detour",
     # Additive, ROUTE-DESCRIPTION (OWNER-DECISIONS item 220): the route in words.
@@ -270,6 +271,24 @@ class TestAnswer:
         assert body["geometry"]["type"] == "LineString"
         assert body["preset"] == "default"
         assert body["variant"] == presets.variant_for_ride("default", routing.default_when())
+
+    def test_a_known_hazard_ridden_is_marked_and_said(self, client, segments, router) -> None:
+        """v0.10.0 (the owner, 2026-10-19: "You only need to show it if it's routed on"): a
+        hazard on a way the route rides is in `road_hazards` and in the directions."""
+        router(standard_router())
+        with connection.cursor() as cursor:
+            cursor.execute(f"UPDATE {segments}.segment SET hazard = 'rails' WHERE osm_way_id = 101")
+        body = post(client, good_body()).json()
+        assert [h["kinds"] for h in body["road_hazards"]] == [["rails"]]
+        assert body["road_hazards"][0]["text"].startswith("Rails in the road on ")
+        said = [e for e in body["description"] if e["kind"] == "hazard"]
+        assert len(said) == 1 and said[0]["text"] == body["road_hazards"][0]["text"]
+
+    def test_no_hazard_no_mark(self, client, segments, router) -> None:
+        router(standard_router())
+        body = post(client, good_body()).json()
+        assert body["road_hazards"] == []
+        assert not [e for e in body["description"] if e["kind"] == "hazard"]
 
     def test_the_destination_side_is_the_routers_destination_maneuver(
         self, client, segments, router
