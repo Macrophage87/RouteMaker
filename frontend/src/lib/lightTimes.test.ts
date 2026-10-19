@@ -188,3 +188,27 @@ test("a light marker under the map's controls (the scale bar) is not drawn but k
   assert.match(readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8"), /element\.classList\.toggle\("under-controls", underControls\(/);
   assert.match(readFileSync(new URL("../styles.css", import.meta.url), "utf8"), /\.light-marker\.under-controls span \{\n  visibility: hidden;\n\}/);
 });
+
+test("Ride mode's corner: the light times within the hour rule, for the ride still to go (the owner, 2026-10-19)", async () => {
+  const { rideLightCorner } = await import("./lightTimes.ts");
+  const line: LonLat[] = [
+    [DC.lon, DC.lat],
+    [DC.lon + 0.05, DC.lat],
+  ];
+  const lengthM = pathLengthM(line);
+  const model = { coordinates: line, along: Float64Array.from([0, lengthM]), lengthM };
+  // 2026-10-16, sunset 6:27:50 PM: at 6:00 PM, 20 minutes to go, both dusk events, short and in words.
+  const six = Date.parse("2026-10-16T18:00:00-04:00");
+  const corner = rideLightCorner(model, 0, 20 * 60, six);
+  assert.ok(corner);
+  assert.equal(corner.shown.length, 2);
+  assert.match(corner.shown[0], /^Sunset 6:2\d PM$/);
+  assert.match(corner.shown[1], /^Twilight 6:5\d PM$/);
+  assert.match(corner.said, /^Sunset 6:2\d PM; civil twilight ends 6:5\d PM\.$/);
+  // After sunset: only what is still ahead.
+  assert.deepEqual(rideLightCorner(model, lengthM / 2, 10 * 60, Date.parse("2026-10-16T18:40:00-04:00"))?.shown.length, 1);
+  // Midday: nothing, so the corner says Ride mode.
+  assert.equal(rideLightCorner(model, 0, 20 * 60, Date.parse("2026-10-16T12:00:00-04:00")), null);
+  // Morning, 6:00 AM: civil dawn 6:51 AM within the hour, then sunrise.
+  assert.match(rideLightCorner(model, 0, 10 * 60, Date.parse("2026-10-16T06:00:00-04:00"))?.said ?? "", /^Civil twilight begins 6:5\d AM; sunrise 7:1\d AM\.$/);
+});

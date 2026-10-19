@@ -125,3 +125,7 @@ export function planToOpen(storage: StorageLike | null, hash: string): string {
   if (/[#&](p|preset)=/.test(hash) || !saved) return hash;
   return saved;
 }
+
+/** The account-deletion page (core.account_deletion.PATH), linked from Settings > Account: the same page the web
+ * offers without the app, which says what is deleted and asks once. */
+export const DELETE_ACCOUNT_PAGE = "/delete-account";

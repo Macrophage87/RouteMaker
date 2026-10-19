@@ -1101,6 +1101,17 @@ def costing(
 # multimodal trips will have way too many options"): not the transit ride types, nor Rebalance
 # Ride, whose docks are the point of it; and not Mass Ride, whose slider is locked.
 STRESS_NOTCHES = (10, 25, 40, STRESS_DEFAULT_AT, STRESS_TODAYS_TOP, 90, STRESS_MAX)
+# The notches the options step over (the owner, 2026-10-19: "I never see the options for more
+# direct or less stressful routes ... maybe the steps need to be increased"). Low-stress (80)
+# is left out: from 70 to 80 `use_roads` only goes from 0.10 to 0, which plans the same route
+# (the rescale above), so a step onto it came back as the rider's own route and was dropped.
+# It is still a ride type's limit where one starts there (Novice and Nervous).
+STEP_NOTCHES = tuple(n for n in STRESS_NOTCHES if n != STRESS_TODAYS_TOP)
+# More direct steps this many notches from Low-stress or below: there each notch moves
+# `use_roads` only a little, and one notch rarely saved the minute the page asks of it. From
+# the calm search (above Low-stress) it steps one, off the search, as Calmer steps one onto
+# it: those are large steps already.
+DIRECT_STEPS = 2
 # Where a ride type's notches stop, inside its own limits (2026-10-16): Novice and Nervous
 # never goes more direct than Low-stress, and Fast never calmer than Direct, which is what
 # Fast means. Elsewhere 0 to the ride type's `stress_max`.
@@ -1108,16 +1119,22 @@ NOTCH_LIMITS = MappingProxyType({NOVICE: (STRESS_TODAYS_TOP, STRESS_MAX), "fast"
 
 
 def stress_notches(name: str, stress: int) -> tuple[int | None, int | None]:
-    """One notch more traffic tolerant (more direct) and one notch calmer than `stress` on
-    ride type `name`, each None where there is none: at an end of the slider, past the
-    ride type's limits (`NOTCH_LIMITS`), or on a ride type that offers neither. A position
-    between notches goes to the notch on each side of it; one below the lowest notch counts
-    as the lowest, so its calmer side is the next one up."""
+    """The positions Go's More direct and Calmer are planned at for `stress` on ride type
+    `name`, over STEP_NOTCHES: DIRECT_STEPS notches more traffic tolerant from Low-stress or
+    below and one from the calm search (the farthest there is, where fewer are left), and
+    one notch calmer. Each is None where there is none: at an end of the slider, past the
+    ride type's limits (`NOTCH_LIMITS`, whose lower end is a notch of its own), or on a ride
+    type that offers neither. A position between notches counts from the notch on each side
+    of it; one below the lowest notch counts as the lowest, so its calmer side is the next
+    one up."""
     preset = PRESETS[name]
     if name == REBALANCE or name in TRANSIT_PRESETS or preset.stress_max <= STRESS_MIN:
         return None, None
     low, high = NOTCH_LIMITS.get(name, (STRESS_MIN, preset.stress_max))
-    at = max(stress, STRESS_NOTCHES[0])
-    direct = [n for n in STRESS_NOTCHES if low <= n < stress]
-    calmer = [n for n in STRESS_NOTCHES if at < n <= high]
-    return (direct[-1] if direct else None), (calmer[0] if calmer else None)
+    at = max(stress, STEP_NOTCHES[0])
+    direct = [n for n in STEP_NOTCHES if low <= n < stress]
+    if STRESS_MIN < low < stress and low not in direct:
+        direct.insert(0, low)
+    calmer = [n for n in STEP_NOTCHES if at < n <= high]
+    steps = DIRECT_STEPS if stress <= STRESS_TODAYS_TOP else 1
+    return (direct[-min(steps, len(direct))] if direct else None), (calmer[0] if calmer else None)

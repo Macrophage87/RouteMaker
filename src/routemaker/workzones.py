@@ -522,6 +522,10 @@ class PlanZones:
     bypassed: list[Zone] = field(default_factory=list)
     uncertain: list[Zone] = field(default_factory=list)
     lanes: list[Zone] = field(default_factory=list)
+    # v0.9.1, DDOT's permits (`possible`): flagged on the map only, never routed round,
+    # never a heading, a spoken cue or the closure dialog (the owner, 2026-10-19: "We
+    # should flag, but not necessarily stop anyone", "And turn the notices off").
+    possible: list[Zone] = field(default_factory=list)
     # The ride's moment the zones were matched against, and whether it is later than now.
     at: datetime | None = None
     future: bool = False
@@ -551,6 +555,7 @@ class PlanZones:
             or self.bypassed
             or self.uncertain
             or self.lanes
+            or self.possible
         )
 
     def every_zone(self) -> list[Zone]:
@@ -564,6 +569,7 @@ class PlanZones:
             self.bypassed,
             self.uncertain,
             self.lanes,
+            self.possible,
         ):
             for zone in group:
                 seen.setdefault(zone.zone_id, zone)
@@ -631,6 +637,24 @@ def is_future(at: datetime, now: datetime | None) -> bool:
     return now is not None and (at - now).total_seconds() > FUTURE_AFTER_S
 
 
+# The sources whose zones are closures that may happen, not ones known to be on now: DDOT's
+# occupancy permits, which allow a road to be closed in their window (DDOT's own note: start
+# and end times unreliable). The owner, 2026-10-19: "The road closures are mostly for roads
+# that could potentially be closed in the near future in DC. They aren't as useful for on
+# the go routing, but worth keeping for future ride planning", and of them keeping riders
+# off good roads: "it could be closed some time in the next month or so ... I wouldn't
+# cancel a solo ride because of it", "We should flag, but not necessarily stop anyone",
+# "And turn the notices off". So they are never routed round: a plan flags them on its map
+# (`PlanZones.possible`), Go and a ride leave them out (`now_only`), and the closure check
+# never asks about them.
+POSSIBLE_SOURCES = frozenset({"dc"})
+
+
+def possible(zone: Zone) -> bool:
+    """Whether the zone is a closure that may happen (a permit), not one known to be on."""
+    return zone.source in POSSIBLE_SOURCES
+
+
 def for_plan(
     zones: Iterable[Zone],
     at: datetime,
@@ -639,6 +663,7 @@ def for_plan(
     now: datetime | None = None,
     bypass: Iterable[str] = (),
     reserve: tuple[float, int] = (0.0, 0),
+    now_only: bool = False,
 ) -> PlanZones:
     """What a plan through `points` (lon, lat) at ride time `at` does with the zones.
 
@@ -647,7 +672,9 @@ def for_plan(
 
     `now` is when the plan is made: a closure with no end given, on a ride later than
     that (`FUTURE_AFTER_S`), "may still apply" and is warned of, not routed round.
-    `bypass` names the closures the rider chose to route through for this plan."""
+    `bypass` names the closures the rider chose to route through for this plan. The
+    closures that may happen (`possible`: DDOT's permits) are only flagged
+    (`PlanZones.possible`), and `now_only` (Go and a ride) leaves them out."""
     future = is_future(at, now)
     plan = PlanZones(status=dict(status), at=at, future=future)
     if not points:
@@ -660,6 +687,10 @@ def for_plan(
     closures = []
     for zone in zones:
         if not active(zone, at) or not _in_box(zone, box):
+            continue
+        if possible(zone):
+            if not now_only:
+                plan.possible.append(zone)
             continue
         if zone.kind == LANE:
             plan.lanes.append(zone)
@@ -765,12 +796,17 @@ def day_text(moment: datetime, now: datetime | None) -> str:
     return f"{_DAYS[local.weekday()]}, {date_text(moment)}"
 
 
-def when_text(zone: Zone, now: datetime | None, future: bool) -> str:
+def when_text(zone: Zone, now: datetime | None, future: bool, possible: bool = False) -> str:
     """When the closure applies, as the card says it: "Closed today 4:30 am to 1:30 pm",
     "Permit: road closed until Oct 20", "May still apply: no end time given"."""
     verb = "Bike lane blocked" if zone.kind == LANE else "Closed"
     if zone.source == "dc":
         verb = "Permit: bike lane blocked" if zone.kind == LANE else "Permit: road closed"
+    if possible:
+        # v0.9.1: a permit flagged only says what it allows, never that the road is closed.
+        verb = (
+            "Permit allows blocking the bike lane" if zone.kind == LANE else "Permit allows closing"
+        )
     start, end = zone.start, zone.end
     if end is None:
         lead = f"{verb} from {day_text(start, now)} {clock_text(start)}" if start else verb
@@ -808,12 +844,13 @@ def minutes_text(seconds: float) -> str:
     return f"about {minutes} min"
 
 
-ON_ROUTE, ROUTED_ROUND, BYPASSED, MAY_APPLY, NO_EFFECT = (
+ON_ROUTE, ROUTED_ROUND, BYPASSED, MAY_APPLY, NO_EFFECT, POSSIBLE = (
     "on_route",
     "routed_round",
     "bypassed",
     "may_still_apply",
     "none",
+    "possible",
 )
 
 
@@ -828,6 +865,12 @@ def effect_text(zone: Zone, effect: str, delay_s: float | None) -> str:
         if delay_s is not None:
             said += f" Going round would add {minutes_text(delay_s)}."
         return said
+    if effect == POSSIBLE:
+        what = "blocking the bike lane" if zone.kind == LANE else "closing the road"
+        return (
+            f"A permit allows {what} some time in this window; it may be open."
+            " Your route was not changed."
+        )
     if effect == MAY_APPLY:
         return (
             "On your route. It may still apply on your ride day; the route was not changed for it."
@@ -858,8 +901,10 @@ __all__ = [
     "FUTURE_AFTER_S",
     "KINDS",
     "LANE",
+    "POSSIBLE_SOURCES",
     "LANE_PENALTY_S",
     "MAY_APPLY",
+    "POSSIBLE",
     "NO_EFFECT",
     "ON_ROUTE",
     "ROUTED_ROUND",

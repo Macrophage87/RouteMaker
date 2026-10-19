@@ -35,9 +35,9 @@ one), MDOT, "Bicycle Level of Traffic Stress (LTS) Metadata and Methodology"
 values: 0 "to represent shared-use paths and similar facilities" (left out: a path, not
 a road rating, as Montgomery's sidepaths are), 1 to 4 the Mekuria-Furth levels (taken
 as they are), 5 "Bicycle access is prohibited by managing roadway agency" (taken as our
-5, Avoid: `agency_lts` keeps an agency's highest level as Avoid, and whether a bicycle
-may use the way is decided apart, closed where unclear: docs/stress/literature.md), 9
-"missing data" (left out). The layer carries a route id and no street name, so its
+5; the rebuild reads MDOT's 5 as a ban and closes the road to bicycles,
+`agency_lts.PROHIBITING_LEVELS`, the owner's ruling of 2026-10-19), 9 "missing data"
+(left out). The layer carries a route id and no street name, so its
 rows have no name.
 """
 

@@ -320,6 +320,15 @@ class RouteIn(Schema):
             " each is marked `bypassed` on the answer. Never remembered by the server."
         ),
     )
+    closures_now: StrictBool = Field(
+        default=False,
+        description=(
+            "v0.9.1, Go and a ride: leave DDOT's occupancy permits off the answer. A permit"
+            " says a road may be closed some time in its window, so it is never routed round;"
+            " without this it is only flagged on the map (`work_zones.closures`, effect"
+            " `possible`), never a description line, a spoken cue or the closure check."
+        ),
+    )
     blocked_lines: list[Annotated[list[LonLat], Field(min_length=2, max_length=50)]] = Field(
         default_factory=list,
         max_length=10,
@@ -508,6 +517,19 @@ class RouteIn(Schema):
         ),
     )
 
+    straight_legs: list[StrictInt] = Field(
+        default_factory=list,
+        max_length=MAX_POINTS,
+        description=(
+            "v0.9.1, Plan's manual mode: the legs the rider drew, by index (leg i runs from"
+            " `points[i]` to `points[i + 1]`). Each is the straight line between its points,"
+            " ridden as drawn, its stress unknown; the other legs are routed as asked. The"
+            " route is then the rider's own: no routes to choose from, calm search or detour"
+            " check (`drawn_legs`). Ignored on a loop, with `follow`, and on the two-point ride"
+            " types."
+        ),
+    )
+
     @field_validator("preset", mode="before")
     @classmethod
     def _renamed_ride_types(cls, value):
@@ -526,6 +548,12 @@ class RouteIn(Schema):
                 raise ValueError(
                     "via_points are distinct indices of points between the start and the end"
                 )
+        if self.straight_legs:
+            last = len(self.points) - 1
+            if len(set(self.straight_legs)) != len(self.straight_legs) or any(
+                not 0 <= index < last for index in self.straight_legs
+            ):
+                raise ValueError("straight_legs are distinct indices of legs between the points")
         if self.novice_legs and self.preset not in presets.TRANSIT_PRESETS:
             raise ValueError("novice_legs applies to the transit ride types only")
         if self.hills is not None and self.hills > 0 and not preset.hills_seek:
@@ -1887,7 +1915,9 @@ class WorkZoneOut(Schema):
     )
 
 
-ClosureEffect = Literal["on_route", "routed_round", "bypassed", "may_still_apply", "none"]
+ClosureEffect = Literal[
+    "on_route", "routed_round", "bypassed", "may_still_apply", "possible", "none"
+]
 
 
 class ClosureOut(Schema):
@@ -1916,7 +1946,8 @@ class ClosureOut(Schema):
         description=(
             '"on_route": the route runs along it; "routed_round": the route goes round it;'
             ' "bypassed": routed through by the rider\'s choice; "may_still_apply": on the route,'
-            ' no end given on a later ride, not routed round; "none": no effect on the route.'
+            ' no end given on a later ride, not routed round; "possible" (v0.9.1): a DDOT permit,'
+            ' flagged only, never routed round; "none": no effect on the route.'
         )
     )
     delay_s: int | None = Field(
@@ -2404,6 +2435,13 @@ class RouteOut(RouteBody):
             " or not; false on every other route."
         ),
     )
+    drawn_legs: list[int] | None = Field(
+        default=None,
+        description=(
+            "The legs drawn as straight lines (`straight_legs`, Plan's manual mode), by index;"
+            " null on a route with none."
+        ),
+    )
     provisional: bool = Field(
         default=False,
         description=(
@@ -2728,8 +2766,8 @@ def _route_answer(request, body: RouteIn, response: HttpResponse):
 
 # --- Go's "More direct" and "Calmer" (the owner, 2026-10-16) --------------------------------
 #
-# POST /api/route/neighbours plans the rider's trip one notch more traffic tolerant and one
-# notch calmer than the rider's own setting (`presets.stress_notches`), for Go to offer beside
+# POST /api/route/neighbours plans the rider's trip a step more traffic tolerant and a step
+# calmer than the rider's own setting (`presets.stress_notches`), for Go to offer beside
 # the rider's own route. Go asks once its own route is shown, and never waits on the answer:
 # a plan or a ride's re-route asked for meanwhile is sent at once (frontend
 # lib/routeScheduler.ts). So this request never takes a slot a plan needs: it has routing's
@@ -2750,7 +2788,7 @@ NEIGHBOURS_COST = 2
 
 class NeighbourOut(Schema):
     kind: Literal["direct", "calmer"] = Field(
-        description="`direct`: one notch more traffic tolerant. `calmer`: one notch calmer."
+        description="`direct`: two notches more traffic tolerant. `calmer`: one notch calmer."
     )
     stress: int = Field(description="The traffic slider's position it was planned at.")
     route: RouteOut
@@ -2779,7 +2817,7 @@ class NeighboursOut(Schema):
         500: ErrorOut,
         503: BusyOut,
     },
-    summary="The same trip one notch more direct and one notch calmer (Go's route options)",
+    summary="The same trip a step more direct and a step calmer (Go's route options)",
     by_alias=True,
 )
 @decorate_view(
@@ -3162,6 +3200,7 @@ def _bikeshare_body(body: RouteIn, started: float | None) -> dict:
         hills=profile.hills if body.hills is None else body.hills,
         when=body.when,
         closure_bypass=tuple(body.closure_bypass),
+        closures_now=body.closures_now,
         blocked=_blocked(body),
         assist=profile.assist,
         avoid_gravel=body.avoid_gravel,
@@ -3329,6 +3368,7 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
         hills=body.hills,
         when=body.when,
         closure_bypass=tuple(body.closure_bypass),
+        closures_now=body.closures_now,
         blocked=_blocked(body),
         avoid_gravel=body.avoid_gravel,
         trails_off=body.trails_off,
@@ -3999,6 +4039,7 @@ def _bike_dials(body: RouteIn) -> routing.Dials:
         hills=body.hills,
         when=body.when,
         closure_bypass=tuple(body.closure_bypass),
+        closures_now=body.closures_now,
         blocked=_blocked(body),
         carrying=body.carrying,
         assist=body.assist,
@@ -4013,6 +4054,7 @@ def _bike_dials(body: RouteIn) -> routing.Dials:
         vias=tuple(body.via_points),
         follow=_follow_line(body),
         follow_exact=body.follow_exact,
+        straight=tuple(body.straight_legs),
         heading=body.heading,
     )
 
@@ -6064,9 +6106,13 @@ def closures_check(request):
         or not all(isinstance(b, str) and 0 < len(b) <= 200 for b in bypass)
     ):
         problem = f"bypass is a list of at most {CLOSURE_BYPASS_MAX} closure ids."
+    # v0.9.1, Go and a ride: only the closures known to be on, not DDOT's permits.
+    now_only = extra.get("now_only", False)
+    if problem is None and not isinstance(now_only, bool):
+        problem = "now_only is true or false."
     if problem:
         return _error(400, problem)
-    return JsonResponse(work_zones.closures_on(line, when=when, bypass=bypass))
+    return JsonResponse(work_zones.closures_on(line, when=when, bypass=bypass, now_only=now_only))
 
 
 # Ride mode's 311 (v0.7.0 "Go riding fixes" item 3; core.dc311): whether the server sends a
