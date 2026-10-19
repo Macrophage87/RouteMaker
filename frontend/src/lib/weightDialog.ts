@@ -94,8 +94,9 @@ export function weightDialogBody(
     blank();
     props.onClose();
   };
-  // The hint is for a screen reader; on screen a part's default is its placeholder, so each field is one row.
-  const field = (key: string, label: string, value: string, hint: string, placeholder: string, onChange: (text: string) => void) => {
+  // A part's hint is for a screen reader; on screen its default is its placeholder, so each part is one row.
+  // The Total's hint stays on screen: it says what typing a total does.
+  const field = (key: string, label: string, value: string, hint: string, placeholder: string | undefined, onChange: (text: string) => void) => {
     const kg = poundsToKg(value);
     // A refused entry marks the field that is not a number, and points it at the rule (N-C).
     const invalid = refused !== "" && kg === null;
@@ -115,7 +116,7 @@ export function weightDialogBody(
         onChange: (event: { target: { value: string } }) => onChange(event.target.value),
       }),
       h("span", { className: "weight-kg", id: `${id}-${key}-kg` }, typeof kg === "number" ? `(${kg.toFixed(1)} kg)` : ""),
-      h("p", { className: "hint visually-hidden", id: `${id}-${key}-hint` }, hint),
+      h("p", { className: placeholder === undefined ? "hint" : "hint visually-hidden", id: `${id}-${key}-hint` }, hint),
     );
   };
   return [
@@ -126,7 +127,7 @@ export function weightDialogBody(
     ...PARTS.map((part) =>
       field(part.key, part.label, sheet[part.key], `Blank: ${formatLbKg(props.split[part.kg])}.`, String(lbOf(props.split[part.kg])), (text) => set.sheet(editPart(sheet, part.key, text, props.split))),
     ),
-    field("total", WEIGHT_LABELS.total, sheet.total, "Or type the total alone: it replaces the parts.", "", (text) => set.sheet(editTotal(text))),
+    field("total", WEIGHT_LABELS.total, sheet.total, "Or the total alone.", undefined, (text) => set.sheet(editTotal(text))),
     h("p", { key: "sum", className: "weight-total", role: "status", "aria-live": "polite" }, state.said ?? totalSaid(sheet, props.split)),
     h("p", { key: "rule", id: `${id}-rule`, className: refused ? "notice dial-rule" : "dial-rule", "aria-live": "assertive" }, refused),
     h(

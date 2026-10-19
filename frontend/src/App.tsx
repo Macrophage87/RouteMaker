@@ -1314,7 +1314,7 @@ export function App() {
   const syncSettingsOnSignIn = async (origin: string, live: () => boolean) => {
     const account = await fetchSettings(origin);
     if (!live() || account === undefined) return;
-    const device = deviceSettings({ preset: rideRef.current.preset, dials: rideRef.current.dials });
+    const device = deviceSettings({ preset: rideRef.current.preset, dials: rideRef.current.dials }, undefined, weightStore.current?.setting());
     const step = onSignIn(account, device);
     if (step.kind === "push-device") {
       lastSettings.current = device;
@@ -1322,8 +1322,12 @@ export function App() {
     } else {
       applyToDevice(step.doc);
       reloadFavorites();
-      // The account's weight, when it has one; the device's stays otherwise (and is saved with the next change).
-      if (step.doc.weight) {
+      // The account's weight, or cleared when it was cleared elsewhere; an account from before it kept one
+      // leaves this device's, which the save below then puts in the account.
+      if (step.doc.weight === null) {
+        weightStore.current?.clear();
+        setWeight(null);
+      } else if (step.doc.weight) {
         weightStore.current?.save(step.doc.weight);
         setWeight(step.doc.weight);
       }
@@ -2842,7 +2846,7 @@ export function App() {
   useEffect(() => {
     if (!me.signed_in || !settingsSynced) return;
     const timer = window.setTimeout(() => {
-      const doc = deviceSettings({ preset, dials });
+      const doc = deviceSettings({ preset, dials }, undefined, weightStore.current?.setting());
       if (sameSettings(doc, lastSettings.current)) return;
       lastSettings.current = doc;
       void saveSettings(window.location.origin, doc);

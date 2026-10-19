@@ -6045,8 +6045,11 @@ kilograms (`system_weight_kg`, `lib/weight.ts` `withWeight` and `dials.ts` `dial
   checkbox (the owner, 2026-10-19). Signed in it is also the `weight` key of the account's
   settings (`lib/accountSettings.ts`, checked by `core.accounts.settings_problem`, which never
   echoes it), so it follows the rider to another device; account settings win on sign-in as
-  for the rest, Clear clears it from the account with the next save, and Delete account
-  erases it with the `AccountSettings` row. It is never in the plan setting, a link, a log or
+  for the rest. Clear stores `cleared` (`WEIGHT_CLEARED`), sent as `weight: null`, so every
+  signed-in device clears its copy instead of putting its own back; an account from before
+  this keeps the device's. App passes `WeightStore.setting()` to `deviceSettings`, so a
+  browser that refuses storage still syncs. Delete account erases it with the
+  `AccountSettings` row. It is never in the plan setting, a link, a log or
   MCP output. The shape is `{name, totalKg, parts?, setAt}`, ready for named loadouts (315);
   `migrate` reads earlier shapes.
 - **Tests**: `lib/weight.test.ts` (the line, the worksheet, storage, migration, never in a

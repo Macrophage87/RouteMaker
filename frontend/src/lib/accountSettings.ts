@@ -10,8 +10,8 @@
  *   (lib/myGo.ts), Home included.
  * - The rider and bike weight ("weight", lib/weight.ts; the owner, 2026-10-19: "Weight should be retained
  *   for signed in users"): kept with the account so it follows the rider, never in the plan setting, a
- *   link, a log or an AI assistant's answer, and erased with the rest by Delete account. Cleared on the
- *   device, it is cleared from the account with the next save.
+ *   link, a log or an AI assistant's answer, and erased with the rest by Delete account. Cleared, it is
+ *   `weight: null`, so every signed-in device clears its copy rather than putting its own back.
  * - On sign-in (every signed-in load): an empty account takes this device's settings; an account that has
  *   settings wins, and its settings replace the device's. Nothing is merged silently.
  * - Signed out, everything stays on the device as before.
@@ -24,7 +24,7 @@ import { decodePlan, encodePlan } from "./planHash.ts";
 import type { PresetId } from "./presets.ts";
 import { csrfFromCookie } from "./stressEditor.ts";
 import { TOPO_STORAGE_KEY } from "./topoLines.ts";
-import { WEIGHT_STORAGE_KEY, migrate as weightOf, type StoredWeight } from "./weight.ts";
+import { WEIGHT_CLEARED, WEIGHT_STORAGE_KEY, migrate as weightOf, storedSetting, type StoredWeight } from "./weight.ts";
 import { WATER_PREFS_KEY, type WaterPrefs } from "./waterRestrooms.ts";
 
 export const SETTINGS_VERSION = 1;
@@ -40,8 +40,8 @@ export interface SettingsDoc {
   sections?: Record<string, string[]>;
   bikeshare?: Record<string, boolean>;
   favorites?: PresetId[];
-  /** The rider and bike weight, as this device keeps it (lib/weight.ts StoredWeight). */
-  weight?: StoredWeight;
+  /** The rider and bike weight (lib/weight.ts StoredWeight), or null once cleared. */
+  weight?: StoredWeight | null;
 }
 
 export interface Store {
@@ -131,8 +131,11 @@ export function parseSettings(raw: unknown): SettingsDoc | null {
   const bikeshare = flagsOf(body.bikeshare);
   if (bikeshare) doc.bikeshare = bikeshare;
   if (Array.isArray(body.favorites)) doc.favorites = parseFavorites(body.favorites);
-  const weight = body.weight === undefined ? null : weightOf(body.weight);
-  if (weight) doc.weight = weight;
+  if (body.weight === null) doc.weight = null;
+  else if (body.weight !== undefined) {
+    const weight = weightOf(body.weight);
+    if (weight) doc.weight = weight;
+  }
   return doc;
 }
 
@@ -141,8 +144,16 @@ export function hasSettings(doc: SettingsDoc | null): boolean {
   return doc !== null && Object.keys(doc).some((key) => key !== "v");
 }
 
-/** This device's settings as a document: what it keeps, and the ride type and dials in use. */
-export function deviceSettings(plan: { preset: PresetId; dials: Dials } | null, store: Store | null = local()): SettingsDoc {
+/**
+ * This device's settings as a document: what it keeps, and the ride type and dials in use. The weight is
+ * App's (WeightStore.setting(), which holds it even where the browser refuses storage); left out, it is
+ * read from the store.
+ */
+export function deviceSettings(
+  plan: { preset: PresetId; dials: Dials } | null,
+  store: Store | null = local(),
+  weight: StoredWeight | null | undefined = storedSetting(read(store, WEIGHT_STORAGE_KEY)),
+): SettingsDoc {
   const doc: SettingsDoc = { v: SETTINGS_VERSION };
   if (plan) doc.plan = planSetting(plan.preset, plan.dials);
   const water = waterOf(json(read(store, WATER_PREFS_KEY)));
@@ -157,9 +168,7 @@ export function deviceSettings(plan: { preset: PresetId; dials: Dials } | null, 
   if (sections && Object.keys(sections).length) doc.sections = sections;
   const favorites = json(read(store, FAVORITES_KEY));
   if (Array.isArray(favorites)) doc.favorites = parseFavorites(favorites);
-  const weightRaw = read(store, WEIGHT_STORAGE_KEY);
-  const weight = weightRaw === null ? null : weightOf(weightRaw);
-  if (weight) doc.weight = weight;
+  if (weight !== undefined) doc.weight = weight;
   return doc;
 }
 
@@ -178,7 +187,7 @@ export function applyToDevice(doc: SettingsDoc, store: Store | null = local()): 
   if (doc.topo !== undefined) write(TOPO_STORAGE_KEY, doc.topo ? "on" : "off");
   if (doc.sections) write(LAYER_SECTIONS_KEY, JSON.stringify(doc.sections));
   if (doc.favorites) write(FAVORITES_KEY, JSON.stringify(doc.favorites));
-  if (doc.weight) write(WEIGHT_STORAGE_KEY, JSON.stringify(doc.weight));
+  if (doc.weight !== undefined) write(WEIGHT_STORAGE_KEY, doc.weight === null ? WEIGHT_CLEARED : JSON.stringify(doc.weight));
 }
 
 export type SignInStep = { kind: "push-device"; doc: SettingsDoc } | { kind: "use-account"; doc: SettingsDoc };

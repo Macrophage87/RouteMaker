@@ -42,6 +42,11 @@ export const DEFAULT_NAME = "My weight";
 
 /** Where the weight is kept in this browser. */
 export const WEIGHT_STORAGE_KEY = "routemaker.weight";
+/**
+ * What the key holds once the rider pressed Clear: kept, not removed, so the account's settings carry
+ * `weight: null` and another signed-in device clears its copy instead of putting its own back.
+ */
+export const WEIGHT_CLEARED = "cleared";
 
 // ---- the ride panel's line (314, 315) ----------------------------------------
 
@@ -214,26 +219,46 @@ function browserStorage(): Storage | null {
   }
 }
 
+/** A stored value: the weight, null once cleared, undefined when never set (or unusable). */
+export function storedSetting(raw: string | null, now: number = Date.now()): StoredWeight | null | undefined {
+  if (raw === null) return undefined;
+  if (raw === WEIGHT_CLEARED) return null;
+  return migrate(raw, now) ?? undefined;
+}
+
 /**
  * Where the weight is kept: this browser, and for this visit as well in case the browser
- * refuses. Signed in, lib/accountSettings.ts reads and writes the same key to sync it.
+ * refuses. Signed in, App passes `setting()` to lib/accountSettings.ts to sync it.
  */
 export class WeightStore {
-  private visit: StoredWeight | null = null;
+  /** This visit's: undefined until read or set, then the weight, or null once cleared. */
+  private visit: StoredWeight | null | undefined = undefined;
   private readonly storage: Storage | null;
   constructor(storage: Storage | null = browserStorage()) {
     this.storage = storage;
   }
 
-  /** What is kept: this visit's, else this browser's (migrated from an earlier shape). */
-  load(now: number = Date.now()): StoredWeight | null {
-    if (this.visit) return this.visit;
+  /** The weight, null once cleared, undefined when never set; read once a visit, so a migrated shape keeps its date. */
+  setting(now: number = Date.now()): StoredWeight | null | undefined {
+    if (this.visit !== undefined) return this.visit;
+    let raw: string | null = null;
     try {
-      const raw = this.storage?.getItem(WEIGHT_STORAGE_KEY);
-      return raw == null ? null : migrate(raw, now);
+      raw = this.storage?.getItem(WEIGHT_STORAGE_KEY) ?? null;
     } catch {
-      return null;
+      return undefined;
     }
+    const found = storedSetting(raw, now);
+    if (found) {
+      this.visit = found;
+      // An earlier shape is written back as today's, so its date stays put.
+      if (raw !== JSON.stringify(found)) this.save(found);
+    }
+    return found;
+  }
+
+  /** What is kept, for planning: the weight, or null (the defaults). */
+  load(now: number = Date.now()): StoredWeight | null {
+    return this.setting(now) ?? null;
   }
 
   /** Keep it, in this browser and for this visit: false when the browser refused (it lasts this visit). */
@@ -247,13 +272,17 @@ export class WeightStore {
     }
   }
 
-  /** Forget it everywhere: the defaults are used. */
+  /** Forget it everywhere: the defaults are used, and a signed-in account clears it too. */
   clear(): void {
     this.visit = null;
     try {
-      this.storage?.removeItem(WEIGHT_STORAGE_KEY);
+      this.storage?.setItem(WEIGHT_STORAGE_KEY, WEIGHT_CLEARED);
     } catch {
-      // Nothing kept that can be reached.
+      try {
+        this.storage?.removeItem(WEIGHT_STORAGE_KEY);
+      } catch {
+        // Nothing kept that can be reached.
+      }
     }
   }
 }

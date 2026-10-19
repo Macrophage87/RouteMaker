@@ -11,6 +11,7 @@ import {
   WEIGHT_PURPOSE,
   WEIGHT_ROUGH,
   WEIGHT_NOT_A_NUMBER,
+  WEIGHT_CLEARED,
   WEIGHT_STORAGE_KEY,
   WeightStore,
   daysSince,
@@ -251,14 +252,25 @@ test("it is always kept in this browser, with no remember choice; Clear forgets 
   assert.deepEqual(new WeightStore(storage).load(NOW), SAVED, "a new visit finds it");
   store.clear();
   assert.equal(store.load(NOW), null);
-  assert.equal(storage.data.has(WEIGHT_STORAGE_KEY), false);
+  // Kept as cleared, not removed, so a signed-in account clears it too (accountSettings.ts).
+  assert.equal(storage.data.get(WEIGHT_STORAGE_KEY), WEIGHT_CLEARED);
+  assert.equal(new WeightStore(storage).setting(NOW), null, "cleared, not never set");
+  assert.equal(new WeightStore(memory()).setting(NOW), undefined, "never set");
+});
+
+test("an earlier stored shape is written back once, so its date stays put", () => {
+  const storage = memory();
+  storage.setItem(WEIGHT_STORAGE_KEY, "90.7");
+  const first = new WeightStore(storage).load(NOW);
+  assert.equal(first?.setAt, NOW);
+  assert.deepEqual(new WeightStore(storage).load(NOW + 5 * 86_400_000), first, "the next visit reads the same date");
 });
 
 test("storage that throws or is missing never breaks it: it lasts the visit", () => {
   const throwing = { getItem: () => { throw new Error("SecurityError"); }, setItem: () => { throw new Error("SecurityError"); }, removeItem: () => { throw new Error("SecurityError"); } };
   const store = new WeightStore(throwing as never);
   assert.equal(store.load(NOW), null);
-  assert.equal(store.save(SAVED, true), false);
+  assert.equal(store.save(SAVED), false);
   assert.deepEqual(store.load(NOW), SAVED);
   store.clear();
   assert.equal(new WeightStore(null).load(NOW), null);
@@ -391,7 +403,7 @@ test("a weight at either end of the range is read back as kept (the mutation re-
     assert.equal(migrate(String(kg), NOW)?.totalKg, kg, `${kg} kg as a bare figure`);
     assert.equal(migrate({ totalKg: kg, setAt: 5 }, NOW)?.totalKg, kg, `${kg} kg stored`);
     const kept = memory();
-    new WeightStore(kept).save({ name: DEFAULT_NAME, totalKg: kg, setAt: NOW }, true);
+    new WeightStore(kept).save({ name: DEFAULT_NAME, totalKg: kg, setAt: NOW });
     assert.equal(new WeightStore(kept).load(NOW)?.totalKg, kg, `${kg} kg round trip`);
   }
 });

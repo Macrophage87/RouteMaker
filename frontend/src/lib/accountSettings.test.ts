@@ -140,7 +140,23 @@ test("signed in, the rider and bike weight goes with the account and comes back 
   assert.equal(step.kind, "use-account");
   applyToDevice(step.doc, laptop);
   assert.deepEqual(new WeightStore(laptop).load(), weight);
-  // Cleared on the device: the next save carries none, so the account's is cleared too.
+  // Cleared on the laptop: the account gets weight null, and the phone, signed in again, clears its copy
+  // instead of putting it back.
   new WeightStore(laptop).clear();
-  assert.equal(deviceSettings(null, laptop).weight, undefined);
+  const cleared = deviceSettings(null, laptop);
+  assert.equal(cleared.weight, null);
+  const back = parseSettings(JSON.parse(JSON.stringify(cleared)));
+  assert.equal(back?.weight, null);
+  const again = onSignIn(back, deviceSettings(null, phone));
+  assert.equal(again.kind, "use-account");
+  applyToDevice(again.doc, phone);
+  assert.equal(new WeightStore(phone).load(), null);
+  assert.equal(deviceSettings(null, phone).weight, null, "and the phone's next save keeps it cleared");
+  // An account from before the weight was kept leaves the device's, which its next save adds.
+  const tablet = new Memory();
+  tablet.setItem(WEIGHT_STORAGE_KEY, JSON.stringify(weight));
+  applyToDevice({ v: 1, topo: true }, tablet);
+  assert.deepEqual(deviceSettings(null, tablet).weight, weight);
+  // Where the browser refuses storage, the weight App holds is the one sent.
+  assert.deepEqual(deviceSettings(null, null, weight).weight, weight);
 });
