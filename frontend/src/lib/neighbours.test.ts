@@ -9,6 +9,7 @@ import { announceHow, candidateRoute, candidateRows, candidatesHint, NEIGHBOURS_
 import { startDials } from "./dials.ts";
 import {
   differsEnough,
+  displacedBy,
   keptNeighbours,
   MAX_ROWS,
   MIN_MOVED_M,
@@ -92,6 +93,20 @@ test("an option the same as one of the routes to choose from is dropped, and the
   assert.deepEqual(chosenThird.map((r) => r.neighbour?.kind), ["direct"]);
   assert.deepEqual(withNeighbours(four, chosenThird)?.candidates?.slice(0, 2), [r2, r3]);
   assert.deepEqual(keptNeighbours(four, both, "default", undefined, 3), [], "the last chosen: nothing gives way");
+  const chosenSecond = keptNeighbours(four, both, "default", undefined, 1);
+  assert.deepEqual(chosenSecond.map((r) => r.neighbour?.kind), ["direct", "calmer"]);
+  assert.deepEqual(withNeighbours(four, chosenSecond)?.candidates?.slice(0, 1), [r2]);
+  // Two routes of its own and both options: one gives way. Said as such, the count heard before being out of date.
+  const three = { ...OWN, candidates: [r2, r3] };
+  const keptThree = keptNeighbours(three, both, "default");
+  const pickedThree = withNeighbours(three, keptThree);
+  assert.deepEqual(pickedThree?.candidates?.slice(0, 1), [r2]);
+  assert.equal(displacedBy(three, pickedThree, keptThree), 1);
+  assert.equal(neighboursSaid(keptThree, 1), "More direct and Calmer replace the last route.");
+  assert.equal(displacedBy(four, picked, kept), 2);
+  assert.equal(neighboursSaid(kept, 2), "More direct and Calmer replace the last 2 routes.");
+  assert.equal(neighboursSaid(kept.slice(1), 1), "Calmer replaces the last route.");
+  assert.equal(displacedBy(OWN, withNeighbours(OWN, keptThree), keptThree), 0, "room for them: none gives way");
 });
 
 test("a route that gains nothing has no line, and is not offered", () => {
@@ -386,7 +401,9 @@ test("App: asked for in Go only, before Start, on the ride types that offer them
   assert.ok(start > 0);
   assert.match(body, /modeRef\.current !== "go" \|\| now\.riding \|\| now\.startAsked/);
   assert.match(body, /!offersNeighbours\(plan\.preset\) \|\| plan\.confirmLong/);
-  assert.match(app, /announce\(neighboursSaid\(kept\)\)/);
+  assert.match(app, /announce\(neighboursSaid\(kept, displacedBy\(answer, picked, kept\)\)\)/);
+  // The routes kept in place are the answer's own: the rider's choice, held to their count, and kept for the same answer.
+  assert.match(app, /before\.answer === answer \? before\.keepRouter : Math\.min\(now\.choice, answer\.candidates\?\.length \?\? 0\)/);
   // Ride mode starts with no options asked for: Start pressed or a ride on, none are.
   assert.match(app.slice(app.indexOf("onAfter:")), /now\.riding\) return;/);
   // The route's own sentence is the answer's, so it is not read again when they come.

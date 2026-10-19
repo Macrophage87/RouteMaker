@@ -10,7 +10,7 @@ import { reorder } from "./lib/pointMover.ts";
 import { canDragLine, dropStillValid, insertIntoRide, legEnds, legPoints } from "./lib/lineEdit.ts";
 import { EditHistory, isRedoKey, isUndoKey, typesText } from "./lib/editHistory.ts";
 import { requestNeighbours, requestRoute, routeRequestBody, type NeighbourOption, type NeighboursResult, type RouteResponse, type RouteResult } from "./lib/api.ts";
-import { keptNeighbours, neighbourDials, neighboursSaid, offersNeighbours, rideDials, withNeighbours } from "./lib/neighbours.ts";
+import { displacedBy, keptNeighbours, neighbourDials, neighboursSaid, offersNeighbours, rideDials, withNeighbours } from "./lib/neighbours.ts";
 import { betterRouteSaid, EarlyStart, takesRefined } from "./lib/progressive.ts";
 import { RAIL_STATUS_MS, closedReason, matchAlerts, withMetroClosed, matchClosures, requestClosures, type RailStatus } from "./lib/railClosures.ts";
 import { COVERAGE_BBOX, MAX_POINTS, addPoint, haversineM, insideCoverage, type LonLat } from "./lib/geo.ts";
@@ -403,8 +403,8 @@ export function App() {
     setAroundAvoid(false);
   }, []);
   // Go's More direct and Calmer (lib/neighbours.ts): asked for once the route shown is final, kept with the answer they
-  // are for, and offered after its own routes to choose from. The answer itself never changes for them, so its route
-  // is not said again and the choice is not reset when they come.
+  // are for, and offered after its own routes to choose from, in place of its last ones where the choice is full. The
+  // answer itself never changes for them, so its route is not said again and the choice is not reset when they come.
   // `keepRouter`: the routes to choose from the rider had already chosen among when they came, which stay in place.
   const [neighbours, setNeighbours] = useState<{
     answer: RouteResponse;
@@ -1001,7 +1001,16 @@ export function App() {
       onAfter: (plan: Plan, result: NeighboursResult) => {
         const now = shownNow.current;
         if (!result.ok || !now.answer || now.answer.provisional || now.riding) return;
-        setNeighbours({ answer: now.answer, preset: plan.preset, dials: plan.dials, options: result.options, keepRouter: now.choice });
+        const answer = now.answer;
+        // Only the answer's own routes count as kept in place; options already shown for this answer keep their rows.
+        setNeighbours((before) => ({
+          answer,
+          preset: plan.preset,
+          dials: plan.dials,
+          options: result.options,
+          keepRouter:
+            before && before.answer === answer ? before.keepRouter : Math.min(now.choice, answer.candidates?.length ?? 0),
+        }));
       },
     });
   }
@@ -1375,8 +1384,8 @@ export function App() {
   useEffect(() => {
     if (kept.length === 0 || neighboursSaidFor.current === neighbours) return;
     neighboursSaidFor.current = neighbours;
-    announce(neighboursSaid(kept));
-  }, [kept, neighbours, announce]);
+    announce(neighboursSaid(kept, displacedBy(answer, picked, kept)));
+  }, [kept, neighbours, announce, answer, picked]);
   // Shows `shown` and says `said` in its place, in one announcement.
   const setNoticeSaying = (shown: string, said: string) => {
     noticeSaidAs.current = shown;

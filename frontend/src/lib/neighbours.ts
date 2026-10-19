@@ -1,10 +1,9 @@
 /**
  * Go's "More direct" and "Calmer" (the owner, 2026-10-16, test-riding: "in go mode see if it's possible to change the
  * routing to be one notch more traffic tolerant and one notch less tolerant on routes and show them as options saying
- * what's gained and the tradeoff"). The API plans the trip a step either side of the rider's traffic setting (two
- * notches more direct, one calmer: core.presets stress_notches, POST /api/route/neighbours) once the rider's own
- * route is shown; here each is compared
- * with that route, kept only where it really differs, and given one short line: what it gains, then what it costs.
+ * what's gained and the tradeoff"). The API plans the trip a step either side of the rider's traffic setting (core.presets
+ * stress_notches, POST /api/route/neighbours) once the rider's own route is shown; here each is compared with that
+ * route, kept only where it really differs, and given one short line: what it gains, then what it costs.
  * They join Go's routes to choose from after the rider's own, which stays first and chosen. Choosing one rides it and
  * changes no setting: the rider's traffic setting, and the saved default (the Ride sheet's Edit default), stay as
  * they are. Bike-only ride types and plain Bikeshare (its ride between the same docks); not the multimodal trips, and
@@ -193,11 +192,25 @@ export function withNeighbours(answer: RouteResponse | null, kept: readonly Rout
   return { ...answer, candidates: [...own, ...kept] };
 }
 
-/** Said once, through the app's polite region, when the options arrive: "More direct and Calmer added to the route choice." */
-export function neighboursSaid(kept: readonly RouteResponse[]): string {
+/**
+ * Said once, through the app's polite region, when the options arrive: "More direct and Calmer added to the route
+ * choice.", or, where they took the place of the answer's own last routes (`displaced` of them, said before as part of
+ * its count), "More direct and Calmer replace the last 2 routes."
+ */
+export function neighboursSaid(kept: readonly RouteResponse[], displaced = 0): string {
   const names = kept.flatMap((r) => (r.neighbour ? [NEIGHBOUR_NAME[r.neighbour.kind]] : []));
   if (names.length === 0) return "";
-  return `${names.join(" and ")} added to the route choice.`;
+  const who = names.join(" and ");
+  if (displaced === 1) return `${who} ${names.length === 1 ? "replaces" : "replace"} the last route.`;
+  if (displaced > 1) return `${who} ${names.length === 1 ? "replaces" : "replace"} the last ${displaced} routes.`;
+  return `${who} added to the route choice.`;
+}
+
+/** How many of the answer's own routes to choose from gave way to the options in `picked` (withNeighbours). */
+export function displacedBy(answer: RouteResponse | null, picked: RouteResponse | null, kept: readonly RouteResponse[]): number {
+  const own = answer?.candidates?.length ?? 0;
+  const left = (picked?.candidates?.length ?? 0) - kept.length;
+  return Math.max(0, own - left);
 }
 
 /**

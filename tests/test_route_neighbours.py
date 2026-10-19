@@ -40,7 +40,7 @@ class TestNotches:
 
     def test_a_position_between_notches_takes_the_notch_on_each_side(self) -> None:
         assert presets.stress_notches("default", 55) == (25, 70)
-        assert presets.stress_notches("default", 97) == (70, 100)
+        assert presets.stress_notches("default", 97) == (90, 100)
 
     def test_the_most_tolerant_end_has_no_more_direct(self) -> None:
         assert presets.stress_notches("default", 0) == (None, 25)
@@ -49,14 +49,19 @@ class TestNotches:
         assert presets.stress_notches("default", 10) == (None, 25)
 
     def test_the_calmest_end_has_no_calmer(self) -> None:
-        assert presets.stress_notches("trailmaxxing", 100) == (70, None)
-        assert presets.stress_notches("default", 100) == (70, None)
+        assert presets.stress_notches("trailmaxxing", 100) == (90, None)
+        assert presets.stress_notches("default", 100) == (90, None)
+
+    def test_more_direct_steps_one_notch_off_the_calm_search(self) -> None:
+        # Two from Default would skip it: the calm search's own steps are large already.
+        assert presets.stress_notches("default", 90) == (70, 100)
+        assert presets.stress_notches("default", 85) == (70, 90)
 
     def test_more_direct_takes_the_farthest_notch_where_fewer_than_two_are_left(self) -> None:
         assert presets.stress_notches("default", 25) == (10, 40)
 
     def test_novice_never_goes_more_direct_than_low_stress(self) -> None:
-        assert presets.stress_notches(presets.NOVICE, 100) == (80, None)
+        assert presets.stress_notches(presets.NOVICE, 100) == (90, None)
         assert presets.stress_notches(presets.NOVICE, 90) == (80, 100)
         assert presets.stress_notches(presets.NOVICE, 80) == (None, 90)
         # A Novice rider who moved the slider lower is offered nothing more direct still.
