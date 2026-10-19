@@ -348,10 +348,12 @@ export function setRouteSections(
   map: RouteSectionsMap,
   route: (Pick<RouteResponse, "geometry" | "stress_spans"> & Partial<Pick<RouteResponse, "transit">>) | null,
   stale: boolean,
+  /** The casing's colour where the route is not the rider's own among several to choose from (lib/routeChoice.ts). */
+  casing?: string,
 ): void {
   const sections = routeAndRideSections(route);
   (map.getSource(ROUTE_STRESS_SOURCE_ID) as { setData(data: object): void } | undefined)?.setData(sectionFeatures(sections));
-  const paint = routePaint(sections !== null, stale);
+  const paint = routePaint(sections !== null, stale, casing);
   map.setPaintProperty("route-line", "line-opacity", paint.lineOpacity);
   map.setPaintProperty("route-stress", "line-opacity", paint.sectionOpacity);
   map.setPaintProperty("route-halo", "line-opacity", paint.haloOpacity);

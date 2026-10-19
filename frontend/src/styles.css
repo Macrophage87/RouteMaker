@@ -2356,6 +2356,16 @@ fieldset.candidates legend {
   font-weight: 600;
 }
 
+/* Go: the route's colour on the map (lib/routeChoice.ts), a short thick line before its name. */
+.candidate-swatch {
+  display: inline-block;
+  width: 18px;
+  height: 6px;
+  margin-right: 6px;
+  vertical-align: middle;
+  border-radius: 3px;
+}
+
 .candidate-line {
   color: var(--text-muted);
   overflow-wrap: anywhere;

@@ -10,6 +10,7 @@ import { reorder } from "./lib/pointMover.ts";
 import { canDragLine, dropStillValid, insertIntoRide, legEnds, legPoints } from "./lib/lineEdit.ts";
 import { EditHistory, isRedoKey, isUndoKey, typesText } from "./lib/editHistory.ts";
 import { requestNeighbours, requestRoute, routeRequestBody, type NeighbourOption, type NeighboursResult, type RouteResponse, type RouteResult } from "./lib/api.ts";
+import { choiceColour, choiceFeatures } from "./lib/routeChoice.ts";
 import { displacedBy, keptNeighbours, neighbourDials, neighboursSaid, offersNeighbours, rideDials, withNeighbours } from "./lib/neighbours.ts";
 import { betterRouteSaid, EarlyStart, takesRefined } from "./lib/progressive.ts";
 import { RAIL_STATUS_MS, closedReason, matchAlerts, withMetroClosed, matchClosures, requestClosures, type RailStatus } from "./lib/railClosures.ts";
@@ -59,7 +60,7 @@ import { useStressStyle } from "./useStressStyle.ts";
 import { ANNOUNCE_SETTLE_MS } from "./lib/settle.ts";
 import { skipToPlanner, SKIP_LINK_TEXT, SKIP_TO_RIDE_TEXT } from "./lib/skipLink.ts";
 import { BetaChip, betaReportUrl, isBetaBuild } from "./lib/betaBanner.ts";
-import { announceHow } from "./lib/candidates.ts";
+import { announceHow, candidateRoute } from "./lib/candidates.ts";
 import { canReverse, loopStops, loopView, reversedPoints } from "./lib/loop.ts";
 import { FINDING_ORDER_SAID, STILL_FINDING_ORDER_SAID, applyAnswer, requestStopOrder, stopsThatMove } from "./lib/stopOrder.ts";
 import {
@@ -4118,6 +4119,11 @@ export function App() {
   const goMode = mode === "go";
   // Review (lib/appMode.ts): the panel holds the queues and the map their roads; the plan stays as it was, unshown.
   const reviewing = mode === "review" && canReview;
+  // Go's routes to choose from, all on the map in their colours, a press on one choosing it (lib/routeChoice.ts; the
+  // owner, 2026-10-19). Not while riding, in Review, on a stale route, or while the way round an Avoid junction shows.
+  const choicesDrawn = mode === "go" && !riding && !reviewing && !stale && !planEdited && !aroundAvoid && shown !== null;
+  const choices = useMemo(() => (choicesDrawn ? choiceFeatures(picked, choice) : null), [choicesDrawn, picked, choice]);
+  const routeColour = choicesDrawn && choice > 0 && picked ? choiceColour(candidateRoute(picked, choice) ?? picked, choice) : null;
   announceLevelNow.current = announceLevel(announceChoice, mode);
   const chooseAnnounce = (level: AnnounceLevel) => {
     setAnnounceChoice(level);
@@ -4274,6 +4280,9 @@ export function App() {
         onMapClick={riding || reviewing ? ignore : place}
         onMovePoint={riding ? ignore : move}
         lineEdit={riding || reviewing ? null : lineEdit}
+        choices={choices}
+        routeColour={routeColour}
+        onPickRoute={choicesDrawn ? choose : undefined}
         onLineDrop={riding || reviewing ? ignore : insertOnLine}
         pressSetsEnd={goTapSetsEnd(mode)}
         onRemovePoint={riding ? ignore : removeFromMap}

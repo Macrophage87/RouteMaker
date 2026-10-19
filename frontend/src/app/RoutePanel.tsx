@@ -4,6 +4,7 @@
 // each note, Start with GPX, Link and More beside it, then one closed line for each fold. Go shows the same
 // route in a few lines: the time, the distance, the stress bar, the warning line and Start. App.tsx keeps
 // the state and the effects; the questions, the errors and Start ride's question are as they were.
+import { choiceColours } from "../lib/routeChoice.ts";
 import { useId, useState, type Dispatch, type ReactNode, type RefObject, type SetStateAction } from "react";
 import type { BikeshareOption, RouteError, RouteResponse } from "../lib/api.ts";
 import { placeLetter } from "../lib/letteredPlaces.ts";
@@ -341,7 +342,7 @@ export function RouteSection(props: RouteSectionProps) {
           onScrub={setScrubPoint}
           picker={
             candidateRows(answer) === null ? null : (
-              <CandidatePicker answer={answer} choice={choice} onChoose={choose} />
+              <CandidatePicker answer={answer} choice={choice} onChoose={choose} colours={goMode ? choiceColours(answer) : null} />
             )
           }
           pickerCount={candidateRows(answer)?.length ?? 0}
