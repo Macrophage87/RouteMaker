@@ -232,10 +232,13 @@ descriptions. Plan's "Change" ride type list has the same search and groups. Typ
   how riding the whole way compares.
 - On the map, a dashed line is the ride on transit, marked with its system's name. A dotted line
   is a walk.
-- All times are "about" and scheduled, from the agencies' published timetables, not live.
+- All times are "about" and scheduled, from the agencies' published timetables, except on a trip
+  leaving now: there a Metro train or Metrobus bus you can reach in time for is WMATA's live
+  prediction and says "live". The time on board stays the timetable's.
   Weekends and holidays use their own timetables. A line with no service that day says so, for
   example "MARC Camden Line: no weekend service".
-- Where trains or buses come every 15 minutes or less, the plan counts half that as the wait.
+- Where trains or buses come every 15 minutes or less, the plan counts half that as the wait,
+  unless a live departure times it.
   Otherwise, as on MARC, it names the departure: "MARC Penn Line 7:42 am from Union Station. You
   arrive 7:36 am (6 min spare). Next after that: 8:15 am." The same appears as a label on the map
   at the station.
