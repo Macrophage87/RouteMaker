@@ -299,10 +299,18 @@ export const SHAPE_STEEPNESS: Record<ClimbShape, string> = {
   diamond: "Steep: 8% or more",
 };
 
-/** The details after the name: the gain, the surface, the trail. */
+/**
+ * The accessible name with the climb's own name in front, where the file has one (the owner, 2026-10-19: "have
+ * them named, by a combination of road names and mountain names"; pipeline.climb_names): "Foxville Road up
+ * Catoctin Mountain, Category 2 climb, 7.5 miles (12.1 km) at 3.0%".
+ */
+export function climbNamedLabel(c: Pick<Climb, "name" | "category" | "lengthM" | "gradePct">): string {
+  return c.name ? `${c.name}, ${climbLabel(c)}` : climbLabel(c);
+}
+
+/** The details after the name: the gain, the surface, the roads' stress. */
 export function climbDetails(c: Climb): string[] {
   const out = [`${formatClimb(c.gainM)} gained.`];
-  if (c.name) out.push(`On the ${c.name}.`);
   // Its surface in words, so the colour is never the only cue; a file before `s` has only `u`.
   if (c.surface) out.push(CLIMB_SURFACES.find((s) => s.surface === c.surface)!.words);
   else if (c.unpaved) out.push("Mostly unpaved.");
@@ -312,7 +320,7 @@ export function climbDetails(c: Climb): string[] {
 
 /** What the map's card says (climbInteraction.ts draws it). */
 export function climbCard(c: Climb): { title: string; details: string[]; caution: string } {
-  return { title: climbLabel(c), details: climbDetails(c), caution: CLIMB_CAUTION };
+  return { title: climbNamedLabel(c), details: climbDetails(c), caution: CLIMB_CAUTION };
 }
 
 export const CLIMB_CAUTION = `Measured from elevation data sampled about every ${formatFeet(30.48)}: short pitches may be steeper than the average.`;
@@ -437,9 +445,9 @@ export function climbsAlongRoute(line: readonly LonLat[], climbs: readonly Climb
   return out.sort((a, b) => a.startM - b.startM);
 }
 
-/** One line of the list: "At 4.2 mi (6.8 km): Category 4 climb, 1.3 miles (2.1 km) at 4.6%. 318 ft (97 m) gained." */
+/** One line of the list: "At 4.2 mi (6.8 km): Snider Lane, Category 4 climb, 1.3 miles (2.1 km) at 4.6%. 318 ft (97 m) gained." */
 export function climbAlongText(item: ClimbAlong): string {
-  return [`At ${formatDistance(item.startM)}: ${climbLabel(item.climb)}.`, ...climbDetails(item.climb)].join(" ");
+  return [`At ${formatDistance(item.startM)}: ${climbNamedLabel(item.climb)}.`, ...climbDetails(item.climb)].join(" ");
 }
 
 /** The list's count line: "2 climbs on your route: 1 Category 4, 1 Category 5." */
@@ -500,7 +508,7 @@ export function climbSummits(climbs: readonly Climb[]): { type: "FeatureCollecti
     type: "FeatureCollection",
     features: climbs.map((c) => ({
       type: "Feature",
-      properties: { id: c.id, c: c.category, shape: climbShape(c.gradePct), rank: CLIMB_CATEGORIES.indexOf(c.category), label: climbLabel(c), s: climbSurfaceOf(c), b: c.busy === true },
+      properties: { id: c.id, c: c.category, shape: climbShape(c.gradePct), rank: CLIMB_CATEGORIES.indexOf(c.category), label: climbNamedLabel(c), s: climbSurfaceOf(c), b: c.busy === true },
       geometry: { type: "Point", coordinates: [c.lon, c.lat] },
     })),
   };

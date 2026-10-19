@@ -477,16 +477,16 @@ def climb_words(climb: Climb) -> str:
 
 
 def sentence(item: Ridden, scale: float = 1.0) -> str:
-    """One line of the description: "At 3.2 mi (5.1 km): Category 4 climb, 0.8 miles
-    (1.3 km) at 5.0%, 262 ft (80 m) gained, to the summit at 4.0 mi (6.4 km)." and,
-    where the file says so, the trail it is on and that it is mostly unpaved."""
+    """One line of the description: "At 3.2 mi (5.1 km): Snider Lane, Category 4 climb,
+    0.8 miles (1.3 km) at 5.0%, 262 ft (80 m) gained, to the summit at 4.0 mi (6.4 km)."
+    with the climb's name where the file has one (`pipeline.climb_names`) and, where it
+    says so, that it is mostly unpaved."""
     climb = item.climb
+    named = f"{climb.name}, " if climb.name else ""
     text = (
-        f"At {point_words(item.start_m * scale)}: {climb_words(climb)}, "
+        f"At {point_words(item.start_m * scale)}: {named}{climb_words(climb)}, "
         f"to the summit at {point_words(item.summit_m * scale)}."
     )
-    if climb.name:
-        text += f" On the {climb.name}."
     if climb.unpaved:
         text += " Mostly unpaved."
     return text

@@ -233,3 +233,4 @@ def test_bundled_file_is_well_formed():
         # The gain is rounded in the file, so a score just over 4,000 may show as 40 m.
         assert c["l"] >= 500 and c["g"] >= 1.0 and c["r"] >= 40
         assert len(c["line"]) >= 2 and [c["x"], c["y"]] == c["line"][-1]
+        assert "n" not in c or (isinstance(c["n"], str) and c["n"].strip())
