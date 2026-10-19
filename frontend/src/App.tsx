@@ -218,7 +218,7 @@ import { BACK_LABEL, SHEET_TITLES, backFrom, openOnto, type Opened } from "./lib
 import { announceLevel, readAnnounceChoice, saysExtra, writeAnnounceChoice, type AnnounceChoice, type AnnounceLevel } from "./lib/announceLevel.ts";
 import { letterKeyIndex, letterPlaces, placeLetter } from "./lib/letteredPlaces.ts";
 import { FIRST_ANSWER_PINS, keepOptions, keepsFirst, optionName, optionPins, optionReplaySaid, optionSaid, optionsKey, pickedOption, replayFor, replaysFirst, sentPlanKey, stationlessUnavailable, type FirstAnswer, type KeptOptions } from "./lib/bikeshareOptions.ts";
-import { GO_START_SAID, GO_START_UNAVAILABLE, goHereStart, goStartStale, goDestinationLocating, goDestinationNeedsStart, goPickAction, goPlaceName, goStartLine, YOUR_LOCATION, goTapRoutedSaid, goTapSetsEnd, goPressLocatingSaid, goPressNeedsStartSaid, goDestinationNeedsStartBecause, goPressNeedsStartBecause, GO_PRESS_LOCATING_SAY_MS, hasPlanLink, laterMyGoApplies, modeSaid, openingMode, readLastReview, readTabMode, reopenReview, shouldAskGoStart, switchModes, writeLastReview, writeTabMode, type AppMode, type GoStart } from "./lib/appMode.ts";
+import { GO_START_SAID, GO_START_UNAVAILABLE, GO_PICK_LOOK_MS, goHereStart, goPickStart, goStartStale, goDestinationLocating, goDestinationNeedsStart, goPickAction, goPlaceName, goStartLine, YOUR_LOCATION, goTapRoutedSaid, goTapSetsEnd, goPressLocatingSaid, goPressNeedsStartSaid, goDestinationNeedsStartBecause, goPressNeedsStartBecause, GO_PRESS_LOCATING_SAY_MS, hasPlanLink, laterMyGoApplies, modeSaid, openingMode, readLastReview, readTabMode, reopenReview, shouldAskGoStart, switchModes, writeLastReview, writeTabMode, type AppMode, type GoStart } from "./lib/appMode.ts";
 import { ReviewMode } from "./ReviewMode.tsx";
 import type { ListKey } from "./lib/review.ts";
 import { MY_GO_NOT_SAVED, MY_GO_SAVED, MY_GO_SAVED_DEVICE, fetchMyGo, goRideChips, OWN_RIDE_HINT, readStartMyGo, saveAccountCopy, saveDeviceMyGo, saveMyGo, type Home, type MyGo } from "./lib/myGo.ts";
@@ -2020,6 +2020,32 @@ export function App() {
   // The opening look-up answers after later renders: it routes through the current one.
   const routeGoRef = useRef(routeGo);
   routeGoRef.current = routeGo;
+  // Go's destinations, numbered: a look-up for one answers only while it is still the latest.
+  const goPickSeq = useRef(0);
+  // A destination's fresh look-up (goPickStart): the fix if it comes within GO_PICK_LOOK_MS, else null (a failure, the
+  // gate busy with another look-up, or slow). Quiet: the route's own words follow. A fix that comes later still moves
+  // the dot and Go's start, and a destination waiting on the gate meanwhile is settled by it, as by any look-up.
+  const goPickFix = (): Promise<Fix | null> =>
+    new Promise((resolve) => {
+      const late = window.setTimeout(() => resolve(null), GO_PICK_LOOK_MS);
+      void locateForGo(true).then((result) => {
+        window.clearTimeout(late);
+        if (result && goWaitingRef.current()) {
+          goSettleRef.current(result);
+          resolve(null);
+          return;
+        }
+        if (result?.ok && insideCoverage(result.fix.point)) {
+          setHere(result.fix);
+          // Go's start is renewed: moved to the fix, or kept where it was (with the early route) for a rider who has not moved.
+          const was = goStartRef.current;
+          if (was.kind === "here" && pointsRef.current.length === 0) setGoStart(goHereStart(goPickStart(was.point, result.fix).point));
+          resolve(result.fix);
+          return;
+        }
+        resolve(null);
+      });
+    });
   const goTo = async (dest: LonLat, name: string, pressed = false, vias: LonLat[] = []) => {
     cancelLocateNotice();
     setNotice(null);
@@ -2028,11 +2054,32 @@ export function App() {
       return;
     }
     // The start Go already has: the plan's first point (typed, from the link or placed in Plan), else the location
-    // found when Go opened. While the location is still being found, the destination waits for it.
+    // found in the last GO_START_MAX_AGE_MS, looked up again for this destination. While the location is still being
+    // found, the destination waits for it.
     const action = goPickAction(pointsRef.current, goStartRef.current);
+    const pick = ++goPickSeq.current;
     if (action.kind === "route") {
       clearGoPending();
-      routeGo(action.point, action.located, dest, name, pressed, vias);
+      if (!action.located) {
+        routeGo(action.point, false, dest, name, pressed, vias);
+        return;
+      }
+      // The start is the location: looked up again for this destination (goPickStart), for at most GO_PICK_LOOK_MS.
+      // A press is said, with what it waits for, once the look-up has taken GO_PRESS_LOCATING_SAY_MS, as a press that
+      // waits for a start is; then the route's own words do not say "Destination set" again.
+      let said = false;
+      const slow = pressed
+        ? window.setTimeout(() => {
+            if (pick !== goPickSeq.current) return;
+            said = true;
+            setNoticeSaying(goDestinationLocating(name), goPressLocatingSaid(name));
+          }, GO_PRESS_LOCATING_SAY_MS)
+        : undefined;
+      const fix = await goPickFix();
+      window.clearTimeout(slow);
+      // A newer pick, a route made meanwhile or a switch to Plan: this pick is over.
+      if (pick !== goPickSeq.current || pointsRef.current.length > 0 || modeRef.current !== "go") return;
+      routeGo(goPickStart(action.point, fix).point, true, dest, name, pressed && !said, vias);
       return;
     }
     // A pressed destination with no start yet: kept for the start as a picked one is, and said set together with
@@ -2192,7 +2239,7 @@ export function App() {
   useEffect(() => {
     if (mode === "go" && !riding && points.length === 0 && goStart.kind === "here" && homeEarly) goEarly(homeEarly);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- asked once each time these change, not each render
-  }, [mode, riding, points.length, goStart.kind, goStart.kind === "here" ? goStart.at : 0, homeEarly?.[0], homeEarly?.[1]]);
+  }, [mode, riding, points.length, goStart.kind, goStart.kind === "here" ? goStart.point[0] : 0, goStart.kind === "here" ? goStart.point[1] : 0, homeEarly?.[0], homeEarly?.[1]]);
   // Go's Locate (the top bar): the map goes to the rider, and nothing is added to the plan.
   const goLocate = async () => {
     const result = await locateForGo();
@@ -2208,7 +2255,7 @@ export function App() {
       return;
     }
     setHere(result.fix);
-    // Go's start (the location, before a destination) moves with it, so the next pick need not look again.
+    // Go's start (the location, before a destination) moves with it.
     if (goStartRef.current.kind === "here" && pointsRef.current.length === 0 && insideCoverage(result.fix.point)) setGoStart(goHereStart(result.fix.point));
     if (!insideCoverage(result.fix.point)) setNotice(LOCATION_OUTSIDE);
     else announceExtra("The map is at your location.");

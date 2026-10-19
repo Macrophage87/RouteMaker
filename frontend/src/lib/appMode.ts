@@ -16,7 +16,7 @@
 
 import { coordinatesText } from "./geocode.ts";
 import { LOCATE_MESSAGES, type LocateFailure } from "./geolocation.ts";
-import type { LonLat } from "./geo.ts";
+import { haversineM, insideCoverage, type LonLat } from "./geo.ts";
 
 /**
  * Review (the owner, 2026-10-16: "Basically we'd have 3 modes for people who have admin access go/plan/review") is
@@ -248,6 +248,21 @@ export function goPickAction(points: readonly [number, number][], start: GoStart
   const known = goRouteStart(points, start, now);
   if (known !== null) return { kind: "route", ...known };
   return start.kind === "locating" ? { kind: "wait" } : { kind: "locate" };
+}
+
+/**
+ * A destination set in Go when Go's start is the location (the owner, 2026-10-19: "update when setting a destination
+ * too"): the location is looked up again, for at most GO_PICK_LOOK_MS, so the route starts where the rider is now.
+ * A fix that came in time, inside the map and more than GO_PICK_MOVED_M from the start Go had is the start; otherwise
+ * the start Go had (found within GO_START_MAX_AGE_MS, or the pick would have looked it up from scratch) stands, so a
+ * rider who has not moved keeps the route asked for early (goEarly) and a slow GPS never holds the route up for long.
+ */
+export const GO_PICK_LOOK_MS = 3_000;
+export const GO_PICK_MOVED_M = 25;
+
+export function goPickStart(prior: [number, number], fix: { point: [number, number] } | null): { point: [number, number]; moved: boolean } {
+  if (fix && insideCoverage(fix.point) && haversineM(prior, fix.point) > GO_PICK_MOVED_M) return { point: fix.point, moved: true };
+  return { point: prior, moved: false };
 }
 
 /** Shown and said while a picked destination waits for the location. */

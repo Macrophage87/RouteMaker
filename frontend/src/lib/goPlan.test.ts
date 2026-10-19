@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { GO_START_SAID, GO_START_UNAVAILABLE, GO_START_MAX_AGE_MS, goHereStart, goStartStale, MODE_LABEL, goDestinationLocating, goDestinationNeedsStart, goPickAction, goTapSetsEnd, goDestinationSet, goPressLocatingSaid, goPressNeedsStartSaid, GO_PRESS_LOCATING_SAY_MS, goStartFailedReason, goDestinationNeedsStartBecause, goPressNeedsStartBecause, goTapRoutedSaid, goPlaceName, OPEN_IN_LABEL, TAB_MODE_KEY, goRouteStart, goStartLine, hasPlanLink, shouldAskGoStart, laterMyGoApplies, modeSaid, openingMode, readTabMode, writeTabMode } from "./appMode.ts";
+import { GO_START_SAID, GO_START_UNAVAILABLE, GO_START_MAX_AGE_MS, GO_PICK_MOVED_M, goPickStart, goHereStart, goStartStale, MODE_LABEL, goDestinationLocating, goDestinationNeedsStart, goPickAction, goTapSetsEnd, goDestinationSet, goPressLocatingSaid, goPressNeedsStartSaid, GO_PRESS_LOCATING_SAY_MS, goStartFailedReason, goDestinationNeedsStartBecause, goPressNeedsStartBecause, goTapRoutedSaid, goPlaceName, OPEN_IN_LABEL, TAB_MODE_KEY, goRouteStart, goStartLine, hasPlanLink, shouldAskGoStart, laterMyGoApplies, modeSaid, openingMode, readTabMode, writeTabMode } from "./appMode.ts";
 import {
   ACCOUNT_COPY_KEY,
   DEVICE_KEY,
@@ -483,4 +483,20 @@ test("go start: Go looks a stale start up again when the page comes back into vi
   assert.match(app, /document\.addEventListener\("visibilitychange", onVisible\)/);
   assert.match(app, /if \(!goStartStale\(goStartRef\.current\)\) return;/);
   assert.doesNotMatch(app, /setGoStart\(\{ kind: "here"/, "every found start is stamped (goHereStart)");
+});
+
+test("go pick: a destination set in Go routes from a fresh fix once the rider has moved (the owner, 2026-10-19)", () => {
+  const prior: [number, number] = [-77.07, 38.905];
+  assert.deepEqual(goPickStart(prior, null), { point: prior, moved: false }, "no fix in time: the start Go had (under 2 min old)");
+  assert.deepEqual(goPickStart(prior, { point: [-77.0701, 38.905] }), { point: prior, moved: false }, "about 9 m: not moved, the early route still matches");
+  assert.deepEqual(goPickStart(prior, { point: [-76.99, 38.91] }), { point: [-76.99, 38.91], moved: true });
+  assert.deepEqual(goPickStart(prior, { point: [-80, 38.9] }), { point: prior, moved: false }, "a fix outside the map is not the start");
+  assert.equal(GO_PICK_MOVED_M, 25);
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  const goTo = app.slice(app.indexOf("const goTo = async"), app.indexOf("const settleGoWaiting"));
+  assert.match(goTo, /const fix = await goPickFix\(\);\s*window\.clearTimeout\(slow\);\s*\/\/[^\n]*\n\s*if \(pick !== goPickSeq\.current \|\| pointsRef\.current\.length > 0 \|\| modeRef\.current !== "go"\) return;\s*routeGo\(goPickStart\(action\.point, fix\)\.point, true, dest, name, pressed && !said, vias\);/);
+  // The look-up is bounded and settles a destination waiting on the gate, as every look-up does.
+  const fix = app.slice(app.indexOf("const goPickFix"), app.indexOf("const goTo = async"));
+  assert.match(fix, /window\.setTimeout\(\(\) => resolve\(null\), GO_PICK_LOOK_MS\)/);
+  assert.match(fix, /if \(result && goWaitingRef\.current\(\)\) \{\s*goSettleRef\.current\(result\);/);
 });
