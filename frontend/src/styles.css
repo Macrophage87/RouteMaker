@@ -3840,8 +3840,30 @@ details.zoom-notes {
   margin-left: auto;
 }
 
-/* Narrow phones: Road closed is its icon alone (its name stays "Road closed ahead"), so the top row stays one line. */
-@media (max-width: 379px) {
+/* Near dawn or dusk the light times in the corner, in place of "Ride mode" (the owner, 2026-10-19): a line each, small. */
+.ride-top .ride-light {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.8rem;
+  line-height: 1.2;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.ride-light-lines {
+  display: flex;
+  flex-direction: column;
+}
+
+/*
+ * Narrow phones and large text: Road closed is its icon alone (its name stays "Road closed ahead"), so the top row
+ * stays one line. Measured in the row's own text size, so a larger system font hides the words sooner.
+ */
+.ride-top {
+  container-type: inline-size;
+}
+
+@container (max-width: 25em) {
   .ride-top-label {
     position: absolute;
     width: 1px;
@@ -3910,16 +3932,21 @@ details.zoom-notes {
 
 .cue-shape {
   flex: none;
-  width: 56px;
-  height: 64px;
+  width: 44px;
+  height: 50px;
   color: var(--text);
 }
 
 .cue-distance {
-  font-size: 1.9rem;
+  font-size: 1.75rem;
+  line-height: 1.15;
   font-weight: 700;
   margin: 0;
   font-variant-numeric: tabular-nums;
+}
+
+.cue-distance-metric {
+  font-size: 0.65em;
 }
 
 /* GPS weak (RideMode, review RIDE-3): the distance is from the last good fix, so it is greyed; the GPS
@@ -3930,7 +3957,16 @@ details.zoom-notes {
 
 .cue-text {
   font-size: 1.25rem;
+  line-height: 1.25;
   margin: 2px 0;
+}
+
+/* What follows the cue's first comma ("No signal mapped, busy road (LTS 3)."): small print under it. */
+.cue-more {
+  font-size: 0.9rem;
+  line-height: 1.25;
+  margin: 0;
+  color: var(--text-muted);
 }
 
 .cue-then {
@@ -3960,7 +3996,8 @@ details.zoom-notes {
   display: flex;
   flex-wrap: wrap;
   gap: 4px 18px;
-  margin: 6px 0 0;
+  margin: 4px 0 0;
+  font-size: 0.9rem;
 }
 
 .ride-togo div {
@@ -3987,6 +4024,79 @@ details.zoom-notes {
 .start-ride button {
   min-height: 44px;
   padding: 8px 14px;
+}
+
+/*
+ * End ride as a slide (RideMode's SlideToEnd; the owner, 2026-10-19): a pill with the words, a round thumb at its
+ * left slid to the right end. The native range sits over the whole pill, so a touch anywhere on it drags.
+ */
+.ride .ride-slide {
+  position: relative;
+  box-sizing: border-box;
+  width: 8.5em;
+  min-height: 44px;
+  padding: 0;
+  border: 2px solid var(--error-text);
+  border-radius: 22px;
+  color: var(--error-text);
+  justify-content: center;
+}
+
+.ride-slide-text {
+  padding-left: 36px;
+  padding-right: 8px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.ride-slide-arrows {
+  margin-left: 4px;
+}
+
+.ride-slide-range {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  background: transparent;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: grab;
+}
+
+.ride-slide-range::-webkit-slider-runnable-track {
+  height: 100%;
+  background: transparent;
+}
+
+.ride-slide-range::-moz-range-track {
+  height: 100%;
+  background: transparent;
+}
+
+.ride-slide-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 36px;
+  height: 36px;
+  margin-top: 2px;
+  border-radius: 50%;
+  background: var(--error-text);
+  border: none;
+}
+
+.ride-slide-range::-moz-range-thumb {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--error-text);
+  border: none;
+}
+
+.ride-slide-range:focus-visible {
+  outline-offset: 3px;
+  border-radius: 22px;
 }
 
 .ride button.danger {
@@ -4114,6 +4224,10 @@ details.zoom-notes {
 
 .ride-big .cue-text {
   font-size: 1.9rem;
+}
+
+.ride-big .cue-more {
+  font-size: 1.25rem;
 }
 
 .ride-big .cue-shape {
