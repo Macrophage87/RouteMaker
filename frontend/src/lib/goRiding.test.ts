@@ -107,7 +107,7 @@ test("Ride settings in reach: a gear at the end of the side buttons opens them j
   assert.match(top, /<span className="ride-top-label">\{ROAD_CLOSED_TEXT\}<\/span>/);
   // With the light times in the corner, the words go a little sooner.
   assert.match(css, /@container \(max-width: 23em\) \{\s*\.ride-top-label \{\s*position: absolute;/);
-  assert.match(css, /@container \(max-width: 25em\) \{\s*\.ride-light ~ \.ride-top-actions \.ride-top-label \{\s*position: absolute;/);
+  assert.match(css, /@container \(max-width: 26em\) \{\s*\.ride-light ~ \.ride-top-actions \.ride-top-label \{\s*position: absolute;/);
   assert.match(top, /ref=\{settingsPanel\}\s+id=\{`\$\{settingsId\}-settings`\}\s+className="ride-mode-settings"\s+role="group"\s+aria-label=\{RIDE_SETTINGS_TITLE\}\s+hidden=\{!settingsOpen\}\s+tabIndex=\{-1\}/);
   // The gear comes after the panel: opened, the focus goes into it; Escape there closes it, back to the gear.
   assert.match(ride, /settingsPanel\.current\?\.focus\(\{ preventScroll: true \}\);/);

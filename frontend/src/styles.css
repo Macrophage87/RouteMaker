@@ -3864,7 +3864,7 @@ details.zoom-notes {
   container-type: inline-size;
 }
 
-@container (max-width: 25em) {
+@container (max-width: 26em) {
   .ride-light ~ .ride-top-actions .ride-top-label {
     position: absolute;
     width: 1px;
@@ -4045,7 +4045,6 @@ details.zoom-notes {
 .ride .ride-slide {
   position: relative;
   box-sizing: border-box;
-  width: 7.5em;
   min-height: 44px;
   padding: 0;
   border: 2px solid var(--error-text);
@@ -4055,8 +4054,8 @@ details.zoom-notes {
 }
 
 .ride-slide-text {
-  padding-left: 36px;
-  padding-right: 8px;
+  padding-left: 42px;
+  padding-right: 12px;
   white-space: nowrap;
   pointer-events: none;
 }
