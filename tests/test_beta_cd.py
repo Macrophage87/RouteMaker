@@ -1708,6 +1708,7 @@ def test_the_handout_and_runbook_say_what_a_deploy_looks_like() -> None:
 # --- the owner's alerts (alert.sh, review OPS-1) ---
 
 STUB_ALERT = """#!/bin/sh
+# knows: release-notes)
 printf '%s|' "$@" >> "$STUB_ALERTS"; echo >> "$STUB_ALERTS"
 """
 
@@ -1736,3 +1737,89 @@ def test_a_quiet_pass_sends_nothing_and_a_missing_alert_script_is_fine(beta: Bet
     beta.agent("run", STUB_ALERTS=str(beta.tmp / "alerts.log"))
     # Up to date only clears an earlier alert (alert.sh posts "working again" only after one).
     assert _alerts(beta) == ["clear|deploy|the release agent is working again (v0.1.0 deployed)|"]
+
+
+def _alert_stub(beta: Beta, text: str = STUB_ALERT) -> None:
+    (beta.cd / "bin" / "alert.sh").write_text(text)
+    (beta.cd / "bin" / "alert.sh").chmod(0o755)
+
+
+def _release_hook(beta: Beta) -> None:
+    (beta.state / "release-webhook").write_text("https://discord.com/api/webhooks/1/x\n")
+
+
+def test_a_deploy_also_posts_the_releases_notes_for_riders(beta: Beta) -> None:
+    _alert_stub(beta)
+    _release_hook(beta)
+    beta.release("v0.2.0", {"docs/releases/v0.2.0.md": "**Fixed**\n- a thing\n"})
+    done = beta.agent("run", STUB_HAS_IMAGES="1", STUB_ALERTS=str(beta.tmp / "alerts.log"))
+    assert done.returncode == 0, done.stdout + done.stderr
+    sent = _alerts(beta)
+    assert sent[0].startswith("note|deployed v0.2.0 ")
+    notes = beta.src / "docs" / "releases" / "v0.2.0.md"
+    assert f"release-notes|v0.2.0|{notes}|" in sent
+    assert sent[-1] == "clear|release-notes|the release notes for v0.2.0 are posted|"
+    assert notes.read_text() == "**Fixed**\n- a thing\n"  # the deployed checkout's own file
+
+
+# What a full code deploy needs from the stubs (as in the green code release test).
+DEPLOY = {"STUB_HAS_IMAGES": "1", "STUB_RUNNING": "postgis", "STUB_PENDING": "1"}
+
+
+def test_a_deploy_refreshes_the_installed_alert_script_first(beta: Beta) -> None:
+    _alert_stub(beta)
+    _release_hook(beta)
+    newer = STUB_ALERT.replace("printf '%s|'", "printf 'new|' >> \"$STUB_ALERTS\"; printf '%s|'")
+    beta.release("v0.2.0", {"scripts/beta/alert.sh": newer})
+    done = beta.agent("run", **DEPLOY, STUB_ALERTS=str(beta.tmp / "alerts.log"))
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert (beta.cd / "bin" / "alert.sh").read_text() == newer
+    sent = _alerts(beta)
+    assert sent and all(line.startswith("new|") for line in sent)
+    assert any(line.startswith("new|release-notes|v0.2.0|") for line in sent), sent
+
+
+def test_release_notes_are_retried_on_an_up_to_date_pass(beta: Beta) -> None:
+    _alert_stub(beta)
+    _release_hook(beta)
+    beta.agent("run", STUB_ALERTS=str(beta.tmp / "alerts.log"))
+    notes = beta.src / "docs" / "releases" / "v0.1.0.md"
+    assert f"release-notes|v0.1.0|{notes}|" in _alerts(beta)
+    (beta.state / "alerts").mkdir(exist_ok=True)
+    (beta.state / "alerts" / "release-posted").write_text("v0.1.0\n")
+    (beta.tmp / "alerts.log").unlink()
+    beta.agent("run", STUB_ALERTS=str(beta.tmp / "alerts.log"))
+    assert not any(line.startswith("release-notes|") for line in _alerts(beta))
+
+
+def test_a_failing_release_post_is_reported_and_never_fails_the_pass(beta: Beta) -> None:
+    failing = STUB_ALERT + 'case "$1" in release-notes) exit 1 ;; esac\n'
+    _alert_stub(beta, failing)
+    _release_hook(beta)
+    done = beta.agent("run", STUB_ALERTS=str(beta.tmp / "alerts.log"))
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert _alerts(beta)[-1].startswith("send|release-notes|v0.1.0|the release notes for v0.1.0")
+
+
+def test_an_old_or_broken_alert_script_leaves_the_deploy_alone(beta: Beta) -> None:
+    _release_hook(beta)
+    _alert_stub(beta, "#!/bin/sh\nexit 2\n")  # an alert.sh from before release-notes
+    beta.release("v0.2.0", {"src/core/b.py": "y = 1\n"})
+    done = beta.agent("run", **DEPLOY)
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "deployed: v0.2.0" in beta.status()
+    _alert_stub(beta, "#!/bin/sh\n# release-notes)\nexit 2\n")  # knows it, and fails at it
+    beta.release("v0.3.0", {"src/core/b.py": "y = 2\n"})
+    done = beta.agent("run", **DEPLOY)
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "deployed: v0.3.0" in beta.status()
+
+
+def test_a_held_release_posts_no_release_notes(beta: Beta) -> None:
+    _alert_stub(beta)
+    _release_hook(beta)
+    (beta.state / "alerts").mkdir(exist_ok=True)
+    (beta.state / "alerts" / "release-posted").write_text("v0.1.0\n")
+    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"}, annotated=False)
+    beta.agent("run", STUB_ALERTS=str(beta.tmp / "alerts.log"))
+    assert not any(line.startswith("release-notes|") for line in _alerts(beta))

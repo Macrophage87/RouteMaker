@@ -175,6 +175,49 @@ def test_a_road_the_rider_marked_closed_stays_out_of_every_request(client, monke
 
 
 @db
+@pytest.mark.usefixtures("weekday_clock", "segments")
+def test_ddots_permits_are_never_routed_round(client, monkeypatch) -> None:
+    """v0.9.1: DDOT's permits are flagged, never routed round, with `closures_now` or not."""
+    from test_route_api import VERTICES, FakeRouter, good_body, post, route_answer, trace_answer
+
+    from core import routing
+
+    until = datetime.now(UTC) + timedelta(days=30)
+    side = ((-77.04, NORTH), (-77.03, NORTH))
+    permit = wz.Zone("dc-p", "dc", wz.CLOSED, 0, side, "Side Road", None, None, until)
+    BikeshareFeedCache.objects.create(
+        key=workzones.KEY,
+        payload={"feeds": {"dc": {"read_at": datetime.now(UTC).isoformat(),
+                                  "zones": [permit.to_json()]}}},
+        fetched_at=datetime.now(UTC),
+    )  # fmt: skip
+    fake = FakeRouter(
+        {
+            "route": lambda payload: route_answer([(VERTICES, 2.2, [10.0] * 5)]),
+            "trace_attributes": trace_answer(VERTICES, [(101, 0, 4, 2.2)]),
+        }
+    )
+    sent: list[dict] = []
+
+    def transport(url, payload, timeout):
+        sent.append({"url": url, **json.loads(json.dumps(payload))})
+        return fake(url, payload, timeout)
+
+    monkeypatch.setattr(routing, "_transport", transport)
+
+    def first_route(body) -> dict:
+        sent.clear()
+        response = post(client, body)
+        assert response.status_code == 200, response.content
+        return next(p for p in sent if p["url"].endswith("/route"))
+
+    planned = first_route(good_body())
+    assert not planned.get("exclude_polygons"), "a permit is never routed round"
+    go = first_route({**good_body(), "closures_now": True})
+    assert not go.get("exclude_polygons")
+
+
+@db
 @pytest.mark.usefixtures("segments")
 def test_blocked_lines_are_checked(client) -> None:
     from test_route_api import good_body, post

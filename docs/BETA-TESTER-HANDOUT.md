@@ -83,12 +83,17 @@ needed; reload the page to get the box back.
   paths where bikes are not allowed until the next map update. Press the button again, or
   Escape, to close it; the focus stays on the button. It is not shown in Ride mode.
 - The "Layers" page (a button in the bar at the bottom of the planner) has one row per section:
-  Traffic stress, Water and restrooms, Rail stations and Trails and terrain (and Federal land on a
-  Mass Ride). Each row is the section's heading, a switch named for it, then a "layers" button that
+  Traffic stress, Water and restrooms, Rail stations, Bikeshare and e-bikes, Places to see and
+  Trails and terrain (and Federal land on a Mass Ride). In Plan two more follow, both off by
+  default: Scenic, and DC permits (roads DDOT's work permits may close; routes never avoid them). Each row is the section's heading, a switch named for it, then a "layers" button that
   says whether it is collapsed or expanded. The switch turns the whole section on or off; off
   remembers which of its layers were on, and on brings those back. With only some on, it is on
   and says "Some on" and which. Expand a row for each layer's own switch and a one-line hint; the
   longer explanations are on the Legend page (the Legend button at the top of Layers).
+- In Plan, the "Manual mode" switch in the map's bar joins each point you tap to the last by a
+  straight line, for a path the planner won't take. It says when it turns on and off.
+- To delete your account: Settings, Account, Delete account. The page says what is deleted and
+  what is kept, and asks you to tick one box first.
 - The "High contrast" switch is on the "Settings" page (the last button in the same bar). It
   makes the lines bolder and the borders and text stronger, and changes the stress colors to
   ones that do not rely on red and green.
@@ -100,7 +105,9 @@ needed; reload the page to get the box back.
   starts. While it is on, the skip link says "Skip to ride mode" and the planner is hidden. Cues
   never move your focus: they are said through two live regions (the urgent ones, such as
   "Left now" and leaving the route, interrupt), or by RouteMaker's own voice, as you chose. With
-  the focus anywhere in Ride mode, W says where you are and C puts the map back on you.
+  the focus anywhere in Ride mode, W says where you are and C puts the map back on you. "End
+  ride" is a slider until you arrive: move it to the end (the arrow keys or End, or your screen
+  reader's adjust gesture) to end the ride.
 - Installing and offline (section 10): "Install the app" and "Routes kept for offline" are
   headings on the Settings page. Each kept route has an "Open" and a "Remove" button that name
   the route. Remove says what it removed and puts the focus on the next route's Remove, or on
@@ -148,11 +155,14 @@ You stay responsible for riding safely; the route can be wrong.
 - "Where am I?" says the street you are on, the next turn and the distance to the next stop
   and the end. On a long trail away from roads it says the trail and a distance from its last
   junction, for example "On the Capital Crescent Trail, about 1.2 miles northwest of ...".
+- End ride is a slide: slide it to the right to end the ride, so a bump doesn't end it. Once you
+  have arrived it is a plain button. Near sunrise or sunset, the top corner shows the sunrise or
+  sunset and civil twilight times.
 - Off the route for a few seconds, it says so and finds a new way from where you are. "Keep
   the planned route" says which way the route is instead.
 - At Start ride the map along the route, about 1,000 ft (300 m) either side, is saved on the
   phone, so it still shows in a dead spot with no signal. A line under the buttons says what was
-  saved. It lasts for this ride only: it is cleared when you press "End ride", when the next
+  saved. It lasts for this ride only: it is cleared at "End ride", when the next
   ride starts, and if you reload or reopen the page (a ride does not carry on after a reload).
   Finding a new way off the route still needs a signal.
 - "Report a problem to DC 311" (Washington, DC only) writes a report for a pothole (chosen
@@ -172,7 +182,7 @@ You stay responsible for riding safely; the route can be wrong.
 - Keep the screen on. If the browser cannot keep it on, Ride mode says so; on an iPhone set
   Settings, Display and Brightness, Auto-Lock to Never for the ride. In the background for more
   than 10 minutes, the ride pauses; press Resume.
-- "Big text during a ride" (in Settings, and in the ride's own Settings) hides the map and shows the next cue large. "End ride" goes back to the planner.
+- "Big text during a ride" (in Settings, and in the ride's own Settings) hides the map and shows the next cue large. Ending the ride goes back to the planner.
 
 
 10. Installing RouteMaker, and routes for places with no signal
@@ -199,7 +209,7 @@ RouteMaker can be installed like an app: it then opens from your home screen in 
   installed app keeps them.
 - When a new version is ready, a line at the top of the planner says "A new version of
   RouteMaker is ready." with a "Reload" button. It never interrupts a ride: it waits until you
-  press "End ride". With no signal, a line there says you are offline.
+  use "End ride". With no signal, a line there says you are offline.
 
 11. Bike and transit together
 -----------------------------
@@ -245,6 +255,8 @@ descriptions. Plan's "Change" ride type list has the same search and groups. Typ
   (July 4)." Bikeshare + 🚶🚆🚌 still uses Metro, because you walk on.
 - If the beta has no timetables installed, or they have run out, Metro still runs on its typical
   timetable; the other systems wait until the timetables are rebuilt.
+- In Go, More, Metro lists the three nearest Metro stations, with a badge on any that's closed.
+  Elevator outages show on the station icons on the map.
 - Before Metro opens, the step names the first train, for example "first train 5:00 am
   scheduled".
 - Always check the agency for track work and service alerts before you go. RouteMaker does not
