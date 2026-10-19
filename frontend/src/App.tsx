@@ -4,7 +4,7 @@ import { MapView, type Frame, type LineEdit, type StressAvailability } from "./M
 import { RoadInfoDialog } from "./RoadInfoDialog.tsx";
 import { MapTools } from "./MapTools.tsx";
 import { ACCESS_LABEL, accessModeToggle, readAccessMode, writeAccessMode } from "./lib/accessMode.ts";
-import { placeAtSpot, requestAfterClose, type InfoRequest } from "./lib/roadInfo.ts";
+import { placeAtSpot, requestAfterClose, TRAIL_RIDE_TYPES, type InfoRequest } from "./lib/roadInfo.ts";
 import { stationNearSpot } from "./lib/stationLinks.ts";
 import { reorder } from "./lib/pointMover.ts";
 import { canDragLine, dropStillValid, insertIntoRide, legEnds, legPoints } from "./lib/lineEdit.ts";
@@ -15,14 +15,14 @@ import { betterRouteSaid, EarlyStart, takesRefined } from "./lib/progressive.ts"
 import { RAIL_STATUS_MS, closedReason, matchAlerts, withMetroClosed, matchClosures, requestClosures, type RailStatus } from "./lib/railClosures.ts";
 import { COVERAGE_BBOX, MAX_POINTS, addPoint, haversineM, insideCoverage, type LonLat } from "./lib/geo.ts";
 import { formatSeconds } from "./lib/format.ts";
-import { endsOnFoot, presetSaid, twoPointsOnly, usesBikeshare, type PresetId } from "./lib/presets.ts";
+import { endsOnFoot, layersTurnedOn, presetSaid, twoPointsOnly, usesBikeshare, type PresetId } from "./lib/presets.ts";
 import { atFromHash, decodePlan, encodePlan } from "./lib/planHash.ts";
 import { RouteScheduler, type SchedulerState } from "./lib/routeScheduler.ts";
 import { confirmedUpTo, sendsConfirmation, spanKm } from "./lib/longRide.ts";
 import { forgetPlan, planToOpen, tabSession } from "./lib/signIn.ts";
 import { STILL_PLANNING_AFTER_MS, announceRoute, stillPlanningSaid } from "./lib/summary.ts";
 import { focusesPlanButton, opensSheet, sheetOrder, type SheetSection } from "./lib/sheet.ts";
-import { neutralPaletteSearch, setMtbTrails, setRoutableMtb } from "./stressStyle.js";
+import { neutralPaletteSearch, MTB_MIN_ZOOM, setMtbTrails, setRoutableMtb } from "./stressStyle.js";
 import { setTopoLines, topoAvailable, useTopoLines } from "./lib/topoLines.ts";
 import { isMtb, mtbChosen, mtbLevelOf } from "./lib/mtbMode.ts";
 import { choose as chooseRideType } from "./lib/rideTypeDialog.ts";
@@ -59,6 +59,7 @@ import { useStressStyle } from "./useStressStyle.ts";
 import { ANNOUNCE_SETTLE_MS } from "./lib/settle.ts";
 import { skipToPlanner, SKIP_LINK_TEXT, SKIP_TO_RIDE_TEXT } from "./lib/skipLink.ts";
 import { BetaChip, betaReportUrl, isBetaBuild } from "./lib/betaBanner.ts";
+import { MtbMapKey } from "./lib/stressLegend.ts";
 import { announceHow } from "./lib/candidates.ts";
 import { canReverse, loopStops, loopView, reversedPoints } from "./lib/loop.ts";
 import { FINDING_ORDER_SAID, STILL_FINDING_ORDER_SAID, applyAnswer, requestStopOrder, stopsThatMove } from "./lib/stopOrder.ts";
@@ -1714,7 +1715,9 @@ export function App() {
   // The road panel's Set as start / Set as end / Add as stop (OWNER-DECISIONS 441n): the spot
   // right-clicked or held (or the map's center by keyboard), as the search's choice places a
   // place: the coverage check, the cap, the loop; an edit like any other, undone and redone.
-  const placeSpot = useCallback((choice: PlaceChoice, point: LonLat) => {
+  const placeSpot = useCallback((choice: PlaceChoice, spot: LonLat, asVia = false) => {
+    // A tapped trail's Route through this trail: a via point, which shapes the route and is never a stop.
+    const point: LonLat = asVia ? VIA_MARKS.via([spot[0], spot[1]]) : spot;
     cancelLocateNotice();
     if (!insideCoverage(point)) {
       setNotice(OUTSIDE_NOTICE);
@@ -2493,12 +2496,13 @@ export function App() {
   const choosePreset = (id: PresetId, next: Dials) => {
     const loopSaid = loopChangeSaid({ preset, dials }, { preset: id, dials: next }, points.length);
     rideTouched.current = true;
-    // Mountain Bike (slice 6) turns the mountain-bike and contour layers on (the owner's defaults of
-    // 2026-10-11), not remembered as the rider's own choice; its loop is on in `next` (mtbChosen).
-    if (isMtb(id) && !isMtb(preset)) {
-      setMtbTrails(true, { remember: false });
-      setTopoLines(true, { remember: false });
-    }
+    // Mountain Bike and Gravel turn the mountain-bike trails and contour layers on, Mountain Goat the contours
+    // and climbs (lib/presets.ts layersTurnedOn; the owner, 2026-10-19), not remembered as the rider's own
+    // choice; Mountain Bike's loop is on in `next` (mtbChosen).
+    const turnOn = layersTurnedOn(preset, id);
+    if (turnOn.mtb) setMtbTrails(true, { remember: false });
+    if (turnOn.topo) setTopoLines(true, { remember: false });
+    if (turnOn.climbs) setClimbsOnState(true);
     // Into or out of riding on foot, a point at a Metro station moves to the way in for the new ride type: its
     // elevator with a bike, its nearest entrance on foot (railStations.ts, stationMoves). One edit with the ride
     // type, so Undo puts both back; the point keeps its kind (a via, a drawn leg) and its station's name, and is said.
@@ -4340,6 +4344,7 @@ export function App() {
         }}
         plan={{ count: points.length, loop: loopVias }}
         onPlace={placeSpot}
+        trailRideType={TRAIL_RIDE_TYPES.has(preset)}
         onSetHome={(point) => void setHomeAt(point)}
       />
       {crosshairShown && (
@@ -4419,6 +4424,8 @@ export function App() {
           )}
         </div>
       )}
+      {/* The mountain-bike trails' key on the map (the owner, 2026-10-19), while their layer draws. */}
+      {!riding && <MtbMapKey drawn={stress === "available" && zoom !== null && zoom >= MTB_MIN_ZOOM} />}
       {/* The beta notice: a chip in the map's free bottom-left corner, only in a VITE_BETA=1 build. */}
       {!riding && (
         <BetaChip

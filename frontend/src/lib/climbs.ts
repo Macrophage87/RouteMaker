@@ -95,10 +95,11 @@ export function saveClimbsOn(on: boolean, store: Store | null = defaultStore()):
 /**
  * "Show climbs from" (the owner, 2026-10-12: "let people pick the minimum level to count for climbing on
  * the map"): the smallest category the layer shows, the list and the keyboard's way to a climb included.
- * Category 5 (every climb) unless the rider chose another on this device.
+ * Category 4 and up unless the rider chose another on this device (the owner, 2026-10-19: "Make the default
+ * climb filter at 4. 5 is too numerous"; it was 5, every climb).
  */
 export const CLIMBS_FROM_KEY = "routemaker.climbsFrom";
-export const CLIMBS_FROM_DEFAULT: ClimbCategory = "5";
+export const CLIMBS_FROM_DEFAULT: ClimbCategory = "4";
 
 export function readClimbsFrom(store: Store | null = defaultStore()): ClimbCategory {
   try {

@@ -340,7 +340,7 @@ test("Go: a press for a feature card goes to runClick as a popup press, so it ad
   // The climb card is opened by MapView itself, before this check (climbInteraction.ts climbAt), and says so by the same lookup.
   const climbs = readFileSync(new URL("../climbInteraction.ts", import.meta.url), "utf8");
   assert.match(climbs, /hits: \(point: \{ x: number; y: number \}\) => climbAt\(point, true\) !== null,/);
-  assert.match(mapView, /climbCard\?\.climbAt\(event\.point, goPress\)/);
+  assert.match(mapView, /climbCard\?\.climbAt\(event\.point, goPress \|\| !under\.line\)/);
   for (const file of ["../waterInteraction.ts", "../federalInteraction.ts"]) {
     const source = readFileSync(new URL(file, import.meta.url), "utf8");
     assert.match(source, /hits: \(point: \{ x: number; y: number \}\) => at\(point\) !== undefined,/, file);

@@ -7306,3 +7306,69 @@ details.fold > summary .icon {
   align-items: center;
   min-height: 44px;
 }
+
+/* The mountain-bike trails' key on the map (lib/stressLegend.ts MtbMapKey; the owner, 2026-10-19): a small box
+   on the map's right, under its zoom buttons, while the trail layer draws. Nothing in it is
+   pressed, so a press goes through to the map. */
+.mtb-map-key {
+  position: absolute;
+  right: 10px;
+  top: 164px;
+  z-index: 2;
+  pointer-events: none;
+  padding: 6px 8px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--swatch-border);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  font-size: 0.8rem;
+  line-height: 1.2;
+}
+
+.mtb-map-key p {
+  margin: 0;
+}
+
+.mtb-map-key-title {
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+
+.mtb-map-key ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.mtb-map-key li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mtb-map-key-hint {
+  margin-top: 2px;
+  color: var(--text-muted);
+}
+
+/* A tapped mountain-bike trail's elevation profile in the road panel (lib/trailProfile.ts). */
+.road-info-trail-profile {
+  margin: 8px 0 0;
+}
+
+.road-info-trail-profile h3 {
+  margin: 0 0 2px;
+  font-size: 0.95rem;
+}
+
+.road-info-trail-profile .climb-profile {
+  margin: 0;
+  max-width: 420px;
+}
+
+.road-info-trail-profile .pc-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}

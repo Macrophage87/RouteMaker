@@ -170,10 +170,10 @@ test("MapView: a climb press opens its card before the click can place a point, 
   const climbAt = click.indexOf("climbCard?.climbAt(");
   const run = click.indexOf("runClick(under");
   assert.ok(climbAt > 0 && run > climbAt, "the climb is asked for before runClick");
-  // A station and a water or restroom icon keep their own cards; in Plan only the summit marker opens the
-  // card (a press on the climb's line places a point), in Go the line too.
+  // A station and a water or restroom icon keep their own cards; the summit marker and the line open the card
+  // in Plan and Go (the owner, 2026-10-19), but in Plan the route's own line under the press keeps it.
   assert.match(click, /!under\.station && !anyPopupOpen\(\) && !water\?\.hits\(event\.point\)/);
-  assert.match(click, /climbAt\(event\.point, goPress\)/);
+  assert.match(click, /climbAt\(event\.point, goPress \|\| !under\.line\)/);
   // The click that closes the card opens no water or federal card under it.
   assert.match(click, /climbCard\.close\(\);\s*climbClosing = true;/);
   assert.match(view, /otherPopupOpen: \(\) => anyPopupOpen\(\) \|\| climbClosing,/);
@@ -240,15 +240,16 @@ test("the profile chart is a picture with its text alternative", () => {
 
 // --- Show climbs from --------------------------------------------------------------
 
-test("Show climbs from: Category 5 and up unless chosen, kept on this device", () => {
+test("Show climbs from: Category 4 and up unless chosen, kept on this device", () => {
   const kept = new Map<string, string>();
   const store = { getItem: (k: string) => kept.get(k) ?? null, setItem: (k: string, v: string) => void kept.set(k, v) };
   assert.equal(readClimbsFrom(store), CLIMBS_FROM_DEFAULT);
+  assert.equal(CLIMBS_FROM_DEFAULT, "4"); // the owner, 2026-10-19: "5 is too numerous"
   assert.equal(saveClimbsFrom("3", store), true);
   assert.equal(kept.get(CLIMBS_FROM_KEY), "3");
   assert.equal(readClimbsFrom(store), "3");
   kept.set(CLIMBS_FROM_KEY, "7");
-  assert.equal(readClimbsFrom(store), "5", "nonsense kept is the default");
+  assert.equal(readClimbsFrom(store), "4", "nonsense kept is the default");
   const throwing = {
     getItem: () => {
       throw new Error("blocked");
@@ -257,7 +258,7 @@ test("Show climbs from: Category 5 and up unless chosen, kept on this device", (
       throw new Error("blocked");
     },
   };
-  assert.equal(readClimbsFrom(throwing), "5");
+  assert.equal(readClimbsFrom(throwing), "4");
   assert.equal(saveClimbsFrom("4", throwing), false);
 });
 

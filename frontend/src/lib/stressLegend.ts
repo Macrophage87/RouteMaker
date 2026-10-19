@@ -436,3 +436,44 @@ export function StressLegend({
       ),
   );
 }
+
+/** The map key's heading and its hint (the owner, 2026-10-19). */
+export const MTB_MAP_KEY_TITLE = "Mountain-bike trails";
+export const MTB_MAP_KEY_HINT = "Tap a trail for details";
+
+/** The key's short names: the level and its colour, as the legend's rows and the road panel say it. */
+export function mtbMapKeyRows(): { key: string; name: string }[] {
+  return [{ key: "unrated", name: "Unrated" }, ...MTB_LEVELS.map((l) => ({ key: String(l.level), name: `${l.level} ${l.name[0].toUpperCase()}${l.name.slice(1)}` }))];
+}
+
+/**
+ * The mountain-bike trails' key on the map itself (the owner, 2026-10-19: "Mountain bike trails need to have a
+ * key on the map"): while their layer is on and the map is close enough in to draw them (`drawn`), a small box
+ * in the map's corner with each look (the unrated grey dashes, then each level) and its short name, and that a
+ * tap on a trail tells more. Not a control: it has nothing to press. The Legend sheet keeps the long words.
+ */
+export function MtbMapKey({ drawn }: { drawn: boolean }): ReactElement | null {
+  useStressStyle();
+  const on = useMtbTrails();
+  if (!MTB_LEGEND || !on || !drawn) return null;
+  const strong = accessibilityOn();
+  const rows = mtbMapKeyRows();
+  return h(
+    "section",
+    { className: "mtb-map-key", "aria-label": MTB_MAP_KEY_TITLE + " key" },
+    h("p", { className: "mtb-map-key-title", "aria-hidden": "true" }, MTB_MAP_KEY_TITLE),
+    h(
+      "ul",
+      null,
+      ...rows.map((r, i) =>
+        h(
+          "li",
+          { key: r.key },
+          i === 0 ? h(MtbTrailSwatch, { strong }) : h(MtbLevelSwatch, { shape: MTB_LEVELS[i - 1], strong }),
+          h("span", null, r.name),
+        ),
+      ),
+    ),
+    h("p", { className: "mtb-map-key-hint" }, MTB_MAP_KEY_HINT),
+  );
+}

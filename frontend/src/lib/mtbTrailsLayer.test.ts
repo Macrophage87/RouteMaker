@@ -304,3 +304,53 @@ test("the Mass Ride legend names the trails' line while the layer is on, and not
   const app = appSource();
   assert.match(app, /<MassLegend \/>\s*<MassZoomNotes[^>]*\/>\s*\{\/\*[^*]*\*\/\}\s*<MtbTrailLegend \/>/);
 });
+
+// ---- the owner, 2026-10-19: a key on the map, and a tap on a trail tells about it ----
+
+import { mtbTrailPressed } from "./mapGlue.ts";
+import { MTB_MAP_KEY_HINT, MTB_MAP_KEY_TITLE, MtbMapKey, mtbMapKeyRows } from "./stressLegend.ts";
+import { segmentInfoUrl, TRAIL_RIDE_TYPES, TRAIL_VIA_TEXT } from "./roadInfo.ts";
+import { MTB_LINE_LAYER_IDS } from "../stressStyle.js";
+
+test("a press on a drawn trail line is the trail's, within the slop, and only on the trail layer's lines", () => {
+  let asked: { box: unknown; layers: string[] } | null = null;
+  const map = {
+    getLayer: (id: string) => (MTB_LINE_LAYER_IDS.includes(id) ? {} : undefined),
+    queryRenderedFeatures: (box: [[number, number], [number, number]], options: { layers: string[] }) => {
+      asked = { box, layers: options.layers };
+      return box[0][0] <= 100 && box[1][0] >= 100 ? [{}] : [];
+    },
+  };
+  assert.equal(mtbTrailPressed(map, { x: 92, y: 50 }, 8), true);
+  assert.equal(mtbTrailPressed(map, { x: 80, y: 50 }, 8), false);
+  assert.deepEqual(asked!.layers, MTB_LINE_LAYER_IDS);
+  // No trail layer on the map yet: nothing is asked.
+  const none = { getLayer: () => undefined, queryRenderedFeatures: () => assert.fail("not asked") };
+  assert.equal(mtbTrailPressed(none, { x: 100, y: 50 }, 8), false);
+});
+
+test("a trail tap asks the road panel for the trail, ahead of a road beside it", () => {
+  assert.equal(segmentInfoUrl("https://x", [-77, 38.9], true), "https://x/api/segment-info?lat=38.900000&lon=-77.000000&trail=true");
+  assert.equal(segmentInfoUrl("https://x", [-77, 38.9]), "https://x/api/segment-info?lat=38.900000&lon=-77.000000");
+  assert.equal(TRAIL_VIA_TEXT, "Route through this trail");
+  assert.deepEqual([...TRAIL_RIDE_TYPES].sort(), ["gravel", "mountain-bike", "mountain-goat"]);
+  assert.match(readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8"), /trail: true/);
+});
+
+test("the map key names each look the layer draws, while it draws", () => {
+  assert.deepEqual(
+    mtbMapKeyRows().map((r) => r.name),
+    ["Unrated", "1 Green", "2 Blue", "3 Black", "4 Red"],
+  );
+  setMtbTrails(true);
+  try {
+    const shown = renderToStaticMarkup(createElement(MtbMapKey, { drawn: true }));
+    assert.match(shown, new RegExp(`aria-label="${MTB_MAP_KEY_TITLE} key"`));
+    assert.match(shown, new RegExp(MTB_MAP_KEY_HINT));
+    assert.equal((shown.match(/<li>/g) ?? []).length, 5);
+    assert.equal(renderToStaticMarkup(createElement(MtbMapKey, { drawn: false })), "");
+  } finally {
+    setMtbTrails(false);
+  }
+  assert.equal(renderToStaticMarkup(createElement(MtbMapKey, { drawn: true })), "");
+});

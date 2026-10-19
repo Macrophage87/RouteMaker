@@ -107,6 +107,7 @@ from . import (
     share_links,
     stoporder,
     timing,
+    trailprofile,
     transit,
     transit_live,
     wmata_bus,
@@ -4646,6 +4647,13 @@ SEGMENT_INFO_MAX_AGE_S = 300
 class SegmentInfoIn(Schema):
     lat: Coordinate
     lon: Coordinate
+    trail: bool = Field(
+        default=False,
+        description=(
+            "A tap on the mountain-bike trail layer: describe the nearest such trail, ahead"
+            " of a road beside it."
+        ),
+    )
 
     @model_validator(mode="after")
     def point_inside(self):
@@ -4716,6 +4724,13 @@ class SegmentInfoOut(Schema):
             " guide where its names place it in no system; null on any other way."
         ),
     )
+    mtb_trail: bool = Field(
+        default=False,
+        description=(
+            "A mountain-bike trail the trail layer draws: its elevation profile is at"
+            " /api/trails/{osm_way_id}/profile, and it has no traffic lines."
+        ),
+    )
     attribution: list[str]
 
 
@@ -4742,7 +4757,7 @@ SEGMENT_INFO_ATTRIBUTION = ("© OpenStreetMap contributors (ODbL)",)
     errors_as_json,
 )
 def road_info(request, params: Query[SegmentInfoIn], response: HttpResponse):
-    found = segment_info.segment_info(params.lat, params.lon)
+    found = segment_info.segment_info(params.lat, params.lon, params.trail)
     response["Cache-Control"] = f"private, max-age={SEGMENT_INFO_MAX_AGE_S}"
     return Status(200, {**found, "attribution": list(SEGMENT_INFO_ATTRIBUTION)})
 
@@ -4872,6 +4887,62 @@ def climb_profile(request, climb_id: str, response: HttpResponse):
     if body is None:
         return Status(404, {"error": "There is no elevation for this climb."})
     response["Cache-Control"] = f"public, max-age={CLIMB_PROFILE_MAX_AGE_S}"
+    return Status(200, body)
+
+
+# --- One mountain-bike trail's elevation profile, for the road panel ----------------
+
+TRAIL_PROFILE_MAX_AGE_S = 86_400
+
+
+class TrailProfileOut(Schema):
+    """A mountain-bike trail's heights along it (`core.trailprofile`; the owner,
+    2026-10-19: "Include an elevation profile of the trail if possible"), as the route
+    chart's `profile`, with its climbing, descending and steepest grade."""
+
+    way: int
+    length_m: int
+    gain_m: float
+    loss_m: float
+    max_grade_pct: float | None = Field(
+        description=(
+            "The steepest grade on it, either way, percent, read as the route chart reads it."
+        )
+    )
+    interval_m: int
+    m: list[int] = Field(description="Metres from the way's first point to each sample.")
+    elevation_m: list[float | None]
+    grade_pct: list[float | None]
+
+
+@api.get(
+    "/trails/{way_id}/profile",
+    response={200: TrailProfileOut, 404: ErrorOut, 429: ErrorOut, 500: ErrorOut, 503: ErrorOut},
+    summary="One mountain-bike trail's elevation profile (the road panel, for a tapped trail)",
+)
+@decorate_view(
+    ratelimit.in_flight_limited(ratelimit.ROUTING_IN_FLIGHT),
+    ratelimit.rate_limited(ratelimit.TRAIL_PROFILE),
+    errors_as_json,
+)
+def trail_profile(request, way_id: int, response: HttpResponse):
+    """Read-only: a trail is named by its OSM way id and read from the live table, never
+    by a line; only a way the mountain-bike trail layer draws is answered."""
+    if not 0 < way_id < 2**53:
+        return Status(404, {"error": "There is no such trail."})
+    try:
+        body = trailprofile.profile(way_id)
+    except trailprofile.Unavailable as error:
+        logger.warning("trail profile unavailable: %s", error)
+        refusal = JsonResponse(
+            {"error": "The trail's elevation is not available right now. Try again shortly."},
+            status=503,
+        )
+        refusal["Retry-After"] = str(DEADLINE_RETRY_S)
+        return refusal
+    if body is None:
+        return Status(404, {"error": "There is no elevation for this trail."})
+    response["Cache-Control"] = f"public, max-age={TRAIL_PROFILE_MAX_AGE_S}"
     return Status(200, body)
 
 

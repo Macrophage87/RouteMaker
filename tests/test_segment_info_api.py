@@ -1157,3 +1157,109 @@ def test_an_owner_adjusted_row_still_reads_as_an_owner_override() -> None:
     assert rows["Why"]["value"] == "Owner-rated corridor"
     assert rows["Owner's reason"]["value"] == "Other"
     assert "Before the override" in rows
+
+
+class TestTrailFacts:
+    """The owner, 2026-10-19: a tapped mountain-bike trail says its surface and the like
+    (`segment.trail_tags`, `routemaker.trail_facts`)."""
+
+    TRAIL = {
+        "bike_access_reason": "mtb",
+        "mtb_only": True,
+        "is_trail_class": True,
+        "stress_tier": 1,
+        "stress_rule": "path",
+    }
+
+    def test_a_trail_says_its_surface_as_mapped_in_place_of_unpaved(self) -> None:
+        row = {
+            **self.TRAIL,
+            "is_unpaved": True,
+            "trail_tags": {"surface": "dirt", "width": "0.6", "mtb:scale:uphill": "2"},
+        }
+        lines = {r["id"]: r["value"] for r in segment_info.summary_rows(row, {}, False)}
+        assert lines["trail_surface"] == "Dirt"
+        assert lines["width"] == "2 ft (0.6 m)"
+        assert "surface" not in lines
+        # Climbing is in the details only, with the rest.
+        assert "uphill" not in lines
+        riding = {r["label"]: r["value"] for r in segment_info.riding_rows(row)}
+        assert riding["Climbing"] == "Hard in places (2 of 5)"
+        assert riding["Trail surface"] == "Dirt"
+
+    def test_a_trail_with_no_surface_mapped_keeps_the_shared_line(self) -> None:
+        row = {**self.TRAIL, "is_unpaved": True, "trail_tags": '{"smoothness": "bad"}'}
+        lines = {r["id"]: r["value"] for r in segment_info.summary_rows(row, {}, False)}
+        assert lines["surface"] == "Unpaved"
+        assert lines["smoothness"] == "Bumpy (wide tyres)"
+
+    def test_another_way_never_says_trail_lines(self) -> None:
+        row = {"is_trail_class": True, "is_unpaved": True, "trail_tags": {"surface": "dirt"}}
+        assert segment_info.trail_rows(row) == []
+
+    def test_a_tap_on_the_trail_layer_means_the_trail(self) -> None:
+        def way(i, d, **kw):
+            return {"osm_way_id": i, "distance_m": d, "map_class": "road", **kw}
+
+        rows = [way(1, 2), way(2, 6, **self.TRAIL), way(3, 4, **self.TRAIL)]
+        assert segment_info.choose(rows)["osm_way_id"] == 1
+        assert segment_info.choose(rows, trail=True)["osm_way_id"] == 3
+        # No trail near: the usual way.
+        assert segment_info.choose([way(1, 2)], trail=True)["osm_way_id"] == 1
+
+
+@db
+class TestTappedTrail:
+    """The owner, 2026-10-19: a tapped mountain-bike trail is described ahead of a road
+    beside it, with no traffic lines, its own tags in words, and an elevation profile."""
+
+    def test_the_tap_describes_the_trail_without_traffic_lines(
+        self, client, segment_schemas, router
+    ) -> None:
+        live, _ = segment_schemas
+        insert(live, 501, [SPOT, east(SPOT, 50)])
+        trail = north(SPOT, 8)
+        insert(
+            live,
+            502,
+            [trail, east(trail, 50)],
+            is_trail_class=True,
+            is_unpaved=True,
+            bike_access_reason="mtb",
+            mtb_only=True,
+            mtb_name="Loop 3",
+            trail_tags=json.dumps({"surface": "dirt", "trail_visibility": "good"}),
+        )
+        router.answers = {"bicycle": [edge(501)], "pedestrian": [edge(502, use="path")]}
+        assert get(client).json()["osm_way_id"] == 501
+        body = client.get(
+            INFO, {"lat": SPOT[1], "lon": SPOT[0], "trail": "true"}, **fresh_client()
+        ).json()
+        assert body["osm_way_id"] == 502 and body["mtb_trail"] is True
+        lines = summary(body)
+        assert "Trail surface: Dirt" in lines and "Trail visibility: Easy to follow" in lines
+        assert not any(line.startswith("Traffic stress") for line in lines)
+        assert {s["id"] for s in body["sections"]}.isdisjoint({"stress", "traffic"})
+
+    def test_the_profile_is_the_routers_heights_along_the_trail(
+        self, client, segment_schemas, router, monkeypatch
+    ) -> None:
+        from core import routing, trailprofile
+
+        live, _ = segment_schemas
+        trail = north(SPOT, 8)
+        insert(live, 503, [trail, north(trail, 100)], bike_access_reason="mtb", mtb_only=True)
+        insert(live, 504, [SPOT, east(SPOT, 50)])
+
+        def fake(variant, endpoint, payload, deadline):
+            assert endpoint == "height"
+            return {"height": [20.0 + i for i in range(len(payload["shape"]))]}
+
+        monkeypatch.setattr(routing, "_call", fake)
+        trailprofile._kept.clear()
+        body = client.get("/api/trails/503/profile", **fresh_client()).json()
+        assert body["way"] == 503 and body["length_m"] == 100
+        assert body["gain_m"] > 0 and body["loss_m"] == 0
+        # A road is not a trail: no profile is drawn for it.
+        assert client.get("/api/trails/504/profile", **fresh_client()).status_code == 404
+        assert client.get("/api/trails/999999/profile", **fresh_client()).status_code == 404

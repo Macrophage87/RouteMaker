@@ -28,6 +28,7 @@ import {
   mtbLevelLayerId,
   mtbLevelPaint,
   MTB_LABEL_LAYER_ID,
+  MTB_LINE_LAYER_IDS,
   mtbLabelColor,
   unpavedLayers,
   halfStepLayers,
@@ -546,6 +547,29 @@ export interface FeatureCards {
  * Read in Go before the main click, where a press on the map sets the destination (lib/appMode.ts goTapSetsEnd):
  * a press for a card, or to dismiss one, must not also replace the destination. Cards not yet on the map are null.
  */
+/** The map a trail press is read from (MapLibre's own, or a test's stand-in). */
+export interface TrailPressMap {
+  getLayer(id: string): unknown;
+  queryRenderedFeatures(box: [[number, number], [number, number]], options: { layers: string[] }): ReadonlyArray<unknown>;
+}
+
+/**
+ * Whether a press at `point` is on a mountain-bike trail the trail layer draws (the owner, 2026-10-19: "The
+ * information should be available when clicked on" and "Basically make them clickable."), within `slop` pixels.
+ * Only drawn lines count: the layer off (or zoomed out past MTB_MIN_ZOOM) draws none, so nothing is hit. In the
+ * Mountain Bike ride type the trails it may ride draw in the routable layers instead, and a press there places a
+ * point as on any road.
+ */
+export function mtbTrailPressed(map: TrailPressMap, point: { x: number; y: number }, slop: number): boolean {
+  const layers = MTB_LINE_LAYER_IDS.filter((id: string) => map.getLayer(id));
+  if (layers.length === 0) return false;
+  const box: [[number, number], [number, number]] = [
+    [point.x - slop, point.y - slop],
+    [point.x + slop, point.y + slop],
+  ];
+  return map.queryRenderedFeatures(box, { layers }).length > 0;
+}
+
 export function featureCardPress(cards: ReadonlyArray<FeatureCards | null>, point: { x: number; y: number }): "card" | "close" | null {
   const shown = cards.filter((card): card is FeatureCards => card !== null);
   if (shown.some((card) => card.hits(point))) return "card";

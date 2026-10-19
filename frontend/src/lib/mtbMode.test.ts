@@ -75,9 +75,9 @@ test("choosing Mountain Bike starts a loop; staying on it, or another ride type,
   assert.equal(mtbChosen("default", "mountain-bike", looped), looped);
 });
 
-test("App turns the mountain-bike and contour layers on with the ride type, not as the rider's saved choice", () => {
+test("App turns the ride type's map layers on with the ride type, not as the rider's saved choice", () => {
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
-  assert.match(app, /if \(isMtb\(id\) && !isMtb\(preset\)\) \{\s+setMtbTrails\(true, \{ remember: false \}\);\s+setTopoLines\(true, \{ remember: false \}\);/);
+  assert.match(app, /const turnOn = layersTurnedOn\(preset, id\);\s+if \(turnOn\.mtb\) setMtbTrails\(true, \{ remember: false \}\);\s+if \(turnOn\.topo\) setTopoLines\(true, \{ remember: false \}\);\s+if \(turnOn\.climbs\) setClimbsOnState\(true\);/);
   assert.match(app, /setRoutableMtb\(routableLevel\)/);
   const picker = readFileSync(new URL("../RideTypePicker.tsx", import.meta.url), "utf8");
   assert.match(picker, /onChoose\(id, mtbChosen\(preset, id, choose\(id, load, dials\)\)\)/);

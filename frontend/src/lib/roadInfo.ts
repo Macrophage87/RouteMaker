@@ -79,6 +79,8 @@ export interface SegmentInfo {
    * or MORE's trail guide (docs/MTB-TOPO-PLAN.md, slice 6). Absent on other ways and from an older API.
    */
   more?: MoreLink | null;
+  /** A mountain-bike trail the trail layer draws: the panel shows its elevation profile and no traffic lines; absent from an older API. */
+  mtb_trail?: boolean;
   sections: InfoSection[];
   attribution: string[];
 }
@@ -94,7 +96,20 @@ export interface InfoRequest {
    * panel opens the junction's suggestion form straight away, where a rider may suggest.
    */
   junction?: boolean;
+  /**
+   * A tap on the mountain-bike trail layer's line (the owner, 2026-10-19: "The information should be
+   * available when clicked on" and "the plan was to allow people to select particular trail segments and
+   * route through them"): the panel describes the trail tapped, ahead of a road beside it, and offers
+   * Route through this trail (TRAIL_VIA_TEXT).
+   */
+  trail?: boolean;
 }
+
+/** The trail panel's via button: a via point on the trail, which shapes the route through it (lib/pointKinds.ts). */
+export const TRAIL_VIA_TEXT = "Route through this trail";
+
+/** The ride types whose router opens mountain-bike trails (docs/MTB-TOPO-PLAN.md slice 6; the off-road graph). */
+export const TRAIL_RIDE_TYPES: ReadonlySet<string> = new Set(["mountain-bike", "gravel", "mountain-goat"]);
 
 /**
  * The panel's request once the dialog showing `closed` has fired its `close` event. The
@@ -249,8 +264,8 @@ export function placeAtSpot(
 }
 
 /** The request for a spot; the coordinates go in the query only, never in a log (OWNER-DECISIONS 395). */
-export function segmentInfoUrl(origin: string, [lon, lat]: LonLat): string {
-  return `${origin}/api/segment-info?lat=${lat.toFixed(6)}&lon=${lon.toFixed(6)}`;
+export function segmentInfoUrl(origin: string, [lon, lat]: LonLat, trail = false): string {
+  return `${origin}/api/segment-info?lat=${lat.toFixed(6)}&lon=${lon.toFixed(6)}${trail ? "&trail=true" : ""}`;
 }
 
 /** What the API's refusals mean to a rider. */
@@ -266,10 +281,11 @@ export async function fetchSegmentInfo(
   point: LonLat,
   signal?: AbortSignal,
   fresh = false,
+  trail = false,
 ): Promise<InfoState> {
   try {
     // `fresh` after an edit: the answer is cached for five minutes, and the rider has just changed it.
-    const response = await fetch(segmentInfoUrl(origin, point), {
+    const response = await fetch(segmentInfoUrl(origin, point, trail), {
       signal,
       headers: { Accept: "application/json" },
       ...(fresh ? { cache: "reload" as const } : {}),

@@ -53,6 +53,7 @@ from routemaker import (
     singletrack,
     speed_corrections,
     surfaces,
+    trail_facts,
     zoo,
 )
 from routemaker.geo import Point
@@ -3653,6 +3654,11 @@ def build_handlers(
                         # And its name, for the layer's label and the road panel (the
                         # owner, 2026-10-10).
                         mtb_name=singletrack.mtb_name(way.tags)
+                        if way.osm_id in context.mtb_only
+                        else None,
+                        # Its surface, width and the like, which the road panel says when
+                        # the trail is tapped (the owner, 2026-10-19).
+                        trail_tags=trail_facts.facts(way.tags)
                         if way.osm_id in context.mtb_only
                         else None,
                         walk_bike=way.osm_id in context.walk_bike,

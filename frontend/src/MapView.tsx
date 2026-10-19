@@ -44,6 +44,7 @@ import {
   popupsOpen,
   pressGrab,
   featureCardPress,
+  mtbTrailPressed,
   runClick,
   ROUTE_STRESS_SOURCE_ID,
   runHover,
@@ -954,9 +955,10 @@ export function MapView(props: Props) {
         : { station: null, line: null };
       const point: LonLat = [event.lngLat.lng, event.lngLat.lat];
       const goPress = callbacks.current.pressSetsEnd === true;
-      // A climb (climbInteraction.ts): its card, never also a point or (in Go) the destination. In Plan only
-      // its summit marker (a press on its dashed line places a point on the climbing road, as before); in Go
-      // its line too. A station and a water or restroom icon keep their own cards. The click after its card
+      // A climb (climbInteraction.ts): its card, never also a point or (in Go) the destination. Its summit
+      // marker or its line, in Plan as in Go since the owner's "You should also be able to select and click on
+      // climbs too" (2026-10-19), except where the planned route's line is under the press in Plan (a via, as
+      // ever). A station and a water or restroom icon keep their own cards. The click after its card
       // is open only closes it (no other card opens under it), or opens the card of another climb pressed.
       if (climbCard?.open()) {
         const shownId = climbCard.shown();
@@ -964,16 +966,31 @@ export function MapView(props: Props) {
         climbClosing = true;
         window.setTimeout(() => (climbClosing = false), 0);
         // A press on the climb already shown only closes its card; on another climb, opens that one's.
-        const next = climbCardAfterClose(shownId, onCanvas && !under.station && !water?.hits(event.point) ? climbCard.climbAt(event.point, goPress) : null);
+        const next = climbCardAfterClose(shownId, onCanvas && !under.station && !water?.hits(event.point) ? climbCard.climbAt(event.point, goPress || !under.line) : null);
         if (next) climbCard.openCard(next);
         return;
       }
       if (onCanvas && !under.station && !anyPopupOpen() && !water?.hits(event.point) && performance.now() >= clickSuppressedUntil) {
-        const climb = climbCard?.climbAt(event.point, goPress);
+        const climb = climbCard?.climbAt(event.point, goPress || !under.line);
         if (climb) {
           climbCard?.openCard(climb);
           return;
         }
+      }
+      // A mountain-bike trail's line, while its layer is on (the owner, 2026-10-19: "Basically make them
+      // clickable."): the road panel for that trail, with its surface and the like and Route through this trail,
+      // never also a point or (in Go) the destination. The route's own line keeps its press (a via in Plan).
+      if (
+        onCanvas &&
+        !under.station &&
+        !(under.line && !goPress) &&
+        !anyPopupOpen() &&
+        !water?.hits(event.point) &&
+        performance.now() >= clickSuppressedUntil &&
+        mtbTrailPressed(map, event.point, touch ? TOUCH_HIT_PX : MOUSE_HIT_PX)
+      ) {
+        callbacks.current.onRoadInfo?.({ point, origin: "spot", trail: true });
+        return;
       }
       // Go: read before the cards' own click handlers (attached after this one) open or close them.
       const forCard = goPress && featureCardPress([water, climbCard, federal], event.point) !== null;
