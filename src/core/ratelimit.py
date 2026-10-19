@@ -175,6 +175,10 @@ MY_SUGGESTION = Limit(scope="my-suggestion", requests=60, window_s=60)
 # opened, a router call the first time a climb is asked for and kept after. PLAN.md:65's 60.
 CLIMB_PROFILE = Limit(scope="climb-profile", requests=60, window_s=60)
 
+# One mountain-bike trail's elevation profile (GET /api/trails/{way}/profile): one request per
+# trail tapped, a router call the first time a way is asked for and kept after.
+TRAIL_PROFILE = Limit(scope="trail-profile", requests=60, window_s=60)
+
 # Who the visitor is (GET /api/me: three yes/no flags the road panel asks once when it
 # opens) and the road panel's stress editor (core.stress_edits), both counted per client
 # address before anything else about the request is looked at, so a refused or anonymous

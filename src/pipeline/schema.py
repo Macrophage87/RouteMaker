@@ -463,6 +463,10 @@ MTB_LEVEL_COLUMN = "mtb_level"
 # `name`. A column of its own, not `trail_name`: that one chains the long trails' runs,
 # which a mountain-bike way must never join (OWNER-DECISIONS 378).
 MTB_NAME_COLUMN = "mtb_name"
+# And a few of its own OSM tags (surface, smoothness, width, trail_visibility,
+# mtb:scale:uphill, sac_scale; `routemaker.trail_facts.facts`), which the road panel says
+# in words when a trail is tapped (the owner, 2026-10-19). Not carried in a tile.
+TRAIL_TAGS_COLUMN = "trail_tags"
 # An unnamed bike way's name from the street beside it (`routemaker.facility.
 # side_street_names`): read by the route description (`core.routing`) and the road panel.
 SIDEPATH_NAME_COLUMN = "sidepath_name"
@@ -601,6 +605,11 @@ CREATE TABLE {schema}.segment (
     -- labels it with and the road panel says. Null on every other way and where none is
     -- mapped. Not `trail_name`, which chains the long trails' runs (378).
     mtb_name        text,
+    -- A mountain-bike-only way's own surface, smoothness, width, trail_visibility,
+    -- mtb:scale:uphill and sac_scale tags, as mapped (`routemaker.trail_facts.facts`;
+    -- the owner, 2026-10-19), which the road panel says in words. Null on every other
+    -- way, where none is mapped, and on a table built before the column existed.
+    trail_tags      jsonb,
     -- An unnamed cycleway or path's name from the named street it runs alongside
     -- (`routemaker.facility.side_street_names`; v0.7.0 "Go riding fixes" item 4):
     -- "9th Street Northwest bike lane", or "... protected bike lane" where tagged

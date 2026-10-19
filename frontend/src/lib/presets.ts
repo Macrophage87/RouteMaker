@@ -209,3 +209,28 @@ export function presetSaid(id: PresetId): string {
   const option = PRESETS.find((p) => p.id === id);
   return option?.spoken ?? option?.label ?? id;
 }
+
+/**
+ * The map layers a ride type turns on when chosen (the owner, 2026-10-19: "When gravel or mtb are selected,
+ * show the trails and topo automatically" and "likewise do topo and climbs for mountain goat"). Turned on,
+ * not remembered as the rider's own choice, and only coming into the ride type from one without them, so the
+ * rider can still turn one off while riding it (App.tsx choosePreset). Mountain Bike's pair was slice 6's
+ * default (the owner's defaults of 2026-10-11).
+ */
+export interface RideTypeLayers {
+  mtb: boolean;
+  topo: boolean;
+  climbs: boolean;
+}
+
+export function rideTypeLayers(id: string): RideTypeLayers {
+  const offRoad = id === "mountain-bike" || id === "gravel";
+  return { mtb: offRoad, topo: offRoad || id === "mountain-goat", climbs: id === "mountain-goat" };
+}
+
+/** The layers to turn on going from ride type `from` to `to`: those `to` brings that `from` did not. */
+export function layersTurnedOn(from: string, to: string): RideTypeLayers {
+  const was = rideTypeLayers(from);
+  const now = rideTypeLayers(to);
+  return { mtb: now.mtb && !was.mtb, topo: now.topo && !was.topo, climbs: now.climbs && !was.climbs };
+}

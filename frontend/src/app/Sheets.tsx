@@ -206,7 +206,10 @@ export function LayersSheet(props: LayersSheetProps) {
         status={(open) => terrainStatus(open, terrain)}
       >
         <MtbTrailsSwitch on={showMtbTrails} onChange={(on) => setMtbTrails(on)} overlay={stressShowable(stress)} />
-        <ClimbsLayerControls on={climbsOn} onChange={changeClimbsOn} from={climbsFrom} onFromChange={changeClimbsFrom} status={climbsStatus} items={climbsAlong} along={false} legend={false} />
+        {/* The owner, 2026-10-19: "include the legend within the accordion settings in layers". Each layer's key
+            sits under its own switch while it is on, as the climbs' does (ClimbsLayerControls). */}
+        <MtbTrailLegend />
+        <ClimbsLayerControls on={climbsOn} onChange={changeClimbsOn} from={climbsFrom} onFromChange={changeClimbsFrom} status={climbsStatus} items={climbsAlong} along={false} />
         <TopoLinesSwitch on={showTopoLines} onChange={(on) => setTopoLines(on)} available={topoReady} />
       </LayerSection>
 
