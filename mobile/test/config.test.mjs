@@ -126,7 +126,10 @@ test("release signing and the store id come from the environment; no key in the 
   for (const name of ["ROUTEMAKER_KEYSTORE_FILE", "ROUTEMAKER_KEYSTORE_PASSWORD", "ROUTEMAKER_KEY_ALIAS", "ROUTEMAKER_KEY_PASSWORD", "ROUTEMAKER_APP_ID"]) {
     assert.match(gradle, new RegExp(`System\\.getenv\\("${name}"\\)|envOr\\("${name}"`), name);
   }
-  assert.doesNotMatch(gradle, /storePassword\s+["']/);
+  // The only password written down is Android's public debug one, for the optional steady debug key.
+  assert.doesNotMatch(gradle, /(?:store|key)Password\s+["'](?!android["'])/);
+  assert.match(gradle, /System\.getenv\("ROUTEMAKER_DEBUG_KEYSTORE_FILE"\)/);
+  assert.match(gradle, /if \(debugKeystore\) \{\s*debug \{/, "the fixed passwords sit only in the debug signing config");
   const workflow = readFileSync(here("../../.github/workflows/android.yml"), "utf8");
   // Pull requests touching the app: tests and a debug APK only; release by hand only; never on a push.
   assert.match(workflow, /^on:\s*\n\s+pull_request:\s*\n\s+paths:\s*\n\s+- "mobile\/\*\*"\s*\n\s+- "\.github\/workflows\/android\.yml"\s*\n\s+workflow_dispatch:/m);
