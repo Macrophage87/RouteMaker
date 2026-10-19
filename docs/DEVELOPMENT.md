@@ -4797,8 +4797,9 @@ puts it, at most two presses away.
 - **Sheets** (`app/Sheets.tsx`, `lib/sidebar.ts` `PanelView`): the bar is Plan, Layers,
   Suggest, GPX and Settings. Layers holds the switches only, with a Legend button that opens
   the Legend sheet one step in; Suggest says how to suggest from the road panel and opens it
-  at the map's center, with DC 311 and an admin's Review; Settings is Display (High contrast,
-  Accessibility mode, Open in when signed out), Ride mode, This device and Account (My Go).
+  at the map's center, with DC 311 and an admin's Review; Settings is My Go (Home, Go's ride
+  type, Open in), Riding, Display (High contrast, Accessibility mode, Announcements) and Account,
+  most used first, one row per setting; on a phone it takes the panel's whole height.
   Plan's map has Food and Water chips (`PlanMapChips`), which open the Find food and Nearest
   sheets. `openOnto`/`backFrom` keep the way back through nested sheets; Back returns the
   focus to what opened the sheet, and a sheet's heading takes it on the way in.

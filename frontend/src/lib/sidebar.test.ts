@@ -967,13 +967,14 @@ test("the bar's current button: the sheet showing, or one opened from it (Layers
   assert.match(sidebar, /aria-current=\{current \? "true" : undefined\}/);
 });
 
-test("the Settings sheet (384): Display, Ride mode and Account, as the mockup groups them; one state, unique ids", () => {
+test("the Settings sheet (384): My Go, Riding, Display and Account, most used first (Settings tidy, 2026-10-19); one state, unique ids", () => {
   const sheet = app.slice(app.indexOf('id="sheet-settings"'), app.indexOf("export interface SuggestSheetProps"));
   assert.match(sheet, /title=\{go \? MENU_TITLE : SHEET_TITLES\.settings\}\s+open=\{nav\.view === "settings"\}\s+onBack=\{nav\.back\}\s+backLabel=\{nav\.backLabel\("settings"\)\}\s+headingRef=\{settingsHeadingRef\}/);
   // This device's routes moved to Save and load (the owner, 2026-10-18); the install offer has its own heading.
   assert.doesNotMatch(sheet, /settings-device-heading/);
-  const order = ["settings-display-heading", "settings-ride-heading", "settings-signin-heading"].map((id) => sheet.indexOf(`<h3 id="${id}">`));
+  const order = ["<MyGoSection controls={myGo} />", ...["settings-ride-heading", "settings-display-heading", "settings-signin-heading"].map((id) => `<h3 id="${id}">`)].map((at) => sheet.indexOf(at));
   assert.ok(order.every((i) => i > 0), JSON.stringify(order));
+  assert.match(app, /<section aria-labelledby="settings-my-go-heading" className="settings-group my-go">\s*<div className="setting-line">\s*<h3 id="settings-my-go-heading">My Go<\/h3>/);
   assert.deepEqual(order, [...order].sort((a, b) => a - b));
   assert.match(sheet, /<section aria-labelledby="settings-display-heading" className="settings-group">\s*<h3 id="settings-display-heading">Display<\/h3>/);
   // The sign-in note has its own heading, so heading navigation does not file it under Display.
