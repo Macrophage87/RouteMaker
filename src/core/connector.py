@@ -152,7 +152,7 @@ class InProcessApi:
                 f"the site is busy ({message}); wait {response.get('Retry-After', 'a few')}"
                 " seconds and try again"
             )
-        raise self._module.ToolError(f"the site refused the route ({status}): {message}")
+        raise self._module.ToolError(self._module.refusal(status, message))
 
     def geocode(self, query, near=None):
         return self._module.Api.geocode(self, query, near)

@@ -763,3 +763,76 @@ def test_a_call_with_a_deadline_stops_planning_while_another_plan_would_not_fit(
     assert len(StandIn.routes) == 1
     assert mcp.OUT_OF_TIME in out["notes"]
     assert mcp.Call().time_for_another_plan()  # no deadline: a computer of the rider's own
+
+
+# --- The independent tester's findings (2026-10-19) -----------------------------------------
+
+
+@pytest.mark.parametrize(
+    "said, station",
+    [
+        ("Navy Yard", "Navy Yard-Ballpark"),
+        ("navy yard metro", "Navy Yard-Ballpark"),
+        ("Union Station", "Union Station"),
+        ("Gallery Place", "Gallery Pl-Chinatown"),
+        ("Mount Vernon Square", "Mt Vernon Sq 7th St-Convention Center"),
+        ("Ronald Reagan", "Ronald Reagan Washington National Airport"),
+        ("Farragut", None),  # North or West: place search decides
+        ("Adams Morgan", None),  # a neighbourhood, not Woodley Park's station
+    ],
+)
+def test_a_station_is_found_by_the_name_riders_use(said, station) -> None:
+    found = mcp.find_station(said, STATIONS)
+    assert (found.name if found else None) == station
+
+
+def test_the_answer_says_what_each_named_point_was_taken_as(tools) -> None:
+    out = tools.call("plan_route", {"points": ["Navy Yard", "Union Market"]})
+    assert [t["taken_as"] for t in out["points_taken_as"]] == [
+        "Navy Yard-Ballpark Metro",
+        "Union Market, Washington",
+    ]
+    revised = tools.call(
+        "revise_route",
+        {"draft_id": out["draft_id"], "add_points": [{"after": 0, "point": "Takoma"}]},
+    )
+    assert revised["points_taken_as"][0]["taken_as"] == "Takoma Metro"
+
+
+def test_a_server_error_with_no_message_says_what_to_try() -> None:
+    text = mcp.refusal(500, None)
+    assert "None" not in text and "time limit" in text and "shorter" in text
+    assert mcp.refusal(400, "too long") == "the site refused the route (400): too long"
+
+
+def test_the_loop_s_length_is_not_sent_as_the_calm_search_target(tools) -> None:
+    tools.call("plan_metro_loop", {"target_miles": 60, "preset": "trailmaxxing", "max_plans": 1})
+    assert "target_distance_m" not in StandIn.routes[0]
+
+
+def test_a_calm_loop_s_first_ring_allows_for_winding_roads() -> None:
+    assert mcp.road_factor(None) == mcp.ROAD_FACTOR == mcp.road_factor(40)
+    assert mcp.road_factor(80) == mcp.CALM_ROAD_FACTOR == mcp.road_factor(100)
+
+
+def test_a_long_loop_is_kept_inside_what_the_site_plans(tools) -> None:
+    asked = {"target_miles": 200, "stress": 40, "max_miles_from_metro": 10, "max_plans": 1}
+    out = tools.call("plan_metro_loop", asked)
+    points = [tuple(p) for p in StandIn.routes[0]["points"]]
+    span = sum(mcp.haversine_mi(a, b) for a, b in zip(points, points[1:], strict=False))
+    assert span <= mcp.LOOP_SPAN_MI
+    assert any("at most 124 mi" in note for note in out["notes"])
+
+
+def test_a_loop_with_no_start_says_where_it_starts(tools) -> None:
+    out = tools.call("plan_metro_loop", {"target_miles": 60, "max_plans": 1})
+    assert out["notes"][0].startswith("no start was given") and "Metro" in out["notes"][0]
+
+
+def test_the_answer_leaves_out_empty_rows_and_internal_flags(tools) -> None:
+    answer = {"distance_m": 1609.344, "stress_m": {"1": 1600.0, "2": 9.344}, "facility_m": {}}
+    assert list(mcp.summary(answer)["traffic_stress"]) == ["LTS 1"]
+    out = tools.call("plan_route", {"points": ["Union Market", "Takoma"]})
+    used = out["settings_used"]
+    assert "confirm_long" not in used and "candidates" not in used
+    assert {"stress", "hills"} <= set(used)

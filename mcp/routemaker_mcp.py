@@ -61,9 +61,23 @@ COVERAGE_BBOX = (-78.05, 38.2, -76.02, 39.72)
 # A long ride's plan may take the site's whole long budget (core/routing.py LONG_PLAN_BUDGET_S,
 # 50 s) after a wait for its one long slot.
 ROUTE_TIMEOUT_S = 120
-# How much longer a planned loop is than its waypoints in straight lines, for a first guess at
-# the ring's radius; the loop is then rescaled by what the router answered.
+# How much longer a planned loop is than its ring in straight lines, for a first guess at the
+# ring's radius; the loop is then rescaled by what the router answered. Calmer settings wind
+# more: a 100 mi loop at stress 80 came out about 2.0 times its ring (tester, 2026-10-19).
 ROAD_FACTOR = 1.3
+CALM_ROAD_FACTOR = 2.0
+
+
+def road_factor(stress: int | None) -> float:
+    """ROAD_FACTOR up to stress 70 (Default), CALM_ROAD_FACTOR from 80, scaled in between."""
+    share = min(1.0, max(0.0, ((stress if stress is not None else 70) - 70) / 10))
+    return ROAD_FACTOR + share * (CALM_ROAD_FACTOR - ROAD_FACTOR)
+
+
+# The site plans at most 200 km (124 mi) of straight lines between points (core/api.py
+# MAX_SPAN_M); a loop's ring is kept a little under it.
+MAX_SPAN_MI = 124
+LOOP_SPAN_MI = 120
 # Every ride type the site plans (frontend/src/lib/presets.ts; the owner, 2026-10-18: "Allow the
 # MCP server to pick whatever mode makes sense for this and to adjust any parameters"). The
 # bikeshare and transit ride types take a start and an end only.
@@ -313,7 +327,7 @@ class Api:
                     f"the site ran out of time planning this long ride ({message}). Try fewer"
                     " points, a lower stress setting, or plan it in two halves."
                 )
-            raise ToolError(f"the site refused the route ({status}): {message or payload}")
+            raise ToolError(refusal(status, message or payload))
         raise ToolError("the site stayed busy; try again shortly")
 
     def geocode(self, query: str, near: tuple[float, float] | None = None) -> list[dict]:
@@ -361,6 +375,44 @@ class Api:
 # --- Points, links and files ----------------------------------------------------------------
 
 
+# Spellings riders use for the words station names shorten.
+SHORT_WORDS = {
+    "place": "pl",
+    "square": "sq",
+    "street": "st",
+    "avenue": "ave",
+    "mount": "mt",
+    "university": "u",
+}
+
+
+def _station_words(text: str) -> str:
+    words = re.sub(r"[^a-z0-9 ]+", " ", text.lower().replace("'", "")).split()
+    return " ".join(SHORT_WORDS.get(w, w) for w in words)
+
+
+def find_station(text: str, stations: list[Station]) -> Station | None:
+    """The one Metro station `text` names: its whole name, its first part ("Navy Yard" for
+    Navy Yard-Ballpark; later parts such as "Adams Morgan" are neighbourhoods, left to place
+    search), or the start of it ("Ronald Reagan"), with or without "Metro" or "station" after
+    it. None when nothing or more than one station fits ("Farragut"), so the text goes to place
+    search."""
+    said = _station_words(text)
+    asked = {said, re.sub(r"( metro| station| metro station)+$", "", said).strip()}
+    asked.discard("")
+    for test in (
+        lambda s: _station_words(s.name) in asked,
+        lambda s: _station_words(re.split(r"[-/]", s.name)[0]) in asked,
+        lambda s: any(_station_words(s.name).startswith(a + " ") for a in asked),
+    ):
+        fits = [s for s in stations if test(s)]
+        if len(fits) == 1:
+            return fits[0]
+        if fits:
+            return None
+    return None
+
+
 def as_point(value, api: Api | None, stations: list[Station]) -> tuple[tuple[float, float], str]:
     """A point from [lon, lat], {"lon", "lat"}, a Metro station's name or a place to search
     for, with a label saying what it was taken as."""
@@ -379,10 +431,9 @@ def as_point(value, api: Api | None, stations: list[Station]) -> tuple[tuple[flo
         return point, f"{point[1]:.5f}, {point[0]:.5f}"
     if isinstance(value, str) and value.strip():
         text = value.strip()
-        wanted = re.sub(r"\s+(metro|station)$", "", text.lower()).strip()
-        for station in stations:
-            if station.name.lower() == wanted:
-                return station.point, f"{station.name} Metro"
+        station = find_station(text, stations)
+        if station is not None:
+            return station.point, f"{station.name} Metro"
         if api is None:
             raise ToolError(f"cannot search for {text!r} without the site")
         found = [r for r in api.geocode(text) if inside_coverage((r["lon"], r["lat"]))]
@@ -558,6 +609,17 @@ def write_gpx(name: str, line: list[list[float]], directory: Path | None = None)
 # --- Planning -------------------------------------------------------------------------------
 
 
+def refusal(status: int, message) -> str:
+    """Why the site gave no route, in words an assistant can act on. A 5xx with no message is
+    the web server giving up, almost always its time limit on a long route."""
+    if status >= 500 and not message:
+        return (
+            f"the site failed while planning ({status}), most likely its time limit on a long"
+            " route. Try again, or plan a shorter ride or fewer points."
+        )
+    return f"the site refused the route ({status}): {message}"
+
+
 def summary(answer: dict) -> dict:
     """The answer in a few lines a model can reason about and repeat to a rider."""
     distance = answer.get("distance_m") or 0.0
@@ -569,7 +631,7 @@ def summary(answer: dict) -> dict:
         return {
             label: f"{table.get(key, 0) / total * 100:.0f}% ({miles_text(table.get(key, 0))})"
             for key, label in keys.items()
-            if table.get(key)
+            if table.get(key, 0) >= 0.05 * METRES_PER_MILE
         }
 
     out = {
@@ -985,12 +1047,32 @@ TOOLS = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "target_miles": {"type": "number", "minimum": 5, "maximum": 300},
+                "target_miles": {
+                    "type": "number",
+                    "minimum": 5,
+                    "maximum": 200,
+                    "description": (
+                        "The loop's length, miles. The site plans at most 124 mi of straight"
+                        " lines between points, so past about 150 mi (more on calm settings,"
+                        " which wind more) the ring is kept smaller and the loop comes out short."
+                    ),
+                },
                 "max_miles_from_metro": {"type": "number", "exclusiveMinimum": 0, "default": 5},
                 "start": POINT_SCHEMA,
                 "centre": POINT_SCHEMA,
                 "max_plans": {"type": "integer", "minimum": 1, "maximum": 6, "default": 3},
-                **{k: v for k, v in RIDE_OPTIONS.items() if k != "max_miles_from_metro"},
+                **{
+                    k: v
+                    for k, v in RIDE_OPTIONS.items()
+                    if k not in ("max_miles_from_metro", "target_miles", "stress")
+                },
+                "stress": {
+                    **RIDE_OPTIONS["stress"],
+                    "description": RIDE_OPTIONS["stress"]["description"].replace(
+                        "Absent: the ride type's own.",
+                        "Absent: 80 on default (low stress), else the ride type's own.",
+                    ),
+                },
             },
             "required": ["target_miles"],
         },
@@ -1272,8 +1354,22 @@ class Server:
             },
         }
 
+    def _point(self, value, taken: list[dict]) -> tuple[float, float]:
+        """as_point, noting what a named point was taken as so the answer can say."""
+        point, label = as_point(value, self.api, self.stations)
+        if isinstance(value, str):
+            taken.append({"asked": value, "taken_as": label, "at": list(point)})
+        return point
+
     def _draft(
-        self, plan: Plan, options: dict, limit, notes: list[str], name: str, revised_from=None
+        self,
+        plan: Plan,
+        options: dict,
+        limit,
+        notes: list[str],
+        name: str,
+        revised_from=None,
+        taken: list[dict] | None = None,
     ) -> dict:
         """Keep the plan as a draft and describe it: nothing is saved or written."""
         draft_id = self.drafts.put(Draft(plan, dict(options), limit, name))
@@ -1284,10 +1380,21 @@ class Server:
             "points": [list(p) for p in plan.points],
             "via_points": plan.vias,
             "preset": plan.preset,
-            "settings_used": {k: v for k, v in plan.sent.items() if k != "points"},
+            "settings_used": {
+                **{
+                    k: v
+                    for k, v in plan.sent.items()
+                    if k not in ("points", "confirm_long", "candidates") and v is not None
+                },
+                "stress": self._dials(plan)["stress"],
+                "hills": self._dials(plan)["hills"],
+            },
             "link": f"{self.api.base}/{fragment}",
             "saved": False,
         }
+        if taken:
+            # Named points, so a wrong match ("Navy Yard" the base, not the station) shows.
+            out["points_taken_as"] = taken
         if revised_from:
             out["revised_from"] = revised_from
         if plan.check is not None:
@@ -1411,8 +1518,9 @@ class Server:
         plan = draft.plan
         points = list(plan.points)
         vias = set(plan.vias)
+        taken: list[dict] = []
         if args.get("points"):
-            points = [as_point(p, self.api, self.stations)[0] for p in args["points"]]
+            points = [self._point(p, taken) for p in args["points"]]
             vias = set()
         # Moves, additions and removals all name points by their place in the draft (or in
         # `points` when given): each point keeps its first index until the new list is built.
@@ -1422,7 +1530,7 @@ class Server:
             index = int(move["index"])
             if not 0 <= index < count:
                 raise ToolError(f"no point {index} to move")
-            rows[index][1] = as_point(move["to"], self.api, self.stations)[0]
+            rows[index][1] = self._point(move["to"], taken)
         removed = {int(i) for i in args.get("remove_points") or []}
         for index in removed:
             if not 0 <= index < count:
@@ -1432,7 +1540,7 @@ class Server:
             after = int(add["after"])
             if not 0 <= after < count:
                 raise ToolError(f"no point {after} to add after")
-            point = as_point(add["point"], self.api, self.stations)[0]
+            point = self._point(add["point"], taken)
             added.setdefault(after, []).append([None, point, add.get("via", True)])
         built = []
         for row in rows:
@@ -1464,49 +1572,64 @@ class Server:
                 options.pop(key, None)
         rounds = int(args.get("fix_metro_rounds") or 0)
         revised, notes = self._plan_and_fix(call, points, vias, preset, options, limit, rounds)
-        return self._draft(revised, options, limit, notes, draft.name, revised_from=draft_id)
+        return self._draft(
+            revised, options, limit, notes, draft.name, revised_from=draft_id, taken=taken
+        )
 
     # plan_route
     def plan_route(self, args: dict, call: Call) -> dict:
-        points = [as_point(p, self.api, self.stations)[0] for p in args["points"]]
+        taken: list[dict] = []
+        points = [self._point(p, taken) for p in args["points"]]
         vias = [int(i) for i in args.get("via_points") or []]
         preset = args.get("preset") or "default"
         limit = args.get("max_miles_from_metro")
         options = self._options(args)
         rounds = int(args.get("fix_metro_rounds") or 0)
         plan, notes = self._plan_and_fix(call, points, vias, preset, options, limit, rounds)
-        return self._draft(plan, options, limit, notes, "RouteMaker route")
+        return self._draft(plan, options, limit, notes, "RouteMaker route", taken=taken)
 
     # plan_metro_loop
     def plan_metro_loop(self, args: dict, call: Call) -> dict:
         target = float(args["target_miles"])
         limit = float(args.get("max_miles_from_metro") or 5)
-        centre = (
-            as_point(args["centre"], self.api, self.stations)[0]
-            if args.get("centre") is not None
-            else DC_CENTRE
-        )
-        start = (
-            as_point(args["start"], self.api, self.stations)[0]
-            if args.get("start") is not None
-            else None
-        )
+        taken: list[dict] = []
+        centre = self._point(args["centre"], taken) if args.get("centre") is not None else DC_CENTRE
+        start = self._point(args["start"], taken) if args.get("start") is not None else None
         preset = args.get("preset") or "default"
         if preset in TWO_POINT_PRESETS or preset == "mass-ride":
             raise ToolError(f"{preset} does not plan loops")
         max_plans = int(args.get("max_plans") or 3)
         options = {**self._options(args), "loop": True}
+        # target_miles is the loop's length here, not the calm search's soft target.
+        options.pop("target_distance_m", None)
         if options["stress"] is None and preset == "default":
             # "Low stress" on everyday riding: low-stress ways unless much longer. Every other
             # ride type keeps its own start, which the assistant can override.
             options["stress"] = 80
-        radius = target / (2 * math.pi * ROAD_FACTOR)
+        radius = target / (2 * math.pi * road_factor(options["stress"]))
         rescaled = False
         notes: list[str] = []
         best: Plan | None = None
-        points, vias = loop_points_from(
-            start, ring_waypoints(centre, radius, limit, self.stations), centre
-        )
+
+        def ring_points(radius):
+            """The loop's points, the ring shrunk to stay inside what the site will plan."""
+            for _ in range(8):
+                points, vias = loop_points_from(
+                    start, ring_waypoints(centre, radius, limit, self.stations), centre
+                )
+                span = sum(haversine_mi(a, b) for a, b in zip(points, points[1:], strict=False))
+                if span <= LOOP_SPAN_MI:
+                    return points, vias, radius
+                radius *= 0.98 * LOOP_SPAN_MI / span
+            return points, vias, radius
+
+        points, vias, fitted = ring_points(radius)
+        if fitted < radius:
+            notes.append(
+                f"the site plans at most {MAX_SPAN_MI} mi of straight lines between points, so"
+                f" the ring was kept to {fitted:.1f} mi out"
+            )
+        radius = fitted
         for attempt in range(max_plans):
             if best is not None and not call.time_for_another_plan():
                 notes.append(OUT_OF_TIME)
@@ -1531,10 +1654,7 @@ class Server:
             off = miles / target
             if not rescaled and not 0.88 <= off <= 1.12:
                 rescaled = True
-                radius = max(1.5, radius / off)
-                points, vias = loop_points_from(
-                    start, ring_waypoints(centre, radius, limit, self.stations), centre
-                )
+                points, vias, radius = ring_points(max(1.5, radius / off))
                 continue
             fix = with_metro_fix(plan, self.stations)
             if fix is None:
@@ -1547,7 +1667,16 @@ class Server:
                 f"the loop is {miles:.0f} mi against a target of {target:.0f}: within"
                 f" {limit:g} mi of Metro, the ring could not be made closer"
             )
-        return self._draft(best, options, limit, notes, f"{target:.0f} mi Metro loop")
+        if start is None:
+            begin = tuple(best.points[0])
+            near = min(self.stations, key=lambda s: haversine_mi(begin, s.point))
+            notes.insert(
+                0,
+                f"no start was given, so the loop starts and ends on the ring near {near.name}"
+                f" Metro ({haversine_mi(begin, near.point):.1f} mi from it); pass start to begin"
+                " somewhere else",
+            )
+        return self._draft(best, options, limit, notes, f"{target:.0f} mi Metro loop", taken=taken)
 
     def handler(self, name: str):
         return {

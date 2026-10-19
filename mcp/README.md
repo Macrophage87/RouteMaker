@@ -70,7 +70,8 @@ standard library only.
    you can remove or replace it there at any time.
 2. **Add the server to your assistant** with these settings:
    - `ROUTEMAKER_BASE_URL`: the address you open RouteMaker at, for example `http://localhost`
-     for a local stack.
+     for a local stack. Route links are built from it, so `http://localhost` links open only on
+     that computer; use the site's public address to open them on your phone.
    - `ROUTEMAKER_SAVE_KEY`: the key from step 1 (leave it out to plan without saving).
    - `ROUTEMAKER_ROUTES_DIR` (optional): where GPX files go; default `~/RouteMaker-routes`.
    - `ROUTEMAKER_BASIC_AUTH` (optional): `user:password` for a site behind a password, such as
