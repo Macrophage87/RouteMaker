@@ -418,8 +418,8 @@ class TestInWords:
         c = climb(at_m=3000.0, length_m=1000.0, gain=90.0, name="Rock Creek Trail", unpaved=True)
         item = hs.Ridden(c, 1609.344, 2 * 1609.344)
         assert hs.sentence(item) == (
-            "At 1.0 mi (1.6 km): Category 4 climb, 0.6 miles (1.0 km) at 9.0%, 295 ft (90 m)"
-            " gained, to the summit at 2.0 mi (3.2 km). On the Rock Creek Trail. Mostly unpaved."
+            "At 1.0 mi (1.6 km): Rock Creek Trail, Category 4 climb, 0.6 miles (1.0 km) at 9.0%,"
+            " 295 ft (90 m) gained, to the summit at 2.0 mi (3.2 km). Mostly unpaved."
         )
         assert hs.sentence(item, scale=2.0).startswith("At 2.0 mi (3.2 km)")
         assert "to the summit at 4.0 mi (6.4 km)." in hs.sentence(item, scale=2.0)
