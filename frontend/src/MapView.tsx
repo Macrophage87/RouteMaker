@@ -35,7 +35,7 @@ import {
   ROUTE_BAND_WIDTH,
   sectionFeatures,
 } from "./lib/routeColours.ts";
-import { stressOverlayLayers, subscribeHighStressLanes, subscribeMtbTrails, subscribePalette, subscribeRoutableMtb } from "./stressStyle.js";
+import { mtbTrailsOn, routableMtbLevel, stressOverlayLayers, subscribeHighStressLanes, subscribeMtbTrails, subscribePalette, subscribeRoutableMtb } from "./stressStyle.js";
 import { subscribeTopoLines, syncTopoLines, topoLinesOn, type TopoMap } from "./lib/topoLines.ts";
 import {
   addStressOverlay,
@@ -78,7 +78,7 @@ import type { FederalStatus } from "./lib/federalLegend.ts";
 import { attachFederalInteraction } from "./federalInteraction.ts";
 import { addWaterRestrooms, setWaterPrefs, WATER_SOURCE_ID, type WaterMap, type WaterPoint, type WaterPrefs } from "./lib/waterRestrooms.ts";
 import { attachWaterInteraction } from "./waterInteraction.ts";
-import { addClimbs, CLIMBS_SOURCE_ID, setClimbsFrom, setClimbsOn, subscribeHideBusy, type Climb, type ClimbCategory, type ClimbsMap } from "./lib/climbs.ts";
+import { addClimbs, CLIMBS_FROM_DEFAULT, CLIMBS_SOURCE_ID, setClimbsFrom, setClimbsOn, setTrailClimbs, subscribeHideBusy, type Climb, type ClimbCategory, type ClimbsMap } from "./lib/climbs.ts";
 import { attachClimbInteraction } from "./climbInteraction.ts";
 import { climbCardAfterClose } from "./lib/climbCard.ts";
 import type { When } from "./lib/dials.ts";
@@ -368,6 +368,11 @@ const TRANSIT_LAYERS = ["transit-casing", "transit-ride", "transit-walk", "trans
 /** How far from the line's centre a mouse, or a finger, still grabs it. */
 const MOUSE_HIT_PX = 8;
 const TOUCH_HIT_PX = 18;
+
+// The stress overlay's layer ids, for a press on a mountain-bike trail's line (lib/mapGlue.ts mtbTrailPressed).
+function overlayLayerIds(): string[] {
+  return stressOverlayLayers(STRESS_SOURCE_ID).map((layer: { id: string }) => layer.id);
+}
 /** Near a marker, the marker is what the pointer is on, not the line. */
 const MARKER_CLEAR_PX = 14;
 /** After a drag, the click the browser may still send is not a new point. */
@@ -631,7 +636,7 @@ export function MapView(props: Props) {
       const on = callbacks.current.climbsOn === true;
       if (map.getSource(CLIMBS_SOURCE_ID)) {
         setClimbsOn(map as unknown as ClimbsMap, on);
-        setClimbsFrom(map as unknown as ClimbsMap, callbacks.current.climbsFrom ?? "5");
+        setClimbsFrom(map as unknown as ClimbsMap, callbacks.current.climbsFrom ?? CLIMBS_FROM_DEFAULT);
         climbCard?.close();
         return;
       }
@@ -639,7 +644,7 @@ export function MapView(props: Props) {
       if (!data || data.length === 0) return;
       climbById = new Map(data.map((c) => [c.id, c]));
       // Under the route, with the water and the stations (railLayer.ts's order).
-      addClimbs(map as unknown as ClimbsMap, data, on, iconPixelRatio(), ROUTE_BOTTOM_LAYER, callbacks.current.climbsFrom ?? "5");
+      addClimbs(map as unknown as ClimbsMap, data, on, iconPixelRatio(), ROUTE_BOTTOM_LAYER, callbacks.current.climbsFrom ?? CLIMBS_FROM_DEFAULT);
     };
     const anyPopupOpen = () => popupsOpen(popup.current, rail);
     /** Bring the federal-land layers in line with props.federalVisible, loading the data the first time. */
@@ -977,19 +982,21 @@ export function MapView(props: Props) {
           return;
         }
       }
-      // A mountain-bike trail's line, while its layer is on (the owner, 2026-10-19: "Basically make them
+      // A mountain-bike trail's line, while one is drawn (the owner, 2026-10-19: "Basically make them
       // clickable."): the road panel for that trail, with its surface and the like and Route through this trail,
-      // never also a point or (in Go) the destination. The route's own line keeps its press (a via in Plan).
-      if (
+      // never also a point or (in Go) the destination. The route's own line keeps its press (a via in Plan), and
+      // a press nearer a road's line than a trail's is the road's (lib/mapGlue.ts mtbTrailPressed).
+      const trailAt =
         onCanvas &&
         !under.station &&
         !(under.line && !goPress) &&
         !anyPopupOpen() &&
         !water?.hits(event.point) &&
-        performance.now() >= clickSuppressedUntil &&
-        mtbTrailPressed(map, event.point, touch ? TOUCH_HIT_PX : MOUSE_HIT_PX)
-      ) {
-        callbacks.current.onRoadInfo?.({ point, origin: "spot", trail: true });
+        performance.now() >= clickSuppressedUntil
+          ? mtbTrailPressed(map, event.point, touch ? TOUCH_HIT_PX : MOUSE_HIT_PX, overlayLayerIds())
+          : null;
+      if (trailAt) {
+        callbacks.current.onRoadInfo?.({ point: trailAt, origin: "spot", trail: true });
         return;
       }
       // Go: read before the cards' own click handlers (attached after this one) open or close them.
@@ -2161,6 +2168,17 @@ export function MapView(props: Props) {
   }, [props.climbs, props.climbsOn, props.climbsFrom]);
   // And "Hide climbs on busy roads" (lib/climbs.ts), set again in place.
   useEffect(() => subscribeHideBusy(() => climbsSync.current?.()), []);
+  // Climbs on mountain-bike trails show while the map draws the trails (lib/climbs.ts trailClimbs).
+  useEffect(() => {
+    const sync = () => setTrailClimbs(mtbTrailsOn() || routableMtbLevel() !== null);
+    sync();
+    const offTrails = subscribeMtbTrails(sync);
+    const offRoutable = subscribeRoutableMtb(sync);
+    return () => {
+      offTrails();
+      offRoutable();
+    };
+  }, []);
 
   // The road panel's "Climb details": the climb's card, with the focus in it.
   useEffect(() => {

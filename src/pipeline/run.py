@@ -832,6 +832,8 @@ class RebuildContext:
     # trail layer in their level's colour (pipeline.trail_closures.drawn_singletrack;
     # OWNER-DECISIONS 456); the rest stay hidden.
     drawn_singletracks: set[int] = field(default_factory=set)
+    # Of those, the ones the off-road graph rides too (`trail_closures.offroad_graph_keeps`).
+    offroad_singletracks: set[int] = field(default_factory=set)
     # Ways mapped closed when wet, which the Mountain Bike graph closes
     # (`routemaker.mtbmode.closed_when_wet`; docs/MTB-TOPO-PLAN.md, slice 6).
     wet_closed: set[int] = field(default_factory=set)
@@ -1352,7 +1354,11 @@ def closure_probes(context: RebuildContext) -> list[tiles.ClosureProbe]:
 
 
 def write_closure_reports(
-    out_dir: Path, probes, singletracks, drawn_singletracks: Collection[int] = frozenset()
+    out_dir: Path,
+    probes,
+    singletracks,
+    drawn_singletracks: Collection[int] = frozenset(),
+    offroad_singletracks: Collection[int] = frozenset(),
 ) -> None:
     """What the post-swap probe reads (scripts/probe_bicycle_closures.py).
 
@@ -1365,9 +1371,19 @@ def write_closure_reports(
     def mtb_open(p) -> str:
         return "1" if trail_closures.mtb_graph_keeps(p.reason, p.way_id, drawn_singletracks) else ""
 
+    def offroad_open(p) -> str:
+        return (
+            "1"
+            if trail_closures.offroad_graph_keeps(p.reason, p.way_id, offroad_singletracks)
+            else ""
+        )
+
     (out_dir / CLOSURE_PROBES_REPORT).write_text(
-        "way_id,lon,lat,reason,mtb_graph_open\n"
-        + "".join(f"{p.way_id},{p.lon:.7f},{p.lat:.7f},{p.reason},{mtb_open(p)}\n" for p in probes)
+        "way_id,lon,lat,reason,mtb_graph_open,offroad_graph_open\n"
+        + "".join(
+            f"{p.way_id},{p.lon:.7f},{p.lat:.7f},{p.reason},{mtb_open(p)},{offroad_open(p)}\n"
+            for p in probes
+        )
     )
     (out_dir / SINGLETRACK_REPORT).write_text("".join(f"{w}\n" for w in sorted(singletracks)))
 
@@ -2995,6 +3011,7 @@ def build_handlers(
         context.cbd_sidewalks = {w for w, r in nobike.reasons.items() if r == cbd.NO_BICYCLE}
         context.singletracks = {w for w, r in nobike.reasons.items() if r == singletrack.NO_BICYCLE}
         context.drawn_singletracks = nobike.drawn_singletrack
+        context.offroad_singletracks = nobike.offroad_singletrack
         # Closed on the Mountain Bike graph alone (`routemaker.mtbmode.closed_when_wet`).
         context.wet_closed = {
             way.osm_id for way in context.ways if mtbmode.closed_when_wet(way.tags)
@@ -3287,15 +3304,16 @@ def build_handlers(
                 lit = lit_value(way.tags)
                 if lit is not None:
                     derived["lit"] = lit
-                # The off-road graph keeps the mountain-bike class open; the Mountain Bike
-                # graph that and drawn singletrack, and closes a trail mapped closed when
-                # wet (slice 6; `trail_closures.graph_reason`).
+                # The off-road and Mountain Bike graphs keep the mountain-bike class and drawn
+                # singletrack open (the off-road graph the singletrack since 2026-10-19), and
+                # close a trail mapped closed when wet (slice 6; `trail_closures.graph_reason`).
                 reason = trail_closures.graph_reason(
                     variant,
                     context.no_bicycle.get(way.osm_id),
                     way.osm_id,
                     context.drawn_singletracks,
                     context.wet_closed,
+                    context.offroad_singletracks,
                 )
                 if reason is not None:
                     derived["no_bicycle"] = reason
@@ -4101,6 +4119,7 @@ def _closures_across_variants(context: RebuildContext, run) -> dict:
             probes,
             context.singletracks,
             getattr(context, "drawn_singletracks", None) or set(),
+            getattr(context, "offroad_singletracks", None) or set(),
         )
     except OSError:
         logger.warning("bicycle-closure probe list not written", exc_info=True)
@@ -4113,7 +4132,10 @@ def _closures_across_variants(context: RebuildContext, run) -> dict:
             probe
             for probe in probes
             if not (
-                variant is variants.Variant.OFFROAD and probe.reason in trail_closures.OFFROAD_KEEPS
+                variant is variants.Variant.OFFROAD
+                and trail_closures.offroad_graph_keeps(
+                    probe.reason, probe.way_id, getattr(context, "offroad_singletracks", set())
+                )
             )
             and not (
                 variant is variants.Variant.MTB

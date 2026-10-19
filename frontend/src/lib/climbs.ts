@@ -183,17 +183,40 @@ export function subscribeHideBusy(listener: () => void): () => void {
 }
 
 /**
+ * Whether climbs mostly on mountain-bike trails show: only while the map draws those trails (their layer on, or the
+ * Mountain Bike ride type), so a road ride type's map shows no climb on a trail its routes do not use. MapView sets
+ * it; a change reaches the same listeners as the busy-road switch.
+ */
+let trailClimbsShown = false;
+
+export function trailClimbs(): boolean {
+  return trailClimbsShown;
+}
+
+export function setTrailClimbs(on: boolean): void {
+  if (on === trailClimbsShown) return;
+  trailClimbsShown = on;
+  for (const listener of [...hideBusyListeners]) listener();
+}
+
+/**
  * Whether a climb is shown with "Show climbs from" at `from`: that category or a harder one, and, while busy
  * roads' climbs are hidden, not one mostly on LTS 3 or higher.
  */
-export function climbShown(c: Pick<Climb, "category" | "busy">, from: ClimbCategory, hidingBusy: boolean = hideBusy): boolean {
-  return climbRank(c.category) <= climbRank(from) && !(hidingBusy && c.busy === true);
+export function climbShown(
+  c: Pick<Climb, "category" | "busy" | "surface">,
+  from: ClimbCategory,
+  hidingBusy: boolean = hideBusy,
+  trails: boolean = trailClimbsShown,
+): boolean {
+  return climbRank(c.category) <= climbRank(from) && !(hidingBusy && c.busy === true) && (trails || c.surface !== "mtb");
 }
 
-/** The map's filter for both layers: the same rule as climbShown, on each feature's rank and `b`. */
-export function climbsFilter(from: ClimbCategory, hidingBusy: boolean = hideBusy): unknown[] {
+/** The map's filter for both layers: the same rule as climbShown, on each feature's rank, `b` and `s`. */
+export function climbsFilter(from: ClimbCategory, hidingBusy: boolean = hideBusy, trails: boolean = trailClimbsShown): unknown[] {
   const rank = ["<=", ["get", "rank"], climbRank(from)];
-  return hidingBusy ? ["all", rank, ["!=", ["get", "b"], true]] : rank;
+  const hides = [...(hidingBusy ? [["!=", ["get", "b"], true]] : []), ...(trails ? [] : [["!=", ["get", "s"], "mtb"]])];
+  return hides.length > 0 ? ["all", rank, ...hides] : rank;
 }
 
 // --- The file --------------------------------------------------------------------

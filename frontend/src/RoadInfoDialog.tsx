@@ -38,6 +38,8 @@ import {
   STREET_VIEW_TEXT,
   fetchSegmentInfo,
   TRAIL_VIA_TEXT,
+  trailNotRouted,
+  type TrailRider,
   streetViewPoint,
   infoHeading,
   infoSaid,
@@ -141,10 +143,10 @@ interface Props {
   /** `asVia`: the point is a via point (a tapped trail's Route through this trail), not a stop. */
   onPlace: (choice: PlaceChoice, point: [number, number], asVia?: boolean) => void;
   /**
-   * Whether the ride type routes on mountain-bike trails (lib/roadInfo.ts TRAIL_RIDE_TYPES): only then does a tapped
-   * trail's stop button read Route through this trail, since another ride type's router cannot use the trail.
+   * The rider's ride type and Mountain Bike level (lib/roadInfo.ts trailNotRouted): a mountain-bike trail's stop
+   * button reads Route through this trail only where this ride type's router uses the trail; else the panel says why.
    */
-  trailRideType?: boolean;
+  trailRider?: TrailRider;
   /** "Set as Home" (lib/homeSet.ts): the spot is the rider's Home; the panel then closes. Absent: no button. */
   onSetHome?: (point: [number, number]) => void;
 }
@@ -170,6 +172,7 @@ function neighbour(items: HTMLElement[], from: HTMLElement, backwards: boolean):
 
 /** Both rail systems shown: where the panel is not told the map's toggles. */
 const ALL_RAIL: RailVisibility = { metro: true, marc: true };
+const NO_TRAIL_RIDER: TrailRider = { rideType: "", mtbLevel: null };
 
 /**
  * A nearby station's lines now, scheduled, as its card on the map says them (railInteraction.ts): the
@@ -204,7 +207,7 @@ function StationTimesList({ station, rail, closed }: { station: Station; rail: R
   );
 }
 
-export function RoadInfoDialog({ request, hazards = null, massRide, station, rail = ALL_RAIL, stationClosed, avoid = null, junctionShown = null, federal = null, climb = null, onShowClimb, trailMiles = null, onClose, fallbackFocus, onStressChanged, plan, onPlace, onSetHome, trailRideType = false }: Props) {
+export function RoadInfoDialog({ request, hazards = null, massRide, station, rail = ALL_RAIL, stationClosed, avoid = null, junctionShown = null, federal = null, climb = null, onShowClimb, trailMiles = null, onClose, fallbackFocus, onStressChanged, plan, onPlace, onSetHome, trailRider = NO_TRAIL_RIDER }: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const returnTo = useRef<Element | null>(null);
@@ -498,6 +501,9 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
   // A rider the settings allow may suggest a level (an instance admin changes it instead).
   // Not on a mountain-bike trail: it has no traffic to rate (the owner, 2026-10-19).
   const trailWay = ready?.mtb_trail === true;
+  // On a trail, whether this ride type's routes use it (Route through this trail), or why not.
+  const trailNote = trailNotRouted(ready, trailRider);
+  const trailRoutes = trailWay && trailNote === null;
   const suggestWay =
     ready && !trailWay && me.can_suggest && editableWay === null && ready.osm_way_id != null && ready.tier != null ? ready.osm_way_id : null;
   // Anyone else gets the short form (v0.7.0; SuggestQuick.tsx): signed out, or the settings keep the
@@ -610,12 +616,12 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
                   onClick={() => {
                     if (action.unavailable) return;
                     // On a tapped trail, the point goes on the trail itself, and its stop is a via point.
-                    const trailVia = request.trail === true && trailRideType && action.choice === "via";
-                    onPlace(action.choice, request.trail ? (ready?.on_way ?? request.point) : request.point, trailVia);
+                    const trailVia = trailRoutes && action.choice === "via";
+                    onPlace(action.choice, trailWay ? (ready?.on_way ?? request.point) : request.point, trailVia);
                     close();
                   }}
                 >
-                  {request.trail && trailRideType && action.choice === "via" ? TRAIL_VIA_TEXT : action.text}
+                  {trailRoutes && action.choice === "via" ? TRAIL_VIA_TEXT : action.text}
                 </button>
               </li>
             ))}
@@ -635,6 +641,7 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
             )}
           </ul>
         )}
+        {request && trailNote !== null && <p className="hint road-info-place-why">{trailNote}</p>}
         {request && actions.some((a) => a.unavailable) && (
           <p className="hint road-info-place-why">
             {actions

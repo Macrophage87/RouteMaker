@@ -268,9 +268,14 @@ test("that category and harder are shown, on the map and in words", () => {
   assert.equal(climbShown({ category: "3" }, "4"), true);
   assert.equal(climbShown({ category: "HC" }, "HC"), true);
   assert.equal(climbShown({ category: "1" }, "HC"), false);
-  assert.deepEqual(climbsFilter("3", false), ["<=", ["get", "rank"], 3]);
+  assert.deepEqual(climbsFilter("3", false, true), ["<=", ["get", "rank"], 3]);
   // The owner, 2026-10-19: "optionally (default on) hide climbs on LTS 3+ roads".
-  assert.deepEqual(climbsFilter("3", true), ["all", ["<=", ["get", "rank"], 3], ["!=", ["get", "b"], true]]);
+  assert.deepEqual(climbsFilter("3", true, true), ["all", ["<=", ["get", "rank"], 3], ["!=", ["get", "b"], true]]);
+  // Climbs on mountain-bike trails show only while the map draws the trails (review of 2026-10-19).
+  assert.deepEqual(climbsFilter("3", false, false), ["all", ["<=", ["get", "rank"], 3], ["!=", ["get", "s"], "mtb"]]);
+  assert.equal(climbShown({ category: "3", surface: "mtb" }, "4", false, false), false);
+  assert.equal(climbShown({ category: "3", surface: "mtb" }, "4", false, true), true);
+  assert.equal(climbShown({ category: "3", surface: "gravel" }, "4", false, false), true);
   assert.equal(climbShown({ category: "3", busy: true }, "4", true), false);
   assert.equal(climbShown({ category: "3", busy: true }, "4", false), true);
   assert.equal(climbShown({ category: "3" }, "4", true), true);
@@ -320,7 +325,7 @@ test("the select is labelled, beside the switch while the layer is on, and chang
   assert.ok(renderToStaticMarkup(createElement(ClimbsLayerControls, { ...props, on: true })).includes("climbs-from"));
   assert.ok(!renderToStaticMarkup(createElement(ClimbsLayerControls, { ...props, on: false })).includes("climbs-from"));
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
-  assert.match(app, /filter\(\(item\) => climbShown\(item\.climb, climbsFrom, hidingBusyClimbs\)\)/);
+  assert.match(app, /filter\(\(item\) => climbShown\(item\.climb, climbsFrom, hidingBusyClimbs, trailClimbsShown\)\)/);
   assert.match(app, /climbNearSpot\(climbsData, roadInfo\.point, climbsFrom\)/);
 });
 

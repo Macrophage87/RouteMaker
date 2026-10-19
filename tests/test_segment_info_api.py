@@ -222,6 +222,9 @@ class TestAnswer:
             "summary": [],
             "sections": [],
             "more": None,
+            "mtb_trail": False,
+            "trail_open": None,
+            "trail_level": None,
             "attribution": ["© OpenStreetMap contributors (ODbL)"],
         }
         assert router.calls == []
@@ -1236,6 +1239,9 @@ class TestTappedTrail:
             INFO, {"lat": SPOT[1], "lon": SPOT[0], "trail": "true"}, **fresh_client()
         ).json()
         assert body["osm_way_id"] == 502 and body["mtb_trail"] is True
+        # The mountain-bike class: Gravel, Mountain Goat and Mountain Bike route through it,
+        # unrated, so at Mountain Bike's unrated level.
+        assert body["trail_open"] == "offroad" and body["trail_level"] == 2
         lines = summary(body)
         assert "Trail surface: Dirt" in lines and "Trail visibility: Easy to follow" in lines
         assert not any(line.startswith("Traffic stress") for line in lines)
@@ -1263,3 +1269,39 @@ class TestTappedTrail:
         # A road is not a trail: no profile is drawn for it.
         assert client.get("/api/trails/504/profile", **fresh_client()).status_code == 404
         assert client.get("/api/trails/999999/profile", **fresh_client()).status_code == 404
+
+    def test_a_router_down_is_503_and_a_refusal_is_not_kept(
+        self, client, segment_schemas, router, monkeypatch
+    ) -> None:
+        from core import routing, trailprofile
+
+        live, _ = segment_schemas
+        trail = north(SPOT, 8)
+        insert(
+            live,
+            505,
+            [trail, north(trail, 100)],
+            bike_access_reason="singletrack",
+            mtb_only=True,
+            mtb_level=3,
+        )
+        info = client.get(
+            INFO, {"lat": trail[1], "lon": trail[0], "trail": "true"}, **fresh_client()
+        ).json()
+        # Rated singletrack above Gravel's cap (green, the owner's choice of 2026-10-19):
+        # Mountain Bike alone, at its level.
+        assert info["trail_open"] == "mtb" and info["trail_level"] == 3
+        trailprofile._kept.clear()
+        answers = iter([routing.RouterUnavailable("down"), routing.RouterRefused(400, None, "no")])
+
+        def fake(variant, endpoint, payload, deadline):
+            answer = next(answers, None)
+            if isinstance(answer, Exception):
+                raise answer
+            return {"height": [20.0] * len(payload["shape"])}
+
+        monkeypatch.setattr(routing, "_call", fake)
+        assert client.get("/api/trails/505/profile", **fresh_client()).status_code == 503
+        assert client.get("/api/trails/505/profile", **fresh_client()).status_code == 404
+        # The refusal was not kept: the next ask is answered.
+        assert client.get("/api/trails/505/profile", **fresh_client()).status_code == 200

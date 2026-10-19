@@ -4,7 +4,7 @@ import { MapView, type Frame, type LineEdit, type StressAvailability } from "./M
 import { RoadInfoDialog } from "./RoadInfoDialog.tsx";
 import { MapTools } from "./MapTools.tsx";
 import { ACCESS_LABEL, accessModeToggle, readAccessMode, writeAccessMode } from "./lib/accessMode.ts";
-import { placeAtSpot, requestAfterClose, TRAIL_RIDE_TYPES, type InfoRequest } from "./lib/roadInfo.ts";
+import { placeAtSpot, requestAfterClose, type InfoRequest, type TrailRider } from "./lib/roadInfo.ts";
 import { stationNearSpot } from "./lib/stationLinks.ts";
 import { reorder } from "./lib/pointMover.ts";
 import { canDragLine, dropStillValid, insertIntoRide, legEnds, legPoints } from "./lib/lineEdit.ts";
@@ -22,7 +22,7 @@ import { confirmedUpTo, sendsConfirmation, spanKm } from "./lib/longRide.ts";
 import { forgetPlan, planToOpen, tabSession } from "./lib/signIn.ts";
 import { STILL_PLANNING_AFTER_MS, announceRoute, stillPlanningSaid } from "./lib/summary.ts";
 import { focusesPlanButton, opensSheet, sheetOrder, type SheetSection } from "./lib/sheet.ts";
-import { neutralPaletteSearch, MTB_MIN_ZOOM, setMtbTrails, setRoutableMtb } from "./stressStyle.js";
+import { neutralPaletteSearch, MTB_MIN_ZOOM, mtbTrailsOn, setMtbTrails, setRoutableMtb } from "./stressStyle.js";
 import { setTopoLines, topoAvailable, useTopoLines } from "./lib/topoLines.ts";
 import { isMtb, mtbChosen, mtbLevelOf } from "./lib/mtbMode.ts";
 import { choose as chooseRideType } from "./lib/rideTypeDialog.ts";
@@ -60,7 +60,7 @@ import { ANNOUNCE_SETTLE_MS } from "./lib/settle.ts";
 import { skipToPlanner, SKIP_LINK_TEXT, SKIP_TO_RIDE_TEXT } from "./lib/skipLink.ts";
 import { BetaChip, betaReportUrl, isBetaBuild } from "./lib/betaBanner.ts";
 import { MtbMapKey } from "./lib/stressLegend.ts";
-import { useHideBusyClimbs } from "./lib/climbsLegend.ts";
+import { useHideBusyClimbs, useTrailClimbs } from "./lib/climbsLegend.ts";
 import { announceHow } from "./lib/candidates.ts";
 import { canReverse, loopStops, loopView, reversedPoints } from "./lib/loop.ts";
 import { FINDING_ORDER_SAID, STILL_FINDING_ORDER_SAID, applyAnswer, requestStopOrder, stopsThatMove } from "./lib/stopOrder.ts";
@@ -633,6 +633,7 @@ export function App() {
   const [climbsFrom, setClimbsFromState] = useState<ClimbCategory>(() => readClimbsFrom());
   // "Hide climbs on busy roads" (the owner, 2026-10-19), kept in lib/climbs.ts for the map, the list and the panel.
   const hidingBusyClimbs = useHideBusyClimbs();
+  const trailClimbsShown = useTrailClimbs();
   const changeClimbsFrom = (from: ClimbCategory) => {
     setClimbsFromState(from);
     saveClimbsFrom(from);
@@ -2476,7 +2477,9 @@ export function App() {
     const map = mapRef.current;
     if (!map) return;
     const { lng, lat } = map.getCenter();
-    setRoadInfo({ point: [lng, lat], origin: "centre" });
+    // Where mountain-bike trails are drawn, a trail at the centre is described ahead of a road beside it,
+    // as a tap on its line does: the keyboard reaches the trail panel too.
+    setRoadInfo({ point: [lng, lat], origin: "centre", trail: mtbTrailsOn() || routableLevel !== null });
   };
   const retry = () =>
     scheduler.current?.request({ points, preset, dials: planDials, confirmLong: sendsConfirmation(points, confirmedKm), ride: rideRef.current, dialsKey: planKey, pins: stationPins, transitPick });
@@ -2486,6 +2489,8 @@ export function App() {
   useEffect(() => {
     setRoutableMtb(routableLevel);
   }, [routableLevel]);
+  // The road panel's Route through this trail: only where this ride type's router uses the trail (lib/roadInfo.ts).
+  const trailRider = useMemo<TrailRider>(() => ({ rideType: preset, mtbLevel: isMtb(preset) ? mtbLevelOf(dials) : null }), [preset, dials]);
   // The Adjust panel's sliders and toggles. Turning the loop on or off renames
   // the points (OWNER-DECISIONS 374), which a screen reader would not hear.
   const commitDials = (next: Dials) => {
@@ -3447,9 +3452,9 @@ export function App() {
   const climbsAlong = useMemo(
     () =>
       climbsOn && climbsData && shown
-        ? climbsAlongRoute(shown.geometry.coordinates, climbsData).filter((item) => climbShown(item.climb, climbsFrom, hidingBusyClimbs))
+        ? climbsAlongRoute(shown.geometry.coordinates, climbsData).filter((item) => climbShown(item.climb, climbsFrom, hidingBusyClimbs, trailClimbsShown))
         : null,
-    [climbsOn, climbsData, shown, climbsFrom, hidingBusyClimbs],
+    [climbsOn, climbsData, shown, climbsFrom, hidingBusyClimbs, trailClimbsShown],
   );
   // Find food (lib/food.ts; FOOD-SEARCH, owner 2026-10-11): a map search by cuisine or name (blank for all
   // food), near the rider (the whole area, the default) or in the map's view. The places file is fetched on
@@ -4347,7 +4352,7 @@ export function App() {
         }}
         plan={{ count: points.length, loop: loopVias }}
         onPlace={placeSpot}
-        trailRideType={TRAIL_RIDE_TYPES.has(preset)}
+        trailRider={trailRider}
         onSetHome={(point) => void setHomeAt(point)}
       />
       {crosshairShown && (
@@ -4428,7 +4433,8 @@ export function App() {
         </div>
       )}
       {/* The mountain-bike trails' key on the map (the owner, 2026-10-19), while their layer draws. */}
-      {!riding && <MtbMapKey drawn={stress === "available" && zoom !== null && zoom >= MTB_MIN_ZOOM} />}
+      {/* Not in Go, which keeps its map clear (the owner: streamline Go); Layers holds the key there. */}
+      {!riding && !goNow && <MtbMapKey drawn={stress === "available" && zoom !== null && zoom >= MTB_MIN_ZOOM} />}
       {/* The beta notice: a chip in the map's free bottom-left corner, only in a VITE_BETA=1 build. */}
       {!riding && (
         <BetaChip

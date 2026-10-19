@@ -105,9 +105,9 @@ def body_of(way_id: int, at: list[float], heights: list[float | None], step: int
     if not any(h is not None for h in heights):
         return None
     grade_at = profile_rules.grades(pairs)
-    known = [h for h in heights if h is not None]
-    gain = sum(max(b - a, 0.0) for a, b in zip(known, known[1:], strict=False))
-    loss = sum(max(a - b, 0.0) for a, b in zip(known, known[1:], strict=False))
+    # The route chart's climbing and descending (`routing.climb_and_descent`, with its
+    # hysteresis): a bare sum of 30 m steps turns the elevation tiles' noise into climbing.
+    gain, loss = routing.climb_and_descent(heights)
     steepest = max((abs(g) for g in grade_at if g is not None), default=None)
     return {
         "way": way_id,
@@ -140,7 +140,8 @@ def profile(way_id: int) -> dict | None:
             VARIANT, "height", {"shape": [{"lon": p[0], "lat": p[1]} for p in where]}, deadline
         )
     except routing.RouterRefused:
-        answer = {}
+        # Not kept: a refusal (a router mid-restart, say) is no answer for the table's life.
+        return None
     except (routing.RouterUnavailable, routing.DeadlineExceeded) as error:
         raise Unavailable(str(error)) from error
     raw = answer.get("height")

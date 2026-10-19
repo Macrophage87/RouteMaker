@@ -81,6 +81,14 @@ export interface SegmentInfo {
   more?: MoreLink | null;
   /** A mountain-bike trail the trail layer draws: the panel shows its elevation profile and no traffic lines; absent from an older API. */
   mtb_trail?: boolean;
+  /**
+   * On a mountain-bike trail, which ride types route through it (core.segment_info trail_routing): "offroad"
+   * Gravel, Mountain Goat and Mountain Bike (up to the rider's level); "mtb" Mountain Bike alone (a trail above
+   * Gravel's level); null none. Absent from an older API.
+   */
+  trail_open?: "offroad" | "mtb" | null;
+  /** On a mountain-bike trail, the level (1-4) Mountain Bike's hardest-level choice reads it at. */
+  trail_level?: number | null;
   sections: InfoSection[];
   attribution: string[];
 }
@@ -108,8 +116,30 @@ export interface InfoRequest {
 /** The trail panel's via button: a via point on the trail, which shapes the route through it (lib/pointKinds.ts). */
 export const TRAIL_VIA_TEXT = "Route through this trail";
 
-/** The ride types whose router opens mountain-bike trails (docs/MTB-TOPO-PLAN.md slice 6; the off-road graph). */
-export const TRAIL_RIDE_TYPES: ReadonlySet<string> = new Set(["mountain-bike", "gravel", "mountain-goat"]);
+/** The rider's ride type and, in Mountain Bike, the hardest level chosen (null otherwise). */
+export interface TrailRider {
+  rideType: string;
+  mtbLevel: number | null;
+}
+
+/**
+ * Why this ride type's routes do not use a tapped mountain-bike trail, or null where they do (or the way is no
+ * trail): only then does the panel offer Route through this trail, since a via point on a trail the router
+ * keeps closed lands on the nearest open way instead and the route would skip the trail.
+ */
+export function trailNotRouted(info: SegmentInfo | null, rider: TrailRider): string | null {
+  if (info?.mtb_trail !== true) return null;
+  const open = info.trail_open ?? null;
+  if (open === null) return "No ride type's routes use this trail.";
+  if (rider.rideType === "mountain-bike") {
+    const level = info.trail_level ?? null;
+    return level !== null && rider.mtbLevel !== null && level > rider.mtbLevel
+      ? "Mountain Bike routes skip this trail: it is above the level you chose."
+      : null;
+  }
+  if (open === "offroad" && (rider.rideType === "gravel" || rider.rideType === "mountain-goat")) return null;
+  return open === "offroad" ? "Only Gravel, Mountain Goat and Mountain Bike routes use this trail." : "Only Mountain Bike routes use this trail.";
+}
 
 /**
  * The panel's request once the dialog showing `closed` has fired its `close` event. The

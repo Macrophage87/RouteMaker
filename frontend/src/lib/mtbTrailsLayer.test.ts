@@ -266,7 +266,7 @@ test("the switch is a named button with role switch, its state, and a short plai
   assert.match(off, new RegExp(`<p class="hint" id="mtb-trails-hint">${MTB_TRAILS_HINT}</p>`));
   assert.match(MTB_TRAILS_HINT, new RegExp(`from zoom ${MTB_MIN_ZOOM}`, "i"));
   // One short line (the owner, 2026-10-12: "less wordy"); the levels and the Gravel note are the legend's rows.
-  assert.equal(MTB_TRAILS_HINT, `From zoom ${MTB_MIN_ZOOM}. Not used for routes.`);
+  assert.equal(MTB_TRAILS_HINT, `From zoom ${MTB_MIN_ZOOM}. Only off-road ride types route on them.`);
   for (const hint of [MTB_TRAILS_HINT, MTB_TRAILS_NO_MAP_HINT]) assert.ok(hint.length <= 60, `${hint.length} characters`);
   const on = renderToStaticMarkup(createElement(MtbTrailsSwitch, { on: true, onChange: () => {} }));
   assert.match(on, /aria-checked="true"/);
@@ -309,31 +309,58 @@ test("the Mass Ride legend names the trails' line while the layer is on, and not
 
 import { mtbTrailPressed } from "./mapGlue.ts";
 import { MTB_MAP_KEY_HINT, MTB_MAP_KEY_TITLE, MtbMapKey, mtbMapKeyRows } from "./stressLegend.ts";
-import { segmentInfoUrl, TRAIL_RIDE_TYPES, TRAIL_VIA_TEXT } from "./roadInfo.ts";
+import { segmentInfoUrl, trailNotRouted, TRAIL_VIA_TEXT, type SegmentInfo } from "./roadInfo.ts";
 import { MTB_LINE_LAYER_IDS } from "../stressStyle.js";
 
-test("a press on a drawn trail line is the trail's, within the slop, and only on the trail layer's lines", () => {
-  let asked: { box: unknown; layers: string[] } | null = null;
-  const map = {
-    getLayer: (id: string) => (MTB_LINE_LAYER_IDS.includes(id) ? {} : undefined),
-    queryRenderedFeatures: (box: [[number, number], [number, number]], options: { layers: string[] }) => {
-      asked = { box, layers: options.layers };
-      return box[0][0] <= 100 && box[1][0] >= 100 ? [{}] : [];
+test("a press on a drawn trail line is the trail's, at the nearest point on it, unless a road's line is nearer", () => {
+  // A flat screen: one pixel a thousandth of a degree, x east and y south.
+  const project = ([lon, lat]: [number, number]) => ({ x: lon * 1000, y: -lat * 1000 });
+  const unproject = ([x, y]: [number, number]) => ({ lng: x / 1000, lat: -y / 1000 });
+  const trail = { properties: { mtb: true }, geometry: { type: "LineString", coordinates: [[0.1, -0.0], [0.1, -0.1]] } };
+  const road = { properties: {}, geometry: { type: "MultiLineString", coordinates: [[[0.0, -0.05], [0.2, -0.05]]] } };
+  let asked: string[] = [];
+  const mapOf = (features: unknown[]) => ({
+    getLayer: (id: string) => (id === "ghost" ? undefined : {}),
+    queryRenderedFeatures: (_box: unknown, options: { layers: string[] }) => {
+      asked = options.layers;
+      return features;
     },
-  };
-  assert.equal(mtbTrailPressed(map, { x: 92, y: 50 }, 8), true);
-  assert.equal(mtbTrailPressed(map, { x: 80, y: 50 }, 8), false);
-  assert.deepEqual(asked!.layers, MTB_LINE_LAYER_IDS);
-  // No trail layer on the map yet: nothing is asked.
-  const none = { getLayer: () => undefined, queryRenderedFeatures: () => assert.fail("not asked") };
-  assert.equal(mtbTrailPressed(none, { x: 100, y: 50 }, 8), false);
+    project,
+    unproject,
+  });
+  const layers = [...MTB_LINE_LAYER_IDS, "stress-1", "ghost"];
+  // 6 px east of the trail: the panel asks at the point on the trail level with the press.
+  const at = mtbTrailPressed(mapOf([trail]), { x: 106, y: 30 }, 8, layers);
+  assert.ok(at);
+  assert.ok(Math.abs(at[0] - 0.1) < 1e-9 && Math.abs(at[1] + 0.03) < 1e-9);
+  assert.deepEqual(asked, [...MTB_LINE_LAYER_IDS, "stress-1"]);
+  // A road crossing nearer the press than the trail: the road's press (a point, as before).
+  assert.equal(mtbTrailPressed(mapOf([trail, road]), { x: 106, y: 51 }, 8, layers), null);
+  // The trail nearer than the road: still the trail's.
+  assert.ok(mtbTrailPressed(mapOf([trail, road]), { x: 101, y: 60 }, 8, layers));
+  // Nothing drawn under the press, or no layer on the map: nothing.
+  assert.equal(mtbTrailPressed(mapOf([]), { x: 106, y: 30 }, 8, layers), null);
+  const none = { ...mapOf([]), getLayer: () => undefined, queryRenderedFeatures: () => assert.fail("not asked") };
+  assert.equal(mtbTrailPressed(none, { x: 100, y: 50 }, 8, layers), null);
 });
 
-test("a trail tap asks the road panel for the trail, ahead of a road beside it", () => {
+test("a trail tap asks the road panel for the trail, and offers Route through this trail only where the ride type uses it", () => {
   assert.equal(segmentInfoUrl("https://x", [-77, 38.9], true), "https://x/api/segment-info?lat=38.900000&lon=-77.000000&trail=true");
   assert.equal(segmentInfoUrl("https://x", [-77, 38.9]), "https://x/api/segment-info?lat=38.900000&lon=-77.000000");
   assert.equal(TRAIL_VIA_TEXT, "Route through this trail");
-  assert.deepEqual([...TRAIL_RIDE_TYPES].sort(), ["gravel", "mountain-bike", "mountain-goat"]);
+  const info = (over: Partial<SegmentInfo>) => ({ mtb_trail: true, trail_open: "offroad", trail_level: 3, ...over }) as SegmentInfo;
+  const rider = (rideType: string, mtbLevel: number | null = null) => ({ rideType, mtbLevel });
+  for (const type of ["gravel", "mountain-goat"]) assert.equal(trailNotRouted(info({}), rider(type)), null);
+  assert.equal(trailNotRouted(info({}), rider("mountain-bike", 3)), null);
+  assert.match(trailNotRouted(info({}), rider("mountain-bike", 2)) ?? "", /above the level you chose/);
+  assert.match(trailNotRouted(info({}), rider("road")) ?? "", /Only Gravel, Mountain Goat and Mountain Bike/);
+  assert.match(trailNotRouted(info({ trail_open: null }), rider("mountain-bike", 4)) ?? "", /No ride type/);
+  // Above Gravel's level: Mountain Bike's alone.
+  assert.match(trailNotRouted(info({ trail_open: "mtb" }), rider("gravel")) ?? "", /Only Mountain Bike/);
+  assert.equal(trailNotRouted(info({ trail_open: "mtb" }), rider("mountain-bike", 4)), null);
+  // Not a trail: nothing to say.
+  assert.equal(trailNotRouted(info({ mtb_trail: false }), rider("road")), null);
+  assert.equal(trailNotRouted(null, rider("road")), null);
   assert.match(readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8"), /trail: true/);
 });
 

@@ -28,7 +28,6 @@ import {
   mtbLevelLayerId,
   mtbLevelPaint,
   MTB_LABEL_LAYER_ID,
-  MTB_LINE_LAYER_IDS,
   mtbLabelColor,
   unpavedLayers,
   halfStepLayers,
@@ -60,6 +59,7 @@ import type { When } from "./dials.ts";
 import { MASS_SOURCE_ID, STRESS_SOURCE_ID, massSource, stressSource } from "./mapStyle.ts";
 import { setDcMaskVisibility } from "./dcBoundary.ts";
 import type { RouteResponse } from "./api.ts";
+import type { LonLat } from "./geo.ts";
 import { ROUTE_AVOID_MARK_DASH, routeCorridorPaint, overlayFade, routeClasses, routePaint, routeSections, sectionFeatures, usesCapacity, type RouteClassKey, type RouteSection } from "./routeColours.ts";
 import { transitRideLines, transitRideSections } from "./transit.ts";
 
@@ -551,23 +551,71 @@ export interface FeatureCards {
 export interface TrailPressMap {
   getLayer(id: string): unknown;
   queryRenderedFeatures(box: [[number, number], [number, number]], options: { layers: string[] }): ReadonlyArray<unknown>;
+  project(lngLat: [number, number]): { x: number; y: number };
+  unproject(point: [number, number]): { lng: number; lat: number };
+}
+
+interface PressedFeature {
+  properties?: { mtb?: unknown } | null;
+  geometry?: { type?: string; coordinates?: unknown } | null;
+}
+
+/** A drawn line's parts, in [lon, lat]: a LineString's one, a MultiLineString's each; nothing else. */
+function lineParts(feature: PressedFeature): number[][][] {
+  const geometry = feature.geometry;
+  if (geometry?.type === "LineString") return [geometry.coordinates as number[][]];
+  if (geometry?.type === "MultiLineString") return geometry.coordinates as number[][][];
+  return [];
+}
+
+/** The point on `feature`'s drawn line nearest `point`, in screen pixels, and how far it is; null with no line. */
+function nearestOn(map: TrailPressMap, feature: PressedFeature, point: { x: number; y: number }): { x: number; y: number; d: number } | null {
+  let best: { x: number; y: number; d: number } | null = null;
+  for (const part of lineParts(feature)) {
+    const screen = part.map(([lon, lat]) => map.project([lon, lat]));
+    for (let i = 0; i < screen.length; i += 1) {
+      const a = screen[i];
+      const b = screen[i + 1] ?? a;
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const span = dx * dx + dy * dy;
+      const t = span === 0 ? 0 : Math.max(0, Math.min(1, ((point.x - a.x) * dx + (point.y - a.y) * dy) / span));
+      const x = a.x + dx * t;
+      const y = a.y + dy * t;
+      const d = Math.hypot(point.x - x, point.y - y);
+      if (best === null || d < best.d) best = { x, y, d };
+    }
+  }
+  return best;
 }
 
 /**
- * Whether a press at `point` is on a mountain-bike trail the trail layer draws (the owner, 2026-10-19: "The
- * information should be available when clicked on" and "Basically make them clickable."), within `slop` pixels.
- * Only drawn lines count: the layer off (or zoomed out past MTB_MIN_ZOOM) draws none, so nothing is hit. In the
- * Mountain Bike ride type the trails it may ride draw in the routable layers instead, and a press there places a
- * point as on any road.
+ * The point on the mountain-bike trail a press at `point` is on, or null (the owner, 2026-10-19: "The information
+ * should be available when clicked on" and "Basically make them clickable."). Only drawn lines within `slop` pixels
+ * count, among `layers` (the stress overlay's): the trail layer's own lines, and in the Mountain Bike ride type the
+ * routable lines, which draw the trails up to the rider's level. A press nearer a road's line than any trail's is
+ * the road's (a point, as before). The point is the nearest on the trail's line itself, so the panel describes that
+ * trail however coarse a finger's press was.
  */
-export function mtbTrailPressed(map: TrailPressMap, point: { x: number; y: number }, slop: number): boolean {
-  const layers = MTB_LINE_LAYER_IDS.filter((id: string) => map.getLayer(id));
-  if (layers.length === 0) return false;
+export function mtbTrailPressed(map: TrailPressMap, point: { x: number; y: number }, slop: number, layers: readonly string[]): LonLat | null {
+  const drawn = layers.filter((id) => map.getLayer(id));
+  if (drawn.length === 0) return null;
   const box: [[number, number], [number, number]] = [
     [point.x - slop, point.y - slop],
     [point.x + slop, point.y + slop],
   ];
-  return map.queryRenderedFeatures(box, { layers }).length > 0;
+  let trail: { x: number; y: number; d: number } | null = null;
+  let road = Infinity;
+  for (const feature of map.queryRenderedFeatures(box, { layers: drawn }) as PressedFeature[]) {
+    const near = nearestOn(map, feature, point);
+    if (near === null) continue;
+    if (feature.properties?.mtb === true) {
+      if (trail === null || near.d < trail.d) trail = near;
+    } else road = Math.min(road, near.d);
+  }
+  if (trail === null || road < trail.d) return null;
+  const { lng, lat } = map.unproject([trail.x, trail.y]);
+  return [lng, lat];
 }
 
 export function featureCardPress(cards: ReadonlyArray<FeatureCards | null>, point: { x: number; y: number }): "card" | "close" | null {

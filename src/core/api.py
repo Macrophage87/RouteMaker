@@ -4731,6 +4731,21 @@ class SegmentInfoOut(Schema):
             " /api/trails/{osm_way_id}/profile, and it has no traffic lines."
         ),
     )
+    trail_open: str | None = Field(
+        default=None,
+        description=(
+            "On a mountain-bike trail: 'offroad' where the Gravel, Mountain Goat and"
+            " Mountain Bike ride types may route through it (Mountain Bike up to the"
+            " rider's level), 'mtb' where only Mountain Bike may, null where none may."
+        ),
+    )
+    trail_level: int | None = Field(
+        default=None,
+        description=(
+            "On a mountain-bike trail: the level (1-4) Mountain Bike's hardest-level"
+            " choice reads it at."
+        ),
+    )
     attribution: list[str]
 
 

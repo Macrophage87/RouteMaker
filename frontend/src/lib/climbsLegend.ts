@@ -19,6 +19,7 @@ import {
   climbAlongCount,
   hideBusyClimbs,
   setHideBusyClimbs,
+  trailClimbs,
   subscribeHideBusy,
   climbAlongText,
   climbIcon,
@@ -114,6 +115,11 @@ export const CLIMBS_HIDE_BUSY_HINT = "Climbs mostly on LTS 3 or higher roads.";
 /** "Hide climbs on busy roads", for a render to follow (lib/climbs.ts hideBusyClimbs). */
 export function useHideBusyClimbs(): boolean {
   return useSyncExternalStore(subscribeHideBusy, hideBusyClimbs, hideBusyClimbs);
+}
+
+/** Whether climbs on mountain-bike trails show, for a render to follow (lib/climbs.ts trailClimbs). */
+export function useTrailClimbs(): boolean {
+  return useSyncExternalStore(subscribeHideBusy, trailClimbs, trailClimbs);
 }
 
 /**

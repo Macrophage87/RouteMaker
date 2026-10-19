@@ -26,7 +26,15 @@ def test_the_body_counts_up_and_down_and_the_steepest_either_way() -> None:
     at = [0.0, 30.0, 60.0, 90.0, 120.0, 150.0, 180.0, 210.0, 240.0]
     heights = [10.0, 12.0, 14.0, 16.0, 16.0, 13.0, 10.0, 7.0, 7.0]
     body = trailprofile.body_of(7, at, heights, 30)
-    assert body["gain_m"] == 6.0 and body["loss_m"] == 9.0
+    # The route chart's hysteresis (3 m): up 4 m (10 to 14 counted, 14 to 16 under it), down 6 m.
+    assert body["gain_m"] == 4.0 and body["loss_m"] == 6.0
     assert body["length_m"] == 240 and body["way"] == 7
     assert body["max_grade_pct"] is not None and body["max_grade_pct"] > 0
     assert trailprofile.body_of(7, at, [None] * len(at), 30) is None
+
+
+def test_noise_on_a_flat_trail_is_no_climbing() -> None:
+    at = [30.0 * i for i in range(20)]
+    heights = [10.0 + (1.5 if i % 2 else 0.0) for i in range(20)]
+    body = trailprofile.body_of(7, at, heights, 30)
+    assert body["gain_m"] == 0.0 and body["loss_m"] == 0.0

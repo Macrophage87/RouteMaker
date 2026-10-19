@@ -4,8 +4,11 @@ OWNER-DECISIONS 90, 91 and 111: "There's several mountain bike trails too, I
 wouldn't route bikes on them either unless that's specifically looked for",
 "Gravel is different. Most bikes can handle gravel, few would want to route
 through singletrack", and "We will need a whole dedicated MTB mode. There's a
-whole set of criteria there." So every ride type avoids singletrack - Gravel
-and Mountain Goat included - and a mode that seeks it is the backlog's.
+whole set of criteria there." So every ride type avoided singletrack - Gravel
+and Mountain Goat included - until the Mountain Bike ride type (docs/MTB-TOPO-PLAN.md,
+slice 6) and, since the owner's choice of 2026-10-19 ("Rated, MTB and Gravel"), the
+off-road graph reopened the rated singletrack the trail layer draws
+(`pipeline.trail_closures.offroad_graph_keeps`).
 
 Singletrack is read from the tags mountain bikers map it with: a trail-class way
 rated one or more on either MTB difficulty scale (`mtb:scale`, 0-6, or
@@ -52,6 +55,13 @@ def grade(value: str | None) -> int | None:
         return None
     match = _GRADE.match(value)
     return int(match.group(1)) if match else None
+
+
+# The hardest level the off-road graph (Gravel, Mountain Goat) rides on rated singletrack
+# the trail layer draws (`pipeline.trail_closures.offroad_graph_keeps`): the owner chose
+# "Rated, MTB and Gravel" on 2026-10-19, with green (1) the default cap while the level
+# question waits on the owner. Harder trails stay the Mountain Bike ride type's.
+OFFROAD_MAX_LEVEL = 1
 
 
 def is_singletrack(tags: dict[str, str]) -> bool:

@@ -31,7 +31,7 @@ from django.core.signals import request_finished, request_started
 from django.db import connection
 
 from pipeline.schema import validate_schema_name
-from routemaker import agency_lts, flow, more_links, scenic, trail_facts
+from routemaker import agency_lts, flow, more_links, mtbmode, scenic, singletrack, trail_facts
 from routemaker.describe import UNNAMED_PATH, UNNAMED_ROAD
 from routemaker.stress import RURAL_EXPRESSWAY_PREFIX, USE_SIDEPATH_RULE
 
@@ -1342,7 +1342,30 @@ def describe(row: dict, router: dict) -> dict:
         # A mountain-bike trail the layer draws: the panel asks for its elevation profile
         # (`core.trailprofile`) and offers no traffic-stress suggestion (the owner, 2026-10-19).
         "mtb_trail": is_mtb_trail(row),
+        **trail_routing(row),
     }
+
+
+def trail_routing(row: dict) -> dict:
+    """Which graphs ride a mountain-bike trail the layer draws, for the panel's Route
+    through this trail (`pipeline.trail_closures`): "offroad" the mountain-bike class and
+    the drawn rated singletrack up to `singletrack.OFFROAD_MAX_LEVEL`, which the off-road
+    graph (Gravel, Mountain Goat) and the Mountain Bike graph keep open (the owner's choice
+    of 2026-10-19); "mtb" harder drawn singletrack, the Mountain Bike graph's alone; None
+    any other way, closed to every ride type. `trail_level` is the level the Mountain Bike
+    ride type's hardest-level choice reads it at (`routemaker.mtbmode`)."""
+    if not is_mtb_trail(row):
+        return {"trail_open": None, "trail_level": None}
+    reason = row.get("bike_access_reason")
+    rated = row.get("mtb_level")
+    opened = None
+    if reason == "mtb":
+        opened = "offroad"
+    elif reason == singletrack.NO_BICYCLE:
+        low = isinstance(rated, int) and rated <= singletrack.OFFROAD_MAX_LEVEL
+        opened = "offroad" if low else "mtb"
+    level = mtbmode.effective_level(row.get("mtb_only") is True, row.get("mtb_level"))
+    return {"trail_open": opened, "trail_level": level}
 
 
 def segment_info(lat: float, lon: float, trail: bool = False) -> dict:
