@@ -992,7 +992,9 @@ def test_the_about_location_names_exactly_the_documentation_pages_the_caddyfile_
     so a new page cannot be served by one edge and not the other."""
     names = set(re.search(r"\^/about/\(([^)]*)\)", ABOUT_LOCATION).group(1).split("|"))
     frontend = re.search(r"^\s*@frontend path (.+)$", CADDYFILE, re.M).group(1).split()
-    caddy = {p.removeprefix("/about/").removesuffix(".html") for p in frontend if p.startswith("/about/")}
+    caddy = {
+        p.removeprefix("/about/").removesuffix(".html") for p in frontend if p.startswith("/about/")
+    }
     public = Path(__file__).resolve().parent.parent / "frontend" / "public" / "about"
     files = {p.stem for p in public.glob("*.html")}
     assert names == caddy == files, (names, caddy, files)
