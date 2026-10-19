@@ -237,6 +237,7 @@ def stress_adjustment(override: Override, computed):
     the admin as `{"tier": n}`). It still sets the tier, and is carried as a
     hidden adjustment named for its way, so nothing unreviewed is ever shown.
     """
+    from routemaker.agency_lts import row_level
     from routemaker.stress import Stress, StressAdjustment
 
     value = override.value
@@ -262,16 +263,19 @@ def stress_adjustment(override: Override, computed):
     problem = stress_value_problem(value)
     if problem:
         raise OverrideRefused(f"stress override on way {override.osm_way_id}: {problem}")
+    # An agency's rating loaded as a row reads as that agency's level does: Montgomery's
+    # LTS 5 rows (`moco-lts5-*`) are our 4.5 (`routemaker.agency_lts.READ_AS`).
+    level = row_level(value["adjustment_id"], step_of(value))
     return StressAdjustment(
         adjustment_id=value["adjustment_id"],
-        tier=Stress(value["tier"]),
+        tier=Stress(int(level)),
         computed_tier=computed,
         category=value["category"],
         visibility=value["visibility"],
         annotation_status=value["annotation_status"],
         public_note=value.get("public_note"),
         display=value["display"],
-        half=value.get("half") is True,
+        half=level != int(level),
     )
 
 
