@@ -1298,13 +1298,14 @@ class DescriptionEntryOut(Schema):
     its `severity` "red" for a closure and "orange" for a zone with a penalty, or, at
     0 with no severity, the work-zone disclaimer or the feeds that could not be read;
     a `climb` is a categorised climb the route rides uphill where the hill seek ran
-    (FOLLOWUP-HILL-SEEK, 205), from its foot to its summit.
+    (FOLLOWUP-HILL-SEEK, 205), from its foot to its summit; a `hazard` is a known road
+    hazard the route rides (v0.10.0: cobblestones, rails in the road; `core.route_hazards`).
     Distances are along the route, scaled to `distance_m`. `text` is one plain
     sentence, US units first with the metric once, for reading aloud; the other
     fields are the same facts for a client that words them itself. Additive:
     older clients ignore it, and it is null where it could not be built."""
 
-    kind: Literal["stretch", "junction", "via", "walk", "avoid", "workzone", "climb"]
+    kind: Literal["stretch", "junction", "via", "walk", "avoid", "workzone", "climb", "hazard"]
     from_m: int
     to_m: int
     from_mi: float
@@ -1823,6 +1824,17 @@ class MassHazardSpanOut(Schema):
     road: str
 
 
+class RoadHazardSpanOut(Schema):
+    """A known hazard the route rides (v0.10.0; `core.route_hazards`): cobblestones or rails
+    in the road, in whole metres along the traced route as `stress_spans` are measured."""
+
+    from_m: int
+    to_m: int
+    kinds: list[Literal["cobbles", "rails"]]
+    road: str
+    text: str = Field(description="One plain sentence, US units first with the metric once.")
+
+
 class MtbOut(Schema):
     """A Mountain Bike plan's reading of its route (docs/MTB-TOPO-PLAN.md, slice 6;
     `core.mtb`)."""
@@ -2076,6 +2088,9 @@ class RouteBody(Schema):
     # A Mass Ride's rider-marked hazards it passes, in riding order (FOLLOWUP-MASSRIDE-MAP
     # part 3, 325). Additive: null on every other ride type, empty where it passes none.
     mass_hazards: list[MassHazardSpanOut] | None = None
+    # The known hazards it rides (v0.10.0; cobbles, rails), in riding order. Additive: empty
+    # where it rides none or the table predates them.
+    road_hazards: list[RoadHazardSpanOut] | None = None
     # The Mountain Bike ride type's reading of the route (slice 6). Additive: null on every
     # other ride type.
     mtb: MtbOut | None = None

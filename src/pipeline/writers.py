@@ -90,6 +90,7 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
             _ratings_json(row["stress"]),
             row.get("sidepath_name"),
             row.get("scenic"),
+            row.get("hazard"),
             row.get("facility_shown"),
         )
         for row in rows
@@ -101,7 +102,7 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
             args = ",".join(
                 cursor.mogrify(
                     "(%s,%s,ST_GeomFromText(%s,4326),%s,%s,%s::jsonb,%s,%s,%s,%s,%s,%s,%s,%s,%s,"
-                    "%s::text[],%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s)",
+                    "%s::text[],%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s)",
                     (
                         way_id,
                         ordinal,
@@ -144,6 +145,7 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
                         ratings,
                         sidepath_name,
                         scenic,
+                        hazard,
                         facility_shown,
                     ),
                 )
@@ -189,6 +191,7 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
                     ratings,
                     sidepath_name,
                     scenic,
+                    hazard,
                     facility_shown,
                 ) in batch
             )
@@ -206,7 +209,7 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
                      trail_name, trail_route, trail_bridge, calm_run_m, roadside,
                      stress_unsmoothed_tier, mass_usable_width_m, bike_access_reason,
                      stress_half, mtb_level, mtb_name, stress_ratings, sidepath_name,
-                     scenic,
+                     scenic, hazard,
                      facility_shown)
                     VALUES {args}"""
             )

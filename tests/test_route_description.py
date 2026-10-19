@@ -313,7 +313,8 @@ class TestSchema:
         # "avoid": an Avoid-rated junction ahead (FOLLOWUP-ISECT-AVOID, OWNER-DECISIONS 307).
         # "workzone": a live work zone on the route (FOLLOWUP-WORKZONES, 341-349).
         # "climb": a categorised climb ridden where the hill seek ran (FOLLOWUP-HILL-SEEK, 205).
-        kinds = ["stretch", "junction", "via", "walk", "avoid", "workzone", "climb"]
+        # "hazard": cobblestones or rails in the road ridden (v0.10.0, `core.route_hazards`).
+        kinds = ["stretch", "junction", "via", "walk", "avoid", "workzone", "climb", "hazard"]
         assert entry["properties"]["kind"]["enum"] == kinds
         for field in (
             "kind",

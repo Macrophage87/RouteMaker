@@ -108,7 +108,16 @@ from routemaker.geo import Point, bearing, bearing_delta, haversine
 from routemaker.massflow import band_of
 from routemaker.measure import elevation_gain
 
-from . import avoid_junctions, mass_hazards, mtb, parallel, presets, segment_info, timing
+from . import (
+    avoid_junctions,
+    mass_hazards,
+    mtb,
+    parallel,
+    presets,
+    route_hazards,
+    segment_info,
+    timing,
+)
 from . import workzones as work_zones
 
 logger = logging.getLogger(__name__)
@@ -3696,6 +3705,11 @@ def plan(
         avoid_scale = length_m / line_m if line_m > 0 and length_m > 0 else 1.0
         described_full = avoid_rules.with_entries(described_full, avoid_found, avoid_scale)
         described_overview = avoid_rules.with_entries(described_overview, avoid_found, avoid_scale)
+        # The known hazards it rides (v0.10.0, `core.route_hazards`): said in place in the
+        # directions and drawn as symbols on the route only.
+        hazards_ridden = route_hazards.along(leg_runs, pieces)
+        described_full = route_hazards.with_entries(described_full, hazards_ridden)
+        described_overview = route_hazards.with_entries(described_overview, hazards_ridden)
         # The climbs the route rides uphill, where the hill seek ran (205): each named in
         # `hills_seek.climbs` and as an entry of the description.
         climbs_ridden = []
@@ -3876,6 +3890,8 @@ def plan(
             "moved_points": moved_points,
             "avoid_junctions": avoid_junctions.rows(avoid_found, avoid_scale),
             "avoid_notice": avoid_rules.notice(avoid_found),
+            # The known hazards the route rides (v0.10.0): cobbles, rails; [] where none.
+            "road_hazards": hazards_ridden,
             # A Mass Ride's approved hazards in riding order (325); null on other ride types.
             "mass_hazards": (
                 mass_hazards.along(leg_runs, pieces, classes, hazard_list)

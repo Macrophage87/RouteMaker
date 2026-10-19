@@ -405,6 +405,8 @@ function cueKindOf(entry: DescriptionEntry, before: DescriptionEntry | null, las
   if (entry.kind === "workzone") return entry.severity ? "hazard" : null;
   // A categorised climb (FOLLOWUP-HILL-SEEK) is in the list to read, not a cue on the move.
   if (entry.kind === "climb") return null;
+  // A known road hazard on the route (v0.10.0: cobblestones, rails in the road): said ahead, as a hazard.
+  if (entry.kind === "hazard") return "hazard";
   if (entry.kind === "junction") return entry.severity || entry.group ? "hazard" : null;
   if (isTurnMovement(entry.turn?.movement)) return "turn";
   if (entry.turn?.severity) return "hazard";
@@ -463,6 +465,7 @@ export function rideModel(route: RouteResponse, vias: readonly number[] = []): R
                 ? ontoWords(entry.street as string)
                 : sentenceOf(entry),
         ...(kind === "hazard" && entry.kind === "junction" && !entry.group ? { rideText: crossingWords(entry.street, entry.turn?.control) } : {}),
+        ...(entry.kind === "hazard" ? { rideText: roadHazardWords(entry.text) } : {}),
         ...(entry.citation ? { citation: entry.citation } : {}),
         movement: kind === "turn" ? (entry.turn?.movement as TurnMovement) : null,
         street: entry.turn?.onto ?? entry.street ?? null,
@@ -509,13 +512,24 @@ function joinJogs(cues: Cue[]): void {
 }
 
 /** Which cues a verbosity level says unprompted (plan section 3's table; Quiet: arrival only). */
-export function says(level: Verbosity, cue: Pick<Cue, "kind" | "tier" | "severity">): boolean {
+/**
+ * Ride's short line for a known road hazard (v0.10.0), from the directions' sentence ("Rails in the road on H
+ * Street Northeast, 0.4 to 1.2 mi (...): cross them square on, ..."): "Rails in the road on H Street Northeast.
+ * Cross them square on, a wheel can drop into the groove.", said "In 500 feet, rails in the road on ...".
+ */
+export function roadHazardWords(text: string): string {
+  const m = /^(.*?) on (.*?), (?:at [\d.]+|[\d.]+ to [\d.]+) mi \([^)]*\): (.*)$/.exec(text);
+  if (!m) return text;
+  return `${m[1]} on ${m[2]}. ${m[3].charAt(0).toUpperCase()}${m[3].slice(1)}`;
+}
+
+export function says(level: Verbosity, cue: Pick<Cue, "kind" | "tier" | "severity"> & Pick<Partial<Cue>, "source">): boolean {
   if (cue.kind === "stop" || cue.kind === "end") return true;
   if (level === "quiet") return false;
   if (level === "full") return true;
   // Stoker: turns, red and orange junctions, walking, and the start of LTS 4 and Avoid stretches.
   if (cue.kind === "turn" || cue.kind === "walk") return true;
-  if (cue.kind === "hazard") return cue.severity === "orange" || cue.severity === "red" || cue.severity === "avoid";
+  if (cue.kind === "hazard") return cue.source === "hazard" || cue.severity === "orange" || cue.severity === "red" || cue.severity === "avoid";
   if (cue.kind === "busy") return (cue.tier ?? 0) >= 4;
   return false;
 }
