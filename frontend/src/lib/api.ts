@@ -1019,7 +1019,7 @@ export const TRANSIT_UNAVAILABLE = "transit_unavailable";
 
 export type RouteResult = { ok: true; route: RouteResponse } | { ok: false; error: RouteError };
 
-/** Go's "More direct" (one notch more traffic tolerant) and "Calmer" (one notch calmer); core.presets stress_notches. */
+/** Go's "More direct" (two notches more traffic tolerant) and "Calmer" (one notch calmer); core.presets stress_notches. */
 export type NeighbourKind = "direct" | "calmer";
 export interface NeighbourOption {
   kind: NeighbourKind;
