@@ -16,7 +16,8 @@ panel lists each, with which one the map uses and why.
 Levels are the agency's own numbers on our scale: 1 to 4 with half steps, and 5
 for an agency's highest level, which is Avoid ("if any ratings agency has it as
 LTS5. We should keep that unless there's a clear case for downgrading").
-Montgomery's 0.5 ("None") is no rating and is dropped before it gets here.
+Montgomery's 0.5 ("None") is no rating and is dropped before it gets here. MDOT SHA's
+5 is a ban, not a level: it also closes the way to bicycles (`PROHIBITING_LEVELS`).
 """
 
 from __future__ import annotations
@@ -49,6 +50,27 @@ AGENCIES: dict[str, tuple[str, int]] = {
 }
 
 AGENCY_RULE = "agency rating"
+
+# An agency level that says bicycles may not use the road at all, which is a fact about
+# access and not a stress level (the owner, 2026-10-19: "MDOT LTS 5 means that bikes are
+# prohibited. MoCo LTS5 is extremely high stress but allowed." and "Just don't draw them or
+# consider them for routing."). MDOT SHA's 5 is "Bicycle access is prohibited by managing
+# roadway agency" (its LTS methodology; `scripts/install_agency_lts.py`). So any such
+# rating closes the way to bicycles whichever agency's level the map uses
+# (`pipeline.agency_ratings.prohibited_closures`); Montgomery's and DDOT's 5 stay Avoid.
+PROHIBITING_LEVELS: dict[str, float] = {"mdot-sha": 5.0}
+# The way's `rm:no_bicycle` reason, and the road panel's code for it
+# (`core.segment_info.ACCESS_WORDS`).
+PROHIBITED_NO_BICYCLE = "mdot_prohibited"
+
+
+def prohibiting(ratings: Iterable[AgencyRating]) -> AgencyRating | None:
+    """The rating among `ratings` that prohibits bicycles (`PROHIBITING_LEVELS`), or None."""
+    for rating in ratings:
+        if PROHIBITING_LEVELS.get(rating.agency) == rating.level:
+            return rating
+    return None
+
 
 # Agencies whose ratings the owner may see in Review, an instance admin's view and not public,
 # before their public use is confirmed (the owner, 2026-10-16: "You can display them in review as
