@@ -27,6 +27,7 @@ import {
   facilityLegendHint,
   stressZoomHint,
   stressZoomNotice,
+  MtbTrailLegend,
 } from "./stressLegend.ts";
 import {
   FACILITIES,
@@ -297,7 +298,7 @@ test("the legend passes the zoom and whether the overlay is on to the zoom notes
   assert.ok(!hidden.includes(stressZoomNotice(11, true)!), "no notice while the overlay is off");
 });
 
-test("the legend has a row for the mountain-bike trails' not-for-routes line, in words, in the list, at every zoom, while their layer is on (OWNER-DECISIONS 452a, 454)", () => {
+test("the trails' key has a row for their line, in words, at every zoom, while their layer is on, and the stress list does not repeat it (OWNER-DECISIONS 452a, 454; the owner, 2026-10-19)", () => {
   assert.deepEqual(MTB_LEGEND, {
     short: "Mountain-bike trail",
     label: "Only off-road ride types route on these (Gravel, Mountain Goat and Mountain Bike): grey dashes on a white edge with dark ticks for an unrated trail. Rated ones show by level below; Gravel and Mountain Goat ride only green (level 1).",
@@ -311,14 +312,18 @@ test("the legend has a row for the mountain-bike trails' not-for-routes line, in
           assert.doesNotMatch(off, /class="mtb-trail"/, `zoom ${zoom}, folded ${foldedZoom}: no row while the layer is off`);
           setMtbTrails(true, { remember: false });
           let html: string;
+          let stress: string;
           try {
-            html = renderToStaticMarkup(createElement(StressLegend, { facilities: new Set(), zoom, shown: true, foldedZoom }));
+            html = renderToStaticMarkup(createElement(MtbTrailLegend));
+            stress = renderToStaticMarkup(createElement(StressLegend, { facilities: new Set(), zoom, shown: true, foldedZoom }));
           } finally {
             setMtbTrails(false, { remember: false });
           }
-          const list = html.slice(html.indexOf('aria-label="Traffic stress legend"'), html.indexOf("</ul>"));
+          // Once in Layers: in the trails' own key under their switch, not again in the stress section's list.
+          assert.doesNotMatch(stress, /mtb-trail|mtb-level/, `zoom ${zoom}, folded ${foldedZoom}: not in the stress list`);
+          const list = html.slice(html.indexOf('aria-label="Mountain-bike trail legend"'), html.indexOf("</ul>"));
           const row = /<li class="mtb-trail">([\s\S]*?)<\/li>/.exec(list);
-          assert.ok(row, `zoom ${zoom}, folded ${foldedZoom}: the row is in the stress legend's list`);
+          assert.ok(row, `zoom ${zoom}, folded ${foldedZoom}: the row is in the trails' key`);
           const text = row[1].replace(/<svg[\s\S]*?<\/svg>/, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
           assert.equal(text, `${MTB_LEGEND!.short} ${MTB_LEGEND!.label}`);
           // The swatch is decoration: the words carry it for a screen reader.

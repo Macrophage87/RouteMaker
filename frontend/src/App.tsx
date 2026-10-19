@@ -681,8 +681,8 @@ export function App() {
   const massHazards = massMap ? hazards : null;
   const [zoom, setZoom] = useState<number | null>(null);
   const [panelOpen, setPanelOpen] = useState(true);
-  // Which view the panel body shows: the planner, or one of the bottom bar's sheets (Map layers,
-  // which Legend opens scrolled to the legend, GPX, Settings). The planner stays in the page, hidden,
+  // Which view the panel body shows: the planner, or one of the bottom bar's sheets (Map layers, GPX,
+  // Settings). The planner stays in the page, hidden,
   // so nothing it holds is lost (OWNER-DECISIONS 312).
   const [view, setView] = useState<PanelView>("planner");
   // With a route shown the points are two or three lines and "Edit points" (the mockup's route view);
@@ -1207,7 +1207,7 @@ export function App() {
   }, [status]);
 
   // Where the focus goes when the view changes (lib/sidebar.ts focusOnViewChange, where every
-  // transition is tested): a sheet's heading (the legend's, for Legend), the bar button that
+  // transition is tested): a sheet's heading, the bar button that
   // opened it on the way back, or the error or the long-ride question that brought the planner back.
   useEffect(() => {
     const was = prevView.current;

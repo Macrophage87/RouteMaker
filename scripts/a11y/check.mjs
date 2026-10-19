@@ -1750,10 +1750,10 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   // for it in words, in the list, on screen and not behind the zoom fold, its swatch hidden from a screen reader.
   // 454: only while their layer is on, which is off until the rider turns it on.
   check("legend: no mountain-bike trail row while their layer is off, as it is by default (454)",
-    await p.eval(`!document.querySelector('#sheet-layers [aria-label="Traffic stress legend"] li.mtb-trail, #sheet-layers [aria-label="Traffic stress legend"] li.mtb-level')`));
+    await p.eval(`!document.querySelector('#sheet-layers [aria-label="Mountain-bike trail legend"] li.mtb-trail, #sheet-layers [aria-label="Mountain-bike trail legend"] li.mtb-level')`));
   await p.eval("document.querySelector('#mtb-trails-switch').click(); true");
   await sleep(200);
-  const mtb = await p.eval(`(() => { const e = document.querySelector('#sheet-layers [aria-label="Traffic stress legend"] li.mtb-trail'); if (!e) return null;
+  const mtb = await p.eval(`(() => { const e = document.querySelector('#sheet-layers [aria-label="Mountain-bike trail legend"] li.mtb-trail'); if (!e) return null;
     const svg = e.querySelector('svg');
     return { text: e.textContent, folded: !!e.closest('details:not([open])'), hidden: !!e.closest('[aria-hidden="true"], [hidden], [inert]'),
       onScreen: e.getClientRects().length > 0, swatchHidden: svg?.getAttribute('aria-hidden') === 'true',
@@ -1762,7 +1762,7 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
     !!mtb && mtb.text.startsWith("Mountain-bike trailOnly off-road ride types route on these") && !mtb.folded && !mtb.hidden && mtb.onScreen && mtb.swatchHidden && !mtb.oldLine, JSON.stringify(mtb));
   // 456: a row a difficulty level after it, the level's number and colour in words (never colour alone), in view,
   // its swatch hidden from a screen reader.
-  const levels = await p.eval(`[...document.querySelectorAll('#sheet-layers [aria-label="Traffic stress legend"] li.mtb-level')].map((e) => ({
+  const levels = await p.eval(`[...document.querySelectorAll('#sheet-layers [aria-label="Mountain-bike trail legend"] li.mtb-level')].map((e) => ({
     text: e.textContent, folded: !!e.closest('details:not([open])'), onScreen: e.getClientRects().length > 0,
     swatchHidden: e.querySelector('svg')?.getAttribute('aria-hidden') === 'true' }))`);
   check("legend: a row a mountain-bike level, 1 to 4, named in words with its colour, in view, swatch aria-hidden (456)",

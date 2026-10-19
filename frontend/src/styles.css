@@ -4733,7 +4733,7 @@ details.zoom-notes {
 }
 
 /* --- UI-CLEANUP (the approved mockup of 2026-10-11): Go and Plan, line icons, chips, one-line folds,
-   the route's one row of actions, the Legend sheet and Ride mode's 311 button. Every target is 44 px at
+   the route's one row of actions and Ride mode's 311 button. Every target is 44 px at
    least; state is never colour alone (a pressed chip is also bold, a fold has its chevron). --- */
 
 .icon {
@@ -5314,10 +5314,7 @@ details.fold > summary .icon {
   min-height: 44px;
 }
 
-/* The Legend button at the end of the Layers sheet's header; the Menu's pages; the Settings groups. */
-.sheet-header .legend-button {
-  margin-left: auto;
-}
+/* The Menu's pages; the Settings groups. */
 
 .layer-group {
   margin-bottom: 8px;
