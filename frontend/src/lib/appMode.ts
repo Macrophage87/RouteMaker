@@ -16,7 +16,7 @@
 
 import { coordinatesText } from "./geocode.ts";
 import { LOCATE_MESSAGES, type LocateFailure } from "./geolocation.ts";
-import type { LonLat } from "./geo.ts";
+import { haversineM, insideCoverage, type LonLat } from "./geo.ts";
 
 /**
  * Review (the owner, 2026-10-16: "Basically we'd have 3 modes for people who have admin access go/plan/review") is
@@ -183,7 +183,27 @@ export function modeSaid(mode: AppMode): string {
 // ---- Go's start (the owner, 2026-10-11 19:53 UTC: "in go, make the current location the starting location by default") ----
 
 /** Where Go's start stands: looking, the rider's location found, not available, or not asked yet. */
-export type GoStart = { kind: "idle" } | { kind: "locating" } | { kind: "here"; point: [number, number] } | { kind: "none" };
+export type GoStart = { kind: "idle" } | { kind: "locating" } | { kind: "here"; point: [number, number]; at: number } | { kind: "none" };
+
+/**
+ * How long a found location stays Go's start (the owner, 2026-10-19: "Go mode sometimes picks a stale current
+ * location"). Go looks the location up once when it opens, but a page or the phone app can stay open for hours (the
+ * app kept in the background after a ride), so a fix older than this is looked up again before a destination is
+ * routed from it, and when the page comes back into view.
+ */
+export const GO_START_MAX_AGE_MS = 2 * 60_000;
+
+/** Go's start at the location just found, stamped with when it was found. */
+export function goHereStart(point: [number, number], at: number = Date.now()): GoStart {
+  return { kind: "here", point, at };
+}
+
+/** Whether Go's start is a location found longer ago than GO_START_MAX_AGE_MS (a clock set back counts as stale too). */
+export function goStartStale(start: GoStart, now: number = Date.now()): boolean {
+  if (start.kind !== "here") return false;
+  const age = now - start.at;
+  return !(age >= 0 && age <= GO_START_MAX_AGE_MS);
+}
 
 /** Said politely when the location becomes the start, and shown on Go's start line. */
 export const GO_START_SAID = "Start: your current location.";
@@ -209,10 +229,10 @@ export function goStartLine(start: GoStart, firstPointName: string | null): stri
   return "Start: none yet; type a start";
 }
 
-/** The start Go routes from: the plan's first point, else the location found; null when there is neither. */
-export function goRouteStart(points: readonly [number, number][], start: GoStart): { point: [number, number]; located: boolean } | null {
+/** The start Go routes from: the plan's first point, else the location found recently (goStartStale); null when there is neither. */
+export function goRouteStart(points: readonly [number, number][], start: GoStart, now: number = Date.now()): { point: [number, number]; located: boolean } | null {
   if (points.length > 0) return { point: points[0], located: false };
-  if (start.kind === "here") return { point: start.point, located: true };
+  if (start.kind === "here" && !goStartStale(start, now)) return { point: start.point, located: true };
   return null;
 }
 
@@ -220,14 +240,29 @@ export function goRouteStart(points: readonly [number, number][], start: GoStart
  * What a destination picked in Go does (review of PR #95): route at once from the start Go has; wait while the
  * location is still being found (the pick is kept and routed when it comes, never dropped); or, with no
  * location, look it up once more and, failing that, keep the destination and ask for a start (the start box),
- * so the destination is never made the start.
+ * so the destination is never made the start. A location found too long ago is looked up again, as if there were none.
  */
 export type GoPick = { kind: "route"; point: [number, number]; located: boolean } | { kind: "wait" } | { kind: "locate" };
 
-export function goPickAction(points: readonly [number, number][], start: GoStart): GoPick {
-  const known = goRouteStart(points, start);
+export function goPickAction(points: readonly [number, number][], start: GoStart, now: number = Date.now()): GoPick {
+  const known = goRouteStart(points, start, now);
   if (known !== null) return { kind: "route", ...known };
   return start.kind === "locating" ? { kind: "wait" } : { kind: "locate" };
+}
+
+/**
+ * A destination set in Go when Go's start is the location (the owner, 2026-10-19: "update when setting a destination
+ * too"): the location is looked up again, for at most GO_PICK_LOOK_MS, so the route starts where the rider is now.
+ * A fix that came in time, inside the map and more than GO_PICK_MOVED_M from the start Go had is the start; otherwise
+ * the start Go had (found within GO_START_MAX_AGE_MS, or the pick would have looked it up from scratch) stands, so a
+ * rider who has not moved keeps the route asked for early (goEarly) and a slow GPS never holds the route up for long.
+ */
+export const GO_PICK_LOOK_MS = 3_000;
+export const GO_PICK_MOVED_M = 25;
+
+export function goPickStart(prior: [number, number], fix: { point: [number, number] } | null): { point: [number, number]; moved: boolean } {
+  if (fix && insideCoverage(fix.point) && haversineM(prior, fix.point) > GO_PICK_MOVED_M) return { point: fix.point, moved: true };
+  return { point: prior, moved: false };
 }
 
 /** Shown and said while a picked destination waits for the location. */

@@ -300,7 +300,7 @@ const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
 
 test("App: Go asks for the first route, Plan keeps the full search on its Route button", () => {
   assert.match(app, /quick: mode === "go" && !riding,/);
-  assert.match(app, /const asked = \{ confirmLong: plan\.confirmLong, dials: plan\.dials, vias: viaIndices\(plan\.points, VIA_MARKS\.isVia\), quick: plan\.quick, follow, followExact \};/);
+  assert.match(app, /const asked = \{\s*confirmLong: plan\.confirmLong,\s*dials: plan\.dials,\s*vias: viaIndices\(plan\.points, VIA_MARKS\.isVia\),\s*straight: drawnLegs\(plan\.points\),\s*quick: plan\.quick,\s*follow,\s*followExact,\s*\};/);
   // The full plan follows only a first route, and is asked for without quick.
   assert.match(app, /refine: \(plan: Plan, shown: RouteResult\) =>\s*shown\.ok && shown\.route\.provisional/);
 });
@@ -340,6 +340,7 @@ test("App: Go's controls are unchanged: no new button or field for any of it", (
   // The edit-route redesign (Stephen 2026-10-18): one more, the route card's button (Edit route); Add a stop stays.
   // Go's bar mirroring Plan's (Stephen 2026-10-18: "mirror what plan does in general, but instead of route, we start
   // the ride"): three more, Undo, Redo and the big Start ride / Route, beside the Clear that was the destination's X.
-  assert.equal((go.match(/<button/g) ?? []).length, 25, "the same buttons as before, the Home sheet's, the route card's and Go's bar");
+  // Metro behind More (Stephen 2026-10-19: "Metro stops should be on the list in more"): one more, still behind More.
+  assert.equal((go.match(/<button/g) ?? []).length, 26, "the same buttons as before, the Home sheet's, the route card's, Go's bar and More's Metro");
   assert.equal((go.match(/<PlaceSearch/g) ?? []).length, 4, "the same search fields as before, and the Home sheet's");
 });
