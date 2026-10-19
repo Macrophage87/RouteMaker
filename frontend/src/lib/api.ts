@@ -250,9 +250,10 @@ export interface DescriptionEntry {
    * work zone along the route (FOLLOWUP-WORKZONES), severity "red" for a closure, "orange" for a
    * penalty; or, at 0 with no severity, the work-zone disclaimer or the feeds not read. "climb": a
    * categorised climb the route rides uphill, from its foot to its summit, where Mountain Goat's hill
-   * seek ran (FOLLOWUP-HILL-SEEK).
+   * seek ran (FOLLOWUP-HILL-SEEK). "hazard": a known road hazard the route rides (v0.10.0;
+   * core/route_hazards.py): cobblestones or rails in the road.
    */
-  kind: "stretch" | "junction" | "via" | "walk" | "avoid" | "workzone" | "climb";
+  kind: "stretch" | "junction" | "via" | "walk" | "avoid" | "workzone" | "climb" | "hazard";
   from_m: number;
   to_m: number;
   from_mi: number;
@@ -765,6 +766,16 @@ export interface MassHazardSpan {
   road: string;
 }
 
+/** core.api RoadHazardSpanOut: a known hazard the route rides (v0.10.0; core/route_hazards.py). */
+export interface RoadHazardSpan {
+  from_m: number;
+  to_m: number;
+  kinds: ("cobbles" | "rails")[];
+  road: string;
+  /** One plain sentence, US units first with the metric once. */
+  text: string;
+}
+
 /** core.api NoviceOut: what is left busy on a Novice and Nervous route. */
 export interface NoviceNote {
   /** Metres on roads rated LTS 3 or above. */
@@ -808,6 +819,8 @@ export interface RouteResponse {
   against_traffic?: { name: string | null; distance_m: number }[] | null;
   /** A Mass Ride's rider-marked hazards it passes, in riding order (325); null or absent on other ride types. */
   mass_hazards?: MassHazardSpan[] | null;
+  /** The known hazards it rides (v0.10.0: cobblestones, rails in the road), in riding order; empty or absent where none. */
+  road_hazards?: RoadHazardSpan[] | null;
   /** The Avoid-rated junctions it passes, in route order (307); empty or absent where none. */
   avoid_junctions?: AvoidJunctionPass[];
   /** "This route goes through an Avoid-rated junction: <name>, <reason>." (335); null where none. */

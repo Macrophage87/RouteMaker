@@ -64,12 +64,12 @@ export const PAVED_RUN_MI = { 11: 2.5, 10: 5 };
  * OWNER-DECISIONS 452a: the mountain-bike trails draw in a look of their own that says they are not
  * used for routes (stressStyle.js, MTB_TRAIL), and the legend says so in words in a row of its own,
  * so a rider who cannot see the map knows what the grey dashed line on a ticked white edge is. The row's name and words;
- * null once they are routable (a future mountain-bike mode, MTB_TRAILS_ROUTABLE). Gravel and
- * Mountain Goat route on them (the off-road graph), and the words say so rather than over-claim.
+ * null once they are routable (a future mountain-bike mode, MTB_TRAILS_ROUTABLE). Gravel, Mountain Goat and
+ * Mountain Bike route on them, the rated ones too since the owner's choice of 2026-10-19 ("Rated, MTB and Gravel").
  */
 export const MTB_LEGEND: { short: string; label: string } | null = MTB_TRAILS_ROUTABLE
   ? null
-  : { short: "Mountain-bike trail", label: "Not used for routes (Gravel and Mountain Goat may use it): grey dashes on a white edge with dark ticks for an unrated trail; rated ones show by level below." };
+  : { short: "Mountain-bike trail", label: "Only off-road ride types route on these (Gravel, Mountain Goat and Mountain Bike): grey dashes on a white edge with dark ticks for an unrated trail. Rated ones show by level below; Gravel and Mountain Goat ride only green (level 1)." };
 
 type MtbLevel = (typeof MTB_LEVELS)[number];
 
@@ -79,11 +79,15 @@ type MtbLevel = (typeof MTB_LEVELS)[number];
  * name is the road panel's wording (core/segment_info.py, mtb_level_words): "Level 2 (blue)".
  */
 export function mtbLevelLegend(shape: MtbLevel): { short: string; label: string } {
+  const who = shape.level <= OFFROAD_MAX_LEVEL ? "Only Gravel, Mountain Goat and Mountain Bike route on it." : "Only Mountain Bike routes use it.";
   return {
     short: `Level ${shape.level} (${shape.name})`,
-    label: `Mountain-bike trail rated ${shape.scale}: ${shape.name} ${shape.pattern} on a white edge with dark ticks. Not used for routes.`,
+    label: `Mountain-bike trail rated ${shape.scale}: ${shape.name} ${shape.pattern} on a white edge with dark ticks. ${who}`,
   };
 }
+
+/** The hardest level Gravel and Mountain Goat ride (routemaker/singletrack.py OFFROAD_MAX_LEVEL; the owner, 2026-10-19). */
+export const OFFROAD_MAX_LEVEL = 1;
 
 /** Where the paths and trails the long-distance rule leaves out come back (STRESS_ZOOMS.quiet). */
 export function everyTrailFrom(quiet: number): string {
@@ -454,5 +458,46 @@ export function StressLegend({
         ),
         h("p", { className: "hint" }, `Sharrows count as ordinary streets. ${ROADWAY_LANES}`),
       ),
+  );
+}
+
+/** The map key's heading and its hint (the owner, 2026-10-19). */
+export const MTB_MAP_KEY_TITLE = "Mountain-bike trails";
+export const MTB_MAP_KEY_HINT = "Tap a trail for details";
+
+/** The key's short names: the level and its colour, as the legend's rows and the road panel say it. */
+export function mtbMapKeyRows(): { key: string; name: string }[] {
+  return [{ key: "unrated", name: "Unrated" }, ...MTB_LEVELS.map((l) => ({ key: String(l.level), name: `${l.level} ${l.name[0].toUpperCase()}${l.name.slice(1)}` }))];
+}
+
+/**
+ * The mountain-bike trails' key on the map itself (the owner, 2026-10-19: "Mountain bike trails need to have a
+ * key on the map"): while their layer is on and the map is close enough in to draw them (`drawn`), a small box
+ * in the map's corner with each look (the unrated grey dashes, then each level) and its short name, and that a
+ * tap on a trail tells more. Not a control: it has nothing to press. The Legend sheet keeps the long words.
+ */
+export function MtbMapKey({ drawn }: { drawn: boolean }): ReactElement | null {
+  useStressStyle();
+  const on = useMtbTrails();
+  if (!MTB_LEGEND || !on || !drawn) return null;
+  const strong = accessibilityOn();
+  const rows = mtbMapKeyRows();
+  return h(
+    "section",
+    { className: "mtb-map-key", "aria-label": MTB_MAP_KEY_TITLE + " key" },
+    h("p", { className: "mtb-map-key-title", "aria-hidden": "true" }, MTB_MAP_KEY_TITLE),
+    h(
+      "ul",
+      null,
+      ...rows.map((r, i) =>
+        h(
+          "li",
+          { key: r.key },
+          i === 0 ? h(MtbTrailSwatch, { strong }) : h(MtbLevelSwatch, { shape: MTB_LEVELS[i - 1], strong }),
+          h("span", null, r.name),
+        ),
+      ),
+    ),
+    h("p", { className: "mtb-map-key-hint" }, MTB_MAP_KEY_HINT),
   );
 }

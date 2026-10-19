@@ -199,6 +199,7 @@ change it.</li>
       <li><a href="#special">Special cases</a></li>
       <li><a href="#not-ratings">What never changes a rating</a></li>
       <li><a href="#avoid">Avoid, and roads closed to bikes</a></li>
+      <li><a href="#hazards">Cobblestones and rails in the road</a></li>
       <li><a href="#corrections">Corrections</a></li>
       <li><a href="#routes">How ride types and the slider use the ratings</a></li>
       <li><a href="#junctions">Junction warnings</a></li>
@@ -635,12 +636,30 @@ change it.</li>
     
     <p><strong>Closed to bikes</strong> is different. It means you may not ride
     there at all, and routes do not use it. Examples are roads and paths inside
-    military bases and secured government sites, ways signed no bicycles, and rated
-    mountain-bike singletrack. When it is unclear whether bikes are allowed,
-    RouteMaker treats the way as closed. A closed way can be reopened by hand when
-    there is evidence that bikes may use it.</p>
-    <p>Other natural-surface mountain-bike trails are closed on most ride types. They
-    are open on Gravel and Mountain Goat.</p>
+    military bases and secured government sites, and ways signed no bicycles. When
+    it is unclear whether bikes are allowed, RouteMaker treats the way as closed. A
+    closed way can be reopened by hand when there is evidence that bikes may use it.</p>
+    <p>Mountain-bike trails are closed on most ride types. Mountain Bike rides all of
+    them. Gravel and Mountain Goat ride the green (level 1) ones and the ones with no
+    rating. A trail signed no bicycles stays closed on every ride type.</p>
+  </div></details>
+</section>
+
+  <section>
+    <h2 id="hazards">Cobblestones and rails in the road</h2>
+<p>Some roads have a known hazard: cobblestones (such as Georgetown's O and P
+    Streets NW), or rails set in the road (such as the old DC Streetcar tracks on
+    H Street NE). Routes price these roads as heavily as a very busy road, so they
+    use one only when the way round is as bad. The road keeps its own stress rating.
+    Mass Ride is the exception: it takes the big roads by design. Paths aren't
+    priced either: a path with a hazard is marked when a route uses it, not avoided.</p>
+<details class="more"><summary>More: Cobblestones and rails in the road</summary>
+<div class="more-body">
+    
+    <p>When a route does ride one, an amber triangle marks it on the route, the
+    directions name it, and Ride warns you ahead. The rest of the map does not show
+    them. Hazards come from OpenStreetMap, plus a short reviewed list for ones it
+    misses.</p>
   </div></details>
 </section>
 

@@ -50,6 +50,7 @@ import { WaterLegend, WaterLegendNotes, WaterSection } from "../lib/waterLegend.
 import type { ClimbAlong, ClimbCategory, ClimbsStatus } from "../lib/climbs.ts";
 import { CLIMBS_HELP, ClimbsLayerControls, ClimbsLegend } from "../lib/climbsLegend.ts";
 import { ScenicLegend, ScenicSection } from "../lib/scenicLayer.ts";
+import { RouteHazardKey } from "../lib/routeHazards.ts";
 import { PermitsSection } from "../lib/permitLayer.ts";
 import { InstallOffer } from "../InstallableApp.tsx";
 import type { Split, StoredWeight } from "../lib/weight.ts";
@@ -155,6 +156,8 @@ export function LayersSheet(props: LayersSheetProps) {
         {/* Not one of the section's layers: shown with or without the stress map, as it also changes the
             route's facility totals and description (the a11y review's SF4). */}
         <HighStressLanesSwitch on={showHighLanes} onChange={(on) => setHighStressLanes(on)} overlay={stress === "available"} massMap={massMap} />
+        {/* v0.10.0: the route's hazard marks, drawn on a route only, with or without the stress map. */}
+        <RouteHazardKey />
       </LayerSection>
 
       {/* Mass Ride's alone (OWNER-DECISIONS 324): null for every other ride type. */}
@@ -203,7 +206,10 @@ export function LayersSheet(props: LayersSheetProps) {
         status={(open) => terrainStatus(open, terrain)}
       >
         <MtbTrailsSwitch on={showMtbTrails} onChange={(on) => setMtbTrails(on)} overlay={stressShowable(stress)} />
-        <ClimbsLayerControls on={climbsOn} onChange={changeClimbsOn} from={climbsFrom} onFromChange={changeClimbsFrom} status={climbsStatus} items={climbsAlong} along={false} legend={false} />
+        {/* The owner, 2026-10-19: "include the legend within the accordion settings in layers". Each layer's key
+            sits under its own switch while it is on, as the climbs' does (ClimbsLayerControls). */}
+        <MtbTrailLegend />
+        <ClimbsLayerControls on={climbsOn} onChange={changeClimbsOn} from={climbsFrom} onFromChange={changeClimbsFrom} status={climbsStatus} items={climbsAlong} along={false} />
         <TopoLinesSwitch on={showTopoLines} onChange={(on) => setTopoLines(on)} available={topoReady} />
       </LayerSection>
 

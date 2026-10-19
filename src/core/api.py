@@ -107,6 +107,7 @@ from . import (
     share_links,
     stoporder,
     timing,
+    trailprofile,
     transit,
     transit_live,
     wmata_bus,
@@ -1298,13 +1299,14 @@ class DescriptionEntryOut(Schema):
     its `severity` "red" for a closure and "orange" for a zone with a penalty, or, at
     0 with no severity, the work-zone disclaimer or the feeds that could not be read;
     a `climb` is a categorised climb the route rides uphill where the hill seek ran
-    (FOLLOWUP-HILL-SEEK, 205), from its foot to its summit.
+    (FOLLOWUP-HILL-SEEK, 205), from its foot to its summit; a `hazard` is a known road
+    hazard the route rides (v0.10.0: cobblestones, rails in the road; `core.route_hazards`).
     Distances are along the route, scaled to `distance_m`. `text` is one plain
     sentence, US units first with the metric once, for reading aloud; the other
     fields are the same facts for a client that words them itself. Additive:
     older clients ignore it, and it is null where it could not be built."""
 
-    kind: Literal["stretch", "junction", "via", "walk", "avoid", "workzone", "climb"]
+    kind: Literal["stretch", "junction", "via", "walk", "avoid", "workzone", "climb", "hazard"]
     from_m: int
     to_m: int
     from_mi: float
@@ -1823,6 +1825,17 @@ class MassHazardSpanOut(Schema):
     road: str
 
 
+class RoadHazardSpanOut(Schema):
+    """A known hazard the route rides (v0.10.0; `core.route_hazards`): cobblestones or rails
+    in the road, in whole metres along the traced route as `stress_spans` are measured."""
+
+    from_m: int
+    to_m: int
+    kinds: list[Literal["cobbles", "rails"]]
+    road: str
+    text: str = Field(description="One plain sentence, US units first with the metric once.")
+
+
 class MtbOut(Schema):
     """A Mountain Bike plan's reading of its route (docs/MTB-TOPO-PLAN.md, slice 6;
     `core.mtb`)."""
@@ -2076,6 +2089,9 @@ class RouteBody(Schema):
     # A Mass Ride's rider-marked hazards it passes, in riding order (FOLLOWUP-MASSRIDE-MAP
     # part 3, 325). Additive: null on every other ride type, empty where it passes none.
     mass_hazards: list[MassHazardSpanOut] | None = None
+    # The known hazards it rides (v0.10.0; cobbles, rails), in riding order. Additive: empty
+    # where it rides none or the table predates them.
+    road_hazards: list[RoadHazardSpanOut] | None = None
     # The Mountain Bike ride type's reading of the route (slice 6). Additive: null on every
     # other ride type.
     mtb: MtbOut | None = None
@@ -4651,6 +4667,13 @@ SEGMENT_INFO_MAX_AGE_S = 300
 class SegmentInfoIn(Schema):
     lat: Coordinate
     lon: Coordinate
+    trail: bool = Field(
+        default=False,
+        description=(
+            "A tap on the mountain-bike trail layer: describe the nearest such trail, ahead"
+            " of a road beside it."
+        ),
+    )
 
     @model_validator(mode="after")
     def point_inside(self):
@@ -4721,6 +4744,28 @@ class SegmentInfoOut(Schema):
             " guide where its names place it in no system; null on any other way."
         ),
     )
+    mtb_trail: bool = Field(
+        default=False,
+        description=(
+            "A mountain-bike trail the trail layer draws: its elevation profile is at"
+            " /api/trails/{osm_way_id}/profile, and it has no traffic lines."
+        ),
+    )
+    trail_open: str | None = Field(
+        default=None,
+        description=(
+            "On a mountain-bike trail: 'offroad' where the Gravel, Mountain Goat and"
+            " Mountain Bike ride types may route through it (Mountain Bike up to the"
+            " rider's level), 'mtb' where only Mountain Bike may, null where none may."
+        ),
+    )
+    trail_level: int | None = Field(
+        default=None,
+        description=(
+            "On a mountain-bike trail: the level (1-4) Mountain Bike's hardest-level"
+            " choice reads it at."
+        ),
+    )
     attribution: list[str]
 
 
@@ -4747,7 +4792,7 @@ SEGMENT_INFO_ATTRIBUTION = ("© OpenStreetMap contributors (ODbL)",)
     errors_as_json,
 )
 def road_info(request, params: Query[SegmentInfoIn], response: HttpResponse):
-    found = segment_info.segment_info(params.lat, params.lon)
+    found = segment_info.segment_info(params.lat, params.lon, params.trail)
     response["Cache-Control"] = f"private, max-age={SEGMENT_INFO_MAX_AGE_S}"
     return Status(200, {**found, "attribution": list(SEGMENT_INFO_ATTRIBUTION)})
 
@@ -4877,6 +4922,62 @@ def climb_profile(request, climb_id: str, response: HttpResponse):
     if body is None:
         return Status(404, {"error": "There is no elevation for this climb."})
     response["Cache-Control"] = f"public, max-age={CLIMB_PROFILE_MAX_AGE_S}"
+    return Status(200, body)
+
+
+# --- One mountain-bike trail's elevation profile, for the road panel ----------------
+
+TRAIL_PROFILE_MAX_AGE_S = 86_400
+
+
+class TrailProfileOut(Schema):
+    """A mountain-bike trail's heights along it (`core.trailprofile`; the owner,
+    2026-10-19: "Include an elevation profile of the trail if possible"), as the route
+    chart's `profile`, with its climbing, descending and steepest grade."""
+
+    way: int
+    length_m: int
+    gain_m: float
+    loss_m: float
+    max_grade_pct: float | None = Field(
+        description=(
+            "The steepest grade on it, either way, percent, read as the route chart reads it."
+        )
+    )
+    interval_m: int
+    m: list[int] = Field(description="Metres from the way's first point to each sample.")
+    elevation_m: list[float | None]
+    grade_pct: list[float | None]
+
+
+@api.get(
+    "/trails/{way_id}/profile",
+    response={200: TrailProfileOut, 404: ErrorOut, 429: ErrorOut, 500: ErrorOut, 503: ErrorOut},
+    summary="One mountain-bike trail's elevation profile (the road panel, for a tapped trail)",
+)
+@decorate_view(
+    ratelimit.in_flight_limited(ratelimit.ROUTING_IN_FLIGHT),
+    ratelimit.rate_limited(ratelimit.TRAIL_PROFILE),
+    errors_as_json,
+)
+def trail_profile(request, way_id: int, response: HttpResponse):
+    """Read-only: a trail is named by its OSM way id and read from the live table, never
+    by a line; only a way the mountain-bike trail layer draws is answered."""
+    if not 0 < way_id < 2**53:
+        return Status(404, {"error": "There is no such trail."})
+    try:
+        body = trailprofile.profile(way_id)
+    except trailprofile.Unavailable as error:
+        logger.warning("trail profile unavailable: %s", error)
+        refusal = JsonResponse(
+            {"error": "The trail's elevation is not available right now. Try again shortly."},
+            status=503,
+        )
+        refusal["Retry-After"] = str(DEADLINE_RETRY_S)
+        return refusal
+    if body is None:
+        return Status(404, {"error": "There is no elevation for this trail."})
+    response["Cache-Control"] = f"public, max-age={TRAIL_PROFILE_MAX_AGE_S}"
     return Status(200, body)
 
 

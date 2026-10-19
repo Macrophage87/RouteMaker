@@ -1334,5 +1334,42 @@ do
     M.NODE_WRITES_ALLOWED.highway == "traffic_signals" and M.FORBIDDEN_KEYS.highway)
 end
 
+-- v0.10.0's known hazards (`rm:hazard`): priced as LTS 4, never a change of access.
+do
+  local street = { highway = "residential", maxspeed = "25 mph" }
+  local plain = M.remap_way(street, { stress_tier = 1 })
+  local cobbled = M.remap_way(street, { stress_tier = 1, hazard = true })
+  local four = M.remap_way(street, { stress_tier = 4 })
+  check("a hazard LTS 1 street takes the stress penalty",
+    cobbled.bicycle == M.STRESS_PENALTY_BICYCLE and plain.bicycle == nil)
+  check("and LTS 4's graded marks", cobbled["maxspeed:practical"] == M.GRADED_SPEED
+    and cobbled["lanes:forward"] == four["lanes:forward"])
+  check("a hazard 2.5 is priced as LTS 4, not its half step",
+    M.remap_way(street, { stress_tier = 2, stress_half = true, hazard = true })["lanes:forward"]
+      == M.GRADED_LANES)
+  check("a hazard never opens a closed road",
+    M.remap_way({ highway = "residential", access = "no" }, { stress_tier = 1, hazard = true }).bicycle
+      ~= M.STRESS_PENALTY_BICYCLE)
+  check("a hazard on a path changes nothing",
+    M.remap_way({ highway = "cycleway" }, { stress_tier = 1, hazard = true, is_trail_class = true })
+      .bicycle == nil)
+  check("an Avoid road keeps its own marks",
+    M.remap_way({ highway = "primary" }, { stress_tier = 5, hazard = true }).service == M.AVOID_SERVICE)
+  local derived = { stress_tier = 2, hazard = true }
+  M.hazard_priced(derived)
+  check("the derived table passed in is not changed", derived.stress_tier == 2)
+  check("a hazard never rewrites road class or speed", not writes_forbidden(cobbled))
+  check("a hazard LTS 3 street is priced as LTS 4",
+    M.remap_way(street, { stress_tier = 3, hazard = true })["lanes:forward"] == M.GRADED_LANES)
+  local alley = { highway = "service", service = "alley" }
+  local hazard_alley = M.remap_way(alley, { stress_tier = 2, hazard = true })
+  local plain_alley = M.remap_way(alley, { stress_tier = 2 })
+  check("a hazard alley keeps its alley use and adds the graded marks",
+    hazard_alley.service == plain_alley.service and hazard_alley["lanes:forward"] == M.GRADED_LANES)
+  check("Mass Ride's no-trail variant gets no graded marks for a hazard",
+    M.remap_way(street, { stress_tier = 1, hazard = true, facility_neutral = true })["lanes:forward"]
+      ~= M.GRADED_LANES)
+end
+
 io.write(string.format("%d checks, %d failures\n", checks, failures))
 os.exit(failures == 0 and 0 or 1)

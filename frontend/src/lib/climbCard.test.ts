@@ -170,10 +170,10 @@ test("MapView: a climb press opens its card before the click can place a point, 
   const climbAt = click.indexOf("climbCard?.climbAt(");
   const run = click.indexOf("runClick(under");
   assert.ok(climbAt > 0 && run > climbAt, "the climb is asked for before runClick");
-  // A station and a water or restroom icon keep their own cards; in Plan only the summit marker opens the
-  // card (a press on the climb's line places a point), in Go the line too.
+  // A station and a water or restroom icon keep their own cards; the summit marker and the line open the card
+  // in Plan and Go (the owner, 2026-10-19), but in Plan the route's own line under the press keeps it.
   assert.match(click, /!under\.station && !anyPopupOpen\(\) && !water\?\.hits\(event\.point\)/);
-  assert.match(click, /climbAt\(event\.point, goPress\)/);
+  assert.match(click, /climbAt\(event\.point, goPress \|\| !under\.line\)/);
   // The click that closes the card opens no water or federal card under it.
   assert.match(click, /climbCard\.close\(\);\s*climbClosing = true;/);
   assert.match(view, /otherPopupOpen: \(\) => anyPopupOpen\(\) \|\| climbClosing,/);
@@ -240,15 +240,16 @@ test("the profile chart is a picture with its text alternative", () => {
 
 // --- Show climbs from --------------------------------------------------------------
 
-test("Show climbs from: Category 5 and up unless chosen, kept on this device", () => {
+test("Show climbs from: Category 4 and up unless chosen, kept on this device", () => {
   const kept = new Map<string, string>();
   const store = { getItem: (k: string) => kept.get(k) ?? null, setItem: (k: string, v: string) => void kept.set(k, v) };
   assert.equal(readClimbsFrom(store), CLIMBS_FROM_DEFAULT);
+  assert.equal(CLIMBS_FROM_DEFAULT, "4"); // the owner, 2026-10-19: "5 is too numerous"
   assert.equal(saveClimbsFrom("3", store), true);
   assert.equal(kept.get(CLIMBS_FROM_KEY), "3");
   assert.equal(readClimbsFrom(store), "3");
   kept.set(CLIMBS_FROM_KEY, "7");
-  assert.equal(readClimbsFrom(store), "5", "nonsense kept is the default");
+  assert.equal(readClimbsFrom(store), "4", "nonsense kept is the default");
   const throwing = {
     getItem: () => {
       throw new Error("blocked");
@@ -257,7 +258,7 @@ test("Show climbs from: Category 5 and up unless chosen, kept on this device", (
       throw new Error("blocked");
     },
   };
-  assert.equal(readClimbsFrom(throwing), "5");
+  assert.equal(readClimbsFrom(throwing), "4");
   assert.equal(saveClimbsFrom("4", throwing), false);
 });
 
@@ -267,7 +268,17 @@ test("that category and harder are shown, on the map and in words", () => {
   assert.equal(climbShown({ category: "3" }, "4"), true);
   assert.equal(climbShown({ category: "HC" }, "HC"), true);
   assert.equal(climbShown({ category: "1" }, "HC"), false);
-  assert.deepEqual(climbsFilter("3"), ["<=", ["get", "rank"], 3]);
+  assert.deepEqual(climbsFilter("3", false, true), ["<=", ["get", "rank"], 3]);
+  // The owner, 2026-10-19: "optionally (default on) hide climbs on LTS 3+ roads".
+  assert.deepEqual(climbsFilter("3", true, true), ["all", ["<=", ["get", "rank"], 3], ["!=", ["get", "b"], true]]);
+  // Climbs on mountain-bike trails show only while the map draws the trails (review of 2026-10-19).
+  assert.deepEqual(climbsFilter("3", false, false), ["all", ["<=", ["get", "rank"], 3], ["!=", ["get", "s"], "mtb"]]);
+  assert.equal(climbShown({ category: "3", surface: "mtb" }, "4", false, false), false);
+  assert.equal(climbShown({ category: "3", surface: "mtb" }, "4", false, true), true);
+  assert.equal(climbShown({ category: "3", surface: "gravel" }, "4", false, false), true);
+  assert.equal(climbShown({ category: "3", busy: true }, "4", true), false);
+  assert.equal(climbShown({ category: "3", busy: true }, "4", false), true);
+  assert.equal(climbShown({ category: "3" }, "4", true), true);
   assert.equal(climbLines([climb({ category: "2" })]).features[0].properties.rank, 2);
   // The filter validates on both layers.
   const empty = { type: "geojson", data: { type: "FeatureCollection", features: [] } };
@@ -314,7 +325,7 @@ test("the select is labelled, beside the switch while the layer is on, and chang
   assert.ok(renderToStaticMarkup(createElement(ClimbsLayerControls, { ...props, on: true })).includes("climbs-from"));
   assert.ok(!renderToStaticMarkup(createElement(ClimbsLayerControls, { ...props, on: false })).includes("climbs-from"));
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
-  assert.match(app, /filter\(\(item\) => climbShown\(item\.climb, climbsFrom\)\)/);
+  assert.match(app, /filter\(\(item\) => climbShown\(item\.climb, climbsFrom, hidingBusyClimbs, trailClimbsShown\)\)/);
   assert.match(app, /climbNearSpot\(climbsData, roadInfo\.point, climbsFrom\)/);
 });
 
