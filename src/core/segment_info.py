@@ -79,6 +79,7 @@ OWNER = "Owner override"
 COUNTY_ADJUSTMENT_PREFIX = "moco-lts5-"
 COUNTY = agency_lts.source_name("moco")
 ROUTER = "OpenStreetMap, through RouteMaker's routing graph"
+MDOT_ACCESS_SOURCE = f"{agency_lts.source_name('mdot-sha')}, Bicycle Level of Traffic Stress (2022)"
 NEXT_UPDATE = "Available after the next data update"
 
 # The step words (OWNER-DECISIONS 441i-441l; 441j: "5 is just avoid").
@@ -211,6 +212,12 @@ ACCESS_WORDS = {
         " (closed unless there is evidence bikes are allowed)",
     ),
     "bicycle_no": (False, "Closed: no bicycles (a no-bike sign or rule, as mapped)"),
+    # MDOT SHA's LTS 5, "Bicycle access is prohibited by managing roadway agency"
+    # (`agency_lts.PROHIBITED_NO_BICYCLE`; the owner, 2026-10-19).
+    agency_lts.PROHIBITED_NO_BICYCLE: (
+        False,
+        "Closed: the Maryland State Highway Administration (MDOT SHA) prohibits bicycles here",
+    ),
     # Legal, rated Avoid, where a side path is mapped beside it (review RL-1; the owner,
     # 2026-10-16: "It's very much not recommended, but I believe still legal").
     "bicycle_use_sidepath": (True, "Open: legal, but riders are asked to use the side path"),
@@ -683,6 +690,10 @@ def _level_text(level: object) -> str:
     return tier_text(whole, level != whole)
 
 
+# An agency level that is a ban rather than a stress level (`agency_lts.PROHIBITING_LEVELS`).
+PROHIBITED_LEVEL_WORDS = "Bicycles prohibited (MDOT SHA's 5)"
+
+
 def rating_rows(row: dict) -> list[dict]:
     """Every rating held for the way (`segment.stress_ratings`), each with its
     source, and which one the map uses (the owner, 2026-10-13: "put all the
@@ -711,7 +722,11 @@ def rating_rows(row: dict) -> list[dict]:
             value += " (used: owner and community ratings come first)"
         rows.append(_row(label, value, named))
     for rating in held["agencies"]:
-        value = _level_text(rating["level"])
+        value = (
+            PROHIBITED_LEVEL_WORDS
+            if agency_lts.PROHIBITING_LEVELS.get(rating.get("agency")) == float(rating["level"])
+            else _level_text(rating["level"])
+        )
         if rating.get("agency") == used:
             value += " (used: the most local agency's rating)"
         rows.append(_row(f"{rating['name']} rates it", value, rating["name"]))
@@ -954,6 +969,8 @@ def access_rows(row: dict, bicycle: bool | None) -> tuple[bool | None, list[dict
         source = (
             OWNER
             if reason.startswith("override")
+            else MDOT_ACCESS_SOURCE
+            if reason == agency_lts.PROHIBITED_NO_BICYCLE
             else (CLASSIFIER if reason in ("military", "secured", "works", "err_closed") else OSM)
         )
         return False, [_row("Bike access", known[1], source)]
@@ -1009,6 +1026,7 @@ ACCESS_SHORT = {
     "secured": "secure government site",
     "works": "quarry, landfill or industrial site",
     "bicycle_no": "no-bike rule",
+    agency_lts.PROHIBITED_NO_BICYCLE: "prohibited by MDOT SHA",
     "motorway": "freeway",
     "motorroad": "motor vehicles only",
     "private": "private",

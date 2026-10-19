@@ -21,14 +21,25 @@ of the record it lies along most, and `agency_lts.chosen` picks between them.
 
 from __future__ import annotations
 
+import csv
+import io
 import json
 import logging
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
-from routemaker import agency_roads
-from routemaker.agency_lts import AGENCIES, AgencyRating, level_problem
+from routemaker import agency_roads, facility
+from routemaker.agency_lts import (
+    AGENCIES,
+    PROHIBITED_NO_BICYCLE,
+    AgencyRating,
+    level_problem,
+    prohibiting,
+)
+from routemaker.avoid_junctions import line_length_m
+from routemaker.classes import TRAIL_CLASS_HIGHWAY
 
 from . import conflation
 
@@ -148,3 +159,126 @@ def ratings_by_way(
             len(result.matched),
         )
     return {way_id: tuple(found_) for way_id, found_ in found.items()}
+
+
+def prohibited_ways(rated: Mapping[int, Sequence[AgencyRating]]) -> set[int]:
+    """The ways an agency says bicycles may not use (`agency_lts.prohibiting`), whatever
+    level the map takes for them."""
+    return {way_id for way_id, ratings in rated.items() if prohibiting(ratings) is not None}
+
+
+# A path is never closed by a road record matched onto it: MDOT SHA rates roads, so its
+# 5 on a trail-class way (or a track) is more likely a conflation slip than a ban, and it
+# is listed for the owner instead (the owner's rule: unclear bike access is closed, but a
+# path is not made unclear by a road layer).
+NOT_CLOSED_HIGHWAY = TRAIL_CLASS_HIGHWAY | {"track"}
+# The roads an agency's ban is expected on. A ban matched onto any other road is still
+# applied, but listed with its own outcome, since a slip onto a side street beside a
+# highway is the likeliest mistake.
+MAJOR_HIGHWAY = frozenset(
+    {"motorway", "motorway_link", "trunk", "trunk_link", "primary", "primary_link"}
+)
+
+PROHIBITED_REPORT_NAME = "agency-prohibited.csv"
+PROHIBITED_COLUMNS = ("way_id", "highway", "name", "bicycle", "length_m", "outcome")
+CLOSED = "closed"
+CLOSED_OSM_OPEN = "closed; OpenStreetMap says bicycles are allowed"
+CLOSED_MINOR = "closed; a minor road, check the match"
+CLOSED_BY_OVERRIDE = "closed by an owner override"
+NOT_CLOSED_PATH = "not closed: a path or track, check the match"
+NOT_CLOSED_OVERRIDE = "not closed: an owner override opens it"
+NOT_CLOSED_BRIDGE = "not closed: a bridge the crossings fixture opens to bicycles"
+CLOSED_OUTCOMES = frozenset({CLOSED, CLOSED_OSM_OPEN, CLOSED_MINOR})
+
+
+@dataclass(frozen=True)
+class ProhibitedRow:
+    way_id: int
+    highway: str
+    name: str
+    bicycle: str
+    length_m: float
+    outcome: str
+
+
+def prohibited_closures(
+    ways: Iterable,
+    prohibited: Collection[int],
+    reasons: Mapping[int, str],
+    reopened: Collection[int],
+    bridge_legal: Collection[int] = frozenset(),
+) -> tuple[dict[int, str], list[ProhibitedRow]]:
+    """The `rm:no_bicycle` reasons the agencies' prohibitions add, and the report's rows.
+
+    A way of `prohibited` is closed (`PROHIBITED_NO_BICYCLE`) when nothing closes it
+    already: no closure rule's reason in `reasons`, and its own tags leave it on the map
+    as a way to ride (`facility.map_class`; a freeway, `bicycle=no` or a private road
+    keeps its own reason). Not closed, and listed: a path or track
+    (`NOT_CLOSED_HIGHWAY`), a bridge the crossings fixture says a bicycle may cross
+    (`bridge_legal`), and a way an approved access override opens (`reopened`: the
+    owner's Review call outranks the agency; an override that closes it is listed as
+    the owner's closure). Closed and listed with a note: a road OpenStreetMap opens to
+    bicycles, and a road that is not a highway (`MAJOR_HIGHWAY`). Every closed way is
+    listed, so the owner sees each road the rule takes off the map."""
+    added: dict[int, str] = {}
+    rows: list[ProhibitedRow] = []
+    for way in ways:
+        if way.osm_id not in prohibited or way.osm_id in reasons:
+            continue
+        tags = way.tags
+        highway = tags.get("highway", "")
+        if highway in NOT_CLOSED_HIGHWAY:
+            outcome = NOT_CLOSED_PATH
+        elif way.osm_id in bridge_legal:
+            outcome = NOT_CLOSED_BRIDGE
+        elif way.osm_id in reopened:
+            opened = facility.bike_access_reason(tags, overridden=True) == "override_open"
+            outcome = NOT_CLOSED_OVERRIDE if opened else CLOSED_BY_OVERRIDE
+        elif facility.map_class(tags) not in (facility.MapClass.ROAD, facility.MapClass.ALLEY):
+            continue
+        else:
+            added[way.osm_id] = PROHIBITED_NO_BICYCLE
+            if tags.get("bicycle") in facility.BICYCLE_ALLOWED:
+                outcome = CLOSED_OSM_OPEN
+            elif highway not in MAJOR_HIGHWAY:
+                outcome = CLOSED_MINOR
+            else:
+                outcome = CLOSED
+        rows.append(
+            ProhibitedRow(
+                way.osm_id,
+                highway,
+                tags.get("name", ""),
+                tags.get("bicycle", ""),
+                line_length_m(way.coordinates),
+                outcome,
+            )
+        )
+    return added, rows
+
+
+def closed_by_class(rows: Iterable[ProhibitedRow]) -> dict[str, tuple[int, float]]:
+    """The closed rows' count and miles by highway class, for the rebuild's log."""
+    by_class: dict[str, list[float]] = defaultdict(lambda: [0, 0.0])
+    for row in rows:
+        if row.outcome in CLOSED_OUTCOMES:
+            by_class[row.highway][0] += 1
+            by_class[row.highway][1] += row.length_m / 1609.344
+    return {highway: (int(n), miles) for highway, (n, miles) in sorted(by_class.items())}
+
+
+def prohibiting_records(ratings: Mapping[str, AgencyRating]) -> int:
+    """How many of the installed records prohibit bicycles (`agency_lts.prohibiting`)."""
+    return sum(prohibiting((rating,)) is not None for rating in ratings.values())
+
+
+def prohibited_report_csv(rows: Iterable[ProhibitedRow]) -> str:
+    """`PROHIBITED_REPORT_NAME`, ordered by way."""
+    out = io.StringIO()
+    writer = csv.writer(out, lineterminator="\n")
+    writer.writerow(PROHIBITED_COLUMNS)
+    for row in sorted(rows, key=lambda r: r.way_id):
+        writer.writerow(
+            [row.way_id, row.highway, row.name, row.bicycle, f"{row.length_m:.0f}", row.outcome]
+        )
+    return out.getvalue()

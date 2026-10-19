@@ -807,7 +807,7 @@ class TestWords:
 
     def test_every_reason_the_rebuild_writes_has_words(self) -> None:
         from pipeline.restricted_areas import MILITARY_NO_BICYCLE, SECURED_NO_BICYCLE
-        from routemaker import cbd, singletrack, trailaccess, zoo
+        from routemaker import agency_lts, cbd, singletrack, trailaccess, zoo
 
         written = {
             *trailaccess.TAG_REASONS,
@@ -824,6 +824,7 @@ class TestWords:
             "impassable",
             "motorway",
             "motorroad",
+            agency_lts.PROHIBITED_NO_BICYCLE,
         }
         assert written <= set(segment_info.ACCESS_WORDS), written - set(segment_info.ACCESS_WORDS)
         for _open, words in segment_info.ACCESS_WORDS.values():
