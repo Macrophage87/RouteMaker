@@ -5,11 +5,12 @@
  * replace) it; the new key is shown once with Copy, and Remove sits beside a key that exists. Replacing or removing
  * asks first: either stops an assistant that uses the key.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   APPS_HEADING,
   APPS_HELP,
   APPS_NONE,
+  APPS_READ_FAILED,
   DISCONNECT_ASK,
   DISCONNECTED,
   KEY_FAILED,
@@ -38,12 +39,13 @@ export function AssistantKeySetting({ origin = window.location.origin }: { origi
   const [said, setSaid] = useState("");
   const [busy, setBusy] = useState(false);
   const [unread, setUnread] = useState(false);
-  const [apps, setApps] = useState<ConnectedApp[]>([]);
+  const [apps, setApps] = useState<ConnectedApp[] | undefined>([]);
+  const status = useRef<HTMLParagraphElement>(null);
 
   useEffect(() => {
     let live = true;
     void readApps(origin).then((read) => {
-      if (live && read) setApps(read);
+      if (live) setApps(read);
     });
     void readKey(origin).then((read) => {
       if (!live) return;
@@ -88,6 +90,8 @@ export function AssistantKeySetting({ origin = window.location.origin }: { origi
     if (!left) return setSaid(KEY_FAILED);
     setApps(left);
     setSaid(DISCONNECTED);
+    // The pressed button's row is gone: keep focus on the line that says what happened.
+    status.current?.focus();
   };
   const copy = async () => {
     if (!secret) return;
@@ -101,7 +105,7 @@ export function AssistantKeySetting({ origin = window.location.origin }: { origi
         {KEY_LABEL}
         <span className="setting-value">
           <span className="visually-hidden">: </span>
-          {key === undefined ? "…" : assistantsSummary(key, apps)}
+          {key === undefined ? "…" : assistantsSummary(key, apps ?? [])}
         </span>
       </summary>
       <p className="hint">{KEY_HELP}</p>
@@ -125,21 +129,23 @@ export function AssistantKeySetting({ origin = window.location.origin }: { origi
       </div>
       <h4 className="assistant-apps-heading">{APPS_HEADING}</h4>
       <p className="hint">{APPS_HELP}</p>
-      {apps.length === 0 ? (
+      {apps === undefined ? (
+        <p className="hint">{APPS_READ_FAILED}</p>
+      ) : apps.length === 0 ? (
         <p className="hint">{APPS_NONE}</p>
       ) : (
         <ul className="assistant-apps">
           {apps.map((app) => (
             <li key={app.id}>
               <span>{appSummary(app)}</span>
-              <button type="button" className="secondary" disabled={busy} aria-label={`Disconnect ${app.name}`} onClick={() => void disconnect(app)}>
+              <button type="button" className="secondary" disabled={busy} aria-label={`Disconnect ${appSummary(app)}`} onClick={() => void disconnect(app)}>
                 Disconnect
               </button>
             </li>
           ))}
         </ul>
       )}
-      <p className="hint" role="status">
+      <p className="hint" role="status" tabIndex={-1} ref={status}>
         {said}
       </p>
     </details>

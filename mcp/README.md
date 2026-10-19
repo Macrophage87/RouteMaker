@@ -59,8 +59,8 @@ in the Claude phone apps can use it with nothing installed.
 On the site, each call answers within one web request (up to a minute), so a long loop is
 planned once per request: the answer says when it stopped early, and asking Claude to revise
 the draft can still fix where it strays from Metro or move its points. Drafts are kept on the site for a week. There is no GPX
-file on the server: `gpx_route` gives a download link instead, which works on any device while
-the draft is kept.
+file on the server: `gpx_route` gives a download link instead, which works while the draft is kept
+(on the beta, behind its password).
 
 ## Set it up on your own computer
 

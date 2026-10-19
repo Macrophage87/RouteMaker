@@ -16,7 +16,15 @@ reasoning for the two-word body and the single query.
 from django.conf import settings
 from django.urls import path
 
-from core import account_deletion, auth_views, connector, health, mass_tiles, share_preview, stress_tiles
+from core import (
+    account_deletion,
+    auth_views,
+    connector,
+    health,
+    mass_tiles,
+    share_preview,
+    stress_tiles,
+)
 from core.admin import site
 from core.api import api
 

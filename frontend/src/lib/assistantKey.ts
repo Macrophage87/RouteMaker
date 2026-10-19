@@ -20,6 +20,7 @@ export const REMOVE_ASK = "Remove the key? An assistant using it can no longer s
 export const APPS_HEADING = "Connected apps";
 export const APPS_HELP = "Assistant apps you allowed to plan routes and add them to My routes, such as Claude on the web or your phone.";
 export const APPS_NONE = "None yet.";
+export const APPS_READ_FAILED = "Couldn't read your connected apps. Try again later.";
 export const DISCONNECT_ASK = "Disconnect this app? It can no longer plan or save routes for you until you allow it again.";
 export const DISCONNECTED = "Disconnected.";
 
