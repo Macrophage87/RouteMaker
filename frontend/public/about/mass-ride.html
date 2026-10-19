@@ -133,7 +133,7 @@ carry each minute, and how long will the group hold each crossing?"</p>
 <div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 760 150" role="img" aria-labelledby="fig-glance-mass-t fig-glance-mass-d" focusable="false" style="min-width:547px">
 <title id="fig-glance-mass-t">Mass Ride at a glance</title>
-<desc id="fig-glance-mass-d">Mass Ride plans in four steps: the size of your group; how many riders each road can carry per minute, about 99 for each lane; how long each crossing must be held and how many corkers it needs; and from those, the route that keeps the group flowing. It does not plan by traffic stress, because a mass ride takes the lane.</desc>
+<desc id="fig-glance-mass-d">Mass Ride plans in four steps: the size of your group; how many riders each road can carry per minute, about 100 for each lane; how long each crossing must be held and how many corkers it needs; and from those, the route that keeps the group flowing. It does not plan by traffic stress, because a mass ride takes the lane.</desc>
 <defs><marker id="ah-glance-mass" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
 <rect class="bxa" x="10" y="30" width="170" height="74" rx="6"/>
 <text class="tb" x="95.0" y="63.5" text-anchor="middle">Your group</text>
@@ -142,7 +142,7 @@ carry each minute, and how long will the group hold each crossing?"</p>
 <rect class="bx" x="200" y="30" width="170" height="74" rx="6"/>
 <text class="tb" x="285.0" y="55.5" text-anchor="middle">Each road</text>
 <text class="ts" x="285.0" y="71.5" text-anchor="middle">riders per minute,</text>
-<text class="ts" x="285.0" y="87.5" text-anchor="middle">about 99 a lane</text>
+<text class="ts" x="285.0" y="87.5" text-anchor="middle">about 100 a lane</text>
 <path class="ar" d="M372,67 L388,67" marker-end="url(#ah-glance-mass)"/>
 <rect class="bx" x="390" y="30" width="170" height="74" rx="6"/>
 <text class="tb" x="475.0" y="55.5" text-anchor="middle">Each crossing</text>
@@ -161,7 +161,7 @@ carry each minute, and how long will the group hold each crossing?"</p>
 <ul>
 <li>A mass ride is a queueing problem, not a traffic-stress problem. The narrowest point and the
 number of crossings to hold decide how it goes.</li>
-<li>The headline figure is <strong>riders per minute</strong>: about 99 for each 11 ft [3.35 m]
+<li>The headline figure is <strong>riders per minute</strong>: about 100 for each 11 ft [3.35 m]
 lane.</li>
 <li>Only the ride's own side of a two-way street counts. Parked cars and door zones do not.</li>
 <li>Three charts follow the route: riders per minute, corker load and elevation.</li>
@@ -248,7 +248,7 @@ does.</p>
 <div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 820 220" role="img" aria-labelledby="fig-formula-t fig-formula-d" focusable="false" style="min-width:590px">
 <title id="fig-formula-t">How RouteMaker works out riders per minute</title>
-<desc id="fig-formula-d">A pipeline of six steps. Start with the usable width, for example one 11 foot (3.35 meter) lane. Multiply by 0.7, because a pack bunches and uses about 7.7 feet of it. Multiply by the density, one rider per 29 square feet (0.37 per square meter). Multiply by the pace, 4.3 mph (1.9 meters a second). Multiply by 60 seconds. The result is about 99 riders a minute for one lane. The route chart then multiplies by a hill factor between 30% and 100%; the map shows the flat figure.</desc>
+<desc id="fig-formula-d">A pipeline of six steps. Start with the usable width, for example one 11 foot (3.35 meter) lane. Multiply by 0.7, because a pack bunches and uses about 7.7 feet of it. Multiply by the density, one rider per 29 square feet (0.37 per square meter). Multiply by the pace, 4.3 mph (1.9 meters a second). Multiply by 60 seconds. The result is about 100 riders a minute for one lane. The route chart then multiplies by a hill factor between 30% and 100%; the map shows the flat figure.</desc>
 <defs><marker id="ah-formula" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
 <rect class="bx" x="10" y="30" width="118" height="74" rx="6"/>
 <text class="tb" x="69.0" y="55.5" text-anchor="middle">Usable width</text>
@@ -276,7 +276,7 @@ does.</p>
 <path class="ar" d="M531,67 L545,67" marker-end="url(#ah-formula)"/>
 <rect class="bxa" x="680" y="30" width="118" height="74" rx="6"/>
 <text class="tb" x="739.0" y="55.5" text-anchor="middle">Riders a minute</text>
-<text class="ts" x="739.0" y="71.5" text-anchor="middle">about 99</text>
+<text class="ts" x="739.0" y="71.5" text-anchor="middle">about 100</text>
 <text class="ts" x="739.0" y="87.5" text-anchor="middle">for one lane</text>
 <path class="ar" d="M665,67 L679,67" marker-end="url(#ah-formula)"/>
 <path class="ar" d="M739.0,104 L739.0,146" marker-end="url(#ah-formula)"/>
@@ -286,7 +286,7 @@ does.</p>
 <text class="ts" x="719.0" y="198.5" text-anchor="middle">route chart only</text>
 <rect class="bx" x="10" y="148" width="520" height="60" rx="6"/>
 <text class="ts" x="270.0" y="174.5" text-anchor="middle">The map shows the flat figure. The route&#x27;s riders chart adds the hills.</text>
-<text class="ts" x="270.0" y="190.5" text-anchor="middle">One 11 ft [3.35 m] lane: 3.35 × 0.7 × 0.37 × 1.9 × 60 = about 99.</text>
+<text class="ts" x="270.0" y="190.5" text-anchor="middle">One 11 ft [3.35 m] lane: 3.35 × 0.7 × 0.37 × 1.9 × 60 = 98.9, about 100.</text>
 <text class="tb" x="10" y="20" text-anchor="start">Riders a minute = usable width × 0.7 × density × pace × 60</text>
 </svg>
 </div>
@@ -335,7 +335,7 @@ is the state that limits a ride: at a pinch, a turn or a signal queue. In words:
 <p>The same riders pass each second whether the group is bunched or spread out. So on a straight at the
 cruising pace of 6 to 8 mph the group just spreads out, to about one rider per 48 ft² [4.5 m²] at 7 mph.
 The road is judged by what its pinches let through<sup class="cite"><a href="#ref-3" aria-label="source 3">[3]</a></sup>. A road with two 11 ft lanes in the ride's
-direction carries about 198 riders a minute; one lane, about 99. The app's 99 sits inside the paper's 50
+direction carries about 200 riders a minute; one lane, about 100. The app's 100 sits inside the paper's 50
 to 120, a little above its central 90. The app takes no separate capacity drop at a queue, because its
 figure already describes the bunched state<sup class="cite"><a href="#ref-1" aria-label="source 1">[1]</a></sup>.</p>
 
@@ -581,8 +581,8 @@ then chose the measured counts as the working model, and the app is built on the
 <caption>The white paper's planning figures and what RouteMaker 0.10.0 does</caption>
 <thead><tr><th scope="col">Topic</th><th scope="col">White paper (grade)</th><th scope="col">RouteMaker 0.10.0</th></tr></thead>
 <tbody>
-<tr><th scope="row">One 11 ft [3.35 m] lane</th><td>About 50 to 120 riders a minute at 6 to 8 mph; 90 as the central value (DERIVED)</td><td>About 99 a minute, from the owner's counts of the bunched state</td></tr>
-<tr><th scope="row">Two lanes, 22 ft [6.7 m]</th><td>About 110 to 245 (DERIVED; not validated)</td><td>About 198</td></tr>
+<tr><th scope="row">One 11 ft [3.35 m] lane</th><td>About 50 to 120 riders a minute at 6 to 8 mph; 90 as the central value (DERIVED)</td><td>About 100 a minute, from the owner's counts of the bunched state</td></tr>
+<tr><th scope="row">Two lanes, 22 ft [6.7 m]</th><td>About 110 to 245 (DERIVED; not validated)</td><td>About 200</td></tr>
 <tr><th scope="row">A 5 ft [1.5 m] pinch</th><td>Ceiling about 110 to 130, then about 27 fewer once a queue forms (PRIMARY formula; DERIVED use)</td><td>Paths and sidepaths are not routed. No road reads under 5 ft [1.5 m], about 44 a minute. No separate queue drop: the figure is already the bunched state</td></tr>
 <tr><th scope="row">1,000 riders on one lane</th><td>1.0 to 1.9 mi [1.7 to 3.0 km] long (DERIVED)</td><td>About 1.18 mi [1.9 km] at 7 mph</td></tr>
 <tr><th scope="row">Time to clear a crossing, one lane</th><td>About 2, 6 and 11 minutes for 200, 500 and 1,000 riders (DERIVED)</td><td>About 2.0, 5.1 and 10.1 minutes</td></tr>
