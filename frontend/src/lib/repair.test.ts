@@ -105,13 +105,16 @@ test("the map shows stands only (shops are in the list), and carries no names", 
   assert.ok(geo.features.every((f) => Object.keys(f.properties).every((k) => k === "id")));
 });
 
-test("Go: Repair and Sights sit behind More, with its expanded state said", () => {
+test("Go: Metro, Repair and Sights sit behind More, with its expanded state said", () => {
   const go = readFileSync(new URL("../app/Go.tsx", import.meta.url), "utf8");
   const row = go.slice(go.indexOf('aria-label="Places"'), go.indexOf('aria-label="More places"'));
-  assert.ok(!/Repair|Sights/.test(row), "the main row stays Home, Food, Water, Restroom, More");
+  assert.ok(!/Metro|Repair|Sights/.test(row), "the main row stays Home, Food, Water, Restroom, More");
   assert.match(go, /aria-expanded=\{moreOpen\} aria-controls=\{moreId\}/);
   assert.match(go, /id=\{moreId\}[^>]*aria-label="More places" hidden=\{!moreOpen\}/);
-  assert.match(go, /places\.onRepair[\s\S]*Repair[\s\S]*places\.onSights[\s\S]*Sights/);
+  assert.match(go, /places\.onMetro[\s\S]*Metro[\s\S]*places\.onRepair[\s\S]*Repair[\s\S]*places\.onSights[\s\S]*Sights/);
+  // Metro opens Nearest on its Metro list (the same search, count and WMATA badges as Nearest's own Metro button).
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  assert.match(app, /onMetro: \(chip\) => \{\s*openView\("nearest", chip\);\s*findNearestHere\("metro"\);/);
 });
 
 test("F13. a Repair row is named by its place and distance; its details are its description", () => {

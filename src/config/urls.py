@@ -16,7 +16,7 @@ reasoning for the two-word body and the single query.
 from django.conf import settings
 from django.urls import path
 
-from core import auth_views, connector, health, mass_tiles, share_preview, stress_tiles
+from core import account_deletion, auth_views, connector, health, mass_tiles, share_preview, stress_tiles
 from core.admin import site
 from core.api import api
 
@@ -42,4 +42,6 @@ urlpatterns = [
     path("oauth/register", connector.register, name="oauth-register"),
     path("oauth/authorize", connector.authorize, name="oauth-authorize"),
     path("oauth/token", connector.token, name="oauth-token"),
+    # Deleting an account, from Settings or from the web without the app (core.account_deletion).
+    path("delete-account", account_deletion.page, name="delete-account"),
 ]

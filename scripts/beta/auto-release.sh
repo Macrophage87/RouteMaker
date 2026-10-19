@@ -159,13 +159,36 @@ notify() { # word message
 	[ -x "$alert" ] || return 0
 	id=${message%%[ :]*}
 	case "$word" in
-		deployed) "$alert" note "deployed $message" && "$alert" clear deploy "the release agent is working again (deployed ${message%% *})" ;;
+		deployed)
+			# The installed copy is the one the timer and this agent run: the deployed release's own,
+			# so a release that teaches alert.sh something new uses it at once.
+			[ ! -f "$RM_SRC/scripts/beta/alert.sh" ] || install -m 700 "$RM_SRC/scripts/beta/alert.sh" "$alert"
+			"$alert" note "deployed $message" && "$alert" clear deploy "the release agent is working again (deployed ${message%% *})" ;;
 		up-to-date) "$alert" clear deploy "the release agent is working again ($message deployed)" ;;
 		rolled-back | failed) "$alert" send deploy "failed $id" "$word: $message" ;;
 		held | interrupted) "$alert" send deploy "$word $id" "$word: $message" ;;
 		broken | error | drift) "$alert" send deploy "$word $(printf '%s' "$message" | sed 's/[0-9][0-9.]*/N/g' | sha256sum | cut -c1-12)" "$word: $message" ;;
 		waiting) case "$message" in *" free "*) "$alert" send deploy "disk" "waiting: $message" ;; esac ;;
 	esac >>"$run_log" 2>&1 </dev/null
+	case "$word" in deployed | up-to-date) release_notes "$alert" ;; esac
+	return 0
+}
+# The riders' channel (alert.sh release-notes): the live release's notes, docs/releases/<tag>.md
+# from its checkout, once per tag. Tried on every deploy and up-to-date pass until posted, only
+# when a release webhook is stored and the installed alert.sh knows the command; a failure is
+# reported once a day in the owner's channel and never fails the pass.
+release_notes() { # alert
+	local tag
+	tag=$(deployed_tag)
+	is_semver "$tag" && [ -s "$RM_STATE/release-webhook" ] && grep -q 'release-notes)' "$1" || return 0
+	! grep -qxF "$tag" "$RM_STATE/alerts/release-posted" 2>/dev/null || return 0
+	{
+		if "$1" release-notes "$tag" "$RM_SRC/docs/releases/$tag.md"; then
+			"$1" clear release-notes "the release notes for $tag are posted"
+		else
+			"$1" send release-notes "$tag" "the release notes for $tag were not posted; tried again at the next pass"
+		fi
+	} >>"$run_log" 2>&1 </dev/null
 	return 0
 }
 # A release that needs the owner: kept in hold/<tag>, so later passes do not retry it.

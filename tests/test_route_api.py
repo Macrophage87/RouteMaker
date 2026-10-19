@@ -116,6 +116,8 @@ CONTRACT_KEYS = {
     "follows_file",
     "follows_exactly",
     "against_traffic",
+    # Additive, v0.9.1: the legs drawn in Plan's manual mode; null on a route with none.
+    "drawn_legs",
 }
 STRESS_KEYS = {"1", "2", "3", "4", "5", "unknown"}
 

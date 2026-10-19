@@ -32,11 +32,13 @@ def test_an_mdot_5_closes_a_road():
     assert [(r.way_id, r.outcome) for r in rows] == [(1, agency_ratings.CLOSED)]
 
 
-def test_a_county_5_alone_stays_avoid_and_open():
+def test_a_county_5_alone_is_45_and_open():
+    """Montgomery's 5 is very high stress, our 4.5 (the owner, 2026-10-19), and open."""
     rated = {1: (AgencyRating("moco", 5),)}
     added, rows = _close([_way(1)], rated)
     assert (added, rows) == ({}, [])
-    assert agency_lts.apply(agency_lts_formula(), rated[1]).tier is Stress.AVOID
+    result = agency_lts.apply(agency_lts_formula(), rated[1])
+    assert (result.tier, result.half) == (Stress.LTS4, True)
 
 
 def test_a_ddot_5_stays_open_too():
