@@ -2431,6 +2431,12 @@ dialog.weight-dialog h2 {
   min-height: 44px;
 }
 
+/* A part's default, shown as its placeholder: readable, not the browser's faint grey. */
+.weight-field input::placeholder {
+  color: var(--text-muted);
+  opacity: 1;
+}
+
 .weight-field .hint {
   grid-column: 1 / -1;
   margin: 2px 0 0;

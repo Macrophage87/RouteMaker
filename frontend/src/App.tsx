@@ -362,7 +362,6 @@ export function App() {
   const weightStore = useRef<WeightStore | null>(null);
   if (weightStore.current === null) weightStore.current = new WeightStore();
   const [weight, setWeight] = useState<StoredWeight | null>(() => weightStore.current?.load() ?? null);
-  const [weightRemembered, setWeightRemembered] = useState(() => weightStore.current?.remembered() ?? false);
   // The stations the rider chose from the nearest-stations lists (OWNER-DECISIONS 466a), each
   // forgotten when its point moves; added to the request only, never to the link.
   const [stationPins, setStationPins] = useState<Pins>({});
@@ -1315,7 +1314,7 @@ export function App() {
   const syncSettingsOnSignIn = async (origin: string, live: () => boolean) => {
     const account = await fetchSettings(origin);
     if (!live() || account === undefined) return;
-    const device = deviceSettings({ preset: rideRef.current.preset, dials: rideRef.current.dials });
+    const device = deviceSettings({ preset: rideRef.current.preset, dials: rideRef.current.dials }, undefined, weightStore.current?.setting());
     const step = onSignIn(account, device);
     if (step.kind === "push-device") {
       lastSettings.current = device;
@@ -1323,6 +1322,15 @@ export function App() {
     } else {
       applyToDevice(step.doc);
       reloadFavorites();
+      // The account's weight, or cleared when it was cleared elsewhere; an account from before it kept one
+      // leaves this device's, which the save below then puts in the account.
+      if (step.doc.weight === null) {
+        weightStore.current?.clear();
+        setWeight(null);
+      } else if (step.doc.weight) {
+        weightStore.current?.save(step.doc.weight);
+        setWeight(step.doc.weight);
+      }
       lastSettings.current = step.doc;
       setWaterPrefsState(readWaterPrefs());
       setClimbsOnState(readClimbsOn());
@@ -2838,13 +2846,13 @@ export function App() {
   useEffect(() => {
     if (!me.signed_in || !settingsSynced) return;
     const timer = window.setTimeout(() => {
-      const doc = deviceSettings({ preset, dials });
+      const doc = deviceSettings({ preset, dials }, undefined, weightStore.current?.setting());
       if (sameSettings(doc, lastSettings.current)) return;
       lastSettings.current = doc;
       void saveSettings(window.location.origin, doc);
     }, SAVE_SETTLE_MS);
     return () => window.clearTimeout(timer);
-  }, [me.signed_in, settingsSynced, preset, dials, waterPrefs, climbsOn, climbsFrom, showTopoLines, favoriteRides]);
+  }, [me.signed_in, settingsSynced, preset, dials, waterPrefs, climbsOn, climbsFrom, showTopoLines, favoriteRides, weight]);
   const answerHome = (move: boolean) => {
     const offer = homeAsk;
     if (!offer) return;
@@ -4672,16 +4680,13 @@ export function App() {
                 // The rider and bike weight (OWNER-DECISIONS 313-318), in Settings (the owner, 2026-10-18).
                 weight: {
                   saved: weight,
-                  remembered: weightRemembered,
                   split: defaultSplit(dials.carrying),
-                  onSave: (next: StoredWeight, remember: boolean) => {
-                    weightStore.current?.save(next, remember);
-                    setWeightRemembered(remember && (weightStore.current?.remembered() ?? false));
+                  onSave: (next: StoredWeight) => {
+                    weightStore.current?.save(next);
                     setWeight(next);
                   },
                   onClear: () => {
                     weightStore.current?.clear();
-                    setWeightRemembered(false);
                     setWeight(null);
                   },
                 },
