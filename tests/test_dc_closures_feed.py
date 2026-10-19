@@ -236,7 +236,7 @@ def test_the_check_sees_dc_closures_at_the_ride_time_not_today(snap) -> None:
 
 
 def test_the_check_says_may_still_apply_leaves_out_a_bypass_and_lists_lanes(snap) -> None:
-    lane = zone("dc-2", source="dc", kind=wz.LANE, end=NOW + timedelta(days=3))
+    lane = zone("mpd-3", kind=wz.LANE, end=NOW + timedelta(days=3))
     snap(zone("mpd-1"), zone("mpd-2", end=NOW + timedelta(days=9)), lane)
     saturday = NOW + timedelta(days=2)
     found = workzones.closures_on(LINE, at=saturday, now=NOW, bypass=["mpd-2"])
@@ -244,7 +244,7 @@ def test_the_check_says_may_still_apply_leaves_out_a_bypass_and_lists_lanes(snap
     assert c["id"] == "mpd-1" and c["may_still_apply"]
     assert "may still apply on your ride day" in c["text"]
     assert [b["id"] for b in found["bypassed"]] == ["mpd-2"]
-    assert [x["id"] for x in found["lanes"]] == ["dc-2"]
+    assert [x["id"] for x in found["lanes"]] == ["mpd-3"]
 
 
 def test_the_check_has_the_park_notices_of_a_line_through_the_park(snap) -> None:
@@ -274,6 +274,79 @@ def test_the_endpoint_takes_when_and_bypass(client, snap) -> None:
     assert [c["id"] for c in r.json()["closures"]] == ["mpd-1"]
     assert post({"line": LINE, "when": "someday"}).status_code == 400
     assert post({"line": LINE, "bypass": "mpd-1"}).status_code == 400
+
+
+def test_ddots_permits_are_flagged_never_routed_round_or_asked_about(snap) -> None:
+    # The owner, 2026-10-19: a permit means "it could be closed some time in the next month
+    # or so", "We should flag, but not necessarily stop anyone", "And turn the notices off";
+    # the state agencies' and NPS's "can stay ... Because those are more reliable".
+    permit = zone("dc-1", source="dc", end=NOW + timedelta(days=30))
+    lane = zone("dc-2", source="dc", kind=wz.LANE, end=NOW + timedelta(days=30))
+    snap(permit, lane, zone("mpd-1", end=NOW + timedelta(hours=3)))
+    for now_only in (False, True):
+        found = workzones.closures_on(LINE, at=NOW, now=NOW, now_only=now_only)
+        assert [c["id"] for c in found["closures"]] == ["mpd-1"]
+        assert found["lanes"] == []
+    points = [LINE[0], LINE[-1]]
+    plan = wz.for_plan([permit, lane], NOW, points, {}, now=NOW)
+    assert plan.excluded == [] and plan.exclude == [] and plan.lanes == []
+    assert plan.possible == [permit, lane]
+    go = wz.for_plan([permit, lane], NOW, points, {}, now=NOW, now_only=True)
+    assert go.possible == [] and not go.any
+
+
+def test_a_flagged_permit_is_drawn_with_no_heading_or_spoken_cue() -> None:
+    permit = zone("dc-1", source="dc", end=NOW + timedelta(days=30))
+    plan = wz.for_plan([permit], NOW, [LINE[0], LINE[-1]], {"dc": workzones.CURRENT}, now=NOW)
+    body = {"geometry": {"coordinates": LINE}, "distance_m": 1700.0, "description": []}
+    out = workzones.with_work_zones(body, plan, now=NOW)
+    (row,) = out["work_zones"]["closures"]
+    assert row["effect"] == "possible" and not row["can_bypass"]
+    assert row["effect_text"].startswith("A permit allows closing the road")
+    # Its card never says the road is closed (the stored title does).
+    assert row["title"] == "K Street NW: may close"
+    assert row["when_text"].startswith("Permit allows closing")
+    assert out["work_zones"]["on_route"] == [] and out["work_zones"]["routed_round"] == 0
+    assert out["description"] == [], "no heading, disclaimer or cue"
+    # Named in `bypass`, it is still only flagged.
+    bypassed = wz.for_plan([permit], NOW, [LINE[0], LINE[-1]], {}, now=NOW, bypass=["dc-1"])
+    assert bypassed.possible == [permit] and bypassed.bypassed == []
+
+
+def test_permits_never_crowd_a_real_closure_off_the_map(monkeypatch) -> None:
+    monkeypatch.setattr(workzones, "MAP_MOST", 2)
+    permits = [zone(f"dc-{i}", source="dc", end=NOW + timedelta(days=30)) for i in range(3)]
+    far = wz.Zone(
+        "mpd-9",
+        "mpd",
+        wz.CLOSED,
+        0,
+        ((-77.03, 38.9025), (-77.028, 38.9025)),
+        None,
+        None,
+        None,
+        None,
+    )
+    plan = wz.for_plan([*permits, far], NOW, [LINE[0], LINE[-1]], {}, now=NOW)
+    body = {"geometry": {"coordinates": LINE}, "distance_m": 1700.0, "description": []}
+    rows = workzones.with_work_zones(body, plan, now=NOW)["work_zones"]["closures"]
+    assert [r["id"] for r in rows][0] == "mpd-9"
+
+
+@pytest.mark.django_db
+def test_the_endpoint_takes_now_only(client, snap) -> None:
+    snap(zone("dc-1", source="dc", end=NOW + timedelta(days=400)))
+    headers = {"HTTP_X_FORWARDED_FOR": "198.51.100.13"}
+
+    def post(body):
+        return client.post(
+            "/api/closures/check", data=json.dumps(body), content_type="application/json", **headers
+        )
+
+    line = {"line": LINE}
+    assert post(line).json()["closures"] == [], "a permit is never asked about"
+    assert post({**line, "now_only": True}).json()["closures"] == []
+    assert post({**line, "now_only": "yes"}).status_code == 400
 
 
 # --- The route's map: its closures, their effect and delay -----------------------------
@@ -310,7 +383,15 @@ def test_measure_delays_names_the_closure_that_changed_the_route_and_its_detour(
 
 def test_a_closure_off_the_route_has_no_effect_and_a_bypassed_one_a_small_marker() -> None:
     far = wz.Zone(
-        "dc-9", "dc", wz.CLOSED, 0, ((-77.03, 38.9025), (-77.028, 38.9025)), None, None, None, None
+        "mpd-9",
+        "mpd",
+        wz.CLOSED,
+        0,
+        ((-77.03, 38.9025), (-77.028, 38.9025)),
+        None,
+        None,
+        None,
+        None,
     )
     through = zone("mpd-1", end=NOW + timedelta(days=1))
     plan = wz.for_plan([far, through], NOW, [LINE[0], LINE[-1]], {}, now=NOW, bypass=["mpd-1"])
@@ -318,7 +399,7 @@ def test_a_closure_off_the_route_has_no_effect_and_a_bypassed_one_a_small_marker
     workzones.with_work_zones(body, plan, now=NOW)
     rows = {r["id"]: r for r in body["work_zones"]["closures"]}
     assert rows["mpd-1"]["effect"] == "bypassed" and rows["mpd-1"]["bypassed"]
-    assert rows["dc-9"]["effect_text"] == "No effect on your route"
+    assert rows["mpd-9"]["effect_text"] == "No effect on your route"
     assert body["work_zones"]["on_route"][0]["bypassed"]
     assert any(
         "You chose to route through it" in (e.get("citation") or "") for e in body["description"]
