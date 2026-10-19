@@ -1961,6 +1961,8 @@ def build_handlers(
             for entry in manifest.get("closure_probes", [])
         ]
         context.singletracks = {int(way_id) for way_id in manifest.get("singletracks", [])}
+        context.drawn_singletracks = {int(w) for w in manifest.get("drawn_singletracks", [])}
+        context.offroad_singletracks = {int(w) for w in manifest.get("offroad_singletracks", [])}
         context.override_summary = manifest.get("override_summary")
         read_at = manifest.get("overrides_read_at")
         context.overrides_read_at = datetime.fromisoformat(read_at) if read_at else None
@@ -3888,6 +3890,10 @@ def build_handlers(
                     for p in context.closure_probes or []
                 ],
                 "singletracks": sorted(context.singletracks),
+                # The rated ones the mtb and off-road graphs keep open: a resume that
+                # rebuilds those graphs must open the same trails the checks expect.
+                "drawn_singletracks": sorted(context.drawn_singletracks),
+                "offroad_singletracks": sorted(context.offroad_singletracks),
                 "override_summary": summary,
                 # When OVERRIDES read the override table, not when this was written: the
                 # swap re-applies the road panel's edits made after it, and a resumed

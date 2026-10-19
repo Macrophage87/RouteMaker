@@ -1260,7 +1260,10 @@ def test_the_closure_probes_are_computed_before_the_tiles_and_survive_a_resume(e
         .startswith(f"{SINGLETRACK_ID},")
     )
     reads = [c for c in second.binaries.commands("valhalla_service") if c[2] == "locate"]
-    assert len(reads) == len(Variant), "every graph, the reused ones too, was read back"
+    # The singletrack is rated, so the mtb graph rides it and has no closure to read
+    # back; every other graph, the reused ones too, was read.
+    assert second.context.drawn_singletracks == {SINGLETRACK_ID}
+    assert len(reads) == len(Variant) - 1, "every graph that keeps it closed was read back"
 
 
 # --- Settings ---------------------------------------------------------------------------------
