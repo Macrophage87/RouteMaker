@@ -245,7 +245,15 @@ const PLOT = { left: 44, right: CHART_W - 6, top: 8, bottom: 92, axisY: 112 };
 
 /** The climb's profile, drawn with the route chart's parts: the area, the line and the 5% and 8% grade bands. */
 export function ClimbProfileChart({ climb, profile, uid }: { climb: Climb; profile: ClimbProfile; uid: string }): ReactElement {
-  const route = asRouteProfile(profile);
+  return h(ElevationProfileChart, { profile, summary: profileSummary(climb, profile), uid });
+}
+
+/** The heights a profile chart draws (a climb's, or a tapped trail's: lib/trailProfile.ts). */
+export type ChartProfile = Pick<ClimbProfile, "interval_m" | "m" | "elevation_m" | "grade_pct">;
+
+/** An elevation profile with the route chart's parts, named by `summary` (its text alternative). */
+export function ElevationProfileChart({ profile, summary, uid }: { profile: ChartProfile; summary: string; uid: string }): ReactElement {
+  const route: RouteProfile = { interval_m: profile.interval_m, m: profile.m, elevation_m: profile.elevation_m, grade_pct: profile.grade_pct, climbs: [] };
   const total = Math.max(profile.m[profile.m.length - 1] ?? 0, 1);
   const range = elevationRange(route);
   const plot: Plot = {
@@ -256,7 +264,6 @@ export function ClimbProfileChart({ climb, profile, uid }: { climb: Climb; profi
     top: PLOT.top,
     bottom: PLOT.bottom,
   };
-  const summary = profileSummary(climb, profile);
   const feetOnly = (m: number) => formatClimb(m).split(" (")[0];
   return h(
     "figure",

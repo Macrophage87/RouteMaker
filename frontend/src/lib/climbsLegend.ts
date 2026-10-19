@@ -8,14 +8,19 @@
  * words: each climb's category, length and average grade ("Category 3 climb, 2.1 miles (3.4 km) at
  * 4.6%"), where on the route it starts and what it gains, without the map.
  */
-import { createElement as h, type ReactElement } from "react";
+import { createElement as h, useSyncExternalStore, type ReactElement } from "react";
 import { formatDistance } from "./format.ts";
 import {
   CLIMB_CAUTION,
   CLIMB_COLOUR,
   CLIMBS_LINE_MIN_ZOOM,
   CLIMBS_MIN_ZOOM,
+  CLIMB_SURFACES,
   climbAlongCount,
+  hideBusyClimbs,
+  setHideBusyClimbs,
+  trailClimbs,
+  subscribeHideBusy,
   climbAlongText,
   climbIcon,
   climbShape,
@@ -23,6 +28,7 @@ import {
   type ClimbAlong,
   type ClimbCategory,
   type ClimbShape,
+  type ClimbSurface,
   type ClimbsStatus,
 } from "./climbs.ts";
 
@@ -50,8 +56,8 @@ export const CLIMB_LEGEND: ReadonlyArray<{ shape: ClimbShape; label: string }> =
 ];
 
 /** The legend's swatch: the map's own shape, as an SVG of its inked pixels, with a sample number. */
-export function ClimbSwatch({ shape, number = "4" }: { shape: ClimbShape; number?: string }): ReactElement {
-  const raster = climbIcon(shape, 1);
+export function ClimbSwatch({ shape, number = "4", surface = "road" }: { shape: ClimbShape; number?: string; surface?: ClimbSurface }): ReactElement {
+  const raster = climbIcon(shape, 1, undefined, surface);
   const colours = new Map<string, string>();
   for (let y = 0; y < raster.height; y++) {
     for (let x = 0; x < raster.width; x++) {
@@ -96,6 +102,51 @@ export function ClimbsLegend(): ReactElement {
       ),
       h("span", { className: "stress-label" }, `The climb itself, from zoom ${CLIMBS_LINE_MIN_ZOOM}: a dashed line from its start to the top`),
     ),
+    // The colour is what most of the climb is ridden on (the owner, 2026-10-19), said in words here.
+    ...CLIMB_SURFACES.map(({ surface, label }) =>
+      h("li", { key: `surface-${surface}` }, h(ClimbSwatch, { shape: "square", surface }), h("span", { className: "stress-label" }, `Colour: ${label}`)),
+    ),
+  );
+}
+
+export const CLIMBS_HIDE_BUSY_LABEL = "Hide climbs on busy roads";
+export const CLIMBS_HIDE_BUSY_HINT = "Climbs mostly on LTS 3 or higher roads.";
+
+/** "Hide climbs on busy roads", for a render to follow (lib/climbs.ts hideBusyClimbs). */
+export function useHideBusyClimbs(): boolean {
+  return useSyncExternalStore(subscribeHideBusy, hideBusyClimbs, hideBusyClimbs);
+}
+
+/** Whether climbs on mountain-bike trails show, for a render to follow (lib/climbs.ts trailClimbs). */
+export function useTrailClimbs(): boolean {
+  return useSyncExternalStore(subscribeHideBusy, trailClimbs, trailClimbs);
+}
+
+/**
+ * The switch (the owner, 2026-10-19: "optionally (default on) hide climbs on LTS 3+ roads"), beside "Show climbs
+ * from" while the layer is on: a button with role="switch", as the layer's own.
+ */
+export function ClimbsHideBusySwitch(): ReactElement {
+  const on = useHideBusyClimbs();
+  return h(
+    "div",
+    { className: "a11y-setting climbs-hide-busy" },
+    h(
+      "button",
+      {
+        type: "button",
+        role: "switch",
+        id: "climbs-hide-busy-switch",
+        className: "switch",
+        "aria-checked": on,
+        "aria-labelledby": "climbs-hide-busy-label",
+        "aria-describedby": "climbs-hide-busy-hint",
+        onClick: () => setHideBusyClimbs(!on),
+      },
+      h("span", { id: "climbs-hide-busy-label", className: "switch-label" }, CLIMBS_HIDE_BUSY_LABEL),
+      h("span", { className: "switch-state", "aria-hidden": "true" }, on ? "On" : "Off"),
+    ),
+    h("p", { className: "hint", id: "climbs-hide-busy-hint" }, CLIMBS_HIDE_BUSY_HINT),
   );
 }
 
@@ -218,14 +269,16 @@ interface SectionProps {
  * "Trails and terrain" section, so it has no heading of its own above the list's.
  */
 export function ClimbsLayerControls({ on, onChange, status, items, from, onFromChange, along = true, legend = true }: SectionProps & { along?: boolean; legend?: boolean }): ReactElement {
-  // UI-CLEANUP: Layers keeps the switch only; the climbs on the route are in the Elevation and climbs fold
-  // and the legend behind Layers' Legend button (along and legend false there), with CLIMBS_HELP under it.
+  // UI-CLEANUP: the climbs on the route are in the Elevation and climbs fold (along false in Layers), with
+  // CLIMBS_HELP behind Layers' Legend button. The key is under the switch in Layers too (the owner, 2026-10-19:
+  // "Make sure there's a key in layers" and "shapes should have a key too").
   const ready = on && status === "ready";
   return h(
     "div",
     { className: "climbs-controls" },
     h(ClimbsSwitch, { on, onChange }),
     on && from !== undefined && onFromChange && h(ClimbsFromSelect, { from, onChange: onFromChange }),
+    on && from !== undefined && onFromChange && h(ClimbsHideBusySwitch, null),
     h("p", { className: "hint climbs-status", role: "status" }, climbsStatusText(on, status)),
     ready && legend && h(ClimbsLegend, null),
     ready && along && h(ClimbsAlongList, { items, headingId: "climbs-along-layers-heading" }),

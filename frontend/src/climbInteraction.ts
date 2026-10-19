@@ -4,9 +4,9 @@
  *
  * Unlike the water card, a press on a climb is the climb's, not also a new point: MapView's click asks
  * `climbAt` first (after a station and a water or restroom icon, which keep their own cards) and opens the
- * card instead of placing a point. In Plan only the summit marker opens it, so a press on the climb's dashed
- * line still places a point on the climbing road; in Go the line opens it too (a feature card, never the
- * destination). The click after the card is open only closes it, as a station card's does. It also closes on Escape (the
+ * card instead of placing a point. Its summit marker and its dashed line open it, in Plan as in Go (the owner,
+ * 2026-10-19: "You should also be able to select and click on climbs too"), except that in Plan a press on the
+ * planned route's own line stays the route's (a via); in Go it is a feature card, never the destination. The click after the card is open only closes it, as a station card's does. It also closes on Escape (the
  * focus going back where it was), and does nothing while the layer is off. The road panel's "Climb
  * details" opens it from the keyboard, with the focus in it (`openCard(c, true)`).
  */

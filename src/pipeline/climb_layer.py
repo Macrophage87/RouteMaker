@@ -9,10 +9,11 @@ committed as frontend/src/climb-data/climbs.json, as the water and restrooms fil
 What it reads:
 
 - **The network**: the live segment table's ways the map draws as routable (`map_class` =
-  `road`), less the mountain-bike-only ways (closed for every ride type today; 291) and the
-  walk-your-bike connectors. Access is the rebuild's, overrides and all, so a way a bicycle
-  may not use (barred, hidden, err closed) never carries a climb. And only a way the
-  segment panel calls open (`segment.bike_access_reason` empty or an open reason in
+  `road`), with the mountain-bike trails the trail layer draws among them (`mtb_only`;
+  left out until 2026-10-19), less the walk-your-bike connectors. Access is the rebuild's,
+  overrides and all, so a way a bicycle may not use (barred, hidden, err closed) never
+  carries a climb. And, a drawn mountain-bike trail aside, only a way the segment panel
+  calls open (`segment.bike_access_reason` empty or an open reason in
   `core.segment_info.ACCESS_WORDS`): a way with a closing reason, or one this release
   does not know, is left out (unclear access is closed, OWNER-DECISIONS 330). A way inside
   a quarry, a landfill or an industrial area closes at the rebuild
@@ -50,6 +51,16 @@ The file, one climb per entry, short keys (frontend/src/lib/climbs.ts reads it):
     line the climb's line from its start to the summit, simplified to SIMPLIFY_M
     u    1 when most of it is unpaved (left out otherwise)
     n    the long trail's name, when one carries most of it (`segment.trail_name`)
+    s    what most of it is ridden on (`surface_class`; the owner, 2026-10-19: "color the
+         climbs by surface: road, gravel, mtb, etc" and "a different color for traffic free
+         paved climbs"): "p" a paved traffic-free path, "g" gravel or another unpaved
+         surface, "m" a mountain-bike trail; left out on a road
+    b    1 when most of its roads are LTS 3 or higher (left out otherwise), which the map
+         hides unless the rider asks for them (the owner, 2026-10-19: "optionally (default
+         on) hide climbs on LTS 3+ roads")
+
+Since 2026-10-19 the network also has the mountain-bike trails the trail layer draws, so a
+climb on one is found and coloured as one ("m"), never as a road's.
 """
 
 from __future__ import annotations
@@ -168,6 +179,11 @@ class SegmentLine:
     oneway: bool = False
     unpaved: bool | None = None
     trail_name: str | None = None
+    # A traffic-free path (`segment.is_trail_class`), a mountain-bike trail the layer draws
+    # (`segment.mtb_only`), and the way's stress tier (`segment.stress_tier`).
+    trail: bool = False
+    mtb: bool = False
+    tier: int | None = None
 
 
 @dataclass(slots=True)
@@ -404,6 +420,8 @@ class Found:
     line: list[tuple[float, float]]
     unpaved_share: float
     trail_name: str | None
+    surface: str | None = None
+    busy: bool = False
 
     def entry(self) -> dict:
         line = [_rounded(p) for p in _simplify(self.line, SIMPLIFY_M)]
@@ -422,7 +440,46 @@ class Found:
             out["u"] = 1
         if self.trail_name:
             out["n"] = self.trail_name
+        if self.surface:
+            out["s"] = self.surface
+        if self.busy:
+            out["b"] = 1
         return out
+
+
+# A climb's surface class (the file's `s`), by what most of its length is ridden on.
+PATH = "p"
+GRAVEL = "g"
+MTB = "m"
+# The tier from which a road is busy for the file's `b` (LTS 3: "for experienced cyclists").
+BUSY_TIER = 3
+
+
+def surface_class(
+    used: Sequence[Sample], stroke: Stroke, segments: Sequence[SegmentLine]
+) -> str | None:
+    """ "m" where most of the climb is on mountain-bike trails, else "g" where most is
+    unpaved, else "p" where most is on traffic-free paths, else None (a road)."""
+    if _share(used, stroke, segments, lambda s: s.mtb) > 0.5:
+        return MTB
+    if _share(used, stroke, segments, lambda s: s.unpaved is True) > 0.5:
+        return GRAVEL
+    if _share(used, stroke, segments, lambda s: s.trail) > 0.5:
+        return PATH
+    return None
+
+
+def busy(used: Sequence[Sample], stroke: Stroke, segments: Sequence[SegmentLine]) -> bool:
+    """Whether most of the climb is on roads (not paths or trails) rated LTS 3 or higher."""
+    return (
+        _share(
+            used,
+            stroke,
+            segments,
+            lambda s: not s.trail and not s.mtb and (s.tier or 0) >= BUSY_TIER,
+        )
+        > 0.5
+    )
 
 
 def climbs_on_stroke(
@@ -456,6 +513,8 @@ def climbs_on_stroke(
                         line=line,
                         unpaved_share=_share(used, stroke, segments, lambda s: s.unpaved is True),
                         trail_name=_trail_name(used, stroke, segments),
+                        surface=surface_class(used, stroke, segments),
+                        busy=busy(used, stroke, segments),
                     )
                 )
     return found
@@ -532,9 +591,10 @@ def write(path: Path | str, doc: dict) -> None:
 
 
 SEGMENT_QUERY = """
-SELECT osm_way_id, ordinal, ST_AsGeoJSON(geometry, 7), {oneway}, is_unpaved, {trail_name}
+SELECT osm_way_id, ordinal, ST_AsGeoJSON(geometry, 7), {oneway}, is_unpaved, {trail_name},
+       is_trail_class, mtb_only, stress_tier
 FROM {schema}.segment
-WHERE map_class = 'road' AND NOT mtb_only AND NOT walk_bike{access}
+WHERE map_class = 'road' AND NOT walk_bike AND (mtb_only OR (TRUE{access}))
 ORDER BY osm_way_id, ordinal
 """
 # The bike-access reasons (`segment.bike_access_reason`) the segment panel calls open
@@ -577,7 +637,7 @@ def read_segments(schema: str) -> list[SegmentLine]:
     with transaction.atomic(), connection.connection.cursor(name="climb_layer_segments") as cursor:
         cursor.itersize = 20_000
         cursor.execute(query, params)
-        for way, ordinal, geojson, oneway, unpaved, trail_name in cursor:
+        for way, ordinal, geojson, oneway, unpaved, trail_name, trail, mtb, tier in cursor:
             coords = tuple((float(x), float(y)) for x, y in json.loads(geojson)["coordinates"])
             out.append(
                 SegmentLine(
@@ -586,6 +646,9 @@ def read_segments(schema: str) -> list[SegmentLine]:
                     oneway=bool(oneway),
                     unpaved=unpaved,
                     trail_name=trail_name or None,
+                    trail=bool(trail),
+                    mtb=bool(mtb),
+                    tier=None if tier is None else int(tier),
                 )
             )
     return out

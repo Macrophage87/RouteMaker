@@ -31,7 +31,16 @@ from django.core.signals import request_finished, request_started
 from django.db import connection
 
 from pipeline.schema import validate_schema_name
-from routemaker import agency_lts, flow, more_links, scenic
+from routemaker import (
+    agency_lts,
+    flow,
+    hazards,
+    more_links,
+    mtbmode,
+    scenic,
+    singletrack,
+    trail_facts,
+)
 from routemaker.describe import UNNAMED_PATH, UNNAMED_ROAD
 from routemaker.stress import RURAL_EXPRESSWAY_PREFIX, USE_SIDEPATH_RULE
 
@@ -230,7 +239,8 @@ ACCESS_WORDS = {
     "singletrack": (
         False,
         "Closed: mountain-bike singletrack, not used for routes except by the Mountain Bike"
-        " ride type where nothing but its rating closes it",
+        " ride type (and Gravel and Mountain Goat on a green trail) where nothing but its"
+        " rating closes it",
     ),
     "mtb": (
         False,
@@ -278,6 +288,8 @@ OPTIONAL_COLUMNS = (
     "stress_ratings",
     "sidepath_name",
     "scenic",
+    "hazard",
+    "trail_tags",
 )
 REQUIRED_COLUMNS = (
     "osm_way_id",
@@ -354,9 +366,10 @@ def forget_columns() -> None:
 # --- the nearest way -------------------------------------------------------------------
 
 
-def nearest_row(lat: float, lon: float) -> dict | None:
+def nearest_row(lat: float, lon: float, trail: bool = False) -> dict | None:
     """The live segment row the spot is on, with `distance_m` and the spot on it
-    (`on_lon`, `on_lat`); None when nothing is within SNAP_RADIUS_M."""
+    (`on_lon`, `on_lat`); None when nothing is within SNAP_RADIUS_M. With `trail` (a
+    tap on the mountain-bike trail layer), the nearest such trail first (`choose`)."""
     schema = validate_schema_name(settings.SEGMENT_SCHEMA_LIVE)
     have = live_columns(schema)
     wanted = [c for c in (*REQUIRED_COLUMNS, *OPTIONAL_COLUMNS) if c in have]
@@ -377,7 +390,7 @@ def nearest_row(lat: float, lon: float) -> dict | None:
         cursor.execute(sql, [lon, lat])
         names = [d[0] for d in cursor.description]
         rows = [dict(zip(names, row, strict=True)) for row in cursor.fetchall()]
-    return choose(rows)
+    return choose(rows, trail)
 
 
 def is_mtb_trail(row: dict) -> bool:
@@ -399,17 +412,23 @@ def _rank(row: dict) -> int:
     return 1 if is_mtb_trail(row) or row.get("map_class") == "barred" else 0
 
 
-def choose(rows: list[dict]) -> dict | None:
+def choose(rows: list[dict], trail: bool = False) -> dict | None:
     """The row meant: the nearest within SNAP_RADIUS_M, unless the nearest is hidden
     or a mountain-bike trail and a way the map draws as one to ride (or, past a hidden
     one, a mountain-bike trail) is within DRAWN_PREFERENCE_M of it. A mountain-bike
-    trail alone near the spot is still described."""
+    trail alone near the spot is still described. With `trail` (the rider tapped a
+    mountain-bike trail's line, the owner, 2026-10-19), the nearest such trail within
+    SNAP_RADIUS_M is meant, ahead of a road beside it."""
     near = sorted(
         (r for r in rows if r.get("distance_m") is not None and r["distance_m"] <= SNAP_RADIUS_M),
         key=lambda r: r["distance_m"],
     )
     if not near:
         return None
+    if trail:
+        trails = [r for r in near if is_mtb_trail(r)]
+        if trails:
+            return trails[0]
     first = near[0]
     reach = first["distance_m"] + DRAWN_PREFERENCE_M
     better = [r for r in near if _rank(r) < _rank(first) and r["distance_m"] <= reach]
@@ -866,6 +885,9 @@ def riding_rows(row: dict) -> list[dict]:
             )
         )
     rows.append(_row("Surface", surface_words(row), OSM))
+    hazard = hazards.words(row.get("hazard"))
+    if hazard:
+        rows.append(_row("Watch for", hazard, hazards.credits(row.get("hazard"))))
     penalty = surface_penalty_words(row)
     if penalty:
         rows.append(_row("Surface penalty", penalty, OWNER))
@@ -881,9 +903,30 @@ def riding_rows(row: dict) -> list[dict]:
                 OSM,
             )
         )
+    elif is_mtb_trail(row):
+        # The owner, 2026-10-19: unrated trails stay open to Gravel and Mountain Goat, "just
+        # give a note that they aren't rated".
+        rows.append(_row("Mountain-bike difficulty", UNRATED_WORDS, OSM))
+    if is_mtb_trail(row):
+        # The trail's own surface, smoothness, width and the like (the owner, 2026-10-19).
+        rows.extend(_row(label, words, OSM) for _id, label, words in trail_rows(row))
     if row.get("walk_bike"):
         rows.append(_row("Walk your bike", "Yes: a short stretch where riding is not allowed", OSM))
     return rows
+
+
+def trail_rows(row: dict) -> list[tuple[str, str, str]]:
+    """A mountain-bike trail's lines from its own tags (`segment.trail_tags`;
+    `routemaker.trail_facts`): none on any other way or from an older table."""
+    if not is_mtb_trail(row):
+        return []
+    tags = row.get("trail_tags")
+    if isinstance(tags, str):
+        try:
+            tags = json.loads(tags)
+        except ValueError:
+            return []
+    return trail_facts.rows(tags)
 
 
 def surface_penalty_words(row: dict) -> str | None:
@@ -1068,6 +1111,10 @@ MTB_LEVEL_SCALES = {
 }
 
 
+# A mountain-bike trail with no difficulty mapped (the owner, 2026-10-19).
+UNRATED_WORDS = "Not rated: no difficulty is mapped for this trail"
+
+
 def mtb_level_words(level: object) -> str | None:
     """'level 2 (blue)', or None for no level."""
     if not isinstance(level, int) or level not in MTB_LEVEL_COLOURS:
@@ -1077,16 +1124,22 @@ def mtb_level_words(level: object) -> str | None:
 
 def mtb_summary(row: dict) -> str:
     """A mountain-bike trail's Bikes line (OWNER-DECISIONS 452a, 456): what the map's line
-    means, 'Mountain-bike trail, level 2 (blue), not used for routes', and, honestly, which
-    ride types do route on it: the Mountain Bike ride type rides every trail the layer draws
-    (docs/MTB-TOPO-PLAN.md, slice 6; up to the rider's chosen level), and Gravel and Mountain
-    Goat (the off-road graph) the unrated mountain-bike class, not rated singletrack."""
-    level = mtb_level_words(row.get("mtb_level"))
-    head = f"Mountain-bike trail, {level}" if level else "Mountain-bike trail"
-    # A level is written on rated singletrack alone (`pipeline.trail_closures.mtb_level`),
-    # which only the Mountain Bike graph opens, so a levelled trail never says the off-road
-    # graph uses it.
-    closed_everywhere = bool(level) or row.get("bike_access_reason") == "singletrack"
+    means, 'Mountain-bike trail, level 2 (blue), not used for routes', or 'not rated', and,
+    honestly, which ride types do route on it: the Mountain Bike ride type rides every trail
+    the layer draws (docs/MTB-TOPO-PLAN.md, slice 6; up to the rider's chosen level), and
+    Gravel and Mountain Goat (the off-road graph) the unrated mountain-bike class and green
+    singletrack (the owner's choices of 2026-10-19)."""
+    rated = row.get("mtb_level")
+    level = mtb_level_words(rated)
+    # An unrated trail says so (the owner, 2026-10-19: "just give a note that they aren't rated").
+    head = f"Mountain-bike trail, {level}" if level else "Mountain-bike trail, not rated"
+    # The off-road graph (Gravel, Mountain Goat) rides the mountain-bike class and rated
+    # singletrack up to green (`singletrack.OFFROAD_MAX_LEVEL`, the owner's choice of
+    # 2026-10-19); a harder trail, or singletrack with no level, is the Mountain Bike graph's.
+    harder = bool(level) and rated > singletrack.OFFROAD_MAX_LEVEL
+    closed_everywhere = harder or (
+        row.get("bike_access_reason") == singletrack.NO_BICYCLE and not level
+    )
     # Its name where one is mapped (the owner, 2026-10-10: "try to make sure trail names are
     # added in if they are available"): "Mountain-bike trail, level 2 (blue): Rosaryville
     # Trail, not used for routes".
@@ -1104,6 +1157,10 @@ def more_link(row: dict, router: dict) -> dict | None:
     if not is_mtb_trail(row):
         return None
     return more_links.link_for(row.get("mtb_name"), row.get("trail_name"), router.get("name"))
+
+
+# Which trail lines the compact summary shows; the rest are in the details.
+SUMMARY_TRAIL_ROWS = frozenset({"trail_surface", "smoothness", "width", "visibility"})
 
 
 # The parts of the classifier's rule the Lanes line already says.
@@ -1130,7 +1187,22 @@ def why_short(rule: str) -> str | None:
 
 
 def summary_rows(row: dict, router: dict, open_: bool | None) -> list[dict]:
-    """The compact summary: [{id, label, value}], in reading order."""
+    """The compact summary: [{id, label, value}], in reading order. A mountain-bike
+    trail's has no traffic lines (TRAFFIC_LINES): it has no traffic to rate."""
+    if is_mtb_trail(row):
+        return [r for r in _summary_rows(row, router, open_) if r["id"] not in TRAFFIC_LINES]
+    return _summary_rows(row, router, open_)
+
+
+# The summary lines a mountain-bike trail leaves out (the owner, 2026-10-19: "traffic
+# ratings and all that probably don't need to be here. If a mountain bike trail is LTS3,
+# there are problems.").
+TRAFFIC_LINES = frozenset({"stress", "why", "speed", "lanes", "traffic", "bike_lane", "car_free"})
+# And the details' sections it leaves out.
+TRAFFIC_SECTIONS = frozenset({"stress", "traffic"})
+
+
+def _summary_rows(row: dict, router: dict, open_: bool | None) -> list[dict]:
     tier = int(row["stress_tier"])
     path = bool(row.get("is_trail_class"))
     assumed = [str(a) for a in (_json(row.get("stress_assumed")) or [])]
@@ -1183,10 +1255,23 @@ def summary_rows(row: dict, router: dict, open_: bool | None) -> list[dict]:
     designations = scenic_text(row)
     if designations:
         add("scenic", "Scenic", designations)
+    # v0.10.0's hazard symbols, in words, so the map's symbol is never the only cue.
+    hazard = hazards.words(row.get("hazard"))
+    if hazard:
+        add("hazard", "Watch for", hazard)
     unpaved = row.get("is_unpaved")
     rough = bool(row.get("is_rough"))
-    if unpaved is not None and (unpaved or rough or path):
+    # A mountain-bike trail says its surface as mapped ("Dirt", "Rock"), and how smooth,
+    # wide and easy to follow it is, in place of the shared paved-or-unpaved line (the
+    # owner, 2026-10-19: "information related to surface and the like").
+    trail = trail_rows(row)
+    if not any(id_ == "trail_surface" for id_, _label, _words in trail) and (
+        unpaved is not None and (unpaved or rough or path)
+    ):
         add("surface", "Surface", surface_words(row))
+    for id_, label, words in trail:
+        if id_ in SUMMARY_TRAIL_ROWS:
+            add(id_, label, words)
     penalty = surface_penalty_words(row)
     if penalty:
         add("surface_penalty", "Surface penalty", penalty)
@@ -1263,7 +1348,9 @@ def describe(row: dict, router: dict) -> dict:
         {"id": "access", "heading": "Bike access", "rows": access},
         {"id": "mass", "heading": "Mass Ride capacity", "rows": mass_rows(row)},
     ]
-    sections = [s for s in sections if s["rows"]]
+    sections = [
+        s for s in sections if s["rows"] and not (s["id"] in TRAFFIC_SECTIONS and is_mtb_trail(row))
+    ]
     return {
         "found": True,
         "title": title,
@@ -1284,12 +1371,39 @@ def describe(row: dict, router: dict) -> dict:
         "summary": summary_rows(row, router, open_),
         "sections": sections,
         "more": more_link(row, router),
+        # A mountain-bike trail the layer draws: the panel asks for its elevation profile
+        # (`core.trailprofile`) and offers no traffic-stress suggestion (the owner, 2026-10-19).
+        "mtb_trail": is_mtb_trail(row),
+        **trail_routing(row),
     }
 
 
-def segment_info(lat: float, lon: float) -> dict:
-    """What is known of the way at the spot, or `{"found": false}`."""
-    row = nearest_row(lat, lon)
+def trail_routing(row: dict) -> dict:
+    """Which graphs ride a mountain-bike trail the layer draws, for the panel's Route
+    through this trail (`pipeline.trail_closures`): "offroad" the mountain-bike class and
+    the drawn rated singletrack up to `singletrack.OFFROAD_MAX_LEVEL`, which the off-road
+    graph (Gravel, Mountain Goat) and the Mountain Bike graph keep open (the owner's choice
+    of 2026-10-19); "mtb" harder drawn singletrack, the Mountain Bike graph's alone; None
+    any other way, closed to every ride type. `trail_level` is the level the Mountain Bike
+    ride type's hardest-level choice reads it at (`routemaker.mtbmode`)."""
+    if not is_mtb_trail(row):
+        return {"trail_open": None, "trail_level": None}
+    reason = row.get("bike_access_reason")
+    rated = row.get("mtb_level")
+    opened = None
+    if reason == "mtb":
+        opened = "offroad"
+    elif reason == singletrack.NO_BICYCLE:
+        low = isinstance(rated, int) and rated <= singletrack.OFFROAD_MAX_LEVEL
+        opened = "offroad" if low else "mtb"
+    level = mtbmode.effective_level(row.get("mtb_only") is True, row.get("mtb_level"))
+    return {"trail_open": opened, "trail_level": level}
+
+
+def segment_info(lat: float, lon: float, trail: bool = False) -> dict:
+    """What is known of the way at the spot, or `{"found": false}`; with `trail`, of the
+    mountain-bike trail tapped (`choose`)."""
+    row = nearest_row(lat, lon, trail)
     if row is None:
         return {"found": False, "title": "No road here", "summary": [], "sections": []}
     from . import stress_edits

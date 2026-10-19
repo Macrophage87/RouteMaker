@@ -35,7 +35,7 @@ import {
   ROUTE_BAND_WIDTH,
   sectionFeatures,
 } from "./lib/routeColours.ts";
-import { stressOverlayLayers, subscribeHighStressLanes, subscribeMtbTrails, subscribePalette, subscribeRoutableMtb } from "./stressStyle.js";
+import { mtbTrailsOn, routableMtbLevel, stressOverlayLayers, subscribeHighStressLanes, subscribeMtbTrails, subscribePalette, subscribeRoutableMtb } from "./stressStyle.js";
 import { subscribeTopoLines, syncTopoLines, topoLinesOn, type TopoMap } from "./lib/topoLines.ts";
 import {
   addStressOverlay,
@@ -44,6 +44,7 @@ import {
   popupsOpen,
   pressGrab,
   featureCardPress,
+  mtbTrailPressed,
   runClick,
   ROUTE_STRESS_SOURCE_ID,
   runHover,
@@ -67,6 +68,7 @@ import { dragPreview, legOfSegment, nearestOnPath } from "./lib/lineEdit.ts";
 import { LineGesture } from "./lib/lineGesture.ts";
 import { PENN_COLOUR, RAIL_STATIONS, stationById } from "./lib/railData.ts";
 import { addRailStations, LABEL_FONT, ROUTE_BOTTOM_LAYER, setRailVisibility } from "./lib/railLayer.ts";
+import { ROUTE_HAZARD_ICON, ROUTE_HAZARD_SOURCE, routeHazardFeatures, routeHazardIcon, routeHazardLayer, routeHazardRepeatLayer } from "./lib/routeHazards.ts";
 import type { RailVisibility, Station, StationBadges, StationRole } from "./lib/railStations.ts";
 import { attachRailInteraction, type StationFound } from "./railInteraction.ts";
 import { stressProbe } from "./lib/stressProtocol.ts";
@@ -77,7 +79,7 @@ import type { FederalStatus } from "./lib/federalLegend.ts";
 import { attachFederalInteraction } from "./federalInteraction.ts";
 import { addWaterRestrooms, setWaterPrefs, WATER_SOURCE_ID, type WaterMap, type WaterPoint, type WaterPrefs } from "./lib/waterRestrooms.ts";
 import { attachWaterInteraction } from "./waterInteraction.ts";
-import { addClimbs, CLIMBS_SOURCE_ID, setClimbsFrom, setClimbsOn, type Climb, type ClimbCategory, type ClimbsMap } from "./lib/climbs.ts";
+import { addClimbs, CLIMBS_FROM_DEFAULT, CLIMBS_SOURCE_ID, setClimbsFrom, setClimbsOn, setTrailClimbs, subscribeHideBusy, type Climb, type ClimbCategory, type ClimbsMap } from "./lib/climbs.ts";
 import { attachClimbInteraction } from "./climbInteraction.ts";
 import { climbCardAfterClose } from "./lib/climbCard.ts";
 import type { When } from "./lib/dials.ts";
@@ -385,6 +387,11 @@ const MOUSE_HIT_PX = 8;
 /** The line layer of Go's other routes to choose from, which a press is tested against (lib/routeChoice.ts). */
 const CHOICE_LINE_LAYER = "route-choice-line";
 const TOUCH_HIT_PX = 18;
+
+// The stress overlay's layer ids, for a press on a mountain-bike trail's line (lib/mapGlue.ts mtbTrailPressed).
+function overlayLayerIds(): string[] {
+  return stressOverlayLayers(STRESS_SOURCE_ID).map((layer: { id: string }) => layer.id);
+}
 /** Near a marker, the marker is what the pointer is on, not the line. */
 const MARKER_CLEAR_PX = 14;
 /** After a drag, the click the browser may still send is not a new point. */
@@ -657,7 +664,7 @@ export function MapView(props: Props) {
       const on = callbacks.current.climbsOn === true;
       if (map.getSource(CLIMBS_SOURCE_ID)) {
         setClimbsOn(map as unknown as ClimbsMap, on);
-        setClimbsFrom(map as unknown as ClimbsMap, callbacks.current.climbsFrom ?? "5");
+        setClimbsFrom(map as unknown as ClimbsMap, callbacks.current.climbsFrom ?? CLIMBS_FROM_DEFAULT);
         climbCard?.close();
         return;
       }
@@ -665,7 +672,7 @@ export function MapView(props: Props) {
       if (!data || data.length === 0) return;
       climbById = new Map(data.map((c) => [c.id, c]));
       // Under the route, with the water and the stations (railLayer.ts's order).
-      addClimbs(map as unknown as ClimbsMap, data, on, iconPixelRatio(), ROUTE_BOTTOM_LAYER, callbacks.current.climbsFrom ?? "5");
+      addClimbs(map as unknown as ClimbsMap, data, on, iconPixelRatio(), ROUTE_BOTTOM_LAYER, callbacks.current.climbsFrom ?? CLIMBS_FROM_DEFAULT);
     };
     const anyPopupOpen = () => popupsOpen(popup.current, rail);
     /** Bring the federal-land layers in line with props.federalVisible, loading the data the first time. */
@@ -981,9 +988,10 @@ export function MapView(props: Props) {
         : { station: null, line: null };
       const point: LonLat = [event.lngLat.lng, event.lngLat.lat];
       const goPress = callbacks.current.pressSetsEnd === true;
-      // A climb (climbInteraction.ts): its card, never also a point or (in Go) the destination. In Plan only
-      // its summit marker (a press on its dashed line places a point on the climbing road, as before); in Go
-      // its line too. A station and a water or restroom icon keep their own cards. The click after its card
+      // A climb (climbInteraction.ts): its card, never also a point or (in Go) the destination. Its summit
+      // marker or its line, in Plan as in Go since the owner's "You should also be able to select and click on
+      // climbs too" (2026-10-19), except where the planned route's line is under the press in Plan (a via, as
+      // ever). A station and a water or restroom icon keep their own cards. The click after its card
       // is open only closes it (no other card opens under it), or opens the card of another climb pressed.
       if (climbCard?.open()) {
         const shownId = climbCard.shown();
@@ -991,16 +999,33 @@ export function MapView(props: Props) {
         climbClosing = true;
         window.setTimeout(() => (climbClosing = false), 0);
         // A press on the climb already shown only closes its card; on another climb, opens that one's.
-        const next = climbCardAfterClose(shownId, onCanvas && !under.station && !water?.hits(event.point) ? climbCard.climbAt(event.point, goPress) : null);
+        const next = climbCardAfterClose(shownId, onCanvas && !under.station && !water?.hits(event.point) ? climbCard.climbAt(event.point, goPress || !under.line) : null);
         if (next) climbCard.openCard(next);
         return;
       }
       if (onCanvas && !under.station && !anyPopupOpen() && !water?.hits(event.point) && performance.now() >= clickSuppressedUntil) {
-        const climb = climbCard?.climbAt(event.point, goPress);
+        const climb = climbCard?.climbAt(event.point, goPress || !under.line);
         if (climb) {
           climbCard?.openCard(climb);
           return;
         }
+      }
+      // A mountain-bike trail's line, while one is drawn (the owner, 2026-10-19: "Basically make them
+      // clickable."): the road panel for that trail, with its surface and the like and Route through this trail,
+      // never also a point or (in Go) the destination. The route's own line keeps its press (a via in Plan), and
+      // a press nearer a road's line than a trail's is the road's (lib/mapGlue.ts mtbTrailPressed).
+      const trailAt =
+        onCanvas &&
+        !under.station &&
+        !(under.line && !goPress) &&
+        !anyPopupOpen() &&
+        featureCardPress([water, stopCards(map)], event.point) === null &&
+        performance.now() >= clickSuppressedUntil
+          ? mtbTrailPressed(map, event.point, touch ? TOUCH_HIT_PX : MOUSE_HIT_PX, overlayLayerIds())
+          : null;
+      if (trailAt) {
+        callbacks.current.onRoadInfo?.({ point: trailAt, origin: "spot", trail: true });
+        return;
       }
       // Go: read before the cards' own click handlers (attached after this one) open or close them. A stop's card
       // (water, restrooms, food, places, repair; lib/stopCard.ts) offers its own Route here or Add as stop, so a
@@ -1165,6 +1190,14 @@ export function MapView(props: Props) {
         layout: { "line-join": "round", "line-cap": "round" },
         paint: { "line-color": ROUTE_BLUE, "line-width": ROUTE_LINE_WIDTH },
       });
+      // The known hazards the route rides (v0.10.0, lib/routeHazards.ts): amber triangles over the route only.
+      if (!map.hasImage(ROUTE_HAZARD_ICON)) {
+        const { pixelRatio: ratio, ...icon } = routeHazardIcon(iconPixelRatio());
+        map.addImage(ROUTE_HAZARD_ICON, icon, { pixelRatio: ratio });
+      }
+      map.addSource(ROUTE_HAZARD_SOURCE, { type: "geojson", data: routeHazardFeatures(callbacks.current.route ?? null) });
+      map.addLayer(routeHazardLayer() as never);
+      map.addLayer(routeHazardRepeatLayer() as never);
       // The other routes' names, over the route so a name where they part is not hidden under it.
       map.addLayer({
         id: "route-choice-name",
@@ -2232,6 +2265,19 @@ export function MapView(props: Props) {
   useEffect(() => {
     climbsSync.current?.();
   }, [props.climbs, props.climbsOn, props.climbsFrom]);
+  // And "Hide climbs on busy roads" (lib/climbs.ts), set again in place.
+  useEffect(() => subscribeHideBusy(() => climbsSync.current?.()), []);
+  // Climbs on mountain-bike trails show while the map draws the trails (lib/climbs.ts trailClimbs).
+  useEffect(() => {
+    const sync = () => setTrailClimbs(mtbTrailsOn() || routableMtbLevel() !== null);
+    sync();
+    const offTrails = subscribeMtbTrails(sync);
+    const offRoutable = subscribeRoutableMtb(sync);
+    return () => {
+      offTrails();
+      offRoutable();
+    };
+  }, []);
 
   // The road panel's "Climb details": the climb's card, with the focus in it.
   useEffect(() => {
@@ -2447,6 +2493,7 @@ function syncRoute(map: MapLibreMap, props: Props, fitted: { current: boolean })
   // The route, and a transit trip's later rides drawn in its colours (lib/mapGlue.ts, routeLineData).
   source.setData(routeLineData(route) as never);
   setRouteSections(map, route, stale, props.routeColour ?? undefined);
+  (map.getSource(ROUTE_HAZARD_SOURCE) as GeoJSONSource | undefined)?.setData(routeHazardFeatures(stale ? null : route) as never);
   // A ride's camera follows the rider; a re-planned route is not framed over it.
   if (!route || stale || route.geometry.coordinates.length < 2 || props.rider) return;
   const padding = props.framePadding();

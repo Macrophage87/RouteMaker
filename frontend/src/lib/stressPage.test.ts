@@ -91,9 +91,9 @@ test("each level is said whole, with a stop after its name, the legend's words m
   assert.doesNotMatch(text, /accessibility switch/i, "Accessibility mode (455) does not change the colors");
 });
 
-test("closed ways: rated singletrack everywhere, other mountain-bike trails open on Gravel and Mountain Goat (presets.OFFROAD_PRESETS)", () => {
-  assert.match(text, /rated mountain-bike singletrack/);
-  assert.match(text, /Other natural-surface mountain-bike trails are closed on most ride types\. They are open on Gravel and Mountain Goat\./);
+test("closed ways: mountain-bike trails open on Mountain Bike, and green or unrated ones on Gravel and Mountain Goat (the owner, 2026-10-19)", () => {
+  assert.doesNotMatch(text, /rated mountain-bike singletrack/);
+  assert.match(text, /Mountain-bike trails are closed on most ride types\. Mountain Bike rides all of them\. Gravel and Mountain Goat ride the green \(level 1\) ones and the ones with no rating\./);
   assert.doesNotMatch(text, /mountain-bike-only trails/);
 });
 

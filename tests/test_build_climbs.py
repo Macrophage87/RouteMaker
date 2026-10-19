@@ -71,8 +71,11 @@ def test_read_segments_reads_the_routable_ways_with_their_columns(segment_schema
 
     segments = climb_layer.read_segments(live)
 
-    assert [s.key for s in segments] == [(10, 0), (10, 1), (11, 0)]
-    first, second, third = segments
+    # A drawn mountain-bike trail carries climbs since 2026-10-19 (the owner: "color the climbs
+    # by surface: road, gravel, mtb, etc"); a hidden one, a barred way or an alley does not.
+    assert [s.key for s in segments] == [(10, 0), (10, 1), (11, 0), (23, 0)]
+    first, second, third, trail = segments
+    assert trail.mtb is True and first.mtb is False
     assert first.trail_name == "Example Trail" and first.unpaved is True and first.oneway is False
     assert second.oneway is True and second.unpaved is False and second.trail_name is None
     assert third.unpaved is None and third.oneway is False
@@ -118,7 +121,7 @@ def test_read_segments_takes_a_table_without_the_newer_columns(segment_schemas):
 def test_the_command_writes_the_file_from_the_table_and_the_tiles(segment_schemas, tmp_path):
     live, _ = segment_schemas
     # 1.2 km due east up the ramp in two ways, and the same climb on a mountain-bike-only way
-    # a little north that must not be drawn.
+    # a little north, drawn as a mountain-bike climb since 2026-10-19.
     insert(live, 10, [east(0), east(600)])
     insert(live, 11, [east(600), east(1200)])
     insert(live, 12, [(WEST, LAT + 0.01), (WEST + 1200 / KX, LAT + 0.01)], mtb_only=True)
@@ -135,14 +138,15 @@ def test_the_command_writes_the_file_from_the_table_and_the_tiles(segment_schema
     )
 
     doc = json.loads(out.read_text())
-    (climb,) = doc["climbs"]
+    climb, trail = sorted(doc["climbs"], key=lambda c: c["y"])
+    assert trail["s"] == "m" and "s" not in climb
     assert climb["c"] == "4"  # about 100 m gained: a score near 10,000
     assert climb["g"] == pytest.approx(8.4, abs=0.2)
     assert climb["l"] == pytest.approx(1200, abs=35)
     assert [climb["x"], climb["y"]] == pytest.approx(list(east(1200)), abs=1e-4)
-    assert doc["counts"]["4"] == 1
-    assert "read 2 segments" in stdout.getvalue()
-    assert "1 written" in stdout.getvalue()
+    assert doc["counts"]["4"] == 2
+    assert "read 3 segments" in stdout.getvalue()
+    assert "2 written" in stdout.getvalue()
 
 
 @db

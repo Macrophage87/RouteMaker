@@ -43,7 +43,28 @@ export interface Climb {
   line: LonLat[];
   unpaved?: boolean;
   name?: string;
+  /** What most of it is ridden on (the file's `s`); a road where absent. */
+  surface?: ClimbSurface;
+  /** Most of it on roads rated LTS 3 or higher (the file's `b`). */
+  busy?: boolean;
 }
+
+/**
+ * The climb's colour by what it is ridden on (the owner, 2026-10-19: "color the climbs by surface: road, gravel,
+ * mtb, etc" and "a different color for traffic free paved climbs"), from the file's `s` (pipeline.climb_layer
+ * surface_class). Each is dark enough for the white number over it (4.5:1 or more) and none is a stress tier's
+ * colour; the shape still carries the steepness, and the card and the list say the surface in words.
+ */
+export type ClimbSurface = "road" | "path" | "gravel" | "mtb";
+export const CLIMB_SURFACES: ReadonlyArray<{ surface: ClimbSurface; code: string | null; colour: string; label: string; words: string }> = [
+  { surface: "road", code: null, colour: "#9d174d", label: "Road", words: "On roads." },
+  { surface: "path", code: "p", colour: "#0f766e", label: "Paved path, no traffic", words: "On a paved traffic-free path." },
+  { surface: "gravel", code: "g", colour: "#8a4b08", label: "Gravel or dirt", words: "Mostly gravel or dirt." },
+  { surface: "mtb", code: "m", colour: "#5b21b6", label: "Mountain-bike trail", words: "On a mountain-bike trail." },
+];
+const SURFACE_BY_CODE = new Map(CLIMB_SURFACES.filter((s) => s.code).map((s) => [s.code as string, s.surface]));
+export const climbSurfaceOf = (c: Pick<Climb, "surface">): ClimbSurface => c.surface ?? "road";
+export const climbSurfaceColour = (surface: ClimbSurface): string => CLIMB_SURFACES.find((s) => s.surface === surface)!.colour;
 
 export type ClimbsStatus = "loading" | "ready" | "empty" | "unavailable";
 
@@ -95,10 +116,11 @@ export function saveClimbsOn(on: boolean, store: Store | null = defaultStore()):
 /**
  * "Show climbs from" (the owner, 2026-10-12: "let people pick the minimum level to count for climbing on
  * the map"): the smallest category the layer shows, the list and the keyboard's way to a climb included.
- * Category 5 (every climb) unless the rider chose another on this device.
+ * Category 4 and up unless the rider chose another on this device (the owner, 2026-10-19: "Make the default
+ * climb filter at 4. 5 is too numerous"; it was 5, every climb).
  */
 export const CLIMBS_FROM_KEY = "routemaker.climbsFrom";
-export const CLIMBS_FROM_DEFAULT: ClimbCategory = "5";
+export const CLIMBS_FROM_DEFAULT: ClimbCategory = "4";
 
 export function readClimbsFrom(store: Store | null = defaultStore()): ClimbCategory {
   try {
@@ -122,14 +144,79 @@ export function saveClimbsFrom(from: ClimbCategory, store: Store | null = defaul
 /** HC ranks 0, Category 5 ranks 5: the order the markers are sorted in. */
 export const climbRank = (category: ClimbCategory): number => CLIMB_CATEGORIES.indexOf(category);
 
-/** Whether a climb is shown with "Show climbs from" at `from`: that category or a harder one. */
-export function climbShown(c: Pick<Climb, "category">, from: ClimbCategory): boolean {
-  return climbRank(c.category) <= climbRank(from);
+/**
+ * "Hide climbs on busy roads" (the owner, 2026-10-19: "optionally (default on) hide climbs on LTS 3+ roads"):
+ * on unless the rider turned it off on this device. One value for the page, read by the map, the list and the
+ * road panel through climbShown and climbsFilter, as the trail layer's switch is (stressStyle.js).
+ */
+export const CLIMBS_HIDE_BUSY_KEY = "routemaker.climbsHideBusy";
+
+export function readHideBusy(store: Store | null = defaultStore()): boolean {
+  try {
+    return store?.getItem(CLIMBS_HIDE_BUSY_KEY) !== "off";
+  } catch {
+    return true;
+  }
 }
 
-/** The map's filter for both layers: the same rule as climbShown, on each feature's rank. */
-export function climbsFilter(from: ClimbCategory): unknown[] {
-  return ["<=", ["get", "rank"], climbRank(from)];
+let hideBusy = readHideBusy();
+const hideBusyListeners = new Set<() => void>();
+
+export function hideBusyClimbs(): boolean {
+  return hideBusy;
+}
+
+export function setHideBusyClimbs(on: boolean, store: Store | null = defaultStore()): void {
+  try {
+    store?.setItem(CLIMBS_HIDE_BUSY_KEY, on ? "on" : "off");
+  } catch {
+    // Kept for this visit only.
+  }
+  if (on === hideBusy) return;
+  hideBusy = on;
+  for (const listener of [...hideBusyListeners]) listener();
+}
+
+export function subscribeHideBusy(listener: () => void): () => void {
+  hideBusyListeners.add(listener);
+  return () => void hideBusyListeners.delete(listener);
+}
+
+/**
+ * Whether climbs mostly on mountain-bike trails show: only while the map draws those trails (their layer on, or the
+ * Mountain Bike ride type), so a road ride type's map shows no climb on a trail its routes do not use. MapView sets
+ * it; a change reaches the same listeners as the busy-road switch.
+ */
+let trailClimbsShown = false;
+
+export function trailClimbs(): boolean {
+  return trailClimbsShown;
+}
+
+export function setTrailClimbs(on: boolean): void {
+  if (on === trailClimbsShown) return;
+  trailClimbsShown = on;
+  for (const listener of [...hideBusyListeners]) listener();
+}
+
+/**
+ * Whether a climb is shown with "Show climbs from" at `from`: that category or a harder one, and, while busy
+ * roads' climbs are hidden, not one mostly on LTS 3 or higher.
+ */
+export function climbShown(
+  c: Pick<Climb, "category" | "busy" | "surface">,
+  from: ClimbCategory,
+  hidingBusy: boolean = hideBusy,
+  trails: boolean = trailClimbsShown,
+): boolean {
+  return climbRank(c.category) <= climbRank(from) && !(hidingBusy && c.busy === true) && (trails || c.surface !== "mtb");
+}
+
+/** The map's filter for both layers: the same rule as climbShown, on each feature's rank, `b` and `s`. */
+export function climbsFilter(from: ClimbCategory, hidingBusy: boolean = hideBusy, trails: boolean = trailClimbsShown): unknown[] {
+  const rank = ["<=", ["get", "rank"], climbRank(from)];
+  const hides = [...(hidingBusy ? [["!=", ["get", "b"], true]] : []), ...(trails ? [] : [["!=", ["get", "s"], "mtb"]])];
+  return hides.length > 0 ? ["all", rank, ...hides] : rank;
 }
 
 // --- The file --------------------------------------------------------------------
@@ -158,6 +245,9 @@ export function parseClimbs(value: unknown): Climb[] | null {
     const climb: Climb = { id: raw.id, category, lengthM: raw.l, gainM: raw.r, gradePct: raw.g, lon: raw.x, lat: raw.y, line };
     if (raw.u === 1) climb.unpaved = true;
     if (typeof raw.n === "string" && raw.n.trim()) climb.name = raw.n.trim();
+    const surface = typeof raw.s === "string" ? SURFACE_BY_CODE.get(raw.s) : undefined;
+    if (surface) climb.surface = surface;
+    if (raw.b === 1) climb.busy = true;
     out.push(climb);
   }
   return out;
@@ -213,7 +303,10 @@ export const SHAPE_STEEPNESS: Record<ClimbShape, string> = {
 export function climbDetails(c: Climb): string[] {
   const out = [`${formatClimb(c.gainM)} gained.`];
   if (c.name) out.push(`On the ${c.name}.`);
-  if (c.unpaved) out.push("Mostly unpaved.");
+  // Its surface in words, so the colour is never the only cue; a file before `s` has only `u`.
+  if (c.surface) out.push(CLIMB_SURFACES.find((s) => s.surface === c.surface)!.words);
+  else if (c.unpaved) out.push("Mostly unpaved.");
+  if (c.busy) out.push("Mostly on busy roads (LTS 3 or higher).");
   return out;
 }
 
@@ -368,10 +461,10 @@ export const CLIMBS_LAYERS = [CLIMBS_LINE_LAYER, CLIMBS_MARKER_LAYER] as const;
 export const CLIMBS_MIN_ZOOM = 9;
 export const CLIMBS_LINE_MIN_ZOOM = 12;
 export const CLIMB_ICON_PX = 24;
-/** One colour for every climb: the shape and the number carry the meaning, not the colour. */
+/** The road climbs' colour, and the one the legend's number and line samples use (CLIMB_SURFACES has the rest). */
 export const CLIMB_COLOUR = "#9d174d";
 const WHITE = "#ffffff";
-export const climbIconId = (shape: ClimbShape) => `climb-${shape}`;
+export const climbIconId = (shape: ClimbShape, surface: ClimbSurface = "road") => `climb-${shape}-${surface}`;
 /** The base map's glyphs include this face (scripts/fetch_basemap.sh), as railLayer.ts's labels use. */
 export const CLIMB_FONT = "Noto Sans Medium";
 
@@ -382,13 +475,13 @@ export function inShape(shape: ClimbShape, x: number, y: number, r: number): boo
   return Math.abs(x) + Math.abs(y) <= r * 1.12;
 }
 
-/** The marker's shape: filled in the climb colour inside a white edge; the number is drawn over it as text. */
-export function climbIcon(shape: ClimbShape, pixelRatio = 2, cssSize = CLIMB_ICON_PX): Raster {
+/** The marker's shape: filled in its surface's colour inside a white edge; the number is drawn over it as text. */
+export function climbIcon(shape: ClimbShape, pixelRatio = 2, cssSize = CLIMB_ICON_PX, surface: ClimbSurface = "road"): Raster {
   const size = Math.round(cssSize * pixelRatio);
   const c = size / 2;
   const r = size / 2 - 0.5;
   const edge = 1.5 * pixelRatio;
-  const fill: Rgb = hexToRgb(CLIMB_COLOUR);
+  const fill: Rgb = hexToRgb(climbSurfaceColour(surface));
   const white: Rgb = hexToRgb(WHITE);
   return rasterise(size, pixelRatio, (x, y): Rgb | null => {
     if (!inShape(shape, x - c, y - c, r)) return null;
@@ -398,7 +491,7 @@ export function climbIcon(shape: ClimbShape, pixelRatio = 2, cssSize = CLIMB_ICO
 
 export interface ClimbSummitFeature {
   type: "Feature";
-  properties: { id: string; c: ClimbCategory; shape: ClimbShape; rank: number; label: string };
+  properties: { id: string; c: ClimbCategory; shape: ClimbShape; rank: number; label: string; s: ClimbSurface; b: boolean };
   geometry: { type: "Point"; coordinates: LonLat };
 }
 
@@ -407,7 +500,7 @@ export function climbSummits(climbs: readonly Climb[]): { type: "FeatureCollecti
     type: "FeatureCollection",
     features: climbs.map((c) => ({
       type: "Feature",
-      properties: { id: c.id, c: c.category, shape: climbShape(c.gradePct), rank: CLIMB_CATEGORIES.indexOf(c.category), label: climbLabel(c) },
+      properties: { id: c.id, c: c.category, shape: climbShape(c.gradePct), rank: CLIMB_CATEGORIES.indexOf(c.category), label: climbLabel(c), s: climbSurfaceOf(c), b: c.busy === true },
       geometry: { type: "Point", coordinates: [c.lon, c.lat] },
     })),
   };
@@ -418,7 +511,7 @@ export function climbLines(climbs: readonly Climb[]) {
     type: "FeatureCollection" as const,
     features: climbs.map((c) => ({
       type: "Feature" as const,
-      properties: { id: c.id, c: c.category, rank: climbRank(c.category) },
+      properties: { id: c.id, c: c.category, rank: climbRank(c.category), s: climbSurfaceOf(c), b: c.busy === true },
       geometry: { type: "LineString" as const, coordinates: c.line },
     })),
   };
@@ -433,7 +526,7 @@ export function climbLineLayer(): Record<string, unknown> {
     layout: { "line-join": "round", "line-cap": "butt" },
     // Dashed, so the climb's line is never read as one more stress tier (every tier is solid).
     paint: {
-      "line-color": CLIMB_COLOUR,
+      "line-color": ["match", ["get", "s"], ...CLIMB_SURFACES.filter((s) => s.surface !== "road").flatMap((s) => [s.surface, s.colour]), CLIMB_COLOUR],
       "line-width": ["interpolate", ["linear"], ["zoom"], CLIMBS_LINE_MIN_ZOOM, 3, 16, 5],
       "line-opacity": 0.85,
       "line-dasharray": [1, 1],
@@ -448,7 +541,7 @@ export function climbMarkerLayer(): Record<string, unknown> {
     source: CLIMBS_SOURCE_ID,
     minzoom: CLIMBS_MIN_ZOOM,
     layout: {
-      "icon-image": ["concat", "climb-", ["get", "shape"]],
+      "icon-image": ["concat", "climb-", ["get", "shape"], "-", ["get", "s"]],
       "icon-size": ["interpolate", ["linear"], ["zoom"], CLIMBS_MIN_ZOOM, 0.8, 14, 1],
       "text-field": ["get", "c"],
       "text-font": [CLIMB_FONT],
@@ -482,19 +575,22 @@ export function addClimbs(
   pixelRatio: number,
   beforeId?: string,
   from: ClimbCategory = CLIMBS_FROM_DEFAULT,
+  hidingBusy: boolean = hideBusy,
 ): boolean {
   if (map.getSource(CLIMBS_SOURCE_ID)) return false;
   for (const shape of CLIMB_SHAPES) {
-    if (map.hasImage(climbIconId(shape))) continue;
-    const { pixelRatio: ratio, ...image } = climbIcon(shape, pixelRatio);
-    map.addImage(climbIconId(shape), image, { pixelRatio: ratio });
+    for (const { surface } of CLIMB_SURFACES) {
+      if (map.hasImage(climbIconId(shape, surface))) continue;
+      const { pixelRatio: ratio, ...image } = climbIcon(shape, pixelRatio, CLIMB_ICON_PX, surface);
+      map.addImage(climbIconId(shape, surface), image, { pixelRatio: ratio });
+    }
   }
   map.addSource(CLIMBS_LINE_SOURCE_ID, { type: "geojson", data: climbLines(climbs) });
   map.addSource(CLIMBS_SOURCE_ID, { type: "geojson", data: climbSummits(climbs) });
   const before = beforeId && map.getLayer(beforeId) ? beforeId : undefined;
   const visibility = on ? "visible" : "none";
   for (const layer of [climbLineLayer(), climbMarkerLayer()]) {
-    map.addLayer({ ...layer, filter: climbsFilter(from), layout: { ...(layer.layout as object), visibility } }, before);
+    map.addLayer({ ...layer, filter: climbsFilter(from, hidingBusy), layout: { ...(layer.layout as object), visibility } }, before);
   }
   return true;
 }
@@ -506,9 +602,9 @@ export function setClimbsOn(map: ClimbsMap, on: boolean): void {
   }
 }
 
-/** Show only the climbs of `from` and harder ("Show climbs from"), on both layers. */
-export function setClimbsFrom(map: ClimbsMap, from: ClimbCategory): void {
+/** Show only the climbs of `from` and harder ("Show climbs from"), less the busy roads' while hidden, on both layers. */
+export function setClimbsFrom(map: ClimbsMap, from: ClimbCategory, hidingBusy: boolean = hideBusy): void {
   for (const id of CLIMBS_LAYERS) {
-    if (map.getLayer(id)) map.setFilter?.(id, climbsFilter(from));
+    if (map.getLayer(id)) map.setFilter?.(id, climbsFilter(from, hidingBusy));
   }
 }

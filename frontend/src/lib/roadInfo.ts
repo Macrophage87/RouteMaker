@@ -79,6 +79,16 @@ export interface SegmentInfo {
    * or MORE's trail guide (docs/MTB-TOPO-PLAN.md, slice 6). Absent on other ways and from an older API.
    */
   more?: MoreLink | null;
+  /** A mountain-bike trail the trail layer draws: the panel shows its elevation profile and no traffic lines; absent from an older API. */
+  mtb_trail?: boolean;
+  /**
+   * On a mountain-bike trail, which ride types route through it (core.segment_info trail_routing): "offroad"
+   * Gravel, Mountain Goat and Mountain Bike (up to the rider's level); "mtb" Mountain Bike alone (a trail above
+   * Gravel's level); null none. Absent from an older API.
+   */
+  trail_open?: "offroad" | "mtb" | null;
+  /** On a mountain-bike trail, the level (1-4) Mountain Bike's hardest-level choice reads it at. */
+  trail_level?: number | null;
   sections: InfoSection[];
   attribution: string[];
 }
@@ -94,6 +104,41 @@ export interface InfoRequest {
    * panel opens the junction's suggestion form straight away, where a rider may suggest.
    */
   junction?: boolean;
+  /**
+   * A tap on the mountain-bike trail layer's line (the owner, 2026-10-19: "The information should be
+   * available when clicked on" and "the plan was to allow people to select particular trail segments and
+   * route through them"): the panel describes the trail tapped, ahead of a road beside it, and offers
+   * Route through this trail (TRAIL_VIA_TEXT).
+   */
+  trail?: boolean;
+}
+
+/** The trail panel's via button: a via point on the trail, which shapes the route through it (lib/pointKinds.ts). */
+export const TRAIL_VIA_TEXT = "Route through this trail";
+
+/** The rider's ride type and, in Mountain Bike, the hardest level chosen (null otherwise). */
+export interface TrailRider {
+  rideType: string;
+  mtbLevel: number | null;
+}
+
+/**
+ * Why this ride type's routes do not use a tapped mountain-bike trail, or null where they do (or the way is no
+ * trail): only then does the panel offer Route through this trail, since a via point on a trail the router
+ * keeps closed lands on the nearest open way instead and the route would skip the trail.
+ */
+export function trailNotRouted(info: SegmentInfo | null, rider: TrailRider): string | null {
+  if (info?.mtb_trail !== true) return null;
+  const open = info.trail_open ?? null;
+  if (open === null) return "No ride type's routes use this trail.";
+  if (rider.rideType === "mountain-bike") {
+    const level = info.trail_level ?? null;
+    return level !== null && rider.mtbLevel !== null && level > rider.mtbLevel
+      ? "Mountain Bike routes skip this trail: it is above the level you chose."
+      : null;
+  }
+  if (open === "offroad" && (rider.rideType === "gravel" || rider.rideType === "mountain-goat")) return null;
+  return open === "offroad" ? "Only Gravel, Mountain Goat and Mountain Bike routes use this trail." : "Only Mountain Bike routes use this trail.";
 }
 
 /**
@@ -249,8 +294,8 @@ export function placeAtSpot(
 }
 
 /** The request for a spot; the coordinates go in the query only, never in a log (OWNER-DECISIONS 395). */
-export function segmentInfoUrl(origin: string, [lon, lat]: LonLat): string {
-  return `${origin}/api/segment-info?lat=${lat.toFixed(6)}&lon=${lon.toFixed(6)}`;
+export function segmentInfoUrl(origin: string, [lon, lat]: LonLat, trail = false): string {
+  return `${origin}/api/segment-info?lat=${lat.toFixed(6)}&lon=${lon.toFixed(6)}${trail ? "&trail=true" : ""}`;
 }
 
 /** What the API's refusals mean to a rider. */
@@ -266,10 +311,11 @@ export async function fetchSegmentInfo(
   point: LonLat,
   signal?: AbortSignal,
   fresh = false,
+  trail = false,
 ): Promise<InfoState> {
   try {
     // `fresh` after an edit: the answer is cached for five minutes, and the rider has just changed it.
-    const response = await fetch(segmentInfoUrl(origin, point), {
+    const response = await fetch(segmentInfoUrl(origin, point, trail), {
       signal,
       headers: { Accept: "application/json" },
       ...(fresh ? { cache: "reload" as const } : {}),

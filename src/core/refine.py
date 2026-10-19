@@ -105,7 +105,7 @@ from routemaker import calm, climbs, effort, grade_stress, trace_junctions
 from routemaker import intersections as model
 from routemaker.geo import Point, haversine
 
-from . import junctions, legsplit, parallel, presets, routing, trailseek
+from . import junctions, legsplit, parallel, presets, route_hazards, routing, trailseek
 
 logger = logging.getLogger(__name__)
 
@@ -395,6 +395,32 @@ def shift_classes(classes: list, shift: int) -> list:
             )
         )
     return out
+
+
+def hazard_priced(classes: list, kinds: list) -> list:
+    """Each piece on a known road hazard (`core.route_hazards`) read at LTS 4 at least, as
+    the graph prices it (lua/routemaker_remap.lua `hazard_priced`; the owner, 2026-10-19:
+    "Roads with hazards like this should get a major penalty"). A path is never priced, as
+    the graph never prices a trail. The same list where no piece changes."""
+    if not any(kinds):
+        return classes
+    out = []
+    changed = False
+    for cls, found in zip(classes, kinds, strict=False):
+        if found and cls[1] != "path" and cls[0] in ("1", "2", "3"):
+            changed = True
+            cls = routing.PieceClass(
+                "4",
+                cls[1],
+                getattr(cls, "unpaved", None),
+                getattr(cls, "lanes", None),
+                getattr(cls, "oneway", None),
+                getattr(cls, "width_m", None),
+                False,
+            )
+        out.append(cls)
+    out.extend(classes[len(out) :])
+    return out if changed else classes
 
 
 @dataclass
@@ -868,6 +894,11 @@ def analyse(
     real_classes = routing.classify(pieces, ctx.when, ctx.lanes_as_roadway)
     shift = ctx.exposure.shift
     classes = shift_classes(real_classes, shift)
+    # A known hazard ridden is searched as the graph prices it, LTS 4 (v0.10.0); the rider
+    # is still shown its own rating (`rated_classes`).
+    priced = hazard_priced(classes, route_hazards.kinds_of(pieces))
+    hazard_read = priced is not classes
+    classes = priced
     avoid_passages = avoid_model.passages(line, ctx.avoid) if ctx.avoid else []
     # The stress figures in hill-weighted metres (409): each piece's metres times its factor.
     hill = hill_of(trip, pieces, ctx)
@@ -903,7 +934,7 @@ def analyse(
         hill=hill,
         flat_exposure_m=flat_exposure_m(pieces, classes, weights),
         rated_lts2_m=stress_totals(*rated_metres(pieces, classes))["lts2_m"],
-        real_classes=real_classes if shift else None,
+        real_classes=real_classes if shift or hazard_read else None,
         shift=shift,
     )
     if with_events:
