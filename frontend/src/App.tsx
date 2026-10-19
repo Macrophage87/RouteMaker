@@ -1679,9 +1679,16 @@ export function App() {
 
   // A station's Start here / End here / Add as stop (railStations.ts): an
   // edit of the points like any other, so it can be undone and redone.
+  // Go's ride to a place from its start (goTo, below), for a station card's End here with no route yet.
+  const goToNow = useRef<((dest: LonLat, name: string) => Promise<void>) | null>(null);
   const placeStation = useCallback((role: StationRole, point: LonLat, place: { name: string; label: string }) => {
     if (!insideCoverage(point)) {
       setNotice("That station is outside the area this map covers.");
+      return;
+    }
+    if (role === "end" && modeRef.current === "go" && pointsRef.current.length === 0 && goToNow.current) {
+      namer.remember(point, place.name, place.label);
+      void goToNow.current(point, place.name);
       return;
     }
     const edit = stationEdit(pointsRef.current, point, role, loopVias);
@@ -2025,6 +2032,7 @@ export function App() {
     }
     settleGoWaiting(result);
   };
+  goToNow.current = (dest, name) => goTo(dest, name);
   // A Go look-up's answer for the destination waiting on it (the latest one picked or pressed): found, Go's start
   // is the location and the destination is routed from it; not, the start box asks for a start, shown and said.
   // Either way only while the plan has no start (one typed meanwhile is routed from, as Go's opening look-up does).
@@ -4163,6 +4171,7 @@ export function App() {
         onFederalStatus={setFederalStatus}
         onFederalData={setFederalData}
         onStationPoint={riding ? ignore : placeStation}
+        stationEndFromHere={mode === "go" && !riding}
         onRoadInfo={riding ? ignore : setRoadInfo /* no road panel (and its Add a stop) during a ride */}
         tools={
           accessMode && !riding ? (
@@ -4439,6 +4448,10 @@ export function App() {
                     onRestroom: (chip) => {
                       openView("nearest", chip);
                       findNearestHere("restroom");
+                    },
+                    onMetro: (chip) => {
+                      openView("nearest", chip);
+                      findNearestHere("metro");
                     },
                     onRepair: openRepair,
                     onSights: openPlaces,

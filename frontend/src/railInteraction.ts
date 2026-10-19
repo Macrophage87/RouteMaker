@@ -11,6 +11,7 @@
 import * as maplibregl from "maplibre-gl";
 import type { Map as MapLibreMap, PointLike } from "maplibre-gl";
 import type { StationTimes } from "./lib/api.ts";
+import { fitPopup } from "./lib/popupFit.ts";
 import type { LonLat } from "./lib/geo.ts";
 import { focusBackTarget } from "./lib/mapGlue.ts";
 import { RailCards } from "./lib/railCards.ts";
@@ -45,6 +46,14 @@ export interface RailInteractionOptions {
   closedReason?(station: Station): string | null;
   /** `place` is the name the point carries: the station's, not its entrance's street (stationPlaceName). */
   onStationPoint(role: StationRole, point: LonLat, place: { name: string; label: string }): void;
+  /** The map's part the panel does not cover (App's framePadding): an opened card is panned into it (lib/popupFit.ts). */
+  /**
+   * Go with no route yet (Stephen 2026-10-19: "Ending at a metro assumes going from the current location"): End here
+   * is offered with no points, and App routes there from Go's start.
+   */
+  endFromHere?(): boolean;
+  framePadding?(): { top: number; left: number; bottom: number; right: number };
+  reducedMotion?(): boolean;
 }
 
 const ROLE_TEXT: Record<StationRole, string> = {
@@ -190,7 +199,9 @@ export function attachRailInteraction(map: MapLibreMap, options: RailInteraction
       const content = summary(station, options, hit.elevator !== undefined);
       const actions = document.createElement("div");
       actions.className = "station-actions";
-      for (const role of stationRoles(options.pointCount(), options.loop?.() === true)) {
+      const roles = stationRoles(options.pointCount(), options.loop?.() === true);
+      if (options.endFromHere?.() === true && options.pointCount() === 0) roles.push("end");
+      for (const role of roles) {
         const button = document.createElement("button");
         button.type = "button";
         button.textContent = ROLE_TEXT[role];
@@ -219,11 +230,18 @@ export function attachRailInteraction(map: MapLibreMap, options: RailInteraction
         .setLngLat(hit.elevator ?? station.point)
         .setDOMContent(content)
         .addTo(map);
+      const fitCard = (open: maplibregl.Popup) => {
+        const element = open.getElement();
+        if (open.isOpen() && element && options.framePadding) fitPopup(map, element, options.framePadding(), options.reducedMotion?.() === true);
+      };
+      fitCard(popup);
       // The times now (scheduled), filled in when they come; none where the server has no timetable.
       const times = content.querySelector<HTMLElement>(".station-times");
       if (times) {
         void requestStationTimes(station.point).then((answer) => {
-          if (popup.isOpen() && times.isConnected) fillTimes(times, timesRows(options, answer));
+          if (!(popup.isOpen() && times.isConnected)) return;
+          fillTimes(times, timesRows(options, answer));
+          fitCard(popup);
         });
       }
       return popup;
