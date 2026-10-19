@@ -160,7 +160,7 @@ transit.</li>
 <p>Paces are only for estimating times. "Hills" and "Surfaces" describe Valhalla's bike costing
 settings<sup class="cite"><a href="#ref-1" aria-label="source 1">[1]</a></sup> that each ride type sends<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup>.</p>
 <figure id="fig-starts">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="Where each ride type starts the traffic slider, scrolls sideways on a narrow screen">
+<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 800 412" role="img" aria-labelledby="fig-starts-t fig-starts-d" focusable="false" style="min-width:576px">
 <title id="fig-starts-t">Where each ride type starts the traffic slider</title>
 <desc id="fig-starts-d">A dot chart of starting slider positions. Mass Ride 0, locked. Fast 10. Group Ride, Gravel and Mountain Goat 40. Default, E-bike, Own Bike plus transit and Cargo Bike carrying cargo 70. Cargo Bike with passengers, Bikeshare, Bikeshare plus transit, Rebalance Ride and Mountain Bike 80. Novice and Nervous and Trailmaxxing 100. From 80 up, RouteMaker&#x27;s own calm search runs.</desc>
@@ -231,7 +231,7 @@ settings<sup class="cite"><a href="#ref-1" aria-label="source 1">[1]</a></sup> t
 counts as more, as if it were longer. The traffic slider and the ride type together decide how
 much more.</p>
 <figure id="fig-costs">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="What a mile of busy road costs, by ride type, scrolls sideways on a narrow screen">
+<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 800 360" role="img" aria-labelledby="fig-costs-t fig-costs-d" focusable="false" style="min-width:576px">
 <title id="fig-costs-t">What a mile of busy road costs, by ride type</title>
 <desc id="fig-costs-d">Range bars of calm miles per mile at each ride type&#x27;s starting slider. Mass Ride: LTS 3 and LTS 4 both 1. Fast: LTS 3 1.22 to 1.36, LTS 4 2.11 to 2.34. Group Ride, Gravel and Mountain Goat: 1.93 to 2.85 and 5.38 to 6.25. Default, E-bike and Cargo Bike carrying cargo: 2.88 to 5.79 and 12.85 to 15.83. Cargo Bike with passengers: 3.16 to 6.84 and 15.61 to 19.42. Trailmaxxing with no target distance: 6 and 11.</desc>
@@ -284,7 +284,7 @@ much more.</p>
 <p>Above 80 on the slider, RouteMaker's own search also weighs each route's exposure to busy roads.
 Ride types differ in how heavily they count LTS 4 and Avoid:</p>
 <figure id="fig-weights">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="How heavily each ride type counts busy roads, scrolls sideways on a narrow screen">
+<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 800 336" role="img" aria-labelledby="fig-weights-t fig-weights-d" focusable="false" style="min-width:576px">
 <title id="fig-weights-t">How heavily each ride type counts busy roads</title>
 <desc id="fig-weights-d">Three sets of weights used when RouteMaker compares routes. Standard, for most ride types: LTS 2 0, LTS 3 1, LTS 4 2, Avoid 3. Stress-averse, for Bikeshare, Rebalance Ride, Bikeshare plus transit and Mountain Bike: LTS 3 1, LTS 4 8, Avoid 16. Not in control, for Trailmaxxing and Cargo Bike with passengers: the same plus LTS 2 at 0.25.</desc>
@@ -351,7 +351,7 @@ toward them.</p>
 <h3>Novice and Nervous</h3>
 <p>For riders new to traffic. Every road and junction is read one level busier than it is, so LTS 3 is
 treated as LTS 4, and busy roads are avoided hard. Detours are kept shorter than on Trailmaxxing (at most
-1.4 times the direct route's length). Where a route still has to use real LTS 3 or worse, or the detour
+1.4 times the length of the router's quickest route). Where a route still has to use real LTS 3 or worse, or the detour
 limit is reached, RouteMaker offers transit and bikeshare instead.</p>
 <h3>E-bike</h3>
 <p>Leaves out ways mapped as closed to e-bikes, starts fine with hills (the more direct route wins), and
@@ -365,7 +365,7 @@ switches to the e-bike map and a faster pace, but hills still count.</p>
 <h2 id="transit">Bikeshare and transit</h2>
 <h3>Bikeshare</h3>
 <figure id="fig-bikeshare">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="A bikeshare trip, scrolls sideways on a narrow screen">
+<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 930 125" role="img" aria-labelledby="fig-bikeshare-t fig-bikeshare-d" focusable="false" style="min-width:600px">
 <title id="fig-bikeshare-t">A bikeshare trip</title>
 <desc id="fig-bikeshare-d">Start, walk to a dock with a bike, ride dock to dock on calm streets, walk from a dock with space, finish. Docks are ranked by walking time plus extra riding, from live availability.</desc>
@@ -401,10 +401,10 @@ with e-bike counts.</p>
 reward points (Bike Angels in the Capital Bikeshare app); the points show there, not in RouteMaker.</p>
 <h3>Own Bike + transit, and Bikeshare + transit</h3>
 <figure id="fig-transit">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="A transit trip, scrolls sideways on a narrow screen">
+<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 920 160" role="img" aria-labelledby="fig-transit-t fig-transit-d" focusable="false" style="min-width:600px">
 <title id="fig-transit-t">A transit trip</title>
-<desc id="fig-transit-d">A trip in five steps: start at your door, ride or walk up to 5 miles to a station, take a train or bus at scheduled times, ride or walk to the end, finish. At most two transit legs. Metro only through stations with elevators. On Bikeshare plus transit the bike is docked before boarding.</desc>
+<desc id="fig-transit-d">A trip in five steps: start at your door, ride or walk up to 5 miles [8 km] to a station, take a train or bus at scheduled times, ride or walk to the end, finish. At most two transit legs. Metro only through stations with elevators. On Bikeshare plus transit the bike is docked before boarding.</desc>
 <defs><marker id="ah-transit" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
 <rect class="bx" x="10" y="40" width="130" height="56" rx="6"/>
 <text class="tb" x="75.0" y="64.5" text-anchor="middle">Start</text>
@@ -437,7 +437,7 @@ and VRE<sup class="cite"><a href="#ref-6" aria-label="source 6">[6]</a></sup>.</
 incidents and elevator outages are shown beside them; an elevator outage is a warning and a small
 cost, never a reason to skip a station.</li>
 <li>Limits: walk up to 1 mi [1.6 km] to a station or 0.4 mi [0.6 km] to a bus stop; ride up to
-5 mi [8 km] to a station. A trip under 1 mi is offered as walking.</li>
+5 mi [8 km] to a station. A trip under 1 mi [1.6 km] is offered as walking.</li>
 <li>Metro is used only through stations with elevators, and not on days when bikes are not allowed on
 trains, such as July 4.</li>
 <li>Own Bike + transit never leaves the bike. Bikeshare + transit docks the shared bike before you
@@ -453,7 +453,7 @@ of LTS 4 costs only about 2 calm miles.</p>
 streets only where there is no other way. It finds the least stressful route, not the most trail, so it
 may add miles. With a target distance it aims at or under it and goes over only where the extra miles
 buy a real cut in stress, never past 1.25 times the target. With no target it stays within 1.6 times the
-direct route (and at least 1 mi [1.6 km] more).</p>
+router's quickest route (and at least 1 mi [1.6 km] more).</p>
 <h3>Gravel</h3>
 <p>Unpaved roads and trails cost nothing extra. It does not yet seek them out.</p>
 <h3>Mountain Goat</h3>

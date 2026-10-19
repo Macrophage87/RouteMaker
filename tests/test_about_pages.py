@@ -10,6 +10,7 @@ server.
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
@@ -27,7 +28,7 @@ def read(name: str) -> str:
 @pytest.mark.parametrize("name", SET)
 def test_each_page_is_a_plain_static_page_the_csp_allows(name: str) -> None:
     page = read(name)
-    assert page.startswith("<!doctype html>\n<html lang=\"en\">"), name
+    assert page.startswith('<!doctype html>\n<html lang="en">'), name
     assert len(re.findall(r"<h1>", page)) == 1
     assert "<script" not in page.lower()
     # Nothing from another site: no external stylesheet, image, frame or font.
@@ -39,7 +40,9 @@ def test_each_page_is_a_plain_static_page_the_csp_allows(name: str) -> None:
 @pytest.mark.parametrize("name", SET)
 def test_each_page_names_the_whole_set_and_marks_itself(name: str) -> None:
     page = read(name)
-    nav = re.search(r'<nav class="docs" aria-label="RouteMaker documentation">(.*?)</nav>', page, re.S)
+    nav = re.search(
+        r'<nav class="docs" aria-label="RouteMaker documentation">(.*?)</nav>', page, re.S
+    )
     assert nav, name
     hrefs = re.findall(r'href="/about/([a-z-]+)\.html"', nav.group(1))
     assert sorted(hrefs) == sorted(SET), hrefs
@@ -99,10 +102,28 @@ def test_every_citation_has_its_source_and_every_source_is_cited(name: str) -> N
 
 def test_the_acknowledgements_credit_every_source_the_map_credits() -> None:
     page = read("acknowledgements")
-    for credit in ("OpenStreetMap", "Protomaps", "Open Data DC", "Virginia DOT", "Open Baltimore",
-                   "City of Alexandria", "Montgomery County Planning", "Maryland DOT State Highway",
-                   "USGS", "Census", "Photon", "Capital Bikeshare", "TOPS", "Metropolitan Police",
-                   "AlertDC", "National Park Service"):
+    map_credits = json.loads((ABOUT.parent.parent / "src" / "lib" / "credits.json").read_text())
+    names = (
+        "OpenStreetMap",
+        "Protomaps",
+        "Open Data DC",
+        "Virginia DOT",
+        "Open Baltimore",
+        "City of Alexandria",
+        "Montgomery County Planning",
+        "Maryland DOT State Highway",
+        "USGS",
+        "Census",
+        "Photon",
+        "Capital Bikeshare",
+        "TOPS",
+        "Metropolitan Police",
+        "AlertDC",
+        "National Park Service",
+    )
+    # One name per map credit, in the same order: a new credit fails here until it is named.
+    assert len(names) == len(map_credits)
+    for credit in names:
         assert credit in page, credit
 
 
@@ -110,4 +131,5 @@ def test_the_acknowledgements_credit_every_source_the_map_credits() -> None:
 def test_nothing_names_a_server(name: str) -> None:
     page = read(name)
     assert not re.search(r"\b\d{1,3}(\.\d{1,3}){3}\b", page), "an IP address"
-    assert not re.search(r"internal-|chubby|\.env\b|amazonaws\.com/(?!3d)|s3://", page, re.I)
+    named = r"internal-|home server|\.env\b|amazonaws\.com/(?!3d)|s3://|href=\"/(admin|review)"
+    assert not re.search(named, page, re.I)

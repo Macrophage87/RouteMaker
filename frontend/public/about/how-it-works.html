@@ -139,7 +139,7 @@ sign is not treated as quiet.</li>
 </nav>
 
 <figure id="fig-overview">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="From map data to your route, scrolls sideways on a narrow screen">
+<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 840 330" role="img" aria-labelledby="fig-overview-t fig-overview-d" focusable="false" style="min-width:600px">
 <title id="fig-overview-t">From map data to your route</title>
 <desc id="fig-overview-d">Three kinds of input, OpenStreetMap map data, agency stress ratings and street facts such as speeds and traffic counts, feed a weekly rebuild that rates every road LTS 1 to 4, 4.5 or Avoid. Community corrections, approved by hand, feed the same rebuild and win over everything. The rebuild produces the stress map and the routing graph. The routing graph, together with live closures, produces your route in Go, Plan or a ride.</desc>
@@ -231,7 +231,7 @@ averages levels. It turns each level into a cost per mile for each ride type ins
 <h2 id="which-rating">Which rating wins</h2>
 <p>Several sources can rate the same road. RouteMaker uses the first one that does, in this order:</p>
 <figure id="fig-priority">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="Which rating wins, scrolls sideways on a narrow screen">
+<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 770 290" role="img" aria-labelledby="fig-priority-t fig-priority-d" focusable="false" style="min-width:554px">
 <title id="fig-priority-t">Which rating wins</title>
 <desc id="fig-priority-d">Four sources of a rating, in order. First, community input: corrections from riders and the owner, each approved by hand. Second, a local agency&#x27;s rating: Montgomery County Planning, or DDOT in the District. Third, a state agency&#x27;s rating: Maryland DOT State Highway Administration. Fourth, RouteMaker&#x27;s own formula from the published LTS tables. A source lower down is used only when nothing above it rates the road.</desc>
@@ -258,7 +258,7 @@ averages levels. It turns each level into a cost per mile for each ride type ins
 <text class="ts" x="660" y="270" text-anchor="start">rates the road</text>
 </svg>
 </div>
-<figcaption>The first source that rates a road decides its level. The road panel lists every rating a road has and says which one is used.</figcaption>
+<figcaption>The first source that rates a road decides its level. The road panel lists every rating a road has and says which one is used. One rule sits above them all: a rural road open to cars is at least LTS 2, whichever source rates it.</figcaption>
 </figure>
 <ol>
 <li><strong>Community input.</strong> Corrections from riders and from RouteMaker's owner, for reasons
@@ -282,11 +282,12 @@ the District keeps them up to date.</p>
 <thead><tr><th scope="col">Agency</th><th scope="col">Area</th><th scope="col">Their level</th><th scope="col">RouteMaker reads it as</th></tr></thead>
 <tbody>
 <tr><th scope="row">Montgomery County Planning<sup class="cite"><a href="#ref-3" aria-label="source 3">[3]</a></sup></th><td>Montgomery County</td><td>1 to 4, with half steps</td><td>The same level</td></tr>
-<tr><th scope="row"></th><td></td><td>5</td><td>LTS 4.5 (very high stress, but allowed)</td></tr>
-<tr><th scope="row">DDOT<sup class="cite"><a href="#ref-4" aria-label="source 4">[4]</a></sup></th><td>District of Columbia</td><td>1 to 5</td><td>The same level</td></tr>
-<tr><th scope="row"></th><td></td><td>100 (not rated)</td><td>Ignored: the formula rates the road</td></tr>
+<tr><th scope="row">Montgomery County Planning</th><td></td><td>5</td><td>LTS 4.5 (very high stress, but allowed)</td></tr>
+<tr><th scope="row">DDOT<sup class="cite"><a href="#ref-4" aria-label="source 4">[4]</a></sup></th><td>District of Columbia</td><td>1 to 4</td><td>The same level</td></tr>
+<tr><th scope="row">DDOT</th><td></td><td>5</td><td>Avoid</td></tr>
+<tr><th scope="row">DDOT</th><td></td><td>100 (not rated)</td><td>Ignored: the formula rates the road</td></tr>
 <tr><th scope="row">MDOT SHA<sup class="cite"><a href="#ref-5" aria-label="source 5">[5]</a></sup></th><td>Maryland state roads</td><td>1 to 4</td><td>The same level</td></tr>
-<tr><th scope="row"></th><td></td><td>5 (bicycles prohibited)</td><td>Closed to bikes: not drawn or routed</td></tr>
+<tr><th scope="row">MDOT SHA</th><td></td><td>5 (bicycles prohibited)</td><td>Closed to bikes: not drawn or routed</td></tr>
 </tbody>
 </table>
 </div>
@@ -295,7 +296,7 @@ the District keeps them up to date.</p>
 agree, but where they differ the county is usually the stricter one, and usually closer to how the
 road feels:</p>
 <figure id="fig-compare">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="Montgomery County and Maryland ratings compared, scrolls sideways on a narrow screen">
+<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 880 192" role="img" aria-labelledby="fig-compare-t fig-compare-d" focusable="false" style="min-width:600px">
 <title id="fig-compare-t">Montgomery County and Maryland ratings compared</title>
 <desc id="fig-compare-d">Horizontal bars over the 2,893 miles of road in Montgomery County that both agencies rate. Montgomery rates 196 miles two or more levels more stressful, 6.8 percent, and 510 miles a half to one and a half levels more stressful, 17.6 percent. 1,988 miles, 68.7 percent, get the same level. Maryland rates 154 miles a half to one and a half levels more stressful, 5.3 percent, and 45 miles two or more levels more stressful, 1.6 percent.</desc>
@@ -318,7 +319,7 @@ road feels:</p>
 <line class="axis" x1="340" y1="8" x2="340" y2="184"/>
 </svg>
 </div>
-<figcaption>RouteMaker's own comparison, October 2026, over 2,893 mi [4,655 km] of road both agencies rate<sup class="cite"><a href="#ref-3" aria-label="source 3">[3]</a><a href="#ref-5" aria-label="source 5">[5]</a></sup>. They agree within one level on 90% of it.</figcaption>
+<figcaption>RouteMaker's own comparison, October 2026, over 2,893 mi [4,655 km] of road both agencies rate<sup class="cite"><a href="#ref-3" aria-label="source 3">[3]</a><a href="#ref-5" aria-label="source 5">[5]</a></sup>. They give the same level on 69% of it, and are within one and a half levels on 92%.</figcaption>
 </figure>
 <ul>
 <li><strong>Rural roads upcounty</strong> (about 120 mi [190 km]), such as Peach Tree, Sugarland and
@@ -337,7 +338,7 @@ still wins, and both show in the road panel.</li>
 tables<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup>, written fresh from the tables rather than copied from another tool. It works
 through these steps in order:</p>
 <figure id="fig-steps">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="The formula, step by step, scrolls sideways on a narrow screen">
+<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 440 412" role="img" aria-labelledby="fig-steps-t fig-steps-d" focusable="false" style="min-width:316px">
 <title id="fig-steps-t">The formula, step by step</title>
 <desc id="fig-steps-d">Seven steps in order. One: a trail, path or separated bike lane is LTS 1. Two: speed, the posted limit or else a cautious default. Three: a bike lane or shoulder is read on the bike-lane table, otherwise the mixed-traffic table. Four: traffic volume moves a quiet road one level down and a busy one level up. Five: road-type floors keep main roads at LTS 3 or above. Six: rural roads open to cars are at least LTS 2. Seven: a rough surface keeps a road out of LTS 1.</desc>
@@ -381,10 +382,10 @@ inside a 2020 Census urban area<sup class="cite"><a href="#ref-8" aria-label="so
 [48 km/h], and a narrow or winding rural road with no traffic count at 25 mph [40 km/h].</p>
 <h3>Bike lanes and lanes of traffic</h3>
 <figure id="fig-mixed">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="Streets with no bike lane: speed and lanes, scrolls sideways on a narrow screen">
+<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 570 214" role="img" aria-labelledby="fig-mixed-t fig-mixed-d" focusable="false" style="min-width:410px">
 <title id="fig-mixed-t">Streets with no bike lane: speed and lanes</title>
-<desc id="fig-mixed-d">A grid of the level for a street with no bike facility. At 20 mph or less: LTS 1 with one lane each way, LTS 2 with more. At 25 mph: LTS 2 and LTS 3. At 30 mph: LTS 3 and LTS 4. At 35 mph or more: LTS 4 either way.</desc>
+<desc id="fig-mixed-d">A grid of the level for a street with no bike facility. At 20 mph [32 km/h] or less: LTS 1 with one lane each way, LTS 2 with more. At 25 mph [40 km/h]: LTS 2 and LTS 3. At 30 mph [48 km/h]: LTS 3 and LTS 4. At 35 mph [56 km/h] or more: LTS 4 either way.</desc>
 <defs><marker id="ah-mixed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
 <text class="tb" x="300" y="20" text-anchor="middle">One lane each way</text>
 <text class="tb" x="470" y="20" text-anchor="middle">Two or more lanes each way</text>
@@ -405,10 +406,10 @@ inside a 2020 Census urban area<sup class="cite"><a href="#ref-8" aria-label="so
 <figcaption>Mixed traffic, from Furth's tables<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup>. Traffic volume then moves a two-lane road one level (below). Inside an urban area a multi-lane street is read on the one-lane row, but never below LTS 3.</figcaption>
 </figure>
 <figure id="fig-lane">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="Streets with a painted bike lane, scrolls sideways on a narrow screen">
+<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 570 214" role="img" aria-labelledby="fig-lane-t fig-lane-d" focusable="false" style="min-width:410px">
 <title id="fig-lane-t">Streets with a painted bike lane</title>
-<desc id="fig-lane-d">A grid of the level for a street with a painted bike lane. Under 30 mph with one lane: LTS 1 if the lane is adequate, LTS 2 if narrow. At 30 mph or with more lanes: LTS 2 and LTS 3. At 35 mph: LTS 3 either way. At 40 mph or more: LTS 4 either way.</desc>
+<desc id="fig-lane-d">A grid of the level for a street with a painted bike lane. Under 30 mph [48 km/h] with one lane: LTS 1 if the lane is adequate, LTS 2 if narrow. At 30 mph [48 km/h] or with more lanes: LTS 2 and LTS 3. At 35 mph [56 km/h]: LTS 3 either way. At 40 mph [64 km/h] or more: LTS 4 either way.</desc>
 <defs><marker id="ah-lane" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
 <text class="tb" x="300" y="20" text-anchor="middle">Adequate lane</text>
 <text class="tb" x="470" y="20" text-anchor="middle">Narrow lane</text>
@@ -472,10 +473,10 @@ last bit.</li>
 cost of their own, measured in <strong>calm miles</strong>: the extra distance of quiet street a
 junction is worth. Quiet streets meeting quiet streets cost almost nothing.</p>
 <figure id="fig-junction">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="What a junction costs, before adjustments, scrolls sideways on a narrow screen">
+<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 840 260" role="img" aria-labelledby="fig-junction-t fig-junction-d" focusable="false" style="min-width:600px">
 <title id="fig-junction-t">What a junction costs, before adjustments</title>
-<desc id="fig-junction-d">Horizontal bars of the base cost of junctions in feet of quiet street. Crossing an LTS 4 road from a stop sign: 4,000 ft, 0.76 calm miles. Crossing LTS 3 from a stop sign: 1,600 ft. A left turn across LTS 4 traffic: 4,000 ft; across LTS 3: 800 ft. Crossing LTS 4 at a signal: 600 ft; LTS 3 at a signal: 150 ft. An all-way stop: 75 ft.</desc>
+<desc id="fig-junction-d">Horizontal bars of the base cost of junctions in feet of quiet street. Crossing an LTS 4 road from a stop sign: 4,000 ft [1,219 m], 0.76 calm miles. Crossing LTS 3 from a stop sign: 1,600 ft [488 m]. A left turn across LTS 4 traffic: 4,000 ft [1,219 m]; across LTS 3: 800 ft [244 m]. Crossing LTS 4 at a signal: 600 ft [183 m]; LTS 3 at a signal: 150 ft [46 m]. An all-way stop: 75 ft [23 m].</desc>
 <defs><marker id="ah-junction" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
 <text class="t" x="250" y="32" text-anchor="end">Cross LTS 4 from a stop sign</text>
 <rect class="fillacc" x="260" y="18" width="330.0" height="20" rx="2"/>
@@ -503,8 +504,8 @@ junction is worth. Quiet streets meeting quiet streets cost almost nothing.</p>
 </div>
 <figcaption>Base costs, then multiplied by the crossed road's speed, lanes and traffic, and by the time of day (rush hour 1.25 times, weekends 0.85, night 0.5 in towns). A median refuge cuts a crossing to 0.75 times and a marked trail crossing to half. No junction costs more than 2 calm miles [3.2 km]. Derived from the crossing tables of Oregon DOT and the Mineta report<sup class="cite"><a href="#ref-11" aria-label="source 11">[11]</a><a href="#ref-1" aria-label="source 1">[1]</a></sup> and the route-choice studies<sup class="cite"><a href="#ref-12" aria-label="source 12">[12]</a><a href="#ref-14" aria-label="source 14">[14]</a><a href="#ref-13" aria-label="source 13">[13]</a><a href="#ref-15" aria-label="source 15">[15]</a></sup>.</figcaption>
 </figure>
-<p>Junctions costing at least 800 ft [0.15 calm mi] are marked orange in the route description, and
-those costing at least 3,100 ft [0.59 calm mi] are marked red. Each warning describes the road, the
+<p>Junctions costing at least 800 ft [244 m] are marked orange in the route description, and
+those costing at least 3,100 ft [945 m] are marked red. Each warning describes the road, the
 movement and the control in words.</p>
 
 <h2 id="routing">From ratings to a route</h2>
@@ -518,7 +519,7 @@ LTS 3 costs about 2.9 to 5.8 calm miles and a mile of LTS 4 about 13 to 16; fast
 the same level cost more. Each entry onto an Avoid road adds about 2.5 calm miles [4 km] more.
 <a href="/about/ride-types.html#costs">Ride types</a> has the figures for every ride type.</p>
 <figure id="fig-slider">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="What the traffic slider does, scrolls sideways on a narrow screen">
+<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 830 322" role="img" aria-labelledby="fig-slider-t fig-slider-d" focusable="false" style="min-width:597px">
 <title id="fig-slider-t">What the traffic slider does</title>
 <desc id="fig-slider-d">A line chart over slider positions 0 to 100. The router&#x27;s willingness to use roads falls in a straight line from 1 at position 0 to 0.10 at 70 and reaches 0 at 80. Above 80 a second line, the calm search&#x27;s rate, rises steeply from 0 to 10: at 85 it is 0.6, at 90 1.8, at 95 4.4 and at 100 10 miles of detour accepted per mile of LTS 3 avoided. Ride types start at: Fast 10, Group Ride and Gravel 40, Default 70, Bikeshare 80, Novice and Trailmaxxing 100.</desc>
@@ -585,7 +586,7 @@ the same level cost more. Each entry onto an Avoid road adds about 2.5 calm mile
 
 <h2 id="closures">Closures</h2>
 <figure id="fig-closures">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="Which closures change a route, scrolls sideways on a narrow screen">
+<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 800 385" role="img" aria-labelledby="fig-closures-t fig-closures-d" focusable="false" style="min-width:576px">
 <title id="fig-closures-t">Which closures change a route</title>
 <desc id="fig-closures-d">Two groups. Routes go around closures from state work-zone feeds, police and city alerts, closures confirmed by a RouteMaker reviewer, and the Road closed button during a ride. DDOT TOPS permits and National Park Service alerts never steer a route: permits are shown only on Plan&#x27;s DC permits layer, which is off by default, and park alerts are notes.</desc>
@@ -625,7 +626,7 @@ the same level cost more. Each entry onto an Avoid road adds about 2.5 calm mile
 <text class="ts" x="590" y="336" text-anchor="start">NPS: a note on the route</text>
 </svg>
 </div>
-<figcaption>A DDOT permit says a road could be closed some time in the coming month, not that it is closed now, so it never moves a route<sup class="cite"><a href="#ref-16" aria-label="source 16">[16]</a></sup>. The other feeds describe closures in force<sup class="cite"><a href="#ref-17" aria-label="source 17">[17]</a><a href="#ref-18" aria-label="source 18">[18]</a></sup>.</figcaption>
+<figcaption>DDOT permits<sup class="cite"><a href="#ref-16" aria-label="source 16">[16]</a></sup> are listed apart because they are not closures in force. The other feeds describe closures in force<sup class="cite"><a href="#ref-17" aria-label="source 17">[17]</a><a href="#ref-18" aria-label="source 18">[18]</a></sup>.</figcaption>
 </figure>
 <ul>
 <li><strong>State work zones</strong> from Maryland's and Virginia's feeds<sup class="cite"><a href="#ref-17" aria-label="source 17">[17]</a></sup>: a road closed to
@@ -656,7 +657,7 @@ than 160 ft [50 m] are not used.</li>
 <li><strong>Re-routing</strong> plans on from where you are, in the direction you are heading.</li>
 </ul>
 <figure id="fig-uturn">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="The U-turn rule when re-routing, scrolls sideways on a narrow screen">
+<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 760 220" role="img" aria-labelledby="fig-uturn-t fig-uturn-d" focusable="false" style="min-width:547px">
 <title id="fig-uturn-t">The U-turn rule when re-routing</title>
 <desc id="fig-uturn-d">A rider heading east goes off route. RouteMaker plans on from the rider&#x27;s heading, so the default new route continues ahead. A route that turns back, setting off 120 degrees or more from the heading, is used only if it is at least half a mile, 0.8 km, shorter, and then the first cue says Make a U-turn.</desc>

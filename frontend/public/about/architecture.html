@@ -135,7 +135,7 @@ Discord token.</li>
 
 <h2 id="runtime">The running system</h2>
 <figure id="fig-runtime">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="The parts of the running system, scrolls sideways on a narrow screen">
+<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 960 400" role="img" aria-labelledby="fig-runtime-t fig-runtime-d" focusable="false" style="min-width:600px">
 <title id="fig-runtime-t">The parts of the running system</title>
 <desc id="fig-runtime-d">Your browser or the Android app talks only to the web server, Caddy. Caddy serves the app&#x27;s files, the base map and the contours itself and passes everything else to the app server, Django. The app server asks the Valhalla routers for routes, Photon for place search and the PostGIS database for ratings and saved routes, and reads live data such as bikeshare and transit. A background worker keeps closures and feeds up to date in the database. A weekly rebuild writes a new database table and new router tiles.</desc>
@@ -216,7 +216,7 @@ never leave the server.</li>
 
 <h2 id="rebuild">The weekly rebuild</h2>
 <figure id="fig-rebuild">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="The weekly map rebuild, scrolls sideways on a narrow screen">
+<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 900 310" role="img" aria-labelledby="fig-rebuild-t fig-rebuild-d" focusable="false" style="min-width:600px">
 <title id="fig-rebuild-t">The weekly map rebuild</title>
 <desc id="fig-rebuild-d">Nine stages in order. 1 Fetch OpenStreetMap for DC, Maryland, Virginia and West Virginia. 2 Load reference data: traffic counts and agency ratings. 3 Elevation from USGS 3DEP. 4 Rate every road: traffic counts, then LTS. 5 Apply approved corrections. 6 Tag the stress levels into the map data. 7 Write and check road segments. 8 Build tiles for six Valhalla graphs. 9 Swap the new map live, keeping the old one. A change report by county is checked before the swap.</desc>
@@ -259,7 +259,7 @@ never leave the server.</li>
 <text class="ts" x="450" y="296" text-anchor="middle">A change report by county is checked before the swap; the previous map is kept for rollback.</text>
 </svg>
 </div>
-<figcaption>The rebuild runs weekly, or on a rented cloud machine when the home server is busy<sup class="cite"><a href="#ref-1" aria-label="source 1">[1]</a><a href="#ref-3" aria-label="source 3">[3]</a><a href="#ref-4" aria-label="source 4">[4]</a><a href="#ref-5" aria-label="source 5">[5]</a><a href="#ref-2" aria-label="source 2">[2]</a></sup>.</figcaption>
+<figcaption>The rebuild runs weekly, or on a rented cloud machine when needed<sup class="cite"><a href="#ref-1" aria-label="source 1">[1]</a><a href="#ref-3" aria-label="source 3">[3]</a><a href="#ref-4" aria-label="source 4">[4]</a><a href="#ref-5" aria-label="source 5">[5]</a><a href="#ref-2" aria-label="source 2">[2]</a></sup>.</figcaption>
 </figure>
 <p>The rebuild downloads OpenStreetMap extracts<sup class="cite"><a href="#ref-3" aria-label="source 3">[3]</a></sup>, merges and clips them to the coverage
 area with Osmium<sup class="cite"><a href="#ref-4" aria-label="source 4">[4]</a></sup>, and converts USGS elevation<sup class="cite"><a href="#ref-5" aria-label="source 5">[5]</a></sup> into the height files Valhalla
@@ -268,7 +268,7 @@ wins</a>), writes the levels into the map data with a Lua script that Valhalla's
 builds each router graph. A new map goes live only after a report of every rating that changed, by
 county, has been checked; the old map is kept so a bad build can be rolled back.</p>
 <figure id="fig-time">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="How long a rebuild takes, scrolls sideways on a narrow screen">
+<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 860 95" role="img" aria-labelledby="fig-time-t fig-time-d" focusable="false" style="min-width:600px">
 <title id="fig-time-t">How long a rebuild takes</title>
 <desc id="fig-time-d">A stacked bar of about 4.3 hours with four threads: 2 hours 37 minutes preparing data and rating roads, 1 hour 15 minutes building router tiles, 27 minutes checking.</desc>
@@ -292,7 +292,7 @@ elevation with GDAL<sup class="cite"><a href="#ref-14" aria-label="source 14">[1
 
 <h2 id="request">Planning a route</h2>
 <figure id="fig-request">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="What happens when you plan a route, scrolls sideways on a narrow screen">
+<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 880 475" role="img" aria-labelledby="fig-request-t fig-request-d" focusable="false" style="min-width:600px">
 <title id="fig-request-t">What happens when you plan a route</title>
 <desc id="fig-request-d">A sequence between you, the web server, the app server, Valhalla and the database. You ask for a route; the web server passes it to the app server. 1: the app server asks Valhalla for a route with this ride type&#x27;s costing and gets a line and alternatives. 2: it asks which roads were used and gets map-matched road ids. 3: it asks the database for those roads&#x27; stress, facilities and junctions. 4: the calm search asks Valhalla again, avoiding the worst stretches, up to five rounds. 5: it scores the candidates, picks one and writes cues. The route, its stress breakdown and cues go back to you. The whole plan has a 40-second budget and an answer is cached for 10 minutes.</desc>
@@ -332,7 +332,7 @@ points; very long plans over 93 mi [150 km] ask for confirmation when signed out
 
 <h2 id="map">Drawing the map</h2>
 <figure id="fig-layers">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="How the map is layered, scrolls sideways on a narrow screen">
+<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 720 280" role="img" aria-labelledby="fig-layers-t fig-layers-d" focusable="false" style="min-width:518px">
 <title id="fig-layers-t">How the map is layered</title>
 <desc id="fig-layers-d">Five layers, bottom to top: the Protomaps base map, contour lines from USGS heights, traffic stress lines as vector tiles from PostGIS, live closures, docks, water and stations from the app server, and your route and its cues drawn by the app.</desc>
