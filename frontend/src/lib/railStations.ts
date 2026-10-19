@@ -349,6 +349,31 @@ export function stationEntrance(station: Station, onFoot: boolean, from: LonLat 
   return onFoot ? walkEntrance(station, from) : bikeEntrance(station);
 }
 
+/** A point this close to one of a station's ways in is at that station (a shared link keeps 5 decimals, about 1 m). */
+const AT_ENTRANCE_M = 3;
+
+/**
+ * The plan with each point placed at a station moved to that station's way in for this ride (Stephen 2026-10-19,
+ * a station picked on Bikeshare must not keep a bike at the stairs on the next ride type): on foot its nearest
+ * entrance (from the next point for a start, else from the start, as App's walkFrom), with a bike its elevator.
+ * The same list when nothing moves.
+ */
+export function stationPointsFor(points: readonly LonLat[], stations: readonly Station[], onFoot: boolean): LonLat[] {
+  let moved = false;
+  const next = points.map((point, index) => {
+    const station = stations.find((s) =>
+      [...s.elevators, ...s.osmElevators, ...s.entrances].some((way) => haversineM(way, point) <= AT_ENTRANCE_M),
+    );
+    if (!station) return point;
+    const from = index === 0 ? (points[1] ?? null) : points[0];
+    const way = stationEntrance(station, onFoot, from).point;
+    if (haversineM(way, point) <= AT_ENTRANCE_M) return point;
+    moved = true;
+    return way;
+  });
+  return moved ? next : [...points];
+}
+
 /** What a station's card says about where routes to it go. */
 export function entranceNote(kind: BikeEntrance["kind"]): string {
   switch (kind) {

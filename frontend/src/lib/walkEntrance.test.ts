@@ -66,3 +66,24 @@ test("App wires the ride type to the map card, the Nearest search and the place 
   const rail = readFileSync(new URL("../railInteraction.ts", import.meta.url), "utf8");
   assert.match(rail, /const \{ point, place \} = pointFor\(role\);/);
 });
+
+test("a new ride type moves a station's point to its way in for that ride, and leaves other points", async () => {
+  const { stationPointsFor } = await import("./railStations.ts");
+  const elevator: [number, number] = [-77.0944, 38.9846];
+  const away: [number, number] = [-77.0942, 38.97];
+  // Own bike, to Bethesda's elevator from the south; then Bikeshare: the south entrance.
+  assert.deepEqual(stationPointsFor([away, elevator], [station], true), [away, [-77.0942, 38.9836]]);
+  // And back with a bike: the elevator again.
+  assert.deepEqual(stationPointsFor([away, [-77.0942, 38.9836]], [station], false), [away, elevator]);
+  // A start at the station walks out toward the next point.
+  assert.deepEqual(stationPointsFor([elevator, [-77.0942, 38.99]], [station], true)[0], [-77.0942, 38.9852]);
+  // Nothing at a station: the same points.
+  assert.deepEqual(stationPointsFor([away, [-77.03, 38.9]], [station], true), [away, [-77.03, 38.9]]);
+});
+
+test("App moves them in the same edit as the ride type, so Undo puts both back", () => {
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  const choose = app.slice(app.indexOf("const choosePreset = "), app.indexOf("const chooseStation = "));
+  assert.match(choose, /endsOnFoot\(id\) === endsOnFoot\(preset\) \? null : stationPointsFor\(pointsRef\.current, RAIL_STATIONS, endsOnFoot\(id\)\)/);
+  assert.match(choose, /commit\(moved, \{ \.\.\.rideRef\.current, preset: id, dials: next \}\)/);
+});

@@ -92,7 +92,7 @@ import { activePins, chosenSaid, withStations, type NearbyStation, type Pins, ty
 import { bikeshareOf } from "./lib/bikeshare.ts";
 import { carries, hillsWords, seeksClimbs, startDials, stressMax, stressWords, trailsAreOff, type Dials } from "./lib/dials.ts";
 import { WeightStore, defaultSplit, withWeight, type StoredWeight } from "./lib/weight.ts";
-import { stationEdit, type RailVisibility, type Station, type StationRole } from "./lib/railStations.ts";
+import { stationEdit, stationPointsFor, type RailVisibility, type Station, type StationRole } from "./lib/railStations.ts";
 import { RAIL_STATIONS, WMATA_SLUGS, stationEntranceForPlace } from "./lib/railData.ts";
 import { federalShown, type FederalData } from "./lib/federalLand.ts";
 import { FEDERAL_POINTS_NONE, type FederalStatus } from "./lib/federalLegend.ts";
@@ -2453,8 +2453,16 @@ export function App() {
       setMtbTrails(true, { remember: false });
       setTopoLines(true, { remember: false });
     }
-    setPreset(id);
-    setDials(next);
+    // Into or out of riding on foot, a point at a Metro station moves to the way in for the new ride type: its
+    // elevator with a bike, its nearest entrance on foot (railStations.ts, stationPointsFor). One edit with the ride
+    // type, so Undo puts both back.
+    const moved = endsOnFoot(id) === endsOnFoot(preset) ? null : stationPointsFor(pointsRef.current, RAIL_STATIONS, endsOnFoot(id));
+    if (moved && moved.some((p, i) => p !== pointsRef.current[i])) {
+      commit(moved, { ...rideRef.current, preset: id, dials: next });
+    } else {
+      setPreset(id);
+      setDials(next);
+    }
     // A station chosen on Bikeshare is not carried to the next ride type, or back (OWNER-DECISIONS 466a).
     setStationPins({});
   };
