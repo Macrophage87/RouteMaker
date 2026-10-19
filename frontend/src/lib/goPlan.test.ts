@@ -17,7 +17,6 @@ import {
   fetchMyGo,
   goRideChips,
   myGoBody,
-  myGoSummary,
   parseMyGo,
   readStartMyGo,
   saveAccountCopy,
@@ -114,8 +113,6 @@ test("My Go reads what makes sense and drops the rest: an unknown view or ride, 
   // The body: Default is "", a Home's label is cut to the server's 120 characters.
   assert.deepEqual(myGoBody({ openIn: "", ride: "default", home: null }), { open_in: "", ride: "", home: null });
   assert.deepEqual(myGoBody({ openIn: "go", ride: "novice", home: { point: [-77, 38.9], label: "x".repeat(200) } }).home, { lon: -77, lat: 38.9, label: "x".repeat(120) });
-  assert.equal(myGoSummary(NO_MY_GO), "By screen size · Default");
-  assert.equal(myGoSummary({ openIn: "go", ride: "cargo", home: null }), "Go · Cargo Bike");
 });
 
 test("signed out My Go stays on this device with its Home; the account's copy opens the next visit at once and goes with a sign-out", () => {
