@@ -1,9 +1,9 @@
 /**
  * Go's "More direct" and "Calmer" (the owner, 2026-10-16, test-riding: "in go mode see if it's possible to change the
  * routing to be one notch more traffic tolerant and one notch less tolerant on routes and show them as options saying
- * what's gained and the tradeoff"). The API plans the trip one notch either side of the rider's traffic setting
- * (core.presets stress_notches, POST /api/route/neighbours) once the rider's own route is shown; here each is compared
- * with that route, kept only where it really differs, and given one short line: what it gains, then what it costs.
+ * what's gained and the tradeoff"). The API plans the trip a step either side of the rider's traffic setting (core.presets
+ * stress_notches, POST /api/route/neighbours) once the rider's own route is shown; here each is compared with that
+ * route, kept only where it really differs, and given one short line: what it gains, then what it costs.
  * They join Go's routes to choose from after the rider's own, which stays first and chosen. Choosing one rides it and
  * changes no setting: the rider's traffic setting, and the saved default (the Ride sheet's Edit default), stay as
  * they are. Bike-only ride types and plain Bikeshare (its ride between the same docks); not the multimodal trips, and
@@ -153,19 +153,23 @@ export const MAX_ROWS = 4;
  * The options to offer beside `answer`, more direct first, each a route tagged with its kind, setting and line. Kept
  * only where it does what its name says (More direct saves at least a minute, Calmer takes at least 250 ft (80 m) off
  * busy riding), differs enough from every route already in the choice (the answer, its routes to choose from, and a
- * kept option), and, on a ride that holds LTS 4, a more direct one adds none. The choice stays at MAX_ROWS rows: the
- * options go first. Each line is against the rider's own route, the answer.
+ * kept option), and, on a ride that holds LTS 4, a more direct one adds none. Each line is against the rider's own
+ * route, the answer. The choice stays at MAX_ROWS rows and the options come before the answer's own last routes to
+ * choose from (the owner, 2026-10-19: "I never see the options"; at the top of the slider the router's three filled
+ * it), except the first `keepRouter` of those, the one the rider has already chosen and those before it.
  */
 export function keptNeighbours(
   answer: RouteResponse,
   options: readonly NeighbourOption[],
   preset: PresetId,
   dials?: Pick<Dials, "carrying">,
+  keepRouter = 0,
 ): RouteResponse[] {
   const shown = [answer, ...(answer.candidates ?? [])];
+  const room = MAX_ROWS - 1 - Math.min(keepRouter, shown.length - 1);
   const kept: RouteResponse[] = [];
   for (const option of [...options].sort((a, b) => (a.kind === b.kind ? 0 : a.kind === "direct" ? -1 : 1))) {
-    if (shown.length + kept.length >= MAX_ROWS) break;
+    if (kept.length >= room) break;
     const route = option.route;
     if ([...shown, ...kept].some((r) => !differsEnough(r, route))) continue;
     if (option.kind === "direct" && route.duration_s > answer.duration_s - SAID_S) continue;
@@ -178,17 +182,35 @@ export function keptNeighbours(
   return kept;
 }
 
-/** The answer with the options after its own routes to choose from; the answer itself where there are none. */
+/**
+ * The answer with the options after as many of its own routes to choose from as still fit in MAX_ROWS rows (the
+ * options have their room first, keptNeighbours); the answer itself where there are none.
+ */
 export function withNeighbours(answer: RouteResponse | null, kept: readonly RouteResponse[]): RouteResponse | null {
   if (!answer || kept.length === 0) return answer;
-  return { ...answer, candidates: [...(answer.candidates ?? []), ...kept] };
+  const own = (answer.candidates ?? []).slice(0, Math.max(0, MAX_ROWS - 1 - kept.length));
+  return { ...answer, candidates: [...own, ...kept] };
 }
 
-/** Said once, through the app's polite region, when the options arrive: "More direct and Calmer added to the route choice." */
-export function neighboursSaid(kept: readonly RouteResponse[]): string {
+/**
+ * Said once, through the app's polite region, when the options arrive: "More direct and Calmer added to the route
+ * choice.", or, where they took the place of the answer's own last routes (`displaced` of them, said before as part of
+ * its count), "More direct and Calmer replace the last 2 routes."
+ */
+export function neighboursSaid(kept: readonly RouteResponse[], displaced = 0): string {
   const names = kept.flatMap((r) => (r.neighbour ? [NEIGHBOUR_NAME[r.neighbour.kind]] : []));
   if (names.length === 0) return "";
-  return `${names.join(" and ")} added to the route choice.`;
+  const who = names.join(" and ");
+  if (displaced === 1) return `${who} ${names.length === 1 ? "replaces" : "replace"} the last route.`;
+  if (displaced > 1) return `${who} ${names.length === 1 ? "replaces" : "replace"} the last ${displaced} routes.`;
+  return `${who} added to the route choice.`;
+}
+
+/** How many of the answer's own routes to choose from gave way to the options in `picked` (withNeighbours). */
+export function displacedBy(answer: RouteResponse | null, picked: RouteResponse | null, kept: readonly RouteResponse[]): number {
+  const own = answer?.candidates?.length ?? 0;
+  const left = (picked?.candidates?.length ?? 0) - kept.length;
+  return Math.max(0, own - left);
 }
 
 /**

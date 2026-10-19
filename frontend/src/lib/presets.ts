@@ -6,6 +6,13 @@
  * does not have to know the vocabulary (PLAN.md, First run).
  */
 
+/**
+ * The ride types that reach a place on foot, with no bike of your own (Stephen 2026-10-19): Bikeshare docks the bike
+ * and walks on, and Bikeshare + walk, train or bus walks or docks too. A Metro station is then reached by its
+ * nearest entrance, not the elevator a bike needs (railStations.ts, walkEntrance).
+ */
+export const endsOnFoot = (preset: PresetId): boolean => preset === "bikeshare" || preset === "bikeshare-transit";
+
 export type PresetId =
   | "default"
   | "trailmaxxing"
