@@ -82,7 +82,10 @@ class TestAPaintedLaneOnAWideTwoWayStreet:
         formula = classify({**SIX_LANE, **LANE})
         rated = agency_lts.apply(formula, [AgencyRating("ddot", 2)])
         assert rated.tier is Stress.LTS2 and rated.formula_tier is Stress.LTS3
-        assert agency_lts.apply(formula, [AgencyRating("moco", 5)]).tier is Stress.AVOID
+        assert agency_lts.apply(formula, [AgencyRating("ddot", 5)]).tier is Stress.AVOID
+        # Montgomery's 5 is very high stress, not Avoid (the owner, 2026-10-19): our 4.5.
+        moco = agency_lts.apply(formula, [AgencyRating("moco", 5)])
+        assert moco.tier is Stress.LTS4 and moco.half
 
 
 def result_for(ratings=()) -> object:
