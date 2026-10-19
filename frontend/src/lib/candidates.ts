@@ -155,7 +155,7 @@ export function candidatesHint(answer: RouteResponse | null): string {
 
 /** What More direct and Calmer are, in the group's hint (read once, on entering the group). */
 export const NEIGHBOURS_HINT =
-  "More direct and Calmer are planned one step either side of your traffic setting. Choosing one rides it and keeps your setting.";
+  "More direct and Calmer are planned a step either side of your traffic setting. Choosing one rides it and keeps your setting.";
 
 /**
  * How the route is announced (summary.ts announceRoute): chosen by the rider ("Route 2

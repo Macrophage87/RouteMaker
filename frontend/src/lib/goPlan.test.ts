@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { GO_START_SAID, GO_START_UNAVAILABLE, MODE_LABEL, goDestinationLocating, goDestinationNeedsStart, goPickAction, goTapSetsEnd, goDestinationSet, goPressLocatingSaid, goPressNeedsStartSaid, GO_PRESS_LOCATING_SAY_MS, goStartFailedReason, goDestinationNeedsStartBecause, goPressNeedsStartBecause, goTapRoutedSaid, goPlaceName, OPEN_IN_LABEL, TAB_MODE_KEY, goRouteStart, goStartLine, hasPlanLink, shouldAskGoStart, laterMyGoApplies, modeSaid, openingMode, readTabMode, writeTabMode } from "./appMode.ts";
+import { GO_START_SAID, GO_START_UNAVAILABLE, GO_START_MAX_AGE_MS, GO_PICK_MOVED_M, goPickStart, goHereStart, goStartStale, MODE_LABEL, goDestinationLocating, goDestinationNeedsStart, goPickAction, goTapSetsEnd, goDestinationSet, goPressLocatingSaid, goPressNeedsStartSaid, GO_PRESS_LOCATING_SAY_MS, goStartFailedReason, goDestinationNeedsStartBecause, goPressNeedsStartBecause, goTapRoutedSaid, goPlaceName, OPEN_IN_LABEL, TAB_MODE_KEY, goRouteStart, goStartLine, hasPlanLink, shouldAskGoStart, laterMyGoApplies, modeSaid, openingMode, readTabMode, writeTabMode } from "./appMode.ts";
 import {
   ACCOUNT_COPY_KEY,
   DEVICE_KEY,
@@ -212,7 +212,7 @@ test("Go's Where to? is the destination from the rider's location, in one edit, 
   assert.match(goTo, /goPending\.current = \{ dest, name, vias, pressed, said: pressed && action\.kind === "wait" \};\s*if \(action\.kind === "wait"\) \{\s*if \(pressed\) setNoticeSaying\(goDestinationLocating\(name\), goPressLocatingSaid\(name\)\);\s*else setNotice\(goDestinationLocating\(name\)\);/);
   // A look-up's answer settles the destination waiting on it, only while the plan has no start (a start typed during
   // a slow look-up is routed from; no "To X. Current location not available" after it; review after #127).
-  assert.match(goTo, /const settleGoWaiting = \(result: LocateResult, reason = false\) => \{\s*goAwaiting\.current = false;\s*const pending = goPending\.current;\s*if \(!result\.ok \|\| !insideCoverage\(result\.fix\.point\)\) \{\s*setGoStart\(\{ kind: "none" \}\);\s*if \(pending && pointsRef\.current\.length === 0\) \{\s*const why = reason && !result\.ok \? result\.reason : null;\s*const shown = why \? goDestinationNeedsStartBecause\(pending\.name, why\) : goDestinationNeedsStart\(pending\.name\);\s*if \(pending\.pressed\) setNoticeSaying\(shown, why \? goPressNeedsStartBecause\(pending\.name, why\) : goPressNeedsStartSaid\(pending\.name\)\);\s*else setNotice\(shown\);\s*\}\s*return;\s*\}\s*setHere\(result\.fix\);\s*setGoStart\(\{ kind: "here", point: result\.fix\.point \}\);\s*clearGoPending\(\);\s*if \(pending && pointsRef\.current\.length === 0\) routeGo\(result\.fix\.point, true, pending\.dest, pending\.name, !!pending\.pressed && !pending\.said, pending\.vias\);/);
+  assert.match(goTo, /const settleGoWaiting = \(result: LocateResult, reason = false\) => \{\s*goAwaiting\.current = false;\s*const pending = goPending\.current;\s*if \(!result\.ok \|\| !insideCoverage\(result\.fix\.point\)\) \{\s*setGoStart\(\{ kind: "none" \}\);\s*if \(pending && pointsRef\.current\.length === 0\) \{\s*const why = reason && !result\.ok \? result\.reason : null;\s*const shown = why \? goDestinationNeedsStartBecause\(pending\.name, why\) : goDestinationNeedsStart\(pending\.name\);\s*if \(pending\.pressed\) setNoticeSaying\(shown, why \? goPressNeedsStartBecause\(pending\.name, why\) : goPressNeedsStartSaid\(pending\.name\)\);\s*else setNotice\(shown\);\s*\}\s*return;\s*\}\s*setHere\(result\.fix\);\s*setGoStart\(goHereStart\(result\.fix\.point\)\);\s*clearGoPending\(\);\s*if \(pending && pointsRef\.current\.length === 0\) routeGo\(result\.fix\.point, true, pending\.dest, pending\.name, !!pending\.pressed && !pending\.said, pending\.vias\);/);
   assert.match(goTo, /if \(!insideCoverage\(dest\)\) \{\s*setNotice\(OUTSIDE_NOTICE\);\s*return;/);
   // The opening look-up routes a destination picked while it ran; a start typed in routes one picked before it.
   assert.match(appFile, /if \(pending\) \{\s*clearGoPending\(\);\s*routeGoRef\.current\(result\.fix\.point, true, pending\.dest, pending\.name, !!pending\.pressed && !pending\.said, pending\.vias\);/);
@@ -321,7 +321,7 @@ test("go start: the location is asked for only in Go, once, and only while the p
 });
 
 test("go start: the line says the location, a typed or tapped start in its place, or that there is none", () => {
-  const here = { kind: "here", point: [-77.03, 38.9] } as const;
+  const here = { kind: "here", point: [-77.03, 38.9], at: Date.now() } as const;
   assert.equal(goStartLine(here, null), "Start: your current location");
   assert.equal(GO_START_SAID, "Start: your current location.");
   assert.equal(goStartLine(here, "Union Station"), "Start: Union Station", "a typed or tapped start replaces it");
@@ -331,7 +331,7 @@ test("go start: the line says the location, a typed or tapped start in its place
 });
 
 test("go start: a destination routes from the plan's first point, else from the location found, else asks", () => {
-  const here = { kind: "here", point: [-77.03, 38.9] } as const;
+  const here = { kind: "here", point: [-77.03, 38.9], at: Date.now() } as const;
   assert.deepEqual(goRouteStart([], here), { point: [-77.03, 38.9], located: true });
   assert.deepEqual(goRouteStart([[-77.0, 38.89]], here), { point: [-77.0, 38.89], located: false }, "typed, tapped or from the link");
   assert.equal(goRouteStart([], { kind: "none" }), null);
@@ -339,7 +339,7 @@ test("go start: a destination routes from the plan's first point, else from the 
 });
 
 test("go pick: route from the start Go has, wait while the location is found, else look it up (review of PR #95)", () => {
-  const here = { kind: "here", point: [-77.03, 38.9] } as const;
+  const here = { kind: "here", point: [-77.03, 38.9], at: Date.now() } as const;
   assert.deepEqual(goPickAction([], here), { kind: "route", point: [-77.03, 38.9], located: true });
   assert.deepEqual(goPickAction([[-77.0, 38.89]], { kind: "none" }), { kind: "route", point: [-77.0, 38.89], located: false });
   assert.deepEqual(goPickAction([], { kind: "locating" }), { kind: "wait" }, "a pick while the location is found is kept, not dropped");
@@ -460,4 +460,43 @@ test("announcements: the essentials are always said; only the narration is extra
   assert.match(app, /setNotice\(pending \? goDestinationNeedsStart\(pending\.name\) : GO_START_UNAVAILABLE\)/);
   // Go starts the ride at once; Plan asks the first time.
   assert.match(app, /if \(!ridePrefs\.chosen && mode !== "go"\) \{/);
+});
+
+test("go start: a location found long ago is looked up again before a destination routes from it (the owner, 2026-10-19)", () => {
+  const found = 1_000_000;
+  const here = goHereStart([-77.03, 38.9], found);
+  assert.deepEqual(here, { kind: "here", point: [-77.03, 38.9], at: found });
+  assert.equal(goStartStale(here, found + GO_START_MAX_AGE_MS), false, "fresh up to the limit");
+  assert.deepEqual(goPickAction([], here, found + 60_000), { kind: "route", point: [-77.03, 38.9], located: true });
+  // An hour later (the app left open since an earlier ride): not routed from; looked up again.
+  assert.equal(goStartStale(here, found + 60 * 60_000), true);
+  assert.equal(goRouteStart([], here, found + 60 * 60_000), null);
+  assert.deepEqual(goPickAction([], here, found + 60 * 60_000), { kind: "locate" });
+  assert.equal(goStartStale(here, found - 1), true, "a clock set back is not trusted");
+  // A start in the plan (typed, tapped or from the link) is never stale: it is not the location.
+  assert.deepEqual(goPickAction([[-77.0, 38.89]], here, found + 60 * 60_000), { kind: "route", point: [-77.0, 38.89], located: false });
+  assert.equal(goStartStale({ kind: "none" }), false);
+});
+
+test("go start: Go looks a stale start up again when the page comes back into view", () => {
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  assert.match(app, /document\.addEventListener\("visibilitychange", onVisible\)/);
+  assert.match(app, /if \(!goStartStale\(goStartRef\.current\)\) return;/);
+  assert.doesNotMatch(app, /setGoStart\(\{ kind: "here"/, "every found start is stamped (goHereStart)");
+});
+
+test("go pick: a destination set in Go routes from a fresh fix once the rider has moved (the owner, 2026-10-19)", () => {
+  const prior: [number, number] = [-77.07, 38.905];
+  assert.deepEqual(goPickStart(prior, null), { point: prior, moved: false }, "no fix in time: the start Go had (under 2 min old)");
+  assert.deepEqual(goPickStart(prior, { point: [-77.0701, 38.905] }), { point: prior, moved: false }, "about 9 m: not moved, the early route still matches");
+  assert.deepEqual(goPickStart(prior, { point: [-76.99, 38.91] }), { point: [-76.99, 38.91], moved: true });
+  assert.deepEqual(goPickStart(prior, { point: [-80, 38.9] }), { point: prior, moved: false }, "a fix outside the map is not the start");
+  assert.equal(GO_PICK_MOVED_M, 25);
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  const goTo = app.slice(app.indexOf("const goTo = async"), app.indexOf("const settleGoWaiting"));
+  assert.match(goTo, /const fix = await goPickFix\(\);\s*window\.clearTimeout\(slow\);\s*\/\/[^\n]*\n\s*if \(pick !== goPickSeq\.current \|\| pointsRef\.current\.length > 0 \|\| modeRef\.current !== "go"\) return;\s*routeGo\(goPickStart\(action\.point, fix\)\.point, true, dest, name, pressed && !said, vias\);/);
+  // The look-up is bounded and settles a destination waiting on the gate, as every look-up does.
+  const fix = app.slice(app.indexOf("const goPickFix"), app.indexOf("const goTo = async"));
+  assert.match(fix, /window\.setTimeout\(\(\) => resolve\(null\), GO_PICK_LOOK_MS\)/);
+  assert.match(fix, /if \(result && goWaitingRef\.current\(\)\) \{\s*goSettleRef\.current\(result\);/);
 });

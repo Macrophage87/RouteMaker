@@ -772,7 +772,7 @@ class TestWords:
             ),
             (
                 "override: stress adjustment moco-lts5-georgia-avenue",
-                "Montgomery County rates it LTS 5",
+                "Montgomery County rates it LTS 5, which means very high stress: LTS 4.5 here",
             ),
             ("named corridor: c1, e2", "Owner-rated corridor"),
             ("trail-class way (footway)", "Path away from traffic"),
@@ -807,7 +807,7 @@ class TestWords:
 
     def test_every_reason_the_rebuild_writes_has_words(self) -> None:
         from pipeline.restricted_areas import MILITARY_NO_BICYCLE, SECURED_NO_BICYCLE
-        from routemaker import cbd, singletrack, trailaccess, zoo
+        from routemaker import agency_lts, cbd, singletrack, trailaccess, zoo
 
         written = {
             *trailaccess.TAG_REASONS,
@@ -824,6 +824,7 @@ class TestWords:
             "impassable",
             "motorway",
             "motorroad",
+            agency_lts.PROHIBITED_NO_BICYCLE,
         }
         assert written <= set(segment_info.ACCESS_WORDS), written - set(segment_info.ACCESS_WORDS)
         for _open, words in segment_info.ACCESS_WORDS.values():
@@ -1068,7 +1069,7 @@ class TestEveryRatingHeld:
         self, client, segment_schemas, router
     ):
         """Darnestown Rd (the owner, 2026-10-14, "LTS 4"): the map uses his LTS 4,
-        and the panel lists the county's LTS 5 (Avoid) and the formula beneath it."""
+        and the panel lists the county's LTS 5 (our 4.5) and the formula beneath it."""
         live, _ = segment_schemas
         held = {
             "formula": 4,
@@ -1094,7 +1095,8 @@ class TestEveryRatingHeld:
         assert owner["value"].startswith("LTS 4") and "(used" in owner["value"]
         assert owner["source"] == "Owner override"
         county = rows["Montgomery County Planning rates it"]
-        assert county["value"] == "Avoid" and county["source"] == "Montgomery County Planning"
+        assert county["value"] == "LTS 5, which means very high stress: LTS 4.5 here"
+        assert county["source"] == "Montgomery County Planning"
         assert rows["RouteMaker's formula"]["value"].startswith("LTS 4")
         assert "owner's rating is used" in rows["Used"]["value"]
         # In the owner's order: his rating, then the county's, then the formula.
@@ -1115,9 +1117,10 @@ class TestEveryRatingHeld:
         assert "RouteMaker's formula" not in rows
 
 
-def _adjusted_row(adjustment_id: str) -> dict:
+def _adjusted_row(adjustment_id: str, tier: int = 5, half: bool = False) -> dict:
     return {
-        "stress_tier": 5,
+        "stress_tier": tier,
+        "stress_half": half,
         "stress_rule": f"override: stress adjustment {adjustment_id}",
         "stress_adjustment_id": adjustment_id,
         "stress_computed_tier": 3,
@@ -1130,12 +1133,14 @@ def _adjusted_row(adjustment_id: str) -> dict:
 
 def test_a_montgomery_county_lts5_row_reads_as_county_data() -> None:
     """The owner: "It's also listed as owner override when it was county data"."""
-    rows = {
-        r["label"]: r for r in segment_info.stress_rows(_adjusted_row("moco-lts5-airpark-road"))
-    }
-    assert rows["Level"]["value"] == "Avoid"
+    # The row's 5 is loaded as our 4.5 (`agency_lts.READ_AS`): LTS 4 and a half.
+    row = _adjusted_row("moco-lts5-airpark-road", tier=4, half=True)
+    rows = {r["label"]: r for r in segment_info.stress_rows(row)}
+    assert rows["Level"]["value"] == "LTS 4.5: A very high-stress road"
     assert rows["Level"]["source"] == segment_info.COUNTY
-    assert rows["Why"]["value"] == "Montgomery County rates it LTS 5"
+    assert rows["Why"]["value"] == (
+        "Montgomery County rates it LTS 5, which means very high stress: LTS 4.5 here"
+    )
     assert rows["Why"]["source"] == segment_info.COUNTY
     assert rows["Before the county's rating"]["source"] == segment_info.CLASSIFIER
     assert "Owner's reason" not in rows
