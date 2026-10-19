@@ -4687,7 +4687,11 @@ puts it, at most two presses away.
 - **Go's start** (the owner, 2026-10-11: "in go, make the current location the starting
   location by default"; `lib/appMode.ts` `shouldAskGoStart`, `goStartLine`, `goRouteStart`):
   when Go opens with an empty plan, App asks for the location once (through Use my location's
-  gate; never in Plan, never with a start from the link). Found, it is the start, shown on Go's
+  gate; never in Plan, never with a start from the link). The found start is stamped with its
+  time (`goHereStart`): older than `GO_START_MAX_AGE_MS` (2 min; the owner, 2026-10-19: "Go
+  mode sometimes picks a stale current location") it is not routed from (`goStartStale`), so a
+  pick looks the location up again, and when the page comes back into view in Go with an empty
+  plan a stale start is looked up again quietly; Go's Locate moves it too. Found, it is the start, shown on Go's
   start line and said politely ("Start: your current location.") but not yet a point, so the
   link holds no position until a destination is picked; denied, unavailable or timed out, the
   start stays empty, the start box opens and "Current location not available; type a start." is
