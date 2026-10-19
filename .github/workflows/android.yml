@@ -1,7 +1,7 @@
 name: Android app
 
 # The phone app (mobile/, v0.8.0). On a pull request that touches mobile/ or this file: `npm test`, the
-# Java unit tests and a debug APK (a debug build only; of the secrets it uses only the debug key). By hand
+# Java unit tests and a debug APK (a debug build only; of the secrets it uses only the debug key, and a fork gets none). By hand
 # (Actions, "Android app", Run workflow): a debug or a release build. A debug build is debug-signed and
 # installs by sideloading; a release build needs the four ROUTEMAKER_KEYSTORE/KEY secrets
 # (mobile/README.md). Never on a push. A debug build is signed with ROUTEMAKER_DEBUG_KEYSTORE_BASE64
@@ -79,13 +79,13 @@ jobs:
         run: |
           if [ -n "$DEBUG_KEYSTORE_BASE64" ]; then
             # The key lives only in the runner's temporary directory for this job.
+            trap 'rm -f "$RUNNER_TEMP/debug.keystore"' EXIT
             printf '%s' "$DEBUG_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/debug.keystore"
             export ROUTEMAKER_DEBUG_KEYSTORE_FILE="$RUNNER_TEMP/debug.keystore"
           else
             echo "::warning::No ROUTEMAKER_DEBUG_KEYSTORE_BASE64 secret: this APK has a fresh debug key and will not install over an earlier test build (mobile/README.md)."
           fi
           ./gradlew --no-daemon assembleDebug
-          rm -f "$RUNNER_TEMP/debug.keystore"
       - name: Release APK and bundle
         if: env.BUILD == 'release' && github.event_name == 'workflow_dispatch'
         working-directory: mobile/android

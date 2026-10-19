@@ -225,9 +225,12 @@ so it is fine as a public artifact. It uses no repository variables: the build n
 The debug key uses Android's standard debug passwords (`android`) and alias (`androiddebugkey`), so it
 is one secret. Make it once with
 `keytool -genkeypair -v -keystore debug.keystore -storepass android -keypass android -alias androiddebugkey -dname "CN=Android Debug,O=Android,C=US" -keyalg RSA -keysize 2048 -validity 10000`.
-It never signs a release. Pull request builds use it too, so it is only as private as the branches
-that can open pull requests here; anyone holding it could make an APK that installs over a test
-build, so sideload only the workflow's own artifacts.
+(On macOS, `base64 -i debug.keystore`.) It never signs a release. Pull requests from this
+repository's branches and by-hand runs use it too (forks and Dependabot get no secrets and fall back
+to a fresh key), so it is only as private as write access here. Anyone holding it could make an APK
+that installs over a test build and keeps its data (site address, sign-in, Home), so sideload only
+the workflow's own artifacts. A local build still uses your own `~/.android/debug.keystore` unless
+`ROUTEMAKER_DEBUG_KEYSTORE_FILE` points at this key.
 
 A `release` run fails at once without the four secrets, writes the key to the runner's temporary
 directory only, and uploads a signed APK and an `.aab` for Play. Make the keystore once, keep it and
