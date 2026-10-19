@@ -6,7 +6,7 @@ the owner adds a pending agency's ratings file. Each queue it computes replaces 
 rulings stay.
 
 After a swap the build is live and the one it replaced is in the retired schema (`<live>_old`):
-`--build-id <id> --old-schema live_old --new-schema live` lists that build's changes then.
+`--build-id <id> --old-schema <live>_old --new-schema <live>` lists that build's changes then.
 """
 
 from __future__ import annotations
@@ -24,7 +24,10 @@ class Command(BaseCommand):
         parser.add_argument(
             "--build-id",
             default="",
-            help="The build the staging schema holds; with it the rebuild's changes are listed.",
+            help=(
+                "The build the staging schema (or --new-schema) holds; with it the build's "
+                "changes are listed."
+            ),
         )
         parser.add_argument(
             "--reports-dir",
@@ -59,6 +62,13 @@ class Command(BaseCommand):
             raise CommandError(
                 "--old-schema and --new-schema list a build's changes: give --build-id"
             )
+        for given in (options["old_schema"], options["new_schema"]):
+            if not given:
+                continue
+            if not stress_review._table_exists(given):
+                raise CommandError(f"{given}.segment does not exist: check the schema name")
+        if build and old == new:
+            raise CommandError("--old-schema and --new-schema are the same schema")
         counts = stress_review.compute_all(
             build,
             old,

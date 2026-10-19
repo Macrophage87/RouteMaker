@@ -274,6 +274,12 @@ class TestPrecompute:
         assert found[DROP].kind == "2-4" and found[CLOSED].kind == "reopened"
         with pytest.raises(CommandError):
             call_command("compute_review_queue", new_schema=live)
+        for bad in ({"old_schema": "live_olld", "new_schema": live}, {"new_schema": "lvie"}):
+            with pytest.raises(CommandError, match="does not exist"):
+                call_command("compute_review_queue", build_id=BUILD, **bad)
+        with pytest.raises(CommandError, match="same schema"):
+            call_command("compute_review_queue", build_id=BUILD, old_schema=live, new_schema=live)
+        assert set(items("rebuild")) == {DROP, CLOSED, RISE}
 
     def test_the_tables_are_compared_in_one_sort_each_and_null_safe(self) -> None:
         """DISTINCT ON (one sort of each table, never an array of every piece), and IS DISTINCT

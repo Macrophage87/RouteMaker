@@ -269,9 +269,9 @@ def _write_facts(queue: str, schema: str, build_id: str) -> None:
                     simple = f.simple, point = f.point, area = f.area
                 FROM review_fact f
                 WHERE i.queue = %s AND i.build_id = %s AND i.osm_way_id = f.osm_way_id
-                  AND i.osm_way_id = ANY(%s::bigint[]) AND f.osm_way_id = ANY(%s::bigint[])
+                  AND i.osm_way_id = ANY(%s::bigint[])
                 """,
-                [queue, build_id, batch, batch],
+                [queue, build_id, batch],
             )
             cursor.execute("TRUNCATE review_fact")
             if len(ways) > CHUNK:
