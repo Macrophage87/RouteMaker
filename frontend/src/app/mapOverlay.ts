@@ -57,8 +57,9 @@ export function tapCard(map: MapLibreMap, layer: string, words: (id: string) => 
 
 // --- Stops' cards (lib/stopCard.ts): food, places to see, repair, and the lettered pins ----------------------
 
-/** The stop card open now, if any: one at a time, whichever opened it. */
+/** The stop card open now, if any: one at a time, whichever opened it, and the layer whose dot opened it. */
 let stopPopup: Popup | null = null;
+let stopFrom: string | null = null;
 /** The layers whose points open a stop card, for MapView's main click (stopCards). */
 const stopLayers = new Set<string>();
 
@@ -68,28 +69,35 @@ export function setStopCardFrame(frame: typeof stopFrame) {
   stopFrame = frame;
 }
 
-/** Close the stop card, if one is open. */
-export function closeStopCard() {
+/** Close the stop card, if one is open (only if `layer`'s dot opened it, when given). */
+export function closeStopCard(layer?: string) {
+  if (layer !== undefined && stopFrom !== layer) return;
   stopPopup?.remove();
   stopPopup = null;
 }
 
 /** Open a stop's card at `point`, kept clear of the panel; `focus` moves the focus into it (a keyboard pick). */
-export function openStopCard(map: MapLibreMap, point: LonLat, words: StopCardWords, action: StopAction | null, focus = false) {
+export function openStopCard(map: MapLibreMap, point: LonLat, words: StopCardWords, action: StopAction | null, focus = false, from: string | null = null) {
   closeStopCard();
-  const body = stopCardElement(words, action, closeStopCard);
-  body.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") closeStopCard();
-  });
+  // A keyboard pick: the focus goes back where it was (the list's row, the sheet) when the card closes.
+  const returnTo = focus && document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
+  const body = stopCardElement(words, action, () => closeStopCard());
   const popup = new Popup({ closeButton: true, maxWidth: "260px", className: "rail-popup place-popup", offset: 12, focusAfterOpen: focus })
     .setLngLat(point)
     .setDOMContent(body)
     .addTo(map);
+  const element = popup.getElement();
+  // On the whole card, so Escape works from its close button too.
+  element?.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closeStopCard();
+  });
   popup.on("close", () => {
     if (stopPopup === popup) stopPopup = null;
+    const lost = document.activeElement === document.body || !document.activeElement?.isConnected;
+    if (lost && returnTo?.isConnected) returnTo.focus();
   });
   stopPopup = popup;
-  const element = popup.getElement();
+  stopFrom = from;
   if (element && stopFrame) fitPopup(map, element, stopFrame.padding(), stopFrame.instant());
 }
 
@@ -107,14 +115,14 @@ export function stopCard(
     const id = event.features?.[0]?.properties?.id;
     const found = typeof id === "string" ? at(id) : null;
     if (!found) return;
-    openStopCard(map, found.point, found.words, actionFor(found.point, found.words.title));
+    openStopCard(map, found.point, found.words, actionFor(found.point, found.words.title), false, layer);
   };
   map.on("click", layer, onClick);
   stopLayers.add(layer);
   return () => {
     map.off("click", layer, onClick);
     stopLayers.delete(layer);
-    closeStopCard();
+    closeStopCard(layer);
   };
 }
 

@@ -45,6 +45,7 @@ test("a repair stand's kit and fee, and a nearest place's details and distance",
   const stand = repairWords({ id: "n3", kind: "stand", lon: -77, lat: 38.9, kit: "pt", fee: "no" }, NOON);
   assert.equal(stand.title, "Repair stand");
   assert.ok(stand.lines.includes("Free."));
+  assert.equal(stand.lines.at(-1), "From OpenStreetMap: check it is working before you count on it.", "the repair card keeps its caution");
   const water = nearbyWords({ place: { id: "n4", kind: "water", point: [-77, 38.9], title: "Drinking water", details: ["Bottle filler."] }, distanceM: 1000, timeS: null, byBike: false });
   assert.deepEqual(water.lines, ["Bottle filler.", "0.6 mi (1.0 km) in a straight line."]);
 });
@@ -58,6 +59,14 @@ test("a press on a lettered pin, its key or a Go row opens the card; the map's s
   assert.match(app, /onGoPick=\{\(r\) => pickLettered\(/);
   // Nothing while riding; Route here before a route, Add as stop with one.
   assert.match(app, /stopActionNow\.current = \(point, name\) => \{\s*if \(riding\) return null;/);
+  // A card's action is for the state it opened in: a ride or a mode switch closes it.
+  assert.match(app, /useEffect\(\(\) => closeStopCard\(\), \[riding, mode\]\);/);
+  const overlay = readFileSync(new URL("../app/mapOverlay.ts", import.meta.url), "utf8");
+  // Escape on the whole card (its close button too); the focus goes back after a keyboard pick; a layer's redraw
+  // closes only its own card.
+  assert.match(overlay, /element\?\.addEventListener\("keydown"/);
+  assert.match(overlay, /if \(lost && returnTo\?\.isConnected\) returnTo\.focus\(\);/);
+  assert.match(overlay, /closeStopCard\(layer\);/);
   const sheets = readFileSync(new URL("../app/PlacesSheets.tsx", import.meta.url), "utf8");
   assert.equal((sheets.match(/return stopCard\(map, (REPAIR|PLACES|FOOD)_LAYER/g) ?? []).length, 3);
 });

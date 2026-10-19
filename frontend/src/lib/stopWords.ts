@@ -10,6 +10,8 @@ import { categoryOf, sightHowFar, type SightPlace, type SightResult } from "./pl
 import { repairDetails, repairHowFar, repairTitle, type RepairNearby, type RepairPlace } from "./repair.ts";
 import { openNowText, type StopCardWords } from "./stopCard.ts";
 
+export const REPAIR_CAUTION = "From OpenStreetMap: check it is working before you count on it.";
+
 const sentence = (text: string) => (text ? `${text.charAt(0).toUpperCase()}${text.slice(1)}.` : "");
 
 /** "Open now." where it can be read, else the hours as mapped (or a farm stand's seasonal note). */
@@ -33,7 +35,8 @@ export function sightWords(place: SightPlace, at: Date, result?: SightResult): S
 
 export function repairWords(place: RepairPlace, at: Date, item?: RepairNearby): StopCardWords {
   const far = item ? sentence(repairHowFar(item)) : "";
-  return { title: repairTitle(place), lines: [...repairDetails(place, at), ...(far ? [far] : [])], website: place.website };
+  // The caution the repair card always had (a stand may be broken, a shop's hours out of date).
+  return { title: repairTitle(place), lines: [...repairDetails(place, at), ...(far ? [far] : []), REPAIR_CAUTION], website: place.website };
 }
 
 /** Water, a restroom or a Metro station from the nearest list. */

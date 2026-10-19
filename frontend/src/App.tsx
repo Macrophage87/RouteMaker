@@ -180,7 +180,7 @@ import { TrailMilesOverlay } from "./app/trailMilesOverlay.ts";
 import { loadRepair, nearestRepair, repairFoundSaid, repairTitle, REPAIR_NO_ORIGIN, REPAIR_UNAVAILABLE, type RepairNearby, type RepairPlace } from "./lib/repair.ts";
 import { loadPlaces, placesSaid, placesToSee, readPlacesLayer, savePlacesLayer, sightsForGo, PLACES_NONE, PLACES_PAGE, PLACES_UNAVAILABLE, type PlaceFilter, type SightPlace, type SightResult } from "./lib/places.ts";
 import { FoodOverlay, PlacesOverlay, PlacesSheet, RepairSheet, RepairStandsOverlay } from "./app/PlacesSheets.tsx";
-import { openStopCard, setStopCardFrame } from "./app/mapOverlay.ts";
+import { closeStopCard, openStopCard, setStopCardFrame } from "./app/mapOverlay.ts";
 import { ADD_AS_STOP, ROUTE_HERE, type StopActionFor, type StopCardWords } from "./lib/stopCard.ts";
 import { foodWords, nearbyWords, repairWords, sightWords } from "./lib/stopWords.ts";
 import { ScenicOverlay } from "./app/ScenicOverlay.tsx";
@@ -3767,6 +3767,8 @@ export function App() {
     };
   };
   const stopActionFor = useCallback<StopActionFor>((point, name) => stopActionNow.current(point, name), []);
+  // A card's action is for the state it opened in: a ride starting or Go and Plan swapping closes it.
+  useEffect(() => closeStopCard(), [riding, mode]);
   /** The lettered place at `index`, as its card shows it. */
   const letteredStop = (index: number): { point: LonLat; words: StopCardWords } | null => {
     const at = new Date();
