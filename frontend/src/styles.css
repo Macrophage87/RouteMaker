@@ -6981,6 +6981,24 @@ details.fold > summary .icon {
   gap: 8px;
   margin: 6px 0;
 }
+/* Connected assistant apps (the owner, 2026-10-19): one row each, its line then Disconnect. */
+.assistant-apps-heading {
+  margin: 1rem 0 0.25rem;
+  font-size: 1rem;
+}
+.assistant-apps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.assistant-apps li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.25rem 0;
+}
 .assistant-key-secret input {
   flex: 1 1 12em;
   min-width: 0;

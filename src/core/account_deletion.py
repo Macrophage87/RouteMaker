@@ -41,7 +41,7 @@ DELETED = [
     "Your saved routes and their earlier versions",
     "Your settings kept with the account, and My Go, including Home",
     "Links you shared while signed in: they stop working",
-    "Your AI assistant key",
+    "Your AI assistant key, the apps connected to your account, and the routes they drafted",
     "Your suggestions and hazard reports still waiting for review, and your agree or disagree "
     "on other riders' suggestions",
 ]

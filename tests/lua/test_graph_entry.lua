@@ -1017,6 +1017,11 @@ check("and bicycle access through it is unchanged", bike_allowed(signalled))
 local marked = transform_node({ ["rm:crossing_signal"] = "yes" })
 check("a node the rebuild marked reaches upstream as a signal",
   marked.highway == "traffic_signals" and marked["rm:crossing_signal"] == nil, marked.highway)
+local agency_marked = transform_node({ highway = "crossing", crossing = "uncontrolled",
+  ["rm:agency_signal"] = "yes" })
+check("a crosswalk an agency lists as a HAWK reaches upstream as a signal",
+  agency_marked.highway == "traffic_signals" and agency_marked["rm:agency_signal"] == nil,
+  agency_marked.highway)
 local refused = transform_node({ highway = "crossing", crossing = "traffic_signals", bicycle = "no" })
 check("a crossing upstream reopens to bicycles keeps its class and its reopening",
   refused.highway == "crossing" and bike_allowed(refused), refused.highway)
