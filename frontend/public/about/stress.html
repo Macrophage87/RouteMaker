@@ -102,6 +102,12 @@
   details.more > summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
   details.more[open] > summary { border-bottom: 1px solid var(--line); }
   details.more > .more-body { padding: 0 0.8rem 0.4rem; }
+
+  .glance { background: var(--accent-bg); border: 2px solid var(--accent); border-radius: 8px; padding: 0.25rem 1rem 0.75rem; margin: 1rem 0 1.5rem; }
+  .glance > h2 { border-top: 0; margin: 0.5rem 0 0.25rem; padding-top: 0; }
+  .glance figure { background: var(--bg); }
+  .glance ul { padding-left: 1.25rem; }
+  .glance .find { margin-bottom: 0; }
 </style>
 </head>
 <body>
@@ -127,6 +133,60 @@
   rating is how stressful the traffic beside you is likely to feel on a bike. It
   colors the map, and it decides which roads a route prefers. This page explains
   where the ratings come from and how each ride type uses them.</p>
+
+<div class="glance">
+<h2 id="glance">At a glance</h2>
+<figure id="fig-glance-stress">
+<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<svg viewBox="0 0 760 240" role="img" aria-labelledby="fig-glance-stress-t fig-glance-stress-d" focusable="false" style="min-width:547px">
+<title id="fig-glance-stress-t">Stress ratings at a glance</title>
+<desc id="fig-glance-stress-d">Four sources can rate a road, and the first that does wins: community corrections approved by hand, a local agency (Montgomery County or DDOT), the state agency (Maryland&#x27;s State Highway Administration), then RouteMaker&#x27;s own LTS formula from OpenStreetMap and street facts. Each road gets one level: LTS 1, 2, 3, 4, 4.5 or Avoid. The level colors the map and sets what the road costs when a route is chosen.</desc>
+<defs><marker id="ah-glance-stress" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<text class="tb" x="10" y="20" text-anchor="start">Who rates the road (first one wins)</text>
+<rect class="bxa" x="10" y="32" width="230" height="42" rx="6"/>
+<text class="tb" x="125.0" y="49.5" text-anchor="middle">1. Community corrections</text>
+<text class="ts" x="125.0" y="65.5" text-anchor="middle">approved by hand</text>
+<rect class="bx" x="10" y="82" width="230" height="42" rx="6"/>
+<text class="tb" x="125.0" y="99.5" text-anchor="middle">2. Local agency</text>
+<text class="ts" x="125.0" y="115.5" text-anchor="middle">MoCo, DDOT</text>
+<rect class="bx" x="10" y="132" width="230" height="42" rx="6"/>
+<text class="tb" x="125.0" y="149.5" text-anchor="middle">3. State agency</text>
+<text class="ts" x="125.0" y="165.5" text-anchor="middle">MDOT SHA</text>
+<rect class="bx" x="10" y="182" width="230" height="42" rx="6"/>
+<text class="tb" x="125.0" y="199.5" text-anchor="middle">4. LTS formula</text>
+<text class="ts" x="125.0" y="215.5" text-anchor="middle">OpenStreetMap, street facts</text>
+<path class="ar" d="M244,128 L300,128" marker-end="url(#ah-glance-stress)"/>
+<text class="tb" x="310" y="20" text-anchor="start">One level per road</text>
+<rect x="310" y="32" width="130" height="28" fill="#9ed3ac" stroke="#1c1917" stroke-width="0.8"/><text class="tk" x="375.0" y="50.5" text-anchor="middle">LTS 1</text>
+<rect x="310" y="64" width="130" height="28" fill="#57a06c" stroke="#1c1917" stroke-width="0.8"/><text class="tk" x="375.0" y="82.5" text-anchor="middle">LTS 2</text>
+<rect x="310" y="96" width="130" height="28" fill="#f3c81a" stroke="#1c1917" stroke-width="0.8"/><text class="tk" x="375.0" y="114.5" text-anchor="middle">LTS 3</text>
+<rect x="310" y="128" width="130" height="28" fill="#f28c28" stroke="#1c1917" stroke-width="0.8"/><text class="tk" x="375.0" y="146.5" text-anchor="middle">LTS 4</text>
+<rect x="310" y="160" width="130" height="28" fill="#c81e1e" stroke="#1c1917" stroke-width="0.8"/><text class="tw" x="375.0" y="178.5" text-anchor="middle">LTS 4.5</text>
+<rect x="310" y="192" width="130" height="28" fill="#111111" stroke="#1c1917" stroke-width="0.8"/><text class="tw" x="375.0" y="210.5" text-anchor="middle">Avoid</text>
+<path class="ar" d="M444,100 L500,70" marker-end="url(#ah-glance-stress)"/>
+<path class="ar" d="M444,160 L500,186" marker-end="url(#ah-glance-stress)"/>
+<text class="tb" x="510" y="20" text-anchor="start">What it does</text>
+<rect class="bx" x="510" y="40" width="240" height="58" rx="6"/>
+<text class="tb" x="630.0" y="65.5" text-anchor="middle">Colors the map</text>
+<text class="ts" x="630.0" y="81.5" text-anchor="middle">one color and dash per level</text>
+<rect class="bx" x="510" y="156" width="240" height="58" rx="6"/>
+<text class="tb" x="630.0" y="181.5" text-anchor="middle">Sets routing costs</text>
+<text class="ts" x="630.0" y="197.5" text-anchor="middle">busier roads count as longer</text>
+</svg>
+</div>
+<figcaption>Where a rating comes from, and what it is used for.</figcaption>
+</figure>
+<ul>
+<li>Six levels: LTS 1, which suits children, to LTS 4 for the most traffic-tolerant riders, then 4.5 and
+Avoid for the worst roads, with half steps between.</li>
+<li>The first source that rates a road wins: community corrections, then a local agency, then the state
+agency, then RouteMaker's own formula.</li>
+<li>The level colors the map and sets what a road costs a route. Hills, pavement and scenery never
+change it.</li>
+<li>Riders can suggest a level from the road panel; every suggestion is reviewed by hand.</li>
+</ul>
+<p class="find"><strong>Looking for something else?</strong> How the levels become a route: <a href="/about/routing.html">Routing</a>. What each ride type accepts: <a href="/about/ride-types.html">Ride types</a>.</p>
+</div>
 
   <nav aria-labelledby="contents-heading">
     <h2 id="contents-heading">On this page</h2>
@@ -514,6 +574,10 @@
 
   <section>
     <h2 id="special">Special cases</h2>
+<p>A few kinds of road get a rule of their own: rural roads are never LTS 1, rural expressways are LTS 4.5, motorways and some side-path roads are Avoid, and some DC park paths are open to bikes.</p>
+<details class="more"><summary>More: Special cases</summary>
+<div class="more-body">
+    
     <ul>
       <li><strong>Rural roads are at least LTS 2.</strong> LTS 1 is meant for children, and a rural road
       open to cars never qualifies, however quiet. Trails and roads closed to cars are not affected.</li>
@@ -536,10 +600,15 @@
       as the Martin Luther King Jr. and Franklin Delano Roosevelt memorials, routes take you there and
       you walk the last bit.</li>
     </ul>
-  </section>
+  </div></details>
+</section>
 
   <section>
     <h2 id="not-ratings">What never changes a rating</h2>
+<p>Scenery, pavement, hills, hazard reports and junction costs can change what a route costs, but never a road's stress level.</p>
+<details class="more"><summary>More: What never changes a rating</summary>
+<div class="more-body">
+    
     <ul>
       <li><strong>Scenic roads.</strong> The Scenic layer (Montgomery County Rustic Roads, Maryland
       Scenic Byways, the East Coast Greenway, U.S. Bicycle Routes, covered bridges) is off by default
@@ -552,7 +621,8 @@
       <li><strong>Junction costs</strong> are added when a route is planned (see
       <a href="/about/routing.html#junctions">Routing</a>); they never change a road's level.</li>
     </ul>
-  </section>
+  </div></details>
+</section>
 
   <section>
     <h2 id="avoid">Avoid, and roads closed to bikes</h2>
@@ -798,6 +868,10 @@
 
   <section>
     <h2 id="report">Reporting a wrong rating</h2>
+<p>If the map data is wrong, fix it in OpenStreetMap; if the data is right but the rating feels wrong, suggest a change from the road panel.</p>
+<details class="more"><summary>More: Reporting a wrong rating</summary>
+<div class="more-body">
+    
     <ul>
       <li><strong>The map data is wrong or missing</strong> (a speed limit, a bike
       lane, the number of lanes): use <strong>Edit in OSM</strong> in the road panel
@@ -809,7 +883,8 @@
       "Report a problem" link, use that. Include the page's address (it holds your
       route), the road, and what you expected.</li>
     </ul>
-  </section>
+  </div></details>
+</section>
 
   <section>
     <h2 id="sources">Sources</h2>

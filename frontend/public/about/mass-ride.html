@@ -94,6 +94,12 @@
   details.more > summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
   details.more[open] > summary { border-bottom: 1px solid var(--line); }
   details.more > .more-body { padding: 0 0.8rem 0.4rem; }
+
+  .glance { background: var(--accent-bg); border: 2px solid var(--accent); border-radius: 8px; padding: 0.25rem 1rem 0.75rem; margin: 1rem 0 1.5rem; }
+  .glance > h2 { border-top: 0; margin: 0.5rem 0 0.25rem; padding-top: 0; }
+  .glance figure { background: var(--bg); }
+  .glance ul { padding-left: 1.25rem; }
+  .glance .find { margin-bottom: 0; }
 </style>
 </head>
 <body>
@@ -121,8 +127,37 @@ a DC Bike Party. A group of hundreds takes a whole lane, so it plans in a differ
 other ride type. The question is not "how stressful is this road?" but "how many riders can this road
 carry each minute, and how long will the group hold each crossing?"</p>
 
-<div class="short">
-<p><strong>In short</strong></p>
+<div class="glance">
+<h2 id="glance">At a glance</h2>
+<figure id="fig-glance-mass">
+<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<svg viewBox="0 0 760 150" role="img" aria-labelledby="fig-glance-mass-t fig-glance-mass-d" focusable="false" style="min-width:547px">
+<title id="fig-glance-mass-t">Mass Ride at a glance</title>
+<desc id="fig-glance-mass-d">Mass Ride plans in four steps: the size of your group; how many riders each road can carry per minute, about 99 for each lane; how long each crossing must be held and how many corkers it needs; and from those, the route that keeps the group flowing. It does not plan by traffic stress, because a mass ride takes the lane.</desc>
+<defs><marker id="ah-glance-mass" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<rect class="bxa" x="10" y="30" width="170" height="74" rx="6"/>
+<text class="tb" x="95.0" y="63.5" text-anchor="middle">Your group</text>
+<text class="ts" x="95.0" y="79.5" text-anchor="middle">how many riders</text>
+<path class="ar" d="M182,67 L198,67" marker-end="url(#ah-glance-mass)"/>
+<rect class="bx" x="200" y="30" width="170" height="74" rx="6"/>
+<text class="tb" x="285.0" y="55.5" text-anchor="middle">Each road</text>
+<text class="ts" x="285.0" y="71.5" text-anchor="middle">riders per minute,</text>
+<text class="ts" x="285.0" y="87.5" text-anchor="middle">about 99 a lane</text>
+<path class="ar" d="M372,67 L388,67" marker-end="url(#ah-glance-mass)"/>
+<rect class="bx" x="390" y="30" width="170" height="74" rx="6"/>
+<text class="tb" x="475.0" y="55.5" text-anchor="middle">Each crossing</text>
+<text class="ts" x="475.0" y="71.5" text-anchor="middle">how long to hold it,</text>
+<text class="ts" x="475.0" y="87.5" text-anchor="middle">corkers needed</text>
+<path class="ar" d="M562,67 L578,67" marker-end="url(#ah-glance-mass)"/>
+<rect class="bxa" x="580" y="30" width="170" height="74" rx="6"/>
+<text class="tb" x="665.0" y="55.5" text-anchor="middle">The route</text>
+<text class="ts" x="665.0" y="71.5" text-anchor="middle">that keeps the</text>
+<text class="ts" x="665.0" y="87.5" text-anchor="middle">group flowing</text>
+<text class="ts" x="380" y="134" text-anchor="middle">Not traffic stress: a mass ride takes the lane, so width and crossings decide it.</text>
+</svg>
+</div>
+<figcaption>A queueing problem, not a traffic-stress problem.</figcaption>
+</figure>
 <ul>
 <li>A mass ride is a queueing problem, not a traffic-stress problem. The narrowest point and the
 number of crossings to hold decide how it goes.</li>
@@ -134,6 +169,7 @@ lane.</li>
 <li>The evidence is thin. No study of a real mass ride was found. The model rests on the owner's video
 counts and agrees with published bicycle flow studies. Treat it as about ±25%.</li>
 </ul>
+<p class="find"><strong>Looking for something else?</strong> How every other ride type plans: <a href="/about/routing.html">Routing</a>. All ride types compared: <a href="/about/ride-types.html">Ride types</a>.</p>
 </div>
 
 <nav class="toc" aria-label="On this page">
@@ -388,6 +424,12 @@ itself; plan a regroup as a stop.</p>
 
 </div></details>
 <h2 id="corkers">Corking and marshals</h2>
+<p>Corkers are riders who block cross traffic at a busy junction so the whole ride passes together.
+RouteMaker finds the junctions that need them, works out how many each needs and how many are held at
+once, and gives the ride a headline of about twice that peak, since corkers leapfrog ahead.</p>
+<details class="more"><summary>More: Corking and marshals</summary>
+<div class="more-body">
+
 <h3>What the paper found</h3>
 <p>Corking is well described by riders and journalists: a few riders block cross traffic so the mass can
 pass through together<sup class="cite"><a href="#ref-21" aria-label="source 21">[21]</a></sup>. No peer-reviewed study of corker numbers exists. The only verified
@@ -425,6 +467,7 @@ and spans at most 6: 12 at once, about 24 for the ride.</p>
 <p class="note">Not built yet: a traffic circle or a diagonal avenue meeting the grid is still counted as
 one road's approaches, not by all its actual approaches.</p>
 
+</div></details>
 <h2 id="clearance">Crossing clearance</h2>
 <p>The time to clear a crossing is the riders divided by the flow. The paper, at its central 90 riders a
 minute on one lane, gets about 2, 6 and 11 minutes for 200, 500 and 1,000 riders, and 8 to 19 minutes for
@@ -529,6 +572,10 @@ then chose the measured counts as the working model, and the app is built on the
 
 </div></details>
 <h2 id="compare">The paper and the app side by side</h2>
+<p>The app follows the white paper's method but uses the owner's video counts for flow, so its figures sit inside the paper's ranges, a little above the paper's central value for one lane.</p>
+<details class="more"><summary>More: The paper and the app side by side</summary>
+<div class="more-body">
+
 <div class="table-wrap" tabindex="0" role="region" aria-label="The white paper&#x27;s planning figures and what RouteMaker 0.10.0 does">
 <table>
 <caption>The white paper's planning figures and what RouteMaker 0.10.0 does</caption>
@@ -547,6 +594,7 @@ then chose the measured counts as the working model, and the app is built on the
 </table>
 </div>
 
+</div></details>
 <h2 id="routing">How the routing differs</h2>
 <p>Mass Ride sends the router a different set of settings<sup class="cite"><a href="#ref-5" aria-label="source 5">[5]</a></sup>:</p>
 <details class="more"><summary>More: How the routing differs</summary>
@@ -662,8 +710,51 @@ the width comes from OpenStreetMap.</li>
 <h2 id="map">The map and its bands</h2>
 <p>When Mass Ride is chosen, the map colors roads by riders per minute instead of traffic stress. Color
 is never the only cue: each band also has its own line width and dash.</p>
+<figure id="fig-massmap">
+<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<svg viewBox="0 0 880 300" role="img" aria-labelledby="fig-massmap-t fig-massmap-d" focusable="false" style="min-width:600px">
+<title id="fig-massmap-t">What the Mass Ride map looks like</title>
+<desc id="fig-massmap-d">A sketch of a street grid on the Mass Ride map. Each road is drawn in its riders-per-minute band: a wide purple solid line for 200 and up (wide open), a green solid line for 120 to 200 (good), an orange long-dashed line for 60 to 120 (tight) and a thin red short-dashed line for under 60 (bottleneck). One stretch rated Avoid is a dark dash-dot line on a red casing with the word AVOID and no figure. A reviewed hazard is a near-black dash-dot rail beside a road. A corner of federal land is shaded. A key beside the sketch repeats each look.</desc>
+<defs><marker id="ah-massmap" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<rect x="0" y="0" width="520" height="300" fill="#efece6" stroke="#1c1917" stroke-width="0.8"/>
+<rect x="330" y="190" width="190" height="110" fill="#d9ead3"/>
+<text class="tk" x="370" y="290" text-anchor="middle" style="font-weight:400;font-size:11px">Federal land</text>
+<line x1="60" y1="0" x2="60" y2="300" stroke="#ffffff" stroke-width="6"/>
+<line x1="170" y1="0" x2="170" y2="300" stroke="#ffffff" stroke-width="6"/>
+<line x1="280" y1="0" x2="280" y2="300" stroke="#ffffff" stroke-width="6"/>
+<line x1="410" y1="0" x2="410" y2="300" stroke="#ffffff" stroke-width="6"/>
+<line x1="0" y1="60" x2="520" y2="60" stroke="#ffffff" stroke-width="6"/>
+<line x1="0" y1="150" x2="520" y2="150" stroke="#ffffff" stroke-width="6"/>
+<line x1="0" y1="240" x2="520" y2="240" stroke="#ffffff" stroke-width="6"/>
+<line x1="0" y1="150" x2="520" y2="150" stroke="#ffffff" stroke-width="10.5"/><line x1="0" y1="150" x2="520" y2="150" stroke="#6a3d9a" stroke-width="8.5"/>
+<line x1="170" y1="0" x2="170" y2="300" stroke="#1c1917" stroke-width="9"/><line x1="170" y1="0" x2="170" y2="300" stroke="#1a9850" stroke-width="7"/>
+<line x1="280" y1="0" x2="280" y2="150" stroke="#1c1917" stroke-width="7.5"/><line x1="280" y1="0" x2="280" y2="150" stroke="#f28e2b" stroke-width="5.5" stroke-dasharray="14 4"/>
+<line x1="0" y1="60" x2="170" y2="60" stroke="#1c1917" stroke-width="7.5"/><line x1="0" y1="60" x2="170" y2="60" stroke="#f28e2b" stroke-width="5.5" stroke-dasharray="14 4"/>
+<line x1="280" y1="60" x2="520" y2="60" stroke="#1c1917" stroke-width="6"/><line x1="280" y1="60" x2="520" y2="60" stroke="#d7191c" stroke-width="4" stroke-dasharray="6 4"/>
+<line x1="60" y1="150" x2="60" y2="300" stroke="#1c1917" stroke-width="9"/><line x1="60" y1="150" x2="60" y2="300" stroke="#1a9850" stroke-width="7"/>
+<line x1="410" y1="150" x2="410" y2="300" stroke="#1c1917" stroke-width="7.5"/><line x1="410" y1="150" x2="410" y2="300" stroke="#f28e2b" stroke-width="5.5" stroke-dasharray="14 4"/>
+<line x1="170" y1="240" x2="410" y2="240" stroke="#ee3b2c" stroke-width="9"/><line x1="170" y1="240" x2="410" y2="240" stroke="#14040a" stroke-width="6.5" stroke-dasharray="5 1 0.5 1"/><text x="290" y="231" text-anchor="middle" style="font:700 12px system-ui,sans-serif" fill="#14040a" stroke="#ffffff" stroke-width="3" paint-order="stroke">AVOID</text>
+<line x1="300" y1="140" x2="400" y2="140" stroke="#ffffff" stroke-width="5"/><line x1="300" y1="140" x2="400" y2="140" stroke="#111111" stroke-width="3.5" stroke-dasharray="10.5 4.2 3.5 4.2"/>
+<text x="350" y="130" text-anchor="middle" style="font:600 11px system-ui,sans-serif" fill="#111" stroke="#fff" stroke-width="3" paint-order="stroke">hazard rail</text>
+<line x1="550" y1="26" x2="610" y2="26" stroke="#1c1917" stroke-width="6"/><line x1="550" y1="26" x2="610" y2="26" stroke="#d7191c" stroke-width="4" stroke-dasharray="6 4"/>
+<text class="t" x="620" y="30" text-anchor="start">Under 60: bottleneck</text>
+<line x1="550" y1="66" x2="610" y2="66" stroke="#1c1917" stroke-width="7.5"/><line x1="550" y1="66" x2="610" y2="66" stroke="#f28e2b" stroke-width="5.5" stroke-dasharray="14 4"/>
+<text class="t" x="620" y="70" text-anchor="start">60 to 120: tight</text>
+<line x1="550" y1="106" x2="610" y2="106" stroke="#1c1917" stroke-width="9"/><line x1="550" y1="106" x2="610" y2="106" stroke="#1a9850" stroke-width="7"/>
+<text class="t" x="620" y="110" text-anchor="start">120 to 200: good</text>
+<line x1="550" y1="146" x2="610" y2="146" stroke="#ffffff" stroke-width="10.5"/><line x1="550" y1="146" x2="610" y2="146" stroke="#6a3d9a" stroke-width="8.5"/>
+<text class="t" x="620" y="150" text-anchor="start">200 and up: wide open</text>
+<line x1="550" y1="186" x2="610" y2="186" stroke="#ee3b2c" stroke-width="9"/><line x1="550" y1="186" x2="610" y2="186" stroke="#14040a" stroke-width="6.5" stroke-dasharray="5 1 0.5 1"/>
+<text class="t" x="620" y="190" text-anchor="start">Avoid: no figure, the word AVOID</text>
+<line x1="550" y1="226" x2="610" y2="226" stroke="#ffffff" stroke-width="5"/><line x1="550" y1="226" x2="610" y2="226" stroke="#111111" stroke-width="3.5" stroke-dasharray="10.5 4.2 3.5 4.2"/>
+<text class="t" x="620" y="230" text-anchor="start">Reviewed hazard, beside the road</text>
+</svg>
+</div>
+<figcaption>A sketch, not a real place. Wider and solid means more riders a minute; color is never the only cue.</figcaption>
+</figure>
 <details class="more"><summary>More: The map and its bands</summary>
 <div class="more-body">
+
 
 <div class="table-wrap" tabindex="0" role="region" aria-label="The four bands on the Mass Ride map">
 <table>
@@ -694,8 +785,71 @@ says to check permit requirements for gathering there. This is information, not 
 <p>A planned Mass Ride shows three charts, one under the other, in this order. They share one distance
 axis, so a mile is in the same place on all three. Moving along one chart moves the others and the
 marker on the map<sup class="cite"><a href="#ref-4" aria-label="source 4">[4]</a></sup>.</p>
+<figure id="fig-charts">
+<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<svg viewBox="0 0 880 400" role="img" aria-labelledby="fig-charts-t fig-charts-d" focusable="false" style="min-width:600px">
+<title id="fig-charts-t">The three route charts of a planned Mass Ride</title>
+<desc id="fig-charts-d">Three charts stacked on one shared distance axis, 0 to 10 miles. First, riders per minute: bars filled in the band colors, with dotted guides at 60, 120 and 200, a dashed line for what the ride size needs, and an arrow at the narrowest point, 48 a minute. Second, corker load: a stepped line of how many corkers are holding junctions at once, with a tick at each junction that needs corkers, and a hatched stretch labeled NOT CHECKED where junctions were not checked. Third, elevation: the height line, with steep grades marked in amber. A dashed vertical marker crosses all three at the same mile.</desc>
+<defs><marker id="ah-charts" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<text class="tb" x="10" y="34" text-anchor="start">1. Riders</text>
+<text class="tb" x="10" y="50" text-anchor="start">per minute</text>
+<line x1="140" y1="112.3" x2="860" y2="112.3" stroke="var(--muted)" stroke-width="1" stroke-dasharray="1 3"/>
+<text class="ts" x="134" y="116.3076923076923" text-anchor="end">60</text>
+<line x1="140" y1="84.6" x2="860" y2="84.6" stroke="var(--muted)" stroke-width="1" stroke-dasharray="1 3"/>
+<text class="ts" x="134" y="88.61538461538461" text-anchor="end">120</text>
+<line x1="140" y1="47.7" x2="860" y2="47.7" stroke="var(--muted)" stroke-width="1" stroke-dasharray="1 3"/>
+<text class="ts" x="134" y="51.69230769230769" text-anchor="end">200</text>
+<rect x="140.0" y="43.1" width="108.0" height="96.9" fill="#6a3d9a" opacity="0.85"/>
+<rect x="248.0" y="66.2" width="108.0" height="73.8" fill="#1a9850" opacity="0.85"/>
+<rect x="356.0" y="94.3" width="86.4" height="45.7" fill="#f28e2b" opacity="0.85"/>
+<rect x="442.4" y="117.8" width="43.2" height="22.2" fill="#d7191c" opacity="0.85"/>
+<rect x="485.6" y="70.8" width="122.4" height="69.2" fill="#1a9850" opacity="0.85"/>
+<rect x="608.0" y="33.8" width="108.0" height="106.2" fill="#6a3d9a" opacity="0.85"/>
+<rect x="716.0" y="89.2" width="144.0" height="50.8" fill="#f28e2b" opacity="0.85"/>
+<line x1="140" y1="103.1" x2="860" y2="103.1" class="ln2"/>
+<text class="ts" x="856" y="98.07692307692308" text-anchor="end">what the ride size needs</text>
+<path class="ar" d="M464.0,28 L464.0,113.8" marker-end="url(#ah-charts)"/>
+<text class="ts" x="470.0" y="34" text-anchor="start">narrowest point, 48</text>
+<line class="axis" x1="140" y1="140" x2="860" y2="140"/>
+<text class="tb" x="10" y="184" text-anchor="start">2. Corker</text>
+<text class="tb" x="10" y="200" text-anchor="start">load</text>
+<path class="ln" d="M140.0,250.0 L140.0,230.0 L212.0,230.0 L212.0,210.0 L320.0,210.0 L320.0,190.0 L428.0,190.0 L428.0,220.0 L536.0,220.0 L536.0,200.0 L608.0,200.0"/>
+<line x1="168.8" y1="250" x2="168.8" y2="242" stroke="var(--fg)" stroke-width="1.5"/>
+<line x1="226.4" y1="250" x2="226.4" y2="242" stroke="var(--fg)" stroke-width="1.5"/>
+<line x1="284.0" y1="250" x2="284.0" y2="242" stroke="var(--fg)" stroke-width="1.5"/>
+<line x1="341.6" y1="250" x2="341.6" y2="242" stroke="var(--fg)" stroke-width="1.5"/>
+<line x1="399.2" y1="250" x2="399.2" y2="242" stroke="var(--fg)" stroke-width="1.5"/>
+<line x1="456.8" y1="250" x2="456.8" y2="242" stroke="var(--fg)" stroke-width="1.5"/>
+<line x1="507.2" y1="250" x2="507.2" y2="242" stroke="var(--fg)" stroke-width="1.5"/>
+<line x1="564.8" y1="250" x2="564.8" y2="242" stroke="var(--fg)" stroke-width="1.5"/>
+<defs><pattern id="hatch-charts" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="8" stroke="var(--muted)" stroke-width="2"/></pattern></defs>
+<rect x="608.0" y="170" width="252.0" height="80" fill="url(#hatch-charts)" stroke="var(--muted)"/>
+<text class="tb" x="734.0" y="215.0" text-anchor="middle" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">NOT CHECKED</text>
+<text class="ts" x="134" y="254.0" text-anchor="end">0</text>
+<text class="ts" x="134" y="214.0" text-anchor="end">4</text>
+<text class="ts" x="134" y="174.0" text-anchor="end">8</text>
+<line class="axis" x1="140" y1="250" x2="860" y2="250"/>
+<text class="tb" x="10" y="294" text-anchor="start">3. Elevation</text>
+<path class="ln" d="M140.0,348.6 L212.0,342.9 L284.0,345.7 L356.0,331.4 L399.2,314.3 L464.0,305.7 L536.0,320.0 L608.0,325.7 L672.8,297.1 L716.0,291.4 L788.0,314.3 L860.0,320.0"/>
+<path d="M356.0,331.4 L399.2,314.3" stroke="#d97706" stroke-width="6" stroke-opacity="0.6" fill="none"/>
+<path d="M608.0,325.7 L672.8,297.1" stroke="#d97706" stroke-width="6" stroke-opacity="0.6" fill="none"/>
+<text class="ts" x="644.0" y="285.14285714285717" text-anchor="middle">steep grades in amber</text>
+<line class="axis" x1="140" y1="360" x2="860" y2="360"/>
+<text class="ts" x="140.0" y="376" text-anchor="middle">0 mi</text>
+<text class="ts" x="284.0" y="376" text-anchor="middle">2 mi</text>
+<text class="ts" x="428.0" y="376" text-anchor="middle">4 mi</text>
+<text class="ts" x="572.0" y="376" text-anchor="middle">6 mi</text>
+<text class="ts" x="716.0" y="376" text-anchor="middle">8 mi</text>
+<text class="ts" x="860.0" y="376" text-anchor="middle">10 mi</text>
+<line x1="464.0" y1="20" x2="464.0" y2="360" stroke="var(--accent)" stroke-width="1.2" stroke-dasharray="4 3"/>
+<text class="ts" x="468.0" y="392" text-anchor="start">one marker, on all three charts and the map</text>
+</svg>
+</div>
+<figcaption>An example route, not a real ride. Moving along one chart moves the others and the marker on the map.</figcaption>
+</figure>
 <details class="more"><summary>More: The three route charts</summary>
 <div class="more-body">
+
 
 <ol>
 <li><strong>Riders per minute.</strong> The figure along the route, with hills included, filled in the
@@ -898,6 +1052,10 @@ door zone are <em>supported</em><sup class="cite"><a href="#ref-9" aria-label="s
 
 </div></details>
 <h2 id="status">How solid each figure is</h2>
+<p>Only the owner's counts of riders passing a point are measured and reliable. Most other figures are derived arithmetic, assumptions checked against design guides, or proposals still to be confirmed.</p>
+<details class="more"><summary>More: How solid each figure is</summary>
+<div class="more-body">
+
 <div class="table-wrap" tabindex="0" role="region" aria-label="How solid each figure is">
 <table>
 <caption>How solid each figure is</caption>
@@ -938,6 +1096,7 @@ door zone are <em>supported</em><sup class="cite"><a href="#ref-9" aria-label="s
 straight sections, with the road width noted, would be the first real data on how fast a large group
 clears a crossing.</p>
 
+</div></details>
 <h2 id="sources">Sources</h2>
 <ol class="refs">
   <li id="ref-1">RouteMaker, "The Mass Ride flow model against the literature": each constant checked, with its range and a recommendation. <a href="https://github.com/Macrophage87/RouteMaker/blob/main/docs/FLOW-CALIBRATION.md">docs/FLOW-CALIBRATION.md</a></li>

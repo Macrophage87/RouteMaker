@@ -94,6 +94,12 @@
   details.more > summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
   details.more[open] > summary { border-bottom: 1px solid var(--line); }
   details.more > .more-body { padding: 0 0.8rem 0.4rem; }
+
+  .glance { background: var(--accent-bg); border: 2px solid var(--accent); border-radius: 8px; padding: 0.25rem 1rem 0.75rem; margin: 1rem 0 1.5rem; }
+  .glance > h2 { border-top: 0; margin: 0.5rem 0 0.25rem; padding-top: 0; }
+  .glance figure { background: var(--bg); }
+  .glance ul { padding-left: 1.25rem; }
+  .glance .find { margin-bottom: 0; }
 </style>
 </head>
 <body>
@@ -121,121 +127,84 @@ Bike. Each plans differently from the everyday ride types. This page covers the 
 trails are rated, the Climbs and topo layers, and what a tap on a trail tells you. For every other ride
 type, see <a href="/about/ride-types.html#adventure">Adventure ride types</a>.</p>
 
-<div class="short">
-<p><strong>In short</strong></p>
+<div class="glance">
+<h2 id="glance">At a glance</h2>
+<figure id="fig-glance-trails">
+<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<svg viewBox="0 0 760 212" role="img" aria-labelledby="fig-glance-trails-t fig-glance-trails-d" focusable="false" style="min-width:547px">
+<title id="fig-glance-trails-t">The roles of Mountain Bike, Mountain Goat and Gravel</title>
+<desc id="fig-glance-trails-d">Three off-road ride types with different jobs. Mountain Bike rides mountain-bike trails: it seeks them, up to the hardest level you choose, links them with calm roads, and turns on the trails and topo layers. Mountain Goat rides climbs: it seeks categorized climbs within 1.5 times the direct distance, may use unrated and Green trails, and turns on the climbs and topo layers. Gravel rides mixed surfaces: unpaved roads cost nothing extra, so gravel competes with pavement; it may use unrated and Green trails and turns on the trails and topo layers.</desc>
+<defs><marker id="ah-glance-trails" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<rect x="10" y="10" width="236" height="44" rx="6" fill="#5b21b6"/>
+<text class="tw" x="128" y="30" text-anchor="middle">Mountain Bike</text>
+<text class="tw" x="128" y="46" text-anchor="middle" style="font-weight:400">Rides mountain-bike trails</text>
+<rect class="bx" x="10" y="62" width="236" height="92" rx="6"/>
+<text class="ts" x="128.0" y="88.5" text-anchor="middle">Seeks trails, up to the</text>
+<text class="ts" x="128.0" y="104.5" text-anchor="middle">hardest level you choose</text>
+<text class="ts" x="128.0" y="120.5" text-anchor="middle">and links them with</text>
+<text class="ts" x="128.0" y="136.5" text-anchor="middle">calm roads</text>
+<rect class="bx" x="10" y="162" width="236" height="40" rx="6"/>
+<text class="ts" x="128.0" y="186.5" text-anchor="middle">Turns on: Trails and topo</text>
+<rect x="262" y="10" width="236" height="44" rx="6" fill="#9d174d"/>
+<text class="tw" x="380" y="30" text-anchor="middle">Mountain Goat</text>
+<text class="tw" x="380" y="46" text-anchor="middle" style="font-weight:400">Rides climbs</text>
+<rect class="bx" x="262" y="62" width="236" height="92" rx="6"/>
+<text class="ts" x="380.0" y="88.5" text-anchor="middle">Seeks categorized climbs,</text>
+<text class="ts" x="380.0" y="104.5" text-anchor="middle">up to 1.5 times the</text>
+<text class="ts" x="380.0" y="120.5" text-anchor="middle">direct distance; may use</text>
+<text class="ts" x="380.0" y="136.5" text-anchor="middle">unrated and Green trails</text>
+<rect class="bx" x="262" y="162" width="236" height="40" rx="6"/>
+<text class="ts" x="380.0" y="186.5" text-anchor="middle">Turns on: Climbs and topo</text>
+<rect x="514" y="10" width="236" height="44" rx="6" fill="#8a4b08"/>
+<text class="tw" x="632" y="30" text-anchor="middle">Gravel</text>
+<text class="tw" x="632" y="46" text-anchor="middle" style="font-weight:400">Rides mixed surfaces</text>
+<rect class="bx" x="514" y="62" width="236" height="92" rx="6"/>
+<text class="ts" x="632.0" y="88.5" text-anchor="middle">Unpaved costs nothing</text>
+<text class="ts" x="632.0" y="104.5" text-anchor="middle">extra, so gravel competes</text>
+<text class="ts" x="632.0" y="120.5" text-anchor="middle">with pavement; may use</text>
+<text class="ts" x="632.0" y="136.5" text-anchor="middle">unrated and Green trails</text>
+<rect class="bx" x="514" y="162" width="236" height="40" rx="6"/>
+<text class="ts" x="632.0" y="186.5" text-anchor="middle">Turns on: Trails and topo</text>
+</svg>
+</div>
+<figcaption>One job each: trails, climbs, or mixed surfaces.</figcaption>
+</figure>
 <ul>
-<li><strong>Mountain Bike</strong> looks for mountain-bike trails, up to the hardest level you choose,
-and links them with calm roads.</li>
-<li><strong>Mountain Goat</strong> looks for climbs.</li>
-<li><strong>Gravel</strong> treats unpaved roads and paths like pavement.</li>
+<li><strong>Mountain Bike</strong> is for riding mountain-bike trails. It looks for them, up to the
+hardest level you choose, and links them with calm roads.</li>
+<li><strong>Mountain Goat</strong> is for climbing. It looks for categorized climbs near your line.</li>
+<li><strong>Gravel</strong> is for mixed surfaces. Unpaved roads and paths cost nothing extra, so they
+compete with pavement.</li>
 <li>Gravel and Mountain Goat may also ride unrated trails and the easiest rated ones (Green). No other
 ride type routes on mountain-bike trails.</li>
-<li>Tap a trail on the map for its surface, an elevation profile and who can ride it.</li>
+<li>Tap a trail for its surface, an elevation profile and who can ride it. Tap a climb's marker for its
+profile.</li>
 </ul>
+<p class="find"><strong>Looking for something else?</strong> Every other ride type:
+<a href="/about/ride-types.html">Ride types</a>. How roads between trails are rated:
+<a href="/about/stress.html">Stress ratings</a>.</p>
 </div>
 
 <nav class="toc" aria-label="On this page">
 <p><strong>On this page</strong></p>
 <ul>
-<li><a href="#compare">The three ride types compared</a></li>
-<li><a href="#mtb">Mountain Bike</a></li>
-<li><a href="#goat">Mountain Goat</a></li>
-<li><a href="#gravel">Gravel</a></li>
+<li><a href="#mtb">Mountain Bike: for trails</a></li>
+<li><a href="#goat">Mountain Goat: for climbs</a></li>
+<li><a href="#gravel">Gravel: for mixed surfaces</a></li>
 <li><a href="#ratings">Trail ratings: where they come from and who may ride them</a></li>
 <li><a href="#tap">Tapping a trail</a></li>
 <li><a href="#climbs">The Climbs layer</a></li>
 <li><a href="#topo">Topo lines</a></li>
 <li><a href="#layers">Layers each ride type turns on</a></li>
+<li><a href="#settings">Starting settings and sliders</a></li>
 <li><a href="#sources">Sources</a></li>
 </ul>
 </nav>
 
-<h2 id="compare">The three ride types compared</h2>
-<figure id="fig-weigh">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
-<svg viewBox="0 0 800 350" role="img" aria-labelledby="fig-weigh-t fig-weigh-d" focusable="false" style="min-width:576px">
-<title id="fig-weigh-t">How Gravel, Mountain Goat and Mountain Bike weigh traffic, hills and surface</title>
-<desc id="fig-weigh-d">Three scales with a dot for each ride type. Traffic slider start, from 0 direct to 100 calmest: Gravel 40, Mountain Goat 40, Mountain Bike 80. Hills slider start, from minus 100 (avoid hills) to plus 100: Gravel 0, Mountain Goat 100 (seek climbs), Mountain Bike 50 (fine with hills). Rough-surface avoidance, from 0 to 1: Gravel 0, Mountain Goat 0.1, Mountain Bike 0.</desc>
-<defs><marker id="ah-weigh" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
-<text class="tb" x="216" y="95" text-anchor="end">Traffic slider start</text>
-<line class="axis" x1="230" y1="90" x2="760" y2="90"/>
-<text class="ts" x="230" y="114" text-anchor="start">0 direct</text>
-<text class="ts" x="760" y="114" text-anchor="end">100 calmest</text>
-<line x1="442.0" y1="90" x2="442.0" y2="76.0" stroke="#8a4b08" stroke-width="1.5"/>
-<line x1="442.0" y1="90" x2="442.0" y2="50.0" stroke="#9d174d" stroke-width="1.5"/>
-<line x1="654.0" y1="90" x2="654.0" y2="24.0" stroke="#5b21b6" stroke-width="1.5"/>
-<circle cx="442.0" cy="76.0" r="12" fill="#8a4b08" stroke="#ffffff" stroke-width="1.5"/>
-<text class="tw" x="442.0" y="80.0" text-anchor="middle" style="font-size:10.5px">G</text>
-<text class="ts" x="458.0" y="80" text-anchor="start">Gravel 40</text>
-<circle cx="442.0" cy="50.0" r="12" fill="#9d174d" stroke="#ffffff" stroke-width="1.5"/>
-<text class="tw" x="442.0" y="54.0" text-anchor="middle" style="font-size:10.5px">MG</text>
-<text class="ts" x="458.0" y="54" text-anchor="start">Mountain Goat 40</text>
-<circle cx="654.0" cy="24.0" r="12" fill="#5b21b6" stroke="#ffffff" stroke-width="1.5"/>
-<text class="tw" x="654.0" y="28.0" text-anchor="middle" style="font-size:10.5px">MB</text>
-<text class="ts" x="638.0" y="28" text-anchor="end">Mountain Bike 80</text>
-<text class="tb" x="216" y="205" text-anchor="end">Hills slider start</text>
-<line class="axis" x1="230" y1="200" x2="760" y2="200"/>
-<text class="ts" x="230" y="224" text-anchor="start">-100 avoid hills</text>
-<text class="ts" x="760" y="224" text-anchor="end">+100</text>
-<line x1="495.0" y1="200" x2="495.0" y2="186.0" stroke="#8a4b08" stroke-width="1.5"/>
-<line x1="760.0" y1="200" x2="760.0" y2="160.0" stroke="#9d174d" stroke-width="1.5"/>
-<line x1="627.5" y1="200" x2="627.5" y2="134.0" stroke="#5b21b6" stroke-width="1.5"/>
-<circle cx="495.0" cy="186.0" r="12" fill="#8a4b08" stroke="#ffffff" stroke-width="1.5"/>
-<text class="tw" x="495.0" y="190.0" text-anchor="middle" style="font-size:10.5px">G</text>
-<text class="ts" x="511.0" y="190" text-anchor="start">Gravel 0</text>
-<circle cx="760.0" cy="160.0" r="12" fill="#9d174d" stroke="#ffffff" stroke-width="1.5"/>
-<text class="tw" x="760.0" y="164.0" text-anchor="middle" style="font-size:10.5px">MG</text>
-<text class="ts" x="744.0" y="164" text-anchor="end">Mountain Goat 100</text>
-<circle cx="627.5" cy="134.0" r="12" fill="#5b21b6" stroke="#ffffff" stroke-width="1.5"/>
-<text class="tw" x="627.5" y="138.0" text-anchor="middle" style="font-size:10.5px">MB</text>
-<text class="ts" x="643.5" y="138" text-anchor="start">Mountain Bike 50</text>
-<line class="grid" x1="495.0" y1="194" x2="495.0" y2="206"/>
-<text class="ts" x="495.0" y="224" text-anchor="middle">0</text>
-<text class="tb" x="216" y="315" text-anchor="end">Rough-surface avoidance</text>
-<line class="axis" x1="230" y1="310" x2="760" y2="310"/>
-<text class="ts" x="230" y="334" text-anchor="start">0 none</text>
-<text class="ts" x="760" y="334" text-anchor="end">1 strong</text>
-<line x1="283.0" y1="310" x2="283.0" y2="296.0" stroke="#9d174d" stroke-width="1.5"/>
-<line x1="230.0" y1="310" x2="230.0" y2="270.0" stroke="#8a4b08" stroke-width="1.5"/>
-<line x1="230.0" y1="310" x2="230.0" y2="244.0" stroke="#5b21b6" stroke-width="1.5"/>
-<circle cx="283.0" cy="296.0" r="12" fill="#9d174d" stroke="#ffffff" stroke-width="1.5"/>
-<text class="tw" x="283.0" y="300.0" text-anchor="middle" style="font-size:10.5px">MG</text>
-<text class="ts" x="299.0" y="300" text-anchor="start">Mountain Goat 0.1</text>
-<circle cx="230.0" cy="270.0" r="12" fill="#8a4b08" stroke="#ffffff" stroke-width="1.5"/>
-<text class="tw" x="230.0" y="274.0" text-anchor="middle" style="font-size:10.5px">G</text>
-<text class="ts" x="246.0" y="274" text-anchor="start">Gravel 0</text>
-<circle cx="230.0" cy="244.0" r="12" fill="#5b21b6" stroke="#ffffff" stroke-width="1.5"/>
-<text class="tw" x="230.0" y="248.0" text-anchor="middle" style="font-size:10.5px">MB</text>
-<text class="ts" x="246.0" y="248" text-anchor="start">Mountain Bike 0</text>
-</svg>
-</div>
-<figcaption>Where each ride type starts. You can move both sliders. Gravel and Mountain Goat plan as a cyclocross bike, which takes gravel in its stride; Mountain Bike plans as a mountain bike, which takes every surface<sup class="cite"><a href="#ref-9" aria-label="source 9">[9]</a><a href="#ref-10" aria-label="source 10">[10]</a></sup>.</figcaption>
-</figure>
-<details class="more"><summary>More: The three ride types compared</summary>
-<div class="more-body">
-<div class="table-wrap" tabindex="0" role="region" aria-label="The three off-road ride types compared">
-<table>
-<caption>The three off-road ride types compared</caption>
-<thead><tr><th scope="col"></th><th scope="col">Gravel</th><th scope="col">Mountain Goat</th><th scope="col">Mountain Bike</th></tr></thead>
-<tbody>
-<tr><th scope="row">Aims for</th><td>Mixed roads and gravel</td><td>Climbs</td><td>Mountain-bike trails</td></tr>
-<tr><th scope="row">Traffic slider starts</th><td>40</td><td>40</td><td>80</td></tr>
-<tr><th scope="row">Hills slider starts</th><td>0, neutral</td><td>100, seeks climbs</td><td>50, fine with hills</td></tr>
-<tr><th scope="row">Unpaved surfaces</th><td>Cost nothing extra</td><td>Cost very little</td><td>Cost nothing extra</td></tr>
-<tr><th scope="row">Trails it may use</th><td>Unrated and Green</td><td>Unrated and Green</td><td>Unrated (as level 2) up to your hardest level</td></tr>
-<tr><th scope="row">Pace for times</th><td>12.4 mph [20 km/h]</td><td>12.4 mph [20 km/h]</td><td>About 10 mph [16 km/h]; 6.2 mph [10 km/h] on trails</td></tr>
-<tr><th scope="row">Layers turned on</th><td>Trails, topo</td><td>Topo, climbs</td><td>Trails, topo</td></tr>
-</tbody>
-</table>
-</div>
-
-<p>Paces are only for estimating times.</p>
-
-</div></details>
-<h2 id="mtb">Mountain Bike</h2>
-<p>Mountain Bike is the only ride type that goes looking for trails. It plans on its own map, where
-mountain-bike trails are open.</p>
-<details class="more"><summary>More: Mountain Bike</summary>
+<h2 id="mtb">Mountain Bike: for trails</h2>
+<p>Mountain Bike's job is to put you on mountain-bike trails. It is the only ride type that goes
+looking for them, and it plans on its own map, where mountain-bike trails are open.</p>
+<details class="more"><summary>More: Mountain Bike: for trails</summary>
 <div class="more-body">
 
 <ul>
@@ -258,20 +227,20 @@ cannot know today's ground, so the trail panel links to MORE's trail conditions<
 their level's look.</p>
 
 </div></details>
-<h2 id="goat">Mountain Goat</h2>
-<p>Mountain Goat starts the hills slider at the top, where it seeks climbs. It asks the router for
+<h2 id="goat">Mountain Goat: for climbs</h2>
+<p>Mountain Goat's job is to find climbs. It starts the hills slider at the top, where it seeks climbs. It asks the router for
 routes, adds routes through categorized climbs near your line, and picks the one that climbs most. A
 route may be up to half again as long as the most direct one (1.5 times). Lower on the slider the
 allowance shrinks: at 50 it is 1.25 times.</p>
-<details class="more"><summary>More: Mountain Goat</summary>
+<details class="more"><summary>More: Mountain Goat: for climbs</summary>
 <div class="more-body">
 
 <p>It does not add climb routes to a loop, which would only go up a climb and back down. Rough
 surfaces cost very little. It may ride unrated trails and Green trails, as Gravel does.</p>
 
 </div></details>
-<h2 id="gravel">Gravel</h2>
-<p>Gravel plans as a cyclocross bike. Unpaved roads and paths cost nothing extra, so a gravel road
+<h2 id="gravel">Gravel: for mixed surfaces</h2>
+<p>Gravel's job is a ride that mixes pavement with gravel and dirt. It plans as a cyclocross bike. Unpaved roads and paths cost nothing extra, so a gravel road
 competes with pavement on distance and traffic alone. It does not yet look for unpaved roads on
 purpose. It may ride unrated trails and Green trails. The traffic slider starts at 40, so it accepts
 busier roads than Default.</p>
@@ -528,8 +497,96 @@ no way to suggest one.</li>
 
 </div></details>
 <h2 id="climbs">The Climbs layer</h2>
-<p>The Climbs layer marks every categorized climb on the roads, paths and trails a bike may use.
-Mountain Goat turns it on, and its climb search uses the same climbs.</p>
+<p>The Climbs layer marks every categorized climb on the roads, paths and trails a bike may use, with a
+symbol at its top. The number in the symbol is the climb's category, from 5 (smallest) to 1, then HC
+(the biggest). The shape is how steep it is on average: a circle is gentle (under 4%), a square
+moderate (4% to 7.9%) and a diamond steep (8% or more). The color is what most of the climb is ridden
+on: a road, a paved path with no traffic, gravel or dirt, or a mountain-bike trail. Mountain Goat turns
+the layer on, and its climb search uses the same climbs.</p>
+<figure id="fig-climbs">
+<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<svg viewBox="0 0 800 276" role="img" aria-labelledby="fig-climbs-t fig-climbs-d" focusable="false" style="min-width:576px">
+<title id="fig-climbs-t">How the Climbs layer draws a climb</title>
+<desc id="fig-climbs-d">Each climb has a marker at its summit with its category number inside. The marker&#x27;s shape is its average grade: a circle under 4%, a square from 4 to 7.9%, a diamond for 8% or more, so a diamond means steep. The marker&#x27;s color is what most of the climb is ridden on: dark pink for a road, teal for a paved path with no traffic, brown for gravel or dirt, purple for a mountain-bike trail.</desc>
+<defs><marker id="ah-climbs" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<text class="tb" x="20" y="24" text-anchor="start">Shape: the climb&#x27;s average grade</text>
+<circle cx="50" cy="66" r="15" fill="#9d174d" stroke="#ffffff" stroke-width="2.5"/><circle cx="50" cy="66" r="16.6" fill="none" stroke="#1c1917" stroke-width="0.8"/><text class="tw" x="50" y="70.5" text-anchor="middle">4</text>
+<text class="t" x="78" y="71" text-anchor="start">Gentle: under 4%</text>
+<rect x="287.1" y="53.1" width="25.8" height="25.8" fill="#9d174d" stroke="#ffffff" stroke-width="2.5"/><rect x="285.5" y="51.5" width="29.0" height="29.0" fill="none" stroke="#1c1917" stroke-width="0.8"/><text class="tw" x="300" y="70.5" text-anchor="middle">3</text>
+<text class="t" x="328" y="71" text-anchor="start">Moderate: 4 to 7.9%</text>
+<polygon points="550,48.3 567.7,66 550,83.7 532.3,66" fill="#9d174d" stroke="#ffffff" stroke-width="2.5"/><text class="tw" x="550" y="70.5" text-anchor="middle">2</text>
+<text class="t" x="578" y="71" text-anchor="start">Steep: 8% or more</text>
+<text class="tb" x="20" y="124" text-anchor="start">Color: what most of the climb is ridden on</text>
+<rect x="37.1" y="151.1" width="25.8" height="25.8" fill="#9d174d" stroke="#ffffff" stroke-width="2.5"/><rect x="35.5" y="149.5" width="29.0" height="29.0" fill="none" stroke="#1c1917" stroke-width="0.8"/><text class="tw" x="50" y="168.5" text-anchor="middle">4</text>
+<text class="t" x="78" y="169" text-anchor="start">Road</text>
+<rect x="417.1" y="151.1" width="25.8" height="25.8" fill="#0f766e" stroke="#ffffff" stroke-width="2.5"/><rect x="415.5" y="149.5" width="29.0" height="29.0" fill="none" stroke="#1c1917" stroke-width="0.8"/><text class="tw" x="430" y="168.5" text-anchor="middle">4</text>
+<text class="t" x="458" y="169" text-anchor="start">Paved path, no traffic</text>
+<rect x="37.1" y="201.1" width="25.8" height="25.8" fill="#8a4b08" stroke="#ffffff" stroke-width="2.5"/><rect x="35.5" y="199.5" width="29.0" height="29.0" fill="none" stroke="#1c1917" stroke-width="0.8"/><text class="tw" x="50" y="218.5" text-anchor="middle">4</text>
+<text class="t" x="78" y="219" text-anchor="start">Gravel or dirt</text>
+<rect x="417.1" y="201.1" width="25.8" height="25.8" fill="#5b21b6" stroke="#ffffff" stroke-width="2.5"/><rect x="415.5" y="199.5" width="29.0" height="29.0" fill="none" stroke="#1c1917" stroke-width="0.8"/><text class="tw" x="430" y="218.5" text-anchor="middle">4</text>
+<text class="t" x="458" y="219" text-anchor="start">Mountain-bike trail</text>
+<text class="ts" x="20" y="262" text-anchor="start">The number is the climb&#x27;s category: 5 (smallest) to 1, then HC.</text>
+</svg>
+</div>
+<figcaption>The climb card and the list of climbs on your route say the surface and the steepness in words too.<sup class="cite"><a href="#ref-7" aria-label="source 7">[7]</a><a href="#ref-10" aria-label="source 10">[10]</a></sup></figcaption>
+</figure>
+<details class="more"><summary>More: The Climbs layer</summary>
+<div class="more-body">
+
+
+<h3 id="climb-symbols">The symbols in detail</h3>
+<ul>
+<li><strong>Number:</strong> the category. 5 is a short rise you notice; 3 is a real mountain climb
+for this region.</li>
+<li><strong>Circle, square or diamond:</strong> the average grade over the whole climb. A long gentle
+climb and a short steep one can share a category, so the shape tells them apart.</li>
+<li><strong>Color by surface:</strong> what more than half the climb is ridden on. A mountain-bike
+trail is checked first, then gravel or dirt, then a paved path with no traffic. Anything else is a
+road. The color says what bike suits it; it never changes the category.</li>
+<li><strong>The dashed line</strong> from zoom 12 is the climb itself, from its start to the top, in
+the same color. Summit symbols show from zoom 9.</li>
+</ul>
+<h3 id="climb-counts">How many there are, with examples</h3>
+<p>The climbs data built on October 12, 2026 has 3,750 climbs. Most are small: nine in ten are
+Category 5. The region's hills top out at Category 2; nothing reaches Category 1 or HC.</p>
+<div class="table-wrap" tabindex="0" role="region" aria-label="Climbs by category, with an example of each">
+<table>
+<caption>Climbs by category, with an example of each</caption>
+<thead><tr><th scope="col">Category</th><th scope="col" class="num">Climbs</th><th scope="col">Example</th></tr></thead>
+<tbody>
+<tr><th scope="row">HC</th><td class="num">0</td><td>None in the region</td></tr>
+<tr><th scope="row">1</th><td class="num">0</td><td>None in the region</td></tr>
+<tr><th scope="row">2</th><td class="num">2</td><td>From Thurmont up Catoctin Mountain: 7.5 mi [12.1 km] at 3.0%, 1,207 ft [368 m] gained</td></tr>
+<tr><th scope="row">3</th><td class="num">54</td><td>Middlepoint Road, Catoctin Mountain: 1.45 mi [2.34 km] at 9.9%, 758 ft [231 m]; Snider Lane, Loudoun Heights: 0.99 mi [1.59 km] at 13.7%, 715 ft [218 m]</td></tr>
+<tr><th scope="row">4</th><td class="num">367</td><td>Ilchester Road out of the Patapsco valley: 1.10 mi [1.77 km] at 6.8%, 397 ft [121 m]; Porter Street NW out of Rock Creek, DC: 1.29 mi [2.07 km] at 5.0%, 341 ft [104 m]</td></tr>
+<tr><th scope="row">5</th><td class="num">3,327</td><td>Most climbs out of Rock Creek Park in DC: typically 0.5 to 1.3 mi [0.8 to 2.1 km], gaining 130 to 260 ft [40 to 80 m]</td></tr>
+</tbody>
+</table>
+</div>
+<p>The two Category 2 climbs are both on Catoctin Mountain west of Frederick: one 7.5 mi
+[12.1 km] long from Thurmont, gaining 1,207 ft [368 m] at 3.0%, and one 3.5 mi [5.7 km] long from the
+west edge of Frederick, gaining 1,073 ft [327 m] at 5.7%. All 54 Category 3 climbs are in the
+mountains west of Frederick and along the Blue Ridge. In and around DC there are about 150 climbs,
+nearly all Category 5, many of them short climbs out of Rock Creek Park.</p>
+<h3>How a climb is found</h3>
+<ul>
+<li><strong>Heights:</strong> every way is sampled every 98 ft [30 m] on USGS 1 arc-second elevation
+data<sup class="cite"><a href="#ref-6" aria-label="source 6">[6]</a></sup>. Each way is read in both directions, and a climb against a one-way street is
+dropped.</li>
+<li><strong>Breaks, not tops:</strong> a short dip or a flat stretch does not end a climb. A dip ends
+it only past a fifth of the height gained so far (at least 33 ft [10 m], at most 165 ft [50 m]). A
+flat or downhill stretch ends it only past a quarter of the length so far (at least 0.25 mi [400 m],
+at most 1 mi [1.6 km]).</li>
+<li><strong>Gentle ends trimmed:</strong> a near-flat approach is cut off, so a short wall after a long
+flat is listed as the wall.</li>
+<li><strong>Minimums:</strong> at least 0.31 mi [500 m] long and at least 1% on average. Rail trails
+can count. Garmin's minimum grade is 3%.</li>
+</ul>
+<h3>How a climb is rated</h3>
+<p>A climb's score is its length in meters times its average grade in percent. This is the scale
+Strava and Garmin use; RouteMaker adds a Category 5<sup class="cite"><a href="#ref-7" aria-label="source 7">[7]</a></sup>. Length times grade comes to 100
+times the height gained in meters, so the category depends on the net gain. A climb scoring under
+4,000 is not a climb. For example, a climb of 1 mi [1.6 km] at 5% scores about 8,050: Category 4.</p>
 <figure id="fig-cats">
 <div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 840 142" role="img" aria-labelledby="fig-cats-t fig-cats-d" focusable="false" style="min-width:600px">
@@ -579,29 +636,6 @@ Mountain Goat turns it on, and its climb search uses the same climbs.</p>
 </div>
 <figcaption>Each category needs double the score of the one below it, except HC, which starts at 80,000. The dashed box is too small to be a climb<sup class="cite"><a href="#ref-7" aria-label="source 7">[7]</a></sup>.</figcaption>
 </figure>
-<details class="more"><summary>More: The Climbs layer</summary>
-<div class="more-body">
-
-<h3>How a climb is found</h3>
-<ul>
-<li><strong>Heights:</strong> every way is sampled every 98 ft [30 m] on USGS 1 arc-second elevation
-data<sup class="cite"><a href="#ref-6" aria-label="source 6">[6]</a></sup>. Each way is read in both directions, and a climb against a one-way street is
-dropped.</li>
-<li><strong>Breaks, not tops:</strong> a short dip or a flat stretch does not end a climb. A dip ends
-it only past a fifth of the height gained so far (at least 33 ft [10 m], at most 165 ft [50 m]). A
-flat or downhill stretch ends it only past a quarter of the length so far (at least 0.25 mi [400 m],
-at most 1 mi [1.6 km]).</li>
-<li><strong>Gentle ends trimmed:</strong> a near-flat approach is cut off, so a short wall after a long
-flat is listed as the wall.</li>
-<li><strong>Minimums:</strong> at least 0.31 mi [500 m] long and at least 1% on average. Rail trails
-can count. Garmin's minimum grade is 3%.</li>
-</ul>
-<h3>How a climb is rated</h3>
-<p>A climb's score is its length in meters times its average grade in percent. This is the scale
-Strava and Garmin use; RouteMaker adds a Category 5<sup class="cite"><a href="#ref-7" aria-label="source 7">[7]</a></sup>. Length times grade comes to 100
-times the height gained in meters, so the category depends on the net gain. A climb scoring under
-4,000 is not a climb. For example, a climb of 1 mi [1.6 km] at 5% scores about 8,050: Category 4.</p>
-
 <div class="table-wrap" tabindex="0" role="region" aria-label="Climb categories">
 <table>
 <caption>Climb categories</caption>
@@ -616,40 +650,8 @@ times the height gained in meters, so the category depends on the net gain. A cl
 </tbody>
 </table>
 </div>
-<h3>How a climb is drawn</h3>
-<p>Summit markers show from zoom 9, and the climb's dashed line from zoom 12. The number in the marker
-is the category. The shape is the average grade, and a diamond means steep: 8% or more.</p>
-<figure id="fig-climbs">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
-<svg viewBox="0 0 800 276" role="img" aria-labelledby="fig-climbs-t fig-climbs-d" focusable="false" style="min-width:576px">
-<title id="fig-climbs-t">How the Climbs layer draws a climb</title>
-<desc id="fig-climbs-d">Each climb has a marker at its summit with its category number inside. The marker&#x27;s shape is its average grade: a circle under 4%, a square from 4 to 7.9%, a diamond for 8% or more, so a diamond means steep. The marker&#x27;s color is what most of the climb is ridden on: dark pink for a road, teal for a paved path with no traffic, brown for gravel or dirt, purple for a mountain-bike trail.</desc>
-<defs><marker id="ah-climbs" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
-<text class="tb" x="20" y="24" text-anchor="start">Shape: the climb&#x27;s average grade</text>
-<circle cx="50" cy="66" r="15" fill="#9d174d" stroke="#ffffff" stroke-width="2.5"/><circle cx="50" cy="66" r="16.6" fill="none" stroke="#1c1917" stroke-width="0.8"/><text class="tw" x="50" y="70.5" text-anchor="middle">4</text>
-<text class="t" x="78" y="71" text-anchor="start">Gentle: under 4%</text>
-<rect x="287.1" y="53.1" width="25.8" height="25.8" fill="#9d174d" stroke="#ffffff" stroke-width="2.5"/><rect x="285.5" y="51.5" width="29.0" height="29.0" fill="none" stroke="#1c1917" stroke-width="0.8"/><text class="tw" x="300" y="70.5" text-anchor="middle">3</text>
-<text class="t" x="328" y="71" text-anchor="start">Moderate: 4 to 7.9%</text>
-<polygon points="550,48.3 567.7,66 550,83.7 532.3,66" fill="#9d174d" stroke="#ffffff" stroke-width="2.5"/><text class="tw" x="550" y="70.5" text-anchor="middle">2</text>
-<text class="t" x="578" y="71" text-anchor="start">Steep: 8% or more</text>
-<text class="tb" x="20" y="124" text-anchor="start">Color: what most of the climb is ridden on</text>
-<rect x="37.1" y="151.1" width="25.8" height="25.8" fill="#9d174d" stroke="#ffffff" stroke-width="2.5"/><rect x="35.5" y="149.5" width="29.0" height="29.0" fill="none" stroke="#1c1917" stroke-width="0.8"/><text class="tw" x="50" y="168.5" text-anchor="middle">4</text>
-<text class="t" x="78" y="169" text-anchor="start">Road</text>
-<rect x="417.1" y="151.1" width="25.8" height="25.8" fill="#0f766e" stroke="#ffffff" stroke-width="2.5"/><rect x="415.5" y="149.5" width="29.0" height="29.0" fill="none" stroke="#1c1917" stroke-width="0.8"/><text class="tw" x="430" y="168.5" text-anchor="middle">4</text>
-<text class="t" x="458" y="169" text-anchor="start">Paved path, no traffic</text>
-<rect x="37.1" y="201.1" width="25.8" height="25.8" fill="#8a4b08" stroke="#ffffff" stroke-width="2.5"/><rect x="35.5" y="199.5" width="29.0" height="29.0" fill="none" stroke="#1c1917" stroke-width="0.8"/><text class="tw" x="50" y="218.5" text-anchor="middle">4</text>
-<text class="t" x="78" y="219" text-anchor="start">Gravel or dirt</text>
-<rect x="417.1" y="201.1" width="25.8" height="25.8" fill="#5b21b6" stroke="#ffffff" stroke-width="2.5"/><rect x="415.5" y="199.5" width="29.0" height="29.0" fill="none" stroke="#1c1917" stroke-width="0.8"/><text class="tw" x="430" y="218.5" text-anchor="middle">4</text>
-<text class="t" x="458" y="219" text-anchor="start">Mountain-bike trail</text>
-<text class="ts" x="20" y="262" text-anchor="start">The number is the climb&#x27;s category: 5 (smallest) to 1, then HC.</text>
-</svg>
-</div>
-<figcaption>The climb card and the list of climbs on your route say the surface and the steepness in words too.<sup class="cite"><a href="#ref-7" aria-label="source 7">[7]</a><a href="#ref-10" aria-label="source 10">[10]</a></sup></figcaption>
-</figure>
+<h3>Which climbs show</h3>
 <ul>
-<li><strong>Color by surface:</strong> what more than half the climb is ridden on. A mountain-bike
-trail is checked first, then gravel or dirt, then a paved path with no traffic. Anything else is a
-road.</li>
 <li><strong>Show climbs from:</strong> Category 4 by default, which shows Category 4, 3, 2, 1 and HC
 and hides Category 5. Category 5 climbs are many and small. Choose 5 to show every climb.</li>
 <li><strong>Hide climbs on busy roads:</strong> on by default. It hides a climb when more than half of
@@ -717,11 +719,92 @@ OpenTopoMap<sup class="cite"><a href="#ref-8" aria-label="source 8">[8]</a></sup
 </div>
 <figcaption>A ride type turns a layer on when you switch to it from a ride type that does not. You can still turn the layer off, and RouteMaker does not save that as your own choice.<sup class="cite"><a href="#ref-10" aria-label="source 10">[10]</a></sup></figcaption>
 </figure>
-<details class="more"><summary>More: Layers each ride type turns on</summary>
-<div class="more-body">
-
 <p>All three layers are under Layers, Trails and terrain, for every ride type. Each has its key
 under its switch.</p>
+
+<h2 id="settings">Starting settings and sliders</h2>
+<p>Each of the three starts the traffic and hills sliders where its job needs them. You can move both;
+the roles above stay the same.</p>
+<figure id="fig-weigh">
+<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<svg viewBox="0 0 800 350" role="img" aria-labelledby="fig-weigh-t fig-weigh-d" focusable="false" style="min-width:576px">
+<title id="fig-weigh-t">How Gravel, Mountain Goat and Mountain Bike weigh traffic, hills and surface</title>
+<desc id="fig-weigh-d">Three scales with a dot for each ride type. Traffic slider start, from 0 direct to 100 calmest: Gravel 40, Mountain Goat 40, Mountain Bike 80. Hills slider start, from minus 100 (avoid hills) to plus 100: Gravel 0, Mountain Goat 100 (seek climbs), Mountain Bike 50 (fine with hills). Rough-surface avoidance, from 0 to 1: Gravel 0, Mountain Goat 0.1, Mountain Bike 0.</desc>
+<defs><marker id="ah-weigh" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<text class="tb" x="216" y="95" text-anchor="end">Traffic slider start</text>
+<line class="axis" x1="230" y1="90" x2="760" y2="90"/>
+<text class="ts" x="230" y="114" text-anchor="start">0 direct</text>
+<text class="ts" x="760" y="114" text-anchor="end">100 calmest</text>
+<line x1="442.0" y1="90" x2="442.0" y2="76.0" stroke="#8a4b08" stroke-width="1.5"/>
+<line x1="442.0" y1="90" x2="442.0" y2="50.0" stroke="#9d174d" stroke-width="1.5"/>
+<line x1="654.0" y1="90" x2="654.0" y2="24.0" stroke="#5b21b6" stroke-width="1.5"/>
+<circle cx="442.0" cy="76.0" r="12" fill="#8a4b08" stroke="#ffffff" stroke-width="1.5"/>
+<text class="tw" x="442.0" y="80.0" text-anchor="middle" style="font-size:10.5px">G</text>
+<text class="ts" x="458.0" y="80" text-anchor="start">Gravel 40</text>
+<circle cx="442.0" cy="50.0" r="12" fill="#9d174d" stroke="#ffffff" stroke-width="1.5"/>
+<text class="tw" x="442.0" y="54.0" text-anchor="middle" style="font-size:10.5px">MG</text>
+<text class="ts" x="458.0" y="54" text-anchor="start">Mountain Goat 40</text>
+<circle cx="654.0" cy="24.0" r="12" fill="#5b21b6" stroke="#ffffff" stroke-width="1.5"/>
+<text class="tw" x="654.0" y="28.0" text-anchor="middle" style="font-size:10.5px">MB</text>
+<text class="ts" x="638.0" y="28" text-anchor="end">Mountain Bike 80</text>
+<text class="tb" x="216" y="205" text-anchor="end">Hills slider start</text>
+<line class="axis" x1="230" y1="200" x2="760" y2="200"/>
+<text class="ts" x="230" y="224" text-anchor="start">-100 avoid hills</text>
+<text class="ts" x="760" y="224" text-anchor="end">+100</text>
+<line x1="495.0" y1="200" x2="495.0" y2="186.0" stroke="#8a4b08" stroke-width="1.5"/>
+<line x1="760.0" y1="200" x2="760.0" y2="160.0" stroke="#9d174d" stroke-width="1.5"/>
+<line x1="627.5" y1="200" x2="627.5" y2="134.0" stroke="#5b21b6" stroke-width="1.5"/>
+<circle cx="495.0" cy="186.0" r="12" fill="#8a4b08" stroke="#ffffff" stroke-width="1.5"/>
+<text class="tw" x="495.0" y="190.0" text-anchor="middle" style="font-size:10.5px">G</text>
+<text class="ts" x="511.0" y="190" text-anchor="start">Gravel 0</text>
+<circle cx="760.0" cy="160.0" r="12" fill="#9d174d" stroke="#ffffff" stroke-width="1.5"/>
+<text class="tw" x="760.0" y="164.0" text-anchor="middle" style="font-size:10.5px">MG</text>
+<text class="ts" x="744.0" y="164" text-anchor="end">Mountain Goat 100</text>
+<circle cx="627.5" cy="134.0" r="12" fill="#5b21b6" stroke="#ffffff" stroke-width="1.5"/>
+<text class="tw" x="627.5" y="138.0" text-anchor="middle" style="font-size:10.5px">MB</text>
+<text class="ts" x="643.5" y="138" text-anchor="start">Mountain Bike 50</text>
+<line class="grid" x1="495.0" y1="194" x2="495.0" y2="206"/>
+<text class="ts" x="495.0" y="224" text-anchor="middle">0</text>
+<text class="tb" x="216" y="315" text-anchor="end">Rough-surface avoidance</text>
+<line class="axis" x1="230" y1="310" x2="760" y2="310"/>
+<text class="ts" x="230" y="334" text-anchor="start">0 none</text>
+<text class="ts" x="760" y="334" text-anchor="end">1 strong</text>
+<line x1="283.0" y1="310" x2="283.0" y2="296.0" stroke="#9d174d" stroke-width="1.5"/>
+<line x1="230.0" y1="310" x2="230.0" y2="270.0" stroke="#8a4b08" stroke-width="1.5"/>
+<line x1="230.0" y1="310" x2="230.0" y2="244.0" stroke="#5b21b6" stroke-width="1.5"/>
+<circle cx="283.0" cy="296.0" r="12" fill="#9d174d" stroke="#ffffff" stroke-width="1.5"/>
+<text class="tw" x="283.0" y="300.0" text-anchor="middle" style="font-size:10.5px">MG</text>
+<text class="ts" x="299.0" y="300" text-anchor="start">Mountain Goat 0.1</text>
+<circle cx="230.0" cy="270.0" r="12" fill="#8a4b08" stroke="#ffffff" stroke-width="1.5"/>
+<text class="tw" x="230.0" y="274.0" text-anchor="middle" style="font-size:10.5px">G</text>
+<text class="ts" x="246.0" y="274" text-anchor="start">Gravel 0</text>
+<circle cx="230.0" cy="244.0" r="12" fill="#5b21b6" stroke="#ffffff" stroke-width="1.5"/>
+<text class="tw" x="230.0" y="248.0" text-anchor="middle" style="font-size:10.5px">MB</text>
+<text class="ts" x="246.0" y="248" text-anchor="start">Mountain Bike 0</text>
+</svg>
+</div>
+<figcaption>Where each ride type starts. You can move both sliders. Gravel and Mountain Goat plan as a cyclocross bike, which takes gravel in its stride; Mountain Bike plans as a mountain bike, which takes every surface<sup class="cite"><a href="#ref-9" aria-label="source 9">[9]</a><a href="#ref-10" aria-label="source 10">[10]</a></sup>.</figcaption>
+</figure>
+<details class="more"><summary>More: Starting settings and sliders</summary>
+<div class="more-body">
+
+
+<div class="table-wrap" tabindex="0" role="region" aria-label="The three off-road ride types compared">
+<table>
+<caption>The three off-road ride types compared</caption>
+<thead><tr><th scope="col"></th><th scope="col">Gravel</th><th scope="col">Mountain Goat</th><th scope="col">Mountain Bike</th></tr></thead>
+<tbody>
+<tr><th scope="row">Aims for</th><td>Mixed roads and gravel</td><td>Climbs</td><td>Mountain-bike trails</td></tr>
+<tr><th scope="row">Traffic slider starts</th><td>40</td><td>40</td><td>80</td></tr>
+<tr><th scope="row">Hills slider starts</th><td>0, neutral</td><td>100, seeks climbs</td><td>50, fine with hills</td></tr>
+<tr><th scope="row">Unpaved surfaces</th><td>Cost nothing extra</td><td>Cost very little</td><td>Cost nothing extra</td></tr>
+<tr><th scope="row">Trails it may use</th><td>Unrated and Green</td><td>Unrated and Green</td><td>Unrated (as level 2) up to your hardest level</td></tr>
+<tr><th scope="row">Pace for times</th><td>12.4 mph [20 km/h]</td><td>12.4 mph [20 km/h]</td><td>About 10 mph [16 km/h]; 6.2 mph [10 km/h] on trails</td></tr>
+<tr><th scope="row">Layers turned on</th><td>Trails, topo</td><td>Topo, climbs</td><td>Trails, topo</td></tr>
+</tbody>
+</table>
+</div>
+<p>Paces are only for estimating times.</p>
 
 <div class="short">
 <p><strong>Note on map data</strong></p>

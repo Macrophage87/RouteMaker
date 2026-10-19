@@ -94,6 +94,12 @@
   details.more > summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
   details.more[open] > summary { border-bottom: 1px solid var(--line); }
   details.more > .more-body { padding: 0 0.8rem 0.4rem; }
+
+  .glance { background: var(--accent-bg); border: 2px solid var(--accent); border-radius: 8px; padding: 0.25rem 1rem 0.75rem; margin: 1rem 0 1.5rem; }
+  .glance > h2 { border-top: 0; margin: 0.5rem 0 0.25rem; padding-top: 0; }
+  .glance figure { background: var(--bg); }
+  .glance ul { padding-left: 1.25rem; }
+  .glance .find { margin-bottom: 0; }
 </style>
 </head>
 <body>
@@ -120,6 +126,51 @@
 junction and every closure a cost, then finding the route that costs least for the ride type you chose.
 This page lists those costs and how each ride type changes them. How a road gets its level is on
 <a href="/about/stress.html">Stress ratings</a>.</p>
+
+<div class="glance">
+<h2 id="glance">At a glance</h2>
+<figure id="fig-glance-routing">
+<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<svg viewBox="0 0 760 226" role="img" aria-labelledby="fig-glance-routing-t fig-glance-routing-d" focusable="false" style="min-width:547px">
+<title id="fig-glance-routing-t">Routing at a glance</title>
+<desc id="fig-glance-routing-d">A route&#x27;s cost is the sum of three parts: each stretch costs its length times its stress level&#x27;s cost, each busy junction adds extra, and hills, surface and turns count as your ride type weighs them. Real closures are blocked. Everything is added up in calm miles, and the router picks the cheapest route for your ride type and slider setting.</desc>
+<defs><marker id="ah-glance-routing" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<rect class="bx" x="10" y="14" width="230" height="50" rx="6"/>
+<text class="tb" x="125.0" y="35.5" text-anchor="middle">Each stretch</text>
+<text class="ts" x="125.0" y="51.5" text-anchor="middle">miles times its level&#x27;s cost</text>
+<path class="ar" d="M244,39 L296,103" marker-end="url(#ah-glance-routing)"/>
+<rect class="bx" x="10" y="78" width="230" height="50" rx="6"/>
+<text class="tb" x="125.0" y="99.5" text-anchor="middle">Each junction</text>
+<text class="ts" x="125.0" y="115.5" text-anchor="middle">extra for busy crossings</text>
+<path class="ar" d="M244,103 L296,103" marker-end="url(#ah-glance-routing)"/>
+<rect class="bx" x="10" y="142" width="230" height="50" rx="6"/>
+<text class="tb" x="125.0" y="163.5" text-anchor="middle">Hills, surface, turns</text>
+<text class="ts" x="125.0" y="179.5" text-anchor="middle">as your ride type weighs them</text>
+<path class="ar" d="M244,167 L296,103" marker-end="url(#ah-glance-routing)"/>
+<rect class="bxa" x="300" y="70" width="190" height="66" rx="6"/>
+<text class="tb" x="395.0" y="99.5" text-anchor="middle">Add it all up</text>
+<text class="ts" x="395.0" y="115.5" text-anchor="middle">in calm miles</text>
+<path class="ar" d="M494,103 L546,103" marker-end="url(#ah-glance-routing)"/>
+<rect class="bxa" x="550" y="70" width="200" height="66" rx="6"/>
+<text class="tb" x="650.0" y="91.5" text-anchor="middle">Cheapest route</text>
+<text class="ts" x="650.0" y="107.5" text-anchor="middle">for your ride type</text>
+<text class="ts" x="650.0" y="123.5" text-anchor="middle">and slider</text>
+<rect class="bx" x="300" y="170" width="190" height="44" rx="6"/>
+<text class="tb" x="395.0" y="188.5" text-anchor="middle">Real closures</text>
+<text class="ts" x="395.0" y="204.5" text-anchor="middle">blocked</text>
+<path class="ar" d="M395,168 L395,140" marker-end="url(#ah-glance-routing)"/>
+</svg>
+</div>
+<figcaption>Every cost is in calm miles: a mile of quiet street counts as 1.</figcaption>
+</figure>
+<ul>
+<li>Every stretch costs its length times its level's cost, in calm miles: a mile of quiet street counts as 1.</li>
+<li>Busy junctions cost extra, so a quiet street that crosses a highway at a stop sign is not treated as quiet.</li>
+<li>Your ride type and the traffic slider set the costs; they never change a road's rating.</li>
+<li>Real closures move a route. DC's planned-work permits never do.</li>
+</ul>
+<p class="find"><strong>Looking for something else?</strong> How a road gets its level: <a href="/about/stress.html">Stress ratings</a>. Each ride type's settings: <a href="/about/ride-types.html">Ride types</a>.</p>
+</div>
 
 <nav class="toc" aria-label="On this page">
 <p><strong>On this page</strong></p>
@@ -271,6 +322,10 @@ wider roads of the same level cost more.</p>
 
 </div></details>
 <h2 id="penalties">Everything a route pays for</h2>
+<p>A route pays for every stretch by its stress level, every junction it crosses, each entry onto an Avoid road, repeated roads, hills, surface and turns. All of it is counted in calm miles.</p>
+<details class="more"><summary>More: Everything a route pays for</summary>
+<div class="more-body">
+
 <ul>
 <li><strong>Each stretch</strong>, by its stress level: the calm-mile costs above. Faster and wider
 roads of the same level cost more. A half step costs halfway between its two levels.</li>
@@ -289,6 +344,7 @@ route's riding on LTS 3, LTS 4 and Avoid, and accepts a longer route for less of
 </ul>
 <p>None of these change a road's rating: they change only what a route through it costs.</p>
 
+</div></details>
 <h2 id="junctions">Junctions</h2>
 <p>Crossing or turning onto a busy road is often the most stressful part of a ride, so junctions have a
 cost of their own, measured in calm miles: the extra distance of quiet street a junction is worth.

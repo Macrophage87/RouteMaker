@@ -94,6 +94,12 @@
   details.more > summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
   details.more[open] > summary { border-bottom: 1px solid var(--line); }
   details.more > .more-body { padding: 0 0.8rem 0.4rem; }
+
+  .glance { background: var(--accent-bg); border: 2px solid var(--accent); border-radius: 8px; padding: 0.25rem 1rem 0.75rem; margin: 1rem 0 1.5rem; }
+  .glance > h2 { border-top: 0; margin: 0.5rem 0 0.25rem; padding-top: 0; }
+  .glance figure { background: var(--bg); }
+  .glance ul { padding-left: 1.25rem; }
+  .glance .find { margin-bottom: 0; }
 </style>
 </head>
 <body>
@@ -121,8 +127,44 @@ extra distance a calmer road is worth, how it treats hills and unpaved surfaces,
 likely to ride. All of them use the same <a href="/about/stress.html#levels">stress
 ratings</a>.</p>
 
-<div class="short">
-<p><strong>In short</strong></p>
+<div class="glance">
+<h2 id="glance">At a glance</h2>
+<figure id="fig-glance-ride-types">
+<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<svg viewBox="0 0 760 206" role="img" aria-labelledby="fig-glance-ride-types-t fig-glance-ride-types-d" focusable="false" style="min-width:547px">
+<title id="fig-glance-ride-types-t">Ride types at a glance</title>
+<desc id="fig-glance-ride-types-d">Fifteen ride types in four groups. Transportation: Default, Novice and Nervous, E-bike and Cargo Bike. Bikeshare and transit: Bikeshare, Own Bike + transit and Bikeshare + transit. Adventure: Fast, Trailmaxxing, Gravel, Mountain Goat, Mountain Bike and Rebalance Ride. Group: Group Ride and Mass Ride. All use the same stress ratings; each sets how much a calmer road is worth, how it treats hills and surfaces, and the pace.</desc>
+<defs><marker id="ah-glance-ride-types" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<rect class="bxa" x="10" y="14" width="176" height="40" rx="6"/>
+<text class="tb" x="98.0" y="38.5" text-anchor="middle">Transportation</text>
+<rect class="bx" x="10" y="62" width="176" height="104" rx="6"/>
+<text class="ts" x="98.0" y="94.5" text-anchor="middle">Default</text>
+<text class="ts" x="98.0" y="110.5" text-anchor="middle">Novice and Nervous</text>
+<text class="ts" x="98.0" y="126.5" text-anchor="middle">E-bike</text>
+<text class="ts" x="98.0" y="142.5" text-anchor="middle">Cargo Bike</text>
+<rect class="bxa" x="198" y="14" width="176" height="40" rx="6"/>
+<text class="tb" x="286.0" y="38.5" text-anchor="middle">Bikeshare and transit</text>
+<rect class="bx" x="198" y="62" width="176" height="104" rx="6"/>
+<text class="ts" x="286.0" y="102.5" text-anchor="middle">Bikeshare</text>
+<text class="ts" x="286.0" y="118.5" text-anchor="middle">Own Bike + transit</text>
+<text class="ts" x="286.0" y="134.5" text-anchor="middle">Bikeshare + transit</text>
+<rect class="bxa" x="386" y="14" width="176" height="40" rx="6"/>
+<text class="tb" x="474.0" y="38.5" text-anchor="middle">Adventure</text>
+<rect class="bx" x="386" y="62" width="176" height="104" rx="6"/>
+<text class="ts" x="474.0" y="94.5" text-anchor="middle">Fast, Trailmaxxing</text>
+<text class="ts" x="474.0" y="110.5" text-anchor="middle">Gravel, Mountain Goat</text>
+<text class="ts" x="474.0" y="126.5" text-anchor="middle">Mountain Bike</text>
+<text class="ts" x="474.0" y="142.5" text-anchor="middle">Rebalance Ride</text>
+<rect class="bxa" x="574" y="14" width="176" height="40" rx="6"/>
+<text class="tb" x="662.0" y="38.5" text-anchor="middle">Group</text>
+<rect class="bx" x="574" y="62" width="176" height="104" rx="6"/>
+<text class="ts" x="662.0" y="110.5" text-anchor="middle">Group Ride</text>
+<text class="ts" x="662.0" y="126.5" text-anchor="middle">Mass Ride</text>
+<text class="ts" x="380" y="194" text-anchor="middle">Same ratings for all; each sets how much a calmer road is worth, hills, surfaces and pace.</text>
+</svg>
+</div>
+<figcaption>Every ride type, by group.</figcaption>
+</figure>
 <ul>
 <li><strong>Transportation:</strong> Default, Novice and Nervous, E-bike, Cargo Bike, Bikeshare, Own
 Bike + transit, Bikeshare + transit.</li>
@@ -132,6 +174,7 @@ Ride.</li>
 <li>Go shows the four most common first: Default, Novice and Nervous, Bikeshare, and Own Bike +
 transit.</li>
 </ul>
+<p class="find"><strong>Looking for something else?</strong> How the costs work: <a href="/about/routing.html">Routing</a>. The off-road ride types in depth: <a href="/about/trails.html">Mountain Bike, Mountain Goat and Gravel</a>. Big group rides: <a href="/about/mass-ride.html">Mass Ride</a>.</p>
 </div>
 
 <nav class="toc" aria-label="On this page">
@@ -317,6 +360,10 @@ Ride types differ in how heavily they count LTS 4 and Avoid:</p>
 
 </div></details>
 <h2 id="transportation">Transportation ride types</h2>
+<p>For getting somewhere: Default for everyday riding, Novice and Nervous for riders new to traffic, and E-bike for assisted riding and Cargo Bike for a long, heavy bike. Bikeshare and transit have their own section.</p>
+<details class="more"><summary>More: Transportation ride types</summary>
+<div class="more-body">
+
 <h3>Default</h3>
 <p>Everyday riding that prefers paths and quiet streets, even when a busier road would be faster. The
 slider starts at 70: a mile of LTS 3 costs about 3 to 6 calm miles and a mile of LTS 4 about 13 to 16.
@@ -336,6 +383,7 @@ seconds on Default), and stronger avoidance of rough surfaces. Choose carrying c
 start the slider at 80 and count LTS 2 streets a little, so routes lean toward LTS 1. Electric assist
 switches to the e-bike map and a faster pace, but hills still count.</p>
 
+</div></details>
 <h2 id="transit">Bikeshare and transit</h2>
 <figure id="fig-bikeshare">
 <div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
@@ -423,6 +471,10 @@ board.</li>
 
 </div></details>
 <h2 id="adventure">Adventure ride types</h2>
+<p>For riding for its own sake: Fast for direct roads, Trailmaxxing for the calmest route, Gravel, Mountain Goat and Mountain Bike off the pavement, and Rebalance Ride for moving a bikeshare bike to a station that needs one.</p>
+<details class="more"><summary>More: Adventure ride types</summary>
+<div class="more-body">
+
 <h3>Fast</h3>
 <p>Direct roads, few turns and smooth pavement, whatever the traffic. The slider starts at 10, so a mile
 of LTS 4 costs only about 2 calm miles.</p>
@@ -446,7 +498,12 @@ conditions<sup class="cite"><a href="#ref-7" aria-label="source 7">[7]</a></sup>
 <p>Mountain Bike, Mountain Goat and Gravel each work differently from the road ride types:
 <a href="/about/trails.html">Mountain Bike, Mountain Goat and Gravel</a> explains how.</p>
 
+</div></details>
 <h2 id="group">Group ride types</h2>
+<p>For riding together: Group Ride for a group riding with traffic, and Mass Ride for a large group that takes the roadway.</p>
+<details class="more"><summary>More: Group ride types</summary>
+<div class="more-body">
+
 <h3>Group Ride</h3>
 <p>A group riding with traffic at riding pace: quiet roads, fewer turns (each change of street costs 30
 seconds, against 5 on Default) and fewer gates.</p>
@@ -458,7 +515,12 @@ map shows how many riders a minute each road can carry instead of traffic stress
 2,000 riders<sup class="cite"><a href="#ref-8" aria-label="source 8">[8]</a></sup>, along with notes on federal land and reviewed hazard reports. Its method is
 unlike any other ride type's: <a href="/about/mass-ride.html">Mass Ride</a> explains it.</p>
 
+</div></details>
 <h2 id="options">Options for any ride type</h2>
+<p>Two sliders and a few switches work on any ride type: how much traffic you accept, how you feel about hills, and whether to avoid gravel or trails.</p>
+<details class="more"><summary>More: Options for any ride type</summary>
+<div class="more-body">
+
 <ul>
 <li><strong>Traffic slider:</strong> named notches from Traffic tolerant (10) through Direct (25),
 Balanced (40), Prefers quiet (70), Low-stress (80) and Calm (90) to Calmest (100).</li>
@@ -472,6 +534,7 @@ you asked it to avoid hills.</li>
 types other than transit, Rebalance Ride and Mass Ride.</li>
 </ul>
 
+</div></details>
 <h2 id="sources">Sources</h2>
 <ol class="refs">
   <li id="ref-1">Valhalla bicycle costing options (<code>use_roads</code>, <code>use_hills</code>, <code>bicycle_type</code>, <code>avoid_bad_surfaces</code>). <a href="https://valhalla.github.io/valhalla/api/turn-by-turn/api-reference/#bicycle-costing-options">valhalla.github.io</a></li>
