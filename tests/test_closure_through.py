@@ -175,6 +175,49 @@ def test_a_road_the_rider_marked_closed_stays_out_of_every_request(client, monke
 
 
 @db
+@pytest.mark.usefixtures("weekday_clock", "segments")
+def test_go_and_a_ride_route_through_ddots_permits_plan_round_them(client, monkeypatch) -> None:
+    """v0.9.1: `closures_now` (Go and a ride) leaves DDOT's permits out of the request;
+    without it (Plan) a permit is routed round as before."""
+    from test_route_api import VERTICES, FakeRouter, good_body, post, route_answer, trace_answer
+
+    from core import routing
+
+    until = datetime.now(UTC) + timedelta(days=30)
+    side = ((-77.04, NORTH), (-77.03, NORTH))
+    permit = wz.Zone("dc-p", "dc", wz.CLOSED, 0, side, "Side Road", None, None, until)
+    BikeshareFeedCache.objects.create(
+        key=workzones.KEY,
+        payload={"feeds": {"dc": {"read_at": datetime.now(UTC).isoformat(),
+                                  "zones": [permit.to_json()]}}},
+        fetched_at=datetime.now(UTC),
+    )  # fmt: skip
+    fake = FakeRouter(
+        {
+            "route": lambda payload: route_answer([(VERTICES, 2.2, [10.0] * 5)]),
+            "trace_attributes": trace_answer(VERTICES, [(101, 0, 4, 2.2)]),
+        }
+    )
+    sent: list[dict] = []
+
+    def transport(url, payload, timeout):
+        sent.append({"url": url, **json.loads(json.dumps(payload))})
+        return fake(url, payload, timeout)
+
+    monkeypatch.setattr(routing, "_transport", transport)
+
+    def first_route(body) -> dict:
+        sent.clear()
+        response = post(client, body)
+        assert response.status_code == 200, response.content
+        return next(p for p in sent if p["url"].endswith("/route"))
+
+    assert first_route(good_body()).get("exclude_polygons"), "Plan routes round the permit"
+    go = first_route({**good_body(), "closures_now": True})
+    assert not go.get("exclude_polygons"), "Go leaves the permit out"
+
+
+@db
 @pytest.mark.usefixtures("segments")
 def test_blocked_lines_are_checked(client) -> None:
     from test_route_api import good_body, post

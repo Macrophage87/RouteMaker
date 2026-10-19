@@ -22,12 +22,12 @@ import { CHECK_TIMEOUT_MS, checkClosures } from "./closureCheck.ts";
 import { routeRequestBody } from "./api.ts";
 import type { Dials } from "./dials.ts";
 import type { LonLat } from "./geo.ts";
+import { readFileSync } from "node:fs";
 
 const LINE2: LonLat[] = [
   [-77.05, 38.9],
   [-77.0, 38.95],
 ];
-import { readFileSync } from "node:fs";
 
 function item(over: Partial<ClosureItem> = {}): ClosureItem {
   return {

@@ -2741,7 +2741,7 @@ export function App() {
   // The closure check (v0.7.0, "closure warning first", and its correction): a route opened, Start ride, and a
   // download are checked against the closures in force now; any hit asks in the major dialog.
   const [closureAsk, setClosureAsk] = useState<ClosureAsk | null>(null);
-  const closurePending = useRef<{ line: number[][]; index: number[]; closures: Closure[]; gpx: boolean; proceed: () => void; afterGpx?: (track: number[][]) => void } | null>(null);
+  const closurePending = useRef<{ line: number[][]; index: number[]; closures: Closure[]; gpx: boolean; nowOnly: boolean; proceed: () => void; afterGpx?: (track: number[][]) => void } | null>(null);
   // A line the rider chose to ride anyway is not asked about again (on Start ride, say).
   const closureLetGo = useRef<string | null>(null);
   const lineKey = (line: readonly (readonly number[])[]) => `${line.length}:${line[0]?.join(",")}:${line[line.length - 1]?.join(",")}`;
@@ -2767,7 +2767,7 @@ export function App() {
       return;
     }
     onAsk?.();
-    closurePending.current = { line: line.map((v) => [...v]), index: found.index, closures: found.closures, gpx, proceed, afterGpx };
+    closurePending.current = { line: line.map((v) => [...v]), index: found.index, closures: found.closures, gpx, nowOnly, proceed, afterGpx };
     setClosureAsk({ why, closures: found.closures, unchecked: found.unchecked, notices: found.notices });
   };
   const closureAnyway = () => {
@@ -2807,7 +2807,9 @@ export function App() {
           [pending.line[after][0], pending.line[after][1]],
         ];
         // The detour's line alone is used: no routes to choose from (review speed-5).
-        const result = await requestRoute(ends, rideRef.current.preset, { dials: planDials, routeOnly: true });
+        // The detours go round what the check found: on Start ride, only the closures known to be on.
+        const dials = pending.nowOnly ? { ...planDials, closuresNow: true } : planDials;
+        const result = await requestRoute(ends, rideRef.current.preset, { dials, routeOnly: true });
         return result.ok ? result.route.geometry.coordinates.map(([lon, lat]) => [lon, lat] as LonLat) : null;
       }),
     );
