@@ -7,13 +7,14 @@ gets the ride cue "no signal mapped (Higher stress junction)". DDOT publishes
 every signal it runs (DDOT Traffic Signals, DC GIS; docs/SOURCES.md), and DC data
 beats OSM for the same fact (the owner, 2026-10-11), so the rebuild reads the list
 and marks the junction node at each signal OSM does not have. MDOT SHA (every
-Maryland signal but Baltimore City's), Arlington and Alexandria publish lists too
+Maryland signal but Baltimore City's), VDOT (Virginia's, a 2023 snapshot), Arlington
+and Alexandria publish lists too
 (`LICENCE_CONFIRMED` says which are read).
 
 The installed file, `<reference>/signals.json`, is one row per signal,
 `{"id", "source", "lon", "lat", "kind"}` (`kind` "signal", or "hawk" for a
 pedestrian hybrid beacon), written by `scripts/install_reference_data.py
---dc-signals / --md-signals / --arlington-signals / --alexandria-signals /
+--dc-signals / --md-signals / --va-signals / --arlington-signals / --alexandria-signals /
 --alexandria-hawks` from each layer as `scripts/fetch_agency_layer.py` stored it.
 Optional: without it the map keeps OSM's signals only, and the load logs that it
 is absent.
@@ -78,6 +79,10 @@ LICENCE_CONFIRMED = {
     # Arlington County: "Please review the Arlington County data disclaimer"; the
     # county's terms are pending (docs/SOURCES.md, Bike Comfort Index).
     "arlington": False,
+    # VDOT HMMS Traffic Signals (2023 Snapshot), Virginia Roads: the portal's VDOT
+    # disclaimer only, as VDOT's traffic volume already read (the owner sent it,
+    # 2026-10-19).
+    "vdot": True,
 }
 SOURCES = frozenset(LICENCE_CONFIRMED)
 
@@ -239,12 +244,43 @@ def alexandria_rows(doc: Mapping, kind: str = "signal") -> tuple[list[dict], dic
     )
 
 
+def _vdot_kind(subtype: object) -> str | None:
+    """VDOT's `ASSET_SUBTYPE` as a kind: a Pedestrian Hybrid Beacon is a HAWK, a
+    Traffic Signal a signal, an Intersection Flasher neither. Read by its words, so
+    the coded value's name ("1-Traffic Signal") and its description both read."""
+    text = str(subtype or "").strip().lower()
+    if "hybrid" in text or "beacon" in text:
+        return "hawk"
+    if "signal" in text and "flash" not in text:
+        return "signal"
+    return None
+
+
+def vdot_rows(doc: Mapping) -> tuple[list[dict], dict[str, int]]:
+    """VDOT HMMS Traffic Signals (2023 Snapshot): `ASSET_SUBTYPE` Traffic Signal
+    or Pedestrian Hybrid Beacon (an Intersection Flasher is left out) whose
+    `STATUS` is Active (code `Active`, name `3-Active`). Every Virginia signal VDOT
+    kept in HMMS up to October 2023, Fairfax's and the other counties' included; the
+    snapshot is not updated. A record whose subtype reads as neither is counted by
+    its value, so a layer coded otherwise shows in the installer's output."""
+
+    def keep(props: Mapping) -> tuple[bool, str]:
+        if _vdot_kind(props.get("ASSET_SUBTYPE")) is None:
+            return False, f"subtype {props.get('ASSET_SUBTYPE') or 'none'}"
+        status = str(props.get("STATUS") or "").strip().lower()
+        if "active" not in status:
+            return False, f"STATUS {props.get('STATUS') or 'none'}"
+        return True, ""
+
+    return _rows(doc, "vdot", keep=keep, kind=lambda props: _vdot_kind(props["ASSET_SUBTYPE"]))
+
+
 def load(path: Path) -> tuple[Signal, ...]:
     """The installed signals, or none (with a warning) where not installed."""
     if not path.exists():
         logger.warning(
-            "%s is absent, so no agency signal list is read (DDOT, MDOT SHA, Arlington, "
-            "Alexandria): the map keeps OSM's signals only. Install it with "
+            "%s is absent, so no agency signal list is read (DDOT, MDOT SHA, VDOT, "
+            "Arlington, Alexandria): the map keeps OSM's signals only. Install it with "
             "scripts/install_reference_data.py --dc-signals (and the others' flags)",
             path,
         )

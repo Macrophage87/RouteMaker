@@ -212,6 +212,19 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
 - Licence: open data, no restrictions stated (PLAN.md, "Licensing").
 - Records: docs/PLAYBOOK.md, "The three reference inputs"; docs/DEVELOPMENT.md,
   "Reference data".
+- Dataset: **HMMS Traffic Signals (2023 Snapshot)** (v0.10.0), ArcGIS item
+  `0d4c36cd061f4be280691d9ff6d36419`
+  (<https://www.virginiaroads.org/datasets/0d4c36cd061f4be280691d9ff6d36419_0>), layer
+  <https://services.arcgis.com/p5v98VHDX9Atv3l7/arcgis/rest/services/HMMS_Traffic_Signals_Flat_NEW/FeatureServer/0>,
+  from VDOT's Traffic Engineering Division: "a snapshot of Traffic Signal data recorded in
+  VDOT HMMS up through October 2023" (signal records have since left HMMS, so it is not
+  updated). 3,153 records on 2026-10-19; `ASSET_SUBTYPE` Traffic Signal and Pedestrian
+  Hybrid Beacon with `STATUS` Active are read, Intersection Flashers left out. Marks the
+  junctions at a Virginia signal OSM does not map as one (`pipeline.agency_signals`); a
+  signal built since October 2023 is not in it. Licence: the item's VDOT disclaimer
+  (sent by the owner 2026-10-19: use "at its own risk", "provided without any guarantee
+  of accuracy, timeliness or completeness"), the portal's terms as for the counts above.
+  Fetched at rebuild time; size and sha256: the download's README, to be copied here.
 
 ## Maryland traffic counts (MDOT SHA)
 

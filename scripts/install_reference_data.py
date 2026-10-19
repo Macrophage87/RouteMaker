@@ -71,6 +71,7 @@ signal OSM does not map:
 
     --dc-signals dc-traffic-signals.geojson          DDOT / DC GIS, Traffic Signals
     --md-signals md-traffic-signals.geojson          MDOT SHA, Traffic Signals
+    --va-signals va-traffic-signals.geojson          VDOT, HMMS Traffic Signals (2023)
     --arlington-signals arlington-intersections.geojson
                                                      Arlington, Intersection Points
     --alexandria-signals alexandria-signals.geojson  Alexandria, Smart Mobility layer 9
@@ -583,6 +584,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--md-signals", type=Path, help="MDOT SHA Traffic Signals, GeoJSON")
     parser.add_argument(
+        "--va-signals", type=Path, help="VDOT HMMS Traffic Signals (2023 Snapshot), GeoJSON"
+    )
+    parser.add_argument(
         "--arlington-signals", type=Path, help="Arlington Intersection Points, GeoJSON"
     )
     parser.add_argument(
@@ -616,6 +620,7 @@ def main(argv: list[str] | None = None) -> int:
         args.scenic_byways,
         args.dc_signals,
         args.md_signals,
+        args.va_signals,
         args.arlington_signals,
         args.alexandria_signals,
         args.alexandria_hawks,
@@ -729,6 +734,7 @@ def main(argv: list[str] | None = None) -> int:
     signal_inputs = (
         (args.dc_signals, "ddot_rows", {}),
         (args.md_signals, "mdot_sha_rows", {}),
+        (args.va_signals, "vdot_rows", {}),
         (args.arlington_signals, "arlington_rows", {}),
         (args.alexandria_signals, "alexandria_rows", {}),
         (args.alexandria_hawks, "alexandria_rows", {"kind": "hawk"}),

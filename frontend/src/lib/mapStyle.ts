@@ -35,7 +35,7 @@ export const OPENING_ZOOM = 11.2;
  *   Roadway Block, Traffic Signals, Metro stations and entrances, and the
  *   federal-land layers):
  *   CC BY 4.0 asks for the licence and that the data was changed, so both stay;
- * - VDOT traffic volume; Open Baltimore's streets and bike facilities; MDOT SHA's
+ * - VDOT traffic volume and traffic signals; Open Baltimore's streets and bike facilities; MDOT SHA's
  *   traffic counts, scenic byways and traffic signals; the City of Alexandria's
  *   streets and traffic signals;
  * - Montgomery County Planning Department's Bicycle LTS (its licence asks for
