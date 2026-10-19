@@ -3,6 +3,7 @@
  * the planning choices this device already remembers sync to the account (GET and POST /api/me/settings;
  * core.models.AccountSettings). One document per account, last write wins.
  *
+ * - The favorite ride types ("favorites", lib/favoriteRides.ts), starred first in the ride type pickers.
  * - The ride type and dials ("plan": a plan link's fragment with no points), the Layers switches this
  *   device keeps (Water, Climbs and its smallest category, contour lines, each section's remembered
  *   switches) and, when the micromobility work adds them, the service switches. My Go syncs on its own
@@ -11,6 +12,7 @@
  *   settings wins, and its settings replace the device's. Nothing is merged silently.
  * - Signed out, everything stays on the device as before.
  */
+import { FAVORITES_KEY, parseFavorites } from "./favoriteRides.ts";
 import { CLIMBS_FROM_KEY, CLIMBS_KEY, CLIMB_CATEGORIES, type ClimbCategory } from "./climbs.ts";
 import type { Dials } from "./dials.ts";
 import { LAYER_SECTIONS_KEY } from "./layerSection.ts";
@@ -32,6 +34,7 @@ export interface SettingsDoc {
   topo?: boolean;
   sections?: Record<string, string[]>;
   bikeshare?: Record<string, boolean>;
+  favorites?: PresetId[];
 }
 
 export interface Store {
@@ -120,6 +123,7 @@ export function parseSettings(raw: unknown): SettingsDoc | null {
   if (sections) doc.sections = sections;
   const bikeshare = flagsOf(body.bikeshare);
   if (bikeshare) doc.bikeshare = bikeshare;
+  if (Array.isArray(body.favorites)) doc.favorites = parseFavorites(body.favorites);
   return doc;
 }
 
@@ -142,6 +146,8 @@ export function deviceSettings(plan: { preset: PresetId; dials: Dials } | null, 
   if (topo === "on" || topo === "off") doc.topo = topo === "on";
   const sections = sectionsOf(json(read(store, LAYER_SECTIONS_KEY)));
   if (sections && Object.keys(sections).length) doc.sections = sections;
+  const favorites = json(read(store, FAVORITES_KEY));
+  if (Array.isArray(favorites)) doc.favorites = parseFavorites(favorites);
   return doc;
 }
 
@@ -159,6 +165,7 @@ export function applyToDevice(doc: SettingsDoc, store: Store | null = local()): 
   if (doc.climbsFrom) write(CLIMBS_FROM_KEY, doc.climbsFrom);
   if (doc.topo !== undefined) write(TOPO_STORAGE_KEY, doc.topo ? "on" : "off");
   if (doc.sections) write(LAYER_SECTIONS_KEY, JSON.stringify(doc.sections));
+  if (doc.favorites) write(FAVORITES_KEY, JSON.stringify(doc.favorites));
 }
 
 export type SignInStep = { kind: "push-device"; doc: SettingsDoc } | { kind: "use-account"; doc: SettingsDoc };
