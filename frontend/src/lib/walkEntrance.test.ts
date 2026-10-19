@@ -59,4 +59,10 @@ test("App wires the ride type to the map card, the Nearest search and the place 
   assert.match(app, /stationOnFoot=\{endsOnFoot\(preset\)\}/);
   assert.match(app, /onFoot: \(\) => endsOnFoot\(ride\.preset\)/);
   assert.doesNotMatch(app, /placeFromSearch\([^;]*stationEntranceForPlace\)/);
+  // A start walks out toward the next point; an end or a stop is reached from the start (or Go's location).
+  assert.match(app, /role === "start"\s*\? \(pointsRef\.current\[1\] \?\? goPending\.current\?\.dest \?\? null\)\s*: \(pointsRef\.current\[0\]/);
+  assert.match(app, /entrance: \(place\) => entranceForPlace\(place, choice\)/);
+  assert.match(app, /const goStartPick[\s\S]{0,400}entranceForPlace\(place, "start"\)/);
+  const rail = readFileSync(new URL("../railInteraction.ts", import.meta.url), "utf8");
+  assert.match(rail, /const \{ point, place \} = pointFor\(role\);/);
 });

@@ -286,7 +286,7 @@ interface Props {
   /** The ride reaches places on foot (presets.ts, endsOnFoot): a station card's points are its nearest entrance. */
   stationOnFoot?: boolean;
   /** Where the rider comes from, for that nearest entrance (App's walkFrom). */
-  stationFrom?: () => LonLat | null;
+  stationFrom?: (role: StationRole) => LonLat | null;
   /**
    * The road panel for a spot (OWNER-DECISIONS 441a; lib/roadInfo.ts): a right-click, a
    * long press on a phone, or I with the map focused (the map's centre).
@@ -1247,7 +1247,7 @@ export function MapView(props: Props) {
         onStationPoint: (role, point, place) => callbacks.current.onStationPoint(role, point, place),
         endFromHere: () => callbacks.current.stationEndFromHere === true,
         onFoot: () => callbacks.current.stationOnFoot === true,
-        from: () => callbacks.current.stationFrom?.() ?? null,
+        from: (role) => callbacks.current.stationFrom?.(role) ?? null,
         framePadding: () => callbacks.current.framePadding(),
         reducedMotion,
       });

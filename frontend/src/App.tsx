@@ -790,10 +790,14 @@ export function App() {
   const rideRef = useRef<Ride>({ preset, dials, imported });
   rideRef.current = { preset, dials, imported };
   // A Metro station on foot (presets.ts, endsOnFoot; Stephen 2026-10-19) is reached by its entrance nearest where the
-  // rider comes from: the plan's start, else Go's location. The search's station results go there too.
-  const walkFrom = (): LonLat | null => pointsRef.current[0] ?? (goStartRef.current.kind === "here" ? goStartRef.current.point : null);
-  const entranceForPlace = (place: Parameters<typeof stationEntranceForPlace>[0]) =>
-    stationEntranceForPlace(place, endsOnFoot(rideRef.current.preset), walkFrom());
+  // rider comes from: as an end or a stop, the plan's start, else Go's location; as a start, the rider walks out
+  // toward the next point, else the destination Go is waiting to route to. The search's station results go there too.
+  const walkFrom = (role: StationRole = "end"): LonLat | null =>
+    role === "start"
+      ? (pointsRef.current[1] ?? goPending.current?.dest ?? null)
+      : (pointsRef.current[0] ?? (goStartRef.current.kind === "here" ? goStartRef.current.point : null));
+  const entranceForPlace = (place: Parameters<typeof stationEntranceForPlace>[0], role: StationRole = "end") =>
+    stationEntranceForPlace(place, endsOnFoot(rideRef.current.preset), walkFrom(role));
   const narrow = useNarrow();
   // Ride mode (WEB-NAV-plan.md; RideMode.tsx): whether a ride is on, the Start ride question, the ride's
   // own route and the rider for the map (in memory only: never the link, storage or a log), the camera.
@@ -1865,7 +1869,7 @@ export function App() {
       commit,
       loop: loopVias,
       remember: (p, name, label) => namer.remember(p, name, label),
-      entrance: entranceForPlace,
+      entrance: (place) => entranceForPlace(place, choice),
     });
     if (point === null) return;
     setNotice(null);
@@ -1983,7 +1987,7 @@ export function App() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   // A start typed into Go's start box: the plan's first point, in place of the location.
   const goStartPick = (found: Place) => {
-    const point = placeFromSearch(found, (p, name, label) => namer.remember(p, name, label), entranceForPlace);
+    const point = placeFromSearch(found, (p, name, label) => namer.remember(p, name, label), (place) => entranceForPlace(place, "start"));
     if (point === null) {
       setNotice(OUTSIDE_NOTICE);
       return;
