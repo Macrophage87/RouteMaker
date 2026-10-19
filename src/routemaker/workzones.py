@@ -631,6 +631,20 @@ def is_future(at: datetime, now: datetime | None) -> bool:
     return now is not None and (at - now).total_seconds() > FUTURE_AFTER_S
 
 
+# The sources whose zones are closures that may happen, not ones known to be on now: DDOT's
+# occupancy permits, which allow a road to be closed in their window (DDOT's own note: start
+# and end times unreliable). The owner, 2026-10-19: "The road closures are mostly for roads
+# that could potentially be closed in the near future in DC. They aren't as useful for on
+# the go routing, but worth keeping for future ride planning." So Go and a ride leave them
+# out (`now_only`); Plan keeps them.
+POSSIBLE_SOURCES = frozenset({"dc"})
+
+
+def possible(zone: Zone) -> bool:
+    """Whether the zone is a closure that may happen (a permit), not one known to be on."""
+    return zone.source in POSSIBLE_SOURCES
+
+
 def for_plan(
     zones: Iterable[Zone],
     at: datetime,
@@ -639,6 +653,7 @@ def for_plan(
     now: datetime | None = None,
     bypass: Iterable[str] = (),
     reserve: tuple[float, int] = (0.0, 0),
+    now_only: bool = False,
 ) -> PlanZones:
     """What a plan through `points` (lon, lat) at ride time `at` does with the zones.
 
@@ -647,7 +662,8 @@ def for_plan(
 
     `now` is when the plan is made: a closure with no end given, on a ride later than
     that (`FUTURE_AFTER_S`), "may still apply" and is warned of, not routed round.
-    `bypass` names the closures the rider chose to route through for this plan."""
+    `bypass` names the closures the rider chose to route through for this plan. `now_only`
+    (Go and a ride) leaves out the closures that may happen (`possible`): DDOT's permits."""
     future = is_future(at, now)
     plan = PlanZones(status=dict(status), at=at, future=future)
     if not points:
@@ -660,6 +676,8 @@ def for_plan(
     closures = []
     for zone in zones:
         if not active(zone, at) or not _in_box(zone, box):
+            continue
+        if now_only and possible(zone):
             continue
         if zone.kind == LANE:
             plan.lanes.append(zone)
@@ -858,6 +876,7 @@ __all__ = [
     "FUTURE_AFTER_S",
     "KINDS",
     "LANE",
+    "POSSIBLE_SOURCES",
     "LANE_PENALTY_S",
     "MAY_APPLY",
     "NO_EFFECT",

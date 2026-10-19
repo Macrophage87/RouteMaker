@@ -295,14 +295,21 @@ def ride_moment(when: str, now: datetime | None = None) -> datetime:
 
 
 def plan_zones(
-    points, when: str, now: datetime | None = None, bypass=(), reserve=(0.0, 0)
+    points,
+    when: str,
+    now: datetime | None = None,
+    bypass=(),
+    reserve=(0.0, 0),
+    now_only: bool = False,
 ) -> rules.PlanZones | None:
     """The zones in force for a plan through `points` with the ride-time dial at `when`;
     None where work zones are not running (no refresh has ever been stored).
 
     Closures follow the ride, not today (v0.7.0): they are matched against the dial's
     moment, and one with no end given "may still apply" on a later ride and is not
-    routed round. `bypass` names the closures the rider chose to route through."""
+    routed round. `bypass` names the closures the rider chose to route through. `now_only`
+    (Go and a ride, v0.9.1) leaves out the closures that may happen: DDOT's permits
+    (`rules.possible`)."""
     found = snapshot()
     if not found.status:
         return None
@@ -315,6 +322,7 @@ def plan_zones(
         now=now,
         bypass=bypass,
         reserve=reserve,
+        now_only=now_only,
     )
     plan.notices = list(found.notices)
     return plan
@@ -948,6 +956,7 @@ def closures_on(
     when: str | None = None,
     bypass=(),
     now: datetime | None = None,
+    now_only: bool = False,
 ) -> dict:
     """The closures in force at the ride that `line` runs along, in line order.
 
@@ -958,7 +967,8 @@ def closures_on(
     line (`from_m`, `to_m`, on the line as sent) and one line of words: street, from and to
     along the route, until when. One with no end given, on a ride later than now, says it
     "may still apply" (`may_still_apply`). The ids in `bypass` are left out of `closures`
-    and listed in `bypassed`.
+    and listed in `bypassed`. `now_only` (Go and a ride, v0.9.1) leaves out the closures
+    that may happen: DDOT's permits (`rules.possible`).
 
     Additive to the dialog's first contract (v0.7.0): each closure's card fields (`title`,
     `source_key`, `source_name`, `url`, `when_text`, `line`), `lanes` (blocked bike lanes
@@ -972,7 +982,11 @@ def closures_on(
     moment = at or (ride_moment(when, now) if when else now)
     future = rules.is_future(moment, now)
     skip = set(bypass)
-    zones = [z for z in found.zones if z.kind in MAP_KINDS and rules.active(z, moment)]
+    zones = [
+        z
+        for z in found.zones
+        if z.kind in MAP_KINDS and rules.active(z, moment) and not (now_only and rules.possible(z))
+    ]
     passages = rules.along(line, zones) if zones else []
     closures, bypassed, lanes = [], [], []
     for p in passages:

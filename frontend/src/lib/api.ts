@@ -1264,6 +1264,8 @@ export function routeRequestBody(points: readonly LonLat[], preset: PresetId, op
     ...(options.confirmLong ? { confirm_long: true } : {}),
     // "Route through anyway" (v0.7.0, lib/closureMap.ts): this plan's only, in the request, never in a link.
     ...(options.dials?.closureBypass?.length ? { closure_bypass: options.dials.closureBypass } : {}),
+    // Go and a ride: only the closures known to be on, not DDOT's permits (lib/dials.ts closuresNow).
+    ...(options.dials?.closuresNow ? { closures_now: true } : {}),
     // The via points (v0.7.0, "Via points vs stops"): passed without a stop. Never on a two-point ride type.
     ...(options.vias?.length && !twoPointsOnly(preset) ? { via_points: [...options.vias] } : {}),
     // The first good route at once (v0.7.0, "Faster routing"); the API answers the full plan where it cannot.
