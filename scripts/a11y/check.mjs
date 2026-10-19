@@ -814,17 +814,17 @@ const federalFetched = (p) =>
   check("weight: Change opens a modal dialog and the focus moves into it", inside.open && inside.modal && inside.focusIn, JSON.stringify(inside));
   check("weight: the dialog is named by its heading and described by its two lines (318)",
     dialog?.role === "dialog" && dialog?.name === "Rider and bike weight" &&
-      /^Optional\. Used only to work out your route, for how hard hills feel\. It is never displayed, and never put in shared links or downloads\. A rough estimate is fine\. Within 20 lb \(10 kg\) or so makes no real difference\.$/.test(dialog?.description ?? ""),
+      /^Optional\. Used only for how hard hills feel; never shown or shared\. A rough guess is fine\.$/.test(dialog?.description ?? ""),
     JSON.stringify(dialog));
   const fields = await p.eval("[...document.querySelectorAll('dialog.weight-dialog input[type=text]')].map((e) => ({ label: e.labels?.[0]?.textContent, value: e.value }))");
   check("weight: Rider, Bike, Cargo and Total are labelled pounds first, kilograms in brackets, and start blank (316)", JSON.stringify(fields.map((f) => f.label)) === JSON.stringify(["Rider, lb (kg)", "Bike, lb (kg)", "Cargo, lb (kg)", "Total, lb (kg)"]) && fields.every((f) => f.value === ""), JSON.stringify(fields));
-  // Type a total of 207 lb and save it, remembered.
+  // Type a total of 207 lb and save it: it is always kept on the device, with no checkbox (the owner, 2026-10-19).
   await p.eval("document.querySelectorAll('dialog.weight-dialog input[type=text]')[3].focus(); true");
   await p.type("207");
   await sleep(1000); // the polite total waits 700 ms after the last key (N-A)
   const total = await p.eval("document.querySelector('dialog.weight-dialog .weight-total').textContent");
   check("weight: the total is said politely as it changes, pounds first", /^Total: 207 lb \(94 kg\)\.$/.test(total) && (await p.eval("document.querySelector('dialog.weight-dialog .weight-total').getAttribute('aria-live')")) === "polite", total);
-  await p.eval("document.querySelector('dialog.weight-dialog input[type=checkbox]').click(); true");
+  check("weight: no Remember checkbox", (await p.eval("document.querySelector('dialog.weight-dialog input[type=checkbox]') === null")) === true, "");
   const before = p.routeRequests;
   await p.eval("[...document.querySelectorAll('dialog.weight-dialog button')].find((b) => b.textContent === 'Save').click(); true");
   await sleep(1500);
@@ -846,7 +846,7 @@ const federalFetched = (p) =>
   const again = await p.eval("({ values: [...document.querySelectorAll('dialog.weight-dialog input[type=text]')].map((e) => e.value), text: document.body.innerText, saved: document.querySelector('dialog.weight-dialog .notice')?.textContent })");
   const { nodes } = await p.s("Accessibility.getFullAXTree", {});
   const axText = JSON.stringify(nodes.map((n) => [n.name?.value, n.description?.value, n.value?.value]));
-  check("weight: reopened, every field is blank and it says a weight is saved, without the numbers (317(b))", again.values.every((v) => v === "") && /^A weight is saved \(set today\)\. Enter new values to replace it, or Clear to use the defaults\.$/.test(again.saved ?? ""), JSON.stringify({ values: again.values, saved: again.saved }));
+  check("weight: reopened, every field is blank and it says a weight is saved, without the numbers (317(b))", again.values.every((v) => v === "") && /^A weight is saved \(set today\)\. Type new values to replace it\.$/.test(again.saved ?? ""), JSON.stringify({ values: again.values, saved: again.saved }));
   check("weight: the saved number is nowhere in the page's text or its accessibility tree", !/\b207\b|\b93\.9\b|\b94 kg/.test(again.text) && !/\b207\b|93\.9|94 kg/.test(axText), "");
   await p.escape();
   await sleep(300);
@@ -3992,12 +3992,12 @@ const JUNCTION_BUTTON = "Suggest a junction change";
 // three groups (lib/rideTypeGroups.ts: Transportation 7, Adventure 6, Group 2).
 {
   const p = await open({ route: S_KIDS, hash: hashFor("default", 70) });
-  const kidsCard = "[...document.querySelectorAll('.ride-type-card > button')].find((b) => b.querySelector('strong')?.textContent === 'Novice and Nervous')";
+  const kidsCard = "[...document.querySelectorAll('.ride-type-card > button:not(.ride-fav)')].find((b) => b.querySelector('strong')?.textContent === 'Novice and Nervous')";
   await p.eval("document.querySelector('.ride-type-current button').focus(); true");
   await p.enter();
   await sleep(300);
   const offered = await p.eval(`(() => { const d = document.querySelector('dialog.ride-types'); const k = ${kidsCard};
-    return { open: d.open, modal: d.matches(':modal'), cards: d.querySelectorAll('.ride-type-card > button:not(.ride-fav)').length, // the cards, not their favorite stars (#248)
+    return { open: d.open, modal: d.matches(':modal'), cards: d.querySelectorAll('.ride-type-card > button:not(.ride-fav)').length,
       kids: !!k, pressed: k?.getAttribute('aria-pressed'), hint: k?.querySelector('.hint')?.textContent, said: k?.querySelector('.visually-hidden')?.textContent }; })()`);
   // Plan streamline (2026-10-17): each card shows its gist; the full sentence is said with it, and shown by What each does.
   check("kids: the ride-type dialog is modal and offers Novice and Nervous among every ride type, with its gist shown and its sentence said",
@@ -4049,7 +4049,7 @@ const JUNCTION_BUTTON = "Suggest a junction change";
   const ride = await p.eval("document.querySelector('.ride-type-current strong')?.textContent");
   await p.eval("document.querySelector('.ride-type-current button').click(); true");
   await sleep(300);
-  const fit = await p.eval(`(() => { const k = [...document.querySelectorAll('.ride-type-card > button')].find((b) => b.querySelector('strong')?.textContent === 'Novice and Nervous');
+  const fit = await p.eval(`(() => { const k = [...document.querySelectorAll('.ride-type-card > button:not(.ride-fav)')].find((b) => b.querySelector('strong')?.textContent === 'Novice and Nervous');
     return { client: k?.clientWidth, scroll: k?.scrollWidth, page: document.documentElement.scrollWidth, width: innerWidth }; })()`);
   check("kids at 320 px: an old \"kids\" link opens on Novice and Nervous, and its card fits with nothing spilling sideways",
     ride === "Novice and Nervous" && fit.scroll <= fit.client + 1 && fit.page <= fit.width, JSON.stringify({ ride, fit }));
@@ -4343,7 +4343,7 @@ const modeNow = "(() => [...document.querySelectorAll('.mode-switch')].filter((g
   await sleep(300);
   await p.eval("document.querySelector('.go-sheet .ride-more').click(); true");
   await sleep(400);
-  const rideSheet = await p.eval("({ shown: !document.getElementById('sheet-ride').hidden, rides: document.querySelectorAll('#sheet-ride .ride-sheet-cards button').length, focus: document.activeElement?.tagName })");
+  const rideSheet = await p.eval("({ shown: !document.getElementById('sheet-ride').hidden, rides: document.querySelectorAll('#sheet-ride .ride-sheet-cards .ride-type-card > button:not(.ride-fav)').length, focus: document.activeElement?.tagName })");
   check("go: the ride types' More opens the Ride sheet with every ride type (the owner's choice 10), its heading focused", rideSheet.shown && rideSheet.rides >= 10 && rideSheet.focus === "H2", JSON.stringify(rideSheet));
   await p.shot(`${SHOTS}/go_390.png`);
   await p.close();
@@ -4712,7 +4712,8 @@ async function goPressMap(p) {
 }
 {
   // Lettered places (the owner, 2026-10-11 21:04 UTC): the nearest listed are lettered in the list and on the
-  // map; a marker's tap or the letter's key picks one as Go's destination, straight to the route options.
+  // map; a marker's tap or the letter's key opens the place's card (Stephen 2026-10-19: "don't auto route"), whose
+  // Route here (no route yet) or Add as stop (with one) acts.
   const p = await goWith("granted");
   const openMetro = async () => {
     await p.eval("[...document.querySelectorAll('.go-places .place-chip')].find((c) => c.textContent.trim() === 'Water').click(); true");
@@ -4729,19 +4730,28 @@ async function goPressMap(p) {
       lettered.markers.every((m, i) => m.tag === "BUTTON" && m.letter === "ABC"[i] && m.name.startsWith(`${"ABC"[i]}: `) && / mi \([0-9.]+ km\)$/.test(m.name) && m.w >= 44 && m.h >= 44) &&
       ax?.role === "button" && /^A: .+ Metro station, /.test(ax?.name ?? ""), JSON.stringify({ lettered, ax }));
   await p.eval("document.querySelectorAll('.lettered-marker')[0].click(); true");
+  await sleep(600);
+  const card = await p.eval(`({ title: document.querySelector('.place-popup .place-card strong')?.textContent ?? '', action: document.querySelector('.place-popup .place-card-actions button')?.textContent ?? '',
+    focused: !!document.activeElement?.closest('.place-popup'), routed: !!document.querySelector('.go-summary .start-button'), points: (location.hash.match(/p=([^&]*)/)?.[1] ?? '').split(';').filter(Boolean).length })`);
+  check("lettered places: a tap on marker A opens its card (name, Route here, the focus in it) and does not route by itself", /Metro station$/.test(card.title) && card.action === "Route here" && card.focused && !card.routed && card.points === 0, JSON.stringify(card));
+  await p.eval("document.querySelector('.place-popup .place-card-actions button').click(); true");
   const byTap = await p.waitFor("!!document.querySelector('.go-summary .start-button')", 20000);
-  const tapped = await p.eval("({ sheet: document.getElementById('sheet-nearest').hidden, dest: document.querySelector('.go-destination-name')?.textContent ?? '', markers: document.querySelectorAll('.lettered-marker').length })");
-  check("lettered places: a tap on marker A makes it Go's destination and shows the route at once (the sheet closes, the markers go)", byTap && tapped.sheet && /Metro station$/.test(tapped.dest) && tapped.markers === 0, JSON.stringify(tapped));
+  const tapped = await p.eval("({ sheet: document.getElementById('sheet-nearest').hidden, dest: document.querySelector('.go-destination-name')?.textContent ?? '', markers: document.querySelectorAll('.lettered-marker').length, card: !!document.querySelector('.place-popup') })");
+  check("lettered places: the card's Route here makes it Go's destination and shows the route (the sheet closes, the markers go, the card closes)", byTap && tapped.sheet && /Metro station$/.test(tapped.dest) && tapped.markers === 0 && !tapped.card, JSON.stringify(tapped));
   await openMetro();
   const second = await p.eval("document.querySelectorAll('.lettered-marker')[1].getAttribute('aria-label').replace(/^B: /, '').replace(/, [0-9.]+ mi.*$/, '')");
   await p.eval("document.getElementById('sheet-nearest-title').focus(); true");
   const saidBefore = await p.eval("window.__said.length");
   await p.key("b", "KeyB", 66);
+  await sleep(600);
+  const keyCard = await p.eval(`({ action: document.querySelector('.place-popup .place-card-actions button')?.textContent ?? '', focused: document.activeElement?.textContent ?? '', points: (location.hash.match(/p=([^&]*)/)?.[1] ?? '').split(';').filter(Boolean).length })`);
+  check("lettered places: the B key opens B's card with the focus on Add as stop (a route is shown), and adds nothing by itself", keyCard.action === "Add as stop" && keyCard.focused === "Add as stop" && keyCard.points === 2, JSON.stringify(keyCard));
+  await p.key("Enter", "Enter", 13);
   await sleep(2500);
   const keyed = await p.eval(`({ sheet: document.getElementById('sheet-nearest').hidden, dest: document.querySelector('.go-destination-name')?.textContent ?? '', points: (location.hash.match(/p=([^&]*)/)?.[1] ?? '').split(';').filter(Boolean).length, said: window.__said.slice(${saidBefore}) })`);
   // With a route in Go a chip's place is a stop on it since b51ec7f7 ("Keep adding stops by search, in Plan and in
-  // Go"): B is added as a stop, said, and the destination stays A.
-  check("lettered places: pressing the B key picks option B, a stop on the route shown, and says so", keyed.sheet && keyed.dest === tapped.dest && keyed.points === 3 && keyed.said.some((t) => t.includes(second)), JSON.stringify({ keyed, second }));
+  // Go"): the card's Add as stop adds B, said, and the destination stays A.
+  check("lettered places: B's Add as stop puts it on the route shown as a stop, and says so", keyed.sheet && keyed.dest === tapped.dest && keyed.points === 3 && keyed.said.some((t) => t.includes(second)), JSON.stringify({ keyed, second }));
   await p.close();
 }
 {
@@ -5004,7 +5014,8 @@ const failed = results.filter((r) => !r.ok);
 // returns early) fails here rather than passing green (the mutation review of the release).
 // The transit blocks (#108) and the Go press checks (#116) were added without raising it; they run since #127.
 // Review mode's own lists (22c2) add six. End ride's slide (#235) adds two: a tap springs back, a slide ends the ride.
-const EXPECTED = 664;
+// A lettered pin's card (no auto route, 2026-10-19) adds two: the card a tap opens, and the card the B key opens.
+const EXPECTED = 667;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

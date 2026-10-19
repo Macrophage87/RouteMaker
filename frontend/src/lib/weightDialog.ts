@@ -18,6 +18,7 @@ import {
   editPart,
   editTotal,
   formatLbKg,
+  lbOf,
   poundsToKg,
   savedNotice,
   toStored,
@@ -37,7 +38,7 @@ export const TOTAL_SAID_DELAY_MS = 700;
 /** The polite total under the worksheet, from what is entered; the defaults with nothing entered. */
 export function totalSaid(sheet: Worksheet, split: Split): string {
   const kg = worksheetKg(sheet, split);
-  if (kg === undefined) return `Total: nothing entered; the defaults, ${formatLbKg(split.riderKg + split.bikeKg + split.cargoKg)}, are used.`;
+  if (kg === undefined) return `Total: default, ${formatLbKg(split.riderKg + split.bikeKg + split.cargoKg)}.`;
   if (kg === null) return "Total: not a number yet.";
   return `Total: ${formatLbKg(kg)}.`;
 }
@@ -56,10 +57,8 @@ interface DialogProps {
   open: boolean;
   /** What is kept, or null: only its date is ever shown. */
   saved: StoredWeight | null;
-  /** Whether this browser keeps it (the checkbox starts so). */
-  remembered: boolean;
   split: Split;
-  onSave: (weight: StoredWeight, remember: boolean) => void;
+  onSave: (weight: StoredWeight) => void;
   onClear: () => void;
   onClose: () => void;
   /** For a test: the clock. */
@@ -70,10 +69,10 @@ interface DialogProps {
 export function weightDialogBody(
   id: string,
   props: DialogProps,
-  state: { sheet: Worksheet; remember: boolean; refused: string; said?: string },
-  set: { sheet: (s: Worksheet) => void; remember: (on: boolean) => void; refused: (text: string) => void },
+  state: { sheet: Worksheet; refused: string; said?: string },
+  set: { sheet: (s: Worksheet) => void; refused: (text: string) => void },
 ): Array<ReactElement | null> {
-  const { sheet, remember, refused } = state;
+  const { sheet, refused } = state;
   const now = props.now ?? Date.now;
   // Whatever closes the dialog leaves it blank, so no figure typed stays in the page (the
   // review's S2; 313, 317(b)): a closed <dialog> is still in the DOM.
@@ -89,13 +88,15 @@ export function weightDialogBody(
     }
     // Outside the range it is the nearer limit, silently (352).
     blank();
-    props.onSave(stored, remember);
+    props.onSave(stored);
   };
   const cancel = () => {
     blank();
     props.onClose();
   };
-  const field = (key: string, label: string, value: string, hint: string, onChange: (text: string) => void) => {
+  // A part's hint is for a screen reader; on screen its default is its placeholder, so each part is one row.
+  // The Total's hint stays on screen: it says what typing a total does.
+  const field = (key: string, label: string, value: string, hint: string, placeholder: string | undefined, onChange: (text: string) => void) => {
     const kg = poundsToKg(value);
     // A refused entry marks the field that is not a number, and points it at the rule (N-C).
     const invalid = refused !== "" && kg === null;
@@ -108,13 +109,14 @@ export function weightDialogBody(
         type: "text",
         inputMode: "decimal",
         autoComplete: "off",
+        placeholder,
         value,
         "aria-describedby": `${id}-${key}-kg ${id}-${key}-hint${invalid ? ` ${id}-rule` : ""}`,
         "aria-invalid": invalid ? "true" : undefined,
         onChange: (event: { target: { value: string } }) => onChange(event.target.value),
       }),
       h("span", { className: "weight-kg", id: `${id}-${key}-kg` }, typeof kg === "number" ? `(${kg.toFixed(1)} kg)` : ""),
-      h("p", { className: "hint", id: `${id}-${key}-hint` }, hint),
+      h("p", { className: placeholder === undefined ? "hint" : "hint visually-hidden", id: `${id}-${key}-hint` }, hint),
     );
   };
   return [
@@ -123,16 +125,10 @@ export function weightDialogBody(
     h("p", { key: "d2", id: `${id}-rough` }, WEIGHT_ROUGH),
     props.saved ? h("p", { key: "s", className: "notice", id: `${id}-saved` }, savedNotice(props.saved, now())) : null,
     ...PARTS.map((part) =>
-      field(part.key, part.label, sheet[part.key], `Blank: ${formatLbKg(props.split[part.kg])}.`, (text) => set.sheet(editPart(sheet, part.key, text, props.split))),
+      field(part.key, part.label, sheet[part.key], `Blank: ${formatLbKg(props.split[part.kg])}.`, String(lbOf(props.split[part.kg])), (text) => set.sheet(editPart(sheet, part.key, text, props.split))),
     ),
-    field("total", WEIGHT_LABELS.total, sheet.total, "Or type the total alone: it replaces the parts.", (text) => set.sheet(editTotal(text))),
+    field("total", WEIGHT_LABELS.total, sheet.total, "Or the total alone.", undefined, (text) => set.sheet(editTotal(text))),
     h("p", { key: "sum", className: "weight-total", role: "status", "aria-live": "polite" }, state.said ?? totalSaid(sheet, props.split)),
-    h(
-      "label",
-      { key: "r", className: "toggle" },
-      h("input", { type: "checkbox", checked: remember, onChange: (event: { target: { checked: boolean } }) => set.remember(event.target.checked) }),
-      "Remember on this device",
-    ),
     h("p", { key: "rule", id: `${id}-rule`, className: refused ? "notice dial-rule" : "dial-rule", "aria-live": "assertive" }, refused),
     h(
       "div",
@@ -153,16 +149,15 @@ export function closedState(): { sheet: Worksheet; refused: string } {
   return { sheet: BLANK, refused: "" };
 }
 
-/** What every open starts from: blank fields (317(b)), no refusal, and the checkbox as this browser has it. */
-export function openedState(props: Pick<DialogProps, "remembered" | "saved">): { sheet: Worksheet; remember: boolean; refused: string } {
-  return { sheet: BLANK, remember: props.remembered, refused: "" };
+/** What every open starts from: blank fields (317(b)) and no refusal. */
+export function openedState(): { sheet: Worksheet; refused: string } {
+  return { sheet: BLANK, refused: "" };
 }
 
 export function WeightDialog(props: DialogProps): ReactElement {
   const id = useId();
   const ref = useRef<HTMLDialogElement>(null);
   const [sheet, setSheet] = useState<Worksheet>(BLANK);
-  const [remember, setRemember] = useState(props.remembered);
   const [refused, setRefused] = useState("");
   // The polite total, a moment behind the typing (TOTAL_SAID_DELAY_MS).
   const live = totalSaid(sheet, props.split);
@@ -171,15 +166,14 @@ export function WeightDialog(props: DialogProps): ReactElement {
     const timer = setTimeout(() => setSaid(live), TOTAL_SAID_DELAY_MS);
     return () => clearTimeout(timer);
   }, [live]);
-  // Every open starts blank (317(b)), and the checkbox as this browser has it.
+  // Every open starts blank (317(b)).
   useEffect(() => {
     const dialog = ref.current;
     if (!dialog) return;
     if (props.open) {
-      const start = openedState(props);
+      const start = openedState();
       setSheet(start.sheet);
       setRefused(start.refused);
-      setRemember(start.remember);
       if (!dialog.open) {
         dialog.showModal?.();
         // The focus starts on the heading, not the first box (showModal's own choice): a box would open a phone's
@@ -207,16 +201,15 @@ export function WeightDialog(props: DialogProps): ReactElement {
       onClose: () => props.onClose(),
       onCancel: () => props.onClose(),
     },
-    ...weightDialogBody(id, props, { sheet, remember, refused, said }, { sheet: setSheet, remember: setRemember, refused: setRefused }),
+    ...weightDialogBody(id, props, { sheet, refused, said }, { sheet: setSheet, refused: setRefused }),
   );
 }
 
 /** The ride panel's part: the line, never the number, and Change, which opens the dialog. */
 export function WeightSetting(props: {
   saved: StoredWeight | null;
-  remembered: boolean;
   split: Split;
-  onSave: (weight: StoredWeight, remember: boolean) => void;
+  onSave: (weight: StoredWeight) => void;
   onClear: () => void;
   now?: () => number;
 }): ReactElement {
@@ -240,11 +233,10 @@ export function WeightSetting(props: {
     h(WeightDialog, {
       open,
       saved: props.saved,
-      remembered: props.remembered,
       split: props.split,
       now: props.now,
-      onSave: (weight, remember) => {
-        props.onSave(weight, remember);
+      onSave: (weight) => {
+        props.onSave(weight);
         close();
       },
       onClear: () => {

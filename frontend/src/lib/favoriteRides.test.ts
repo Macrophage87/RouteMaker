@@ -127,6 +127,6 @@ test("the store tells every picker of a change, and a star pressed moves the foc
 test("a star pressed is a settings change: App saves when the favorites change", () => {
   const app = src("../App.tsx");
   assert.match(app, /const favoriteRides = useFavoriteRides\(\);/);
-  assert.match(app, /showTopoLines, favoriteRides\]\);/);
+  assert.match(app, /showTopoLines, favoriteRides, weight\]\);/);
   assert.match(app, /applyToDevice\(step\.doc\);\s*reloadFavorites\(\);/);
 });

@@ -16,10 +16,12 @@
  *   is planned at the nearer limit, silently (352: "Just have a very heavy setting and
  *   include silently"): no note about a limit is shown anywhere.
  *
- * Signed out it is kept in this browser only if the rider ticks "Remember on this
- * device" (localStorage, which may refuse); otherwise it lasts this visit. Signed in it
- * is to be saved to the rider's profile with the accounts work (WeightStore, TODO below).
- * Only the total reaches the API, rounded to whole kilograms (dials.ts dialFields).
+ * It is always kept in this browser (localStorage; for this visit only if storage
+ * refuses): there is no "remember" choice (the owner, 2026-10-19: "no need to have the
+ * remember"). Signed in it is also saved with the account's settings, so it follows the
+ * rider to another device (lib/accountSettings.ts, "weight"), and Delete account erases
+ * it with them. Only the total reaches the routing API, rounded to whole kilograms
+ * (dials.ts dialFields); it is never logged, shared or given to an AI assistant.
  */
 import type { Carrying, Dials } from "./dials.ts";
 import { PASSENGERS_WEIGHT_KG, SYSTEM_WEIGHT_KG, SYSTEM_WEIGHT_MAX_KG, SYSTEM_WEIGHT_MIN_KG } from "./dials.ts";
@@ -38,8 +40,13 @@ export interface StoredWeight {
 /** The one weight a signed-out rider has (315). */
 export const DEFAULT_NAME = "My weight";
 
-/** Where a remembered weight is kept in this browser. */
+/** Where the weight is kept in this browser. */
 export const WEIGHT_STORAGE_KEY = "routemaker.weight";
+/**
+ * What the key holds once the rider pressed Clear: kept, not removed, so the account's settings carry
+ * `weight: null` and another signed-in device clears its copy instead of putting its own back.
+ */
+export const WEIGHT_CLEARED = "cleared";
 
 // ---- the ride panel's line (314, 315) ----------------------------------------
 
@@ -70,13 +77,14 @@ export function weightLine(weight: StoredWeight | null, now: number = Date.now()
 // ---- the dialog's words (317, 318) -------------------------------------------
 
 export const WEIGHT_DIALOG_TITLE = "Rider and bike weight";
-export const WEIGHT_PURPOSE =
-  "Optional. Used only to work out your route, for how hard hills feel. It is never displayed, and never put in shared links or downloads.";
-export const WEIGHT_ROUGH = "A rough estimate is fine. Within 20 lb (10 kg) or so makes no real difference.";
+// Short, so the dialog fits a phone without scrolling (the owner, 2026-10-19: "reduce the text. too much
+// scrolling"); the meaning of 318 stays: used only for the route, never shown, a rough figure is fine.
+export const WEIGHT_PURPOSE = "Optional. Used only for how hard hills feel; never shown or shared.";
+export const WEIGHT_ROUGH = "A rough guess is fine.";
 
 /** What the dialog says when a weight is saved: the date, never the numbers (317(b)), and never a limit (352). */
 export function savedNotice(weight: StoredWeight, now: number = Date.now()): string {
-  return `A weight is saved (${setAgo(weight.setAt, now)}). Enter new values to replace it, or Clear to use the defaults.`;
+  return `A weight is saved (${setAgo(weight.setAt, now)}). Type new values to replace it.`;
 }
 
 // ---- the worksheet (316, 317) ------------------------------------------------
@@ -211,61 +219,70 @@ function browserStorage(): Storage | null {
   }
 }
 
+/** A stored value: the weight, null once cleared, undefined when never set (or unusable). */
+export function storedSetting(raw: string | null, now: number = Date.now()): StoredWeight | null | undefined {
+  if (raw === null) return undefined;
+  if (raw === WEIGHT_CLEARED) return null;
+  return migrate(raw, now) ?? undefined;
+}
+
 /**
- * Where the weight is kept. Signed out: this browser, if the rider asked (`remember`),
- * else this visit only. TODO (accounts work, OWNER-DECISIONS 313, 315): signed in, load
- * and save it, and its named loadouts, with the rider's profile, with a way to delete
- * it there; nothing here sends it anywhere yet.
+ * Where the weight is kept: this browser, and for this visit as well in case the browser
+ * refuses. Signed in, App passes `setting()` to lib/accountSettings.ts to sync it.
  */
 export class WeightStore {
-  private visit: StoredWeight | null = null;
+  /** This visit's: undefined until read or set, then the weight, or null once cleared. */
+  private visit: StoredWeight | null | undefined = undefined;
   private readonly storage: Storage | null;
   constructor(storage: Storage | null = browserStorage()) {
     this.storage = storage;
   }
 
-  /** What is kept: this visit's, else this browser's (migrated from an earlier shape). */
+  /** The weight, null once cleared, undefined when never set; read once a visit, so a migrated shape keeps its date. */
+  setting(now: number = Date.now()): StoredWeight | null | undefined {
+    if (this.visit !== undefined) return this.visit;
+    let raw: string | null = null;
+    try {
+      raw = this.storage?.getItem(WEIGHT_STORAGE_KEY) ?? null;
+    } catch {
+      return undefined;
+    }
+    const found = storedSetting(raw, now);
+    if (found) {
+      this.visit = found;
+      // An earlier shape is written back as today's, so its date stays put.
+      if (raw !== JSON.stringify(found)) this.save(found);
+    }
+    return found;
+  }
+
+  /** What is kept, for planning: the weight, or null (the defaults). */
   load(now: number = Date.now()): StoredWeight | null {
-    if (this.visit) return this.visit;
-    try {
-      const raw = this.storage?.getItem(WEIGHT_STORAGE_KEY);
-      return raw == null ? null : migrate(raw, now);
-    } catch {
-      return null;
-    }
+    return this.setting(now) ?? null;
   }
 
-  /** Whether this browser keeps one. */
-  remembered(): boolean {
-    try {
-      return this.storage?.getItem(WEIGHT_STORAGE_KEY) != null;
-    } catch {
-      return false;
-    }
-  }
-
-  /** Keep it: in this browser with `remember` (false when storage refused), else for this visit and not in the browser. */
-  save(weight: StoredWeight, remember: boolean): boolean {
+  /** Keep it, in this browser and for this visit: false when the browser refused (it lasts this visit). */
+  save(weight: StoredWeight): boolean {
     this.visit = weight;
     try {
-      if (remember) {
-        this.storage?.setItem(WEIGHT_STORAGE_KEY, JSON.stringify(weight));
-        return this.storage != null;
-      }
-      this.storage?.removeItem(WEIGHT_STORAGE_KEY);
+      this.storage?.setItem(WEIGHT_STORAGE_KEY, JSON.stringify(weight));
+      return this.storage != null;
     } catch {
       return false;
     }
-    return true;
   }
 
-  /** Forget it everywhere: the defaults are used. */
+  /** Forget it everywhere: the defaults are used, and a signed-in account clears it too. */
   clear(): void {
     this.visit = null;
     try {
-      this.storage?.removeItem(WEIGHT_STORAGE_KEY);
+      this.storage?.setItem(WEIGHT_STORAGE_KEY, WEIGHT_CLEARED);
     } catch {
-      // Nothing kept that can be reached.
+      try {
+        this.storage?.removeItem(WEIGHT_STORAGE_KEY);
+      } catch {
+        // Nothing kept that can be reached.
+      }
     }
   }
 }

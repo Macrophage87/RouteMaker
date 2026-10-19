@@ -415,7 +415,7 @@ export interface SettingsSheetProps {
   /** Big text in a ride: a setting here, not a ride button (the owner, 2026-10-17). */
   bigText: { on: boolean; onChange: (on: boolean) => void };
   /** The rider and bike weight: its line and Change, never the number (lib/weightDialog.ts). */
-  weight: { saved: StoredWeight | null; remembered: boolean; split: Split; onSave: (weight: StoredWeight, remember: boolean) => void; onClear: () => void };
+  weight: { saved: StoredWeight | null; split: Split; onSave: (weight: StoredWeight) => void; onClear: () => void };
   announce: (text: string) => void;
   linkNote: string;
   accessMode: boolean;
