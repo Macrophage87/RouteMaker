@@ -38,6 +38,7 @@ from routemaker.agency_lts import (
     level_problem,
     prohibiting,
 )
+from routemaker.avoid_junctions import line_length_m
 from routemaker.classes import TRAIL_CLASS_HIGHWAY
 
 from . import conflation
@@ -171,13 +172,23 @@ def prohibited_ways(rated: Mapping[int, Sequence[AgencyRating]]) -> set[int]:
 # is listed for the owner instead (the owner's rule: unclear bike access is closed, but a
 # path is not made unclear by a road layer).
 NOT_CLOSED_HIGHWAY = TRAIL_CLASS_HIGHWAY | {"track"}
+# The roads an agency's ban is expected on. A ban matched onto any other road is still
+# applied, but listed with its own outcome, since a slip onto a side street beside a
+# highway is the likeliest mistake.
+MAJOR_HIGHWAY = frozenset(
+    {"motorway", "motorway_link", "trunk", "trunk_link", "primary", "primary_link"}
+)
 
 PROHIBITED_REPORT_NAME = "agency-prohibited.csv"
 PROHIBITED_COLUMNS = ("way_id", "highway", "name", "bicycle", "length_m", "outcome")
 CLOSED = "closed"
 CLOSED_OSM_OPEN = "closed; OpenStreetMap says bicycles are allowed"
+CLOSED_MINOR = "closed; a minor road, check the match"
+CLOSED_BY_OVERRIDE = "closed by an owner override"
 NOT_CLOSED_PATH = "not closed: a path or track, check the match"
 NOT_CLOSED_OVERRIDE = "not closed: an owner override opens it"
+NOT_CLOSED_BRIDGE = "not closed: a bridge the crossings fixture opens to bicycles"
+CLOSED_OUTCOMES = frozenset({CLOSED, CLOSED_OSM_OPEN, CLOSED_MINOR})
 
 
 @dataclass(frozen=True)
@@ -195,6 +206,7 @@ def prohibited_closures(
     prohibited: Collection[int],
     reasons: Mapping[int, str],
     reopened: Collection[int],
+    bridge_legal: Collection[int] = frozenset(),
 ) -> tuple[dict[int, str], list[ProhibitedRow]]:
     """The `rm:no_bicycle` reasons the agencies' prohibitions add, and the report's rows.
 
@@ -202,10 +214,12 @@ def prohibited_closures(
     already: no closure rule's reason in `reasons`, and its own tags leave it on the map
     as a way to ride (`facility.map_class`; a freeway, `bicycle=no` or a private road
     keeps its own reason). Not closed, and listed: a path or track
-    (`NOT_CLOSED_HIGHWAY`), and a way an approved access override wrote a bicycle key on
-    (`reopened`: the owner's Review call outranks the agency). Closed and listed with a
-    note: a way OpenStreetMap tags as open to bicycles. Every closed way is listed, so the
-    owner sees each road the rule takes off the map."""
+    (`NOT_CLOSED_HIGHWAY`), a bridge the crossings fixture says a bicycle may cross
+    (`bridge_legal`), and a way an approved access override opens (`reopened`: the
+    owner's Review call outranks the agency; an override that closes it is listed as
+    the owner's closure). Closed and listed with a note: a road OpenStreetMap opens to
+    bicycles, and a road that is not a highway (`MAJOR_HIGHWAY`). Every closed way is
+    listed, so the owner sees each road the rule takes off the map."""
     added: dict[int, str] = {}
     rows: list[ProhibitedRow] = []
     for way in ways:
@@ -215,24 +229,47 @@ def prohibited_closures(
         highway = tags.get("highway", "")
         if highway in NOT_CLOSED_HIGHWAY:
             outcome = NOT_CLOSED_PATH
+        elif way.osm_id in bridge_legal:
+            outcome = NOT_CLOSED_BRIDGE
         elif way.osm_id in reopened:
-            outcome = NOT_CLOSED_OVERRIDE
+            opened = facility.bike_access_reason(tags, overridden=True) == "override_open"
+            outcome = NOT_CLOSED_OVERRIDE if opened else CLOSED_BY_OVERRIDE
         elif facility.map_class(tags) not in (facility.MapClass.ROAD, facility.MapClass.ALLEY):
             continue
         else:
             added[way.osm_id] = PROHIBITED_NO_BICYCLE
-            outcome = CLOSED_OSM_OPEN if tags.get("bicycle") in facility.BICYCLE_ALLOWED else CLOSED
+            if tags.get("bicycle") in facility.BICYCLE_ALLOWED:
+                outcome = CLOSED_OSM_OPEN
+            elif highway not in MAJOR_HIGHWAY:
+                outcome = CLOSED_MINOR
+            else:
+                outcome = CLOSED
         rows.append(
             ProhibitedRow(
                 way.osm_id,
                 highway,
                 tags.get("name", ""),
                 tags.get("bicycle", ""),
-                facility._length_m(way.coordinates),
+                line_length_m(way.coordinates),
                 outcome,
             )
         )
     return added, rows
+
+
+def closed_by_class(rows: Iterable[ProhibitedRow]) -> dict[str, tuple[int, float]]:
+    """The closed rows' count and miles by highway class, for the rebuild's log."""
+    by_class: dict[str, list[float]] = defaultdict(lambda: [0, 0.0])
+    for row in rows:
+        if row.outcome in CLOSED_OUTCOMES:
+            by_class[row.highway][0] += 1
+            by_class[row.highway][1] += row.length_m / 1609.344
+    return {highway: (int(n), miles) for highway, (n, miles) in sorted(by_class.items())}
+
+
+def prohibiting_records(ratings: Mapping[str, AgencyRating]) -> int:
+    """How many of the installed records prohibit bicycles (`agency_lts.prohibiting`)."""
+    return sum(prohibiting((rating,)) is not None for rating in ratings.values())
 
 
 def prohibited_report_csv(rows: Iterable[ProhibitedRow]) -> str:

@@ -4791,11 +4791,16 @@ them or consider them for routing."). From v0.9.1 the rebuild closes such a road
 routes on it, whatever Montgomery or DDOT rate it. A road something else already closes (a
 freeway, `bicycle=no`, private) keeps its own reason. Not closed, and listed instead: a
 path or track the MDOT record matched (a road layer on a path is more likely a matching
-slip), and a way an owner access override opens. The rebuild writes
-`reports/agency-prohibited.csv` (`way_id, highway, name, bicycle, length_m, outcome`), one
-row per closed way and per listed one; `closed; OpenStreetMap says bicycles are allowed`
-marks a road the two sources disagree about, worth a look in Review. To reopen a road,
-approve a `bicycle=yes` access override for it. Montgomery's and DDOT's 5 stay Avoid.
+slip), a bridge the crossings fixture opens to bicycles, and a way an owner access
+override opens. The rebuild writes `reports/agency-prohibited.csv` (`way_id, highway,
+name, bicycle, length_m, outcome`), one row per closed way and per listed one, and logs
+the closed ways and miles by highway class. Two outcomes mark a closure worth a look:
+`closed; OpenStreetMap says bicycles are allowed` (the two sources disagree) and `closed; a
+minor road, check the match` (anything but a motorway, trunk or primary road, where a
+matching slip onto a side street is likeliest). Check it, and reopen with an access
+override in Review if it is wrong (a `bicycle=yes` row, in force from the next rebuild).
+A build where MDOT's 5 records are installed but close no way logs a warning. Montgomery's
+and DDOT's 5 stay Avoid.
 
 DDOT's level field is not recorded in this repository: the script prints `ddot: level read
 from <field>`, and where the layer has none of the expected fields it stops and lists the

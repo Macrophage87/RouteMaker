@@ -2940,11 +2940,15 @@ def build_handlers(
         # MDOT SHA's "bicycle access is prohibited" (its LTS 5): closed and left off the
         # stress map, as the owner ruled 2026-10-19, after the rules above so a way they
         # close keeps their reason, and after the DC Review list, which is the District's.
+        reference = context.require_reference()
         prohibited, prohibited_rows = agency_ratings.prohibited_closures(
             context.ways,
             context.agency_prohibited,
             nobike.reasons,
             context.bicycle_override_ways,
+            bridge_legal={
+                w for w, legal in getattr(reference, "bridge_bicycle_legal", {}).items() if legal
+            },
         )
         nobike.reasons.update(prohibited)
         logger.info(
@@ -2952,6 +2956,19 @@ def build_handlers(
             len(prohibited),
             len(prohibited_rows) - len(prohibited),
         )
+        for highway, (count, miles) in agency_ratings.closed_by_class(prohibited_rows).items():
+            logger.info("agency prohibitions: %s, %d ways, %.1f mi closed", highway, count, miles)
+        banning = agency_ratings.prohibiting_records(
+            getattr(reference, "agency_lts_ratings", None) or {}
+        )
+        if banning and not prohibited:
+            logger.warning(
+                "agency prohibitions: %d installed records prohibit bicycles (MDOT SHA's 5) "
+                "but no way was closed by them: the ratings did not match, or something "
+                "else already closes every one; check reports/%s",
+                banning,
+                agency_ratings.PROHIBITED_REPORT_NAME,
+            )
         write_reports(
             context.work_dir,
             {
