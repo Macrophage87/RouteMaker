@@ -331,9 +331,11 @@ class User(AbstractBaseUser):
                 or (self.is_deleted and not previous.is_deleted)
             ):
                 self.session_epoch += 1
-                # A ban or deletion ends the AI assistant key as it ends the sessions: an unban
-                # does not bring it back.
+                # A ban or deletion ends the AI assistant key and the connector's grants (and
+                # drops its unsaved drafts) as it ends the sessions: an unban brings none back.
                 AssistantKey.objects.filter(user_id=self.pk).delete()
+                ConnectorGrant.objects.filter(user_id=self.pk).delete()
+                ConnectorDraft.objects.filter(user_id=self.pk).delete()
                 update_fields = kwargs.get("update_fields")
                 if update_fields is not None:
                     kwargs["update_fields"] = {*update_fields, "session_epoch"}
@@ -2264,3 +2266,74 @@ class ReviewQueueState(models.Model):
 
     def __str__(self) -> str:
         return f"{self.queue} at {self.computed_at:%Y-%m-%d %H:%M}"
+
+
+class ConnectorClient(models.Model):
+    """An assistant app registered to use the site's own MCP connector (core.connector; the owner,
+    2026-10-19: "Build it, v0.10.0", so Claude on the web and the phone can plan routes). Apps
+    register themselves (OAuth 2.0 dynamic client registration, RFC 7591), as Claude does when a
+    rider adds the connector: anyone may register, and the rider's own consent on this site is
+    what grants anything. A registration grants nothing by itself."""
+
+    client_id = models.CharField(max_length=64, unique=True)
+    name = models.CharField(max_length=120, blank=True)
+    redirect_uris = models.JSONField(default=list)
+    # Only for an app that asked for a secret; most (Claude among them) are public, with PKCE.
+    secret_digest = models.CharField(max_length=64, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "connector_client"
+
+    def __str__(self) -> str:
+        return f"connector app {self.name or self.client_id}"
+
+
+class ConnectorGrant(models.Model):
+    """One rider's consent to one app: the short-lived code (only its SHA-256), then the tokens
+    the app trades it for (only their SHA-256s). Like the AI assistant key it can only plan and
+    add routes to My routes: it signs nobody in and reads none of the account's routes. A ban or
+    deletion ends every grant (User.save)."""
+
+    user = models.ForeignKey("User", on_delete=models.CASCADE, related_name="connector_grants")
+    client = models.ForeignKey(ConnectorClient, on_delete=models.CASCADE, related_name="grants")
+    redirect_uri = models.TextField()
+    code_digest = models.CharField(max_length=64, unique=True, null=True, blank=True)
+    code_challenge = models.CharField(max_length=128)
+    code_expires_at = models.DateTimeField(null=True, blank=True)
+    access_digest = models.CharField(max_length=64, unique=True, null=True, blank=True)
+    access_expires_at = models.DateTimeField(null=True, blank=True)
+    refresh_digest = models.CharField(max_length=64, unique=True, null=True, blank=True)
+    refresh_expires_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_used_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "connector_grant"
+
+    def __str__(self) -> str:
+        return f"connector grant {self.pk} for account {self.user_id}"
+
+
+class ConnectorDraft(models.Model):
+    """A route the connector planned and has not saved (the owner, 2026-10-18: "see a ride, then
+    tell the agent the revisions to make and only save it ... when committed"). The local MCP
+    server keeps its drafts in memory; the site's runs in many processes, so here. The account's
+    own, kept a week and at most `MAX_PER_USER`, the oldest going first."""
+
+    MAX_PER_USER = 200
+    KEPT_DAYS = 7
+
+    user = models.ForeignKey("User", on_delete=models.CASCADE, related_name="connector_drafts")
+    draft_id = models.CharField(max_length=16)
+    data = models.JSONField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "connector_draft"
+        constraints = [
+            models.UniqueConstraint(fields=["user", "draft_id"], name="connector_draft_once")
+        ]
+
+    def __str__(self) -> str:
+        return f"draft {self.draft_id} of account {self.user_id}"

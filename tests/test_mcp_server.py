@@ -749,3 +749,17 @@ def test_old_and_renamed_links_open_as_the_page_opens_them(fragment, stress, hil
     points, _, preset, options = mcp.parse_fragment(fragment)
     assert options["stress"] == stress and options["hills"] == hills
     assert len(points) == 2
+
+
+def test_a_call_with_a_deadline_stops_planning_while_another_plan_would_not_fit(
+    tools, monkeypatch
+) -> None:
+    """The site's own connector answers inside one web request (core.connector): the loop plans
+    once more only while a long plan still fits, and says it stopped."""
+    clock = iter(range(0, 10_000, 10))
+    monkeypatch.setattr(mcp.time, "monotonic", lambda: next(clock))
+    call = mcp.Call(deadline=45)  # less than one long plan (48 s) is left after the first
+    out = tools.call("plan_metro_loop", {"target_miles": 200, "max_plans": 3}, call)
+    assert len(StandIn.routes) == 1
+    assert mcp.OUT_OF_TIME in out["notes"]
+    assert mcp.Call().time_for_another_plan()  # no deadline: a computer of the rider's own

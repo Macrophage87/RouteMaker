@@ -16,7 +16,7 @@ reasoning for the two-word body and the single query.
 from django.conf import settings
 from django.urls import path
 
-from core import auth_views, health, mass_tiles, share_preview, stress_tiles
+from core import auth_views, connector, health, mass_tiles, share_preview, stress_tiles
 from core.admin import site
 from core.api import api
 
@@ -33,4 +33,12 @@ urlpatterns = [
     path("auth/login", auth_views.login_start, name="login"),
     path("auth/callback", auth_views.login_callback, name="login-callback"),
     path("auth/logout", auth_views.logout_view, name="logout"),
+    # The site's own MCP connector and its sign-in (core.connector; v0.10.0).
+    path("mcp", connector.mcp_endpoint, name="mcp"),
+    path(".well-known/oauth-protected-resource", connector.protected_resource),
+    path(".well-known/oauth-protected-resource/mcp", connector.protected_resource),
+    path(".well-known/oauth-authorization-server", connector.authorization_server),
+    path("oauth/register", connector.register, name="oauth-register"),
+    path("oauth/authorize", connector.authorize, name="oauth-authorize"),
+    path("oauth/token", connector.token, name="oauth-token"),
 ]

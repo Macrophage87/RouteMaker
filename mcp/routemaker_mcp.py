@@ -52,6 +52,11 @@ DC_CENTRE = (-77.0365, 38.8949)
 # The site's own limits (core/api.py MAX_POINTS, COVERAGE_BBOX).
 MAX_POINTS = 25
 MAX_DRAFTS = 200  # drafts kept in memory
+PLAN_BUDGET_S = 48  # the longest one plan can take: the site's long-plan budget, and a little
+OUT_OF_TIME = (
+    "stopped there to answer inside the site's time limit; call revise_route on this draft"
+    " to keep improving it"
+)
 COVERAGE_BBOX = (-78.05, 38.2, -76.02, 39.72)
 # A long ride's plan may take the site's whole long budget (core/routing.py LONG_PLAN_BUDGET_S,
 # 50 s) after a wait for its one long slot.
@@ -1109,9 +1114,16 @@ TOOLS = [
 class Call:
     """One tools/call in flight: its progress reports and whether the client cancelled it."""
 
-    def __init__(self, progress=None):
+    def __init__(self, progress=None, deadline: float | None = None):
         self.progress = progress  # function(done, total, message), or None
         self.cancelled = threading.Event()
+        # time.monotonic() by which the answer must be sent, or None: the site's own connector
+        # (core.mcp_remote) answers inside one web request, which the server ends at 60 s.
+        self.deadline = deadline
+
+    def time_for_another_plan(self) -> bool:
+        """Whether one more plan of a long ride still fits before the deadline."""
+        return self.deadline is None or time.monotonic() + PLAN_BUDGET_S < self.deadline
 
     def report(self, done, total, message) -> None:
         if self.progress:
@@ -1128,17 +1140,59 @@ class Cancelled(ToolError):
     pass
 
 
+class MemoryDrafts:
+    """The drafts of this session (the owner, 2026-10-18: "see a ride, then tell the agent the
+    revisions to make and only save it ... when committed"), by id. Held in memory only: nothing
+    reaches the site until save_route. The site's own connector keeps them in its database
+    instead (core.mcp_remote), with the same two methods."""
+
+    def __init__(self):
+        self._drafts: dict[str, Draft] = {}
+        self._lock = threading.Lock()
+
+    def get(self, draft_id: str) -> Draft | None:
+        return self._drafts.get(draft_id)
+
+    def put(self, draft: Draft) -> str:
+        with self._lock:
+            # Random, so an id from before a restart finds nothing rather than another route.
+            draft_id = f"d{secrets.token_hex(4)}"
+            self._drafts[draft_id] = draft
+            while len(self._drafts) > MAX_DRAFTS:  # the oldest go first
+                del self._drafts[next(iter(self._drafts))]
+        return draft_id
+
+    def __contains__(self, draft_id) -> bool:
+        return draft_id in self._drafts
+
+
 class Server:
-    def __init__(self, api_factory=Api, stations: list[Station] | None = None, out_dir=None):
+    def __init__(
+        self,
+        api_factory=Api,
+        stations: list[Station] | None = None,
+        out_dir=None,
+        drafts=None,
+        files: bool = True,
+    ):
         self._api_factory = api_factory
         self._api: Api | None = None
         self._stations = stations
         self.out_dir = out_dir
         self._lock = threading.Lock()
-        # The drafts of this session (the owner, 2026-10-18: "see a ride, then tell the agent the
-        # revisions to make and only save it ... when committed"), by id. Held in memory only:
-        # nothing reaches the site until save_route.
-        self.drafts: dict[str, Draft] = {}
+        self.drafts = MemoryDrafts() if drafts is None else drafts
+        # Whether save_route may write a GPX file: not on the site's own connector, whose
+        # "computer" is the server.
+        self.files = files
+
+    def tools(self) -> list[dict]:
+        """The tools, as tools/list gives them: without the GPX file where none can be written."""
+        if self.files:
+            return TOOLS
+        listed = json.loads(json.dumps(TOOLS))
+        for tool in listed:
+            tool["inputSchema"]["properties"].pop("gpx_file", None)
+        return listed
 
     @property
     def api(self) -> Api:
@@ -1222,12 +1276,7 @@ class Server:
         self, plan: Plan, options: dict, limit, notes: list[str], name: str, revised_from=None
     ) -> dict:
         """Keep the plan as a draft and describe it: nothing is saved or written."""
-        with self._lock:
-            # Random, so an id from before a restart finds nothing rather than another route.
-            draft_id = f"d{secrets.token_hex(4)}"
-            self.drafts[draft_id] = Draft(plan, dict(options), limit, name)
-            while len(self.drafts) > MAX_DRAFTS:  # the oldest go first
-                del self.drafts[next(iter(self.drafts))]
+        draft_id = self.drafts.put(Draft(plan, dict(options), limit, name))
         fragment = plan_fragment(plan.points, plan.vias, plan.preset, self._dials(plan), plan.sent)
         out = {
             "draft_id": draft_id,
@@ -1256,6 +1305,9 @@ class Server:
             fix = with_metro_fix(plan, self.stations)
             if fix is None:
                 break
+            if not call.time_for_another_plan():
+                notes.append(OUT_OF_TIME)
+                break
             new_points, new_vias, station = fix
             call.report(done + 1, rounds + 1, f"replanning by way of {station}")
             again = self._plan(call, new_points, new_vias, preset, options, limit)
@@ -1272,8 +1324,7 @@ class Server:
         draft = self.drafts.get(str(args["draft_id"]))
         if draft is None:
             raise ToolError(
-                f"no draft {args['draft_id']} (drafts last only while this server runs; plan it"
-                " again)"
+                f"no draft {args['draft_id']} (drafts last only a while; plan it again)"
             )
         name = str(args["name"]).strip()[:120]
         if not name:
@@ -1284,7 +1335,9 @@ class Server:
         out: dict = {"draft_id": args["draft_id"], "name": name}
         notes: list[str] = []
         call.check()
-        if args.get("gpx_file"):
+        if args.get("gpx_file") and not self.files:
+            notes.append("no GPX file here: open the link and use Save & load > GPX in the app")
+        elif args.get("gpx_file"):
             try:
                 out["gpx_file"] = str(write_gpx(name, plan.line, self.out_dir))
             except OSError as error:
@@ -1354,7 +1407,7 @@ class Server:
         draft_id = str(args["draft_id"])
         draft = self.drafts.get(draft_id)
         if draft is None:
-            raise ToolError(f"no draft {draft_id} (drafts last only while this server runs)")
+            raise ToolError(f"no draft {draft_id} (drafts last only a while; plan it again)")
         plan = draft.plan
         points = list(plan.points)
         vias = set(plan.vias)
@@ -1455,6 +1508,9 @@ class Server:
             start, ring_waypoints(centre, radius, limit, self.stations), centre
         )
         for attempt in range(max_plans):
+            if best is not None and not call.time_for_another_plan():
+                notes.append(OUT_OF_TIME)
+                break
             call.report(attempt, max_plans, f"planning loop {attempt + 1} ({len(points)} points)")
             try:
                 plan = self._plan(call, points, vias, preset, options, limit)
@@ -1573,7 +1629,7 @@ def handle(server: Server, message, send=_send, calls: dict | None = None) -> di
     elif method == "ping":
         result = {}
     elif method == "tools/list":
-        result = {"tools": TOOLS}
+        result = {"tools": server.tools()}
     elif method == "tools/call":
         name = params.get("name")
         if server.handler(name) is None:

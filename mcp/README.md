@@ -41,7 +41,25 @@ It plans through the site's own API (`POST /api/route`), so a route is exactly w
 plan. It changes nothing on the site except adding the routes you ask it to save. Metro distances
 are straight-line, from DC Open Data's station file (CC BY 4.0) that the map also uses.
 
-## Set it up
+## Use it in Claude on the web and on your phone
+
+The site runs the same server itself, at `/mcp` on its own address, so Claude on claude.ai and
+in the Claude phone apps can use it with nothing installed.
+
+1. In Claude, open **Settings > Connectors > Add custom connector**.
+2. Name it RouteMaker, and give the site's address followed by `/mcp`, for example
+   `https://routes.example.org/mcp`.
+3. Choose **Connect**. RouteMaker's sign-in opens: sign in with Discord as usual (on the beta,
+   with its password first), and choose **Allow**. Claude can then plan routes and add the ones
+   you ask it to save to your My routes. It cannot read your saved routes or change anything
+   else.
+
+On the site, each call answers within one web request (up to a minute), so a long loop is
+planned once per request: the answer says when it stopped early, and asking Claude to revise
+the draft carries on from there. Drafts are kept on the site for a week. There is no GPX file
+here: open the link and use Save & load in the app.
+
+## Set it up on your own computer
 
 You need Python 3.11 or later and this repository checked out. Nothing to install: it uses the
 standard library only.
