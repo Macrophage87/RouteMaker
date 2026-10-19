@@ -31,6 +31,8 @@ import base64
 import hashlib
 import importlib.util
 import json
+import logging
+import re
 import secrets
 import sys
 import time
@@ -40,6 +42,7 @@ from functools import cache
 
 from django.conf import settings
 from django.contrib.sessions.backends.base import SessionBase
+from django.core import signing
 from django.db import transaction
 from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
 from django.test import RequestFactory
@@ -49,7 +52,9 @@ from django.utils.html import format_html, format_html_join
 from django.views.decorators.csrf import csrf_exempt
 
 from . import ratelimit
-from .models import ConnectorClient, ConnectorDraft, ConnectorGrant
+from .models import ConnectorClient, ConnectorDraft, ConnectorGrant, User
+
+logger = logging.getLogger(__name__)
 
 SCOPE = "routes"
 CODE_LIFETIME = timedelta(minutes=5)
@@ -104,6 +109,9 @@ class InProcessApi:
         module = mcp_module()
         self._module = module
         self.base = _origin(request)
+        # When the /mcp request began: the site's plan budget counts from it, so the plan that
+        # follows a few place searches still ends inside gunicorn's 60 s.
+        self._started = getattr(request, "routing_started", None)
         self._host = request.get_host()
         self._secure = request.is_secure()
         self.user = user
@@ -128,6 +136,8 @@ class InProcessApi:
         request.user = self.user
         request.session = SessionBase()
         request._dont_enforce_csrf_checks = True
+        if self._started is not None:
+            request.routing_started = self._started
         match = resolve(urllib.parse.urlsplit(path).path)
         response = match.func(request, *match.args, **match.kwargs)
         try:
@@ -137,9 +147,19 @@ class InProcessApi:
         return response.status_code, payload, response
 
     def route(self, body: dict) -> dict:
-        status, payload, response = self._request("POST", "/api/route", body)
-        if status == 200 and isinstance(payload, dict):
-            return payload
+        for attempt in range(2):
+            status, payload, response = self._request("POST", "/api/route", body)
+            if status == 200 and isinstance(payload, dict):
+                return payload
+            code = payload.get("code") if isinstance(payload, dict) else None
+            if attempt or status not in (429, 503) or code == "long_ride_timed_out":
+                break
+            # Busy (parallel calls share the rider's two plans in flight): one short wait.
+            try:
+                wait = float(response.get("Retry-After", "2"))
+            except (TypeError, ValueError):
+                wait = 2.0
+            time.sleep(min(3.0, max(0.5, wait)))
         message = payload.get("error") if isinstance(payload, dict) else payload
         code = payload.get("code") if isinstance(payload, dict) else None
         if code == "long_ride_timed_out":
@@ -159,6 +179,14 @@ class InProcessApi:
 
     def shared_fragment(self, route_id):
         return self._module.Api.shared_fragment(self, route_id)
+
+    def shared_route(self, route_id):
+        return self._module.Api.shared_route(self, route_id)
+
+    def share(self, body: dict) -> str:
+        """Keep the exact route under its link id, as the app's Share does: the rider's own
+        link (theirs to turn off from My routes), counted against their own limit."""
+        return self._module.Api.share(self, body)
 
     def save(self, body: dict) -> dict:
         """Add to the rider's My routes through the keyed save's own checks and limits."""
@@ -278,24 +306,32 @@ def _unauthorized(request):
     return response
 
 
+def _too_many(decision) -> JsonResponse:
+    response = JsonResponse({"error": "too many requests; try again shortly"}, status=429)
+    response["Retry-After"] = str(decision.retry_after_s)
+    return response
+
+
 @csrf_exempt
-@ratelimit.rate_limited(ratelimit.CONNECTOR_ADDRESS)
 def mcp_endpoint(request):
-    """POST /mcp: one JSON-RPC message in, its answer out."""
+    """POST /mcp: one JSON-RPC message in, its answer out. A rider's calls are counted against
+    the rider (CONNECTOR_CALLS); only requests without a valid token are counted against the
+    address, since every claude.ai rider arrives from the same few."""
     if request.method != "POST":
         response = HttpResponse(status=405)
         response["Allow"] = "POST"
         return response
     grant = grant_for(request)
     if grant is None:
-        return _unauthorized(request)
+        counted = ratelimit.hit(
+            ratelimit.CONNECTOR_ADDRESS, ratelimit.client_key(ratelimit.client_address(request))
+        )
+        return _unauthorized(request) if counted.allowed else _too_many(counted)
     counted = ratelimit.hit(
         ratelimit.CONNECTOR_CALLS, ratelimit.client_key(rider_address(grant.user))
     )
     if not counted.allowed:
-        response = JsonResponse({"error": "too many requests; try again shortly"}, status=429)
-        response["Retry-After"] = str(counted.retry_after_s)
-        return response
+        return _too_many(counted)
     if len(request.body) > MAX_BODY_BYTES:
         return JsonResponse({"error": "request too large"}, status=413)
     module = mcp_module()
@@ -309,18 +345,68 @@ def mcp_endpoint(request):
         lambda: InProcessApi(request, user),
         drafts=DatabaseDrafts(user),
         files=False,
+        gpx_link=lambda draft_id, name: gpx_link(request, user, draft_id, name),
     )
+    msg_id = message.get("id") if isinstance(message, dict) else None
+    if msg_id is not None and (isinstance(msg_id, bool) or not isinstance(msg_id, (str, int))):
+        return JsonResponse(module._error(None, -32600, "id: a string or a number"), status=400)
     calls = {}
-    if isinstance(message, dict) and message.get("id") is not None:
-        calls[message["id"]] = module.Call(deadline=time.monotonic() + CALL_BUDGET_S)
+    if msg_id is not None:
+        calls[msg_id] = module.Call(deadline=time.monotonic() + CALL_BUDGET_S)
     try:
         answer = module.handle(server, message, send=lambda _note: None, calls=calls)
     except Exception as error:  # noqa: BLE001 - a bug is an answer, not the site's error page
-        msg_id = message.get("id") if isinstance(message, dict) else None
+        logger.exception("connector call failed")
         answer = module._error(msg_id, -32603, f"internal error: {type(error).__name__}")
     if answer is None:
         return HttpResponse(status=202)  # a notification: nothing to answer
     return _no_store(JsonResponse(answer))
+
+
+mcp_endpoint.limits = ratelimit.CONNECTOR_CALLS
+
+
+# --- A draft's GPX ------------------------------------------------------------------------------
+
+GPX_SALT = "core.connector.gpx"
+
+
+def gpx_link(request, user, draft_id: str, name: str) -> str:
+    """A link that downloads the rider's draft as GPX, signed so it names that rider's draft
+    and nothing else, and good while drafts are kept. Opened from the assistant app on any
+    device, so it carries no sign-in of its own and grants nothing but this one file."""
+    token = signing.dumps({"u": user.pk, "d": draft_id, "n": name}, salt=GPX_SALT, compress=True)
+    return f"{_origin(request)}/mcp/gpx/{token}"
+
+
+@ratelimit.rate_limited(ratelimit.SHARED_ROUTE_READS)
+def draft_gpx(request, token: str):
+    """GET /mcp/gpx/<token>: the draft as a .gpx download."""
+    if request.method != "GET":
+        return HttpResponse(status=405, headers={"Allow": "GET"})
+    try:
+        signed = signing.loads(
+            token, salt=GPX_SALT, max_age=timedelta(days=ConnectorDraft.KEPT_DAYS)
+        )
+    except signing.BadSignature:
+        return _page("This link has expired", format_html("<p>{}</p>", GPX_GONE), status=404)
+    user = User.objects.filter(pk=signed.get("u")).first()
+    if user is None or not user.is_active:
+        user = None
+    draft = DatabaseDrafts(user).get(str(signed.get("d"))) if user is not None else None
+    if draft is None:
+        return _page("This link has expired", format_html("<p>{}</p>", GPX_GONE), status=404)
+    module = mcp_module()
+    name = str(signed.get("n") or draft.name)[:120]
+    response = HttpResponse(
+        module.gpx_text(name, draft.plan.line), content_type="application/gpx+xml"
+    )
+    response["Content-Disposition"] = f'attachment; filename="{module.gpx_slug(name)}.gpx"'
+    response["X-Content-Type-Options"] = "nosniff"
+    return _no_store(response)
+
+
+GPX_GONE = "The route is no longer kept. Ask the assistant to plan it again for a new link."
 
 
 # --- OAuth: discovery ---------------------------------------------------------------------------
@@ -355,6 +441,7 @@ def authorization_server(request):
             "response_types_supported": ["code"],
             "grant_types_supported": ["authorization_code", "refresh_token"],
             "code_challenge_methods_supported": ["S256"],
+            "authorization_response_iss_parameter_supported": True,
             "token_endpoint_auth_methods_supported": ["none", "client_secret_post"],
         }
     )
@@ -372,6 +459,12 @@ def redirect_uri_allowed(uri: str) -> bool:
         return False
     if parts.fragment or parts.username or parts.password or not parts.hostname:
         return False
+    if not re.fullmatch(r"[A-Za-z0-9.-]+|[0-9A-Fa-f:]+", parts.hostname):
+        return False  # no spaces, ";" or "," that could reach the consent page's CSP
+    try:
+        parts.port  # noqa: B018 - raises on a port that is not a number
+    except ValueError:
+        return False
     if len(uri) > 500:
         return False
     if parts.scheme == "https":
@@ -383,6 +476,19 @@ def _oauth_error(error: str, description: str, status: int = 400):
     return _no_store(
         JsonResponse({"error": error, "error_description": description}, status=status)
     )
+
+
+def _registered(client: ConnectorClient, method: str) -> dict:
+    return {
+        "client_id": client.client_id,
+        "client_id_issued_at": int(client.created_at.timestamp()),
+        "client_name": client.name,
+        "redirect_uris": client.redirect_uris,
+        "grant_types": ["authorization_code", "refresh_token"],
+        "response_types": ["code"],
+        "token_endpoint_auth_method": method,
+        "scope": SCOPE,
+    }
 
 
 @csrf_exempt
@@ -413,24 +519,22 @@ def register(request):
     method = body.get("token_endpoint_auth_method") or "none"
     if method not in ("none", "client_secret_post"):
         return _oauth_error("invalid_client_metadata", "token_endpoint_auth_method: none")
+    if method == "none":
+        # Every rider who adds the connector registers the same app: one row serves them all.
+        same = ConnectorClient.objects.filter(
+            name=name, redirect_uris=uris, secret_digest=""
+        ).first()
+        if same is not None:
+            return _no_store(JsonResponse(_registered(same, method), status=201))
     client_id = "rmc_" + secrets.token_urlsafe(24)
     secret = "rmcs_" + secrets.token_urlsafe(32) if method == "client_secret_post" else ""
-    ConnectorClient.objects.create(
+    client = ConnectorClient.objects.create(
         client_id=client_id,
         name=name,
         redirect_uris=uris,
         secret_digest=_digest(secret) if secret else "",
     )
-    out = {
-        "client_id": client_id,
-        "client_id_issued_at": int(time.time()),
-        "client_name": name,
-        "redirect_uris": uris,
-        "grant_types": ["authorization_code", "refresh_token"],
-        "response_types": ["code"],
-        "token_endpoint_auth_method": method,
-        "scope": SCOPE,
-    }
+    out = _registered(client, method)
     if secret:
         out["client_secret"] = secret
         out["client_secret_expires_at"] = 0
@@ -477,6 +581,7 @@ button:focus-visible {{ outline: 3px solid #0b57d0; outline-offset: 2px; }}
   body {{ background: #121212; color: #eee; }}
   button {{ background: #121212; color: #eee; border-color: #eee; }}
   button.allow {{ background: #eee; color: #121212; }}
+  button:focus-visible {{ outline-color: #8ab4f8; }}
 }}
 </style>
 </head>
@@ -497,7 +602,9 @@ button:focus-visible {{ outline: 3px solid #0b57d0; outline-offset: 2px; }}
         f" form-action 'self'{(' ' + form_to) if form_to else ''}"
     )
     response["X-Frame-Options"] = "DENY"
-    response["Referrer-Policy"] = "no-referrer"
+    # Not no-referrer: a form posted from such a page sends "Origin: null", which Django's CSRF
+    # check refuses. same-origin is the site's own policy.
+    response["Referrer-Policy"] = "same-origin"
     return _no_store(response)
 
 
@@ -514,21 +621,16 @@ def _checked_authorize(request, params):
     redirect_uri = params.get("redirect_uri") or ""
     if redirect_uri not in client.redirect_uris:
         return None, _refusal("The assistant app gave a return address it did not register.")
+    # These are answered on a page of this site, not by sending the browser on: anyone can
+    # register an app, so a redirect here would make the site an open redirect (RFC 9700 4.11.2).
     if params.get("response_type", "code") != "code":
-        return None, _redirect_with(
-            redirect_uri, error="unsupported_response_type", state=params.get("state")
-        )
+        return None, _refusal("The assistant app asked for a kind of sign-in this site doesn't do.")
     challenge = params.get("code_challenge") or ""
     if params.get("code_challenge_method") != "S256" or not 43 <= len(challenge) <= 128:
-        return None, _redirect_with(
-            redirect_uri,
-            error="invalid_request",
-            error_description="PKCE with S256 is required",
-            state=params.get("state"),
-        )
+        return None, _refusal("The assistant app's sign-in is missing its PKCE check (S256).")
     resource = params.get("resource")
     if resource and resource.rstrip("/") != f"{_origin(request)}/mcp":
-        return None, _redirect_with(redirect_uri, error="invalid_target", state=params.get("state"))
+        return None, _refusal("The assistant app asked to use something other than RouteMaker.")
     return client, None
 
 
@@ -583,8 +685,8 @@ If you allow it, it can:</p>
 <li>plan routes with RouteMaker's routing</li>
 <li>add routes to your My routes, when you ask it to</li>
 </ul>
-<p>It can't read your saved routes, sign in to the site as you, or change anything else.
-You'll go back to {host} after you answer.</p>
+<p>It can't read your saved routes, sign in to the site as you, or change anything else.</p>
+<p>After you answer you'll go back to <strong>{host}</strong>.</p>
 <form method="post" action="/oauth/authorize">
 <input type="hidden" name="csrfmiddlewaretoken" value="{csrf}">
 {hidden}
@@ -635,6 +737,8 @@ def _issue(grant: ConnectorGrant) -> JsonResponse:
             "refresh_expires_at",
             "code_digest",
             "code_expires_at",
+            "spent_code_digest",
+            "previous_refresh_digest",
         ]
     )
     return _no_store(
@@ -670,33 +774,74 @@ def token(request):
     now = timezone.now()
     with transaction.atomic():
         if kind == "authorization_code":
-            code = request.POST.get("code") or ""
+            digest = _digest(request.POST.get("code") or "")
             grant = (
-                ConnectorGrant.objects.select_for_update()
+                ConnectorGrant.objects.select_for_update(of=("self",))
                 .select_related("user")
-                .filter(code_digest=_digest(code), client=client)
+                .filter(code_digest=digest, client=client)
                 .first()
             )
-            if grant is None or grant.code_expires_at is None or grant.code_expires_at <= now:
+            if grant is None:
+                # A code traded once and seen again: someone else has a copy, so the tokens
+                # it bought stop working too.
+                ConnectorGrant.objects.filter(spent_code_digest=digest, client=client).delete()
                 return _oauth_error("invalid_grant", "the code is not valid, or was used")
-            if request.POST.get("redirect_uri") != grant.redirect_uri:
-                return _oauth_error("invalid_grant", "the return address does not match")
-            if not _pkce_matches(request.POST.get("code_verifier") or "", grant.code_challenge):
-                return _oauth_error("invalid_grant", "the code verifier does not match")
-            if not grant.user.is_active:
-                return _oauth_error("invalid_grant", "the account can no longer sign in")
-            grant.code_digest = None  # once only
+            # Whatever happens next, the code is spent: a wrong guess does not get another.
+            grant.code_digest = None
+            grant.spent_code_digest = digest
+            fresh = grant.code_expires_at is not None and grant.code_expires_at > now
             grant.code_expires_at = None
+            if not fresh:
+                grant.delete()
+                return _oauth_error("invalid_grant", "the code is not valid, or was used")
+            refused = None
+            if request.POST.get("redirect_uri") != grant.redirect_uri:
+                refused = "the return address does not match"
+            elif not _pkce_matches(request.POST.get("code_verifier") or "", grant.code_challenge):
+                refused = "the code verifier does not match"
+            elif not grant.user.is_active:
+                refused = "the account can no longer sign in"
+            if refused:
+                grant.delete()
+                return _oauth_error("invalid_grant", refused)
             return _issue(grant)
         if kind == "refresh_token":
-            refresh = request.POST.get("refresh_token") or ""
+            digest = _digest(request.POST.get("refresh_token") or "")
             grant = (
-                ConnectorGrant.objects.select_for_update()
+                ConnectorGrant.objects.select_for_update(of=("self",))
                 .select_related("user")
-                .filter(refresh_digest=_digest(refresh), client=client, refresh_expires_at__gt=now)
+                .filter(refresh_digest=digest, client=client, refresh_expires_at__gt=now)
                 .first()
             )
-            if grant is None or not grant.user.is_active:
+            if grant is None:
+                # An old refresh token used again after it was rotated: end the grant.
+                ConnectorGrant.objects.filter(
+                    previous_refresh_digest=digest, client=client
+                ).delete()
                 return _oauth_error("invalid_grant", "the refresh token is not valid")
+            if not grant.user.is_active:
+                return _oauth_error("invalid_grant", "the refresh token is not valid")
+            grant.previous_refresh_digest = digest
             return _issue(grant)  # a new refresh token each time; the old one stops working
     return _oauth_error("unsupported_grant_type", "authorization_code or refresh_token")
+
+
+# --- Clearing up -------------------------------------------------------------------------------
+
+
+def sweep_connector() -> int:
+    """Delete what will never be used again (the membership sweep's backstop): drafts past their
+    week, grants whose code expired untraded or whose refresh token expired, and apps a day old
+    with no grant left. Drafts hold route points, often a rider's home."""
+    now = timezone.now()
+    drafts, _ = ConnectorDraft.objects.filter(
+        created_at__lt=now - timedelta(days=ConnectorDraft.KEPT_DAYS)
+    ).delete()
+    untraded, _ = ConnectorGrant.objects.filter(
+        refresh_digest__isnull=True, created_at__lt=now - CODE_LIFETIME - timedelta(hours=1)
+    ).delete()
+    lapsed, _ = ConnectorGrant.objects.filter(refresh_expires_at__lt=now).delete()
+    apps, _ = ConnectorClient.objects.filter(
+        grants__isnull=True, created_at__lt=now - timedelta(days=1)
+    ).delete()
+    return drafts + untraded + lapsed + apps

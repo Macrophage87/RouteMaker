@@ -25,6 +25,7 @@ century".
 | `open_link` | Picks up a route from a RouteMaker link you paste: the page's address after you changed the route in the app, one of your saved routes opened in the app, or a shared route's link. |
 | `revise_route` | Changes a draft (add, move or remove points; any ride type or setting) and plans it again as a new draft; the old one stays to go back to. |
 | `save_route` | Keeps a draft, only when you say so: in your My routes on the site, and/or as a GPX file. |
+| `gpx_route` | A draft as a GPX track: a `.gpx` file on your own computer, or a download link on the site. |
 | `plan_metro_loop` | Builds a loop of about the target length around DC (or another centre) through waypoints at or just beyond Metro stations, rescales it once towards the target, and repairs stretches past the Metro limit. |
 
 The assistant picks the ride type and settings that fit what you ask: every ride type the app
@@ -32,8 +33,9 @@ has (bikeshare and bike plus transit included) and every setting (traffic stress
 time, gravel, trails, target distance, rider weight, cargo load and assist, trail levels, the
 bikeshare bike and ending, departure time).
 
-Every planned route is a draft: it comes back with a link that opens it in the app, and
-nothing is saved. Drafts last while the assistant's session does. `save_route` (with a key,
+Every planned route is a draft: it comes back with a link that opens that exact route in the
+app, like a link from the app's Share, so the map, Start ride and the app's own GPX are the
+route the assistant described. Nothing is saved to My routes. Drafts last while the assistant's session does. `save_route` (with a key,
 below) puts one in My routes, where it opens like any route you saved yourself; you can also
 open the link and press Save in the app.
 
@@ -56,8 +58,9 @@ in the Claude phone apps can use it with nothing installed.
 
 On the site, each call answers within one web request (up to a minute), so a long loop is
 planned once per request: the answer says when it stopped early, and asking Claude to revise
-the draft carries on from there. Drafts are kept on the site for a week. There is no GPX file
-here: open the link and use Save & load in the app.
+the draft can still fix where it strays from Metro or move its points. Drafts are kept on the site for a week. There is no GPX
+file on the server: `gpx_route` gives a download link instead, which works on any device while
+the draft is kept.
 
 ## Set it up on your own computer
 

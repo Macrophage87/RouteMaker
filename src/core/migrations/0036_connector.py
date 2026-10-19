@@ -63,6 +63,14 @@ class Migration(migrations.Migration):
                     models.CharField(blank=True, max_length=64, null=True, unique=True),
                 ),
                 ("refresh_expires_at", models.DateTimeField(blank=True, null=True)),
+                (
+                    "spent_code_digest",
+                    models.CharField(blank=True, db_index=True, max_length=64, null=True),
+                ),
+                (
+                    "previous_refresh_digest",
+                    models.CharField(blank=True, db_index=True, max_length=64, null=True),
+                ),
                 ("created_at", models.DateTimeField(auto_now_add=True)),
                 ("last_used_at", models.DateTimeField(blank=True, null=True)),
                 (

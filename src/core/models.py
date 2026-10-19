@@ -2305,6 +2305,10 @@ class ConnectorGrant(models.Model):
     access_expires_at = models.DateTimeField(null=True, blank=True)
     refresh_digest = models.CharField(max_length=64, unique=True, null=True, blank=True)
     refresh_expires_at = models.DateTimeField(null=True, blank=True)
+    # The code once traded, and the refresh token before the current one: either seen again
+    # means someone else holds a copy, so the grant ends (RFC 6749 4.1.2, RFC 9700 4.14.2).
+    spent_code_digest = models.CharField(max_length=64, null=True, blank=True, db_index=True)
+    previous_refresh_digest = models.CharField(max_length=64, null=True, blank=True, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
     last_used_at = models.DateTimeField(null=True, blank=True)
 

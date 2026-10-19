@@ -35,6 +35,7 @@ urlpatterns = [
     path("auth/logout", auth_views.logout_view, name="logout"),
     # The site's own MCP connector and its sign-in (core.connector; v0.10.0).
     path("mcp", connector.mcp_endpoint, name="mcp"),
+    path("mcp/gpx/<str:token>", connector.draft_gpx, name="mcp-gpx"),
     path(".well-known/oauth-protected-resource", connector.protected_resource),
     path(".well-known/oauth-protected-resource/mcp", connector.protected_resource),
     path(".well-known/oauth-authorization-server", connector.authorization_server),

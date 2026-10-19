@@ -216,7 +216,9 @@ SHARED_ROUTE_READS = Limit(scope="shared-route-read", requests=60, window_s=60)
 # addresses, so the address limits are wide and the work is counted per rider (CONNECTOR_CALLS,
 # by the rider's own in-process address, as their plans and saves are).
 CONNECTOR_ADDRESS = Limit(scope="connector-ip", requests=600, window_s=60)
-CONNECTOR_REGISTER = Limit(scope="connector-register", requests=60, window_s=3600)
+# Registration is once per app, not per rider (an identical app gets its first row back), but
+# claude.ai registers for every rider from the same few addresses, so the cap is wide.
+CONNECTOR_REGISTER = Limit(scope="connector-register", requests=600, window_s=3600)
 CONNECTOR_CALLS = Limit(scope="connector-calls", requests=300, window_s=3600)
 # A shared link fetched for its preview (GET /s/{id} and its image, core.share_preview): a chat
 # app's fetchers share few addresses, so twice the reads.

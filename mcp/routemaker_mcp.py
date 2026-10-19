@@ -24,6 +24,7 @@ Configuration, all from the environment:
 from __future__ import annotations
 
 import base64
+import bisect
 import json
 import math
 import os
@@ -54,8 +55,8 @@ MAX_POINTS = 25
 MAX_DRAFTS = 200  # drafts kept in memory
 PLAN_BUDGET_S = 48  # the longest one plan can take: the site's long-plan budget, and a little
 OUT_OF_TIME = (
-    "stopped there to answer inside the site's time limit; call revise_route on this draft"
-    " to keep improving it"
+    "stopped there to answer inside the site's time limit; revise_route on this draft can still"
+    " fix where it strays (fix_metro_rounds) or move its points"
 )
 COVERAGE_BBOX = (-78.05, 38.2, -76.02, 39.72)
 # A long ride's plan may take the site's whole long budget (core/routing.py LONG_PLAN_BUDGET_S,
@@ -340,18 +341,32 @@ class Api:
             raise ToolError(f"place search failed ({status}): {message}")
         return payload.get("results", [])
 
-    def shared_fragment(self, route_id: str) -> str:
-        """A shared route's plan link fragment (GET /api/shared-routes/{id}, public)."""
+    def shared_route(self, route_id: str) -> dict:
+        """A shared route as it was shared: its exact line, answer and plan inputs (GET
+        /api/shared-routes/{id}, public)."""
         status, payload, _ = self._request(
             "GET", "/api/shared-routes/" + urllib.parse.quote(route_id, safe="")
         )
         if status != 200 or not isinstance(payload, dict):
             message = payload.get("error") if isinstance(payload, dict) else payload
             raise ToolError(f"that shared route could not be opened ({status}): {message}")
-        fragment = (payload.get("inputs") or {}).get("hash") or ""
+        return payload
+
+    def shared_fragment(self, route_id: str) -> str:
+        """A shared route's plan link fragment."""
+        fragment = (self.shared_route(route_id).get("inputs") or {}).get("hash") or ""
         if "p=" not in fragment:
             raise ToolError("that shared route keeps no plan to continue from (an opened file?)")
         return fragment
+
+    def share(self, body: dict) -> str:
+        """Keep the exact route under a new link id (POST /api/shared-routes, as the app's Share
+        does); the id."""
+        status, payload, _ = self._request("POST", "/api/shared-routes", body)
+        if status != 201:
+            message = payload.get("error") if isinstance(payload, dict) else payload
+            raise ToolError(f"the exact route was not kept ({status}): {message}")
+        return body["id"]
 
     def save(self, body: dict) -> dict:
         if not self.save_key:
@@ -586,23 +601,30 @@ def routes_dir() -> Path:
     return Path(os.environ.get("ROUTEMAKER_ROUTES_DIR") or Path.home() / "RouteMaker-routes")
 
 
-def write_gpx(name: str, line: list[list[float]], directory: Path | None = None) -> Path:
-    directory = directory or routes_dir()
-    directory.mkdir(parents=True, exist_ok=True)
-    slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:60] or "route"
-    path = directory / f"{time.strftime('%Y%m%d-%H%M%S')}-{slug}.gpx"
+def gpx_slug(name: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:60] or "route"
+
+
+def gpx_text(name: str, line: list[list[float]]) -> str:
+    """The route as a GPX 1.1 track, with heights where the answer has them."""
     points = []
     for vertex in line:
         ele = f"<ele>{vertex[2]:.1f}</ele>" if len(vertex) > 2 else ""
         points.append(f'<trkpt lat="{vertex[1]:.6f}" lon="{vertex[0]:.6f}">{ele}</trkpt>')
-    path.write_text(
+    return (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         '<gpx version="1.1" creator="RouteMaker MCP" xmlns="http://www.topografix.com/GPX/1/1">\n'
         f"<metadata><name>{escape(name)}</name></metadata>\n"
         f"<trk><name>{escape(name)}</name><trkseg>\n" + "\n".join(points) + "\n</trkseg></trk>\n"
-        "</gpx>\n",
-        encoding="utf-8",
+        "</gpx>\n"
     )
+
+
+def write_gpx(name: str, line: list[list[float]], directory: Path | None = None) -> Path:
+    directory = directory or routes_dir()
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / f"{time.strftime('%Y%m%d-%H%M%S')}-{gpx_slug(name)}.gpx"
+    path.write_text(gpx_text(name, line), encoding="utf-8")
     return path
 
 
@@ -766,6 +788,53 @@ def with_metro_fix(plan: Plan, stations: list[Station]) -> tuple[list, list[int]
     points = [*plan.points[: leg + 1], station.point, *plan.points[leg + 1 :]]
     vias = sorted({*(i if i <= leg else i + 1 for i in plan.vias), leg + 1})
     return points, vias, station.name
+
+
+# An out-and-back to a loop's waypoint (the router reaching a point off any road through, and
+# coming back the way it went) longer than this is a spur worth taking out.
+SPUR_MI = 0.2
+SPUR_SAME_MI = 0.03  # outbound and return closer than this (about 50 m) are the same road
+
+
+def _along(line, cum, d):
+    """The point `d` miles along `line` (cumulative miles `cum`)."""
+    d = min(max(d, 0.0), cum[-1])
+    i = max(1, bisect.bisect_left(cum, d))
+    a, b = line[i - 1], line[i]
+    span = cum[i] - cum[i - 1]
+    t = 0.0 if span <= 0 else (d - cum[i - 1]) / span
+    return (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t)
+
+
+def spur_at(line, point) -> tuple[float, tuple[float, float]]:
+    """How far the route goes out and comes back the same way at the vertex nearest `point`,
+    in miles, and the junction the spur leaves from."""
+    k = min(range(len(line)), key=lambda i: haversine_mi(point, (line[i][0], line[i][1])))
+    cum = [0.0]
+    for a, b in zip(line, line[1:], strict=False):
+        cum.append(cum[-1] + haversine_mi((a[0], a[1]), (b[0], b[1])))
+    here, reach, d = cum[k], min(cum[k], cum[-1] - cum[k]), 0.0
+    step = 0.01
+    while d + step <= reach:
+        before = _along(line, cum, here - d - step)
+        after = _along(line, cum, here + d + step)
+        if haversine_mi(before, after) > SPUR_SAME_MI:
+            break
+        d += step
+    return d, tuple(round(c, 5) for c in _along(line, cum, here - d))
+
+
+def without_spurs(plan: Plan) -> tuple[list, list[int], int] | None:
+    """The points with each via point that the route reaches by an out-and-back longer than
+    SPUR_MI moved to where the spur leaves the loop, and how many moved; None where none."""
+    points = list(plan.points)
+    moved = 0
+    for i in plan.vias:
+        length, junction = spur_at(plan.line, plan.points[i])
+        if length >= SPUR_MI:
+            points[i] = junction
+            moved += 1
+    return (points, list(plan.vias), moved) if moved else None
 
 
 def ring_waypoints(
@@ -999,9 +1068,10 @@ TOOLS = [
             "Plan a bike route on RouteMaker through 2 to 25 points (start, stops or via points,"
             " end) and summarise it: distance, time, climbing, the share on each traffic-stress"
             " level (LTS 1 calmest to 4, and Avoid) and on paths and lanes. The route is a draft:"
-            " it comes back with a draft_id and a link that shows it in the app, and nothing is"
-            " saved. Revise it with revise_route; keep it with save_route once the rider is"
-            " happy. With max_miles_from_metro it checks the distance from Metro and, with"
+            " it comes back with a draft_id and a link that opens this exact route in the app"
+            " (a shared link, as the app's Share makes), and nothing is saved to My routes."
+            " Revise it with revise_route; keep it with save_route once the rider is happy."
+            " With max_miles_from_metro it checks the distance from Metro and, with"
             " fix_metro_rounds, adds the nearest station as a via point where the route strays."
         ),
         "inputSchema": {
@@ -1060,7 +1130,7 @@ TOOLS = [
                 "max_miles_from_metro": {"type": "number", "exclusiveMinimum": 0, "default": 5},
                 "start": POINT_SCHEMA,
                 "centre": POINT_SCHEMA,
-                "max_plans": {"type": "integer", "minimum": 1, "maximum": 6, "default": 3},
+                "max_plans": {"type": "integer", "minimum": 1, "maximum": 6, "default": 4},
                 **{
                     k: v
                     for k, v in RIDE_OPTIONS.items()
@@ -1083,8 +1153,9 @@ TOOLS = [
         "description": (
             "Start a draft from a RouteMaker link the rider pastes: the address of the page"
             " showing a route (after changing it in the app, or opening one of their saved"
-            " routes) or a shared route's link. Plans it as the app would and answers it as a"
-            " draft to revise or save."
+            " routes) or a shared route's link. A shared link (one this server gave, too) is"
+            " taken exactly as it was kept; any other is planned as the app would. Answers it"
+            " as a draft to revise or save."
         ),
         "inputSchema": {
             "type": "object",
@@ -1190,6 +1261,24 @@ TOOLS = [
         },
         "annotations": {"readOnlyHint": False, "destructiveHint": False, "openWorldHint": False},
     },
+    {
+        "name": "gpx_route",
+        "description": (
+            "A draft as a GPX track for a bike computer or another app: on the rider's own"
+            " computer a .gpx file, on the site a download link (for the rider who made the"
+            " draft, while the draft is kept). Saves nothing to My routes; give the rider the"
+            " file or link."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "draft_id": {"type": "string"},
+                "name": {"type": "string", "minLength": 1, "maxLength": 120},
+            },
+            "required": ["draft_id"],
+        },
+        "annotations": {"readOnlyHint": True, "openWorldHint": False},
+    },
 ]
 
 
@@ -1200,7 +1289,7 @@ class Call:
         self.progress = progress  # function(done, total, message), or None
         self.cancelled = threading.Event()
         # time.monotonic() by which the answer must be sent, or None: the site's own connector
-        # (core.mcp_remote) answers inside one web request, which the server ends at 60 s.
+        # (core.connector) answers inside one web request, which the server ends at 60 s.
         self.deadline = deadline
 
     def time_for_another_plan(self) -> bool:
@@ -1226,7 +1315,7 @@ class MemoryDrafts:
     """The drafts of this session (the owner, 2026-10-18: "see a ride, then tell the agent the
     revisions to make and only save it ... when committed"), by id. Held in memory only: nothing
     reaches the site until save_route. The site's own connector keeps them in its database
-    instead (core.mcp_remote), with the same two methods."""
+    instead (core.connector), with the same two methods."""
 
     def __init__(self):
         self._drafts: dict[str, Draft] = {}
@@ -1248,6 +1337,29 @@ class MemoryDrafts:
         return draft_id in self._drafts
 
 
+def kept_route(plan: Plan, name: str, fragment: str, dials: dict) -> dict:
+    """The route as the site keeps it, saved or shared: the exact line with its heights, the
+    plan's inputs, and its answer without the alternatives."""
+    return {
+        "name": name,
+        "source": "plan",
+        "line": [list(v[:3]) for v in plan.line],
+        "distance_m": plan.answer["distance_m"],
+        "inputs": {
+            "hash": fragment,
+            "points": [list(p) for p in plan.points],
+            "preset": plan.preset,
+            "dials": page_dials(dials, plan.sent),
+        },
+        "answer": {
+            **plan.answer,
+            "candidates": None,
+            "avoid_alternate": None,
+            "closure_through": None,
+        },
+    }
+
+
 class Server:
     def __init__(
         self,
@@ -1256,6 +1368,7 @@ class Server:
         out_dir=None,
         drafts=None,
         files: bool = True,
+        gpx_link=None,
     ):
         self._api_factory = api_factory
         self._api: Api | None = None
@@ -1266,6 +1379,8 @@ class Server:
         # Whether save_route may write a GPX file: not on the site's own connector, whose
         # "computer" is the server.
         self.files = files
+        # On the site: function(draft_id, name) -> a download link for the draft's GPX.
+        self.gpx_link = gpx_link
 
     def tools(self) -> list[dict]:
         """The tools, as tools/list gives them: without the GPX file where none can be written."""
@@ -1373,7 +1488,20 @@ class Server:
     ) -> dict:
         """Keep the plan as a draft and describe it: nothing is saved or written."""
         draft_id = self.drafts.put(Draft(plan, dict(options), limit, name))
-        fragment = plan_fragment(plan.points, plan.vias, plan.preset, self._dials(plan), plan.sent)
+        dials = self._dials(plan)
+        fragment = plan_fragment(plan.points, plan.vias, plan.preset, dials, plan.sent)
+        notes = list(notes)
+        # The link opens this exact line in the app, as its Share does, so the map, Start ride
+        # and the app's GPX are this route; the plan's inputs ride along for editing.
+        link = f"{self.api.base}/{fragment}"
+        try:
+            route_id = secrets.token_hex(16)
+            self.api.share({"id": route_id, **kept_route(plan, name, fragment, dials)})
+            link = f"{self.api.base}/s/{route_id}{fragment}&route={route_id}"
+        except ToolError as error:
+            notes.append(
+                f"{error}; the link plans the route again when opened, so it can differ a little"
+            )
         out = {
             "draft_id": draft_id,
             "summary": summary(plan.answer),
@@ -1389,7 +1517,7 @@ class Server:
                 "stress": self._dials(plan)["stress"],
                 "hills": self._dials(plan)["hills"],
             },
-            "link": f"{self.api.base}/{fragment}",
+            "link": link,
             "saved": False,
         }
         if taken:
@@ -1426,6 +1554,27 @@ class Server:
                 plan = again
         return plan, notes
 
+    # gpx_route
+    def gpx_route(self, args: dict, call: Call) -> dict:
+        draft_id = str(args["draft_id"])
+        draft = self.drafts.get(draft_id)
+        if draft is None:
+            raise ToolError(f"no draft {draft_id} (drafts last only a while; plan it again)")
+        name = str(args.get("name") or draft.name).strip()[:120] or draft.name
+        miles = round(draft.plan.answer["distance_m"] / METRES_PER_MILE, 1)
+        out: dict = {"draft_id": draft_id, "name": name, "distance_mi": miles}
+        if self.gpx_link is not None:
+            out["gpx_link"] = self.gpx_link(draft_id, name)
+            out["note"] = "the link downloads the file; it works while the draft is kept"
+        elif self.files:
+            try:
+                out["gpx_file"] = str(write_gpx(name, draft.plan.line, self.out_dir))
+            except OSError as error:
+                raise ToolError(f"GPX not written: {error}") from None
+        else:
+            raise ToolError("no GPX here: open the link and use Save & load > GPX in the app")
+        return out
+
     # save_route
     def save_route(self, args: dict, call: Call) -> dict:
         draft = self.drafts.get(str(args["draft_id"]))
@@ -1443,7 +1592,7 @@ class Server:
         notes: list[str] = []
         call.check()
         if args.get("gpx_file") and not self.files:
-            notes.append("no GPX file here: open the link and use Save & load > GPX in the app")
+            notes.append("no GPX file here: gpx_route gives a download link")
         elif args.get("gpx_file"):
             try:
                 out["gpx_file"] = str(write_gpx(name, plan.line, self.out_dir))
@@ -1499,13 +1648,37 @@ class Server:
             named = urllib.parse.parse_qs(url.query).get("route")
             shared_id = named[0] if named else None
         has_points = "p" in urllib.parse.parse_qs(fragment)
-        if shared_id and not has_points:
-            fragment = self.api.shared_fragment(shared_id)
+        shared = None
+        if shared_id:
+            try:
+                shared = self.api.shared_route(shared_id)
+            except ToolError:
+                if not has_points:
+                    raise
+        if shared is not None and not has_points:
+            fragment = (shared.get("inputs") or {}).get("hash") or ""
+            if "p=" not in fragment:
+                raise ToolError(
+                    "that shared route keeps no plan to continue from (an opened file?)"
+                )
         if not fragment:
             match = re.search(r"(?:^|[#&?])(p=.*)$", link)
             fragment = match.group(1) if match else ""
         points, vias, preset, options = parse_fragment(fragment)
         limit = args.get("max_miles_from_metro")
+        answer = (shared or {}).get("answer")
+        kept_hash = str(((shared or {}).get("inputs") or {}).get("hash") or "").lstrip("#")
+        asked_hash = re.sub(r"&route=[^&]*", "", fragment).lstrip("#")
+        if has_points and asked_hash != kept_hash:
+            answer = None  # the rider changed the route in the app: plan what the link says now
+        if isinstance(answer, dict) and (answer.get("geometry") or {}).get("coordinates"):
+            # The exact route that was shared: kept as it is, not planned again.
+            line = answer["geometry"]["coordinates"]
+            check = metro_check(line, limit, self.stations) if limit else None
+            sent = request_body(points, vias, preset, options)
+            plan = Plan(list(points), list(vias), preset, answer, check, sent)
+            name = str(shared.get("name") or "RouteMaker route")
+            return self._draft(plan, options, limit, [], name)
         plan, notes = self._plan_and_fix(call, points, vias, preset, options, limit, 0)
         return self._draft(plan, options, limit, notes, "RouteMaker route")
 
@@ -1598,7 +1771,7 @@ class Server:
         preset = args.get("preset") or "default"
         if preset in TWO_POINT_PRESETS or preset == "mass-ride":
             raise ToolError(f"{preset} does not plan loops")
-        max_plans = int(args.get("max_plans") or 3)
+        max_plans = int(args.get("max_plans") or 4)
         options = {**self._options(args), "loop": True}
         # target_miles is the loop's length here, not the calm search's soft target.
         options.pop("target_distance_m", None)
@@ -1656,6 +1829,14 @@ class Server:
                 rescaled = True
                 points, vias, radius = ring_points(max(1.5, radius / off))
                 continue
+            pruned = without_spurs(plan)
+            if pruned is not None:
+                points, vias, moved = pruned
+                notes.append(
+                    f"moving {moved} waypoint{'s' if moved > 1 else ''} the loop reached by an"
+                    " out-and-back to where the spur left the loop"
+                )
+                continue
             fix = with_metro_fix(plan, self.stations)
             if fix is None:
                 break
@@ -1687,6 +1868,7 @@ class Server:
             "open_link": self.open_link,
             "revise_route": self.revise_route,
             "save_route": self.save_route,
+            "gpx_route": self.gpx_route,
         }.get(name)
 
     def call(self, name: str, args: dict, call: Call | None = None) -> dict:
@@ -1702,10 +1884,14 @@ class Server:
 
 
 def _better(plan: Plan, best: Plan, target: float) -> bool:
-    """Fewer miles over the Metro limit first, then nearer the target length."""
-    a = (plan.check["miles_over_limit"], abs(plan.answer["distance_m"] / METRES_PER_MILE - target))
-    b = (best.check["miles_over_limit"], abs(best.answer["distance_m"] / METRES_PER_MILE - target))
-    return a < b
+    """Fewer miles over the Metro limit first, then no out-and-back spurs, then nearer the
+    target length."""
+
+    def key(p: Plan):
+        miles = p.answer["distance_m"] / METRES_PER_MILE
+        return (p.check["miles_over_limit"], without_spurs(p) is not None, abs(miles - target))
+
+    return key(plan) < key(best)
 
 
 # --- MCP over stdio -------------------------------------------------------------------------

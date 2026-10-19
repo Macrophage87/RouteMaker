@@ -17,7 +17,13 @@ from test_mcp_server import straight_answer
 from test_route_api import VERTICES, router, segments, standard_router
 
 from core import connector
-from core.models import ConnectorClient, ConnectorDraft, ConnectorGrant, SavedRoute
+from core.models import (
+    ConnectorClient,
+    ConnectorDraft,
+    ConnectorGrant,
+    SavedRoute,
+    SharedRoute,
+)
 
 db = pytest.mark.django_db(transaction=True)
 
@@ -172,7 +178,7 @@ class TestSignIn:
         browser, _user, _csrf = signed_in()
         params = authorize_params(client_id, "x" * 43, code_challenge_method="plain")
         r = browser.get("/oauth/authorize", params, **addr())
-        assert r.status_code == 302 and "error=invalid_request" in r["Location"]
+        assert r.status_code == 400 and "Location" not in r and b"PKCE" in r.content
 
     def test_the_consent_needs_the_csrf_token(self) -> None:
         client_id = register().json()["client_id"]
@@ -197,16 +203,15 @@ class TestSignIn:
             "redirect_uri": REDIRECT,
             "client_id": client_id,
         }
-        assert trade(**form, code_verifier="wrong" * 10).status_code == 400
         r = trade(**form, code_verifier=verifier)
         assert r.status_code == 200 and r["Cache-Control"] == "no-store"
         tokens = r.json()
         assert tokens["token_type"] == "Bearer" and tokens["expires_in"] == 3600
+        row = ConnectorGrant.objects.get(user=user)
+        stored = json.dumps([row.access_digest, row.refresh_digest, row.spent_code_digest])
+        assert tokens["access_token"] not in stored and query["code"] not in stored
         again = trade(**form, code_verifier=verifier)
         assert again.status_code == 400 and again.json()["error"] == "invalid_grant"
-        row = ConnectorGrant.objects.get(user=user)
-        stored = json.dumps([row.access_digest, row.refresh_digest, row.code_digest])
-        assert tokens["access_token"] not in stored and query["code"] not in stored
 
     def test_a_refresh_token_is_replaced_each_time(self) -> None:
         _user, tokens, client_id = tokens_for()
@@ -214,16 +219,18 @@ class TestSignIn:
             grant_type="refresh_token", refresh_token=tokens["refresh_token"], client_id=client_id
         )
         assert first.status_code == 200
-        stale = trade(
-            grant_type="refresh_token", refresh_token=tokens["refresh_token"], client_id=client_id
-        )
-        assert stale.status_code == 400
         assert mcp(tokens["access_token"], "ping").status_code == 401
         assert mcp(first.json()["access_token"], "ping").status_code == 200
+        second = trade(
+            grant_type="refresh_token",
+            refresh_token=first.json()["refresh_token"],
+            client_id=client_id,
+        )
+        assert second.status_code == 200
 
     def test_another_app_cannot_use_the_code(self) -> None:
         _browser, _user, query, _client_id, verifier = allow()
-        other = register().json()["client_id"]
+        other = register(client_name="Other app").json()["client_id"]
         r = trade(
             grant_type="authorization_code",
             code=query["code"],
@@ -259,7 +266,10 @@ class TestConnector:
         assert not planned["isError"], planned
         draft = planned["structuredContent"]
         assert draft["saved"] is False and not SavedRoute.objects.filter(user=user).exists()
-        assert draft["link"].startswith("http://testserver/#p=")
+        # The link opens this exact route, kept as the rider's own shared link.
+        route_id = draft["link"].rsplit("route=", 1)[1]
+        assert draft["link"].startswith(f"http://testserver/s/{route_id}#p=")
+        assert SharedRoute.objects.get(pk=route_id).owner_id == user.pk
         # Drafts live in the database: the next request (any process) finds it.
         revised = call(token, "revise_route", {"draft_id": draft["draft_id"], "stress": 90})
         assert planner[-1]["stress"] == 90 and not revised["isError"]
@@ -331,3 +341,192 @@ def test_a_registration_grants_nothing_by_itself() -> None:
     client_id = register().json()["client_id"]
     assert ConnectorClient.objects.filter(client_id=client_id).exists()
     assert not ConnectorGrant.objects.exists()
+
+
+@db
+class TestReview:
+    """The connector review's findings (2026-10-19)."""
+
+    def test_allow_works_when_the_browser_sends_the_site_s_origin(self) -> None:
+        client_id = register().json()["client_id"]
+        _verifier, challenge = pkce()
+        browser, _user, csrf = signed_in()
+        params = authorize_params(client_id, challenge)
+        page = browser.get("/oauth/authorize", params, **addr())
+        # A no-referrer page makes browsers post "Origin: null", which the CSRF check refuses.
+        assert page["Referrer-Policy"] == "same-origin"
+        answered = browser.post(
+            "/oauth/authorize",
+            {**params, "answer": "allow", "csrfmiddlewaretoken": csrf},
+            HTTP_ORIGIN="http://testserver",
+            **addr(),
+        )
+        assert answered.status_code == 302 and "code=" in answered["Location"]
+
+    @pytest.mark.parametrize(
+        "changes",
+        [
+            {"response_type": "token"},
+            {"code_challenge_method": "plain"},
+            {"resource": "https://elsewhere.example/mcp"},
+        ],
+    )
+    def test_a_bad_request_is_answered_here_not_redirected(self, changes) -> None:
+        client_id = (
+            Client()
+            .post(
+                "/oauth/register",
+                data=json.dumps({"client_name": "x", "redirect_uris": ["https://evil.example/l"]}),
+                content_type="application/json",
+                **addr(),
+            )
+            .json()["client_id"]
+        )
+        _verifier, challenge = pkce()
+        params = authorize_params(
+            client_id, challenge, redirect_uri="https://evil.example/l", **changes
+        )
+        r = Client().get("/oauth/authorize", params, **addr())
+        assert r.status_code == 400 and "Location" not in r
+
+    def test_a_redirect_host_cannot_carry_csp_text(self) -> None:
+        assert register("https://a.com;script-src */cb").status_code == 400
+        assert register("https://a.com,b.com/cb").status_code == 400
+
+    def test_the_same_app_registers_once(self) -> None:
+        assert register().json()["client_id"] == register().json()["client_id"]
+        assert ConnectorClient.objects.count() == 1
+
+    def test_a_wrong_verifier_spends_the_code(self) -> None:
+        _browser, user, query, client_id, verifier = allow()
+        form = {
+            "grant_type": "authorization_code",
+            "code": query["code"],
+            "redirect_uri": REDIRECT,
+            "client_id": client_id,
+        }
+        assert trade(**form, code_verifier="wrong" * 10).status_code == 400
+        assert trade(**form, code_verifier=verifier).status_code == 400
+        assert not ConnectorGrant.objects.filter(user=user).exists()
+
+    def test_a_replayed_code_ends_the_grant_it_bought(self) -> None:
+        _browser, _user, query, client_id, verifier = allow()
+        form = {
+            "grant_type": "authorization_code",
+            "code": query["code"],
+            "redirect_uri": REDIRECT,
+            "client_id": client_id,
+            "code_verifier": verifier,
+        }
+        tokens = trade(**form).json()
+        assert trade(**form).status_code == 400
+        assert mcp(tokens["access_token"], "ping").status_code == 401
+
+    def test_a_replayed_refresh_token_ends_the_grant(self) -> None:
+        _user, tokens, client_id = tokens_for()
+        old = tokens["refresh_token"]
+        new = trade(grant_type="refresh_token", refresh_token=old, client_id=client_id).json()
+        assert (
+            trade(grant_type="refresh_token", refresh_token=old, client_id=client_id).status_code
+            == 400
+        )
+        assert mcp(new["access_token"], "ping").status_code == 401
+
+    def test_signing_out_everywhere_ends_grants(self) -> None:
+        from core.revocation import bump_session_epoch
+
+        user, tokens, _client_id = tokens_for()
+        bump_session_epoch(user, "test")
+        assert mcp(tokens["access_token"], "ping").status_code == 401
+
+    def test_an_id_that_is_not_a_string_or_number_is_refused(self) -> None:
+        _user, tokens, _client_id = tokens_for()
+        r = mcp(tokens["access_token"], "ping", msg_id=[1])
+        assert r.status_code == 400 and r.json()["error"]["code"] == -32600
+
+    def test_only_unsigned_requests_count_against_the_address(self, monkeypatch) -> None:
+        from core import ratelimit
+
+        _user, tokens, _client_id = tokens_for()
+        tight = ratelimit.Limit(scope="connector-ip-test", requests=1, window_s=60)
+        monkeypatch.setattr(ratelimit, "CONNECTOR_ADDRESS", tight)
+        one = {"HTTP_X_FORWARDED_FOR": "203.0.113.7"}  # claude.ai's riders share addresses
+
+        def ping(token=None):
+            auth = {"HTTP_AUTHORIZATION": f"Bearer {token}"} if token else {}
+            body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "ping"})
+            return (
+                Client()
+                .post("/mcp", data=body, content_type="application/json", **auth, **one)
+                .status_code
+            )
+
+        assert ping() == 401
+        assert ping() == 429
+        assert ping(tokens["access_token"]) == 200
+
+    def test_in_process_plans_count_from_when_the_mcp_request_began(self, monkeypatch) -> None:
+        user = make_user()
+        outer = Client().get("/healthz").wsgi_request
+        outer.routing_started = 12.5
+        seen = []
+
+        def view(request):
+            seen.append(request.routing_started)
+            from django.http import JsonResponse
+
+            return JsonResponse({})
+
+        api = connector.InProcessApi(outer, user)
+        from types import SimpleNamespace
+
+        match = SimpleNamespace(func=view, args=(), kwargs={})
+        monkeypatch.setattr(connector, "resolve", lambda _path: match)
+        api._request("GET", "/api/geocode?q=x")
+        assert seen == [12.5]
+
+    def test_the_sweep_clears_what_will_never_be_used(self) -> None:
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        user = make_user()
+        old = timezone.now() - timedelta(days=8)
+        ConnectorDraft.objects.create(user=user, draft_id="dold", data={})
+        ConnectorDraft.objects.filter(draft_id="dold").update(created_at=old)
+        app = ConnectorClient.objects.create(
+            client_id="rmc_old", name="x", redirect_uris=[REDIRECT]
+        )
+        ConnectorClient.objects.filter(pk=app.pk).update(created_at=old)
+        _user, tokens, _client_id = tokens_for()
+        assert connector.sweep_connector() == 2
+        assert mcp(tokens["access_token"], "ping").status_code == 200
+
+
+@db
+class TestGpx:
+    def test_a_draft_s_gpx_downloads_from_its_link_and_nothing_else_does(self, planner) -> None:
+        _user, tokens, _client_id = tokens_for()
+        token = tokens["access_token"]
+        planned = call(token, "plan_route", {"points": [[-77.03, 38.9], [-77.02, 38.91]]})
+        draft_id = planned["structuredContent"]["draft_id"]
+        gpx = call(token, "gpx_route", {"draft_id": draft_id, "name": "Rock Creek"})
+        assert not gpx["isError"], gpx
+        link = gpx["structuredContent"]["gpx_link"]
+        assert link.startswith("http://testserver/mcp/gpx/")
+        r = Client().get(urllib.parse.urlsplit(link).path, **addr())
+        assert r.status_code == 200 and r["Content-Type"] == "application/gpx+xml"
+        assert 'filename="rock-creek.gpx"' in r["Content-Disposition"]
+        assert b"<trkpt" in r.content and b"Rock Creek" in r.content
+        path = urllib.parse.urlsplit(link).path
+        assert Client().get(path[:-2] + "xx", **addr()).status_code == 404
+
+    def test_a_banned_rider_s_link_stops_working(self, planner) -> None:
+        user, tokens, _client_id = tokens_for()
+        token = tokens["access_token"]
+        planned = call(token, "plan_route", {"points": [[-77.03, 38.9], [-77.02, 38.91]]})
+        draft_id = planned["structuredContent"]["draft_id"]
+        link = call(token, "gpx_route", {"draft_id": draft_id})["structuredContent"]["gpx_link"]
+        user.is_banned = True
+        user.save()
+        assert Client().get(urllib.parse.urlsplit(link).path, **addr()).status_code == 404
