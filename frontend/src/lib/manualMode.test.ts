@@ -32,6 +32,29 @@ test("moving a point or switching its kind keeps its leg drawn", () => {
   assert.ok(marks.isDrawn(stop) && !marks.isVia(stop));
 });
 
+test("an added point is drawn to in manual mode, or where it splits a drawn leg; other edits change no mark", () => {
+  const marks = new ViaMarks();
+  const a = p(-77.0);
+  const c = marks.drawn(p(-77.02));
+  const b = p(-77.01);
+  // Splitting the drawn leg a-c: both halves drawn.
+  assert.deepEqual(drawnLegs(marks.afterEdit([a, c], [a, b, c], false), marks.isDrawn), [0, 1]);
+  // Splitting a routed leg, manual mode off: routed.
+  const d = p(-77.03);
+  const e = p(-77.04);
+  assert.deepEqual(drawnLegs(marks.afterEdit([a, d], [a, e, d], false), marks.isDrawn), []);
+  // Manual mode: the line to the new point is drawn; a new start has none.
+  const f = p(-77.05);
+  assert.deepEqual(drawnLegs(marks.afterEdit([a, d], [a, d, f], true), marks.isDrawn), [1]);
+  const g = p(-77.06);
+  marks.afterEdit([a], [g, a], true);
+  assert.ok(!marks.isDrawn(g));
+  // A move (same length) changes nothing, even in manual mode.
+  const h = p(-77.07);
+  marks.afterEdit([a, d], [a, h], true);
+  assert.ok(!marks.isDrawn(h));
+});
+
 test("withLegs draws exactly the legs asked, keeping each point's kind and the pairs that need no change", () => {
   const marks = new ViaMarks();
   const a = p(-77.0);
@@ -76,7 +99,11 @@ test("Plan's map bar has the switch, and the page sends and keeps the drawn legs
   const app = source("../App.tsx");
   assert.match(app, /aria-pressed=\{manual\}/);
   assert.match(app, /straight: drawnLegs\(plan\.points\)/);
-  assert.match(app, /if \(manualRef\.current && index > 0\) VIA_MARKS\.drawn\(point\)/);
+  // Every edit goes through commit, which marks an added point (afterEdit); a manual tap is the new end.
+  assert.match(app, /edits\.commit\(VIA_MARKS\.afterEdit\(pointsRef\.current, next, manualRef\.current\), ride\)/);
+  assert.match(app, /manualRef\.current && current\.length >= 1\s*\? \[\.\.\.current\.slice\(0, -1\)/);
+  // Ride's re-plan keeps them.
+  assert.match(source("../RideMode.tsx"), /straight: drawnLegs\(to\)/);
   assert.match(app, /VIA_MARKS\.markDrawn\(initialPlan\.points, initialPlan\.drawn\)/);
   // Only in Plan, and not on a loop or a two-point ride type.
   assert.match(app, /const manualOffered = mode === "plan" && !loopVias && !twoPointsOnly\(preset\);/);

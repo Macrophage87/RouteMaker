@@ -65,8 +65,8 @@ test("App: the names follow the rider's toggle, not a ride that happens to end o
 
 test("App: every way of adding, setting or removing a point is handed the toggle", () => {
   const app = appSource();
-  assert.match(app, /addPoint\(pointsRef\.current, point, loopVias\)/);
-  assert.match(app, /announce\(kindSaid\(next, index, VIA_MARKS\.isVia, loopVias, "added"\)\)/);
+  assert.match(app, /addPoint\(current, point, loopVias\)/);
+  assert.match(app, /const said = kindSaid\(next, index, VIA_MARKS\.isVia, loopVias, "added"\);/);
   assert.match(app, /stationEdit\(pointsRef\.current, point, role, loopVias\)/);
   assert.match(app, /announce\(stationSaid\(edit\.index, edit\.next\.length, loopVias\)\)/);
   assert.match(app, /kindSaid\(current, index, VIA_MARKS\.isVia, loopVias, "removed"\)/);

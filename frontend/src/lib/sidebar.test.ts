@@ -926,7 +926,7 @@ test("the skip link and its target stay: #route-planner is the aside, and every 
   assert.match(app, /\{status\.kind === "idle" && points\.length < 2 && !goMode && <p className="hint">No route yet\.<\/p>\}/);
   assert.equal((app.match(/aria-live="polite" className="status-line/g) ?? []).length, 1);
   assert.match(app, /\{said\.text\}/);
-  assert.match(app, /announce\(kindSaid\(next, index, VIA_MARKS\.isVia, loopVias, "added"\)\)/);
+  assert.match(app, /const said = kindSaid\(next, index, VIA_MARKS\.isVia, loopVias, "added"\);/);
 });
 
 test("on a desktop the points come first, then the Ride line, then the route; on a phone the route leads", () => {

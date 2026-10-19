@@ -1738,6 +1738,8 @@ def _drawn(variant: str, request: dict, deadline: Deadline) -> dict:
         bicycle.get("bicycle_type", "Hybrid"), BICYCLE_TYPE_KMH["Hybrid"]
     )
     interval = asked.get("elevation_interval")
+    # A router that refuses `/height` (its config without the action) is asked once a plan.
+    heights_served = True
     legs: list[dict] = []
     i = 0
     while i < len(locations) - 1:
@@ -1747,7 +1749,9 @@ def _drawn(variant: str, request: dict, deadline: Deadline) -> dict:
             heights = None
             if interval:
                 samples = samples_along(a, b, interval)
-                heights = _heights(variant, samples, deadline) or [None] * len(samples)
+                heights = _heights(variant, samples, deadline) if heights_served else None
+                heights_served = heights is not None
+                heights = heights or [None] * len(samples)
             legs.append(straight_leg(a, b, float(speed), heights))
             i += 1
             continue
@@ -3190,7 +3194,9 @@ def plan(
         # choose; `work_zones.drop_exclusions`).
         work_zones.drop_exclusions(request, zones_plan)
         try:
-            answer, timed_out = _route(variant, request, deadline)
+            # The rider's drawn legs stay drawn (`_drawn`).
+            again = {**request, DRAWN_KEY: dials.straight} if drawing else request
+            answer, timed_out = _route(variant, again, deadline)
         except RouterRefused as again:
             raise NoRoute(str(again), no_path=again.code in NO_PATH_CODES) from again
 

@@ -130,6 +130,42 @@ class TestDrawnRoute:
         assert response.status_code == 200, response.content
         assert response.json()["drawn_legs"] == [0, 1]
 
+    def test_a_router_without_heights_is_asked_once_a_plan(self, client, segments, router) -> None:
+        fake = router(drawn_router(heights=routing.RouterRefused(400, 106, "Try any of")))
+        post(client, drawn_body(straight_legs=[0, 1]))
+        assert fake.endpoints().count("height") == 1
+
+    def test_a_retry_through_closures_keeps_the_drawn_legs(
+        self, client, segments, router, monkeypatch
+    ) -> None:
+        """No way round the closures: the plan is asked again through them (`work_zones`),
+        its drawn legs still drawn."""
+        asked = []
+
+        def fake_route(variant, request, deadline):
+            asked.append(routing.DRAWN_KEY in request)
+            if len(asked) == 1:
+                raise routing.RouterRefused(400, 442, "no path")
+            return routing._drawn(variant, request, deadline), False
+
+        class Zones:
+            exclude = [[[-77.1, 38.8], [-77.1, 39.0], [-77.0, 39.0], [-77.1, 38.8]]]
+            blocked: list = []
+            through = None
+
+        monkeypatch.setattr(routing.work_zones, "plan_zones", lambda *a, **k: Zones())
+        monkeypatch.setattr(routing.work_zones, "drop_exclusions", lambda request, plan: None)
+        monkeypatch.setattr(routing.work_zones, "with_work_zones", lambda answered, plan: answered)
+        monkeypatch.setattr(routing, "_route", fake_route)
+        router(drawn_router())
+        body = routing.plan(
+            [list(VERTICES[0]), list(VERTICES[2]), list(VERTICES[-1])],
+            "default",
+            dials=routing.Dials(straight=(1,)),
+        )
+        assert asked == [True, True]
+        assert body["drawn_legs"] == [1]
+
     def test_runs_on_both_sides_of_a_drawn_leg_are_routed_apart(
         self, client, segments, router
     ) -> None:

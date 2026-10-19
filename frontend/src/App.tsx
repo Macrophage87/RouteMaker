@@ -69,6 +69,7 @@ import {
   MANUAL_OFF_SAID,
   MANUAL_ON_SAID,
   MANUAL_TITLE,
+  DRAWN_SAID,
   VIA_POINT_NAME,
   addStopWhereShortest,
   isMiddle,
@@ -407,6 +408,10 @@ export function App() {
   const manual = manualOn && manualOffered;
   const manualRef = useRef(manual);
   manualRef.current = manual;
+  // Off whenever it is not offered (Go, a loop, a two-point ride type), so it never comes back on unseen.
+  useEffect(() => {
+    if (!manualOffered) setManualOn(false);
+  }, [manualOffered]);
   // What the planner answered, and which of its routes to choose from is shown
   // (OWNER-DECISIONS 265): 0 is the answer, the others its candidates.
   const [answer, setRoute] = useState<RouteResponse | null>(null);
@@ -1476,8 +1481,14 @@ export function App() {
     [syncHistory, applyRide],
   );
 
-  /** Every edit of the points goes through here, so undo can give the list before it back. */
-  const commit = edits.commit;
+  /**
+   * Every edit of the points goes through here, so undo can give the list before it back. A point it adds is drawn
+   * to in manual mode, or where it splits a drawn leg (lib/pointKinds.ts afterEdit).
+   */
+  const commit = useCallback(
+    (next: LonLat[], ride?: Ride) => edits.commit(VIA_MARKS.afterEdit(pointsRef.current, next, manualRef.current), ride),
+    [edits],
+  );
 
   /** Undo or redo: the list the history gives back, which is not itself an edit. */
   const travel = useCallback(
@@ -1557,14 +1568,19 @@ export function App() {
       return;
     }
     setNotice(null);
-    const next = addPoint(pointsRef.current, point, loopVias);
+    const current = pointsRef.current;
+    // Manual mode: the tap is the new end, drawn to from the last one (commit marks it), so a path is traced tap by
+    // tap. An end drawn to before goes on as a via point; an end that was a chosen place stays a stop.
+    const next =
+      manualRef.current && current.length >= 1
+        ? [...current.slice(0, -1), ...current.slice(-1).map((end) => (current.length > 1 && VIA_MARKS.isDrawn(end) ? VIA_MARKS.withKind(end, "via") : end)), point]
+        : addPoint(current, point, loopVias);
     // A point tapped in between the ends is a via point (v0.7.0, "Via points vs stops"); its menu makes it a stop.
     const index = next.indexOf(point);
     if (isMiddle(index, next.length, loopVias) && index < next.length - 1) VIA_MARKS.via(point);
-    // Manual mode: the line to it is drawn straight (lib/pointKinds.ts); a start has no line to it.
-    if (manualRef.current && index > 0) VIA_MARKS.drawn(point);
     commit(next);
-    announce(kindSaid(next, index, VIA_MARKS.isVia, loopVias, "added"));
+    const said = kindSaid(next, index, VIA_MARKS.isVia, loopVias, "added");
+    announce(index > 0 && VIA_MARKS.isDrawn(point) ? `${said} ${DRAWN_SAID}` : said);
   }, [commit, announce, loopVias]); // namer is the page's one, kept for the page (usePlaceNames)
 
   // "Use my location": one look-up per press (lib/geolocation.ts), then placeFix decides: from the button,
@@ -1646,9 +1662,6 @@ export function App() {
         setNotice(`A route can have at most ${MAX_POINTS} points.`);
         return;
       }
-      // A drawn leg split stays drawn on both sides; in manual mode a routed one is drawn from here on.
-      const after = next[next.indexOf(point) + 1];
-      if (manualRef.current || (after && VIA_MARKS.isDrawn(after))) VIA_MARKS.drawn(point);
       setNotice(null);
       commit(next);
       announce(insertedSaid(leg, next.length, loopVias, VIA_POINT_NAME));
@@ -3867,7 +3880,7 @@ export function App() {
   // big one after routing, Clear after clearing) moves to the panel's Route button where it shows, else the map
   // (never to Clear, where a second Enter would clear the plan).
   const barRoute = planFirst && (routingNow || routeNow.unavailable === null);
-  const planBar = planFirst && (barRoute || can.undo || can.redo || points.length > 0 || manualOffered);
+  const planBar = planFirst && (barRoute || can.undo || can.redo || points.length > 0);
   const barFocused = useRef(false);
   useEffect(() => {
     if (!barFocused.current) return;

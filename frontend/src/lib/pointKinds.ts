@@ -77,6 +77,22 @@ export class ViaMarks {
     });
   }
 
+  /**
+   * After an edit from `before` to `next` that adds one point (a tap, a stop, a dragged line): the new pair's leg is
+   * drawn in manual mode, and otherwise where it splits a drawn leg (the leg on from it is drawn), so both halves stay
+   * drawn. Any other edit (a move, a replacement, a new order) changes no mark. `next` back.
+   */
+  afterEdit<T extends readonly LonLat[]>(before: readonly LonLat[], next: T, manual: boolean): T {
+    if (next.length !== before.length + 1) return next;
+    const kept = new Set(before);
+    next.forEach((point, i) => {
+      if (i === 0 || kept.has(point)) return;
+      const after = next[i + 1];
+      if (manual || (after && this.isDrawn(after))) this.drawn(point);
+    });
+    return next;
+  }
+
   /** A pair moved to `to` (a dragged marker): the same kind as the one it replaces, its leg drawn as it was. */
   moved(from: LonLat, to: LonLat): LonLat {
     if (this.isDrawn(from)) this.drawn(to);
@@ -114,9 +130,11 @@ export function drawnLegs(points: readonly LonLat[], isDrawn: (p: LonLat) => boo
 
 /** Plan's map bar switch for manual mode, and what is said as it turns on and off. */
 export const MANUAL_LABEL = "Manual mode";
-export const MANUAL_TITLE = "Manual mode: points you tap are joined by straight lines";
-export const MANUAL_ON_SAID = "Manual mode on. Each point you tap on the map is joined to the last by a straight line.";
+export const MANUAL_TITLE = "Manual mode: each point you tap is joined by a straight line";
+export const MANUAL_ON_SAID = "Manual mode on. Each point you tap is the new end, joined by a straight line.";
 export const MANUAL_OFF_SAID = "Manual mode off. New points are routed.";
+/** Said after a point's "added" when the line to it is drawn. */
+export const DRAWN_SAID = "Joined by a straight line.";
 
 /** The link's `line` field read back: the drawn legs between `count` points, in order, each once. */
 export function decodeDrawn(value: string | null, count: number): number[] {

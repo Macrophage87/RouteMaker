@@ -121,7 +121,8 @@ test("an edit that sets the ride is one step: undo gives back the points and the
 test("App edits through planEdits, with its own history, points and ride", () => {
   const app = appSource();
   assert.match(app, /planEdits<LonLat\[\], Ride>\(\{\s*history: history\.current,\s*current: \(\) => pointsRef\.current,\s*ride: \(\) => rideRef\.current,/);
-  assert.match(app, /const commit = edits\.commit;/);
+  // Through edits.commit, with Plan's manual-mode marks set on an added point first (lib/pointKinds.ts afterEdit).
+  assert.match(app, /const commit = useCallback\(\s*\(next: LonLat\[\], ride\?: Ride\) => edits\.commit\(/);
   assert.match(app, /const next = edits\.travel\(direction\);/);
   assert.match(app, /const said = travelSaid\(direction, next\.length\);/);
   // No second way in: nothing else in App records to the history.
