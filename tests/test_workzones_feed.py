@@ -229,6 +229,21 @@ class TestTheAnswer:
         )
         assert body["work_zones"]["stale"] == ["Maryland's feed"]
 
+    def test_the_permits_feed_down_is_never_said(self) -> None:
+        """v0.9.1 (owner): DDOT's permits give no warning or cue, so TOPS being down is
+        not said either; another source down still is."""
+        assert "dc" in wz.POSSIBLE_SOURCES
+        assert workzones.unchecked_text({"dc": "unavailable", "md": "current"}) is None
+        body = workzones.with_work_zones(
+            self.body(), wz.PlanZones(status={"dc": "unavailable", "md": "current"})
+        )
+        assert not any("could not be checked" in e["text"] for e in body["description"])
+        assert body["work_zones"]["unchecked"] is None
+        assert workzones.unchecked_text({"dc": "unavailable", "mpd": "unavailable"}) == (
+            "Work zones could not be checked for this route: "
+            "MPD's traffic advisories not available."
+        )
+
     def test_no_zone_no_entry(self) -> None:
         body = workzones.with_work_zones(self.body(), wz.PlanZones(status={"md": "current"}))
         assert [e["text"] for e in body["description"]] == ["Ride north."]

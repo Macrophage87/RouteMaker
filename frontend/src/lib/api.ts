@@ -802,6 +802,8 @@ export interface RouteResponse {
   follows_file?: boolean;
   /** True where the route follows the file in the manual mode (`follow_exact`): against one-way traffic and on roads closed to bikes too. */
   follows_exactly?: boolean;
+  /** The legs drawn in Plan's manual mode (`straight_legs`), by index; null on a route with none. */
+  drawn_legs?: number[] | null;
   /** On a route that follows a file: where the file rides against one-way traffic, which the route goes round (or follows, `follows_exactly`). */
   against_traffic?: { name: string | null; distance_m: number }[] | null;
   /** A Mass Ride's rider-marked hazards it passes, in riding order (325); null or absent on other ride types. */
@@ -1019,7 +1021,7 @@ export const TRANSIT_UNAVAILABLE = "transit_unavailable";
 
 export type RouteResult = { ok: true; route: RouteResponse } | { ok: false; error: RouteError };
 
-/** Go's "More direct" (one notch more traffic tolerant) and "Calmer" (one notch calmer); core.presets stress_notches. */
+/** Go's "More direct" (two notches more traffic tolerant) and "Calmer" (one notch calmer); core.presets stress_notches. */
 export type NeighbourKind = "direct" | "calmer";
 export interface NeighbourOption {
   kind: NeighbourKind;
@@ -1238,6 +1240,8 @@ export interface RouteRequestOptions {
   follow?: readonly LonLat[];
   /** The manual mode of `follow` (core/follow.py EXACT): the line followed as ridden, rules or not. */
   followExact?: boolean;
+  /** Plan's manual mode (v0.9.1): the legs drawn as straight lines, by index (lib/pointKinds.ts drawnLegs). */
+  straight?: readonly number[];
   /** v0.8.2, Ride's Road closed: the stretches the rider found closed on this ride, left out of the plan. */
   blocked?: readonly (readonly LonLat[])[];
   /** A ride's re-route: the rider's heading at the first point (degrees), so a U-turn is taken only where it saves half a mile. */
@@ -1264,6 +1268,8 @@ export function routeRequestBody(points: readonly LonLat[], preset: PresetId, op
     ...(options.confirmLong ? { confirm_long: true } : {}),
     // "Route through anyway" (v0.7.0, lib/closureMap.ts): this plan's only, in the request, never in a link.
     ...(options.dials?.closureBypass?.length ? { closure_bypass: options.dials.closureBypass } : {}),
+    // Go and a ride: only the closures known to be on, not DDOT's permits (lib/dials.ts closuresNow).
+    ...(options.dials?.closuresNow ? { closures_now: true } : {}),
     // The via points (v0.7.0, "Via points vs stops"): passed without a stop. Never on a two-point ride type.
     ...(options.vias?.length && !twoPointsOnly(preset) ? { via_points: [...options.vias] } : {}),
     // The first good route at once (v0.7.0, "Faster routing"); the API answers the full plan where it cannot.
@@ -1274,6 +1280,8 @@ export function routeRequestBody(points: readonly LonLat[], preset: PresetId, op
     ...(options.follow && options.follow.length >= 2 && !twoPointsOnly(preset)
       ? { follow: encodePolyline6(options.follow), ...(options.followExact ? { follow_exact: true } : {}) }
       : {}),
+    // The legs drawn in Plan's manual mode, straight between their points. Never on a two-point ride type.
+    ...(options.straight?.length && !twoPointsOnly(preset) ? { straight_legs: [...options.straight] } : {}),
     // The roads the rider marked closed on this ride (Ride's Road closed): sent with its re-plans only.
     ...(options.blocked?.length ? { blocked_lines: options.blocked.map((line) => line.map((p) => [p[0], p[1]])) } : {}),
     // The way the rider is going, for a ride's re-route: the API weighs a U-turn against the way ahead.
