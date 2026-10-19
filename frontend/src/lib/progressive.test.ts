@@ -300,7 +300,7 @@ const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
 
 test("App: Go asks for the first route, Plan keeps the full search on its Route button", () => {
   assert.match(app, /quick: mode === "go" && !riding,/);
-  assert.match(app, /const asked = \{ confirmLong: plan\.confirmLong, dials: plan\.dials, vias: viaIndices\(plan\.points, VIA_MARKS\.isVia\), quick: plan\.quick, follow, followExact \};/);
+  assert.match(app, /const asked = \{\s*confirmLong: plan\.confirmLong,\s*dials: plan\.dials,\s*vias: viaIndices\(plan\.points, VIA_MARKS\.isVia\),\s*straight: drawnLegs\(plan\.points\),\s*quick: plan\.quick,\s*follow,\s*followExact,\s*\};/);
   // The full plan follows only a first route, and is asked for without quick.
   assert.match(app, /refine: \(plan: Plan, shown: RouteResult\) =>\s*shown\.ok && shown\.route\.provisional/);
 });

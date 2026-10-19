@@ -517,6 +517,19 @@ class RouteIn(Schema):
         ),
     )
 
+    straight_legs: list[StrictInt] = Field(
+        default_factory=list,
+        max_length=MAX_POINTS,
+        description=(
+            "v0.9.1, Plan's manual mode: the legs the rider drew, by index (leg i runs from"
+            " `points[i]` to `points[i + 1]`). Each is the straight line between its points,"
+            " ridden as drawn, its stress unknown; the other legs are routed as asked. The"
+            " route is then the rider's own: no routes to choose from, calm search or detour"
+            " check (`drawn_legs`). Ignored on a loop, with `follow`, and on the two-point ride"
+            " types."
+        ),
+    )
+
     @field_validator("preset", mode="before")
     @classmethod
     def _renamed_ride_types(cls, value):
@@ -535,6 +548,12 @@ class RouteIn(Schema):
                 raise ValueError(
                     "via_points are distinct indices of points between the start and the end"
                 )
+        if self.straight_legs:
+            last = len(self.points) - 1
+            if len(set(self.straight_legs)) != len(self.straight_legs) or any(
+                not 0 <= index < last for index in self.straight_legs
+            ):
+                raise ValueError("straight_legs are distinct indices of legs between the points")
         if self.novice_legs and self.preset not in presets.TRANSIT_PRESETS:
             raise ValueError("novice_legs applies to the transit ride types only")
         if self.hills is not None and self.hills > 0 and not preset.hills_seek:
@@ -2416,6 +2435,13 @@ class RouteOut(RouteBody):
             " or not; false on every other route."
         ),
     )
+    drawn_legs: list[int] | None = Field(
+        default=None,
+        description=(
+            "The legs drawn as straight lines (`straight_legs`, Plan's manual mode), by index;"
+            " null on a route with none."
+        ),
+    )
     provisional: bool = Field(
         default=False,
         description=(
@@ -4028,6 +4054,7 @@ def _bike_dials(body: RouteIn) -> routing.Dials:
         vias=tuple(body.via_points),
         follow=_follow_line(body),
         follow_exact=body.follow_exact,
+        straight=tuple(body.straight_legs),
         heading=body.heading,
     )
 

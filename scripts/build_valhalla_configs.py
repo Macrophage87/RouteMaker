@@ -82,7 +82,8 @@ OVERRIDES: dict = {
         # trace_attributes is what the stats block comes from; without it every
         # route reports nothing. sources_to_targets is the riding-time matrix
         # "Best order" orders a ride's stops by past ten stops, or when the legs'
-        # costs fail (OWNER-DECISIONS 449, core.stoporder).
+        # costs fail (OWNER-DECISIONS 449, core.stoporder). height gives a leg drawn in
+        # Plan's manual mode its elevations (v0.9.1, core.routing._drawn).
         "actions": [
             "route",
             "trace_route",
@@ -90,6 +91,7 @@ OVERRIDES: dict = {
             "locate",
             "status",
             "sources_to_targets",
+            "height",
         ],
         "service_defaults": {"radius": 0, "minimum_reachability": 50},
     },
