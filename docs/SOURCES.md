@@ -250,7 +250,9 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
   Methodology" (<https://www.mdot.maryland.gov/OPCP/MDOT_LTS_Metadata_Methodology_Full.pdf>);
   installed into `reference/agency-lts.json` by `scripts/install_agency_lts.py`
   (docs/OPERATIONS.md, "Agency stress ratings (agency-lts.json)"). Size and sha256: the
-  download's README, to be copied here.
+  download's README, to be copied here. Its 5 ("Bicycle access is prohibited by managing
+  roadway agency") closes a road to bicycles (v0.9.1; the owner, 2026-10-19), and the
+  road panel's Bike access row credits it to the line above.
 - Publisher: Maryland Department of Transportation.
 - Licence: Maryland iMAP's terms, as for the counts above; the download's README keeps
   the item's licence text verbatim.
