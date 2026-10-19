@@ -268,7 +268,12 @@ test("that category and harder are shown, on the map and in words", () => {
   assert.equal(climbShown({ category: "3" }, "4"), true);
   assert.equal(climbShown({ category: "HC" }, "HC"), true);
   assert.equal(climbShown({ category: "1" }, "HC"), false);
-  assert.deepEqual(climbsFilter("3"), ["<=", ["get", "rank"], 3]);
+  assert.deepEqual(climbsFilter("3", false), ["<=", ["get", "rank"], 3]);
+  // The owner, 2026-10-19: "optionally (default on) hide climbs on LTS 3+ roads".
+  assert.deepEqual(climbsFilter("3", true), ["all", ["<=", ["get", "rank"], 3], ["!=", ["get", "b"], true]]);
+  assert.equal(climbShown({ category: "3", busy: true }, "4", true), false);
+  assert.equal(climbShown({ category: "3", busy: true }, "4", false), true);
+  assert.equal(climbShown({ category: "3" }, "4", true), true);
   assert.equal(climbLines([climb({ category: "2" })]).features[0].properties.rank, 2);
   // The filter validates on both layers.
   const empty = { type: "geojson", data: { type: "FeatureCollection", features: [] } };
@@ -315,7 +320,7 @@ test("the select is labelled, beside the switch while the layer is on, and chang
   assert.ok(renderToStaticMarkup(createElement(ClimbsLayerControls, { ...props, on: true })).includes("climbs-from"));
   assert.ok(!renderToStaticMarkup(createElement(ClimbsLayerControls, { ...props, on: false })).includes("climbs-from"));
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
-  assert.match(app, /filter\(\(item\) => climbShown\(item\.climb, climbsFrom\)\)/);
+  assert.match(app, /filter\(\(item\) => climbShown\(item\.climb, climbsFrom, hidingBusyClimbs\)\)/);
   assert.match(app, /climbNearSpot\(climbsData, roadInfo\.point, climbsFrom\)/);
 });
 

@@ -12,6 +12,7 @@ import {
   CLIMB_CATEGORIES,
   CLIMB_COLOUR,
   CLIMB_SHAPES,
+  CLIMB_SURFACES,
   CLIMBS_KEY,
   CLIMBS_LAYERS,
   CLIMBS_LINE_SOURCE_ID,
@@ -27,6 +28,7 @@ import {
   climbLabel,
   climbLength,
   climbLineLayer,
+  climbDetails,
   climbMarkerLayer,
   climbShape,
   climbSummits,
@@ -107,7 +109,9 @@ test("the summit marker carries the category as its text and the shape as its ic
   assert.equal(features[0].properties.label, "Category 5 climb, 0.6 miles (1.0 km) at 2.4%");
   const layer = climbMarkerLayer() as { layout: Record<string, unknown> };
   assert.deepEqual(layer.layout["text-field"], ["get", "c"]);
-  assert.deepEqual(layer.layout["icon-image"], ["concat", "climb-", ["get", "shape"]]);
+  // The owner, 2026-10-19: coloured by surface, so one icon per shape and surface.
+  assert.deepEqual(layer.layout["icon-image"], ["concat", "climb-", ["get", "shape"], "-", ["get", "s"]]);
+  assert.equal(features[0].properties.s, "road");
   assert.deepEqual(layer.layout["symbol-sort-key"], ["get", "rank"]);
 });
 
@@ -275,7 +279,7 @@ function stubMap(layers: string[] = []) {
 test("adds the three shapes, both sources and both layers once, under the route; the switch shows and hides both", () => {
   const s = stubMap(["route-casing"]);
   assert.equal(addClimbs(s.map, [climb()], false, 2, "route-casing"), true);
-  assert.deepEqual(s.images, CLIMB_SHAPES.map(climbIconId));
+  assert.deepEqual(s.images, CLIMB_SHAPES.flatMap((shape) => CLIMB_SURFACES.map(({ surface }) => climbIconId(shape, surface))));
   assert.ok(s.sources.has(CLIMBS_SOURCE_ID) && s.sources.has(CLIMBS_LINE_SOURCE_ID));
   assert.deepEqual(s.added.map((a) => [a.layer.id, a.before, a.layer.layout.visibility]), [
     ["climbs-line", "route-casing", "none"],
@@ -317,7 +321,9 @@ test("the legend says each shape and the number in words", () => {
   assert.ok(html.includes("Steep: diamond, 8% or steeper average"));
   assert.ok(html.includes("its category, 5 (smallest) to 1, then HC (the biggest)"));
   // The swatches are pictures of what the words say.
-  assert.equal((html.match(/aria-hidden="true"/g) ?? []).length, 5);
+  // And each surface's colour (the owner, 2026-10-19), in words beside it.
+  for (const { label } of CLIMB_SURFACES) assert.ok(html.includes(`Colour: ${label}`));
+  assert.equal((html.match(/aria-hidden="true"/g) ?? []).length, 5 + CLIMB_SURFACES.length);
 });
 
 test("the list: a heading always, each climb in words beside its marker", () => {
@@ -327,4 +333,28 @@ test("the list: a heading always, each climb in words beside its marker", () => 
   assert.ok(html.includes("Category 4 climb, 0.6 miles (1.0 km) at 9.0%"));
   assert.match(html, /<text[^>]*>4<\/text>/);
   assert.ok(renderToStaticMarkup(createElement(ClimbsAlongList, { items: [], headingId: "h" })).includes(CLIMBS_ALONG_NONE));
+});
+
+// The owner, 2026-10-19: "color the climbs by surface: road, gravel, mtb, etc", "a different color for traffic
+// free paved climbs", and "optionally (default on) hide climbs on LTS 3+ roads".
+test("the file's surface and busy marks are read, said in words, and drawn in their colour", () => {
+  const raw = (extra: Record<string, unknown>) => ({ climbs: [{ id: "x", c: "4", l: 900, r: 40, g: 4.4, x: -77, y: 39, line: [[-77, 39], [-77.01, 39]], ...extra }] });
+  assert.equal(parseClimbs(raw({}))![0].surface, undefined);
+  assert.equal(parseClimbs(raw({ s: "p" }))![0].surface, "path");
+  assert.equal(parseClimbs(raw({ s: "g" }))![0].surface, "gravel");
+  assert.equal(parseClimbs(raw({ s: "m", b: 1 }))![0].surface, "mtb");
+  assert.equal(parseClimbs(raw({ s: "zz" }))![0].surface, undefined);
+  assert.equal(parseClimbs(raw({ b: 1 }))![0].busy, true);
+  const mtb = parseClimbs(raw({ s: "m", u: 1 }))![0];
+  assert.ok(climbDetails(mtb).includes("On a mountain-bike trail."));
+  assert.ok(!climbDetails(mtb).includes("Mostly unpaved."));
+  assert.ok(climbDetails(parseClimbs(raw({ u: 1, b: 1 }))![0]).includes("Mostly on busy roads (LTS 3 or higher)."));
+  // Every surface's colour carries the white number at 4.5:1 or more.
+  const lum = (hex: string) => {
+    const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+  for (const { colour } of CLIMB_SURFACES) assert.ok(1.05 / (lum(colour) + 0.05) >= 4.5, colour);
+  const line = climbLineLayer() as { paint: Record<string, unknown> };
+  assert.deepEqual(line.paint["line-color"], ["match", ["get", "s"], "path", "#0f766e", "gravel", "#8a4b08", "mtb", "#5b21b6", "#9d174d"]);
 });

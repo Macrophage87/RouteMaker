@@ -78,7 +78,7 @@ import type { FederalStatus } from "./lib/federalLegend.ts";
 import { attachFederalInteraction } from "./federalInteraction.ts";
 import { addWaterRestrooms, setWaterPrefs, WATER_SOURCE_ID, type WaterMap, type WaterPoint, type WaterPrefs } from "./lib/waterRestrooms.ts";
 import { attachWaterInteraction } from "./waterInteraction.ts";
-import { addClimbs, CLIMBS_SOURCE_ID, setClimbsFrom, setClimbsOn, type Climb, type ClimbCategory, type ClimbsMap } from "./lib/climbs.ts";
+import { addClimbs, CLIMBS_SOURCE_ID, setClimbsFrom, setClimbsOn, subscribeHideBusy, type Climb, type ClimbCategory, type ClimbsMap } from "./lib/climbs.ts";
 import { attachClimbInteraction } from "./climbInteraction.ts";
 import { climbCardAfterClose } from "./lib/climbCard.ts";
 import type { When } from "./lib/dials.ts";
@@ -2159,6 +2159,8 @@ export function MapView(props: Props) {
   useEffect(() => {
     climbsSync.current?.();
   }, [props.climbs, props.climbsOn, props.climbsFrom]);
+  // And "Hide climbs on busy roads" (lib/climbs.ts), set again in place.
+  useEffect(() => subscribeHideBusy(() => climbsSync.current?.()), []);
 
   // The road panel's "Climb details": the climb's card, with the focus in it.
   useEffect(() => {

@@ -60,6 +60,7 @@ import { ANNOUNCE_SETTLE_MS } from "./lib/settle.ts";
 import { skipToPlanner, SKIP_LINK_TEXT, SKIP_TO_RIDE_TEXT } from "./lib/skipLink.ts";
 import { BetaChip, betaReportUrl, isBetaBuild } from "./lib/betaBanner.ts";
 import { MtbMapKey } from "./lib/stressLegend.ts";
+import { useHideBusyClimbs } from "./lib/climbsLegend.ts";
 import { announceHow } from "./lib/candidates.ts";
 import { canReverse, loopStops, loopView, reversedPoints } from "./lib/loop.ts";
 import { FINDING_ORDER_SAID, STILL_FINDING_ORDER_SAID, applyAnswer, requestStopOrder, stopsThatMove } from "./lib/stopOrder.ts";
@@ -630,6 +631,8 @@ export function App() {
   };
   // "Show climbs from" (the owner, 2026-10-12): the smallest category shown, kept on this device as the switch is.
   const [climbsFrom, setClimbsFromState] = useState<ClimbCategory>(() => readClimbsFrom());
+  // "Hide climbs on busy roads" (the owner, 2026-10-19), kept in lib/climbs.ts for the map, the list and the panel.
+  const hidingBusyClimbs = useHideBusyClimbs();
   const changeClimbsFrom = (from: ClimbCategory) => {
     setClimbsFromState(from);
     saveClimbsFrom(from);
@@ -3444,9 +3447,9 @@ export function App() {
   const climbsAlong = useMemo(
     () =>
       climbsOn && climbsData && shown
-        ? climbsAlongRoute(shown.geometry.coordinates, climbsData).filter((item) => climbShown(item.climb, climbsFrom))
+        ? climbsAlongRoute(shown.geometry.coordinates, climbsData).filter((item) => climbShown(item.climb, climbsFrom, hidingBusyClimbs))
         : null,
-    [climbsOn, climbsData, shown, climbsFrom],
+    [climbsOn, climbsData, shown, climbsFrom, hidingBusyClimbs],
   );
   // Find food (lib/food.ts; FOOD-SEARCH, owner 2026-10-11): a map search by cuisine or name (blank for all
   // food), near the rider (the whole area, the default) or in the map's view. The places file is fetched on
