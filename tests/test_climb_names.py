@@ -149,7 +149,14 @@ class TestClimbName:
         assert names.climb_name(["Gapland Road"], self.gap) == "Gapland Road to Crampton Gap"
 
     def test_two_roads(self):
-        assert names.climb_name(["Hollow Road", "Ridge Road"], None) == "Hollow Road to Ridge Road"
+        assert (
+            names.climb_name(["Hollow Road", "Ridge Road"], self.gap)
+            == "Hollow Road and Ridge Road to Crampton Gap"
+        )
+
+    def test_the_hill_is_left_off_whatever_its_case(self):
+        hill = Landmark("Sugarloaf Mountain", names.PEAK, (east(0),))
+        assert names.climb_name(["SUGARLOAF MOUNTAIN ROAD"], hill) == "SUGARLOAF MOUNTAIN ROAD"
 
     def test_the_hill_is_left_off_a_road_that_has_it(self):
         hill = Landmark("Sugarloaf Mountain", names.PEAK, (east(0),))
@@ -195,6 +202,19 @@ class TestOnTheLayer:
             {5: "Ridge Road"},
         )
         assert segment.name == "Ridge Road"
+
+    def test_an_unnamed_climb_far_from_anything_has_no_name(self):
+        segments = [SegmentLine(key=(1, 0), coords=(east(0), east(1200)))]
+        ground = Ramp(0.06, 1200)
+        found = cl.find_all(segments, ground)
+        cl.name_all(found, gazetteer(places=(Place("Faraway", east(-6000)),)), ground)
+        assert found[0].name is None and "n" not in found[0].entry()
+
+    def test_a_place_just_inside_the_reach_east_or_west_is_found(self):
+        place = Place("Thurmont", east(4900))
+        assert names.nearest_place(east(0), gazetteer(places=(place,))) == place
+        place = Place("Thurmont", east(-4900))
+        assert names.nearest_place(east(0), gazetteer(places=(place,))) == place
 
     def test_an_unnamed_climb_is_named_for_the_place_at_its_foot(self):
         segments = [SegmentLine(key=(1, 0), coords=(east(0), east(1200)))]

@@ -75,7 +75,7 @@ const PROFILE: ClimbProfile = {
 test("named by its roads and hill where it has a name, else by its category", () => {
   assert.equal(climbTitle(climb({ name: "Foxville Road up Catoctin Mountain" })), "Foxville Road up Catoctin Mountain");
   assert.equal(climbTitle(climb()), "Category 4 climb");
-  assert.equal(climbEndName(climb({ name: "Ridge Road" }), "Top"), "Top of Ridge Road");
+  assert.equal(climbEndName(climb({ name: "Ridge Road" }), "Top"), "Top of the climb on Ridge Road");
   assert.equal(climbEndName(climb({ name: "Sugarloaf Mountain climb" }), "Top"), "Top of the Sugarloaf Mountain climb");
   assert.equal(climbEndName(climb({ name: "Climb near Thurmont" }), "the top"), "the top of the climb near Thurmont");
   assert.equal(climbEndName(climb({ category: "HC" }), "Bottom"), "Bottom of a Hors catégorie (HC) climb");

@@ -63,13 +63,13 @@ export function climbTitle(c: Pick<Climb, "name" | "category">): string {
 }
 
 /**
- * A climb's end as a place in the plan: "Top of Foxville Road up Catoctin Mountain", "Top of the Sugarloaf
+ * A climb's end as a place in the plan: "Top of the climb on Foxville Road up Catoctin Mountain", "Top of the Sugarloaf
  * Mountain climb", "Bottom of the climb near Thurmont", "Bottom of a Category 4 climb".
  */
 export function climbEndName(c: Pick<Climb, "name" | "category">, end: string): string {
   if (!c.name) return `${end} of a ${categoryName(c.category)} climb`;
   if (c.name.startsWith("Climb ")) return `${end} of the c${c.name.slice(1)}`;
-  return c.name.endsWith(" climb") ? `${end} of the ${c.name}` : `${end} of ${c.name}`;
+  return c.name.endsWith(" climb") ? `${end} of the ${c.name}` : `${end} of the climb on ${c.name}`;
 }
 
 /** A grade to a tenth, without a needless ".0": "9%", "5.4%". */

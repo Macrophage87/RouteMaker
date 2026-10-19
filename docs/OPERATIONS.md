@@ -6076,8 +6076,9 @@ and `climbs.test.ts` check the committed file.
 
 **Names (the owner, 2026-10-19: "have them named, by a combination of road names and mountain
 names (if named)").** Each climb is named at build time from the extract (`pipeline.climb_names`):
-the OSM `name` (else `ref`) of the roads carrying at least a quarter of it, at most two, in the
-order ridden, then the named gap, peak or ridge it runs up ("Foxville Road up Catoctin Mountain",
+the OSM `name` (else `ref`, else the rebuild's own name for an unnamed way: its mountain-bike
+trail, long trail, or the street a side path runs beside) of the roads carrying at least a
+quarter of it, at most two, in the order ridden ("Hollow Road and Ridge Road"), then the named gap, peak or ridge it runs up ("Foxville Road up Catoctin Mountain",
 "Gapland Road to Crampton Gap"); with no road name, "<hill> climb", else "Climb near <place>"
 (a city, town, village, hamlet, suburb or neighbourhood within 3 mi (5 km) of its foot), else no
 name. The file's `n`; the map's climb card, the climb's label and the hill seek's route

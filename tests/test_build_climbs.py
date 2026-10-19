@@ -176,7 +176,7 @@ def test_the_command_writes_the_file_from_the_table_and_the_tiles(segment_schema
     doc = json.loads(out.read_text())
     climb, trail = sorted(doc["climbs"], key=lambda c: c["y"])
     assert trail["s"] == "m" and "s" not in climb
-    assert climb["n"] == "Ridge Road to MD 77 up High Knob"
+    assert climb["n"] == "Ridge Road and MD 77 up High Knob"
     assert trail["n"] == "Climb near Wolfsville"
     assert "2 of 2 found named" in stdout.getvalue()
     assert climb["c"] == "4"  # about 100 m gained: a score near 10,000

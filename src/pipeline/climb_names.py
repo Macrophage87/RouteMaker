@@ -8,7 +8,7 @@ the rebuild's own extract (`<DATA_ROOT>/extracts/source.osm.pbf`), so it needs n
 names the rebuild already gives an unnamed way (`mtb_name`, `trail_name`, `sidepath_name`;
 `pipeline.schema`). A climb's roads are the names that carry at least `ROAD_SHARE` (a
 quarter) of its length, in the order a rider meets them, at most `MAX_ROADS` of them (the
-longest): "Snider Lane", "Hollow Road to Ridge Road". A road with no name carries none, so a
+longest): "Snider Lane", "Hollow Road and Ridge Road". A road with no name carries none, so a
 climb mostly on an unnamed track or driveway has no road name.
 
 **The hill.** OSM's named `natural=saddle` (or `mountain_pass=yes`), `natural=peak`, `hill`
@@ -70,8 +70,9 @@ NATURAL_KINDS = {
 }
 
 M_PER_DEG_LAT = 111_320.0
-# The grid the landmarks and places are kept in, degrees (about 3 mi (5 km)).
-CELL_DEG = 0.05
+# The grid the landmarks and places are kept in, degrees: wider than every reach east-west
+# across the region (0.07 degrees of longitude is 3.7 mi (6 km) at 40 N).
+CELL_DEG = 0.07
 
 
 def _metres(a: LonLat, b: LonLat) -> float:
@@ -301,7 +302,7 @@ def climb_name(
 ) -> str | None:
     """The climb's name from its roads, the hill it runs up and the place it starts near."""
     if road_names:
-        name = " to ".join(road_names)
+        name = " and ".join(road_names)
         if hill is not None and hill.name.casefold() not in name.casefold():
             name += f" {'to' if hill.kind == SADDLE else 'up'} {hill.name}"
         return name
