@@ -180,6 +180,8 @@ interface Props {
   loopVias?: boolean;
   route: RouteResponse | null;
   stale: boolean;
+  /** v0.9.1, Plan's DC permits layer (lib/permitLayer.ts): draw the closures a permit allows; off by default. */
+  permitsOn?: boolean;
   /** Plan mode (v0.7.0): the line before the last update, drawn dashed until the next change, or null. */
   ghost?: readonly LonLat[] | null;
   /** Plan: the light times on the route near dawn or dusk (lib/lightTimes.ts), each marked where the rider will be; null draws none. */
@@ -279,6 +281,12 @@ interface Props {
   climbCardRequest?: { climb: Climb; n: number } | null;
   /** A station's Start here / End here / Add as stop, with its bike entrance. */
   onStationPoint: (role: StationRole, point: LonLat, place: { name: string; label: string }) => void;
+  /** Go with no route yet: a station card's End here rides there from the rider's start (App's goTo). */
+  stationEndFromHere?: boolean;
+  /** The ride reaches places on foot (presets.ts, endsOnFoot): a station card's points are its nearest entrance. */
+  stationOnFoot?: boolean;
+  /** Where the rider comes from, for that nearest entrance (App's walkFrom). */
+  stationFrom?: (role: StationRole) => LonLat | null;
   /**
    * The road panel for a spot (OWNER-DECISIONS 441a; lib/roadInfo.ts): a right-click, a
    * long press on a phone, or I with the map focused (the map's centre).
@@ -1095,7 +1103,7 @@ export function MapView(props: Props) {
       // Closures in force at the ride (v0.7.0, lib/closureMap.ts): over the route, so a closed stretch on it shows.
       // A white casing, then red (closed) or amber (bike lane blocked); dashed where it "may still apply". Their
       // markers (buttons) carry the names and open the cards.
-      map.addSource(CLOSURE_SOURCE, { type: "geojson", data: closureFeatures(closuresOf(callbacks.current.route)) });
+      map.addSource(CLOSURE_SOURCE, { type: "geojson", data: closureFeatures(closuresOf(callbacks.current.route, callbacks.current.permitsOn)) });
       map.addLayer({
         id: "closure-casing",
         type: "line",
@@ -1237,6 +1245,11 @@ export function MapView(props: Props) {
         pointCount: () => callbacks.current.points.length,
         loop: () => callbacks.current.loopVias === true,
         onStationPoint: (role, point, place) => callbacks.current.onStationPoint(role, point, place),
+        endFromHere: () => callbacks.current.stationEndFromHere === true,
+        onFoot: () => callbacks.current.stationOnFoot === true,
+        from: (role) => callbacks.current.stationFrom?.(role) ?? null,
+        framePadding: () => callbacks.current.framePadding(),
+        reducedMotion,
       });
       // The federal-land shading, for a Mass Ride (lib/federalLand.ts): fetched
       // the first time it is shown, under the stress overlay and the route.
@@ -1812,7 +1825,7 @@ export function MapView(props: Props) {
     closureMarkers.current.forEach((marker) => marker.remove());
     closureMarkers.current = [];
     if (!map) return;
-    const items = props.route && !props.stale ? closuresOf(props.route) : [];
+    const items = props.route && !props.stale ? closuresOf(props.route, props.permitsOn) : [];
     const source = map.getSource(CLOSURE_SOURCE) as GeoJSONSource | undefined;
     source?.setData(closureFeatures(items));
     const open = (opener: HTMLButtonElement, at: LonLat, card: ClosureCard, item: ClosureItem | null) => {
@@ -1862,7 +1875,7 @@ export function MapView(props: Props) {
       });
       closureMarkers.current.push(new maplibregl.Marker({ element, anchor: "center" }).setLngLat(point).addTo(map));
     }
-  }, [props.route, props.stale]);
+  }, [props.route, props.stale, props.permitsOn]);
 
   // Where the next train or bus is (v0.9.0): a mark named in words ("Next bus: Bus 52 is 0.8 mi away (1.3 km), 3
   // stops back (Data: WMATA, live)"), not a button (it does nothing when pressed); moved in place at each answer.

@@ -765,9 +765,12 @@ def rating_sources(
     def add(key: str, level, is_pending: bool = False) -> None:
         if level is None or any(s["key"] == key for s in out):
             return
-        out.append(
-            {"key": key, "name": source_name(key), "level": float(level), "pending": is_pending}
-        )
+        # An agency's level as the map uses it (Montgomery's 5 is our 4.5), so the spread and
+        # "Use this level" compare like with like; its own level stays in the name.
+        raw = float(level)
+        level = float(agency_lts.map_level(key, raw))
+        name = source_name(key) + (f" (rated LTS {raw:g})" if level != raw else "")
+        out.append({"key": key, "name": name, "level": level, "pending": is_pending})
 
     adjusted = bool(row.get("adjustment")) or str(row.get("rule") or "").startswith("override:")
     formula = held.get("formula")
@@ -1058,7 +1061,7 @@ def painted_lane_levels(
     agency = row.get("agency") or ""
     try:
         if agency in agency_lts.AGENCIES:
-            return agency, float(row["agency_level"]), formula
+            return agency, float(agency_lts.map_level(agency, float(row["agency_level"]))), formula
     except (KeyError, TypeError, ValueError):
         return None
     for key, level in pending:
@@ -2025,8 +2028,11 @@ def road_detail(way: int, queue: str = "") -> dict:
         )
         value = row.value if isinstance(row.value, dict) else {}
         level = value.get("tier")
+        if level:
+            step = float(level) + (0.5 if value.get("half") else 0)
+            level = agency_lts.row_level(value.get("adjustment_id"), step)
         what = f"{row.get_kind_display()} override ({row.get_source_display()}), {state}" + (
-            f": {level_label(float(level) + (0.5 if value.get('half') else 0))}" if level else ""
+            f": {level_label(level)}" if level else ""
         )
         # A row never approved has no date of its own; it sorts last.
         history.append({"at": row.approved_at.isoformat() if row.approved_at else "", "what": what})
