@@ -466,7 +466,7 @@ export function App() {
   const [notice, setNotice] = useState<string | null>(null);
   const [stress, setStress] = useState<StressAvailability>("checking");
   const [stressVisible, setStressVisible] = useState(true);
-  useStressStyle();
+  const palette = useStressStyle();
   const showHighLanes = useHighStressLanes();
   const showMtbTrails = useMtbTrails();
   // Topo lines (lib/topoLines.ts; 454): the switch's state is shared with the map; whether the server
@@ -4122,7 +4122,8 @@ export function App() {
   // Go's routes to choose from, all on the map in their colours, a press on one choosing it (lib/routeChoice.ts; the
   // owner, 2026-10-19). Not while riding, in Review, on a stale route, or while the way round an Avoid junction shows.
   const choicesDrawn = mode === "go" && !riding && !reviewing && !stale && !planEdited && !aroundAvoid && shown !== null;
-  const choices = useMemo(() => (choicesDrawn ? choiceFeatures(picked, choice) : null), [choicesDrawn, picked, choice]);
+  // The palette too: the rider's own route is drawn in the route's colour for it (routeColours.ts, routeCasing).
+  const choices = useMemo(() => (choicesDrawn ? choiceFeatures(picked, choice) : null), [choicesDrawn, picked, choice, palette]);
   const routeColour = choicesDrawn && choice > 0 && picked ? choiceColour(candidateRoute(picked, choice) ?? picked, choice) : null;
   announceLevelNow.current = announceLevel(announceChoice, mode);
   const chooseAnnounce = (level: AnnounceLevel) => {

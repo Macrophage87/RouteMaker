@@ -994,9 +994,12 @@ export function MapView(props: Props) {
       // Go: read before the cards' own click handlers (attached after this one) open or close them. A stop's card
       // (water, restrooms, food, places, repair; lib/stopCard.ts) offers its own Route here or Add as stop, so a
       // press on one is the card's in Plan too (Stephen 2026-10-19: "don't auto route").
-      // Go's other routes to choose from (lib/routeChoice.ts): a press on one chooses it, and is nothing else's.
+      const stops = [water, stopCards(map)];
+      const forCard = featureCardPress(goPress ? [...stops, climbCard, federal] : stops, event.point) !== null;
+      // Go's other routes to choose from (lib/routeChoice.ts): a press on one chooses it. Not a press on the route
+      // shown (they share its ends and often more), on a station, a card's feature, or the click that ends a drag.
       const pick = callbacks.current.onPickRoute;
-      if (pick && onCanvas && !under.station && !anyPopupOpen() && !water?.hits(event.point)) {
+      if (pick && onCanvas && !under.station && !under.line && !forCard && !anyPopupOpen() && performance.now() >= clickSuppressedUntil) {
         const pad = touch ? TOUCH_HIT_PX : MOUSE_HIT_PX;
         const box: [[number, number], [number, number]] = [
           [event.point.x - pad, event.point.y - pad],
@@ -1009,8 +1012,6 @@ export function MapView(props: Props) {
           return;
         }
       }
-      const stops = [water, stopCards(map)];
-      const forCard = featureCardPress(goPress ? [...stops, climbCard, federal] : stops, event.point) !== null;
       runClick(under, { popupOpen: anyPopupOpen() || forCard, afterDrag: performance.now() < clickSuppressedUntil, lineTapIsPoint: goPress }, {
         closePopups: () => {
           closePopup(false);

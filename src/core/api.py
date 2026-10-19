@@ -2822,7 +2822,7 @@ class NeighboursOut(Schema):
         500: ErrorOut,
         503: BusyOut,
     },
-    summary="The same trip a step more direct and a step calmer (Go's route options)",
+    summary="The same trip more direct and trailmaxxed (Go's route options)",
     by_alias=True,
 )
 @decorate_view(

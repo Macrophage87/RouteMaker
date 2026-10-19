@@ -105,4 +105,7 @@ test("App draws them in Go only, off the ride, and a press on one chooses it", (
   assert.match(app, /onPickRoute=\{choicesDrawn \? choose : undefined\}/);
   const map = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
   assert.match(map, /queryRenderedFeatures\(box, \{ layers: \[CHOICE_LINE_LAYER\] \}\)/);
+  // A press on the route shown, a card's feature, or the end of a drag is never taken as choosing another route.
+  assert.match(map, /if \(pick && onCanvas && !under\.station && !under\.line && !forCard && !anyPopupOpen\(\) && performance\.now\(\) >= clickSuppressedUntil\)/);
+  assert.ok(map.indexOf("const forCard =") < map.indexOf("const pick = callbacks.current.onPickRoute"));
 });
