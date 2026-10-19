@@ -4754,11 +4754,23 @@ puts it, at most two presses away.
   water, restrooms or Metro stations and the food found are lettered A, B, C... in their list (a
   pin, aria-hidden, with the letter heard first) and on the map (MapView `lettered`: 44 px
   buttons, a pin with the letter, named "B: Drinking water, Garfield Park, 0.3 mi (0.5 km)"),
-  while that list's sheet is open; the map fits them in, above a phone's sheet. A marker's tap,
-  the row's Ride here, or the letter's key (not while typing, on the map or in a dialog) picks
-  it: in Go as the destination, straight to the route options; in Plan, the nearest's Ride here
-  and food's Show on map. Food's numbered circle layer is gone; its list and markers use the
-  letters. The Choose a station lists (Plan) are not lettered.
+  while that list's sheet is open; the map fits them in, above a phone's sheet. A marker's tap
+  or the letter's key (not while typing, on the map or in a dialog), and a row of Go's Repair or
+  Sights, opens the place's **stop card**; the rows' own Ride here and Add as stop act at once.
+  Food's numbered circle layer is gone; its list and markers use the letters. The Choose a
+  station lists (Plan) are not lettered.
+- **Stop cards** (Stephen 2026-10-19: "when pressing on food or other stops provide information
+  on what's there including a link to the website if available. Then offer a route/detour here",
+  and "don't auto route"; `lib/stopCard.ts`, `lib/stopWords.ts`, `app/mapOverlay.ts` `stopCard`):
+  a press on a lettered pin, a food, places-to-see or repair-stand dot, or a water or restroom
+  icon opens one card and never routes or places a point by itself, in Go or Plan (MapView's
+  main click counts the stop layers as feature cards in both modes). Most important first: the
+  name, what it is, Open now or Closed now where the mapped hours can be read (else the hours as
+  mapped), how far or the detour; then one action and the website (http or https only, a new
+  tab, named "Website: <place> (opens in a new tab)"). The action is Route here before there is
+  a route (Go: from Go's start; Plan: from the rider's location with an empty plan, else as the
+  end) and Add as stop with one (Go: where it is shortest; Plan: as a stop). Nothing while
+  riding.
 - **Bikeshare options** (`lib/bikeshareOptions.ts`; #94's `bikeshare.options`): a Bikeshare route
   in Go lists its pick-up and drop-off pairs as buttons lettered A, B, C, each named by the
   option's own `text`, the one the shown plan rides pressed (aria-pressed and a "Planned" tag),
