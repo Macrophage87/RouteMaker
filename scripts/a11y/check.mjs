@@ -761,9 +761,9 @@ const federalFetched = (p) =>
   const id = "#mtb-trails-switch";
   const before = await axNode(p, id);
   check("mtb layer: a switch named Mountain-bike trails, off by default", before?.role === "switch" && before?.name === "Mountain-bike trails" && String(before?.checked) === "false", JSON.stringify(before));
-  check("mtb layer: described in one plain line: from which zoom, and that it is not used for routes (the levels are the legend's)",
+  check("mtb layer: described in one plain line: from which zoom, and that only off-road ride types route on them (the levels are the legend's; the owner, 2026-10-19)",
     // From zoom 12 (MTB_MIN_ZOOM, STRESS_ZOOMS.quiet: every street from z12 since tile FORMAT_VERSION 10; before it, the ride layer's tiles, 5cfe0e3a).
-    /^From zoom 12\. Not used for routes\.$/.test(before?.description ?? ""), before?.description ?? "");
+    /^From zoom 12\. Only off-road ride types route on them\.$/.test(before?.description ?? ""), before?.description ?? "");
   const headings = await p.eval("[...document.querySelectorAll('#sheet-layers h3')].map((e) => e.textContent)");
   const at = (name) => headings.indexOf(name);
   // UI-CLEANUP: the legend is its own sheet, behind Layers' Legend button; Layers is the switches.
@@ -790,7 +790,7 @@ const federalFetched = (p) =>
   await p.eval("document.querySelector('#mtb-trails-switch').click(); true");
   await sleep(200);
   const row = await p.eval("(() => { const e = document.querySelector('#sheet-legend .mass-legend') && document.querySelector('#sheet-legend [aria-label=\"Mountain-bike trail legend\"] li.mtb-trail'); return e ? e.textContent : null; })()");
-  check("mtb layer: with it on, the Mass Ride legend has the trail's row in words", !!row && row.startsWith("Mountain-bike trailNot used for routes"), JSON.stringify(row));
+  check("mtb layer: with it on, the Mass Ride legend has the trail's row in words", !!row && row.startsWith("Mountain-bike trailOnly off-road ride types route on these"), JSON.stringify(row));
   // 456: and a row a level, its number and colour in words.
   const massLevels = await p.eval(`[...document.querySelectorAll('#sheet-legend [aria-label="Mountain-bike trail legend"] li.mtb-level')].map((e) => e.textContent)`);
   check("mtb layer: the Mass Ride legend names each difficulty level in words (456)",
@@ -1760,8 +1760,8 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
     return { text: e.textContent, folded: !!e.closest('details:not([open])'), hidden: !!e.closest('[aria-hidden="true"], [hidden], [inert]'),
       onScreen: e.getClientRects().length > 0, swatchHidden: svg?.getAttribute('aria-hidden') === 'true',
       oldLine: !!document.querySelector('#sheet-legend .mtb-hidden') }; })()`);
-  check("legend: a row says in words that a mountain-bike trail is not used for routes, in view and not in a fold, swatch aria-hidden (452a)",
-    !!mtb && mtb.text.startsWith("Mountain-bike trailNot used for routes") && !mtb.folded && !mtb.hidden && mtb.onScreen && mtb.swatchHidden && !mtb.oldLine, JSON.stringify(mtb));
+  check("legend: a row says in words which ride types route on a mountain-bike trail, in view and not in a fold, swatch aria-hidden (452a; the owner, 2026-10-19)",
+    !!mtb && mtb.text.startsWith("Mountain-bike trailOnly off-road ride types route on these") && !mtb.folded && !mtb.hidden && mtb.onScreen && mtb.swatchHidden && !mtb.oldLine, JSON.stringify(mtb));
   // 456: a row a difficulty level after it, the level's number and colour in words (never colour alone), in view,
   // its swatch hidden from a screen reader.
   const levels = await p.eval(`[...document.querySelectorAll('#sheet-legend [aria-label="Traffic stress legend"] li.mtb-level')].map((e) => ({
@@ -3997,7 +3997,7 @@ const JUNCTION_BUTTON = "Suggest a junction change";
   await p.enter();
   await sleep(300);
   const offered = await p.eval(`(() => { const d = document.querySelector('dialog.ride-types'); const k = ${kidsCard};
-    return { open: d.open, modal: d.matches(':modal'), cards: d.querySelectorAll('.ride-type-card > button').length,
+    return { open: d.open, modal: d.matches(':modal'), cards: d.querySelectorAll('.ride-type-card > button:not(.ride-fav)').length,
       kids: !!k, pressed: k?.getAttribute('aria-pressed'), hint: k?.querySelector('.hint')?.textContent, said: k?.querySelector('.visually-hidden')?.textContent }; })()`);
   // Plan streamline (2026-10-17): each card shows its gist; the full sentence is said with it, and shown by What each does.
   check("kids: the ride-type dialog is modal and offers Novice and Nervous among every ride type, with its gist shown and its sentence said",
