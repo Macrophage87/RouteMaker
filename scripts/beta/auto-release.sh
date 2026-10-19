@@ -152,14 +152,19 @@ finish() { # word message
 	fi
 }
 # The owner's alert channel (alert.sh, review OPS-1): a result that needs the owner is posted once
-# (again once a day while it lasts), a deploy always. alert.sh posts nothing without a webhook and
-# never fails, and a slow channel cannot hold a pass for long (its curl has a 20 s limit).
+# (again once a day while it lasts), a deploy always, and a deploy's release notes in the riders'
+# channel. alert.sh posts nothing without a webhook and never fails, and a slow channel cannot
+# hold a pass for long (its curl has a 20 s limit).
 notify() { # word message
 	local word=$1 message=$2 alert="$cd_dir/bin/alert.sh" id
 	[ -x "$alert" ] || return 0
 	id=${message%%[ :]*}
 	case "$word" in
-		deployed) "$alert" note "deployed $message" && "$alert" clear deploy "the release agent is working again (deployed ${message%% *})" ;;
+		deployed)
+			"$alert" note "deployed $message" && "$alert" clear deploy "the release agent is working again (deployed ${message%% *})"
+			# The riders' channel: the release's own notes (docs/releases/<tag>.md, from the deployed
+			# checkout), once per tag; nothing without its webhook.
+			"$alert" release-notes "${message%% *}" "$RM_SRC/docs/releases/${message%% *}.md" ;;
 		up-to-date) "$alert" clear deploy "the release agent is working again ($message deployed)" ;;
 		rolled-back | failed) "$alert" send deploy "failed $id" "$word: $message" ;;
 		held | interrupted) "$alert" send deploy "$word $id" "$word: $message" ;;

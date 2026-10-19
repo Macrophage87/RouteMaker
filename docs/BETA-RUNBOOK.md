@@ -24,7 +24,7 @@ a message naming `RM_BETA_HOST` when it is missing; on a server set up before v0
 | `~/routemaker-beta-state` | Mode 700: the before/after copies of `nginx -T` and the other sites' status codes | `rm -rf` it |
 | `~/routemaker-beta-passwords.txt` | Mode 600: the testers' passwords, for the owner to read and hand out | the owner deletes it (`shred -u`) |
 | `~/routemaker-beta-state/cd`, `~/.config/systemd/user/routemaker-beta-cd.*` | Only once continuous deployment is installed ("Continuous deployment", below): the release agent, its state, logs and pre-release snapshots, and its user timer | `auto-release.sh uninstall`, then `rm -rf` the `cd` directory |
-| `~/routemaker-beta-state/alert-webhook`, `~/routemaker-beta-state/alerts`, `~/.config/systemd/user/routemaker-beta-alert.*` | Only once alerts are installed ("Alerts", below): the Discord webhook address (mode 600), what was last posted, and the check timer | `alert.sh uninstall`, then `rm` the webhook file and the `alerts` directory |
+| `~/routemaker-beta-state/alert-webhook`, `~/routemaker-beta-state/release-webhook`, `~/routemaker-beta-state/alerts`, `~/.config/systemd/user/routemaker-beta-alert.*` | Only once alerts are installed ("Alerts", below): the Discord webhook addresses (mode 600), what was last posted, and the check timer | `alert.sh uninstall`, then `rm` the webhook files and the `alerts` directory |
 
 Every RouteMaker path above is created only after a check that it **does not exist yet**; if one
 does, stop and ask the owner. Nothing here changes the owner, group or mode of a directory that
@@ -1291,6 +1291,25 @@ cd "$RM_SRC"
 "$RM_STATE/cd/bin/alert.sh" test              # one test message in the channel
 "$RM_SRC/scripts/beta/auto-release.sh" install  # once, so the agent's installed copy posts its results too
 ```
+
+**Release notes for riders (a second, read-only channel).** Each deploy also posts that release's
+notes, `docs/releases/<tag>.md` from the deployed checkout (docs/releases/README.md), to a second
+webhook: the title "RouteMaker vX.Y.Z is on beta", then the notes, split at line ends to fit, once
+per tag (`$RM_STATE/alerts/release-posted`). A tag without a notes file posts the title alone; a
+release shipped by hand posts nothing until `alert.sh release-notes vX.Y.Z "$RM_SRC/docs/releases/vX.Y.Z.md"`.
+In Discord: a text channel whose `@everyone` permissions allow View Channel and Read Message
+History and deny Send Messages and Create Threads (a webhook still posts there), then its own
+webhook. On the server, after a release that carries this:
+
+```sh
+. "$HOME/routemaker-beta-state/vars.sh"
+cd "$RM_SRC"
+"$RM_SRC/scripts/beta/alert.sh" set-release-webhook   # paste, Enter, Ctrl-D; kept in $RM_STATE/release-webhook, mode 600
+"$RM_SRC/scripts/beta/alert.sh" install               # the installed copy learns the release commands
+"$RM_STATE/cd/bin/alert.sh" release-test              # one test message in the release channel
+```
+
+Without `release-webhook` nothing is posted there, and the alerts channel is unchanged.
 
 Day to day: `journalctl --user -u routemaker-beta-alert --since today` shows each check;
 `ls "$RM_STATE/alerts"` shows what is currently posted (a `.strike` file is a failure seen once).

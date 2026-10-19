@@ -28,6 +28,7 @@ for a in "$@"; do
   case "$a" in @*) cat "${a#@}" >> "$STUB_DIR/posts"; echo >> "$STUB_DIR/posts" ;; esac
 done
 cat > "$STUB_DIR/config"
+cat "$STUB_DIR/config" >> "$STUB_DIR/configs"
 printf '%s' "${STUB_CODE:-204}"
 """
 STUB_SMOKE = """#!/bin/sh
@@ -226,3 +227,88 @@ def test_a_report_whose_numbers_change_is_still_the_same_failure(box: Box) -> No
     posts = box.posts()
     assert len(posts) == 1
     assert "running for 610s" in posts[0]
+
+
+RELEASE_HOOK = "https://discord.com/api/webhooks/456/release-token"
+
+
+def release_hook(box: Box) -> None:
+    done = box.run("set-release-webhook", stdin=RELEASE_HOOK + "\n")
+    assert done.returncode == 0, done.stderr
+
+
+def configs(box: Box) -> list[str]:
+    path = box.tmp / "configs"
+    return [line for line in path.read_text().splitlines() if line] if path.exists() else []
+
+
+def test_release_notes_without_their_webhook_post_nothing(box: Box) -> None:
+    box.hook()
+    notes = box.tmp / "v0.9.1.md"
+    notes.write_text("**Fixed**\n- a thing\n")
+    done = box.run("release-notes", "v0.9.1", str(notes))
+    assert done.returncode == 0
+    assert "no release webhook set" in done.stdout
+    assert box.posts() == []
+
+
+def test_release_notes_go_to_their_own_channel_once_per_tag(box: Box) -> None:
+    box.hook()
+    release_hook(box)
+    assert oct((box.state / "release-webhook").stat().st_mode & 0o777) == "0o600"
+    notes = box.tmp / "v0.9.1.md"
+    notes.write_text("**Fixed**\n- Planning no longer sticks at keyboard height.\n")
+    assert box.run("release-notes", "v0.9.1", str(notes)).returncode == 0
+    assert box.posts() == [
+        "**RouteMaker v0.9.1 is on beta**\n\n"
+        "**Fixed**\n- Planning no longer sticks at keyboard height."
+    ]
+    assert configs(box) == [f'url = "{RELEASE_HOOK}"']
+    box.run("release-notes", "v0.9.1", str(notes))
+    assert len(box.posts()) == 1
+    assert not (box.tmp / "leaks").exists()
+    # The alerts channel keeps its own webhook.
+    box.run("test")
+    assert configs(box)[-1] == f'url = "{HOOK}"'
+
+
+def test_a_hand_stored_release_webhook_is_read_as_is(box: Box) -> None:
+    """The owner may write $RM_STATE/release-webhook himself (umask 077); a CR is dropped."""
+    (box.state / "release-webhook").write_text(RELEASE_HOOK + "\r\n")
+    assert box.run("release-test").returncode == 0
+    assert configs(box) == [f'url = "{RELEASE_HOOK}"']
+    assert box.posts() == ["RouteMaker: test message; release notes reach this channel"]
+
+
+def test_a_tag_without_notes_posts_its_title(box: Box) -> None:
+    release_hook(box)
+    box.run("release-notes", "v0.9.2", str(box.tmp / "missing.md"))
+    assert box.posts() == ["**RouteMaker v0.9.2 is on beta**"]
+
+
+def test_long_release_notes_are_split_at_line_ends(box: Box) -> None:
+    release_hook(box)
+    lines = [f"- change number {n} " + "x" * 80 for n in range(60)]
+    notes = box.tmp / "v1.0.0.md"
+    notes.write_text("\n".join(lines) + "\n")
+    box.run("release-notes", "v1.0.0", str(notes))
+    posts = box.posts()
+    assert len(posts) > 1
+    assert all(len(p) <= 2000 for p in posts)
+    body = "\n".join(posts).splitlines()
+    assert [line for line in body if line.startswith("- ")] == lines
+
+
+def test_a_failed_release_post_is_tried_again(box: Box) -> None:
+    release_hook(box)
+    box.run("release-notes", "v0.9.3", STUB_CODE="500")
+    assert box.run("release-notes", "v0.9.3").returncode == 0
+    assert len(box.posts()) == 2
+    box.run("release-notes", "v0.9.3")
+    assert len(box.posts()) == 2
+
+
+def test_release_notes_refuse_a_tag_that_is_not_a_version(box: Box) -> None:
+    release_hook(box)
+    assert box.run("release-notes", "../../etc").returncode == 2
+    assert box.posts() == []

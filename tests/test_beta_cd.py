@@ -1736,3 +1736,24 @@ def test_a_quiet_pass_sends_nothing_and_a_missing_alert_script_is_fine(beta: Bet
     beta.agent("run", STUB_ALERTS=str(beta.tmp / "alerts.log"))
     # Up to date only clears an earlier alert (alert.sh posts "working again" only after one).
     assert _alerts(beta) == ["clear|deploy|the release agent is working again (v0.1.0 deployed)|"]
+
+
+def test_a_deploy_also_posts_the_releases_notes_for_riders(beta: Beta) -> None:
+    (beta.cd / "bin" / "alert.sh").write_text(STUB_ALERT)
+    (beta.cd / "bin" / "alert.sh").chmod(0o755)
+    beta.release("v0.2.0", {"docs/releases/v0.2.0.md": "**Fixed**\n- a thing\n"})
+    done = beta.agent("run", STUB_HAS_IMAGES="1", STUB_ALERTS=str(beta.tmp / "alerts.log"))
+    assert done.returncode == 0, done.stdout + done.stderr
+    sent = _alerts(beta)
+    assert sent[0].startswith("note|deployed v0.2.0 ")
+    notes = beta.src / "docs" / "releases" / "v0.2.0.md"
+    assert sent[-1] == f"release-notes|v0.2.0|{notes}|"
+    assert notes.read_text() == "**Fixed**\n- a thing\n"  # the deployed checkout's own file
+
+
+def test_a_held_release_posts_no_release_notes(beta: Beta) -> None:
+    (beta.cd / "bin" / "alert.sh").write_text(STUB_ALERT)
+    (beta.cd / "bin" / "alert.sh").chmod(0o755)
+    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"}, annotated=False)
+    beta.agent("run", STUB_ALERTS=str(beta.tmp / "alerts.log"))
+    assert not any(line.startswith("release-notes|") for line in _alerts(beta))

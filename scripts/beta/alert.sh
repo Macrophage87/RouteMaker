@@ -18,9 +18,17 @@
 #                                  --user timer that runs `watch` about every 10 minutes
 #   alert.sh uninstall             stop and remove that timer (keeps the webhook and state)
 #
+# Release notes go to a second channel, one riders can read and not post in:
+#   alert.sh set-release-webhook   as set-webhook, into $RM_STATE/release-webhook
+#   alert.sh release-test          posts one test message there
+#   alert.sh release-notes TAG [FILE]
+#                                  posts "RouteMaker TAG is on beta" and FILE's text (the release's
+#                                  docs/releases/TAG.md), split at line ends to fit; once per tag
+#
 # With no webhook set, nothing is posted and every command still succeeds, so the release
 # agent's calls never fail a pass. Messages carry no secret and no rider's data: release tags,
-# step names, the smoke tests' PASS/FAIL lines and check_operations' own report.
+# step names, the smoke tests' PASS/FAIL lines and check_operations' own report. Release notes are
+# the repository's own rider-facing text, with no server address in them.
 #
 # Settings: $RM_STATE/vars.sh, as auto-release.sh reads it (RM_VARS names another file).
 # CURL names the curl binary [curl]; RM_ALERT_COMPOSE and RM_ALERT_SMOKE stand in for
@@ -52,24 +60,24 @@ load_vars() {
 	done
 	py=${RM_PY:-python3}
 	hook_file="$RM_STATE/alert-webhook"
+	release_hook_file="$RM_STATE/release-webhook"
 	state="$RM_STATE/alerts"
 	cd_dir="$RM_STATE/cd"
 }
 
-webhook() { [ -f "$hook_file" ] && head -n 1 "$hook_file" | tr -d '\r'; }
+webhook() { [ -f "${1:-$hook_file}" ] && head -n 1 "${1:-$hook_file}" | tr -d '\r'; }
 good_webhook() {
 	case "$1" in https://?*) ;; *) return 1 ;; esac
 	case "$1" in *[!A-Za-z0-9._~:/?#!\$\&*+,\;=%-]* | *@*) return 1 ;; esac
 }
 
-# Post one message. The address goes to curl as a config on standard input and the body as a
-# file, so neither is in a process listing; the address is never printed.
-post() { # message
-	local url body text code
-	url=$(webhook)
-	[ -n "$url" ] || { echo "alert: no webhook set (alert.sh set-webhook); not posted: $1"; return 0; }
-	good_webhook "$url" || { echo "alert: $hook_file does not hold a plain https:// address; not posted" >&2; return 0; }
-	text="RouteMaker beta: $1"
+# Post one message to the webhook in FILE. The address goes to curl as a config on standard input
+# and the body as a file, so neither is in a process listing; the address is never printed.
+post_to() { # file setter text
+	local url body text=$3 code
+	url=$(webhook "$1")
+	[ -n "$url" ] || { echo "alert: no webhook set (alert.sh $2); not posted: ${3%%$'\n'*}"; return 0; }
+	good_webhook "$url" || { echo "alert: $1 does not hold a plain https:// address; not posted" >&2; return 0; }
 	[ "${#text}" -le "$MAX_CHARS" ] || text="${text:0:$MAX_CHARS}..."
 	body=$(mktemp)
 	# allowed_mentions: no @everyone or role ping, whatever a message happens to contain.
@@ -78,10 +86,11 @@ post() { # message
 	code=$(printf 'url = "%s"\n' "$url" | "${CURL:-curl}" -K - -sS --max-time 20 -o /dev/null -w '%{http_code}' \
 		-H 'Content-Type: application/json' --data-binary "@$body" 2>/dev/null) || code=000
 	rm -f "$body"
-	case "$code" in 2??) echo "alert: posted: $1"; return 0 ;; esac
-	echo "alert: the webhook answered HTTP $code; not posted: $1" >&2
+	case "$code" in 2??) echo "alert: posted: ${3%%$'\n'*}"; return 0 ;; esac
+	echo "alert: the webhook answered HTTP $code; not posted: ${3%%$'\n'*}" >&2
 	return 1
 }
+post() { post_to "$hook_file" set-webhook "RouteMaker beta: $1"; }
 
 # A failure's repeat-check id: its words without their numbers, so "running for 610s" and "12
 # GiB free" are the same failure at the next check, not a new one to post.
@@ -148,15 +157,42 @@ cmd_watch() {
 	return 0
 }
 
-cmd_set_webhook() {
+cmd_set_webhook() { # file test-command
 	local url
 	[ -t 0 ] && echo "Paste the webhook address, press Enter, then Ctrl-D:" >&2
 	IFS= read -r url || [ -n "$url" ] || die "no address read"
 	url=${url%$'\r'}
 	good_webhook "$url" || die "that is not a plain https:// address; nothing was written"
 	mkdir -p "$RM_STATE"
-	(umask 077 && printf '%s\n' "$url" >"$hook_file.new") && mv -f "$hook_file.new" "$hook_file"
-	echo "webhook saved in $hook_file (mode 600); try it: alert.sh test"
+	(umask 077 && printf '%s\n' "$url" >"$1.new") && mv -f "$1.new" "$1"
+	echo "webhook saved in $1 (mode 600); try it: alert.sh $2"
+}
+
+# A release's notes in the release channel: the title, then the notes in as many messages as
+# Discord needs, each cut at a line end. Posted once per tag (state/release-posted), so a pass
+# that records the same tag again posts nothing; a failed post is tried again next time.
+cmd_release_notes() { # tag [file]
+	[ $# = 1 ] || [ $# = 2 ] || die "release-notes TAG [FILE]"
+	[[ $1 =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "a tag is vX.Y.Z ('$1')"
+	local tag=$1 file=${2:-} posted="$state/release-posted" chunk="" line ok=1
+	[ -n "$(webhook "$release_hook_file")" ] || { echo "alert: no release webhook set (alert.sh set-release-webhook); notes for $tag not posted"; return 0; }
+	mkdir -p "$state" && chmod 700 "$state"
+	if [ -f "$posted" ] && grep -qxF "$tag" "$posted"; then echo "alert: notes for $tag were already posted"; return 0; fi
+	chunk="**RouteMaker $tag is on beta**"
+	if [ -n "$file" ] && [ -f "$file" ]; then
+		chunk+=$'\n'
+		while IFS= read -r line || [ -n "$line" ]; do
+			line=${line%$'\r'}
+			if [ $((${#chunk} + ${#line} + 1)) -gt "$MAX_CHARS" ] && [ -n "$chunk" ]; then
+				post_to "$release_hook_file" set-release-webhook "$chunk" || ok=0
+				chunk=""
+			fi
+			chunk+="${chunk:+$'\n'}$line"
+		done <"$file"
+	fi
+	[ -z "$chunk" ] || post_to "$release_hook_file" set-release-webhook "$chunk" || ok=0
+	[ "$ok" = 1 ] && printf '%s\n' "$tag" >>"$posted"
+	return 0
 }
 
 cmd_install() {
@@ -209,7 +245,7 @@ cmd_uninstall() {
 	systemctl --user disable --now "$UNIT.timer" 2>/dev/null || true
 	rm -f "$unit_dir/$UNIT.service" "$unit_dir/$UNIT.timer"
 	systemctl --user daemon-reload 2>/dev/null || true
-	echo "timer and units removed; $hook_file and $state are kept"
+	echo "timer and units removed; $hook_file, $release_hook_file and $state are kept"
 }
 
 main() {
@@ -223,7 +259,10 @@ main() {
 		clear) cmd_clear "$@" ;;
 		watch) cmd_watch ;;
 		test) post "test message from alert.sh test; alerts reach this channel" ;;
-		set-webhook) cmd_set_webhook ;;
+		set-webhook) cmd_set_webhook "$hook_file" test ;;
+		release-test) post_to "$release_hook_file" set-release-webhook "RouteMaker: test message; release notes reach this channel"; return 0 ;;
+		set-release-webhook) cmd_set_webhook "$release_hook_file" release-test ;;
+		release-notes) cmd_release_notes "$@" ;;
 		install) cmd_install "$@" ;;
 		uninstall) cmd_uninstall ;;
 		*) die "unknown command '$command' (--help)" ;;
