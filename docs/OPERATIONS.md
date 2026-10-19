@@ -4782,7 +4782,20 @@ scale. The levels on our scale (the script's docstring has the citations):
 |---|---|---|---|
 | Montgomery County Planning | `LTS_EXIST` | 1, 2, 2.5, 3, 4, 5 (5 is Avoid) | 0.5 "None"; not Existing; sidepaths, trails, parking lots |
 | DDOT (2020) | the first of `DDOT_LEVEL_FIELDS` any record has (`LTS`, `LTS_2020`, ...) | 1 to 4 as they are (a 5 would be Avoid) | 0 and empty |
-| MDOT SHA | `LTS_ADJUSTED` | 1 to 4 as they are; 5, "bicycle access prohibited", as Avoid | 0 (shared-use path), 9 (missing data), empty |
+| MDOT SHA | `LTS_ADJUSTED` | 1 to 4 as they are; 5, "bicycle access prohibited", closes the road to bicycles (v0.9.1) | 0 (shared-use path), 9 (missing data), empty |
+
+MDOT SHA's 5 is about access, not stress (the owner, 2026-10-19: "MDOT LTS 5 means that
+bikes are prohibited. MoCo LTS5 is extremely high stress but allowed."; "Just don't draw
+them or consider them for routing."). From v0.9.1 the rebuild closes such a road
+(`rm:no_bicycle=mdot_prohibited`): it is not drawn on the stress map and no ride type
+routes on it, whatever Montgomery or DDOT rate it. A road something else already closes (a
+freeway, `bicycle=no`, private) keeps its own reason. Not closed, and listed instead: a
+path or track the MDOT record matched (a road layer on a path is more likely a matching
+slip), and a way an owner access override opens. The rebuild writes
+`reports/agency-prohibited.csv` (`way_id, highway, name, bicycle, length_m, outcome`), one
+row per closed way and per listed one; `closed; OpenStreetMap says bicycles are allowed`
+marks a road the two sources disagree about, worth a look in Review. To reopen a road,
+approve a `bicycle=yes` access override for it. Montgomery's and DDOT's 5 stay Avoid.
 
 DDOT's level field is not recorded in this repository: the script prints `ddot: level read
 from <field>`, and where the layer has none of the expected fields it stops and lists the

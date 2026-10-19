@@ -848,6 +848,10 @@ class RebuildContext:
     # Every way inside a military area, and whether the rule closed it
     # (`restricted_areas.military_closures`; the rebuild's military-closures.csv).
     military_ways: list[restricted_areas.MilitaryWay] = field(default_factory=list)
+    # The ways an agency's rating says bicycles may not use (MDOT SHA's 5;
+    # `agency_lts.PROHIBITING_LEVELS`), closed in `classify_facilities` unless a path or
+    # an owner's access override (`agency_ratings.prohibited_closures`).
+    agency_prohibited: set[int] = field(default_factory=set)
     # The ways an approved access override wrote a bicycle key on (APPLY_OVERRIDES):
     # inside a military area, only these reopen by evidence (OWNER-DECISIONS 330, 437).
     bicycle_override_ways: frozenset[int] = frozenset()
@@ -2272,6 +2276,9 @@ def build_handlers(
             context.ways, entries, reference.agency_lts_features, reference.agency_lts_ratings
         )
         tags_of = {way.osm_id: way.tags for way in context.ways}
+        # Access, not stress: closed later whatever level the map takes, a curated lane's
+        # included (`classify_facilities`).
+        context.agency_prohibited = agency_ratings.prohibited_ways(rated)
         changed = 0
         for way_id, ratings in rated.items():
             current = context.stress_by_way.get(way_id)
@@ -2930,6 +2937,30 @@ def build_handlers(
         )
         context.no_bicycle = nobike.reasons
         write_bike_bans(placed, areas[restricted_areas.PARK])
+        # MDOT SHA's "bicycle access is prohibited" (its LTS 5): closed and left off the
+        # stress map, as the owner ruled 2026-10-19, after the rules above so a way they
+        # close keeps their reason, and after the DC Review list, which is the District's.
+        prohibited, prohibited_rows = agency_ratings.prohibited_closures(
+            context.ways,
+            context.agency_prohibited,
+            nobike.reasons,
+            context.bicycle_override_ways,
+        )
+        nobike.reasons.update(prohibited)
+        logger.info(
+            "agency prohibitions: %d ways closed to bicycles, %d listed for review",
+            len(prohibited),
+            len(prohibited_rows) - len(prohibited),
+        )
+        write_reports(
+            context.work_dir,
+            {
+                agency_ratings.PROHIBITED_REPORT_NAME: agency_ratings.prohibited_report_csv(
+                    prohibited_rows
+                )
+            },
+            "agency-prohibited",
+        )
         context.walk_bike = nobike.walk_bike
         context.destination_only = nobike.destination_only
         context.mtb_only = nobike.mtb_only()

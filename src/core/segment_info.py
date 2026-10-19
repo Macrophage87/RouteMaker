@@ -79,6 +79,7 @@ OWNER = "Owner override"
 COUNTY_ADJUSTMENT_PREFIX = "moco-lts5-"
 COUNTY = agency_lts.source_name("moco")
 ROUTER = "OpenStreetMap, through RouteMaker's routing graph"
+MDOT_ACCESS_SOURCE = "State of Maryland (MDOT SHA), Bicycle Level of Traffic Stress (2022)"
 NEXT_UPDATE = "Available after the next data update"
 
 # The step words (OWNER-DECISIONS 441i-441l; 441j: "5 is just avoid").
@@ -211,6 +212,9 @@ ACCESS_WORDS = {
         " (closed unless there is evidence bikes are allowed)",
     ),
     "bicycle_no": (False, "Closed: no bicycles (a no-bike sign or rule, as mapped)"),
+    # MDOT SHA's LTS 5, "Bicycle access is prohibited by managing roadway agency"
+    # (`agency_lts.PROHIBITED_NO_BICYCLE`; the owner, 2026-10-19).
+    "mdot_prohibited": (False, "Closed: the State of Maryland (MDOT SHA) prohibits bicycles here"),
     # Legal, rated Avoid, where a side path is mapped beside it (review RL-1; the owner,
     # 2026-10-16: "It's very much not recommended, but I believe still legal").
     "bicycle_use_sidepath": (True, "Open: legal, but riders are asked to use the side path"),
@@ -954,6 +958,8 @@ def access_rows(row: dict, bicycle: bool | None) -> tuple[bool | None, list[dict
         source = (
             OWNER
             if reason.startswith("override")
+            else MDOT_ACCESS_SOURCE
+            if reason == "mdot_prohibited"
             else (CLASSIFIER if reason in ("military", "secured", "works", "err_closed") else OSM)
         )
         return False, [_row("Bike access", known[1], source)]
@@ -1009,6 +1015,7 @@ ACCESS_SHORT = {
     "secured": "secure government site",
     "works": "quarry, landfill or industrial site",
     "bicycle_no": "no-bike rule",
+    "mdot_prohibited": "prohibited by MDOT SHA",
     "motorway": "freeway",
     "motorroad": "motor vehicles only",
     "private": "private",
