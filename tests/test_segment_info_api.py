@@ -422,8 +422,8 @@ class TestAnswer:
         body = get(client).json()
         assert body["open"] is False and body["osm_way_id"] == 120
         assert summary(body)[-1] == (
-            "Bikes: Mountain-bike trail, not used for routes (Mountain Bike, Gravel and Mountain"
-            " Goat may use it)"
+            "Bikes: Mountain-bike trail, not rated, not used for routes (Mountain Bike, Gravel and"
+            " Mountain Goat may use it)"
         )
         access = section(body, "access")["Bike access"]
         assert access["value"] == (
@@ -439,8 +439,8 @@ class TestAnswer:
         router.answers = {"bicycle": [], "pedestrian": [edge(121, use="path")]}
         body = get(client).json()
         assert summary(body)[-1] == (
-            "Bikes: Mountain-bike trail, not used for routes (Mountain Bike, Gravel and Mountain"
-            " Goat may use it)"
+            "Bikes: Mountain-bike trail, not rated, not used for routes (Mountain Bike, Gravel and"
+            " Mountain Goat may use it)"
         )
 
     @pytest.mark.parametrize(
@@ -472,8 +472,10 @@ class TestAnswer:
         )
         router.answers = {"bicycle": [], "pedestrian": [edge(124, "Lake Loop", use="path")]}
         body = get(client).json()
+        # Green: Gravel and Mountain Goat ride it too (the owner's choice of 2026-10-19).
+        who = "Mountain Bike, Gravel and Mountain Goat" if level == 1 else "Mountain Bike"
         assert summary(body)[-1] == (
-            f"Bikes: Mountain-bike trail, {words}, not used for routes (Mountain Bike may use it)"
+            f"Bikes: Mountain-bike trail, {words}, not used for routes ({who} may use it)"
         )
         difficulty = section(body, "riding")["Mountain-bike difficulty"]
         assert difficulty["value"] == (f"{words[0].upper()}{words[1:]}: {scale}")
@@ -482,7 +484,8 @@ class TestAnswer:
         access = section(body, "access")["Bike access"]
         assert access["value"] == (
             "Closed: mountain-bike singletrack, not used for routes except by the Mountain Bike"
-            " ride type where nothing but its rating closes it"
+            " ride type (and Gravel and Mountain Goat on a green trail) where nothing but its"
+            " rating closes it"
         )
 
     def test_a_levelled_trail_never_says_the_off_road_graph_uses_it(
@@ -573,21 +576,24 @@ class TestAnswer:
     def test_a_named_unrated_trail(self) -> None:
         row = {"bike_access_reason": "mtb", "mtb_only": True, "mtb_name": "Loop 3"}
         assert segment_info.mtb_summary(row) == (
-            "Mountain-bike trail: Loop 3, not used for routes (Mountain Bike, Gravel and"
-            " Mountain Goat may use it)"
+            "Mountain-bike trail, not rated: Loop 3, not used for routes (Mountain Bike, Gravel"
+            " and Mountain Goat may use it)"
         )
         assert segment_info.mtb_summary({**row, "mtb_name": "  "}) == (
-            "Mountain-bike trail, not used for routes (Mountain Bike, Gravel and Mountain Goat"
-            " may use it)"
+            "Mountain-bike trail, not rated, not used for routes (Mountain Bike, Gravel and"
+            " Mountain Goat may use it)"
         )
 
-    def test_an_unrated_trail_has_no_difficulty_row(self, client, segment_schemas, router):
+    def test_an_unrated_trail_says_it_is_not_rated(self, client, segment_schemas, router):
+        """The owner, 2026-10-19: "Include the unrated trails too, just give a note that they
+        aren't rated"."""
         live, _ = segment_schemas
         insert(live, 126, [SPOT, east(SPOT, 50)], is_trail_class=True, mtb_only=True)
         router.answers = {"bicycle": [], "pedestrian": [edge(126, use="path")]}
         body = get(client).json()
-        assert "Mountain-bike difficulty" not in section(body, "riding")
-        assert "level" not in summary(body)[-1]
+        difficulty = section(body, "riding")["Mountain-bike difficulty"]
+        assert difficulty["value"] == segment_info.UNRATED_WORDS
+        assert "level" not in summary(body)[-1] and "not rated" in summary(body)[-1]
 
     def test_the_level_words_match_the_front_end(self) -> None:
         """frontend/src/stressStyle.js MTB_LEVELS holds the same colours by name."""

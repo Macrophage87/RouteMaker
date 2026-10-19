@@ -230,7 +230,8 @@ ACCESS_WORDS = {
     "singletrack": (
         False,
         "Closed: mountain-bike singletrack, not used for routes except by the Mountain Bike"
-        " ride type where nothing but its rating closes it",
+        " ride type (and Gravel and Mountain Goat on a green trail) where nothing but its"
+        " rating closes it",
     ),
     "mtb": (
         False,
@@ -889,6 +890,10 @@ def riding_rows(row: dict) -> list[dict]:
                 OSM,
             )
         )
+    elif is_mtb_trail(row):
+        # The owner, 2026-10-19: unrated trails stay open to Gravel and Mountain Goat, "just
+        # give a note that they aren't rated".
+        rows.append(_row("Mountain-bike difficulty", UNRATED_WORDS, OSM))
     if is_mtb_trail(row):
         # The trail's own surface, smoothness, width and the like (the owner, 2026-10-19).
         rows.extend(_row(label, words, OSM) for _id, label, words in trail_rows(row))
@@ -1093,6 +1098,10 @@ MTB_LEVEL_SCALES = {
 }
 
 
+# A mountain-bike trail with no difficulty mapped (the owner, 2026-10-19).
+UNRATED_WORDS = "Not rated: no difficulty is mapped for this trail"
+
+
 def mtb_level_words(level: object) -> str | None:
     """'level 2 (blue)', or None for no level."""
     if not isinstance(level, int) or level not in MTB_LEVEL_COLOURS:
@@ -1102,16 +1111,22 @@ def mtb_level_words(level: object) -> str | None:
 
 def mtb_summary(row: dict) -> str:
     """A mountain-bike trail's Bikes line (OWNER-DECISIONS 452a, 456): what the map's line
-    means, 'Mountain-bike trail, level 2 (blue), not used for routes', and, honestly, which
-    ride types do route on it: the Mountain Bike ride type rides every trail the layer draws
-    (docs/MTB-TOPO-PLAN.md, slice 6; up to the rider's chosen level), and Gravel and Mountain
-    Goat (the off-road graph) the unrated mountain-bike class, not rated singletrack."""
-    level = mtb_level_words(row.get("mtb_level"))
-    head = f"Mountain-bike trail, {level}" if level else "Mountain-bike trail"
-    # A level is written on rated singletrack alone (`pipeline.trail_closures.mtb_level`),
-    # which only the Mountain Bike graph opens, so a levelled trail never says the off-road
-    # graph uses it.
-    closed_everywhere = bool(level) or row.get("bike_access_reason") == "singletrack"
+    means, 'Mountain-bike trail, level 2 (blue), not used for routes', or 'not rated', and,
+    honestly, which ride types do route on it: the Mountain Bike ride type rides every trail
+    the layer draws (docs/MTB-TOPO-PLAN.md, slice 6; up to the rider's chosen level), and
+    Gravel and Mountain Goat (the off-road graph) the unrated mountain-bike class and green
+    singletrack (the owner's choices of 2026-10-19)."""
+    rated = row.get("mtb_level")
+    level = mtb_level_words(rated)
+    # An unrated trail says so (the owner, 2026-10-19: "just give a note that they aren't rated").
+    head = f"Mountain-bike trail, {level}" if level else "Mountain-bike trail, not rated"
+    # The off-road graph (Gravel, Mountain Goat) rides the mountain-bike class and rated
+    # singletrack up to green (`singletrack.OFFROAD_MAX_LEVEL`, the owner's choice of
+    # 2026-10-19); a harder trail, or singletrack with no level, is the Mountain Bike graph's.
+    harder = bool(level) and rated > singletrack.OFFROAD_MAX_LEVEL
+    closed_everywhere = harder or (
+        row.get("bike_access_reason") == singletrack.NO_BICYCLE and not level
+    )
     # Its name where one is mapped (the owner, 2026-10-10: "try to make sure trail names are
     # added in if they are available"): "Mountain-bike trail, level 2 (blue): Rosaryville
     # Trail, not used for routes".
