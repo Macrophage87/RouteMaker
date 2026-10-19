@@ -11,6 +11,7 @@
 import { createElement as h, type ReactElement, type ReactNode } from "react";
 import { PRESETS, type PresetId } from "./presets.ts";
 import { PresetName } from "./presetName.ts";
+import { FavoriteStar } from "./favoriteRides.ts";
 
 export function RideTypeCards({
   ids,
@@ -18,6 +19,8 @@ export function RideTypeCards({
   onPick,
   icon,
   idPrefix,
+  favorites,
+  onFavorite,
 }: {
   ids: readonly PresetId[];
   preset: PresetId;
@@ -26,6 +29,9 @@ export function RideTypeCards({
   icon?: (id: PresetId) => ReactNode;
   /** Makes the name and sentence ids unique in the page. */
   idPrefix: string;
+  /** The rider's favorites: with onFavorite, each card has its star (lib/favoriteRides.ts). */
+  favorites?: readonly PresetId[];
+  onFavorite?: (id: PresetId) => void;
 }): ReactElement {
   return h(
     "ul",
@@ -37,7 +43,7 @@ export function RideTypeCards({
       const aboutId = `${idPrefix}-${id}-about`;
       return h(
         "li",
-        { key: id, className: current ? "ride-type-card current" : "ride-type-card" },
+        { key: id, className: `ride-type-card${current ? " current" : ""}${onFavorite ? " has-fav" : ""}` },
         h(
           "button",
           {
@@ -51,6 +57,7 @@ export function RideTypeCards({
           h("strong", { id: nameId }, h(PresetName, { id })),
           h("span", { id: aboutId, className: "hint" }, option?.summary ?? ""),
         ),
+        onFavorite ? h(FavoriteStar, { id, on: favorites?.includes(id) ?? false, onToggle: onFavorite }) : null,
       );
     }),
   );
