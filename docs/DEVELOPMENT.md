@@ -4695,7 +4695,9 @@ puts it, at most two presses away.
   Go from a fresh start looks the location up again too (the owner, 2026-10-19: "update when
   setting a destination too"; `goPickStart`): a fix within `GO_PICK_LOOK_MS` (3 s) more than 25 m
   away is the start; otherwise the start Go had stands (so a rider who has not moved keeps the early
-  route), and a later fix still moves Go's start. Found, it is the start, shown on Go's
+  route), and a later fix still moves Go's start. A press still looking after 1 s is said with "Finding
+  your location for the start…", as one waiting for a start is. A press still looking after 1 s is said with "Finding
+  your location for the start…", as one waiting for a start is. Found, it is the start, shown on Go's
   start line and said politely ("Start: your current location.") but not yet a point, so the
   link holds no position until a destination is picked; denied, unavailable or timed out, the
   start stays empty, the start box opens and "Current location not available; type a start." is
@@ -4709,7 +4711,7 @@ puts it, at most two presses away.
   picked one is and said "Destination set: …" (named by `goPlaceName`, the same on the sheet: its coordinates until
   its place name comes; a press on a water, climb or federal-land card's feature, or one that only closes such a card,
   is the card's alone, `featureCardPress`; `goTapSetsEnd`, the owner 2026-10-12; it replaces #95's tap-as-start). Picking a
-  destination with a start plans at once; Go then shows the routes to choose from open, and the ride types under the
+  destination with a start plans at once (a location start after its look-up, at most 3 s); Go then shows the routes to choose from open, and the ride types under the
   route, so Bikeshare is one press, and only a Bikeshare route names its pick-up and drop-off
   stations (the route's Bikeshare plan).
 - **Few presses** (the owner, 2026-10-11 20:23 UTC: "just ... find a destination and go"): from

@@ -494,7 +494,7 @@ test("go pick: a destination set in Go routes from a fresh fix once the rider ha
   assert.equal(GO_PICK_MOVED_M, 25);
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   const goTo = app.slice(app.indexOf("const goTo = async"), app.indexOf("const settleGoWaiting"));
-  assert.match(goTo, /const fix = await goPickFix\(\);\s*\/\/[^\n]*\n\s*if \(pick !== goPickSeq\.current \|\| pointsRef\.current\.length > 0 \|\| modeRef\.current !== "go"\) return;\s*routeGo\(goPickStart\(action\.point, fix\)\.point, true,/);
+  assert.match(goTo, /const fix = await goPickFix\(\);\s*window\.clearTimeout\(slow\);\s*\/\/[^\n]*\n\s*if \(pick !== goPickSeq\.current \|\| pointsRef\.current\.length > 0 \|\| modeRef\.current !== "go"\) return;\s*routeGo\(goPickStart\(action\.point, fix\)\.point, true, dest, name, pressed && !said, vias\);/);
   // The look-up is bounded and settles a destination waiting on the gate, as every look-up does.
   const fix = app.slice(app.indexOf("const goPickFix"), app.indexOf("const goTo = async"));
   assert.match(fix, /window\.setTimeout\(\(\) => resolve\(null\), GO_PICK_LOOK_MS\)/);

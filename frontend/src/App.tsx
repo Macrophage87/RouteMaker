@@ -2054,7 +2054,8 @@ export function App() {
       return;
     }
     // The start Go already has: the plan's first point (typed, from the link or placed in Plan), else the location
-    // found when Go opened. While the location is still being found, the destination waits for it.
+    // found in the last GO_START_MAX_AGE_MS, looked up again for this destination. While the location is still being
+    // found, the destination waits for it.
     const action = goPickAction(pointsRef.current, goStartRef.current);
     const pick = ++goPickSeq.current;
     if (action.kind === "route") {
@@ -2064,10 +2065,21 @@ export function App() {
         return;
       }
       // The start is the location: looked up again for this destination (goPickStart), for at most GO_PICK_LOOK_MS.
+      // A press is said, with what it waits for, once the look-up has taken GO_PRESS_LOCATING_SAY_MS, as a press that
+      // waits for a start is; then the route's own words do not say "Destination set" again.
+      let said = false;
+      const slow = pressed
+        ? window.setTimeout(() => {
+            if (pick !== goPickSeq.current) return;
+            said = true;
+            setNoticeSaying(goDestinationLocating(name), goPressLocatingSaid(name));
+          }, GO_PRESS_LOCATING_SAY_MS)
+        : undefined;
       const fix = await goPickFix();
+      window.clearTimeout(slow);
       // A newer pick, a route made meanwhile or a switch to Plan: this pick is over.
       if (pick !== goPickSeq.current || pointsRef.current.length > 0 || modeRef.current !== "go") return;
-      routeGo(goPickStart(action.point, fix).point, true, dest, name, pressed, vias);
+      routeGo(goPickStart(action.point, fix).point, true, dest, name, pressed && !said, vias);
       return;
     }
     // A pressed destination with no start yet: kept for the start as a picked one is, and said set together with
