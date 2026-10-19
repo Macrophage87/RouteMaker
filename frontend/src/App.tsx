@@ -233,6 +233,7 @@ import { ClosureDialog, type ClosureAsk } from "./ClosureDialog.tsx";
 import { ShareCardDialog, type ShareCardSource } from "./ShareCardDialog.tsx";
 import { usableProfile } from "./lib/profileChart.ts";
 import { bypassFor, bypassPlanKey, bypassSaid, toggleBypass, type Bypass } from "./lib/closureMap.ts";
+import { permitsShown, readPermitsLayer, savePermitsLayer } from "./lib/permitLayer.ts";
 import { RideGroup } from "./RideGroup.tsx";
 import { BikeshareDocksOverlay, type DocksReport } from "./BikeshareDocks.tsx";
 import { KNOWN_OPERATORS, docksStatus, mergeOperators, operatorsToAsk, readOperatorChoices, saveOperatorChoices, type OperatorInfo } from "./lib/bikeshareDocks.ts";
@@ -580,6 +581,13 @@ export function App() {
   // The Scenic layer (v0.8.0; lib/scenicLayer.ts): one switch in Plan's Layers, off by default, kept on this
   // device. Its covered bridges and viewpoints are Places to see's file, fetched the first time it is shown.
   const [scenicOn, setScenicOnState] = useState<boolean>(() => readScenicLayer());
+  // DC permits (v0.9.1; lib/permitLayer.ts): one switch in Plan's Layers, off by default, kept on this device. A permit
+  // is never routed round; on, Plan's map draws the ones near the route, dashed.
+  const [permitsOn, setPermitsOnState] = useState<boolean>(() => readPermitsLayer());
+  const changePermitsOn = (on: boolean) => {
+    setPermitsOnState(on);
+    savePermitsLayer(on);
+  };
   const changeScenicOn = (on: boolean) => {
     setScenicOnState(on);
     saveScenicLayer(on);
@@ -4039,6 +4047,7 @@ export function App() {
         pointWarnings={riding || reviewing ? undefined : pointWarnings}
         route={riding && rideView ? rideView.route : reviewing ? null : shown}
         stale={riding ? false : stale || planEdited}
+        permitsOn={!riding && permitsShown(permitsOn, mode)}
         // Plan's ghost of the last route; else the standard way through a closure the route goes round, dashed
         // beside it (v0.8.2), in Go and Plan, and on the ride the line not being followed.
         ghost={riding ? (rideView?.other ?? null) : reviewing ? null : (ghost ?? shown?.closure_through?.geometry.coordinates ?? null)}
@@ -4408,6 +4417,7 @@ export function App() {
                 placesOn, changePlacesOn, placesStatus: placesData === "unavailable" ? PLACES_UNAVAILABLE : Array.isArray(placesData) && placesData.length === 0 ? PLACES_NONE : "",
                 // Plan's alone (the brief: "not in Go"); null leaves the section out of Go's Layers.
                 scenic: mode === "go" ? null : { on: scenicOn, onChange: changeScenicOn, status: scenicStatus(scenicOn, stress !== "unavailable", placesData ?? "loading") },
+                permits: mode === "go" ? null : { on: permitsOn, onChange: changePermitsOn },
                 bikeshare: {
                   operators: docksOperators,
                   choices: docksChoices,

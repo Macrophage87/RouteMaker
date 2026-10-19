@@ -180,6 +180,8 @@ interface Props {
   loopVias?: boolean;
   route: RouteResponse | null;
   stale: boolean;
+  /** v0.9.1, Plan's DC permits layer (lib/permitLayer.ts): draw the closures a permit allows; off by default. */
+  permitsOn?: boolean;
   /** Plan mode (v0.7.0): the line before the last update, drawn dashed until the next change, or null. */
   ghost?: readonly LonLat[] | null;
   /** Plan: the light times on the route near dawn or dusk (lib/lightTimes.ts), each marked where the rider will be; null draws none. */
@@ -1095,7 +1097,7 @@ export function MapView(props: Props) {
       // Closures in force at the ride (v0.7.0, lib/closureMap.ts): over the route, so a closed stretch on it shows.
       // A white casing, then red (closed) or amber (bike lane blocked); dashed where it "may still apply". Their
       // markers (buttons) carry the names and open the cards.
-      map.addSource(CLOSURE_SOURCE, { type: "geojson", data: closureFeatures(closuresOf(callbacks.current.route)) });
+      map.addSource(CLOSURE_SOURCE, { type: "geojson", data: closureFeatures(closuresOf(callbacks.current.route, callbacks.current.permitsOn)) });
       map.addLayer({
         id: "closure-casing",
         type: "line",
@@ -1812,7 +1814,7 @@ export function MapView(props: Props) {
     closureMarkers.current.forEach((marker) => marker.remove());
     closureMarkers.current = [];
     if (!map) return;
-    const items = props.route && !props.stale ? closuresOf(props.route) : [];
+    const items = props.route && !props.stale ? closuresOf(props.route, props.permitsOn) : [];
     const source = map.getSource(CLOSURE_SOURCE) as GeoJSONSource | undefined;
     source?.setData(closureFeatures(items));
     const open = (opener: HTMLButtonElement, at: LonLat, card: ClosureCard, item: ClosureItem | null) => {
@@ -1862,7 +1864,7 @@ export function MapView(props: Props) {
       });
       closureMarkers.current.push(new maplibregl.Marker({ element, anchor: "center" }).setLngLat(point).addTo(map));
     }
-  }, [props.route, props.stale]);
+  }, [props.route, props.stale, props.permitsOn]);
 
   // Where the next train or bus is (v0.9.0): a mark named in words ("Next bus: Bus 52 is 0.8 mi away (1.3 km), 3
   // stops back (Data: WMATA, live)"), not a button (it does nothing when pressed); moved in place at each answer.
