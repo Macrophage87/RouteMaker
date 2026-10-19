@@ -323,9 +323,10 @@ class RouteIn(Schema):
     closures_now: StrictBool = Field(
         default=False,
         description=(
-            "v0.9.1, Go and a ride: route round only the closures known to be on, leaving out"
-            " DDOT's occupancy permits, which say a road may be closed in their window. Plan"
-            " sends nothing and keeps them, for planning a later ride."
+            "v0.9.1, Go and a ride: leave DDOT's occupancy permits off the answer. A permit"
+            " says a road may be closed some time in its window, so it is never routed round;"
+            " without this it is only flagged on the map (`work_zones.closures`, effect"
+            " `possible`), never a description line, a spoken cue or the closure check."
         ),
     )
     blocked_lines: list[Annotated[list[LonLat], Field(min_length=2, max_length=50)]] = Field(
@@ -1895,7 +1896,9 @@ class WorkZoneOut(Schema):
     )
 
 
-ClosureEffect = Literal["on_route", "routed_round", "bypassed", "may_still_apply", "none"]
+ClosureEffect = Literal[
+    "on_route", "routed_round", "bypassed", "may_still_apply", "possible", "none"
+]
 
 
 class ClosureOut(Schema):
@@ -1924,7 +1927,8 @@ class ClosureOut(Schema):
         description=(
             '"on_route": the route runs along it; "routed_round": the route goes round it;'
             ' "bypassed": routed through by the rider\'s choice; "may_still_apply": on the route,'
-            ' no end given on a later ride, not routed round; "none": no effect on the route.'
+            ' no end given on a later ride, not routed round; "possible" (v0.9.1): a DDOT permit,'
+            ' flagged only, never routed round; "none": no effect on the route.'
         )
     )
     delay_s: int | None = Field(

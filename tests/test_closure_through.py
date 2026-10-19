@@ -176,9 +176,8 @@ def test_a_road_the_rider_marked_closed_stays_out_of_every_request(client, monke
 
 @db
 @pytest.mark.usefixtures("weekday_clock", "segments")
-def test_go_and_a_ride_route_through_ddots_permits_plan_round_them(client, monkeypatch) -> None:
-    """v0.9.1: `closures_now` (Go and a ride) leaves DDOT's permits out of the request;
-    without it (Plan) a permit is routed round as before."""
+def test_ddots_permits_are_never_routed_round(client, monkeypatch) -> None:
+    """v0.9.1: DDOT's permits are flagged, never routed round, with `closures_now` or not."""
     from test_route_api import VERTICES, FakeRouter, good_body, post, route_answer, trace_answer
 
     from core import routing
@@ -212,9 +211,10 @@ def test_go_and_a_ride_route_through_ddots_permits_plan_round_them(client, monke
         assert response.status_code == 200, response.content
         return next(p for p in sent if p["url"].endswith("/route"))
 
-    assert first_route(good_body()).get("exclude_polygons"), "Plan routes round the permit"
+    planned = first_route(good_body())
+    assert not planned.get("exclude_polygons"), "a permit is never routed round"
     go = first_route({**good_body(), "closures_now": True})
-    assert not go.get("exclude_polygons"), "Go leaves the permit out"
+    assert not go.get("exclude_polygons")
 
 
 @db
