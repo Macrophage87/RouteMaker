@@ -105,7 +105,9 @@ test("Ride settings in reach: a gear at the end of the side buttons opens them j
   assert.match(top, /\{!walking && !ride\.arrived && \(\s*<button type="button" className="secondary ride-road-closed" onClick=\{roadClosed\} aria-label=\{ROAD_CLOSED_NAME\} title=\{ROAD_CLOSED_NAME\}>/);
   // On the narrowest phones the icon alone, the words kept for its name (visually hidden, not removed).
   assert.match(top, /<span className="ride-top-label">\{ROAD_CLOSED_TEXT\}<\/span>/);
-  assert.match(css, /@container \(max-width: 25em\) \{\s*\.ride-top-label \{\s*position: absolute;/);
+  // With the light times in the corner, the words go a little sooner.
+  assert.match(css, /@container \(max-width: 23em\) \{\s*\.ride-top-label \{\s*position: absolute;/);
+  assert.match(css, /@container \(max-width: 25em\) \{\s*\.ride-light ~ \.ride-top-actions \.ride-top-label \{\s*position: absolute;/);
   assert.match(top, /ref=\{settingsPanel\}\s+id=\{`\$\{settingsId\}-settings`\}\s+className="ride-mode-settings"\s+role="group"\s+aria-label=\{RIDE_SETTINGS_TITLE\}\s+hidden=\{!settingsOpen\}\s+tabIndex=\{-1\}/);
   // The gear comes after the panel: opened, the focus goes into it; Escape there closes it, back to the gear.
   assert.match(ride, /settingsPanel\.current\?\.focus\(\{ preventScroll: true \}\);/);
@@ -156,6 +158,11 @@ test("End ride is slid until the rider has arrived (the owner, 2026-10-19: \"Add
   assert.match(slide, /if \(next >= 100\) onEnd\(\);/);
   // A tap that jumps it past half way springs back and says how; let go short of the end, it springs back.
   assert.match(slide, /if \(!byKey && next - last\.current > 50\) \{\s*back\(\);\s*onTap\(\);\s*return;/);
+  // Only the range's own keys count as a step (review: a stray key let the next tap through); a pointer clears it.
+  assert.match(slide, /key\.current = SLIDE_KEYS\.has\(event\.key\);/);
+  assert.match(slide, /onPointerDown=\{\(\) => \{\s*key\.current = false;/);
+  // Left part way by a screen reader's adjust gestures (no blur), it goes back.
+  assert.match(slide, /window\.setTimeout\(back, SLIDE_BACK_MS\)/);
   assert.match(slide, /onPointerUp=\{\(\) => \{\s*if \(last\.current < 100\) back\(\);/);
   assert.match(ride, /const slideHint = \(\) => \{\s*showToast\(SLIDE_TO_END_HINT\);\s*announcer\.current\?\.answer\(SLIDE_TO_END_HINT\);/);
   // The light times take the corner inside the heading, which stays Ride mode for screen readers; the times said in words after it.

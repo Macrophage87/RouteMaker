@@ -3857,13 +3857,25 @@ details.zoom-notes {
 
 /*
  * Narrow phones and large text: Road closed is its icon alone (its name stays "Road closed ahead"), so the top row
- * stays one line. Measured in the row's own text size, so a larger system font hides the words sooner.
+ * stays one line. Measured in the row's own text size, so a larger system font hides the words sooner; with the
+ * light times in the corner, which are wider than "Ride mode", sooner still.
  */
 .ride-top {
   container-type: inline-size;
 }
 
 @container (max-width: 25em) {
+  .ride-light ~ .ride-top-actions .ride-top-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+}
+
+@container (max-width: 23em) {
   .ride-top-label {
     position: absolute;
     width: 1px;
@@ -4033,7 +4045,7 @@ details.zoom-notes {
 .ride .ride-slide {
   position: relative;
   box-sizing: border-box;
-  width: 8.5em;
+  width: 7.5em;
   min-height: 44px;
   padding: 0;
   border: 2px solid var(--error-text);

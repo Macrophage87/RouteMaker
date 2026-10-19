@@ -2766,6 +2766,20 @@ const levelSlider = `${EDITOR} input[type=range]`;
   const axSlide = await axNode(p, ".ride-top .ride-slide-range");
   check("ride: End ride is a slider named End ride; a tap at its end leaves the ride on, springs back and says to slide it",
     slideTap.riding && slideTap.value === "0" && /Slide End ride/.test(slideTap.toast) && axSlide?.role === "slider" && axSlide?.name === "End ride", JSON.stringify({ slideTap, axSlide }));
+  // A real slide from the thumb to the end ends the ride (review: no check dragged it); Undo brings the ride back.
+  const thumb = await p.eval(`(() => { const r = document.querySelector('.ride-top .ride-slide-range').getBoundingClientRect(); return { x0: r.left + 18, x1: r.right - 2, y: r.top + r.height / 2 }; })()`);
+  await p.s("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: thumb.x0, y: thumb.y }] });
+  for (let i = 1; i <= 12; i += 1) {
+    await p.s("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: thumb.x0 + ((thumb.x1 - thumb.x0) * i) / 12, y: thumb.y }] });
+    await sleep(30);
+  }
+  await p.s("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await sleep(500);
+  const slid = await p.eval("({ ride: !!document.querySelector('section.ride'), undo: !!document.querySelector('.ride-ended') })");
+  await p.eval("[...document.querySelectorAll('.ride-ended button')].find((b) => b.textContent === 'Undo')?.click(); true");
+  await sleep(1200);
+  const undone = await p.eval("!!document.querySelector('section.ride')");
+  check("ride: sliding End ride from its thumb to the end ends the ride, and Undo brings it back", !slid.ride && slid.undo && undone, JSON.stringify({ slid, undone }));
   await p.eval("document.querySelector('.ride-311-button').focus(); true");
   await p.enter();
   await sleep(300);

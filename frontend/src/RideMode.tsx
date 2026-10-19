@@ -221,7 +221,11 @@ export const RIDE_ENDED = "Ride ended.";
 /** The always-visible End ride button's words (the owner, 2026-10-16: "add a method of ending navigation"). */
 export const END_RIDE_NAME = "End ride";
 /** End ride is a slide to end until the rider has arrived (the owner, 2026-10-19: "Add a swipe confirmation on ending the ride unless at the destination"). */
-export const SLIDE_TO_END = "Slide right to end the ride";
+export const SLIDE_TO_END = "Move it to the end to end the ride";
+/** The keys that move a range: only these count as a step of End ride's slide. */
+const SLIDE_KEYS = new Set(["ArrowRight", "ArrowUp", "ArrowLeft", "ArrowDown", "PageUp", "PageDown", "Home", "End"]);
+/** End ride's slide left part way goes back after this long. */
+const SLIDE_BACK_MS = 4_000;
 /** Said and shown when End ride is tapped rather than slid. */
 export const SLIDE_TO_END_HINT = "Slide End ride to the right to end the ride.";
 /** The side buttons' gear opens these, under the top row (the owner, 2026-10-16: "the buttons to change the settings seem hidden"; a gear in the rack since v0.9.0). */
@@ -349,18 +353,25 @@ function CueShape({ shape }: { shape: ReturnType<typeof arrowFor> }) {
  * End ride as a slide (the owner, 2026-10-19), so a bump while riding does not end it: a range from 0 to
  * 100 in quarters, the ride ended when it reaches the end. A native range, so the keyboard's arrows and a
  * screen reader's adjust gestures move it too. A tap on the track that jumps it more than half way is a
- * tap, not a slide: it springs back and says how. Let go short of the end, it springs back.
+ * tap, not a slide: it springs back and says how. Let go short of the end, or left part way, it springs back.
  */
 function SlideToEnd({ onEnd, onTap }: { onEnd: () => void; onTap: () => void }) {
   const [value, setValue] = useState(0);
   const last = useRef(0);
   const key = useRef(false);
   const back = () => {
+    key.current = false;
     last.current = 0;
     setValue(0);
   };
+  // Left part way (a screen reader's adjust gestures move it without the focus, so no blur comes): back after a few seconds.
+  useEffect(() => {
+    if (value === 0 || value >= 100) return;
+    const timer = window.setTimeout(back, SLIDE_BACK_MS);
+    return () => window.clearTimeout(timer);
+  }, [value]);
   return (
-    <div className={`ride-end ride-slide${value > 0 ? " ride-slide-moving" : ""}`}>
+    <div className="ride-end ride-slide">
       <span className="ride-slide-text" aria-hidden="true">
         {END_RIDE_NAME}
         <span className="ride-slide-arrows">››</span>
@@ -374,8 +385,12 @@ function SlideToEnd({ onEnd, onTap }: { onEnd: () => void; onTap: () => void }) 
         value={value}
         aria-label={END_RIDE_NAME}
         aria-valuetext={value === 0 ? SLIDE_TO_END : `${value}%`}
-        onKeyDown={() => {
-          key.current = true;
+        onKeyDown={(event) => {
+          // Only the keys that move a range count as a step, so a stray key never lets a tap through.
+          key.current = SLIDE_KEYS.has(event.key);
+        }}
+        onPointerDown={() => {
+          key.current = false;
         }}
         onChange={(event) => {
           const next = Number(event.currentTarget.value);
@@ -397,7 +412,6 @@ function SlideToEnd({ onEnd, onTap }: { onEnd: () => void; onTap: () => void }) 
         onBlur={() => {
           if (last.current < 100) back();
         }}
-        style={{ ["--slide" as string]: `${value}%` }}
       />
     </div>
   );
@@ -1653,7 +1667,9 @@ export function RideMode({
       if (event.altKey || event.ctrlKey || event.metaKey || event.repeat) return;
       const target = event.target as HTMLElement | null;
       if (!target || !sectionRef.current?.contains(target)) return;
-      if (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
+      // End ride's slide is a range: W and C still work there, as they did on its button.
+      const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName) && (target as HTMLInputElement).type !== "range";
+      if (target.isContentEditable || typing) return;
       if (event.key === "w" || event.key === "W") {
         event.preventDefault();
         askWhere();
@@ -1748,7 +1764,7 @@ export function RideMode({
       <LiveRegion said={assertive} urgent />
       <div className="cue-card">
         {/* End ride (v0.7.0, "Go riding fixes" item 6): always in view, at the top of the card, which stays at
-            every size and in Big text; one tap ends the ride, and the page offers Undo for a few seconds
+            every size and in Big text; one slide ends the ride (a tap once arrived), and the page offers Undo for a few seconds
             (RideEnded). The ride's settings open just under the row, from the side buttons' gear. */}
         <div className="ride-top">
           {/* "Ride mode" in the corner; near dawn or dusk the light times in its place (the owner, 2026-10-19),
