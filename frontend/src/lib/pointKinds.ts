@@ -23,9 +23,14 @@ export type PointKind = "stop" | "via";
 /** The marks: which pairs are via points. One for the page (App.tsx); a test makes its own. */
 export class ViaMarks {
   private readonly vias = new WeakSet<LonLat>();
+  // Plan's manual mode (v0.9.1): the pairs the line to which was drawn, straight, not routed. Kept the same way.
+  private readonly drawnTo = new WeakSet<LonLat>();
 
   /** Whether this pair was made as a via point. */
   isVia = (point: LonLat): boolean => this.vias.has(point);
+
+  /** Whether the leg that ends at this pair was drawn as a straight line (Plan's manual mode). */
+  isDrawn = (point: LonLat): boolean => this.drawnTo.has(point);
 
   /** Marks a pair just made as a via point, and gives it back. */
   via(point: LonLat): LonLat {
@@ -33,9 +38,16 @@ export class ViaMarks {
     return point;
   }
 
+  /** Marks a pair just made as the end of a drawn leg, and gives it back. */
+  drawn(point: LonLat): LonLat {
+    this.drawnTo.add(point);
+    return point;
+  }
+
   /** A new pair at the same place, of `kind` (the point menu's "Make this a stop / a via point"). */
   withKind(point: LonLat, kind: PointKind): LonLat {
     const copy: LonLat = [point[0], point[1]];
+    if (this.isDrawn(point)) this.drawn(copy);
     return kind === "via" ? this.via(copy) : copy;
   }
 
@@ -45,8 +57,29 @@ export class ViaMarks {
     return points;
   }
 
-  /** A pair moved to `to` (a dragged marker): the same kind as the one it replaces. */
+  /** Marks the legs at `legs` (a link's `line` field) as drawn: leg i ends at point i + 1. The list back. */
+  markDrawn<T extends LonLat[]>(points: T, legs: readonly number[]): T {
+    for (const i of legs) if (points[i + 1]) this.drawn(points[i + 1]);
+    return points;
+  }
+
+  /**
+   * `points` with exactly the legs at `legs` drawn: a pair whose mark must change is replaced by a new one at the same
+   * place, of the same kind (Reverse, whose legs run the other way). The list back, the same pairs where none changes.
+   */
+  withLegs(points: readonly LonLat[], legs: readonly number[]): LonLat[] {
+    const wanted = new Set(legs);
+    return points.map((point, i) => {
+      if (i === 0 || wanted.has(i - 1) === this.isDrawn(point)) return point;
+      const copy: LonLat = [point[0], point[1]];
+      if (this.isVia(point)) this.via(copy);
+      return wanted.has(i - 1) ? this.drawn(copy) : copy;
+    });
+  }
+
+  /** A pair moved to `to` (a dragged marker): the same kind as the one it replaces, its leg drawn as it was. */
   moved(from: LonLat, to: LonLat): LonLat {
+    if (this.isDrawn(from)) this.drawn(to);
     return this.isVia(from) ? this.via(to) : to;
   }
 }
@@ -67,6 +100,33 @@ export function viaIndices(points: readonly LonLat[], isVia: (p: LonLat) => bool
   const out: number[] = [];
   for (let i = 1; i < points.length - 1; i += 1) if (isVia(points[i])) out.push(i);
   return out;
+}
+
+/**
+ * The drawn legs' indices (Plan's manual mode), for the route request (`straight_legs`) and the link (`line`): leg i
+ * runs from point i to point i + 1, and is drawn where point i + 1 is marked.
+ */
+export function drawnLegs(points: readonly LonLat[], isDrawn: (p: LonLat) => boolean = VIA_MARKS.isDrawn): number[] {
+  const out: number[] = [];
+  for (let i = 1; i < points.length; i += 1) if (isDrawn(points[i])) out.push(i - 1);
+  return out;
+}
+
+/** Plan's map bar switch for manual mode, and what is said as it turns on and off. */
+export const MANUAL_LABEL = "Manual mode";
+export const MANUAL_TITLE = "Manual mode: points you tap are joined by straight lines";
+export const MANUAL_ON_SAID = "Manual mode on. Each point you tap on the map is joined to the last by a straight line.";
+export const MANUAL_OFF_SAID = "Manual mode off. New points are routed.";
+
+/** The link's `line` field read back: the drawn legs between `count` points, in order, each once. */
+export function decodeDrawn(value: string | null, count: number): number[] {
+  if (!value) return [];
+  const out = new Set<number>();
+  for (const part of value.split(",")) {
+    const i = Number(part);
+    if (Number.isInteger(i) && i >= 0 && i < count - 1) out.add(i);
+  }
+  return [...out].sort((a, b) => a - b);
 }
 
 /** A point's kind as the plan uses it: "start", "end", or between them "stop" or "via". */

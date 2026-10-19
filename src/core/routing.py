@@ -954,6 +954,9 @@ class Dials:
     follow: tuple[tuple[float, float], ...] | None = None
     # Follow it exactly, rules or not (`core.follow.EXACT`): the manual mode.
     follow_exact: bool = False
+    # Plan's manual mode (v0.9.1): the legs the rider drew as straight lines, by index (leg i
+    # runs from point i to point i + 1); the others are routed (`_drawn`).
+    straight: tuple[int, ...] = ()
     # "Make it a loop" (OWNER-DECISIONS 266): return to the start by a different way.
     # A ride whose last point is its first is a loop whatever this says.
     loop: bool = False
@@ -1311,6 +1314,8 @@ def prefetch_traces(
     wanted: dict[tuple, str] = {}
     for trip in trips:
         for leg in (trip or {}).get("legs") or []:
+            if leg.get("drawn"):
+                continue
             shape = leg.get("shape", "")
             key = _trace_key(variant, costing, shape)
             if key not in traces and key not in wanted:
@@ -1584,6 +1589,8 @@ def _route(variant: str, request: dict, deadline: Deadline) -> tuple[dict, bool]
         limit = min(limit, WEEKEND_TIMEOUT_S)
     if "shape" in request:
         return _followed(variant, request, Deadline(deadline.at, limit)), False
+    if DRAWN_KEY in request:
+        return _drawn(variant, request, Deadline(deadline.at, limit)), False
     if "alternates" not in request:
         return _call(variant, "route", request, Deadline(deadline.at, limit)), False
     alternates_limit = min(limit, ALTERNATES_TIMEOUT_S)
@@ -1653,6 +1660,111 @@ def _followed(variant: str, request: dict, deadline: Deadline) -> dict:
         else follow.gone_round(around, _trip_line(joined["trip"]))
     )
     return joined
+
+
+# The key `plan` puts its drawn legs under in the request it hands `_route` (never sent).
+DRAWN_KEY = "_straight_legs"
+# The pace a drawn leg is timed at where the costing names none: Valhalla's own default
+# for each bicycle type (km/h).
+BICYCLE_TYPE_KMH = {"Road": 25.0, "Cross": 20.0, "Hybrid": 18.0, "Mountain": 16.0}
+
+
+def straight_leg(a, b, speed_kmh: float, heights=None) -> dict:
+    """A leg drawn by the rider (Plan's manual mode): the straight line from `a` to `b`,
+    shaped as a router's leg so the plan reads it as one. Its length is the line's, its
+    time at `speed_kmh`; `heights` are its elevations every ELEVATION_INTERVAL_M where they
+    are known. `drawn` marks it: it is not traced, so its stress is unknown."""
+    from .dedodge import encode_polyline6
+
+    a, b = (float(a[0]), float(a[1])), (float(b[0]), float(b[1]))
+    km = haversine(Point(*a), Point(*b)) / 1000.0
+    seconds = km / speed_kmh * 3600.0 if speed_kmh > 0 else 0.0
+    leg = {
+        "shape": encode_polyline6([a, b]),
+        "summary": {"length": km, "time": seconds, "cost": seconds},
+        # A start and an arrival, as a router's leg has, and nothing between: no turns.
+        "maneuvers": [
+            {
+                "type": 1,
+                "length": km,
+                "time": seconds,
+                "begin_shape_index": 0,
+                "end_shape_index": 1,
+            },
+            {"type": 4, "length": 0.0, "time": 0.0, "begin_shape_index": 1, "end_shape_index": 1},
+        ],
+        "drawn": True,
+    }
+    if heights is not None:
+        leg["elevation"] = list(heights)
+    return leg
+
+
+def samples_along(a, b, interval_m: float) -> list[tuple[float, float]]:
+    """Points every `interval_m` along the straight line `a`-`b`, its ends included: where a
+    router's leg has its elevations (`elevation_interval`)."""
+    metres = haversine(Point(*a), Point(*b))
+    steps = max(1, round(metres / interval_m)) if interval_m else 1
+    return [
+        (a[0] + (b[0] - a[0]) * i / steps, a[1] + (b[1] - a[1]) * i / steps)
+        for i in range(steps + 1)
+    ]
+
+
+def _heights(variant: str, line: list, deadline: Deadline) -> list | None:
+    """The router's elevations of `line`'s points (`/height`), or None where it has none."""
+    try:
+        answer = _call(
+            variant, "height", {"shape": [{"lon": p[0], "lat": p[1]} for p in line]}, deadline
+        )
+    except (RouterRefused, RouterUnavailable):
+        return None
+    heights = answer.get("height")
+    if not isinstance(heights, list) or len(heights) != len(line):
+        return None
+    return [h if isinstance(h, (int, float)) and h > -1000 else None for h in heights]
+
+
+def _drawn(variant: str, request: dict, deadline: Deadline) -> dict:
+    """A plan with legs the rider drew (`DRAWN_KEY`, Plan's manual mode), as one trip: each
+    drawn leg the straight line between its points (`straight_leg`), each run of the other
+    legs one `/route` through its points, as the plan would ask it. One leg per pair of
+    points, as `VIA_LOCATION_TYPE` keeps them, so `leg_ends` line up with the points."""
+    drawn = set(request[DRAWN_KEY])
+    asked = {k: v for k, v in request.items() if k not in (DRAWN_KEY, "alternates")}
+    locations = asked["locations"]
+    bicycle = (asked.get("costing_options") or {}).get("bicycle") or {}
+    speed = bicycle.get("cycling_speed") or BICYCLE_TYPE_KMH.get(
+        bicycle.get("bicycle_type", "Hybrid"), BICYCLE_TYPE_KMH["Hybrid"]
+    )
+    interval = asked.get("elevation_interval")
+    legs: list[dict] = []
+    i = 0
+    while i < len(locations) - 1:
+        if i in drawn:
+            a = (locations[i]["lon"], locations[i]["lat"])
+            b = (locations[i + 1]["lon"], locations[i + 1]["lat"])
+            heights = None
+            if interval:
+                samples = samples_along(a, b, interval)
+                heights = _heights(variant, samples, deadline) or [None] * len(samples)
+            legs.append(straight_leg(a, b, float(speed), heights))
+            i += 1
+            continue
+        j = i + 1
+        while j < len(locations) - 1 and j not in drawn:
+            j += 1
+        # A run's own ends are where it stops: the run before or after a drawn leg starts there.
+        run = [dict(location) for location in locations[i : j + 1]]
+        run[0]["type"] = run[-1]["type"] = "break"
+        answer = _call(variant, "route", {**asked, "locations": run}, deadline)
+        legs.extend((answer.get("trip") or {}).get("legs") or [])
+        i = j
+    summary = {
+        key: sum(float((leg.get("summary") or {}).get(key, 0.0)) for leg in legs)
+        for key in ("length", "time", "cost")
+    }
+    return {"trip": {"legs": legs, "summary": summary, "units": "kilometers"}}
 
 
 def plan_alternates(request: dict, trips: list, timed_out: bool, refitted: bool) -> list | None:
@@ -2869,9 +2981,15 @@ def plan(
     following = dials.follow is not None and not dials.loop
     from . import follow
 
+    # Plan's manual mode (Stephen 2026-10-19, "a 'manual mode' where you can just route
+    # directly"): the legs the rider drew are straight lines, the rest routed as asked
+    # (`_drawn`). Like a followed line, the route is the rider's own: nothing is searched
+    # for beside it. Not on a loop, nor with a line to follow, which is the whole ride.
+    drawing = bool(dials.straight) and not following and not dials.loop
+    fixed = following or drawing
     # A loop is planned through its start again (OWNER-DECISIONS 266); a followed line is
     # already the whole ride.
-    loop = not following and loop_wanted(points, dials.loop, preset_name)
+    loop = not fixed and loop_wanted(points, dials.loop, preset_name)
     points = loop_points(points, loop)
     # A long calm plan (Trailmaxxing at the top of the slider past the calm
     # search's working span, planned leg by leg) has the long ride's time
@@ -2881,7 +2999,7 @@ def plan(
     # a long ride makes (docs/OPERATIONS.md, "Long calm plans").
     long_calm = (
         not loop
-        and not following
+        and not fixed
         and long_calm_for(
             preset_name, points, stress_dial, long_ride, trails_off=bool(dials.trails_off)
         )
@@ -2898,7 +3016,7 @@ def plan(
     # `quick_applies`): the router's own route, its closures, stress and words, with no
     # search after it. The full plan follows it from the client.
     # A followed line is a single router call already: never a first route with more to come.
-    quick = quick and not following and quick_applies(preset_name, loop, long_ride, long_calm)
+    quick = quick and not fixed and quick_applies(preset_name, loop, long_ride, long_calm)
     exposure = presets.exposure_for(preset_name, dials.carrying)
     # The approved Avoid-rated junctions (FOLLOWUP-ISECT-AVOID, 307-310, 335), read at
     # request time: empty as shipped.
@@ -3010,6 +3128,8 @@ def plan(
     # The first router call: the plan's own request, or the trace of the followed line.
     if following:
         asked = follow.request_for(dials.follow, points, request)
+    elif drawing:
+        asked = {**request, DRAWN_KEY: dials.straight}
     else:
         asked = request
     try:
@@ -3076,7 +3196,7 @@ def plan(
 
     timing.mark("route")
     delays = None
-    if zones_plan is not None and not following:
+    if zones_plan is not None and not fixed:
         answer = work_zones.settle_penalties(
             answer,
             request,
@@ -3114,7 +3234,7 @@ def plan(
     # put on one place.
     round_trip = loop or haversine(Point(*points[0]), Point(*points[-1])) <= LOOP_SAME_M
     sought = None
-    if climb_seek and seek_limited is None and not round_trip and not quick and not following:
+    if climb_seek and seek_limited is None and not round_trip and not quick and not fixed:
         sought = hill_seek(
             trips,
             points,
@@ -3125,7 +3245,7 @@ def plan(
             avoid_gravel,
         )
         trips = trips + sought.trips
-    if following:
+    if fixed:
         chosen = 0
     elif climb_seek:
         chosen = choose_climb(trips, presets.seek_distance_ratio(hills_dial))
@@ -3157,7 +3277,7 @@ def plan(
     trip = trips[chosen]
     kept_middle = False
     trace_costing = costing
-    if avoiding and not quick and not following:
+    if avoiding and not quick and not fixed:
         middle_costing = _same_pace(
             presets.costing(preset_name, stress_dial, 0, assist=assist, avoid_gravel=avoid_gravel),
             request,
@@ -3178,8 +3298,8 @@ def plan(
     refine_limited = _refine_limit(preset_name, points, long_ride, climb_seek, deadline, long_calm)
     if quick:
         refine_limited = "quick"
-    elif following:
-        refine_limited = "follow"
+    elif fixed:
+        refine_limited = "follow" if following else "drawn"
     ceiling = None
     fitted_at = None
     fit, past = None, []
@@ -3256,7 +3376,7 @@ def plan(
         trip, loop_info = refine.make_loop(trip, refine_context)
         if loop_info["fallback"] is None and loop_info["overlap_pct"] is not None:
             refine_context.loop_overlap = loop_info["overlap_pct"] / 100.0
-    if len(trip.get("legs") or []) > 1 and not quick and not following:
+    if len(trip.get("legs") or []) > 1 and not quick and not fixed:
         # A slight price on riding a way twice (the owner, 2026-10-18): each later leg that
         # repeats an earlier one's ways is asked for again (`refine.fewer_repeats`).
         trip, repeat_info = refine.fewer_repeats(trip, refine_context)
@@ -3278,7 +3398,7 @@ def plan(
             trip, refined = refine.refine_long(trip, refine_context)
         else:
             trip, refined = refine.refine(trip, refine_context)
-    elif refine_context.rate > 0 and not quick and not following:
+    elif refine_context.rate > 0 and not quick and not fixed:
         # A calm search was asked for and could not run: say so.
         refined = {
             "rate": refine_context.rate,
@@ -3294,7 +3414,7 @@ def plan(
     # one the standard graph answered while the mountain-bike router was down, has no trails
     # to weigh.
     mtb_info = None
-    mtb_level_held = preset_name == mtb.PRESET and variant == Variant.MTB.value and not following
+    mtb_level_held = preset_name == mtb.PRESET and variant == Variant.MTB.value and not fixed
     if mtb_level_held:
         searched_trip = trip
         trip, mtb_info = mtb.settle(
@@ -3307,7 +3427,7 @@ def plan(
             # The routes to choose from were near-ties of the route it replaced: none are
             # offered beside a route they were not weighed against (as the Avoid pass).
             refine_context.candidates = refine_context.candidates[:1]
-    elif preset_name == mtb.PRESET and not trails_off and not following:
+    elif preset_name == mtb.PRESET and not trails_off and not fixed:
         # Trails off is the rider's own choice, said by the answer's `dials`; this is the
         # router not being there.
         mtb_info = {
@@ -3323,7 +3443,7 @@ def plan(
     # are the search's near-ties, picked again against the answer as it now is
     # (`dedodge.settle`), so the pass's bounds are the plan's.
     dodges = None
-    if not loop and not quick and not following:
+    if not loop and not quick and not fixed:
         trip, dodges = dedodge.apply(trip, refine_context)
         dedodge.settle(trip, refine_context, refined, dodges)
     # An Avoid-rated junction still on the answer (307-310, 335): the way round, taken
@@ -3332,7 +3452,7 @@ def plan(
     # on a loop), else offered (`core.avoid_junctions`). `searched` is what the search
     # did: at least one round, not cut short.
     avoid_info, avoid_trip = None, None
-    if avoid_list and not quick and not following:
+    if avoid_list and not quick and not fixed:
         searched = (
             refined is not None and (refined.get("rounds") or 0) > 0 and not refined.get("limited")
         )
@@ -3428,7 +3548,13 @@ def plan(
             leg_ends.append(len(coordinates) - 1)
             elevations.extend(leg.get("elevation") or [])
             try:
-                trace = _trace(variant, trace_costing, leg.get("shape", ""), deadline, traces)
+                # A leg the rider drew follows no road: it is not traced, and its stress is
+                # unknown (`_drawn`).
+                trace = (
+                    None
+                    if leg.get("drawn")
+                    else _trace(variant, trace_costing, leg.get("shape", ""), deadline, traces)
+                )
             except DeadlineExceeded:
                 # The route is found, so it is answered; a leg left untraced is
                 # unknown, and once the budget is gone `_call` starts no more.
@@ -3601,7 +3727,7 @@ def plan(
         summary = trip.get("summary") or {}
         climb, descent = climb_and_descent(elevations)
         hills_seek = None
-        if calm_seek and not alternate and not following:
+        if calm_seek and not alternate and not fixed:
             # No climb search among alternatives: the stress order chose, and the
             # climbing only broke its ties (298(3)).
             hills_seek = {
@@ -3613,7 +3739,7 @@ def plan(
                 "climbs": [],
                 "climb_seek": None,
             }
-        elif seeking and not alternate and not following:
+        elif seeking and not alternate and not fixed:
             direct = trips[0].get("summary") or {}
             hills_seek = {
                 "candidates": len(trips),
@@ -3630,7 +3756,7 @@ def plan(
                 "climb_seek": None if sought is None else sought.info(),
             }
         hills_tolerate = None
-        if tolerating and not alternate and not following:
+        if tolerating and not alternate and not fixed:
             direct = trips[0].get("summary") or {}
             # Nothing is discounted at the top of the stress slider (`calm_first`).
             discount = tolerate_weight if direct_tolerate else 0.0
@@ -3647,7 +3773,7 @@ def plan(
                 "limited": seek_limited,
             }
         hills_avoid = None
-        if avoiding and not alternate and not following:
+        if avoiding and not alternate and not fixed:
             direct = trips[0].get("summary") or {}
             hills_avoid = {
                 "candidates": len(trips),
@@ -3674,7 +3800,7 @@ def plan(
         # second /route, and the full plan that follows says it.
         detour = (
             None
-            if quick or following
+            if quick or fixed
             else _detour(
                 round(float(summary.get("length", 0.0)) * 1000.0, 1),
                 straight_m,
@@ -3774,6 +3900,7 @@ def plan(
     body["follows_file"] = following
     body["against_traffic"] = answer.get("against_traffic") if following else None
     body["follows_exactly"] = following and dials.follow_exact
+    body["drawn_legs"] = sorted(dials.straight) if drawing else None
     timing.mark("answer")
 
     def _with_mtb(answered: dict, info: dict | None) -> dict:
