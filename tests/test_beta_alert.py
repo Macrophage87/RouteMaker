@@ -29,6 +29,13 @@ for a in "$@"; do
 done
 cat > "$STUB_DIR/config"
 cat "$STUB_DIR/config" >> "$STUB_DIR/configs"
+# STUB_FAIL_AFTER=N: the first N posts are taken, the rest refused (a partial failure)
+if [ -n "${STUB_FAIL_AFTER:-}" ]; then
+  n=$(cat "$STUB_DIR/count" 2>/dev/null || echo 0); echo $((n + 1)) > "$STUB_DIR/count"
+  if [ "$n" -ge "$STUB_FAIL_AFTER" ]; then
+    sed -i '$d' "$STUB_DIR/posts"; printf 500; exit 0
+  fi
+fi
 printf '%s' "${STUB_CODE:-204}"
 """
 STUB_SMOKE = """#!/bin/sh
@@ -66,6 +73,7 @@ class Box:
             "RM_ALERT_COMPOSE": str(self.tmp / "compose"),
             "STUB_DIR": str(self.tmp),
             "TMPDIR": str(self.tmp),
+            "RM_ALERT_CHUNK_SLEEP": "0",
             **env,
         }
         return subprocess.run(
@@ -81,11 +89,14 @@ class Box:
         done = self.run("set-webhook", stdin=HOOK + "\n")
         assert done.returncode == 0, done.stderr
 
-    def posts(self) -> list[str]:
+    def bodies(self) -> list[dict]:
         path = self.tmp / "posts"
         if not path.exists():
             return []
-        return [json.loads(line)["content"] for line in path.read_text().splitlines() if line]
+        return [json.loads(line) for line in path.read_text().splitlines() if line]
+
+    def posts(self) -> list[str]:
+        return [body["content"] for body in self.bodies()]
 
 
 @pytest.fixture
@@ -312,3 +323,57 @@ def test_release_notes_refuse_a_tag_that_is_not_a_version(box: Box) -> None:
     release_hook(box)
     assert box.run("release-notes", "../../etc").returncode == 2
     assert box.posts() == []
+
+
+def test_release_notes_keep_any_text_and_never_mention(box: Box) -> None:
+    release_hook(box)
+    text = "Quotes \"x\" and 'y', a back\\slash, a\ttab, café 🚲, and @everyone <@&123>"
+    notes = box.tmp / "v0.9.4.md"
+    notes.write_text(text + "\n", encoding="utf-8")
+    box.run("release-notes", "v0.9.4", str(notes))
+    (body,) = box.bodies()
+    assert body["content"] == "**RouteMaker v0.9.4 is on beta**\n\n" + text
+    assert body["allowed_mentions"] == {"parse": []}
+
+
+def test_a_line_longer_than_a_message_is_cut_by_characters(box: Box) -> None:
+    release_hook(box)
+    line = "é🚲" * 2000  # 4,000 characters, each more than one byte
+    notes = box.tmp / "v0.9.5.md"
+    notes.write_text(line + "\n", encoding="utf-8")
+    assert box.run("release-notes", "v0.9.5", str(notes)).returncode == 0
+    posts = box.posts()
+    assert len(posts) == 4  # the title, then three pieces of the line
+    assert all(len(p) <= 1900 for p in posts)
+    assert "".join(posts[1:]) == line
+
+
+def test_a_bad_release_address_is_not_recorded_as_posted(box: Box) -> None:
+    (box.state / "release-webhook").write_text("http://example.org/hook\n")
+    done = box.run("release-notes", "v0.9.6")
+    assert done.returncode == 0
+    assert box.posts() == []
+    posted = box.state / "alerts" / "release-posted"
+    assert not posted.exists() or "v0.9.6" not in posted.read_text()
+
+
+def test_a_partly_posted_release_resumes_where_it_stopped(box: Box) -> None:
+    release_hook(box)
+    lines = [f"- change number {n} " + "x" * 80 for n in range(40)]  # three messages
+    notes = box.tmp / "v0.9.7.md"
+    notes.write_text("\n".join(lines) + "\n")
+    done = box.run("release-notes", "v0.9.7", str(notes), STUB_FAIL_AFTER="2")
+    assert done.returncode == 1
+    assert len(box.posts()) == 2
+    assert (box.state / "alerts" / "release-posted").read_text() == "v0.9.7:2\n"
+    assert box.run("release-notes", "v0.9.7", str(notes)).returncode == 0
+    posts = box.posts()
+    assert len(posts) == 3
+    assert [line for line in "\n".join(posts).splitlines() if line.startswith("- ")] == lines
+    assert (box.state / "alerts" / "release-posted").read_text() == "v0.9.7\n"
+
+
+def test_no_alerts_webhook_still_counts_as_done_for_the_owners_channel(box: Box) -> None:
+    """post_to's "not sent" is the release channel's to see; the owner's checks behave as before."""
+    done = box.run("note", "deployed v0.9.0")
+    assert done.returncode == 0

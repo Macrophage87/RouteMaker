@@ -1292,21 +1292,24 @@ cd "$RM_SRC"
 "$RM_SRC/scripts/beta/auto-release.sh" install  # once, so the agent's installed copy posts its results too
 ```
 
-**Release notes for riders (a second, read-only channel).** Each deploy also posts that release's
-notes, `docs/releases/<tag>.md` from the deployed checkout (docs/releases/README.md), to a second
-webhook: the title "RouteMaker vX.Y.Z is on beta", then the notes, split at line ends to fit, once
-per tag (`$RM_STATE/alerts/release-posted`). A tag without a notes file posts the title alone; a
-release shipped by hand posts nothing until `alert.sh release-notes vX.Y.Z "$RM_SRC/docs/releases/vX.Y.Z.md"`.
+**Release notes for riders (a second, read-only channel).** The live release's notes,
+`docs/releases/<tag>.md` from its checkout (docs/releases/README.md), go to a second webhook: the
+title "RouteMaker vX.Y.Z is on beta", then the notes, split at line ends to fit. The agent tries on
+each deploy and each up-to-date pass until they are posted, once per tag
+(`$RM_STATE/alerts/release-posted`; a pass that stops part-way resumes at the next message). A
+deploy first refreshes the installed `alert.sh` from the deployed checkout, so the release that
+brings this posts its own notes. A tag without a notes file posts the title alone; a failure is
+reported once a day in the alerts channel and never fails a pass. By hand:
+`alert.sh release-notes vX.Y.Z "$RM_SRC/docs/releases/vX.Y.Z.md"`.
 In Discord: a text channel whose `@everyone` permissions allow View Channel and Read Message
 History and deny Send Messages and Create Threads (a webhook still posts there), then its own
-webhook. On the server, after a release that carries this:
+webhook. On the server:
 
 ```sh
 . "$HOME/routemaker-beta-state/vars.sh"
 cd "$RM_SRC"
-"$RM_SRC/scripts/beta/alert.sh" set-release-webhook   # paste, Enter, Ctrl-D; kept in $RM_STATE/release-webhook, mode 600
-"$RM_SRC/scripts/beta/alert.sh" install               # the installed copy learns the release commands
-"$RM_STATE/cd/bin/alert.sh" release-test              # one test message in the release channel
+"$RM_SRC/scripts/beta/alert.sh" set-release-webhook   # skip if $RM_STATE/release-webhook is already stored (it is); paste, Enter, Ctrl-D; mode 600
+"$RM_SRC/scripts/beta/alert.sh" release-test          # one test message in the release channel
 ```
 
 Without `release-webhook` nothing is posted there, and the alerts channel is unchanged.

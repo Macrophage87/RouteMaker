@@ -23,7 +23,8 @@
 #   alert.sh release-test          posts one test message there
 #   alert.sh release-notes TAG [FILE]
 #                                  posts "RouteMaker TAG is on beta" and FILE's text (the release's
-#                                  docs/releases/TAG.md), split at line ends to fit; once per tag
+#                                  docs/releases/TAG.md), split at line ends to fit; once per tag,
+#                                  resuming where a failed pass stopped (exit 1 until all posted)
 #
 # With no webhook set, nothing is posted and every command still succeeds, so the release
 # agent's calls never fail a pass. Messages carry no secret and no rider's data: release tags,
@@ -71,18 +72,24 @@ good_webhook() {
 	case "$1" in *[!A-Za-z0-9._~:/?#!\$\&*+,\;=%-]* | *@*) return 1 ;; esac
 }
 
-# Post one message to the webhook in FILE. The address goes to curl as a config on standard input
-# and the body as a file, so neither is in a process listing; the address is never printed.
+# Post one message to the webhook in FILE: 0 sent, 1 the webhook refused it, 3 not sent (no
+# webhook, a bad address, no message built). The address goes to curl as a config on standard
+# input and the body as a file, so neither is in a process listing; the address is never printed.
+# Python builds the body and cuts it to Discord's limit by characters, never inside one.
 post_to() { # file setter text
-	local url body text=$3 code
+	local url body code
 	url=$(webhook "$1")
-	[ -n "$url" ] || { echo "alert: no webhook set (alert.sh $2); not posted: ${3%%$'\n'*}"; return 0; }
-	good_webhook "$url" || { echo "alert: $1 does not hold a plain https:// address; not posted" >&2; return 0; }
-	[ "${#text}" -le "$MAX_CHARS" ] || text="${text:0:$MAX_CHARS}..."
+	[ -n "$url" ] || { echo "alert: no webhook set (alert.sh $2); not posted: ${3%%$'\n'*}"; return 3; }
+	good_webhook "$url" || { echo "alert: $1 does not hold a plain https:// address; not posted" >&2; return 3; }
 	body=$(mktemp)
 	# allowed_mentions: no @everyone or role ping, whatever a message happens to contain.
-	ALERT_TEXT=$text "$py" -c 'import json, os, sys; json.dump({"content": os.environ["ALERT_TEXT"], "allowed_mentions": {"parse": []}}, sys.stdout)' >"$body" ||
-		{ rm -f "$body"; echo "alert: could not build the message" >&2; return 0; }
+	ALERT_TEXT=$3 ALERT_MAX=$MAX_CHARS PYTHONUTF8=1 "$py" -c '
+import json, os, sys
+text, limit = os.environ["ALERT_TEXT"], int(os.environ["ALERT_MAX"])
+if len(text) > limit:
+    text = text[:limit] + "..."
+json.dump({"content": text, "allowed_mentions": {"parse": []}}, sys.stdout)' >"$body" ||
+		{ rm -f "$body"; echo "alert: could not build the message" >&2; return 3; }
 	code=$(printf 'url = "%s"\n' "$url" | "${CURL:-curl}" -K - -sS --max-time 20 -o /dev/null -w '%{http_code}' \
 		-H 'Content-Type: application/json' --data-binary "@$body" 2>/dev/null) || code=000
 	rm -f "$body"
@@ -90,7 +97,14 @@ post_to() { # file setter text
 	echo "alert: the webhook answered HTTP $code; not posted: ${3%%$'\n'*}" >&2
 	return 1
 }
-post() { post_to "$hook_file" set-webhook "RouteMaker beta: $1"; }
+# The owner's channel: a message that cannot be sent at all (no webhook yet) counts as done, so
+# the repeat checks and the agent behave as they did before alerts were set up.
+post() {
+	local rc
+	post_to "$hook_file" set-webhook "RouteMaker beta: $1"; rc=$?
+	[ "$rc" != 3 ] || return 0
+	return "$rc"
+}
 
 # A failure's repeat-check id: its words without their numbers, so "running for 610s" and "12
 # GiB free" are the same failure at the next check, not a new one to post.
@@ -169,30 +183,62 @@ cmd_set_webhook() { # file test-command
 }
 
 # A release's notes in the release channel: the title, then the notes in as many messages as
-# Discord needs, each cut at a line end. Posted once per tag (state/release-posted), so a pass
-# that records the same tag again posts nothing; a failed post is tried again next time.
+# Discord needs, cut at line ends (a line longer than a message is cut by characters). Python
+# does the cutting, so a cut never lands inside a character. state/release-posted holds "TAG"
+# once every message is posted, or "TAG:N" after the first N: a failed pass resumes there.
+# Exit 0 posted, already posted or nothing to post to; 1 not (yet) posted, tried again next time.
 cmd_release_notes() { # tag [file]
 	[ $# = 1 ] || [ $# = 2 ] || die "release-notes TAG [FILE]"
 	[[ $1 =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "a tag is vX.Y.Z ('$1')"
-	local tag=$1 file=${2:-} posted="$state/release-posted" chunk="" line ok=1
-	[ -n "$(webhook "$release_hook_file")" ] || { echo "alert: no release webhook set (alert.sh set-release-webhook); notes for $tag not posted"; return 0; }
+	local tag=$1 file=${2:-} posted="$state/release-posted" url dir count done_n=0 n rc
+	url=$(webhook "$release_hook_file")
+	[ -n "$url" ] || { echo "alert: no release webhook set (alert.sh set-release-webhook); notes for $tag not posted"; return 0; }
+	good_webhook "$url" || { echo "alert: $release_hook_file does not hold a plain https:// address; notes for $tag not posted" >&2; return 0; }
 	mkdir -p "$state" && chmod 700 "$state"
 	if [ -f "$posted" ] && grep -qxF "$tag" "$posted"; then echo "alert: notes for $tag were already posted"; return 0; fi
-	chunk="**RouteMaker $tag is on beta**"
-	if [ -n "$file" ] && [ -f "$file" ]; then
-		chunk+=$'\n'
-		while IFS= read -r line || [ -n "$line" ]; do
-			line=${line%$'\r'}
-			if [ $((${#chunk} + ${#line} + 1)) -gt "$MAX_CHARS" ] && [ -n "$chunk" ]; then
-				post_to "$release_hook_file" set-release-webhook "$chunk" || ok=0
-				chunk=""
-			fi
-			chunk+="${chunk:+$'\n'}$line"
-		done <"$file"
-	fi
-	[ -z "$chunk" ] || post_to "$release_hook_file" set-release-webhook "$chunk" || ok=0
-	[ "$ok" = 1 ] && printf '%s\n' "$tag" >>"$posted"
+	[ -f "$posted" ] && n=$(grep -E "^${tag//./\\.}:[0-9]+$" "$posted" | tail -n 1) && done_n=${n#*:}
+	dir=$(mktemp -d)
+	count=$(PYTHONUTF8=1 "$py" - "$file" "**RouteMaker $tag is on beta**" "$MAX_CHARS" "$dir" <<'PY'
+import pathlib, sys
+path, title, limit, out = sys.argv[1], sys.argv[2], int(sys.argv[3]), pathlib.Path(sys.argv[4])
+lines = [title]
+if path and pathlib.Path(path).is_file():
+    lines += [""] + pathlib.Path(path).read_text(encoding="utf-8", errors="replace").splitlines()
+chunks, cur, size = [], [], 0
+for line in lines:
+    line = line.rstrip()
+    for piece in [line[i : i + limit] for i in range(0, len(line), limit)] or [""]:
+        add = len(piece) + (1 if cur else 0)
+        if cur and size + add > limit:
+            chunks.append("\n".join(cur))
+            cur, size, add = [], 0, len(piece)
+        cur.append(piece)
+        size += add
+chunks.append("\n".join(cur))
+chunks = [c.strip("\n") for c in chunks if c.strip()]
+for n, chunk in enumerate(chunks):
+    (out / str(n)).write_text(chunk, encoding="utf-8")
+print(len(chunks))
+PY
+	) || { rm -rf "$dir"; echo "alert: could not read the notes for $tag" >&2; return 1; }
+	for ((n = done_n; n < count; n++)); do
+		[ "$n" = "$done_n" ] || sleep "${RM_ALERT_CHUNK_SLEEP:-1}"
+		post_to "$release_hook_file" set-release-webhook "$(cat "$dir/$n")"; rc=$?
+		if [ "$rc" != 0 ]; then
+			record_release "$tag" "$tag:$n"
+			rm -rf "$dir"
+			echo "alert: notes for $tag stopped after $n of $count messages; the rest are tried next time" >&2
+			return 1
+		fi
+	done
+	rm -rf "$dir"
+	record_release "$tag" "$tag"
 	return 0
+}
+record_release() { # tag line: the tag's one line in release-posted
+	local posted="$state/release-posted"
+	{ [ ! -f "$posted" ] || grep -vE "^${1//./\\.}(:[0-9]+)?$" "$posted"; printf '%s\n' "$2"; } >"$posted.new"
+	mv -f "$posted.new" "$posted"
 }
 
 cmd_install() {
@@ -260,7 +306,7 @@ main() {
 		watch) cmd_watch ;;
 		test) post "test message from alert.sh test; alerts reach this channel" ;;
 		set-webhook) cmd_set_webhook "$hook_file" test ;;
-		release-test) post_to "$release_hook_file" set-release-webhook "RouteMaker: test message; release notes reach this channel"; return 0 ;;
+		release-test) post_to "$release_hook_file" set-release-webhook "RouteMaker: test message; release notes reach this channel"; [ $? != 1 ] ;;
 		set-release-webhook) cmd_set_webhook "$release_hook_file" release-test ;;
 		release-notes) cmd_release_notes "$@" ;;
 		install) cmd_install "$@" ;;
