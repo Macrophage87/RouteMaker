@@ -2027,9 +2027,12 @@ export function App() {
       setNotice(OUTSIDE_NOTICE);
       return;
     }
-    // The start Go already has: the plan's first point (typed, from the link or placed in Plan), else the location
-    // found when Go opened. While the location is still being found, the destination waits for it.
-    const action = goPickAction(pointsRef.current, goStartRef.current);
+    // The start Go already has: the plan's first point (typed, from the link or placed in Plan) routes at once. A start
+    // that is the location is looked up again for each destination (the owner, 2026-10-19), so the route starts where
+    // the rider is now; the browser answers at once with a fix under 30 s old (LOCATE_OPTIONS). While the location is
+    // still being found, the destination waits for it.
+    const prior = goStartRef.current;
+    const action = goPickAction(pointsRef.current, prior, Date.now(), true);
     if (action.kind === "route") {
       clearGoPending();
       routeGo(action.point, action.located, dest, name, pressed, vias);
@@ -2043,8 +2046,9 @@ export function App() {
       else setNotice(goDestinationLocating(name));
       return;
     }
-    // No location yet: one more look-up (the rider may have allowed it since); failing that the destination is
-    // kept and the start box asks for a start. The destination is never made the start.
+    // The location (again, or for the first time: the rider may have allowed it since); failing that a location
+    // found in the last GO_START_MAX_AGE_MS is used, else the destination is kept and the start box asks for a start.
+    // The destination is never made the start.
     setGoStart({ kind: "locating" });
     // A pressed destination is said, with what it waits for, once the look-up has taken GO_PRESS_LOCATING_SAY_MS
     // (a timeout can take up to a minute); a quick answer (a denial) is said alone, so nothing is replaced at once.
@@ -2063,6 +2067,12 @@ export function App() {
       // A press is said now, as it is while Go's opening look-up runs.
       if (pressed) sayLocating();
       goAwaiting.current = true;
+      return;
+    }
+    if (!result.ok && prior.kind === "here" && !goStartStale(prior) && goPending.current === mine && pointsRef.current.length === 0) {
+      setGoStart(prior);
+      clearGoPending();
+      routeGo(prior.point, true, dest, name, pressed && !mine?.said, vias);
       return;
     }
     settleGoWaiting(result);

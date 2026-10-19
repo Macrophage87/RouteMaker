@@ -241,12 +241,14 @@ export function goRouteStart(points: readonly [number, number][], start: GoStart
  * location is still being found (the pick is kept and routed when it comes, never dropped); or, with no
  * location, look it up once more and, failing that, keep the destination and ask for a start (the start box),
  * so the destination is never made the start. A location found too long ago is looked up again, as if there were none.
+ * With `relocate` (a destination set in Go; the owner, 2026-10-19: "update when setting a destination too") a start that
+ * is the location is always looked up again; only a start in the plan routes at once.
  */
 export type GoPick = { kind: "route"; point: [number, number]; located: boolean } | { kind: "wait" } | { kind: "locate" };
 
-export function goPickAction(points: readonly [number, number][], start: GoStart, now: number = Date.now()): GoPick {
+export function goPickAction(points: readonly [number, number][], start: GoStart, now: number = Date.now(), relocate = false): GoPick {
   const known = goRouteStart(points, start, now);
-  if (known !== null) return { kind: "route", ...known };
+  if (known !== null && !(relocate && known.located)) return { kind: "route", ...known };
   return start.kind === "locating" ? { kind: "wait" } : { kind: "locate" };
 }
 
