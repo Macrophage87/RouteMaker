@@ -630,6 +630,25 @@ def test_a_road_with_its_bikeway_mapped_beside_it(tags, beside) -> None:
             "hidden",
         ),
         ({"highway": "service", "service": "driveway", "bicycle": "dismount"}, "hidden"),
+        (
+            {"highway": "service", "service": "drive-through", "bicycle": "yes", "vehicle": "yes"},
+            "road",
+        ),
+        (
+            {"highway": "service", "service": "driveway", "bicycle": "yes", "access": "permissive"},
+            "road",
+        ),
+        # Destination-only by its own access: the remap keeps upstream's flag, so
+        # the map keeps it off as well.
+        (
+            {
+                "highway": "service",
+                "service": "driveway",
+                "bicycle": "yes",
+                "access": "destination",
+            },
+            "hidden",
+        ),
         ({"highway": "service", "service": "alley"}, "alley"),  # item 100: close in, faint
         ({"highway": "service"}, "road"),
         ({"highway": "path"}, "road"),  # its length and ends decide (short_paths_to_hide)
@@ -1041,3 +1060,20 @@ def test_a_sidewalk_a_bicycle_may_not_ride_is_not_a_bike_lane() -> None:
     street = (1, {"highway": "secondary", "name": "9th Street Northwest"}, NINTH)
     sidewalk = (2, {"highway": "footway", "footway": "sidewalk"}, _east(NINTH, 8))
     assert facility_rules.side_street_names([street, sidewalk]) == {}
+
+
+def test_bicycle_link_service_matches_the_remap() -> None:
+    """The map draws exactly the service ways the remap routes as roads (#197)."""
+    import re
+    from pathlib import Path
+
+    lua = (Path(__file__).resolve().parents[1] / "lua" / "routemaker_remap.lua").read_text()
+
+    def table(name: str) -> set[str]:
+        body = re.search(rf"^M\.{name} = \{{(.*?)\}}", lua, re.M | re.S)
+        assert body, name
+        return set(re.findall(r'\[?"?([\w-]+)"?\]?\s*=\s*true', body.group(1)))
+
+    assert table("BICYCLE_LINK_SERVICES") == set(facility_rules.HIDDEN_SERVICE)
+    assert table("BICYCLE_LINK_GRANTS") == set(facility_rules.BICYCLE_LINK_GRANTS)
+    assert table("PERMISSIVE_ACCESS") == set(facility_rules.PERMISSIVE_ACCESS)
