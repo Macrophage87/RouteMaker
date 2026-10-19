@@ -334,16 +334,20 @@ still wins, and both show in the road panel.</li>
 <p>The roads where the two agencies disagree most are kept as test cases. Whenever the ratings or the
 matching change, these are the roads checked first: a wide gap is either a real difference in method,
 which the table explains, or a sign that two different roads were matched. Only 5.6 mi [9.0 km] of road
-differ by three levels (Maryland 2, the county 5), and most of that is matching, not method.</p>
+differ by three levels (Maryland 2, the county 5), and most of that is matching, not method. Inside
+the county the county's level is used in every case.</p>
 <div class="table-wrap" tabindex="0" role="region" aria-label="The widest disagreements, kept as test cases">
 <table>
 <caption>The widest disagreements, kept as test cases</caption>
-<thead><tr><th scope="col">Road</th><th scope="col">Maryland</th><th scope="col">County</th><th scope="col">Length</th><th scope="col">Why they differ</th></tr></thead>
+<thead><tr><th scope="col">Road</th><th scope="col">Maryland</th><th scope="col">County</th><th scope="col">Length</th><th scope="col">Why they differ, and what the case checks</th></tr></thead>
 <tbody>
-<tr><th scope="row">Comus Road, Sugarloaf Mountain to Old Hundred Road</th><td>LTS 2</td><td>LTS 5</td><td>1.8 mi [2.9 km]</td><td>Maryland's formula scores an unstriped, low-traffic road low; the county goes by its speed and the lack of shoulders. The one real case of the widest gap.</td></tr>
-<tr><th scope="row">Peach Tree, Partnership, Sugarland, Slidell and Elmer School Roads</th><td>LTS 1</td><td>LTS 3 to 4</td><td>about 120 mi [190 km] of such roads</td><td>The same cause on many rural roads. RouteMaker's rural floor would not call them LTS 1 either.</td></tr>
-<tr><th scope="row">Old Columbia Pike near Burtonsville; Veirs Mill Road, Twinbrook to Wheaton</th><td>LTS 2</td><td>LTS 5</td><td>0.8 mi [1.3 km] each</td><td>Probably not a real disagreement: a service road or ramp within the 49 ft [15 m] matching window is compared with the main road. Not yet checked on the ground.</td></tr>
-<tr><th scope="row">Beach Drive</th><td>LTS 4</td><td>LTS 2</td><td>3.9 mi [6.3 km]</td><td>Not yet explained. The county's rating wins, and both show in the road panel.</td></tr>
+<tr><th scope="row">Comus Road, Sugarloaf Mountain to Old Hundred Road</th><td>LTS 2</td><td>LTS 5</td><td>1.8 mi [2.9 km]</td><td>The widest real split on the same pavement. Maryland's formula scores an unstriped, low-traffic road low; the county counts its speed and the missing shoulder. Checks that the county wins and its 5 becomes 4.5, not Avoid.</td></tr>
+<tr><th scope="row">Peach Tree, Partnership, Sugarland, Slidell, Watkins, Elmer School and other upcounty roads</th><td>LTS 1</td><td>LTS 3 to 4</td><td>about 120 mi [190 km] in all</td><td>The same cause on many rural roads. Checks that the county wins; the rural floor would stop an LTS 1 here even if Maryland's rating were used.</td></tr>
+<tr><th scope="row">Whites Ferry Road, near Poolesville</th><td>LTS 2</td><td>LTS 4</td><td>5.3 mi [8.5 km]</td><td>The longest rural stretch two levels apart, for the same reason.</td></tr>
+<tr><th scope="row">River Road (upper); Great Seneca Highway</th><td>LTS 3</td><td>LTS 5</td><td>4.4 and 3.4 mi [7.1 and 5.5 km]</td><td>Arterials the county calls very high stress. Checks they become 4.5, not Avoid.</td></tr>
+<tr><th scope="row">Beach Drive; Brookeville and Gainsborough Roads</th><td>LTS 4</td><td>LTS 2</td><td>3.9, 2.6 and 2.2 mi [6.3, 4.2 and 3.5 km]</td><td>Rare cases where Maryland is stricter. Checks that the county's lower level is still used: a rating is lowered only with a clear reason, and the county's own data is one.</td></tr>
+<tr><th scope="row">Short pieces of Old Columbia Pike, Veirs Mill Road, Georgia Avenue, Frederick Road and New Hampshire Avenue</th><td>LTS 2</td><td>LTS 5</td><td>0.1 to 0.8 mi [0.2 to 1.3 km] each</td><td>Probably not real disagreements: Maryland's 2 likely belongs to a service road, ramp or side path within the 49 ft [15 m] matching window. Inferred, not yet checked. Checks that matching never moves a side facility's rating onto the main road.</td></tr>
+<tr><th scope="row">Ramps and freeways Maryland closes to bikes</th><td>LTS 5</td><td>Mostly 5</td><td>16 mi [26 km] in all</td><td>The two 5s mean different things. Checks that roads Maryland closes to bikes stay closed, even though the county's 5 alone would give 4.5.</td></tr>
 </tbody>
 </table>
 </div>
