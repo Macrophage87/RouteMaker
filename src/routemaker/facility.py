@@ -414,6 +414,26 @@ PUBLIC_WAY = frozenset({"yes", "designated", "permissive", "official", "public"}
 # 2026-09-29: "There's a lot of side paths and parking lots that probably
 # don't need to show up." - "Sidewalks + small paths"; OWNER-DECISIONS 82).
 HIDDEN_SERVICE = frozenset({"parking_aisle", "driveway", "drive-through"})
+# What a hidden service way's own tags must say to be a link in the bicycle
+# network instead: the same reading as the remap's `bicycle_link_service`
+# (lua/routemaker_remap.lua, PR #197), which routes such a way as the service
+# road it is. Pennyfield Lock Road's last 300 m to C&O Canal Lock 22 (way
+# 137401070, `service=driveway` + `bicycle=yes`) was left off the map while it
+# is the only road to the lock (owner report, 2026-10-19).
+BICYCLE_LINK_GRANTS = frozenset({"yes", "designated", "permissive"})
+OPEN_ACCESS = frozenset({"yes", "permissive", "designated", "official", "public", "allowed"})
+
+
+def bicycle_link_service(tags: dict[str, str]) -> bool:
+    """A parking aisle, driveway or drive-through its own tags open to bicycles,
+    with no `access` or `vehicle` that restricts it: drawn and routed as a road."""
+    return (
+        tags.get("highway") == "service"
+        and tags.get("service") in HIDDEN_SERVICE
+        and tags.get("bicycle") in BICYCLE_LINK_GRANTS
+        and all(tags.get(key, "yes") in OPEN_ACCESS for key in ("access", "vehicle"))
+    )
+
 
 # How short an unnamed footway or path has to be for the map to leave it out
 # (82), unless it joins two trails the map keeps (`short_paths_to_hide`).
@@ -488,7 +508,11 @@ def map_class(tags: dict[str, str]) -> MapClass:
     highway = tags.get("highway")
     if highway in NOT_A_WAY_HIGHWAY or tags.get("indoor", "no") != "no":
         return MapClass.HIDDEN
-    if highway == "service" and tags.get("service") in HIDDEN_SERVICE:
+    if (
+        highway == "service"
+        and tags.get("service") in HIDDEN_SERVICE
+        and not bicycle_link_service(tags)
+    ):
         return MapClass.HIDDEN
     closed = any(tags.get(key) in NO_PUBLIC_ACCESS for key in ("access", "vehicle"))
     if highway in TRAIL_CLASS_HIGHWAY:

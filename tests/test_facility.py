@@ -601,6 +601,35 @@ def test_a_road_with_its_bikeway_mapped_beside_it(tags, beside) -> None:
         ({"highway": "service", "service": "parking_aisle"}, "hidden"),
         ({"highway": "service", "service": "driveway"}, "hidden"),
         ({"highway": "service", "service": "drive-through"}, "hidden"),
+        # Pennyfield Lock Road's last stretch to Lock 22 (way 137401070): open to
+        # bicycles by its own tags, so drawn as the road routing makes it (#197).
+        (
+            {
+                "highway": "service",
+                "service": "driveway",
+                "name": "Pennyfield Lock Road",
+                "bicycle": "yes",
+                "motor_vehicle": "yes",
+            },
+            "road",
+        ),
+        ({"highway": "service", "service": "parking_aisle", "bicycle": "designated"}, "road"),
+        # A private lot's aisle stays off whatever its bicycle tag (the remap keeps
+        # upstream's destination-only flag on it too).
+        (
+            {
+                "highway": "service",
+                "service": "parking_aisle",
+                "bicycle": "yes",
+                "access": "private",
+            },
+            "hidden",
+        ),
+        (
+            {"highway": "service", "service": "driveway", "bicycle": "yes", "vehicle": "no"},
+            "hidden",
+        ),
+        ({"highway": "service", "service": "driveway", "bicycle": "dismount"}, "hidden"),
         ({"highway": "service", "service": "alley"}, "alley"),  # item 100: close in, faint
         ({"highway": "service"}, "road"),
         ({"highway": "path"}, "road"),  # its length and ends decide (short_paths_to_hide)
