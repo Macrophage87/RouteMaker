@@ -80,15 +80,16 @@ test("the row: the heading names the switch; the disclosure is a named button wi
   assert.match(none, /role="status">Stress map unavailable for now\.<\/p>/);
 });
 
-test("the Layers sheet: every section is a LayerSection, and the old long paragraphs are by the legend now", async () => {
+test("the Layers sheet: every section is a LayerSection, each with its own key inside (the owner, 2026-10-19)", async () => {
   const { readFileSync } = await import("node:fs");
   const sheets = readFileSync(new URL("../app/Sheets.tsx", import.meta.url), "utf8");
-  const layers = sheets.slice(sheets.indexOf('id="sheet-layers"'), sheets.indexOf("export interface LegendSheetProps"));
-  const legend = sheets.slice(sheets.indexOf('id="sheet-legend"'), sheets.indexOf("export interface GpxSheetProps"));
-  for (const part of ["<FederalLegendNotes", "<WaterLegendNotes", "<RailStationsLegend", "CLIMBS_HELP"]) {
-    assert.ok(legend.includes(part), part);
-    assert.ok(!layers.includes(part), part);
+  const layers = sheets.slice(sheets.indexOf('id="sheet-layers"'), sheets.indexOf("function StressSectionKey"));
+  // "include the legend within the accordion settings in layers": no Legend sheet, each key in its section's own file.
+  assert.ok(!sheets.includes('id="sheet-legend"') && !sheets.includes("legend-button"));
+  for (const [file, part] of [["./federalLegend.ts", "h(FederalKey"], ["./waterLegend.ts", "h(WaterLegendNotes"], ["../RailStations.tsx", "<RailStationsLegend />"], ["./climbsLegend.ts", "CLIMBS_HELP)"], ["./scenicLayer.ts", "h(ScenicLegend"]]) {
+    assert.ok(readFileSync(new URL(file, import.meta.url), "utf8").includes(part), `${file}: ${part}`);
   }
+  assert.match(layers, /<StressSectionKey [^>]*\/>\s*\{\/\*[^}]*\*\/\}\s*<JunctionLegend \/>\s*<\/LayerSection>/);
   assert.equal((layers.match(/<LayerSection\b/g) ?? []).length, 3, "Traffic stress, Places to see (v0.7.0) and Trails and terrain here; federal, water and rail in their own files");
   for (const file of ["./federalLegend.ts", "./waterLegend.ts", "../RailStations.tsx"]) {
     assert.match(readFileSync(new URL(file, import.meta.url), "utf8"), /LayerSection/, file);

@@ -67,7 +67,8 @@ async function open({ route = S_DEFAULT, hash = hashFor("default", 70), width = 
 
 /**
  * Opens a bottom-bar sheet by its button's label ("Layers", "Suggest", "Save & load", "Settings"; Plan's GPX was Export from 5efab18a, Files in v0.8.2, Save & load since v0.9.0). UI-CLEANUP: "Map
- * layers" is "Layers", and "Legend" is the Legend sheet, one step in from Layers (its Legend button). "Review" is the admin's Review mode
+ * layers" is "Layers", and "Legend" is Layers with every section open, each with its key inside (the owner, 2026-10-19: "include the
+ * legend within the accordion settings in layers"; there is no Legend sheet any more). "Review" is the admin's Review mode
  * (ReviewMode.tsx), opened from Suggest's Review button on its Rider suggestions list; "Review hazards" is the same mode on its Mass Ride
  * hazard reports list.
  */
@@ -85,10 +86,7 @@ async function openSheet(p, label = "Layers") {
     }
     await sleep(250);
   }
-  if (name === "Legend") {
-    await p.eval("document.querySelector('#sheet-layers .legend-button')?.click(); true");
-    await sleep(250);
-  }
+  if (name === "Legend") await openSection(p);
 }
 
 /**
@@ -671,13 +669,13 @@ const federalFetched = (p) =>
   // rows and the help are in the Legend sheet.
   await openSection(p, "federal");
   const section = await p.eval(`(() => { const s = document.querySelector('.federal-section'); if (!s) return null;
-    const items = [...document.querySelectorAll('#sheet-legend .federal-legend li')];
+    const items = [...document.querySelectorAll('#sheet-layers .federal-legend li')];
     return { heading: s.querySelector('h3')?.textContent, items: items.length,
       cues: items.map((li) => /shaded with (dots|cross-hatch|rising diagonal stripes|falling diagonal stripes)/.test(li.textContent)),
       swatchesHidden: items.every((li) => li.querySelector('svg')?.getAttribute('aria-hidden') === 'true'),
       note: /Federal land - permit rules may differ \\(information, not legal advice\\)/.test(s.textContent),
       checked: document.querySelector('#federal-section-switch')?.getAttribute('aria-checked') === 'true' }; })()`);
-  check("federal: a Mass Ride's panel has the section and the note; the Legend sheet four legend rows each naming its pattern",
+  check("federal: a Mass Ride's panel has the section and the note; its key inside, four rows each naming its pattern",
     section && section.heading === "Federal land" && section.items === 4 && section.cues.every(Boolean) && section.swatchesHidden && section.note && section.checked, JSON.stringify(section));
   check("federal: the data is fetched for a Mass Ride", await federalFetched(p));
   await sleep(1500);
@@ -789,10 +787,10 @@ const federalFetched = (p) =>
   check("mtb layer: a Mass Ride has the same switch", ax?.role === "switch" && ax?.name === "Mountain-bike trails", JSON.stringify(ax));
   await p.eval("document.querySelector('#mtb-trails-switch').click(); true");
   await sleep(200);
-  const row = await p.eval("(() => { const e = document.querySelector('#sheet-legend .mass-legend') && document.querySelector('#sheet-legend [aria-label=\"Mountain-bike trail legend\"] li.mtb-trail'); return e ? e.textContent : null; })()");
+  const row = await p.eval("(() => { const e = document.querySelector('#sheet-layers .mass-legend') && document.querySelector('#sheet-layers [aria-label=\"Mountain-bike trail legend\"] li.mtb-trail'); return e ? e.textContent : null; })()");
   check("mtb layer: with it on, the Mass Ride legend has the trail's row in words", !!row && row.startsWith("Mountain-bike trailOnly off-road ride types route on these"), JSON.stringify(row));
   // 456: and a row a level, its number and colour in words.
-  const massLevels = await p.eval(`[...document.querySelectorAll('#sheet-legend [aria-label="Mountain-bike trail legend"] li.mtb-level')].map((e) => e.textContent)`);
+  const massLevels = await p.eval(`[...document.querySelectorAll('#sheet-layers [aria-label="Mountain-bike trail legend"] li.mtb-level')].map((e) => e.textContent)`);
   check("mtb layer: the Mass Ride legend names each difficulty level in words (456)",
     Array.isArray(massLevels) && massLevels.length === 4 && ["green", "blue", "black", "red"].every((c, i) => massLevels[i].startsWith(`Level ${i + 1} (${c})Mountain-bike trail rated `)), JSON.stringify(massLevels));
   // Leave the browser as the later sections expect it: the layer off.
@@ -1188,14 +1186,14 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   await sleep(300);
   const planned = await p.eval("({ top: document.querySelector('.panel-scroll').scrollTop, planner: !document.querySelector('.planner-view').hidden, focus: document.activeElement?.tagName })");
   check("plan: pressed on a scrolled sheet it shows the planner at its top and focuses the heading", sheetTop > 0 && planned.top === 0 && planned.planner && planned.focus === "H1", JSON.stringify({ sheetTop, planned }));
-  // Show planner from the Legend sheet too.
+  // Show planner from Layers, its keys open, too.
   await openSheet(p, "Legend");
   await p.eval("document.querySelector('.panel-toggle').focus(); document.querySelector('.panel-toggle').click(); true");
   await sleep(200);
   await p.eval("document.querySelector('.panel-toggle').focus(); document.querySelector('.panel-toggle').click(); true");
   await sleep(300);
-  const fromLegend = await p.eval("({ planner: !document.querySelector('.planner-view').hidden, layers: document.getElementById('sheet-legend').hidden, focus: document.activeElement?.tagName + ':' + document.activeElement?.textContent })");
-  check("toggle: Show planner from the Legend sheet also returns to the planner, the focus on the toggle", fromLegend.planner && fromLegend.layers && fromLegend.focus === "BUTTON:Hide planner", JSON.stringify(fromLegend));
+  const fromLegend = await p.eval("({ planner: !document.querySelector('.planner-view').hidden, layers: document.getElementById('sheet-layers').hidden, focus: document.activeElement?.tagName + ':' + document.activeElement?.textContent })");
+  check("toggle: Show planner from Layers with its keys open also returns to the planner, the focus on the toggle", fromLegend.planner && fromLegend.layers && fromLegend.focus === "BUTTON:Hide planner", JSON.stringify(fromLegend));
   await p.close();
 }
 
@@ -1675,7 +1673,7 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   const lead2 = await p.eval("document.querySelector('.capacity-lead')?.textContent ?? ''");
   check("capacity: the directions open with the narrowest point and every band's share, in words", /^Carrying capacity: narrowest on the flat and with the hills: 50 riders per minute \(bottleneck\) on the flat, 55 riders per minute \(bottleneck\) with the hills, at the start\. By distance: /.test(lead || lead2), lead || lead2);
   await openSheet(p, "Legend");
-  await p.eval("document.getElementById('sheet-legend-title')?.scrollIntoView({ block: 'center' }); true");
+  await p.eval("document.getElementById('layers-heading')?.scrollIntoView({ block: 'center' }); true");
   // The map has drawn a road with a capacity: the legend is riders per minute.
   const gotLegend = await p.waitFor("!!document.querySelector('.mass-legend')", 15000);
   const legend = await p.eval(`(() => { const u = document.querySelector('.mass-legend'); if (!u) return null;
@@ -1688,10 +1686,10 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
     legend?.swatchesHidden && legend.heading === legend.name && /riders per minute/i.test(legend.toggle ?? "") && !legend.stressLegend, JSON.stringify(legend));
   const axLegend = await axNode(p, ".mass-legend");
   check("capacity: the legend is a list a screen reader names", axLegend?.role === "list" && /^Riders per minute at 6 to 8 mph/.test(axLegend?.name ?? ""), JSON.stringify(axLegend));
-  const notes = await p.eval("[...document.querySelectorAll('#sheet-legend .hint')].map((h) => h.textContent).join(' | ')");
+  const notes = await p.eval("[...document.querySelectorAll('#sheet-layers .hint')].map((h) => h.textContent).join(' | ')");
   check("capacity: it says what the map leaves out, and credits where the figures come from", /Trails, paths, protected bike lanes and bike lanes are not drawn on this map at any zoom/.test(notes) && /DC Open Data, Roadway Block \(CC BY 4\.0, adapted\)/.test(notes) && /© OpenStreetMap contributors/.test(notes), notes.slice(0, 200));
   // DC only for now (OWNER-DECISIONS 418), in words beside the gray mask, with the boundary's source.
-  const dcOnly = await p.eval(`({ legend: document.querySelector('#sheet-legend .mass-dc-only')?.textContent ?? '', credit: document.querySelector('#sheet-legend .dc-boundary-source')?.textContent ?? '',
+  const dcOnly = await p.eval(`({ legend: document.querySelector('#sheet-layers .mass-dc-only')?.textContent ?? '', credit: document.querySelector('#sheet-layers .dc-boundary-source')?.textContent ?? '',
     planner: document.querySelector('#route-planner .mass-dc-only')?.textContent ?? '' })`);
   check("capacity: the legend says in words that Mass Ride planning covers DC only for now, and credits the District's boundary",
     /^Mass Ride planning covers DC only for now\. Outside the District of Columbia the map is grayed out and no riders-per-minute figures are drawn\.$/.test(dcOnly.legend) && dcOnly.credit === "District of Columbia boundary: © OpenStreetMap contributors (ODbL).", JSON.stringify(dcOnly));
@@ -1711,20 +1709,20 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   check("capacity: a Mass Ride inside DC shows and says no outside-DC notice", !inside.shown && !inside.said, JSON.stringify(inside));
   await p.eval("document.querySelector('.mass-legend').scrollIntoView({ block: 'center' }); true");
   await sleep(600);
-  await p.shot(`${SHOTS}/capacity_legend.png`, await p.eval("(() => { const r = document.querySelector('#sheet-legend').getBoundingClientRect(); return { x: Math.max(0, r.left), y: 0, width: Math.round(r.width), height: Math.min(900, Math.round(r.height)) }; })()"));
+  await p.shot(`${SHOTS}/capacity_legend.png`, await p.eval("(() => { const r = document.querySelector('#sheet-layers').getBoundingClientRect(); return { x: Math.max(0, r.left), y: 0, width: Math.round(r.width), height: Math.min(900, Math.round(r.height)) }; })()"));
   // The route line on the map, and the roads under it.
   await p.key("Escape", "Escape", 27);
   await sleep(400);
   await p.shot(`${SHOTS}/capacity_map.png`, await p.eval("(() => { const r = document.querySelector('.map').getBoundingClientRect(); return { x: r.left, y: r.top, width: Math.round(r.width), height: Math.round(r.height) }; })()"));
   // OWNER-DECISIONS 421, 422: which bands show at the zoom the map is at, in words, in one status line in the legend
   // whose words change only when the set of bands does; with the legend off screen, said through the app's region.
-  const bandsLine = "#sheet-legend .mass-bands";
+  const bandsLine = "#sheet-layers .mass-bands";
   const bands = await p.eval(`(() => { const e = document.querySelector('${bandsLine}'); if (!e) return null; e.dataset.a11yMark = '1';
     return { role: e.getAttribute('role'), text: e.textContent }; })()`);
   check("capacity: the legend says in words which bands show at this zoom, in a status line",
     bands?.role === "status" && /^At this zoom the map shows (only wide open roads|wide open and good roads|every road)/.test(bands.text), JSON.stringify(bands));
-  // The legend off screen: the sheet closed by its Back button (Escape closes it only from inside).
-  await p.eval("(() => { const s = document.querySelector('#sheet-legend'); if (s && !s.hidden) s.querySelector('.sheet-back')?.click(); return true; })()");
+  // The legend off screen: Layers closed by its Back button (Escape closes it only from inside).
+  await p.eval("(() => { const s = document.querySelector('#sheet-layers'); if (s && !s.hidden) s.querySelector('.sheet-back')?.click(); return true; })()");
   await sleep(250);
   for (let i = 0; i < 6; i++) {
     if (/only wide open/.test(await p.eval(`document.querySelector('${bandsLine}')?.textContent ?? ''`))) break;
@@ -1752,19 +1750,19 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   // for it in words, in the list, on screen and not behind the zoom fold, its swatch hidden from a screen reader.
   // 454: only while their layer is on, which is off until the rider turns it on.
   check("legend: no mountain-bike trail row while their layer is off, as it is by default (454)",
-    await p.eval(`!document.querySelector('#sheet-legend [aria-label="Traffic stress legend"] li.mtb-trail, #sheet-legend [aria-label="Traffic stress legend"] li.mtb-level')`));
+    await p.eval(`!document.querySelector('#sheet-layers [aria-label="Mountain-bike trail legend"] li.mtb-trail, #sheet-layers [aria-label="Mountain-bike trail legend"] li.mtb-level')`));
   await p.eval("document.querySelector('#mtb-trails-switch').click(); true");
   await sleep(200);
-  const mtb = await p.eval(`(() => { const e = document.querySelector('#sheet-legend [aria-label="Traffic stress legend"] li.mtb-trail'); if (!e) return null;
+  const mtb = await p.eval(`(() => { const e = document.querySelector('#sheet-layers [aria-label="Mountain-bike trail legend"] li.mtb-trail'); if (!e) return null;
     const svg = e.querySelector('svg');
     return { text: e.textContent, folded: !!e.closest('details:not([open])'), hidden: !!e.closest('[aria-hidden="true"], [hidden], [inert]'),
       onScreen: e.getClientRects().length > 0, swatchHidden: svg?.getAttribute('aria-hidden') === 'true',
-      oldLine: !!document.querySelector('#sheet-legend .mtb-hidden') }; })()`);
+      oldLine: !!document.querySelector('#sheet-layers .mtb-hidden') }; })()`);
   check("legend: a row says in words which ride types route on a mountain-bike trail, in view and not in a fold, swatch aria-hidden (452a; the owner, 2026-10-19)",
     !!mtb && mtb.text.startsWith("Mountain-bike trailOnly off-road ride types route on these") && !mtb.folded && !mtb.hidden && mtb.onScreen && mtb.swatchHidden && !mtb.oldLine, JSON.stringify(mtb));
   // 456: a row a difficulty level after it, the level's number and colour in words (never colour alone), in view,
   // its swatch hidden from a screen reader.
-  const levels = await p.eval(`[...document.querySelectorAll('#sheet-legend [aria-label="Traffic stress legend"] li.mtb-level')].map((e) => ({
+  const levels = await p.eval(`[...document.querySelectorAll('#sheet-layers [aria-label="Mountain-bike trail legend"] li.mtb-level')].map((e) => ({
     text: e.textContent, folded: !!e.closest('details:not([open])'), onScreen: e.getClientRects().length > 0,
     swatchHidden: e.querySelector('svg')?.getAttribute('aria-hidden') === 'true' }))`);
   check("legend: a row a mountain-bike level, 1 to 4, named in words with its colour, in view, swatch aria-hidden (456)",
@@ -1780,7 +1778,7 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   check("capacity: a Mass Ride on a table without the column (no rpm in the tiles or the route) shows its current styling: the stress legend, bar and no figures", !old.mass && old.stress && !old.figures && old.bar, JSON.stringify(old));
   // Accessibility review S2: the map it draws is the one that legend describes. The stress layers stay on (they ask
   // for tiles beyond MapView's one probe), the Mass Ride layers stay off, and DC only is still said beside the mask.
-  const words = await p.eval("({ dcOnly: document.querySelector('#sheet-legend .mass-dc-only')?.textContent ?? '', credit: document.querySelector('#sheet-legend .dc-boundary-source')?.textContent ?? '' })");
+  const words = await p.eval("({ dcOnly: document.querySelector('#sheet-layers .mass-dc-only')?.textContent ?? '', credit: document.querySelector('#sheet-layers .dc-boundary-source')?.textContent ?? '' })");
   check("capacity: on that table the stress layers stay visible under the stress legend, and the legend still says DC only, with the boundary's credit",
     p.tileRequests.stress > 1 && p.tileRequests.mass === 0 && /^Mass Ride planning covers DC only for now\./.test(words.dcOnly) && /OpenStreetMap/.test(words.credit),
     JSON.stringify({ tiles: p.tileRequests, words }));
@@ -2475,10 +2473,10 @@ const levelSlider = `${EDITOR} input[type=range]`;
 {
   const p = await open();
   await openSheet(p, "Legend");
-  await p.eval("document.getElementById('sheet-legend-title')?.scrollIntoView({ block: 'center' }); true");
+  await p.eval("document.getElementById('layers-heading')?.scrollIntoView({ block: 'center' }); true");
   await p.waitFor("!!document.querySelector('[aria-label=\"Traffic stress legend\"]')", 15000);
   const link = await p.eval(`(() => { const a = document.querySelector('.stress-page-link a'); if (!a) return null;
-    return { href: a.getAttribute('href'), target: a.getAttribute('target'), shown: a.getBoundingClientRect().height > 0, inLegend: !!a.closest('section[aria-labelledby="sheet-legend-title"]') }; })()`);
+    return { href: a.getAttribute('href'), target: a.getAttribute('target'), shown: a.getBoundingClientRect().height > 0, inLegend: !!a.closest('#stress-section-body') }; })()`);
   const ax = await axNode(p, ".stress-page-link a");
   check("stress page: the legend links to it in the same tab, named by its visible words",
     link?.href === "/about/stress.html" && link.target === null && link.shown && link.inLegend && ax?.role === "link" && ax?.name === "How stress ratings work",
@@ -3078,12 +3076,12 @@ async function hazardsAsked(p, ms = 15000) {
     JSON.stringify(listed));
 
   await openSheet(p, "Legend");
-  await p.eval("document.getElementById('sheet-legend-title')?.scrollIntoView({ block: 'center' }); true");
+  await p.eval("document.getElementById('layers-heading')?.scrollIntoView({ block: 'center' }); true");
   await p.waitFor("!!document.querySelector('.hazard-legend')", 15000);
-  const legend = await p.eval(`(() => { const u = document.querySelector('#sheet-legend .hazard-legend'); if (!u) return null;
+  const legend = await p.eval(`(() => { const u = document.querySelector('#sheet-layers .hazard-legend'); if (!u) return null;
     return { rows: [...u.querySelectorAll('li')].map((li) => li.textContent), hidden: [...u.querySelectorAll('svg')].every((v) => v.getAttribute('aria-hidden') === 'true'),
-      note: document.querySelector('#sheet-legend .hazard-legend-note')?.textContent ?? '' }; })()`);
-  const axList = await axNode(p, "#sheet-legend .hazard-legend");
+      note: document.querySelector('#sheet-layers .hazard-legend-note')?.textContent ?? '' }; })()`);
+  const axList = await axNode(p, "#sheet-layers .hazard-legend");
   check("hazards: the Mass Ride legend names both rails in words, their look too, as a named list with hidden swatches",
     legend?.rows.length === 2 && legend.rows[0] === "Caution: riders have had problems here; take care. Drawn as dotted black rails on both sides of the road." &&
       legend.rows[1] === "Warning: riders have had serious problems here. Drawn as dash-dot black rails on both sides of the road." && legend.hidden &&
@@ -4918,18 +4916,16 @@ const PICK_OPEN_IN_GO = "(() => { const s = document.querySelector('#sheet-setti
   await p.close();
 }
 {
-  // The Legend sheet (the owner's choice 6): one step in from Layers, Back returns to Layers.
+  // No Legend sheet (the owner, 2026-10-19: "include the legend within the accordion settings in layers"): the
+  // stress key is inside the traffic stress section, shown when it is opened, and Layers has no Legend button.
   const p = await open();
   await openSheet(p);
-  const btn = await axNode(p, "#sheet-layers .legend-button");
-  await p.eval("document.querySelector('#sheet-layers .legend-button').focus(); document.querySelector('#sheet-layers .legend-button').click(); true");
+  const closed = await p.eval("({ button: !!document.querySelector('.legend-button'), sheet: !!document.getElementById('sheet-legend'), hidden: document.getElementById('stress-section-body')?.hidden })");
+  await p.eval("document.querySelector('[aria-controls=\"stress-section-body\"]')?.click(); true");
   await sleep(300);
-  const legend = await p.eval("({ shown: !document.getElementById('sheet-legend').hidden, layers: document.getElementById('sheet-layers').hidden, focus: document.activeElement?.id, back: document.querySelector('#sheet-legend .sheet-back')?.textContent.trim(), stress: !!document.querySelector('#sheet-legend [aria-label=\"Traffic stress legend\"]') })");
-  await p.eval("document.querySelector('#sheet-legend .sheet-back').click(); true");
-  await sleep(300);
-  const back = await p.eval("({ layers: !document.getElementById('sheet-layers').hidden, focus: document.activeElement?.classList.contains('legend-button') })");
-  check("legend sheet: Layers' Legend button opens it (heading focused, the stress legend there), and Back returns to Layers with the focus on Legend",
-    btn?.role === "button" && btn?.name === "Legend" && legend.shown && legend.layers && legend.focus === "sheet-legend-title" && /Layers/.test(legend.back ?? "") && legend.stress && back.layers && back.focus, JSON.stringify({ btn, legend, back }));
+  const opened = await p.eval("({ stress: !!document.querySelector('#stress-section-body [aria-label=\"Traffic stress legend\"]'), junctions: !!document.querySelector('#stress-section-body .junction-legend'), shown: (document.querySelector('#stress-section-body [aria-label=\"Traffic stress legend\"]')?.getBoundingClientRect().height ?? 0) > 0 })");
+  check("legend: no Legend button or sheet; the traffic stress section holds the stress and junction keys, shown when it is opened",
+    !closed.button && !closed.sheet && closed.hidden === true && opened.stress && opened.junctions && opened.shown, JSON.stringify({ closed, opened }));
   await p.close();
 }
 

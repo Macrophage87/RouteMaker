@@ -105,7 +105,7 @@ export function SheetFrame({
   headingRef?: Ref<HTMLHeadingElement>;
   /** The Back button's words: back to the planner, or to the sheet this one was opened from. */
   backLabel?: string;
-  /** A control at the header's end (Layers' Legend button). */
+  /** A control at the header's end. */
   extra?: ReactNode;
   children: ReactNode;
 }) {
