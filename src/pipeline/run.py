@@ -481,8 +481,8 @@ class ReferenceData:
     scenic_features: tuple[conflation.RoadFeature, ...] = ()
     scenic_labels: dict[str, str] = field(default_factory=dict)
     # Agency traffic signal lists (`pipeline.agency_signals`, v0.10.0): DDOT's, MDOT
-    # SHA's, VDOT's and Alexandria's (and Arlington's once its licence is confirmed), from
-    # `signals.json`. Optional like `roadway.json`: without it the map
+    # SHA's and Alexandria's (VDOT's for comparison only, and Arlington's once its
+    # licence is confirmed), from `signals.json`. Optional like `roadway.json`: without it the map
     # keeps OSM's signals only, and the load logs that it is absent.
     agency_signal_list: tuple[agency_signals.Signal, ...] = ()
 

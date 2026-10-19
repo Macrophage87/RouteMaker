@@ -219,9 +219,11 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
   from VDOT's Traffic Engineering Division: "a snapshot of Traffic Signal data recorded in
   VDOT HMMS up through October 2023" (signal records have since left HMMS, so it is not
   updated). 3,153 records on 2026-10-19; `ASSET_SUBTYPE` Traffic Signal and Pedestrian
-  Hybrid Beacon with `STATUS` Active are read, Intersection Flashers left out. Marks the
-  junctions at a Virginia signal OSM does not map as one (`pipeline.agency_signals`); a
-  signal built since October 2023 is not in it. Licence: the item's VDOT disclaimer
+  Hybrid Beacon with `STATUS` Active are read, Intersection Flashers left out. **Report
+  only** (`pipeline.agency_signals.REPORT_ONLY`): being stale, it marks nothing; the
+  rebuild's `reports/agency-signals.csv` lists each signal OSM lacks as "would add", for
+  comparison (the owner, 2026-10-19: "Since it's stale, just report it for comparison.
+  It's likely OSM is better."). Licence: the item's VDOT disclaimer
   (sent by the owner 2026-10-19: use "at its own risk", "provided without any guarantee
   of accuracy, timeliness or completeness"), the portal's terms as for the counts above.
   Fetched at rebuild time; size and sha256: the download's README, to be copied here.

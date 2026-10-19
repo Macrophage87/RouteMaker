@@ -7,8 +7,8 @@ gets the ride cue "no signal mapped (Higher stress junction)". DDOT publishes
 every signal it runs (DDOT Traffic Signals, DC GIS; docs/SOURCES.md), and DC data
 beats OSM for the same fact (the owner, 2026-10-11), so the rebuild reads the list
 and marks the junction node at each signal OSM does not have. MDOT SHA (every
-Maryland signal but Baltimore City's), VDOT (Virginia's, a 2023 snapshot), Arlington
-and Alexandria publish lists too
+Maryland signal but Baltimore City's), VDOT (Virginia's, a 2023 snapshot: reported
+but never marked, `REPORT_ONLY`), Arlington and Alexandria publish lists too
 (`LICENCE_CONFIRMED` says which are read).
 
 The installed file, `<reference>/signals.json`, is one row per signal,
@@ -84,6 +84,11 @@ LICENCE_CONFIRMED = {
     # 2026-10-19).
     "vdot": True,
 }
+# Sources matched and reported but never marked: VDOT's list stops at October 2023,
+# and OSM is likely the better record there (the owner, 2026-10-19: "Since it's
+# stale, just report it for comparison. It's likely OSM is better."). Their rows
+# read "would add" in the report and the log counts them apart.
+REPORT_ONLY = frozenset({"vdot"})
 SOURCES = frozenset(LICENCE_CONFIRMED)
 
 # Metres. JUNCTION_M covers a divided road's junction nodes around DDOT's point (on
@@ -429,6 +434,8 @@ class Match:
     nodes: set[int] = field(default_factory=set)
     already_in_osm: dict[str, int] = field(default_factory=lambda: defaultdict(int))
     added: dict[str, int] = field(default_factory=lambda: defaultdict(int))
+    # A report-only source's signals OSM lacks: counted, never marked.
+    would_add: dict[str, int] = field(default_factory=lambda: defaultdict(int))
     unmatched: dict[str, int] = field(default_factory=lambda: defaultdict(int))
     # (signal id, lon, lat, outcome, marked node ids) per signal, for the report.
     rows: list[tuple[str, float, float, str, tuple[int, ...]]] = field(default_factory=list)
@@ -463,6 +470,10 @@ def match(
         if not marked:
             result.unmatched[signal.source] += 1
             result.rows.append((signal.feature_id, signal.lon, signal.lat, "unmatched", ()))
+            continue
+        if signal.source in REPORT_ONLY:
+            result.would_add[signal.source] += 1
+            result.rows.append((signal.feature_id, signal.lon, signal.lat, "would add", marked))
             continue
         result.added[signal.source] += 1
         result.nodes.update(marked)
@@ -521,16 +532,22 @@ def read_osm_signals(pbf: Path | str, box: tuple[float, ...]) -> dict[int, tuple
 
 
 def summary(result: Match) -> str:
-    sources = sorted(set(result.already_in_osm) | set(result.added) | set(result.unmatched))
-    return (
-        "; ".join(
-            f"{source}: {result.added.get(source, 0)} added, "
-            f"{result.already_in_osm.get(source, 0)} already in OSM, "
+    sources = sorted(
+        set(result.already_in_osm) | set(result.added) | set(result.would_add)
+        | set(result.unmatched)
+    )  # fmt: skip
+
+    def line(source: str) -> str:
+        if source in REPORT_ONLY:
+            head = f"{source} (report only): {result.would_add.get(source, 0)} OSM lacks"
+        else:
+            head = f"{source}: {result.added.get(source, 0)} added"
+        return (
+            f"{head}, {result.already_in_osm.get(source, 0)} already in OSM, "
             f"{result.unmatched.get(source, 0)} with no junction in reach"
-            for source in sources
         )
-        or "no agency signals"
-    )
+
+    return "; ".join(line(source) for source in sources) or "no agency signals"
 
 
 def report_csv(result: Match) -> str:
@@ -540,7 +557,7 @@ def report_csv(result: Match) -> str:
 
     out = io.StringIO()
     writer = csv.writer(out, lineterminator="\n")
-    writer.writerow(["signal_id", "lon", "lat", "outcome", "marked_osm_nodes"])
+    writer.writerow(["signal_id", "lon", "lat", "outcome", "junction_osm_nodes"])
     for feature_id, lon, lat, outcome, nodes in result.rows:
         writer.writerow([feature_id, lon, lat, outcome, " ".join(str(n) for n in nodes)])
     return out.getvalue()
