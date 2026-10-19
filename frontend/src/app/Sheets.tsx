@@ -4,7 +4,7 @@
 // in to the suggest tools, and Review is an admin's; Settings is Display, Riding and Account
 // with My Go; and the map's Water and Food chips open the nearest finder and Find food. In Go, Settings is
 // the Menu, with Plan, Suggest, GPX and Review above it. App.tsx keeps the state and the effects.
-import { useEffect, useState, type ReactNode, type RefObject } from "react";
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import type { Map as MapLibreMap } from "maplibre-gl";
 import type { StressAvailability } from "../MapView.tsx";
 import type { RouteResponse } from "../lib/api.ts";
@@ -13,6 +13,7 @@ import { PRESETS, presetSaid, type PresetId } from "../lib/presets.ts";
 import { PresetName } from "../lib/presetName.ts";
 import { filterRideGroups, rideSections, rideTypeCount, RideTypeSearch } from "../lib/rideTypeGroups.ts";
 import { RideTypeCards } from "../lib/rideTypeCards.ts";
+import { toggleFromPicker, useFavoriteRides } from "../lib/favoriteRides.ts";
 import { DELETE_ACCOUNT_PAGE, isPlainClick, rememberPlanForSignIn, tabSession } from "../lib/signIn.ts";
 import { SignOutForm } from "../SignOut.tsx";
 import { AssistantKeySetting } from "../AssistantKey.tsx";
@@ -731,22 +732,32 @@ const rideIcon = (id: PresetId) => <Icon name={RIDE_ICON[id] ?? "bike"} size={20
  */
 export function RideGroupChips({ preset, onPick, open }: { preset: PresetId; onPick: (id: PresetId) => void; open: boolean }) {
   const [query, setQuery] = useState("");
+  const scopeRef = useRef<HTMLElement>(null);
   useEffect(() => {
     if (!open) setQuery("");
   }, [open]);
   // Review F9: the common types first, the rest in their groups, folded (the one in use opens its group); a search
   // shows every match flat. The class is ride-sheet-group: .ride-group is the group ride's overlay (RideGroup.tsx).
-  const { common, groups, folded } = rideSections(query);
+  // Favorites (Stephen 2026-10-19) come before Common, each card with its star (lib/favoriteRides.ts).
+  const favorites = useFavoriteRides();
+  const { favorites: favs, common, groups, folded } = rideSections(query, undefined, favorites);
+  const star = { favorites, onFavorite: (id: PresetId) => toggleFromPicker(id, scopeRef.current) };
   return (
-    <section className="ride-groups" aria-labelledby="ride-sheet-types">
+    <section ref={scopeRef} className="ride-groups" aria-labelledby="ride-sheet-types">
       <h3 id="ride-sheet-types" className="visually-hidden">
         Every ride type
       </h3>
       <RideTypeSearch id="ride-sheet-search" query={query} onQuery={setQuery} count={rideTypeCount(filterRideGroups(query))} />
+      {favs.length > 0 && (
+        <section className="ride-sheet-group" aria-labelledby="ride-sheet-favorites">
+          <h4 id="ride-sheet-favorites">Favorites</h4>
+          <RideTypeCards ids={favs} preset={preset} onPick={onPick} idPrefix="ride-sheet" icon={rideIcon} {...star} />
+        </section>
+      )}
       {common.length > 0 && (
         <section className="ride-sheet-group" aria-labelledby="ride-sheet-common">
           <h4 id="ride-sheet-common">Common</h4>
-          <RideTypeCards ids={common} preset={preset} onPick={onPick} idPrefix="ride-sheet" icon={rideIcon} />
+          <RideTypeCards ids={common} preset={preset} onPick={onPick} idPrefix="ride-sheet" icon={rideIcon} {...star} />
         </section>
       )}
       {groups.map((group) =>
@@ -754,13 +765,13 @@ export function RideGroupChips({ preset, onPick, open }: { preset: PresetId; onP
           <details key={group.id} className="fold ride-sheet-fold" open={group.ids.includes(preset) || undefined}>
             <summary>{`${group.label} (${group.ids.length})`}</summary>
             <div className="fold-body">
-              <RideTypeCards ids={group.ids} preset={preset} onPick={onPick} idPrefix="ride-sheet" icon={rideIcon} />
+              <RideTypeCards ids={group.ids} preset={preset} onPick={onPick} idPrefix="ride-sheet" icon={rideIcon} {...star} />
             </div>
           </details>
         ) : (
           <section key={group.id} className="ride-sheet-group" aria-labelledby={`ride-sheet-${group.id}`}>
             <h4 id={`ride-sheet-${group.id}`}>{group.label}</h4>
-            <RideTypeCards ids={group.ids} preset={preset} onPick={onPick} idPrefix="ride-sheet" icon={rideIcon} />
+            <RideTypeCards ids={group.ids} preset={preset} onPick={onPick} idPrefix="ride-sheet" icon={rideIcon} {...star} />
           </section>
         ),
       )}

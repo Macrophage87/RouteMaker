@@ -228,6 +228,7 @@ import { optionChosenSaid, transitOf, withTransitOption, type TransitPick } from
 import { REST_ANYWAY_MS, RIDE_REST_FINDING, fixedRide, restClosedSaid, restRequest, rideLegOf, rideTripOf, rideable as rideableRoute, type RideTrip } from "./lib/rideTrip.ts";
 import { RIDE_TOO_LONG } from "./lib/navigate.ts";
 import { fetchMe, NO_ME, type Me } from "./lib/stressEditor.ts";
+import { reloadFavorites, useFavoriteRides } from "./lib/favoriteRides.ts";
 import { ACCOUNT_SETTINGS_USED, applyToDevice, deviceSettings, fetchSettings, onSignIn, planFromSetting, sameSettings, saveSettings, SAVE_SETTLE_MS, type SettingsDoc } from "./lib/accountSettings.ts";
 import { HOME_KEPT, HOME_MOVED, answerHomeOffer, deviceHome, homeOffer, type HomeOffer } from "./lib/homeMove.ts";
 import { OPENED_SAID, SAVED_SAID, SAVE_FAILED, UNCHANGED_SAID, UPDATE_ROUTE, VERSION_SAID, defaultRouteName, differenceLine, differsTooMuch, gpxSave, afterDelete, afterRename, planSave, saveAsVersion, savedAnswer, versionOf, type OpenSaved, type SavedRoute } from "./lib/savedRoutes.ts";
@@ -1312,6 +1313,8 @@ export function App() {
   };
   // Saved settings (v0.7.0): the account's win on sign-in; an empty account takes this device's.
   const lastSettings = useRef<SettingsDoc | null>(null);
+  // The favorite ride types are saved with the rest (lib/favoriteRides.ts); a star pressed is a change.
+  const favoriteRides = useFavoriteRides();
   const [settingsSynced, setSettingsSynced] = useState(false);
   const [homeAsk, setHomeAsk] = useState<HomeOffer | null>(null);
   const syncSettingsOnSignIn = async (origin: string, live: () => boolean) => {
@@ -1324,6 +1327,7 @@ export function App() {
       void saveSettings(origin, device);
     } else {
       applyToDevice(step.doc);
+      reloadFavorites();
       lastSettings.current = step.doc;
       setWaterPrefsState(readWaterPrefs());
       setClimbsOnState(readClimbsOn());
@@ -2852,7 +2856,7 @@ export function App() {
       void saveSettings(window.location.origin, doc);
     }, SAVE_SETTLE_MS);
     return () => window.clearTimeout(timer);
-  }, [me.signed_in, settingsSynced, preset, dials, waterPrefs, climbsOn, climbsFrom, showTopoLines]);
+  }, [me.signed_in, settingsSynced, preset, dials, waterPrefs, climbsOn, climbsFrom, showTopoLines, favoriteRides]);
   const answerHome = (move: boolean) => {
     const offer = homeAsk;
     if (!offer) return;
