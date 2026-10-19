@@ -699,21 +699,58 @@ MAP_MOST = 60
 MAP_KINDS = (rules.CLOSED, rules.UNKNOWN, rules.LANE)
 
 
-def _near_line(zone: rules.Zone, coordinates, box) -> float:
-    """How near the zone comes to the route's line, metres (inf beyond the box)."""
-    if not any(box[0] <= lon <= box[2] and box[1] <= lat <= box[3] for lon, lat in zone.line):
-        return math.inf
-    lat0 = zone.line[0][1]
-    route = [rules._xy(c[0], c[1], lat0) for c in coordinates]
-    return min(rules._distance_to_line(rules._xy(lon, lat, lat0), route) for lon, lat in zone.line)
+class _RouteIndex:
+    """The route's segments in a coarse grid of lon/lat cells, so each zone is measured against
+    the few segments near it, not the whole line. A 100 mi loop's box covers most of DC, and
+    measuring every zone's every point against every segment of it took the plan past the web
+    server's 60 s (the MCP tester, 2026-10-19). Built once per route."""
 
+    CELL_DEG = 0.01  # about 0.7 mi of longitude here, 0.7 mi of latitude
 
-def _route_box(coordinates, margin_m: float):
-    lons = [c[0] for c in coordinates]
-    lats = [c[1] for c in coordinates]
-    dlat = margin_m / 111_195.0
-    dlon = dlat / max(math.cos(math.radians(sum(lats) / len(lats))), 0.01)
-    return min(lons) - dlon, min(lats) - dlat, max(lons) + dlon, max(lats) + dlat
+    def __init__(self, coordinates, margin_m: float):
+        self.coordinates = coordinates
+        self.margin_m = margin_m
+        self.cells: dict[tuple[int, int], list[int]] = {}
+        for i, (a, b) in enumerate(zip(coordinates, coordinates[1:], strict=False)):
+            for cell in self._cells(
+                min(a[0], b[0]), min(a[1], b[1]), max(a[0], b[0]), max(a[1], b[1])
+            ):
+                self.cells.setdefault(cell, []).append(i)
+
+    def _cells(self, west, south, east, north):
+        size = self.CELL_DEG
+        for x in range(math.floor(west / size), math.floor(east / size) + 1):
+            for y in range(math.floor(south / size), math.floor(north / size) + 1):
+                yield (x, y)
+
+    def near(self, zone: rules.Zone) -> float:
+        """How near the zone comes to the route's line, metres; inf when no segment of the
+        line comes within `margin_m` of the zone's box."""
+        lons = [lon for lon, _lat in zone.line]
+        lats = [lat for _lon, lat in zone.line]
+        # A little over the margin, so a segment just inside it is never missed.
+        dlat = self.margin_m * 1.1 / 111_195.0
+        dlon = dlat / max(math.cos(math.radians(max(abs(min(lats)), abs(max(lats))))), 0.01)
+        found: set[int] = set()
+        for cell in self._cells(
+            min(lons) - dlon, min(lats) - dlat, max(lons) + dlon, max(lats) + dlat
+        ):
+            found.update(self.cells.get(cell, ()))
+        if not found:
+            return math.inf
+        lat0 = zone.line[0][1]
+        segments = [
+            (
+                rules._xy(self.coordinates[i][0], self.coordinates[i][1], lat0),
+                rules._xy(self.coordinates[i + 1][0], self.coordinates[i + 1][1], lat0),
+            )
+            for i in sorted(found)
+        ]
+        return min(
+            rules._distance_to_line(rules._xy(lon, lat, lat0), [a, b])
+            for lon, lat in zone.line
+            for a, b in segments
+        )
 
 
 def _effect(zone: rules.Zone, plan: rules.PlanZones, on_route: set[str]) -> str:
@@ -800,12 +837,12 @@ def map_rows(coordinates, plan: rules.PlanZones, passages, scale: float, now) ->
     if len(coordinates) < 2:
         return []
     on_route = {p.zone.zone_id: p for p in passages}
-    box = _route_box(coordinates, MAP_NEAR_M)
+    index = _RouteIndex(coordinates, MAP_NEAR_M)
     rows = []
     for zone in plan.every_zone():
         if zone.kind not in MAP_KINDS:
             continue
-        near = 0.0 if zone.zone_id in on_route else _near_line(zone, coordinates, box)
+        near = 0.0 if zone.zone_id in on_route else index.near(zone)
         if near > MAP_NEAR_M:
             continue
         effect = _effect(zone, plan, set(on_route))
