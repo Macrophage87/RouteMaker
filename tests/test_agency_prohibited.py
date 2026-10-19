@@ -114,10 +114,11 @@ def agency_lts_formula():
 
 
 def test_the_stress_stage_records_the_ban_beside_the_level(tmp_path, monkeypatch):
-    from pipeline import run as run_module
-    from pipeline.run import build_handlers
-    from pipeline.rebuild import Stage
     from test_review_rl_ratings import MD_LANE, PLAIN, stage_context
+
+    from pipeline import run as run_module
+    from pipeline.rebuild import Stage
+    from pipeline.run import build_handlers
 
     context = stage_context(tmp_path, monkeypatch)
     monkeypatch.setattr(
