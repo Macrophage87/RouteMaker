@@ -313,7 +313,15 @@ for (const [width, height] of [[375, 812], [320, 800]]) {
 }
 {
   const p = await open({ width: 1280, height: 900 });
-  check("credits at 1280 px: stay open", await p.eval("document.querySelector('.maplibregl-ctrl-attrib').classList.contains('maplibregl-compact-show')"));
+  // The credits hold the map's info panel too (lib/mapInfo.ts), so they start as the i at every width.
+  check("credits at 1280 px: start collapsed to the i button", await p.eval("!document.querySelector('.maplibregl-ctrl-attrib').classList.contains('maplibregl-compact-show')"));
+  check("credits at 1280 px: the i is named for the info panel", (await p.eval("document.querySelector('.maplibregl-ctrl-attrib-button').getAttribute('aria-label')")) === "Map info and credits");
+  await p.eval("document.querySelector('.maplibregl-ctrl-attrib-button').click(); true");
+  await sleep(200);
+  const info = await p.eval(`(() => { const a = document.querySelector('.maplibregl-ctrl-attrib'); const r = a.getBoundingClientRect();
+    return { text: a.querySelector('.map-info')?.textContent ?? '', docs: [...a.querySelectorAll('a[href^="/about/"]')].length, onScreen: r.top >= 0 && r.bottom <= innerHeight }; })()`);
+  check("credits at 1280 px: the i opens the how-to and the documentation links, on screen", /Plan a route/.test(info.text) && /accessibility mode/.test(info.text) && info.docs >= 4 && info.onScreen, JSON.stringify(info));
+  await p.shot(`${SHOTS}/credits_1280_opened.png`);
   await p.close();
 }
 

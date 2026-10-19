@@ -127,12 +127,12 @@ test("the skip link is off screen until it has the focus", () => {
   assert.match(declared(".skip-link:focus"), /transform:\s*none/);
 });
 
-test("MapView: the credits start collapsed on a narrow map, below the scales", () => {
+test("MapView: the credits start collapsed, below the scales", () => {
   assert.match(mapView, /attributionControl:\s*false/);
   const credits = mapView.indexOf("new maplibregl.AttributionControl({ compact: true");
   const scale = mapView.indexOf("new maplibregl.ScaleControl");
   assert.ok(credits > 0 && scale > credits, "added before the scales, so it is the bottom of the stack");
-  assert.match(mapView, /collapseCredits\(container\.current\.querySelector\("\.maplibregl-ctrl-attrib"\)/);
+  assert.match(mapView, /const credits = container\.current\.querySelector<HTMLElement>\("\.maplibregl-ctrl-attrib"\);\s*collapseCredits\(credits\);/);
 });
 
 test("MapView: the junction card is a named dialog, takes the focus only from a marker, and Escape closes it", () => {
