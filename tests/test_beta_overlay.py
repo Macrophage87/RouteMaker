@@ -800,8 +800,18 @@ def test_basic_auth_is_on_for_the_whole_https_server_and_off_only_for_robots_and
     assert "auth_basic_user_file @HTPASSWD_FILE@;" in https
     exempt = [path for path, body in locations(full) if "auth_basic off" in body]
     assert sorted(exempt) == sorted(
-        ["^~ /.well-known/acme-challenge/", "= /robots.txt", "= /rmbeta-401.html"]
+        [
+            "^~ /.well-known/acme-challenge/",
+            "= /robots.txt",
+            "= /rmbeta-401.html",
+            "= /delete-account",
+        ]
     ), exempt
+    # Google Play's deletion link (core.account_deletion): that exact path, to the api, and not
+    # the sign-in it links to.
+    deletion = dict(locations(full))["= /delete-account"]
+    assert "proxy_pass http://rmbeta_api;" in deletion
+    assert not any(p.startswith(("^~ /auth", "= /auth")) for p in exempt)
     # the sign-in page is reachable only as the 401's error page, never directly
     page = dict(locations(full))["= /rmbeta-401.html"]
     assert re.search(r"^\s*internal;", page, re.M), page

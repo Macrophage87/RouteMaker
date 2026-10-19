@@ -263,3 +263,40 @@ export function routeLightMarks(
   if (chosen !== null && chosen !== "night" && chosen !== whenAt(new Date(nowMs))) return [];
   return lightMarks({ line: route.geometry?.coordinates ?? [], distanceM: route.distance_m, durationS: route.duration_s, departMs: nowMs });
 }
+
+/** Ride mode's corner (the owner, 2026-10-19): the light names kept short to fit beside the top row's buttons. */
+const LIGHT_SHORT: Record<LightKind, string> = {
+  civil_dawn: "Twilight",
+  sunrise: "Sunrise",
+  sunset: "Sunset",
+  civil_dusk: "Twilight",
+};
+
+/**
+ * Ride mode's corner, in place of "Ride mode" (the owner, 2026-10-19: "put civil twilight and sunrise times
+ * in that location if within an hour of those, as per the other rules"): the same rule as the route's marks
+ * (lightMarks), for the ride still to go from `progressM`, leaving now. Null when there is nothing to show.
+ * `shown` is a line per event ("Sunset 6:31 PM", "Twilight 6:58 PM"); `said` the whole of it in words.
+ */
+export function rideLightCorner(
+  model: { coordinates: readonly LonLat[]; along: Float64Array; lengthM: number },
+  progressM: number,
+  remainingS: number | null,
+  nowMs: number,
+): { shown: string[]; said: string } | null {
+  const start = pointAlong(model.coordinates, progressM);
+  if (!start) return null;
+  const rest: LonLat[] = [start];
+  for (let i = 0; i < model.coordinates.length; i += 1) if (model.along[i] > progressM) rest.push(model.coordinates[i]);
+  if (rest.length < 2) rest.push(start);
+  const distanceM = Math.max(1, model.lengthM - progressM);
+  // No pace known: the hour counts from now.
+  const durationS = Math.max(1, remainingS ?? 1);
+  const marks = lightMarks({ line: rest, distanceM, durationS, departMs: nowMs });
+  if (marks.length === 0) return null;
+  const said = marks.map((m) => `${LIGHT_NAME[m.kind]} ${lightClock(m.at)}`);
+  return {
+    shown: marks.map((m) => `${LIGHT_SHORT[m.kind]} ${lightClock(m.at)}`),
+    said: `${said.map((text, i) => (i === 0 ? text : text.charAt(0).toLowerCase() + text.slice(1))).join("; ")}.`,
+  };
+}

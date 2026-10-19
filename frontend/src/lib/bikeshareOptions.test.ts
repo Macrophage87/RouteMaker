@@ -102,6 +102,8 @@ test("the first answer is replayed only when the free e-bike asked for it and th
   // A dock ending set by an option's press (the default either way) is the same plan; outside a dock is not.
   assert.equal(sentPlanKey([A, B], "bikeshare", { bike: "ebike", stress: 80 }), firstKey);
   assert.notEqual(sentPlanKey([A, B], "bikeshare", { ...dials, ending: "outside_dock" }), firstKey);
+  // Go's closuresNow (v0.9.1) is the same plan: one first planned in Plan replays in Go.
+  assert.equal(sentPlanKey([A, B], "bikeshare", { ...dials, closuresNow: true }), firstKey);
   assert.equal(replayFor(first, firstKey, firstKey), "first route");
   assert.equal(replayFor(first, null, firstKey), null, "not asked: sent (another change reaching the same plan asks the planner)");
   assert.equal(replayFor(first, firstKey, pinned), null, "another plan: sent");
