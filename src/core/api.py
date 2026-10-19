@@ -323,9 +323,10 @@ class RouteIn(Schema):
     closures_now: StrictBool = Field(
         default=False,
         description=(
-            "v0.9.1, Go and a ride: route round only the closures known to be on, leaving out"
-            " DDOT's occupancy permits, which say a road may be closed in their window. Plan"
-            " sends nothing and keeps them, for planning a later ride."
+            "v0.9.1, Go and a ride: leave DDOT's occupancy permits off the answer. A permit"
+            " says a road may be closed some time in its window, so it is never routed round;"
+            " without this it is only flagged on the map (`work_zones.closures`, effect"
+            " `possible`), never a description line, a spoken cue or the closure check."
         ),
     )
     blocked_lines: list[Annotated[list[LonLat], Field(min_length=2, max_length=50)]] = Field(
@@ -516,6 +517,19 @@ class RouteIn(Schema):
         ),
     )
 
+    straight_legs: list[StrictInt] = Field(
+        default_factory=list,
+        max_length=MAX_POINTS,
+        description=(
+            "v0.9.1, Plan's manual mode: the legs the rider drew, by index (leg i runs from"
+            " `points[i]` to `points[i + 1]`). Each is the straight line between its points,"
+            " ridden as drawn, its stress unknown; the other legs are routed as asked. The"
+            " route is then the rider's own: no routes to choose from, calm search or detour"
+            " check (`drawn_legs`). Ignored on a loop, with `follow`, and on the two-point ride"
+            " types."
+        ),
+    )
+
     @field_validator("preset", mode="before")
     @classmethod
     def _renamed_ride_types(cls, value):
@@ -534,6 +548,12 @@ class RouteIn(Schema):
                 raise ValueError(
                     "via_points are distinct indices of points between the start and the end"
                 )
+        if self.straight_legs:
+            last = len(self.points) - 1
+            if len(set(self.straight_legs)) != len(self.straight_legs) or any(
+                not 0 <= index < last for index in self.straight_legs
+            ):
+                raise ValueError("straight_legs are distinct indices of legs between the points")
         if self.novice_legs and self.preset not in presets.TRANSIT_PRESETS:
             raise ValueError("novice_legs applies to the transit ride types only")
         if self.hills is not None and self.hills > 0 and not preset.hills_seek:
@@ -1895,7 +1915,9 @@ class WorkZoneOut(Schema):
     )
 
 
-ClosureEffect = Literal["on_route", "routed_round", "bypassed", "may_still_apply", "none"]
+ClosureEffect = Literal[
+    "on_route", "routed_round", "bypassed", "may_still_apply", "possible", "none"
+]
 
 
 class ClosureOut(Schema):
@@ -1924,7 +1946,8 @@ class ClosureOut(Schema):
         description=(
             '"on_route": the route runs along it; "routed_round": the route goes round it;'
             ' "bypassed": routed through by the rider\'s choice; "may_still_apply": on the route,'
-            ' no end given on a later ride, not routed round; "none": no effect on the route.'
+            ' no end given on a later ride, not routed round; "possible" (v0.9.1): a DDOT permit,'
+            ' flagged only, never routed round; "none": no effect on the route.'
         )
     )
     delay_s: int | None = Field(
@@ -2410,6 +2433,13 @@ class RouteOut(RouteBody):
         description=(
             "True where the route follows the file in the manual mode (`follow_exact`), rules"
             " or not; false on every other route."
+        ),
+    )
+    drawn_legs: list[int] | None = Field(
+        default=None,
+        description=(
+            "The legs drawn as straight lines (`straight_legs`, Plan's manual mode), by index;"
+            " null on a route with none."
         ),
     )
     provisional: bool = Field(
@@ -4024,6 +4054,7 @@ def _bike_dials(body: RouteIn) -> routing.Dials:
         vias=tuple(body.via_points),
         follow=_follow_line(body),
         follow_exact=body.follow_exact,
+        straight=tuple(body.straight_legs),
         heading=body.heading,
     )
 

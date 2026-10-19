@@ -47,7 +47,7 @@ import {
   withClosed,
 } from "./lib/roadClosed.ts";
 import { requestRoute, type RouteResponse } from "./lib/api.ts";
-import { VIA_MARKS, viaIndices } from "./lib/pointKinds.ts";
+import { VIA_MARKS, drawnLegs, viaIndices } from "./lib/pointKinds.ts";
 import type { Dials } from "./lib/dials.ts";
 import { haversineM, insideCoverage, type LonLat } from "./lib/geo.ts";
 import type { PresetId } from "./lib/presets.ts";
@@ -1019,7 +1019,7 @@ export function RideMode({
       // The rider is riding a plan already made: a long one is not asked to be confirmed again (a signed-out
       // rider's re-plan of a long ride was refused for want of it).
       const ask = (to: LonLat[]) =>
-        requestRoute(to, preset, { dials: { ...dials, loop: false }, vias: viaIndices(to, VIA_MARKS.isVia), routeOnly: true, confirmLong: true, blocked: blockedRef.current, heading });
+        requestRoute(to, preset, { dials: { ...dials, loop: false }, vias: viaIndices(to, VIA_MARKS.isVia), straight: drawnLegs(to), routeOnly: true, confirmLong: true, blocked: blockedRef.current, heading });
       const result = await ask(points);
       // No new route to the end: the way back to the planned route, which goes on from there (lib/rejoin.ts;
       // the owner, 2026-10-17). Not for a detour, whose place the planned route does not pass. The no-signal

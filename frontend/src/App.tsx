@@ -64,6 +64,12 @@ import { canReverse, loopStops, loopView, reversedPoints } from "./lib/loop.ts";
 import { FINDING_ORDER_SAID, STILL_FINDING_ORDER_SAID, applyAnswer, requestStopOrder, stopsThatMove } from "./lib/stopOrder.ts";
 import {
   VIA_MARKS,
+  drawnLegs,
+  MANUAL_LABEL,
+  MANUAL_OFF_SAID,
+  MANUAL_ON_SAID,
+  MANUAL_TITLE,
+  DRAWN_SAID,
   VIA_POINT_NAME,
   addStopWhereShortest,
   isMiddle,
@@ -233,6 +239,7 @@ import { ClosureDialog, type ClosureAsk } from "./ClosureDialog.tsx";
 import { ShareCardDialog, type ShareCardSource } from "./ShareCardDialog.tsx";
 import { usableProfile } from "./lib/profileChart.ts";
 import { bypassFor, bypassPlanKey, bypassSaid, toggleBypass, type Bypass } from "./lib/closureMap.ts";
+import { permitsShown, readPermitsLayer, savePermitsLayer } from "./lib/permitLayer.ts";
 import { RideGroup } from "./RideGroup.tsx";
 import { BikeshareDocksOverlay, type DocksReport } from "./BikeshareDocks.tsx";
 import { KNOWN_OPERATORS, docksStatus, mergeOperators, operatorsToAsk, readOperatorChoices, saveOperatorChoices, type OperatorInfo } from "./lib/bikeshareDocks.ts";
@@ -274,6 +281,8 @@ interface Plan {
 const initialPlan = decodePlan(planToOpen(tabSession(), window.location.hash));
 // The link's via points (v0.7.0, lib/pointKinds.ts): an older link has none, so every point is a stop.
 VIA_MARKS.markAt(initialPlan.points, initialPlan.vias);
+// And its legs drawn in Plan's manual mode (v0.9.1); an older link has none.
+VIA_MARKS.markDrawn(initialPlan.points, initialPlan.drawn);
 
 // Go or Plan (lib/appMode.ts; the owner's choices 1 and 2 of 2026-10-11): the tab's own view, else Plan for a
 // link with a plan in it, else My Go's Open in (the account's copy or this device's), else by screen size.
@@ -392,6 +401,18 @@ export function App() {
   planDialsNow.current = planDials;
   // "Make it a loop" chosen (OWNER-DECISIONS 374): the first point is the start and finish, every later one a stop.
   const loopVias = loopStops(preset, dials.loop);
+  // Plan's manual mode (v0.9.1, Stephen 2026-10-19: "a 'manual mode' where you can just route directly"): while
+  // on, each point tapped on the map is joined to the one before by a straight line, not a route. Not on a loop or
+  // a two-point ride type, where the API plans every leg (core/routing.py `_drawn`).
+  const [manualOn, setManualOn] = useState(false);
+  const manualOffered = mode === "plan" && !loopVias && !twoPointsOnly(preset);
+  const manual = manualOn && manualOffered;
+  const manualRef = useRef(manual);
+  manualRef.current = manual;
+  // Off whenever it is not offered (Go, a loop, a two-point ride type), so it never comes back on unseen.
+  useEffect(() => {
+    if (!manualOffered) setManualOn(false);
+  }, [manualOffered]);
   // What the planner answered, and which of its routes to choose from is shown
   // (OWNER-DECISIONS 265): 0 is the answer, the others its candidates.
   const [answer, setRoute] = useState<RouteResponse | null>(null);
@@ -580,6 +601,13 @@ export function App() {
   // The Scenic layer (v0.8.0; lib/scenicLayer.ts): one switch in Plan's Layers, off by default, kept on this
   // device. Its covered bridges and viewpoints are Places to see's file, fetched the first time it is shown.
   const [scenicOn, setScenicOnState] = useState<boolean>(() => readScenicLayer());
+  // DC permits (v0.9.1; lib/permitLayer.ts): one switch in Plan's Layers, off by default, kept on this device. A permit
+  // is never routed round; on, Plan's map draws the ones near the route, dashed.
+  const [permitsOn, setPermitsOnState] = useState<boolean>(() => readPermitsLayer());
+  const changePermitsOn = (on: boolean) => {
+    setPermitsOnState(on);
+    savePermitsLayer(on);
+  };
   const changeScenicOn = (on: boolean) => {
     setScenicOnState(on);
     saveScenicLayer(on);
@@ -907,7 +935,15 @@ export function App() {
         // Its manual mode (Plan's "Follow the file exactly"): rules or not, as for a road closed for a parade. Plan
         // only, where the switch is: Go keeps to the rules.
         const followExact = follow !== undefined && importBase.current?.exact === true && modeRef.current === "plan";
-        const asked = { confirmLong: plan.confirmLong, dials: plan.dials, vias: viaIndices(plan.points, VIA_MARKS.isVia), quick: plan.quick, follow, followExact };
+        const asked = {
+          confirmLong: plan.confirmLong,
+          dials: plan.dials,
+          vias: viaIndices(plan.points, VIA_MARKS.isVia),
+          straight: drawnLegs(plan.points),
+          quick: plan.quick,
+          follow,
+          followExact,
+        };
         // Asked for already, before the tap (Go's early start): that request's answer, not a second request.
         const early = earlyStart.current?.take(routeRequestBody(plan.points, plan.preset, asked)) ?? null;
         const result = early
@@ -977,6 +1013,7 @@ export function App() {
                 confirmLong: plan.confirmLong,
                 dials: plan.dials,
                 vias: viaIndices(plan.points, VIA_MARKS.isVia),
+                straight: drawnLegs(plan.points),
               })
           : null,
       // The full plan replaces the first route before Start only, and is said once where it is another route; the
@@ -1000,7 +1037,8 @@ export function App() {
       after: (plan: Plan, final: RouteResult) => {
         const now = shownNow.current;
         if (!final.ok || final.route.provisional || modeRef.current !== "go" || now.riding || now.startAsked) return null;
-        if (!offersNeighbours(plan.preset) || plan.confirmLong) return null;
+        // Nor for a plan with legs drawn in Plan's manual mode: the rider drew that way on purpose.
+        if (!offersNeighbours(plan.preset) || plan.confirmLong || drawnLegs(plan.points).length) return null;
         // Bikeshare keeps the plan's own docks: only the ride between them changes.
         const dials = neighbourDials(plan.preset, plan.dials, final.route);
         if (!dials) return null;
@@ -1059,7 +1097,7 @@ export function App() {
       // A plan opened from a link opens drawn, in Plan as in Go (v0.7.0), and is not compared with the last one.
       forgetDrawn();
       setRouteAsk((n) => n + 1);
-      setPoints(VIA_MARKS.markAt(plan.points, plan.vias));
+      setPoints(VIA_MARKS.markDrawn(VIA_MARKS.markAt(plan.points, plan.vias), plan.drawn));
       setPreset(plan.preset);
       setDials(plan.dials);
     };
@@ -1451,8 +1489,14 @@ export function App() {
     [syncHistory, applyRide],
   );
 
-  /** Every edit of the points goes through here, so undo can give the list before it back. */
-  const commit = edits.commit;
+  /**
+   * Every edit of the points goes through here, so undo can give the list before it back. A point it adds is drawn
+   * to in manual mode, or where it splits a drawn leg (lib/pointKinds.ts afterEdit).
+   */
+  const commit = useCallback(
+    (next: LonLat[], ride?: Ride) => edits.commit(VIA_MARKS.afterEdit(pointsRef.current, next, manualRef.current), ride),
+    [edits],
+  );
 
   /** Undo or redo: the list the history gives back, which is not itself an edit. */
   const travel = useCallback(
@@ -1532,12 +1576,19 @@ export function App() {
       return;
     }
     setNotice(null);
-    const next = addPoint(pointsRef.current, point, loopVias);
+    const current = pointsRef.current;
+    // Manual mode: the tap is the new end, drawn to from the last one (commit marks it), so a path is traced tap by
+    // tap. An end drawn to before goes on as a via point; an end that was a chosen place stays a stop.
+    const next =
+      manualRef.current && current.length >= 1
+        ? [...current.slice(0, -1), ...current.slice(-1).map((end) => (current.length > 1 && VIA_MARKS.isDrawn(end) ? VIA_MARKS.withKind(end, "via") : end)), point]
+        : addPoint(current, point, loopVias);
     // A point tapped in between the ends is a via point (v0.7.0, "Via points vs stops"); its menu makes it a stop.
     const index = next.indexOf(point);
     if (isMiddle(index, next.length, loopVias) && index < next.length - 1) VIA_MARKS.via(point);
     commit(next);
-    announce(kindSaid(next, index, VIA_MARKS.isVia, loopVias, "added"));
+    const said = kindSaid(next, index, VIA_MARKS.isVia, loopVias, "added");
+    announce(index > 0 && VIA_MARKS.isDrawn(point) ? `${said} ${DRAWN_SAID}` : said);
   }, [commit, announce, loopVias]); // namer is the page's one, kept for the page (usePlaceNames)
 
   // "Use my location": one look-up per press (lib/geolocation.ts), then placeFix decides: from the button,
@@ -2195,7 +2246,11 @@ export function App() {
       return;
     }
     if (!canReverse(current, loopVias)) return;
-    commit(reversedPoints(current, loopVias));
+    const reversed = reversedPoints(current, loopVias);
+    // A leg drawn in manual mode stays drawn, now ridden the other way (a loop's drawn legs are not used).
+    const drawn = drawnLegs(current);
+    const end = current.length - 2;
+    commit(drawn.length && reversed[0] !== current[0] ? VIA_MARKS.withLegs(reversed, drawn.map((leg) => end - leg)) : reversed);
     announce(reversedSaid(loopVias));
   };
   // Best order (OWNER-DECISIONS 449): the stops in the order the router rates best, as
@@ -2647,7 +2702,7 @@ export function App() {
     showPlanner(true);
     // The kept key leaves Mass Ride's ride size out (keptPlanKey); the size set now stays.
     const plan = decodePlan(kept.plan);
-    const hash = dials.rideSize && plan.preset === preset ? encodePlan(plan.points, plan.preset, { ...plan.dials, rideSize: dials.rideSize }, plan.vias) : kept.plan;
+    const hash = dials.rideSize && plan.preset === preset ? encodePlan(plan.points, plan.preset, { ...plan.dials, rideSize: dials.rideSize }, plan.vias, plan.drawn) : kept.plan;
     if (window.location.hash !== hash) window.location.hash = hash;
     announce(`Opening ${kept.title}.`);
   };
@@ -2993,6 +3048,7 @@ export function App() {
       // with (its points, ride type and sliders) and that very line answers it, in the mode it was followed in.
       const answer = saved.answer ?? null;
       const at = answer ? decodePlan(saved.inputs.hash) : null;
+      if (at) VIA_MARKS.markDrawn(at.points, at.drawn);
       const keepShown = () => {
         if (answer && at) savedShown.current = { key: keptPlanKey(at.points, at.preset, at.dials), answer };
       };
@@ -3011,6 +3067,8 @@ export function App() {
       return;
     }
     const plan = decodePlan(saved.inputs.hash);
+    // Its drawn legs (Plan's manual mode) on its points, so its key is the plan's as the page will ask it.
+    VIA_MARKS.markDrawn(plan.points, plan.drawn);
     const answer = savedAnswer(saved);
     const key = keptPlanKey(plan.points, plan.preset, plan.dials);
     savedShown.current = answer ? { key, answer } : null;
@@ -3019,7 +3077,7 @@ export function App() {
     announce(said);
     void checkThen("open", saved.line, false, () => {});
     // Today's map, asked quietly: more than 5% apart in distance offers Update route; nothing changes without it.
-    void requestRoute(plan.points, plan.preset, { dials: plan.dials }).then((today) => {
+    void requestRoute(plan.points, plan.preset, { dials: plan.dials, straight: plan.drawn }).then((today) => {
       if (today.ok && savedShown.current?.key === key && differsTooMuch(saved.distance_m, today.route.distance_m))
         setSavedNote({ key, savedM: saved.distance_m, todayM: today.route.distance_m });
     });
@@ -4039,6 +4097,7 @@ export function App() {
         pointWarnings={riding || reviewing ? undefined : pointWarnings}
         route={riding && rideView ? rideView.route : reviewing ? null : shown}
         stale={riding ? false : stale || planEdited}
+        permitsOn={!riding && permitsShown(permitsOn, mode)}
         // Plan's ghost of the last route; else the standard way through a closure the route goes round, dashed
         // beside it (v0.8.2), in Go and Plan, and on the ride the line not being followed.
         ghost={riding ? (rideView?.other ?? null) : reviewing ? null : (ghost ?? shown?.closure_through?.geometry.coordinates ?? null)}
@@ -4203,6 +4262,21 @@ export function App() {
             >
               <Icon name="routes" size={20} />
               {routingNow ? ROUTING_LABEL : routeNow.label}
+            </button>
+          )}
+          {manualOffered && (
+            <button
+              type="button"
+              className="secondary plan-bar-small plan-bar-manual"
+              aria-pressed={manual}
+              aria-label={MANUAL_LABEL}
+              title={MANUAL_TITLE}
+              onClick={() => {
+                setManualOn(!manual);
+                announce(manual ? MANUAL_OFF_SAID : MANUAL_ON_SAID);
+              }}
+            >
+              <Icon name="draw" size={20} />
             </button>
           )}
           {points.length > 0 && (
@@ -4408,6 +4482,7 @@ export function App() {
                 placesOn, changePlacesOn, placesStatus: placesData === "unavailable" ? PLACES_UNAVAILABLE : Array.isArray(placesData) && placesData.length === 0 ? PLACES_NONE : "",
                 // Plan's alone (the brief: "not in Go"); null leaves the section out of Go's Layers.
                 scenic: mode === "go" ? null : { on: scenicOn, onChange: changeScenicOn, status: scenicStatus(scenicOn, stress !== "unavailable", placesData ?? "loading") },
+                permits: mode === "go" ? null : { on: permitsOn, onChange: changePermitsOn },
                 bikeshare: {
                   operators: docksOperators,
                   choices: docksChoices,

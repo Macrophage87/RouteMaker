@@ -6897,6 +6897,13 @@ details.fold > summary .icon {
   background: var(--bg);
 }
 
+/* Plan's manual mode (v0.9.1): the switch is filled while on. */
+.plan-map-bar .plan-bar-manual[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--accent-text);
+  border-color: var(--accent);
+}
+
 .plan-map-bar .plan-bar-route,
 .go-destination .plan-bar-route {
   min-height: 52px;

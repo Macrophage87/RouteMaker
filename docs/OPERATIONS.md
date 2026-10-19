@@ -4354,6 +4354,14 @@ What the strip changes besides access, so it is not mistaken for a fault:
   (`bicycle:forward=yes`, `oneway:bicycle=no`, `cycleway=opposite*`) reopens a
   direction. The NO-BIKE-PATHS rules get that for free by using the same mark.
 
+## Manual mode's heights need the routers restarted once (v0.9.1)
+
+A leg drawn in Plan's manual mode (`straight_legs`, `core.routing._drawn`) takes its elevations from
+the router's `/height`, which the routers serve only once `loki.actions` lists `height`
+(`scripts/build_valhalla_configs.py`). After deploying v0.9.1, restart the routers once, as for Best
+order below; the beta's CD does it itself. Until then nothing fails: the first drawn leg's `/height` is
+refused, the plan asks no more, and its drawn legs have no heights (their climb is not counted).
+
 ## Best order needs the routers restarted once (OWNER-DECISIONS 449)
 
 "Best order" (`POST /api/stop-order`, `core.stoporder`) orders up to ten stops by the router's cost
