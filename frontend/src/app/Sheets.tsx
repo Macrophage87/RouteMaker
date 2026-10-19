@@ -13,7 +13,7 @@ import { PRESETS, presetSaid, type PresetId } from "../lib/presets.ts";
 import { PresetName } from "../lib/presetName.ts";
 import { filterRideGroups, rideSections, rideTypeCount, RideTypeSearch } from "../lib/rideTypeGroups.ts";
 import { RideTypeCards } from "../lib/rideTypeCards.ts";
-import { isPlainClick, rememberPlanForSignIn, tabSession } from "../lib/signIn.ts";
+import { DELETE_ACCOUNT_PAGE, isPlainClick, rememberPlanForSignIn, tabSession } from "../lib/signIn.ts";
 import { SignOutForm } from "../SignOut.tsx";
 import { AssistantKeySetting } from "../AssistantKey.tsx";
 import { pointName } from "../lib/summary.ts";
@@ -49,6 +49,7 @@ import { WaterLegend, WaterLegendNotes, WaterSection } from "../lib/waterLegend.
 import type { ClimbAlong, ClimbCategory, ClimbsStatus } from "../lib/climbs.ts";
 import { CLIMBS_HELP, ClimbsLayerControls, ClimbsLegend } from "../lib/climbsLegend.ts";
 import { ScenicLegend, ScenicSection } from "../lib/scenicLayer.ts";
+import { PermitsSection } from "../lib/permitLayer.ts";
 import { InstallOffer } from "../InstallableApp.tsx";
 import type { Split, StoredWeight } from "../lib/weight.ts";
 import { WeightSetting } from "../lib/weightDialog.ts";
@@ -112,6 +113,8 @@ export interface LayersSheetProps {
   bikeshare: { operators: readonly OperatorInfo[]; choices: Record<string, boolean>; onChange: (next: Record<string, boolean>) => void; status: string };
   /** The Scenic layer (v0.8.0; lib/scenicLayer.ts): one switch, off by default; null in Go, which leaves it out. */
   scenic: { on: boolean; onChange: (on: boolean) => void; status: string } | null;
+  /** DC permits (v0.9.1; lib/permitLayer.ts): one switch, off by default; null in Go, which leaves it out. */
+  permits: { on: boolean; onChange: (on: boolean) => void } | null;
 }
 
 export const PLACES_LAYER_TITLE = "Places to see";
@@ -119,7 +122,7 @@ export const PLACES_LAYER_HINT = "Museums, gardens, viewpoints and more. Places 
 
 /** The Layers sheet: the map's switches, in the mockup's order, with the Legend button at its top. */
 export function LayersSheet(props: LayersSheetProps) {
-  const { nav, openLegend, massMap, stress, stressVisible, setStressVisible, showHighLanes, preset, federalOn, setFederalOn, federalStatus, federalData, points, waterPrefs, changeWaterPrefs, waterStatus, rail, setRail, showMtbTrails, showTopoLines, topoReady, climbsOn, changeClimbsOn, climbsFrom, changeClimbsFrom, climbsStatus, climbsAlong, placesOn, changePlacesOn, placesStatus, bikeshare, scenic } = props;
+  const { nav, openLegend, massMap, stress, stressVisible, setStressVisible, showHighLanes, preset, federalOn, setFederalOn, federalStatus, federalData, points, waterPrefs, changeWaterPrefs, waterStatus, rail, setRail, showMtbTrails, showTopoLines, topoReady, climbsOn, changeClimbsOn, climbsFrom, changeClimbsFrom, climbsStatus, climbsAlong, placesOn, changePlacesOn, placesStatus, bikeshare, scenic, permits } = props;
   // The Trails and terrain section's layers that can show, and its row's words (lib/terrainSection.ts).
   const terrain = { mtb: showMtbTrails, climbs: climbsOn, topo: showTopoLines, stressAvailable: stressShowable(stress), topoReady, climbsStatus };
   return (
@@ -205,6 +208,8 @@ export function LayersSheet(props: LayersSheetProps) {
 
       {/* v0.8.0: the Scenic layer, one switch, off by default, after Trails and terrain; Plan's alone. */}
       {scenic && <ScenicSection {...scenic} />}
+      {/* v0.9.1: DDOT's permits, flagged only, one switch, off by default; Plan's alone. */}
+      {permits && <PermitsSection {...permits} />}
 
       {/* Mockup v3's line; the Mass Ride layers sheet itself waits on FOLLOWUP-MASSRIDE-MAP (324-334). */}
       {!federalShown(preset, true) && <p className="hint mass-ride-layers">{MASS_RIDE_LAYERS_NOTE}</p>}
@@ -569,6 +574,11 @@ export function SettingsSheet(props: SettingsSheetProps) {
               <Icon name="user" size={16} /> Signed in with Discord.
             </p>
             <SignOutForm />
+            {/* A page of its own (core.account_deletion), the same one the web offers without the app: it says what goes
+                and what is kept, and asks once. */}
+            <p className="delete-account">
+              <a href={DELETE_ACCOUNT_PAGE}>Delete account</a>
+            </p>
           </>
         ) : signInAvailable ? (
           // The plan's one line (item 4); the link is its first words. The plan in hand is kept across the round trip.

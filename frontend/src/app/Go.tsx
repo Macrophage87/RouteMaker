@@ -164,6 +164,8 @@ export interface GoPlaces {
   onFood: (chip: HTMLButtonElement) => void;
   onWater: (chip: HTMLButtonElement) => void;
   onRestroom: (chip: HTMLButtonElement) => void;
+  /** Behind More (the owner, 2026-10-19: "Metro stops should be on the list in more"): the nearest Metro stations, in Nearest. */
+  onMetro: (chip: HTMLButtonElement) => void;
   /** Behind More (v0.7.0, the owner 2026-10-14: "Make sure that go stays clean"): the nearest repair stands and shops. */
   onRepair: (chip: HTMLButtonElement) => void;
   /** Behind More: the nearest places to see (Plan's Places to see, five of them, no filters). */
@@ -351,7 +353,7 @@ export function GoSheet({
   const startBoxId = useId();
   const moreId = useId();
   const [startOpen, setStartOpen] = useState(false);
-  // More: one chip at the row's end that shows the rest (Repair, Sights); later additions go here, not on the row.
+  // More: one chip at the row's end that shows the rest (Metro, Repair, Sights); later additions go here, not on the row.
   const [moreOpen, setMoreOpen] = useState(false);
   const startShown = startOpen || startMissing;
   const next = nextSheetSize(size);
@@ -426,6 +428,10 @@ export function GoSheet({
           </button>
         </div>
         <div id={moreId} className="chip-row go-places go-more-row" role="group" aria-label="More places" hidden={!moreOpen}>
+          <button type="button" className="chip place-chip" onClick={(event) => places.onMetro(event.currentTarget)}>
+            <Icon name="train" size={18} />
+            Metro
+          </button>
           <button type="button" className="chip place-chip" onClick={(event) => places.onRepair(event.currentTarget)}>
             <Icon name="wrench" size={18} />
             Repair

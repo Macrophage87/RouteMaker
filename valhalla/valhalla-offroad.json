@@ -24,7 +24,8 @@
       "trace_attributes",
       "locate",
       "status",
-      "sources_to_targets"
+      "sources_to_targets",
+      "height"
     ],
     "service": {
       "proxy": "ipc:///tmp/loki"

@@ -112,6 +112,14 @@ def test_trace_actions_are_enabled(config: dict) -> None:
     assert "trace_route" in actions
 
 
+def test_every_router_endpoint_the_api_calls_is_enabled(config: dict) -> None:
+    """Each action `core.routing` calls: `height` gives a leg drawn in Plan's manual mode
+    its elevations (`_drawn`)."""
+    actions = config["loki"]["actions"]
+    for action in ("route", "trace_route", "trace_attributes", "height"):
+        assert action in actions
+
+
 def test_worker_counts_come_from_the_command_line_not_the_config(config: dict) -> None:
     """These configs used to carry loki_workers, thor_workers and odin_workers,
     and this test used to assert them.
