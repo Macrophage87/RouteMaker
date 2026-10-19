@@ -1894,9 +1894,9 @@ export function App() {
     const offset = visibleCentreOffset(map.getContainer().getBoundingClientRect(), bar, panel, window.matchMedia(NARROW).matches);
     map.flyTo({ center: point, zoom: Math.max(map.getZoom(), zoom), offset });
   };
-  const locateForGo = async (): Promise<LocateResult | null> => {
+  const locateForGo = async (quiet = false): Promise<LocateResult | null> => {
     const press = gate.begin();
-    announceExtra(FINDING_LOCATION);
+    if (!quiet) announceExtra(FINDING_LOCATION);
     if (press === null) return null;
     setLocating(true);
     const result = await locate(geoEnv);
@@ -1951,7 +1951,8 @@ export function App() {
     const refresh = async () => {
       if (document.visibilityState !== "visible" || modeRef.current !== "go" || pointsRef.current.length > 0) return;
       if (!goStartStale(goStartRef.current)) return;
-      const result = await locateForGo();
+      // Quiet: the rider did not ask, so nothing is said (a pick meanwhile says its own words).
+      const result = await locateForGo(true);
       if (result === null) return;
       if (goWaitingRef.current()) {
         goSettleRef.current(result);
@@ -2175,7 +2176,7 @@ export function App() {
   useEffect(() => {
     if (mode === "go" && !riding && points.length === 0 && goStart.kind === "here" && homeEarly) goEarly(homeEarly);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- asked once each time these change, not each render
-  }, [mode, riding, points.length, goStart.kind, homeEarly?.[0], homeEarly?.[1]]);
+  }, [mode, riding, points.length, goStart.kind, goStart.kind === "here" ? goStart.at : 0, homeEarly?.[0], homeEarly?.[1]]);
   // Go's Locate (the top bar): the map goes to the rider, and nothing is added to the plan.
   const goLocate = async () => {
     const result = await locateForGo();
@@ -2191,6 +2192,8 @@ export function App() {
       return;
     }
     setHere(result.fix);
+    // Go's start (the location, before a destination) moves with it, so the next pick need not look again.
+    if (goStartRef.current.kind === "here" && pointsRef.current.length === 0 && insideCoverage(result.fix.point)) setGoStart(goHereStart(result.fix.point));
     if (!insideCoverage(result.fix.point)) setNotice(LOCATION_OUTSIDE);
     else announceExtra("The map is at your location.");
     flyToInView(result.fix.point, 15);
