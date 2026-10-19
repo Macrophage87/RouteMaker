@@ -63,3 +63,46 @@ test("wiring: Android resizes the page, a phone's place search lifts the app, th
   assert.match(search, /onBlur=\{\(\) => \{\s*setOpen\(false\);\s*stopKeyboardWatch\(\);/);
   assert.match(read("../styles.css"), /\.app \{\s*height: calc\(100% - var\(--keyboard-lift, 0px\)\);/);
 });
+
+test("a reading between the two heights' steps does not stick: the window's resize and a settle re-read fix it", () => {
+  const { win, view, listeners, props, root } = fakeWindow(800);
+  const winListeners = new Set<() => void>();
+  const timers = new Map<number, () => void>();
+  let nextTimer = 1;
+  Object.assign(win, {
+    addEventListener: (_type: string, listener: () => void) => winListeners.add(listener),
+    removeEventListener: (_type: string, listener: () => void) => winListeners.delete(listener),
+    setTimeout: (handler: () => void) => {
+      timers.set(nextTimer, handler);
+      return nextTimer++;
+    },
+    clearTimeout: (id: number) => timers.delete(id),
+  });
+  const fire = (set: Iterable<() => void>) => {
+    for (const listener of [...set]) listener();
+  };
+  const runTimers = () => {
+    const due = [...timers.values()];
+    timers.clear();
+    for (const handler of due) handler();
+  };
+  const stop = watchKeyboard(win, root);
+  // Keyboard opens: the visual viewport shrinks first (one event), the page shrinks after it with no visual event.
+  view.height = 460;
+  fire(listeners);
+  assert.equal(props.get("--keyboard-lift"), "340px", "for that moment it looks like iOS");
+  (win as { innerHeight: number }).innerHeight = 460;
+  fire(winListeners);
+  assert.equal(props.has("--keyboard-lift"), false, "the window's resize puts it right");
+  // Keyboard closes with the box still focused: the last visual event comes mid-way, the rest lands without one.
+  (win as { innerHeight: number }).innerHeight = 800;
+  view.height = 460;
+  fire(listeners);
+  assert.equal(props.get("--keyboard-lift"), "340px");
+  view.height = 800;
+  runTimers();
+  assert.equal(props.has("--keyboard-lift"), false, "the settle re-read takes the lift off");
+  stop();
+  assert.equal(winListeners.size, 0);
+  assert.equal(timers.size, 0);
+});
