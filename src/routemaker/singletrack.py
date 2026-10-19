@@ -59,8 +59,8 @@ def grade(value: str | None) -> int | None:
 
 # The hardest level the off-road graph (Gravel, Mountain Goat) rides on rated singletrack
 # the trail layer draws (`pipeline.trail_closures.offroad_graph_keeps`): the owner chose
-# "Rated, MTB and Gravel" on 2026-10-19, with green (1) the default cap while the level
-# question waits on the owner. Harder trails stay the Mountain Bike ride type's.
+# "Rated, MTB and Gravel" on 2026-10-19, and "Up to Green (1)" for the cap the same day.
+# Harder trails stay the Mountain Bike ride type's.
 OFFROAD_MAX_LEVEL = 1
 
 

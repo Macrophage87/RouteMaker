@@ -40,7 +40,7 @@ ones already built).
   rating means mappers saw bicycles ride it; `pipeline.trail_closures.RATING_OPENS`), so the
   layer draws it and the Mountain Bike graph rides it. The off-road graph (Gravel, Mountain
   Goat) rides the drawn rated singletrack up to `routemaker.singletrack.OFFROAD_MAX_LEVEL`
-  (green, 1, while the owner's level choice is open). Unrated dirt paths stay closed.
+  (green, 1: the owner's "Up to Green (1)", 2026-10-19). Unrated dirt paths stay closed.
 
 ## Slices
 
