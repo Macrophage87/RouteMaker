@@ -4319,11 +4319,15 @@ details.zoom-notes {
 /* Bikeshare (FOLLOWUP-BIKESHARE): the dock markers on the map, the plan in the route
    panel, and the bike choice. Text and shape carry the meaning; no operator mark or
    brand colour is used (OWNER-DECISIONS 300, 301). */
+/* The white bubble (the owner, 2026-10-19: "so they pop out"), as on the map's other docks. */
 .dock-marker {
   position: relative;
   width: 26px;
   height: 26px;
   line-height: 0;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px #ffffff, 0 0 0 4px #6b7280;
   filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.45));
 }
 .dock-marker .dock-badge {

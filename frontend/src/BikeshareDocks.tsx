@@ -5,12 +5,13 @@
  * the page is hidden, zoomed out past zoom 11, or every service is off.
  */
 import { useEffect, useRef } from "react";
-import type { GeoJSONSource, Map as MapLibreMap, MapLayerMouseEvent } from "maplibre-gl";
+import type { GeoJSONSource, Map as MapLibreMap, MapLayerMouseEvent, StyleImageMetadata } from "maplibre-gl";
 import { setSource, tapCard, useMap } from "./app/mapOverlay.ts";
 import {
   DOCKS_POLL_MS,
   DOCKS_SOURCE,
   DOCK_CLUSTERS,
+  DOCK_LABELS,
   DOCK_LAYERS,
   DOCK_POINTS,
   FREE_POINTS,
@@ -69,8 +70,10 @@ export function BikeshareDocksOverlay({
         hide();
         return;
       }
-      for (const [id, { pixelRatio: ratio, ...image }] of docksImages(operators, pixelRatio)) {
-        if (!map.hasImage(id)) map.addImage(id, image, { pixelRatio: ratio });
+      for (const [id, raster] of docksImages(operators, pixelRatio)) {
+        // The bubble also says which rows and columns the map may stretch around the label.
+        const { pixelRatio: ratio, stretchX, stretchY, ...image } = raster as typeof raster & Pick<StyleImageMetadata, "stretchX" | "stretchY">;
+        if (!map.hasImage(id)) map.addImage(id, image, { pixelRatio: ratio, stretchX, stretchY });
       }
       if (!map.getSource(DOCKS_SOURCE)) map.addSource(DOCKS_SOURCE, docksSource(EMPTY) as never);
       setSource(map, FREE_SOURCE, EMPTY);
@@ -125,7 +128,7 @@ export function BikeshareDocksOverlay({
       map.on("click", DOCK_CLUSTERS, onCluster);
       document.addEventListener("visibilitychange", onVisible);
       const poll = window.setInterval(() => void refresh(), DOCKS_POLL_MS);
-      const offDock = tapCard(map, DOCK_POINTS, (id) => {
+      const offDock = tapCard(map, [DOCK_POINTS, DOCK_LABELS], (id) => {
         const dock = latest?.docks.find((d) => d.id === id);
         return dock && latest ? dockCard(dock, latest) : null;
       });

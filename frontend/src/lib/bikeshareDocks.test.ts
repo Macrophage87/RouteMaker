@@ -9,11 +9,15 @@ import { BikeshareSection } from "./bikeshareSection.ts";
 import {
   BIKE_ICON,
   BOLT_ICON,
+  BUBBLE_EDGE,
+  BUBBLE_ICON,
   DOCKS_ALL_OFF,
   DOCKS_UNAVAILABLE,
   DOCKS_ZOOM_IN,
+  DOCK_CLUSTERS,
   DOCK_LABELS,
   DOCK_LABELS_ZOOM,
+  DOCK_POINTS,
   FREE_POINTS,
   KNOWN_OPERATORS,
   MAX_SPAN_LAT,
@@ -203,7 +207,7 @@ test("the signs are drawn: a white glyph on each colour", () => {
   const images = docksImages(KNOWN_OPERATORS, 2);
   assert.deepEqual(
     images.map(([id]) => id),
-    [BIKE_ICON, BOLT_ICON, SPACE_ICON, "free-bike-cabi"],
+    [BIKE_ICON, BOLT_ICON, SPACE_ICON, BUBBLE_ICON, "free-bike-cabi"],
   );
   for (const [id, raster] of images) {
     let white = 0;
@@ -215,6 +219,31 @@ test("the signs are drawn: a white glyph on each colour", () => {
     }
     assert.ok(white > 10 && other > 10, `${id}: ${white} white, ${other} coloured`);
   }
+});
+
+test("each dock sits on a white bubble that holds the dot, under the dot, and is thinned with its label", () => {
+  const layers = docksLayers();
+  const ids = layers.map((l) => l.id);
+  assert.ok(ids.indexOf(DOCK_LABELS) < ids.indexOf(DOCK_POINTS), "the dot is drawn on top of its bubble");
+  const layout = layers.find((l) => l.id === DOCK_LABELS)!.layout as Record<string, unknown>;
+  assert.equal(layout["icon-image"], BUBBLE_ICON);
+  assert.equal(layout["icon-text-fit"], "both");
+  const [, , , left] = layout["icon-text-fit-padding"] as number[];
+  // The label starts 0.9em (12 px text) right of the dock; the bubble must reach past the dot's 7 px radius and 3 px ring.
+  assert.ok(left >= 0.9 * 12 + 7, `left padding ${left}`);
+  assert.notEqual(layout["text-optional"], true, "never a bubble without its counts");
+  assert.equal(layout["icon-allow-overlap"], false);
+  for (const id of [DOCK_POINTS, DOCK_CLUSTERS]) {
+    const paint = layers.find((l) => l.id === id)!.paint as Record<string, unknown>;
+    assert.equal(paint["circle-stroke-color"], "#ffffff");
+    assert.ok((paint["circle-stroke-width"] as number) >= 3, `${id} has a thick white ring`);
+  }
+  // The grey edge reads against white roads and pale ground (3:1 for graphics); the counts are dark on white.
+  assert.ok(contrastRatio(BUBBLE_EDGE, "#ffffff") >= 3);
+  assert.ok(contrastRatio("#111827", "#ffffff") >= 4.5);
+  const bubble = docksImages(KNOWN_OPERATORS, 2).find(([id]) => id === BUBBLE_ICON)![1] as { width: number; stretchX: Array<[number, number]> };
+  const [[from, to]] = bubble.stretchX;
+  assert.ok(from > 0 && to < bubble.width && from < to, "the corners are kept, the middle stretches");
 });
 
 test("Layers: one service, so the section's own switch alone, with no list of one and no other service", () => {
