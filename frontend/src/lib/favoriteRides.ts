@@ -85,9 +85,18 @@ export function reloadFavorites(): void {
   for (const listener of listeners) listener();
 }
 
-const subscribe = (listener: () => void) => {
+// A star pressed in another tab reaches this one's pickers (and so its next settings save).
+const onStorage = (event: StorageEvent) => {
+  if (event.key === FAVORITES_KEY) reloadFavorites();
+};
+
+export const subscribe = (listener: () => void) => {
+  if (listeners.size === 0 && typeof window !== "undefined") window.addEventListener("storage", onStorage);
   listeners.add(listener);
-  return () => listeners.delete(listener);
+  return () => {
+    listeners.delete(listener);
+    if (listeners.size === 0 && typeof window !== "undefined") window.removeEventListener("storage", onStorage);
+  };
 };
 
 const EMPTY: PresetId[] = [];
@@ -102,28 +111,29 @@ export function favoriteLabel(id: PresetId): string {
   return `Favorite ${presetSaid(id)}`;
 }
 
-/** What is said once a star is pressed (a polite status), so the change is heard as well as seen. */
-export function favoriteSaid(id: PresetId, on: boolean): string {
-  return on ? `${presetSaid(id)} added to favorites.` : `${presetSaid(id)} removed from favorites.`;
+/** What a picker's DOM offers the refocus: enough for a test to stand in for it. */
+interface Scope {
+  querySelector(selector: string): { focus(): void; closest(selector: string): { open: boolean } | null } | null;
 }
 
 /**
  * Star or unstar a ride type from a picker. The card moves (into Favorites or back to its group), so
- * the focus follows its star to where it now is in `scope`, rather than being lost; what changed is
- * returned, for the picker's polite status.
+ * the focus follows its star to where it now is in `scope`, rather than being lost. The star's own
+ * name and pressed state say the change; nothing else is announced, so it is heard once.
  */
-export function toggleFromPicker(id: PresetId, scope: HTMLElement | null): string {
-  const on = !snapshot().includes(id);
+export function toggleFromPicker(id: PresetId, scope: Scope | null, frame: (run: () => void) => void = defaultFrame): void {
   toggleFavorite(id);
-  const refocus = () => {
-    const star = scope?.querySelector<HTMLElement>(`.ride-fav[data-fav="${id}"]`);
+  frame(() => {
+    const star = scope?.querySelector(`.ride-fav[data-fav="${id}"]`);
     // Back in a folded group (Go's More ride types): open it, so the star can take the focus.
     const fold = star?.closest("details");
     if (fold && !fold.open) fold.open = true;
     star?.focus();
-  };
-  if (typeof requestAnimationFrame === "function") requestAnimationFrame(refocus);
-  return favoriteSaid(id, on);
+  });
+}
+
+function defaultFrame(run: () => void): void {
+  if (typeof requestAnimationFrame === "function") requestAnimationFrame(run);
 }
 
 /**
@@ -139,7 +149,6 @@ export function FavoriteStar({ id, on, onToggle }: { id: PresetId; on: boolean; 
       "data-fav": id,
       "aria-pressed": on,
       "aria-label": favoriteLabel(id),
-      title: on ? "Remove from favorites" : "Add to favorites",
       onClick: () => onToggle(id),
     },
     h("svg", {

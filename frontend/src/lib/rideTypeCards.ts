@@ -3,7 +3,7 @@
  * options and explains things more"): each ride type a card with its name and one short sentence
  * (PresetOption.summary), the gist first; the longer description stays on Plan's dialog.
  *
- * Each card is one button. Its name is the ride type's name (aria-labelledby, so the emoji of a
+ * Each card is one button (with onFavorite, a star toggle beside it: lib/favoriteRides.ts FavoriteStar). Its name is the ride type's name (aria-labelledby, so the emoji of a
  * transit name are not read: PresetName); its sentence is its description (aria-describedby).
  * The ride type in use is pressed (aria-pressed), so it is said as well as shown. A
  * createElement component, so a test renders it (node's runner reads .ts, not .tsx).

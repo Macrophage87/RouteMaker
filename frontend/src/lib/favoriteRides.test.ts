@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { FAVORITES_KEY, FavoriteStar, favoriteLabel, favoriteSaid, parseFavorites, readFavorites, toggled } from "./favoriteRides.ts";
+import { FAVORITES_KEY, FavoriteStar, favoriteLabel, parseFavorites, readFavorites, reloadFavorites, setFavorites, subscribe, toggleFromPicker, toggled } from "./favoriteRides.ts";
 import { PRESETS } from "./presets.ts";
 import { RideTypeCards } from "./rideTypeCards.ts";
 import { filterRideGroups, rideSections, withFavorites } from "./rideTypeGroups.ts";
@@ -70,8 +70,6 @@ test("the star is a toggle button named for its ride type, its state said", () =
   const on = renderToStaticMarkup(createElement(FavoriteStar, { id: "cargo", on: true, onToggle: () => {} }));
   assert.match(on, /aria-pressed="true"/);
   assert.equal(favoriteLabel("cargo"), "Favorite Cargo Bike");
-  assert.equal(favoriteSaid("cargo", true), "Cargo Bike added to favorites.");
-  assert.equal(favoriteSaid("cargo", false), "Cargo Bike removed from favorites.");
 });
 
 test("Go's cards carry the star only when asked; Plan's dialog has it on every card", () => {
@@ -85,9 +83,9 @@ test("Go's cards carry the star only when asked; Plan's dialog has it on every c
   const picker = src("../RideTypePicker.tsx");
   assert.match(picker, /<FavoriteStar id=\{option\.id\}/);
   assert.match(picker, /withFavorites\(filterRideGroups\(query\), favorites\)/);
-  // Each picker says the change politely, and the focus follows the star when its card moves.
-  assert.match(picker, /role="status"[^>]*>\s*\{favSaid\}/);
-  assert.match(src("../app/Sheets.tsx"), /role="status"[^>]*>\s*\{favSaid\}/);
+  // Both pickers hand toggleFromPicker their own part of the page, so the focus follows the star there.
+  assert.match(picker, /toggleFromPicker\(id, dialogRef\.current\)/);
+  assert.match(src("../app/Sheets.tsx"), /toggleFromPicker\(id, scopeRef\.current\)/);
 });
 
 test("favorites sync with the account's settings", () => {
@@ -98,4 +96,37 @@ test("favorites sync with the account's settings", () => {
   const other = memory();
   applyToDevice({ v: 1, favorites: ["cargo"] }, other);
   assert.equal(other.data.get(FAVORITES_KEY), '["cargo"]');
+});
+
+test("the store tells every picker of a change, and a star pressed moves the focus to its new place", () => {
+  let heard = 0;
+  const stop = subscribe(() => heard++);
+  setFavorites(["cargo"], null);
+  reloadFavorites();
+  assert.equal(heard, 2);
+  // The card moved into a folded group: the group opens and the star takes the focus.
+  const fold = { open: false };
+  let focused = "";
+  let asked = "";
+  const scope = {
+    querySelector: (selector: string) => {
+      asked = selector;
+      return { focus: () => (focused = "gravel"), closest: () => fold };
+    },
+  };
+  toggleFromPicker("gravel", scope, (run) => run());
+  assert.equal(asked, '.ride-fav[data-fav="gravel"]');
+  assert.equal(focused, "gravel");
+  assert.equal(fold.open, true);
+  assert.equal(heard, 3);
+  stop();
+  setFavorites([], null);
+  assert.equal(heard, 3, "no longer told once unsubscribed");
+});
+
+test("a star pressed is a settings change: App saves when the favorites change", () => {
+  const app = src("../App.tsx");
+  assert.match(app, /const favoriteRides = useFavoriteRides\(\);/);
+  assert.match(app, /showTopoLines, favoriteRides\]\);/);
+  assert.match(app, /applyToDevice\(step\.doc\);\s*reloadFavorites\(\);/);
 });

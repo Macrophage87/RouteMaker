@@ -41,7 +41,6 @@ export function RideTypePicker({ preset, dials, onChoose }: Props) {
   // Plan streamline (Stephen 2026-10-17): each card shows its one-line gist; "What each does" shows the full words.
   // A screen reader hears the full words either way.
   const [full, setFull] = useState(false);
-  const [favSaid, setFavSaid] = useState("");
   // Favorites (Stephen 2026-10-19): starred ride types first, under their own heading (lib/favoriteRides.ts).
   const favorites = useFavoriteRides();
   const groups = withFavorites(filterRideGroups(query), favorites);
@@ -65,7 +64,6 @@ export function RideTypePicker({ preset, dials, onChoose }: Props) {
     // one in use is there to take the focus.
     const onClose = () => {
       setQuery("");
-      setFavSaid("");
       openerRef.current?.focus();
     };
     dialog.addEventListener("close", onClose);
@@ -153,9 +151,6 @@ export function RideTypePicker({ preset, dials, onChoose }: Props) {
             </button>
           </p>
           <RideTypeSearch id="ride-types-search" query={query} onQuery={setQuery} count={rideTypeCount(groups)} />
-          <p role="status" className="visually-hidden">
-            {favSaid}
-          </p>
           {groups.map((group) => (
             <section key={group.id} className="ride-type-group" aria-labelledby={`ride-types-${group.id}`}>
               <h3 id={`ride-types-${group.id}`}>{group.label}</h3>
@@ -185,7 +180,7 @@ export function RideTypePicker({ preset, dials, onChoose }: Props) {
                         </>
                       )}
                     </button>
-                    <FavoriteStar id={option.id} on={favorites.includes(option.id)} onToggle={(id) => setFavSaid(toggleFromPicker(id, dialogRef.current))} />
+                    <FavoriteStar id={option.id} on={favorites.includes(option.id)} onToggle={(id) => toggleFromPicker(id, dialogRef.current)} />
                     {carries(option.id) && (
                       <div className="ride-type-loads" role="group" aria-label={`${presetSaid(option.id)}: cargo or passengers`}>
                         {CARRYINGS.map((load) => (

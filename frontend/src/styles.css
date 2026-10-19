@@ -2659,6 +2659,10 @@ button.secondary,
   padding: 10px 12px;
 }
 
+.ride-types .ride-type-card.has-fav > button:first-child {
+  padding-right: 52px;
+}
+
 /* The route summary: the totals line, the bar, the quick figures */
 .stats.totals {
   display: flex;

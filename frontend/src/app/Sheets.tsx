@@ -729,29 +729,22 @@ const rideIcon = (id: PresetId) => <Icon name={RIDE_ICON[id] ?? "bike"} size={20
  */
 export function RideGroupChips({ preset, onPick, open }: { preset: PresetId; onPick: (id: PresetId) => void; open: boolean }) {
   const [query, setQuery] = useState("");
-  const [favSaid, setFavSaid] = useState("");
   const scopeRef = useRef<HTMLElement>(null);
   useEffect(() => {
-    if (!open) {
-      setQuery("");
-      setFavSaid("");
-    }
+    if (!open) setQuery("");
   }, [open]);
   // Review F9: the common types first, the rest in their groups, folded (the one in use opens its group); a search
   // shows every match flat. The class is ride-sheet-group: .ride-group is the group ride's overlay (RideGroup.tsx).
   // Favorites (Stephen 2026-10-19) come before Common, each card with its star (lib/favoriteRides.ts).
   const favorites = useFavoriteRides();
   const { favorites: favs, common, groups, folded } = rideSections(query, undefined, favorites);
-  const star = { favorites, onFavorite: (id: PresetId) => setFavSaid(toggleFromPicker(id, scopeRef.current)) };
+  const star = { favorites, onFavorite: (id: PresetId) => toggleFromPicker(id, scopeRef.current) };
   return (
     <section ref={scopeRef} className="ride-groups" aria-labelledby="ride-sheet-types">
       <h3 id="ride-sheet-types" className="visually-hidden">
         Every ride type
       </h3>
       <RideTypeSearch id="ride-sheet-search" query={query} onQuery={setQuery} count={rideTypeCount(filterRideGroups(query))} />
-      <p role="status" className="visually-hidden">
-        {favSaid}
-      </p>
       {favs.length > 0 && (
         <section className="ride-sheet-group" aria-labelledby="ride-sheet-favorites">
           <h4 id="ride-sheet-favorites">Favorites</h4>

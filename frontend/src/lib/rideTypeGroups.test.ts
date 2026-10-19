@@ -137,7 +137,7 @@ test("Go's More ride types and Plan's dialog: the search first, then each group 
   assert.match(go, /<section key=\{group\.id\} className="ride-sheet-group" aria-labelledby=\{`ride-sheet-\$\{group\.id\}`\}>\s*<h4 id=\{`ride-sheet-\$\{group\.id\}`\}>\{group\.label\}<\/h4>\s*<RideTypeCards ids=\{group\.ids\} preset=\{preset\} onPick=\{onPick\} idPrefix="ride-sheet" icon=\{rideIcon\} \{\.\.\.star\} \/>/);
   assert.match(sheets, /role=\{label \? "group" : undefined\} aria-label=\{label\}/);
   // Go: the search is cleared whenever the sheet is left (as Plan's dialog on closing).
-  assert.match(go, /useEffect\(\(\) => \{\s*if \(!open\) \{\s*setQuery\(""\);[^}]*\}\s*\}, \[open\]\);/);
+  assert.match(go, /useEffect\(\(\) => \{\s*if \(!open\) setQuery\(""\);\s*\}, \[open\]\);/);
   assert.match(src("../App.tsx"), /<RideGroupChips preset=\{preset\} onPick=\{pickRide\} open=\{view === "ride"\} \/>/);
   assert.ok(go.indexOf("<RideTypeSearch") < go.indexOf("groups.map"), "the search comes before the groups");
   const plan = src("../RideTypePicker.tsx");
@@ -146,7 +146,7 @@ test("Go's More ride types and Plan's dialog: the search first, then each group 
   assert.ok(plan.indexOf("<RideTypeSearch") < plan.indexOf("groups.map((group)"), "the search comes before the groups");
   // The search is cleared as the dialog closes, so the next opening has every type and the one in
   // use takes the focus (cleared on open, the card would not be there yet to focus).
-  assert.match(plan, /const onClose = \(\) => \{\s*setQuery\(""\);\s*setFavSaid\(""\);\s*openerRef\.current\?\.focus\(\);/);
+  assert.match(plan, /const onClose = \(\) => \{\s*setQuery\(""\);\s*openerRef\.current\?\.focus\(\);/);
   assert.doesNotMatch(plan, /setQuery\(""\);\s*dialogRef\.current\?\.showModal\(\);/);
   // The two ids differ, so both can be in the page (Go's sheet holds the Ride line, whose dialog has its own).
   const goId = go.match(/<RideTypeSearch id="([^"]+)"/)?.[1];

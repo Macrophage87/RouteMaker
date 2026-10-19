@@ -125,6 +125,7 @@ class TestSettings:
             {"v": 1, "bikeshare": {"name": "x" * (accounts.SETTINGS_MAX_BYTES + 1)}},
             {"v": 1, "favorites": "cargo"},
             {"v": 1, "favorites": [{"id": "cargo"}]},
+            {"v": 1, "favorites": ["cargo", "cargo"]},
             {"v": 1, "favorites": ["cargo"] * (accounts.FAVORITES_MAX + 1)},
         ],
     )

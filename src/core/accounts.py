@@ -34,7 +34,7 @@ SETTINGS_KEYS = frozenset(
 )
 SETTINGS_MAX_BYTES = 16 * 1024
 SETTINGS_MAX_DEPTH = 4
-# Every ride type at most (there are 15); a list of short names.
+# A list of short ride type names, each once; room for every ride type and some to come.
 FAVORITES_MAX = 32
 
 # A saved route.
@@ -74,7 +74,10 @@ def settings_problem(data) -> str | None:
         return "The saved ride type and dials are not in the expected form."
     favorites = data.get("favorites")
     if favorites is not None and (
-        not isinstance(favorites, list) or len(favorites) > FAVORITES_MAX or not all(isinstance(f, str) and len(f) <= 40 for f in favorites)
+        not isinstance(favorites, list)
+        or len(favorites) > FAVORITES_MAX
+        or not all(isinstance(f, str) and len(f) <= 40 for f in favorites)
+        or len(set(favorites)) != len(favorites)
     ):
         return "The favorite ride types are not in the expected form."
     return None
