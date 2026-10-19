@@ -848,13 +848,14 @@ def membership_sweep(timestamp: int) -> None:
     which holds keyed client addresses that PLAN's Privacy and retention drops
     within 30 days; rows idle a day go on the next sweep.
     """
+    from core.connector import sweep_connector
     from core.membership import sweep_memberships
     from core.models import apply_due_instance_admin_removals
     from core.ratelimit import purge_expired
     from core.revocation import sweep_sessions
     from core.runs import record, run_with_deadline
 
-    def sweep() -> tuple[int, int, int, int, int]:
+    def sweep() -> tuple[int, int, int, int, int, int]:
         # The session sweep rides here rather than on a cron of its own: it is
         # the same shape of work (rows nothing will ever accept again, for
         # people who may have asked to be forgotten), it is cheap, and a second
@@ -876,10 +877,11 @@ def membership_sweep(timestamp: int) -> None:
             sweep_sessions(),
             apply_due_instance_admin_removals(),
             purge_expired(),
+            sweep_connector(),
         )
 
     with record("membership_sweep") as run:
-        purged, departed, sessions, removals, idle_clients = run_with_deadline(
+        purged, departed, sessions, removals, idle_clients, connector = run_with_deadline(
             sweep, SWEEP_TIMEOUT_S, "membership_sweep"
         )
         # "never-signed-in" was the whole of the purge once and is not any more:
@@ -889,7 +891,8 @@ def membership_sweep(timestamp: int) -> None:
             f"purged {purged} forgotten and never-signed-in rows, "
             f"dropped {departed} departed rows and {sessions} session rows, "
             f"applied {removals} due instance-admin removals, "
-            f"purged {idle_clients} idle rate-limit rows"
+            f"purged {idle_clients} idle rate-limit rows, "
+            f"cleared {connector} spent assistant-app rows"
         )
         run.save(update_fields=["detail"])
 

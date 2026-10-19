@@ -1371,8 +1371,21 @@ function M.signalised_crossing(tags)
   return tags["crossing:signals"] == "yes" and not M.NOT_SIGNALISED[crossing]
 end
 
+-- v0.10.0: a junction or crosswalk at a signal an agency lists (DDOT, Alexandria)
+-- that OSM does not map, marked by the rebuild (`pipeline.agency_signals`). DC data
+-- beats OSM (the owner, 2026-10-11), so this mark is a signal over what the node
+-- itself says: an `uncontrolled` or `unmarked` crossing (a HAWK's crosswalk, as OSM
+-- often still tags it) and a stop or give-way sign mapped on the junction node. Only
+-- a crossing whose class upstream reopens to bicycles keeps it, as above.
+M.AGENCY_SIGNAL_MARK = "rm:agency_signal"
+M.AGENCY_OVERRIDES_CLASS = { crossing = true, stop = true, give_way = true }
+
 function M.derives_signal(tags)
   local highway = tags.highway
+  if tags[M.AGENCY_SIGNAL_MARK] == "yes" then
+    if highway == "crossing" and M.CROSSING_REGRANTS_BICYCLE[tags.bicycle] then return false end
+    return highway == nil or M.AGENCY_OVERRIDES_CLASS[highway] == true
+  end
   if highway ~= nil and highway ~= "crossing" then return false end
   if M.NOT_SIGNALISED[tags.crossing] or tags["crossing:signals"] == "no" then return false end
   if highway == "crossing" and M.CROSSING_REGRANTS_BICYCLE[tags.bicycle] then return false end

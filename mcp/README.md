@@ -25,6 +25,7 @@ century".
 | `open_link` | Picks up a route from a RouteMaker link you paste: the page's address after you changed the route in the app, one of your saved routes opened in the app, or a shared route's link. |
 | `revise_route` | Changes a draft (add, move or remove points; any ride type or setting) and plans it again as a new draft; the old one stays to go back to. |
 | `save_route` | Keeps a draft, only when you say so: in your My routes on the site, and/or as a GPX file. |
+| `gpx_route` | A draft as a GPX track: a `.gpx` file on your own computer, or a download link on the site. |
 | `plan_metro_loop` | Builds a loop of about the target length around DC (or another centre) through waypoints at or just beyond Metro stations, rescales it once towards the target, and repairs stretches past the Metro limit. |
 
 The assistant picks the ride type and settings that fit what you ask: every ride type the app
@@ -32,8 +33,9 @@ has (bikeshare and bike plus transit included) and every setting (traffic stress
 time, gravel, trails, target distance, rider weight, cargo load and assist, trail levels, the
 bikeshare bike and ending, departure time).
 
-Every planned route is a draft: it comes back with a link that opens it in the app, and
-nothing is saved. Drafts last while the assistant's session does. `save_route` (with a key,
+Every planned route is a draft: it comes back with a link that opens that exact route in the
+app, like a link from the app's Share, so the map, Start ride and the app's own GPX are the
+route the assistant described. Nothing is saved to My routes. Drafts last while the assistant's session does. `save_route` (with a key,
 below) puts one in My routes, where it opens like any route you saved yourself; you can also
 open the link and press Save in the app.
 
@@ -41,7 +43,26 @@ It plans through the site's own API (`POST /api/route`), so a route is exactly w
 plan. It changes nothing on the site except adding the routes you ask it to save. Metro distances
 are straight-line, from DC Open Data's station file (CC BY 4.0) that the map also uses.
 
-## Set it up
+## Use it in Claude on the web and on your phone
+
+The site runs the same server itself, at `/mcp` on its own address, so Claude on claude.ai and
+in the Claude phone apps can use it with nothing installed.
+
+1. In Claude, open **Settings > Connectors > Add custom connector**.
+2. Name it RouteMaker, and give the site's address followed by `/mcp`, for example
+   `https://routes.example.org/mcp`.
+3. Choose **Connect**. RouteMaker's sign-in opens: sign in with Discord as usual (on the beta,
+   with its password first), and choose **Allow**. Claude can then plan routes and add the ones
+   you ask it to save to your My routes. It cannot read your saved routes or change anything
+   else.
+
+On the site, each call answers within one web request (up to a minute), so a long loop is
+planned once per request: the answer says when it stopped early, and asking Claude to revise
+the draft can still fix where it strays from Metro or move its points. Drafts are kept on the site for a week. There is no GPX
+file on the server: `gpx_route` gives a download link instead, which works while the draft is kept
+(on the beta, behind its password).
+
+## Set it up on your own computer
 
 You need Python 3.11 or later and this repository checked out. Nothing to install: it uses the
 standard library only.
@@ -52,7 +73,8 @@ standard library only.
    you can remove or replace it there at any time.
 2. **Add the server to your assistant** with these settings:
    - `ROUTEMAKER_BASE_URL`: the address you open RouteMaker at, for example `http://localhost`
-     for a local stack.
+     for a local stack. Route links are built from it, so `http://localhost` links open only on
+     that computer; use the site's public address to open them on your phone.
    - `ROUTEMAKER_SAVE_KEY`: the key from step 1 (leave it out to plan without saving).
    - `ROUTEMAKER_ROUTES_DIR` (optional): where GPX files go; default `~/RouteMaker-routes`.
    - `ROUTEMAKER_BASIC_AUTH` (optional): `user:password` for a site behind a password, such as

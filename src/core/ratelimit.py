@@ -211,6 +211,15 @@ ACCOUNT_WRITES = Limit(scope="account", requests=240, window_s=3600)
 # one (GET /api/shared-routes/{id}) is one per link opened: PLAN's 60 a minute.
 SHARED_ROUTE_WRITES = Limit(scope="shared-route", requests=30, window_s=3600)
 SHARED_ROUTE_READS = Limit(scope="shared-route-read", requests=60, window_s=60)
+# The site's own MCP connector (core.connector; v0.10.0). Its sign-in pages and discovery
+# documents per address: an assistant's servers make these calls for many riders from few
+# addresses, so the address limits are wide and the work is counted per rider (CONNECTOR_CALLS,
+# by the rider's own in-process address, as their plans and saves are).
+CONNECTOR_ADDRESS = Limit(scope="connector-ip", requests=600, window_s=60)
+# Registration is once per app, not per rider (an identical app gets its first row back), but
+# claude.ai registers for every rider from the same few addresses, so the cap is wide.
+CONNECTOR_REGISTER = Limit(scope="connector-register", requests=600, window_s=3600)
+CONNECTOR_CALLS = Limit(scope="connector-calls", requests=300, window_s=3600)
 # A shared link fetched for its preview (GET /s/{id} and its image, core.share_preview): a chat
 # app's fetchers share few addresses, so twice the reads.
 SHARE_PREVIEWS = Limit(scope="share-preview", requests=120, window_s=60)
