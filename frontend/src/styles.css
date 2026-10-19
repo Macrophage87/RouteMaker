@@ -1408,7 +1408,7 @@ dialog.ride-types::backdrop {
   gap: 10px;
 }
 
-.ride-type-card > button {
+.ride-type-card > button:not(.ride-fav) {
   width: 100%;
   text-align: left;
   display: grid;
@@ -1420,8 +1420,8 @@ dialog.ride-types::backdrop {
   border-radius: 10px;
 }
 
-.ride-type-card.current > button,
-.ride-type-card button[aria-pressed="true"] {
+.ride-type-card.current > button:not(.ride-fav),
+.ride-type-card button:not(.ride-fav)[aria-pressed="true"] {
   border-color: var(--accent);
 }
 
@@ -1431,7 +1431,7 @@ dialog.ride-types::backdrop {
   gap: 8px;
 }
 
-.ride-sheet-cards .ride-type-card > button {
+.ride-sheet-cards .ride-type-card > button:not(.ride-fav) {
   grid-template-columns: auto 1fr;
   column-gap: 10px;
   align-items: start;
@@ -1450,8 +1450,38 @@ dialog.ride-types::backdrop {
 }
 
 /* The one in use: a thicker edge as well as the color, so it is not shown by color alone. */
-.ride-sheet-cards .ride-type-card > button[aria-pressed="true"] {
+.ride-sheet-cards .ride-type-card > button:not(.ride-fav)[aria-pressed="true"] {
   box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+/* Favorite ride types (Stephen 2026-10-19): the star sits in the card's top right corner, a 44px target;
+   the card's own text keeps clear of it. Filled when it is a favorite (and said so: aria-pressed). */
+.ride-type-card.has-fav {
+  position: relative;
+}
+
+.ride-type-card.has-fav > button:first-child {
+  padding-right: 52px;
+}
+
+.ride-fav {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: transparent;
+  color: var(--text-muted);
+  border: 0;
+  border-radius: 8px;
+}
+
+.ride-fav[aria-pressed="true"] {
+  color: var(--accent);
 }
 
 .ride-type-loads {
@@ -2652,8 +2682,12 @@ button.secondary,
   gap: 8px;
 }
 
-.ride-types .ride-type-card > button {
+.ride-types .ride-type-card > button:not(.ride-fav) {
   padding: 10px 12px;
+}
+
+.ride-types .ride-type-card.has-fav > button:first-child {
+  padding-right: 52px;
 }
 
 /* The route summary: the totals line, the bar, the quick figures */

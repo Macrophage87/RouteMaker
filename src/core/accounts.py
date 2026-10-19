@@ -29,10 +29,13 @@ SETTINGS_KEYS = frozenset(
         "topo",  # contour lines on or off
         "sections",  # which Layers sections' switches were on
         "bikeshare",  # the bikeshare and micromobility service switches
+        "favorites",  # the favorite ride types, listed first in the ride type pickers
     }
 )
 SETTINGS_MAX_BYTES = 16 * 1024
 SETTINGS_MAX_DEPTH = 4
+# A list of short ride type names, each once; room for every ride type and some to come.
+FAVORITES_MAX = 32
 
 # A saved route.
 NAME_MAX = 120
@@ -69,6 +72,14 @@ def settings_problem(data) -> str | None:
     if plan is not None and (not isinstance(plan, str) or len(plan) > HASH_MAX or "p=" in plan):
         # The ride type and dials only: a plan's points are a route, not a setting.
         return "The saved ride type and dials are not in the expected form."
+    favorites = data.get("favorites")
+    if favorites is not None and (
+        not isinstance(favorites, list)
+        or len(favorites) > FAVORITES_MAX
+        or not all(isinstance(f, str) and len(f) <= 40 for f in favorites)
+        or len(set(favorites)) != len(favorites)
+    ):
+        return "The favorite ride types are not in the expected form."
     return None
 
 
