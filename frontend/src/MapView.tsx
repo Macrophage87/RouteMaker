@@ -281,6 +281,12 @@ interface Props {
   climbCardRequest?: { climb: Climb; n: number } | null;
   /** A station's Start here / End here / Add as stop, with its bike entrance. */
   onStationPoint: (role: StationRole, point: LonLat, place: { name: string; label: string }) => void;
+  /** Go with no route yet: a station card's End here rides there from the rider's start (App's goTo). */
+  stationEndFromHere?: boolean;
+  /** The ride reaches places on foot (presets.ts, endsOnFoot): a station card's points are its nearest entrance. */
+  stationOnFoot?: boolean;
+  /** Where the rider comes from, for that nearest entrance (App's walkFrom). */
+  stationFrom?: (role: StationRole) => LonLat | null;
   /**
    * The road panel for a spot (OWNER-DECISIONS 441a; lib/roadInfo.ts): a right-click, a
    * long press on a phone, or I with the map focused (the map's centre).
@@ -1239,6 +1245,11 @@ export function MapView(props: Props) {
         pointCount: () => callbacks.current.points.length,
         loop: () => callbacks.current.loopVias === true,
         onStationPoint: (role, point, place) => callbacks.current.onStationPoint(role, point, place),
+        endFromHere: () => callbacks.current.stationEndFromHere === true,
+        onFoot: () => callbacks.current.stationOnFoot === true,
+        from: (role) => callbacks.current.stationFrom?.(role) ?? null,
+        framePadding: () => callbacks.current.framePadding(),
+        reducedMotion,
       });
       // The federal-land shading, for a Mass Ride (lib/federalLand.ts): fetched
       // the first time it is shown, under the stress overlay and the route.
