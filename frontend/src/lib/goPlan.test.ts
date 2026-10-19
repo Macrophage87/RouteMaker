@@ -54,12 +54,15 @@ function store(initial: Record<string, string> = {}, refuse = false) {
 
 // ---- which view the app opens in (the owner's choice 1) ------------------------------------------
 
-test("a phone opens in Go and a wide screen in Plan; a shared link opens in Plan; My Go's choice wins over the screen; the tab's own view wins over all", () => {
+test("a phone opens in Go and a wide screen in Plan; a shared link opens in Plan on a wide screen only; My Go's choice wins over the screen; the tab's own view wins over all", () => {
   const base = { tab: null, planLink: false, openIn: "" as const };
   assert.deepEqual(openingMode({ ...base, wide: false }), { mode: "go", by: "screen" });
   assert.deepEqual(openingMode({ ...base, wide: true }), { mode: "plan", by: "screen" });
-  assert.deepEqual(openingMode({ ...base, planLink: true, wide: false }), { mode: "plan", by: "link" });
-  assert.deepEqual(openingMode({ ...base, planLink: true, openIn: "go", wide: false }), { mode: "plan", by: "link" }, "a shared link always opens in Plan");
+  // A phone opens in Go even with a link (the owner, 2026-10-19), as the app's own #preset=… address is one.
+  assert.deepEqual(openingMode({ ...base, planLink: true, wide: false }), { mode: "go", by: "screen" });
+  assert.deepEqual(openingMode({ ...base, planLink: true, openIn: "plan", wide: false }), { mode: "plan", by: "my-go" }, "My Go's Plan still wins");
+  assert.deepEqual(openingMode({ ...base, planLink: true, wide: true }), { mode: "plan", by: "link" });
+  assert.deepEqual(openingMode({ ...base, planLink: true, openIn: "go", wide: true }), { mode: "plan", by: "link" }, "a shared link opens in Plan on a wide screen");
   assert.deepEqual(openingMode({ ...base, openIn: "go", wide: true }), { mode: "go", by: "my-go" });
   assert.deepEqual(openingMode({ ...base, openIn: "plan", wide: false }), { mode: "plan", by: "my-go" });
   assert.deepEqual(openingMode({ tab: "go", planLink: true, openIn: "plan", wide: true }), { mode: "go", by: "tab" }, "a reload keeps the tab's view");
