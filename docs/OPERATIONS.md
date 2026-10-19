@@ -3195,6 +3195,7 @@ in `routing.ATTRIBUTION` and `VOLUME_CREDITS`:
   `fixtures/datasets/README.md` and PLAN.md. **The credit and the rows travel
   together**: deleting the rows does not make the credit wrong for the graph
   until the next rebuild, but a rebuild without them should drop the line.
+  From v0.9.1 the map reads those rows as LTS 4.5, not Avoid (`agency_lts.row_level`).
 
 Arlington's Bike Comfort Index is internal comparison only and is never
 credited because nothing of it is published. Alexandria's Transport Streets was
@@ -4354,6 +4355,14 @@ What the strip changes besides access, so it is not mistaken for a fault:
   (`bicycle:forward=yes`, `oneway:bicycle=no`, `cycleway=opposite*`) reopens a
   direction. The NO-BIKE-PATHS rules get that for free by using the same mark.
 
+## Manual mode's heights need the routers restarted once (v0.9.1)
+
+A leg drawn in Plan's manual mode (`straight_legs`, `core.routing._drawn`) takes its elevations from
+the router's `/height`, which the routers serve only once `loki.actions` lists `height`
+(`scripts/build_valhalla_configs.py`). After deploying v0.9.1, restart the routers once, as for Best
+order below; the beta's CD does it itself. Until then nothing fails: the first drawn leg's `/height` is
+refused, the plan asks no more, and its drawn legs have no heights (their climb is not counted).
+
 ## Best order needs the routers restarted once (OWNER-DECISIONS 449)
 
 "Best order" (`POST /api/stop-order`, `core.stoporder`) orders up to ten stops by the router's cost
@@ -4639,7 +4648,7 @@ row keyed `closures` (`src/core/closure_sources.py`):
 
 | Source | URL | Every | Stale after | Dropped after | Becomes |
 |---|---|---|---|---|---|
-| DDOT TOPS permits (`dc`, CC BY 4.0) | `maps2.dcgis.dc.gov/.../DDOT/TOPS/MapServer/1/query` | 1 h | 3 h | 26 h | Closed block (IsRoadClosed), or "Bike lane blocked" (BikeLaneLength > 0, road open) |
+| DDOT TOPS permits (`dc`, CC BY 4.0) | `maps2.dcgis.dc.gov/.../DDOT/TOPS/MapServer/1/query` | 1 h | 3 h | 26 h | Flagged only (a road *may* be closed): never routed around (Go, Plan, MCP), no warning or cue; shown only by Plan's DC permits layer (off by default) |
 | MPD traffic advisories (`mpd`) | `mpdc.dc.gov/newsroom` | 15 min | 45 min | 6 h | Closures on the ways between the cross streets; the rest "Check before you go" text |
 | AlertDC (`alertdc`) | `trainingtrack.hsema.dc.gov/NRss` | 15 min | 45 min | 3 h | As MPD; only traffic and road items are kept, every other item is dropped unread |
 | NPS alerts (`nps`) | `developer.nps.gov/api/v1/alerts` | 30 min | 90 min | 6 h | Park-level "Check before you go" notices (rocr, nama, gwmp, choh, anac), never closures |
@@ -4665,8 +4674,11 @@ without it NPS is simply not read. The host needs egress to the four hosts (PLAY
    cross streets leaves the named street) is shown as text with its link, never guessed;
    it is looked for again after 6 hours.
 
-Closures follow the ride time (the When setting). One with no reliable end, on a ride
-more than 2 hours away, reads "may still apply" and does not reroute. A rider's "Route
+Closures follow the ride time (the When setting). Only closures known to be in effect
+reroute (Go, Plan and MCP alike). One with no reliable end, on a ride more than 2 hours
+away, reads "may still apply" and does not reroute. DDOT TOPS permits are never routed
+around anywhere and give no warning or cue, not even when the TOPS source cannot be
+read; Plan's DC permits layer (off by default) is the only place they show. A rider's "Route
 through anyway" is per plan and session only (`closure_bypass` on `/api/route`, `bypass`
 on `/api/closures/check`); nothing about it is stored.
 
@@ -4780,9 +4792,37 @@ scale. The levels on our scale (the script's docstring has the citations):
 
 | Agency | Field | Taken | Left out |
 |---|---|---|---|
-| Montgomery County Planning | `LTS_EXIST` | 1, 2, 2.5, 3, 4, 5 (5 is Avoid) | 0.5 "None"; not Existing; sidepaths, trails, parking lots |
+| Montgomery County Planning | `LTS_EXIST` | 1, 2, 2.5, 3, 4, 5 (5 is very high stress, used as LTS 4.5 from v0.9.1) | 0.5 "None"; not Existing; sidepaths, trails, parking lots |
 | DDOT (2020) | the first of `DDOT_LEVEL_FIELDS` any record has (`LTS`, `LTS_2020`, ...) | 1 to 4 as they are (a 5 would be Avoid) | 0 and empty |
-| MDOT SHA | `LTS_ADJUSTED` | 1 to 4 as they are; 5, "bicycle access prohibited", as Avoid | 0 (shared-use path), 9 (missing data), empty |
+| MDOT SHA | `LTS_ADJUSTED` | 1 to 4 as they are; 5, "bicycle access prohibited", closes the road to bicycles (v0.9.1) | 0 (shared-use path), 9 (missing data), empty |
+
+Montgomery's 5 means very high stress, which is our 4.5, not our Avoid (the owner,
+2026-10-19: "5 in our case means technically legal, but not a real option. MoCo's mean very
+high stress, what our 4.5 means."). From v0.9.1 the rebuild uses LTS 4.5 for it, urban and
+rural alike (`agency_lts.READ_AS`), and so for the county's LTS 5 rows loaded as overrides
+(`moco-lts5-*` in `fixtures/overrides/2026-10-01-owner-moco-lts5-avoid.json`, about 39 mi
+(63 km) of ways). The road panel shows "Rated LTS 5 by Montgomery County Planning, which
+means very high stress: LTS 4.5 here". The owner's own rows (Darnestown Road's LTS 4, for
+one) still win. Our Avoid stays for roads that are legal but not a real option: motorway-like
+roads, a hand-set Avoid, a side path riders are asked to use, and DDOT's 5.
+
+MDOT SHA's 5 is about access, not stress (the owner, 2026-10-19: "MDOT LTS 5 means that
+bikes are prohibited. MoCo LTS5 is extremely high stress but allowed."; "Just don't draw
+them or consider them for routing."). From v0.9.1 the rebuild closes such a road
+(`rm:no_bicycle=mdot_prohibited`): it is not drawn on the stress map and no ride type
+routes on it, whatever Montgomery or DDOT rate it. A road something else already closes (a
+freeway, `bicycle=no`, private) keeps its own reason. Not closed, and listed instead: a
+path or track the MDOT record matched (a road layer on a path is more likely a matching
+slip), a bridge the crossings fixture opens to bicycles, and a way an owner access
+override opens. The rebuild writes `reports/agency-prohibited.csv` (`way_id, highway,
+name, bicycle, length_m, outcome`), one row per closed way and per listed one, and logs
+the closed ways and miles by highway class. Two outcomes mark a closure worth a look:
+`closed; OpenStreetMap says bicycles are allowed` (the two sources disagree) and `closed; a
+minor road, check the match` (anything but a motorway, trunk or primary road, where a
+matching slip onto a side street is likeliest). Check it, and reopen with an access
+override in Review if it is wrong (a `bicycle=yes` row, in force from the next rebuild).
+A build where MDOT's 5 records are installed but close no way logs a warning. DDOT's 5
+stays Avoid; Montgomery's is LTS 4.5 (except where our formula already says Avoid).
 
 DDOT's level field is not recorded in this repository: the script prints `ddot: level read
 from <field>`, and where the layer has none of the expected fields it stops and lists the
@@ -6249,7 +6289,7 @@ the dry run each prints after `grep -v '^present:'`:
    (`bicycle=no`). Dry: 2 retire `{'bicycle': 'designated'}`, 2 create `{'bicycle': 'no'}`.
 4. `2026-10-01-owner-moco-lts5-avoid.json`, the Montgomery Planning LTS 5 file (433):
    retires the 23 Veirs Mill Rd Avoid rows and keeps the other 386. Dry: 23 retire, 386
-   present.
+   present. From v0.9.1 the map reads these rows as LTS 4.5, not Avoid (`agency_lts.row_level`).
 5. `2026-10-06-owner-military-reopenings.json`, the military reopenings (437.6, 437a-c,
    438.2, 439b): `bicycle=yes` on Jeff Todd Way (10 ways), Russell Rd (32), Saint
    Elizabeths Rd SE (2) and its side path (11) and Pentagon Connector Road (25), LTS 4 on

@@ -285,7 +285,7 @@ class TestRideTime:
         assert plan.excluded and not plan.uncertain
 
     def test_route_through_anyway_and_a_blocked_lane(self) -> None:
-        lane = wz.Zone("dc-2", "dc", wz.LANE, 0, self.LINE, "K St NW", None, None, None)
+        lane = wz.Zone("mpd-2", "mpd", wz.LANE, 0, self.LINE, "K St NW", None, None, None)
         plan = wz.for_plan(
             [self.zone(end=NOW + timedelta(days=1)), lane],
             NOW,
@@ -295,7 +295,7 @@ class TestRideTime:
             bypass=["mpd-1"],
         )
         assert [z.zone_id for z in plan.bypassed] == ["mpd-1"] and not plan.exclude
-        assert [z.zone_id for z in plan.lanes] == ["dc-2"] and not plan.passable
+        assert [z.zone_id for z in plan.lanes] == ["mpd-2"] and not plan.passable
 
     def test_the_card_words(self) -> None:
         zone = self.zone(start=NOW + timedelta(hours=2), end=NOW + timedelta(days=5))

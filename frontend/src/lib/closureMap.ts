@@ -5,7 +5,8 @@
  *
  * The route's answer carries the closures in force at the ride (`work_zones.closures`: the Maryland and Virginia
  * work zones, DDOT's permits, MPD's advisories and AlertDC's items) and the park-level "Check before you go" notices
- * (`work_zones.notices`, NPS). MapView.tsx draws them in Go and Plan, in every ride type, with no layer switch: a red
+ * (`work_zones.notices`, NPS). MapView.tsx draws them in Go and Plan, in every ride type, with no layer switch (but
+ * DDOT's permits, v0.9.1: flagged only, behind Plan's DC permits switch, lib/permitLayer.ts): a red
  * closed stretch with a barrier marker, amber for a blocked bike lane, a park marker for an NPS alert, and a small
  * marker on the line for a closure the rider chose to route through. Each marker is a real button (Tab reaches it, a
  * screen reader names it), and opens a card: what is closed, the source named and linked, when it applies, and the
@@ -19,7 +20,12 @@
  */
 import type { LonLat } from "./geo.ts";
 
-export type ClosureEffect = "on_route" | "routed_round" | "bypassed" | "may_still_apply" | "none";
+/**
+ * "possible" (v0.9.1): a DDOT permit, which allows closing the road some time in its window. Flagged only: dashed on
+ * the map, never routed round, never a heading or a spoken cue (Stephen, 2026-10-19: "We should flag, but not
+ * necessarily stop anyone").
+ */
+export type ClosureEffect = "on_route" | "routed_round" | "bypassed" | "may_still_apply" | "possible" | "none";
 
 /** One closure as the route's answer gives it (core.workzones closure_row). */
 export interface ClosureItem {
@@ -65,8 +71,10 @@ export interface WithClosures {
   work_zones?: { closures?: ClosureItem[] | null; notices?: ClosureNotice[] | null } | null;
 }
 
-export function closuresOf(route: WithClosures | null | undefined): ClosureItem[] {
-  return route?.work_zones?.closures ?? [];
+/** The closures to draw; DDOT's permits ("possible") only where the DC permits layer is on (lib/permitLayer.ts). */
+export function closuresOf(route: WithClosures | null | undefined, permits = false): ClosureItem[] {
+  const items = route?.work_zones?.closures ?? [];
+  return permits ? items : items.filter((item) => item.effect !== "possible");
 }
 
 /** The notices with a place on the map: the parks' (a District-wide notice has none). */
@@ -86,7 +94,7 @@ export function closureFeatures(items: readonly ClosureItem[]) {
       .filter((item) => item.line.length >= 2 && !item.bypassed)
       .map((item) => ({
         type: "Feature" as const,
-        properties: { id: item.id, severity: item.severity, maybe: item.effect === "may_still_apply" ? 1 : 0 },
+        properties: { id: item.id, severity: item.severity, maybe: item.effect === "may_still_apply" || item.effect === "possible" ? 1 : 0 },
         geometry: { type: "LineString" as const, coordinates: item.line },
       })),
   };
@@ -94,7 +102,13 @@ export function closureFeatures(items: readonly ClosureItem[]) {
 
 /** What the marker is called, to a screen reader: "Road closed: G St NW (permit PA261001). Detour adds about 4 min". */
 export function closureMarkerName(item: ClosureItem): string {
-  const lead = item.bypassed ? "Routed through closure" : item.kind === "lane" ? "Bike lane blocked" : "Road closed";
+  const lead = item.bypassed
+    ? "Routed through closure"
+    : item.effect === "possible"
+      ? item.kind === "lane" ? "Bike lane may be blocked" : "Possible closure"
+      : item.kind === "lane"
+        ? "Bike lane blocked"
+        : "Road closed";
   return `${lead}: ${item.title}. ${item.effect_text.replace(/\.$/, "")}`;
 }
 
@@ -118,7 +132,13 @@ export interface ClosureCard {
 }
 
 export function closureCard(item: ClosureItem): ClosureCard {
-  const heading = item.bypassed ? "Closure you route through" : item.kind === "lane" ? "Bike lane blocked" : "Road closed";
+  const heading = item.bypassed
+    ? "Closure you route through"
+    : item.effect === "possible"
+      ? item.kind === "lane" ? "Bike lane may be blocked (permit)" : "Possible closure (permit)"
+      : item.kind === "lane"
+        ? "Bike lane blocked"
+        : "Road closed";
   let action: ClosureCard["action"] = null;
   if (item.bypassed) action = { label: UNDO_BYPASS_LABEL, bypass: false };
   else if (item.can_bypass && (item.effect === "routed_round" || item.effect === "may_still_apply" || item.effect === "on_route"))

@@ -98,6 +98,12 @@ export interface Dials {
    */
   closureBypass?: string[];
   /**
+   * v0.9.1, Go and a ride: only the closures known to be on, leaving out DDOT's permits, which say a road may be
+   * closed (Stephen, 2026-10-19: "They aren't as useful for on the go routing, but worth keeping for future ride
+   * planning"). Plan leaves it off and keeps them. Session only, like closureBypass: in the request, never a link.
+   */
+  closuresNow?: boolean;
+  /**
    * The transit ride types only (v0.7.0, Novice and Nervous): the bike legs planned as Novice and Nervous
    * plans them, for a novice rider offered transit where only a busy road connects. In the link; absent is off.
    */

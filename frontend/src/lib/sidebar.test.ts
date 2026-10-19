@@ -277,7 +277,7 @@ test("with a route shown Plan's search and point tools stay in view (v0.7.0), an
   assert.match(app, /<div id="points-edit" ref=\{pointsEditRef\} hidden=\{compactPoints\}>/);
   // Clear, a plan from a link, or fewer than two points: the next route opens compact again (N1).
   assert.match(app, /const clearAll = \(\) => \{\s*setConfirmedKm\(null\);\s*setEditPoints\(false\);/);
-  assert.match(app, /setEditPoints\(false\);\s*\/\/ A plan opened from a link opens drawn[^\n]*\n\s*forgetDrawn\(\);\s*setRouteAsk\(\(n\) => n \+ 1\);\s*setPoints\(VIA_MARKS\.markAt\(plan\.points, plan\.vias\)\);/);
+  assert.match(app, /setEditPoints\(false\);\s*\/\/ A plan opened from a link opens drawn[^\n]*\n\s*forgetDrawn\(\);\s*setRouteAsk\(\(n\) => n \+ 1\);\s*setPoints\(VIA_MARKS\.markDrawn\(VIA_MARKS\.markAt\(plan\.points, plan\.vias\), plan\.drawn\)\);/);
   assert.match(app, /setStatus\(\{ kind: "idle" \}\);\s*\/\/ The next route opens compact again[^\n]*\n\s*setEditPoints\(false\);/);
 });
 
@@ -926,7 +926,7 @@ test("the skip link and its target stay: #route-planner is the aside, and every 
   assert.match(app, /\{status\.kind === "idle" && points\.length < 2 && !goMode && <p className="hint">No route yet\.<\/p>\}/);
   assert.equal((app.match(/aria-live="polite" className="status-line/g) ?? []).length, 1);
   assert.match(app, /\{said\.text\}/);
-  assert.match(app, /announce\(kindSaid\(next, index, VIA_MARKS\.isVia, loopVias, "added"\)\)/);
+  assert.match(app, /const said = kindSaid\(next, index, VIA_MARKS\.isVia, loopVias, "added"\);/);
 });
 
 test("on a desktop the points come first, then the Ride line, then the route; on a phone the route leads", () => {
