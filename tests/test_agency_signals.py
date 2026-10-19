@@ -166,7 +166,7 @@ def test_the_report_has_a_row_per_signal() -> None:
         [signal(fid="ddot:a"), signal(0, 500, fid="ddot:b")], crossroads(), {}
     )
     rows = agency_signals.report_csv(result).splitlines()
-    assert rows[0] == "signal_id,lon,lat,outcome,marked_osm_nodes"
+    assert rows[0] == "signal_id,lon,lat,outcome,junction_osm_nodes"
     assert [row.split(",")[3] for row in rows[1:]] == ["added", "unmatched"]
     assert "1 added" in agency_signals.summary(result)
 

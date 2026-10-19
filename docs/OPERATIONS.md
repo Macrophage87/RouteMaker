@@ -4832,7 +4832,7 @@ installed; the rebuild logs `... signals installed but not read` and leaves it o
    on the junction (DC data beats OSM).
 
    `${DATA_ROOT}/rebuild/reports/agency-signals.csv` has one line per signal: its
-   id, point, outcome (`added`, `in OSM`, `unmatched`) and the OSM nodes marked.
+   id, point, outcome (`added`, `in OSM`, `unmatched`, or `would add` for a report-only list) and its junction's OSM nodes (marked only where it reads `added`).
    Spot-check two added ones you know (Florida Ave NE, the cue of 2026-10-19).
 
    **Rolling it back** without a code change: remove `reference/signals.json` and

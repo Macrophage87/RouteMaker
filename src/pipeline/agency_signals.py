@@ -557,7 +557,7 @@ def report_csv(result: Match) -> str:
 
     out = io.StringIO()
     writer = csv.writer(out, lineterminator="\n")
-    writer.writerow(["signal_id", "lon", "lat", "outcome", "marked_osm_nodes"])
+    writer.writerow(["signal_id", "lon", "lat", "outcome", "junction_osm_nodes"])
     for feature_id, lon, lat, outcome, nodes in result.rows:
         writer.writerow([feature_id, lon, lat, outcome, " ".join(str(n) for n in nodes)])
     return out.getvalue()
