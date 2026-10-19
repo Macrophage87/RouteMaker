@@ -102,6 +102,8 @@ test("a reading between the two heights' steps does not stick: the window's resi
   view.height = 800;
   runTimers();
   assert.equal(props.has("--keyboard-lift"), false, "the settle re-read takes the lift off");
+  fire(listeners);
+  assert.equal(timers.size, 1, "one re-read pending");
   stop();
   assert.equal(winListeners.size, 0);
   assert.equal(timers.size, 0);
