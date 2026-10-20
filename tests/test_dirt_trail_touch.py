@@ -33,14 +33,14 @@ TOUCHED = 404
 STRAY = 505
 
 
-def add_trail(live: str, way: int, line) -> None:
+def add_trail(live: str, way: int, line, reason: str = "mtb") -> None:
     wkt = "LINESTRING(" + ", ".join(f"{lon} {lat}" for lon, lat in line) + ")"
     with connection.cursor() as cursor:
         cursor.execute(
             f"INSERT INTO {live}.segment (osm_way_id, ordinal, geometry, stress_tier, "
             "stress_rule, bike_access_reason) "
-            "VALUES (%s, 0, ST_GeomFromText(%s, 4326), 1, 'test', 'mtb')",
-            [way, wkt],
+            "VALUES (%s, 0, ST_GeomFromText(%s, 4326), 1, 'test', %s)",
+            [way, wkt, reason],
         )
 
 
@@ -115,7 +115,7 @@ class TestThroughTheApi:
         assert response.status_code == 200, response.content
         assert response.json()["variant"] == "offroad"
         assert not asked[0].get("exclude_polygons")
-        ring = asked[-1]["exclude_polygons"][-1]
+        ring = asked[-1]["exclude_polygons"][0]
         lons = [p[0] for p in ring]
         # Across 505 (between the third and fourth vertices), nowhere near the start.
         assert VERTICES[2][0] < min(lons) and max(lons) < VERTICES[3][0]
@@ -146,23 +146,95 @@ class TestThroughTheApi:
         assert graphs.count("offroad") == routing.STRAY_ROUNDS
         assert graphs[-1] == "standard"
 
+    def test_green_singletrack_the_plan_found_is_left_out_too(
+        self, client, segments, router
+    ) -> None:
+        add_trail(segments, TOUCHED, [VERTICES[0], (VERTICES[0][0], VERTICES[0][1] + 0.001)])
+        add_trail(segments, STRAY, VERTICES[2:4], reason="singletrack")
+        stray_edges = [(TOUCHED, 0, 1, 0.9), (202, 1, 2, 0.4), (STRAY, 2, 3, 0.4), (303, 3, 4, 0.5)]
+        asked: list[dict] = []
+
+        def route(payload):
+            asked.append(payload)
+            return route_answer([(VERTICES, 2.2, [10.0, 20.0, 15.0, 30.0])])
+
+        def trace(_payload):
+            edges = STANDARD_EDGES if asked[-1].get("exclude_polygons") else stray_edges
+            return trace_answer(VERTICES, edges)
+
+        router(FakeRouter({"route": route, "trace_attributes": trace}))
+        response = post(client, good_body())
+        assert response.status_code == 200, response.content
+        assert response.json()["variant"] == "offroad"
+        assert asked[-1].get("exclude_polygons")
+
+    def test_no_route_once_a_stray_is_left_out_plans_without_dirt_trails(
+        self, client, segments, router
+    ) -> None:
+        add_trail(segments, TOUCHED, [VERTICES[0], (VERTICES[0][0], VERTICES[0][1] + 0.001)])
+        add_trail(segments, STRAY, VERTICES[2:4])
+        stray_edges = [(TOUCHED, 0, 1, 0.9), (202, 1, 2, 0.4), (STRAY, 2, 3, 0.4), (303, 3, 4, 0.5)]
+        graphs: list[str] = []
+
+        def route(payload):
+            graph = graph_of(fake.calls[-1][0])
+            graphs.append(graph)
+            if graph == "offroad" and payload.get("exclude_polygons"):
+                raise routing.RouterRefused(400, 442, "No path could be found")
+            return route_answer([(VERTICES, 2.2, [10.0, 20.0, 15.0, 30.0])])
+
+        def trace(_payload):
+            edges = STANDARD_EDGES if graphs[-1] == "standard" else stray_edges
+            return trace_answer(VERTICES, edges)
+
+        fake = router(FakeRouter({"route": route, "trace_attributes": trace}))
+        response = post(client, good_body())
+        assert response.status_code == 200, response.content
+        assert response.json()["variant"] == "standard"
+        assert graphs[0] == "offroad" and graphs[-1] == "standard"
+
+    def test_a_waypoint_on_a_dirt_trail_plans_on_the_off_road_graph(
+        self, client, segments, router
+    ) -> None:
+        add_trail(segments, TOUCHED, [VERTICES[2], (VERTICES[2][0], VERTICES[2][1] + 0.001)])
+        fake = router(plain_router())
+        body = {"points": [list(VERTICES[0]), list(VERTICES[2]), list(VERTICES[-1])]}
+        response = post(client, {**body, "preset": "default"})
+        assert response.status_code == 200, response.content
+        assert response.json()["variant"] == "offroad"
+        assert {graph_of(url) for url, _ in routes(fake)} == {"offroad"}
+
 
 class TestRuns:
     def test_a_run_of_dirt_trails_one_after_another_is_one_run(self) -> None:
         dirt = frozenset({1, 2, 3})
-        assert trail_touch.runs([1, 2, 9, 3, 3, 9], dirt) == [(0, 2), (3, 5)]
-        assert trail_touch.runs([9, 9], dirt) == []
-        assert trail_touch.runs([1], dirt) == [(0, 1)]
+        far = [100.0] * 6
+        assert trail_touch.runs([1, 2, 9, 3, 3, 9], far, dirt) == [(0, 2), (3, 5)]
+        assert trail_touch.runs([9, 9], far, dirt) == []
+        assert trail_touch.runs([1], far, dirt) == [(0, 1)]
 
     def test_a_joined_trail_counts_with_the_touched_one_and_a_separate_one_does_not(self) -> None:
         """'Connecting trails too': 2 follows the touched 1 without a road between."""
         dirt = frozenset({1, 2, 3})
-        assert trail_touch.strays([1, 2, 9, 3], dirt, frozenset({1})) == [(3, 4)]
-        assert trail_touch.strays([1, 2, 9, 3], dirt, frozenset({3})) == [(0, 2)]
-        assert trail_touch.strays([1, 2, 9, 3], dirt, frozenset({2, 3})) == []
+        far = [100.0] * 4
+        assert trail_touch.strays([1, 2, 9, 3], far, dirt, frozenset({1})) == [(3, 4)]
+        assert trail_touch.strays([1, 2, 9, 3], far, dirt, frozenset({3})) == [(0, 2)]
+        assert trail_touch.strays([1, 2, 9, 3], far, dirt, frozenset({2, 3})) == []
 
-    def test_the_line_across_a_stray_is_short_and_along_it(self) -> None:
-        a, b = trail_touch.block_line(-77.0, 38.9, 90.0)
-        assert a[1] == pytest.approx(38.9) and b[1] == pytest.approx(38.9)
-        metres = (b[0] - a[0]) * 111_320.0 * 0.7782
-        assert metres == pytest.approx(trail_touch.BLOCK_LINE_M, rel=0.05)
+    def test_a_trail_across_a_short_bridge_or_road_is_joined(self) -> None:
+        """A paved bridge or a road crossed between two trails joins them; a longer road
+        between them does not."""
+        dirt = frozenset({1, 2})
+        kept = frozenset({1})
+        assert trail_touch.strays([1, 9, 2], [200.0, 12.0, 300.0], dirt, kept) == []
+        assert trail_touch.strays([1, 9, 2], [200.0, 400.0, 300.0], dirt, kept) == [(2, 3)]
+
+    def test_the_strip_across_a_stray_is_small_and_along_it(self) -> None:
+        ring = trail_touch.block_ring(-77.0, 38.9, 90.0)
+        assert ring[0] == ring[-1] and len(ring) == 5
+        lons = [p[0] for p in ring]
+        lats = [p[1] for p in ring]
+        along = (max(lons) - min(lons)) * 111_320.0 * 0.7782
+        across = (max(lats) - min(lats)) * 110_540.0
+        assert along == pytest.approx(trail_touch.BLOCK_ALONG_M, rel=0.05)
+        assert across == pytest.approx(trail_touch.BLOCK_ACROSS_M, rel=0.05)
