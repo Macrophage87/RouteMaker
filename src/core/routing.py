@@ -119,6 +119,7 @@ from . import (
     route_hazards,
     segment_info,
     timing,
+    trail_touch,
 )
 from . import workzones as work_zones
 
@@ -208,6 +209,21 @@ class RouterRefused(Exception):
         super().__init__(message)
         self.status = status
         self.code = code
+
+
+class StrayTrails(Exception):
+    """A route planned on the off-road graph for a dirt trail a point touches
+    (`core.trail_touch`) took dirt trails no point touches: `lines` leave them out, and
+    `plan` plans again."""
+
+    def __init__(self, lines: tuple) -> None:
+        super().__init__(f"{len(lines)} dirt trail run(s) no point touches")
+        self.lines = lines
+
+
+# How many times a plan is made again without the dirt trails it found for itself
+# (`StrayTrails`) before it is made on the ride type's own graph, the touched trail closed.
+STRAY_ROUNDS = 3
 
 
 class NoRoute(Exception):
@@ -997,6 +1013,12 @@ class Dials:
     mtb_preferred: int | None = None
     # v0.7.0 "Route through anyway": the closures this plan routes through (their ids).
     closure_bypass: tuple[str, ...] = ()
+    # A dirt trail a point is on is ridden on a ride type that does not plan on them
+    # (`core.trail_touch`); False plans on the ride type's own graph alone. Set by `plan`.
+    trail_touch: bool = True
+    # The dirt trails such a plan found for itself, each a short line across it, left out
+    # as `blocked` is. Set by `plan`.
+    trail_strays: tuple[tuple[tuple[float, float], ...], ...] = ()
     # v0.9.1, Go and a ride: DDOT's permits, which say a road may be closed
     # (`routemaker.workzones.possible`), left off the answer. A plan flags them only.
     closures_now: bool = False
@@ -3027,6 +3049,34 @@ def plan(
     quick: bool = False,
     candidates: bool = True,
 ) -> dict:
+    """Route through `points` on `preset_name`, returning the contract's body (`_plan`).
+
+    A plan that rides a dirt trail a point touches and found others for itself
+    (`StrayTrails`) is made again without them, STRAY_ROUNDS times at most, then on the
+    ride type's own graph, the dirt trails closed as before.
+    """
+    if started is None:
+        started = clock()
+    dials = dials or Dials()
+    for _round in range(STRAY_ROUNDS):
+        try:
+            return _plan(points, preset_name, long_ride, started, dials, quick, candidates)
+        except StrayTrails as found:
+            logger.info("planning again without %s", found)
+            dials = dataclasses.replace(dials, trail_strays=dials.trail_strays + found.lines)
+    dials = dataclasses.replace(dials, trail_touch=False, trail_strays=())
+    return _plan(points, preset_name, long_ride, started, dials, quick, candidates)
+
+
+def _plan(
+    points: list[list[float]],
+    preset_name: str,
+    long_ride: bool = False,
+    started: float | None = None,
+    dials: Dials | None = None,
+    quick: bool = False,
+    candidates: bool = True,
+) -> dict:
     """Route through `points` on `preset_name`, returning the contract's body.
 
     `long_ride` gives the request the long-ride time limits, and `started`
@@ -3132,6 +3182,20 @@ def plan(
     assist = bool(dials.assist) and preset.assist_speed_kmh is not None
     trails_off = bool(dials.trails_off)
     variant = presets.variant_for_ride(preset_name, when, assist, trails_off)
+    # A dirt trail the rider is on or put a point on (the owner, 2026-10-20: "Don't plan on the
+    # route, but if you enter it or mark a waypoint in it, it will continue to route through"):
+    # planned on the off-road graph, where it is open, with this ride type's costing; the dirt
+    # trails the plan finds for itself are left out again (`StrayTrails`, `core.trail_touch`).
+    touched_trails: frozenset[int] = frozenset()
+    if (
+        variant == Variant.STANDARD.value
+        and dials.trail_touch
+        and dials.follow is None
+        and not dials.straight
+    ):
+        touched_trails = trail_touch.touched(points)
+        if touched_trails:
+            variant = Variant.OFFROAD.value
     # Bike lanes are "none" in the breakdown on a ride that takes the roadway (Mass
     # Ride, whose own graph is no-trail), not on every trails-off ride.
     lanes_as_roadway = preset.variant == Variant.NO_TRAIL.value
@@ -3179,7 +3243,7 @@ def plan(
     # The roads the rider marked closed on this ride (v0.8.2): left out as a closure is,
     # after the closures' own rings, and kept out where those are let back in. They take
     # the router's polygon budget first (the latest kept), and the closures fit the rest.
-    blocked = work_zones.blocked_rings(dials.blocked)
+    blocked = work_zones.blocked_rings(dials.blocked + dials.trail_strays)
     zones_plan = work_zones.plan_zones(
         points,
         when,
@@ -3673,6 +3737,11 @@ def plan(
                 leg_runs.append((start, len(pieces)))
                 raw_junctions.extend(trace_junctions.junctions_of_trace(trace, shape, traced_m))
                 traced_m += sum(piece.metres for piece in pieces[start:])
+        if touched_trails and variant == Variant.OFFROAD.value:
+            dirt = trail_touch.dirt_ways([piece.way_id for piece in pieces])
+            stray = trail_touch.stray_lines(pieces, dirt, touched_trails)
+            if stray:
+                raise StrayTrails(tuple(stray))
         # A long calm plan was searched in legs of its own: the answer has the plan's
         # legs, as the front end reads which leg a point on the line belongs to, and
         # a Mass Ride's stops and the description's are the plan's stops.
