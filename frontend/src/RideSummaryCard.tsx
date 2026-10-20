@@ -40,11 +40,9 @@ function ElevationFigure({ stats }: { stats: RideStats }) {
         <path d={`${line}L${W},${H}L0,${H}Z`} className="ride-summary-elevation-area" />
         <path d={line} className="ride-summary-elevation-line" vectorEffect="non-scaling-stroke" />
       </svg>
-      {/* Each on its own line (the owner, 2026-10-20: "the H in highest should be capitalized"). */}
+      {/* Each capitalised (the owner, 2026-10-20: "the H in highest should be capitalized"), side by side where they fit. */}
       <p aria-hidden="true">
-        {lowest}
-        <br />
-        {highest}
+        <span>{lowest}</span> <span>{highest}</span>
       </p>
     </figure>
   );
@@ -75,35 +73,39 @@ export function RideSummaryCard({
   return (
     <section className="ride-summary" aria-labelledby={titleId}>
       <h2 id={titleId}>{RIDE_SUMMARY_TITLE}</h2>
-      {note && <p className="hint">{note}</p>}
-      <dl className="ride-summary-figures">
-        {rows.map((row) => (
-          <div key={row.name}>
-            <dt>{row.name}</dt>
-            <dd>{row.value}</dd>
-          </div>
-        ))}
-      </dl>
-      <ElevationFigure stats={stats} />
-      {segments.length > 0 && (
-        <figure className="stress ride-summary-stress">
-          <figcaption>Traffic stress, along the route</figcaption>
-          <div className="stress-bar" role="img" aria-label={stressBarLabel(segments)}>
-            {segments
-              .filter((s) => s.fraction > 0)
-              .map((s) => (
-                <span
-                  key={s.key}
-                  className={`stress-seg stress-seg-${s.key}`}
-                  style={{ width: `${s.fraction * 100}%`, backgroundColor: s.color, ["--seg-accent" as string]: s.casing }}
-                />
-              ))}
-          </div>
-          <p className="stress-key" aria-hidden="true">
-            {stressBarKey(segments)}
-          </p>
-        </figure>
-      )}
+      {/* The figures, chart and stress fill the screen between the title and the buttons (the owner, 2026-10-20: "The end
+          ride panel should be scaled to fill the page, not go over"); only very large system text scrolls, here. */}
+      <div className="ride-summary-body">
+        {note && <p className="hint">{note}</p>}
+        <dl className="ride-summary-figures">
+          {rows.map((row) => (
+            <div key={row.name}>
+              <dt>{row.name}</dt>
+              <dd>{row.value}</dd>
+            </div>
+          ))}
+        </dl>
+        <ElevationFigure stats={stats} />
+        {segments.length > 0 && (
+          <figure className="stress ride-summary-stress">
+            <figcaption>Traffic stress</figcaption>
+            <div className="stress-bar" role="img" aria-label={stressBarLabel(segments)}>
+              {segments
+                .filter((s) => s.fraction > 0)
+                .map((s) => (
+                  <span
+                    key={s.key}
+                    className={`stress-seg stress-seg-${s.key}`}
+                    style={{ width: `${s.fraction * 100}%`, backgroundColor: s.color, ["--seg-accent" as string]: s.casing }}
+                  />
+                ))}
+            </div>
+            <p className="stress-key" aria-hidden="true">
+              {stressBarKey(segments)}
+            </p>
+          </figure>
+        )}
+      </div>
       <div className="ride-summary-actions">
         <button ref={done} type="button" onClick={onDone}>
           Done
