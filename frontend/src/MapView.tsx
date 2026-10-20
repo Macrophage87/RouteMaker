@@ -856,13 +856,20 @@ export function MapView(props: Props) {
         const under = hoverPoint
           ? { station: stationAt(hoverPoint), line: lineAt(hoverPoint, MOUSE_HIT_PX) }
           : { station: null, line: null };
+        // A mountain-bike trail a click would open (the click's own test, below), where nothing else is the press's.
+        const trail =
+          hoverPoint !== null &&
+          !under.station &&
+          !under.line &&
+          !anyPopupOpen() &&
+          mtbTrailPressed(map, hoverPoint, MOUSE_HIT_PX, overlayLayerIds()) !== null;
         runHover(under, anyPopupOpen(), { handle: hoverShown.current, cursor: canvas.style.cursor }, {
           drawHandle: (at) => showEdit(at as LonLat | null),
           stationHover: (station, lineHint) => rail?.showHover(station, lineHint),
           setCursor: (cursor) => {
             canvas.style.cursor = cursor;
           },
-        });
+        }, trail);
       });
     });
     const onCanvasLeave = () => {
