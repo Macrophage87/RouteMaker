@@ -40,6 +40,13 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
   2026-10-16. Maryland's covered bridges per the Maryland Manual are Roddy Road, Loy's
   Station and Utica Mills in Frederick County and Jericho in Baltimore and Harford counties;
   whether OSM maps each as `bridge=covered` was not checked.
+- Also: **climb names** (v0.10.0; on the map from the next map update), made when the map is
+  built by `pipeline.climb_names`: the `name` or `ref` of the roads a climb rides; the named
+  `natural=saddle` (or `mountain_pass=yes`), `peak`, `hill`, `volcano`, `ridge` or `arete` it
+  runs up (<https://wiki.openstreetmap.org/wiki/Key:natural>,
+  <https://wiki.openstreetmap.org/wiki/Key:mountain_pass>); else the nearest named `place`
+  (<https://wiki.openstreetmap.org/wiki/Key:place>) within 3 mi (5 km). Credit: the
+  OpenStreetMap credit above.
 - Dataset: OpenStreetMap, the regional extract from Geofabrik
   (<https://download.geofabrik.de/>), rebuilt weekly (docs/OPERATIONS.md, "The weekly
   rebuild").
@@ -147,6 +154,15 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
     `332ef7bb9b1d62b27e980304636bfa13683a2699a5037e2f2433bab42341bd34`; the station and
     entrance markers. The ArcGIS item ids were not recorded; the layer paths above are
     what was queried. `frontend/src/rail-data/README.md`.
+  - **Traffic Signals** (District Department of Transportation; the layer's own name is
+    "DDOT Traffic Signals"), item `ca6ad078a6f6415389e220704b7698ac`, ArcGIS layer
+    `DCGIS_DATA/Transportation_Signs_Signals_Lights_WebMercator/MapServer/170`
+    (<https://opendata.dc.gov/datasets/traffic-signal>); licence CC BY 4.0 (the item's,
+    read 2026-10-19), item modified 2026-10-05, 1,597 signals, every `STATUS` Active.
+    Marks the junctions at a District signal OSM does not map as one (v0.10.0;
+    `pipeline.agency_signals`, docs/OPERATIONS.md "Agency traffic signals"); a record
+    with `HAWK` yes marks the crosswalk it stands at. Fetched at rebuild time; size and
+    sha256: the download's README, to be copied here.
   - **National Parks** (NPS Map A: Park Service and other government-owned land; DC
     GIS), item `14eb1c6b576940c7b876ebafb227febe`, retrieved 2026-10-03, sha256
     `d2038ab8bb43ab947c8b377e01f47fb58e4b2cd16acd6d6dfe992a66b9184310`;
@@ -203,6 +219,21 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
 - Licence: open data, no restrictions stated (PLAN.md, "Licensing").
 - Records: docs/PLAYBOOK.md, "The three reference inputs"; docs/DEVELOPMENT.md,
   "Reference data".
+- Dataset: **HMMS Traffic Signals (2023 Snapshot)** (v0.10.0), ArcGIS item
+  `0d4c36cd061f4be280691d9ff6d36419`
+  (<https://www.virginiaroads.org/datasets/0d4c36cd061f4be280691d9ff6d36419_0>), layer
+  <https://services.arcgis.com/p5v98VHDX9Atv3l7/arcgis/rest/services/HMMS_Traffic_Signals_Flat_NEW/FeatureServer/0>,
+  from VDOT's Traffic Engineering Division: "a snapshot of Traffic Signal data recorded in
+  VDOT HMMS up through October 2023" (signal records have since left HMMS, so it is not
+  updated). 3,153 records on 2026-10-19; `ASSET_SUBTYPE` Traffic Signal and Pedestrian
+  Hybrid Beacon with `STATUS` Active are read, Intersection Flashers left out. **Report
+  only** (`pipeline.agency_signals.REPORT_ONLY`): being stale, it marks nothing; the
+  rebuild's `reports/agency-signals.csv` lists each signal OSM lacks as "would add", for
+  comparison (the owner, 2026-10-19: "Since it's stale, just report it for comparison.
+  It's likely OSM is better."). Licence: the item's VDOT disclaimer
+  (sent by the owner 2026-10-19: use "at its own risk", "provided without any guarantee
+  of accuracy, timeliness or completeness"), the portal's terms as for the counts above.
+  Fetched at rebuild time; size and sha256: the download's README, to be copied here.
 
 ## Maryland traffic counts (MDOT SHA)
 
@@ -274,6 +305,22 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
 - Licence: Maryland iMAP's terms, as for the counts above: "The Data can be freely
   distributed as long as the metadata entry is not modified or deleted." The download's
   README keeps the item's metadata unedited.
+- Dataset: **MDOT SHA Traffic Signals** (v0.10.0), ArcGIS service
+  `UtilitiesCommunication/TrafficSignals_Maryland_MDOTSHA`, layer 0
+  (<https://gisportalapps.sha.maryland.gov/arcgis/rest/services/UtilitiesCommunication/TrafficSignals_Maryland_MDOTSHA/MapServer/0>),
+  owned by the MDOT SHA Office of Traffic & Safety, updated weekly (Friday evenings).
+  5,803 traffic control devices on 2026-10-19, 3,403 of them traffic control signals
+  (`TCD_Type` 1, the only ones read as signals; `OWNER_DESC` Proposed left out); county and city
+  signals included, none in Baltimore City. Marks the junctions at a Maryland signal OSM
+  does not map as one (`pipeline.agency_signals`). Its Intersection Control Beacons
+  (`TCD_Type` 2, 221) and Warning Beacons (`TCD_Type` 3, 674) are read too: a junction
+  OSM maps with a signal at one is priced with no signal
+  (`core.flashing_signals`; docs/OPERATIONS.md, "Flashing beacons"). Fetched at rebuild time; size and
+  sha256: the download's README, to be copied here.
+- Licence: Maryland iMAP's terms, as for the counts above. The layer is on SHA's own map
+  server rather than iMAP and its `licenseInfo` is empty, as the counts' is; the same
+  publisher (MDOT SHA OIT Enterprise Information Services), so the owner took it under the
+  same terms (2026-10-19).
 
 ## Open Baltimore
 
@@ -322,6 +369,16 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
     licence field is "cc0", and it is on the same portal. A cross-check of OSM's bike
     lanes (`reports/data-comparison/alexandria-bike-lanes-check.md`); nothing in the
     map is read from it.
+  - **Smart Mobility Data**, layers 9 (signalised intersections, "Single point file
+    representing intersections with signals throughout the city") and 0, which
+    serve the same 257 intersections (2026-10-20); the HAWKs are the 4 whose
+    `signal_type` is HAWK, the other 253 signals
+    (<https://geoportal.alexandriava.gov/server/rest/services/Hosted/Smart_Mobility_Data/FeatureServer>),
+    on the city's GIS portal. Marks the
+    junctions at a city signal OSM does not map as one (v0.10.0;
+    `pipeline.agency_signals`). Its item licence field is empty; the portal's CC0
+    reply above covers it. Fetched at rebuild time; size and sha256: the download's
+    README, to be copied here.
 - Records: `fixtures/datasets/README.md`.
 
 ## Montgomery County Planning
@@ -562,6 +619,35 @@ the shipped `licenses.txt`, which the map's "Software licences" link opens (384:
   `140e2bd25a7315c8a062508391426b0d8c3297400c947b8d847be28f73a199f0`.
 - Records: docs/DEVELOPMENT.md, "The sidebar (312)", "The font".
 
+## Atkinson Hyperlegible Next (the map's labels; not a map credit)
+
+A bundled asset like Atkinson Hyperlegible above, credited in the shipped `licenses.txt`.
+
+- What it is: the face every map label is set in (the owner, 2026-10-20): Regular (400) where the
+  layers name Noto Sans Regular, SemiBold (600) for Noto Sans Medium and the street names, Italic
+  (400) for Noto Sans Italic. MapLibre glyph files for the three Latin ranges, made with
+  `scripts/make_map_glyphs.mjs` from the variable fonts (Version 2.001; sha256 upright
+  `5a455d1cfa099b601ab70751bb9673e8fe1854dc4500c80e1a220d0d75e31745`, italic
+  `ce9cffed32742ad2d9238c561a93220385e5934cdc02b8eb4097a50efa957dc6`) and bundled as
+  `frontend/src/fonts/map-glyphs/atkinson-next-<face>-<range>.pbf`, served as hashed
+  `/assets/*.pbf` files (`frontend/src/lib/mapGlyphs.ts`). Code points the font lacks in those
+  ranges are filled from the base map's matching Noto Sans face (basemaps-assets, the commit
+  `scripts/fetch_basemap.sh` pins), and other ranges are the base map's.
+- Publisher: The Atkinson Hyperlegible Next Project Authors (copyright 2020-2024),
+  https://github.com/googlefonts/atkinson-hyperlegible-next
+- Licence: SIL Open Font License 1.1, the full text in `frontend/src/fonts/map-glyphs/OFL.txt`
+  (sha256 `aca6a428580965d2297d1b718042dd427c2a9443ece3b0d02d758e161e0c4030`). Glyph files, sha256:
+  - regular: 0-255 `6ed278792352ca425ac22636a42b3301b6d276302977f0293541852409f8baca`, 256-511
+    `001a52f1b8e70d07f239f88f3c08a630dcb6c481be7f40baa4b35e123656268e`, 8192-8447
+    `2b1fca09b8aa06fe3d4ba1cad2941a573b28be16e321413254e456c979e0ab3f`
+  - semibold: 0-255 `35d921ecbcf66b3dbd22d8f3b477b0439e1964aad6e02f7d0ba6db04ed35de23`, 256-511
+    `a1b1951c109b13efd912668ccfac033d23e1f9e4212cbf61f4c363cddbd6c519`, 8192-8447
+    `9c672386bad4edf1bdc08667f7afa9e2e09937cf04a39f148b035323fc10aa2f`
+  - italic: 0-255 `59c8fd80148386ba0eb39be4638da48084586872d0b6a81288f5c2cb75fbcf8c`, 256-511
+    `c800e0c0e1b4d296ab019a697f40ef3b13d6c2119e8d0db1688cabf5a420deaa`, 8192-8447
+    `1ded461996e956998dea030e91d4467aae85637c1f18b727f481903e4bff73f8`
+- Records: docs/DEVELOPMENT.md, "The map's label font".
+
 ## Helvetica character widths (the PDF cue sheets; not a map credit)
 
 Not a data source and no `Credit:` line: a table of numbers the PDF writer lays text out with.
@@ -755,8 +841,9 @@ per-foot conversions are on FLOW-CALIBRATION.md.
 ## Transit timetables (GTFS) and bike rules (TRANSIT-ASSIST)
 
 The two transit ride types, Own Bike + 🚆🚌 and Bikeshare + 🚶🚆🚌, plan from each system's
-published static GTFS timetable. The times are scheduled, not live, and every plan says "about"
-and "scheduled". Each plan names its sources under its steps, so these are plan credits and not
+published static GTFS timetable. The times are scheduled, and every plan says "about" and
+"scheduled", except a Metro or Metrobus departure WMATA predicts on a plan for now, which says
+"live" (WMATA's live data, below). Each plan names its sources under its steps, so these are plan credits and not
 map credits:
 
 - Credit: WMATA GTFS (scheduled times). Shown with a plan that uses Metro or Metrobus.
@@ -807,7 +894,12 @@ map credits:
   row holds this minute's and this second's counts only (key `wmata-budget`). Bus answers are
   kept in each worker's memory for under a minute (a stop's place, a day), never stored.
 - **Shown:** each live time says "live", each timetable time "scheduled"; with no reading the
-  timetable is shown alone. An elevator out where a rider takes their own bike is a warning
+  timetable is shown alone. On a plan for now (within 2 minutes, a reading under 3 minutes old),
+  a Metro step boards WMATA's next train its line and way that the rider reaches the station in
+  time for, and on the chosen trip a Metrobus step its next bus (v0.10.0): the wait is to that
+  train or bus and the step says "live"; the time on board stays the timetable's, since WMATA
+  predicts arrivals at the boarding station only. A step with no such prediction keeps its
+  timetable time. An elevator out where a rider takes their own bike is a warning
   ("Elevator out at X: carry your bike on the stairs."), never an avoidance; it costs the trip 2
   minutes in the ranking only. A Metrobus step adds its route's next buses its way, as a Metro
   step adds its trains: "Live: bus 52 in 4 min, 13 min." (the way: the stop's only one for the
@@ -972,7 +1064,8 @@ needs no bike access.
   agencies' real-time endpoints cannot be reached from the build environment, and their terms
   have not been checked. Planned closures that an
   agency publishes in its static timetable (`calendar_dates.txt`) are used, but unplanned track
-  work is not. Every plan says "Scheduled service; check for track work."
+  work is not, except as it shows in WMATA's predicted departures. A plan with a timetable
+  departure says "Scheduled service: check for track work and service alerts before you go."
 
 ## Street photos (Mapillary, v0.7.0)
 
@@ -994,6 +1087,23 @@ needs no bike access.
 - Code: `src/core/street_photo.py`, `frontend/src/lib/streetPhoto.ts`; fixture
   `tests/data/mapillary/`.
 
+## Known road hazards (v0.10.0: cobblestones, rails in the road)
+
+Read from OpenStreetMap (credited there): `surface=sett`, `cobblestone`,
+`cobblestone:flattened` or `unhewn_cobblestone`; `embedded_rails`; and `railway=tram`, an
+`embedded=yes` railway or a disused tram line matched onto the road it lies along
+(`src/routemaker/hazards.py`, `src/pipeline/hazard_layer.py`). A short reviewed list adds
+what OSM may miss (`fixtures/hazards/`), each entry with its source:
+
+- Georgetown's O and P Streets NW, Wisconsin Ave to 35th St, setts and streetcar tracks:
+  The Georgetowner, "O and P Streets Project to Mark Completion in a Few Weeks"
+  (<https://georgetowner.com/?p=93557>), on DDOT's O and P Streets Rehabilitation Project.
+- DC Streetcar's H Street NE and Benning Road NE rails: the line closed on 31 March 2026
+  and its rails stay in the street (<https://en.wikipedia.org/wiki/H_Street/Benning_Road_Line>).
+
+Facts only, no data copied. The route network prices a hazard road as LTS 4; its rating is
+unchanged, and the map marks it only on a route that rides it.
+
 ## Used inside the project only (no credit)
 
 These are shown nowhere: no tile, route, fixture or page carries anything read from
@@ -1001,8 +1111,48 @@ them (OWNER-DECISIONS 152, 155, 162).
 
 - Arlington County's Bike Comfort Index: internal comparison only, held outside the
   repository, while Arlington's terms are pending.
+- Arlington County's Intersection Points
+  (<https://arlgis.arlingtonva.us/arcgis/rest/services/Open_Data/od_Intersection_Points/FeatureServer/0>),
+  319 signalised intersections (2026-10-19): installable as a signal list
+  (`pipeline.agency_signals`) but not read while Arlington's terms are pending (its
+  item says only "Please review the Arlington County data disclaimer").
 - MDOT's Road Separated Bike Routes web map: check-only (its terms bar trip-planning
   use).
+
+## 311 websites (the 311 checklist; facts, no credit)
+
+The 311 checklist (frontend/src/lib/report311Log.ts JURISDICTIONS) names, for each place, the
+public website that takes reports of road problems. Each was read on 2026-10-20 from the
+jurisdiction's own page that links it:
+
+- DC: 311.dc.gov (ouc.dc.gov/page/311-about). DC's Text to 311 (32311) answered every
+  message, even a plain NEW, with only "Welcome to DC311" (a rider's test, 2026-10-20), so the
+  app no longer texts it.
+- Montgomery County: MC311 (montgomerycountymd.gov/department-transportation/request-road-repairs).
+- Prince George's County: PGC311 (princegeorgescountymd.gov, PGC311).
+- Baltimore City: Baltimore 311 (baltimorecity.gov/311services).
+- Baltimore County: baltimorecountymd.gov/report-problem (streetlights go to BGE).
+- Howard County: Tell HoCo (howardcountymd.gov/public-works/pothole-repair).
+- Anne Arundel County: aacounty.org's potholes page.
+- Frederick County: FCG FixIt (frederickcountymd.gov/8235/FCG-FixIT).
+- Carroll County: See Click Report (carrollcountymd.gov/scr; its app takes the report).
+- Harford County: You Click We Fix (harfordcountymd.gov/139/Report-a-Concern).
+- Charles County: See Click Report (charlescountymd.gov/services/e-services/see-click-report).
+- Arlington County: its Online Service Request Tool
+  (arlingtonva.us/Government/Topics/Report-Problem/Online-Service-Request-Tool).
+- Alexandria: Alex311 (alexandriava.gov/Potholes; Alex311 replaced Call.Click.Connect in 2020).
+- City of Fairfax: fairfaxva.gov's Report Road Problems (by phone).
+- Falls Church: RequestTracker (fallschurchva.gov/155/Public-Works).
+- Manassas: Report a Concern (manassasva.gov/public_works).
+- Manassas Park: its Public Works request page.
+- Fairfax, Loudoun and Prince William counties: My VDOT (my.vdot.virginia.gov), since VDOT keeps
+  their roads (fairfaxcounty.gov/transportation/roads-conditions-maintenance, loudoun.gov/3919).
+- Maryland's numbered state roads, and Calvert County, which has no online form: MDOT SHA
+  Customer Care (roads.maryland.gov, "Contact Us").
+
+Which applies to a spot: inside DC from DC's boundary (core/geodata/dc-boundary.geojson); elsewhere
+from the county or city the self-hosted Photon names for the spot (OpenStreetMap's administrative
+boundaries; core/report_log.py).
 
 ## WMATA service announcements (facts, no credit)
 

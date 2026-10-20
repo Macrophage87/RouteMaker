@@ -4,3 +4,21 @@ One file per release tag (`v0.9.1.md`), written for riders: what's new and what'
 words, a few short lines, US units first with metric in brackets. When the beta deploys a tag, the
 release agent posts that tag's file to the read-only release channel (docs/BETA-RUNBOOK.md, "Alerts").
 No server addresses, keys or riders' data.
+
+## The documentation check, every release
+
+Every release branch gets one more reviewer before it goes to `main` (the owner, 2026-10-19): a
+check that what the app does matches what the rider documentation says. The pages are
+`frontend/public/about/` (How it works, Ride types, Stress ratings, Architecture,
+Acknowledgements). The reviewer reads the release's changes and, for each one:
+
+- finds every statement in those pages it touches, such as a rating rule, a cost, a slider value,
+  a ride type, a data source, a closure rule, a control's name or where it sits, or a diagram;
+- checks the statement against the code on the release branch, not against memory or earlier notes;
+- fixes the page in the same release when it no longer matches, or flags the change if the page is
+  right and the code is wrong;
+- adds a new data source or project to Acknowledgements and to `docs/SOURCES.md`;
+- keeps the pages' footer version at the release being shipped.
+
+A mismatch blocks the merge to `main` like a failing test. The pages are static HTML with no
+build step; edit them directly and run `pytest tests/test_about_pages.py`.

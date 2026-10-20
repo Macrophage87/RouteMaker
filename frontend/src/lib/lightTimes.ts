@@ -13,7 +13,7 @@
  */
 import type { LonLat } from "./geo.ts";
 import { haversineM } from "./geo.ts";
-import { formatMilePost } from "./format.ts";
+import { formatDuration, formatMilePost } from "./format.ts";
 import type { When } from "./dials.ts";
 import { whenAt } from "./rideTime.ts";
 
@@ -276,7 +276,8 @@ const LIGHT_SHORT: Record<LightKind, string> = {
  * Ride mode's corner, in place of "Ride mode" (the owner, 2026-10-19: "put civil twilight and sunrise times
  * in that location if within an hour of those, as per the other rules"): the same rule as the route's marks
  * (lightMarks), for the ride still to go from `progressM`, leaving now. Null when there is nothing to show.
- * `shown` is a line per event ("Sunset 6:31 PM", "Twilight 6:58 PM"); `said` the whole of it in words.
+ * `shown` is a line per event, with the time till it ("Sunset 6:31 PM (12 min)", "Twilight 6:58 PM (39 min)"); `said`
+ * the whole of it in words.
  */
 export function rideLightCorner(
   model: { coordinates: readonly LonLat[]; along: Float64Array; lengthM: number },
@@ -294,9 +295,16 @@ export function rideLightCorner(
   const durationS = Math.max(1, remainingS ?? 1);
   const marks = lightMarks({ line: rest, distanceM, durationS, departMs: nowMs });
   if (marks.length === 0) return null;
-  const said = marks.map((m) => `${LIGHT_NAME[m.kind]} ${lightClock(m.at)}`);
+  // The time till each, while it is still ahead (the owner, 2026-10-20: "put minutes till in parentheses").
+  const till = (at: number) => (at - nowMs >= 30_000 ? formatDuration((at - nowMs) / 1000) : "");
+  const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+  const tillSaid = (at: number) => {
+    const minutes = Math.max(1, Math.round((at - nowMs) / 60_000));
+    return minutes < 60 ? plural(minutes, "minute") : `${plural(Math.floor(minutes / 60), "hour")} ${plural(minutes % 60, "minute")}`;
+  };
+  const said = marks.map((m) => `${LIGHT_NAME[m.kind]} ${lightClock(m.at)}${till(m.at) ? `, in ${tillSaid(m.at)}` : ""}`);
   return {
-    shown: marks.map((m) => `${LIGHT_SHORT[m.kind]} ${lightClock(m.at)}`),
+    shown: marks.map((m) => `${LIGHT_SHORT[m.kind]} ${lightClock(m.at)}${till(m.at) ? ` (${till(m.at)})` : ""}`),
     said: `${said.map((text, i) => (i === 0 ? text : text.charAt(0).toLowerCase() + text.slice(1))).join("; ")}.`,
   };
 }

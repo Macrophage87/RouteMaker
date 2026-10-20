@@ -120,7 +120,7 @@ test("Go: Metro, Repair and Sights sit behind More, with its expanded state said
 test("F13. a Repair row is named by its place and distance; its details are its description", () => {
   const sheet = readFileSync(new URL("../app/PlacesSheets.tsx", import.meta.url), "utf8");
   const repair = sheet.slice(sheet.indexOf("export function RepairSheet("), sheet.indexOf("function SightRow("));
-  assert.match(repair, /aria-label=\{`\$\{placeLetter\(i\)\}: Ride to \$\{repairTitle\(item\.place\)\}, \$\{repairHowFar\(item\)\}`\}\s*aria-describedby=\{`\$\{rowId\}-\$\{i\}`\}/);
+  assert.match(repair, /aria-label=\{`\$\{placeLetter\(i\)\}: \$\{repairTitle\(item\.place\)\}, \$\{repairHowFar\(item\)\}`\}\s*aria-describedby=\{`\$\{rowId\}-\$\{i\}`\}/);
   assert.match(repair, /<span id=\{`\$\{rowId\}-\$\{i\}`\}>\{repairDetails\(item\.place, at\)\.join\(" "\)\}<\/span>/);
   // The name no longer repeats the details.
   assert.doesNotMatch(repair, /aria-label=\{[^}]*repairDetails/);

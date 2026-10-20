@@ -348,11 +348,12 @@ test("with no stress map the switch is still there, and its description says wha
 test("the panel places the switch just before the High contrast switch, outside the overlay's block, telling it whether the map is there", () => {
   const app = appSource();
   // App.tsx is not rendered by a test: where it places the switch is read here. The sidebar's Map
-  // layers sheet has OWNER-DECISIONS 312's order: traffic stress, then high-stress lanes; High contrast is in
+  // layers sheet has OWNER-DECISIONS 312's order: traffic stress, then high-stress lanes (and v0.10.0's route
+  // hazard key); High contrast is in
   // Settings, Display (UI-CLEANUP, the approved mockup's Layers and Menu).
   assert.match(
     app,
-    /status=\{stress === "checking" \? STRESS_CHECKING : stress === "unavailable" \? STRESS_UNAVAILABLE : ""\}\s*>\s*(?:\{\/\*[\s\S]*?\*\/\}\s*)?<HighStressLanesSwitch on=\{showHighLanes\} onChange=\{\(on\) => setHighStressLanes\(on\)\} overlay=\{stress === "available"\} massMap=\{massMap\} \/>\s*<\/LayerSection>/,
+    /status=\{stress === "checking" \? STRESS_CHECKING : stress === "unavailable" \? STRESS_UNAVAILABLE : ""\}\s*>\s*(?:\{\/\*[\s\S]*?\*\/\}\s*)?<HighStressLanesSwitch on=\{showHighLanes\} onChange=\{\(on\) => setHighStressLanes\(on\)\} overlay=\{stress === "available"\} massMap=\{massMap\} \/>\s*(?:\{\/\*[\s\S]*?\*\/\}\s*<RouteHazardKey \/>\s*)?\{\/\*[\s\S]*?\*\/\}\s*<StressSectionKey /,
   );
   assert.equal((app.match(/<HighStressLanesSwitch /g) ?? []).length, 1, "drawn in one place only");
   assert.ok(FACILITIES.length === 3);
