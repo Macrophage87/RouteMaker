@@ -378,12 +378,12 @@ export const RIDER_AT = 2 / 3;
 const NO_PADDING = { top: 0, bottom: 0, left: 0, right: 0 };
 const reducedMotion = () => typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-/** The follow camera's offset from the map's middle that puts the rider RIDER_AT down the open band. */
-function riderOffset(container: HTMLElement): number {
+/** The follow camera's offset from the map's middle that puts the rider `at` down the open band. */
+function riderOffset(container: HTMLElement, at: number): number {
   const box = container.getBoundingClientRect();
   const top = (document.querySelector(".ride .cue-card")?.getBoundingClientRect().bottom ?? box.top) - box.top;
   const bottom = (document.querySelector(".ride .ride-controls")?.getBoundingClientRect().top ?? box.bottom) - box.top;
-  return Math.round(top + Math.max(0, bottom - top) * RIDER_AT - box.height / 2);
+  return Math.round(top + Math.max(0, bottom - top) * at - box.height / 2);
 }
 /** The closures in force at the ride (v0.7.0, lib/closureMap.ts). */
 const CLOSURE_SOURCE = "closures";
@@ -2245,9 +2245,10 @@ export function MapView(props: Props) {
     // A moving map once a second is too much for some: with reduced motion asked for, it jumps.
     const still = reducedMotion();
     // Track-up, the rider sits about two thirds of the way down the map, so more of the road ahead shows (the owner,
-    // 2026-10-17: "You care more about what's ahead of you than behind"); north-up, ahead is any way, so centred.
+    // 2026-10-17: "You care more about what's ahead of you than behind"); north-up, ahead is any way, so centred in the
+    // open band (with Large text the card covers half the map, 2026-10-20).
     // Padding left by the planner's framing (a junction or the chart's scrub) is cleared, so the offset is from the middle.
-    const ahead = props.headingUp ? riderOffset(map.getContainer()) : 0;
+    const ahead = riderOffset(map.getContainer(), props.headingUp ? RIDER_AT : 1 / 2);
     map.easeTo({ center: rider.point, bearing, zoom, offset: [0, ahead], padding: NO_PADDING, duration: still ? 0 : 400 });
   }, [props.rider, props.follow, props.headingUp]);
   useEffect(() => () => void riderMarker.current?.remove(), []);

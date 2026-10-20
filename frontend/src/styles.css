@@ -4268,6 +4268,51 @@ details.zoom-notes {
   margin: 0;
 }
 
+/*
+ * Large (the owner, 2026-10-20: "the text takes up half the page with big text and big arrows", for near sight and
+ * bright sun): the card about half the screen, the turn's arrow and words large and centred in it; the map stays
+ * below, the follow camera keeping the rider in the open part (MapView's riderOffset reads the card's foot).
+ */
+.ride-large .cue-card {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  min-height: 50%;
+  max-height: 60%;
+  box-sizing: border-box;
+}
+
+.ride-large .cue-card > :not(.ride-top, .ride-mode-settings, .ride-togo) {
+  flex: 1 0 auto;
+  align-content: center;
+}
+
+.ride-large .cue-next,
+.ride-large .cue-off {
+  gap: 16px;
+}
+
+.ride-large .cue-distance {
+  font-size: 2.6rem;
+}
+
+.ride-large .cue-text {
+  font-size: 1.65rem;
+}
+
+.ride-large .cue-more {
+  font-size: 1.1rem;
+}
+
+.ride-large .cue-shape {
+  width: 88px;
+  height: 100px;
+}
+
+.ride-large .ride-togo {
+  font-size: 1.05rem;
+}
+
 /* Big text: the map is hidden, and the card takes the screen. */
 .riding-big .map {
   display: none;
@@ -5590,6 +5635,24 @@ details.fold > summary .icon {
 .ride-menu-choice span {
   color: var(--text-muted);
   font-size: 0.9rem;
+}
+
+/* The text size button's dots: which of Normal, Large and Huge, filled up to the one in use. */
+.ride-text-dots {
+  display: flex;
+  gap: 3px;
+  margin-top: 1px;
+}
+
+.ride-text-dots span {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  border: 1px solid currentColor;
+}
+
+.ride-text-dots span.on {
+  background: currentColor;
 }
 
 .ride-big .ride-middle {

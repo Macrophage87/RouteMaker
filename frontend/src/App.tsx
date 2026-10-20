@@ -91,7 +91,7 @@ import { avoidNearSpot, shownRoute } from "./lib/avoidJunctions.ts";
 import { shownNear } from "./lib/junctionSuggest.ts";
 import { CHECKING_CLOSURES, CLOSURE_SLOW_MS, RIDE_ENDED_FROM_HERE_SAID, RIDE_ENDED_NO_FIX_SAID, RIDE_ENDED_SAID, RideEnded, RideMode, primeRideVoice, startRideGesture, voiceTurnedOn, type EndedPlan, type RideView } from "./RideMode.tsx";
 import { Icon } from "./Icon.tsx";
-import { readBigText, readHeadingUp, readRidePrefs, writeBigText, writeHeadingUp, writeRidePrefs, type RidePrefs } from "./lib/rideOutput.ts";
+import { readHeadingUp, readRidePrefs, readRideText, writeHeadingUp, writeRidePrefs, writeRideText, type RidePrefs, type RideTextSize } from "./lib/rideOutput.ts";
 import { activePins, chosenSaid, withStations, type NearbyStation, type Pins, type StationAction } from "./lib/stations.ts";
 import { bikeshareOf } from "./lib/bikeshare.ts";
 import { carries, hillsWords, seeksClimbs, startDials, stressMax, stressWords, trailsAreOff, type Dials } from "./lib/dials.ts";
@@ -840,12 +840,14 @@ export function App() {
     writeHeadingUp(on);
     setHeadingUpState(on);
   }, []);
-  // Big text is a setting kept on this device, not a ride button (the owner, 2026-10-17: "not something people will fiddle with mid ride").
-  const [bigText, setBigTextState] = useState(() => readBigText());
-  const setBigText = useCallback((on: boolean) => {
-    writeBigText(on);
-    setBigTextState(on);
+  // The ride's text size, kept on this device: in Settings, and on the ride's own text size button (the owner, 2026-10-20:
+  // "It actually should have it's own button. They could cycle between the 3 modes"). Huge is the old Big text.
+  const [rideText, setRideTextState] = useState<RideTextSize>(() => readRideText());
+  const setRideText = useCallback((size: RideTextSize) => {
+    writeRideText(size);
+    setRideTextState(size);
   }, []);
+  const bigText = rideText === "huge";
   const startRideRef = useRef<HTMLButtonElement>(null);
   const rideStartFirstRef = useRef<HTMLButtonElement>(null);
   // The Start ride button pressed (under the figures or in Directions): where the focus goes back to.
@@ -4245,7 +4247,7 @@ export function App() {
   const rideGroupLine = (goMode || riding) && rideGroupType && rideGroupRoute ? (rideGroupRoute.geometry.coordinates as LonLat[]) : null;
 
   return (
-    <div className={`app${riding ? " riding" : ""}${riding && bigText ? " riding-big" : ""}${goMode && !riding ? " go-mode" : ""}`}>
+    <div className={`app${riding ? " riding" : ""}${riding && bigText ? " riding-big" : ""}${riding && rideText === "large" ? " riding-large" : ""}${goMode && !riding ? " go-mode" : ""}`}>
       {/* Past the map, its markers and its controls (up to 150 junction
           markers come before the planner), to the planner (lib/skipLink.ts). */}
       {/* The page's first stop and first in a screen reader's order, hidden until focused: accessibility mode's
@@ -4550,8 +4552,8 @@ export function App() {
           onFollow={setFollow}
           headingUp={headingUp}
           onHeadingUp={setHeadingUp}
-          big={bigText}
-          onBig={setBigText}
+          textSize={rideText}
+          onTextSize={setRideText}
           onView={setRideView}
           onEnd={endRide}
           water={ensureWater}
@@ -4744,7 +4746,7 @@ export function App() {
             />
             <SettingsSheet
               {...{
-                bigText: { on: bigText, onChange: setBigText },
+                rideText: { size: rideText, onChange: setRideText },
                 // The rider and bike weight (OWNER-DECISIONS 313-318), in Settings (the owner, 2026-10-18).
                 weight: {
                   saved: weight,

@@ -10,20 +10,21 @@
  * - Two live regions of its own, polite for advance cues and assertive for "now", leaving the route
  *   and arrival; each repeats the count trick so the same sentence twice is said twice. A cue never
  *   moves the focus.
- * - Where am I? (a button, and the W key): said on demand, outside the throttle.
+ * - Where am I? (a button, and the W or C key): said on demand, outside the throttle; it re-centres the map too (the two
+ *   buttons merged, the owner, 2026-10-20).
  * - Off route: re-planned automatically after the gate (plan Q5), or "Keep the planned route", which
  *   shows the way back. A fixed route (`fixed`: a link shared as a ride, or a Mass Ride or Group Ride not shared as a route)
  *   is never re-planned on its own: everyone on it stays on the same line, and the way back is shown instead. A re-plan never touches the plan in the address bar (plan Q2): it is the ride's
  *   own route, held here and in App's ride state only.
- * - Big text (map hidden; a setting, in the ride's Settings and the Settings page), Re-centre (and the C key), heading-up (track-up by default since v0.7.0); and
+ * - The text size (the owner, 2026-10-20): Normal, Large (the card about half the screen, the map below) and Huge (the old
+ *   Big text, the map hidden), cycled by its side button (and the T key) and kept with Settings' picker; heading-up (track-up by default since v0.7.0); and
  *   Road closed ahead and End ride always in view at the top of the card (since v0.9.0; Settings is a gear in the
  *   side buttons, opening the ride's settings under that row), with Undo after End ride. End ride part way leaves the plan starting where the rider is.
  * - The map along the route, kept for dead spots (lib/corridor.ts, N5), and Report a problem to DC 311
  *   with the place in the route's street names (lib/report311.ts, N6; OWNER-DECISIONS 369, 465).
  * - The side buttons (the owner, 2026-10-17: "Remove that bottom part when routing by default. instead put
- *   these as circle icons on the side"): Where am I?, Re-centre, Detour (water or restroom), on a
- *   share bike the dock button with the time undocked (lib/rideDock.ts), 311 inside DC, and the Settings gear (Big text moved to
- *   Settings, the owner, 2026-10-17: "not something people will fiddle with mid ride"); each a round
+ *   these as circle icons on the side"): Where am I? (re-centring too), the text size, Detour (water or restroom), on a
+ *   share bike the dock button with the time undocked (lib/rideDock.ts), 311 inside DC, and the Settings gear; each a round
  *   icon with its name for screen readers, its menu opening beside it. The bottom panel shows only when it
  *   has something to say or ask: GPS and screen notes, off route, Ride the rest, the full 311 report.
  *   Answers asked for (Where am I?, a detour's progress) show for a few seconds by the buttons.
@@ -97,14 +98,18 @@ import {
 } from "./lib/navigate.ts";
 import {
   Announcer,
-  BIG_TEXT_NAME,
   OUTPUT_LABELS,
+  RIDE_TEXT_LABEL,
+  RIDE_TEXT_NAMES,
+  RIDE_TEXT_SIZES,
+  nextRideText,
   ScreenWake,
   Voice,
   toScreenReader,
   toVoice,
   type CueOutput,
   type RidePrefs,
+  type RideTextSize,
   type Said,
 } from "./lib/rideOutput.ts";
 import { WAITING_FOR_GPS, watchRide, type RideGeoEnv } from "./lib/rideWatch.ts";
@@ -507,16 +512,6 @@ export function RideSettingsFields({
   );
 }
 
-/** Big text (the cue card large, the map hidden): in Settings, not on the ride screen (the owner, 2026-10-17). */
-export function BigTextField({ on, onChange }: { on: boolean; onChange: (on: boolean) => void }) {
-  return (
-    <label className="toggle ride-toggle big-text-setting">
-      <input type="checkbox" checked={on} onChange={(event) => onChange(event.target.checked)} />
-      {BIG_TEXT_NAME}
-    </label>
-  );
-}
-
 /** How long the copy reply waits after clearing, so a second press is a change a screen reader says. */
 const COPY_REPLY_DELAY_MS = 150;
 
@@ -652,8 +647,8 @@ export function RideMode({
   onFollow,
   headingUp,
   onHeadingUp,
-  big,
-  onBig,
+  textSize,
+  onTextSize,
   onView,
   onEnd,
   water,
@@ -676,8 +671,9 @@ export function RideMode({
   onFollow: (on: boolean) => void;
   headingUp: boolean;
   onHeadingUp: (on: boolean) => void;
-  big: boolean;
-  onBig: (on: boolean) => void;
+  /** Normal, Large (the card about half the screen) or Huge (the old Big text: the map hidden); kept by App, also in Settings. */
+  textSize: RideTextSize;
+  onTextSize: (size: RideTextSize) => void;
   /** The ride's route and the rider's position, for the map. */
   onView: (view: RideView) => void;
   /** End ride: with the plan the ride leaves (part way, from here; lib/navigate.ts planAfterEnd). */
@@ -778,6 +774,7 @@ export function RideMode({
   const cueSheetId = useId();
   const headingRef = useRef<HTMLHeadingElement>(null);
   const whereRef = useRef<HTMLButtonElement>(null);
+  const big = textSize === "huge";
   const sectionRef = useRef<HTMLElement>(null);
   // Ended (End ride, or unmounted): a re-plan answering late says nothing and changes nothing.
   const ended = useRef(false);
@@ -1445,6 +1442,22 @@ export function RideMode({
     announcer.current?.answer(spoken);
     if (prefsRef.current.output === "neither") setPolite((s) => ({ text: spoken, count: s.count + 1 }));
   }, [approach, showToast]);
+  // Where am I? and Re-centre are one button (the owner, 2026-10-20: "We can merge the where am I and the center on map
+  // button functionality"): the map follows the rider again, and the answer is said and shown.
+  const findMe = useCallback(() => {
+    onFollow(true);
+    askWhere();
+  }, [askWhere, onFollow]);
+  // The text size button (the owner, 2026-10-20): Normal, Large, Huge and back, the same choice as Settings'. The new
+  // size is said as an answer, as Where am I? is, since a focused button's new name is not always read out.
+  const cycleText = useCallback(() => {
+    const next = nextRideText(textSize);
+    onTextSize(next);
+    const said = `Text size: ${RIDE_TEXT_NAMES[next]}`;
+    showToast(said);
+    announcer.current?.answer(said);
+    if (prefsRef.current.output === "neither") setPolite((s) => ({ text: said, count: s.count + 1 }));
+  }, [onTextSize, showToast, textSize]);
   // Ride the rest (lib/rideTrip.ts): offered near or past the stop where the transit ends, said once as it
   // shows; the press is answered as Re-plan from here's is, and a new ride replaces this one.
   const rest = trip?.rest ?? null;
@@ -1660,7 +1673,7 @@ export function RideMode({
     }
   };
 
-  // Keys while the focus is in Ride mode (outside a text field): W where am I, C re-centre. Only there
+  // Keys while the focus is in Ride mode (outside a text field): W or C where am I (and re-centre), T the text size. Only there
   // (WCAG 2.1.4), so speech input or a stray key elsewhere on the page fires neither.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -1670,17 +1683,17 @@ export function RideMode({
       // End ride's slide is a range: W and C still work there, as they did on its button.
       const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName) && (target as HTMLInputElement).type !== "range";
       if (target.isContentEditable || typing) return;
-      if (event.key === "w" || event.key === "W") {
+      if (event.key === "w" || event.key === "W" || event.key === "c" || event.key === "C") {
         event.preventDefault();
-        askWhere();
-      } else if ((event.key === "c" || event.key === "C") && !big) {
+        findMe();
+      } else if (event.key === "t" || event.key === "T") {
         event.preventDefault();
-        onFollow(true);
+        cycleText();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [askWhere, onFollow, big]);
+  }, [findMe, cycleText]);
 
   const progress = ride.progressM;
   const cue = progress === null ? null : nextAction(model, progress);
@@ -1759,7 +1772,7 @@ export function RideMode({
   }, [ride.off, show311]);
 
   return (
-    <section ref={sectionRef} className={`ride ${big ? "ride-big" : ""}`} aria-labelledby="ride-heading">
+    <section ref={sectionRef} className={`ride${big ? " ride-big" : textSize === "large" ? " ride-large" : ""}`} aria-labelledby="ride-heading">
       <LiveRegion said={polite} urgent={false} />
       <LiveRegion said={assertive} urgent />
       <div className="cue-card">
@@ -1829,7 +1842,6 @@ export function RideMode({
             <input type="checkbox" checked={headingUp} onChange={(event) => onHeadingUp(event.target.checked)} />
             Turn the map to my heading
           </label>
-          <BigTextField on={big} onChange={onBig} />
         </div>
         {ride.arrived ? (
           <>
@@ -1936,19 +1948,33 @@ export function RideMode({
           </div>
         )}
         <div className="ride-rail" role="group" aria-label="Ride buttons">
-          <button type="button" ref={whereRef} className="ride-round" onClick={askWhere} aria-keyshortcuts="W" aria-label="Where am I?" title="Where am I?">
-            <Icon name="pin" size={24} />
-          </button>
+          {/* Where am I? with Re-centre in it (the owner, 2026-10-20): highlighted when the map stopped following. */}
           <button
             type="button"
-            className={`ride-round${follow ? "" : " ride-round-alert"}`}
-            onClick={() => onFollow(true)}
-            aria-keyshortcuts="C"
-            aria-label={follow ? "Re-centre" : "Re-centre: the map stopped following you"}
-            title="Re-centre"
-            hidden={big}
+            ref={whereRef}
+            className={`ride-round${follow || big ? "" : " ride-round-alert"}`}
+            onClick={findMe}
+            aria-keyshortcuts="W C"
+            aria-label={follow || big ? "Where am I?" : "Where am I? The map stopped following you"}
+            title="Where am I?"
           >
             <Icon name="locate" size={24} />
+          </button>
+          {/* The text size, Normal, Large, Huge and back (the owner, 2026-10-20); the dots show which of the three. */}
+          <button
+            type="button"
+            className="ride-round ride-text-size"
+            onClick={cycleText}
+            aria-keyshortcuts="T"
+            aria-label={`${RIDE_TEXT_LABEL}: ${RIDE_TEXT_NAMES[textSize]}`}
+            title={`${RIDE_TEXT_LABEL}: ${RIDE_TEXT_NAMES[textSize]}`}
+          >
+            <Icon name="textsize" size={24} />
+            <span className="ride-text-dots" aria-hidden="true">
+              {RIDE_TEXT_SIZES.map((size, i) => (
+                <span key={size} className={i <= RIDE_TEXT_SIZES.indexOf(textSize) ? "on" : undefined} />
+              ))}
+            </span>
           </button>
           {water && (
             <div

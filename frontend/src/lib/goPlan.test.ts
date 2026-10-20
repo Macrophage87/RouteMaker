@@ -299,13 +299,19 @@ test("the 311 button shows only on the route inside DC; its menu has the six pro
   assert.match(css, /\.ride-rail \{\s*position: absolute;\s*right: 12px;/);
 });
 
-test("Big text is a setting, in the ride's Settings and the Settings page, not a side button", () => {
-  // The owner, 2026-10-17: "the text size should be moved to the settings page ... not something people will fiddle with mid ride".
-  assert.doesNotMatch(ride, /className="ride-round big-text"/);
-  assert.match(ride, /Turn the map to my heading\s*<\/label>\s*<BigTextField on=\{big\} onChange=\{onBig\} \/>/);
+test("The ride's text size: a side button cycling three sizes, kept with Settings' picker (the owner, 2026-10-20)", () => {
+  // "It actually should have it's own button. They could cycle between the 3 modes."
+  assert.match(ride, /className="ride-round ride-text-size"\s+onClick=\{cycleText\}\s+aria-keyshortcuts="T"\s+aria-label=\{`\$\{RIDE_TEXT_LABEL\}: \$\{RIDE_TEXT_NAMES\[textSize\]\}`\}/);
+  assert.match(ride, /const next = nextRideText\(textSize\);\s*onTextSize\(next\);/);
+  // The new size is said, as Where am I? is.
+  assert.match(ride, /announcer\.current\?\.answer\(said\);/);
+  // The ride's own settings no longer carry a second copy of it.
+  assert.doesNotMatch(ride, /BigTextField/);
   const sheets = src("../app/Sheets.tsx");
-  assert.match(sheets, /<SettingRow infoId="settings-big-text-info" about="big text" info=\{BIG_TEXT_HELP\}/);
-  assert.match(sheets, /role="switch"[^>]*aria-checked=\{props\.bigText\.on\}[^>]*onClick=\{\(\) => props\.bigText\.onChange\(!props\.bigText\.on\)\}/s);
+  assert.match(sheets, /<SettingRow infoId="settings-big-text-info" about="ride text size" info=\{RIDE_TEXT_HELP\}/);
+  assert.match(sheets, /<SettingSelect\s+label=\{RIDE_TEXT_LABEL\}\s+value=\{props\.rideText\.size\}/);
+  const css = src("../styles.css");
+  assert.match(css, /\.ride-large \.cue-card \{[^}]*min-height: 50%;/);
 });
 
 // ---- Go's start: the rider's current location by default (the owner, 2026-10-11 19:53 UTC) ----

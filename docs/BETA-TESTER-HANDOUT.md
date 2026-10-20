@@ -154,7 +154,7 @@ You stay responsible for riding safely; the route can be wrong.
   it), Stoker (each turn once ahead and as it happens, busy crossings and stops: for the rider
   behind on a tandem) or Quiet (only arrival). Both choices stay on this device; change them in
   "Ride settings" during a ride, or in Settings.
-- "Where am I?" says the street you are on, the next turn and the distance to the next stop
+- "Where am I?" (it also re-centres the map on you) says the street you are on, the next turn and the distance to the next stop
   and the end. On a long trail away from roads it says the trail and a distance from its last
   junction, for example "On the Capital Crescent Trail, about 1.2 miles northwest of ...".
 - End ride is a slide: slide it to the right to end the ride, so a bump doesn't end it. Once you
@@ -184,7 +184,7 @@ You stay responsible for riding safely; the route can be wrong.
 - Keep the screen on. If the browser cannot keep it on, Ride mode says so; on an iPhone set
   Settings, Display and Brightness, Auto-Lock to Never for the ride. In the background for more
   than 10 minutes, the ride pauses; press Resume.
-- "Big text during a ride" (in Settings, and in the ride's own Settings) hides the map and shows the next cue large. Ending the ride goes back to the planner.
+- The text size button on the ride's side (the "Aa") cycles Normal, Large and Huge. Large shows the next turn on about half the screen with the map below, for bright sun; Huge hides the map and shows the cue very large. "Ride text size" in Settings is the same choice. Ending the ride goes back to the planner.
 
 
 10. Installing RouteMaker, and routes for places with no signal

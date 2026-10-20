@@ -27,7 +27,7 @@ import { LayerSection } from "../lib/layerSection.ts";
 import { AccessibilitySwitch } from "../lib/accessibilitySwitch.ts";
 import { ACCESS_HELP, ACCESS_LABEL } from "../lib/accessMode.ts";
 import { RideSettingsFields } from "../RideMode.tsx";
-import { BIG_TEXT_HELP, BIG_TEXT_LABEL } from "../lib/rideOutput.ts";
+import { RIDE_TEXT_HELP, RIDE_TEXT_LABEL, RIDE_TEXT_NAMES, RIDE_TEXT_SIZES, type RideTextSize } from "../lib/rideOutput.ts";
 import type { RidePrefs } from "../lib/rideOutput.ts";
 import type { RailVisibility } from "../lib/railStations.ts";
 import { RailStationsSection } from "../RailStations.tsx";
@@ -379,8 +379,8 @@ export interface SettingsSheetProps {
   settingsHeadingRef: RefObject<HTMLHeadingElement | null>;
   ridePrefs: RidePrefs;
   changeRidePrefs: (next: RidePrefs) => void;
-  /** Big text in a ride: a setting here, not a ride button (the owner, 2026-10-17). */
-  bigText: { on: boolean; onChange: (on: boolean) => void };
+  /** The ride's text size: here, and on the ride's own button (the owner, 2026-10-20), the one kept choice. */
+  rideText: { size: RideTextSize; onChange: (size: RideTextSize) => void };
   /** The rider and bike weight: its line and Change, never the number (lib/weightDialog.ts). */
   weight: { saved: StoredWeight | null; split: Split; onSave: (weight: StoredWeight) => void; onClear: () => void };
   announce: (text: string) => void;
@@ -456,24 +456,15 @@ export function SettingsSheet(props: SettingsSheetProps) {
       <section aria-labelledby="settings-ride-heading" className="settings-group">
         <h3 id="settings-ride-heading">Riding</h3>
         <RideSettingsFields prefs={ridePrefs} onChange={changeRidePrefs} idBase="settings-ride" compact />
-        {/* Big text: a setting here, not a ride button (the owner, 2026-10-17: "not something people will fiddle with mid ride"). */}
-        <SettingRow infoId="settings-big-text-info" about="big text" info={BIG_TEXT_HELP} className="big-text-row">
-          <button
-            type="button"
-            role="switch"
-            className="switch"
-            aria-checked={props.bigText.on}
-            aria-labelledby="settings-big-text-label"
-            aria-describedby="settings-big-text-info"
-            onClick={() => props.bigText.onChange(!props.bigText.on)}
-          >
-            <span id="settings-big-text-label" className="switch-label">
-              {BIG_TEXT_LABEL}
-            </span>
-            <span className="switch-state" aria-hidden="true">
-              {props.bigText.on ? "On" : "Off"}
-            </span>
-          </button>
+        {/* The ride's text size (Huge was Big text): here, and on the ride's own button, which cycles the same choice. */}
+        <SettingRow infoId="settings-big-text-info" about="ride text size" info={RIDE_TEXT_HELP} className="big-text-row">
+          <SettingSelect
+            label={RIDE_TEXT_LABEL}
+            value={props.rideText.size}
+            options={RIDE_TEXT_SIZES.map((size) => [size, RIDE_TEXT_NAMES[size]] as const)}
+            onChange={props.rideText.onChange}
+            describedBy="settings-big-text-info"
+          />
         </SettingRow>
         {/* Rider and bike weight, for how hard hills feel (the owner, 2026-10-18: "probably belongs in settings"); set once, so last. */}
         <div className="setting-row weight-row">
