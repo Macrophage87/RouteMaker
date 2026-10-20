@@ -99,6 +99,7 @@ import { bikeshareOf } from "./lib/bikeshare.ts";
 import { carries, hillsWords, seeksClimbs, startDials, stressMax, stressWords, trailsAreOff, type Dials } from "./lib/dials.ts";
 import { WeightStore, defaultSplit, withWeight, type StoredWeight } from "./lib/weight.ts";
 import { stationEdit, stationMoves, stationPlaceLabel, stationPlaceName, type RailVisibility, type Station, type StationRole } from "./lib/railStations.ts";
+import { lonLatKey, quickerWayIn, wayInChecks, wayInPlaces, wayInSaid } from "./lib/stationWayIn.ts";
 import { RAIL_STATIONS, WMATA_SLUGS, stationEntranceForPlace } from "./lib/railData.ts";
 import { federalShown, type FederalData } from "./lib/federalLand.ts";
 import { FEDERAL_POINTS_NONE, type FederalStatus } from "./lib/federalLegend.ts";
@@ -1719,10 +1720,39 @@ export function App() {
     [commit, announce, loopVias],
   );
 
+  // A point at a station's way in moves to the one quickest to ride to (lib/stationWayIn.ts; Stephen 2026-10-20 at
+  // Shady Grove: "Somehow it missed one of the metro entrances"): asked once for each point and where its leg comes
+  // from, with a bike only, never during a ride; a move is an edit of its own, said, so Undo puts the point back.
+  const wayInAsked = useRef(new Set<string>());
+  const wayInKept = useRef(new Set<string>());
+  useEffect(() => {
+    if (riding || endsOnFoot(preset)) return;
+    for (const check of wayInChecks(points, RAIL_STATIONS)) {
+      const point = points[check.index];
+      const key = `${lonLatKey(point)}|${lonLatKey(check.from)}|${preset}`;
+      if (wayInKept.current.has(lonLatKey(point)) || wayInAsked.current.has(key)) continue;
+      wayInAsked.current.add(key);
+      void requestNearest(check.from, wayInPlaces(check), preset, dials).then((result) => {
+        const to = quickerWayIn(point, check, result);
+        const current = pointsRef.current;
+        if (!to || ridingNow.current || current[check.index] !== point || rideRef.current.preset !== preset) return;
+        const moved = [...current];
+        moved[check.index] = VIA_MARKS.moved(point, [to[0], to[1]]);
+        const pointName = namePoints(current, VIA_MARKS.isVia, loopVias)[check.index]?.name ?? "A point";
+        namer.remember(moved[check.index], stationPlaceName(check.station), stationPlaceLabel(check.station, check.kind));
+        commit(moved);
+        announce(wayInSaid(pointName, stationPlaceName(check.station), check.kind));
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- asked again on a change of the points, ride type or ride only
+  }, [points, preset, riding]);
+
   // A station's Start here / End here / Add as stop (railStations.ts): an
   // edit of the points like any other, so it can be undone and redone. In Go with no route yet, End here rides
   // there from Go's start (goTo, said as a pressed destination is: "Destination set").
-  const placeStation = useCallback((role: StationRole, point: LonLat, place: { name: string; label: string }) => {
+  const placeStation = useCallback((role: StationRole, point: LonLat, place: { name: string; label: string; tapped?: boolean }) => {
+    // An elevator tapped on the map is the rider's choice: never moved to a quicker way in (lib/stationWayIn.ts).
+    if (place.tapped) wayInKept.current.add(lonLatKey(point));
     if (!insideCoverage(point)) {
       setNotice("That station is outside the area this map covers.");
       return;
