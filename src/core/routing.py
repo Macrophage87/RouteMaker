@@ -534,7 +534,10 @@ def _fork_of(before: dict | None, edge: dict) -> str | None:
         for other in (before.get("end_node") or {}).get("intersecting_edges") or []
     ]
     return describe.fork_movement(
-        _heading(before.get("end_heading")), _heading(edge.get("begin_heading")), others
+        _heading(before.get("end_heading")),
+        _heading(edge.get("begin_heading")),
+        others,
+        trail=edge.get("use") in describe.TRAIL_USES,
     )
 
 

@@ -121,8 +121,10 @@ FORK_CLEAR_DEG = 20.0
 # Where the route's own way bends off too, a choice up to FORK_CLEAR_DEG beyond it, as far
 # as FORK_WIDE_MAX_DEG, is as much the way on: a Y whose two branches each lean 60 degrees
 # (the owner, 2026-10-20, on Rock Creek Trail by Norbeck Road: "It missed a trail fork").
-# A sidewalk is not such a choice (one meets a path at most road junctions).
+# Only on a trail, and only for another trail-like way: a street that curves at a side
+# street, or a sidepath at a footway, is no question.
 FORK_WIDE_MAX_DEG = 90.0
+TRAIL_USES = frozenset({"cycleway", "footway", "path", "mountain_bike", "bridleway", "track"})
 # A turn this sharp, read from Valhalla's headings (each over the edge's first or last 30 m
 # or so), may have come out the wrong side of straight back: the side is read from the
 # route's own line at the node (`turn_between`; the owner, 2026-10-20, on a ramp up to a
@@ -803,8 +805,11 @@ def turn_between(before: Atom | None, after: Atom | None) -> float | None:
         return None
     turn = _turn_deg(a, b)
     if abs(turn) >= HAIRPIN_DEG and before.bearing is not None and after.bearing is not None:
+        # The bearings run on unbroken along the trace, so their difference is how the
+        # route turned between the two pieces; never a turn past 360 - HAIRPIN_DEG.
         line = after.bearing - before.bearing
-        turn = min((turn, turn - 360.0, turn + 360.0), key=lambda t: abs(t - line))
+        sides = [t for t in (turn, turn - 360.0, turn + 360.0) if abs(t) <= 360.0 - HAIRPIN_DEG]
+        turn = min(sides, key=lambda t: abs(t - line))
     return turn
 
 
@@ -827,6 +832,7 @@ def fork_movement(
     heading_in: float | None,
     heading_out: float | None,
     others: list[tuple[float | None, str | None, str | None]],
+    trail: bool = False,
 ) -> str | None:
     """The movement to say where the route leaves a node that is a fork, else None.
 
@@ -836,9 +842,10 @@ def fork_movement(
     the router did not say). A way a bicycle may not ride away on, or one of
     FORK_IGNORED_USES, is not a choice. The node is a fork where a choice lies
     within FORK_AHEAD_DEG of straight ahead and the route's own way is not nearer
-    straight by FORK_CLEAR_DEG; where the route's way bends off itself, a choice
-    within FORK_CLEAR_DEG beyond it (to FORK_WIDE_MAX_DEG, not a sidewalk) is a fork
-    too (a Y of two leaning branches); where the route's way is itself within
+    straight by FORK_CLEAR_DEG; on a trail (`trail`: the route's way is one of
+    TRAIL_USES) whose way bends off itself, another trail-like way within
+    FORK_CLEAR_DEG beyond it (to FORK_WIDE_MAX_DEG) is a fork too (a Y of two leaning
+    branches); where the route's way is itself within
     SLIGHT_MIN_DEG of straight, only a choice straighter still makes a fork (a spur
     a little off a trail carried straight on is no question). A way whose
     cyclability the router did not give (an older router) is taken as a choice.
@@ -855,11 +862,11 @@ def fork_movement(
         and use not in FORK_IGNORED_USES
         and cyclability not in ("none", "backward")
     ]
-    wide = min(abs(ours) + FORK_CLEAR_DEG, FORK_WIDE_MAX_DEG)
+    wide = min(abs(ours) + FORK_CLEAR_DEG, FORK_WIDE_MAX_DEG) if trail else FORK_AHEAD_DEG
     ahead = [
         d
         for d, use in choices
-        if abs(d) <= FORK_AHEAD_DEG or (abs(d) <= wide and use not in SHAPE_IGNORED_USES)
+        if abs(d) <= FORK_AHEAD_DEG or (abs(d) <= wide and use in TRAIL_USES)
     ]
     if not ahead:
         return None
@@ -1260,12 +1267,18 @@ def _crossing(
     if into.movement not in TURN_WORDS or out.movement not in TURN_WORDS:
         return None
     start, end = starts[i], starts[i] + run.metres
-    for event in events:
-        if event.kind in CROSS_KINDS and start - CROSS_NEAR_M <= event.m <= end + CROSS_NEAR_M:
-            name = _event_name(event)
-            if name and name.lower() in runs[i - 1].names:
-                continue
-            return name or CROSS_UNNAMED
+    ways = runs[i - 1].names | runs[i + 1].names
+    near = [
+        event
+        for event in events
+        if event.kind in CROSS_KINDS
+        and start - CROSS_NEAR_M <= event.m <= end + CROSS_NEAR_M
+        and (_event_name(event) or "").lower() not in ways
+    ]
+    if near:
+        middle = (start + end) / 2
+        name = _event_name(min(near, key=lambda event: abs(event.m - middle)))
+        return name or CROSS_UNNAMED
     if crosswalk:
         return CROSS_UNNAMED
     return None
@@ -1409,8 +1422,9 @@ def describe_both(
             )
             # A hairpin read on the line's side (`turn_between`) is drawn as the plain
             # arrow: the diagram's headings would show it the other way.
-            if shape is not None and movement in ("left", "right", "bear_left", "bear_right"):
-                if (shape["out"] > 0) != movement.endswith("right"):
+            hairpin = turn_between(before.last, run.first)
+            if shape is not None and hairpin is not None and abs(hairpin) >= HAIRPIN_DEG:
+                if (shape["out"] > 0) != (movement or "").endswith("right"):
                     shape = None
         circle = exits.get(id(run.first)) if run.first is not None else None
         exit = None

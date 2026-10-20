@@ -1603,9 +1603,27 @@ test("crossing: a short path across a road between two turns is said as the cros
   assert.equal(first.cross, "Redland Road");
   assert.equal(first.junction, undefined);
   assert.equal(first.text, "Cross Redland Road, then left onto Redland Road bike lane.");
-  assert.equal(cueSpoken(first, "now", 0), "Cross now, then left onto Redland Road bike lane.");
+  assert.equal(cueSpoken(first, "now", 0), "Cross Redland Road now, then left onto Redland Road bike lane.");
   assert.equal(cueSpoken(first, "advance", 152.4), `In ${spokenDistance(152.4)}, cross Redland Road, then left onto Redland Road bike lane.`);
   assert.ok(second.joined && second.movement === "left");
   // On its own, the crossing says the road at "now".
   assert.equal(cueSpoken({ ...first, then: undefined }, "now", 0), "Cross Redland Road now.");
+});
+
+test("crossing: a turn just before a crossing is not joined to it; the crossing keeps its own cue with the turn after", () => {
+  const model = rideModel(
+    straightRoute([
+      stretch(0, 900, "A Street.", { street: "A Street" }),
+      stretch(900, 960, "Left onto Needwood Road bike lane.", { street: "Needwood Road bike lane", turn: turning("left", "Needwood Road bike lane") }),
+      stretch(960, 985, "Cross Redland Road.", {
+        street: "Needwood Road bike lane",
+        turn: { ...turning("bear_right", "Needwood Road bike lane"), stay: true, cross: "Redland Road" },
+      }),
+      stretch(985, 2200, "Left onto Redland Road bike lane.", { street: "Redland Road bike lane", turn: turning("left", "Redland Road bike lane") }),
+    ]),
+  );
+  const [left, crossing] = model.cues;
+  assert.equal(left.text, "Left onto Needwood Road bike lane.");
+  assert.equal(crossing.text, "Cross Redland Road, then left onto Redland Road bike lane.");
+  assert.ok(!crossing.joined);
 });

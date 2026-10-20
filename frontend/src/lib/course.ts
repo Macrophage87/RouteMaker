@@ -29,7 +29,7 @@ import { COPYRIGHT_AUTHOR, CREATOR } from "./gpx.ts";
 import { elevationsAlong, exportFileName, exportName } from "./gpxText.ts";
 import { writeFit } from "./fit.ts";
 import { writeTcx } from "./tcx.ts";
-import { rideModel, turnWords, type Cue } from "./navigate.ts";
+import { CROSS_UNNAMED, rideModel, turnWords, type Cue } from "./navigate.ts";
 import { presetSaid } from "./presets.ts";
 
 export type CourseFormat = "fit" | "tcx";
@@ -157,7 +157,7 @@ function fromRide(cue: Cue): { type: CourseCueType; name: string; priority: numb
       // A re-route's U-turn (Ride only): a left, by its name.
       if (cue.movement === "uturn") return { type: "left", name: "U-turn", priority: 4 };
       // A crossing between two turns (navigate.crossWords): a note by the road's name; the turn after it is the device's turn.
-      if (cue.cross) return { type: "note", name: named(cue.cross) && cue.cross !== "the road" ? abbreviateStreet(cue.cross) : "Cross", priority: 3 };
+      if (cue.cross) return { type: "note", name: named(cue.cross) && cue.cross !== CROSS_UNNAMED ? abbreviateStreet(cue.cross) : "Cross", priority: 3 };
       const turn = TURN_TYPES[cue.movement ?? "right"];
       return { type: turn, name: street ? abbreviateStreet(street) : TURN_NAMES[turn], priority: street ? 4 : 3 };
     }

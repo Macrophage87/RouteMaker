@@ -1924,6 +1924,16 @@ class TestHairpins:
         assert entries[1]["turn"]["movement"] == "right"
         assert "Right onto Rock Creek Trl," in entries[1]["text"]
 
+    def test_never_a_turn_of_more_than_240(self):
+        before = d.Atom(10, "1", "none", heading_out=0, bearing=0)
+        # Headings -125, a line of +300: +235 is the most it may read.
+        assert d.turn_between(
+            before, d.Atom(10, "1", "none", heading_in=235, bearing=300)
+        ) == pytest.approx(235)
+        assert d.turn_between(
+            before, d.Atom(10, "1", "none", heading_in=125, bearing=300)
+        ) == pytest.approx(125)
+
     def test_a_hairpin_left_stays_a_left(self):
         entries = self.hairpin(-90.0)
         assert entries[1]["turn"]["movement"] == "left"
@@ -1993,21 +2003,28 @@ class TestLeaningForks:
     fork". A Y whose branches each lean well off straight is still a fork."""
 
     def test_a_y_of_two_leaning_branches_is_a_fork(self):
-        assert d.fork_movement(0, 300, [(60, "path", "both")]) == "bear_left"
-        assert d.fork_movement(0, 60, [(300, "cycleway", "both")]) == "bear_right"
+        assert d.fork_movement(0, 300, [(60, "path", "both")], trail=True) == "bear_left"
+        assert d.fork_movement(0, 60, [(300, "cycleway", "both")], trail=True) == "bear_right"
 
     def test_a_branch_well_past_the_routes_own_bend_is_none(self):
         # The route bends 30 left, a branch 70 right: the route is plainly the way on.
-        assert d.fork_movement(0, 330, [(70, "path", "both")]) is None
+        assert d.fork_movement(0, 330, [(70, "path", "both")], trail=True) is None
 
     def test_a_t_on_a_trail_is_a_turn_to_stay_on_it(self):
-        assert d.fork_movement(0, 270, [(90, "path", "both")]) == "left"
+        assert d.fork_movement(0, 270, [(90, "path", "both")], trail=True) == "left"
 
-    def test_a_sidewalk_is_no_leaning_choice(self):
-        assert d.fork_movement(0, 300, [(60, "sidewalk", "both")]) is None
+    def test_a_sidewalk_or_a_road_is_no_leaning_choice(self):
+        assert d.fork_movement(0, 300, [(60, "sidewalk", "both")], trail=True) is None
+        assert d.fork_movement(0, 300, [(60, "road", "both")], trail=True) is None
+
+    def test_off_a_trail_a_leaning_branch_is_no_fork(self):
+        # A street curving 50 right with a side street 65 left: no question.
+        assert d.fork_movement(0, 50, [(295, "road", "both")]) is None
+        # A sidepath bending at a footway.
+        assert d.fork_movement(0, 300, [(60, "footway", "both")]) is None
 
     def test_a_branch_behind_is_never_a_choice(self):
-        assert d.fork_movement(0, 240, [(100, "path", "both")]) is None
+        assert d.fork_movement(0, 240, [(100, "path", "both")], trail=True) is None
 
 
 class TestCrossings:
@@ -2052,6 +2069,19 @@ class TestCrossings:
         crossing = event(420, "straight", kind="crossing", names=("redland road",), flagged=False)
         entries = self.needwood([crossing], middle_m=200)
         assert "cross" not in entries[1]["turn"]
+
+    def test_a_left_across_a_road_is_a_crossing_and_the_nearest_event_names_it(self):
+        far = event(395, "left", kind="left_across", names=("muncaster mill road",), flagged=False)
+        near = event(412, "left", kind="left_across", names=("redland road",), flagged=False)
+        assert self.needwood([far, near])[1]["turn"]["cross"] == "Redland Road"
+
+    def test_an_unnamed_road_crossed_is_the_road(self):
+        crossing = event(410, "straight", kind="crossing", names=(), flagged=False)
+        assert self.needwood([crossing])[1]["turn"]["cross"] == "the road"
+
+    def test_the_road_turned_onto_is_not_the_one_crossed(self):
+        onto = event(424, "left", kind="crossing", names=("redland road bike lane",), flagged=False)
+        assert "cross" not in self.needwood([onto])[1]["turn"]
 
     def test_the_road_the_route_was_on_is_not_the_one_crossed(self):
         crossing = event(
