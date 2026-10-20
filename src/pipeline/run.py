@@ -51,6 +51,7 @@ from routemaker import (
     mtbmode,
     pavement,
     ridetime,
+    sidewalks,
     singletrack,
     speed_corrections,
     surfaces,
@@ -60,6 +61,7 @@ from routemaker import (
 from routemaker.geo import Point
 from routemaker.shape import sinuosity
 from routemaker.stress import (
+    Stress,
     classify,
     inferred_unpaved,
     is_rough,
@@ -852,9 +854,9 @@ class RebuildContext:
     # mountain-bike mode would ride.
     no_bicycle: dict[int, str] = field(default_factory=dict)
     walk_bike: set[int] = field(default_factory=set)
-    # Footways opened as walk-your-bike links where a bike way stops at a sidewalk
-    # (`routemaker.walk_links`), all of them in `walk_bike` too.
-    walk_links: set[int] = field(default_factory=set)
+    # Sidewalks, crosswalks and short footway links ridden as a last resort
+    # (`routemaker.sidewalks`), rated `sidewalks.TIER`.
+    sidewalk_rides: set[int] = field(default_factory=set)
     destination_only: set[int] = field(default_factory=set)
     mtb_only: set[int] = field(default_factory=set)
     # Ways classified at a curated speed limit (`routemaker.speed_corrections`).
@@ -3023,9 +3025,17 @@ def build_handlers(
             "agency-prohibited",
         )
         # After the agency prohibitions, so a link never leads onto a road they close.
-        trail_closures.add_walk_links(nobike, context.ways)
+        trail_closures.add_sidewalk_rides(nobike, context.ways)
         context.walk_bike = nobike.walk_bike
-        context.walk_links = nobike.walk_links
+        context.sidewalk_rides = nobike.sidewalk_rides
+        # A ridden sidewalk is rated as the graph prices it (`sidewalks.TIER`), never
+        # lower than a curated rating already says.
+        for way_id in nobike.sidewalk_rides:
+            current = context.stress_by_way.get(way_id)
+            if current is not None and int(current.tier) < sidewalks.TIER:
+                context.stress_by_way[way_id] = replace(
+                    current, tier=Stress(sidewalks.TIER), half=False, rule=sidewalks.RULE
+                )
         context.destination_only = nobike.destination_only
         context.mtb_only = nobike.mtb_only()
         context.cbd_sidewalks = {w for w, r in nobike.reasons.items() if r == cbd.NO_BICYCLE}
@@ -3066,8 +3076,8 @@ def build_handlers(
             "facility classes: %s; %d ways car-free at set times, %d car-free for good "
             "(tier 1), %d beside a road that maps its facility separately, %d CBD sidewalks "
             "barred to bicycles, %d singletrack ways avoided; no-bicycle reasons %s, %d "
-            "walk-your-bike connectors kept (%d of them sidewalk links where a bike way stops), "
-            "%d destination-only",
+            "walk-your-bike connectors kept, %d footways ridden as a last resort (sidewalks, "
+            "crosswalks, links), %d destination-only",
             dict(sorted(Counter(context.facility_by_way.values()).items())),
             len(context.car_free_by_way),
             car_free_for_good,
@@ -3076,7 +3086,7 @@ def build_handlers(
             len(context.singletracks),
             dict(sorted(nobike.counts().items())),
             len(nobike.walk_bike),
-            len(nobike.walk_links),
+            len(nobike.sidewalk_rides),
             len(nobike.destination_only),
         )
 
@@ -3354,10 +3364,13 @@ def build_handlers(
                     derived["no_bicycle"] = reason
                 if way.osm_id in context.destination_only:
                     derived["destination_only"] = zoo.DESTINATION_ONLY
-                # A short sidewalk stretch where a bike way stops (`routemaker.walk_links`):
-                # lua/routemaker_remap.lua opens it as `bicycle=dismount`, walk your bike.
-                if way.osm_id in context.walk_links:
-                    derived["walk_link"] = True
+                # A sidewalk ridden as a last resort (`routemaker.sidewalks`), priced so by
+                # lua/routemaker_remap.lua; never on Mass Ride's graph, a crowd on a sidewalk.
+                if (
+                    way.osm_id in context.sidewalk_rides
+                    and variant is not variants.Variant.NO_TRAIL
+                ):
+                    derived["sidewalk"] = True
                 # A known hazard (v0.10.0; the owner, 2026-10-19: "Roads with hazards like
                 # this should get a major penalty"): cobbles or rails anywhere on the way,
                 # which lua/routemaker_remap.lua prices as LTS 4 without changing its rating.

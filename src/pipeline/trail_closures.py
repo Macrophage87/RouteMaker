@@ -4,8 +4,8 @@ Pure: it takes the rebuild's ways and what the extract says about routes and
 places, and answers which way gets which `rm:no_bicycle` reason
 (`routemaker.trailaccess`, `routemaker.zoo`), which short `bicycle=dismount`
 connectors stay and are flagged "walk your bike here" (OWNER-DECISIONS 291(5)),
-which short footways become walk-your-bike links where a bike way stops at a
-sidewalk (`routemaker.walk_links`), and which ways are the Zoo's destination-only
+which sidewalks, crosswalks and short footway links are ridden as a last resort
+(`routemaker.sidewalks`), and which ways are the Zoo's destination-only
 spur. `pipeline.run` calls it from `classify_facilities` and writes the answers
 on the extract and the segment table.
 
@@ -22,7 +22,7 @@ from collections import Counter
 from collections.abc import Collection, Iterable, Mapping, Set
 from dataclasses import dataclass, field
 
-from routemaker import cbd, facility, singletrack, trailaccess, walk_links, zoo
+from routemaker import cbd, facility, sidewalks, singletrack, trailaccess, zoo
 from routemaker.cbd import Polygon
 
 from .extract import Way
@@ -125,9 +125,9 @@ class TrailClosures:
     reasons: dict[int, str] = field(default_factory=dict)
     # short bicycle=dismount connectors kept, flagged for the route description
     walk_bike: set[int] = field(default_factory=set)
-    # footways opened as short walk-your-bike links where a bike way stops at a sidewalk
-    # (`routemaker.walk_links`; the owner, 2026-10-20), each also in `walk_bike`
-    walk_links: set[int] = field(default_factory=set)
+    # sidewalks, crosswalks and short footway links ridden as a last resort
+    # (`routemaker.sidewalks`; the owner, 2026-10-20)
+    sidewalk_rides: set[int] = field(default_factory=set)
     # the Zoo spur: open, destination-only
     destination_only: set[int] = field(default_factory=set)
     # rated singletrack that nothing but the rating closes: the map draws it on the
@@ -262,24 +262,21 @@ def closures(
     return result
 
 
-def add_walk_links(result: TrailClosures, ways: Iterable[Way]) -> None:
-    """Find the walk-your-bike links (`routemaker.walk_links`) once every closure is in
-    `result.reasons`, the agency prohibitions included, and flag them `walk_bike`."""
-    result.walk_links = set(
-        walk_links.links(
-            [
-                (
-                    way.osm_id,
-                    way.tags,
-                    way.node_ids,
-                    node_coordinates(way) if walk_links.is_link_candidate(way.tags) else (),
-                )
-                for way in ways
-            ],
-            closed=set(result.reasons) | result.destination_only,
-        )
+def add_sidewalk_rides(result: TrailClosures, ways: Iterable[Way]) -> None:
+    """Find the footways ridden as a last resort (`routemaker.sidewalks`) once every closure
+    is in `result.reasons`, the agency prohibitions included."""
+    result.sidewalk_rides = sidewalks.rides(
+        [
+            (
+                way.osm_id,
+                way.tags,
+                way.node_ids,
+                node_coordinates(way) if sidewalks.is_link_candidate(way.tags) else (),
+            )
+            for way in ways
+        ],
+        closed=set(result.reasons) | result.destination_only,
     )
-    result.walk_bike |= result.walk_links
 
 
 def node_coordinates(way: Way) -> list[tuple[float, float] | None]:

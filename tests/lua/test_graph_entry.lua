@@ -305,14 +305,15 @@ check("and destination-only (upstream's private flag)", spur_out.private == "tru
   tostring(spur_out.private))
 check("and the mark never reaches the tile build", spur_out["rm:destination_only"] == nil)
 
--- A walk-your-bike sidewalk link (routemaker.walk_links) reaches the graph open both ways.
+-- A sidewalk ridden as a last resort (routemaker.sidewalks) reaches the graph open both ways.
 local _, link_out = transform_way({
-  highway = "footway", footway = "sidewalk", ["rm:walk_link"] = "yes", ["rm:trail_class"] = "yes",
+  highway = "footway", footway = "sidewalk", ["rm:sidewalk"] = "yes", ["rm:trail_class"] = "yes",
+  ["rm:stress_tier"] = "3",
 })
-check("a walk link reaches the graph open to bicycles, dismounted",
-  link_out.bicycle == "dismount" and link_out.bike_forward == "true" and link_out.bike_backward == "true",
+check("a ridden sidewalk reaches the graph open to bicycles",
+  link_out.bike_forward == "true" and link_out.bike_backward == "true",
   tostring(link_out.bicycle) .. " " .. tostring(link_out.bike_forward) .. "/" .. tostring(link_out.bike_backward))
-check("and the mark never reaches the tile build", link_out["rm:walk_link"] == nil)
+check("and the mark never reaches the tile build", link_out["rm:sidewalk"] == nil)
 
 -- OWNER-DECISIONS 111: singletrack reaches the graph with upstream's alley use.
 local _, single_out = transform_way({

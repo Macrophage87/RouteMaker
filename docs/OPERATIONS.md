@@ -5960,19 +5960,26 @@ table has two new columns, `mtb_only` and `walk_bike`; the model's migration
 the ways that join it, stays and the route description gets a `walk` entry;
 longer ones close.
 
-**Walk links (v0.10.1, with the next map update).** Where a bicycle-open way ends at a
-node no other bicycle-open way reaches, and footways with no bicycle tag lead from it to
-another bicycle-open way within 160 ft (50 m), those footways get `rm:walk_link=yes` and
-the remap writes `bicycle=dismount` on them (`routemaker.walk_links`; the owner's Redland
-Road report, 2026-10-20). One end must be a trail-class way. The gap walked is at most
-160 ft (50 m), but a tag opens the whole way, so each footway opened is at most 1,000 ft
-(300 m) long: longer than OSM's own dismount connectors may be (500 ft, 150 m), because
-the sidewalks trails end on often run a block, as Redland Road's does (175 m). Nothing a
-closure reason closes (the CBD's sidewalks, military, secured, the Zoo, an agency
-prohibition) and no informal footway is opened. They are in `walk_bike`, so the route
-says walk your bike. The rebuild log's facility line counts them ("sidewalk links where
-a bike way stops"); the 2026-10-09 extract has about 7,500, about half of them
-crosswalks where a trail stops at the curb, a third sidewalks, the rest plain footways.
+**Sidewalks as a last resort (v0.10.1, with the next map update).** The owner, 2026-10-20,
+after a trail on Redland Road ended on a sidewalk 120 ft (36 m) short of the side path:
+"Bikes can go on sidewalks, especially in more rural parts", then chose "Also sidewalks as
+last resort". `routemaker.sidewalks` picks the footways ridden: every sidewalk and
+crosswalk (`footway=sidewalk` or `crossing`) no bicycle tag speaks for or against and
+open on foot (about 144,000 sidewalks, some 10,400 mi, and 97,000 crosswalks in the
+2026-10-09 extract), and the short links where a bicycle-open way dead-ends and untagged
+footways reach another bicycle-open way within 160 ft (50 m) (one end a trail, each
+footway at most 1,000 ft (300 m), since a tag opens the whole way). Nothing a closure
+reason closes is ridden (the CBD's sidewalks, military, secured, the Zoo, an agency
+prohibition), nor an informal footway, an area or an indoor one, and Mass Ride's graph
+rides none. They get `rm:sidewalk=yes`, and the remap writes `bicycle=use_sidepath` and
+`maxspeed:practical=90`: Valhalla prices a sidewalk's or crosswalk's use as a road's, from
+its speed, so on a tile build (tests/test_tile_build_sidewalk_price.py) a sidewalk loses
+to the road beside it at LTS 1 to 3.5 and wins over LTS 4, 4.5 and Avoid from the
+slider's 40 up. The rebuild rates them LTS 3 ("sidewalk ridden as a last resort"), so the
+route's stress, the rolling stress chart (`calm.edge_factor`) and the ranking count them
+as the router prices them. The map still hides sidewalks (OWNER-DECISIONS 82). The
+rebuild log's facility line counts them ("footways ridden as a last resort"). The stress
+change report shows the sidewalks moving from LTS 1 to 3.
 
 **NPS units.** Tag rules only. A per-park "paved and designated only" rule goes
 in `pipeline.trail_closures.PARK_RULES` after that park's compendium has been

@@ -505,17 +505,18 @@ CASES: list[tuple[str, dict[str, str], bool | tuple[bool, bool]]] = [
         CLOSED,
     ),
     (
-        "a walk-your-bike sidewalk link where a bike way stops (routemaker.walk_links)",
+        "a sidewalk ridden as a last resort (routemaker.sidewalks)",
         {
             "highway": "footway",
             "footway": "sidewalk",
             "rm:trail_class": "yes",
-            "rm:walk_link": "yes",
+            "rm:sidewalk": "yes",
+            "rm:stress_tier": "3",
         },
         OPEN,
     ),
     (
-        "the same sidewalk unmarked (the walk-link control)",
+        "the same sidewalk unmarked (the ridden-sidewalk control)",
         {"highway": "footway", "footway": "sidewalk", "rm:trail_class": "yes"},
         CLOSED,
     ),

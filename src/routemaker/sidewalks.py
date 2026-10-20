@@ -1,35 +1,42 @@
-"""Short walk-your-bike links where a bike way stops at a sidewalk.
+"""Sidewalks a bicycle may ride, as a last resort, and the short links where a bike way
+stops at a footway.
 
 The owner, riding Redland Road in Derwood on 2026-10-20: "When there's a tiny bit of
 sidewalk before a bike lane it doesn't connect". The paved path from Lake Needwood
 (OSM 710999916, `bicycle=designated`) ends on a sidewalk (448386707, `footway=sidewalk`,
 no bicycle tag) about 120 ft (36 m) short of the Redland Road side path. Upstream's
 transform closes a footway with no bicycle tag to bicycles by its class, so the path was
-a dead end and routes could not use it.
+a dead end and routes could not use it. Then: "Bikes can go on sidewalks, especially in
+more rural parts", and on the choice put to him, "Also sidewalks as last resort":
+"Generally sidewalks adjacent to busy roads don't have a lot of pedestrian traffic so
+it's less problematic. Not the most fun option".
 
-The rule here is general, not that one place's: where a way open to bicycles ends at a
-node no other bicycle-open way reaches (a dead end), and footways with no bicycle tag
-lead from it to another bicycle-open way within `GAP_M`, those footways become a short
-`bicycle=dismount` link: routable at a walk and flagged "walk your bike here" in the
-directions, as OSM's own short dismount connectors are (OWNER-DECISIONS 291(5)). Walking
-a bicycle is walking, so a link needs no bicycle grant beyond the pedestrian's; riding the
-sidewalk is never assumed ("unclear bike access = closed").
+So two sets of footways are ridden (`rides`), and lua/routemaker_remap.lua prices each as
+a last resort (`rm:sidewalk`): costlier than any road up to LTS 3.5, cheaper than LTS 4,
+4.5 and Avoid from the slider's middle up. The rebuild rates them LTS 3 (`TIER`), so the
+route's stress, the rolling stress chart and RouteMaker's own ranking count them as the
+router prices them, not as a quiet trail.
 
-Bounds, so a link stays a link:
-- one end at least is a trail-class way (a path, cycleway, or a footway or bridleway
-  open to bicycles): a parking lot joined to a street through a sidewalk is not a link;
-- the walk is at most `GAP_M` (about 160 ft) along the footways;
-- each footway it opens is at most `WAY_MAX_M` (about 1,000 ft) long, since a tag opens
-  the whole way and a router could walk any of it;
-- never a footway something closes for a reason (`closed`: the CBD's sidewalks, a
-  military or secured area, the Zoo, an agency prohibition), one barred to pedestrians,
-  an informal one, an area, or indoors.
+- `rideable`: a sidewalk or crosswalk (`footway=sidewalk` or `crossing`) no bicycle tag
+  speaks for or against, open on foot. Riding a sidewalk is legal in DC outside the
+  Central Business District (whose sidewalks keep their closure, `routemaker.cbd`) and in
+  most of Maryland and Virginia; a town's own ban is not in the map data, and the owner
+  chose to ride them all the same.
+- `links`: where a way open to bicycles ends at a node no other bicycle-open way reaches (a
+  dead end), and footways with no bicycle tag lead from it to another bicycle-open way
+  within `GAP_M`, those footways, sidewalks or not. Bounds, so a link stays a link:
+  - one end at least is a trail-class way (a path, cycleway, or a footway or bridleway
+    open to bicycles): a parking lot joined to a street through a footway is not a link;
+  - the gap is at most `GAP_M` (about 160 ft) along the footways;
+  - each footway it opens is at most `WAY_MAX_M` (about 1,000 ft) long, since a tag opens
+    the whole way and a router could ride any of it;
+  - never one barred to pedestrians, an informal one, an area, or indoors.
 
-Most links are crosswalks: a trail that stops at the curb of an unmarked crossing is
-walked across it.
+Neither opens a footway something closes for a reason (`closed`: the CBD's sidewalks, a
+military or secured area, the Zoo, an agency prohibition). Mass Ride's graph rides none of
+them (`pipeline.run`).
 
-Pure: `pipeline.trail_closures` calls `links` with the rebuild's ways, and the rebuild
-writes `rm:walk_link` on what it answers (lua/routemaker_remap.lua).
+Pure: `pipeline.trail_closures` calls `rides` with the rebuild's ways.
 """
 
 from __future__ import annotations
@@ -42,7 +49,11 @@ from collections.abc import Sequence, Set
 from . import tags as osm_tags
 from . import trailaccess
 
-# The longest walk a link may be, along the footways (about 160 ft).
+# What a ridden sidewalk is rated: LTS 3, as the graph prices it (see the module's note).
+TIER = 3
+RULE = "sidewalk ridden as a last resort (the owner, 2026-10-20)"
+SIDEWALK_KINDS = frozenset({"sidewalk", "crossing"})
+# The longest gap a link may bridge, along the footways (about 160 ft).
 GAP_M = 50.0
 # The longest footway a link may open (about 1,000 ft).
 WAY_MAX_M = 300.0
@@ -104,7 +115,7 @@ def is_trail(tags: dict[str, str]) -> bool:
 
 
 def is_link_candidate(tags: dict[str, str]) -> bool:
-    """A footway a link may open: one no bicycle tag speaks for or against, open on foot."""
+    """A footway that may be ridden: one no bicycle tag speaks for or against, open on foot."""
     if tags.get("highway") not in LINK_HIGHWAY:
         return False
     if any(key == "bicycle" or key.startswith("bicycle:") for key in tags):
@@ -116,6 +127,24 @@ def is_link_candidate(tags: dict[str, str]) -> bool:
     if tags.get("informal") == "yes":
         return False
     return trailaccess.upstream_open(tags) is False
+
+
+def rideable(tags: dict[str, str]) -> bool:
+    """A sidewalk or crosswalk ridden as a last resort."""
+    return (
+        tags.get("highway") == "footway"
+        and tags.get("footway") in SIDEWALK_KINDS
+        and is_link_candidate(tags)
+    )
+
+
+def rides(ways: Sequence[Placed], closed: Set[int] = frozenset()) -> set[int]:
+    """Every footway ridden: the rideable sidewalks and crosswalks and the links."""
+    found = set(links(ways, closed))
+    found.update(
+        osm_id for osm_id, tags, _nodes, _coords in ways if osm_id not in closed and rideable(tags)
+    )
+    return found
 
 
 def _metres(a: tuple[float, float], b: tuple[float, float]) -> float:
@@ -135,7 +164,7 @@ MANY = -1
 
 
 def links(ways: Sequence[Placed], closed: Set[int] = frozenset()) -> dict[int, float]:
-    """The footways to open as walk-your-bike links, each with the shortest walk (in
+    """The footways to open as links, each with the shortest gap (in
     metres) of a link it is part of. `ways` is (id, tags, node ids, a coordinate per
     node id, None where the extract has none; only a link candidate's are read, so
     other ways may carry none); `closed` the ways a closure rule closes.
@@ -180,10 +209,10 @@ def links(ways: Sequence[Placed], closed: Set[int] = frozenset()) -> dict[int, f
     for osm_id, end in ends:
         if open_at.get(end) != osm_id:
             continue  # no footway meets it, or another bicycle-open way does: no dead end
-        walk = _shortest_walk(end, osm_id, open_at, adjacent)
-        if walk is None:
+        gap = _shortest_gap(end, osm_id, open_at, adjacent)
+        if gap is None:
             continue
-        metres, reached, used = walk
+        metres, reached, used = gap
         if osm_id not in trail_ways and reached not in trail_at:
             continue  # neither end is a trail: not a link (a parking lot, a driveway)
         if any(lengths[way] > WAY_MAX_M for way in used):
@@ -193,13 +222,13 @@ def links(ways: Sequence[Placed], closed: Set[int] = frozenset()) -> dict[int, f
     return found
 
 
-def _shortest_walk(
+def _shortest_gap(
     start: int,
     from_way: int,
     open_at: dict[int, int],
     adjacent: dict[int, list[tuple[int, float, int]]],
 ) -> tuple[float, int, list[int]] | None:
-    """The shortest walk along candidate footways from `start` to a node another
+    """The shortest way along candidate footways from `start` to a node another
     bicycle-open way reaches, within GAP_M: (metres, that node, the footways used)."""
     best = {start: 0.0}
     previous: dict[int, tuple[int, int]] = {}
