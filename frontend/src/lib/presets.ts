@@ -138,7 +138,7 @@ export const PRESETS: readonly PresetOption[] = [
     spoken: "Own bike plus train or bus",
     keywords: "transit",
     description:
-      "Your own bike the whole way, with Metro, MARC, VRE, Light RailLink, Metro SubwayLink or a bus's bike rack: riding directly there, then the quickest transit trips by scheduled times, not live. Uses stations a bike can get into (Metro's elevators), and never leaves the bike.",
+      "Your own bike the whole way, with Metro, MARC, VRE, Light RailLink, Metro SubwayLink or a bus's bike rack: riding directly there, then the quickest transit trips by scheduled times, with WMATA's live departures on a trip leaving now. Uses stations a bike can get into (Metro's elevators), and never leaves the bike.",
     summary: "Your bike plus a train or bus.",
   },
   {
@@ -147,7 +147,7 @@ export const PRESETS: readonly PresetOption[] = [
     spoken: "Bikeshare plus walk, train or bus",
     keywords: "transit",
     description:
-      "Bikeshare directly there, walking where that is quickest or the trip is short, or transit with either end a walk or a bikeshare bike, whichever is quicker (a bike is docked before you board). Metro, MARC, VRE, Light RailLink, Metro SubwayLink and buses; scheduled times, not live; docks from live availability where it can be read.",
+      "Bikeshare directly there, walking where that is quickest or the trip is short, or transit with either end a walk or a bikeshare bike, whichever is quicker (a bike is docked before you board). Metro, MARC, VRE, Light RailLink, Metro SubwayLink and buses; scheduled times, with WMATA's live departures on a trip leaving now; docks from live availability where it can be read.",
     summary: "Bikeshare or walking plus a train or bus.",
   },
   {
@@ -208,4 +208,29 @@ export function presetLabel(id: PresetId): string {
 export function presetSaid(id: PresetId): string {
   const option = PRESETS.find((p) => p.id === id);
   return option?.spoken ?? option?.label ?? id;
+}
+
+/**
+ * The map layers a ride type turns on when chosen (the owner, 2026-10-19: "When gravel or mtb are selected,
+ * show the trails and topo automatically" and "likewise do topo and climbs for mountain goat"). Turned on,
+ * not remembered as the rider's own choice, and only coming into the ride type from one without them, so the
+ * rider can still turn one off while riding it (App.tsx choosePreset). Mountain Bike's pair was slice 6's
+ * default (the owner's defaults of 2026-10-11).
+ */
+export interface RideTypeLayers {
+  mtb: boolean;
+  topo: boolean;
+  climbs: boolean;
+}
+
+export function rideTypeLayers(id: string): RideTypeLayers {
+  const offRoad = id === "mountain-bike" || id === "gravel";
+  return { mtb: offRoad, topo: offRoad || id === "mountain-goat", climbs: id === "mountain-goat" };
+}
+
+/** The layers to turn on going from ride type `from` to `to`: those `to` brings that `from` did not. */
+export function layersTurnedOn(from: string, to: string): RideTypeLayers {
+  const was = rideTypeLayers(from);
+  const now = rideTypeLayers(to);
+  return { mtb: now.mtb && !was.mtb, topo: now.topo && !was.topo, climbs: now.climbs && !was.climbs };
 }

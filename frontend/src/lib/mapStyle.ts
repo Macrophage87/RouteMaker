@@ -32,9 +32,12 @@ export const OPENING_ZOOM = 11.2;
  *   the base map's style and tiles;
  * - DC Open Data, one entry for every District layer used (DDOT traffic volume
  *   and the Central Business District, the Architect of the Capitol boundary, the
- *   Roadway Block, Metro stations and entrances, and the federal-land layers):
+ *   Roadway Block, Traffic Signals, Metro stations and entrances, and the
+ *   federal-land layers):
  *   CC BY 4.0 asks for the licence and that the data was changed, so both stay;
- * - VDOT traffic volume; Open Baltimore's streets and bike facilities;
+ * - VDOT traffic volume; Open Baltimore's streets and bike facilities; MDOT SHA's
+ *   traffic counts, scenic byways and traffic signals; the City of Alexandria's
+ *   streets and traffic signals;
  * - Montgomery County Planning Department's Bicycle LTS (its licence asks for
  *   that name);
  * - USGS 3DEP elevation, for the climb and the Hills slider; the U.S. Census
@@ -54,14 +57,21 @@ export const CREDITS: ReadonlyArray<{ text: string; html: string }> = CREDITS_DA
 export const MAP_CREDITS: readonly string[] = CREDITS.map((credit) => credit.html);
 
 /**
+ * The rider-facing page that names every data source and open source project with its
+ * link and licence (the owner, 2026-10-19), a static page in public/about/ like the stress page.
+ */
+export const ACKNOWLEDGEMENTS_LINK = '<a href="/about/acknowledgements.html">Acknowledgements</a>';
+
+/**
  * The attribution control's one entry. MapLibre sorts separate entries by
  * length (which put VDOT's first) and drops any entry that is part of a longer
  * one, so a single combined string keeps OpenStreetMap first and absorbs the
- * base map source's own copy of its credit. It ends with the third-party
- * licence notices the build ships (licenses.txt, written by Vite).
+ * base map source's own copy of its credit. It ends with the acknowledgements page
+ * and the third-party licence notices the build ships (licenses.txt, written by Vite).
  */
 export const MAP_ATTRIBUTION: string = [
   ...MAP_CREDITS,
+  ACKNOWLEDGEMENTS_LINK,
   '<a href="/licenses.txt">Software licences</a>',
 ].join(" | ");
 

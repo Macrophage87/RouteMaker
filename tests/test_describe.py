@@ -1574,3 +1574,320 @@ class TestForksAreKeptEverywhere:
         ]
         _full, overview = d.describe_both(legs)
         assert any(e["turn"] and e["turn"].get("stay") for e in overview)
+
+
+class TestServiceRoads:
+    """The owner, 2026-10-20, on a frontage road beside East-West Highway: "When going on a
+    service road, especially next to a major road, say so"."""
+
+    EW = "service road beside East-West Highway"
+
+    def test_a_turn_onto_an_unnamed_service_road_names_it(self):
+        entries = d.describe(
+            [
+                road("Grubb Road", 2, 400, 0.0, 0.0)
+                + road(None, 2, 400, 270.0, 270.0, use="service_road")
+            ]
+        )
+        assert entries[1]["street"] == "service road"
+        assert entries[1]["turn"]["onto"] == "service road"
+        assert ": Left onto the service road, fairly low stress" in entries[1]["text"]
+
+    def test_one_beside_a_major_road_says_which(self):
+        entries = d.describe(
+            [
+                road("Grubb Road", 2, 400, 0.0, 0.0)
+                + road(self.EW, 2, 400, 270.0, 270.0, use="service_road")
+            ]
+        )
+        assert entries[1]["turn"]["onto"] == "service road beside East-West Highway"
+        assert f": Left onto the {self.EW}, fairly low stress" in entries[1]["text"]
+
+    def test_leaving_the_highway_straight_on_for_its_service_road_is_said(self):
+        entries = d.describe(
+            [
+                road("East-West Highway", 4, 400, 45.0, 45.0)
+                + road(self.EW, 2, 400, 50.0, 50.0, use="service_road")
+            ]
+        )
+        assert len(entries) == 2
+        assert f": Continue onto the {self.EW}, fairly low stress" in entries[1]["text"]
+
+    def test_an_unnamed_road_then_an_unnamed_service_road_is_a_turn(self):
+        entries = d.describe(
+            [road(None, 2, 400, 0.0, 0.0) + road(None, 2, 400, 90.0, 90.0, use="driveway")]
+        )
+        assert [e["street"] for e in entries] == ["unnamed road", "service road"]
+        assert entries[1]["turn"]["movement"] == "right"
+
+    def test_an_alley_and_a_parking_aisle_are_said_as_such(self):
+        entries = d.describe(
+            [
+                road("A Street", 2, 400, 0.0, 0.0)
+                + road(None, 2, 200, 90.0, 90.0, use="alley")
+                + road(None, 2, 200, 0.0, 0.0, use="parking_aisle")
+            ]
+        )
+        assert [e["street"] for e in entries] == ["A Street", "alley", "parking aisle"]
+        assert ": Right onto the alley," in entries[1]["text"]
+
+    def test_a_path_beside_a_major_road_is_not_called_a_path_twice(self):
+        entries = d.describe(
+            [
+                road("Grubb Road", 2, 400, 0.0, 0.0)
+                + road("path beside EW Hwy", 1, 400, 270.0, 270.0, facility="path", use="footway")
+            ]
+        )
+        assert entries[1]["text"].endswith(": Left onto the path beside EW Hwy, traffic-free.")
+
+    def test_beside_words(self):
+        assert d.beside_words("service_road", "X Road") == "service road beside X Road"
+        assert d.beside_words("driveway", "X Road") == "service road beside X Road"
+        assert d.beside_words("sidewalk", "X Road") == "sidewalk beside X Road"
+        assert d.beside_words("cycleway", "X Road") == "path beside X Road"
+        assert d.beside_words("alley", "X Road") is None
+        assert d.beside_words("road", "X Road") is None
+
+
+def branched(atoms, others):
+    """`atoms` with the first given the other ways at its node (`describe.junction_shape`)."""
+    return [replace(atoms[0], others=tuple(others)), *atoms[1:]]
+
+
+class TestJunctionShapes:
+    """The owner, 2026-10-20: "Can arrows be made more clear when there's unusual
+    intersections? For instance if there's a left turn on a service road show the
+    non-picked intersections dashed. Likewise with 5 way intersections and the like."
+    The ride card draws the junction where it is unusual; a plain crossroads or T keeps
+    its plain arrow."""
+
+    def test_a_plain_crossroads_or_t_keeps_the_plain_arrow(self):
+        assert d.junction_shape(0, 270, [(0, "road"), (90, "road")]) is None
+        assert d.junction_shape(0, 270, [(90, "road")]) is None
+        # A little off square is still square.
+        assert d.junction_shape(10, 275, [(5, "road"), (100, "road")]) is None
+
+    def test_a_five_way_junction_is_drawn(self):
+        # North into a five-way: the route takes the right-hand diagonal.
+        shape = d.junction_shape(0, 45, [(270, "road"), (0, "road"), (90, "road")])
+        assert shape == {"out": 45, "others": [-90, 0, 90]}
+
+    def test_a_branch_off_square_is_drawn(self):
+        assert d.junction_shape(0, 270, [(30, "road")]) == {"out": -90, "others": [30]}
+
+    def test_two_ways_to_one_side_are_drawn(self):
+        # A left and a sharp left: which one the plain arrow means is not plain.
+        assert d.junction_shape(0, 270, [(225, "road")]) == {"out": -90, "others": [-135]}
+
+    def test_a_left_onto_a_service_road_is_drawn_with_the_road_on(self):
+        assert d.junction_shape(0, 270, [(0, "road")], service=True) == {
+            "out": -90,
+            "others": [0],
+        }
+        # With no other way it is only a bend: nothing to draw.
+        assert d.junction_shape(0, 270, [], service=True) is None
+
+    def test_driveways_crosswalks_and_sidewalks_are_not_drawn(self):
+        others = [
+            (0, "road"),
+            (90, "road"),
+            (30, "driveway"),
+            (45, "sidewalk"),
+            (60, "pedestrian_crossing"),
+        ]
+        assert d.junction_shape(0, 270, others) is None
+
+    def test_ways_close_together_are_one_branch(self):
+        # A divided road's two carriageways, and a way alongside the route's own.
+        shape = d.junction_shape(0, 270, [(40, "road"), (48, "road"), (275, "road")])
+        assert shape == {"out": -90, "others": [40]}
+
+    def test_without_headings_nothing_is_drawn(self):
+        assert d.junction_shape(None, 270, [(30, "road")]) is None
+        assert d.junction_shape(0, 270, None) is None
+        assert d.junction_shape(0, 270, [(None, "road")]) is None
+
+    def test_the_turn_carries_its_shape_in_both_lists(self):
+        legs = [
+            flat(
+                road("Grubb Road", 2, 600, 0.0, 0.0),
+                branched(
+                    road(None, 2, 600, 270.0, 270.0, use="service_road"),
+                    [(0.0, "road"), (90.0, "road")],
+                ),
+            )
+        ]
+        full, short = d.describe_both(legs)
+        assert full[1]["turn"]["shape"] == {"out": -90, "others": [0, 90]}
+        assert short[1]["turn"]["shape"] == {"out": -90, "others": [0, 90]}
+        # The words are as they were.
+        assert ": Left onto the service road, fairly low stress" in full[1]["text"]
+
+    def test_a_plain_turn_carries_no_shape(self):
+        legs = [
+            flat(
+                road("A Street", 2, 400, 0.0, 0.0),
+                branched(road("B Street", 2, 400, 270.0, 270.0), [(0.0, "road"), (90.0, "road")]),
+            )
+        ]
+        assert "shape" not in d.describe(legs)[1]["turn"]
+
+    def test_a_way_almost_back_the_way_in_is_not_drawn_over_it(self):
+        assert d.junction_shape(0, 270, [(160, "road"), (0, "road"), (90, "road")]) is None
+
+    def test_no_shape_across_a_short_street_folded_in(self):
+        # An offset crossing: A Street, 10 m of B Street, then C Street. The heading in
+        # is A Street's and the ways out are C Street's node: two nodes, so no picture.
+        legs = [
+            flat(
+                road("A Street", 2, 600, 0.0, 0.0),
+                road("B Street", 2, 10, 90.0, 90.0),
+                branched(
+                    road("C Street", 2, 600, 0.0, 0.0),
+                    [(270.0, "road"), (45.0, "road"), (300.0, "road")],
+                ),
+            )
+        ]
+        for entry in d.describe(legs):
+            assert not (entry["turn"] or {}).get("shape"), entry
+
+
+class TestServiceRoadMainRoad:
+    """The owner, 2026-10-20, on the service road diagram: "In the service road case
+    you'd be going further than the main road ... If making a left ... or shorter if
+    making a right". The main road beside the service road is drawn where it lies."""
+
+    EW = "service road beside East-West Highway"
+
+    def test_crossed_just_before_it_lies_across_the_way_in(self):
+        # North on Grubb Road, across East-West Highway (east-west), then left (west).
+        behind = [(90.0, "road", "primary"), (270.0, "road", "primary")]
+        assert d.main_road_side(270.0, [(0.0, "road", "residential")], behind) == "before"
+
+    def test_otherwise_it_lies_across_the_way_ahead(self):
+        assert d.main_road_side(90.0, [(0.0, "road", "residential")], None) == "after"
+        # A busy road behind that is not alongside is not the one.
+        assert d.main_road_side(90.0, [], [(0.0, "road", "primary")]) == "after"
+
+    def test_at_the_turn_s_own_junction_it_is_drawn_there_already(self):
+        assert d.main_road_side(270.0, [(90.0, "road", "primary")], None) is None
+
+    def test_a_right_short_of_the_main_road_draws_it_ahead(self):
+        legs = [
+            flat(
+                road("Grubb Road", 2, 600, 0.0, 0.0),
+                branched(
+                    road(self.EW, 2, 600, 90.0, 90.0, use="service_road"),
+                    [(0.0, "road", "residential"), (270.0, "service_road", "service_other")],
+                ),
+            )
+        ]
+        shape = d.describe(legs)[1]["turn"]["shape"]
+        assert shape == {"out": 90, "others": [-90, 0], "main": "after"}
+
+    def test_a_left_across_it_draws_it_behind(self):
+        atoms = road(self.EW, 2, 600, 270.0, 270.0, use="service_road")
+        atoms[0] = replace(
+            atoms[0],
+            others=((0.0, "road", "residential"),),
+            prior=((90.0, "road", "primary"), (270.0, "road", "primary")),
+        )
+        shape = d.describe([flat(road("Grubb Road", 2, 600, 0.0, 0.0), atoms)])[1]["turn"]["shape"]
+        assert shape == {"out": -90, "others": [0], "main": "before"}
+
+    def test_not_when_riding_the_main_road_itself(self):
+        legs = [
+            flat(
+                road("East-West Highway", 4, 600, 90.0, 90.0),
+                branched(
+                    road(self.EW, 2, 600, 45.0, 45.0, use="service_road"),
+                    [(90.0, "road", "primary")],
+                ),
+            )
+        ]
+        assert "main" not in (d.describe(legs)[1]["turn"].get("shape") or {})
+
+
+def ringed(atoms, *others):
+    """Ring atoms, the start of each later ring edge given the ways off at its node."""
+    out = [replace(atom, roundabout=True) for atom in atoms]
+    for k, ways in enumerate(others, start=1):
+        out[k] = replace(out[k], others=tuple(ways))
+    return out
+
+
+class TestCircleExits:
+    """The owner, 2026-10-20, on traffic circles: a ring picture and the exit number
+    ("Ring picture + exit number")."""
+
+    def legs(self):
+        # North on Massachusetts Avenue into the ring, bearing right (anticlockwise);
+        # it passes 18th Street (east, two-way) and New Hampshire Avenue (north, only
+        # into the ring), a slip lane and a footway, and leaves west on P Street.
+        ring = ringed(
+            road("Dupont Circle Northwest", 3, 240, 45, 300),
+            [(80.0, "road", "secondary", "both"), (60.0, "turn_channel", "secondary", "both")],
+            [(0.0, "road", "secondary", "backward"), (20.0, "footway", None, "none")],
+            [(330.0, "road", "secondary", "forward")],
+        )
+        return [
+            flat(
+                road("Massachusetts Avenue Northwest", 3, 600, 0, 0),
+                ring,
+                road("P Street Northwest", 3, 600, 270, 270),
+            )
+        ]
+
+    def test_the_way_off_says_its_exit(self):
+        entries = d.describe(self.legs())
+        off = entries[-1]
+        assert off["turn"]["exit"] == {"number": 3, "circle": "Dupont Circle Northwest"}
+        assert (
+            ": Take the 3rd exit onto P Street Northwest at Dupont Circle Northwest,"
+            in (off["text"])
+        )
+        assert off["turn"]["shape"] == {"out": -90, "others": [80, -30], "ring": "right"}
+
+    def test_a_small_circle_folded_in_still_says_its_exit(self):
+        legs = self.legs()
+        small = [a for a in legs[0] if not a.roundabout]
+        ring = [a for a in legs[0] if a.roundabout][:2]
+        ring = [replace(a, metres=30.0) for a in ring]
+        legs = [small[:10] + ring + small[10:]]
+        entries = d.describe(legs)
+        assert [e["street"] for e in entries] == [
+            "Massachusetts Avenue Northwest",
+            "P Street Northwest",
+        ]
+        assert entries[1]["turn"]["exit"]["number"] == 2
+        assert entries[1]["turn"]["shape"]["ring"] == "right"
+
+    def test_an_unnamed_roundabout_is_the_roundabout(self):
+        ring = ringed(road(None, 2, 60, 300, 330))
+        entries = d.describe(
+            [flat(road("A Street", 2, 600, 0, 0), ring, road("B Street", 2, 600, 270, 270))]
+        )
+        assert ": Take the 1st exit onto B Street at the roundabout," in entries[-1]["text"]
+        assert entries[-1]["turn"]["shape"]["ring"] == "left"
+
+    def test_ordinals(self):
+        assert [d.ordinal(n) for n in (1, 2, 3, 4, 11, 12, 13, 21, 22)] == [
+            "1st",
+            "2nd",
+            "3rd",
+            "4th",
+            "11th",
+            "12th",
+            "13th",
+            "21st",
+            "22nd",
+        ]
+
+    def test_a_loop_street_named_circle_is_not_a_ring(self):
+        # "Oak Circle" by name only: a street, its turns said as turns, no exit counted.
+        loop = branched(road("Oak Circle", 2, 60, 90, 0), [(0.0, "road", None, "both")])
+        entries = d.describe(
+            [flat(road("Elm Street", 2, 600, 0, 0), loop, road("Main Street", 2, 600, 270, 270))]
+        )
+        assert all("exit" not in (e["turn"] or {}) for e in entries)
+        assert "exit" not in entries[-1]["text"]

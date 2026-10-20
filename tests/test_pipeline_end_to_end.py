@@ -666,17 +666,21 @@ def test_singletrack_is_closed_and_the_towpath_is_a_path_either_side_of_lock_21(
     for variant in Variant:
         tags = {w.osm_id: w.tags for w in read_ways(context.variant_pbf(variant))}
         if SINGLETRACK_ID in tags:
-            assert tags[SINGLETRACK_ID].get("rm:no_bicycle") == "singletrack", variant.value
+            # Rated, so open on the Mountain Bike graph though it has no bicycle tag (the
+            # owner's choice of 2026-10-19, "Rated, MTB and Gravel"); level 2 is above the
+            # off-road graph's cap (green), so Gravel's stays closed like every other.
+            want = None if variant is Variant.MTB else "singletrack"
+            assert tags[SINGLETRACK_ID].get("rm:no_bicycle") == want, variant.value
         for way_id in (TOWPATH_ABOVE_ID, TOWPATH_BELOW_ID):
             if way_id in tags:
                 assert tags[way_id].get("rm:no_bicycle") is None, (variant.value, way_id)
-    # The map agrees: no singletrack drawn as a trail nobody is routed down,
-    # and the towpath either side of lock 21 is.
+    # The map agrees: the singletrack is drawn on the mountain-bike layer alone (its rating
+    # is all that closes it, since the natural-surface rule yields to a rating), and the
+    # towpath either side of lock 21 is an ordinary way.
     drawn = stored_map_class(context)
-    # It has no bicycle tag on a dirt surface, which the tag rules close without the rating
-    # (natural_surface), so the mountain-bike layer does not draw it either (456).
-    assert SINGLETRACK_ID not in context.drawn_singletracks
-    assert drawn[SINGLETRACK_ID] == "hidden"
+    assert context.drawn_singletracks == {SINGLETRACK_ID}
+    assert context.offroad_singletracks == set()
+    assert drawn[SINGLETRACK_ID] == "road"
     assert drawn[TOWPATH_ABOVE_ID] == drawn[TOWPATH_BELOW_ID] == "road"
     # Its level is written all the same (`mtb:scale` 2, level 2), and the towpath, rated
     # IMBA 0, a gravel trail (456b), has none.
@@ -883,7 +887,12 @@ def test_validate_reads_singletrack_back_from_every_graph_before_the_swap(
     probes, and the probes left where the post-swap check reads them."""
     from pipeline.run import CLOSURE_PROBES_REPORT, DISCREPANCY_REPORT_DIR, SINGLETRACK_REPORT
 
-    source = install_source_extract(tmp_path, build_dials_extract)
+    # bicycle=no: closed on every graph, so every graph is held to it (a rated trail with no
+    # bicycle tag is open on the Mountain Bike graph since 2026-10-19, and not probed there).
+    closed = {"highway": "path", "mtb:scale": "2", "surface": "dirt", "bicycle": "no"}
+    source = install_source_extract(
+        tmp_path, lambda path: build_dials_extract(path, singletrack_tags=closed)
+    )
     binaries = FakeBinaries()
     context, report = run_pipeline(
         source, tmp_path, binaries=binaries, urban=DIALS_IDS, skip=NOT_SWAPPED

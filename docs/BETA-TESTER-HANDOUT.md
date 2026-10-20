@@ -88,10 +88,12 @@ needed; reload the page to get the box back.
   default: Scenic, and DC permits (roads DDOT's work permits may close; routes never avoid them). Each row is the section's heading, a switch named for it, then a "layers" button that
   says whether it is collapsed or expanded. The switch turns the whole section on or off; off
   remembers which of its layers were on, and on brings those back. With only some on, it is on
-  and says "Some on" and which. Expand a row for each layer's own switch and a one-line hint; the
-  longer explanations are on the Legend page (the Legend button at the top of Layers).
+  and says "Some on" and which. Expand a row for each layer's own switch, a one-line hint, and
+  its key (what each line, color and symbol means) with the longer explanation.
 - In Plan, the "Manual mode" switch in the map's bar joins each point you tap to the last by a
-  straight line, for a path the planner won't take. It says when it turns on and off.
+  straight line, for a path the planner won't take. It says when it turns on and off, and a
+  "Manual mode: taps join with straight lines" label shows under the bar while it is on. Until the route comes, faint lines join
+  your points: solid for legs to be routed, dashed for legs you drew. Drawn legs stay dashed on the route.
 - To delete your account: Settings, Account, Delete account. The page says what is deleted and
   what is kept, and asks you to tick one box first.
 - The "High contrast" switch is on the "Settings" page (the last button in the same bar). It
@@ -152,12 +154,16 @@ You stay responsible for riding safely; the route can be wrong.
   it), Stoker (each turn once ahead and as it happens, busy crossings and stops: for the rider
   behind on a tandem) or Quiet (only arrival). Both choices stay on this device; change them in
   "Ride settings" during a ride, or in Settings.
-- "Where am I?" says the street you are on, the next turn and the distance to the next stop
+- "Where am I?" (it also re-centres the map on you) says the street you are on, the next turn and the distance to the next stop
   and the end. On a long trail away from roads it says the trail and a distance from its last
   junction, for example "On the Capital Crescent Trail, about 1.2 miles northwest of ...".
 - End ride is a slide: slide it to the right to end the ride, so a bump doesn't end it. Once you
-  have arrived it is a plain button. Near sunrise or sunset, the top corner shows the sunrise or
-  sunset and civil twilight times.
+  have arrived it is a plain button. End ride and Road closed share the top row; Road closed
+  always shows its words. Near sunrise or sunset, a small line under them gives the sunrise or
+  sunset and civil twilight times and the minutes till each.
+- After End ride you get the ride's summary: distance, moving time, average speed, total time,
+  climbing, an elevation chart and the traffic stress you rode. Done leaves Go empty for your next trip (in Plan the
+  plan stays to adjust); Undo carries on with the same ride. Nothing about the ride is saved.
 - Off the route for a few seconds, it says so and finds a new way from where you are. "Keep
   the planned route" says which way the route is instead.
 - At Start ride the map along the route, about 1,000 ft (300 m) either side, is saved on the
@@ -165,24 +171,31 @@ You stay responsible for riding safely; the route can be wrong.
   saved. It lasts for this ride only: it is cleared at "End ride", when the next
   ride starts, and if you reload or reopen the page (a ride does not carry on after a reload).
   Finding a new way off the route still needs a signal.
-- "Report a problem to DC 311" (Washington, DC only) writes a report for a pothole (chosen
-  first), a downed tree, a vehicle parked in a bike lane, a roadway or bikeway obstructed, a
-  streetlight out or anything else. The place is the road you are on, a cross street when one
-  is within about 500 feet, and your GPS position, for example "on R Street Northwest near Q
-  Street Northwest, Washington, DC. GPS 38.91234, -77.03890." On a
-  phone, a pothole or a streetlight can be a text to DC 311 (32311) that you send yourself; the
-  others go to DC 311 online, with the problem named in the report. There is always a link to
-  DC 311 online and a button to copy the report for it. RouteMaker sends
-  nothing and keeps nothing. Check the place before you send it.
+- The round 311 button logs a problem where you are, anywhere on the route: a pothole, a
+  downed tree, a vehicle parked in a bike lane, a roadway or bikeway obstructed, a streetlight
+  out or something else. The entry keeps the road you are on, a cross street when one is within
+  about 500 feet, your GPS position and the time, for example "on R Street Northwest near Q
+  Street Northwest. GPS 38.91234, -77.03890." "Add a note" adds a few words. Off a ride,
+  right-click a road on the map (press and hold on a phone) and choose Log for 311.
+- Your 311 checklist is in Suggest (Go's Menu, or Plan's bottom bar). It lists what you logged
+  under the website that takes it (DC 311, MC311, PGC311, Baltimore 311, Arlington, Alexandria,
+  VDOT and the rest), each with Copy report. Paste the report into the site, then check the
+  entry off and it moves to Archived. Texting DC 311 (32311) is gone: DC's text line answers
+  only "Welcome to DC311". Signed in, the checklist follows you to your other devices; signed
+  out, it is this device's own, and what you logged signed out joins your account when you sign
+  in. Where the server can send DC reports itself, a DC problem is sent at once and goes straight
+  to Archived.
 - Your position stays on your phone. It is sent only when a new way is found from where you
   are, or when you ask for the nearest water or restroom (as "Use my location" does when
-  planning), and never kept. A 311 report you send yourself carries it too. Place search, when
+  planning), and never kept. A problem you log for 311 keeps it, on your phone and, signed in,
+  with your account; outside DC the app asks the server which county's website takes it. Place search, when
   the app already knows where you are and that spot is on the map you are looking at, sends an
   approximate location (about 1 km / 0.6 mi) so nearby places come first.
 - Keep the screen on. If the browser cannot keep it on, Ride mode says so; on an iPhone set
   Settings, Display and Brightness, Auto-Lock to Never for the ride. In the background for more
   than 10 minutes, the ride pauses; press Resume.
-- "Big text during a ride" (in Settings, and in the ride's own Settings) hides the map and shows the next cue large. Ending the ride goes back to the planner.
+- In a ride the map's street names are larger and shortened ("R St NW"), and the turn card uses fewer words ("0.2 mi", not "In 0.2 mi") so its type can be larger; a screen reader still hears the whole sentence.
+- The Large text button on the ride's side (the "Aa") puts the next turn as big as it fits on the top half of the screen, with the map below, for bright sun or near sight; press it again for the normal card. "Large text during a ride" in Settings is the same switch. Ending the ride goes back to the planner.
 
 
 10. Installing RouteMaker, and routes for places with no signal
@@ -237,10 +250,13 @@ descriptions. Plan's "Change" ride type list has the same search and groups. Typ
   how riding the whole way compares.
 - On the map, a dashed line is the ride on transit, marked with its system's name. A dotted line
   is a walk.
-- All times are "about" and scheduled, from the agencies' published timetables, not live.
+- All times are "about" and scheduled, from the agencies' published timetables, except on a trip
+  leaving now: there a Metro train or Metrobus bus you can reach in time for is WMATA's live
+  prediction and says "live". The time on board stays the timetable's.
   Weekends and holidays use their own timetables. A line with no service that day says so, for
   example "MARC Camden Line: no weekend service".
-- Where trains or buses come every 15 minutes or less, the plan counts half that as the wait.
+- Where trains or buses come every 15 minutes or less, the plan counts half that as the wait,
+  unless a live departure times it.
   Otherwise, as on MARC, it names the departure: "MARC Penn Line 7:42 am from Union Station. You
   arrive 7:36 am (6 min spare). Next after that: 8:15 am." The same appears as a label on the map
   at the station.

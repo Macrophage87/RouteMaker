@@ -1312,11 +1312,63 @@ do
     not signal({ highway = "give_way", crossing = "traffic_signals" }))
   check("a crossing whose bicycle=no upstream reopens keeps its class",
     not signal({ highway = "crossing", crossing = "traffic_signals", bicycle = "no" }))
+  local agency = M.AGENCY_SIGNAL_MARK
+  check("a junction an agency lists as a signal becomes one",
+    signal({ [agency] = "yes" }))
+  check("the agency's signal overrides an uncontrolled crosswalk (a HAWK)",
+    signal({ highway = "crossing", crossing = "uncontrolled", [agency] = "yes" }))
+  check("and an unmarked one",
+    signal({ highway = "crossing", crossing = "unmarked", [agency] = "yes" }))
+  check("and a stop sign mapped on the junction",
+    signal({ highway = "stop", [agency] = "yes" }))
+  check("and a give-way sign",
+    signal({ highway = "give_way", [agency] = "yes" }))
+  check("but not a crossing whose bicycle=no upstream reopens",
+    not signal({ highway = "crossing", bicycle = "no", [agency] = "yes" }))
+  check("nor any other node class",
+    not signal({ highway = "motorway_junction", [agency] = "yes" }))
   check("a crossing with no signal tag is untouched",
     next(M.remap_node({ highway = "crossing", crossing = "marked" })) == nil)
   check("a bare node with no mark is untouched", next(M.remap_node({ name = "x" })) == nil)
   check("the one class write a node may make is the signal",
     M.NODE_WRITES_ALLOWED.highway == "traffic_signals" and M.FORBIDDEN_KEYS.highway)
+end
+
+-- v0.10.0's known hazards (`rm:hazard`): priced as LTS 4, never a change of access.
+do
+  local street = { highway = "residential", maxspeed = "25 mph" }
+  local plain = M.remap_way(street, { stress_tier = 1 })
+  local cobbled = M.remap_way(street, { stress_tier = 1, hazard = true })
+  local four = M.remap_way(street, { stress_tier = 4 })
+  check("a hazard LTS 1 street takes the stress penalty",
+    cobbled.bicycle == M.STRESS_PENALTY_BICYCLE and plain.bicycle == nil)
+  check("and LTS 4's graded marks", cobbled["maxspeed:practical"] == M.GRADED_SPEED
+    and cobbled["lanes:forward"] == four["lanes:forward"])
+  check("a hazard 2.5 is priced as LTS 4, not its half step",
+    M.remap_way(street, { stress_tier = 2, stress_half = true, hazard = true })["lanes:forward"]
+      == M.GRADED_LANES)
+  check("a hazard never opens a closed road",
+    M.remap_way({ highway = "residential", access = "no" }, { stress_tier = 1, hazard = true }).bicycle
+      ~= M.STRESS_PENALTY_BICYCLE)
+  check("a hazard on a path changes nothing",
+    M.remap_way({ highway = "cycleway" }, { stress_tier = 1, hazard = true, is_trail_class = true })
+      .bicycle == nil)
+  check("an Avoid road keeps its own marks",
+    M.remap_way({ highway = "primary" }, { stress_tier = 5, hazard = true }).service == M.AVOID_SERVICE)
+  local derived = { stress_tier = 2, hazard = true }
+  M.hazard_priced(derived)
+  check("the derived table passed in is not changed", derived.stress_tier == 2)
+  check("a hazard never rewrites road class or speed", not writes_forbidden(cobbled))
+  check("a hazard LTS 3 street is priced as LTS 4",
+    M.remap_way(street, { stress_tier = 3, hazard = true })["lanes:forward"] == M.GRADED_LANES)
+  local alley = { highway = "service", service = "alley" }
+  local hazard_alley = M.remap_way(alley, { stress_tier = 2, hazard = true })
+  local plain_alley = M.remap_way(alley, { stress_tier = 2 })
+  check("a hazard alley keeps its alley use and adds the graded marks",
+    hazard_alley.service == plain_alley.service and hazard_alley["lanes:forward"] == M.GRADED_LANES)
+  check("Mass Ride's no-trail variant gets no graded marks for a hazard",
+    M.remap_way(street, { stress_tier = 1, hazard = true, facility_neutral = true })["lanes:forward"]
+      ~= M.GRADED_LANES)
 end
 
 io.write(string.format("%d checks, %d failures\n", checks, failures))
