@@ -338,6 +338,28 @@ class TestSchema:
         for entry in describe.describe([atoms, 400.0]):
             api.DescriptionEntryOut.model_validate(entry)
 
+    def test_a_fork_and_a_junction_shape_reach_the_client(self):
+        """`stay` and `shape` are fields of the turn: the response schema keeps only its
+        own fields, and `stay` was dropped before v0.10.0."""
+        atoms = [
+            describe.Atom(500.0, "2", "none", ("A St",), "road", 0.0, 0.0),
+            describe.Atom(
+                500.0,
+                "2",
+                "none",
+                ("A St",),
+                "road",
+                45.0,
+                45.0,
+                fork="bear_right",
+                others=((0.0, "road"), (270.0, "road"), (90.0, "road")),
+            ),
+        ]
+        entry = describe.describe([atoms])[1]
+        turn = api.DescriptionEntryOut.model_validate(entry).model_dump()["turn"]
+        assert turn["stay"] is True
+        assert turn["shape"] == {"out": 45, "others": [-90, 0, 90]}
+
     def test_an_answer_without_it_still_validates_and_has_none(self):
         assert api.RouteOut.model_fields["description"].default is None
 
@@ -710,3 +732,5 @@ class TestForksFromTheTrace:
         }
         pieces = routing.pieces_of_trace(trace)
         assert [p.fork for p in pieces] == [None, "left", None]
+        # And the other ways at the node, for the ride card's junction diagram.
+        assert [p.others for p in pieces] == [None, ((3.0, "cycleway"),), None]

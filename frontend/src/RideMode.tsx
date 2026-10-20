@@ -199,6 +199,7 @@ import { NextVehicleLine } from "./NextVehicleLine.tsx";
 import type { VehicleMark } from "./lib/nextVehicle.ts";
 import { SettingRow, SettingSelect } from "./SettingRow.tsx";
 import { shortLabel } from "./lib/shortLabel.ts";
+import { junctionPaths, type JunctionShape } from "./lib/junctionShape.ts";
 import {
   RIDE_REST,
   RIDE_REST_FINDING,
@@ -329,8 +330,23 @@ function arrowFor(cue: Cue | null): "left" | "right" | "bear_left" | "bear_right
   return "straight";
 }
 
-/** The card's shape for the cue: an arrow, a stop or a finish mark, a warning sign. A shape, never colour alone. */
-function CueShape({ shape }: { shape: ReturnType<typeof arrowFor> }) {
+/**
+ * The card's shape for the cue: an arrow, a stop or a finish mark, a warning sign. A shape, never colour alone. A
+ * turn at an unusual junction (v0.10.0; lib/junctionShape.ts) is drawn as the junction: the way taken solid with
+ * its arrowhead, the other ways dashed.
+ */
+function CueShape({ shape, junction }: { shape: ReturnType<typeof arrowFor>; junction?: JunctionShape }) {
+  if (junction && shape !== "uturn" && shape !== "stop" && shape !== "end" && shape !== "warn") {
+    const drawn = junctionPaths(junction);
+    return (
+      <svg className="cue-shape cue-junction" viewBox="0 0 48 56" aria-hidden="true" focusable="false">
+        {drawn.others.map((d) => (
+          <path key={d} d={d} fill="none" stroke="currentColor" strokeWidth="3" strokeDasharray="4 4" strokeLinecap="butt" />
+        ))}
+        <path d={drawn.route} fill="none" stroke="currentColor" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    );
+  }
   const paths: Record<typeof shape, string> = {
     left: "M30 52 V28 H14 M22 18 L12 28 L22 38",
     right: "M18 52 V28 H34 M26 18 L36 28 L26 38",
@@ -2007,7 +2023,7 @@ export function RideMode({
           </div>
         ) : cue && progress !== null ? (
           <div className="cue-next">
-            <CueShape shape={shape} />
+            <CueShape shape={shape} junction={cue.junction} />
             <div>
               {/* Greyed while GPS is weak or lost (any GPS note): the distance is from an old fix, not where the rider is. */}
               <p className={gps ? "cue-distance cue-distance-weak" : "cue-distance"}>

@@ -133,6 +133,12 @@ FORK_IGNORED_USES = frozenset(
         "pedestrian_crossing",
     }
 )
+# The ride card's junction diagram (`junction_shape`): a branch more than this off
+# straight on, a left or a right makes a junction unusual; ways nearer one another
+# than SHAPE_MERGE_DEG are drawn as one; a sidewalk beside the road is never drawn.
+SHAPE_SQUARE_DEG = 20.0
+SHAPE_MERGE_DEG = 15.0
+SHAPE_IGNORED_USES = frozenset({"sidewalk"})
 # How far from a change of street an event still is that junction.
 MATCH_M = 30.0
 # Tiers that are never folded into a neighbour.
@@ -271,6 +277,10 @@ class Atom:
     # Where the piece begins at a fork the route leaves the straight-ahead way by
     # (`fork_movement`): the movement to say there, else None.
     fork: str | None = None
+    # Where the piece begins a traced edge: the other ways at the node it leaves,
+    # each (its compass heading away from the node, Valhalla's `use`); None on every
+    # other piece, and from a trace that has none (`junction_shape`).
+    others: tuple[tuple[float | None, str | None], ...] | None = None
 
 
 def beside_words(use: str, road: str) -> str | None:
@@ -721,6 +731,8 @@ class _Turn:
     event: object | None = None
     # A fork along one street: "Bear right to stay on ...".
     stay: bool = False
+    # An unusual junction's shape for the ride card's diagram (`junction_shape`).
+    shape: dict | None = None
 
 
 def _turn_deg(heading_in: float, heading_out: float) -> float:
@@ -786,6 +798,59 @@ def fork_movement(
     if abs(ours) > BEAR_MAX_DEG:
         return "right" if ours > 0 else "left"
     return "bear_right" if ours > nearest else "bear_left"
+
+
+def junction_shape(
+    heading_in: float | None,
+    heading_out: float | None,
+    others: tuple[tuple[float | None, str | None], ...] | list | None,
+    service: bool = False,
+) -> dict | None:
+    """The shape of an unusual junction, for the ride card to draw in place of its plain
+    arrow (the owner, 2026-10-20: "if there's a left turn on a service road show the
+    non-picked intersections dashed. Likewise with 5 way intersections"), else None.
+
+    `heading_in` is the compass heading the route arrives on, `heading_out` the one it
+    leaves on, `others` each other way at the node (its heading away from the node,
+    Valhalla's `use`). A way of FORK_IGNORED_USES (a driveway, a crosswalk) or a sidewalk
+    is not drawn; ways within SHAPE_MERGE_DEG of one another are one branch, and one
+    within it of the route's way or of the way back is not drawn. Answers {"out": the
+    route's turn, "others": the other branches' turns}, in degrees from straight ahead,
+    clockwise positive, -180 to 180, where the junction is unusual: more than two other
+    branches, a branch more than SHAPE_SQUARE_DEG off straight, left or right, two in
+    one of those three directions, or a turn onto a service road or alley with any
+    other branch. A plain crossroads or T keeps the plain arrow; so does a junction
+    whose ways the router did not give. The words said and read stay as they are: the
+    diagram is a picture of the junction, never its only telling."""
+    if heading_in is None or heading_out is None or not others:
+        return None
+    out = _turn_deg(heading_in, heading_out)
+    branches: list[float] = []
+    for heading, use in others:
+        if heading is None or use in FORK_IGNORED_USES or use in SHAPE_IGNORED_USES:
+            continue
+        turn = _turn_deg(heading_in, heading)
+        near = [out, *branches]
+        if any(abs(_turn_deg(b, turn)) < SHAPE_MERGE_DEG for b in near):
+            continue
+        if abs(turn) > 180.0 - SHAPE_MERGE_DEG:
+            continue
+        branches.append(turn)
+    if not branches:
+        return None
+    every = [out, *branches]
+
+    def slot(turn: float) -> float | None:
+        for square in (-90.0, 0.0, 90.0):
+            if abs(turn - square) <= SHAPE_SQUARE_DEG:
+                return square
+        return None
+
+    slots = [slot(t) for t in every]
+    plain = len(branches) <= 2 and None not in slots and len(set(slots)) == len(slots)
+    if plain and not service:
+        return None
+    return {"out": round(out), "others": sorted(round(b) for b in branches)}
 
 
 def _street_words(run: _Run) -> str:
@@ -1103,7 +1168,15 @@ def describe_both(
         event = events[found] if found is not None else None
         if movement is None and event is not None:
             movement = event.movement.value
-        turns[i] = _Turn(movement, event, same)
+        shape = None
+        if movement is not None and before.last is not None and run.first is not None:
+            shape = junction_shape(
+                before.last.heading_out,
+                run.first.heading_in,
+                run.first.others,
+                run.first.use in SERVICE_WORDS,
+            )
+        turns[i] = _Turn(movement, event, same, shape)
 
     entries: list[tuple[tuple[float, int, int], dict]] = []
     shared: list[tuple[tuple[float, int, int], dict]] = []
@@ -1158,6 +1231,7 @@ def describe_both(
                         "control": turn.event.control.value if turn.event is not None else None,
                         "severity": severity,
                         **({"stay": True} if turn.stay else {}),
+                        **({"shape": turn.shape} if turn.shape else {}),
                     },
                     severity=severity,
                 ),
@@ -1273,6 +1347,7 @@ def describe_both(
                         "control": turn.event.control.value if turn.event is not None else None,
                         "severity": severity,
                         **({"stay": True} if turn.stay else {}),
+                        **({"shape": turn.shape} if turn.shape else {}),
                     },
                     severity=severity,
                 ),

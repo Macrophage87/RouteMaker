@@ -430,6 +430,10 @@ class Piece:
     # by (`describe.fork_movement`): the movement to say there; None elsewhere, and on
     # every piece of an edge but its first.
     fork: str | None = field(default=None, compare=False)
+    # The other ways at the node the piece's edge begins at, each (its heading away from
+    # the node, Valhalla's `use`), for the ride card's junction diagram
+    # (`describe.junction_shape`); None on every piece of an edge but its first.
+    others: tuple[tuple[float | None, str | None], ...] | None = field(default=None, compare=False)
 
 
 def _heading(value) -> float | None:
@@ -463,6 +467,7 @@ def pieces_of_trace(trace: dict) -> list[Piece]:
             "road": calm.road_of_edge(edge, miles=trace.get("units") == "miles"),
         }
         fork = _fork_of(before, edge)
+        others = _others_of(before)
         before = edge
         stretches = []
         for a, b in zip(shape[begin:end], shape[begin + 1 : end + 1], strict=True):
@@ -471,7 +476,7 @@ def pieces_of_trace(trace: dict) -> list[Piece]:
         if ground <= 0:
             # A degenerate edge: all its length on its first vertex.
             (lon, lat) = shape[begin]
-            pieces.append(Piece(way_id, lon, lat, length, **info, fork=fork))
+            pieces.append(Piece(way_id, lon, lat, length, **info, fork=fork, others=others))
             continue
         for a, b, d in stretches:
             if d > 0:
@@ -483,9 +488,11 @@ def pieces_of_trace(trace: dict) -> list[Piece]:
                         length * d / ground,
                         **info,
                         fork=fork,
+                        others=others,
                     )
                 )
                 fork = None
+                others = None
     return pieces
 
 
@@ -500,6 +507,17 @@ def _fork_of(before: dict | None, edge: dict) -> str | None:
     ]
     return describe.fork_movement(
         _heading(before.get("end_heading")), _heading(edge.get("begin_heading")), others
+    )
+
+
+def _others_of(before: dict | None) -> tuple[tuple[float | None, str | None], ...] | None:
+    """The other ways at the node a traced edge begins at (`describe.junction_shape`):
+    the edge before's `end_node.intersecting_edges`, each (heading away, use)."""
+    if before is None:
+        return None
+    return tuple(
+        (_heading(other.get("begin_heading")), other.get("use"))
+        for other in (before.get("end_node") or {}).get("intersecting_edges") or []
     )
 
 
@@ -2431,6 +2449,7 @@ def describe_route(
                             getattr(classes[i], "unpaved", None),
                             bool(pieces[i].road and pieces[i].road.roundabout),
                             pieces[i].fork,
+                            pieces[i].others,
                         )
                         for i in range(run[0], run[1])
                     ]

@@ -1239,6 +1239,14 @@ class DetourOut(Schema):
     )
 
 
+class DescriptionShapeOut(Schema):
+    """The ways at an unusual junction, in degrees from straight ahead as the rider
+    arrives, clockwise positive, -180 to 180."""
+
+    out: int = Field(description="The way the route takes.")
+    others: list[int] = Field(description="Every other way, drawn dashed.")
+
+
 class DescriptionTurnOut(Schema):
     """How the rider comes into a described stretch, or what a junction entry
     is: the movement, the street turned onto, who has the right of way where
@@ -1253,6 +1261,17 @@ class DescriptionTurnOut(Schema):
     )
     severity: Literal["orange", "red"] | None = Field(
         description='"Higher stress" (orange) or "Very high stress" (red), where flagged.'
+    )
+    stay: bool | None = Field(
+        default=None,
+        description='A fork along one way: "Bear right to stay on ..."; absent elsewhere.',
+    )
+    shape: DescriptionShapeOut | None = Field(
+        default=None,
+        description=(
+            "An unusual junction's shape, which the ride card draws in place of its plain"
+            " arrow (`describe.junction_shape`); absent at a plain crossroads or T."
+        ),
     )
 
 

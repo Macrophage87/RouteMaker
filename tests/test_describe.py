@@ -1647,3 +1647,87 @@ class TestServiceRoads:
         assert d.beside_words("cycleway", "X Road") == "path beside X Road"
         assert d.beside_words("alley", "X Road") is None
         assert d.beside_words("road", "X Road") is None
+
+
+def branched(atoms, others):
+    """`atoms` with the first given the other ways at its node (`describe.junction_shape`)."""
+    return [replace(atoms[0], others=tuple(others)), *atoms[1:]]
+
+
+class TestJunctionShapes:
+    """The owner, 2026-10-20: "Can arrows be made more clear when there's unusual
+    intersections? For instance if there's a left turn on a service road show the
+    non-picked intersections dashed. Likewise with 5 way intersections and the like."
+    The ride card draws the junction where it is unusual; a plain crossroads or T keeps
+    its plain arrow."""
+
+    def test_a_plain_crossroads_or_t_keeps_the_plain_arrow(self):
+        assert d.junction_shape(0, 270, [(0, "road"), (90, "road")]) is None
+        assert d.junction_shape(0, 270, [(90, "road")]) is None
+        # A little off square is still square.
+        assert d.junction_shape(10, 275, [(5, "road"), (100, "road")]) is None
+
+    def test_a_five_way_junction_is_drawn(self):
+        # North into a five-way: the route takes the right-hand diagonal.
+        shape = d.junction_shape(0, 45, [(270, "road"), (0, "road"), (90, "road")])
+        assert shape == {"out": 45, "others": [-90, 0, 90]}
+
+    def test_a_branch_off_square_is_drawn(self):
+        assert d.junction_shape(0, 270, [(30, "road")]) == {"out": -90, "others": [30]}
+
+    def test_two_ways_to_one_side_are_drawn(self):
+        # A left and a sharp left: which one the plain arrow means is not plain.
+        assert d.junction_shape(0, 270, [(225, "road")]) == {"out": -90, "others": [-135]}
+
+    def test_a_left_onto_a_service_road_is_drawn_with_the_road_on(self):
+        assert d.junction_shape(0, 270, [(0, "road")], service=True) == {
+            "out": -90,
+            "others": [0],
+        }
+        # With no other way it is only a bend: nothing to draw.
+        assert d.junction_shape(0, 270, [], service=True) is None
+
+    def test_driveways_crosswalks_and_sidewalks_are_not_drawn(self):
+        others = [
+            (0, "road"),
+            (90, "road"),
+            (30, "driveway"),
+            (45, "sidewalk"),
+            (60, "pedestrian_crossing"),
+        ]
+        assert d.junction_shape(0, 270, others) is None
+
+    def test_ways_close_together_are_one_branch(self):
+        # A divided road's two carriageways, and a way alongside the route's own.
+        shape = d.junction_shape(0, 270, [(40, "road"), (48, "road"), (275, "road")])
+        assert shape == {"out": -90, "others": [40]}
+
+    def test_without_headings_nothing_is_drawn(self):
+        assert d.junction_shape(None, 270, [(30, "road")]) is None
+        assert d.junction_shape(0, 270, None) is None
+        assert d.junction_shape(0, 270, [(None, "road")]) is None
+
+    def test_the_turn_carries_its_shape_in_both_lists(self):
+        legs = [
+            flat(
+                road("Grubb Road", 2, 600, 0.0, 0.0),
+                branched(
+                    road(None, 2, 600, 270.0, 270.0, use="service_road"),
+                    [(0.0, "road"), (90.0, "road")],
+                ),
+            )
+        ]
+        full, short = d.describe_both(legs)
+        assert full[1]["turn"]["shape"] == {"out": -90, "others": [0, 90]}
+        assert short[1]["turn"]["shape"] == {"out": -90, "others": [0, 90]}
+        # The words are as they were.
+        assert ": Left onto the service road, fairly low stress" in full[1]["text"]
+
+    def test_a_plain_turn_carries_no_shape(self):
+        legs = [
+            flat(
+                road("A Street", 2, 400, 0.0, 0.0),
+                branched(road("B Street", 2, 400, 270.0, 270.0), [(0.0, "road"), (90.0, "road")]),
+            )
+        ]
+        assert "shape" not in d.describe(legs)[1]["turn"]

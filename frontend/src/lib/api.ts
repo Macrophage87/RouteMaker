@@ -268,7 +268,12 @@ export interface DescriptionEntry {
     control: "signal" | "stop" | "cross_stop" | "all_stop" | "none" | null;
     severity: "orange" | "red" | null;
     /** A fork along one way (describe.fork_movement): "Bear right to stay on ...". */
-    stay?: boolean;
+    stay?: boolean | null;
+    /**
+     * An unusual junction's ways (v0.10.0, describe.junction_shape), in degrees from straight ahead, clockwise
+     * positive: the ride card draws them in place of the plain arrow. Absent or null at a plain crossroads or T.
+     */
+    shape?: { out: number; others: number[] } | null;
   } | null;
   severity?: "orange" | "red" | "avoid" | null;
   via?: number | null;

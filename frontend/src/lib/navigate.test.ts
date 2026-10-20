@@ -1446,6 +1446,29 @@ test("a fork along one trail is a turn cue to stay on it (the owner, 2026-10-18,
   );
 });
 
+test("an unusual junction's ways ride on its turn cue for the card to draw; a plain turn has none (the owner, 2026-10-20)", () => {
+  const route = lRoute();
+  route.description = [
+    stretch(0, 1000, "0.0 to 0.6 mi (0.0 to 1.0 km): Grubb Road, fairly low stress (LTS 2).", { street: "Grubb Road" }),
+    stretch(1000, 1500, "0.6 to 0.9 mi (1.0 to 1.5 km): Left onto the service road, fairly low stress (LTS 2).", {
+      street: "service road",
+      turn: { movement: "left", onto: "service road", control: null, severity: null, shape: { out: -90, others: [0, 90] } },
+    }),
+    stretch(1500, 2000, "0.9 to 1.2 mi (1.5 to 2.0 km): Right onto C Street, fairly low stress (LTS 2).", {
+      street: "C Street",
+      turn: { movement: "right", onto: "C Street", control: null, severity: null, shape: null },
+    }),
+  ];
+  const turns = rideModel(route).cues.filter((c) => c.kind === "turn");
+  assert.deepEqual(
+    turns.map((c) => [c.text, c.junction ?? null]),
+    [
+      ["Left onto the service road.", { out: -90, others: [0, 90] }],
+      ["Right onto C Street.", null],
+    ],
+  );
+});
+
 test("a re-route that turns the rider round: judged from the line's first 25 m against the heading", () => {
   const east = lRoute().geometry.coordinates;
   assert.equal(setsOffBack(east, 270), true);
