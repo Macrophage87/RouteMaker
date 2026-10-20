@@ -1097,6 +1097,21 @@ what OSM may miss (`fixtures/hazards/`), each entry with its source:
 Facts only, no data copied. The route network prices a hazard road as LTS 4; its rating is
 unchanged, and the map marks it only on a route that rides it.
 
+## Used inside the project only (no credit)
+
+These are shown nowhere: no tile, route, fixture or page carries anything read from
+them (OWNER-DECISIONS 152, 155, 162).
+
+- Arlington County's Bike Comfort Index: internal comparison only, held outside the
+  repository, while Arlington's terms are pending.
+- Arlington County's Intersection Points
+  (<https://arlgis.arlingtonva.us/arcgis/rest/services/Open_Data/od_Intersection_Points/FeatureServer/0>),
+  319 signalised intersections (2026-10-19): installable as a signal list
+  (`pipeline.agency_signals`) but not read while Arlington's terms are pending (its
+  item says only "Please review the Arlington County data disclaimer").
+- MDOT's Road Separated Bike Routes web map: check-only (its terms bar trip-planning
+  use).
+
 ## 311 websites (the 311 checklist; facts, no credit)
 
 The 311 checklist (frontend/src/lib/report311Log.ts JURISDICTIONS) names, for each place, the
@@ -1131,21 +1146,6 @@ jurisdiction's own page that links it:
 Which applies to a spot: inside DC from DC's boundary (core/geodata/dc-boundary.geojson); elsewhere
 from the county or city the self-hosted Photon names for the spot (OpenStreetMap's administrative
 boundaries; core/report_log.py).
-
-## Used inside the project only (no credit)
-
-These are shown nowhere: no tile, route, fixture or page carries anything read from
-them (OWNER-DECISIONS 152, 155, 162).
-
-- Arlington County's Bike Comfort Index: internal comparison only, held outside the
-  repository, while Arlington's terms are pending.
-- Arlington County's Intersection Points
-  (<https://arlgis.arlingtonva.us/arcgis/rest/services/Open_Data/od_Intersection_Points/FeatureServer/0>),
-  319 signalised intersections (2026-10-19): installable as a signal list
-  (`pipeline.agency_signals`) but not read while Arlington's terms are pending (its
-  item says only "Please review the Arlington County data disclaimer").
-- MDOT's Road Separated Bike Routes web map: check-only (its terms bar trip-planning
-  use).
 
 ## WMATA service announcements (facts, no credit)
 

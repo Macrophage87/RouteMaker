@@ -4236,13 +4236,13 @@ details.zoom-notes {
 }
 
 .ride-report-actions button,
-.ride-report-actions .action-link {
+.log311-group .action-link {
   min-height: 44px;
   padding: 8px 14px;
   box-sizing: border-box;
 }
 
-.ride-report-actions .action-link {
+.log311-group .action-link {
   display: inline-flex;
   align-items: center;
   color: var(--accent-text);
@@ -4252,7 +4252,7 @@ details.zoom-notes {
   text-decoration: underline;
 }
 
-.ride-report-actions .action-link.secondary {
+.log311-group .action-link.secondary {
   background: transparent;
   color: var(--accent);
 }

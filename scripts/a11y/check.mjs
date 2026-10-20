@@ -1951,10 +1951,45 @@ async function saidInDialog(p, text) {
   const backwards = await p.eval("({ inside: !!document.activeElement?.closest('dialog.road-info'), text: document.activeElement?.textContent ?? '' })");
   // Signed out, the row ends with the short form's Suggest a change, after Edit in OSM (b67278b5, "Signed-out LTS
   // suggestions: a short form").
-  check("road panel: Shift+Tab from the heading goes round to the dialog's last control, Suggest a change", backwards.inside && backwards.text === "Suggest a change", JSON.stringify(backwards));
+  check("road panel: Shift+Tab from the heading goes round to the dialog's last control, Log for 311 (its list of problems hidden)", backwards.inside && backwards.text === "Log for 311", JSON.stringify(backwards));
+  // Log for 311 in the road panel (Stephen, 2026-10-20: "It should be on the right click panel"): the button shows its
+  // six problems under the row; a pick logs one at the road's nearest point, says so on screen, and the list hides
+  // with the focus back on the button.
+  const LOG_311 = "routemaker.report311-log";
+  const newest311 = `JSON.parse(localStorage.getItem(${JSON.stringify(LOG_311)}) ?? "[]").reduce((a, b) => (a && a.at > b.at ? a : b), null)`;
+  await p.eval("[...document.querySelectorAll('dialog.road-info button')].find((b) => b.textContent === 'Log for 311').click(); true");
+  await sleep(200);
+  const logList = await p.eval(`(() => { const b = [...document.querySelectorAll('dialog.road-info button')].find((x) => x.textContent === 'Log for 311'); const ul = document.getElementById(b.getAttribute('aria-controls'));
+    return { expanded: b.getAttribute('aria-expanded'), shown: !!ul && !ul.hidden, name: ul?.getAttribute('aria-label'), kinds: [...(ul?.querySelectorAll('button') ?? [])].map((k) => k.textContent), small: [...(ul?.querySelectorAll('button') ?? [])].filter((k) => k.getBoundingClientRect().height < 44).length }; })()`);
+  await p.eval("[...document.querySelectorAll('dialog.road-info .road-info-311 button')].find((k) => k.textContent === 'Pothole').click(); true");
+  await sleep(300);
+  const panelLogged = await p.eval(`(() => { const b = [...document.querySelectorAll('dialog.road-info button')].find((x) => x.textContent === 'Log for 311'); const e = ${newest311};
+    return { expanded: b.getAttribute('aria-expanded'), hidden: document.getElementById(b.getAttribute('aria-controls'))?.hidden, focus: document.activeElement === b, said: document.querySelector('dialog.road-info .road-info-logged')?.textContent, kind: e?.kind, lat: e?.lat, at: e?.at }; })()`);
+  check("road panel: Log for 311 shows its six problems (44 px or taller) under the row; a pick logs it, says Logged for 311 and where it is kept, and hides the list, the focus back on Log for 311",
+    logList.expanded === "true" && logList.shown && logList.name === "Log for 311" && JSON.stringify(logList.kinds) === JSON.stringify(["Pothole", "Downed tree", "Vehicle parked in a bike lane", "Roadway or bikeway obstructed", "Streetlight out", "Something else"]) && logList.small === 0 &&
+      panelLogged.expanded === "false" && panelLogged.hidden && panelLogged.focus && /^Logged for 311: Pothole( on .+)?\. It is in your 311 checklist in Suggest\.$/.test(panelLogged.said ?? "") && panelLogged.kind === "pothole" && typeof panelLogged.lat === "number",
+    JSON.stringify({ logList, panelLogged }));
   await armInfoClose(p);
   await p.escape();
   const shutFirst = await infoClosed(p, "true");
+  // The 311 checklist in Suggest (Stephen, 2026-10-20: "a checklist of what needs to be logged to 311 and which website,
+  // by location. Checking archives it."): a heading per website with its Open link, a checkbox per problem whose place
+  // describes it, Copy report; checking it moves it to Archived.
+  await openSheet(p, "Suggest");
+  const list311 = await p.eval(`(() => { const s = document.querySelector('#sheet-suggest section[aria-labelledby="suggest-311-heading"]'); const g = s?.querySelector('.log311-group'); const a = g?.querySelector('a'); const box = g?.querySelector('input[type=checkbox]');
+    return { heading: s?.querySelector('h3')?.textContent, group: g?.querySelector('h4')?.textContent, link: a ? { text: a.textContent, href: a.getAttribute('href'), target: a.target, rel: a.rel } : null,
+      label: box?.closest('label')?.textContent, place: document.getElementById(box?.getAttribute('aria-describedby') ?? '')?.textContent, copy: g?.querySelector('.log311-copy')?.textContent,
+      small: [...(s?.querySelectorAll('input[type=checkbox], a, button') ?? [])].filter((e) => e.closest('label, a, button').getBoundingClientRect().height < 43.5).length }; })()`);
+  await p.eval("document.querySelector('#sheet-suggest .log311-group input[type=checkbox]').click(); true");
+  await sleep(300);
+  const archived311 = await p.eval(`(() => { const s = document.querySelector('#sheet-suggest .log311'); return { groups: s.querySelectorAll('.log311-group').length, empty: [...s.querySelectorAll('p')].some((x) => x.textContent === 'Nothing to report yet.'), fold: s.querySelector('.log311-archived summary')?.textContent, reported: !!(${newest311})?.reported }; })()`);
+  check("suggest: Your 311 checklist groups the logged pothole under Washington, DC with Open DC 311 (new tab), a checkbox named by the problem and time and described by its place; checking it archives it",
+    list311.heading === "Your 311 checklist" && list311.group === "Washington, DC" && list311.link?.href === "https://311.dc.gov/citizen/s/" && list311.link.target === "_blank" && /noopener/.test(list311.link.rel) && /\(new tab\)$/.test(list311.link.text) &&
+      /^Pothole, [A-Z][a-z]{2} \d{1,2}, \d{1,2}:\d{2} [AP]M$/.test(list311.label ?? "") && /GPS 38\.\d{5}, -77\.\d{5}\./.test(list311.place ?? "") && list311.copy === "Copy report" && list311.small === 0 &&
+      archived311.groups === 0 && archived311.empty && archived311.fold === "Archived (1)" && archived311.reported,
+    JSON.stringify({ list311, archived311 }));
+  await p.eval("document.querySelector('#sheet-suggest .sheet-back').click(); true");
+  await sleep(300);
   // The keyboard's way: I on the focused map, for the road at its center.
   await p.eval("document.querySelector('.maplibregl-canvas').focus(); true");
   const canvasFirst = await p.waitFor(CANVAS_FOCUSED, 5000);
@@ -2235,8 +2270,8 @@ const levelSlider = `${EDITOR} input[type=range]`;
   const row = await p.eval(`(() => { const ul = document.querySelector('dialog.road-info ul.road-info-buttons');
     const last = ul?.querySelector('li:last-child > *');
     return { names: [...(ul?.querySelectorAll('li > *') ?? [])].map((e) => e.textContent), lastTag: last?.tagName, height: Math.round(last?.getBoundingClientRect().height ?? 0) }; })()`);
-  check("stress editor: an instance admin's bottom row is Street View, Edit in OSM, then a Change LTS button, at least 44px tall (the panel opened by the keyboard)",
-    opened && JSON.stringify(row.names) === JSON.stringify(["Street View", "Edit in OSM", "Change LTS"]) && row.lastTag === "BUTTON" && row.height >= 44, JSON.stringify(row));
+  check("stress editor: an instance admin's bottom row is Street View, Edit in OSM, a Change LTS button, then Log for 311 (Stephen, 2026-10-20), at least 44px tall (the panel opened by the keyboard)",
+    opened && JSON.stringify(row.names) === JSON.stringify(["Street View", "Edit in OSM", "Change LTS", "Log for 311"]) && row.lastTag === "BUTTON" && row.height >= 44, JSON.stringify(row));
 
   // Open the editor: in the same dialog, in place of the row, the focus on its heading.
   await p.eval("[...document.querySelectorAll('dialog.road-info button')].find((b) => b.textContent === 'Change LTS').click(); true");
@@ -2673,81 +2708,19 @@ const levelSlider = `${EDITOR} input[type=range]`;
   check("ride: with no signal, a kept stress tile answers the map's tile loader at once (Network offline)",
     dead.riding === true && dead.online === false && dead.network === "failed" && dead.data === true && dead.ms < 1000 && dead.never === "failed", JSON.stringify(dead));
 
-  // N6: Report a problem to DC 311 (OWNER-DECISIONS 369, 370, 465; the owner, 2026-10-12): the road ridden
-  // in the route's own street names (R Street, the turn from Q Street just passed; Q Street named only
-  // within 500 ft), then the GPS position, latitude first to 5 decimals; the copy has no text keyword.
-  const AT_311 = /^Location: on R Street Northwest( near Q Street Northwest)?, Washington, DC\. GPS 38\.\d{5}, -7[67]\.\d{5}\.$/;
-  // The full report is not on screen by default (the owner, 2026-10-17: "Remove that bottom part"): the 311 menu's
-  // last button opens it.
-  await p.eval("document.querySelector('.ride-311-button').click(); true");
-  await sleep(300);
-  await p.eval("document.querySelector('.ride-311-more').click(); true");
-  await sleep(300);
-  const report = await p.eval(`(() => {
-    const d = document.querySelector('.ride-report');
-    const links = [...d.querySelectorAll('.ride-report-actions a')];
-    return {
-      open: d.open, text: d.querySelector('.ride-report-text')?.textContent,
-      links: links.map((a) => ({ name: a.textContent, href: a.getAttribute('href'), target: a.getAttribute('target'), rel: a.getAttribute('rel') })),
-      copy: [...d.querySelectorAll('.ride-report-actions button')].map((b) => b.textContent),
-      privacy: d.textContent.includes('The message goes to DC 311 from your own phone'),
-    };
-  })()`);
-  check("ride 311: the report names the place from the route's streets (no text keyword in the copy); a desktop opens DC 311 online in a new tab, with Copy (369, 370)",
-    report.open && AT_311.test((report.text ?? "").replace(/^The report: /, "")) && report.links.length === 1 && report.links[0].href === "https://311.dc.gov/" && report.links[0].target === "_blank" && /noopener/.test(report.links[0].rel) && /new tab/.test(report.links[0].name) && report.copy.includes("Copy the report") && report.privacy,
-    JSON.stringify(report));
-  const reportForm = await p.eval(`(() => {
-    const d = document.querySelector('.ride-report');
-    const fs = d.querySelector('fieldset');
-    const small = [...d.querySelectorAll('summary, label.radio, input[type=text], .ride-report-actions a, .ride-report-actions button')].filter((e) => e.getBoundingClientRect().height < 43.5).map((e) => e.textContent || e.tagName);
-    const note = d.querySelector('input[type=text]');
-    return { legend: fs?.querySelector('legend')?.textContent, radios: fs?.querySelectorAll('input[type=radio]').length, checked: fs?.querySelector('input[type=radio]:checked')?.closest('label')?.textContent, labelled: [...fs.querySelectorAll('input[type=radio]')].every((i) => i.closest('label')?.textContent.trim().length > 0), note: note?.closest('label')?.textContent.trim(), small, focus: document.activeElement?.id };
-  })()`);
-  check("ride 311: what it is is a named group of six radios with Pothole first and chosen, the note a labelled field, and every control at least 44 px tall",
-    reportForm.legend === "What is it?" && reportForm.radios === 6 && reportForm.checked === "Pothole" && reportForm.labelled && reportForm.note === "Add a note (optional)" /* 4bf8e6ab, "Go 311: ... the note after" */ && reportForm.small.length === 0, JSON.stringify(reportForm));
-  // On a phone (an Android browser), a streetlight is a text to 32311 with the same words; something else has no keyword, so DC 311 online.
-  const ua = await p.eval("navigator.userAgent");
-  await p.s("Emulation.setUserAgentOverride", { userAgent: "Mozilla/5.0 (Linux; Android 15; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Mobile Safari/537.36" });
-  await p.eval("[...document.querySelectorAll('.ride-report label.radio')].find((l) => l.textContent === 'Streetlight out').querySelector('input').click(); true");
-  await sleep(300);
-  const sms = await p.eval("[...document.querySelectorAll('.ride-report-actions a')].map((a) => ({ name: a.textContent, label: a.getAttribute('aria-label'), href: a.getAttribute('href') }))");
-  await p.eval("[...document.querySelectorAll('.ride-report label.radio')].find((l) => l.textContent.startsWith('Something else')).querySelector('input').click(); true");
-  await sleep(300);
-  const other = await p.eval("({ links: [...document.querySelectorAll('.ride-report-actions a')].map((a) => a.getAttribute('href')), text: document.querySelector('.ride-report-text')?.textContent })");
-  // The owner's three new kinds have no DC keyword: DC 311 online, with the problem named first and the hint
-  // naming DC's request only where a source does (none for an obstruction).
-  const newKinds = {};
-  for (const label of ["Downed tree", "Vehicle parked in a bike lane", "Roadway or bikeway obstructed"]) {
-    await p.eval(`[...document.querySelectorAll('.ride-report label.radio')].find((l) => l.textContent === ${JSON.stringify(label)}).querySelector('input').click(); true`);
-    await sleep(300);
-    newKinds[label] = await p.eval("({ links: [...document.querySelectorAll('.ride-report-actions a')].map((a) => a.getAttribute('href')), text: document.querySelector('.ride-report-text')?.textContent, hint: [...document.querySelectorAll('.ride-report .hint')].map((h) => h.textContent).find((t) => t.startsWith(\"DC's text service\")) })");
-  }
-  // The rider has not moved since the first check: the same place and coordinates throughout.
-  const at = (report.text ?? "").replace(/^The report: /, "");
-  const online = (k) => JSON.stringify(k?.links) === JSON.stringify(["https://311.dc.gov/"]);
-  const tree = newKinds["Downed tree"], lane = newKinds["Vehicle parked in a bike lane"], blocked = newKinds["Roadway or bikeway obstructed"];
-  await p.eval("[...document.querySelectorAll('.ride-report label.radio')].find((l) => l.textContent === 'Pothole').querySelector('input').click(); true");
-  await p.s("Emulation.setUserAgentOverride", { userAgent: ua });
-  check("ride 311: on a phone a streetlight is a Text to 311 link first (sms:32311, Android's ?body=, the code read digit by digit), DC 311 online still beside it; something else, a downed tree, a vehicle in a bike lane or an obstructed roadway or bikeway (each named first, DC's request in the hint only where sourced) goes to DC 311 online",
-    sms.length === 2 && sms[0].name === "Text to DC 311 (32311)" && sms[0].label === "Text to DC 311 (3 2 3 1 1)" && sms[1].href === "https://311.dc.gov/" && AT_311.test(at) && sms[0].href === `sms:32311?body=${encodeURIComponent(`STREETLIGHT ${at}`)}` &&
-      JSON.stringify(other.links) === JSON.stringify(["https://311.dc.gov/"]) && other.text === `The report: ${at}` &&
-      online(tree) && tree.text === `The report: Downed tree. ${at}` && /Tree Inspection and Tree Removal/.test(tree.hint ?? "") &&
-      online(lane) && lane.text === `The report: Vehicle parked in a bike lane. ${at}` && /Parking Enforcement/.test(lane.hint ?? "") &&
-      online(blocked) && blocked.text === `The report: Roadway or bikeway obstructed. ${at}` && !!blocked.hint && !/Enforcement|Inspection|Removal|Repair/.test(blocked.hint),
-    JSON.stringify({ sms, other, newKinds }));
-  await p.eval("document.querySelector('.ride-report').open = false; document.querySelector('#ride-heading').focus(); true");
-
-  // UI-CLEANUP (the owner's choice 9): the 311 button, inside DC only, round, about 60 px, on the right edge at
-  // thumb height; one tap opens a menu of large buttons, the six problems; a pick opens the report with it chosen.
+  // UI-CLEANUP (the owner's choice 9): the 311 button, round, about 60 px, on the right edge at thumb height; one
+  // tap opens a menu of large buttons, the six problems. Since the 311 log (Stephen, 2026-10-20: "enable it everywhere
+  // as a log with what website to go to and the description of where") a pick is logged, anywhere on the route.
+  await p.eval("document.querySelector('#ride-heading').focus(); true");
   await sleep(300);
   const b311 = await p.eval(`(() => { const b = document.querySelector('.ride-311-button'); if (!b) return null; const r = b.getBoundingClientRect(); const s = getComputedStyle(b);
     return { w: Math.round(r.width), h: Math.round(r.height), right: Math.round(innerWidth - r.right), mid: Math.round((r.top + r.bottom) / 2 / innerHeight * 100), round: parseFloat(s.borderRadius) >= r.width / 2 - 1, text: b.textContent, expanded: b.getAttribute('aria-expanded') }; })()`);
   // The side buttons, each round, named, at least 44 px.
   const rail = await p.eval(`[...document.querySelectorAll('.ride-rail button')].filter((b) => b.getClientRects().length > 0).map((b) => { const r = b.getBoundingClientRect(); return { name: b.getAttribute('aria-label'), w: Math.round(r.width), round: parseFloat(getComputedStyle(b).borderRadius) >= r.width / 2 - 1 }; })`);
   const ax311 = await axNode(p, ".ride-311-button");
-  check("ride 311 button: inside DC, a round button of about 60 px at the right edge, in the lower half (thumb height), named Report to DC 311 with its visible 311, closed",
-    !!b311 && b311.w >= 56 && b311.w <= 72 && b311.h >= 56 && b311.round && b311.right <= 24 && b311.mid >= 45 && b311.mid <= 96 && b311.text === "311" && b311.expanded === "false" && ax311?.role === "button" && ax311?.name === "Report to DC 311" &&
-      JSON.stringify(rail.map((x) => x.name)) === JSON.stringify(["Where am I?", "Large text", "Detour: water or restroom", "Report to DC 311", "Settings"]) && rail.every((x) => x.round && x.w >= 44),
+  check("ride 311 button: a round button of about 60 px at the right edge, in the lower half (thumb height), named Log for 311 with its visible 311, closed",
+    !!b311 && b311.w >= 56 && b311.w <= 72 && b311.h >= 56 && b311.round && b311.right <= 24 && b311.mid >= 45 && b311.mid <= 96 && b311.text === "311" && b311.expanded === "false" && ax311?.role === "button" && ax311?.name === "Log for 311" &&
+      JSON.stringify(rail.map((x) => x.name)) === JSON.stringify(["Where am I?", "Large text", "Detour: water or restroom", "Log for 311", "Settings"]) && rail.every((x) => x.round && x.w >= 44),
     JSON.stringify({ b311, ax311, rail }));
   // The top row (the owner, 2026-10-19: "switch end ride and road closed"): End ride, then Road closed ahead with its
   // words (2026-10-20), one line.
@@ -2785,23 +2758,47 @@ const levelSlider = `${EDITOR} input[type=range]`;
   const menu311 = await p.eval(`(() => { const m = document.querySelector('.ride-311-menu'); const kinds = [...m.querySelectorAll('.ride-311-kind')];
     return { shown: !m.hidden, expanded: document.querySelector('.ride-311-button').getAttribute('aria-expanded'), focus: document.activeElement === m.querySelector('h3'), heading: m.querySelector('h3')?.textContent,
       kinds: kinds.map((k) => k.textContent), small: kinds.filter((k) => k.getBoundingClientRect().height < 44).length, place: m.querySelector('.ride-311-place')?.textContent }; })()`);
-  check("ride 311 button: one press opens the menu, its heading focused, the six problems in the owner's order as buttons 44 px or taller, and the place to check",
-    menu311.shown && menu311.expanded === "true" && menu311.focus && menu311.heading === "Report to DC 311" && menu311.small === 0 &&
-      JSON.stringify(menu311.kinds) === JSON.stringify(["Pothole", "Downed tree", "Vehicle parked in a bike lane", "Roadway or bikeway obstructed", "Streetlight out", "Something else"]) && /^On R Street Northwest( near Q Street Northwest)?, GPS 38\.\d{5}, -7[67]\.\d{5}\. Check it before you send\.$/.test(menu311.place ?? ""),
+  check("ride 311 button: one press opens the menu, its heading focused, the six problems in the owner's order as buttons 44 px or taller, and the place the entry will name",
+    menu311.shown && menu311.expanded === "true" && menu311.focus && menu311.heading === "Log for 311" && menu311.small === 0 &&
+      JSON.stringify(menu311.kinds) === JSON.stringify(["Pothole", "Downed tree", "Vehicle parked in a bike lane", "Roadway or bikeway obstructed", "Streetlight out", "Something else"]) && /^On R Street Northwest( near Q Street Northwest)?, GPS 38\.\d{5}, -7[67]\.\d{5}\.$/.test(menu311.place ?? ""),
     JSON.stringify(menu311));
   await p.escape();
   await sleep(200);
   const closed311 = await p.eval("({ hidden: document.querySelector('.ride-311-menu').hidden, focus: document.activeElement === document.querySelector('.ride-311-button'), riding: !!document.querySelector('section.ride') })");
+  // A pick is logged on the phone (lib/report311Log.ts): the problem, the place in the route's street names, the GPS
+  // position and the time; in DC its website is known at once. The mocked API has no DC 311 key, so nothing is sent.
+  const LOG_KEY = "routemaker.report311-log";
+  const logged = `JSON.parse(localStorage.getItem(${JSON.stringify(LOG_KEY)}) ?? "[]")`;
+  const before311 = await p.eval(`${logged}.length`);
   await p.eval("document.querySelector('.ride-311-button').click(); true");
   await sleep(300);
   await p.eval("[...document.querySelectorAll('.ride-311-kind')].find((k) => k.textContent === 'Downed tree').focus(); true");
   await p.enter();
   await sleep(400);
-  const picked = await p.eval("(() => { const d = document.querySelector('.ride-report'); return { open: d.open, checked: d.querySelector('input[type=radio]:checked')?.closest('label')?.textContent, focus: document.activeElement === d.querySelector('summary'), menu: document.querySelector('.ride-311-menu').hidden }; })()");
-  check("ride 311 button: Escape closes the menu back to the button (the ride goes on); a pick opens Report a problem to DC 311 with that problem chosen, the focus on it",
-    closed311.hidden && closed311.focus && closed311.riding && picked.open && picked.checked === "Downed tree" && picked.focus && picked.menu, JSON.stringify({ closed311, picked }));
-  await p.eval("[...document.querySelectorAll('.ride-report label.radio')].find((l) => l.textContent === 'Pothole').querySelector('input').click(); true");
-  await p.eval("document.querySelector('.ride-report').open = false; document.querySelector('#ride-heading').focus(); true");
+  const picked = await p.eval(`(() => { const log = ${logged}; const e = log.reduce((a, b) => (a && a.at > b.at ? a : b), null);
+    return { menu: document.querySelector('.ride-311-menu').hidden, focus: document.activeElement === document.querySelector('.ride-311-button'), said: document.querySelector('.ride-311-said p')?.textContent,
+      added: log.length - ${before311}, kind: e?.kind, where: e?.where, place: e?.place, reported: e?.reported }; })()`);
+  check("ride 311 button: Escape closes the menu back to the button (the ride goes on); a pick logs the problem with the place, in DC with DC's website, says Logged for 311, the focus back on the button",
+    closed311.hidden && closed311.focus && closed311.riding && picked.menu && picked.focus && picked.said === "Logged for 311: Downed tree." && picked.added === 1 &&
+      picked.kind === "tree" && picked.where === "dc" && /^on R Street Northwest( near Q Street Northwest)?$/.test(picked.place ?? "") && picked.reported === null,
+    JSON.stringify({ closed311, picked }));
+  // The note comes after (v0.7.0 "Go riding fixes" item 3): Add a note opens the entry as it will read on the 311 site,
+  // with a labelled note field, focused, that saves as it is typed.
+  await p.eval("[...document.querySelectorAll('.ride-311-said button')].find((b) => b.textContent === 'Add a note').click(); true");
+  await sleep(300);
+  await p.s("Input.insertText", { text: "Across the bike lane" });
+  await sleep(300);
+  const note311 = await p.eval(`(() => { const d = document.querySelector('.ride-report'); const input = d?.querySelector('input[type=text]');
+    const small = [...d.querySelectorAll('summary, input[type=text]')].filter((e) => e.getBoundingClientRect().height < 43.5).map((e) => e.textContent || e.tagName);
+    const e = ${logged}.reduce((a, b) => (a && a.at > b.at ? a : b), null);
+    return { open: d?.open, text: d?.querySelector('.ride-report-text')?.textContent, label: input?.closest('label')?.textContent.trim(), focus: document.activeElement === input, small, note: e?.note }; })()`);
+  check("ride 311: Add a note opens the entry as the site will get it (the problem, the place from the route's streets, Washington, DC, GPS, when, then the note) and a labelled note, focused, saved as typed; every control 44 px or taller",
+    note311.open && /^Downed tree\. Location: on R Street Northwest( near Q Street Northwest)?, Washington, DC\. GPS 38\.\d{5}, -7[67]\.\d{5}\. Seen [A-Z][a-z]{2} \d{1,2}, \d{1,2}:\d{2} [AP]M\. Across the bike lane\.$/.test(note311.text ?? "") &&
+      note311.label === "Note (optional)" && note311.focus && note311.note === "Across the bike lane" && note311.small.length === 0,
+    JSON.stringify(note311));
+  await p.eval("document.querySelector('.ride-report').open = false; true");
+  await sleep(200);
+  await p.eval("document.querySelector('#ride-heading').focus(); true");
   await sleep(200);
 
   // A pan by hand stops following; Where am I? (the C key, Re-centre merged into it, the owner, 2026-10-20) follows again. From a spot of bare map: the map's
@@ -2926,8 +2923,8 @@ const SUGGEST = "dialog.road-info .suggest-change";
   const row = await p.eval(`(() => { const ul = document.querySelector('dialog.road-info ul.road-info-buttons');
     const last = ul?.querySelector('li:last-child > *');
     return { names: [...(ul?.querySelectorAll('li > *') ?? [])].map((e) => e.textContent), tag: last?.tagName, height: Math.round(last?.getBoundingClientRect().height ?? 0) }; })()`);
-  check("suggestions: a rider the settings allow gets a Suggest a change button (not Change LTS) in the panel's bottom row, at least 44px tall",
-    opened && row.names.at(-1) === "Suggest a change" && !row.names.includes("Change LTS") && row.tag === "BUTTON" && row.height >= 44, JSON.stringify(row));
+  check("suggestions: a rider the settings allow gets a Suggest a change button (not Change LTS) in the panel's bottom row, before Log for 311, at least 44px tall",
+    opened && JSON.stringify(row.names.slice(-2)) === JSON.stringify(["Suggest a change", "Log for 311"]) && !row.names.includes("Change LTS") && row.tag === "BUTTON" && row.height >= 44, JSON.stringify(row));
 
   await p.eval("[...document.querySelectorAll('dialog.road-info button')].find((b) => b.textContent === 'Suggest a change').click(); true");
   await p.waitFor(`!!document.querySelector('${SUGGEST} input[type=range]')`, 8000);
