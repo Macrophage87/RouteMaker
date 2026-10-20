@@ -15,6 +15,11 @@ The api reads the same file (v0.6.0): Mountain Goat's hill seek routes through t
 names those a route rides (`src/core/hillseek.py`, FOLLOWUP-HILL-SEEK), so `docker/api.Dockerfile`
 copies it into the api image. Without it the api plans as before.
 
+Each climb's name (`n`: its roads and the named hill it runs up, "Foxville Road up Catoctin
+Mountain"; the owner, 2026-10-19) is read from the rebuild's extract by `pipeline.climb_names`. The
+file committed on 2026-10-12 predates that: its `n` is only a long trail's name where one carries
+most of a climb, and the next `build_climbs` names them all.
+
 What counts as a climb and its category is in `routemaker.climb_categories`; how the network is
 read, the keys of each entry and the one-way rule are in `pipeline.climb_layer`'s docstring.
 

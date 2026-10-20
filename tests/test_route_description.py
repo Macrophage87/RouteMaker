@@ -313,7 +313,8 @@ class TestSchema:
         # "avoid": an Avoid-rated junction ahead (FOLLOWUP-ISECT-AVOID, OWNER-DECISIONS 307).
         # "workzone": a live work zone on the route (FOLLOWUP-WORKZONES, 341-349).
         # "climb": a categorised climb ridden where the hill seek ran (FOLLOWUP-HILL-SEEK, 205).
-        kinds = ["stretch", "junction", "via", "walk", "avoid", "workzone", "climb"]
+        # "hazard": cobblestones or rails in the road ridden (v0.10.0, `core.route_hazards`).
+        kinds = ["stretch", "junction", "via", "walk", "avoid", "workzone", "climb", "hazard"]
         assert entry["properties"]["kind"]["enum"] == kinds
         for field in (
             "kind",
@@ -336,6 +337,28 @@ class TestSchema:
         ]
         for entry in describe.describe([atoms, 400.0]):
             api.DescriptionEntryOut.model_validate(entry)
+
+    def test_a_fork_and_a_junction_shape_reach_the_client(self):
+        """`stay` and `shape` are fields of the turn: the response schema keeps only its
+        own fields, and `stay` was dropped before v0.10.0."""
+        atoms = [
+            describe.Atom(500.0, "2", "none", ("A St",), "road", 0.0, 0.0),
+            describe.Atom(
+                500.0,
+                "2",
+                "none",
+                ("A St",),
+                "road",
+                45.0,
+                45.0,
+                fork="bear_right",
+                others=((0.0, "road"), (270.0, "road"), (90.0, "road")),
+            ),
+        ]
+        entry = describe.describe([atoms])[1]
+        turn = api.DescriptionEntryOut.model_validate(entry).model_dump()["turn"]
+        assert turn["stay"] is True
+        assert turn["shape"] == {"out": 45, "others": [-90, 0, 90], "main": None, "ring": None}
 
     def test_an_answer_without_it_still_validates_and_has_none(self):
         assert api.RouteOut.model_fields["description"].default is None
@@ -709,3 +732,43 @@ class TestForksFromTheTrace:
         }
         pieces = routing.pieces_of_trace(trace)
         assert [p.fork for p in pieces] == [None, "left", None]
+        # And the other ways at the node, for the ride card's junction diagram.
+        assert [p.others for p in pieces] == [None, ((3.0, "cycleway", None, None),), None]
+
+    def test_the_ways_just_short_of_a_node_ride_on_the_edge_after_it(self):
+        """A main road crossed within `describe.SHAPE_NEAR_M` before a turn: its ways
+        are the turn's `prior` (the owner, 2026-10-20, on a left onto a service road)."""
+        from test_route_api import encode_polyline6
+
+        points = [(-77.0, 38.9), (-77.0, 38.9002), (-77.0, 38.9003), (-77.001, 38.9003)]
+
+        def edge(way, km, begin, end, heading, *ways):
+            node = {"end_node": {"intersecting_edges": list(ways)}} if ways else {}
+            return {
+                "way_id": way,
+                "length": km,
+                "begin_shape_index": begin,
+                "end_shape_index": end,
+                "begin_heading": heading,
+                "end_heading": heading,
+                **node,
+            }
+
+        highway = {"begin_heading": 90, "use": "road", "road_class": "primary"}
+        street = {"begin_heading": 0, "use": "road", "road_class": "residential"}
+        trace = {
+            "units": "kilometers",
+            "shape": encode_polyline6(points),
+            "edges": [
+                edge(1, 0.022, 0, 1, 0, highway),
+                edge(2, 0.011, 1, 2, 0, street),
+                edge(3, 0.08, 2, 3, 270),
+            ],
+        }
+        firsts = {p.way_id: p for p in reversed(routing.pieces_of_trace(trace))}
+        assert firsts[3].others == ((0.0, "road", "residential", None),)
+        assert firsts[3].prior == ((90.0, "road", "primary", None),)
+        # Past SHAPE_NEAR_M the junction is not the turn's.
+        trace["edges"][1]["length"] = 0.08
+        firsts = {p.way_id: p for p in reversed(routing.pieces_of_trace(trace))}
+        assert firsts[3].prior is None

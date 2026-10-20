@@ -86,26 +86,35 @@ export function writeHeadingUp(on: boolean, store: KeyValueStore | null = browse
   }
 }
 
-// ---- Big text (the owner, 2026-10-17: "the text size should be moved to the settings page"), kept on this device ----
+// ---- Ride text size (the owner, 2026-10-17: "the text size should be moved to the settings page"; 2026-10-20: a size
+// "where the text takes up half the page with big text and big arrows", on its own ride button), kept on this device ----
 
-/** Big text in a ride (the cue card large, the map hidden): a setting, off by default, not a ride button. */
+/**
+ * Normal (the compact card over the map) or Large (the card half the screen, the turn as big as fits, the map below; for
+ * near sight and bright sun). Large replaced Big text, which hid the map: filling the card, its words were no bigger than
+ * Large's on a phone (the owner, 2026-10-20: "if you can fit the largest text in the half mode, then you're not gaining much").
+ */
+export type RideTextSize = "normal" | "large";
+/** Kept under Big text's old key, so a rider who had Big text on ("1") gets Large. */
 export const BIG_TEXT_KEY = "routemaker.ride.bigText";
-export const BIG_TEXT_NAME = "Big text during a ride (hides the map)";
-/** The Settings page's switch: its name, and what its (i) says. */
-export const BIG_TEXT_LABEL = "Big text during a ride";
-export const BIG_TEXT_HELP = "The next turn in large type with the map hidden, which also saves battery. Kept on this device.";
+/** The Settings page's switch and the ride button's name, and what its (i) says. */
+export const RIDE_TEXT_LABEL = "Large text during a ride";
+export const RIDE_TEXT_BUTTON = "Large text";
+export const RIDE_TEXT_HELP =
+  "The next turn as big as it fits on the top half of the screen, the map below, for bright sun or near sight. The Large text button in a ride turns it on and off too. Kept on this device.";
 
-export function readBigText(store: KeyValueStore | null = browserStore()): boolean {
+export function readRideText(store: KeyValueStore | null = browserStore()): RideTextSize {
   try {
-    return store?.getItem(BIG_TEXT_KEY) === "1";
+    const kept = store?.getItem(BIG_TEXT_KEY);
+    return kept === "1" || kept === "large" ? "large" : "normal";
   } catch {
-    return false;
+    return "normal";
   }
 }
 
-export function writeBigText(on: boolean, store: KeyValueStore | null = browserStore()): void {
+export function writeRideText(size: RideTextSize, store: KeyValueStore | null = browserStore()): void {
   try {
-    store?.setItem(BIG_TEXT_KEY, on ? "1" : "0");
+    store?.setItem(BIG_TEXT_KEY, size === "large" ? "large" : "0");
   } catch {
     // Blocked site data: the choice holds for this visit only.
   }

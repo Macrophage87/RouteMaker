@@ -4,7 +4,7 @@
  * marker or its line, opens it (climbInteraction.ts); so does the road panel's "Climb details" for the
  * keyboard (RoadInfoDialog.tsx, the climb at the map's center).
  *
- * It says the climb: its name ("Climb on Ridge Road", else "Category 4 climb"), category, length (miles
+ * It says the climb: its name ("Foxville Road up Catoctin Mountain", else "Category 4 climb"), category, length (miles
  * first, km in brackets), gain (feet first), the average grade beside the map's own shape for it with the
  * shape's meaning ("Moderate: 4 to 7.9%"; the owner: "note that the icon means steepness on the map") and
  * the steepest grade; and its elevation profile, drawn with the route chart's own parts
@@ -54,14 +54,22 @@ export const PROFILE_ERROR = "The elevation profile is not available right now."
 
 // --- Words -----------------------------------------------------------------------
 
-/** "Climb on Ridge Road" (the road it climbs), else "Category 4 climb". */
+/**
+ * The climb's own name from its roads and hill (pipeline.climb_names: "Foxville Road up Catoctin Mountain",
+ * "Sugarloaf Mountain climb", "Climb near Thurmont"), else "Category 4 climb".
+ */
 export function climbTitle(c: Pick<Climb, "name" | "category">): string {
-  return c.name ? `Climb on ${c.name}` : `${categoryName(c.category)} climb`;
+  return c.name ?? `${categoryName(c.category)} climb`;
 }
 
-/** A climb's end as a place in the plan: "Top of the climb on Ridge Road", "Bottom of a Category 4 climb". */
+/**
+ * A climb's end as a place in the plan: "Top of the climb on Foxville Road up Catoctin Mountain", "Top of the Sugarloaf
+ * Mountain climb", "Bottom of the climb near Thurmont", "Bottom of a Category 4 climb".
+ */
 export function climbEndName(c: Pick<Climb, "name" | "category">, end: string): string {
-  return c.name ? `${end} of the climb on ${c.name}` : `${end} of a ${categoryName(c.category)} climb`;
+  if (!c.name) return `${end} of a ${categoryName(c.category)} climb`;
+  if (c.name.startsWith("Climb ")) return `${end} of the c${c.name.slice(1)}`;
+  return c.name.endsWith(" climb") ? `${end} of the ${c.name}` : `${end} of the climb on ${c.name}`;
 }
 
 /** A grade to a tenth, without a needless ".0": "9%", "5.4%". */
@@ -245,7 +253,15 @@ const PLOT = { left: 44, right: CHART_W - 6, top: 8, bottom: 92, axisY: 112 };
 
 /** The climb's profile, drawn with the route chart's parts: the area, the line and the 5% and 8% grade bands. */
 export function ClimbProfileChart({ climb, profile, uid }: { climb: Climb; profile: ClimbProfile; uid: string }): ReactElement {
-  const route = asRouteProfile(profile);
+  return h(ElevationProfileChart, { profile, summary: profileSummary(climb, profile), uid });
+}
+
+/** The heights a profile chart draws (a climb's, or a tapped trail's: lib/trailProfile.ts). */
+export type ChartProfile = Pick<ClimbProfile, "interval_m" | "m" | "elevation_m" | "grade_pct">;
+
+/** An elevation profile with the route chart's parts, named by `summary` (its text alternative). */
+export function ElevationProfileChart({ profile, summary, uid }: { profile: ChartProfile; summary: string; uid: string }): ReactElement {
+  const route: RouteProfile = { interval_m: profile.interval_m, m: profile.m, elevation_m: profile.elevation_m, grade_pct: profile.grade_pct, climbs: [] };
   const total = Math.max(profile.m[profile.m.length - 1] ?? 0, 1);
   const range = elevationRange(route);
   const plot: Plot = {
@@ -256,7 +272,6 @@ export function ClimbProfileChart({ climb, profile, uid }: { climb: Climb; profi
     top: PLOT.top,
     bottom: PLOT.bottom,
   };
-  const summary = profileSummary(climb, profile);
   const feetOnly = (m: number) => formatClimb(m).split(" (")[0];
   return h(
     "figure",

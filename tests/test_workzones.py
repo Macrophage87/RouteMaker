@@ -7,6 +7,7 @@ could be reached from where this was written, so nothing here is agency data.
 from __future__ import annotations
 
 import json
+import math
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -197,3 +198,46 @@ class TestTheWords:
         assert wz.severity(z["md-wz-closed-bikes"]) == "red"
         assert wz.severity(z["md-wz-closed-unknown"]) == "red"
         assert wz.severity(z["md-wz-shoulder"]) == "orange"
+
+
+def test_the_map_s_nearness_matches_measuring_every_segment_and_is_quick() -> None:
+    """core.workzones._RouteIndex (the MCP tester, 2026-10-19): a 100 mi loop's map pass took
+    the plan past the web server's 60 s. The index gives the same distance for every zone within
+    the map's reach, and inf only for zones beyond it."""
+    import random
+    import time as clock
+
+    from core import workzones as site
+    from routemaker import workzones as zrules
+
+    rng = random.Random(7)
+    # A loop round DC: about 100 mi of line in 20 m steps' worth of vertices.
+    loop = [
+        (
+            -77.03 + 0.12 * math.cos(t / 4000 * 2 * math.pi),
+            38.9 + 0.1 * math.sin(t / 4000 * 2 * math.pi),
+        )
+        for t in range(4001)
+    ]
+    zones = []
+    for n in range(600):
+        lon, lat = -77.03 + rng.uniform(-0.16, 0.16), 38.9 + rng.uniform(-0.14, 0.14)
+        line = ((lon, lat), (lon + rng.uniform(-0.003, 0.003), lat + rng.uniform(-0.003, 0.003)))
+        zones.append(zrules.Zone(f"z{n}", "dc", zrules.CLOSED, 0.0, line, None, None, None, None))
+
+    def every_segment(zone):
+        lat0 = zone.line[0][1]
+        route = [zrules._xy(c[0], c[1], lat0) for c in loop]
+        return min(zrules._distance_to_line(zrules._xy(x, y, lat0), route) for x, y in zone.line)
+
+    started = clock.monotonic()
+    index = site._RouteIndex(loop, site.MAP_NEAR_M)
+    fast = [index.near(zone) for zone in zones]
+    took = clock.monotonic() - started
+    for zone, near in zip(zones, fast, strict=True):
+        slow = every_segment(zone)
+        if slow <= site.MAP_NEAR_M:
+            assert near == pytest.approx(slow), zone.zone_id
+        else:
+            assert near > site.MAP_NEAR_M, zone.zone_id
+    assert took < 2.0, took
