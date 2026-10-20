@@ -1,6 +1,7 @@
 // Ride mode's engine (WEB-NAV-plan.md sections 2-4): progress along the line, the cue schedule per
 // level, off route with its hysteresis, the re-plan's points and gate, and the words.
 import { test } from "node:test";
+import { routeRequestBody } from "./api.ts";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import type { DescriptionEntry, RouteResponse } from "./api.ts";
@@ -51,6 +52,7 @@ import {
   REPLAN_AHEAD,
   UTURNS_BEFORE_AHEAD,
   keepsAhead,
+  replanTold,
   says,
   setsOffBack,
   UTURN_SAID,
@@ -1608,4 +1610,14 @@ test("two U-turn re-routes ridden past, then the third keeps the rider's way (th
   assert.equal(keepsAhead(1), false);
   assert.equal(keepsAhead(2), true);
   assert.equal(REPLAN_AHEAD, "New route found. Keep going ahead.");
+  // Said at the stoker's level, as "New route found." was before it.
+  assert.equal(replanTold(false, "stoker", REPLAN_AHEAD), "say");
+  assert.equal(replanTold(false, "quiet", REPLAN_AHEAD), "quiet");
+});
+
+test("ahead_only is sent only with a heading", () => {
+  const body = (options: Parameters<typeof routeRequestBody>[2]) => JSON.parse(routeRequestBody([[-77, 38.9], [-77.01, 38.9]], "default", options));
+  assert.equal(body({ heading: 90, aheadOnly: true }).ahead_only, true);
+  assert.equal(body({ heading: 90 }).ahead_only, undefined);
+  assert.equal(body({ heading: null, aheadOnly: true }).ahead_only, undefined);
 });

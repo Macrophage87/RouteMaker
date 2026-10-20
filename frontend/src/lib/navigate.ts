@@ -1313,11 +1313,11 @@ export const REPLAN_STILL_WAITING = "Still waiting for the last re-plan.";
 /**
  * How a re-plan's outcome reaches the rider: one the rider asked for (Re-plan from here) is answered
  * whatever the level, as a detour's is (review RIDE-5); an automatic one is said at the full level, and
- * at the stoker's only when a new route (or a way back to the planned one) was found; the quiet level
+ * at the stoker's only when a new route (one that keeps going ahead, or a way back to the planned one) was found; the quiet level
  * hears it on screen only.
  */
 export function replanTold(asked: boolean, level: Verbosity, note: string): "answer" | "say" | "quiet" {
   if (asked) return "answer";
-  if (level === "full" || (level === "stoker" && (note === REPLAN_FOUND || note === REPLAN_REJOIN))) return "say";
+  if (level === "full" || (level === "stoker" && (note === REPLAN_FOUND || note === REPLAN_AHEAD || note === REPLAN_REJOIN))) return "say";
   return "quiet";
 }
