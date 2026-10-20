@@ -4751,6 +4751,157 @@ graph built without it; steps 1 to 3 are for that rebuild.
    rebuild; every street then keeps OSM's reading, and the log says the file is
    absent.
 
+## Agency traffic signals (signals.json)
+
+The agencies' signal lists mark the junctions OSM has no signal at (v0.10.0;
+`pipeline.agency_signals`; DC data beats OSM, the owner 2026-10-11). Without them a
+junction with a signal on the street and none on the map is priced as unsignalised
+and gets the cue "no signal mapped (Higher stress junction)". The downloads run on the
+home PC or the beta server at rebuild time: the cloud proxy cannot reach the agencies'
+map servers. Five lists, one file (`reference/signals.json`):
+
+| Source | Layer | Read by the rebuild |
+|---|---|---|
+| DDOT Traffic Signals (item `ca6ad078a6f6415389e220704b7698ac`) | `https://maps2.dcgis.dc.gov/DCGIS/rest/services/DCGIS_DATA/Transportation_Signs_Signals_Lights_WebMercator/MapServer/170` | yes (CC BY 4.0) |
+| VDOT HMMS Traffic Signals, 2023 snapshot (item `0d4c36cd061f4be280691d9ff6d36419`; all of Virginia, Fairfax included) | `https://services.arcgis.com/p5v98VHDX9Atv3l7/arcgis/rest/services/HMMS_Traffic_Signals_Flat_NEW/FeatureServer/0` | report only: listed in the report, never marked (2023 snapshot; OSM likely better, the owner 2026-10-19) |
+| City of Alexandria, signalised intersections | `https://geoportal.alexandriava.gov/server/rest/services/Hosted/Smart_Mobility_Data/FeatureServer/9` | yes (CC0) |
+| City of Alexandria, HAWKs | the same service, layer `0`, `signal_type = 'HAWK'` | yes (CC0) |
+| MDOT SHA Traffic Signals (all of Maryland but Baltimore City) | `https://gisportalapps.sha.maryland.gov/arcgis/rest/services/UtilitiesCommunication/TrafficSignals_Maryland_MDOTSHA/MapServer/0` | yes (Maryland iMAP's terms, the owner 2026-10-19) |
+| Arlington County Intersection Points | `https://arlgis.arlingtonva.us/arcgis/rest/services/Open_Data/od_Intersection_Points/FeatureServer/0` | not until Arlington's terms are confirmed |
+
+A list whose licence is not confirmed (`agency_signals.LICENCE_CONFIRMED`) may be
+installed; the rebuild logs `... signals installed but not read` and leaves it out.
+
+1. **Fetch each once**, from the checkout on the host:
+
+   ```sh
+   export DATA_ROOT=/srv/routemaker/data   # the same value as DATA_ROOT in .env
+   python3 scripts/fetch_agency_layer.py --slug dc-traffic-signals \
+       --item ca6ad078a6f6415389e220704b7698ac \
+       --layer https://maps2.dcgis.dc.gov/DCGIS/rest/services/DCGIS_DATA/Transportation_Signs_Signals_Lights_WebMercator/MapServer/170 \
+       --out-dir ~/rmdata/datasets --credit "DC Open Data (CC BY 4.0, adapted)"
+   python3 scripts/fetch_agency_layer.py --slug md-traffic-signals \
+       --layer https://gisportalapps.sha.maryland.gov/arcgis/rest/services/UtilitiesCommunication/TrafficSignals_Maryland_MDOTSHA/MapServer/0 \
+       --out-dir ~/rmdata/datasets --credit "State of Maryland (MDOT SHA)"
+   python3 scripts/fetch_agency_layer.py --slug va-traffic-signals \
+       --item 0d4c36cd061f4be280691d9ff6d36419 \
+       --layer https://services.arcgis.com/p5v98VHDX9Atv3l7/arcgis/rest/services/HMMS_Traffic_Signals_Flat_NEW/FeatureServer/0 \
+       --out-dir ~/rmdata/datasets --credit "VDOT"
+   python3 scripts/fetch_agency_layer.py --slug alexandria-signals \
+       --layer https://geoportal.alexandriava.gov/server/rest/services/Hosted/Smart_Mobility_Data/FeatureServer/9 \
+       --order-by objectid \
+       --out-dir ~/rmdata/datasets --credit "City of Alexandria"
+   python3 scripts/fetch_agency_layer.py --slug alexandria-hawks \
+       --layer https://geoportal.alexandriava.gov/server/rest/services/Hosted/Smart_Mobility_Data/FeatureServer/0 \
+       --order-by objectid --where "signal_type = 'HAWK'" \
+       --out-dir ~/rmdata/datasets --credit "City of Alexandria"
+   for slug in dc-traffic-signals md-traffic-signals va-traffic-signals alexandria-signals alexandria-hawks; do
+     sudo mkdir -p "$DATA_ROOT/reference/inputs/$slug"
+     sudo cp ~/rmdata/datasets/$slug/* "$DATA_ROOT/reference/inputs/$slug/"
+     sudo chown -R 10001:10001 "$DATA_ROOT/reference/inputs/$slug" && sudo chmod 644 "$DATA_ROOT/reference/inputs/$slug/"*
+   done
+   ```
+
+   Exit 3 means the pages did not add up to the count the service reported: delete
+   the folder and run it again. Put each README's size and sha256 into docs/SOURCES.md.
+   Alexandria's server returns an error page unless the field is named in lower
+   case (`--order-by objectid`). Its layers 9 and 0 both serve the whole
+   intersection table (257 records), so the HAWK fetch filters on `signal_type`, and
+   the installer reads a record as a signal or a HAWK by its `signal_type` whatever
+   was fetched: no Alexandria signal counts twice, so a HAWK file fetched without the
+   filter installs the same and need not be fetched again. The counts on 2026-10-20: DDOT
+   1,597 (all `STATUS` Active), MDOT SHA 3,366 (513 devices that are not signals left
+   out), VDOT 3,134 (report only), Alexandria 253 signals and 4 HAWKs; 8,354 in all,
+   40 of them HAWKs.
+
+2. **Install them**, all in one run (the file is written whole, so a run with one
+   flag drops the others):
+
+   ```sh
+   docker compose exec -T rebuild python3 scripts/install_reference_data.py \
+       --data-root /data \
+       --dc-signals /data/reference/inputs/dc-traffic-signals/dc-traffic-signals.geojson \
+       --md-signals /data/reference/inputs/md-traffic-signals/md-traffic-signals.geojson \
+       --va-signals /data/reference/inputs/va-traffic-signals/va-traffic-signals.geojson \
+       --alexandria-signals /data/reference/inputs/alexandria-signals/alexandria-signals.geojson \
+       --alexandria-hawks /data/reference/inputs/alexandria-hawks/alexandria-hawks.geojson
+   ```
+
+   It prints the records each file left out and why, then `wrote .../signals.json: N
+   signals (N HAWKs)`, and with `--md-signals` `wrote .../flashing-signals.json: N
+   junction beacons`, which the api reads once loaded ("Flashing beacons" below).
+
+3. **After the rebuild**, read the log line and the report:
+
+   | Line | What to look for |
+   |---|---|
+   | `agency signals: ddot: N added, N already in OSM, N with no junction in reach; ...` | "added" is how many signals OSM was missing; "no junction in reach" should be small (beyond the extract, or the junction mapped more than 20 m from the agency's point) |
+   | `vdot (report only): N OSM lacks, ...` | for comparison only; VDOT's rows read `would add` in the report and nothing is marked |
+   | `.../signals.json is absent, so no agency signal list is read` | should not appear once step 2 has run |
+   | `... arlington signals installed but not read, their licence not yet confirmed` | expected while Arlington's terms are pending |
+
+   The match reads the extract's OSM signals in one more pass over its `highway`
+   nodes (a minute or two on the region's extract). An agency signal marks the node
+   over a crosswalk OSM tags `uncontrolled` and over a stop or give-way sign mapped
+   on the junction (DC data beats OSM).
+
+   `${DATA_ROOT}/rebuild/reports/agency-signals.csv` has one line per signal: its
+   id, point, outcome (`added`, `in OSM`, `unmatched`, or `would add` for a report-only list) and its junction's OSM nodes (marked only where it reads `added`).
+   Spot-check two added ones you know (Florida Ave NE, the cue of 2026-10-19).
+
+   **Rolling it back** without a code change: remove `reference/signals.json` and
+   rebuild; the map then keeps OSM's signals only, and the log says the file is absent.
+
+## Flashing beacons (no rebuild)
+
+A junction OSM maps with a traffic signal can really have a flashing beacon: flashing
+yellow to the main road, flashing red to the side street (v0.10.0; the owner,
+2026-10-20, Connecticut Ave and Baltimore St, Kensington: "a blinking red against free
+flowing traffic. It wasn't passable"). Priced as a signal, crossing the main road cost
+600 ft (0.11 calm mi); as what it is, the stopped side of an LTS 4 road, more than
+6,000 ft (1.1 calm mi), and more at rush hour. Each active `FlashingSignal` row makes the
+junction model read a signalised junction within 98 ft (30 m) of it by its signs alone,
+as if the map had no signal there (`core.flashing_signals`,
+`routemaker.intersections.with_beacons`), from the next plan, with no rebuild. The marker
+and the cue then say "flashing light, not a signal".
+
+Two sources, each loaded with the `load_flashing_signals` command (dry run first, then the
+same with `--confirm`; `--actor` is the instance admin's Discord id, as for overrides):
+
+1. **The owner's**, checked in under `fixtures/flashing-signals/`. The api image has no
+   `fixtures/`, so from the checkout:
+
+   ```sh
+   docker compose exec -T api python manage.py load_flashing_signals - \
+       --actor <discord user id> < fixtures/flashing-signals/2026-10-20-owner-connecticut-baltimore.json
+   ```
+
+2. **MDOT SHA's junction beacons**: the Traffic Signals layer's Intersection Control
+   Beacons (`TCD_Type` 2, 221 on 2026-10-20) and Warning Beacons (`TCD_Type` 3, 674),
+   less any within 98 ft (30 m) of a listed signal. An ICB may flash red to every
+   approach, an all-way stop, which the list does not say; the owner chose to read them
+   all (2026-10-20). An all-way stop OSM maps with stop signs still prices as one, and
+   where no signs are mapped, roads within a stress level of each other are read as an
+   all-way stop and a quieter road meeting a busier one as a stop for the quieter road
+   (`intersections.beacon_control`, the owner's rule of 2026-10-20). Step 2 of "Agency traffic signals"
+   above writes them to `reference/flashing-signals.json` from the layer already fetched;
+   no new download. Then:
+
+   ```sh
+   export DATA_ROOT=/srv/routemaker/data   # the same value as DATA_ROOT in .env
+   docker compose exec -T api python manage.py load_flashing_signals - \
+       --actor <discord user id> < "$DATA_ROOT/reference/flashing-signals.json"
+   ```
+
+   The file is MDOT SHA's whole list, so a reload withdraws a beacon that has left it
+   (removed, or made a signal) and restores one that is back. It never touches the
+   owner's rows. Reload it whenever the signals are reinstalled.
+
+An instance admin can withdraw a row in the admin (Flashing beacons), an audited action;
+a later load leaves it withdrawn for good. DDOT's and Alexandria's lists say nothing about flash
+operation, and VDOT's Intersection Flashers stay out with the rest of its report-only
+list, so a beacon elsewhere goes in the owner's file.
+
 ## Agency stress ratings (agency-lts.json)
 
 The rebuild sets a road's level from a local government's own rating where one rates it
@@ -5913,13 +6064,13 @@ generation), inside the cache's 64 (with the half step's `h` too, `+kcfrmwdnoesh
 letters, 40 characters, 48 with the longest edit generation); `FORMAT_VERSION` stays 8 for the same reason as `d`. The
 level log line ends "; N of M mountain-bike ways named" (`pipeline.trail_routes.mtb_name_counts`).
 The front end labels each named mountain-bike trail along its line (`mtb-trail-label`, a symbol
-layer in `MTB_LAYER_IDS`, so it follows the layer's switch), from zoom 15, in Noto Sans Medium 12 px
-on a 1.5 px white halo, over the routable lines and under the Mass Ride layers; MapLibre's
+layer in `MTB_LAYER_IDS`, so it follows the layer's switch), from zoom 15, in Noto Sans Medium 12 px (drawn in
+Atkinson Hyperlegible Next SemiBold, `frontend/src/lib/mapGlyphs.ts`) on a 1.5 px white halo, over the routable lines and under the Mass Ride layers; MapLibre's
 collision, `text-padding` 8 and `symbol-spacing` 300 thin the labels, and `text-max-angle` is 45
 so a name still fits along curvy singletrack at z15-16. The text is in the line's own
 colour, each 4.5:1 or more against the halo (green 6.10:1, blue 5.75:1, black 17.49:1, red 5.62:1,
-the unrated grey 6.05:1, 7.85:1 with the accessibility switch); the base map's path-label grey (#91888b, about 3.5:1) would
-not be. The road panel says the name: the Bikes line reads "Mountain-bike trail, level 2 (blue):
+the unrated grey 6.05:1, 7.85:1 with the accessibility switch); the base map's stock path-label grey (#91888b, about 3.5:1) would
+not be (the app now draws street names darker, stressStyle.js ROAD_LABEL). The road panel says the name: the Bikes line reads "Mountain-bike trail, level 2 (blue):
 Rosaryville Trail, not used for routes", and the panel's title and Name row fall back to it where
 the router has no name. No name, no label and no name in the words.
 
@@ -5968,20 +6119,34 @@ running container with `exec`, not `run` (a `run` starts a second rebuild contai
     free -m    # "available" at least 3,000 MB; else stop
     flock <the host's heavy.lock> docker compose exec -T rebuild ./manage.py build_climbs </dev/null
 
-It prints `climbs: read N segments from live.segment`, then `climbs: M written to
+It prints `climbs: read N segments from live.segment`, `climbs: names from
+/data/extracts/source.osm.pbf: W ways, H hills, P places`, `climbs: K of F found named`, then
+`climbs: M written to
 /data/rebuild/climbs.json (HC 0, 1 0, 2 2, 3 54, 4 367, 5 3,327)` (the committed file's counts,
 from staging build 20261011T215845Z on 2026-10-12: 484,351 segments read, 3,750 climbs, 85 s). It only reads
 and is safe to re-run. It refuses, writing nothing, when the table has no routable rows or no
 elevation tile could be read under `--elevation-dir` (a wrong directory, or tiles not in skadi's
-`N38/N38W077.hgt` layout), and names on stderr any tile that was missing or the wrong size (the
-climbs there are left out). Options: `--out`, `--elevation-dir`, `--schema` (default the live
-schema). Then:
+`N38/N38W077.hgt` layout), or there is no extract to name the climbs from (a file without names
+would replace a named one), and names on stderr any tile that was missing or the wrong size (the
+climbs there are left out). Options: `--out`, `--elevation-dir`, `--pbf` (default the rebuild's
+own extract, `/data/extracts/source.osm.pbf`, which the `rebuild` container mounts), `--schema`
+(default the live schema). Then:
 
     cp <DATA_ROOT>/rebuild/climbs.json frontend/src/climb-data/climbs.json
     git add frontend/src/climb-data/climbs.json   # and update the counts in climb-data/README.md
 
 and deploy the front end as usual. `tests/test_climb_layer.py::test_bundled_file_is_well_formed`
 and `climbs.test.ts` check the committed file.
+
+**Names (the owner, 2026-10-19: "have them named, by a combination of road names and mountain
+names (if named)").** Each climb is named at build time from the extract (`pipeline.climb_names`):
+the OSM `name` (else `ref`, else the rebuild's own name for an unnamed way: its mountain-bike
+trail, long trail, or the street a side path runs beside) of the roads carrying at least a
+quarter of it, at most two, in the order ridden ("Hollow Road and Ridge Road"), then the named gap, peak or ridge it runs up ("Foxville Road up Catoctin Mountain",
+"Gapland Road to Crampton Gap"); with no road name, "<hill> climb", else "Climb near <place>"
+(a city, town, village, hamlet, suburb or neighbourhood within 3 mi (5 km) of its foot), else no
+name. The file's `n`; the map's climb card, the climb's label and the hill seek's route
+description lead with it. Reading the names adds two passes over the extract (no location index).
 
 **What it reads.** Ways with `map_class = 'road'`, less `mtb_only` and `walk_bike`: access is the
 rebuild's, overrides included, so a barred, hidden or err-closed way never carries a climb. And
@@ -6929,7 +7094,8 @@ To ship it to a host:
    host, or after adding a ratings file (step 3):
    `docker compose exec -T api python manage.py compute_review_queue` (the live table and
    this host's own `rebuild/reports`), with `--build-id <id>` before a swap to list the
-   rebuild's changes against `staging`, and `--reports-dir <dir>` for another build's
+   rebuild's changes against `staging`, `--build-id <id> --old-schema <live>_old
+   --new-schema <live>` after a swap, and `--reports-dir <dir>` for another build's
    reports. Each list it computes replaces its rows, with each road's simplified line and
    point for the map; the rulings stay. `0030_review_map_by_view` gives the roads already
    listed theirs, so the map needs no recomputation after it. Review's map asks for the view

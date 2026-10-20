@@ -275,9 +275,11 @@ test("the app-level region says a change of bands only while the legend is off s
   // App.tsx wires it so.
   const app = appSource();
   assert.match(app, /const massBands = massMap && stressVisible \? massBandsSaid\(zoom\) : null;/);
-  assert.match(app, /massBandsChangeSaid\(massBandsBefore\.current, massBands, legendShownNow\.current\)/);
-  // UI-CLEANUP: the bands' status line is in the Legend sheet, so that is the sheet that says it itself.
-  assert.match(app, /legendShownNow\.current = view === "legend" && panelOpen;/);
+  assert.match(app, /massBandsChangeSaid\(massBandsBefore\.current, massBands, massKeyOnScreen\(\)\)/);
+  // The bands' status line is in Layers' traffic stress section (the owner, 2026-10-19), so it says it itself
+  // only while Layers shows and that section is open.
+  assert.match(app, /legendShownNow\.current = view === "layers" && panelOpen;/);
+  assert.match(app, /const massKeyOnScreen = \(\) => legendShownNow\.current && document\.getElementById\("stress-section-body"\)\?\.hidden === false;/);
 });
 
 // --- The route line -----------------------------------------------------------------------
@@ -350,7 +352,7 @@ test("the app wires the mode: the map's capacity layers, the legend and the pane
   assert.match(app, /massArea=\{isMassRide\(preset\)\}/);
   assert.match(app, /watchForCapacity\(map, \(\) => setCapacityTiles\(true\)\)/);
   assert.match(app, /const massMap = isMassRide\(preset\) && capacityTiles;/);
-  assert.match(app, /massMap \? \(\s*<>\s*<MassLegend \/>\s*<MassZoomNotes[^>]*\/>\s*\{\/\*[^*]*\*\/\}\s*<MtbTrailLegend \/>\s*<\/>\s*\) : \(\s*<>\s*<StressLegend/);
+  assert.match(app, /massMap \? \(\s*<>\s*<MassLegend \/>\s*<MassZoomNotes[^>]*\/>\s*<\/>\s*\) : \(\s*<>\s*<StressLegend/);
   // The panel's figures are the route's own: they need the sections' capacity, so an older table keeps the stress breakdown.
   assert.match(app, /const capacity = capacitySummary\(route\.stress_spans\);/);
   assert.match(app, /const segments = capacity \? \[\] : stressSegments\(route\.stress_m\);/);

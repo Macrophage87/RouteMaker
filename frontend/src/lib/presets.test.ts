@@ -25,7 +25,7 @@ test("the picker offers every ride type in PLAN's table", () => {
   );
 });
 
-test("the transit ride types are named as the owner named them, scheduled and not live, two points only", () => {
+test("the transit ride types are named as the owner named them, scheduled with live departures, two points only", () => {
   // TRANSIT-ASSIST (Stephen, 2026-10-12 20:35): emoji names, said in words; the ids are unchanged.
   assert.equal(presetLabel("bike-transit"), "Own Bike + 🚆🚌");
   assert.equal(presetLabel("bikeshare-transit"), "Bikeshare + 🚶🚆🚌");
@@ -35,7 +35,7 @@ test("the transit ride types are named as the owner named them, scheduled and no
   assert.equal(presetSaid("rebalance"), "Rebalance Ride");
   for (const id of TRANSIT_PRESETS) {
     const description = PRESETS.find((p) => p.id === id)!.description;
-    assert.match(description, /[Ss]cheduled times, not live/);
+    assert.match(description, /[Ss]cheduled times, with WMATA's live departures on a trip leaving now/);
     assert.ok(isTransit(id) && twoPointsOnly(id));
   }
   assert.ok(twoPointsOnly("bikeshare") && !isTransit("bikeshare"));

@@ -257,11 +257,13 @@ def bump_session_epoch(user, reason: str, actor=None) -> int:
     account page it belongs on arrives with the rest of the account surface; it
     is here now because the primitive is what ban and deletion are built on.
     """
-    from .models import Session, User
+    from .models import ConnectorGrant, Session, User
 
     user.session_epoch += 1
     User.objects.filter(pk=user.pk).update(session_epoch=user.session_epoch)
     Session.objects.filter(user=user).delete()
+    # Assistant apps' grants (core.connector) are sign-ins too: signing out everywhere ends them.
+    ConnectorGrant.objects.filter(user=user).delete()
     _audit_user(user, "sign_out_everywhere", actor=actor, detail=reason)
     return user.session_epoch
 
