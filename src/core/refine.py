@@ -101,7 +101,7 @@ import math
 from dataclasses import dataclass, field
 
 from routemaker import avoid_junctions as avoid_model
-from routemaker import calm, climbs, effort, grade_stress, trace_junctions
+from routemaker import calm, climbs, effort, grade_stress, junction_delay, trace_junctions
 from routemaker import intersections as model
 from routemaker.geo import Point, haversine
 
@@ -486,6 +486,10 @@ class Analysis:
     # (the junctions' colours are read as many levels up, `presets.shifted_severity`).
     real_classes: list | None = None
     shift: int = 0
+    # The seconds its junctions cost the rider, which the router's own time leaves out
+    # (`routemaker.junction_delay`, the owner, 2026-10-20: "Both", the time shown and the
+    # route chosen): priced in `score` as that much quiet riding.
+    junction_delay_s: float = 0.0
 
     @property
     def rated_classes(self) -> list:
@@ -524,7 +528,12 @@ class Analysis:
             lts2 = self.lts2_m if self.rated_lts2_m is None else self.rated_lts2_m
             extra += self.lts2_weight * lts3_added_m(ctx) * lts2
         extra -= ctx.hills_tolerate_weight * self.router_climb_m
-        return self.cost_s + ctx.quiet_cost * extra + avoid_model.penalty_s(self.avoid_passages)
+        return (
+            self.cost_s
+            + ctx.quiet_cost * extra
+            + avoid_model.penalty_s(self.avoid_passages)
+            + QUIET_COST_FACTOR * self.junction_delay_s
+        )
 
     @property
     def red_m(self) -> float:
@@ -589,7 +598,16 @@ def level3(read: Analysis, ctx: Context) -> float:
     "Keep stress order + target (Recommended)"). The target distance is in actual
     metres, not these."""
     effort = read.effort_m or read.length_m
-    return charged_m(read, ctx) - ctx.hills_seek_weight * effort
+    return charged_m(read, ctx) - ctx.hills_seek_weight * effort + delay_m(read, ctx)
+
+
+def delay_m(read: Analysis, ctx: Context) -> float:
+    """The route's junction delay (`Analysis.junction_delay_s`) as metres of quiet riding,
+    the rate `score` prices it at, so the top of the slider weighs it too: between equally
+    calm routes, the one with fewer stops ranks first."""
+    if ctx.quiet_cost <= 0:
+        return 0.0
+    return QUIET_COST_FACTOR * read.junction_delay_s / ctx.quiet_cost
 
 
 def charged_m(read: Analysis, ctx: Context) -> float:
@@ -940,6 +958,11 @@ def analyse(
         rated_lts2_m=stress_totals(*rated_metres(pieces, classes))["lts2_m"],
         real_classes=real_classes if shift or hazard_read else None,
         shift=shift,
+        junction_delay_s=junction_delay.delay_s(
+            raws,
+            routing.stop_as_yield,
+            lambda lon, lat: model.beacon_at(lon, lat, ctx.beacons) is not None,
+        ),
     )
     if with_events:
         ctx.analyses[key] = result
@@ -2766,6 +2789,7 @@ def combine(reads: list[Analysis]) -> Analysis:
             else None
         ),
         shift=max((r.shift for r in reads), default=0),
+        junction_delay_s=sum(r.junction_delay_s for r in reads),
     )
 
 

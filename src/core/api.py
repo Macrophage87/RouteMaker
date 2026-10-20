@@ -2025,7 +2025,11 @@ class RouteBody(Schema):
     variant: Literal["standard", "no-trail", "ebike", "weekend", "offroad", "mtb"]
     geometry: LineString
     distance_m: float
+    # The router's time plus `junction_delay_s`.
     duration_s: float
+    # The seconds of `duration_s` the route's junctions add (stops, yields, signals;
+    # `routemaker.junction_delay`), which the router's own time leaves out.
+    junction_delay_s: float = 0.0
     climb_m: float
     descent_m: float
     stress_m: StressOut

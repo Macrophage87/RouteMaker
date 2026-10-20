@@ -95,6 +95,7 @@ from routemaker import (
     flow,
     grade_stress,
     intersections,
+    junction_delay,
     mdot_aadt,
     mtbmode,
     ridetime,
@@ -1931,6 +1932,17 @@ STRETCH_UNTRACED = "untraced"
 # Outside the District (OWNER-DECISIONS 427): Mass Ride figures are not supported there yet,
 # so the stretch has no width and no riders a minute; border roads count as inside (420).
 STRETCH_OUTSIDE_DC = "outside_dc"
+
+
+def stop_as_yield(lon: float, lat: float) -> bool:
+    """Whether a rider may take a stop sign at this point as a yield sign: inside the
+    District, its border roads not included (`routemaker.junction_delay`)."""
+    from .mass_tiles import dc_boundary, inside_dc
+
+    west, south, east, north = dc_boundary()[1]
+    if not (west <= lon <= east and south <= lat <= north):
+        return False
+    return inside_dc(lon, lat, tolerance_m=0.0)
 
 
 def _outside_dc(piece) -> bool:
@@ -3856,6 +3868,13 @@ def plan(
                 traces=traces,
             )
         )
+        # The time its junctions cost the rider, which the router's own time leaves out
+        # (`routemaker.junction_delay`): part of the time shown.
+        delay = junction_delay.delay_s(
+            raw_junctions,
+            stop_as_yield,
+            lambda lon, lat: intersections.beacon_at(lon, lat, beacons) is not None,
+        )
         return {
             "preset": preset.name,
             "variant": variant,
@@ -3864,7 +3883,8 @@ def plan(
                 "coordinates": [[round(lon, 6), round(lat, 6)] for lon, lat in coordinates],
             },
             "distance_m": round(float(summary.get("length", 0.0)) * 1000.0, 1),
-            "duration_s": round(float(summary.get("time", 0.0)), 1),
+            "duration_s": round(float(summary.get("time", 0.0)) + delay, 1),
+            "junction_delay_s": round(delay, 1),
             "climb_m": round(climb, 1),
             "descent_m": round(descent, 1),
             "stress_m": {key: round(metres, 1) for key, metres in stress.items()},
@@ -3952,11 +3972,13 @@ def plan(
         (10 km/h) on singletrack (`mtbmode.duration_s`), the router's own time kept."""
         answered["mtb"] = info
         if info and info.get("singletrack_m"):
-            info["router_duration_s"] = answered["duration_s"]
+            # The junction delay is added after the singletrack retiming, so the router's
+            # own time stays the router's and the delay is not scaled with the trail.
+            delay = answered.get("junction_delay_s") or 0.0
+            router_s = answered["duration_s"] - delay
+            info["router_duration_s"] = round(router_s, 1)
             answered["duration_s"] = round(
-                mtbmode.duration_s(
-                    answered["duration_s"], answered["distance_m"], info["singletrack_m"]
-                ),
+                mtbmode.duration_s(router_s, answered["distance_m"], info["singletrack_m"]) + delay,
                 1,
             )
         return answered

@@ -47,6 +47,7 @@ CONTRACT_KEYS = {
     "duration_s",
     "climb_m",
     "descent_m",
+    "junction_delay_s",
     "stress_m",
     "attribution",
     # Additive, PUBLIC-DIALS (tests/test_route_dials.py).
