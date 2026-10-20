@@ -378,6 +378,21 @@ test("the hover draws the handle, and writes the cursor, only when they change",
   ]);
 });
 
+test("the hover over a mountain-bike trail or a climb a click would open takes the pointing hand, and leaving it takes it away", () => {
+  const log = (card: boolean, cursor: string) => {
+    const calls: unknown[][] = [];
+    runHover({ station: null, line: null }, false, { handle: null, cursor }, {
+      drawHandle: (at) => calls.push(["handle", at]),
+      stationHover: () => {},
+      setCursor: (next) => calls.push(["cursor", next]),
+    }, card);
+    return calls;
+  };
+  assert.deepEqual(log(true, ""), [["cursor", "pointer"]]);
+  assert.deepEqual(log(true, "pointer"), []);
+  assert.deepEqual(log(false, "pointer"), [["cursor", ""]]);
+});
+
 test("the hover over a station shows its card, never the handle, and hints the line where it runs there", () => {
   assert.deepEqual(hoverLog({ station: STATION, line: LINE }, false, { handle: LINE.at, cursor: "pointer" }), [
     ["handle", null],

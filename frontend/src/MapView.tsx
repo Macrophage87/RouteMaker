@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { vehicleBadge, type VehicleMark } from "./lib/nextVehicle.ts";
 import { createPortal } from "react-dom";
+import { attachFeatureHover } from "./featureHoverCard.ts";
+import { climbHoverChart, climbHoverWords, trailHoverChart, trailHoverWords } from "./lib/featureHover.ts";
 import * as maplibregl from "maplibre-gl";
 import type { DataDrivenPropertyValueSpecification, GeoJSONSource, Map as MapLibreMap, Marker, Popup } from "maplibre-gl";
 import { Protocol } from "pmtiles";
@@ -46,6 +48,7 @@ import {
   popupsOpen,
   pressGrab,
   featureCardPress,
+  mtbTrailAt,
   mtbTrailPressed,
   runClick,
   ROUTE_STRESS_SOURCE_ID,
@@ -698,8 +701,12 @@ export function MapView(props: Props) {
       const data = callbacks.current.climbs;
       if (!data || data.length === 0) return;
       climbById = new Map(data.map((c) => [c.id, c]));
-      // Under the route, with the water and the stations (railLayer.ts's order).
-      addClimbs(map as unknown as ClimbsMap, data, on, iconPixelRatio(), ROUTE_BOTTOM_LAYER, callbacks.current.climbsFrom ?? CLIMBS_FROM_DEFAULT);
+      // Under the street names, so a name is never drawn under a climb's dashes or summit (the owner, 2026-10-20:
+      // "The climb dots go over the road name"): the names are placed first and a summit gives way to one, as two
+      // summits give way to each other. Under the route, the water and the stations too. Without the names, the route.
+      const layerIds = map.getStyle().layers.map((layer) => layer.id);
+      const underNames = layerIds.find((id) => ROAD_LABEL_LAYER_IDS.includes(id)) ?? ROUTE_BOTTOM_LAYER;
+      addClimbs(map as unknown as ClimbsMap, data, on, iconPixelRatio(), underNames, callbacks.current.climbsFrom ?? CLIMBS_FROM_DEFAULT);
     };
     const anyPopupOpen = () => popupsOpen(popup.current, rail);
     /** Bring the federal-land layers in line with props.federalVisible, loading the data the first time. */
@@ -846,8 +853,20 @@ export function MapView(props: Props) {
     // other, as pointerTarget (mapGlue.ts) decides for the press and click.
     let hoverFrame = 0;
     let hoverPoint: { x: number; y: number } | null = null;
+    // The climbs' and the trails' hover card (featureHoverCard.ts), as the stations' own.
+    const featureHover = attachFeatureHover(map);
+    // Mouse only: a tap's compatibility mousemove (after its touch pointerdown) shows no hover card.
+    let mousePointer = true;
+    const onPointer = (event: PointerEvent) => {
+      mousePointer = event.pointerType === "mouse";
+    };
+    canvas.addEventListener("pointerdown", onPointer);
+    canvas.addEventListener("pointermove", onPointer);
     map.on("mousemove", (event) => {
-      if (gesture.active) return;
+      if (gesture.active) {
+        featureHover.hide();
+        return;
+      }
       hoverPoint = event.originalEvent.target === canvas ? event.point : null;
       if (hoverFrame) return;
       hoverFrame = requestAnimationFrame(() => {
@@ -856,18 +875,37 @@ export function MapView(props: Props) {
         const under = hoverPoint
           ? { station: stationAt(hoverPoint), line: lineAt(hoverPoint, MOUSE_HIT_PX) }
           : { station: null, line: null };
+        // A climb, else a mountain-bike trail, a click would open (the click's own tests, below, in its order): the
+        // pointing hand, and its hover card as a station's (the owner, 2026-10-20: "Add the hover to climbs too";
+        // "Basically they would work sort of like how our metros do now.").
+        const free = mousePointer && hoverPoint !== null && !under.station && !anyPopupOpen() && !climbCard?.open();
+        const climb =
+          free && hoverPoint && !water?.hits(hoverPoint)
+            ? (climbCard?.climbAt(hoverPoint, callbacks.current.pressSetsEnd === true || !under.line) ?? null)
+            : null;
+        const trail =
+          free && hoverPoint && climb === null && !under.line && featureCardPress([water, stopCards(map)], hoverPoint) === null
+            ? mtbTrailAt(map, hoverPoint, MOUSE_HIT_PX, overlayLayerIds())
+            : null;
+        if (climb && hoverPoint) {
+          const { lng, lat } = map.unproject([hoverPoint.x, hoverPoint.y]);
+          featureHover.show(climbHoverWords(climb), [lng, lat], climbHoverChart(climb));
+        } else if (trail) {
+          featureHover.show(trailHoverWords(trail.properties, trail.way), trail.point, trailHoverChart(window.location.origin, trail.point));
+        } else featureHover.hide();
         runHover(under, anyPopupOpen(), { handle: hoverShown.current, cursor: canvas.style.cursor }, {
           drawHandle: (at) => showEdit(at as LonLat | null),
           stationHover: (station, lineHint) => rail?.showHover(station, lineHint),
           setCursor: (cursor) => {
             canvas.style.cursor = cursor;
           },
-        });
+        }, trail !== null || climb !== null);
       });
     });
     const onCanvasLeave = () => {
       hoverPoint = null;
       rail?.showHover(null);
+      featureHover.hide();
       if (!gesture.active) endDrag();
     };
     canvas.addEventListener("mouseleave", onCanvasLeave);
@@ -1003,6 +1041,8 @@ export function MapView(props: Props) {
     canvas.addEventListener("mousedown", onRightDown);
 
     map.on("click", (event) => {
+      // Whatever the click opens or closes, the hover card is not left over it.
+      featureHover.hide();
       // A click on a station opens its card, and a click on the line puts
       // the via in the leg clicked, as a drag does; anywhere else it is
       // addPoint's (the leg it lengthens least). A click while a via's Remove
@@ -1463,6 +1503,9 @@ export function MapView(props: Props) {
 
     return () => {
       disposed = true;
+      featureHover.hide();
+      canvas.removeEventListener("pointerdown", onPointer);
+      canvas.removeEventListener("pointermove", onPointer);
       rail?.close();
       federal?.detach();
       federalSync.current = null;
