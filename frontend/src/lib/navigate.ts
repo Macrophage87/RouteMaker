@@ -223,6 +223,8 @@ export interface Cue {
   junction?: JunctionShape;
   /** The way off a circle (v0.10.0): its exit, said ("take the 3rd exit") and drawn as a ring. */
   exit?: CircleExit;
+  /** A short path across a road between two turns: the road, said in place of the turn ("Cross Redland Road."), drawn straight on. */
+  cross?: string;
   /** A closure's source and until when (v0.8.2): shown in small print on the card, never said. */
   citation?: string;
   /** The description entry's kind it came from (a course export keeps Avoid and work-zone hazards); absent on the end. */
@@ -501,7 +503,9 @@ export function rideModel(route: RouteResponse, vias: readonly number[] = []): R
         text:
           kind === "stop"
             ? `Stop ${entry.via ?? cues.filter((c) => c.kind === "stop").length + 1}.`
-            : kind === "turn"
+            : kind === "turn" && entry.turn?.cross
+              ? crossWords(entry.turn.cross)
+              : kind === "turn"
               ? turnWords(entry.turn?.movement as TurnMovement, entry.turn?.onto ?? entry.street ?? null, entry.turn?.stay === true, entry.turn?.exit ?? null)
               : kind === "onto"
                 ? ontoWords(entry.street as string)
@@ -509,7 +513,8 @@ export function rideModel(route: RouteResponse, vias: readonly number[] = []): R
         ...(kind === "hazard" && entry.kind === "junction" && !entry.group ? { rideText: crossingWords(entry.street, entry.turn?.control) } : {}),
         ...(entry.kind === "hazard" ? { rideText: roadHazardWords(entry.text) } : {}),
         ...(entry.citation ? { citation: entry.citation } : {}),
-        ...(kind === "turn" && entry.turn?.shape ? { junction: entry.turn.shape } : {}),
+        ...(kind === "turn" && entry.turn?.shape && !entry.turn.cross ? { junction: entry.turn.shape } : {}),
+        ...(kind === "turn" && entry.turn?.cross ? { cross: entry.turn.cross } : {}),
         ...(kind === "turn" && entry.turn?.exit ? { exit: entry.turn.exit } : {}),
         movement: kind === "turn" ? (entry.turn?.movement as TurnMovement) : null,
         street: entry.turn?.onto ?? entry.street ?? null,
@@ -533,9 +538,20 @@ export function rideModel(route: RouteResponse, vias: readonly number[] = []): R
   return { coordinates, along, lengthM, cues, stretches, paceMs, ...(vias.length ? { passes } : {}) };
 }
 
-/** ", then immediately bear left onto Rhode Island Avenue.": a jog's second turn, after the first. */
-function thenWords(then: NonNullable<Cue["then"]>): string {
-  return `, then immediately ${lowerFirst(turnWords(then.movement, then.street, false, then.exit ?? null))}`;
+/** The road crossed where it has no name (describe.CROSS_UNNAMED). */
+export const CROSS_UNNAMED = "the road";
+
+/** "Cross Redland Road.": a short path across a road between two turns (describe._crossing). */
+export function crossWords(road: string): string {
+  return `Cross ${wayWords(road)}.`;
+}
+
+/**
+ * ", then immediately bear left onto Rhode Island Avenue.": a jog's second turn, after the first; after a crossing
+ * only ", then left onto ..." (the owner, 2026-10-20: "cross the street and turn left").
+ */
+function thenWords(then: NonNullable<Cue["then"]>, crossing = false): string {
+  return `, then ${crossing ? "" : "immediately "}${lowerFirst(turnWords(then.movement, then.street, false, then.exit ?? null))}`;
 }
 
 /**
@@ -548,9 +564,11 @@ function joinJogs(cues: Cue[]): void {
     const first = cues[i];
     const second = cues[i + 1];
     if (first.kind !== "turn" || second.kind !== "turn" || first.joined || !first.movement || !second.movement) continue;
+    // A crossing is never said as a turn after another: it leads its own cue, with the turn after it.
+    if (second.cross) continue;
     if (second.atM - first.atM > JOG_M) continue;
     first.then = { movement: second.movement, street: second.street, ...(second.exit ? { exit: second.exit } : {}) };
-    first.text = first.text.replace(/\.$/, "") + thenWords(first.then);
+    first.text = first.text.replace(/\.$/, "") + thenWords(first.then, first.cross !== undefined);
     second.joined = true;
   }
 }
@@ -741,7 +759,9 @@ export function cueSpoken(cue: Cue, phase: Phase, distanceM: number, first = pha
   if (cue.kind === "stop") return `You have reached stop ${cue.stop}.`;
   if (phase === "now" && cue.movement) {
     // A jog's "now" is short, the second turn being only seconds on: "Right now, then bear left onto ...".
-    if (cue.then) return `${cue.exit ? "Exit" : MOVEMENT_WORDS[cue.movement]} now, then ${lowerFirst(turnWords(cue.then.movement, cue.then.street, false, cue.then.exit ?? null))}`;
+    const lead = cue.cross ? `Cross ${wayWords(cue.cross)}` : cue.exit ? "Exit" : MOVEMENT_WORDS[cue.movement];
+    if (cue.then) return `${lead} now, then ${lowerFirst(turnWords(cue.then.movement, cue.then.street, false, cue.then.exit ?? null))}`;
+    if (cue.cross) return `Cross ${wayWords(cue.cross)} now.`;
     if (cue.movement === "uturn") return "Make a U-turn now.";
     if (cue.exit) return `Exit now${cue.street && !isUnnamed(cue.street) ? ` onto ${wayWords(cue.street)}` : ""}.`;
     return `${MOVEMENT_WORDS[cue.movement]} now${cue.street ? ` onto ${wayWords(cue.street)}` : ""}.`;

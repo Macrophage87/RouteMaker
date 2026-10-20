@@ -440,6 +440,11 @@ class Piece:
     # as `others`: where a main road was crossed just before a turn onto its service
     # road; None elsewhere.
     prior: tuple | None = field(default=None, compare=False)
+    # The compass bearing of the piece's own stretch, unwrapped along the trace: each
+    # piece's is the one before's plus the turn between them (-180 to 180), so the
+    # difference between two pieces' is the way the route really turned between them
+    # (`describe.turn_between`: a hairpin right reads +190, never a left of -170).
+    bearing: float | None = field(default=None, compare=False)
 
 
 def _heading(value) -> float | None:
@@ -455,6 +460,8 @@ def pieces_of_trace(trace: dict) -> list[Piece]:
     # kept, with its length, for the junctions just short of that node.
     before: dict | None = None
     kept: list[tuple[dict, float]] = []
+    # The last stretch's bearing, unwrapped (`Piece.bearing`).
+    unwrapped: float | None = None
     for edge in trace.get("edges", []):
         length = float(edge.get("length") or 0.0) * to_metres
         begin, end = edge.get("begin_shape_index"), edge.get("end_shape_index")
@@ -492,6 +499,12 @@ def pieces_of_trace(trace: dict) -> list[Piece]:
             continue
         for a, b, d in stretches:
             if d > 0:
+                compass = bearing(Point(*a), Point(*b))
+                unwrapped = (
+                    compass
+                    if unwrapped is None
+                    else unwrapped + (compass - unwrapped + 540.0) % 360.0 - 180.0
+                )
                 pieces.append(
                     Piece(
                         way_id,
@@ -502,6 +515,7 @@ def pieces_of_trace(trace: dict) -> list[Piece]:
                         fork=fork,
                         others=others,
                         prior=prior,
+                        bearing=unwrapped,
                     )
                 )
                 fork = None
@@ -520,7 +534,10 @@ def _fork_of(before: dict | None, edge: dict) -> str | None:
         for other in (before.get("end_node") or {}).get("intersecting_edges") or []
     ]
     return describe.fork_movement(
-        _heading(before.get("end_heading")), _heading(edge.get("begin_heading")), others
+        _heading(before.get("end_heading")),
+        _heading(edge.get("begin_heading")),
+        others,
+        trail=edge.get("use") in describe.TRAIL_USES,
     )
 
 
@@ -2495,6 +2512,7 @@ def describe_route(
                             pieces[i].fork,
                             pieces[i].others,
                             pieces[i].prior,
+                            bearing=pieces[i].bearing,
                         )
                         for i in range(run[0], run[1])
                     ]

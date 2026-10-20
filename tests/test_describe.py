@@ -1891,3 +1891,200 @@ class TestCircleExits:
         )
         assert all("exit" not in (e["turn"] or {}) for e in entries)
         assert "exit" not in entries[-1]["text"]
+
+
+def bent(atoms, bearing):
+    """`atoms` with each piece's own unwrapped bearing (`Atom.bearing`)."""
+    return [replace(atom, bearing=bearing) for atom in atoms]
+
+
+class TestHairpins:
+    """The owner, 2026-10-20, by Veirs Mill Road at Rock Creek: "This is a right turn up
+    onto a bridge". Valhalla's headings, each over the first or last 30 m or so of an
+    edge, put a ramp that curls round to the right a little past straight back: read
+    alone, a left. Past HAIRPIN_DEG the side is the one the route's own line turns to."""
+
+    @staticmethod
+    def hairpin(line_turn, h_out=190.0):
+        return d.describe(
+            [
+                flat(
+                    bent(road("Veirs Mill Road bike lane", 1, 400, 0, 0, "path", "cycleway"), 0),
+                    bent(
+                        road("Rock Creek Trl", 1, 400, h_out, h_out, "path", "cycleway"),
+                        line_turn,
+                    ),
+                )
+            ]
+        )
+
+    def test_a_hairpin_right_that_the_headings_read_as_a_left_is_a_right(self):
+        # Headings: north, then 190 (a turn of -170). The line set off east (+90).
+        entries = self.hairpin(90.0)
+        assert entries[1]["turn"]["movement"] == "right"
+        assert "Right onto Rock Creek Trl," in entries[1]["text"]
+
+    def test_never_a_turn_of_more_than_240(self):
+        before = d.Atom(10, "1", "none", heading_out=0, bearing=0)
+        # Headings -125, a line of +300: +235 is the most it may read.
+        assert d.turn_between(
+            before, d.Atom(10, "1", "none", heading_in=235, bearing=300)
+        ) == pytest.approx(235)
+        assert d.turn_between(
+            before, d.Atom(10, "1", "none", heading_in=125, bearing=300)
+        ) == pytest.approx(125)
+
+    def test_a_hairpin_left_stays_a_left(self):
+        entries = self.hairpin(-90.0)
+        assert entries[1]["turn"]["movement"] == "left"
+
+    def test_without_the_line_the_headings_decide(self):
+        legs = [
+            flat(
+                road("A Trail", 1, 400, 0, 0, "path", "cycleway"),
+                road("B Trail", 1, 400, 190, 190, "path", "cycleway"),
+            )
+        ]
+        assert d.describe(legs)[1]["turn"]["movement"] == "left"
+
+    def test_an_ordinary_turn_never_reads_the_line(self):
+        # A right of 90 by the headings stays a right even where the line wobbles.
+        assert d.turn_between(
+            d.Atom(10, "1", "none", heading_out=0, bearing=0),
+            d.Atom(10, "1", "none", heading_in=90, bearing=-80),
+        ) == pytest.approx(90)
+
+    def test_the_turn_is_read_on_the_lines_side(self):
+        before = d.Atom(10, "1", "none", heading_out=0, bearing=0)
+        assert d.turn_between(before, d.Atom(10, "1", "none", heading_in=190, bearing=90)) == (
+            pytest.approx(190)
+        )
+        assert d.turn_between(before, d.Atom(10, "1", "none", heading_in=170, bearing=-90)) == (
+            pytest.approx(-190)
+        )
+
+    def test_a_hairpin_at_a_fork_is_said_on_the_lines_side_too(self):
+        legs = [
+            flat(
+                bent(road("Rock Creek Trail", 1, 400, 0, 0, "path", "cycleway"), 0),
+                bent(
+                    forked(road("Rock Creek Trail", 1, 400, 190, 190, "path", "cycleway"), "left"),
+                    100,
+                ),
+            )
+        ]
+        entries = d.describe(legs)
+        assert entries[1]["turn"]["movement"] == "right"
+        assert "Right to stay on Rock Creek Trail," in entries[1]["text"]
+
+    def test_a_hairpin_drawn_the_other_way_keeps_the_plain_arrow(self):
+        legs = [
+            flat(
+                bent(road("A Trail", 1, 400, 0, 0, "path", "cycleway"), 0),
+                [
+                    replace(
+                        atom,
+                        bearing=90,
+                        others=((60, "footway", "both"), (300, "footway", "both"))
+                        if i == 0
+                        else None,
+                    )
+                    for i, atom in enumerate(road("B Trail", 1, 400, 190, 190, "path", "cycleway"))
+                ],
+            )
+        ]
+        turn = d.describe(legs)[1]["turn"]
+        assert turn["movement"] == "right"
+        assert "shape" not in turn
+
+
+class TestLeaningForks:
+    """The owner, 2026-10-20, on Rock Creek Trail by Norbeck Road: "It missed a trail
+    fork". A Y whose branches each lean well off straight is still a fork."""
+
+    def test_a_y_of_two_leaning_branches_is_a_fork(self):
+        assert d.fork_movement(0, 300, [(60, "path", "both")], trail=True) == "bear_left"
+        assert d.fork_movement(0, 60, [(300, "cycleway", "both")], trail=True) == "bear_right"
+
+    def test_a_branch_well_past_the_routes_own_bend_is_none(self):
+        # The route bends 30 left, a branch 70 right: the route is plainly the way on.
+        assert d.fork_movement(0, 330, [(70, "path", "both")], trail=True) is None
+
+    def test_a_t_on_a_trail_is_a_turn_to_stay_on_it(self):
+        assert d.fork_movement(0, 270, [(90, "path", "both")], trail=True) == "left"
+
+    def test_a_sidewalk_or_a_road_is_no_leaning_choice(self):
+        assert d.fork_movement(0, 300, [(60, "sidewalk", "both")], trail=True) is None
+        assert d.fork_movement(0, 300, [(60, "road", "both")], trail=True) is None
+
+    def test_off_a_trail_a_leaning_branch_is_no_fork(self):
+        # A street curving 50 right with a side street 65 left: no question.
+        assert d.fork_movement(0, 50, [(295, "road", "both")]) is None
+        # A sidepath bending at a footway.
+        assert d.fork_movement(0, 300, [(60, "footway", "both")]) is None
+
+    def test_a_branch_behind_is_never_a_choice(self):
+        assert d.fork_movement(0, 240, [(100, "path", "both")], trail=True) is None
+
+
+class TestCrossings:
+    """The owner, 2026-10-20, north on the Needwood Road bike lane at Redland Road: "It
+    should have told me to cross the street and turn left". A short path across a road
+    between two turns is said as the crossing, not a bear to stay on the path."""
+
+    @staticmethod
+    def needwood(events=None, middle_use="cycleway", middle_m=25):
+        legs = [
+            flat(
+                road("Needwood Road bike lane", 1, 400, 0, 0, "path", "cycleway"),
+                forked(
+                    road("Needwood Road bike lane", 1, middle_m, 30, 30, "path", middle_use),
+                    "bear_right",
+                ),
+                road("Redland Road bike lane", 1, 400, 290, 290, "path", "cycleway"),
+            )
+        ]
+        return d.describe(legs, events)
+
+    def test_a_crossing_between_two_turns_is_said_as_the_crossing(self):
+        crossing = event(410, "straight", kind="crossing", names=("redland road",), flagged=False)
+        entries = self.needwood([crossing])
+        assert entries[1]["turn"]["cross"] == "Redland Road"
+        # The junction's control is the crossing's.
+        assert "Cross Redland Road at a signal," in entries[1]["text"]
+        assert entries[2]["turn"]["movement"] == "left"
+        assert "Left onto Redland Road bike lane" in entries[2]["text"]
+
+    def test_a_crosswalk_with_no_event_crosses_the_road(self):
+        entries = self.needwood(middle_use="pedestrian_crossing")
+        assert entries[1]["turn"]["cross"] == "the road"
+        assert "Cross the road," in entries[1]["text"]
+
+    def test_without_a_road_crossed_it_is_the_turn(self):
+        entries = self.needwood()
+        assert "cross" not in entries[1]["turn"]
+        assert "Bear right to stay on Needwood Road bike lane," in entries[1]["text"]
+
+    def test_a_long_middle_is_no_crossing(self):
+        crossing = event(420, "straight", kind="crossing", names=("redland road",), flagged=False)
+        entries = self.needwood([crossing], middle_m=200)
+        assert "cross" not in entries[1]["turn"]
+
+    def test_a_left_across_a_road_is_a_crossing_and_the_nearest_event_names_it(self):
+        far = event(395, "left", kind="left_across", names=("muncaster mill road",), flagged=False)
+        near = event(412, "left", kind="left_across", names=("redland road",), flagged=False)
+        assert self.needwood([far, near])[1]["turn"]["cross"] == "Redland Road"
+
+    def test_an_unnamed_road_crossed_is_the_road(self):
+        crossing = event(410, "straight", kind="crossing", names=(), flagged=False)
+        assert self.needwood([crossing])[1]["turn"]["cross"] == "the road"
+
+    def test_the_road_turned_onto_is_not_the_one_crossed(self):
+        onto = event(424, "left", kind="crossing", names=("redland road bike lane",), flagged=False)
+        assert "cross" not in self.needwood([onto])[1]["turn"]
+
+    def test_the_road_the_route_was_on_is_not_the_one_crossed(self):
+        crossing = event(
+            410, "straight", kind="crossing", names=("needwood road bike lane",), flagged=False
+        )
+        assert "cross" not in self.needwood([crossing])[1]["turn"]
