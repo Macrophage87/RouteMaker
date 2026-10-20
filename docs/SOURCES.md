@@ -607,6 +607,25 @@ the shipped `licenses.txt`, which the map's "Software licences" link opens (384:
   `140e2bd25a7315c8a062508391426b0d8c3297400c947b8d847be28f73a199f0`.
 - Records: docs/DEVELOPMENT.md, "The sidebar (312)", "The font".
 
+## Atkinson Hyperlegible Next (the map's street names; not a map credit)
+
+A bundled asset like Atkinson Hyperlegible above, credited in the shipped `licenses.txt`.
+
+- What it is: the face the map's street names are set in (the owner, 2026-10-20), weight 600
+  (SemiBold), as MapLibre glyph files for the three Latin ranges, made with
+  `scripts/make_map_glyphs.mjs` from the variable font (Version 2.001, sha256
+  `5a455d1cfa099b601ab70751bb9673e8fe1854dc4500c80e1a220d0d75e31745`) and bundled as
+  `frontend/src/fonts/map-glyphs/atkinson-next-semibold-<range>.pbf`, served as hashed
+  `/assets/*.pbf` files (`frontend/src/lib/mapGlyphs.ts`). Other ranges fall back to the base
+  map's Noto Sans Medium.
+- Publisher: The Atkinson Hyperlegible Next Project Authors (copyright 2020-2024),
+  https://github.com/googlefonts/atkinson-hyperlegible-next
+- Licence: SIL Open Font License 1.1, the full text in `frontend/src/fonts/map-glyphs/OFL.txt`
+  (sha256 `aca6a428580965d2297d1b718042dd427c2a9443ece3b0d02d758e161e0c4030`). Glyph files, sha256:
+  0-255 `9e51a8d97015a4630ecd000ceffb72d5f05cbd3fc6f527009c59701f835f95df`, 256-511
+  `29a0d23107deea4b517702c991e1f93f20fb9756b5c817b2b6959b66cc5644b0`, 8192-8447
+  `630c4d4c53fb87478dcda8ca2ebf028a9dad9d021f891cf6854a785200eaf952`.
+
 ## Helvetica character widths (the PDF cue sheets; not a map credit)
 
 Not a data source and no `Credit:` line: a table of numbers the PDF writer lays text out with.

@@ -660,20 +660,22 @@ export const BASEMAP = {
  * seem to disappear over the colored lanes". The base map's road names (@protomaps/basemaps `roads_labels_major`
  * and `roads_labels_minor`) are already drawn over the stress lines (lib/mapGlue.ts, addStressOverlay), but as
  * light grey (#938a8d, 3.4:1 on white) 12 px Regular with a 1 px halo, which a 5-6.5 px coloured line shows
- * through. Here they are a size larger and Medium, dark grey (9.1:1 on the white halo; near-black, 17:1, with the
- * accessibility switch) on a 3 px white halo (3.25 px with the switch, the most MapLibre draws at 13 px), so each
- * name sits on its own white band over any line. The names are on the canvas, out of a screen reader's reach as
- * before; the road panel says a road's name in words.
+ * through. Here they are 15 px (the owner, 2026-10-20: "a point or two up" on 13) in Atkinson Hyperlegible Next
+ * SemiBold (the owner's pick, 2026-10-20; bundled, lib/mapGlyphs.ts), dark grey (9.1:1 on the white halo; near-black,
+ * 17:1, with the accessibility switch) on a 3.5 px white halo (3.75 px with the switch, the most MapLibre draws at
+ * 15 px), so each name sits on its own white band over any line. The names are on the canvas, out of a screen
+ * reader's reach as before; the road panel says a road's name in words.
  */
 export const ROAD_LABEL_LAYER_IDS = ["roads_labels_major", "roads_labels_minor"];
 export const ROAD_LABEL = {
-  font: "Noto Sans Medium",
-  size: 13,
+  // Bundled with the app, not the base map (lib/mapGlyphs.ts, MAP_LABEL_FONT).
+  font: "Atkinson Hyperlegible Next SemiBold",
+  size: 15,
   color: "#4d4749",
   strongColor: "#1c1a1b",
   halo: "#ffffff",
-  haloWidth: 3,
-  strongHaloWidth: 3.25,
+  haloWidth: 3.5,
+  strongHaloWidth: 3.75,
   haloBlur: 0,
 };
 
