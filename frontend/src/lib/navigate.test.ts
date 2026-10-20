@@ -1,6 +1,7 @@
 // Ride mode's engine (WEB-NAV-plan.md sections 2-4): progress along the line, the cue schedule per
 // level, off route with its hysteresis, the re-plan's points and gate, and the words.
 import { test } from "node:test";
+import { routeRequestBody } from "./api.ts";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import type { DescriptionEntry, RouteResponse } from "./api.ts";
@@ -48,6 +49,11 @@ import {
   replanPoints,
   rideModel,
   REPLAN_UTURN,
+  REPLAN_AHEAD,
+  REPLAN_NO_AHEAD,
+  UTURNS_BEFORE_AHEAD,
+  keepsAhead,
+  replanTold,
   says,
   setsOffBack,
   UTURN_SAID,
@@ -1597,6 +1603,41 @@ test("a ring kept as its own short stretch, then the way off: the jog says the e
   // An exit with a turn right after it: its own "now" is the exit.
   const exitFirst = { ...second, joined: false, then: { movement: "right" as const, street: "Q Street Northwest" } };
   assert.equal(cueSpoken(exitFirst, "now", 5), "Exit now, then right onto Q Street Northwest.");
+});
+
+test("two U-turn re-routes ridden past, then the third keeps the rider's way (the owner, 2026-10-20)", () => {
+  assert.equal(UTURNS_BEFORE_AHEAD, 2);
+  assert.equal(keepsAhead(0), false);
+  assert.equal(keepsAhead(1), false);
+  assert.equal(keepsAhead(2), true);
+  assert.equal(REPLAN_AHEAD, "New route found. Keep going ahead.");
+  // Said at the stoker's level, as "New route found." was before it.
+  assert.equal(replanTold(false, "stoker", REPLAN_AHEAD), "say");
+  assert.equal(replanTold(false, "quiet", REPLAN_AHEAD), "quiet");
+});
+
+test("ahead_only is sent only with a heading", () => {
+  const body = (options: Parameters<typeof routeRequestBody>[2]) => JSON.parse(routeRequestBody([[-77, 38.9], [-77.01, 38.9]], "default", options));
+  assert.equal(body({ heading: 90, aheadOnly: true }).ahead_only, true);
+  assert.equal(body({ heading: 90 }).ahead_only, undefined);
+  assert.equal(body({ heading: null, aheadOnly: true }).ahead_only, undefined);
+});
+
+test("no way ahead on the third: said plainly once, and the route is left up (the owner, 2026-10-20)", () => {
+  assert.equal(REPLAN_NO_AHEAD, "No route found ahead. Make a U-turn.");
+  assert.equal(replanTold(false, "stoker", REPLAN_NO_AHEAD), "say");
+  const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
+  assert.match(ride, /uturnHeld\.current = turned && aheadOnly && note !== REPLAN_REJOIN;/);
+  // Held, off route promises no new way; the silent check never takes the gate the rider's asks need.
+  assert.match(ride, /prefsRef\.current\.verbosity, auto && !uturnHeld\.current\);/);
+  assert.match(ride, /if \(check \? gate\.busy \|\| checking\.current : !gate\.begin\(Date\.now\(\)\)\) \{/);
+  assert.match(ride, /announcer\.current\?\.say\(note, note === REPLAN_NO_AHEAD\)/);
+  // No automatic re-plan while it is held; turning round as asked lets go of it.
+  assert.match(ride, /if \(!uturnHeld\.current\) void replan\(out\.state\.goodFix\.point\);/);
+  // Checked quietly now and then: a check that still turns round says and shows nothing.
+  assert.match(ride, /Date\.now\(\) - heldCheckAt\.current >= UTURN_RECHECK_MS/);
+  assert.match(ride, /if \(check && \(!found \|\| heading === null \|\| setsOffBack\(found\.geometry\.coordinates, heading\)\)\) return;/);
+  assert.match(ride, /uturnsInARow\.current = 0;\n\s+uturnHeld\.current = false;/);
 });
 
 // ---- Crossings between two turns (the owner, 2026-10-20, at Needwood Road and Redland Road: "It should have told me to cross the street and turn left") ----

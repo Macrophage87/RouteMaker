@@ -1042,6 +1042,10 @@ class Dials:
     # north), so the route sets off that way rather than turning round (`plan_onward`); None:
     # either way.
     heading: float | None = None
+    # A re-route after the rider has ridden on past two U-turns (the owner, 2026-10-20: "give two
+    # reroutes and on the third time assume that the user wants to stay on that path"): the route
+    # that sets off ahead is taken whatever turning round would save (`plan_onward`).
+    ahead_only: bool = False
 
 
 def _same_pace(options: dict, request: dict) -> dict:
@@ -4174,8 +4178,9 @@ def plan_onward(
 ) -> dict:
     """`plan`, with a re-route's U-turn penalised: where `dials.heading` is given and the route
     sets off back the other way, the best route that sets off ahead is planned too, and the
-    U-turn kept only where it saves UTURN_SAVING_M. Anything that stops the second plan (no
-    route ahead, no time left) keeps the first: the rider is never left without one."""
+    U-turn kept only where it saves UTURN_SAVING_M (never with `dials.ahead_only`). Anything
+    that stops the second plan (no route ahead, no time left) keeps the first: the rider is
+    never left without one."""
     dials = dials or Dials()
     heading = dials.heading
     asked = dict(long_ride=long_ride, started=started, quick=quick, candidates=candidates)
@@ -4198,7 +4203,7 @@ def plan_onward(
         return answered
     saving = float(ahead["distance_m"]) - float(answered["distance_m"])
     # The router takes the way back where it has no way ahead within its tolerance.
-    if saving >= UTURN_SAVING_M or sets_off_back(ahead, heading):
+    if (saving >= UTURN_SAVING_M and not dials.ahead_only) or sets_off_back(ahead, heading):
         logger.info("a re-route turns round: it saves %.0f m", saving)
         return answered
     return ahead
