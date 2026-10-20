@@ -161,6 +161,9 @@ You stay responsible for riding safely; the route can be wrong.
   have arrived it is a plain button. End ride and Road closed share the top row; Road closed
   always shows its words. Near sunrise or sunset, a small line under them gives the sunrise or
   sunset and civil twilight times and the minutes till each.
+- After End ride you get the ride's summary: distance, moving time, average speed, total time,
+  climbing, an elevation chart and the traffic stress you rode. Done leaves Go empty for your next trip (in Plan the
+  plan stays to adjust); Undo carries on with the same ride. Nothing about the ride is saved.
 - Off the route for a few seconds, it says so and finds a new way from where you are. "Keep
   the planned route" says which way the route is instead.
 - At Start ride the map along the route, about 1,000 ft (300 m) either side, is saved on the
