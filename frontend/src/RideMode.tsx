@@ -1703,6 +1703,8 @@ export function RideMode({
   // screen as possible"), set as --cue-fit on the card. Worked out when the turn, the size or the screen changes, not each
   // fix, with a little room left for the distance's words to grow; the small print stays 16 pt or more (styles.css).
   const cardRef = useRef<HTMLDivElement>(null);
+  const large = textSize === "large";
+  const about = large ? ", " : ", about ";
   const fitKey = `${textSize}|${cueShown.head}|${cueShown.rest}|${distanceWords.length}|${ride.off}|${ride.arrived}|${cueSheetOn}|${settingsOpen}`;
   useLayoutEffect(() => {
     const card = cardRef.current;
@@ -2003,12 +2005,14 @@ export function RideMode({
             <div>
               {/* Greyed while GPS is weak or lost (any GPS note): the distance is from an old fix, not where the rider is. */}
               <p className={gps ? "cue-distance cue-distance-weak" : "cue-distance"}>
-                In {distanceShown.us}
+                {/* Large text: fewer words, larger type (the owner, 2026-10-20); "In" stays for screen readers. */}
+                <span className={large ? "visually-hidden" : undefined}>In </span>
+                {distanceShown.us}
                 {distanceShown.metric && <span className="cue-distance-metric"> {distanceShown.metric}</span>}
               </p>
               {/* The instruction large, the rest in small print, street words shortened; the whole sentence for screen readers. */}
               <p className="cue-text">
-                <span aria-hidden="true">{cueShown.head}</span>
+                <span aria-hidden="true">{large ? cueShown.head.replace(/\.$/, "") : cueShown.head}</span>
                 <span className="visually-hidden">{cue.rideText ?? cue.text}</span>
               </p>
               {cueShown.rest && (
@@ -2029,7 +2033,7 @@ export function RideMode({
                 <dt>To stop {togo.stop.number}</dt>
                 <dd>
                   {formatDistance(togo.stop.metres)}
-                  {togo.stop.seconds !== null && `, about ${formatDuration(togo.stop.seconds)}`}
+                  {togo.stop.seconds !== null && `${about}${formatDuration(togo.stop.seconds)}`}
                 </dd>
               </div>
             )}
@@ -2037,7 +2041,7 @@ export function RideMode({
               <dt>To the end</dt>
               <dd>
                 {formatDistance(togo.end.metres)}
-                {togo.end.seconds !== null && `, about ${formatDuration(togo.end.seconds)}`}
+                {togo.end.seconds !== null && `${about}${formatDuration(togo.end.seconds)}`}
               </dd>
             </div>
           </dl>

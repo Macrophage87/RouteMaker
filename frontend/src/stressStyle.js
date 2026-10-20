@@ -671,8 +671,9 @@ export const ROAD_LABEL = {
   // Bundled with the app, not the base map (lib/mapGlyphs.ts, MAP_LABEL_FONT).
   font: "Atkinson Hyperlegible Next SemiBold",
   size: 15,
-  /** With Large text in a ride (the owner, 2026-10-20: "Can text in the map increase in large too?"). */
-  largeSize: 20,
+  /** In a ride, at either text size (the owner, 2026-10-20: "20 pt for road names regardless of size choice for ride mode";
+   *  "When riding you want to be able to see quickly"). */
+  rideSize: 20,
   color: "#4d4749",
   strongColor: "#1c1a1b",
   halo: "#ffffff",
@@ -680,6 +681,49 @@ export const ROAD_LABEL = {
   strongHaloWidth: 3.75,
   haloBlur: 0,
 };
+
+// A ride's street names shortened as on the cue card (lib/cueShown.ts, shortStreets): "R Street Northwest" as "R St NW"
+// (the owner, 2026-10-20: fewer words, larger text). A style expression has no regex, so only a trailing quadrant and
+// the street type before it (or at the end) are shortened, as the cue card does; the name is the English one, else the
+// local one, without the base map's second-script line (none in this region).
+const RIDE_QUADRANTS = [["Northwest", "NW"], ["Northeast", "NE"], ["Southwest", "SW"], ["Southeast", "SE"]];
+const RIDE_TYPES = [
+  ["Avenue", "Ave"], ["Street", "St"], ["Road", "Rd"], ["Boulevard", "Blvd"], ["Drive", "Dr"], ["Parkway", "Pkwy"],
+  ["Place", "Pl"], ["Terrace", "Ter"], ["Lane", "Ln"], ["Court", "Ct"], ["Trail", "Trl"], ["Highway", "Hwy"],
+  ["Circle", "Cir"], ["Square", "Sq"], ["Bridge", "Br"],
+];
+const endsWith = (v, tail, more = 0) => [
+  "all",
+  [">=", ["length", v], tail.length + more],
+  ["==", ["slice", v, ["-", ["length", v], tail.length]], tail],
+];
+const cut = (v, n) => ["slice", v, 0, ["-", ["length", v], n]];
+export function rideRoadLabelField() {
+  const n = ["var", "n"];
+  const q = ["var", "q"];
+  const b = ["var", "b"];
+  return [
+    "let",
+    "n",
+    ["coalesce", ["get", "name:en"], ["get", "pgf:name"], ["get", "name"], ""],
+    [
+      "let",
+      "q",
+      ["case", ...RIDE_QUADRANTS.flatMap(([long, short]) => [endsWith(n, ` ${long}`, 1), ` ${short}`]), ""],
+      [
+        "let",
+        "b",
+        // Every quadrant word is 9 letters, so " Northwest" and the rest are 10 characters to cut.
+        ["case", ["==", q, ""], n, cut(n, 10)],
+        [
+          "concat",
+          ["case", ...RIDE_TYPES.flatMap(([long, short]) => [endsWith(b, ` ${long}`, 1), ["concat", cut(b, long.length), short]]), b],
+          q,
+        ],
+      ],
+    ],
+  ];
+}
 
 /** The street names' paint, plain or with the accessibility switch on. */
 export function roadLabelPaint(strong = accessibilityOn()) {

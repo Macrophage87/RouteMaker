@@ -4309,7 +4309,7 @@ export function App() {
         // 2026-10-17: the location centred, so it is seen). With a route its start pin marks it.
         youDot={!riding && mode === "go" && points.length === 0 && goStart.kind === "here" ? goStart.point : null}
         follow={riding && follow}
-        largeLabels={riding && rideText === "large"}
+        rideLabels={riding}
         // The owner, 2026-10-20: the map's junction buttons, zoom and credits are only extra swipes for a screen reader in a ride.
         screenReaderRide={riding && ridePrefs.output === "screen-reader"}
         headingUp={headingUp}

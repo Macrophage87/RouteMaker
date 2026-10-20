@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { vehicleBadge, type VehicleMark } from "./lib/nextVehicle.ts";
 import { createPortal } from "react-dom";
 import * as maplibregl from "maplibre-gl";
-import type { GeoJSONSource, Map as MapLibreMap, Marker, Popup } from "maplibre-gl";
+import type { DataDrivenPropertyValueSpecification, GeoJSONSource, Map as MapLibreMap, Marker, Popup } from "maplibre-gl";
 import { Protocol } from "pmtiles";
 // MapLibre 6 ships its worker as a separate module and finds it next to its own
 // file by `import.meta.url`, which a bundle does not preserve; Vite builds it
@@ -37,7 +37,7 @@ import {
   ROUTE_BAND_WIDTH,
   sectionFeatures,
 } from "./lib/routeColours.ts";
-import { ROAD_LABEL, ROAD_LABEL_LAYER_IDS, mtbTrailsOn, routableMtbLevel, stressOverlayLayers, subscribeHighStressLanes, subscribeMtbTrails, subscribePalette, subscribeRoutableMtb, withClearRoadLabels } from "./stressStyle.js";
+import { ROAD_LABEL, ROAD_LABEL_LAYER_IDS, mtbTrailsOn, rideRoadLabelField, routableMtbLevel, stressOverlayLayers, subscribeHighStressLanes, subscribeMtbTrails, subscribePalette, subscribeRoutableMtb, withClearRoadLabels } from "./stressStyle.js";
 import { subscribeTopoLines, syncTopoLines, topoLinesOn, type TopoMap } from "./lib/topoLines.ts";
 import {
   addStressOverlay,
@@ -256,8 +256,8 @@ interface Props {
   youDot?: LonLat | null;
   follow?: boolean;
   headingUp?: boolean;
-  /** A ride with Large text: the street names larger too (ROAD_LABEL.largeSize). */
-  largeLabels?: boolean;
+  /** A ride: the street names larger (ROAD_LABEL.rideSize) and shortened (rideRoadLabelField). */
+  rideLabels?: boolean;
   /** A ride whose cues go to the screen reader alone: the map is out of its reach (inert), so swiping goes cue card to side buttons. */
   screenReaderRide?: boolean;
   onFollowBroken?: () => void;
@@ -2256,15 +2256,26 @@ export function MapView(props: Props) {
     map.easeTo({ center: rider.point, bearing, zoom, offset: [0, ahead], padding: NO_PADDING, duration: still ? 0 : 400 });
   }, [props.rider, props.follow, props.headingUp]);
 
-  // Large text in a ride: the street names grow with the cue (the owner, 2026-10-20), and go back after.
+  // In a ride the street names are larger and shortened ("R St NW"), to be read at a glance (the owner, 2026-10-20),
+  // and go back after.
+  type LabelField = DataDrivenPropertyValueSpecification<string>;
+  const baseLabelField = useRef<Record<string, LabelField>>({});
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    const size = props.largeLabels ? ROAD_LABEL.largeSize : ROAD_LABEL.size;
+    const ride = Boolean(props.rideLabels);
     // Set as soon as the layers exist: isStyleLoaded() is false while any tile loads, which is most of a ride.
     const apply = () => {
       const ids = ROAD_LABEL_LAYER_IDS.filter((id) => map.getLayer(id));
-      for (const id of ids) map.setLayoutProperty(id, "text-size", size);
+      for (const id of ids) {
+        map.setLayoutProperty(id, "text-size", ride ? ROAD_LABEL.rideSize : ROAD_LABEL.size);
+        if (ride) {
+          baseLabelField.current[id] ??= map.getLayoutProperty(id, "text-field") as LabelField;
+          map.setLayoutProperty(id, "text-field", rideRoadLabelField() as LabelField);
+        } else if (baseLabelField.current[id] !== undefined) {
+          map.setLayoutProperty(id, "text-field", baseLabelField.current[id]);
+        }
+      }
       if (ids.length > 0) map.off("styledata", apply);
     };
     if (ROAD_LABEL_LAYER_IDS.some((id) => map.getLayer(id))) apply();
@@ -2272,7 +2283,7 @@ export function MapView(props: Props) {
     return () => {
       map.off("styledata", apply);
     };
-  }, [props.largeLabels]);
+  }, [props.rideLabels]);
   useEffect(() => () => void riderMarker.current?.remove(), []);
   // Go's "you" dot: a marker only (aria-hidden: Go's start line says where the rider is).
   const youMarker = useRef<Marker | null>(null);

@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { layers as protomapsLayers, namedFlavor } from "@protomaps/basemaps";
-import { ROAD_LABEL, ROAD_LABEL_LAYER_IDS, contrastRatio, roadLabelPaint, withClearRoadLabels } from "./stressStyle.js";
+import { ROAD_LABEL, ROAD_LABEL_LAYER_IDS, contrastRatio, rideRoadLabelField, roadLabelPaint, withClearRoadLabels } from "./stressStyle.js";
 import { setStressPalette } from "./lib/mapGlue.ts";
 
 type Layer = { id: string; type: string; layout?: Record<string, unknown>; paint?: Record<string, unknown> };
@@ -51,4 +51,17 @@ test("road names: the switch repaints them in place", () => {
   };
   setStressPalette(map as never);
   for (const id of ROAD_LABEL_LAYER_IDS) assert.deepEqual(set[id], roadLabelPaint());
+});
+
+test("a ride's street names are shortened as on the cue card", async () => {
+  const { expression } = await import("@maplibre/maplibre-gl-style-spec");
+  const field = expression.createExpression(rideRoadLabelField(), { type: "string" } as never);
+  assert.equal(field.result, "success");
+  const shown = (name: string) => (field.value as { evaluate: (g: object, f: object) => string }).evaluate({ zoom: 15 }, { properties: { name } });
+  assert.equal(shown("R Street Northwest"), "R St NW");
+  assert.equal(shown("Florida Avenue Northeast"), "Florida Ave NE");
+  assert.equal(shown("East-West Highway"), "East-West Hwy");
+  assert.equal(shown("Northwest Branch Trail"), "Northwest Branch Trl");
+  assert.equal(shown("The Mall"), "The Mall");
+  assert.equal(shown("Street"), "Street");
 });

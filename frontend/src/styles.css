@@ -4037,6 +4037,18 @@ details.zoom-notes {
   margin: 2px 0;
 }
 
+/* Wrapped ride text in even lines, never a lone word left on the last (the owner, 2026-10-20: "make wrapping text a
+   little prettier"). */
+.ride .cue-text,
+.ride .cue-more,
+.ride .cue-then,
+.ride .cue-citation,
+.ride .ride-togo dd,
+.ride .ride-light-below,
+.ride .ride-toast p {
+  text-wrap: balance;
+}
+
 /* What follows the cue's first comma ("No signal mapped, busy road (LTS 3)."): small print under it. */
 .cue-more {
   font-size: 0.9rem;
