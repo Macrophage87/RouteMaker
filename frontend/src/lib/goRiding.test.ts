@@ -73,21 +73,20 @@ test("6. an End ride button always in view, labelled End ride with its icon, one
   assert.match(app, /startRideGesture\(ridePrefs\);\s*setResumeStats\(ended\.stats\);\s*setRideStart\(ended\.start\);/);
 });
 
-test("3. 311: the pick is the report (sent, or the text app filled in); the note after, never before", () => {
+test("3. 311: the pick is logged (and sent where the server has DC's key); the note after, never before", () => {
   const pick = ride.slice(ride.indexOf("const pick311 = (kind: ReportKind) => {"), ride.indexOf("const addNote = () => {"));
-  assert.match(pick, /const way = pickWay\(serverOn311, phone\);/);
-  assert.match(pick, /sendReport311\(window\.location\.origin, kind, place\)/);
-  assert.match(pick, /window\.location\.assign\(smsHref\(sms, agent, touch\)\)/);
-  assert.match(pick, /tell311\(REPORT_SENT\)/);
-  assert.match(pick, /tell311\(REPORT_READY\)/);
+  assert.match(pick, /const entry = report311Log\(\)\.add\(kind, place\);/);
+  assert.match(pick, /if \(serverOn311 && entry\.where === "dc"\)/);
+  assert.match(pick, /sendReport311\(window\.location\.origin, kind, place, entryText\(entry\)\)/);
+  assert.match(pick, /if \(sent\) report311Log\(\)\.setReported\(entry\.id, true\);/);
+  assert.match(pick, /tell311\(loggedSaid\(entry\)\)/);
+  assert.doesNotMatch(ride, /smsHref|sms:/, "no text message: DC's text line answers only Welcome (2026-10-20)");
   // The confirmation line and Add a note under the button.
   // Review F4: the line clears after SAID_311_MS, held while focused or hovered (the spread handlers).
   assert.match(ride, /<div className="ride-311-said" \{\.\.\.said311Timer\.hold\}>\s*\{\/\*[^*]*\*\/\}\s*<p>\{said311\}<\/p>\s*\{\/\*[^*]*\*\/\}\s*\{said311 !== REPORT_SENT && \(\s*<button type="button" className="secondary" onClick=\{addNote\}>\s*Add a note/);
-  // Sent by the server already: no Add a note, which would send the same problem twice (v0.7.0 end review).
-  // In the report itself the note comes after the sending.
-  const fold = ride.slice(ride.indexOf("function Report311("), ride.indexOf("export function RideMode("));
-  assert.ok(fold.indexOf("Add a note (optional)") > fold.indexOf("Copy the report"), "the note after the actions");
-  assert.ok(fold.indexOf("Add a note (optional)") > fold.indexOf("<legend>What is it?</legend>"));
+  // The note fold edits the entry just logged, saved as typed.
+  const fold = ride.slice(ride.indexOf("function Note311("), ride.indexOf("export function RideMode("));
+  assert.match(fold, /onChange=\{\(event\) => report311Log\(\)\.setNote\(entry\.id, event\.target\.value\)\}/);
 });
 
 test("F1. Start unlocks the voice synchronously in the press, before the closure check's await", () => {

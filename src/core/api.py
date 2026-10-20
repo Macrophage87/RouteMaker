@@ -5464,6 +5464,58 @@ def account_settings_save(request):
     return _private(JsonResponse(_settings_out(row)))
 
 
+# The 311 log (core.report_log; core.models.Report311Log): the whole log, last write wins, like
+# the settings. Signed out it is 401 and the log stays on the device.
+
+
+def _report_log_out(row) -> dict:
+    return {
+        "entries": row.entries if row is not None else None,
+        "updated_at": row.updated_at.isoformat() if row is not None else None,
+    }
+
+
+@api.get("/me/report311-log", summary="The signed-in rider's 311 log (null when none yet)")
+@decorate_view(
+    signed_in_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.ME),
+    errors_as_json,
+)
+def report311_log_read(request):
+    from django.middleware.csrf import get_token
+
+    from .models import Report311Log
+
+    get_token(request)
+    row = Report311Log.objects.filter(user=request.user).first()
+    return _private(JsonResponse(_report_log_out(row)))
+
+
+@api.post("/me/report311-log", summary="Save the signed-in rider's 311 log (the whole log)")
+@decorate_view(
+    ratelimit.user_rate_limited(ratelimit.ACCOUNT_WRITES),
+    csrf_protected,
+    signed_in_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+def report311_log_save(request):
+    from . import report_log
+    from .models import Report311Log
+
+    body, refusal = _json_body(request, report_log.LOG_MAX_BYTES + 1024)
+    if refusal is not None:
+        return refusal
+    entries = body.get("entries") if isinstance(body, dict) else None
+    problem = report_log.log_problem(entries)
+    if problem:
+        return _stress_error(400, problem, field="entries")
+    row, _ = Report311Log.objects.update_or_create(user=request.user, defaults={"entries": entries})
+    return _private(JsonResponse(_report_log_out(row)))
+
+
 def _route_summary(row) -> dict:
     return {
         "id": row.pk,
@@ -6375,6 +6427,31 @@ def report311_status(request):
     )
     response["Cache-Control"] = "no-store"
     return response
+
+
+@api.get("/report311/where", summary="Which 311 website takes a problem at a point")
+@decorate_view(
+    ratelimit.in_flight_limited(ratelimit.GEOCODE_IN_FLIGHT, ratelimit.name_slots),
+    ratelimit.rate_limited(ratelimit.REVERSE),
+    ratelimit.rate_limited(ratelimit.REVERSE_BURST),
+    same_site_only,
+    errors_as_json,
+)
+def report311_where(request, params: Query[ReverseIn]):
+    """The 311 log's site for an entry (core.report_log.where): an id the page knows, or null
+    where the point is in no jurisdiction the log names. The point is not kept or logged."""
+    from . import report_log
+
+    try:
+        found = report_log.where(params.lat, params.lon, lang=params.lang)
+    except geocode.Unavailable as unavailable:
+        logger.warning("311 log: the geocoder did not answer: %s", unavailable)
+        out = JsonResponse({"error": GEOCODER_DOWN}, status=502)
+        out["Cache-Control"] = "no-store"
+        return out
+    out = JsonResponse({"where": found})
+    out["Cache-Control"] = "private, max-age=86400"
+    return out
 
 
 @api.post("/report311", summary="Send one Ride mode report to DC 311 (only with a DC key)")

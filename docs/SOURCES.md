@@ -1112,6 +1112,41 @@ them (OWNER-DECISIONS 152, 155, 162).
 - MDOT's Road Separated Bike Routes web map: check-only (its terms bar trip-planning
   use).
 
+## 311 websites (the 311 checklist; facts, no credit)
+
+The 311 checklist (frontend/src/lib/report311Log.ts JURISDICTIONS) names, for each place, the
+public website that takes reports of road problems. Each was read on 2026-10-20 from the
+jurisdiction's own page that links it:
+
+- DC: 311.dc.gov (ouc.dc.gov/page/311-about). DC's Text to 311 (32311) answered every
+  message, even a plain NEW, with only "Welcome to DC311" (a rider's test, 2026-10-20), so the
+  app no longer texts it.
+- Montgomery County: MC311 (montgomerycountymd.gov/department-transportation/request-road-repairs).
+- Prince George's County: PGC311 (princegeorgescountymd.gov, PGC311).
+- Baltimore City: Baltimore 311 (baltimorecity.gov/311services).
+- Baltimore County: baltimorecountymd.gov/report-problem (streetlights go to BGE).
+- Howard County: Tell HoCo (howardcountymd.gov/public-works/pothole-repair).
+- Anne Arundel County: aacounty.org's potholes page.
+- Frederick County: FCG FixIt (frederickcountymd.gov/8235/FCG-FixIT).
+- Carroll County: See Click Report (carrollcountymd.gov/scr; its app takes the report).
+- Harford County: You Click We Fix (harfordcountymd.gov/139/Report-a-Concern).
+- Charles County: See Click Report (charlescountymd.gov/services/e-services/see-click-report).
+- Arlington County: its Online Service Request Tool
+  (arlingtonva.us/Government/Topics/Report-Problem/Online-Service-Request-Tool).
+- Alexandria: Alex311 (alexandriava.gov/Potholes; Alex311 replaced Call.Click.Connect in 2020).
+- City of Fairfax: fairfaxva.gov's Report Road Problems (by phone).
+- Falls Church: RequestTracker (fallschurchva.gov/155/Public-Works).
+- Manassas: Report a Concern (manassasva.gov/public_works).
+- Manassas Park: its Public Works request page.
+- Fairfax, Loudoun and Prince William counties: My VDOT (my.vdot.virginia.gov), since VDOT keeps
+  their roads (fairfaxcounty.gov/transportation/roads-conditions-maintenance, loudoun.gov/3919).
+- Maryland's numbered state roads, and Calvert County, which has no online form: MDOT SHA
+  Customer Care (roads.maryland.gov, "Contact Us").
+
+Which applies to a spot: inside DC from DC's boundary (core/geodata/dc-boundary.geojson); elsewhere
+from the county or city the self-hosted Photon names for the spot (OpenStreetMap's administrative
+boundaries; core/report_log.py).
+
 ## WMATA service announcements (facts, no credit)
 
 - Credit: none. Two service changes the Open Data DC Metro layers predate are added

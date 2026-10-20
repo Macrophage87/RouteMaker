@@ -84,6 +84,8 @@ import { climbNamedLabel, type Climb } from "./lib/climbs.ts";
 import { CLIMB_DETAILS_TEXT } from "./lib/climbCard.ts";
 import { TrailProfileView } from "./lib/trailProfile.ts";
 import { milePanelRow, type TrailMiles } from "./lib/trailMiles.ts";
+import { LOG_311_TEXT, panelLoggedSaid, panelPlace, report311Log } from "./lib/report311Log.ts";
+import { REPORT_KINDS } from "./lib/report311.ts";
 import { HAZARD_REPORT_TEXT, hazardOnPiece, hazardPanelText, hazardSaid, type HazardCollection } from "./lib/massHazards.ts";
 
 interface Props {
@@ -247,6 +249,11 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
   // that shows them; open, it stays open while a form opened from it is shown, so Back finds its button.
   const [suggestMenu, setSuggestMenu] = useState(false);
   const suggestMenuId = useId();
+  // Log for 311 (lib/report311Log.ts): its six problems, shown under the row while open, and the line once one is logged.
+  const [logMenu, setLogMenu] = useState(false);
+  const [logged, setLogged] = useState("");
+  const logMenuId = useId();
+  const logButton = useRef<HTMLButtonElement>(null);
   const junctionButton = useRef<HTMLButtonElement>(null);
   const returnToJunction = useRef(false);
   // A Mass Ride's "Mark a hazard" form (HazardReport.tsx), open in place of the row.
@@ -292,6 +299,8 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
     setJunction(null);
     setSuggestingJunction(false);
     setSuggestMenu(false);
+    setLogMenu(false);
+    setLogged("");
     setReload(0);
     const controller = new AbortController();
     void fetchMe(window.location.origin).then((who) => {
@@ -912,7 +921,34 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
                 </li>
               )}
               {suggestCount < 2 && suggestItems}
+              <li>
+                <button type="button" className="road-info-button" ref={logButton} aria-expanded={logMenu} aria-controls={logMenuId} onClick={() => setLogMenu(!logMenu)}>
+                  {LOG_311_TEXT}
+                </button>
+              </li>
             </ul>
+            <ul id={logMenuId} className="road-info-buttons road-info-311" aria-label={LOG_311_TEXT} hidden={!logMenu}>
+              {REPORT_KINDS.map((k) => (
+                <li key={k.kind}>
+                  <button
+                    type="button"
+                    className="road-info-button"
+                    onClick={() => {
+                      const entry = report311Log().add(k.kind, panelPlace(ready?.title ?? null, ready?.on_way ?? request.point));
+                      const line = panelLoggedSaid(entry);
+                      setLogMenu(false);
+                      setLogged(line);
+                      setSaid(line);
+                      // The picked button hides with the list: the focus goes back to Log for 311.
+                      logButton.current?.focus();
+                    }}
+                  >
+                    {k.label}
+                  </button>
+                </li>
+              ))}
+            </ul>
+            {logged && <p className="hint road-info-logged">{logged}</p>}
             {suggestCount >= 2 && (
               <ul id={suggestMenuId} className="road-info-buttons road-info-suggest" aria-label="Suggest a change" hidden={!suggestMenu}>
                 {suggestItems}

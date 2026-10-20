@@ -8,7 +8,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { DockInfo, DocksAnswer } from "./bikeshareDocks.ts";
 import type { LonLat } from "./geo.ts";
 import type { NearestPlace, NearestResult } from "./nearest.ts";
-import { RIDE_311_MORE, Ride311Menu } from "./ride311.ts";
+import { Ride311Menu } from "./ride311.ts";
 import { corridorWorry } from "./corridor.ts";
 import { rideTripOf } from "./rideTrip.ts";
 import {
@@ -183,9 +183,9 @@ test("the map saved for dead spots is said only when something went wrong", () =
   assert.equal(corridorWorry(null), "");
 });
 
-test("the 311 menu ends with the full report, so the bottom panel need not show it", () => {
-  const html = renderToStaticMarkup(createElement(Ride311Menu, { id: "m", open: true, place: null, onPick: () => {}, onClose: () => {}, onMore: () => {} }));
-  assert.match(html, new RegExp(`<button type="button" class="secondary ride-311-more">${RIDE_311_MORE}</button></div>$`));
+test("the 311 menu ends with its six problems: no full report, since a pick is logged", () => {
+  const html = renderToStaticMarkup(createElement(Ride311Menu, { id: "m", open: true, place: null, onPick: () => {}, onClose: () => {} }));
+  assert.match(html, /Something else<\/button><\/li><\/ul><\/div>$/);
 });
 
 test("RideMode: round side buttons with names; the bottom panel only when it has something; the dock button on a share bike", () => {

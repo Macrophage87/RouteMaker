@@ -55,7 +55,7 @@ import { PermitsSection } from "../lib/permitLayer.ts";
 import { InstallOffer } from "../InstallableApp.tsx";
 import type { Split, StoredWeight } from "../lib/weight.ts";
 import { WeightSetting } from "../lib/weightDialog.ts";
-import { DC_311_ONLINE, REPORT_KINDS } from "../lib/report311.ts";
+import { Report311Log } from "../Report311Log.tsx";
 import { OPEN_IN_HINT, OPEN_IN_LABEL, type AppMode, type OpenIn } from "../lib/appMode.ts";
 import type { Home, MyGo } from "../lib/myGo.ts";
 import { homeFromPlace } from "../lib/homeSet.ts";
@@ -581,7 +581,8 @@ export interface SuggestSheetProps {
 /**
  * Suggest (the owner's choice 6): the one way in to the suggest tools. Each starts from a road on the map
  * (the road panel's "Suggest a change…": a road's level, a junction, a Mass Ride hazard), so this says how
- * to get there and opens the panel at the map's centre; DC 311 is reported from Ride mode's 311 button.
+ * to get there and opens the panel at the map's centre. The 311 checklist (Report311Log.tsx) lists the problems
+ * logged from a ride's 311 button or the road panel's Log for 311, by the website that takes them.
  */
 export function SuggestSheet({ nav, roadInfoAtCentre, onReview }: SuggestSheetProps) {
   return (
@@ -597,16 +598,7 @@ export function SuggestSheet({ nav, roadInfoAtCentre, onReview }: SuggestSheetPr
           The road at the map's center
         </button>
       </section>
-      <section aria-labelledby="suggest-311-heading" className="settings-group">
-        <h3 id="suggest-311-heading">Report a problem to DC 311</h3>
-        <p className="hint">
-          While you ride inside DC, the round 311 button on the map's right edge reports a problem where you are ({REPORT_KINDS.map((k) => k.label.toLowerCase()).join(", ")}),
-          with your place taken from the route's street names.
-        </p>
-        <a className="action-link secondary" href={DC_311_ONLINE} target="_blank" rel="noopener noreferrer">
-          Open DC 311 online (new tab)
-        </a>
-      </section>
+      <Report311Log />
       {onReview && (
         <section aria-labelledby="suggest-review-heading" className="settings-group">
           <h3 id="suggest-review-heading">Review</h3>

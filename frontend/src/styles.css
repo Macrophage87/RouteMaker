@@ -4314,7 +4314,7 @@ details.zoom-notes {
   min-height: 44px;
 }
 
-/* Report to DC 311 (lib/report311.ts): the note field and the actions at 44px, the link drawn as a button. */
+/* The note for a problem logged for 311 (RideMode's Note311): the note field at 44px. */
 .ride-report-note {
   display: flex;
   flex-direction: column;
@@ -4338,13 +4338,13 @@ details.zoom-notes {
 }
 
 .ride-report-actions button,
-.ride-report-actions .action-link {
+.log311-group .action-link {
   min-height: 44px;
   padding: 8px 14px;
   box-sizing: border-box;
 }
 
-.ride-report-actions .action-link {
+.log311-group .action-link {
   display: inline-flex;
   align-items: center;
   color: var(--accent-text);
@@ -4354,7 +4354,7 @@ details.zoom-notes {
   text-decoration: underline;
 }
 
-.ride-report-actions .action-link.secondary {
+.log311-group .action-link.secondary {
   background: transparent;
   color: var(--accent);
 }
@@ -5874,7 +5874,8 @@ details.fold > summary .icon {
 }
 
 /* The road panel's "Suggest a change…": the ways to suggest, shown under it. */
-.road-info-suggest[hidden] {
+.road-info-suggest[hidden],
+.road-info-311[hidden] {
   display: none;
 }
 
@@ -7730,4 +7731,52 @@ details.fold > summary .icon {
   width: 100%;
   height: auto;
   display: block;
+}
+
+/* The 311 checklist (Report311Log.tsx): each website a heading and its Open link, its entries as 44px checkboxes. */
+.log311-group {
+  margin: 12px 0;
+}
+
+.log311-group h4 {
+  margin: 8px 0 4px;
+}
+
+.log311-entries {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+
+.log311-entry {
+  margin: 0 0 12px;
+}
+
+.log311-check {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.log311-check input {
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  flex: none;
+}
+
+.log311-place {
+  margin: 0 0 4px 32px;
+  overflow-wrap: anywhere;
+}
+
+.log311-copy {
+  min-height: 44px;
+  margin-left: 32px;
+}
+
+.log311-archived .log311-check {
+  font-weight: 400;
 }

@@ -346,6 +346,8 @@ class User(AbstractBaseUser):
                 # Nor its saved settings and routes (v0.7.0: "deleted with the account").
                 AccountSettings.objects.filter(user_id=self.pk).delete()
                 SavedRoute.objects.filter(user_id=self.pk).delete()
+                # Nor its 311 log (its positions are where the rider rode).
+                Report311Log.objects.filter(user_id=self.pk).delete()
                 # Its shared links keep working for those they were sent to, but with Home gone
                 # their previews could no longer hide it: no image from now on.
                 SharedRoute.objects.filter(owner_id=self.pk).update(
@@ -1945,6 +1947,30 @@ class AccountSettings(models.Model):
 
     def __str__(self) -> str:
         return f"Settings for account {self.user_id}"
+
+
+class Report311Log(models.Model):
+    """A signed-in rider's 311 log (core.report_log; Stephen, 2026-10-20): the problems they
+    logged from a ride's 311 button or the road panel's Log for 311, each with what it is, the
+    road's name and GPS position, the time, a note, the 311 site that takes it and when they
+    reported it there. Kept with the account so it follows the rider to another device.
+
+    One row per account, the whole log as the front end keeps it (frontend/src/lib/report311Log.ts),
+    checked for shape and size by the API (`report_log.log_problem`) before it is written; the last
+    write wins. Never shared, never in a log line, deleted with the account.
+    """
+
+    user = models.OneToOneField(
+        "User", on_delete=models.CASCADE, primary_key=True, related_name="report311_log"
+    )
+    entries = models.JSONField(default=list)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "report311_log"
+
+    def __str__(self) -> str:
+        return f"311 log for account {self.user_id}"
 
 
 class SavedRoute(models.Model):

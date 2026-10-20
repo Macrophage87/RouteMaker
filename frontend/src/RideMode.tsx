@@ -20,13 +20,13 @@
  *   below; its side button (and the T key) and Settings' switch are the one choice; heading-up (track-up by default since v0.7.0); and
  *   Road closed ahead and End ride always in view at the top of the card (since v0.9.0; Settings is a gear in the
  *   side buttons, opening the ride's settings under that row), with Undo after End ride. End ride part way leaves the plan starting where the rider is.
- * - The map along the route, kept for dead spots (lib/corridor.ts, N5), and Report a problem to DC 311
- *   with the place in the route's street names (lib/report311.ts, N6; OWNER-DECISIONS 369, 465).
+ * - The map along the route, kept for dead spots (lib/corridor.ts, N5), and Log for 311 with the place in
+ *   the route's street names (lib/report311.ts, lib/report311Log.ts; N6; OWNER-DECISIONS 369, 465).
  * - The side buttons (the owner, 2026-10-17: "Remove that bottom part when routing by default. instead put
  *   these as circle icons on the side"): Where am I? (re-centring too), Large text, Detour (water or restroom), on a
- *   share bike the dock button with the time undocked (lib/rideDock.ts), 311 inside DC, and the Settings gear; each a round
+ *   share bike the dock button with the time undocked (lib/rideDock.ts), 311 anywhere on the route, and the Settings gear; each a round
  *   icon with its name for screen readers, its menu opening beside it. The bottom panel shows only when it
- *   has something to say or ask: GPS and screen notes, off route, Ride the rest, the full 311 report.
+ *   has something to say or ask: GPS and screen notes, off route, Ride the rest, the note for a problem just logged for 311.
  *   Answers asked for (Where am I?, a detour's progress) show for a few seconds by the buttons.
  *
  * Privacy (plan section 7): positions stay in memory for the ride; nothing is stored or logged; the only
@@ -80,7 +80,6 @@ import {
   cueSpoken,
   nextAction,
   planAfterEnd,
-  pointAt,
   replanKept,
   replanPoints,
   replanTold,
@@ -139,34 +138,8 @@ import { corridorWorry, type PrefetchResult } from "./lib/corridor.ts";
 import { clearCorridor, copyCorridor, keepCorridor } from "./lib/corridorStore.ts";
 import { lastRideAdopter } from "./lib/offlineKeep.ts";
 import { blockOf, rescueRideFocus, type RideBlock } from "./lib/rideFocus.ts";
-import { inDc } from "./lib/dcBoundary.ts";
-import { copyText, selectionCopy } from "./lib/sidebar.ts";
-import {
-  DC_311_ONLINE,
-  REPORT_KINDS,
-  REPORT_NOTE_MAX,
-  REPORT_NO_PLACE,
-  REPORT_OFF_ROUTE,
-  REPORT_OUTSIDE_DC,
-  REPORT_PRIVACY,
-  REPORT_PRIVACY_SERVER,
-  REPORT_FORM,
-  REPORT_READY,
-  REPORT_SEND_FAILED,
-  REPORT_SENT,
-  pickWay,
-  report311Enabled,
-  sendReport311,
-  REPORT_SUMMARY,
-  SHORT_CODE_SPOKEN,
-  canText,
-  keywordOf,
-  onlineHint,
-  reportPlace,
-  reportText,
-  smsHref,
-  type ReportKind,
-} from "./lib/report311.ts";
+import { REPORT_SENT, report311Enabled, sendReport311, reportPlace, type ReportKind } from "./lib/report311.ts";
+import { NOTE_MAX, entryText, kindLabel, report311Log, useReport311Log, type LogEntry } from "./lib/report311Log.ts";
 import { RIDE_311_NAME, RIDE_311_TEXT, Ride311Menu, ride311Shown } from "./lib/ride311.ts";
 import {
   DOCKED_SHOWN,
@@ -238,6 +211,12 @@ export const RIDE_SETTINGS_TITLE = "Ride settings";
 export type EndedPlan = ReturnType<typeof planAfterEnd>;
 /** How long the 311 line ("Sent to DC 311." and Add a note) stays (review F4); held the same way. */
 export const SAID_311_MS = 8_000;
+/** Said when a 311 pick has no place on the route yet. */
+export const NO_PLACE_311 = "Your place on the route is not known yet, so nothing was logged.";
+/** Said when a problem is logged: "Logged for 311: Pothole." */
+export function loggedSaid(entry: LogEntry): string {
+  return `Logged for 311: ${kindLabel(entry.kind)}.`;
+}
 /** Said as the ride ends, by the voice and the page's polite region; the figures are on the summary card. */
 export const RIDE_ENDED_SAID = "Ride ended.";
 /** Shown and said with the ride's summary in Plan where End ride came part way (lib/navigate.ts planAfterEnd): the plan now starts where the rider is. */
@@ -540,120 +519,47 @@ export function RideSettingsFields({
   );
 }
 
-/** How long the copy reply waits after clearing, so a second press is a change a screen reader says. */
-const COPY_REPLY_DELAY_MS = 150;
-
 /**
- * Report to DC 311 (lib/report311.ts; OWNER-DECISIONS 369, 370, 465): what it is, the message built from
- * the rider's place and its sending, then an optional note (v0.7.0 "Go riding fixes" item 3: the note comes
- * after, never before; the 311 button's one-tap pick is the usual way, and this fold is where "Add a note"
- * and a computer's copy land). The place is: the road ridden in the route's street names, a cross street within 500 ft, and the GPS position. On a phone a pothole or a
- * streetlight is a Text to 311 link the rider sends; anything else (a downed tree, a vehicle in a bike
- * lane, a blocked road or bikeway, which the words name first), and everything on a desktop, is the
- * same words to copy into DC 311 online, with a hint naming its request there where one is known. The place follows the rider; the message is shown as sent.
+ * The note for the problem just logged (lib/report311Log.ts; v0.7.0 "Go riding fixes" item 3: the note comes
+ * after, never before): the entry as it will read on the 311 site, and its note, saved as it is typed. The
+ * 311 button's "Add a note" opens it; the checklist in Suggest has the rest.
  */
-function Report311({
-  model,
-  progressM,
-  off,
-  idBase,
-  kind,
-  onKind,
+function Note311({
+  entry,
   open,
   onOpen,
   summaryRef,
   noteRef,
-  serverOn = false,
-  miles = null,
 }: {
-  model: RideModel;
-  progressM: number | null;
-  off: boolean;
-  idBase: string;
-  /** The problem chosen: here, or from the 311 button's menu (UI-CLEANUP), which opens this fold. */
-  kind: ReportKind;
-  onKind: (kind: ReportKind) => void;
+  entry: LogEntry;
   open: boolean;
   onOpen: (open: boolean) => void;
   summaryRef: RefObject<HTMLElement | null>;
   noteRef?: RefObject<HTMLInputElement | null>;
-  /** The server sends reports to DC 311 itself (it has DC's key): the privacy line says so. */
-  serverOn?: boolean;
-  /** The trail mile markers (lib/trailMiles.ts): on a trail the place names its mile. */
-  miles?: TrailMiles | null;
 }) {
-  const setKind = onKind;
-  const [note, setNote] = useState("");
-  const [copied, setCopied] = useState("");
-  const place = progressM === null ? null : reportPlace(model, progressM, miles);
-  const outside = progressM !== null && !inDc(pointAt(model, progressM));
-  // The words for DC 311 online (shown and copied), and the text message, which starts with DC's keyword.
-  const text = outside ? null : reportText(kind, place, note);
-  const sms = outside ? null : reportText(kind, place, note, true);
-  const keyword = keywordOf(kind);
-  const phone = typeof navigator !== "undefined" && canText(navigator.userAgent, navigator.maxTouchPoints ?? 0);
-  const copy = async () => {
-    if (!text) return;
-    const done = await copyText(text, navigator.clipboard, selectionCopy);
-    setCopied("");
-    window.setTimeout(() => setCopied(done ? "Report copied." : "Could not copy; select the report's text instead."), COPY_REPLY_DELAY_MS);
-  };
   return (
     <details className="fold ride-report" open={open} onToggle={(event) => onOpen(event.currentTarget.open)}>
-      <summary ref={summaryRef}>{REPORT_SUMMARY}</summary>
+      <summary ref={summaryRef}>{`Note for the ${kindLabel(entry.kind).toLowerCase()}`}</summary>
       <div className="fold-body">
-        <fieldset className="ride-choice">
-          <legend>What is it?</legend>
-          {REPORT_KINDS.map((k) => (
-            <label key={k.kind} className="radio">
-              <input type="radio" name={`${idBase}-report`} checked={kind === k.kind} onChange={() => setKind(k.kind)} />
-              {k.label}
-            </label>
-          ))}
-        </fieldset>
-        {text === null || sms === null ? (
-          <p className="hint">{outside ? REPORT_OUTSIDE_DC : off ? REPORT_OFF_ROUTE : REPORT_NO_PLACE}</p>
-        ) : (
-          <>
-            <p className="ride-report-text">
-              <span className="ride-report-label">The report: </span>
-              {text}
-            </p>
-            {phone && keyword && <p className="hint">{`The text to 32311 starts with ${keyword}, DC's keyword for it.`}</p>}
-            {/* On a phone the text first; DC 311 online always, since a tablet (or a phone) may not send texts. */}
-            <div className="actions ride-report-actions">
-              {phone && keyword && (
-                <a
-                  className="action-link"
-                  href={smsHref(sms, navigator.userAgent, navigator.maxTouchPoints ?? 0)}
-                  aria-label={`Text to DC 311 (${SHORT_CODE_SPOKEN})`}
-                >
-                  Text to DC 311 (32311)
-                </a>
-              )}
-              <a className={`action-link${phone && keyword ? " secondary" : ""}`} href={DC_311_ONLINE} target="_blank" rel="noopener noreferrer">
-                Open DC 311 online (new tab)
-              </a>
-              <button type="button" className="secondary" onClick={() => void copy()}>
-                Copy the report
-              </button>
-            </div>
-            <p className="hint" role="status">
-              {copied}
-            </p>
-            {!keyword && <p className="hint">{onlineHint(kind)}</p>}
-          </>
-        )}
-        {/* The note last: optional, and after the sending (the report above takes it in as it is typed). */}
+        <p className="ride-report-text">{entryText(entry)}</p>
         <label className="ride-report-note">
-          Add a note (optional)
-          <input ref={noteRef} type="text" value={note} maxLength={REPORT_NOTE_MAX} onChange={(event) => setNote(event.target.value)} />
+          Note (optional)
+          <input
+            ref={noteRef}
+            type="text"
+            value={entry.note}
+            maxLength={NOTE_MAX}
+            onChange={(event) => report311Log().setNote(entry.id, event.target.value)}
+          />
         </label>
-        <p className="hint">{serverOn ? REPORT_PRIVACY_SERVER : REPORT_PRIVACY}</p>
+        <p className="hint">{NOTE_311_HINT}</p>
       </div>
     </details>
   );
 }
+
+/** Under the note: where the log is, and that it stays on the rider's own phone and account. */
+export const NOTE_311_HINT = "Saved in your 311 checklist in Suggest, with the site to report it on. Only you see it.";
 
 /** The way back to the planned route, said: "The planned route is 300 feet to the left." */
 /** Said off a fixed route, before the way back: it is not re-routed (the review of #191). */
@@ -825,8 +731,11 @@ export function RideMode({
     settingsPanel.current?.scrollIntoView?.({ block: "nearest" });
     settingsPanel.current?.focus({ preventScroll: true });
   }, [settingsOpen]);
-  // The 311 button's menu (lib/ride311.ts; the owner's choice 9) and the report it continues into.
-  const [reportKind, setReportKind] = useState<ReportKind>("pothole");
+  // The 311 button's menu (lib/ride311.ts; the owner's choice 9), and the entry just logged, whose note
+  // "Add a note" opens.
+  const log311 = useReport311Log();
+  const [lastEntryId, setLastEntryId] = useState<string | null>(null);
+  const lastEntry = lastEntryId === null ? null : (log311.find((e) => e.id === lastEntryId) ?? null);
   const [reportOpen, setReportOpen] = useState(false);
   const [menu311, setMenu311] = useState(false);
   const menu311Id = useId();
@@ -846,15 +755,6 @@ export function RideMode({
   const close311 = () => {
     setMenu311(false);
     button311.current?.focus();
-  };
-  // The report fold opened and its summary focused (a computer's copy, a pick with no place yet).
-  const openReport = () => {
-    focusReport.current = true;
-    if (reportOpen) {
-      focusReport.current = false;
-      reportSummary.current?.focus();
-      reportSummary.current?.scrollIntoView?.({ block: "start" });
-    } else setReportOpen(true);
   };
   // Whether the server sends reports to DC 311 itself (v0.7.0 "Go riding fixes" item 3): asked once a ride.
   const [serverOn311, setServerOn311] = useState(false);
@@ -884,47 +784,28 @@ export function RideMode({
     announcer.current?.answer(text);
     if (prefsRef.current.output === "neither") setPolite((s) => ({ text, count: s.count + 1 }));
   }, []);
-  // One tap: the problem picked is the report (Go riding fixes item 3). Sent by the server where it can;
-  // else, on a phone, the text app to 311 filled in; else the report below to copy. The focus goes back to
-  // the 311 button as the menu closes, never into a form.
+  // One tap: the problem picked is logged (lib/report311Log.ts), with the place and the GPS position; in DC,
+  // where the server has DC's key, it is sent there too and checked off. The focus goes back to the 311
+  // button as the menu closes, never into a form.
   const pick311 = (kind: ReportKind) => {
-    setReportKind(kind);
     setMenu311(false);
+    button311.current?.focus();
     const progress = rideRef.current.off ? null : rideRef.current.progressM;
-    const place = progress === null ? null : reportPlace(modelRef.current, progress, milesRef.current);
-    if (!place || !inDc(place.point)) {
-      openReport();
+    if (progress === null) {
+      tell311(NO_PLACE_311);
       return;
     }
-    button311.current?.focus();
-    const agent = typeof navigator !== "undefined" ? navigator.userAgent : "";
-    const touch = typeof navigator !== "undefined" ? (navigator.maxTouchPoints ?? 0) : 0;
-    const phone = canText(agent, touch);
-    const toMessages = () => {
-      const sms = reportText(kind, place, "", true);
-      if (sms) window.location.assign(smsHref(sms, agent, touch));
-    };
-    const way = pickWay(serverOn311, phone);
-    if (way === "server") {
+    const place = reportPlace(modelRef.current, progress, milesRef.current);
+    const entry = report311Log().add(kind, place);
+    setLastEntryId(entry.id);
+    if (serverOn311 && entry.where === "dc") {
       setSaid311("Sending to DC 311…");
-      void sendReport311(window.location.origin, kind, place).then((sent) => {
+      void sendReport311(window.location.origin, kind, place, entryText(entry)).then((sent) => {
         if (ended.current) return;
-        if (sent) tell311(REPORT_SENT);
-        else if (phone) {
-          toMessages();
-          tell311(REPORT_SEND_FAILED);
-        } else {
-          openReport();
-          tell311(REPORT_FORM);
-        }
+        if (sent) report311Log().setReported(entry.id, true);
+        tell311(sent ? REPORT_SENT : loggedSaid(entry));
       });
-    } else if (way === "sms") {
-      toMessages();
-      tell311(REPORT_READY);
-    } else {
-      openReport();
-      tell311(REPORT_FORM);
-    }
+    } else tell311(loggedSaid(entry));
   };
   // "Add a note" (after, never before): the report opens with the focus in its note field.
   const addNote = () => {
@@ -1864,7 +1745,7 @@ export function RideMode({
   }, [lightKey, ride.arrived, walking, textSize]);
   const back = ride.off ? wayBack(model, ride) : null;
   const shape = arrowFor(cue);
-  const show311 = ride311Shown({ off: ride.off, progressM: progress, insideDc: (m) => inDc(pointAt(model, m)) });
+  const show311 = ride311Shown({ off: ride.off, progressM: progress });
   const place311 = show311 && progress !== null ? reportPlace(model, progress, trailMiles) : null;
   // A re-plan's outcome back on the route ("New route found.") shows by the side buttons for a few seconds; off
   // the route it stays in the bottom panel with Re-plan from here. Said either way (replan's tell).
@@ -2290,7 +2171,7 @@ export function RideMode({
               </div>
             </div>
           )}
-          {/* The 311 button (lib/ride311.ts): inside DC only; its menu beside the buttons. */}
+          {/* The 311 button (lib/ride311.ts): anywhere on the route; its menu beside the buttons. */}
           {show311 && (
             <div className="ride-311" ref={block311} onKeyDown={(event) => {
               if (event.key === "Escape" && menu311) {
@@ -2317,10 +2198,6 @@ export function RideMode({
                 headingRef={menu311Heading}
                 onPick={pick311}
                 onClose={close311}
-                onMore={() => {
-                  setMenu311(false);
-                  openReport();
-                }}
               />
               {said311Shown && (
                 <div className="ride-311-said" {...said311Timer.hold}>
@@ -2396,24 +2273,17 @@ export function RideMode({
               </p>
             </div>
           )}
-          {reportOpen && (
-            <Report311
-              model={model}
-              progressM={ride.off ? null : progress}
-              off={ride.off}
-              idBase={settingsId}
-              kind={reportKind}
-              onKind={setReportKind}
+          {reportOpen && lastEntry && (
+            <Note311
+              entry={lastEntry}
               open={reportOpen}
               onOpen={(open) => {
                 setReportOpen(open);
-                // Closed, the report goes from the page: the focus goes to Where am I?, not to the page's top.
+                // Closed, the note goes from the page: the focus goes to Where am I?, not to the page's top.
                 if (!open) whereRef.current?.focus({ preventScroll: true });
               }}
               summaryRef={reportSummary}
               noteRef={noteInput}
-              serverOn={serverOn311}
-              miles={trailMiles}
             />
           )}
         </div>
