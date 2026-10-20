@@ -40,7 +40,7 @@ export interface RailInteractionOptions {
   pennColour: string;
   visibility(): RailVisibility;
   pointCount(): number;
-  /** "Make it a loop" is on: a station can be a start or a stop, not an end (OWNER-DECISIONS 374). */
+  /** "Make it a loop" is on: a station can be a start, a stop, or an end that turns the loop off (Stephen 2026-10-20). */
   loop?(): boolean;
   /** Why the station is closed today with the toggles as they are, or null (railClosures.ts). */
   closedReason?(station: Station): string | null;

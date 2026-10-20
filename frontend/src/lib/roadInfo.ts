@@ -264,22 +264,25 @@ export const SPOT_ACTION_TEXT: Record<PlaceChoice, string> = {
 /**
  * The top row for a plan of `count` points: Set as start, Set as end, Add as stop, each
  * available as the search's Start / Destination / Stop choice is (`choicesFor`), else
- * with the reason it is not. A loop finishes at its start, so it has no end to set.
+ * with the reason it is not. In a loop Set as end is there too: it ends the ride there (placeAtSpot).
  */
 export function spotActions(count: number, loop: boolean): SpotAction[] {
   const full = count >= MAX_POINTS;
-  const open = choicesFor(count, full, loop);
+  // In a loop, Set as end ends the ride there and turns the loop off (Stephen 2026-10-20: "allow an end to be set,
+  // stopping the loop"); it adds a point, so not on a full plan.
+  const open = [...choicesFor(count, full, loop), ...(loop && count >= 1 && !full ? (["end"] as const) : [])];
   const why = (choice: PlaceChoice): string | null => {
     if (open.includes(choice)) return null;
-    if (choice === "end") return loop ? "A loop finishes at its start." : "Set a start first.";
+    if (choice === "end" && count === 0) return "Set a start first.";
     if (full) return `The route has the most points it can (${MAX_POINTS}).`;
     if (count === 0) return "Set a start first.";
     return "Set an end first.";
   };
-  return (["start", "end", "via"] as const)
-    .filter((choice) => !(loop && choice === "end"))
-    .map((choice) => ({ choice, text: SPOT_ACTION_TEXT[choice], unavailable: why(choice) }));
+  return (["start", "end", "via"] as const).map((choice) => ({ choice, text: SPOT_ACTION_TEXT[choice], unavailable: why(choice) }));
 }
+
+/** What is said when an end set on a loop turns the loop off. */
+export const LOOP_ENDED_SAID = "End set here. Loop off: the ride ends here.";
 
 /** The plan after a top-row button, the new point's index, and what the live region says. */
 export function placeAtSpot(
@@ -287,7 +290,9 @@ export function placeAtSpot(
   point: LonLat,
   choice: PlaceChoice,
   loop: boolean,
-): { next: LonLat[]; said: string } {
+): { next: LonLat[]; said: string; loopOff?: true } {
+  // An end set on a loop: after the start and the stops, and the loop off, in one edit (App placeSpot).
+  if (loop && choice === "end" && points.length >= 1) return { next: [...points, point], said: LOOP_ENDED_SAID, loopOff: true };
   const next = applyPlace(points, point, choice, loop);
   const index = next.indexOf(point);
   return { next, said: `${pointName(index, next.length, loop)} set here.` };

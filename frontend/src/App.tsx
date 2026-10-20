@@ -4,7 +4,7 @@ import { MapView, type Frame, type LineEdit, type StressAvailability } from "./M
 import { RoadInfoDialog } from "./RoadInfoDialog.tsx";
 import { MapTools } from "./MapTools.tsx";
 import { ACCESS_LABEL, accessModeToggle, readAccessMode, writeAccessMode } from "./lib/accessMode.ts";
-import { placeAtSpot, requestAfterClose, type InfoRequest, type TrailRider } from "./lib/roadInfo.ts";
+import { LOOP_ENDED_SAID, placeAtSpot, requestAfterClose, type InfoRequest, type TrailRider } from "./lib/roadInfo.ts";
 import { stationNearSpot } from "./lib/stationLinks.ts";
 import { reorder } from "./lib/pointMover.ts";
 import { canDragLine, dropStillValid, insertIntoRide, legEnds, legPoints } from "./lib/lineEdit.ts";
@@ -63,7 +63,7 @@ import { BetaChip, betaReportUrl, isBetaBuild } from "./lib/betaBanner.ts";
 import { MtbMapKey } from "./lib/stressLegend.ts";
 import { useHideBusyClimbs, useTrailClimbs } from "./lib/climbsLegend.ts";
 import { announceHow, candidateRoute } from "./lib/candidates.ts";
-import { canReverse, loopStops, loopView, reversedPoints } from "./lib/loop.ts";
+import { canReverse, loopStops, loopView, planStartDials, reversedPoints, withLoop } from "./lib/loop.ts";
 import { FINDING_ORDER_SAID, STILL_FINDING_ORDER_SAID, applyAnswer, requestStopOrder, stopsThatMove } from "./lib/stopOrder.ts";
 import {
   VIA_MARKS,
@@ -85,7 +85,7 @@ import {
   viaIndices,
   viaPointsNamed,
 } from "./lib/pointKinds.ts";
-import { MANUAL_BADGE } from "./lib/planLegs.ts";
+import { MANUAL_BADGE, planLegEdit } from "./lib/planLegs.ts";
 import { insertedSaid, loopChangeSaid,reversedSaid, reverseUnavailableHint, stationSaid } from "./lib/pointText.ts";
 import { avoidNearSpot, shownRoute } from "./lib/avoidJunctions.ts";
 import { shownNear } from "./lib/junctionSuggest.ts";
@@ -336,6 +336,8 @@ const SHARED_WAIT: Promise<void> | null = SHARED_ID
 /** The points notice for a point outside the map, from a click, a station, or the rider's location. */
 /** During a ride the map takes no edits and shows no plan pins (plan Q2: the plan stays as started). */
 const NO_POINTS: LonLat[] = [];
+/** A loop's plan lines: none drawn by hand (the API plans every leg of a loop). */
+const NO_LEGS: number[] = [];
 const ignore = () => undefined;
 
 const OUTSIDE_NOTICE = "That point is outside the area this map covers (the DC region to Baltimore).";
@@ -411,6 +413,13 @@ export function App() {
   planDialsNow.current = planDials;
   // "Make it a loop" chosen (OWNER-DECISIONS 374): the first point is the start and finish, every later one a stop.
   const loopVias = loopStops(preset, dials.loop);
+  // Plan starts as a loop (lib/loop.ts planStartDials): on coming into Plan with no points, and when its points are
+  // cleared. Only then, so a rider who unticks Loop on an empty plan keeps it off.
+  const planEmpty = points.length === 0;
+  useEffect(() => {
+    if (mode === "plan" && planEmpty) setDials((now) => planStartDials(preset, now));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- on the change of view or emptiness only
+  }, [mode, planEmpty]);
   // Plan's manual mode (v0.9.1, Stephen 2026-10-19: "a 'manual mode' where you can just route directly"): while
   // on, each point tapped on the map is joined to the one before by a straight line, not a route. Not on a loop or
   // a two-point ride type, where the API plans every leg (core/routing.py `_drawn`).
@@ -1740,8 +1749,11 @@ export function App() {
     setNotice(null);
     // Named for the station, not the street its bike entrance is on (PLAN.md, the stationBikeEntrance naming).
     namer.remember(point, place.name, place.label);
-    commit(edit.next);
-    announce(stationSaid(edit.index, edit.next.length, loopVias));
+    // End here on a loop ends the ride at the station and turns the loop off, in one edit (railStations.ts stationRoles).
+    const loopOff = loopVias && role === "end";
+    const ride = rideRef.current;
+    commit(edit.next, loopOff ? { ...ride, dials: withLoop(ride.dials, false) } : undefined);
+    announce(loopOff ? LOOP_ENDED_SAID : stationSaid(edit.index, edit.next.length, loopVias));
   }, [commit, announce, loopVias, namer]);
 
   // The road panel's Set as start / Set as end / Add as stop (OWNER-DECISIONS 441n): the spot
@@ -1761,7 +1773,9 @@ export function App() {
     }
     setNotice(null);
     const placed = placeAtSpot(pointsRef.current, point, choice, loopVias);
-    commit(placed.next);
+    // An end set on a loop turns the loop off in the same edit, so Undo puts both back.
+    const ride = rideRef.current;
+    commit(placed.next, placed.loopOff ? { ...ride, dials: withLoop(ride.dials, false) } : undefined);
     announce(placed.said);
   }, [commit, announce, loopVias]);
 
@@ -3946,7 +3960,11 @@ export function App() {
   const lineEdit = useMemo<LineEdit | null>(() => {
     const routeShown = shown !== null;
     const vertexCount = shown?.geometry.coordinates.length ?? 0;
-    if (!shown || !canDragLine({ routeShown, stale, routedIsCurrent: routedPoints === points, vertexCount })) return null;
+    if (!shown || !canDragLine({ routeShown, stale, routedIsCurrent: routedPoints === points, vertexCount })) {
+      // Plan's straight lines, while they show (no route for the points as they are): a drag on one adds a via in
+      // that leg, as on the route (lib/planLegs.ts planLegEdit). Not on a ride type of a start and an end only.
+      return mode === "plan" && !twoPointsOnly(preset) ? planLegEdit(points, loopVias) : null;
+    }
     // A bikeshare ride runs dock to dock, not between the points, and a transit ride's line is its
     // first ride only: neither line is theirs to drag.
     if (bikeshareOf(shown) || shown.transit) return null;
@@ -3955,7 +3973,7 @@ export function App() {
     // leg ends fit them.
     const legs = legPoints(routedPoints, loopVias);
     return { path, ends: legEnds(path, legs, shown.leg_ends), points: routedPoints, legPoints: legs };
-  }, [shown, stale, routedPoints, points, loopVias]);
+  }, [shown, stale, routedPoints, points, loopVias, mode, preset]);
   // On a phone the sheet is half the screen; a route that is showing (a
   // shared link, usually), a question or an error comes first in it, before
   // the ride types (sheet.ts).
@@ -4097,7 +4115,7 @@ export function App() {
     setChangeDetails([]);
     clearAll();
   };
-  const routeNow = routeButton({ points: points.length, drawn: drawn !== null, changed: planEdited, routeShown: shown !== null });
+  const routeNow = routeButton({ points: points.length, drawn: drawn !== null, changed: planEdited, routeShown: shown !== null, loop: loopVias });
   // Plan's bar at the top of the map (the owner, 2026-10-17: "In plan, make "Update route" a big button at the top of
   // the map ... Update route or start route. don't show if there's nothing to change. Also put the undo and clear there
   // as well, smaller"): the Route button big while there is something to route (or it is routing), Undo, Redo and
@@ -4153,6 +4171,7 @@ export function App() {
       onReset={resetPlan}
       clearDisabled={points.length === 0}
       onClear={clearPlan}
+      locate={points.length === 0 && locateReady.available ? { onLocate: () => void useMyLocation("start"), busy: locating } : null}
     />
   );
   const pointsSection = (
@@ -4324,7 +4343,7 @@ export function App() {
         // Plan's ghost of the last route; else the standard way through a closure the route goes round, dashed
         // beside it (v0.8.2), in Go and Plan, and on the ride the line not being followed.
         ghost={riding ? (rideView?.other ?? null) : reviewing ? null : (ghost ?? shown?.closure_through?.geometry.coordinates ?? null)}
-        planLegs={riding || reviewing || mode !== "plan" || loopVias ? null : planDrawn}
+        planLegs={riding || reviewing || mode !== "plan" ? null : loopVias ? NO_LEGS : planDrawn}
         lightMarks={riding || mode !== "plan" ? null : light}
         stressVisible={stressVisible && stress === "available"}
         when={mapWhen(dials.when ?? null)}

@@ -68,7 +68,10 @@ test("App: every way of adding, setting or removing a point is handed the toggle
   assert.match(app, /addPoint\(current, point, loopVias\)/);
   assert.match(app, /const said = kindSaid\(next, index, VIA_MARKS\.isVia, loopVias, "added"\);/);
   assert.match(app, /stationEdit\(pointsRef\.current, point, role, loopVias\)/);
-  assert.match(app, /announce\(stationSaid\(edit\.index, edit\.next\.length, loopVias\)\)/);
+  assert.match(app, /announce\(loopOff \? LOOP_ENDED_SAID : stationSaid\(edit\.index, edit\.next\.length, loopVias\)\)/);
+  // An end set on a loop (a station's End here, the road panel's Set as end) turns the loop off in the same edit.
+  assert.match(app, /const loopOff = loopVias && role === "end";[\s\S]{0,120}commit\(edit\.next, loopOff \? \{ \.\.\.ride, dials: withLoop\(ride\.dials, false\) \} : undefined\)/);
+  assert.match(app, /commit\(placed\.next, placed\.loopOff \? \{ \.\.\.ride, dials: withLoop\(ride\.dials, false\) \} : undefined\)/);
   assert.match(app, /kindSaid\(current, index, VIA_MARKS\.isVia, loopVias, "removed"\)/);
   assert.match(app, /insertIntoRide\(routed, leg, VIA_MARKS\.via\(point\), loopVias\)/);
   assert.match(app, /announce\(insertedSaid\(leg, next\.length, loopVias, VIA_POINT_NAME\)\)/);
@@ -81,7 +84,9 @@ test("App: the line's legs, Reverse, the hints and the toggle's announcement use
   const app = appSource();
   assert.match(app, /const legs = legPoints\(routedPoints, loopVias\);/);
   assert.match(app, /ends: legEnds\(path, legs, shown\.leg_ends\), points: routedPoints, legPoints: legs/);
-  assert.match(app, /\}, \[shown, stale, routedPoints, points, loopVias\]\);/);
+  assert.match(app, /\}, \[shown, stale, routedPoints, points, loopVias, mode, preset\]\);/);
+  // Before a route, Plan's straight lines are what is dragged (lib/planLegs.ts planLegEdit), a loop's closing leg too.
+  assert.match(app, /return mode === "plan" && !twoPointsOnly\(preset\) \? planLegEdit\(points, loopVias\) : null;/);
   assert.match(app, /if \(!canReverse\(current, loopVias\)\) return;\s+const reversed = reversedPoints\(current, loopVias\);/);
   assert.match(app, /announce\(reversedSaid\(loopVias\)\);/);
   assert.match(app, /\{emptyPlanHint\(preset, loopVias, accessMode\)\}/);

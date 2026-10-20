@@ -28,10 +28,19 @@ export interface PlanPanelProps {
   onReset: () => void;
   clearDisabled: boolean;
   onClear: () => void;
+  /**
+   * With no point yet, Route's place holds "Start at current location" (Stephen 2026-10-20: "where it currently has
+   * route, have a button that says start at current location when no route has started"); null where the browser
+   * cannot find one, or once there is a start. `busy` while the location is being found.
+   */
+  locate?: { onLocate: () => void; busy: boolean } | null;
 }
 
+/** The button in Route's place on an empty plan. */
+export const START_HERE_LABEL = "Start at current location";
+
 export function PlanPanel(props: PlanPanelProps) {
-  const { sentences, button, onRoute, routing, onCancel, change, details, onCloseChange, resetUnavailable, onReset, clearDisabled, onClear } = props;
+  const { sentences, button, onRoute, routing, onCancel, change, details, onCloseChange, resetUnavailable, onReset, clearDisabled, onClear, locate } = props;
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const moreId = useId();
@@ -88,28 +97,37 @@ export function PlanPanel(props: PlanPanelProps) {
         </div>
       ) : (
         <div className="plan-route">
-          <button
-            type="button"
-            ref={routeRef}
-            className="route-button"
-            aria-disabled={button.unavailable ? true : undefined}
-            aria-describedby={button.unavailable ? `${routeWhy} ${planId}` : planId}
-            aria-keyshortcuts="Control+Enter Meta+Enter"
-            onFocus={() => (routeHadFocus.current = true)}
-            onBlur={(event) => {
-              if (event.relatedTarget) routeHadFocus.current = false;
-            }}
-            onClick={route}
-          >
-            {button.label}
-            {upToDate && (
-              <span className="route-state" aria-hidden="true">
-                {" "}✓ up to date
-              </span>
-            )}
-          </button>
-          {button.unavailable && (
-            <span id={routeWhy} className={upToDate ? "visually-hidden" : "hint"}>
+          {locate ? (
+            // aria-disabled while finding, so the focus stays and a press is answered ("Finding your location…").
+            <button type="button" className="route-button start-here" aria-disabled={locate.busy || undefined} onClick={locate.onLocate}>
+              {START_HERE_LABEL}
+            </button>
+          ) : (
+            <button
+              type="button"
+              ref={routeRef}
+              className="route-button"
+              aria-disabled={button.unavailable ? true : undefined}
+              aria-describedby={button.unavailable ? `${routeWhy} ${planId}` : planId}
+              aria-keyshortcuts="Control+Enter Meta+Enter"
+              onFocus={() => (routeHadFocus.current = true)}
+              onBlur={(event) => {
+                if (event.relatedTarget) routeHadFocus.current = false;
+              }}
+              onClick={route}
+            >
+              {button.label}
+              {upToDate && (
+                <span className="route-state" aria-hidden="true">
+                  {" "}✓ up to date
+                </span>
+              )}
+            </button>
+          )}
+          {button.unavailable && !locate && (
+            // Said with the button, not shown: the points above show what is missing (Stephen 2026-10-20: "it needs to
+            // be simpler, still a wall of text").
+            <span id={routeWhy} className="visually-hidden">
               {button.unavailable}
             </span>
           )}
