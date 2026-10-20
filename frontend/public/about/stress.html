@@ -262,8 +262,9 @@ change it.</li>
     correction from the community (see <a href="#corrections">Corrections</a>); a local
     agency's rating (Montgomery County Planning, or DDOT in the District); a state
     agency's rating (Maryland DOT State Highway Administration); and otherwise
-    RouteMaker's own formula. Montgomery County's level 5 is read as LTS 4.5, and a road
-    Maryland rates 5 (bicycles prohibited) is closed to bikes. The page
+    RouteMaker's own formula. From the next map update, Montgomery County's level 5 is
+    read as LTS 4.5, and a road Maryland rates 5 (bicycles prohibited) is closed to bikes;
+    until then both are Avoid. The page
     <a href="#which-rating">Which rating wins</a> explains
     the order, with a diagram.</p>
 <details class="more"><summary>More: How a road gets its rating</summary>
@@ -362,12 +363,12 @@ change it.</li>
 <thead><tr><th scope="col">Agency</th><th scope="col">Area</th><th scope="col">Their level</th><th scope="col">RouteMaker reads it as</th></tr></thead>
 <tbody>
 <tr><th scope="row">Montgomery County Planning<sup class="cite"><a href="#ref-1" aria-label="source 1">[1]</a></sup></th><td>Montgomery County</td><td>1 to 4, with half steps</td><td>The same level</td></tr>
-<tr><th scope="row">Montgomery County Planning</th><td></td><td>5</td><td>LTS 4.5 (very high stress, but allowed)</td></tr>
+<tr><th scope="row">Montgomery County Planning</th><td></td><td>5</td><td>LTS 4.5 (very high stress, but allowed), from the next map update; Avoid until then</td></tr>
 <tr><th scope="row">DDOT<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup></th><td>District of Columbia</td><td>1 to 4</td><td>The same level</td></tr>
 <tr><th scope="row">DDOT</th><td></td><td>5</td><td>Avoid</td></tr>
 <tr><th scope="row">DDOT</th><td></td><td>100 (not rated)</td><td>Ignored: the formula rates the road</td></tr>
 <tr><th scope="row">MDOT SHA<sup class="cite"><a href="#ref-3" aria-label="source 3">[3]</a></sup></th><td>Maryland state roads</td><td>1 to 4</td><td>The same level</td></tr>
-<tr><th scope="row">MDOT SHA</th><td></td><td>5 (bicycles prohibited)</td><td>Closed to bikes: not drawn or routed</td></tr>
+<tr><th scope="row">MDOT SHA</th><td></td><td>5 (bicycles prohibited)</td><td>Closed to bikes: not drawn or routed, from the next map update; Avoid until then</td></tr>
 </tbody>
 </table>
 </div>
@@ -407,7 +408,7 @@ change it.</li>
       of them LTS 3 or 4. RouteMaker's own rural floor would not call them LTS 1 either.</li>
       <li><strong>Busy arterials</strong> (about 72 mi [116 km]), such as Darnestown Road, Georgia Avenue
       and Great Seneca Highway: Maryland says LTS 4; the county says 5, which RouteMaker reads as
-      4.5.</li>
+      4.5 from the next map update.</li>
       <li>Where Maryland is stricter, as on Beach Drive (Maryland 4, the county 2), the county's rating
       still wins, and both show in the road panel.</li>
     </ul>
@@ -599,7 +600,7 @@ change it.</li>
       are Avoid only where the side path is actually mapped beside them; otherwise they are rated like
       any other road.</li>
       <li><strong>Parking aisles and driveways open to bikes</strong> are treated as ordinary service
-      roads, drawn on the map and usable for routing.</li>
+      roads and usable for routing. From the next map update they are drawn on the map too.</li>
       <li><strong>DC park paths.</strong> Paths in DC's circle parks (Dupont, Logan and others) are open
       to bikes, and sidewalks on National Park Service land in the Central Business District and on the
       Capitol grounds are exempt from the District's sidewalk ban. At memorials where you must walk, such
@@ -654,15 +655,15 @@ change it.</li>
     <h2 id="hazards">Cobblestones and rails in the road</h2>
 <p>Some roads have a known hazard: cobblestones (such as Georgetown's O and P
     Streets NW), or rails set in the road (such as the old DC Streetcar tracks on
-    H Street NE). Routes price these roads as heavily as a very busy road, so they
-    use one only when the way round is as bad. The road keeps its own stress rating.
+    H Street NE). From the next map update, routes price these roads as heavily as a
+    very busy road, so they use one only when the way round is as bad. The road keeps its own stress rating.
     Mass Ride is the exception: it takes the big roads by design. Paths aren't
     priced either: a path with a hazard is marked when a route uses it, not avoided.</p>
 <details class="more"><summary>More: Cobblestones and rails in the road</summary>
 <div class="more-body">
     
-    <p>When a route does ride one, an amber triangle marks it on the route, the
-    directions name it, and Ride warns you ahead. The rest of the map does not show
+    <p>From then, when a route does ride one, an amber triangle marks it on the route,
+    the directions name it, and Ride warns you ahead. The rest of the map does not show
     them. Hazards come from OpenStreetMap, plus a short reviewed list for ones it
     misses.</p>
   </div></details>
