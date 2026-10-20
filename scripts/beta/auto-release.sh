@@ -619,13 +619,16 @@ deploy() { # tag new-sha gate-file
 	fi
 	mark started "start the api and worker" || return 1
 	step "start the api and worker" bc up -d api worker </dev/null || return 1
+	# The routers to recreate or restart: the four, and each trail router whose tiles are there.
+	local -a running
+	read -ra running <<<"$(routers)"
 	if [ "$(kv compose_changed "$gate_file")" = 1 ]; then
 		mark services "recreate photon and the routers whose compose settings changed" || return 1
-		step "recreate photon and the routers" bc up -d photon $(routers) </dev/null || return 1
+		step "recreate photon and the routers" bc up -d photon "${running[@]}" </dev/null || return 1
 	fi
 	if [ "$(kv routers_restart "$gate_file")" = 1 ]; then
 		mark routers "restart the routers (a valhalla/*.json they read changed)" || return 1
-		step "restart the routers" bc restart $(routers) </dev/null || return 1
+		step "restart the routers" bc restart "${running[@]}" </dev/null || return 1
 	fi
 	wait_healthy || { say "FAILED: /healthz did not answer 200 (60 tries, 3 s apart)"; return 1; }
 	step "migrations check" bc exec -T api ./manage.py migrate --check </dev/null || return 1
