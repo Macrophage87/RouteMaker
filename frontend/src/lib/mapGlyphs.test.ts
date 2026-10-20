@@ -105,11 +105,15 @@ test("map glyphs: each file carries every code point its base map face does, so 
   }
 });
 
-test("map glyphs: MapView sends the glyph requests through glyphRequestUrl with every bundled file", () => {
+test("map glyphs: the app's map and the share card send the glyph requests through glyphRequestUrl with every bundled file", () => {
+  const assets = readFileSync(new URL("./mapGlyphAssets.ts", import.meta.url), "utf8");
+  assert.match(assets, /const glyph = type === "Glyphs" \? glyphRequestUrl\(url, MAP_GLYPHS\) : undefined;/);
+  assert.match(assets, /const MAP_GLYPHS = bundledGlyphs\(import\.meta\.glob<string>\("\.\.\/fonts\/map-glyphs\/\*\.pbf", \{ query: "\?url", import: "default", eager: true \}\)\);/);
   const view = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
-  assert.match(view, /transformRequest: \(url, type\) => \{\s+const glyph = type === "Glyphs" \? glyphRequestUrl\(url, MAP_GLYPHS\) : undefined;/);
-  assert.match(view, /const MAP_GLYPHS = bundledGlyphs\(import\.meta\.glob<string>\("\.\/fonts\/map-glyphs\/\*\.pbf", \{ query: "\?url", import: "default", eager: true \}\)\);/);
+  assert.match(view, /transformRequest: mapGlyphRequest,/);
   assert.match(view, /fontStacks\(style\.layers\)\.filter\(\(stack\) => !bundledFace\(stack\)\)/);
+  const card = readFileSync(new URL("../app/shareCardRender.ts", import.meta.url), "utf8");
+  assert.match(card, /transformRequest: mapGlyphRequest,/);
 });
 
 test("map glyphs: the files are the ones docs/SOURCES.md records", () => {

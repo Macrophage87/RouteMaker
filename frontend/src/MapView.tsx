@@ -22,7 +22,8 @@ import {
   stressTileTemplate,
 } from "./lib/mapStyle.ts";
 import { tileRev } from "./lib/tileRev.ts";
-import { bundledFace, bundledGlyphs, glyphRequestUrl } from "./lib/mapGlyphs.ts";
+import { bundledFace } from "./lib/mapGlyphs.ts";
+import { mapGlyphRequest } from "./lib/mapGlyphAssets.ts";
 import { fontStacks } from "./lib/corridor.ts";
 import { basemapArchive, setCorridorStyle, sweepCorridor } from "./lib/corridorStore.ts";
 import type { RouteResponse } from "./lib/api.ts";
@@ -159,8 +160,6 @@ import {
 import { ViaHold } from "./lib/viaHold.ts";
 import { planLegLines, routeDrawnLines } from "./lib/planLegs.ts";
 
-/** The map labels' bundled glyph files, Atkinson Hyperlegible Next (lib/mapGlyphs.ts). */
-const MAP_GLYPHS = bundledGlyphs(import.meta.glob<string>("./fonts/map-glyphs/*.pbf", { query: "?url", import: "default", eager: true }));
 
 export type StressAvailability = "checking" | "available" | "unavailable";
 
@@ -604,10 +603,7 @@ export function MapView(props: Props) {
       attributionControl: false,
       cooperativeGestures: false,
       // The labels' font comes with the app, not the base map (lib/mapGlyphs.ts).
-      transformRequest: (url, type) => {
-        const glyph = type === "Glyphs" ? glyphRequestUrl(url, MAP_GLYPHS) : undefined;
-        return glyph ? { url: glyph } : undefined;
-      },
+      transformRequest: mapGlyphRequest,
     });
     mapRef.current = map;
     let disposed = false;

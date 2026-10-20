@@ -4920,7 +4920,9 @@ Tests: `lib/sidebar.test.ts`.
   with the base map's matching Noto Sans face filling the code points the font lacks, since
   MapLibre draws nothing for a code point missing from a range it has. Vite serves them as
   hashed `/assets/*.pbf` files (no edge change) and the service worker precaches them (about
-  800 KB). The layers keep naming the base map's faces; `MapView.tsx`'s `transformRequest`
+  800 KB uncompressed, 470 KB gzipped). The layers keep naming the base map's faces; the
+  `transformRequest` of both the app's map (`MapView.tsx`) and the share card's
+  (`app/shareCardRender.ts`), `lib/mapGlyphAssets.ts` `mapGlyphRequest`,
   sends a request for Noto Sans Regular, Medium or Italic (or the street names' face) to its
   Atkinson file through `lib/mapGlyphs.ts` `glyphRequestUrl`, and leaves other ranges to the
   base map. A kept ride's prefetch skips the bundled faces. The licence is the second

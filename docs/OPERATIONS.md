@@ -6013,8 +6013,8 @@ generation), inside the cache's 64 (with the half step's `h` too, `+kcfrmwdnoesh
 letters, 40 characters, 48 with the longest edit generation); `FORMAT_VERSION` stays 8 for the same reason as `d`. The
 level log line ends "; N of M mountain-bike ways named" (`pipeline.trail_routes.mtb_name_counts`).
 The front end labels each named mountain-bike trail along its line (`mtb-trail-label`, a symbol
-layer in `MTB_LAYER_IDS`, so it follows the layer's switch), from zoom 15, in Noto Sans Medium 12 px
-on a 1.5 px white halo, over the routable lines and under the Mass Ride layers; MapLibre's
+layer in `MTB_LAYER_IDS`, so it follows the layer's switch), from zoom 15, in Noto Sans Medium 12 px (drawn in
+Atkinson Hyperlegible Next SemiBold, `frontend/src/lib/mapGlyphs.ts`) on a 1.5 px white halo, over the routable lines and under the Mass Ride layers; MapLibre's
 collision, `text-padding` 8 and `symbol-spacing` 300 thin the labels, and `text-max-angle` is 45
 so a name still fits along curvy singletrack at z15-16. The text is in the line's own
 colour, each 4.5:1 or more against the halo (green 6.10:1, blue 5.75:1, black 17.49:1, red 5.62:1,

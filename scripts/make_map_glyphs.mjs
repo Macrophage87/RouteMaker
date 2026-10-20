@@ -3,8 +3,8 @@
 // made from Atkinson Hyperlegible Next (SIL Open Font License, frontend/src/fonts/map-glyphs/OFL.txt): Regular
 // (400) over Noto Sans Regular, SemiBold (600) over Noto Sans Medium, and Italic (400) over Noto Sans Italic. Run on a developer's machine only; nothing in
 // the build or the deploy runs it. It needs fontnik (the glyph maker MapLibre's base maps use) and a
-// static SemiBold instance of the variable font, made with fontTools, and the base map's Noto Sans Medium
-// glyphs for the same ranges (scripts/fetch_basemap.sh ASSETS_COMMIT, fonts/Noto Sans Medium/):
+// static instance of the variable font for each weight, made with fontTools, and the base map's matching Noto
+// Sans glyphs for the same ranges (scripts/fetch_basemap.sh ASSETS_COMMIT, fonts/Noto Sans <face>/):
 //
 //   curl -LO "https://raw.githubusercontent.com/google/fonts/main/ofl/atkinsonhyperlegiblenext/AtkinsonHyperlegibleNext%5Bwght%5D.ttf"
 //   curl -LO "https://raw.githubusercontent.com/google/fonts/main/ofl/atkinsonhyperlegiblenext/AtkinsonHyperlegibleNext-Italic%5Bwght%5D.ttf"
@@ -18,7 +18,7 @@
 //
 // The font has only part of these ranges (94 of 256 code points in 256-511, 19 in 8192-8447), and MapLibre
 // draws nothing for a code point missing from a range file it has, so each file is the font's glyphs with
-// Noto Sans Medium's filling the rest (fontnik's composite: the first font wins): a name with "ō" or "‑"
+// its Noto Sans face's filling the rest (fontnik's composite: the first font wins): a name with "ō" or "‑"
 // is still drawn whole.
 //
 // The variable fonts used (Version 2.001) had sha256 5a455d1cfa099b601ab70751bb9673e8fe1854dc4500c80e1a220d0d75e31745
