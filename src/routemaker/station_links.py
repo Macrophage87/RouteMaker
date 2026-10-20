@@ -47,6 +47,8 @@ WALK_MAX_M = 250.0
 # A footway node this close to a way in starts a walk (about 80 ft): an elevator or an
 # entrance is often mapped beside the footway it serves, not on it.
 SEED_M = 25.0
+# A footway node this close to a way in is the way in itself.
+ON_WAY_IN_M = 1.0
 # The longest footway a walk may open (about 500 ft): shorter than a walk link's, since a
 # station's walks run along downtown sidewalks, and a tag opens the whole way.
 WAY_MAX_M = 150.0
@@ -172,6 +174,9 @@ def links(
 
     found: dict[int, float] = {}
     for starts in seeds.values():
+        # A way in mapped on a footway starts there alone: no node near it cuts its walk short.
+        on = {node: m for node, m in starts.items() if m <= ON_WAY_IN_M}
+        starts = on or starts
         for metres, used in _walks(starts, adjacent, open_at, tunnels):
             for way in used:
                 found[way] = min(metres, found.get(way, metres))

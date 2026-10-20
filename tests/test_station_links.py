@@ -172,3 +172,12 @@ def test_a_footway_too_long_to_open_is_walked_round():
     long_way = placed(2, FOOTWAY, [(0.0, -30.0), (sl.WAY_MAX_M, -30.0), (0.0, -60.0)])
     found = sl.links(shady_grove({2: long_way}), [ELEVATOR])
     assert 2 not in found and 4 in found
+
+
+def test_a_way_in_on_a_footway_walks_from_itself():
+    """Shady Grove's elevator is the first node of its footway; the footway's far end is
+    within SEED_M of it, but the walk still starts at the elevator."""
+    found = sl.links(
+        shady_grove({1: placed(1, FOOTWAY, [(0.0, 0.0), (0.0, -20.0), (0.0, -30.0)])}), [ELEVATOR]
+    )
+    assert 1 in found
