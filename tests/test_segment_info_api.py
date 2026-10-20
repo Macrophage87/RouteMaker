@@ -1323,6 +1323,9 @@ class TestTappedTrail:
         body = client.get("/api/trails/503/profile", **fresh_client()).json()
         assert body["way"] == 503 and body["length_m"] == 100
         assert body["gain_m"] > 0 and body["loss_m"] == 0
+        # Its two ends, so the chart can say which way it runs (south to north here).
+        assert body["start"] == [round(trail[0], 6), round(trail[1], 6)]
+        assert body["end"][1] > body["start"][1]
         # A road is not a trail: no profile is drawn for it.
         assert client.get("/api/trails/504/profile", **fresh_client()).status_code == 404
         assert client.get("/api/trails/999999/profile", **fresh_client()).status_code == 404
