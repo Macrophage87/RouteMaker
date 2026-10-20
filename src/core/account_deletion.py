@@ -5,11 +5,11 @@ One page does both: GET /delete-account says what is deleted and what is kept, a
 offers the one button; signed out, it offers Sign in with Discord, which comes back here.
 Settings > Account links to it, so the app and the web share one confirmation and one code path.
 
-The account row itself is deleted, not flagged. What is the rider's own goes with it, by the
-models' CASCADE (sessions, My Go with Home, synced settings, the 311 log, saved routes and their
-versions, the AI assistant key), or here, before it (shared links, suggestions still waiting, agree or disagree
-on others' suggestions, the bot's cached Discord roles). What is the map's record is kept with
-the link to the account cleared (SET_NULL): a decided suggestion, and an admin's edits and
+The account row itself is deleted, not flagged. What is the rider's own goes with it, by the models'
+CASCADE (sessions, My Go with Home, synced settings, the 311 log, saved routes and their versions,
+the AI assistant key), or here, before it (shared links, suggestions still waiting, agree or
+disagree on others' suggestions, the bot's cached Discord roles). What is the map's record is kept
+with the link to the account cleared (SET_NULL): a decided suggestion, and an admin's edits and
 rulings. The audit log keeps an account number, never a Discord id (`audit.record`), and one row
 says this account was deleted. Signing in again with the same Discord account makes a new, empty
 account; a banned account cannot reach this page, and its ban tombstone is kept by the ban.
