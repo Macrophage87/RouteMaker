@@ -800,8 +800,9 @@ per-foot conversions are on FLOW-CALIBRATION.md.
 ## Transit timetables (GTFS) and bike rules (TRANSIT-ASSIST)
 
 The two transit ride types, Own Bike + 🚆🚌 and Bikeshare + 🚶🚆🚌, plan from each system's
-published static GTFS timetable. The times are scheduled, not live, and every plan says "about"
-and "scheduled". Each plan names its sources under its steps, so these are plan credits and not
+published static GTFS timetable. The times are scheduled, and every plan says "about" and
+"scheduled", except a Metro or Metrobus departure WMATA predicts on a plan for now, which says
+"live" (WMATA's live data, below). Each plan names its sources under its steps, so these are plan credits and not
 map credits:
 
 - Credit: WMATA GTFS (scheduled times). Shown with a plan that uses Metro or Metrobus.
@@ -852,7 +853,12 @@ map credits:
   row holds this minute's and this second's counts only (key `wmata-budget`). Bus answers are
   kept in each worker's memory for under a minute (a stop's place, a day), never stored.
 - **Shown:** each live time says "live", each timetable time "scheduled"; with no reading the
-  timetable is shown alone. An elevator out where a rider takes their own bike is a warning
+  timetable is shown alone. On a plan for now (within 2 minutes, a reading under 3 minutes old),
+  a Metro step boards WMATA's next train its line and way that the rider reaches the station in
+  time for, and on the chosen trip a Metrobus step its next bus (v0.10.0): the wait is to that
+  train or bus and the step says "live"; the time on board stays the timetable's, since WMATA
+  predicts arrivals at the boarding station only. A step with no such prediction keeps its
+  timetable time. An elevator out where a rider takes their own bike is a warning
   ("Elevator out at X: carry your bike on the stairs."), never an avoidance; it costs the trip 2
   minutes in the ranking only. A Metrobus step adds its route's next buses its way, as a Metro
   step adds its trains: "Live: bus 52 in 4 min, 13 min." (the way: the stop's only one for the
@@ -1017,7 +1023,8 @@ needs no bike access.
   agencies' real-time endpoints cannot be reached from the build environment, and their terms
   have not been checked. Planned closures that an
   agency publishes in its static timetable (`calendar_dates.txt`) are used, but unplanned track
-  work is not. Every plan says "Scheduled service; check for track work."
+  work is not, except as it shows in WMATA's predicted departures. A plan with a timetable
+  departure says "Scheduled service: check for track work and service alerts before you go."
 
 ## Street photos (Mapillary, v0.7.0)
 

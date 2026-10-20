@@ -1,9 +1,14 @@
 """Live values on the transit plans and station cards (v0.7.0): WMATA's next trains, its rail
 incidents and its elevator outages (`core.wmata_live`), laid over the timetable's answer.
 
-Nothing here replaces the timetable. A plan is still searched and timed on the schedule
-(`core.transit`), and every time it gives still says "scheduled". Where a live reading is to
-hand, the plan and the station card add, each marked "live" and credited "Data: WMATA":
+A plan is searched on the schedule (`core.transit`). For a plan leaving now, a Metro step's
+departure is then WMATA's next train the step's way that the rider can reach in time
+(`with_live_trains`, every option, so the ranking sees it), and on the chosen trip a Metrobus
+step's is its next bus (`with_live_buses`): the wait is to that train or bus, the time on board
+stays the timetable's (WMATA predicts arrivals at the boarding station only), and the step says
+"live". A step with no prediction it can catch keeps its timetable time and says "scheduled".
+Where a live reading is to hand, the plan and the station card also add, each marked "live" and
+credited "Data: WMATA":
 
 - the next trains at a Metro step's boarding station, the way the step goes ("Live: Red Line
   toward Shady Grove in 3 min, 11 min");
@@ -25,6 +30,7 @@ from __future__ import annotations
 import math
 import time
 from dataclasses import replace
+from datetime import UTC, datetime
 
 from . import presets, transit, wmata_bus, wmata_live, wmata_trains
 
@@ -143,11 +149,7 @@ def rank(plan: transit.Plan, live: wmata_live.Snapshot | None) -> transit.Plan:
         return plan
     chosen = plan.options[plan.chosen].key
 
-    def key(o: transit.Option):
-        total = o.total_s + cost[o.key]
-        return (transit.minutes(total), sum(leg.transit for leg in o.legs), total, o.key)
-
-    options = sorted(plan.options, key=key)
+    options = sorted(plan.options, key=lambda o: transit.rank_key(o, cost[o.key]))
     index = 0 if plan.chosen == 0 else next(i for i, o in enumerate(options) if o.key == chosen)
     return replace(plan, options=options, chosen=index)
 
@@ -168,20 +170,25 @@ def _when(trains: list[wmata_live.Train]) -> str:
     return ", ".join(wmata_live.train_minutes(t) for t in trains[:TRAINS_SHOWN])
 
 
-def step_live(leg: transit.Leg, live: wmata_live.Snapshot) -> dict | None:
-    """A Metro step's next trains now, its way: {"text", "minutes"}, or None."""
+def _coming(leg: transit.Leg, live: wmata_live.Snapshot) -> list[wmata_live.Train]:
+    """A Metro step's next trains at its boarding station, its line and its way, soonest first."""
     board, alight = _metro_ends(leg, live)
     if board is None:
-        return None
+        return []
     lines = set(leg.lines)
     trains = [
         t
         for t in live.trains_at(board)
-        if (not lines or any(wmata_live.same_line(t.line, line) for line in lines))
+        if t.minutes is not None
+        and (not lines or any(wmata_live.same_line(t.line, line) for line in lines))
         and _toward(t, board, alight, live)
     ]
-    trains.sort(key=lambda t: t.minutes if t.minutes is not None else 99)
-    trains = [t for t in trains if t.minutes is not None]
+    return sorted(trains, key=lambda t: t.minutes)
+
+
+def step_live(leg: transit.Leg, live: wmata_live.Snapshot) -> dict | None:
+    """A Metro step's next trains now, its way: {"text", "minutes"}, or None."""
+    trains = _coming(leg, live)
     if not trains:
         return None
     first = trains[0]
@@ -190,6 +197,129 @@ def step_live(leg: transit.Leg, live: wmata_live.Snapshot) -> dict | None:
         "minutes": [t.minutes for t in trains[:TRAINS_SHOWN]],
         "source": "live",
     }
+
+
+# --- Live departures (v0.10.0) --------------------------------------------------------------
+#
+# The owner, 2026-10-19: "Can live metro data be used". A plan for now takes WMATA's predicted
+# departures where they cover a step. A reading older than `LIVE_FRESH_S`, or kept past its time
+# (`Snapshot.stale`), times nothing; nor does a plan for more than `NOW_S` from now.
+LIVE_FRESH_S = 180.0
+NOW_S = 120.0
+# The clock the plan's moment is checked against (a test pins it).
+_wall = time.time
+
+
+def _minute(moment: transit.Moment, wall: float) -> float:
+    """An epoch time as the moment's service-day minute."""
+    at = datetime.fromtimestamp(wall, UTC) - transit.day_zero(moment.service_day)
+    return at.total_seconds() / 60.0
+
+
+def _for_now(moment: transit.Moment, as_of: float | None, now: float) -> bool:
+    if as_of is None or now - as_of > LIVE_FRESH_S:
+        return False
+    return abs(_minute(moment, now) - moment.minute) * 60.0 <= NOW_S
+
+
+def _caught(leg: transit.Leg, reach: float, departs: list[float]) -> transit.Leg | None:
+    """The step timed on the first predicted departure the rider reaches the stop for (`reach`,
+    service-day minutes), the rest seen after it kept for a rider who misses it; None where the
+    predictions run out before the rider gets there."""
+    catch = sorted(t for t in departs if reach - 1e-6 <= t <= reach + transit.MAX_WAIT_MIN)
+    if not catch:
+        return None
+    rest = tuple(catch[1:])
+    return replace(
+        leg,
+        depart=catch[0],
+        after=rest[0] if rest else None,
+        later=rest,
+        wait_s=(catch[0] - reach) * 60.0,
+        first=None,
+        live=True,
+    )
+
+
+def _timed(option: transit.Option, moment: transit.Moment, departs_for) -> transit.Option:
+    """The option with each step `departs_for(index, leg)` predicts (departures as service-day
+    minutes, or None) timed live, and every later timetable departure worked out again from when
+    the rider now gets there. Unchanged where nothing is predicted or the trip no longer holds.
+    A step after a frequent service's estimated wait (half the interval) is not timed live: the
+    rider's time at its stop is a guess, too rough to name one train."""
+    legs = list(option.legs)
+    at = moment.minute
+    changed = False
+    exact = True
+    for index, leg in enumerate(legs):
+        departs = departs_for(index, leg) if leg.transit and exact else None
+        if departs:
+            caught = _caught(leg, at, departs)
+            if caught is not None:
+                legs[index] = leg = caught
+                changed = True
+        exact = exact and (not leg.transit or leg.depart is not None)
+        at += leg.total_s / 60.0
+    if not changed:
+        return option
+    retimed, _notes = transit._retimed(moment.minute, legs)
+    return option if retimed is None else replace(option, legs=tuple(retimed))
+
+
+def with_live_trains(
+    plan: transit.Plan, live: wmata_live.Snapshot | None, now: float | None = None
+) -> transit.Plan:
+    """The plan with every option's Metro steps timed on WMATA's next trains, where the reading
+    is fresh and the plan is for now, ranked again on the new totals."""
+    if live is None or live.stale or not plan.options:
+        return plan
+    now = _wall() if now is None else now
+    if not _for_now(plan.moment, live.as_of, now):
+        return plan
+
+    def timed_live(option: transit.Option) -> transit.Option:
+        moment = option.moment or plan.moment
+
+        def departs_for(_index, leg):
+            if leg.system != METRO:
+                return None
+            return [_minute(moment, live.as_of + t.minutes * 60.0) for t in _coming(leg, live)]
+
+        return _timed(option, moment, departs_for)
+
+    timed = [timed_live(option) for option in plan.options]
+    if all(a is b for a, b in zip(timed, plan.options, strict=True)):
+        return plan
+    chosen = plan.option.key
+    ranked = sorted(timed, key=transit.rank_key)
+    index = 0 if plan.chosen == 0 else next(i for i, o in enumerate(ranked) if o.key == chosen)
+    return replace(plan, options=ranked, chosen=index)
+
+
+def with_live_buses(
+    plan: transit.Plan, buses: wmata_bus.StepLives | None, now: float | None = None
+) -> transit.Plan:
+    """The plan with its chosen trip's Metrobus steps timed on their next buses (the step lives
+    `bus_legs` asked for), where the reading is fresh and the plan is for now."""
+    if buses is None or not buses.steps:
+        return plan
+    now = _wall() if now is None else now
+    moment = plan.when
+    if not _for_now(moment, buses.as_of, now):
+        return plan
+
+    def departs_for(index, leg):
+        said = buses.steps.get(index)
+        if leg.system != METROBUS or not said:
+            return None
+        return [_minute(moment, buses.as_of + m * 60.0) for m in said.get("minutes", ())]
+
+    option = _timed(plan.option, moment, departs_for)
+    if option is plan.option:
+        return plan
+    options = list(plan.options)
+    options[plan.chosen] = option
+    return replace(plan, options=options)
 
 
 def bus_legs(plan: transit.Plan) -> list[tuple[int, str, tuple, tuple]]:

@@ -138,7 +138,7 @@ export const PRESETS: readonly PresetOption[] = [
     spoken: "Own bike plus train or bus",
     keywords: "transit",
     description:
-      "Your own bike the whole way, with Metro, MARC, VRE, Light RailLink, Metro SubwayLink or a bus's bike rack: riding directly there, then the quickest transit trips by scheduled times, not live. Uses stations a bike can get into (Metro's elevators), and never leaves the bike.",
+      "Your own bike the whole way, with Metro, MARC, VRE, Light RailLink, Metro SubwayLink or a bus's bike rack: riding directly there, then the quickest transit trips by scheduled times, with WMATA's live departures on a trip leaving now. Uses stations a bike can get into (Metro's elevators), and never leaves the bike.",
     summary: "Your bike plus a train or bus.",
   },
   {
@@ -147,7 +147,7 @@ export const PRESETS: readonly PresetOption[] = [
     spoken: "Bikeshare plus walk, train or bus",
     keywords: "transit",
     description:
-      "Bikeshare directly there, walking where that is quickest or the trip is short, or transit with either end a walk or a bikeshare bike, whichever is quicker (a bike is docked before you board). Metro, MARC, VRE, Light RailLink, Metro SubwayLink and buses; scheduled times, not live; docks from live availability where it can be read.",
+      "Bikeshare directly there, walking where that is quickest or the trip is short, or transit with either end a walk or a bikeshare bike, whichever is quicker (a bike is docked before you board). Metro, MARC, VRE, Light RailLink, Metro SubwayLink and buses; scheduled times, with WMATA's live departures on a trip leaving now; docks from live availability where it can be read.",
     summary: "Bikeshare or walking plus a train or bus.",
   },
   {
