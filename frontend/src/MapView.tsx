@@ -8,6 +8,10 @@ import { Protocol } from "pmtiles";
 // file by `import.meta.url`, which a bundle does not preserve; Vite builds it
 // as an asset of its own here and the map is told where it is.
 import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
+// The street names' font, bundled (lib/mapGlyphs.ts).
+import atkinsonLatin from "./fonts/map-glyphs/atkinson-next-semibold-0-255.pbf?url";
+import atkinsonLatinExtended from "./fonts/map-glyphs/atkinson-next-semibold-256-511.pbf?url";
+import atkinsonPunctuation from "./fonts/map-glyphs/atkinson-next-semibold-8192-8447.pbf?url";
 import { layers as protomapsLayers, namedFlavor } from "@protomaps/basemaps";
 import { COVERAGE_BBOX, type LonLat } from "./lib/geo.ts";
 import { AT_ZOOM } from "./lib/planHash.ts";
@@ -22,6 +26,7 @@ import {
   stressTileTemplate,
 } from "./lib/mapStyle.ts";
 import { tileRev } from "./lib/tileRev.ts";
+import { glyphRequestUrl } from "./lib/mapGlyphs.ts";
 import { fontStacks } from "./lib/corridor.ts";
 import { basemapArchive, setCorridorStyle, sweepCorridor } from "./lib/corridorStore.ts";
 import type { RouteResponse } from "./lib/api.ts";
@@ -35,7 +40,7 @@ import {
   ROUTE_BAND_WIDTH,
   sectionFeatures,
 } from "./lib/routeColours.ts";
-import { mtbTrailsOn, routableMtbLevel, stressOverlayLayers, subscribeHighStressLanes, subscribeMtbTrails, subscribePalette, subscribeRoutableMtb } from "./stressStyle.js";
+import { mtbTrailsOn, routableMtbLevel, stressOverlayLayers, subscribeHighStressLanes, subscribeMtbTrails, subscribePalette, subscribeRoutableMtb, withClearRoadLabels } from "./stressStyle.js";
 import { subscribeTopoLines, syncTopoLines, topoLinesOn, type TopoMap } from "./lib/topoLines.ts";
 import {
   addStressOverlay,
@@ -158,6 +163,14 @@ import {
   type ClosureItem,
 } from "./lib/closureMap.ts";
 import { ViaHold } from "./lib/viaHold.ts";
+import { planLegLines, routeDrawnLines } from "./lib/planLegs.ts";
+
+/** The street names' bundled glyph ranges (lib/mapGlyphs.ts, MAP_LABEL_RANGES). */
+const MAP_GLYPHS: Readonly<Record<string, string>> = {
+  "0-255": atkinsonLatin,
+  "256-511": atkinsonLatinExtended,
+  "8192-8447": atkinsonPunctuation,
+};
 
 export type StressAvailability = "checking" | "available" | "unavailable";
 
@@ -190,6 +203,12 @@ interface Props {
   permitsOn?: boolean;
   /** Plan mode (v0.7.0): the line before the last update, drawn dashed until the next change, or null. */
   ghost?: readonly LonLat[] | null;
+  /**
+   * Plan (v0.10.0, lib/planLegs.ts): the legs drawn by hand (manual mode), and that the plan's legs show: a faint
+   * straight line from each point to the next while there is no route for the points as they are, dashed where
+   * drawn. Null shows none. The route's own drawn legs are dashed whatever this is.
+   */
+  planLegs?: readonly number[] | null;
   /** Plan: the light times on the route near dawn or dusk (lib/lightTimes.ts), each marked where the rider will be; null draws none. */
   lightMarks?: readonly LightMark[] | null;
   stressVisible: boolean;
@@ -341,6 +360,11 @@ function registerPmtiles(): void {
 const DC_CENTRE: LonLat = [-77.03, 38.9];
 const ROUTE_SOURCE = "route";
 const GHOST_SOURCE = "route-ghost";
+const PLAN_LEGS_SOURCE = "plan-legs";
+const ROUTE_DRAWN_SOURCE = "route-drawn";
+/** The faint plan lines' grey, and the drawn legs' dash (lib/planLegs.ts). */
+const PLAN_LEG_COLOUR = "#374151";
+const DRAWN_DASH = [2, 1.5];
 const CHOICE_SOURCE = "route-choice";
 const NO_CHOICES = { type: "FeatureCollection", features: [] };
 
@@ -349,6 +373,10 @@ function ghostData(line: readonly LonLat[] | null | undefined): object {
   return line && line.length >= 2
     ? { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: line.map((c) => [c[0], c[1]]) } }
     : { type: "FeatureCollection", features: [] };
+}
+/** Plan's faint leg lines (lib/planLegs.ts): shown with no route, or a route greyed for a new plan. */
+function planLegsData(props: Pick<Props, "points" | "planLegs" | "route" | "stale">): object {
+  return planLegLines(props.planLegs && (!props.route || props.stale) ? props.points : [], props.planLegs ?? []);
 }
 /** The route's sections by traffic stress (lib/routeColours.ts). */
 const ROUTE_STRESS_SOURCE = ROUTE_STRESS_SOURCE_ID;
@@ -564,7 +592,8 @@ export function MapView(props: Props) {
     if (!container.current) return;
     registerPmtiles();
     const origin = window.location.origin;
-    const basemapLayers = protomapsLayers(BASEMAP_SOURCE_ID, namedFlavor("light"), { lang: "en" });
+    // The street names larger, darker and on a wider halo, so a stress line does not hide them (stressStyle.js, ROAD_LABEL).
+    const basemapLayers = withClearRoadLabels(protomapsLayers(BASEMAP_SOURCE_ID, namedFlavor("light"), { lang: "en" }));
     const style = buildStyle(origin, basemapLayers);
     // What Ride mode's corridor prefetch asks for besides the tiles: the style's glyphs and sprite.
     setCorridorStyle(style.glyphs, style.sprite, fontStacks(style.layers), () => stressTileTemplate(origin));
@@ -585,6 +614,11 @@ export function MapView(props: Props) {
       // The "i" opens the map's info panel (lib/mapInfo.ts), not only the credits: say so.
       locale: { "AttributionControl.ToggleAttribution": "Map info and credits" },
       cooperativeGestures: false,
+      // The street names' font comes with the app, not the base map (lib/mapGlyphs.ts).
+      transformRequest: (url, type) => {
+        const glyph = type === "Glyphs" ? glyphRequestUrl(url, MAP_GLYPHS) : undefined;
+        return glyph ? { url: glyph } : undefined;
+      },
     });
     mapRef.current = map;
     let disposed = false;
@@ -1105,6 +1139,25 @@ export function MapView(props: Props) {
         layout: { "line-join": "round", "line-cap": "butt" },
         paint: { "line-color": "#4b5563", "line-width": 4, "line-opacity": 0.8, "line-dasharray": [2, 1.5] },
       });
+      // Plan's legs as planned (v0.10.0, lib/planLegs.ts): faint straight lines between the points until the route
+      // comes, solid where it will be routed, dashed where drawn by hand. Under the route.
+      map.addSource(PLAN_LEGS_SOURCE, { type: "geojson", data: planLegsData(callbacks.current) as never });
+      map.addLayer({
+        id: "plan-legs-routed",
+        type: "line",
+        source: PLAN_LEGS_SOURCE,
+        filter: ["!", ["get", "drawn"]],
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: { "line-color": PLAN_LEG_COLOUR, "line-width": 3, "line-opacity": 0.45 },
+      });
+      map.addLayer({
+        id: "plan-legs-drawn",
+        type: "line",
+        source: PLAN_LEGS_SOURCE,
+        filter: ["get", "drawn"],
+        layout: { "line-join": "round", "line-cap": "butt" },
+        paint: { "line-color": PLAN_LEG_COLOUR, "line-width": 3, "line-opacity": 0.45, "line-dasharray": DRAWN_DASH },
+      });
       // Go's other routes to choose from (lib/routeChoice.ts): under the route, fainter, each in its colour on a
       // white edge so it reads over the roads; a press on one chooses it (the click handler above).
       map.addSource(CHOICE_SOURCE, { type: "geojson", data: (callbacks.current.choices ?? NO_CHOICES) as never });
@@ -1189,6 +1242,16 @@ export function MapView(props: Props) {
         source: ROUTE_SOURCE,
         layout: { "line-join": "round", "line-cap": "round" },
         paint: { "line-color": ROUTE_BLUE, "line-width": ROUTE_LINE_WIDTH },
+      });
+      // The route's legs drawn by hand (manual mode, v0.10.0, lib/planLegs.ts): white gaps over the line, so they
+      // read dashed beside the routed legs' solid line. Not while the route is greyed for a new plan.
+      map.addSource(ROUTE_DRAWN_SOURCE, { type: "geojson", data: routeDrawnLines(null, 0) as never });
+      map.addLayer({
+        id: "route-drawn-gaps",
+        type: "line",
+        source: ROUTE_DRAWN_SOURCE,
+        layout: { "line-join": "round", "line-cap": "butt" },
+        paint: { "line-color": "#ffffff", "line-width": ROUTE_LINE_WIDTH + 1, "line-dasharray": [1.2, 1.2] },
       });
       // The known hazards the route rides (v0.10.0, lib/routeHazards.ts): amber triangles over the route only.
       if (!map.hasImage(ROUTE_HAZARD_ICON)) {
@@ -1607,6 +1670,13 @@ export function MapView(props: Props) {
     if (!map || !loaded.current) return;
     (map.getSource(CHOICE_SOURCE) as GeoJSONSource | undefined)?.setData((props.choices ?? NO_CHOICES) as never);
   }, [props.choices]);
+
+  // Plan's legs as planned, while there is no route for the points as they are (v0.10.0).
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loaded.current) return;
+    (map.getSource(PLAN_LEGS_SOURCE) as GeoJSONSource | undefined)?.setData(planLegsData(props) as never);
+  }, [props.points, props.planLegs, props.route, props.stale]);
 
   // Plan mode's ghost of the route before the last update (v0.7.0).
   useEffect(() => {
@@ -2493,6 +2563,7 @@ function syncRoute(map: MapLibreMap, props: Props, fitted: { current: boolean })
   // The route, and a transit trip's later rides drawn in its colours (lib/mapGlue.ts, routeLineData).
   source.setData(routeLineData(route) as never);
   setRouteSections(map, route, stale, props.routeColour ?? undefined);
+  (map.getSource(ROUTE_DRAWN_SOURCE) as GeoJSONSource | undefined)?.setData(routeDrawnLines(stale ? null : route, props.points.length) as never);
   (map.getSource(ROUTE_HAZARD_SOURCE) as GeoJSONSource | undefined)?.setData(routeHazardFeatures(stale ? null : route) as never);
   // A ride's camera follows the rider; a re-planned route is not framed over it.
   if (!route || stale || route.geometry.coordinates.length < 2 || props.rider) return;
