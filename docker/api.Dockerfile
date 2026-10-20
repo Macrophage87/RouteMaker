@@ -127,6 +127,10 @@ COPY --chown=root:root fixtures/circle_parks ./fixtures/circle_parks
 # (src/core/hillseek.py, FOLLOWUP-HILL-SEEK). Without it Mountain Goat's climb
 # search compares the router's own alternatives only, as before, and says so.
 COPY --chown=root:root frontend/src/climb-data/climbs.json ./frontend/src/climb-data/climbs.json
+# The site's own MCP connector (src/core/connector.py, v0.10.0) runs the assistant's module from
+# mcp/, as a rider's own computer does, with the Metro stations it measures routes against.
+COPY --chown=root:root mcp/routemaker_mcp.py ./mcp/routemaker_mcp.py
+COPY --chown=root:root frontend/src/rail-data/metro-stations.geojson ./frontend/src/rail-data/metro-stations.geojson
 ENV PYTHONPATH=/app/src
 
 # Read-only to the process that runs it: nothing in the application writes to

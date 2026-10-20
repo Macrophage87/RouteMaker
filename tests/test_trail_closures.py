@@ -120,7 +120,8 @@ def test_rated_singletrack_is_drawn_on_the_mtb_layer_only_where_its_rating_alone
         way(20, {**dirt, "bicycle": "yes", "mtb:scale": "2"}),
         way(21, {**dirt, "bicycle": "designated", "mtb:scale:imba": "3"}),
         way(22, {"highway": "bridleway", "bicycle": "permissive", "mtb:scale": "1"}),
-        # No bicycle tag on a natural surface: closed as natural_surface without the rating.
+        # No bicycle tag on a natural surface: closed as natural_surface without the rating,
+        # but rated, so drawn (the owner's choice of 2026-10-19, "Rated, MTB and Gravel").
         way(23, {**dirt, "mtb:scale": "2"}),
         way(24, {**dirt, "bicycle": "no", "mtb:scale": "2"}),
         way(25, {**dirt, "access": "private", "mtb:scale": "1"}),
@@ -136,7 +137,7 @@ def test_rated_singletrack_is_drawn_on_the_mtb_layer_only_where_its_rating_alone
     )
     result = run(ways, parks=[park])
     assert {w for w, r in result.reasons.items() if r == "singletrack"} == set(range(20, 29))
-    assert result.drawn_singletrack == {20, 21, 22}
+    assert result.drawn_singletrack == {20, 21, 22, 23}
     # Every drawn one is mountain-bike only, so only the mountain-bike layer draws it.
     assert result.drawn_singletrack <= result.mtb_only()
 
@@ -195,7 +196,13 @@ def test_graph_reason_per_variant():
         assert got == "private", variant
     assert tc.graph_reason(Variant.STANDARD, "mtb", 1, drawn, wet) == "mtb"
     assert tc.graph_reason(Variant.OFFROAD, "mtb", 1, drawn, wet) is None
-    assert tc.graph_reason(Variant.OFFROAD, "singletrack", 7, drawn, wet) == "singletrack"
+    # The owner's choice of 2026-10-19 ("Rated, MTB and Gravel"): the off-road graph keeps
+    # drawn singletrack up to its level (`offroad_singletrack`), closed when wet; never undrawn.
+    assert tc.graph_reason(Variant.OFFROAD, "singletrack", 7, drawn, wet, {7}) == tc.WET
+    assert tc.graph_reason(Variant.OFFROAD, "singletrack", 7, drawn, set(), {7}) is None
+    assert tc.graph_reason(Variant.OFFROAD, "singletrack", 7, drawn, set()) == "singletrack"
+    assert tc.graph_reason(Variant.OFFROAD, "singletrack", 8, drawn, wet, {7}) == "singletrack"
+    assert tc.graph_reason(Variant.STANDARD, "singletrack", 7, drawn, set()) == "singletrack"
     assert tc.graph_reason(Variant.MTB, "mtb", 1, drawn, wet) is None
     assert tc.graph_reason(Variant.MTB, "singletrack", 8, drawn, wet) == "singletrack"
     # Drawn singletrack mapped closed when wet: closed on the Mountain Bike graph alone.
@@ -203,3 +210,21 @@ def test_graph_reason_per_variant():
     assert tc.graph_reason(Variant.MTB, None, 9, drawn, wet) == tc.WET
     assert tc.graph_reason(Variant.OFFROAD, None, 9, drawn, wet) is None
     assert tc.graph_reason(Variant.STANDARD, None, 9, drawn, wet) is None
+
+
+def test_the_offroad_graph_keeps_low_level_drawn_singletrack():
+    """The owner's choice of 2026-10-19, "Rated, MTB and Gravel": Gravel's graph rides the
+    drawn rated singletrack up to OFFROAD_MAX_LEVEL, and the mountain-bike class."""
+    from routemaker import singletrack
+
+    dirt = {"highway": "path", "surface": "dirt"}
+    easy = str(singletrack.OFFROAD_MAX_LEVEL)
+    result = run(
+        [way(60, {**dirt, "mtb:scale:imba": easy}), way(61, {**dirt, "mtb:scale:imba": "4"})]
+    )
+    assert result.drawn_singletrack == {60, 61}
+    assert result.offroad_singletrack == {60}
+    assert tc.offroad_graph_keeps("mtb", 1, set())
+    assert tc.offroad_graph_keeps("singletrack", 60, result.offroad_singletrack)
+    assert not tc.offroad_graph_keeps("singletrack", 61, result.offroad_singletrack)
+    assert not tc.offroad_graph_keeps("private", 60, result.offroad_singletrack)

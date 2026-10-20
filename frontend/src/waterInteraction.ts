@@ -5,9 +5,9 @@
  * the season and hours) and the standing caution that it is volunteers'
  * mapping.
  *
- * As federalInteraction.ts, the card is information beside the map's own
- * click, not instead of it: the click still goes on to place a point, which
- * here is often what the rider wants (a stop at the fountain). It closes on the
+ * The card offers Route here, or Add as stop with a route (lib/stopCard.ts;
+ * Stephen 2026-10-19: "don't auto route"), so the press is the card's alone:
+ * it no longer also places a point or sets Go's destination. It closes on the
  * next map click, on its own button and on Escape, does nothing while the
  * layer is off, and holds back while another card is open. The same points
  * are listed in words along the route (lib/waterLegend.ts), so nothing here is
@@ -16,11 +16,14 @@
 import * as maplibregl from "maplibre-gl";
 import type { Map as MapLibreMap } from "maplibre-gl";
 import { WATER_LAYER, waterCard, type WaterPoint } from "./lib/waterRestrooms.ts";
+import { stopCardElement, type StopActionFor } from "./lib/stopCard.ts";
 
 export interface WaterInteractionOptions {
   visible(): boolean;
   otherPopupOpen(): boolean;
   point(id: string): WaterPoint | undefined;
+  /** The card's Route here or Add as stop (lib/stopCard.ts). */
+  actionFor?: StopActionFor;
 }
 
 /** Pixels around a tap that still count as on the icon. */
@@ -78,6 +81,12 @@ export function attachWaterInteraction(map: MapLibreMap, options: WaterInteracti
     const p = at(event.point);
     if (!p) return;
     const content = waterCardElement(p);
+    const card = waterCard(p);
+    const name = card.name ? `${card.kind}, ${card.name}` : card.kind;
+    const action = options.actionFor?.([p.lon, p.lat], name) ?? null;
+    // The action row alone (the words are waterCardElement's): no title or lines.
+    const actions = action ? stopCardElement({ title: name, lines: [] }, action, close).querySelector(".place-card-actions") : null;
+    if (actions) content.append(actions);
     content.addEventListener("keydown", (key) => {
       if (key.key === "Escape") close();
     });

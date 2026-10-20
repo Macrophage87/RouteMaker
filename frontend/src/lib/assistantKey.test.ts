@@ -1,7 +1,7 @@
 /** The AI assistant key's words and requests (lib/assistantKey.ts). */
 import assert from "node:assert/strict";
 import test from "node:test";
-import { KEY_NONE, keySummary, makeKey, readKey, removeKey } from "./assistantKey.ts";
+import { KEY_NONE, appSummary, assistantsSummary, disconnectApp, keySummary, makeKey, readApps, readKey, removeKey } from "./assistantKey.ts";
 
 const ok = (body: unknown, status = 200) => Promise.resolve(new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } }));
 
@@ -37,4 +37,26 @@ test("a refusal or a network failure is no key and no change", async () => {
   assert.equal(await readKey("https://x", refused), undefined);
   assert.equal(await makeKey("https://x", broken), null);
   assert.equal(await removeKey("https://x", refused), false);
+});
+
+test("the fold names the key and the connected apps, and each app its own line", () => {
+  const key = { hint: "wxyz", created_at: "2026-10-18T13:00:00Z", last_used_at: null };
+  const app = { id: 3, name: "Claude", created_at: "2026-10-19T13:00:00Z", last_used_at: null };
+  assert.equal(assistantsSummary(null, []), KEY_NONE);
+  assert.equal(assistantsSummary(key, [app]), "Key ends …wxyz, 1 app connected");
+  assert.equal(assistantsSummary(null, [app, { ...app, id: 4 }]), "2 apps connected");
+  assert.equal(appSummary(app), "Claude, connected Oct 19, not used yet");
+});
+
+test("apps are read and disconnected with the session's requests", async () => {
+  const sent: string[] = [];
+  const fake = ((url: string) => {
+    sent.push(url);
+    return ok({ apps: [] });
+  }) as typeof fetch;
+  assert.deepEqual(await readApps("https://x", fake), []);
+  assert.deepEqual(await disconnectApp("https://x", 3, fake, "csrftoken=tok"), []);
+  assert.deepEqual(sent, ["https://x/api/me/connected-apps", "https://x/api/me/connected-apps/3/delete"]);
+  const refused = (() => ok({ error: "no" }, 403)) as typeof fetch;
+  assert.equal(await disconnectApp("https://x", 3, refused), null);
 });

@@ -1,5 +1,5 @@
 // The panel's icons: the approved UI mockup's own line icons (reports/v0.5.0/ui-mockup.html, 2026-10-11),
-// plus a cargo bike, a bikeshare dock, a downed tree, a text-size "Aa" (the owner's choice 11; unused since Big text
+// plus a cargo bike, a bikeshare dock, a downed tree, a text-size "Aa" (the owner's choice 11; the ride's Large text button since 2026-10-20; before that unused once Big text
 // moved to Settings, 2026-10-17), and Plan's map bar's undo, redo and clear, and the points list's grip (drag to reorder, 2026-10-18). Each is drawn with currentColor and hidden from assistive technology: every control that
 // shows one also shows its words.
 

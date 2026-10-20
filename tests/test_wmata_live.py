@@ -573,3 +573,140 @@ def test_real_closures_worded_other_ways_still_close() -> None:
     assert closed(
         "Single tracking between Ballston-MU and Foggy Bottom-GWU and Rosslyn is closed."
     ) == {"C05"}
+
+
+# --- Live departures (v0.10.0) ---------------------------------------------------------------
+
+EIGHT = at(2026, 9, 30, 8, 0)
+
+
+def live_at(wall: float, **changes) -> wmata_live.Snapshot:
+    from dataclasses import replace
+
+    return replace(wmata_live.build(docs(), wall), **changes)
+
+
+def test_a_plan_for_now_boards_the_next_train_wmata_predicts_that_the_rider_can_reach(schedule):
+    plan = plan_bike(schedule, CAPITOL_HILL, DOWNTOWN, EIGHT)
+    wall = EIGHT.timestamp()
+    timed = transit_live.with_live_trains(plan, live_at(wall), now=wall)
+    chosen = transit.choose(timed, metro_option(timed).key)
+    metro = transit_legs(chosen.option)[0]
+    # At Eastern Market by 8:05 (a minute's ride, 4 min in by the elevator): the train in 3 min
+    # is gone, the one in 11 min is caught; the time on board is still the timetable's.
+    scheduled = transit_legs(metro_option(plan))[0]
+    eight = transit._moment(EIGHT, EIGHT.date()).minute
+    assert metro.live and metro.depart == pytest.approx(eight + 11)
+    assert metro.wait_s == pytest.approx(chosen.option.legs[2].wait_s)
+    assert metro.seconds == scheduled.seconds
+    assert transit.minutes(metro.wait_s) == 6
+    # The order follows the new totals.
+    order = [(transit.minutes(o.total_s), o.key) for o in timed.options]
+    assert [m for m, _ in order] == sorted(m for m, _ in order)
+    block = transit.block(chosen, schedule)
+    step = next(s for s in block["steps"] if s["mode"] == "metro")
+    assert step["source"] == "live"
+    assert step["text"].startswith(
+        "Board the Orange Line at 8:11 am live from Eastern Market: you arrive 8:05 am, 6 min"
+        " spare; next train after that: 8:19 am live."
+    )
+    assert block["live_times"] and block["summary"].endswith("with live departures.")
+    # The time on board is the timetable's, so the track-work note stays.
+    assert transit.LIVE_WORDS in block["notes"] and transit.SCHEDULED_WORDS in block["notes"]
+    # A train every few minutes has no countdown, live or not.
+    assert block["departure"] is None
+
+
+def test_a_ride_routed_slower_than_the_predictions_reach_waits_as_the_timetable_says(schedule):
+    plan = plan_bike(schedule, CAPITOL_HILL, DOWNTOWN, EIGHT)
+    wall = EIGHT.timestamp()
+    timed = transit_live.with_live_trains(plan, live_at(wall), now=wall)
+    chosen = transit.choose(timed, metro_option(timed).key)
+    # Routed 16 min instead of 1: at the station after the last train WMATA predicts (8:19).
+    slow = transit.with_rides(chosen, {0: 960.0})
+    assert slow.option.key == chosen.option.key
+    metro = transit_legs(slow.option)[0]
+    assert not metro.live and metro.depart is None and metro.wait_s == metro.every * 30.0
+    # Routed 9 min: the 8:11 is missed, the 8:19 is caught, still live.
+    later = transit_legs(transit.with_rides(chosen, {0: 540.0}).option)[0]
+    assert later.live and later.depart == pytest.approx(transit_legs(chosen.option)[0].after)
+
+
+def test_a_change_after_an_estimated_wait_is_not_timed_live(schedule) -> None:
+    plan = plan_bike(schedule, CAPITOL_HILL, DOWNTOWN, EIGHT)
+    two = next(o for o in plan.options if len(transit_legs(o)) == 2 and o.legs[2].system == "Metro")
+    second = next(i for i, leg in enumerate(two.legs) if leg.transit and leg.change)
+    moment = plan.moment
+    timed = transit_live._timed(
+        two, moment, lambda i, _leg: [moment.minute + 30] if i == second else None
+    )
+    assert timed is two
+
+
+def test_the_trip_the_rider_chose_stays_chosen_when_the_order_moves(schedule) -> None:
+    plan = plan_bike(schedule, CAPITOL_HILL, DOWNTOWN, EIGHT)
+    asked = transit.choose(plan, plan.options[-1].key)
+    wall = EIGHT.timestamp()
+    timed = transit_live.with_live_trains(asked, live_at(wall), now=wall)
+    assert timed.option.key == plan.options[-1].key
+
+
+def test_a_plan_for_later_or_an_old_reading_stays_on_the_timetable(schedule) -> None:
+    plan = plan_bike(schedule, CAPITOL_HILL, DOWNTOWN, EIGHT)
+    wall = EIGHT.timestamp()
+    assert transit_live.with_live_trains(plan, live_at(wall), now=wall - 3600) is plan
+    assert transit_live.with_live_trains(plan, live_at(wall - 600), now=wall) is plan
+    assert transit_live.with_live_trains(plan, live_at(wall, stale=True), now=wall) is plan
+    assert transit_live.with_live_trains(plan, None, now=wall) is plan
+    trip = transit.choose(plan, metro_option(plan).key)
+    block = transit.block(trip, schedule)
+    assert not block["live_times"] and block["summary"].endswith("scheduled.")
+    assert transit.SCHEDULED_WORDS in block["notes"]
+
+
+def test_predictions_that_run_out_before_the_rider_gets_there_keep_the_timetable() -> None:
+    leg = transit.Leg(transit.METRO, 600.0, system="Metro", wait_s=300.0, every=10.0)
+    assert transit_live._caught(leg, 500.0, [490.0, 498.0]) is None
+    caught = transit_live._caught(leg, 500.0, [498.0, 503.0, 509.0])
+    assert caught.live and caught.depart == 503.0 and caught.after == 509.0
+    assert caught.wait_s == pytest.approx(180.0)
+
+
+def test_a_chosen_trips_bus_boards_the_next_bus_wmata_predicts(schedule) -> None:
+    from core import wmata_bus
+
+    plan = plan_bike(schedule, CAPITOL_HILL, DOWNTOWN, EIGHT)
+    bus = next(
+        o for o in plan.options if transit_legs(o) and transit_legs(o)[0].system == "Metrobus"
+    )
+    chosen = transit.choose(plan, bus.key)
+    index = next(i for i, leg in enumerate(chosen.legs) if leg.system == "Metrobus")
+    wall = EIGHT.timestamp()
+    said = {"text": "Live: bus 90 in 2 min, 9 min.", "minutes": [2, 9], "source": "live"}
+    buses = wmata_bus.StepLives({index: said}, wall)
+    timed = transit_live.with_live_buses(chosen, buses, now=wall)
+    leg = timed.legs[index]
+    # At the stop about 8:05.6: the bus at 8:02 is gone, the one at 8:09 is caught.
+    assert leg.live and leg.depart == pytest.approx(transit._moment(EIGHT, EIGHT.date()).minute + 9)
+    assert transit.minutes(leg.wait_s) == 3
+    assert timed.option.total_s < chosen.option.total_s
+    assert transit.block(timed, schedule)["steps"][index]["source"] == "live"
+    # A plan for later is the timetable's.
+    assert transit_live.with_live_buses(chosen, buses, now=wall + 3600) is chosen
+
+
+@db
+@pytest.mark.usefixtures("weekday_clock")
+def test_a_plan_asked_for_now_says_its_live_departures(
+    client, segments, router, installed, monkeypatch
+) -> None:
+    noon = at(2026, 9, 30, 12, 0).timestamp()
+    monkeypatch.setattr(wmata_live.client, "snapshot", lambda: live_at(noon))
+    monkeypatch.setattr(transit_live, "_wall", lambda: noon)
+    router(standard_router())
+    first = post_transit(client, [CAPITOL_HILL, DOWNTOWN]).json()["transit"]
+    metro = next(o for o in first["options"] if not o["direct"] and o["legs"][1]["mode"] == "metro")
+    block = post_transit(client, [CAPITOL_HILL, DOWNTOWN], transit_option=metro["key"]).json()
+    step = next(s for s in block["transit"]["steps"] if s["mode"] == "metro")
+    assert step["source"] == "live" and " live from " in step["text"]
+    assert block["transit"]["live_times"]

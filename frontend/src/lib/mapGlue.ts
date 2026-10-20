@@ -29,6 +29,8 @@ import {
   mtbLevelPaint,
   MTB_LABEL_LAYER_ID,
   mtbLabelColor,
+  ROAD_LABEL_LAYER_IDS,
+  roadLabelPaint,
   unpavedLayers,
   halfStepLayers,
   UNPAVED_DASH,
@@ -59,6 +61,7 @@ import type { When } from "./dials.ts";
 import { MASS_SOURCE_ID, STRESS_SOURCE_ID, massSource, stressSource } from "./mapStyle.ts";
 import { setDcMaskVisibility } from "./dcBoundary.ts";
 import type { RouteResponse } from "./api.ts";
+import type { LonLat } from "./geo.ts";
 import { ROUTE_AVOID_MARK_DASH, routeCorridorPaint, overlayFade, routeClasses, routePaint, routeSections, sectionFeatures, usesCapacity, type RouteClassKey, type RouteSection } from "./routeColours.ts";
 import { transitRideLines, transitRideSections } from "./transit.ts";
 
@@ -229,6 +232,11 @@ export function setStressPalette(
   if (map.getLayer(MTB_LABEL_LAYER_ID)) {
     map.setPaintProperty(MTB_LABEL_LAYER_ID, "text-color", mtbLabelColor());
   }
+  // The street names: darker, on a wider halo, with the accessibility switch (stressStyle.js, ROAD_LABEL).
+  for (const id of ROAD_LABEL_LAYER_IDS) {
+    if (!map.getLayer(id)) continue;
+    for (const [name, value] of Object.entries(roadLabelPaint())) map.setPaintProperty(id, name, value);
+  }
 }
 
 /** The parts of a MapLibre map the route's coloured sections use. */
@@ -348,10 +356,12 @@ export function setRouteSections(
   map: RouteSectionsMap,
   route: (Pick<RouteResponse, "geometry" | "stress_spans"> & Partial<Pick<RouteResponse, "transit">>) | null,
   stale: boolean,
+  /** The casing's colour where the route is not the rider's own among several to choose from (lib/routeChoice.ts). */
+  casing?: string,
 ): void {
   const sections = routeAndRideSections(route);
   (map.getSource(ROUTE_STRESS_SOURCE_ID) as { setData(data: object): void } | undefined)?.setData(sectionFeatures(sections));
-  const paint = routePaint(sections !== null, stale);
+  const paint = routePaint(sections !== null, stale, casing);
   map.setPaintProperty("route-line", "line-opacity", paint.lineOpacity);
   map.setPaintProperty("route-stress", "line-opacity", paint.sectionOpacity);
   map.setPaintProperty("route-halo", "line-opacity", paint.haloOpacity);
@@ -546,6 +556,77 @@ export interface FeatureCards {
  * Read in Go before the main click, where a press on the map sets the destination (lib/appMode.ts goTapSetsEnd):
  * a press for a card, or to dismiss one, must not also replace the destination. Cards not yet on the map are null.
  */
+/** The map a trail press is read from (MapLibre's own, or a test's stand-in). */
+export interface TrailPressMap {
+  getLayer(id: string): unknown;
+  queryRenderedFeatures(box: [[number, number], [number, number]], options: { layers: string[] }): ReadonlyArray<unknown>;
+  project(lngLat: [number, number]): { x: number; y: number };
+  unproject(point: [number, number]): { lng: number; lat: number };
+}
+
+interface PressedFeature {
+  properties?: { mtb?: unknown } | null;
+  geometry?: { type?: string; coordinates?: unknown } | null;
+}
+
+/** A drawn line's parts, in [lon, lat]: a LineString's one, a MultiLineString's each; nothing else. */
+function lineParts(feature: PressedFeature): number[][][] {
+  const geometry = feature.geometry;
+  if (geometry?.type === "LineString") return [geometry.coordinates as number[][]];
+  if (geometry?.type === "MultiLineString") return geometry.coordinates as number[][][];
+  return [];
+}
+
+/** The point on `feature`'s drawn line nearest `point`, in screen pixels, and how far it is; null with no line. */
+function nearestOn(map: TrailPressMap, feature: PressedFeature, point: { x: number; y: number }): { x: number; y: number; d: number } | null {
+  let best: { x: number; y: number; d: number } | null = null;
+  for (const part of lineParts(feature)) {
+    const screen = part.map(([lon, lat]) => map.project([lon, lat]));
+    for (let i = 0; i < screen.length; i += 1) {
+      const a = screen[i];
+      const b = screen[i + 1] ?? a;
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const span = dx * dx + dy * dy;
+      const t = span === 0 ? 0 : Math.max(0, Math.min(1, ((point.x - a.x) * dx + (point.y - a.y) * dy) / span));
+      const x = a.x + dx * t;
+      const y = a.y + dy * t;
+      const d = Math.hypot(point.x - x, point.y - y);
+      if (best === null || d < best.d) best = { x, y, d };
+    }
+  }
+  return best;
+}
+
+/**
+ * The point on the mountain-bike trail a press at `point` is on, or null (the owner, 2026-10-19: "The information
+ * should be available when clicked on" and "Basically make them clickable."). Only drawn lines within `slop` pixels
+ * count, among `layers` (the stress overlay's): the trail layer's own lines, and in the Mountain Bike ride type the
+ * routable lines, which draw the trails up to the rider's level. A press nearer a road's line than any trail's is
+ * the road's (a point, as before). The point is the nearest on the trail's line itself, so the panel describes that
+ * trail however coarse a finger's press was.
+ */
+export function mtbTrailPressed(map: TrailPressMap, point: { x: number; y: number }, slop: number, layers: readonly string[]): LonLat | null {
+  const drawn = layers.filter((id) => map.getLayer(id));
+  if (drawn.length === 0) return null;
+  const box: [[number, number], [number, number]] = [
+    [point.x - slop, point.y - slop],
+    [point.x + slop, point.y + slop],
+  ];
+  let trail: { x: number; y: number; d: number } | null = null;
+  let road = Infinity;
+  for (const feature of map.queryRenderedFeatures(box, { layers: drawn }) as PressedFeature[]) {
+    const near = nearestOn(map, feature, point);
+    if (near === null) continue;
+    if (feature.properties?.mtb === true) {
+      if (trail === null || near.d < trail.d) trail = near;
+    } else road = Math.min(road, near.d);
+  }
+  if (trail === null || road < trail.d) return null;
+  const { lng, lat } = map.unproject([trail.x, trail.y]);
+  return [lng, lat];
+}
+
 export function featureCardPress(cards: ReadonlyArray<FeatureCards | null>, point: { x: number; y: number }): "card" | "close" | null {
   const shown = cards.filter((card): card is FeatureCards => card !== null);
   if (shown.some((card) => card.hits(point))) return "card";

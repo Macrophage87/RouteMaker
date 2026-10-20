@@ -720,7 +720,7 @@ test("the map and the panel are wired to the switch: MapView repaints on it, the
   const src = (name: string) => readFileSync(new URL(`../${name}`, import.meta.url), "utf8");
   const mapView = src("MapView.tsx");
   assert.match(mapView, /setStressPalette\(map, callbacks\.current\.when\)/);
-  assert.match(mapView, /setRouteSections\(map, callbacks\.current\.route, callbacks\.current\.stale\)/);
+  assert.match(mapView, /setRouteSections\(map, callbacks\.current\.route, callbacks\.current\.stale, callbacks\.current\.routeColour \?\? undefined\)/);
   // The subscription is the effect's return value, so it is stopped with the component.
   assert.match(mapView, /useEffect\(\s*\(\) =>\s*subscribePalette\(/);
   for (const name of ["App.tsx", "app/RoutePanel.tsx", "FacilityBreakdown.tsx"]) assert.match(src(name), /useStressStyle\(\)/, name);

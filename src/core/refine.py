@@ -101,11 +101,11 @@ import math
 from dataclasses import dataclass, field
 
 from routemaker import avoid_junctions as avoid_model
-from routemaker import calm, climbs, effort, grade_stress, trace_junctions
+from routemaker import calm, climbs, effort, grade_stress, junction_delay, trace_junctions
 from routemaker import intersections as model
 from routemaker.geo import Point, haversine
 
-from . import junctions, legsplit, parallel, presets, routing, trailseek
+from . import junctions, legsplit, parallel, presets, route_hazards, routing, trailseek
 
 logger = logging.getLogger(__name__)
 
@@ -373,6 +373,9 @@ class Context:
     # The approved rider ratings of junctions (`core.junction_suggestions.approved_ratings`,
     # OWNER-DECISIONS 232), which set a rated junction's cost and marker.
     junction_ratings: tuple = ()
+    # The known flashing beacons at junctions the map has a signal at
+    # (`core.flashing_signals.active`), priced with no signal.
+    beacons: tuple = ()
 
 
 def shift_classes(classes: list, shift: int) -> list:
@@ -395,6 +398,32 @@ def shift_classes(classes: list, shift: int) -> list:
             )
         )
     return out
+
+
+def hazard_priced(classes: list, kinds: list) -> list:
+    """Each piece on a known road hazard (`core.route_hazards`) read at LTS 4 at least, as
+    the graph prices it (lua/routemaker_remap.lua `hazard_priced`; the owner, 2026-10-19:
+    "Roads with hazards like this should get a major penalty"). A path is never priced, as
+    the graph never prices a trail. The same list where no piece changes."""
+    if not any(kinds):
+        return classes
+    out = []
+    changed = False
+    for cls, found in zip(classes, kinds, strict=False):
+        if found and cls[1] != "path" and cls[0] in ("1", "2", "3"):
+            changed = True
+            cls = routing.PieceClass(
+                "4",
+                cls[1],
+                getattr(cls, "unpaved", None),
+                getattr(cls, "lanes", None),
+                getattr(cls, "oneway", None),
+                getattr(cls, "width_m", None),
+                False,
+            )
+        out.append(cls)
+    out.extend(classes[len(out) :])
+    return out if changed else classes
 
 
 @dataclass
@@ -457,6 +486,10 @@ class Analysis:
     # (the junctions' colours are read as many levels up, `presets.shifted_severity`).
     real_classes: list | None = None
     shift: int = 0
+    # The seconds its junctions cost the rider, which the router's own time leaves out
+    # (`routemaker.junction_delay`, the owner, 2026-10-20: "Both", the time shown and the
+    # route chosen): priced in `score` as that much quiet riding.
+    junction_delay_s: float = 0.0
 
     @property
     def rated_classes(self) -> list:
@@ -495,7 +528,12 @@ class Analysis:
             lts2 = self.lts2_m if self.rated_lts2_m is None else self.rated_lts2_m
             extra += self.lts2_weight * lts3_added_m(ctx) * lts2
         extra -= ctx.hills_tolerate_weight * self.router_climb_m
-        return self.cost_s + ctx.quiet_cost * extra + avoid_model.penalty_s(self.avoid_passages)
+        return (
+            self.cost_s
+            + ctx.quiet_cost * extra
+            + avoid_model.penalty_s(self.avoid_passages)
+            + QUIET_COST_FACTOR * self.junction_delay_s
+        )
 
     @property
     def red_m(self) -> float:
@@ -560,7 +598,16 @@ def level3(read: Analysis, ctx: Context) -> float:
     "Keep stress order + target (Recommended)"). The target distance is in actual
     metres, not these."""
     effort = read.effort_m or read.length_m
-    return charged_m(read, ctx) - ctx.hills_seek_weight * effort
+    return charged_m(read, ctx) - ctx.hills_seek_weight * effort + delay_m(read, ctx)
+
+
+def delay_m(read: Analysis, ctx: Context) -> float:
+    """The route's junction delay (`Analysis.junction_delay_s`) as metres of quiet riding,
+    the rate `score` prices it at, so the top of the slider weighs it too: between equally
+    calm routes, the one with fewer stops ranks first."""
+    if ctx.quiet_cost <= 0:
+        return 0.0
+    return QUIET_COST_FACTOR * read.junction_delay_s / ctx.quiet_cost
 
 
 def charged_m(read: Analysis, ctx: Context) -> float:
@@ -820,6 +867,7 @@ def events_of_raws(raws, ctx: Context, deadline: routing.Deadline) -> list | Non
             ctx.group,
             cut_short=(routing.DeadlineExceeded,),
             ratings=ctx.junction_ratings,
+            beacons=ctx.beacons,
         )
     except junctions.ReadingCutShort as error:
         raise routing.DeadlineExceeded(str(error)) from error
@@ -868,6 +916,11 @@ def analyse(
     real_classes = routing.classify(pieces, ctx.when, ctx.lanes_as_roadway)
     shift = ctx.exposure.shift
     classes = shift_classes(real_classes, shift)
+    # A known hazard ridden is searched as the graph prices it, LTS 4 (v0.10.0); the rider
+    # is still shown its own rating (`rated_classes`).
+    priced = hazard_priced(classes, route_hazards.kinds_of(pieces))
+    hazard_read = priced is not classes
+    classes = priced
     avoid_passages = avoid_model.passages(line, ctx.avoid) if ctx.avoid else []
     # The stress figures in hill-weighted metres (409): each piece's metres times its factor.
     hill = hill_of(trip, pieces, ctx)
@@ -903,8 +956,13 @@ def analyse(
         hill=hill,
         flat_exposure_m=flat_exposure_m(pieces, classes, weights),
         rated_lts2_m=stress_totals(*rated_metres(pieces, classes))["lts2_m"],
-        real_classes=real_classes if shift else None,
+        real_classes=real_classes if shift or hazard_read else None,
         shift=shift,
+        junction_delay_s=junction_delay.delay_s(
+            raws,
+            routing.stop_as_yield,
+            lambda lon, lat: model.beacon_at(lon, lat, ctx.beacons) is not None,
+        ),
     )
     if with_events:
         ctx.analyses[key] = result
@@ -2731,6 +2789,7 @@ def combine(reads: list[Analysis]) -> Analysis:
             else None
         ),
         shift=max((r.shift for r in reads), default=0),
+        junction_delay_s=sum(r.junction_delay_s for r in reads),
     )
 
 

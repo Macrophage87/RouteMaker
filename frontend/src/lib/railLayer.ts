@@ -34,7 +34,7 @@ export const RAIL_LAYERS = {
 export const ELEVATOR_ICON = "rail-elevator";
 /** The route's lowest layer (MapView); the stations go directly under it. */
 export const ROUTE_BOTTOM_LAYER = "route-casing";
-/** The base map's glyphs include this face (scripts/fetch_basemap.sh). */
+/** A face the base map's glyphs include (scripts/fetch_basemap.sh), drawn in Atkinson Hyperlegible Next SemiBold (lib/mapGlyphs.ts). */
 export const LABEL_FONT = "Noto Sans Medium";
 
 /** Street level: where an elevator is worth drawing, and a plain entrance later still. */

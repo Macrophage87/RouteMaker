@@ -1,10 +1,12 @@
 // v0.7.0's place sheets: Go's Repair and Sights (behind the More chip; the owner, 2026-10-14: "Make sure that go
 // stays clean, but they can find it there. Plan can have more complexity"), and Plan's Places to see. Each list
-// is lettered as the map's markers are (lib/letteredPlaces.ts); a row's one button rides there (Go) or adds the
-// place as a stop. App.tsx keeps the state; the lists are lib/repair.ts's and lib/places.ts's.
+// is lettered as the map's markers are (lib/letteredPlaces.ts); a Go row's one button opens the place's card on the
+// map (what's there, its website, Route here or Add as stop: lib/stopCard.ts), never a route by itself. App.tsx keeps the state; the lists are lib/repair.ts's and lib/places.ts's.
 import { useId, type ReactNode } from "react";
 import type { Map as MapLibreMap } from "maplibre-gl";
-import { setSource, tapCard, useMap } from "./mapOverlay.ts";
+import { setSource, stopCard, useMap } from "./mapOverlay.ts";
+import { foodWords, repairWords, sightWords } from "../lib/stopWords.ts";
+import type { StopActionFor } from "../lib/stopCard.ts";
 import { Icon } from "../Icon.tsx";
 import { SheetFrame } from "../Sidebar.tsx";
 import { placeLetter } from "../lib/letteredPlaces.ts";
@@ -38,13 +40,13 @@ import {
   type SightResult,
 } from "../lib/places.ts";
 import { WATER_MIN_ZOOM } from "../lib/waterRestrooms.ts";
-import { FOOD_LAYER, FOOD_SOURCE_ID, foodGeoJson, foodHoursText, foodHowFar, foodKindText, foodLayer, type FoodResult } from "../lib/food.ts";
+import { FOOD_LAYER, FOOD_SOURCE_ID, foodGeoJson, foodLayer, type FoodResult } from "../lib/food.ts";
 import { ROUTE_BOTTOM_LAYER } from "../lib/railLayer.ts";
 import { SHEET_TITLES, type PanelView } from "../lib/sidebar.ts";
 import type { SheetNav } from "./Sheets.tsx";
 
-/** Go's Repair: the nearest repair stands and bike shops, lettered; a row rides there. */
-export function RepairSheet({ nav, status, items, at, onRide }: { nav: SheetNav; status: string; items: readonly RepairNearby[] | null; at: Date; onRide: (item: RepairNearby) => void }) {
+/** Go's Repair: the nearest repair stands and bike shops, lettered; a row opens its card. */
+export function RepairSheet({ nav, status, items, at, onPick }: { nav: SheetNav; status: string; items: readonly RepairNearby[] | null; at: Date; onPick: (item: RepairNearby) => void }) {
   const rowId = useId();
   return (
     <SheetFrame id="sheet-repair" title={SHEET_TITLES.repair} open={nav.view === "repair"} onBack={nav.back} backLabel={nav.backLabel("repair")}>
@@ -60,8 +62,8 @@ export function RepairSheet({ nav, status, items, at, onRide }: { nav: SheetNav;
                 <button
                   type="button"
                   className="secondary place-row"
-                  onClick={() => onRide(item)}
-                  aria-label={`${placeLetter(i)}: Ride to ${repairTitle(item.place)}, ${repairHowFar(item)}`}
+                  onClick={() => onPick(item)}
+                  aria-label={`${placeLetter(i)}: ${repairTitle(item.place)}, ${repairHowFar(item)}`}
                   aria-describedby={`${rowId}-${i}`}
                 >
                   <Icon name={item.place.kind === "stand" ? "wrench" : "shop"} size={18} />
@@ -98,13 +100,13 @@ function SightRow({ result, index, children }: { result: SightResult; index: num
   );
 }
 
-/** Go's Sights: the nearest five, no filters; a row adds it as a stop (with a route) or rides there. */
-export function SightsList({ items, canAddStop, onPick }: { items: readonly SightResult[]; canAddStop: boolean; onPick: (result: SightResult) => void }) {
+/** Go's Sights: the nearest five, no filters; a row opens its card. */
+export function SightsList({ items, onPick }: { items: readonly SightResult[]; onPick: (result: SightResult) => void }) {
   return (
     <ol role="list" className="nearest-list sights-list" aria-label="Places to see">
       {items.map((r, i) => (
         <li key={r.place.id}>
-          <button type="button" className="secondary place-row" onClick={() => onPick(r)} aria-label={`${placeLetter(i)}: ${canAddStop ? "Add as stop" : "Ride to"} ${sightText(r)}`}>
+          <button type="button" className="secondary place-row" onClick={() => onPick(r)} aria-label={`${placeLetter(i)}: ${sightText(r)}`}>
             <SightRow result={r} index={i} />
           </button>
         </li>
@@ -126,7 +128,7 @@ export interface PlacesSheetProps {
   canAddStop: boolean;
   onShow: (result: SightResult) => void;
   onAddStop: (result: SightResult) => void;
-  /** Go: a row's one tap (a stop with a route, else the destination). */
+  /** Go: a row's one tap, the place's card on the map. */
   onGoPick: (result: SightResult) => void;
 }
 
@@ -151,7 +153,7 @@ export function PlacesSheet(props: PlacesSheetProps) {
       <p className="hint places-status" role="status">
         {status}
       </p>
-      {items && items.length > 0 && go && <SightsList items={items} canAddStop={canAddStop} onPick={onGoPick} />}
+      {items && items.length > 0 && go && <SightsList items={items} onPick={onGoPick} />}
       {items && items.length > 0 && !go && (
         <ol role="list" className="nearest-list places-list" aria-label="Places to see">
           {items.map((r, i) => (
@@ -197,7 +199,7 @@ export const PLACE_VIEWS: readonly PanelView[] = ["repair", "places"];
 // --- The map: repair stands (with the water layer's switch) and the places to see layer ------------
 
 /** The repair stands, drawn with the Water and restrooms layer's switch (the owner: "just the stands"). */
-export function RepairStandsOverlay({ getMap, places, on, pixelRatio }: { getMap: () => MapLibreMap | null; places: readonly RepairPlace[] | null; on: boolean; pixelRatio: number }) {
+export function RepairStandsOverlay({ getMap, places, on, pixelRatio, actionFor }: { getMap: () => MapLibreMap | null; places: readonly RepairPlace[] | null; on: boolean; pixelRatio: number; actionFor: StopActionFor }) {
   useMap(
     getMap,
     (map) => {
@@ -210,19 +212,18 @@ export function RepairStandsOverlay({ getMap, places, on, pixelRatio }: { getMap
       if (!map.getLayer(REPAIR_LAYER)) map.addLayer(repairLayer(WATER_MIN_ZOOM) as never, map.getLayer(ROUTE_BOTTOM_LAYER) ? ROUTE_BOTTOM_LAYER : undefined);
       map.setLayoutProperty(REPAIR_LAYER, "visibility", on ? "visible" : "none");
       const byId = new Map(places.map((p) => [p.id, p]));
-      return tapCard(map, REPAIR_LAYER, (id) => {
+      return stopCard(map, REPAIR_LAYER, (id) => {
         const p = byId.get(id);
-        if (!p) return null;
-        return [repairTitle(p), ...repairDetails(p, new Date()), "From OpenStreetMap: check it is working before you count on it."];
-      });
+        return p ? { point: [p.lon, p.lat], words: repairWords(p, new Date()) } : null;
+      }, actionFor);
     },
-    [places, on, pixelRatio],
+    [places, on, pixelRatio, actionFor],
   );
   return null;
 }
 
 /** The places to see layer: one switch in Layers, off by default. */
-export function PlacesOverlay({ getMap, places, on }: { getMap: () => MapLibreMap | null; places: readonly SightPlace[] | null; on: boolean }) {
+export function PlacesOverlay({ getMap, places, on, actionFor }: { getMap: () => MapLibreMap | null; places: readonly SightPlace[] | null; on: boolean; actionFor: StopActionFor }) {
   useMap(
     getMap,
     (map) => {
@@ -234,19 +235,18 @@ export function PlacesOverlay({ getMap, places, on }: { getMap: () => MapLibreMa
       if (!map.getLayer(PLACES_LAYER)) map.addLayer(placesLayer() as never, map.getLayer(ROUTE_BOTTOM_LAYER) ? ROUTE_BOTTOM_LAYER : undefined);
       map.setLayoutProperty(PLACES_LAYER, "visibility", on ? "visible" : "none");
       const byId = new Map(places.map((p) => [p.id, p]));
-      return tapCard(map, PLACES_LAYER, (id) => {
+      return stopCard(map, PLACES_LAYER, (id) => {
         const p = byId.get(id);
-        if (!p) return null;
-        return [p.name, `${categoryOf(p).one}.`, ...(p.hours ? [`Hours as mapped: ${p.hours}.`] : []), "From OpenStreetMap."];
-      });
+        return p ? { point: [p.lon, p.lat], words: sightWords(p, new Date()) } : null;
+      }, actionFor);
     },
-    [places, on],
+    [places, on, actionFor],
   );
   return null;
 }
 
 /** Every food place a search found, as dots under the lettered pins, while the Food sheet is open. */
-export function FoodOverlay({ getMap, results, on }: { getMap: () => MapLibreMap | null; results: readonly FoodResult[] | null; on: boolean }) {
+export function FoodOverlay({ getMap, results, on, actionFor }: { getMap: () => MapLibreMap | null; results: readonly FoodResult[] | null; on: boolean; actionFor: StopActionFor }) {
   useMap(
     getMap,
     (map) => {
@@ -258,17 +258,12 @@ export function FoodOverlay({ getMap, results, on }: { getMap: () => MapLibreMap
       if (!map.getLayer(FOOD_LAYER)) map.addLayer(foodLayer() as never, map.getLayer(ROUTE_BOTTOM_LAYER) ? ROUTE_BOTTOM_LAYER : undefined);
       map.setLayoutProperty(FOOD_LAYER, "visibility", "visible");
       const byId = new Map(results.map((r) => [r.place.id, r]));
-      return tapCard(map, FOOD_LAYER, (id) => {
+      return stopCard(map, FOOD_LAYER, (id) => {
         const r = byId.get(id);
-        if (!r) return null;
-        const hours = foodHoursText(r.place);
-        return [r.place.name, `${foodKindText(r.place)}.`, foodHowFar(r), ...(hours ? [hours] : []), "From OpenStreetMap."];
-      }, (id) => {
-        const place = byId.get(id)?.place;
-        return place?.website ? { href: place.website, text: "Website", label: `Website: ${place.name} (opens in a new tab)` } : null;
-      });
+        return r ? { point: [r.place.lon, r.place.lat], words: foodWords(r, new Date()) } : null;
+      }, actionFor);
     },
-    [results, on],
+    [results, on, actionFor],
   );
   return null;
 }

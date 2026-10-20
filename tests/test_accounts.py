@@ -95,6 +95,35 @@ class TestSettings:
         assert r["Cache-Control"] == "no-store"
         assert AccountSettings.objects.get(user=user).data == doc
 
+    def test_favorite_ride_types_are_kept(self) -> None:
+        client, user, csrf = signed_in()
+        doc = {"v": 1, "favorites": ["cargo", "gravel"]}
+        r = send(client, "post", "/api/me/settings", {"settings": doc}, csrf)
+        assert r.status_code == 200
+        assert AccountSettings.objects.get(user=user).data == doc
+
+    def test_the_rider_and_bike_weight_is_kept(self) -> None:
+        # The owner, 2026-10-19: "Weight should be retained for signed in users".
+        client, user, csrf = signed_in()
+        weight = {
+            "name": "My weight",
+            "totalKg": 93.4,
+            "parts": {"riderKg": 78.4, "bikeKg": 15, "cargoKg": 0},
+            "setAt": 1760000000000,
+        }
+        doc = {"v": 1, "weight": weight}
+        r = send(client, "post", "/api/me/settings", {"settings": doc}, csrf)
+        assert r.status_code == 200
+        assert AccountSettings.objects.get(user=user).data == doc
+        assert client.get("/api/me/settings").json()["settings"]["weight"] == weight
+
+    def test_a_refused_weight_is_not_echoed(self) -> None:
+        client, _user, csrf = signed_in()
+        doc = {"v": 1, "weight": {"totalKg": 4321}}
+        r = send(client, "post", "/api/me/settings", {"settings": doc}, csrf)
+        assert r.status_code == 400
+        assert "4321" not in r.content.decode()
+
     def test_last_write_wins(self) -> None:
         client, user, csrf = signed_in()
         send(client, "post", "/api/me/settings", {"settings": {"v": 1, "topo": True}}, csrf)
@@ -115,7 +144,17 @@ class TestSettings:
             {"v": 1, "plan": "#p=-77.0,38.9;-77.1,38.8&preset=default"},
             {"v": 1, "sections": {"a": {"b": {"c": {"d": 1}}}}},
             {"v": 1, "weight": {"total_kg": 80}},
+            {"v": 1, "weight": 80},
+            {"v": 1, "weight": {"totalKg": 10}},
+            {"v": 1, "weight": {"totalKg": 701}},
+            {"v": 1, "weight": {"totalKg": True}},
+            {"v": 1, "weight": {"totalKg": 80, "parts": {"riderKg": 80}}},
+            {"v": 1, "weight": {"totalKg": 80, "name": "x" * 500}},
             {"v": 1, "bikeshare": {"name": "x" * (accounts.SETTINGS_MAX_BYTES + 1)}},
+            {"v": 1, "favorites": "cargo"},
+            {"v": 1, "favorites": [{"id": "cargo"}]},
+            {"v": 1, "favorites": ["cargo", "cargo"]},
+            {"v": 1, "favorites": ["cargo"] * (accounts.FAVORITES_MAX + 1)},
         ],
     )
     def test_only_the_planner_s_own_settings_are_kept(self, doc) -> None:

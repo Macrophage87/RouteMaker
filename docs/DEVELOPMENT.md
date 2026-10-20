@@ -3615,6 +3615,42 @@ The owner, 2026-10-03: "Actually, I like merging the runs, that sounds good." (2
   are stored (`routemaker.stress`); the merge cost assumes lanes by tier where
   none was read. None of the post-rebuild pricing has been run live.
 
+## Junction delay: the time stops and signals cost
+
+The owner, 2026-10-20: a route the planner chose over a rider's usual, flatter way took
+11 minutes longer than the router said, through a grid of stop signs, and the owner chose
+"Both": the delay counts in the time shown and in which route is picked.
+
+Valhalla's bicycle costing (3.9.1) times a junction as its `stopimpact` (0 to 7, from the
+roads' classes) times a turn cost of 0.15 s straight on, about a second at most, whatever
+controls it. `routemaker.junction_delay` adds what a rider loses, read at every node of the
+route's trace where it crosses or joins a road (`trace_junctions.junctions_of_trace`, with
+the router's `node.traffic_signal` and `edge.traffic_signal` flags):
+
+| At the junction | Delay | Why |
+|---|---|---|
+| A traffic signal on the node or within 30 m (100 ft) up the rider's approach | 15 s | the average wait for a random arrival at a 100 s cycle with 50 s of red (Webster's uniform delay), plus half a stop; inferred |
+| The rider gives way to a neighbourhood street (unclassified or residential): crossing one as busy as their own, turning onto one where their own street does not go on ahead, or crossing or leaving a path | 8 s | one stop at a steady effort: Fajans and Curry, ["Why Bicyclists Hate Stop Signs"](https://www.accessmagazine.org/spring-2001/bicyclists-hate-stop-signs), ACCESS 18 (2001), 14.2 against 10.9 mph |
+| The same in the District, where the road given way to is unclassified or residential | 4 s | DC lets a rider take a stop sign as a yield (the owner: "bikes aren't required to stop at stop signs if there's no cross traffic"); a slow-and-roll, inferred |
+| The rider gives way to a busier road that does not stop: tertiary, secondary, primary or busier | 12, 20, 30 s | the wait for a gap (the owner: "a stop sign against a busy street without one probably costs more"); one value per class through the day, from the Highway Capacity Manual's two-way-stop levels of service (HCM 6th ed., Exhibit 20-2: A up to 10 s, B 10-15, C 15-25, D 25-35); inferred |
+| The rider on the busier road, a side road from one side, a turn off a through street at a T onto one no busier, a turn off onto a quieter street, driveways and alleys | 0 | |
+
+Junctions that cost something and lie within 35 m (115 ft) of the first of them along the
+route are one stop at the dearest, or at the signal's wait where one is a signal (a divided
+road, a stop line and its junction). Junctions that cost nothing (driveways, way splits)
+neither start nor stretch the run, so a street with a driveway every few metres still counts
+each stop sign. A flashing beacon mapped as a signal (`core.flashing_signals`) is priced by
+who gives way, not as a signal. The answer's `duration_s` is the router's
+time plus `junction_delay_s`, and the calm search's score (`refine.Analysis.score`) adds the
+delay at what that much quiet riding costs the router (`QUIET_COST_FACTOR`); at the top of
+the slider the same quiet metres join the ranking's distance level (`refine.level3`), so
+between equally calm routes the one with fewer stops ranks first. A Mountain Bike route's
+singletrack retiming applies to the router's time, and the delay is added after it. This is time,
+not stress: a junction's stress is still the intersection model's (section above) and the
+two do not replace each other. Stop and yield signs reach the router only through
+`/locate`, so the model reads who gives way from the roads' classes, not from the signs; no
+map rebuild is needed.
+
 ## The worker
 
 Procrastinate runs through its Django integration, so its job tables are
@@ -4203,6 +4239,37 @@ rails, added under the lowest stress layer; and the covered bridges and viewpoin
 `amenity-data/places.json` (`build_places.py` marks a covered bridge `cv`). The switch is
 in Plan's Layers only (`LayersSheetProps.scenic` is null in Go).
 
+### Agency traffic signals: `signals.json` (v0.10.0)
+
+Signals an agency lists and OSM does not map (the owner, 2026-10-19: "I noticed some
+traffic signals weren't marked, however, DC has a full listing of them"). DC data beats
+OSM (2026-10-11), and so do the other agencies' lists where OSM says nothing or says
+less.
+
+- `reference/signals.json`, optional, from `install_reference_data.py --dc-signals
+  --md-signals --va-signals --arlington-signals --alexandria-signals --alexandria-hawks`
+  (`pipeline.agency_signals.ddot_rows`, `mdot_sha_rows`, `vdot_rows`, `arlington_rows`,
+  `alexandria_rows`; field names read in any case): one row a signal,
+  `{"id", "source", "lon", "lat", "kind"}`, `kind` `signal` or `hawk`. Each source's
+  licence is in `LICENCE_CONFIRMED`; a row of a source not confirmed (Arlington, for now)
+  is installed but not read. Alexandria's two layers are one table (257 records), so
+  `alexandria_rows` splits it by `signal_type`: a HAWK only from `--alexandria-hawks`,
+  the rest (and a record with no `signal_type`) only from `--alexandria-signals`. A
+  `REPORT_ONLY` source (VDOT's 2023 snapshot) is matched and reported (`would add`)
+  but never marked.
+- `INJECT_TAGS` matches them (`agency_signals.match`): a signal with an OSM signal within
+  30 m whose nearest junction is the one the agency point marks is "in OSM"; otherwise
+  every road junction node within 20 m (three or more road arms; alleys, parking aisles
+  and driveways are not arms) is marked `rm:agency_signal=yes`, and a HAWK marks its
+  nearest crosswalk node. Only way nodes near a listed signal are indexed, and the
+  extract's OSM signals are read in one more pass over its `highway` nodes.
+- The transform (`remap.derives_signal`) turns the mark into `highway=traffic_signals`
+  over an `uncontrolled` or `unmarked` crossing and a stop or give-way sign on the node;
+  a crossing whose `bicycle=no` upstream reopens keeps its class.
+- The log line `agency signals: ddot: N added, N already in OSM, N with no junction in
+  reach` and `reports/agency-signals.csv` (one row a signal) say what happened. Tests:
+  `tests/test_agency_signals.py`, `tests/lua/test_remap.lua`.
+
 ## Tiles and the swap
 
 Each variant's tiles live under `<DATA_ROOT>/tiles/<variant>/`: a dated build
@@ -4725,11 +4792,23 @@ puts it, at most two presses away.
   water, restrooms or Metro stations and the food found are lettered A, B, C... in their list (a
   pin, aria-hidden, with the letter heard first) and on the map (MapView `lettered`: 44 px
   buttons, a pin with the letter, named "B: Drinking water, Garfield Park, 0.3 mi (0.5 km)"),
-  while that list's sheet is open; the map fits them in, above a phone's sheet. A marker's tap,
-  the row's Ride here, or the letter's key (not while typing, on the map or in a dialog) picks
-  it: in Go as the destination, straight to the route options; in Plan, the nearest's Ride here
-  and food's Show on map. Food's numbered circle layer is gone; its list and markers use the
-  letters. The Choose a station lists (Plan) are not lettered.
+  while that list's sheet is open; the map fits them in, above a phone's sheet. A marker's tap
+  or the letter's key (not while typing, on the map or in a dialog), and a row of Go's Repair or
+  Sights, opens the place's **stop card**; the rows' own Ride here and Add as stop act at once.
+  Food's numbered circle layer is gone; its list and markers use the letters. The Choose a
+  station lists (Plan) are not lettered.
+- **Stop cards** (Stephen 2026-10-19: "when pressing on food or other stops provide information
+  on what's there including a link to the website if available. Then offer a route/detour here",
+  and "don't auto route"; `lib/stopCard.ts`, `lib/stopWords.ts`, `app/mapOverlay.ts` `stopCard`):
+  a press on a lettered pin, a food, places-to-see or repair-stand dot, or a water or restroom
+  icon opens one card and never routes or places a point by itself, in Go or Plan (MapView's
+  main click counts the stop layers as feature cards in both modes). Most important first: the
+  name, what it is, Open now or Closed now where the mapped hours can be read (else the hours as
+  mapped), how far or the detour; then one action and the website (http or https only, a new
+  tab, named "Website: <place> (opens in a new tab)"). The action is Route here before there is
+  a route (Go: from Go's start; Plan: from the rider's location with an empty plan, else as the
+  end) and Add as stop with one (Go: where it is shortest; Plan: as a stop). Nothing while
+  riding.
 - **Bikeshare options** (`lib/bikeshareOptions.ts`; #94's `bikeshare.options`): a Bikeshare route
   in Go lists its pick-up and drop-off pairs as buttons lettered A, B, C, each named by the
   option's own `text`, the one the shown plan rides pressed (aria-pressed and a "Planned" tag),
@@ -4768,8 +4847,9 @@ puts it, at most two presses away.
 - **Sheets** (`app/Sheets.tsx`, `lib/sidebar.ts` `PanelView`): the bar is Plan, Layers,
   Suggest, GPX and Settings. Layers holds the switches only, with a Legend button that opens
   the Legend sheet one step in; Suggest says how to suggest from the road panel and opens it
-  at the map's center, with DC 311 and an admin's Review; Settings is Display (High contrast,
-  Accessibility mode, Open in when signed out), Ride mode, This device and Account (My Go).
+  at the map's center, with DC 311 and an admin's Review; Settings is My Go (Home, Go's ride
+  type, Open in), Riding, Display (High contrast, Accessibility mode, Announcements) and Account,
+  most used first, one row per setting; on a phone it takes the panel's whole height.
   Plan's map has Food and Water chips (`PlanMapChips`), which open the Find food and Nearest
   sheets. `openOnto`/`backFrom` keep the way back through nested sheets; Back returns the
   focus to what opened the sheet, and a sheet's heading takes it on the way in.
@@ -4778,8 +4858,9 @@ puts it, at most two presses away.
 - **Ride mode**: the 311 button (`lib/ride311.ts`), 60 px round on the right edge at thumb
   height, only while the rider's place on the route is inside DC; it opens a menu with the
   place line and the six problems as large buttons, and a pick opens "Report a problem to DC
-  311" with that problem chosen (the note, the text or DC 311 online and Copy as before). Big
-  text has a text-size icon; Where am I?, Re-centre and End ride have icons too.
+  311" with that problem chosen (the note, the text or DC 311 online and Copy as before). Large
+  text (which replaced Big text, 2026-10-20) has the text-size icon; Where am I? (which re-centres
+  too) and End ride have icons too.
 - **Icons**: `lib/iconPaths.ts` (the mockup's own line icons, minus Work, plus cargo,
   text size, tree and bikeshare) drawn by `Icon.tsx` (or `lineIcon` in createElement
   modules), always `aria-hidden` beside words.
@@ -4867,6 +4948,22 @@ Tests: `lib/sidebar.test.ts`.
   `licenses.txt` (which the map's "Software licences" link opens), not a data credit. The sidebar test fails if the import and the
   two files are not both there, or the licence is missing; `notices.test.mjs` checks
   that the credit and the licence text reach `licenses.txt`.
+- **The map's label font (the owner, 2026-10-20).** Every map label is Atkinson Hyperlegible
+  Next; the street names (`stressStyle.js`, `ROAD_LABEL`) are its SemiBold at 15 px. MapLibre
+  draws text from glyph files, not web fonts, and the style has one glyph URL template (the
+  base map's `/basemap/fonts/`), so the three Latin ranges (`corridor.ts` `GLYPH_RANGES`) of
+  Regular, SemiBold and Italic are made once with `scripts/make_map_glyphs.mjs` and bundled in
+  `frontend/src/fonts/map-glyphs/` (sha256 in docs/SOURCES.md). Each file is the font's glyphs
+  with the base map's matching Noto Sans face filling the code points the font lacks, since
+  MapLibre draws nothing for a code point missing from a range it has. Vite serves them as
+  hashed `/assets/*.pbf` files (no edge change) and the service worker precaches them (about
+  800 KB uncompressed, 470 KB gzipped). The layers keep naming the base map's faces; the
+  `transformRequest` of both the app's map (`MapView.tsx`) and the share card's
+  (`app/shareCardRender.ts`), `lib/mapGlyphAssets.ts` `mapGlyphRequest`,
+  sends a request for Noto Sans Regular, Medium or Italic (or the street names' face) to its
+  Atkinson file through `lib/mapGlyphs.ts` `glyphRequestUrl`, and leaves other ranges to the
+  base map. A kept ride's prefetch skips the bundled faces. The licence is the second
+  `BUNDLED_FONTS` entry, in `licenses.txt`.
 - **The Plan button (OWNER-DECISIONS 392, 393).** The bar is Plan, Map layers, Legend, GPX,
   Settings (`BAR_ITEMS`; Plan is `id: "plan"`, `opens: "planner"`, so `barCurrent` marks it
   `aria-current` while the planner shows and no other button then). It returns from any
@@ -6011,11 +6108,18 @@ kilograms (`system_weight_kg`, `lib/weight.ts` `withWeight` and `dials.ts` `dial
   The effort model stays well-behaved to the top: an 8% climb's factor is 6.5 at 90 kg, 11.3
   at 450 and 12.2 at 700, flattening towards 1 + grade / CRR (14.3), so above about 450 kg
   routes barely change (337's "any end where routes stop changing"; tests/test_effort.py).
-- **Where it is kept** (`WeightStore`): signed out, in this browser (localStorage,
-  `routemaker.weight`) only when "Remember on this device" is ticked, else for the visit.
-  The shape is `{name, totalKg, parts?, setAt}`, ready for named loadouts (315); `migrate`
-  reads earlier shapes. Signed in, saving it to the rider's profile is the accounts work's:
-  `WeightStore` is where it goes in.
+- **Where it is kept** (`WeightStore`): always in this browser (localStorage,
+  `routemaker.weight`; for the visit only if storage refuses). There is no "remember"
+  checkbox (the owner, 2026-10-19). Signed in it is also the `weight` key of the account's
+  settings (`lib/accountSettings.ts`, checked by `core.accounts.settings_problem`, which never
+  echoes it), so it follows the rider to another device; account settings win on sign-in as
+  for the rest. Clear stores `cleared` (`WEIGHT_CLEARED`), sent as `weight: null`, so every
+  signed-in device clears its copy instead of putting its own back; an account from before
+  this keeps the device's. App passes `WeightStore.setting()` to `deviceSettings`, so a
+  browser that refuses storage still syncs. Delete account erases it with the
+  `AccountSettings` row. It is never in the plan setting, a link, a log or
+  MCP output. The shape is `{name, totalKg, parts?, setAt}`, ready for named loadouts (315);
+  `migrate` reads earlier shapes.
 - **Tests**: `lib/weight.test.ts` (the line, the worksheet, storage, migration, never in a
   link or a GPX file, the saved number in no markup), the a11y harness's section 15 (focus
   in and back, the name and description, Escape, the saved number absent from the page and

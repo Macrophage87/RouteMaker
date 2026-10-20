@@ -15,7 +15,8 @@ import { formatDistanceChange, formatDuration } from "./format.ts";
 import { isTransit, type PresetId } from "./presets.ts";
 import type { StressKey } from "./stressBar.ts";
 
-export const NEIGHBOUR_NAME: Record<NeighbourKind, string> = { direct: "More direct", calmer: "Calmer" };
+/** The calmer option is the trailmaxxed route, the top of the rider's slider (the owner, 2026-10-19; core.presets stress_notches). */
+export const NEIGHBOUR_NAME: Record<NeighbourKind, string> = { direct: "More direct", calmer: "Trailmaxxed" };
 
 /**
  * Whether Go asks for the options at all: the bike-only ride types with a traffic slider to move, and plain Bikeshare

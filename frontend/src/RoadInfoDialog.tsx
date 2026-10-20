@@ -37,6 +37,9 @@ import {
   STREET_VIEW_NOTE,
   STREET_VIEW_TEXT,
   fetchSegmentInfo,
+  TRAIL_VIA_TEXT,
+  trailNotRouted,
+  type TrailRider,
   streetViewPoint,
   infoHeading,
   infoSaid,
@@ -77,9 +80,12 @@ import { FEDERAL_ADVICE, stopWarningShort, type FederalArea } from "./lib/federa
 import { HazardReport } from "./HazardReport.tsx";
 import { ClosureEntry } from "./ClosureEntry.tsx";
 import { MARK_CLOSED_TEXT } from "./lib/closureReview.ts";
-import { climbLabel, type Climb } from "./lib/climbs.ts";
+import { climbNamedLabel, type Climb } from "./lib/climbs.ts";
 import { CLIMB_DETAILS_TEXT } from "./lib/climbCard.ts";
+import { TrailProfileView } from "./lib/trailProfile.ts";
 import { milePanelRow, type TrailMiles } from "./lib/trailMiles.ts";
+import { LOG_311_TEXT, panelLoggedSaid, panelPlace, report311Log } from "./lib/report311Log.ts";
+import { REPORT_KINDS } from "./lib/report311.ts";
 import { HAZARD_REPORT_TEXT, hazardOnPiece, hazardPanelText, hazardSaid, type HazardCollection } from "./lib/massHazards.ts";
 
 interface Props {
@@ -136,7 +142,13 @@ interface Props {
   /** The plan's point count and whether it is a loop, for the top row (OWNER-DECISIONS 441n). */
   plan: { count: number; loop: boolean };
   /** Put the spot in the plan as its start, its end or a stop; the panel then closes. */
-  onPlace: (choice: PlaceChoice, point: [number, number]) => void;
+  /** `asVia`: the point is a via point (a tapped trail's Route through this trail), not a stop. */
+  onPlace: (choice: PlaceChoice, point: [number, number], asVia?: boolean) => void;
+  /**
+   * The rider's ride type and Mountain Bike level (lib/roadInfo.ts trailNotRouted): a mountain-bike trail's stop
+   * button reads Route through this trail only where this ride type's router uses the trail; else the panel says why.
+   */
+  trailRider?: TrailRider;
   /** "Set as Home" (lib/homeSet.ts): the spot is the rider's Home; the panel then closes. Absent: no button. */
   onSetHome?: (point: [number, number]) => void;
 }
@@ -162,6 +174,7 @@ function neighbour(items: HTMLElement[], from: HTMLElement, backwards: boolean):
 
 /** Both rail systems shown: where the panel is not told the map's toggles. */
 const ALL_RAIL: RailVisibility = { metro: true, marc: true };
+const NO_TRAIL_RIDER: TrailRider = { rideType: "", mtbLevel: null };
 
 /**
  * A nearby station's lines now, scheduled, as its card on the map says them (railInteraction.ts): the
@@ -196,7 +209,7 @@ function StationTimesList({ station, rail, closed }: { station: Station; rail: R
   );
 }
 
-export function RoadInfoDialog({ request, hazards = null, massRide, station, rail = ALL_RAIL, stationClosed, avoid = null, junctionShown = null, federal = null, climb = null, onShowClimb, trailMiles = null, onClose, fallbackFocus, onStressChanged, plan, onPlace, onSetHome }: Props) {
+export function RoadInfoDialog({ request, hazards = null, massRide, station, rail = ALL_RAIL, stationClosed, avoid = null, junctionShown = null, federal = null, climb = null, onShowClimb, trailMiles = null, onClose, fallbackFocus, onStressChanged, plan, onPlace, onSetHome, trailRider = NO_TRAIL_RIDER }: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const returnTo = useRef<Element | null>(null);
@@ -236,6 +249,11 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
   // that shows them; open, it stays open while a form opened from it is shown, so Back finds its button.
   const [suggestMenu, setSuggestMenu] = useState(false);
   const suggestMenuId = useId();
+  // Log for 311 (lib/report311Log.ts): its six problems, shown under the row while open, and the line once one is logged.
+  const [logMenu, setLogMenu] = useState(false);
+  const [logged, setLogged] = useState("");
+  const logMenuId = useId();
+  const logButton = useRef<HTMLButtonElement>(null);
   const junctionButton = useRef<HTMLButtonElement>(null);
   const returnToJunction = useRef(false);
   // A Mass Ride's "Mark a hazard" form (HazardReport.tsx), open in place of the row.
@@ -281,6 +299,8 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
     setJunction(null);
     setSuggestingJunction(false);
     setSuggestMenu(false);
+    setLogMenu(false);
+    setLogged("");
     setReload(0);
     const controller = new AbortController();
     void fetchMe(window.location.origin).then((who) => {
@@ -295,7 +315,7 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
         if (found && request.junction) setSuggestingJunction(true);
       });
     });
-    fetchSegmentInfo(window.location.origin, request.point, controller.signal).then(
+    fetchSegmentInfo(window.location.origin, request.point, controller.signal, false, request.trail === true).then(
       (next) => {
         stateFor.current = request;
         setState(next);
@@ -315,7 +335,7 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
   useEffect(() => {
     if (reload === 0 || !request) return;
     const controller = new AbortController();
-    fetchSegmentInfo(window.location.origin, request.point, controller.signal, true).then(
+    fetchSegmentInfo(window.location.origin, request.point, controller.signal, true, request.trail === true).then(
       (next) => {
         if (next.kind === "ready") setState(next);
       },
@@ -488,12 +508,17 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
   const actions = spotActions(plan.count, plan.loop);
   const editableWay = ready && me.can_change_lts && ready.osm_way_id != null ? ready.osm_way_id : null;
   // A rider the settings allow may suggest a level (an instance admin changes it instead).
+  // Not on a mountain-bike trail: it has no traffic to rate (the owner, 2026-10-19).
+  const trailWay = ready?.mtb_trail === true;
+  // On a trail, whether this ride type's routes use it (Route through this trail), or why not.
+  const trailNote = trailNotRouted(ready, trailRider);
+  const trailRoutes = trailWay && trailNote === null;
   const suggestWay =
-    ready && me.can_suggest && editableWay === null && ready.osm_way_id != null && ready.tier != null ? ready.osm_way_id : null;
+    ready && !trailWay && me.can_suggest && editableWay === null && ready.osm_way_id != null && ready.tier != null ? ready.osm_way_id : null;
   // Anyone else gets the short form (v0.7.0; SuggestQuick.tsx): signed out, or the settings keep the
   // full form closed to them.
   const quickWay =
-    meKnown && ready && !me.can_suggest && !me.can_change_lts && ready.osm_way_id != null && ready.tier != null
+    meKnown && ready && !trailWay && !me.can_suggest && !me.can_change_lts && ready.osm_way_id != null && ready.tier != null
       ? ready.osm_way_id
       : null;
   const suggestRoad = suggestWay ?? quickWay;
@@ -599,11 +624,13 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
                   aria-describedby={action.unavailable ? id(`why-${action.choice}`) : undefined}
                   onClick={() => {
                     if (action.unavailable) return;
-                    onPlace(action.choice, request.point);
+                    // On a tapped trail, the point goes on the trail itself, and its stop is a via point.
+                    const trailVia = trailRoutes && action.choice === "via";
+                    onPlace(action.choice, trailWay ? (ready?.on_way ?? request.point) : request.point, trailVia);
                     close();
                   }}
                 >
-                  {action.text}
+                  {trailRoutes && action.choice === "via" ? TRAIL_VIA_TEXT : action.text}
                 </button>
               </li>
             ))}
@@ -623,6 +650,7 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
             )}
           </ul>
         )}
+        {request && trailNote !== null && <p className="hint road-info-place-why">{trailNote}</p>}
         {request && actions.some((a) => a.unavailable) && (
           <p className="hint road-info-place-why">
             {actions
@@ -672,6 +700,8 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
             ))}
           </ul>
         )}
+        {/* A mountain-bike trail's elevation profile (the owner, 2026-10-19; lib/trailProfile.ts). */}
+        {ready && trailWay && ready.osm_way_id != null && <TrailProfileView way={ready.osm_way_id} uid={id("trail").replace(/[^A-Za-z0-9_-]/g, "")} />}
         {mySuggestion && mySuggestion.osm_way_id === ready?.osm_way_id && (
           <p className="road-info-mine">
             <span className="road-info-label">Your suggestion:</span> {mySuggestionText(mySuggestion)}
@@ -692,7 +722,7 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
         {climb && onShowClimb && (
           <div className="road-info-climb">
             <p id={id("climb")}>
-              <span className="road-info-label">Climb here:</span> {climbLabel(climb)}{climb.name ? `, on ${climb.name}` : ""}
+              <span className="road-info-label">Climb here:</span> {climbNamedLabel(climb)}
             </p>
             <button
               type="button"
@@ -891,7 +921,34 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
                 </li>
               )}
               {suggestCount < 2 && suggestItems}
+              <li>
+                <button type="button" className="road-info-button" ref={logButton} aria-expanded={logMenu} aria-controls={logMenuId} onClick={() => setLogMenu(!logMenu)}>
+                  {LOG_311_TEXT}
+                </button>
+              </li>
             </ul>
+            <ul id={logMenuId} className="road-info-buttons road-info-311" aria-label={LOG_311_TEXT} hidden={!logMenu}>
+              {REPORT_KINDS.map((k) => (
+                <li key={k.kind}>
+                  <button
+                    type="button"
+                    className="road-info-button"
+                    onClick={() => {
+                      const entry = report311Log().add(k.kind, panelPlace(ready?.title ?? null, ready?.on_way ?? request.point));
+                      const line = panelLoggedSaid(entry);
+                      setLogMenu(false);
+                      setLogged(line);
+                      setSaid(line);
+                      // The picked button hides with the list: the focus goes back to Log for 311.
+                      logButton.current?.focus();
+                    }}
+                  >
+                    {k.label}
+                  </button>
+                </li>
+              ))}
+            </ul>
+            {logged && <p className="hint road-info-logged">{logged}</p>}
             {suggestCount >= 2 && (
               <ul id={suggestMenuId} className="road-info-buttons road-info-suggest" aria-label="Suggest a change" hidden={!suggestMenu}>
                 {suggestItems}

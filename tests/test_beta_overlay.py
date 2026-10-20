@@ -793,6 +793,12 @@ def test_reverse_and_geocode_log_errors_at_crit_only_with_the_api_proxy_settings
     assert not covered.fullmatch("/api/review/rulings")
 
 
+CONNECTOR_PATHS = (
+    r"~ ^/(mcp|oauth/(register|token)|\.well-known/oauth-(protected-resource(/mcp)?"
+    r"|authorization-server))$"
+)
+
+
 def test_basic_auth_is_on_for_the_whole_https_server_and_off_only_for_robots_and_acme() -> None:
     full = stage("full")
     https = full[full.index("listen 443") :]
@@ -804,6 +810,9 @@ def test_basic_auth_is_on_for_the_whole_https_server_and_off_only_for_robots_and
             "^~ /.well-known/acme-challenge/",
             "= /robots.txt",
             "= /rmbeta-401.html",
+            # The MCP connector (core.connector), which an assistant's servers call with the
+            # rider's token: never the rider's own sign-in pages.
+            CONNECTOR_PATHS,
             "= /delete-account",
         ]
     ), exempt
@@ -817,6 +826,21 @@ def test_basic_auth_is_on_for_the_whole_https_server_and_off_only_for_robots_and
     assert re.search(r"^\s*internal;", page, re.M), page
     assert "error_page 401 /rmbeta-401.html;" in https
     assert "alias @PAGES_DIR@/401.html;" in page
+
+
+def test_only_the_connector_s_machine_paths_skip_the_password() -> None:
+    covered = re.compile(CONNECTOR_PATHS.removeprefix("~ "))
+    for path in (
+        "/mcp",
+        "/oauth/register",
+        "/oauth/token",
+        "/.well-known/oauth-protected-resource",
+        "/.well-known/oauth-protected-resource/mcp",
+        "/.well-known/oauth-authorization-server",
+    ):
+        assert covered.fullmatch(path), path
+    for path in ("/oauth/authorize", "/auth/login", "/mcp/x", "/api/route", "/oauth/token/x"):
+        assert not covered.fullmatch(path), path
 
 
 def test_the_back_soon_page_replaces_only_nginxs_own_502_and_stays_behind_the_password() -> None:
@@ -935,6 +959,12 @@ def test_json_is_gzipped() -> None:
     assert "application/json" in re.search(r"gzip_types[^;]*;", full).group(0)
 
 
+ABOUT_LOCATION = (
+    r"~ ^/about/((stress|how-it-works|using|accessibility|routing|ride-types|mass-ride|trails"
+    r"|architecture|assistants|acknowledgements)\.html|route-example\.webp)$"
+)
+
+
 def test_the_template_serves_what_the_caddyfile_serves() -> None:
     full = stage("full")
     paths = [p for p, _ in locations(full)]
@@ -943,7 +973,7 @@ def test_the_template_serves_what_the_caddyfile_serves() -> None:
         "= /index.html",
         "= /favicon.svg",
         "= /licenses.txt",
-        "= /about/stress.html",
+        ABOUT_LOCATION,
         "= /sw.js",
         "= /manifest.webmanifest",
         "^~ /icons/",
@@ -978,7 +1008,7 @@ def test_the_stress_page_and_its_short_paths_are_served_as_the_caddyfile_serves_
     with the Caddyfile's status, as case-insensitively as Caddy's `path` matcher."""
     full = stage("full")
     by_path = dict(locations(full))
-    page = by_path["= /about/stress.html"]
+    page = by_path[ABOUT_LOCATION]
     caddy_csp = re.search(r'header Content-Security-Policy "([^"]+)"', CADDYFILE).group(1)
     assert f'add_header Content-Security-Policy "{caddy_csp}" always;' in page
     assert 'add_header Cache-Control "no-cache" always;' in page
@@ -991,6 +1021,21 @@ def test_the_stress_page_and_its_short_paths_are_served_as_the_caddyfile_serves_
     target, status = caddy.groups()
     assert target == "/about/stress.html"
     assert by_path["~* ^/about/stress/?$"].strip() == f"return {status} {target};"
+
+
+def test_the_about_location_names_exactly_the_documentation_pages_the_caddyfile_serves() -> None:
+    """The owner, 2026-10-19: the rider-facing documentation under /about/. The template's
+    one location names the same pages as the Caddyfile's @frontend and as frontend/public/about,
+    so a new page cannot be served by one edge and not the other."""
+    pages = re.search(r"\^/about/\(\(([^)]*)\)\\.html\|([^)]*)\)", ABOUT_LOCATION)
+    names = {f"{n}.html" for n in pages.group(1).split("|")} | {
+        n.replace("\\.", ".") for n in pages.group(2).split("|")
+    }
+    frontend = re.search(r"^\s*@frontend path (.+)$", CADDYFILE, re.M).group(1).split()
+    caddy = {p.removeprefix("/about/") for p in frontend if p.startswith("/about/")}
+    public = Path(__file__).resolve().parent.parent / "frontend" / "public" / "about"
+    files = {p.name for p in public.iterdir() if p.is_file()}
+    assert names == caddy == files, (names, caddy, files)
 
 
 def test_the_installable_app_is_served_as_the_caddyfile_serves_it() -> None:

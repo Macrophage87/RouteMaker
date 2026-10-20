@@ -4,7 +4,6 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   CARD_CLOSE_LABEL,
-  CREDITS_COLLAPSE_PX,
   cardName,
   cardTakesFocus,
   collapseCredits,
@@ -67,23 +66,17 @@ function fakeCredits(classes: string[]) {
   };
 }
 
-test("on a narrow map the credits start as MapLibre's collapsed i; on a wide one they stay open", () => {
-  const phone = fakeCredits(["maplibregl-ctrl-attrib", "maplibregl-compact", "maplibregl-compact-show"]);
-  assert.equal(collapseCredits(phone, 375), true);
-  assert.deepEqual([...phone.set].sort(), ["maplibregl-compact", "maplibregl-ctrl-attrib"], "compact stays, so the i shows");
-  const edge = fakeCredits(["maplibregl-compact", "maplibregl-compact-show"]);
-  assert.equal(collapseCredits(edge, CREDITS_COLLAPSE_PX), true, "MapLibre's own compact width, inclusive");
-  const desk = fakeCredits(["maplibregl-compact", "maplibregl-compact-show"]);
-  assert.equal(collapseCredits(desk, CREDITS_COLLAPSE_PX + 1), false);
-  assert.ok(desk.set.has("maplibregl-compact-show"));
-  assert.equal(CREDITS_COLLAPSE_PX, 640);
+test("the credits start as MapLibre's collapsed i at every width (they hold the info panel, lib/mapInfo.ts)", () => {
+  const credits = fakeCredits(["maplibregl-ctrl-attrib", "maplibregl-compact", "maplibregl-compact-show"]);
+  assert.equal(collapseCredits(credits), true);
+  assert.deepEqual([...credits.set].sort(), ["maplibregl-compact", "maplibregl-ctrl-attrib"], "compact stays, so the i shows");
 });
 
 test("credits that are not compact, already collapsed, or missing are left alone", () => {
   const full = fakeCredits(["maplibregl-ctrl-attrib"]);
-  assert.equal(collapseCredits(full, 320), false);
+  assert.equal(collapseCredits(full), false);
   const shut = fakeCredits(["maplibregl-compact"]);
-  assert.equal(collapseCredits(shut, 320), false);
+  assert.equal(collapseCredits(shut), false);
   assert.deepEqual([...shut.set], ["maplibregl-compact"]);
-  assert.equal(collapseCredits(null, 320), false);
+  assert.equal(collapseCredits(null), false);
 });

@@ -18,6 +18,8 @@ interface Props {
   answer: RouteResponse | null;
   choice: number;
   onChoose: (index: number) => void;
+  /** Go: each row's colour on the map (lib/routeChoice.ts), shown as a swatch beside its name; null for none. */
+  colours?: readonly string[] | null;
 }
 
 export function CandidatePicker(props: Props): ReactElement | null {
@@ -25,7 +27,7 @@ export function CandidatePicker(props: Props): ReactElement | null {
 }
 
 /** The picker's markup for the ids under `id` (CandidatePicker passes useId's), or null with one route. */
-export function candidateFieldset(id: string, { answer, choice, onChoose }: Props): ReactElement | null {
+export function candidateFieldset(id: string, { answer, choice, onChoose, colours }: Props): ReactElement | null {
   const rows = candidateRows(answer);
   if (rows === null) return null;
   const hintId = `${id}-hint`;
@@ -46,7 +48,13 @@ export function candidateFieldset(id: string, { answer, choice, onChoose }: Prop
           "aria-labelledby": `${id}-name-${index}`,
           "aria-describedby": row.line ? `${id}-line-${index}` : undefined,
         }),
-        h("span", { className: "candidate-name", id: `${id}-name-${index}` }, row.name),
+        h(
+          "span",
+          { className: "candidate-name", id: `${id}-name-${index}` },
+          // The line's colour on the map, beside the name it is drawn with there; decorative, as the name says it.
+          colours?.[index] ? h("span", { className: "candidate-swatch", "aria-hidden": true, style: { background: colours[index] } }) : null,
+          row.name,
+        ),
         row.line ? h("span", { className: "candidate-line", id: `${id}-line-${index}` }, row.line) : null,
       ),
     ),
