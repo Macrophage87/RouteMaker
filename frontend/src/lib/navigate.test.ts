@@ -50,6 +50,7 @@ import {
   rideModel,
   REPLAN_UTURN,
   REPLAN_AHEAD,
+  REPLAN_NO_AHEAD,
   UTURNS_BEFORE_AHEAD,
   keepsAhead,
   replanTold,
@@ -1620,4 +1621,21 @@ test("ahead_only is sent only with a heading", () => {
   assert.equal(body({ heading: 90, aheadOnly: true }).ahead_only, true);
   assert.equal(body({ heading: 90 }).ahead_only, undefined);
   assert.equal(body({ heading: null, aheadOnly: true }).ahead_only, undefined);
+});
+
+test("no way ahead on the third: said plainly once, and the route is left up (the owner, 2026-10-20)", () => {
+  assert.equal(REPLAN_NO_AHEAD, "No route found ahead. Make a U-turn.");
+  assert.equal(replanTold(false, "stoker", REPLAN_NO_AHEAD), "say");
+  const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
+  assert.match(ride, /uturnHeld\.current = turned && aheadOnly && note !== REPLAN_REJOIN;/);
+  // Held, off route promises no new way; the silent check never takes the gate the rider's asks need.
+  assert.match(ride, /prefsRef\.current\.verbosity, auto && !uturnHeld\.current\);/);
+  assert.match(ride, /if \(check \? gate\.busy \|\| checking\.current : !gate\.begin\(Date\.now\(\)\)\) \{/);
+  assert.match(ride, /announcer\.current\?\.say\(note, note === REPLAN_NO_AHEAD\)/);
+  // No automatic re-plan while it is held; turning round as asked lets go of it.
+  assert.match(ride, /if \(!uturnHeld\.current\) void replan\(out\.state\.goodFix\.point\);/);
+  // Checked quietly now and then: a check that still turns round says and shows nothing.
+  assert.match(ride, /Date\.now\(\) - heldCheckAt\.current >= UTURN_RECHECK_MS/);
+  assert.match(ride, /if \(check && \(!found \|\| heading === null \|\| setsOffBack\(found\.geometry\.coordinates, heading\)\)\) return;/);
+  assert.match(ride, /uturnsInARow\.current = 0;\n\s+uturnHeld\.current = false;/);
 });

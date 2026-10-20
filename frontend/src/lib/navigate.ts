@@ -1267,6 +1267,14 @@ export const REPLAN_AHEAD = "New route found. Keep going ahead.";
  * "give two reroutes and on the third time assume that the user wants to stay on that path").
  */
 export const UTURNS_BEFORE_AHEAD = 2;
+/**
+ * That third re-route still turns round: there is no way ahead (or the map is wrong there). Said plainly, once; the
+ * route is left up and not re-planned again until the rider turns round or asks (the owner, 2026-10-20: "There is no
+ * route found ahead, make a U Turn. It could also be a mapping error, so just leave it up and don't keep annoying the user").
+ */
+export const REPLAN_NO_AHEAD = "No route found ahead. Make a U-turn.";
+/** How often a held U-turn route is checked, silently, for a way ahead (the owner: "check periodically... silently"). */
+export const UTURN_RECHECK_MS = 60_000;
 /** How far along a U-turn route the rider is once they have turned round as asked: the count of U-turns starts again. */
 export const UTURN_TAKEN_M = 50;
 
@@ -1318,6 +1326,6 @@ export const REPLAN_STILL_WAITING = "Still waiting for the last re-plan.";
  */
 export function replanTold(asked: boolean, level: Verbosity, note: string): "answer" | "say" | "quiet" {
   if (asked) return "answer";
-  if (level === "full" || (level === "stoker" && (note === REPLAN_FOUND || note === REPLAN_AHEAD || note === REPLAN_REJOIN))) return "say";
+  if (level === "full" || (level === "stoker" && (note === REPLAN_FOUND || note === REPLAN_AHEAD || note === REPLAN_NO_AHEAD || note === REPLAN_REJOIN))) return "say";
   return "quiet";
 }
