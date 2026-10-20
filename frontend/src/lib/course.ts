@@ -156,6 +156,8 @@ function fromRide(cue: Cue): { type: CourseCueType; name: string; priority: numb
     case "turn": {
       // A re-route's U-turn (Ride only): a left, by its name.
       if (cue.movement === "uturn") return { type: "left", name: "U-turn", priority: 4 };
+      // A crossing between two turns (navigate.crossWords): a note by the road's name; the turn after it is the device's turn.
+      if (cue.cross) return { type: "note", name: named(cue.cross) && cue.cross !== "the road" ? abbreviateStreet(cue.cross) : "Cross", priority: 3 };
       const turn = TURN_TYPES[cue.movement ?? "right"];
       return { type: turn, name: street ? abbreviateStreet(street) : TURN_NAMES[turn], priority: street ? 4 : 3 };
     }

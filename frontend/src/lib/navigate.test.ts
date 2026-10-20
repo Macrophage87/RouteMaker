@@ -1585,3 +1585,27 @@ test("a ring kept as its own short stretch, then the way off: the jog says the e
   const exitFirst = { ...second, joined: false, then: { movement: "right" as const, street: "Q Street Northwest" } };
   assert.equal(cueSpoken(exitFirst, "now", 5), "Exit now, then right onto Q Street Northwest.");
 });
+
+// ---- Crossings between two turns (the owner, 2026-10-20, at Needwood Road and Redland Road: "It should have told me to cross the street and turn left") ----
+
+test("crossing: a short path across a road between two turns is said as the crossing, then the turn, drawn straight on", () => {
+  const model = rideModel(
+    straightRoute([
+      stretch(0, 900, "Needwood Road bike lane.", { street: "Needwood Road bike lane" }),
+      stretch(900, 925, "Cross Redland Road.", {
+        street: "Needwood Road bike lane",
+        turn: { ...turning("bear_right", "Needwood Road bike lane"), stay: true, cross: "Redland Road", shape: { out: 30, others: [-60] } },
+      }),
+      stretch(925, 2200, "Left onto Redland Road bike lane.", { street: "Redland Road bike lane", turn: turning("left", "Redland Road bike lane") }),
+    ]),
+  );
+  const [first, second] = model.cues;
+  assert.equal(first.cross, "Redland Road");
+  assert.equal(first.junction, undefined);
+  assert.equal(first.text, "Cross Redland Road, then left onto Redland Road bike lane.");
+  assert.equal(cueSpoken(first, "now", 0), "Cross now, then left onto Redland Road bike lane.");
+  assert.equal(cueSpoken(first, "advance", 152.4), `In ${spokenDistance(152.4)}, cross Redland Road, then left onto Redland Road bike lane.`);
+  assert.ok(second.joined && second.movement === "left");
+  // On its own, the crossing says the road at "now".
+  assert.equal(cueSpoken({ ...first, then: undefined }, "now", 0), "Cross Redland Road now.");
+});
