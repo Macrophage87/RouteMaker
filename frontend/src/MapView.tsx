@@ -308,7 +308,7 @@ interface Props {
   /** The road panel's "Climb details": open this climb's card with the focus in it; `n` changes for each ask. */
   climbCardRequest?: { climb: Climb; n: number } | null;
   /** A station's Start here / End here / Add as stop, with its bike entrance. */
-  onStationPoint: (role: StationRole, point: LonLat, place: { name: string; label: string }) => void;
+  onStationPoint: (role: StationRole, point: LonLat, place: { name: string; label: string; tapped?: boolean }) => void;
   /** Go with no route yet: a station card's End here rides there from the rider's start (App's goTo). */
   stationEndFromHere?: boolean;
   /** The ride reaches places on foot (presets.ts, endsOnFoot): a station card's points are its nearest entrance. */
