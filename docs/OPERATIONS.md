@@ -4648,7 +4648,7 @@ row keyed `closures` (`src/core/closure_sources.py`):
 
 | Source | URL | Every | Stale after | Dropped after | Becomes |
 |---|---|---|---|---|---|
-| DDOT TOPS permits (`dc`, CC BY 4.0) | `maps2.dcgis.dc.gov/.../DDOT/TOPS/MapServer/1/query` | 1 h | 3 h | 26 h | Closed block (IsRoadClosed), or "Bike lane blocked" (BikeLaneLength > 0, road open) |
+| DDOT TOPS permits (`dc`, CC BY 4.0) | `maps2.dcgis.dc.gov/.../DDOT/TOPS/MapServer/1/query` | 1 h | 3 h | 26 h | Flagged only (a road *may* be closed): never routed around (Go, Plan, MCP), no warning or cue; shown only by Plan's DC permits layer (off by default) |
 | MPD traffic advisories (`mpd`) | `mpdc.dc.gov/newsroom` | 15 min | 45 min | 6 h | Closures on the ways between the cross streets; the rest "Check before you go" text |
 | AlertDC (`alertdc`) | `trainingtrack.hsema.dc.gov/NRss` | 15 min | 45 min | 3 h | As MPD; only traffic and road items are kept, every other item is dropped unread |
 | NPS alerts (`nps`) | `developer.nps.gov/api/v1/alerts` | 30 min | 90 min | 6 h | Park-level "Check before you go" notices (rocr, nama, gwmp, choh, anac), never closures |
@@ -4674,8 +4674,11 @@ without it NPS is simply not read. The host needs egress to the four hosts (PLAY
    cross streets leaves the named street) is shown as text with its link, never guessed;
    it is looked for again after 6 hours.
 
-Closures follow the ride time (the When setting). One with no reliable end, on a ride
-more than 2 hours away, reads "may still apply" and does not reroute. A rider's "Route
+Closures follow the ride time (the When setting). Only closures known to be in effect
+reroute (Go, Plan and MCP alike). One with no reliable end, on a ride more than 2 hours
+away, reads "may still apply" and does not reroute. DDOT TOPS permits are never routed
+around anywhere and give no warning or cue, not even when the TOPS source cannot be
+read; Plan's DC permits layer (off by default) is the only place they show. A rider's "Route
 through anyway" is per plan and session only (`closure_bypass` on `/api/route`, `bypass`
 on `/api/closures/check`); nothing about it is stored.
 
@@ -4908,8 +4911,8 @@ the closed ways and miles by highway class. Two outcomes mark a closure worth a 
 minor road, check the match` (anything but a motorway, trunk or primary road, where a
 matching slip onto a side street is likeliest). Check it, and reopen with an access
 override in Review if it is wrong (a `bicycle=yes` row, in force from the next rebuild).
-A build where MDOT's 5 records are installed but close no way logs a warning. Montgomery's
-and DDOT's 5 stay Avoid.
+A build where MDOT's 5 records are installed but close no way logs a warning. DDOT's 5
+stays Avoid; Montgomery's is LTS 4.5 (except where our formula already says Avoid).
 
 DDOT's level field is not recorded in this repository: the script prints `ddot: level read
 from <field>`, and where the layer has none of the expected fields it stops and lists the
