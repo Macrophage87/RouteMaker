@@ -1489,6 +1489,10 @@ test("a U-turn re-route says it plainly: first on the card, said at once, then t
   assert.equal(model.cues[0].movement, "uturn");
   assert.deepEqual(model.cues.map((c) => c.index), model.cues.map((_, i) => i));
   assert.equal(model.cues[1].text, "Left onto B Street.");
+  // The card leads with it (the owner, 2026-10-20: "There's no U turn symbol."), until the rider is on the way.
+  assert.equal(nextAction(model, 0)?.movement, "uturn");
+  assert.equal(nextAction(model, 5)?.movement, "uturn");
+  assert.equal(nextAction(model, 20)?.text, "Left onto B Street.");
   const out = step(model, startState(), fix(at(0, 0)), "full");
   assert.ok(out.events.some((e) => e.spoken === "Make a U-turn now."), JSON.stringify(out.events.map((e) => e.spoken)));
   const { events } = ride(model, "full", 0, 1100, 20);
