@@ -197,6 +197,12 @@ class RelationName(str):
     `relation_name`, and the ride never cues "Continue onto" it."""
 
 
+class BesideName(str):
+    """A way's name from the major road it runs beside (`core.beside_roads`,
+    `beside_words`): "service road beside East-West Highway". It takes the place of the
+    way's own name too, where a service road is mapped with the road's name."""
+
+
 # A national or international route's name (the East Coast Greenway, a US Bicycle
 # Route, a national scenic or memorial trail): never a way's name on the move.
 NATIONAL_ROUTE_NAME = re.compile(

@@ -82,10 +82,13 @@ def _shape_bearing(shape: list[tuple[float, float]], lon: float, lat: float) -> 
     return best[1] if best else None
 
 
-def road_beside(edges: list[dict], way_id: int, heading: float) -> str | None:
+def road_beside(
+    edges: list[dict], way_id: int, heading: float, same_as: frozenset[str] = frozenset()
+) -> str | None:
     """The name of the nearest major road among the router's `edges` (a `/locate`
     answer's) that runs within BESIDE_ANGLE of parallel to `heading`, either way; None
-    where there is none."""
+    where there is none. With `same_as` (a named service road's names, lower case), only a
+    road of one of those names."""
     from .routing import decode_polyline6
 
     best: tuple[float, str] | None = None
@@ -98,7 +101,7 @@ def road_beside(edges: list[dict], way_id: int, heading: float) -> str | None:
             continue
         names = [n.strip() for n in info.get("names") or [] if isinstance(n, str) and n.strip()]
         name = describe.street_label(names)
-        if not name:
+        if not name or (same_as and not same_as & {n.lower() for n in names}):
             continue
         try:
             lon, lat = float(edge["correlated_lon"]), float(edge["correlated_lat"])
@@ -151,12 +154,19 @@ def _time_left() -> float:
 def names_of(pieces: list, named: dict[int, str] | None = None) -> dict[int, str]:
     """Each unnamed service road, path or sidewalk of the route that runs beside a major
     road, by way id: its name for the description ("service road beside East-West
-    Highway"). `named` are the ways already named (`sidepath_names_of`), left alone. Empty
-    where the router is silent."""
+    Highway"), a `describe.BesideName`. And a service road mapped with the name of the
+    major road it runs beside (the owner, 2026-10-20, on East-West Highway's frontage road,
+    told "Turn left onto East-West Highway"): named so too, in place of its own name, which
+    would otherwise make it one street with the highway. `named` are the ways already
+    named (`sidepath_names_of`), left alone. Empty where the router is silent."""
     named = named or {}
     runs: dict[int, list[int]] = {}
     for i, piece in enumerate(pieces):
-        if piece.way_id and not piece.names and piece.way_id not in named and _wanted(piece.use):
+        if not piece.way_id or piece.way_id in named:
+            continue
+        if piece.names and describe.SERVICE_WORDS.get(piece.use) != "service road":
+            continue
+        if _wanted(piece.use):
             runs.setdefault(piece.way_id, []).append(i)
     ways = sorted(
         (w for w, idx in runs.items() if sum(pieces[i].metres for i in idx) >= MIN_RUN_M),
@@ -188,12 +198,13 @@ def names_of(pieces: list, named: dict[int, str] | None = None) -> dict[int, str
             if len(_cache) >= _CACHE_MAX:
                 _cache.clear()
             for (way, key, _lon, _lat, heading), edges in zip(asked, answers, strict=True):
-                road = road_beside(edges, way, heading)
+                own = frozenset(n.lower() for n in pieces[runs[way][0]].names)
+                road = road_beside(edges, way, heading, own)
                 _cache[key] = road
                 roads[way] = road
     found: dict[int, str] = {}
     for way, road in roads.items():
         words = describe.beside_words(pieces[runs[way][0]].use, road) if road else None
         if words:
-            found[way] = words
+            found[way] = describe.BesideName(words)
     return found
