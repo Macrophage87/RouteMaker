@@ -93,6 +93,7 @@ test("the stations go over the base map and its labels, directly under the route
     ...BASE.map((l) => l.id),
     RAIL_LAYERS.entrances,
     RAIL_LAYERS.stations,
+    RAIL_LAYERS.names,
     RAIL_LAYERS.elevators,
     RAIL_LAYERS.badges,
     ...ROUTE.map((l) => l.id),
@@ -133,8 +134,11 @@ test("the layers read the source's features by kind, and the station icon by its
   const stations = layers.find((l) => l.id === RAIL_LAYERS.stations) as { layout: Record<string, unknown> };
   assert.deepEqual(stations.layout["icon-image"], ["get", "icon"]);
   assert.deepEqual(stations.layout["symbol-sort-key"], ["get", "sort"]);
-  // Names only from street-ish zooms: below it the label is the empty string.
-  assert.deepEqual(stations.layout["text-field"], ["step", ["zoom"], "", NAME_MIN_ZOOM, ["get", "name"]]);
+  assert.equal(stations.layout["text-field"], undefined, "the names are their own layer");
+  assert.deepEqual(kind(RAIL_LAYERS.names), ["==", ["get", "kind"], "station"]);
+  const names = layers.find((l) => l.id === RAIL_LAYERS.names) as { minzoom: number; layout: Record<string, unknown> };
+  assert.deepEqual(names.layout["text-field"], ["get", "name"]);
+  assert.equal(names.minzoom, NAME_MIN_ZOOM);
 });
 
 test("elevators come in at street zoom and plain entrances later, de-emphasised", () => {
@@ -167,8 +171,8 @@ test("added before the route exists, the stations go on top rather than failing"
   const { map, layers } = fakeMap(BASE);
   addRailStations(map, STATIONS, ALL, PENN_COLOUR, 1);
   assert.deepEqual(
-    layers.slice(-4).map((l) => l.id),
-    [RAIL_LAYERS.entrances, RAIL_LAYERS.stations, RAIL_LAYERS.elevators, RAIL_LAYERS.badges],
+    layers.slice(-5).map((l) => l.id),
+    [RAIL_LAYERS.entrances, RAIL_LAYERS.stations, RAIL_LAYERS.names, RAIL_LAYERS.elevators, RAIL_LAYERS.badges],
   );
 });
 
@@ -224,7 +228,7 @@ test("the stations show from the zoom the map opens at, and are never hidden by 
   const layer = railLayers().find((l) => l.id === RAIL_LAYERS.stations) as { layout: Record<string, unknown> };
   assert.equal(layer.layout["icon-allow-overlap"], true);
   assert.equal(layer.layout["icon-ignore-placement"], true);
-  assert.equal(layer.layout["text-optional"], true, "a label that does not fit must not take its icon with it");
+  assert.equal(layer.layout["text-field"], undefined, "a name that does not fit must not take its icon with it");
 });
 
 test("a tap the rendered-feature query misses finds the nearest shown station within reach", () => {
@@ -259,14 +263,24 @@ test("stationAt falls back to the stations' points when the query misses, from t
   assert.match(view, /stations: RAIL_STATIONS,/);
 });
 
-test("station names are as large as the street names, in a ride too, and show from the opening zoom", async () => {
+test("station names are larger than the street names, in a ride too, and show from the opening zoom", async () => {
   const { ROAD_LABEL } = await import("../stressStyle.js");
   const { NAME_MIN_ZOOM, RIDE_STATION_NAME_SIZE, STATION_NAME_SIZE } = await import("./railLayer.ts");
-  const layer = railLayers().find((l) => l.id === RAIL_LAYERS.stations) as { layout: Record<string, unknown> };
+  const layer = railLayers().find((l) => l.id === RAIL_LAYERS.names) as { layout: Record<string, unknown>; paint: Record<string, unknown> };
   assert.equal(layer.layout["text-size"], STATION_NAME_SIZE);
-  assert.ok(STATION_NAME_SIZE >= ROAD_LABEL.size);
-  assert.ok(RIDE_STATION_NAME_SIZE >= ROAD_LABEL.rideSize);
+  assert.equal(STATION_NAME_SIZE, 18);
+  assert.equal(RIDE_STATION_NAME_SIZE, 24);
+  assert.ok(STATION_NAME_SIZE > ROAD_LABEL.size && RIDE_STATION_NAME_SIZE > ROAD_LABEL.rideSize);
+  assert.equal(layer.paint["text-halo-width"], ROAD_LABEL.haloWidth);
   assert.ok(NAME_MIN_ZOOM <= OPENING_ZOOM, "names show where the map opens");
   const mapView = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
   assert.match(mapView, /RIDE_STATION_NAME_SIZE : STATION_NAME_SIZE/, "a ride switches the station names' size");
+});
+
+test("where names crowd, the station with most lines keeps its name and a closed one gives way", () => {
+  const layer = railLayers().find((l) => l.id === RAIL_LAYERS.names) as { layout: Record<string, unknown> };
+  // MapLibre places the lower key first; the key is minus the feature's sort (railStations.ts: lines, 0 when closed).
+  assert.deepEqual(layer.layout["symbol-sort-key"], ["-", 0, ["get", "sort"]]);
+  const at = (sort: number) => 0 - sort;
+  assert.ok(at(4) < at(2) && at(2) < at(1) && at(1) < at(0));
 });

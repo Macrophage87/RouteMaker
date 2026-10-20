@@ -29,6 +29,7 @@ export const RAIL_SOURCE_ID = "rail";
 export const RAIL_LAYERS = {
   entrances: "rail-entrances",
   stations: "rail-stations",
+  names: "rail-station-names",
   elevators: "rail-elevators",
   badges: "rail-badges",
 } as const;
@@ -45,10 +46,11 @@ export const ENTRANCE_MIN_ZOOM = 16;
  *  at most zooms too"); where they crowd, a name gives way and its icon stays (text-optional). */
 export const NAME_MIN_ZOOM = 11;
 export const STATION_MIN_ZOOM = 8;
-/** A station's name at the street names' size, 20 px in a ride (ROAD_LABEL): the stations are often the wayfinders
- *  (the owner, 2026-10-20: "The metro names are now much smaller than the roadways, but are often the key wayfinders"). */
-export const STATION_NAME_SIZE = ROAD_LABEL.size;
-export const RIDE_STATION_NAME_SIZE = ROAD_LABEL.rideSize;
+/** A station's name larger than the street names (ROAD_LABEL: 15 px, 20 px in a ride): the stations are often the
+ *  wayfinders (the owner, 2026-10-20: "The metro names are now much smaller than the roadways, but are often the key
+ *  wayfinders"; "More than street name size."). */
+export const STATION_NAME_SIZE = ROAD_LABEL.size + 3;
+export const RIDE_STATION_NAME_SIZE = ROAD_LABEL.rideSize + 4;
 /** WMATA's badges from where a station's name would nearly show: further out they would crowd the lines. */
 export const BADGE_MIN_ZOOM = 12;
 
@@ -86,13 +88,27 @@ export function railLayers(sourceId = RAIL_SOURCE_ID) {
         "icon-ignore-placement": true,
         // Interchanges over the single-line stations beside them.
         "symbol-sort-key": ["get", "sort"],
-        "text-field": ["step", ["zoom"], "", NAME_MIN_ZOOM, ["get", "name"]],
+      },
+    },
+    {
+      // The names in a layer of their own, so the busiest station keeps its name where two crowd: one layer's sort
+      // key both draws (higher on top: interchanges over single-line icons) and places (lower first), so the icons'
+      // key could not also put the interchanges' names first.
+      id: RAIL_LAYERS.names,
+      type: "symbol",
+      source: sourceId,
+      minzoom: NAME_MIN_ZOOM,
+      filter: byKind("station"),
+      layout: {
+        // Most lines first; a closed station (sort 0) last.
+        "symbol-sort-key": ["-", 0, ["get", "sort"]],
+        "text-field": ["get", "name"],
         "text-font": [LABEL_FONT],
         "text-size": STATION_NAME_SIZE,
         "text-anchor": "top",
-        "text-offset": [0, 0.9],
+        // In ems, so it grows with the text: clear of the icon at the street names' sizes.
+        "text-offset": [0, 1],
         "text-max-width": 8,
-        "text-optional": true,
       },
       paint: {
         // A closed station's name is grey as well as "(closed)" (railClosures.ts); #4b5563 is 7.6:1 on its white halo.

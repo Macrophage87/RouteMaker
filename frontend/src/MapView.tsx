@@ -613,7 +613,7 @@ export function MapView(props: Props) {
       // The labels' font comes with the app, not the base map (lib/mapGlyphs.ts).
       transformRequest: mapGlyphRequest,
     });
-    mapRef.current = map; (window as unknown as { __shotMap: unknown }).__shotMap = map; // SHOT-TEMP
+    mapRef.current = map;
     let disposed = false;
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: false }), "top-right");
     // Map tools, under the zoom buttons (OWNER-DECISIONS 450): an empty control React fills.
@@ -2296,14 +2296,14 @@ export function MapView(props: Props) {
     };
   }, [props.rideLabels]);
   // The station names keep pace with the street names (railLayer.ts, STATION_NAME_SIZE); the stations' layer can be
-  // added after the ride starts, so this listens for as long as the ride does.
+  // added (or the style reloaded) at any time, so this listens throughout.
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
     const size = props.rideLabels ? RIDE_STATION_NAME_SIZE : STATION_NAME_SIZE;
     const apply = () => {
-      if (map.getLayer(RAIL_LAYERS.stations) && map.getLayoutProperty(RAIL_LAYERS.stations, "text-size") !== size) {
-        map.setLayoutProperty(RAIL_LAYERS.stations, "text-size", size);
+      if (map.getLayer(RAIL_LAYERS.names) && map.getLayoutProperty(RAIL_LAYERS.names, "text-size") !== size) {
+        map.setLayoutProperty(RAIL_LAYERS.names, "text-size", size);
       }
     };
     apply();
