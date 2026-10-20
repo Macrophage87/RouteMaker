@@ -5058,7 +5058,8 @@ const failed = results.filter((r) => !r.ok);
 // Review mode's own lists (22c2) add six. End ride's slide (#235) adds two: a tap springs back, a slide ends the ride.
 // A lettered pin's card (no auto route, 2026-10-19) adds two: the card a tap opens, and the card the B key opens.
 // The map's info panel adds two at 1280 px: the i named for it, and what it opens.
-const EXPECTED = 669;
+// Plan starting as a loop (2026-10-20) adds one: the loop box unticked and ticked again.
+const EXPECTED = 670;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);
