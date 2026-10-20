@@ -284,3 +284,15 @@ test("where names crowd, the station with most lines keeps its name and a closed
   const at = (sort: number) => 0 - sort;
   assert.ok(at(4) < at(2) && at(2) < at(1) && at(1) < at(0));
 });
+
+test("a tap on a station's icon opens that station, though a neighbour's name covers it", () => {
+  const name = { layer: { id: RAIL_LAYERS.names }, properties: { kind: "station", id: "metro-center" } };
+  const icon = { layer: { id: RAIL_LAYERS.stations }, properties: { kind: "station", id: "gallery-place" } };
+  assert.deepEqual(railHitFrom([name, icon]), { id: "gallery-place" });
+  // A name alone still opens its station.
+  assert.deepEqual(railHitFrom([name]), { id: "metro-center" });
+  // The icons draw interchanges on top; their names are placed first where they crowd.
+  const layers = railLayers() as Array<{ id: string; layout?: Record<string, unknown> }>;
+  const key = (id: string) => layers.find((l) => l.id === id)?.layout?.["symbol-sort-key"];
+  assert.deepEqual([key(RAIL_LAYERS.stations), key(RAIL_LAYERS.names)], [["get", "sort"], ["-", 0, ["get", "sort"]]]);
+});

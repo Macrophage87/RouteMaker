@@ -222,9 +222,15 @@ export interface RailHit {
 }
 
 export function railHitFrom(
-  features: ReadonlyArray<{ properties?: Record<string, unknown> | null; geometry?: { type: string; coordinates?: unknown } }>,
+  features: ReadonlyArray<{
+    properties?: Record<string, unknown> | null;
+    geometry?: { type: string; coordinates?: unknown };
+    layer?: { id: string };
+  }>,
 ): RailHit | null {
-  for (const feature of features) {
+  // An icon before any name: the names draw over the icons, and a large name can cover the station beside its own.
+  const iconsFirst = [...features].sort((a, b) => Number(a.layer?.id === RAIL_LAYERS.names) - Number(b.layer?.id === RAIL_LAYERS.names));
+  for (const feature of iconsFirst) {
     const props = feature.properties ?? {};
     if (typeof props.id !== "string") continue;
     if (props.kind === "elevator" && feature.geometry?.type === "Point") {
