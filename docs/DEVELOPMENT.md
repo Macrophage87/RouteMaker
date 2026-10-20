@@ -4724,7 +4724,6 @@ puts it, at most two presses away.
   setting a destination too"; `goPickStart`): a fix within `GO_PICK_LOOK_MS` (3 s) more than 25 m
   away is the start; otherwise the start Go had stands (so a rider who has not moved keeps the early
   route), and a later fix still moves Go's start. A press still looking after 1 s is said with "Finding
-  your location for the start…", as one waiting for a start is. A press still looking after 1 s is said with "Finding
   your location for the start…", as one waiting for a start is. Found, it is the start, shown on Go's
   start line and said politely ("Start: your current location.") but not yet a point, so the
   link holds no position until a destination is picked; denied, unavailable or timed out, the
