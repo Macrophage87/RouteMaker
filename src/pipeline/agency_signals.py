@@ -218,15 +218,15 @@ def mdot_sha_rows(doc: Mapping) -> tuple[list[dict], dict[str, int]]:
     return _rows(doc, "mdot-sha", keep=keep, id_fields=("SIGNAL_ID", "OBJECTID"))
 
 
-# MDOT SHA's device type for a Warning Beacon: the device at Connecticut Ave and
-# Baltimore St, Kensington, where the owner met a flashing red to the side street
-# against free-flowing traffic (2026-10-20), so the main road has priority and the side
-# street stops. An Intersection Control Beacon (`TCD_Type` 2) may flash red to every
-# approach, an all-way stop, which the list does not tell from a two-way one, so it is
-# counted and left out until the owner decides. A School Warning Beacon flashes only at
+# MDOT SHA's device types for a beacon that flashes at a junction: a Warning Beacon
+# (the device at Connecticut Ave and Baltimore St, Kensington, where the owner met a
+# flashing red to the side street against free-flowing traffic, 2026-10-20) and an
+# Intersection Control Beacon. An ICB may flash red to every approach, an all-way stop,
+# which the list does not tell from a two-way one; the owner chose to read them all
+# (2026-10-20, "Include"), and a junction is then read by its mapped signs, so an
+# all-way stop OSM maps still prices as one. A School Warning Beacon flashes only at
 # school times and is left out.
-MDOT_BEACON_TYPES = {"3": "Warning Beacon"}
-MDOT_ICB_TYPE = "2"
+MDOT_BEACON_TYPES = {"2": "Intersection Control Beacon", "3": "Warning Beacon"}
 # The file `scripts/install_reference_data.py --md-signals` writes beside signals.json
 # and `manage.py load_flashing_signals` loads (`core.flashing_signals`): the junction
 # model prices a signal the map has within reach of one as no signal, at plan time.
@@ -240,7 +240,7 @@ def _road_name(value: object) -> str:
 
 
 def mdot_sha_beacons(doc: Mapping, signals: Sequence[Mapping] = ()) -> dict:
-    """MDOT SHA's Warning Beacons (`MDOT_BEACON_TYPES`, not `Proposed`) as a
+    """MDOT SHA's junction beacons (`MDOT_BEACON_TYPES`, not `Proposed`) as a
     `load_flashing_signals` file. A beacon within `OSM_SIGNAL_M` of a signal in
     `signals` (the installed rows) is left out: the junction has a signal too, and the
     signal is what stops traffic there."""
@@ -250,9 +250,6 @@ def mdot_sha_beacons(doc: Mapping, signals: Sequence[Mapping] = ()) -> dict:
     for feature in doc.get("features", []):
         props = {str(k).upper(): v for k, v in (feature.get("properties") or {}).items()}
         device = str(props.get("TCD_TYPE") or "").strip()
-        if device == MDOT_ICB_TYPE:
-            dropped["an Intersection Control Beacon (may be an all-way stop)"] += 1
-            continue
         if device not in MDOT_BEACON_TYPES:
             continue
         geometry = feature.get("geometry") or {}

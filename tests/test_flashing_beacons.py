@@ -161,16 +161,13 @@ class TestMdotBeacons:
         }
         out = agency_signals.mdot_sha_beacons(doc)
         assert out["version"] == 1 and out["source"] == "mdot-sha"
-        # The Intersection Control Beacon may be an all-way stop: counted and left out.
-        assert [r["id"] for r in out["rows"]] == ["mdot-sha:sig1"]
+        assert [r["id"] for r in out["rows"]] == ["mdot-sha:sig1", "mdot-sha:sig2"]
+        assert "Intersection Control Beacon" in out["rows"][1]["evidence"]
         first = out["rows"][0]
         assert first["name"] == "Connecticut Ave and Baltimore St (MB)"
         assert (first["lon"], first["lat"]) == (LON, LAT)
         assert "Warning Beacon" in first["evidence"]
-        assert out["dropped"] == {
-            "OWNER_DESC Proposed": 1,
-            "an Intersection Control Beacon (may be an all-way stop)": 1,
-        }
+        assert out["dropped"] == {"OWNER_DESC Proposed": 1}
 
     def test_a_beacon_at_a_junction_with_a_signal_too_is_left_out(self) -> None:
         signals = [

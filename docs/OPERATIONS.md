@@ -4876,10 +4876,11 @@ same with `--confirm`; `--actor` is the instance admin's Discord id, as for over
        --actor <discord user id> < fixtures/flashing-signals/2026-10-20-owner-connecticut-baltimore.json
    ```
 
-2. **MDOT SHA's Warning Beacons**: the Traffic Signals layer's `TCD_Type` 3 (674 on
-   2026-10-20), less any within 98 ft (30 m) of a listed signal. Its Intersection
-   Control Beacons (`TCD_Type` 2, 221) are counted and left out: one may flash red to
-   every approach, an all-way stop, and the list does not say which. Step 2 of "Agency traffic signals"
+2. **MDOT SHA's junction beacons**: the Traffic Signals layer's Intersection Control
+   Beacons (`TCD_Type` 2, 221 on 2026-10-20) and Warning Beacons (`TCD_Type` 3, 674),
+   less any within 98 ft (30 m) of a listed signal. An ICB may flash red to every
+   approach, an all-way stop, which the list does not say; the owner chose to read them
+   all (2026-10-20), and an all-way stop OSM maps with stop signs still prices as one. Step 2 of "Agency traffic signals"
    above writes them to `reference/flashing-signals.json` from the layer already fetched;
    no new download. Then:
 

@@ -305,8 +305,9 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
   5,803 traffic control devices on 2026-10-19, 3,403 of them traffic control signals
   (`TCD_Type` 1, the only ones read as signals; `OWNER_DESC` Proposed left out); county and city
   signals included, none in Baltimore City. Marks the junctions at a Maryland signal OSM
-  does not map as one (`pipeline.agency_signals`). Its Warning Beacons (`TCD_Type` 3,
-  674) are read too: a junction OSM maps with a signal at one is priced with no signal
+  does not map as one (`pipeline.agency_signals`). Its Intersection Control Beacons
+  (`TCD_Type` 2, 221) and Warning Beacons (`TCD_Type` 3, 674) are read too: a junction
+  OSM maps with a signal at one is priced with no signal
   (`core.flashing_signals`; docs/OPERATIONS.md, "Flashing beacons"). Fetched at rebuild time; size and
   sha256: the download's README, to be copied here.
 - Licence: Maryland iMAP's terms, as for the counts above. The layer is on SHA's own map
