@@ -39,7 +39,7 @@ import { FederalLandFor, type FederalStatus } from "../lib/federalLegend.ts";
 import { CAPACITY_LEGEND_TITLE, isMassRide } from "../lib/massCapacity.ts";
 import { MassLegend, MassZoomNotes } from "../lib/massLegend.ts";
 import { DC_BOUNDARY_CREDIT, MASS_DC_ONLY } from "../lib/dcBoundary.ts";
-import { MtbTrailLegend, StressLegend } from "../lib/stressLegend.ts";
+import { DocsPageLink, MtbTrailLegend, StressLegend } from "../lib/stressLegend.ts";
 import { GpxPanel, type FileFormat, type GpxPanelProps, type Said } from "../GpxPanel.tsx";
 import type { DeviceProfileId } from "../lib/deviceProfiles.ts";
 import { JunctionLegend, SheetFrame } from "../Sidebar.tsx";
@@ -566,6 +566,11 @@ export function SettingsSheet(props: SettingsSheetProps) {
           )}
         </section>
       )}
+      {/* The documentation (the owner, 2026-10-19): one link, last, under its own heading. */}
+      <section aria-labelledby="settings-about-heading" className="settings-group">
+        <h3 id="settings-about-heading">About</h3>
+        <DocsPageLink />
+      </section>
     </SheetFrame>
   );
 }

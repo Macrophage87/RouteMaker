@@ -40,6 +40,13 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
   2026-10-16. Maryland's covered bridges per the Maryland Manual are Roddy Road, Loy's
   Station and Utica Mills in Frederick County and Jericho in Baltimore and Harford counties;
   whether OSM maps each as `bridge=covered` was not checked.
+- Also: **climb names** (v0.10.0; on the map from the next map update), made when the map is
+  built by `pipeline.climb_names`: the `name` or `ref` of the roads a climb rides; the named
+  `natural=saddle` (or `mountain_pass=yes`), `peak`, `hill`, `volcano`, `ridge` or `arete` it
+  runs up (<https://wiki.openstreetmap.org/wiki/Key:natural>,
+  <https://wiki.openstreetmap.org/wiki/Key:mountain_pass>); else the nearest named `place`
+  (<https://wiki.openstreetmap.org/wiki/Key:place>) within 3 mi (5 km). Credit: the
+  OpenStreetMap credit above.
 - Dataset: OpenStreetMap, the regional extract from Geofabrik
   (<https://download.geofabrik.de/>), rebuilt weekly (docs/OPERATIONS.md, "The weekly
   rebuild").

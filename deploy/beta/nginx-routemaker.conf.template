@@ -240,9 +240,11 @@ server {
         add_header Cache-Control "no-cache" always;
     }
 
-    # The rider-facing page on how traffic-stress ratings work (OWNER-DECISIONS
-    # 461; frontend/public/about/stress.html), with the app's headers and CSP.
-    location = /about/stress.html {
+    # The rider-facing pages (Caddyfile @frontend): how traffic-stress ratings work
+    # (OWNER-DECISIONS 461; frontend/public/about/stress.html) and the rest of the
+    # documentation beside it, with the app's headers and CSP. Exactly these names, as
+    # the Caddyfile lists them; any other /about/ path still reaches the app.
+    location ~ ^/about/((stress|how-it-works|using|accessibility|routing|ride-types|mass-ride|trails|architecture|assistants|acknowledgements)\.html|route-example\.webp)$ {
         root @DATA_ROOT@/frontend;
         add_header X-Robots-Tag "noindex, nofollow" always;
         add_header Strict-Transport-Security "max-age=86400" always;

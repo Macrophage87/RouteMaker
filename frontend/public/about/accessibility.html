@@ -1,0 +1,496 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="description" content="RouteMaker&#x27;s accessibility settings, where they are and how to use them: high contrast, accessibility mode, announcements and ride cues.">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<title>Accessibility - RouteMaker</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1c1917; --muted: #4b5260; --line: #d6d3d1;
+    --panel: #f5f5f4; --link: #1d4ed8; --focus: #1d4ed8; --accent: #1d4ed8; --accent-bg: #dbeafe;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #1c1917; --fg: #f5f5f4; --muted: #c4c7ce; --line: #57534e;
+      --panel: #292524; --link: #93c5fd; --focus: #93c5fd; --accent: #93c5fd; --accent-bg: #1e3a5f;
+    }
+    /* Outline the stress colors in light ink so Avoid's black reads on the dark page. */
+    :root:not([data-theme="light"]) svg rect[stroke="#1c1917"] { stroke: #d6d3d1; }
+    :root:not([data-theme="light"]) svg line.halo { stroke: #d6d3d1; opacity: 0.9; }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    font-size: 1.0625rem; line-height: 1.6; overflow-wrap: break-word;
+  }
+  .skip { position: absolute; left: -9999px; top: 0; }
+  .skip:focus { left: 1rem; top: 1rem; background: var(--bg); padding: 0.5rem 0.75rem; border: 2px solid var(--focus); z-index: 1; }
+  header, main, footer { max-width: 48rem; margin: 0 auto; padding: 0 1rem; }
+  header { padding-top: 1.25rem; }
+  footer { padding-bottom: 2rem; border-top: 1px solid var(--line); margin-top: 2.5rem; color: var(--muted); font-size: 0.95rem; }
+  h1 { font-size: 1.75rem; line-height: 1.25; margin: 0.5rem 0 0.75rem; }
+  h2 { font-size: 1.35rem; line-height: 1.3; margin: 2.5rem 0 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--line); }
+  h3 { font-size: 1.1rem; margin: 1.5rem 0 0.4rem; }
+  a { color: var(--link); text-underline-offset: 0.15em; }
+  a:focus-visible, summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+  .back { display: inline-block; margin-bottom: 0.25rem; }
+  .lead { font-size: 1.1rem; }
+  .note { background: var(--panel); border-left: 4px solid var(--muted); padding: 0.6rem 0.9rem; margin: 1rem 0; }
+  .short { background: var(--accent-bg); border-left: 4px solid var(--accent); padding: 0.6rem 0.9rem; margin: 1rem 0; }
+  .short > :first-child { margin-top: 0; }
+  .short > :last-child { margin-bottom: 0; }
+  nav.docs > ul { list-style: none; padding: 0; margin: 0.25rem 0 0.75rem; display: grid; grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr)); gap: 0.5rem 1.25rem; }
+  nav.docs ul ul { list-style: none; padding: 0; margin: 0.1rem 0 0; }
+  nav.docs ul ul li { margin: 0.1rem 0; }
+  nav.docs .group { font-size: 0.85rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  .next { margin-top: 2.5rem; padding-top: 1rem; border-top: 1px solid var(--line); font-weight: 600; }
+  nav.docs a[aria-current="page"] { font-weight: 700; color: var(--fg); text-decoration: none; }
+  nav.toc ul { padding-left: 1.25rem; margin: 0.25rem 0; }
+  pre { overflow-x: auto; padding: 0.75rem; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); font-size: 0.9rem; }
+  .table-wrap { overflow-x: auto; margin: 0.75rem 0; }
+  .table-wrap:focus-visible { outline: 3px solid var(--focus); }
+  table { border-collapse: collapse; width: 100%; font-size: 0.97rem; }
+  caption { text-align: left; font-weight: 600; padding-bottom: 0.4rem; }
+  th, td { border: 1px solid var(--line); padding: 0.4rem 0.5rem; text-align: left; vertical-align: top; }
+  thead th { background: var(--panel); }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .sw { display: inline-block; width: 1.6em; height: 0.8em; border: 1px solid var(--fg); vertical-align: middle; margin-right: 0.35em; border-radius: 2px; }
+  figure { margin: 1.25rem 0; padding: 0.75rem; border: 1px solid var(--line); border-radius: 6px; }
+  .fig-scroll { overflow-x: auto; }
+  .fig-scroll:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+  figure svg { display: block; width: 100%; height: auto; }
+  figcaption { font-size: 0.95rem; color: var(--muted); margin-top: 0.5rem; }
+  details { margin: 0.75rem 0; }
+  summary { cursor: pointer; font-weight: 600; }
+  sup.cite a { text-decoration: none; }
+  ol.refs li { margin-bottom: 0.4rem; }
+  .t { fill: var(--fg); font: 13px system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  .maplbl { fill: #111; stroke: #fff; stroke-width: 6px; stroke-linejoin: round; paint-order: stroke; font: 600 24px system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  .mapbig { font-size: 28px; font-weight: 700; }
+  .mapbar { fill: #111; stroke: #fff; stroke-width: 2px; }
+  .ts { fill: var(--muted); font: 11.5px system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  .tb { fill: var(--fg); font: 600 13px system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  .tk { fill: #1c1917; font: 600 12.5px system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  .tw { fill: #ffffff; font: 600 12.5px system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  .bx { fill: var(--panel); stroke: var(--line); stroke-width: 1.5; }
+  .bxa { fill: var(--accent-bg); stroke: var(--accent); stroke-width: 1.5; }
+  .ar { stroke: var(--muted); stroke-width: 1.6; fill: none; }
+  .ard { stroke: var(--muted); stroke-width: 1.4; fill: none; stroke-dasharray: 5 4; }
+  .ah { fill: var(--muted); }
+  .grid { stroke: var(--line); stroke-width: 1; }
+  .axis { stroke: var(--fg); stroke-width: 1.2; }
+  .ln { stroke: var(--accent); stroke-width: 2.5; fill: none; }
+  .ln2 { stroke: #c2410c; stroke-width: 2.5; fill: none; stroke-dasharray: 7 4; }
+  .fillacc { fill: var(--accent); }
+  @media (max-width: 30rem) {
+    body { font-size: 1rem; }
+    h1 { font-size: 1.5rem; }
+    th, td { padding: 0.35rem 0.4rem; }
+    figure { padding: 0.4rem; }
+  }
+
+  details.more { margin: 0.5rem 0 1rem; border: 1px solid var(--line); border-radius: 6px; }
+  details.more > summary { cursor: pointer; padding: 0.55rem 0.8rem; font-weight: 600; color: var(--link); }
+  details.more > summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+  details.more[open] > summary { border-bottom: 1px solid var(--line); }
+  details.more > .more-body { padding: 0 0.8rem 0.4rem; }
+
+  .glance { background: var(--accent-bg); border: 2px solid var(--accent); border-radius: 8px; padding: 0.25rem 1rem 0.75rem; margin: 1rem 0 1.5rem; }
+  .glance > h2 { border-top: 0; margin: 0.5rem 0 0.25rem; padding-top: 0; }
+  .glance figure { background: var(--bg); }
+  .glance ul { padding-left: 1.25rem; }
+  .glance .find { margin-bottom: 0; }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to the content</a>
+<header>
+  <p><a class="back" href="/">Back to the map</a></p>
+  <nav class="docs" aria-label="RouteMaker documentation">
+  <ul>
+    <li><span class="group">Start here</span>
+      <ul><li><a href="/about/how-it-works.html">Overview</a></li><li><a href="/about/using.html">Using RouteMaker</a></li><li><a href="/about/accessibility.html" aria-current="page">Accessibility</a></li></ul></li>
+    <li><span class="group">How routes are chosen</span>
+      <ul><li><a href="/about/ride-types.html">Ride types</a></li><li><a href="/about/stress.html">Stress ratings</a></li><li><a href="/about/routing.html">Routing</a></li></ul></li>
+    <li><span class="group">Special rides</span>
+      <ul><li><a href="/about/trails.html">Trails and gravel</a></li><li><a href="/about/mass-ride.html">Mass Ride</a></li></ul></li>
+    <li><span class="group">Behind the scenes</span>
+      <ul><li><a href="/about/assistants.html">AI assistants</a></li><li><a href="/about/architecture.html">Architecture</a></li><li><a href="/about/acknowledgements.html">Acknowledgements</a></li></ul></li>
+  </ul>
+  </nav>
+  <h1>Accessibility</h1>
+</header>
+<main id="main">
+
+<p class="lead">RouteMaker is built to be used without seeing the map: with a screen reader, a keyboard,
+large text or high contrast. This page lists every accessibility setting, where it is, and how to use
+it.</p>
+
+<div class="glance">
+<h2 id="glance">At a glance</h2>
+<figure id="fig-glance-a11y">
+<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<svg viewBox="0 0 760 172" role="img" aria-labelledby="fig-glance-a11y-t fig-glance-a11y-d" focusable="false" style="min-width:547px">
+<title id="fig-glance-a11y-t">Accessibility at a glance</title>
+<desc id="fig-glance-a11y-d">Settings by need. For seeing: High contrast, and Large text during a ride. For a screen reader and the keyboard: Accessibility mode and Announcements. For hearing cues while riding: Say cues with and How much to say. All are on the Settings page and kept on each device.</desc>
+<defs><marker id="ah-glance-a11y" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<rect class="bxa" x="10" y="12" width="236" height="40" rx="6"/>
+<text class="tb" x="128.0" y="36.5" text-anchor="middle">Seeing</text>
+<path class="ar" d="M128,54 L128,70" marker-end="url(#ah-glance-a11y)"/>
+<rect class="bx" x="10" y="72" width="236" height="64" rx="6"/>
+<text class="ts" x="128.0" y="100.5" text-anchor="middle">High contrast</text>
+<text class="ts" x="128.0" y="116.5" text-anchor="middle">Large text during a ride</text>
+<rect class="bxa" x="262" y="12" width="236" height="40" rx="6"/>
+<text class="tb" x="380.0" y="36.5" text-anchor="middle">Screen reader and keys</text>
+<path class="ar" d="M380,54 L380,70" marker-end="url(#ah-glance-a11y)"/>
+<rect class="bx" x="262" y="72" width="236" height="64" rx="6"/>
+<text class="ts" x="380.0" y="100.5" text-anchor="middle">Accessibility mode</text>
+<text class="ts" x="380.0" y="116.5" text-anchor="middle">Announcements</text>
+<rect class="bxa" x="514" y="12" width="236" height="40" rx="6"/>
+<text class="tb" x="632.0" y="36.5" text-anchor="middle">Hearing cues</text>
+<path class="ar" d="M632,54 L632,70" marker-end="url(#ah-glance-a11y)"/>
+<rect class="bx" x="514" y="72" width="236" height="64" rx="6"/>
+<text class="ts" x="632.0" y="100.5" text-anchor="middle">Say cues with</text>
+<text class="ts" x="632.0" y="116.5" text-anchor="middle">How much to say</text>
+<text class="ts" x="380" y="160" text-anchor="middle">All on the Settings page, kept on each device.</text>
+</svg>
+</div>
+<figcaption>Which setting to reach for.</figcaption>
+</figure>
+<ul>
+<li>All the settings are on the Settings page: in Plan, the last button in the bar at the bottom of the
+planner; in Go, the Menu.</li>
+<li><strong>High contrast</strong> for stronger lines, text and colors; <strong>Accessibility
+mode</strong> for keyboard and screen reader map tools; <strong>Announcements</strong> for how much a
+screen reader is told.</li>
+<li>For rides: <strong>Say cues with</strong>, <strong>How much to say</strong> and <strong>Large text
+during a ride</strong>.</li>
+<li>Every setting is kept on the device you set it on.</li>
+</ul>
+<p class="find"><strong>Looking for something else?</strong> What the stress levels mean: <a href="/about/stress.html">Stress ratings</a>. Turn cues and leaving the route: <a href="/about/routing.html#riding">While you ride</a>.</p>
+</div>
+
+<nav class="toc" aria-label="On this page">
+<p><strong>On this page</strong></p>
+<ul>
+<li><a href="#where">Where the settings are</a></li>
+<li><a href="#seeing">Seeing the map</a></li>
+<li><a href="#screen-reader">With a screen reader or keyboard</a></li>
+<li><a href="#riding">During a ride</a></li>
+<li><a href="#android">In the Android app</a></li>
+<li><a href="#standards">What RouteMaker aims for</a></li>
+<li><a href="#sources">Sources</a></li>
+</ul>
+</nav>
+
+<h2 id="where">Where the settings are</h2>
+<p>Open Settings: in Plan it is the last button in the bar at the bottom of the planner, and in Go it is
+the Menu. The
+riding settings are under Riding and the rest under Display. Each is kept on the device you set it on,
+not in your account, so set them once on each phone or computer you use<sup class="cite"><a href="#ref-1" aria-label="source 1">[1]</a></sup>.</p>
+<figure id="fig-a11y-where">
+<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<svg viewBox="0 0 760 196" role="img" aria-labelledby="fig-a11y-where-t fig-a11y-where-d" focusable="false" style="min-width:547px">
+<title id="fig-a11y-where-t">Where the accessibility settings are</title>
+<desc id="fig-a11y-where-d">In Plan, Settings is the last button in the bar at the bottom of the planner; in Go, it is the Menu. The Settings page has a Riding section with Say cues with, How much to say and Large text during a ride, and a Display section with High contrast, Accessibility mode and Announcements.</desc>
+<defs><marker id="ah-a11y-where" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<rect class="bxa" x="10" y="14" width="220" height="50" rx="6"/>
+<text class="tb" x="120.0" y="35.5" text-anchor="middle">Plan: the last button in</text>
+<text class="ts" x="120.0" y="51.5" text-anchor="middle">the planner&#x27;s bottom bar</text>
+<rect class="bxa" x="10" y="84" width="220" height="50" rx="6"/>
+<text class="tb" x="120.0" y="105.5" text-anchor="middle">Go: Menu</text>
+<text class="ts" x="120.0" y="121.5" text-anchor="middle"></text>
+<rect class="bx" x="270" y="14" width="480" height="34" rx="6"/>
+<text class="tb" x="510.0" y="35.5" text-anchor="middle">Settings</text>
+<path class="ar" d="M232,39 L268,31" marker-end="url(#ah-a11y-where)"/>
+<path class="ar" d="M232,109 L268,39" marker-end="url(#ah-a11y-where)"/>
+<text class="tb" x="280" y="72" text-anchor="start">Riding</text>
+<rect class="bx" x="280" y="80" width="220" height="30" rx="6"/>
+<text class="ts" x="390.0" y="99.5" text-anchor="middle">Say cues with</text>
+<rect class="bx" x="280" y="116" width="220" height="30" rx="6"/>
+<text class="ts" x="390.0" y="135.5" text-anchor="middle">How much to say</text>
+<rect class="bx" x="280" y="152" width="220" height="30" rx="6"/>
+<text class="ts" x="390.0" y="171.5" text-anchor="middle">Large text during a ride</text>
+<text class="tb" x="520" y="72" text-anchor="start">Display</text>
+<rect class="bx" x="520" y="80" width="220" height="30" rx="6"/>
+<text class="ts" x="630.0" y="99.5" text-anchor="middle">High contrast</text>
+<rect class="bx" x="520" y="116" width="220" height="30" rx="6"/>
+<text class="ts" x="630.0" y="135.5" text-anchor="middle">Accessibility mode</text>
+<rect class="bx" x="520" y="152" width="220" height="30" rx="6"/>
+<text class="ts" x="630.0" y="171.5" text-anchor="middle">Announcements</text>
+</svg>
+</div>
+<figcaption>Six settings in two sections of one page.</figcaption>
+</figure>
+<details class="more"><summary>More: Where the settings are</summary>
+<div class="more-body">
+
+
+<div class="table-wrap" tabindex="0" role="region" aria-label="Every accessibility setting">
+<table>
+<caption>Every accessibility setting</caption>
+<thead><tr><th scope="col">Setting</th><th scope="col">Where</th><th scope="col">What it does</th><th scope="col">Kept</th></tr></thead>
+<tbody>
+<tr><th scope="row">High contrast</th><td>Settings, Display</td><td>Bolder map lines, stronger borders and text, darker street names, and map colors that don't rely on red and green. Off unless your device asks for more contrast.</td><td>On this device</td></tr>
+<tr><th scope="row">Accessibility mode</th><td>Settings, Display; also the first button on every page</td><td>Adds Map tools by the map's zoom buttons, to add a point, set a destination or get road info at the map center.</td><td>On this device</td></tr>
+<tr><th scope="row">Announcements</th><td>Settings, Display</td><td>Brief: the route, guidance and errors. Full: also what the app is doing. Unset, Go is brief and Plan is full.</td><td>On this device</td></tr>
+<tr><th scope="row">Say cues with</th><td>Settings, Riding; Ride settings</td><td>My screen reader, RouteMaker's voice, Both, or Neither (on screen only). RouteMaker's voice unless you choose.</td><td>On this device</td></tr>
+<tr><th scope="row">How much to say</th><td>Settings, Riding; Ride settings</td><td>Full, Stoker or Quiet (below). Full unless you choose.</td><td>On this device</td></tr>
+<tr><th scope="row">Large text during a ride</th><td>Settings, Riding; the Large text button during a ride</td><td>The next turn as big as it fits on the top half of the screen, with the map below and larger street names, for bright sun or near sight. Off unless you turn it on.</td><td>On this device</td></tr>
+<tr><th scope="row">Turn the map to my heading</th><td>Ride settings</td><td>The map turns with you during a ride. On unless you turn it off.</td><td>On this device</td></tr>
+</tbody>
+</table>
+</div>
+
+</div></details>
+<h2 id="seeing">Seeing the map</h2>
+<p>High contrast makes the map and the panels stronger, and the stress map never relies on color
+alone: each level has its own dash pattern and width.</p>
+<figure id="fig-a11y-dashes">
+<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<svg viewBox="0 0 760 214" role="img" aria-labelledby="fig-a11y-dashes-t fig-a11y-dashes-d" focusable="false" style="min-width:547px">
+<title id="fig-a11y-dashes-t">Each stress level has its own line, not only its own color</title>
+<desc id="fig-a11y-dashes-d">The stress map draws each level with its own dash pattern and width, so it can be read without color. LTS 1 is a solid line, the thinnest. LTS 2 is dashed. LTS 3 has short dashes. LTS 4 has long dashes. Avoid is a dash and dot, the thickest. High contrast keeps these patterns and changes only the colors and the weight.</desc>
+<defs><marker id="ah-a11y-dashes" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<text class="tb" x="10" y="31" text-anchor="start">LTS 1</text>
+<line x1="110" y1="26" x2="430" y2="26" class="halo" stroke="#1c1917" stroke-width="7.0" stroke-linecap="butt" opacity="0.25"/>
+<line x1="110" y1="26" x2="430" y2="26" stroke="#9ed3ac" stroke-width="5.0" stroke-linecap="butt"/>
+<text class="ts" x="450" y="31" text-anchor="start">solid, thinnest</text>
+<text class="tb" x="10" y="69" text-anchor="start">LTS 2</text>
+<line x1="110" y1="64" x2="430" y2="64" class="halo" stroke="#1c1917" stroke-width="8.5" stroke-dasharray="16 4" stroke-linecap="butt" opacity="0.25"/>
+<line x1="110" y1="64" x2="430" y2="64" stroke="#57a06c" stroke-width="6.5" stroke-dasharray="16 4" stroke-linecap="butt"/>
+<text class="ts" x="450" y="69" text-anchor="start">dashed</text>
+<text class="tb" x="10" y="107" text-anchor="start">LTS 3</text>
+<line x1="110" y1="102" x2="430" y2="102" class="halo" stroke="#1c1917" stroke-width="10.5" stroke-dasharray="8 1.6" stroke-linecap="butt" opacity="0.25"/>
+<line x1="110" y1="102" x2="430" y2="102" stroke="#f3c81a" stroke-width="8.5" stroke-dasharray="8 1.6" stroke-linecap="butt"/>
+<text class="ts" x="450" y="107" text-anchor="start">short dashes</text>
+<text class="tb" x="10" y="145" text-anchor="start">LTS 4</text>
+<line x1="110" y1="140" x2="430" y2="140" class="halo" stroke="#1c1917" stroke-width="12" stroke-dasharray="32 4" stroke-linecap="butt" opacity="0.25"/>
+<line x1="110" y1="140" x2="430" y2="140" stroke="#f28c28" stroke-width="10" stroke-dasharray="32 4" stroke-linecap="butt"/>
+<text class="ts" x="450" y="145" text-anchor="start">long dashes</text>
+<text class="tb" x="10" y="183" text-anchor="start">Avoid</text>
+<line x1="110" y1="178" x2="430" y2="178" class="halo" stroke="#1c1917" stroke-width="15.0" stroke-dasharray="18 5 3 5" stroke-linecap="butt" opacity="0.25"/>
+<line x1="110" y1="178" x2="430" y2="178" stroke="#111111" stroke-width="13.0" stroke-dasharray="18 5 3 5" stroke-linecap="butt"/>
+<text class="ts" x="450" y="183" text-anchor="start">dash and dot, thickest</text>
+</svg>
+</div>
+<figcaption>The map's own dash patterns, drawn larger here. Each road's level is also said in words in its road panel.</figcaption>
+</figure>
+<details class="more"><summary>More: Seeing the map</summary>
+<div class="more-body">
+
+
+<ul>
+<li><strong>High contrast</strong> (Settings, Display) draws the stress lines and their outlines
+bolder, makes the panel's borders and grey text stronger, darkens the street names on the map, and
+switches the stress map to colors that don't rely on red and green. The dash patterns stay the same.
+It turns on by itself when your device asks for more contrast<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup> and you haven't chosen,
+and then says so; you can turn it off there. Map layers says where it is.</li>
+<li><strong>Fonts.</strong> The app is set in Atkinson Hyperlegible, and the street names on the map in
+Atkinson Hyperlegible Next, typefaces designed by the Braille Institute for low-vision
+readers<sup class="cite"><a href="#ref-3" aria-label="source 3">[3]</a></sup>. Street names sit on a white outline so they stay readable over the colored
+lines.</li>
+<li><strong>Text size.</strong> Panels follow your browser's or phone's zoom. During a ride, the
+<strong>Large text</strong> button (Aa) makes the next turn as big as it fits on the top half of the
+screen, with no ride text under 16 pt, and makes the map's street names larger.</li>
+<li><strong>Dark mode</strong> follows your device for the panels; the map stays light, so the stress
+colors read the same. Windows' contrast themes are supported<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup>.</li>
+<li><strong>Less motion.</strong> When your device asks for reduced motion, the turning section arrows
+and the sliding of points as you reorder them are turned off.</li>
+</ul>
+
+</div></details>
+<h2 id="screen-reader">With a screen reader or keyboard</h2>
+<p>Everything you can do on the map can also be done without it. Turn on <strong>Accessibility
+mode</strong> for Map tools, choose how much you are told with <strong>Announcements</strong>, and use
+the directions and junction lists to read a route.</p>
+<figure id="fig-a11y-keys">
+<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<svg viewBox="0 0 760 208" role="img" aria-labelledby="fig-a11y-keys-t fig-a11y-keys-d" focusable="false" style="min-width:547px">
+<title id="fig-a11y-keys-t">Keys on the map</title>
+<desc id="fig-a11y-keys-d">With the map focused: the arrow keys move the map, plus and minus zoom, I gives road info at the map center, Ctrl+Z undoes a change to the points and Ctrl+Shift+Z or Ctrl+Y redoes it, and a letter picks a lettered place. During a ride, W or C says where you are and centers the map on you, and T turns large text on or off.</desc>
+<defs><marker id="ah-a11y-keys" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<rect class="bxa" x="10" y="14" width="130" height="38" rx="6"/>
+<text class="tb" x="75.0" y="37.5" text-anchor="middle">Arrows</text>
+<text class="t" x="152" y="38" text-anchor="start">move the map</text>
+<rect class="bxa" x="10" y="64" width="130" height="38" rx="6"/>
+<text class="tb" x="75.0" y="87.5" text-anchor="middle">+  and  -</text>
+<text class="t" x="152" y="88" text-anchor="start">zoom in and out</text>
+<rect class="bxa" x="10" y="114" width="130" height="38" rx="6"/>
+<text class="tb" x="75.0" y="137.5" text-anchor="middle">I</text>
+<text class="t" x="152" y="138" text-anchor="start">road info at the map center</text>
+<rect class="bxa" x="390" y="14" width="130" height="38" rx="6"/>
+<text class="tb" x="455.0" y="37.5" text-anchor="middle">Ctrl+Z</text>
+<text class="t" x="532" y="38" text-anchor="start">undo a change to the points</text>
+<rect class="bxa" x="390" y="64" width="130" height="38" rx="6"/>
+<text class="tb" x="455.0" y="87.5" text-anchor="middle">Ctrl+Shift+Z</text>
+<text class="t" x="532" y="88" text-anchor="start">redo (or Ctrl+Y)</text>
+<rect class="bxa" x="390" y="114" width="130" height="38" rx="6"/>
+<text class="tb" x="455.0" y="137.5" text-anchor="middle">A to Z</text>
+<text class="t" x="532" y="138" text-anchor="start">pick a lettered place</text>
+<text class="tb" x="10" y="182" text-anchor="start">During a ride:</text>
+<rect class="bxa" x="140" y="164" width="80" height="30" rx="6"/>
+<text class="tb" x="180.0" y="183.5" text-anchor="middle">W or C</text>
+<text class="t" x="232" y="184" text-anchor="start">Where am I?</text>
+<rect class="bxa" x="390" y="164" width="80" height="30" rx="6"/>
+<text class="tb" x="430.0" y="183.5" text-anchor="middle">T</text>
+<text class="t" x="482" y="184" text-anchor="start">large text on or off</text>
+</svg>
+</div>
+<figcaption>These keys work whether Accessibility mode is on or off.</figcaption>
+</figure>
+<details class="more"><summary>More: With a screen reader or keyboard</summary>
+<div class="more-body">
+
+
+<h3>Getting started</h3>
+<ol>
+<li>Press Tab once: the first button on the page is <strong>Accessibility mode</strong>. Turn it on,
+and focus moves to Map tools, by the map's zoom buttons. It is also in Settings, Display. With it on,
+Plan's panel says how to use Map tools.</li>
+<li>Press Tab again for <strong>Skip to the route planner</strong> (<strong>Skip to ride mode</strong>
+during a ride). The planner is a landmark named Route planner.</li>
+<li>Type places into From, To and Add a stop in the planner. Stops can be put in another order with the
+keyboard, or removed, there too, without the map.</li>
+</ol>
+<h3>Map tools</h3>
+<p>With Accessibility mode on, <strong>Map tools</strong> by the zoom buttons offers <strong>Add point
+at map center</strong> (in Go, <strong>Set destination at map center</strong>) and <strong>Road info at
+map center</strong>. Move the map with the arrow keys, then choose one. Escape closes Map tools and
+returns focus to its button. The keys above work whether Accessibility mode is on or off; with NVDA or
+JAWS, the map's keys need focus mode.</p>
+<h3>Announcements</h3>
+<p>Announcements in Settings, Display, sets what screen readers are told. <strong>Brief</strong> says
+the route, guidance and errors. <strong>Full</strong> also says what the app is doing, such as "Finding
+your location" and "Planning a route". If you leave it unset, Go is brief and Plan is full. Routes,
+guidance and errors are always said.</p>
+<h3>Reading a route</h3>
+<ul>
+<li><strong>Directions</strong> is the route as a numbered list, with each road's stress level and each
+warning in words. <strong>Full detail</strong> adds more, and the list can be copied or downloaded as
+text.</li>
+<li><strong>The junction list</strong> in the route summary names each stressful junction and how far
+along it is; each row opens the same card as the marker on the map.</li>
+<li><strong>Road info</strong> says a road's name, level and why, in words: street names on the map
+itself are pictures a screen reader can't reach.</li>
+<li><strong>Manual mode</strong> in Plan says when it turns on and off, and a label under the map's bar
+says it is on.</li>
+</ul>
+
+</div></details>
+<h2 id="riding">During a ride</h2>
+<p>Choose who says the cues and how much they say. The first Start ride asks both; you can change them
+later in Settings, Riding, or in Ride settings during a ride.</p>
+<figure id="fig-a11y-cues">
+<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<svg viewBox="0 0 760 176" role="img" aria-labelledby="fig-a11y-cues-t fig-a11y-cues-d" focusable="false" style="min-width:547px">
+<title id="fig-a11y-cues-t">How much each setting says at a turn</title>
+<desc id="fig-a11y-cues-d">On Full, a turn is said well before it, again close to it, and at the turn. On Stoker, each turn is said once ahead and as it happens, with busy crossings and stops. On Quiet, nothing is said until you arrive, and you can ask Where am I? at any time.</desc>
+<defs><marker id="ah-a11y-cues" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<text class="tb" x="10" y="22" text-anchor="start">Approaching a turn:</text>
+<text class="ts" x="170" y="22" text-anchor="start">well before</text>
+<text class="ts" x="480" y="22" text-anchor="middle">close to it</text>
+<text class="ts" x="720" y="22" text-anchor="middle">at the turn</text>
+<text class="tb" x="10" y="57" text-anchor="start">Full</text>
+<line class="axis" x1="170" y1="52" x2="740" y2="52"/>
+<circle cx="210" cy="52" r="7" class="fillacc"/>
+<text class="ts" x="210" y="40" text-anchor="middle">early cue</text>
+<circle cx="480" cy="52" r="7" class="fillacc"/>
+<text class="ts" x="480" y="40" text-anchor="middle">again</text>
+<circle cx="720" cy="52" r="7" class="fillacc"/>
+<text class="ts" x="720" y="40" text-anchor="middle">now</text>
+<text class="tb" x="10" y="101" text-anchor="start">Stoker</text>
+<line class="axis" x1="170" y1="96" x2="740" y2="96"/>
+<circle cx="210" cy="96" r="7" class="fillacc"/>
+<text class="ts" x="210" y="84" text-anchor="middle">once ahead</text>
+<circle cx="720" cy="96" r="7" class="fillacc"/>
+<text class="ts" x="720" y="84" text-anchor="middle">as it happens</text>
+<text class="tb" x="10" y="145" text-anchor="start">Quiet</text>
+<line class="axis" x1="170" y1="140" x2="740" y2="140"/>
+<text class="ts" x="455.0" y="132" text-anchor="middle">nothing until you arrive; ask Where am I? any time</text>
+</svg>
+</div>
+<figcaption>The three choices of How much to say. Say cues with picks whose voice says them.</figcaption>
+</figure>
+<details class="more"><summary>More: During a ride</summary>
+<div class="more-body">
+
+
+<ul>
+<li><strong>Say cues with</strong>: <strong>My screen reader</strong>, <strong>RouteMaker's
+voice</strong>, <strong>Both</strong>, or <strong>Neither (on screen only)</strong>. Cues never move
+focus.</li>
+<li><strong>How much to say</strong>: <strong>Full</strong>, every turn, early and again close to it;
+<strong>Stoker</strong>, each turn once ahead and as it happens, with busy crossings and stops, made for
+a blind stoker on a tandem; <strong>Quiet</strong>, only arrival.</li>
+<li><strong>Where am I?</strong> says where you are at any time and centers the map on you again; on a
+keyboard, press W or C.</li>
+<li>Cues say when the route goes onto a <strong>service road</strong>, alley or parking aisle, and name
+the main road beside it: "Left onto the service road beside East-West Highway."</li>
+<li>At a <strong>traffic circle</strong> the cue counts the exits: "Take the 3rd exit onto P Street NW
+at Dupont Circle". Only streets are counted, not slip lanes, service lanes or paths. Where the turn card
+draws an unusual junction as a picture, the cue says the same as it would with a plain arrow.</li>
+<li>The <strong>Large text</strong> button (T on a keyboard) turns large text on and off; a screen
+reader hears whether it is pressed, and each press says "Large text on" or "off".</li>
+<li>With <strong>Say cues with</strong> set to <strong>My screen reader</strong>, the map is hidden from
+the screen reader during a ride, so swiping goes from the next turn straight to the ride's buttons.</li>
+<li><strong>Turn the map to my heading</strong>, in Ride settings, turns the map with you; turn it off
+to keep north up.</li>
+<li>In a ride the map's street names are larger and shortened (R St NW), and the turn card uses fewer
+words (0.2 mi, not In 0.2 mi; 20 min, not about 20 min) so its type and arrow can be larger. A screen
+reader still hears the whole sentence, including "about".</li>
+<li><strong>End ride</strong> is a slider, so it isn't ended by a stray tap; the arrow keys or End move
+it too.</li>
+<li><strong>End ride</strong> and <strong>Road closed</strong> have larger text, and stay on one line on
+the narrowest phones.</li>
+<li>When a ride ends, "Ride ended." is said and the focus goes to <strong>Done</strong>; the figures
+follow on the <strong>ride summary</strong> card. The elevation chart and the stress bar each have a text
+version beside them. The summary stays until you choose Done or Undo. It is always in
+large text, one figure to a line, with nothing smaller than 16 pt.</li>
+</ul>
+
+</div></details>
+<h2 id="android">In the Android app</h2>
+<p>The Android app keeps cues going with the screen locked<sup class="cite"><a href="#ref-4" aria-label="source 4">[4]</a></sup>.</p>
+<details class="more"><summary>More: In the Android app</summary>
+<div class="more-body">
+
+<ul>
+<li>Cues are said with the phone's own text-to-speech, and location keeps working with the screen
+locked, shown by a "Riding with RouteMaker" notification. It never asks for location all the time.</li>
+<li>The latest cue is shown in a silent notification, so TalkBack doesn't say each cue twice.</li>
+<li>A short buzz confirms when a long press picks up the route line, and Group Ride alerts buzz and are
+said at once.</li>
+<li>In a browser, RouteMaker asks to keep the screen on during a ride and says so if it can't.</li>
+</ul>
+
+</div></details>
+<h2 id="standards">What RouteMaker aims for</h2>
+<p>The aim is WCAG 2.2 level AA<sup class="cite"><a href="#ref-5" aria-label="source 5">[5]</a></sup> for everything outside the map itself, with nothing shown by
+color alone and a non-map way to do every action. Screen reader users and blind stokers on tandems are
+part of the intended audience, and each release is checked in a real browser for focus order, contrast
+and screen reader names.</p>
+
+<h2 id="sources">Sources</h2>
+<ol class="refs">
+  <li id="ref-1">RouteMaker's accessibility settings, in the code. <a href="https://github.com/Macrophage87/RouteMaker/blob/main/frontend/src/lib/accessibilitySwitch.ts">accessibilitySwitch.ts</a>, <a href="https://github.com/Macrophage87/RouteMaker/blob/main/frontend/src/lib/accessMode.ts">accessMode.ts</a>, <a href="https://github.com/Macrophage87/RouteMaker/blob/main/frontend/src/lib/announceLevel.ts">announceLevel.ts</a>, <a href="https://github.com/Macrophage87/RouteMaker/blob/main/frontend/src/lib/rideOutput.ts">rideOutput.ts</a></li>
+  <li id="ref-2">The prefers-contrast and forced-colors media features, Media Queries Level 5. <a href="https://www.w3.org/TR/mediaqueries-5/#prefers-contrast">w3.org/TR/mediaqueries-5</a></li>
+  <li id="ref-3">Braille Institute, Atkinson Hyperlegible, and the Atkinson Hyperlegible Next project. <a href="https://www.brailleinstitute.org/freefont/">brailleinstitute.org/freefont</a>; <a href="https://github.com/googlefonts/atkinson-hyperlegible-next">github.com/googlefonts/atkinson-hyperlegible-next</a></li>
+  <li id="ref-4">RouteMaker's Android app. <a href="https://github.com/Macrophage87/RouteMaker/blob/main/mobile/README.md">mobile/README.md</a></li>
+  <li id="ref-5">W3C, Web Content Accessibility Guidelines 2.2. <a href="https://www.w3.org/TR/WCAG22/">w3.org/TR/WCAG22</a></li>
+</ol>
+<p class="next">Next: <a href="/about/ride-types.html">Ride types</a></p>
+</main>
+<footer>
+  <p>Part of RouteMaker's documentation. It describes version 0.10.0. The code is
+  open source under the MIT licence:
+  <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
+  <p><a href="/">Back to the map</a></p>
+</footer>
+</body>
+</html>

@@ -1,0 +1,670 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="description" content="How to use RouteMaker: Go, Plan, the ride screen, layers, saving, sharing and exporting routes, settings, suggestions and ride links.">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<title>Using RouteMaker - RouteMaker</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1c1917; --muted: #4b5260; --line: #d6d3d1;
+    --panel: #f5f5f4; --link: #1d4ed8; --focus: #1d4ed8; --accent: #1d4ed8; --accent-bg: #dbeafe;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #1c1917; --fg: #f5f5f4; --muted: #c4c7ce; --line: #57534e;
+      --panel: #292524; --link: #93c5fd; --focus: #93c5fd; --accent: #93c5fd; --accent-bg: #1e3a5f;
+    }
+    /* Outline the stress colors in light ink so Avoid's black reads on the dark page. */
+    :root:not([data-theme="light"]) svg rect[stroke="#1c1917"] { stroke: #d6d3d1; }
+    :root:not([data-theme="light"]) svg line.halo { stroke: #d6d3d1; opacity: 0.9; }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    font-size: 1.0625rem; line-height: 1.6; overflow-wrap: break-word;
+  }
+  .skip { position: absolute; left: -9999px; top: 0; }
+  .skip:focus { left: 1rem; top: 1rem; background: var(--bg); padding: 0.5rem 0.75rem; border: 2px solid var(--focus); z-index: 1; }
+  header, main, footer { max-width: 48rem; margin: 0 auto; padding: 0 1rem; }
+  header { padding-top: 1.25rem; }
+  footer { padding-bottom: 2rem; border-top: 1px solid var(--line); margin-top: 2.5rem; color: var(--muted); font-size: 0.95rem; }
+  h1 { font-size: 1.75rem; line-height: 1.25; margin: 0.5rem 0 0.75rem; }
+  h2 { font-size: 1.35rem; line-height: 1.3; margin: 2.5rem 0 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--line); }
+  h3 { font-size: 1.1rem; margin: 1.5rem 0 0.4rem; }
+  a { color: var(--link); text-underline-offset: 0.15em; }
+  a:focus-visible, summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+  .back { display: inline-block; margin-bottom: 0.25rem; }
+  .lead { font-size: 1.1rem; }
+  .note { background: var(--panel); border-left: 4px solid var(--muted); padding: 0.6rem 0.9rem; margin: 1rem 0; }
+  .short { background: var(--accent-bg); border-left: 4px solid var(--accent); padding: 0.6rem 0.9rem; margin: 1rem 0; }
+  .short > :first-child { margin-top: 0; }
+  .short > :last-child { margin-bottom: 0; }
+  nav.docs > ul { list-style: none; padding: 0; margin: 0.25rem 0 0.75rem; display: grid; grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr)); gap: 0.5rem 1.25rem; }
+  nav.docs ul ul { list-style: none; padding: 0; margin: 0.1rem 0 0; }
+  nav.docs ul ul li { margin: 0.1rem 0; }
+  nav.docs .group { font-size: 0.85rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  .next { margin-top: 2.5rem; padding-top: 1rem; border-top: 1px solid var(--line); font-weight: 600; }
+  nav.docs a[aria-current="page"] { font-weight: 700; color: var(--fg); text-decoration: none; }
+  nav.toc ul { padding-left: 1.25rem; margin: 0.25rem 0; }
+  pre { overflow-x: auto; padding: 0.75rem; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); font-size: 0.9rem; }
+  .table-wrap { overflow-x: auto; margin: 0.75rem 0; }
+  .table-wrap:focus-visible { outline: 3px solid var(--focus); }
+  table { border-collapse: collapse; width: 100%; font-size: 0.97rem; }
+  caption { text-align: left; font-weight: 600; padding-bottom: 0.4rem; }
+  th, td { border: 1px solid var(--line); padding: 0.4rem 0.5rem; text-align: left; vertical-align: top; }
+  thead th { background: var(--panel); }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .sw { display: inline-block; width: 1.6em; height: 0.8em; border: 1px solid var(--fg); vertical-align: middle; margin-right: 0.35em; border-radius: 2px; }
+  figure { margin: 1.25rem 0; padding: 0.75rem; border: 1px solid var(--line); border-radius: 6px; }
+  .fig-scroll { overflow-x: auto; }
+  .fig-scroll:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+  figure svg { display: block; width: 100%; height: auto; }
+  figcaption { font-size: 0.95rem; color: var(--muted); margin-top: 0.5rem; }
+  details { margin: 0.75rem 0; }
+  summary { cursor: pointer; font-weight: 600; }
+  sup.cite a { text-decoration: none; }
+  ol.refs li { margin-bottom: 0.4rem; }
+  .t { fill: var(--fg); font: 13px system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  .maplbl { fill: #111; stroke: #fff; stroke-width: 6px; stroke-linejoin: round; paint-order: stroke; font: 600 24px system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  .mapbig { font-size: 28px; font-weight: 700; }
+  .mapbar { fill: #111; stroke: #fff; stroke-width: 2px; }
+  .ts { fill: var(--muted); font: 11.5px system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  .tb { fill: var(--fg); font: 600 13px system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  .tk { fill: #1c1917; font: 600 12.5px system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  .tw { fill: #ffffff; font: 600 12.5px system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  .bx { fill: var(--panel); stroke: var(--line); stroke-width: 1.5; }
+  .bxa { fill: var(--accent-bg); stroke: var(--accent); stroke-width: 1.5; }
+  .ar { stroke: var(--muted); stroke-width: 1.6; fill: none; }
+  .ard { stroke: var(--muted); stroke-width: 1.4; fill: none; stroke-dasharray: 5 4; }
+  .ah { fill: var(--muted); }
+  .grid { stroke: var(--line); stroke-width: 1; }
+  .axis { stroke: var(--fg); stroke-width: 1.2; }
+  .ln { stroke: var(--accent); stroke-width: 2.5; fill: none; }
+  .ln2 { stroke: #c2410c; stroke-width: 2.5; fill: none; stroke-dasharray: 7 4; }
+  .fillacc { fill: var(--accent); }
+  @media (max-width: 30rem) {
+    body { font-size: 1rem; }
+    h1 { font-size: 1.5rem; }
+    th, td { padding: 0.35rem 0.4rem; }
+    figure { padding: 0.4rem; }
+  }
+
+  details.more { margin: 0.5rem 0 1rem; border: 1px solid var(--line); border-radius: 6px; }
+  details.more > summary { cursor: pointer; padding: 0.55rem 0.8rem; font-weight: 600; color: var(--link); }
+  details.more > summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+  details.more[open] > summary { border-bottom: 1px solid var(--line); }
+  details.more > .more-body { padding: 0 0.8rem 0.4rem; }
+
+  .glance { background: var(--accent-bg); border: 2px solid var(--accent); border-radius: 8px; padding: 0.25rem 1rem 0.75rem; margin: 1rem 0 1.5rem; }
+  .glance > h2 { border-top: 0; margin: 0.5rem 0 0.25rem; padding-top: 0; }
+  .glance figure { background: var(--bg); }
+  .glance ul { padding-left: 1.25rem; }
+  .glance .find { margin-bottom: 0; }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to the content</a>
+<header>
+  <p><a class="back" href="/">Back to the map</a></p>
+  <nav class="docs" aria-label="RouteMaker documentation">
+  <ul>
+    <li><span class="group">Start here</span>
+      <ul><li><a href="/about/how-it-works.html">Overview</a></li><li><a href="/about/using.html" aria-current="page">Using RouteMaker</a></li><li><a href="/about/accessibility.html">Accessibility</a></li></ul></li>
+    <li><span class="group">How routes are chosen</span>
+      <ul><li><a href="/about/ride-types.html">Ride types</a></li><li><a href="/about/stress.html">Stress ratings</a></li><li><a href="/about/routing.html">Routing</a></li></ul></li>
+    <li><span class="group">Special rides</span>
+      <ul><li><a href="/about/trails.html">Trails and gravel</a></li><li><a href="/about/mass-ride.html">Mass Ride</a></li></ul></li>
+    <li><span class="group">Behind the scenes</span>
+      <ul><li><a href="/about/assistants.html">AI assistants</a></li><li><a href="/about/architecture.html">Architecture</a></li><li><a href="/about/acknowledgements.html">Acknowledgements</a></li></ul></li>
+  </ul>
+  </nav>
+  <h1>Using RouteMaker</h1>
+</header>
+<main id="main">
+
+<p class="lead">How to use RouteMaker, screen by screen. Each section starts with the short version;
+open More for the detail.</p>
+
+<div class="glance">
+<h2 id="glance">At a glance</h2>
+<figure id="fig-glance-using">
+<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<svg viewBox="0 0 760 172" role="img" aria-labelledby="fig-glance-using-t fig-glance-using-d" focusable="false" style="min-width:547px">
+<title id="fig-glance-using-t">Using RouteMaker at a glance</title>
+<desc id="fig-glance-using-d">Three places. Go: Where to? and Start ride, for a quick trip on a phone. Plan: the points, the ride type and the directions, for building a route. The Menu and sheets: Layers, Save and load, Suggest and Settings. Go and Plan share one route, and you can switch at any time.</desc>
+<defs><marker id="ah-glance-using" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<rect class="bxa" x="10" y="12" width="236" height="40" rx="6"/>
+<text class="tb" x="128.0" y="36.5" text-anchor="middle">Go</text>
+<path class="ar" d="M128,54 L128,70" marker-end="url(#ah-glance-using)"/>
+<rect class="bx" x="10" y="72" width="236" height="64" rx="6"/>
+<text class="ts" x="128.0" y="100.5" text-anchor="middle">Where to?</text>
+<text class="ts" x="128.0" y="116.5" text-anchor="middle">Start ride</text>
+<rect class="bxa" x="262" y="12" width="236" height="40" rx="6"/>
+<text class="tb" x="380.0" y="36.5" text-anchor="middle">Plan</text>
+<path class="ar" d="M380,54 L380,70" marker-end="url(#ah-glance-using)"/>
+<rect class="bx" x="262" y="72" width="236" height="64" rx="6"/>
+<text class="ts" x="380.0" y="100.5" text-anchor="middle">Points, ride type</text>
+<text class="ts" x="380.0" y="116.5" text-anchor="middle">Directions</text>
+<rect class="bxa" x="514" y="12" width="236" height="40" rx="6"/>
+<text class="tb" x="632.0" y="36.5" text-anchor="middle">Menu and sheets</text>
+<path class="ar" d="M632,54 L632,70" marker-end="url(#ah-glance-using)"/>
+<rect class="bx" x="514" y="72" width="236" height="64" rx="6"/>
+<text class="ts" x="632.0" y="100.5" text-anchor="middle">Layers, Save and load</text>
+<text class="ts" x="632.0" y="116.5" text-anchor="middle">Suggest, Settings</text>
+<text class="ts" x="380" y="160" text-anchor="middle">Go and Plan share one route: switch at any time.</text>
+</svg>
+</div>
+<figcaption>Where each thing is.</figcaption>
+</figure>
+<ul>
+<li><strong>Go</strong>, for a quick trip: say where, choose a line, Start ride.</li>
+<li><strong>Plan</strong>, for building a route: points, ride type, directions.</li>
+<li>Both show the same route; the switch at the top changes between them.</li>
+<li><strong>Layers</strong> and <strong>Save and load</strong> are in the Menu.</li>
+</ul>
+<p class="find"><strong>Looking for something else?</strong> How routes are chosen: <a href="/about/routing.html">Routing</a>. The ride types: <a href="/about/ride-types.html">Ride types</a>. Screen reader and keyboard use: <a href="/about/accessibility.html">Accessibility</a>.</p>
+</div>
+
+<nav class="toc" aria-label="On this page">
+<p><strong>On this page</strong></p>
+<ul>
+<li><a href="#go">Go</a></li>
+<li><a href="#plan">Plan</a></li>
+<li><a href="#ride">On the ride screen</a></li>
+<li><a href="#layers">Layers and the road panel</a></li>
+<li><a href="#save">Save, share and export</a></li>
+<li><a href="#settings">Settings and your account</a></li>
+<li><a href="#suggest">Suggest, 311 and ride links</a></li>
+<li><a href="#android">The Android app</a></li>
+<li><a href="#sources">Sources</a></li>
+</ul>
+</nav>
+
+<h2 id="go">Go</h2>
+<p>Type where you are going in <strong>Where to?</strong>, or press a place button, then choose one of
+the lines on the map and press <strong>Start ride</strong><sup class="cite"><a href="#ref-1" aria-label="source 1">[1]</a></sup>.</p>
+<figure id="fig-use-go">
+<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<svg viewBox="0 0 760 206" role="img" aria-labelledby="fig-use-go-t fig-use-go-d" focusable="false" style="min-width:547px">
+<title id="fig-use-go-t">Go in three steps</title>
+<desc id="fig-use-go-d">Go has three steps. Type a place in Where to?, or press Home, Food, Water or Restroom. Choose a line: your route in blue, More direct in near-black, Trailmaxxed in teal, each named on the map. Then press Start ride for turn cues, re-routes and the Road closed button.</desc>
+<defs><marker id="ah-use-go" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<rect class="bx" x="10" y="14" width="228" height="74" rx="6"/>
+<text class="tb" x="124.0" y="39.5" text-anchor="middle">Where to?</text>
+<text class="ts" x="124.0" y="55.5" text-anchor="middle">a place, or Home, Food,</text>
+<text class="ts" x="124.0" y="71.5" text-anchor="middle">Water, Restroom</text>
+<path class="ar" d="M240,51 L260,51" marker-end="url(#ah-use-go)"/>
+<rect class="bx" x="262" y="14" width="228" height="74" rx="6"/>
+<text class="tb" x="376.0" y="39.5" text-anchor="middle">Choose a line</text>
+<text class="ts" x="376.0" y="55.5" text-anchor="middle">Your route, More direct,</text>
+<text class="ts" x="376.0" y="71.5" text-anchor="middle">Trailmaxxed</text>
+<path class="ar" d="M492,51 L512,51" marker-end="url(#ah-use-go)"/>
+<rect class="bxa" x="514" y="14" width="228" height="74" rx="6"/>
+<text class="tb" x="628.0" y="39.5" text-anchor="middle">Start ride</text>
+<text class="ts" x="628.0" y="55.5" text-anchor="middle">cues, re-routes,</text>
+<text class="ts" x="628.0" y="71.5" text-anchor="middle">Road closed</text>
+<line x1="262" y1="116" x2="400" y2="116" stroke="#ffffff" stroke-width="10" stroke-linecap="round"/>
+<line x1="262" y1="116" x2="400" y2="116" stroke="#1d4ed8" stroke-width="6" stroke-linecap="round"/>
+<text class="t" x="410" y="121" text-anchor="start">Your route</text>
+<line x1="262" y1="140" x2="400" y2="140" stroke="#ffffff" stroke-width="10" stroke-linecap="round"/>
+<line x1="262" y1="140" x2="400" y2="140" stroke="#1f2937" stroke-width="6" stroke-linecap="round"/>
+<text class="t" x="410" y="145" text-anchor="start">More direct</text>
+<line x1="262" y1="164" x2="400" y2="164" stroke="#ffffff" stroke-width="10" stroke-linecap="round"/>
+<line x1="262" y1="164" x2="400" y2="164" stroke="#0f766e" stroke-width="6" stroke-linecap="round"/>
+<text class="t" x="410" y="169" text-anchor="start">Trailmaxxed</text>
+<text class="ts" x="262" y="196" text-anchor="start">Each a different color, named on the map.</text>
+</svg>
+</div>
+<figcaption>Go is the phone's short way to a route; everything else is in Plan.</figcaption>
+</figure>
+<details class="more"><summary>More: Go</summary>
+<div class="more-body">
+
+
+<ul>
+<li><strong>Where to?</strong> starts finding the route while you are still looking at the top result.
+Tapping the empty box lists your location and the places you picked recently.</li>
+<li><strong>Place buttons:</strong> <strong>Home</strong>, <strong>Food</strong>,
+<strong>Water</strong> and <strong>Restroom</strong>; <strong>More</strong> adds
+<strong>Metro</strong> (the three nearest stations, closed ones marked), <strong>Repair</strong>,
+<strong>Sights</strong> and Change home. The first press of Home asks where home is: search for it or
+tap the map.</li>
+<li><strong>The route card</strong> shows the start, the number of stops and the destination; Edit
+opens the points. <strong>Add a stop</strong> under it puts a place where it adds the least distance,
+and <strong>Best order</strong> appears with two or more stops. Undo takes a stop back out.</li>
+<li><strong>Route choice:</strong> beside your route, Go can draw <strong>More direct</strong> and
+<strong>Trailmaxxed</strong>, each with how much time or busy riding it saves or adds. More direct is
+up to two notches more tolerant of traffic and is shown only when it saves at least a minute.
+Trailmaxxed is planned at the top of the traffic slider and is shown only when it takes at least
+250 ft [80 m] off busy riding. Press a line, or its row, to choose it; your own setting doesn't
+change.</li>
+<li><strong>Transit offer:</strong> on Novice and Nervous, when the only way through is a busy road,
+<strong>Own bike + transit</strong> and <strong>Bikeshare + transit</strong> appear beside the route,
+each naming the busy stretch it avoids.</li>
+<li><strong>Ride types:</strong> Go shows the commuting types as buttons; <strong>More ride
+types</strong> lists every type in groups, with a search box. A star puts a type you use first, and is
+kept with your account when you are signed in.</li>
+<li><strong>Shared places:</strong> a location shared from another app (a map pin or a link) opens in
+RouteMaker as the destination.</li>
+</ul>
+
+</div></details>
+<h2 id="plan">Plan</h2>
+<p>Plan is the full planner: build the route point by point, choose how it should ride, and read its
+directions, elevation and junctions before you go.</p>
+<figure id="fig-use-plan">
+<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<svg viewBox="0 0 760 222" role="img" aria-labelledby="fig-use-plan-t fig-use-plan-d" focusable="false" style="min-width:547px">
+<title id="fig-use-plan-t">Plan&#x27;s points and choices</title>
+<desc id="fig-use-plan-d">Plan lists the points: From, any stops, and To, with Add a stop and Best order under them. A stop&#x27;s grip drags it to a new place in the order. Then choose the ride type and its two sliders, the ride time (weekend, weekday rush, weekday off-hours or night), Make it a loop, and Undo or Redo for any change to the points.</desc>
+<defs><marker id="ah-use-plan" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<rect class="bxa" x="10" y="14" width="150" height="32" rx="6"/>
+<text class="tb" x="85.0" y="34.5" text-anchor="middle">From</text>
+<text class="ts" x="172" y="35" text-anchor="start">your start</text>
+<rect class="bx" x="10" y="54" width="150" height="32" rx="6"/>
+<text class="tb" x="85.0" y="74.5" text-anchor="middle">Stop 1</text>
+<text class="ts" x="172" y="75" text-anchor="start">drag the grip to reorder</text>
+<rect class="bx" x="10" y="94" width="150" height="32" rx="6"/>
+<text class="tb" x="85.0" y="114.5" text-anchor="middle">Stop 2</text>
+<rect class="bxa" x="10" y="134" width="150" height="32" rx="6"/>
+<text class="tb" x="85.0" y="154.5" text-anchor="middle">To</text>
+<text class="ts" x="172" y="155" text-anchor="start">your finish</text>
+<rect class="bx" x="10" y="180" width="150" height="32" rx="6"/>
+<text class="tb" x="85.0" y="200.5" text-anchor="middle">Add a stop</text>
+<rect class="bx" x="172" y="180" width="130" height="32" rx="6"/>
+<text class="tb" x="237.0" y="200.5" text-anchor="middle">Best order</text>
+<text class="tb" x="400" y="22" text-anchor="start">Then choose</text>
+<rect class="bx" x="400" y="34" width="350" height="38" rx="6"/>
+<text class="tb" x="575.0" y="49.5" text-anchor="middle">Ride type</text>
+<text class="ts" x="575.0" y="65.5" text-anchor="middle">and its two sliders</text>
+<rect class="bx" x="400" y="80" width="350" height="38" rx="6"/>
+<text class="tb" x="575.0" y="95.5" text-anchor="middle">Ride time</text>
+<text class="ts" x="575.0" y="111.5" text-anchor="middle">Weekend, rush, off-hours, night</text>
+<rect class="bx" x="400" y="126" width="350" height="38" rx="6"/>
+<text class="tb" x="575.0" y="141.5" text-anchor="middle">Make it a loop</text>
+<text class="ts" x="575.0" y="157.5" text-anchor="middle">start and finish the same</text>
+<rect class="bx" x="400" y="172" width="350" height="38" rx="6"/>
+<text class="tb" x="575.0" y="187.5" text-anchor="middle">Undo and Redo</text>
+<text class="ts" x="575.0" y="203.5" text-anchor="middle">every change to the points</text>
+</svg>
+</div>
+<figcaption>Up to 25 points. Points can also be added by tapping the map.</figcaption>
+</figure>
+<details class="more"><summary>More: Plan</summary>
+<div class="more-body">
+
+
+<h3>Points</h3>
+<ul>
+<li><strong>How to start:</strong> the (i) by the map's credits, <strong>Map info and credits</strong>,
+opens a short how-to, the four-line summary of how RouteMaker works, links to these pages, and the
+map's credits. It starts closed.</li>
+<li>Type places into <strong>From</strong>, <strong>To</strong> and <strong>Add a stop</strong>, or tap
+the map. Up to 25 points in all.</li>
+<li>Drag a stop's grip to move it, or use <strong>Best order</strong> to put the stops in the order that
+rides best; the start and the finish stay where they are.</li>
+<li><strong>Make it a loop</strong> makes the first point the start and the finish; Reverse rides the
+stops the other way round.</li>
+<li><strong>Undo</strong> and <strong>Redo</strong> cover every change to the points (Ctrl+Z, and
+Ctrl+Shift+Z or Ctrl+Y). <strong>More</strong> has Reset and Clear.</li>
+<li><strong>Manual mode</strong> draws straight lines between points you place, for a stretch the
+router won't take; see <a href="/about/routing.html">Routing</a>.</li>
+</ul>
+<h3>How it rides</h3>
+<ul>
+<li><strong>Ride type</strong> and its <strong>traffic</strong> and <strong>hills</strong> sliders:
+<a href="/about/ride-types.html">Ride types</a>.</li>
+<li><strong>Ride time:</strong> Weekend, Weekday rush, Weekday off-hours, or Night, 9 PM to 7 AM. Rush
+hour and night change how busy roads are taken to be; weekends open roads closed to cars at
+weekends.</li>
+<li><strong>Cargo Bike</strong> asks what you carry: Carrying cargo, or Cargo with passengers.</li>
+<li><strong>Rider and bike weight</strong> (Settings, Riding) makes climbs cost what they cost you;
+it is kept private.</li>
+<li><strong>Show bike lanes on high-stress roads</strong> (Layers, Traffic stress) draws the painted
+lanes on LTS 4 and Avoid roads and counts them in the route's totals. Off unless you turn it on.</li>
+<li>When you are not signed in, a plan whose points are more than about 93 mi [150 km] apart asks
+you to confirm before it is planned.</li>
+</ul>
+<h3>Reading the route</h3>
+<p>Under the route are its folds: <strong>Elevation and climbs</strong>, <strong>Stress and
+facilities</strong>, <strong>Directions</strong> (with <strong>Full detail</strong>, and a copy or
+download as text), <strong>Junctions to watch</strong>, <strong>Other routes</strong> (up to three
+more at the top of the traffic slider) and <strong>Water and restrooms</strong> along the way. Each
+starts closed. A line under the time gives sunrise or sunset when it falls during the ride or within
+about an hour of arriving, worked out on your device<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup>.</p>
+
+</div></details>
+<h2 id="ride">On the ride screen</h2>
+<p>Start ride follows you along the route with turn cues, re-plans if you leave it, and keeps the map
+for the route in case you lose signal.</p>
+<figure id="fig-use-ride">
+<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<svg viewBox="0 0 760 316" role="img" aria-labelledby="fig-use-ride-t fig-use-ride-d" focusable="false" style="min-width:547px">
+<title id="fig-use-ride-t">The ride screen</title>
+<desc id="fig-use-ride-d">The ride screen has End ride and Road closed across the top; End ride is a slider so a stray tap won&#x27;t end it. Below them is the turn card with the next turn and how far it is. Round buttons on the map&#x27;s right edge are Where am I?, Large text, Detour and 311. Near sunrise or sunset, a line gives the time and how long until it.</desc>
+<defs><marker id="ah-use-ride" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<rect x="250" y="8" width="260" height="300" rx="18" class="bx"/>
+<rect class="bxa" x="262" y="20" width="236" height="30" rx="6"/>
+<text class="tb" x="380.0" y="39.5" text-anchor="middle">End ride  |  Road closed</text>
+<rect class="bx" x="262" y="58" width="236" height="56" rx="6"/>
+<text class="tb" x="380.0" y="82.5" text-anchor="middle">Next turn</text>
+<text class="ts" x="380.0" y="98.5" text-anchor="middle">0.2 mi, Left onto R St NW</text>
+<text class="ts" x="380" y="170" text-anchor="middle">the map, along your route</text>
+<circle cx="480" cy="136" r="14" class="fillacc"/>
+<text class="t" x="530" y="141" text-anchor="start">Where am I?</text>
+<path class="ar" d="M524,136 L498,136" marker-end="url(#ah-use-ride)"/>
+<circle cx="480" cy="176" r="14" class="fillacc"/>
+<text class="t" x="530" y="181" text-anchor="start">Large text</text>
+<path class="ar" d="M524,176 L498,176" marker-end="url(#ah-use-ride)"/>
+<circle cx="480" cy="216" r="14" class="fillacc"/>
+<text class="t" x="530" y="221" text-anchor="start">Detour</text>
+<path class="ar" d="M524,216 L498,216" marker-end="url(#ah-use-ride)"/>
+<circle cx="480" cy="256" r="14" class="fillacc"/>
+<text class="t" x="530" y="261" text-anchor="start">311</text>
+<path class="ar" d="M524,256 L498,256" marker-end="url(#ah-use-ride)"/>
+<text class="tb" x="10" y="32" text-anchor="start">Top: two big buttons</text>
+<text class="ts" x="10" y="52" text-anchor="start">End ride is a slider,</text>
+<text class="ts" x="10" y="70" text-anchor="start">so a stray tap won&#x27;t end it.</text>
+<text class="ts" x="10" y="96" text-anchor="start">The turn card: the next</text>
+<text class="ts" x="10" y="114" text-anchor="start">turn and how far.</text>
+<text class="ts" x="10" y="280" text-anchor="start">Light times: Sunset 6:22 PM (22 min)</text>
+</svg>
+</div>
+<figcaption>What each button does is in the list below.</figcaption>
+</figure>
+<details class="more"><summary>More: On the ride screen</summary>
+<div class="more-body">
+
+
+<ul>
+<li><strong>Before the first ride</strong> RouteMaker asks who says the cues and how much; see
+<a href="/about/accessibility.html#riding">Accessibility</a>. The screen is kept on while you
+ride.</li>
+<li>At an unusual junction, such as a five-way or a left onto a service road, the turn card draws the
+junction instead of a plain arrow. Your way is solid with its arrowhead, the other roads are dashed,
+and a service road's main road is drawn where it lies: behind the turn when you cross it first, ahead
+when you turn short of it. At a traffic circle the card draws the ring with your exit's number in it,
+and the cue counts the exits, for example "Take the 3rd exit onto P Street NW at Dupont Circle". Only
+streets are counted, not slip lanes, service lanes or paths. Ordinary crossroads keep the plain
+arrow.</li>
+<li><strong>Where am I?</strong> says where you are and centers the map on you again.
+<strong>Large text</strong> makes the next turn as big as it fits.</li>
+<li><strong>Detour</strong> lists the nearest <strong>Water</strong> or <strong>Restroom</strong>;
+choosing one re-plans the ride through it and on along the rest of the route.</li>
+<li><strong>Road closed</strong> plans a way round from where you are: "Road closed. Finding a way
+round."</li>
+<li><strong>311</strong> logs a problem where you are, for reporting later; see
+<a href="#suggest">below</a>.</li>
+<li><strong>Off the route</strong>, RouteMaker plans again from where you are. <strong>Keep the planned
+route</strong> stops that until you are back on it, and shows the way back instead.</li>
+<li><strong>No signal:</strong> at Start ride, the map within about 1,000 ft [300 m] either side of the
+route is kept on your device, so dead spots still show the stress lines. It is cleared when the ride
+ends. Only map tiles are kept, never where you were.</li>
+<li><strong>In the background:</strong> after 10 minutes with the page out of sight, the ride pauses to
+save battery and stops using your location; <strong>Resume</strong> carries on.</li>
+<li><strong>Back gesture:</strong> swiping back during a ride does nothing, so a glove or a bump
+can't leave the ride.</li>
+<li><strong>Bikeshare rides</strong> show the time since you undocked, counting up, and <strong>Ride to
+the nearest dock</strong> finds the closest dock with room, or the one that adds least to the ride.
+Stopping by a dock for a while marks the bike as docked; <strong>Restart the time</strong> starts the
+count again.</li>
+<li><strong>Waiting for a train or bus</strong>, the ride shows where the next one is and when it is
+due. Times say whether they are live or scheduled, and a countdown shows when there are under
+five minutes to spare.</li>
+<li><strong>End ride</strong> shows the ride summary; <strong>Undo</strong> picks the ride back up,
+keeping the figures recorded so far. See <a href="/about/routing.html#riding">While you
+ride</a>.</li>
+</ul>
+
+</div></details>
+<h2 id="layers">Layers and the road panel</h2>
+<p>Layers turns the map's extras on and off, one switch per section, with each section's key inside
+it. Pressing and holding a road, or right-clicking it, opens the road panel.</p>
+<figure id="fig-use-layers">
+<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<svg viewBox="0 0 760 256" role="img" aria-labelledby="fig-use-layers-t fig-use-layers-d" focusable="false" style="min-width:547px">
+<title id="fig-use-layers-t">The Layers sheet</title>
+<desc id="fig-use-layers-d">Layers has one row per section, each with one switch and its own key inside: Traffic stress, Water and restrooms, Rail stations, Bikeshare and e-bikes, Places to see, and Trails and terrain. Plan also has Scenic and DC permits, and Mass Ride has federal land.</desc>
+<defs><marker id="ah-use-layers" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<rect class="bxa" x="10" y="12" width="230" height="32" rx="6"/>
+<text class="tb" x="125.0" y="32.5" text-anchor="middle">Traffic stress</text>
+<rect x="252" y="20" width="30" height="16" rx="8" class="fillacc"/>
+<text class="ts" x="296" y="33" text-anchor="start">the stress map, lanes on busy roads, junctions, hazards</text>
+<rect class="bx" x="10" y="52" width="230" height="32" rx="6"/>
+<text class="tb" x="125.0" y="72.5" text-anchor="middle">Water and restrooms</text>
+<rect x="252" y="60" width="30" height="16" rx="8" class="fillacc"/>
+<text class="ts" x="296" y="73" text-anchor="start">fountains, taps, restrooms, repair stands</text>
+<rect class="bx" x="10" y="92" width="230" height="32" rx="6"/>
+<text class="tb" x="125.0" y="112.5" text-anchor="middle">Rail stations</text>
+<rect x="252" y="100" width="30" height="16" rx="8" class="fillacc"/>
+<text class="ts" x="296" y="113" text-anchor="start">Metro and MARC; closures and elevator outages</text>
+<rect class="bx" x="10" y="132" width="230" height="32" rx="6"/>
+<text class="tb" x="125.0" y="152.5" text-anchor="middle">Bikeshare and e-bikes</text>
+<rect x="252" y="140" width="30" height="16" rx="8" class="fillacc"/>
+<text class="ts" x="296" y="153" text-anchor="start">Capital Bikeshare docks, bikes and room</text>
+<rect class="bx" x="10" y="172" width="230" height="32" rx="6"/>
+<text class="tb" x="125.0" y="192.5" text-anchor="middle">Places to see</text>
+<rect x="252" y="180" width="30" height="16" rx="8" class="fillacc"/>
+<text class="ts" x="296" y="193" text-anchor="start">museums, gardens, viewpoints</text>
+<rect class="bx" x="10" y="212" width="230" height="32" rx="6"/>
+<text class="tb" x="125.0" y="232.5" text-anchor="middle">Trails and terrain</text>
+<rect x="252" y="220" width="30" height="16" rx="8" class="fillacc"/>
+<text class="ts" x="296" y="233" text-anchor="start">trail ratings, climbs, topo lines</text>
+</svg>
+</div>
+<figcaption>Each section's key is inside it; open a section to see its layers one by one.</figcaption>
+</figure>
+<details class="more"><summary>More: Layers and the road panel</summary>
+<div class="more-body">
+
+
+<h3>The layers</h3>
+<ul>
+<li><strong>Traffic stress</strong>: the stress map, Show bike lanes on high-stress roads, the
+junction markers and, from the next map update, the route's hazard marks. The levels: <a href="/about/stress.html">Stress
+ratings</a>.</li>
+<li><strong>Water and restrooms</strong>: drinking fountains and taps (with untreated water marked),
+flush and portable restrooms, and bike repair stands, from street zoom.</li>
+<li><strong>Rail stations</strong>: Metro and MARC, with closed stations struck through and elevator
+outages on the station icons.</li>
+<li><strong>Bikeshare and e-bikes</strong>: Capital Bikeshare docks, with the bikes, e-bikes and room
+at each.</li>
+<li><strong>Places to see</strong>: museums, gardens, viewpoints and more. Off unless you turn it
+on.</li>
+<li><strong>Trails and terrain</strong>: trail ratings, climbs and topo lines; see
+<a href="/about/trails.html">Mountain Bike, Mountain Goat and Gravel</a>.</li>
+<li>In Plan, also <strong>Scenic</strong> and <strong>DC permits</strong>, both off by default. Neither
+changes the route.</li>
+</ul>
+<h3>Finding things on the map</h3>
+<ul>
+<li>Plan's map has <strong>Food</strong> and <strong>Water</strong> buttons. <strong>Find food</strong>
+has Crab, Coffee, Pizza, Tacos, Ice cream and Farm stands, near you or in the map's view.</li>
+<li><strong>Repair stands and bike shops</strong> (Go's More, Repair) lists the nearest.</li>
+<li>On towpaths and long trails, <strong>trail mile markers</strong> are shown on the map, in the road
+panel and in Where am I?.</li>
+</ul>
+<h3>The road panel</h3>
+<ul>
+<li>The road's name, its stress level and why, in words.</li>
+<li><strong>Use this spot:</strong> start, stop or finish here, or <strong>Set as Home</strong>.</li>
+<li><strong>Street View</strong>, the newest Mapillary photo facing along the road where there is one, and <strong>Edit in
+OSM</strong> to fix the map itself.</li>
+<li><strong>Suggest a change…</strong>: a road's level, a junction, or a hazard on a Mass Ride.</li>
+</ul>
+
+</div></details>
+<h2 id="save">Save, share and export</h2>
+<p>Save and load, in the Menu, keeps, shares and exports routes, and opens files from other apps.</p>
+<figure id="fig-use-save">
+<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<svg viewBox="0 0 760 240" role="img" aria-labelledby="fig-use-save-t fig-use-save-d" focusable="false" style="min-width:547px">
+<title id="fig-use-save-t">Where a route can go</title>
+<desc id="fig-use-save-d">From a route you can: Save route, to My routes, up to 200 with versions; Keep for offline, up to 10 on this device; Share it as a link, a ride link or an image; Export it as GPX, FIT, TCX, a PDF or a lock-screen image; or Send to Garmin.</desc>
+<defs><marker id="ah-use-save" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<rect class="bxa" x="10" y="92" width="150" height="50" rx="6"/>
+<text class="tb" x="85.0" y="121.5" text-anchor="middle">Your route</text>
+<path class="ar" d="M162,117 L238,27" marker-end="url(#ah-use-save)"/>
+<rect class="bx" x="240" y="8" width="170" height="38" rx="6"/>
+<text class="tb" x="325.0" y="31.5" text-anchor="middle">Save route</text>
+<text class="ts" x="422" y="32" text-anchor="start">My routes, up to 200, with versions</text>
+<path class="ar" d="M162,117 L238,73" marker-end="url(#ah-use-save)"/>
+<rect class="bx" x="240" y="54" width="170" height="38" rx="6"/>
+<text class="tb" x="325.0" y="77.5" text-anchor="middle">Keep for offline</text>
+<text class="ts" x="422" y="78" text-anchor="start">up to 10, on this device</text>
+<path class="ar" d="M162,117 L238,119" marker-end="url(#ah-use-save)"/>
+<rect class="bx" x="240" y="100" width="170" height="38" rx="6"/>
+<text class="tb" x="325.0" y="123.5" text-anchor="middle">Share</text>
+<text class="ts" x="422" y="124" text-anchor="start">a link, a ride link, or an image</text>
+<path class="ar" d="M162,117 L238,165" marker-end="url(#ah-use-save)"/>
+<rect class="bx" x="240" y="146" width="170" height="38" rx="6"/>
+<text class="tb" x="325.0" y="169.5" text-anchor="middle">Export</text>
+<text class="ts" x="422" y="170" text-anchor="start">GPX, FIT, TCX, PDF, lock-screen image</text>
+<path class="ar" d="M162,117 L238,211" marker-end="url(#ah-use-save)"/>
+<rect class="bx" x="240" y="192" width="170" height="38" rx="6"/>
+<text class="tb" x="325.0" y="215.5" text-anchor="middle">Send to Garmin</text>
+<text class="ts" x="422" y="216" text-anchor="start">straight to Garmin Connect</text>
+</svg>
+</div>
+<figcaption>All of these are in Save and load, and Share is under the route too.</figcaption>
+</figure>
+<details class="more"><summary>More: Save, share and export</summary>
+<div class="more-body">
+
+
+<h3>Keep</h3>
+<ul>
+<li><strong>Save route</strong> (signed in) puts the route in <strong>My routes</strong>, up to 200,
+each with Rename, Versions, GPX and Delete. A search box finds a route by name.</li>
+<li><strong>Keep for offline</strong> keeps a planned route on this device, up to 10, so it opens
+without signal, in the installed app or a browser tab. The last ride is kept too.</li>
+<li>Before a route is exported or kept, RouteMaker warns if it goes through a closure.</li>
+</ul>
+<h3>Share</h3>
+<ul>
+<li><strong>Copy link</strong> and <strong>Share</strong> give a link to the route. <strong>Share
+route</strong>: others can look it over, change it, or ride it their own way. <strong>Share
+ride</strong>: everyone rides this exact route, never re-routed, and each can choose to show where
+they are (see <a href="#suggest">ride links</a>).</li>
+<li><strong>Keep shared link</strong>: 1 year after last opened, Permanently, or Until a date. Shared
+links are listed in Save and load, where you can turn one off.</li>
+<li><strong>Share as image</strong> draws the route as a picture: Square 1080 × 1080, Portrait 1080 ×
+1350, Story 1080 × 1920 or Landscape 1200 × 630, with a QR code if you want one.</li>
+</ul>
+<h3>Export</h3>
+<ul>
+<li><strong>GPX track</strong><sup class="cite"><a href="#ref-3" aria-label="source 3">[3]</a></sup>; <strong>FIT course</strong> and <strong>TCX course</strong>,
+with turn cues<sup class="cite"><a href="#ref-4" aria-label="source 4">[4]</a></sup>; <strong>PDF cue sheet</strong> and <strong>PDF handlebar strip</strong> to
+print; and a <strong>cue sheet image</strong> for a phone's lock screen.</li>
+<li>Choose your bike computer (Any, Garmin Edge, Wahoo ELEMNT or Hammerhead Karoo) so the cues and the
+course fit what it can hold.</li>
+<li><strong>Send to Garmin</strong> sends the course to Garmin Connect.</li>
+</ul>
+<h3>Open a file</h3>
+<ul>
+<li><strong>Open GPX…</strong> reads a file in your browser; it is never uploaded. Up to 20 MB and
+100,000 points.</li>
+<li>In Plan, <strong>Snap to the map's streets</strong> turns the track into a plan you can change, or
+<strong>Follow the file exactly</strong> rides it as drawn, for a road closed for an event.</li>
+</ul>
+
+</div></details>
+<h2 id="settings">Settings and your account</h2>
+<p>Settings holds My Go, the riding and display settings, the app install, and your account. Sign in to
+keep your settings and routes on every device.</p>
+<details class="more"><summary>More: Settings and your account</summary>
+<div class="more-body">
+
+<ul>
+<li><strong>My Go:</strong> <strong>Home</strong>, <strong>Go's ride type</strong>, and <strong>Open
+in</strong> (Go, Plan, or by screen size: a phone opens in Go, even from a shared link, which it shows
+in Go; a wider screen opens in Plan). Kept with your account when you are signed in, otherwise on
+this device.</li>
+<li><strong>Riding</strong> and <strong>Display:</strong> cues, large text, rider and bike weight, high
+contrast and the rest, on <a href="/about/accessibility.html">Accessibility</a>.</li>
+<li><strong>Install RouteMaker</strong> adds it to your home screen when the browser offers it. When a
+new version is ready, a line says so with Reload; it never interrupts a ride.</li>
+<li><strong>Account:</strong> <strong>Sign in with Discord</strong> keeps My Go, starred ride types and
+saved routes with your account. <strong>Delete account</strong> says what is deleted and what is kept,
+and asks once.</li>
+<li><strong>AI assistant</strong> keys and connected apps: <a href="/about/assistants.html">AI
+assistants</a>.</li>
+</ul>
+
+</div></details>
+<h2 id="suggest">Suggest, 311 and ride links</h2>
+<p>Suggest sends a correction to the map's admins; 311 logs a problem on the street for you to report;
+ride links let a group see each other on the route.</p>
+<details class="more"><summary>More: Suggest, 311 and ride links</summary>
+<div class="more-body">
+
+<h3>Suggest a change</h3>
+<ul>
+<li>Press and hold a road (or right-click it), then <strong>Suggest a change…</strong>: a road's
+traffic stress, a junction, or a hazard on a Mass Ride. <strong>The road at the map's center</strong>
+in the Suggest sheet does the same without the map.</li>
+<li>Nothing changes until an admin reviews it. Admins work through suggestions, closures and hazards in
+<strong>Review</strong>, beside Go and Plan.</li>
+</ul>
+<h3>311</h3>
+<ul>
+<li>During a ride, the <strong>311</strong> button logs a problem where you are; in Plan, the map's
+right-click or long-press menu has <strong>Log for 311</strong>.</li>
+<li>The log is a checklist in Suggest, grouped by the 311 website for each place (DC 311<sup class="cite"><a href="#ref-5" aria-label="source 5">[5]</a></sup>,
+Montgomery County, Prince George's County, Baltimore and others). Report each one there, then check it
+off. The log is kept with your account.</li>
+</ul>
+<h3>Group Ride and Mass Ride links</h3>
+<ul>
+<li>Everyone who opens the same <strong>Share ride</strong> link is on the same ride, and sees the
+others as dots, with no names.</li>
+<li>When the link opens, it asks once whether to <strong>show me as a dot</strong>, and your role:
+<strong>Participant</strong>, <strong>Lead line</strong>, <strong>Sweep</strong> or
+<strong>Corker</strong>. Your dot is sent only while the app is open and you are within a quarter mile
+[400 m] of the route, and stops when you turn it off, close the app, are off the route for 10 minutes,
+or 12 hours after the start. The server keeps a dot for 2 minutes, in memory only.</li>
+<li><strong>Alert</strong> sends one tap to everyone on the link with your location. A Group Ride has
+Rider off the back, Crash, Mechanical or flat, Wrong turn and Other; a Mass Ride has Extensive rider
+spread, Emergency vehicle coming through, Aggressive person, Medical emergency or crash, Rerouting and
+Other. Crash and Medical ask first and offer to call 911.</li>
+<li>Planning a Mass Ride: <a href="/about/mass-ride.html">Mass Ride</a>.</li>
+</ul>
+
+</div></details>
+<h2 id="android">The Android app</h2>
+<p>The Android app is RouteMaker with cues that keep going when the screen is locked<sup class="cite"><a href="#ref-6" aria-label="source 6">[6]</a></sup>.</p>
+<details class="more"><summary>More: The Android app</summary>
+<div class="more-body">
+
+<ul>
+<li>On first launch it asks for the site's address.</li>
+<li>RouteMaker links shared to the app open in it.</li>
+<li><strong>Send to Garmin</strong> hands the course to Garmin Connect.</li>
+<li>Locked-screen cues, the ride notification and the buzzes: <a href="/about/accessibility.html#android">Accessibility</a>.</li>
+</ul>
+
+</div></details>
+<h2 id="sources">Sources</h2>
+<ol class="refs">
+  <li id="ref-1">RouteMaker's screens, in the code. <a href="https://github.com/Macrophage87/RouteMaker/blob/main/frontend/src/app/Go.tsx">Go.tsx</a>, <a href="https://github.com/Macrophage87/RouteMaker/blob/main/frontend/src/app/Planner.tsx">Planner.tsx</a>, <a href="https://github.com/Macrophage87/RouteMaker/blob/main/frontend/src/RideMode.tsx">RideMode.tsx</a>, <a href="https://github.com/Macrophage87/RouteMaker/blob/main/frontend/src/GpxPanel.tsx">GpxPanel.tsx</a>, <a href="https://github.com/Macrophage87/RouteMaker/blob/main/frontend/src/app/Sheets.tsx">Sheets.tsx</a></li>
+  <li id="ref-2">NOAA Global Monitoring Laboratory, Solar Calculator and its formulas (after Meeus, Astronomical Algorithms). <a href="https://gml.noaa.gov/grad/solcalc/">gml.noaa.gov/grad/solcalc</a></li>
+  <li id="ref-3">TopoGrafix, GPX 1.1 schema. <a href="https://www.topografix.com/GPX/1/1/">topografix.com/GPX/1/1</a></li>
+  <li id="ref-4">Garmin, FIT SDK: courses and course points. <a href="https://developer.garmin.com/fit/">developer.garmin.com/fit</a></li>
+  <li id="ref-5">DC 311 online. <a href="https://311.dc.gov/citizen/s/">311.dc.gov</a></li>
+  <li id="ref-6">RouteMaker's Android app. <a href="https://github.com/Macrophage87/RouteMaker/blob/main/mobile/README.md">mobile/README.md</a></li>
+</ol>
+<p class="next">Next: <a href="/about/accessibility.html">Accessibility</a></p>
+</main>
+<footer>
+  <p>Part of RouteMaker's documentation. It describes version 0.10.0. The code is
+  open source under the MIT licence:
+  <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
+  <p><a href="/">Back to the map</a></p>
+</footer>
+</body>
+</html>
