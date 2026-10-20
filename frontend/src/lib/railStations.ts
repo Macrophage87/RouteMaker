@@ -315,23 +315,33 @@ function nearestTo(from: LonLat, points: readonly LonLat[]): LonLat | null {
 }
 
 /**
- * Where a ride starting or ending at this station goes: the elevator nearest
- * the station, which is where a bike gets in (owner, 2026-09-27). DC's
- * elevator first; where DC lists none, OpenStreetMap's; where neither has
- * one, the nearest other entrance (owner, 2026-09-28); the station itself
- * only when nothing is known.
+ * The ways in a ride with a bike may use at this station, best kind first: DC's elevators (owner, 2026-09-27: the
+ * elevator is where a bike gets in); where DC lists none, OpenStreetMap's; where neither has one, the other entrances
+ * (owner, 2026-09-28). Empty when nothing is known.
  */
-export function bikeEntrance(station: Station): BikeEntrance {
+export function bikeWaysIn(station: Station): { kind: BikeEntrance["kind"]; points: readonly LonLat[] } {
   const candidates: Array<[BikeEntrance["kind"], readonly LonLat[]]> = [
     ["elevator", station.elevators],
     ["osm-elevator", station.osmElevators],
     ["entrance", station.entrances],
   ];
   for (const [kind, points] of candidates) {
-    const point = nearestTo(station.point, points);
-    if (point) return { point, kind };
+    if (points.length > 0) return { kind, points };
   }
-  return { point: station.point, kind: "station" };
+  return { kind: "station", points: [] };
+}
+
+/**
+ * Where a ride starting or ending at this station goes with a bike: one of its ways in (bikeWaysIn), the one nearest
+ * `from`, where the rider comes from (Stephen 2026-10-20, at Shady Grove: "Somehow it missed one of the metro
+ * entrances"), else the one nearest the station's own point; the station itself only when nothing is known. App then
+ * asks the router which is quickest to reach (lib/stationWayIn.ts), since the nearest in a straight line can be
+ * across the tracks.
+ */
+export function bikeEntrance(station: Station, from: LonLat | null = null): BikeEntrance {
+  const ways = bikeWaysIn(station);
+  const point = nearestTo(from ?? station.point, ways.points);
+  return point ? { point, kind: ways.kind } : { point: station.point, kind: "station" };
 }
 
 /**
@@ -344,13 +354,13 @@ export function walkEntrance(station: Station, from: LonLat | null = null): Bike
   return point ? { point, kind: "walk" } : { point: station.point, kind: "station" };
 }
 
-/** A station's way in for this ride: on foot (endsOnFoot), the nearest of any kind; with a bike, its elevator. */
+/** A station's way in for this ride: on foot (endsOnFoot), the nearest of any kind; with a bike, its nearest elevator. */
 export function stationEntrance(station: Station, onFoot: boolean, from: LonLat | null = null): BikeEntrance {
-  return onFoot ? walkEntrance(station, from) : bikeEntrance(station);
+  return onFoot ? walkEntrance(station, from) : bikeEntrance(station, from);
 }
 
 /** A point this close to one of a station's ways in is at that station (a shared link keeps 5 decimals, about 1 m). */
-const AT_ENTRANCE_M = 3;
+export const AT_ENTRANCE_M = 3;
 
 /** A point of the plan moved to its station's way in for the new ride type (stationMoves). */
 export interface StationMove {
