@@ -140,7 +140,7 @@ export function roadHazardsSaid(route: Partial<Pick<RouteResponse, "road_hazards
 }
 
 export const ROUTE_HAZARD_KEY_TEXT =
-  "On a route, amber triangles mark cobblestones or rails in the road. Routes avoid them where they can; the directions name each.";
+  "On a route, amber triangles mark cobblestones or rails in the road. From the next map update, routes avoid them where they can and the directions name each.";
 
 /** The key's one entry, in the Traffic stress section of Layers: the mark, and the words. */
 export function RouteHazardKey(): ReactElement {
