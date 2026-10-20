@@ -1618,7 +1618,8 @@ export function RideMode({
   const togo = progress === null ? null : toGo(model, progress);
   const cueShown = cueParts(cue ? (cue.rideText ?? cue.text) : "");
   // The distance's metric in brackets a size smaller, so the line stays one line with large text.
-  const distanceWords = cue && progress !== null ? formatDistance(cue.atM - progress) : "";
+  // A U-turn is now: no distance (it is at the line's start, behind the rider).
+  const distanceWords = cue && progress !== null && cue.movement !== "uturn" ? formatDistance(cue.atM - progress) : "";
   const metricAt = distanceWords.indexOf(" (");
   const distanceShown = metricAt < 0 ? { us: distanceWords, metric: "" } : { us: distanceWords.slice(0, metricAt), metric: distanceWords.slice(metricAt + 1) };
   // Large: the turn's arrow and words as big as the card has room for (the owner, 2026-10-20: "take up as much

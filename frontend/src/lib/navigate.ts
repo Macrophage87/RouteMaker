@@ -918,9 +918,18 @@ export function step(
 
 // ---- What the screen shows and "Where am I?" says ---------------------------------------------------
 
+/**
+ * Whether a cue is still ahead of the rider: past its point by less than a metre, or a re-route's U-turn (at the
+ * line's start, so never ahead) until the rider is PASSED_M along the new way, turned round (the owner, 2026-10-20:
+ * "There's no U turn symbol.").
+ */
+function ahead(cue: Cue, progressM: number): boolean {
+  return cue.atM > progressM + 1 || (cue.movement === "uturn" && progressM < PASSED_M);
+}
+
 /** The next turn, new named way, flagged junction or walk: what the cue card leads with. */
 export function nextAction(model: RideModel, progressM: number): Cue | null {
-  return model.cues.find((c) => c.atM > progressM + 1 && (c.kind === "turn" || c.kind === "onto" || c.kind === "hazard" || c.kind === "walk" || c.kind === "stop" || c.kind === "end")) ?? null;
+  return model.cues.find((c) => ahead(c, progressM) && (c.kind === "turn" || c.kind === "onto" || c.kind === "hazard" || c.kind === "walk" || c.kind === "stop" || c.kind === "end")) ?? null;
 }
 
 /** The stretch the rider is on: its street as the API names it, or null. */
@@ -1128,8 +1137,9 @@ export function whereAmI(model: RideModel, state: RideState, metric = false, mil
         : `On ${way}.`,
   ];
   const progress = state.progressM;
-  const cue = model.cues.find((c) => c.atM > progress + 1 && (c.kind === "turn" || c.kind === "onto" || c.kind === "hazard" || c.kind === "walk"));
-  if (cue) {
+  const cue = model.cues.find((c) => ahead(c, progress) && (c.kind === "turn" || c.kind === "onto" || c.kind === "hazard" || c.kind === "walk"));
+  if (cue?.movement === "uturn") sentences.push(`Next: ${lowerFirst(cue.text)}`);
+  else if (cue) {
     const text = metric ? (cue.rideText ?? cue.text) : withoutMetric(cue.rideText ?? cue.text);
     sentences.push(`Next, in ${dist(cue.atM - state.progressM)}: ${lowerFirst(text)}`);
   }
