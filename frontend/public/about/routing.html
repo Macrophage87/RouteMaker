@@ -403,11 +403,12 @@ the version 0.10.0 map, the traffic signal lists of the District, Maryland's Sta
 Administration and Alexandria fill the gaps: a junction where the agency lists a signal and
 OpenStreetMap maps none is treated as signalled. Virginia's DOT list, a snapshot from October 2023, is
 used only for comparison and never marks a junction.</p>
-<p>Some junctions OpenStreetMap maps with a signal really have a flashing light: the main road keeps
-going and the side street faces a flashing red. Where Maryland's State Highway Administration lists
-one as a warning beacon, or RouteMaker's owner has marked it, the junction is treated as having no
-signal: the main road keeps priority, crossing it is priced as crossing from a stop sign, and the
-route description says "flashing light, not a signal".</p>
+<p>Some junctions OpenStreetMap maps with a signal really have a flashing light. Where Maryland's State
+Highway Administration lists one as a warning beacon or an intersection control beacon (about 220 of
+those), or RouteMaker's owner has marked it, the junction is not treated as signalled, and the route
+description says "flashing light, not a signal". Between roads of similar stress the light is taken
+as flashing red both ways, an all-way stop. Where a quieter road crosses a busier one, the busier road
+keeps going, and crossing it is priced as stopping and waiting for a gap.</p>
 <h3 id="junction-time">Time lost at junctions</h3>
 <p>The routing engine times a junction at about a second, whatever controls it, so a route through a
 grid of stop signs used to be timed as quick as a trail of the same length. From version 0.10.0, route
