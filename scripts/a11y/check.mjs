@@ -2917,10 +2917,10 @@ const levelSlider = `${EDITOR} input[type=range]`;
   await p.eval("document.querySelector('.ride .ride-slide-range').focus(); true");
   await p.key("End", "End", 35);
   await sleep(500);
-  const ended = await p.eval("({ ride: !!document.querySelector('section.ride'), planner: getComputedStyle(document.querySelector('#route-planner')).display === 'none', focus: document.activeElement?.textContent, wake: window.__wake.slice(-1)[0], map: getComputedStyle(document.querySelector('.map')).display, summary: document.querySelector('section.ride-summary h2')?.textContent, rows: [...document.querySelectorAll('.ride-summary-figures dt')].map((d) => d.textContent) })");
+  const ended = await p.eval("({ ride: !!document.querySelector('section.ride'), planner: getComputedStyle(document.querySelector('#route-planner')).display === 'none', focus: document.activeElement?.textContent, wake: window.__wake.slice(-1)[0], map: getComputedStyle(document.querySelector('.map')).display, summary: document.querySelector('section.ride-summary h2')?.textContent, rows: [...document.querySelectorAll('.ride-summary-figures dt')].map((d) => d.textContent), fits: (() => { const r = document.querySelector('.ride-summary').getBoundingClientRect(); const b = document.querySelector('.ride-summary-actions').getBoundingClientRect(); const body = document.querySelector('.ride-summary-body').getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight && b.bottom <= r.bottom && b.top >= body.bottom; })() })");
   // The ride's summary (the owner, 2026-10-20) with the focus on its Done; Undo beside it.
-  check("ride: End ride shows the ride's summary over the planner, puts the focus on Done and lets the screen lock go",
-    !ended.ride && ended.planner === false && ended.focus === "Done" && ended.summary === "Ride ended" && ended.rows[0] === "Distance" && ended.wake === "release" && ended.map !== "none", JSON.stringify(ended));
+  check("ride: End ride shows the ride's summary over the planner, inside the screen with Done in view, puts the focus on Done and lets the screen lock go",
+    ended.fits && !ended.ride && ended.planner === false && ended.focus === "Done" && ended.summary === "Ride ended" && ended.rows[0] === "Distance" && ended.wake === "release" && ended.map !== "none", JSON.stringify(ended));
   await sleep(500);
   const cleared = await p.eval("(async () => ({ bucket: await caches.has('routemaker-corridor-v1'), stamp: localStorage.getItem('routemaker.corridor') }))()");
   check("ride: End ride clears the map kept for dead spots", cleared.bucket === false && cleared.stamp === null, JSON.stringify(cleared));
