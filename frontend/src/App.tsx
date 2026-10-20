@@ -85,6 +85,7 @@ import {
   viaIndices,
   viaPointsNamed,
 } from "./lib/pointKinds.ts";
+import { MANUAL_BADGE } from "./lib/planLegs.ts";
 import { insertedSaid, loopChangeSaid,reversedSaid, reverseUnavailableHint, stationSaid } from "./lib/pointText.ts";
 import { avoidNearSpot, shownRoute } from "./lib/avoidJunctions.ts";
 import { shownNear } from "./lib/junctionSuggest.ts";
@@ -413,6 +414,8 @@ export function App() {
   const [manualOn, setManualOn] = useState(false);
   const manualOffered = mode === "plan" && !loopVias && !twoPointsOnly(preset);
   const manual = manualOn && manualOffered;
+  // The legs drawn by hand, for the map's dashed lines (lib/planLegs.ts).
+  const planDrawn = useMemo(() => drawnLegs(points), [points]);
   const manualRef = useRef(manual);
   manualRef.current = manual;
   // Off whenever it is not offered (Go, a loop, a two-point ride type), so it never comes back on unseen.
@@ -4285,6 +4288,7 @@ export function App() {
         // Plan's ghost of the last route; else the standard way through a closure the route goes round, dashed
         // beside it (v0.8.2), in Go and Plan, and on the ride the line not being followed.
         ghost={riding ? (rideView?.other ?? null) : reviewing ? null : (ghost ?? shown?.closure_through?.geometry.coordinates ?? null)}
+        planLegs={riding || reviewing || mode !== "plan" || loopVias ? null : planDrawn}
         lightMarks={riding || mode !== "plan" ? null : light}
         stressVisible={stressVisible && stress === "available"}
         when={mapWhen(dials.when ?? null)}
@@ -4477,6 +4481,7 @@ export function App() {
               <Icon name="trash" size={20} />
             </button>
           )}
+          {manual && <p className="plan-bar-manual-badge"><span>{MANUAL_BADGE}</span></p>}
         </div>
       )}
       {!riding && !goMode && <PlanMapChips onFood={(chip) => openView("food", chip)} onWater={(chip) => openView("nearest", chip)} onPlaces={openPlaces} />}
