@@ -48,7 +48,8 @@ NOT_LISTED_FOOTWAY = frozenset({"crossing", "traffic_island", "access_aisle"})
 # has its own queue already. The Zoo, military and secured areas close a way whatever
 # its own tags say (`restricted_areas`, `zoo.closed_way`), so a Reopen there, a
 # `bicycle=yes` override, would change nothing: they are not listed.
-UNLISTED_REASONS = frozenset({CBD_SIDEWALK, "works", "zoo", "military", "secured"})
+# An escalator is closed whatever its tags say (`routemaker.station_links`): not listed either.
+UNLISTED_REASONS = frozenset({CBD_SIDEWALK, "works", "zoo", "military", "secured", "escalator"})
 
 # What the Review card says for each reason; an unknown reason is shown as its code.
 WHY = {
@@ -65,7 +66,6 @@ WHY = {
     "mtb": "A mountain-bike trail",
     "singletrack": "Rated singletrack",
     "dismount": "A long walk-your-bike connector",
-    "escalator": "An escalator: bicycles use the elevator",
 }
 
 

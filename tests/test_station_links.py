@@ -65,6 +65,37 @@ def test_a_walk_stops_at_the_first_bike_way_and_is_never_a_way_round():
     assert 6 not in found, "the sidewalk past the service road is not a way in"
 
 
+def test_a_way_in_on_a_sidewalk_opens_its_nearest_crossing_and_no_more():
+    """An entrance on a sidewalk with a crossing to a street every 60 m: one walk."""
+    ways = [
+        placed(
+            10 + i,
+            {"highway": "footway", "footway": "sidewalk"},
+            [(60.0 * i, 0.0), (60.0 * (i + 1), 0.0)],
+        )
+        for i in range(4)
+    ]
+    ways += [
+        placed(
+            20 + i,
+            {"highway": "footway", "footway": "crossing"},
+            [(60.0 * (i + 1), 0.0), (60.0 * (i + 1), -10.0)],
+        )
+        for i in range(4)
+    ]
+    ways += [placed(30, {"highway": "residential"}, [(60.0 * i, -10.0) for i in range(6)])]
+    assert set(sl.links(ways, [at(0.0, 0.0)])) == {10, 20}
+
+
+def test_the_tunnel_is_walked_even_when_a_road_is_nearer():
+    nearer = placed(3, SERVICE, [(-100.0, -40.0), (0.0, -40.0)])
+    found = sl.links(
+        shady_grove({1: placed(1, FOOTWAY, [(0.0, 0.0), (0.0, -40.0)]), 3: nearer}), [ELEVATOR]
+    )
+    assert 4 in found and 1 in found
+    assert sl.is_tunnel(TUNNEL) and sl.is_tunnel({"layer": "-1"}) and not sl.is_tunnel(FOOTWAY)
+
+
 def test_no_way_in_near_means_no_link():
     assert sl.links(shady_grove(), [at(1000.0, 1000.0)]) == {}
     assert sl.links(shady_grove(), []) == {}
@@ -103,7 +134,10 @@ def test_ways_in_are_entrances_stations_and_elevators_near_a_station():
     assert sl.ways_in([at(5.0, 5.0)], [station], [near, far]) == [at(5.0, 5.0), station, near]
     assert sl.is_way_in({"railway": "subway_entrance"})
     assert sl.is_way_in({"railway": "train_station_entrance"})
-    assert sl.is_station({"public_transport": "station"})
+    assert sl.is_station({"railway": "station", "station": "subway"})
+    assert not sl.is_station({"public_transport": "station", "bus": "yes"}), (
+        "a bus station is not one"
+    )
     assert not sl.is_way_in({"highway": "elevator"})
 
 
