@@ -8,10 +8,6 @@ import { Protocol } from "pmtiles";
 // file by `import.meta.url`, which a bundle does not preserve; Vite builds it
 // as an asset of its own here and the map is told where it is.
 import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
-// The street names' font, bundled (lib/mapGlyphs.ts).
-import atkinsonLatin from "./fonts/map-glyphs/atkinson-next-semibold-0-255.pbf?url";
-import atkinsonLatinExtended from "./fonts/map-glyphs/atkinson-next-semibold-256-511.pbf?url";
-import atkinsonPunctuation from "./fonts/map-glyphs/atkinson-next-semibold-8192-8447.pbf?url";
 import { layers as protomapsLayers, namedFlavor } from "@protomaps/basemaps";
 import { COVERAGE_BBOX, type LonLat } from "./lib/geo.ts";
 import { AT_ZOOM } from "./lib/planHash.ts";
@@ -26,7 +22,7 @@ import {
   stressTileTemplate,
 } from "./lib/mapStyle.ts";
 import { tileRev } from "./lib/tileRev.ts";
-import { glyphRequestUrl } from "./lib/mapGlyphs.ts";
+import { bundledFace, bundledGlyphs, glyphRequestUrl } from "./lib/mapGlyphs.ts";
 import { fontStacks } from "./lib/corridor.ts";
 import { basemapArchive, setCorridorStyle, sweepCorridor } from "./lib/corridorStore.ts";
 import type { RouteResponse } from "./lib/api.ts";
@@ -163,12 +159,8 @@ import {
 import { ViaHold } from "./lib/viaHold.ts";
 import { planLegLines, routeDrawnLines } from "./lib/planLegs.ts";
 
-/** The street names' bundled glyph ranges (lib/mapGlyphs.ts, MAP_LABEL_RANGES). */
-const MAP_GLYPHS: Readonly<Record<string, string>> = {
-  "0-255": atkinsonLatin,
-  "256-511": atkinsonLatinExtended,
-  "8192-8447": atkinsonPunctuation,
-};
+/** The map labels' bundled glyph files, Atkinson Hyperlegible Next (lib/mapGlyphs.ts). */
+const MAP_GLYPHS = bundledGlyphs(import.meta.glob<string>("./fonts/map-glyphs/*.pbf", { query: "?url", import: "default", eager: true }));
 
 export type StressAvailability = "checking" | "available" | "unavailable";
 
@@ -594,7 +586,8 @@ export function MapView(props: Props) {
     const basemapLayers = withClearRoadLabels(protomapsLayers(BASEMAP_SOURCE_ID, namedFlavor("light"), { lang: "en" }));
     const style = buildStyle(origin, basemapLayers);
     // What Ride mode's corridor prefetch asks for besides the tiles: the style's glyphs and sprite.
-    setCorridorStyle(style.glyphs, style.sprite, fontStacks(style.layers), () => stressTileTemplate(origin));
+    // The labels' faces come with the app (lib/mapGlyphs.ts), so a kept ride fetches no glyphs for them.
+    setCorridorStyle(style.glyphs, style.sprite, fontStacks(style.layers).filter((stack) => !bundledFace(stack)), () => stressTileTemplate(origin));
     const [west, south, east, north] = COVERAGE_BBOX;
     const map = new maplibregl.Map({
       container: container.current,
@@ -610,7 +603,7 @@ export function MapView(props: Props) {
       // Added below, so it can start collapsed on a phone.
       attributionControl: false,
       cooperativeGestures: false,
-      // The street names' font comes with the app, not the base map (lib/mapGlyphs.ts).
+      // The labels' font comes with the app, not the base map (lib/mapGlyphs.ts).
       transformRequest: (url, type) => {
         const glyph = type === "Glyphs" ? glyphRequestUrl(url, MAP_GLYPHS) : undefined;
         return glyph ? { url: glyph } : undefined;
