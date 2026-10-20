@@ -2774,8 +2774,8 @@ const levelSlider = `${EDITOR} input[type=range]`;
   }
   await p.s("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
   await sleep(500);
-  const slid = await p.eval("({ ride: !!document.querySelector('section.ride'), undo: !!document.querySelector('.ride-ended') })");
-  await p.eval("[...document.querySelectorAll('.ride-ended button')].find((b) => b.textContent === 'Undo')?.click(); true");
+  const slid = await p.eval("({ ride: !!document.querySelector('section.ride'), undo: !!document.querySelector('.ride-summary') })");
+  await p.eval("[...document.querySelectorAll('.ride-summary button')].find((b) => b.textContent === 'Undo')?.click(); true");
   await sleep(1200);
   const undone = await p.eval("!!document.querySelector('section.ride')");
   check("ride: sliding End ride from its thumb to the end ends the ride, and Undo brings it back", !slid.ride && slid.undo && undone, JSON.stringify({ slid, undone }));

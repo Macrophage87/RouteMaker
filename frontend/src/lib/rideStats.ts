@@ -13,7 +13,7 @@
  * - Elevation (the owner, 2026-10-20: "Show elevation too!"): the profile's height where the rider was on the route,
  *   every ELEVATION_STEP_M of the ride's distance, for the summary's chart.
  */
-import { FEET_PER_METRE, formatClimb, formatDistance, formatDuration, formatSpeed, spokenClimb, spokenDistance, spokenSpeed } from "./format.ts";
+import { formatClimb, formatDistance, formatDuration, formatSpeed } from "./format.ts";
 import { haversineM, type LonLat } from "./geo.ts";
 import { POOR_FIX_M, stretchAt, type RideFix, type RideModel, type RideState } from "./navigate.ts";
 import type { RouteProfile } from "./api.ts";
@@ -161,21 +161,4 @@ export function summaryRows(stats: RideStats, now: number): RideSummaryRow[] {
   if (formatDuration(elapsedS) !== formatDuration(movingS) || movingS < 30) rows.push({ name: "Total time", value: formatDuration(elapsedS) });
   if (Math.round(stats.climbM) >= 1) rows.push({ name: "Climbing", value: formatClimb(stats.climbM) });
   return rows;
-}
-
-/** What is said: US units only, as every spoken figure is. "Ride ended. 4.7 miles, 23 minutes moving, 12 miles per hour average." */
-export function summarySpoken(stats: RideStats): string {
-  if (stats.distanceM < MOVE_MIN_M) return "Ride ended.";
-  const movingS = stats.movingMs / 1000;
-  const parts = [spokenDistance(stats.distanceM)];
-  if (movingS >= 30) {
-    const minutes = Math.max(1, Math.round(movingS / 60));
-    const hours = Math.floor(minutes / 60);
-    const rest = minutes % 60;
-    const time = hours > 0 ? `${hours} ${hours === 1 ? "hour" : "hours"}${rest ? ` ${rest} ${rest === 1 ? "minute" : "minutes"}` : ""}` : `${minutes} ${minutes === 1 ? "minute" : "minutes"}`;
-    parts.push(`${time} moving`);
-    parts.push(`${spokenSpeed(stats.distanceM / movingS)} average`);
-  }
-  if (stats.climbM * FEET_PER_METRE >= 10) parts.push(`${spokenClimb(stats.climbM)} of climbing`);
-  return `Ride ended. ${parts.join(", ")}.`;
 }

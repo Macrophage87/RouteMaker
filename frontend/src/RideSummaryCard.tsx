@@ -3,7 +3,7 @@
  * again"): the ride's own figures (lib/rideStats.ts) in one card, with Done and Undo. In Go, Done leaves Go empty for
  * the next trip; in Plan the plan stays to adjust. Undo starts the same ride again, as it did before.
  *
- * Not timed: it stays until Done, Undo or Escape (WCAG 2.2.1). The focus goes to Done; the summary is said by the
+ * Not timed: it stays until Done, Undo or Escape (WCAG 2.2.1). The focus goes to Done; "Ride ended." is said by the
  * page's polite region (App), as a region mounted with its text in it is often not read (review F6).
  */
 import { useEffect, useId, useRef } from "react";
@@ -48,7 +48,6 @@ export function RideSummaryCard({
   stats,
   endedAt,
   note,
-  large = false,
   onDone,
   onUndo,
 }: {
@@ -56,8 +55,6 @@ export function RideSummaryCard({
   endedAt: number;
   /** A line under the title where the plan changed (Plan: "The route now starts where you are."). */
   note?: string | null;
-  /** The ride's Large text (lib/rideOutput.ts RideTextSize), kept from the ride: bigger figures, one to a line. */
-  large?: boolean;
   onDone: () => void;
   onUndo: () => void;
 }) {
@@ -71,7 +68,7 @@ export function RideSummaryCard({
   const segments = ridden >= STRESS_MIN_M ? stressSegments(stats.stressM) : [];
   return (
     <section
-      className={large ? "ride-summary ride-summary-large" : "ride-summary"}
+      className="ride-summary"
       aria-labelledby={titleId}
       onKeyDown={(event) => {
         if (event.key === "Escape") onDone();

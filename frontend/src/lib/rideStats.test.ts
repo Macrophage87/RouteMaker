@@ -1,7 +1,7 @@
 // The ride's summary figures (lib/rideStats.ts; the owner, 2026-10-20). Made-up points along a meridian, not a real ride.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { elevationSpan, profileGain, statsPause, statsStart, statsStep, summaryRows, summarySpoken, type RideStats } from "./rideStats.ts";
+import { elevationSpan, profileGain, statsPause, statsStart, statsStep, summaryRows, type RideStats } from "./rideStats.ts";
 import type { RideFix, RideModel } from "./navigate.ts";
 import type { RouteProfile } from "./api.ts";
 
@@ -85,12 +85,6 @@ test("the rows are US units first with metric in brackets; total time only where
   assert.equal(by["Climbing"], "66 ft (20 m)");
   assert.equal(summaryRows(statsStart(0), 5000)[0].value, "0 ft (0 m)");
   assert.equal(summaryRows(s, s.movingMs).find((r) => r.name === "Total time"), undefined);
-});
-
-test("said in US units only, for the voice and a screen reader", () => {
-  const s = ride(statsStart(0), 0, 2000, 5, 0);
-  assert.equal(summarySpoken(s), "Ride ended. 1.2 miles, 7 minutes moving, 11 miles per hour average, 66 feet of climbing.");
-  assert.equal(summarySpoken(statsStart(0)), "Ride ended.");
 });
 
 test("heights are kept along the ride for the elevation chart, every 30 m or so, from the route's profile", () => {

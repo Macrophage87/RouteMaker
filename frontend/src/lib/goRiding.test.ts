@@ -49,14 +49,16 @@ test("6. an End ride button always in view, labelled End ride with its icon, one
   // The ride's summary (the owner, 2026-10-20), with Done and Undo; Undo starts the same ride.
   // Review F6: said by the page's always-mounted polite region (not a status region mounted full), the focus on Done.
   // Not timed (WCAG 2.2.1): it stays until Done, Undo or Escape.
-  assert.match(summary, /<section\s+className=\{large \? "ride-summary ride-summary-large" : "ride-summary"\}\s+aria-labelledby=\{titleId\}/);
-  // The ride's Large text carries on to the summary (the owner, 2026-10-20), its small print never under 16 pt.
-  assert.match(app, /large=\{rideText === "large"\}/);
-  assert.match(css, /\.ride-summary-large \.ride-summary-figures dt,[^{]*\{\s*font-size: 16pt;/);
+  assert.match(summary, /<section\s+className="ride-summary"\s+aria-labelledby=\{titleId\}/);
+  // Large text always (the owner, 2026-10-20: "Just use large for everything"), its small print never under 16 pt.
+  assert.match(css, /\.ride-summary-figures dt,[^{]*\{\s*font-size: 16pt;/);
+  assert.doesNotMatch(css + summary + app, /ride-summary-large/);
   assert.doesNotMatch(summary, /role="status"|aria-live/);
   assert.match(summary, /done\.current\?\.focus\(\);/);
   assert.doesNotMatch(summary, /useHoldTimer|setTimeout/);
-  assert.match(app, /announce\(note \? `\$\{summarySpoken\(stats\)\} \$\{note\}` : summarySpoken\(stats\)\);/);
+  // Only "Ride ended." is said (the owner, 2026-10-20: "Just put ride ended."); the figures are on the card.
+  assert.match(app, /announce\(note \? `\$\{RIDE_ENDED_SAID\} \$\{note\}` : RIDE_ENDED_SAID\);/);
+  assert.match(ride, /rideVoice\.speak\(RIDE_ENDED_SAID, true\);/);
   assert.doesNotMatch(app, /focusStartAfterRide/);
   assert.match(ride, /onFocus: \(\) => timer\.current\?\.focus\(true\)/);
   assert.match(app, /\{!riding && rideEnded && \(\s*<RideSummaryCard\s*key=\{rideEnded\.n\}[\s\S]*?onUndo=\{undoEndRide\}\s*onDone=\{finishRide\}/);

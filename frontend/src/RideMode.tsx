@@ -96,7 +96,7 @@ import {
   type RideState,
   type Verbosity,
 } from "./lib/navigate.ts";
-import { statsPause, statsStart, statsStep, summarySpoken, type RideStats } from "./lib/rideStats.ts";
+import { statsPause, statsStart, statsStep, type RideStats } from "./lib/rideStats.ts";
 import {
   Announcer,
   OUTPUT_LABELS,
@@ -237,6 +237,8 @@ export const RIDE_SETTINGS_TITLE = "Ride settings";
 export type EndedPlan = ReturnType<typeof planAfterEnd>;
 /** How long the 311 line ("Sent to DC 311." and Add a note) stays (review F4); held the same way. */
 export const SAID_311_MS = 8_000;
+/** Said as the ride ends, by the voice and the page's polite region; the figures are on the summary card. */
+export const RIDE_ENDED_SAID = "Ride ended.";
 /** Shown and said with the ride's summary in Plan where End ride came part way (lib/navigate.ts planAfterEnd): the plan now starts where the rider is. */
 export const RIDE_ENDED_FROM_HERE_NOTE = "The route now starts where you are.";
 /** Part way in Plan with no recent location: the plan keeps its start, and the rider is told. */
@@ -1486,8 +1488,8 @@ export function RideMode({
     stopWatch.current = null;
     announcer.current?.drop();
     rideVoice.stop();
-    // The summary's figures, said as the ride goes (US units only, as every spoken figure is).
-    if (toVoice(prefsRef.current.output)) rideVoice.speak(summarySpoken(statsRef.current), true);
+    // Only "Ride ended." is said; the figures are on the summary (the owner, 2026-10-20: "Just put ride ended.").
+    if (toVoice(prefsRef.current.output)) rideVoice.speak(RIDE_ENDED_SAID, true);
     // A Bikeshare or transit trip's riding leg is not the plan: the plan stays as it was.
     onEnd(trip && !trip.asPlanned ? null : planAfterEnd(modelRef.current, rideRef.current, plan.current.points, plan.current.loop, Date.now()), statsRef.current);
   };
