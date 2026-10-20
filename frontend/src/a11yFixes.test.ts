@@ -116,7 +116,7 @@ test("the credits: the OpenStreetMap credit shows beside the collapsed i, and op
   const collapsed = declared(".maplibregl-ctrl-attrib.maplibregl-compact:not(.maplibregl-compact-show)::before");
   assert.match(collapsed, /content:\s*"© OpenStreetMap"/);
   const phone = mediaBody(css, "(max-width: 720px)");
-  const open = rules(phone).find((r) => r.selectors.includes(".maplibregl-ctrl-attrib.maplibregl-compact-show .maplibregl-ctrl-attrib-inner"));
+  const open = rules(phone).find((r) => r.selectors.includes(".maplibregl-ctrl-attrib.maplibregl-compact-show .map-info-body"));
   assert.ok(open, "a rule for the opened credits on a phone");
   assert.match(open.declarations, /max-height:/);
   assert.match(open.declarations, /overflow-y:\s*auto/);
@@ -127,12 +127,12 @@ test("the skip link is off screen until it has the focus", () => {
   assert.match(declared(".skip-link:focus"), /transform:\s*none/);
 });
 
-test("MapView: the credits start collapsed on a narrow map, below the scales", () => {
+test("MapView: the credits start collapsed, below the scales", () => {
   assert.match(mapView, /attributionControl:\s*false/);
   const credits = mapView.indexOf("new maplibregl.AttributionControl({ compact: true");
   const scale = mapView.indexOf("new maplibregl.ScaleControl");
   assert.ok(credits > 0 && scale > credits, "added before the scales, so it is the bottom of the stack");
-  assert.match(mapView, /collapseCredits\(container\.current\.querySelector\("\.maplibregl-ctrl-attrib"\)/);
+  assert.match(mapView, /const credits = container\.current\.querySelector<HTMLElement>\("\.maplibregl-ctrl-attrib"\);\s*collapseCredits\(credits\);/);
 });
 
 test("MapView: the junction card is a named dialog, takes the focus only from a marker, and Escape closes it", () => {

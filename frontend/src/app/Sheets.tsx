@@ -1,10 +1,10 @@
 // The panel's sheets (moved out of App.tsx in UI-CLEANUP step 4, docs/DEVELOPMENT.md "The App.tsx split"),
 // arranged as the approved UI mockup of 2026-10-11 has them (reports/v0.5.0/ui-mockup.html): Layers is its
-// switches, with the legend behind a Legend button at its top (the owner's choice 6); Suggest is the one way
-// in to the suggest tools, and Review is an admin's; Settings is Display, Riding and Account
-// with My Go; and the map's Water and Food chips open the nearest finder and Find food. In Go, Settings is
-// the Menu, with Plan, Suggest, GPX and Review above it. App.tsx keeps the state and the effects.
-import { useEffect, useState, type ReactNode, type RefObject } from "react";
+// switches, each section with its own key (the owner, 2026-10-19); Suggest is the one way
+// in to the suggest tools, and Review is an admin's; Settings is My Go, Riding, Display and Account; and the
+// map's Water and Food chips open the nearest finder and Find food. In Go, Settings is the Menu, with Plan,
+// Suggest, GPX and Review above it. App.tsx keeps the state and the effects.
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import type { Map as MapLibreMap } from "maplibre-gl";
 import type { StressAvailability } from "../MapView.tsx";
 import type { RouteResponse } from "../lib/api.ts";
@@ -13,6 +13,7 @@ import { PRESETS, presetSaid, type PresetId } from "../lib/presets.ts";
 import { PresetName } from "../lib/presetName.ts";
 import { filterRideGroups, rideSections, rideTypeCount, RideTypeSearch } from "../lib/rideTypeGroups.ts";
 import { RideTypeCards } from "../lib/rideTypeCards.ts";
+import { toggleFromPicker, useFavoriteRides } from "../lib/favoriteRides.ts";
 import { DELETE_ACCOUNT_PAGE, isPlainClick, rememberPlanForSignIn, tabSession } from "../lib/signIn.ts";
 import { SignOutForm } from "../SignOut.tsx";
 import { AssistantKeySetting } from "../AssistantKey.tsx";
@@ -26,36 +27,37 @@ import { LayerSection } from "../lib/layerSection.ts";
 import { AccessibilitySwitch } from "../lib/accessibilitySwitch.ts";
 import { ACCESS_HELP, ACCESS_LABEL } from "../lib/accessMode.ts";
 import { RideSettingsFields } from "../RideMode.tsx";
-import { BIG_TEXT_HELP, BIG_TEXT_LABEL } from "../lib/rideOutput.ts";
+import { RIDE_TEXT_HELP, RIDE_TEXT_LABEL, type RideTextSize } from "../lib/rideOutput.ts";
 import type { RidePrefs } from "../lib/rideOutput.ts";
 import type { RailVisibility } from "../lib/railStations.ts";
-import { RailStationsLegend, RailStationsSection } from "../RailStations.tsx";
+import { RailStationsSection } from "../RailStations.tsx";
 import { BikeshareSection } from "../lib/bikeshareSection.ts";
 import type { OperatorInfo } from "../lib/bikeshareDocks.ts";
 import { RAIL_STATIONS } from "../lib/railData.ts";
 import { federalPoints, federalShown, type FederalData } from "../lib/federalLand.ts";
-import { FederalLandFor, FederalLegendNotes, type FederalStatus } from "../lib/federalLegend.ts";
+import { FederalLandFor, type FederalStatus } from "../lib/federalLegend.ts";
 import { CAPACITY_LEGEND_TITLE, isMassRide } from "../lib/massCapacity.ts";
 import { MassLegend, MassZoomNotes } from "../lib/massLegend.ts";
 import { DC_BOUNDARY_CREDIT, MASS_DC_ONLY } from "../lib/dcBoundary.ts";
-import { MtbTrailLegend, StressLegend } from "../lib/stressLegend.ts";
+import { DocsPageLink, MtbTrailLegend, StressLegend } from "../lib/stressLegend.ts";
 import { GpxPanel, type FileFormat, type GpxPanelProps, type Said } from "../GpxPanel.tsx";
 import type { DeviceProfileId } from "../lib/deviceProfiles.ts";
 import { JunctionLegend, SheetFrame } from "../Sidebar.tsx";
 import { MASS_RIDE_LAYERS_NOTE, MENU_TITLE, SAVE_LOAD, SHEET_TITLES, STRESS_CHECKING, STRESS_UNAVAILABLE, type PanelView } from "../lib/sidebar.ts";
 import type { ImportedPlan } from "../lib/gpxPlan.ts";
 import type { WaterPrefs, WaterStatus } from "../lib/waterRestrooms.ts";
-import { WaterLegend, WaterLegendNotes, WaterSection } from "../lib/waterLegend.ts";
+import { WaterSection } from "../lib/waterLegend.ts";
 import type { ClimbAlong, ClimbCategory, ClimbsStatus } from "../lib/climbs.ts";
-import { CLIMBS_HELP, ClimbsLayerControls, ClimbsLegend } from "../lib/climbsLegend.ts";
-import { ScenicLegend, ScenicSection } from "../lib/scenicLayer.ts";
+import { ClimbsLayerControls } from "../lib/climbsLegend.ts";
+import { ScenicSection } from "../lib/scenicLayer.ts";
+import { RouteHazardKey } from "../lib/routeHazards.ts";
 import { PermitsSection } from "../lib/permitLayer.ts";
 import { InstallOffer } from "../InstallableApp.tsx";
 import type { Split, StoredWeight } from "../lib/weight.ts";
 import { WeightSetting } from "../lib/weightDialog.ts";
-import { DC_311_ONLINE, REPORT_KINDS } from "../lib/report311.ts";
+import { Report311Log } from "../Report311Log.tsx";
 import { OPEN_IN_HINT, OPEN_IN_LABEL, type AppMode, type OpenIn } from "../lib/appMode.ts";
-import { myGoSummary, type Home, type MyGo } from "../lib/myGo.ts";
+import type { Home, MyGo } from "../lib/myGo.ts";
 import { homeFromPlace } from "../lib/homeSet.ts";
 import { HomeSetter } from "./Go.tsx";
 import { SIGN_IN_LINE } from "../lib/accountSettings.ts";
@@ -67,7 +69,7 @@ import { shortLabel } from "../lib/shortLabel.ts";
 import { ANNOUNCE_HINT, ANNOUNCE_LABEL, type AnnounceLevel } from "../lib/announceLevel.ts";
 import type { Status } from "./RoutePanel.tsx";
 
-/** How the sheets go back: to the planner, or to the sheet that opened them (Layers for Legend, Suggest for Review). */
+/** How the sheets go back: to the planner, or to the sheet that opened them (Suggest for Review). */
 export interface SheetNav {
   view: PanelView;
   back: () => void;
@@ -77,8 +79,6 @@ export interface SheetNav {
 
 export interface LayersSheetProps {
   nav: SheetNav;
-  /** Opens the legend (a sheet of its own, back to Layers). */
-  openLegend: (opener: HTMLElement) => void;
   massMap: boolean;
   stress: StressAvailability;
   stressVisible: boolean;
@@ -93,6 +93,11 @@ export interface LayersSheetProps {
   waterPrefs: WaterPrefs;
   changeWaterPrefs: (next: WaterPrefs) => void;
   waterStatus: WaterStatus;
+  /** What the stress section's key needs: the map's zoom and the bike facilities the route rides. */
+  zoom: number | null;
+  facilitiesShown: ReadonlySet<string>;
+  /** Whether the Scenic layer is drawn (its switch, in Plan, off the Mass Ride map), for its key. */
+  scenicDrawn: boolean;
   /** The Climbs layer (lib/climbs.ts): the switch, its data's status and the climbs the route rides. */
   climbsOn: boolean;
   changeClimbsOn: (on: boolean) => void;
@@ -120,9 +125,9 @@ export interface LayersSheetProps {
 export const PLACES_LAYER_TITLE = "Places to see";
 export const PLACES_LAYER_HINT = "Museums, gardens, viewpoints and more. Places to see lists them.";
 
-/** The Layers sheet: the map's switches, in the mockup's order, with the Legend button at its top. */
+/** The Layers sheet: the map's switches, in the mockup's order, each section with its own key. */
 export function LayersSheet(props: LayersSheetProps) {
-  const { nav, openLegend, massMap, stress, stressVisible, setStressVisible, showHighLanes, preset, federalOn, setFederalOn, federalStatus, federalData, points, waterPrefs, changeWaterPrefs, waterStatus, rail, setRail, showMtbTrails, showTopoLines, topoReady, climbsOn, changeClimbsOn, climbsFrom, changeClimbsFrom, climbsStatus, climbsAlong, placesOn, changePlacesOn, placesStatus, bikeshare, scenic, permits } = props;
+  const { nav, massMap, zoom, facilitiesShown, scenicDrawn, stress, stressVisible, setStressVisible, showHighLanes, preset, federalOn, setFederalOn, federalStatus, federalData, points, waterPrefs, changeWaterPrefs, waterStatus, rail, setRail, showMtbTrails, showTopoLines, topoReady, climbsOn, changeClimbsOn, climbsFrom, changeClimbsFrom, climbsStatus, climbsAlong, placesOn, changePlacesOn, placesStatus, bikeshare, scenic, permits } = props;
   // The Trails and terrain section's layers that can show, and its row's words (lib/terrainSection.ts).
   const terrain = { mtb: showMtbTrails, climbs: climbsOn, topo: showTopoLines, stressAvailable: stressShowable(stress), topoReady, climbsStatus };
   return (
@@ -132,12 +137,6 @@ export function LayersSheet(props: LayersSheetProps) {
       open={nav.view === "layers"}
       onBack={nav.back}
       backLabel={nav.backLabel("layers")}
-      extra={
-        <button type="button" className="link icon-button legend-button" onClick={(event) => openLegend(event.currentTarget)}>
-          <Icon name="info" />
-          <span>Legend</span>
-        </button>
-      }
     >
       {/* The mockup's order: the stress map, lanes on busy roads, federal land (Mass Ride's alone), water and
           restrooms, Metro and MARC, then trails and terrain. High contrast is in Settings. Each section is one
@@ -154,6 +153,13 @@ export function LayersSheet(props: LayersSheetProps) {
         {/* Not one of the section's layers: shown with or without the stress map, as it also changes the
             route's facility totals and description (the a11y review's SF4). */}
         <HighStressLanesSwitch on={showHighLanes} onChange={(on) => setHighStressLanes(on)} overlay={stress === "available"} massMap={massMap} />
+        {/* v0.10.0: the route's hazard marks, drawn on a route only, with or without the stress map. */}
+        <RouteHazardKey />
+        {/* The owner, 2026-10-19: "include the legend within the accordion settings in layers". The map's key
+            is in its own section. */}
+        <StressSectionKey massMap={massMap} stress={stress} stressVisible={stressVisible} preset={preset} zoom={zoom} facilitiesShown={facilitiesShown} />
+        {/* The junction markers are drawn with or without the stress map (spec review SF1). */}
+        <JunctionLegend />
       </LayerSection>
 
       {/* Mass Ride's alone (OWNER-DECISIONS 324): null for every other ride type. */}
@@ -167,7 +173,7 @@ export function LayersSheet(props: LayersSheetProps) {
         nameOf={(index) => pointName(index, points.length) /* Mass Ride: no loop */}
       />
 
-      {/* The switch and its two filters; the list along the route is the route's fold, the legend and help behind Legend. */}
+      {/* The switch and its two filters, its key and help; the list along the route is the route's fold. */}
       <WaterSection prefs={waterPrefs} onChange={changeWaterPrefs} status={waterStatus} />
 
       {RAIL_STATIONS.length > 0 && <RailStationsSection visibility={rail} onChange={setRail} />}
@@ -202,12 +208,15 @@ export function LayersSheet(props: LayersSheetProps) {
         status={(open) => terrainStatus(open, terrain)}
       >
         <MtbTrailsSwitch on={showMtbTrails} onChange={(on) => setMtbTrails(on)} overlay={stressShowable(stress)} />
-        <ClimbsLayerControls on={climbsOn} onChange={changeClimbsOn} from={climbsFrom} onFromChange={changeClimbsFrom} status={climbsStatus} items={climbsAlong} along={false} legend={false} />
+        {/* The owner, 2026-10-19: "include the legend within the accordion settings in layers". Each layer's key
+            sits under its own switch while it is on, as the climbs' does (ClimbsLayerControls). */}
+        <MtbTrailLegend />
+        <ClimbsLayerControls on={climbsOn} onChange={changeClimbsOn} from={climbsFrom} onFromChange={changeClimbsFrom} status={climbsStatus} items={climbsAlong} along={false} />
         <TopoLinesSwitch on={showTopoLines} onChange={(on) => setTopoLines(on)} available={topoReady} />
       </LayerSection>
 
       {/* v0.8.0: the Scenic layer, one switch, off by default, after Trails and terrain; Plan's alone. */}
-      {scenic && <ScenicSection {...scenic} />}
+      {scenic && <ScenicSection {...scenic} drawn={scenicDrawn} />}
       {/* v0.9.1: DDOT's permits, flagged only, one switch, off by default; Plan's alone. */}
       {permits && <PermitsSection {...permits} />}
 
@@ -217,68 +226,27 @@ export function LayersSheet(props: LayersSheetProps) {
   );
 }
 
-export interface LegendSheetProps {
-  nav: SheetNav;
-  legendHeadingRef: RefObject<HTMLHeadingElement | null>;
-  massMap: boolean;
-  stress: StressAvailability;
-  stressVisible: boolean;
-  preset: PresetId;
-  zoom: number | null;
-  facilitiesShown: ReadonlySet<string>;
-  waterPrefs: WaterPrefs;
-  waterStatus: WaterStatus;
-  climbsOn: boolean;
-  climbsStatus: ClimbsStatus;
-  federalOn: boolean;
-  federalStatus: FederalStatus;
-  rail: RailVisibility;
-  /** Whether the Scenic layer is drawn (its switch, in Plan, off the Mass Ride map): its one legend entry. */
-  scenicOn: boolean;
-}
-
-/** The legend, behind Layers' Legend button (the owner's choice 6): what each zoom shows and how stress ratings work. */
-export function LegendSheet(props: LegendSheetProps) {
-  const { nav, legendHeadingRef, massMap, stress, stressVisible, preset, zoom, facilitiesShown, waterPrefs, waterStatus, climbsOn, climbsStatus, federalOn, federalStatus, rail, scenicOn } = props;
-  return (
-    <SheetFrame id="sheet-legend" title={SHEET_TITLES.legend} open={nav.view === "legend"} onBack={nav.back} backLabel={nav.backLabel("legend")} headingRef={legendHeadingRef}>
-      <section aria-labelledby="sheet-legend-title" className="legend-body">
-        {stress === "available" ? (
-          massMap ? (
-            <>
-              <MassLegend />
-              <MassZoomNotes zoom={zoom} shown={stressVisible} />
-              {/* 454: the mountain-bike trails' layer shows in Mass Ride too, so its row does. */}
-              <MtbTrailLegend />
-            </>
-          ) : (
-            <>
-              <StressLegend facilities={facilitiesShown} zoom={zoom} shown={stressVisible} foldedZoom />
-              {/* A Mass Ride before the tiles carry a capacity: the stress map stays, and the grey
-                  outside DC still shows, so its words and its credit do too (accessibility review S2). */}
-              {isMassRide(preset) && (
-                <>
-                  <p className="hint mass-dc-only">{MASS_DC_ONLY}</p>
-                  <p className="hint dc-boundary-source">{DC_BOUNDARY_CREDIT}</p>
-                </>
-              )}
-            </>
-          )
-        ) : (
-          <p className="hint">The traffic stress legend shows here when the stress map is available.</p>
-        )}
-        {/* The junction markers are drawn with or without the stress map (spec review SF1). */}
-        <JunctionLegend />
-        {/* Moved from Layers (the owner, 2026-10-12: "less wordy"): each layer's how-it-works, by its legend. */}
-        <FederalLegendNotes preset={preset} on={federalOn} status={federalStatus} />
-        {waterPrefs.on && waterStatus === "ready" && <WaterLegend prefs={waterPrefs} />}
-        {waterPrefs.on && <WaterLegendNotes prefs={waterPrefs} />}
-        {RAIL_STATIONS.length > 0 && (rail.metro || rail.marc) && <RailStationsLegend />}
-        {climbsOn && climbsStatus === "ready" && <ClimbsLegend />}
-        {climbsOn && <p className="hint climbs-help">{CLIMBS_HELP}</p>}
-        {scenicOn && <ScenicLegend />}
-      </section>
-    </SheetFrame>
+/** The stress section's key: Mass Ride's capacity bands, or the stress levels and what each zoom shows. */
+function StressSectionKey(props: { massMap: boolean; stress: StressAvailability; stressVisible: boolean; preset: PresetId; zoom: number | null; facilitiesShown: ReadonlySet<string> }) {
+  const { massMap, stress, stressVisible, preset, zoom, facilitiesShown } = props;
+  if (stress !== "available") return null;
+  return massMap ? (
+    <>
+      <MassLegend />
+      <MassZoomNotes zoom={zoom} shown={stressVisible} />
+    </>
+  ) : (
+    <>
+      <StressLegend facilities={facilitiesShown} zoom={zoom} shown={stressVisible} foldedZoom />
+      {/* A Mass Ride before the tiles carry a capacity: the stress map stays, and the grey
+          outside DC still shows, so its words and its credit do too (accessibility review S2). */}
+      {isMassRide(preset) && (
+        <>
+          <p className="hint mass-dc-only">{MASS_DC_ONLY}</p>
+          <p className="hint dc-boundary-source">{DC_BOUNDARY_CREDIT}</p>
+        </>
+      )}
+    </>
   );
 }
 
@@ -365,37 +333,22 @@ function OpenInChoice({ value, onChange, idBase, hint }: { value: OpenIn; onChan
 }
 
 /**
- * My Go (the owner's choice 2): where the app opens and Go's ride type, saved to the account when signed
- * in and on this device when not; signed in, the Home that Go's Home chip rides to.
+ * My Go (the owner's choice 2): the Home that Go's Home chip rides to, Go's ride type and where the app opens,
+ * saved to the account when signed in and on this device when not. First in Settings: Home is what a rider
+ * comes here to set (Settings tidy, Stephen 2026-10-19: "still very clunky").
  */
 function MyGoSection({ controls }: { controls: MyGoControls }) {
   const { myGo, signedIn, save, setHome, said, geoGate, searchBias } = controls;
   const [infoOpen, setInfoOpen] = useState(false);
   return (
-    <section aria-labelledby="settings-my-go-heading" className="my-go">
+    <section aria-labelledby="settings-my-go-heading" className="settings-group my-go">
       <div className="setting-line">
-        <h4 id="settings-my-go-heading">
-          <Icon name="star" size={18} />
-          My Go
-          <span className="setting-value">
-            <span className="visually-hidden">: </span>
-            {myGoSummary(myGo)}
-          </span>
-        </h4>
+        <h3 id="settings-my-go-heading">My Go</h3>
         <InfoButton open={infoOpen} onToggle={() => setInfoOpen((was) => !was)} controls="settings-my-go-info" about="My Go" />
       </div>
       <p className="hint setting-info" id="settings-my-go-info" hidden={!infoOpen}>
         {signedIn ? "Kept with your Discord account, on every device you sign in on." : "Kept on this device. Sign in to keep it with your account."}
       </p>
-      <OpenInChoice value={myGo.openIn} onChange={(openIn) => save({ ...myGo, openIn })} idBase="my-go" hint={OPEN_IN_HINT} />
-      <SettingRow infoId="settings-go-ride-info" about="Go's ride type">
-        <SettingSelect
-          label="Go's ride type"
-          value={myGo.ride ?? "default"}
-          options={PRESETS.filter((p) => p.id !== "mass-ride").map((p) => [p.id, presetSaid(p.id)] as const)}
-          onChange={(ride) => save({ ...myGo, ride: ride === "default" ? null : ride })}
-        />
-      </SettingRow>
       {/* The same Home sheet as Go's (lib/homeSet.ts), without the map way: the map is behind Settings. */}
       <div className="my-go-home">
         {!myGo.home && (
@@ -405,6 +358,15 @@ function MyGoSection({ controls }: { controls: MyGoControls }) {
         )}
         <HomeSetter home={myGo.home} geoGate={geoGate} searchBias={searchBias} onPlace={(place: Place) => setHome(homeFromPlace(place))} onClear={() => setHome(null)} />
       </div>
+      <SettingRow infoId="settings-go-ride-info" about="Go's ride type">
+        <SettingSelect
+          label="Go's ride type"
+          value={myGo.ride ?? "default"}
+          options={PRESETS.filter((p) => p.id !== "mass-ride").map((p) => [p.id, presetSaid(p.id)] as const)}
+          onChange={(ride) => save({ ...myGo, ride: ride === "default" ? null : ride })}
+        />
+      </SettingRow>
+      <OpenInChoice value={myGo.openIn} onChange={(openIn) => save({ ...myGo, openIn })} idBase="my-go" hint={OPEN_IN_HINT} />
       <p className="hint my-go-said" role="status">
         {said}
       </p>
@@ -417,10 +379,10 @@ export interface SettingsSheetProps {
   settingsHeadingRef: RefObject<HTMLHeadingElement | null>;
   ridePrefs: RidePrefs;
   changeRidePrefs: (next: RidePrefs) => void;
-  /** Big text in a ride: a setting here, not a ride button (the owner, 2026-10-17). */
-  bigText: { on: boolean; onChange: (on: boolean) => void };
+  /** The ride's text size: here, and on the ride's own button (the owner, 2026-10-20), the one kept choice. */
+  rideText: { size: RideTextSize; onChange: (size: RideTextSize) => void };
   /** The rider and bike weight: its line and Change, never the number (lib/weightDialog.ts). */
-  weight: { saved: StoredWeight | null; remembered: boolean; split: Split; onSave: (weight: StoredWeight, remember: boolean) => void; onClear: () => void };
+  weight: { saved: StoredWeight | null; split: Split; onSave: (weight: StoredWeight) => void; onClear: () => void };
   announce: (text: string) => void;
   linkNote: string;
   accessMode: boolean;
@@ -453,7 +415,7 @@ function ContrastRow() {
   );
 }
 
-/** The Settings sheet (Go's Menu): Display, Riding and Account, as the mockup groups them. */
+/** The Settings sheet (Go's Menu): My Go, Riding, Display and Account, most used first. */
 export function SettingsSheet(props: SettingsSheetProps) {
   const { nav, settingsHeadingRef, ridePrefs, changeRidePrefs, announce, linkNote, accessMode, toggleAccessMode, myGo, mode, menu, announcements, signInAvailable } = props;
   const go = mode === "go";
@@ -488,6 +450,39 @@ export function SettingsSheet(props: SettingsSheetProps) {
           )}
         </nav>
       )}
+      {/* Most used first (Settings tidy, Stephen 2026-10-19): My Go with Home, then Riding, Display and Account. */}
+      <MyGoSection controls={myGo} />
+      {/* Ride mode's choices (WEB-NAV-plan.md section 3): the same ones the first Start ride asks, kept on this device. */}
+      <section aria-labelledby="settings-ride-heading" className="settings-group">
+        <h3 id="settings-ride-heading">Riding</h3>
+        <RideSettingsFields prefs={ridePrefs} onChange={changeRidePrefs} idBase="settings-ride" compact />
+        {/* Large text in a ride (it replaced Big text): here, and on the ride's own button, the same choice. */}
+        <SettingRow infoId="settings-big-text-info" about="large text" info={RIDE_TEXT_HELP} className="big-text-row">
+          <button
+            type="button"
+            role="switch"
+            className="switch"
+            aria-checked={props.rideText.size === "large"}
+            aria-labelledby="settings-big-text-label"
+            aria-describedby="settings-big-text-info"
+            onClick={() => props.rideText.onChange(props.rideText.size === "large" ? "normal" : "large")}
+          >
+            <span id="settings-big-text-label" className="switch-label">
+              {RIDE_TEXT_LABEL}
+            </span>
+            <span className="switch-state" aria-hidden="true">
+              {props.rideText.size === "large" ? "On" : "Off"}
+            </span>
+          </button>
+        </SettingRow>
+        {/* Rider and bike weight, for how hard hills feel (the owner, 2026-10-18: "probably belongs in settings"); set once, so last. */}
+        <div className="setting-row weight-row">
+          <div className="setting-line">
+            <WeightSetting {...props.weight} />
+            <span className="info-spacer" aria-hidden="true" />
+          </div>
+        </div>
+      </section>
       <section aria-labelledby="settings-display-heading" className="settings-group">
         <h3 id="settings-display-heading">Display</h3>
         <ContrastRow />
@@ -535,63 +530,46 @@ export function SettingsSheet(props: SettingsSheetProps) {
             describedBy="settings-announce-info"
           />
         </SettingRow>
-        {/* Open in Go or Plan is My Go's, under Account, signed in or out: one control, not two (Plan streamline). */}
-      </section>
-      {/* Ride mode's choices (WEB-NAV-plan.md section 3): the same ones the first Start ride asks, kept on this device. */}
-      <section aria-labelledby="settings-ride-heading" className="settings-group">
-        <h3 id="settings-ride-heading">Riding</h3>
-        {/* Rider and bike weight, for how hard hills feel (the owner, 2026-10-18: "probably belongs in settings"). */}
-        <WeightSetting {...props.weight} />
-        <RideSettingsFields prefs={ridePrefs} onChange={changeRidePrefs} idBase="settings-ride" compact />
-        {/* Big text: a setting here, not a ride button (the owner, 2026-10-17: "not something people will fiddle with mid ride"). */}
-        <SettingRow infoId="settings-big-text-info" about="big text" info={BIG_TEXT_HELP} className="big-text-row">
-          <button
-            type="button"
-            role="switch"
-            className="switch"
-            aria-checked={props.bigText.on}
-            aria-labelledby="settings-big-text-label"
-            aria-describedby="settings-big-text-info"
-            onClick={() => props.bigText.onChange(!props.bigText.on)}
-          >
-            <span id="settings-big-text-label" className="switch-label">
-              {BIG_TEXT_LABEL}
-            </span>
-            <span className="switch-state" aria-hidden="true">
-              {props.bigText.on ? "On" : "Off"}
-            </span>
-          </button>
-        </SettingRow>
       </section>
       {/* The installable app (WEB-NAV-plan.md section 8, P4), under its own heading when the browser offers it. The
           routes saved and kept for offline are in Save and load (YourRoutes.tsx; the owner, 2026-10-18). */}
       <InstallOffer idBase="settings-install" onSay={announce} />
-      <section aria-labelledby="settings-signin-heading" className="settings-group">
-        <h3 id="settings-signin-heading">Account</h3>
-        {myGo.signedIn ? (
-          <>
-            <p className="hint signed-in">
-              <Icon name="user" size={16} /> Signed in with Discord.
+      {/* Account: never an empty heading (signed out on a server that cannot sign anyone in, it has nothing to hold). */}
+      {(myGo.signedIn || signInAvailable) && (
+        <section aria-labelledby="settings-signin-heading" className="settings-group">
+          <h3 id="settings-signin-heading">Account</h3>
+          {myGo.signedIn ? (
+            <div className="account-line">
+              <p className="hint signed-in">
+                <Icon name="user" size={16} /> Signed in with Discord.
+              </p>
+              <SignOutForm />
+              <span className="info-spacer" aria-hidden="true" />
+            </div>
+          ) : signInAvailable ? (
+            // The plan's one line (item 4); the link is its first words. The plan in hand is kept across the round trip.
+            <p className="hint sign-in-line">
+              <a href="/auth/login" onClick={(e) => isPlainClick(e) && rememberPlanForSignIn(tabSession(), window.location.hash, linkNote !== "")}>
+                Sign in with Discord
+              </a>
+              {SIGN_IN_LINE.slice("Sign in with Discord".length)}
             </p>
-            <SignOutForm />
-            {/* A page of its own (core.account_deletion), the same one the web offers without the app: it says what goes
-                and what is kept, and asks once. */}
+          ) : null}
+          {/* The save-only key an AI assistant's MCP server saves routes with (the owner, 2026-10-18). */}
+          {myGo.signedIn && <AssistantKeySetting />}
+          {/* A page of its own (core.account_deletion), the same one the web offers without the app: it says what goes
+              and what is kept, and asks once. Last: nobody needs it often. */}
+          {myGo.signedIn && (
             <p className="delete-account">
               <a href={DELETE_ACCOUNT_PAGE}>Delete account</a>
             </p>
-          </>
-        ) : signInAvailable ? (
-          // The plan's one line (item 4); the link is its first words. The plan in hand is kept across the round trip.
-          <p className="hint sign-in-line">
-            <a href="/auth/login" onClick={(e) => isPlainClick(e) && rememberPlanForSignIn(tabSession(), window.location.hash, linkNote !== "")}>
-              Sign in with Discord
-            </a>
-            {SIGN_IN_LINE.slice("Sign in with Discord".length)}
-          </p>
-        ) : null}
-        <MyGoSection controls={myGo} />
-        {/* The save-only key an AI assistant's MCP server saves routes with (the owner, 2026-10-18). */}
-        {myGo.signedIn && <AssistantKeySetting />}
+          )}
+        </section>
+      )}
+      {/* The documentation (the owner, 2026-10-19): one link, last, under its own heading. */}
+      <section aria-labelledby="settings-about-heading" className="settings-group">
+        <h3 id="settings-about-heading">About</h3>
+        <DocsPageLink />
       </section>
     </SheetFrame>
   );
@@ -608,7 +586,8 @@ export interface SuggestSheetProps {
 /**
  * Suggest (the owner's choice 6): the one way in to the suggest tools. Each starts from a road on the map
  * (the road panel's "Suggest a change…": a road's level, a junction, a Mass Ride hazard), so this says how
- * to get there and opens the panel at the map's centre; DC 311 is reported from Ride mode's 311 button.
+ * to get there and opens the panel at the map's centre. The 311 checklist (Report311Log.tsx) lists the problems
+ * logged from a ride's 311 button or the road panel's Log for 311, by the website that takes them.
  */
 export function SuggestSheet({ nav, roadInfoAtCentre, onReview }: SuggestSheetProps) {
   return (
@@ -624,16 +603,7 @@ export function SuggestSheet({ nav, roadInfoAtCentre, onReview }: SuggestSheetPr
           The road at the map's center
         </button>
       </section>
-      <section aria-labelledby="suggest-311-heading" className="settings-group">
-        <h3 id="suggest-311-heading">Report a problem to DC 311</h3>
-        <p className="hint">
-          While you ride inside DC, the round 311 button on the map's right edge reports a problem where you are ({REPORT_KINDS.map((k) => k.label.toLowerCase()).join(", ")}),
-          with your place taken from the route's street names.
-        </p>
-        <a className="action-link secondary" href={DC_311_ONLINE} target="_blank" rel="noopener noreferrer">
-          Open DC 311 online (new tab)
-        </a>
-      </section>
+      <Report311Log />
       {onReview && (
         <section aria-labelledby="suggest-review-heading" className="settings-group">
           <h3 id="suggest-review-heading">Review</h3>
@@ -728,22 +698,32 @@ const rideIcon = (id: PresetId) => <Icon name={RIDE_ICON[id] ?? "bike"} size={20
  */
 export function RideGroupChips({ preset, onPick, open }: { preset: PresetId; onPick: (id: PresetId) => void; open: boolean }) {
   const [query, setQuery] = useState("");
+  const scopeRef = useRef<HTMLElement>(null);
   useEffect(() => {
     if (!open) setQuery("");
   }, [open]);
   // Review F9: the common types first, the rest in their groups, folded (the one in use opens its group); a search
   // shows every match flat. The class is ride-sheet-group: .ride-group is the group ride's overlay (RideGroup.tsx).
-  const { common, groups, folded } = rideSections(query);
+  // Favorites (Stephen 2026-10-19) come before Common, each card with its star (lib/favoriteRides.ts).
+  const favorites = useFavoriteRides();
+  const { favorites: favs, common, groups, folded } = rideSections(query, undefined, favorites);
+  const star = { favorites, onFavorite: (id: PresetId) => toggleFromPicker(id, scopeRef.current) };
   return (
-    <section className="ride-groups" aria-labelledby="ride-sheet-types">
+    <section ref={scopeRef} className="ride-groups" aria-labelledby="ride-sheet-types">
       <h3 id="ride-sheet-types" className="visually-hidden">
         Every ride type
       </h3>
       <RideTypeSearch id="ride-sheet-search" query={query} onQuery={setQuery} count={rideTypeCount(filterRideGroups(query))} />
+      {favs.length > 0 && (
+        <section className="ride-sheet-group" aria-labelledby="ride-sheet-favorites">
+          <h4 id="ride-sheet-favorites">Favorites</h4>
+          <RideTypeCards ids={favs} preset={preset} onPick={onPick} idPrefix="ride-sheet" icon={rideIcon} {...star} />
+        </section>
+      )}
       {common.length > 0 && (
         <section className="ride-sheet-group" aria-labelledby="ride-sheet-common">
           <h4 id="ride-sheet-common">Common</h4>
-          <RideTypeCards ids={common} preset={preset} onPick={onPick} idPrefix="ride-sheet" icon={rideIcon} />
+          <RideTypeCards ids={common} preset={preset} onPick={onPick} idPrefix="ride-sheet" icon={rideIcon} {...star} />
         </section>
       )}
       {groups.map((group) =>
@@ -751,13 +731,13 @@ export function RideGroupChips({ preset, onPick, open }: { preset: PresetId; onP
           <details key={group.id} className="fold ride-sheet-fold" open={group.ids.includes(preset) || undefined}>
             <summary>{`${group.label} (${group.ids.length})`}</summary>
             <div className="fold-body">
-              <RideTypeCards ids={group.ids} preset={preset} onPick={onPick} idPrefix="ride-sheet" icon={rideIcon} />
+              <RideTypeCards ids={group.ids} preset={preset} onPick={onPick} idPrefix="ride-sheet" icon={rideIcon} {...star} />
             </div>
           </details>
         ) : (
           <section key={group.id} className="ride-sheet-group" aria-labelledby={`ride-sheet-${group.id}`}>
             <h4 id={`ride-sheet-${group.id}`}>{group.label}</h4>
-            <RideTypeCards ids={group.ids} preset={preset} onPick={onPick} idPrefix="ride-sheet" icon={rideIcon} />
+            <RideTypeCards ids={group.ids} preset={preset} onPick={onPick} idPrefix="ride-sheet" icon={rideIcon} {...star} />
           </section>
         ),
       )}

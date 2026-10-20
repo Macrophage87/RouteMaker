@@ -58,7 +58,9 @@ ORDER = (
 )
 
 # Reasons that only the standard graphs close: the off-road graph keeps them
-# open (OWNER-DECISIONS 291(2)).
+# open (OWNER-DECISIONS 291(2)). Since the owner's choice of 2026-10-19 ("Rated, MTB and
+# Gravel") it keeps the drawn singletrack open as well, as the Mountain Bike graph does
+# (`offroad_graph_keeps`).
 OFFROAD_KEEPS = frozenset({trailaccess.MTB})
 # Reasons whose ways the Mountain Bike ride type rides (`segment.mtb_only`).
 MTB_ONLY = frozenset({trailaccess.MTB, singletrack.NO_BICYCLE})
@@ -80,19 +82,34 @@ def mtb_graph_keeps(reason: str | None, osm_id: int, drawn_singletrack: Set[int]
     return reason == singletrack.NO_BICYCLE and osm_id in drawn_singletrack
 
 
+def offroad_graph_keeps(reason: str | None, osm_id: int, offroad_singletrack: Set[int]) -> bool:
+    """Whether the off-road graph (Gravel, Mountain Goat) keeps a closed way open: the
+    mountain-bike class, and, since the owner's choice of 2026-10-19 ("Rated, MTB and
+    Gravel"), the drawn rated singletrack up to `singletrack.OFFROAD_MAX_LEVEL`
+    (`offroad_singletrack`), which the Mountain Bike graph keeps too."""
+    return reason in OFFROAD_KEEPS or (
+        reason == singletrack.NO_BICYCLE and osm_id in offroad_singletrack
+    )
+
+
 def graph_reason(
     variant: Variant,
     reason: str | None,
     osm_id: int,
     drawn_singletrack: Set[int],
     wet_closed: Set[int],
+    offroad_singletrack: Set[int] = frozenset(),
 ) -> str | None:
     """The `rm:no_bicycle` reason a way carries on one graph, or None for open: the
     rebuild's reason, less what the off-road graph keeps open (`OFFROAD_KEEPS`) and what the
     Mountain Bike graph keeps open (`mtb_graph_keeps`); on the Mountain Bike graph a way
     mapped closed when wet is closed (`WET`) whatever else it is."""
-    if reason is not None and variant is Variant.OFFROAD and reason in OFFROAD_KEEPS:
-        reason = None
+    if variant is Variant.OFFROAD and reason is not None:
+        if reason in OFFROAD_KEEPS:
+            reason = None
+        elif offroad_graph_keeps(reason, osm_id, offroad_singletrack):
+            # Rated singletrack (2026-10-19), and closed when wet as on the Mountain Bike graph.
+            reason = WET if osm_id in wet_closed else None
     if variant is Variant.MTB:
         if mtb_graph_keeps(reason, osm_id, drawn_singletrack):
             reason = None
@@ -112,6 +129,9 @@ class TrailClosures:
     # rated singletrack that nothing but the rating closes: the map draws it on the
     # mountain-bike trail layer, in its level's colour (OWNER-DECISIONS 456; `drawn_singletrack`)
     drawn_singletrack: set[int] = field(default_factory=set)
+    # the drawn singletrack the off-road graph rides too: up to singletrack.OFFROAD_MAX_LEVEL
+    # (the owner's choice of 2026-10-19; `offroad_graph_keeps`)
+    offroad_singletrack: set[int] = field(default_factory=set)
 
     def reason(self, osm_id: int) -> str | None:
         return self.reasons.get(osm_id)
@@ -142,10 +162,19 @@ def drawn_singletrack(tags: dict[str, str], routes: trailaccess.WayRoutes, in_pa
     layer never draws a trail a bicycle may not be allowed on ("err closed", 330). The
     mountain-bike class (`mtb`) is no such rule: it is the layer's own. A way upstream's
     own access reading already closes (`bicycle=no`, a footway with no bicycle tag) is not
-    drawn either: `verdict` answers None for it only because there is nothing left to close."""
+    drawn either: `verdict` answers None for it only because there is nothing left to close.
+
+    A natural surface with no bicycle tag (`natural_surface`) is no such rule on a rated
+    trail (the owner's choice of 2026-10-19, "Rated, MTB and Gravel"): a difficulty rating
+    means mappers saw bicycles ride it. Unrated, it stays closed (`trailaccess.verdict`)."""
     if trailaccess.is_dismount(tags) or not trailaccess.upstream_open(tags):
         return False
-    return trailaccess.verdict(tags, routes, in_park) in (None, trailaccess.MTB)
+    return trailaccess.verdict(tags, routes, in_park) in RATING_OPENS
+
+
+# The tag rules' answers that a difficulty rating does not overrule into a closure: none,
+# the mountain-bike class, and a natural surface with no bicycle tag (2026-10-19).
+RATING_OPENS = (None, trailaccess.MTB, trailaccess.NATURAL_SURFACE)
 
 
 def park_paths(ways: Iterable[Way], park_areas: list[Area]) -> set[int]:
@@ -210,6 +239,9 @@ def closures(
                 tags, routes.get(osm_id, trailaccess.NO_ROUTES), osm_id in in_park
             ):
                 result.drawn_singletrack.add(osm_id)
+                level = singletrack.mtb_level(tags)
+                if level is not None and level <= singletrack.OFFROAD_MAX_LEVEL:
+                    result.offroad_singletrack.add(osm_id)
         elif cbd.barred_sidewalk(tags, way.coordinates):
             reason = cbd.NO_BICYCLE
         else:

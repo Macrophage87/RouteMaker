@@ -34,6 +34,10 @@ TRACE_ATTRIBUTES = (
     # Whether a bicycle may ride each other way away from the node: a fork is a
     # choice only between rideable ways (`describe.fork_movement`).
     "node.intersecting_edge.cyclability",
+    # The signal flags the junction delay reads (`routemaker.junction_delay`): on the
+    # node, and on an edge that ends at a signalled node (a stop line short of the junction).
+    "node.traffic_signal",
+    "edge.traffic_signal",
 )
 
 # The road classes (Valhalla's, from OSM `highway`) on which a way can be LTS 3
@@ -122,6 +126,13 @@ class RawJunction:
     # APPROACH_M of the node along the route (nearest first): a stop sign or a
     # signal on one is the rider's own, a stop line short of the junction.
     back_edge_ids: tuple[int, ...] = ()
+    # The router flags a traffic signal at the node, or on the rider's own approach within
+    # APPROACH_M of it (`routemaker.junction_delay`). From the trace alone: a signal up a
+    # cross road only is not seen here (`core.junctions` reads those with `/locate`).
+    signal: bool = False
+    # Each of `others`' headings away from the node (degrees), None where the router gave
+    # none; empty for a junction built without them.
+    other_headings: tuple[float | None, ...] = ()
 
     @property
     def slip_lane(self) -> bool:
@@ -259,6 +270,10 @@ def junctions_of_trace(
             other.get("road_class")
             for other in (here.get("end_node") or {}).get("intersecting_edges") or []
         )
+        other_headings = tuple(
+            None if other.get("begin_heading") is None else float(other["begin_heading"])
+            for other in (here.get("end_node") or {}).get("intersecting_edges") or []
+        )
         if in_way == out_way and not others:
             continue
         lon, lat = shape[end]
@@ -282,9 +297,29 @@ def junctions_of_trace(
                 in_heading=float(in_heading),
                 out_heading=float(out_heading),
                 back_edge_ids=_back_edge_ids(edges, index, to_metres),
+                signal=_signal_at(edges, index, to_metres),
+                other_headings=other_headings,
             )
         )
     return junctions
+
+
+def _signal_at(edges: list[dict], index: int, to_metres: float) -> bool:
+    """Whether the router flags a signal at the node `edges[index]` arrives at: on the node,
+    on the in-edge, or on one of the rider's edges before it that ends within APPROACH_M of
+    the node along the route."""
+    here = edges[index]
+    if (here.get("end_node") or {}).get("traffic_signal") or here.get("traffic_signal"):
+        return True
+    gone = float(here.get("length") or 0.0) * to_metres
+    for back in range(index - 1, -1, -1):
+        if gone > APPROACH_M:
+            return False
+        edge = edges[back]
+        if edge.get("traffic_signal") or (edge.get("end_node") or {}).get("traffic_signal"):
+            return True
+        gone += float(edge.get("length") or 0.0) * to_metres
+    return False
 
 
 def _back_edge_ids(edges: list[dict], index: int, to_metres: float) -> tuple[int, ...]:

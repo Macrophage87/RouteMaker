@@ -10,7 +10,7 @@
 import { createElement as h, type ChangeEvent, type ReactElement } from "react";
 import { PRESETS, type PresetId, type PresetOption } from "./presets.ts";
 
-export type RideGroupId = "transportation" | "adventure" | "group";
+export type RideGroupId = "favorites" | "transportation" | "adventure" | "group";
 
 export interface RideGroup {
   id: RideGroupId;
@@ -62,18 +62,47 @@ export function filterRideGroups(query: string, presets: readonly PresetOption[]
   })).filter((group) => group.ids.length > 0);
 }
 
+/**
+ * The rider's favorites (lib/favoriteRides.ts) as a group of their own, first, in the order they were
+ * starred, and taken out of the groups they belong to, so each ride type shows once. Only the
+ * favorites the groups hold (a search's matches) are kept.
+ */
+export function withFavorites(groups: readonly RideGroup[], favorites: readonly PresetId[]): RideGroup[] {
+  const shown = new Set(groups.flatMap((g) => g.ids));
+  const ids = favorites.filter((id) => shown.has(id));
+  if (ids.length === 0) return [...groups];
+  return [
+    { id: "favorites", label: "Favorites", ids },
+    ...groups.map((g) => ({ ...g, ids: g.ids.filter((id) => !ids.includes(id)) })).filter((g) => g.ids.length > 0),
+  ];
+}
+
 /** The ride types most riders pick: Go's More ride types shows them first, the groups folded under (review F9). */
 export const COMMON_RIDE_TYPES: readonly PresetId[] = ["default", "novice", "bikeshare", "bike-transit"];
 
-/** Go's More ride types: the common ones, then the groups (without them), folded; a search shows its matches flat. */
-export function rideSections(query: string, presets: readonly PresetOption[] = PRESETS): { common: PresetId[]; groups: RideGroup[]; folded: boolean } {
-  const groups = filterRideGroups(query, presets);
-  if (query.trim() !== "") return { common: [], groups, folded: false };
+/**
+ * Go's More ride types: the rider's favorites, then the common ones (less the favorites), then the
+ * groups (without either), folded; a search shows its matches flat, favorites first.
+ */
+export function rideSections(
+  query: string,
+  presets: readonly PresetOption[] = PRESETS,
+  favorites: readonly PresetId[] = [],
+): { favorites: PresetId[]; common: PresetId[]; groups: RideGroup[]; folded: boolean } {
   const known = new Set(presets.map((p) => p.id));
-  const common = COMMON_RIDE_TYPES.filter((id) => known.has(id));
+  const all = filterRideGroups(query, presets);
+  const shown = new Set(all.flatMap((g) => g.ids));
+  const favs = favorites.filter((id) => known.has(id) && shown.has(id));
+  const rest = (ids: readonly PresetId[], out: readonly PresetId[]) => ids.filter((id) => !out.includes(id));
+  if (query.trim() !== "") {
+    return { favorites: favs, common: [], groups: all.map((g) => ({ ...g, ids: rest(g.ids, favs) })).filter((g) => g.ids.length > 0), folded: false };
+  }
+  const common = rest(COMMON_RIDE_TYPES.filter((id) => known.has(id)), favs);
+  const taken = [...favs, ...common];
   return {
+    favorites: favs,
     common,
-    groups: groups.map((g) => ({ ...g, ids: g.ids.filter((id) => !common.includes(id)) })).filter((g) => g.ids.length > 0),
+    groups: all.map((g) => ({ ...g, ids: rest(g.ids, taken) })).filter((g) => g.ids.length > 0),
     folded: true,
   };
 }

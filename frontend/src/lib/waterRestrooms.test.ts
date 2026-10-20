@@ -341,7 +341,7 @@ test("in words: US units first, metric in brackets, every detail said", () => {
   );
 });
 
-test("the section: one row, its switch the layer's, one status line; the kinds and one line inside; the legend and help by Legend", () => {
+test("the section: one row, its switch the layer's, one status line; the kinds and one line inside, then the key and help while on", () => {
   const html = (status: "loading" | "ready" | "unavailable", prefs: WaterPrefs = ALL) =>
     renderToStaticMarkup(createElement(WaterSection, { prefs, onChange: () => {}, status }));
   const loading = html("loading");
@@ -352,9 +352,13 @@ test("the section: one row, its switch the layer's, one status line; the kinds a
   assert.ok(loading.includes("<legend>Also show</legend>"));
   assert.ok(loading.includes(`role="status">${WATER_LOADING}<`));
   assert.ok(loading.includes(`<p class="hint">${WATER_HINT}</p>`));
-  // Less wordy (the owner, 2026-10-12): no legend, list or long help in Layers.
+  // The key and its help are inside (the owner, 2026-10-19: "include the legend within the accordion settings in
+  // layers"), the key once the layer is ready; the list along the route stays the route's fold.
   const ready = html("ready");
-  for (const gone of ["water-legend", WATER_ALONG_NO_ROUTE, "OpenStreetMap lists"]) assert.ok(!ready.includes(gone), gone);
+  assert.ok(ready.includes("water-legend") && ready.includes(WATER_HELP));
+  assert.ok(!loading.includes("water-legend"));
+  assert.ok(!ready.includes(WATER_ALONG_NO_ROUTE));
+  assert.ok(!html("ready", { ...ALL, on: false }).includes(WATER_HELP), "off: no key or help");
   assert.ok(html("unavailable").includes(WATER_UNAVAILABLE));
   // Off: the status line stays in the page, empty, so the next words are read.
   const off = html("loading", { ...ALL, on: false });
@@ -363,7 +367,7 @@ test("the section: one row, its switch the layer's, one status line; the kinds a
   assert.equal(waterStatusText(false, "unavailable"), "");
 });
 
-test("the Legend sheet's water part: the legend by kind, then the help, and the untreated note while untreated water shows", () => {
+test("the section's water key: the legend by kind, then the help, and the untreated note while untreated water shows", () => {
   const legend = renderToStaticMarkup(createElement(WaterLegend, { prefs: ALL }));
   assert.ok(legend.includes('aria-label="Water and restrooms legend"'));
   for (const row of WATER_LEGEND) assert.ok(legend.includes(`${row.label}: ${row.shape}`), row.icon);

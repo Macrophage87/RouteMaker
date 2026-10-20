@@ -1006,6 +1006,15 @@ check("and the derived tag is stripped", pci_poor["rm:pci"] == nil)
 local _, pci_none = transform_way({ highway = "residential", surface = "asphalt" })
 check("a street with no rm:pci keeps its surface", pci_none.surface == "asphalt", pci_none.surface)
 
+-- `rm:hazard` (v0.10.0): a cobbled or railed street reaches the graph priced as LTS 4.
+local _, hazard_way = transform_way({ highway = "residential", maxspeed = "25 mph",
+  ["rm:stress_tier"] = "1", ["rm:hazard"] = "yes" })
+local _, calm_way = transform_way({ highway = "residential", maxspeed = "25 mph", ["rm:stress_tier"] = "1" })
+check("rm:hazard=yes reaches the graph with the stress penalty",
+  hazard_way.bicycle == remap.STRESS_PENALTY_BICYCLE and calm_way.bicycle ~= remap.STRESS_PENALTY_BICYCLE,
+  hazard_way.bicycle)
+check("and the derived tag is stripped", hazard_way["rm:hazard"] == nil)
+
 -- FOLLOWUP-SIGNAL-DERIVE, through the entry point: the remap's one permitted
 -- node class write lands, and the mark that asked for it does not reach upstream.
 local signalled = transform_node({ highway = "crossing", crossing = "traffic_signals" })
@@ -1017,6 +1026,11 @@ check("and bicycle access through it is unchanged", bike_allowed(signalled))
 local marked = transform_node({ ["rm:crossing_signal"] = "yes" })
 check("a node the rebuild marked reaches upstream as a signal",
   marked.highway == "traffic_signals" and marked["rm:crossing_signal"] == nil, marked.highway)
+local agency_marked = transform_node({ highway = "crossing", crossing = "uncontrolled",
+  ["rm:agency_signal"] = "yes" })
+check("a crosswalk an agency lists as a HAWK reaches upstream as a signal",
+  agency_marked.highway == "traffic_signals" and agency_marked["rm:agency_signal"] == nil,
+  agency_marked.highway)
 local refused = transform_node({ highway = "crossing", crossing = "traffic_signals", bicycle = "no" })
 check("a crossing upstream reopens to bicycles keeps its class and its reopening",
   refused.highway == "crossing" and bike_allowed(refused), refused.highway)
