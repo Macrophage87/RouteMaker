@@ -1072,25 +1072,32 @@ const FIRST_HINT = "Place the starting point, then a stop or two along the way."
   await p.waitFor("!!document.querySelector('.loop-toggle input')", 40000);
   await sleep(800);
   const box = await axNode(p, ".loop-toggle input");
-  check("loop first: with no point placed the box is in the page, named \"Make it a loop\", unchecked", box?.role === "checkbox" && box?.name === "Make it a loop" && box?.checked === false, JSON.stringify(box));
+  // Plan starts as a loop (Stephen 2026-10-20: "For plan we should do loop as default").
+  check("loop first: with no point placed the box is in the page, named \"Make it a loop\", checked (Plan starts as a loop)", box?.role === "checkbox" && box?.name === "Make it a loop" && box?.checked === true, JSON.stringify(box));
   const place = await p.eval("(() => { const t = document.querySelector('.loop-toggle'); const i = t.closest('section'); const r = t.getBoundingClientRect(); return { inPoints: i?.getAttribute('aria-labelledby') === 'points-heading', afterSearch: !!t.closest('.section-head'), outsideRide: !t.closest('.ride-settings-body'), shown: r.height > 0, row: Math.round(t.getBoundingClientRect().height) }; })()");
   check("loop first: it is in the Points section, in its head row (UI-CLEANUP: Swap, Loop, Edit, Info), and not behind the Ride line's Edit", place.inPoints && place.afterSearch && place.outsideRide && place.shown, JSON.stringify(place));
   check("loop first: its row is a 44 px target", place.row >= 44, `${place.row} px`);
   // Every live region in the page, not only the first one found: the road panel's dialog holds a
   // status region of its own (S1) ahead of the page's in the document, and "once" means once in all of them.
   await p.eval("window.__said = []; const sel = '[role=status], [role=alert], [aria-live]:not([aria-live=off])'; for (const live of document.querySelectorAll(sel)) if (!live.parentElement?.closest(sel)) new MutationObserver(() => { const t = live.textContent.trim(); if (t) window.__said.push(t); }).observe(live, { childList: true, subtree: true, characterData: true }); true");
+  const hintOf = "(() => { const h = document.getElementById(document.querySelector('.loop-toggle input').getAttribute('aria-describedby')); const r = h.getBoundingClientRect(); return { text: h.textContent, visible: r.height >= 10 && r.width >= 50 && getComputedStyle(h).visibility !== 'hidden' && !h.classList.contains('visually-hidden') && !h.closest('.visually-hidden, [hidden]'), size: Math.round(r.width) + 'x' + Math.round(r.height) }; })()";
+  const first = await p.eval(hintOf);
+  check("loop first: checked with no point, the box is described by \"Place the starting point, then a stop or two along the way.\", said and not shown (Stephen 2026-10-20: simpler)", box?.description === FIRST_HINT && first.text === FIRST_HINT && !first.visible, JSON.stringify({ first, description: box?.description }));
+  // Unticked and ticked again: each said once.
   await p.eval("document.querySelector('.loop-toggle input').focus(); true");
   await p.key(" ", "Space", 32);
   await sleep(700);
+  const off = await axNode(p, ".loop-toggle input");
+  await p.key(" ", "Space", 32);
+  await sleep(700);
   const on = await axNode(p, ".loop-toggle input");
-  const hint = await p.eval("(() => { const h = document.getElementById(document.querySelector('.loop-toggle input').getAttribute('aria-describedby')); const r = h.getBoundingClientRect(); return { text: h.textContent, visible: r.height >= 10 && r.width >= 50 && getComputedStyle(h).visibility !== 'hidden' && !h.classList.contains('visually-hidden') && !h.closest('.visually-hidden, [hidden]'), size: Math.round(r.width) + 'x' + Math.round(r.height) }; })()");
-  check("loop first: checked with no point, the hint is visible text, \"Place the starting point, then a stop or two along the way.\"", on?.checked === true && hint.visible && hint.text === FIRST_HINT, JSON.stringify(hint));
-  check("loop first: the box is described by it", on?.description === FIRST_HINT, JSON.stringify(on?.description));
+  check("loop first: Space unticks it and ticks it again", off?.checked === false && on?.checked === true, JSON.stringify({ off: off?.checked, on: on?.checked }));
+  check("loop first: the box is described by the hint again", on?.description === FIRST_HINT, JSON.stringify(on?.description));
   const live = await p.eval("document.querySelectorAll('.loop-toggle [role=status], .loop-toggle [role=alert], .loop-toggle [aria-live]').length");
   check("loop first: the box and its hint hold no live region of their own (the one announcement is the page's)", live === 0, String(live));
   const said = await p.eval("window.__said");
-  check("loop first: it is announced once when the box is checked", said.filter((t) => t.includes(FIRST_HINT)).length === 1 && said.length === 1, JSON.stringify(said));
-  check("loop first: checking it plans nothing, and the focus stays on the box", p.routeRequests === 0 && (await p.eval("document.activeElement === document.querySelector('.loop-toggle input')")), `${p.routeRequests} plans`);
+  check("loop first: unticking and ticking are each announced once", said.filter((t) => t.includes(FIRST_HINT)).length === 1 && said.filter((t) => t.includes("Loop off")).length === 1 && said.length === 2, JSON.stringify(said));
+  check("loop first: ticking it plans nothing, and the focus stays on the box", p.routeRequests === 0 && (await p.eval("document.activeElement === document.querySelector('.loop-toggle input')")), `${p.routeRequests} plans`);
   check("loop first: the empty-plan words do not send the rider to the Ride line", !/Edit button|ride settings/.test(await p.eval("document.querySelector('.tips-body').textContent")), "");
   await p.close();
 }
@@ -1227,8 +1234,9 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
     if (!secure) await p.s("Page.addScriptToEvaluateOnNewDocument", { source: "Object.defineProperty(window, 'isSecureContext', { value: false })" });
     if (script) await p.s("Page.addScriptToEvaluateOnNewDocument", { source: script });
     await p.s("Page.navigate", { url: `${ORIGIN}/${hash}` });
-    // Plan's boxes (Plan streamline, 2026-10-17): Use my location sits on From (an empty plan) and To; a fuller plan has Add a stop.
-    if (!(await p.waitFor("!!document.querySelector('.locate-button, #points-search .place-search input')", 30000))) throw new Error("no Use my location button");
+    // Plan's boxes (Plan streamline, 2026-10-17): Use my location sits on To; a fuller plan has Add a stop. An empty plan has
+    // Start at current location in Route's place (Stephen 2026-10-20), and From has Your location in its list.
+    if (!(await p.waitFor("!!document.querySelector('.start-here, .locate-button, #points-search .place-search input')", 30000))) throw new Error("no Use my location button");
     await sleep(500);
     return p;
   }
@@ -1236,7 +1244,7 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   // space, so the same words said again count again).
   const countSaid = (text) => `(() => { window.__said = 0; const last = new WeakMap(); const scan = () => { for (const e of document.querySelectorAll('[role=status],[aria-live]')) { const t = e.textContent; if (last.get(e) !== t) { last.set(e, t); if (t.includes(${JSON.stringify(text)})) window.__said += 1; } } }; scan(); window.__said = 0; new MutationObserver(scan).observe(document.body, { subtree: true, childList: true, characterData: true }); return true; })()`;
   const press = async (p) => {
-    await p.eval("document.querySelector('.locate-button').click(); true");
+    await p.eval("(document.querySelector('.start-here') ?? document.querySelector('.locate-button')).click(); true");
     await sleep(300);
     // The look-up is done when the button's "Finding your location" text is gone; the notice follows 150 ms later.
     await p.waitFor("!document.querySelector('.place-search')?.textContent.includes('Finding your location')", 15000);
@@ -1245,10 +1253,11 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
 
   {
     const p = await emptyPlan();
-    const box = await p.eval(`(() => { const r = (e) => { const x = e.getBoundingClientRect(); return { top: x.top, bottom: x.bottom, left: x.left, w: x.width, h: x.height }; }; const b = document.querySelector('.locate-button'); const i = document.querySelector('.place-search input'); return { b: r(b), i: r(i), inPoints: !!b.closest('section[aria-labelledby=points-heading]') }; })()`);
-    const ax = await axNode(p, ".locate-button");
-    check("locate: the button is named Use my location, a button, in the Points section", ax?.role === "button" && ax?.name === "Use my location" && box.inPoints, JSON.stringify({ ax, inPoints: box.inPoints }));
-    check("locate: the button is 44 px or more each way and beside the search box (same row, to its right)", box.b.w >= 44 && box.b.h >= 44 && box.b.left >= box.i.left + box.i.w - 1 && box.b.top < box.i.bottom && box.b.bottom > box.i.top, JSON.stringify(box));
+    // An empty plan: Start at current location in Route's place (Stephen 2026-10-20), and no second button on From.
+    const box = await p.eval(`(() => { const b = document.querySelector('.start-here'); const x = b?.getBoundingClientRect(); return { w: x?.width ?? 0, h: x?.height ?? 0, inPanel: !!b?.closest('section.plan-panel'), fromButton: !!document.querySelector('#points-search .locate-button') }; })()`);
+    const ax = await axNode(p, ".start-here");
+    check("locate: an empty plan has a button named Start at current location in the plan panel, Route's place, and From no second button", ax?.role === "button" && ax?.name === "Start at current location" && box.inPanel && !box.fromButton, JSON.stringify({ ax, box }));
+    check("locate: the button is 44 px or more each way", box.w >= 44 && box.h >= 44, JSON.stringify(box));
     await p.eval("document.querySelector('.place-search input').focus(); true");
     await sleep(300);
     const opt = await p.eval("(() => { const o = [...document.querySelectorAll('.place-results [role=option]')]; return { n: o.length, first: o[0]?.textContent, shown: !document.querySelector('.place-results').hidden }; })()");
@@ -1257,7 +1266,7 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
     await p.enter();
     await sleep(1500);
     const said = await p.eval(live);
-    const startSaid = said.filter((t) => /Start set to your location, accurate to about \d+ ft \(15 m\)\./.test(t));
+    const startSaid = said.filter((t) => /Start( and finish)? set to your location, accurate to about \d+ ft \(15 m\)\./.test(t));
     check("locate: choosing Your location sets the start and says it, with US units first", startSaid.length >= 1, JSON.stringify(said));
     check("locate: said once, in one live region (no double announcement)", (await p.eval(holders("set to your location"))) === 1);
     const hint = await p.eval("document.querySelector('.place-search')?.textContent ?? ''");
@@ -1265,6 +1274,9 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
     const rows = await p.eval("document.querySelectorAll('.points > li').length");
     check("locate: one point is in the plan", rows >= 1, String(rows));
     // Every text the live regions held during the second press, to hear the pending sentence too.
+    // Plan starts as a loop, which has no To box: untick it, so the next press is Use my location on To.
+    await p.eval("document.querySelector('.loop-toggle input').click(); true");
+    await sleep(500);
     await p.eval("(() => { window.__heard = []; const o = new MutationObserver(() => { for (const e of document.querySelectorAll('[role=status],[aria-live]')) { const t = e.textContent.trim(); if (t && !window.__heard.includes(t)) window.__heard.push(t); } }); o.observe(document.body, { subtree: true, childList: true, characterData: true }); return true; })()");
     await press(p);
     const second = await p.eval(live);
@@ -1378,9 +1390,9 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
     const slow = "(() => { const g = navigator.geolocation; const real = g.getCurrentPosition.bind(g); window.__lookups = 0; Object.defineProperty(g, 'getCurrentPosition', { configurable: true, value: (ok, fail, o) => { window.__lookups += 1; setTimeout(() => real(ok, fail, o), 2500); } }); })()";
     const p = await emptyPlan({ script: slow });
     await p.eval(countSaid("Finding your location"));
-    await p.eval("document.querySelector('.locate-button').click(); true");
+    await p.eval("document.querySelector('.start-here').click(); true");
     await sleep(500);
-    await p.eval("document.querySelector('.locate-button').click(); true");
+    await p.eval("document.querySelector('.start-here').click(); true");
     await sleep(500);
     const during = await p.eval("({ said: window.__said, lookups: window.__lookups })");
     await p.waitFor("!document.querySelector('.place-search')?.textContent.includes('Finding your location')", 15000);
@@ -1405,8 +1417,8 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   }
   {
     const p = await emptyPlan({ secure: false });
-    const ax = await axNode(p, ".locate-button");
-    const attr = await p.eval("document.querySelector('.locate-button').getAttribute('aria-disabled')");
+    const ax = await axNode(p, ".start-here");
+    const attr = await p.eval("document.querySelector('.start-here').getAttribute('aria-disabled')");
     check("locate: on an insecure page the button stays in the Tab order, aria-disabled, with the reason as its description", attr === "true" && /secure \(HTTPS\)/.test(ax?.description ?? ""), JSON.stringify(ax));
     await press(p);
     const pts = await p.eval("!!document.querySelector('.link-note')");
@@ -5046,7 +5058,8 @@ const failed = results.filter((r) => !r.ok);
 // Review mode's own lists (22c2) add six. End ride's slide (#235) adds two: a tap springs back, a slide ends the ride.
 // A lettered pin's card (no auto route, 2026-10-19) adds two: the card a tap opens, and the card the B key opens.
 // The map's info panel adds two at 1280 px: the i named for it, and what it opens.
-const EXPECTED = 669;
+// Plan starting as a loop (2026-10-20) adds one: the loop box unticked and ticked again.
+const EXPECTED = 670;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

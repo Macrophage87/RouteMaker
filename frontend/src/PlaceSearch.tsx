@@ -396,7 +396,9 @@ export function PlaceSearch({
           {FINDING_LOCATION}
         </p>
       )}
-      {locate && !locate.listOnly && !locate.busy && locate.note && <p className="hint">{locate.note}</p>}
+      {/* The located point's note shows under whichever box is open, Add a stop too: a loop has no To box (Plan starts
+          as a loop, Stephen 2026-10-20), and the note is what says the point is approximate. */}
+      {locate && !locate.busy && locate.note && <p className="hint">{locate.note}</p>}
       <ul id={listId} role="listbox" aria-label={empty ? "Your location and recent places" : "Places found"} className="place-results" hidden={!expanded}>
         {items.map((item, i) =>
           item === HERE ? (
