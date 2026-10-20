@@ -2269,14 +2269,25 @@ class TransitStepOut(Schema):
     )
     departs: str | None = Field(
         default=None,
-        description='An infrequent service (over 15 min apart): the departure taken, "7:42 am".',
+        description=(
+            'An infrequent service (over 15 min apart), or one WMATA predicts (`source` "live"):'
+            ' the departure taken, "7:42 am".'
+        ),
+    )
+    source: Literal["scheduled", "live"] | None = Field(
+        default=None,
+        description=(
+            "A transit step's departure: \"live\", WMATA's next train or bus that the rider"
+            " reaches the stop in time for (a plan for now; the time on board stays the"
+            ' timetable\'s); else "scheduled". Null off transit.'
+        ),
     )
     text: str = Field(description="The step in one sentence, US units first, for reading aloud.")
     seconds: int = Field(description="The step's time, without the wait.")
     wait_s: int = Field(
         description="The wait before it: for a service every 15 min or less, half the headway"
-        " (a rider who does not time the trip); for a less frequent one, the time to spare"
-        " between reaching the stop and the scheduled departure taken (`departs`)."
+        " (a rider who does not time the trip); for a less frequent one, or one timed live, the"
+        " time to spare between reaching the stop and the departure taken (`departs`)."
     )
     to: str | None = Field(description="Where the step ends, by name; null: no name.")
     lines: list[str] = Field(description="Metro lines or bus routes that run it.")
@@ -2357,17 +2368,26 @@ class TransitDepartureOut(Schema):
     planned_at: str = Field(description="The moment the plan is for.")
     point: list[float] | None = Field(description="[lon, lat] of the stop, for the map's label.")
     label: str = Field(description='The map\'s label: "MARC 7:42 am · 6 min spare".')
+    source: Literal["scheduled", "live"] = Field(
+        default="scheduled", description='"live" where WMATA predicts the departure.'
+    )
 
 
 class TransitOut(Schema):
-    """A transit ride type's trip (`core.transit`): scheduled, not live."""
+    """A transit ride type's trip (`core.transit`): scheduled, with WMATA's predicted
+    departures on a plan for now (`core.transit_live`)."""
 
     mode: Literal["bike-transit", "bikeshare-transit"]
     key: str = Field(description="The chosen option's key.")
     direct: bool = Field(description="The chosen option is riding the whole way.")
     total_s: int
     minutes: int
-    summary: str = Field(description='"About N min door to door, scheduled."')
+    summary: str = Field(
+        description=(
+            '"About N min door to door, scheduled.", or "..., with live departures." where'
+            " `live_times`."
+        )
+    )
     bike_only_s: int | None = Field(description="Riding the whole way, for comparison.")
     comparison: str | None
     riding_quicker: bool = Field(description="Riding the whole way is at least as quick.")
@@ -2389,6 +2409,13 @@ class TransitOut(Schema):
         )
     )
     scheduled: bool
+    live_times: bool = Field(
+        default=False,
+        description=(
+            "A departure on the chosen trip is WMATA's prediction (its step's `source` is"
+            ' "live").'
+        ),
+    )
     credits: list[str] = Field(description="The schedules' sources, for the systems used.")
     departure: TransitDepartureOut | None = Field(
         default=None, description="The first infrequent departure, or null where there is none."
@@ -3402,7 +3429,10 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
     )
     # WMATA's live reading (core.wmata_live), if any: an elevator out on the way costs the trip
     # a little in the ranking, and the block says the live values (core.transit_live).
+    # A plan for now takes its Metro steps' departures from WMATA's next trains, where they
+    # cover them, before it is ranked.
     live = wmata_live.client.snapshot()
+    found = transit_live.with_live_trains(found, live)
     found = transit_live.rank(transit_live.skip_closed(found, live), live)
     found = transit.choose(found, body.transit_option)
     # The chosen trip's Metrobus steps' next buses (core.wmata_bus, v0.9.0), asked now, beside
@@ -3425,6 +3455,7 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
         # trip's other walks and rides are routed for the map (transit.drawn).
         lines = lines or {}
         buses = _buses_for(plan, bus_ask)
+        plan = transit_live.with_live_buses(plan, buses)
         block = _transit_block(transit.drawn(plan, draw, skip=lines), schedule, live, buses)
         answer["transit"] = _with_leg_lines(block, lines)
         return answer

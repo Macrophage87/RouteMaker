@@ -468,11 +468,11 @@ export interface TransitStep {
   lines: string[];
   /** A transit leg's system, by name: "Metro", "MARC". */
   system?: string | null;
-  /** An infrequent service (over 15 min apart): the departure taken, "7:42 am". */
+  /** An infrequent service (over 15 min apart), or one WMATA predicts (`source` "live"): the departure taken, "7:42 am". */
   departs?: string | null;
   /** A frequent service: minutes between departures. */
   every_min?: number | null;
-  /** Where a transit step's times are from: "scheduled" now; "live" from v0.7. Null off transit. */
+  /** Where a transit step's departure is from: "live" (WMATA's prediction, on a plan for now) or "scheduled". Null off transit. */
   source?: TimeSource | null;
   with_bike: boolean;
   /**
@@ -601,7 +601,7 @@ export interface StationTimes {
   live?: StationLive | null;
 }
 
-/** A transit ride type's trip: scheduled times, not live. */
+/** A transit ride type's trip: scheduled times, with WMATA's predicted departures on a plan for now. */
 export interface TransitPlan {
   mode: "bike-transit" | "bikeshare-transit";
   /** The chosen option's key, and whether it is riding the whole way. */
@@ -624,6 +624,8 @@ export interface TransitPlan {
   holiday: boolean;
   bike_blackout: boolean;
   scheduled: boolean;
+  /** A departure on the chosen trip is WMATA's prediction (v0.10.0; absent from older answers). */
+  live_times?: boolean;
   /** The schedules' sources, for the systems the chosen trip uses. */
   credits: string[];
   /** The first infrequent departure, or null (absent from older answers). */
