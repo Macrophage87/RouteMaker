@@ -844,13 +844,24 @@ function M.remap_way(tags, derived)
   -- cemetery's ways, `access=destination` is upstream's destination-only, so a
   -- route may enter only to end there; and `bicycle=destination` opens the
   -- footways and sidewalks the spur runs over, which upstream closes by class
-  -- (or by `bicycle=no`). The spur is the one place this remap widens a bicycle
-  -- tag, and only for the ways the rebuild names.
+  -- (or by `bicycle=no`). The spur and the walk links below are the only places
+  -- this remap widens a bicycle tag, and only for the ways the rebuild names.
   if derived.destination_only then
     if tags.access == nil or M.PERMISSIVE_ACCESS[tags.access] then
       out.access = M.CEMETERY_ACCESS
     end
     out.bicycle = "destination"
+  end
+
+  -- A short sidewalk stretch where a bike way stops (`rm:walk_link`,
+  -- routemaker.walk_links; the owner, 2026-10-20: "When there's a tiny bit of
+  -- sidewalk before a bike lane it doesn't connect"): open at a walk, as OSM's own
+  -- short `bicycle=dismount` connectors are (OWNER-DECISIONS 291(5)). Upstream
+  -- closes a footway with no bicycle tag by its class; walking a bicycle is walking,
+  -- so this widens nothing a pedestrian may not do. Only where no bicycle tag speaks
+  -- and no closure reason stands.
+  if derived.walk_link and tags.bicycle == nil and out.bicycle == nil and not derived.no_bicycle then
+    out.bicycle = "dismount"
   end
 
   -- A paved way is not a mountain-bike trail (`M.strip_paved_ratings`).

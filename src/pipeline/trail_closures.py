@@ -4,9 +4,10 @@ Pure: it takes the rebuild's ways and what the extract says about routes and
 places, and answers which way gets which `rm:no_bicycle` reason
 (`routemaker.trailaccess`, `routemaker.zoo`), which short `bicycle=dismount`
 connectors stay and are flagged "walk your bike here" (OWNER-DECISIONS 291(5)),
-and which ways are the Zoo's destination-only spur. `pipeline.run` calls it from
-`classify_facilities` and writes the answers on the extract and the segment
-table.
+which short footways become walk-your-bike links where a bike way stops at a
+sidewalk (`routemaker.walk_links`), and which ways are the Zoo's destination-only
+spur. `pipeline.run` calls it from `classify_facilities` and writes the answers
+on the extract and the segment table.
 
 NPS units (291(6)): the tag rules apply now. A per-park "paved and designated
 only" rule belongs in `PARK_RULES` below and is added only after that park's
@@ -21,7 +22,7 @@ from collections import Counter
 from collections.abc import Collection, Iterable, Mapping, Set
 from dataclasses import dataclass, field
 
-from routemaker import cbd, facility, singletrack, trailaccess, zoo
+from routemaker import cbd, facility, singletrack, trailaccess, walk_links, zoo
 from routemaker.cbd import Polygon
 
 from .extract import Way
@@ -124,6 +125,9 @@ class TrailClosures:
     reasons: dict[int, str] = field(default_factory=dict)
     # short bicycle=dismount connectors kept, flagged for the route description
     walk_bike: set[int] = field(default_factory=set)
+    # footways opened as short walk-your-bike links where a bike way stops at a sidewalk
+    # (`routemaker.walk_links`; the owner, 2026-10-20), each also in `walk_bike`
+    walk_links: set[int] = field(default_factory=set)
     # the Zoo spur: open, destination-only
     destination_only: set[int] = field(default_factory=set)
     # rated singletrack that nothing but the rating closes: the map draws it on the
@@ -255,4 +259,19 @@ def closures(
             result.reasons[osm_id] = reason
         elif osm_id in kept:
             result.walk_bike.add(osm_id)
+    result.walk_links = set(
+        walk_links.links(
+            ((way.osm_id, way.tags, way.node_ids, node_coordinates(way)) for way in ways),
+            closed=set(result.reasons) | result.destination_only,
+        )
+    )
+    result.walk_bike |= result.walk_links
     return result
+
+
+def node_coordinates(way: Way) -> list[tuple[float, float] | None]:
+    """A coordinate per node id, None where the extract carries no location."""
+    coords: list[tuple[float, float] | None] = [None] * len(way.node_ids)
+    for index, lon, lat in way.located_points():
+        coords[index] = (lon, lat)
+    return coords
