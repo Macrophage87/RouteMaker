@@ -307,6 +307,66 @@ class Rating:
     level: int
 
 
+# --- Flashing beacons mapped as signals ----------------------------------------
+#
+# The owner, 2026-10-20, at Connecticut Ave (MD 185) and Baltimore St, Kensington: "a
+# traffic light that's a blinking red against free flowing traffic. It wasn't
+# passable." OSM maps the junction with a signal; MDOT SHA lists the device there as a
+# Warning Beacon, not a Traffic Control Signal. A beacon stops nobody on the main road
+# (flashing yellow) and tells the side street to stop (flashing red): the junction is a
+# two-way stop. So a junction priced as signalised whose node is within BEACON_MATCH_M
+# of a known beacon (`core.flashing_signals`: the owner's list and MDOT SHA's beacons)
+# is priced with no signal: the busier road keeps priority and the rider crossing it is
+# on the stopped side (`crossing_ft`, `Control.NONE`).
+#
+# The reach in which the junction model takes a signal for the junction's own
+# (`trace_junctions.APPROACH_M`, 98 ft): a divided road's far carriageway node, or a
+# stop line, within it reads the beacon's flag, so it is the beacon's too.
+BEACON_MATCH_M = 30.0
+
+
+@dataclass(frozen=True)
+class Beacon:
+    """A known flashing beacon at a junction mapped as signalised."""
+
+    id: int
+    lon: float
+    lat: float
+
+
+# BEACON_MATCH_M as degrees of latitude, with room: a cheap test before the distance.
+_BEACON_DEG = BEACON_MATCH_M / 100_000.0
+
+
+def beacons_near(points: Sequence[tuple[float, float]], beacons: Sequence[Beacon]) -> list[Beacon]:
+    """The beacons within reach of the box round `points` (lon, lat): a route meets a few
+    of a state's beacons at most, so each junction is then matched against those only."""
+    if not points or not beacons:
+        return []
+    lons = [p[0] for p in points]
+    lats = [p[1] for p in points]
+    # A degree of longitude is shorter than one of latitude: twice the margin covers 60 N.
+    lon_margin = 2 * _BEACON_DEG
+    return [
+        b
+        for b in beacons
+        if min(lats) - _BEACON_DEG <= b.lat <= max(lats) + _BEACON_DEG
+        and min(lons) - lon_margin <= b.lon <= max(lons) + lon_margin
+    ]
+
+
+def beacon_at(lon: float, lat: float, beacons: Sequence[Beacon]) -> Beacon | None:
+    """The beacon nearest (lon, lat) within BEACON_MATCH_M, or None."""
+    best, best_m = None, BEACON_MATCH_M
+    for beacon in beacons:
+        if abs(beacon.lat - lat) > _BEACON_DEG:
+            continue
+        m = haversine(Point(lon, lat), Point(beacon.lon, beacon.lat))
+        if m <= best_m:
+            best, best_m = beacon, m
+    return best
+
+
 def rating_at(lon: float, lat: float, ratings: Sequence[Rating]) -> Rating | None:
     """The rating nearest (lon, lat) within RATING_MATCH_M, or None."""
     best, best_m = None, RATING_MATCH_M
@@ -411,6 +471,9 @@ class Junction:
     # An approved rider rating of the junction (`Rating.level`, 2 to 4), which
     # sets its cost and colour (OWNER-DECISIONS 232); None: the model's own.
     rating: int | None = None
+    # The map has a signal here, but it is a flashing beacon (`with_beacons`): priced
+    # with no signal, and said so.
+    beacon: bool = False
 
 
 @dataclass(frozen=True)
@@ -474,6 +537,8 @@ class Event:
     # is `cost_ft`: carried through a refuge credit and a merge, so a merged event
     # names the ride time only where the hour moved the merged cost too.
     untimed_ft: float | None = field(default=None, compare=False)
+    # The junction's mapped signal is a flashing beacon (`Junction.beacon`).
+    beacon: bool = field(default=False, compare=False)
 
 
 def _untimed(event: Event) -> float:
@@ -765,6 +830,8 @@ CONTROL_WORDS = {
     # not mapped" is the same fact, and review r2 asked for one phrase.
     Control.NONE: "no signal mapped",
 }
+# A junction whose mapped signal is a flashing beacon (`Junction.beacon`).
+BEACON_WORDS = "flashing light, not a signal"
 
 KIND_WORDS = {
     "crossing": "Crossing",
@@ -781,11 +848,15 @@ KIND_WORDS = {
 }
 
 
-def reason_of(kind: str, road: Road | None, control: Control) -> str:
+def reason_of(kind: str, road: Road | None, control: Control, beacon: bool = False) -> str:
     """The sentence a click on the marker shows, in US units first (the
     owner's example: "Left turn across 4-lane 35 mph road, no signal")."""
     noun = describe_road(road)
     words = CONTROL_WORDS[control]
+    if beacon:
+        # The map's signal is a flashing beacon (`with_beacons`): said in place of "no
+        # signal mapped", or beside the signs.
+        words = BEACON_WORDS if control is Control.NONE else f"{words}, {BEACON_WORDS}"
     return f"{KIND_WORDS.get(kind, 'Junction with')} {_article(noun)} {noun}, {words}"
 
 
@@ -825,7 +896,7 @@ def assess(junction: Junction, group: bool = False, when: str | None = None) -> 
     band = when if abs(cost - untimed) >= 1.0 else None
     assumed = speed_assumed(about) and junction.control is not Control.SIGNAL
     marked = kind == "crossing" and marked_unsignalised(junction)
-    reason = reason_of(kind, about, junction.control)
+    reason = reason_of(kind, about, junction.control, junction.beacon)
     if group:
         if kind in {"left_from", "left_across"} and about.oneway:
             return None
@@ -856,6 +927,7 @@ def assess(junction: Junction, group: bool = False, when: str | None = None) -> 
             time_factor=factor,
             time_band=band,
             untimed_ft=untimed,
+            beacon=junction.beacon,
         )
     cap = MARKED_CROSSING_MAX_SEVERITY if marked else None
     severity = _at_most(severity_of(cost), cap)
@@ -882,6 +954,7 @@ def assess(junction: Junction, group: bool = False, when: str | None = None) -> 
         time_factor=factor,
         time_band=band,
         untimed_ft=untimed,
+        beacon=junction.beacon,
     )
 
 
@@ -912,7 +985,7 @@ def rated(
         )
         reason = said
     else:
-        reason = f"{reason_of(kind, about, junction.control)}. {said}"
+        reason = f"{reason_of(kind, about, junction.control, junction.beacon)}. {said}"
     return Event(
         junction.m,
         junction.lon,
@@ -933,6 +1006,7 @@ def rated(
         road_oneway=about.oneway,
         road_lanes=about.lanes,
         rating=level,
+        beacon=junction.beacon,
     )
 
 
@@ -944,6 +1018,27 @@ def with_ratings(junctions: Sequence[Junction], ratings: Sequence[Rating]) -> li
     for junction in junctions:
         found = rating_at(junction.lon, junction.lat, ratings)
         out.append(replace(junction, rating=found.level) if found else junction)
+    return out
+
+
+def with_beacons(
+    junctions: Sequence[Junction],
+    beacons: Sequence[Beacon],
+    unsignalled: Sequence[Control] | None = None,
+) -> list[Junction]:
+    """The junctions with each signalised one at a known flashing beacon priced with no
+    signal (`BEACON_MATCH_M`): its control is what the signs say once the map's signal
+    is read as nothing (`unsignalled`, one for each junction, from the router's flags;
+    `Control.NONE` where not given), so a stop sign mapped on an approach still counts.
+    A junction with no signal is left as it is."""
+    if not beacons:
+        return list(junctions)
+    out = []
+    for index, junction in enumerate(junctions):
+        if junction.control is Control.SIGNAL and beacon_at(junction.lon, junction.lat, beacons):
+            control = unsignalled[index] if unsignalled is not None else Control.NONE
+            junction = replace(junction, control=control, beacon=True)
+        out.append(junction)
     return out
 
 
@@ -1149,6 +1244,9 @@ def share_controls(junctions: list[Junction]) -> list[Junction]:
     shared = list(junctions)
     for place, i in enumerate(order):
         junction = junctions[i]
+        if junction.beacon:
+            # Its signal is a beacon's: a neighbouring node's signal flag is the same one.
+            continue
         best = junction.control
         near = [k for step in (-1, 1) for k in _within(order, place, step, junctions, junction.m)]
         for k in near:

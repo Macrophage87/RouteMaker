@@ -3041,6 +3041,10 @@ def plan(
     from .junction_suggestions import approved_ratings
 
     junction_ratings = approved_ratings()
+    # The flashing beacons the map has as signals (the owner's and MDOT SHA's), the same way.
+    from .flashing_signals import active as active_beacons
+
+    beacons = active_beacons()
     # The rider's target distance counts at the top of the slider only.
     target_m = float(dials.target_distance_m) if dials.target_distance_m and maxcalm else None
     when = dials.when or default_when()
@@ -3375,6 +3379,7 @@ def plan(
         options=[] if offering and not long_calm else None,
         avoid=avoid_list,
         junction_ratings=junction_ratings,
+        beacons=beacons,
     )
     if past:
         # The router's own route is past the target: the calmer route past it where
