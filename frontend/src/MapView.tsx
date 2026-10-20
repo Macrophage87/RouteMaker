@@ -35,7 +35,7 @@ import {
   ROUTE_BAND_WIDTH,
   sectionFeatures,
 } from "./lib/routeColours.ts";
-import { mtbTrailsOn, routableMtbLevel, stressOverlayLayers, subscribeHighStressLanes, subscribeMtbTrails, subscribePalette, subscribeRoutableMtb } from "./stressStyle.js";
+import { mtbTrailsOn, routableMtbLevel, stressOverlayLayers, subscribeHighStressLanes, subscribeMtbTrails, subscribePalette, subscribeRoutableMtb, withClearRoadLabels } from "./stressStyle.js";
 import { subscribeTopoLines, syncTopoLines, topoLinesOn, type TopoMap } from "./lib/topoLines.ts";
 import {
   addStressOverlay,
@@ -562,7 +562,8 @@ export function MapView(props: Props) {
     if (!container.current) return;
     registerPmtiles();
     const origin = window.location.origin;
-    const basemapLayers = protomapsLayers(BASEMAP_SOURCE_ID, namedFlavor("light"), { lang: "en" });
+    // The street names larger, darker and on a wider halo, so a stress line does not hide them (stressStyle.js, ROAD_LABEL).
+    const basemapLayers = withClearRoadLabels(protomapsLayers(BASEMAP_SOURCE_ID, namedFlavor("light"), { lang: "en" }));
     const style = buildStyle(origin, basemapLayers);
     // What Ride mode's corridor prefetch asks for besides the tiles: the style's glyphs and sprite.
     setCorridorStyle(style.glyphs, style.sprite, fontStacks(style.layers), () => stressTileTemplate(origin));
