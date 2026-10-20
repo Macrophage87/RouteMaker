@@ -4283,9 +4283,11 @@ details.zoom-notes {
   font-size: 1rem;
 }
 
+/* A value too long for the rest of its label's line goes whole onto the next, not split under itself. */
 .ride-togo div {
   display: flex;
-  gap: 6px;
+  flex-wrap: wrap;
+  gap: 0 6px;
 }
 
 .ride-togo dt {
@@ -4498,7 +4500,7 @@ details.zoom-notes {
   box-sizing: border-box;
 }
 
-.ride-large .cue-card > :not(.ride-top, .ride-mode-settings, .ride-togo) {
+.ride-large .cue-card > :not(.ride-top, .ride-light-below, .ride-mode-settings, .ride-togo) {
   flex: 1 0 auto;
 }
 
@@ -4535,8 +4537,9 @@ details.zoom-notes {
   font-size: max(16pt, 0.5em);
 }
 
+/* The instruction never smaller than the small print under it. */
 .ride-large .cue-text {
-  font-size: calc(var(--cue-fit, 1) * 1.9rem);
+  font-size: max(18pt, calc(var(--cue-fit, 1) * 1.9rem));
 }
 
 .ride-large .cue-more,
@@ -4552,6 +4555,16 @@ details.zoom-notes {
 }
 
 .ride-large .ride-togo dt {
+  white-space: nowrap;
+}
+
+/* Where the turn's words do not fit at their smallest, To the end gives way to them (RideMode's fit); screen readers keep it. */
+.ride-large .cue-crowded .ride-togo-end {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
   white-space: nowrap;
 }
 
