@@ -75,8 +75,11 @@ function mainRoad(out: number, side: "before" | "after"): string {
     .join(" ");
 }
 
-/** A circle's ring: its middle, where the exit number is, and its radius; the ways off reach this far out. */
-export const RING = { x: 24, y: 24, r: 12, spoke: 23, dashed: 23 };
+/**
+ * A circle's ring: its middle, where the exit number is, and its radius; the ways off reach this far out, which keeps
+ * a tip and its round cap inside the box at any angle.
+ */
+export const RING = { x: 24, y: 24, r: 10, spoke: 21, dashed: 21, head: 7 };
 
 /**
  * SVG paths for a circle (the owner, 2026-10-20: "Put the number in the ring and also show roughly where it would
@@ -97,9 +100,9 @@ export function ringPaths(shape: JunctionShape): { ring: string; route: string; 
         `A${RING.r} ${RING.r} 0 0 ${right ? 0 : 1} ${RING.x} ${RING.y - RING.r} A${RING.r} ${RING.r} 0 0 ${right ? 0 : 1} ${bottom.x} ${bottom.y}`
       : `A${RING.r} ${RING.r} 0 ${sweep > 180 ? 1 : 0} ${right ? 0 : 1} ${on.x} ${on.y}`;
   const back = shape.out + 180;
-  const a = toward(tip, back - HEAD_DEG, HEAD);
-  const b = toward(tip, back + HEAD_DEG, HEAD);
-  const route = `M24 54 L${bottom.x} ${bottom.y} ${arc} L${tip.x} ${tip.y} M${a.x} ${a.y} L${tip.x} ${tip.y} L${b.x} ${b.y}`;
+  const a = toward(tip, back - HEAD_DEG, RING.head);
+  const b = toward(tip, back + HEAD_DEG, RING.head);
+  const route = `M24 52 L${bottom.x} ${bottom.y} ${arc} L${tip.x} ${tip.y} M${a.x} ${a.y} L${tip.x} ${tip.y} L${b.x} ${b.y}`;
   const others = shape.others.map((deg) => {
     const from = toward(middle, deg, RING.r);
     const to = toward(middle, deg, RING.dashed);

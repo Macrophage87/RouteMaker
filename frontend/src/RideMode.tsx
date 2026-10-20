@@ -346,7 +346,7 @@ function CueShape({ shape, junction, exit }: { shape: ReturnType<typeof arrowFor
           <path key={d} d={d} fill="none" stroke="currentColor" strokeWidth="3" strokeDasharray="4 2.5" strokeLinecap="butt" />
         ))}
         <path d={drawn.route} fill="none" stroke="currentColor" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
-        <text x={RING.x} y={RING.y} textAnchor="middle" dominantBaseline="central" fontSize="13" fontWeight="700" fill="currentColor">
+        <text x={RING.x} y={RING.y} textAnchor="middle" dominantBaseline="central" fontSize="12" fontWeight="700" fill="currentColor">
           {exit}
         </text>
       </svg>
