@@ -127,6 +127,8 @@ import {
   groupHolding,
   type CardOpener,
 } from "./lib/junctionCard.ts";
+import { wrapCredits } from "./lib/mapInfo.ts";
+import { isPlainClick, rememberPlanForPage, tabSession } from "./lib/signIn.ts";
 import {
   MAP_MAX_ZOOM,
   groupJunctions,
@@ -603,8 +605,10 @@ export function MapView(props: Props) {
         [west - MAX_BOUNDS_PAD, south - MAX_BOUNDS_PAD],
         [east + MAX_BOUNDS_PAD, north + MAX_BOUNDS_PAD],
       ],
-      // Added below, so it can start collapsed on a phone.
+      // Added below, so it can start collapsed.
       attributionControl: false,
+      // The "i" opens the map's info panel (lib/mapInfo.ts), not only the credits: say so.
+      locale: { "AttributionControl.ToggleAttribution": "Map info and credits" },
       cooperativeGestures: false,
       // The labels' font comes with the app, not the base map (lib/mapGlyphs.ts).
       transformRequest: mapGlyphRequest,
@@ -617,12 +621,19 @@ export function MapView(props: Props) {
     toolsControl.className = "maplibregl-ctrl map-tools-ctrl";
     map.addControl({ onAdd: () => toolsControl, onRemove: () => toolsControl.remove() }, "top-right");
     setToolsHost(toolsControl);
-    // One entry, OpenStreetMap first (mapStyle.ts says why). Added before the
-    // scales, so it is the bottom of the corner's stack. On a narrow map it
-    // starts as the "i" button with the OpenStreetMap credit beside it, as
-    // MapLibre's own first drag leaves it (lib/junctionCard.ts collapseCredits).
+    // One entry, OpenStreetMap first (mapStyle.ts says why). Added before the scales, so it is the
+    // bottom of the corner's stack. It starts as the "i" button with the OpenStreetMap credit beside it,
+    // as MapLibre's own first drag leaves it (lib/junctionCard.ts collapseCredits).
     map.addControl(new maplibregl.AttributionControl({ compact: true, customAttribution: MAP_ATTRIBUTION }), "bottom-right");
-    collapseCredits(container.current.querySelector(".maplibregl-ctrl-attrib"), map.getCanvasContainer().offsetWidth);
+    const credits = container.current.querySelector<HTMLElement>(".maplibregl-ctrl-attrib");
+    collapseCredits(credits);
+    // The info panel (lib/mapInfo.ts) goes over the credits in one scrolling body. Its own element, not an
+    // attribution entry, so a source's credit (the contours') never sorts above it.
+    wrapCredits(credits);
+    credits?.addEventListener("click", (e) => {
+      const link = (e.target as Element).closest?.('a[href^="/about/"]');
+      if (link && isPlainClick(e)) rememberPlanForPage(tabSession(), window.location.hash);
+    });
     // Both scales, miles and feet over kilometres and metres (OWNER-DECISIONS 85):
     // a bottom corner stacks its controls upwards, so the one added last is on top.
     map.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-right");

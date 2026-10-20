@@ -1202,8 +1202,35 @@ button.secondary {
   font-size: 11px;
 }
 
-/* Collapsed to the "i" button (lib/junctionCard.ts collapseCredits, on a narrow
-   map, or by the rider): the OpenStreetMap credit still shows beside it, as
+/* The info panel the "i" opens (lib/mapInfo.ts wrapCredits): the how-to at a readable size, then the
+   credits, in one body that shows only while it is open and scrolls as one. */
+.maplibregl-ctrl-attrib .map-info-body {
+  display: none;
+}
+
+.maplibregl-ctrl-attrib.maplibregl-compact-show .map-info-body {
+  display: block;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.maplibregl-ctrl-attrib .map-info {
+  font-size: 13px;
+  line-height: 1.4;
+  color: #000;
+}
+
+.maplibregl-ctrl-attrib .map-info p,
+.maplibregl-ctrl-attrib .map-info ul {
+  margin: 4px 0;
+}
+
+.maplibregl-ctrl-attrib .map-info ul {
+  padding-left: 18px;
+}
+
+/* Collapsed to the "i" button (lib/junctionCard.ts collapseCredits, at the
+   start, or by the rider): the OpenStreetMap credit still shows beside it, as
    text the "i" opens in full. Hidden from screen readers, which have the
    button and, behind it, the credits themselves. */
 .maplibregl-ctrl-attrib.maplibregl-compact:not(.maplibregl-compact-show)::before {
@@ -1267,7 +1294,7 @@ button.secondary {
 
   /* Opened on a phone, the credits scroll rather than climb past the scales
      into the zoom buttons (a11y review of integrate-2, 2.4.11). */
-  .maplibregl-ctrl-attrib.maplibregl-compact-show .maplibregl-ctrl-attrib-inner {
+  .maplibregl-ctrl-attrib.maplibregl-compact-show .map-info-body {
     max-height: 22vh;
     overflow-y: auto;
   }

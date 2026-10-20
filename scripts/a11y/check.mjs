@@ -35,7 +35,7 @@ const b = await connect(CDP_PORT);
 // route is shown (the sliders, the target distance, the loop and the weight live there), and
 // `junctions` the "Junctions to watch" fold; openSheet opens a bar sheet, openDirections the
 // Directions fold.
-async function open({ route = S_DEFAULT, hash = hashFor("default", 70), width = 1280, height = 900, scheme = "light", forced = false, mobile = false, delayMs = 0, delayFrom = 2, stressTiles = true, ride = true, junctions = true, accessMode = false, admin = false, suggester = false, hazards = null, port = PORT, before = null, init = "" } = {}) {
+async function open({ route = S_DEFAULT, hash = hashFor("default", 70), width = 1280, height = 900, scheme = "light", forced = false, mobile = false, delayMs = 0, delayFrom = 2, stressTiles = true, ride = true, junctions = true, accessMode = false, admin = false, suggester = false, hazards = null, port = PORT, before = null, init = "", view = "plan" } = {}) {
   const p = await newPage(b, { width, height, mobile });
   if (mobile) await p.s("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
   await mock(p, route, { delayMs, delayFrom, stressTiles, admin, suggester, hazards });
@@ -47,6 +47,9 @@ async function open({ route = S_DEFAULT, hash = hashFor("default", 70), width = 
   if (accessMode) await p.s("Page.addScriptToEvaluateOnNewDocument", { source: "try { localStorage.setItem('routemaker.accessMode', 'on'); } catch {}" });
   // A script run before the app starts (the Share section stubs or removes navigator.share).
   if (init) await p.s("Page.addScriptToEvaluateOnNewDocument", { source: init });
+  // These checks are Plan's: a phone now opens a link in Go (the owner, 2026-10-19), so the tab is in Plan, as after
+  // a press on Plan. The Go checks (bare, goWith) open as a rider does.
+  if (view) await p.s("Page.addScriptToEvaluateOnNewDocument", { source: `try { sessionStorage.setItem('routemaker.tab-mode', ${JSON.stringify(view)}); } catch {}` });
   if (before) await before(p);
   await p.s("Page.navigate", { url: `http://127.0.0.1:${port}/${hash}` });
   const ready = await p.waitFor("!!document.querySelector('.summary') && document.querySelectorAll('.junction-marker').length > 0", 40000);
@@ -311,7 +314,15 @@ for (const [width, height] of [[375, 812], [320, 800]]) {
 }
 {
   const p = await open({ width: 1280, height: 900 });
-  check("credits at 1280 px: stay open", await p.eval("document.querySelector('.maplibregl-ctrl-attrib').classList.contains('maplibregl-compact-show')"));
+  // The credits hold the map's info panel too (lib/mapInfo.ts), so they start as the i at every width.
+  check("credits at 1280 px: start collapsed to the i button", await p.eval("!document.querySelector('.maplibregl-ctrl-attrib').classList.contains('maplibregl-compact-show')"));
+  check("credits at 1280 px: the i is named for the info panel", (await p.eval("document.querySelector('.maplibregl-ctrl-attrib-button').getAttribute('aria-label')")) === "Map info and credits");
+  await p.eval("document.querySelector('.maplibregl-ctrl-attrib-button').click(); true");
+  await sleep(200);
+  const info = await p.eval(`(() => { const a = document.querySelector('.maplibregl-ctrl-attrib'); const r = a.getBoundingClientRect();
+    return { text: a.querySelector('.map-info')?.textContent ?? '', docs: [...a.querySelectorAll('a[href^="/about/"]')].length, onScreen: r.top >= 0 && r.bottom <= innerHeight }; })()`);
+  check("credits at 1280 px: the i opens the how-to and the documentation links, on screen", /Plan a route/.test(info.text) && /accessibility mode/.test(info.text) && info.docs >= 4 && info.onScreen, JSON.stringify(info));
+  await p.shot(`${SHOTS}/credits_1280_opened.png`);
   await p.close();
 }
 
@@ -350,7 +361,10 @@ for (const [mode, opts] of [["light", {}], ["dark", { scheme: "dark" }], ["force
   if (mode === "dark") {
     const canvas = await p.eval("(() => { const c = document.querySelector('.maplibregl-canvas'); return getComputedStyle(c).getPropertyValue('--map-focus').trim(); })()");
     check("ring (dark): the canvas and the credits use the map's ring, not amber", canvas === "#111827", canvas);
-    const rings = await p.eval(`(() => { const out = {}; for (const sel of ['.maplibregl-canvas', '.maplibregl-ctrl-attrib a', '.maplibregl-ctrl-zoom-in']) {
+    // The credits start as the i at every width (they hold the info panel): open them to reach a link.
+    const rings = await p.eval(`(() => { const a = document.querySelector('.maplibregl-ctrl-attrib');
+      if (!a.classList.contains('maplibregl-compact-show')) a.querySelector('.maplibregl-ctrl-attrib-button').click();
+      const out = {}; for (const sel of ['.maplibregl-canvas', '.maplibregl-ctrl-attrib a', '.maplibregl-ctrl-zoom-in']) {
       const e = document.querySelector(sel); e.focus(); const st = getComputedStyle(e); out[sel] = { fv: e.matches(':focus-visible'), outline: st.outlineColor + ' ' + st.outlineWidth }; } return out; })()`);
     check("ring (dark): the canvas, a credits link and Zoom in ring in the map's dark ring", Object.values(rings).every((r) => r.fv && /^rgb\(17, 24, 39\) 3px$/.test(r.outline)), JSON.stringify(rings));
     await p.shot(`${SHOTS}/ring_dark_zoom-in.png`, await p.eval("(() => { const r = document.querySelector('.maplibregl-ctrl-top-right').getBoundingClientRect(); return { x: r.left - 12, y: r.top, width: r.width + 12, height: r.height + 12 }; })()"));
@@ -2573,6 +2587,8 @@ const levelSlider = `${EDITOR} input[type=range]`;
     })()`,
   });
   const hash = hashFor("default", 70);
+  // Ridden from Plan's Start ride: a phone opens a link in Go now (the owner, 2026-10-19), so the tab is in Plan.
+  await p.s("Page.addScriptToEvaluateOnNewDocument", { source: "try { sessionStorage.setItem('routemaker.tab-mode', 'plan'); } catch {}" });
   await p.s("Page.navigate", { url: `${ORIGIN}/${hash}` });
   if (!(await p.waitFor("!!document.querySelector('.start-ride button')", 40000))) throw new Error("no Start ride button");
   await sleep(800);
@@ -4584,7 +4600,8 @@ async function goPressMap(p) {
   const linked = await goWith("granted", { hash: hashFor("default", 70) });
   const w = await wide.eval("({ geo: window.__geo, mode: document.querySelector('.mode-button[aria-pressed=true]')?.textContent })");
   const l = await linked.eval("({ geo: window.__geo, mode: document.querySelector('.mode-button[aria-pressed=true]')?.textContent })");
-  check("go start: Plan never asks for the location (a wide screen, and a shared link on a phone, open in Plan and ask nothing)", w.mode === "Plan" && w.geo === 0 && l.mode === "Plan" && l.geo === 0, JSON.stringify({ w, l }));
+  // A shared link on a phone opens in Go (the owner, 2026-10-19) with the link's start, so nothing is asked there either.
+  check("go start: Plan never asks for the location (a wide screen), and a shared link on a phone opens in Go from the link's start, asking nothing", w.mode === "Plan" && w.geo === 0 && l.mode === "Go" && l.geo === 0, JSON.stringify({ w, l }));
   await wide.close();
   await linked.close();
 }
@@ -4899,14 +4916,14 @@ const PICK_OPEN_IN_GO = "(() => { const s = document.querySelector('#sheet-setti
   await p.close();
 }
 {
-  // A shared link opens in Plan, even on a phone; a wide screen opens in Plan.
+  // A shared link opens in Go on a phone (the owner, 2026-10-19: "Have go open by default on phones"); a wide screen opens in Plan.
   const p = await bare({ hash: hashFor("default", 70) });
   const linked = await p.eval(modeNow);
   await p.close();
   const q = await bare({ width: 1280, height: 900, mobile: false });
   const wide = await q.eval(`({ mode: ${modeNow}, top: !!document.querySelector('nav.go-top'), chips: [...document.querySelectorAll('.map-chips .map-chip')].map((x) => x.textContent.trim()) })`);
   // Places to see joined Plan's map chips in 2b38bf1c ("Go: Repair and Sights behind More; Plan: Places to see").
-  check("go: a shared link opens in Plan on a phone, and a wide screen opens in Plan, with Food, Water and Places to see chips on the map", linked === "Plan" && wide.mode === "Plan" && !wide.top && JSON.stringify(wide.chips) === JSON.stringify(["Food", "Water", "Places to see"]), JSON.stringify({ linked, wide }));
+  check("go: a shared link opens in Go on a phone, and a wide screen opens in Plan, with Food, Water and Places to see chips on the map", linked === "Go" && wide.mode === "Plan" && !wide.top && JSON.stringify(wide.chips) === JSON.stringify(["Food", "Water", "Places to see"]), JSON.stringify({ linked, wide }));
   await q.close();
 }
 {
@@ -5031,7 +5048,8 @@ const failed = results.filter((r) => !r.ok);
 // The transit blocks (#108) and the Go press checks (#116) were added without raising it; they run since #127.
 // Review mode's own lists (22c2) add six. End ride's slide (#235) adds two: a tap springs back, a slide ends the ride.
 // A lettered pin's card (no auto route, 2026-10-19) adds two: the card a tap opens, and the card the B key opens.
-const EXPECTED = 667;
+// The map's info panel adds two at 1280 px: the i named for it, and what it opens.
+const EXPECTED = 669;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

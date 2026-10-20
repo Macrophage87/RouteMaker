@@ -357,7 +357,10 @@ function PointBoxes(props: PointBoxesProps) {
     <div id="points-search" ref={pointsSearchRef} className="points-controls plan-points">
       {showFrom && editing === null && search("from")}
       {points.length === 0 ? (
-        <p className="hint">{searchLede(loopVias, accessMode)}</p>
+        // Shown in accessibility mode (its Map tools way in) and for a loop (the info panel says start, then
+        // end); otherwise it is in the map's info panel (lib/mapInfo.ts, Stephen 2026-10-19), and a screen
+        // reader still hears it here, where it plans.
+        <p className={accessMode || loopVias ? "hint" : "visually-hidden"}>{searchLede(loopVias, accessMode)}</p>
       ) : (
         <PointsList
           rows={pointRows(points, names, loopVias, VIA_MARKS.isVia)}

@@ -111,13 +111,6 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     ),
     # --- the credits ---------------------------------------------------------
     (
-        "credits collapse at the edge excluded",
-        JC,
-        "mapWidth > CREDITS_COLLAPSE_PX",
-        "mapWidth >= CREDITS_COLLAPSE_PX",
-        CARD,
-    ),
-    (
         "credits never collapse",
         JC,
         '  element.classList.remove("maplibregl-compact-show");\n',
@@ -134,8 +127,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "credits added after the scales",
         MV,
-        'map.addControl(new maplibregl.AttributionControl({ compact: true, customAttribution: MAP_ATTRIBUTION }), "bottom-right");\n    collapseCredits',
-        "collapseCredits",
+        'map.addControl(new maplibregl.AttributionControl({ compact: true, customAttribution: MAP_ATTRIBUTION }), "bottom-right");\n    const credits',
+        "const credits",
         FIXES,
     ),
     ("no short credit", CSS, 'content: "© OpenStreetMap" / "";', 'content: "";', FIXES),
