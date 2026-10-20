@@ -19,6 +19,7 @@ import pytest
 ABOUT = Path(__file__).resolve().parent.parent / "frontend" / "public" / "about"
 DOCS = (
     "how-it-works",
+    "using",
     "accessibility",
     "routing",
     "ride-types",
@@ -104,6 +105,7 @@ def test_every_diagram_is_an_image_with_a_title_and_a_description(name: str) -> 
 
 CITED = (
     "how-it-works",
+    "using",
     "accessibility",
     "routing",
     "ride-types",

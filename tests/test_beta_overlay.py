@@ -960,7 +960,7 @@ def test_json_is_gzipped() -> None:
 
 
 ABOUT_LOCATION = (
-    r"~ ^/about/((stress|how-it-works|accessibility|routing|ride-types|mass-ride|trails"
+    r"~ ^/about/((stress|how-it-works|using|accessibility|routing|ride-types|mass-ride|trails"
     r"|architecture|assistants|acknowledgements)\.html|route-example\.webp)$"
 )
 

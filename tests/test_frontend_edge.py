@@ -41,6 +41,7 @@ STRESS_PAGE = b"<!doctype html><title>How traffic stress ratings work</title>"
 # The rest of the rider-facing documentation (the owner, 2026-10-19), beside the stress page.
 DOC_PAGES = (
     "how-it-works",
+    "using",
     "accessibility",
     "routing",
     "ride-types",
