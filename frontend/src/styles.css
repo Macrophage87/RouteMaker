@@ -4478,7 +4478,7 @@ details.zoom-notes {
 }
 
 /* Where the turn's words do not fit at their smallest, To the end gives way to them (RideMode's fit); screen readers keep it. */
-.ride-large .cue-crowded > .ride-togo {
+.ride-large .cue-crowded .ride-togo-end {
   position: absolute;
   width: 1px;
   height: 1px;

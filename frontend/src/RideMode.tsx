@@ -1975,7 +1975,7 @@ export function RideMode({
                 </dd>
               </div>
             )}
-            <div>
+            <div className="ride-togo-end">
               <dt>To the end</dt>
               <dd>
                 {formatDistance(togo.end.metres)}
