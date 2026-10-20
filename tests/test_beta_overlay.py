@@ -112,24 +112,31 @@ def test_the_only_published_port_is_the_apis_on_loopback(rendered: dict) -> None
 
 
 @needs_docker
-def test_the_resident_total_is_about_six_point_nine_gib_and_the_peak_counts_the_one_shot(
-    rendered: dict,
-) -> None:
-    services = rendered["services"]
-    assert beta.resident_bytes(services) == 7102 * 1024**2  # compose.beta.yaml's header
-    assert beta.peak_bytes(services) == (7102 + 256) * 1024**2  # plus migrate, the largest one-shot
+def test_the_resident_total_is_about_seven_point_one_gib_and_the_peak_counts_the_one_shot() -> None:
+    # With the two trail routers (the owner, 2026-10-20: "Both, raise limit to 7.1 GB").
+    services = beta.render(offroad=True)["services"]
+    assert beta.resident_bytes(services) == 7230 * 1024**2  # compose.beta.yaml's header
+    assert beta.peak_bytes(services) == (7230 + 256) * 1024**2  # plus migrate, the largest one-shot
     assert beta.resident_bytes(services) / 1024**3 <= beta.MAX_RESIDENT_GB
+    assert not any(
+        "resident total" in p or "startup peak" in p for p in beta.check({"services": services})
+    )
 
 
 @needs_docker
-def test_the_offroad_placeholder_is_off_by_default_and_busts_the_budget_when_on() -> None:
+def test_the_trail_routers_start_only_when_named_and_fit_the_budget_at_one_worker() -> None:
     plain = beta.render()
     assert "valhalla-offroad" not in plain["services"]
-    with_offroad = beta.render(offroad=True)
-    assert "valhalla-offroad" in with_offroad["services"]
-    assert any("resident total" in p for p in beta.check(with_offroad)), (
-        "adding the off-road router must force a decision about the other caps"
-    )
+    assert "valhalla-mtb" not in plain["services"]
+    services = beta.render(offroad=True)["services"]
+    for name in ("valhalla-offroad", "valhalla-mtb"):
+        assert services[name]["command"][-1] == "1"
+        assert beta.parse_bytes(services[name]["memswap_limit"]) == 320 * 1024**2
+    for v in ("standard", "no-trail", "ebike", "weekend"):
+        assert beta.parse_bytes(services[f"valhalla-{v}"]["memswap_limit"]) == 640 * 1024**2
+    # One more trail-router worker would not fit its cap: the gate stops it.
+    services["valhalla-mtb"]["command"][-1] = "2"
+    assert any("valhalla-mtb" in p for p in beta.check({"services": services}))
 
 
 @needs_docker
@@ -430,7 +437,7 @@ def test_the_checker_refuses_renderer_and_bot() -> None:
 
 def test_the_memory_constants_are_the_reviewed_figures() -> None:
     assert beta.HOST_AVAILABLE_GB == 8.6
-    assert beta.MAX_RESIDENT_GB == 7.0
+    assert beta.MAX_RESIDENT_GB == 7.1
     assert beta.PEAK_MARGIN_GB == 1.0
     assert beta.PHOTON_OTHER_NATIVE_MB == 192
     assert beta.POSTGRES_MAX_SHARED_BUFFERS_FRACTION == 0.30
@@ -443,9 +450,9 @@ def _cap(service: dict, mb: int) -> None:
     service["memswap_limit"] = f"{mb}M"
 
 
-@pytest.mark.parametrize(("api_mb", "ok"), [(1516, True), (1517, False)])
-def test_the_resident_ceiling_is_exactly_seven_gib(api_mb: int, ok: bool) -> None:
-    # good() is 7102 MiB resident with a 1450M api; 7168 MiB is 7.0 GiB exactly
+@pytest.mark.parametrize(("api_mb", "ok"), [(1618, True), (1619, False)])
+def test_the_resident_ceiling_is_exactly_seven_point_one_gib(api_mb: int, ok: bool) -> None:
+    # good() is 7102 MiB resident with a 1450M api; 7270.4 MiB is 7.1 GiB exactly
     found = problems_for(lambda s: _cap(s["api"], api_mb))
     assert (not any("resident total" in p for p in found)) is ok, found
 
@@ -2730,7 +2737,7 @@ def test_the_runbook_records_the_servers_facts_and_checks_them_read_only() -> No
     a variable and its address is checked live, never written down."""
     step1 = RUNBOOK[RUNBOOK.index("## 1. Prerequisites") : RUNBOOK.index("## 2. Get the code")]
     assert "export RM_SSH_HOST=<" in RUNBOOK[: RUNBOOK.index("## 1. Prerequisites")]
-    for fact in ('ssh "$RM_SSH_HOST"', "`nofail`", "root disk", "8400 MiB", "x86_64"):
+    for fact in ('ssh "$RM_SSH_HOST"', "`nofail`", "root disk", "8510 MiB", "x86_64"):
         assert fact in step1, fact
     assert "https://api.ipify.org" in step1 and "getent ahostsv4 beta.example.org" in step1
     assert '[ -n "$dns" ] && [ -n "$me" ] && [ "$dns" = "$me" ]' in step1  # re-check ops SF-A
@@ -2988,9 +2995,9 @@ def test_the_certificate_paths_and_the_checkout_come_from_the_vars_file() -> Non
 
 
 def test_the_runbook_states_the_budget_in_both_units() -> None:
-    """Re-check 2 ops NIT-5: 7102 MiB is 6.94 GiB, and the two are written together."""
-    assert round(7102 / 1024, 2) == 6.94 and round(7358 / 1024, 2) == 7.19
-    assert "7102 MiB = 6.94 GiB" in RUNBOOK and "7358 MiB = 7.19 GiB" in RUNBOOK
+    """Re-check 2 ops NIT-5: 7230 MiB is 7.06 GiB, and the two are written together."""
+    assert round(7230 / 1024, 2) == 7.06 and round(7486 / 1024, 2) == 7.31
+    assert "7230 MiB = 7.06 GiB" in RUNBOOK and "7486 MiB = 7.31 GiB" in RUNBOOK
 
 
 @needs_sh

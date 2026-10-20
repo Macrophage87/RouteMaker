@@ -309,6 +309,8 @@ function arrowFor(cue: Cue | null): "left" | "right" | "bear_left" | "bear_right
   if (!cue) return "straight";
   if (cue.kind === "end") return "end";
   if (cue.kind === "stop") return "stop";
+  // A crossing between two turns (lib/navigate.ts crossWords): straight across.
+  if (cue.cross) return "straight";
   if (cue.movement) return cue.movement;
   if (cue.kind === "hazard" || cue.kind === "walk") return "warn";
   return "straight";
@@ -1681,8 +1683,10 @@ export function RideMode({
     }
     // The ride's settings open in the card: the size stays as it was while they show.
     if (settingsOpen) return;
-    // Two scales: the distance line's (and the arrow's), as big as its one line fits across; then the instruction's, as
-    // big as the card's height allows under it, so its lines fill the rest.
+    // Two scales: the distance line's (and the arrow's), as big as its one line fits across and at most half the card
+    // under the top row, whatever the cue says (the owner, 2026-10-20: "When there are multiple options the arrow and
+    // distance shrink, which are the most important parts"); then the instruction's, as big as the card's height allows
+    // under it. Where even the smallest words do not fit, To the end gives way (kept for screen readers).
     const set = (name: string, k: number) => card.style.setProperty(name, String(k));
     const inside = (selector: string) => {
       const right = card.getBoundingClientRect().right;
@@ -1699,13 +1703,7 @@ export function RideMode({
       }
       return Math.floor(lo * 0.94 * 100) / 100;
     };
-    const fit = () => {
-      set("--cue-fit", 0.5);
-      const distance = largest((k) => {
-        set("--cue-fit-d", k);
-        return inside(".cue-distance") && fitsAll();
-      });
-      set("--cue-fit-d", distance);
+    const words = () =>
       set(
         "--cue-fit",
         largest((k) => {
@@ -1713,6 +1711,22 @@ export function RideMode({
           return inside(".cue-text, .cue-more, .cue-then") && fitsAll();
         }),
       );
+    const fit = () => {
+      card.classList.remove("cue-crowded");
+      set("--cue-fit", 0.5);
+      const box = card.getBoundingClientRect();
+      const top = [...card.querySelectorAll<HTMLElement>(":scope > .ride-top, :scope > .ride-light-below")].reduce((m, e) => Math.max(m, e.getBoundingClientRect().bottom), box.top);
+      const below = box.bottom - top;
+      const tall = () => [...card.querySelectorAll<HTMLElement>(".cue-shape, .cue-distance")].every((e) => e.getBoundingClientRect().height <= below / 2);
+      const distance = largest((k) => {
+        set("--cue-fit-d", k);
+        return inside(".cue-distance") && tall();
+      });
+      set("--cue-fit-d", distance);
+      words();
+      if (fitsAll()) return;
+      card.classList.add("cue-crowded");
+      words();
     };
     fit();
     // Fitted again, once a frame at most, when the screen or the top row changes size, when a line comes or goes in the
@@ -2008,7 +2022,7 @@ export function RideMode({
                 </dd>
               </div>
             )}
-            <div>
+            <div className="ride-togo-end">
               <dt>To the end</dt>
               <dd>
                 {formatDistance(togo.end.metres)}

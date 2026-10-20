@@ -276,6 +276,11 @@ export interface DescriptionEntry {
     shape?: { out: number; others: number[]; main?: "before" | "after" | null; ring?: "right" | "left" | null } | null;
     /** The way off a circle (v0.10.0, describe.circle_exit): "Take the 3rd exit onto P Street Northwest at Dupont Circle Northwest". */
     exit?: { number: number; circle: string | null } | null;
+    /**
+     * A short path across a road between two turns (describe._crossing; the owner, 2026-10-20: "It should have told
+     * me to cross the street and turn left"): the road crossed, said in place of the turn ("Cross Redland Road").
+     */
+    cross?: string | null;
   } | null;
   severity?: "orange" | "red" | "avoid" | null;
   via?: number | null;

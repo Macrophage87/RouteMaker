@@ -627,6 +627,30 @@ details.how summary {
   pointer-events: none;
 }
 
+/* A climb's or a mountain-bike trail's hover card (featureHoverCard.ts; the owner, 2026-10-20: "sort of like how our
+   metros do now"): the name, a line about it, and its profile once asked for; the profile's key and caption are the
+   whole card's, so the hover stays small. */
+.feature-hover-card {
+  width: 260px;
+}
+
+.feature-hover-detail {
+  margin: 4px 0 0;
+}
+
+.feature-hover-profile:empty {
+  display: none;
+}
+
+.feature-hover-profile .climb-profile {
+  margin: 6px 0 0;
+}
+
+.feature-hover-profile .climb-profile-key,
+.feature-hover-profile .climb-profile-text {
+  display: none;
+}
+
 .rail-popup .maplibregl-popup-close-button {
   color: var(--text-muted);
   font-size: 18px;
@@ -3108,6 +3132,13 @@ details.zoom-notes {
   font-family: var(--font);
 }
 
+/* A trail's or a climb's compass point at each end of its profile (the owner, 2026-10-20: "If the trail goes from N to S
+   put those directions on each end"): bold and in the text colour, so the letter stands out from its distance. */
+.pc-compass {
+  font-weight: 700;
+  fill: var(--text);
+}
+
 /* The guides' figures are in the text colour, not the band colours (2.4:1 to 3.7:1 as small text: the
    a11y review's S1); the band colour is on the line and the swatch beside the figure. */
 .pc-cross-text,
@@ -3729,6 +3760,19 @@ details.zoom-notes {
   gap: 6px;
 }
 
+/* The route chart's area and line colours (.elevation-chart's), which a climb's or a trail's profile is drawn outside
+   of: without them the area fell back to black. */
+.climb-profile {
+  --pc-area: #c3c9d4;
+  --pc-line: var(--text);
+}
+
+@media (prefers-color-scheme: dark) {
+  .climb-profile {
+    --pc-area: #3a4250;
+  }
+}
+
 .climb-popup .climb-profile {
   margin: 6px 0 0;
 }
@@ -4239,9 +4283,11 @@ details.zoom-notes {
   font-size: 1rem;
 }
 
+/* A value too long for the rest of its label's line goes whole onto the next, not split under itself. */
 .ride-togo div {
   display: flex;
-  gap: 6px;
+  flex-wrap: wrap;
+  gap: 0 6px;
 }
 
 .ride-togo dt {
@@ -4454,7 +4500,7 @@ details.zoom-notes {
   box-sizing: border-box;
 }
 
-.ride-large .cue-card > :not(.ride-top, .ride-mode-settings, .ride-togo) {
+.ride-large .cue-card > :not(.ride-top, .ride-light-below, .ride-mode-settings, .ride-togo) {
   flex: 1 0 auto;
 }
 
@@ -4491,8 +4537,9 @@ details.zoom-notes {
   font-size: max(16pt, 0.5em);
 }
 
+/* The instruction never smaller than the small print under it. */
 .ride-large .cue-text {
-  font-size: calc(var(--cue-fit, 1) * 1.9rem);
+  font-size: max(18pt, calc(var(--cue-fit, 1) * 1.9rem));
 }
 
 .ride-large .cue-more,
@@ -4508,6 +4555,16 @@ details.zoom-notes {
 }
 
 .ride-large .ride-togo dt {
+  white-space: nowrap;
+}
+
+/* Where the turn's words do not fit at their smallest, To the end gives way to them (RideMode's fit); screen readers keep it. */
+.ride-large .cue-crowded .ride-togo-end {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
   white-space: nowrap;
 }
 
