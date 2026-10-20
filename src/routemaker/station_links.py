@@ -10,11 +10,12 @@ to open them at a walk: WMATA lets a bicycle into a station walked, by the eleva
 
 So, at every rail station: from each of its ways in (a `railway=subway_entrance` or
 `train_station_entrance`, a street elevator near a station, the station node itself),
-along the footways with no bicycle tag (`walk_links.is_link_candidate`), two walks at
+along the footways with no bicycle tag (`sidewalks.is_link_candidate`), two walks at
 most: the shortest to a bicycle-open way, and the shortest to one through a tunnel (a
 station's tunnel under the tracks leads to its other side), each within `WALK_MAX_M`.
-Each footway on them becomes a `bicycle=dismount` link, "walk your bike here", as
-`routemaker.walk_links`' are (`rm:walk_link`). A walk stops at the first bicycle-open
+Each footway on them becomes a `bicycle=dismount` link, "walk your bike here"
+(`rm:walk_link`), as OSM's own short dismount connectors are, and is never ridden as a
+last-resort sidewalk (`routemaker.sidewalks`). A walk stops at the first bicycle-open
 way it meets: a way in, not a way round, so a way in on a sidewalk opens its nearest
 crossing and no more. Never steps, never a footway a closure rule closes (the CBD's
 sidewalks, a military or secured area), an indoor or informal one, an area, or one
@@ -35,7 +36,7 @@ import math
 from collections import defaultdict
 from collections.abc import Iterable, Sequence, Set
 
-from .walk_links import Placed, bicycle_open, is_link_candidate
+from .sidewalks import Placed, bicycle_open, is_link_candidate
 
 # The `rm:no_bicycle` reason for an escalator.
 ESCALATOR = "escalator"
@@ -130,7 +131,7 @@ def links(
     closed: Set[int] = frozenset(),
 ) -> dict[int, float]:
     """The footways to open as walk-your-bike links into a station, each with the
-    shortest walk (metres) it is part of. `ways` as `walk_links.links` takes them (only a
+    shortest walk (metres) it is part of. `ways` as `sidewalks.links` takes them (only a
     link candidate's coordinates are read); `points` the ways in (`ways_in`); `closed`
     the ways a closure rule closes.
 

@@ -150,11 +150,12 @@ def test_the_rebuild_opens_station_links_and_closes_the_escalator():
     ways = [way(*w) for w in shady_grove()]
     result = tc.closures(ways, {}, [])
     assert result.reasons.get(8) == sl.ESCALATOR
-    tc.add_walk_links(result, ways)
+    tc.add_sidewalk_rides(result, ways)
     tc.add_station_links(result, ways, [ELEVATOR])
     assert {1, 2, 4} <= result.walk_links
     assert {1, 2, 4} <= result.walk_bike, "the directions say walk your bike here"
     assert not ({1, 2, 4} & set(result.reasons))
+    assert not ({1, 2, 4} & result.sidewalk_rides), "walked, not ridden"
 
 
 def test_the_tunnel_to_an_entrance_on_an_untagged_sidewalk_is_walked_through():
