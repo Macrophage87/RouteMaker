@@ -8,10 +8,14 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { contrastRatio } from "../stressStyle.js";
 import type { DescriptionEntry, RouteResponse } from "./api.ts";
 import { rideModel, roadHazardWords, says } from "./navigate.ts";
+import { SEVERITY_COLOURS, SEVERITY_SHAPES } from "./intersectionMarkers.ts";
 import {
   ROUTE_HAZARD_EDGE,
   ROUTE_HAZARD_FILL,
+  ROUTE_HAZARD_KEY_NAME,
+  ROUTE_HAZARD_KEY_SHAPE,
   ROUTE_HAZARD_KEY_TEXT,
+  ROUTE_HAZARD_MARK,
   ROUTE_HAZARD_SOURCE,
   RouteHazardKey,
   roadHazardsSaid,
@@ -63,14 +67,28 @@ test("the layers are valid over their source and draw the icon", () => {
   assert.deepEqual(errors, []);
 });
 
-test("the mark's edge and fill are told apart, and the icon has both", () => {
-  assert.ok(contrastRatio(ROUTE_HAZARD_FILL, ROUTE_HAZARD_EDGE) >= 7);
+test("the mark's '!', disc and rim are told apart, and the icon is a disc", () => {
+  assert.ok(contrastRatio(ROUTE_HAZARD_MARK, ROUTE_HAZARD_FILL) >= 7);
+  assert.ok(contrastRatio(ROUTE_HAZARD_EDGE, ROUTE_HAZARD_FILL) >= 7);
   const icon = routeHazardIcon(2);
   assert.equal(icon.width, 36);
   const at = (x: number, y: number) => Array.from(icon.data.slice((y * icon.width + x) * 4, (y * icon.width + x) * 4 + 4));
-  assert.equal(at(0, 0)[3], 0, "transparent outside the triangle");
-  assert.deepEqual(at(11, 28).slice(0, 3), [0xfb, 0xbf, 0x24], "amber inside");
-  assert.deepEqual(at(18, 20).slice(0, 3), [0x11, 0x18, 0x27], "the mark's bar");
+  assert.equal(at(0, 0)[3], 0, "transparent outside the disc");
+  assert.equal(at(18, 0)[3] > 0, true, "the disc reaches the top middle");
+  assert.equal(at(1, 18)[3] > 0, true, "and the left middle, where a triangle would not");
+  assert.deepEqual(at(18, 1).slice(0, 3), [0xff, 0xff, 0xff], "white rim");
+  assert.deepEqual(at(8, 18).slice(0, 3), [0x11, 0x18, 0x27], "near-black inside");
+  assert.deepEqual(at(18, 15).slice(0, 3), [0xfb, 0xbf, 0x24], "the amber bar");
+});
+
+test("the mark is not the higher-stress junction's: another shape, and dark where it is light", () => {
+  // The owner, 2026-10-20: "the on a route marker looks identical to a higher stress intersection".
+  const icon = routeHazardIcon(2);
+  const at = (x: number, y: number) => icon.data[(y * icon.width + x) * 4 + 3];
+  // The junction's triangle (SEVERITY_SHAPES.orange) leaves its upper left corner empty at mid height; the disc fills it.
+  assert.match(SEVERITY_SHAPES.orange, /^M12 2\.5 22\.5 20\.5H1\.5Z$/);
+  assert.ok(at(4, 12) > 0, "the disc fills where a triangle has none");
+  for (const severity of ["orange", "red"] as const) assert.ok(contrastRatio(ROUTE_HAZARD_FILL, SEVERITY_COLOURS[severity].fill) >= 3, severity);
 });
 
 test("the announcement names each, and none says nothing", () => {
@@ -81,10 +99,15 @@ test("the announcement names each, and none says nothing", () => {
   );
 });
 
-test("the key says what the mark means, in words", () => {
+test("the key says what the mark means, in words, with the row's whole width", () => {
   const html = renderToStaticMarkup(createElement(RouteHazardKey));
   assert.match(html, /aria-hidden="true"/);
   assert.ok(html.includes(ROUTE_HAZARD_KEY_TEXT));
+  assert.ok(html.includes(`${ROUTE_HAZARD_KEY_NAME}</span><span class="hint"> (${ROUTE_HAZARD_KEY_SHAPE}): </span>`));
+  assert.match(html, /<circle /, "the swatch is the map's disc");
+  assert.doesNotMatch(html, /polygon/, "not the old triangle");
+  // Not the stress key's grid (68 px swatch, 52 px figure, then the words): that put the words in the 52 px column.
+  assert.doesNotMatch(html, /class="legend[ "]/);
 });
 
 test("Ride says a hazard ahead, shortly, at every level but Quiet", () => {

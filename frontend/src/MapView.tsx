@@ -1246,7 +1246,7 @@ export function MapView(props: Props) {
         layout: { "line-join": "round", "line-cap": "butt" },
         paint: { "line-color": "#ffffff", "line-width": ROUTE_LINE_WIDTH + 1, "line-dasharray": [1.2, 1.2] },
       });
-      // The known hazards the route rides (v0.10.0, lib/routeHazards.ts): amber triangles over the route only.
+      // The known hazards the route rides (v0.10.0, lib/routeHazards.ts): dark circles over the route only.
       if (!map.hasImage(ROUTE_HAZARD_ICON)) {
         const { pixelRatio: ratio, ...icon } = routeHazardIcon(iconPixelRatio());
         map.addImage(ROUTE_HAZARD_ICON, icon, { pixelRatio: ratio });
