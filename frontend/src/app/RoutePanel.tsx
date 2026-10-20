@@ -771,7 +771,8 @@ export function RouteSummary({
     </button>
   ) : null;
   const startHint = rideable ? (
-    <p id="start-ride-hint" className="hint start-ride-hint">
+    // Plan says it with Start, not under it (Stephen 2026-10-20: "it needs to be simpler, still a wall of text").
+    <p id="start-ride-hint" className={goMode ? "hint start-ride-hint" : "visually-hidden start-ride-hint"}>
       Turn-by-turn directions on this phone, said as you chose.{ridesHidden() ? "" : " Keep the screen on and this page in front."}
     </p>
   ) : !ridesLine(route) ? null : (

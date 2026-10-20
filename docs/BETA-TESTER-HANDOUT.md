@@ -90,10 +90,16 @@ needed; reload the page to get the box back.
   remembers which of its layers were on, and on brings those back. With only some on, it is on
   and says "Some on" and which. Expand a row for each layer's own switch, a one-line hint, and
   its key (what each line, color and symbol means) with the longer explanation.
+- Plan starts as a loop: the "Loop" box is ticked, so each point after the start is a stop and the
+  ride comes back. To finish somewhere else, untick it, or right-click the map (press and hold on
+  a phone) and choose "Set as end" ("End here" on a station's card): the loop turns off and says so.
+  With no points yet, "Start at current location" sits where the "Route" button goes.
 - In Plan, the "Manual mode" switch in the map's bar joins each point you tap to the last by a
-  straight line, for a path the planner won't take. It says when it turns on and off, and a
-  "Manual mode: taps join with straight lines" label shows under the bar while it is on. Until the route comes, faint lines join
-  your points: solid for legs to be routed, dashed for legs you drew. Drawn legs stay dashed on the route.
+  straight line, for a path the planner won't take; turned on during a loop, it turns the loop off.
+  It says when it turns on and off, and a "Manual mode: taps join with straight lines" label shows
+  under the bar while it is on. Until the route comes, bold lines with arrows join your points in
+  the order you'll ride them (a loop's way back to the start too): solid for legs to be routed,
+  dashed for legs you drew. Drag a line to add a via point in that leg. Drawn legs stay dashed on the route.
 - To delete your account: Settings, Account, Delete account. The page says what is deleted and
   what is kept, and asks you to tick one box first.
 - The "High contrast" switch is on the "Settings" page (the last button in the same bar). It

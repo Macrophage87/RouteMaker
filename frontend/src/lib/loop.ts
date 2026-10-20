@@ -95,6 +95,16 @@ export function loopView(preset: PresetId, loop: boolean | undefined, points: re
   return { label: LOOP_LABEL, checked: implied || loop === true, implied, hint: loopHint(loop, implied, points.length) };
 }
 
+/**
+ * The dials an empty plan in Plan starts with (Stephen 2026-10-20: "For plan we should do loop as default"): Make it a
+ * loop on where the ride type has it, so the clicks after the start are stops and the ride comes back; setting an
+ * end turns it off (roadInfo.ts placeAtSpot). The same object when nothing changes.
+ */
+export function planStartDials(preset: PresetId, dials: Dials): Dials {
+  if (preset === "mass-ride" || twoPointsOnly(preset) || dials.loop === true) return dials;
+  return withLoop(dials, true);
+}
+
 /** The dials with the loop on, or off (taken off the object). */
 export function withLoop(dials: Dials, on: boolean): Dials {
   const next: Dials = { ...dials };
