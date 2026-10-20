@@ -1927,7 +1927,7 @@ export function RideMode({
               {/* Greyed while GPS is weak or lost (any GPS note): the distance is from an old fix, not where the rider is. */}
               <p className={gps ? "cue-distance cue-distance-weak" : "cue-distance"}>
                 {/* Fewer words, larger type (the owner, 2026-10-20); "In" stays for screen readers. */}
-                <span className="visually-hidden">In </span>
+                {distanceShown.us && <span className="visually-hidden">In </span>}
                 {distanceShown.us}
                 {distanceShown.metric && <span className="cue-distance-metric"> {distanceShown.metric}</span>}
               </p>
