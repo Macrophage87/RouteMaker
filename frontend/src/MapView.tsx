@@ -2271,7 +2271,7 @@ export function MapView(props: Props) {
         map.setLayoutProperty(id, "text-size", ride ? ROAD_LABEL.rideSize : ROAD_LABEL.size);
         if (ride) {
           baseLabelField.current[id] ??= map.getLayoutProperty(id, "text-field") as LabelField;
-          map.setLayoutProperty(id, "text-field", rideRoadLabelField() as LabelField);
+          map.setLayoutProperty(id, "text-field", rideRoadLabelField(baseLabelField.current[id]) as LabelField);
         } else if (baseLabelField.current[id] !== undefined) {
           map.setLayoutProperty(id, "text-field", baseLabelField.current[id]);
         }

@@ -685,7 +685,7 @@ export const ROAD_LABEL = {
 // A ride's street names shortened as on the cue card (lib/cueShown.ts, shortStreets): "R Street Northwest" as "R St NW"
 // (the owner, 2026-10-20: fewer words, larger text). A style expression has no regex, so only a trailing quadrant and
 // the street type before it (or at the end) are shortened, as the cue card does; the name is the English one, else the
-// local one, without the base map's second-script line (none in this region).
+// local one; a name in another script keeps the base map's own field.
 const RIDE_QUADRANTS = [["Northwest", "NW"], ["Northeast", "NE"], ["Southwest", "SW"], ["Southeast", "SE"]];
 const RIDE_TYPES = [
   ["Avenue", "Ave"], ["Street", "St"], ["Road", "Rd"], ["Boulevard", "Blvd"], ["Drive", "Dr"], ["Parkway", "Pkwy"],
@@ -698,23 +698,28 @@ const endsWith = (v, tail, more = 0) => [
   ["==", ["slice", v, ["-", ["length", v], tail.length]], tail],
 ];
 const cut = (v, n) => ["slice", v, 0, ["-", ["length", v], n]];
-export function rideRoadLabelField() {
+/** @param {unknown} [base] the base map's own text-field, for names in another script */
+export function rideRoadLabelField(base = null) {
   const n = ["var", "n"];
   const q = ["var", "q"];
   const b = ["var", "b"];
-  return [
+  const short = [
     "let",
     "n",
     ["coalesce", ["get", "name:en"], ["get", "pgf:name"], ["get", "name"], ""],
     [
       "let",
       "q",
-      ["case", ...RIDE_QUADRANTS.flatMap(([long, short]) => [endsWith(n, ` ${long}`, 1), ` ${short}`]), ""],
+      [
+        "case",
+        ...RIDE_QUADRANTS.flatMap(([long, short]) => [endsWith(n, ` ${long}`, 1), ` ${short}`, endsWith(n, ` ${short}`, 1), ` ${short}`]),
+        "",
+      ],
       [
         "let",
         "b",
-        // Every quadrant word is 9 letters, so " Northwest" and the rest are 10 characters to cut.
-        ["case", ["==", q, ""], n, cut(n, 10)],
+        // Every quadrant word is 9 letters, so " Northwest" and the rest are 10 characters to cut; " NW" and the rest 3.
+        ["case", ["==", q, ""], n, ["==", ["slice", n, ["-", ["length", n], 3]], q], cut(n, 3), cut(n, 10)],
         [
           "concat",
           ["case", ...RIDE_TYPES.flatMap(([long, short]) => [endsWith(b, ` ${long}`, 1), ["concat", cut(b, long.length), short]]), b],
@@ -723,6 +728,8 @@ export function rideRoadLabelField() {
       ],
     ],
   ];
+  // A name in another script, with no English one, keeps the base map's own field and its fonts (Atkinson has no glyphs for it).
+  return base === null ? short : ["case", ["all", ["!", ["has", "name:en"]], ["has", "script"]], base, short];
 }
 
 /** The street names' paint, plain or with the accessibility switch on. */

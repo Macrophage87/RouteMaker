@@ -185,7 +185,8 @@ You stay responsible for riding safely; the route can be wrong.
 - Keep the screen on. If the browser cannot keep it on, Ride mode says so; on an iPhone set
   Settings, Display and Brightness, Auto-Lock to Never for the ride. In the background for more
   than 10 minutes, the ride pauses; press Resume.
-- The Large text button on the ride's side (the "Aa") puts the next turn as big as it fits on the top half of the screen, with the map below and larger street names, for bright sun or near sight; press it again for the normal card. "Large text during a ride" in Settings is the same switch. Ending the ride goes back to the planner.
+- In a ride the map's street names are larger and shortened ("R St NW"), and the turn card uses fewer words ("0.2 mi", not "In 0.2 mi") so its type can be larger; a screen reader still hears the whole sentence.
+- The Large text button on the ride's side (the "Aa") puts the next turn as big as it fits on the top half of the screen, with the map below, for bright sun or near sight; press it again for the normal card. "Large text during a ride" in Settings is the same switch. Ending the ride goes back to the planner.
 
 
 10. Installing RouteMaker, and routes for places with no signal

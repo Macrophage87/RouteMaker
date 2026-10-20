@@ -64,4 +64,15 @@ test("a ride's street names are shortened as on the cue card", async () => {
   assert.equal(shown("Northwest Branch Trail"), "Northwest Branch Trl");
   assert.equal(shown("The Mall"), "The Mall");
   assert.equal(shown("Street"), "Street");
+  assert.equal(shown("Constitution Avenue NW"), "Constitution Ave NW");
+  assert.equal(shown("Main St"), "Main St");
+});
+
+test("a ride's street name in another script, with no English name, keeps the base map's field", async () => {
+  const { expression } = await import("@maplibre/maplibre-gl-style-spec");
+  const field = expression.createExpression(rideRoadLabelField(["get", "name"]), { type: "string" } as never);
+  assert.equal(field.result, "success");
+  const shown = (properties: object) => (field.value as { evaluate: (g: object, f: object) => string }).evaluate({ zoom: 15 }, { properties });
+  assert.equal(shown({ name: "Rue Street", script: "Han" }), "Rue Street");
+  assert.equal(shown({ name: "R Street Northwest" }), "R St NW");
 });

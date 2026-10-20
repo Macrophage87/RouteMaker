@@ -174,3 +174,10 @@ test("End ride is slid until the rider has arrived (the owner, 2026-10-19: \"Add
   assert.match(top, /className=\{light \? "ride-heading ride-light" : "ride-heading"\}>\s*\{light \? \(\s*<>\s*<span className="visually-hidden">Ride mode<\/span>\s*<span className="ride-light-lines" aria-hidden="true">/);
   assert.match(top, /\{light && <p className="visually-hidden">\{light\.said\}<\/p>\}/);
 });
+
+test("ride card: fewer words on screen, the whole of them for screen readers (the owner, 2026-10-20)", () => {
+  const ride = source("../RideMode.tsx");
+  assert.match(ride, /<span className="visually-hidden">In <\/span>/, "\"In\" before the distance stays for screen readers");
+  assert.equal((ride.match(/<span className="visually-hidden">about <\/span>/g) ?? []).length, 2, "\"about\" before both to-go times stays for screen readers");
+  assert.match(ride, /<span aria-hidden="true">\{cueShown\.head\.replace\(\/\\\.\$\/, ""\)\}<\/span>\s*<span className="visually-hidden">\{cue\.rideText \?\? cue\.text\}<\/span>/, "the full stop goes from the shown head only; the whole sentence is read");
+});

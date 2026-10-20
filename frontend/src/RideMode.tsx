@@ -1703,8 +1703,6 @@ export function RideMode({
   // screen as possible"), set as --cue-fit on the card. Worked out when the turn, the size or the screen changes, not each
   // fix, with a little room left for the distance's words to grow; the small print stays 16 pt or more (styles.css).
   const cardRef = useRef<HTMLDivElement>(null);
-  // Fewer words at every size, so the type can be larger (the owner, 2026-10-20): "0.3 mi, 2 min", not "about".
-  const about = ", ";
   const fitKey = `${textSize}|${cueShown.head}|${cueShown.rest}|${distanceWords.length}|${ride.off}|${ride.arrived}|${cueSheetOn}|${settingsOpen}`;
   useLayoutEffect(() => {
     const card = cardRef.current;
@@ -2033,7 +2031,13 @@ export function RideMode({
                 <dt>To stop {togo.stop.number}</dt>
                 <dd>
                   {formatDistance(togo.stop.metres)}
-                  {togo.stop.seconds !== null && `${about}${formatDuration(togo.stop.seconds)}`}
+                  {togo.stop.seconds !== null && (
+                  <>
+                    {/* "about" only for screen readers: fewer words on screen (the owner, 2026-10-20), still an estimate. */}
+                    , <span className="visually-hidden">about </span>
+                    {formatDuration(togo.stop.seconds)}
+                  </>
+                )}
                 </dd>
               </div>
             )}
@@ -2041,7 +2045,13 @@ export function RideMode({
               <dt>To the end</dt>
               <dd>
                 {formatDistance(togo.end.metres)}
-                {togo.end.seconds !== null && `${about}${formatDuration(togo.end.seconds)}`}
+                {togo.end.seconds !== null && (
+                  <>
+                    {/* "about" only for screen readers: fewer words on screen (the owner, 2026-10-20), still an estimate. */}
+                    , <span className="visually-hidden">about </span>
+                    {formatDuration(togo.end.seconds)}
+                  </>
+                )}
               </dd>
             </div>
           </dl>
