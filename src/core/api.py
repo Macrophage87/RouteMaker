@@ -1239,6 +1239,36 @@ class DetourOut(Schema):
     )
 
 
+class DescriptionShapeOut(Schema):
+    """The ways at an unusual junction, in degrees from straight ahead as the rider
+    arrives, clockwise positive, -180 to 180."""
+
+    out: int = Field(description="The way the route takes.")
+    others: list[int] = Field(description="Every other way, drawn dashed.")
+    main: Literal["before", "after"] | None = Field(
+        default=None,
+        description=(
+            "On a turn onto a service road beside a main road: the main road lies across the"
+            " way in (crossed just before, as for a left) or across the way ahead (a right"
+            " short of it)."
+        ),
+    )
+    ring: Literal["right", "left"] | None = Field(
+        default=None,
+        description=(
+            "On the way off a circle: drawn as a ring, entered bearing right (round it"
+            " anticlockwise) or left; `others` are then the exits passed."
+        ),
+    )
+
+
+class DescriptionExitOut(Schema):
+    """The way off a circle (`describe.circle_exit`)."""
+
+    number: int = Field(description="The exit taken, counting the streets off the ring passed.")
+    circle: str | None = Field(description="The circle's name; null where it has none.")
+
+
 class DescriptionTurnOut(Schema):
     """How the rider comes into a described stretch, or what a junction entry
     is: the movement, the street turned onto, who has the right of way where
@@ -1253,6 +1283,21 @@ class DescriptionTurnOut(Schema):
     )
     severity: Literal["orange", "red"] | None = Field(
         description='"Higher stress" (orange) or "Very high stress" (red), where flagged.'
+    )
+    stay: bool | None = Field(
+        default=None,
+        description='A fork along one way: "Bear right to stay on ..."; absent elsewhere.',
+    )
+    shape: DescriptionShapeOut | None = Field(
+        default=None,
+        description=(
+            "An unusual junction's shape, which the ride card draws in place of its plain"
+            " arrow (`describe.junction_shape`); absent at a plain crossroads or T."
+        ),
+    )
+    exit: DescriptionExitOut | None = Field(
+        default=None,
+        description='Off a circle: "Take the 3rd exit onto ... at Dupont Circle Northwest".',
     )
 
 
