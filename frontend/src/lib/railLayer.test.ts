@@ -258,3 +258,15 @@ test("stationAt falls back to the stations' points when the query misses, from t
   const view = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
   assert.match(view, /stations: RAIL_STATIONS,/);
 });
+
+test("station names are as large as the street names, in a ride too, and show from the opening zoom", async () => {
+  const { ROAD_LABEL } = await import("../stressStyle.js");
+  const { NAME_MIN_ZOOM, RIDE_STATION_NAME_SIZE, STATION_NAME_SIZE } = await import("./railLayer.ts");
+  const layer = railLayers().find((l) => l.id === RAIL_LAYERS.stations) as { layout: Record<string, unknown> };
+  assert.equal(layer.layout["text-size"], STATION_NAME_SIZE);
+  assert.ok(STATION_NAME_SIZE >= ROAD_LABEL.size);
+  assert.ok(RIDE_STATION_NAME_SIZE >= ROAD_LABEL.rideSize);
+  assert.ok(NAME_MIN_ZOOM <= OPENING_ZOOM, "names show where the map opens");
+  const mapView = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
+  assert.match(mapView, /RIDE_STATION_NAME_SIZE : STATION_NAME_SIZE/, "a ride switches the station names' size");
+});

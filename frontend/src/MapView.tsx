@@ -69,7 +69,7 @@ import {
 import { dragPreview, legOfSegment, nearestOnPath } from "./lib/lineEdit.ts";
 import { LineGesture } from "./lib/lineGesture.ts";
 import { PENN_COLOUR, RAIL_STATIONS, stationById } from "./lib/railData.ts";
-import { addRailStations, LABEL_FONT, ROUTE_BOTTOM_LAYER, setRailVisibility } from "./lib/railLayer.ts";
+import { addRailStations, LABEL_FONT, RAIL_LAYERS, RIDE_STATION_NAME_SIZE, ROUTE_BOTTOM_LAYER, STATION_NAME_SIZE, setRailVisibility } from "./lib/railLayer.ts";
 import { ROUTE_HAZARD_ICON, ROUTE_HAZARD_SOURCE, routeHazardFeatures, routeHazardIcon, routeHazardLayer, routeHazardRepeatLayer } from "./lib/routeHazards.ts";
 import type { RailVisibility, Station, StationBadges, StationRole } from "./lib/railStations.ts";
 import { attachRailInteraction, type StationFound } from "./railInteraction.ts";
@@ -613,7 +613,7 @@ export function MapView(props: Props) {
       // The labels' font comes with the app, not the base map (lib/mapGlyphs.ts).
       transformRequest: mapGlyphRequest,
     });
-    mapRef.current = map;
+    mapRef.current = map; (window as unknown as { __shotMap: unknown }).__shotMap = map; // SHOT-TEMP
     let disposed = false;
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: false }), "top-right");
     // Map tools, under the zoom buttons (OWNER-DECISIONS 450): an empty control React fills.
@@ -2291,6 +2291,23 @@ export function MapView(props: Props) {
     };
     if (ROAD_LABEL_LAYER_IDS.some((id) => map.getLayer(id))) apply();
     else map.on("styledata", apply);
+    return () => {
+      map.off("styledata", apply);
+    };
+  }, [props.rideLabels]);
+  // The station names keep pace with the street names (railLayer.ts, STATION_NAME_SIZE); the stations' layer can be
+  // added after the ride starts, so this listens for as long as the ride does.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const size = props.rideLabels ? RIDE_STATION_NAME_SIZE : STATION_NAME_SIZE;
+    const apply = () => {
+      if (map.getLayer(RAIL_LAYERS.stations) && map.getLayoutProperty(RAIL_LAYERS.stations, "text-size") !== size) {
+        map.setLayoutProperty(RAIL_LAYERS.stations, "text-size", size);
+      }
+    };
+    apply();
+    map.on("styledata", apply);
     return () => {
       map.off("styledata", apply);
     };

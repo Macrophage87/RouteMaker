@@ -22,6 +22,7 @@ import {
   type Station,
   type StationBadges,
 } from "./railStations.ts";
+import { ROAD_LABEL } from "../stressStyle.js";
 import { alertBadgeIcon, closedStationIcon, elevatorIcon, elevatorOutIcon, stationIcon, type Raster } from "./stationIcons.ts";
 
 export const RAIL_SOURCE_ID = "rail";
@@ -40,8 +41,14 @@ export const LABEL_FONT = "Noto Sans Medium";
 /** Street level: where an elevator is worth drawing, and a plain entrance later still. */
 export const ELEVATOR_MIN_ZOOM = 15;
 export const ENTRANCE_MIN_ZOOM = 16;
-export const NAME_MIN_ZOOM = 13;
+/** Names from the zoom the map opens at (OPENING_ZOOM), not only street level (the owner, 2026-10-20: "probably show
+ *  at most zooms too"); where they crowd, a name gives way and its icon stays (text-optional). */
+export const NAME_MIN_ZOOM = 11;
 export const STATION_MIN_ZOOM = 8;
+/** A station's name at the street names' size, 20 px in a ride (ROAD_LABEL): the stations are often the wayfinders
+ *  (the owner, 2026-10-20: "The metro names are now much smaller than the roadways, but are often the key wayfinders"). */
+export const STATION_NAME_SIZE = ROAD_LABEL.size;
+export const RIDE_STATION_NAME_SIZE = ROAD_LABEL.rideSize;
 /** WMATA's badges from where a station's name would nearly show: further out they would crowd the lines. */
 export const BADGE_MIN_ZOOM = 12;
 
@@ -81,7 +88,7 @@ export function railLayers(sourceId = RAIL_SOURCE_ID) {
         "symbol-sort-key": ["get", "sort"],
         "text-field": ["step", ["zoom"], "", NAME_MIN_ZOOM, ["get", "name"]],
         "text-font": [LABEL_FONT],
-        "text-size": ["interpolate", ["linear"], ["zoom"], NAME_MIN_ZOOM, 11, 17, 13],
+        "text-size": STATION_NAME_SIZE,
         "text-anchor": "top",
         "text-offset": [0, 0.9],
         "text-max-width": 8,
@@ -91,7 +98,8 @@ export function railLayers(sourceId = RAIL_SOURCE_ID) {
         // A closed station's name is grey as well as "(closed)" (railClosures.ts); #4b5563 is 7.6:1 on its white halo.
         "text-color": ["case", ["==", ["get", "closed"], true], "#4b5563", "#1f2937"],
         "text-halo-color": "#ffffff",
-        "text-halo-width": 1.5,
+        // The street names' white band, so a line under a name does not hide it.
+        "text-halo-width": ROAD_LABEL.haloWidth,
       },
     },
     {
