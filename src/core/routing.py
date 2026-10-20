@@ -110,6 +110,7 @@ from routemaker.measure import elevation_gain
 
 from . import (
     avoid_junctions,
+    beside_roads,
     mass_hazards,
     mtb,
     parallel,
@@ -2367,6 +2368,27 @@ def sidepath_names_of(pieces: list[Piece]) -> dict[int, str]:
         return {}
 
 
+def _way_names_of(pieces: list[Piece]) -> dict[int, str]:
+    """The names the description gives the route's unnamed ways: the rebuild's street-side
+    and trail names (`sidepath_names_of`), then, for an unnamed service road, path or
+    sidewalk still without one, the major road it runs beside (`beside_roads.names_of`)."""
+    names = sidepath_names_of(pieces)
+    try:
+        names.update(beside_roads.names_of(pieces, names))
+    except Exception:  # noqa: BLE001 - the ways are then just "service road" or "path"
+        logger.warning("the roads beside the route's unnamed ways could not be read", exc_info=True)
+    return names
+
+
+def _piece_names(piece: Piece, side_names: dict[int, str]) -> tuple[str, ...]:
+    """A piece's names for the description: its own, else its way's in `side_names`; a
+    road-beside name (`describe.BesideName`) in place of its own too."""
+    side = side_names.get(piece.way_id)
+    if side is not None and (not piece.names or isinstance(side, describe.BesideName)):
+        return (side,)
+    return piece.names
+
+
 def describe_route(
     leg_runs: list,
     pieces: list[Piece],
@@ -2402,12 +2424,7 @@ def describe_route(
                             pieces[i].metres,
                             classes[i][0],
                             classes[i][1],
-                            pieces[i].names
-                            or (
-                                (side_names[pieces[i].way_id],)
-                                if pieces[i].way_id in side_names
-                                else ()
-                            ),
+                            _piece_names(pieces[i], side_names),
                             pieces[i].use,
                             pieces[i].heading_in,
                             pieces[i].heading_out,
@@ -3694,7 +3711,7 @@ def plan(
             events,
             trip.get("summary") or {},
             walks,
-            sidepath_names_of(pieces),
+            _way_names_of(pieces),
         )
         described_full, described_overview = described if described else (None, None)
         # The Avoid-rated junctions it passes (307, 335), at their distance along the

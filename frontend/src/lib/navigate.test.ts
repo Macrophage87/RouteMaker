@@ -57,9 +57,12 @@ import {
   toGo,
   turnWords,
   wayBack,
+  ontoWords,
   wayRidden,
+  wayWords,
   whereAmI,
   withoutMetric,
+  type Cue,
   type RideEvent,
   type RideFix,
   type RideModel,
@@ -1466,4 +1469,45 @@ test("a U-turn re-route says it plainly: first on the card, said at once, then t
   const { events } = ride(model, "full", 0, 1100, 20);
   assert.equal(events.filter((e) => e.spoken.includes("U-turn")).length, 1);
   assert.ok(events.some((e) => e.spoken === "Left now onto B Street."));
+});
+
+// ---- Service roads (the owner, 2026-10-20, on East-West Highway: "When going on a service road, especially next to a major road, say so") ----
+
+test("service roads: a turn onto one says what it is and the road it runs beside", () => {
+  assert.equal(turnWords("left", "service road beside East-West Highway"), "Left onto the service road beside East-West Highway.");
+  assert.equal(turnWords("right", "service road"), "Right onto the service road.");
+  assert.equal(turnWords("bear_left", "sidewalk beside East-West Highway"), "Bear left onto the sidewalk beside East-West Highway.");
+  assert.equal(turnWords("left", "path beside East-West Highway"), "Left onto the path beside East-West Highway.");
+  assert.equal(turnWords("right", "alley"), "Right onto the alley.");
+  assert.equal(ontoWords("service road beside East-West Highway"), "Continue onto the service road beside East-West Highway.");
+  assert.equal(wayWords("Spencer Road"), "Spencer Road");
+  const cue = { index: 0, kind: "turn", atM: 100, text: "", movement: "left", street: "service road beside East-West Highway", severity: null, tier: 2, stop: null } as Cue;
+  assert.equal(cueSpoken(cue, "now", 0), "Left now onto the service road beside East-West Highway.");
+});
+
+test("service roads: leaving the highway straight on for its service road is said, however short, and named in Where am I?", () => {
+  const route = (highway: number, service: number) =>
+    rideModel(
+      straightRoute([
+        stretch(0, 1500, "East-West Highway.", { street: "East-West Highway", tier: highway }),
+        stretch(1500, 1800, "Continue onto the service road beside East-West Highway, fairly low stress (LTS 2).", {
+          street: "service road beside East-West Highway",
+          tier: service,
+          turn: straightOnto("service road beside East-West Highway"),
+        }),
+        stretch(1800, 3000, "Continue onto East-West Highway.", { street: "East-West Highway", tier: highway, turn: straightOnto("East-West Highway") }),
+      ]),
+    );
+  // At one level of stress: the onto cue, though the service road is far shorter than a quarter mile, and back
+  // onto the highway after it.
+  const level = route(2, 2);
+  assert.deepEqual(
+    level.cues.filter((c) => c.kind === "onto").map((c) => c.text),
+    ["Continue onto the service road beside East-West Highway.", "Continue onto East-West Highway."],
+  );
+  assert.match(whereAmI(level, { ...startState(), progressM: 1600 }), /^On the service road beside East-West Highway/);
+  // Off a busy highway: the calmer cue, which names it too.
+  const calmer = route(4, 2).cues.find((c) => c.atM > 1400 && c.atM < 1600);
+  assert.equal(calmer?.kind, "calmer");
+  assert.match(calmer?.text ?? "", /^Continue onto the service road beside East-West Highway, /);
 });
