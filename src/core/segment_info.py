@@ -30,7 +30,7 @@ from django.conf import settings
 from django.core.signals import request_finished, request_started
 from django.db import connection
 
-from pipeline.schema import validate_schema_name
+from pipeline.schema import TRAIL_TAGS_COLUMN, validate_schema_name
 from routemaker import (
     agency_lts,
     flow,
@@ -993,6 +993,13 @@ def use_sidepath_words(row: dict) -> str:
     return f"{words}: {name}" if name else words
 
 
+# The singletrack line for a table built before v0.10.0 (`offroad_rides_green`).
+SINGLETRACK_BEFORE_GREEN_WORDS = (
+    "Closed: mountain-bike singletrack, not used for routes except by the Mountain Bike"
+    " ride type where nothing but its rating closes it"
+)
+
+
 def access_rows(row: dict, bicycle: bool | None) -> tuple[bool | None, list[dict]]:
     """Whether a bicycle may use the way, and the rows saying so and why."""
     have_reason = "bike_access_reason" in row
@@ -1025,7 +1032,11 @@ def access_rows(row: dict, bicycle: bool | None) -> tuple[bool | None, list[dict
             if reason == agency_lts.PROHIBITED_NO_BICYCLE
             else (CLASSIFIER if reason in ("military", "secured", "works", "err_closed") else OSM)
         )
-        return False, [_row("Bike access", known[1], source)]
+        words = known[1]
+        if reason == singletrack.NO_BICYCLE and not offroad_rides_green(row):
+            # A table built before v0.10.0: its graphs keep green singletrack closed to Gravel.
+            words = SINGLETRACK_BEFORE_GREEN_WORDS
+        return False, [_row("Bike access", words, source)]
     why = "Closed to bicycles" + (
         "" if have_reason else "; the reason is available after the next data update"
     )
@@ -1122,6 +1133,15 @@ def mtb_level_words(level: object) -> str | None:
     return f"level {level} ({MTB_LEVEL_COLOURS[level]})"
 
 
+def offroad_rides_green(row: dict) -> bool:
+    """Whether the live map's off-road graph (Gravel, Mountain Goat) rides green
+    singletrack: a build from v0.10.0 on (`pipeline.trail_closures.offroad_graph_keeps`).
+    Read from the row having the `trail_tags` column, which came with the same release: a
+    table built before it (the graphs built with it) keeps all singletrack the Mountain
+    Bike graph's, so the panel must not offer Gravel a trail its routes would skip."""
+    return TRAIL_TAGS_COLUMN in row
+
+
 def mtb_summary(row: dict) -> str:
     """A mountain-bike trail's Bikes line (OWNER-DECISIONS 452a, 456): what the map's line
     means, 'Mountain-bike trail, level 2 (blue), not used for routes', or 'not rated', and,
@@ -1131,12 +1151,13 @@ def mtb_summary(row: dict) -> str:
     singletrack (the owner's choices of 2026-10-19)."""
     rated = row.get("mtb_level")
     level = mtb_level_words(rated)
+    green_offroad = offroad_rides_green(row)
     # An unrated trail says so (the owner, 2026-10-19: "just give a note that they aren't rated").
     head = f"Mountain-bike trail, {level}" if level else "Mountain-bike trail, not rated"
     # The off-road graph (Gravel, Mountain Goat) rides the mountain-bike class and rated
     # singletrack up to green (`singletrack.OFFROAD_MAX_LEVEL`, the owner's choice of
     # 2026-10-19); a harder trail, or singletrack with no level, is the Mountain Bike graph's.
-    harder = bool(level) and rated > singletrack.OFFROAD_MAX_LEVEL
+    harder = bool(level) and (rated > singletrack.OFFROAD_MAX_LEVEL or not green_offroad)
     closed_everywhere = harder or (
         row.get("bike_access_reason") == singletrack.NO_BICYCLE and not level
     )
@@ -1394,7 +1415,11 @@ def trail_routing(row: dict) -> dict:
     if reason == "mtb":
         opened = "offroad"
     elif reason == singletrack.NO_BICYCLE:
-        low = isinstance(rated, int) and rated <= singletrack.OFFROAD_MAX_LEVEL
+        low = (
+            isinstance(rated, int)
+            and rated <= singletrack.OFFROAD_MAX_LEVEL
+            and offroad_rides_green(row)
+        )
         opened = "offroad" if low else "mtb"
     level = mtbmode.effective_level(row.get("mtb_only") is True, row.get("mtb_level"))
     return {"trail_open": opened, "trail_level": level}
