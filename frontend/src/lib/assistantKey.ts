@@ -6,7 +6,7 @@
  */
 import { csrfFromCookie } from "./stressEditor.ts";
 
-export const KEY_LABEL = "AI assistant key";
+export const KEY_LABEL = "AI assistants";
 export const KEY_HELP =
   "Lets an AI assistant that supports MCP, such as Claude, save routes it plans to My routes. The key can only add routes: it cannot sign in, read your routes or change anything else. Remove it here at any time.";
 export const KEY_NONE = "None";
@@ -16,6 +16,20 @@ export const KEY_REMOVED = "Key removed. An assistant using it can no longer sav
 export const KEY_READ_FAILED = "Your key could not be checked just now.";
 export const REPLACE_ASK = "Make a new key? The one your assistant uses now stops working.";
 export const REMOVE_ASK = "Remove the key? An assistant using it can no longer save routes.";
+
+export const APPS_HEADING = "Connected apps";
+export const APPS_HELP = "Assistant apps you allowed to plan routes and add them to My routes, such as Claude on the web or your phone.";
+export const APPS_NONE = "None yet.";
+export const APPS_READ_FAILED = "Couldn't read your connected apps. Try again later.";
+export const DISCONNECT_ASK = "Disconnect this app? It can no longer plan or save routes for you until you allow it again.";
+export const DISCONNECTED = "Disconnected.";
+
+export interface ConnectedApp {
+  id: number;
+  name: string;
+  created_at: string;
+  last_used_at: string | null;
+}
 
 export interface KeyInfo {
   hint: string;
@@ -28,6 +42,20 @@ export function keySummary(key: KeyInfo | null): string {
   if (!key) return KEY_NONE;
   const used = key.last_used_at ? `last used ${shortDate(key.last_used_at)}` : "not used yet";
   return `Ends …${key.hint}, ${used}`;
+}
+
+/** One app's line: "Claude, connected Oct 19, last used Oct 19". */
+export function appSummary(app: ConnectedApp): string {
+  const used = app.last_used_at ? `last used ${shortDate(app.last_used_at)}` : "not used yet";
+  return `${app.name}, connected ${shortDate(app.created_at)}, ${used}`;
+}
+
+/** The fold's line: the key and how many apps are connected, or None. */
+export function assistantsSummary(key: KeyInfo | null, apps: ConnectedApp[]): string {
+  const parts = [];
+  if (key) parts.push(`Key ends …${key.hint}`);
+  if (apps.length) parts.push(`${apps.length} app${apps.length === 1 ? "" : "s"} connected`);
+  return parts.length ? parts.join(", ") : KEY_NONE;
 }
 
 function shortDate(iso: string): string {
@@ -72,5 +100,27 @@ export async function removeKey(origin: string, post: Fetch = fetch, cookie = do
     return response.ok;
   } catch {
     return false;
+  }
+}
+
+/** The apps connected to the account; undefined where they could not be read. */
+export async function readApps(origin: string, get: Fetch = fetch): Promise<ConnectedApp[] | undefined> {
+  try {
+    const response = await get(`${origin}/api/me/connected-apps`, { headers: { Accept: "application/json" }, credentials: "same-origin" });
+    if (!response.ok) return undefined;
+    return ((await response.json()) as { apps: ConnectedApp[] }).apps;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Disconnect one app: the apps left, or null where it failed. */
+export async function disconnectApp(origin: string, id: number, post: Fetch = fetch, cookie = docCookie()): Promise<ConnectedApp[] | null> {
+  try {
+    const response = await post(`${origin}/api/me/connected-apps/${id}/delete`, { method: "POST", credentials: "same-origin", headers: writeHeaders(cookie), body: "{}" });
+    if (!response.ok) return null;
+    return ((await response.json()) as { apps: ConnectedApp[] }).apps;
+  } catch {
+    return null;
   }
 }

@@ -253,6 +253,38 @@ class TestIntersectionsInTheAnswer:
         assert row["text"].endswith(" calm km)") and " calm mi (" in row["text"]
         assert row["assumed_speed"] is False
 
+    def test_a_signal_that_is_a_known_flashing_beacon_is_priced_with_no_signal(
+        self, client, arterial, router
+    ) -> None:
+        """The owner, 2026-10-20: "a traffic light that's a blinking red against free
+        flowing traffic. It wasn't passable" (`core.flashing_signals`)."""
+        from django.contrib.gis.geos import Point
+
+        from core.models import FlashingSignal
+
+        fake = world()
+        fake.locate = locate_answer(signal=True)
+        router(fake)
+        assert post(client, good_body()).json()["intersections"] == []
+        FlashingSignal.objects.create(
+            source="owner", source_id="t", name="Arterial", location=Point(*JUNCTION, srid=4326)
+        )
+        fake = world()
+        fake.locate = locate_answer(signal=True)
+        router(fake)
+        (junction,) = post(client, good_body()).json()["intersections"]
+        assert junction["severity"] == "red" and junction["control"] == "none"
+        assert junction["reason"] == (
+            "Crossing a 4-lane 40 mph (64 km/h) road, flashing light, not a signal"
+        )
+        # Its approach was read for signs too: a stop sign on the rider's side is said.
+        fake = world()
+        fake.locate = locate_answer(signal=True, stop=True)
+        router(fake)
+        (junction,) = post(client, good_body()).json()["intersections"]
+        assert junction["control"] == "stop"
+        assert junction["reason"].endswith("stop sign on your side, flashing light, not a signal")
+
     def test_a_stop_sign_on_the_riders_side_is_said(self, client, arterial, router) -> None:
         fake = world()
         fake.locate = locate_answer(stop=True)

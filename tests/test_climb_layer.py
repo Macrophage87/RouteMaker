@@ -128,6 +128,36 @@ class TestClimbsOnAStroke:
         entry = found.entry()
         assert entry["u"] == 1 and entry["n"] == "Example Trail"
 
+    def test_the_surface_class_is_what_most_of_it_is_ridden_on(self):
+        """The owner, 2026-10-19: "color the climbs by surface: road, gravel, mtb, etc" and
+        "a different color for traffic free paved climbs"."""
+
+        def entry(**kw):
+            segments = [seg(1, (0, 0), (900, 0), **kw), seg(2, (900, 0), (1200, 0))]
+            (found,) = cl.climbs_on_stroke(self.stroke(segments), segments, Ramp(0.06))
+            return found.entry()
+
+        assert "s" not in entry()
+        assert entry(trail=True)["s"] == "p"
+        assert entry(trail=True, unpaved=True)["s"] == "g"
+        assert entry(trail=True, unpaved=True, mtb=True)["s"] == "m"
+
+    def test_a_climb_mostly_on_lts_3_or_higher_roads_is_marked_busy(self):
+        """The owner, 2026-10-19: "optionally (default on) hide climbs on LTS 3+ roads"."""
+
+        def entry(first, second=None, **kw):
+            segments = [
+                seg(1, (0, 0), (900, 0), tier=first, **kw),
+                seg(2, (900, 0), (1200, 0), tier=second),
+            ]
+            (found,) = cl.climbs_on_stroke(self.stroke(segments), segments, Ramp(0.06))
+            return found.entry()
+
+        assert entry(3)["b"] == 1
+        assert "b" not in entry(2, 4)
+        # A path is never a busy road, whatever its tier.
+        assert "b" not in entry(3, trail=True)
+
     def test_the_summit_is_where_the_ground_stops_rising(self):
         segments = [seg(1, (0, 0), (3000, 0))]
         (found,) = cl.climbs_on_stroke(self.stroke(segments), segments, Ramp(0.05, top_m=1500))
@@ -203,3 +233,4 @@ def test_bundled_file_is_well_formed():
         # The gain is rounded in the file, so a score just over 4,000 may show as 40 m.
         assert c["l"] >= 500 and c["g"] >= 1.0 and c["r"] >= 40
         assert len(c["line"]) >= 2 and [c["x"], c["y"]] == c["line"][-1]
+        assert "n" not in c or (isinstance(c["n"], str) and c["n"].strip())

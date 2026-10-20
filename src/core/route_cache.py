@@ -195,7 +195,7 @@ def _closures_part(now: datetime) -> tuple[str, datetime | None]:
 
 def _approved_part(preset: str) -> list:
     """The approvals the plan reads at request time."""
-    from . import avoid_junctions, mass_hazards
+    from . import avoid_junctions, flashing_signals, mass_hazards
     from .junction_suggestions import approved_ratings
 
     hazards = []
@@ -207,6 +207,7 @@ def _approved_part(preset: str) -> list:
         [repr(item) for item in avoid_junctions.approved()],
         [repr(item) for item in approved_ratings()],
         hazards,
+        flashing_signals.digest(),
     ]
 
 

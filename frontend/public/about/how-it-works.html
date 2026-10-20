@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="description" content="An overview of how RouteMaker rates roads for traffic stress and plans routes, with links to the detail.">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<title>How RouteMaker works - RouteMaker</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1c1917; --muted: #4b5260; --line: #d6d3d1;
+    --panel: #f5f5f4; --link: #1d4ed8; --focus: #1d4ed8; --accent: #1d4ed8; --accent-bg: #dbeafe;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #1c1917; --fg: #f5f5f4; --muted: #c4c7ce; --line: #57534e;
+      --panel: #292524; --link: #93c5fd; --focus: #93c5fd; --accent: #93c5fd; --accent-bg: #1e3a5f;
+    }
+    /* Outline the stress colors in light ink so Avoid's black reads on the dark page. */
+    :root:not([data-theme="light"]) svg rect[stroke="#1c1917"] { stroke: #d6d3d1; }
+    :root:not([data-theme="light"]) svg line.halo { stroke: #d6d3d1; opacity: 0.9; }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    font-size: 1.0625rem; line-height: 1.6; overflow-wrap: break-word;
+  }
+  .skip { position: absolute; left: -9999px; top: 0; }
+  .skip:focus { left: 1rem; top: 1rem; background: var(--bg); padding: 0.5rem 0.75rem; border: 2px solid var(--focus); z-index: 1; }
+  header, main, footer { max-width: 48rem; margin: 0 auto; padding: 0 1rem; }
+  header { padding-top: 1.25rem; }
+  footer { padding-bottom: 2rem; border-top: 1px solid var(--line); margin-top: 2.5rem; color: var(--muted); font-size: 0.95rem; }
+  h1 { font-size: 1.75rem; line-height: 1.25; margin: 0.5rem 0 0.75rem; }
+  h2 { font-size: 1.35rem; line-height: 1.3; margin: 2.5rem 0 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--line); }
+  h3 { font-size: 1.1rem; margin: 1.5rem 0 0.4rem; }
+  a { color: var(--link); text-underline-offset: 0.15em; }
+  a:focus-visible, summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+  .back { display: inline-block; margin-bottom: 0.25rem; }
+  .lead { font-size: 1.1rem; }
+  .note { background: var(--panel); border-left: 4px solid var(--muted); padding: 0.6rem 0.9rem; margin: 1rem 0; }
+  .short { background: var(--accent-bg); border-left: 4px solid var(--accent); padding: 0.6rem 0.9rem; margin: 1rem 0; }
+  .short > :first-child { margin-top: 0; }
+  .short > :last-child { margin-bottom: 0; }
+  nav.docs > ul { list-style: none; padding: 0; margin: 0.25rem 0 0.75rem; display: grid; grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr)); gap: 0.5rem 1.25rem; }
+  nav.docs ul ul { list-style: none; padding: 0; margin: 0.1rem 0 0; }
+  nav.docs ul ul li { margin: 0.1rem 0; }
+  nav.docs .group { font-size: 0.85rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  .next { margin-top: 2.5rem; padding-top: 1rem; border-top: 1px solid var(--line); font-weight: 600; }
+  nav.docs a[aria-current="page"] { font-weight: 700; color: var(--fg); text-decoration: none; }
+  nav.toc ul { padding-left: 1.25rem; margin: 0.25rem 0; }
+  pre { overflow-x: auto; padding: 0.75rem; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); font-size: 0.9rem; }
+  .table-wrap { overflow-x: auto; margin: 0.75rem 0; }
+  .table-wrap:focus-visible { outline: 3px solid var(--focus); }
+  table { border-collapse: collapse; width: 100%; font-size: 0.97rem; }
+  caption { text-align: left; font-weight: 600; padding-bottom: 0.4rem; }
+  th, td { border: 1px solid var(--line); padding: 0.4rem 0.5rem; text-align: left; vertical-align: top; }
+  thead th { background: var(--panel); }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .sw { display: inline-block; width: 1.6em; height: 0.8em; border: 1px solid var(--fg); vertical-align: middle; margin-right: 0.35em; border-radius: 2px; }
+  figure { margin: 1.25rem 0; padding: 0.75rem; border: 1px solid var(--line); border-radius: 6px; }
+  .fig-scroll { overflow-x: auto; }
+  .fig-scroll:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+  figure svg { display: block; width: 100%; height: auto; }
+  figcaption { font-size: 0.95rem; color: var(--muted); margin-top: 0.5rem; }
+  details { margin: 0.75rem 0; }
+  summary { cursor: pointer; font-weight: 600; }
+  sup.cite a { text-decoration: none; }
+  ol.refs li { margin-bottom: 0.4rem; }
+  .t { fill: var(--fg); font: 13px system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  .maplbl { fill: #111; stroke: #fff; stroke-width: 6px; stroke-linejoin: round; paint-order: stroke; font: 600 24px system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  .mapbig { font-size: 28px; font-weight: 700; }
+  .mapbar { fill: #111; stroke: #fff; stroke-width: 2px; }
+  .ts { fill: var(--muted); font: 11.5px system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  .tb { fill: var(--fg); font: 600 13px system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  .tk { fill: #1c1917; font: 600 12.5px system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  .tw { fill: #ffffff; font: 600 12.5px system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  .bx { fill: var(--panel); stroke: var(--line); stroke-width: 1.5; }
+  .bxa { fill: var(--accent-bg); stroke: var(--accent); stroke-width: 1.5; }
+  .ar { stroke: var(--muted); stroke-width: 1.6; fill: none; }
+  .ard { stroke: var(--muted); stroke-width: 1.4; fill: none; stroke-dasharray: 5 4; }
+  .ah { fill: var(--muted); }
+  .grid { stroke: var(--line); stroke-width: 1; }
+  .axis { stroke: var(--fg); stroke-width: 1.2; }
+  .ln { stroke: var(--accent); stroke-width: 2.5; fill: none; }
+  .ln2 { stroke: #c2410c; stroke-width: 2.5; fill: none; stroke-dasharray: 7 4; }
+  .fillacc { fill: var(--accent); }
+  @media (max-width: 30rem) {
+    body { font-size: 1rem; }
+    h1 { font-size: 1.5rem; }
+    th, td { padding: 0.35rem 0.4rem; }
+    figure { padding: 0.4rem; }
+  }
+
+  details.more { margin: 0.5rem 0 1rem; border: 1px solid var(--line); border-radius: 6px; }
+  details.more > summary { cursor: pointer; padding: 0.55rem 0.8rem; font-weight: 600; color: var(--link); }
+  details.more > summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+  details.more[open] > summary { border-bottom: 1px solid var(--line); }
+  details.more > .more-body { padding: 0 0.8rem 0.4rem; }
+
+  .glance { background: var(--accent-bg); border: 2px solid var(--accent); border-radius: 8px; padding: 0.25rem 1rem 0.75rem; margin: 1rem 0 1.5rem; }
+  .glance > h2 { border-top: 0; margin: 0.5rem 0 0.25rem; padding-top: 0; }
+  .glance figure { background: var(--bg); }
+  .glance ul { padding-left: 1.25rem; }
+  .glance .find { margin-bottom: 0; }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to the content</a>
+<header>
+  <p><a class="back" href="/">Back to the map</a></p>
+  <nav class="docs" aria-label="RouteMaker documentation">
+  <ul>
+    <li><span class="group">Start here</span>
+      <ul><li><a href="/about/how-it-works.html" aria-current="page">Overview</a></li><li><a href="/about/using.html">Using RouteMaker</a></li><li><a href="/about/accessibility.html">Accessibility</a></li></ul></li>
+    <li><span class="group">How routes are chosen</span>
+      <ul><li><a href="/about/ride-types.html">Ride types</a></li><li><a href="/about/stress.html">Stress ratings</a></li><li><a href="/about/routing.html">Routing</a></li></ul></li>
+    <li><span class="group">Special rides</span>
+      <ul><li><a href="/about/trails.html">Trails and gravel</a></li><li><a href="/about/mass-ride.html">Mass Ride</a></li></ul></li>
+    <li><span class="group">Behind the scenes</span>
+      <ul><li><a href="/about/assistants.html">AI assistants</a></li><li><a href="/about/architecture.html">Architecture</a></li><li><a href="/about/acknowledgements.html">Acknowledgements</a></li></ul></li>
+  </ul>
+  </nav>
+  <h1>How RouteMaker works</h1>
+</header>
+<main id="main">
+
+<p class="lead">RouteMaker plans bike routes between Washington, DC and Baltimore that keep you
+away from heavy traffic. It rates every road and path for how stressful its traffic feels on a bike,
+then looks for the route with the least stress for the kind of ride you chose.</p>
+
+<div class="glance">
+<h2 id="glance">At a glance</h2>
+<figure id="fig-overview">
+<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<svg viewBox="0 0 840 330" role="img" aria-labelledby="fig-overview-t fig-overview-d" focusable="false" style="min-width:600px">
+<title id="fig-overview-t">From map data to your route</title>
+<desc id="fig-overview-d">Three kinds of input, OpenStreetMap map data, agency stress ratings and street facts such as speeds and traffic counts, feed a weekly rebuild that rates every road LTS 1 to 4, 4.5 or Avoid. Community corrections, approved by hand, feed the same rebuild and win over everything. The rebuild produces the stress map and the routing graph. The routing graph, together with live closures, produces your route in Go, Plan or a ride.</desc>
+<defs><marker id="ah-overview" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<rect class="bx" x="10" y="20" width="170" height="58" rx="6"/>
+<text class="tb" x="95.0" y="45.5" text-anchor="middle">Map data</text>
+<text class="ts" x="95.0" y="61.5" text-anchor="middle">OpenStreetMap</text>
+<rect class="bx" x="10" y="92" width="170" height="58" rx="6"/>
+<text class="tb" x="95.0" y="117.5" text-anchor="middle">Agency ratings</text>
+<text class="ts" x="95.0" y="133.5" text-anchor="middle">MoCo, DDOT, MDOT SHA</text>
+<rect class="bx" x="10" y="164" width="170" height="58" rx="6"/>
+<text class="tb" x="95.0" y="189.5" text-anchor="middle">Street facts</text>
+<text class="ts" x="95.0" y="205.5" text-anchor="middle">speeds, counts, lanes</text>
+<rect class="bxa" x="232" y="78" width="170" height="86" rx="6"/>
+<text class="tb" x="317.0" y="109.5" text-anchor="middle">Weekly rebuild</text>
+<text class="ts" x="317.0" y="125.5" text-anchor="middle">rates every road</text>
+<text class="ts" x="317.0" y="141.5" text-anchor="middle">LTS 1 to 4, 4.5, Avoid</text>
+<rect class="bx" x="454" y="40" width="170" height="58" rx="6"/>
+<text class="tb" x="539.0" y="65.5" text-anchor="middle">Stress map</text>
+<text class="ts" x="539.0" y="81.5" text-anchor="middle">colours and dashes</text>
+<rect class="bx" x="454" y="144" width="170" height="58" rx="6"/>
+<text class="tb" x="539.0" y="169.5" text-anchor="middle">Routing graph</text>
+<text class="ts" x="539.0" y="185.5" text-anchor="middle">Valhalla</text>
+<rect class="bx" x="454" y="248" width="170" height="58" rx="6"/>
+<text class="tb" x="539.0" y="273.5" text-anchor="middle">Live closures</text>
+<text class="ts" x="539.0" y="289.5" text-anchor="middle">work zones, police</text>
+<rect class="bxa" x="676" y="144" width="150" height="58" rx="6"/>
+<text class="tb" x="751.0" y="169.5" text-anchor="middle">Your route</text>
+<text class="ts" x="751.0" y="185.5" text-anchor="middle">Go, Plan, Ride</text>
+<path class="ar" d="M182,49 L230,121" marker-end="url(#ah-overview)"/>
+<path class="ar" d="M182,121 L230,121" marker-end="url(#ah-overview)"/>
+<path class="ar" d="M182,193 L230,121" marker-end="url(#ah-overview)"/>
+<path class="ar" d="M404,110 L452,72" marker-end="url(#ah-overview)"/>
+<path class="ar" d="M404,130 L452,172" marker-end="url(#ah-overview)"/>
+<path class="ar" d="M626,173 L674,173" marker-end="url(#ah-overview)"/>
+<path class="ar" d="M626,277 L650,277 L650,190 L674,190" marker-end="url(#ah-overview)"/>
+<rect class="bxa" x="10" y="248" width="170" height="58" rx="6"/>
+<text class="tb" x="95.0" y="273.5" text-anchor="middle">Corrections</text>
+<text class="ts" x="95.0" y="289.5" text-anchor="middle">approved by hand</text>
+<path class="ard" d="M182,277 L317,277 L317,166" marker-end="url(#ah-overview)"/>
+<text class="ts" x="250" y="296" text-anchor="middle">win over everything</text>
+</svg>
+</div>
+<figcaption>The whole system in one picture. The <a href="/about/architecture.html">architecture page</a> has the detail.</figcaption>
+</figure>
+<ul>
+<li><strong>Start here:</strong> <a href="/about/using.html">Using RouteMaker</a>, how to use Go, Plan, the
+ride screen and the rest; <a href="/about/accessibility.html">Accessibility</a>, for screen readers, the
+keyboard, high contrast and spoken cues.</li>
+<li><strong>How routes are chosen:</strong> <a href="/about/ride-types.html">Ride types</a>, then
+<a href="/about/stress.html">Stress ratings</a> and <a href="/about/routing.html">Routing</a> for the
+detail.</li>
+<li><strong>Special rides:</strong> <a href="/about/trails.html">Mountain Bike, Mountain Goat and
+Gravel</a>; <a href="/about/mass-ride.html">Mass Ride</a>.</li>
+<li><strong>Behind the scenes:</strong> <a href="/about/assistants.html">AI assistants</a>,
+<a href="/about/architecture.html">Architecture</a> and <a href="/about/acknowledgements.html">Acknowledgements</a>.</li>
+</ul>
+<p class="find"><strong>Looking for something else?</strong> The sections below give each part in a few lines, with links to the detail.</p>
+</div>
+
+<h2 id="ratings">Every road gets a stress level</h2>
+<p>RouteMaker uses Level of Traffic Stress (LTS), a four-level scale for bike riding developed by
+Mekuria, Furth and Nixon<sup class="cite"><a href="#ref-1" aria-label="source 1">[1]</a></sup> and refined by Furth<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup>. LTS 1 suits children and LTS 4
+only the most traffic-tolerant riders. RouteMaker adds LTS 4.5 and Avoid for the worst roads, and half
+steps for roads between two levels.</p>
+<details class="more"><summary>More: Every road gets a stress level</summary>
+<div class="more-body">
+
+<div class="table-wrap" tabindex="0" role="region" aria-label="The levels, their words and their map colours">
+<table>
+<caption>The levels, their words and their map colours</caption>
+<thead><tr><th scope="col">Level</th><th scope="col">What it means</th><th scope="col">Examples</th></tr></thead>
+<tbody>
+<tr><th scope="row"><span class="sw" style="background:#9ed3ac" aria-hidden="true"></span>LTS 1</th><td>Comfortable for everyone, including children</td><td>Trails, separated bike lanes, very quiet slow streets</td></tr>
+<tr><th scope="row"><span class="sw" style="background:#57a06c" aria-hidden="true"></span>LTS 2</th><td>Fine for adults</td><td>Quiet streets; slower streets with a good bike lane; rural roads open to cars at best</td></tr>
+<tr><th scope="row"><span class="sw" style="background:#f3c81a" aria-hidden="true"></span>LTS 3</th><td>For experienced cyclists</td><td>Busier or faster streets; most main roads with a painted lane</td></tr>
+<tr><th scope="row"><span class="sw" style="background:#f28c28" aria-hidden="true"></span>LTS 4</th><td>High stress: busy, fast traffic</td><td>Multi-lane roads at 35 mph [56 km/h] and more</td></tr>
+<tr><th scope="row"><span class="sw" style="background:#c81e1e" aria-hidden="true"></span>LTS 4.5</th><td>A very high-stress road</td><td>Rural expressways, where often there is no way around</td></tr>
+<tr><th scope="row"><span class="sw" style="background:#111111" aria-hidden="true"></span>Avoid</th><td>Technically legal, but not a real option</td><td>Expressways in towns and suburbs; motorways that allow bikes</td></tr>
+<tr><th scope="row">Closed</th><td>Bikes not allowed, or not clearly allowed</td><td>Not drawn, never routed (see below)</td></tr>
+</tbody>
+</table>
+</div>
+<p>More: <a href="/about/stress.html#levels">the levels and how they look on the map</a>,
+<a href="/about/stress.html#rating">how a road gets its rating</a>,
+<a href="/about/stress.html#formula">the formula in detail</a> and
+<a href="/about/stress.html#special">special cases</a>.</p>
+
+</div></details>
+<h2 id="which-rating">Which rating wins</h2>
+<p>A road's level comes from the first of these that rates it: community corrections, approved by hand;
+a local agency (Montgomery County or the District); a state agency (Maryland's State Highway
+Administration); then RouteMaker's own formula. Every place publishes different data, so the evidence
+behind a rating changes when you cross a county or state line. More:
+<a href="/about/stress.html#which-rating">which rating wins and why</a> and
+<a href="/about/stress.html#places">what each place tells us</a>.</p>
+
+<h2 id="routing">From ratings to a route</h2>
+<p>A route is chosen by adding up what every stretch, junction and closure costs, in calm miles: a mile
+of quiet street counts as 1, and a busier mile counts as more, as if it were longer. Busy junctions cost
+extra too, so a quiet street that crosses a highway at a stop sign is not treated as quiet. More:
+<a href="/about/routing.html#costs">what each level costs</a>,
+<a href="/about/routing.html#penalties">everything a route pays for</a>,
+<a href="/about/routing.html#junctions">junctions</a> and
+<a href="/about/routing.html#example">a worked example</a>.</p>
+
+<h2 id="ride-types">Ride types</h2>
+<p>Your ride type and the traffic slider decide how much extra distance a calmer road is worth, how fast
+you are assumed to ride, and how hills and surfaces count. They change the costs, never the ratings.
+More: <a href="/about/ride-types.html">every ride type compared</a>. Three ride types use methods of
+their own:</p>
+<details class="more"><summary>More: Ride types</summary>
+<div class="more-body">
+
+<ul>
+<li><a href="/about/mass-ride.html">Mass Ride</a>, for a large group that takes the lane, plans by how
+many riders a road can carry and where corkers are needed, not by traffic stress.</li>
+<li><a href="/about/trails.html">Mountain Bike, Mountain Goat and Gravel</a> seek trails, climbs or
+unpaved roads, using trail ratings and elevation.</li>
+</ul>
+
+</div></details>
+<h2 id="closures">Closures</h2>
+<p>Real closures move a route: state work zones, police and city alerts, and closures a reviewer has
+confirmed. DC's planned-work permits never do. More: <a href="/about/routing.html#closures">closures</a>.</p>
+
+<h2 id="riding">While you ride</h2>
+<p>Turn cues come before each turn, and if you leave the route RouteMaker plans on from where you are,
+in the direction you are heading. The 311 button, and Log for 311 when you right-click a road, add a
+problem to your 311 checklist in Suggest, under the website that takes it. More: <a
+href="/about/routing.html#riding">while you ride</a>.</p>
+
+<h2 id="corrections">Corrections and community input</h2>
+<p>Map data is not always right. Riders who are signed in can suggest a level from the road panel.
+Every suggestion is reviewed and never applied automatically. Each weekly map rebuild produces a report
+of every rating that changed, by county, before the new map goes live. More:
+<a href="/about/stress.html#corrections">corrections</a> and
+<a href="/about/stress.html#report">reporting a wrong rating</a>.</p>
+
+<h2 id="more">How it is built, and who made it possible</h2>
+<p><a href="/about/architecture.html">Architecture</a> describes the app, the router and the weekly map
+build. <a href="/about/assistants.html">AI assistants</a> explains how to plan routes from Claude or
+another assistant. <a href="/about/acknowledgements.html">Acknowledgements</a> credits every data
+source and open source project. The developer notes, with every threshold and the reasons for each, are
+in the repository<sup class="cite"><a href="#ref-3" aria-label="source 3">[3]</a></sup>.</p>
+
+<h2 id="sources">Sources</h2>
+<ol class="refs">
+  <li id="ref-1">Mekuria, Furth and Nixon, "Low-Stress Bicycling and Network Connectivity", Mineta Transportation Institute Report 11-19 (2012). <a href="https://transweb.sjsu.edu/sites/default/files/1005-low-stress-bicycling-network-connectivity.pdf">transweb.sjsu.edu</a></li>
+  <li id="ref-2">Peter G. Furth, Level of Traffic Stress criteria, version 2.0 (2017) and the tables of version 2.2 (2022). <a href="https://peterfurth.sites.northeastern.edu/level-of-traffic-stress/">peterfurth.sites.northeastern.edu</a>; <a href="https://bpb-us-e1.wpmucdn.com/sites.northeastern.edu/dist/e/618/files/2014/05/LTS-Tables-v2.2.pdf">LTS tables v2.2 (PDF)</a></li>
+  <li id="ref-3">RouteMaker's full list of data sources with licences and download records: <a href="https://github.com/Macrophage87/RouteMaker/blob/main/docs/SOURCES.md">docs/SOURCES.md</a>; developer notes on the stress method: <a href="https://github.com/Macrophage87/RouteMaker/tree/main/docs/stress">docs/stress</a></li>
+</ol>
+<p class="next">Next: <a href="/about/using.html">Using RouteMaker</a></p>
+</main>
+<footer>
+  <p>Part of RouteMaker's documentation. It describes version 0.10.0. The code is
+  open source under the MIT licence:
+  <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
+  <p><a href="/">Back to the map</a></p>
+</footer>
+</body>
+</html>

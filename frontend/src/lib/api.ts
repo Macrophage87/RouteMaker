@@ -250,9 +250,10 @@ export interface DescriptionEntry {
    * work zone along the route (FOLLOWUP-WORKZONES), severity "red" for a closure, "orange" for a
    * penalty; or, at 0 with no severity, the work-zone disclaimer or the feeds not read. "climb": a
    * categorised climb the route rides uphill, from its foot to its summit, where Mountain Goat's hill
-   * seek ran (FOLLOWUP-HILL-SEEK).
+   * seek ran (FOLLOWUP-HILL-SEEK). "hazard": a known road hazard the route rides (v0.10.0;
+   * core/route_hazards.py): cobblestones or rails in the road.
    */
-  kind: "stretch" | "junction" | "via" | "walk" | "avoid" | "workzone" | "climb";
+  kind: "stretch" | "junction" | "via" | "walk" | "avoid" | "workzone" | "climb" | "hazard";
   from_m: number;
   to_m: number;
   from_mi: number;
@@ -267,7 +268,14 @@ export interface DescriptionEntry {
     control: "signal" | "stop" | "cross_stop" | "all_stop" | "none" | null;
     severity: "orange" | "red" | null;
     /** A fork along one way (describe.fork_movement): "Bear right to stay on ...". */
-    stay?: boolean;
+    stay?: boolean | null;
+    /**
+     * An unusual junction's ways (v0.10.0, describe.junction_shape), in degrees from straight ahead, clockwise
+     * positive: the ride card draws them in place of the plain arrow. Absent or null at a plain crossroads or T.
+     */
+    shape?: { out: number; others: number[]; main?: "before" | "after" | null; ring?: "right" | "left" | null } | null;
+    /** The way off a circle (v0.10.0, describe.circle_exit): "Take the 3rd exit onto P Street Northwest at Dupont Circle Northwest". */
+    exit?: { number: number; circle: string | null } | null;
   } | null;
   severity?: "orange" | "red" | "avoid" | null;
   via?: number | null;
@@ -467,11 +475,11 @@ export interface TransitStep {
   lines: string[];
   /** A transit leg's system, by name: "Metro", "MARC". */
   system?: string | null;
-  /** An infrequent service (over 15 min apart): the departure taken, "7:42 am". */
+  /** An infrequent service (over 15 min apart), or one WMATA predicts (`source` "live"): the departure taken, "7:42 am". */
   departs?: string | null;
   /** A frequent service: minutes between departures. */
   every_min?: number | null;
-  /** Where a transit step's times are from: "scheduled" now; "live" from v0.7. Null off transit. */
+  /** Where a transit step's departure is from: "live" (WMATA's prediction, on a plan for now) or "scheduled". Null off transit. */
   source?: TimeSource | null;
   with_bike: boolean;
   /**
@@ -600,7 +608,7 @@ export interface StationTimes {
   live?: StationLive | null;
 }
 
-/** A transit ride type's trip: scheduled times, not live. */
+/** A transit ride type's trip: scheduled times, with WMATA's predicted departures on a plan for now. */
 export interface TransitPlan {
   mode: "bike-transit" | "bikeshare-transit";
   /** The chosen option's key, and whether it is riding the whole way. */
@@ -623,6 +631,8 @@ export interface TransitPlan {
   holiday: boolean;
   bike_blackout: boolean;
   scheduled: boolean;
+  /** A departure on the chosen trip is WMATA's prediction (v0.10.0; absent from older answers). */
+  live_times?: boolean;
   /** The schedules' sources, for the systems the chosen trip uses. */
   credits: string[];
   /** The first infrequent departure, or null (absent from older answers). */
@@ -765,6 +775,16 @@ export interface MassHazardSpan {
   road: string;
 }
 
+/** core.api RoadHazardSpanOut: a known hazard the route rides (v0.10.0; core/route_hazards.py). */
+export interface RoadHazardSpan {
+  from_m: number;
+  to_m: number;
+  kinds: ("cobbles" | "rails")[];
+  road: string;
+  /** One plain sentence, US units first with the metric once. */
+  text: string;
+}
+
 /** core.api NoviceOut: what is left busy on a Novice and Nervous route. */
 export interface NoviceNote {
   /** Metres on roads rated LTS 3 or above. */
@@ -808,6 +828,8 @@ export interface RouteResponse {
   against_traffic?: { name: string | null; distance_m: number }[] | null;
   /** A Mass Ride's rider-marked hazards it passes, in riding order (325); null or absent on other ride types. */
   mass_hazards?: MassHazardSpan[] | null;
+  /** The known hazards it rides (v0.10.0: cobblestones, rails in the road), in riding order; empty or absent where none. */
+  road_hazards?: RoadHazardSpan[] | null;
   /** The Avoid-rated junctions it passes, in route order (307); empty or absent where none. */
   avoid_junctions?: AvoidJunctionPass[];
   /** "This route goes through an Avoid-rated junction: <name>, <reason>." (335); null where none. */

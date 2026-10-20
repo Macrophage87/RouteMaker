@@ -18,6 +18,11 @@
  * docs/SOURCES.md), so the Layers sheet's bikeshare section is its one switch. A service the server says is
  * licensed later gets a switch of its own there.
  *
+ * The owner, 2026-10-19: "Put a white bubble around the bikeshare docks so they pop out." From zoom 14 each dock
+ * and its counts sit on one white, grey-edged bubble (a stretched image behind the label, wide enough on the left
+ * to hold the dot), and every dot and count bubble has a thick white ring, so they stand out from the red and
+ * orange stress lines. The bubble is part of the label, so it is thinned with it and a tap on it opens the card.
+ *
  * Screen readers: the map's labels are decorative; a tap gives a card in words, and the route's station list
  * says the same counts ("5 classic, 2 e-bikes, 3 open docks", lib/stations.ts).
  *
@@ -284,7 +289,7 @@ export const DOCK_CLUSTER_COUNT = "bikeshare-dock-cluster-count";
 export const DOCK_POINTS = "bikeshare-dock-points";
 export const DOCK_LABELS = "bikeshare-dock-labels";
 export const FREE_POINTS = "bikeshare-free-points";
-export const DOCK_LAYERS = [DOCK_CLUSTERS, DOCK_CLUSTER_COUNT, DOCK_POINTS, DOCK_LABELS, FREE_POINTS] as const;
+export const DOCK_LAYERS = [DOCK_CLUSTERS, DOCK_CLUSTER_COUNT, DOCK_LABELS, DOCK_POINTS, FREE_POINTS] as const;
 
 export const DOCK_COLOUR = "#c8102e";
 export const CLOSED_COLOUR = "#6b7280";
@@ -292,6 +297,9 @@ export const BIKE_ICON = "dock-bike";
 export const BOLT_ICON = "dock-bolt";
 export const SPACE_ICON = "dock-space";
 export const FREE_ICON_PREFIX = "free-bike-";
+export const BUBBLE_ICON = "dock-bubble";
+/** The bubble's edge, a mid grey that stands out from white roads and pale ground (WCAG 3:1 for graphics). */
+export const BUBBLE_EDGE = "#6b7280";
 export const DOCK_ICON_PX = 14;
 export const FREE_ICON_PX = 16;
 /** The label signs' fields: the bike in the dock red, the bolt amber, the open dock (P) blue. */
@@ -331,6 +339,11 @@ export function docksSource(data: object): Record<string, unknown> {
 const isCluster = ["has", "point_count"];
 const notCluster = ["!", ["has", "point_count"]];
 const HALO = { "text-halo-color": "#ffffff", "text-halo-width": 1.5 };
+/**
+ * Around the label's box: top, right, bottom, left in CSS pixels. The label starts 0.9em (about 11 px) right of
+ * the dock; the left side reaches about 12 px past the dock's centre so the dot (7 px, 10 px with its ring) sits inside.
+ */
+export const BUBBLE_PADDING = [3, 4, 3, 23];
 
 /** The layers, bottom to top. */
 export function docksLayers(): Array<Record<string, unknown>> {
@@ -345,7 +358,7 @@ export function docksLayers(): Array<Record<string, unknown>> {
         "circle-color": DOCK_COLOUR,
         "circle-radius": ["step", ["get", "point_count"], 12, 10, 15, 50, 19],
         "circle-stroke-color": "#ffffff",
-        "circle-stroke-width": 2,
+        "circle-stroke-width": 3,
       },
     },
     {
@@ -355,18 +368,6 @@ export function docksLayers(): Array<Record<string, unknown>> {
       filter: isCluster,
       layout: { "text-field": ["get", "point_count_abbreviated"], "text-font": [CLIMB_FONT], "text-size": 12, "text-allow-overlap": true },
       paint: { "text-color": "#ffffff" },
-    },
-    {
-      id: DOCK_POINTS,
-      type: "circle",
-      source: DOCKS_SOURCE,
-      filter: notCluster,
-      paint: {
-        "circle-color": ["case", ["get", "closed"], CLOSED_COLOUR, DOCK_COLOUR],
-        "circle-radius": ["interpolate", ["linear"], ["zoom"], DOCKS_MIN_ZOOM, 4, 16, 7],
-        "circle-stroke-color": "#ffffff",
-        "circle-stroke-width": 1.5,
-      },
     },
     {
       id: DOCK_LABELS,
@@ -380,11 +381,28 @@ export function docksLayers(): Array<Record<string, unknown>> {
         "text-size": 12,
         "text-anchor": "left",
         "text-offset": [0.9, 0],
-        // Colliding labels are left out (the dot stays), so the map is never crowded.
+        // The white bubble behind the counts, reaching left under the dot (drawn above it).
+        "icon-image": BUBBLE_ICON,
+        "icon-text-fit": "both",
+        "icon-text-fit-padding": BUBBLE_PADDING,
+        // Colliding labels are left out with their bubble (the dot stays), so the map is never crowded.
         "text-allow-overlap": false,
-        "text-optional": true,
+        "icon-allow-overlap": false,
       },
-      paint: { "text-color": ["case", ["get", "closed"], CLOSED_COLOUR, "#111827"], ...HALO },
+      // No halo: the bubble behind the counts is white already.
+      paint: { "text-color": ["case", ["get", "closed"], CLOSED_COLOUR, "#111827"] },
+    },
+    {
+      id: DOCK_POINTS,
+      type: "circle",
+      source: DOCKS_SOURCE,
+      filter: notCluster,
+      paint: {
+        "circle-color": ["case", ["get", "closed"], CLOSED_COLOUR, DOCK_COLOUR],
+        "circle-radius": ["interpolate", ["linear"], ["zoom"], DOCKS_MIN_ZOOM, 4, 16, 7],
+        "circle-stroke-color": "#ffffff",
+        "circle-stroke-width": 3,
+      },
     },
     {
       id: FREE_POINTS,
@@ -503,12 +521,32 @@ export function freeBikeIcon(colour: string, pixelRatio = 2, cssSize = FREE_ICON
   });
 }
 
+/** The dock's bubble: 4 px corners and a 1 px grey edge on white, stretched by the map along its middle. */
+export const BUBBLE_PX = 12;
+export function bubbleIcon(pixelRatio = 2): Raster & { stretchX: Array<[number, number]>; stretchY: Array<[number, number]> } {
+  const size = Math.round(BUBBLE_PX * pixelRatio);
+  const radius = 4 * pixelRatio;
+  const edge = pixelRatio;
+  const white = hexToRgb("#ffffff");
+  const grey = hexToRgb(BUBBLE_EDGE);
+  const raster = rasterise(size, pixelRatio, (x, y): Rgb | null => {
+    const cx = Math.min(Math.max(x, radius), size - radius);
+    const cy = Math.min(Math.max(y, radius), size - radius);
+    const d = Math.hypot(x - cx, y - cy);
+    if (d > radius) return null;
+    return d > radius - edge || x < edge || y < edge || x > size - edge || y > size - edge ? grey : white;
+  });
+  const middle: Array<[number, number]> = [[radius, size - radius]];
+  return { ...raster, stretchX: middle, stretchY: middle };
+}
+
 /** Every image the layers name, by id. */
-export function docksImages(operators: readonly OperatorInfo[], pixelRatio = 2): Array<[string, Raster]> {
+export function docksImages(operators: readonly OperatorInfo[], pixelRatio = 2): Array<[string, Raster & Partial<Pick<ReturnType<typeof bubbleIcon>, "stretchX" | "stretchY">>]> {
   return [
     [BIKE_ICON, signIcon(bikeGlyph, SIGN_COLOURS.bike, pixelRatio)],
     [BOLT_ICON, signIcon(boltGlyph, SIGN_COLOURS.bolt, pixelRatio)],
     [SPACE_ICON, signIcon(spaceGlyph, SIGN_COLOURS.space, pixelRatio)],
+    [BUBBLE_ICON, bubbleIcon(pixelRatio)],
     ...operators.map((o): [string, Raster] => [`${FREE_ICON_PREFIX}${o.id}`, freeBikeIcon(o.colour, pixelRatio)]),
   ];
 }

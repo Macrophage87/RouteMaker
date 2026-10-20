@@ -5,8 +5,9 @@
  * a scheduled total and the time of riding the whole way. These are the words, the map's lines and
  * markers and the credit, as plain functions so they can be tested without a browser.
  *
- * Every time here is scheduled (WMATA's static timetables), not live: the words say "about" and
- * "scheduled" wherever a total is given.
+ * The times are scheduled (the systems' timetables) except where WMATA predicts a Metro or Metrobus
+ * departure on a plan for now (v0.10.0): the words say "about" and "scheduled", or "live", wherever a
+ * time is given.
  */
 import type { ClosedStation, RouteResponse, StressSpan, TransitOption, TransitPlan, TransitStep } from "./api.ts";
 import type { Dials } from "./dials.ts";
@@ -23,6 +24,12 @@ export function transitOf(route: Pick<RouteResponse, "transit"> | null | undefin
 /** The route's door-to-door time as the totals show it: "about 28 min". */
 export function transitTime(plan: TransitPlan): string {
   return `about ${plan.minutes} min`;
+}
+
+/** The total's name: live where a departure is WMATA's prediction, scheduled where the trip rides transit. */
+export function transitTimeName(plan: Pick<TransitPlan, "scheduled" | "live_times">): string {
+  if (plan.live_times) return "Door-to-door time, with live departures";
+  return plan.scheduled ? "Door-to-door time, scheduled" : "Door-to-door time";
 }
 
 /** The list's name, which a screen reader announces with the list. */

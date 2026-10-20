@@ -44,6 +44,7 @@ from routemaker import (
     corridors,
     divided,
     facility,
+    hazards,
     lane_overrides,
     massflow,
     mdot_aadt,
@@ -53,6 +54,7 @@ from routemaker import (
     singletrack,
     speed_corrections,
     surfaces,
+    trail_facts,
     zoo,
 )
 from routemaker.geo import Point
@@ -69,12 +71,14 @@ from routemaker.stress import (
 from . import (
     aadt_smoothing,
     agency_ratings,
+    agency_signals,
     borders,
     checkpoint,
     conflation,
     discrepancies,
     elevation,
     extract,
+    hazard_layer,
     lts_sentinels,
     mass_capacity,
     overrides,
@@ -121,6 +125,9 @@ CORRIDOR_REPORT_NAME = "named-corridors.md"
 USE_SIDEPATH_REPORT_NAME = "use-sidepath-no-path.csv"
 # DDOT's PCI per District street it reached, and whether it was applied (DC-PCI).
 PAVEMENT_REPORT_NAME = "dc-pavement-pci.csv"
+# Each agency signal and what the rebuild did with it: added, already in OSM, or
+# no junction in reach (`pipeline.agency_signals`).
+AGENCY_SIGNALS_REPORT_NAME = "agency-signals.csv"
 # Every way inside a military area, closed or left open, for the owner (owner report
 # 2026-10-05; `restricted_areas.military_report_csv`).
 MILITARY_REPORT_NAME = "military-closures.csv"
@@ -476,6 +483,11 @@ class ReferenceData:
     # bridges only. Never read by the classifier.
     scenic_features: tuple[conflation.RoadFeature, ...] = ()
     scenic_labels: dict[str, str] = field(default_factory=dict)
+    # Agency traffic signal lists (`pipeline.agency_signals`, v0.10.0): DDOT's, MDOT
+    # SHA's and Alexandria's (VDOT's for comparison only, and Arlington's once its
+    # licence is confirmed), from `signals.json`. Optional like `roadway.json`: without it the map
+    # keeps OSM's signals only, and the load logs that it is absent.
+    agency_signal_list: tuple[agency_signals.Signal, ...] = ()
 
     @classmethod
     def load(
@@ -600,6 +612,7 @@ class ReferenceData:
                     strict=True,
                 )
             ),
+            agency_signal_list=agency_signals.load(directory / agency_signals.FILE_NAME),
             **dict(
                 zip(
                     ("scenic_features", "scenic_labels"),
@@ -813,6 +826,12 @@ class RebuildContext:
     # The East Coast Greenway and US Bicycle Route designations of each way in one
     # (`pipeline.scenic_layer.read_routes`; v0.8.0's Scenic layer, never a stress input).
     scenic_routes: dict[int, set[str]] = field(default_factory=dict)
+    # The street-running rail lines of the extract (`pipeline.hazard_layer.read_rails`;
+    # v0.10.0's hazard symbols, never a stress input).
+    street_rails: list = field(default_factory=list)
+    # (the roads they lie along, the reviewed list by way), worked out once
+    # (`hazard_inputs`); None until then.
+    hazard_inputs: tuple | None = None
     # Sidewalks bicycles may not ride: the CBD rule (routemaker.cbd).
     cbd_sidewalks: set[int] = field(default_factory=set)
     # Mountain-bike singletrack, which every ride type avoids (routemaker.singletrack).
@@ -821,6 +840,8 @@ class RebuildContext:
     # trail layer in their level's colour (pipeline.trail_closures.drawn_singletrack;
     # OWNER-DECISIONS 456); the rest stay hidden.
     drawn_singletracks: set[int] = field(default_factory=set)
+    # Of those, the ones the off-road graph rides too (`trail_closures.offroad_graph_keeps`).
+    offroad_singletracks: set[int] = field(default_factory=set)
     # Ways mapped closed when wet, which the Mountain Bike graph closes
     # (`routemaker.mtbmode.closed_when_wet`; docs/MTB-TOPO-PLAN.md, slice 6).
     wet_closed: set[int] = field(default_factory=set)
@@ -949,6 +970,8 @@ class RebuildContext:
             "trail_routes",
             "route_names",
             "scenic_routes",
+            "street_rails",
+            "hazard_inputs",
             "no_bicycle",
             "border_nodes_by_way",
             "reviewer_surface_by_way",
@@ -1341,7 +1364,11 @@ def closure_probes(context: RebuildContext) -> list[tiles.ClosureProbe]:
 
 
 def write_closure_reports(
-    out_dir: Path, probes, singletracks, drawn_singletracks: Collection[int] = frozenset()
+    out_dir: Path,
+    probes,
+    singletracks,
+    drawn_singletracks: Collection[int] = frozenset(),
+    offroad_singletracks: Collection[int] = frozenset(),
 ) -> None:
     """What the post-swap probe reads (scripts/probe_bicycle_closures.py).
 
@@ -1354,9 +1381,19 @@ def write_closure_reports(
     def mtb_open(p) -> str:
         return "1" if trail_closures.mtb_graph_keeps(p.reason, p.way_id, drawn_singletracks) else ""
 
+    def offroad_open(p) -> str:
+        return (
+            "1"
+            if trail_closures.offroad_graph_keeps(p.reason, p.way_id, offroad_singletracks)
+            else ""
+        )
+
     (out_dir / CLOSURE_PROBES_REPORT).write_text(
-        "way_id,lon,lat,reason,mtb_graph_open\n"
-        + "".join(f"{p.way_id},{p.lon:.7f},{p.lat:.7f},{p.reason},{mtb_open(p)}\n" for p in probes)
+        "way_id,lon,lat,reason,mtb_graph_open,offroad_graph_open\n"
+        + "".join(
+            f"{p.way_id},{p.lon:.7f},{p.lat:.7f},{p.reason},{mtb_open(p)},{offroad_open(p)}\n"
+            for p in probes
+        )
     )
     (out_dir / SINGLETRACK_REPORT).write_text("".join(f"{w}\n" for w in sorted(singletracks)))
 
@@ -1934,6 +1971,8 @@ def build_handlers(
             for entry in manifest.get("closure_probes", [])
         ]
         context.singletracks = {int(way_id) for way_id in manifest.get("singletracks", [])}
+        context.drawn_singletracks = {int(w) for w in manifest.get("drawn_singletracks", [])}
+        context.offroad_singletracks = {int(w) for w in manifest.get("offroad_singletracks", [])}
         context.override_summary = manifest.get("override_summary")
         read_at = manifest.get("overrides_read_at")
         context.overrides_read_at = datetime.fromisoformat(read_at) if read_at else None
@@ -2084,6 +2123,8 @@ def build_handlers(
         context.route_names = routes.names
         # The scenic routes (v0.8.0), for the Scenic layer and the road panel alone.
         context.scenic_routes = scenic_layer.read_routes(context.source_pbf)
+        # The street-running rails (v0.10.0), for the hazard symbols and the road panel alone.
+        context.street_rails = hazard_layer.read_rails(context.source_pbf)
         # Indexed once. The first version scanned the whole way list inside a
         # loop over every border node inside a loop over every variant.
         context.ways_by_id = {way.osm_id: way for way in context.ways}
@@ -2984,6 +3025,7 @@ def build_handlers(
         context.cbd_sidewalks = {w for w, r in nobike.reasons.items() if r == cbd.NO_BICYCLE}
         context.singletracks = {w for w, r in nobike.reasons.items() if r == singletrack.NO_BICYCLE}
         context.drawn_singletracks = nobike.drawn_singletrack
+        context.offroad_singletracks = nobike.offroad_singletrack
         # Closed on the Mountain Bike graph alone (`routemaker.mtbmode.closed_when_wet`).
         context.wet_closed = {
             way.osm_id for way in context.ways if mtbmode.closed_when_wet(way.tags)
@@ -3095,6 +3137,17 @@ def build_handlers(
             }
         return {**way.tags, **routed}
 
+    def hazard_inputs() -> tuple[set[int], dict]:
+        """The roads the street rails lie along and the reviewed list's ways (v0.10.0's
+        hazards; `pipeline.hazard_layer`), worked out once for the graph and the segments."""
+        if context.hazard_inputs is None:
+            trail_ids = frozenset(w.osm_id for w in context.ways if variants.is_trail_class(w.tags))
+            context.hazard_inputs = (
+                hazard_layer.rail_ways(context.ways, context.street_rails, trail_ids),
+                hazard_layer.listed_by_way(context.ways, hazards.load()),
+            )
+        return context.hazard_inputs
+
     def inject_tags() -> None:
         reference = context.require_reference()
         context.work_dir.mkdir(parents=True, exist_ok=True)
@@ -3107,6 +3160,25 @@ def build_handlers(
         logger.info(
             "%d signalised trail crossings marked from their crossing ways", len(signal_tags)
         )
+        # And the junctions at an agency's signal that OSM does not map as one
+        # (`pipeline.agency_signals`; DC data beats OSM, the owner 2026-10-11).
+        if reference.agency_signal_list:
+            osm_signals = agency_signals.read_osm_signals(
+                context.source_pbf, agency_signals.bounds(reference.agency_signal_list)
+            )
+            matched = agency_signals.match(reference.agency_signal_list, context.ways, osm_signals)
+            logger.info(
+                "agency signals: %s; %d nodes marked",
+                agency_signals.summary(matched),
+                len(matched.nodes),
+            )
+            for node, tags in agency_signals.node_tags(matched.nodes).items():
+                signal_tags[node] = {**signal_tags.get(node, {}), **tags}
+            write_reports(
+                context.work_dir,
+                {AGENCY_SIGNALS_REPORT_NAME: agency_signals.report_csv(matched)},
+                "agency signals",
+            )
 
         # Review RL-5: the ways whose posted speed every variant's extract carries as an
         # explicit mph (`variants.with_speed_units`), so the change shows in the
@@ -3116,7 +3188,9 @@ def build_handlers(
             "upper-case MPH, read as km/h by the router before): %d ways",
             sum(1 for way in context.ways if variants.with_speed_units(way.tags) is not way.tags),
         )
+        rail_roads, listed_hazards = hazard_inputs()
         for variant in variants.Variant:
+            hazard_ways = 0
             per_way_tags: dict[int, dict[str, str]] = {}
             node_lists: dict[int, list[int]] = {}
             dropped: set[int] = set()
@@ -3257,20 +3331,29 @@ def build_handlers(
                 lit = lit_value(way.tags)
                 if lit is not None:
                     derived["lit"] = lit
-                # The off-road graph keeps the mountain-bike class open; the Mountain Bike
-                # graph that and drawn singletrack, and closes a trail mapped closed when
-                # wet (slice 6; `trail_closures.graph_reason`).
+                # The off-road and Mountain Bike graphs keep the mountain-bike class and drawn
+                # singletrack open (the off-road graph the singletrack since 2026-10-19), and
+                # close a trail mapped closed when wet (slice 6; `trail_closures.graph_reason`).
                 reason = trail_closures.graph_reason(
                     variant,
                     context.no_bicycle.get(way.osm_id),
                     way.osm_id,
                     context.drawn_singletracks,
                     context.wet_closed,
+                    context.offroad_singletracks,
                 )
                 if reason is not None:
                     derived["no_bicycle"] = reason
                 if way.osm_id in context.destination_only:
                     derived["destination_only"] = zoo.DESTINATION_ONLY
+                # A known hazard (v0.10.0; the owner, 2026-10-19: "Roads with hazards like
+                # this should get a major penalty"): cobbles or rails anywhere on the way,
+                # which lua/routemaker_remap.lua prices as LTS 4 without changing its rating.
+                if hazard_layer.way_has_hazard(
+                    way, way.osm_id in rail_roads, listed_hazards.get(way.osm_id, ())
+                ):
+                    derived["hazard"] = True
+                    hazard_ways += 1
 
                 per_way_tags[way.osm_id] = {**changes, **extract.derived_tags(derived)}
 
@@ -3287,6 +3370,7 @@ def build_handlers(
                     context.ways_by_id[way_id].node_ids, nodes
                 )
 
+            logger.info("%s: ways priced for a known hazard: %d", variant.value, hazard_ways)
             extract.write_extract(
                 context.source_pbf,
                 context.variant_pbf(variant),
@@ -3553,9 +3637,15 @@ def build_handlers(
         logger.info(
             "scenic ways (designated, covered bridges, scenic routes): %d", len(scenic_text)
         )
+        # The known hazards (v0.10.0): cobbles and rails, from the tags, the street rails
+        # and the reviewed list, for the road panel and the route's hazard marks.
+        rail_roads, listed_hazards = hazard_inputs()
+        hazard_ways = 0
         for way in context.ways:
             stress = context.stress_by_way[way.osm_id]
             trail = variants.is_trail_class(way.tags, way.osm_id, reference.sidepath_bridge_ids)
+            on_rails = way.osm_id in rail_roads
+            way_listed = listed_hazards.get(way.osm_id, ())
             # A mountain-bike trail never qualifies as a long trail (OWNER-DECISIONS
             # 378): it has no route level and no name to chain a run by. A way on a
             # national bicycle route is never one (the C&O towpath, 2026-10-09).
@@ -3626,6 +3716,11 @@ def build_handlers(
                         mtb_name=singletrack.mtb_name(way.tags)
                         if way.osm_id in context.mtb_only
                         else None,
+                        # Its surface, width and the like, which the road panel says when
+                        # the trail is tapped (the owner, 2026-10-19).
+                        trail_tags=trail_facts.facts(way.tags)
+                        if way.osm_id in context.mtb_only
+                        else None,
                         walk_bike=way.osm_id in context.walk_bike,
                         road_speed_mph=_smallint(getattr(stress, "speed_mph", None)),
                         road_default_speed_mph=_smallint(
@@ -3658,8 +3753,11 @@ def build_handlers(
                         bike_access_reason=access_reason,
                         sidepath_name=side_name,
                         scenic=scenic_text.get(way.osm_id),
+                        hazard=hazard_layer.piece_hazard(way.tags, on_rails, way_listed, piece),
                     )
                 )
+                hazard_ways += rows[-1]["hazard"] is not None
+        logger.info("segments marked with a hazard (cobbles, rails): %d", hazard_ways)
         writers.write_segments(context.staging_schema, rows)
         # Not kept on the context any more: this stage runs before the tile build
         # now, and millions of row dicts held through it are memory the host does
@@ -3835,6 +3933,10 @@ def build_handlers(
                     for p in context.closure_probes or []
                 ],
                 "singletracks": sorted(context.singletracks),
+                # The rated ones the mtb and off-road graphs keep open: a resume that
+                # rebuilds those graphs must open the same trails the checks expect.
+                "drawn_singletracks": sorted(context.drawn_singletracks),
+                "offroad_singletracks": sorted(context.offroad_singletracks),
                 "override_summary": summary,
                 # When OVERRIDES read the override table, not when this was written: the
                 # swap re-applies the road panel's edits made after it, and a resumed
@@ -4066,6 +4168,7 @@ def _closures_across_variants(context: RebuildContext, run) -> dict:
             probes,
             context.singletracks,
             getattr(context, "drawn_singletracks", None) or set(),
+            getattr(context, "offroad_singletracks", None) or set(),
         )
     except OSError:
         logger.warning("bicycle-closure probe list not written", exc_info=True)
@@ -4078,7 +4181,10 @@ def _closures_across_variants(context: RebuildContext, run) -> dict:
             probe
             for probe in probes
             if not (
-                variant is variants.Variant.OFFROAD and probe.reason in trail_closures.OFFROAD_KEEPS
+                variant is variants.Variant.OFFROAD
+                and trail_closures.offroad_graph_keeps(
+                    probe.reason, probe.way_id, getattr(context, "offroad_singletracks", set())
+                )
             )
             and not (
                 variant is variants.Variant.MTB

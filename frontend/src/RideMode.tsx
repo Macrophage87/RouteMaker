@@ -10,22 +10,23 @@
  * - Two live regions of its own, polite for advance cues and assertive for "now", leaving the route
  *   and arrival; each repeats the count trick so the same sentence twice is said twice. A cue never
  *   moves the focus.
- * - Where am I? (a button, and the W key): said on demand, outside the throttle.
+ * - Where am I? (a button, and the W or C key): said on demand, outside the throttle; it re-centres the map too (the two
+ *   buttons merged, the owner, 2026-10-20).
  * - Off route: re-planned automatically after the gate (plan Q5), or "Keep the planned route", which
  *   shows the way back. A fixed route (`fixed`: a link shared as a ride, or a Mass Ride or Group Ride not shared as a route)
  *   is never re-planned on its own: everyone on it stays on the same line, and the way back is shown instead. A re-plan never touches the plan in the address bar (plan Q2): it is the ride's
  *   own route, held here and in App's ride state only.
- * - Big text (map hidden; a setting, in the ride's Settings and the Settings page), Re-centre (and the C key), heading-up (track-up by default since v0.7.0); and
+ * - Large text (the owner, 2026-10-20; it replaced Big text): the card half the screen, the turn as big as fits, the map
+ *   below; its side button (and the T key) and Settings' switch are the one choice; heading-up (track-up by default since v0.7.0); and
  *   Road closed ahead and End ride always in view at the top of the card (since v0.9.0; Settings is a gear in the
  *   side buttons, opening the ride's settings under that row), with Undo after End ride. End ride part way leaves the plan starting where the rider is.
- * - The map along the route, kept for dead spots (lib/corridor.ts, N5), and Report a problem to DC 311
- *   with the place in the route's street names (lib/report311.ts, N6; OWNER-DECISIONS 369, 465).
+ * - The map along the route, kept for dead spots (lib/corridor.ts, N5), and Log for 311 with the place in
+ *   the route's street names (lib/report311.ts, lib/report311Log.ts; N6; OWNER-DECISIONS 369, 465).
  * - The side buttons (the owner, 2026-10-17: "Remove that bottom part when routing by default. instead put
- *   these as circle icons on the side"): Where am I?, Re-centre, Detour (water or restroom), on a
- *   share bike the dock button with the time undocked (lib/rideDock.ts), 311 inside DC, and the Settings gear (Big text moved to
- *   Settings, the owner, 2026-10-17: "not something people will fiddle with mid ride"); each a round
+ *   these as circle icons on the side"): Where am I? (re-centring too), Large text, Detour (water or restroom), on a
+ *   share bike the dock button with the time undocked (lib/rideDock.ts), 311 anywhere on the route, and the Settings gear; each a round
  *   icon with its name for screen readers, its menu opening beside it. The bottom panel shows only when it
- *   has something to say or ask: GPS and screen notes, off route, Ride the rest, the full 311 report.
+ *   has something to say or ask: GPS and screen notes, off route, Ride the rest, the note for a problem just logged for 311.
  *   Answers asked for (Where am I?, a detour's progress) show for a few seconds by the buttons.
  *
  * Privacy (plan section 7): positions stay in memory for the ride; nothing is stored or logged; the only
@@ -79,7 +80,6 @@ import {
   cueSpoken,
   nextAction,
   planAfterEnd,
-  pointAt,
   replanKept,
   replanPoints,
   replanTold,
@@ -95,16 +95,18 @@ import {
   type RideState,
   type Verbosity,
 } from "./lib/navigate.ts";
+import { statsPause, statsStart, statsStep, type RideStats } from "./lib/rideStats.ts";
 import {
   Announcer,
-  BIG_TEXT_NAME,
   OUTPUT_LABELS,
+  RIDE_TEXT_BUTTON,
   ScreenWake,
   Voice,
   toScreenReader,
   toVoice,
   type CueOutput,
   type RidePrefs,
+  type RideTextSize,
   type Said,
 } from "./lib/rideOutput.ts";
 import { WAITING_FOR_GPS, watchRide, type RideGeoEnv } from "./lib/rideWatch.ts";
@@ -136,34 +138,8 @@ import { corridorWorry, type PrefetchResult } from "./lib/corridor.ts";
 import { clearCorridor, copyCorridor, keepCorridor } from "./lib/corridorStore.ts";
 import { lastRideAdopter } from "./lib/offlineKeep.ts";
 import { blockOf, rescueRideFocus, type RideBlock } from "./lib/rideFocus.ts";
-import { inDc } from "./lib/dcBoundary.ts";
-import { copyText, selectionCopy } from "./lib/sidebar.ts";
-import {
-  DC_311_ONLINE,
-  REPORT_KINDS,
-  REPORT_NOTE_MAX,
-  REPORT_NO_PLACE,
-  REPORT_OFF_ROUTE,
-  REPORT_OUTSIDE_DC,
-  REPORT_PRIVACY,
-  REPORT_PRIVACY_SERVER,
-  REPORT_FORM,
-  REPORT_READY,
-  REPORT_SEND_FAILED,
-  REPORT_SENT,
-  pickWay,
-  report311Enabled,
-  sendReport311,
-  REPORT_SUMMARY,
-  SHORT_CODE_SPOKEN,
-  canText,
-  keywordOf,
-  onlineHint,
-  reportPlace,
-  reportText,
-  smsHref,
-  type ReportKind,
-} from "./lib/report311.ts";
+import { REPORT_SENT, report311Enabled, sendReport311, reportPlace, type ReportKind } from "./lib/report311.ts";
+import { NOTE_MAX, entryText, kindLabel, report311Log, useReport311Log, type LogEntry } from "./lib/report311Log.ts";
 import { RIDE_311_NAME, RIDE_311_TEXT, Ride311Menu, ride311Shown } from "./lib/ride311.ts";
 import {
   DOCKED_SHOWN,
@@ -196,6 +172,7 @@ import { NextVehicleLine } from "./NextVehicleLine.tsx";
 import type { VehicleMark } from "./lib/nextVehicle.ts";
 import { SettingRow, SettingSelect } from "./SettingRow.tsx";
 import { shortLabel } from "./lib/shortLabel.ts";
+import { RING, junctionPaths, ringPaths, type JunctionShape } from "./lib/junctionShape.ts";
 import {
   RIDE_REST,
   RIDE_REST_FINDING,
@@ -217,7 +194,6 @@ export const rideVoice = new Voice(rideSpeech());
 
 /** Said as the ride starts, inside the Start press, so the voice is unlocked by it. */
 export const RIDE_STARTED = "Ride started.";
-export const RIDE_ENDED = "Ride ended.";
 /** The always-visible End ride button's words (the owner, 2026-10-16: "add a method of ending navigation"). */
 export const END_RIDE_NAME = "End ride";
 /** End ride is a slide to end until the rider has arrived (the owner, 2026-10-19: "Add a swipe confirmation on ending the ride unless at the destination"). */
@@ -233,16 +209,20 @@ export const RIDE_SETTINGS_TEXT = "Settings";
 export const RIDE_SETTINGS_TITLE = "Ride settings";
 /** What End ride leaves behind (lib/navigate.ts planAfterEnd): the plan from here, or as it was. */
 export type EndedPlan = ReturnType<typeof planAfterEnd>;
-/** How long Undo is offered after End (v0.7.0, "Go riding fixes" item 6); held while it has the focus. */
-export const UNDO_END_MS = 8_000;
 /** How long the 311 line ("Sent to DC 311." and Add a note) stays (review F4); held the same way. */
 export const SAID_311_MS = 8_000;
-/** Said by the page's polite region (always mounted) as Ride ended shows (review F6). */
-export const RIDE_ENDED_SAID = "Ride ended. Undo available.";
-/** Said instead where End ride came part way (lib/navigate.ts planAfterEnd): the plan now starts where the rider is. */
-export const RIDE_ENDED_FROM_HERE_SAID = "Ride ended. The route now starts where you are. Undo available.";
-/** Part way with no recent location: the plan keeps its start, and the rider is told. */
-export const RIDE_ENDED_NO_FIX_SAID = "Ride ended. Route start unchanged. Undo available.";
+/** Said when a 311 pick has no place on the route yet. */
+export const NO_PLACE_311 = "Your place on the route is not known yet, so nothing was logged.";
+/** Said when a problem is logged: "Logged for 311: Pothole." */
+export function loggedSaid(entry: LogEntry): string {
+  return `Logged for 311: ${kindLabel(entry.kind)}.`;
+}
+/** Said as the ride ends, by the voice and the page's polite region; the figures are on the summary card. */
+export const RIDE_ENDED_SAID = "Ride ended.";
+/** Shown and said with the ride's summary in Plan where End ride came part way (lib/navigate.ts planAfterEnd): the plan now starts where the rider is. */
+export const RIDE_ENDED_FROM_HERE_NOTE = "The route now starts where you are.";
+/** Part way in Plan with no recent location: the plan keeps its start, and the rider is told. */
+export const RIDE_ENDED_NO_FIX_NOTE = "Route start unchanged.";
 
 /**
  * A short-lived message's timer (lib/holdTimer.ts) with the handlers that hold it: while the focus is inside, or a
@@ -329,8 +309,40 @@ function arrowFor(cue: Cue | null): "left" | "right" | "bear_left" | "bear_right
   return "straight";
 }
 
-/** The card's shape for the cue: an arrow, a stop or a finish mark, a warning sign. A shape, never colour alone. */
-function CueShape({ shape }: { shape: ReturnType<typeof arrowFor> }) {
+/**
+ * The card's shape for the cue: an arrow, a stop or a finish mark, a warning sign. A shape, never colour alone. A
+ * turn at an unusual junction (v0.10.0; lib/junctionShape.ts) is drawn as the junction: the way taken solid with
+ * its arrowhead, the other ways dashed.
+ */
+function CueShape({ shape, junction, exit }: { shape: ReturnType<typeof arrowFor>; junction?: JunctionShape; exit?: number }) {
+  if (junction?.ring && exit && shape !== "uturn" && shape !== "stop" && shape !== "end" && shape !== "warn") {
+    // A circle: the ring with the exit's number in it, the way round solid, the exits passed dashed.
+    const drawn = ringPaths(junction);
+    return (
+      <svg className="cue-shape cue-junction" viewBox="0 0 48 56" aria-hidden="true" focusable="false">
+        <path d={drawn.ring} fill="none" stroke="currentColor" strokeWidth="1.5" />
+        {drawn.others.map((d) => (
+          <path key={d} d={d} fill="none" stroke="currentColor" strokeWidth="3" strokeDasharray="4 2.5" strokeLinecap="butt" />
+        ))}
+        <path d={drawn.route} fill="none" stroke="currentColor" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
+        <text x={RING.x} y={RING.y} textAnchor="middle" dominantBaseline="central" fontSize="12" fontWeight="700" fill="currentColor">
+          {exit}
+        </text>
+      </svg>
+    );
+  }
+  if (junction && shape !== "uturn" && shape !== "stop" && shape !== "end" && shape !== "warn") {
+    const drawn = junctionPaths(junction);
+    return (
+      <svg className="cue-shape cue-junction" viewBox="0 0 48 56" aria-hidden="true" focusable="false">
+        {drawn.main ? <path d={drawn.main} fill="none" stroke="currentColor" strokeWidth="1.5" /> : null}
+        {drawn.others.map((d) => (
+          <path key={d} d={d} fill="none" stroke="currentColor" strokeWidth="3" strokeDasharray="4 4" strokeLinecap="butt" />
+        ))}
+        <path d={drawn.route} fill="none" stroke="currentColor" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    );
+  }
   const paths: Record<typeof shape, string> = {
     left: "M30 52 V28 H14 M22 18 L12 28 L22 38",
     right: "M18 52 V28 H34 M26 18 L36 28 L26 38",
@@ -507,130 +519,47 @@ export function RideSettingsFields({
   );
 }
 
-/** Big text (the cue card large, the map hidden): in Settings, not on the ride screen (the owner, 2026-10-17). */
-export function BigTextField({ on, onChange }: { on: boolean; onChange: (on: boolean) => void }) {
-  return (
-    <label className="toggle ride-toggle big-text-setting">
-      <input type="checkbox" checked={on} onChange={(event) => onChange(event.target.checked)} />
-      {BIG_TEXT_NAME}
-    </label>
-  );
-}
-
-/** How long the copy reply waits after clearing, so a second press is a change a screen reader says. */
-const COPY_REPLY_DELAY_MS = 150;
-
 /**
- * Report to DC 311 (lib/report311.ts; OWNER-DECISIONS 369, 370, 465): what it is, the message built from
- * the rider's place and its sending, then an optional note (v0.7.0 "Go riding fixes" item 3: the note comes
- * after, never before; the 311 button's one-tap pick is the usual way, and this fold is where "Add a note"
- * and a computer's copy land). The place is: the road ridden in the route's street names, a cross street within 500 ft, and the GPS position. On a phone a pothole or a
- * streetlight is a Text to 311 link the rider sends; anything else (a downed tree, a vehicle in a bike
- * lane, a blocked road or bikeway, which the words name first), and everything on a desktop, is the
- * same words to copy into DC 311 online, with a hint naming its request there where one is known. The place follows the rider; the message is shown as sent.
+ * The note for the problem just logged (lib/report311Log.ts; v0.7.0 "Go riding fixes" item 3: the note comes
+ * after, never before): the entry as it will read on the 311 site, and its note, saved as it is typed. The
+ * 311 button's "Add a note" opens it; the checklist in Suggest has the rest.
  */
-function Report311({
-  model,
-  progressM,
-  off,
-  idBase,
-  kind,
-  onKind,
+function Note311({
+  entry,
   open,
   onOpen,
   summaryRef,
   noteRef,
-  serverOn = false,
-  miles = null,
 }: {
-  model: RideModel;
-  progressM: number | null;
-  off: boolean;
-  idBase: string;
-  /** The problem chosen: here, or from the 311 button's menu (UI-CLEANUP), which opens this fold. */
-  kind: ReportKind;
-  onKind: (kind: ReportKind) => void;
+  entry: LogEntry;
   open: boolean;
   onOpen: (open: boolean) => void;
   summaryRef: RefObject<HTMLElement | null>;
   noteRef?: RefObject<HTMLInputElement | null>;
-  /** The server sends reports to DC 311 itself (it has DC's key): the privacy line says so. */
-  serverOn?: boolean;
-  /** The trail mile markers (lib/trailMiles.ts): on a trail the place names its mile. */
-  miles?: TrailMiles | null;
 }) {
-  const setKind = onKind;
-  const [note, setNote] = useState("");
-  const [copied, setCopied] = useState("");
-  const place = progressM === null ? null : reportPlace(model, progressM, miles);
-  const outside = progressM !== null && !inDc(pointAt(model, progressM));
-  // The words for DC 311 online (shown and copied), and the text message, which starts with DC's keyword.
-  const text = outside ? null : reportText(kind, place, note);
-  const sms = outside ? null : reportText(kind, place, note, true);
-  const keyword = keywordOf(kind);
-  const phone = typeof navigator !== "undefined" && canText(navigator.userAgent, navigator.maxTouchPoints ?? 0);
-  const copy = async () => {
-    if (!text) return;
-    const done = await copyText(text, navigator.clipboard, selectionCopy);
-    setCopied("");
-    window.setTimeout(() => setCopied(done ? "Report copied." : "Could not copy; select the report's text instead."), COPY_REPLY_DELAY_MS);
-  };
   return (
     <details className="fold ride-report" open={open} onToggle={(event) => onOpen(event.currentTarget.open)}>
-      <summary ref={summaryRef}>{REPORT_SUMMARY}</summary>
+      <summary ref={summaryRef}>{`Note for the ${kindLabel(entry.kind).toLowerCase()}`}</summary>
       <div className="fold-body">
-        <fieldset className="ride-choice">
-          <legend>What is it?</legend>
-          {REPORT_KINDS.map((k) => (
-            <label key={k.kind} className="radio">
-              <input type="radio" name={`${idBase}-report`} checked={kind === k.kind} onChange={() => setKind(k.kind)} />
-              {k.label}
-            </label>
-          ))}
-        </fieldset>
-        {text === null || sms === null ? (
-          <p className="hint">{outside ? REPORT_OUTSIDE_DC : off ? REPORT_OFF_ROUTE : REPORT_NO_PLACE}</p>
-        ) : (
-          <>
-            <p className="ride-report-text">
-              <span className="ride-report-label">The report: </span>
-              {text}
-            </p>
-            {phone && keyword && <p className="hint">{`The text to 32311 starts with ${keyword}, DC's keyword for it.`}</p>}
-            {/* On a phone the text first; DC 311 online always, since a tablet (or a phone) may not send texts. */}
-            <div className="actions ride-report-actions">
-              {phone && keyword && (
-                <a
-                  className="action-link"
-                  href={smsHref(sms, navigator.userAgent, navigator.maxTouchPoints ?? 0)}
-                  aria-label={`Text to DC 311 (${SHORT_CODE_SPOKEN})`}
-                >
-                  Text to DC 311 (32311)
-                </a>
-              )}
-              <a className={`action-link${phone && keyword ? " secondary" : ""}`} href={DC_311_ONLINE} target="_blank" rel="noopener noreferrer">
-                Open DC 311 online (new tab)
-              </a>
-              <button type="button" className="secondary" onClick={() => void copy()}>
-                Copy the report
-              </button>
-            </div>
-            <p className="hint" role="status">
-              {copied}
-            </p>
-            {!keyword && <p className="hint">{onlineHint(kind)}</p>}
-          </>
-        )}
-        {/* The note last: optional, and after the sending (the report above takes it in as it is typed). */}
+        <p className="ride-report-text">{entryText(entry)}</p>
         <label className="ride-report-note">
-          Add a note (optional)
-          <input ref={noteRef} type="text" value={note} maxLength={REPORT_NOTE_MAX} onChange={(event) => setNote(event.target.value)} />
+          Note (optional)
+          <input
+            ref={noteRef}
+            type="text"
+            value={entry.note}
+            maxLength={NOTE_MAX}
+            onChange={(event) => report311Log().setNote(entry.id, event.target.value)}
+          />
         </label>
-        <p className="hint">{serverOn ? REPORT_PRIVACY_SERVER : REPORT_PRIVACY}</p>
+        <p className="hint">{NOTE_311_HINT}</p>
       </div>
     </details>
   );
 }
+
+/** Under the note: where the log is, and that it stays on the rider's own phone and account. */
+export const NOTE_311_HINT = "Saved in your 311 checklist in Suggest, with the site to report it on. Only you see it.";
 
 /** The way back to the planned route, said: "The planned route is 300 feet to the left." */
 /** Said off a fixed route, before the way back: it is not re-routed (the review of #191). */
@@ -652,10 +581,11 @@ export function RideMode({
   onFollow,
   headingUp,
   onHeadingUp,
-  big,
-  onBig,
+  textSize,
+  onTextSize,
   onView,
   onEnd,
+  resumeStats = null,
   water,
   trailMiles = null,
   geoEnv,
@@ -676,12 +606,15 @@ export function RideMode({
   onFollow: (on: boolean) => void;
   headingUp: boolean;
   onHeadingUp: (on: boolean) => void;
-  big: boolean;
-  onBig: (on: boolean) => void;
+  /** Normal, or Large (the card half the screen, the turn as big as fits); kept by App, also in Settings. */
+  textSize: RideTextSize;
+  onTextSize: (size: RideTextSize) => void;
   /** The ride's route and the rider's position, for the map. */
   onView: (view: RideView) => void;
-  /** End ride: with the plan the ride leaves (part way, from here; lib/navigate.ts planAfterEnd). */
-  onEnd: (after: EndedPlan) => void;
+  /** End ride: with the plan the ride leaves (part way, from here; lib/navigate.ts planAfterEnd) and the ride's figures. */
+  onEnd: (after: EndedPlan, stats: RideStats) => void;
+  /** Undo after End ride: the ended ride's figures, to carry on from. */
+  resumeStats?: RideStats | null;
   /** The water layer's points, loaded if they are not yet (App's ensureWater); for the detours. */
   water?: () => Promise<WaterPoint[] | null>;
   /**
@@ -781,6 +714,9 @@ export function RideMode({
   const sectionRef = useRef<HTMLElement>(null);
   // Ended (End ride, or unmounted): a re-plan answering late says nothing and changes nothing.
   const ended = useRef(false);
+  // The ride's own figures for the summary at End ride (lib/rideStats.ts), from the Start press.
+  // Undo after End ride carries on from the figures so far, not from nought (the step across the pause not counted).
+  const statsRef = useRef<RideStats>(resumeStats ? statsPause(resumeStats) : statsStart(Date.now()));
   // Each re-plan's ticket: "Keep the planned route" or a newer re-plan voids an older one's answer.
   const replanTicket = useRef(0);
   const settingsId = useId();
@@ -795,8 +731,11 @@ export function RideMode({
     settingsPanel.current?.scrollIntoView?.({ block: "nearest" });
     settingsPanel.current?.focus({ preventScroll: true });
   }, [settingsOpen]);
-  // The 311 button's menu (lib/ride311.ts; the owner's choice 9) and the report it continues into.
-  const [reportKind, setReportKind] = useState<ReportKind>("pothole");
+  // The 311 button's menu (lib/ride311.ts; the owner's choice 9), and the entry just logged, whose note
+  // "Add a note" opens.
+  const log311 = useReport311Log();
+  const [lastEntryId, setLastEntryId] = useState<string | null>(null);
+  const lastEntry = lastEntryId === null ? null : (log311.find((e) => e.id === lastEntryId) ?? null);
   const [reportOpen, setReportOpen] = useState(false);
   const [menu311, setMenu311] = useState(false);
   const menu311Id = useId();
@@ -816,15 +755,6 @@ export function RideMode({
   const close311 = () => {
     setMenu311(false);
     button311.current?.focus();
-  };
-  // The report fold opened and its summary focused (a computer's copy, a pick with no place yet).
-  const openReport = () => {
-    focusReport.current = true;
-    if (reportOpen) {
-      focusReport.current = false;
-      reportSummary.current?.focus();
-      reportSummary.current?.scrollIntoView?.({ block: "start" });
-    } else setReportOpen(true);
   };
   // Whether the server sends reports to DC 311 itself (v0.7.0 "Go riding fixes" item 3): asked once a ride.
   const [serverOn311, setServerOn311] = useState(false);
@@ -854,47 +784,28 @@ export function RideMode({
     announcer.current?.answer(text);
     if (prefsRef.current.output === "neither") setPolite((s) => ({ text, count: s.count + 1 }));
   }, []);
-  // One tap: the problem picked is the report (Go riding fixes item 3). Sent by the server where it can;
-  // else, on a phone, the text app to 311 filled in; else the report below to copy. The focus goes back to
-  // the 311 button as the menu closes, never into a form.
+  // One tap: the problem picked is logged (lib/report311Log.ts), with the place and the GPS position; in DC,
+  // where the server has DC's key, it is sent there too and checked off. The focus goes back to the 311
+  // button as the menu closes, never into a form.
   const pick311 = (kind: ReportKind) => {
-    setReportKind(kind);
     setMenu311(false);
+    button311.current?.focus();
     const progress = rideRef.current.off ? null : rideRef.current.progressM;
-    const place = progress === null ? null : reportPlace(modelRef.current, progress, milesRef.current);
-    if (!place || !inDc(place.point)) {
-      openReport();
+    if (progress === null) {
+      tell311(NO_PLACE_311);
       return;
     }
-    button311.current?.focus();
-    const agent = typeof navigator !== "undefined" ? navigator.userAgent : "";
-    const touch = typeof navigator !== "undefined" ? (navigator.maxTouchPoints ?? 0) : 0;
-    const phone = canText(agent, touch);
-    const toMessages = () => {
-      const sms = reportText(kind, place, "", true);
-      if (sms) window.location.assign(smsHref(sms, agent, touch));
-    };
-    const way = pickWay(serverOn311, phone);
-    if (way === "server") {
+    const place = reportPlace(modelRef.current, progress, milesRef.current);
+    const entry = report311Log().add(kind, place);
+    setLastEntryId(entry.id);
+    if (serverOn311 && entry.where === "dc") {
       setSaid311("Sending to DC 311…");
-      void sendReport311(window.location.origin, kind, place).then((sent) => {
+      void sendReport311(window.location.origin, kind, place, entryText(entry)).then((sent) => {
         if (ended.current) return;
-        if (sent) tell311(REPORT_SENT);
-        else if (phone) {
-          toMessages();
-          tell311(REPORT_SEND_FAILED);
-        } else {
-          openReport();
-          tell311(REPORT_FORM);
-        }
+        if (sent) report311Log().setReported(entry.id, true);
+        tell311(sent ? REPORT_SENT : loggedSaid(entry));
       });
-    } else if (way === "sms") {
-      toMessages();
-      tell311(REPORT_READY);
-    } else {
-      openReport();
-      tell311(REPORT_FORM);
-    }
+    } else tell311(loggedSaid(entry));
   };
   // "Add a note" (after, never before): the report opens with the focus in its note field.
   const addNote = () => {
@@ -1256,6 +1167,9 @@ export function RideMode({
       const out = { state: stepped.state.ride, events: stepped.events };
       rideRef.current = out.state;
       setRide(out.state);
+      statsRef.current = stepped.state.walking
+        ? statsPause(statsRef.current)
+        : statsStep(statsRef.current, fix, out.state, modelRef.current, routeRef.current.profile);
       if (stepped.state.walking) return;
       // Off this line but on the other one (the standard way, or the detour): followed there, not re-planned.
       if (out.state.off && fix.accuracyM <= POOR_FIX_M) {
@@ -1445,6 +1359,22 @@ export function RideMode({
     announcer.current?.answer(spoken);
     if (prefsRef.current.output === "neither") setPolite((s) => ({ text: spoken, count: s.count + 1 }));
   }, [approach, showToast]);
+  // Where am I? and Re-centre are one button (the owner, 2026-10-20: "We can merge the where am I and the center on map
+  // button functionality"): the map follows the rider again, and the answer is said and shown.
+  const findMe = useCallback(() => {
+    onFollow(true);
+    askWhere();
+  }, [askWhere, onFollow]);
+  // The Large text button (the owner, 2026-10-20), the same choice as Settings' switch. The change is said as an answer,
+  // as Where am I? is, since a pressed state's change is not always read out.
+  const cycleText = useCallback(() => {
+    const next = textSize === "large" ? "normal" : "large";
+    onTextSize(next);
+    const said = next === "large" ? "Large text on" : "Large text off";
+    showToast(said);
+    announcer.current?.answer(said);
+    if (prefsRef.current.output === "neither") setPolite((s) => ({ text: said, count: s.count + 1 }));
+  }, [onTextSize, showToast, textSize]);
   // Ride the rest (lib/rideTrip.ts): offered near or past the stop where the transit ends, said once as it
   // shows; the press is answered as Re-plan from here's is, and a new ride replaces this one.
   const rest = trip?.rest ?? null;
@@ -1476,9 +1406,10 @@ export function RideMode({
     stopWatch.current = null;
     announcer.current?.drop();
     rideVoice.stop();
-    if (toVoice(prefsRef.current.output)) rideVoice.speak(RIDE_ENDED, true);
+    // Only "Ride ended." is said; the figures are on the summary (the owner, 2026-10-20: "Just put ride ended.").
+    if (toVoice(prefsRef.current.output)) rideVoice.speak(RIDE_ENDED_SAID, true);
     // A Bikeshare or transit trip's riding leg is not the plan: the plan stays as it was.
-    onEnd(trip && !trip.asPlanned ? null : planAfterEnd(modelRef.current, rideRef.current, plan.current.points, plan.current.loop, Date.now()));
+    onEnd(trip && !trip.asPlanned ? null : planAfterEnd(modelRef.current, rideRef.current, plan.current.points, plan.current.loop, Date.now()), statsRef.current);
   };
   // A toggle: pressed, no automatic re-plan (one in flight is voided) and the way back is said once;
   // pressed again, re-planning is back on.
@@ -1660,7 +1591,7 @@ export function RideMode({
     }
   };
 
-  // Keys while the focus is in Ride mode (outside a text field): W where am I, C re-centre. Only there
+  // Keys while the focus is in Ride mode (outside a text field): W or C where am I (and re-centre), T the text size. Only there
   // (WCAG 2.1.4), so speech input or a stray key elsewhere on the page fires neither.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -1670,17 +1601,17 @@ export function RideMode({
       // End ride's slide is a range: W and C still work there, as they did on its button.
       const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName) && (target as HTMLInputElement).type !== "range";
       if (target.isContentEditable || typing) return;
-      if (event.key === "w" || event.key === "W") {
+      if (event.key === "w" || event.key === "W" || event.key === "c" || event.key === "C") {
         event.preventDefault();
-        askWhere();
-      } else if ((event.key === "c" || event.key === "C") && !big) {
+        findMe();
+      } else if (event.key === "t" || event.key === "T") {
         event.preventDefault();
-        onFollow(true);
+        cycleText();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [askWhere, onFollow, big]);
+  }, [findMe, cycleText]);
 
   const progress = ride.progressM;
   const cue = progress === null ? null : nextAction(model, progress);
@@ -1690,6 +1621,89 @@ export function RideMode({
   const distanceWords = cue && progress !== null ? formatDistance(cue.atM - progress) : "";
   const metricAt = distanceWords.indexOf(" (");
   const distanceShown = metricAt < 0 ? { us: distanceWords, metric: "" } : { us: distanceWords.slice(0, metricAt), metric: distanceWords.slice(metricAt + 1) };
+  // Large: the turn's arrow and words as big as the card has room for (the owner, 2026-10-20: "take up as much
+  // screen as possible"), set as --cue-fit on the card. Worked out when the turn, the size or the screen changes, not each
+  // fix, with a little room left for the distance's words to grow; the small print stays 16 pt or more (styles.css).
+  const cardRef = useRef<HTMLDivElement>(null);
+  const fitKey = `${textSize}|${cueShown.head}|${cueShown.rest}|${distanceWords.length}|${ride.off}|${ride.arrived}|${cueSheetOn}|${settingsOpen}`;
+  useLayoutEffect(() => {
+    const card = cardRef.current;
+    if (!card) return;
+    if (textSize === "normal") {
+      card.style.removeProperty("--cue-fit");
+      card.style.removeProperty("--cue-fit-d");
+      return;
+    }
+    // The ride's settings open in the card: the size stays as it was while they show.
+    if (settingsOpen) return;
+    // Two scales: the distance line's (and the arrow's), as big as its one line fits across; then the instruction's, as
+    // big as the card's height allows under it, so its lines fill the rest.
+    const set = (name: string, k: number) => card.style.setProperty(name, String(k));
+    const inside = (selector: string) => {
+      const right = card.getBoundingClientRect().right;
+      return [...card.querySelectorAll<HTMLElement>(selector)].every((e) => e.scrollWidth <= e.clientWidth + 1 && e.getBoundingClientRect().right <= right + 1);
+    };
+    const fitsAll = () => card.scrollHeight <= card.clientHeight + 1 && card.scrollWidth <= card.clientWidth + 1;
+    const largest = (ok: (k: number) => boolean) => {
+      let lo = 0.5;
+      let hi = 4;
+      for (let i = 0; i < 9; i += 1) {
+        const mid = (lo + hi) / 2;
+        if (ok(mid)) lo = mid;
+        else hi = mid;
+      }
+      return Math.floor(lo * 0.94 * 100) / 100;
+    };
+    const fit = () => {
+      set("--cue-fit", 0.5);
+      const distance = largest((k) => {
+        set("--cue-fit-d", k);
+        return inside(".cue-distance") && fitsAll();
+      });
+      set("--cue-fit-d", distance);
+      set(
+        "--cue-fit",
+        largest((k) => {
+          set("--cue-fit", k);
+          return inside(".cue-text, .cue-more, .cue-then") && fitsAll();
+        }),
+      );
+    };
+    fit();
+    // Fitted again, once a frame at most, when the screen or the top row changes size, when a line comes or goes in the
+    // card (off route's re-plan line, a departure's timer, the light times), and once the label face has loaded.
+    let frame = 0;
+    const again = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(fit);
+    };
+    let stopped = false;
+    void document.fonts?.ready.then(() => {
+      if (!stopped) again();
+    });
+    const mutations = typeof MutationObserver === "undefined" ? null : new MutationObserver(again);
+    mutations?.observe(card, { childList: true, subtree: true });
+    const section = sectionRef.current;
+    const top = card.querySelector(".ride-top");
+    const sizes = new Map<Element, string>();
+    const resized = typeof ResizeObserver === "undefined" ? null : new ResizeObserver((entries) => {
+      let changed = false;
+      for (const entry of entries) {
+        const size = `${Math.round(entry.contentRect.width)}x${Math.round(entry.contentRect.height)}`;
+        if (sizes.has(entry.target) && sizes.get(entry.target) !== size) changed = true;
+        sizes.set(entry.target, size);
+      }
+      if (changed) again();
+    });
+    if (section) resized?.observe(section);
+    if (top) resized?.observe(top);
+    return () => {
+      stopped = true;
+      cancelAnimationFrame(frame);
+      mutations?.disconnect();
+      resized?.disconnect();
+    };
+  }, [fitKey]); // eslint-disable-line react-hooks/exhaustive-deps
   // The light times for the corner, worked out once a minute and every tenth of a mile or so.
   const minute = Math.floor(Date.now() / 60_000);
   const lightStep = progress === null ? null : Math.round(progress / 160);
@@ -1698,9 +1712,40 @@ export function RideMode({
     () => (lightStep === null || ride.arrived ? null : rideLightCorner(model, lightStep * 160, togoS, minute * 60_000)),
     [model, lightStep, togoS === null ? null : Math.round(togoS / 60), ride.arrived, minute], // eslint-disable-line react-hooks/exhaustive-deps
   );
+  // "Ride mode" is for screen readers only and the two buttons fill the row (the owner, 2026-10-20: "People know it's
+  // ride mode anyway"). Near dawn or dusk the light times take the corner while they fit beside the buttons on one
+  // line, measured, as a phone's own text size can be larger than the page knows; else they go just under the row.
+  const topRef = useRef<HTMLDivElement>(null);
+  const [cornerFits, setCornerFits] = useState(true);
+  const lightKey = light ? light.shown.join("|") : "";
+  useLayoutEffect(() => {
+    const top = topRef.current;
+    const heading = headingRef.current;
+    const actions = top?.querySelector<HTMLElement>(".ride-top-actions");
+    if (!top || !heading || !actions) return;
+    const check = () => {
+      // Measured as laid out untight (the buttons not stretched), put back before anything is drawn.
+      const tight = top.classList.contains("ride-corner-tight");
+      if (tight) top.classList.remove("ride-corner-tight");
+      const row = getComputedStyle(top);
+      const room = top.clientWidth - parseFloat(row.paddingLeft) - parseFloat(row.paddingRight);
+      const buttons = [...actions.children] as HTMLElement[];
+      const between = parseFloat(getComputedStyle(actions).columnGap) || 0;
+      const need =
+        heading.scrollWidth + (parseFloat(row.columnGap) || 0) + buttons.reduce((sum, b) => sum + b.offsetWidth, 0) + between * Math.max(0, buttons.length - 1);
+      if (tight) top.classList.add("ride-corner-tight");
+      setCornerFits(need <= room);
+    };
+    check();
+    if (typeof ResizeObserver === "undefined") return;
+    const watch = new ResizeObserver(check);
+    watch.observe(top);
+    for (const button of actions.children) watch.observe(button);
+    return () => watch.disconnect();
+  }, [lightKey, ride.arrived, walking, textSize]);
   const back = ride.off ? wayBack(model, ride) : null;
   const shape = arrowFor(cue);
-  const show311 = ride311Shown({ off: ride.off, progressM: progress, insideDc: (m) => inDc(pointAt(model, m)) });
+  const show311 = ride311Shown({ off: ride.off, progressM: progress });
   const place311 = show311 && progress !== null ? reportPlace(model, progress, trailMiles) : null;
   // A re-plan's outcome back on the route ("New route found.") shows by the side buttons for a few seconds; off
   // the route it stays in the bottom panel with Re-plan from here. Said either way (replan's tell).
@@ -1759,16 +1804,16 @@ export function RideMode({
   }, [ride.off, show311]);
 
   return (
-    <section ref={sectionRef} className={`ride ${big ? "ride-big" : ""}`} aria-labelledby="ride-heading">
+    <section ref={sectionRef} className={`ride${textSize === "large" ? " ride-large" : ""}`} aria-labelledby="ride-heading">
       <LiveRegion said={polite} urgent={false} />
       <LiveRegion said={assertive} urgent />
-      <div className="cue-card">
+      <div ref={cardRef} className="cue-card">
         {/* End ride (v0.7.0, "Go riding fixes" item 6): always in view, at the top of the card, which stays at
-            every size and in Big text; one slide ends the ride (a tap once arrived), and the page offers Undo for a few seconds
-            (RideEnded). The ride's settings open just under the row, from the side buttons' gear. */}
-        <div className="ride-top">
-          {/* "Ride mode" in the corner; near dawn or dusk the light times in its place (the owner, 2026-10-19),
-              the heading kept for screen readers. */}
+            every size and in Large text; one slide ends the ride (a tap once arrived), and the page shows the ride's summary
+            with Done and Undo (RideSummaryCard). The ride's settings open just under the row, from the side buttons' gear. */}
+        <div ref={topRef} className={light && cornerFits ? "ride-top" : "ride-top ride-corner-tight"}>
+          {/* The heading, "Ride mode", for screen readers; near dawn or dusk the light times shown in the corner
+              (the owner, 2026-10-19) where they fit beside the buttons, else just under the row. */}
           <h2 id="ride-heading" ref={headingRef} tabIndex={-1} className={light ? "ride-heading ride-light" : "ride-heading"}>
             {light ? (
               <>
@@ -1789,7 +1834,7 @@ export function RideMode({
                 rider has arrived, End ride is slid, not tapped. */}
             {ride.arrived ? (
               <button type="button" className="danger ride-end" onClick={end}>
-                <Icon name="stop" size={18} />
+                <Icon name="stop" size={22} />
                 {END_RIDE_NAME}
               </button>
             ) : (
@@ -1799,13 +1844,19 @@ export function RideMode({
                 on the fly"): one press while riding, no menu. */}
             {!walking && !ride.arrived && (
               <button type="button" className="secondary ride-road-closed" onClick={roadClosed} aria-label={ROAD_CLOSED_NAME} title={ROAD_CLOSED_NAME}>
-                <Icon name="barrier" size={18} />
-                {/* Shown where there is room; on narrow phones and with large text the icon alone, its name kept. */}
+                <Icon name="barrier" size={22} />
+                {/* Always its words, at every size (the owner, 2026-10-20: "make everything have the big button"). */}
                 <span className="ride-top-label">{ROAD_CLOSED_TEXT}</span>
               </button>
             )}
           </div>
         </div>
+        {/* Where the corner has no room, the light times just under the top row, so they stay in view. */}
+        {light && !cornerFits && (
+          <p className="ride-light-below" aria-hidden="true">
+            {light.shown.join(" · ")}
+          </p>
+        )}
         <div
           ref={settingsPanel}
           id={`${settingsId}-settings`}
@@ -1829,7 +1880,6 @@ export function RideMode({
             <input type="checkbox" checked={headingUp} onChange={(event) => onHeadingUp(event.target.checked)} />
             Turn the map to my heading
           </label>
-          <BigTextField on={big} onChange={onBig} />
         </div>
         {ride.arrived ? (
           <>
@@ -1871,16 +1921,18 @@ export function RideMode({
           </div>
         ) : cue && progress !== null ? (
           <div className="cue-next">
-            <CueShape shape={shape} />
+            <CueShape shape={shape} junction={cue.junction} exit={cue.exit?.number} />
             <div>
               {/* Greyed while GPS is weak or lost (any GPS note): the distance is from an old fix, not where the rider is. */}
               <p className={gps ? "cue-distance cue-distance-weak" : "cue-distance"}>
-                In {distanceShown.us}
+                {/* Fewer words, larger type (the owner, 2026-10-20); "In" stays for screen readers. */}
+                <span className="visually-hidden">In </span>
+                {distanceShown.us}
                 {distanceShown.metric && <span className="cue-distance-metric"> {distanceShown.metric}</span>}
               </p>
               {/* The instruction large, the rest in small print, street words shortened; the whole sentence for screen readers. */}
               <p className="cue-text">
-                <span aria-hidden="true">{cueShown.head}</span>
+                <span aria-hidden="true">{cueShown.head.replace(/\.$/, "")}</span>
                 <span className="visually-hidden">{cue.rideText ?? cue.text}</span>
               </p>
               {cueShown.rest && (
@@ -1901,7 +1953,13 @@ export function RideMode({
                 <dt>To stop {togo.stop.number}</dt>
                 <dd>
                   {formatDistance(togo.stop.metres)}
-                  {togo.stop.seconds !== null && `, about ${formatDuration(togo.stop.seconds)}`}
+                  {togo.stop.seconds !== null && (
+                  <>
+                    {/* "about" only for screen readers: fewer words on screen (the owner, 2026-10-20), still an estimate. */}
+                    , <span className="visually-hidden">about </span>
+                    {formatDuration(togo.stop.seconds)}
+                  </>
+                )}
                 </dd>
               </div>
             )}
@@ -1909,7 +1967,13 @@ export function RideMode({
               <dt>To the end</dt>
               <dd>
                 {formatDistance(togo.end.metres)}
-                {togo.end.seconds !== null && `, about ${formatDuration(togo.end.seconds)}`}
+                {togo.end.seconds !== null && (
+                  <>
+                    {/* "about" only for screen readers: fewer words on screen (the owner, 2026-10-20), still an estimate. */}
+                    , <span className="visually-hidden">about </span>
+                    {formatDuration(togo.end.seconds)}
+                  </>
+                )}
               </dd>
             </div>
           </dl>
@@ -1921,14 +1985,12 @@ export function RideMode({
       <div className="ride-middle">
         {/* A minimalist compass (the owner, 2026-10-17), turned with the map; a press switches north-up and track-up
             ("maybe clicking on it changes to north up"), the same choice as the ride settings' switch. */}
-        {!big && (
-          <button type="button" className="ride-compass" aria-pressed={!headingUp} aria-label="North up" title="North up" onClick={() => onHeadingUp(!headingUp)}>
-            <svg viewBox="0 0 40 40" width="40" height="40" aria-hidden="true">
-              <path d="M20 5 L25 20 L20 17 L15 20 Z" className="ride-compass-north" />
-              <path d="M20 35 L15 20 L20 23 L25 20 Z" className="ride-compass-south" />
-            </svg>
-          </button>
-        )}
+        <button type="button" className="ride-compass" aria-pressed={!headingUp} aria-label="North up" title="North up" onClick={() => onHeadingUp(!headingUp)}>
+          <svg viewBox="0 0 40 40" width="40" height="40" aria-hidden="true">
+            <path d="M20 5 L25 20 L20 17 L15 20 Z" className="ride-compass-north" />
+            <path d="M20 35 L15 20 L20 23 L25 20 Z" className="ride-compass-south" />
+          </svg>
+        </button>
         {toast.text && !detourOpen && !dockOpen && !menu311 && (
           <div className="ride-toast" {...toastTimer.hold}>
             {/* Shown, not a live region: it is said through the rider's own outputs. */}
@@ -1936,19 +1998,29 @@ export function RideMode({
           </div>
         )}
         <div className="ride-rail" role="group" aria-label="Ride buttons">
-          <button type="button" ref={whereRef} className="ride-round" onClick={askWhere} aria-keyshortcuts="W" aria-label="Where am I?" title="Where am I?">
-            <Icon name="pin" size={24} />
-          </button>
+          {/* Where am I? with Re-centre in it (the owner, 2026-10-20): highlighted when the map stopped following. */}
           <button
             type="button"
+            ref={whereRef}
             className={`ride-round${follow ? "" : " ride-round-alert"}`}
-            onClick={() => onFollow(true)}
-            aria-keyshortcuts="C"
-            aria-label={follow ? "Re-centre" : "Re-centre: the map stopped following you"}
-            title="Re-centre"
-            hidden={big}
+            onClick={findMe}
+            aria-keyshortcuts="W C"
+            aria-label={follow ? "Where am I?" : "Where am I? The map stopped following you"}
+            title="Where am I?"
           >
             <Icon name="locate" size={24} />
+          </button>
+          {/* Large text on and off (the owner, 2026-10-20), shown pressed while on. */}
+          <button
+            type="button"
+            className="ride-round ride-text-size"
+            onClick={cycleText}
+            aria-keyshortcuts="T"
+            aria-pressed={textSize === "large"}
+            aria-label={RIDE_TEXT_BUTTON}
+            title={RIDE_TEXT_BUTTON}
+          >
+            <Icon name="textsize" size={24} />
           </button>
           {water && (
             <div
@@ -2099,7 +2171,7 @@ export function RideMode({
               </div>
             </div>
           )}
-          {/* The 311 button (lib/ride311.ts): inside DC only; its menu beside the buttons. */}
+          {/* The 311 button (lib/ride311.ts): anywhere on the route; its menu beside the buttons. */}
           {show311 && (
             <div className="ride-311" ref={block311} onKeyDown={(event) => {
               if (event.key === "Escape" && menu311) {
@@ -2126,10 +2198,6 @@ export function RideMode({
                 headingRef={menu311Heading}
                 onPick={pick311}
                 onClose={close311}
-                onMore={() => {
-                  setMenu311(false);
-                  openReport();
-                }}
               />
               {said311Shown && (
                 <div className="ride-311-said" {...said311Timer.hold}>
@@ -2205,56 +2273,21 @@ export function RideMode({
               </p>
             </div>
           )}
-          {reportOpen && (
-            <Report311
-              model={model}
-              progressM={ride.off ? null : progress}
-              off={ride.off}
-              idBase={settingsId}
-              kind={reportKind}
-              onKind={setReportKind}
+          {reportOpen && lastEntry && (
+            <Note311
+              entry={lastEntry}
               open={reportOpen}
               onOpen={(open) => {
                 setReportOpen(open);
-                // Closed, the report goes from the page: the focus goes to Where am I?, not to the page's top.
+                // Closed, the note goes from the page: the focus goes to Where am I?, not to the page's top.
                 if (!open) whereRef.current?.focus({ preventScroll: true });
               }}
               summaryRef={reportSummary}
               noteRef={noteInput}
-              serverOn={serverOn311}
-              miles={trailMiles}
             />
           )}
         </div>
       )}
     </section>
-  );
-}
-
-/**
- * After End (v0.7.0, "Go riding fixes" item 6): "Ride ended." and Undo for UNDO_END_MS. It is said by the page's
- * polite region, which is always mounted (App says RIDE_ENDED_SAID: a region mounted with its text in it is often
- * not read; review F6), and the focus goes to Undo, as End (the button pressed) has gone. The time is held while the
- * focus or a mouse is inside it (WCAG 2.2.1), so a keyboard or screen-reader rider on Undo is not timed out of it.
- * Undo starts the same ride again.
- */
-export function RideEnded({ onUndo, onGone }: { onUndo: () => void; onGone: () => void }) {
-  const undo = useRef<HTMLButtonElement>(null);
-  const { timer, hold } = useHoldTimer(UNDO_END_MS, onGone);
-  useEffect(() => {
-    // Focus is put on Undo, not taken there by the rider, so it does not hold the bar (re-check of
-    // F6: a touch rider's bar would otherwise never go). Moving focus away and back does hold it.
-    undo.current?.focus();
-    timer.focus(false);
-    timer.start();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, as it shows
-  }, []);
-  return (
-    <div className="ride-ended" role="group" aria-label={RIDE_ENDED} {...hold}>
-      <span aria-hidden="true">{RIDE_ENDED}</span>
-      <button ref={undo} type="button" className="secondary" onClick={onUndo}>
-        Undo
-      </button>
-    </div>
   );
 }
