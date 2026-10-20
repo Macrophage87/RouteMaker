@@ -565,6 +565,7 @@ export interface TrailPressMap {
 }
 
 interface PressedFeature {
+  id?: string | number;
   properties?: { mtb?: unknown } | null;
   geometry?: { type?: string; coordinates?: unknown } | null;
 }
@@ -607,24 +608,41 @@ function nearestOn(map: TrailPressMap, feature: PressedFeature, point: { x: numb
  * trail however coarse a finger's press was.
  */
 export function mtbTrailPressed(map: TrailPressMap, point: { x: number; y: number }, slop: number, layers: readonly string[]): LonLat | null {
+  return mtbTrailAt(map, point, slop, layers)?.point ?? null;
+}
+
+/** As mtbTrailPressed, with the trail's tile properties (its `mtb_name` and `mtb_level`) for the hover card. */
+export function mtbTrailAt(
+  map: TrailPressMap,
+  point: { x: number; y: number },
+  slop: number,
+  layers: readonly string[],
+): { point: LonLat; properties: Record<string, unknown>; way: string } | null {
   const drawn = layers.filter((id) => map.getLayer(id));
   if (drawn.length === 0) return null;
   const box: [[number, number], [number, number]] = [
     [point.x - slop, point.y - slop],
     [point.x + slop, point.y + slop],
   ];
-  let trail: { x: number; y: number; d: number } | null = null;
+  let trail: { x: number; y: number; d: number; properties: Record<string, unknown>; way: string } | null = null;
   let road = Infinity;
   for (const feature of map.queryRenderedFeatures(box, { layers: drawn }) as PressedFeature[]) {
     const near = nearestOn(map, feature, point);
     if (near === null) continue;
     if (feature.properties?.mtb === true) {
-      if (trail === null || near.d < trail.d) trail = near;
+      if (trail === null || near.d < trail.d) trail = { ...near, properties: feature.properties, way: wayOf(feature) };
     } else road = Math.min(road, near.d);
   }
   if (trail === null || road < trail.d) return null;
   const { lng, lat } = map.unproject([trail.x, trail.y]);
-  return [lng, lat];
+  return { point: [lng, lat], properties: trail.properties, way: trail.way };
+}
+
+/** The drawn way: its feature id, else its first point (the tiles may carry no id). */
+function wayOf(feature: PressedFeature): string {
+  if (feature.id !== undefined) return String(feature.id);
+  const first = lineParts(feature)[0]?.[0];
+  return first ? `${first[0].toFixed(6)},${first[1].toFixed(6)}` : "";
 }
 
 export function featureCardPress(cards: ReadonlyArray<FeatureCards | null>, point: { x: number; y: number }): "card" | "close" | null {
@@ -665,20 +683,23 @@ export interface HoverEffects<S> {
 /**
  * Carry out a hover at `under`. The handle is drawn, and the cursor written,
  * only when they change: a pointer nowhere near the line, frame after frame,
- * is no reason to render.
+ * is no reason to render. `card`: a mountain-bike trail or a climb a click there would open
+ * is under the pointer, which takes the pointing hand too (the owner, 2026-10-20: "Have the
+ * ability to mouseover and click on the trail."; "Add the hover to climbs too").
  */
 export function runHover<S, L extends { at: readonly [number, number] }>(
   under: Under<S, L>,
   popupOpen: boolean,
   shown: { handle: readonly [number, number] | null; cursor: string },
   effects: HoverEffects<S>,
+  card = false,
 ): void {
   const target = pointerTarget(stateOf(under, popupOpen));
   const at = target.hover === "line" && under.line !== null ? under.line.at : null;
   if (hoverChanged(shown.handle, at)) effects.drawHandle(at);
   // The hover is the station's exactly when there is one under the pointer.
   effects.stationHover(under.station, target.hover === "station" && target.grab);
-  const cursor = target.hover === "map" ? "" : "pointer";
+  const cursor = target.hover === "map" && !card ? "" : "pointer";
   if (shown.cursor !== cursor) effects.setCursor(cursor);
 }
 
