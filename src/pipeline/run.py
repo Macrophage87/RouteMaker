@@ -3022,6 +3022,8 @@ def build_handlers(
             },
             "agency-prohibited",
         )
+        # After the agency prohibitions, so a link never leads onto a road they close.
+        trail_closures.add_walk_links(nobike, context.ways)
         context.walk_bike = nobike.walk_bike
         context.walk_links = nobike.walk_links
         context.destination_only = nobike.destination_only

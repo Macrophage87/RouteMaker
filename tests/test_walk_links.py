@@ -73,6 +73,31 @@ def test_a_footway_barred_on_foot_or_indoors_is_no_link():
     assert wl.links(redland({**SIDEWALK, "indoor": "yes"})) == {}
 
 
+def test_an_informal_area_or_pedestrian_footway():
+    assert wl.links(redland({**SIDEWALK, "informal": "yes"})) == {}
+    assert wl.links(redland({**SIDEWALK, "area": "yes"})) == {}
+    assert set(wl.links(redland({"highway": "pedestrian"}))) == {3}
+
+
+def test_a_link_through_two_footways_opens_both():
+    ways = [
+        placed(50, TRAIL, [(0.0, 100.0), (0.0, 20.0)]),
+        placed(51, {"highway": "footway"}, [(0.0, 20.0), (0.0, 10.0)]),
+        placed(52, SIDEWALK, [(-50.0, 10.0), (0.0, 10.0), (30.0, 10.0), (50.0, 10.0)]),
+        placed(53, SIDE_PATH, [(30.0, -100.0), (30.0, 10.0)]),
+    ]
+    found = wl.links(ways)
+    assert set(found) == {51, 52}
+    assert round(found[51]) == round(found[52]) == 40
+
+
+def test_a_footway_edge_with_no_location_is_not_walked():
+    osm_id, tags, nodes, coords = placed(3, SIDEWALK, [(0.0, 0.0), (36.0, 0.0), (175.0, 0.0)])
+    ways = redland()
+    ways[2] = (osm_id, tags, nodes, [None, *coords[1:]])
+    assert wl.links(ways) == {}, "a clipped extract never guesses a link"
+
+
 def test_a_closed_footway_is_never_a_link():
     assert wl.links(redland(), closed={3}) == {}
 
@@ -150,6 +175,7 @@ def test_the_rebuild_flags_the_link_walk_your_bike():
         )
     ]
     result = tc.closures(ways, {}, [])
+    tc.add_walk_links(result, ways)
     assert result.walk_links == {3}
     assert 3 in result.walk_bike, "the directions say walk your bike here"
     assert 3 not in result.reasons

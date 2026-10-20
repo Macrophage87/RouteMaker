@@ -259,14 +259,27 @@ def closures(
             result.reasons[osm_id] = reason
         elif osm_id in kept:
             result.walk_bike.add(osm_id)
+    return result
+
+
+def add_walk_links(result: TrailClosures, ways: Iterable[Way]) -> None:
+    """Find the walk-your-bike links (`routemaker.walk_links`) once every closure is in
+    `result.reasons`, the agency prohibitions included, and flag them `walk_bike`."""
     result.walk_links = set(
         walk_links.links(
-            ((way.osm_id, way.tags, way.node_ids, node_coordinates(way)) for way in ways),
+            [
+                (
+                    way.osm_id,
+                    way.tags,
+                    way.node_ids,
+                    node_coordinates(way) if walk_links.is_link_candidate(way.tags) else (),
+                )
+                for way in ways
+            ],
             closed=set(result.reasons) | result.destination_only,
         )
     )
     result.walk_bike |= result.walk_links
-    return result
 
 
 def node_coordinates(way: Way) -> list[tuple[float, float] | None]:

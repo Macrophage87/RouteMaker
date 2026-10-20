@@ -22,7 +22,11 @@ Bounds, so a link stays a link:
 - each footway it opens is at most `WAY_MAX_M` (about 1,000 ft) long, since a tag opens
   the whole way and a router could walk any of it;
 - never a footway something closes for a reason (`closed`: the CBD's sidewalks, a
-  military or secured area, the Zoo), one barred to pedestrians, an area, or indoors.
+  military or secured area, the Zoo, an agency prohibition), one barred to pedestrians,
+  an informal one, an area, or indoors.
+
+Most links are crosswalks: a trail that stops at the curb of an unmarked crossing is
+walked across it.
 
 Pure: `pipeline.trail_closures` calls `links` with the rebuild's ways, and the rebuild
 writes `rm:walk_link` on what it answers (lua/routemaker_remap.lua).
@@ -33,7 +37,7 @@ from __future__ import annotations
 import heapq
 import math
 from collections import defaultdict
-from collections.abc import Iterable, Sequence, Set
+from collections.abc import Sequence, Set
 
 from . import tags as osm_tags
 from . import trailaccess
@@ -109,6 +113,8 @@ def is_link_candidate(tags: dict[str, str]) -> bool:
         return False
     if tags.get("access") in CLOSING_ACCESS or tags.get("foot") in CLOSING_FOOT:
         return False
+    if tags.get("informal") == "yes":
+        return False
     return trailaccess.upstream_open(tags) is False
 
 
@@ -124,44 +130,61 @@ def _length(coords: Sequence[tuple[float, float] | None]) -> float:
     return sum(_metres(a, b) for a, b in zip(known, known[1:], strict=False))
 
 
-def links(ways: Iterable[Placed], closed: Set[int] = frozenset()) -> dict[int, float]:
+# `links`' mark for a node two or more bicycle-open ways reach.
+MANY = -1
+
+
+def links(ways: Sequence[Placed], closed: Set[int] = frozenset()) -> dict[int, float]:
     """The footways to open as walk-your-bike links, each with the shortest walk (in
     metres) of a link it is part of. `ways` is (id, tags, node ids, a coordinate per
-    node id, None where the extract has none); `closed` the ways a closure rule closes."""
-    open_at: dict[int, set[int]] = defaultdict(set)
-    trail_ways: set[int] = set()
-    ends: list[tuple[int, int]] = []
+    node id, None where the extract has none; only a link candidate's are read, so
+    other ways may carry none); `closed` the ways a closure rule closes.
+
+    Two passes, so a region's million ways cost little: the footway network first, then
+    the bicycle-open ways only at the nodes it reaches."""
     adjacent: dict[int, list[tuple[int, float, int]]] = defaultdict(list)
     lengths: dict[int, float] = {}
     for osm_id, tags, node_ids, coords in ways:
-        if osm_id in closed or len(node_ids) < 2:
+        if osm_id in closed or len(node_ids) < 2 or not is_link_candidate(tags):
             continue
-        if bicycle_open(tags):
-            for node in node_ids:
-                open_at[node].add(osm_id)
-            if tags.get("highway") in TRAIL_HIGHWAY:
-                trail_ways.add(osm_id)
-            if node_ids[0] != node_ids[-1]:
-                ends.extend(((osm_id, node_ids[0]), (osm_id, node_ids[-1])))
-        elif is_link_candidate(tags):
-            lengths[osm_id] = _length(coords)
-            for i in range(len(node_ids) - 1):
-                a, b = coords[i], coords[i + 1]
-                if a is None or b is None:
-                    continue
-                step = _metres(a, b)
-                adjacent[node_ids[i]].append((node_ids[i + 1], step, osm_id))
-                adjacent[node_ids[i + 1]].append((node_ids[i], step, osm_id))
+        lengths[osm_id] = _length(coords)
+        for i in range(len(node_ids) - 1):
+            a, b = coords[i], coords[i + 1]
+            if a is None or b is None:
+                continue
+            step = _metres(a, b)
+            adjacent[node_ids[i]].append((node_ids[i + 1], step, osm_id))
+            adjacent[node_ids[i + 1]].append((node_ids[i], step, osm_id))
+
+    # At each node the footways reach: the one bicycle-open way there, or MANY.
+    open_at: dict[int, int] = {}
+    trail_at: set[int] = set()
+    ends: list[tuple[int, int]] = []
+    trail_ways: set[int] = set()
+    for osm_id, tags, node_ids, _coords in ways:
+        if osm_id in closed or len(node_ids) < 2 or not bicycle_open(tags):
+            continue
+        trail = tags.get("highway") in TRAIL_HIGHWAY
+        if trail:
+            trail_ways.add(osm_id)
+        for node in set(node_ids):
+            if node not in adjacent:
+                continue
+            open_at[node] = osm_id if open_at.get(node, osm_id) == osm_id else MANY
+            if trail:
+                trail_at.add(node)
+        if node_ids[0] != node_ids[-1]:
+            ends.extend(((osm_id, node_ids[0]), (osm_id, node_ids[-1])))
 
     found: dict[int, float] = {}
     for osm_id, end in ends:
-        if open_at[end] != {osm_id} or end not in adjacent:
-            continue  # not a dead end, or no footway meets it
+        if open_at.get(end) != osm_id:
+            continue  # no footway meets it, or another bicycle-open way does: no dead end
         walk = _shortest_walk(end, osm_id, open_at, adjacent)
         if walk is None:
             continue
         metres, reached, used = walk
-        if osm_id not in trail_ways and not (open_at[reached] & trail_ways):
+        if osm_id not in trail_ways and reached not in trail_at:
             continue  # neither end is a trail: not a link (a parking lot, a driveway)
         if any(lengths[way] > WAY_MAX_M for way in used):
             continue
@@ -173,7 +196,7 @@ def links(ways: Iterable[Placed], closed: Set[int] = frozenset()) -> dict[int, f
 def _shortest_walk(
     start: int,
     from_way: int,
-    open_at: dict[int, set[int]],
+    open_at: dict[int, int],
     adjacent: dict[int, list[tuple[int, float, int]]],
 ) -> tuple[float, int, list[int]] | None:
     """The shortest walk along candidate footways from `start` to a node another
@@ -185,7 +208,7 @@ def _shortest_walk(
         metres, node = heapq.heappop(queue)
         if metres > best.get(node, math.inf):
             continue
-        if node != start and open_at.get(node, set()) - {from_way}:
+        if node != start and open_at.get(node, from_way) != from_way:
             used: list[int] = []
             at = node
             while at != start:

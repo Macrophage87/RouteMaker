@@ -5964,11 +5964,15 @@ longer ones close.
 node no other bicycle-open way reaches, and footways with no bicycle tag lead from it to
 another bicycle-open way within 160 ft (50 m), those footways get `rm:walk_link=yes` and
 the remap writes `bicycle=dismount` on them (`routemaker.walk_links`; the owner's Redland
-Road report, 2026-10-20). One end must be a trail-class way, each footway opened is at
-most 1,000 ft (300 m) long (a tag opens the whole way), and nothing a closure reason
-closes (the CBD's sidewalks, military, secured, the Zoo) is opened. They are in
-`walk_bike`, so the route says walk your bike. The rebuild log's facility line counts
-them ("sidewalk links where a bike way stops"); the 2026-10-09 extract has about 7,500.
+Road report, 2026-10-20). One end must be a trail-class way. The gap walked is at most
+160 ft (50 m), but a tag opens the whole way, so each footway opened is at most 1,000 ft
+(300 m) long: longer than OSM's own dismount connectors may be (500 ft, 150 m), because
+the sidewalks trails end on often run a block, as Redland Road's does (175 m). Nothing a
+closure reason closes (the CBD's sidewalks, military, secured, the Zoo, an agency
+prohibition) and no informal footway is opened. They are in `walk_bike`, so the route
+says walk your bike. The rebuild log's facility line counts them ("sidewalk links where
+a bike way stops"); the 2026-10-09 extract has about 7,500, about half of them
+crosswalks where a trail stops at the curb, a third sidewalks, the rest plain footways.
 
 **NPS units.** Tag rules only. A per-park "paved and designated only" rule goes
 in `pipeline.trail_closures.PARK_RULES` after that park's compendium has been
