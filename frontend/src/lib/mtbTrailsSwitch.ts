@@ -19,7 +19,7 @@ export const MTB_TRAILS_LABEL = "Mountain-bike trails";
  * Read on every focus, so one short line (the owner, 2026-10-12: "less wordy"). The levels, and that Gravel
  * and Mountain Goat may use the unrated trails (456), are said by the legend's rows (stressLegend.ts).
  */
-export const MTB_TRAILS_HINT = `From zoom ${MTB_MIN_ZOOM}. Not used for routes.`;
+export const MTB_TRAILS_HINT = `From zoom ${MTB_MIN_ZOOM}. Only off-road ride types route on them.`;
 
 /** The description while the stress map, which carries the trails, is unavailable. */
 export const MTB_TRAILS_NO_MAP_HINT = "Needs the stress map, which is unavailable for now.";

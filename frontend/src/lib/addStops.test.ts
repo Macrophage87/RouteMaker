@@ -53,6 +53,6 @@ test("Go's route sheet keeps one 'Add a stop' field, under the route card, with 
   assert.match(app, /const goStops = mode === "go" && !riding && points\.length >= 2 && !twoPointsOnly\(preset\) && !isMassRide\(preset\);/);
   // One edit, so Undo removes it; the route follows at once, as every Go edit does.
   assert.match(app, /const added = addStopWhereShortest\(current, point, loop\);\s*setNotice\(null\);\s*commit\(added\.points\);/);
-  // A chip's place (water, a restroom, food) is a stop once there is a route.
-  assert.ok((app.match(/if \(mode === "go" && goStops\) \{/g) ?? []).length >= 2);
+  // A place's card (water, a restroom, food: lib/stopCard.ts) offers Add as stop once there is a route.
+  assert.match(app, /if \(!goStops\) return \{ text: ROUTE_HERE, run: \(\) => goToLettered\(point, name\) \};/);
 });

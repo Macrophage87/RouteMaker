@@ -132,6 +132,12 @@ export function RouteDescription({
             {AVOID_SYMBOL}{" "}
           </span>
         )}
+        {/* A known road hazard (v0.10.0): the map's amber triangle, seen, not heard; the text names it. */}
+        {entry.kind === "hazard" && (
+          <span className="route-hazard-symbol" aria-hidden="true">
+            {"\u26a0\ufe0e "}
+          </span>
+        )}
         {entry.text}
         {/* A closure's source and until when, in small print (v0.8.2: "Citations in small text, not read out"). */}
         {entry.citation && <small className="description-citation">{entry.citation}</small>}

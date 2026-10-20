@@ -634,6 +634,13 @@ function M.remap_way(tags, derived)
     out.bicycle = "no"
   end
 
+  -- A known hazard (`rm:hazard`; v0.10.0, pipeline.hazard_layer): cobblestones or rails
+  -- in the road. The owner, 2026-10-19: "Roads with hazards like this should get a major
+  -- penalty." From here on the way is priced as LTS 4 (`M.hazard_priced`): the stress
+  -- penalty and the graded marks below, so a route takes it only where the way round is
+  -- as bad. Its rating, what the map and the road panel show, is unchanged.
+  derived = M.hazard_priced(derived)
+
   -- OSM's own `bicycle=use_sidepath` never opens a road something else closes (review
   -- RL-1): upstream reads it as "true" over a motorway's class default, `motorroad=yes`
   -- and a closing `access` or `vehicle`, so there it is written as `no`, as
@@ -1371,8 +1378,21 @@ function M.signalised_crossing(tags)
   return tags["crossing:signals"] == "yes" and not M.NOT_SIGNALISED[crossing]
 end
 
+-- v0.10.0: a junction or crosswalk at a signal an agency lists (DDOT, Alexandria)
+-- that OSM does not map, marked by the rebuild (`pipeline.agency_signals`). DC data
+-- beats OSM (the owner, 2026-10-11), so this mark is a signal over what the node
+-- itself says: an `uncontrolled` or `unmarked` crossing (a HAWK's crosswalk, as OSM
+-- often still tags it) and a stop or give-way sign mapped on the junction node. Only
+-- a crossing whose class upstream reopens to bicycles keeps it, as above.
+M.AGENCY_SIGNAL_MARK = "rm:agency_signal"
+M.AGENCY_OVERRIDES_CLASS = { crossing = true, stop = true, give_way = true }
+
 function M.derives_signal(tags)
   local highway = tags.highway
+  if tags[M.AGENCY_SIGNAL_MARK] == "yes" then
+    if highway == "crossing" and M.CROSSING_REGRANTS_BICYCLE[tags.bicycle] then return false end
+    return highway == nil or M.AGENCY_OVERRIDES_CLASS[highway] == true
+  end
   if highway ~= nil and highway ~= "crossing" then return false end
   if M.NOT_SIGNALISED[tags.crossing] or tags["crossing:signals"] == "no" then return false end
   if highway == "crossing" and M.CROSSING_REGRANTS_BICYCLE[tags.bicycle] then return false end
@@ -1455,6 +1475,24 @@ M.STRESS_PENALTY_TIER = 3
 M.GRADED_TIER = 4
 M.GRADED_SPEED = "140"
 M.GRADED_LANES = "15"
+
+--- What a known hazard is priced at (`rm:hazard`, see `remap_way`): the derived values
+-- with the tier raised to `GRADED_TIER` and no half step, where the way has a tier
+-- below it and is not trail-class (a cobbled path keeps its own price). A higher tier
+-- (4.5, Avoid) keeps its own marks. The table passed in is never changed.
+-- @param derived table: the rm:* values
+-- @return table
+function M.hazard_priced(derived)
+  if not derived.hazard or derived.is_trail_class or derived.stress_tier == nil
+    or derived.stress_tier >= M.GRADED_TIER then
+    return derived
+  end
+  local priced = {}
+  for key, value in pairs(derived) do priced[key] = value end
+  priced.stress_tier = M.GRADED_TIER
+  priced.stress_half = false
+  return priced
+end
 
 -- Half steps' marks (see `remap_way`): 3.5's practical speed (kph) and lanes
 -- each way, between a road's own and LTS 4's `GRADED_*`, and 2.5's lanes.

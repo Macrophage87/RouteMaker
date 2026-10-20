@@ -153,7 +153,8 @@ def test_the_built_licence_notices_are_complete_and_each_packages_own() -> None:
         assert name in sections, f"{name}: no section in licenses.txt"
         got_version, got_licence, body = sections.pop(name)
         assert (got_version, got_licence) == (version, licence), name
-        expected = (FRONTEND / file).read_text().strip()
+        # notices.mjs folds runs of blank lines into one, as it does for every package's text.
+        expected = re.sub(r"\n{3,}", "\n\n", (FRONTEND / file).read_text().strip())
         assert body.strip() == expected, f"{name}: the text is not {file}"
     assert not set(fonts) & set(committed_notices()), "a font is not a package"
     required = {"pmtiles", "@protomaps/basemaps", "maplibre-gl", "@maplibre/mlt"}

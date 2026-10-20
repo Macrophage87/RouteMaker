@@ -4,6 +4,7 @@
 // each note, Start with GPX, Link and More beside it, then one closed line for each fold. Go shows the same
 // route in a few lines: the time, the distance, the stress bar, the warning line and Start. App.tsx keeps
 // the state and the effects; the questions, the errors and Start ride's question are as they were.
+import { choiceColours } from "../lib/routeChoice.ts";
 import { useId, useState, type Dispatch, type ReactNode, type RefObject, type SetStateAction } from "react";
 import type { BikeshareOption, RouteError, RouteResponse } from "../lib/api.ts";
 import { placeLetter } from "../lib/letteredPlaces.ts";
@@ -35,7 +36,7 @@ import { restOffered, rideTripOf, rideable as rideableRoute, ridesLine } from ".
 import { BikeshareSummary } from "../BikeshareSummary.tsx";
 import { TransitSummary } from "../TransitSummary.tsx";
 import { DepartureTimer } from "../DepartureTimer.tsx";
-import { transitOf, transitTime } from "../lib/transit.ts";
+import { transitOf, transitTime, transitTimeName } from "../lib/transit.ts";
 import { bikeshareOf, routeCredits } from "../lib/bikeshare.ts";
 import { rideSizeOf, type Dials, type Ending } from "../lib/dials.ts";
 import { CAPACITY_FOLD_TITLE, capacitySummary } from "../lib/massCapacity.ts";
@@ -341,7 +342,7 @@ export function RouteSection(props: RouteSectionProps) {
           onScrub={setScrubPoint}
           picker={
             candidateRows(answer) === null ? null : (
-              <CandidatePicker answer={answer} choice={choice} onChoose={choose} />
+              <CandidatePicker answer={answer} choice={choice} onChoose={choose} colours={goMode ? choiceColours(answer) : null} />
             )
           }
           pickerCount={candidateRows(answer)?.length ?? 0}
@@ -747,7 +748,7 @@ export function RouteSummary({
   const bikeshare = bikeshareOf(route);
   // A transit ride type (lib/transit.ts): the line is the first ride; the trip, its total and its steps are `transit`.
   const transit = transitOf(route);
-  const timeName = transit ? (transit.scheduled ? "Door-to-door time, scheduled" : "Door-to-door time") : "Moving time";
+  const timeName = transit ? transitTimeName(transit) : "Moving time";
   const timeText = transit ? transitTime(transit) : formatDuration(route.duration_s);
   const calm = calmPercent(route.stress_m);
   // Start ride is offered with the directions too (plan Q1). On a Bikeshare or transit plan it follows the

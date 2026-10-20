@@ -331,9 +331,11 @@ class User(AbstractBaseUser):
                 or (self.is_deleted and not previous.is_deleted)
             ):
                 self.session_epoch += 1
-                # A ban or deletion ends the AI assistant key as it ends the sessions: an unban
-                # does not bring it back.
+                # A ban or deletion ends the AI assistant key and the connector's grants (and
+                # drops its unsaved drafts) as it ends the sessions: an unban brings none back.
                 AssistantKey.objects.filter(user_id=self.pk).delete()
+                ConnectorGrant.objects.filter(user_id=self.pk).delete()
+                ConnectorDraft.objects.filter(user_id=self.pk).delete()
                 update_fields = kwargs.get("update_fields")
                 if update_fields is not None:
                     kwargs["update_fields"] = {*update_fields, "session_epoch"}
@@ -344,6 +346,8 @@ class User(AbstractBaseUser):
                 # Nor its saved settings and routes (v0.7.0: "deleted with the account").
                 AccountSettings.objects.filter(user_id=self.pk).delete()
                 SavedRoute.objects.filter(user_id=self.pk).delete()
+                # Nor its 311 log (its positions are where the rider rode).
+                Report311Log.objects.filter(user_id=self.pk).delete()
                 # Its shared links keep working for those they were sent to, but with Home gone
                 # their previews could no longer hide it: no image from now on.
                 SharedRoute.objects.filter(owner_id=self.pk).update(
@@ -1825,6 +1829,59 @@ class JunctionOverride(models.Model):
         return f"{self.name}: {self.get_level_display()}"
 
 
+class FlashingSignal(models.Model):
+    """A junction the map has a traffic signal at that is really a flashing beacon: the
+    main road does not stop and the side street faces a flashing red (the owner,
+    2026-10-20, Connecticut Ave and Baltimore St, Kensington: "a blinking red against free
+    flowing traffic. It wasn't passable").
+
+    Read at plan time (`core.flashing_signals.active`), so it changes the next plan with no
+    rebuild: the junction model prices the junction with no signal
+    (`routemaker.intersections.with_beacons`), the busier road keeping priority and a rider
+    crossing it on the stopped side. Rows come from the owner (`fixtures/flashing-signals/`)
+    or an agency's list (MDOT SHA's beacons, `pipeline.agency_signals.mdot_sha_beacons`),
+    both loaded by `manage.py load_flashing_signals`, audited to an instance admin. Owner
+    rows come first, as community input outranks agency data: a load of an agency's list
+    never touches them. Withdrawing one (an audited admin action) turns it off for good.
+    """
+
+    class Source(models.TextChoices):
+        OWNER = "owner", "Owner or instance admin"
+        MDOT_SHA = "mdot-sha", "MDOT SHA Traffic Signals (a beacon)"
+
+    source = models.CharField(max_length=16, choices=Source.choices)
+    # The row's id in its source ("mdot-sha:<SIGNAL_ID>", or the owner file's own), the key
+    # a reload matches on.
+    source_id = models.CharField(max_length=80)
+    name = models.CharField(max_length=200)
+    location = models.PointField(srid=4326)
+    evidence = models.TextField(blank=True)
+    active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    withdrawn_at = models.DateTimeField(null=True, blank=True)
+    # Who withdrew it: an instance admin (it stays withdrawn whatever a load says), or a load
+    # of its agency's list that no longer had it (a later load that has it again restores it).
+    withdrawn_by = models.CharField(
+        max_length=8,
+        choices=[("admin", "An instance admin"), ("list", "Its agency's list")],
+        blank=True,
+    )
+    # Any change to the row (a load's update, a withdrawal): what tells a plan the list
+    # changed (`core.flashing_signals`). Saves name it in `update_fields`.
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "flashing_signal"
+        ordering = ["name", "id"]
+        indexes = [models.Index(fields=["active"], name="flashing_signal_active")]
+        constraints = [
+            models.UniqueConstraint(fields=["source", "source_id"], name="flashing_signal_one_row")
+        ]
+
+    def __str__(self) -> str:
+        return f"Flashing beacon: {self.name}"
+
+
 class MyGo(models.Model):
     """A signed-in rider's own Go settings (UI-CLEANUP, the owner's choice 2 of 2026-10-11):
     which view the app opens in, the ride type Go uses, and the Home the Go sheet's Home chip
@@ -1890,6 +1947,30 @@ class AccountSettings(models.Model):
 
     def __str__(self) -> str:
         return f"Settings for account {self.user_id}"
+
+
+class Report311Log(models.Model):
+    """A signed-in rider's 311 log (core.report_log; Stephen, 2026-10-20): the problems they
+    logged from a ride's 311 button or the road panel's Log for 311, each with what it is, the
+    road's name and GPS position, the time, a note, the 311 site that takes it and when they
+    reported it there. Kept with the account so it follows the rider to another device.
+
+    One row per account, the whole log as the front end keeps it (frontend/src/lib/report311Log.ts),
+    checked for shape and size by the API (`report_log.log_problem`) before it is written; the last
+    write wins. Never shared, never in a log line, deleted with the account.
+    """
+
+    user = models.OneToOneField(
+        "User", on_delete=models.CASCADE, primary_key=True, related_name="report311_log"
+    )
+    entries = models.JSONField(default=list)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "report311_log"
+
+    def __str__(self) -> str:
+        return f"311 log for account {self.user_id}"
 
 
 class SavedRoute(models.Model):
@@ -2264,3 +2345,78 @@ class ReviewQueueState(models.Model):
 
     def __str__(self) -> str:
         return f"{self.queue} at {self.computed_at:%Y-%m-%d %H:%M}"
+
+
+class ConnectorClient(models.Model):
+    """An assistant app registered to use the site's own MCP connector (core.connector; the owner,
+    2026-10-19: "Build it, v0.10.0", so Claude on the web and the phone can plan routes). Apps
+    register themselves (OAuth 2.0 dynamic client registration, RFC 7591), as Claude does when a
+    rider adds the connector: anyone may register, and the rider's own consent on this site is
+    what grants anything. A registration grants nothing by itself."""
+
+    client_id = models.CharField(max_length=64, unique=True)
+    name = models.CharField(max_length=120, blank=True)
+    redirect_uris = models.JSONField(default=list)
+    # Only for an app that asked for a secret; most (Claude among them) are public, with PKCE.
+    secret_digest = models.CharField(max_length=64, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "connector_client"
+
+    def __str__(self) -> str:
+        return f"connector app {self.name or self.client_id}"
+
+
+class ConnectorGrant(models.Model):
+    """One rider's consent to one app: the short-lived code (only its SHA-256), then the tokens
+    the app trades it for (only their SHA-256s). Like the AI assistant key it can only plan and
+    add routes to My routes: it signs nobody in and reads none of the account's routes. A ban or
+    deletion ends every grant (User.save)."""
+
+    user = models.ForeignKey("User", on_delete=models.CASCADE, related_name="connector_grants")
+    client = models.ForeignKey(ConnectorClient, on_delete=models.CASCADE, related_name="grants")
+    redirect_uri = models.TextField()
+    code_digest = models.CharField(max_length=64, unique=True, null=True, blank=True)
+    code_challenge = models.CharField(max_length=128)
+    code_expires_at = models.DateTimeField(null=True, blank=True)
+    access_digest = models.CharField(max_length=64, unique=True, null=True, blank=True)
+    access_expires_at = models.DateTimeField(null=True, blank=True)
+    refresh_digest = models.CharField(max_length=64, unique=True, null=True, blank=True)
+    refresh_expires_at = models.DateTimeField(null=True, blank=True)
+    # The code once traded, and the refresh token before the current one: either seen again
+    # means someone else holds a copy, so the grant ends (RFC 6749 4.1.2, RFC 9700 4.14.2).
+    spent_code_digest = models.CharField(max_length=64, null=True, blank=True, db_index=True)
+    previous_refresh_digest = models.CharField(max_length=64, null=True, blank=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_used_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "connector_grant"
+
+    def __str__(self) -> str:
+        return f"connector grant {self.pk} for account {self.user_id}"
+
+
+class ConnectorDraft(models.Model):
+    """A route the connector planned and has not saved (the owner, 2026-10-18: "see a ride, then
+    tell the agent the revisions to make and only save it ... when committed"). The local MCP
+    server keeps its drafts in memory; the site's runs in many processes, so here. The account's
+    own, kept a week and at most `MAX_PER_USER`, the oldest going first."""
+
+    MAX_PER_USER = 200
+    KEPT_DAYS = 7
+
+    user = models.ForeignKey("User", on_delete=models.CASCADE, related_name="connector_drafts")
+    draft_id = models.CharField(max_length=16)
+    data = models.JSONField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "connector_draft"
+        constraints = [
+            models.UniqueConstraint(fields=["user", "draft_id"], name="connector_draft_once")
+        ]
+
+    def __str__(self) -> str:
+        return f"draft {self.draft_id} of account {self.user_id}"

@@ -53,7 +53,7 @@ export const OPEN_IN_LABEL: Record<OpenIn, string> = {
 };
 
 /** A line under "Open in" saying what by screen size does. */
-export const OPEN_IN_HINT = "By screen size: a phone opens in Go, a wider screen in Plan. A shared link always opens in Plan.";
+export const OPEN_IN_HINT = "By screen size: a phone opens in Go, a wider screen in Plan. A shared link opens in Plan on a wider screen.";
 
 export function isMode(value: unknown): value is AppMode {
   return value === "go" || value === "plan" || value === "review";
@@ -158,10 +158,15 @@ export interface OpeningInputs {
   wide: boolean;
 }
 
-/** The view to open in, and why (the why decides whether a later My Go may still change it). */
+/**
+ * The view to open in, and why (the why decides whether a later My Go may still change it). A link opens
+ * in Plan only on a wide screen: a phone opens in Go (the owner, 2026-10-19: "Have go open by default on
+ * phones"), with the link's points, which Go shows and rides. The app writes its own ride type into the
+ * address, so a phone that reloaded the app with it went to Plan.
+ */
 export function openingMode(inputs: OpeningInputs): { mode: AppMode; by: "tab" | "link" | "my-go" | "screen" } {
   if (inputs.tab) return { mode: inputs.tab, by: "tab" };
-  if (inputs.planLink) return { mode: "plan", by: "link" };
+  if (inputs.planLink && inputs.wide) return { mode: "plan", by: "link" };
   if (inputs.openIn) return { mode: inputs.openIn, by: "my-go" };
   return { mode: inputs.wide ? "plan" : "go", by: "screen" };
 }

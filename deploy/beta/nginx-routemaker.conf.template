@@ -240,9 +240,11 @@ server {
         add_header Cache-Control "no-cache" always;
     }
 
-    # The rider-facing page on how traffic-stress ratings work (OWNER-DECISIONS
-    # 461; frontend/public/about/stress.html), with the app's headers and CSP.
-    location = /about/stress.html {
+    # The rider-facing pages (Caddyfile @frontend): how traffic-stress ratings work
+    # (OWNER-DECISIONS 461; frontend/public/about/stress.html) and the rest of the
+    # documentation beside it, with the app's headers and CSP. Exactly these names, as
+    # the Caddyfile lists them; any other /about/ path still reaches the app.
+    location ~ ^/about/((stress|how-it-works|using|accessibility|routing|ride-types|mass-ride|trails|architecture|assistants|acknowledgements)\.html|route-example\.webp)$ {
         root @DATA_ROOT@/frontend;
         add_header X-Robots-Tag "noindex, nofollow" always;
         add_header Strict-Transport-Security "max-age=86400" always;
@@ -419,6 +421,27 @@ server {
     # and Django's DATA_UPLOAD_MAX_MEMORY_SIZE. The proxy settings are location /'s below.
     location ~ ^/api/(shared-routes|me|keyed)(/|$) {
         client_max_body_size 5m;
+        proxy_pass http://rmbeta_api;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_connect_timeout 5s;
+        proxy_send_timeout 75s;
+        proxy_read_timeout 75s;
+    }
+
+    # --- the MCP connector and its sign-in, past the password ---------------------------
+    # The site's own MCP connector (src/core/connector.py, v0.10.0): an assistant's servers call
+    # these, and they cannot type the beta's password. Each carries its own credential instead: a
+    # rider's OAuth token for /mcp, a code and its PKCE verifier for /oauth/token. The rider's
+    # own pages (/oauth/authorize, /auth/) stay behind the password. The proxy settings are
+    # location /'s below.
+    location ~ ^/(mcp|oauth/(register|token)|\.well-known/oauth-(protected-resource(/mcp)?|authorization-server))$ {
+        auth_basic off;
+        add_header X-Robots-Tag "noindex, nofollow" always;
+        add_header Strict-Transport-Security "max-age=86400" always;
         proxy_pass http://rmbeta_api;
         proxy_http_version 1.1;
         proxy_set_header Connection "";

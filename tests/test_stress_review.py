@@ -11,6 +11,7 @@ audited and can be undone in the window, and only an instance admin reaches any 
 
 from __future__ import annotations
 
+import io
 import json
 import re
 from datetime import UTC, datetime, timedelta
@@ -252,6 +253,34 @@ class TestPrecompute:
         assert stress_review.reports_dir("reports") == tmp_path / "reports"
         assert stress_review.reports_dir("missing") is None
 
+    def test_after_a_swap_the_command_lists_the_build_from_live_and_the_retired(
+        self, tables, tmp_path
+    ) -> None:
+        """After a swap the build is live and the map it replaced retired (`<live>_old`):
+        `--old-schema` and `--new-schema` name them. Here staging stands for the retired."""
+        from django.core.management import CommandError, call_command
+
+        live, staging = tables
+        call_command(
+            "compute_review_queue",
+            build_id=BUILD,
+            old_schema=staging,
+            new_schema=live,
+            reports_dir=str(tmp_path),
+            stdout=io.StringIO(),
+        )
+        found = items("rebuild")
+        assert set(found) == {DROP, CLOSED, RISE}
+        assert found[DROP].kind == "2-4" and found[CLOSED].kind == "reopened"
+        with pytest.raises(CommandError):
+            call_command("compute_review_queue", new_schema=live)
+        for bad in ({"old_schema": "live_olld", "new_schema": live}, {"new_schema": "lvie"}):
+            with pytest.raises(CommandError, match="does not exist"):
+                call_command("compute_review_queue", build_id=BUILD, **bad)
+        with pytest.raises(CommandError, match="same schema"):
+            call_command("compute_review_queue", build_id=BUILD, old_schema=live, new_schema=live)
+        assert set(items("rebuild")) == {DROP, CLOSED, RISE}
+
     def test_the_tables_are_compared_in_one_sort_each_and_null_safe(self) -> None:
         """DISTINCT ON (one sort of each table, never an array of every piece), and IS DISTINCT
         FROM, so a value missing on one side is still a change."""
@@ -262,6 +291,70 @@ class TestPrecompute:
         body = inspect.getsource(stress_review.compute_rebuild)
         assert "o.step IS DISTINCT FROM n.step OR o.closed IS DISTINCT FROM n.closed" in body
         assert "array_agg" not in inspect.getsource(stress_review)
+
+    def test_a_large_build_fills_by_batch_and_never_a_row_at_a_time(
+        self, segment_schemas, settings, tmp_path, monkeypatch
+    ) -> None:
+        """The owner's PC, 2026-10-19: a build of about 107,000 changed ways spent over ten hours
+        in one `UPDATE review_item ... FROM (the segments' aggregate)`. The rows were new in that
+        transaction, the planner guessed one, and its nested loop ran the aggregate again for
+        every row. Here the planner is held to nested loops (as it chose there) and each statement
+        to 15 seconds: that fill takes about 40 here and runs out of it; one by batch on
+        indexes takes well under a second a statement."""
+        live, staging = segment_schemas
+        ways = 3000
+        for schema, tier in ((live, 4), (staging, 2)):
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    f"""
+                    INSERT INTO {schema}.segment (osm_way_id, ordinal, stress_tier, stress_rule,
+                                                 trail_name, geometry)
+                    SELECT w, o, {tier}, 'mixed traffic', 'Way ' || w,
+                           ST_MakeLine(ST_MakePoint(-77.2 + (w % 60) * 0.004 + o * 0.001,
+                                                    38.8 + (w / 60) * 0.002),
+                                       ST_MakePoint(-77.2 + (w % 60) * 0.004 + (o + 1) * 0.001,
+                                                    38.8 + (w / 60) * 0.002))
+                    FROM generate_series(1, {ways}) w, generate_series(0, 2) o
+                    """
+                )
+                cursor.execute(f"ANALYZE {schema}.segment")
+        west = [[-77.3, 38.7], [-77.0, 38.7], [-77.0, 39.0], [-77.3, 39.0], [-77.3, 38.7]]
+        (tmp_path / "counties.geojson").write_text(
+            json.dumps(
+                {
+                    "type": "FeatureCollection",
+                    "features": [
+                        {
+                            "type": "Feature",
+                            "properties": {"NAMELSAD": "Montgomery County", "STATEFP": "24"},
+                            "geometry": {"type": "Polygon", "coordinates": [west]},
+                        }
+                    ],
+                }
+            )
+        )
+        settings.REBUILD_REFERENCE_DIR = tmp_path
+        monkeypatch.setattr(stress_review, "CHUNK", 700)
+        write_facts = stress_review._write_facts
+
+        def held_to_nested_loops(queue, schema, build_id):
+            with connection.cursor() as cursor:
+                cursor.execute("SET LOCAL enable_hashjoin = off")
+                cursor.execute("SET LOCAL enable_mergejoin = off")
+                cursor.execute("SET LOCAL statement_timeout = '15s'")
+            write_facts(queue, schema, build_id)
+
+        monkeypatch.setattr(stress_review, "_write_facts", held_to_nested_loops)
+        assert stress_review.compute_rebuild(BUILD, live, staging) == ways
+        found = items("rebuild")
+        assert len(found) == ways
+        for way in (1, 700, 701, 1400, ways):
+            item = found[way]
+            assert item.name == f"Way {way}" and item.area == "Montgomery County, MD"
+            assert len(item.geometry) == 3 and item.simple is not None
+            assert item.geometry.distance(item.point) < 1e-9
+            assert 250 < item.length_m < 270 and item.score == pytest.approx(2 * item.length_m)
+        assert not ReviewItem.objects.filter(queue="rebuild", geometry__isnull=True).exists()
 
     def test_each_item_keeps_a_simplified_line_and_a_point_on_it(self, tables) -> None:
         live, staging = tables

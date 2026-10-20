@@ -1,4 +1,4 @@
-// The short-lived messages' timer (review F4, F6): the 311 line and Ride ended's Undo clear after a while, but
+// The short-lived messages' timer (review F4, F6): the 311 line and the ride's toast clear after a while, but
 // never while the focus or a mouse is in them.
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -82,13 +82,12 @@ test("F4. a new message restarts the time; a start while held waits; reset lets 
   assert.equal(gone, 1);
 });
 
-test("F4. RideMode: the 311 line uses it (8 s), held on focus or a mouse, and Ride ended's Undo the same", () => {
+test("F4. RideMode: the 311 line uses it (8 s), held on focus or a mouse", () => {
   const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
   assert.match(ride, /export const SAID_311_MS = 8_000;/);
   assert.match(ride, /const said311Timer = useHoldTimer\(SAID_311_MS, \(\) => setSaid311\(""\)\);/);
   assert.match(ride, /<div className="ride-311-said" \{\.\.\.said311Timer\.hold\}>/);
   assert.match(ride, /if \(said311Shown\) said311Timer\.timer\.start\(\);\s*else said311Timer\.timer\.reset\(\);/);
-  assert.match(ride, /const \{ timer, hold \} = useHoldTimer\(UNDO_END_MS, onGone\);/);
   // A touch's emulated hover is not a hover (it would hold the line until the next tap).
   assert.match(ride, /if \(event\.pointerType === "mouse"\) timer\.current\?\.hover\(true\);/);
 });

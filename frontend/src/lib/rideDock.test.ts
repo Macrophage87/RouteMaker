@@ -8,7 +8,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { DockInfo, DocksAnswer } from "./bikeshareDocks.ts";
 import type { LonLat } from "./geo.ts";
 import type { NearestPlace, NearestResult } from "./nearest.ts";
-import { RIDE_311_MORE, Ride311Menu } from "./ride311.ts";
+import { Ride311Menu } from "./ride311.ts";
 import { corridorWorry } from "./corridor.ts";
 import { rideTripOf } from "./rideTrip.ts";
 import {
@@ -183,15 +183,16 @@ test("the map saved for dead spots is said only when something went wrong", () =
   assert.equal(corridorWorry(null), "");
 });
 
-test("the 311 menu ends with the full report, so the bottom panel need not show it", () => {
-  const html = renderToStaticMarkup(createElement(Ride311Menu, { id: "m", open: true, place: null, onPick: () => {}, onClose: () => {}, onMore: () => {} }));
-  assert.match(html, new RegExp(`<button type="button" class="secondary ride-311-more">${RIDE_311_MORE}</button></div>$`));
+test("the 311 menu ends with its six problems: no full report, since a pick is logged", () => {
+  const html = renderToStaticMarkup(createElement(Ride311Menu, { id: "m", open: true, place: null, onPick: () => {}, onClose: () => {} }));
+  assert.match(html, /Something else<\/button><\/li><\/ul><\/div>$/);
 });
 
 test("RideMode: round side buttons with names; the bottom panel only when it has something; the dock button on a share bike", () => {
-  // Each round button is named for screen readers, keeps its key, and Re-centre says when the map stopped following.
-  assert.match(ride, /className="ride-round" onClick=\{askWhere\} aria-keyshortcuts="W" aria-label="Where am I\?"/);
-  assert.match(ride, /aria-keyshortcuts="C"\s+aria-label=\{follow \? "Re-centre" : "Re-centre: the map stopped following you"\}/);
+  // Each round button is named for screen readers and keeps its key; Where am I? re-centres too (the owner, 2026-10-20)
+  // and says when the map stopped following.
+  assert.match(ride, /onClick=\{findMe\}\s+aria-keyshortcuts="W C"\s+aria-label=\{follow \? "Where am I\?" : "Where am I\? The map stopped following you"\}/);
+  assert.match(ride, /const findMe = useCallback\(\(\) => \{\s*onFollow\(true\);\s*askWhere\(\);/);
   assert.match(ride, /<Icon name="detour" size=\{24\} \/>/);
   assert.match(ride, /\{shareBike && !ride\.arrived && \(/);
   // The bottom panel is gone by default.
@@ -209,8 +210,9 @@ test("RideMode: round side buttons with names; the bottom panel only when it has
 test("following track-up, the rider is held two thirds of the way down the map, and the marker is a little larger (v0.9.0)", () => {
   const map = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
   assert.match(map, /export const RIDER_AT = 2 \/ 3;/);
-  assert.match(map, /return Math\.round\(top \+ Math\.max\(0, bottom - top\) \* RIDER_AT - box\.height \/ 2\);/);
-  assert.match(map, /const ahead = props\.headingUp \? riderOffset\(map\.getContainer\(\)\) : 0;/);
+  assert.match(map, /return Math\.round\(top \+ Math\.max\(0, bottom - top\) \* at - box\.height \/ 2\);/);
+  // North-up, the rider is centred in the open band, below a Large card (2026-10-20).
+  assert.match(map, /const ahead = riderOffset\(map\.getContainer\(\), props\.headingUp \? RIDER_AT : 1 \/ 2\);/);
   assert.match(map, /map\.easeTo\(\{ center: rider\.point, bearing, zoom, offset: \[0, ahead\], padding: NO_PADDING, duration: still \? 0 : 400 \}\);/);
   assert.match(css, /\.rider-marker \{\s*width: 36px;\s*height: 36px;/);
 });

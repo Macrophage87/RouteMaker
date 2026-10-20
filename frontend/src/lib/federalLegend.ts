@@ -1,7 +1,7 @@
 /**
  * The panel's Federal land section, shown only for a Mass Ride: the switch, the
  * status of the data, the points on it and the standing note; the legend and the
- * help are in the Legend sheet. Written with
+ * help are in its Layers section. Written with
  * createElement so a test renders it (as pointsList.ts, stressLegend.ts).
  *
  * The legend draws each kind with the map's own pattern and outline dash and
@@ -158,7 +158,8 @@ interface Props {
  * The section in the Layers sheet (lib/layerSection.ts); the caller renders it for a Mass Ride only
  * (federalShown's preset test). One row, its switch the layer's; its status line is the section's one
  * persistent role="status" element whose words change (the a11y review's N8), said open or closed. Inside:
- * the points list and the note. The legend and the help are behind Layers' Legend button (FederalLegendNotes).
+ * the points list and the note, then, while the layer is on, its key and help (FederalKey; the owner, 2026-10-19:
+ * "include the legend within the accordion settings in layers").
  */
 export function FederalLandSection({ on, onChange, status, points = null, pointCount = 0, nameOf = (i) => `Point ${i + 1}` }: Props): ReactElement {
   return h(
@@ -174,16 +175,15 @@ export function FederalLandSection({ on, onChange, status, points = null, pointC
     },
     h(FederalPointsList, { found: points, count: pointCount, nameOf }),
     h("p", { className: "hint federal-note" }, `${FEDERAL_NOTE}.`),
+    on && h(FederalKey, { status }),
   );
 }
 
 /**
- * The Legend sheet's federal land part, a Mass Ride's alone and while the layer is on: the four kinds in
- * words and patterns, then the help, the ownership caveat and the route's badge (moved from Layers, the
- * owner's "less wordy", 2026-10-12).
+ * The federal land section's key, while the layer is on: the four kinds in words and patterns, then the help,
+ * the ownership caveat and the route's badge.
  */
-export function FederalLegendNotes({ preset, on, status }: { preset: PresetId; on: boolean; status: FederalStatus }): ReactElement | null {
-  if (!federalShown(preset, on)) return null;
+function FederalKey({ status }: { status: FederalStatus }): ReactElement {
   return h(
     "div",
     { className: "federal-notes" },
