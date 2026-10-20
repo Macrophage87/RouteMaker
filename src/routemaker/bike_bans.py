@@ -65,6 +65,7 @@ WHY = {
     "mtb": "A mountain-bike trail",
     "singletrack": "Rated singletrack",
     "dismount": "A long walk-your-bike connector",
+    "escalator": "An escalator: bicycles use the elevator",
 }
 
 

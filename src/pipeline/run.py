@@ -98,6 +98,7 @@ from . import (
     variants,
     writers,
 )
+from . import station_links as station_ways
 from .rebuild import RebuildTimedOut, Stage
 from .schema import (
     METRES_PER_MILE,
@@ -829,6 +830,9 @@ class RebuildContext:
     # The street-running rail lines of the extract (`pipeline.hazard_layer.read_rails`;
     # v0.10.0's hazard symbols, never a stress input).
     street_rails: list = field(default_factory=list)
+    # The ways into Metro and MARC stations (`pipeline.station_links.read_ways_in`): the
+    # footways from them become walk-your-bike links (`routemaker.station_links`).
+    station_ways_in: list = field(default_factory=list)
     # (the roads they lie along, the reviewed list by way), worked out once
     # (`hazard_inputs`); None until then.
     hazard_inputs: tuple | None = None
@@ -2128,6 +2132,8 @@ def build_handlers(
         context.scenic_routes = scenic_layer.read_routes(context.source_pbf)
         # The street-running rails (v0.10.0), for the hazard symbols and the road panel alone.
         context.street_rails = hazard_layer.read_rails(context.source_pbf)
+        # The stations' ways in (the owner, 2026-10-20), for the walk-your-bike links into them.
+        context.station_ways_in = station_ways.read_ways_in(context.source_pbf)
         # Indexed once. The first version scanned the whole way list inside a
         # loop over every border node inside a loop over every variant.
         context.ways_by_id = {way.osm_id: way for way in context.ways}
@@ -3024,6 +3030,7 @@ def build_handlers(
         )
         # After the agency prohibitions, so a link never leads onto a road they close.
         trail_closures.add_walk_links(nobike, context.ways)
+        trail_closures.add_station_links(nobike, context.ways, context.station_ways_in)
         context.walk_bike = nobike.walk_bike
         context.walk_links = nobike.walk_links
         context.destination_only = nobike.destination_only
