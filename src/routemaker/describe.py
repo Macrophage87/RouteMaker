@@ -158,6 +158,22 @@ UNNAMED_PATH = "path"
 # tests/test_describe.py TestFrontEndAgrees).
 UNNAMED_ROAD = "unnamed road"
 UNTRACED_STREET = "this part of the route"
+# What an unnamed service way is called, by Valhalla's `use` (the owner, 2026-10-20, on a
+# frontage road beside East-West Highway: "When going on a service road, especially next
+# to a major road, say so"). A service way is never folded into an unnamed road as one
+# street (`_same_street`), so the turn onto it is said.
+SERVICE_WORDS = {
+    "service_road": "service road",
+    "driveway": "service road",
+    "drive_through": "service road",
+    "alley": "alley",
+    "parking_aisle": "parking aisle",
+}
+# An unnamed service road, path or sidewalk beside a major road is named after it at plan
+# time (`core.beside_roads`, `beside_words`): "service road beside East-West Highway".
+BESIDE = " beside "
+# The words a sentence says "the" before: "Left onto the service road beside ...".
+_COMMON_WAY = re.compile(r"^(?:path|sidewalk|service road|alley|parking aisle)\b")
 PATH_WORDS = "traffic-free path"
 FACILITY_WORDS = {"protected": "protected bike lane", "lane": "painted bike lane"}
 # The tiers on which a painted lane is not called a bike lane while the client's
@@ -251,6 +267,22 @@ class Atom:
     fork: str | None = None
 
 
+def beside_words(use: str, road: str) -> str | None:
+    """An unnamed way's name from the major road it runs beside (`core.beside_roads`):
+    "service road beside East-West Highway", "sidewalk beside ...", "path beside ...";
+    None for a way that is neither a service way nor a path (or an alley or a parking
+    aisle, which are not said to run beside anything)."""
+    if SERVICE_WORDS.get(use) == "service road":
+        kind = "service road"
+    elif use == "sidewalk":
+        kind = "sidewalk"
+    elif use in PATH_USES:
+        kind = UNNAMED_PATH
+    else:
+        return None
+    return f"{kind}{BESIDE}{road}"
+
+
 @dataclass
 class _Run:
     """A stretch being built."""
@@ -266,6 +298,8 @@ class _Run:
     untraced: bool = False
     leg: int = 0
     unpaved_m: float = 0.0
+    # An unnamed service way's word (`SERVICE_WORDS`), else None.
+    service: str | None = None
 
 
 def _run_of(atom: Atom, leg: int) -> _Run:
@@ -280,6 +314,7 @@ def _run_of(atom: Atom, leg: int) -> _Run:
         path=atom.use in PATH_USES,
         leg=leg,
         unpaved_m=atom.metres if atom.unpaved else 0.0,
+        service=None if atom.names else SERVICE_WORDS.get(atom.use),
     )
 
 
@@ -297,6 +332,7 @@ def _runs_of(atoms: list[Atom], leg: int) -> list[_Run]:
             and atom.tier == previous.tier
             and atom.facility == previous.facility
             and not atom.fork
+            and (atom.names or SERVICE_WORDS.get(atom.use) == SERVICE_WORDS.get(previous.use))
         ):
             run = runs[-1]
             run.metres += atom.metres
@@ -311,7 +347,7 @@ def _runs_of(atoms: list[Atom], leg: int) -> list[_Run]:
 
 def _same_street(a: _Run, b: _Run) -> bool:
     if not a.names and not b.names:
-        return True
+        return a.service == b.service
     return bool(a.names & b.names)
 
 
@@ -749,13 +785,16 @@ def _street_words(run: _Run) -> str:
         return UNTRACED_STREET
     if run.label:
         return run.label
+    if run.service:
+        return run.service
     return UNNAMED_PATH if run.facility in ("path", "protected") or run.path else UNNAMED_ROAD
 
 
 def _in_sentence(street: str) -> str:
     """The street as a sentence names it after "onto" or "on": "the path" for a path
-    with no name, the street itself otherwise."""
-    return f"the {street}" if street == UNNAMED_PATH else street
+    with no name, "the service road beside East-West Highway", the street itself
+    otherwise."""
+    return f"the {street}" if _COMMON_WAY.match(street) else street
 
 
 def _stretch_sentence(
@@ -785,9 +824,9 @@ def _stretch_sentence(
     elif same_street_continues:
         lead = f"Continue on {_in_sentence(street)}"
     else:
-        lead = street[:1].upper() + street[1:] if street == UNNAMED_PATH else street
+        lead = street[:1].upper() + street[1:] if _COMMON_WAY.match(street) else street
     words = tier_words(run.tier, run.facility)
-    if words == PATH_WORDS and street == UNNAMED_PATH:
+    if words == PATH_WORDS and _COMMON_WAY.match(street):
         words = "traffic-free"
     elif street.endswith(" bike lane"):
         # A bike lane named for its street ("9th Street Northwest protected bike lane")
@@ -813,7 +852,7 @@ def _then_words(streets: list[tuple[str, str | None]]) -> str:
         pieces.append(
             f"{TURN_WORDS[movement].lower()} on {_in_sentence(street)}"
             if movement in TURN_WORDS
-            else street
+            else _in_sentence(street)
         )
     more = len(streets) - MAX_NAMED_TURNS
     if more > 0:
