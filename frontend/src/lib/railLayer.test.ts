@@ -263,7 +263,7 @@ test("stationAt falls back to the stations' points when the query misses, from t
   assert.match(view, /stations: RAIL_STATIONS,/);
 });
 
-test("station names are larger than the street names, in a ride too, and show from the opening zoom", async () => {
+test("station names are larger than the street names, in a ride too, and show from city zoom", async () => {
   const { ROAD_LABEL } = await import("../stressStyle.js");
   const { NAME_MIN_ZOOM, RIDE_STATION_NAME_SIZE, STATION_NAME_SIZE } = await import("./railLayer.ts");
   const layer = railLayers().find((l) => l.id === RAIL_LAYERS.names) as { layout: Record<string, unknown>; paint: Record<string, unknown> };
@@ -272,9 +272,12 @@ test("station names are larger than the street names, in a ride too, and show fr
   assert.equal(RIDE_STATION_NAME_SIZE, 24);
   assert.ok(STATION_NAME_SIZE > ROAD_LABEL.size && RIDE_STATION_NAME_SIZE > ROAD_LABEL.rideSize);
   assert.equal(layer.paint["text-halo-width"], ROAD_LABEL.haloWidth);
-  assert.ok(NAME_MIN_ZOOM <= OPENING_ZOOM, "names show where the map opens");
+  // From city zoom, not region zoom, where they ran together.
+  assert.equal(NAME_MIN_ZOOM, 12);
+  assert.ok(NAME_MIN_ZOOM > OPENING_ZOOM && NAME_MIN_ZOOM < ELEVATOR_MIN_ZOOM);
   const mapView = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
   assert.match(mapView, /RIDE_STATION_NAME_SIZE : STATION_NAME_SIZE/, "a ride switches the station names' size");
+  assert.match(mapView, /map\.moveLayer\(RAIL_LAYERS\.names\)/, "the names are kept over every other layer");
 });
 
 test("where names crowd, the station with most lines keeps its name and a closed one gives way", () => {

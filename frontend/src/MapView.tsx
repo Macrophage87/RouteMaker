@@ -2295,16 +2295,18 @@ export function MapView(props: Props) {
       map.off("styledata", apply);
     };
   }, [props.rideLabels]);
-  // The station names keep pace with the street names (railLayer.ts, STATION_NAME_SIZE); the stations' layer can be
-  // added (or the style reloaded) at any time, so this listens throughout.
+  // The station names: larger than the street names (railLayer.ts, STATION_NAME_SIZE), and over every other layer
+  // (the owner, 2026-10-20: "Text should be on top in most cases"), so no pin, line or route hides one; the markers
+  // are DOM and stay above. Layers come and go (water, climbs, the route, a style reload), so this listens throughout.
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
     const size = props.rideLabels ? RIDE_STATION_NAME_SIZE : STATION_NAME_SIZE;
     const apply = () => {
-      if (map.getLayer(RAIL_LAYERS.names) && map.getLayoutProperty(RAIL_LAYERS.names, "text-size") !== size) {
-        map.setLayoutProperty(RAIL_LAYERS.names, "text-size", size);
-      }
+      if (!map.getLayer(RAIL_LAYERS.names)) return;
+      if (map.getLayoutProperty(RAIL_LAYERS.names, "text-size") !== size) map.setLayoutProperty(RAIL_LAYERS.names, "text-size", size);
+      const order = map.getLayersOrder();
+      if (order[order.length - 1] !== RAIL_LAYERS.names) map.moveLayer(RAIL_LAYERS.names);
     };
     apply();
     map.on("styledata", apply);

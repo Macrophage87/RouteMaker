@@ -6,7 +6,8 @@
  * (which goes under the base map's first label layer), then these - ordinary
  * entrances, stations, elevators - then the route, then the markers (DOM, so
  * always on top). They go in directly under the route's casing, so they sit
- * over everything the base map and the overlay draw and under the ride.
+ * over everything the base map and the overlay draw and under the ride; the
+ * names then move to the very top (MapView), over the route and every pin.
  */
 import {
   ALERT_BADGE_ICON,
@@ -42,9 +43,11 @@ export const LABEL_FONT = "Noto Sans Medium";
 /** Street level: where an elevator is worth drawing, and a plain entrance later still. */
 export const ELEVATOR_MIN_ZOOM = 15;
 export const ENTRANCE_MIN_ZOOM = 16;
-/** Names from the zoom the map opens at (OPENING_ZOOM), not only street level (the owner, 2026-10-20: "probably show
- *  at most zooms too"); where they crowd, a name gives way and its icon stays (text-optional). */
-export const NAME_MIN_ZOOM = 11;
+/** Names from city zoom, not only street level (the owner, 2026-10-20: "probably show at most zooms too"), but not
+ *  at region zooms where they run together ("Cap the zoom at the point when they stop running together"): at 12 the
+ *  outer stations all have their names and downtown's sit clear of each other; where they still crowd, the busiest
+ *  station's name stays (the names' sort key) and every name is there by about 13.5. */
+export const NAME_MIN_ZOOM = 12;
 export const STATION_MIN_ZOOM = 8;
 /** A station's name larger than the street names (ROAD_LABEL: 15 px, 20 px in a ride): the stations are often the
  *  wayfinders (the owner, 2026-10-20: "The metro names are now much smaller than the roadways, but are often the key
