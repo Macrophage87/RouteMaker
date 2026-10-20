@@ -46,6 +46,7 @@ DOC_PAGES = (
     "mass-ride",
     "trails",
     "architecture",
+    "assistants",
     "acknowledgements",
 )
 # The worked example's map on the routing page.

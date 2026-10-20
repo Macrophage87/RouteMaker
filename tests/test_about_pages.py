@@ -24,6 +24,7 @@ DOCS = (
     "mass-ride",
     "trails",
     "architecture",
+    "assistants",
     "acknowledgements",
 )
 SET = (*DOCS, "stress")
@@ -100,7 +101,16 @@ def test_every_diagram_is_an_image_with_a_title_and_a_description(name: str) -> 
     assert page.count('<div class="fig-scroll" tabindex="0"') == len(svgs)
 
 
-CITED = ("how-it-works", "routing", "ride-types", "mass-ride", "trails", "architecture", "stress")
+CITED = (
+    "how-it-works",
+    "routing",
+    "ride-types",
+    "mass-ride",
+    "trails",
+    "architecture",
+    "assistants",
+    "stress",
+)
 
 
 @pytest.mark.parametrize("name", CITED)

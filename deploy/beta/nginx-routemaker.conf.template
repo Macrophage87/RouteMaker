@@ -244,7 +244,7 @@ server {
     # (OWNER-DECISIONS 461; frontend/public/about/stress.html) and the rest of the
     # documentation beside it, with the app's headers and CSP. Exactly these names, as
     # the Caddyfile lists them; any other /about/ path still reaches the app.
-    location ~ ^/about/((stress|how-it-works|routing|ride-types|mass-ride|trails|architecture|acknowledgements)\.html|route-example\.webp)$ {
+    location ~ ^/about/((stress|how-it-works|routing|ride-types|mass-ride|trails|architecture|assistants|acknowledgements)\.html|route-example\.webp)$ {
         root @DATA_ROOT@/frontend;
         add_header X-Robots-Tag "noindex, nofollow" always;
         add_header Strict-Transport-Security "max-age=86400" always;

@@ -203,7 +203,7 @@
 	# rest of the rider-facing documentation (the owner, 2026-10-19: "a full set of
 	# documentation that can be linked to the website"): how-it-works.html, the
 	# hub that Settings links to, routing.html, ride-types.html, mass-ride.html,
-	# trails.html, architecture.html and acknowledgements.html, which the map's
+	# trails.html, architecture.html, assistants.html and acknowledgements.html, which the map's
 	# credits link to, and route-example.webp, the worked example's map. 302, not 301, for
 	# the preset links' reason above: a browser keeps a permanent redirect with no
 	# way for us to take it back, so a rollback or a later move of the page would
@@ -223,7 +223,7 @@
 	# served: it is copied over sw.js on disk when needed.
 	@stress-page path /about/stress /about/stress/
 	redir @stress-page /about/stress.html 302
-	@frontend path / /index.html /favicon.svg /licenses.txt /about/stress.html /about/how-it-works.html /about/routing.html /about/ride-types.html /about/mass-ride.html /about/trails.html /about/architecture.html /about/acknowledgements.html /about/route-example.webp /assets/* /sw.js /manifest.webmanifest /icons/*
+	@frontend path / /index.html /favicon.svg /licenses.txt /about/stress.html /about/how-it-works.html /about/routing.html /about/ride-types.html /about/mass-ride.html /about/trails.html /about/architecture.html /about/assistants.html /about/acknowledgements.html /about/route-example.webp /assets/* /sw.js /manifest.webmanifest /icons/*
 	handle @frontend {
 		encode zstd gzip
 		header Referrer-Policy "same-origin"
