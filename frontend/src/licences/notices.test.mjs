@@ -122,7 +122,7 @@ test("the notices cover every package inlined in the maplibre-gl this lockfile i
 });
 
 test("the self-hosted font's credit and the full SIL Open Font License are added under a heading of its own (384)", () => {
-  assert.deepEqual(BUNDLED_FONTS.map((f) => f.name), ["Atkinson Hyperlegible"]);
+  assert.deepEqual(BUNDLED_FONTS.map((f) => f.name), ["Atkinson Hyperlegible", "Atkinson Hyperlegible Next"]);
   const fonts = BUNDLED_FONTS.map((f) => ({ ...f, text: readFileSync(new URL(f.file, FRONTEND), "utf8") }));
   const base = completeLicences(VITE, { fill: () => "text" });
   const text = withFontNotices(base, fonts);
@@ -131,6 +131,8 @@ test("the self-hosted font's credit and the full SIL Open Font License are added
   assert.ok(text.indexOf("## pmtiles") >= 0 && text.indexOf("## fflate") >= 0);
   assert.match(text, /^## Atkinson Hyperlegible - 2020 \(OFL-1\.1\)$/m);
   assert.match(text, /Copyright 2020 Braille Institute of America, Inc\./);
+  assert.match(text, /^## Atkinson Hyperlegible Next - 2\.001 \(OFL-1\.1\)$/m);
+  assert.match(text, /The Atkinson Hyperlegible Next Project Authors/);
   assert.match(text, /SIL OPEN FONT LICENSE Version 1\.1 - 26 February 2007/);
   assert.match(text, /PERMISSION & CONDITIONS/);
   assert.match(text, /DISCLAIMER/);

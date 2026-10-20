@@ -99,6 +99,8 @@ export function completeLicences(text, { fill, inlined = [] }) {
 /** The fonts the app serves from /assets/ (src/fonts/fonts.css), each with the licence file shipped beside it. */
 export const BUNDLED_FONTS = [
   { name: "Atkinson Hyperlegible", version: "2020", license: "OFL-1.1", file: "src/fonts/OFL.txt" },
+  // The map's street names (lib/mapGlyphs.ts), as glyph files made from the font.
+  { name: "Atkinson Hyperlegible Next", version: "2.001", license: "OFL-1.1", file: "src/fonts/map-glyphs/OFL.txt" },
 ];
 
 /** Each bundled font with its licence file's text read from `root` (frontend/), or null when the file is missing. */
