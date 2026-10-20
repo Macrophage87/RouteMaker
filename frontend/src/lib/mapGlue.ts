@@ -29,6 +29,8 @@ import {
   mtbLevelPaint,
   MTB_LABEL_LAYER_ID,
   mtbLabelColor,
+  ROAD_LABEL_LAYER_IDS,
+  roadLabelPaint,
   unpavedLayers,
   halfStepLayers,
   UNPAVED_DASH,
@@ -229,6 +231,11 @@ export function setStressPalette(
   // The trail names (2026-10-10): an unrated trail's grey follows its line's with the accessibility switch.
   if (map.getLayer(MTB_LABEL_LAYER_ID)) {
     map.setPaintProperty(MTB_LABEL_LAYER_ID, "text-color", mtbLabelColor());
+  }
+  // The street names: darker, on a wider halo, with the accessibility switch (stressStyle.js, ROAD_LABEL).
+  for (const id of ROAD_LABEL_LAYER_IDS) {
+    if (!map.getLayer(id)) continue;
+    for (const [name, value] of Object.entries(roadLabelPaint())) map.setPaintProperty(id, name, value);
   }
 }
 

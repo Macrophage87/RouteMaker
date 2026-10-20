@@ -6008,8 +6008,8 @@ on a 1.5 px white halo, over the routable lines and under the Mass Ride layers; 
 collision, `text-padding` 8 and `symbol-spacing` 300 thin the labels, and `text-max-angle` is 45
 so a name still fits along curvy singletrack at z15-16. The text is in the line's own
 colour, each 4.5:1 or more against the halo (green 6.10:1, blue 5.75:1, black 17.49:1, red 5.62:1,
-the unrated grey 6.05:1, 7.85:1 with the accessibility switch); the base map's path-label grey (#91888b, about 3.5:1) would
-not be. The road panel says the name: the Bikes line reads "Mountain-bike trail, level 2 (blue):
+the unrated grey 6.05:1, 7.85:1 with the accessibility switch); the base map's stock path-label grey (#91888b, about 3.5:1) would
+not be (the app now draws street names darker, stressStyle.js ROAD_LABEL). The road panel says the name: the Bikes line reads "Mountain-bike trail, level 2 (blue):
 Rosaryville Trail, not used for routes", and the panel's title and Name row fall back to it where
 the router has no name. No name, no label and no name in the words.
 
