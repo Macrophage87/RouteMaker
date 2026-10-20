@@ -584,6 +584,27 @@ class TestAnswer:
             " Mountain Goat may use it)"
         )
 
+    def test_a_green_trail_on_a_table_built_before_v0_10_0(self) -> None:
+        """A table without `trail_tags` was built (with its graphs) before the off-road graph
+        rode green singletrack: the panel neither offers Gravel the trail nor says it may."""
+        green = {
+            "bike_access_reason": "singletrack",
+            "mtb_only": True,
+            "mtb_level": 1,
+            "trail_tags": None,
+        }
+        assert segment_info.trail_routing(green)["trail_open"] == "offroad"
+        assert "Gravel" in segment_info.mtb_summary(green)
+        _, rows = segment_info.access_rows(green, False)
+        assert "green trail" in rows[0]["value"]
+        old = {k: v for k, v in green.items() if k != "trail_tags"}
+        assert segment_info.trail_routing(old)["trail_open"] == "mtb"
+        assert segment_info.mtb_summary(old) == (
+            "Mountain-bike trail, level 1 (green), not used for routes (Mountain Bike may use it)"
+        )
+        _, rows = segment_info.access_rows(old, False)
+        assert rows[0]["value"] == segment_info.SINGLETRACK_BEFORE_GREEN_WORDS
+
     def test_an_unrated_trail_says_it_is_not_rated(self, client, segment_schemas, router):
         """The owner, 2026-10-19: "Include the unrated trails too, just give a note that they
         aren't rated"."""
@@ -1252,6 +1273,36 @@ class TestTappedTrail:
         assert "Trail surface: Dirt" in lines and "Trail visibility: Easy to follow" in lines
         assert not any(line.startswith("Traffic stress") for line in lines)
         assert {s["id"] for s in body["sections"]}.isdisjoint({"stress", "traffic"})
+
+    def test_a_table_built_before_v0_10_0_answers_a_green_trail(
+        self, client, segment_schemas, router
+    ) -> None:
+        """The live table and graphs of an older build (no `hazard`, no `trail_tags`): the
+        tap answers, with no hazard or trail lines, and green singletrack stays the Mountain
+        Bike ride type's, as those graphs route it."""
+        live, _ = segment_schemas
+        with connection.cursor() as cursor:
+            for column in ("hazard", "trail_tags"):
+                cursor.execute(f"ALTER TABLE {live}.segment DROP COLUMN {column} CASCADE")
+        segment_info.forget_columns()
+        trail = north(SPOT, 8)
+        insert(
+            live,
+            506,
+            [trail, east(trail, 50)],
+            is_trail_class=True,
+            bike_access_reason="singletrack",
+            mtb_only=True,
+            mtb_level=1,
+        )
+        router.answers = {"pedestrian": [edge(506, use="path")]}
+        body = client.get(
+            INFO, {"lat": trail[1], "lon": trail[0], "trail": "true"}, **fresh_client()
+        ).json()
+        assert body["osm_way_id"] == 506 and body["mtb_trail"] is True
+        assert body["trail_open"] == "mtb"
+        assert not any("Gravel" in line for line in summary(body))
+        assert not any(line.startswith("Watch for") for line in summary(body))
 
     def test_the_profile_is_the_routers_heights_along_the_trail(
         self, client, segment_schemas, router, monkeypatch
