@@ -3032,6 +3032,37 @@ details.zoom-notes {
   padding: 2px 0;
 }
 
+/* The route hazard mark's key (lib/routeHazards.ts), set as the Junctions key: the mark, then the words with the
+   row's whole width. The mark stays by the first line when the words wrap. */
+.route-hazard-key {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+  font-size: 0.88rem;
+}
+
+.route-hazard-key li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 2px 0;
+}
+
+.route-hazard-key .route-hazard-swatch {
+  flex: none;
+  margin-top: 1px;
+}
+
+.route-hazard-name {
+  font-weight: 600;
+}
+
+/* The mark in the directions' hazard line, on the text's baseline. */
+.route-hazard-symbol .route-hazard-swatch {
+  vertical-align: -2px;
+  margin-right: 4px;
+}
+
 /*
  * Short or zoomed screens (WCAG 1.4.4, 1.4.10; the sidebar review's B2 and S1): the pinned route actions
  * and bottom bar would leave the planner almost no room, so the whole panel scrolls as one, header,
