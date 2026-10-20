@@ -189,3 +189,23 @@ class TestNamedServiceRoads:
         assert routing._piece_names(piece, {77: name}) == (name,)
         # A street-side name never replaces a way's own name.
         assert routing._piece_names(piece, {77: "X bike lane"}) == ("East-West Highway",)
+
+    def test_a_service_road_carrying_on_in_line_where_its_road_ends_is_not_beside_it(self):
+        # Oak Street ends, and a service road also mapped "Oak Street" carries straight on.
+        oak = [(-77.0600, 38.9900), (-77.0600, 38.9910)]
+        edges = [edge(5, ["Oak Street"], cls="tertiary", shape=oak, distance=25.0, at=oak[1])]
+        ahead = (-77.0600, 38.99122)  # 25 m past its end, on its line
+        assert beside_roads.road_beside(edges, 77, 0.0, frozenset({"oak street"}), ahead) is None
+        beside = (-77.0597, 38.9905)  # 25 m to its side
+        assert (
+            beside_roads.road_beside(edges, 77, 0.0, frozenset({"oak street"}), beside)
+            == "Oak Street"
+        )
+
+    def test_the_road_of_its_own_name_wins_over_a_nearer_one(self):
+        edges = [
+            edge(4, ["Colesville Road"], distance=8.0),
+            edge(5, ["East-West Highway"], distance=22.0),
+        ]
+        same = frozenset({"east-west highway"})
+        assert beside_roads.road_beside(edges, 77, 45.0, same) == "East-West Highway"
