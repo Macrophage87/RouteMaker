@@ -18,7 +18,7 @@ Each footway on them becomes a `bicycle=dismount` link, "walk your bike here", a
 way it meets: a way in, not a way round, so a way in on a sidewalk opens its nearest
 crossing and no more. Never steps, never a footway a closure rule closes (the CBD's
 sidewalks, a military or secured area), an indoor or informal one, an area, or one
-longer than `walk_links.WAY_MAX_M`.
+longer than `WAY_MAX_M` (a tag opens the whole way, so a long sidewalk stays closed).
 
 And an escalator (`highway=steps` with `conveying`) is closed to bicycles whatever its
 tags say (`ESCALATOR`): WMATA: "Use the elevators (never escalators)". Upstream opens
@@ -35,7 +35,7 @@ import math
 from collections import defaultdict
 from collections.abc import Iterable, Sequence, Set
 
-from .walk_links import WAY_MAX_M, Placed, bicycle_open, is_link_candidate
+from .walk_links import Placed, bicycle_open, is_link_candidate
 
 # The `rm:no_bicycle` reason for an escalator.
 ESCALATOR = "escalator"
@@ -47,6 +47,9 @@ WALK_MAX_M = 250.0
 # A footway node this close to a way in starts a walk (about 80 ft): an elevator or an
 # entrance is often mapped beside the footway it serves, not on it.
 SEED_M = 25.0
+# The longest footway a walk may open (about 500 ft): shorter than a walk link's, since a
+# station's walks run along downtown sidewalks, and a tag opens the whole way.
+WAY_MAX_M = 150.0
 # A street elevator counts as a way in within this of a station node (about 1,000 ft).
 ELEVATOR_STATION_M = 300.0
 
@@ -79,11 +82,14 @@ def ways_in(
     stations: Sequence[tuple[float, float]],
     elevators: Iterable[tuple[float, float]],
 ) -> list[tuple[float, float]]:
-    """The points walks start from: every entrance and station, and the elevators within
-    ELEVATOR_STATION_M of a station (an elevator elsewhere is a building's)."""
-    points = [*entrances, *stations]
-    points += [e for e in elevators if any(_metres(e, s) <= ELEVATOR_STATION_M for s in stations)]
-    return points
+    """The points walks start from: every entrance, the elevators within
+    ELEVATOR_STATION_M of a station (an elevator elsewhere is a building's), and a station
+    node only where neither is mapped near it (it is often mid-block, over the platform)."""
+    entrances = list(entrances)
+    near = [e for e in elevators if any(_metres(e, s) <= ELEVATOR_STATION_M for s in stations)]
+    ways = entrances + near
+    bare = [s for s in stations if not any(_metres(s, w) <= ELEVATOR_STATION_M for w in ways)]
+    return ways + bare
 
 
 class _Grid:
@@ -99,11 +105,17 @@ class _Grid:
         # 0.0003 degrees is about 33 m north-south and 26 m east-west in this region.
         return (math.floor(point[0] / 0.0003), math.floor(point[1] / 0.0003))
 
-    def near(self, point: tuple[float, float], metres: float) -> list[int]:
-        """The ways in within `metres` of `point`, by index."""
+    def near(self, point: tuple[float, float], metres: float) -> list[tuple[int, float]]:
+        """The ways in within `metres` of `point`: (index, metres)."""
         cx, cy = self._cell(point)
-        cells = [self.cells.get((cx + dx, cy + dy)) for dx in (-1, 0, 1) for dy in (-1, 0, 1)]
-        return [i for cell in cells if cell for i, other in cell if _metres(point, other) <= metres]
+        found = []
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                for i, other in self.cells.get((cx + dx, cy + dy), ()):
+                    m = _metres(point, other)
+                    if m <= metres:
+                        found.append((i, m))
+        return found
 
 
 def is_tunnel(tags: dict[str, str]) -> bool:
@@ -127,28 +139,28 @@ def links(
     if not grid.cells:
         return {}
     adjacent: dict[int, list[tuple[int, float, int]]] = defaultdict(list)
-    lengths: dict[int, float] = {}
     tunnels: set[int] = set()
-    seeds: dict[int, set[int]] = defaultdict(set)
+    # Each way in's footway nodes within SEED_M, with how far each is from it.
+    seeds: dict[int, dict[int, float]] = defaultdict(dict)
     for osm_id, tags, node_ids, coords in ways:
         if osm_id in closed or len(node_ids) < 2 or not is_link_candidate(tags):
             continue
+        steps = [
+            (i, _metres(a, b))
+            for i, (a, b) in enumerate(zip(coords, coords[1:], strict=False))
+            if a is not None and b is not None
+        ]
+        if sum(m for _i, m in steps) > WAY_MAX_M:
+            continue  # a tag opens the whole way: a long one is never a link
         if is_tunnel(tags):
             tunnels.add(osm_id)
-        length = 0.0
-        for i, (node, coord) in enumerate(zip(node_ids, coords, strict=False)):
+        for node, coord in zip(node_ids, coords, strict=False):
             if coord is not None:
-                for way_in in grid.near(coord, SEED_M):
-                    seeds[way_in].add(node)
-            if i + 1 < len(node_ids):
-                a, b = coord, coords[i + 1]
-                if a is None or b is None:
-                    continue
-                step = _metres(a, b)
-                length += step
-                adjacent[node].append((node_ids[i + 1], step, osm_id))
-                adjacent[node_ids[i + 1]].append((node, step, osm_id))
-        lengths[osm_id] = length
+                for way_in, metres in grid.near(coord, SEED_M):
+                    seeds[way_in][node] = min(metres, seeds[way_in].get(node, metres))
+        for i, step in steps:
+            adjacent[node_ids[i]].append((node_ids[i + 1], step, osm_id))
+            adjacent[node_ids[i + 1]].append((node_ids[i], step, osm_id))
     if not seeds:
         return {}
 
@@ -161,8 +173,6 @@ def links(
     found: dict[int, float] = {}
     for starts in seeds.values():
         for metres, used in _walks(starts, adjacent, open_at, tunnels):
-            if any(lengths[way] > WAY_MAX_M for way in used):
-                continue
             for way in used:
                 found[way] = min(metres, found.get(way, metres))
     return found
@@ -172,20 +182,21 @@ State = tuple[int, bool]
 
 
 def _walks(
-    starts: Set[int],
+    starts: dict[int, float],
     adjacent: dict[int, list[tuple[int, float, int]]],
     open_at: Set[int],
     tunnels: Set[int],
 ) -> list[tuple[float, list[int]]]:
-    """From one way in's nodes, the shortest walk to a bicycle-open way, and the shortest
-    that goes through a tunnel, within WALK_MAX_M: (metres, the footways used) each. A
-    walk stops at the first bicycle-open way it meets: a way in, not a way round."""
+    """From one way in's nodes (each starting at its distance from the way in), the
+    shortest walk to a bicycle-open way, and the shortest that goes through a tunnel, within
+    WALK_MAX_M: (metres, the footways used) each. A walk stops at the first bicycle-open way
+    it meets: a way in, not a way round."""
     best: dict[State, float] = {}
     previous: dict[State, tuple[State, int]] = {}
     queue: list[tuple[float, int, bool]] = []
-    for node in starts:
-        best[(node, False)] = 0.0
-        queue.append((0.0, node, False))
+    for node, metres in starts.items():
+        best[(node, False)] = metres
+        queue.append((metres, node, False))
     heapq.heapify(queue)
     ends: dict[bool, tuple[float, State]] = {}
     while queue and len(ends) < 2:

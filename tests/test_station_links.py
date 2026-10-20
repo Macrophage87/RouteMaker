@@ -131,7 +131,8 @@ def test_steps_are_never_a_link_and_an_escalator_is():
 def test_ways_in_are_entrances_stations_and_elevators_near_a_station():
     station = at(0.0, 0.0)
     near, far = at(100.0, 0.0), at(2000.0, 0.0)
-    assert sl.ways_in([at(5.0, 5.0)], [station], [near, far]) == [at(5.0, 5.0), station, near]
+    assert sl.ways_in([at(5.0, 5.0)], [station], [near, far]) == [at(5.0, 5.0), near]
+    assert sl.ways_in([], [station], [far]) == [station], "a station with no way in mapped"
     assert sl.is_way_in({"railway": "subway_entrance"})
     assert sl.is_way_in({"railway": "train_station_entrance"})
     assert sl.is_station({"railway": "station", "station": "subway"})
@@ -154,3 +155,20 @@ def test_the_rebuild_opens_station_links_and_closes_the_escalator():
     assert {1, 2, 4} <= result.walk_links
     assert {1, 2, 4} <= result.walk_bike, "the directions say walk your bike here"
     assert not ({1, 2, 4} & set(result.reasons))
+
+
+def test_the_tunnel_to_an_entrance_on_an_untagged_sidewalk_is_walked_through():
+    """Shady Grove's: the tunnel's far end meets only a sidewalk with no bicycle tag, which
+    reaches footways open to bicycles a few metres on; its near end is beside the elevator."""
+    far_sidewalk = placed(5, FOOTWAY, [(80.0, 0.0), (84.0, 0.0)])
+    bike = placed(9, BIKE_FOOTWAY, [(84.0, 0.0), (84.0, 100.0)])
+    tunnel = placed(4, TUNNEL, [(-8.0, 0.0), (80.0, 0.0)])
+    entrance = at(80.0, 0.0)
+    found = sl.links(shady_grove({4: tunnel, 5: far_sidewalk, 9: bike}), [ELEVATOR, entrance])
+    assert {1, 2, 4, 5} <= set(found)
+
+
+def test_a_footway_too_long_to_open_is_walked_round():
+    long_way = placed(2, FOOTWAY, [(0.0, -30.0), (sl.WAY_MAX_M, -30.0), (0.0, -60.0)])
+    found = sl.links(shady_grove({2: long_way}), [ELEVATOR])
+    assert 2 not in found and 4 in found
