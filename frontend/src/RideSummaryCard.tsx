@@ -74,8 +74,9 @@ export function RideSummaryCard({
     <section className="ride-summary" aria-labelledby={titleId}>
       <h2 id={titleId}>{RIDE_SUMMARY_TITLE}</h2>
       {/* The figures, chart and stress fill the screen between the title and the buttons (the owner, 2026-10-20: "The end
-          ride panel should be scaled to fill the page, not go over"); only very large system text scrolls, here. */}
-      <div className="ride-summary-body">
+          ride panel should be scaled to fill the page, not go over"); where it cannot fit, this part scrolls, and can be
+          reached by keyboard to scroll it. */}
+      <div className="ride-summary-body" role="group" aria-labelledby={titleId} tabIndex={0}>
         {note && <p className="hint">{note}</p>}
         <dl className="ride-summary-figures">
           {rows.map((row) => (
@@ -88,7 +89,9 @@ export function RideSummaryCard({
         <ElevationFigure stats={stats} />
         {segments.length > 0 && (
           <figure className="stress ride-summary-stress">
-            <figcaption>Traffic stress</figcaption>
+            <figcaption>
+              Traffic stress<span className="visually-hidden">, along the route</span>
+            </figcaption>
             <div className="stress-bar" role="img" aria-label={stressBarLabel(segments)}>
               {segments
                 .filter((s) => s.fraction > 0)
