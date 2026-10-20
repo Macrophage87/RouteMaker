@@ -1722,28 +1722,47 @@ export function App() {
 
   // A point at a station's way in moves to the one quickest to ride to (lib/stationWayIn.ts; Stephen 2026-10-20 at
   // Shady Grove: "Somehow it missed one of the metro entrances"): asked once for each point and where its leg comes
-  // from, with a bike only, never during a ride; a move is an edit of its own, said, so Undo puts the point back.
+  // from, with a bike only, never during a ride. The moves of one change are one edit and one sentence, so Undo puts
+  // them back. Kept as they are: the plan's points when the page opened (a link, a saved plan), an elevator the
+  // rider tapped, and a way in a move left (so an Undo of it stands).
   const wayInAsked = useRef(new Set<string>());
-  const wayInKept = useRef(new Set<string>());
+  const wayInKept = useRef(new Set<string>(initialPlan.points.map(lonLatKey)));
   useEffect(() => {
     if (riding || endsOnFoot(preset)) return;
-    for (const check of wayInChecks(points, RAIL_STATIONS)) {
-      const point = points[check.index];
-      const key = `${lonLatKey(point)}|${lonLatKey(check.from)}|${preset}`;
-      if (wayInKept.current.has(lonLatKey(point)) || wayInAsked.current.has(key)) continue;
+    const asking = wayInChecks(points, RAIL_STATIONS).filter((check) => {
+      const key = `${lonLatKey(points[check.index])}|${lonLatKey(check.from)}|${preset}`;
+      if (wayInKept.current.has(lonLatKey(points[check.index])) || wayInAsked.current.has(key)) return false;
       wayInAsked.current.add(key);
-      void requestNearest(check.from, wayInPlaces(check), preset, dials).then((result) => {
+      return true;
+    });
+    if (asking.length === 0) return;
+    const asked = points;
+    void Promise.all(asking.map((check) => requestNearest(check.from, wayInPlaces(check), preset, dials))).then((results) => {
+      // Only onto the plan as it was asked about: a later edit has its own question.
+      const current = pointsRef.current;
+      if (ridingNow.current || rideRef.current.preset !== preset || current.length !== asked.length || current.some((p, i) => p !== asked[i])) {
+        asking.forEach((check) => wayInAsked.current.delete(`${lonLatKey(asked[check.index])}|${lonLatKey(check.from)}|${preset}`));
+        return;
+      }
+      const moved = [...current];
+      const naming = namePoints(current, VIA_MARKS.isVia, loopVias);
+      const said: string[] = [];
+      asking.forEach((check, i) => {
+        const result = results[i];
+        // A request that failed is asked again on the next change.
+        if (!result.ok) wayInAsked.current.delete(`${lonLatKey(asked[check.index])}|${lonLatKey(check.from)}|${preset}`);
+        const point = current[check.index];
         const to = quickerWayIn(point, check, result);
-        const current = pointsRef.current;
-        if (!to || ridingNow.current || current[check.index] !== point || rideRef.current.preset !== preset) return;
-        const moved = [...current];
+        if (!to) return;
         moved[check.index] = VIA_MARKS.moved(point, [to[0], to[1]]);
-        const pointName = namePoints(current, VIA_MARKS.isVia, loopVias)[check.index]?.name ?? "A point";
+        wayInKept.current.add(lonLatKey(point));
         namer.remember(moved[check.index], stationPlaceName(check.station), stationPlaceLabel(check.station, check.kind));
-        commit(moved);
-        announce(wayInSaid(pointName, stationPlaceName(check.station), check.kind));
+        said.push(wayInSaid(naming[check.index]?.name ?? "A point", stationPlaceName(check.station), check.kind));
       });
-    }
+      if (said.length === 0) return;
+      commit(moved);
+      announce(said.join(" "));
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- asked again on a change of the points, ride type or ride only
   }, [points, preset, riding]);
 
