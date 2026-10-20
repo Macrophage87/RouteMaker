@@ -19,6 +19,7 @@
     }
     /* Outline the stress colors in light ink so Avoid's black reads on the dark page. */
     :root:not([data-theme="light"]) svg rect[stroke="#1c1917"] { stroke: #d6d3d1; }
+    :root:not([data-theme="light"]) svg line.halo { stroke: #d6d3d1; opacity: 0.9; }
   }
   * { box-sizing: border-box; }
   html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
@@ -109,6 +110,7 @@
   <nav class="docs" aria-label="RouteMaker documentation">
   <ul>
     <li><a href="/about/how-it-works.html" aria-current="page">How RouteMaker works</a></li>
+    <li><a href="/about/accessibility.html">Accessibility</a></li>
     <li><a href="/about/stress.html">Stress ratings</a></li>
     <li><a href="/about/routing.html">Routing</a></li>
     <li><a href="/about/ride-types.html">Ride types</a></li>
@@ -177,12 +179,14 @@ then looks for the route with the least stress for the kind of ride you chose.</
 <figcaption>The whole system in one picture. The <a href="/about/architecture.html">architecture page</a> has the detail.</figcaption>
 </figure>
 <ul>
+<li><strong>High contrast, screen readers, keyboard and spoken cues:</strong> <a href="/about/accessibility.html">Accessibility</a>.</li>
 <li><strong>The levels, which rating wins and the formula:</strong> <a href="/about/stress.html">Stress ratings</a>.</li>
 <li><strong>Every cost and penalty, junctions, closures and a worked example:</strong> <a href="/about/routing.html">Routing</a>.</li>
 <li><strong>Every ride type compared:</strong> <a href="/about/ride-types.html">Ride types</a>.</li>
 <li><strong>Big group rides:</strong> <a href="/about/mass-ride.html">Mass Ride</a>.</li>
 <li><strong>Trails, climbs and topo lines:</strong> <a href="/about/trails.html">Mountain Bike, Mountain Goat and Gravel</a>.</li>
 <li><strong>The app, the server and the weekly map build:</strong> <a href="/about/architecture.html">Architecture</a>.</li>
+<li><strong>Planning from Claude or another assistant:</strong> <a href="/about/assistants.html">AI assistants</a>.</li>
 <li><strong>Data sources and thanks:</strong> <a href="/about/acknowledgements.html">Acknowledgements</a>.</li>
 </ul>
 <p class="find"><strong>Looking for something else?</strong> The sections below give each part in a few lines, with links to the detail.</p>

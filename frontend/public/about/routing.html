@@ -19,6 +19,7 @@
     }
     /* Outline the stress colors in light ink so Avoid's black reads on the dark page. */
     :root:not([data-theme="light"]) svg rect[stroke="#1c1917"] { stroke: #d6d3d1; }
+    :root:not([data-theme="light"]) svg line.halo { stroke: #d6d3d1; opacity: 0.9; }
   }
   * { box-sizing: border-box; }
   html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
@@ -109,6 +110,7 @@
   <nav class="docs" aria-label="RouteMaker documentation">
   <ul>
     <li><a href="/about/how-it-works.html">How RouteMaker works</a></li>
+    <li><a href="/about/accessibility.html">Accessibility</a></li>
     <li><a href="/about/stress.html">Stress ratings</a></li>
     <li><a href="/about/routing.html" aria-current="page">Routing</a></li>
     <li><a href="/about/ride-types.html">Ride types</a></li>
