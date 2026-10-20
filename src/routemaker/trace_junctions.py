@@ -130,6 +130,9 @@ class RawJunction:
     # APPROACH_M of it (`routemaker.junction_delay`). From the trace alone: a signal up a
     # cross road only is not seen here (`core.junctions` reads those with `/locate`).
     signal: bool = False
+    # Each of `others`' headings away from the node (degrees), None where the router gave
+    # none; empty for a junction built without them.
+    other_headings: tuple[float | None, ...] = ()
 
     @property
     def slip_lane(self) -> bool:
@@ -267,6 +270,10 @@ def junctions_of_trace(
             other.get("road_class")
             for other in (here.get("end_node") or {}).get("intersecting_edges") or []
         )
+        other_headings = tuple(
+            None if other.get("begin_heading") is None else float(other["begin_heading"])
+            for other in (here.get("end_node") or {}).get("intersecting_edges") or []
+        )
         if in_way == out_way and not others:
             continue
         lon, lat = shape[end]
@@ -291,6 +298,7 @@ def junctions_of_trace(
                 out_heading=float(out_heading),
                 back_edge_ids=_back_edge_ids(edges, index, to_metres),
                 signal=_signal_at(edges, index, to_metres),
+                other_headings=other_headings,
             )
         )
     return junctions

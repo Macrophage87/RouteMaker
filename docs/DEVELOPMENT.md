@@ -3630,14 +3630,22 @@ the router's `node.traffic_signal` and `edge.traffic_signal` flags):
 | At the junction | Delay | Why |
 |---|---|---|
 | A traffic signal on the node or within 30 m (100 ft) up the rider's approach | 15 s | the average wait for a random arrival at a 100 s cycle with 50 s of red (Webster's uniform delay), plus half a stop; inferred |
-| The rider gives way: crossing a road as busy as their own or busier, turning onto one, or crossing or leaving a path | 8 s | one stop at a steady effort: Fajans and Curry, ["Why Bicyclists Hate Stop Signs"](https://www.accessmagazine.org/spring-2001/bicyclists-hate-stop-signs), ACCESS 18 (2001), 14.2 against 10.9 mph |
+| The rider gives way to a neighbourhood street (unclassified or residential): crossing one as busy as their own, turning onto one where their own street does not go on ahead, or crossing or leaving a path | 8 s | one stop at a steady effort: Fajans and Curry, ["Why Bicyclists Hate Stop Signs"](https://www.accessmagazine.org/spring-2001/bicyclists-hate-stop-signs), ACCESS 18 (2001), 14.2 against 10.9 mph |
 | The same in the District, where the road given way to is unclassified or residential | 4 s | DC lets a rider take a stop sign as a yield (the owner: "bikes aren't required to stop at stop signs if there's no cross traffic"); a slow-and-roll, inferred |
-| The rider on the busier road, a side road from one side, a turn off onto a quieter street, driveways and alleys | 0 | |
+| The rider gives way to a busier road that does not stop: tertiary, secondary, primary or busier | 12, 20, 30 s | the wait for a gap (the owner: "a stop sign against a busy street without one probably costs more"); one value per class through the day, from the Highway Capacity Manual's two-way-stop levels of service (HCM 6th ed., Exhibit 20-2: A up to 10 s, B 10-15, C 15-25, D 25-35); inferred |
+| The rider on the busier road, a side road from one side, a turn off a through street at a T onto one no busier, a turn off onto a quieter street, driveways and alleys | 0 | |
 
-Junctions within 35 m (115 ft) of each other along the route are one stop at the dearest
-(a divided road, a stop line and its junction). The answer's `duration_s` is the router's
+Junctions that cost something and lie within 35 m (115 ft) of the first of them along the
+route are one stop at the dearest, or at the signal's wait where one is a signal (a divided
+road, a stop line and its junction). Junctions that cost nothing (driveways, way splits)
+neither start nor stretch the run, so a street with a driveway every few metres still counts
+each stop sign. A flashing beacon mapped as a signal (`core.flashing_signals`) is priced by
+who gives way, not as a signal. The answer's `duration_s` is the router's
 time plus `junction_delay_s`, and the calm search's score (`refine.Analysis.score`) adds the
-delay at what that much quiet riding costs the router (`QUIET_COST_FACTOR`). This is time,
+delay at what that much quiet riding costs the router (`QUIET_COST_FACTOR`); at the top of
+the slider the same quiet metres join the ranking's distance level (`refine.level3`), so
+between equally calm routes the one with fewer stops ranks first. A Mountain Bike route's
+singletrack retiming applies to the router's time, and the delay is added after it. This is time,
 not stress: a junction's stress is still the intersection model's (section above) and the
 two do not replace each other. Stop and yield signs reach the router only through
 `/locate`, so the model reads who gives way from the roads' classes, not from the signs; no

@@ -1937,8 +1937,11 @@ STRETCH_OUTSIDE_DC = "outside_dc"
 def stop_as_yield(lon: float, lat: float) -> bool:
     """Whether a rider may take a stop sign at this point as a yield sign: inside the
     District, its border roads not included (`routemaker.junction_delay`)."""
-    from .mass_tiles import inside_dc
+    from .mass_tiles import dc_boundary, inside_dc
 
+    west, south, east, north = dc_boundary()[1]
+    if not (west <= lon <= east and south <= lat <= north):
+        return False
     return inside_dc(lon, lat, tolerance_m=0.0)
 
 
@@ -3956,11 +3959,13 @@ def plan(
         (10 km/h) on singletrack (`mtbmode.duration_s`), the router's own time kept."""
         answered["mtb"] = info
         if info and info.get("singletrack_m"):
-            info["router_duration_s"] = answered["duration_s"]
+            # The junction delay is added after the singletrack retiming, so the router's
+            # own time stays the router's and the delay is not scaled with the trail.
+            delay = answered.get("junction_delay_s") or 0.0
+            router_s = answered["duration_s"] - delay
+            info["router_duration_s"] = round(router_s, 1)
             answered["duration_s"] = round(
-                mtbmode.duration_s(
-                    answered["duration_s"], answered["distance_m"], info["singletrack_m"]
-                ),
+                mtbmode.duration_s(router_s, answered["distance_m"], info["singletrack_m"]) + delay,
                 1,
             )
         return answered

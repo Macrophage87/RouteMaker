@@ -172,6 +172,30 @@ class TestScore:
         assert refine.intersection_weight(100) == 1.0
 
 
+class TestJunctionDelay:
+    """The time a route's junctions cost the rider (`routemaker.junction_delay`) counts in
+    route choice below the top of the slider and at it (the owner, 2026-10-20: "Both")."""
+
+    def test_the_score_prices_the_delay_as_quiet_riding(self) -> None:
+        slow = analysis("a")
+        slow.junction_delay_s = 60.0
+        assert slow.score(context()) == pytest.approx(4000.0 + refine.QUIET_COST_FACTOR * 60.0)
+
+    def test_at_the_top_the_route_with_fewer_stops_ranks_first(self) -> None:
+        ctx = context(maxcalm=True)
+        smooth, stops = analysis("a"), analysis("b")
+        stops.junction_delay_s = 120.0
+        assert smooth.key(ctx)[:2] == stops.key(ctx)[:2]
+        assert smooth.key(ctx) < stops.key(ctx)
+        extra_m = stops.key(ctx)[2] - smooth.key(ctx)[2]
+        assert extra_m == pytest.approx(refine.QUIET_COST_FACTOR * 120.0 / QUIET_COST)
+
+    def test_a_routes_legs_add_their_delays(self) -> None:
+        one, two = analysis("a"), analysis("b")
+        one.junction_delay_s, two.junction_delay_s = 30.0, 45.0
+        assert refine.combine([one, two]).junction_delay_s == 75.0
+
+
 class TestCrossingAvoidance:
     def test_the_worst_crossings_approaches_are_excluded_and_a_better_route_kept(
         self, monkeypatch

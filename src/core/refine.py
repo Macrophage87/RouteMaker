@@ -595,7 +595,16 @@ def level3(read: Analysis, ctx: Context) -> float:
     "Keep stress order + target (Recommended)"). The target distance is in actual
     metres, not these."""
     effort = read.effort_m or read.length_m
-    return charged_m(read, ctx) - ctx.hills_seek_weight * effort
+    return charged_m(read, ctx) - ctx.hills_seek_weight * effort + delay_m(read, ctx)
+
+
+def delay_m(read: Analysis, ctx: Context) -> float:
+    """The route's junction delay (`Analysis.junction_delay_s`) as metres of quiet riding,
+    the rate `score` prices it at, so the top of the slider weighs it too: between equally
+    calm routes, the one with fewer stops ranks first."""
+    if ctx.quiet_cost <= 0:
+        return 0.0
+    return QUIET_COST_FACTOR * read.junction_delay_s / ctx.quiet_cost
 
 
 def charged_m(read: Analysis, ctx: Context) -> float:
@@ -2772,6 +2781,7 @@ def combine(reads: list[Analysis]) -> Analysis:
             else None
         ),
         shift=max((r.shift for r in reads), default=0),
+        junction_delay_s=sum(r.junction_delay_s for r in reads),
     )
 
 
