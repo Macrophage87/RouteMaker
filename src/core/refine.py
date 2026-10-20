@@ -958,7 +958,11 @@ def analyse(
         rated_lts2_m=stress_totals(*rated_metres(pieces, classes))["lts2_m"],
         real_classes=real_classes if shift or hazard_read else None,
         shift=shift,
-        junction_delay_s=junction_delay.delay_s(raws, routing.stop_as_yield),
+        junction_delay_s=junction_delay.delay_s(
+            raws,
+            routing.stop_as_yield,
+            lambda lon, lat: model.beacon_at(lon, lat, ctx.beacons) is not None,
+        ),
     )
     if with_events:
         ctx.analyses[key] = result

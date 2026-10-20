@@ -6,7 +6,7 @@ import pytest
 
 from routemaker import junction_delay as d
 from routemaker import trace_junctions as t
-from routemaker.intersections import Movement
+from routemaker.intersections import Beacon, Movement, beacon_at
 
 SHAPE = [(-77.0 + i * 0.001, 38.9) for i in range(12)]
 
@@ -159,6 +159,17 @@ class TestWholeRoute:
 
         assert d.delay_s(stops, beacon=beacon) == d.GIVE_WAY_DELAY_S[2] + d.STOP_DELAY_S
         assert len(asked) == 1
+
+    def test_a_known_beacon_on_the_list_prices_the_signal_as_a_stop(self) -> None:
+        busy = (("road", "primary"), ("road", "primary"))
+        at_beacon = [junction(*busy, m=100.0, signal=True)]
+        beacons = (Beacon(id=1, lon=-77.0001, lat=38.9),)
+        near = d.delay_s(
+            at_beacon, beacon=lambda lon, lat: beacon_at(lon, lat, beacons) is not None
+        )
+        far = (Beacon(id=2, lon=-77.01, lat=38.9),)
+        away = d.delay_s(at_beacon, beacon=lambda lon, lat: beacon_at(lon, lat, far) is not None)
+        assert (near, away) == (d.GIVE_WAY_DELAY_S[2], d.SIGNAL_DELAY_S)
 
     def test_driveways_between_stops_do_not_merge_them(self) -> None:
         driveway = (("driveway", "service_other"),)

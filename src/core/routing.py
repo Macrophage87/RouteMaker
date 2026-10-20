@@ -3870,7 +3870,11 @@ def plan(
         )
         # The time its junctions cost the rider, which the router's own time leaves out
         # (`routemaker.junction_delay`): part of the time shown.
-        delay = junction_delay.delay_s(raw_junctions, stop_as_yield)
+        delay = junction_delay.delay_s(
+            raw_junctions,
+            stop_as_yield,
+            lambda lon, lat: intersections.beacon_at(lon, lat, beacons) is not None,
+        )
         return {
             "preset": preset.name,
             "variant": variant,
