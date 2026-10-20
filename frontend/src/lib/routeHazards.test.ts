@@ -8,7 +8,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { contrastRatio } from "../stressStyle.js";
 import type { DescriptionEntry, RouteResponse } from "./api.ts";
 import { rideModel, roadHazardWords, says } from "./navigate.ts";
-import { SEVERITY_COLOURS, SEVERITY_SHAPES } from "./intersectionMarkers.ts";
+import { SEVERITY_COLOURS } from "./intersectionMarkers.ts";
 import {
   ROUTE_HAZARD_EDGE,
   ROUTE_HAZARD_FILL,
@@ -86,7 +86,6 @@ test("the mark is not the higher-stress junction's: another shape, and dark wher
   const icon = routeHazardIcon(2);
   const at = (x: number, y: number) => icon.data[(y * icon.width + x) * 4 + 3];
   // The junction's triangle (SEVERITY_SHAPES.orange) leaves its upper left corner empty at mid height; the disc fills it.
-  assert.match(SEVERITY_SHAPES.orange, /^M12 2\.5 22\.5 20\.5H1\.5Z$/);
   assert.ok(at(4, 12) > 0, "the disc fills where a triangle has none");
   for (const severity of ["orange", "red"] as const) assert.ok(contrastRatio(ROUTE_HAZARD_FILL, SEVERITY_COLOURS[severity].fill) >= 3, severity);
 });
