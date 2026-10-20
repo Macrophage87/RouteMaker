@@ -862,6 +862,8 @@ export function MapView(props: Props) {
           !under.station &&
           !under.line &&
           !anyPopupOpen() &&
+          !climbCard?.open() &&
+          featureCardPress([water, stopCards(map)], hoverPoint) === null &&
           mtbTrailPressed(map, hoverPoint, MOUSE_HIT_PX, overlayLayerIds()) !== null;
         runHover(under, anyPopupOpen(), { handle: hoverShown.current, cursor: canvas.style.cursor }, {
           drawHandle: (at) => showEdit(at as LonLat | null),
