@@ -69,6 +69,9 @@ import {
   REPLAN_FAILED,
   REPLAN_FOUND,
   REPLAN_UTURN,
+  REPLAN_AHEAD,
+  UTURN_TAKEN_M,
+  keepsAhead,
   setsOffBack,
   withUTurn,
   REPLAN_NO_SIGNAL,
@@ -651,6 +654,8 @@ export function RideMode({
   // The via points are not announced (v0.7.0): the model leaves them out of its cues.
   // A re-route that turns the rider round starts with "Make a U-turn." (lib/navigate.ts withUTurn).
   const uturnRoute = useRef<RouteResponse | null>(null);
+  // Re-routes in a row that asked for a U-turn the rider rode on past (lib/navigate.ts keepsAhead).
+  const uturnsInARow = useRef(0);
   const modelOf = (r: RouteResponse, points: readonly LonLat[]) => {
     const built = rideModel(r, viaIndices(points, VIA_MARKS.isVia));
     return r === uturnRoute.current ? withUTurn(built) : built;
@@ -968,6 +973,8 @@ export function RideMode({
       // The way the rider is going (the owner, 2026-10-18: "Penalize U turns", "For rerouting"): the new route sets
       // off ahead unless turning round saves half a mile. Not after Road closed, where turning round is the point.
       const heading = turnRound ? null : (current.goodFix?.headingDeg ?? null);
+      // Two U-turns ridden past: the rider means to stay on this way, so this one sets off ahead whatever turning saves.
+      const aheadOnly = heading !== null && keepsAhead(uturnsInARow.current);
       const left = replanPoints(modelRef.current, current.progressM ?? 0, here, plan.current.points, plan.current.loop);
       const points = via ? detourPoints(left, via) : left;
       if (!points) {
@@ -1008,7 +1015,7 @@ export function RideMode({
       // The rider is riding a plan already made: a long one is not asked to be confirmed again (a signed-out
       // rider's re-plan of a long ride was refused for want of it).
       const ask = (to: LonLat[]) =>
-        requestRoute(to, preset, { dials: { ...dials, loop: false }, vias: viaIndices(to, VIA_MARKS.isVia), straight: drawnLegs(to), routeOnly: true, confirmLong: true, blocked: blockedRef.current, heading });
+        requestRoute(to, preset, { dials: { ...dials, loop: false }, vias: viaIndices(to, VIA_MARKS.isVia), straight: drawnLegs(to), routeOnly: true, confirmLong: true, blocked: blockedRef.current, heading, aheadOnly });
       const result = await ask(points);
       // No new route to the end: the way back to the planned route, which goes on from there (lib/rejoin.ts;
       // the owner, 2026-10-17). Not for a detour, whose place the planned route does not pass. The no-signal
@@ -1050,7 +1057,9 @@ export function RideMode({
       // Turned round (the API keeps a U-turn only where it saves half a mile): said plainly, and the first cue.
       const turned = heading !== null && setsOffBack(found.geometry.coordinates, heading);
       uturnRoute.current = turned ? found : null;
+      uturnsInARow.current = turned ? uturnsInARow.current + 1 : 0;
       if (turned && note === REPLAN_FOUND) note = REPLAN_UTURN;
+      if (!turned && aheadOnly && note === REPLAN_FOUND) note = REPLAN_AHEAD;
       const model = modelOf(found, points);
       modelRef.current = model;
       setRoute(found);
@@ -1180,6 +1189,8 @@ export function RideMode({
         }
       }
       say(out.events);
+      // Turned round as asked: the next U-turn re-route counts from one again.
+      if (uturnRoute.current === routeRef.current && !out.state.off && (out.state.progressM ?? 0) >= UTURN_TAKEN_M) uturnsInARow.current = 0;
       // A fixed route: leaving it says the way back, once, as Keep the planned route does.
       if (fixedRef.current && out.events.some((e) => e.kind === "off-route")) {
         const back = wayBack(modelRef.current, out.state);

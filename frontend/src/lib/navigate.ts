@@ -1260,6 +1260,20 @@ export const REPLAN_FOUND = "New route found.";
 /** A re-route that sets off back the way the rider came (the owner, 2026-10-18: "clearly announce make a u turn"). */
 export const REPLAN_UTURN = "New route found. Make a U-turn.";
 export const UTURN_SAID = "Make a U-turn.";
+/** A re-route that keeps the rider's way after they rode on past UTURNS_BEFORE_AHEAD U-turns. */
+export const REPLAN_AHEAD = "New route found. Keep going ahead.";
+/**
+ * Re-routes in a row that may ask for a U-turn before the next one keeps the rider's way (the owner, 2026-10-20:
+ * "give two reroutes and on the third time assume that the user wants to stay on that path").
+ */
+export const UTURNS_BEFORE_AHEAD = 2;
+/** How far along a U-turn route the rider is once they have turned round as asked: the count of U-turns starts again. */
+export const UTURN_TAKEN_M = 50;
+
+/** Whether the next re-route keeps the rider's way, after `uturns` U-turn re-routes in a row they rode on past. */
+export function keepsAhead(uturns: number): boolean {
+  return uturns >= UTURNS_BEFORE_AHEAD;
+}
 /** A start this far off the rider's heading is a U-turn (the API's routing.UTURN_MIN_DEG). */
 export const UTURN_MIN_DEG = 120;
 /** How far along the line its setting-off direction is read: past the snap to the road (routing.UTURN_READ_M). */

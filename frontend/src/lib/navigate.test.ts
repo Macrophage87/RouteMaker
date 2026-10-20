@@ -48,6 +48,9 @@ import {
   replanPoints,
   rideModel,
   REPLAN_UTURN,
+  REPLAN_AHEAD,
+  UTURNS_BEFORE_AHEAD,
+  keepsAhead,
   says,
   setsOffBack,
   UTURN_SAID,
@@ -1597,4 +1600,12 @@ test("a ring kept as its own short stretch, then the way off: the jog says the e
   // An exit with a turn right after it: its own "now" is the exit.
   const exitFirst = { ...second, joined: false, then: { movement: "right" as const, street: "Q Street Northwest" } };
   assert.equal(cueSpoken(exitFirst, "now", 5), "Exit now, then right onto Q Street Northwest.");
+});
+
+test("two U-turn re-routes ridden past, then the third keeps the rider's way (the owner, 2026-10-20)", () => {
+  assert.equal(UTURNS_BEFORE_AHEAD, 2);
+  assert.equal(keepsAhead(0), false);
+  assert.equal(keepsAhead(1), false);
+  assert.equal(keepsAhead(2), true);
+  assert.equal(REPLAN_AHEAD, "New route found. Keep going ahead.");
 });
