@@ -1698,8 +1698,9 @@ export function RideMode({
     () => (lightStep === null || ride.arrived ? null : rideLightCorner(model, lightStep * 160, togoS, minute * 60_000)),
     [model, lightStep, togoS === null ? null : Math.round(togoS / 60), ride.arrived, minute], // eslint-disable-line react-hooks/exhaustive-deps
   );
-  // "Ride mode" (or the light times) in the corner only while it fits beside the two buttons on one line (the owner,
-  // 2026-10-20: the row must not grow); measured, as a phone's own text size can be larger than the page knows.
+  // "Ride mode" is for screen readers only and the two buttons fill the row (the owner, 2026-10-20: "People know it's
+  // ride mode anyway"). Near dawn or dusk the light times take the corner while they fit beside the buttons on one
+  // line, measured, as a phone's own text size can be larger than the page knows; else they go just under the row.
   const topRef = useRef<HTMLDivElement>(null);
   const [cornerFits, setCornerFits] = useState(true);
   const lightKey = light ? light.shown.join("|") : "";
@@ -1709,12 +1710,16 @@ export function RideMode({
     const actions = top?.querySelector<HTMLElement>(".ride-top-actions");
     if (!top || !heading || !actions) return;
     const check = () => {
+      // Measured as laid out untight (the buttons not stretched), put back before anything is drawn.
+      const tight = top.classList.contains("ride-corner-tight");
+      if (tight) top.classList.remove("ride-corner-tight");
       const row = getComputedStyle(top);
       const room = top.clientWidth - parseFloat(row.paddingLeft) - parseFloat(row.paddingRight);
       const buttons = [...actions.children] as HTMLElement[];
       const between = parseFloat(getComputedStyle(actions).columnGap) || 0;
       const need =
         heading.scrollWidth + (parseFloat(row.columnGap) || 0) + buttons.reduce((sum, b) => sum + b.offsetWidth, 0) + between * Math.max(0, buttons.length - 1);
+      if (tight) top.classList.add("ride-corner-tight");
       setCornerFits(need <= room);
     };
     check();
@@ -1792,10 +1797,9 @@ export function RideMode({
         {/* End ride (v0.7.0, "Go riding fixes" item 6): always in view, at the top of the card, which stays at
             every size and in Big text; one slide ends the ride (a tap once arrived), and the page offers Undo for a few seconds
             (RideEnded). The ride's settings open just under the row, from the side buttons' gear. */}
-        <div ref={topRef} className={cornerFits ? "ride-top" : "ride-top ride-corner-tight"}>
-          {/* "Ride mode" in the corner; near dawn or dusk the light times in its place (the owner, 2026-10-19),
-              the heading kept for screen readers. Where it does not fit beside the buttons it is hidden from view
-              (the light times then show under the card), so the row stays one line. */}
+        <div ref={topRef} className={light && cornerFits ? "ride-top" : "ride-top ride-corner-tight"}>
+          {/* The heading, "Ride mode", for screen readers; near dawn or dusk the light times shown in the corner
+              (the owner, 2026-10-19) where they fit beside the buttons, else just under the row. */}
           <h2 id="ride-heading" ref={headingRef} tabIndex={-1} className={light ? "ride-heading ride-light" : "ride-heading"}>
             {light ? (
               <>
@@ -1833,6 +1837,12 @@ export function RideMode({
             )}
           </div>
         </div>
+        {/* Where the corner has no room, the light times just under the top row, so they stay in view. */}
+        {light && !cornerFits && (
+          <p className="ride-light-below" aria-hidden="true">
+            {light.shown.join(" · ")}
+          </p>
+        )}
         <div
           ref={settingsPanel}
           id={`${settingsId}-settings`}
@@ -1940,11 +1950,6 @@ export function RideMode({
               </dd>
             </div>
           </dl>
-        )}
-        {light && !cornerFits && (
-          <p className="ride-light-below" aria-hidden="true">
-            {light.shown.join(" · ")}
-          </p>
         )}
       </div>
 
