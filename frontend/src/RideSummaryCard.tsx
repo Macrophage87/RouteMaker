@@ -9,12 +9,40 @@
 import { useEffect, useId, useRef } from "react";
 import { stressBarKey, stressBarLabel } from "./lib/quickFigures.ts";
 import { stressSegments } from "./lib/stressBar.ts";
-import { summaryRows, type RideStats } from "./lib/rideStats.ts";
-import { METRES_PER_MILE } from "./lib/format.ts";
+import { elevationSpan, summaryRows, type RideStats } from "./lib/rideStats.ts";
+import { METRES_PER_MILE, formatClimb } from "./lib/format.ts";
 
 export const RIDE_SUMMARY_TITLE = "Ride ended";
 /** The stress shares are shown once this much was ridden along the route. */
 const STRESS_MIN_M = METRES_PER_MILE / 10;
+
+/** The ride's heights as a filled line (the owner, 2026-10-20: "Show elevation too!"), its lowest and highest in words. */
+function ElevationFigure({ stats }: { stats: RideStats }) {
+  const span = elevationSpan(stats);
+  if (!span) return null;
+  const points = stats.elevation;
+  const from = points[0].atM;
+  const length = points[points.length - 1].atM - from;
+  if (!(length >= STRESS_MIN_M)) return null;
+  // At least 30 ft (about 9 m) of height in the box, so a flat ride is drawn flat, not as noise.
+  const rise = Math.max(span.hi - span.lo, 9);
+  const W = 300;
+  const H = 60;
+  const x = (atM: number) => ((atM - from) / length) * W;
+  const y = (m: number) => H - 2 - ((m - span.lo) / rise) * (H - 4);
+  const line = points.map((p, i) => `${i ? "L" : "M"}${x(p.atM).toFixed(1)},${y(p.m).toFixed(1)}`).join("");
+  const words = `Lowest ${formatClimb(span.lo)}, highest ${formatClimb(span.hi)}`;
+  return (
+    <figure className="ride-summary-elevation">
+      <figcaption>Elevation</figcaption>
+      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label={`Elevation along the ride. ${words}.`}>
+        <path d={`${line}L${W},${H}L0,${H}Z`} className="ride-summary-elevation-area" />
+        <path d={line} className="ride-summary-elevation-line" vectorEffect="non-scaling-stroke" />
+      </svg>
+      <p aria-hidden="true">{words}</p>
+    </figure>
+  );
+}
 
 export function RideSummaryCard({
   stats,
@@ -59,6 +87,7 @@ export function RideSummaryCard({
           </div>
         ))}
       </dl>
+      <ElevationFigure stats={stats} />
       {segments.length > 0 && (
         <figure className="stress ride-summary-stress">
           <figcaption>Traffic stress, along the route</figcaption>

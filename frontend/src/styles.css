@@ -4032,6 +4032,39 @@ details.zoom-notes {
   margin: 0 0 12px;
 }
 
+.ride-summary-elevation {
+  margin: 0 0 12px;
+}
+
+.ride-summary-elevation svg {
+  display: block;
+  width: 100%;
+  height: 60px;
+}
+
+.ride-summary-elevation-area {
+  fill: var(--text-muted);
+  opacity: 0.25;
+}
+
+.ride-summary-elevation-line {
+  fill: none;
+  stroke: var(--text);
+  stroke-width: 2;
+}
+
+.ride-summary-elevation figcaption,
+.ride-summary-elevation p {
+  font-size: 1rem;
+  margin: 0 0 4px;
+}
+
+.ride-summary-elevation p {
+  margin: 4px 0 0;
+  color: var(--text-muted);
+  text-wrap: balance;
+}
+
 .ride-summary-stress figcaption {
   font-size: 1rem;
   margin-bottom: 4px;
@@ -4074,6 +4107,8 @@ details.zoom-notes {
 
 .ride-summary-large .ride-summary-figures dt,
 .ride-summary-large .ride-summary-stress figcaption,
+.ride-summary-large .ride-summary-elevation figcaption,
+.ride-summary-large .ride-summary-elevation p,
 .ride-summary-large .stress-key,
 .ride-summary-large .hint {
   font-size: 16pt;

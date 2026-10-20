@@ -1,7 +1,7 @@
 // The ride's summary figures (lib/rideStats.ts; the owner, 2026-10-20). Made-up points along a meridian, not a real ride.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { profileGain, statsPause, statsStart, statsStep, summaryRows, summarySpoken, type RideStats } from "./rideStats.ts";
+import { elevationSpan, profileGain, statsPause, statsStart, statsStep, summaryRows, summarySpoken, type RideStats } from "./rideStats.ts";
 import type { RideFix, RideModel } from "./navigate.ts";
 import type { RouteProfile } from "./api.ts";
 
@@ -91,4 +91,16 @@ test("said in US units only, for the voice and a screen reader", () => {
   const s = ride(statsStart(0), 0, 2000, 5, 0);
   assert.equal(summarySpoken(s), "Ride ended. 1.2 miles, 7 minutes moving, 11 miles per hour average, 66 feet of climbing.");
   assert.equal(summarySpoken(statsStart(0)), "Ride ended.");
+});
+
+test("heights are kept along the ride for the elevation chart, every 30 m or so, from the route's profile", () => {
+  const s = ride(statsStart(0), 0, 2000, 5, 0);
+  assert.ok(s.elevation.length >= 60 && s.elevation.length <= 70, String(s.elevation.length));
+  assert.equal(s.elevation[0].m, 10);
+  assert.deepEqual(elevationSpan(s), { lo: 10, hi: 25 });
+  for (let i = 1; i < s.elevation.length; i++) assert.ok(s.elevation[i].atM - s.elevation[i - 1].atM >= 30);
+  // Off the route, none.
+  let off = statsStep(statsStart(0), fix(0, 0), { progressM: 0, off: true }, model, profile);
+  off = statsStep(off, fix(600, 120), { progressM: 600, off: true }, model, profile);
+  assert.equal(elevationSpan(off), null);
 });
