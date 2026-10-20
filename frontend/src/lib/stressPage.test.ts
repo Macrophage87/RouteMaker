@@ -97,7 +97,7 @@ test("each level is said whole, with a stop after its name and its map color in 
 
 test("closed ways: mountain-bike trails open on Mountain Bike, and green or unrated ones on Gravel and Mountain Goat (the owner, 2026-10-19)", () => {
   assert.doesNotMatch(text, /rated mountain-bike singletrack/);
-  assert.match(text, /Mountain-bike trails are closed on most ride types\. Mountain Bike rides all of them\. Gravel and Mountain Goat ride the green \(level 1\) ones and the ones with no rating\./);
+  assert.match(text, /Mountain-bike trails are closed on most ride types\. Mountain Bike rides all of them\. Gravel and Mountain Goat ride the ones with no rating, and from the next map update the green \(level 1\) ones too\./);
   assert.doesNotMatch(text, /mountain-bike-only trails/);
 });
 
