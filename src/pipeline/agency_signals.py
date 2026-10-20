@@ -218,6 +218,73 @@ def mdot_sha_rows(doc: Mapping) -> tuple[list[dict], dict[str, int]]:
     return _rows(doc, "mdot-sha", keep=keep, id_fields=("SIGNAL_ID", "OBJECTID"))
 
 
+# MDOT SHA's device types for a beacon that flashes at a junction: a Warning Beacon
+# (the device at Connecticut Ave and Baltimore St, Kensington, where the owner met a
+# flashing red to the side street against free-flowing traffic, 2026-10-20) and an
+# Intersection Control Beacon. An ICB may flash red to every approach, an all-way stop,
+# which the list does not tell from a two-way one; the owner chose to read them all
+# (2026-10-20, "Include"), and a junction is then read by its mapped signs, or where
+# there are none by its roads' stress (`intersections.beacon_control`). A School
+# Warning Beacon flashes only at school times and is left out.
+MDOT_BEACON_TYPES = {"2": "Intersection Control Beacon", "3": "Warning Beacon"}
+# The file `scripts/install_reference_data.py --md-signals` writes beside signals.json
+# and `manage.py load_flashing_signals` loads (`core.flashing_signals`): the junction
+# model prices a signal the map has within reach of one as no signal, at plan time.
+BEACONS_FILE_NAME = "flashing-signals.json"
+
+
+def _road_name(value: object) -> str:
+    """ "CONNECTICUT AVE" as "Connecticut Ave"; MDOT's "(MB)" and the like kept as given."""
+    words = str(value or "").split()
+    return " ".join(w if w.startswith("(") else w.capitalize() for w in words)
+
+
+def mdot_sha_beacons(doc: Mapping, signals: Sequence[Mapping] = ()) -> dict:
+    """MDOT SHA's junction beacons (`MDOT_BEACON_TYPES`, not `Proposed`) as a
+    `load_flashing_signals` file. A beacon within `OSM_SIGNAL_M` of a signal in
+    `signals` (the installed rows) is left out: the junction has a signal too, and the
+    signal is what stops traffic there."""
+    rows: list[dict] = []
+    dropped: dict[str, int] = defaultdict(int)
+    near_signal = [(r["lon"], r["lat"]) for r in signals if r.get("kind") == "signal"]
+    for feature in doc.get("features", []):
+        props = {str(k).upper(): v for k, v in (feature.get("properties") or {}).items()}
+        device = str(props.get("TCD_TYPE") or "").strip()
+        if device not in MDOT_BEACON_TYPES:
+            continue
+        geometry = feature.get("geometry") or {}
+        if geometry.get("type") != "Point" or not geometry.get("coordinates"):
+            dropped["no point"] += 1
+            continue
+        if not in_service(props.get("OWNER_DESC")):
+            dropped[f"OWNER_DESC {props.get('OWNER_DESC')}"] += 1
+            continue
+        key = next(
+            (props[f] for f in ("SIGNAL_ID", "OBJECTID") if props.get(f) not in (None, "")), None
+        )
+        if key is None:
+            dropped["no id"] += 1
+            continue
+        lon, lat = (float(v) for v in geometry["coordinates"][:2])
+        if any(metres(lon, lat, x, y) <= OSM_SIGNAL_M for x, y in near_signal):
+            dropped["a signal at the same junction"] += 1
+            continue
+        roads = [_road_name(props.get(f)) for f in ("MR_ROAD_NAME", "SR_ROAD_NAME")]
+        rows.append(
+            {
+                "id": f"mdot-sha:{key}",
+                "name": " and ".join(r for r in roads if r) or "An unnamed junction",
+                "lon": round(lon, 7),
+                "lat": round(lat, 7),
+                "evidence": f"MDOT SHA Traffic Signals, TCD_Type {device} "
+                f"({MDOT_BEACON_TYPES[device]}), SIGNAL_ID {key}",
+            }
+        )
+    if len({r["id"] for r in rows}) != len(rows):
+        raise SignalListInvalid("two MDOT SHA beacons share an id")
+    return {"version": 1, "source": "mdot-sha", "rows": rows, "dropped": dict(dropped)}
+
+
 def arlington_rows(doc: Mapping) -> tuple[list[dict], dict[str, int]]:
     """Arlington County's Intersection Points: `TrafficControlType` Signalized, not
     still in design or construction (`ActiveProjectStatus`), and not retired (any
