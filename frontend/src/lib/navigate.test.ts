@@ -55,6 +55,7 @@ import {
   sentenceOf,
   snap,
   startState,
+  PASSED_M,
   step,
   toGo,
   turnWords,
@@ -1491,8 +1492,16 @@ test("a U-turn re-route says it plainly: first on the card, said at once, then t
   assert.equal(model.cues[1].text, "Left onto B Street.");
   // The card leads with it (the owner, 2026-10-20: "There's no U turn symbol."), until the rider is on the way.
   assert.equal(nextAction(model, 0)?.movement, "uturn");
-  assert.equal(nextAction(model, 5)?.movement, "uturn");
+  assert.equal(nextAction(model, 9.9)?.movement, "uturn");
+  assert.equal(nextAction(model, PASSED_M)?.text, "Left onto B Street.");
   assert.equal(nextAction(model, 20)?.text, "Left onto B Street.");
+  assert.equal(whereAmI(model, { ...startState(), progressM: 0 }).includes("Next: make a U-turn."), true);
+  // Without a U-turn, the start is as before: the first turn.
+  assert.equal(nextAction(rideModel(lRoute()), 0)?.text, "Left onto B Street.");
+  // A first turn within 10 m of the start: the card moves on to it when the voice does.
+  const near = withUTurn({ ...rideModel(lRoute()), cues: rideModel(lRoute()).cues.map((c, i) => (i === 0 ? { ...c, atM: 6 } : c)) });
+  assert.equal(nextAction(near, 2)?.movement, "uturn");
+  assert.equal(nextAction(near, 3.5)?.text, "Left onto B Street.");
   const out = step(model, startState(), fix(at(0, 0)), "full");
   assert.ok(out.events.some((e) => e.spoken === "Make a U-turn now."), JSON.stringify(out.events.map((e) => e.spoken)));
   const { events } = ride(model, "full", 0, 1100, 20);
