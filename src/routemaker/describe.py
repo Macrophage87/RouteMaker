@@ -852,7 +852,7 @@ def _then_words(streets: list[tuple[str, str | None]]) -> str:
         pieces.append(
             f"{TURN_WORDS[movement].lower()} on {_in_sentence(street)}"
             if movement in TURN_WORDS
-            else street
+            else _in_sentence(street)
         )
     more = len(streets) - MAX_NAMED_TURNS
     if more > 0:

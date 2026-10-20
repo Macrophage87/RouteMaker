@@ -3,23 +3,23 @@ owner, 2026-10-20, on a frontage road beside East-West Highway: "When going on a
 road, especially next to a major road, say so").
 
 Read at plan time from the router, so it needs no rebuild: for each such way of the route,
-Valhalla's `/locate` (auto costing, verbose) at the middle of the route's run along it
-answers the drivable edges within BESIDE_M; the nearest of a major class (MAJOR_CLASSES,
-not a ramp) with a name, running within BESIDE_ANGLE of parallel to the way there, is the
-road beside it. The route description then calls the way "service road beside East-West
-Highway" (`routemaker.describe.beside_words`), on the ride's card, in its voice and in the
-directions.
+Valhalla's `/locate` (auto costing, verbose; one request for all of them) at the middle of
+the route's run along it answers the drivable edges within BESIDE_M; the nearest of a
+major class (MAJOR_CLASSES, not a ramp) with a name, running within BESIDE_ANGLE of
+parallel to the way there, is the road beside it. The route description then calls the way
+"service road beside East-West Highway" (`routemaker.describe.beside_words`), on the
+ride's card, in its voice and in the directions.
 
 A path the rebuild already named for its street (`sidepath_names_of`: "9th Street
 Northwest protected bike lane") keeps that name, and a way with a name of its own is never
-asked. The router has BUDGET_S for all of a route's ways together; a way it does not
-answer in time, or answers with no such road, is just "service road" or "path".
+asked. The router has BUDGET_S for all of a route's ways together (less when the plan is
+short of time); a way it does not answer in time, or answers with no such road, is just
+"service road" or "path".
 """
 
 from __future__ import annotations
 
 import logging
-import time
 
 from django.conf import settings
 
@@ -37,13 +37,14 @@ BESIDE_ANGLE = 30.0
 MAJOR_CLASSES = frozenset({"motorway", "trunk", "primary", "secondary", "tertiary"})
 # The shortest run of a way worth naming: shorter ones are folded into a neighbour anyway.
 MIN_RUN_M = 40.0
-# The most ways asked about for one route, and the time the router has for all of them.
+# The most ways asked about for one route. All of them are asked in one `/locate`, given
+# at most BUDGET_S, and never more than a quarter of what the plan has left.
 MAX_WAYS = 12
 BUDGET_S = 1.0
-PER_CALL_S = 0.5
 # What the router answered, by way and spot: a road beside a way changes only at a rebuild.
 _CACHE_MAX = 4096
 _cache: dict[tuple[int, float, float], str | None] = {}
+_MISSING = object()
 
 
 def _wanted(use: str) -> bool:
@@ -116,19 +117,35 @@ def road_beside(edges: list[dict], way_id: int, heading: float) -> str | None:
     return best[1] if best else None
 
 
-def _locate(lon: float, lat: float, timeout_s: float) -> list[dict]:
+def _locate(spots: list[tuple[float, float]], timeout_s: float) -> list[list[dict]]:
+    """The router's drivable edges within BESIDE_M of each (lon, lat), in one `/locate`
+    (it takes many locations and answers one item each, in order)."""
     from . import routing
 
     payload = {
-        "locations": [{"lat": lat, "lon": lon, "radius": BESIDE_M}],
+        "locations": [{"lat": lat, "lon": lon, "radius": BESIDE_M} for lon, lat in spots],
         "costing": "auto",
         "verbose": True,
     }
     url = f"{settings.VALHALLA_UPSTREAMS['standard'].rstrip('/')}/locate"
     answer = routing._transport(url, payload, timeout_s)
-    if not isinstance(answer, list) or not answer:
-        return []
-    return [e for e in (answer[0] or {}).get("edges") or [] if isinstance(e, dict)]
+    if not isinstance(answer, list):
+        return [[] for _ in spots]
+    out = []
+    for k in range(len(spots)):
+        item = answer[k] if k < len(answer) and isinstance(answer[k], dict) else {}
+        out.append([e for e in item.get("edges") or [] if isinstance(e, dict)])
+    return out
+
+
+def _time_left() -> float:
+    """BUDGET_S, or less where the plan has less left (`routing._plan_ends`)."""
+    from . import routing
+
+    ends = routing._plan_ends.get()
+    if ends is None:
+        return BUDGET_S
+    return min(BUDGET_S, (ends - routing.clock()) / 4)
 
 
 def names_of(pieces: list, named: dict[int, str] | None = None) -> dict[int, str]:
@@ -145,28 +162,37 @@ def names_of(pieces: list, named: dict[int, str] | None = None) -> dict[int, str
         (w for w, idx in runs.items() if sum(pieces[i].metres for i in idx) >= MIN_RUN_M),
         key=lambda w: -sum(pieces[i].metres for i in runs[w]),
     )[:MAX_WAYS]
-    found: dict[int, str] = {}
-    ends = time.monotonic() + BUDGET_S
+    roads: dict[int, str | None] = {}
+    asked: list[tuple[int, tuple[int, float, float], float, float, float]] = []
     for way in ways:
         spot = _spot(pieces, runs[way])
         if spot is None:
             continue
         lon, lat, heading = spot
         key = (way, round(lon, 4), round(lat, 4))
-        if key in _cache:
-            road = _cache[key]
+        cached = _cache.get(key, _MISSING)
+        if cached is _MISSING:
+            asked.append((way, key, lon, lat, heading))
         else:
-            left = ends - time.monotonic()
-            if left <= 0:
-                break
-            try:
-                road = road_beside(_locate(lon, lat, min(PER_CALL_S, left)), way, heading)
-            except Exception:  # noqa: BLE001 - the way is just "service road" or "path"
-                logger.info("the road beside way %s could not be read", way, exc_info=True)
-                continue
+            roads[way] = cached
+    left = _time_left()
+    if asked and left > 0.05:
+        try:
+            answers = _locate([(lon, lat) for _w, _k, lon, lat, _h in asked], left)
+        except Exception:  # noqa: BLE001 - the ways are just "service road" or "path"
+            logger.info(
+                "the roads beside the route's unnamed ways could not be read", exc_info=True
+            )
+            answers = None
+        if answers is not None:
             if len(_cache) >= _CACHE_MAX:
                 _cache.clear()
-            _cache[key] = road
+            for (way, key, _lon, _lat, heading), edges in zip(asked, answers, strict=True):
+                road = road_beside(edges, way, heading)
+                _cache[key] = road
+                roads[way] = road
+    found: dict[int, str] = {}
+    for way, road in roads.items():
         words = describe.beside_words(pieces[runs[way][0]].use, road) if road else None
         if words:
             found[way] = words

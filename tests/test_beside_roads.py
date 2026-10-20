@@ -78,9 +78,9 @@ class TestNamesOf:
     def test_a_service_road_is_named_for_the_highway_beside_it(self, monkeypatch):
         asked = []
 
-        def locate(lon, lat, timeout_s):
-            asked.append((lon, lat))
-            return [edge(5, ["East-West Highway"])]
+        def locate(spots, timeout_s):
+            asked.append(spots)
+            return [[edge(5, ["East-West Highway"])] for _ in spots]
 
         monkeypatch.setattr(beside_roads, "_locate", locate)
         pieces = service_pieces()
@@ -91,7 +91,11 @@ class TestNamesOf:
         assert len(asked) == 1
 
     def test_a_sidewalk_and_a_path_are_named_so(self, monkeypatch):
-        monkeypatch.setattr(beside_roads, "_locate", lambda *a: [edge(5, ["East-West Highway"])])
+        monkeypatch.setattr(
+            beside_roads,
+            "_locate",
+            lambda spots, t: [[edge(5, ["East-West Highway"])] for _ in spots],
+        )
         sidewalk = beside_roads.names_of(service_pieces(use="sidewalk"))
         assert sidewalk == {77: "sidewalk beside East-West Highway"}
         path = beside_roads.names_of(service_pieces(way_id=78, use="cycleway"))
@@ -116,3 +120,30 @@ class TestNamesOf:
 
         monkeypatch.setattr(beside_roads, "_locate", locate)
         assert beside_roads.names_of(service_pieces()) == {}
+
+
+class TestOneAsk:
+    def test_every_way_is_asked_in_one_request_within_the_budget(self, monkeypatch):
+        calls = []
+
+        def locate(spots, timeout_s):
+            calls.append((len(spots), timeout_s))
+            return [[edge(5, ["East-West Highway"])], []]
+
+        monkeypatch.setattr(beside_roads, "_locate", locate)
+        pieces = service_pieces() + service_pieces(way_id=78, use="sidewalk")
+        assert beside_roads.names_of(pieces) == {77: "service road beside East-West Highway"}
+        assert calls == [(2, beside_roads.BUDGET_S)]
+
+    def test_a_plan_short_of_time_does_not_ask(self, monkeypatch):
+        from core import routing
+
+        def locate(*args):
+            raise AssertionError("not asked")
+
+        monkeypatch.setattr(beside_roads, "_locate", locate)
+        token = routing._plan_ends.set(routing.clock() + 0.1)
+        try:
+            assert beside_roads.names_of(service_pieces()) == {}
+        finally:
+            routing._plan_ends.reset(token)

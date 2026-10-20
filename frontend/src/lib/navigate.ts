@@ -714,7 +714,7 @@ export function cueSpoken(cue: Cue, phase: Phase, distanceM: number, first = pha
     // A jog's "now" is short, the second turn being only seconds on: "Right now, then bear left onto ...".
     if (cue.then) return `${MOVEMENT_WORDS[cue.movement]} now, then ${lowerFirst(turnWords(cue.then.movement, cue.then.street))}`;
     if (cue.movement === "uturn") return "Make a U-turn now.";
-    return `${MOVEMENT_WORDS[cue.movement]} now${cue.street ? ` onto ${cue.street}` : ""}.`;
+    return `${MOVEMENT_WORDS[cue.movement]} now${cue.street ? ` onto ${wayWords(cue.street)}` : ""}.`;
   }
   // A turn at a flagged junction says so in its first warning only; "now" is the turn alone.
   const busy = cue.kind === "turn" && (cue.severity === "orange" || cue.severity === "red") && first;

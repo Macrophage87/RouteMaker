@@ -62,6 +62,7 @@ import {
   wayWords,
   whereAmI,
   withoutMetric,
+  type Cue,
   type RideEvent,
   type RideFix,
   type RideModel,
@@ -1480,6 +1481,8 @@ test("service roads: a turn onto one says what it is and the road it runs beside
   assert.equal(turnWords("right", "alley"), "Right onto the alley.");
   assert.equal(ontoWords("service road beside East-West Highway"), "Continue onto the service road beside East-West Highway.");
   assert.equal(wayWords("Spencer Road"), "Spencer Road");
+  const cue = { index: 0, kind: "turn", atM: 100, text: "", movement: "left", street: "service road beside East-West Highway", severity: null, tier: 2, stop: null } as Cue;
+  assert.equal(cueSpoken(cue, "now", 0), "Left now onto the service road beside East-West Highway.");
 });
 
 test("service roads: leaving the highway straight on for its service road is said, however short, and named in Where am I?", () => {
