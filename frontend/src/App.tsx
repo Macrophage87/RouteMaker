@@ -3301,8 +3301,7 @@ export function App() {
   // The ride just ended, kept for Undo while its summary shows (the owner, 2026-10-20: "When ending a ride, perhaps
   // summary stats rather than programming that ride again"). In memory only, as the ride itself is.
   // `from`: the plan End ride left starting where the rider was (Plan, part way), so Undo takes that edit back too.
-  // `left`: the plan as End ride left it; the summary is about that plan, so a new plan or ride closes it (end review M1).
-  const endedRide = useRef<{ start: NonNullable<typeof rideStart>; from: LonLat[] | null; left: LonLat[]; stats: RideStats } | null>(null);
+  const endedRide = useRef<{ start: NonNullable<typeof rideStart>; from: LonLat[] | null; stats: RideStats } | null>(null);
   // Undo's ride carries on from the ended ride's figures (RideMode's resumeStats); a new Start begins from nought.
   const [resumeStats, setResumeStats] = useState<RideStats | null>(null);
   const [rideEnded, setRideEnded] = useState<{ n: number; stats: RideStats; at: number; note: string | null } | null>(null);
@@ -3324,7 +3323,7 @@ export function App() {
       setFromHere((f) => [...f, from![0]]);
     }
     const note = from ? RIDE_ENDED_FROM_HERE_NOTE : endedIn !== "go" && after === "no-fix" ? RIDE_ENDED_NO_FIX_NOTE : null;
-    endedRide.current = start ? { start, from, left: from ?? pointsRef.current, stats } : null;
+    endedRide.current = start ? { start, from, stats } : null;
     setRiding(false);
     setRideStart(null);
     setRideView(null);
@@ -3359,14 +3358,23 @@ export function App() {
     if (mode === "go" && pointsRef.current.length > 0) clearPlan();
     else backToRideOpener();
   };
-  // A plan changed or a ride started while the summary is up: the summary goes, so Done can't clear the new plan
-  // and Undo can't ride the old one over it (end review M1).
+  // A new destination or a ride started while the summary is up: the summary goes, so Done can't clear the next trip
+  // and Undo can't ride the old one over it (end review M1). The destination, by value: Go's start follows the rider.
+  const summaryEnd = useRef<string | null>(null);
+  const planEnd = points.length > 0 ? points[points.length - 1].join(",") : "";
   useEffect(() => {
-    const ended = endedRide.current;
-    if (!rideEnded || (!riding && (!ended || points === ended.left))) return;
+    if (!rideEnded) {
+      summaryEnd.current = null;
+      return;
+    }
+    if (!riding && (summaryEnd.current === null || summaryEnd.current === planEnd)) {
+      summaryEnd.current = planEnd;
+      return;
+    }
+    summaryEnd.current = null;
     endedRide.current = null;
     setRideEnded(null);
-  }, [points, riding, rideEnded]);
+  }, [planEnd, riding, rideEnded]);
   // The first ride's question takes the focus to its heading, so its safety note is read before the
   // choices (VoiceOver skips a dialog's description when the focus lands inside it).
   useEffect(() => {
