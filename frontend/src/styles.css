@@ -7229,6 +7229,38 @@ details.fold > summary .icon {
   top: 72px;
 }
 
+/* Manual mode on (v0.10.0, Stephen 2026-10-20: "make it clear that manual mode is being used"): a label on its own
+   row under the bar, in the switch's colours; not a control, so taps go through to the map. */
+.plan-map-bar {
+  flex-wrap: wrap;
+}
+
+.plan-map-bar .plan-bar-manual-badge {
+  flex-basis: 100%;
+  display: flex;
+  justify-content: center;
+  margin: 0;
+}
+
+
+.plan-bar-manual-badge {
+  font-size: 0.875rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.plan-bar-manual-badge > span {
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-text);
+  box-shadow: var(--shadow);
+}
+
+.app:has(.plan-bar-manual-badge) .map-chips {
+  top: 108px;
+}
+
 @media (max-width: 720px) {
   .plan-map-bar {
     left: 10px;
@@ -7237,6 +7269,10 @@ details.fold > summary .icon {
 
   .app:has(.plan-map-bar) .map-chips {
     top: 72px;
+  }
+
+  .app:has(.plan-bar-manual-badge) .map-chips {
+    top: 108px;
   }
 }
 
