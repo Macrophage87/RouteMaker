@@ -837,7 +837,7 @@ class TestWords:
 
     def test_every_reason_the_rebuild_writes_has_words(self) -> None:
         from pipeline.restricted_areas import MILITARY_NO_BICYCLE, SECURED_NO_BICYCLE
-        from routemaker import agency_lts, cbd, singletrack, trailaccess, zoo
+        from routemaker import agency_lts, cbd, singletrack, station_links, trailaccess, zoo
 
         written = {
             *trailaccess.TAG_REASONS,
@@ -846,6 +846,7 @@ class TestWords:
             cbd.NO_BICYCLE,
             singletrack.NO_BICYCLE,
             zoo.NO_BICYCLE,
+            station_links.ESCALATOR,
             "override_open",
             "override_closed",
             "bicycle_no",
