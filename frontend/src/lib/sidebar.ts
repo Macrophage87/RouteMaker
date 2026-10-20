@@ -13,10 +13,10 @@ import type { PresetId } from "./presets.ts";
 
 /**
  * The views the panel body shows: the planner (Plan's sections, or Go's sheet), or one of the sheets
- * the bottom bar, the map's chips, Go's Menu and the Layers sheet's Legend button open (UI-CLEANUP,
- * the approved mockup of 2026-10-11).
+ * the bottom bar, the map's chips and Go's Menu open (UI-CLEANUP, the approved mockup of 2026-10-11). The
+ * legend is in Layers, each key in its own layer's section (the owner, 2026-10-19).
  */
-export type PanelView = "planner" | "layers" | "legend" | "suggest" | "review" | "gpx" | "settings" | "nearest" | "food" | "ride" | "repair" | "places" | "points";
+export type PanelView = "planner" | "layers" | "suggest" | "review" | "gpx" | "settings" | "nearest" | "food" | "ride" | "repair" | "places" | "points";
 
 /** The planner's own heading, where the focus goes when the Plan button returns to it (OWNER-DECISIONS 392). */
 export const PLANNER_TITLE = "RouteMaker";
@@ -24,7 +24,6 @@ export const PLANNER_TITLE = "RouteMaker";
 /** The sheets' headings (the focus goes to it on open). Go shows Settings as its Menu. */
 export const SHEET_TITLES: Record<Exclude<PanelView, "planner">, string> = {
   layers: "Layers",
-  legend: "Legend",
   suggest: "Suggest a change",
   review: "Review",
   // Save and load (the owner, 2026-10-18: "the files tab (maybe call it save or load)"): files, Save, Share, your routes.
@@ -59,21 +58,21 @@ export interface BarItem {
 
 /**
  * Plan, Layers, Suggest, GPX and Settings (OWNER-DECISIONS 392, 393: Plan is first, the way back to the
- * planner from any sheet). UI-CLEANUP (the owner's choice 6 of 2026-10-11): the legend moved behind a
- * Legend button at the top of Layers, and Suggest took its slot: the one way in to the suggest tools.
+ * planner from any sheet). UI-CLEANUP (the owner's choice 6 of 2026-10-11): the legend moved into Layers
+ * (each key in its layer's section since 2026-10-19), and Suggest took its slot: the one way in to the suggest tools.
  */
 export const BAR_ITEMS: readonly BarItem[] = [
   { id: "plan", label: "Plan", opens: "planner", description: "Shows the planner: the points, the ride settings and the route." },
-  { id: "layers", label: "Layers", opens: "layers", description: "Opens the map layers and their switches; the legend is behind its Legend button." },
+  { id: "layers", label: "Layers", opens: "layers", description: "Opens the map layers, their switches and each layer's key." },
   { id: "suggest", label: "Suggest", opens: "suggest", description: "Opens the ways to suggest a change to the map, or report a problem to DC 311." },
   { id: "gpx", label: SAVE_LOAD, opens: "gpx", description: "Opens Save and load: save or share the route, find your routes, or open or export a route file." },
   { id: "settings", label: "Settings", opens: "settings", description: "Opens the settings: My Go (Home, ride type, Open in), riding, display and your account." },
 ];
 
-/** The sheets a bar button counts as its own: Layers holds the legend, Suggest the review. */
+/** The sheets a bar button counts as its own: Suggest holds the review. */
 const BAR_SHEETS: Record<BarItem["id"], readonly PanelView[]> = {
   plan: ["planner"],
-  layers: ["layers", "legend"],
+  layers: ["layers"],
   suggest: ["suggest", "review"],
   gpx: ["gpx"],
   settings: ["settings"],
@@ -248,8 +247,8 @@ export function chartFoldOpen(narrow: boolean): boolean {
 // ---- Where the focus goes ---------------------------------------------------------
 
 /**
- * Why the panel changed view: a bar button or another opener (a map chip, Go's Menu, the Legend
- * button), Back (or Escape), the Plan button (planButton, which focuses the heading), the phone
+ * Why the panel changed view: a bar button or another opener (a map chip, Go's Menu),
+ * Back (or Escape), the Plan button (planButton, which focuses the heading), the phone
  * header's "Show planner" (panelToggle, which leaves the focus on the toggle), or a question or error
  * that needs the planner.
  */
@@ -266,7 +265,7 @@ export type FocusTarget =
 
 /**
  * Where the focus goes when the panel body changes view (App.tsx). A sheet opened takes it to its
- * heading. Back takes it to what opened the sheet (a bar button, a map chip, the Legend button), the
+ * heading. Back takes it to what opened the sheet (a bar button, a map chip), the
  * sheet it was opened from showing again; the Plan button takes it to the planner's heading
  * (OWNER-DECISIONS 392). An error that brought the planner back takes it to the error, and the
  * long-ride question to its "Plan it" button. No change of view moves nothing.

@@ -4346,11 +4346,15 @@ details.zoom-notes {
 /* Bikeshare (FOLLOWUP-BIKESHARE): the dock markers on the map, the plan in the route
    panel, and the bike choice. Text and shape carry the meaning; no operator mark or
    brand colour is used (OWNER-DECISIONS 300, 301). */
+/* The white bubble (the owner, 2026-10-19: "so they pop out"), as on the map's other docks. */
 .dock-marker {
   position: relative;
   width: 26px;
   height: 26px;
   line-height: 0;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px #ffffff, 0 0 0 4px #6b7280;
   filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.45));
 }
 .dock-marker .dock-badge {
@@ -4760,7 +4764,7 @@ details.zoom-notes {
 }
 
 /* --- UI-CLEANUP (the approved mockup of 2026-10-11): Go and Plan, line icons, chips, one-line folds,
-   the route's one row of actions, the Legend sheet and Ride mode's 311 button. Every target is 44 px at
+   the route's one row of actions and Ride mode's 311 button. Every target is 44 px at
    least; state is never colour alone (a pressed chip is also bold, a fold has its chevron). --- */
 
 .icon {
@@ -5341,10 +5345,7 @@ details.fold > summary .icon {
   min-height: 44px;
 }
 
-/* The Legend button at the end of the Layers sheet's header; the Menu's pages; the Settings groups. */
-.sheet-header .legend-button {
-  margin-left: auto;
-}
+/* The Menu's pages; the Settings groups. */
 
 .layer-group {
   margin-bottom: 8px;

@@ -32,7 +32,7 @@ export function useMap(getMap: () => MapLibreMap | null, draw: (map: MapLibreMap
 }
 
 /** A small card on a tap, in words; the same facts are in the lists. A stop's card is stopCard's, below. */
-export function tapCard(map: MapLibreMap, layer: string, words: (id: string) => string[] | null): () => void {
+export function tapCard(map: MapLibreMap, layer: string | string[], words: (id: string) => string[] | null): () => void {
   let popup: Popup | null = null;
   const onClick = (event: MapMouseEvent & { features?: Array<{ properties?: Record<string, unknown> }> }) => {
     const id = event.features?.[0]?.properties?.id;
@@ -48,9 +48,10 @@ export function tapCard(map: MapLibreMap, layer: string, words: (id: string) => 
     }
     popup = new Popup({ closeButton: true, maxWidth: "260px", className: "rail-popup place-popup" }).setLngLat(event.lngLat).setDOMContent(body).addTo(map);
   };
-  map.on("click", layer, onClick);
+  const layers = typeof layer === "string" ? [layer] : layer;
+  map.on("click", layers, onClick);
   return () => {
-    map.off("click", layer, onClick);
+    map.off("click", layers, onClick);
     popup?.remove();
   };
 }

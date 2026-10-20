@@ -87,8 +87,8 @@ needed; reload the page to get the box back.
   Mass Ride). Each row is the section's heading, a switch named for it, then a "layers" button that
   says whether it is collapsed or expanded. The switch turns the whole section on or off; off
   remembers which of its layers were on, and on brings those back. With only some on, it is on
-  and says "Some on" and which. Expand a row for each layer's own switch and a one-line hint; the
-  longer explanations are on the Legend page (the Legend button at the top of Layers).
+  and says "Some on" and which. Expand a row for each layer's own switch, a one-line hint, and
+  its key (what each line, color and symbol means) with the longer explanation.
 - The "High contrast" switch is on the "Settings" page (the last button in the same bar). It
   makes the lines bolder and the borders and text stronger, and changes the stress colors to
   ones that do not rely on red and green.

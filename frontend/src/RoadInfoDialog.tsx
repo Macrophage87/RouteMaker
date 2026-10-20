@@ -80,7 +80,7 @@ import { FEDERAL_ADVICE, stopWarningShort, type FederalArea } from "./lib/federa
 import { HazardReport } from "./HazardReport.tsx";
 import { ClosureEntry } from "./ClosureEntry.tsx";
 import { MARK_CLOSED_TEXT } from "./lib/closureReview.ts";
-import { climbLabel, type Climb } from "./lib/climbs.ts";
+import { climbNamedLabel, type Climb } from "./lib/climbs.ts";
 import { CLIMB_DETAILS_TEXT } from "./lib/climbCard.ts";
 import { TrailProfileView } from "./lib/trailProfile.ts";
 import { milePanelRow, type TrailMiles } from "./lib/trailMiles.ts";
@@ -713,7 +713,7 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
         {climb && onShowClimb && (
           <div className="road-info-climb">
             <p id={id("climb")}>
-              <span className="road-info-label">Climb here:</span> {climbLabel(climb)}{climb.name ? `, on ${climb.name}` : ""}
+              <span className="road-info-label">Climb here:</span> {climbNamedLabel(climb)}
             </p>
             <button
               type="button"
