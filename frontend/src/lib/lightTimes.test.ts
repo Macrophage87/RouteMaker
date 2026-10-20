@@ -202,13 +202,13 @@ test("Ride mode's corner: the light times within the hour rule, for the ride sti
   const corner = rideLightCorner(model, 0, 20 * 60, six);
   assert.ok(corner);
   assert.equal(corner.shown.length, 2);
-  assert.match(corner.shown[0], /^Sunset 6:2\d PM$/);
-  assert.match(corner.shown[1], /^Twilight 6:5\d PM$/);
-  assert.match(corner.said, /^Sunset 6:2\d PM; civil twilight ends 6:5\d PM\.$/);
+  assert.match(corner.shown[0], /^Sunset 6:2\d PM \(2\d min\)$/);
+  assert.match(corner.shown[1], /^Twilight 6:5\d PM \(5\d min\)$/);
+  assert.match(corner.said, /^Sunset 6:2\d PM, in 2\d minutes; civil twilight ends 6:5\d PM, in 5\d minutes\.$/);
   // After sunset: only what is still ahead.
   assert.deepEqual(rideLightCorner(model, lengthM / 2, 10 * 60, Date.parse("2026-10-16T18:40:00-04:00"))?.shown.length, 1);
   // Midday: nothing, so the corner says Ride mode.
   assert.equal(rideLightCorner(model, 0, 20 * 60, Date.parse("2026-10-16T12:00:00-04:00")), null);
   // Morning, 6:00 AM: civil dawn 6:51 AM within the hour, then sunrise.
-  assert.match(rideLightCorner(model, 0, 10 * 60, Date.parse("2026-10-16T06:00:00-04:00"))?.said ?? "", /^Civil twilight begins 6:5\d AM; sunrise 7:1\d AM\.$/);
+  assert.match(rideLightCorner(model, 0, 10 * 60, Date.parse("2026-10-16T06:00:00-04:00"))?.said ?? "", /^Civil twilight begins 6:5\d AM, in 5\d minutes; sunrise 7:1\d AM, in 1 hour 1\d minutes\.$/);
 });

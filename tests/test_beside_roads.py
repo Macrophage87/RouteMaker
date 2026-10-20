@@ -9,6 +9,7 @@ import pytest
 from core import beside_roads
 from core.dedodge import encode_polyline6
 from core.routing import Piece
+from routemaker import describe
 
 # East-West Highway near Rock Creek Forest Elementary runs about north-east.
 HIGHWAY = [(-77.0600, 38.9910), (-77.0560, 38.9940)]
@@ -106,7 +107,7 @@ class TestNamesOf:
             raise AssertionError("not asked")
 
         monkeypatch.setattr(beside_roads, "_locate", locate)
-        assert beside_roads.names_of(service_pieces(names=("Spencer Road",))) == {}
+        assert beside_roads.names_of(service_pieces(use="cycleway", names=("Spencer Road",))) == {}
         assert beside_roads.names_of(service_pieces(n=1, metres=20.0)) == {}
         assert beside_roads.names_of(service_pieces(use="road")) == {}
         assert beside_roads.names_of(service_pieces(use="alley")) == {}
@@ -147,3 +148,64 @@ class TestOneAsk:
             assert beside_roads.names_of(service_pieces()) == {}
         finally:
             routing._plan_ends.reset(token)
+
+
+class TestNamedServiceRoads:
+    """The owner, 2026-10-20: the frontage road is mapped "East-West Highway" too, and the
+    ride said "Turn left onto East-West Highway"."""
+
+    def test_one_with_the_highways_name_is_the_service_road_beside_it(self, monkeypatch):
+        monkeypatch.setattr(
+            beside_roads,
+            "_locate",
+            lambda spots, t: [[edge(5, ["MD 410", "East-West Highway"])] for _ in spots],
+        )
+        found = beside_roads.names_of(service_pieces(names=("East-West Highway",)))
+        assert found == {77: "service road beside East-West Highway"}
+        assert isinstance(found[77], describe.BesideName)
+
+    def test_one_with_a_name_of_its_own_keeps_it(self, monkeypatch):
+        monkeypatch.setattr(
+            beside_roads,
+            "_locate",
+            lambda spots, t: [[edge(5, ["East-West Highway"])] for _ in spots],
+        )
+        assert beside_roads.names_of(service_pieces(names=("Spencer Road",))) == {}
+
+    def test_a_named_path_is_never_asked(self, monkeypatch):
+        def locate(*args):
+            raise AssertionError("not asked")
+
+        monkeypatch.setattr(beside_roads, "_locate", locate)
+        assert (
+            beside_roads.names_of(service_pieces(use="cycleway", names=("Rock Creek Trail",))) == {}
+        )
+
+    def test_the_description_says_the_beside_name_in_place_of_its_own(self):
+        from core import routing
+
+        piece = service_pieces(names=("East-West Highway",))[0]
+        name = describe.BesideName("service road beside East-West Highway")
+        assert routing._piece_names(piece, {77: name}) == (name,)
+        # A street-side name never replaces a way's own name.
+        assert routing._piece_names(piece, {77: "X bike lane"}) == ("East-West Highway",)
+
+    def test_a_service_road_carrying_on_in_line_where_its_road_ends_is_not_beside_it(self):
+        # Oak Street ends, and a service road also mapped "Oak Street" carries straight on.
+        oak = [(-77.0600, 38.9900), (-77.0600, 38.9910)]
+        edges = [edge(5, ["Oak Street"], cls="tertiary", shape=oak, distance=25.0, at=oak[1])]
+        ahead = (-77.0600, 38.99122)  # 25 m past its end, on its line
+        assert beside_roads.road_beside(edges, 77, 0.0, frozenset({"oak street"}), ahead) is None
+        beside = (-77.0597, 38.9905)  # 25 m to its side
+        assert (
+            beside_roads.road_beside(edges, 77, 0.0, frozenset({"oak street"}), beside)
+            == "Oak Street"
+        )
+
+    def test_the_road_of_its_own_name_wins_over_a_nearer_one(self):
+        edges = [
+            edge(4, ["Colesville Road"], distance=8.0),
+            edge(5, ["East-West Highway"], distance=22.0),
+        ]
+        same = frozenset({"east-west highway"})
+        assert beside_roads.road_beside(edges, 77, 45.0, same) == "East-West Highway"
