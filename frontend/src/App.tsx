@@ -4171,7 +4171,11 @@ export function App() {
       onReset={resetPlan}
       clearDisabled={points.length === 0}
       onClear={clearPlan}
-      locate={points.length === 0 && locateReady.available ? { onLocate: () => void useMyLocation("start"), busy: locating } : null}
+      locate={
+        points.length === 0
+          ? { onLocate: () => void useMyLocation("start"), busy: locating, unavailable: locateReady.available ? null : locateReady.reason }
+          : null
+      }
     />
   );
   const pointsSection = (
