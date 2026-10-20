@@ -101,7 +101,7 @@ What to expect on this server (the owner's check, 2026-10-04); a check below tha
 - `/data` is a separate filesystem mounted `nofail`, with far more than the 25 GB this needs;
 - Docker's root may be on the root disk rather than on `/data` (that is why binds never create
   their source: "Reboot and a late `/data`"), so its free space is checked on its own;
-- available memory is at least the 8400 MiB threshold below (the 7358 MiB startup peak plus the
+- available memory is at least the 8510 MiB threshold below (the 7486 MiB startup peak plus the
   checker's 1 GiB margin);
 - an x86_64 machine (the api image is built at home, on x86_64);
 - `beta.example.org` resolves to this server's own public address (checked live below; the
@@ -772,6 +772,10 @@ done
 scripts/beta/beta-compose.sh restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend
 ```
 
+The trail routers (`valhalla-offroad`, `valhalla-mtb`) are left out of every rollback: the release rolled back to may
+cap them at 768M, over the budget. If they run, stop them with `scripts/beta/beta-compose.sh stop valhalla-offroad
+valhalla-mtb` when rolling back to a release before v0.11.0, and start them again on the next release.
+
 If that update also carried a db part (`db --update-data`), do **B** as well, with the
 `pre-update-<time>.dump` it wrote: the graphs and the `live` schema are one build, and the old graphs
 against the new `live` mix segment attributes from one build with edges from another. A Photon index
@@ -931,7 +935,8 @@ continuous deployment first, as above, and resume it after.
    The pre-draw is not optional: until it finishes, every map view draws its tiles live (step 8,
    "Draw the stress tiles"). Run it before telling the testers the update is in.
 4. `scripts/beta/beta-compose.sh restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend`
-   (a router keeps the old archive mapped until restarted).
+   (a router keeps the old archive mapped until restarted), then the trail routers on their new tiles, from v0.11.0 on
+   (receive-data.sh prints the line): `scripts/beta/beta-compose.sh up -d --force-recreate valhalla-offroad valhalla-mtb`.
 5. `scripts/beta/smoke-test.sh --local`, then `--public`.
 
 **A new release sha** (code changes). The order matters: the database is snapshotted **before**
@@ -1257,6 +1262,23 @@ old `$RM_STATE/cd/node_modules/<hash>` directories. The agent keeps `RM_CD_KEEP`
 
 **Uninstall:** `"$A" uninstall` stops and removes the timer and units; `rm -rf "$RM_STATE/cd"`
 removes the agent, its logs and its snapshots (owner's say-so: they hold database dumps).
+
+### The trail routers, once, after v0.11.0 deploys
+
+`valhalla-offroad` (Gravel and Mountain Goat) and `valhalla-mtb` (Mountain Bike) run on the beta from v0.11.0 (the
+owner, 2026-10-20: "Both, raise limit to 7.1 GB"). The agent that deploys v0.11.0 is the one installed before it, which
+knows only the four routers, so after that deploy, and once the new map's tiles are installed (`$RM_DATA/tiles/offroad/current`
+and `$RM_DATA/tiles/mtb/current` exist):
+
+```sh
+. "$HOME/routemaker-beta-state/vars.sh"
+cd "$RM_SRC"
+scripts/beta/auto-release.sh install                                  # the agent that knows the trail routers
+"${RM_PY:-python3}" scripts/check_beta_compose.py --env-file .env      # "beta compose: ok", 7.06 GiB resident
+scripts/beta/beta-compose.sh up -d valhalla-offroad valhalla-mtb
+```
+
+From then on the agent recreates and restarts them beside the four, whenever their tiles are on the host.
 
 ## Alerts
 

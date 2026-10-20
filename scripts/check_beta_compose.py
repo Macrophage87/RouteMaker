@@ -11,8 +11,8 @@ daemon will be given: an overlay's merge can change a value the file never
 mentions, and the rendered form is also where compose has already expanded the
 `${...}` defaults.
 
-    scripts/check_beta_compose.py --render              # render with dummy env, then check
-                                                        # (always with the offroad profile on)
+    scripts/check_beta_compose.py --render              # render with dummy env, then check (the offroad
+                                                        # profile always on; --offroad is accepted, and a no-op)
     scripts/check_beta_compose.py --env-file .env       # the SERVER's .env, through beta-compose.sh
     scripts/check_beta_compose.py rendered.yaml         # a file made by `docker compose config`
 

@@ -2737,7 +2737,7 @@ def test_the_runbook_records_the_servers_facts_and_checks_them_read_only() -> No
     a variable and its address is checked live, never written down."""
     step1 = RUNBOOK[RUNBOOK.index("## 1. Prerequisites") : RUNBOOK.index("## 2. Get the code")]
     assert "export RM_SSH_HOST=<" in RUNBOOK[: RUNBOOK.index("## 1. Prerequisites")]
-    for fact in ('ssh "$RM_SSH_HOST"', "`nofail`", "root disk", "8400 MiB", "x86_64"):
+    for fact in ('ssh "$RM_SSH_HOST"', "`nofail`", "root disk", "8510 MiB", "x86_64"):
         assert fact in step1, fact
     assert "https://api.ipify.org" in step1 and "getent ahostsv4 beta.example.org" in step1
     assert '[ -n "$dns" ] && [ -n "$me" ] && [ "$dns" = "$me" ]' in step1  # re-check ops SF-A
