@@ -4218,8 +4218,9 @@ less.
   licence is in `LICENCE_CONFIRMED`; a row of a source not confirmed (Arlington, for now)
   is installed but not read. Alexandria's two layers are one table (257 records), so
   `alexandria_rows` splits it by `signal_type`: a HAWK only from `--alexandria-hawks`,
-  the rest only from `--alexandria-signals`. A `REPORT_ONLY` source (VDOT's 2023 snapshot) is matched
-  and reported (`would add`) but never marked.
+  the rest (and a record with no `signal_type`) only from `--alexandria-signals`. A
+  `REPORT_ONLY` source (VDOT's 2023 snapshot) is matched and reported (`would add`)
+  but never marked.
 - `INJECT_TAGS` matches them (`agency_signals.match`): a signal with an OSM signal within
   30 m whose nearest junction is the one the agency point marks is "in OSM"; otherwise
   every road junction node within 20 m (three or more road arms; alleys, parking aisles

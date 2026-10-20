@@ -318,9 +318,11 @@ def test_arlington_rows_keep_signalised_intersections_in_service() -> None:
 
 
 def test_alexandria_rows_name_the_hawk_layer() -> None:
-    doc = {"features": [point_feature({"OBJECTID": 7})]}
-    assert agency_signals.alexandria_rows(doc)[0][0]["kind"] == "signal"
+    doc = {"features": [point_feature({"OBJECTID": 7, "SIGNAL_TYPE": "HAWK"})]}
     assert agency_signals.alexandria_rows(doc, kind="hawk")[0][0]["kind"] == "hawk"
+    plain = {"features": [point_feature({"OBJECTID": 7})]}
+    assert agency_signals.alexandria_rows(plain)[0][0]["kind"] == "signal"
+    assert agency_signals.alexandria_rows(plain, kind="hawk") == ([], {"no signal_type": 1})
 
 
 def test_a_source_without_a_confirmed_licence_is_installed_but_not_read(tmp_path, caplog) -> None:
@@ -347,12 +349,18 @@ def test_field_names_are_read_in_any_case() -> None:
     assert [row["id"] for row in rows] == ["arlington:3", "arlington:{X}"]
 
 
-def test_the_two_alexandria_layers_numbered_alike_do_not_clash(tmp_path) -> None:
-    """Layer 9 and the HAWK layer both number from OBJECTID 1."""
+def test_the_alexandria_table_fetched_twice_installs_each_record_once(tmp_path) -> None:
+    """Layers 9 and 0 are one table; both files unfiltered still give one row a record."""
+    table = {
+        "features": [
+            point_feature({"OBJECTID": 1, "SIGNAL_TYPE": "Signal"}),
+            point_feature({"OBJECTID": 2, "SIGNAL_TYPE": "HAWK"}),
+        ]
+    }
     signals_file = tmp_path / "alexandria-signals.geojson"
-    signals_file.write_text(json.dumps({"features": [point_feature({"OBJECTID": 1})]}))
+    signals_file.write_text(json.dumps(table))
     hawks = tmp_path / "alexandria-hawks.geojson"
-    hawks.write_text(json.dumps({"features": [point_feature({"OBJECTID": 1})]}))
+    hawks.write_text(json.dumps(table))
     done = subprocess.run(
         [sys.executable, str(REPO / "scripts" / "install_reference_data.py"),
          "--data-root", str(tmp_path), "--alexandria-signals", str(signals_file),
@@ -361,7 +369,10 @@ def test_the_two_alexandria_layers_numbered_alike_do_not_clash(tmp_path) -> None
     )  # fmt: skip
     assert done.returncode in (0, 1), done.stderr  # 1: the required files are missing
     rows = json.loads((tmp_path / "reference" / agency_signals.FILE_NAME).read_text())
-    assert [row["id"] for row in rows] == ["alexandria:1", "alexandria-hawk:1"]
+    assert [(row["id"], row["kind"]) for row in rows] == [
+        ("alexandria:1", "signal"),
+        ("alexandria-hawk:2", "hawk"),
+    ]
 
 
 def test_node_tags_carry_the_mark_the_transform_reads() -> None:
@@ -375,7 +386,8 @@ def test_the_installer_writes_every_source_into_one_file(tmp_path) -> None:
     dc = tmp_path / "dc.geojson"
     dc.write_text(json.dumps({"features": [ddot_feature(1)]}))
     hawks = tmp_path / "alexandria-hawks.geojson"
-    hawks.write_text(json.dumps({"features": [point_feature({"OBJECTID": 9})]}))
+    hawk = point_feature({"OBJECTID": 9, "SIGNAL_TYPE": "HAWK"})
+    hawks.write_text(json.dumps({"features": [hawk]}))
     va = tmp_path / "va.geojson"
     va_signal = {"OBJECTID": 4, "ASSET_SUBTYPE": "Traffic Signal", "STATUS": "Active"}
     va.write_text(json.dumps({"features": [point_feature(va_signal)]}))
@@ -452,12 +464,12 @@ def test_alexandria_layers_split_the_one_table_by_signal_type() -> None:
     doc = {
         "features": [
             point_feature({"objectid": oid, "signal_type": signal_type})
-            for oid, signal_type in ((1, "Signal"), (2, "HAWK"), (3, "Flashing"))
+            for oid, signal_type in ((1, "Signal"), (2, " hawk "), (3, "Signalized"))
         ]
     }
     signals, signal_drops = agency_signals.alexandria_rows(doc)
     hawks, hawk_drops = agency_signals.alexandria_rows(doc, kind="hawk")
     assert [row["id"] for row in signals] == ["alexandria:1", "alexandria:3"]
-    assert dict(signal_drops) == {"a HAWK (read from --alexandria-hawks)": 1}
+    assert dict(signal_drops) == {"a HAWK, read from --alexandria-hawks": 1}
     assert [(row["id"], row["kind"]) for row in hawks] == [("alexandria-hawk:2", "hawk")]
     assert dict(hawk_drops) == {"not a HAWK": 2}

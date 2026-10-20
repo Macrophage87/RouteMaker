@@ -4808,7 +4808,8 @@ installed; the rebuild logs `... signals installed but not read` and leaves it o
    case (`--order-by objectid`). Its layers 9 and 0 both serve the whole
    intersection table (257 records), so the HAWK fetch filters on `signal_type`, and
    the installer reads a record as a signal or a HAWK by its `signal_type` whatever
-   was fetched: no Alexandria signal counts twice. The counts on 2026-10-20: DDOT
+   was fetched: no Alexandria signal counts twice, so a HAWK file fetched without the
+   filter installs the same and need not be fetched again. The counts on 2026-10-20: DDOT
    1,597 (all `STATUS` Active), MDOT SHA 3,366 (513 devices that are not signals left
    out), VDOT 3,134 (report only), Alexandria 253 signals and 4 HAWKs; 8,354 in all,
    40 of them HAWKs.
