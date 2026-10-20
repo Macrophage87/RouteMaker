@@ -579,7 +579,11 @@ def _crossed(tier: int | None) -> str:
     return {3: " (LTS 3)", 4: " (LTS 4)", 5: " (Avoid)"}.get(tier or 0, "")
 
 
-def _control_words(control, flagged: bool) -> str:
+def _control_words(control, flagged: bool, beacon: bool = False) -> str:
+    if beacon:
+        # The map's signal is a flashing beacon (`intersections.with_beacons`).
+        phrase = CONTROL_PHRASES.get(control, "")
+        return f"{phrase}, flashing light, not a signal" if flagged or phrase else phrase
     phrase = CONTROL_PHRASES.get(control)
     if phrase is not None:
         return phrase
@@ -613,10 +617,8 @@ def _point_sentence(event, at_m: float) -> str:
         if name
         else "a busy road" + _crossed(event.crossed_tier)
     )
-    return (
-        f"At {point_words(at_m)}: {verb} {what}"
-        f"{_control_words(event.control, True)}{_severity_suffix(event.severity)}."
-    )
+    control = _control_words(event.control, True, getattr(event, "beacon", False))
+    return f"At {point_words(at_m)}: {verb} {what}{control}{_severity_suffix(event.severity)}."
 
 
 MAX_NAMED_STREETS = 3
@@ -825,7 +827,7 @@ def _stretch_sentence(
         else:
             lead = f"Continue onto {_in_sentence(street)}"
         if event is not None:
-            lead += _control_words(event.control, event.flagged)
+            lead += _control_words(event.control, event.flagged, getattr(event, "beacon", False))
             lead += _severity_suffix(event.severity if event.flagged else None)
     elif same_street_continues:
         lead = f"Continue on {_in_sentence(street)}"
