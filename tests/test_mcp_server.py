@@ -886,10 +886,22 @@ def test_the_link_opens_the_exact_route_and_reads_back_unplanned(tools) -> None:
     assert f"/s/{route_id}#p=" in out["link"]
     kept = StandIn.shared[route_id]
     assert kept["answer"]["geometry"]["coordinates"] and kept["inputs"]["hash"].startswith("#p=")
+    # The link goes with the draft: deleted a day after the draft's week, not kept a year.
+    assert kept["keep"] == "until"
+    assert kept["delete_after"] == mcp.draft_link_keep()["delete_after"]
     planned = len(StandIn.routes)
     opened = tools.call("open_link", {"link": out["link"]})
     assert len(StandIn.routes) == planned  # kept as it is, not planned again
     assert opened["summary"]["distance_mi"] == out["summary"]["distance_mi"]
+
+
+def test_a_draft_link_is_kept_a_day_past_the_drafts_week() -> None:
+    import datetime
+
+    assert mcp.draft_link_keep(datetime.date(2026, 10, 20)) == {
+        "keep": "until",
+        "delete_after": "2026-10-28",
+    }
 
 
 def test_a_link_still_comes_back_when_the_exact_route_is_not_kept(tools, monkeypatch) -> None:

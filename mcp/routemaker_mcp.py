@@ -37,6 +37,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
+from datetime import date, timedelta
 from pathlib import Path
 from xml.sax.saxutils import escape
 
@@ -1337,6 +1338,18 @@ class MemoryDrafts:
         return draft_id in self._drafts
 
 
+# A draft's exact-route link lasts as long as the draft (a week) and a day more, then the site
+# deletes it (shared_routes keep "until"): a draft often starts at home, and every revision makes
+# one. A route the rider saves is kept in My routes on its own.
+DRAFT_LINK_DAYS = 8
+
+
+def draft_link_keep(today: date | None = None) -> dict:
+    """The share body's keep fields for a draft's link: deleted after DRAFT_LINK_DAYS."""
+    day = (today or date.today()) + timedelta(days=DRAFT_LINK_DAYS)
+    return {"keep": "until", "delete_after": day.isoformat()}
+
+
 def kept_route(plan: Plan, name: str, fragment: str, dials: dict) -> dict:
     """The route as the site keeps it, saved or shared: the exact line with its heights, the
     plan's inputs, and its answer without the alternatives."""
@@ -1496,7 +1509,9 @@ class Server:
         link = f"{self.api.base}/{fragment}"
         try:
             route_id = secrets.token_hex(16)
-            self.api.share({"id": route_id, **kept_route(plan, name, fragment, dials)})
+            self.api.share(
+                {"id": route_id, **kept_route(plan, name, fragment, dials), **draft_link_keep()}
+            )
             link = f"{self.api.base}/s/{route_id}{fragment}&route={route_id}"
         except ToolError as error:
             notes.append(

@@ -33,8 +33,8 @@ has (bikeshare and bike plus transit included) and every setting (traffic stress
 time, gravel, trails, target distance, rider weight, cargo load and assist, trail levels, the
 bikeshare bike and ending, departure time).
 
-Every planned route is a draft: it comes back with a link that opens that exact route in the
-app, like a link from the app's Share, so the map, Start ride and the app's own GPX are the
+Every planned route is a draft: it comes back with a link, kept for a week, that opens that
+exact route in the app, like a link from the app's Share, so the map, Start ride and the app's own GPX are the
 route the assistant described. Nothing is saved to My routes. Drafts last while the assistant's session does. `save_route` (with a key,
 below) puts one in My routes, where it opens like any route you saved yourself; you can also
 open the link and press Save in the app.

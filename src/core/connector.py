@@ -682,7 +682,7 @@ def authorize(request):
         """<p><strong>{app}</strong> is asking to use RouteMaker for you.
 If you allow it, it can:</p>
 <ul>
-<li>plan routes with RouteMaker's routing</li>
+<li>plan routes with RouteMaker's routing, each with a link to it that lasts a week</li>
 <li>add routes to your My routes, when you ask it to</li>
 </ul>
 <p>It can't read your saved routes, sign in to the site as you, or change anything else.</p>
