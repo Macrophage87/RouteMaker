@@ -373,6 +373,9 @@ class Context:
     # The approved rider ratings of junctions (`core.junction_suggestions.approved_ratings`,
     # OWNER-DECISIONS 232), which set a rated junction's cost and marker.
     junction_ratings: tuple = ()
+    # The known flashing beacons at junctions the map has a signal at
+    # (`core.flashing_signals.active`), priced with no signal.
+    beacons: tuple = ()
 
 
 def shift_classes(classes: list, shift: int) -> list:
@@ -864,6 +867,7 @@ def events_of_raws(raws, ctx: Context, deadline: routing.Deadline) -> list | Non
             ctx.group,
             cut_short=(routing.DeadlineExceeded,),
             ratings=ctx.junction_ratings,
+            beacons=ctx.beacons,
         )
     except junctions.ReadingCutShort as error:
         raise routing.DeadlineExceeded(str(error)) from error

@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "source": "owner",
+  "decided": "2026-10-20",
+  "decided_by": "the deployment owner",
+  "status": "Load with load_flashing_signals (dry run first); takes effect at the next plan, no rebuild.",
+  "rows": [
+    {
+      "id": "connecticut-ave-baltimore-st-kensington",
+      "name": "Connecticut Ave and Baltimore St",
+      "lon": -77.0759572,
+      "lat": 39.0243093,
+      "evidence": "The owner, 2026-10-20: \"a traffic light that's a blinking red against free flowing traffic. It wasn't passable\" and \"At rush hour that felt completely impassable\". MDOT SHA Traffic Signals lists the device here as TCD_Type 3, Warning Beacon (SIGNAL_ID 0a018d660bbd0067005ed376c4175c0a, MD 185 at Baltimore St, Kensington), whose point this is."
+    }
+  ]
+}

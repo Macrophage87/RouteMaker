@@ -2811,7 +2811,9 @@ class TestSeekWiring:
             asked.extend((p["lon"], p["lat"]) for p in payload["locations"])
             return [{} for _ in payload["locations"]]
 
-        def events_of(raws, when, with_facility, locate, group, cut_short=(), ratings=None):
+        def events_of(
+            raws, when, with_facility, locate, group, cut_short=(), ratings=None, beacons=()
+        ):
             junctions._ask(raws, range(len(raws)), junctions.LOCATE_RADIUS_M, locate, cut_short)
             return []
 
