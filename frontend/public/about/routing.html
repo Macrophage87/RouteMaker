@@ -408,7 +408,8 @@ Highway Administration lists one as a warning beacon or an intersection control 
 those), or RouteMaker's owner has marked it, the junction is not treated as signalled, and the route
 description says "flashing light, not a signal". Between roads of similar stress the light is taken
 as flashing red both ways, an all-way stop. Where a quieter road crosses a busier one, the busier road
-keeps going, and crossing it is priced as stopping and waiting for a gap.</p>
+keeps going, and crossing it is priced as stopping and waiting for a gap (see
+<a href="#junction-time">Time lost at junctions</a>).</p>
 <h3 id="junction-time">Time lost at junctions</h3>
 <p>The routing engine times a junction at about a second, whatever controls it, so a route through a
 grid of stop signs used to be timed as quick as a trail of the same length. From version 0.10.0, route
@@ -420,16 +421,19 @@ route:</p>
 <thead><tr><th scope="col">At the junction</th><th scope="col">Time added</th></tr></thead>
 <tbody>
 <tr><th scope="row">A traffic signal</th><td>15 seconds, an average wait plus half a stop; inferred</td></tr>
-<tr><th scope="row">A stop or give-way: crossing or turning onto a road as busy as yours or busier, or coming off a path</th><td>8 seconds, one stop and back up to speed<sup class="cite"><a href="#ref-11" aria-label="source 11">[11]</a></sup></td></tr>
-<tr><th scope="row">The same in the District, where the road you give way to is a neighborhood street</th><td>4 seconds: DC lets a rider take a stop sign as a yield<sup class="cite"><a href="#ref-12" aria-label="source 12">[12]</a></sup>, so it is a slow-and-roll; inferred</td></tr>
-<tr><th scope="row">You are on the busier road, or only pass driveways, alleys and side streets</th><td>Nothing</td></tr>
+<tr><th scope="row">Giving way to a neighborhood street: crossing one as busy as yours, turning onto one, or coming off a path</th><td>8 seconds, one stop and back up to speed<sup class="cite"><a href="#ref-11" aria-label="source 11">[11]</a></sup></td></tr>
+<tr><th scope="row">The same in the District</th><td>4 seconds: DC lets a rider take a stop sign as a yield<sup class="cite"><a href="#ref-12" aria-label="source 12">[12]</a></sup>, so it is a slow-and-roll; inferred</td></tr>
+<tr><th scope="row">Giving way to a busier road that does not stop</th><td>12, 20 or 30 seconds, waiting for a gap, by how busy the road is<sup class="cite"><a href="#ref-13" aria-label="source 13">[13]</a></sup>; inferred</td></tr>
+<tr><th scope="row">You are on the busier road, turn off onto a quieter street, or only pass driveways, alleys and side streets</th><td>Nothing</td></tr>
 </tbody>
 </table>
 </div>
-<p>Junctions a few yards apart, such as the two halves of a divided road, count once. This is time, not
-stress: a junction's cost for traffic is still the one above. In the route search the time counts as
-that much quiet riding, so of two routes about the same length, the one with fewer stops is
-preferred.</p>
+<p>Junctions a few yards apart, such as the two halves of a divided road, count once, at the dearest.
+A flashing light is priced by who gives way, not as a signal, so crossing a main road at one costs the
+30-second wait for a gap rather than the 15 seconds of a signal. This is time, not
+stress: a junction's cost for traffic is still the one above. The same time is shown in the route's time and
+counted in the route search as that much quiet riding, so of two equally calm routes about the same
+length, the one with fewer stops is preferred.</p>
 
 </div></details>
 <h2 id="hills">Hills</h2>
@@ -478,12 +482,12 @@ climbing is forgiven, or on Mountain Goat sought out. Avoiding hills never makes
 
 
 <h3>How hard a grade is</h3>
-<p>RouteMaker measures a grade by the effort it takes, from the standard cycling power model<sup class="cite"><a href="#ref-13" aria-label="source 13">[13]</a></sup>:
-the force of rolling, air and climbing at a steady 12.4 mph [20 km/h]<sup class="cite"><a href="#ref-14" aria-label="source 14">[14]</a></sup>. The first column
+<p>RouteMaker measures a grade by the effort it takes, from the standard cycling power model<sup class="cite"><a href="#ref-14" aria-label="source 14">[14]</a></sup>:
+the force of rolling, air and climbing at a steady 12.4 mph [20 km/h]<sup class="cite"><a href="#ref-15" aria-label="source 15">[15]</a></sup>. The first column
 below is that effort, as distance on the flat. A heavier rider and bike pay more for a climb: the weight
 saved in Settings is used, from 55 to 1,543 lb [25 to 700 kg]. A descent never counts as less than the
 flat, so it can never pay for a climb. Grades are read over at least 1,000 ft [300 m], because the
-elevation data<sup class="cite"><a href="#ref-15" aria-label="source 15">[15]</a></sup>, sampled every 98 ft [30 m], is too noisy for steeper pitches over a shorter
+elevation data<sup class="cite"><a href="#ref-16" aria-label="source 16">[16]</a></sup>, sampled every 98 ft [30 m], is too noisy for steeper pitches over a shorter
 distance to be trusted.</p>
 <div class="table-wrap" tabindex="0" role="region" aria-label="What a grade costs, for a rider and bike of 198 lb [90 kg] together">
 <table>
@@ -640,7 +644,7 @@ them work quite differently: <a href="/about/mass-ride.html">Mass Ride</a> and
 <ul>
 <li><strong>The block.</strong> The shorter route starts down 18th Street NW from Massachusetts Avenue
 to N Street: about 400 ft [120 m] of three-lane road with no bike lane, which DDOT rates
-LTS 4<sup class="cite"><a href="#ref-16" aria-label="source 16">[16]</a></sup>. RouteMaker keeps the agency's rating, since an agency's data outranks the formula and a
+LTS 4<sup class="cite"><a href="#ref-17" aria-label="source 17">[17]</a></sup>. RouteMaker keeps the agency's rating, since an agency's data outranks the formula and a
 rating is lowered only with a clear reason.</li>
 <li><strong>What it costs.</strong> In the routing engine's own cost, that one block counts for about
 1,000 seconds of riding, under Default's costs and Trailmaxxing's alike. That is far more than the shorter
@@ -655,9 +659,9 @@ busy road can be worth a detour of a third of a mile [half a kilometre] or more.
 </div></details>
 <h2 id="closures">Closures</h2>
 <p>Only Maryland and Virginia publish work-zone feeds in the national Work Zone Data Exchange
-format<sup class="cite"><a href="#ref-17" aria-label="source 17">[17]</a></sup>: dated, mapped closures in force, with whether bikes can pass. The District publishes
+format<sup class="cite"><a href="#ref-18" aria-label="source 18">[18]</a></sup>: dated, mapped closures in force, with whether bikes can pass. The District publishes
 no such feed. What it has instead is a mix: police traffic advisories and AlertDC emergency
-closures<sup class="cite"><a href="#ref-18" aria-label="source 18">[18]</a></sup>, which name streets in words and are matched to the map; DDOT's TOPS permits<sup class="cite"><a href="#ref-19" aria-label="source 19">[19]</a></sup>,
+closures<sup class="cite"><a href="#ref-19" aria-label="source 19">[19]</a></sup>, which name streets in words and are matched to the map; DDOT's TOPS permits<sup class="cite"><a href="#ref-20" aria-label="source 20">[20]</a></sup>,
 which say a street may be occupied some time in the coming month, not that it is closed now; and
 National Park Service alerts for the parks. So a closure in the District is usually known from an
 advisory or a reviewer, not from an official work-zone record, and planned roadwork in the District
@@ -704,27 +708,27 @@ where one is set up.</p>
 <text class="ts" x="590" y="336" text-anchor="start">NPS: a note on the route</text>
 </svg>
 </div>
-<figcaption>DDOT permits<sup class="cite"><a href="#ref-19" aria-label="source 19">[19]</a></sup> are listed apart because they are not closures in force. The other feeds describe closures in force<sup class="cite"><a href="#ref-17" aria-label="source 17">[17]</a><a href="#ref-18" aria-label="source 18">[18]</a></sup>.</figcaption>
+<figcaption>DDOT permits<sup class="cite"><a href="#ref-20" aria-label="source 20">[20]</a></sup> are listed apart because they are not closures in force. The other feeds describe closures in force<sup class="cite"><a href="#ref-18" aria-label="source 18">[18]</a><a href="#ref-19" aria-label="source 19">[19]</a></sup>.</figcaption>
 </figure>
 <details class="more"><summary>More: Closures</summary>
 <div class="more-body">
 
 
 <ul>
-<li><strong>State work zones</strong> from Maryland's and Virginia's feeds<sup class="cite"><a href="#ref-17" aria-label="source 17">[17]</a></sup>: a road closed to
+<li><strong>State work zones</strong> from Maryland's and Virginia's feeds<sup class="cite"><a href="#ref-18" aria-label="source 18">[18]</a></sup>: a road closed to
 bikes is left out; a closure that does not mention bikes costs about 10 minutes and gets a warning;
 lane and shoulder work cost a little.</li>
-<li><strong>Police and city alerts</strong> (MPD traffic advisories and AlertDC)<sup class="cite"><a href="#ref-18" aria-label="source 18">[18]</a></sup> are
+<li><strong>Police and city alerts</strong> (MPD traffic advisories and AlertDC)<sup class="cite"><a href="#ref-19" aria-label="source 19">[19]</a></sup> are
 matched to the streets they name and routed around.</li>
 <li><strong>Reviewed closures</strong>, entered or confirmed by a RouteMaker reviewer, are routed
 around and credited to the reviewer. Saved routes get an alert when one affects them.</li>
 <li><strong>Road closed</strong> in a ride marks the road ahead closed for that ride only. Where a
 route detours round a closure, the standard way is shown too, and you are followed on whichever you
 take.</li>
-<li><strong>DDOT TOPS permits</strong><sup class="cite"><a href="#ref-19" aria-label="source 19">[19]</a></sup> are permission to occupy a street some time in the
+<li><strong>DDOT TOPS permits</strong><sup class="cite"><a href="#ref-20" aria-label="source 20">[20]</a></sup> are permission to occupy a street some time in the
 coming month. They never move a route, in Go, Plan or anywhere else, and they raise no warnings. Plan
 has a DC permits layer, off by default, for anyone who wants to look.</li>
-<li><strong>National Park Service alerts</strong><sup class="cite"><a href="#ref-18" aria-label="source 18">[18]</a></sup> are park-wide notices, shown as a note
+<li><strong>National Park Service alerts</strong><sup class="cite"><a href="#ref-19" aria-label="source 19">[19]</a></sup> are park-wide notices, shown as a note
 on a route through the park, never as closures.</li>
 </ul>
 
@@ -782,13 +786,14 @@ stop does. Stops come from OpenStreetMap, so check a repair stand works before y
   <li id="ref-10">OpenStreetMap contributors, map data under the Open Database License 1.0. <a href="https://www.openstreetmap.org/copyright">openstreetmap.org/copyright</a></li>
   <li id="ref-11">Fajans and Curry, "Why Bicyclists Hate Stop Signs", ACCESS 18 (2001). <a href="https://www.accessmagazine.org/spring-2001/bicyclists-hate-stop-signs">accessmagazine.org</a></li>
   <li id="ref-12">Washington Area Bicyclist Association, "Bicycle Stop as Yield Arrives in DC", on the District's Safer Streets Amendment Act of 2022. <a href="https://waba.org/?p=54522">waba.org</a></li>
-  <li id="ref-13">Martin, Milliken, Cobb, McCole and Coggan, "Validation of a mathematical model for road cycling power", Journal of Applied Biomechanics 14 (1998). <a href="https://doi.org/10.1123/jab.14.3.276">doi.org/10.1123/jab.14.3.276</a></li>
-  <li id="ref-14">RouteMaker's hill costs, in the code: <a href="https://github.com/Macrophage87/RouteMaker/blob/main/src/routemaker/effort.py">effort.py</a>, <a href="https://github.com/Macrophage87/RouteMaker/blob/main/src/routemaker/climbs.py">climbs.py</a>, <a href="https://github.com/Macrophage87/RouteMaker/blob/main/src/routemaker/grade_stress.py">grade_stress.py</a></li>
-  <li id="ref-15">U.S. Geological Survey, 3D Elevation Program, 1 arc-second elevation. <a href="https://www.usgs.gov/3d-elevation-program">usgs.gov/3d-elevation-program</a></li>
-  <li id="ref-16">District Department of Transportation, Bicycle Level of Traffic Stress (2020) and Roadway Block (item 6fcba8618ae744949630da3ea12d90eb), Open Data DC, CC BY 4.0. <a href="https://opendata.dc.gov/">opendata.dc.gov</a></li>
-  <li id="ref-17">Work Zone Data Exchange feeds: Maryland DOT SHA (CC0, <a href="https://filter.ritis.org/wzdx_v4.1/mdot.geojson">RITIS</a>) and VDOT through SmarterRoads; specification at <a href="https://github.com/usdot-jpo-ode/wzdx">github.com/usdot-jpo-ode/wzdx</a></li>
-  <li id="ref-18">Metropolitan Police Department traffic advisories (<a href="https://mpdc.dc.gov/newsroom">mpdc.dc.gov/newsroom</a>), AlertDC from DC HSEMA, and the National Park Service alerts API (<a href="https://www.nps.gov/subjects/developer/api-documentation.htm">nps.gov developer</a>)</li>
-  <li id="ref-19">District Department of Transportation, TOPS occupancy permits (CC BY 4.0). <a href="https://maps2.dcgis.dc.gov/dcgis/rest/services/DDOT/TOPS/MapServer/1">DC GIS</a>; <a href="https://catalog.data.gov/dataset/occupancy-permits-via-ddot-tops">catalog.data.gov</a></li>
+  <li id="ref-13">Transportation Research Board, Highway Capacity Manual, 6th edition (2016), Exhibit 20-2: levels of service at two-way stop-controlled intersections. <a href="https://www.trb.org/Main/Blurbs/175169.aspx">trb.org</a></li>
+  <li id="ref-14">Martin, Milliken, Cobb, McCole and Coggan, "Validation of a mathematical model for road cycling power", Journal of Applied Biomechanics 14 (1998). <a href="https://doi.org/10.1123/jab.14.3.276">doi.org/10.1123/jab.14.3.276</a></li>
+  <li id="ref-15">RouteMaker's hill costs, in the code: <a href="https://github.com/Macrophage87/RouteMaker/blob/main/src/routemaker/effort.py">effort.py</a>, <a href="https://github.com/Macrophage87/RouteMaker/blob/main/src/routemaker/climbs.py">climbs.py</a>, <a href="https://github.com/Macrophage87/RouteMaker/blob/main/src/routemaker/grade_stress.py">grade_stress.py</a></li>
+  <li id="ref-16">U.S. Geological Survey, 3D Elevation Program, 1 arc-second elevation. <a href="https://www.usgs.gov/3d-elevation-program">usgs.gov/3d-elevation-program</a></li>
+  <li id="ref-17">District Department of Transportation, Bicycle Level of Traffic Stress (2020) and Roadway Block (item 6fcba8618ae744949630da3ea12d90eb), Open Data DC, CC BY 4.0. <a href="https://opendata.dc.gov/">opendata.dc.gov</a></li>
+  <li id="ref-18">Work Zone Data Exchange feeds: Maryland DOT SHA (CC0, <a href="https://filter.ritis.org/wzdx_v4.1/mdot.geojson">RITIS</a>) and VDOT through SmarterRoads; specification at <a href="https://github.com/usdot-jpo-ode/wzdx">github.com/usdot-jpo-ode/wzdx</a></li>
+  <li id="ref-19">Metropolitan Police Department traffic advisories (<a href="https://mpdc.dc.gov/newsroom">mpdc.dc.gov/newsroom</a>), AlertDC from DC HSEMA, and the National Park Service alerts API (<a href="https://www.nps.gov/subjects/developer/api-documentation.htm">nps.gov developer</a>)</li>
+  <li id="ref-20">District Department of Transportation, TOPS occupancy permits (CC BY 4.0). <a href="https://maps2.dcgis.dc.gov/dcgis/rest/services/DDOT/TOPS/MapServer/1">DC GIS</a>; <a href="https://catalog.data.gov/dataset/occupancy-permits-via-ddot-tops">catalog.data.gov</a></li>
 </ol>
 </main>
 <footer>
