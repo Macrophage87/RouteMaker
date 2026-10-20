@@ -9,7 +9,7 @@
  * Written with createElement so a test renders it, as climbCard.ts.
  */
 import { createElement as h, useEffect, useState, type ReactElement } from "react";
-import { ElevationProfileChart, gradeText } from "./climbCard.ts";
+import { ElevationProfileChart, gradeText, profileEnds } from "./climbCard.ts";
 import { formatClimb, formatDistance } from "./format.ts";
 
 /** GET /api/trails/{way}/profile (core.api.TrailProfileOut). */
@@ -23,6 +23,9 @@ export interface TrailProfile {
   m: number[];
   elevation_m: (number | null)[];
   grade_pct: (number | null)[];
+  /** The way's first and last points, [lon, lat]: the chart's left and right ends (older answers have neither). */
+  start?: [number, number] | null;
+  end?: [number, number] | null;
 }
 
 export type TrailProfileState = { kind: "loading" } | { kind: "ready"; profile: TrailProfile } | { kind: "none" } | { kind: "error" };
@@ -96,6 +99,13 @@ export function TrailProfileBody({ state, uid }: { state: TrailProfileState; uid
     h("h3", { id: `${uid}-elevation` }, TRAIL_PROFILE_HEADING),
     state.kind === "loading" && h("p", { className: "hint" }, TRAIL_PROFILE_LOADING),
     state.kind === "error" && h("p", { className: "hint" }, TRAIL_PROFILE_ERROR),
-    state.kind === "ready" && h(ElevationProfileChart, { profile: state.profile, summary: trailProfileSummary(state.profile), uid }),
+    state.kind === "ready" && h(TrailProfileChart, { profile: state.profile, uid }),
   );
+}
+
+/** The trail's chart, with the compass point at each end where the answer has the way's ends. */
+export function TrailProfileChart({ profile, uid }: { profile: TrailProfile; uid: string }): ReactElement {
+  const ends = profile.start && profile.end ? profileEnds(profile.start, profile.end) : null;
+  const summary = trailProfileSummary(profile);
+  return h(ElevationProfileChart, { profile, summary: ends ? `${summary} ${ends.words}` : summary, uid, ends });
 }

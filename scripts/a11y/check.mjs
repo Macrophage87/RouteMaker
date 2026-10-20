@@ -5014,8 +5014,8 @@ const PICK_OPEN_IN_GO = "(() => { const s = document.querySelector('#sheet-setti
   const chart = await p.waitFor("!!document.querySelector('.climb-popup svg[role=img]')", 8000);
   const img = chart ? await axNode(p, ".climb-popup svg[role=img]") : null;
   const caption = chart ? await axNode(p, ".climb-popup figcaption") : null;
-  check("climb card: the profile is a picture named by its text alternative, the caption not read twice",
-    img?.role === "image" && /^Climbs [\d,]+ ft \([\d,]+ m\) over 7\.5 mi \(12\.1 km\), steepest 9%\.$/.test(img?.name ?? "") && (caption === null || caption.ignored), JSON.stringify({ img, caption }));
+  check("climb card: the profile is a picture named by its text alternative (with the way it runs), the caption not read twice",
+    img?.role === "image" && /^Climbs [\d,]+ ft \([\d,]+ m\) over 7\.5 mi \(12\.1 km\), steepest 9%\. Runs (north|south|east|west)(\w+)? to (north|south|east|west)(\w+)?\.$/.test(img?.name ?? "") && (caption === null || caption.ignored), JSON.stringify({ img, caption }));
   await p.escape();
   // Back where it was before the card: where the road panel left it (Map tools, which opened it), or the map.
   const back = await p.waitFor("!document.querySelector('.climb-popup') && (document.activeElement === document.querySelector('.maplibregl-canvas') || !!document.activeElement?.closest('.map-tools-toggle, .map-tools-panel'))", 5000);
