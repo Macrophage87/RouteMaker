@@ -304,6 +304,8 @@ function arrowFor(cue: Cue | null): "left" | "right" | "bear_left" | "bear_right
   if (!cue) return "straight";
   if (cue.kind === "end") return "end";
   if (cue.kind === "stop") return "stop";
+  // A crossing between two turns (lib/navigate.ts crossWords): straight across.
+  if (cue.cross) return "straight";
   if (cue.movement) return cue.movement;
   if (cue.kind === "hazard" || cue.kind === "walk") return "warn";
   return "straight";
