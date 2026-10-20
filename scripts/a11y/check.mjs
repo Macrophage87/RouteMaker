@@ -2886,10 +2886,10 @@ const levelSlider = `${EDITOR} input[type=range]`;
   await p.eval("document.querySelector('.ride .ride-slide-range').focus(); true");
   await p.key("End", "End", 35);
   await sleep(500);
-  const ended = await p.eval("({ ride: !!document.querySelector('section.ride'), planner: getComputedStyle(document.querySelector('#route-planner')).display === 'none', focus: document.activeElement?.textContent, wake: window.__wake.slice(-1)[0], map: getComputedStyle(document.querySelector('.map')).display })");
-  // The focus goes to the "Ride ended." bar's Undo since f60b7610 ("End always in view with Undo").
-  check("ride: End ride shows the planner, puts the focus on the ended bar's Undo and lets the screen lock go",
-    !ended.ride && ended.planner === false && ended.focus === "Undo" && ended.wake === "release" && ended.map !== "none", JSON.stringify(ended));
+  const ended = await p.eval("({ ride: !!document.querySelector('section.ride'), planner: getComputedStyle(document.querySelector('#route-planner')).display === 'none', focus: document.activeElement?.textContent, wake: window.__wake.slice(-1)[0], map: getComputedStyle(document.querySelector('.map')).display, summary: document.querySelector('section.ride-summary h2')?.textContent, rows: [...document.querySelectorAll('.ride-summary-figures dt')].map((d) => d.textContent) })");
+  // The ride's summary (the owner, 2026-10-20) with the focus on its Done; Undo beside it.
+  check("ride: End ride shows the ride's summary over the planner, puts the focus on Done and lets the screen lock go",
+    !ended.ride && ended.planner === false && ended.focus === "Done" && ended.summary === "Ride ended" && ended.rows[0] === "Distance" && ended.wake === "release" && ended.map !== "none", JSON.stringify(ended));
   await sleep(500);
   const cleared = await p.eval("(async () => ({ bucket: await caches.has('routemaker-corridor-v1'), stamp: localStorage.getItem('routemaker.corridor') }))()");
   check("ride: End ride clears the map kept for dead spots", cleared.bucket === false && cleared.stamp === null, JSON.stringify(cleared));

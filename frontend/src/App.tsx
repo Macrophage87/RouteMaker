@@ -89,8 +89,10 @@ import { MANUAL_BADGE } from "./lib/planLegs.ts";
 import { insertedSaid, loopChangeSaid,reversedSaid, reverseUnavailableHint, stationSaid } from "./lib/pointText.ts";
 import { avoidNearSpot, shownRoute } from "./lib/avoidJunctions.ts";
 import { shownNear } from "./lib/junctionSuggest.ts";
-import { CHECKING_CLOSURES, CLOSURE_SLOW_MS, RIDE_ENDED_FROM_HERE_SAID, RIDE_ENDED_NO_FIX_SAID, RIDE_ENDED_SAID, RideEnded, RideMode, primeRideVoice, startRideGesture, voiceTurnedOn, type EndedPlan, type RideView } from "./RideMode.tsx";
+import { CHECKING_CLOSURES, CLOSURE_SLOW_MS, RIDE_ENDED_FROM_HERE_NOTE, RIDE_ENDED_NO_FIX_NOTE, RideMode, primeRideVoice, startRideGesture, voiceTurnedOn, type EndedPlan, type RideView } from "./RideMode.tsx";
 import { Icon } from "./Icon.tsx";
+import { RideSummaryCard } from "./RideSummaryCard.tsx";
+import { summarySpoken, type RideStats } from "./lib/rideStats.ts";
 import { readBigText, readHeadingUp, readRidePrefs, writeBigText, writeHeadingUp, writeRidePrefs, type RidePrefs } from "./lib/rideOutput.ts";
 import { activePins, chosenSaid, withStations, type NearbyStation, type Pins, type StationAction } from "./lib/stations.ts";
 import { bikeshareOf } from "./lib/bikeshare.ts";
@@ -3288,34 +3290,36 @@ export function App() {
     const opener = rideOpener.current;
     (opener?.isConnected ? opener : startRideRef.current)?.focus();
   };
-  // The ride just ended, kept for Undo for a few seconds (v0.7.0, "Go riding fixes" item 6: one tap on
-  // End ends the ride with "Ride ended" and Undo). In memory only, as the ride itself is.
-  // `from`: the plan End ride left starting where the rider was (part way), so Undo takes that edit back too.
+  // The ride just ended, kept for Undo while its summary shows (the owner, 2026-10-20: "When ending a ride, perhaps
+  // summary stats rather than programming that ride again"). In memory only, as the ride itself is.
+  // `from`: the plan End ride left starting where the rider was (Plan, part way), so Undo takes that edit back too.
   const endedRide = useRef<{ start: NonNullable<typeof rideStart>; from: LonLat[] | null } | null>(null);
-  const [rideEnded, setRideEnded] = useState(0);
-  const rideNow = useRef({ start: rideStart });
-  rideNow.current = { start: rideStart };
-  const endRide = useCallback((after: EndedPlan) => {
-    const { start } = rideNow.current;
-    // The plan stays, every route of it, to adjust and ride again (the owner, 2026-10-16: "You should keep all
-    // the routes ... But be able to adjust things"). Part way, it starts where the rider is ("If you went part
+  const [rideEnded, setRideEnded] = useState<{ n: number; stats: RideStats; at: number; note: string | null } | null>(null);
+  const rideNow = useRef({ start: rideStart, mode });
+  rideNow.current = { start: rideStart, mode };
+  const endRide = useCallback((after: EndedPlan, stats: RideStats) => {
+    const { start, mode: endedIn } = rideNow.current;
+    // Go: the plan is left as it was until Done, which empties Go for the next trip; Undo rides it again.
+    // Plan: the plan stays, every route of it, to adjust and ride again (the owner, 2026-10-16: "You should keep
+    // all the routes ... But be able to adjust things"). Part way, it starts where the rider is ("If you went part
     // way it changes your start location"): the stops passed dropped, a loop's finish still its start, as one
     // edit of the points (re-planned as any is; Undo of the plan takes it back). The start is the ride's own
     // last fix: no new location look-up.
     let from: LonLat[] | null = null;
-    if (after && after !== "no-fix" && after.points.length >= 2) {
+    if (endedIn !== "go" && after && after !== "no-fix" && after.points.length >= 2) {
       from = after.points;
       const ride = rideRef.current;
       commit(from, ride.dials.loop ? { ...ride, dials: { ...ride.dials, loop: false } } : undefined);
       setFromHere((f) => [...f, from![0]]);
     }
+    const note = from ? RIDE_ENDED_FROM_HERE_NOTE : endedIn !== "go" && after === "no-fix" ? RIDE_ENDED_NO_FIX_NOTE : null;
     endedRide.current = start ? { start, from } : null;
     setRiding(false);
     setRideStart(null);
     setRideView(null);
-    setRideEnded((n) => n + 1);
-    // Said by the page's region, always mounted; the focus goes to Undo (RideEnded), not back to Start (review F6).
-    announce(from ? RIDE_ENDED_FROM_HERE_SAID : after === "no-fix" ? RIDE_ENDED_NO_FIX_SAID : RIDE_ENDED_SAID);
+    setRideEnded((was) => ({ n: (was?.n ?? 0) + 1, stats, at: Date.now(), note }));
+    // Said by the page's region, always mounted; the focus goes to Done (RideSummaryCard), not back to Start (review F6).
+    announce(note ? `${summarySpoken(stats)} ${note}` : summarySpoken(stats));
   }, [announce, commit]);
   // A back gesture during a ride does nothing; End ride is the way out (lib/rideBack.ts, review RIDE-2).
   // Each held back is told, politely, once (review RIDE-2).
@@ -3325,7 +3329,7 @@ export function App() {
   const undoEndRide = () => {
     const ended = endedRide.current;
     endedRide.current = null;
-    setRideEnded(0);
+    setRideEnded(null);
     if (!ended) return;
     // The plan End ride moved to where the rider was goes back, unless it has been edited since.
     if (ended.from && pointsRef.current === ended.from) edits.retract();
@@ -3334,6 +3338,14 @@ export function App() {
     setFollow(true);
     setRideView(null);
     setRiding(true);
+  };
+  // Done on the ride's summary: in Go, Go is left empty for the next trip rather than the same ride set up again
+  // (the owner, 2026-10-20); in Plan the plan stays to adjust. The focus goes to Go's place search or Plan's Start ride.
+  const finishRide = () => {
+    endedRide.current = null;
+    setRideEnded(null);
+    if (mode === "go" && pointsRef.current.length > 0) clearPlan();
+    else backToRideOpener();
   };
   // The first ride's question takes the focus to its heading, so its safety note is read before the
   // choices (VoiceOver skips a dialog's description when the focus lands inside it).
@@ -4524,14 +4536,14 @@ export function App() {
         {status.kind === "waiting" && <p>{announcement}</p>}
         {status.kind === "ok" && routeSaid && <p>{routeSaid}</p>}
       </div>
-      {!riding && rideEnded > 0 && (
-        <RideEnded
-          key={rideEnded}
+      {!riding && rideEnded && (
+        <RideSummaryCard
+          key={rideEnded.n}
+          stats={rideEnded.stats}
+          endedAt={rideEnded.at}
+          note={rideEnded.note}
           onUndo={undoEndRide}
-          onGone={() => {
-            endedRide.current = null;
-            setRideEnded(0);
-          }}
+          onDone={finishRide}
         />
       )}
       {riding && rideStart && (

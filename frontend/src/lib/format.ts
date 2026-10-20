@@ -276,3 +276,13 @@ export function spokenDistance(metres: number): string {
   if (miles === 1) return "1 mile";
   return `${Number.isInteger(miles) ? miles.toFixed(0) : miles.toFixed(1)} miles`;
 }
+
+/** A speed as said, US units only (the ride's summary): "11 miles per hour". */
+export function spokenSpeed(metresPerSecond: number): string {
+  return `${Math.round((metresPerSecond * 3600) / METRES_PER_MILE)} miles per hour`;
+}
+
+/** Climbing as said, US units only (the ride's summary): "1,250 feet". */
+export function spokenClimb(metres: number): string {
+  return `${Math.round(metres * FEET_PER_METRE).toLocaleString("en-US")} feet`;
+}

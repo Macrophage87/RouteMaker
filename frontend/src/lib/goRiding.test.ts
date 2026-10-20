@@ -9,6 +9,7 @@ const source = (path: string) => readFileSync(new URL(path, import.meta.url), "u
 const app = source("../App.tsx");
 const ride = source("../RideMode.tsx");
 const map = source("../MapView.tsx");
+const summary = source("../RideSummaryCard.tsx");
 const css = source("../styles.css");
 
 test("1. track-up by default, the ride settings' switch remembered on this device", () => {
@@ -26,7 +27,7 @@ test("1. track-up by default, the ride settings' switch remembered on this devic
   assert.doesNotMatch(follow, /\.focus\(/);
 });
 
-test("6. an End ride button always in view, labelled End ride with its icon, one tap; Ride ended with Undo", () => {
+test("6. an End ride button always in view, labelled End ride with its icon, one tap; the ride's summary with Done and Undo", () => {
   const top = ride.slice(ride.indexOf('className={light && cornerFits ? "ride-top"'), ride.indexOf('className={light && cornerFits ? "ride-top"') + 2400);
   assert.match(top, /<h2 id="ride-heading"/);
   // The owner, 2026-10-16 ("add a method of ending navigation"): the visible words are End ride, so its name is too.
@@ -45,18 +46,17 @@ test("6. an End ride button always in view, labelled End ride with its icon, one
   // Kept in view as the card scrolls, at every size and in Big text (which never hides the card).
   assert.match(css, /\.ride-top \{\s*position: sticky;\s*\/\*[^*]*\*\/\s*top: -10px;/);
   assert.doesNotMatch(css, /\.ride-big \.ride-(top|end)[^{]*\{[^}]*display: none/);
-  // Ride ended, announced, with Undo for a few seconds, held while focused; Undo starts the same ride.
-  // Review F6: said by the page's always-mounted polite region (not a status region mounted full), the focus on Undo.
-  assert.match(ride, /<div className="ride-ended" role="group" aria-label=\{RIDE_ENDED\} \{\.\.\.hold\}>/);
-  assert.doesNotMatch(ride.slice(ride.indexOf("export function RideEnded(")), /role="status"/);
-  // The focus put on Undo does not hold the bar: it is released before the 8 s start (re-check of F6).
-  assert.match(ride, /undo\.current\?\.focus\(\);\s*timer\.focus\(false\);\s*timer\.start\(\);/);
-  assert.match(ride, /export const RIDE_ENDED_SAID = "Ride ended\. Undo available\.";/);
-  assert.match(app, /announce\(from \? RIDE_ENDED_FROM_HERE_SAID : after === "no-fix" \? RIDE_ENDED_NO_FIX_SAID : RIDE_ENDED_SAID\);/);
+  // The ride's summary (the owner, 2026-10-20), with Done and Undo; Undo starts the same ride.
+  // Review F6: said by the page's always-mounted polite region (not a status region mounted full), the focus on Done.
+  // Not timed (WCAG 2.2.1): it stays until Done, Undo or Escape.
+  assert.match(summary, /<section\s+className="ride-summary"\s+aria-labelledby=\{titleId\}/);
+  assert.doesNotMatch(summary, /role="status"|aria-live/);
+  assert.match(summary, /done\.current\?\.focus\(\);/);
+  assert.doesNotMatch(summary, /useHoldTimer|setTimeout/);
+  assert.match(app, /announce\(note \? `\$\{summarySpoken\(stats\)\} \$\{note\}` : summarySpoken\(stats\)\);/);
   assert.doesNotMatch(app, /focusStartAfterRide/);
   assert.match(ride, /onFocus: \(\) => timer\.current\?\.focus\(true\)/);
-  assert.match(ride, /export const UNDO_END_MS = 8_000;/);
-  assert.match(app, /\{!riding && rideEnded > 0 && \(\s*<RideEnded\s*key=\{rideEnded\}\s*onUndo=\{undoEndRide\}/);
+  assert.match(app, /\{!riding && rideEnded && \(\s*<RideSummaryCard\s*key=\{rideEnded\.n\}[\s\S]*?onUndo=\{undoEndRide\}\s*onDone=\{finishRide\}/);
   assert.match(app, /startRideGesture\(ridePrefs\);\s*setRideStart\(ended\.start\);/);
 });
 
@@ -141,15 +141,16 @@ test("Go's Ride sheet offers Start ride for the route its changes planned (the o
   assert.equal(sheet.match(/Start ride/g)?.length, 1);
 });
 
-test("End ride keeps the plan and its routes; part way it starts where the rider is, and Undo takes that back", () => {
+test("End ride in Plan keeps the plan and its routes; part way it starts where the rider is, and Undo takes that back", () => {
   const endRide = app.slice(app.indexOf("const endRide = useCallback("), app.indexOf("const undoEndRide = () => {"));
   // Nothing about the plan is cleared: the points, the answer and its routes stay for the planner shown again.
   assert.doesNotMatch(endRide, /setPoints\(|setAnswer\(|forgetDrawn\(|setChoice\(/);
   // Part way: one edit of the points (re-planned as any edit is), a loop turned off as its finish is now a point.
+  // In Go nothing is set up again (the owner, 2026-10-20): only Plan's ride moves the plan's start.
+  assert.match(endRide, /if \(endedIn !== "go" && after && after !== "no-fix" && after\.points\.length >= 2\) \{/);
   assert.match(endRide, /commit\(from, ride\.dials\.loop \? \{ \.\.\.ride, dials: \{ \.\.\.ride\.dials, loop: false \} \} : undefined\);/);
-  assert.match(endRide, /announce\(from \? RIDE_ENDED_FROM_HERE_SAID : after === "no-fix" \? RIDE_ENDED_NO_FIX_SAID : RIDE_ENDED_SAID\);/);
-  // The ride's own fix (planAfterEnd), never a trip's riding leg.
-  assert.match(ride, /onEnd\(trip && !trip\.asPlanned \? null : planAfterEnd\(modelRef\.current, rideRef\.current, plan\.current\.points, plan\.current\.loop, Date\.now\(\)\)\);/);
+  // The ride's own fix (planAfterEnd), never a trip's riding leg; the ride's figures with it.
+  assert.match(ride, /onEnd\(trip && !trip\.asPlanned \? null : planAfterEnd\(modelRef\.current, rideRef\.current, plan\.current\.points, plan\.current\.loop, Date\.now\(\)\), statsRef\.current\);/);
   assert.match(app, /if \(ended\.from && pointsRef\.current === ended\.from\) edits\.retract\(\);/);
 });
 
