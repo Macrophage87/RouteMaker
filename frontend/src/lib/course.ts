@@ -123,12 +123,16 @@ const STREET_WORDS: Record<string, string> = {
   street: "St", avenue: "Ave", road: "Rd", drive: "Dr", boulevard: "Blvd", parkway: "Pkwy", place: "Pl",
   court: "Ct", lane: "Ln", terrace: "Ter", trail: "Trl", highway: "Hwy", circle: "Cir", square: "Sq",
   northwest: "NW", northeast: "NE", southwest: "SW", southeast: "SE", bridge: "Br", path: "Path",
+  service: "Svc", sidewalk: "Sidewalk", alley: "Alley",
 };
 
 /** "R Street Northwest" as a unit's screen has room for it: "R St NW". */
 export function abbreviateStreet(street: string): string {
+  // "service road beside East-West Highway" (describe.beside_words) is "Svc Rd": a unit's 10 to 15 characters
+  // have no room for the road beside it.
   return street
     .trim()
+    .replace(/^(service road|sidewalk|path) beside .*$/, "$1")
     .split(/\s+/)
     .map((word) => STREET_WORDS[word.toLowerCase()] ?? word)
     .join(" ");
@@ -292,7 +296,7 @@ export function routeCues(route: CompiledRoute, vias: readonly number[] = []): R
       kind: cue.kind,
       ...(cue.source ? { source: cue.source } : {}),
       ...(cue.joined ? { joined: true } : {}),
-      ...(cue.then && cue.movement ? { turnText: turnWords(cue.movement, cue.street) } : {}),
+      ...(cue.then && cue.movement ? { turnText: turnWords(cue.movement, cue.street, false, cue.exit ?? null) } : {}),
     });
   }
   return all;

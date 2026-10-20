@@ -3,9 +3,9 @@
 
 What is held here: only the ways the map draws as routable carry a climb (not barred, hidden or
 alley ways, not mountain-bike-only ways, not walk-your-bike connectors); the row's one-way,
-unpaved and trail name reach the reader; the streaming cursor reads every row in way order; and
-the command writes the file from the table and a tile, and refuses to write over a good file
-when it read no ground at all.
+unpaved and names reach the reader; the streaming cursor reads every row in way order; and
+the command writes the file from the table, a tile and the extract's names, and refuses to
+write over a good file when it read no ground at all or has no extract to name the climbs from.
 """
 
 from __future__ import annotations
@@ -46,6 +46,24 @@ def insert(schema, way, points, ordinal=0, **columns) -> None:
         )
 
 
+def extract(path, ways=None, nodes=None) -> None:
+    """A small OSM extract for the names: `ways` {id: tags} on two dummy nodes, and `nodes`
+    {id: ((lon, lat), tags)}."""
+    import osmium
+    from osmium.osm.mutable import Node, Way
+
+    writer = osmium.SimpleWriter(str(path))
+    try:
+        writer.add_node(Node(id=1, location=east(0)))
+        writer.add_node(Node(id=2, location=east(10)))
+        for node_id, (at, tags) in sorted((nodes or {}).items()):
+            writer.add_node(Node(id=node_id, location=at, tags=tags))
+        for way_id, tags in sorted((ways or {}).items()):
+            writer.add_way(Way(id=way_id, nodes=[1, 2], tags=tags))
+    finally:
+        writer.close()
+
+
 def ramp_tile(root) -> None:
     """N39W077 rising 2 m per arc-second going east (about 8.4% at LAT), level north-south."""
     side = climb_layer.HGT_1ARCSEC_SIDE
@@ -68,11 +86,19 @@ def test_read_segments_reads_the_routable_ways_with_their_columns(segment_schema
     insert(live, 22, [east(400), east(700)], map_class="alley")
     insert(live, 23, [east(400), east(700)], mtb_only=True)
     insert(live, 24, [east(400), east(700)], walk_bike=True)
+    insert(live, 25, [east(800), east(900)], sidepath_name="Rockville Pike")
+    insert(live, 23, [east(700), east(800)], ordinal=1, mtb_only=True, mtb_name="Bacon Ridge Trail")
 
     segments = climb_layer.read_segments(live)
 
-    assert [s.key for s in segments] == [(10, 0), (10, 1), (11, 0)]
-    first, second, third = segments
+    # A drawn mountain-bike trail carries climbs since 2026-10-19 (the owner: "color the climbs
+    # by surface: road, gravel, mtb, etc"); a hidden one, a barred way or an alley does not.
+    assert [s.key for s in segments] == [(10, 0), (10, 1), (11, 0), (23, 0), (23, 1), (25, 0)]
+    first, second, third, trail, named_trail, sidepath = segments
+    # What names a way for its climbs before the extract's name: mtb, trail, then sidepath.
+    assert first.name == "Example Trail" and second.name is None and trail.name is None
+    assert named_trail.name == "Bacon Ridge Trail" and sidepath.name == "Rockville Pike"
+    assert trail.mtb is True and first.mtb is False
     assert first.trail_name == "Example Trail" and first.unpaved is True and first.oneway is False
     assert second.oneway is True and second.unpaved is False and second.trail_name is None
     assert third.unpaved is None and third.oneway is False
@@ -118,31 +144,48 @@ def test_read_segments_takes_a_table_without_the_newer_columns(segment_schemas):
 def test_the_command_writes_the_file_from_the_table_and_the_tiles(segment_schemas, tmp_path):
     live, _ = segment_schemas
     # 1.2 km due east up the ramp in two ways, and the same climb on a mountain-bike-only way
-    # a little north that must not be drawn.
+    # a little north, drawn as a mountain-bike climb since 2026-10-19.
     insert(live, 10, [east(0), east(600)])
     insert(live, 11, [east(600), east(1200)])
     insert(live, 12, [(WEST, LAT + 0.01), (WEST + 1200 / KX, LAT + 0.01)], mtb_only=True)
     ramp_tile(tmp_path / "elevation")
     out = tmp_path / "rebuild" / "climbs.json"
+    pbf = tmp_path / "source.osm.pbf"
+    # The road is named in the extract and runs up a named hill; the trail has no name and
+    # starts near a town (the owner, 2026-10-19: "have them named, by a combination of road
+    # names and mountain names (if named)").
+    extract(
+        pbf,
+        ways={10: {"highway": "tertiary", "name": "Ridge Road"}, 11: {"ref": "MD 77"}},
+        nodes={
+            3: (east(1300), {"natural": "peak", "name": "High Knob"}),
+            4: ((WEST, LAT + 0.012), {"place": "village", "name": "Wolfsville"}),
+        },
+    )
     stdout = io.StringIO()
 
     call_command(
         "build_climbs",
         out=out,
         elevation_dir=tmp_path / "elevation",
+        pbf=pbf,
         schema=live,
         stdout=stdout,
     )
 
     doc = json.loads(out.read_text())
-    (climb,) = doc["climbs"]
+    climb, trail = sorted(doc["climbs"], key=lambda c: c["y"])
+    assert trail["s"] == "m" and "s" not in climb
+    assert climb["n"] == "Ridge Road and MD 77 up High Knob"
+    assert trail["n"] == "Climb near Wolfsville"
+    assert "2 of 2 found named" in stdout.getvalue()
     assert climb["c"] == "4"  # about 100 m gained: a score near 10,000
     assert climb["g"] == pytest.approx(8.4, abs=0.2)
     assert climb["l"] == pytest.approx(1200, abs=35)
     assert [climb["x"], climb["y"]] == pytest.approx(list(east(1200)), abs=1e-4)
-    assert doc["counts"]["4"] == 1
-    assert "read 2 segments" in stdout.getvalue()
-    assert "1 written" in stdout.getvalue()
+    assert doc["counts"]["4"] == 2
+    assert "read 3 segments" in stdout.getvalue()
+    assert "2 written" in stdout.getvalue()
 
 
 @db
@@ -152,8 +195,34 @@ def test_no_ground_writes_nothing(segment_schemas, tmp_path):
     out = tmp_path / "climbs.json"
     out.write_text("the good file")
     (tmp_path / "elevation").mkdir()
+    extract(tmp_path / "source.osm.pbf")
     with pytest.raises(CommandError, match="no elevation tiles"):
-        call_command("build_climbs", out=out, elevation_dir=tmp_path / "elevation", schema=live)
+        call_command(
+            "build_climbs",
+            out=out,
+            elevation_dir=tmp_path / "elevation",
+            pbf=tmp_path / "source.osm.pbf",
+            schema=live,
+        )
+    assert out.read_text() == "the good file"
+
+
+@db
+def test_no_extract_writes_nothing(segment_schemas, tmp_path):
+    """Without the extract the climbs would be written without their names."""
+    live, _ = segment_schemas
+    insert(live, 10, [east(0), east(1200)])
+    ramp_tile(tmp_path / "elevation")
+    out = tmp_path / "climbs.json"
+    out.write_text("the good file")
+    with pytest.raises(CommandError, match="no extract"):
+        call_command(
+            "build_climbs",
+            out=out,
+            elevation_dir=tmp_path / "elevation",
+            pbf=tmp_path / "missing.osm.pbf",
+            schema=live,
+        )
     assert out.read_text() == "the good file"
 
 
@@ -161,6 +230,13 @@ def test_no_ground_writes_nothing(segment_schemas, tmp_path):
 def test_an_empty_table_writes_nothing(segment_schemas, tmp_path):
     live, _ = segment_schemas
     out = tmp_path / "climbs.json"
+    extract(tmp_path / "source.osm.pbf")
     with pytest.raises(CommandError, match="no routable segments"):
-        call_command("build_climbs", out=out, elevation_dir=tmp_path, schema=live)
+        call_command(
+            "build_climbs",
+            out=out,
+            elevation_dir=tmp_path,
+            pbf=tmp_path / "source.osm.pbf",
+            schema=live,
+        )
     assert not out.exists()

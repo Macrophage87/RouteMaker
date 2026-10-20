@@ -874,6 +874,8 @@ PIPELINE_ONLY_PATHS = {
     "fixtures/overrides": "agency_roads reads it during the rebuild's conflation; "
     "load_access_overrides takes its file on stdin",
     "fixtures/speed": "speed corrections are applied by the rebuild",
+    "fixtures/hazards": "the hazard list is read by the rebuild (v0.10.0); the api reads only "
+    "the segment table's hazard column, never routemaker.hazards.load",
     "fixtures/corridors": "named corridors are applied by the rebuild's classifier",
     "fixtures/bike_lanes": "curated bike lanes are applied by the rebuild's classifier (433)",
     "fixtures/pavement/overrides.json": (

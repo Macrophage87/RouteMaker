@@ -1,0 +1,234 @@
+"""The time a rider loses at junctions (`routemaker.junction_delay`)."""
+
+from __future__ import annotations
+
+import pytest
+
+from routemaker import junction_delay as d
+from routemaker import trace_junctions as t
+from routemaker.intersections import Beacon, Movement, beacon_at
+
+SHAPE = [(-77.0 + i * 0.001, 38.9) for i in range(12)]
+
+
+def junction(
+    *others: tuple[str, str],
+    m: float = 100.0,
+    movement: Movement = Movement.STRAIGHT,
+    in_class: str = "residential",
+    out_class: str = "residential",
+    in_use: str = "road",
+    out_use: str = "road",
+    in_way: int = 1,
+    out_way: int = 1,
+    signal: bool = False,
+    headings: tuple[float, ...] | None = None,
+) -> t.RawJunction:
+    """A junction with the other edges at the node as (use, road class) pairs, heading
+    east (90 degrees) into it; `headings`: those edges' headings away from the node."""
+    return t.RawJunction(
+        m=m,
+        lon=-77.0,
+        lat=38.9,
+        in_edge_id=None,
+        in_way=in_way,
+        out_way=out_way,
+        movement=movement,
+        in_use=in_use,
+        out_use=out_use,
+        others=tuple((use, False) for use, _cls in others),
+        in_class=in_class,
+        out_class=out_class,
+        other_classes=tuple(cls for _use, cls in others),
+        signal=signal,
+        in_heading=90.0,
+        other_headings=headings if headings is not None else (),
+    )
+
+
+CROSS_STREET = (("road", "residential"), ("road", "residential"))
+
+
+class TestOneJunction:
+    def test_a_neighbourhood_crossing_is_a_full_stop(self) -> None:
+        assert d.delay_at(junction(*CROSS_STREET)) == d.STOP_DELAY_S
+
+    def test_in_the_district_it_is_a_slow_and_roll(self) -> None:
+        assert d.delay_at(junction(*CROSS_STREET), rolls=True) == d.YIELD_DELAY_S
+
+    def test_crossing_a_busier_road_waits_for_a_gap_in_the_district_too(self) -> None:
+        busy = (("road", "tertiary"), ("road", "tertiary"))
+        assert d.delay_at(junction(*busy), rolls=True) == d.GIVE_WAY_DELAY_S[4]
+
+    def test_the_busier_the_road_given_way_to_the_longer_the_wait(self) -> None:
+        waits = [
+            d.delay_at(junction(("road", cls), ("road", cls)))
+            for cls in ("residential", "tertiary", "secondary", "primary")
+        ]
+        assert waits == sorted(waits)
+        assert waits[0] == d.STOP_DELAY_S < waits[1] < waits[2] < waits[3]
+
+    def test_a_signal_is_the_signal_wait(self) -> None:
+        busy = (("road", "primary"), ("road", "primary"))
+        assert d.delay_at(junction(*busy, signal=True)) == d.SIGNAL_DELAY_S
+
+    def test_a_flashing_beacon_mapped_as_a_signal_is_a_stop(self) -> None:
+        busy = (("road", "primary"), ("road", "primary"))
+        assert d.delay_at(junction(*busy, signal=True), beacon=True) == d.GIVE_WAY_DELAY_S[2]
+
+    def test_the_rider_on_the_busier_road_does_not_stop(self) -> None:
+        assert d.delay_at(junction(*CROSS_STREET, in_class="tertiary", out_class="tertiary")) == 0
+
+    def test_a_side_road_from_one_side_does_not_stop_the_rider(self) -> None:
+        assert d.delay_at(junction(("road", "residential"))) == 0
+
+    def test_a_street_split_into_two_ways_with_nothing_crossing_is_free(self) -> None:
+        assert d.delay_at(junction(in_way=1, out_way=2)) == 0
+
+    def test_driveways_and_alleys_cost_nothing(self) -> None:
+        others = (("driveway", "service_other"), ("road", "service_other"))
+        assert d.delay_at(junction(*others)) == 0
+
+    def test_a_trail_crossing_a_road_gives_way(self) -> None:
+        trail = {"in_use": "cycleway", "out_use": "cycleway"}
+        trail |= {"in_class": "service_other", "out_class": "service_other"}
+        assert d.delay_at(junction(*CROSS_STREET, **trail)) == d.STOP_DELAY_S
+
+    def test_a_trail_meeting_another_trail_is_free(self) -> None:
+        trail = {"in_use": "cycleway", "out_use": "cycleway"}
+        trail |= {"in_class": "service_other", "out_class": "service_other"}
+        assert d.delay_at(junction(("cycleway", "service_other"), **trail)) == 0
+
+    def test_a_trail_coming_out_onto_a_street_gives_way(self) -> None:
+        out = {"in_use": "cycleway", "in_class": "service_other"}
+        assert d.delay_at(junction(movement=Movement.RIGHT, out_way=2, **out)) == d.STOP_DELAY_S
+
+    def test_turning_onto_a_busier_road_gives_way(self) -> None:
+        turn = {"movement": Movement.LEFT, "out_way": 2, "out_class": "secondary"}
+        assert d.delay_at(junction(("road", "secondary"), **turn)) == d.GIVE_WAY_DELAY_S[3]
+
+    def test_turning_off_a_through_street_at_a_t_is_free(self) -> None:
+        # Own street goes on ahead (east); the rider turns left onto a side street.
+        turn = {"movement": Movement.LEFT, "out_way": 2}
+        assert d.delay_at(junction(("road", "residential"), headings=(92.0,), **turn)) == 0
+
+    def test_turning_at_the_end_of_a_street_gives_way(self) -> None:
+        # Own street ends at the T: the cross street's other half leaves to the south.
+        turn = {"movement": Movement.LEFT, "out_way": 2}
+        found = junction(("road", "residential"), headings=(180.0,), **turn)
+        assert d.delay_at(found) == d.STOP_DELAY_S
+
+    def test_turning_at_a_crossroads_gives_way(self) -> None:
+        turn = {"movement": Movement.LEFT, "out_way": 2}
+        found = junction(*CROSS_STREET, headings=(90.0, 180.0), **turn)
+        assert d.delay_at(found) == d.STOP_DELAY_S
+
+    def test_turning_off_onto_a_quieter_street_is_free(self) -> None:
+        turn = {"movement": Movement.RIGHT, "out_way": 2, "in_class": "secondary"}
+        assert d.delay_at(junction(("road", "secondary"), **turn)) == 0
+
+
+class TestWholeRoute:
+    def test_junctions_add_up(self) -> None:
+        stops = [junction(*CROSS_STREET, m=100.0 * i) for i in range(1, 6)]
+        assert d.delay_s(stops) == pytest.approx(5 * d.STOP_DELAY_S)
+
+    def test_a_divided_road_is_crossed_as_one_stop_at_its_dearest(self) -> None:
+        busy = (("road", "primary"), ("road", "primary"))
+        near = [junction(*busy, m=100.0), junction(*busy, m=118.0, signal=True)]
+        assert d.delay_s(near) == d.SIGNAL_DELAY_S
+
+    def test_the_district_test_is_asked_at_each_junction(self) -> None:
+        stops = [junction(*CROSS_STREET, m=100.0), junction(*CROSS_STREET, m=300.0)]
+        asked = []
+
+        def rolls(lon: float, lat: float) -> bool:
+            asked.append((lon, lat))
+            return len(asked) == 1
+
+        assert d.delay_s(stops, rolls) == d.YIELD_DELAY_S + d.STOP_DELAY_S
+
+    def test_the_beacon_test_is_asked_only_at_signals(self) -> None:
+        busy = (("road", "primary"), ("road", "primary"))
+        stops = [junction(*busy, m=100.0, signal=True), junction(*CROSS_STREET, m=300.0)]
+        asked = []
+
+        def beacon(lon: float, lat: float) -> bool:
+            asked.append((lon, lat))
+            return True
+
+        assert d.delay_s(stops, beacon=beacon) == d.GIVE_WAY_DELAY_S[2] + d.STOP_DELAY_S
+        assert len(asked) == 1
+
+    def test_a_known_beacon_on_the_list_prices_the_signal_as_a_stop(self) -> None:
+        busy = (("road", "primary"), ("road", "primary"))
+        at_beacon = [junction(*busy, m=100.0, signal=True)]
+        beacons = (Beacon(id=1, lon=-77.0001, lat=38.9),)
+        near = d.delay_s(
+            at_beacon, beacon=lambda lon, lat: beacon_at(lon, lat, beacons) is not None
+        )
+        far = (Beacon(id=2, lon=-77.01, lat=38.9),)
+        away = d.delay_s(at_beacon, beacon=lambda lon, lat: beacon_at(lon, lat, far) is not None)
+        assert (near, away) == (d.GIVE_WAY_DELAY_S[2], d.SIGNAL_DELAY_S)
+
+    def test_driveways_between_stops_do_not_merge_them(self) -> None:
+        driveway = (("driveway", "service_other"),)
+        route = []
+        for block in range(4):
+            route.append(junction(*CROSS_STREET, m=100.0 * block))
+            route += [junction(*driveway, m=100.0 * block + k) for k in range(20, 100, 20)]
+        assert d.delay_s(route) == pytest.approx(4 * d.STOP_DELAY_S)
+
+    def test_the_district_test_is_not_asked_where_nothing_stops(self) -> None:
+        asked = []
+
+        def rolls(lon: float, lat: float) -> bool:
+            asked.append((lon, lat))
+            return True
+
+        d.delay_s([junction(("road", "residential"), m=100.0)], rolls)
+        assert asked == []
+
+    def test_no_junctions_no_delay(self) -> None:
+        assert d.delay_s([]) == 0
+
+
+def edge(way, begin, end, length_km, **fields):
+    return {
+        "way_id": way,
+        "begin_shape_index": begin,
+        "end_shape_index": end,
+        "length": length_km,
+        "begin_heading": 90,
+        "end_heading": 90,
+        "road_class": "residential",
+        "use": "road",
+        **fields,
+    }
+
+
+class TestSignalFromTheTrace:
+    def test_a_signal_on_the_node(self) -> None:
+        first = edge(1, 0, 2, 0.1)
+        first["end_node"] = {
+            "traffic_signal": True,
+            "intersecting_edges": [{"use": "road", "road_class": "primary"}],
+        }
+        (found,) = t.junctions_of_trace({"edges": [first, edge(1, 2, 4, 0.1)]}, SHAPE)
+        assert found.signal
+
+    def test_a_signal_on_the_stop_line_before_the_junction(self) -> None:
+        approach = edge(1, 0, 2, 0.1, traffic_signal=True)
+        last = edge(1, 2, 3, 0.012)
+        last["end_node"] = {"intersecting_edges": [{"use": "road", "road_class": "primary"}]}
+        trace = {"edges": [approach, last, edge(1, 3, 5, 0.1)]}
+        (found,) = t.junctions_of_trace(trace, SHAPE)
+        assert found.signal
+
+    def test_a_signal_a_block_back_is_not_this_junctions(self) -> None:
+        approach = edge(1, 0, 2, 0.1, traffic_signal=True)
+        last = edge(1, 2, 3, 0.1)
+        last["end_node"] = {"intersecting_edges": [{"use": "road", "road_class": "primary"}]}
+        trace = {"edges": [approach, last, edge(1, 3, 5, 0.1)]}
+        (found,) = t.junctions_of_trace(trace, SHAPE)
+        assert not found.signal

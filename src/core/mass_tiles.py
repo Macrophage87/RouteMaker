@@ -149,6 +149,8 @@ def inside_dc(lon: float, lat: float, tolerance_m: float = DC_EDGE_TOLERANCE_M) 
     polygons = _dc_polygons()
     if in_polygons((lon, lat), polygons):
         return True
+    if tolerance_m <= 0:
+        return False
     kx = 111_320.0 * math.cos(math.radians(lat))
     ky = 110_574.0
     for polygon in polygons:

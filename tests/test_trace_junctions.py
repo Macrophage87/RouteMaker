@@ -312,6 +312,8 @@ class TestWhatIsAtTheNode:
 class TestAttributes:
     def test_the_attributes_are_valhallas_names(self) -> None:
         for name in t.TRACE_ATTRIBUTES:
-            assert name.startswith(("edge.", "node.intersecting_edge."))
+            assert name.startswith(("edge.", "node.intersecting_edge.")) or name == (
+                "node.traffic_signal"
+            )
         assert "edge.id" in t.TRACE_ATTRIBUTES
         assert "node.intersecting_edge.use" in t.TRACE_ATTRIBUTES
