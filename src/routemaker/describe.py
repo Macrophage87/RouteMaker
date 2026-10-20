@@ -929,7 +929,9 @@ def exit_words(number: int, street: str, circle: str | None) -> str:
 
 
 def _on_circle(atom: Atom) -> bool:
-    return atom.roundabout or any(CIRCLE_NAME.search(name) for name in atom.names)
+    """On a ring by the map's own flag (Valhalla's `edge.roundabout`): a name is not
+    enough for exits, for "Oak Circle" is as often a loop street as a ring."""
+    return atom.roundabout
 
 
 def circle_exit(entry: Atom, ring: list[Atom], way_off: Atom) -> dict | None:

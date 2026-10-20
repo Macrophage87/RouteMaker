@@ -274,7 +274,7 @@ export interface DescriptionEntry {
      * positive: the ride card draws them in place of the plain arrow. Absent or null at a plain crossroads or T.
      */
     shape?: { out: number; others: number[]; main?: "before" | "after" | null; ring?: "right" | "left" | null } | null;
-    /** The way off a circle (v0.10.0, describe.circle_exit): "At Dupont Circle Northwest, take the 3rd exit onto ...". */
+    /** The way off a circle (v0.10.0, describe.circle_exit): "Take the 3rd exit onto P Street Northwest at Dupont Circle Northwest". */
     exit?: { number: number; circle: string | null } | null;
   } | null;
   severity?: "orange" | "red" | "avoid" | null;

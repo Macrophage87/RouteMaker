@@ -212,7 +212,7 @@ export interface Cue {
   /** A stop's number (from 1); null on any other cue. */
   stop: number | null;
   /** A jog's first turn: the turn just after it (within JOG_M), said with it. */
-  then?: { movement: TurnMovement; street: string | null };
+  then?: { movement: TurnMovement; street: string | null; exit?: CircleExit };
   /**
    * A jog's second turn: said with the turn before (its `then`); on its own only at "now", and only where the
    * turn before's "now" was never said (a gap in the fixes, a ride started or rejoined between the two). Still on
@@ -535,7 +535,7 @@ export function rideModel(route: RouteResponse, vias: readonly number[] = []): R
 
 /** ", then immediately bear left onto Rhode Island Avenue.": a jog's second turn, after the first. */
 function thenWords(then: NonNullable<Cue["then"]>): string {
-  return `, then immediately ${lowerFirst(turnWords(then.movement, then.street))}`;
+  return `, then immediately ${lowerFirst(turnWords(then.movement, then.street, false, then.exit ?? null))}`;
 }
 
 /**
@@ -549,7 +549,7 @@ function joinJogs(cues: Cue[]): void {
     const second = cues[i + 1];
     if (first.kind !== "turn" || second.kind !== "turn" || first.joined || !first.movement || !second.movement) continue;
     if (second.atM - first.atM > JOG_M) continue;
-    first.then = { movement: second.movement, street: second.street };
+    first.then = { movement: second.movement, street: second.street, ...(second.exit ? { exit: second.exit } : {}) };
     first.text = first.text.replace(/\.$/, "") + thenWords(first.then);
     second.joined = true;
   }
@@ -741,7 +741,7 @@ export function cueSpoken(cue: Cue, phase: Phase, distanceM: number, first = pha
   if (cue.kind === "stop") return `You have reached stop ${cue.stop}.`;
   if (phase === "now" && cue.movement) {
     // A jog's "now" is short, the second turn being only seconds on: "Right now, then bear left onto ...".
-    if (cue.then) return `${MOVEMENT_WORDS[cue.movement]} now, then ${lowerFirst(turnWords(cue.then.movement, cue.then.street))}`;
+    if (cue.then) return `${cue.exit ? "Exit" : MOVEMENT_WORDS[cue.movement]} now, then ${lowerFirst(turnWords(cue.then.movement, cue.then.street, false, cue.then.exit ?? null))}`;
     if (cue.movement === "uturn") return "Make a U-turn now.";
     if (cue.exit) return `Exit now${cue.street && !isUnnamed(cue.street) ? ` onto ${wayWords(cue.street)}` : ""}.`;
     return `${MOVEMENT_WORDS[cue.movement]} now${cue.street ? ` onto ${wayWords(cue.street)}` : ""}.`;

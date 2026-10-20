@@ -542,7 +542,7 @@ def _others_of(before: dict | None) -> tuple | None:
 
 def _behind_of(kept: list[tuple[dict, float]]) -> tuple | None:
     """The other ways at the junctions within `describe.SHAPE_NEAR_M` short of the node
-    the last edge kept ends at, each (heading away, use, road class); None where none."""
+    the last edge kept ends at, as `_others_of`; None where none."""
     found: list = []
     gap = 0.0
     for i in range(len(kept) - 1, 0, -1):

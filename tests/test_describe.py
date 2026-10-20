@@ -1882,3 +1882,12 @@ class TestCircleExits:
             "21st",
             "22nd",
         ]
+
+    def test_a_loop_street_named_circle_is_not_a_ring(self):
+        # "Oak Circle" by name only: a street, its turns said as turns, no exit counted.
+        loop = branched(road("Oak Circle", 2, 60, 90, 0), [(0.0, "road", None, "both")])
+        entries = d.describe(
+            [flat(road("Elm Street", 2, 600, 0, 0), loop, road("Main Street", 2, 600, 270, 270))]
+        )
+        assert all("exit" not in (e["turn"] or {}) for e in entries)
+        assert "exit" not in entries[-1]["text"]

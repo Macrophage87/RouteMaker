@@ -296,7 +296,7 @@ export function routeCues(route: CompiledRoute, vias: readonly number[] = []): R
       kind: cue.kind,
       ...(cue.source ? { source: cue.source } : {}),
       ...(cue.joined ? { joined: true } : {}),
-      ...(cue.then && cue.movement ? { turnText: turnWords(cue.movement, cue.street) } : {}),
+      ...(cue.then && cue.movement ? { turnText: turnWords(cue.movement, cue.street, false, cue.exit ?? null) } : {}),
     });
   }
   return all;

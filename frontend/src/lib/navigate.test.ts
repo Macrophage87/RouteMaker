@@ -1563,3 +1563,25 @@ test("off a circle the cue says its exit, said and shown; 'now' is the exit (the
   assert.equal(cueSpoken(turn, "now", 10), "Exit now onto P Street Northwest.");
   assert.equal(cueSpoken(turn, "advance", 150), "In 500 feet, take the 3rd exit onto P Street Northwest at Dupont Circle Northwest.");
 });
+
+test("a ring kept as its own short stretch, then the way off: the jog says the exit, and so does its 'now'", () => {
+  const route = lRoute();
+  route.description = [
+    stretch(0, 1000, "0.0 to 0.6 mi (0.0 to 1.0 km): Massachusetts Avenue Northwest, busy road (LTS 3).", { street: "Massachusetts Avenue Northwest" }),
+    stretch(1000, 1020, "0.6 to 0.6 mi (1.0 to 1.0 km): Bear right onto Dupont Circle Northwest, busy road (LTS 3).", {
+      street: "Dupont Circle Northwest",
+      turn: { movement: "bear_right", onto: "Dupont Circle Northwest", control: null, severity: null },
+    }),
+    stretch(1020, 2000, "0.6 to 1.2 mi (1.0 to 2.0 km): Take the 2nd exit onto P Street Northwest at Dupont Circle Northwest, busy road (LTS 3).", {
+      street: "P Street Northwest",
+      turn: { movement: "left", onto: "P Street Northwest", control: null, severity: null, exit: { number: 2, circle: "Dupont Circle Northwest" } },
+    }),
+  ];
+  const [first, second] = rideModel(route).cues.filter((c) => c.kind === "turn");
+  assert.equal(first.text, "Bear right onto Dupont Circle Northwest, then immediately take the 2nd exit onto P Street Northwest at Dupont Circle Northwest.");
+  assert.equal(second.joined, true);
+  assert.equal(cueSpoken(second, "now", 5), "Exit now onto P Street Northwest.");
+  // An exit with a turn right after it: its own "now" is the exit.
+  const exitFirst = { ...second, joined: false, then: { movement: "right" as const, street: "Q Street Northwest" } };
+  assert.equal(cueSpoken(exitFirst, "now", 5), "Exit now, then right onto Q Street Northwest.");
+});
