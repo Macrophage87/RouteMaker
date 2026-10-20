@@ -7229,17 +7229,17 @@ details.fold > summary .icon {
   top: 72px;
 }
 
-/* Manual mode on (v0.10.0, Stephen 2026-10-20: "make it clear that manual mode is being used"): a label on its own
-   row under the bar, in the switch's colours; not a control, so taps go through to the map. */
-.plan-map-bar {
-  flex-wrap: wrap;
-}
-
+/* Manual mode on (v0.10.0, Stephen 2026-10-20: "make it clear that manual mode is being used"): a label just under
+   the bar, in the switch's colours; not a control, so taps go through to the map. */
 .plan-map-bar .plan-bar-manual-badge {
-  flex-basis: 100%;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin: 8px 0 0;
   display: flex;
   justify-content: center;
-  margin: 0;
+  text-align: center;
 }
 
 

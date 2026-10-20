@@ -1216,7 +1216,7 @@ export function MapView(props: Props) {
       });
       // The route's legs drawn by hand (manual mode, v0.10.0, lib/planLegs.ts): white gaps over the line, so they
       // read dashed beside the routed legs' solid line. Not while the route is greyed for a new plan.
-      map.addSource(ROUTE_DRAWN_SOURCE, { type: "geojson", data: routeDrawnLines(null) as never });
+      map.addSource(ROUTE_DRAWN_SOURCE, { type: "geojson", data: routeDrawnLines(null, 0) as never });
       map.addLayer({
         id: "route-drawn-gaps",
         type: "line",
@@ -2534,7 +2534,7 @@ function syncRoute(map: MapLibreMap, props: Props, fitted: { current: boolean })
   // The route, and a transit trip's later rides drawn in its colours (lib/mapGlue.ts, routeLineData).
   source.setData(routeLineData(route) as never);
   setRouteSections(map, route, stale, props.routeColour ?? undefined);
-  (map.getSource(ROUTE_DRAWN_SOURCE) as GeoJSONSource | undefined)?.setData(routeDrawnLines(stale ? null : route) as never);
+  (map.getSource(ROUTE_DRAWN_SOURCE) as GeoJSONSource | undefined)?.setData(routeDrawnLines(stale ? null : route, props.points.length) as never);
   (map.getSource(ROUTE_HAZARD_SOURCE) as GeoJSONSource | undefined)?.setData(routeHazardFeatures(stale ? null : route) as never);
   // A ride's camera follows the rider; a re-planned route is not framed over it.
   if (!route || stale || route.geometry.coordinates.length < 2 || props.rider) return;

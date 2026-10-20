@@ -92,7 +92,7 @@ needed; reload the page to get the box back.
   its key (what each line, color and symbol means) with the longer explanation.
 - In Plan, the "Manual mode" switch in the map's bar joins each point you tap to the last by a
   straight line, for a path the planner won't take. It says when it turns on and off, and a
-  "Manual mode" label shows under the bar while it is on. Until the route comes, faint lines join
+  "Manual mode: taps join with straight lines" label shows under the bar while it is on. Until the route comes, faint lines join
   your points: solid for legs to be routed, dashed for legs you drew. Drawn legs stay dashed on the route.
 - To delete your account: Settings, Account, Delete account. The page says what is deleted and
   what is kept, and asks you to tick one box first.
