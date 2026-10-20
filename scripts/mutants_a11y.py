@@ -111,13 +111,6 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     ),
     # --- the credits ---------------------------------------------------------
     (
-        "credits collapse at the edge excluded",
-        JC,
-        "mapWidth > CREDITS_COLLAPSE_PX",
-        "mapWidth >= CREDITS_COLLAPSE_PX",
-        CARD,
-    ),
-    (
         "credits never collapse",
         JC,
         '  element.classList.remove("maplibregl-compact-show");\n',
@@ -134,8 +127,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "credits added after the scales",
         MV,
-        'map.addControl(new maplibregl.AttributionControl({ compact: true, customAttribution: MAP_ATTRIBUTION }), "bottom-right");\n    collapseCredits',
-        "collapseCredits",
+        'map.addControl(new maplibregl.AttributionControl({ compact: true, customAttribution: MAP_ATTRIBUTION }), "bottom-right");\n    const credits',
+        "const credits",
         FIXES,
     ),
     ("no short credit", CSS, 'content: "© OpenStreetMap" / "";', 'content: "";', FIXES),
@@ -442,8 +435,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "S2 Save leaves the typed figures in the closed dialog",
         WD,
-        "    blank();\n    props.onSave(stored, remember);",
-        "    props.onSave(stored, remember);",
+        "    blank();\n    props.onSave(stored);",
+        "    props.onSave(stored);",
         WEIGHT,
     ),
     (
@@ -539,12 +532,18 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         "",
         WEIGHT,
     ),
-    ("remembered without the tick", WT, "      if (remember) {\n", "      if (true) {\n", WEIGHT),
+    (
+        "save keeps it only for the visit",
+        WT,
+        "      this.storage?.setItem(WEIGHT_STORAGE_KEY, JSON.stringify(weight));\n      return this.storage != null;",
+        "      return this.storage != null;",
+        WEIGHT,
+    ),
     (
         "clear keeps the browser's",
         WT,
-        "    this.visit = null;\n    try {\n      this.storage?.removeItem(WEIGHT_STORAGE_KEY);",
-        "    this.visit = null;\n    try {\n      void WEIGHT_STORAGE_KEY;",
+        "    this.visit = null;\n    try {\n      this.storage?.setItem(WEIGHT_STORAGE_KEY, WEIGHT_CLEARED);",
+        "    this.visit = null;\n    try {\n      void WEIGHT_CLEARED;",
         WEIGHT,
     ),
     (
@@ -557,15 +556,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "dialog pre-fills the saved total",
         WD,
-        '  return { sheet: BLANK, remember: props.remembered, refused: "" };',
-        '  return { sheet: props.saved ? { ...BLANK, total: String(props.saved.totalKg), mode: "total" } : BLANK, remember: props.remembered, refused: "" };',
-        WEIGHT,
-    ),
-    (
-        "dialog forgets the remembered tick",
-        WD,
-        '  return { sheet: BLANK, remember: props.remembered, refused: "" };',
-        '  return { sheet: BLANK, remember: false, refused: "" };',
+        'export function openedState(): { sheet: Worksheet; refused: string } {\n  return { sheet: BLANK, refused: "" };',
+        'export function openedState(): { sheet: Worksheet; refused: string } {\n  return { sheet: { ...BLANK, total: "93", mode: "total" }, refused: "" };',
         WEIGHT,
     ),
     (

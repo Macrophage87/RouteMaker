@@ -1,0 +1,496 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="description" content="How to plan, revise and save RouteMaker routes from an AI assistant such as Claude, through the Model Context Protocol.">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<title>AI assistants - RouteMaker</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1c1917; --muted: #4b5260; --line: #d6d3d1;
+    --panel: #f5f5f4; --link: #1d4ed8; --focus: #1d4ed8; --accent: #1d4ed8; --accent-bg: #dbeafe;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #1c1917; --fg: #f5f5f4; --muted: #c4c7ce; --line: #57534e;
+      --panel: #292524; --link: #93c5fd; --focus: #93c5fd; --accent: #93c5fd; --accent-bg: #1e3a5f;
+    }
+    /* Outline the stress colors in light ink so Avoid's black reads on the dark page. */
+    :root:not([data-theme="light"]) svg rect[stroke="#1c1917"] { stroke: #d6d3d1; }
+    :root:not([data-theme="light"]) svg line.halo { stroke: #d6d3d1; opacity: 0.9; }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    font-size: 1.0625rem; line-height: 1.6; overflow-wrap: break-word;
+  }
+  .skip { position: absolute; left: -9999px; top: 0; }
+  .skip:focus { left: 1rem; top: 1rem; background: var(--bg); padding: 0.5rem 0.75rem; border: 2px solid var(--focus); z-index: 1; }
+  header, main, footer { max-width: 48rem; margin: 0 auto; padding: 0 1rem; }
+  header { padding-top: 1.25rem; }
+  footer { padding-bottom: 2rem; border-top: 1px solid var(--line); margin-top: 2.5rem; color: var(--muted); font-size: 0.95rem; }
+  h1 { font-size: 1.75rem; line-height: 1.25; margin: 0.5rem 0 0.75rem; }
+  h2 { font-size: 1.35rem; line-height: 1.3; margin: 2.5rem 0 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--line); }
+  h3 { font-size: 1.1rem; margin: 1.5rem 0 0.4rem; }
+  a { color: var(--link); text-underline-offset: 0.15em; }
+  a:focus-visible, summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+  .back { display: inline-block; margin-bottom: 0.25rem; }
+  .lead { font-size: 1.1rem; }
+  .note { background: var(--panel); border-left: 4px solid var(--muted); padding: 0.6rem 0.9rem; margin: 1rem 0; }
+  .short { background: var(--accent-bg); border-left: 4px solid var(--accent); padding: 0.6rem 0.9rem; margin: 1rem 0; }
+  .short > :first-child { margin-top: 0; }
+  .short > :last-child { margin-bottom: 0; }
+  nav.docs > ul { list-style: none; padding: 0; margin: 0.25rem 0 0.75rem; display: grid; grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr)); gap: 0.5rem 1.25rem; }
+  nav.docs ul ul { list-style: none; padding: 0; margin: 0.1rem 0 0; }
+  nav.docs ul ul li { margin: 0.1rem 0; }
+  nav.docs .group { font-size: 0.85rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  .next { margin-top: 2.5rem; padding-top: 1rem; border-top: 1px solid var(--line); font-weight: 600; }
+  nav.docs a[aria-current="page"] { font-weight: 700; color: var(--fg); text-decoration: none; }
+  nav.toc ul { padding-left: 1.25rem; margin: 0.25rem 0; }
+  pre { overflow-x: auto; padding: 0.75rem; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); font-size: 0.9rem; }
+  .table-wrap { overflow-x: auto; margin: 0.75rem 0; }
+  .table-wrap:focus-visible { outline: 3px solid var(--focus); }
+  table { border-collapse: collapse; width: 100%; font-size: 0.97rem; }
+  caption { text-align: left; font-weight: 600; padding-bottom: 0.4rem; }
+  th, td { border: 1px solid var(--line); padding: 0.4rem 0.5rem; text-align: left; vertical-align: top; }
+  thead th { background: var(--panel); }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .sw { display: inline-block; width: 1.6em; height: 0.8em; border: 1px solid var(--fg); vertical-align: middle; margin-right: 0.35em; border-radius: 2px; }
+  figure { margin: 1.25rem 0; padding: 0.75rem; border: 1px solid var(--line); border-radius: 6px; }
+  .fig-scroll { overflow-x: auto; }
+  .fig-scroll:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+  figure svg { display: block; width: 100%; height: auto; }
+  figcaption { font-size: 0.95rem; color: var(--muted); margin-top: 0.5rem; }
+  details { margin: 0.75rem 0; }
+  summary { cursor: pointer; font-weight: 600; }
+  sup.cite a { text-decoration: none; }
+  ol.refs li { margin-bottom: 0.4rem; }
+  .t { fill: var(--fg); font: 13px system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  .maplbl { fill: #111; stroke: #fff; stroke-width: 6px; stroke-linejoin: round; paint-order: stroke; font: 600 24px system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  .mapbig { font-size: 28px; font-weight: 700; }
+  .mapbar { fill: #111; stroke: #fff; stroke-width: 2px; }
+  .ts { fill: var(--muted); font: 11.5px system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  .tb { fill: var(--fg); font: 600 13px system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  .tk { fill: #1c1917; font: 600 12.5px system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  .tw { fill: #ffffff; font: 600 12.5px system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  .bx { fill: var(--panel); stroke: var(--line); stroke-width: 1.5; }
+  .bxa { fill: var(--accent-bg); stroke: var(--accent); stroke-width: 1.5; }
+  .ar { stroke: var(--muted); stroke-width: 1.6; fill: none; }
+  .ard { stroke: var(--muted); stroke-width: 1.4; fill: none; stroke-dasharray: 5 4; }
+  .ah { fill: var(--muted); }
+  .grid { stroke: var(--line); stroke-width: 1; }
+  .axis { stroke: var(--fg); stroke-width: 1.2; }
+  .ln { stroke: var(--accent); stroke-width: 2.5; fill: none; }
+  .ln2 { stroke: #c2410c; stroke-width: 2.5; fill: none; stroke-dasharray: 7 4; }
+  .fillacc { fill: var(--accent); }
+  @media (max-width: 30rem) {
+    body { font-size: 1rem; }
+    h1 { font-size: 1.5rem; }
+    th, td { padding: 0.35rem 0.4rem; }
+    figure { padding: 0.4rem; }
+  }
+
+  details.more { margin: 0.5rem 0 1rem; border: 1px solid var(--line); border-radius: 6px; }
+  details.more > summary { cursor: pointer; padding: 0.55rem 0.8rem; font-weight: 600; color: var(--link); }
+  details.more > summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+  details.more[open] > summary { border-bottom: 1px solid var(--line); }
+  details.more > .more-body { padding: 0 0.8rem 0.4rem; }
+
+  .glance { background: var(--accent-bg); border: 2px solid var(--accent); border-radius: 8px; padding: 0.25rem 1rem 0.75rem; margin: 1rem 0 1.5rem; }
+  .glance > h2 { border-top: 0; margin: 0.5rem 0 0.25rem; padding-top: 0; }
+  .glance figure { background: var(--bg); }
+  .glance ul { padding-left: 1.25rem; }
+  .glance .find { margin-bottom: 0; }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to the content</a>
+<header>
+  <p><a class="back" href="/">Back to the map</a></p>
+  <nav class="docs" aria-label="RouteMaker documentation">
+  <ul>
+    <li><span class="group">Start here</span>
+      <ul><li><a href="/about/how-it-works.html">Overview</a></li><li><a href="/about/using.html">Using RouteMaker</a></li><li><a href="/about/accessibility.html">Accessibility</a></li></ul></li>
+    <li><span class="group">How routes are chosen</span>
+      <ul><li><a href="/about/ride-types.html">Ride types</a></li><li><a href="/about/stress.html">Stress ratings</a></li><li><a href="/about/routing.html">Routing</a></li></ul></li>
+    <li><span class="group">Special rides</span>
+      <ul><li><a href="/about/trails.html">Trails and gravel</a></li><li><a href="/about/mass-ride.html">Mass Ride</a></li></ul></li>
+    <li><span class="group">Behind the scenes</span>
+      <ul><li><a href="/about/assistants.html" aria-current="page">AI assistants</a></li><li><a href="/about/architecture.html">Architecture</a></li><li><a href="/about/acknowledgements.html">Acknowledgements</a></li></ul></li>
+  </ul>
+  </nav>
+  <h1>AI assistants</h1>
+</header>
+<main id="main">
+
+<p class="lead">RouteMaker can be used from an AI assistant such as Claude. You describe the ride you
+want in your own words, and the assistant plans it with RouteMaker's own planner, shows you a link to
+look at it in the app, changes it when you ask, and saves it when you say so.</p>
+
+<div class="glance">
+<h2 id="glance">At a glance</h2>
+<figure id="fig-glance-assistants">
+<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<svg viewBox="0 0 760 136" role="img" aria-labelledby="fig-glance-assistants-t fig-glance-assistants-d" focusable="false" style="min-width:547px">
+<title id="fig-glance-assistants-t">AI assistants at a glance</title>
+<desc id="fig-glance-assistants-d">You ask for a route in your own words. Your assistant plans it with RouteMaker&#x27;s own planner and gives you a draft with a link that opens it in the app. Ask for changes as often as you like, and each is a new draft. When you say save, the route goes to My routes.</desc>
+<defs><marker id="ah-glance-assistants" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<rect class="bxa" x="10" y="20" width="170" height="56" rx="6"/>
+<text class="tb" x="95.0" y="44.5" text-anchor="middle">You ask</text>
+<text class="ts" x="95.0" y="60.5" text-anchor="middle">in your own words</text>
+<path class="ar" d="M182,48 L198,48" marker-end="url(#ah-glance-assistants)"/>
+<rect class="bx" x="200" y="20" width="170" height="56" rx="6"/>
+<text class="tb" x="285.0" y="44.5" text-anchor="middle">Your assistant</text>
+<text class="ts" x="285.0" y="60.5" text-anchor="middle">plans with RouteMaker</text>
+<path class="ar" d="M372,48 L388,48" marker-end="url(#ah-glance-assistants)"/>
+<rect class="bx" x="390" y="20" width="170" height="56" rx="6"/>
+<text class="tb" x="475.0" y="44.5" text-anchor="middle">A draft</text>
+<text class="ts" x="475.0" y="60.5" text-anchor="middle">with a link to the app</text>
+<path class="ar" d="M562,48 L578,48" marker-end="url(#ah-glance-assistants)"/>
+<rect class="bxa" x="580" y="20" width="170" height="56" rx="6"/>
+<text class="tb" x="665.0" y="44.5" text-anchor="middle">You say save</text>
+<text class="ts" x="665.0" y="60.5" text-anchor="middle">it goes to My routes</text>
+<path class="ard" d="M475,78 C475,112 285,112 285,80" marker-end="url(#ah-glance-assistants)"/>
+<text class="ts" x="380" y="124" text-anchor="middle">Ask for changes as often as you like: each is a new draft.</text>
+</svg>
+</div>
+<figcaption>Plan, look, change, save: nothing is kept until you say so.</figcaption>
+</figure>
+<ul>
+<li>Ask for a route in your own words, for example a 100 mile loop round DC on low-stress roads that
+never strays more than 5 miles from Metro.</li>
+<li>The assistant plans through the same route request as the app, so the route is exactly what the app
+would plan.</li>
+<li>Every route is a draft with a link to open it in the app. Nothing is saved until you say so.</li>
+<li>The connection can only add routes to My routes. It cannot read or change anything else.</li>
+</ul>
+<p class="find"><strong>Looking for something else?</strong> How the planner works: <a href="/about/routing.html">Routing</a>. How the site is built: <a href="/about/architecture.html">Architecture</a>.</p>
+</div>
+
+<nav class="toc" aria-label="On this page">
+<p><strong>On this page</strong></p>
+<ul>
+<li><a href="#what">What it is</a></li>
+<li><a href="#asking">Asking for a route</a></li>
+<li><a href="#tools">What an assistant can do</a></li>
+<li><a href="#metro-loop">Loops near Metro</a></li>
+<li><a href="#reach">What it can and cannot see</a></li>
+<li><a href="#connect">Connecting an assistant</a></li>
+<li><a href="#limits">Limits</a></li>
+<li><a href="#sources">Sources</a></li>
+</ul>
+</nav>
+
+<h2 id="what">What it is</h2>
+<p>RouteMaker speaks the Model Context Protocol<sup class="cite"><a href="#ref-1" aria-label="source 1">[1]</a></sup>, an open standard that lets an AI assistant
+use outside tools. Any assistant app that supports it can plan routes with RouteMaker, not only Claude.
+There are two ways in: Claude on the web and the phone apps connect to the site itself, and assistant
+apps on your own computer can run RouteMaker's server there<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup>.</p>
+<figure id="fig-mcp-paths">
+<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<svg viewBox="0 0 760 196" role="img" aria-labelledby="fig-mcp-paths-t fig-mcp-paths-d" focusable="false" style="min-width:547px">
+<title id="fig-mcp-paths-t">Two ways to connect an assistant</title>
+<desc id="fig-mcp-paths-d">Claude on the web or the Claude phone apps connects to the site&#x27;s own /mcp address, after you sign in to RouteMaker and allow it. Claude Desktop, Claude Code or another assistant app can instead run RouteMaker&#x27;s server on your own computer, with a save-only key. Both reach RouteMaker&#x27;s route request, the same one the app makes, so a route has the same planner and the same ratings.</desc>
+<defs><marker id="ah-mcp-paths" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<rect class="bxa" x="10" y="20" width="170" height="56" rx="6"/>
+<text class="tb" x="95.0" y="44.5" text-anchor="middle">Claude on the web</text>
+<text class="ts" x="95.0" y="60.5" text-anchor="middle">or the phone apps</text>
+<rect class="bxa" x="10" y="120" width="170" height="56" rx="6"/>
+<text class="tb" x="95.0" y="144.5" text-anchor="middle">Claude Desktop, Claude</text>
+<text class="ts" x="95.0" y="160.5" text-anchor="middle">Code or another app</text>
+<rect class="bx" x="240" y="20" width="200" height="56" rx="6"/>
+<text class="tb" x="340.0" y="44.5" text-anchor="middle">The site&#x27;s /mcp</text>
+<text class="ts" x="340.0" y="60.5" text-anchor="middle">signed in, with your Allow</text>
+<rect class="bx" x="240" y="120" width="200" height="56" rx="6"/>
+<text class="tb" x="340.0" y="144.5" text-anchor="middle">The server on your</text>
+<text class="ts" x="340.0" y="160.5" text-anchor="middle">computer, with a save key</text>
+<path class="ar" d="M182,48 L238,48" marker-end="url(#ah-mcp-paths)"/>
+<path class="ar" d="M182,148 L238,148" marker-end="url(#ah-mcp-paths)"/>
+<rect class="bxa" x="500" y="60" width="250" height="76" rx="6"/>
+<text class="tb" x="625.0" y="86.5" text-anchor="middle">RouteMaker&#x27;s route request</text>
+<text class="ts" x="625.0" y="102.5" text-anchor="middle">the same one the app makes</text>
+<text class="ts" x="625.0" y="118.5" text-anchor="middle">same planner, same ratings</text>
+<path class="ar" d="M442,48 L498,86" marker-end="url(#ah-mcp-paths)"/>
+<path class="ar" d="M442,148 L498,112" marker-end="url(#ah-mcp-paths)"/>
+</svg>
+</div>
+<figcaption>Either way, the assistant plans through the app's own route request.</figcaption>
+</figure>
+<details class="more"><summary>More: What it is</summary>
+<div class="more-body">
+
+
+<p>Either way, the assistant goes through the same route request the app makes<sup class="cite"><a href="#ref-3" aria-label="source 3">[3]</a></sup>, so a
+route has the same ratings, costs, closures and ride types as one planned in the app. On the web each
+rider's requests count against their own limits, as in the app.</p>
+
+</div></details>
+<h2 id="asking">Asking for a route</h2>
+<p>Ask in your own words, look at the draft in the app, ask for changes, and say save when it is right.
+The assistant chooses the ride type and settings that fit what you ask, and you can name them yourself.</p>
+<figure id="fig-mcp-drafts">
+<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<svg viewBox="0 0 760 134" role="img" aria-labelledby="fig-mcp-drafts-t fig-mcp-drafts-d" focusable="false" style="min-width:547px">
+<title id="fig-mcp-drafts-t">How a route goes from a request to My routes</title>
+<desc id="fig-mcp-drafts-d">You ask for a route in your own words. The assistant plans a first draft, with a link that opens it in the app. You look at it and ask for changes, and the assistant plans a second draft, keeping the first to go back to. When it is right, you say save, and the draft goes to My routes or a GPX file. You can also change the route in the app yourself and paste its address back, which makes a draft too.</desc>
+<defs><marker id="ah-mcp-drafts" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<rect class="bxa" x="10" y="30" width="136" height="56" rx="6"/>
+<text class="tb" x="78.0" y="54.5" text-anchor="middle">You ask</text>
+<text class="ts" x="78.0" y="70.5" text-anchor="middle">in your own words</text>
+<path class="ar" d="M148,58 L158,58" marker-end="url(#ah-mcp-drafts)"/>
+<rect class="bx" x="160" y="30" width="136" height="56" rx="6"/>
+<text class="tb" x="228.0" y="54.5" text-anchor="middle">Draft 1</text>
+<text class="ts" x="228.0" y="70.5" text-anchor="middle">with a link to open it</text>
+<path class="ar" d="M298,58 L308,58" marker-end="url(#ah-mcp-drafts)"/>
+<rect class="bx" x="310" y="30" width="136" height="56" rx="6"/>
+<text class="tb" x="378.0" y="54.5" text-anchor="middle">You look</text>
+<text class="ts" x="378.0" y="70.5" text-anchor="middle">in the app</text>
+<path class="ar" d="M448,58 L458,58" marker-end="url(#ah-mcp-drafts)"/>
+<rect class="bx" x="460" y="30" width="136" height="56" rx="6"/>
+<text class="tb" x="528.0" y="54.5" text-anchor="middle">Draft 2</text>
+<text class="ts" x="528.0" y="70.5" text-anchor="middle">revised; draft 1 kept</text>
+<path class="ar" d="M598,58 L608,58" marker-end="url(#ah-mcp-drafts)"/>
+<rect class="bxa" x="610" y="30" width="136" height="56" rx="6"/>
+<text class="tb" x="678.0" y="54.5" text-anchor="middle">You say save</text>
+<text class="ts" x="678.0" y="70.5" text-anchor="middle">My routes or GPX</text>
+<text class="ts" x="380" y="118" text-anchor="middle">Or change the route in the app yourself and paste its address back: that becomes a draft too.</text>
+</svg>
+</div>
+<figcaption>Nothing is saved until you say so.</figcaption>
+</figure>
+<details class="more"><summary>More: Asking for a route</summary>
+<div class="more-body">
+
+
+<p>Things you might ask:</p>
+<ul>
+<li>"Make me a 100 mile route that goes around DC using low-stress roads and doesn't stray more than 5
+miles from a Metro station."</li>
+<li>"Plan a calm ride from Union Station to the National Arboretum on a Capital Bikeshare e-bike."</li>
+<li>"Go by the Capital Crescent Trail instead." "Make it calmer." "Save it as Metro century."</li>
+</ul>
+<p>Every ride type the app has is available, bikeshare and bike plus transit included, with every
+setting: traffic stress, hills, target distance, ride time, gravel and trails, rider weight, cargo,
+trail levels, the bikeshare bike and where to end, and departure time. Each answer gives the distance,
+time, climbing and how much of the route is on each stress level, and a link, kept for a week, that opens
+that exact route in the app. You can change the route in the app yourself and paste the
+page's address back: the assistant picks it up as a new draft. On the traffic slider, 70 is the app's
+Default and 80 keeps to low-stress ways unless avoiding them takes much longer; above 80 the calm
+search runs, which is slower on a long ride.</p>
+
+</div></details>
+<h2 id="tools">What an assistant can do</h2>
+<p>The assistant has eight tools. Only one writes anything, and only when you ask it to save.</p>
+<details class="more"><summary>More: What an assistant can do</summary>
+<div class="more-body">
+
+<div class="table-wrap" tabindex="0" role="region" aria-label="What an assistant can do">
+<table>
+<caption>What an assistant can do</caption>
+<thead><tr><th scope="col">Tool</th><th scope="col">What it does</th></tr></thead>
+<tbody>
+<tr><th scope="row"><code>find_place</code></th><td>Searches RouteMaker's place search for a place, address or street.</td></tr>
+<tr><th scope="row"><code>metro_stations</code></th><td>Lists the 98 Metrorail stations, or those near a point, with miles and direction.</td></tr>
+<tr><th scope="row"><code>plan_route</code></th><td>Plans through 2 to 25 points (places, station names or coordinates) on any ride type and setting, as a loop if asked. Reports distance, time, climbing and the share on each stress level, and the bikeshare or transit plan on those ride types. Can check the distance from Metro and add stations where the route strays.</td></tr>
+<tr><th scope="row"><code>revise_route</code></th><td>Changes a draft (add, move or remove points; another ride type or setting) and plans it again as a new draft. The old one stays.</td></tr>
+<tr><th scope="row"><code>open_link</code></th><td>Picks up a route from a RouteMaker link you paste: the app's address after you changed a route, a saved route opened in the app, or a shared route's link.</td></tr>
+<tr><th scope="row"><code>save_route</code></th><td>Saves a draft to My routes, or as a GPX file on your computer, only when you say so.</td></tr>
+<tr><th scope="row"><code>gpx_route</code></th><td>Gives a draft as a GPX track: a file on your computer, or a download link on the web.</td></tr>
+<tr><th scope="row"><code>plan_metro_loop</code></th><td>Builds a loop of about a target length, 5 to 200 mi [8 to 322 km], that stays within a set distance of a Metro station, 5 mi [8 km] unless you say otherwise.</td></tr>
+</tbody>
+</table>
+</div>
+
+</div></details>
+<h2 id="metro-loop">Loops near Metro</h2>
+<p>One tool builds a loop of about the length you ask for that stays near Metro, so you can bail out
+by train. Distances to Metro are in a straight line, from the same station file the map uses<sup class="cite"><a href="#ref-4" aria-label="source 4">[4]</a></sup>.</p>
+<figure id="fig-mcp-loop">
+<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<svg viewBox="0 0 760 140" role="img" aria-labelledby="fig-mcp-loop-t fig-mcp-loop-d" focusable="false" style="min-width:547px">
+<title id="fig-mcp-loop-t">How a Metro loop is built</title>
+<desc id="fig-mcp-loop-d">The Metro loop tool places a ring of points at or just past Metro stations around DC, plans the loop on the ride type asked for, rescales the ring once if the loop is more than 12% off the target length, and repairs it by adding the nearest station where it strays past the Metro limit. It makes up to 4 plans by default, 6 at most, and the best loop found becomes the draft.</desc>
+<defs><marker id="ah-mcp-loop" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<rect class="bxa" x="10" y="24" width="170" height="72" rx="6"/>
+<text class="tb" x="95.0" y="48.5" text-anchor="middle">Ring of points</text>
+<text class="ts" x="95.0" y="64.5" text-anchor="middle">at or just past Metro</text>
+<text class="ts" x="95.0" y="80.5" text-anchor="middle">stations, round DC</text>
+<path class="ar" d="M182,60 L198,60" marker-end="url(#ah-mcp-loop)"/>
+<rect class="bx" x="200" y="24" width="170" height="72" rx="6"/>
+<text class="tb" x="285.0" y="48.5" text-anchor="middle">Plan the loop</text>
+<text class="ts" x="285.0" y="64.5" text-anchor="middle">on the ride type</text>
+<text class="ts" x="285.0" y="80.5" text-anchor="middle">you asked for</text>
+<path class="ar" d="M372,60 L388,60" marker-end="url(#ah-mcp-loop)"/>
+<rect class="bx" x="390" y="24" width="170" height="72" rx="6"/>
+<text class="tb" x="475.0" y="48.5" text-anchor="middle">Rescale once</text>
+<text class="ts" x="475.0" y="64.5" text-anchor="middle">if it is more than</text>
+<text class="ts" x="475.0" y="80.5" text-anchor="middle">12% off the target</text>
+<path class="ar" d="M562,60 L578,60" marker-end="url(#ah-mcp-loop)"/>
+<rect class="bx" x="580" y="24" width="170" height="72" rx="6"/>
+<text class="tb" x="665.0" y="48.5" text-anchor="middle">Repair</text>
+<text class="ts" x="665.0" y="64.5" text-anchor="middle">add the nearest station</text>
+<text class="ts" x="665.0" y="80.5" text-anchor="middle">where it strays</text>
+<text class="ts" x="380" y="126" text-anchor="middle">Up to 4 plans by default (6 at most); the best loop found is the draft.</text>
+</svg>
+</div>
+<figcaption>A loop of about the length you ask for that stays near Metro.</figcaption>
+</figure>
+<details class="more"><summary>More: Loops near Metro</summary>
+<div class="more-body">
+
+
+<ul>
+<li>The loop is centred on DC unless you name another centre or a start.</li>
+<li>On Default it plans at traffic slider 80, low stress, unless you ask otherwise; other ride types
+keep their own starting setting. Mass Ride and the two-point ride types do not plan loops.</li>
+<li>The site plans at most 124 mi [200 km] of straight lines between points, so past about 150 mi
+[241 km] the ring is kept smaller and the loop comes out short. The answer says so.</li>
+<li>A point the loop reaches only by going out and back is moved to where the spur leaves the loop.</li>
+</ul>
+
+</div></details>
+<h2 id="reach">What it can and cannot see</h2>
+<p>The connection can only add. It can plan routes and add the ones you ask it to save to My routes;
+it cannot read your saved routes or change anything else.</p>
+<figure id="fig-mcp-reach">
+<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<svg viewBox="0 0 760 236" role="img" aria-labelledby="fig-mcp-reach-t fig-mcp-reach-d" focusable="false" style="min-width:547px">
+<title id="fig-mcp-reach-t">What an assistant can and cannot do</title>
+<desc id="fig-mcp-reach-d">An assistant connected to RouteMaker can search places and Metro stations, plan and revise routes on any ride type, open a RouteMaker link you paste, add a route to My routes when you ask, and give a route as GPX. It cannot read your saved routes, change or delete any route, sign in to the site as you, change your account or settings, or see anything about other riders.</desc>
+<defs><marker id="ah-mcp-reach" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<text class="tb" x="185" y="20" text-anchor="middle">Can</text>
+<text class="tb" x="575" y="20" text-anchor="middle">Cannot</text>
+<rect class="bxa" x="10" y="32" width="350" height="32" rx="6"/>
+<text class="ts" x="185.0" y="52.5" text-anchor="middle">Search places and Metro stations</text>
+<rect class="bxa" x="10" y="72" width="350" height="32" rx="6"/>
+<text class="ts" x="185.0" y="92.5" text-anchor="middle">Plan and revise routes, any ride type</text>
+<rect class="bxa" x="10" y="112" width="350" height="32" rx="6"/>
+<text class="ts" x="185.0" y="132.5" text-anchor="middle">Open a RouteMaker link you paste</text>
+<rect class="bxa" x="10" y="152" width="350" height="32" rx="6"/>
+<text class="ts" x="185.0" y="172.5" text-anchor="middle">Add a route to My routes, when you ask</text>
+<rect class="bxa" x="10" y="192" width="350" height="32" rx="6"/>
+<text class="ts" x="185.0" y="212.5" text-anchor="middle">Give a route as GPX</text>
+<rect class="bx" x="400" y="32" width="350" height="32" rx="6"/>
+<text class="ts" x="575.0" y="52.5" text-anchor="middle">Read your saved routes</text>
+<rect class="bx" x="400" y="72" width="350" height="32" rx="6"/>
+<text class="ts" x="575.0" y="92.5" text-anchor="middle">Change or delete any route</text>
+<rect class="bx" x="400" y="112" width="350" height="32" rx="6"/>
+<text class="ts" x="575.0" y="132.5" text-anchor="middle">Sign in to the site as you</text>
+<rect class="bx" x="400" y="152" width="350" height="32" rx="6"/>
+<text class="ts" x="575.0" y="172.5" text-anchor="middle">Change your account or settings</text>
+<rect class="bx" x="400" y="192" width="350" height="32" rx="6"/>
+<text class="ts" x="575.0" y="212.5" text-anchor="middle">See anything about other riders</text>
+</svg>
+</div>
+<figcaption>The connection, and the save-only key, can only add.</figcaption>
+</figure>
+<details class="more"><summary>More: What it can and cannot see</summary>
+<div class="more-body">
+
+
+<ul>
+<li><strong>On the web</strong>, the connection uses OAuth<sup class="cite"><a href="#ref-5" aria-label="source 5">[5]</a></sup>: your assistant app registers
+itself, you sign in to RouteMaker with Discord as usual and choose Allow, and the app gets a token for
+routes only. RouteMaker keeps only SHA-256 fingerprints of the tokens, never the tokens themselves. A
+token lasts an hour and is renewed while you use it; a connection unused for 30 days has to be
+connected again.</li>
+<li><strong>On your own computer</strong>, the save-only key can only add routes to My routes. It is
+shown once, and you can remove or replace it in Settings at any time. Without a key the server plans
+but cannot save.</li>
+<li><strong>Your conversation</strong> is between you and your assistant app, under that app's own
+terms. RouteMaker sees the routes it is asked to plan, as it does for the app.</li>
+</ul>
+
+</div></details>
+<h2 id="connect">Connecting an assistant</h2>
+<p>On claude.ai or a Claude phone app, add RouteMaker as a connector and sign in. On your own computer,
+run the server from a copy of the code. The table compares the two.</p>
+<details class="more"><summary>More: Connecting an assistant</summary>
+<div class="more-body">
+
+<div class="table-wrap" tabindex="0" role="region" aria-label="The two ways to connect, compared">
+<table>
+<caption>The two ways to connect, compared</caption>
+<thead><tr><th scope="col"></th><th scope="col">On the web (claude.ai and phone apps)</th><th scope="col">On your own computer</th></tr></thead>
+<tbody>
+<tr><th scope="row">What you need</th><td>A RouteMaker account</td><td>A copy of the code and Python 3.11 or later</td></tr>
+<tr><th scope="row">How it signs in</th><td>RouteMaker's sign-in, then Allow</td><td>A save-only key from Settings, if you want to save</td></tr>
+<tr><th scope="row">Time per request</th><td>About a minute; a long loop may stop after fewer plans</td><td>As long as your assistant waits; a long loop can take a few minutes</td></tr>
+<tr><th scope="row">Drafts kept</th><td>A week</td><td>While the assistant's session lasts</td></tr>
+<tr><th scope="row">GPX</th><td>A download link, while the draft is kept</td><td>A file on your computer</td></tr>
+<tr><th scope="row">Turning it off</th><td>Settings &gt; Account &gt; AI assistants &gt; Disconnect</td><td>Remove the key in Settings, or the server from your assistant</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="mcp-web">On claude.ai and the Claude phone apps</h3>
+<ol>
+<li>In Claude, open <strong>Settings &gt; Connectors &gt; Add custom connector</strong>.</li>
+<li>Name it RouteMaker and give the address you open RouteMaker at, followed by <code>/mcp</code>
+(for example <code>https://routes.example.org/mcp</code>).</li>
+<li>Choose <strong>Connect</strong>. RouteMaker's sign-in opens: sign in with Discord as usual and
+choose <strong>Allow</strong>.</li>
+</ol>
+<p>Settings &gt; Account &gt; AI assistants lists each connected assistant with a Disconnect
+button.</p>
+<h3 id="mcp-local">On your own computer (Claude Desktop, Claude Code and others)</h3>
+<p>The server needs Python 3.11 or later and a copy of the repository; it uses nothing beyond Python
+itself. To let it save, make a key on the site under <strong>Settings &gt; Account &gt; AI assistant key
+&gt; Make a key</strong>. Then add the server to your assistant with these settings:</p>
+<ul>
+<li><code>ROUTEMAKER_BASE_URL</code>: the address you open RouteMaker at. Route links are built from
+it.</li>
+<li><code>ROUTEMAKER_SAVE_KEY</code>: the key (leave it out to plan without saving).</li>
+<li><code>ROUTEMAKER_ROUTES_DIR</code> (optional): where GPX files go, <code>~/RouteMaker-routes</code>
+unless set.</li>
+</ul>
+<p>For Claude Code the command is:</p>
+<pre><code>claude mcp add routemaker \
+  -e ROUTEMAKER_BASE_URL=https://routes.example.org \
+  -e ROUTEMAKER_SAVE_KEY=rmk_your_key_here \
+  -- python3 /path/to/RouteMaker/mcp/routemaker_mcp.py</code></pre>
+<p>Claude Desktop and other apps take the same command, path and settings in their own configuration.
+The <a href="https://github.com/Macrophage87/RouteMaker/blob/main/mcp/README.md">server's README</a><sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup> has a Claude Desktop example, including
+Windows with the copy in WSL.</p>
+
+</div></details>
+<h2 id="limits">Limits</h2>
+<p>The planner covers DC to Baltimore, and a long loop can take a while: about a minute per request on
+the web, a few minutes on your own computer.</p>
+<details class="more"><summary>More: Limits</summary>
+<div class="more-body">
+
+<ul>
+<li><strong>Coverage.</strong> Points outside the DC to Baltimore area are refused.</li>
+<li><strong>Time.</strong> Each plan of a long ride can take up to a minute. On the web a request
+answers within about a minute, so a long loop may be planned in fewer rounds; the answer says when it
+stopped early, and asking for a revision can still fix it. On your own computer, if the assistant gives
+up first, raise its tool timeout (Claude Code: <code>MCP_TOOL_TIMEOUT=600000</code>) or ask for fewer
+plans. A request the assistant gives up on saves nothing, unless the save was already under way.</li>
+<li><strong>Changes in between.</strong> If closures or the map change between planning and opening the
+route in the app, a route planned again may differ a little. A saved route keeps the line exactly as
+planned.</li>
+</ul>
+
+</div></details>
+<h2 id="sources">Sources</h2>
+<ol class="refs">
+  <li id="ref-1">Model Context Protocol, an open standard for connecting AI assistants to tools. <a href="https://modelcontextprotocol.io/">modelcontextprotocol.io</a></li>
+  <li id="ref-2">RouteMaker's MCP server and its README. <a href="https://github.com/Macrophage87/RouteMaker/blob/main/mcp/README.md">mcp/README.md</a>; <a href="https://github.com/Macrophage87/RouteMaker/blob/main/mcp/routemaker_mcp.py">mcp/routemaker_mcp.py</a></li>
+  <li id="ref-3">RouteMaker's web connector, at /mcp on the site. <a href="https://github.com/Macrophage87/RouteMaker/blob/main/src/core/connector.py">src/core/connector.py</a></li>
+  <li id="ref-4">Metro Station Entrances and Metro Stations, Open Data DC, CC BY 4.0. <a href="https://opendata.dc.gov/">opendata.dc.gov</a></li>
+  <li id="ref-5">OAuth 2.1 with PKCE, and Dynamic Client Registration (RFC 7591). <a href="https://oauth.net/2.1/">oauth.net/2.1</a>; <a href="https://www.rfc-editor.org/rfc/rfc7591">rfc-editor.org/rfc/rfc7591</a></li>
+</ol>
+<p class="next">Next: <a href="/about/architecture.html">Architecture</a></p>
+</main>
+<footer>
+  <p>Part of RouteMaker's documentation. It describes version 0.10.0. The code is
+  open source under the MIT licence:
+  <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
+  <p><a href="/">Back to the map</a></p>
+</footer>
+</body>
+</html>

@@ -17,7 +17,6 @@ import {
   fetchMyGo,
   goRideChips,
   myGoBody,
-  myGoSummary,
   parseMyGo,
   readStartMyGo,
   saveAccountCopy,
@@ -54,12 +53,15 @@ function store(initial: Record<string, string> = {}, refuse = false) {
 
 // ---- which view the app opens in (the owner's choice 1) ------------------------------------------
 
-test("a phone opens in Go and a wide screen in Plan; a shared link opens in Plan; My Go's choice wins over the screen; the tab's own view wins over all", () => {
+test("a phone opens in Go and a wide screen in Plan; a shared link opens in Plan on a wide screen only; My Go's choice wins over the screen; the tab's own view wins over all", () => {
   const base = { tab: null, planLink: false, openIn: "" as const };
   assert.deepEqual(openingMode({ ...base, wide: false }), { mode: "go", by: "screen" });
   assert.deepEqual(openingMode({ ...base, wide: true }), { mode: "plan", by: "screen" });
-  assert.deepEqual(openingMode({ ...base, planLink: true, wide: false }), { mode: "plan", by: "link" });
-  assert.deepEqual(openingMode({ ...base, planLink: true, openIn: "go", wide: false }), { mode: "plan", by: "link" }, "a shared link always opens in Plan");
+  // A phone opens in Go even with a link (the owner, 2026-10-19), as the app's own #preset=… address is one.
+  assert.deepEqual(openingMode({ ...base, planLink: true, wide: false }), { mode: "go", by: "screen" });
+  assert.deepEqual(openingMode({ ...base, planLink: true, openIn: "plan", wide: false }), { mode: "plan", by: "my-go" }, "My Go's Plan still wins");
+  assert.deepEqual(openingMode({ ...base, planLink: true, wide: true }), { mode: "plan", by: "link" });
+  assert.deepEqual(openingMode({ ...base, planLink: true, openIn: "go", wide: true }), { mode: "plan", by: "link" }, "a shared link opens in Plan on a wide screen");
   assert.deepEqual(openingMode({ ...base, openIn: "go", wide: true }), { mode: "go", by: "my-go" });
   assert.deepEqual(openingMode({ ...base, openIn: "plan", wide: false }), { mode: "plan", by: "my-go" });
   assert.deepEqual(openingMode({ tab: "go", planLink: true, openIn: "plan", wide: true }), { mode: "go", by: "tab" }, "a reload keeps the tab's view");
@@ -114,8 +116,6 @@ test("My Go reads what makes sense and drops the rest: an unknown view or ride, 
   // The body: Default is "", a Home's label is cut to the server's 120 characters.
   assert.deepEqual(myGoBody({ openIn: "", ride: "default", home: null }), { open_in: "", ride: "", home: null });
   assert.deepEqual(myGoBody({ openIn: "go", ride: "novice", home: { point: [-77, 38.9], label: "x".repeat(200) } }).home, { lon: -77, lat: 38.9, label: "x".repeat(120) });
-  assert.equal(myGoSummary(NO_MY_GO), "By screen size · Default");
-  assert.equal(myGoSummary({ openIn: "go", ride: "cargo", home: null }), "Go · Cargo Bike");
 });
 
 test("signed out My Go stays on this device with its Home; the account's copy opens the next visit at once and goes with a sign-out", () => {
@@ -270,30 +270,28 @@ test("a route's notes are one line each with an icon; their full words are in In
   assert.match(app, /<div id=\{moreId\} className="route-more-body" hidden=\{!more\}>[\s\S]*?share-image[\s\S]*?keep-offline/);
 });
 
-// ---- Ride mode's 311 button (the owner's choice 9) and Big text's icon (choice 11) ----------------------
+// ---- Ride mode's 311 button (the owner's choice 9) and the text-size icon (choice 11, Large text's button since 2026-10-20) ----------------------
 
-test("the 311 button shows only on the route inside DC; its menu has the six problems in the owner's words and order", () => {
-  assert.equal(ride311Shown({ off: false, progressM: 100, insideDc: () => true }), true);
-  assert.equal(ride311Shown({ off: false, progressM: 100, insideDc: () => false }), false, "hidden outside DC");
-  assert.equal(ride311Shown({ off: true, progressM: 100, insideDc: () => true }), false, "off the route there is no place to report");
-  assert.equal(ride311Shown({ off: false, progressM: null, insideDc: () => true }), false, "no place yet");
+test("the 311 button shows anywhere on the route; its menu has the six problems in the owner's words and order", () => {
+  assert.equal(ride311Shown({ off: false, progressM: 100 }), true, "inside DC or out: the log works everywhere (2026-10-20)");
+  assert.equal(ride311Shown({ off: true, progressM: 100 }), false, "off the route there is no place to log");
+  assert.equal(ride311Shown({ off: false, progressM: null }), false, "no place yet");
   assert.ok(RIDE_311_NAME.includes(RIDE_311_TEXT), "the visible words are in its name");
   const picked: string[] = [];
   const html = renderToStaticMarkup(createElement(Ride311Menu, { id: "m", open: true, place: { words: "on R St NW near 17th St NW", point: [-77.0389, 38.9126] }, onPick: (k) => picked.push(k), onClose: () => {} }));
   assert.match(html, /^<div id="m" class="ride-311-menu" role="group" aria-labelledby="m-heading">/);
-  assert.match(html, /<h3 id="m-heading" tabindex="-1">Report to DC 311<\/h3><button type="button" class="secondary ride-311-close">Close<\/button>/);
-  assert.match(html, /On R St NW near 17th St NW, GPS 38\.91260, -77\.03890\. Check it before you send\./);
-  assert.equal(menuPlaceLine({ words: null, point: [-77.0389, 38.9126] }), "GPS 38.91260, -77.03890. Check it before you send.", "no words: the coordinates alone");
+  assert.match(html, /<h3 id="m-heading" tabindex="-1">Log for 311<\/h3><button type="button" class="secondary ride-311-close">Close<\/button>/);
+  assert.match(html, /On R St NW near 17th St NW, GPS 38\.91260, -77\.03890\./);
+  assert.equal(menuPlaceLine({ words: null, point: [-77.0389, 38.9126] }), "GPS 38.91260, -77.03890.", "no words: the coordinates alone");
   assert.doesNotMatch(menuPlaceLine({ words: "on an unnamed path", point: [-77.0389, 38.9126] }), /Near|miles/);
   const labels = [...html.matchAll(/class="ride-311-kind">(?:<svg[\s\S]*?<\/svg>)?([^<]+)<\/button>/g)].map((m) => m[1]);
   assert.deepEqual(labels, ["Pothole", "Downed tree", "Vehicle parked in a bike lane", "Roadway or bikeway obstructed", "Streetlight out", "Something else"]);
   assert.deepEqual(labels, REPORT_KINDS.map((k) => k.label));
   assert.match(renderToStaticMarkup(createElement(Ride311Menu, { id: "m", open: false, place: null, onPick: () => {}, onClose: () => {} })), /hidden=""/);
-  assert.match(menuPlaceLine(null), /Check it before you send/);
-  // RideMode: the button only when shown, a disclosure; a pick opens the report with that problem chosen.
+  // RideMode: the button only when shown, a disclosure; a pick closes the menu and logs the problem.
   assert.match(ride, /\{show311 && \(/);
   assert.match(ride, /aria-label=\{RIDE_311_NAME\}\s+aria-expanded=\{menu311\}\s+aria-controls=\{menu311Id\}/);
-  assert.match(ride, /const pick311 = \(kind: ReportKind\) => \{\s*setReportKind\(kind\);\s*setMenu311\(false\);/);
+  assert.match(ride, /const pick311 = \(kind: ReportKind\) => \{\s*setMenu311\(false\);\s*button311\.current\?\.focus\(\);/);
   assert.match(ride, /<details className="fold ride-report" open=\{open\} onToggle=\{\(event\) => onOpen\(event\.currentTarget\.open\)\}>/);
   assert.match(ride, /if \(event\.key === "Escape" && menu311\) \{\s*event\.preventDefault\(\);\s*close311\(\);/);
   // About 60 px round, in the side buttons on the right edge (the owner, 2026-10-17).
@@ -302,13 +300,21 @@ test("the 311 button shows only on the route inside DC; its menu has the six pro
   assert.match(css, /\.ride-rail \{\s*position: absolute;\s*right: 12px;/);
 });
 
-test("Big text is a setting, in the ride's Settings and the Settings page, not a side button", () => {
-  // The owner, 2026-10-17: "the text size should be moved to the settings page ... not something people will fiddle with mid ride".
-  assert.doesNotMatch(ride, /className="ride-round big-text"/);
-  assert.match(ride, /Turn the map to my heading\s*<\/label>\s*<BigTextField on=\{big\} onChange=\{onBig\} \/>/);
+test("Large text: a side button and Settings' switch, one choice; it replaced Big text (the owner, 2026-10-20)", () => {
+  // "It actually should have it's own button"; Big text went: "if you can fit the largest text in the half mode, then you're not gaining much".
+  assert.match(ride, /className="ride-round ride-text-size"\s+onClick=\{cycleText\}\s+aria-keyshortcuts="T"\s+aria-pressed=\{textSize === "large"\}\s+aria-label=\{RIDE_TEXT_BUTTON\}/);
+  // The change is said, as Where am I? is.
+  assert.match(ride, /announcer\.current\?\.answer\(said\);/);
+  assert.doesNotMatch(ride, /BigTextField|ride-big/);
   const sheets = src("../app/Sheets.tsx");
-  assert.match(sheets, /<SettingRow infoId="settings-big-text-info" about="big text" info=\{BIG_TEXT_HELP\}/);
-  assert.match(sheets, /role="switch"[^>]*aria-checked=\{props\.bigText\.on\}[^>]*onClick=\{\(\) => props\.bigText\.onChange\(!props\.bigText\.on\)\}/s);
+  assert.match(sheets, /<SettingRow infoId="settings-big-text-info" about="large text" info=\{RIDE_TEXT_HELP\}/);
+  assert.match(sheets, /role="switch"[^>]*aria-checked=\{props\.rideText\.size === "large"\}/s);
+  const css = src("../styles.css");
+  assert.match(css, /\.ride-large \.cue-card \{[^}]*height: 50%;/);
+  assert.doesNotMatch(css, /\.riding-big|\.ride-big/);
+  // The turn fills the card (RideMode sets --cue-fit), the small print 16 pt or more.
+  assert.match(ride, /set\("--cue-fit-d", distance\);/);
+  assert.match(css, /\.ride-large \.ride-togo,[^{]*\{\s*font-size: 16pt;/);
 });
 
 // ---- Go's start: the rider's current location by default (the owner, 2026-10-11 19:53 UTC) ----
