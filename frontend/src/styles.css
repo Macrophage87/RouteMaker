@@ -3974,6 +3974,18 @@ details.zoom-notes {
   font-weight: 700;
 }
 
+/* On the narrowest phones (320 px) the two keep one line at a slightly smaller size; the slide's text stays clear of its thumb. */
+@media (max-width: 359px) {
+  .ride .ride-road-closed,
+  .ride .ride-end {
+    font-size: 1rem;
+  }
+
+  .ride .ride-slide-text {
+    padding-left: 46px;
+  }
+}
+
 /* "Ride ended." with Undo for a few seconds, over the planner (RideMode's RideEnded). */
 .ride-ended {
   position: fixed;
@@ -4014,7 +4026,7 @@ details.zoom-notes {
 }
 
 .cue-distance {
-  font-size: 1.75rem;
+  font-size: 2rem;
   line-height: 1.15;
   font-weight: 700;
   margin: 0;
@@ -4032,7 +4044,7 @@ details.zoom-notes {
 }
 
 .cue-text {
-  font-size: 1.25rem;
+  font-size: 1.5rem;
   line-height: 1.25;
   margin: 2px 0;
 }
@@ -4051,7 +4063,7 @@ details.zoom-notes {
 
 /* What follows the cue's first comma ("No signal mapped, busy road (LTS 3)."): small print under it. */
 .cue-more {
-  font-size: 0.9rem;
+  font-size: 1rem;
   line-height: 1.25;
   margin: 0;
   color: var(--text-muted);
@@ -4085,7 +4097,7 @@ details.zoom-notes {
   flex-wrap: wrap;
   gap: 4px 18px;
   margin: 4px 0 0;
-  font-size: 0.9rem;
+  font-size: 1rem;
 }
 
 .ride-togo div {
