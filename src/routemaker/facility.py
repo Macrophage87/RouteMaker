@@ -412,8 +412,28 @@ PUBLIC_WAY = frozenset({"yes", "designated", "permissive", "official", "public"}
 
 # The service roads a map of where to ride has no use for (the owner,
 # 2026-09-29: "There's a lot of side paths and parking lots that probably
-# don't need to show up." - "Sidewalks + small paths"; OWNER-DECISIONS 82).
+# don't need to show up." - "Sidewalks + small paths"; OWNER-DECISIONS 82),
+# except one its own tags open to bicycles (`bicycle_link_service`).
 HIDDEN_SERVICE = frozenset({"parking_aisle", "driveway", "drive-through"})
+# What a hidden service way's own tags must say to be a link in the bicycle
+# network instead: the same reading as the remap's `bicycle_link_service`
+# (lua/routemaker_remap.lua, PR #197), which routes such a way as the service
+# road it is. Pennyfield Lock Road's last 300 m to C&O Canal Lock 22 (way
+# 137401070, `service=driveway` + `bicycle=yes`) was left off the map while it
+# is the only road to the lock (owner report, 2026-10-19).
+BICYCLE_LINK_GRANTS = frozenset({"yes", "designated", "permissive"})
+
+
+def bicycle_link_service(tags: dict[str, str]) -> bool:
+    """A parking aisle, driveway or drive-through its own tags open to bicycles,
+    with no `access` or `vehicle` that restricts it: drawn and routed as a road."""
+    return (
+        tags.get("highway") == "service"
+        and tags.get("service") in HIDDEN_SERVICE
+        and tags.get("bicycle") in BICYCLE_LINK_GRANTS
+        and all(tags.get(key, "yes") in PERMISSIVE_ACCESS for key in ("access", "vehicle"))
+    )
+
 
 # How short an unnamed footway or path has to be for the map to leave it out
 # (82), unless it joins two trails the map keeps (`short_paths_to_hide`).
@@ -480,7 +500,8 @@ def map_class(tags: dict[str, str]) -> MapClass:
     Washington, Suitland and Clara Barton parkways), `motorroad=yes`.
     HIDDEN: a way no typical rider could use - no road
     or path at all (a terminal hallway, `indoor`), a sidewalk or crosswalk, a
-    parking aisle or driveway, and a road or path the public may not enter
+    parking aisle or driveway (unless its own tags open it to bicycles,
+    `bicycle_link_service`), and a road or path the public may not enter
     (`access` or `vehicle` of no, private, military, restricted, permit), a
     bicycle or foot tag reopening it. Neither is drawn (OWNER-DECISIONS 89).
     "Legal but avoid" (US 340, `bicycle=use_sidepath`) is a road a bicycle may
@@ -488,7 +509,11 @@ def map_class(tags: dict[str, str]) -> MapClass:
     highway = tags.get("highway")
     if highway in NOT_A_WAY_HIGHWAY or tags.get("indoor", "no") != "no":
         return MapClass.HIDDEN
-    if highway == "service" and tags.get("service") in HIDDEN_SERVICE:
+    if (
+        highway == "service"
+        and tags.get("service") in HIDDEN_SERVICE
+        and not bicycle_link_service(tags)
+    ):
         return MapClass.HIDDEN
     closed = any(tags.get(key) in NO_PUBLIC_ACCESS for key in ("access", "vehicle"))
     if highway in TRAIL_CLASS_HIGHWAY:

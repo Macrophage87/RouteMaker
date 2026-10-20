@@ -36,7 +36,8 @@ is walked by Valhalla's pedestrian costing, and the chosen trip's other walks an
 routed for the map too (`drawn`: pedestrian or bicycle costing), straight only where the router
 does not answer; the drawing never changes a time.
 
-Nothing here is live. The times are **scheduled**: each system's static GTFS, compacted on the
+The times are **scheduled** (core.transit_live then times a Metro or Metrobus departure by
+WMATA's prediction where it has one, and says "live"): each system's static GTFS, compacted on the
 host by scripts/build_transit_schedule.py into one file the API reads
 (`settings.TRANSIT_SCHEDULE_PATH`). The agencies' terms do not let this project republish the
 data, so the file is built on the host and never committed (docs/SOURCES.md). A planned closure
@@ -198,6 +199,9 @@ SCHEDULED_WORDS = "Scheduled service: check for track work and service alerts be
 # scheduled". GTFS timetables and Metro's typical timetable are both "scheduled"; live times
 # (v0.7) will say "live". Each transit step and the departure carry it as `source`.
 SCHEDULED = "scheduled"
+# A departure WMATA predicts (core.transit_live.with_live_trains, with_live_buses): said "live".
+LIVE = "live"
+LIVE_WORDS = "Departures marked live are WMATA's predictions; the time on board is scheduled."
 NO_TRANSIT_WORDS = (
     "No Metro, train or bus is scheduled between these places at this time: riding the whole"
     " way is the plan."
@@ -938,10 +942,16 @@ class Leg:
     service_day: date | None = None  # a transit leg's service day, for its clock times
     every: float | None = None  # a frequent service: minutes between departures
     first: float | None = None  # typical Metro before its first train: that train
+    live: bool = False  # `depart` and `later` are WMATA's predictions (core.transit_live)
 
     @property
     def total_s(self) -> float:
         return self.seconds + self.wait_s
+
+    @property
+    def source(self) -> str:
+        """The word said after the step's departure times: "live" or "scheduled"."""
+        return LIVE if self.live else SCHEDULED
 
     @property
     def arrive(self) -> float | None:
@@ -956,7 +966,7 @@ class Leg:
         noun = "bus" if self.mode == BUS else "train"
         if self.after is None:
             return f"no later {noun} within the hour"
-        return f"next {noun} after that: {clock(self.after, self.service_day)} {SCHEDULED}"
+        return f"next {noun} after that: {clock(self.after, self.service_day)} {self.source}"
 
     def words(self, last: bool = False) -> str:
         """The step as one sentence."""
@@ -996,7 +1006,7 @@ class Leg:
         spare = round(self.wait_s / 60)
         place = f" from {self.board_at}" if self.board_at else ""
         return (
-            f"{board} at {clock(self.depart, self.service_day)} {SCHEDULED}{place}: you arrive"
+            f"{board} at {clock(self.depart, self.service_day)} {self.source}{place}: you arrive"
             f" {clock(self.arrive, self.service_day)},"
             f" {spare} min spare; {self._after_words()}. Ride {m} min{at}."
         )
@@ -1610,6 +1620,13 @@ def _search(day: _Day, starts: list[_End], ends: dict[int, _End], speed: float) 
     return found
 
 
+def rank_key(option: Option, extra_s: float = 0.0) -> tuple:
+    """The options' order: quickest to the minute, then (the same train) the simpler trip, with
+    fewer transit legs. `extra_s` is a ranking cost on top (core.transit_live's elevator out)."""
+    total = option.total_s + extra_s
+    return (minutes(total), sum(leg.transit for leg in option.legs), total, option.key)
+
+
 def _ranked(
     direct: Option | None, transit: list[Option], walk: Option | None = None
 ) -> list[Option]:
@@ -1624,10 +1641,7 @@ def _ranked(
     kept = sorted(best.values(), key=lambda o: (o.total_s, o.key))[:TRANSIT_OPTIONS]
     kept += [o for o in (direct, walk) if o is not None]
     # A tie to the minute (the same train) goes to the simpler trip: fewer transit legs.
-    return sorted(
-        kept,
-        key=lambda o: (minutes(o.total_s), sum(leg.transit for leg in o.legs), o.total_s, o.key),
-    )
+    return sorted(kept, key=rank_key)
 
 
 def _runs(day: _Day, patterns: list[Pattern]) -> bool:
@@ -2196,9 +2210,23 @@ def _retimed(minute: float, legs: list[Leg]) -> tuple[list[Leg] | None, list[str
             if leg.depart < arrive - 1e-6:
                 missed = leg.depart
                 catchable = [t for t in leg.later if t >= arrive - 1e-6]
+                if leg.live and leg.every is not None and not catchable:
+                    # A frequent service whose predictions run out before the rider gets there:
+                    # its timetable's wait again, half the interval, never a trip left out.
+                    leg = replace(
+                        leg,
+                        depart=None,
+                        after=None,
+                        later=(),
+                        live=False,
+                        wait_s=leg.every * 30.0,
+                    )
+                    out.append(leg)
+                    at += leg.total_s / 60.0
+                    continue
                 if not catchable or catchable[0] - arrive > MAX_WAIT_MIN:
                     notes.append(
-                        f"You would miss the {clock(missed, leg.service_day)} {SCHEDULED}"
+                        f"You would miss the {clock(missed, leg.service_day)} {leg.source}"
                         f" ({leg.vehicle})"
                         " and no later one"
                         " leaves within the hour: that trip is left out."
@@ -2207,9 +2235,9 @@ def _retimed(minute: float, legs: list[Leg]) -> tuple[list[Leg] | None, list[str
                 rest = tuple(t for t in leg.later if t > catchable[0])
                 leg = replace(leg, depart=catchable[0], after=rest[0] if rest else None, later=rest)
                 notes.append(
-                    f"You would miss the {clock(missed, leg.service_day)} {SCHEDULED}"
+                    f"You would miss the {clock(missed, leg.service_day)} {leg.source}"
                     f" ({leg.vehicle}): planned on the {clock(leg.depart, leg.service_day)}"
-                    f" {SCHEDULED} instead."
+                    f" {leg.source} instead."
                 )
             leg = replace(leg, wait_s=max(0.0, (leg.depart - arrive) * 60.0))
         out.append(leg)
@@ -2231,10 +2259,11 @@ def _local(moment: Moment, minute: float) -> str:
 
 def departure(plan: Plan) -> dict | None:
     """The chosen trip's first infrequent departure: when it leaves and from where, when the
-    rider gets there, the time to spare and the one after it, as Go shows it."""
+    rider gets there, the time to spare and the one after it, as Go shows it. A frequent
+    service timed live (a train every few minutes) is not one: it never shows a countdown."""
     legs = plan.legs
     for index, leg in enumerate(legs):
-        if not leg.transit or leg.depart is None:
+        if not leg.transit or leg.depart is None or (leg.live and leg.every is not None):
             continue
         reach = plan.when.minute + _total(legs[:index]) / 60.0
         return {
@@ -2251,9 +2280,9 @@ def departure(plan: Plan) -> dict | None:
             "close": leg.wait_s < CLOSE_S,
             "planned_at": _local(plan.when, plan.when.minute),
             "point": _pt(leg.coordinates[0]) if leg.coordinates else None,
-            "source": SCHEDULED,
+            "source": leg.source,
             "label": (
-                f"{leg.system} {clock(leg.depart, plan.when.service_day)} {SCHEDULED}"
+                f"{leg.system} {clock(leg.depart, plan.when.service_day)} {leg.source}"
                 f" · {round(leg.wait_s / 60)} min spare"
             ),
         }
@@ -2356,6 +2385,8 @@ def _notes(plan: Plan, rules: dict[str, str]) -> list[str]:
             said = far_dock_words(leg.to)
             if said not in notes:
                 notes.append(said)
+    if any(leg.transit and leg.live for leg in legs):
+        notes.append(LIVE_WORDS)
     if any(leg.transit for leg in legs):
         notes.append(SCHEDULED_WORDS)
     return notes
@@ -2385,8 +2416,9 @@ def block(plan: Plan, schedule: Schedule | None = None) -> dict:
                 "system": leg.system or None,
                 "departs": None if leg.depart is None else clock(leg.depart, leg.service_day),
                 "every_min": None if leg.every is None else max(1, round(leg.every)),
-                # Where a transit step's times are from: "scheduled" (live, from v0.7).
-                "source": SCHEDULED if leg.transit else None,
+                # Where a transit step's times are from: "scheduled", or "live" where WMATA's
+                # predictions time its departure (core.transit_live).
+                "source": leg.source if leg.transit else None,
                 "with_bike": leg.bike,
                 # The route's own line is this step's: the map draws the rest from here.
                 "route_line": index == option.ride,
@@ -2394,6 +2426,7 @@ def block(plan: Plan, schedule: Schedule | None = None) -> dict:
             }
         )
     total_min = minutes(total)
+    live_times = any(leg.transit and leg.live for leg in option.legs)
     share = plan.mode == presets.BIKESHARE_TRANSIT
     whole = "Riding a bikeshare bike" if share else "Riding"
     if option.direct:
@@ -2401,6 +2434,8 @@ def block(plan: Plan, schedule: Schedule | None = None) -> dict:
         summary = f"About {total_min} min door to door, {how}."
     elif option.walk:
         summary = f"About {total_min} min door to door, walking."
+    elif live_times:
+        summary = f"About {total_min} min door to door, with live departures."
     else:
         summary = f"About {total_min} min door to door, scheduled."
     used = list(dict.fromkeys(leg.system for leg in option.legs if leg.transit))
@@ -2437,6 +2472,8 @@ def block(plan: Plan, schedule: Schedule | None = None) -> dict:
         "bike_blackout": plan.mode == presets.BIKE_TRANSIT
         and blackout_day(plan.moment) is not None,
         "scheduled": option.scheduled,
+        # A departure on the chosen trip is WMATA's prediction (its step says "live").
+        "live_times": live_times,
         "credits": [plan.credits[name] for name in used if plan.credits.get(name)],
         "departure": departure(plan),
     }

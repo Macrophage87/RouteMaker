@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { vehicleBadge, type VehicleMark } from "./lib/nextVehicle.ts";
 import { createPortal } from "react-dom";
 import * as maplibregl from "maplibre-gl";
-import type { GeoJSONSource, Map as MapLibreMap, Marker, Popup } from "maplibre-gl";
+import type { DataDrivenPropertyValueSpecification, GeoJSONSource, Map as MapLibreMap, Marker, Popup } from "maplibre-gl";
 import { Protocol } from "pmtiles";
 // MapLibre 6 ships its worker as a separate module and finds it next to its own
 // file by `import.meta.url`, which a bundle does not preserve; Vite builds it
@@ -22,6 +22,8 @@ import {
   stressTileTemplate,
 } from "./lib/mapStyle.ts";
 import { tileRev } from "./lib/tileRev.ts";
+import { bundledFace } from "./lib/mapGlyphs.ts";
+import { mapGlyphRequest } from "./lib/mapGlyphAssets.ts";
 import { fontStacks } from "./lib/corridor.ts";
 import { basemapArchive, setCorridorStyle, sweepCorridor } from "./lib/corridorStore.ts";
 import type { RouteResponse } from "./lib/api.ts";
@@ -35,7 +37,7 @@ import {
   ROUTE_BAND_WIDTH,
   sectionFeatures,
 } from "./lib/routeColours.ts";
-import { stressOverlayLayers, subscribeHighStressLanes, subscribeMtbTrails, subscribePalette, subscribeRoutableMtb } from "./stressStyle.js";
+import { ROAD_LABEL, ROAD_LABEL_LAYER_IDS, mtbTrailsOn, rideRoadLabelField, routableMtbLevel, stressOverlayLayers, subscribeHighStressLanes, subscribeMtbTrails, subscribePalette, subscribeRoutableMtb, withClearRoadLabels } from "./stressStyle.js";
 import { subscribeTopoLines, syncTopoLines, topoLinesOn, type TopoMap } from "./lib/topoLines.ts";
 import {
   addStressOverlay,
@@ -44,6 +46,7 @@ import {
   popupsOpen,
   pressGrab,
   featureCardPress,
+  mtbTrailPressed,
   runClick,
   ROUTE_STRESS_SOURCE_ID,
   runHover,
@@ -66,7 +69,8 @@ import {
 import { dragPreview, legOfSegment, nearestOnPath } from "./lib/lineEdit.ts";
 import { LineGesture } from "./lib/lineGesture.ts";
 import { PENN_COLOUR, RAIL_STATIONS, stationById } from "./lib/railData.ts";
-import { addRailStations, ROUTE_BOTTOM_LAYER, setRailVisibility } from "./lib/railLayer.ts";
+import { addRailStations, LABEL_FONT, ROUTE_BOTTOM_LAYER, setRailVisibility } from "./lib/railLayer.ts";
+import { ROUTE_HAZARD_ICON, ROUTE_HAZARD_SOURCE, routeHazardFeatures, routeHazardIcon, routeHazardLayer, routeHazardRepeatLayer } from "./lib/routeHazards.ts";
 import type { RailVisibility, Station, StationBadges, StationRole } from "./lib/railStations.ts";
 import { attachRailInteraction, type StationFound } from "./railInteraction.ts";
 import { stressProbe } from "./lib/stressProtocol.ts";
@@ -77,7 +81,7 @@ import type { FederalStatus } from "./lib/federalLegend.ts";
 import { attachFederalInteraction } from "./federalInteraction.ts";
 import { addWaterRestrooms, setWaterPrefs, WATER_SOURCE_ID, type WaterMap, type WaterPoint, type WaterPrefs } from "./lib/waterRestrooms.ts";
 import { attachWaterInteraction } from "./waterInteraction.ts";
-import { addClimbs, CLIMBS_SOURCE_ID, setClimbsFrom, setClimbsOn, type Climb, type ClimbCategory, type ClimbsMap } from "./lib/climbs.ts";
+import { addClimbs, CLIMBS_FROM_DEFAULT, CLIMBS_SOURCE_ID, setClimbsFrom, setClimbsOn, setTrailClimbs, subscribeHideBusy, type Climb, type ClimbCategory, type ClimbsMap } from "./lib/climbs.ts";
 import { attachClimbInteraction } from "./climbInteraction.ts";
 import { climbCardAfterClose } from "./lib/climbCard.ts";
 import type { When } from "./lib/dials.ts";
@@ -123,6 +127,8 @@ import {
   groupHolding,
   type CardOpener,
 } from "./lib/junctionCard.ts";
+import { wrapCredits } from "./lib/mapInfo.ts";
+import { isPlainClick, rememberPlanForPage, tabSession } from "./lib/signIn.ts";
 import {
   MAP_MAX_ZOOM,
   groupJunctions,
@@ -136,6 +142,8 @@ import {
 } from "./lib/intersectionMarkers.ts";
 import { avoidItems, avoidMarkerName } from "./lib/avoidJunctions.ts";
 import type { LetteredPlace } from "./lib/letteredPlaces.ts";
+import type { StopActionFor } from "./lib/stopCard.ts";
+import { stopCards } from "./app/mapOverlay.ts";
 import { avoidMarkerSvg } from "./lib/avoidIcon.ts";
 import {
   CLOSED_RED,
@@ -152,6 +160,8 @@ import {
   type ClosureItem,
 } from "./lib/closureMap.ts";
 import { ViaHold } from "./lib/viaHold.ts";
+import { planLegLines, routeDrawnLines } from "./lib/planLegs.ts";
+
 
 export type StressAvailability = "checking" | "available" | "unavailable";
 
@@ -184,6 +194,12 @@ interface Props {
   permitsOn?: boolean;
   /** Plan mode (v0.7.0): the line before the last update, drawn dashed until the next change, or null. */
   ghost?: readonly LonLat[] | null;
+  /**
+   * Plan (v0.10.0, lib/planLegs.ts): the legs drawn by hand (manual mode), and that the plan's legs show: a faint
+   * straight line from each point to the next while there is no route for the points as they are, dashed where
+   * drawn. Null shows none. The route's own drawn legs are dashed whatever this is.
+   */
+  planLegs?: readonly number[] | null;
   /** Plan: the light times on the route near dawn or dusk (lib/lightTimes.ts), each marked where the rider will be; null draws none. */
   lightMarks?: readonly LightMark[] | null;
   stressVisible: boolean;
@@ -196,6 +212,14 @@ interface Props {
   onMovePoint: (index: number, point: LonLat) => void;
   /** The route line, when it is the current points' route and can be dragged; null otherwise. */
   lineEdit: LineEdit | null;
+  /**
+   * Go's routes to choose from that are not the one shown (lib/routeChoice.ts choiceFeatures): each drawn fainter in
+   * its colour and named, and a press on one chooses it (`onPickRoute`). Empty or absent draws none.
+   */
+  choices?: object | null;
+  /** The shown route's casing colour where it is not the rider's own route (lib/routeChoice.ts); else the route's own. */
+  routeColour?: string | null;
+  onPickRoute?: (index: number) => void;
   /** The line was dragged (or clicked) to `point` from leg `leg` of the route through `points`. */
   onLineDrop: (leg: number, point: LonLat, points: LonLat[]) => void;
   /**
@@ -234,6 +258,10 @@ interface Props {
   youDot?: LonLat | null;
   follow?: boolean;
   headingUp?: boolean;
+  /** A ride: the street names larger (ROAD_LABEL.rideSize) and shortened (rideRoadLabelField). */
+  rideLabels?: boolean;
+  /** A ride whose cues go to the screen reader alone: the map is out of its reach (inert), so swiping goes cue card to side buttons. */
+  screenReaderRide?: boolean;
   onFollowBroken?: () => void;
   onReady: (map: MapLibreMap) => void;
   onCanvasFocus: (focused: boolean) => void;
@@ -300,6 +328,8 @@ interface Props {
   tools?: ReactNode;
   /** The lettered places (lib/letteredPlaces.ts): the nearest or the food listed, each a button marker. */
   lettered?: readonly LetteredPlace[] | null;
+  /** A stop card's Route here or Add as stop (lib/stopCard.ts), for the water and restrooms card. */
+  stopActionFor?: StopActionFor;
   /** A lettered marker pressed: its index in the list. */
   onLettered?: (index: number) => void;
   /** A closure card's "Route through anyway" (true) or Undo (false), for this plan (lib/closureMap.ts). */
@@ -325,12 +355,23 @@ function registerPmtiles(): void {
 const DC_CENTRE: LonLat = [-77.03, 38.9];
 const ROUTE_SOURCE = "route";
 const GHOST_SOURCE = "route-ghost";
+const PLAN_LEGS_SOURCE = "plan-legs";
+const ROUTE_DRAWN_SOURCE = "route-drawn";
+/** The faint plan lines' grey, and the drawn legs' dash (lib/planLegs.ts). */
+const PLAN_LEG_COLOUR = "#374151";
+const DRAWN_DASH = [2, 1.5];
+const CHOICE_SOURCE = "route-choice";
+const NO_CHOICES = { type: "FeatureCollection", features: [] };
 
 /** The ghost line's data: the old route's line, or nothing. */
 function ghostData(line: readonly LonLat[] | null | undefined): object {
   return line && line.length >= 2
     ? { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: line.map((c) => [c[0], c[1]]) } }
     : { type: "FeatureCollection", features: [] };
+}
+/** Plan's faint leg lines (lib/planLegs.ts): shown with no route, or a route greyed for a new plan. */
+function planLegsData(props: Pick<Props, "points" | "planLegs" | "route" | "stale">): object {
+  return planLegLines(props.planLegs && (!props.route || props.stale) ? props.points : [], props.planLegs ?? []);
 }
 /** The route's sections by traffic stress (lib/routeColours.ts). */
 const ROUTE_STRESS_SOURCE = ROUTE_STRESS_SOURCE_ID;
@@ -343,12 +384,12 @@ export const RIDER_AT = 2 / 3;
 const NO_PADDING = { top: 0, bottom: 0, left: 0, right: 0 };
 const reducedMotion = () => typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-/** The follow camera's offset from the map's middle that puts the rider RIDER_AT down the open band. */
-function riderOffset(container: HTMLElement): number {
+/** The follow camera's offset from the map's middle that puts the rider `at` down the open band. */
+function riderOffset(container: HTMLElement, at: number): number {
   const box = container.getBoundingClientRect();
   const top = (document.querySelector(".ride .cue-card")?.getBoundingClientRect().bottom ?? box.top) - box.top;
   const bottom = (document.querySelector(".ride .ride-controls")?.getBoundingClientRect().top ?? box.bottom) - box.top;
-  return Math.round(top + Math.max(0, bottom - top) * RIDER_AT - box.height / 2);
+  return Math.round(top + Math.max(0, bottom - top) * at - box.height / 2);
 }
 /** The closures in force at the ride (v0.7.0, lib/closureMap.ts). */
 const CLOSURE_SOURCE = "closures";
@@ -366,7 +407,14 @@ const TRANSIT_SOURCE = "transit-trip";
 const TRANSIT_LAYERS = ["transit-casing", "transit-ride", "transit-walk", "transit-line"];
 /** How far from the line's centre a mouse, or a finger, still grabs it. */
 const MOUSE_HIT_PX = 8;
+/** The line layer of Go's other routes to choose from, which a press is tested against (lib/routeChoice.ts). */
+const CHOICE_LINE_LAYER = "route-choice-line";
 const TOUCH_HIT_PX = 18;
+
+// The stress overlay's layer ids, for a press on a mountain-bike trail's line (lib/mapGlue.ts mtbTrailPressed).
+function overlayLayerIds(): string[] {
+  return stressOverlayLayers(STRESS_SOURCE_ID).map((layer: { id: string }) => layer.id);
+}
 /** Near a marker, the marker is what the pointer is on, not the line. */
 const MARKER_CLEAR_PX = 14;
 /** After a drag, the click the browser may still send is not a new point. */
@@ -539,10 +587,12 @@ export function MapView(props: Props) {
     if (!container.current) return;
     registerPmtiles();
     const origin = window.location.origin;
-    const basemapLayers = protomapsLayers(BASEMAP_SOURCE_ID, namedFlavor("light"), { lang: "en" });
+    // The street names larger, darker and on a wider halo, so a stress line does not hide them (stressStyle.js, ROAD_LABEL).
+    const basemapLayers = withClearRoadLabels(protomapsLayers(BASEMAP_SOURCE_ID, namedFlavor("light"), { lang: "en" }));
     const style = buildStyle(origin, basemapLayers);
     // What Ride mode's corridor prefetch asks for besides the tiles: the style's glyphs and sprite.
-    setCorridorStyle(style.glyphs, style.sprite, fontStacks(style.layers), () => stressTileTemplate(origin));
+    // The labels' faces come with the app (lib/mapGlyphs.ts), so a kept ride fetches no glyphs for them.
+    setCorridorStyle(style.glyphs, style.sprite, fontStacks(style.layers).filter((stack) => !bundledFace(stack)), () => stressTileTemplate(origin));
     const [west, south, east, north] = COVERAGE_BBOX;
     const map = new maplibregl.Map({
       container: container.current,
@@ -555,9 +605,13 @@ export function MapView(props: Props) {
         [west - MAX_BOUNDS_PAD, south - MAX_BOUNDS_PAD],
         [east + MAX_BOUNDS_PAD, north + MAX_BOUNDS_PAD],
       ],
-      // Added below, so it can start collapsed on a phone.
+      // Added below, so it can start collapsed.
       attributionControl: false,
+      // The "i" opens the map's info panel (lib/mapInfo.ts), not only the credits: say so.
+      locale: { "AttributionControl.ToggleAttribution": "Map info and credits" },
       cooperativeGestures: false,
+      // The labels' font comes with the app, not the base map (lib/mapGlyphs.ts).
+      transformRequest: mapGlyphRequest,
     });
     mapRef.current = map;
     let disposed = false;
@@ -567,12 +621,19 @@ export function MapView(props: Props) {
     toolsControl.className = "maplibregl-ctrl map-tools-ctrl";
     map.addControl({ onAdd: () => toolsControl, onRemove: () => toolsControl.remove() }, "top-right");
     setToolsHost(toolsControl);
-    // One entry, OpenStreetMap first (mapStyle.ts says why). Added before the
-    // scales, so it is the bottom of the corner's stack. On a narrow map it
-    // starts as the "i" button with the OpenStreetMap credit beside it, as
-    // MapLibre's own first drag leaves it (lib/junctionCard.ts collapseCredits).
+    // One entry, OpenStreetMap first (mapStyle.ts says why). Added before the scales, so it is the
+    // bottom of the corner's stack. It starts as the "i" button with the OpenStreetMap credit beside it,
+    // as MapLibre's own first drag leaves it (lib/junctionCard.ts collapseCredits).
     map.addControl(new maplibregl.AttributionControl({ compact: true, customAttribution: MAP_ATTRIBUTION }), "bottom-right");
-    collapseCredits(container.current.querySelector(".maplibregl-ctrl-attrib"), map.getCanvasContainer().offsetWidth);
+    const credits = container.current.querySelector<HTMLElement>(".maplibregl-ctrl-attrib");
+    collapseCredits(credits);
+    // The info panel (lib/mapInfo.ts) goes over the credits in one scrolling body. Its own element, not an
+    // attribution entry, so a source's credit (the contours') never sorts above it.
+    wrapCredits(credits);
+    credits?.addEventListener("click", (e) => {
+      const link = (e.target as Element).closest?.('a[href^="/about/"]');
+      if (link && isPlainClick(e)) rememberPlanForPage(tabSession(), window.location.hash);
+    });
     // Both scales, miles and feet over kilometres and metres (OWNER-DECISIONS 85):
     // a bottom corner stacks its controls upwards, so the one added last is on top.
     map.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-right");
@@ -630,7 +691,7 @@ export function MapView(props: Props) {
       const on = callbacks.current.climbsOn === true;
       if (map.getSource(CLIMBS_SOURCE_ID)) {
         setClimbsOn(map as unknown as ClimbsMap, on);
-        setClimbsFrom(map as unknown as ClimbsMap, callbacks.current.climbsFrom ?? "5");
+        setClimbsFrom(map as unknown as ClimbsMap, callbacks.current.climbsFrom ?? CLIMBS_FROM_DEFAULT);
         climbCard?.close();
         return;
       }
@@ -638,7 +699,7 @@ export function MapView(props: Props) {
       if (!data || data.length === 0) return;
       climbById = new Map(data.map((c) => [c.id, c]));
       // Under the route, with the water and the stations (railLayer.ts's order).
-      addClimbs(map as unknown as ClimbsMap, data, on, iconPixelRatio(), ROUTE_BOTTOM_LAYER, callbacks.current.climbsFrom ?? "5");
+      addClimbs(map as unknown as ClimbsMap, data, on, iconPixelRatio(), ROUTE_BOTTOM_LAYER, callbacks.current.climbsFrom ?? CLIMBS_FROM_DEFAULT);
     };
     const anyPopupOpen = () => popupsOpen(popup.current, rail);
     /** Bring the federal-land layers in line with props.federalVisible, loading the data the first time. */
@@ -954,9 +1015,10 @@ export function MapView(props: Props) {
         : { station: null, line: null };
       const point: LonLat = [event.lngLat.lng, event.lngLat.lat];
       const goPress = callbacks.current.pressSetsEnd === true;
-      // A climb (climbInteraction.ts): its card, never also a point or (in Go) the destination. In Plan only
-      // its summit marker (a press on its dashed line places a point on the climbing road, as before); in Go
-      // its line too. A station and a water or restroom icon keep their own cards. The click after its card
+      // A climb (climbInteraction.ts): its card, never also a point or (in Go) the destination. Its summit
+      // marker or its line, in Plan as in Go since the owner's "You should also be able to select and click on
+      // climbs too" (2026-10-19), except where the planned route's line is under the press in Plan (a via, as
+      // ever). A station and a water or restroom icon keep their own cards. The click after its card
       // is open only closes it (no other card opens under it), or opens the card of another climb pressed.
       if (climbCard?.open()) {
         const shownId = climbCard.shown();
@@ -964,19 +1026,55 @@ export function MapView(props: Props) {
         climbClosing = true;
         window.setTimeout(() => (climbClosing = false), 0);
         // A press on the climb already shown only closes its card; on another climb, opens that one's.
-        const next = climbCardAfterClose(shownId, onCanvas && !under.station && !water?.hits(event.point) ? climbCard.climbAt(event.point, goPress) : null);
+        const next = climbCardAfterClose(shownId, onCanvas && !under.station && !water?.hits(event.point) ? climbCard.climbAt(event.point, goPress || !under.line) : null);
         if (next) climbCard.openCard(next);
         return;
       }
       if (onCanvas && !under.station && !anyPopupOpen() && !water?.hits(event.point) && performance.now() >= clickSuppressedUntil) {
-        const climb = climbCard?.climbAt(event.point, goPress);
+        const climb = climbCard?.climbAt(event.point, goPress || !under.line);
         if (climb) {
           climbCard?.openCard(climb);
           return;
         }
       }
-      // Go: read before the cards' own click handlers (attached after this one) open or close them.
-      const forCard = goPress && featureCardPress([water, climbCard, federal], event.point) !== null;
+      // A mountain-bike trail's line, while one is drawn (the owner, 2026-10-19: "Basically make them
+      // clickable."): the road panel for that trail, with its surface and the like and Route through this trail,
+      // never also a point or (in Go) the destination. The route's own line keeps its press (a via in Plan), and
+      // a press nearer a road's line than a trail's is the road's (lib/mapGlue.ts mtbTrailPressed).
+      const trailAt =
+        onCanvas &&
+        !under.station &&
+        !(under.line && !goPress) &&
+        !anyPopupOpen() &&
+        featureCardPress([water, stopCards(map)], event.point) === null &&
+        performance.now() >= clickSuppressedUntil
+          ? mtbTrailPressed(map, event.point, touch ? TOUCH_HIT_PX : MOUSE_HIT_PX, overlayLayerIds())
+          : null;
+      if (trailAt) {
+        callbacks.current.onRoadInfo?.({ point: trailAt, origin: "spot", trail: true });
+        return;
+      }
+      // Go: read before the cards' own click handlers (attached after this one) open or close them. A stop's card
+      // (water, restrooms, food, places, repair; lib/stopCard.ts) offers its own Route here or Add as stop, so a
+      // press on one is the card's in Plan too (Stephen 2026-10-19: "don't auto route").
+      const stops = [water, stopCards(map)];
+      const forCard = featureCardPress(goPress ? [...stops, climbCard, federal] : stops, event.point) !== null;
+      // Go's other routes to choose from (lib/routeChoice.ts): a press on one chooses it. Not a press on the route
+      // shown (they share its ends and often more), on a station, a card's feature, or the click that ends a drag.
+      const pick = callbacks.current.onPickRoute;
+      if (pick && onCanvas && !under.station && !under.line && !forCard && !anyPopupOpen() && performance.now() >= clickSuppressedUntil) {
+        const pad = touch ? TOUCH_HIT_PX : MOUSE_HIT_PX;
+        const box: [[number, number], [number, number]] = [
+          [event.point.x - pad, event.point.y - pad],
+          [event.point.x + pad, event.point.y + pad],
+        ];
+        const hit = map.getLayer(CHOICE_LINE_LAYER) ? map.queryRenderedFeatures(box, { layers: [CHOICE_LINE_LAYER] })[0] : undefined;
+        const index = hit?.properties?.index;
+        if (typeof index === "number") {
+          pick(index);
+          return;
+        }
+      }
       runClick(under, { popupOpen: anyPopupOpen() || forCard, afterDrag: performance.now() < clickSuppressedUntil, lineTapIsPoint: goPress }, {
         closePopups: () => {
           closePopup(false);
@@ -1033,6 +1131,44 @@ export function MapView(props: Props) {
         source: GHOST_SOURCE,
         layout: { "line-join": "round", "line-cap": "butt" },
         paint: { "line-color": "#4b5563", "line-width": 4, "line-opacity": 0.8, "line-dasharray": [2, 1.5] },
+      });
+      // Plan's legs as planned (v0.10.0, lib/planLegs.ts): faint straight lines between the points until the route
+      // comes, solid where it will be routed, dashed where drawn by hand. Under the route.
+      map.addSource(PLAN_LEGS_SOURCE, { type: "geojson", data: planLegsData(callbacks.current) as never });
+      map.addLayer({
+        id: "plan-legs-routed",
+        type: "line",
+        source: PLAN_LEGS_SOURCE,
+        filter: ["!", ["get", "drawn"]],
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: { "line-color": PLAN_LEG_COLOUR, "line-width": 3, "line-opacity": 0.45 },
+      });
+      map.addLayer({
+        id: "plan-legs-drawn",
+        type: "line",
+        source: PLAN_LEGS_SOURCE,
+        filter: ["get", "drawn"],
+        layout: { "line-join": "round", "line-cap": "butt" },
+        paint: { "line-color": PLAN_LEG_COLOUR, "line-width": 3, "line-opacity": 0.45, "line-dasharray": DRAWN_DASH },
+      });
+      // Go's other routes to choose from (lib/routeChoice.ts): under the route, fainter, each in its colour on a
+      // white edge so it reads over the roads; a press on one chooses it (the click handler above).
+      map.addSource(CHOICE_SOURCE, { type: "geojson", data: (callbacks.current.choices ?? NO_CHOICES) as never });
+      map.addLayer({
+        id: "route-choice-casing",
+        type: "line",
+        source: CHOICE_SOURCE,
+        filter: ["==", ["geometry-type"], "LineString"],
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: { "line-color": "#ffffff", "line-width": 10, "line-opacity": 0.7 },
+      });
+      map.addLayer({
+        id: CHOICE_LINE_LAYER,
+        type: "line",
+        source: CHOICE_SOURCE,
+        filter: ["==", ["geometry-type"], "LineString"],
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: { "line-color": ["get", "color"], "line-width": 6, "line-opacity": 0.55 },
       });
       map.addSource(ROUTE_SOURCE, { type: "geojson", data: { type: "FeatureCollection", features: [] } });
       map.addLayer({
@@ -1099,6 +1235,41 @@ export function MapView(props: Props) {
         source: ROUTE_SOURCE,
         layout: { "line-join": "round", "line-cap": "round" },
         paint: { "line-color": ROUTE_BLUE, "line-width": ROUTE_LINE_WIDTH },
+      });
+      // The route's legs drawn by hand (manual mode, v0.10.0, lib/planLegs.ts): white gaps over the line, so they
+      // read dashed beside the routed legs' solid line. Not while the route is greyed for a new plan.
+      map.addSource(ROUTE_DRAWN_SOURCE, { type: "geojson", data: routeDrawnLines(null, 0) as never });
+      map.addLayer({
+        id: "route-drawn-gaps",
+        type: "line",
+        source: ROUTE_DRAWN_SOURCE,
+        layout: { "line-join": "round", "line-cap": "butt" },
+        paint: { "line-color": "#ffffff", "line-width": ROUTE_LINE_WIDTH + 1, "line-dasharray": [1.2, 1.2] },
+      });
+      // The known hazards the route rides (v0.10.0, lib/routeHazards.ts): amber triangles over the route only.
+      if (!map.hasImage(ROUTE_HAZARD_ICON)) {
+        const { pixelRatio: ratio, ...icon } = routeHazardIcon(iconPixelRatio());
+        map.addImage(ROUTE_HAZARD_ICON, icon, { pixelRatio: ratio });
+      }
+      map.addSource(ROUTE_HAZARD_SOURCE, { type: "geojson", data: routeHazardFeatures(callbacks.current.route ?? null) });
+      map.addLayer(routeHazardLayer() as never);
+      map.addLayer(routeHazardRepeatLayer() as never);
+      // The other routes' names, over the route so a name where they part is not hidden under it.
+      map.addLayer({
+        id: "route-choice-name",
+        type: "symbol",
+        source: CHOICE_SOURCE,
+        filter: ["==", ["geometry-type"], "Point"],
+        layout: {
+          "text-field": ["get", "name"],
+          "text-font": [LABEL_FONT],
+          "text-size": 13,
+          "text-anchor": "bottom",
+          "text-offset": [0, -0.6],
+          "text-max-width": 16,
+          "text-allow-overlap": true,
+        },
+        paint: { "text-color": ["get", "color"], "text-halo-color": "#ffffff", "text-halo-width": 2 },
       });
       // Closures in force at the ride (v0.7.0, lib/closureMap.ts): over the route, so a closed stretch on it shows.
       // A white casing, then red (closed) or amber (bike lane blocked); dashed where it "may still apply". Their
@@ -1258,6 +1429,7 @@ export function MapView(props: Props) {
         visible: () => callbacks.current.waterPrefs?.on === true,
         otherPopupOpen: () => anyPopupOpen() || climbClosing,
         point: (id) => waterById.get(id),
+        actionFor: (point, name) => callbacks.current.stopActionFor?.(point, name) ?? null,
       });
       waterSync.current = () => syncWater();
       syncWater();
@@ -1483,7 +1655,21 @@ export function MapView(props: Props) {
     const map = mapRef.current;
     if (!map || !loaded.current) return;
     syncRoute(map, callbacks.current, fitted);
-  }, [props.route, props.stale]);
+  }, [props.route, props.stale, props.routeColour]);
+
+  // Go's other routes to choose from (lib/routeChoice.ts).
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loaded.current) return;
+    (map.getSource(CHOICE_SOURCE) as GeoJSONSource | undefined)?.setData((props.choices ?? NO_CHOICES) as never);
+  }, [props.choices]);
+
+  // Plan's legs as planned, while there is no route for the points as they are (v0.10.0).
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loaded.current) return;
+    (map.getSource(PLAN_LEGS_SOURCE) as GeoJSONSource | undefined)?.setData(planLegsData(props) as never);
+  }, [props.points, props.planLegs, props.route, props.stale]);
 
   // Plan mode's ghost of the route before the last update (v0.7.0).
   useEffect(() => {
@@ -1651,7 +1837,7 @@ export function MapView(props: Props) {
         const map = mapRef.current;
         if (!map || !loaded.current) return;
         setStressPalette(map, callbacks.current.when);
-        setRouteSections(map, callbacks.current.route, callbacks.current.stale);
+        setRouteSections(map, callbacks.current.route, callbacks.current.stale, callbacks.current.routeColour ?? undefined);
       }),
     [],
   );
@@ -2074,11 +2260,41 @@ export function MapView(props: Props) {
     // A moving map once a second is too much for some: with reduced motion asked for, it jumps.
     const still = reducedMotion();
     // Track-up, the rider sits about two thirds of the way down the map, so more of the road ahead shows (the owner,
-    // 2026-10-17: "You care more about what's ahead of you than behind"); north-up, ahead is any way, so centred.
+    // 2026-10-17: "You care more about what's ahead of you than behind"); north-up, ahead is any way, so centred in the
+    // open band (with Large text the card covers half the map, 2026-10-20).
     // Padding left by the planner's framing (a junction or the chart's scrub) is cleared, so the offset is from the middle.
-    const ahead = props.headingUp ? riderOffset(map.getContainer()) : 0;
+    const ahead = riderOffset(map.getContainer(), props.headingUp ? RIDER_AT : 1 / 2);
     map.easeTo({ center: rider.point, bearing, zoom, offset: [0, ahead], padding: NO_PADDING, duration: still ? 0 : 400 });
   }, [props.rider, props.follow, props.headingUp]);
+
+  // In a ride the street names are larger and shortened ("R St NW"), to be read at a glance (the owner, 2026-10-20),
+  // and go back after.
+  type LabelField = DataDrivenPropertyValueSpecification<string>;
+  const baseLabelField = useRef<Record<string, LabelField>>({});
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const ride = Boolean(props.rideLabels);
+    // Set as soon as the layers exist: isStyleLoaded() is false while any tile loads, which is most of a ride.
+    const apply = () => {
+      const ids = ROAD_LABEL_LAYER_IDS.filter((id) => map.getLayer(id));
+      for (const id of ids) {
+        map.setLayoutProperty(id, "text-size", ride ? ROAD_LABEL.rideSize : ROAD_LABEL.size);
+        if (ride) {
+          baseLabelField.current[id] ??= map.getLayoutProperty(id, "text-field") as LabelField;
+          map.setLayoutProperty(id, "text-field", rideRoadLabelField(baseLabelField.current[id]) as LabelField);
+        } else if (baseLabelField.current[id] !== undefined) {
+          map.setLayoutProperty(id, "text-field", baseLabelField.current[id]);
+        }
+      }
+      if (ids.length > 0) map.off("styledata", apply);
+    };
+    if (ROAD_LABEL_LAYER_IDS.some((id) => map.getLayer(id))) apply();
+    else map.on("styledata", apply);
+    return () => {
+      map.off("styledata", apply);
+    };
+  }, [props.rideLabels]);
   useEffect(() => () => void riderMarker.current?.remove(), []);
   // Go's "you" dot: a marker only (aria-hidden: Go's start line says where the rider is).
   const youMarker = useRef<Marker | null>(null);
@@ -2099,7 +2315,7 @@ export function MapView(props: Props) {
   }, [props.youDot]);
   useEffect(() => () => void youMarker.current?.remove(), []);
 
-  // A pan or a turn of the map by hand pauses following (Re-centre resumes it). MapLibre's start events
+  // A pan or a turn of the map by hand pauses following (Where am I? resumes it). MapLibre's start events
   // carry the DOM event only when the rider made the move, not for the camera's own easeTo.
   useEffect(() => {
     const map = mapRef.current;
@@ -2142,6 +2358,19 @@ export function MapView(props: Props) {
   useEffect(() => {
     climbsSync.current?.();
   }, [props.climbs, props.climbsOn, props.climbsFrom]);
+  // And "Hide climbs on busy roads" (lib/climbs.ts), set again in place.
+  useEffect(() => subscribeHideBusy(() => climbsSync.current?.()), []);
+  // Climbs on mountain-bike trails show while the map draws the trails (lib/climbs.ts trailClimbs).
+  useEffect(() => {
+    const sync = () => setTrailClimbs(mtbTrailsOn() || routableMtbLevel() !== null);
+    sync();
+    const offTrails = subscribeMtbTrails(sync);
+    const offRoutable = subscribeRoutableMtb(sync);
+    return () => {
+      offTrails();
+      offRoutable();
+    };
+  }, []);
 
   // The road panel's "Climb details": the climb's card, with the focus in it.
   useEffect(() => {
@@ -2150,7 +2379,7 @@ export function MapView(props: Props) {
 
   return (
     <>
-      <div ref={container} className="map" role="region" aria-label="Map" />
+      <div ref={container} className="map" role="region" aria-label="Map" inert={props.screenReaderRide || undefined} />
       {toolsHost && props.tools ? createPortal(props.tools, toolsHost) : null}
     </>
   );
@@ -2356,7 +2585,9 @@ function syncRoute(map: MapLibreMap, props: Props, fitted: { current: boolean })
   if (!source) return;
   // The route, and a transit trip's later rides drawn in its colours (lib/mapGlue.ts, routeLineData).
   source.setData(routeLineData(route) as never);
-  setRouteSections(map, route, stale);
+  setRouteSections(map, route, stale, props.routeColour ?? undefined);
+  (map.getSource(ROUTE_DRAWN_SOURCE) as GeoJSONSource | undefined)?.setData(routeDrawnLines(stale ? null : route, props.points.length) as never);
+  (map.getSource(ROUTE_HAZARD_SOURCE) as GeoJSONSource | undefined)?.setData(routeHazardFeatures(stale ? null : route) as never);
   // A ride's camera follows the rider; a re-planned route is not framed over it.
   if (!route || stale || route.geometry.coordinates.length < 2 || props.rider) return;
   const padding = props.framePadding();

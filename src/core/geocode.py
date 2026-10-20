@@ -91,6 +91,9 @@ SAME_PLACE_M = 300
 
 # How far from the point Photon may look for a place to say it is near, in km.
 REVERSE_RADIUS_KM = 0.25
+# The 311 log's county lookup (`area`) takes any object within this: a county is wide, and a
+# rural road may have nothing Photon knows within REVERSE_RADIUS_KM.
+AREA_RADIUS_KM = 2
 
 # How far from the point a named edge of the route network may be and still
 # name it. A point dropped on a trail snaps within a few metres; past 25 m the
@@ -451,6 +454,22 @@ def reverse(lat: float, lon: float, *, lang: str) -> list[dict]:
             **_osm(properties),
         }
     ]
+
+
+def area(lat: float, lon: float, *, lang: str) -> dict | None:
+    """The state, county and city Photon names for a point (its nearest object's), for the 311
+    log's site (core.report_log.where); None when Photon knows nothing near it.
+
+    Raises Unavailable when Photon did not answer."""
+    answer = _get(
+        "/reverse",
+        {"lat": lat, "lon": lon, "lang": lang, "limit": 1, "radius": AREA_RADIUS_KM},
+    )
+    for feature in answer.get("features", []):
+        properties = feature.get("properties") if isinstance(feature, dict) else None
+        if isinstance(properties, dict):
+            return {key: _text(properties, key) for key in ("state", "county", "city")}
+    return None
 
 
 # --- Photon's answer ------------------------------------------------------------------

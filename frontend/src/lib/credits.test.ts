@@ -54,7 +54,10 @@ test("the credits are short source names, exactly these, OpenStreetMap first (OW
 test("the map's attribution is credits.json, in its order, then the software licences", () => {
   assert.deepEqual(CREDITS, DATA);
   assert.deepEqual(MAP_CREDITS, DATA.map((c) => c.html));
-  assert.equal(MAP_ATTRIBUTION, [...DATA.map((c) => c.html), '<a href="/licenses.txt">Software licences</a>'].join(" | "));
+  assert.equal(
+    MAP_ATTRIBUTION,
+    [...DATA.map((c) => c.html), '<a href="/about/acknowledgements.html">Acknowledgements</a>', '<a href="/licenses.txt">Software licences</a>'].join(" | "),
+  );
   // The base map source's own credit is folded into the one entry (MapLibre drops a part of a longer one).
   assert.ok(MAP_ATTRIBUTION.startsWith(BASEMAP.attribution), BASEMAP.attribution);
   assert.equal((buildStyle("https://x.example", []).sources.protomaps as { attribution: string }).attribution, BASEMAP.attribution);
@@ -75,6 +78,8 @@ test("Arlington's comparison data, internal only, is named nowhere a rider sees"
       }
       // The code and the page, where a credit would be written; the data files hold place names (a station called Arlington Cemetery).
       if (/\.test\./.test(name) || !/\.(ts|tsx|js|mjs|css|html)$/.test(name)) continue;
+      // The 311 checklist's websites name Arlington County as a place to report to, not as a data source.
+      if (name === "report311Log.ts") continue;
       if (/Arlington|Bike Comfort Index/i.test(readFileSync(path, "utf8"))) offenders.push(path);
     }
   };

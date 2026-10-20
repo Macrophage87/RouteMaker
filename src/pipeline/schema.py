@@ -463,6 +463,10 @@ MTB_LEVEL_COLUMN = "mtb_level"
 # `name`. A column of its own, not `trail_name`: that one chains the long trails' runs,
 # which a mountain-bike way must never join (OWNER-DECISIONS 378).
 MTB_NAME_COLUMN = "mtb_name"
+# And a few of its own OSM tags (surface, smoothness, width, trail_visibility,
+# mtb:scale:uphill, sac_scale; `routemaker.trail_facts.facts`), which the road panel says
+# in words when a trail is tapped (the owner, 2026-10-19). Not carried in a tile.
+TRAIL_TAGS_COLUMN = "trail_tags"
 # An unnamed bike way's name from the street beside it (`routemaker.facility.
 # side_street_names`): read by the route description (`core.routing`) and the road panel.
 SIDEPATH_NAME_COLUMN = "sidepath_name"
@@ -470,6 +474,11 @@ SIDEPATH_NAME_COLUMN = "sidepath_name"
 # v0.8.0): read by the road panel, and carried in a stress tile as `scenic` (true or left
 # out) for the Scenic layer's casing. Never a stress or routing input.
 SCENIC_COLUMN = "scenic"
+# The way's known hazards (`routemaker.hazards`, `pipeline.hazard_layer`; v0.10.0):
+# "cobbles", "rails", comma-separated, a hand-listed one marked "/list". Read by the road
+# panel and by a route that rides it (`core.route_hazards`), never by the tiles. Never a
+# stress input: the graph is told by `rm:hazard` and prices the way as LTS 4.
+HAZARD_COLUMN = "hazard"
 WALK_BIKE_COLUMN = "walk_bike"
 ROUGH_COLUMN = "is_rough"
 ROAD_TRAIT_COLUMNS = ("road_speed_mph", "road_lanes", "road_oneway")
@@ -596,6 +605,11 @@ CREATE TABLE {schema}.segment (
     -- labels it with and the road panel says. Null on every other way and where none is
     -- mapped. Not `trail_name`, which chains the long trails' runs (378).
     mtb_name        text,
+    -- A mountain-bike-only way's own surface, smoothness, width, trail_visibility,
+    -- mtb:scale:uphill and sac_scale tags, as mapped (`routemaker.trail_facts.facts`;
+    -- the owner, 2026-10-19), which the road panel says in words. Null on every other
+    -- way, where none is mapped, and on a table built before the column existed.
+    trail_tags      jsonb,
     -- An unnamed cycleway or path's name from the named street it runs alongside
     -- (`routemaker.facility.side_street_names`; v0.7.0 "Go riding fixes" item 4):
     -- "9th Street Northwest bike lane", or "... protected bike lane" where tagged
@@ -610,6 +624,13 @@ CREATE TABLE {schema}.segment (
     -- Scenic layer draws a casing where it is set. Never read by the classifier or the
     -- graph. Null on every other way and on a table built before the column existed.
     scenic          text,
+    -- The way's known hazards (`routemaker.hazards`; v0.10.0, the owner, 2026-10-19: "a
+    -- symbol for roads with known other hazards"): "cobbles", "rails" or both, comma-
+    -- separated, "/list" on a kind only the reviewed list (`fixtures/hazards/`) gives.
+    -- A route that rides it marks and names it, and the road panel says it; the graph
+    -- prices the way as LTS 4 (`rm:hazard`). Never read by the classifier. Null on every
+    -- other way and on a table built before it.
+    hazard          text,
     -- What the classifier read the road at, for the intersection model
     -- (`routemaker.intersections`; OWNER-DECISIONS 165-167, 172): the speed and
     -- through lanes a direction as read (tags, an agency's record, a curated

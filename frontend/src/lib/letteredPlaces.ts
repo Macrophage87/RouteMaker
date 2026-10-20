@@ -6,7 +6,8 @@
  * The nearest water, restrooms and Metro stations, and the food found, are lettered A, B, C... in their list
  * and on the map, where each is a real button (MapView `lettered`) named "B: Drinking water, Garfield Park,
  * 0.3 mi (0.5 km)": the letter in a pin shape, so neither colour nor shape is needed alone. A tap on the
- * marker, the row's Ride here (Go) or the letter's key (while that list's sheet is open) picks it.
+ * marker or the letter's key (while that list's sheet is open) opens its card (lib/stopCard.ts: what's there, the
+ * website, Route here or Add as stop; Stephen 2026-10-19: "don't auto route"); the row's Ride here acts at once.
  */
 import type { LonLat } from "./geo.ts";
 import { formatDistance } from "./format.ts";
