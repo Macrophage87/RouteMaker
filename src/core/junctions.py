@@ -67,6 +67,7 @@ from pipeline.schema import (
 )
 from routemaker.geo import Point, haversine
 from routemaker.intersections import (
+    Beacon,
     Control,
     Event,
     Junction,
@@ -75,9 +76,12 @@ from routemaker.intersections import (
     Road,
     RouteEvents,
     assess_route,
+    beacon_at,
+    beacons_near,
     major_crossings,
     majors_of_events,
     rating_at,
+    with_beacons,
     with_ratings,
 )
 from routemaker.trace_junctions import (
@@ -672,6 +676,7 @@ def nodes_at(
     raws: Sequence[RawJunction],
     locate: Callable[[dict], list[dict]],
     cut_short: tuple[type[BaseException], ...] = (),
+    beacons: Sequence[Beacon] = (),
 ) -> dict[int, Node]:
     """The node at each junction (by position in `raws`), asked of the router
     in batches. A junction whose answer lacks the route's own edge, or whose
@@ -686,6 +691,10 @@ def nodes_at(
     another's). Where the second answer is missing the node is read from what
     is at it.
 
+    A node at a known flashing beacon (`beacons`) is asked around too, though its
+    map says signal: its signal is the beacon's (`intersections.with_beacons`), and
+    the stop signs up its arms are what control it (`control_of(signals=False)`).
+
     A batch that fails with one of `cut_short` (the clock) is not a batch the router
     will not answer: the reading is cut short, and `ReadingCutShort` is raised."""
     answers = _ask(raws, range(len(raws)), LOCATE_RADIUS_M, locate, cut_short)
@@ -694,7 +703,12 @@ def nodes_at(
         node = node_from_locate(answer, raws[position], approaches=False)
         if node is not None:
             found[position] = node
-    unsure = [p for p in sorted(found) if control_of(found[p]) is not Control.SIGNAL]
+    unsure = [
+        p
+        for p in sorted(found)
+        if control_of(found[p]) is not Control.SIGNAL
+        or beacon_at(raws[p].lon, raws[p].lat, beacons) is not None
+    ]
     for position, around in _ask(raws, unsure, APPROACH_RADIUS_M, locate, cut_short).items():
         node = node_from_locate(answers[position], raws[position], around)
         if node is not None:
@@ -751,7 +765,7 @@ def _ask(
     return found
 
 
-def control_of(node: Node | None) -> Control:
+def control_of(node: Node | None, signals: bool = True) -> Control:
     """Who has the right of way, from the node's arms: a signal at the node, on
     the rider's approach or on any other road's approach, at the node or up it
     within APPROACH_M (a signal for the cross traffic is a signalized junction,
@@ -759,12 +773,13 @@ def control_of(node: Node | None) -> Control:
     else the stop and yield signs on the rider's approach (up to APPROACH_M
     before the node along the route) against those on the other roads' at the
     node. At the node only edges arriving are read: an edge leaving it carries
-    the flags of its far end. Unknown where the node is."""
+    the flags of its far end. Unknown where the node is. `signals` False reads the
+    signs alone, for a junction whose mapped signal is a flashing beacon."""
     if node is None:
         return Control.NONE
     others = [a for a in node.others if a.is_road or a.is_link]
     ahead = [node.out_arm] if node.out_arm is not None and node.out_arm.is_road else []
-    if node.signal or node.in_signal or any(a.signal for a in (*others, *ahead)):
+    if signals and (node.signal or node.in_signal or any(a.signal for a in (*others, *ahead))):
         return Control.SIGNAL
     cross_stops = any(a.stop for a in others)
     if node.in_stop and cross_stops:
@@ -944,6 +959,7 @@ def events_of(
     group: bool = False,
     cut_short: tuple[type[BaseException], ...] = (),
     ratings: Sequence[Rating] = (),
+    beacons: Sequence[Beacon] = (),
 ) -> list[Event]:
     """The route's junction events, in route order: the router says what meets
     at each junction and who has the right of way, the segment table how busy
@@ -953,9 +969,11 @@ def events_of(
     (`core.junction_suggestions.approved_ratings`, OWNER-DECISIONS 232), which
     set a junction's cost and colour; a rated junction is read even where no road
     there can be busy ("the road is fine, but the intersection can be especially
-    dangerous")."""
+    dangerous"). `beacons`: the known flashing beacons at junctions the map has a
+    signal at (`core.flashing_signals.active`), priced with no signal."""
     raws = [raw for raw in raws if wanted(raw) or _rated(raw, ratings)]
-    nodes = nodes_at(raws, locate, cut_short)
+    beacons = beacons_near([(raw.lon, raw.lat) for raw in raws], beacons)
+    nodes = nodes_at(raws, locate, cut_short, beacons)
     asked: dict[tuple[int, int], tuple[int, int, float, float]] = {}
     for position, raw in enumerate(raws):
         ways = {raw.in_way, raw.out_way}
@@ -966,7 +984,11 @@ def events_of(
             if way:
                 asked[(position, way)] = (position, way, raw.lon, raw.lat)
     roads = roads_by_way(list(asked.values()), when, with_facility)
-    built = with_ratings(build_junctions(raws, nodes, roads), ratings)
+    built = build_junctions(raws, nodes, roads)
+    if beacons:
+        signs = [control_of(nodes.get(position), signals=False) for position in range(len(raws))]
+        built = with_beacons(built, beacons, signs)
+    built = with_ratings(built, ratings)
     events = assess_route(built, group, when=when)
     if not group:
         return events
