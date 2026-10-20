@@ -44,7 +44,11 @@
   .short { background: var(--accent-bg); border-left: 4px solid var(--accent); padding: 0.6rem 0.9rem; margin: 1rem 0; }
   .short > :first-child { margin-top: 0; }
   .short > :last-child { margin-bottom: 0; }
-  nav.docs ul { list-style: none; padding: 0; margin: 0.25rem 0 0.75rem; display: flex; flex-wrap: wrap; gap: 0.35rem 1rem; }
+  nav.docs > ul { list-style: none; padding: 0; margin: 0.25rem 0 0.75rem; display: grid; grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr)); gap: 0.5rem 1.25rem; }
+  nav.docs ul ul { list-style: none; padding: 0; margin: 0.1rem 0 0; }
+  nav.docs ul ul li { margin: 0.1rem 0; }
+  nav.docs .group { font-size: 0.85rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  .next { margin-top: 2.5rem; padding-top: 1rem; border-top: 1px solid var(--line); font-weight: 600; }
   nav.docs a[aria-current="page"] { font-weight: 700; color: var(--fg); text-decoration: none; }
   nav.toc ul { padding-left: 1.25rem; margin: 0.25rem 0; }
   pre { overflow-x: auto; padding: 0.75rem; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); font-size: 0.9rem; }
@@ -109,17 +113,14 @@
   <p><a class="back" href="/">Back to the map</a></p>
   <nav class="docs" aria-label="RouteMaker documentation">
   <ul>
-    <li><a href="/about/how-it-works.html">How RouteMaker works</a></li>
-    <li><a href="/about/using.html">Using RouteMaker</a></li>
-    <li><a href="/about/accessibility.html">Accessibility</a></li>
-    <li><a href="/about/stress.html">Stress ratings</a></li>
-    <li><a href="/about/routing.html">Routing</a></li>
-    <li><a href="/about/ride-types.html">Ride types</a></li>
-    <li><a href="/about/mass-ride.html" aria-current="page">Mass Ride</a></li>
-    <li><a href="/about/trails.html">Mountain Bike, Mountain Goat and Gravel</a></li>
-    <li><a href="/about/architecture.html">Architecture</a></li>
-    <li><a href="/about/assistants.html">AI assistants</a></li>
-    <li><a href="/about/acknowledgements.html">Acknowledgements</a></li>
+    <li><span class="group">Start here</span>
+      <ul><li><a href="/about/how-it-works.html">Overview</a></li><li><a href="/about/using.html">Using RouteMaker</a></li><li><a href="/about/accessibility.html">Accessibility</a></li></ul></li>
+    <li><span class="group">How routes are chosen</span>
+      <ul><li><a href="/about/ride-types.html">Ride types</a></li><li><a href="/about/stress.html">Stress ratings</a></li><li><a href="/about/routing.html">Routing</a></li></ul></li>
+    <li><span class="group">Special rides</span>
+      <ul><li><a href="/about/trails.html">Trails and gravel</a></li><li><a href="/about/mass-ride.html" aria-current="page">Mass Ride</a></li></ul></li>
+    <li><span class="group">Behind the scenes</span>
+      <ul><li><a href="/about/assistants.html">AI assistants</a></li><li><a href="/about/architecture.html">Architecture</a></li><li><a href="/about/acknowledgements.html">Acknowledgements</a></li></ul></li>
   </ul>
   </nav>
   <h1>Mass Ride</h1>
@@ -1128,6 +1129,7 @@ clears a crossing.</p>
   <li id="ref-23">Parkin and Rotheram, "Design speeds and acceleration characteristics of bicycle traffic for use in planning, design and appraisal", Transport Policy 17(5) (2010). <a href="https://uwe-repository.worktribe.com/OutputFile/987474">uwe-repository.worktribe.com</a></li>
   <li id="ref-24">Attalla, Robertson and Kodsi, "Cyclist's Choice of Speed, Radius and Lateral Acceleration While Negotiating a Curve: A Closed Course Pilot Study", Accident Reconstruction Journal (2015). <a href="https://jsheld.com/uploads/Cyclists-Choice-of-Speed-Radius-and-Lateral-Acceleration-While-Negotiating-a-Curve.pdf">jsheld.com (PDF)</a></li>
 </ol>
+<p class="next">Next: <a href="/about/assistants.html">AI assistants</a></p>
 </main>
 <footer>
   <p>Part of RouteMaker's documentation. It describes version 0.10.0. The code is

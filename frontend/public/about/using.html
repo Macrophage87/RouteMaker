@@ -44,7 +44,11 @@
   .short { background: var(--accent-bg); border-left: 4px solid var(--accent); padding: 0.6rem 0.9rem; margin: 1rem 0; }
   .short > :first-child { margin-top: 0; }
   .short > :last-child { margin-bottom: 0; }
-  nav.docs ul { list-style: none; padding: 0; margin: 0.25rem 0 0.75rem; display: flex; flex-wrap: wrap; gap: 0.35rem 1rem; }
+  nav.docs > ul { list-style: none; padding: 0; margin: 0.25rem 0 0.75rem; display: grid; grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr)); gap: 0.5rem 1.25rem; }
+  nav.docs ul ul { list-style: none; padding: 0; margin: 0.1rem 0 0; }
+  nav.docs ul ul li { margin: 0.1rem 0; }
+  nav.docs .group { font-size: 0.85rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  .next { margin-top: 2.5rem; padding-top: 1rem; border-top: 1px solid var(--line); font-weight: 600; }
   nav.docs a[aria-current="page"] { font-weight: 700; color: var(--fg); text-decoration: none; }
   nav.toc ul { padding-left: 1.25rem; margin: 0.25rem 0; }
   pre { overflow-x: auto; padding: 0.75rem; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); font-size: 0.9rem; }
@@ -109,25 +113,22 @@
   <p><a class="back" href="/">Back to the map</a></p>
   <nav class="docs" aria-label="RouteMaker documentation">
   <ul>
-    <li><a href="/about/how-it-works.html">How RouteMaker works</a></li>
-    <li><a href="/about/using.html" aria-current="page">Using RouteMaker</a></li>
-    <li><a href="/about/accessibility.html">Accessibility</a></li>
-    <li><a href="/about/stress.html">Stress ratings</a></li>
-    <li><a href="/about/routing.html">Routing</a></li>
-    <li><a href="/about/ride-types.html">Ride types</a></li>
-    <li><a href="/about/mass-ride.html">Mass Ride</a></li>
-    <li><a href="/about/trails.html">Mountain Bike, Mountain Goat and Gravel</a></li>
-    <li><a href="/about/architecture.html">Architecture</a></li>
-    <li><a href="/about/assistants.html">AI assistants</a></li>
-    <li><a href="/about/acknowledgements.html">Acknowledgements</a></li>
+    <li><span class="group">Start here</span>
+      <ul><li><a href="/about/how-it-works.html">Overview</a></li><li><a href="/about/using.html" aria-current="page">Using RouteMaker</a></li><li><a href="/about/accessibility.html">Accessibility</a></li></ul></li>
+    <li><span class="group">How routes are chosen</span>
+      <ul><li><a href="/about/ride-types.html">Ride types</a></li><li><a href="/about/stress.html">Stress ratings</a></li><li><a href="/about/routing.html">Routing</a></li></ul></li>
+    <li><span class="group">Special rides</span>
+      <ul><li><a href="/about/trails.html">Trails and gravel</a></li><li><a href="/about/mass-ride.html">Mass Ride</a></li></ul></li>
+    <li><span class="group">Behind the scenes</span>
+      <ul><li><a href="/about/assistants.html">AI assistants</a></li><li><a href="/about/architecture.html">Architecture</a></li><li><a href="/about/acknowledgements.html">Acknowledgements</a></li></ul></li>
   </ul>
   </nav>
   <h1>Using RouteMaker</h1>
 </header>
 <main id="main">
 
-<p class="lead">How to use RouteMaker, screen by screen: Go for a quick trip, Plan for building a route,
-the ride screen, the map's layers, saving and sharing, Settings, and suggesting changes.</p>
+<p class="lead">How to use RouteMaker, screen by screen. Each section starts with the short version;
+open More for the detail.</p>
 
 <div class="glance">
 <h2 id="glance">At a glance</h2>
@@ -161,13 +162,10 @@ the ride screen, the map's layers, saving and sharing, Settings, and suggesting 
 <figcaption>Where each thing is.</figcaption>
 </figure>
 <ul>
-<li><strong>Go</strong> is the phone's view: type where you are going, choose a line, press Start ride.</li>
-<li><strong>Plan</strong> is the full planner: up to 25 points, the ride type, the ride time, and the
-route's directions, elevation and junctions.</li>
-<li>The switch at the top changes between them, and both show the same route. Phones open in Go and
-wider screens in Plan, unless you choose otherwise in Settings, My Go; a shared link opens in Plan.</li>
-<li><strong>Save and load</strong> keeps, shares and exports routes; <strong>Layers</strong> turns the
-map's extras on and off.</li>
+<li><strong>Go</strong>, for a quick trip: say where, choose a line, Start ride.</li>
+<li><strong>Plan</strong>, for building a route: points, ride type, directions.</li>
+<li>Both show the same route; the switch at the top changes between them.</li>
+<li><strong>Layers</strong> and <strong>Save and load</strong> are in the Menu.</li>
 </ul>
 <p class="find"><strong>Looking for something else?</strong> How routes are chosen: <a href="/about/routing.html">Routing</a>. The ride types: <a href="/about/ride-types.html">Ride types</a>. Screen reader and keyboard use: <a href="/about/accessibility.html">Accessibility</a>.</p>
 </div>
@@ -574,7 +572,8 @@ keep your settings and routes on every device.</p>
 
 <ul>
 <li><strong>My Go:</strong> <strong>Home</strong>, <strong>Go's ride type</strong>, and <strong>Open
-in</strong> (Go, Plan, or by screen size). Kept with your account when you are signed in, otherwise on
+in</strong> (Go, Plan, or by screen size: a phone opens in Go, a wider screen in Plan; a shared link
+always opens in Plan). Kept with your account when you are signed in, otherwise on
 this device.</li>
 <li><strong>Riding</strong> and <strong>Display:</strong> cues, large text, rider and bike weight, high
 contrast and the rest, on <a href="/about/accessibility.html">Accessibility</a>.</li>
@@ -649,6 +648,7 @@ Other. Crash and Medical ask first and offer to call 911.</li>
   <li id="ref-5">DC 311 online. <a href="https://311.dc.gov/citizen/s/">311.dc.gov</a></li>
   <li id="ref-6">RouteMaker's Android app. <a href="https://github.com/Macrophage87/RouteMaker/blob/main/mobile/README.md">mobile/README.md</a></li>
 </ol>
+<p class="next">Next: <a href="/about/accessibility.html">Accessibility</a></p>
 </main>
 <footer>
   <p>Part of RouteMaker's documentation. It describes version 0.10.0. The code is
