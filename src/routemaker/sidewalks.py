@@ -122,11 +122,23 @@ def is_link_candidate(tags: dict[str, str]) -> bool:
         return False
     if tags.get("area") == "yes" or tags.get("indoor") not in (None, "no"):
         return False
-    if tags.get("access") in CLOSING_ACCESS or tags.get("foot") in CLOSING_FOOT:
+    if tags.get("foot") in CLOSING_FOOT or tags.get("informal") == "yes":
         return False
-    if tags.get("informal") == "yes":
+    if _closed_by_its_tags(tags):
         return False
     return trailaccess.upstream_open(tags) is False
+
+
+def _closed_by_its_tags(tags: dict[str, str]) -> bool:
+    """Closed for a reason besides the missing bicycle tag: an `access` or `vehicle`
+    that grants less than the public, or impassable. The mark the remap writes reopens
+    all of these, since upstream reads the bicycle key first, so they are left alone."""
+    tags = osm_tags.narrow_access_lists(tags)
+    for key in ("access", "vehicle"):
+        value = tags.get(key)
+        if value is not None and value not in osm_tags.PERMISSIVE_ACCESS:
+            return True
+    return tags.get("impassable") == "yes" or tags.get("smoothness") == "impassable"
 
 
 def rideable(tags: dict[str, str]) -> bool:

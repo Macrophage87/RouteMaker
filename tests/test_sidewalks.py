@@ -202,3 +202,36 @@ def test_the_rebuild_rides_the_sidewalk_and_the_link():
     assert result.sidewalk_rides == {3}
     assert 3 not in result.walk_bike, "ridden, not walked"
     assert 3 not in result.reasons
+
+
+def test_a_sidewalk_its_own_tags_close_is_not_ridden():
+    """The mark reopens anything upstream would close, so a sidewalk closed by more than
+    the missing bicycle tag is left as it is."""
+    for extra in (
+        {"vehicle": "no"},
+        {"vehicle": "private"},
+        {"access": "destination"},
+        {"access": "delivery"},
+        {"access": "no", "foot": "yes"},
+        {"smoothness": "impassable"},
+        {"impassable": "yes"},
+    ):
+        assert not sw.rideable({**SIDEWALK, **extra}), extra
+    for extra in ({}, {"access": "yes"}, {"foot": "designated"}):
+        assert sw.rideable({**SIDEWALK, **extra}), extra
+
+
+def test_a_ridden_sidewalk_is_rated_lts_3_unless_the_owner_rated_it():
+    from dataclasses import replace
+
+    from pipeline.run import raise_ridden_sidewalks
+    from routemaker.stress import Stress, StressResult
+
+    plain = StressResult(tier=Stress(1), rule="trail-class way")
+    owners = replace(plain, rule="override: stress adjustment 7", adjustment=object())
+    busy = StressResult(tier=Stress(4), rule="formula")
+    ratings = {1: plain, 2: owners, 3: busy}
+    raise_ridden_sidewalks(ratings, {1, 2, 3, 4})
+    assert int(ratings[1].tier) == sw.TIER and ratings[1].rule == sw.RULE
+    assert ratings[2] is owners, "the owner's rating stands"
+    assert ratings[3] is busy, "never lowered"

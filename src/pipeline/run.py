@@ -1794,6 +1794,19 @@ def car_free_tier_1(way, stress_by_way: dict) -> bool:
     return True
 
 
+def raise_ridden_sidewalks(stress_by_way: dict, ridden: Collection[int]) -> None:
+    """Rate a ridden sidewalk as the graph prices it (`sidewalks.TIER`), never lower
+    than a rating already says, and never over the owner's own (an override row)."""
+    for way_id in ridden:
+        current = stress_by_way.get(way_id)
+        if current is None or getattr(current, "adjustment", None) is not None:
+            continue
+        if int(current.tier) < sidewalks.TIER:
+            stress_by_way[way_id] = replace(
+                current, tier=Stress(sidewalks.TIER), half=False, rule=sidewalks.RULE
+            )
+
+
 def facility_derived(
     variant: variants.Variant,
     way_id: int,
@@ -3028,14 +3041,7 @@ def build_handlers(
         trail_closures.add_sidewalk_rides(nobike, context.ways)
         context.walk_bike = nobike.walk_bike
         context.sidewalk_rides = nobike.sidewalk_rides
-        # A ridden sidewalk is rated as the graph prices it (`sidewalks.TIER`), never
-        # lower than a curated rating already says.
-        for way_id in nobike.sidewalk_rides:
-            current = context.stress_by_way.get(way_id)
-            if current is not None and int(current.tier) < sidewalks.TIER:
-                context.stress_by_way[way_id] = replace(
-                    current, tier=Stress(sidewalks.TIER), half=False, rule=sidewalks.RULE
-                )
+        raise_ridden_sidewalks(context.stress_by_way, nobike.sidewalk_rides)
         context.destination_only = nobike.destination_only
         context.mtb_only = nobike.mtb_only()
         context.cbd_sidewalks = {w for w, r in nobike.reasons.items() if r == cbd.NO_BICYCLE}

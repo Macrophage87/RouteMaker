@@ -5965,7 +5965,8 @@ after a trail on Redland Road ended on a sidewalk 120 ft (36 m) short of the sid
 "Bikes can go on sidewalks, especially in more rural parts", then chose "Also sidewalks as
 last resort". `routemaker.sidewalks` picks the footways ridden: every sidewalk and
 crosswalk (`footway=sidewalk` or `crossing`) no bicycle tag speaks for or against and
-open on foot (about 144,000 sidewalks, some 10,400 mi, and 97,000 crosswalks in the
+open on foot, with no `access` or `vehicle` short of public and not impassable, since
+the mark reopens all of those (about 144,000 sidewalks, some 10,400 mi, and 97,000 crosswalks in the
 2026-10-09 extract), and the short links where a bicycle-open way dead-ends and untagged
 footways reach another bicycle-open way within 160 ft (50 m) (one end a trail, each
 footway at most 1,000 ft (300 m), since a tag opens the whole way). Nothing a closure
@@ -5975,7 +5976,7 @@ rides none. They get `rm:sidewalk=yes`, and the remap writes `bicycle=use_sidepa
 `maxspeed:practical=90`: Valhalla prices a sidewalk's or crosswalk's use as a road's, from
 its speed, so on a tile build (tests/test_tile_build_sidewalk_price.py) a sidewalk loses
 to the road beside it at LTS 1 to 3.5 and wins over LTS 4, 4.5 and Avoid from the
-slider's 40 up. The rebuild rates them LTS 3 ("sidewalk ridden as a last resort"), so the
+slider's 40 up. The rebuild rates them LTS 3 (an owner's override row stands) ("sidewalk ridden as a last resort"), so the
 route's stress, the rolling stress chart (`calm.edge_factor`) and the ranking count them
 as the router prices them. The map still hides sidewalks (OWNER-DECISIONS 82). The
 rebuild log's facility line counts them ("footways ridden as a last resort"). The stress
