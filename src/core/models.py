@@ -1827,6 +1827,59 @@ class JunctionOverride(models.Model):
         return f"{self.name}: {self.get_level_display()}"
 
 
+class FlashingSignal(models.Model):
+    """A junction the map has a traffic signal at that is really a flashing beacon: the
+    main road does not stop and the side street faces a flashing red (the owner,
+    2026-10-20, Connecticut Ave and Baltimore St, Kensington: "a blinking red against free
+    flowing traffic. It wasn't passable").
+
+    Read at plan time (`core.flashing_signals.active`), so it changes the next plan with no
+    rebuild: the junction model prices the junction with no signal
+    (`routemaker.intersections.with_beacons`), the busier road keeping priority and a rider
+    crossing it on the stopped side. Rows come from the owner (`fixtures/flashing-signals/`)
+    or an agency's list (MDOT SHA's beacons, `pipeline.agency_signals.mdot_sha_beacons`),
+    both loaded by `manage.py load_flashing_signals`, audited to an instance admin. Owner
+    rows come first, as community input outranks agency data: a load of an agency's list
+    never touches them. Withdrawing one (an audited admin action) turns it off for good.
+    """
+
+    class Source(models.TextChoices):
+        OWNER = "owner", "Owner or instance admin"
+        MDOT_SHA = "mdot-sha", "MDOT SHA Traffic Signals (a beacon)"
+
+    source = models.CharField(max_length=16, choices=Source.choices)
+    # The row's id in its source ("mdot-sha:<SIGNAL_ID>", or the owner file's own), the key
+    # a reload matches on.
+    source_id = models.CharField(max_length=80)
+    name = models.CharField(max_length=200)
+    location = models.PointField(srid=4326)
+    evidence = models.TextField(blank=True)
+    active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    withdrawn_at = models.DateTimeField(null=True, blank=True)
+    # Who withdrew it: an instance admin (it stays withdrawn whatever a load says), or a load
+    # of its agency's list that no longer had it (a later load that has it again restores it).
+    withdrawn_by = models.CharField(
+        max_length=8,
+        choices=[("admin", "An instance admin"), ("list", "Its agency's list")],
+        blank=True,
+    )
+    # Any change to the row (a load's update, a withdrawal): what tells a plan the list
+    # changed (`core.flashing_signals`). Saves name it in `update_fields`.
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "flashing_signal"
+        ordering = ["name", "id"]
+        indexes = [models.Index(fields=["active"], name="flashing_signal_active")]
+        constraints = [
+            models.UniqueConstraint(fields=["source", "source_id"], name="flashing_signal_one_row")
+        ]
+
+    def __str__(self) -> str:
+        return f"Flashing beacon: {self.name}"
+
+
 class MyGo(models.Model):
     """A signed-in rider's own Go settings (UI-CLEANUP, the owner's choice 2 of 2026-10-11):
     which view the app opens in, the ride type Go uses, and the Home the Go sheet's Home chip

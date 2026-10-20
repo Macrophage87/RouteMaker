@@ -4828,7 +4828,8 @@ installed; the rebuild logs `... signals installed but not read` and leaves it o
    ```
 
    It prints the records each file left out and why, then `wrote .../signals.json: N
-   signals (N HAWKs)`.
+   signals (N HAWKs)`, and with `--md-signals` `wrote .../flashing-signals.json: N
+   junction beacons`, which the api reads once loaded ("Flashing beacons" below).
 
 3. **After the rebuild**, read the log line and the report:
 
@@ -4850,6 +4851,56 @@ installed; the rebuild logs `... signals installed but not read` and leaves it o
 
    **Rolling it back** without a code change: remove `reference/signals.json` and
    rebuild; the map then keeps OSM's signals only, and the log says the file is absent.
+
+## Flashing beacons (no rebuild)
+
+A junction OSM maps with a traffic signal can really have a flashing beacon: flashing
+yellow to the main road, flashing red to the side street (v0.10.0; the owner,
+2026-10-20, Connecticut Ave and Baltimore St, Kensington: "a blinking red against free
+flowing traffic. It wasn't passable"). Priced as a signal, crossing the main road cost
+600 ft (0.11 calm mi); as what it is, the stopped side of an LTS 4 road, more than
+6,000 ft (1.1 calm mi), and more at rush hour. Each active `FlashingSignal` row makes the
+junction model read a signalised junction within 98 ft (30 m) of it by its signs alone,
+as if the map had no signal there (`core.flashing_signals`,
+`routemaker.intersections.with_beacons`), from the next plan, with no rebuild. The marker
+and the cue then say "flashing light, not a signal".
+
+Two sources, each loaded with the `load_flashing_signals` command (dry run first, then the
+same with `--confirm`; `--actor` is the instance admin's Discord id, as for overrides):
+
+1. **The owner's**, checked in under `fixtures/flashing-signals/`. The api image has no
+   `fixtures/`, so from the checkout:
+
+   ```sh
+   docker compose exec -T api python manage.py load_flashing_signals - \
+       --actor <discord user id> < fixtures/flashing-signals/2026-10-20-owner-connecticut-baltimore.json
+   ```
+
+2. **MDOT SHA's junction beacons**: the Traffic Signals layer's Intersection Control
+   Beacons (`TCD_Type` 2, 221 on 2026-10-20) and Warning Beacons (`TCD_Type` 3, 674),
+   less any within 98 ft (30 m) of a listed signal. An ICB may flash red to every
+   approach, an all-way stop, which the list does not say; the owner chose to read them
+   all (2026-10-20). An all-way stop OSM maps with stop signs still prices as one, and
+   where no signs are mapped, roads within a stress level of each other are read as an
+   all-way stop and a quieter road meeting a busier one as a stop for the quieter road
+   (`intersections.beacon_control`, the owner's rule of 2026-10-20). Step 2 of "Agency traffic signals"
+   above writes them to `reference/flashing-signals.json` from the layer already fetched;
+   no new download. Then:
+
+   ```sh
+   export DATA_ROOT=/srv/routemaker/data   # the same value as DATA_ROOT in .env
+   docker compose exec -T api python manage.py load_flashing_signals - \
+       --actor <discord user id> < "$DATA_ROOT/reference/flashing-signals.json"
+   ```
+
+   The file is MDOT SHA's whole list, so a reload withdraws a beacon that has left it
+   (removed, or made a signal) and restores one that is back. It never touches the
+   owner's rows. Reload it whenever the signals are reinstalled.
+
+An instance admin can withdraw a row in the admin (Flashing beacons), an audited action;
+a later load leaves it withdrawn for good. DDOT's and Alexandria's lists say nothing about flash
+operation, and VDOT's Intersection Flashers stay out with the rest of its report-only
+list, so a beacon elsewhere goes in the owner's file.
 
 ## Agency stress ratings (agency-lts.json)
 

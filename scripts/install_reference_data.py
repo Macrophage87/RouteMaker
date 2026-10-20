@@ -80,6 +80,9 @@ signal OSM does not map:
 each as `scripts/fetch_agency_layer.py` stored it, all in one file written whole: a
 rerun with one flag replaces the others' rows, so give them all each time. A record
 that is not a running signal is left out, and the count of each reason is printed.
+With --md-signals it also writes `flashing-signals.json`: MDOT SHA's junction beacons
+(flashing lights the map may have as signals), loaded into the api with
+`manage.py load_flashing_signals` (docs/OPERATIONS.md, "Flashing beacons").
 
 Run with only --data-root it installs the crossings and reports which of the
 other two are still missing, exiting non-zero while any is. See
@@ -759,6 +762,14 @@ def main(argv: list[str] | None = None) -> int:
         target = reference / agency_signals.FILE_NAME
         target.write_text(json.dumps(rows, separators=(",", ":")))
         print(f"wrote {target}: {len(rows)} signals ({hawks} HAWKs)")
+        if args.md_signals is not None:
+            # MDOT SHA's junction beacons, for `manage.py load_flashing_signals`.
+            beacons = agency_signals.mdot_sha_beacons(json.loads(args.md_signals.read_text()), rows)
+            for reason, count in sorted(beacons.pop("dropped").items()):
+                print(f"  {args.md_signals}: {count} beacons left out ({reason})")
+            target = reference / agency_signals.BEACONS_FILE_NAME
+            target.write_text(json.dumps(beacons, separators=(",", ":")))
+            print(f"wrote {target}: {len(beacons['rows'])} junction beacons")
 
     missing = [name for name in REQUIRED if not (reference / name).exists()]
     for name in missing:
