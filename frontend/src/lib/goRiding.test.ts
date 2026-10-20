@@ -30,7 +30,7 @@ test("6. an End ride button always in view, labelled End ride with its icon, one
   const top = ride.slice(ride.indexOf('className={light && cornerFits ? "ride-top"'), ride.indexOf('className={light && cornerFits ? "ride-top"') + 2400);
   assert.match(top, /<h2 id="ride-heading"/);
   // The owner, 2026-10-16 ("add a method of ending navigation"): the visible words are End ride, so its name is too.
-  assert.match(top, /<button type="button" className="danger ride-end" onClick=\{end\}>\s*<Icon name="stop" size=\{18\} \/>\s*\{END_RIDE_NAME\}\s*<\/button>/);
+  assert.match(top, /<button type="button" className="danger ride-end" onClick=\{end\}>\s*<Icon name="stop" size=\{22\} \/>\s*\{END_RIDE_NAME\}\s*<\/button>/);
   assert.match(ride, /export const END_RIDE_NAME = "End ride";/);
   // End ride stops the ride at once: the watch, the queued words and the voice, then App's endRide.
   const end = ride.slice(ride.indexOf("  const end = () => {"), ride.indexOf("  const keep = () => {"));
@@ -42,7 +42,7 @@ test("6. an End ride button always in view, labelled End ride with its icon, one
   // Review F5: the action row's duplicate End ride is gone; the sticky top End is the one End control (one, not two).
   assert.equal(ride.match(/onClick=\{end\}/g)?.length, 1);
   assert.doesNotMatch(ride, /<button type="button" className="danger" onClick=\{end\}>/);
-  // Kept in view as the card scrolls, at every size and in Big text (which never hides the card).
+  // Kept in view as the card scrolls, at every size and in Large text.
   assert.match(css, /\.ride-top \{\s*position: sticky;\s*\/\*[^*]*\*\/\s*top: -10px;/);
   assert.doesNotMatch(css, /\.ride-big \.ride-(top|end)[^{]*\{[^}]*display: none/);
   // Ride ended, announced, with Undo for a few seconds, held while focused; Undo starts the same ride.
@@ -173,4 +173,11 @@ test("End ride is slid until the rider has arrived (the owner, 2026-10-19: \"Add
   // The light times take the corner inside the heading, which stays Ride mode for screen readers; the times said in words after it.
   assert.match(top, /className=\{light \? "ride-heading ride-light" : "ride-heading"\}>\s*\{light \? \(\s*<>\s*<span className="visually-hidden">Ride mode<\/span>\s*<span className="ride-light-lines" aria-hidden="true">/);
   assert.match(top, /\{light && <p className="visually-hidden">\{light\.said\}<\/p>\}/);
+});
+
+test("ride card: fewer words on screen, the whole of them for screen readers (the owner, 2026-10-20)", () => {
+  const ride = source("../RideMode.tsx");
+  assert.match(ride, /<span className="visually-hidden">In <\/span>/, "\"In\" before the distance stays for screen readers");
+  assert.equal((ride.match(/<span className="visually-hidden">about <\/span>/g) ?? []).length, 2, "\"about\" before both to-go times stays for screen readers");
+  assert.match(ride, /<span aria-hidden="true">\{cueShown\.head\.replace\(\/\\\.\$\/, ""\)\}<\/span>\s*<span className="visually-hidden">\{cue\.rideText \?\? cue\.text\}<\/span>/, "the full stop goes from the shown head only; the whole sentence is read");
 });

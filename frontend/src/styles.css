@@ -3851,7 +3851,7 @@ details.zoom-notes {
  * Ride mode (WEB-NAV-plan.md; RideMode.tsx). The planner is hidden; a cue card sits at the top of the
  * map and the ride's buttons at the bottom, each on the page's own background so its text keeps the
  * panel's contrast over any map. Buttons are at least 44 px tall: they are pressed on the move.
- * Big text hides the map (no rendering, less battery) and gives the card the screen.
+ * Large text gives the card the top half of the screen (the map below).
  */
 .ride {
   position: absolute;
@@ -3897,7 +3897,7 @@ details.zoom-notes {
 
 /*
  * The heading, Road closed ahead and the always-visible End ride (Go riding fixes item 6): kept at the top of the
- * card as it scrolls, so End ride is in view at every size, in Big text and at 200% text. One line: the
+ * card as it scrolls, so End ride is in view at every size, in Large text and at 200% text. One line: the
  * heading gives way first (below); only where the two buttons alone are too wide do they wrap.
  */
 .ride-top {
@@ -3987,16 +3987,30 @@ details.zoom-notes {
   border-bottom: 1px solid var(--border);
 }
 
+/* Larger than the panel's buttons, at every text size (the owner, 2026-10-20: "End ride and road closed could have larger font in general"). */
 .ride .ride-road-closed,
 .ride .ride-end {
   flex: none;
-  min-height: 44px;
-  min-width: 44px;
+  min-height: 52px;
+  min-width: 52px;
   padding: 6px 14px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  font-size: 1.2rem;
   font-weight: 700;
+}
+
+/* On the narrowest phones (320 px) the two keep one line at a slightly smaller size; the slide's text stays clear of its thumb. */
+@media (max-width: 359px) {
+  .ride .ride-road-closed,
+  .ride .ride-end {
+    font-size: 1rem;
+  }
+
+  .ride .ride-slide-text {
+    padding-left: 46px;
+  }
 }
 
 /* "Ride ended." with Undo for a few seconds, over the planner (RideMode's RideEnded). */
@@ -4033,13 +4047,13 @@ details.zoom-notes {
 
 .cue-shape {
   flex: none;
-  width: 44px;
-  height: 50px;
+  width: 72px;
+  height: 82px;
   color: var(--text);
 }
 
 .cue-distance {
-  font-size: 1.75rem;
+  font-size: 2rem;
   line-height: 1.15;
   font-weight: 700;
   margin: 0;
@@ -4057,14 +4071,26 @@ details.zoom-notes {
 }
 
 .cue-text {
-  font-size: 1.25rem;
+  font-size: 1.5rem;
   line-height: 1.25;
   margin: 2px 0;
 }
 
+/* Wrapped ride text in even lines, never a lone word left on the last (the owner, 2026-10-20: "make wrapping text a
+   little prettier"). */
+.ride .cue-text,
+.ride .cue-more,
+.ride .cue-then,
+.ride .cue-citation,
+.ride .ride-togo dd,
+.ride .ride-light-below,
+.ride .ride-toast p {
+  text-wrap: balance;
+}
+
 /* What follows the cue's first comma ("No signal mapped, busy road (LTS 3)."): small print under it. */
 .cue-more {
-  font-size: 0.9rem;
+  font-size: 1rem;
   line-height: 1.25;
   margin: 0;
   color: var(--text-muted);
@@ -4098,7 +4124,7 @@ details.zoom-notes {
   flex-wrap: wrap;
   gap: 4px 18px;
   margin: 4px 0 0;
-  font-size: 0.9rem;
+  font-size: 1rem;
 }
 
 .ride-togo div {
@@ -4134,16 +4160,16 @@ details.zoom-notes {
 .ride .ride-slide {
   position: relative;
   box-sizing: border-box;
-  min-height: 44px;
+  min-height: 52px;
   padding: 0;
   border: 2px solid var(--error-text);
-  border-radius: 22px;
+  border-radius: 26px;
   color: var(--error-text);
   justify-content: center;
 }
 
 .ride-slide-text {
-  padding-left: 42px;
+  padding-left: 50px;
   padding-right: 12px;
   white-space: nowrap;
   pointer-events: none;
@@ -4178,8 +4204,8 @@ details.zoom-notes {
 .ride-slide-range::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
   margin-top: 2px;
   border-radius: 50%;
   background: var(--error-text);
@@ -4187,8 +4213,8 @@ details.zoom-notes {
 }
 
 .ride-slide-range::-moz-range-thumb {
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   background: var(--error-text);
   border: none;
@@ -4196,7 +4222,7 @@ details.zoom-notes {
 
 .ride-slide-range:focus-visible {
   outline-offset: 3px;
-  border-radius: 22px;
+  border-radius: 26px;
 }
 
 .ride button.danger {
@@ -4299,40 +4325,84 @@ details.zoom-notes {
   margin: 0;
 }
 
-/* Big text: the map is hidden, and the card takes the screen. */
-.riding-big .map {
-  display: none;
-}
-
-.ride-big {
-  background: var(--bg);
-}
-
-.ride-big .cue-card {
-  flex: 1;
+/*
+ * Large text (the owner, 2026-10-20: "the text takes up half the page with big text and big arrows", for near sight and
+ * bright sun; it replaced Big text, which hid the map): the card half the screen, the map below, the follow camera
+ * keeping the rider in the open part (MapView's riderOffset reads the card's foot). The turn's arrow and words grow to
+ * fill the card ("take up as much screen as possible"): RideMode sets --cue-fit-d (the distance and arrow, as wide as
+ * fits) and --cue-fit (the instruction, as tall as fits under them).
+ * The small print is never under 16 pt ("Maybe have a min size of like 16 pt").
+ */
+.ride-large .cue-card {
+  flex: none;
+  height: 50%;
   max-height: none;
-  box-shadow: none;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
 }
 
-.ride-big .ride-heading {
-  font-size: 1.25rem;
+.ride-large .cue-card > :not(.ride-top, .ride-mode-settings, .ride-togo) {
+  flex: 1 0 auto;
 }
 
-.ride-big .cue-distance {
-  font-size: 3rem;
+/* The arrow beside the distance, the instruction under both across the card's whole width. */
+.ride-large .cue-next {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  align-content: center;
+  column-gap: 16px;
 }
 
-.ride-big .cue-text {
-  font-size: 1.9rem;
+.ride-large .cue-next > div {
+  display: contents;
 }
 
-.ride-big .cue-more {
-  font-size: 1.25rem;
+.ride-large .cue-next > div > :not(.cue-distance) {
+  grid-column: 1 / -1;
+  min-width: 0;
 }
 
-.ride-big .cue-shape {
-  width: 96px;
-  height: 110px;
+.ride-large .cue-off {
+  gap: 16px;
+}
+
+.ride-large .cue-distance {
+  font-size: calc(var(--cue-fit-d, 1) * 3rem);
+  white-space: nowrap;
+}
+
+/* The metric under the miles, so the big number keeps its line. */
+.ride-large .cue-distance-metric {
+  display: block;
+  font-size: max(16pt, 0.5em);
+}
+
+.ride-large .cue-text {
+  font-size: calc(var(--cue-fit, 1) * 1.9rem);
+}
+
+.ride-large .cue-more,
+.ride-large .cue-then {
+  font-size: max(16pt, calc(var(--cue-fit, 1) * 1.25rem));
+}
+
+/* The arrow grows with the words but leaves the distance most of the width. */
+.ride-large .cue-shape {
+  width: min(calc(var(--cue-fit-d, 1) * 128px), 35vw);
+  height: auto;
+  aspect-ratio: 128 / 146;
+}
+
+.ride-large .ride-togo dt {
+  white-space: nowrap;
+}
+
+.ride-large .ride-togo,
+.ride-large .cue-citation,
+.ride-large .cue-sheet {
+  font-size: 16pt;
 }
 
 @media (forced-colors: active) {
@@ -5454,7 +5524,7 @@ details.fold > summary .icon {
 /*
  * The side buttons (the owner, 2026-10-17: "put these as circle icons on the side"): a column of round icon
  * buttons on the right of the map at thumb height, above the bottom panel when it shows. Each menu opens to
- * their left, at their foot; an answer asked for shows there too. In Big text (no map) they are a row under the card.
+ * their left, at their foot; an answer asked for shows there too.
  */
 .ride-middle {
   position: relative;
@@ -5623,24 +5693,11 @@ details.fold > summary .icon {
   font-size: 0.9rem;
 }
 
-.ride-big .ride-middle {
-  flex: none;
-}
-
-.ride-big .ride-rail {
-  position: static;
-  flex-direction: row;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  padding: 8px 12px;
-  background: var(--bg);
-}
-
-.ride-big .ride-menu,
-.ride-big .ride-311-said,
-.ride-big .ride-toast {
-  right: 12px;
-  bottom: calc(100% + 8px);
+/* Large text on: its button shown pressed. */
+.ride .ride-round[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--accent-text);
+  border-color: var(--bg);
 }
 
 .ride-311-button {
