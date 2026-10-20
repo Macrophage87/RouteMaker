@@ -215,6 +215,7 @@ import { NARROW, useLongerThan, useMinute, useNarrow, useSettled } from "./app/h
 import { routeLightMarks, sameLightMarks, type LightMark } from "./lib/lightTimes.ts";
 import { PointsSection, RideSection } from "./app/Planner.tsx";
 import { RouteSection, ShareControls, type Status } from "./app/RoutePanel.tsx";
+import { report311Log } from "./lib/report311Log.ts";
 import { EditRouteSheet, FoodSheet, GpxSheet, LayersSheet, NearestSheet, RideChips, RideGroupChips, RideSheet, SettingsSheet, SuggestSheet, type SheetNav } from "./app/Sheets.tsx";
 import { GoAddStop, GoRouteCard, GoSheet, GoTopBar, ModeSwitch, PlanMapChips } from "./app/Go.tsx";
 import { useSharedLaunch } from "./app/sharedLaunch.ts";
@@ -1382,6 +1383,8 @@ export function App() {
         return;
       }
       void syncSettingsOnSignIn(origin, () => live);
+      // The 311 checklist (lib/report311Log.ts): this device's and the account's, merged by entry.
+      void report311Log().signIn();
       const account = await fetchMyGo(origin);
       if (!live || !account) return;
       accountMyGoRead.current = true;

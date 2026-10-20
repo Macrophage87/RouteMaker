@@ -168,18 +168,21 @@ You stay responsible for riding safely; the route can be wrong.
   saved. It lasts for this ride only: it is cleared at "End ride", when the next
   ride starts, and if you reload or reopen the page (a ride does not carry on after a reload).
   Finding a new way off the route still needs a signal.
-- "Report a problem to DC 311" (Washington, DC only) writes a report for a pothole (chosen
-  first), a downed tree, a vehicle parked in a bike lane, a roadway or bikeway obstructed, a
-  streetlight out or anything else. The place is the road you are on, a cross street when one
-  is within about 500 feet, and your GPS position, for example "on R Street Northwest near Q
-  Street Northwest, Washington, DC. GPS 38.91234, -77.03890." On a
-  phone, a pothole or a streetlight can be a text to DC 311 (32311) that you send yourself; the
-  others go to DC 311 online, with the problem named in the report. There is always a link to
-  DC 311 online and a button to copy the report for it. RouteMaker sends
-  nothing and keeps nothing. Check the place before you send it.
+- The round 311 button logs a problem where you are, anywhere on the route: a pothole, a
+  downed tree, a vehicle parked in a bike lane, a roadway or bikeway obstructed, a streetlight
+  out or something else. The entry keeps the road you are on, a cross street when one is within
+  about 500 feet, your GPS position and the time, for example "on R Street Northwest near Q
+  Street Northwest. GPS 38.91234, -77.03890." "Add a note" adds a few words. Off a ride,
+  right-click a road on the map (press and hold on a phone) and choose Log for 311.
+- Your 311 checklist is in Suggest (Go's Menu, or Plan's bottom bar). It lists what you logged
+  under the website that takes it (DC 311, MC311, PGC311, Baltimore 311, Arlington, Alexandria,
+  VDOT and the rest), each with Copy report. Paste the report into the site, then check the
+  entry off and it moves to Archived. Texting DC 311 (32311) is gone: DC's text line answers
+  only "Welcome to DC311". Signed in, the checklist follows you to your other devices.
 - Your position stays on your phone. It is sent only when a new way is found from where you
   are, or when you ask for the nearest water or restroom (as "Use my location" does when
-  planning), and never kept. A 311 report you send yourself carries it too. Place search, when
+  planning), and never kept. A problem you log for 311 keeps it, on your phone and, signed in,
+  with your account; outside DC the app asks the server which county's website takes it. Place search, when
   the app already knows where you are and that spot is on the map you are looking at, sends an
   approximate location (about 1 km / 0.6 mi) so nearby places come first.
 - Keep the screen on. If the browser cannot keep it on, Ride mode says so; on an iPhone set

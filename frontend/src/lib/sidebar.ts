@@ -64,7 +64,7 @@ export interface BarItem {
 export const BAR_ITEMS: readonly BarItem[] = [
   { id: "plan", label: "Plan", opens: "planner", description: "Shows the planner: the points, the ride settings and the route." },
   { id: "layers", label: "Layers", opens: "layers", description: "Opens the map layers, their switches and each layer's key." },
-  { id: "suggest", label: "Suggest", opens: "suggest", description: "Opens the ways to suggest a change to the map, or report a problem to DC 311." },
+  { id: "suggest", label: "Suggest", opens: "suggest", description: "Opens the ways to suggest a change to the map, and your 311 checklist." },
   { id: "gpx", label: SAVE_LOAD, opens: "gpx", description: "Opens Save and load: save or share the route, find your routes, or open or export a route file." },
   { id: "settings", label: "Settings", opens: "settings", description: "Opens the settings: My Go (Home, ride type, Open in), riding, display and your account." },
 ];

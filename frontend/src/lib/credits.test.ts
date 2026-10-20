@@ -75,6 +75,8 @@ test("Arlington's comparison data, internal only, is named nowhere a rider sees"
       }
       // The code and the page, where a credit would be written; the data files hold place names (a station called Arlington Cemetery).
       if (/\.test\./.test(name) || !/\.(ts|tsx|js|mjs|css|html)$/.test(name)) continue;
+      // The 311 checklist's websites name Arlington County as a place to report to, not as a data source.
+      if (name === "report311Log.ts") continue;
       if (/Arlington|Bike Comfort Index/i.test(readFileSync(path, "utf8"))) offenders.push(path);
     }
   };

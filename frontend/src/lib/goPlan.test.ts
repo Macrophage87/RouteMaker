@@ -269,28 +269,26 @@ test("a route's notes are one line each with an icon; their full words are in In
 
 // ---- Ride mode's 311 button (the owner's choice 9) and Big text's icon (choice 11) ----------------------
 
-test("the 311 button shows only on the route inside DC; its menu has the six problems in the owner's words and order", () => {
-  assert.equal(ride311Shown({ off: false, progressM: 100, insideDc: () => true }), true);
-  assert.equal(ride311Shown({ off: false, progressM: 100, insideDc: () => false }), false, "hidden outside DC");
-  assert.equal(ride311Shown({ off: true, progressM: 100, insideDc: () => true }), false, "off the route there is no place to report");
-  assert.equal(ride311Shown({ off: false, progressM: null, insideDc: () => true }), false, "no place yet");
+test("the 311 button shows anywhere on the route; its menu has the six problems in the owner's words and order", () => {
+  assert.equal(ride311Shown({ off: false, progressM: 100 }), true, "inside DC or out: the log works everywhere (2026-10-20)");
+  assert.equal(ride311Shown({ off: true, progressM: 100 }), false, "off the route there is no place to log");
+  assert.equal(ride311Shown({ off: false, progressM: null }), false, "no place yet");
   assert.ok(RIDE_311_NAME.includes(RIDE_311_TEXT), "the visible words are in its name");
   const picked: string[] = [];
   const html = renderToStaticMarkup(createElement(Ride311Menu, { id: "m", open: true, place: { words: "on R St NW near 17th St NW", point: [-77.0389, 38.9126] }, onPick: (k) => picked.push(k), onClose: () => {} }));
   assert.match(html, /^<div id="m" class="ride-311-menu" role="group" aria-labelledby="m-heading">/);
-  assert.match(html, /<h3 id="m-heading" tabindex="-1">Report to DC 311<\/h3><button type="button" class="secondary ride-311-close">Close<\/button>/);
-  assert.match(html, /On R St NW near 17th St NW, GPS 38\.91260, -77\.03890\. Check it before you send\./);
-  assert.equal(menuPlaceLine({ words: null, point: [-77.0389, 38.9126] }), "GPS 38.91260, -77.03890. Check it before you send.", "no words: the coordinates alone");
+  assert.match(html, /<h3 id="m-heading" tabindex="-1">Log for 311<\/h3><button type="button" class="secondary ride-311-close">Close<\/button>/);
+  assert.match(html, /On R St NW near 17th St NW, GPS 38\.91260, -77\.03890\./);
+  assert.equal(menuPlaceLine({ words: null, point: [-77.0389, 38.9126] }), "GPS 38.91260, -77.03890.", "no words: the coordinates alone");
   assert.doesNotMatch(menuPlaceLine({ words: "on an unnamed path", point: [-77.0389, 38.9126] }), /Near|miles/);
   const labels = [...html.matchAll(/class="ride-311-kind">(?:<svg[\s\S]*?<\/svg>)?([^<]+)<\/button>/g)].map((m) => m[1]);
   assert.deepEqual(labels, ["Pothole", "Downed tree", "Vehicle parked in a bike lane", "Roadway or bikeway obstructed", "Streetlight out", "Something else"]);
   assert.deepEqual(labels, REPORT_KINDS.map((k) => k.label));
   assert.match(renderToStaticMarkup(createElement(Ride311Menu, { id: "m", open: false, place: null, onPick: () => {}, onClose: () => {} })), /hidden=""/);
-  assert.match(menuPlaceLine(null), /Check it before you send/);
-  // RideMode: the button only when shown, a disclosure; a pick opens the report with that problem chosen.
+  // RideMode: the button only when shown, a disclosure; a pick closes the menu and logs the problem.
   assert.match(ride, /\{show311 && \(/);
   assert.match(ride, /aria-label=\{RIDE_311_NAME\}\s+aria-expanded=\{menu311\}\s+aria-controls=\{menu311Id\}/);
-  assert.match(ride, /const pick311 = \(kind: ReportKind\) => \{\s*setReportKind\(kind\);\s*setMenu311\(false\);/);
+  assert.match(ride, /const pick311 = \(kind: ReportKind\) => \{\s*setMenu311\(false\);\s*button311\.current\?\.focus\(\);/);
   assert.match(ride, /<details className="fold ride-report" open=\{open\} onToggle=\{\(event\) => onOpen\(event\.currentTarget\.open\)\}>/);
   assert.match(ride, /if \(event\.key === "Escape" && menu311\) \{\s*event\.preventDefault\(\);\s*close311\(\);/);
   // About 60 px round, in the side buttons on the right edge (the owner, 2026-10-17).
