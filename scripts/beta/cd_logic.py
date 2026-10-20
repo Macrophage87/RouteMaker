@@ -335,7 +335,7 @@ STEPS = (
     "frontend",  # front end install started (the index may be the new one)
     "started",  # api and worker started on the new image
     "services",  # photon and the routers recreated for a compose change
-    "routers",  # the four routers restarted for a valhalla/*.json change
+    "routers",  # the routers restarted for a valhalla/*.json change
 )
 
 
