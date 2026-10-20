@@ -46,6 +46,20 @@ class TestThroughTheApi:
         assert ahead[0]["locations"][0]["heading"] == 270
         assert ahead[0]["locations"][0]["heading_tolerance"] == routing.HEADING_TOLERANCE_DEG
 
+    def test_ahead_only_reaches_the_plan(self, client, segments, router, monkeypatch) -> None:
+        router(standard_router())
+        seen: list[routing.Dials] = []
+        real = routing.plan_onward
+
+        def spy(points, preset_name, dials=None, **kw):
+            seen.append(dials)
+            return real(points, preset_name, dials=dials, **kw)
+
+        monkeypatch.setattr(routing, "plan_onward", spy)
+        response = post(client, {**good_body(), "heading": 270, "ahead_only": True})
+        assert response.status_code == 200, response.content
+        assert seen and seen[0].ahead_only is True
+
     @pytest.mark.parametrize("heading", [-1, 360, "north"])
     def test_a_heading_out_of_range_is_refused(self, client, router, heading) -> None:
         fake = router(standard_router())
@@ -94,6 +108,19 @@ class TestPlanOnward:
     def test_the_u_turn_wins_when_it_saves_half_a_mile(self, planned) -> None:
         planned(answer(EAST, 2000.0 + routing.UTURN_SAVING_M))
         assert self.onward()["geometry"]["coordinates"][1] == list(WEST[1])
+
+    def test_after_two_u_turns_the_way_ahead_wins_whatever_turning_saves(self, planned) -> None:
+        # The owner, 2026-10-20: "on the third time assume that the user wants to stay on that path"
+        planned(answer(EAST, 2000.0 + 10 * routing.UTURN_SAVING_M))
+        dials = routing.Dials(heading=90.0, ahead_only=True)
+        onward = routing.plan_onward([[-77.05, 38.9], [-77.06, 38.9]], "default", dials=dials)
+        assert onward["geometry"]["coordinates"][1] == list(EAST[1])
+
+    def test_ahead_only_with_no_way_ahead_still_turns_round(self, planned) -> None:
+        planned(routing.NoRoute("no route"))
+        dials = routing.Dials(heading=90.0, ahead_only=True)
+        onward = routing.plan_onward([[-77.05, 38.9], [-77.06, 38.9]], "default", dials=dials)
+        assert onward["geometry"]["coordinates"][1] == list(WEST[1])
 
     def test_no_way_ahead_keeps_the_u_turn(self, planned) -> None:
         planned(routing.NoRoute("no route"))

@@ -68,6 +68,7 @@ from rebuild_fixtures import (
     SECURED_ROAD_ID,
     SEPARATE_ROAD_ID,
     SINGLETRACK_ID,
+    SUBURBAN_SIDEWALK_ID,
     TOWPATH_ABOVE_ID,
     TOWPATH_BELOW_ID,
     TRACK_GRADE1_ID,
@@ -628,6 +629,30 @@ def test_a_circle_parks_walkway_and_its_crossing_open_to_bicycles(
                 assert tags[way_id].get("rm:no_bicycle") is None, (variant.value, way_id)
     assert seen
     assert CIRCLE_WALKWAY_ID not in context.no_bicycle
+
+
+def test_a_sidewalk_is_ridden_as_a_last_resort_but_not_on_mass_rides(
+    tmp_path, segment_schemas, states
+) -> None:
+    """The owner, 2026-10-20: "Bikes can go on sidewalks". An untagged sidewalk outside
+    downtown carries `rm:sidewalk` into every graph but Mass Ride's and is rated LTS 3;
+    the downtown one stays barred and the circle park's crossing stays plainly open."""
+    from pipeline.extract import read_ways
+
+    context, _stored = run_dials_extract(tmp_path)
+    assert SUBURBAN_SIDEWALK_ID in context.sidewalk_rides
+    assert CBD_SIDEWALK_ID not in context.sidewalk_rides
+    assert CIRCLE_CROSSING_ID not in context.sidewalk_rides, "the circle parks open it outright"
+    assert int(context.stress_by_way[SUBURBAN_SIDEWALK_ID].tier) == 3
+    seen = set()
+    for variant in Variant:
+        tags = {w.osm_id: w.tags for w in read_ways(context.variant_pbf(variant))}
+        if SUBURBAN_SIDEWALK_ID not in tags:
+            continue
+        seen.add(variant)
+        expected = None if variant is Variant.NO_TRAIL else "yes"
+        assert tags[SUBURBAN_SIDEWALK_ID].get("rm:sidewalk") == expected, variant.value
+    assert Variant.STANDARD in seen
 
 
 def test_a_downtown_sidewalk_is_barred_to_bicycles_in_every_graph(

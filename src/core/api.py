@@ -351,6 +351,14 @@ class RouteIn(Schema):
             " a loop, Bikeshare and the transit ride types."
         ),
     )
+    ahead_only: StrictBool = Field(
+        default=False,
+        description=(
+            "With `heading`: the rider has ridden on past two re-routes' U-turns, so the route"
+            " that sets off ahead is answered whatever turning round would save. A U-turn is"
+            " still answered where there is no way ahead."
+        ),
+    )
     loop: StrictBool = Field(
         default=False,
         description=(
@@ -4157,6 +4165,7 @@ def _bike_dials(body: RouteIn) -> routing.Dials:
         follow_exact=body.follow_exact,
         straight=tuple(body.straight_legs),
         heading=body.heading,
+        ahead_only=body.ahead_only,
     )
 
 

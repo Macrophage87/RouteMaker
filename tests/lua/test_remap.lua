@@ -1105,11 +1105,28 @@ check("a stricter access tag is kept on it",
 check("an unmarked footway is not opened",
   M.remap_way({ highway = "footway" }, { is_trail_class = true }).bicycle == nil)
 
--- A short sidewalk stretch where a bike way stops (routemaker.walk_links, 2026-10-20).
-check("a walk link is opened at a walk",
+-- A sidewalk ridden as a last resort (routemaker.sidewalks, 2026-10-20).
+local ridden = M.remap_way({ highway = "footway", footway = "sidewalk" },
+  { sidewalk = true, is_trail_class = true, stress_tier = 3 })
+check("a ridden sidewalk is opened with the stress penalty",
+  ridden.bicycle == "use_sidepath")
+check("and priced at the sidewalk speed", ridden["maxspeed:practical"] == M.SIDEWALK_SPEED)
+check("and given no road's graded lanes", ridden["lanes:forward"] == nil)
+check("a ridden sidewalk never overrules a bicycle tag",
+  M.remap_way({ highway = "footway", bicycle = "no" },
+    { sidewalk = true, is_trail_class = true }).bicycle == nil)
+check("nor a closure reason (a CBD sidewalk)",
+  M.remap_way({ highway = "footway", footway = "sidewalk" },
+    { sidewalk = true, is_trail_class = true, no_bicycle = "cbd_sidewalk" }).bicycle == "no")
+
+-- A footway into a rail station (routemaker.station_links, 2026-10-20): walked.
+check("a station link is opened at a walk",
   M.remap_way({ highway = "footway", footway = "sidewalk" },
     { walk_link = true, is_trail_class = true }).bicycle == "dismount")
-check("a walk link never overrules a bicycle tag",
+check("and stays walked if it is a sidewalk too",
+  M.remap_way({ highway = "footway", footway = "sidewalk" },
+    { walk_link = true, sidewalk = true, is_trail_class = true }).bicycle == "dismount")
+check("a station link never overrules a bicycle tag",
   M.remap_way({ highway = "footway", bicycle = "no" },
     { walk_link = true, is_trail_class = true }).bicycle == nil)
 check("nor a closure reason (a CBD sidewalk)",
