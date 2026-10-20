@@ -105,6 +105,8 @@ JOG_MIN_M = 15.0
 # A roundabout or circle by its name ("Dupont Circle Northwest"): never a jog's
 # middle; the turn is read across it, as the net movement.
 CIRCLE_NAME = re.compile(r"\b(?:circle|roundabout)\b", re.IGNORECASE)
+# The ways off a circle that are counted as its exits (`circle_exit`): streets.
+EXIT_USES = frozenset({"road", "living_street"})
 # The words for a turn's movement, where it is one.
 TURN_WORDS = {
     "left": "Left",
@@ -756,6 +758,8 @@ class _Turn:
     stay: bool = False
     # An unusual junction's shape for the ride card's diagram (`junction_shape`).
     shape: dict | None = None
+    # The way off a circle (`circle_exit`): {"number": its exit, "circle": its name}.
+    exit: dict | None = None
 
 
 def _turn_deg(heading_in: float, heading_out: float) -> float:
@@ -911,6 +915,79 @@ def main_road_side(heading_out: float | None, others, prior) -> str | None:
     return "before" if _parallel_main(heading_out, prior) else "after"
 
 
+def ordinal(number: int) -> str:
+    """1st, 2nd, 3rd, 4th, ... 11th, 12th, 13th, ... 21st."""
+    if number % 100 in (11, 12, 13):
+        return f"{number}th"
+    return f"{number}{ {1: 'st', 2: 'nd', 3: 'rd'}.get(number % 10, 'th') }"
+
+
+def exit_words(number: int, street: str, circle: str | None) -> str:
+    """ "Take the 3rd exit onto P Street Northwest at Dupont Circle Northwest"; "... at the
+    roundabout" where it has no name. The exit first, so the ride card shows it whole."""
+    return f"Take the {ordinal(number)} exit onto {street} at {circle or 'the roundabout'}"
+
+
+def _on_circle(atom: Atom) -> bool:
+    return atom.roundabout or any(CIRCLE_NAME.search(name) for name in atom.names)
+
+
+def circle_exit(entry: Atom, ring: list[Atom], way_off: Atom) -> dict | None:
+    """The way off a circle (the owner, 2026-10-20, chose "Ring picture + exit number"):
+    {"number": the exit the route takes, counting the streets off the ring it passes;
+    "circle": the circle's name, or None; "shape": the ring for the ride card}, or None
+    where a heading is not known.
+
+    An exit is another way at a ring node the route passes (not the node it comes onto
+    the ring at) that is a street (EXIT_USES) a car may drive away on: a slip lane, a
+    service lane, a path or a way only into the ring is not counted, so the count is the
+    streets a rider sees leave. The shape is {"out", "others", "ring"}: the way off and
+    the exits passed, as turns from the heading in (where each leaves the ring, near
+    enough, for a street leaves a ring about square), and "right" where the route bears
+    right onto the ring (round it anticlockwise, as in the US) or "left"."""
+    heading_in = entry.heading_out
+    if heading_in is None or way_off.heading_in is None or ring[0].heading_in is None:
+        return None
+    passed: list[float] = []
+    for atom in ring[1:]:
+        for heading, use, *rest in atom.others or ():
+            drive = rest[1] if len(rest) > 1 else None
+            if heading is None or use not in EXIT_USES or drive in ("backward", "none"):
+                continue
+            passed.append(_turn_deg(heading_in, heading))
+    names = next((atom.names for atom in ring if atom.names), ())
+    side = "right" if _turn_deg(heading_in, ring[0].heading_in) >= 0 else "left"
+    return {
+        "number": len(passed) + 1,
+        "circle": street_label(names),
+        "shape": {
+            "out": round(_turn_deg(heading_in, way_off.heading_in)),
+            "others": [round(t) for t in passed],
+            "ring": side,
+        },
+    }
+
+
+def _circle_exits(atoms: list[Atom]) -> dict[int, dict]:
+    """`circle_exit` for each time a leg's atoms go onto a circle and off it again, by
+    the id of the atom the way off begins with."""
+    found: dict[int, dict] = {}
+    i = 0
+    while i < len(atoms):
+        if not _on_circle(atoms[i]):
+            i += 1
+            continue
+        j = i
+        while j < len(atoms) and _on_circle(atoms[j]):
+            j += 1
+        if i > 0 and j < len(atoms):
+            way = circle_exit(atoms[i - 1], atoms[i:j], atoms[j])
+            if way is not None:
+                found[id(atoms[j])] = way
+        i = j
+    return found
+
+
 def _street_words(run: _Run) -> str:
     if run.untraced:
         return UNTRACED_STREET
@@ -943,7 +1020,9 @@ def _stretch_sentence(
     event = turn.event if turn else None
     if turn is not None:
         movement = turn.movement
-        if movement in TURN_WORDS and turn.stay:
+        if turn.exit is not None:
+            lead = exit_words(turn.exit["number"], _in_sentence(street), turn.exit["circle"])
+        elif movement in TURN_WORDS and turn.stay:
             lead = f"{TURN_WORDS[movement]} to stay on {_in_sentence(street)}"
         elif movement in TURN_WORDS:
             lead = f"{TURN_WORDS[movement]} onto {_in_sentence(street)}"
@@ -1174,6 +1253,8 @@ def describe_both(
     alone (`RelationName`): a stretch of one has `relation_name` true.
     """
     runs: list[_Run] = []
+    # The ways off circles, by the atom the way off begins with (`_circle_exits`).
+    exits: dict[int, dict] = {}
     for leg, content in enumerate(legs):
         if isinstance(content, (int, float)):
             if content > 0:
@@ -1192,6 +1273,7 @@ def describe_both(
                     )
                 )
             continue
+        exits.update(_circle_exits(content))
         leg_runs = _coalesce(_runs_of(content, leg))
         runs.extend(_absorb_tiny(leg_runs))
     traced = sum(run.metres for run in runs)
@@ -1240,7 +1322,12 @@ def describe_both(
             shape = junction_shape(
                 before.last.heading_out, run.first.heading_in, run.first.others, service, main
             )
-        turns[i] = _Turn(movement, event, same, shape)
+        circle = exits.get(id(run.first)) if run.first is not None else None
+        exit = None
+        if circle is not None and movement is not None and not same:
+            exit = {"number": circle["number"], "circle": circle["circle"]}
+            shape = circle["shape"]
+        turns[i] = _Turn(movement, event, same, shape, exit)
 
     entries: list[tuple[tuple[float, int, int], dict]] = []
     shared: list[tuple[tuple[float, int, int], dict]] = []
@@ -1296,6 +1383,7 @@ def describe_both(
                         "severity": severity,
                         **({"stay": True} if turn.stay else {}),
                         **({"shape": turn.shape} if turn.shape else {}),
+                        **({"exit": turn.exit} if turn.exit else {}),
                     },
                     severity=severity,
                 ),
@@ -1412,6 +1500,7 @@ def describe_both(
                         "severity": severity,
                         **({"stay": True} if turn.stay else {}),
                         **({"shape": turn.shape} if turn.shape else {}),
+                        **({"exit": turn.exit} if turn.exit else {}),
                     },
                     severity=severity,
                 ),

@@ -1806,3 +1806,79 @@ class TestServiceRoadMainRoad:
             )
         ]
         assert "main" not in (d.describe(legs)[1]["turn"].get("shape") or {})
+
+
+def ringed(atoms, *others):
+    """Ring atoms, the start of each later ring edge given the ways off at its node."""
+    out = [replace(atom, roundabout=True) for atom in atoms]
+    for k, ways in enumerate(others, start=1):
+        out[k] = replace(out[k], others=tuple(ways))
+    return out
+
+
+class TestCircleExits:
+    """The owner, 2026-10-20, on traffic circles: a ring picture and the exit number
+    ("Ring picture + exit number")."""
+
+    def legs(self):
+        # North on Massachusetts Avenue into the ring, bearing right (anticlockwise);
+        # it passes 18th Street (east, two-way) and New Hampshire Avenue (north, only
+        # into the ring), a slip lane and a footway, and leaves west on P Street.
+        ring = ringed(
+            road("Dupont Circle Northwest", 3, 240, 45, 300),
+            [(80.0, "road", "secondary", "both"), (60.0, "turn_channel", "secondary", "both")],
+            [(0.0, "road", "secondary", "backward"), (20.0, "footway", None, "none")],
+            [(330.0, "road", "secondary", "forward")],
+        )
+        return [
+            flat(
+                road("Massachusetts Avenue Northwest", 3, 600, 0, 0),
+                ring,
+                road("P Street Northwest", 3, 600, 270, 270),
+            )
+        ]
+
+    def test_the_way_off_says_its_exit(self):
+        entries = d.describe(self.legs())
+        off = entries[-1]
+        assert off["turn"]["exit"] == {"number": 3, "circle": "Dupont Circle Northwest"}
+        assert (
+            ": Take the 3rd exit onto P Street Northwest at Dupont Circle Northwest,"
+            in (off["text"])
+        )
+        assert off["turn"]["shape"] == {"out": -90, "others": [80, -30], "ring": "right"}
+
+    def test_a_small_circle_folded_in_still_says_its_exit(self):
+        legs = self.legs()
+        small = [a for a in legs[0] if not a.roundabout]
+        ring = [a for a in legs[0] if a.roundabout][:2]
+        ring = [replace(a, metres=30.0) for a in ring]
+        legs = [small[:10] + ring + small[10:]]
+        entries = d.describe(legs)
+        assert [e["street"] for e in entries] == [
+            "Massachusetts Avenue Northwest",
+            "P Street Northwest",
+        ]
+        assert entries[1]["turn"]["exit"]["number"] == 2
+        assert entries[1]["turn"]["shape"]["ring"] == "right"
+
+    def test_an_unnamed_roundabout_is_the_roundabout(self):
+        ring = ringed(road(None, 2, 60, 300, 330))
+        entries = d.describe(
+            [flat(road("A Street", 2, 600, 0, 0), ring, road("B Street", 2, 600, 270, 270))]
+        )
+        assert ": Take the 1st exit onto B Street at the roundabout," in entries[-1]["text"]
+        assert entries[-1]["turn"]["shape"]["ring"] == "left"
+
+    def test_ordinals(self):
+        assert [d.ordinal(n) for n in (1, 2, 3, 4, 11, 12, 13, 21, 22)] == [
+            "1st",
+            "2nd",
+            "3rd",
+            "4th",
+            "11th",
+            "12th",
+            "13th",
+            "21st",
+            "22nd",
+        ]

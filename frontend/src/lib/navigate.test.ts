@@ -34,6 +34,8 @@ import {
   compassWord,
   crossingWords,
   cueSpoken,
+  exitWords,
+  ordinal,
   isUnnamed,
   measureMap,
   nextAction,
@@ -1533,4 +1535,31 @@ test("service roads: leaving the highway straight on for its service road is sai
   const calmer = route(4, 2).cues.find((c) => c.atM > 1400 && c.atM < 1600);
   assert.equal(calmer?.kind, "calmer");
   assert.match(calmer?.text ?? "", /^Continue onto the service road beside East-West Highway, /);
+});
+
+test("off a circle the cue says its exit, said and shown; 'now' is the exit (the owner, 2026-10-20: ring picture + exit number)", () => {
+  assert.deepEqual([1, 2, 3, 4, 11, 21, 22].map(ordinal), ["1st", "2nd", "3rd", "4th", "11th", "21st", "22nd"]);
+  assert.equal(exitWords({ number: 3, circle: "Dupont Circle Northwest" }, "P Street Northwest"), "Take the 3rd exit onto P Street Northwest at Dupont Circle Northwest");
+  assert.equal(exitWords({ number: 1, circle: null }, null), "Take the 1st exit at the roundabout");
+  const route = lRoute();
+  route.description = [
+    stretch(0, 1000, "0.0 to 0.6 mi (0.0 to 1.0 km): Massachusetts Avenue Northwest, busy road (LTS 3).", { street: "Massachusetts Avenue Northwest" }),
+    stretch(1000, 2000, "0.6 to 1.2 mi (1.0 to 2.0 km): Take the 3rd exit onto P Street Northwest at Dupont Circle Northwest, busy road (LTS 3).", {
+      street: "P Street Northwest",
+      turn: {
+        movement: "left",
+        onto: "P Street Northwest",
+        control: null,
+        severity: null,
+        shape: { out: -90, others: [80, -30], ring: "right" },
+        exit: { number: 3, circle: "Dupont Circle Northwest" },
+      },
+    }),
+  ];
+  const [turn] = rideModel(route).cues.filter((c) => c.kind === "turn");
+  assert.equal(turn.text, "Take the 3rd exit onto P Street Northwest at Dupont Circle Northwest.");
+  assert.deepEqual(turn.exit, { number: 3, circle: "Dupont Circle Northwest" });
+  assert.equal(turn.junction?.ring, "right");
+  assert.equal(cueSpoken(turn, "now", 10), "Exit now onto P Street Northwest.");
+  assert.equal(cueSpoken(turn, "advance", 150), "In 500 feet, take the 3rd exit onto P Street Northwest at Dupont Circle Northwest.");
 });

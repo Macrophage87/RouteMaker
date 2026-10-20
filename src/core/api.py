@@ -1253,6 +1253,20 @@ class DescriptionShapeOut(Schema):
             " short of it)."
         ),
     )
+    ring: Literal["right", "left"] | None = Field(
+        default=None,
+        description=(
+            "On the way off a circle: drawn as a ring, entered bearing right (round it"
+            " anticlockwise) or left; `others` are then the exits passed."
+        ),
+    )
+
+
+class DescriptionExitOut(Schema):
+    """The way off a circle (`describe.circle_exit`)."""
+
+    number: int = Field(description="The exit taken, counting the streets off the ring passed.")
+    circle: str | None = Field(description="The circle's name; null where it has none.")
 
 
 class DescriptionTurnOut(Schema):
@@ -1280,6 +1294,10 @@ class DescriptionTurnOut(Schema):
             "An unusual junction's shape, which the ride card draws in place of its plain"
             " arrow (`describe.junction_shape`); absent at a plain crossroads or T."
         ),
+    )
+    exit: DescriptionExitOut | None = Field(
+        default=None,
+        description='Off a circle: "Take the 3rd exit onto ... at Dupont Circle Northwest".',
     )
 
 

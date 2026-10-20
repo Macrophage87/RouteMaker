@@ -431,8 +431,9 @@ class Piece:
     # every piece of an edge but its first.
     fork: str | None = field(default=None, compare=False)
     # The other ways at the node the piece's edge begins at, each (its heading away from
-    # the node, Valhalla's `use`, its road class), for the ride card's junction diagram
-    # (`describe.junction_shape`); None on every piece of an edge but its first.
+    # the node, Valhalla's `use`, its road class and driveability), for the ride card's
+    # junction diagram (`describe.junction_shape`); None on every piece of an edge but
+    # its first.
     others: tuple | None = field(default=None, compare=False)
     # The other ways at the junctions just short of that node (`describe.SHAPE_NEAR_M`),
     # as `others`: where a main road was crossed just before a turn onto its service
@@ -524,11 +525,17 @@ def _fork_of(before: dict | None, edge: dict) -> str | None:
 
 def _others_of(before: dict | None) -> tuple | None:
     """The other ways at the node a traced edge begins at (`describe.junction_shape`):
-    the edge before's `end_node.intersecting_edges`, each (heading away, use, road class)."""
+    the edge before's `end_node.intersecting_edges`, each (heading away, use, road class,
+    driveability)."""
     if before is None:
         return None
     return tuple(
-        (_heading(other.get("begin_heading")), other.get("use"), other.get("road_class"))
+        (
+            _heading(other.get("begin_heading")),
+            other.get("use"),
+            other.get("road_class"),
+            other.get("driveability"),
+        )
         for other in (before.get("end_node") or {}).get("intersecting_edges") or []
     )
 

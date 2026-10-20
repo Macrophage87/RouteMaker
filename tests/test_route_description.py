@@ -358,7 +358,7 @@ class TestSchema:
         entry = describe.describe([atoms])[1]
         turn = api.DescriptionEntryOut.model_validate(entry).model_dump()["turn"]
         assert turn["stay"] is True
-        assert turn["shape"] == {"out": 45, "others": [-90, 0, 90]}
+        assert turn["shape"] == {"out": 45, "others": [-90, 0, 90], "main": None, "ring": None}
 
     def test_an_answer_without_it_still_validates_and_has_none(self):
         assert api.RouteOut.model_fields["description"].default is None
@@ -733,7 +733,7 @@ class TestForksFromTheTrace:
         pieces = routing.pieces_of_trace(trace)
         assert [p.fork for p in pieces] == [None, "left", None]
         # And the other ways at the node, for the ride card's junction diagram.
-        assert [p.others for p in pieces] == [None, ((3.0, "cycleway", None),), None]
+        assert [p.others for p in pieces] == [None, ((3.0, "cycleway", None, None),), None]
 
     def test_the_ways_just_short_of_a_node_ride_on_the_edge_after_it(self):
         """A main road crossed within `describe.SHAPE_NEAR_M` before a turn: its ways
@@ -766,8 +766,8 @@ class TestForksFromTheTrace:
             ],
         }
         firsts = {p.way_id: p for p in reversed(routing.pieces_of_trace(trace))}
-        assert firsts[3].others == ((0.0, "road", "residential"),)
-        assert firsts[3].prior == ((90.0, "road", "primary"),)
+        assert firsts[3].others == ((0.0, "road", "residential", None),)
+        assert firsts[3].prior == ((90.0, "road", "primary", None),)
         # Past SHAPE_NEAR_M the junction is not the turn's.
         trace["edges"][1]["length"] = 0.08
         firsts = {p.way_id: p for p in reversed(routing.pieces_of_trace(trace))}

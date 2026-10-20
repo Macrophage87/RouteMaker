@@ -273,7 +273,9 @@ export interface DescriptionEntry {
      * An unusual junction's ways (v0.10.0, describe.junction_shape), in degrees from straight ahead, clockwise
      * positive: the ride card draws them in place of the plain arrow. Absent or null at a plain crossroads or T.
      */
-    shape?: { out: number; others: number[]; main?: "before" | "after" | null } | null;
+    shape?: { out: number; others: number[]; main?: "before" | "after" | null; ring?: "right" | "left" | null } | null;
+    /** The way off a circle (v0.10.0, describe.circle_exit): "At Dupont Circle Northwest, take the 3rd exit onto ...". */
+    exit?: { number: number; circle: string | null } | null;
   } | null;
   severity?: "orange" | "red" | "avoid" | null;
   via?: number | null;
