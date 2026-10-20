@@ -20,6 +20,7 @@ export function RideSummaryCard({
   stats,
   endedAt,
   note,
+  large = false,
   onDone,
   onUndo,
 }: {
@@ -27,6 +28,8 @@ export function RideSummaryCard({
   endedAt: number;
   /** A line under the title where the plan changed (Plan: "The route now starts where you are."). */
   note?: string | null;
+  /** The ride's Large text (lib/rideOutput.ts RideTextSize), kept from the ride: bigger figures, one to a line. */
+  large?: boolean;
   onDone: () => void;
   onUndo: () => void;
 }) {
@@ -40,7 +43,7 @@ export function RideSummaryCard({
   const segments = ridden >= STRESS_MIN_M ? stressSegments(stats.stressM) : [];
   return (
     <section
-      className="ride-summary"
+      className={large ? "ride-summary ride-summary-large" : "ride-summary"}
       aria-labelledby={titleId}
       onKeyDown={(event) => {
         if (event.key === "Escape") onDone();

@@ -267,7 +267,7 @@ test("a route's notes are one line each with an icon; their full words are in In
   assert.match(app, /<div id=\{moreId\} className="route-more-body" hidden=\{!more\}>[\s\S]*?share-image[\s\S]*?keep-offline/);
 });
 
-// ---- Ride mode's 311 button (the owner's choice 9) and Big text's icon (choice 11) ----------------------
+// ---- Ride mode's 311 button (the owner's choice 9) and the text-size icon (choice 11, Large text's button since 2026-10-20) ----------------------
 
 test("the 311 button shows only on the route inside DC; its menu has the six problems in the owner's words and order", () => {
   assert.equal(ride311Shown({ off: false, progressM: 100, insideDc: () => true }), true);
@@ -299,13 +299,21 @@ test("the 311 button shows only on the route inside DC; its menu has the six pro
   assert.match(css, /\.ride-rail \{\s*position: absolute;\s*right: 12px;/);
 });
 
-test("Big text is a setting, in the ride's Settings and the Settings page, not a side button", () => {
-  // The owner, 2026-10-17: "the text size should be moved to the settings page ... not something people will fiddle with mid ride".
-  assert.doesNotMatch(ride, /className="ride-round big-text"/);
-  assert.match(ride, /Turn the map to my heading\s*<\/label>\s*<BigTextField on=\{big\} onChange=\{onBig\} \/>/);
+test("Large text: a side button and Settings' switch, one choice; it replaced Big text (the owner, 2026-10-20)", () => {
+  // "It actually should have it's own button"; Big text went: "if you can fit the largest text in the half mode, then you're not gaining much".
+  assert.match(ride, /className="ride-round ride-text-size"\s+onClick=\{cycleText\}\s+aria-keyshortcuts="T"\s+aria-pressed=\{textSize === "large"\}\s+aria-label=\{RIDE_TEXT_BUTTON\}/);
+  // The change is said, as Where am I? is.
+  assert.match(ride, /announcer\.current\?\.answer\(said\);/);
+  assert.doesNotMatch(ride, /BigTextField|ride-big/);
   const sheets = src("../app/Sheets.tsx");
-  assert.match(sheets, /<SettingRow infoId="settings-big-text-info" about="big text" info=\{BIG_TEXT_HELP\}/);
-  assert.match(sheets, /role="switch"[^>]*aria-checked=\{props\.bigText\.on\}[^>]*onClick=\{\(\) => props\.bigText\.onChange\(!props\.bigText\.on\)\}/s);
+  assert.match(sheets, /<SettingRow infoId="settings-big-text-info" about="large text" info=\{RIDE_TEXT_HELP\}/);
+  assert.match(sheets, /role="switch"[^>]*aria-checked=\{props\.rideText\.size === "large"\}/s);
+  const css = src("../styles.css");
+  assert.match(css, /\.ride-large \.cue-card \{[^}]*height: 50%;/);
+  assert.doesNotMatch(css, /\.riding-big|\.ride-big/);
+  // The turn fills the card (RideMode sets --cue-fit), the small print 16 pt or more.
+  assert.match(ride, /set\("--cue-fit-d", distance\);/);
+  assert.match(css, /\.ride-large \.ride-togo,[^{]*\{\s*font-size: 16pt;/);
 });
 
 // ---- Go's start: the rider's current location by default (the owner, 2026-10-11 19:53 UTC) ----
