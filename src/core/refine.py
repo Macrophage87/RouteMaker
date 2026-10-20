@@ -101,7 +101,7 @@ import math
 from dataclasses import dataclass, field
 
 from routemaker import avoid_junctions as avoid_model
-from routemaker import calm, climbs, effort, grade_stress, trace_junctions
+from routemaker import calm, climbs, effort, grade_stress, junction_delay, trace_junctions
 from routemaker import intersections as model
 from routemaker.geo import Point, haversine
 
@@ -483,6 +483,10 @@ class Analysis:
     # (the junctions' colours are read as many levels up, `presets.shifted_severity`).
     real_classes: list | None = None
     shift: int = 0
+    # The seconds its junctions cost the rider, which the router's own time leaves out
+    # (`routemaker.junction_delay`, the owner, 2026-10-20: "Both", the time shown and the
+    # route chosen): priced in `score` as that much quiet riding.
+    junction_delay_s: float = 0.0
 
     @property
     def rated_classes(self) -> list:
@@ -521,7 +525,12 @@ class Analysis:
             lts2 = self.lts2_m if self.rated_lts2_m is None else self.rated_lts2_m
             extra += self.lts2_weight * lts3_added_m(ctx) * lts2
         extra -= ctx.hills_tolerate_weight * self.router_climb_m
-        return self.cost_s + ctx.quiet_cost * extra + avoid_model.penalty_s(self.avoid_passages)
+        return (
+            self.cost_s
+            + ctx.quiet_cost * extra
+            + avoid_model.penalty_s(self.avoid_passages)
+            + QUIET_COST_FACTOR * self.junction_delay_s
+        )
 
     @property
     def red_m(self) -> float:
@@ -936,6 +945,7 @@ def analyse(
         rated_lts2_m=stress_totals(*rated_metres(pieces, classes))["lts2_m"],
         real_classes=real_classes if shift or hazard_read else None,
         shift=shift,
+        junction_delay_s=junction_delay.delay_s(raws, routing.stop_as_yield),
     )
     if with_events:
         ctx.analyses[key] = result

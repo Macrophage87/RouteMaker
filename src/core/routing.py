@@ -95,6 +95,7 @@ from routemaker import (
     flow,
     grade_stress,
     intersections,
+    junction_delay,
     mdot_aadt,
     mtbmode,
     ridetime,
@@ -1931,6 +1932,14 @@ STRETCH_UNTRACED = "untraced"
 # Outside the District (OWNER-DECISIONS 427): Mass Ride figures are not supported there yet,
 # so the stretch has no width and no riders a minute; border roads count as inside (420).
 STRETCH_OUTSIDE_DC = "outside_dc"
+
+
+def stop_as_yield(lon: float, lat: float) -> bool:
+    """Whether a rider may take a stop sign at this point as a yield sign: inside the
+    District, its border roads not included (`routemaker.junction_delay`)."""
+    from .mass_tiles import inside_dc
+
+    return inside_dc(lon, lat, tolerance_m=0.0)
 
 
 def _outside_dc(piece) -> bool:
@@ -3847,6 +3856,9 @@ def plan(
                 traces=traces,
             )
         )
+        # The time its junctions cost the rider, which the router's own time leaves out
+        # (`routemaker.junction_delay`): part of the time shown.
+        delay = junction_delay.delay_s(raw_junctions, stop_as_yield)
         return {
             "preset": preset.name,
             "variant": variant,
@@ -3855,7 +3867,8 @@ def plan(
                 "coordinates": [[round(lon, 6), round(lat, 6)] for lon, lat in coordinates],
             },
             "distance_m": round(float(summary.get("length", 0.0)) * 1000.0, 1),
-            "duration_s": round(float(summary.get("time", 0.0)), 1),
+            "duration_s": round(float(summary.get("time", 0.0)) + delay, 1),
+            "junction_delay_s": round(delay, 1),
             "climb_m": round(climb, 1),
             "descent_m": round(descent, 1),
             "stress_m": {key: round(metres, 1) for key, metres in stress.items()},

@@ -3615,6 +3615,34 @@ The owner, 2026-10-03: "Actually, I like merging the runs, that sounds good." (2
   are stored (`routemaker.stress`); the merge cost assumes lanes by tier where
   none was read. None of the post-rebuild pricing has been run live.
 
+## Junction delay: the time stops and signals cost
+
+The owner, 2026-10-20: a route the planner chose over a rider's usual, flatter way took
+11 minutes longer than the router said, through a grid of stop signs, and the owner chose
+"Both": the delay counts in the time shown and in which route is picked.
+
+Valhalla's bicycle costing (3.9.1) times a junction as its `stopimpact` (0 to 7, from the
+roads' classes) times a turn cost of 0.15 s straight on, about a second at most, whatever
+controls it. `routemaker.junction_delay` adds what a rider loses, read at every node of the
+route's trace where it crosses or joins a road (`trace_junctions.junctions_of_trace`, with
+the router's `node.traffic_signal` and `edge.traffic_signal` flags):
+
+| At the junction | Delay | Why |
+|---|---|---|
+| A traffic signal on the node or within 30 m (100 ft) up the rider's approach | 15 s | the average wait for a random arrival at a 100 s cycle with 50 s of red (Webster's uniform delay), plus half a stop; inferred |
+| The rider gives way: crossing a road as busy as their own or busier, turning onto one, or crossing or leaving a path | 8 s | one stop at a steady effort: Fajans and Curry, ["Why Bicyclists Hate Stop Signs"](https://www.accessmagazine.org/spring-2001/bicyclists-hate-stop-signs), ACCESS 18 (2001), 14.2 against 10.9 mph |
+| The same in the District, where the road given way to is unclassified or residential | 4 s | DC lets a rider take a stop sign as a yield (the owner: "bikes aren't required to stop at stop signs if there's no cross traffic"); a slow-and-roll, inferred |
+| The rider on the busier road, a side road from one side, a turn off onto a quieter street, driveways and alleys | 0 | |
+
+Junctions within 35 m (115 ft) of each other along the route are one stop at the dearest
+(a divided road, a stop line and its junction). The answer's `duration_s` is the router's
+time plus `junction_delay_s`, and the calm search's score (`refine.Analysis.score`) adds the
+delay at what that much quiet riding costs the router (`QUIET_COST_FACTOR`). This is time,
+not stress: a junction's stress is still the intersection model's (section above) and the
+two do not replace each other. Stop and yield signs reach the router only through
+`/locate`, so the model reads who gives way from the roads' classes, not from the signs; no
+map rebuild is needed.
+
 ## The worker
 
 Procrastinate runs through its Django integration, so its job tables are
