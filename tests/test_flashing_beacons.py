@@ -108,6 +108,17 @@ class TestPricing:
         shared = m.share_controls(m.with_beacons([first, third], [BEACON]))
         assert [j.control for j in shared] == [Control.NONE, Control.SIGNAL]
 
+    def test_roads_of_the_same_stress_at_a_beacon_are_an_all_way_stop(self) -> None:
+        # Flashing red to every approach: two LTS 4 roads, no signs mapped.
+        other = Road(4, speed_mph=35, lanes=2, names=frozenset({"knowles avenue"}))
+        busy = crossing(incoming=other, outgoing=other)
+        (beaconed,) = m.with_beacons([busy], [BEACON])
+        assert beaconed.control is Control.ALL_STOP and beaconed.beacon
+        # LTS 3 against LTS 4 is a level apart: the LTS 3 road stops.
+        lts3 = Road(3, speed_mph=30, lanes=1, names=frozenset({"summit avenue"}))
+        (beaconed,) = m.with_beacons([crossing(incoming=lts3, outgoing=lts3)], [BEACON])
+        assert beaconed.control is Control.NONE
+
     def test_the_signs_still_count_once_the_signal_is_read_as_nothing(self) -> None:
         (beaconed,) = m.with_beacons([crossing()], [BEACON], [Control.STOP])
         event = m.assess(beaconed)

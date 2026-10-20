@@ -4880,7 +4880,10 @@ same with `--confirm`; `--actor` is the instance admin's Discord id, as for over
    Beacons (`TCD_Type` 2, 221 on 2026-10-20) and Warning Beacons (`TCD_Type` 3, 674),
    less any within 98 ft (30 m) of a listed signal. An ICB may flash red to every
    approach, an all-way stop, which the list does not say; the owner chose to read them
-   all (2026-10-20), and an all-way stop OSM maps with stop signs still prices as one. Step 2 of "Agency traffic signals"
+   all (2026-10-20). An all-way stop OSM maps with stop signs still prices as one, and
+   where no signs are mapped, roads within a stress level of each other are read as an
+   all-way stop and a quieter road meeting a busier one as a stop for the quieter road
+   (`intersections.beacon_control`, the owner's rule of 2026-10-20). Step 2 of "Agency traffic signals"
    above writes them to `reference/flashing-signals.json` from the layer already fetched;
    no new download. Then:
 

@@ -223,9 +223,9 @@ def mdot_sha_rows(doc: Mapping) -> tuple[list[dict], dict[str, int]]:
 # flashing red to the side street against free-flowing traffic, 2026-10-20) and an
 # Intersection Control Beacon. An ICB may flash red to every approach, an all-way stop,
 # which the list does not tell from a two-way one; the owner chose to read them all
-# (2026-10-20, "Include"), and a junction is then read by its mapped signs, so an
-# all-way stop OSM maps still prices as one. A School Warning Beacon flashes only at
-# school times and is left out.
+# (2026-10-20, "Include"), and a junction is then read by its mapped signs, or where
+# there are none by its roads' stress (`intersections.beacon_control`). A School
+# Warning Beacon flashes only at school times and is left out.
 MDOT_BEACON_TYPES = {"2": "Intersection Control Beacon", "3": "Warning Beacon"}
 # The file `scripts/install_reference_data.py --md-signals` writes beside signals.json
 # and `manage.py load_flashing_signals` loads (`core.flashing_signals`): the junction

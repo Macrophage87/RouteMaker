@@ -1030,6 +1030,7 @@ def with_beacons(
     signal (`BEACON_MATCH_M`): its control is what the signs say once the map's signal
     is read as nothing (`unsignalled`, one for each junction, from the router's flags;
     `Control.NONE` where not given), so a stop sign mapped on an approach still counts.
+    Where the signs say nothing, who flashes red is read from the roads (`beacon_control`).
     A junction with no signal is left as it is."""
     if not beacons:
         return list(junctions)
@@ -1037,9 +1038,34 @@ def with_beacons(
     for index, junction in enumerate(junctions):
         if junction.control is Control.SIGNAL and beacon_at(junction.lon, junction.lat, beacons):
             control = unsignalled[index] if unsignalled is not None else Control.NONE
+            if control is Control.NONE:
+                control = beacon_control(junction)
             junction = replace(junction, control=control, beacon=True)
         out.append(junction)
     return out
+
+
+# Roads this many levels apart or more at a beacon: the busier one flashes yellow and
+# the quieter one red. Closer than that, every approach flashes red.
+BEACON_PRIORITY_LEVELS = 1.0
+
+
+def beacon_control(junction: Junction) -> Control:
+    """Who stops at a flashing beacon whose signs the map does not have, read from the
+    roads' stress (the owner, 2026-10-20: "A low stress road crossing a high stress road
+    would probably have this issue. A low stress road against a low stress road wouldn't
+    have a high penalty to begin with. These are the flashing red vs flashing red."):
+    roads a level or more apart are a two-way stop, the quieter road stopping
+    (`Control.NONE`, which `crossing_ft` prices by the rider's road against the crossed
+    one); roads of about the same stress are an all-way stop."""
+    levels = [
+        road.level
+        for road in (junction.incoming, junction.outgoing, *junction.crossed)
+        if road.tier is not None
+    ]
+    if len(levels) >= 2 and max(levels) - min(levels) < BEACON_PRIORITY_LEVELS:
+        return Control.ALL_STOP
+    return Control.NONE
 
 
 # Events this close along the route are one junction as a rider meets it: a
