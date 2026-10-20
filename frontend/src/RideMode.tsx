@@ -646,6 +646,7 @@ export function RideMode({
   onTextSize,
   onView,
   onEnd,
+  resumeStats = null,
   water,
   trailMiles = null,
   geoEnv,
@@ -673,6 +674,8 @@ export function RideMode({
   onView: (view: RideView) => void;
   /** End ride: with the plan the ride leaves (part way, from here; lib/navigate.ts planAfterEnd) and the ride's figures. */
   onEnd: (after: EndedPlan, stats: RideStats) => void;
+  /** Undo after End ride: the ended ride's figures, to carry on from. */
+  resumeStats?: RideStats | null;
   /** The water layer's points, loaded if they are not yet (App's ensureWater); for the detours. */
   water?: () => Promise<WaterPoint[] | null>;
   /**
@@ -773,7 +776,8 @@ export function RideMode({
   // Ended (End ride, or unmounted): a re-plan answering late says nothing and changes nothing.
   const ended = useRef(false);
   // The ride's own figures for the summary at End ride (lib/rideStats.ts), from the Start press.
-  const statsRef = useRef<RideStats>(statsStart(Date.now()));
+  // Undo after End ride carries on from the figures so far, not from nought (the step across the pause not counted).
+  const statsRef = useRef<RideStats>(resumeStats ? statsPause(resumeStats) : statsStart(Date.now()));
   // Each re-plan's ticket: "Keep the planned route" or a newer re-plan voids an older one's answer.
   const replanTicket = useRef(0);
   const settingsId = useId();

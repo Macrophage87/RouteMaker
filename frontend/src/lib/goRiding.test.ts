@@ -49,7 +49,15 @@ test("6. an End ride button always in view, labelled End ride with its icon, one
   // The ride's summary (the owner, 2026-10-20), with Done and Undo; Undo starts the same ride.
   // Review F6: said by the page's always-mounted polite region (not a status region mounted full), the focus on Done.
   // Not timed (WCAG 2.2.1): it stays until Done, Undo or Escape.
-  assert.match(summary, /<section\s+className="ride-summary"\s+aria-labelledby=\{titleId\}/);
+  assert.match(summary, /<section className="ride-summary" aria-labelledby=\{titleId\}>/);
+  assert.doesNotMatch(summary, /key === "Escape"/);
+  // Done: Go emptied for the next trip, Plan's plan kept (the owner, 2026-10-20).
+  const finish = app.slice(app.indexOf("const finishRide = () => {"), app.indexOf("// The first ride's question"));
+  assert.match(finish, /endedRide\.current = null;\s*setRideEnded\(null\);\s*if \(mode === "go" && pointsRef\.current\.length > 0\) clearPlan\(\);\s*else backToRideOpener\(\);/);
+  // Undo carries on from the ended ride's figures; a new Start begins from nought.
+  assert.match(app, /setResumeStats\(ended\.stats\);\s*setRideStart\(ended\.start\);/);
+  assert.match(app, /setResumeStats\(null\);\s*setRideStart\(\(before\) =>/);
+  assert.match(ride, /useRef<RideStats>\(resumeStats \? statsPause\(resumeStats\) : statsStart\(Date\.now\(\)\)\)/);
   // Large text always (the owner, 2026-10-20: "Just use large for everything"), its small print never under 16 pt.
   assert.match(css, /\.ride-summary-figures dt,[^{]*\{\s*font-size: 16pt;/);
   assert.doesNotMatch(css + summary + app, /ride-summary-large/);
@@ -62,7 +70,7 @@ test("6. an End ride button always in view, labelled End ride with its icon, one
   assert.doesNotMatch(app, /focusStartAfterRide/);
   assert.match(ride, /onFocus: \(\) => timer\.current\?\.focus\(true\)/);
   assert.match(app, /\{!riding && rideEnded && \(\s*<RideSummaryCard\s*key=\{rideEnded\.n\}[\s\S]*?onUndo=\{undoEndRide\}\s*onDone=\{finishRide\}/);
-  assert.match(app, /startRideGesture\(ridePrefs\);\s*setRideStart\(ended\.start\);/);
+  assert.match(app, /startRideGesture\(ridePrefs\);\s*setResumeStats\(ended\.stats\);\s*setRideStart\(ended\.start\);/);
 });
 
 test("3. 311: the pick is the report (sent, or the text app filled in); the note after, never before", () => {

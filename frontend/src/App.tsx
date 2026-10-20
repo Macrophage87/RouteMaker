@@ -2803,6 +2803,7 @@ export function App() {
     // Its sharer is not held to it ("Maybe make the sharer able to reroute").
     const opened = sharedOpen?.answer === route ? sharedOpen : null;
     const fixed = fixedRide(leg, opened, !!rest);
+    setResumeStats(null);
     setRideStart((before) => ({ route, ...leg, dials: rideDials({ ...planDials, closuresNow: true }, rest ? null : route), fixed, n: (before?.n ?? 0) + 1 }));
     // The installed app keeps the ride's route as the last ride (OWNER-DECISIONS 465a); End ride gives it
     // the map the ride kept. A browser tab keeps nothing unless the rider presses Keep for offline.
@@ -3294,7 +3295,9 @@ export function App() {
   // The ride just ended, kept for Undo while its summary shows (the owner, 2026-10-20: "When ending a ride, perhaps
   // summary stats rather than programming that ride again"). In memory only, as the ride itself is.
   // `from`: the plan End ride left starting where the rider was (Plan, part way), so Undo takes that edit back too.
-  const endedRide = useRef<{ start: NonNullable<typeof rideStart>; from: LonLat[] | null } | null>(null);
+  const endedRide = useRef<{ start: NonNullable<typeof rideStart>; from: LonLat[] | null; stats: RideStats } | null>(null);
+  // Undo's ride carries on from the ended ride's figures (RideMode's resumeStats); a new Start begins from nought.
+  const [resumeStats, setResumeStats] = useState<RideStats | null>(null);
   const [rideEnded, setRideEnded] = useState<{ n: number; stats: RideStats; at: number; note: string | null } | null>(null);
   const rideNow = useRef({ start: rideStart, mode });
   rideNow.current = { start: rideStart, mode };
@@ -3314,7 +3317,7 @@ export function App() {
       setFromHere((f) => [...f, from![0]]);
     }
     const note = from ? RIDE_ENDED_FROM_HERE_NOTE : endedIn !== "go" && after === "no-fix" ? RIDE_ENDED_NO_FIX_NOTE : null;
-    endedRide.current = start ? { start, from } : null;
+    endedRide.current = start ? { start, from, stats } : null;
     setRiding(false);
     setRideStart(null);
     setRideView(null);
@@ -3335,6 +3338,7 @@ export function App() {
     // The plan End ride moved to where the rider was goes back, unless it has been edited since.
     if (ended.from && pointsRef.current === ended.from) edits.retract();
     startRideGesture(ridePrefs);
+    setResumeStats(ended.stats);
     setRideStart(ended.start);
     setFollow(true);
     setRideView(null);
@@ -4566,6 +4570,7 @@ export function App() {
           onTextSize={setRideText}
           onView={setRideView}
           onEnd={endRide}
+          resumeStats={resumeStats}
           water={ensureWater}
           trailMiles={trailMiles}
           keepLastRide={isStandalone()}

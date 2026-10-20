@@ -3,8 +3,8 @@
  * summary stats rather than programming that ride again"). Kept from the ride's fixes, in memory only, as the ride
  * itself is: nothing is stored or sent.
  *
- * - Distance: the straight line between good fixes (POOR_FIX_M), once the rider has moved MOVE_MIN_M from the last
- *   one counted, so GPS wander while stopped adds nothing. A jump faster than MAX_SPEED_MS (a bad fix) is not counted.
+ * - Distance: the straight line between good fixes (POOR_FIX_M), once the rider has moved MOVE_MIN_M, and more than
+ *   either fix's accuracy, from the last one counted, so GPS wander while stopped adds nothing. A jump faster than MAX_SPEED_MS (a bad fix) is not counted.
  * - Moving time: the time of each counted step ridden at MOVING_MIN_MS or more, each step capped at STEP_MAX_MS so a
  *   gap in the fixes is not all taken as riding.
  * - Climbing: the planned route's elevation profile over the stretch ridden along it (fixes carry no reliable
@@ -44,7 +44,7 @@ export interface RideStats {
   /** Heights along the ride (metres along its distance, metres up), for the chart. */
   elevation: { atM: number; m: number }[];
   /** The last counted fix: where, when, and where along which route. */
-  last: { point: LonLat; at: number; progressM: number | null; model: RideModel | null } | null;
+  last: { point: LonLat; at: number; accuracyM: number; progressM: number | null; model: RideModel | null } | null;
 }
 
 export function statsStart(now: number): RideStats {
@@ -56,7 +56,6 @@ export function statsPause(stats: RideStats): RideStats {
   return stats.last ? { ...stats, last: null } : stats;
 }
 
-/** Metres climbed along the profile from `fromM` to `toM` (forward only). */
 /** The profile's height `x` metres along the route, or null where it has none. */
 export function profileAt(profile: Pick<RouteProfile, "m" | "elevation_m"> | null | undefined, x: number): number | null {
   if (!profile) return null;
@@ -73,6 +72,7 @@ export function profileAt(profile: Pick<RouteProfile, "m" | "elevation_m"> | nul
   return null;
 }
 
+/** Metres climbed along the profile from `fromM` to `toM` (forward only). */
 export function profileGain(profile: Pick<RouteProfile, "m" | "elevation_m"> | null | undefined, fromM: number, toM: number): number {
   if (!profile || !(toM > fromM)) return 0;
   const { m, elevation_m: el } = profile;
@@ -99,11 +99,12 @@ export function statsStep(
 ): RideStats {
   if (fix.accuracyM > POOR_FIX_M) return stats;
   const progressM = state.off ? null : state.progressM;
-  const here = { point: fix.point, at: fix.at, progressM, model };
+  const here = { point: fix.point, at: fix.at, accuracyM: Math.max(0, fix.accuracyM), progressM, model };
   const last = stats.last;
   if (!last) return { ...stats, last: here, elevation: progressM === null ? stats.elevation : withHeight(stats.elevation, stats.distanceM, profileAt(profile, progressM)) };
   const stepM = haversineM(last.point, fix.point);
-  if (stepM < MOVE_MIN_M) return stats;
+  // Moved more than either fix's own wander (a poor fix among tall buildings drifts 10 to 20 m while standing still).
+  if (stepM < Math.max(MOVE_MIN_M, here.accuracyM, last.accuracyM)) return stats;
   const dt = fix.at - last.at;
   if (!(dt > 0) || stepM / (dt / 1000) > MAX_SPEED_MS) return { ...stats, last: here };
   const next: RideStats = { ...stats, last: here, distanceM: stats.distanceM + stepM };

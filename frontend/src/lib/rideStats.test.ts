@@ -48,6 +48,14 @@ test("standing still with the GPS wandering adds no distance or moving time", ()
   assert.equal(s.movingMs, before.movingMs);
 });
 
+test("wander within the fixes' own accuracy adds nothing: 15 m drift at a light among tall buildings", () => {
+  let s = ride(statsStart(0), 0, 100, 5, 0);
+  const before = s;
+  for (let t = 22, i = 0; t < 140; t += 1, i += 1) s = statsStep(s, fix(100 + (i % 2 ? 15 : -15), t, 20), onRoute(100), model, profile);
+  assert.equal(s.distanceM, before.distanceM);
+  assert.equal(s.movingMs, before.movingMs);
+});
+
 test("poor fixes, jumps and walking to a dock are not counted", () => {
   let s = ride(statsStart(0), 0, 100, 5, 0);
   const d = s.distanceM;
