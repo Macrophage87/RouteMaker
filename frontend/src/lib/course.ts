@@ -123,6 +123,8 @@ const STREET_WORDS: Record<string, string> = {
   street: "St", avenue: "Ave", road: "Rd", drive: "Dr", boulevard: "Blvd", parkway: "Pkwy", place: "Pl",
   court: "Ct", lane: "Ln", terrace: "Ter", trail: "Trl", highway: "Hwy", circle: "Cir", square: "Sq",
   northwest: "NW", northeast: "NE", southwest: "SW", southeast: "SE", bridge: "Br", path: "Path",
+  // "service road beside East-West Highway" (describe.beside_words) as "Svc Rd by East-West Hwy".
+  service: "Svc", beside: "by",
 };
 
 /** "R Street Northwest" as a unit's screen has room for it: "R St NW". */

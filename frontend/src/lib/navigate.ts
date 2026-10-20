@@ -258,7 +258,21 @@ export function turnWords(movement: TurnMovement, street: string | null, stay = 
   const turn = MOVEMENT_WORDS[movement];
   const onto = stay ? "to stay on" : "onto";
   if (street && /^(?:unnamed )?path$/i.test(street.trim())) return `${turn} ${onto} the path.`;
-  return street && !isUnnamed(street) ? `${turn} ${onto} ${street}.` : `${turn}.`;
+  return street && !isUnnamed(street) ? `${turn} ${onto} ${wayWords(street)}.` : `${turn}.`;
+}
+
+/**
+ * The ways the API names by what they are (src/routemaker/describe.py SERVICE_WORDS and beside_words; the
+ * owner, 2026-10-20: "When going on a service road, especially next to a major road, say so"): "service
+ * road", "service road beside East-West Highway", "sidewalk beside ...", "path beside ...", "alley".
+ */
+const COMMON_WAY = /^(?:path|sidewalk|service road|alley|parking aisle)\b/;
+/** A service way: going onto one is always said, straight on too, so the rider leaves the main road for it. */
+const SERVICE_WAY = /^(?:service road|alley|parking aisle)\b/;
+
+/** A way as a sentence names it: "the service road beside East-West Highway", a street's own name as it is. */
+export function wayWords(street: string): string {
+  return COMMON_WAY.test(street) ? `the ${street}` : street;
 }
 
 const CROSSING_CONTROL_WORDS: Partial<Record<NonNullable<NonNullable<DescriptionEntry["turn"]>["control"]>, string>> = {
@@ -358,7 +372,7 @@ export const ONTO_TRAIL_MIN_M = 300;
 
 /** "Continue onto Mount Vernon Trail.": a new name straight on. */
 export function ontoWords(street: string): string {
-  return `Continue onto ${street}.`;
+  return `Continue onto ${wayWords(street)}.`;
 }
 
 /** The last named way ridden, and where (description metres) it ended. */
@@ -386,6 +400,7 @@ function isOnto(entry: DescriptionEntry, before: DescriptionEntry, lastNamed: La
   const street = entry.street;
   if (!street || isUnnamed(street) || sameStem(before.street, street)) return false;
   if (lastNamed && lastNamed.street === street && entry.from_m - lastNamed.toM <= ONTO_TRAIL_MIN_M) return false;
+  if (SERVICE_WAY.test(street)) return true;
   const length = entry.to_m - entry.from_m;
   if (entry.facility === "path" || before.facility === "path") return length >= ONTO_TRAIL_MIN_M;
   return length > ONTO_ROAD_MIN_M;
@@ -944,7 +959,7 @@ export function isUnnamed(street: string | null | undefined): boolean {
  */
 export function wayRidden(stretch: RideModel["stretches"][number] | null): string | null {
   if (!stretch) return null;
-  if (!isUnnamed(stretch.street)) return stretch.street;
+  if (!isUnnamed(stretch.street)) return wayWords(stretch.street as string);
   if (stretch.street && /^this part of the route$/i.test(stretch.street.trim())) return null;
   // The API's own word first ("unnamed road"), else the facility.
   if (/\bpath\b/i.test(stretch.street ?? "")) return "a path";
