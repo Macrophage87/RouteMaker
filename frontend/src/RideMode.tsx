@@ -96,6 +96,7 @@ import {
   type RideState,
   type Verbosity,
 } from "./lib/navigate.ts";
+import { statsPause, statsStart, statsStep, type RideStats } from "./lib/rideStats.ts";
 import {
   Announcer,
   OUTPUT_LABELS,
@@ -219,7 +220,6 @@ export const rideVoice = new Voice(rideSpeech());
 
 /** Said as the ride starts, inside the Start press, so the voice is unlocked by it. */
 export const RIDE_STARTED = "Ride started.";
-export const RIDE_ENDED = "Ride ended.";
 /** The always-visible End ride button's words (the owner, 2026-10-16: "add a method of ending navigation"). */
 export const END_RIDE_NAME = "End ride";
 /** End ride is a slide to end until the rider has arrived (the owner, 2026-10-19: "Add a swipe confirmation on ending the ride unless at the destination"). */
@@ -235,16 +235,14 @@ export const RIDE_SETTINGS_TEXT = "Settings";
 export const RIDE_SETTINGS_TITLE = "Ride settings";
 /** What End ride leaves behind (lib/navigate.ts planAfterEnd): the plan from here, or as it was. */
 export type EndedPlan = ReturnType<typeof planAfterEnd>;
-/** How long Undo is offered after End (v0.7.0, "Go riding fixes" item 6); held while it has the focus. */
-export const UNDO_END_MS = 8_000;
 /** How long the 311 line ("Sent to DC 311." and Add a note) stays (review F4); held the same way. */
 export const SAID_311_MS = 8_000;
-/** Said by the page's polite region (always mounted) as Ride ended shows (review F6). */
-export const RIDE_ENDED_SAID = "Ride ended. Undo available.";
-/** Said instead where End ride came part way (lib/navigate.ts planAfterEnd): the plan now starts where the rider is. */
-export const RIDE_ENDED_FROM_HERE_SAID = "Ride ended. The route now starts where you are. Undo available.";
-/** Part way with no recent location: the plan keeps its start, and the rider is told. */
-export const RIDE_ENDED_NO_FIX_SAID = "Ride ended. Route start unchanged. Undo available.";
+/** Said as the ride ends, by the voice and the page's polite region; the figures are on the summary card. */
+export const RIDE_ENDED_SAID = "Ride ended.";
+/** Shown and said with the ride's summary in Plan where End ride came part way (lib/navigate.ts planAfterEnd): the plan now starts where the rider is. */
+export const RIDE_ENDED_FROM_HERE_NOTE = "The route now starts where you are.";
+/** Part way in Plan with no recent location: the plan keeps its start, and the rider is told. */
+export const RIDE_ENDED_NO_FIX_NOTE = "Route start unchanged.";
 
 /**
  * A short-lived message's timer (lib/holdTimer.ts) with the handlers that hold it: while the focus is inside, or a
@@ -648,6 +646,7 @@ export function RideMode({
   onTextSize,
   onView,
   onEnd,
+  resumeStats = null,
   water,
   trailMiles = null,
   geoEnv,
@@ -673,8 +672,10 @@ export function RideMode({
   onTextSize: (size: RideTextSize) => void;
   /** The ride's route and the rider's position, for the map. */
   onView: (view: RideView) => void;
-  /** End ride: with the plan the ride leaves (part way, from here; lib/navigate.ts planAfterEnd). */
-  onEnd: (after: EndedPlan) => void;
+  /** End ride: with the plan the ride leaves (part way, from here; lib/navigate.ts planAfterEnd) and the ride's figures. */
+  onEnd: (after: EndedPlan, stats: RideStats) => void;
+  /** Undo after End ride: the ended ride's figures, to carry on from. */
+  resumeStats?: RideStats | null;
   /** The water layer's points, loaded if they are not yet (App's ensureWater); for the detours. */
   water?: () => Promise<WaterPoint[] | null>;
   /**
@@ -774,6 +775,9 @@ export function RideMode({
   const sectionRef = useRef<HTMLElement>(null);
   // Ended (End ride, or unmounted): a re-plan answering late says nothing and changes nothing.
   const ended = useRef(false);
+  // The ride's own figures for the summary at End ride (lib/rideStats.ts), from the Start press.
+  // Undo after End ride carries on from the figures so far, not from nought (the step across the pause not counted).
+  const statsRef = useRef<RideStats>(resumeStats ? statsPause(resumeStats) : statsStart(Date.now()));
   // Each re-plan's ticket: "Keep the planned route" or a newer re-plan voids an older one's answer.
   const replanTicket = useRef(0);
   const settingsId = useId();
@@ -1249,6 +1253,9 @@ export function RideMode({
       const out = { state: stepped.state.ride, events: stepped.events };
       rideRef.current = out.state;
       setRide(out.state);
+      statsRef.current = stepped.state.walking
+        ? statsPause(statsRef.current)
+        : statsStep(statsRef.current, fix, out.state, modelRef.current, routeRef.current.profile);
       if (stepped.state.walking) return;
       // Off this line but on the other one (the standard way, or the detour): followed there, not re-planned.
       if (out.state.off && fix.accuracyM <= POOR_FIX_M) {
@@ -1485,9 +1492,10 @@ export function RideMode({
     stopWatch.current = null;
     announcer.current?.drop();
     rideVoice.stop();
-    if (toVoice(prefsRef.current.output)) rideVoice.speak(RIDE_ENDED, true);
+    // Only "Ride ended." is said; the figures are on the summary (the owner, 2026-10-20: "Just put ride ended.").
+    if (toVoice(prefsRef.current.output)) rideVoice.speak(RIDE_ENDED_SAID, true);
     // A Bikeshare or transit trip's riding leg is not the plan: the plan stays as it was.
-    onEnd(trip && !trip.asPlanned ? null : planAfterEnd(modelRef.current, rideRef.current, plan.current.points, plan.current.loop, Date.now()));
+    onEnd(trip && !trip.asPlanned ? null : planAfterEnd(modelRef.current, rideRef.current, plan.current.points, plan.current.loop, Date.now()), statsRef.current);
   };
   // A toggle: pressed, no automatic re-plan (one in flight is voided) and the way back is said once;
   // pressed again, re-planning is back on.
@@ -1887,8 +1895,8 @@ export function RideMode({
       <LiveRegion said={assertive} urgent />
       <div ref={cardRef} className="cue-card">
         {/* End ride (v0.7.0, "Go riding fixes" item 6): always in view, at the top of the card, which stays at
-            every size and in Large text; one slide ends the ride (a tap once arrived), and the page offers Undo for a few seconds
-            (RideEnded). The ride's settings open just under the row, from the side buttons' gear. */}
+            every size and in Large text; one slide ends the ride (a tap once arrived), and the page shows the ride's summary
+            with Done and Undo (RideSummaryCard). The ride's settings open just under the row, from the side buttons' gear. */}
         <div ref={topRef} className={light && cornerFits ? "ride-top" : "ride-top ride-corner-tight"}>
           {/* The heading, "Ride mode", for screen readers; near dawn or dusk the light times shown in the corner
               (the owner, 2026-10-19) where they fit beside the buttons, else just under the row. */}
@@ -2378,33 +2386,5 @@ export function RideMode({
         </div>
       )}
     </section>
-  );
-}
-
-/**
- * After End (v0.7.0, "Go riding fixes" item 6): "Ride ended." and Undo for UNDO_END_MS. It is said by the page's
- * polite region, which is always mounted (App says RIDE_ENDED_SAID: a region mounted with its text in it is often
- * not read; review F6), and the focus goes to Undo, as End (the button pressed) has gone. The time is held while the
- * focus or a mouse is inside it (WCAG 2.2.1), so a keyboard or screen-reader rider on Undo is not timed out of it.
- * Undo starts the same ride again.
- */
-export function RideEnded({ onUndo, onGone }: { onUndo: () => void; onGone: () => void }) {
-  const undo = useRef<HTMLButtonElement>(null);
-  const { timer, hold } = useHoldTimer(UNDO_END_MS, onGone);
-  useEffect(() => {
-    // Focus is put on Undo, not taken there by the rider, so it does not hold the bar (re-check of
-    // F6: a touch rider's bar would otherwise never go). Moving focus away and back does hold it.
-    undo.current?.focus();
-    timer.focus(false);
-    timer.start();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, as it shows
-  }, []);
-  return (
-    <div className="ride-ended" role="group" aria-label={RIDE_ENDED} {...hold}>
-      <span aria-hidden="true">{RIDE_ENDED}</span>
-      <button ref={undo} type="button" className="secondary" onClick={onUndo}>
-        Undo
-      </button>
-    </div>
   );
 }
