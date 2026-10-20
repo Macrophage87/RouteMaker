@@ -1119,6 +1119,20 @@ check("nor a closure reason (a CBD sidewalk)",
   M.remap_way({ highway = "footway", footway = "sidewalk" },
     { sidewalk = true, is_trail_class = true, no_bicycle = "cbd_sidewalk" }).bicycle == "no")
 
+-- A footway into a rail station (routemaker.station_links, 2026-10-20): walked.
+check("a station link is opened at a walk",
+  M.remap_way({ highway = "footway", footway = "sidewalk" },
+    { walk_link = true, is_trail_class = true }).bicycle == "dismount")
+check("and stays walked if it is a sidewalk too",
+  M.remap_way({ highway = "footway", footway = "sidewalk" },
+    { walk_link = true, sidewalk = true, is_trail_class = true }).bicycle == "dismount")
+check("a station link never overrules a bicycle tag",
+  M.remap_way({ highway = "footway", bicycle = "no" },
+    { walk_link = true, is_trail_class = true }).bicycle == nil)
+check("nor a closure reason (a CBD sidewalk)",
+  M.remap_way({ highway = "footway", footway = "sidewalk" },
+    { walk_link = true, is_trail_class = true, no_bicycle = "cbd_sidewalk" }).bicycle == "no")
+
 -- A paved way is not a mountain-bike trail: its rating, which Valhalla's parser
 -- prices as dirt, comes off (the Rock Creek Trail in Montgomery County, way
 -- 851669430 among others, as the 2026-10-03 extract tags it).
