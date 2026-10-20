@@ -36,7 +36,7 @@ import { restOffered, rideTripOf, rideable as rideableRoute, ridesLine } from ".
 import { BikeshareSummary } from "../BikeshareSummary.tsx";
 import { TransitSummary } from "../TransitSummary.tsx";
 import { DepartureTimer } from "../DepartureTimer.tsx";
-import { transitOf, transitTime } from "../lib/transit.ts";
+import { transitOf, transitTime, transitTimeName } from "../lib/transit.ts";
 import { bikeshareOf, routeCredits } from "../lib/bikeshare.ts";
 import { rideSizeOf, type Dials, type Ending } from "../lib/dials.ts";
 import { CAPACITY_FOLD_TITLE, capacitySummary } from "../lib/massCapacity.ts";
@@ -748,7 +748,7 @@ export function RouteSummary({
   const bikeshare = bikeshareOf(route);
   // A transit ride type (lib/transit.ts): the line is the first ride; the trip, its total and its steps are `transit`.
   const transit = transitOf(route);
-  const timeName = transit ? (transit.scheduled ? "Door-to-door time, scheduled" : "Door-to-door time") : "Moving time";
+  const timeName = transit ? transitTimeName(transit) : "Moving time";
   const timeText = transit ? transitTime(transit) : formatDuration(route.duration_s);
   const calm = calmPercent(route.stress_m);
   // Start ride is offered with the directions too (plan Q1). On a Bikeshare or transit plan it follows the
