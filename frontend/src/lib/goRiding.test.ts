@@ -129,7 +129,7 @@ test("Ride settings in reach: a gear at the end of the side buttons opens them j
   // "Ride mode" itself is never shown, only said (the owner, 2026-10-20: "People know it's ride mode anyway").
   assert.match(ride, /className=\{light && cornerFits \? "ride-top" : "ride-top ride-corner-tight"\}/);
   // Then the two buttons share the whole row (the owner, 2026-10-20).
-  assert.match(css, /\.ride-top\.ride-corner-tight \.ride-top-actions > \* \{\s*flex: 1;/);
+  assert.match(css, /\.ride-top\.ride-corner-tight \.ride-top-actions > \* \{\s*flex: 1 1 auto;\s*white-space: nowrap;/);
   assert.match(ride, /\{light && !cornerFits && \(\s*<p className="ride-light-below" aria-hidden="true">/);
 });
 

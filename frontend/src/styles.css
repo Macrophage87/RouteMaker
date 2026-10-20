@@ -3936,7 +3936,8 @@ details.zoom-notes {
 }
 
 .ride-top.ride-corner-tight .ride-top-actions > * {
-  flex: 1;
+  flex: 1 1 auto;
+  white-space: nowrap;
   justify-content: center;
 }
 
