@@ -1731,3 +1731,22 @@ class TestJunctionShapes:
             )
         ]
         assert "shape" not in d.describe(legs)[1]["turn"]
+
+    def test_a_way_almost_back_the_way_in_is_not_drawn_over_it(self):
+        assert d.junction_shape(0, 270, [(160, "road"), (0, "road"), (90, "road")]) is None
+
+    def test_no_shape_across_a_short_street_folded_in(self):
+        # An offset crossing: A Street, 10 m of B Street, then C Street. The heading in
+        # is A Street's and the ways out are C Street's node: two nodes, so no picture.
+        legs = [
+            flat(
+                road("A Street", 2, 600, 0.0, 0.0),
+                road("B Street", 2, 10, 90.0, 90.0),
+                branched(
+                    road("C Street", 2, 600, 0.0, 0.0),
+                    [(270.0, "road"), (45.0, "road"), (300.0, "road")],
+                ),
+            )
+        ]
+        for entry in d.describe(legs):
+            assert not (entry["turn"] or {}).get("shape"), entry

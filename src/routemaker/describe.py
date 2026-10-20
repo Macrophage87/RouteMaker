@@ -137,7 +137,9 @@ FORK_IGNORED_USES = frozenset(
 # straight on, a left or a right makes a junction unusual; ways nearer one another
 # than SHAPE_MERGE_DEG are drawn as one; a sidewalk beside the road is never drawn.
 SHAPE_SQUARE_DEG = 20.0
-SHAPE_MERGE_DEG = 15.0
+SHAPE_MERGE_DEG = 20.0
+# A way within 30 degrees of the way back would be drawn on the way in: not drawn.
+SHAPE_BACK_DEG = 150.0
 SHAPE_IGNORED_USES = frozenset({"sidewalk"})
 # How far from a change of street an event still is that junction.
 MATCH_M = 30.0
@@ -316,6 +318,10 @@ class _Run:
     unpaved_m: float = 0.0
     # An unnamed service way's word (`SERVICE_WORDS`), else None.
     service: str | None = None
+    # A short stretch of another street folded in at its end (`_join`) or its start
+    # (`_absorb_tiny`): the turn there spans two nodes, so no junction is drawn.
+    folded_end: bool = False
+    folded_start: bool = False
 
 
 def _run_of(atom: Atom, leg: int) -> _Run:
@@ -386,6 +392,8 @@ def _join(a: _Run, b: _Run) -> None:
         a.label = a.label or b.label
         a.path = a.path or b.path
         a.last = b.last
+    else:
+        a.folded_end = True
     a.metres += b.metres
     a.unpaved_m += b.unpaved_m
 
@@ -498,6 +506,8 @@ def _absorb_tiny(runs: list[_Run]) -> list[_Run]:
                     # The turn into the stretch is where its own street begins.
                     if not _forks(target):
                         target.first = run.first
+                else:
+                    target.folded_start = True
                 target.metres += run.metres
                 target.unpaved_m += run.unpaved_m
             del runs[i]
@@ -812,16 +822,17 @@ def junction_shape(
 
     `heading_in` is the compass heading the route arrives on, `heading_out` the one it
     leaves on, `others` each other way at the node (its heading away from the node,
-    Valhalla's `use`). A way of FORK_IGNORED_USES (a driveway, a crosswalk) or a sidewalk
-    is not drawn; ways within SHAPE_MERGE_DEG of one another are one branch, and one
-    within it of the route's way or of the way back is not drawn. Answers {"out": the
-    route's turn, "others": the other branches' turns}, in degrees from straight ahead,
-    clockwise positive, -180 to 180, where the junction is unusual: more than two other
-    branches, a branch more than SHAPE_SQUARE_DEG off straight, left or right, two in
-    one of those three directions, or a turn onto a service road or alley with any
-    other branch. A plain crossroads or T keeps the plain arrow; so does a junction
-    whose ways the router did not give. The words said and read stay as they are: the
-    diagram is a picture of the junction, never its only telling."""
+    Valhalla's `use`). A way of FORK_IGNORED_USES (a driveway, a crosswalk) or a
+    sidewalk is not drawn; ways within SHAPE_MERGE_DEG of one another are one branch,
+    one within it of the route's way is not drawn, nor one past SHAPE_BACK_DEG (on the
+    way in). Answers {"out": the route's turn, "others": the other branches' turns}, in
+    degrees from straight ahead, clockwise positive, -180 to 180, where the junction is
+    unusual: more than two other branches, a branch more than SHAPE_SQUARE_DEG off
+    straight, left or right, two in one of those three directions, or a turn onto a
+    service road or alley with any other branch. A plain crossroads or T keeps the plain
+    arrow; so does a junction whose ways the router did not give. The words said and
+    read stay as they are: the diagram is a picture of the junction, never its only
+    telling."""
     if heading_in is None or heading_out is None or not others:
         return None
     out = _turn_deg(heading_in, heading_out)
@@ -833,7 +844,7 @@ def junction_shape(
         near = [out, *branches]
         if any(abs(_turn_deg(b, turn)) < SHAPE_MERGE_DEG for b in near):
             continue
-        if abs(turn) > 180.0 - SHAPE_MERGE_DEG:
+        if abs(turn) > SHAPE_BACK_DEG:
             continue
         branches.append(turn)
     if not branches:
@@ -1169,7 +1180,10 @@ def describe_both(
         if movement is None and event is not None:
             movement = event.movement.value
         shape = None
-        if movement is not None and before.last is not None and run.first is not None:
+        # Only where the heading in and the ways out are read at one node: a short
+        # stretch of another street folded in between puts them at two.
+        one_node = not before.folded_end and not run.folded_start
+        if movement is not None and one_node and before.last is not None and run.first is not None:
             shape = junction_shape(
                 before.last.heading_out,
                 run.first.heading_in,
