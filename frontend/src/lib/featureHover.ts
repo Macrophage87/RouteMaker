@@ -37,13 +37,14 @@ export function climbHoverWords(c: Climb): HoverWords {
  * then the difficulty rating and what it's based on"): "Level 1 (green): rated S1 or IMBA 1 in OpenStreetMap", as the
  * road panel's "Mountain-bike difficulty" row says it, or that it is not rated.
  */
-export function trailHoverWords(properties: Record<string, unknown>): HoverWords {
+/** `way` names the drawn way, so the card is rebuilt (at its own point, with its own profile) on the next way along. */
+export function trailHoverWords(properties: Record<string, unknown>, way = ""): HoverWords {
   const named = typeof properties.name === "string" ? properties.name.trim() : "";
   const level = MTB_LEVEL_OPTIONS.find((option) => option.level === Number(properties.mtb_level));
   const scale = level ? MTB_LEVELS.find((l: { level: number }) => l.level === level.level)?.scale : undefined;
   const title = named || "Mountain-bike trail";
   const detail = level ? `${level.label}: rated ${scale} in OpenStreetMap` : "Not rated: no difficulty is mapped for this trail";
-  return { key: `trail|${title}|${level?.level ?? ""}`, title, detail };
+  return { key: `trail|${way}|${title}|${level?.level ?? ""}`, title, detail };
 }
 
 // --- The profile in the card ---------------------------------------------------------------------------------------

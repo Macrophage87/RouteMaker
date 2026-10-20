@@ -855,6 +855,13 @@ export function MapView(props: Props) {
     let hoverPoint: { x: number; y: number } | null = null;
     // The climbs' and the trails' hover card (featureHoverCard.ts), as the stations' own.
     const featureHover = attachFeatureHover(map);
+    // Mouse only: a tap's compatibility mousemove (after its touch pointerdown) shows no hover card.
+    let mousePointer = true;
+    const onPointer = (event: PointerEvent) => {
+      mousePointer = event.pointerType === "mouse";
+    };
+    canvas.addEventListener("pointerdown", onPointer);
+    canvas.addEventListener("pointermove", onPointer);
     map.on("mousemove", (event) => {
       if (gesture.active) {
         featureHover.hide();
@@ -871,20 +878,20 @@ export function MapView(props: Props) {
         // A climb, else a mountain-bike trail, a click would open (the click's own tests, below, in its order): the
         // pointing hand, and its hover card as a station's (the owner, 2026-10-20: "Add the hover to climbs too";
         // "Basically they would work sort of like how our metros do now.").
-        const free = hoverPoint !== null && !under.station && !anyPopupOpen();
+        const free = mousePointer && hoverPoint !== null && !under.station && !anyPopupOpen() && !climbCard?.open();
         const climb =
           free && hoverPoint && !water?.hits(hoverPoint)
             ? (climbCard?.climbAt(hoverPoint, callbacks.current.pressSetsEnd === true || !under.line) ?? null)
             : null;
         const trail =
-          free && hoverPoint && climb === null && !under.line && !climbCard?.open() && featureCardPress([water, stopCards(map)], hoverPoint) === null
+          free && hoverPoint && climb === null && !under.line && featureCardPress([water, stopCards(map)], hoverPoint) === null
             ? mtbTrailAt(map, hoverPoint, MOUSE_HIT_PX, overlayLayerIds())
             : null;
         if (climb && hoverPoint) {
           const { lng, lat } = map.unproject([hoverPoint.x, hoverPoint.y]);
           featureHover.show(climbHoverWords(climb), [lng, lat], climbHoverChart(climb));
         } else if (trail) {
-          featureHover.show(trailHoverWords(trail.properties), trail.point, trailHoverChart(window.location.origin, trail.point));
+          featureHover.show(trailHoverWords(trail.properties, trail.way), trail.point, trailHoverChart(window.location.origin, trail.point));
         } else featureHover.hide();
         runHover(under, anyPopupOpen(), { handle: hoverShown.current, cursor: canvas.style.cursor }, {
           drawHandle: (at) => showEdit(at as LonLat | null),
@@ -1496,6 +1503,9 @@ export function MapView(props: Props) {
 
     return () => {
       disposed = true;
+      featureHover.hide();
+      canvas.removeEventListener("pointerdown", onPointer);
+      canvas.removeEventListener("pointermove", onPointer);
       rail?.close();
       federal?.detach();
       federalSync.current = null;

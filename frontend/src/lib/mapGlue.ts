@@ -565,6 +565,7 @@ export interface TrailPressMap {
 }
 
 interface PressedFeature {
+  id?: string | number;
   properties?: { mtb?: unknown } | null;
   geometry?: { type?: string; coordinates?: unknown } | null;
 }
@@ -616,25 +617,32 @@ export function mtbTrailAt(
   point: { x: number; y: number },
   slop: number,
   layers: readonly string[],
-): { point: LonLat; properties: Record<string, unknown> } | null {
+): { point: LonLat; properties: Record<string, unknown>; way: string } | null {
   const drawn = layers.filter((id) => map.getLayer(id));
   if (drawn.length === 0) return null;
   const box: [[number, number], [number, number]] = [
     [point.x - slop, point.y - slop],
     [point.x + slop, point.y + slop],
   ];
-  let trail: { x: number; y: number; d: number; properties: Record<string, unknown> } | null = null;
+  let trail: { x: number; y: number; d: number; properties: Record<string, unknown>; way: string } | null = null;
   let road = Infinity;
   for (const feature of map.queryRenderedFeatures(box, { layers: drawn }) as PressedFeature[]) {
     const near = nearestOn(map, feature, point);
     if (near === null) continue;
     if (feature.properties?.mtb === true) {
-      if (trail === null || near.d < trail.d) trail = { ...near, properties: feature.properties };
+      if (trail === null || near.d < trail.d) trail = { ...near, properties: feature.properties, way: wayOf(feature) };
     } else road = Math.min(road, near.d);
   }
   if (trail === null || road < trail.d) return null;
   const { lng, lat } = map.unproject([trail.x, trail.y]);
-  return { point: [lng, lat], properties: trail.properties };
+  return { point: [lng, lat], properties: trail.properties, way: trail.way };
+}
+
+/** The drawn way: its feature id, else its first point (the tiles may carry no id). */
+function wayOf(feature: PressedFeature): string {
+  if (feature.id !== undefined) return String(feature.id);
+  const first = lineParts(feature)[0]?.[0];
+  return first ? `${first[0].toFixed(6)},${first[1].toFixed(6)}` : "";
 }
 
 export function featureCardPress(cards: ReadonlyArray<FeatureCards | null>, point: { x: number; y: number }): "card" | "close" | null {

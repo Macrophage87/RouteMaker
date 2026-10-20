@@ -18,7 +18,7 @@ test("a climb's hover card names it and says its category, length, gain and grad
 
 test("a trail's hover card names it, then its difficulty and what that is based on, or that it is not rated", () => {
   assert.deepEqual(trailHoverWords({ mtb: true, mtb_level: 1, name: "Rosaryville Loop" }), {
-    key: "trail|Rosaryville Loop|1",
+    key: "trail||Rosaryville Loop|1",
     title: "Rosaryville Loop",
     detail: "Level 1 (green): rated S1 or IMBA 1 in OpenStreetMap",
   });
@@ -27,6 +27,9 @@ test("a trail's hover card names it, then its difficulty and what that is based 
   assert.equal(unnamed.title, "Mountain-bike trail");
   assert.equal(unnamed.detail, "Not rated: no difficulty is mapped for this trail");
   assert.notEqual(trailHoverWords({ mtb: true, mtb_level: 2 }).key, trailHoverWords({ mtb: true, mtb_level: 3 }).key);
+  // The next way of the same trail is a new card, at its own point and with its own profile.
+  const loop = { mtb: true, mtb_level: 1, name: "Rosaryville Loop" };
+  assert.notEqual(trailHoverWords(loop, "101").key, trailHoverWords(loop, "102").key);
 });
 
 test("the hover card's profile is asked for once and kept, and none is drawn where there is none", async () => {
