@@ -287,7 +287,7 @@ test("pressing the switch asks for the opposite state", () => {
 
 // ---- the Mass Ride legend ---------------------------------------------------
 
-test("the Mass Ride legend names the trails' line while the layer is on, and nothing while it is off", () => {
+test("the trails' key names their line while the layer is on, and nothing while it is off", () => {
   assert.equal(renderToStaticMarkup(createElement(MtbTrailLegend)), "");
   setMtbTrails(true, { remember: false });
   try {
@@ -302,7 +302,9 @@ test("the Mass Ride legend names the trails' line while the layer is on, and not
     setMtbTrails(false, { remember: false });
   }
   const app = appSource();
-  assert.match(app, /<MassLegend \/>\s*<MassZoomNotes[^>]*\/>\s*\{\/\*[^*]*\*\/\}\s*<MtbTrailLegend \/>/);
+  // In every ride type, Mass Ride's too, the key is in Layers' Trails and terrain section, under its switch.
+  assert.equal((app.match(/<MtbTrailLegend \/>/g) ?? []).length, 1);
+  assert.match(app, /<MtbTrailsSwitch [^\n]*\/>\s*\{\/\*[^}]*\*\/\}\s*<MtbTrailLegend \/>/);
 });
 
 // ---- the owner, 2026-10-19: a key on the map, and a tap on a trail tells about it ----

@@ -383,9 +383,10 @@ function mtbRows(): ReactElement[] {
 }
 
 /**
- * The mountain-bike trails' row on its own, for the Mass Ride map, whose legend is the capacity one
- * (lib/massLegend.ts): their layer shows in every ride type (454), so its words are there too, while
- * it is on. Null while it is off, or once the trails are routable.
+ * The mountain-bike trails' key, under their switch in Layers' Trails and terrain section, in every ride type
+ * (454; the owner, 2026-10-19: "include the legend within the accordion settings in layers"): the trail's row
+ * in words, not behind the zoom fold (452a), and a row a level (456), while the layer is on. Null while it is
+ * off, or once the trails are routable.
  */
 export function MtbTrailLegend(): ReactElement | null {
   useStressStyle();
@@ -418,7 +419,6 @@ export function StressLegend({
 }): ReactElement {
   useStressStyle();
   const showHighLanes = useHighStressLanes();
-  const showMtbTrails = useMtbTrails();
   const tiers = currentTiers();
   const widths = legendWidths(tiers);
   return h(
@@ -432,10 +432,8 @@ export function StressLegend({
       ...tiers.map((tier, i) => row(tier.tier, h(TierSwatch, { tier, widths: widths.tiers[i] }), tier.short, tier.label)),
       row("unpaved", h(UnpavedSwatch, { tiers, widths: widths.tiers[0] }), "Unpaved", UNPAVED_LEGEND),
       row("unknown", h(UnknownSurfaceSwatch, { tier: tiers[0], widths: widths.tiers[0] }), "Surface unknown", UNKNOWN_SURFACE_LEGEND),
-      // 452a: the mountain-bike trails' not-for-routes line, in words in the list, not behind the zoom fold;
-      // only while their layer is on (454), so the legend names what the map draws.
-      // Each level's row (456) follows, while the layer is on.
-      ...(showMtbTrails ? mtbRows() : []),
+      // The mountain-bike trails' rows (452a, 456) are in their own key, under their switch in Trails and terrain
+      // (MtbTrailLegend), once in Layers.
     ),
     // What the tiles leave out as the map zooms out (core/stress_tiles.py).
     h(StressZoomNotes, { zoom, shown, folded: foldedZoom }),
@@ -474,7 +472,7 @@ export function mtbMapKeyRows(): { key: string; name: string }[] {
  * The mountain-bike trails' key on the map itself (the owner, 2026-10-19: "Mountain bike trails need to have a
  * key on the map"): while their layer is on and the map is close enough in to draw them (`drawn`), a small box
  * in the map's corner with each look (the unrated grey dashes, then each level) and its short name, and that a
- * tap on a trail tells more. Not a control: it has nothing to press. The Legend sheet keeps the long words.
+ * tap on a trail tells more. Not a control: it has nothing to press. Layers keeps the long words.
  */
 export function MtbMapKey({ drawn }: { drawn: boolean }): ReactElement | null {
   useStressStyle();

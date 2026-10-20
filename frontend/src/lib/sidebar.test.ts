@@ -664,7 +664,7 @@ test("the bottom bar is Plan, Layers, Suggest, Save & load and Settings: real bu
 });
 
 test("a sheet: Back is a labelled button, its heading takes the focus, Escape goes back", () => {
-  assert.deepEqual(Object.values(SHEET_TITLES), ["Layers", "Legend", "Suggest a change", "Review", "Save and load", "Settings", "Nearest", "Find food", "Ride", "Repair stands and bike shops", "Places to see", "Edit route"]);
+  assert.deepEqual(Object.values(SHEET_TITLES), ["Layers", "Suggest a change", "Review", "Save and load", "Settings", "Nearest", "Find food", "Ride", "Repair stands and bike shops", "Places to see", "Edit route"]);
   // In visible words, not only an arrow, so the name and the label are one (OWNER-DECISIONS 393).
   assert.equal(BACK_LABEL, "Back to planner");
   assert.doesNotMatch(sidebar, /aria-label="Back to the planner"/);
@@ -682,7 +682,7 @@ test("a sheet: Back is a labelled button, its heading takes the focus, Escape go
 });
 
 test("where the focus goes on every change of view (mutation SF1)", () => {
-  const views: PanelView[] = ["planner", "layers", "legend", "suggest", "review", "gpx", "settings", "nearest", "food", "ride"];
+  const views: PanelView[] = ["planner", "layers", "suggest", "review", "gpx", "settings", "nearest", "food", "ride"];
   const causes: ViewCause[] = ["bar", "back", "error", "confirm", "planButton", "panelToggle"];
   for (const was of views)
     for (const view of views)
@@ -768,8 +768,8 @@ test("a sheet's Escape: back, except in a dialog, on the place search, or when a
   assert.deepEqual(run(event("Escape", { role: "combobox" })), stays, "the place search's list");
 });
 
-test("the Layers sheet holds the switches in the mockup's order; the legend is its own sheet, behind Legend (the owner's choice 6)", () => {
-  const sheet = app.slice(app.indexOf('id="sheet-layers"'), app.indexOf('id="sheet-legend"'));
+test("the Layers sheet holds the switches in the mockup's order, each section with its own key (the owner, 2026-10-19)", () => {
+  const sheet = app.slice(app.indexOf('id="sheet-layers"'), app.indexOf('id="sheet-gpx"'));
   // Traffic stress, high-stress lanes, federal land, water, rail stations, then trails and terrain; each a
   // section of one row (lib/layerSection.ts), the layers inside.
   const parts = [
@@ -785,13 +785,12 @@ test("the Layers sheet holds the switches in the mockup's order; the legend is i
   const at = parts.map((part) => sheet.indexOf(part));
   assert.ok(at.every((i) => i > 0), JSON.stringify(at));
   assert.deepEqual(at, [...at].sort((a, b) => a - b));
-  // Toggles only: no legend in it, and the Legend button in its header opens the Legend sheet, one step in.
-  assert.doesNotMatch(sheet, /<StressLegend|<JunctionLegend/);
-  assert.match(sheet, /className="link icon-button legend-button" onClick=\{\(event\) => openLegend\(event\.currentTarget\)\}/);
-  assert.match(src("../App.tsx"), /openLegend: \(opener: HTMLElement\) => openView\("legend", opener, true\)/);
-  const legend = app.slice(app.indexOf('id="sheet-legend"'), app.indexOf('id="sheet-gpx"'));
-  assert.ok(legend.indexOf("<StressLegend") > 0 && legend.indexOf("<StressLegend") < legend.indexOf("<JunctionLegend />"));
-  assert.match(legend, /<StressLegend facilities=\{facilitiesShown\} zoom=\{zoom\} shown=\{stressVisible\} foldedZoom \/>/);
+  // "include the legend within the accordion settings in layers": no Legend sheet or button; the stress key and
+  // the junctions' are in the traffic stress section, before the next section.
+  assert.ok(!app.includes('id="sheet-legend"') && !app.includes("legend-button") && !app.includes("openLegend"));
+  const stress = sheet.slice(sheet.indexOf('switchId="show-stress"'), sheet.indexOf("<FederalLandFor"));
+  assert.match(stress, /<StressSectionKey [^\n]*\/>[\s\S]*<JunctionLegend \/>\s*<\/LayerSection>/);
+  assert.match(app, /<StressLegend facilities=\{facilitiesShown\} zoom=\{zoom\} shown=\{stressVisible\} foldedZoom \/>/);
   assert.match(sheet, /\{!federalShown\(preset, true\) && <p className="hint mass-ride-layers">\{MASS_RIDE_LAYERS_NOTE\}<\/p>\}/);
   assert.equal(MASS_RIDE_LAYERS_NOTE, "Mass Ride has its own layers, such as federal land.");
   assert.match(app, /id="sheet-gpx"[\s\S]*<GpxPanel/);
@@ -951,11 +950,11 @@ test("App dispatches the focus decision to the right element (the mutation re-ch
   assert.match(app, /<BottomBar view=\{view\} onOpen=\{openSheet\}/);
 });
 
-test("the bar's current button: the sheet showing, or one opened from it (Layers' Legend, Suggest's Review)", () => {
-  const views: PanelView[] = ["planner", "layers", "legend", "suggest", "review", "gpx", "settings", "nearest", "food", "ride"];
+test("the bar's current button: the sheet showing, or one opened from it (Suggest's Review)", () => {
+  const views: PanelView[] = ["planner", "layers", "suggest", "review", "gpx", "settings", "nearest", "food", "ride"];
   const of: Record<string, PanelView[]> = {
     plan: ["planner"],
-    layers: ["layers", "legend"],
+    layers: ["layers"],
     suggest: ["suggest", "review"],
     gpx: ["gpx"],
     settings: ["settings"],
@@ -986,7 +985,7 @@ test("the Settings sheet (384): My Go, Riding, Display and Account, most used fi
   // Go's Menu: Plan, Suggest, GPX and an admin's Review above the settings, each a button.
   assert.match(sheet, /\{go && \(\s*<nav className="menu-pages" aria-label="Pages">/);
   // High contrast is only in Settings now (the mockup's Layers has toggles for the map only).
-  const layers = app.slice(app.indexOf('id="sheet-layers"'), app.indexOf('id="sheet-legend"'));
+  const layers = app.slice(app.indexOf('id="sheet-layers"'), app.indexOf('id="sheet-gpx"'));
   assert.doesNotMatch(layers, /<AccessibilitySwitch/);
   assert.equal((app.match(/<AccessibilitySwitch/g) ?? []).length, 1);
   const b = renderToStaticMarkup(createElement(AccessibilitySwitch, { idBase: "settings-contrast", on: true, source: "chosen", paletteFromAddress: false, onChange: () => {} }));

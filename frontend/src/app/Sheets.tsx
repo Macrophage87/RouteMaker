@@ -1,6 +1,6 @@
 // The panel's sheets (moved out of App.tsx in UI-CLEANUP step 4, docs/DEVELOPMENT.md "The App.tsx split"),
 // arranged as the approved UI mockup of 2026-10-11 has them (reports/v0.5.0/ui-mockup.html): Layers is its
-// switches, with the legend behind a Legend button at its top (the owner's choice 6); Suggest is the one way
+// switches, each section with its own key (the owner, 2026-10-19); Suggest is the one way
 // in to the suggest tools, and Review is an admin's; Settings is My Go, Riding, Display and Account; and the
 // map's Water and Food chips open the nearest finder and Find food. In Go, Settings is the Menu, with Plan,
 // Suggest, GPX and Review above it. App.tsx keeps the state and the effects.
@@ -30,12 +30,12 @@ import { RideSettingsFields } from "../RideMode.tsx";
 import { BIG_TEXT_HELP, BIG_TEXT_LABEL } from "../lib/rideOutput.ts";
 import type { RidePrefs } from "../lib/rideOutput.ts";
 import type { RailVisibility } from "../lib/railStations.ts";
-import { RailStationsLegend, RailStationsSection } from "../RailStations.tsx";
+import { RailStationsSection } from "../RailStations.tsx";
 import { BikeshareSection } from "../lib/bikeshareSection.ts";
 import type { OperatorInfo } from "../lib/bikeshareDocks.ts";
 import { RAIL_STATIONS } from "../lib/railData.ts";
 import { federalPoints, federalShown, type FederalData } from "../lib/federalLand.ts";
-import { FederalLandFor, FederalLegendNotes, type FederalStatus } from "../lib/federalLegend.ts";
+import { FederalLandFor, type FederalStatus } from "../lib/federalLegend.ts";
 import { CAPACITY_LEGEND_TITLE, isMassRide } from "../lib/massCapacity.ts";
 import { MassLegend, MassZoomNotes } from "../lib/massLegend.ts";
 import { DC_BOUNDARY_CREDIT, MASS_DC_ONLY } from "../lib/dcBoundary.ts";
@@ -46,10 +46,10 @@ import { JunctionLegend, SheetFrame } from "../Sidebar.tsx";
 import { MASS_RIDE_LAYERS_NOTE, MENU_TITLE, SAVE_LOAD, SHEET_TITLES, STRESS_CHECKING, STRESS_UNAVAILABLE, type PanelView } from "../lib/sidebar.ts";
 import type { ImportedPlan } from "../lib/gpxPlan.ts";
 import type { WaterPrefs, WaterStatus } from "../lib/waterRestrooms.ts";
-import { WaterLegend, WaterLegendNotes, WaterSection } from "../lib/waterLegend.ts";
+import { WaterSection } from "../lib/waterLegend.ts";
 import type { ClimbAlong, ClimbCategory, ClimbsStatus } from "../lib/climbs.ts";
-import { CLIMBS_HELP, ClimbsLayerControls, ClimbsLegend } from "../lib/climbsLegend.ts";
-import { ScenicLegend, ScenicSection } from "../lib/scenicLayer.ts";
+import { ClimbsLayerControls } from "../lib/climbsLegend.ts";
+import { ScenicSection } from "../lib/scenicLayer.ts";
 import { RouteHazardKey } from "../lib/routeHazards.ts";
 import { PermitsSection } from "../lib/permitLayer.ts";
 import { InstallOffer } from "../InstallableApp.tsx";
@@ -69,7 +69,7 @@ import { shortLabel } from "../lib/shortLabel.ts";
 import { ANNOUNCE_HINT, ANNOUNCE_LABEL, type AnnounceLevel } from "../lib/announceLevel.ts";
 import type { Status } from "./RoutePanel.tsx";
 
-/** How the sheets go back: to the planner, or to the sheet that opened them (Layers for Legend, Suggest for Review). */
+/** How the sheets go back: to the planner, or to the sheet that opened them (Suggest for Review). */
 export interface SheetNav {
   view: PanelView;
   back: () => void;
@@ -79,8 +79,6 @@ export interface SheetNav {
 
 export interface LayersSheetProps {
   nav: SheetNav;
-  /** Opens the legend (a sheet of its own, back to Layers). */
-  openLegend: (opener: HTMLElement) => void;
   massMap: boolean;
   stress: StressAvailability;
   stressVisible: boolean;
@@ -95,6 +93,11 @@ export interface LayersSheetProps {
   waterPrefs: WaterPrefs;
   changeWaterPrefs: (next: WaterPrefs) => void;
   waterStatus: WaterStatus;
+  /** What the stress section's key needs: the map's zoom and the bike facilities the route rides. */
+  zoom: number | null;
+  facilitiesShown: ReadonlySet<string>;
+  /** Whether the Scenic layer is drawn (its switch, in Plan, off the Mass Ride map), for its key. */
+  scenicDrawn: boolean;
   /** The Climbs layer (lib/climbs.ts): the switch, its data's status and the climbs the route rides. */
   climbsOn: boolean;
   changeClimbsOn: (on: boolean) => void;
@@ -122,9 +125,9 @@ export interface LayersSheetProps {
 export const PLACES_LAYER_TITLE = "Places to see";
 export const PLACES_LAYER_HINT = "Museums, gardens, viewpoints and more. Places to see lists them.";
 
-/** The Layers sheet: the map's switches, in the mockup's order, with the Legend button at its top. */
+/** The Layers sheet: the map's switches, in the mockup's order, each section with its own key. */
 export function LayersSheet(props: LayersSheetProps) {
-  const { nav, openLegend, massMap, stress, stressVisible, setStressVisible, showHighLanes, preset, federalOn, setFederalOn, federalStatus, federalData, points, waterPrefs, changeWaterPrefs, waterStatus, rail, setRail, showMtbTrails, showTopoLines, topoReady, climbsOn, changeClimbsOn, climbsFrom, changeClimbsFrom, climbsStatus, climbsAlong, placesOn, changePlacesOn, placesStatus, bikeshare, scenic, permits } = props;
+  const { nav, massMap, zoom, facilitiesShown, scenicDrawn, stress, stressVisible, setStressVisible, showHighLanes, preset, federalOn, setFederalOn, federalStatus, federalData, points, waterPrefs, changeWaterPrefs, waterStatus, rail, setRail, showMtbTrails, showTopoLines, topoReady, climbsOn, changeClimbsOn, climbsFrom, changeClimbsFrom, climbsStatus, climbsAlong, placesOn, changePlacesOn, placesStatus, bikeshare, scenic, permits } = props;
   // The Trails and terrain section's layers that can show, and its row's words (lib/terrainSection.ts).
   const terrain = { mtb: showMtbTrails, climbs: climbsOn, topo: showTopoLines, stressAvailable: stressShowable(stress), topoReady, climbsStatus };
   return (
@@ -134,12 +137,6 @@ export function LayersSheet(props: LayersSheetProps) {
       open={nav.view === "layers"}
       onBack={nav.back}
       backLabel={nav.backLabel("layers")}
-      extra={
-        <button type="button" className="link icon-button legend-button" onClick={(event) => openLegend(event.currentTarget)}>
-          <Icon name="info" />
-          <span>Legend</span>
-        </button>
-      }
     >
       {/* The mockup's order: the stress map, lanes on busy roads, federal land (Mass Ride's alone), water and
           restrooms, Metro and MARC, then trails and terrain. High contrast is in Settings. Each section is one
@@ -158,6 +155,11 @@ export function LayersSheet(props: LayersSheetProps) {
         <HighStressLanesSwitch on={showHighLanes} onChange={(on) => setHighStressLanes(on)} overlay={stress === "available"} massMap={massMap} />
         {/* v0.10.0: the route's hazard marks, drawn on a route only, with or without the stress map. */}
         <RouteHazardKey />
+        {/* The owner, 2026-10-19: "include the legend within the accordion settings in layers". The map's key
+            is in its own section. */}
+        <StressSectionKey massMap={massMap} stress={stress} stressVisible={stressVisible} preset={preset} zoom={zoom} facilitiesShown={facilitiesShown} />
+        {/* The junction markers are drawn with or without the stress map (spec review SF1). */}
+        <JunctionLegend />
       </LayerSection>
 
       {/* Mass Ride's alone (OWNER-DECISIONS 324): null for every other ride type. */}
@@ -171,7 +173,7 @@ export function LayersSheet(props: LayersSheetProps) {
         nameOf={(index) => pointName(index, points.length) /* Mass Ride: no loop */}
       />
 
-      {/* The switch and its two filters; the list along the route is the route's fold, the legend and help behind Legend. */}
+      {/* The switch and its two filters, its key and help; the list along the route is the route's fold. */}
       <WaterSection prefs={waterPrefs} onChange={changeWaterPrefs} status={waterStatus} />
 
       {RAIL_STATIONS.length > 0 && <RailStationsSection visibility={rail} onChange={setRail} />}
@@ -214,7 +216,7 @@ export function LayersSheet(props: LayersSheetProps) {
       </LayerSection>
 
       {/* v0.8.0: the Scenic layer, one switch, off by default, after Trails and terrain; Plan's alone. */}
-      {scenic && <ScenicSection {...scenic} />}
+      {scenic && <ScenicSection {...scenic} drawn={scenicDrawn} />}
       {/* v0.9.1: DDOT's permits, flagged only, one switch, off by default; Plan's alone. */}
       {permits && <PermitsSection {...permits} />}
 
@@ -224,68 +226,27 @@ export function LayersSheet(props: LayersSheetProps) {
   );
 }
 
-export interface LegendSheetProps {
-  nav: SheetNav;
-  legendHeadingRef: RefObject<HTMLHeadingElement | null>;
-  massMap: boolean;
-  stress: StressAvailability;
-  stressVisible: boolean;
-  preset: PresetId;
-  zoom: number | null;
-  facilitiesShown: ReadonlySet<string>;
-  waterPrefs: WaterPrefs;
-  waterStatus: WaterStatus;
-  climbsOn: boolean;
-  climbsStatus: ClimbsStatus;
-  federalOn: boolean;
-  federalStatus: FederalStatus;
-  rail: RailVisibility;
-  /** Whether the Scenic layer is drawn (its switch, in Plan, off the Mass Ride map): its one legend entry. */
-  scenicOn: boolean;
-}
-
-/** The legend, behind Layers' Legend button (the owner's choice 6): what each zoom shows and how stress ratings work. */
-export function LegendSheet(props: LegendSheetProps) {
-  const { nav, legendHeadingRef, massMap, stress, stressVisible, preset, zoom, facilitiesShown, waterPrefs, waterStatus, climbsOn, climbsStatus, federalOn, federalStatus, rail, scenicOn } = props;
-  return (
-    <SheetFrame id="sheet-legend" title={SHEET_TITLES.legend} open={nav.view === "legend"} onBack={nav.back} backLabel={nav.backLabel("legend")} headingRef={legendHeadingRef}>
-      <section aria-labelledby="sheet-legend-title" className="legend-body">
-        {stress === "available" ? (
-          massMap ? (
-            <>
-              <MassLegend />
-              <MassZoomNotes zoom={zoom} shown={stressVisible} />
-              {/* 454: the mountain-bike trails' layer shows in Mass Ride too, so its row does. */}
-              <MtbTrailLegend />
-            </>
-          ) : (
-            <>
-              <StressLegend facilities={facilitiesShown} zoom={zoom} shown={stressVisible} foldedZoom />
-              {/* A Mass Ride before the tiles carry a capacity: the stress map stays, and the grey
-                  outside DC still shows, so its words and its credit do too (accessibility review S2). */}
-              {isMassRide(preset) && (
-                <>
-                  <p className="hint mass-dc-only">{MASS_DC_ONLY}</p>
-                  <p className="hint dc-boundary-source">{DC_BOUNDARY_CREDIT}</p>
-                </>
-              )}
-            </>
-          )
-        ) : (
-          <p className="hint">The traffic stress legend shows here when the stress map is available.</p>
-        )}
-        {/* The junction markers are drawn with or without the stress map (spec review SF1). */}
-        <JunctionLegend />
-        {/* Moved from Layers (the owner, 2026-10-12: "less wordy"): each layer's how-it-works, by its legend. */}
-        <FederalLegendNotes preset={preset} on={federalOn} status={federalStatus} />
-        {waterPrefs.on && waterStatus === "ready" && <WaterLegend prefs={waterPrefs} />}
-        {waterPrefs.on && <WaterLegendNotes prefs={waterPrefs} />}
-        {RAIL_STATIONS.length > 0 && (rail.metro || rail.marc) && <RailStationsLegend />}
-        {climbsOn && climbsStatus === "ready" && <ClimbsLegend />}
-        {climbsOn && <p className="hint climbs-help">{CLIMBS_HELP}</p>}
-        {scenicOn && <ScenicLegend />}
-      </section>
-    </SheetFrame>
+/** The stress section's key: Mass Ride's capacity bands, or the stress levels and what each zoom shows. */
+function StressSectionKey(props: { massMap: boolean; stress: StressAvailability; stressVisible: boolean; preset: PresetId; zoom: number | null; facilitiesShown: ReadonlySet<string> }) {
+  const { massMap, stress, stressVisible, preset, zoom, facilitiesShown } = props;
+  if (stress !== "available") return null;
+  return massMap ? (
+    <>
+      <MassLegend />
+      <MassZoomNotes zoom={zoom} shown={stressVisible} />
+    </>
+  ) : (
+    <>
+      <StressLegend facilities={facilitiesShown} zoom={zoom} shown={stressVisible} foldedZoom />
+      {/* A Mass Ride before the tiles carry a capacity: the stress map stays, and the grey
+          outside DC still shows, so its words and its credit do too (accessibility review S2). */}
+      {isMassRide(preset) && (
+        <>
+          <p className="hint mass-dc-only">{MASS_DC_ONLY}</p>
+          <p className="hint dc-boundary-source">{DC_BOUNDARY_CREDIT}</p>
+        </>
+      )}
+    </>
   );
 }
 
