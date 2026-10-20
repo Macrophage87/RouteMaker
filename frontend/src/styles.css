@@ -4293,11 +4293,18 @@ details.zoom-notes {
 }
 
 .ride-large .cue-distance {
-  font-size: 2.6rem;
+  font-size: 2.75rem;
+}
+
+/* Large and Huge: the metric under the miles, so the big number keeps its line. */
+.ride-large .cue-distance-metric,
+.ride-big .cue-distance-metric {
+  display: block;
+  font-size: 0.5em;
 }
 
 .ride-large .cue-text {
-  font-size: 1.65rem;
+  font-size: 1.9rem;
 }
 
 .ride-large .cue-more {
@@ -4305,8 +4312,8 @@ details.zoom-notes {
 }
 
 .ride-large .cue-shape {
-  width: 88px;
-  height: 100px;
+  width: 112px;
+  height: 128px;
 }
 
 .ride-large .ride-togo {
@@ -4345,8 +4352,8 @@ details.zoom-notes {
 }
 
 .ride-big .cue-shape {
-  width: 96px;
-  height: 110px;
+  width: 128px;
+  height: 146px;
 }
 
 @media (forced-colors: active) {
