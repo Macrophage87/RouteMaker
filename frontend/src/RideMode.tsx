@@ -1711,6 +1711,37 @@ export function RideMode({
     () => (lightStep === null || ride.arrived ? null : rideLightCorner(model, lightStep * 160, togoS, minute * 60_000)),
     [model, lightStep, togoS === null ? null : Math.round(togoS / 60), ride.arrived, minute], // eslint-disable-line react-hooks/exhaustive-deps
   );
+  // "Ride mode" is for screen readers only and the two buttons fill the row (the owner, 2026-10-20: "People know it's
+  // ride mode anyway"). Near dawn or dusk the light times take the corner while they fit beside the buttons on one
+  // line, measured, as a phone's own text size can be larger than the page knows; else they go just under the row.
+  const topRef = useRef<HTMLDivElement>(null);
+  const [cornerFits, setCornerFits] = useState(true);
+  const lightKey = light ? light.shown.join("|") : "";
+  useLayoutEffect(() => {
+    const top = topRef.current;
+    const heading = headingRef.current;
+    const actions = top?.querySelector<HTMLElement>(".ride-top-actions");
+    if (!top || !heading || !actions) return;
+    const check = () => {
+      // Measured as laid out untight (the buttons not stretched), put back before anything is drawn.
+      const tight = top.classList.contains("ride-corner-tight");
+      if (tight) top.classList.remove("ride-corner-tight");
+      const row = getComputedStyle(top);
+      const room = top.clientWidth - parseFloat(row.paddingLeft) - parseFloat(row.paddingRight);
+      const buttons = [...actions.children] as HTMLElement[];
+      const between = parseFloat(getComputedStyle(actions).columnGap) || 0;
+      const need =
+        heading.scrollWidth + (parseFloat(row.columnGap) || 0) + buttons.reduce((sum, b) => sum + b.offsetWidth, 0) + between * Math.max(0, buttons.length - 1);
+      if (tight) top.classList.add("ride-corner-tight");
+      setCornerFits(need <= room);
+    };
+    check();
+    if (typeof ResizeObserver === "undefined") return;
+    const watch = new ResizeObserver(check);
+    watch.observe(top);
+    for (const button of actions.children) watch.observe(button);
+    return () => watch.disconnect();
+  }, [lightKey, ride.arrived, walking, big]);
   const back = ride.off ? wayBack(model, ride) : null;
   const shape = arrowFor(cue);
   const show311 = ride311Shown({ off: ride.off, progressM: progress, insideDc: (m) => inDc(pointAt(model, m)) });
@@ -1779,9 +1810,9 @@ export function RideMode({
         {/* End ride (v0.7.0, "Go riding fixes" item 6): always in view, at the top of the card, which stays at
             every size and in Big text; one slide ends the ride (a tap once arrived), and the page offers Undo for a few seconds
             (RideEnded). The ride's settings open just under the row, from the side buttons' gear. */}
-        <div className="ride-top">
-          {/* "Ride mode" in the corner; near dawn or dusk the light times in its place (the owner, 2026-10-19),
-              the heading kept for screen readers. */}
+        <div ref={topRef} className={light && cornerFits ? "ride-top" : "ride-top ride-corner-tight"}>
+          {/* The heading, "Ride mode", for screen readers; near dawn or dusk the light times shown in the corner
+              (the owner, 2026-10-19) where they fit beside the buttons, else just under the row. */}
           <h2 id="ride-heading" ref={headingRef} tabIndex={-1} className={light ? "ride-heading ride-light" : "ride-heading"}>
             {light ? (
               <>
@@ -1813,12 +1844,18 @@ export function RideMode({
             {!walking && !ride.arrived && (
               <button type="button" className="secondary ride-road-closed" onClick={roadClosed} aria-label={ROAD_CLOSED_NAME} title={ROAD_CLOSED_NAME}>
                 <Icon name="barrier" size={18} />
-                {/* Shown where there is room; on narrow phones and with large text the icon alone, its name kept. */}
+                {/* Always its words, at every size (the owner, 2026-10-20: "make everything have the big button"). */}
                 <span className="ride-top-label">{ROAD_CLOSED_TEXT}</span>
               </button>
             )}
           </div>
         </div>
+        {/* Where the corner has no room, the light times just under the top row, so they stay in view. */}
+        {light && !cornerFits && (
+          <p className="ride-light-below" aria-hidden="true">
+            {light.shown.join(" · ")}
+          </p>
+        )}
         <div
           ref={settingsPanel}
           id={`${settingsId}-settings`}

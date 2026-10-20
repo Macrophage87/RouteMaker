@@ -158,8 +158,9 @@ You stay responsible for riding safely; the route can be wrong.
   and the end. On a long trail away from roads it says the trail and a distance from its last
   junction, for example "On the Capital Crescent Trail, about 1.2 miles northwest of ...".
 - End ride is a slide: slide it to the right to end the ride, so a bump doesn't end it. Once you
-  have arrived it is a plain button. Near sunrise or sunset, the top corner shows the sunrise or
-  sunset and civil twilight times.
+  have arrived it is a plain button. End ride and Road closed share the top row; Road closed
+  always shows its words. Near sunrise or sunset, a small line under them gives the sunrise or
+  sunset and civil twilight times and the minutes till each.
 - Off the route for a few seconds, it says so and finds a new way from where you are. "Keep
   the planned route" says which way the route is instead.
 - At Start ride the map along the route, about 1,000 ft (300 m) either side, is saved on the
