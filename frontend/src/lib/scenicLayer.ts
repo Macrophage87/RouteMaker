@@ -181,12 +181,13 @@ export function scenicStatus(on: boolean, stressAvailable: boolean, places: "loa
   return [stressAvailable ? "" : SCENIC_NO_STRESS, dots].filter(Boolean).join(" ");
 }
 
-/** The Map layers section: one switch, its hint inside. */
-export function ScenicSection({ on, onChange, status = "" }: { on: boolean; onChange: (on: boolean) => void; status?: string }): ReactElement {
+/** The Map layers section: one switch, its hint inside, and its key while the layer is drawn. */
+export function ScenicSection({ on, onChange, status = "", drawn = on }: { on: boolean; onChange: (on: boolean) => void; status?: string; drawn?: boolean }): ReactElement {
   return h(
     LayerSection,
     { id: "scenic", title: SCENIC_LABEL, headingId: "scenic-heading", layers: [{ key: "scenic", label: SCENIC_LABEL, on }], onLayers: (next) => onChange(next.scenic), status },
     h("p", { className: "hint", id: "scenic-hint" }, SCENIC_HINT),
+    drawn && h(ScenicLegend, null),
   );
 }
 

@@ -43,6 +43,7 @@ from .models import (
     CachedMembership,
     ConfiguredGuild,
     DriftReport,
+    FlashingSignal,
     InstanceAdminListing,
     JunctionOverride,
     JunctionSuggestion,
@@ -894,6 +895,58 @@ class JunctionOverrideAdmin(InstanceAdminOnly):
             audit(request, "withdraw", "junctionoverride", row.pk, AuditLogEntry.Outcome.ALLOWED)
             count += 1
         self.message_user(request, f"Withdrew {count} junction override(s).")
+
+    def get_actions(self, request):
+        actions = super().get_actions(request)
+        if not self._is_instance_admin(request):
+            actions.pop("withdraw_selected", None)
+        return actions
+
+
+@admin.register(FlashingSignal, site=site)
+class FlashingSignalAdmin(InstanceAdminOnly):
+    """Flashing beacons the map has as signals (`core.flashing_signals`): the junction model
+    prices each one's junction with no signal at the next plan. Rows come only from
+    `manage.py load_flashing_signals` (the owner's file or MDOT SHA's list); here an instance
+    admin can look and withdraw one (an audited action), which a later load leaves withdrawn."""
+
+    list_display = ("name", "source", "active", "created_at", "withdrawn_at")
+    list_filter = ("active", "source")
+    search_fields = ("name", "source_id")
+    ordering = ("name",)
+    readonly_fields = (
+        "source",
+        "source_id",
+        "name",
+        "location",
+        "evidence",
+        "active",
+        "created_at",
+        "withdrawn_at",
+        "withdrawn_by",
+        "updated_at",
+    )
+    actions = ("withdraw_selected",)
+
+    def has_add_permission(self, request) -> bool:
+        return False
+
+    def has_delete_permission(self, request, obj=None) -> bool:
+        return False
+
+    @admin.action(description="Withdraw the selected flashing beacons (routing changes at once)")
+    def withdraw_selected(self, request, queryset) -> None:
+        if not self._is_instance_admin(request):
+            raise PermissionDenied
+        count = 0
+        for row in queryset.filter(active=True):
+            row.active = False
+            row.withdrawn_at = timezone.now()
+            row.withdrawn_by = "admin"
+            row.save(update_fields=["active", "withdrawn_at", "withdrawn_by", "updated_at"])
+            audit(request, "withdraw", "flashingsignal", row.pk, AuditLogEntry.Outcome.ALLOWED)
+            count += 1
+        self.message_user(request, f"Withdrew {count} flashing beacon(s).")
 
     def get_actions(self, request):
         actions = super().get_actions(request)

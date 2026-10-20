@@ -107,6 +107,7 @@ from . import (
     share_links,
     stoporder,
     timing,
+    trailprofile,
     transit,
     transit_live,
     wmata_bus,
@@ -1238,6 +1239,36 @@ class DetourOut(Schema):
     )
 
 
+class DescriptionShapeOut(Schema):
+    """The ways at an unusual junction, in degrees from straight ahead as the rider
+    arrives, clockwise positive, -180 to 180."""
+
+    out: int = Field(description="The way the route takes.")
+    others: list[int] = Field(description="Every other way, drawn dashed.")
+    main: Literal["before", "after"] | None = Field(
+        default=None,
+        description=(
+            "On a turn onto a service road beside a main road: the main road lies across the"
+            " way in (crossed just before, as for a left) or across the way ahead (a right"
+            " short of it)."
+        ),
+    )
+    ring: Literal["right", "left"] | None = Field(
+        default=None,
+        description=(
+            "On the way off a circle: drawn as a ring, entered bearing right (round it"
+            " anticlockwise) or left; `others` are then the exits passed."
+        ),
+    )
+
+
+class DescriptionExitOut(Schema):
+    """The way off a circle (`describe.circle_exit`)."""
+
+    number: int = Field(description="The exit taken, counting the streets off the ring passed.")
+    circle: str | None = Field(description="The circle's name; null where it has none.")
+
+
 class DescriptionTurnOut(Schema):
     """How the rider comes into a described stretch, or what a junction entry
     is: the movement, the street turned onto, who has the right of way where
@@ -1252,6 +1283,21 @@ class DescriptionTurnOut(Schema):
     )
     severity: Literal["orange", "red"] | None = Field(
         description='"Higher stress" (orange) or "Very high stress" (red), where flagged.'
+    )
+    stay: bool | None = Field(
+        default=None,
+        description='A fork along one way: "Bear right to stay on ..."; absent elsewhere.',
+    )
+    shape: DescriptionShapeOut | None = Field(
+        default=None,
+        description=(
+            "An unusual junction's shape, which the ride card draws in place of its plain"
+            " arrow (`describe.junction_shape`); absent at a plain crossroads or T."
+        ),
+    )
+    exit: DescriptionExitOut | None = Field(
+        default=None,
+        description='Off a circle: "Take the 3rd exit onto ... at Dupont Circle Northwest".',
     )
 
 
@@ -1298,13 +1344,14 @@ class DescriptionEntryOut(Schema):
     its `severity` "red" for a closure and "orange" for a zone with a penalty, or, at
     0 with no severity, the work-zone disclaimer or the feeds that could not be read;
     a `climb` is a categorised climb the route rides uphill where the hill seek ran
-    (FOLLOWUP-HILL-SEEK, 205), from its foot to its summit.
+    (FOLLOWUP-HILL-SEEK, 205), from its foot to its summit; a `hazard` is a known road
+    hazard the route rides (v0.10.0: cobblestones, rails in the road; `core.route_hazards`).
     Distances are along the route, scaled to `distance_m`. `text` is one plain
     sentence, US units first with the metric once, for reading aloud; the other
     fields are the same facts for a client that words them itself. Additive:
     older clients ignore it, and it is null where it could not be built."""
 
-    kind: Literal["stretch", "junction", "via", "walk", "avoid", "workzone", "climb"]
+    kind: Literal["stretch", "junction", "via", "walk", "avoid", "workzone", "climb", "hazard"]
     from_m: int
     to_m: int
     from_mi: float
@@ -1823,6 +1870,17 @@ class MassHazardSpanOut(Schema):
     road: str
 
 
+class RoadHazardSpanOut(Schema):
+    """A known hazard the route rides (v0.10.0; `core.route_hazards`): cobblestones or rails
+    in the road, in whole metres along the traced route as `stress_spans` are measured."""
+
+    from_m: int
+    to_m: int
+    kinds: list[Literal["cobbles", "rails"]]
+    road: str
+    text: str = Field(description="One plain sentence, US units first with the metric once.")
+
+
 class MtbOut(Schema):
     """A Mountain Bike plan's reading of its route (docs/MTB-TOPO-PLAN.md, slice 6;
     `core.mtb`)."""
@@ -2012,7 +2070,11 @@ class RouteBody(Schema):
     variant: Literal["standard", "no-trail", "ebike", "weekend", "offroad", "mtb"]
     geometry: LineString
     distance_m: float
+    # The router's time plus `junction_delay_s`.
     duration_s: float
+    # The seconds of `duration_s` the route's junctions add (stops, yields, signals;
+    # `routemaker.junction_delay`), which the router's own time leaves out.
+    junction_delay_s: float = 0.0
     climb_m: float
     descent_m: float
     stress_m: StressOut
@@ -2076,6 +2138,9 @@ class RouteBody(Schema):
     # A Mass Ride's rider-marked hazards it passes, in riding order (FOLLOWUP-MASSRIDE-MAP
     # part 3, 325). Additive: null on every other ride type, empty where it passes none.
     mass_hazards: list[MassHazardSpanOut] | None = None
+    # The known hazards it rides (v0.10.0; cobbles, rails), in riding order. Additive: empty
+    # where it rides none or the table predates them.
+    road_hazards: list[RoadHazardSpanOut] | None = None
     # The Mountain Bike ride type's reading of the route (slice 6). Additive: null on every
     # other ride type.
     mtb: MtbOut | None = None
@@ -2253,14 +2318,25 @@ class TransitStepOut(Schema):
     )
     departs: str | None = Field(
         default=None,
-        description='An infrequent service (over 15 min apart): the departure taken, "7:42 am".',
+        description=(
+            'An infrequent service (over 15 min apart), or one WMATA predicts (`source` "live"):'
+            ' the departure taken, "7:42 am".'
+        ),
+    )
+    source: Literal["scheduled", "live"] | None = Field(
+        default=None,
+        description=(
+            "A transit step's departure: \"live\", WMATA's next train or bus that the rider"
+            " reaches the stop in time for (a plan for now; the time on board stays the"
+            ' timetable\'s); else "scheduled". Null off transit.'
+        ),
     )
     text: str = Field(description="The step in one sentence, US units first, for reading aloud.")
     seconds: int = Field(description="The step's time, without the wait.")
     wait_s: int = Field(
         description="The wait before it: for a service every 15 min or less, half the headway"
-        " (a rider who does not time the trip); for a less frequent one, the time to spare"
-        " between reaching the stop and the scheduled departure taken (`departs`)."
+        " (a rider who does not time the trip); for a less frequent one, or one timed live, the"
+        " time to spare between reaching the stop and the departure taken (`departs`)."
     )
     to: str | None = Field(description="Where the step ends, by name; null: no name.")
     lines: list[str] = Field(description="Metro lines or bus routes that run it.")
@@ -2341,17 +2417,26 @@ class TransitDepartureOut(Schema):
     planned_at: str = Field(description="The moment the plan is for.")
     point: list[float] | None = Field(description="[lon, lat] of the stop, for the map's label.")
     label: str = Field(description='The map\'s label: "MARC 7:42 am · 6 min spare".')
+    source: Literal["scheduled", "live"] = Field(
+        default="scheduled", description='"live" where WMATA predicts the departure.'
+    )
 
 
 class TransitOut(Schema):
-    """A transit ride type's trip (`core.transit`): scheduled, not live."""
+    """A transit ride type's trip (`core.transit`): scheduled, with WMATA's predicted
+    departures on a plan for now (`core.transit_live`)."""
 
     mode: Literal["bike-transit", "bikeshare-transit"]
     key: str = Field(description="The chosen option's key.")
     direct: bool = Field(description="The chosen option is riding the whole way.")
     total_s: int
     minutes: int
-    summary: str = Field(description='"About N min door to door, scheduled."')
+    summary: str = Field(
+        description=(
+            '"About N min door to door, scheduled.", or "..., with live departures." where'
+            " `live_times`."
+        )
+    )
     bike_only_s: int | None = Field(description="Riding the whole way, for comparison.")
     comparison: str | None
     riding_quicker: bool = Field(description="Riding the whole way is at least as quick.")
@@ -2373,6 +2458,13 @@ class TransitOut(Schema):
         )
     )
     scheduled: bool
+    live_times: bool = Field(
+        default=False,
+        description=(
+            "A departure on the chosen trip is WMATA's prediction (its step's `source` is"
+            ' "live").'
+        ),
+    )
     credits: list[str] = Field(description="The schedules' sources, for the systems used.")
     departure: TransitDepartureOut | None = Field(
         default=None, description="The first infrequent departure, or null where there is none."
@@ -2781,14 +2873,19 @@ def _route_answer(request, body: RouteIn, response: HttpResponse):
 # routes it shows and keeps those that differ enough (frontend lib/neighbours.ts).
 
 # The seconds the two plans may take together, inside the request's own budget.
-NEIGHBOURS_BUDGET_S = 15
+# 25 since the calmer option became the trailmaxxed route (2026-10-19): the top of the slider
+# runs the calm search at its full rate, which took longer than the old notch's one call.
+NEIGHBOURS_BUDGET_S = 25
 # What the request counts against the routing limit: one for each plan.
 NEIGHBOURS_COST = 2
 
 
 class NeighbourOut(Schema):
     kind: Literal["direct", "calmer"] = Field(
-        description="`direct`: two notches more traffic tolerant. `calmer`: one notch calmer."
+        description=(
+            "`direct`: two notches more traffic tolerant. `calmer`: the top of the slider"
+            " (Go's Trailmaxxed)."
+        )
     )
     stress: int = Field(description="The traffic slider's position it was planned at.")
     route: RouteOut
@@ -2817,7 +2914,7 @@ class NeighboursOut(Schema):
         500: ErrorOut,
         503: BusyOut,
     },
-    summary="The same trip a step more direct and a step calmer (Go's route options)",
+    summary="The same trip more direct and trailmaxxed (Go's route options)",
     by_alias=True,
 )
 @decorate_view(
@@ -3381,7 +3478,10 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
     )
     # WMATA's live reading (core.wmata_live), if any: an elevator out on the way costs the trip
     # a little in the ranking, and the block says the live values (core.transit_live).
+    # A plan for now takes its Metro steps' departures from WMATA's next trains, where they
+    # cover them, before it is ranked.
     live = wmata_live.client.snapshot()
+    found = transit_live.with_live_trains(found, live)
     found = transit_live.rank(transit_live.skip_closed(found, live), live)
     found = transit.choose(found, body.transit_option)
     # The chosen trip's Metrobus steps' next buses (core.wmata_bus, v0.9.0), asked now, beside
@@ -3404,6 +3504,7 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
         # trip's other walks and rides are routed for the map (transit.drawn).
         lines = lines or {}
         buses = _buses_for(plan, bus_ask)
+        plan = transit_live.with_live_buses(plan, buses)
         block = _transit_block(transit.drawn(plan, draw, skip=lines), schedule, live, buses)
         answer["transit"] = _with_leg_lines(block, lines)
         return answer
@@ -4646,6 +4747,13 @@ SEGMENT_INFO_MAX_AGE_S = 300
 class SegmentInfoIn(Schema):
     lat: Coordinate
     lon: Coordinate
+    trail: bool = Field(
+        default=False,
+        description=(
+            "A tap on the mountain-bike trail layer: describe the nearest such trail, ahead"
+            " of a road beside it."
+        ),
+    )
 
     @model_validator(mode="after")
     def point_inside(self):
@@ -4716,6 +4824,28 @@ class SegmentInfoOut(Schema):
             " guide where its names place it in no system; null on any other way."
         ),
     )
+    mtb_trail: bool = Field(
+        default=False,
+        description=(
+            "A mountain-bike trail the trail layer draws: its elevation profile is at"
+            " /api/trails/{osm_way_id}/profile, and it has no traffic lines."
+        ),
+    )
+    trail_open: str | None = Field(
+        default=None,
+        description=(
+            "On a mountain-bike trail: 'offroad' where the Gravel, Mountain Goat and"
+            " Mountain Bike ride types may route through it (Mountain Bike up to the"
+            " rider's level), 'mtb' where only Mountain Bike may, null where none may."
+        ),
+    )
+    trail_level: int | None = Field(
+        default=None,
+        description=(
+            "On a mountain-bike trail: the level (1-4) Mountain Bike's hardest-level"
+            " choice reads it at."
+        ),
+    )
     attribution: list[str]
 
 
@@ -4742,7 +4872,7 @@ SEGMENT_INFO_ATTRIBUTION = ("© OpenStreetMap contributors (ODbL)",)
     errors_as_json,
 )
 def road_info(request, params: Query[SegmentInfoIn], response: HttpResponse):
-    found = segment_info.segment_info(params.lat, params.lon)
+    found = segment_info.segment_info(params.lat, params.lon, params.trail)
     response["Cache-Control"] = f"private, max-age={SEGMENT_INFO_MAX_AGE_S}"
     return Status(200, {**found, "attribution": list(SEGMENT_INFO_ATTRIBUTION)})
 
@@ -4872,6 +5002,62 @@ def climb_profile(request, climb_id: str, response: HttpResponse):
     if body is None:
         return Status(404, {"error": "There is no elevation for this climb."})
     response["Cache-Control"] = f"public, max-age={CLIMB_PROFILE_MAX_AGE_S}"
+    return Status(200, body)
+
+
+# --- One mountain-bike trail's elevation profile, for the road panel ----------------
+
+TRAIL_PROFILE_MAX_AGE_S = 86_400
+
+
+class TrailProfileOut(Schema):
+    """A mountain-bike trail's heights along it (`core.trailprofile`; the owner,
+    2026-10-19: "Include an elevation profile of the trail if possible"), as the route
+    chart's `profile`, with its climbing, descending and steepest grade."""
+
+    way: int
+    length_m: int
+    gain_m: float
+    loss_m: float
+    max_grade_pct: float | None = Field(
+        description=(
+            "The steepest grade on it, either way, percent, read as the route chart reads it."
+        )
+    )
+    interval_m: int
+    m: list[int] = Field(description="Metres from the way's first point to each sample.")
+    elevation_m: list[float | None]
+    grade_pct: list[float | None]
+
+
+@api.get(
+    "/trails/{way_id}/profile",
+    response={200: TrailProfileOut, 404: ErrorOut, 429: ErrorOut, 500: ErrorOut, 503: ErrorOut},
+    summary="One mountain-bike trail's elevation profile (the road panel, for a tapped trail)",
+)
+@decorate_view(
+    ratelimit.in_flight_limited(ratelimit.ROUTING_IN_FLIGHT),
+    ratelimit.rate_limited(ratelimit.TRAIL_PROFILE),
+    errors_as_json,
+)
+def trail_profile(request, way_id: int, response: HttpResponse):
+    """Read-only: a trail is named by its OSM way id and read from the live table, never
+    by a line; only a way the mountain-bike trail layer draws is answered."""
+    if not 0 < way_id < 2**53:
+        return Status(404, {"error": "There is no such trail."})
+    try:
+        body = trailprofile.profile(way_id)
+    except trailprofile.Unavailable as error:
+        logger.warning("trail profile unavailable: %s", error)
+        refusal = JsonResponse(
+            {"error": "The trail's elevation is not available right now. Try again shortly."},
+            status=503,
+        )
+        refusal["Retry-After"] = str(DEADLINE_RETRY_S)
+        return refusal
+    if body is None:
+        return Status(404, {"error": "There is no elevation for this trail."})
+    response["Cache-Control"] = f"public, max-age={TRAIL_PROFILE_MAX_AGE_S}"
     return Status(200, body)
 
 
@@ -5278,6 +5464,77 @@ def account_settings_save(request):
     return _private(JsonResponse(_settings_out(row)))
 
 
+# The 311 log (core.report_log; core.models.Report311Log): the whole log, last write wins, like
+# the settings. Signed out it is 401 and the log stays on the device.
+
+
+def _report_log_owner(user) -> str:
+    """A tag the page keeps with its copy of the account's 311 log, so a copy left by one account
+    is never merged into another's on the same device. Derived from the account with the server's
+    key: the same for one account, and no id can be read from it."""
+    from django.utils.crypto import salted_hmac
+
+    return salted_hmac("core.report311_log.owner", str(user.pk)).hexdigest()[:24]
+
+
+def _report_log_out(row, user) -> dict:
+    return {
+        "entries": row.entries if row is not None else None,
+        "updated_at": row.updated_at.isoformat() if row is not None else None,
+        "owner": _report_log_owner(user),
+    }
+
+
+@api.get("/me/report311-log", summary="The signed-in rider's 311 log (null when none yet)")
+@decorate_view(
+    signed_in_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.ME),
+    errors_as_json,
+)
+def report311_log_read(request):
+    from django.middleware.csrf import get_token
+
+    from .models import Report311Log
+
+    get_token(request)
+    row = Report311Log.objects.filter(user=request.user).first()
+    return _private(JsonResponse(_report_log_out(row, request.user)))
+
+
+@api.post("/me/report311-log", summary="Save the signed-in rider's 311 log (the whole log)")
+@decorate_view(
+    ratelimit.user_rate_limited(ratelimit.ACCOUNT_WRITES),
+    csrf_protected,
+    signed_in_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+def report311_log_save(request):
+    from django.db import transaction
+
+    from . import report_log
+    from .models import Report311Log
+
+    body, refusal = _json_body(request, report_log.LOG_MAX_BYTES + 1024)
+    if refusal is not None:
+        return refusal
+    entries = body.get("entries") if isinstance(body, dict) else None
+    problem = report_log.log_problem(entries)
+    if problem:
+        return _stress_error(400, problem, field="entries")
+    # Merged with what the account has, by entry (core.report_log.merge_logs), not replaced: a
+    # device with an old copy keeps what another device logged. The answer is the merged log.
+    with transaction.atomic():
+        # The row first (two first saves at once: get_or_create takes the other's), then locked.
+        Report311Log.objects.get_or_create(user=request.user, defaults={"entries": []})
+        row = Report311Log.objects.select_for_update().get(user=request.user)
+        row.entries = report_log.merge_logs(row.entries or [], entries)
+        row.save(update_fields=["entries", "updated_at"])
+    return _private(JsonResponse(_report_log_out(row, request.user)))
+
+
 def _route_summary(row) -> dict:
     return {
         "id": row.pk,
@@ -5514,6 +5771,58 @@ def assistant_key_delete(request):
 
     AssistantKey.objects.filter(user=request.user).delete()
     return _private(JsonResponse(_assistant_key_out(None)))
+
+
+# Assistant apps the rider connected through the site's own MCP connector (core.connector; the
+# owner, 2026-10-19: "Sure, add that in"): listed beside the AI assistant key, each with
+# Disconnect, which ends that app's access at once.
+
+
+def _connected_app_out(grant) -> dict:
+    return {
+        "id": grant.pk,
+        "name": grant.client.name or "An assistant app",
+        "created_at": grant.created_at.isoformat(),
+        "last_used_at": grant.last_used_at.isoformat() if grant.last_used_at else None,
+    }
+
+
+def _connected_apps(user) -> list[dict]:
+    from .models import ConnectorGrant
+
+    rows = (
+        ConnectorGrant.objects.select_related("client")
+        .filter(user=user, refresh_digest__isnull=False)
+        .order_by("-created_at")
+    )
+    return [_connected_app_out(g) for g in rows]
+
+
+@api.get("/me/connected-apps", summary="Assistant apps connected to the rider's account")
+@decorate_view(
+    signed_in_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.ME),
+    errors_as_json,
+)
+def connected_apps_read(request):
+    return _private(JsonResponse({"apps": _connected_apps(request.user)}))
+
+
+@api.post("/me/connected-apps/{grant_id}/delete", summary="Disconnect one assistant app")
+@decorate_view(
+    ratelimit.user_rate_limited(ratelimit.ACCOUNT_WRITES),
+    csrf_protected,
+    signed_in_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+def connected_app_delete(request, grant_id: int):
+    from .models import ConnectorGrant
+
+    ConnectorGrant.objects.filter(user=request.user, pk=grant_id).delete()
+    return _private(JsonResponse({"apps": _connected_apps(request.user)}))
 
 
 def keyed_account(view):
@@ -6137,6 +6446,31 @@ def report311_status(request):
     )
     response["Cache-Control"] = "no-store"
     return response
+
+
+@api.get("/report311/where", summary="Which 311 website takes a problem at a point")
+@decorate_view(
+    ratelimit.in_flight_limited(ratelimit.GEOCODE_IN_FLIGHT, ratelimit.name_slots),
+    ratelimit.rate_limited(ratelimit.REVERSE),
+    ratelimit.rate_limited(ratelimit.REVERSE_BURST),
+    same_site_only,
+    errors_as_json,
+)
+def report311_where(request, params: Query[ReverseIn]):
+    """The 311 log's site for an entry (core.report_log.where): an id the page knows, or null
+    where the point is in no jurisdiction the log names. The point is not kept."""
+    from . import report_log
+
+    try:
+        found = report_log.where(params.lat, params.lon, lang=params.lang)
+    except geocode.Unavailable as unavailable:
+        logger.warning("311 log: the geocoder did not answer: %s", unavailable)
+        out = JsonResponse({"error": GEOCODER_DOWN}, status=502)
+        out["Cache-Control"] = "no-store"
+        return out
+    out = JsonResponse({"where": found})
+    out["Cache-Control"] = "private, max-age=86400"
+    return out
 
 
 @api.post("/report311", summary="Send one Ride mode report to DC 311 (only with a DC key)")
