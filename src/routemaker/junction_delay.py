@@ -87,9 +87,10 @@ def _rank(road_class: str | None) -> int:
     return ROAD_RANK.get(road_class or "", _NO_RANK)
 
 
-def delay_at(junction: RawJunction, rolls: bool = False) -> float:
+def delay_at(junction: RawJunction, rolls: bool = False, beacon: bool = False) -> float:
     """The seconds a rider loses at one junction (see the module docstring); `rolls`: a
-    stop sign there may be taken as a yield (the District)."""
+    stop sign there may be taken as a yield (the District); `beacon`: the map's signal
+    there is a known flashing beacon, so the rider gives way as at a stop sign."""
     arms = [
         _rank(cls)
         for (use, _one_way), cls in zip(junction.others, junction.other_classes, strict=False)
@@ -102,7 +103,7 @@ def delay_at(junction: RawJunction, rolls: bool = False) -> float:
         # No road crosses here: a way's end, or only driveways, paths and service roads
         # meet the route. A path coming out onto a road still gives way to it.
         return _stop(out, rolls) if from_path and out < _NO_RANK else 0.0
-    if junction.signal:
+    if junction.signal and not beacon:
         return SIGNAL_DELAY_S
     if from_path:
         # A path crossing a road or coming out onto one gives way to it.
@@ -130,16 +131,24 @@ def _stop(busiest_rank: int, rolls: bool) -> float:
 
 
 def delay_s(
-    junctions: Iterable[RawJunction], rolls: Callable[[float, float], bool] | None = None
+    junctions: Iterable[RawJunction],
+    rolls: Callable[[float, float], bool] | None = None,
+    beacon: Callable[[float, float], bool] | None = None,
 ) -> float:
     """The route's junction delay in seconds: each junction's `delay_at`, a run of
     junctions within MERGE_M of each other counted once, at its dearest. `rolls(lon, lat)`
-    says where a stop sign may be taken as a yield; None: nowhere."""
+    says where a stop sign may be taken as a yield, `beacon(lon, lat)` where a mapped
+    signal is a known flashing beacon (the junction model's beacon list); None: nowhere."""
     total = 0.0
     run_end: float | None = None
     run_cost = 0.0
     for junction in sorted(junctions, key=lambda j: j.m):
-        cost = delay_at(junction, rolls is not None and rolls(junction.lon, junction.lat))
+        here = (junction.lon, junction.lat)
+        cost = delay_at(
+            junction,
+            rolls is not None and rolls(*here),
+            junction.signal and beacon is not None and beacon(*here),
+        )
         if run_end is not None and junction.m - run_end <= MERGE_M:
             run_cost = max(run_cost, cost)
         else:

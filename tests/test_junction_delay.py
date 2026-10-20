@@ -60,6 +60,10 @@ class TestOneJunction:
         busy = (("road", "primary"), ("road", "primary"))
         assert d.delay_at(junction(*busy, signal=True)) == d.SIGNAL_DELAY_S
 
+    def test_a_flashing_beacon_mapped_as_a_signal_is_a_stop(self) -> None:
+        busy = (("road", "primary"), ("road", "primary"))
+        assert d.delay_at(junction(*busy, signal=True), beacon=True) == d.STOP_DELAY_S
+
     def test_the_rider_on_the_busier_road_does_not_stop(self) -> None:
         assert d.delay_at(junction(*CROSS_STREET, in_class="tertiary", out_class="tertiary")) == 0
 
@@ -115,6 +119,18 @@ class TestWholeRoute:
             return len(asked) == 1
 
         assert d.delay_s(stops, rolls) == d.YIELD_DELAY_S + d.STOP_DELAY_S
+
+    def test_the_beacon_test_is_asked_only_at_signals(self) -> None:
+        busy = (("road", "primary"), ("road", "primary"))
+        stops = [junction(*busy, m=100.0, signal=True), junction(*CROSS_STREET, m=300.0)]
+        asked = []
+
+        def beacon(lon: float, lat: float) -> bool:
+            asked.append((lon, lat))
+            return True
+
+        assert d.delay_s(stops, beacon=beacon) == 2 * d.STOP_DELAY_S
+        assert len(asked) == 1
 
     def test_no_junctions_no_delay(self) -> None:
         assert d.delay_s([]) == 0
