@@ -4765,7 +4765,7 @@ map servers. Five lists, one file (`reference/signals.json`):
 | DDOT Traffic Signals (item `ca6ad078a6f6415389e220704b7698ac`) | `https://maps2.dcgis.dc.gov/DCGIS/rest/services/DCGIS_DATA/Transportation_Signs_Signals_Lights_WebMercator/MapServer/170` | yes (CC BY 4.0) |
 | VDOT HMMS Traffic Signals, 2023 snapshot (item `0d4c36cd061f4be280691d9ff6d36419`; all of Virginia, Fairfax included) | `https://services.arcgis.com/p5v98VHDX9Atv3l7/arcgis/rest/services/HMMS_Traffic_Signals_Flat_NEW/FeatureServer/0` | report only: listed in the report, never marked (2023 snapshot; OSM likely better, the owner 2026-10-19) |
 | City of Alexandria, signalised intersections | `https://geoportal.alexandriava.gov/server/rest/services/Hosted/Smart_Mobility_Data/FeatureServer/9` | yes (CC0) |
-| City of Alexandria, HAWKs | the same service, layer `0` | yes (CC0) |
+| City of Alexandria, HAWKs | the same service, layer `0`, `signal_type = 'HAWK'` | yes (CC0) |
 | MDOT SHA Traffic Signals (all of Maryland but Baltimore City) | `https://gisportalapps.sha.maryland.gov/arcgis/rest/services/UtilitiesCommunication/TrafficSignals_Maryland_MDOTSHA/MapServer/0` | yes (Maryland iMAP's terms, the owner 2026-10-19) |
 | Arlington County Intersection Points | `https://arlgis.arlingtonva.us/arcgis/rest/services/Open_Data/od_Intersection_Points/FeatureServer/0` | not until Arlington's terms are confirmed |
 
@@ -4789,9 +4789,11 @@ installed; the rebuild logs `... signals installed but not read` and leaves it o
        --out-dir ~/rmdata/datasets --credit "VDOT"
    python3 scripts/fetch_agency_layer.py --slug alexandria-signals \
        --layer https://geoportal.alexandriava.gov/server/rest/services/Hosted/Smart_Mobility_Data/FeatureServer/9 \
+       --order-by objectid \
        --out-dir ~/rmdata/datasets --credit "City of Alexandria"
    python3 scripts/fetch_agency_layer.py --slug alexandria-hawks \
        --layer https://geoportal.alexandriava.gov/server/rest/services/Hosted/Smart_Mobility_Data/FeatureServer/0 \
+       --order-by objectid --where "signal_type = 'HAWK'" \
        --out-dir ~/rmdata/datasets --credit "City of Alexandria"
    for slug in dc-traffic-signals md-traffic-signals va-traffic-signals alexandria-signals alexandria-hawks; do
      sudo mkdir -p "$DATA_ROOT/reference/inputs/$slug"
@@ -4802,7 +4804,14 @@ installed; the rebuild logs `... signals installed but not read` and leaves it o
 
    Exit 3 means the pages did not add up to the count the service reported: delete
    the folder and run it again. Put each README's size and sha256 into docs/SOURCES.md.
-   (DDOT reported 1,597 signals, all `STATUS` Active, on 2026-10-19.)
+   Alexandria's server returns an error page unless the field is named in lower
+   case (`--order-by objectid`). Its layers 9 and 0 both serve the whole
+   intersection table (257 records), so the HAWK fetch filters on `signal_type`, and
+   the installer reads a record as a signal or a HAWK by its `signal_type` whatever
+   was fetched: no Alexandria signal counts twice. The counts on 2026-10-20: DDOT
+   1,597 (all `STATUS` Active), MDOT SHA 3,366 (513 devices that are not signals left
+   out), VDOT 3,134 (report only), Alexandria 253 signals and 4 HAWKs; 8,354 in all,
+   40 of them HAWKs.
 
 2. **Install them**, all in one run (the file is written whole, so a run with one
    flag drops the others):

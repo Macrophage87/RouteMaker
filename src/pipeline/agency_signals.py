@@ -238,12 +238,31 @@ def arlington_rows(doc: Mapping) -> tuple[list[dict], dict[str, int]]:
     return _rows(doc, "arlington", keep=keep)
 
 
+def _alexandria_is_hawk(props: Mapping) -> bool | None:
+    """Whether an Alexandria record's `SIGNAL_TYPE` is HAWK; None where the layer
+    has no such field."""
+    if "SIGNAL_TYPE" not in props:
+        return None
+    return str(props["SIGNAL_TYPE"] or "").strip().upper() == "HAWK"
+
+
 def alexandria_rows(doc: Mapping, kind: str = "signal") -> tuple[list[dict], dict[str, int]]:
-    """City of Alexandria Smart Mobility Data: the signalised intersections layer
-    (every record a signal) or the HAWK layer (`kind` "hawk")."""
+    """City of Alexandria Smart Mobility Data, `kind` "signal" (layer 9) or "hawk"
+    (layer 0 fetched with `signal_type = 'HAWK'`). Both layers serve the whole
+    intersection table (257 records on 2026-10-20), so by `SIGNAL_TYPE` the signal
+    list leaves out the HAWKs and the HAWK list everything else: a layer fetched
+    without the filter counts no signal twice."""
+
+    def keep(props: Mapping) -> tuple[bool, str]:
+        hawk = _alexandria_is_hawk(props)
+        if hawk is None or hawk == (kind == "hawk"):
+            return True, ""
+        return False, "a HAWK (read from --alexandria-hawks)" if hawk else "not a HAWK"
+
     return _rows(
         doc,
         "alexandria",
+        keep=keep,
         kind=lambda props: kind,
         id_prefix="alexandria-hawk" if kind == "hawk" else None,
     )

@@ -360,9 +360,11 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
     lanes (`reports/data-comparison/alexandria-bike-lanes-check.md`); nothing in the
     map is read from it.
   - **Smart Mobility Data**, layers 9 (signalised intersections, "Single point file
-    representing intersections with signals throughout the city") and 0 (HAWKs)
+    representing intersections with signals throughout the city") and 0, which
+    serve the same 257 intersections (2026-10-20); the HAWKs are the 4 whose
+    `signal_type` is HAWK, the other 253 signals
     (<https://geoportal.alexandriava.gov/server/rest/services/Hosted/Smart_Mobility_Data/FeatureServer>),
-    on the city's GIS portal; 257 signalised intersections (2026-10-19). Marks the
+    on the city's GIS portal. Marks the
     junctions at a city signal OSM does not map as one (v0.10.0;
     `pipeline.agency_signals`). Its item licence field is empty; the portal's CC0
     reply above covers it. Fetched at rebuild time; size and sha256: the download's

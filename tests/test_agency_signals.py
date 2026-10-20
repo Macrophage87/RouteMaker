@@ -444,3 +444,20 @@ def test_a_report_only_source_is_counted_but_never_marked() -> None:
     assert result.would_add == {"vdot": 1} and result.added == {}
     assert agency_signals.report_csv(result).splitlines()[1].split(",")[3] == "would add"
     assert "vdot (report only): 1 OSM lacks" in agency_signals.summary(result)
+
+
+def test_alexandria_layers_split_the_one_table_by_signal_type() -> None:
+    """Layers 9 and 0 both serve the whole intersection table: a HAWK is read once,
+    as a HAWK, and every other record once, as a signal."""
+    doc = {
+        "features": [
+            point_feature({"objectid": oid, "signal_type": signal_type})
+            for oid, signal_type in ((1, "Signal"), (2, "HAWK"), (3, "Flashing"))
+        ]
+    }
+    signals, signal_drops = agency_signals.alexandria_rows(doc)
+    hawks, hawk_drops = agency_signals.alexandria_rows(doc, kind="hawk")
+    assert [row["id"] for row in signals] == ["alexandria:1", "alexandria:3"]
+    assert dict(signal_drops) == {"a HAWK (read from --alexandria-hawks)": 1}
+    assert [(row["id"], row["kind"]) for row in hawks] == [("alexandria-hawk:2", "hawk")]
+    assert dict(hawk_drops) == {"not a HAWK": 2}
