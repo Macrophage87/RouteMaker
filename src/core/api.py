@@ -5527,13 +5527,11 @@ def report311_log_save(request):
     # Merged with what the account has, by entry (core.report_log.merge_logs), not replaced: a
     # device with an old copy keeps what another device logged. The answer is the merged log.
     with transaction.atomic():
-        row = Report311Log.objects.select_for_update().filter(user=request.user).first()
-        if row is None:
-            kept = report_log.cap_log(entries)
-            row = Report311Log.objects.create(user=request.user, entries=kept)
-        else:
-            row.entries = report_log.merge_logs(row.entries or [], entries)
-            row.save(update_fields=["entries", "updated_at"])
+        # The row first (two first saves at once: get_or_create takes the other's), then locked.
+        Report311Log.objects.get_or_create(user=request.user, defaults={"entries": []})
+        row = Report311Log.objects.select_for_update().get(user=request.user)
+        row.entries = report_log.merge_logs(row.entries or [], entries)
+        row.save(update_fields=["entries", "updated_at"])
     return _private(JsonResponse(_report_log_out(row, request.user)))
 
 

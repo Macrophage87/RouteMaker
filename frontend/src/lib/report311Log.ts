@@ -207,7 +207,9 @@ export function mergeLogs(a: LogEntry[], b: LogEntry[]): LogEntry[] {
   const byId = new Map<string, LogEntry>();
   for (const entry of [...a, ...b]) {
     const had = byId.get(entry.id);
-    if (!had || Date.parse(entry.changed) > Date.parse(had.changed)) byId.set(entry.id, entry);
+    const won = !had || Date.parse(entry.changed) > Date.parse(had.changed) ? entry : had;
+    // A website looked up on one copy is kept whichever copy wins (a lookup is not a change).
+    byId.set(entry.id, won.where === null && had ? { ...won, where: (won === entry ? had : entry).where } : won);
   }
   return capLog([...byId.values()].sort((x, y) => Date.parse(y.at) - Date.parse(x.at)));
 }
@@ -527,7 +529,10 @@ export class Report311LogStore {
       this.looking.add(entry.id);
       const where = inDc(entryPoint(entry)) ? "dc" : await lookUpWhere(this.origin, entryPoint(entry), this.net);
       this.looking.delete(entry.id);
-      if (where !== undefined) this.change(entry.id, { where });
+      // Not a change of the rider's (its time is kept), so it cannot outrank a check-off made on another device.
+      if (where !== undefined && this.entries.some((e) => e.id === entry.id && e.where === null)) {
+        this.write(this.entries.map((e) => (e.id === entry.id ? { ...e, where } : e)));
+      }
     }
   }
 

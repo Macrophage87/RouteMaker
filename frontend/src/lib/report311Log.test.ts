@@ -254,6 +254,20 @@ test("no signal: the lookup waits, the entry stays under Website not looked up y
   assert.equal(await lookUpWhere("https://x", MOCO_SPOT.point, fakeFetch(() => ({ status: 200, body: { where: null } })).fn), "none");
 });
 
+test("a website looked up is not a change: it never outranks a check-off from another device, and the merge keeps it", async () => {
+  const store = memory();
+  const open = entry({ id: "p", where: null, ...MOCO_AT, changed: "2026-10-20T16:00:00.000Z" });
+  store.data.set(LOG_KEY, JSON.stringify([open]));
+  const log = new Report311LogStore(store, "https://x", fakeFetch(() => ({ status: 200, body: { where: "moco" } })).fn);
+  await log.lookUp();
+  assert.equal(log.list()[0].where, "moco");
+  assert.equal(log.list()[0].changed, open.changed, "its time is kept");
+  const checked = { ...open, reported: "2026-10-20T17:00:00.000Z", changed: "2026-10-20T17:00:00.000Z" };
+  const merged = mergeLogs([checked], log.list());
+  assert.equal(merged[0].reported, checked.reported, "the check-off stands");
+  assert.equal(merged[0].where, "moco", "and the website is kept");
+});
+
 test("one lookup with no answer does not stop the others", async () => {
   let asked = 0;
   const net = fakeFetch(() => (asked++ === 0 ? { status: 429 } : { status: 200, body: { where: "moco" } }));

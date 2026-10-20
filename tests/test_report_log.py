@@ -69,6 +69,13 @@ class TestLogChecks:
         kept = report_log.cap_log([*new, old])
         assert len(kept) == report_log.ENTRIES_MAX and "old" not in {e["id"] for e in kept}
 
+    def test_the_merge_keeps_a_website_and_takes_an_entry_with_no_changed_time(self) -> None:
+        stored = [entry(id="a", where="moco")]
+        incoming = [entry(id="a", where=None, changed=None, reported="2026-10-20T17:00:00")]
+        merged = report_log.merge_logs(stored, incoming)
+        assert merged[0]["where"] == "moco" and merged[0]["reported"] == "2026-10-20T17:00:00"
+        assert report_log.cap_log([entry(id="b", at="2026-10-20T16:00:00"), entry(id="c")])
+
     def test_the_whole_log(self) -> None:
         assert report_log.log_problem({"entries": []})
         assert report_log.log_problem([entry(), entry()]) == "Two entries have the same id."

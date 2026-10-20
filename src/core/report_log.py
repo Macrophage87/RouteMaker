@@ -27,7 +27,7 @@ from __future__ import annotations
 import json
 import math
 import re
-from datetime import datetime
+from datetime import UTC, datetime
 from functools import cache
 from pathlib import Path
 
@@ -164,7 +164,12 @@ def log_bytes(entries: list) -> int:
 
 
 def _when(value: str) -> datetime:
-    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    found = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    return found if found.tzinfo is not None else found.replace(tzinfo=UTC)
+
+
+def _changed(entry: dict) -> datetime:
+    return _when(entry.get("changed") or entry["at"])
 
 
 def cap_log(entries: list[dict]) -> list[dict]:
@@ -191,8 +196,11 @@ def merge_logs(stored: list[dict], incoming: list[dict]) -> list[dict]:
         by_id[entry["id"]] = entry
     for entry in incoming:
         had = by_id.get(entry["id"])
-        if had is None or _when(entry["changed"]) >= _when(had["changed"]):
-            by_id[entry["id"]] = entry
+        won = entry if had is None or _changed(entry) >= _changed(had) else had
+        # A website looked up on one copy is kept whichever copy wins (a lookup is not a change).
+        if had is not None and won.get("where") is None:
+            won = {**won, "where": (had if won is entry else entry).get("where")}
+        by_id[entry["id"]] = won
     merged = sorted(by_id.values(), key=lambda e: _when(e["at"]), reverse=True)
     return cap_log(merged)
 
