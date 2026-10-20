@@ -175,7 +175,9 @@ def _list(items: list[str]) -> str:
     return "<ul>" + "".join(f"<li>{escape(i)}.</li>" for i in items) + "</ul>"
 
 
-def _explanation() -> str:
+def _explanation(signed_in: bool = False) -> str:
+    """What deletion does. The banned-account line is for the signed-out page only: a rider
+    signed in is not banned."""
     return (
         "<h2>Deleted at once</h2>"
         + _list(DELETED)
@@ -185,7 +187,7 @@ def _explanation() -> str:
         + "<h2>On your phone or computer</h2>"
         + f"<p>{escape(ON_DEVICE)}</p>"
         + f"<p>{escape(AGAIN)}</p>"
-        + f"<p>{escape(BANNED)}</p>"
+        + ("" if signed_in else f"<p>{escape(BANNED)}</p>")
     )
 
 
@@ -215,18 +217,18 @@ def _signed_out() -> str:
 @ratelimit.rate_limited(ratelimit.SIGN_IN)
 @csrf_protect
 def page(request):
-    """GET: what deletion does, and the button (signed in) or the sign-in link. POST: delete."""
+    """GET: the button (signed in) or the sign-in link, then what deletion does. POST: delete."""
     from .api import signed_in
 
     if not signed_in(request):
         return _page(_signed_out() + _explanation(), status=200 if request.method == "GET" else 401)
     if request.method == "GET":
-        return _page(_explanation() + _form(request))
+        return _page(_form(request) + _explanation(signed_in=True))
     if request.POST.get(CONFIRM_FIELD) != "yes":
-        return _page(_explanation() + _form(request, NOT_CONFIRMED), status=400)
+        return _page(_form(request, NOT_CONFIRMED) + _explanation(signed_in=True), status=400)
     try:
         delete_account(request.user)
     except LastAdminRefused:
-        return _page(_explanation() + _form(request, LAST_ADMIN), status=409)
+        return _page(_form(request, LAST_ADMIN) + _explanation(signed_in=True), status=409)
     django_logout(request)
     return _page(f'<p class="note" role="status">{escape(DONE)}</p><p>{escape(AGAIN)}</p>')

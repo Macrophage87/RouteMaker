@@ -672,8 +672,16 @@ def _merge(description: list[dict] | None, added: list[dict]) -> list[dict] | No
 
 
 def unchecked_text(status: dict[str, str]) -> str | None:
-    """'Work zones could not be checked ...' for the feeds not in use; None where all are."""
-    names = [NAMES.get(s, s) for s, v in sorted(status.items()) if v == UNAVAILABLE]
+    """'Work zones could not be checked ...' for the feeds not in use; None where all are.
+
+    A permits source (`rules.POSSIBLE_SOURCES`, DDOT's TOPS) is never named: permits are
+    never routed round and give no warning or cue (owner), so their feed being down
+    changes nothing on the route."""
+    names = [
+        NAMES.get(s, s)
+        for s, v in sorted(status.items())
+        if v == UNAVAILABLE and s not in rules.POSSIBLE_SOURCES
+    ]
     if not names:
         return None
     return f"Work zones could not be checked for this route: {' and '.join(names)} not available."
