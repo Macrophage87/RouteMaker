@@ -15,7 +15,7 @@ test("the info panel leads with Plan's how-to, the accessibility mode pointer in
 test("then the documentation's short version, one line each, and a link to each page", () => {
   assert.equal(INFO_POINTS.length, 4);
   for (const point of INFO_POINTS) assert.ok(MAP_INFO.includes(`<li>${point}</li>`), point);
-  assert.deepEqual(DOCS_LINKS.map((l) => l.href), ["/about/how-it-works.html", "/about/ride-types.html", "/about/stress.html", "/about/architecture.html"]);
+  assert.deepEqual(DOCS_LINKS.map((l) => l.href), ["/about/using.html", "/about/how-it-works.html", "/about/ride-types.html", "/about/stress.html", "/about/routing.html", "/about/architecture.html"]);
   for (const link of DOCS_LINKS) assert.ok(MAP_INFO.includes(`<a href="${link.href}">${link.text}</a>`), link.href);
 });
 

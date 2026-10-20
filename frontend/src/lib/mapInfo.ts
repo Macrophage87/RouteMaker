@@ -12,9 +12,11 @@ import { STRESS_PAGE } from "./stressLegend.ts";
 
 /** The rider-facing documentation pages (public/about/), in the hub's order; Acknowledgements is in the credits. */
 export const DOCS_LINKS: ReadonlyArray<{ href: string; text: string }> = [
+  { href: "/about/using.html", text: "Using RouteMaker" },
   { href: "/about/how-it-works.html", text: "How RouteMaker works" },
   { href: "/about/ride-types.html", text: "Ride types" },
   { href: STRESS_PAGE, text: "Stress ratings" },
+  { href: "/about/routing.html", text: "Routing" },
   { href: "/about/architecture.html", text: "Architecture" },
 ];
 
