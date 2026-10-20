@@ -175,9 +175,10 @@ test("the page wires it: Plan's Layers after Trails and terrain, not in Go, unde
   const app = read("../App.tsx");
   const overlay = read("../app/ScenicOverlay.tsx");
   assert.ok(sheets.indexOf('title="Trails and terrain"') < sheets.indexOf("<ScenicSection"));
-  assert.match(sheets, /\{scenic && <ScenicSection \{\.\.\.scenic\} \/>\}/);
-  assert.match(sheets, /\{scenicOn && <ScenicLegend \/>\}/);
+  assert.match(sheets, /\{scenic && <ScenicSection \{\.\.\.scenic\} drawn=\{scenicDrawn\} \/>\}/);
   assert.match(app, /scenic: mode === "go" \? null :/);
   assert.match(app, /on=\{scenicShown\(scenicOn, mode, massMap\)\}/);
+  // Its key is inside its section while it is drawn (the owner, 2026-10-19).
+  assert.match(app, /scenicDrawn: scenicShown\(scenicOn, mode, massMap\)/);
   assert.match(overlay, /map\.addLayer\(scenicCasingLayer\(STRESS_SOURCE_ID\) as never, lowestStressLayer\(map\)\)/);
 });

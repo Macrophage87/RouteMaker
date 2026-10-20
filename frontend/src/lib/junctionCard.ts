@@ -56,24 +56,23 @@ export function groupHolding(groups: readonly Pick<JunctionGroup, "members">[], 
 }
 
 /**
- * The map's credits on a narrow screen (a11y review of integrate-2, 2.4.11):
- * MapLibre's compact attribution opens expanded and closes only on the first
- * drag. With the agency credits it is 904 characters and covered about 68% of
- * a 375 px phone's map, junction markers and the card's close button included.
- * At or below this width it starts as the "i" button (MapLibre's own collapsed
- * state, which a tap opens), with the OpenStreetMap credit beside it
- * (styles.css), so the credit stays on screen; wider screens keep it open.
+ * The map's credits (a11y review of integrate-2, 2.4.11): MapLibre's compact
+ * attribution opens expanded and closes only on the first drag. With the agency
+ * credits it is 904 characters and covered about 68% of a 375 px phone's map,
+ * junction markers and the card's close button included; and since it also holds
+ * the map's info panel (lib/mapInfo.ts, Stephen 2026-10-19), it starts as the "i"
+ * button (MapLibre's own collapsed state, which a tap opens) at every width, with
+ * the OpenStreetMap credit beside it (styles.css), so the credit stays on screen.
  */
-export const CREDITS_COLLAPSE_PX = 640;
 
 /** The few parts of the attribution control's element this touches. */
 export interface CreditsElement {
   classList: { contains(name: string): boolean; remove(...names: string[]): void };
 }
 
-/** Collapse the credits as MapLibre's own first drag does, if the map is narrow; whether it did. */
-export function collapseCredits(element: CreditsElement | null, mapWidth: number): boolean {
-  if (!element || mapWidth > CREDITS_COLLAPSE_PX) return false;
+/** Collapse the credits as MapLibre's own first drag does; whether it did. */
+export function collapseCredits(element: CreditsElement | null): boolean {
+  if (!element) return false;
   if (!element.classList.contains("maplibregl-compact") || !element.classList.contains("maplibregl-compact-show")) return false;
   element.classList.remove("maplibregl-compact-show");
   return true;

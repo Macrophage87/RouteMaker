@@ -95,6 +95,7 @@ from routemaker import (
     flow,
     grade_stress,
     intersections,
+    junction_delay,
     mdot_aadt,
     mtbmode,
     ridetime,
@@ -108,7 +109,17 @@ from routemaker.geo import Point, bearing, bearing_delta, haversine
 from routemaker.massflow import band_of
 from routemaker.measure import elevation_gain
 
-from . import avoid_junctions, mass_hazards, mtb, parallel, presets, segment_info, timing
+from . import (
+    avoid_junctions,
+    beside_roads,
+    mass_hazards,
+    mtb,
+    parallel,
+    presets,
+    route_hazards,
+    segment_info,
+    timing,
+)
 from . import workzones as work_zones
 
 logger = logging.getLogger(__name__)
@@ -420,6 +431,15 @@ class Piece:
     # by (`describe.fork_movement`): the movement to say there; None elsewhere, and on
     # every piece of an edge but its first.
     fork: str | None = field(default=None, compare=False)
+    # The other ways at the node the piece's edge begins at, each (its heading away from
+    # the node, Valhalla's `use`, its road class and driveability), for the ride card's
+    # junction diagram (`describe.junction_shape`); None on every piece of an edge but
+    # its first.
+    others: tuple | None = field(default=None, compare=False)
+    # The other ways at the junctions just short of that node (`describe.SHAPE_NEAR_M`),
+    # as `others`: where a main road was crossed just before a turn onto its service
+    # road; None elsewhere.
+    prior: tuple | None = field(default=None, compare=False)
 
 
 def _heading(value) -> float | None:
@@ -431,8 +451,10 @@ def pieces_of_trace(trace: dict) -> list[Piece]:
     shape = decode_polyline6(trace.get("shape", ""))
     to_metres = 1609.344 if trace.get("units") == "miles" else 1000.0
     pieces: list[Piece] = []
-    # The last edge kept: the node a fork is read at is where it ends.
+    # The last edge kept: the node a fork is read at is where it ends; and every one
+    # kept, with its length, for the junctions just short of that node.
     before: dict | None = None
+    kept: list[tuple[dict, float]] = []
     for edge in trace.get("edges", []):
         length = float(edge.get("length") or 0.0) * to_metres
         begin, end = edge.get("begin_shape_index"), edge.get("end_shape_index")
@@ -453,7 +475,10 @@ def pieces_of_trace(trace: dict) -> list[Piece]:
             "road": calm.road_of_edge(edge, miles=trace.get("units") == "miles"),
         }
         fork = _fork_of(before, edge)
+        others = _others_of(before)
+        prior = _behind_of(kept)
         before = edge
+        kept.append((edge, length))
         stretches = []
         for a, b in zip(shape[begin:end], shape[begin + 1 : end + 1], strict=True):
             stretches.append((a, b, haversine(Point(*a), Point(*b))))
@@ -461,7 +486,9 @@ def pieces_of_trace(trace: dict) -> list[Piece]:
         if ground <= 0:
             # A degenerate edge: all its length on its first vertex.
             (lon, lat) = shape[begin]
-            pieces.append(Piece(way_id, lon, lat, length, **info, fork=fork))
+            pieces.append(
+                Piece(way_id, lon, lat, length, **info, fork=fork, others=others, prior=prior)
+            )
             continue
         for a, b, d in stretches:
             if d > 0:
@@ -473,9 +500,13 @@ def pieces_of_trace(trace: dict) -> list[Piece]:
                         length * d / ground,
                         **info,
                         fork=fork,
+                        others=others,
+                        prior=prior,
                     )
                 )
                 fork = None
+                others = None
+                prior = None
     return pieces
 
 
@@ -491,6 +522,36 @@ def _fork_of(before: dict | None, edge: dict) -> str | None:
     return describe.fork_movement(
         _heading(before.get("end_heading")), _heading(edge.get("begin_heading")), others
     )
+
+
+def _others_of(before: dict | None) -> tuple | None:
+    """The other ways at the node a traced edge begins at (`describe.junction_shape`):
+    the edge before's `end_node.intersecting_edges`, each (heading away, use, road class,
+    driveability)."""
+    if before is None:
+        return None
+    return tuple(
+        (
+            _heading(other.get("begin_heading")),
+            other.get("use"),
+            other.get("road_class"),
+            other.get("driveability"),
+        )
+        for other in (before.get("end_node") or {}).get("intersecting_edges") or []
+    )
+
+
+def _behind_of(kept: list[tuple[dict, float]]) -> tuple | None:
+    """The other ways at the junctions within `describe.SHAPE_NEAR_M` short of the node
+    the last edge kept ends at, as `_others_of`; None where none."""
+    found: list = []
+    gap = 0.0
+    for i in range(len(kept) - 1, 0, -1):
+        gap += kept[i][1]
+        if gap >= describe.SHAPE_NEAR_M:
+            break
+        found.extend(_others_of(kept[i - 1][0]) or ())
+    return tuple(found) or None
 
 
 # One row per piece, in the pieces' order: the tier and facility class of the
@@ -1923,6 +1984,17 @@ STRETCH_UNTRACED = "untraced"
 STRETCH_OUTSIDE_DC = "outside_dc"
 
 
+def stop_as_yield(lon: float, lat: float) -> bool:
+    """Whether a rider may take a stop sign at this point as a yield sign: inside the
+    District, its border roads not included (`routemaker.junction_delay`)."""
+    from .mass_tiles import dc_boundary, inside_dc
+
+    west, south, east, north = dc_boundary()[1]
+    if not (west <= lon <= east and south <= lat <= north):
+        return False
+    return inside_dc(lon, lat, tolerance_m=0.0)
+
+
 def _outside_dc(piece) -> bool:
     """Whether a traced piece lies outside the District (its midpoint; a piece with no
     position is taken as inside)."""
@@ -2358,6 +2430,27 @@ def sidepath_names_of(pieces: list[Piece]) -> dict[int, str]:
         return {}
 
 
+def _way_names_of(pieces: list[Piece]) -> dict[int, str]:
+    """The names the description gives the route's unnamed ways: the rebuild's street-side
+    and trail names (`sidepath_names_of`), then, for an unnamed service road, path or
+    sidewalk still without one, the major road it runs beside (`beside_roads.names_of`)."""
+    names = sidepath_names_of(pieces)
+    try:
+        names.update(beside_roads.names_of(pieces, names))
+    except Exception:  # noqa: BLE001 - the ways are then just "service road" or "path"
+        logger.warning("the roads beside the route's unnamed ways could not be read", exc_info=True)
+    return names
+
+
+def _piece_names(piece: Piece, side_names: dict[int, str]) -> tuple[str, ...]:
+    """A piece's names for the description: its own, else its way's in `side_names`; a
+    road-beside name (`describe.BesideName`) in place of its own too."""
+    side = side_names.get(piece.way_id)
+    if side is not None and (not piece.names or isinstance(side, describe.BesideName)):
+        return (side,)
+    return piece.names
+
+
 def describe_route(
     leg_runs: list,
     pieces: list[Piece],
@@ -2393,18 +2486,15 @@ def describe_route(
                             pieces[i].metres,
                             classes[i][0],
                             classes[i][1],
-                            pieces[i].names
-                            or (
-                                (side_names[pieces[i].way_id],)
-                                if pieces[i].way_id in side_names
-                                else ()
-                            ),
+                            _piece_names(pieces[i], side_names),
                             pieces[i].use,
                             pieces[i].heading_in,
                             pieces[i].heading_out,
                             getattr(classes[i], "unpaved", None),
                             bool(pieces[i].road and pieces[i].road.roundabout),
                             pieces[i].fork,
+                            pieces[i].others,
+                            pieces[i].prior,
                         )
                         for i in range(run[0], run[1])
                     ]
@@ -3032,6 +3122,10 @@ def plan(
     from .junction_suggestions import approved_ratings
 
     junction_ratings = approved_ratings()
+    # The flashing beacons the map has as signals (the owner's and MDOT SHA's), the same way.
+    from .flashing_signals import active as active_beacons
+
+    beacons = active_beacons()
     # The rider's target distance counts at the top of the slider only.
     target_m = float(dials.target_distance_m) if dials.target_distance_m and maxcalm else None
     when = dials.when or default_when()
@@ -3366,6 +3460,7 @@ def plan(
         options=[] if offering and not long_calm else None,
         avoid=avoid_list,
         junction_ratings=junction_ratings,
+        beacons=beacons,
     )
     if past:
         # The router's own route is past the target: the calmer route past it where
@@ -3685,7 +3780,7 @@ def plan(
             events,
             trip.get("summary") or {},
             walks,
-            sidepath_names_of(pieces),
+            _way_names_of(pieces),
         )
         described_full, described_overview = described if described else (None, None)
         # The Avoid-rated junctions it passes (307, 335), at their distance along the
@@ -3696,6 +3791,11 @@ def plan(
         avoid_scale = length_m / line_m if line_m > 0 and length_m > 0 else 1.0
         described_full = avoid_rules.with_entries(described_full, avoid_found, avoid_scale)
         described_overview = avoid_rules.with_entries(described_overview, avoid_found, avoid_scale)
+        # The known hazards it rides (v0.10.0, `core.route_hazards`): said in place in the
+        # directions and drawn as symbols on the route only.
+        hazards_ridden = route_hazards.along(leg_runs, pieces)
+        described_full = route_hazards.with_entries(described_full, hazards_ridden)
+        described_overview = route_hazards.with_entries(described_overview, hazards_ridden)
         # The climbs the route rides uphill, where the hill seek ran (205): each named in
         # `hills_seek.climbs` and as an entry of the description.
         climbs_ridden = []
@@ -3820,6 +3920,13 @@ def plan(
                 traces=traces,
             )
         )
+        # The time its junctions cost the rider, which the router's own time leaves out
+        # (`routemaker.junction_delay`): part of the time shown.
+        delay = junction_delay.delay_s(
+            raw_junctions,
+            stop_as_yield,
+            lambda lon, lat: intersections.beacon_at(lon, lat, beacons) is not None,
+        )
         return {
             "preset": preset.name,
             "variant": variant,
@@ -3828,7 +3935,8 @@ def plan(
                 "coordinates": [[round(lon, 6), round(lat, 6)] for lon, lat in coordinates],
             },
             "distance_m": round(float(summary.get("length", 0.0)) * 1000.0, 1),
-            "duration_s": round(float(summary.get("time", 0.0)), 1),
+            "duration_s": round(float(summary.get("time", 0.0)) + delay, 1),
+            "junction_delay_s": round(delay, 1),
             "climb_m": round(climb, 1),
             "descent_m": round(descent, 1),
             "stress_m": {key: round(metres, 1) for key, metres in stress.items()},
@@ -3876,6 +3984,8 @@ def plan(
             "moved_points": moved_points,
             "avoid_junctions": avoid_junctions.rows(avoid_found, avoid_scale),
             "avoid_notice": avoid_rules.notice(avoid_found),
+            # The known hazards the route rides (v0.10.0): cobbles, rails; [] where none.
+            "road_hazards": hazards_ridden,
             # A Mass Ride's approved hazards in riding order (325); null on other ride types.
             "mass_hazards": (
                 mass_hazards.along(leg_runs, pieces, classes, hazard_list)
@@ -3914,11 +4024,13 @@ def plan(
         (10 km/h) on singletrack (`mtbmode.duration_s`), the router's own time kept."""
         answered["mtb"] = info
         if info and info.get("singletrack_m"):
-            info["router_duration_s"] = answered["duration_s"]
+            # The junction delay is added after the singletrack retiming, so the router's
+            # own time stays the router's and the delay is not scaled with the trail.
+            delay = answered.get("junction_delay_s") or 0.0
+            router_s = answered["duration_s"] - delay
+            info["router_duration_s"] = round(router_s, 1)
             answered["duration_s"] = round(
-                mtbmode.duration_s(
-                    answered["duration_s"], answered["distance_m"], info["singletrack_m"]
-                ),
+                mtbmode.duration_s(router_s, answered["distance_m"], info["singletrack_m"]) + delay,
                 1,
             )
         return answered

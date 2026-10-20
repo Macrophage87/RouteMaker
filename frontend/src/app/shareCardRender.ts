@@ -10,6 +10,7 @@ import { layers as protomapsLayers, namedFlavor } from "@protomaps/basemaps";
 import type { RouteProfile } from "../lib/api.ts";
 import type { LonLat } from "../lib/geo.ts";
 import { BASEMAP_SOURCE_ID, buildStyle } from "../lib/mapStyle.ts";
+import { mapGlyphRequest } from "../lib/mapGlyphAssets.ts";
 import {
   BRAND,
   cardAttribution,
@@ -77,6 +78,8 @@ async function drawMap(w: number, h: number, route: CardRoute, padding: { top: n
       pixelRatio: 1,
       fadeDuration: 0,
       canvasContextAttributes: { preserveDrawingBuffer: true, antialias: true },
+      // The labels in the app map's font (lib/mapGlyphAssets.ts).
+      transformRequest: mapGlyphRequest,
     });
     const made = map;
     made.setMissingStyleImageResolver((id) => {

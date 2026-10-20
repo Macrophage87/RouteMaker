@@ -22,7 +22,8 @@ import { CARRYINGS, carries, type Carrying, type Dials } from "./lib/dials.ts";
 import { bikeLabel } from "./lib/bikeshare.ts";
 import { choose, closesDialog, initialCard, isCustom, nextFocus } from "./lib/rideTypeDialog.ts";
 import { mtbChosen } from "./lib/mtbMode.ts";
-import { filterRideGroups, rideTypeCount, RideTypeSearch } from "./lib/rideTypeGroups.ts";
+import { filterRideGroups, rideTypeCount, RideTypeSearch, withFavorites } from "./lib/rideTypeGroups.ts";
+import { FavoriteStar, toggleFromPicker, useFavoriteRides } from "./lib/favoriteRides.ts";
 
 interface Props {
   preset: PresetId;
@@ -40,7 +41,9 @@ export function RideTypePicker({ preset, dials, onChoose }: Props) {
   // Plan streamline (Stephen 2026-10-17): each card shows its one-line gist; "What each does" shows the full words.
   // A screen reader hears the full words either way.
   const [full, setFull] = useState(false);
-  const groups = filterRideGroups(query);
+  // Favorites (Stephen 2026-10-19): starred ride types first, under their own heading (lib/favoriteRides.ts).
+  const favorites = useFavoriteRides();
+  const groups = withFavorites(filterRideGroups(query), favorites);
   const current = PRESETS.find((p) => p.id === preset);
   const carrying = CARRYINGS.find((c) => c.id === dials.carrying);
   const custom = isCustom(preset, dials);
@@ -153,7 +156,7 @@ export function RideTypePicker({ preset, dials, onChoose }: Props) {
               <h3 id={`ride-types-${group.id}`}>{group.label}</h3>
               <ul className="ride-type-cards">
                 {group.ids.map((id) => PRESETS.find((p) => p.id === id)!).map((option) => (
-                  <li key={option.id} className={option.id === preset ? "ride-type-card current" : "ride-type-card"}>
+                  <li key={option.id} className={option.id === preset ? "ride-type-card has-fav current" : "ride-type-card has-fav"}>
                     <button
                       type="button"
                       ref={(el) => {
@@ -177,6 +180,7 @@ export function RideTypePicker({ preset, dials, onChoose }: Props) {
                         </>
                       )}
                     </button>
+                    <FavoriteStar id={option.id} on={favorites.includes(option.id)} onToggle={(id) => toggleFromPicker(id, dialogRef.current)} />
                     {carries(option.id) && (
                       <div className="ride-type-loads" role="group" aria-label={`${presetSaid(option.id)}: cargo or passengers`}>
                         {CARRYINGS.map((load) => (
