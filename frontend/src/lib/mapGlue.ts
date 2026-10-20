@@ -665,20 +665,23 @@ export interface HoverEffects<S> {
 /**
  * Carry out a hover at `under`. The handle is drawn, and the cursor written,
  * only when they change: a pointer nowhere near the line, frame after frame,
- * is no reason to render.
+ * is no reason to render. `trail`: a mountain-bike trail a click there would open
+ * (mtbTrailPressed) is under the pointer, which takes the pointing hand too (the owner,
+ * 2026-10-20: "Have the ability to mouseover and click on the trail.").
  */
 export function runHover<S, L extends { at: readonly [number, number] }>(
   under: Under<S, L>,
   popupOpen: boolean,
   shown: { handle: readonly [number, number] | null; cursor: string },
   effects: HoverEffects<S>,
+  trail = false,
 ): void {
   const target = pointerTarget(stateOf(under, popupOpen));
   const at = target.hover === "line" && under.line !== null ? under.line.at : null;
   if (hoverChanged(shown.handle, at)) effects.drawHandle(at);
   // The hover is the station's exactly when there is one under the pointer.
   effects.stationHover(under.station, target.hover === "station" && target.grab);
-  const cursor = target.hover === "map" ? "" : "pointer";
+  const cursor = target.hover === "map" && !trail ? "" : "pointer";
   if (shown.cursor !== cursor) effects.setCursor(cursor);
 }
 
