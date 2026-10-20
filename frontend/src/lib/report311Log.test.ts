@@ -4,10 +4,13 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
+  ACCOUNT_LOG_KEY,
   JURISDICTIONS,
   LOG_DIRTY_KEY,
   LOG_KEY,
+  LOG_MAX_BYTES,
   MAX_ENTRIES,
+  NOTE_MAX,
   Report311LogStore,
   WHERE_PENDING,
   archived,
@@ -27,6 +30,7 @@ import {
 const DC_SPOT = { words: "on R Street Northeast", point: [-77.00709, 38.9126] as [number, number] };
 const MOCO_SPOT = { words: "on Capital Crescent Trail at about mile 3.2", point: [-77.0957, 38.9851] as [number, number] };
 const NOON = new Date("2026-10-20T16:00:00Z");
+const MOCO_AT = { lat: 38.9851, lon: -77.0957 };
 
 function memory(): Store & { data: Map<string, string> } {
   const data = new Map<string, string>();
@@ -121,36 +125,123 @@ test("a damaged or old copy is read safely", () => {
   assert.equal(kept[0].where, null, "an unknown website is looked up again");
 });
 
-test("the store: logged, noted and checked off on the device; signed in, saved to the account; lookups fill the website", async () => {
-  const store = memory();
+/** A fake account server: it merges each save by entry, as core/report_log.py merge_logs does, and tags the account. */
+function fakeAccount(owner: string, start: LogEntry[] = []) {
+  const server = { owner, entries: start, posts: 0, gets: 0, signedIn: true };
   const net = fakeFetch((url, init) => {
     if (url.includes("/api/report311/where")) return { status: 200, body: { where: "moco" } };
-    if (url.endsWith("/api/me/report311-log") && init?.method === "POST") return { status: 200, body: {} };
-    if (url.endsWith("/api/me/report311-log")) return { status: 200, body: { entries: [] } };
-    return { status: 404 };
+    if (!url.endsWith("/api/me/report311-log")) return { status: 404 };
+    if (!server.signedIn) return { status: 401 };
+    if (init?.method === "POST") {
+      server.posts++;
+      server.entries = mergeLogs(server.entries, JSON.parse(String(init.body)).entries);
+    } else server.gets++;
+    return { status: 200, body: { entries: server.entries, owner: server.owner } };
   });
-  const log = new Report311LogStore(store, "https://x", net.fn);
+  return { server, net };
+}
+
+const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
+
+test("the store: logged, noted and checked off on the device; signed in, moved to the account; lookups fill the website", async () => {
+  const store = memory();
+  const { server, net } = fakeAccount("owner-a");
+  const log = new Report311LogStore(store, "https://x", net.fn, 0);
   let heard = 0;
   log.subscribe(() => heard++);
   const added = log.add("tree", MOCO_SPOT, NOON);
   assert.equal(log.list()[0].id, added.id);
   assert.ok(heard >= 1);
-  assert.equal(store.data.get(LOG_DIRTY_KEY), "1", "signed out: the account has not taken it");
-  await new Promise((r) => setTimeout(r, 0));
+  await tick();
   assert.equal(log.list()[0].where, "moco", "looked up at once");
   assert.match(net.calls[0].url, /^https:\/\/x\/api\/report311\/where\?lat=38\.98510&lon=-77\.09570$/);
   log.setNote(added.id, "across the trail", new Date("2026-10-20T16:01:00Z"));
   log.setReported(added.id, true, new Date("2026-10-20T16:02:00Z"));
   assert.equal(log.list()[0].reported, "2026-10-20T16:02:00.000Z");
   assert.equal(JSON.parse(store.data.get(LOG_KEY) ?? "[]")[0].note, "across the trail");
+  assert.equal(server.posts, 0, "signed out: nothing is sent");
   await log.signIn();
-  const posts = net.calls.filter((c) => c.init?.method === "POST");
-  assert.equal(posts.length, 1, "the account had none: this device's log went up");
-  assert.equal(JSON.parse(String(posts[0].init?.body)).entries[0].id, added.id);
+  assert.equal(server.posts, 1, "the account had none: this device's entries went up");
+  assert.equal(server.entries[0].id, added.id);
+  assert.equal(store.data.get(LOG_KEY), undefined, "moved: no longer this device's own");
+  assert.equal(JSON.parse(store.data.get(ACCOUNT_LOG_KEY) ?? "{}").owner, "owner-a");
   assert.equal(store.data.get(LOG_DIRTY_KEY), undefined);
   log.setReported(added.id, false);
-  await new Promise((r) => setTimeout(r, 0));
-  assert.equal(net.calls.filter((c) => c.init?.method === "POST").length, 2, "signed in: each change is saved");
+  assert.equal(store.data.get(LOG_DIRTY_KEY), "1", "until the account takes it");
+  await tick(5);
+  assert.equal(server.posts, 2, "signed in: the change is saved");
+  assert.equal(server.entries[0].reported, null);
+  assert.equal(store.data.get(LOG_DIRTY_KEY), undefined);
+});
+
+test("typing a note saves once, after the typing settles, and saves go one at a time", async () => {
+  const { server, net } = fakeAccount("owner-a");
+  const log = new Report311LogStore(memory(), "https://x", net.fn, 20);
+  await log.signIn();
+  const entry = log.add("pothole", DC_SPOT, NOON);
+  for (const note of ["a", "ac", "acr", "across", "across the lane"]) log.setNote(entry.id, note);
+  assert.equal(server.posts, 0, "not at each key");
+  await tick(60);
+  assert.equal(server.posts, 1);
+  assert.equal(server.entries[0].note, "across the lane");
+});
+
+test("another account on the same device: the first one's copy is neither shown signed out nor merged into the second's", async () => {
+  const store = memory();
+  const a = fakeAccount("owner-a", [entry({ id: "a1" })]);
+  const first = new Report311LogStore(store, "https://x", a.net.fn, 0);
+  await first.signIn();
+  assert.deepEqual(first.list().map((e) => e.id), ["a1"]);
+  first.signOut();
+  assert.deepEqual(first.list(), [], "signed out: this device's own, which is empty");
+  assert.equal(store.data.get(ACCOUNT_LOG_KEY), undefined, "the account's copy went");
+  // The next page load, signed in as someone else.
+  const b = fakeAccount("owner-b", [entry({ id: "b1" })]);
+  const second = new Report311LogStore(store, "https://x", b.net.fn, 0);
+  await second.signIn();
+  assert.deepEqual(second.list().map((e) => e.id), ["b1"]);
+  assert.equal(b.server.posts, 0, "nothing of the first account's was sent");
+});
+
+test("a copy with unsaved changes waits, unshown, for its own account; a different account drops it", async () => {
+  const store = memory();
+  const a = fakeAccount("owner-a");
+  const log = new Report311LogStore(store, "https://x", a.net.fn, 1_000_000);
+  await log.signIn();
+  log.add("pothole", DC_SPOT, NOON);
+  log.signOut();
+  assert.deepEqual(log.list(), []);
+  assert.equal(JSON.parse(store.data.get(ACCOUNT_LOG_KEY) ?? "{}").waiting, true);
+  assert.deepEqual(new Report311LogStore(store, "https://x", a.net.fn).list(), [], "a reload signed out does not show it");
+  const b = fakeAccount("owner-b");
+  const other = new Report311LogStore(store, "https://x", b.net.fn, 0);
+  await other.signIn();
+  assert.deepEqual(other.list(), []);
+  assert.equal(b.server.posts, 0);
+  const own = fakeAccount("owner-a");
+  store.data.set(ACCOUNT_LOG_KEY, JSON.stringify({ owner: "owner-a", entries: [entry({ id: "w1" })], waiting: true }));
+  const back = new Report311LogStore(store, "https://x", own.net.fn, 0);
+  await back.signIn();
+  assert.deepEqual(own.server.entries.map((e) => e.id), ["w1"], "its own account takes it at sign-in");
+});
+
+test("a save keeps what the server merged in: entries another device logged appear", async () => {
+  const { server, net } = fakeAccount("owner-a");
+  const log = new Report311LogStore(memory(), "https://x", net.fn, 0);
+  await log.signIn();
+  server.entries = [entry({ id: "phone", at: "2026-10-20T17:00:00.000Z" })];
+  log.add("tree", MOCO_SPOT, NOON);
+  await tick(5);
+  assert.ok(log.list().some((e) => e.id === "phone"));
+});
+
+test("the cap counts bytes too: a long log loses its oldest archived entries first", () => {
+  const long = (n: number, reported: string | null) => entry({ id: `e${n}`, at: new Date(NOON.getTime() + n * 1000).toISOString(), note: "é".repeat(NOTE_MAX), reported });
+  const log = Array.from({ length: 200 }, (_, n) => long(n, n < 100 ? NOON.toISOString() : null));
+  const capped = capLog(log);
+  assert.ok(new TextEncoder().encode(JSON.stringify(capped)).length <= LOG_MAX_BYTES);
+  assert.ok(capped.length < 200 && !capped.some((e) => e.id === "e0"), "the oldest archived went");
+  assert.ok(capped.some((e) => e.id === "e199"));
 });
 
 test("no signal: the lookup waits, the entry stays under Website not looked up yet", async () => {
@@ -161,6 +252,30 @@ test("no signal: the lookup waits, the entry stays under Website not looked up y
   await new Promise((r) => setTimeout(r, 0));
   assert.equal(log.list()[0].where, null);
   assert.equal(await lookUpWhere("https://x", MOCO_SPOT.point, fakeFetch(() => ({ status: 200, body: { where: null } })).fn), "none");
+});
+
+test("a website looked up is not a change: it never outranks a check-off from another device, and the merge keeps it", async () => {
+  const store = memory();
+  const open = entry({ id: "p", where: null, ...MOCO_AT, changed: "2026-10-20T16:00:00.000Z" });
+  store.data.set(LOG_KEY, JSON.stringify([open]));
+  const log = new Report311LogStore(store, "https://x", fakeFetch(() => ({ status: 200, body: { where: "moco" } })).fn);
+  await log.lookUp();
+  assert.equal(log.list()[0].where, "moco");
+  assert.equal(log.list()[0].changed, open.changed, "its time is kept");
+  const checked = { ...open, reported: "2026-10-20T17:00:00.000Z", changed: "2026-10-20T17:00:00.000Z" };
+  const merged = mergeLogs([checked], log.list());
+  assert.equal(merged[0].reported, checked.reported, "the check-off stands");
+  assert.equal(merged[0].where, "moco", "and the website is kept");
+});
+
+test("one lookup with no answer does not stop the others", async () => {
+  let asked = 0;
+  const net = fakeFetch(() => (asked++ === 0 ? { status: 429 } : { status: 200, body: { where: "moco" } }));
+  const store = memory();
+  store.data.set(LOG_KEY, JSON.stringify([entry({ id: "a", where: null, ...MOCO_AT }), entry({ id: "b", where: null, ...MOCO_AT })]));
+  const log = new Report311LogStore(store, "https://x", net.fn);
+  await log.lookUp();
+  assert.deepEqual(log.list().map((e) => e.where).sort(), ["moco", null]);
 });
 
 test("the road panel's Log for 311: the road's name and its nearest point; an unnamed way is the GPS alone", () => {
@@ -178,9 +293,10 @@ test("the checklist in Suggest: a heading per website with its Open link, checkb
   const sheets = readFileSync(new URL("../app/Sheets.tsx", import.meta.url), "utf8");
   assert.match(sheets, /<Report311Log \/>/);
   const view = readFileSync(new URL("../Report311Log.tsx", import.meta.url), "utf8");
-  assert.match(view, /<input type="checkbox" checked=\{done\} aria-describedby=\{`\$\{id\}-place`\} onChange=\{\(event\) => report311Log\(\)\.setReported\(entry\.id, event\.target\.checked\)\} \/>/);
+  assert.match(view, /<input type="checkbox" checked=\{done\} data-entry=\{entry\.id\} aria-describedby=\{`\$\{id\}-place`\} onChange=\{\(event\) => onCheck\(entry, event\.target\.checked\)\} \/>/);
+  assert.match(view, /report311Log\(\)\.setReported\(entry\.id, checked\);/);
   assert.match(view, /<details className="fold log311-archived">/);
-  assert.match(view, /<h3 id="suggest-311-heading">\{LOG_HEADING\}<\/h3>/);
+  assert.match(view, /<h3 id="suggest-311-heading" tabIndex=\{-1\}>\s*\{LOG_HEADING\}\s*<\/h3>/);
   assert.match(view, /\{`Open \$\{group\.site\.site\} \(new tab\)`\}/);
   assert.match(view, /target="_blank" rel="noopener noreferrer"/);
 });

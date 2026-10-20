@@ -181,7 +181,10 @@ You stay responsible for riding safely; the route can be wrong.
   under the website that takes it (DC 311, MC311, PGC311, Baltimore 311, Arlington, Alexandria,
   VDOT and the rest), each with Copy report. Paste the report into the site, then check the
   entry off and it moves to Archived. Texting DC 311 (32311) is gone: DC's text line answers
-  only "Welcome to DC311". Signed in, the checklist follows you to your other devices.
+  only "Welcome to DC311". Signed in, the checklist follows you to your other devices; signed
+  out, it is this device's own, and what you logged signed out joins your account when you sign
+  in. Where the server can send DC reports itself, a DC problem is sent at once and goes straight
+  to Archived.
 - Your position stays on your phone. It is sent only when a new way is found from where you
   are, or when you ask for the nearest water or restroom (as "Use my location" does when
   planning), and never kept. A problem you log for 311 keeps it, on your phone and, signed in,

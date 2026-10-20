@@ -54,6 +54,28 @@ class TestLogChecks:
     def test_a_bad_entry_is_refused(self, bad) -> None:
         assert report_log.log_problem([bad])
 
+    def test_the_size_is_counted_in_utf8_bytes(self) -> None:
+        # A note in another script counts its bytes, not the six of an escaped \\u for each.
+        notes = [entry(id=f"e{n}", note="é" * 500) for n in range(100)]
+        assert report_log.log_bytes(notes) < report_log.LOG_MAX_BYTES
+        assert report_log.log_problem(notes) is None
+
+    def test_the_cap_drops_the_oldest_archived_first(self) -> None:
+        old = entry(id="old", at="2026-10-01T00:00:00.000Z", reported="2026-10-02T00:00:00.000Z")
+        new = [
+            entry(id=f"e{n}", at=f"2026-10-20T{n // 60:02d}:{n % 60:02d}:00.000Z")
+            for n in range(report_log.ENTRIES_MAX)
+        ]
+        kept = report_log.cap_log([*new, old])
+        assert len(kept) == report_log.ENTRIES_MAX and "old" not in {e["id"] for e in kept}
+
+    def test_the_merge_keeps_a_website_and_takes_an_entry_with_no_changed_time(self) -> None:
+        stored = [entry(id="a", where="moco")]
+        incoming = [entry(id="a", where=None, changed=None, reported="2026-10-20T17:00:00")]
+        merged = report_log.merge_logs(stored, incoming)
+        assert merged[0]["where"] == "moco" and merged[0]["reported"] == "2026-10-20T17:00:00"
+        assert report_log.cap_log([entry(id="b", at="2026-10-20T16:00:00"), entry(id="c")])
+
     def test_the_whole_log(self) -> None:
         assert report_log.log_problem({"entries": []})
         assert report_log.log_problem([entry(), entry()]) == "Two entries have the same id."
@@ -167,6 +189,34 @@ class TestAccountLog:
         send(owner, "post", "/api/me/report311-log", {"entries": [entry()]}, csrf)
         other, _o, _c = signed_in()
         assert other.get("/api/me/report311-log", **addr()).json()["entries"] is None
+
+    def test_each_account_has_its_own_owner_tag(self) -> None:
+        # The page keeps the tag with its copy, and never merges one account's copy into another's.
+        one, _u, _c = signed_in()
+        two, _o, _c2 = signed_in()
+        a = one.get("/api/me/report311-log", **addr()).json()["owner"]
+        assert a == one.get("/api/me/report311-log", **addr()).json()["owner"]
+        assert a != two.get("/api/me/report311-log", **addr()).json()["owner"]
+        assert len(a) == 24
+
+    def test_a_save_merges_by_entry_so_an_old_copy_drops_nothing(self) -> None:
+        client, user, csrf = signed_in()
+        pothole = entry(id="pothole-1")
+        five, six = "2026-10-20T17:00:00.000Z", "2026-10-20T18:00:00.000Z"
+        tree = entry(id="tree-1", kind="tree", at=five, changed=five)
+        send(client, "post", "/api/me/report311-log", {"entries": [pothole]}, csrf)
+        # The phone logs a tree; then a desktop with only the pothole checks the pothole off.
+        send(client, "post", "/api/me/report311-log", {"entries": [tree, pothole]}, csrf)
+        done = entry(id="pothole-1", reported=six, changed=six)
+        r = send(client, "post", "/api/me/report311-log", {"entries": [done]}, csrf)
+        assert r.status_code == 200
+        kept = Report311Log.objects.get(user=user).entries
+        assert [e["id"] for e in kept] == ["tree-1", "pothole-1"]
+        assert kept[1]["reported"] == six
+        assert r.json()["entries"] == kept
+        # An older change does not undo a newer one.
+        send(client, "post", "/api/me/report311-log", {"entries": [pothole]}, csrf)
+        assert Report311Log.objects.get(user=user).entries[1]["reported"] == six
 
     def test_it_goes_with_the_account(self) -> None:
         client, user, csrf = signed_in()
