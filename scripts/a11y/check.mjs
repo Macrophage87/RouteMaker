@@ -2765,11 +2765,12 @@ const levelSlider = `${EDITOR} input[type=range]`;
     !!b311 && b311.w >= 56 && b311.w <= 72 && b311.h >= 56 && b311.round && b311.right <= 24 && b311.mid >= 45 && b311.mid <= 96 && b311.text === "311" && b311.expanded === "false" && ax311?.role === "button" && ax311?.name === "Report to DC 311" &&
       JSON.stringify(rail.map((x) => x.name)) === JSON.stringify(["Where am I?", "Re-centre", "Detour: water or restroom", "Report to DC 311", "Settings"]) && rail.every((x) => x.round && x.w >= 44),
     JSON.stringify({ b311, ax311, rail }));
-  // The top row (the owner, 2026-10-19: "switch end ride and road closed"): End ride, then Road closed ahead, one line.
+  // The top row (the owner, 2026-10-19: "switch end ride and road closed"): End ride, then Road closed ahead with its
+  // words (2026-10-20), one line.
   const topRow = await p.eval(`(() => { const c = document.querySelector('.ride-top .ride-road-closed'); const e = document.querySelector('.ride-top .ride-end'); if (!c || !e) return null; const a = c.getBoundingClientRect(); const b = e.getBoundingClientRect();
-    return { name: c.getAttribute('aria-label'), text: c.textContent, beside: b.right <= a.left && Math.abs(a.top - b.top) <= 2, h: Math.round(Math.min(a.height, b.height)), settingsInTop: !!document.querySelector('.ride-top .ride-settings-button') }; })()`);
-  check("ride top row: End ride with Road closed ahead (its words Road closed) to its right, both 44 px or taller, Settings no longer there",
-    !!topRow && topRow.name === "Road closed ahead" && topRow.text === "Road closed" && topRow.beside && topRow.h >= 44 && !topRow.settingsInTop, JSON.stringify(topRow));
+    return { name: c.getAttribute('aria-label'), text: c.textContent, beside: b.right <= a.left && Math.abs(a.top - b.top) <= 2, h: Math.round(Math.min(a.height, b.height)), words: c.querySelector('.ride-top-label').getBoundingClientRect().width > 20, oneLine: Math.abs(a.height - b.height) <= 4 && document.querySelector('.ride-top').getBoundingClientRect().height < Math.max(a.height, b.height) + 24, settingsInTop: !!document.querySelector('.ride-top .ride-settings-button') }; })()`);
+  check("ride top row: one line, End ride with Road closed ahead (its words Road closed, shown) to its right, both 44 px or taller, Settings no longer there",
+    !!topRow && topRow.name === "Road closed ahead" && topRow.text === "Road closed" && topRow.words && topRow.oneLine && topRow.beside && topRow.h >= 44 && !topRow.settingsInTop, JSON.stringify(topRow));
   // End ride is slid until the rider has arrived (the owner, 2026-10-19): a slider named End ride; a tap at its right end
   // does not end the ride, it springs back and says how.
   const slide = await p.eval(`(() => { const r = document.querySelector('.ride-top .ride-slide-range'); const box = r.getBoundingClientRect(); return { x: box.right - 6, y: box.top + box.height / 2 }; })()`);

@@ -84,6 +84,8 @@ test("the plan's points are named by role: a Home start or finish is Start and F
 test("street names are shortened for the unit's screen, and cut to the profile's length", () => {
   assert.equal(abbreviateStreet("R Street Northwest"), "R St NW");
   assert.equal(abbreviateStreet("Capital Crescent Trail"), "Capital Crescent Trl");
+  assert.equal(abbreviateStreet("service road beside East-West Highway"), "Svc Rd", "a unit has no room for the road beside");
+  assert.equal(abbreviateStreet("sidewalk beside East-West Highway"), "Sidewalk");
   const tcx = compileCourse(sampleRoute(), GENERIC, "tcx");
   for (const c of tcx.cues) assert.ok(Array.from(c.name).length <= TCX_CUE_NAME_CHARS, c.name);
   assert.equal(tcx.cues[2].name, "Florida Av", "cut to TCX's 10 characters, without a trailing space");

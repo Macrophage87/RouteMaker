@@ -1574,3 +1574,76 @@ class TestForksAreKeptEverywhere:
         ]
         _full, overview = d.describe_both(legs)
         assert any(e["turn"] and e["turn"].get("stay") for e in overview)
+
+
+class TestServiceRoads:
+    """The owner, 2026-10-20, on a frontage road beside East-West Highway: "When going on a
+    service road, especially next to a major road, say so"."""
+
+    EW = "service road beside East-West Highway"
+
+    def test_a_turn_onto_an_unnamed_service_road_names_it(self):
+        entries = d.describe(
+            [
+                road("Grubb Road", 2, 400, 0.0, 0.0)
+                + road(None, 2, 400, 270.0, 270.0, use="service_road")
+            ]
+        )
+        assert entries[1]["street"] == "service road"
+        assert entries[1]["turn"]["onto"] == "service road"
+        assert ": Left onto the service road, fairly low stress" in entries[1]["text"]
+
+    def test_one_beside_a_major_road_says_which(self):
+        entries = d.describe(
+            [
+                road("Grubb Road", 2, 400, 0.0, 0.0)
+                + road(self.EW, 2, 400, 270.0, 270.0, use="service_road")
+            ]
+        )
+        assert entries[1]["turn"]["onto"] == "service road beside East-West Highway"
+        assert f": Left onto the {self.EW}, fairly low stress" in entries[1]["text"]
+
+    def test_leaving_the_highway_straight_on_for_its_service_road_is_said(self):
+        entries = d.describe(
+            [
+                road("East-West Highway", 4, 400, 45.0, 45.0)
+                + road(self.EW, 2, 400, 50.0, 50.0, use="service_road")
+            ]
+        )
+        assert len(entries) == 2
+        assert f": Continue onto the {self.EW}, fairly low stress" in entries[1]["text"]
+
+    def test_an_unnamed_road_then_an_unnamed_service_road_is_a_turn(self):
+        entries = d.describe(
+            [road(None, 2, 400, 0.0, 0.0) + road(None, 2, 400, 90.0, 90.0, use="driveway")]
+        )
+        assert [e["street"] for e in entries] == ["unnamed road", "service road"]
+        assert entries[1]["turn"]["movement"] == "right"
+
+    def test_an_alley_and_a_parking_aisle_are_said_as_such(self):
+        entries = d.describe(
+            [
+                road("A Street", 2, 400, 0.0, 0.0)
+                + road(None, 2, 200, 90.0, 90.0, use="alley")
+                + road(None, 2, 200, 0.0, 0.0, use="parking_aisle")
+            ]
+        )
+        assert [e["street"] for e in entries] == ["A Street", "alley", "parking aisle"]
+        assert ": Right onto the alley," in entries[1]["text"]
+
+    def test_a_path_beside_a_major_road_is_not_called_a_path_twice(self):
+        entries = d.describe(
+            [
+                road("Grubb Road", 2, 400, 0.0, 0.0)
+                + road("path beside EW Hwy", 1, 400, 270.0, 270.0, facility="path", use="footway")
+            ]
+        )
+        assert entries[1]["text"].endswith(": Left onto the path beside EW Hwy, traffic-free.")
+
+    def test_beside_words(self):
+        assert d.beside_words("service_road", "X Road") == "service road beside X Road"
+        assert d.beside_words("driveway", "X Road") == "service road beside X Road"
+        assert d.beside_words("sidewalk", "X Road") == "sidewalk beside X Road"
+        assert d.beside_words("cycleway", "X Road") == "path beside X Road"
+        assert d.beside_words("alley", "X Road") is None
+        assert d.beside_words("road", "X Road") is None
