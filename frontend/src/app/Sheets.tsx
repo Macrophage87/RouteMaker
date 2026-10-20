@@ -153,13 +153,14 @@ export function LayersSheet(props: LayersSheetProps) {
         {/* Not one of the section's layers: shown with or without the stress map, as it also changes the
             route's facility totals and description (the a11y review's SF4). */}
         <HighStressLanesSwitch on={showHighLanes} onChange={(on) => setHighStressLanes(on)} overlay={stress === "available"} massMap={massMap} />
-        {/* v0.10.0: the route's hazard marks, drawn on a route only, with or without the stress map. */}
-        <RouteHazardKey />
         {/* The owner, 2026-10-19: "include the legend within the accordion settings in layers". The map's key
             is in its own section. */}
         <StressSectionKey massMap={massMap} stress={stress} stressVisible={stressVisible} preset={preset} zoom={zoom} facilitiesShown={facilitiesShown} />
         {/* The junction markers are drawn with or without the stress map (spec review SF1). */}
         <JunctionLegend />
+        {/* v0.10.0: the route's hazard marks, drawn on a route only, with or without the stress map. Last in the
+            section (the owner, 2026-10-20: "put it at the bottom"). */}
+        <RouteHazardKey />
       </LayerSection>
 
       {/* Mass Ride's alone (OWNER-DECISIONS 324): null for every other ride type. */}

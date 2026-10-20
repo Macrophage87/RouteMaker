@@ -150,7 +150,7 @@ export function attachRailInteraction(map: MapLibreMap, options: RailInteraction
   const hover = new maplibregl.Popup({ closeButton: false, closeOnClick: false, className: "rail-popup rail-hover", offset: 12 });
   const canvas = map.getCanvas();
 
-  const layers = () => [RAIL_LAYERS.elevators, RAIL_LAYERS.badges, RAIL_LAYERS.stations].filter((id) => map.getLayer(id));
+  const layers = () => [RAIL_LAYERS.elevators, RAIL_LAYERS.badges, RAIL_LAYERS.names, RAIL_LAYERS.stations].filter((id) => map.getLayer(id));
 
   /** The station (or elevator) within the tap slop of a pointer at `point`, if any. */
   function stationAt(point: { x: number; y: number }): StationFound | null {
