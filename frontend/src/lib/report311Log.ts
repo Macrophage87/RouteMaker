@@ -13,9 +13,12 @@
  * The log's list (Report311Log.tsx, in Suggest) is a checklist by website: each site's open entries
  * under its name, with "Copy and open" for each; checking an entry archives it (Archived, folded).
  *
- * Kept on this device (localStorage) and, signed in, with the account (GET and POST /api/me/report311-log,
- * core.models.Report311Log), so it follows the rider. On sign-in the two are merged by entry: an entry in
- * both keeps whichever changed last. Nothing is deleted, only archived, so a merge never brings back
+ * Signed out, kept on this device (localStorage). Signed in, the account's log (GET and POST
+ * /api/me/report311-log, core.models.Report311Log), so it follows the rider; this device keeps a copy of it
+ * apart from its own, tagged with the account (the server's owner tag), so one account's copy is never shown
+ * signed out or merged into another account's. At sign-in, entries logged signed out on this device join the
+ * account's. Saves wait for typing to settle (SAVE_WAIT_MS), go one at a time, and the server merges each into
+ * what it has by entry: an entry in both keeps whichever changed last. Nothing is deleted, only archived, so a merge never brings back
  * something removed; past MAX_ENTRIES the oldest archived entries go first.
  *
  * Which website: inside DC from DC's boundary, here on the phone (lib/dcBoundary.ts); elsewhere the server
@@ -28,11 +31,18 @@ import type { LonLat } from "./geo.ts";
 import { REPORT_KINDS, gpsWords, isUnnamed, type ReportKind, type ReportPlace } from "./report311.ts";
 import { csrfFromCookie } from "./stressEditor.ts";
 
+/** This device's log, signed out. */
 export const LOG_KEY = "routemaker.report311-log";
-/** Set while this device has changes the account has not taken yet (a save failed, or no signal). */
+/** The account's log as last read, with its owner tag, signed in. */
+export const ACCOUNT_LOG_KEY = "routemaker.report311-log.account";
+/** Set while the account's copy here has changes the account has not taken yet (a save failed, or no signal). */
 export const LOG_DIRTY_KEY = "routemaker.report311-log-dirty";
 export const MAX_ENTRIES = 300;
 export const NOTE_MAX = 500;
+/** The most the account keeps, as UTF-8 JSON (core/report_log.py LOG_MAX_BYTES). */
+export const LOG_MAX_BYTES = 160 * 1024;
+/** How long a change waits before it is saved, so a note is saved once typing stops, not at each key. */
+export const SAVE_WAIT_MS = 2_000;
 
 /** A jurisdiction's id (core/report_log.py JURISDICTION_IDS); "none": looked up, and none the log names. */
 export type WhereId =
@@ -171,14 +181,24 @@ export function parseLog(raw: unknown): LogEntry[] {
   return out;
 }
 
-/** At most MAX_ENTRIES: the oldest archived go first, then (only if every one is open) the oldest open. */
+const encoder = new TextEncoder();
+
+/**
+ * At most MAX_ENTRIES and LOG_MAX_BYTES: the oldest archived go first, then (only if every one is open) the
+ * oldest open. The same rule as the server's (core/report_log.py cap_log).
+ */
 export function capLog(entries: LogEntry[]): LogEntry[] {
-  if (entries.length <= MAX_ENTRIES) return entries;
-  const extra = entries.length - MAX_ENTRIES;
+  const size = new Map(entries.map((e) => [e.id, encoder.encode(JSON.stringify(e)).length + 1]));
+  let bytes = 1 + [...size.values()].reduce((a, b) => a + b, 0);
+  if (entries.length <= MAX_ENTRIES && bytes <= LOG_MAX_BYTES) return entries;
   const byAge = [...entries].sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
-  const archived = byAge.filter((e) => e.reported !== null).slice(0, extra);
-  const open = byAge.filter((e) => e.reported === null).slice(0, extra - archived.length);
-  const drop = new Set([...archived, ...open].map((e) => e.id));
+  const order = [...byAge.filter((e) => e.reported !== null), ...byAge.filter((e) => e.reported === null)];
+  const drop = new Set<string>();
+  for (const entry of order) {
+    if (entries.length - drop.size <= MAX_ENTRIES && bytes <= LOG_MAX_BYTES) break;
+    drop.add(entry.id);
+    bytes -= size.get(entry.id) ?? 0;
+  }
   return entries.filter((e) => !drop.has(e.id));
 }
 
@@ -298,6 +318,25 @@ export function readLog(store: Store | null = local()): LogEntry[] {
   }
 }
 
+/** The account's copy on this device, or null: its entries and the owner tag they belong to. */
+export interface AccountLog {
+  owner: string;
+  entries: LogEntry[];
+  /** Kept after a sign-out only for changes the account has not taken: never shown, merged at that account's sign-in. */
+  waiting?: boolean;
+}
+
+export function readAccountLog(store: Store | null = local()): AccountLog | null {
+  try {
+    const raw = store?.getItem(ACCOUNT_LOG_KEY);
+    const body = raw ? (JSON.parse(raw) as { owner?: unknown; entries?: unknown; waiting?: unknown }) : null;
+    if (!body || typeof body.owner !== "string" || !body.owner) return null;
+    return { owner: body.owner, entries: parseLog(body.entries), ...(body.waiting === true ? { waiting: true } : {}) };
+  } catch {
+    return null;
+  }
+}
+
 export function isDirty(store: Store | null = local()): boolean {
   try {
     return store?.getItem(LOG_DIRTY_KEY) === "1";
@@ -317,20 +356,23 @@ function setDirty(on: boolean, store: Store | null): void {
 
 type Fetch = typeof fetch;
 
-/** GET /api/me/report311-log: undefined when it could not be read (signed out, offline), [] for none yet. */
-export async function fetchAccountLog(origin: string, get: Fetch = fetch): Promise<LogEntry[] | undefined> {
+function accountAnswer(body: { entries?: unknown; owner?: unknown }): AccountLog | undefined {
+  return typeof body.owner === "string" && body.owner ? { owner: body.owner, entries: parseLog(body.entries ?? []) } : undefined;
+}
+
+/** GET /api/me/report311-log: the account's log and owner tag; undefined when it could not be read (signed out, offline). */
+export async function fetchAccountLog(origin: string, get: Fetch = fetch): Promise<AccountLog | undefined> {
   try {
     const response = await get(`${origin}/api/me/report311-log`, { headers: { Accept: "application/json" }, credentials: "same-origin" });
     if (!response.ok) return undefined;
-    const body = (await response.json()) as { entries?: unknown };
-    return parseLog(body.entries ?? []);
+    return accountAnswer((await response.json()) as { entries?: unknown; owner?: unknown });
   } catch {
     return undefined;
   }
 }
 
-/** POST /api/me/report311-log: whether the account took it. */
-export async function saveAccountLog(origin: string, entries: LogEntry[], post: Fetch = fetch, cookie = typeof document === "undefined" ? "" : document.cookie): Promise<boolean> {
+/** POST /api/me/report311-log: the account's log as the server merged it, or undefined when it did not take it. */
+export async function saveAccountLog(origin: string, entries: LogEntry[], post: Fetch = fetch, cookie = typeof document === "undefined" ? "" : document.cookie): Promise<AccountLog | undefined> {
   try {
     const token = csrfFromCookie(cookie);
     const response = await post(`${origin}/api/me/report311-log`, {
@@ -339,9 +381,10 @@ export async function saveAccountLog(origin: string, entries: LogEntry[], post: 
       headers: { "Content-Type": "application/json", Accept: "application/json", ...(token ? { "X-CSRFToken": token } : {}) },
       body: JSON.stringify({ entries }),
     });
-    return response.ok;
+    if (!response.ok) return undefined;
+    return accountAnswer((await response.json()) as { entries?: unknown; owner?: unknown });
   } catch {
-    return false;
+    return undefined;
   }
 }
 
@@ -360,24 +403,42 @@ export async function lookUpWhere(origin: string, point: LonLat, get: Fetch = fe
 }
 
 /**
- * The one log on this device, with listeners (the ride's 311 button, the road panel and the checklist all
- * see the same entries). Signed in, each change is also saved to the account; a failed save leaves the
- * device dirty, so the next sign-in merge sends it.
+ * The log this page shows, with listeners (the ride's 311 button, the road panel and the checklist all see the
+ * same entries): this device's own signed out, the account's copy signed in. Signed in, a change is saved
+ * once changes settle (SAVE_WAIT_MS), one save at a time; until the account has it the copy is marked dirty,
+ * so the next sign-in merges it.
  */
 export class Report311LogStore {
   private entries: LogEntry[];
   private listeners = new Set<() => void>();
+  /** Whose log is shown: this device's, or the account's with that account's owner tag. */
+  private owner: string | null;
   private signedIn = false;
   private looking = new Set<string>();
+  private timer: ReturnType<typeof setTimeout> | null = null;
+  private saving = false;
+  private again = false;
   private readonly store: Store | null;
   private readonly origin: string;
   private readonly net: Fetch;
+  private readonly wait: number;
 
-  constructor(store: Store | null = local(), origin = typeof window === "undefined" ? "" : window.location.origin, net: Fetch = (...args) => fetch(...args)) {
+  constructor(
+    store: Store | null = local(),
+    origin = typeof window === "undefined" ? "" : window.location.origin,
+    net: Fetch = (...args) => fetch(...args),
+    wait = SAVE_WAIT_MS,
+  ) {
     this.store = store;
     this.origin = origin;
     this.net = net;
-    this.entries = readLog(store);
+    this.wait = wait;
+    // The account's copy until the page knows whether it is signed in (as My Go does); signed out, it goes.
+    // One left waiting by a sign-out is never shown.
+    const copy = readAccountLog(store);
+    const shown = copy && !copy.waiting ? copy : null;
+    this.owner = shown?.owner ?? null;
+    this.entries = shown ? shown.entries : readLog(store);
   }
 
   list = (): LogEntry[] => this.entries;
@@ -387,21 +448,55 @@ export class Report311LogStore {
     return () => this.listeners.delete(listener);
   };
 
-  private write(next: LogEntry[], toAccount = true): void {
-    this.entries = capLog(next);
+  private keep(): void {
     try {
-      this.store?.setItem(LOG_KEY, JSON.stringify(this.entries));
+      if (this.owner === null) this.store?.setItem(LOG_KEY, JSON.stringify(this.entries));
+      else this.store?.setItem(ACCOUNT_LOG_KEY, JSON.stringify({ owner: this.owner, entries: this.entries }));
     } catch {
       // Storage full or refused: the log still holds for this visit.
     }
+  }
+
+  private show(next: LogEntry[]): void {
+    this.entries = next;
+    this.keep();
     for (const listener of this.listeners) listener();
-    if (toAccount && this.signedIn) {
-      setDirty(true, this.store);
-      const sent = this.entries;
-      void saveAccountLog(this.origin, sent, this.net).then((ok) => {
-        if (ok && this.entries === sent) setDirty(false, this.store);
-      });
-    } else if (toAccount) setDirty(true, this.store);
+  }
+
+  private write(next: LogEntry[]): void {
+    this.show(capLog(next));
+    if (this.owner === null) return;
+    setDirty(true, this.store);
+    if (!this.signedIn) return;
+    if (this.timer !== null) clearTimeout(this.timer);
+    this.timer = setTimeout(() => {
+      this.timer = null;
+      void this.save();
+    }, this.wait);
+  }
+
+  /** One save at a time; a change made while one is out is sent after it. The server's merged log is kept. */
+  private async save(): Promise<void> {
+    if (this.saving) {
+      this.again = true;
+      return;
+    }
+    this.saving = true;
+    const owner = this.owner;
+    const sent = this.entries;
+    const answer = await saveAccountLog(this.origin, sent, this.net);
+    this.saving = false;
+    if (owner === null || this.owner !== owner) return;
+    if (answer && answer.owner === owner) {
+      const changed = this.entries !== sent;
+      const merged = mergeLogs(answer.entries, this.entries);
+      if (!sameLog(merged, this.entries)) this.show(merged);
+      if (!changed) setDirty(false, this.store);
+    }
+    if (this.again) {
+      this.again = false;
+      void this.save();
+    }
   }
 
   /** Log a problem; returns the entry. Its website is looked up at once where it is not DC's. */
@@ -432,27 +527,56 @@ export class Report311LogStore {
       this.looking.add(entry.id);
       const where = inDc(entryPoint(entry)) ? "dc" : await lookUpWhere(this.origin, entryPoint(entry), this.net);
       this.looking.delete(entry.id);
-      if (where === undefined) return;
-      this.change(entry.id, { where });
+      if (where !== undefined) this.change(entry.id, { where });
     }
   }
 
   /**
-   * Signed in (every signed-in load): the account's log and this device's merged by entry, kept on both.
-   * The account is written only when the merge differs from what it has.
+   * Signed in (every signed-in load): the account's log, with this device's copy of it where that copy is the
+   * same account's (another account's is dropped), and the entries logged signed out on this device, which
+   * join the account's and leave the device's own log. The account is written only when that differs.
    */
   async signIn(): Promise<void> {
     const account = await fetchAccountLog(this.origin, this.net);
     if (account === undefined) return;
+    const waiting = readAccountLog(this.store);
+    const copy = this.owner === account.owner ? this.entries : waiting?.owner === account.owner ? waiting.entries : [];
+    const device = readLog(this.store);
+    const merged = mergeLogs(mergeLogs(account.entries, copy), device);
     this.signedIn = true;
-    const merged = mergeLogs(account, this.entries);
-    const accountNeeds = !sameLog(merged, account);
-    this.write(merged, false);
-    if (accountNeeds) {
+    this.owner = account.owner;
+    this.show(merged);
+    try {
+      this.store?.removeItem(LOG_KEY);
+    } catch {
+      // Refused: the device's entries are in the account's copy already.
+    }
+    if (!sameLog(merged, account.entries)) {
       setDirty(true, this.store);
-      if (await saveAccountLog(this.origin, merged, this.net)) setDirty(false, this.store);
+      await this.save();
     } else setDirty(false, this.store);
     void this.lookUp();
+  }
+
+  /**
+   * Signed out (the page found no account): this device's own log. The account's copy goes, unless it holds
+   * changes the account has not taken, which wait, unshown, for that account's next sign-in.
+   */
+  signOut(): void {
+    if (this.timer !== null) clearTimeout(this.timer);
+    this.timer = null;
+    this.signedIn = false;
+    if (this.owner !== null) {
+      try {
+        if (isDirty(this.store)) this.store?.setItem(ACCOUNT_LOG_KEY, JSON.stringify({ owner: this.owner, entries: this.entries, waiting: true }));
+        else this.store?.removeItem(ACCOUNT_LOG_KEY);
+      } catch {
+        // Refused: it is not shown either way.
+      }
+    }
+    this.owner = null;
+    this.entries = readLog(this.store);
+    for (const listener of this.listeners) listener();
   }
 }
 

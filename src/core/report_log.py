@@ -13,12 +13,13 @@ copies the report and opens the site.
 Two pieces live here:
 
 - `log_problem`: the shape and size checks for the log document a signed-in rider keeps with the
-  account (core.models.Report311Log, GET and POST /api/me/report311-log). Signed out, the log stays
-  on the device.
+  account (core.models.Report311Log, GET and POST /api/me/report311-log), and `merge_logs`, which
+  folds a device's copy into the account's by entry, so a device with an old copy cannot drop
+  entries another device logged. Signed out, the log stays on the device.
 - `where`: which jurisdiction's 311 takes a point (GET /api/report311/where): DC from its own
   boundary (core/geodata/dc-boundary.geojson, the one the map draws), elsewhere the county or
   independent city from the self-hosted Photon's answer for the point (OpenStreetMap's
-  administrative boundaries). The point is not kept or logged, and the answer is only an id.
+  administrative boundaries). The point is not kept, and the answer is only an id.
 """
 
 from __future__ import annotations
@@ -152,9 +153,48 @@ def log_problem(entries) -> str | None:
         if entry["id"] in seen:
             return "Two entries have the same id."
         seen.add(entry["id"])
-    if len(json.dumps(entries, separators=(",", ":"))) > LOG_MAX_BYTES:
+    if log_bytes(entries) > LOG_MAX_BYTES:
         return f"The log is larger than {LOG_MAX_BYTES // 1024} KB."
     return None
+
+
+def log_bytes(entries: list) -> int:
+    """The log's size as UTF-8 JSON, as the page measures it (lib/report311Log.ts capLog)."""
+    return len(json.dumps(entries, separators=(",", ":"), ensure_ascii=False).encode())
+
+
+def _when(value: str) -> datetime:
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def cap_log(entries: list[dict]) -> list[dict]:
+    """At most ENTRIES_MAX and LOG_MAX_BYTES: the oldest archived go first, then the oldest open
+    (lib/report311Log.ts capLog, the same rule)."""
+    by_age = sorted(entries, key=lambda e: _when(e["at"]))
+    order = [e for e in by_age if e.get("reported") is not None] + [
+        e for e in by_age if e.get("reported") is None
+    ]
+    kept = list(entries)
+    for entry in order:
+        if len(kept) <= ENTRIES_MAX and log_bytes(kept) <= LOG_MAX_BYTES:
+            break
+        kept.remove(entry)
+    return kept
+
+
+def merge_logs(stored: list[dict], incoming: list[dict]) -> list[dict]:
+    """The account's log and a device's, merged by entry: one in both keeps whichever changed
+    last (a tie keeps the device's). Nothing is deleted from a log, only archived, so an entry
+    missing from a device's copy is one it has not seen yet, and it stays. Newest first."""
+    by_id: dict[str, dict] = {}
+    for entry in stored:
+        by_id[entry["id"]] = entry
+    for entry in incoming:
+        had = by_id.get(entry["id"])
+        if had is None or _when(entry["changed"]) >= _when(had["changed"]):
+            by_id[entry["id"]] = entry
+    merged = sorted(by_id.values(), key=lambda e: _when(e["at"]), reverse=True)
+    return cap_log(merged)
 
 
 # --- Which 311 ---------------------------------------------------------------------------

@@ -1378,6 +1378,8 @@ export function App() {
         leaveGo();
       }
       if (!found.signed_in) {
+        // The 311 checklist (lib/report311Log.ts): this device's own, never an account's copy.
+        report311Log().signOut();
         // Signed out (or the account's copy is from before a sign-out): this device's My Go.
         if (START_MY_GO.account) {
           saveAccountCopy(null);

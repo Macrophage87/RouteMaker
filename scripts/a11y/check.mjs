@@ -1996,11 +1996,11 @@ async function saidInDialog(p, text) {
       small: [...(s?.querySelectorAll('input[type=checkbox], a, button') ?? [])].filter((e) => e.closest('label, a, button').getBoundingClientRect().height < 43.5).length }; })()`);
   await p.eval("document.querySelector('#sheet-suggest .log311-group input[type=checkbox]').click(); true");
   await sleep(300);
-  const archived311 = await p.eval(`(() => { const s = document.querySelector('#sheet-suggest .log311'); return { groups: s.querySelectorAll('.log311-group').length, empty: [...s.querySelectorAll('p')].some((x) => x.textContent === 'Nothing to report yet.'), fold: s.querySelector('.log311-archived summary')?.textContent, reported: !!(${newest311})?.reported }; })()`);
-  check("suggest: Your 311 checklist groups the logged pothole under Washington, DC with Open DC 311 (new tab), a checkbox named by the problem and time and described by its place; checking it archives it",
+  const archived311 = await p.eval(`(() => { const s = document.querySelector('#sheet-suggest .log311'); return { groups: s.querySelectorAll('.log311-group').length, empty: [...s.querySelectorAll('p')].some((x) => x.textContent === 'Nothing to report yet.'), fold: s.querySelector('.log311-archived summary')?.textContent, reported: !!(${newest311})?.reported, focus: document.activeElement?.id, said: s.querySelector('[role=status]')?.textContent }; })()`);
+  check("suggest: Your 311 checklist groups the logged pothole under Washington, DC with Open DC 311 (new tab), a checkbox named by the problem and time and described by its place; checking it archives it, the focus kept in the list (on its heading when none is left) and Pothole archived said",
     list311.heading === "Your 311 checklist" && list311.group === "Washington, DC" && list311.link?.href === "https://311.dc.gov/citizen/s/" && list311.link.target === "_blank" && /noopener/.test(list311.link.rel) && /\(new tab\)$/.test(list311.link.text) &&
       /^Pothole, [A-Z][a-z]{2} \d{1,2}, \d{1,2}:\d{2} [AP]M$/.test(list311.label ?? "") && /GPS 38\.\d{5}, -77\.\d{5}\./.test(list311.place ?? "") && list311.copy === "Copy report" && list311.small === 0 &&
-      archived311.groups === 0 && archived311.empty && archived311.fold === "Archived (1)" && archived311.reported,
+      archived311.groups === 0 && archived311.empty && archived311.fold === "Archived (1)" && archived311.reported && archived311.focus === "suggest-311-heading" && archived311.said === "Pothole archived.",
     JSON.stringify({ list311, archived311 }));
   await p.eval("document.querySelector('#sheet-suggest .sheet-back').click(); true");
   await sleep(300);

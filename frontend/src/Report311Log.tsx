@@ -8,10 +8,11 @@
  * up yet", and are looked up as the checklist opens.
  *
  * Built like the rest of the sheets: real headings, native checkboxes whose label is the entry's own words,
- * the place tied to its checkbox by aria-describedby, and the copy's result in a polite status region that
- * is always in the page.
+ * the place tied to its checkbox by aria-describedby, and the copy's or the check's result in a polite status
+ * region that is always in the page. A checked entry moves, so the focus goes to the next one in the list it
+ * left (focusAfter).
  */
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { copyText, selectionCopy } from "./lib/sidebar.ts";
 import { gpsWords } from "./lib/report311.ts";
 import {
@@ -42,13 +43,13 @@ export function entryPlace(entry: LogEntry): string {
   return `${words}${gpsWords(entryPoint(entry))}.${entry.note ? ` ${entry.note}` : ""}`;
 }
 
-function Entry({ entry, onCopy }: { entry: LogEntry; onCopy: (entry: LogEntry) => void }) {
+function Entry({ entry, onCopy, onCheck }: { entry: LogEntry; onCopy: (entry: LogEntry) => void; onCheck: (entry: LogEntry, checked: boolean) => void }) {
   const id = useId();
   const done = entry.reported !== null;
   return (
     <li className="log311-entry">
       <label className="log311-check">
-        <input type="checkbox" checked={done} aria-describedby={`${id}-place`} onChange={(event) => report311Log().setReported(entry.id, event.target.checked)} />
+        <input type="checkbox" checked={done} data-entry={entry.id} aria-describedby={`${id}-place`} onChange={(event) => onCheck(entry, event.target.checked)} />
         <span>{entryLabel(entry)}</span>
       </label>
       <p id={`${id}-place`} className="hint log311-place">
@@ -63,9 +64,30 @@ function Entry({ entry, onCopy }: { entry: LogEntry; onCopy: (entry: LogEntry) =
   );
 }
 
+/**
+ * Where the focus goes once a checkbox is checked or unchecked, since its entry moves (to Archived, or back
+ * under its website) and the checkbox the focus was on is gone: the next entry's in the list it left, else the
+ * one before, else that list's heading (the checklist's, or Archived's summary).
+ */
+export function focusAfter(list: LogEntry[], id: string): string | null {
+  const at = list.findIndex((e) => e.id === id);
+  return (list[at + 1] ?? list[at - 1])?.id ?? null;
+}
+
 export function Report311Log() {
   const entries = useReport311Log();
   const [copied, setCopied] = useState("");
+  const section = useRef<HTMLElement>(null);
+  // The checkbox (or heading) to focus after the next render, and the words the status region says.
+  const nextFocus = useRef<{ id: string | null; to: "heading" | "archived" } | null>(null);
+  useEffect(() => {
+    const next = nextFocus.current;
+    if (!next || !section.current) return;
+    nextFocus.current = null;
+    const box = next.id ? section.current.querySelector<HTMLInputElement>(`input[data-entry="${CSS.escape(next.id)}"]`) : null;
+    const fallback = next.to === "archived" ? section.current.querySelector<HTMLElement>(".log311-archived summary") : section.current.querySelector<HTMLElement>("h3");
+    (box ?? fallback ?? section.current.querySelector<HTMLElement>("h3"))?.focus();
+  });
   // Entries logged with no signal (or before their website was known) are looked up as the list opens.
   useEffect(() => {
     void report311Log().lookUp();
@@ -77,9 +99,19 @@ export function Report311Log() {
   };
   const groups = openGroups(entries);
   const old = archived(entries);
+  const check = (entry: LogEntry, checked: boolean) => {
+    // The list the entry leaves: open ones in the order shown, or Archived.
+    const from = checked ? groups.flatMap((g) => g.entries) : old;
+    nextFocus.current = { id: focusAfter(from, entry.id), to: checked ? "heading" : "archived" };
+    report311Log().setReported(entry.id, checked);
+    setCopied("");
+    window.setTimeout(() => setCopied(checked ? `${kindLabel(entry.kind)} archived.` : `${kindLabel(entry.kind)} back on the checklist.`), 150);
+  };
   return (
-    <section aria-labelledby="suggest-311-heading" className="settings-group log311">
-      <h3 id="suggest-311-heading">{LOG_HEADING}</h3>
+    <section ref={section} aria-labelledby="suggest-311-heading" className="settings-group log311">
+      <h3 id="suggest-311-heading" tabIndex={-1}>
+        {LOG_HEADING}
+      </h3>
       <p className="hint">{LOG_HINT}</p>
       {groups.length === 0 && <p>{LOG_EMPTY}</p>}
       {groups.map((group) => (
@@ -93,7 +125,7 @@ export function Report311Log() {
           )}
           <ul className="log311-entries" role="list">
             {group.entries.map((entry) => (
-              <Entry key={entry.id} entry={entry} onCopy={(e) => void copy(e)} />
+              <Entry key={entry.id} entry={entry} onCopy={(e) => void copy(e)} onCheck={check} />
             ))}
           </ul>
         </div>
@@ -107,7 +139,7 @@ export function Report311Log() {
           <div className="fold-body">
             <ul className="log311-entries" role="list">
               {old.map((entry) => (
-                <Entry key={entry.id} entry={entry} onCopy={(e) => void copy(e)} />
+                <Entry key={entry.id} entry={entry} onCopy={(e) => void copy(e)} onCheck={check} />
               ))}
             </ul>
           </div>

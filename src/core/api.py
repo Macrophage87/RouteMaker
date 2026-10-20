@@ -5468,10 +5468,20 @@ def account_settings_save(request):
 # the settings. Signed out it is 401 and the log stays on the device.
 
 
-def _report_log_out(row) -> dict:
+def _report_log_owner(user) -> str:
+    """A tag the page keeps with its copy of the account's 311 log, so a copy left by one account
+    is never merged into another's on the same device. Derived from the account with the server's
+    key: the same for one account, and no id can be read from it."""
+    from django.utils.crypto import salted_hmac
+
+    return salted_hmac("core.report311_log.owner", str(user.pk)).hexdigest()[:24]
+
+
+def _report_log_out(row, user) -> dict:
     return {
         "entries": row.entries if row is not None else None,
         "updated_at": row.updated_at.isoformat() if row is not None else None,
+        "owner": _report_log_owner(user),
     }
 
 
@@ -5489,7 +5499,7 @@ def report311_log_read(request):
 
     get_token(request)
     row = Report311Log.objects.filter(user=request.user).first()
-    return _private(JsonResponse(_report_log_out(row)))
+    return _private(JsonResponse(_report_log_out(row, request.user)))
 
 
 @api.post("/me/report311-log", summary="Save the signed-in rider's 311 log (the whole log)")
@@ -5502,6 +5512,8 @@ def report311_log_read(request):
     errors_as_json,
 )
 def report311_log_save(request):
+    from django.db import transaction
+
     from . import report_log
     from .models import Report311Log
 
@@ -5512,8 +5524,17 @@ def report311_log_save(request):
     problem = report_log.log_problem(entries)
     if problem:
         return _stress_error(400, problem, field="entries")
-    row, _ = Report311Log.objects.update_or_create(user=request.user, defaults={"entries": entries})
-    return _private(JsonResponse(_report_log_out(row)))
+    # Merged with what the account has, by entry (core.report_log.merge_logs), not replaced: a
+    # device with an old copy keeps what another device logged. The answer is the merged log.
+    with transaction.atomic():
+        row = Report311Log.objects.select_for_update().filter(user=request.user).first()
+        if row is None:
+            kept = report_log.cap_log(entries)
+            row = Report311Log.objects.create(user=request.user, entries=kept)
+        else:
+            row.entries = report_log.merge_logs(row.entries or [], entries)
+            row.save(update_fields=["entries", "updated_at"])
+    return _private(JsonResponse(_report_log_out(row, request.user)))
 
 
 def _route_summary(row) -> dict:
@@ -6439,7 +6460,7 @@ def report311_status(request):
 )
 def report311_where(request, params: Query[ReverseIn]):
     """The 311 log's site for an entry (core.report_log.where): an id the page knows, or null
-    where the point is in no jurisdiction the log names. The point is not kept or logged."""
+    where the point is in no jurisdiction the log names. The point is not kept."""
     from . import report_log
 
     try:
