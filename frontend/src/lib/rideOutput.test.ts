@@ -14,12 +14,12 @@ import {
   WAKE_LOST,
   WAKE_REASKS,
   WAKE_UNAVAILABLE,
-  readBigText,
+  readRideText,
   readHeadingUp,
   readRidePrefs,
   toScreenReader,
   toVoice,
-  writeBigText,
+  writeRideText,
   writeHeadingUp,
   writeRidePrefs,
   type Said,
@@ -62,19 +62,22 @@ test("track-up: on by default, the switch's choice kept on this device (Go ridin
   assert.doesNotThrow(() => writeHeadingUp(false, throwing));
 });
 
-test("Big text: off by default, a setting kept on this device (the owner, 2026-10-17)", () => {
-  assert.equal(readBigText(memoryStore()), false);
-  assert.equal(readBigText(null), false);
+test("Ride text size: Normal by default, Large kept on this device under Big text's old key (the owner, 2026-10-20)", () => {
+  assert.equal(readRideText(memoryStore()), "normal");
+  assert.equal(readRideText(null), "normal");
+  // A rider who had Big text on gets Large.
+  assert.equal(readRideText(memoryStore({ [BIG_TEXT_KEY]: "1" })), "large");
   const store = memoryStore();
-  writeBigText(true, store);
-  assert.equal(store.data[BIG_TEXT_KEY], "1");
-  assert.equal(readBigText(store), true);
-  writeBigText(false, store);
-  assert.equal(readBigText(store), false);
-  assert.equal(readBigText(memoryStore({ [BIG_TEXT_KEY]: "junk" })), false);
+  writeRideText("large", store);
+  assert.equal(store.data[BIG_TEXT_KEY], "large");
+  assert.equal(readRideText(store), "large");
+  writeRideText("normal", store);
+  assert.equal(store.data[BIG_TEXT_KEY], "0");
+  assert.equal(readRideText(store), "normal");
+  assert.equal(readRideText(memoryStore({ [BIG_TEXT_KEY]: "junk" })), "normal");
   const throwing = { getItem: () => { throw new Error("blocked"); }, setItem: () => { throw new Error("blocked"); } };
-  assert.equal(readBigText(throwing), false);
-  assert.doesNotThrow(() => writeBigText(true, throwing));
+  assert.equal(readRideText(throwing), "normal");
+  assert.doesNotThrow(() => writeRideText("large", throwing));
 });
 
 test("outputs: which channel each choice uses", () => {

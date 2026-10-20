@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { vehicleBadge, type VehicleMark } from "./lib/nextVehicle.ts";
 import { createPortal } from "react-dom";
 import * as maplibregl from "maplibre-gl";
-import type { GeoJSONSource, Map as MapLibreMap, Marker, Popup } from "maplibre-gl";
+import type { DataDrivenPropertyValueSpecification, GeoJSONSource, Map as MapLibreMap, Marker, Popup } from "maplibre-gl";
 import { Protocol } from "pmtiles";
 // MapLibre 6 ships its worker as a separate module and finds it next to its own
 // file by `import.meta.url`, which a bundle does not preserve; Vite builds it
@@ -37,7 +37,7 @@ import {
   ROUTE_BAND_WIDTH,
   sectionFeatures,
 } from "./lib/routeColours.ts";
-import { mtbTrailsOn, routableMtbLevel, stressOverlayLayers, subscribeHighStressLanes, subscribeMtbTrails, subscribePalette, subscribeRoutableMtb, withClearRoadLabels } from "./stressStyle.js";
+import { ROAD_LABEL, ROAD_LABEL_LAYER_IDS, mtbTrailsOn, rideRoadLabelField, routableMtbLevel, stressOverlayLayers, subscribeHighStressLanes, subscribeMtbTrails, subscribePalette, subscribeRoutableMtb, withClearRoadLabels } from "./stressStyle.js";
 import { subscribeTopoLines, syncTopoLines, topoLinesOn, type TopoMap } from "./lib/topoLines.ts";
 import {
   addStressOverlay,
@@ -256,6 +256,10 @@ interface Props {
   youDot?: LonLat | null;
   follow?: boolean;
   headingUp?: boolean;
+  /** A ride: the street names larger (ROAD_LABEL.rideSize) and shortened (rideRoadLabelField). */
+  rideLabels?: boolean;
+  /** A ride whose cues go to the screen reader alone: the map is out of its reach (inert), so swiping goes cue card to side buttons. */
+  screenReaderRide?: boolean;
   onFollowBroken?: () => void;
   onReady: (map: MapLibreMap) => void;
   onCanvasFocus: (focused: boolean) => void;
@@ -378,12 +382,12 @@ export const RIDER_AT = 2 / 3;
 const NO_PADDING = { top: 0, bottom: 0, left: 0, right: 0 };
 const reducedMotion = () => typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-/** The follow camera's offset from the map's middle that puts the rider RIDER_AT down the open band. */
-function riderOffset(container: HTMLElement): number {
+/** The follow camera's offset from the map's middle that puts the rider `at` down the open band. */
+function riderOffset(container: HTMLElement, at: number): number {
   const box = container.getBoundingClientRect();
   const top = (document.querySelector(".ride .cue-card")?.getBoundingClientRect().bottom ?? box.top) - box.top;
   const bottom = (document.querySelector(".ride .ride-controls")?.getBoundingClientRect().top ?? box.bottom) - box.top;
-  return Math.round(top + Math.max(0, bottom - top) * RIDER_AT - box.height / 2);
+  return Math.round(top + Math.max(0, bottom - top) * at - box.height / 2);
 }
 /** The closures in force at the ride (v0.7.0, lib/closureMap.ts). */
 const CLOSURE_SOURCE = "closures";
@@ -2245,11 +2249,41 @@ export function MapView(props: Props) {
     // A moving map once a second is too much for some: with reduced motion asked for, it jumps.
     const still = reducedMotion();
     // Track-up, the rider sits about two thirds of the way down the map, so more of the road ahead shows (the owner,
-    // 2026-10-17: "You care more about what's ahead of you than behind"); north-up, ahead is any way, so centred.
+    // 2026-10-17: "You care more about what's ahead of you than behind"); north-up, ahead is any way, so centred in the
+    // open band (with Large text the card covers half the map, 2026-10-20).
     // Padding left by the planner's framing (a junction or the chart's scrub) is cleared, so the offset is from the middle.
-    const ahead = props.headingUp ? riderOffset(map.getContainer()) : 0;
+    const ahead = riderOffset(map.getContainer(), props.headingUp ? RIDER_AT : 1 / 2);
     map.easeTo({ center: rider.point, bearing, zoom, offset: [0, ahead], padding: NO_PADDING, duration: still ? 0 : 400 });
   }, [props.rider, props.follow, props.headingUp]);
+
+  // In a ride the street names are larger and shortened ("R St NW"), to be read at a glance (the owner, 2026-10-20),
+  // and go back after.
+  type LabelField = DataDrivenPropertyValueSpecification<string>;
+  const baseLabelField = useRef<Record<string, LabelField>>({});
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const ride = Boolean(props.rideLabels);
+    // Set as soon as the layers exist: isStyleLoaded() is false while any tile loads, which is most of a ride.
+    const apply = () => {
+      const ids = ROAD_LABEL_LAYER_IDS.filter((id) => map.getLayer(id));
+      for (const id of ids) {
+        map.setLayoutProperty(id, "text-size", ride ? ROAD_LABEL.rideSize : ROAD_LABEL.size);
+        if (ride) {
+          baseLabelField.current[id] ??= map.getLayoutProperty(id, "text-field") as LabelField;
+          map.setLayoutProperty(id, "text-field", rideRoadLabelField(baseLabelField.current[id]) as LabelField);
+        } else if (baseLabelField.current[id] !== undefined) {
+          map.setLayoutProperty(id, "text-field", baseLabelField.current[id]);
+        }
+      }
+      if (ids.length > 0) map.off("styledata", apply);
+    };
+    if (ROAD_LABEL_LAYER_IDS.some((id) => map.getLayer(id))) apply();
+    else map.on("styledata", apply);
+    return () => {
+      map.off("styledata", apply);
+    };
+  }, [props.rideLabels]);
   useEffect(() => () => void riderMarker.current?.remove(), []);
   // Go's "you" dot: a marker only (aria-hidden: Go's start line says where the rider is).
   const youMarker = useRef<Marker | null>(null);
@@ -2270,7 +2304,7 @@ export function MapView(props: Props) {
   }, [props.youDot]);
   useEffect(() => () => void youMarker.current?.remove(), []);
 
-  // A pan or a turn of the map by hand pauses following (Re-centre resumes it). MapLibre's start events
+  // A pan or a turn of the map by hand pauses following (Where am I? resumes it). MapLibre's start events
   // carry the DOM event only when the rider made the move, not for the camera's own easeTo.
   useEffect(() => {
     const map = mapRef.current;
@@ -2334,7 +2368,7 @@ export function MapView(props: Props) {
 
   return (
     <>
-      <div ref={container} className="map" role="region" aria-label="Map" />
+      <div ref={container} className="map" role="region" aria-label="Map" inert={props.screenReaderRide || undefined} />
       {toolsHost && props.tools ? createPortal(props.tools, toolsHost) : null}
     </>
   );
