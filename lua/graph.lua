@@ -94,6 +94,7 @@ local function derived_from(kv)
   if kv["rm:no_bicycle"] then derived.no_bicycle = kv["rm:no_bicycle"] end
   if kv["rm:cemetery"] then derived.cemetery = kv["rm:cemetery"] == "yes" end
   if kv["rm:destination_only"] then derived.destination_only = true end
+  if kv["rm:walk_link"] then derived.walk_link = kv["rm:walk_link"] == "yes" end
   if kv["rm:hazard"] then derived.hazard = kv["rm:hazard"] == "yes" end
   return derived
 end

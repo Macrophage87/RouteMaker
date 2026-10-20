@@ -1105,6 +1105,17 @@ check("a stricter access tag is kept on it",
 check("an unmarked footway is not opened",
   M.remap_way({ highway = "footway" }, { is_trail_class = true }).bicycle == nil)
 
+-- A short sidewalk stretch where a bike way stops (routemaker.walk_links, 2026-10-20).
+check("a walk link is opened at a walk",
+  M.remap_way({ highway = "footway", footway = "sidewalk" },
+    { walk_link = true, is_trail_class = true }).bicycle == "dismount")
+check("a walk link never overrules a bicycle tag",
+  M.remap_way({ highway = "footway", bicycle = "no" },
+    { walk_link = true, is_trail_class = true }).bicycle == nil)
+check("nor a closure reason (a CBD sidewalk)",
+  M.remap_way({ highway = "footway", footway = "sidewalk" },
+    { walk_link = true, is_trail_class = true, no_bicycle = "cbd_sidewalk" }).bicycle == "no")
+
 -- A paved way is not a mountain-bike trail: its rating, which Valhalla's parser
 -- prices as dirt, comes off (the Rock Creek Trail in Montgomery County, way
 -- 851669430 among others, as the 2026-10-03 extract tags it).
