@@ -3870,15 +3870,15 @@ details.zoom-notes {
 
 /*
  * The heading, Road closed ahead and the always-visible End ride (Go riding fixes item 6): kept at the top of the
- * card as it scrolls, so End ride is in view at every size, in Big text and at 200% text. On a narrow
- * screen the two buttons wrap under the heading rather than overflow.
+ * card as it scrolls, so End ride is in view at every size, in Big text and at 200% text. One line: the
+ * heading gives way first (below); only where the two buttons alone are too wide do they wrap.
  */
 .ride-top {
   position: sticky;
   top: 0;
   z-index: 1;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
@@ -3889,6 +3889,8 @@ details.zoom-notes {
 
 .ride-top .ride-heading {
   margin: 0;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .ride-top-actions {
@@ -3914,34 +3916,23 @@ details.zoom-notes {
 }
 
 /*
- * Narrow phones and large text: Road closed is its icon alone (its name stays "Road closed ahead"), so the top row
- * stays one line. Measured in the row's own text size, so a larger system font hides the words sooner; with the
- * light times in the corner, which are wider than "Ride mode", sooner still.
+ * Where "Ride mode" or the light times do not fit beside the two buttons (narrow phones, large text), RideMode
+ * hides the corner from view, kept for screen readers, so the row stays one line and Road closed keeps its words.
  */
-.ride-top {
-  container-type: inline-size;
+.ride-top.ride-corner-tight .ride-heading {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
 
-@container (max-width: 26em) {
-  .ride-light ~ .ride-top-actions .ride-top-label {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip: rect(0 0 0 0);
-    white-space: nowrap;
-  }
-}
-
-@container (max-width: 23em) {
-  .ride-top-label {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip: rect(0 0 0 0);
-    white-space: nowrap;
-  }
+.ride-light-below {
+  margin: 2px 0 0;
+  font-size: 0.8rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
 
 /* Go's Ride sheet: Start ride for the route its changes planned, set off from the dials above it. */
