@@ -158,7 +158,7 @@ def _rows(
     not); `kind` names a HAWK. Field names are read in upper case whatever case the
     layer gives them (a hosted layer's `objectid`, `GlobalID`). Each id is
     `<id_prefix>:<the first id field with a value>`, the prefix the source unless
-    given: two layers of one source number their records from 1 alike."""
+    given (Alexandria's HAWKs are `alexandria-hawk:`)."""
     rows: list[dict] = []
     dropped: dict[str, int] = defaultdict(int)
     seen: set[str] = set()
@@ -238,12 +238,34 @@ def arlington_rows(doc: Mapping) -> tuple[list[dict], dict[str, int]]:
     return _rows(doc, "arlington", keep=keep)
 
 
+def _alexandria_is_hawk(props: Mapping) -> bool | None:
+    """Whether an Alexandria record's `SIGNAL_TYPE` is HAWK; None where the record
+    has no such field."""
+    if props.get("SIGNAL_TYPE") in (None, ""):
+        return None
+    return str(props["SIGNAL_TYPE"]).strip().upper() == "HAWK"
+
+
 def alexandria_rows(doc: Mapping, kind: str = "signal") -> tuple[list[dict], dict[str, int]]:
-    """City of Alexandria Smart Mobility Data: the signalised intersections layer
-    (every record a signal) or the HAWK layer (`kind` "hawk")."""
+    """City of Alexandria Smart Mobility Data, `kind` "signal" (layer 9) or "hawk"
+    (layer 0 fetched with `signal_type = 'HAWK'`). Both layers serve the whole
+    intersection table (257 records on 2026-10-20), so by `SIGNAL_TYPE` the signal
+    list leaves out the HAWKs and the HAWK list everything else: a layer fetched
+    without the filter counts no signal twice. A record without a `SIGNAL_TYPE` is
+    a signal, so the HAWK list leaves it out."""
+
+    def keep(props: Mapping) -> tuple[bool, str]:
+        hawk = _alexandria_is_hawk(props)
+        if kind == "hawk":
+            if hawk:
+                return True, ""
+            return False, "no signal_type" if hawk is None else "not a HAWK"
+        return (False, "a HAWK, read from --alexandria-hawks") if hawk else (True, "")
+
     return _rows(
         doc,
         "alexandria",
+        keep=keep,
         kind=lambda props: kind,
         id_prefix="alexandria-hawk" if kind == "hawk" else None,
     )

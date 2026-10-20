@@ -75,7 +75,7 @@ signal OSM does not map:
     --arlington-signals arlington-intersections.geojson
                                                      Arlington, Intersection Points
     --alexandria-signals alexandria-signals.geojson  Alexandria, Smart Mobility layer 9
-    --alexandria-hawks alexandria-hawks.geojson      Alexandria, Smart Mobility layer 0
+    --alexandria-hawks alexandria-hawks.geojson      Alexandria, layer 0, signal_type HAWK
 
 each as `scripts/fetch_agency_layer.py` stored it, all in one file written whole: a
 rerun with one flag replaces the others' rows, so give them all each time. A record
