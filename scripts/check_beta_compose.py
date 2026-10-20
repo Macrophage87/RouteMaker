@@ -12,7 +12,7 @@ mentions, and the rendered form is also where compose has already expanded the
 `${...}` defaults.
 
     scripts/check_beta_compose.py --render              # render with dummy env, then check
-    scripts/check_beta_compose.py --render --offroad    # the same with the offroad profile on
+                                                        # (always with the offroad profile on)
     scripts/check_beta_compose.py --env-file .env       # the SERVER's .env, through beta-compose.sh
     scripts/check_beta_compose.py rendered.yaml         # a file made by `docker compose config`
 
@@ -60,8 +60,9 @@ import check_compose_limits as production  # noqa: E402
 
 REPO = Path(__file__).resolve().parent.parent
 
-# The services the beta runs. `valhalla-offroad` and `valhalla-mtb` are the placeholders
-# behind the `offroad` profile and are allowed, not required.
+# The services the beta runs. `valhalla-offroad` and `valhalla-mtb` sit behind the `offroad`
+# profile and start once their tiles are on the host (scripts/beta/auto-release.sh), so they are
+# allowed, not required; the budget always counts them (main renders with the profile on).
 EXPECTED_SERVICES = {
     "postgis",
     "api",
@@ -87,9 +88,10 @@ ONE_SHOT = {"migrate"}
 # The host: 15 GiB total, about 8.6 GiB available at the owner's measurement
 # (OWNER-DECISIONS 361). The resident ceiling is the owner's "about 6 GB"
 # widened to what the measured per-container needs add up to (compose.beta.yaml
-# header), and still leaves the host 1.5 GiB of the 8.6 for its own growth.
+# header), and then to 7.1 GiB for the two trail routers (the owner, 2026-10-20: "Both,
+# raise limit to 7.1 GB"); it still leaves the host 1.5 GiB of the 8.6 for its own growth.
 HOST_AVAILABLE_GB = 8.6
-MAX_RESIDENT_GB = 7.0
+MAX_RESIDENT_GB = 7.1
 # The startup peak (resident plus the largest one-shot) must leave the host at least this much.
 PEAK_MARGIN_GB = 1.0
 
@@ -761,7 +763,9 @@ REFUSED_DOCKER_ENV = ("DOCKER_CONTEXT", "DOCKER_TLS_VERIFY", "DOCKER_CERT_PATH")
 
 
 def main(argv: list[str]) -> int:
-    offroad = "--offroad" in argv
+    # The trail routers run on the beta once their tiles are there (2026-10-20), so the gate
+    # counts them always; `--offroad` is still accepted, and changes nothing.
+    offroad = True
     if "--env-file" in argv or any(a.startswith("--env-file=") for a in argv) or "--render" in argv:
         refused = [k for k in REFUSED_DOCKER_ENV if k in os.environ]
         if refused:

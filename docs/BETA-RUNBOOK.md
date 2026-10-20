@@ -15,7 +15,7 @@ a message naming `RM_BETA_HOST` when it is missing; on a server set up before v0
 
 | Where | What | Undo |
 | --- | --- | --- |
-| Docker | One compose project, `routemaker-beta`: containers postgis, api, worker, photon and four routers; one network | `scripts/beta/beta-compose.sh down` |
+| Docker | One compose project, `routemaker-beta`: containers postgis, api, worker, photon and four routers, plus the two trail routers (valhalla-offroad, valhalla-mtb) once their tiles are on the host; one network | `scripts/beta/beta-compose.sh down` |
 | `/data/routemaker-src` | The checkout of the exact release sha | `rm -rf` it |
 | `/data/routemaker` | `DATA_ROOT`: tiles, database files, Photon index, base map, front end, backups | `rm -rf` it, only after the owner agrees |
 | `/data/routemaker-incoming` | The bundle as shipped from home (about 4 GB) | `rm -rf` it |
@@ -33,8 +33,8 @@ already exists (`/data` included: it holds other people's data).
 It does not touch the other sites, `nginx.conf`, the firewall, the system packages' configuration,
 or Docker's daemon settings. If a step seems to need any of those, **stop and ask the owner**.
 
-The memory budget is hard: every container has a cap (`compose.beta.yaml`, 7102 MiB = 6.94 GiB
-resident in all, 7358 MiB = 7.19 GiB at the startup peak, against the host's 8.6 GiB available), so a spike restarts a
+The memory budget is hard: every container has a cap (`compose.beta.yaml`, 7230 MiB = 7.06 GiB
+resident in all with the two trail routers, 7486 MiB = 7.31 GiB at the startup peak, against the host's 8.6 GiB available), so a spike restarts a
 RouteMaker container rather than starving another site. Every RouteMaker container also has
 `cpu_shares: 512` and `oom_score_adj: 500`: under CPU contention the other sites win, and a
 host-wide out-of-memory kill picks a RouteMaker process first.
@@ -109,7 +109,7 @@ What to expect on this server (the owner's check, 2026-10-04); a check below tha
 
 ```sh
 . "$HOME/routemaker-beta-state/vars.sh"
-free -m                                  # "available" must be at least 8400 MiB: the 7358 MiB startup peak plus the checker's 1 GiB margin (the caps total 7102 MiB = 6.94 GiB resident)
+free -m                                  # "available" must be at least 8510 MiB: the 7486 MiB startup peak plus the checker's 1 GiB margin (the caps total 7230 MiB = 7.06 GiB resident)
 uname -m; docker info -f '{{.Architecture}}'   # both x86_64: the api image is built at home on x86_64; anything else is a stop
 df -h /data /                            # /data: at least 25 GB free (bundle 4 GB, installed copy 4 GB, backups)
 findmnt -no SOURCE,FSTYPE,OPTIONS /data  # a filesystem of its own; nofail in the options is expected (see "Reboot and a late /data")
@@ -296,7 +296,7 @@ from `.env` (the rendered config holds every secret), only the table and any pro
 prints a problem, stop and report it. It checks: no caddy or rebuild; a memory cap, CPU cap and
 `memswap_limit` on every container; `cpu_shares` below 1024 and `oom_score_adj` at least 500 on
 every container; only the api publishing a port and only on `127.0.0.1`; the resident total under
-7.0 GiB and the startup peak (plus the largest one-shot) leaving 1 GiB of the host's 8.6; at most
+7.1 GiB (the two trail routers always counted) and the startup peak (plus the largest one-shot) leaving 1 GiB of the host's 8.6; at most
 six gunicorn workers with one left free beside the routing, geocoding and tile pools; Photon's heap
 plus capped direct buffers inside its cap; the weekly rebuild paused; every long-running service
 restarting `unless-stopped` and Django debug off; and in `.env`, no `COMPOSE_PROFILES` or
@@ -963,7 +963,8 @@ anything can run `migrate` (rollback C restores that snapshot), and the app star
    exactly the ones that did). The four routers also need a restart if `valhalla/*.json` or `lua/` changed, because
    they read those files only at start and `up -d` sees nothing to recreate:
    `scripts/beta/beta-compose.sh restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend`
-   (the same line as rollback A). Check with `git diff --stat <old sha>..<new sha> -- valhalla lua`.
+   (the same line as rollback A), with `valhalla-offroad valhalla-mtb` added once their tiles are on the host.
+   Check with `git diff --stat <old sha>..<new sha> -- valhalla lua`.
 9. **Only if `git diff --stat <old sha>..<new sha> -- deploy/beta` lists the nginx template** (owner steps, because
    they use sudo): re-render it with the same command and flags as step 9c of the install into `$RM_STATE`, install it
    over the site file (`sudo install -m 644 "$RM_STATE/routemaker-beta.full.conf" "$NGINX_SITE"`), then
@@ -1063,7 +1064,7 @@ A tag is never moved or reused: a fix is the next patch number. The agent's scri
 | docs, reports, `*.md`, `.github/`, fixtures | nothing on the server | ignored |
 | `src/` (not the items below), `frontend/`, `scripts/` | a code release | deploys |
 | `src/*/migrations/` | a migration | deploys; migrate runs after the pre-release snapshot |
-| `valhalla/*.json`, only keys a router reads at start (`logging`, `loki`, `thor`, `service_limits`, `httpd`, `odin`, `meili`, `statsd`, mjolnir's cache keys) | a router setting | deploys, then restarts the four routers (never the offroad one, which does not run on the beta; a runtime-only change to `valhalla/valhalla-offroad.json` restarts nothing) |
+| `valhalla/*.json`, only keys a router reads at start (`logging`, `loki`, `thor`, `service_limits`, `httpd`, `odin`, `meili`, `statsd`, mjolnir's cache keys) | a router setting | deploys, then restarts the routers: the four, and valhalla-offroad and valhalla-mtb once their tiles (`$RM_DATA/tiles/<variant>/current`) are on the host |
 | compose files, other than the lines below | a stack setting | deploys if the compose gate passes, then `up -d` photon and the routers (recreates only those whose settings changed) |
 | `deploy/` (the nginx template, the 401 and 502 pages, the env template) | owner steps with sudo | **stops** |
 | `scripts/prepare_data_root.sh`, a compose line adding a `DATA_ROOT` path | a data directory with sudo | **stops** |
