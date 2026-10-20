@@ -7,7 +7,8 @@
  * entrances, stations, elevators - then the route, then the markers (DOM, so
  * always on top). They go in directly under the route's casing, so they sit
  * over everything the base map and the overlay draw and under the ride; the
- * names then move to the very top (MapView), over the route and every pin.
+ * names then move up (MapView, stationNamesTarget), over the route and every
+ * pin, under only the hazard marks, the ride dots and Review's layers.
  */
 import {
   ALERT_BADGE_ICON,
@@ -54,6 +55,25 @@ export const STATION_MIN_ZOOM = 8;
  *  wayfinders"; "More than street name size."). */
 export const STATION_NAME_SIZE = ROAD_LABEL.size + 3;
 export const RIDE_STATION_NAME_SIZE = ROAD_LABEL.rideSize + 4;
+/** What stays over the station names: the route's hazard marks (a safety cue, which a name would also knock out of
+ *  placement), the live ride dots and alerts, and Review mode's own layers. */
+export const OVER_STATION_NAMES = ["route-hazard-", "ride-dots-", "ride-alerts-", "review-"] as const;
+
+/**
+ * Where the names layer belongs in `order` (the map's layers, bottom first): on top of everything but
+ * OVER_STATION_NAMES ("Text should be on top in most cases", the owner, 2026-10-20). `null` when it is already
+ * there; otherwise the moveLayer target, the layer to go under (`undefined` = the very top).
+ */
+export function stationNamesTarget(order: readonly string[]): { before: string | undefined } | null {
+  const over = (id: string) => OVER_STATION_NAMES.some((prefix) => id.startsWith(prefix));
+  const rest = order.filter((id) => id !== RAIL_LAYERS.names);
+  const first = rest.findIndex(over);
+  const at = first === -1 ? rest.length : first;
+  const want = [...rest.slice(0, at), RAIL_LAYERS.names, ...rest.slice(at)];
+  if (want.every((id, i) => order[i] === id)) return null;
+  return { before: rest[at] };
+}
+
 /** WMATA's badges from where a station's name would nearly show: further out they would crowd the lines. */
 export const BADGE_MIN_ZOOM = 12;
 

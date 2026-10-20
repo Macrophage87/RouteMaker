@@ -69,7 +69,7 @@ import {
 import { dragPreview, legOfSegment, nearestOnPath } from "./lib/lineEdit.ts";
 import { LineGesture } from "./lib/lineGesture.ts";
 import { PENN_COLOUR, RAIL_STATIONS, stationById } from "./lib/railData.ts";
-import { addRailStations, LABEL_FONT, RAIL_LAYERS, RIDE_STATION_NAME_SIZE, ROUTE_BOTTOM_LAYER, STATION_NAME_SIZE, setRailVisibility } from "./lib/railLayer.ts";
+import { addRailStations, LABEL_FONT, RAIL_LAYERS, RIDE_STATION_NAME_SIZE, ROUTE_BOTTOM_LAYER, STATION_NAME_SIZE, setRailVisibility, stationNamesTarget } from "./lib/railLayer.ts";
 import { ROUTE_HAZARD_ICON, ROUTE_HAZARD_SOURCE, routeHazardFeatures, routeHazardIcon, routeHazardLayer, routeHazardRepeatLayer } from "./lib/routeHazards.ts";
 import type { RailVisibility, Station, StationBadges, StationRole } from "./lib/railStations.ts";
 import { attachRailInteraction, type StationFound } from "./railInteraction.ts";
@@ -2296,8 +2296,8 @@ export function MapView(props: Props) {
     };
   }, [props.rideLabels]);
   // The station names: larger than the street names (railLayer.ts, STATION_NAME_SIZE), and over every other layer
-  // (the owner, 2026-10-20: "Text should be on top in most cases"), so no pin, line or route hides one; the markers
-  // are DOM and stay above. Layers come and go (water, climbs, the route, a style reload), so this listens throughout.
+  // but the hazard marks, ride dots and Review's layers (the owner, 2026-10-20: "Text should be on top in most cases"),
+  // so no pin, line or route hides one; the markers are DOM and stay above. Layers come and go (water, climbs, the route, a style reload), so this listens throughout.
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -2305,8 +2305,8 @@ export function MapView(props: Props) {
     const apply = () => {
       if (!map.getLayer(RAIL_LAYERS.names)) return;
       if (map.getLayoutProperty(RAIL_LAYERS.names, "text-size") !== size) map.setLayoutProperty(RAIL_LAYERS.names, "text-size", size);
-      const order = map.getLayersOrder();
-      if (order[order.length - 1] !== RAIL_LAYERS.names) map.moveLayer(RAIL_LAYERS.names);
+      const move = stationNamesTarget(map.getLayersOrder());
+      if (move) map.moveLayer(RAIL_LAYERS.names, move.before);
     };
     apply();
     map.on("styledata", apply);

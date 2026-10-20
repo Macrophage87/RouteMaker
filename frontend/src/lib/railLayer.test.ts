@@ -277,7 +277,7 @@ test("station names are larger than the street names, in a ride too, and show fr
   assert.ok(NAME_MIN_ZOOM > OPENING_ZOOM && NAME_MIN_ZOOM < ELEVATOR_MIN_ZOOM);
   const mapView = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
   assert.match(mapView, /RIDE_STATION_NAME_SIZE : STATION_NAME_SIZE/, "a ride switches the station names' size");
-  assert.match(mapView, /map\.moveLayer\(RAIL_LAYERS\.names\)/, "the names are kept over every other layer");
+  assert.match(mapView, /stationNamesTarget\(map\.getLayersOrder\(\)\)/, "the names are kept over the other layers");
 });
 
 test("where names crowd, the station with most lines keeps its name and a closed one gives way", () => {
@@ -298,4 +298,17 @@ test("a tap on a station's icon opens that station, though a neighbour's name co
   const layers = railLayers() as Array<{ id: string; layout?: Record<string, unknown> }>;
   const key = (id: string) => layers.find((l) => l.id === id)?.layout?.["symbol-sort-key"];
   assert.deepEqual([key(RAIL_LAYERS.stations), key(RAIL_LAYERS.names)], [["get", "sort"], ["-", 0, ["get", "sort"]]]);
+});
+
+test("the station names go over every layer but the hazard marks, the ride dots and Review's, and then stay", async () => {
+  const { stationNamesTarget } = await import("./railLayer.ts");
+  const names = RAIL_LAYERS.names;
+  // Over the pins and the route.
+  assert.deepEqual(stationNamesTarget(["base", names, "water-restrooms", "route-casing", "route-line"]), { before: undefined });
+  // Under the hazard marks and the ride dots.
+  assert.deepEqual(stationNamesTarget([names, "route-line", "route-hazard-marks", "ride-dots-dot"]), { before: "route-hazard-marks" });
+  // Once there, no move, so its styledata cannot loop.
+  assert.equal(stationNamesTarget(["route-line", names, "route-hazard-marks", "route-hazard-marks-along"]), null);
+  assert.equal(stationNamesTarget(["route-line", names]), null);
+  assert.equal(stationNamesTarget(["route-line", "review-dots", names]) !== null, true);
 });
