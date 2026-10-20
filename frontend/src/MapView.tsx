@@ -162,9 +162,12 @@ import {
 } from "./lib/closureMap.ts";
 import { ViaHold } from "./lib/viaHold.ts";
 
-
 /** The street names' bundled glyph ranges (lib/mapGlyphs.ts, MAP_LABEL_RANGES). */
-const MAP_GLYPHS: Readonly<Record<string, string>> = { "0-255": atkinsonLatin, "256-511": atkinsonLatinExtended, "8192-8447": atkinsonPunctuation };
+const MAP_GLYPHS: Readonly<Record<string, string>> = {
+  "0-255": atkinsonLatin,
+  "256-511": atkinsonLatinExtended,
+  "8192-8447": atkinsonPunctuation,
+};
 
 export type StressAvailability = "checking" | "available" | "unavailable";
 

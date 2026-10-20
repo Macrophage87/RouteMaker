@@ -4908,6 +4908,18 @@ Tests: `lib/sidebar.test.ts`.
   `licenses.txt` (which the map's "Software licences" link opens), not a data credit. The sidebar test fails if the import and the
   two files are not both there, or the licence is missing; `notices.test.mjs` checks
   that the credit and the licence text reach `licenses.txt`.
+- **The map's street-name font (the owner, 2026-10-20).** The street names
+  (`stressStyle.js`, `ROAD_LABEL`) are Atkinson Hyperlegible Next SemiBold at 15 px. MapLibre
+  draws text from glyph files, not web fonts, and the style has one glyph URL template (the
+  base map's `/basemap/fonts/`), so the three Latin ranges (`corridor.ts` `GLYPH_RANGES`) are
+  made once with `scripts/make_map_glyphs.mjs` and bundled in `frontend/src/fonts/map-glyphs/`
+  (sha256 in docs/SOURCES.md). Each file is the font's glyphs with the base map's Noto Sans
+  Medium filling the code points the font lacks, since MapLibre draws nothing for a code point
+  missing from a range it has. Vite serves them as hashed `/assets/*.pbf` files (no edge change)
+  and the service worker precaches them. `MapView.tsx`'s `transformRequest` sends this font's
+  glyph requests to them through `lib/mapGlyphs.ts` `glyphRequestUrl`, and any other range to
+  Noto Sans Medium. `fontStacks` leaves the font out of a kept ride's prefetch. The licence is
+  the second `BUNDLED_FONTS` entry, in `licenses.txt`.
 - **The Plan button (OWNER-DECISIONS 392, 393).** The bar is Plan, Map layers, Legend, GPX,
   Settings (`BAR_ITEMS`; Plan is `id: "plan"`, `opens: "planner"`, so `barCurrent` marks it
   `aria-current` while the planner shows and no other button then). It returns from any

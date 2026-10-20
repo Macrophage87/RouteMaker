@@ -41,6 +41,56 @@ test("map glyphs: the bundled ranges are the ones a kept ride needs, each a file
   assert.match(ofl, /SIL OPEN FONT LICENSE Version 1\.1/);
 });
 
+/** The code points a glyph range file carries (the glyphs protobuf: fontstack 1 > glyph 3 > id 1). */
+function codePoints(buf: Buffer): Set<number> {
+  const ids = new Set<number>();
+  const at = { i: 0 };
+  const varint = () => {
+    let value = 0;
+    for (let shift = 0; ; shift += 7) {
+      const byte = buf[at.i++];
+      value += (byte & 127) * 2 ** shift;
+      if (byte < 128) return value;
+    }
+  };
+  const read = (end: number, depth: number) => {
+    while (at.i < end) {
+      const key = varint();
+      if ((key & 7) === 0) {
+        const value = varint();
+        if (depth === 2 && key >> 3 === 1) ids.add(value);
+        continue;
+      }
+      const stop = varint() + at.i;
+      if ((depth === 0 && key >> 3 === 1) || (depth === 1 && key >> 3 === 3)) read(stop, depth + 1);
+      at.i = stop;
+    }
+  };
+  read(buf.length, 0);
+  return ids;
+}
+
+test("map glyphs: each range carries every code point the base map's Noto Sans Medium does, so no letter of a name is dropped", () => {
+  // The base map's Noto Sans Medium (basemaps-assets at fetch_basemap.sh's ASSETS_COMMIT) has 193, 256 and 194;
+  // the font alone has 189, 94 and 19.
+  const want: Record<string, number> = { "0-255": 193, "256-511": 256, "8192-8447": 194 };
+  const sample: Record<string, string> = { "0-255": "Street é ñ", "256-511": "ō Ũ ŉ Ơ ư", "8192-8447": "\u2010\u2011\u2032\u2033\u203c—’" };
+  for (const range of MAP_LABEL_RANGES) {
+    const ids = codePoints(readFileSync(new URL(`../fonts/map-glyphs/atkinson-next-semibold-${range}.pbf`, import.meta.url)));
+    assert.equal(ids.size, want[range], range);
+    for (const ch of sample[range].replace(/ /g, "")) assert.ok(ids.has(ch.codePointAt(0)!), `${range} ${ch}`);
+  }
+});
+
+test("map glyphs: MapView sends the glyph requests through glyphRequestUrl with the three bundled files", () => {
+  const view = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
+  assert.match(view, /transformRequest: \(url, type\) => \{\s+const glyph = type === "Glyphs" \? glyphRequestUrl\(url, MAP_GLYPHS\) : undefined;/);
+  for (const range of MAP_LABEL_RANGES) {
+    assert.match(view, new RegExp(`from "\\./fonts/map-glyphs/atkinson-next-semibold-${range}\\.pbf\\?url";`));
+    assert.match(view, new RegExp(`"${range}": atkinson`));
+  }
+});
+
 test("map glyphs: the files are the ones docs/SOURCES.md records", () => {
   const sources = readFileSync(new URL("../../../docs/SOURCES.md", import.meta.url), "utf8");
   for (const name of [...MAP_LABEL_RANGES.map((r) => `atkinson-next-semibold-${r}.pbf`), "OFL.txt"]) {

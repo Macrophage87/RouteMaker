@@ -467,6 +467,7 @@ export function fontStacks(layers: readonly unknown[]): string[] {
   const found = new Set<string>();
   const walk = (value: unknown) => {
     if (typeof value === "string") {
+      // The street names' bundled "... Next SemiBold" (lib/mapGlyphs.ts) is left out too: it is precached, not on the base map.
       if (/^[A-Z][A-Za-z ]* (Regular|Medium|Italic|Bold)$/.test(value)) found.add(value);
     } else if (Array.isArray(value)) value.forEach(walk);
   };

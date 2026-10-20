@@ -7,9 +7,10 @@
  * MapLibre draws text from glyph files (signed distance fields in protobuf, one per 256 code points),
  * not from a web font, and the style names one URL template for every font: the base map's, under
  * /basemap/fonts/ (scripts/fetch_basemap.sh). This font's three Latin ranges are made once from the
- * font with scripts/make_map_glyphs.mjs and bundled under src/fonts/map-glyphs/, so Vite serves them as
- * hashed /assets/ files, which both edges already serve and the service worker precaches; no edge,
- * deploy or base map change is needed. MapView's transformRequest sends a glyph request for this font
+ * font with scripts/make_map_glyphs.mjs, with the base map's Noto Sans Medium filling the code points the
+ * font lacks (MapLibre draws nothing for a code point missing from a range it has), and bundled under
+ * src/fonts/map-glyphs/, so Vite serves them as hashed /assets/ files, which both edges already serve and
+ * the service worker precaches; no edge, deploy or base map change is needed. MapView's transformRequest sends a glyph request for this font
  * to the bundled file for its range, and any other range (a name in a script the font does not cover)
  * to the base map's Noto Sans Medium, so such a name is still drawn.
  */
