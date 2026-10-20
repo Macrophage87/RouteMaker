@@ -86,27 +86,27 @@ export function writeHeadingUp(on: boolean, store: KeyValueStore | null = browse
   }
 }
 
-// ---- Ride text size (the owner, 2026-10-17: "the text size should be moved to the settings page"; 2026-10-20: a
-// middle size, "where the text takes up half the page with big text and big arrows", on its own ride button), kept on this device ----
+// ---- Ride text size (the owner, 2026-10-17: "the text size should be moved to the settings page"; 2026-10-20: a size
+// "where the text takes up half the page with big text and big arrows", on its own ride button), kept on this device ----
 
 /**
- * Normal (the compact card over the map), Large (the card about half the screen, for near-sighted riders and bright
- * sun; the map stays) and Huge (the old Big text: the next turn in large type, the map hidden, for low vision).
+ * Normal (the compact card over the map) or Large (the card half the screen, the turn as big as fits, the map below; for
+ * near sight and bright sun). Large replaced Big text, which hid the map: filling the card, its words were no bigger than
+ * Large's on a phone (the owner, 2026-10-20: "if you can fit the largest text in the half mode, then you're not gaining much").
  */
-export type RideTextSize = "normal" | "large" | "huge";
-export const RIDE_TEXT_SIZES: readonly RideTextSize[] = ["normal", "large", "huge"];
-/** Kept under Big text's old key, so a rider who had it on keeps Huge ("1"); Large is stored as "large". */
+export type RideTextSize = "normal" | "large";
+/** Kept under Big text's old key, so a rider who had Big text on ("1") gets Large. */
 export const BIG_TEXT_KEY = "routemaker.ride.bigText";
-/** The Settings page's picker and the ride button's name; what its (i) says. */
-export const RIDE_TEXT_LABEL = "Ride text size";
-export const RIDE_TEXT_NAMES: Record<RideTextSize, string> = { normal: "Normal", large: "Large", huge: "Huge (hides the map)" };
+/** The Settings page's switch and the ride button's name, and what its (i) says. */
+export const RIDE_TEXT_LABEL = "Large text during a ride";
+export const RIDE_TEXT_BUTTON = "Large text";
 export const RIDE_TEXT_HELP =
-  "Large shows the next turn on about half the screen with the map below, for bright sun or near sight. Huge hides the map, which also saves battery. The text size button in a ride changes it too. Kept on this device.";
+  "The next turn as big as it fits on the top half of the screen, the map below, for bright sun or near sight. The Large text button in a ride turns it on and off too. Kept on this device.";
 
 export function readRideText(store: KeyValueStore | null = browserStore()): RideTextSize {
   try {
     const kept = store?.getItem(BIG_TEXT_KEY);
-    return kept === "1" ? "huge" : kept === "large" ? "large" : "normal";
+    return kept === "1" || kept === "large" ? "large" : "normal";
   } catch {
     return "normal";
   }
@@ -114,15 +114,10 @@ export function readRideText(store: KeyValueStore | null = browserStore()): Ride
 
 export function writeRideText(size: RideTextSize, store: KeyValueStore | null = browserStore()): void {
   try {
-    store?.setItem(BIG_TEXT_KEY, size === "huge" ? "1" : size === "large" ? "large" : "0");
+    store?.setItem(BIG_TEXT_KEY, size === "large" ? "large" : "0");
   } catch {
     // Blocked site data: the choice holds for this visit only.
   }
-}
-
-/** The ride button's press: Normal, Large, Huge, then Normal again. */
-export function nextRideText(size: RideTextSize): RideTextSize {
-  return RIDE_TEXT_SIZES[(RIDE_TEXT_SIZES.indexOf(size) + 1) % RIDE_TEXT_SIZES.length];
 }
 
 export function toScreenReader(output: CueOutput): boolean {

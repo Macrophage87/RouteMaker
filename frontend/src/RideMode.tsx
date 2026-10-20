@@ -16,14 +16,14 @@
  *   shows the way back. A fixed route (`fixed`: a link shared as a ride, or a Mass Ride or Group Ride not shared as a route)
  *   is never re-planned on its own: everyone on it stays on the same line, and the way back is shown instead. A re-plan never touches the plan in the address bar (plan Q2): it is the ride's
  *   own route, held here and in App's ride state only.
- * - The text size (the owner, 2026-10-20): Normal, Large (the card about half the screen, the map below) and Huge (the old
- *   Big text, the map hidden), cycled by its side button (and the T key) and kept with Settings' picker; heading-up (track-up by default since v0.7.0); and
+ * - Large text (the owner, 2026-10-20; it replaced Big text): the card half the screen, the turn as big as fits, the map
+ *   below; its side button (and the T key) and Settings' switch are the one choice; heading-up (track-up by default since v0.7.0); and
  *   Road closed ahead and End ride always in view at the top of the card (since v0.9.0; Settings is a gear in the
  *   side buttons, opening the ride's settings under that row), with Undo after End ride. End ride part way leaves the plan starting where the rider is.
  * - The map along the route, kept for dead spots (lib/corridor.ts, N5), and Report a problem to DC 311
  *   with the place in the route's street names (lib/report311.ts, N6; OWNER-DECISIONS 369, 465).
  * - The side buttons (the owner, 2026-10-17: "Remove that bottom part when routing by default. instead put
- *   these as circle icons on the side"): Where am I? (re-centring too), the text size, Detour (water or restroom), on a
+ *   these as circle icons on the side"): Where am I? (re-centring too), Large text, Detour (water or restroom), on a
  *   share bike the dock button with the time undocked (lib/rideDock.ts), 311 inside DC, and the Settings gear; each a round
  *   icon with its name for screen readers, its menu opening beside it. The bottom panel shows only when it
  *   has something to say or ask: GPS and screen notes, off route, Ride the rest, the full 311 report.
@@ -99,10 +99,7 @@ import {
 import {
   Announcer,
   OUTPUT_LABELS,
-  RIDE_TEXT_LABEL,
-  RIDE_TEXT_NAMES,
-  RIDE_TEXT_SIZES,
-  nextRideText,
+  RIDE_TEXT_BUTTON,
   ScreenWake,
   Voice,
   toScreenReader,
@@ -671,7 +668,7 @@ export function RideMode({
   onFollow: (on: boolean) => void;
   headingUp: boolean;
   onHeadingUp: (on: boolean) => void;
-  /** Normal, Large (the card about half the screen) or Huge (the old Big text: the map hidden); kept by App, also in Settings. */
+  /** Normal, or Large (the card half the screen, the turn as big as fits); kept by App, also in Settings. */
   textSize: RideTextSize;
   onTextSize: (size: RideTextSize) => void;
   /** The ride's route and the rider's position, for the map. */
@@ -774,7 +771,6 @@ export function RideMode({
   const cueSheetId = useId();
   const headingRef = useRef<HTMLHeadingElement>(null);
   const whereRef = useRef<HTMLButtonElement>(null);
-  const big = textSize === "huge";
   const sectionRef = useRef<HTMLElement>(null);
   // Ended (End ride, or unmounted): a re-plan answering late says nothing and changes nothing.
   const ended = useRef(false);
@@ -1448,12 +1444,12 @@ export function RideMode({
     onFollow(true);
     askWhere();
   }, [askWhere, onFollow]);
-  // The text size button (the owner, 2026-10-20): Normal, Large, Huge and back, the same choice as Settings'. The new
-  // size is said as an answer, as Where am I? is, since a focused button's new name is not always read out.
+  // The Large text button (the owner, 2026-10-20), the same choice as Settings' switch. The change is said as an answer,
+  // as Where am I? is, since a pressed state's change is not always read out.
   const cycleText = useCallback(() => {
-    const next = nextRideText(textSize);
+    const next = textSize === "large" ? "normal" : "large";
     onTextSize(next);
-    const said = `Text size: ${RIDE_TEXT_NAMES[next]}`;
+    const said = next === "large" ? "Large text on" : "Large text off";
     showToast(said);
     announcer.current?.answer(said);
     if (prefsRef.current.output === "neither") setPolite((s) => ({ text: said, count: s.count + 1 }));
@@ -1703,6 +1699,68 @@ export function RideMode({
   const distanceWords = cue && progress !== null ? formatDistance(cue.atM - progress) : "";
   const metricAt = distanceWords.indexOf(" (");
   const distanceShown = metricAt < 0 ? { us: distanceWords, metric: "" } : { us: distanceWords.slice(0, metricAt), metric: distanceWords.slice(metricAt + 1) };
+  // Large: the turn's arrow and words as big as the card has room for (the owner, 2026-10-20: "take up as much
+  // screen as possible"), set as --cue-fit on the card. Worked out when the turn, the size or the screen changes, not each
+  // fix, with a little room left for the distance's words to grow; the small print stays 16 pt or more (styles.css).
+  const cardRef = useRef<HTMLDivElement>(null);
+  const fitKey = `${textSize}|${cueShown.head}|${cueShown.rest}|${distanceWords.length}|${ride.off}|${ride.arrived}|${cueSheetOn}|${settingsOpen}`;
+  useLayoutEffect(() => {
+    const card = cardRef.current;
+    if (!card) return;
+    if (textSize === "normal") {
+      card.style.removeProperty("--cue-fit");
+      card.style.removeProperty("--cue-fit-d");
+      return;
+    }
+    // The ride's settings open in the card: the size stays as it was while they show.
+    if (settingsOpen) return;
+    // Two scales: the distance line's (and the arrow's), as big as its one line fits across; then the instruction's, as
+    // big as the card's height allows under it, so its lines fill the rest.
+    const set = (name: string, k: number) => card.style.setProperty(name, String(k));
+    const inside = (selector: string) => {
+      const right = card.getBoundingClientRect().right;
+      return [...card.querySelectorAll<HTMLElement>(selector)].every((e) => e.scrollWidth <= e.clientWidth + 1 && e.getBoundingClientRect().right <= right + 1);
+    };
+    const fitsAll = () => card.scrollHeight <= card.clientHeight + 1 && card.scrollWidth <= card.clientWidth + 1;
+    const largest = (ok: (k: number) => boolean) => {
+      let lo = 0.5;
+      let hi = 4;
+      for (let i = 0; i < 9; i += 1) {
+        const mid = (lo + hi) / 2;
+        if (ok(mid)) lo = mid;
+        else hi = mid;
+      }
+      return Math.floor(lo * 0.94 * 100) / 100;
+    };
+    const fit = () => {
+      set("--cue-fit", 0.5);
+      const distance = largest((k) => {
+        set("--cue-fit-d", k);
+        return inside(".cue-distance") && fitsAll();
+      });
+      set("--cue-fit-d", distance);
+      set(
+        "--cue-fit",
+        largest((k) => {
+          set("--cue-fit", k);
+          return inside(".cue-text, .cue-more, .cue-then") && fitsAll();
+        }),
+      );
+    };
+    fit();
+    const section = sectionRef.current;
+    if (!section || typeof ResizeObserver === "undefined") return;
+    let width = section.clientWidth;
+    let height = section.clientHeight;
+    const observer = new ResizeObserver(() => {
+      if (section.clientWidth === width && section.clientHeight === height) return;
+      width = section.clientWidth;
+      height = section.clientHeight;
+      fit();
+    });
+    observer.observe(section);
+    return () => observer.disconnect();
+  }, [fitKey]); // eslint-disable-line react-hooks/exhaustive-deps
   // The light times for the corner, worked out once a minute and every tenth of a mile or so.
   const minute = Math.floor(Date.now() / 60_000);
   const lightStep = progress === null ? null : Math.round(progress / 160);
@@ -1741,7 +1799,7 @@ export function RideMode({
     watch.observe(top);
     for (const button of actions.children) watch.observe(button);
     return () => watch.disconnect();
-  }, [lightKey, ride.arrived, walking, big]);
+  }, [lightKey, ride.arrived, walking, textSize]);
   const back = ride.off ? wayBack(model, ride) : null;
   const shape = arrowFor(cue);
   const show311 = ride311Shown({ off: ride.off, progressM: progress, insideDc: (m) => inDc(pointAt(model, m)) });
@@ -1803,12 +1861,12 @@ export function RideMode({
   }, [ride.off, show311]);
 
   return (
-    <section ref={sectionRef} className={`ride${big ? " ride-big" : textSize === "large" ? " ride-large" : ""}`} aria-labelledby="ride-heading">
+    <section ref={sectionRef} className={`ride${textSize === "large" ? " ride-large" : ""}`} aria-labelledby="ride-heading">
       <LiveRegion said={polite} urgent={false} />
       <LiveRegion said={assertive} urgent />
-      <div className="cue-card">
+      <div ref={cardRef} className="cue-card">
         {/* End ride (v0.7.0, "Go riding fixes" item 6): always in view, at the top of the card, which stays at
-            every size and in Big text; one slide ends the ride (a tap once arrived), and the page offers Undo for a few seconds
+            every size and in Large text; one slide ends the ride (a tap once arrived), and the page offers Undo for a few seconds
             (RideEnded). The ride's settings open just under the row, from the side buttons' gear. */}
         <div ref={topRef} className={light && cornerFits ? "ride-top" : "ride-top ride-corner-tight"}>
           {/* The heading, "Ride mode", for screen readers; near dawn or dusk the light times shown in the corner
@@ -1970,14 +2028,12 @@ export function RideMode({
       <div className="ride-middle">
         {/* A minimalist compass (the owner, 2026-10-17), turned with the map; a press switches north-up and track-up
             ("maybe clicking on it changes to north up"), the same choice as the ride settings' switch. */}
-        {!big && (
-          <button type="button" className="ride-compass" aria-pressed={!headingUp} aria-label="North up" title="North up" onClick={() => onHeadingUp(!headingUp)}>
-            <svg viewBox="0 0 40 40" width="40" height="40" aria-hidden="true">
-              <path d="M20 5 L25 20 L20 17 L15 20 Z" className="ride-compass-north" />
-              <path d="M20 35 L15 20 L20 23 L25 20 Z" className="ride-compass-south" />
-            </svg>
-          </button>
-        )}
+        <button type="button" className="ride-compass" aria-pressed={!headingUp} aria-label="North up" title="North up" onClick={() => onHeadingUp(!headingUp)}>
+          <svg viewBox="0 0 40 40" width="40" height="40" aria-hidden="true">
+            <path d="M20 5 L25 20 L20 17 L15 20 Z" className="ride-compass-north" />
+            <path d="M20 35 L15 20 L20 23 L25 20 Z" className="ride-compass-south" />
+          </svg>
+        </button>
         {toast.text && !detourOpen && !dockOpen && !menu311 && (
           <div className="ride-toast" {...toastTimer.hold}>
             {/* Shown, not a live region: it is said through the rider's own outputs. */}
@@ -1989,29 +2045,25 @@ export function RideMode({
           <button
             type="button"
             ref={whereRef}
-            className={`ride-round${follow || big ? "" : " ride-round-alert"}`}
+            className={`ride-round${follow ? "" : " ride-round-alert"}`}
             onClick={findMe}
             aria-keyshortcuts="W C"
-            aria-label={follow || big ? "Where am I?" : "Where am I? The map stopped following you"}
+            aria-label={follow ? "Where am I?" : "Where am I? The map stopped following you"}
             title="Where am I?"
           >
             <Icon name="locate" size={24} />
           </button>
-          {/* The text size, Normal, Large, Huge and back (the owner, 2026-10-20); the dots show which of the three. */}
+          {/* Large text on and off (the owner, 2026-10-20), shown pressed while on. */}
           <button
             type="button"
             className="ride-round ride-text-size"
             onClick={cycleText}
             aria-keyshortcuts="T"
-            aria-label={`${RIDE_TEXT_LABEL}: ${RIDE_TEXT_NAMES[textSize]}`}
-            title={`${RIDE_TEXT_LABEL}: ${RIDE_TEXT_NAMES[textSize]}`}
+            aria-pressed={textSize === "large"}
+            aria-label={RIDE_TEXT_BUTTON}
+            title={RIDE_TEXT_BUTTON}
           >
             <Icon name="textsize" size={24} />
-            <span className="ride-text-dots" aria-hidden="true">
-              {RIDE_TEXT_SIZES.map((size, i) => (
-                <span key={size} className={i <= RIDE_TEXT_SIZES.indexOf(textSize) ? "on" : undefined} />
-              ))}
-            </span>
           </button>
           {water && (
             <div

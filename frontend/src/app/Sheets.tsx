@@ -27,7 +27,7 @@ import { LayerSection } from "../lib/layerSection.ts";
 import { AccessibilitySwitch } from "../lib/accessibilitySwitch.ts";
 import { ACCESS_HELP, ACCESS_LABEL } from "../lib/accessMode.ts";
 import { RideSettingsFields } from "../RideMode.tsx";
-import { RIDE_TEXT_HELP, RIDE_TEXT_LABEL, RIDE_TEXT_NAMES, RIDE_TEXT_SIZES, type RideTextSize } from "../lib/rideOutput.ts";
+import { RIDE_TEXT_HELP, RIDE_TEXT_LABEL, type RideTextSize } from "../lib/rideOutput.ts";
 import type { RidePrefs } from "../lib/rideOutput.ts";
 import type { RailVisibility } from "../lib/railStations.ts";
 import { RailStationsSection } from "../RailStations.tsx";
@@ -456,15 +456,24 @@ export function SettingsSheet(props: SettingsSheetProps) {
       <section aria-labelledby="settings-ride-heading" className="settings-group">
         <h3 id="settings-ride-heading">Riding</h3>
         <RideSettingsFields prefs={ridePrefs} onChange={changeRidePrefs} idBase="settings-ride" compact />
-        {/* The ride's text size (Huge was Big text): here, and on the ride's own button, which cycles the same choice. */}
-        <SettingRow infoId="settings-big-text-info" about="ride text size" info={RIDE_TEXT_HELP} className="big-text-row">
-          <SettingSelect
-            label={RIDE_TEXT_LABEL}
-            value={props.rideText.size}
-            options={RIDE_TEXT_SIZES.map((size) => [size, RIDE_TEXT_NAMES[size]] as const)}
-            onChange={props.rideText.onChange}
-            describedBy="settings-big-text-info"
-          />
+        {/* Large text in a ride (it replaced Big text): here, and on the ride's own button, the same choice. */}
+        <SettingRow infoId="settings-big-text-info" about="large text" info={RIDE_TEXT_HELP} className="big-text-row">
+          <button
+            type="button"
+            role="switch"
+            className="switch"
+            aria-checked={props.rideText.size === "large"}
+            aria-labelledby="settings-big-text-label"
+            aria-describedby="settings-big-text-info"
+            onClick={() => props.rideText.onChange(props.rideText.size === "large" ? "normal" : "large")}
+          >
+            <span id="settings-big-text-label" className="switch-label">
+              {RIDE_TEXT_LABEL}
+            </span>
+            <span className="switch-state" aria-hidden="true">
+              {props.rideText.size === "large" ? "On" : "Off"}
+            </span>
+          </button>
         </SettingRow>
         {/* Rider and bike weight, for how hard hills feel (the owner, 2026-10-18: "probably belongs in settings"); set once, so last. */}
         <div className="setting-row weight-row">

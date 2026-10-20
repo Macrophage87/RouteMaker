@@ -37,7 +37,7 @@ import {
   ROUTE_BAND_WIDTH,
   sectionFeatures,
 } from "./lib/routeColours.ts";
-import { mtbTrailsOn, routableMtbLevel, stressOverlayLayers, subscribeHighStressLanes, subscribeMtbTrails, subscribePalette, subscribeRoutableMtb, withClearRoadLabels } from "./stressStyle.js";
+import { ROAD_LABEL, ROAD_LABEL_LAYER_IDS, mtbTrailsOn, routableMtbLevel, stressOverlayLayers, subscribeHighStressLanes, subscribeMtbTrails, subscribePalette, subscribeRoutableMtb, withClearRoadLabels } from "./stressStyle.js";
 import { subscribeTopoLines, syncTopoLines, topoLinesOn, type TopoMap } from "./lib/topoLines.ts";
 import {
   addStressOverlay,
@@ -256,6 +256,10 @@ interface Props {
   youDot?: LonLat | null;
   follow?: boolean;
   headingUp?: boolean;
+  /** A ride with Large text: the street names larger too (ROAD_LABEL.largeSize). */
+  largeLabels?: boolean;
+  /** A ride whose cues go to the screen reader alone: the map is out of its reach (inert), so swiping goes cue card to side buttons. */
+  screenReaderRide?: boolean;
   onFollowBroken?: () => void;
   onReady: (map: MapLibreMap) => void;
   onCanvasFocus: (focused: boolean) => void;
@@ -2251,6 +2255,21 @@ export function MapView(props: Props) {
     const ahead = riderOffset(map.getContainer(), props.headingUp ? RIDER_AT : 1 / 2);
     map.easeTo({ center: rider.point, bearing, zoom, offset: [0, ahead], padding: NO_PADDING, duration: still ? 0 : 400 });
   }, [props.rider, props.follow, props.headingUp]);
+
+  // Large text in a ride: the street names grow with the cue (the owner, 2026-10-20), and go back after.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const size = props.largeLabels ? ROAD_LABEL.largeSize : ROAD_LABEL.size;
+    const apply = () => {
+      for (const id of ROAD_LABEL_LAYER_IDS) if (map.getLayer(id)) map.setLayoutProperty(id, "text-size", size);
+    };
+    if (map.isStyleLoaded()) apply();
+    else map.once("load", apply);
+    return () => {
+      map.off("load", apply);
+    };
+  }, [props.largeLabels]);
   useEffect(() => () => void riderMarker.current?.remove(), []);
   // Go's "you" dot: a marker only (aria-hidden: Go's start line says where the rider is).
   const youMarker = useRef<Marker | null>(null);
@@ -2335,7 +2354,7 @@ export function MapView(props: Props) {
 
   return (
     <>
-      <div ref={container} className="map" role="region" aria-label="Map" />
+      <div ref={container} className="map" role="region" aria-label="Map" inert={props.screenReaderRide || undefined} />
       {toolsHost && props.tools ? createPortal(props.tools, toolsHost) : null}
     </>
   );

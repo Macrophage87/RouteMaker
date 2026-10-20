@@ -840,14 +840,13 @@ export function App() {
     writeHeadingUp(on);
     setHeadingUpState(on);
   }, []);
-  // The ride's text size, kept on this device: in Settings, and on the ride's own text size button (the owner, 2026-10-20:
-  // "It actually should have it's own button. They could cycle between the 3 modes"). Huge is the old Big text.
+  // The ride's text size, kept on this device: in Settings, and on the ride's own Large text button (the owner, 2026-10-20:
+  // "It actually should have it's own button"). Large replaced Big text.
   const [rideText, setRideTextState] = useState<RideTextSize>(() => readRideText());
   const setRideText = useCallback((size: RideTextSize) => {
     writeRideText(size);
     setRideTextState(size);
   }, []);
-  const bigText = rideText === "huge";
   const startRideRef = useRef<HTMLButtonElement>(null);
   const rideStartFirstRef = useRef<HTMLButtonElement>(null);
   // The Start ride button pressed (under the figures or in Directions): where the focus goes back to.
@@ -3342,10 +3341,6 @@ export function App() {
   useEffect(() => {
     if (rideAsk) document.getElementById("ride-ask-title")?.focus();
   }, [rideAsk]);
-  // Big text hides the map; shown again, it fits its box.
-  useEffect(() => {
-    if (!(riding && bigText)) mapRef.current?.resize();
-  }, [bigText, riding]);
 
   // The map frames a route in the part the panel does not cover.
   const framePadding = useCallback((): Frame => {
@@ -4247,7 +4242,7 @@ export function App() {
   const rideGroupLine = (goMode || riding) && rideGroupType && rideGroupRoute ? (rideGroupRoute.geometry.coordinates as LonLat[]) : null;
 
   return (
-    <div className={`app${riding ? " riding" : ""}${riding && bigText ? " riding-big" : ""}${riding && rideText === "large" ? " riding-large" : ""}${goMode && !riding ? " go-mode" : ""}`}>
+    <div className={`app${riding ? " riding" : ""}${riding && rideText === "large" ? " riding-large" : ""}${goMode && !riding ? " go-mode" : ""}`}>
       {/* Past the map, its markers and its controls (up to 150 junction
           markers come before the planner), to the planner (lib/skipLink.ts). */}
       {/* The page's first stop and first in a screen reader's order, hidden until focused: accessibility mode's
@@ -4313,7 +4308,10 @@ export function App() {
         // Go, before a destination: its start, the location found, drawn as the ride's still dot (the owner,
         // 2026-10-17: the location centred, so it is seen). With a route its start pin marks it.
         youDot={!riding && mode === "go" && points.length === 0 && goStart.kind === "here" ? goStart.point : null}
-        follow={riding && follow && !bigText /* Big text hides the map: no camera work for it */}
+        follow={riding && follow}
+        largeLabels={riding && rideText === "large"}
+        // The owner, 2026-10-20: the map's junction buttons, zoom and credits are only extra swipes for a screen reader in a ride.
+        screenReaderRide={riding && ridePrefs.output === "screen-reader"}
         headingUp={headingUp}
         onFollowBroken={() => setFollow(false)}
         junctionFocus={junctionFocus}

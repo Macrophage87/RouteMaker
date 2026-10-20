@@ -2747,7 +2747,7 @@ const levelSlider = `${EDITOR} input[type=range]`;
   const ax311 = await axNode(p, ".ride-311-button");
   check("ride 311 button: inside DC, a round button of about 60 px at the right edge, in the lower half (thumb height), named Report to DC 311 with its visible 311, closed",
     !!b311 && b311.w >= 56 && b311.w <= 72 && b311.h >= 56 && b311.round && b311.right <= 24 && b311.mid >= 45 && b311.mid <= 96 && b311.text === "311" && b311.expanded === "false" && ax311?.role === "button" && ax311?.name === "Report to DC 311" &&
-      JSON.stringify(rail.map((x) => x.name)) === JSON.stringify(["Where am I?", "Ride text size: Normal", "Detour: water or restroom", "Report to DC 311", "Settings"]) && rail.every((x) => x.round && x.w >= 44),
+      JSON.stringify(rail.map((x) => x.name)) === JSON.stringify(["Where am I?", "Large text", "Detour: water or restroom", "Report to DC 311", "Settings"]) && rail.every((x) => x.round && x.w >= 44),
     JSON.stringify({ b311, ax311, rail }));
   // The top row (the owner, 2026-10-19: "switch end ride and road closed"): End ride, then Road closed ahead with its
   // words (2026-10-20), one line.
@@ -2868,26 +2868,33 @@ const levelSlider = `${EDITOR} input[type=range]`;
     gear.expanded === "true" && gear.shown && gear.focusIn && gear.width <= 379 && gear.name === "Road closed ahead" && gear.oneLine && gear.w >= 44 && gear.h >= 44, JSON.stringify(gear));
   await p.eval("document.querySelector('.ride .ride-settings-button').click(); true");
   await sleep(200);
-  // The text size button (the owner, 2026-10-20): Normal, Large (the card about half the screen, the map kept) and Huge
-  // (the map hidden), then Normal; its name says the size, each press says the new one, and the choice is kept.
+  // Large text (the owner, 2026-10-20; it replaced Big text): a side button, pressed while on; the card half the screen,
+  // the map below; the change said; kept on this device. A press again goes back.
   const sizeButton = ".ride-rail .ride-text-size";
   const sized = async () => {
     await p.eval(`document.querySelector('${sizeButton}').click(); true`);
-    await sleep(400);
+    await sleep(500);
     const ax = await axNode(p, sizeButton);
-    return p.eval(`(() => { const card = document.querySelector('.ride .cue-card').getBoundingClientRect(); return { name: ${JSON.stringify(ax?.name ?? null)}, map: getComputedStyle(document.querySelector('.map')).display, card: Math.round(card.height / innerHeight * 100), kept: localStorage.getItem('routemaker.ride.bigText'), heard: window.__heard.slice(-1)[0] }; })()`);
+    return p.eval(`(() => { const card = document.querySelector('.ride .cue-card').getBoundingClientRect(); const d = document.querySelector('.ride .cue-distance'); return { name: ${JSON.stringify(ax?.name ?? null)}, pressed: document.querySelector('${sizeButton}').getAttribute('aria-pressed'), map: getComputedStyle(document.querySelector('.map')).display, card: Math.round(card.height / innerHeight * 100), distancePx: d ? parseFloat(getComputedStyle(d).fontSize) : null, kept: localStorage.getItem('routemaker.ride.bigText'), heard: window.__heard.slice(-1)[0] }; })()`);
   };
   const large = await sized();
   await p.shot(`${SHOTS}/ride_large_320.png`);
-  const huge = await sized();
-  await p.shot(`${SHOTS}/ride_big_320.png`);
   const normal = await sized();
-  check("ride: the text size button's first press is Large: the card about half the screen with the map below, its name and the answer say Large, kept on this device",
-    large.name === "Ride text size: Large" && large.map !== "none" && large.card >= 45 && large.kept === "large" && /Text size: Large/.test(large.heard ?? ""), JSON.stringify(large));
-  check("ride: the text size button's next presses are Huge (the map hidden) and Normal again, each named and kept",
-    huge.name === "Ride text size: Huge (hides the map)" && huge.map === "none" && huge.kept === "1" &&
-      normal.name === "Ride text size: Normal" && normal.map !== "none" && normal.card < 45 && normal.kept === "0",
-    JSON.stringify({ huge, normal }));
+  check("ride: Large text is a side button: on, it is pressed, the card is about half the screen with the map below and the turn larger, the change said and kept on this device",
+    large.name === "Large text" && large.pressed === "true" && large.map !== "none" && large.card >= 45 && large.card <= 55 && large.distancePx > 28 && large.kept === "large" && /Large text on/.test(large.heard ?? ""), JSON.stringify(large));
+  // Cues to the screen reader alone: the map is out of its reach in a ride (the owner, 2026-10-20), so a swipe goes from
+  // the card to the side buttons; with the voice as well it stays.
+  const outputTo = (label) => p.eval(`(() => { document.querySelector('.ride .ride-settings-button').click(); const l = [...document.querySelectorAll('.ride-mode-settings label')].find((x) => x.textContent === ${JSON.stringify(label)}); l?.querySelector('input').click(); document.querySelector('.ride .ride-settings-button').click(); return !!l; })()`);
+  const srPicked = await outputTo("My screen reader");
+  await sleep(300);
+  const srOnly = await p.eval("({ inert: document.querySelector('.map').inert, zoom: !!document.querySelector('.maplibregl-ctrl-zoom-in') })");
+  const axMap = await axNode(p, ".map");
+  await outputTo("Both");
+  await sleep(300);
+  const both = await p.eval("document.querySelector('.map').inert");
+  check("ride: Large text off again with a second press; with cues to the screen reader alone the map is inert (out of a screen reader's reach), with Both it is not",
+    normal.name === "Large text" && normal.pressed === "false" && normal.card < 45 && normal.kept === "0" && srPicked && srOnly.inert === true && (!axMap || axMap.ignored) && both === false,
+    JSON.stringify({ normal, srPicked, srOnly, axMap, both }));
   // End ride: the planner again, the focus on Start ride, the lock let go. A base-map range is put in
   // the ride's IndexedDB store first (the mock serves no archive), to see End ride empty it.
   const idb = (act) => `new Promise((resolve, reject) => { const r = indexedDB.open('routemaker-corridor', 1); r.onupgradeneeded = () => r.result.createObjectStore('ranges', { keyPath: 'key' }); r.onerror = () => reject(r.error); r.onsuccess = () => { const db = r.result; const tx = db.transaction('ranges', 'readwrite'); const store = tx.objectStore('ranges'); const q = ${act}; tx.oncomplete = () => { db.close(); resolve(q.result); }; tx.onabort = () => reject(tx.error); }; })`;
@@ -4881,13 +4888,13 @@ const PICK_OPEN_IN_GO = "(() => { const s = document.querySelector('#sheet-setti
   const rideKept = await p.eval("localStorage.getItem('routemaker.ride')");
   check("settings: Ride mode is two pickers, Say cues with (4 choices) and How much to say (Full, Stoker, Quiet); a pick is kept as chosen",
     ride.out?.length === 4 && JSON.stringify(ride.lvl) === JSON.stringify(["Full", "Stoker", "Quiet"]) && /"verbosity":"quiet"/.test(rideKept ?? "") && /"chosen":true/.test(rideKept ?? ""), JSON.stringify({ ride, rideKept }));
-  // The ride's text size (the owner, 2026-10-20): a picker in Riding, the same choice the ride's button cycles, kept on this device.
-  const bigBefore = await p.eval("(() => { const s = document.querySelector('#sheet-settings .big-text-row select'); return s && { value: s.value, options: [...s.options].map((o) => o.textContent), name: s.closest('label')?.querySelector('.setting-name')?.textContent, h: s.getBoundingClientRect().height, group: s.closest('section')?.querySelector('h3')?.textContent }; })()");
-  await p.eval("(() => { const s = document.querySelector('#sheet-settings .big-text-row select'); s.value = 'huge'; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()");
+  // Large text in a ride (the owner, 2026-10-20; it replaced Big text): a switch in Riding, the same choice as the ride's button.
+  const bigBefore = await p.eval("(() => { const b = document.querySelector('#sheet-settings .big-text-row [role=switch]'); return b && { checked: b.getAttribute('aria-checked'), name: b.querySelector('.switch-label')?.textContent, h: b.getBoundingClientRect().height, group: b.closest('section')?.querySelector('h3')?.textContent }; })()");
+  await p.eval("document.querySelector('#sheet-settings .big-text-row [role=switch]').click(); true");
   await sleep(200);
-  const bigAfter = await p.eval("({ value: document.querySelector('#sheet-settings .big-text-row select').value, kept: localStorage.getItem('routemaker.ride.bigText') })");
-  check("settings: Riding has a Ride text size picker (Normal, Large, Huge), Normal at first and 44 px tall; Huge is kept on this device",
-    bigBefore?.value === "normal" && bigBefore.name === "Ride text size" && JSON.stringify(bigBefore.options) === JSON.stringify(["Normal", "Large", "Huge (hides the map)"]) && bigBefore.h >= 44 && bigBefore.group === "Riding" && bigAfter.value === "huge" && bigAfter.kept === "1",
+  const bigAfter = await p.eval("({ checked: document.querySelector('#sheet-settings .big-text-row [role=switch]').getAttribute('aria-checked'), kept: localStorage.getItem('routemaker.ride.bigText') })");
+  check("settings: Riding has a Large text during a ride switch, off at first and 44 px tall; turning it on is kept on this device",
+    bigBefore?.checked === "false" && bigBefore.name === "Large text during a ride" && bigBefore.h >= 44 && bigBefore.group === "Riding" && bigAfter.checked === "true" && bigAfter.kept === "large",
     JSON.stringify({ bigBefore, bigAfter }));
   await p.close();
 }

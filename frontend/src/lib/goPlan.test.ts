@@ -299,19 +299,21 @@ test("the 311 button shows only on the route inside DC; its menu has the six pro
   assert.match(css, /\.ride-rail \{\s*position: absolute;\s*right: 12px;/);
 });
 
-test("The ride's text size: a side button cycling three sizes, kept with Settings' picker (the owner, 2026-10-20)", () => {
-  // "It actually should have it's own button. They could cycle between the 3 modes."
-  assert.match(ride, /className="ride-round ride-text-size"\s+onClick=\{cycleText\}\s+aria-keyshortcuts="T"\s+aria-label=\{`\$\{RIDE_TEXT_LABEL\}: \$\{RIDE_TEXT_NAMES\[textSize\]\}`\}/);
-  assert.match(ride, /const next = nextRideText\(textSize\);\s*onTextSize\(next\);/);
-  // The new size is said, as Where am I? is.
+test("Large text: a side button and Settings' switch, one choice; it replaced Big text (the owner, 2026-10-20)", () => {
+  // "It actually should have it's own button"; Big text went: "if you can fit the largest text in the half mode, then you're not gaining much".
+  assert.match(ride, /className="ride-round ride-text-size"\s+onClick=\{cycleText\}\s+aria-keyshortcuts="T"\s+aria-pressed=\{textSize === "large"\}\s+aria-label=\{RIDE_TEXT_BUTTON\}/);
+  // The change is said, as Where am I? is.
   assert.match(ride, /announcer\.current\?\.answer\(said\);/);
-  // The ride's own settings no longer carry a second copy of it.
-  assert.doesNotMatch(ride, /BigTextField/);
+  assert.doesNotMatch(ride, /BigTextField|ride-big/);
   const sheets = src("../app/Sheets.tsx");
-  assert.match(sheets, /<SettingRow infoId="settings-big-text-info" about="ride text size" info=\{RIDE_TEXT_HELP\}/);
-  assert.match(sheets, /<SettingSelect\s+label=\{RIDE_TEXT_LABEL\}\s+value=\{props\.rideText\.size\}/);
+  assert.match(sheets, /<SettingRow infoId="settings-big-text-info" about="large text" info=\{RIDE_TEXT_HELP\}/);
+  assert.match(sheets, /role="switch"[^>]*aria-checked=\{props\.rideText\.size === "large"\}/s);
   const css = src("../styles.css");
-  assert.match(css, /\.ride-large \.cue-card \{[^}]*min-height: 50%;/);
+  assert.match(css, /\.ride-large \.cue-card \{[^}]*height: 50%;/);
+  assert.doesNotMatch(css, /\.riding-big|\.ride-big/);
+  // The turn fills the card (RideMode sets --cue-fit), the small print 16 pt or more.
+  assert.match(ride, /set\("--cue-fit-d", distance\);/);
+  assert.match(css, /\.ride-large \.ride-togo,[^{]*\{\s*font-size: 16pt;/);
 });
 
 // ---- Go's start: the rider's current location by default (the owner, 2026-10-11 19:53 UTC) ----

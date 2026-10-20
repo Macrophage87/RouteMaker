@@ -2380,15 +2380,6 @@ def _way_names_of(pieces: list[Piece]) -> dict[int, str]:
     return names
 
 
-def _piece_names(piece: Piece, side_names: dict[int, str]) -> tuple[str, ...]:
-    """A piece's names for the description: its own, else its way's in `side_names`; a
-    road-beside name (`describe.BesideName`) in place of its own too."""
-    side = side_names.get(piece.way_id)
-    if side is not None and (not piece.names or isinstance(side, describe.BesideName)):
-        return (side,)
-    return piece.names
-
-
 def describe_route(
     leg_runs: list,
     pieces: list[Piece],
@@ -2424,7 +2415,12 @@ def describe_route(
                             pieces[i].metres,
                             classes[i][0],
                             classes[i][1],
-                            _piece_names(pieces[i], side_names),
+                            pieces[i].names
+                            or (
+                                (side_names[pieces[i].way_id],)
+                                if pieces[i].way_id in side_names
+                                else ()
+                            ),
                             pieces[i].use,
                             pieces[i].heading_in,
                             pieces[i].heading_out,

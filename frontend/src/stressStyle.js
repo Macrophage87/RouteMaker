@@ -671,6 +671,8 @@ export const ROAD_LABEL = {
   // Bundled with the app, not the base map (lib/mapGlyphs.ts, MAP_LABEL_FONT).
   font: "Atkinson Hyperlegible Next SemiBold",
   size: 15,
+  /** With Large text in a ride (the owner, 2026-10-20: "Can text in the map increase in large too?"). */
+  largeSize: 20,
   color: "#4d4749",
   strongColor: "#1c1a1b",
   halo: "#ffffff",
