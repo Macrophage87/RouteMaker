@@ -4014,12 +4014,16 @@ details.zoom-notes {
 }
 
 /* The ride's summary after End ride (RideSummaryCard), over the planner. It fits the screen and never runs past it (the
-   owner, 2026-10-20: "The end ride panel should be scaled to fill the page, not go over"): the title at the top, Done and
-   Undo at the foot, and between them each figure on one row, label and value, the elevation chart shrinking to fit. Large text always ("Just use large for everything"): nothing under 16 pt. Only system text too large for the
-   screen scrolls, and then only the figures, the buttons staying in view. */
+   owner, 2026-10-20: "The end ride panel should be scaled to fill the page, not go over"): the title at the top, Done
+   and Undo at the foot, and between them each figure on one row, label and value, the elevation chart shrinking to fit.
+   Large text always ("Just use large for everything"): nothing under 16 pt. Where even then it cannot fit (a short or
+   landscape screen, large system text), only the figures scroll, the buttons staying in view. Plain vh and px first
+   for older WebViews without dvh or max(). */
 .ride-summary {
   position: fixed;
+  bottom: 8px;
   bottom: max(8px, env(safe-area-inset-bottom));
+  max-height: calc(100vh - 16px);
   max-height: calc(100dvh - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
   left: 50%;
   transform: translateX(-50%);
@@ -4087,7 +4091,7 @@ details.zoom-notes {
 
 .ride-summary-figures dd {
   margin: 0 0 0 auto;
-  font-size: 1.375rem;
+  font-size: max(16pt, 1.375rem);
   font-weight: 700;
   text-align: right;
 }
@@ -4100,20 +4104,12 @@ details.zoom-notes {
   margin-bottom: 4px;
 }
 
-/* The chart gives way first on a short screen, never below a readable strip. */
-.ride-summary-body > .ride-summary-elevation {
-  flex: 0 1 auto;
-  /* Its caption and up to two lines of words, and the chart's own floor. */
-  min-height: calc(16pt * 1.4 * 3 + 56px);
-  display: flex;
-  flex-direction: column;
-}
-
+/* The chart takes a share of the screen's height, never below a readable strip. */
 .ride-summary-elevation svg {
   display: block;
   width: 100%;
-  flex: 0 1 96px;
-  min-height: 48px;
+  height: clamp(48px, 12vh, 96px);
+  height: clamp(48px, 12dvh, 96px);
 }
 
 .ride-summary-elevation-area {

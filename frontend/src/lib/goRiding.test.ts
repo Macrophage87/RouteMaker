@@ -54,8 +54,10 @@ test("6. an End ride button always in view, labelled End ride with its icon, one
   // Fits the screen (the owner, 2026-10-20: "scaled to fill the page, not go over"): a max height of the screen, the
   // figures scrolling only inside it, Done and Undo outside the scrolling part.
   assert.match(css, /\.ride-summary \{[^}]*max-height: calc\(100dvh - 16px - env\(safe-area-inset-top\) - env\(safe-area-inset-bottom\)\);[^}]*display: flex;/);
+  // Plain vh first, for WebViews without dvh (Android 7 and up).
+  assert.match(css, /\.ride-summary \{[^}]*max-height: calc\(100vh - 16px\);\s*max-height: calc\(100dvh/);
   assert.match(css, /\.ride-summary-body \{[^}]*min-height: 0;\s*overflow-y: auto;/);
-  assert.match(summary, /<div className="ride-summary-body">[\s\S]*<\/figure>\s*\)\}\s*<\/div>\s*<div className="ride-summary-actions">/);
+  assert.match(summary, /<div className="ride-summary-body" role="group" aria-labelledby=\{titleId\} tabIndex=\{0\}>[\s\S]*<\/figure>\s*\)\}\s*<\/div>\s*<div className="ride-summary-actions">/);
   // Done: Go emptied for the next trip, Plan's plan kept (the owner, 2026-10-20).
   const finish = app.slice(app.indexOf("const finishRide = () => {"), app.indexOf("// The first ride's question"));
   assert.match(finish, /endedRide\.current = null;\s*setRideEnded\(null\);\s*if \(mode === "go" && pointsRef\.current\.length > 0\) clearPlan\(\);\s*else backToRideOpener\(\);/);
