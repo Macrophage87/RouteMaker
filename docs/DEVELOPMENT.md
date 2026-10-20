@@ -4858,8 +4858,9 @@ puts it, at most two presses away.
 - **Ride mode**: the 311 button (`lib/ride311.ts`), 60 px round on the right edge at thumb
   height, only while the rider's place on the route is inside DC; it opens a menu with the
   place line and the six problems as large buttons, and a pick opens "Report a problem to DC
-  311" with that problem chosen (the note, the text or DC 311 online and Copy as before). Big
-  text has a text-size icon; Where am I?, Re-centre and End ride have icons too.
+  311" with that problem chosen (the note, the text or DC 311 online and Copy as before). Large
+  text (which replaced Big text, 2026-10-20) has the text-size icon; Where am I? (which re-centres
+  too) and End ride have icons too.
 - **Icons**: `lib/iconPaths.ts` (the mockup's own line icons, minus Work, plus cargo,
   text size, tree and bikeshare) drawn by `Icon.tsx` (or `lineIcon` in createElement
   modules), always `aria-hidden` beside words.
