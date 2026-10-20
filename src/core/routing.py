@@ -431,9 +431,13 @@ class Piece:
     # every piece of an edge but its first.
     fork: str | None = field(default=None, compare=False)
     # The other ways at the node the piece's edge begins at, each (its heading away from
-    # the node, Valhalla's `use`), for the ride card's junction diagram
+    # the node, Valhalla's `use`, its road class), for the ride card's junction diagram
     # (`describe.junction_shape`); None on every piece of an edge but its first.
-    others: tuple[tuple[float | None, str | None], ...] | None = field(default=None, compare=False)
+    others: tuple | None = field(default=None, compare=False)
+    # The other ways at the junctions just short of that node (`describe.SHAPE_NEAR_M`),
+    # as `others`: where a main road was crossed just before a turn onto its service
+    # road; None elsewhere.
+    prior: tuple | None = field(default=None, compare=False)
 
 
 def _heading(value) -> float | None:
@@ -445,8 +449,10 @@ def pieces_of_trace(trace: dict) -> list[Piece]:
     shape = decode_polyline6(trace.get("shape", ""))
     to_metres = 1609.344 if trace.get("units") == "miles" else 1000.0
     pieces: list[Piece] = []
-    # The last edge kept: the node a fork is read at is where it ends.
+    # The last edge kept: the node a fork is read at is where it ends; and every one
+    # kept, with its length, for the junctions just short of that node.
     before: dict | None = None
+    kept: list[tuple[dict, float]] = []
     for edge in trace.get("edges", []):
         length = float(edge.get("length") or 0.0) * to_metres
         begin, end = edge.get("begin_shape_index"), edge.get("end_shape_index")
@@ -468,7 +474,9 @@ def pieces_of_trace(trace: dict) -> list[Piece]:
         }
         fork = _fork_of(before, edge)
         others = _others_of(before)
+        prior = _behind_of(kept)
         before = edge
+        kept.append((edge, length))
         stretches = []
         for a, b in zip(shape[begin:end], shape[begin + 1 : end + 1], strict=True):
             stretches.append((a, b, haversine(Point(*a), Point(*b))))
@@ -476,7 +484,9 @@ def pieces_of_trace(trace: dict) -> list[Piece]:
         if ground <= 0:
             # A degenerate edge: all its length on its first vertex.
             (lon, lat) = shape[begin]
-            pieces.append(Piece(way_id, lon, lat, length, **info, fork=fork, others=others))
+            pieces.append(
+                Piece(way_id, lon, lat, length, **info, fork=fork, others=others, prior=prior)
+            )
             continue
         for a, b, d in stretches:
             if d > 0:
@@ -489,10 +499,12 @@ def pieces_of_trace(trace: dict) -> list[Piece]:
                         **info,
                         fork=fork,
                         others=others,
+                        prior=prior,
                     )
                 )
                 fork = None
                 others = None
+                prior = None
     return pieces
 
 
@@ -510,15 +522,28 @@ def _fork_of(before: dict | None, edge: dict) -> str | None:
     )
 
 
-def _others_of(before: dict | None) -> tuple[tuple[float | None, str | None], ...] | None:
+def _others_of(before: dict | None) -> tuple | None:
     """The other ways at the node a traced edge begins at (`describe.junction_shape`):
-    the edge before's `end_node.intersecting_edges`, each (heading away, use)."""
+    the edge before's `end_node.intersecting_edges`, each (heading away, use, road class)."""
     if before is None:
         return None
     return tuple(
-        (_heading(other.get("begin_heading")), other.get("use"))
+        (_heading(other.get("begin_heading")), other.get("use"), other.get("road_class"))
         for other in (before.get("end_node") or {}).get("intersecting_edges") or []
     )
+
+
+def _behind_of(kept: list[tuple[dict, float]]) -> tuple | None:
+    """The other ways at the junctions within `describe.SHAPE_NEAR_M` short of the node
+    the last edge kept ends at, each (heading away, use, road class); None where none."""
+    found: list = []
+    gap = 0.0
+    for i in range(len(kept) - 1, 0, -1):
+        gap += kept[i][1]
+        if gap >= describe.SHAPE_NEAR_M:
+            break
+        found.extend(_others_of(kept[i - 1][0]) or ())
+    return tuple(found) or None
 
 
 # One row per piece, in the pieces' order: the tier and facility class of the
@@ -2450,6 +2475,7 @@ def describe_route(
                             bool(pieces[i].road and pieces[i].road.roundabout),
                             pieces[i].fork,
                             pieces[i].others,
+                            pieces[i].prior,
                         )
                         for i in range(run[0], run[1])
                     ]

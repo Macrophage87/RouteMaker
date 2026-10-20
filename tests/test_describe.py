@@ -1750,3 +1750,59 @@ class TestJunctionShapes:
         ]
         for entry in d.describe(legs):
             assert not (entry["turn"] or {}).get("shape"), entry
+
+
+class TestServiceRoadMainRoad:
+    """The owner, 2026-10-20, on the service road diagram: "In the service road case
+    you'd be going further than the main road ... If making a left ... or shorter if
+    making a right". The main road beside the service road is drawn where it lies."""
+
+    EW = "service road beside East-West Highway"
+
+    def test_crossed_just_before_it_lies_across_the_way_in(self):
+        # North on Grubb Road, across East-West Highway (east-west), then left (west).
+        behind = [(90.0, "road", "primary"), (270.0, "road", "primary")]
+        assert d.main_road_side(270.0, [(0.0, "road", "residential")], behind) == "before"
+
+    def test_otherwise_it_lies_across_the_way_ahead(self):
+        assert d.main_road_side(90.0, [(0.0, "road", "residential")], None) == "after"
+        # A busy road behind that is not alongside is not the one.
+        assert d.main_road_side(90.0, [], [(0.0, "road", "primary")]) == "after"
+
+    def test_at_the_turn_s_own_junction_it_is_drawn_there_already(self):
+        assert d.main_road_side(270.0, [(90.0, "road", "primary")], None) is None
+
+    def test_a_right_short_of_the_main_road_draws_it_ahead(self):
+        legs = [
+            flat(
+                road("Grubb Road", 2, 600, 0.0, 0.0),
+                branched(
+                    road(self.EW, 2, 600, 90.0, 90.0, use="service_road"),
+                    [(0.0, "road", "residential"), (270.0, "service_road", "service_other")],
+                ),
+            )
+        ]
+        shape = d.describe(legs)[1]["turn"]["shape"]
+        assert shape == {"out": 90, "others": [-90, 0], "main": "after"}
+
+    def test_a_left_across_it_draws_it_behind(self):
+        atoms = road(self.EW, 2, 600, 270.0, 270.0, use="service_road")
+        atoms[0] = replace(
+            atoms[0],
+            others=((0.0, "road", "residential"),),
+            prior=((90.0, "road", "primary"), (270.0, "road", "primary")),
+        )
+        shape = d.describe([flat(road("Grubb Road", 2, 600, 0.0, 0.0), atoms)])[1]["turn"]["shape"]
+        assert shape == {"out": -90, "others": [0], "main": "before"}
+
+    def test_not_when_riding_the_main_road_itself(self):
+        legs = [
+            flat(
+                road("East-West Highway", 4, 600, 90.0, 90.0),
+                branched(
+                    road(self.EW, 2, 600, 45.0, 45.0, use="service_road"),
+                    [(90.0, "road", "primary")],
+                ),
+            )
+        ]
+        assert "main" not in (d.describe(legs)[1]["turn"].get("shape") or {})

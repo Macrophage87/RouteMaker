@@ -141,6 +141,15 @@ SHAPE_MERGE_DEG = 20.0
 # A way within 30 degrees of the way back would be drawn on the way in: not drawn.
 SHAPE_BACK_DEG = 150.0
 SHAPE_IGNORED_USES = frozenset({"sidewalk"})
+# A turn onto a service road beside a main road draws the main road too, across the
+# way in where the route crossed it within SHAPE_NEAR_M before the turn, else across the
+# way ahead (the owner, 2026-10-20: "In the service road case you'd be going further than
+# the main road ... If making a left ... or shorter if making a right"). A main road is
+# one of MAIN_CLASSES, read as the one beside where it runs within SHAPE_PARALLEL_DEG of
+# the service road.
+SHAPE_NEAR_M = 60.0
+SHAPE_PARALLEL_DEG = 30.0
+MAIN_CLASSES = frozenset({"motorway", "trunk", "primary", "secondary", "tertiary"})
 # How far from a change of street an event still is that junction.
 MATCH_M = 30.0
 # Tiers that are never folded into a neighbour.
@@ -280,9 +289,13 @@ class Atom:
     # (`fork_movement`): the movement to say there, else None.
     fork: str | None = None
     # Where the piece begins a traced edge: the other ways at the node it leaves,
-    # each (its compass heading away from the node, Valhalla's `use`); None on every
-    # other piece, and from a trace that has none (`junction_shape`).
-    others: tuple[tuple[float | None, str | None], ...] | None = None
+    # each (its compass heading away from the node, Valhalla's `use`, and its road
+    # class where the router gave it); None on every other piece, and from a trace that
+    # has none (`junction_shape`).
+    others: tuple | None = None
+    # The other ways, as `others`, at the junctions within SHAPE_NEAR_M short of that
+    # node; None where there are none.
+    prior: tuple | None = None
 
 
 def beside_words(use: str, road: str) -> str | None:
@@ -810,11 +823,28 @@ def fork_movement(
     return "bear_right" if ours > nearest else "bear_left"
 
 
+def _branches(heading_in: float, keep: list[float], others) -> list[float]:
+    """The other ways worth drawing at a node, as turns from `heading_in`: see
+    `junction_shape`. `keep` is the route's own ways there, never drawn twice."""
+    branches: list[float] = []
+    for heading, use, *_class in others or ():
+        if heading is None or use in FORK_IGNORED_USES or use in SHAPE_IGNORED_USES:
+            continue
+        turn = _turn_deg(heading_in, heading)
+        if any(abs(_turn_deg(b, turn)) < SHAPE_MERGE_DEG for b in [*keep, *branches]):
+            continue
+        if abs(turn) > SHAPE_BACK_DEG:
+            continue
+        branches.append(turn)
+    return branches
+
+
 def junction_shape(
     heading_in: float | None,
     heading_out: float | None,
     others: tuple[tuple[float | None, str | None], ...] | list | None,
     service: bool = False,
+    main: str | None = None,
 ) -> dict | None:
     """The shape of an unusual junction, for the ride card to draw in place of its plain
     arrow (the owner, 2026-10-20: "if there's a left turn on a service road show the
@@ -822,32 +852,25 @@ def junction_shape(
 
     `heading_in` is the compass heading the route arrives on, `heading_out` the one it
     leaves on, `others` each other way at the node (its heading away from the node,
-    Valhalla's `use`). A way of FORK_IGNORED_USES (a driveway, a crosswalk) or a
-    sidewalk is not drawn; ways within SHAPE_MERGE_DEG of one another are one branch,
-    one within it of the route's way is not drawn, nor one past SHAPE_BACK_DEG (on the
-    way in). Answers {"out": the route's turn, "others": the other branches' turns}, in
-    degrees from straight ahead, clockwise positive, -180 to 180, where the junction is
-    unusual: more than two other branches, a branch more than SHAPE_SQUARE_DEG off
-    straight, left or right, two in one of those three directions, or a turn onto a
-    service road or alley with any other branch. A plain crossroads or T keeps the plain
-    arrow; so does a junction whose ways the router did not give. The words said and
-    read stay as they are: the diagram is a picture of the junction, never its only
-    telling."""
-    if heading_in is None or heading_out is None or not others:
+    Valhalla's `use`). A way of FORK_IGNORED_USES (a driveway, a crosswalk) or a sidewalk
+    is not drawn; ways within SHAPE_MERGE_DEG of one another are one branch, one within
+    it of the route's way is not drawn, nor one past SHAPE_BACK_DEG (on the way in).
+    `main` is where a service road's main road lies (`main_road_side`), drawn across the
+    way in ("before") or the way ahead ("after").
+
+    Answers {"out": the route's turn, "others": the other branches' turns, and "main"
+    where given}, in degrees from straight ahead, clockwise positive, -180 to 180, where
+    the junction is unusual: more than two other branches, a branch more than
+    SHAPE_SQUARE_DEG off straight, left or right, two in one of those three directions,
+    or a turn onto a service road or alley with any other branch. A plain crossroads or
+    T keeps the plain arrow; so does a junction whose ways the router did not give. The
+    words said and read stay as they are: the diagram is a picture of the junction,
+    never its only telling."""
+    if heading_in is None or heading_out is None:
         return None
     out = _turn_deg(heading_in, heading_out)
-    branches: list[float] = []
-    for heading, use in others:
-        if heading is None or use in FORK_IGNORED_USES or use in SHAPE_IGNORED_USES:
-            continue
-        turn = _turn_deg(heading_in, heading)
-        near = [out, *branches]
-        if any(abs(_turn_deg(b, turn)) < SHAPE_MERGE_DEG for b in near):
-            continue
-        if abs(turn) > SHAPE_BACK_DEG:
-            continue
-        branches.append(turn)
-    if not branches:
+    branches = _branches(heading_in, [out], others)
+    if not branches and main is None:
         return None
     every = [out, *branches]
 
@@ -859,9 +882,33 @@ def junction_shape(
 
     slots = [slot(t) for t in every]
     plain = len(branches) <= 2 and None not in slots and len(set(slots)) == len(slots)
-    if plain and not service:
+    if plain and not service and main is None:
         return None
-    return {"out": round(out), "others": sorted(round(b) for b in branches)}
+    shape = {"out": round(out), "others": sorted(round(b) for b in branches)}
+    if main is not None:
+        shape["main"] = main
+    return shape
+
+
+def _parallel_main(heading_out: float, ways) -> bool:
+    """Whether a main road (MAIN_CLASSES) among `ways` runs alongside `heading_out`."""
+    for heading, _use, *road_class in ways or ():
+        if heading is None or not road_class or road_class[0] not in MAIN_CLASSES:
+            continue
+        off = abs(_turn_deg(heading_out, heading))
+        if min(off, 180.0 - off) <= SHAPE_PARALLEL_DEG:
+            return True
+    return False
+
+
+def main_road_side(heading_out: float | None, others, prior) -> str | None:
+    """Where the main road beside a service road lies for a turn onto it: "before" where
+    the route crossed it within SHAPE_NEAR_M of the turn (a left across it, as a rule),
+    None where it meets the turn's own junction (drawn there already) or the turn's way
+    is not known, else "after", ahead across the way on (a right short of it)."""
+    if heading_out is None or _parallel_main(heading_out, others):
+        return None
+    return "before" if _parallel_main(heading_out, prior) else "after"
 
 
 def _street_words(run: _Run) -> str:
@@ -1184,11 +1231,14 @@ def describe_both(
         # stretch of another street folded in between puts them at two.
         one_node = not before.folded_end and not run.folded_start
         if movement is not None and one_node and before.last is not None and run.first is not None:
+            service = run.first.use in SERVICE_WORDS
+            main = None
+            # A service road beside a main road the route was not on: where the main road is.
+            beside = (run.label or "").partition(BESIDE)[2].lower()
+            if service and beside and beside not in before.names:
+                main = main_road_side(run.first.heading_in, run.first.others, run.first.prior)
             shape = junction_shape(
-                before.last.heading_out,
-                run.first.heading_in,
-                run.first.others,
-                run.first.use in SERVICE_WORDS,
+                before.last.heading_out, run.first.heading_in, run.first.others, service, main
             )
         turns[i] = _Turn(movement, event, same, shape)
 

@@ -733,4 +733,42 @@ class TestForksFromTheTrace:
         pieces = routing.pieces_of_trace(trace)
         assert [p.fork for p in pieces] == [None, "left", None]
         # And the other ways at the node, for the ride card's junction diagram.
-        assert [p.others for p in pieces] == [None, ((3.0, "cycleway"),), None]
+        assert [p.others for p in pieces] == [None, ((3.0, "cycleway", None),), None]
+
+    def test_the_ways_just_short_of_a_node_ride_on_the_edge_after_it(self):
+        """A main road crossed within `describe.SHAPE_NEAR_M` before a turn: its ways
+        are the turn's `prior` (the owner, 2026-10-20, on a left onto a service road)."""
+        from test_route_api import encode_polyline6
+
+        points = [(-77.0, 38.9), (-77.0, 38.9002), (-77.0, 38.9003), (-77.001, 38.9003)]
+
+        def edge(way, km, begin, end, heading, *ways):
+            node = {"end_node": {"intersecting_edges": list(ways)}} if ways else {}
+            return {
+                "way_id": way,
+                "length": km,
+                "begin_shape_index": begin,
+                "end_shape_index": end,
+                "begin_heading": heading,
+                "end_heading": heading,
+                **node,
+            }
+
+        highway = {"begin_heading": 90, "use": "road", "road_class": "primary"}
+        street = {"begin_heading": 0, "use": "road", "road_class": "residential"}
+        trace = {
+            "units": "kilometers",
+            "shape": encode_polyline6(points),
+            "edges": [
+                edge(1, 0.022, 0, 1, 0, highway),
+                edge(2, 0.011, 1, 2, 0, street),
+                edge(3, 0.08, 2, 3, 270),
+            ],
+        }
+        firsts = {p.way_id: p for p in reversed(routing.pieces_of_trace(trace))}
+        assert firsts[3].others == ((0.0, "road", "residential"),)
+        assert firsts[3].prior == ((90.0, "road", "primary"),)
+        # Past SHAPE_NEAR_M the junction is not the turn's.
+        trace["edges"][1]["length"] = 0.08
+        firsts = {p.way_id: p for p in reversed(routing.pieces_of_trace(trace))}
+        assert firsts[3].prior is None

@@ -340,6 +340,7 @@ function CueShape({ shape, junction }: { shape: ReturnType<typeof arrowFor>; jun
     const drawn = junctionPaths(junction);
     return (
       <svg className="cue-shape cue-junction" viewBox="0 0 48 56" aria-hidden="true" focusable="false">
+        {drawn.main ? <path d={drawn.main} fill="none" stroke="currentColor" strokeWidth="1.5" /> : null}
         {drawn.others.map((d) => (
           <path key={d} d={d} fill="none" stroke="currentColor" strokeWidth="3" strokeDasharray="4 4" strokeLinecap="butt" />
         ))}

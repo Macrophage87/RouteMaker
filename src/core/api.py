@@ -1245,6 +1245,14 @@ class DescriptionShapeOut(Schema):
 
     out: int = Field(description="The way the route takes.")
     others: list[int] = Field(description="Every other way, drawn dashed.")
+    main: Literal["before", "after"] | None = Field(
+        default=None,
+        description=(
+            "On a turn onto a service road beside a main road: the main road lies across the"
+            " way in (crossed just before, as for a left) or across the way ahead (a right"
+            " short of it)."
+        ),
+    )
 
 
 class DescriptionTurnOut(Schema):

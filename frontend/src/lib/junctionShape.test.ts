@@ -18,3 +18,11 @@ test("a five-way's diagonals stay inside the arrow's box", () => {
   }
   assert.equal(drawn.others.length, 5);
 });
+
+test("a service road's main road is drawn as a road's two edges, across the way in or the way ahead", () => {
+  assert.equal(junctionPaths({ out: -90, others: [0] }).main, null);
+  // A left across East-West Highway: the highway runs across the way in, below the junction.
+  assert.equal(junctionPaths({ out: -90, others: [0], main: "before" }).main, "M-2 45.5 L50 45.5 M-2 40.5 L50 40.5");
+  // A right short of it: across the way ahead, above.
+  assert.equal(junctionPaths({ out: 90, others: [0], main: "after" }).main, "M50 14.5 L-2 14.5 M50 19.5 L-2 19.5");
+});
