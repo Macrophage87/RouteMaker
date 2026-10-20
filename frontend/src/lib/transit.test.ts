@@ -23,6 +23,7 @@ import {
   transitOf,
   transitSaid,
   transitTime,
+  transitTimeName,
   withTransitOption,
 } from "./transit.ts";
 
@@ -220,7 +221,7 @@ test("the panel's steps are a labelled ordered list, with the total, comparison 
   assert.match(summary, /plan\.riding_quicker \? "transit-compare notice"/);
   // The panel's time is the door-to-door total, named for a screen reader, not the first ride's.
   const panel = src("app/RoutePanel.tsx");
-  assert.match(panel, /const timeName = transit \? \(transit\.scheduled \? "Door-to-door time, scheduled" : "Door-to-door time"\) : "Moving time";/);
+  assert.match(panel, /const timeName = transit \? transitTimeName\(transit\) : "Moving time";/);
   assert.match(panel, /\{!go\.peek && transitFold\}/);
   // Start ride on a transit plan follows its first riding leg (lib/rideTrip.ts; rideTrip.test.ts).
   assert.match(panel, /const rideable = rideableRoute\(route\);/);
@@ -249,4 +250,11 @@ test("a transit trip's row shows its legs as marks, and a screen reader hears th
   // The button shows the marks aria-hidden and the words beside them.
   const summary = readFileSync(new URL("../TransitSummary.tsx", import.meta.url), "utf8");
   assert.match(summary, /<span aria-hidden="true">\{optionText\(option, index\)\}<\/span>\n\s*<span className="visually-hidden">\{optionSaid\(option, index\)\}<\/span>/);
+});
+
+test("the total's name says live where a departure is WMATA's prediction", () => {
+  assert.equal(transitTimeName({ scheduled: true, live_times: true }), "Door-to-door time, with live departures");
+  assert.equal(transitTimeName({ scheduled: true, live_times: false }), "Door-to-door time, scheduled");
+  assert.equal(transitTimeName({ scheduled: true }), "Door-to-door time, scheduled");
+  assert.equal(transitTimeName({ scheduled: false }), "Door-to-door time");
 });

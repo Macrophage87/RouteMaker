@@ -34,6 +34,8 @@ import {
   compassWord,
   crossingWords,
   cueSpoken,
+  exitWords,
+  ordinal,
   isUnnamed,
   measureMap,
   nextAction,
@@ -57,9 +59,12 @@ import {
   toGo,
   turnWords,
   wayBack,
+  ontoWords,
   wayRidden,
+  wayWords,
   whereAmI,
   withoutMetric,
+  type Cue,
   type RideEvent,
   type RideFix,
   type RideModel,
@@ -1443,6 +1448,29 @@ test("a fork along one trail is a turn cue to stay on it (the owner, 2026-10-18,
   );
 });
 
+test("an unusual junction's ways ride on its turn cue for the card to draw; a plain turn has none (the owner, 2026-10-20)", () => {
+  const route = lRoute();
+  route.description = [
+    stretch(0, 1000, "0.0 to 0.6 mi (0.0 to 1.0 km): Grubb Road, fairly low stress (LTS 2).", { street: "Grubb Road" }),
+    stretch(1000, 1500, "0.6 to 0.9 mi (1.0 to 1.5 km): Left onto the service road, fairly low stress (LTS 2).", {
+      street: "service road",
+      turn: { movement: "left", onto: "service road", control: null, severity: null, shape: { out: -90, others: [0, 90] } },
+    }),
+    stretch(1500, 2000, "0.9 to 1.2 mi (1.5 to 2.0 km): Right onto C Street, fairly low stress (LTS 2).", {
+      street: "C Street",
+      turn: { movement: "right", onto: "C Street", control: null, severity: null, shape: null },
+    }),
+  ];
+  const turns = rideModel(route).cues.filter((c) => c.kind === "turn");
+  assert.deepEqual(
+    turns.map((c) => [c.text, c.junction ?? null]),
+    [
+      ["Left onto the service road.", { out: -90, others: [0, 90] }],
+      ["Right onto C Street.", null],
+    ],
+  );
+});
+
 test("a re-route that turns the rider round: judged from the line's first 25 m against the heading", () => {
   const east = lRoute().geometry.coordinates;
   assert.equal(setsOffBack(east, 270), true);
@@ -1466,4 +1494,94 @@ test("a U-turn re-route says it plainly: first on the card, said at once, then t
   const { events } = ride(model, "full", 0, 1100, 20);
   assert.equal(events.filter((e) => e.spoken.includes("U-turn")).length, 1);
   assert.ok(events.some((e) => e.spoken === "Left now onto B Street."));
+});
+
+// ---- Service roads (the owner, 2026-10-20, on East-West Highway: "When going on a service road, especially next to a major road, say so") ----
+
+test("service roads: a turn onto one says what it is and the road it runs beside", () => {
+  assert.equal(turnWords("left", "service road beside East-West Highway"), "Left onto the service road beside East-West Highway.");
+  assert.equal(turnWords("right", "service road"), "Right onto the service road.");
+  assert.equal(turnWords("bear_left", "sidewalk beside East-West Highway"), "Bear left onto the sidewalk beside East-West Highway.");
+  assert.equal(turnWords("left", "path beside East-West Highway"), "Left onto the path beside East-West Highway.");
+  assert.equal(turnWords("right", "alley"), "Right onto the alley.");
+  assert.equal(ontoWords("service road beside East-West Highway"), "Continue onto the service road beside East-West Highway.");
+  assert.equal(wayWords("Spencer Road"), "Spencer Road");
+  const cue = { index: 0, kind: "turn", atM: 100, text: "", movement: "left", street: "service road beside East-West Highway", severity: null, tier: 2, stop: null } as Cue;
+  assert.equal(cueSpoken(cue, "now", 0), "Left now onto the service road beside East-West Highway.");
+});
+
+test("service roads: leaving the highway straight on for its service road is said, however short, and named in Where am I?", () => {
+  const route = (highway: number, service: number) =>
+    rideModel(
+      straightRoute([
+        stretch(0, 1500, "East-West Highway.", { street: "East-West Highway", tier: highway }),
+        stretch(1500, 1800, "Continue onto the service road beside East-West Highway, fairly low stress (LTS 2).", {
+          street: "service road beside East-West Highway",
+          tier: service,
+          turn: straightOnto("service road beside East-West Highway"),
+        }),
+        stretch(1800, 3000, "Continue onto East-West Highway.", { street: "East-West Highway", tier: highway, turn: straightOnto("East-West Highway") }),
+      ]),
+    );
+  // At one level of stress: the onto cue, though the service road is far shorter than a quarter mile, and back
+  // onto the highway after it.
+  const level = route(2, 2);
+  assert.deepEqual(
+    level.cues.filter((c) => c.kind === "onto").map((c) => c.text),
+    ["Continue onto the service road beside East-West Highway.", "Continue onto East-West Highway."],
+  );
+  assert.match(whereAmI(level, { ...startState(), progressM: 1600 }), /^On the service road beside East-West Highway/);
+  // Off a busy highway: the calmer cue, which names it too.
+  const calmer = route(4, 2).cues.find((c) => c.atM > 1400 && c.atM < 1600);
+  assert.equal(calmer?.kind, "calmer");
+  assert.match(calmer?.text ?? "", /^Continue onto the service road beside East-West Highway, /);
+});
+
+test("off a circle the cue says its exit, said and shown; 'now' is the exit (the owner, 2026-10-20: ring picture + exit number)", () => {
+  assert.deepEqual([1, 2, 3, 4, 11, 21, 22].map(ordinal), ["1st", "2nd", "3rd", "4th", "11th", "21st", "22nd"]);
+  assert.equal(exitWords({ number: 3, circle: "Dupont Circle Northwest" }, "P Street Northwest"), "Take the 3rd exit onto P Street Northwest at Dupont Circle Northwest");
+  assert.equal(exitWords({ number: 1, circle: null }, null), "Take the 1st exit at the roundabout");
+  const route = lRoute();
+  route.description = [
+    stretch(0, 1000, "0.0 to 0.6 mi (0.0 to 1.0 km): Massachusetts Avenue Northwest, busy road (LTS 3).", { street: "Massachusetts Avenue Northwest" }),
+    stretch(1000, 2000, "0.6 to 1.2 mi (1.0 to 2.0 km): Take the 3rd exit onto P Street Northwest at Dupont Circle Northwest, busy road (LTS 3).", {
+      street: "P Street Northwest",
+      turn: {
+        movement: "left",
+        onto: "P Street Northwest",
+        control: null,
+        severity: null,
+        shape: { out: -90, others: [80, -30], ring: "right" },
+        exit: { number: 3, circle: "Dupont Circle Northwest" },
+      },
+    }),
+  ];
+  const [turn] = rideModel(route).cues.filter((c) => c.kind === "turn");
+  assert.equal(turn.text, "Take the 3rd exit onto P Street Northwest at Dupont Circle Northwest.");
+  assert.deepEqual(turn.exit, { number: 3, circle: "Dupont Circle Northwest" });
+  assert.equal(turn.junction?.ring, "right");
+  assert.equal(cueSpoken(turn, "now", 10), "Exit now onto P Street Northwest.");
+  assert.equal(cueSpoken(turn, "advance", 150), "In 500 feet, take the 3rd exit onto P Street Northwest at Dupont Circle Northwest.");
+});
+
+test("a ring kept as its own short stretch, then the way off: the jog says the exit, and so does its 'now'", () => {
+  const route = lRoute();
+  route.description = [
+    stretch(0, 1000, "0.0 to 0.6 mi (0.0 to 1.0 km): Massachusetts Avenue Northwest, busy road (LTS 3).", { street: "Massachusetts Avenue Northwest" }),
+    stretch(1000, 1020, "0.6 to 0.6 mi (1.0 to 1.0 km): Bear right onto Dupont Circle Northwest, busy road (LTS 3).", {
+      street: "Dupont Circle Northwest",
+      turn: { movement: "bear_right", onto: "Dupont Circle Northwest", control: null, severity: null },
+    }),
+    stretch(1020, 2000, "0.6 to 1.2 mi (1.0 to 2.0 km): Take the 2nd exit onto P Street Northwest at Dupont Circle Northwest, busy road (LTS 3).", {
+      street: "P Street Northwest",
+      turn: { movement: "left", onto: "P Street Northwest", control: null, severity: null, exit: { number: 2, circle: "Dupont Circle Northwest" } },
+    }),
+  ];
+  const [first, second] = rideModel(route).cues.filter((c) => c.kind === "turn");
+  assert.equal(first.text, "Bear right onto Dupont Circle Northwest, then immediately take the 2nd exit onto P Street Northwest at Dupont Circle Northwest.");
+  assert.equal(second.joined, true);
+  assert.equal(cueSpoken(second, "now", 5), "Exit now onto P Street Northwest.");
+  // An exit with a turn right after it: its own "now" is the exit.
+  const exitFirst = { ...second, joined: false, then: { movement: "right" as const, street: "Q Street Northwest" } };
+  assert.equal(cueSpoken(exitFirst, "now", 5), "Exit now, then right onto Q Street Northwest.");
 });

@@ -84,7 +84,7 @@ def read_probes(path: Path) -> list[tiles.ClosureProbe]:
 
 def read_probe_file(path: Path) -> tuple[list[tiles.ClosureProbe], set[int] | None]:
     """The probes, and the way ids the Mountain Bike graph opens on purpose (None where the
-    file predates the `mtb_graph_open` column)."""
+    file predates the `mtb_graph_open` column). The off-road graph's are `offroad_opens`."""
     with path.open(newline="") as handle:
         reader = csv.DictReader(handle)
         rows = list(reader)
@@ -101,21 +101,39 @@ def read_probe_file(path: Path) -> tuple[list[tiles.ClosureProbe], set[int] | No
     return probes, (mtb_open if marked else None)
 
 
-def held_on(name: str, probes: list, mtb_open: set[int] | None) -> list:
-    """The probes a router must find closed: all but what its graph opens on purpose."""
+def offroad_opens(path: Path) -> set[int] | None:
+    """The way ids the off-road graph opens on purpose (`offroad_graph_open`), or None where
+    the file predates that column (the graph then keeps the mountain-bike class alone)."""
+    with path.open(newline="") as handle:
+        reader = csv.DictReader(handle)
+        rows = list(reader)
+        if "offroad_graph_open" not in (reader.fieldnames or ()):
+            return None
+    return {int(row["way_id"]) for row in rows if row.get("offroad_graph_open") == "1"}
+
+
+def held_on(
+    name: str, probes: list, mtb_open: set[int] | None, offroad_open: set[int] | None = None
+) -> list:
+    """The probes a router must find closed: all but what its graph opens on purpose. The
+    off-road graph also keeps the low-level rated singletrack since the owner's choice of
+    2026-10-19 (pipeline.trail_closures.offroad_graph_keeps; `offroad_graph_open`)."""
     if name == MTB and mtb_open is not None:
         return [p for p in probes if p.way_id not in mtb_open]
+    if name == OFFROAD and offroad_open is not None:
+        return [p for p in probes if p.way_id not in offroad_open]
     return [p for p in probes if p.reason not in KEEPS.get(name, ())]
 
 
 def locate(args: argparse.Namespace) -> int:
     probes, mtb_open = read_probe_file(args.probes)
+    offroad_open = offroad_opens(args.probes)
     if not probes:
         print(f"no probes in {args.probes}: the last rebuild had no closure to check")
         return 0
     failed = False
     for name, url in ROUTERS.items():
-        held = held_on(name, probes, mtb_open)
+        held = held_on(name, probes, mtb_open, offroad_open)
         try:
             answer = _post(f"{url}/locate", tiles.closure_locate_request(held))
         except urllib.error.URLError as error:
