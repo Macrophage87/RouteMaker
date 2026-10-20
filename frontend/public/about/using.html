@@ -262,7 +262,7 @@ directions, elevation and junctions before you go.</p>
 <div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 760 222" role="img" aria-labelledby="fig-use-plan-t fig-use-plan-d" focusable="false" style="min-width:547px">
 <title id="fig-use-plan-t">Plan&#x27;s points and choices</title>
-<desc id="fig-use-plan-d">Plan lists the points: From, any stops, and To, with Add a stop and Best order under them. A stop&#x27;s grip drags it to a new place in the order. Then choose the ride type and its two sliders, the ride time (weekend, weekday rush, weekday off-hours or night), Make it a loop, and Undo or Redo for any change to the points.</desc>
+<desc id="fig-use-plan-d">Plan lists the points: From, any stops, and To, with Add a stop and Best order under them. A stop&#x27;s grip drags it to a new place in the order. Then choose the ride type and its two sliders, the ride time (weekend, weekday rush, weekday off-hours or night), Loop, which is on until you set an end, and Undo or Redo for any change to the points.</desc>
 <defs><marker id="ah-use-plan" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
 <rect class="bxa" x="10" y="14" width="150" height="32" rx="6"/>
 <text class="tb" x="85.0" y="34.5" text-anchor="middle">From</text>
@@ -287,8 +287,8 @@ directions, elevation and junctions before you go.</p>
 <text class="tb" x="575.0" y="95.5" text-anchor="middle">Ride time</text>
 <text class="ts" x="575.0" y="111.5" text-anchor="middle">Weekend, rush, off-hours, night</text>
 <rect class="bx" x="400" y="126" width="350" height="38" rx="6"/>
-<text class="tb" x="575.0" y="141.5" text-anchor="middle">Make it a loop</text>
-<text class="ts" x="575.0" y="157.5" text-anchor="middle">start and finish the same</text>
+<text class="tb" x="575.0" y="141.5" text-anchor="middle">Loop</text>
+<text class="ts" x="575.0" y="157.5" text-anchor="middle">on at first; an end turns it off</text>
 <rect class="bx" x="400" y="172" width="350" height="38" rx="6"/>
 <text class="tb" x="575.0" y="187.5" text-anchor="middle">Undo and Redo</text>
 <text class="ts" x="575.0" y="203.5" text-anchor="middle">every change to the points</text>
@@ -304,13 +304,20 @@ directions, elevation and junctions before you go.</p>
 <ul>
 <li><strong>How to start:</strong> the (i) by the map's credits, <strong>Map info and credits</strong>,
 opens a short how-to, the four-line summary of how RouteMaker works, links to these pages, and the
-map's credits. It starts closed.</li>
+map's credits. It starts closed. With no points yet, <strong>Start at current location</strong> (in the
+<strong>Route</strong> button's place) sets your start where you are.</li>
 <li>Type places into <strong>From</strong>, <strong>To</strong> and <strong>Add a stop</strong>, or tap
 the map. Up to 25 points in all.</li>
 <li>Drag a stop's grip to move it, or use <strong>Best order</strong> to put the stops in the order that
 rides best; the start and the finish stay where they are.</li>
-<li><strong>Make it a loop</strong> makes the first point the start and the finish; Reverse rides the
-stops the other way round.</li>
+<li>Plan starts as a <strong>loop</strong>: the first point is the start and finish, each later tap is a
+stop, and the ride comes back. Untick <strong>Loop</strong> for a ride that ends somewhere else, or
+right-click the map (press and hold on a phone) and choose <strong>Set as end</strong>, or
+<strong>End here</strong> on a station's card. That ends the ride there and turns the loop off.
+<strong>Reverse</strong> rides the stops the other way round.</li>
+<li>While you plan, bold lines with arrows join your points in the order you'll ride them. A loop also
+shows its way back to the start. Drag a line to add a via point in that leg, the same as on a planned
+route.</li>
 <li><strong>Undo</strong> and <strong>Redo</strong> cover every change to the points (Ctrl+Z, and
 Ctrl+Shift+Z or Ctrl+Y). <strong>More</strong> has Reset and Clear.</li>
 <li><strong>Manual mode</strong> draws straight lines between points you place, for a stretch the
