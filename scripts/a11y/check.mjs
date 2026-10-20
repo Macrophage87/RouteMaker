@@ -1266,7 +1266,7 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
     await p.enter();
     await sleep(1500);
     const said = await p.eval(live);
-    const startSaid = said.filter((t) => /Start set to your location, accurate to about \d+ ft \(15 m\)\./.test(t));
+    const startSaid = said.filter((t) => /Start( and finish)? set to your location, accurate to about \d+ ft \(15 m\)\./.test(t));
     check("locate: choosing Your location sets the start and says it, with US units first", startSaid.length >= 1, JSON.stringify(said));
     check("locate: said once, in one live region (no double announcement)", (await p.eval(holders("set to your location"))) === 1);
     const hint = await p.eval("document.querySelector('.place-search')?.textContent ?? ''");

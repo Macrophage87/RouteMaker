@@ -8,6 +8,7 @@
  * whole. "Up to date" is said on the button itself, and Reset and Clear sit behind one "More" button.
  */
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
+import { FINDING_LOCATION } from "../lib/geolocation.ts";
 import { CLEAR_LABEL, RESET_LABEL, ROUTE_UP_TO_DATE, type Phrase } from "../lib/planFirst.ts";
 
 export interface PlanPanelProps {
@@ -49,6 +50,7 @@ export function PlanPanel(props: PlanPanelProps) {
   const detailsId = useId();
   const routeWhy = useId();
   const resetWhy = useId();
+  const busyId = useId();
   const routeRef = useRef<HTMLButtonElement | null>(null);
   const cancelRef = useRef<HTMLButtonElement | null>(null);
   const routeHadFocus = useRef(false);
@@ -104,7 +106,7 @@ export function PlanPanel(props: PlanPanelProps) {
               type="button"
               className="route-button start-here"
               aria-disabled={locate.unavailable !== null || locate.busy || undefined}
-              aria-describedby={locate.unavailable ? routeWhy : undefined}
+              aria-describedby={locate.unavailable ? routeWhy : locate.busy ? busyId : undefined}
               onClick={() => {
                 if (locate.unavailable === null) locate.onLocate();
               }}
@@ -132,6 +134,11 @@ export function PlanPanel(props: PlanPanelProps) {
                 </span>
               )}
             </button>
+          )}
+          {locate?.busy && (
+            <span id={busyId} className="visually-hidden">
+              {FINDING_LOCATION}
+            </span>
           )}
           {locate?.unavailable && (
             <span id={routeWhy} className="hint">

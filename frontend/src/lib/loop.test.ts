@@ -110,10 +110,12 @@ test("Plan starts as a loop (Stephen 2026-10-20: \"For plan we should do loop as
   assert.equal(planStartDials("default", on), on, "the same object when it is on already");
   assert.equal(planStartDials("mass-ride", dials), dials, "Mass Ride has no loop");
   assert.equal(planStartDials("bikeshare", dials), dials, "nor a ride type of a start and an end only");
-  // Set on coming into Plan with no points, and when the points are cleared; only then, so an unticked box stays so.
+  // Set on coming into Plan with no points (and taken off coming into Go), only on the change of view, so an Undo or a
+  // removal that empties the plan never turns it on unseen; Clear and an empty plan's ride type set it in their own edit.
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   assert.match(
     app,
-    /useEffect\(\(\) => \{\s+if \(mode === "plan" && planEmpty\) setDials\(\(now\) => planStartDials\(preset, now\)\);[\s\S]{0,160}\}, \[mode, planEmpty\]\);/,
+    /useEffect\(\(\) => \{\s+if \(points\.length > 0\) return;\s+if \(mode === "plan"\) setDials\(\(now\) => planStartDials\(preset, now\)\);\s+else if \(mode === "go"\) setDials\(\(now\) => \(now\.loop \? withLoop\(now, false\) : now\)\);[\s\S]{0,120}\}, \[mode\]\);/,
   );
+  assert.match(app, /const startDials = modeRef\.current === "plan" \? planStartDials\(ride\.preset, ride\.dials\) : ride\.dials;/);
 });

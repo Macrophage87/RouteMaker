@@ -4,7 +4,7 @@ import { MapView, type Frame, type LineEdit, type StressAvailability } from "./M
 import { RoadInfoDialog } from "./RoadInfoDialog.tsx";
 import { MapTools } from "./MapTools.tsx";
 import { ACCESS_LABEL, accessModeToggle, readAccessMode, writeAccessMode } from "./lib/accessMode.ts";
-import { LOOP_ENDED_SAID, placeAtSpot, requestAfterClose, type InfoRequest, type TrailRider } from "./lib/roadInfo.ts";
+import { placeAtSpot, requestAfterClose, type InfoRequest, type TrailRider } from "./lib/roadInfo.ts";
 import { stationNearSpot } from "./lib/stationLinks.ts";
 import { reorder } from "./lib/pointMover.ts";
 import { canDragLine, dropStillValid, insertIntoRide, legEnds, legPoints } from "./lib/lineEdit.ts";
@@ -413,27 +413,31 @@ export function App() {
   planDialsNow.current = planDials;
   // "Make it a loop" chosen (OWNER-DECISIONS 374): the first point is the start and finish, every later one a stop.
   const loopVias = loopStops(preset, dials.loop);
-  // Plan starts as a loop (lib/loop.ts planStartDials): on coming into Plan with no points, and when its points are
-  // cleared. Only then, so a rider who unticks Loop on an empty plan keeps it off.
-  const planEmpty = points.length === 0;
+  // Plan starts as a loop (lib/loop.ts planStartDials): on coming into Plan with no points (opening in it too), and
+  // Clear and an empty plan's ride type do the same in their own edits (clearAll, choosePreset). Go has no loop
+  // before a destination, so coming into Go with no points takes it off. Only on the change of view, so an Undo or a
+  // removal that empties the plan never turns it back on unseen.
   useEffect(() => {
-    if (mode === "plan" && planEmpty) setDials((now) => planStartDials(preset, now));
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- on the change of view or emptiness only
-  }, [mode, planEmpty]);
+    if (points.length > 0) return;
+    if (mode === "plan") setDials((now) => planStartDials(preset, now));
+    else if (mode === "go") setDials((now) => (now.loop ? withLoop(now, false) : now));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- on the change of view only
+  }, [mode]);
   // Plan's manual mode (v0.9.1, Stephen 2026-10-19: "a 'manual mode' where you can just route directly"): while
-  // on, each point tapped on the map is joined to the one before by a straight line, not a route. Not on a loop or
-  // a two-point ride type, where the API plans every leg (core/routing.py `_drawn`).
+  // on, each point tapped on the map is joined to the one before by a straight line, not a route. Not on a two-point
+  // ride type, and not with a loop, where the API plans every leg (core/routing.py `_drawn`): the switch is offered on
+  // a loop too, now that Plan starts as one, and turning it on there turns the loop off.
   const [manualOn, setManualOn] = useState(false);
-  const manualOffered = mode === "plan" && !loopVias && !twoPointsOnly(preset);
-  const manual = manualOn && manualOffered;
+  const manualOffered = mode === "plan" && !twoPointsOnly(preset);
+  const manual = manualOn && manualOffered && !loopVias;
   // The legs drawn by hand, for the map's dashed lines (lib/planLegs.ts).
   const planDrawn = useMemo(() => drawnLegs(points), [points]);
   const manualRef = useRef(manual);
   manualRef.current = manual;
-  // Off whenever it is not offered (Go, a loop, a two-point ride type), so it never comes back on unseen.
+  // Off whenever it is not offered (Go, a two-point ride type) or the loop goes on, so it never comes back on unseen.
   useEffect(() => {
-    if (!manualOffered) setManualOn(false);
-  }, [manualOffered]);
+    if (!manualOffered || loopVias) setManualOn(false);
+  }, [manualOffered, loopVias]);
   // What the planner answered, and which of its routes to choose from is shown
   // (OWNER-DECISIONS 265): 0 is the answer, the others its candidates.
   const [answer, setRoute] = useState<RouteResponse | null>(null);
@@ -1753,7 +1757,7 @@ export function App() {
     const loopOff = loopVias && role === "end";
     const ride = rideRef.current;
     commit(edit.next, loopOff ? { ...ride, dials: withLoop(ride.dials, false) } : undefined);
-    announce(loopOff ? LOOP_ENDED_SAID : stationSaid(edit.index, edit.next.length, loopVias));
+    announce(loopOff ? `${stationSaid(edit.index, edit.next.length, false)} Loop off.` : stationSaid(edit.index, edit.next.length, loopVias));
   }, [commit, announce, loopVias, namer]);
 
   // The road panel's Set as start / Set as end / Add as stop (OWNER-DECISIONS 441n): the spot
@@ -2469,7 +2473,10 @@ export function App() {
     const ride = rideRef.current;
     // Cleared, the next save is a new saved route.
     openSavedRoute.current = null;
-    commit([], ride.imported ? { ...ride, imported: null } : undefined);
+    // In Plan the cleared plan starts as a loop again (planStartDials), in the same edit, so Undo puts back the loop
+    // state the points had.
+    const startDials = modeRef.current === "plan" ? planStartDials(ride.preset, ride.dials) : ride.dials;
+    commit([], ride.imported || startDials !== ride.dials ? { ...ride, imported: null, dials: startDials } : undefined);
     // Said, and the focus to the place search, as every other removal hands it on (review a11y-1).
     announce(CLEARED_SAID);
     focusAfterRemove.current = -1;
@@ -2543,7 +2550,9 @@ export function App() {
   // A new ride type moves the sliders to where it starts them (RideTypePicker)
   // and keeps Make it a loop (rideTypeDialog.choose). Mass Ride has no loop, so
   // into or out of it renames the points; between two others nothing is said.
-  const choosePreset = (id: PresetId, next: Dials) => {
+  const choosePreset = (id: PresetId, chosen: Dials) => {
+    // An empty plan in Plan starts as a loop on whatever ride type is chosen (lib/loop.ts planStartDials).
+    const next = mode === "plan" && points.length === 0 ? planStartDials(id, chosen) : chosen;
     const loopSaid = loopChangeSaid({ preset, dials }, { preset: id, dials: next }, points.length);
     rideTouched.current = true;
     // Mountain Bike and Gravel turn the mountain-bike trails and contour layers on, Mountain Goat the contours
@@ -3961,9 +3970,11 @@ export function App() {
     const routeShown = shown !== null;
     const vertexCount = shown?.geometry.coordinates.length ?? 0;
     if (!shown || !canDragLine({ routeShown, stale, routedIsCurrent: routedPoints === points, vertexCount })) {
-      // Plan's straight lines, while they show (no route for the points as they are): a drag on one adds a via in
-      // that leg, as on the route (lib/planLegs.ts planLegEdit). Not on a ride type of a start and an end only.
-      return mode === "plan" && !twoPointsOnly(preset) ? planLegEdit(points, loopVias) : null;
+      // Plan's straight lines, while they show (no route, or not one for the points as they are: MapView planLegsData):
+      // a drag on one adds a via in that leg, as on the route (lib/planLegs.ts planLegEdit). Not on a ride type of a
+      // start and an end only.
+      const linesShown = !shown || stale || routedPoints !== points;
+      return linesShown && mode === "plan" && !twoPointsOnly(preset) ? planLegEdit(points, loopVias) : null;
     }
     // A bikeshare ride runs dock to dock, not between the points, and a transit ride's line is its
     // first ride only: neither line is theirs to drag.
@@ -4531,8 +4542,10 @@ export function App() {
               aria-label={MANUAL_LABEL}
               title={MANUAL_TITLE}
               onClick={() => {
+                // On a loop, manual mode turns the loop off: each tap is then the new end, joined by a straight line.
+                if (!manual && loopVias) setDials(withLoop(dials, false));
                 setManualOn(!manual);
-                announce(manual ? MANUAL_OFF_SAID : MANUAL_ON_SAID);
+                announce(manual ? MANUAL_OFF_SAID : loopVias ? `${MANUAL_ON_SAID} Loop off.` : MANUAL_ON_SAID);
               }}
             >
               <Icon name="draw" size={20} />
