@@ -267,7 +267,7 @@ test("a route's notes are one line each with an icon; their full words are in In
   assert.match(app, /<div id=\{moreId\} className="route-more-body" hidden=\{!more\}>[\s\S]*?share-image[\s\S]*?keep-offline/);
 });
 
-// ---- Ride mode's 311 button (the owner's choice 9) and Big text's icon (choice 11) ----------------------
+// ---- Ride mode's 311 button (the owner's choice 9) and the text-size icon (choice 11, Large text's button since 2026-10-20) ----------------------
 
 test("the 311 button shows only on the route inside DC; its menu has the six problems in the owner's words and order", () => {
   assert.equal(ride311Shown({ off: false, progressM: 100, insideDc: () => true }), true);

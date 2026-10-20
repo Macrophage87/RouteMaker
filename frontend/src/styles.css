@@ -3960,15 +3960,17 @@ details.zoom-notes {
   border-bottom: 1px solid var(--border);
 }
 
+/* Larger than the panel's buttons, at every text size (the owner, 2026-10-20: "End ride and road closed could have larger font in general"). */
 .ride .ride-road-closed,
 .ride .ride-end {
   flex: none;
-  min-height: 44px;
-  min-width: 44px;
+  min-height: 52px;
+  min-width: 52px;
   padding: 6px 14px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  font-size: 1.2rem;
   font-weight: 700;
 }
 
@@ -4107,16 +4109,16 @@ details.zoom-notes {
 .ride .ride-slide {
   position: relative;
   box-sizing: border-box;
-  min-height: 44px;
+  min-height: 52px;
   padding: 0;
   border: 2px solid var(--error-text);
-  border-radius: 22px;
+  border-radius: 26px;
   color: var(--error-text);
   justify-content: center;
 }
 
 .ride-slide-text {
-  padding-left: 42px;
+  padding-left: 50px;
   padding-right: 12px;
   white-space: nowrap;
   pointer-events: none;
@@ -4151,8 +4153,8 @@ details.zoom-notes {
 .ride-slide-range::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
   margin-top: 2px;
   border-radius: 50%;
   background: var(--error-text);
@@ -4160,8 +4162,8 @@ details.zoom-notes {
 }
 
 .ride-slide-range::-moz-range-thumb {
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   background: var(--error-text);
   border: none;
@@ -4169,7 +4171,7 @@ details.zoom-notes {
 
 .ride-slide-range:focus-visible {
   outline-offset: 3px;
-  border-radius: 22px;
+  border-radius: 26px;
 }
 
 .ride button.danger {

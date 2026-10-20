@@ -1748,18 +1748,39 @@ export function RideMode({
       );
     };
     fit();
-    const section = sectionRef.current;
-    if (!section || typeof ResizeObserver === "undefined") return;
-    let width = section.clientWidth;
-    let height = section.clientHeight;
-    const observer = new ResizeObserver(() => {
-      if (section.clientWidth === width && section.clientHeight === height) return;
-      width = section.clientWidth;
-      height = section.clientHeight;
-      fit();
+    // Fitted again, once a frame at most, when the screen or the top row changes size, when a line comes or goes in the
+    // card (off route's re-plan line, a departure's timer, the light times), and once the label face has loaded.
+    let frame = 0;
+    const again = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(fit);
+    };
+    let stopped = false;
+    void document.fonts?.ready.then(() => {
+      if (!stopped) again();
     });
-    observer.observe(section);
-    return () => observer.disconnect();
+    const mutations = typeof MutationObserver === "undefined" ? null : new MutationObserver(again);
+    mutations?.observe(card, { childList: true, subtree: true });
+    const section = sectionRef.current;
+    const top = card.querySelector(".ride-top");
+    const sizes = new Map<Element, string>();
+    const resized = typeof ResizeObserver === "undefined" ? null : new ResizeObserver((entries) => {
+      let changed = false;
+      for (const entry of entries) {
+        const size = `${Math.round(entry.contentRect.width)}x${Math.round(entry.contentRect.height)}`;
+        if (sizes.has(entry.target) && sizes.get(entry.target) !== size) changed = true;
+        sizes.set(entry.target, size);
+      }
+      if (changed) again();
+    });
+    if (section) resized?.observe(section);
+    if (top) resized?.observe(top);
+    return () => {
+      stopped = true;
+      cancelAnimationFrame(frame);
+      mutations?.disconnect();
+      resized?.disconnect();
+    };
   }, [fitKey]); // eslint-disable-line react-hooks/exhaustive-deps
   // The light times for the corner, worked out once a minute and every tenth of a mile or so.
   const minute = Math.floor(Date.now() / 60_000);
@@ -1891,7 +1912,7 @@ export function RideMode({
                 rider has arrived, End ride is slid, not tapped. */}
             {ride.arrived ? (
               <button type="button" className="danger ride-end" onClick={end}>
-                <Icon name="stop" size={18} />
+                <Icon name="stop" size={22} />
                 {END_RIDE_NAME}
               </button>
             ) : (
@@ -1901,7 +1922,7 @@ export function RideMode({
                 on the fly"): one press while riding, no menu. */}
             {!walking && !ride.arrived && (
               <button type="button" className="secondary ride-road-closed" onClick={roadClosed} aria-label={ROAD_CLOSED_NAME} title={ROAD_CLOSED_NAME}>
-                <Icon name="barrier" size={18} />
+                <Icon name="barrier" size={22} />
                 {/* Always its words, at every size (the owner, 2026-10-20: "make everything have the big button"). */}
                 <span className="ride-top-label">{ROAD_CLOSED_TEXT}</span>
               </button>

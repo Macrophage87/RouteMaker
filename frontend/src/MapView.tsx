@@ -2261,13 +2261,16 @@ export function MapView(props: Props) {
     const map = mapRef.current;
     if (!map) return;
     const size = props.largeLabels ? ROAD_LABEL.largeSize : ROAD_LABEL.size;
+    // Set as soon as the layers exist: isStyleLoaded() is false while any tile loads, which is most of a ride.
     const apply = () => {
-      for (const id of ROAD_LABEL_LAYER_IDS) if (map.getLayer(id)) map.setLayoutProperty(id, "text-size", size);
+      const ids = ROAD_LABEL_LAYER_IDS.filter((id) => map.getLayer(id));
+      for (const id of ids) map.setLayoutProperty(id, "text-size", size);
+      if (ids.length > 0) map.off("styledata", apply);
     };
-    if (map.isStyleLoaded()) apply();
-    else map.once("load", apply);
+    if (ROAD_LABEL_LAYER_IDS.some((id) => map.getLayer(id))) apply();
+    else map.on("styledata", apply);
     return () => {
-      map.off("load", apply);
+      map.off("styledata", apply);
     };
   }, [props.largeLabels]);
   useEffect(() => () => void riderMarker.current?.remove(), []);
@@ -2290,7 +2293,7 @@ export function MapView(props: Props) {
   }, [props.youDot]);
   useEffect(() => () => void youMarker.current?.remove(), []);
 
-  // A pan or a turn of the map by hand pauses following (Re-centre resumes it). MapLibre's start events
+  // A pan or a turn of the map by hand pauses following (Where am I? resumes it). MapLibre's start events
   // carry the DOM event only when the rider made the move, not for the camera's own easeTo.
   useEffect(() => {
     const map = mapRef.current;
