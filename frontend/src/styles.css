@@ -6686,6 +6686,23 @@ details.fold > summary .icon {
   gap: 8px;
   margin-top: 12px;
 }
+/* Start ride on a computer (StartOnComputerDialog): the closure warning's frame, in the plain border. */
+.start-computer-dialog {
+  max-width: min(440px, calc(100vw - 32px));
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  padding: 16px;
+}
+.start-computer-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.45);
+}
+.start-computer-dialog h2 {
+  margin-top: 0;
+}
+
 .closure-choices {
   display: flex;
   flex-wrap: wrap;
@@ -7533,6 +7550,23 @@ details.fold > summary .icon {
   border-radius: 999px;
 }
 
+/* Start ride and Load route beside the big button: the same pill, outlined. */
+.plan-map-bar .plan-bar-route.secondary {
+  background: var(--bg);
+}
+.plan-map-bar .plan-bar-route {
+  white-space: nowrap;
+}
+/* A phone: "Save" and "Start" (their names stay Save route and Start ride). */
+@media (max-width: 599px) {
+  .plan-map-bar .plan-bar-wide {
+    display: none;
+  }
+  .plan-map-bar .plan-bar-route {
+    padding: 0 16px;
+  }
+}
+
 .plan-map-bar .plan-bar-route[aria-disabled="true"],
 .go-destination .plan-bar-route[aria-disabled="true"] {
   opacity: 0.85;
@@ -7563,6 +7597,45 @@ details.fold > summary .icon {
   background: var(--bg);
   border-radius: 10px;
   box-shadow: var(--shadow);
+}
+/* The form on the map: the name across the top, then Save, Download GPX and Cancel in one centred row of equal
+   height, wrapping where a phone is too narrow for them. */
+.plan-map-bar .save-route-bar .save-route-form {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  align-items: stretch;
+}
+.plan-map-bar .save-route-bar .save-route-form label {
+  flex: 1 0 100%;
+  display: grid;
+  gap: 4px;
+  font-weight: 700;
+}
+.plan-map-bar .save-route-bar .save-route-form input {
+  min-height: 44px;
+  width: 100%;
+  box-sizing: border-box;
+}
+.plan-map-bar .save-route-bar .save-route-form button {
+  min-height: 44px;
+  margin: 0;
+  white-space: nowrap;
+}
+/* Signed out, Save's form offers Discord sign-in in the name's place: a link drawn as the primary button. */
+.save-route-sign-in {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
 }
 /* The line that says it saved is not a control: taps go through to the chips under it. */
 .plan-map-bar .save-route-bar .save-route-said {
