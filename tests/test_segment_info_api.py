@@ -837,7 +837,7 @@ class TestWords:
 
     def test_every_reason_the_rebuild_writes_has_words(self) -> None:
         from pipeline.restricted_areas import MILITARY_NO_BICYCLE, SECURED_NO_BICYCLE
-        from routemaker import agency_lts, cbd, singletrack, trailaccess, zoo
+        from routemaker import agency_lts, cbd, singletrack, station_links, trailaccess, zoo
 
         written = {
             *trailaccess.TAG_REASONS,
@@ -846,6 +846,7 @@ class TestWords:
             cbd.NO_BICYCLE,
             singletrack.NO_BICYCLE,
             zoo.NO_BICYCLE,
+            station_links.ESCALATOR,
             "override_open",
             "override_closed",
             "bicycle_no",
@@ -1323,6 +1324,9 @@ class TestTappedTrail:
         body = client.get("/api/trails/503/profile", **fresh_client()).json()
         assert body["way"] == 503 and body["length_m"] == 100
         assert body["gain_m"] > 0 and body["loss_m"] == 0
+        # Its two ends, so the chart can say which way it runs (south to north here).
+        assert body["start"] == [round(trail[0], 6), round(trail[1], 6)]
+        assert body["end"][1] > body["start"][1]
         # A road is not a trail: no profile is drawn for it.
         assert client.get("/api/trails/504/profile", **fresh_client()).status_code == 404
         assert client.get("/api/trails/999999/profile", **fresh_client()).status_code == 404

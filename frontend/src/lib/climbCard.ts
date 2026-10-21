@@ -253,14 +253,46 @@ const PLOT = { left: 44, right: CHART_W - 6, top: 8, bottom: 92, axisY: 112 };
 
 /** The climb's profile, drawn with the route chart's parts: the area, the line and the 5% and 8% grade bands. */
 export function ClimbProfileChart({ climb, profile, uid }: { climb: Climb; profile: ClimbProfile; uid: string }): ReactElement {
-  return h(ElevationProfileChart, { profile, summary: profileSummary(climb, profile), uid });
+  const ends = climb.line.length >= 2 ? profileEnds(climb.line[0], climb.line[climb.line.length - 1]) : null;
+  const summary = profileSummary(climb, profile);
+  return h(ElevationProfileChart, { profile, summary: ends ? `${summary} ${ends.words}` : summary, uid, ends });
 }
 
 /** The heights a profile chart draws (a climb's, or a tapped trail's: lib/trailProfile.ts). */
 export type ChartProfile = Pick<ClimbProfile, "interval_m" | "m" | "elevation_m" | "grade_pct">;
 
-/** An elevation profile with the route chart's parts, named by `summary` (its text alternative). */
-export function ElevationProfileChart({ profile, summary, uid }: { profile: ChartProfile; summary: string; uid: string }): ReactElement {
+/**
+ * Which way a profile runs, for the letters at its two ends (the owner, 2026-10-20: "Make it clear which direction is
+ * which. If the trail goes from N to S put those directions on each end. Same with climbs."): the compass point (of
+ * eight) the left end lies toward, the right end's, and the words for the text alternative. Null where the two ends are
+ * within `minM` of each other (a loop), where neither end is "north" of the other in any useful sense.
+ */
+export interface ProfileEnds {
+  start: string;
+  end: string;
+  words: string;
+}
+
+const COMPASS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"] as const;
+const COMPASS_WORDS: Record<(typeof COMPASS)[number], string> = {
+  N: "north", NE: "northeast", E: "east", SE: "southeast", S: "south", SW: "southwest", W: "west", NW: "northwest",
+};
+
+export function profileEnds(start: LonLat, end: LonLat, minM = 50): ProfileEnds | null {
+  if (haversineM(start, end) < minM) return null;
+  // The bearing from the start to the end, on a local flat projection (fine at a trail's or a climb's scale).
+  const dx = (end[0] - start[0]) * Math.cos((((start[1] + end[1]) / 2) * Math.PI) / 180);
+  const dy = end[1] - start[1];
+  const bearing = ((Math.atan2(dx, dy) * 180) / Math.PI + 360) % 360;
+  const point = (deg: number) => COMPASS[Math.round(((deg + 360) % 360) / 45) % 8];
+  const to = point(bearing);
+  const from = point(bearing + 180);
+  return { start: from, end: to, words: `Runs ${COMPASS_WORDS[from]} to ${COMPASS_WORDS[to]}.` };
+}
+
+/** An elevation profile with the route chart's parts, named by `summary` (its text alternative); `ends`, the compass
+ *  point at each end, in bold beside its distance. */
+export function ElevationProfileChart({ profile, summary, uid, ends = null }: { profile: ChartProfile; summary: string; uid: string; ends?: ProfileEnds | null }): ReactElement {
   const route: RouteProfile = { interval_m: profile.interval_m, m: profile.m, elevation_m: profile.elevation_m, grade_pct: profile.grade_pct, climbs: [] };
   const total = Math.max(profile.m[profile.m.length - 1] ?? 0, 1);
   const range = elevationRange(route);
@@ -302,8 +334,18 @@ export function ElevationProfileChart({ profile, summary, uid }: { profile: Char
         ),
       ),
       h("path", { className: "pc-line", d: elevationLine(route, plot), fill: "none" }),
-      h("text", { className: "pc-axis-text", x: PLOT.left, y: PLOT.axisY, textAnchor: "start" }, axisDistance(0)),
-      h("text", { className: "pc-axis-text", x: PLOT.right, y: PLOT.axisY, textAnchor: "end" }, axisDistance(total)),
+      h(
+        "text",
+        { className: "pc-axis-text", x: PLOT.left, y: PLOT.axisY, textAnchor: "start" },
+        ends && h("tspan", { className: "pc-compass" }, `${ends.start} `),
+        axisDistance(0),
+      ),
+      h(
+        "text",
+        { className: "pc-axis-text", x: PLOT.right, y: PLOT.axisY, textAnchor: "end" },
+        axisDistance(total),
+        ends && h("tspan", { className: "pc-compass" }, ` ${ends.end}`),
+      ),
     ),
     // Shown for the eye; the picture's own name says it, so it is not read twice.
     h("figcaption", { id: `${uid}-profile-text`, className: "climb-profile-text", "aria-hidden": "true" }, summary),
