@@ -34,6 +34,8 @@ class FakeDiscord:
         self.threads: dict[str, dict] = {}
         self.messages: dict[str, list[dict]] = {}
         self.calls: list[tuple[str, str, dict | None]] = []
+        self.page = 100  # archived posts per page, smaller to make the script page
+        self.fail_patch = False
 
     def add(self, name, tags, messages, archived=False, locked=False):
         tid = snowflake(len(self.threads) + 1)
@@ -43,7 +45,11 @@ class FakeDiscord:
             "parent_id": BUGS,
             "applied_tags": list(tags),
             "last_message_id": tid,
-            "thread_metadata": {"archived": archived, "locked": locked, "archive_timestamp": "t"},
+            "thread_metadata": {
+                "archived": archived,
+                "locked": locked,
+                "archive_timestamp": f"2026-10-{len(self.threads) + 1:02d}T00:00:00+00:00",
+            },
         }
         self.messages[tid] = [
             {"id": snowflake(100 + i), "author": {"id": who}, "content": text, "attachments": []}
@@ -72,10 +78,18 @@ class FakeDiscord:
                 ]
             }
         if path.startswith(f"/channels/{BUGS}/threads/archived/public"):
-            return {
-                "threads": [t for t in self.threads.values() if t["thread_metadata"]["archived"]],
-                "has_more": False,
-            }
+            query = dict(part.split("=", 1) for part in path.split("?", 1)[1].split("&"))
+            older = sorted(
+                (t for t in self.threads.values() if t["thread_metadata"]["archived"]),
+                key=lambda t: t["thread_metadata"]["archive_timestamp"],
+                reverse=True,  # newest archived first, as Discord does
+            )
+            if "before" in query:
+                older = [
+                    t for t in older if t["thread_metadata"]["archive_timestamp"] < query["before"]
+                ]
+            size = min(int(query["limit"]), self.page)
+            return {"threads": older[:size], "has_more": len(older) > size}
         tid = path.split("/")[2]
         if path.endswith("/messages") and method == "POST":
             self.messages[tid].append(
@@ -83,8 +97,14 @@ class FakeDiscord:
             )
             return {}
         if "/messages?" in path:
-            return list(reversed(self.messages[tid]))  # Discord gives the newest first
+            query = dict(part.split("=", 1) for part in path.split("?", 1)[1].split("&"))
+            newest = sorted(self.messages[tid], key=lambda m: int(m["id"]), reverse=True)
+            if "before" in query:
+                newest = [m for m in newest if int(m["id"]) < int(query["before"])]
+            return newest[: int(query["limit"])]
         if method == "PATCH":
+            if self.fail_patch:
+                raise mod.DiscordError(f"PATCH {path}: HTTP 403")
             self.threads[tid].update(body)
             return {}
         return self.threads[tid]
@@ -126,7 +146,6 @@ def test_merged_replies_with_the_version_and_sets_the_status_tag(settings, capsy
     assert fake.threads[post]["applied_tags"] == ["1", "2"]  # the tester's tag kept, one status tag
     sent = [b for m, p, b in fake.calls if m == "POST"][0]
     assert sent["allowed_mentions"] == {"parse": []}
-    assert "secret-token" not in capsys.readouterr().out
 
 
 def test_live_tells_only_posts_whose_change_has_shipped(settings) -> None:
@@ -173,7 +192,7 @@ def test_dry_run_posts_nothing(settings, capsys) -> None:
     assert "would post" in capsys.readouterr().out
 
 
-def test_a_locked_post_fails_without_stopping_the_rest(settings) -> None:
+def test_a_locked_post_is_skipped_so_it_cannot_fail_every_pass(settings) -> None:
     fake = FakeDiscord()
     fake.add(
         "A",
@@ -184,7 +203,7 @@ def test_a_locked_post_fails_without_stopping_the_rest(settings) -> None:
     ok = fake.add(
         "B", ["2"], [(BOT, "This change is in v0.11.0, coming in the next beta release.")]
     )
-    assert run(settings, fake, "live", "v0.11.0") == 1
+    assert run(settings, fake, "live", "v0.11.0") == 0
     assert [p for p, _ in fake.posted()] == [ok]
 
 
@@ -229,3 +248,76 @@ def test_post_links_and_ids() -> None:
     assert mod.post_id(" 44 ") == "44"
     with pytest.raises(mod.DiscordError):
         mod.post_id("https://example.com/channels/1/22")
+
+
+NEXT = "This change is in v0.11.0, coming in the next beta release."
+
+
+def test_a_failed_tag_change_posts_nothing_so_a_retry_cannot_repeat_it(settings) -> None:
+    fake = FakeDiscord()
+    post = fake.add("A", ["2"], [(BOT, NEXT)])
+    fake.fail_patch = True  # e.g. the bot lacks Manage Threads
+    for _ in range(3):  # the release agent retries on each pass
+        assert run(settings, fake, "live", "v0.11.0") == 1
+    assert fake.posted() == []
+    fake.fail_patch = False
+    assert run(settings, fake, "live", "v0.11.0") == 0
+    assert run(settings, fake, "live", "v0.11.0") == 0
+    assert [p for p, _ in fake.posted()] == [post]
+
+
+def test_archived_posts_and_long_posts_are_read_across_pages(settings) -> None:
+    fake = FakeDiscord()
+    fake.page = 2
+    archived = [fake.add(f"old {i}", ["2"], [(BOT, NEXT)], archived=True) for i in range(5)]
+    long = fake.add("long", ["2"], [(BOT, NEXT)] + [(TESTER, f"reply {i}") for i in range(250)])
+    assert run(settings, fake, "live", "v0.11.0") == 0
+    assert sorted(p for p, _ in fake.posted()) == sorted([*archived, long])
+
+
+def test_send_signs_requests_and_waits_out_an_html_rate_limit(monkeypatch) -> None:
+    import io
+    import urllib.error
+
+    seen: list = []
+    answers = [
+        urllib.error.HTTPError(
+            "u", 429, "Too Many", {"Retry-After": "2"}, io.BytesIO(b"<html>slow down</html>")
+        ),
+        io.BytesIO(b'{"id": "1"}'),
+    ]
+
+    class Response(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    def urlopen(request, timeout):
+        seen.append(request)
+        answer = answers.pop(0)
+        if isinstance(answer, Exception):
+            raise answer
+        return Response(answer.getvalue())
+
+    slept: list = []
+    monkeypatch.setattr(mod.urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr(mod.time, "sleep", slept.append)
+    assert mod.Discord("tok").get("/users/@me") == {"id": "1"}
+    assert slept == [2.0]
+    assert seen[0].get_header("Authorization") == "Bot tok"
+    assert seen[0].get_header("User-agent").startswith("DiscordBot (")
+
+
+def test_an_error_names_the_status_and_never_the_token(monkeypatch) -> None:
+    import io
+    import urllib.error
+
+    def urlopen(request, timeout):
+        raise urllib.error.HTTPError("u", 403, "Forbidden", {}, io.BytesIO(b"{}"))
+
+    monkeypatch.setattr(mod.urllib.request, "urlopen", urlopen)
+    with pytest.raises(mod.DiscordError) as caught:
+        mod.Discord("secret-token").get("/channels/1")
+    assert str(caught.value) == "GET /channels/1: HTTP 403"

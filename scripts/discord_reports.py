@@ -27,10 +27,11 @@ The settings live outside the repo, in --dir (default ~/.config/routemaker-disco
     bot-token   the bot's token, one line, mode 600; never printed or logged
     forums      the forum channels' ids, one per line (# starts a comment)
 
-The bot needs View Channels, Read Message History, Send Messages in Posts and Manage Threads
-(to set the status tags), and the Message Content intent for `fetch`. Mentions are switched
-off in everything it posts. Standard library only, so it runs on the host without the
-virtualenv (Python 3.11 or later).
+The bot needs View Channels, Read Message History, Send Messages in Threads ("...in Threads
+and Posts" in a server's role settings) and Manage Threads (to set the status tags), and the
+Message Content intent for `fetch`. Mentions are switched off in everything it posts. A locked
+post is skipped. Standard library only, so it runs on the host without the virtualenv (Python
+3.11 or later).
 """
 
 from __future__ import annotations
@@ -63,6 +64,10 @@ class DiscordError(Exception):
     pass
 
 
+class Locked(DiscordError):
+    """A post the owner locked: skipped, not retried, since only he can open it again."""
+
+
 def semver(tag: str) -> tuple[int, int, int]:
     match = SEMVER_RE.match(tag)
     if not match:
@@ -90,8 +95,11 @@ class Discord:
                     return json.loads(raw) if raw else None
             except urllib.error.HTTPError as error:
                 if error.code == 429:
-                    wait = json.loads(error.read() or b"{}").get("retry_after", 1)
-                    time.sleep(min(float(wait), 30))
+                    try:
+                        wait = float(json.loads(error.read() or b"{}").get("retry_after", 1))
+                    except (ValueError, AttributeError):  # Cloudflare's 429 is an HTML page
+                        wait = float(error.headers.get("Retry-After") or 1)
+                    time.sleep(min(wait, 30))
                     continue
                 # The reason only: the response never carries the token, the request might.
                 raise DiscordError(f"{method} {path}: HTTP {error.code}") from None
@@ -210,17 +218,18 @@ class Forums:
         if dry_run:
             print(f"would post in {thread['name']!r}: {text}  [tag: {status}]")
             return
-        meta = thread.get("thread_metadata", {})
-        if meta.get("locked"):
-            raise DiscordError(f"{thread['name']!r} is locked; unlock it to post there")
-        if meta.get("archived"):
-            self.api.send("PATCH", f"/channels/{thread['id']}", {"archived": False})
+        if thread.get("thread_metadata", {}).get("locked"):
+            raise Locked(f"{thread['name']!r} is locked; unlock it to post there")
+        # The tag first, in the same call that reopens an archived post: if the bot cannot set
+        # it, nothing is posted, so a pass that is retried can never post the same reply twice.
+        self.api.send(
+            "PATCH", f"/channels/{thread['id']}", {"archived": False, "applied_tags": applied}
+        )
         self.api.send(
             "POST",
             f"/channels/{thread['id']}/messages",
             {"content": text, "allowed_mentions": NO_MENTIONS},
         )
-        self.api.send("PATCH", f"/channels/{thread['id']}", {"applied_tags": applied})
         print(f"posted in {thread['name']!r}: {text}  [tag: {status}]")
 
 
@@ -319,6 +328,8 @@ def cmd_live(forums: Forums, version: str, dry_run: bool) -> int:
         try:
             forums.reply(thread, LIVE_TEXT.format(version=version), LIVE_TAG, dry_run)
             done += 1
+        except Locked as error:
+            print(f"skipped: {error}")
         except DiscordError as error:
             print(f"failed: {error}", file=sys.stderr)
             failed += 1

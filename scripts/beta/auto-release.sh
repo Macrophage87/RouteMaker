@@ -207,14 +207,15 @@ release_notes() { # alert
 # The testers' report posts (scripts/discord_reports.py live, docs/BETA-RUNBOOK.md, "Tester
 # reports"): every forum post whose change is in the live release is told it is live, once per
 # tag, only when the owner has stored a bot token in $RM_STATE/discord. A failure is reported
-# once a day in the owner's channel and never fails the pass; the next pass tries again.
+# once a day in the owner's channel and never fails the pass; the next pass tries again. Five
+# minutes at most, since the pass holds the deploy lock.
 reports_live() {
 	local tag script="$RM_SRC/scripts/discord_reports.py" alert="$cd_dir/bin/alert.sh"
 	tag=$(deployed_tag)
 	is_semver "$tag" && [ -s "$RM_STATE/discord/bot-token" ] && [ -f "$script" ] || return 0
 	! grep -qxF "$tag" "$RM_STATE/alerts/live-posted" 2>/dev/null || return 0
 	{
-		if "$py" "$script" --dir "$RM_STATE/discord" live "$tag"; then
+		if timeout 300 "$py" "$script" --dir "$RM_STATE/discord" live "$tag"; then
 			mkdir -p "$RM_STATE/alerts" && echo "$tag" >>"$RM_STATE/alerts/live-posted"
 			[ ! -x "$alert" ] || "$alert" clear reports-live "the testers' posts are told $tag is live"
 		else
