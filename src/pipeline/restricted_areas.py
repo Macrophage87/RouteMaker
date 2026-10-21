@@ -78,8 +78,19 @@ area assembly (multipolygon relations and closed ways alike):
 - `park` - `leisure=park` or `nature_reserve`, `boundary=national_park` or
   `protected_area`, or an operator that is the National Park Service. An
   untagged `highway=path` inside one is closed to bicycles, and kept outside
-  (OWNER-DECISIONS 291(1); `routemaker.trailaccess`). Nothing is hidden or
-  re-routed for it here: only `pipeline.trail_closures` reads this kind.
+  (OWNER-DECISIONS 291(1); `routemaker.trailaccess`). It is also the public land
+  that keeps a farm track open (`track_closures`, below).
+
+And one rule by class, not by area: a `highway=track` - OSM's farm or forest road - with
+no tag that opens it. The owner, 2026-10-21, of rural Montgomery County around Dickerson
+and Barnesville: "there's some track roads on the rural part that are likely private roads
+that we can't legally use". Under "err closed on bike access" (OWNER-DECISIONS 330) such a
+track closes on every graph (`track_closures`, `rm:no_bicycle=track`) and leaves the map,
+unless its own tags open it, it lies mostly inside a park or protected area, it carries a
+name or a public route number (a public dirt road, or a trail), or it is in a bicycle or
+hiking route relation; an owner's override reopens one. A track whose own `access`,
+`vehicle` or `bicycle` already closes it is the tag rules' and is not judged here. Listed
+in the rebuild's `track-closures.csv`.
 
 A way is inside when at least INSIDE_FRACTION of its vertices fall in one of
 the kind's areas, outside that area's holes (an island mapped inside a hole is
@@ -101,7 +112,7 @@ from pathlib import Path
 import osmium
 
 from routemaker.classes import TRAIL_CLASS_HIGHWAY
-from routemaker.facility import NO_PUBLIC_ACCESS, _length_m
+from routemaker.facility import ACCESS_CLOSES, NO_PUBLIC_ACCESS, _length_m
 
 logger = logging.getLogger(__name__)
 
@@ -1272,6 +1283,111 @@ def golf_closures(
                 osm_id,
                 site,
                 highway,
+                tags.get("name") or "",
+                round(_length_m(coords), 1),
+                status,
+                why,
+                _shown_tags(tags),
+                round(share, 3),
+            )
+        )
+    return out
+
+
+# --- Farm and forest tracks closed to bicycles (owner report 2026-10-21; OWNER-DECISIONS
+# 330) ---------------------------------------------------------------------------------
+
+# The `rm:no_bicycle` reason of a track with nothing that says the public may use it.
+TRACK_NO_BICYCLE = "track"
+WHY_TRACK = "closed: a farm or forest track with no sign it is public"
+WHY_TRACK_TAGGED_OPEN = "open: its own access/bicycle tag lets the public ride it"
+WHY_TRACK_PARK = "open: mostly inside a park or protected area"
+WHY_TRACK_ROUTE = "open: part of a bicycle or hiking route relation"
+WHY_TRACK_NAMED = "open: named, so possibly a public dirt road or a trail; owner to check"
+# A `motor_vehicle` value that makes a track a road the public may drive, and so ride.
+PUBLIC_MOTOR_VEHICLE = frozenset({"yes", "permissive", "designated"})
+
+
+# The `access` / `vehicle` values that already keep a bicycle off a track (or keep it to
+# those with a right to be there), under the tag rules: the public kept out
+# (`NO_PUBLIC_ACCESS`), and what upstream closes outright (agricultural, forestry, ...).
+TRACK_CLOSED_ACCESS = NO_PUBLIC_ACCESS | ACCESS_CLOSES
+
+
+def track_closed_by_tags(tags) -> bool:
+    """The track's own tags already speak against a bicycle: a bicycle tag that does not
+    open it, or, with none, an `access` or `vehicle` value in `TRACK_CLOSED_ACCESS`. The
+    tag rules (the map's private reading, upstream's access tables) have it already."""
+    bicycle = tags.get("bicycle")
+    if bicycle is not None:
+        return bicycle not in PUBLIC_BICYCLE
+    return any(tags.get(key) in TRACK_CLOSED_ACCESS for key in ("access", "vehicle"))
+
+
+def track_open_tags(tags) -> bool:
+    """The track's own tags let the public ride it: a bicycle tag that opens it
+    (`bicycle=yes|designated|permissive`, which outranks the rest), or, with no bicycle
+    tag, `access`, `vehicle` or `motor_vehicle` yes or permissive (`motor_vehicle` also
+    designated), or `foot=designated` (a signed trail on a track bed)."""
+    if tags.get("bicycle") is not None:
+        return tags.get("bicycle") in PUBLIC_BICYCLE
+    return (
+        tags.get("access") in PUBLIC_ACCESS
+        or tags.get("vehicle") in PUBLIC_ACCESS
+        or tags.get("motor_vehicle") in PUBLIC_MOTOR_VEHICLE
+        or tags.get("foot") == "designated"
+    )
+
+
+def track_closures(
+    ways,
+    park_areas: Sequence[Area],
+    reopened: Collection[int] = frozenset(),
+    skip: Collection[int] = frozenset(),
+    trail_routes: Collection[int] = frozenset(),
+) -> list[MilitaryWay]:
+    """Every `highway=track` (OSM's farm or forest road) the tag rules leave open,
+    closed or (with the reason) left open (owner report 2026-10-21: farm tracks around
+    Dickerson and Barnesville "likely private roads that we can't legally use"; "err
+    closed on bike access", OWNER-DECISIONS 330). Open: an override's bicycle permission,
+    a numbered public road, a track whose own tags let the public ride it
+    (`track_open_tags`), one at least INSIDE_FRACTION of whose length lies in a park or
+    protected area (`park_areas`: county, state and national parks, nature reserves), a
+    way in a bicycle or hiking route relation (`trail_routes`), and a named track (a
+    public dirt road, or a trail on an old farm road). Everything else closes. A track
+    whose `access`, `vehicle` or `bicycle` already keeps the public off
+    (`NO_PUBLIC_ACCESS`, or upstream's agricultural and forestry) is the tag rules'
+    and is not listed; `skip` are the ways the area rules already judged."""
+    shapes = _Shapes(park_areas) if park_areas else None
+    out: list[MilitaryWay] = []
+    for osm_id, tags, coords in ways:
+        if tags.get("highway") != "track" or not coords or osm_id in skip:
+            continue
+        if track_closed_by_tags(tags):
+            continue
+        share, area = (0.0, None)
+        if osm_id in reopened and reopened_by_override(tags):
+            status, why = OPEN, WHY_OVERRIDE
+        elif public_route(tags):
+            status, why = OPEN, WHY_PUBLIC_ROUTE
+        elif track_open_tags(tags):
+            status, why = OPEN, WHY_TRACK_TAGGED_OPEN
+        elif osm_id in trail_routes:
+            status, why = OPEN, WHY_TRACK_ROUTE
+        elif tags.get("name"):
+            status, why = OPEN, WHY_TRACK_NAMED
+        else:
+            share, area = shapes.share(coords) if shapes is not None else (0.0, None)
+            if share >= INSIDE_FRACTION:
+                status, why = OPEN, WHY_TRACK_PARK
+            else:
+                status, why = CLOSED, WHY_TRACK
+        place = (getattr(area, "name", "") or getattr(area, "osm", "")) if area else ""
+        out.append(
+            MilitaryWay(
+                osm_id,
+                place or ("park" if why == WHY_TRACK_PARK else "track"),
+                "track",
                 tags.get("name") or "",
                 round(_length_m(coords), 1),
                 status,

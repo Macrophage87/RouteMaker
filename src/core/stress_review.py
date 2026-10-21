@@ -24,12 +24,12 @@ heaviest compares two whole segment tables:
   pending file for comparison (`compute_painted_lane`).
 
 A ruling (`rule`) is Accept (recorded only), Reject (a rebuild change: the level it had before,
-or a road the build closed reopened; an industrial-area or golf course closure reopened) or
-Change LTS. A level is the road panel's own change (`stress_edits.apply`): an approved owner
-override that outranks the agencies and the formula, written to the live table at once, kept in
-the stress-edit history and re-applied by the swap. A reopening is an approved access override,
-applied at the next rebuild. Every ruling is audited and can be undone within the editor's undo
-window.
+or a road the build closed reopened; an industrial-area, golf course or farm track closure
+reopened) or Change LTS. A level is the road panel's own change (`stress_edits.apply`): an
+approved owner override that outranks the agencies and the formula, written to the live table at
+once, kept in the stress-edit history and re-applied by the swap. A reopening is an approved
+access override, applied at the next rebuild. Every ruling is audited and can be undone within
+the editor's undo window.
 """
 
 from __future__ import annotations
@@ -1016,7 +1016,8 @@ FILE_QUEUES = (
     # Footways and residential streets closed inside industrial areas (the works rule's report,
     # laid out as `restricted_areas.military_report_csv`: a `status` of closed or open), and a
     # golf course's cart paths and drives (the golf rule's, laid out the same; owner report
-    # 2026-10-21), where a public trail the rule missed is reopened.
+    # 2026-10-21), and the farm and forest tracks closed as likely private (the track rule's,
+    # the same day), where a public trail or road the rule missed is reopened.
     FileQueue(
         Queue.WORKS_CLOSURE,
         "works-closures.csv",
@@ -1024,7 +1025,7 @@ FILE_QUEUES = (
         lambda r: (r.get("status") or "closed") == "closed",
         lambda r: r.get("why") or r.get("reason") or "Closed inside an industrial area",
         closed=True,
-        also=("golf-closures.csv",),
+        also=("golf-closures.csv", "track-closures.csv"),
     ),
     # Override rows the rebuild could not find their way again for (`pipeline.rematch`).
     FileQueue(

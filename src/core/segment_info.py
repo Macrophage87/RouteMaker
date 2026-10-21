@@ -225,6 +225,11 @@ ACCESS_WORDS = {
         "Closed: a golf course's cart path or drive"
         " (closed unless there is evidence bikes are allowed)",
     ),
+    "track": (
+        False,
+        "Closed: a farm or forest track, likely private"
+        " (closed unless there is evidence bikes are allowed)",
+    ),
     "bicycle_no": (False, "Closed: no bicycles (a no-bike sign or rule, as mapped)"),
     # MDOT SHA's LTS 5, "Bicycle access is prohibited by managing roadway agency"
     # (`agency_lts.PROHIBITED_NO_BICYCLE`; the owner, 2026-10-19).
@@ -1038,7 +1043,7 @@ def access_rows(row: dict, bicycle: bool | None) -> tuple[bool | None, list[dict
             if reason == agency_lts.PROHIBITED_NO_BICYCLE
             else (
                 CLASSIFIER
-                if reason in ("military", "secured", "works", "golf", "err_closed")
+                if reason in ("military", "secured", "works", "golf", "track", "err_closed")
                 else OSM
             )
         )
@@ -1099,6 +1104,7 @@ ACCESS_SHORT = {
     "secured": "secure government site",
     "works": "quarry, landfill or industrial site",
     "golf": "golf course",
+    "track": "private farm track",
     "bicycle_no": "no-bike rule",
     agency_lts.PROHIBITED_NO_BICYCLE: "prohibited by MDOT SHA",
     "motorway": "freeway",
