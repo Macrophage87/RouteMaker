@@ -87,11 +87,20 @@
   .ln { stroke: var(--accent); stroke-width: 2.5; fill: none; }
   .ln2 { stroke: #c2410c; stroke-width: 2.5; fill: none; stroke-dasharray: 7 4; }
   .fillacc { fill: var(--accent); }
+  .fig-narrow { display: none; }
+  .fig-narrow .t, .fig-narrow .tb { font-size: 15.5px; }
+  .fig-narrow .ts { font-size: 14px; }
+  .fig-narrow .tk, .fig-narrow .tw { font-size: 14.5px; }
+  @media (max-width: 37.5rem) {
+    figure.has-narrow .fig-wide { display: none; }
+    figure.has-narrow .fig-narrow { display: block; }
+  }
   @media (max-width: 30rem) {
     body { font-size: 1rem; }
     h1 { font-size: 1.5rem; }
     th, td { padding: 0.35rem 0.4rem; }
-    figure { padding: 0.4rem; }
+    figure { padding: 0.25rem; }
+    header, main, footer { padding-left: 0.75rem; padding-right: 0.75rem; }
   }
 
   details.more { margin: 0.5rem 0 1rem; border: 1px solid var(--line); border-radius: 6px; }
@@ -105,6 +114,10 @@
   .glance figure { background: var(--bg); }
   .glance ul { padding-left: 1.25rem; }
   .glance .find { margin-bottom: 0; }
+  @media (max-width: 30rem) {
+    .glance { padding: 0.25rem 0.5rem 0.5rem; }
+    details.more > .more-body { padding: 0 0.25rem 0.4rem; }
+  }
 </style>
 </head>
 <body>
@@ -134,8 +147,8 @@ carry each minute, and how long will the group hold each crossing?"</p>
 
 <div class="glance">
 <h2 id="glance">At a glance</h2>
-<figure id="fig-glance-mass">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<figure id="fig-glance-mass" class="has-narrow">
+<div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 760 150" role="img" aria-labelledby="fig-glance-mass-t fig-glance-mass-d" focusable="false" style="min-width:547px">
 <title id="fig-glance-mass-t">Mass Ride at a glance</title>
 <desc id="fig-glance-mass-d">Mass Ride plans in four steps: the size of your group; how many riders each road can carry per minute, about 100 for each lane; how long each crossing must be held and how many corkers it needs; and from those, the route that keeps the group flowing. It does not plan by traffic stress, because a mass ride takes the lane.</desc>
@@ -159,6 +172,34 @@ carry each minute, and how long will the group hold each crossing?"</p>
 <text class="ts" x="665.0" y="71.5" text-anchor="middle">that keeps the</text>
 <text class="ts" x="665.0" y="87.5" text-anchor="middle">group flowing</text>
 <text class="ts" x="380" y="134" text-anchor="middle">Not traffic stress: a mass ride takes the lane, so width and crossings decide it.</text>
+</svg>
+</div>
+<div class="fig-narrow">
+<svg viewBox="0 0 320 440" role="img" aria-labelledby="fig-glance-mass-n-t fig-glance-mass-n-d" focusable="false">
+<title id="fig-glance-mass-n-t">Mass Ride at a glance</title>
+<desc id="fig-glance-mass-n-d">Mass Ride plans in four steps: the size of your group; how many riders each road can carry per minute, about 100 for each lane; how long each crossing must be held and how many corkers it needs; and from those, the route that keeps the group flowing. It does not plan by traffic stress, because a mass ride takes the lane.</desc>
+<defs><marker id="ah-glance-mass-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<rect class="bxa" x="10" y="8" width="300" height="54" rx="6"/>
+<text class="tb" x="160.0" y="30.5" text-anchor="middle">Your group</text>
+<text class="ts" x="160.0" y="50.5" text-anchor="middle">how many riders</text>
+<path class="ar" d="M160.0,64 L160.0,84" marker-end="url(#ah-glance-mass-n)"/>
+<rect class="bx" x="10" y="88" width="300" height="74" rx="6"/>
+<text class="tb" x="160.0" y="110.5" text-anchor="middle">Each road</text>
+<text class="ts" x="160.0" y="130.5" text-anchor="middle">riders per minute,</text>
+<text class="ts" x="160.0" y="150.5" text-anchor="middle">about 100 a lane</text>
+<path class="ar" d="M160.0,164 L160.0,184" marker-end="url(#ah-glance-mass-n)"/>
+<rect class="bx" x="10" y="188" width="300" height="74" rx="6"/>
+<text class="tb" x="160.0" y="210.5" text-anchor="middle">Each crossing</text>
+<text class="ts" x="160.0" y="230.5" text-anchor="middle">how long to hold it,</text>
+<text class="ts" x="160.0" y="250.5" text-anchor="middle">corkers needed</text>
+<path class="ar" d="M160.0,264 L160.0,284" marker-end="url(#ah-glance-mass-n)"/>
+<rect class="bxa" x="10" y="288" width="300" height="74" rx="6"/>
+<text class="tb" x="160.0" y="310.5" text-anchor="middle">The route</text>
+<text class="ts" x="160.0" y="330.5" text-anchor="middle">that keeps the</text>
+<text class="ts" x="160.0" y="350.5" text-anchor="middle">group flowing</text>
+<text class="ts" x="160.0" y="388" text-anchor="middle">Not traffic stress: a mass ride takes</text>
+<text class="ts" x="160.0" y="408" text-anchor="middle">the lane, so width and crossings</text>
+<text class="ts" x="160.0" y="428" text-anchor="middle">decide it.</text>
 </svg>
 </div>
 <figcaption>A queueing problem, not a traffic-stress problem.</figcaption>
@@ -249,8 +290,8 @@ does.</p>
 
 </div></details>
 <h2 id="flow">Flow capacity</h2>
-<figure id="fig-formula">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<figure id="fig-formula" class="has-narrow">
+<div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 820 220" role="img" aria-labelledby="fig-formula-t fig-formula-d" focusable="false" style="min-width:590px">
 <title id="fig-formula-t">How RouteMaker works out riders per minute</title>
 <desc id="fig-formula-d">A pipeline of six steps. Start with the usable width, for example one 11 foot (3.35 meter) lane. Multiply by 0.7, because a pack bunches and uses about 7.7 feet of it. Multiply by the density, one rider per 29 square feet (0.37 per square meter). Multiply by the pace, 4.3 mph (1.9 meters a second). Multiply by 60 seconds. The result is about 100 riders a minute for one lane. The route chart then multiplies by a hill factor between 30% and 100%; the map shows the flat figure.</desc>
@@ -293,6 +334,55 @@ does.</p>
 <text class="ts" x="270.0" y="174.5" text-anchor="middle">The map shows the flat figure. The route&#x27;s riders chart adds the hills.</text>
 <text class="ts" x="270.0" y="190.5" text-anchor="middle">One 11 ft [3.35 m] lane: 3.35 × 0.7 × 0.37 × 1.9 × 60 = 98.9, about 100.</text>
 <text class="tb" x="10" y="20" text-anchor="start">Riders a minute = usable width × 0.7 × density × pace × 60</text>
+</svg>
+</div>
+<div class="fig-narrow">
+<svg viewBox="0 0 320 818" role="img" aria-labelledby="fig-formula-n-t fig-formula-n-d" focusable="false">
+<title id="fig-formula-n-t">How RouteMaker works out riders per minute</title>
+<desc id="fig-formula-n-d">A pipeline of six steps. Start with the usable width, for example one 11 foot (3.35 meter) lane. Multiply by 0.7, because a pack bunches and uses about 7.7 feet of it. Multiply by the density, one rider per 29 square feet (0.37 per square meter). Multiply by the pace, 4.3 mph (1.9 meters a second). Multiply by 60 seconds. The result is about 100 riders a minute for one lane. The route chart then multiplies by a hill factor between 30% and 100%; the map shows the flat figure.</desc>
+<defs><marker id="ah-formula-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<text class="tb" x="10" y="20" text-anchor="start">Riders a minute = usable width</text>
+<text class="tb" x="10" y="40" text-anchor="start">× 0.7 × density × pace × 60</text>
+<rect class="bx" x="40" y="56" width="240" height="72" rx="6"/>
+<text class="tb" x="160.0" y="77.5" text-anchor="middle">Usable width</text>
+<text class="ts" x="160.0" y="97.5" text-anchor="middle">one 11 ft lane</text>
+<text class="ts" x="160.0" y="117.5" text-anchor="middle">[3.35 m]</text>
+<path class="ar" d="M160,130 L160,146" marker-end="url(#ah-formula-n)"/>
+<rect class="bx" x="40" y="148" width="240" height="72" rx="6"/>
+<text class="tb" x="160.0" y="169.5" text-anchor="middle">× 0.7 used</text>
+<text class="ts" x="160.0" y="189.5" text-anchor="middle">a pack bunches</text>
+<text class="ts" x="160.0" y="209.5" text-anchor="middle">7.7 ft [2.35 m]</text>
+<path class="ar" d="M160,222 L160,238" marker-end="url(#ah-formula-n)"/>
+<rect class="bx" x="40" y="240" width="240" height="72" rx="6"/>
+<text class="tb" x="160.0" y="261.5" text-anchor="middle">× density</text>
+<text class="ts" x="160.0" y="281.5" text-anchor="middle">1 rider per 29 ft²</text>
+<text class="ts" x="160.0" y="301.5" text-anchor="middle">[0.37 per m²]</text>
+<path class="ar" d="M160,314 L160,330" marker-end="url(#ah-formula-n)"/>
+<rect class="bx" x="40" y="332" width="240" height="72" rx="6"/>
+<text class="tb" x="160.0" y="353.5" text-anchor="middle">× pace</text>
+<text class="ts" x="160.0" y="373.5" text-anchor="middle">4.3 mph</text>
+<text class="ts" x="160.0" y="393.5" text-anchor="middle">[1.9 m/s]</text>
+<path class="ar" d="M160,406 L160,422" marker-end="url(#ah-formula-n)"/>
+<rect class="bx" x="40" y="424" width="240" height="72" rx="6"/>
+<text class="tb" x="160.0" y="445.5" text-anchor="middle">× 60</text>
+<text class="ts" x="160.0" y="465.5" text-anchor="middle">seconds</text>
+<text class="ts" x="160.0" y="485.5" text-anchor="middle">in a minute</text>
+<path class="ar" d="M160,498 L160,514" marker-end="url(#ah-formula-n)"/>
+<rect class="bxa" x="40" y="516" width="240" height="72" rx="6"/>
+<text class="tb" x="160.0" y="537.5" text-anchor="middle">Riders a minute</text>
+<text class="ts" x="160.0" y="557.5" text-anchor="middle">about 100</text>
+<text class="ts" x="160.0" y="577.5" text-anchor="middle">for one lane</text>
+<path class="ar" d="M160,590 L160,606" marker-end="url(#ah-formula-n)"/>
+<rect class="bx" x="40" y="608" width="240" height="72" rx="6"/>
+<text class="tb" x="160.0" y="629.5" text-anchor="middle">× hill factor</text>
+<text class="ts" x="160.0" y="649.5" text-anchor="middle">30% to 100%</text>
+<text class="ts" x="160.0" y="669.5" text-anchor="middle">route chart only</text>
+<rect class="bx" x="10" y="694" width="300" height="116" rx="6"/>
+<text class="ts" x="160.0" y="717.5" text-anchor="middle">The map shows the flat figure.</text>
+<text class="ts" x="160.0" y="737.5" text-anchor="middle">The route&#x27;s riders chart adds the hills.</text>
+<text class="ts" x="160.0" y="757.5" text-anchor="middle">One 11 ft [3.35 m] lane:</text>
+<text class="ts" x="160.0" y="777.5" text-anchor="middle">3.35 × 0.7 × 0.37 × 1.9 × 60</text>
+<text class="ts" x="160.0" y="797.5" text-anchor="middle">= 98.9, about 100.</text>
 </svg>
 </div>
 <figcaption>Each 3.3 ft [1 m] of usable width adds about 30 riders a minute: 9.0 per foot [29.5 per meter].<sup class="cite"><a href="#ref-4" aria-label="source 4">[4]</a></sup></figcaption>
@@ -346,8 +436,8 @@ figure already describes the bunched state<sup class="cite"><a href="#ref-2" ari
 
 </div></details>
 <h2 id="length">Density and group length</h2>
-<figure id="fig-length">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<figure id="fig-length" class="has-narrow">
+<div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 800 360" role="img" aria-labelledby="fig-length-t fig-length-d" focusable="false" style="min-width:576px">
 <title id="fig-length-t">How long the group is, by ride size</title>
 <desc id="fig-length-d">A line chart drawn to scale. Riders from 0 to 2,000 across, group length in miles up the side, at a cruising pace of 7 mph. On two 11 foot lanes (22 feet, 6.7 meters) 500 riders are about 1,560 feet (475 meters) long and 2,000 riders about 1.18 miles (1.9 km). On one 11 foot lane the group is twice as long: 500 riders about 3,110 feet (949 meters), 2,000 riders about 2.36 miles (3.8 km). A shaded band shows the white paper&#x27;s derived range for one lane, 1.0 to 1.9 miles per 1,000 riders; RouteMaker&#x27;s one-lane line lies inside it.</desc>
@@ -386,6 +476,56 @@ figure already describes the bunched state<sup class="cite"><a href="#ref-2" ari
 <circle cx="260.0" cy="280.1" r="5" class="fillacc"/>
 <text class="ts" x="270.0" y="296.09596399227195" text-anchor="start">500: 1,560 ft [475 m]</text>
 <text class="ts" x="420.0" y="340" text-anchor="middle">Anticipated ride size (riders); the slider runs 100 to 2,000</text>
+</svg>
+</div>
+<div class="fig-narrow">
+<svg viewBox="0 0 320 588" role="img" aria-labelledby="fig-length-n-t fig-length-n-d" focusable="false">
+<title id="fig-length-n-t">How long the group is, by ride size</title>
+<desc id="fig-length-n-d">A line chart drawn to scale. Riders from 0 to 2,000 across, group length in miles up the side, at a cruising pace of 7 mph. On two 11 foot lanes (22 feet, 6.7 meters) 500 riders are about 1,560 feet (475 meters) long and 2,000 riders about 1.18 miles (1.9 km). On one 11 foot lane the group is twice as long: 500 riders about 3,110 feet (949 meters), 2,000 riders about 2.36 miles (3.8 km). A shaded band shows the white paper&#x27;s derived range for one lane, 1.0 to 1.9 miles per 1,000 riders; RouteMaker&#x27;s one-lane line lies inside it.</desc>
+<defs><marker id="ah-length-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<line class="grid" x1="66.0" y1="20" x2="66.0" y2="330"/>
+<line class="grid" x1="124.5" y1="20" x2="124.5" y2="330"/>
+<line class="grid" x1="183.0" y1="20" x2="183.0" y2="330"/>
+<line class="grid" x1="241.5" y1="20" x2="241.5" y2="330"/>
+<line class="grid" x1="300.0" y1="20" x2="300.0" y2="330"/>
+<text class="ts" x="66.0" y="350" text-anchor="middle">0</text>
+<text class="ts" x="183.0" y="350" text-anchor="middle">1,000</text>
+<text class="ts" x="300.0" y="350" text-anchor="end">2,000</text>
+<line class="grid" x1="66" y1="330.0" x2="300" y2="330.0"/>
+<text class="ts" x="58" y="328.0" text-anchor="end">0 mi</text>
+<text class="ts" x="58" y="344.0" text-anchor="end">[0.0 km]</text>
+<line class="grid" x1="66" y1="252.5" x2="300" y2="252.5"/>
+<text class="ts" x="58" y="250.5" text-anchor="end">1 mi</text>
+<text class="ts" x="58" y="266.5" text-anchor="end">[1.6 km]</text>
+<line class="grid" x1="66" y1="175.0" x2="300" y2="175.0"/>
+<text class="ts" x="58" y="173.0" text-anchor="end">2 mi</text>
+<text class="ts" x="58" y="189.0" text-anchor="end">[3.2 km]</text>
+<line class="grid" x1="66" y1="97.5" x2="300" y2="97.5"/>
+<text class="ts" x="58" y="95.5" text-anchor="end">3 mi</text>
+<text class="ts" x="58" y="111.5" text-anchor="end">[4.8 km]</text>
+<line class="grid" x1="66" y1="20.0" x2="300" y2="20.0"/>
+<text class="ts" x="58" y="18.0" text-anchor="end">4 mi</text>
+<text class="ts" x="58" y="34.0" text-anchor="end">[6.4 km]</text>
+<polygon points="66.0,330.0 300.0,175.0 300.0,35.5" fill="#c2410c" opacity="0.15"/>
+<line class="axis" x1="66" y1="330" x2="300" y2="330"/>
+<line class="axis" x1="66" y1="20" x2="66" y2="330"/>
+<path class="ln2" d="M66.0,330.0 L300.0,147.2"/>
+<circle cx="124.5" cy="284.3" r="5" class="fillacc"/>
+<path class="ln" d="M66.0,330.0 L300.0,238.6"/>
+<circle cx="124.5" cy="307.1" r="5" class="fillacc"/>
+<text class="ts" x="10" y="370" text-anchor="start">Anticipated ride size (riders);</text>
+<text class="ts" x="10" y="389" text-anchor="start">the slider runs 100 to 2,000</text>
+<path class="ln2" d="M10,414 L46,414"/>
+<text class="tb" x="56" y="419" text-anchor="start">One 11 ft [3.35 m] lane</text>
+<text class="ts" x="56" y="438" text-anchor="start">2.36 mi at 2,000</text>
+<text class="ts" x="56" y="457" text-anchor="start">500: 3,110 ft [949 m]</text>
+<path class="ln" d="M10,484 L46,484"/>
+<text class="tb" x="56" y="489" text-anchor="start">Two lanes, 22 ft [6.7 m]</text>
+<text class="ts" x="56" y="508" text-anchor="start">1.18 mi at 2,000</text>
+<text class="ts" x="56" y="527" text-anchor="start">500: 1,560 ft [475 m]</text>
+<rect x="10" y="546" width="36" height="16" fill="#c2410c" opacity="0.15"/>
+<text class="ts" x="56" y="559" text-anchor="start">Shaded: the white paper&#x27;s one-lane</text>
+<text class="ts" x="56" y="578" text-anchor="start">range, 1.0 to 1.9 mi per 1,000 riders</text>
 </svg>
 </div>
 <figcaption>Length = riders ÷ riders a second × the 7 mph [11 km/h] cruise. Halve the road and the group doubles.<sup class="cite"><a href="#ref-4" aria-label="source 4">[4]</a><a href="#ref-5" aria-label="source 5">[5]</a></sup></figcaption>
@@ -478,8 +618,8 @@ one road's approaches, not by all its actual approaches.</p>
 minute on one lane, gets about 2, 6 and 11 minutes for 200, 500 and 1,000 riders, and 8 to 19 minutes for
 1,000 riders across its whole one-lane range (DERIVED). That is several signal cycles, which is the
 practical reason mass rides cork.</p>
-<figure id="fig-hold">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<figure id="fig-hold" class="has-narrow">
+<div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 800 270" role="img" aria-labelledby="fig-hold-t fig-hold-d" focusable="false" style="min-width:576px">
 <title id="fig-hold-t">How long the group holds a junction</title>
 <desc id="fig-hold-d">A bar chart of how long one junction is held, from the moment the head of the ride arrives until the tail passes, at 7 mph on 11 foot lanes. 100 riders on two lanes: 0.5 minutes. 500 riders on two lanes: 2.5 minutes. 500 riders on one lane: 5.1 minutes. 2,000 riders on two lanes: 10.1 minutes. A dashed line marks the proposed 5 minute longest hold.</desc>
@@ -529,6 +669,56 @@ practical reason mass rides cork.</p>
 <path class="ln2" d="M491.8,52 L491.8,220"/>
 <text class="ts" x="497.8181818181818" y="50" text-anchor="start">5 min (proposed)</text>
 <text class="ts" x="515.0" y="256" text-anchor="middle">Minutes from the head&#x27;s arrival until the tail passes</text>
+</svg>
+</div>
+<div class="fig-narrow">
+<svg viewBox="0 0 320 416" role="img" aria-labelledby="fig-hold-n-t fig-hold-n-d" focusable="false">
+<title id="fig-hold-n-t">How long the group holds a junction</title>
+<desc id="fig-hold-n-d">A bar chart of how long one junction is held, from the moment the head of the ride arrives until the tail passes, at 7 mph on 11 foot lanes. 100 riders on two lanes: 0.5 minutes. 500 riders on two lanes: 2.5 minutes. 500 riders on one lane: 5.1 minutes. 2,000 riders on two lanes: 10.1 minutes. A dashed line marks the proposed 5 minute longest hold.</desc>
+<defs><marker id="ah-hold-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<text class="ts" x="10" y="18" text-anchor="start">Head reaches the junction: corkers step</text>
+<text class="ts" x="10" y="37" text-anchor="start">out and hold cross traffic.</text>
+<text class="ts" x="10" y="56" text-anchor="start">Tail passes: corkers are released and</text>
+<text class="ts" x="10" y="75" text-anchor="start">ride up past the group to a junction</text>
+<text class="ts" x="10" y="94" text-anchor="start">ahead.</text>
+<line class="grid" x1="14.0" y1="124" x2="14.0" y2="348"/>
+<line class="grid" x1="35.5" y1="124" x2="35.5" y2="348"/>
+<line class="grid" x1="56.9" y1="124" x2="56.9" y2="348"/>
+<line class="grid" x1="78.4" y1="124" x2="78.4" y2="348"/>
+<line class="grid" x1="99.8" y1="124" x2="99.8" y2="348"/>
+<line class="grid" x1="121.3" y1="124" x2="121.3" y2="348"/>
+<line class="grid" x1="142.7" y1="124" x2="142.7" y2="348"/>
+<line class="grid" x1="164.2" y1="124" x2="164.2" y2="348"/>
+<line class="grid" x1="185.6" y1="124" x2="185.6" y2="348"/>
+<line class="grid" x1="207.1" y1="124" x2="207.1" y2="348"/>
+<line class="grid" x1="228.5" y1="124" x2="228.5" y2="348"/>
+<line class="grid" x1="250.0" y1="124" x2="250.0" y2="348"/>
+<text class="ts" x="14.0" y="366" text-anchor="middle">0</text>
+<text class="ts" x="56.90909090909091" y="366" text-anchor="middle">2</text>
+<text class="ts" x="99.81818181818181" y="366" text-anchor="middle">4</text>
+<text class="ts" x="142.72727272727272" y="366" text-anchor="middle">6</text>
+<text class="ts" x="185.63636363636363" y="366" text-anchor="middle">8</text>
+<text class="ts" x="228.54545454545453" y="366" text-anchor="middle">10</text>
+<path class="ln2" d="M121.3,146 L121.3,174 M121.3,258 L121.3,286 M121.3,314 L121.3,342"/>
+<text class="t" x="14" y="142" text-anchor="start" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">100 riders, two lanes</text>
+<rect x="14" y="150" width="10.8" height="20" class="fillacc"/>
+<circle cx="14" cy="160" r="5" class="ah"/>
+<text class="ts" x="32.8" y="165" text-anchor="start" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">0.5 min</text>
+<text class="t" x="14" y="198" text-anchor="start" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">500 riders, two lanes</text>
+<rect x="14" y="206" width="54.2" height="20" class="fillacc"/>
+<circle cx="14" cy="216" r="5" class="ah"/>
+<text class="ts" x="76.2" y="221" text-anchor="start" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">2.5 min</text>
+<text class="t" x="14" y="254" text-anchor="start" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">500 riders, one lane</text>
+<rect x="14" y="262" width="108.5" height="20" class="fillacc"/>
+<circle cx="14" cy="272" r="5" class="ah"/>
+<text class="ts" x="130.5" y="277" text-anchor="start" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">5.1 min</text>
+<text class="t" x="14" y="310" text-anchor="start" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">2,000 riders, two lanes</text>
+<rect x="14" y="318" width="216.9" height="20" class="fillacc"/>
+<circle cx="14" cy="328" r="5" class="ah"/>
+<text class="ts" x="238.9" y="333" text-anchor="start" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">10.1 min</text>
+<text class="ts" x="127.3" y="116" text-anchor="start" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">5 min (proposed)</text>
+<text class="ts" x="160" y="388" text-anchor="middle">Minutes from the head&#x27;s arrival</text>
+<text class="ts" x="160" y="407" text-anchor="middle">until the tail passes</text>
 </svg>
 </div>
 <figcaption>Hold time = riders ÷ riders a minute. The 5 minute line is a proposal, not yet confirmed.<sup class="cite"><a href="#ref-5" aria-label="source 5">[5]</a></sup></figcaption>
@@ -581,10 +771,10 @@ then chose the measured counts as the working model, and the app is built on the
 <details class="more"><summary>More: The paper and the app side by side</summary>
 <div class="more-body">
 
-<div class="table-wrap" tabindex="0" role="region" aria-label="The white paper&#x27;s planning figures and what RouteMaker 0.10.0 does">
+<div class="table-wrap" tabindex="0" role="region" aria-label="The white paper&#x27;s planning figures and what RouteMaker 0.10.1 does">
 <table>
-<caption>The white paper's planning figures and what RouteMaker 0.10.0 does</caption>
-<thead><tr><th scope="col">Topic</th><th scope="col">White paper (grade)</th><th scope="col">RouteMaker 0.10.0</th></tr></thead>
+<caption>The white paper's planning figures and what RouteMaker 0.10.1 does</caption>
+<thead><tr><th scope="col">Topic</th><th scope="col">White paper (grade)</th><th scope="col">RouteMaker 0.10.1</th></tr></thead>
 <tbody>
 <tr><th scope="row">One 11 ft [3.35 m] lane</th><td>About 50 to 120 riders a minute at 6 to 8 mph; 90 as the central value (DERIVED)</td><td>About 100 a minute, from the owner's counts of the bunched state</td></tr>
 <tr><th scope="row">Two lanes, 22 ft [6.7 m]</th><td>About 110 to 245 (DERIVED; not validated)</td><td>About 200</td></tr>
@@ -632,8 +822,8 @@ roads; and a capacity drop for sharp turns and poor pavement.</p>
 </div></details>
 <h2 id="width">Usable width</h2>
 <p>Usable width is the road a corked group has in the direction it rides. The rules<sup class="cite"><a href="#ref-4" aria-label="source 4">[4]</a></sup>:</p>
-<figure id="fig-width">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<figure id="fig-width" class="has-narrow">
+<div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 800 290" role="img" aria-labelledby="fig-width-t fig-width-d" focusable="false" style="min-width:576px">
 <title id="fig-width-t">Usable width on a two-way street with parking and bike lanes</title>
 <desc id="fig-width-d">A cross-section of a 48 foot two-way street, left to right: 8 feet of parked cars, a 5 foot bike lane, an 11 foot travel lane, the center line, an 11 foot travel lane, a 5 foot bike lane and 8 feet of parked cars. The ride plans only on its own side. Its usable width is its travel lane plus the part of its bike lane outside the 3.5 foot (1.07 meter) door zone: about 12.4 feet (3.78 meters), about 112 riders a minute. Parked cars, the door zone and the oncoming lanes are not counted.</desc>
@@ -679,6 +869,64 @@ roads; and a capacity drop for sharp turns and poor pavement.</p>
 <text class="ts" x="64" y="260" text-anchor="start">the oncoming lanes, protected bike lanes.</text>
 </svg>
 </div>
+<div class="fig-narrow">
+<svg viewBox="0 0 320 588" role="img" aria-labelledby="fig-width-n-t fig-width-n-d" focusable="false">
+<title id="fig-width-n-t">Usable width on a two-way street with parking and bike lanes</title>
+<desc id="fig-width-n-d">A cross-section of a 48 foot two-way street, left to right: 8 feet of parked cars, a 5 foot bike lane, an 11 foot travel lane, the center line, an 11 foot travel lane, a 5 foot bike lane and 8 feet of parked cars. The ride plans only on its own side. Its usable width is its travel lane plus the part of its bike lane outside the 3.5 foot (1.07 meter) door zone: about 12.4 feet (3.78 meters), about 112 riders a minute. Parked cars, the door zone and the oncoming lanes are not counted.</desc>
+<defs><marker id="ah-width-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<defs><pattern id="hatch-width-n" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><path class="ar" d="M0,0 L0,8"/></pattern></defs>
+<text class="ts" x="10" y="18" text-anchor="start">Across the street, side to side</text>
+<rect class="bx" x="40" y="30" width="90" height="72" rx="0"/>
+<rect class="bx" x="56" y="40" width="58" height="52" rx="10"/>
+<text class="ts" x="85.0" y="71.0" text-anchor="middle">car</text>
+<rect class="bx" x="40" y="102" width="90" height="45" rx="0"/>
+<rect class="bx" x="40" y="147" width="90" height="99" rx="0"/>
+<rect class="bxa" x="40" y="246" width="90" height="99" rx="0"/>
+<rect class="bx" x="40" y="345" width="90" height="45" rx="0"/>
+<rect class="bx" x="40" y="390" width="90" height="72" rx="0"/>
+<rect class="bx" x="56" y="400" width="58" height="52" rx="10"/>
+<text class="ts" x="85.0" y="431.0" text-anchor="middle">car</text>
+<rect class="bxa" x="40" y="345" width="90" height="13.5" rx="0"/>
+<rect x="40" y="358.5" width="90" height="31.5" fill="url(#hatch-width-n)" stroke="none"/>
+<rect x="40" y="102" width="90" height="31.5" fill="url(#hatch-width-n)" stroke="none"/>
+<rect x="40" y="133.5" width="90" height="112.5" fill="url(#hatch-width-n)" stroke="none" opacity="0.5"/>
+<path class="ard" d="M40,246 L130,246"/>
+<text class="ts" x="85.0" y="122.75" text-anchor="middle" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">door zone</text>
+<text class="ts" x="85.0" y="379.25" text-anchor="middle" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">door zone</text>
+<path class="grid" fill="none" d="M132,66.0 L140,66.0 L146,66.0 L150,66.0"/>
+<text class="ts" x="154" y="61.0" text-anchor="start">Parked cars</text>
+<text class="ts" x="154" y="79.0" text-anchor="start">8 ft [2.4 m]</text>
+<path class="grid" fill="none" d="M132,124.5 L140,124.5 L146,124.5 L150,124.5"/>
+<text class="ts" x="154" y="119.5" text-anchor="start">Bike lane</text>
+<text class="ts" x="154" y="137.5" text-anchor="start">5 ft [1.5 m]</text>
+<path class="grid" fill="none" d="M132,196.5 L140,196.5 L146,196.5 L150,196.5"/>
+<text class="ts" x="154" y="173.5" text-anchor="start">Travel lane</text>
+<text class="ts" x="154" y="191.5" text-anchor="start">11 ft [3.4 m]</text>
+<text class="tb" x="154" y="209.5" text-anchor="start">Oncoming side:</text>
+<text class="tb" x="154" y="227.5" text-anchor="start">not planned</text>
+<path class="grid" fill="none" d="M132,295.5 L140,295.5 L146,295.5 L150,295.5"/>
+<text class="ts" x="154" y="272.5" text-anchor="start">Travel lane</text>
+<text class="ts" x="154" y="290.5" text-anchor="start">11 ft [3.4 m]</text>
+<text class="tb" x="154" y="308.5" text-anchor="start">The ride&#x27;s side</text>
+<text class="ts" x="154" y="326.5" text-anchor="start">(looking ahead)</text>
+<path class="grid" fill="none" d="M132,351.8 L140,351.8 L146,353.5 L150,353.5"/>
+<text class="ts" x="154" y="348.5" text-anchor="start">Bike lane</text>
+<text class="ts" x="154" y="366.5" text-anchor="start">5 ft [1.5 m]</text>
+<path class="grid" fill="none" d="M132,374.2 L140,374.2 L146,393.5 L150,393.5"/>
+<text class="ts" x="154" y="388.5" text-anchor="start">door zone</text>
+<text class="ts" x="154" y="406.5" text-anchor="start">3.5 ft [1.07 m]</text>
+<path class="grid" fill="none" d="M132,426.0 L140,426.0 L146,433.5 L150,433.5"/>
+<text class="ts" x="154" y="428.5" text-anchor="start">Parked cars</text>
+<text class="ts" x="154" y="446.5" text-anchor="start">8 ft [2.4 m]</text>
+<path class="axis" fill="none" d="M36,246 L26,246 L26,358.5 L36,358.5"/>
+<text class="tb" x="20" y="302.2" text-anchor="middle" transform="rotate(-90 20 302.2)">Usable</text>
+<text class="tb" x="10" y="492" text-anchor="start">Usable: about 12.4 ft [3.78 m]</text>
+<text class="ts" x="10" y="511" text-anchor="start">about 112 riders a minute</text>
+<text class="ts" x="10" y="538" text-anchor="start">Not usable: parked cars, the door zone,</text>
+<text class="ts" x="10" y="557" text-anchor="start">the oncoming lanes, protected bike</text>
+<text class="ts" x="10" y="576" text-anchor="start">lanes.</text>
+</svg>
+</div>
 <figcaption>A segment is drawn once for both directions, so the map shows the narrower direction's figure.<sup class="cite"><a href="#ref-4" aria-label="source 4">[4]</a></sup></figcaption>
 </figure>
 <details class="more"><summary>More: Usable width</summary>
@@ -715,8 +963,8 @@ the width comes from OpenStreetMap.</li>
 <h2 id="map">The map and its bands</h2>
 <p>When Mass Ride is chosen, the map colors roads by riders per minute instead of traffic stress. Color
 is never the only cue: each band also has its own line width and dash.</p>
-<figure id="fig-massmap">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<figure id="fig-massmap" class="has-narrow">
+<div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 880 300" role="img" aria-labelledby="fig-massmap-t fig-massmap-d" focusable="false" style="min-width:600px">
 <title id="fig-massmap-t">What the Mass Ride map looks like</title>
 <desc id="fig-massmap-d">A sketch of a street grid on the Mass Ride map. Each road is drawn in its riders-per-minute band: a wide purple solid line for 200 and up (wide open), a green solid line for 120 to 200 (good), an orange long-dashed line for 60 to 120 (tight) and a thin red short-dashed line for under 60 (bottleneck). One stretch rated Avoid is a dark dash-dot line on a red casing with the word AVOID and no figure. A reviewed hazard is a near-black dash-dot rail beside a road. A corner of federal land is shaded. A key beside the sketch repeats each look.</desc>
@@ -755,6 +1003,48 @@ is never the only cue: each band also has its own line width and dash.</p>
 <text class="t" x="620" y="230" text-anchor="start">Reviewed hazard, beside the road</text>
 </svg>
 </div>
+<div class="fig-narrow">
+<svg viewBox="0 0 320 480" role="img" aria-labelledby="fig-massmap-n-t fig-massmap-n-d" focusable="false">
+<title id="fig-massmap-n-t">What the Mass Ride map looks like</title>
+<desc id="fig-massmap-n-d">A sketch of a street grid on the Mass Ride map. Each road is drawn in its riders-per-minute band: a wide purple solid line for 200 and up (wide open), a green solid line for 120 to 200 (good), an orange long-dashed line for 60 to 120 (tight) and a thin red short-dashed line for under 60 (bottleneck). One stretch rated Avoid is a dark dash-dot line on a red casing with the word AVOID and no figure. A reviewed hazard is a near-black dash-dot rail beside a road. A corner of federal land is shaded. A key beside the sketch repeats each look.</desc>
+<defs><marker id="ah-massmap-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<rect x="10" y="10" width="300" height="220" fill="#efece6" stroke="#1c1917" stroke-width="0.8"/>
+<rect x="200.4" y="149.3" width="109.6" height="80.7" fill="#d9ead3"/>
+<text class="tk" x="280.3" y="204.0" text-anchor="middle" style="font-weight:400;font-size:12px">Federal</text>
+<text class="tk" x="280.3" y="220.0" text-anchor="middle" style="font-weight:400;font-size:12px">land</text>
+<line x1="44.6" y1="10" x2="44.6" y2="230" stroke="#ffffff" stroke-width="5"/>
+<line x1="108.1" y1="10" x2="108.1" y2="230" stroke="#ffffff" stroke-width="5"/>
+<line x1="171.5" y1="10" x2="171.5" y2="230" stroke="#ffffff" stroke-width="5"/>
+<line x1="246.5" y1="10" x2="246.5" y2="230" stroke="#ffffff" stroke-width="5"/>
+<line x1="10" y1="54.0" x2="310" y2="54.0" stroke="#ffffff" stroke-width="5"/>
+<line x1="10" y1="120.0" x2="310" y2="120.0" stroke="#ffffff" stroke-width="5"/>
+<line x1="10" y1="186.0" x2="310" y2="186.0" stroke="#ffffff" stroke-width="5"/>
+<line x1="10.0" y1="120.0" x2="310.0" y2="120.0" stroke="#ffffff" stroke-width="10.5"/><line x1="10.0" y1="120.0" x2="310.0" y2="120.0" stroke="#6a3d9a" stroke-width="8.5"/>
+<line x1="108.1" y1="10.0" x2="108.1" y2="230.0" stroke="#1c1917" stroke-width="9"/><line x1="108.1" y1="10.0" x2="108.1" y2="230.0" stroke="#1a9850" stroke-width="7"/>
+<line x1="171.5" y1="10.0" x2="171.5" y2="120.0" stroke="#1c1917" stroke-width="7.5"/><line x1="171.5" y1="10.0" x2="171.5" y2="120.0" stroke="#f28e2b" stroke-width="5.5" stroke-dasharray="14 4"/>
+<line x1="10.0" y1="54.0" x2="108.1" y2="54.0" stroke="#1c1917" stroke-width="7.5"/><line x1="10.0" y1="54.0" x2="108.1" y2="54.0" stroke="#f28e2b" stroke-width="5.5" stroke-dasharray="14 4"/>
+<line x1="171.5" y1="54.0" x2="310.0" y2="54.0" stroke="#1c1917" stroke-width="6"/><line x1="171.5" y1="54.0" x2="310.0" y2="54.0" stroke="#d7191c" stroke-width="4" stroke-dasharray="6 4"/>
+<line x1="44.6" y1="120.0" x2="44.6" y2="230.0" stroke="#1c1917" stroke-width="9"/><line x1="44.6" y1="120.0" x2="44.6" y2="230.0" stroke="#1a9850" stroke-width="7"/>
+<line x1="246.5" y1="120.0" x2="246.5" y2="230.0" stroke="#1c1917" stroke-width="7.5"/><line x1="246.5" y1="120.0" x2="246.5" y2="230.0" stroke="#f28e2b" stroke-width="5.5" stroke-dasharray="14 4"/>
+<line x1="108.1" y1="186.0" x2="246.5" y2="186.0" stroke="#ee3b2c" stroke-width="9"/><line x1="108.1" y1="186.0" x2="246.5" y2="186.0" stroke="#14040a" stroke-width="6.5" stroke-dasharray="5 1 0.5 1"/><text x="177.3" y="176.0" text-anchor="middle" style="font:700 13px system-ui,sans-serif" fill="#14040a" stroke="#ffffff" stroke-width="3" paint-order="stroke">AVOID</text>
+<line x1="183.1" y1="107.0" x2="240.8" y2="107.0" stroke="#ffffff" stroke-width="5"/><line x1="183.1" y1="107.0" x2="240.8" y2="107.0" stroke="#111111" stroke-width="3.5" stroke-dasharray="10.5 4.2 3.5 4.2"/>
+<text x="217.9" y="98.0" text-anchor="middle" style="font:600 12px system-ui,sans-serif" fill="#111" stroke="#fff" stroke-width="3" paint-order="stroke">hazard rail</text>
+<line x1="10" y1="260" x2="66" y2="260" stroke="#1c1917" stroke-width="6"/><line x1="10" y1="260" x2="66" y2="260" stroke="#d7191c" stroke-width="4" stroke-dasharray="6 4"/>
+<text class="t" x="78" y="265" text-anchor="start">Under 60: bottleneck</text>
+<line x1="10" y1="294" x2="66" y2="294" stroke="#1c1917" stroke-width="7.5"/><line x1="10" y1="294" x2="66" y2="294" stroke="#f28e2b" stroke-width="5.5" stroke-dasharray="14 4"/>
+<text class="t" x="78" y="299" text-anchor="start">60 to 120: tight</text>
+<line x1="10" y1="328" x2="66" y2="328" stroke="#1c1917" stroke-width="9"/><line x1="10" y1="328" x2="66" y2="328" stroke="#1a9850" stroke-width="7"/>
+<text class="t" x="78" y="333" text-anchor="start">120 to 200: good</text>
+<line x1="10" y1="362" x2="66" y2="362" stroke="#ffffff" stroke-width="10.5"/><line x1="10" y1="362" x2="66" y2="362" stroke="#6a3d9a" stroke-width="8.5"/>
+<text class="t" x="78" y="367" text-anchor="start">200 and up: wide open</text>
+<line x1="10" y1="396" x2="66" y2="396" stroke="#ee3b2c" stroke-width="9"/><line x1="10" y1="396" x2="66" y2="396" stroke="#14040a" stroke-width="6.5" stroke-dasharray="5 1 0.5 1"/>
+<text class="t" x="78" y="401" text-anchor="start">Avoid: no figure,</text>
+<text class="t" x="78" y="421" text-anchor="start">the word AVOID</text>
+<line x1="10" y1="446" x2="66" y2="446" stroke="#ffffff" stroke-width="5"/><line x1="10" y1="446" x2="66" y2="446" stroke="#111111" stroke-width="3.5" stroke-dasharray="10.5 4.2 3.5 4.2"/>
+<text class="t" x="78" y="451" text-anchor="start">Reviewed hazard,</text>
+<text class="t" x="78" y="471" text-anchor="start">beside the road</text>
+</svg>
+</div>
 <figcaption>A sketch, not a real place. Wider and solid means more riders a minute; color is never the only cue.</figcaption>
 </figure>
 <details class="more"><summary>More: The map and its bands</summary>
@@ -790,8 +1080,8 @@ says to check permit requirements for gathering there. This is information, not 
 <p>A planned Mass Ride shows three charts, one under the other, in this order. They share one distance
 axis, so a mile is in the same place on all three. Moving along one chart moves the others and the
 marker on the map<sup class="cite"><a href="#ref-5" aria-label="source 5">[5]</a></sup>.</p>
-<figure id="fig-charts">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<figure id="fig-charts" class="has-narrow">
+<div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 880 400" role="img" aria-labelledby="fig-charts-t fig-charts-d" focusable="false" style="min-width:600px">
 <title id="fig-charts-t">The three route charts of a planned Mass Ride</title>
 <desc id="fig-charts-d">Three charts stacked on one shared distance axis, 0 to 10 miles. First, riders per minute: bars filled in the band colors, with dotted guides at 60, 120 and 200, a dashed line for what the ride size needs, and an arrow at the narrowest point, 48 a minute. Second, corker load: a stepped line of how many corkers are holding junctions at once, with a tick at each junction that needs corkers, and a hatched stretch labeled NOT CHECKED where junctions were not checked. Third, elevation: the height line, with steep grades marked in amber. A dashed vertical marker crosses all three at the same mile.</desc>
@@ -850,6 +1140,65 @@ marker on the map<sup class="cite"><a href="#ref-5" aria-label="source 5">[5]</a
 <text class="ts" x="468.0" y="392" text-anchor="start">one marker, on all three charts and the map</text>
 </svg>
 </div>
+<div class="fig-narrow">
+<svg viewBox="0 0 320 572" role="img" aria-labelledby="fig-charts-n-t fig-charts-n-d" focusable="false">
+<title id="fig-charts-n-t">The three route charts of a planned Mass Ride</title>
+<desc id="fig-charts-n-d">Three charts stacked on one shared distance axis, 0 to 10 miles. First, riders per minute: bars filled in the band colors, with dotted guides at 60, 120 and 200, a dashed line for what the ride size needs, and an arrow at the narrowest point, 48 a minute. Second, corker load: a stepped line of how many corkers are holding junctions at once, with a tick at each junction that needs corkers, and a hatched stretch labeled NOT CHECKED where junctions were not checked. Third, elevation: the height line, with steep grades marked in amber. A dashed vertical marker crosses all three at the same mile.</desc>
+<defs><marker id="ah-charts-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<text class="tb" x="10" y="18" text-anchor="start">1. Riders per minute</text>
+<line x1="44" y1="145.4" x2="306" y2="145.4" stroke="var(--muted)" stroke-width="1" stroke-dasharray="1 3"/>
+<text class="ts" x="38" y="150.3846153846154" text-anchor="end">60</text>
+<line x1="44" y1="110.8" x2="306" y2="110.8" stroke="var(--muted)" stroke-width="1" stroke-dasharray="1 3"/>
+<text class="ts" x="38" y="115.76923076923077" text-anchor="end">120</text>
+<line x1="44" y1="64.6" x2="306" y2="64.6" stroke="var(--muted)" stroke-width="1" stroke-dasharray="1 3"/>
+<text class="ts" x="38" y="69.61538461538461" text-anchor="end">200</text>
+<rect x="44.0" y="58.8" width="39.3" height="121.2" fill="#6a3d9a" opacity="0.85"/>
+<rect x="83.3" y="87.7" width="39.3" height="92.3" fill="#1a9850" opacity="0.85"/>
+<rect x="122.6" y="122.9" width="31.4" height="57.1" fill="#f28e2b" opacity="0.85"/>
+<rect x="154.0" y="152.3" width="15.7" height="27.7" fill="#d7191c" opacity="0.85"/>
+<rect x="169.8" y="93.5" width="44.5" height="86.5" fill="#1a9850" opacity="0.85"/>
+<rect x="214.3" y="47.3" width="39.3" height="132.7" fill="#6a3d9a" opacity="0.85"/>
+<rect x="253.6" y="116.5" width="52.4" height="63.5" fill="#f28e2b" opacity="0.85"/>
+<line x1="44" y1="133.8" x2="306" y2="133.8" class="ln2"/>
+<line x1="44" y1="195" x2="72" y2="195" class="ln2"/>
+<text class="ts" x="80" y="200" text-anchor="start" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">what the ride size needs</text>
+<path class="ar" d="M161.9,34 L161.9,148.3" marker-end="url(#ah-charts-n)"/>
+<text class="ts" x="167.9" y="44" text-anchor="start" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">narrowest point, 48</text>
+<line class="axis" x1="44" y1="180" x2="306" y2="180"/>
+<text class="tb" x="10" y="226" text-anchor="start">2. Corker load</text>
+<path class="ln" d="M44.0,348.0 L44.0,320.5 L70.2,320.5 L70.2,293.0 L109.5,293.0 L109.5,265.5 L148.8,265.5 L148.8,306.8 L188.1,306.8 L188.1,279.2 L214.3,279.2"/>
+<line x1="54.5" y1="348" x2="54.5" y2="339" stroke="var(--fg)" stroke-width="1.5"/>
+<line x1="75.4" y1="348" x2="75.4" y2="339" stroke="var(--fg)" stroke-width="1.5"/>
+<line x1="96.4" y1="348" x2="96.4" y2="339" stroke="var(--fg)" stroke-width="1.5"/>
+<line x1="117.4" y1="348" x2="117.4" y2="339" stroke="var(--fg)" stroke-width="1.5"/>
+<line x1="138.3" y1="348" x2="138.3" y2="339" stroke="var(--fg)" stroke-width="1.5"/>
+<line x1="159.3" y1="348" x2="159.3" y2="339" stroke="var(--fg)" stroke-width="1.5"/>
+<line x1="177.6" y1="348" x2="177.6" y2="339" stroke="var(--fg)" stroke-width="1.5"/>
+<line x1="198.6" y1="348" x2="198.6" y2="339" stroke="var(--fg)" stroke-width="1.5"/>
+<defs><pattern id="hatch-charts-n" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="8" stroke="var(--muted)" stroke-width="2"/></pattern></defs>
+<rect x="214.3" y="238" width="91.7" height="110" fill="url(#hatch-charts-n)" stroke="var(--muted)"/>
+<text class="tb" x="260.1" y="289.0" text-anchor="middle" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">NOT</text>
+<text class="tb" x="260.1" y="309.0" text-anchor="middle" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">CHECKED</text>
+<text class="ts" x="38" y="353.0" text-anchor="end">0</text>
+<text class="ts" x="38" y="298.0" text-anchor="end">4</text>
+<text class="ts" x="38" y="243.0" text-anchor="end">8</text>
+<line class="axis" x1="44" y1="348" x2="306" y2="348"/>
+<text class="tb" x="10" y="376" text-anchor="start">3. Elevation</text>
+<path class="ln" d="M44.0,482.3 L70.2,474.4 L96.4,478.4 L122.6,458.7 L138.3,435.1 L161.9,423.4 L188.1,443.0 L214.3,450.9 L237.9,411.6 L253.6,403.7 L279.8,435.1 L306.0,443.0"/>
+<path d="M122.6,458.7 L138.3,435.1" stroke="#d97706" stroke-width="6" stroke-opacity="0.6" fill="none"/>
+<path d="M214.3,450.9 L237.9,411.6" stroke="#d97706" stroke-width="6" stroke-opacity="0.6" fill="none"/>
+<text class="ts" x="304" y="397.6" text-anchor="end" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">steep grades in amber</text>
+<line class="axis" x1="44" y1="498" x2="306" y2="498"/>
+<text class="ts" x="44.0" y="518" text-anchor="middle">0 mi</text>
+<text class="ts" x="175.0" y="518" text-anchor="middle">5 mi</text>
+<text class="ts" x="306.0" y="518" text-anchor="end">10 mi</text>
+<line x1="161.9" y1="30" x2="161.9" y2="180" stroke="var(--accent)" stroke-width="1.2" stroke-dasharray="4 3"/>
+<line x1="161.9" y1="238" x2="161.9" y2="348" stroke="var(--accent)" stroke-width="1.2" stroke-dasharray="4 3"/>
+<line x1="161.9" y1="402" x2="161.9" y2="498" stroke="var(--accent)" stroke-width="1.2" stroke-dasharray="4 3"/>
+<text class="ts" x="160" y="544" text-anchor="middle">one marker, on all three charts</text>
+<text class="ts" x="160" y="563" text-anchor="middle">and the map</text>
+</svg>
+</div>
 <figcaption>An example route, not a real ride. Moving along one chart moves the others and the marker on the map.</figcaption>
 </figure>
 <details class="more"><summary>More: The three route charts</summary>
@@ -873,8 +1222,8 @@ corker load at each.</p>
 </div></details>
 <h2 id="hills">Hills</h2>
 <p>On the route's riders chart, the flat figure is lowered by the grade<sup class="cite"><a href="#ref-4" aria-label="source 4">[4]</a></sup>:</p>
-<figure id="fig-hills">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<figure id="fig-hills" class="has-narrow">
+<div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 800 334" role="img" aria-labelledby="fig-hills-t fig-hills-d" focusable="false" style="min-width:576px">
 <title id="fig-hills-t">How hills lower riders per minute</title>
 <desc id="fig-hills-d">A line chart of the share of the flat figure a road keeps, by grade. Uphill past 1%, the group slows: 81% at 3%, 62.5% at 6%, 54% at 8%, never under 30%. Downhill past 4%, riders space out: 83% at 8% down, never under 60%. A dashed comparison line for commuters riding alone (Parkin and Rotheram) falls from 100% at 0% to about 33% at 10%, close to RouteMaker&#x27;s factor up to about 6% and steeper above it.</desc>
@@ -930,6 +1279,56 @@ corker load at each.</p>
 <text class="ts" x="430.0" y="300" text-anchor="middle">Grade, in the direction ridden</text>
 </svg>
 </div>
+<div class="fig-narrow">
+<svg viewBox="0 0 320 498" role="img" aria-labelledby="fig-hills-n-t fig-hills-n-d" focusable="false">
+<title id="fig-hills-n-t">How hills lower riders per minute</title>
+<desc id="fig-hills-n-d">A line chart of the share of the flat figure a road keeps, by grade. Uphill past 1%, the group slows: 81% at 3%, 62.5% at 6%, 54% at 8%, never under 30%. Downhill past 4%, riders space out: 83% at 8% down, never under 60%. A dashed comparison line for commuters riding alone (Parkin and Rotheram) falls from 100% at 0% to about 33% at 10%, close to RouteMaker&#x27;s factor up to about 6% and steeper above it.</desc>
+<defs><marker id="ah-hills-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<line class="grid" x1="50.0" y1="70" x2="50.0" y2="340"/>
+<text class="ts" x="50.0" y="360" text-anchor="start">-20%</text>
+<line class="grid" x1="113.5" y1="70" x2="113.5" y2="340"/>
+<text class="ts" x="113.5" y="360" text-anchor="middle">-10%</text>
+<line class="grid" x1="177.0" y1="70" x2="177.0" y2="340"/>
+<text class="ts" x="177.0" y="360" text-anchor="middle">0%</text>
+<line class="grid" x1="240.5" y1="70" x2="240.5" y2="340"/>
+<text class="ts" x="240.5" y="360" text-anchor="middle">10%</text>
+<line class="grid" x1="304.0" y1="70" x2="304.0" y2="340"/>
+<text class="ts" x="304.0" y="360" text-anchor="end">20%</text>
+<line class="grid" x1="50" y1="340.0" x2="304" y2="340.0"/>
+<line class="grid" x1="50" y1="272.5" x2="304" y2="272.5"/>
+<line class="grid" x1="50" y1="205.0" x2="304" y2="205.0"/>
+<line class="grid" x1="50" y1="137.5" x2="304" y2="137.5"/>
+<line class="grid" x1="50" y1="70.0" x2="304" y2="70.0"/>
+<text class="ts" x="42" y="345" text-anchor="end">0%</text>
+<text class="ts" x="42" y="210.0" text-anchor="end">50%</text>
+<text class="ts" x="42" y="75" text-anchor="end">100%</text>
+<line class="axis" x1="50" y1="340" x2="304" y2="340"/>
+<line class="axis" x1="177.0" y1="70" x2="177.0" y2="340"/>
+<path class="ln" d="M50.0,178.0 L50.6,178.0 L51.3,178.0 L51.9,178.0 L52.5,178.0 L53.2,178.0 L53.8,178.0 L54.4,178.0 L55.1,178.0 L55.7,178.0 L56.4,178.0 L57.0,178.0 L57.6,178.0 L58.3,178.0 L58.9,178.0 L59.5,178.0 L60.2,178.0 L60.8,178.0 L61.4,178.0 L62.1,178.0 L62.7,178.0 L63.3,178.0 L64.0,178.0 L64.6,178.0 L65.2,178.0 L65.9,178.0 L66.5,178.0 L67.1,177.8 L67.8,177.3 L68.4,176.9 L69.0,176.4 L69.7,175.9 L70.3,175.4 L71.0,174.9 L71.6,174.4 L72.2,173.8 L72.9,173.3 L73.5,172.8 L74.1,172.3 L74.8,171.8 L75.4,171.2 L76.0,170.7 L76.7,170.2 L77.3,169.7 L77.9,169.1 L78.6,168.6 L79.2,168.0 L79.8,167.5 L80.5,166.9 L81.1,166.4 L81.8,165.8 L82.4,165.2 L83.0,164.7 L83.7,164.1 L84.3,163.5 L84.9,163.0 L85.6,162.4 L86.2,161.8 L86.8,161.2 L87.5,160.6 L88.1,160.0 L88.7,159.4 L89.4,158.8 L90.0,158.2 L90.6,157.6 L91.3,156.9 L91.9,156.3 L92.5,155.7 L93.2,155.1 L93.8,154.4 L94.5,153.8 L95.1,153.1 L95.7,152.5 L96.4,151.8 L97.0,151.2 L97.6,150.5 L98.3,149.9 L98.9,149.2 L99.5,148.5 L100.2,147.8 L100.8,147.1 L101.4,146.5 L102.1,145.8 L102.7,145.1 L103.3,144.3 L104.0,143.6 L104.6,142.9 L105.2,142.2 L105.9,141.5 L106.5,140.7 L107.2,140.0 L107.8,139.3 L108.4,138.5 L109.1,137.8 L109.7,137.0 L110.3,136.2 L111.0,135.5 L111.6,134.7 L112.2,133.9 L112.9,133.1 L113.5,132.3 L114.1,131.5 L114.8,130.7 L115.4,129.9 L116.0,129.1 L116.7,128.2 L117.3,127.4 L117.9,126.6 L118.6,125.7 L119.2,124.9 L119.8,124.0 L120.5,123.1 L121.1,122.3 L121.8,121.4 L122.4,120.5 L123.0,119.6 L123.7,118.7 L124.3,117.8 L124.9,116.9 L125.6,115.9 L126.2,115.0 L126.8,114.1 L127.5,113.1 L128.1,112.2 L128.7,111.2 L129.4,110.2 L130.0,109.2 L130.6,108.2 L131.3,107.2 L131.9,106.2 L132.6,105.2 L133.2,104.2 L133.8,103.2 L134.5,102.1 L135.1,101.1 L135.7,100.0 L136.4,98.9 L137.0,97.8 L137.6,96.8 L138.3,95.7 L138.9,94.5 L139.5,93.4 L140.2,92.3 L140.8,91.2 L141.4,90.0 L142.1,88.8 L142.7,87.7 L143.3,86.5 L144.0,85.3 L144.6,84.1 L145.2,82.9 L145.9,81.6 L146.5,80.4 L147.2,79.1 L147.8,77.9 L148.4,76.6 L149.1,75.3 L149.7,74.0 L150.3,72.7 L151.0,71.3 L151.6,70.0 L152.2,70.0 L152.9,70.0 L153.5,70.0 L154.1,70.0 L154.8,70.0 L155.4,70.0 L156.0,70.0 L156.7,70.0 L157.3,70.0 L157.9,70.0 L158.6,70.0 L159.2,70.0 L159.9,70.0 L160.5,70.0 L161.1,70.0 L161.8,70.0 L162.4,70.0 L163.0,70.0 L163.7,70.0 L164.3,70.0 L164.9,70.0 L165.6,70.0 L166.2,70.0 L166.8,70.0 L167.5,70.0 L168.1,70.0 L168.7,70.0 L169.4,70.0 L170.0,70.0 L170.7,70.0 L171.3,70.0 L171.9,70.0 L172.6,70.0 L173.2,70.0 L173.8,70.0 L174.5,70.0 L175.1,70.0 L175.7,70.0 L176.4,70.0 L177.0,70.0 L177.6,70.0 L178.3,70.0 L178.9,70.0 L179.5,70.0 L180.2,70.0 L180.8,70.0 L181.4,70.0 L182.1,70.0 L182.7,70.0 L183.3,70.0 L184.0,73.2 L184.6,76.3 L185.3,79.4 L185.9,82.4 L186.5,85.3 L187.2,88.1 L187.8,90.9 L188.4,93.6 L189.1,96.3 L189.7,98.9 L190.3,101.5 L191.0,104.0 L191.6,106.4 L192.2,108.8 L192.9,111.2 L193.5,113.5 L194.1,115.7 L194.8,118.0 L195.4,120.1 L196.1,122.3 L196.7,124.3 L197.3,126.4 L198.0,128.4 L198.6,130.4 L199.2,132.3 L199.9,134.2 L200.5,136.1 L201.1,137.9 L201.8,139.7 L202.4,141.5 L203.0,143.2 L203.7,144.9 L204.3,146.6 L204.9,148.2 L205.6,149.9 L206.2,151.5 L206.8,153.0 L207.5,154.6 L208.1,156.1 L208.8,157.6 L209.4,159.0 L210.0,160.5 L210.7,161.9 L211.3,163.3 L211.9,164.7 L212.6,166.0 L213.2,167.4 L213.8,168.7 L214.5,170.0 L215.1,171.2 L215.7,172.5 L216.4,173.7 L217.0,175.0 L217.6,176.2 L218.3,177.3 L218.9,178.5 L219.5,179.7 L220.2,180.8 L220.8,181.9 L221.4,183.0 L222.1,184.1 L222.7,185.2 L223.4,186.2 L224.0,187.3 L224.6,188.3 L225.3,189.3 L225.9,190.3 L226.5,191.3 L227.2,192.3 L227.8,193.3 L228.4,194.2 L229.1,195.2 L229.7,196.1 L230.3,197.0 L231.0,197.9 L231.6,198.8 L232.2,199.7 L232.9,200.5 L233.5,201.4 L234.2,202.2 L234.8,203.1 L235.4,203.9 L236.1,204.7 L236.7,205.5 L237.3,206.3 L238.0,207.1 L238.6,207.9 L239.2,208.7 L239.9,209.4 L240.5,210.2 L241.1,210.9 L241.8,211.7 L242.4,212.4 L243.0,213.1 L243.7,213.8 L244.3,214.5 L244.9,215.2 L245.6,215.9 L246.2,216.6 L246.8,217.3 L247.5,217.9 L248.1,218.6 L248.8,219.2 L249.4,219.9 L250.0,220.5 L250.7,221.2 L251.3,221.8 L251.9,222.4 L252.6,223.0 L253.2,223.6 L253.8,224.2 L254.5,224.8 L255.1,225.4 L255.7,226.0 L256.4,226.6 L257.0,227.1 L257.6,227.7 L258.3,228.2 L258.9,228.8 L259.6,229.3 L260.2,229.9 L260.8,230.4 L261.5,231.0 L262.1,231.5 L262.7,232.0 L263.4,232.5 L264.0,233.0 L264.6,233.5 L265.3,234.0 L265.9,234.5 L266.5,235.0 L267.2,235.5 L267.8,236.0 L268.4,236.5 L269.1,236.9 L269.7,237.4 L270.3,237.9 L271.0,238.3 L271.6,238.8 L272.2,239.3 L272.9,239.7 L273.5,240.1 L274.2,240.6 L274.8,241.0 L275.4,241.5 L276.1,241.9 L276.7,242.3 L277.3,242.7 L278.0,243.2 L278.6,243.6 L279.2,244.0 L279.9,244.4 L280.5,244.8 L281.1,245.2 L281.8,245.6 L282.4,246.0 L283.0,246.4 L283.7,246.8 L284.3,247.2 L284.9,247.5 L285.6,247.9 L286.2,248.3 L286.9,248.7 L287.5,249.0 L288.1,249.4 L288.8,249.8 L289.4,250.1 L290.0,250.5 L290.7,250.8 L291.3,251.2 L291.9,251.5 L292.6,251.9 L293.2,252.2 L293.8,252.6 L294.5,252.9 L295.1,253.2 L295.7,253.6 L296.4,253.9 L297.0,254.2 L297.6,254.6 L298.3,254.9 L298.9,255.2 L299.6,255.5 L300.2,255.8 L300.8,256.1 L301.5,256.5 L302.1,256.8 L302.7,257.1 L303.4,257.4 L304.0,257.7"/>
+<path class="ln2" d="M177.0,70.0 L177.6,71.8 L178.3,73.6 L178.9,75.4 L179.5,77.2 L180.2,79.0 L180.8,80.8 L181.4,82.6 L182.1,84.4 L182.7,86.2 L183.3,88.0 L184.0,89.8 L184.6,91.6 L185.3,93.4 L185.9,95.2 L186.5,97.0 L187.2,98.8 L187.8,100.6 L188.4,102.4 L189.1,104.2 L189.7,106.0 L190.3,107.8 L191.0,109.6 L191.6,111.4 L192.2,113.1 L192.9,114.9 L193.5,116.7 L194.1,118.5 L194.8,120.3 L195.4,122.1 L196.1,123.9 L196.7,125.7 L197.3,127.5 L198.0,129.3 L198.6,131.1 L199.2,132.9 L199.9,134.7 L200.5,136.5 L201.1,138.3 L201.8,140.1 L202.4,141.9 L203.0,143.7 L203.7,145.5 L204.3,147.3 L204.9,149.1 L205.6,150.9 L206.2,152.7 L206.8,154.5 L207.5,156.3 L208.1,158.1 L208.8,159.9 L209.4,161.7 L210.0,163.5 L210.7,165.3 L211.3,167.1 L211.9,168.9 L212.6,170.7 L213.2,172.5 L213.8,174.3 L214.5,176.1 L215.1,177.9 L215.7,179.7 L216.4,181.5 L217.0,183.3 L217.6,185.1 L218.3,186.9 L218.9,188.7 L219.5,190.5 L220.2,192.3 L220.8,194.1 L221.4,195.9 L222.1,197.7 L222.7,199.4 L223.4,201.2 L224.0,203.0 L224.6,204.8 L225.3,206.6 L225.9,208.4 L226.5,210.2 L227.2,212.0 L227.8,213.8 L228.4,215.6 L229.1,217.4 L229.7,219.2 L230.3,221.0 L231.0,222.8 L231.6,224.6 L232.2,226.4 L232.9,228.2 L233.5,230.0 L234.2,231.8 L234.8,233.6 L235.4,235.4 L236.1,237.2 L236.7,239.0 L237.3,240.8 L238.0,242.6 L238.6,244.4 L239.2,246.2 L239.9,248.0 L240.5,249.8"/>
+<circle cx="196.1" cy="122.3" r="4" class="fillacc"/>
+<text class="ts" x="203.1" y="115.3" text-anchor="start" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">3%: 81%</text>
+<circle cx="215.1" cy="171.2" r="4" class="fillacc"/>
+<text class="ts" x="222.1" y="164.2" text-anchor="start" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">6%: 62.5%</text>
+<circle cx="227.8" cy="193.3" r="4" class="fillacc"/>
+<text class="ts" x="234.8" y="186.3" text-anchor="start" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">8%: 54%</text>
+<circle cx="126.2" cy="115.0" r="4" class="fillacc"/>
+<text class="ts" x="118.2" y="107.0" text-anchor="end" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">-8%: 83%</text>
+<text class="ts" x="297.6" y="279.0" text-anchor="end" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">floor 30%</text>
+<text class="ts" x="56.4" y="200.0" text-anchor="start" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">floor 60%</text>
+<text class="tb" x="113.5" y="22" text-anchor="middle">Downhill:</text>
+<text class="ts" x="113.5" y="42" text-anchor="middle">riders space out</text>
+<text class="tb" x="240.5" y="22" text-anchor="middle">Uphill:</text>
+<text class="ts" x="240.5" y="42" text-anchor="middle">the group slows</text>
+<text class="ts" x="160" y="386" text-anchor="middle">Grade, in the direction ridden</text>
+<path class="ln" d="M10,416 L46,416"/>
+<text class="ts" x="56" y="421" text-anchor="start">RouteMaker&#x27;s factor (full, after</text>
+<text class="ts" x="56" y="440" text-anchor="start">490 ft [150 m] of climb)</text>
+<path class="ln2" d="M10,466 L46,466"/>
+<text class="ts" x="56" y="471" text-anchor="start">Commuters, Parkin and</text>
+<text class="ts" x="56" y="490" text-anchor="start">Rotheram (2010)</text>
+</svg>
+</div>
 <figcaption>The climb factor builds up over the first 490 ft [150 m] of a climb, so a short ramp costs little.<sup class="cite"><a href="#ref-4" aria-label="source 4">[4]</a><a href="#ref-24" aria-label="source 24">[24]</a></sup></figcaption>
 </figure>
 <details class="more"><summary>More: Hills</summary>
@@ -972,8 +1371,8 @@ the road, then dropped. Each rider can have at most 20 open reports, and one per
 studies<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup>. Every published figure comes from everyday bicycle traffic: commuters on cycle
 tracks, queues at signals, or students on closed test tracks. Reported capacities vary about threefold
 between studies, so the literature can show whether a figure is plausible. It cannot set it precisely.</p>
-<figure id="fig-evidence">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<figure id="fig-evidence" class="has-narrow">
+<div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 800 356" role="img" aria-labelledby="fig-evidence-t fig-evidence-d" focusable="false" style="min-width:576px">
 <title id="fig-evidence-t">RouteMaker&#x27;s figure against published bicycle flows</title>
 <desc id="fig-evidence-d">Range bars of riders a minute per foot of width from ten published results. Field counts: FHWA 1998 signal queues 5.6 to 8.3; Buch and Greibe 2014 7.6; field counts tabled by Kaths 2025 7.6 to 7.8; Seriani 2015 Santiago 10.5 to 11.8; Yuan 2019 11.1 to 11.8; Seriani 2015 London 21.9. Experiments: Guo 2021 9.1; Guo 2024 14.0 to 15.8; experiments tabled by Kaths 2025 18.3 to 22.9; Wierbos 2019 20.3. RouteMaker&#x27;s figure, 9.0 per foot (29.5 per meter), is marked with a dashed line, in the lower half of the field counts and below every experiment.</desc>
@@ -1025,6 +1424,61 @@ between studies, so the literature can show whether a figure is plausible. It ca
 <path class="ln2" d="M476.2,4 L476.2,278"/>
 <text class="tb" x="480.25" y="306" text-anchor="start">RouteMaker: 9.0</text>
 <text class="ts" x="535.0" y="344" text-anchor="middle">Riders a minute per foot of width (× 3.28 for per meter)</text>
+</svg>
+</div>
+<div class="fig-narrow">
+<svg viewBox="0 0 320 606" role="img" aria-labelledby="fig-evidence-n-t fig-evidence-n-d" focusable="false">
+<title id="fig-evidence-n-t">RouteMaker&#x27;s figure against published bicycle flows</title>
+<desc id="fig-evidence-n-d">Range bars of riders a minute per foot of width from ten published results. Field counts: FHWA 1998 signal queues 5.6 to 8.3; Buch and Greibe 2014 7.6; field counts tabled by Kaths 2025 7.6 to 7.8; Seriani 2015 Santiago 10.5 to 11.8; Yuan 2019 11.1 to 11.8; Seriani 2015 London 21.9. Experiments: Guo 2021 9.1; Guo 2024 14.0 to 15.8; experiments tabled by Kaths 2025 18.3 to 22.9; Wierbos 2019 20.3. RouteMaker&#x27;s figure, 9.0 per foot (29.5 per meter), is marked with a dashed line, in the lower half of the field counts and below every experiment.</desc>
+<defs><marker id="ah-evidence-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<line class="grid" x1="12.0" y1="8" x2="12.0" y2="510"/>
+<text class="ts" x="12.0" y="528" text-anchor="middle">0</text>
+<line class="grid" x1="60.0" y1="8" x2="60.0" y2="510"/>
+<text class="ts" x="60.0" y="528" text-anchor="middle">4</text>
+<line class="grid" x1="108.0" y1="8" x2="108.0" y2="510"/>
+<text class="ts" x="108.0" y="528" text-anchor="middle">8</text>
+<line class="grid" x1="156.0" y1="8" x2="156.0" y2="510"/>
+<text class="ts" x="156.0" y="528" text-anchor="middle">12</text>
+<line class="grid" x1="204.0" y1="8" x2="204.0" y2="510"/>
+<text class="ts" x="204.0" y="528" text-anchor="middle">16</text>
+<line class="grid" x1="252.0" y1="8" x2="252.0" y2="510"/>
+<text class="ts" x="252.0" y="528" text-anchor="middle">20</text>
+<line class="grid" x1="300.0" y1="8" x2="300.0" y2="510"/>
+<text class="ts" x="300.0" y="528" text-anchor="middle">24</text>
+<path class="ln2" d="M120.0,4 L120.0,514"/>
+<text class="t" x="12" y="26" text-anchor="start" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">FHWA 1998, signal queues</text>
+<rect x="79.2" y="34" width="32.4" height="16" class="fillacc"/>
+<text class="ts" x="118.6" y="47" text-anchor="start" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">5.6 to 8.3</text>
+<text class="t" x="12" y="76" text-anchor="start" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">Buch and Greibe 2014, Copenhagen</text>
+<rect x="100.2" y="84" width="6.0" height="16" class="fillacc"/>
+<text class="ts" x="110.2" y="97" text-anchor="start" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">7.6</text>
+<text class="t" x="12" y="126" text-anchor="start" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">Kaths 2025, field counts tabled</text>
+<rect x="100.2" y="134" width="6.0" height="16" class="fillacc"/>
+<text class="ts" x="112.6" y="147" text-anchor="start" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">7.6 to 7.8</text>
+<text class="t" x="12" y="176" text-anchor="start" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">Guo 2021, wide track</text>
+<rect x="118.2" y="184" width="6.0" height="16" class="bxa"/>
+<text class="ts" x="128.2" y="197" text-anchor="start" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">9.1 (experiment)</text>
+<text class="t" x="12" y="226" text-anchor="start" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">Seriani 2015, Santiago</text>
+<rect x="138.0" y="234" width="15.6" height="16" class="fillacc"/>
+<text class="ts" x="160.6" y="247" text-anchor="start" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">10.5 to 11.8</text>
+<text class="t" x="12" y="276" text-anchor="start" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">Yuan 2019, Amsterdam signal</text>
+<rect x="145.2" y="284" width="8.4" height="16" class="fillacc"/>
+<text class="ts" x="160.6" y="297" text-anchor="start" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">11.1 to 11.8</text>
+<text class="t" x="12" y="326" text-anchor="start" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">Guo 2024, bottleneck</text>
+<rect x="180.0" y="334" width="21.6" height="16" class="bxa"/>
+<text class="ts" x="173.0" y="347" text-anchor="end" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">14 to 15.8 (experiment)</text>
+<text class="t" x="12" y="376" text-anchor="start" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">Kaths 2025, experiments tabled</text>
+<rect x="231.6" y="384" width="55.2" height="16" class="bxa"/>
+<text class="ts" x="224.6" y="397" text-anchor="end" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">18.3 to 22.9 (experiment)</text>
+<text class="t" x="12" y="426" text-anchor="start" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">Wierbos 2019, extra width</text>
+<rect x="252.6" y="434" width="6.0" height="16" class="bxa"/>
+<text class="ts" x="245.6" y="447" text-anchor="end" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">20.3 (experiment)</text>
+<text class="t" x="12" y="476" text-anchor="start" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">Seriani 2015, London</text>
+<rect x="271.8" y="484" width="6.0" height="16" class="fillacc"/>
+<text class="ts" x="264.8" y="497" text-anchor="end" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">21.9</text>
+<text class="tb" x="124.0" y="552" text-anchor="start">RouteMaker: 9.0</text>
+<text class="ts" x="160" y="578" text-anchor="middle">Riders a minute per foot of width</text>
+<text class="ts" x="160" y="597" text-anchor="middle">(× 3.28 for per meter)</text>
 </svg>
 </div>
 <figcaption>Solid bars are counts of real traffic; outlined bars are experiments on closed tracks. None of them is a mass ride: no such study was found.<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup></figcaption>
@@ -1133,7 +1587,7 @@ clears a crossing.</p>
 <p class="next">Next: <a href="/about/assistants.html">AI assistants</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.10.0. The code is
+  <p>Part of RouteMaker's documentation. It describes version 0.10.1. The code is
   open source under the MIT licence:
   <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
   <p><a href="/">Back to the map</a></p>
