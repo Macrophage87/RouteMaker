@@ -711,6 +711,68 @@ def build_works_extract(path: Path) -> None:
         writer.close()
 
 
+# A golf course's ways (owner report 2026-10-21, Woodmont Country Club: plain `highway=path`
+# cart paths drawn as bike paths; `restricted_areas.golf_closures`).
+GOLF_CART_PATH_ID = 3400
+GOLF_DRIVE_ID = 3401
+GOLF_STREET_ID = 3402
+GOLF_TRAIL_ID = 3403
+GOLF_OUTSIDE_ID = 3404
+GOLF_TRAIL_OUTSIDE_ID = 3405
+GOLF_OUTLINE_ID = 3500
+
+
+def build_golf_extract(path: Path) -> None:
+    """A golf course inside the District's box: a cart path tagged `highway=path` and
+    nothing else, the clubhouse's service drive, a public street across the course, and a
+    named trail through it that runs on north of the course; south of the course, a public
+    street they all reach."""
+    Path(path).unlink(missing_ok=True)  # osmium refuses to overwrite
+    writer = osmium.SimpleWriter(str(path))
+    try:
+        nodes = {
+            1: (-77.080, 38.920),
+            2: (-77.060, 38.920),
+            3: (-77.060, 38.930),
+            4: (-77.080, 38.930),
+            10: (-77.0760, 38.916),
+            11: (-77.0760, 38.929),
+            12: (-77.0720, 38.916),
+            13: (-77.0720, 38.929),
+            14: (-77.0680, 38.916),
+            15: (-77.0680, 38.934),
+            16: (-77.0640, 38.916),
+            17: (-77.0640, 38.929),
+            20: (-77.0640, 38.936),
+            18: (-77.085, 38.916),
+            19: (-77.055, 38.916),
+        }
+        for node_id, (lon, lat) in nodes.items():
+            writer.add_node(
+                osmium.osm.mutable.Node(id=node_id, location=(lon, lat), tags={}, version=1)
+            )
+        ways = {
+            GOLF_CART_PATH_ID: ([10, 11], {"highway": "path"}),
+            GOLF_DRIVE_ID: ([12, 13], {"highway": "service"}),
+            GOLF_STREET_ID: ([14, 15], {"highway": "residential", "name": "Fairway Road"}),
+            GOLF_TRAIL_ID: ([16, 17], {"highway": "path", "name": "Test Creek Trail"}),
+            GOLF_TRAIL_OUTSIDE_ID: ([17, 20], {"highway": "path", "name": "Test Creek Trail"}),
+            GOLF_OUTSIDE_ID: (
+                [18, 10, 12, 14, 16, 19],
+                {"highway": "residential", "name": "Outside Street"},
+            ),
+            GOLF_OUTLINE_ID: (
+                [1, 2, 3, 4, 1],
+                {"leisure": "golf_course", "name": "Test Country Club"},
+            ),
+        }
+        for way_id in sorted(ways):
+            node_ids, tags = ways[way_id]
+            writer.add_way(osmium.osm.mutable.Way(id=way_id, nodes=node_ids, version=1, tags=tags))
+    finally:
+        writer.close()
+
+
 PARALLEL_COUNT = {
     "id": "count-parkway",
     # Drawn between the two ways and nearer the trail, which is what makes the
