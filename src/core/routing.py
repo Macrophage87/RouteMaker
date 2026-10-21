@@ -114,6 +114,7 @@ from . import (
     beside_roads,
     mass_hazards,
     mtb,
+    novice_walks,
     parallel,
     presets,
     route_hazards,
@@ -1047,6 +1048,9 @@ class Dials:
     # own. Set only by a transit trip's lines priced as Novice on a share bike (`api._transit_body`,
     # `novice_legs` on Bikeshare + Transit), so the lines are timed as its candidates were.
     cycling_speed_kmh: float | None = None
+    # Novice and Nervous's walks past a short busy stretch (`core.novice_walks`); off for a
+    # transit trip's lines priced as Novice (`novice_legs`), which say no walks.
+    novice_walks: bool = True
     # An opened file's line to follow exactly, [(lon, lat), ...] (`core.follow`); None: plan.
     follow: tuple[tuple[float, float], ...] | None = None
     # Follow it exactly, rules or not (`core.follow.EXACT`): the manual mode.
@@ -1098,9 +1102,11 @@ NOVICE_BUSY_SLACK_M = 80.0
 
 def busiest_stretch(pieces: list, classes: list) -> dict | None:
     """The longest run of real LTS 3 or worse along a route, by the road's name: its name
-    (None where the road has none), its metres and its worst level. None where there is
-    no such run."""
-    runs: list[list] = []  # [name, metres, worst]
+    (None where the road has none), its metres, its worst level, and where it begins and
+    ends (`from` and `to`, [lon, lat], the middles of its first and last pieces, near
+    enough for the stations around them; v0.11.0, the transit hop past it,
+    `transit.plan_bike`'s `hop`). None where there is no such run."""
+    runs: list[list] = []  # [name, metres, worst, first piece, last piece]
     last = None
     for piece, cls in zip(pieces, classes, strict=False):
         tier = cls[0]
@@ -1113,26 +1119,43 @@ def busiest_stretch(pieces: list, classes: list) -> dict | None:
         if last is not None and last[0] == name:
             last[1] += piece.metres
             last[2] = max(last[2], int(tier))
+            last[4] = piece
         else:
-            last = [name, piece.metres, int(tier)]
+            last = [name, piece.metres, int(tier), piece, piece]
             runs.append(last)
     if not runs:
         return None
-    name, metres, worst = max(runs, key=lambda run: run[1])
-    return {"name": name, "metres": round(metres, 1), "level": worst}
+    name, metres, worst, first, final = max(runs, key=lambda run: run[1])
+    return {
+        "name": name,
+        "metres": round(metres, 1),
+        "level": worst,
+        "from": [round(first.lon, 6), round(first.lat, 6)],
+        "to": [round(final.lon, 6), round(final.lat, 6)],
+    }
 
 
-def novice_note(stress_m: dict, calm_search: dict | None, busiest: dict | None) -> dict:
+def novice_note(
+    stress_m: dict,
+    calm_search: dict | None,
+    busiest: dict | None,
+    walked_m: float = 0.0,
+    walks: list[dict] | None = None,
+) -> dict:
     """Novice and Nervous's reading of its own route (v0.7.0 plan, item 4): its real LTS 3
-    and worse metres, the busiest stretch, whether the search was held at the ceiling, and
-    whether to offer Own bike + Transit and Bikeshare + Transit beside it."""
-    busy_m = sum(float(stress_m.get(key, 0.0)) for key in ("3", "4", "5"))
+    and worse metres ridden, the busiest stretch ridden, whether the search was held at the
+    ceiling, and whether to offer Own bike + Transit and Bikeshare + Transit beside it. The
+    busy stretches walked instead (v0.11.0, `core.novice_walks`: `walked_m` of them, the
+    walks themselves in `walks`) are not ridden, and are left out of the busy metres."""
+    busy_m = max(0.0, sum(float(stress_m.get(key, 0.0)) for key in ("3", "4", "5")) - walked_m)
     held = bool(calm_search) and (calm_search or {}).get("limited") == "ceiling"
     return {
         "busy_m": round(busy_m, 1),
         "busiest": busiest,
         "over_ceiling": held,
         "transit": busy_m > NOVICE_BUSY_SLACK_M or held,
+        "walked_m": round(walked_m, 1),
+        "walks": walks or [],
     }
 
 
@@ -2955,15 +2978,29 @@ WALK_IN_MIN_LEFT_S = 1.0
 WALK_IN_CALL_S = 2.0
 
 
-def walk_leg(a: list[float], b: list[float], deadline: Deadline) -> dict | None:
+# A walk past a busy stretch (`novice_walks`) prefers sidewalks and footpaths to the
+# road's own edge by this factor (Valhalla's `sidewalk_factor` and `walkway_factor`): a
+# sidewalk mapped as its own way is only reached by crossing to it, which a walk that
+# starts on the road would otherwise not do.
+WALKWAY_PREFERENCE = 0.5
+
+
+def walk_leg(
+    a: list[float], b: list[float], deadline: Deadline, prefer_walkways: bool = False
+) -> dict | None:
     """The walk from `a` to `b` on the standard graph's pedestrian costing, as the answer
-    carries it, or None where there is none on foot, it is too long, or no time is left."""
+    carries it, or None where there is none on foot, it is too long, or no time is left.
+    `prefer_walkways`: keep to sidewalks and paths where there are (`WALKWAY_PREFERENCE`)."""
     if deadline.at - clock() < WALK_IN_MIN_LEFT_S:
         return None
+    pedestrian: dict = {"walking_speed": WALK_IN_SPEED_KMH}
+    if prefer_walkways:
+        pedestrian["sidewalk_factor"] = WALKWAY_PREFERENCE
+        pedestrian["walkway_factor"] = WALKWAY_PREFERENCE
     payload = {
         "locations": [{"lon": p[0], "lat": p[1], "type": "break"} for p in (a, b)],
         "costing": "pedestrian",
-        "costing_options": {"pedestrian": {"walking_speed": WALK_IN_SPEED_KMH}},
+        "costing_options": {"pedestrian": pedestrian},
         "directions_type": "none",
         "units": "kilometers",
     }
@@ -2995,6 +3032,70 @@ def walk_leg(a: list[float], b: list[float], deadline: Deadline) -> dict | None:
         "distance_m": round(metres, 1),
         "duration_s": round(float((legs[0].get("summary") or {}).get("time", 0.0)), 1),
     }
+
+
+# What a walk beside a busy road may be on (`walk_roadside_m`): Valhalla's uses that are
+# not a carriageway, and the road classes a walk may follow without a sidewalk.
+WALKWAY_USES = frozenset(
+    {
+        "footway",
+        "sidewalk",
+        "path",
+        "pedestrian",
+        "cycleway",
+        "pedestrian_crossing",
+        "steps",
+        "mountain_bike",
+        "bridleway",
+        "living_street",
+        "elevator",
+    }
+)
+MAIN_ROAD_CLASSES = frozenset(
+    {"motorway", "trunk", "primary", "secondary", "tertiary", "unclassified"}
+)
+
+
+def walk_roadside_m(line: list, deadline: Deadline) -> float | None:
+    """The metres of a walk (`walk_leg`'s line) along a main road's carriageway with no
+    sidewalk mapped on it, as the standard graph's pedestrian costing traces it; None
+    where it cannot be traced or no time is left (`novice_walks`: such a walk is not
+    offered)."""
+    if len(line) < 2 or deadline.at - clock() < WALK_IN_MIN_LEFT_S:
+        return None
+    payload = {
+        "shape": [{"lon": p[0], "lat": p[1]} for p in line],
+        "shape_match": "edge_walk",
+        "costing": "pedestrian",
+        "costing_options": {"pedestrian": {"walking_speed": WALK_IN_SPEED_KMH}},
+        "filters": {
+            "attributes": ["edge.length", "edge.use", "edge.road_class", "edge.sidewalk"],
+            "action": "include",
+        },
+        "units": "kilometers",
+    }
+    try:
+        answer = _call(
+            Variant.STANDARD.value,
+            "trace_attributes",
+            payload,
+            Deadline(deadline.at, min(deadline.per_call_s, WALK_IN_CALL_S)),
+        )
+    except (RouterRefused, DeadlineExceeded, RouterUnavailable):
+        return None
+    edges = answer.get("edges") or []
+    if not edges:
+        return None
+    metres = 0.0
+    for edge in edges:
+        if str(edge.get("use") or "") in WALKWAY_USES:
+            continue
+        if str(edge.get("road_class") or "") not in MAIN_ROAD_CLASSES:
+            continue
+        if str(edge.get("sidewalk") or "none") in ("left", "right", "both"):
+            continue
+        metres += float(edge.get("length") or 0.0) * 1000.0
+    return round(metres, 1)
 
 
 def walk_in(
@@ -4058,6 +4159,48 @@ def _plan(
             stop_as_yield,
             lambda lon, lat: intersections.beacon_at(lon, lat, beacons) is not None,
         )
+        route_m = round(float(summary.get("length", 0.0)) * 1000.0, 1)
+        route_s = float(summary.get("time", 0.0))
+        # Novice and Nervous (v0.11.0, `core.novice_walks`): the short stretches of real LTS 4
+        # or worse with a sidewalk beside them, walked; on the plan's own route only, so the
+        # candidates do not spend its time.
+        walked: list[dict] = []
+        novice_classes = classes
+        if (
+            preset_name == presets.NOVICE
+            and dials.novice_walks
+            and not over_budget
+            and not quick
+            and not alternate
+        ):
+            # One small budget for all of them, so they never hold a slow plan up.
+            walks_until = Deadline(
+                min(deadline.at, clock() + novice_walks.BUDGET_S), deadline.per_call_s
+            )
+            walked = novice_walks.walks(
+                novice_walks.stretches(leg_runs, pieces, classes),
+                coordinates,
+                sum(p.metres for p in pieces)
+                + sum(float(r) for r in leg_runs if not isinstance(r, tuple)),
+                route_m,
+                lambda a, b: walk_leg(a, b, walks_until, prefer_walkways=True),
+                lambda line: walk_roadside_m(line, walks_until),
+            )
+            if walked:
+                described_full = novice_walks.with_entries(described_full, walked)
+                described_overview = novice_walks.with_entries(described_overview, walked)
+                gone = {i for walk in walked for i in walk["pieces"]}
+                novice_classes = [
+                    PieceClass("1", "none") if i in gone else cls for i, cls in enumerate(classes)
+                ]
+        # The walked pieces' own metres, as `stress` counts them (a join gap left out).
+        walked_m = sum(
+            pieces[i].metres
+            for walk in walked
+            for i in walk["pieces"]
+            if classes[i][0] in novice_walks.WALK_TIERS
+        )
+        walk_change_s = novice_walks.time_change_s(walked, route_m, route_s)
         return {
             "preset": preset.name,
             "variant": variant,
@@ -4067,7 +4210,7 @@ def _plan(
                 "coordinates": [[round(lon, 6), round(lat, 6)] for lon, lat in coordinates],
             },
             "distance_m": round(float(summary.get("length", 0.0)) * 1000.0, 1),
-            "duration_s": round(float(summary.get("time", 0.0)) + delay, 1),
+            "duration_s": round(route_s + delay + walk_change_s, 1),
             "junction_delay_s": round(delay, 1),
             "climb_m": round(climb, 1),
             "descent_m": round(descent, 1),
@@ -4128,7 +4271,13 @@ def _plan(
             # Not on a first route (`quick`): the offer is decided on the route the search
             # settles, so it does not come and go as the better route arrives.
             "novice": (
-                novice_note(stress, refined, busiest_stretch(pieces, classes))
+                novice_note(
+                    stress,
+                    refined,
+                    busiest_stretch(pieces, novice_classes),
+                    walked_m,
+                    novice_walks.public(walked),
+                )
                 if preset_name == presets.NOVICE and not over_budget and not quick
                 else None
             ),
