@@ -6247,6 +6247,22 @@ Travilah quarry pit off Shady Grove Rd over nine ways tagged only `highway=track
   1379220522 to 1379220572) is not closed as `works`, and warns if fewer than nine are in the
   extract. The climbs file then loses such climbs when it
   is written again after that rebuild.
+- Golf courses (owner report 2026-10-21, Woodmont Country Club in Rockville: "Still showing
+  some bike paths on private property. These are golf courses."). The cart paths there are plain
+  `highway=path` with no access tag, so the private-access tag rule missed them. From the next
+  rebuild every way inside a `leisure=golf_course` (half its length or more) is closed on every
+  graph (`restricted_areas.golf_closures`, `rm:no_bicycle=golf`, the road panel's "golf
+  course"): a closed path is left to the base map, a closed drive hidden. So is a way tagged
+  `golf=cartpath|path`, or a path or drive tagged `golf_cart=designated`, wherever it lies. Open:
+  an owner's override, a numbered public road, a DDOT Roadway Block street, a way whose own
+  `bicycle` tag (or, with none, `access=yes|permissive`) opens it, and, unless tagged as a cart
+  path, a way in a bicycle or hiking route relation, a path, cycleway or footway whose name a
+  trail outside the course also carries (a public trail through it, such as a creek trail past a
+  park course), an unnamed piece of up to 100 m (330 ft) between such trail ways (a bridge), and
+  a public street or its sidewalk or crossing. Every way is in
+  `<DATA_ROOT>/rebuild/reports/golf-closures.csv`; its closed ways join Review's "Industrial and
+  golf closures" list, where Reopen writes a `bicycle=yes` access override for a public trail
+  the rule closed.
 - Now, without a rebuild: `routemaker.climb_exclusions.EXCLUDED` lists a climb by id with its
   reason and source, and the builder, the hill seek (`core.hillseek.parse`) and the map
   (`frontend/src/lib/climbExclusions.ts`, the same ids) all drop it, so the committed file need not
