@@ -603,6 +603,18 @@ export function addClimbs(
   return true;
 }
 
+/**
+ * Both layers moved under `beforeId` (the major trails' names), when both are on the map; whether they were. The
+ * names come with the stress overlay, which can come after the climbs: added then, they would sit over the names
+ * (the v0.10.1 end review), so the map moves them once the overlay is in.
+ */
+export function climbsUnder(map: Pick<ClimbsMap, "getLayer"> & { moveLayer(id: string, beforeId?: string): void }, beforeId: string): boolean {
+  if (!map.getLayer(beforeId) || !CLIMBS_LAYERS.every((id) => map.getLayer(id))) return false;
+  // The line first, then the summits over it, as addClimbs orders them.
+  for (const id of CLIMBS_LAYERS) map.moveLayer(id, beforeId);
+  return true;
+}
+
 /** Show or hide both layers with the switch. */
 export function setClimbsOn(map: ClimbsMap, on: boolean): void {
   for (const id of CLIMBS_LAYERS) {
