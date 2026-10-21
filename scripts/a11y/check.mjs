@@ -35,10 +35,10 @@ const b = await connect(CDP_PORT);
 // route is shown (the sliders, the target distance, the loop and the weight live there), and
 // `junctions` the "Junctions to watch" fold; openSheet opens a bar sheet, openDirections the
 // Directions fold.
-async function open({ route = S_DEFAULT, hash = hashFor("default", 70), width = 1280, height = 900, scheme = "light", forced = false, mobile = false, delayMs = 0, delayFrom = 2, stressTiles = true, ride = true, junctions = true, accessMode = false, admin = false, suggester = false, hazards = null, port = PORT, before = null, init = "", view = "plan" } = {}) {
-  const p = await newPage(b, { width, height, mobile });
+async function open({ route = S_DEFAULT, hash = hashFor("default", 70), width = 1280, height = 900, scheme = "light", forced = false, mobile = false, delayMs = 0, delayFrom = 2, stressTiles = true, ride = true, junctions = true, accessMode = false, admin = false, suggester = false, signIn = false, computerAsks = false, hazards = null, port = PORT, before = null, init = "", view = "plan" } = {}) {
+  const p = await newPage(b, { width, height, mobile, computerAsks });
   if (mobile) await p.s("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
-  await mock(p, route, { delayMs, delayFrom, stressTiles, admin, suggester, hazards });
+  await mock(p, route, { delayMs, delayFrom, stressTiles, admin, suggester, hazards, signIn });
   await media(p, { scheme, forced });
   // A device that kept accessibility mode on (455): the stored value, set before the app starts.
   // Room for every resource entry: the dev server's modules alone now pass Chrome's default of 250, after which a
@@ -188,15 +188,15 @@ const pressRoute = async (p) => {
   await p.close();
 }
 
-// ---- 1b. Plan's bar at the top of the map (the owner, 2026-10-17): Route or Update route big, only while there is
-// something to route; Undo, Redo, Manual mode (v0.9.1) and Clear small beside it ----
+// ---- 1b. Plan's bar at the top of the map (the owner, 2026-10-17): Route or Update route big while there is
+// something to route, else Save route with Start ride (2026-10-21); Undo, Redo, Manual mode (v0.9.1) and Clear small ----
 for (const [label, size] of [["phone", { width: 390, height: 844, mobile: true }], ["computer", { width: 1280, height: 900 }]]) {
   const p = await open({ ...size, ride: false });
   const bar = () => p.eval(`(() => { const g = document.querySelector('.plan-map-bar'); if (!g) return null; const r = g.getBoundingClientRect();
     return { r: [Math.round(r.top), Math.round(r.left), Math.round(r.right)], buttons: [...g.querySelectorAll('button')].map((b) => { const q = b.getBoundingClientRect(); return { name: b.getAttribute('aria-label') || b.textContent.trim(), h: Math.round(q.height), w: Math.round(q.width), top: Math.round(q.top), right: Math.round(q.right) }; }) }; })()`);
   const upToDate = await bar();
-  check(`plan bar (${label}): with the route up to date there is no big button, only Manual mode and Clear (small, named, 44 px)`,
-    upToDate && JSON.stringify(upToDate.buttons.map((x) => x.name)) === JSON.stringify(["Manual mode", "Clear the plan"]) && upToDate.buttons.every((x) => x.h >= 44 && x.w >= 44), JSON.stringify(upToDate));
+  check(`plan bar (${label}): with the route up to date the big ones are Save route and Start ride, then Manual mode and Clear (small, named, 44 px)`,
+    upToDate && JSON.stringify(upToDate.buttons.map((x) => x.name)) === JSON.stringify(["Save route", "Start ride", "Manual mode", "Clear the plan"]) && upToDate.buttons.every((x) => x.h >= 44 && x.w >= 44), JSON.stringify(upToDate));
   const before = p.routeRequests;
   // A slider moved (set as a rider's drag would: the phone's sheet may have it out of view).
   await p.eval("(() => { const i = document.querySelector('.dial input[type=range]'); const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; const d = Number(i.step || 1) * 5; const v = Number(i.value); i.focus(); set.call(i, String(v - d >= Number(i.min) ? v - d : v + d)); i.dispatchEvent(new Event('input', { bubbles: true })); i.dispatchEvent(new FocusEvent('focusout', { bubbles: true })); return true; })()");
@@ -213,8 +213,123 @@ for (const [label, size] of [["phone", { width: 390, height: 844, mobile: true }
   await sleep(3500);
   const after = await bar();
   const focus = await p.eval("(() => { const e = document.activeElement; return e?.classList.contains('route-button') ? 'route' : e?.classList.contains('maplibregl-canvas') ? 'map' : e?.getAttribute('aria-label') || e?.tagName; })()");
-  check(`plan bar (${label}): pressing it routes once, it goes once the route is up to date, and the focus goes to the panel's Route button (the map when the panel is hidden), never Clear`,
-    p.routeRequests - before === 1 && after && !after.buttons.some((x) => /route|Routing/.test(x.name)) && focus === "route", JSON.stringify({ plans: p.routeRequests - before, after, focus }));
+  check(`plan bar (${label}): pressing it routes once, it goes once the route is up to date, and the focus goes to Save route in its place, never Clear`,
+    p.routeRequests - before === 1 && after && !after.buttons.some((x) => /Update route|Routing/.test(x.name)) && focus === "Save route", JSON.stringify({ plans: p.routeRequests - before, after, focus }));
+  await p.close();
+}
+
+// ---- 1c. Save route in the big button's place (the owner, 2026-10-21): signed in, a route up to date and chosen (one
+// route is chosen as drawn) shows Save route there; it opens the name form, and a change brings Update route back ----
+for (const [label, size] of [["phone", { width: 390, height: 844, mobile: true }], ["computer", { width: 1280, height: 900 }]]) {
+  const p = await open({ ...size, ride: false, suggester: true });
+  const names = () => p.eval("[...document.querySelectorAll('.plan-map-bar button')].map((b) => b.getAttribute('aria-label') || b.textContent.trim())");
+  const upToDate = await names();
+  const big = await p.eval("(() => { const b = document.querySelector('.plan-map-bar .save-route-open'); if (!b) return null; const r = b.getBoundingClientRect(); return { h: Math.round(r.height), top: Math.round(r.top), expanded: b.getAttribute('aria-expanded') }; })()");
+  await p.eval("document.querySelector('.plan-map-bar .save-route-open').click(); true");
+  await sleep(300);
+  const form = await p.eval("(() => { const f = document.querySelector('.plan-map-bar .save-route-form'); const i = f?.querySelector('input'); const b = document.querySelector('.plan-map-bar .save-route-open'); return { open: !!f, focused: document.activeElement === i, name: i?.value, expanded: b?.getAttribute('aria-expanded'), buttons: [...f.querySelectorAll('button')].map((x) => x.textContent.trim()) }; })()");
+  await p.escape();
+  await sleep(200);
+  const escBack = await p.eval("document.activeElement === document.querySelector('.plan-map-bar .save-route-open')");
+  await p.eval("document.querySelector('.plan-map-bar .save-route-open').click(); true");
+  await sleep(300);
+  // The form whole on the screen, under the bar.
+  const fits = await p.eval("(() => { const r = document.querySelector('.plan-map-bar .save-route-form').getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth; })()");
+  await p.eval("[...document.querySelectorAll('.plan-map-bar .save-route-form button')].find((b) => b.textContent.trim() === 'Cancel').click(); true");
+  await sleep(200);
+  const back = escBack && fits && await p.eval("document.activeElement === document.querySelector('.plan-map-bar .save-route-open')");
+  await p.eval("(() => { const i = document.querySelector('.dial input[type=range]'); const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; const d = Number(i.step || 1) * 5; const v = Number(i.value); set.call(i, String(v - d >= Number(i.min) ? v - d : v + d)); i.dispatchEvent(new Event('input', { bubbles: true })); i.dispatchEvent(new FocusEvent('focusout', { bubbles: true })); return true; })()");
+  await sleep(600);
+  const changed = await names();
+  // Update route pressed: once the route is up to date, Save route takes its place and the focus with it.
+  await p.eval("[...document.querySelectorAll('.plan-map-bar button')].find((b) => b.textContent.trim() === 'Update route').focus(); true");
+  await p.enter();
+  await sleep(3500);
+  const handed = await p.eval("document.activeElement === document.querySelector('.plan-map-bar .save-route-open')");
+  check(`plan bar (${label}): pressing Update route hands the focus to Save route in its place`, handed, await p.eval("document.activeElement?.textContent?.trim() || document.activeElement?.tagName"));
+  check(`plan bar (${label}): signed in, the route up to date shows Save route big in Update route's place; it opens the name form (focused, named, with Download GPX, whole on the screen), Escape and Cancel return to it, and a change brings Update route back in its place`,
+    JSON.stringify(upToDate) === JSON.stringify(["Save route", "Start ride", "Manual mode", "Clear the plan"]) && big?.h >= 52 && big.top <= 16 && big.expanded === "false" &&
+      form.open && form.focused && !!form.name && form.expanded === "true" && JSON.stringify(form.buttons) === JSON.stringify(["Save", "Download GPX", "Cancel"]) && back &&
+      JSON.stringify(changed) === JSON.stringify(["Update route", "Manual mode", "Clear the plan"]),
+    JSON.stringify({ upToDate, big, form, back, changed }));
+  await p.close();
+}
+
+// ---- 1d. Save route waits for a route chosen among several (the owner, 2026-10-21: "once an option was chosen") ----
+{
+  const p = await open({ route: S_CHOICES, hash: hashFor("trailmaxxing", 100), ride: false, suggester: true });
+  const has = () => p.eval("!!document.querySelector('.plan-map-bar .save-route-open')");
+  const before = await has();
+  await p.eval("(() => { const d = document.querySelector('fieldset.candidates')?.closest('details'); if (d && !d.open) d.querySelector('summary').click(); return true; })()");
+  await sleep(200);
+  await p.eval("document.querySelectorAll('fieldset.candidates input')[1].click(); true");
+  await sleep(400);
+  const after = await has();
+  check("plan bar: with routes to choose from, Save route shows only once one is chosen", before === false && after === true, JSON.stringify({ before, after }));
+  await p.close();
+}
+
+// ---- 1e. The bar's other buttons (the owner, 2026-10-21): signed out, Save offers Discord sign-in or the GPX file; Start
+// ride on a computer asks first; an empty plan offers Load route; a route a link shared can be saved from Go ----
+{
+  const p = await open({ ride: false, signIn: true, computerAsks: true });
+  await p.eval("document.querySelector('.plan-map-bar .save-route-open').click(); true");
+  await sleep(300);
+  const form = await p.eval("(() => { const f = document.querySelector('.plan-map-bar .save-route-form'); return { input: !!f?.querySelector('input'), items: [...f.querySelectorAll('a, button')].map((x) => x.textContent.trim()), href: f.querySelector('a')?.getAttribute('href'), focused: document.activeElement?.textContent.trim() }; })()");
+  await p.eval("[...document.querySelectorAll('.plan-map-bar .save-route-form button')].find((b) => b.textContent.trim() === 'Download GPX').click(); true");
+  await p.waitFor("!!document.querySelector('.plan-map-bar .save-route-said')?.textContent.trim()", 5000);
+  const gpx = await p.eval("({ said: document.querySelector('.plan-map-bar .save-route-said').textContent.trim(), closed: !document.querySelector('.plan-map-bar .save-route-form'), focus: document.activeElement === document.querySelector('.plan-map-bar .save-route-open') })");
+  check("plan bar: signed out, Save offers Sign in with Discord (focused, to /auth/login) or Download GPX, which saves the file, says so and returns to Save",
+    !form.input && JSON.stringify(form.items) === JSON.stringify(["Sign in with Discord", "Download GPX", "Cancel"]) && form.href === "/auth/login" && form.focused === "Sign in with Discord" &&
+      /^GPX track/.test(gpx.said) && gpx.closed && gpx.focus, JSON.stringify({ form, gpx }));
+  await p.eval("document.querySelector('.plan-map-bar .plan-bar-start').focus(); true");
+  await p.enter();
+  await sleep(500);
+  const asked = await p.eval("(() => { const d = document.querySelector('.start-computer-dialog'); return { open: !!d?.open, focus: document.activeElement?.textContent.trim(), riding: !!document.querySelector('section.ride, .ride-ask:not([hidden])') }; })()");
+  const dialog = await axNode(p, ".start-computer-dialog");
+  await p.escape();
+  await sleep(300);
+  const back = await p.eval("({ closed: !document.querySelector('.start-computer-dialog').open, focus: document.activeElement === document.querySelector('.plan-map-bar .plan-bar-start'), riding: !!document.querySelector('section.ride, .ride-ask:not([hidden])') })");
+  await p.eval("document.querySelector('.plan-map-bar .plan-bar-start').click(); true");
+  await sleep(400);
+  await p.eval("[...document.querySelectorAll('.start-computer-dialog button')].find((b) => b.textContent.trim() === 'Start anyway').click(); true");
+  // Start anyway goes on as Start ride does: to the ride, or first to how the ride is told (Plan's first ride).
+  const rode = await p.waitFor("!!document.querySelector('section.ride') || !!document.querySelector('.ride-ask:not([hidden])')", 8000);
+  check("start ride on a computer: a dialog named 'This looks like a computer' asks first, Go back focused; Escape goes back to Start ride, and Start anyway goes on to the ride",
+    asked.open && asked.focus === "Go back" && !asked.riding && dialog?.role === "dialog" && dialog?.name === "This looks like a computer" && back.closed && back.focus && !back.riding && rode,
+    JSON.stringify({ asked, dialog: [dialog?.role, dialog?.name], back, rode }));
+  await p.close();
+}
+for (const [label, size] of [["phone", { width: 390, height: 844, mobile: true }], ["computer", { width: 1280, height: 900 }]]) {
+  const p = await newPage(b, size);
+  if (size.mobile) await p.s("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
+  await mock(p, S_DEFAULT, {});
+  await media(p, {});
+  await p.s("Page.addScriptToEvaluateOnNewDocument", { source: "try { sessionStorage.setItem('routemaker.tab-mode', 'plan'); } catch {}" });
+  await p.s("Page.navigate", { url: `http://127.0.0.1:${PORT}/` });
+  await p.waitFor("!!document.querySelector('.plan-map-bar .plan-bar-load')", 30000);
+  const load = await p.eval("(() => { const b = document.querySelector('.plan-map-bar .plan-bar-load'); const r = b.getBoundingClientRect(); return { name: b.textContent.trim(), h: Math.round(r.height) }; })()");
+  await p.eval("document.querySelector('.plan-map-bar .plan-bar-load').click(); true");
+  await sleep(500);
+  const sheet = await p.eval("(() => { const s = document.getElementById('sheet-gpx'); return !!s && !s.hidden && !!s.offsetParent; })()");
+  check(`plan bar (${label}): an empty plan offers Load route big at the top of the map, and it opens Save & load`, load.name === "Load route" && load.h >= 52 && sheet, JSON.stringify({ load, sheet }));
+  await p.close();
+}
+{
+  // A route a link shared, opened signed out on a phone (in Go): Save offers sign-in or the GPX file.
+  const p = await newPage(b, { width: 390, height: 844, mobile: true });
+  await p.s("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
+  await mock(p, S_DEFAULT, { signIn: true });
+  const hash = hashFor("default", 70);
+  p.sharedRoute = { source: "plan", name: "A friend's route", line: S_DEFAULT.geometry.coordinates, distance_m: S_DEFAULT.distance_m, inputs: { hash, points: [] }, answer: S_DEFAULT };
+  await media(p, {});
+  const id = "a".repeat(32);
+  await p.s("Page.navigate", { url: `http://127.0.0.1:${PORT}/?route=${id}${hash}&route=${id}` });
+  await p.waitFor("!!document.querySelector('.go-chips .save-route-chip')", 30000);
+  await p.eval("document.querySelector('.go-chips .save-route-chip').click(); true");
+  await sleep(300);
+  const items = await p.eval("[...document.querySelectorAll('.go-chips .save-route-form a, .go-chips .save-route-form button')].map((x) => x.textContent.trim())");
+  check("shared link: signed out in Go, Save offers Sign in with Discord or Download GPX", JSON.stringify(items) === JSON.stringify(["Sign in with Discord", "Download GPX", "Cancel"]), JSON.stringify(items));
   await p.close();
 }
 
@@ -4935,7 +5050,26 @@ const PICK_OPEN_IN_GO = "(() => { const s = document.querySelector('#sheet-setti
   const q = await bare({ width: 1280, height: 900, mobile: false });
   const wide = await q.eval(`({ mode: ${modeNow}, top: !!document.querySelector('nav.go-top'), chips: [...document.querySelectorAll('.map-chips .map-chip')].map((x) => x.textContent.trim()) })`);
   // Places to see joined Plan's map chips in 2b38bf1c ("Go: Repair and Sights behind More; Plan: Places to see").
-  check("go: a shared link opens in Go on a phone, and a wide screen opens in Plan, with Food, Water and Places to see chips on the map", linked === "Go" && wide.mode === "Plan" && !wide.top && JSON.stringify(wide.chips) === JSON.stringify(["Food", "Water", "Places to see"]), JSON.stringify({ linked, wide }));
+  check("go: a shared link opens in Go on a phone, and a wide screen opens in Plan, with Food, Water and Places to see chips on the map (behind Find)", linked === "Go" && wide.mode === "Plan" && !wide.top && JSON.stringify(wide.chips) === JSON.stringify(["Find", "Food", "Water", "Places to see"]), JSON.stringify({ linked, wide }));
+  // Folded behind Find (the owner, 2026-10-21: "It's more room"): Find opens the row, Escape folds it back to Find,
+  // and a choice opens its sheet and folds the row.
+  const fold = "(() => { const t = document.querySelector('.map-chips-toggle'); const r = document.getElementById(t.getAttribute('aria-controls')); return { expanded: t.getAttribute('aria-expanded'), hidden: r.hidden }; })()";
+  const closed = await q.eval(fold);
+  await q.eval("document.querySelector('.map-chips-toggle').focus(); document.querySelector('.map-chips-toggle').click(); true");
+  await sleep(200);
+  const opened = await q.eval(fold);
+  await q.eval("document.querySelector('.map-chips-row .map-chip').focus(); true");
+  await q.escape();
+  await sleep(200);
+  const escaped = { ...(await q.eval(fold)), focus: await q.eval("document.activeElement === document.querySelector('.map-chips-toggle')") };
+  await q.eval("document.querySelector('.map-chips-toggle').click(); true");
+  await sleep(200);
+  await q.eval("[...document.querySelectorAll('.map-chips-row .map-chip')].find((c) => c.textContent.trim() === 'Water').click(); true");
+  await sleep(400);
+  const chose = { ...(await q.eval(fold)), sheet: await q.eval("(() => { const s = document.getElementById('sheet-nearest'); return !!s && !s.hidden; })()") };
+  check("plan: Food, Water and Places to see fold behind Find (collapsed); Find opens them, Escape folds them back to Find, and Water opens its sheet and folds them",
+    closed.expanded === "false" && closed.hidden && opened.expanded === "true" && !opened.hidden && escaped.hidden && escaped.focus && chose.hidden && chose.sheet,
+    JSON.stringify({ closed, opened, escaped, chose }));
   await q.close();
 }
 {
@@ -5061,7 +5195,7 @@ const failed = results.filter((r) => !r.ok);
 // Review mode's own lists (22c2) add six. End ride's slide (#235) adds two: a tap springs back, a slide ends the ride.
 // A lettered pin's card (no auto route, 2026-10-19) adds two: the card a tap opens, and the card the B key opens.
 // The map's info panel adds two at 1280 px: the i named for it, and what it opens.
-const EXPECTED = 670;
+const EXPECTED = 681;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

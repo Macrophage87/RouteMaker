@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactElement } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type ReactElement } from "react";
 import type { Map as MapLibreMap } from "maplibre-gl";
 import { MapView, type Frame, type LineEdit, type StressAvailability } from "./MapView.tsx";
 import { RoadInfoDialog } from "./RoadInfoDialog.tsx";
@@ -21,7 +21,7 @@ import { endsOnFoot, layersTurnedOn, presetSaid, twoPointsOnly, usesBikeshare, t
 import { atFromHash, decodePlan, encodePlan } from "./lib/planHash.ts";
 import { RouteScheduler, type SchedulerState } from "./lib/routeScheduler.ts";
 import { confirmedUpTo, sendsConfirmation, spanKm } from "./lib/longRide.ts";
-import { forgetPlan, planToOpen, tabSession } from "./lib/signIn.ts";
+import { forgetPlan, isPlainClick, planToOpen, rememberPlanForSignIn, tabSession } from "./lib/signIn.ts";
 import { STILL_PLANNING_AFTER_MS, announceRoute, stillPlanningSaid } from "./lib/summary.ts";
 import { focusesPlanButton, opensSheet, sheetOrder, type SheetSection } from "./lib/sheet.ts";
 import { neutralPaletteSearch, MTB_MIN_ZOOM, mtbTrailsOn, setMtbTrails, setRoutableMtb } from "./stressStyle.js";
@@ -63,7 +63,7 @@ import { skipToPlanner, SKIP_LINK_TEXT, SKIP_TO_RIDE_TEXT } from "./lib/skipLink
 import { BetaChip, betaReportUrl, isBetaBuild } from "./lib/betaBanner.ts";
 import { MtbMapKey } from "./lib/stressLegend.ts";
 import { useHideBusyClimbs, useTrailClimbs } from "./lib/climbsLegend.ts";
-import { announceHow, candidateRoute } from "./lib/candidates.ts";
+import { announceHow, candidateRoute, candidateRows } from "./lib/candidates.ts";
 import { canReverse, loopStops, loopView, reversedPoints } from "./lib/loop.ts";
 import { FINDING_ORDER_SAID, STILL_FINDING_ORDER_SAID, applyAnswer, requestStopOrder, stopsThatMove } from "./lib/stopOrder.ts";
 import {
@@ -249,6 +249,8 @@ import { GPX_SAID_OPENED, GPX_SAID_ROUTE, GPX_SAID_TRACK, downloadCourse, downlo
 import type { DeviceProfileId } from "./lib/deviceProfiles.ts";
 import { SHARED_GONE, SHARED_INPUTS_ONLY, SHARED_OPENED, SHARED_PATH, SHARED_REVOKED, SHARED_REVOKED_ERROR, SHARE_KEEP_DEFAULT, SHARE_RIDE_WAIT, asRideLink, gpxShareFile, keepFields, newSharedId, previewImageOk, readShared, rideLinkFrom, sharedBody, sharedIdFrom, storeShared, withSharedId, type ShareKeep } from "./lib/sharedRoutes.ts";
 import { ClosureDialog, type ClosureAsk } from "./ClosureDialog.tsx";
+import { StartOnComputerDialog } from "./StartOnComputerDialog.tsx";
+import { askBeforeStart, looksLikePhone, rememberStartAnyway } from "./lib/startOnComputer.ts";
 import { ShareCardDialog, type ShareCardSource } from "./ShareCardDialog.tsx";
 import { usableProfile } from "./lib/profileChart.ts";
 import { bypassFor, bypassPlanKey, bypassSaid, toggleBypass, type Bypass } from "./lib/closureMap.ts";
@@ -3150,7 +3152,15 @@ export function App() {
   // Start ride: the line about to be ridden, checked first ("Ride it anyway" goes on to the ride).
   // The voice is unlocked first, synchronously inside the press (iOS speaks only in a gesture; after the
   // check's await it would be too late). A press that asks the first-ride question unlocks in that dialog.
+  const [computerAsk, setComputerAsk] = useState(false);
+  // Start anyway, kept in memory too: a tab that cannot store it (a private window) still starts.
+  const computerOk = useRef(false);
   const startRideChecked = () => {
+    // On a computer, asked first (lib/startOnComputer.ts): Go back, or Start anyway, which presses again.
+    if (!computerOk.current && askBeforeStart(looksLikePhone(), tabSession())) {
+      setComputerAsk(true);
+      return;
+    }
     const unlocked = ridePrefs.chosen || mode === "go";
     if (!shown) return startRide(false);
     // A second press while the first one's check runs is ignored (checkThen).
@@ -4178,15 +4188,25 @@ export function App() {
   // big one after routing, Clear after clearing) moves to the panel's Route button where it shows, else the map
   // (never to Clear, where a second Enter would clear the plan).
   const barRoute = planFirst && (routingNow || routeNow.unavailable === null);
-  const planBar = planFirst && (barRoute || can.undo || can.redo || points.length > 0);
+  // Once the route is up to date and chosen, the big button saves it (the owner, 2026-10-21: "plan should offer an
+  // option to save the route in the same button location as the update route ... Basically once an option was
+  // chosen"). A route without others to choose from is chosen as drawn. Its form also downloads the GPX ("Save should
+  // save, but also allow a GPX export too"); signed out, it offers Discord sign-in in the name's place.
+  const barSave =
+    planFirst && !barRoute && !!shown && !stale && routedPoints === points && (chosen || candidateRows(picked) === null);
+  // An empty plan: Load route there (the owner, 2026-10-21: "Also, add a load route"), opening Save & load.
+  const barLoad = planFirst && points.length === 0 && !routingNow;
+  const planBar = planFirst && (barRoute || barSave || barLoad || can.undo || can.redo || points.length > 0);
   const barFocused = useRef(false);
   useEffect(() => {
     if (!barFocused.current) return;
     const active = document.activeElement;
     if (active && active !== document.body && active.isConnected) return;
     barFocused.current = false;
+    // Update route gone for Save route in its place: the focus stays in that place, so the new name is read.
+    const save = document.querySelector<HTMLElement>(".plan-map-bar .save-route-open");
     const route = document.querySelector<HTMLElement>(".plan-panel .route-button");
-    (route?.offsetParent ? route : document.querySelector<HTMLElement>(".maplibregl-canvas"))?.focus();
+    (save ?? (route?.offsetParent ? route : document.querySelector<HTMLElement>(".maplibregl-canvas")))?.focus();
   });
   // Go's bar mirrors Plan's (the owner, 2026-10-18: "mirror what plan does in general, but instead of route, we
   // start the ride"): Undo, Redo, the big button and Clear, each while it has something to do. The big button is
@@ -4262,9 +4282,18 @@ export function App() {
         <NearbyStations points={points} pins={stationChoice} onChoose={chooseStation} />
       </Fold>
     ) : null;
+  // Discord sign-in from a Save form (the owner, 2026-10-21), where the server signs riders in: the plan is kept across it.
+  const signInFromSave = me.sign_in
+    ? (e: MouseEvent<HTMLAnchorElement>) => isPlainClick(e) && rememberPlanForSignIn(tabSession(), window.location.hash, linkNote !== "")
+    : null;
+  // A route a link shared, signed out (the owner, 2026-10-21: "If someone sends a route via link, you should be able
+  // to add that ride to your saved routes"): Go's Save offers sign-in, or the GPX file, as Plan's bar does.
+  const sharedShown = sharedOpen !== null && shown === sharedOpen.answer;
   const actions = {
     routedLoop, copyLink, linkNote, shareImage: () => setShareCardOpen(true), linkSpoken, keepShown, keepForOffline, keeping, keepSpoken, linkSaid,
-    downloadRoute, save: saveProps, savedNote: savedNoteShown,
+    downloadRoute,
+    save: saveProps ?? (sharedShown ? { defaultName: () => "", onSave: null, signIn: signInFromSave, onGpx: downloadRoute } : null),
+    savedNote: savedNoteShown,
   };
   // Go's ride types: before a route under the place chips, with one under the route card (edit-route redesign).
   const goRides = <RideChips ids={goRideChips(myGo.ride)} preset={preset} onPick={pickRide} more={(opener) => openView("ride", opener)} label="Ride type" ownHint={OWN_RIDE_HINT} />;
@@ -4506,6 +4535,16 @@ export function App() {
       {rideGroupLine && (
         <RideGroup type={rideGroupType ?? "group-ride"} points={rideGroupPoints} line={rideGroupLine} getMap={getMap} here={rideView?.rider?.point ?? (here ? here.point : null)} />
       )}
+      <StartOnComputerDialog
+        open={computerAsk}
+        onBack={() => setComputerAsk(false)}
+        onAnyway={() => {
+          computerOk.current = true;
+          rememberStartAnyway(tabSession());
+          setComputerAsk(false);
+          startRideChecked();
+        }}
+      />
       <ClosureDialog ask={closureAsk} onReroute={() => void closureReroute()} onAnyway={closureAnyway} onCancel={closureCancel} />
       <ShareCardDialog
         open={shareCardOpen && shareCardSource !== null && mode !== "go" && !riding}
@@ -4550,7 +4589,9 @@ export function App() {
           aria-label="Route and edits"
           onFocus={() => (barFocused.current = true)}
           onBlur={(event) => {
-            if (event.relatedTarget) barFocused.current = false;
+            // A button of the bar taken away leaves no focus behind; a click on nothing in particular leaves it on
+            // the page, with the button still there, and is not followed.
+            if (event.relatedTarget || (event.target as Element).isConnected) barFocused.current = false;
           }}
         >
           {can.undo && (
@@ -4574,6 +4615,30 @@ export function App() {
             >
               <Icon name="routes" size={20} />
               {routingNow ? ROUTING_LABEL : routeNow.label}
+            </button>
+          )}
+          {barSave && (
+            <SaveRoute
+              defaultName={saveProps?.defaultName ?? (() => "")}
+              onSave={saveProps?.onSave ?? null}
+              label={SAVE_ROUTE}
+              bar
+              onGpx={downloadRoute}
+              signIn={signInFromSave}
+            />
+          )}
+          {barLoad && (
+            <button type="button" className="secondary plan-bar-route plan-bar-load" onClick={(event) => openView("gpx", event.currentTarget)}>
+              <Icon name="file" size={20} />
+              Load route
+            </button>
+          )}
+          {/* Start ride beside it (the owner, 2026-10-21: "We might also want to allow for a start route too"), on a
+              route a browser can ride, as Go's bar. */}
+          {barSave && shown && rideableRoute(shown) && (
+            <button type="button" className="secondary plan-bar-route plan-bar-start" onClick={startRideChecked} aria-label="Start ride">
+              <Icon name="play" size={20} />
+              Start<span className="plan-bar-wide"> ride</span>
             </button>
           )}
           {manualOffered && (
