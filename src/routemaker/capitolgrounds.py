@@ -25,8 +25,9 @@ Not opened: a way any bicycle, vehicle or closed access key speaks for (OSM's
 `access=private` courtyards and corridors stay closed), steps, natural surfaces, a
 tunnel, building passage, indoor or covered way (the passages through and under the
 buildings), and roadside sidewalks (`footway=sidewalk`). The sidewalks are open
-already, at the sidewalk rule's price (`routemaker.sidewalks`; the CBD's ban does not reach the grounds,
-`routemaker.cbd`), so a route keeps the street beside them where the street is calm.
+already, at the sidewalk rule's price (`routemaker.sidewalks`; the CBD's ban does not
+reach the grounds, `routemaker.cbd`), so a route keeps the street beside them where the
+street is calm.
 """
 
 from __future__ import annotations
