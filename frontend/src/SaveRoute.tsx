@@ -36,6 +36,11 @@ export function SaveRoute({ label, defaultName, onSave, chip = false, shown, bar
   const [busy, setBusy] = useState(false);
   const [said, setSaid] = useState({ text: "", count: 0 });
   const openerRef = useRef<HTMLButtonElement>(null);
+  // React's autoFocus skips a link: the sign-in link takes the focus as the form opens, as the name field does.
+  const signInRef = useRef<HTMLAnchorElement>(null);
+  useEffect(() => {
+    if (asking) signInRef.current?.focus();
+  }, [asking]);
   const formId = useId();
   // On the map, the line that says it saved goes after a while: it would cover the map chips under the bar.
   useEffect(() => {
@@ -106,7 +111,7 @@ export function SaveRoute({ label, defaultName, onSave, chip = false, shown, bar
               </button>
             </>
           ) : signIn ? (
-            <a className="button save-route-sign-in" href="/auth/login" onClick={signIn} autoFocus>
+            <a className="button save-route-sign-in" href="/auth/login" onClick={signIn} ref={signInRef}>
               Sign in with Discord
             </a>
           ) : null}

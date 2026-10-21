@@ -4266,7 +4266,7 @@ export function App() {
     ) : null;
   // Discord sign-in from a Save form (the owner, 2026-10-21), where the server signs riders in: the plan is kept across it.
   const signInFromSave = me.sign_in
-    ? (event: MouseEvent<HTMLAnchorElement>) => isPlainClick(event) && rememberPlanForSignIn(tabSession(), window.location.hash, linkNote !== "")
+    ? (e: MouseEvent<HTMLAnchorElement>) => isPlainClick(e) && rememberPlanForSignIn(tabSession(), window.location.hash, linkNote !== "")
     : null;
   // A route a link shared, signed out (the owner, 2026-10-21: "If someone sends a route via link, you should be able
   // to add that ride to your saved routes"): Go's Save offers sign-in, or the GPX file, as Plan's bar does.

@@ -45,7 +45,7 @@ export async function connect(port = Number(process.env.A11Y_CDP_PORT || 9222)) 
 }
 
 /** A fresh browser context and page. */
-export async function newPage(b, { width = 1280, height = 900, mobile = false } = {}) {
+export async function newPage(b, { width = 1280, height = 900, mobile = false, computerAsks = false } = {}) {
   const { browserContextId } = await b.send("Target.createBrowserContext", { disposeOnDetach: true });
   const { targetId } = await b.send("Target.createTarget", { url: "about:blank", browserContextId });
   const { sessionId } = await b.send("Target.attachToTarget", { targetId, flatten: true });
@@ -114,6 +114,9 @@ export async function newPage(b, { width = 1280, height = 900, mobile = false } 
   await s("DOM.enable");
   await s("Accessibility.enable");
   await s("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile });
+  // Start ride on a computer asks first (lib/startOnComputer.ts): Start anyway is taken as chosen in this tab, so a
+  // check's Start ride starts, unless the check is about that question (`computerAsks`).
+  if (!computerAsks) await s("Page.addScriptToEvaluateOnNewDocument", { source: "try { sessionStorage.setItem('routemaker.start-on-computer', 'yes'); } catch {}" });
   return page;
 }
 
