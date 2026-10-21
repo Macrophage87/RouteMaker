@@ -4969,7 +4969,16 @@ Tests: `lib/sidebar.test.ts`.
   `places_locality`; the owner, 2026-10-21) are its ExtraBold on a 2.5 px white halo: a
   neighbourhood in capitals, 11-14 px; a town in mixed case, 13-17 px; a large town
   (population_rank 9 or more) 15-17 px, so a town reads above a neighbourhood, a neighbourhood
-  apart from a street, and both stay under the station names. MapLibre
+  apart from a street, and both stay under the station names. The base map's other labels
+  (`OTHER_LABEL`: park and place names, water, islands, house numbers, route shields) and the
+  app's own names (mountain-bike trails, scenic spots, waypoints, route choices at 15 px; mile
+  markers and contour heights at 12-13 px) are SemiBold on a white halo too, in dark shades of
+  their colours (7:1 or more); counts inside icons (climbs, docks, Review badges) keep their
+  sizes. At z12 and z13 a plain street (facility "none", not a trail, paved, open to cars) that
+  the tiles mark `dense` (a city grid; unmarked, as a rural road or an older tile, it is full width) is
+  drawn thinner (`STREET_THIN_SCALE`: line x0.4 and x0.6, casing extra x0.5 and x0.75, a full
+  pixel a side with the accessibility switch), so a city grid is a mesh, not a carpet; lanes,
+  paths, trails and unpaved roads keep their widths (the owner, 2026-10-21). MapLibre
   draws text from glyph files, not web fonts, and the style has one glyph URL template (the
   base map's `/basemap/fonts/`), so the three Latin ranges (`corridor.ts` `GLYPH_RANGES`) of
   Regular, SemiBold, ExtraBold and Italic are made once with `scripts/make_map_glyphs.mjs` and bundled in
