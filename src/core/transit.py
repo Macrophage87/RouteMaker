@@ -103,6 +103,7 @@ from __future__ import annotations
 import json
 import logging
 import math
+import re
 from bisect import bisect_left
 from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
@@ -176,6 +177,11 @@ FREQUENT_MIN = 15
 # A departure further off than this is not offered.
 MAX_WAIT_MIN = 60
 
+# Every Metro station has elevators (WMATA: all 98 stations are accessible), so every one takes
+# a bike. A station the elevator files miss (27 of them, NoMa-Gallaudet U among them) was left out,
+# and a rider a block from NoMa was sent 14 min to another station (Stephen, 2026-10-21). Its
+# bike entrance is then its nearest entrance, where the files have no elevator.
+EVERY_STATION_TAKES_A_BIKE = True
 SYSTEMS_PATH = Path(__file__).resolve().parent / "transitdata" / "systems.json"
 BLACKOUTS_PATH = Path(__file__).resolve().parent / "transitdata" / "metro-bike-blackouts.json"
 METRO_SYSTEM = "wmata-rail"
@@ -272,6 +278,12 @@ class Stop:
     entrances: tuple[tuple[float, float], ...]
     system: int
     rail: bool  # a station (entered and left), not a bus stop
+    # Its bike entrance is an elevator the files know; else an entrance, often step-free
+    # (Stephen, 2026-10-21: "a lot have walk-in entrances"), and the steps do not say elevator.
+    elevator: bool = True
+    # Every elevator a bike could use here is out (core.transit_live.blocked_stations): a trip
+    # taking its own bike in or out here is ranked this many seconds down (`ELEVATOR_OUT_S`).
+    elevator_out_s: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -396,6 +408,40 @@ class Schedule:
         return f"the stop at {stop.name}" if stop.name else "the bus stop"
 
 
+# Stephen, 2026-10-21: "I'd say an elevator outage is about a 15 minute penalty" (with no other
+# elevator to use; "Most cyclists would just ride from the next station over"), on the ranking's
+# score only, never the time shown, and "15 minutes for everyone". In the search, so the same
+# line's next station is kept where it wins.
+ELEVATOR_OUT_S = 900.0
+# Stops of one station (its platforms) lie within this much of each other beyond the nearest.
+SAME_STATION_M = 60.0
+
+
+def with_elevators_out(schedule: Schedule, points, cost_s: float = ELEVATOR_OUT_S) -> Schedule:
+    """The schedule with the Metro stations at `points` ([lon, lat]) costing `cost_s` to take
+    a bike in or out of (`Stop.elevator_out_s`)."""
+    if not points:
+        return schedule
+    metro = {s.index for s in schedule.systems if s.id == METRO_SYSTEM}
+    rail = [stop for stop in schedule.stops if stop.rail and stop.system in metro]
+    # Only the station at each point, not the next one over (Farragut North and West are
+    # 227 m apart): the nearest Metro stop, and any of the same station's within
+    # SAME_STATION_M more.
+    marked: set[int] = set()
+    for p in points:
+        near = [(_distance(stop.point, p), stop.index) for stop in rail]
+        near = [(d, i) for d, i in near if d <= STATION_NEAR_M]
+        if near:
+            closest = min(d for d, _ in near)
+            marked.update(i for d, i in near if d <= closest + SAME_STATION_M)
+
+    stops = [
+        replace(stop, elevator_out_s=cost_s) if stop.index in marked else stop
+        for stop in schedule.stops
+    ]
+    return replace(schedule, stops=stops)
+
+
 def _cell(point) -> tuple[int, int]:
     return (math.floor(point[0] / CELL), math.floor(point[1] / CELL))
 
@@ -427,10 +473,12 @@ def parse(doc: dict) -> Schedule:
             s["name"],
             tuple(s["point"]),
             tuple(s.get("bike_entrance") or s["point"]),
-            bool(s["bike"]),
+            # Every station takes a bike (`EVERY_STATION_TAKES_A_BIKE`); a bus stop, at the curb.
+            bool(s["bike"]) or EVERY_STATION_TAKES_A_BIKE,
             tuple(tuple(e) for e in s.get("entrances") or [s["point"]]),
             int(s["system"]),
             systems[int(s["system"])].mode != BUS,
+            bool(s["bike"]),
         )
         for i, s in enumerate(doc["stops"])
     ]
@@ -659,10 +707,11 @@ def with_typical_metro(schedule: Schedule, path: Path = TYPICAL_PATH) -> Schedul
                 row["name"],
                 tuple(row["point"]),
                 tuple(row["bike_entrance"]),
-                bool(row["bike"]),
+                bool(row["bike"]) or EVERY_STATION_TAKES_A_BIKE,
                 tuple(tuple(e) for e in row["entrances"]),
                 system.index,
                 True,
+                bool(row["bike"]),
             )
         )
     # One service per day type, running on its days of the window.
@@ -943,6 +992,12 @@ class Leg:
     every: float | None = None  # a frequent service: minutes between departures
     first: float | None = None  # typical Metro before its first train: that train
     live: bool = False  # `depart` and `later` are WMATA's predictions (core.transit_live)
+    elevator: bool = True  # a station's way in or out with the bike is a known elevator
+    elevator_out: bool = False  # and every one is out (the option's row shows it)
+    # A ride's time on busy roads and waiting at junctions, added again for ranking only
+    # (`Option.score_s`), and its metres on busy roads, said with the option (`busy_m`).
+    penalty_s: float = 0.0
+    busy_m: float | None = None
 
     @property
     def total_s(self) -> float:
@@ -982,10 +1037,10 @@ class Leg:
         if self.mode == WALK:
             return f"Walk {m} min{at}."
         if self.mode == ENTER:
-            how = " by the elevator" if self.bike else ""
+            how = " by the elevator" if self.bike and self.elevator else ""
             return f"About {m} min into the station{how}."
         if self.mode == EXIT:
-            how = " by the elevator" if self.bike else ""
+            how = " by the elevator" if self.bike and self.elevator else ""
             return f"About {m} min out of the station{how}."
         if self.mode == BUS and self.bike:
             board = f"Put your bike on the front rack of {self.vehicle}"
@@ -1036,6 +1091,8 @@ class _Day:
         # A blackout date: no bike on Metro at all (a rider on foot still rides it).
         self.blackout_day = blackout_day(moment) if bike else None
         self.blackout = self.blackout_day is not None
+        # How a ride with no trace is priced (`priced`): as the whole ride is.
+        self.pricing = UNPRICED
 
     def boards(self, pattern: Pattern, minute: float, encoded: int) -> bool:
         if not self.bike:
@@ -1249,6 +1306,10 @@ class Ride:
     seconds: float
     coordinates: tuple[tuple[float, float], ...]
     metres: float | None = None  # the routed length, where the router gave it
+    # Its metres on busy roads (LTS 3 and up), where its trace was read; its junction waits
+    # are in `seconds` then, as the answer's line has them (routing.plan).
+    busy_m: float | None = None
+    waits_s: float = 0.0
 
 
 class Services(Protocol):
@@ -1280,8 +1341,11 @@ class RoutingServices:
         max_calls: int | None = None,
         per_call_s: float = CANDIDATE_CALL_S,
         costing: dict | None = None,
+        when: str | None = None,
     ) -> None:
         self._until = until
+        # The ride time setting the busy roads are read at; None: rides are not traced.
+        self._when = when
         self._preset = preset_name
         # The bike legs' costing where it is not the preset's own (Novice and Nervous's
         # Bikeshare + Transit: its pricing at the share bike's pace).
@@ -1333,11 +1397,69 @@ class RoutingServices:
         shape = tuple(tuple(p) for p in routing.decode_polyline6(legs[0].get("shape", "")))
         summary = legs[0].get("summary") or {}
         length = summary.get("length")
-        return Ride(
-            float(summary.get("time", 0.0)),
-            shape,
-            None if length is None else float(length) * 1000.0,
-        )
+        seconds = float(summary.get("time", 0.0))
+        metres = None if length is None else float(length) * 1000.0
+        if costing != "bicycle" or self._when is None:
+            return Ride(seconds, shape, metres)
+        # Its busy roads and junction waits, from its trace, inside the same call's cap.
+        traced_at = routing.clock()
+        try:
+            measured = routing.busy_and_waits(
+                "standard", options, legs[0].get("shape", ""), self._when, deadline
+            )
+        except (routing.RouterUnavailable, routing.DeadlineExceeded):
+            measured = None
+        finally:
+            self.spent_s += routing.clock() - traced_at
+        if measured is None:
+            return Ride(seconds, shape, metres)
+        busy, waits = measured
+        return Ride(seconds + waits, shape, metres, busy, waits)
+
+
+# --- Busy roads: the ranking's penalty (Stephen, 2026-10-21) --------------------------------
+
+# Stephen, 2026-10-21: "We should order by time to get there with a penalty for time taken on
+# busy roads and intersections", and each option says it: "arrive in X min with x mi of busy
+# roads". A ride's time on busy roads (LTS 3 and up) and its waits at junctions count twice in
+# the ranking (`Option.score_s`); the times shown stay the times.
+BUSY_WEIGHT = 1.0
+WAITS_WEIGHT = 1.0
+
+
+@dataclass(frozen=True)
+class Pricing:
+    """How a ride with no trace is priced: as the whole ride is, where it was traced. `share`
+    is the penalty a second of riding; `busy_per_m` its busy metres a metre (None: unknown)."""
+
+    share: float = 0.0
+    busy_per_m: float | None = None
+
+
+# A ride with no trace and no traced whole ride to price it by: no penalty, its busy roads unknown.
+UNPRICED = Pricing()
+
+
+def pricing_of(ride: Ride | None) -> Pricing:
+    if ride is None or ride.busy_m is None or not ride.metres or ride.seconds <= 0:
+        return UNPRICED
+    penalty = _penalty_s(ride)
+    return Pricing(penalty / ride.seconds, min(ride.busy_m / ride.metres, 1.0))
+
+
+def _penalty_s(ride: Ride) -> float:
+    moving = max(ride.seconds - ride.waits_s, 0.0)
+    busy_s = moving * min((ride.busy_m or 0.0) / ride.metres, 1.0) if ride.metres else 0.0
+    return BUSY_WEIGHT * busy_s + WAITS_WEIGHT * ride.waits_s
+
+
+def priced(ride: Ride | None, seconds: float, line_m: float, pricing: Pricing):
+    """(penalty seconds, busy metres or None) for a ride: its own where it was traced, else as
+    `pricing` prices one of `seconds` and `line_m`."""
+    if ride is not None and ride.busy_m is not None and ride.metres:
+        return _penalty_s(ride), ride.busy_m
+    busy = None if pricing.busy_per_m is None else pricing.busy_per_m * line_m
+    return seconds * pricing.share, busy
 
 
 # --- Ends: how a trip reaches a stop, or leaves one -----------------------------------------
@@ -1383,29 +1505,88 @@ def _candidates(schedule: Schedule, point, bike: bool, rail_m: float, bus_m: flo
     return rail, others + buses
 
 
-def _ride_to(schedule: Schedule, start, stop: Stop, ride: Ride | None, speed: float) -> _End:
+def _station_leg(mode: str, stop: Stop) -> Leg:
+    """Into (ENTER) or out of (EXIT) a station with your own bike: by its elevator, ranked
+    ranked `Stop.elevator_out_s` down where every one is out."""
+    return Leg(
+        mode,
+        ACCESS_BIKE_S,
+        bike=True,
+        elevator=stop.elevator,
+        penalty_s=stop.elevator_out_s,
+        elevator_out=stop.elevator_out_s > 0,
+    )
+
+
+def _line_m(ride: Ride) -> float:
+    """A ride's length: the router's, else its straight line's with the usual detour."""
+    if ride.metres is not None:
+        return ride.metres
+    return (
+        _distance(ride.coordinates[0], ride.coordinates[-1]) * DETOUR if ride.coordinates else 0.0
+    )
+
+
+def _ride_to(
+    schedule: Schedule,
+    start,
+    stop: Stop,
+    ride: Ride | None,
+    speed: float,
+    pricing: Pricing = UNPRICED,
+) -> _End:
     """Ride your own bike to a stop (and, a station, in by the elevator)."""
     to = stop.bike_entrance
+    routed = ride
     if ride is None:
         ride = Ride(ride_s(start, to, speed), (tuple(start), to))
         estimated = True
     else:
         estimated = False
-    legs = [Leg(RIDE, ride.seconds, ride.coordinates, schedule.place(stop), estimated=estimated)]
+    penalty, busy = priced(routed, ride.seconds, _line_m(ride), pricing)
+    legs = [
+        Leg(
+            RIDE,
+            ride.seconds,
+            ride.coordinates,
+            schedule.place(stop),
+            estimated=estimated,
+            penalty_s=penalty,
+            busy_m=busy,
+        )
+    ]
     if stop.rail:
-        legs.append(Leg(ENTER, ACCESS_BIKE_S, bike=True))
+        legs.append(_station_leg(ENTER, stop))
     return _End(stop.index, legs, f"a{stop.index}")
 
 
-def _ride_from(schedule: Schedule, end, stop: Stop, ride: Ride | None, speed: float) -> _End:
+def _ride_from(
+    schedule: Schedule,
+    end,
+    stop: Stop,
+    ride: Ride | None,
+    speed: float,
+    pricing: Pricing = UNPRICED,
+) -> _End:
     start = stop.bike_entrance
+    routed = ride
     if ride is None:
         ride = Ride(ride_s(start, end, speed), (start, tuple(end)))
         estimated = True
     else:
         estimated = False
-    legs = [Leg(EXIT, ACCESS_BIKE_S, bike=True)] if stop.rail else []
-    legs.append(Leg(RIDE, ride.seconds, ride.coordinates, estimated=estimated))
+    penalty, busy = priced(routed, ride.seconds, _line_m(ride), pricing)
+    legs = [_station_leg(EXIT, stop)] if stop.rail else []
+    legs.append(
+        Leg(
+            RIDE,
+            ride.seconds,
+            ride.coordinates,
+            estimated=estimated,
+            penalty_s=penalty,
+            busy_m=busy,
+        )
+    )
     return _End(stop.index, legs, f"e{stop.index}")
 
 
@@ -1517,6 +1698,20 @@ class Option:
         return _total(self.legs)
 
     @property
+    def score_s(self) -> float:
+        """What the options are ranked by: the time door to door, and each ride's busy roads and
+        junctions on top (`penalty_s`; Stephen, 2026-10-21)."""
+        return self.total_s + sum(leg.penalty_s for leg in self.legs)
+
+    @property
+    def busy_m(self) -> float | None:
+        """Its rides' metres on busy roads; None where any ride's are not known."""
+        rides = [leg.busy_m for leg in self.legs if leg.mode in (RIDE, SHARE)]
+        if not rides or any(m is None for m in rides):
+            return None if rides else 0.0
+        return float(sum(rides))
+
+    @property
     def ride(self) -> int:
         """The leg the answer's route line is: the first ride, else the first walk, of at least
         `MIN_LINE_M` (a walk of a few yards from a dock to a stop has no route to draw)."""
@@ -1560,16 +1755,28 @@ def _transfer(day: _Day, a: Stop, b: Stop, speed: float) -> tuple[list[Leg], flo
     bike = day.bike
     legs = []
     if a.rail:
-        legs.append(Leg(EXIT, ACCESS_BIKE_S if bike else ACCESS_WALK_S, bike=bike))
+        legs.append(_station_leg(EXIT, a) if bike else Leg(EXIT, ACCESS_WALK_S))
     start = _nearest_entrance(a, b.point)
     end = b.bike_entrance if bike else _nearest_entrance(b, start)
     place = day.schedule.place(b)
     if bike:
-        legs.append(Leg(RIDE, ride_s(start, end, speed), (start, end), place, estimated=True))
+        seconds = ride_s(start, end, speed)
+        penalty, busy = priced(None, seconds, _distance(start, end) * DETOUR, day.pricing)
+        legs.append(
+            Leg(
+                RIDE,
+                seconds,
+                (start, end),
+                place,
+                estimated=True,
+                penalty_s=penalty,
+                busy_m=busy,
+            )
+        )
     else:
         legs.append(Leg(WALK, walk_s(start, end), (start, end), place))
     if b.rail:
-        legs.append(Leg(ENTER, ACCESS_BIKE_S if bike else ACCESS_WALK_S, bike=bike))
+        legs.append(_station_leg(ENTER, b) if bike else Leg(ENTER, ACCESS_WALK_S))
     return legs, _total(legs)
 
 
@@ -1621,24 +1828,26 @@ def _search(day: _Day, starts: list[_End], ends: dict[int, _End], speed: float) 
 
 
 def rank_key(option: Option, extra_s: float = 0.0) -> tuple:
-    """The options' order: quickest to the minute, then (the same train) the simpler trip, with
-    fewer transit legs. `extra_s` is a ranking cost on top (core.transit_live's elevator out)."""
-    total = option.total_s + extra_s
-    return (minutes(total), sum(leg.transit for leg in option.legs), total, option.key)
+    """The options' order: the time door to door with the rides' busy roads and junctions on top
+    (`Option.score_s`), to the minute, then (the same train) the simpler trip, with fewer transit
+    legs. `extra_s` is a ranking cost on top (core.transit_live's elevator out)."""
+    score = option.score_s + extra_s
+    return (minutes(score), sum(leg.transit for leg in option.legs), score, option.key)
 
 
 def _ranked(
     direct: Option | None, transit: list[Option], walk: Option | None = None
 ) -> list[Option]:
-    """The direct ride always (and walking the whole way, where it is offered), then the
-    quickest of each kind of transit trip (one per signature), up to `TRANSIT_OPTIONS`; all of
-    them by total time, quickest first."""
+    """The direct ride always (and walking the whole way, where it is offered), then the best
+    of each kind of transit trip (one per signature), up to `TRANSIT_OPTIONS`; all of them by
+    `rank_key`, best first: the time door to door with each ride's busy roads and junction
+    waits counted again (Stephen, 2026-10-21)."""
     best: dict[tuple, Option] = {}
     for option in transit:
         held = best.get(option.signature)
-        if held is None or (option.total_s, option.key) < (held.total_s, held.key):
+        if held is None or (option.score_s, option.key) < (held.score_s, held.key):
             best[option.signature] = option
-    kept = sorted(best.values(), key=lambda o: (o.total_s, o.key))[:TRANSIT_OPTIONS]
+    kept = sorted(best.values(), key=lambda o: (o.score_s, o.key))[:TRANSIT_OPTIONS]
     kept += [o for o in (direct, walk) if o is not None]
     # A tie to the minute (the same train) goes to the simpler trip: fewer transit legs.
     return sorted(kept, key=rank_key)
@@ -1731,14 +1940,45 @@ class Plan:
         return None if direct is None else direct.total_s
 
 
-def choose(plan: Plan, key: str | None) -> Plan:
-    """The plan with the option `key` chosen; the quickest where it is not (or no longer) one."""
+def choose(plan: Plan, key: str | None, schedule: Schedule | None = None) -> Plan:
+    """The plan with the option `key` chosen; the same trip under another key where it is not
+    (`same_trip`), else the best where it is not (or no longer) one."""
     if key is None:
         return plan
     for index, option in enumerate(plan.options):
         if option.key == key:
             return replace(plan, chosen=index, asked=None)
+    if schedule is not None:
+        for index, option in enumerate(plan.options):
+            if same_trip(schedule, key, option.key):
+                return replace(plan, chosen=index, asked=None)
     return replace(plan, chosen=0, asked=key)
+
+
+def _key_parts(schedule: Schedule, key: str) -> tuple | None:
+    """A transit option's key as the trip the rider sees: its stops (the start's, each change's
+    and the end's) and its lines in order (each pattern's system and route), or None for a key
+    that is not a transit trip's or names a pattern this schedule does not have."""
+    parts = []
+    for token in re.split(r"[>-]", key):
+        if token[:1] == "p" and token[1:].isdigit():
+            index = int(token[1:])
+            if index >= len(schedule.patterns):
+                return None
+            pattern = schedule.patterns[index]
+            parts.append((pattern.system, pattern.route))
+        else:
+            parts.append(token)
+    return tuple(parts) if any(isinstance(p, tuple) for p in parts) else None
+
+
+def same_trip(schedule: Schedule, asked: str, key: str) -> bool:
+    """Whether two keys are the same trip: the same stops and the same lines, by any of their
+    patterns. A trip's key names the pattern that reached each stop first, which can be another
+    of the same line's a minute later, so a pick kept by its exact key was lost on a plan again
+    (Stephen, 2026-10-21: "I can't even click on the other options")."""
+    a = _key_parts(schedule, asked)
+    return a is not None and a == _key_parts(schedule, key)
 
 
 def running_services(schedule: Schedule, moment: Moment) -> frozenset[int]:
@@ -1979,6 +2219,7 @@ def _search_days(day: _Day, moments: list[Moment], starts, ends, speed: float) -
     found = _search(day, starts, ends, speed)
     for other in moments[1:]:
         alt = _Day(day.schedule, other, day.bike)
+        alt.pricing = day.pricing
         found += [replace(o, moment=other) for o in _search(alt, starts, ends, speed)]
     return found
 
@@ -1995,28 +2236,52 @@ def plan_bike(schedule, start, end, when: datetime, services: Services, speed_km
         notes.append(blackout_words(day.blackout_day))
     # Riding directly there first: it is always offered, so it has the router before the
     # candidates; with no answer it is estimated from the straight line.
-    whole = services.ride(start, end)
-    estimated = whole is None
-    if whole is None:
-        whole = Ride(ride_s(start, end, speed_kmh), (tuple(start), tuple(end)))
+    routed = services.ride(start, end)
+    whole = routed or Ride(ride_s(start, end, speed_kmh), (tuple(start), tuple(end)))
+    # The rides the router could not trace are priced as the whole ride is.
+    day.pricing = pricing_of(routed)
+    penalty, busy = priced(routed, whole.seconds, _line_m(whole), day.pricing)
     direct = Option(
-        DIRECT, (Leg(RIDE, whole.seconds, whole.coordinates, estimated=estimated),), direct=True
+        DIRECT,
+        (
+            Leg(
+                RIDE,
+                whole.seconds,
+                whole.coordinates,
+                estimated=routed is None,
+                penalty_s=penalty,
+                busy_m=busy,
+            ),
+        ),
+        direct=True,
     )
     near_start, more_start = _candidates(schedule, start, True, BIKE_TO_STATION_M, RIDE_TO_STOP_M)
     near_end, more_end = _candidates(schedule, end, True, BIKE_TO_STATION_M, RIDE_TO_STOP_M)
     if not notes:
         starts = [
-            _ride_to(schedule, start, s, services.ride(start, list(s.bike_entrance)), speed_kmh)
+            _ride_to(
+                schedule,
+                start,
+                s,
+                services.ride(start, list(s.bike_entrance)),
+                speed_kmh,
+                day.pricing,
+            )
             for s in near_start
-        ] + [_ride_to(schedule, start, s, None, speed_kmh) for s in more_start]
+        ] + [_ride_to(schedule, start, s, None, speed_kmh, day.pricing) for s in more_start]
         ends = {
             s.index: _ride_from(
-                schedule, end, s, services.ride(list(s.bike_entrance), end), speed_kmh
+                schedule,
+                end,
+                s,
+                services.ride(list(s.bike_entrance), end),
+                speed_kmh,
+                day.pricing,
             )
             for s in near_end
         }
         for s in more_end:
-            ends[s.index] = _ride_from(schedule, end, s, None, speed_kmh)
+            ends[s.index] = _ride_from(schedule, end, s, None, speed_kmh, day.pricing)
         found = _search_days(day, moments, starts, ends, speed_kmh)
         if not found:
             where = "the start" if not near_start else "the destination"
@@ -2122,11 +2387,18 @@ def with_ride(plan: Plan, seconds: float) -> Plan:
     return with_rides(plan, {plan.option.ride: seconds})
 
 
-def with_rides(plan: Plan, seconds: dict[int, float]) -> Plan:
+def with_rides(
+    plan: Plan,
+    seconds: dict[int, float],
+    busy: dict[int, float] | None = None,
+    keep: bool = True,
+) -> Plan:
     """The plan with its chosen option's ride legs timed as routed: `seconds` by leg index
     (the route line's own, and each later ride routed for its stress colours). A walk keeps
     its walking time; the waits for infrequent departures are worked out again from the new
-    times, and an option whose departure can no longer be caught goes, as `with_ride`."""
+    times, and an option whose departure can no longer be caught goes, as `with_ride`. The
+    options are ranked again (`resorted`); without `keep` (the rider chose none), the best of
+    them is chosen, which may now be another (the caller plans it)."""
     option = plan.option
     legs = list(option.legs)
     changed = False
@@ -2134,7 +2406,13 @@ def with_rides(plan: Plan, seconds: dict[int, float]) -> Plan:
         leg = legs[index]
         if leg.mode not in (RIDE, SHARE):
             continue
-        legs[index] = replace(leg, seconds=routed, estimated=False)
+        # Its busy metres as routed (`busy`, the answer's own stress breakdown) where given;
+        # the penalty keeps its share of the ride's time.
+        share = leg.penalty_s / leg.seconds if leg.seconds > 0 else 0.0
+        busy_m = (busy or {}).get(index, leg.busy_m)
+        legs[index] = replace(
+            leg, seconds=routed, estimated=False, penalty_s=routed * share, busy_m=busy_m
+        )
         changed = True
     if not changed:
         return plan
@@ -2148,7 +2426,19 @@ def with_rides(plan: Plan, seconds: dict[int, float]) -> Plan:
             raise NoTransit(" ".join(notes))
         return replace(plan, options=options, chosen=0, notes=plan.notes + notes)
     options[plan.chosen] = replace(option, legs=tuple(legs))
-    return replace(plan, options=options, notes=plan.notes + notes)
+    ranked = resorted(replace(plan, options=options, notes=plan.notes + notes))
+    return ranked if keep else replace(ranked, chosen=0)
+
+
+def resorted(plan: Plan) -> Plan:
+    """The options in `rank_key` order again, the same one chosen: the chosen trip's rides timed
+    as routed can move it past another (Stephen, 2026-10-21: A listed first at 106 min above B at
+    88 min, which was still an estimate)."""
+    key = plan.option.key
+    options = sorted(plan.options, key=rank_key)
+    return replace(
+        plan, options=options, chosen=next(i for i, o in enumerate(options) if o.key == key)
+    )
 
 
 # The most router calls `drawn` makes for one trip's lines, each one's cap, and the time they may
@@ -2459,6 +2749,8 @@ def block(plan: Plan, schedule: Schedule | None = None) -> dict:
                 "direct": o.direct,
                 "walk": o.walk,
                 "chosen": index == plan.chosen,
+                "busy_m": None if o.busy_m is None else round(o.busy_m),
+                "elevator_out": any(leg.elevator_out for leg in o.legs),
                 "legs": option_legs(o),
             }
             for index, o in enumerate(plan.options)

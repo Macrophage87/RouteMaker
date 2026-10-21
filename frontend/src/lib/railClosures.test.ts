@@ -82,7 +82,7 @@ test("on the map a closed station is struck through, greyed and named '(closed)'
   const ids = railImages(STATIONS, "#8a6500", 1).map((image) => image.id);
   assert.ok(ids.includes("rail-closed-circle") && ids.includes("rail-closed-square"));
   // The name is greyed as well as worded.
-  const names = railLayers().find((layer) => layer.id === RAIL_LAYERS.stations) as { paint: Record<string, unknown> };
+  const names = railLayers().find((layer) => layer.id === RAIL_LAYERS.names) as { paint: Record<string, unknown> };
   assert.deepEqual(names.paint["text-color"], ["case", ["==", ["get", "closed"], true], "#4b5563", "#1f2937"]);
 });
 
