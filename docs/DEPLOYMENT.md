@@ -951,7 +951,7 @@ missing deploy step, not a broken stack.
   that answers 404). It needs the `stress_tile_cache` table from migration
   `core.0009`, which the `migrate` one-shot applies, and on the first deploy of
   the tile cache one `docker compose exec -T api python manage.py
-  predraw_stress_tiles` to draw the live table's z10-14 tiles - every one the map
+  predraw_stress_tiles` to draw the live table's z7-14 tiles - every one the map
   asks for - into it; the
   weekly rebuild does it after every promotion from then on
   (docs/OPERATIONS.md, "The stress tiles"). The stress editor's migration
@@ -1223,8 +1223,8 @@ What the map shows and credits:
   retrieved) is in docs/SOURCES.md. Each route's own attribution strings from
   the API are printed under its breakdown.
 - The stress overlay is drawn from `/tiles/stress/{z}/{x}/{y}.pbf` (layer
-  `stress`, properties `tier`, `trail`, `unpaved` and `facility`) from zoom 10
-  to 16; zoomed out to 10-11 only the long trails and the roads closed to
+  `stress`, properties `tier`, `trail`, `unpaved` and `facility`) from zoom 7
+  to 16; zoomed out to 7-11 only the long trails and the roads closed to
   cars at set times, drawn thinner (docs/OPERATIONS.md, "The long trails"),
   from 12 every trail and the LTS 3-4 roads, from 14 every street and
   footway, and below 10 nothing, where the legend says
