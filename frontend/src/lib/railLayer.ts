@@ -6,7 +6,9 @@
  * (which goes under the base map's first label layer), then these - ordinary
  * entrances, stations, elevators - then the route, then the markers (DOM, so
  * always on top). They go in directly under the route's casing, so they sit
- * over everything the base map and the overlay draw and under the ride.
+ * over everything the base map and the overlay draw and under the ride; the
+ * names then move up (MapView, stationNamesTarget), over the route and every
+ * pin, under only the hazard marks, the ride dots and Review's layers.
  */
 import {
   ALERT_BADGE_ICON,
@@ -22,12 +24,14 @@ import {
   type Station,
   type StationBadges,
 } from "./railStations.ts";
+import { ROAD_LABEL } from "../stressStyle.js";
 import { alertBadgeIcon, closedStationIcon, elevatorIcon, elevatorOutIcon, stationIcon, type Raster } from "./stationIcons.ts";
 
 export const RAIL_SOURCE_ID = "rail";
 export const RAIL_LAYERS = {
   entrances: "rail-entrances",
   stations: "rail-stations",
+  names: "rail-station-names",
   elevators: "rail-elevators",
   badges: "rail-badges",
 } as const;
@@ -40,8 +44,36 @@ export const LABEL_FONT = "Noto Sans Medium";
 /** Street level: where an elevator is worth drawing, and a plain entrance later still. */
 export const ELEVATOR_MIN_ZOOM = 15;
 export const ENTRANCE_MIN_ZOOM = 16;
-export const NAME_MIN_ZOOM = 13;
+/** Names from city zoom, not only street level (the owner, 2026-10-20: "probably show at most zooms too"), but not
+ *  at region zooms where they run together ("Cap the zoom at the point when they stop running together"): at 12 the
+ *  outer stations all have their names and downtown's sit clear of each other; where they still crowd, the busiest
+ *  station's name stays (the names' sort key) and every name is there by about 13.5. */
+export const NAME_MIN_ZOOM = 12;
 export const STATION_MIN_ZOOM = 8;
+/** A station's name larger than the street names (ROAD_LABEL: 15 px, 20 px in a ride): the stations are often the
+ *  wayfinders (the owner, 2026-10-20: "The metro names are now much smaller than the roadways, but are often the key
+ *  wayfinders"; "More than street name size."). */
+export const STATION_NAME_SIZE = ROAD_LABEL.size + 3;
+export const RIDE_STATION_NAME_SIZE = ROAD_LABEL.rideSize + 4;
+/** What stays over the station names: the route's hazard marks (a safety cue, which a name would also knock out of
+ *  placement), the live ride dots and alerts, and Review mode's own layers. */
+export const OVER_STATION_NAMES = ["route-hazard-", "ride-dots-", "ride-alerts-", "review-"] as const;
+
+/**
+ * Where the names layer belongs in `order` (the map's layers, bottom first): on top of everything but
+ * OVER_STATION_NAMES ("Text should be on top in most cases", the owner, 2026-10-20). `null` when it is already
+ * there; otherwise the moveLayer target, the layer to go under (`undefined` = the very top).
+ */
+export function stationNamesTarget(order: readonly string[]): { before: string | undefined } | null {
+  const over = (id: string) => OVER_STATION_NAMES.some((prefix) => id.startsWith(prefix));
+  const rest = order.filter((id) => id !== RAIL_LAYERS.names);
+  const first = rest.findIndex(over);
+  const at = first === -1 ? rest.length : first;
+  const want = [...rest.slice(0, at), RAIL_LAYERS.names, ...rest.slice(at)];
+  if (want.every((id, i) => order[i] === id)) return null;
+  return { before: rest[at] };
+}
+
 /** WMATA's badges from where a station's name would nearly show: further out they would crowd the lines. */
 export const BADGE_MIN_ZOOM = 12;
 
@@ -79,19 +111,34 @@ export function railLayers(sourceId = RAIL_SOURCE_ID) {
         "icon-ignore-placement": true,
         // Interchanges over the single-line stations beside them.
         "symbol-sort-key": ["get", "sort"],
-        "text-field": ["step", ["zoom"], "", NAME_MIN_ZOOM, ["get", "name"]],
+      },
+    },
+    {
+      // The names in a layer of their own, so the busiest station keeps its name where two crowd: one layer's sort
+      // key both draws (higher on top: interchanges over single-line icons) and places (lower first), so the icons'
+      // key could not also put the interchanges' names first.
+      id: RAIL_LAYERS.names,
+      type: "symbol",
+      source: sourceId,
+      minzoom: NAME_MIN_ZOOM,
+      filter: byKind("station"),
+      layout: {
+        // Most lines first; a closed station (sort 0) last.
+        "symbol-sort-key": ["-", 0, ["get", "sort"]],
+        "text-field": ["get", "name"],
         "text-font": [LABEL_FONT],
-        "text-size": ["interpolate", ["linear"], ["zoom"], NAME_MIN_ZOOM, 11, 17, 13],
+        "text-size": STATION_NAME_SIZE,
         "text-anchor": "top",
-        "text-offset": [0, 0.9],
+        // In ems, so it grows with the text: clear of the icon at the street names' sizes.
+        "text-offset": [0, 1],
         "text-max-width": 8,
-        "text-optional": true,
       },
       paint: {
         // A closed station's name is grey as well as "(closed)" (railClosures.ts); #4b5563 is 7.6:1 on its white halo.
         "text-color": ["case", ["==", ["get", "closed"], true], "#4b5563", "#1f2937"],
         "text-halo-color": "#ffffff",
-        "text-halo-width": 1.5,
+        // The street names' white band, so a line under a name does not hide it.
+        "text-halo-width": ROAD_LABEL.haloWidth,
       },
     },
     {
@@ -198,9 +245,15 @@ export interface RailHit {
 }
 
 export function railHitFrom(
-  features: ReadonlyArray<{ properties?: Record<string, unknown> | null; geometry?: { type: string; coordinates?: unknown } }>,
+  features: ReadonlyArray<{
+    properties?: Record<string, unknown> | null;
+    geometry?: { type: string; coordinates?: unknown };
+    layer?: { id: string };
+  }>,
 ): RailHit | null {
-  for (const feature of features) {
+  // An icon before any name: the names draw over the icons, and a large name can cover the station beside its own.
+  const iconsFirst = [...features].sort((a, b) => Number(a.layer?.id === RAIL_LAYERS.names) - Number(b.layer?.id === RAIL_LAYERS.names));
+  for (const feature of iconsFirst) {
     const props = feature.properties ?? {};
     if (typeof props.id !== "string") continue;
     if (props.kind === "elevator" && feature.geometry?.type === "Point") {
