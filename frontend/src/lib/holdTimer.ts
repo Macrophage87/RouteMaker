@@ -1,7 +1,7 @@
 /**
  * A short-lived message's timer (review F4, F6): it clears the message after `ms`, but never while the rider's
  * focus or pointer is in it (WCAG 2.2.1); once both leave, the full time starts again. Ride ended's Undo and the
- * 311 "Sent" line with its Add a note both use it.
+ * 311 line ("Logged for 311: Pothole.") both use it.
  */
 export interface Clock {
   set: (run: () => void, ms: number) => unknown;
