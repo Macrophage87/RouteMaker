@@ -10,6 +10,7 @@ import {
   ringLayers,
   mtbTrailLayers,
   mtbLabelLayers,
+  trailLabelLayers,
   stressOverlayLayers,
   unpavedLayers,
   halfStepLayers,
@@ -254,7 +255,11 @@ test("the overlay is added casings first: every casing under every tier", () => 
   const names = mtbLabelLayers("s").map((l) => l.id);
   assert.deepEqual(names, ["mtb-trail-label"]);
   assert.deepEqual(ids.slice(-mass.length - 1, -mass.length), names);
-  assert.deepEqual([...ids].sort(), [...mtb, ...rings, ...rails, ...tiers, ...casings, ...gaps, ...unknown, ...marks, ...halves, ...names, ...mass].sort(), "each layer once");
+  // The major trails' names (2026-10-21) over every line, under the mountain-bike names.
+  const trailNames = trailLabelLayers("s").map((l) => l.id);
+  assert.deepEqual(trailNames, ["trail-name"]);
+  assert.deepEqual(ids.slice(-mass.length - 2, -mass.length - 1), trailNames);
+  assert.deepEqual([...ids].sort(), [...mtb, ...rings, ...rails, ...tiers, ...casings, ...gaps, ...unknown, ...marks, ...halves, ...trailNames, ...names, ...mass].sort(), "each layer once");
   // A half step's outline under its dash, both over every tier line (458).
   for (let tier = 1; tier <= 4; tier++) assert.ok(ids.indexOf(`stress-half-outline-${tier}`) < ids.indexOf(`stress-half-${tier}`));
   assert.ok(Math.min(...halves.map((h) => ids.indexOf(h))) > Math.max(...tiers.map((t) => ids.indexOf(t))), "the half-step dashes are drawn over every tier line");
