@@ -87,11 +87,20 @@
   .ln { stroke: var(--accent); stroke-width: 2.5; fill: none; }
   .ln2 { stroke: #c2410c; stroke-width: 2.5; fill: none; stroke-dasharray: 7 4; }
   .fillacc { fill: var(--accent); }
+  .fig-narrow { display: none; }
+  .fig-narrow .t, .fig-narrow .tb { font-size: 15.5px; }
+  .fig-narrow .ts { font-size: 14px; }
+  .fig-narrow .tk, .fig-narrow .tw { font-size: 14.5px; }
+  @media (max-width: 37.5rem) {
+    figure.has-narrow .fig-wide { display: none; }
+    figure.has-narrow .fig-narrow { display: block; }
+  }
   @media (max-width: 30rem) {
     body { font-size: 1rem; }
     h1 { font-size: 1.5rem; }
     th, td { padding: 0.35rem 0.4rem; }
-    figure { padding: 0.4rem; }
+    figure { padding: 0.25rem; }
+    header, main, footer { padding: 0 0.75rem; }
   }
 
   details.more { margin: 0.5rem 0 1rem; border: 1px solid var(--line); border-radius: 6px; }
@@ -105,6 +114,10 @@
   .glance figure { background: var(--bg); }
   .glance ul { padding-left: 1.25rem; }
   .glance .find { margin-bottom: 0; }
+  @media (max-width: 30rem) {
+    .glance { padding: 0.25rem 0.5rem 0.5rem; }
+    details.more > .more-body { padding: 0 0.25rem 0.4rem; }
+  }
 </style>
 </head>
 <body>
@@ -134,8 +147,8 @@ This page lists those costs and how each ride type changes them. How a road gets
 
 <div class="glance">
 <h2 id="glance">At a glance</h2>
-<figure id="fig-glance-routing">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<figure id="fig-glance-routing" class="has-narrow">
+<div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 760 226" role="img" aria-labelledby="fig-glance-routing-t fig-glance-routing-d" focusable="false" style="min-width:547px">
 <title id="fig-glance-routing-t">Routing at a glance</title>
 <desc id="fig-glance-routing-d">A route&#x27;s cost is the sum of three parts: each stretch costs its length times its stress level&#x27;s cost, each busy junction adds extra, and hills, surface and turns count as your ride type weighs them. Real closures are blocked. Everything is added up in calm miles, and the router picks the cheapest route for your ride type and slider setting.</desc>
@@ -164,6 +177,34 @@ This page lists those costs and how each ride type changes them. How a road gets
 <text class="tb" x="395.0" y="188.5" text-anchor="middle">Real closures</text>
 <text class="ts" x="395.0" y="204.5" text-anchor="middle">blocked</text>
 <path class="ar" d="M395,168 L395,140" marker-end="url(#ah-glance-routing)"/>
+</svg>
+</div>
+<div class="fig-narrow">
+<svg viewBox="0 0 320 446" role="img" aria-labelledby="fig-glance-routing-n-t fig-glance-routing-n-d" focusable="false">
+<title id="fig-glance-routing-n-t">Routing at a glance</title>
+<desc id="fig-glance-routing-n-d">A route&#x27;s cost is the sum of three parts: each stretch costs its length times its stress level&#x27;s cost, each busy junction adds extra, and hills, surface and turns count as your ride type weighs them. Real closures are blocked. Everything is added up in calm miles, and the router picks the cheapest route for your ride type and slider setting.</desc>
+<defs><marker id="ah-glance-routing-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<rect class="bx" x="10" y="8" width="300" height="54" rx="6"/>
+<text class="tb" x="160.0" y="30.5" text-anchor="middle">Each stretch</text>
+<text class="ts" x="160.0" y="50.5" text-anchor="middle">miles times its level&#x27;s cost</text>
+<rect class="bx" x="10" y="70" width="300" height="54" rx="6"/>
+<text class="tb" x="160.0" y="92.5" text-anchor="middle">Each junction</text>
+<text class="ts" x="160.0" y="112.5" text-anchor="middle">extra for busy crossings</text>
+<rect class="bx" x="10" y="132" width="300" height="54" rx="6"/>
+<text class="tb" x="160.0" y="154.5" text-anchor="middle">Hills, surface, turns</text>
+<text class="ts" x="160.0" y="174.5" text-anchor="middle">as your ride type weighs them</text>
+<rect class="bx" x="10" y="194" width="300" height="54" rx="6"/>
+<text class="tb" x="160.0" y="216.5" text-anchor="middle">Real closures</text>
+<text class="ts" x="160.0" y="236.5" text-anchor="middle">blocked</text>
+<path class="ar" d="M160.0,252 L160.0,276" marker-end="url(#ah-glance-routing-n)"/>
+<rect class="bxa" x="10" y="280" width="300" height="54" rx="6"/>
+<text class="tb" x="160.0" y="302.5" text-anchor="middle">Add it all up</text>
+<text class="ts" x="160.0" y="322.5" text-anchor="middle">in calm miles</text>
+<path class="ar" d="M160.0,338 L160.0,360" marker-end="url(#ah-glance-routing-n)"/>
+<rect class="bxa" x="10" y="364" width="300" height="74" rx="6"/>
+<text class="tb" x="160.0" y="386.5" text-anchor="middle">Cheapest route</text>
+<text class="ts" x="160.0" y="406.5" text-anchor="middle">for your ride type</text>
+<text class="ts" x="160.0" y="426.5" text-anchor="middle">and slider</text>
 </svg>
 </div>
 <figcaption>Every cost is in calm miles: a mile of quiet street counts as 1.</figcaption>
@@ -204,8 +245,8 @@ alternatives, excludes busy stretches and bad crossings, and asks again, up to f
 mile of quiet street counts as 1. A busier stretch costs more, as if it were longer. On the Default ride
 type a mile of LTS 3 costs about 2.9 to 5.8 calm miles and a mile of LTS 4 about 13 to 16; faster and
 wider roads of the same level cost more.</p>
-<figure id="fig-costs">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<figure id="fig-costs" class="has-narrow">
+<div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 800 360" role="img" aria-labelledby="fig-costs-t fig-costs-d" focusable="false" style="min-width:576px">
 <title id="fig-costs-t">What a mile of busy road costs, by ride type</title>
 <desc id="fig-costs-d">Range bars of calm miles per mile at each ride type&#x27;s starting slider. Mass Ride: LTS 3 and LTS 4 both 1. Fast: LTS 3 1.22 to 1.36, LTS 4 2.11 to 2.34. Group Ride, Gravel and Mountain Goat: 1.93 to 2.85 and 5.38 to 6.25. Default, E-bike and Cargo Bike carrying cargo: 2.88 to 5.79 and 12.85 to 15.83. Cargo Bike with passengers: 3.16 to 6.84 and 15.61 to 19.42. Trailmaxxing with no target distance: 6 and 11.</desc>
@@ -253,6 +294,55 @@ wider roads of the same level cost more.</p>
 <text class="ts" x="460.0" y="350" text-anchor="middle">Calm miles per mile ridden (a quiet street = 1)</text>
 </svg>
 </div>
+<div class="fig-narrow">
+<svg viewBox="0 0 320 544" role="img" aria-labelledby="fig-costs-n-t fig-costs-n-d" focusable="false">
+<title id="fig-costs-n-t">What a mile of busy road costs, by ride type</title>
+<desc id="fig-costs-n-d">Range bars of calm miles per mile at each ride type&#x27;s starting slider. Mass Ride: LTS 3 and LTS 4 both 1. Fast: LTS 3 1.22 to 1.36, LTS 4 2.11 to 2.34. Group Ride, Gravel and Mountain Goat: 1.93 to 2.85 and 5.38 to 6.25. Default, E-bike and Cargo Bike carrying cargo: 2.88 to 5.79 and 12.85 to 15.83. Cargo Bike with passengers: 3.16 to 6.84 and 15.61 to 19.42. Trailmaxxing with no target distance: 6 and 11.</desc>
+<defs><marker id="ah-costs-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<line class="grid" x1="12.0" y1="8" x2="12.0" y2="464"/>
+<text class="ts" x="12.0" y="484" text-anchor="middle">0</text>
+<line class="grid" x1="84.0" y1="8" x2="84.0" y2="464"/>
+<text class="ts" x="84.0" y="484" text-anchor="middle">5</text>
+<line class="grid" x1="156.0" y1="8" x2="156.0" y2="464"/>
+<text class="ts" x="156.0" y="484" text-anchor="middle">10</text>
+<line class="grid" x1="228.0" y1="8" x2="228.0" y2="464"/>
+<text class="ts" x="228.0" y="484" text-anchor="middle">15</text>
+<line class="grid" x1="300.0" y1="8" x2="300.0" y2="464"/>
+<text class="ts" x="300.0" y="484" text-anchor="middle">20</text>
+<text class="t" x="10" y="26" text-anchor="start">Mass Ride</text>
+<rect x="23.4" y="34" width="6.0" height="16" fill="#f3c81a" stroke="#1c1917" stroke-width="0.8"/>
+<text class="ts" x="34.4" y="47" text-anchor="start">LTS 3: 1</text>
+<rect x="23.4" y="56" width="6.0" height="16" fill="#f28c28" stroke="#1c1917" stroke-width="0.8"/>
+<text class="ts" x="34.4" y="69" text-anchor="start">LTS 4: 1</text>
+<text class="t" x="10" y="102" text-anchor="start">Fast</text>
+<rect x="26.6" y="110" width="6.0" height="16" fill="#f3c81a" stroke="#1c1917" stroke-width="0.8"/>
+<text class="ts" x="39.584" y="123" text-anchor="start">LTS 3: 1.22 to 1.36</text>
+<rect x="39.4" y="132" width="6.0" height="16" fill="#f28c28" stroke="#1c1917" stroke-width="0.8"/>
+<text class="ts" x="53.696" y="145" text-anchor="start">LTS 4: 2.11 to 2.34</text>
+<text class="t" x="10" y="178" text-anchor="start">Group Ride, Gravel, Mountain Goat</text>
+<rect x="39.8" y="186" width="13.2" height="16" fill="#f3c81a" stroke="#1c1917" stroke-width="0.8"/>
+<text class="ts" x="61.040000000000006" y="199" text-anchor="start">LTS 3: 1.93 to 2.85</text>
+<rect x="89.5" y="208" width="12.5" height="16" fill="#f28c28" stroke="#1c1917" stroke-width="0.8"/>
+<text class="ts" x="110.0" y="221" text-anchor="start">LTS 4: 5.38 to 6.25</text>
+<text class="t" x="10" y="254" text-anchor="start">Default, E-bike, Cargo (cargo)</text>
+<rect x="53.5" y="262" width="41.9" height="16" fill="#f3c81a" stroke="#1c1917" stroke-width="0.8"/>
+<text class="ts" x="103.376" y="275" text-anchor="start">LTS 3: 2.88 to 5.79</text>
+<rect x="197.0" y="284" width="42.9" height="16" fill="#f28c28" stroke="#1c1917" stroke-width="0.8"/>
+<text class="ts" x="189.04" y="297" text-anchor="end">LTS 4: 12.85 to 15.83</text>
+<text class="t" x="10" y="330" text-anchor="start">Cargo with passengers</text>
+<rect x="57.5" y="338" width="53.0" height="16" fill="#f3c81a" stroke="#1c1917" stroke-width="0.8"/>
+<text class="ts" x="118.49600000000001" y="351" text-anchor="start">LTS 3: 3.16 to 6.84</text>
+<rect x="236.8" y="360" width="54.9" height="16" fill="#f28c28" stroke="#1c1917" stroke-width="0.8"/>
+<text class="ts" x="228.78400000000002" y="373" text-anchor="end">LTS 4: 15.61 to 19.42</text>
+<text class="t" x="10" y="406" text-anchor="start">Trailmaxxing (no target)</text>
+<rect x="95.4" y="414" width="6.0" height="16" fill="#f3c81a" stroke="#1c1917" stroke-width="0.8"/>
+<text class="ts" x="106.4" y="427" text-anchor="start">LTS 3: 6</text>
+<rect x="167.4" y="436" width="6.0" height="16" fill="#f28c28" stroke="#1c1917" stroke-width="0.8"/>
+<text class="ts" x="178.4" y="449" text-anchor="start">LTS 4: 11</text>
+<text class="ts" x="160.0" y="512" text-anchor="middle">Calm miles per mile ridden</text>
+<text class="ts" x="160.0" y="532" text-anchor="middle">(a quiet street = 1)</text>
+</svg>
+</div>
 <figcaption>Each bar is a range because faster and wider roads of the same level cost more. LTS 1 and 2 cost 1 (except on the ride types below that lean toward LTS 1). Trailmaxxing and Novice and Nervous also rank LTS 4 and Avoid ahead of everything else, so these figures understate how hard they avoid them.<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup></figcaption>
 </figure>
 <details class="more"><summary>More: What each level costs</summary>
@@ -260,8 +350,8 @@ wider roads of the same level cost more.</p>
 
 
 <p>The traffic slider sets how much more. The ride type sets where the slider starts:</p>
-<figure id="fig-slider">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<figure id="fig-slider" class="has-narrow">
+<div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 830 322" role="img" aria-labelledby="fig-slider-t fig-slider-d" focusable="false" style="min-width:597px">
 <title id="fig-slider-t">What the traffic slider does</title>
 <desc id="fig-slider-d">A line chart over slider positions 0 to 100. The router&#x27;s willingness to use roads falls in a straight line from 1 at position 0 to 0.10 at 70 and reaches 0 at 80. Above 80 a second line, the calm search&#x27;s rate, rises steeply from 0 to 10: at 85 it is 0.6, at 90 1.8, at 95 4.4 and at 100 10 miles of detour accepted per mile of LTS 3 avoided. Ride types start at: Fast 10, Group Ride and Gravel 40, Default 70, Bikeshare 80, Novice and Trailmaxxing 100.</desc>
@@ -323,6 +413,57 @@ wider roads of the same level cost more.</p>
 <text class="t" x="108" y="310" text-anchor="start">Calm search: miles of detour accepted per mile of LTS 3 avoided (right scale, 0 to 10)</text>
 </svg>
 </div>
+<div class="fig-narrow">
+<svg viewBox="0 0 320 498" role="img" aria-labelledby="fig-slider-n-t fig-slider-n-d" focusable="false">
+<title id="fig-slider-n-t">What the traffic slider does</title>
+<desc id="fig-slider-n-d">A line chart over slider positions 0 to 100. The router&#x27;s willingness to use roads falls in a straight line from 1 at position 0 to 0.10 at 70 and reaches 0 at 80. Above 80 a second line, the calm search&#x27;s rate, rises steeply from 0 to 10: at 85 it is 0.6, at 90 1.8, at 95 4.4 and at 100 10 miles of detour accepted per mile of LTS 3 avoided. Ride types start at: Fast 10, Group Ride and Gravel 40, Default 70, Bikeshare 80, Novice and Trailmaxxing 100.</desc>
+<defs><marker id="ah-slider-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<line class="grid" x1="40.0" y1="20" x2="40.0" y2="196"/>
+<text class="ts" x="40.0" y="216" text-anchor="middle">0</text>
+<line class="grid" x1="86.0" y1="20" x2="86.0" y2="196"/>
+<text class="ts" x="86.0" y="216" text-anchor="middle">20</text>
+<line class="grid" x1="132.0" y1="20" x2="132.0" y2="196"/>
+<text class="ts" x="132.0" y="216" text-anchor="middle">40</text>
+<line class="grid" x1="178.0" y1="20" x2="178.0" y2="196"/>
+<text class="ts" x="178.0" y="216" text-anchor="middle">60</text>
+<line class="grid" x1="224.0" y1="20" x2="224.0" y2="196"/>
+<text class="ts" x="224.0" y="216" text-anchor="middle">80</text>
+<line class="grid" x1="270.0" y1="20" x2="270.0" y2="196"/>
+<text class="ts" x="270.0" y="216" text-anchor="middle">100</text>
+<line class="grid" x1="40" y1="196.0" x2="270" y2="196.0"/>
+<text class="ts" x="34" y="201.0" text-anchor="end">0</text>
+<line class="grid" x1="40" y1="108.0" x2="270" y2="108.0"/>
+<text class="ts" x="34" y="113.0" text-anchor="end">0.5</text>
+<line class="grid" x1="40" y1="20.0" x2="270" y2="20.0"/>
+<text class="ts" x="34" y="25.0" text-anchor="end">1</text>
+<text class="ts" x="276" y="201.0" text-anchor="start">0</text>
+<text class="ts" x="276" y="113.0" text-anchor="start">5</text>
+<text class="ts" x="276" y="25.0" text-anchor="start">10</text>
+<line class="ard" x1="63.0" y1="20" x2="63.0" y2="196"/>
+<line class="ard" x1="132.0" y1="20" x2="132.0" y2="196"/>
+<line class="ard" x1="201.0" y1="20" x2="201.0" y2="196"/>
+<line class="ard" x1="224.0" y1="20" x2="224.0" y2="196"/>
+<line class="ard" x1="270.0" y1="20" x2="270.0" y2="196"/>
+<line class="axis" x1="40" y1="196" x2="270" y2="196"/>
+<line class="axis" x1="40" y1="20" x2="40" y2="196"/>
+<path class="ln" d="M40.0,20.0 L42.3,22.3 L44.6,24.5 L46.9,26.8 L49.2,29.1 L51.5,31.3 L53.8,33.6 L56.1,35.8 L58.4,38.1 L60.7,40.4 L63.0,42.6 L65.3,44.9 L67.6,47.2 L69.9,49.4 L72.2,51.7 L74.5,53.9 L76.8,56.2 L79.1,58.5 L81.4,60.7 L83.7,63.0 L86.0,65.3 L88.3,67.5 L90.6,69.8 L92.9,72.0 L95.2,74.3 L97.5,76.6 L99.8,78.8 L102.1,81.1 L104.4,83.4 L106.7,85.6 L109.0,87.9 L111.3,90.1 L113.6,92.4 L115.9,94.7 L118.2,96.9 L120.5,99.2 L122.8,101.5 L125.1,103.7 L127.4,106.0 L129.7,108.3 L132.0,110.5 L134.3,112.8 L136.6,115.0 L138.9,117.3 L141.2,119.6 L143.5,121.8 L145.8,124.1 L148.1,126.4 L150.4,128.6 L152.7,130.9 L155.0,133.1 L157.3,135.4 L159.6,137.7 L161.9,139.9 L164.2,142.2 L166.5,144.5 L168.8,146.7 L171.1,149.0 L173.4,151.2 L175.7,153.5 L178.0,155.8 L180.3,158.0 L182.6,160.3 L184.9,162.6 L187.2,164.8 L189.5,167.1 L191.8,169.3 L194.1,171.6 L196.4,173.9 L198.7,176.1 L201.0,178.4 L203.3,180.2 L205.6,181.9 L207.9,183.7 L210.2,185.4 L212.5,187.2 L214.8,189.0 L217.1,190.7 L219.4,192.5 L221.7,194.2 L224.0,196.0 L226.3,196.0 L228.6,196.0 L230.9,196.0 L233.2,196.0 L235.5,196.0 L237.8,196.0 L240.1,196.0 L242.4,196.0 L244.7,196.0 L247.0,196.0 L249.3,196.0 L251.6,196.0 L253.9,196.0 L256.2,196.0 L258.5,196.0 L260.8,196.0 L263.1,196.0 L265.4,196.0 L267.7,196.0 L270.0,196.0"/>
+<path class="ln2" d="M40.0,196.0 L42.3,196.0 L44.6,196.0 L46.9,196.0 L49.2,196.0 L51.5,196.0 L53.8,196.0 L56.1,196.0 L58.4,196.0 L60.7,196.0 L63.0,196.0 L65.3,196.0 L67.6,196.0 L69.9,196.0 L72.2,196.0 L74.5,196.0 L76.8,196.0 L79.1,196.0 L81.4,196.0 L83.7,196.0 L86.0,196.0 L88.3,196.0 L90.6,196.0 L92.9,196.0 L95.2,196.0 L97.5,196.0 L99.8,196.0 L102.1,196.0 L104.4,196.0 L106.7,196.0 L109.0,196.0 L111.3,196.0 L113.6,196.0 L115.9,196.0 L118.2,196.0 L120.5,196.0 L122.8,196.0 L125.1,196.0 L127.4,196.0 L129.7,196.0 L132.0,196.0 L134.3,196.0 L136.6,196.0 L138.9,196.0 L141.2,196.0 L143.5,196.0 L145.8,196.0 L148.1,196.0 L150.4,196.0 L152.7,196.0 L155.0,196.0 L157.3,196.0 L159.6,196.0 L161.9,196.0 L164.2,196.0 L166.5,196.0 L168.8,196.0 L171.1,196.0 L173.4,196.0 L175.7,196.0 L178.0,196.0 L180.3,196.0 L182.6,196.0 L184.9,196.0 L187.2,196.0 L189.5,196.0 L191.8,196.0 L194.1,196.0 L196.4,196.0 L198.7,196.0 L201.0,196.0 L203.3,196.0 L205.6,196.0 L207.9,196.0 L210.2,196.0 L212.5,196.0 L214.8,196.0 L217.1,196.0 L219.4,196.0 L221.7,196.0 L224.0,196.0 L226.3,194.5 L228.6,192.8 L230.9,190.8 L233.2,188.4 L235.5,185.7 L237.8,182.5 L240.1,178.9 L242.4,174.6 L244.7,169.6 L247.0,163.9 L249.3,157.2 L251.6,149.4 L253.9,140.4 L256.2,129.9 L258.5,117.7 L260.8,103.6 L263.1,87.1 L265.4,68.0 L267.7,45.8 L270.0,20.0"/>
+<text class="t" x="160.0" y="242" text-anchor="middle">Traffic slider position</text>
+<text class="t" x="160.0" y="262" text-anchor="middle">(0 = direct, 100 = calmest)</text>
+<path class="ln" d="M10,289 L46,289"/>
+<text class="t" x="56" y="294" text-anchor="start">Router&#x27;s willingness to use roads</text>
+<text class="t" x="56" y="314" text-anchor="start">(left scale, 0 to 1)</text>
+<path class="ln2" d="M10,341 L46,341"/>
+<text class="t" x="56" y="346" text-anchor="start">Calm search: miles of detour</text>
+<text class="t" x="56" y="366" text-anchor="start">accepted per mile of LTS 3</text>
+<text class="t" x="56" y="386" text-anchor="start">avoided (right scale, 0 to 10)</text>
+<path class="ard" d="M10,413 L46,413"/>
+<text class="t" x="56" y="418" text-anchor="start">Where ride types start: Fast 10;</text>
+<text class="t" x="56" y="438" text-anchor="start">Group, Gravel 40; Default 70;</text>
+<text class="t" x="56" y="458" text-anchor="start">Bikeshare 80; Novice,</text>
+<text class="t" x="56" y="478" text-anchor="start">Trailmaxxing 100</text>
+</svg>
+</div>
 <figcaption>The left half of the slider tunes the router itself (Valhalla's <code>use_roads</code><sup class="cite"><a href="#ref-1" aria-label="source 1">[1]</a></sup>). Past 80 the router is already as calm as it goes, so RouteMaker's own calm search takes over and trades real extra distance for less traffic. At 100 it ranks routes by the least LTS 4 and Avoid first, then the least LTS 3, then distance.</figcaption>
 </figure>
 
@@ -361,8 +502,8 @@ route's riding on LTS 3, LTS 4 and Avoid, and accepts a longer route for less of
 <p>Crossing or turning onto a busy road is often the most stressful part of a ride, so junctions have a
 cost of their own, measured in calm miles: the extra distance of quiet street a junction is worth.
 Quiet streets meeting quiet streets cost almost nothing.</p>
-<figure id="fig-junction">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<figure id="fig-junction" class="has-narrow">
+<div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 840 260" role="img" aria-labelledby="fig-junction-t fig-junction-d" focusable="false" style="min-width:600px">
 <title id="fig-junction-t">What a junction costs, before adjustments</title>
 <desc id="fig-junction-d">Horizontal bars of the base cost of junctions in feet of quiet street. Crossing an LTS 4 road from a stop sign: 4,000 ft [1,219 m], 0.76 calm miles. Crossing LTS 3 from a stop sign: 1,600 ft [488 m]. A left turn across LTS 4 traffic: 4,000 ft [1,219 m]; across LTS 3: 800 ft [244 m]. Crossing LTS 4 at a signal: 600 ft [183 m]; LTS 3 at a signal: 150 ft [46 m]. An all-way stop: 75 ft [23 m].</desc>
@@ -389,6 +530,35 @@ Quiet streets meeting quiet streets cost almost nothing.</p>
 <rect class="fillacc" x="260" y="222" width="6.2" height="20" rx="2"/>
 <text class="ts" x="272.1875" y="237" text-anchor="start">75 ft [23 m], 0.01 calm mi</text>
 <line class="axis" x1="260" y1="8" x2="260" y2="252"/>
+</svg>
+</div>
+<div class="fig-narrow">
+<svg viewBox="0 0 320 506" role="img" aria-labelledby="fig-junction-n-t fig-junction-n-d" focusable="false">
+<title id="fig-junction-n-t">What a junction costs, before adjustments</title>
+<desc id="fig-junction-n-d">Horizontal bars of the base cost of junctions in feet of quiet street. Crossing an LTS 4 road from a stop sign: 4,000 ft [1,219 m], 0.76 calm miles. Crossing LTS 3 from a stop sign: 1,600 ft [488 m]. A left turn across LTS 4 traffic: 4,000 ft [1,219 m]; across LTS 3: 800 ft [244 m]. Crossing LTS 4 at a signal: 600 ft [183 m]; LTS 3 at a signal: 150 ft [46 m]. An all-way stop: 75 ft [23 m].</desc>
+<defs><marker id="ah-junction-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<text class="t" x="18" y="24" text-anchor="start">Cross LTS 4 from a stop sign</text>
+<text class="ts" x="18" y="42" text-anchor="start">4,000 ft [1,219 m], 0.76 calm mi</text>
+<rect class="fillacc" x="11" y="50" width="296.0" height="16" rx="2"/>
+<text class="t" x="18" y="94" text-anchor="start">Cross LTS 3 from a stop sign</text>
+<text class="ts" x="18" y="112" text-anchor="start">1,600 ft [488 m], 0.30 calm mi</text>
+<rect class="fillacc" x="11" y="120" width="118.4" height="16" rx="2"/>
+<text class="t" x="18" y="164" text-anchor="start">Left turn across LTS 4 traffic</text>
+<text class="ts" x="18" y="182" text-anchor="start">4,000 ft [1,219 m], 0.76 calm mi</text>
+<rect class="fillacc" x="11" y="190" width="296.0" height="16" rx="2"/>
+<text class="t" x="18" y="234" text-anchor="start">Left turn across LTS 3 traffic</text>
+<text class="ts" x="18" y="252" text-anchor="start">800 ft [244 m], 0.15 calm mi</text>
+<rect class="fillacc" x="11" y="260" width="59.2" height="16" rx="2"/>
+<text class="t" x="18" y="304" text-anchor="start">Cross LTS 4 at a signal</text>
+<text class="ts" x="18" y="322" text-anchor="start">600 ft [183 m], 0.11 calm mi</text>
+<rect class="fillacc" x="11" y="330" width="44.4" height="16" rx="2"/>
+<text class="t" x="18" y="374" text-anchor="start">Cross LTS 3 at a signal</text>
+<text class="ts" x="18" y="392" text-anchor="start">150 ft [46 m], 0.03 calm mi</text>
+<rect class="fillacc" x="11" y="400" width="11.1" height="16" rx="2"/>
+<text class="t" x="18" y="444" text-anchor="start">All-way stop</text>
+<text class="ts" x="18" y="462" text-anchor="start">75 ft [23 m], 0.01 calm mi</text>
+<rect class="fillacc" x="11" y="470" width="5.5" height="16" rx="2"/>
+<line class="axis" x1="10" y1="4" x2="10" y2="498"/>
 </svg>
 </div>
 <figcaption>Base costs, then multiplied by the crossed road's speed, lanes and traffic, and by the time of day (rush hour 1.25 times, weekends 0.85, night 0.5 in towns). A median refuge cuts a crossing to 0.75 times and a marked trail crossing to half. No junction costs more than 2 calm miles [3.2 km]. Derived from the crossing tables of Oregon DOT and the Mineta report<sup class="cite"><a href="#ref-4" aria-label="source 4">[4]</a><a href="#ref-5" aria-label="source 5">[5]</a></sup> and the route-choice studies<sup class="cite"><a href="#ref-6" aria-label="source 6">[6]</a><a href="#ref-7" aria-label="source 7">[7]</a><a href="#ref-8" aria-label="source 8">[8]</a><a href="#ref-9" aria-label="source 9">[9]</a></sup>.</figcaption>
@@ -443,8 +613,8 @@ length, the one with fewer stops is preferred.</p>
 engine slows you down uphill. The Hills slider adds to that: left of the middle, steep and long climbs,
 descents where you ride the brakes and the effort of climbing all count more; right of the middle,
 climbing is forgiven, or on Mountain Goat sought out. Avoiding hills never makes a route busier.</p>
-<figure id="fig-hills">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<figure id="fig-hills" class="has-narrow">
+<div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 760 304" role="img" aria-labelledby="fig-hills-t fig-hills-d" focusable="false" style="min-width:547px">
 <title id="fig-hills-t">What the Hills slider turns on</title>
 <desc id="fig-hills-d">The Hills slider runs from Avoids hills on the left, through Fastest time in the middle, to Fine with hills on the right (Seeks hills on Mountain Goat). At every position the routing engine times a climb at a slower speed, so each foot climbed adds about 12 to 31 feet of flat riding. Left of the middle, three costs grow toward the left end: the engine&#x27;s own hill penalty; a price on long climbs and on descents steep enough to ride the brakes, by grade and length together; and the effort of the route counting as distance. Right of the middle, the engine&#x27;s climbing charge is taken off, all of it at the right end; on Mountain Goat the route instead seeks climbs, up to 1.5 times the direct distance. In the calm search, hills also multiply traffic stress: by half the extra effort at the left, a quarter at the middle, and not at all at the right.</desc>
@@ -475,6 +645,64 @@ climbing is forgiven, or on Mountain Goat sought out. Avoiding hills never makes
 <rect class="bx" x="20" y="254" width="720" height="42" rx="6"/>
 <text class="tb" x="380.0" y="271.5" text-anchor="middle">Hills multiply traffic stress (the calm search)</text>
 <text class="ts" x="380.0" y="287.5" text-anchor="middle">x 0.5 of the extra effort at the left, x 0.25 at the middle, none at the right</text>
+</svg>
+</div>
+<div class="fig-narrow">
+<svg viewBox="0 0 320 970" role="img" aria-labelledby="fig-hills-n-t fig-hills-n-d" focusable="false">
+<title id="fig-hills-n-t">What the Hills slider turns on</title>
+<desc id="fig-hills-n-d">The Hills slider runs from Avoids hills on the left, through Fastest time in the middle, to Fine with hills on the right (Seeks hills on Mountain Goat). At every position the routing engine times a climb at a slower speed, so each foot climbed adds about 12 to 31 feet of flat riding. Left of the middle, three costs grow toward the left end: the engine&#x27;s own hill penalty; a price on long climbs and on descents steep enough to ride the brakes, by grade and length together; and the effort of the route counting as distance. Right of the middle, the engine&#x27;s climbing charge is taken off, all of it at the right end; on Mountain Goat the route instead seeks climbs, up to 1.5 times the direct distance. In the calm search, hills also multiply traffic stress: by half the extra effort at the left, a quarter at the middle, and not at all at the right.</desc>
+<defs><marker id="ah-hills-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<rect class="bx" x="10" y="12" width="300" height="12" rx="6"/>
+<rect x="158" y="8" width="4" height="20" fill="#1c1917"/>
+<text class="tb" x="10" y="48" text-anchor="start">Avoids hills</text>
+<text class="tb" x="310" y="48" text-anchor="end">Fine with hills</text>
+<text class="tb" x="160" y="70" text-anchor="middle">Fastest time (middle)</text>
+<text class="ts" x="310" y="92" text-anchor="end">(Mountain Goat: Seeks hills)</text>
+<text class="tb" x="10" y="130" text-anchor="start">At every position</text>
+<rect class="bx" x="10" y="140" width="300" height="8" rx="4"/>
+<rect class="fillacc" x="10" y="140" width="300" height="8" rx="4"/>
+<rect x="159" y="136" width="2" height="16" fill="#1c1917"/>
+<rect class="bx" x="10" y="160" width="300" height="100" rx="6"/>
+<text class="tb" x="160.0" y="185" text-anchor="middle">Slower uphill speed, at every</text>
+<text class="tb" x="160.0" y="205" text-anchor="middle">position</text>
+<text class="ts" x="160.0" y="225" text-anchor="middle">each foot climbed adds about 12 to 31 ft</text>
+<text class="ts" x="160.0" y="245" text-anchor="middle">of flat riding</text>
+<text class="tb" x="10" y="296" text-anchor="start">Left of the middle</text>
+<rect class="bx" x="10" y="306" width="300" height="8" rx="4"/>
+<rect class="fillacc" x="10" y="306" width="150.0" height="8" rx="4"/>
+<rect x="159" y="302" width="2" height="16" fill="#1c1917"/>
+<rect class="bx" x="10" y="326" width="300" height="60" rx="6"/>
+<text class="tb" x="160.0" y="351" text-anchor="middle">The engine&#x27;s own hill penalty</text>
+<text class="ts" x="160.0" y="371" text-anchor="middle">none at the middle, full at the left</text>
+<rect class="bx" x="10" y="394" width="300" height="80" rx="6"/>
+<text class="tb" x="160.0" y="419" text-anchor="middle">Long climbs and brake-riding</text>
+<text class="tb" x="160.0" y="439" text-anchor="middle">descents</text>
+<text class="ts" x="160.0" y="459" text-anchor="middle">priced by grade and length together</text>
+<rect class="bx" x="10" y="482" width="300" height="80" rx="6"/>
+<text class="tb" x="160.0" y="507" text-anchor="middle">Effort counts as distance</text>
+<text class="ts" x="160.0" y="527" text-anchor="middle">half at the halfway point, all at the</text>
+<text class="ts" x="160.0" y="547" text-anchor="middle">left</text>
+<text class="tb" x="10" y="598" text-anchor="start">Right of the middle</text>
+<rect class="bx" x="10" y="608" width="300" height="8" rx="4"/>
+<rect class="fillacc" x="160.0" y="608" width="150.0" height="8" rx="4"/>
+<rect x="159" y="604" width="2" height="16" fill="#1c1917"/>
+<rect class="bxa" x="10" y="628" width="300" height="100" rx="6"/>
+<text class="tb" x="160.0" y="653" text-anchor="middle">Fine with hills: climbing charge</text>
+<text class="tb" x="160.0" y="673" text-anchor="middle">taken off</text>
+<text class="ts" x="160.0" y="693" text-anchor="middle">none at the middle, all of it at the</text>
+<text class="ts" x="160.0" y="713" text-anchor="middle">right</text>
+<rect class="bxa" x="10" y="736" width="300" height="60" rx="6"/>
+<text class="tb" x="160.0" y="761" text-anchor="middle">Mountain Goat only: seeks climbs</text>
+<text class="ts" x="160.0" y="781" text-anchor="middle">up to 1.5 times the direct distance</text>
+<text class="tb" x="10" y="832" text-anchor="start">In the calm search</text>
+<rect class="bx" x="10" y="842" width="300" height="8" rx="4"/>
+<rect class="fillacc" x="10" y="842" width="300" height="8" rx="4"/>
+<rect x="159" y="838" width="2" height="16" fill="#1c1917"/>
+<rect class="bx" x="10" y="862" width="300" height="100" rx="6"/>
+<text class="tb" x="160.0" y="887" text-anchor="middle">Hills multiply traffic stress</text>
+<text class="tb" x="160.0" y="907" text-anchor="middle">(the calm search)</text>
+<text class="ts" x="160.0" y="927" text-anchor="middle">x 0.5 of the extra effort at the left,</text>
+<text class="ts" x="160.0" y="947" text-anchor="middle">x 0.25 at the middle, none at the right</text>
 </svg>
 </div>
 <figcaption>Which hill costs apply at each position of the Hills slider.</figcaption>
@@ -603,8 +831,8 @@ them work quite differently: <a href="/about/mass-ride.html">Mass Ride</a> and
 <p>A short busy block can outweigh a shorter route. From Dupont Circle to Nationals Park, a route of
 4.4 mi [7.0 km] starts with one LTS 4 block, so both Default and Trailmaxxing take a calmer route of
 4.7 mi [7.5 km] instead.</p>
-<figure id="fig-example">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<figure id="fig-example" class="has-narrow">
+<div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 1200 1100" role="img" aria-labelledby="fig-example-t fig-example-d" focusable="false" style="min-width:600px">
 <title id="fig-example-t">Two routes for one trip, on the app&#x27;s map</title>
 <desc id="fig-example-d">A map of central Washington with two routes from Dupont Circle to Nationals Park, planned on 19 October 2026, drawn over the stress map. Both start on Massachusetts Avenue and finish on the Pennsylvania Avenue cycle track and 4th Street. The longer route, a solid blue line, goes up 18th Street to Q Street and down the 15th Street cycle track and 9th Street: 4.7 miles [7.5 km]. The shorter route, a dashed orange line, goes down one block of 18th Street rated LTS 4, then 17th Street, L Street and 11th Street: 4.4 miles [7.0 km].</desc>
@@ -622,6 +850,36 @@ them work quite differently: <a href="/about/mass-ride.html">Mass Ride</a> and
 <rect x="30" y="1046" width="352" height="8" class="mapbar"/>
 <text class="maplbl" x="30" y="1036" text-anchor="start">1 mi [1.6 km]</text>
 <text class="maplbl" x="1190" y="1090" text-anchor="end">© OpenStreetMap contributors, Protomaps</text>
+</svg>
+</div>
+<div class="fig-narrow">
+<svg viewBox="0 0 320 599.3333333333333" role="img" aria-labelledby="fig-example-n-t fig-example-n-d" focusable="false">
+<title id="fig-example-n-t">Two routes for one trip, on the app&#x27;s map</title>
+<desc id="fig-example-n-d">A map of central Washington with two routes from Dupont Circle to Nationals Park, planned on 19 October 2026, drawn over the stress map. Both start on Massachusetts Avenue and finish on the Pennsylvania Avenue cycle track and 4th Street. The longer route, a solid blue line, goes up 18th Street to Q Street and down the 15th Street cycle track and 9th Street: 4.7 miles [7.5 km]. The shorter route, a dashed orange line, goes down one block of 18th Street rated LTS 4, then 17th Street, L Street and 11th Street: 4.4 miles [7.0 km].</desc>
+<defs><marker id="ah-example-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<image href="/about/route-example.webp" x="0" y="0" width="320" height="293.3"/>
+<circle cx="50" cy="54" r="10" fill="#ffffff" stroke="#111111" stroke-width="2"/><text class="tk" x="50" y="59" text-anchor="middle">1</text>
+<circle cx="232" cy="268" r="10" fill="#ffffff" stroke="#111111" stroke-width="2"/><text class="tk" x="232" y="273" text-anchor="middle">2</text>
+<circle cx="178" cy="82" r="10" fill="#ffffff" stroke="#111111" stroke-width="2"/><text class="tk" x="178" y="87" text-anchor="middle">3</text>
+<circle cx="126" cy="104" r="10" fill="#ffffff" stroke="#111111" stroke-width="2"/><text class="tk" x="126" y="109" text-anchor="middle">4</text>
+<circle cx="212" cy="200" r="10" fill="#ffffff" stroke="#111111" stroke-width="2"/><text class="tk" x="212" y="205" text-anchor="middle">5</text>
+<circle cx="20" cy="318.3333333333333" r="10" fill="#ffffff" stroke="#111111" stroke-width="2"/><text class="tk" x="20" y="323.3333333333333" text-anchor="middle">1</text>
+<text class="t" x="40" y="323.3333333333333" text-anchor="start">Dupont Circle (start)</text>
+<circle cx="20" cy="350.3333333333333" r="10" fill="#ffffff" stroke="#111111" stroke-width="2"/><text class="tk" x="20" y="355.3333333333333" text-anchor="middle">2</text>
+<text class="t" x="40" y="355.3333333333333" text-anchor="start">Nationals Park (end)</text>
+<circle cx="20" cy="382.3333333333333" r="10" fill="#ffffff" stroke="#111111" stroke-width="2"/><text class="tk" x="20" y="387.3333333333333" text-anchor="middle">3</text>
+<text class="t" x="40" y="387.3333333333333" text-anchor="start">4.7 mi, solid blue:</text>
+<text class="t" x="40" y="407.3333333333333" text-anchor="start">Q St, 15th St, 9th St</text>
+<circle cx="20" cy="434.3333333333333" r="10" fill="#ffffff" stroke="#111111" stroke-width="2"/><text class="tk" x="20" y="439.3333333333333" text-anchor="middle">4</text>
+<text class="t" x="40" y="439.3333333333333" text-anchor="start">4.4 mi, dashed orange: an LTS 4</text>
+<text class="t" x="40" y="459.3333333333333" text-anchor="start">block of 18th St, then 17th St,</text>
+<text class="t" x="40" y="479.3333333333333" text-anchor="start">L St, 11th St</text>
+<circle cx="20" cy="506.3333333333333" r="10" fill="#ffffff" stroke="#111111" stroke-width="2"/><text class="tk" x="20" y="511.3333333333333" text-anchor="middle">5</text>
+<text class="t" x="40" y="511.3333333333333" text-anchor="start">Both: Pennsylvania Ave</text>
+<text class="t" x="40" y="531.3333333333333" text-anchor="start">cycle track, then 4th St</text>
+<rect x="10" y="557.3333333333333" width="93.9" height="6" class="fillacc"/>
+<text class="t" x="111.86666666666666" y="563.3333333333333" text-anchor="start">1 mi [1.6 km]</text>
+<text class="ts" x="10" y="589.3333333333333" text-anchor="start">© OpenStreetMap contributors, Protomaps</text>
 </svg>
 </div>
 <figcaption>Both routes as RouteMaker's own route request planned them on 19 October 2026, drawn on the app's map of that week, with the stress map underneath in its usual colours. North is up. Routes change as the map and the ratings do. Base map &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>, drawn with <a href="https://protomaps.com">Protomaps</a>.</figcaption>
@@ -669,8 +927,8 @@ National Park Service alerts for the parks. So a closure in the District is usua
 advisory or a reviewer, not from an official work-zone record, and planned roadwork in the District
 can be missing until someone reports it. Virginia's feed also needs an access key, so it is read only
 where one is set up.</p>
-<figure id="fig-closures">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<figure id="fig-closures" class="has-narrow">
+<div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 800 385" role="img" aria-labelledby="fig-closures-t fig-closures-d" focusable="false" style="min-width:576px">
 <title id="fig-closures-t">Which closures change a route</title>
 <desc id="fig-closures-d">Two groups. Routes go around closures from state work-zone feeds, police and city alerts, closures confirmed by a RouteMaker reviewer, and the Road closed button during a ride. DDOT TOPS permits and National Park Service alerts never steer a route: permits are shown only on Plan&#x27;s DC permits layer, which is off by default, and park alerts are notes.</desc>
@@ -710,6 +968,42 @@ where one is set up.</p>
 <text class="ts" x="590" y="336" text-anchor="start">NPS: a note on the route</text>
 </svg>
 </div>
+<div class="fig-narrow">
+<svg viewBox="0 0 320 702" role="img" aria-labelledby="fig-closures-n-t fig-closures-n-d" focusable="false">
+<title id="fig-closures-n-t">Which closures change a route</title>
+<desc id="fig-closures-n-d">Two groups. Routes go around closures from state work-zone feeds, police and city alerts, closures confirmed by a RouteMaker reviewer, and the Road closed button during a ride. DDOT TOPS permits and National Park Service alerts never steer a route: permits are shown only on Plan&#x27;s DC permits layer, which is off by default, and park alerts are notes.</desc>
+<defs><marker id="ah-closures-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<rect class="bx" x="10" y="8" width="300" height="60" rx="6"/>
+<text class="tb" x="160.0" y="33" text-anchor="middle">State work zones</text>
+<text class="ts" x="160.0" y="53" text-anchor="middle">Maryland and Virginia feeds</text>
+<rect class="bx" x="10" y="76" width="300" height="60" rx="6"/>
+<text class="tb" x="160.0" y="101" text-anchor="middle">Police and city alerts</text>
+<text class="ts" x="160.0" y="121" text-anchor="middle">MPD, AlertDC</text>
+<rect class="bx" x="10" y="144" width="300" height="60" rx="6"/>
+<text class="tb" x="160.0" y="169" text-anchor="middle">Reviewed closures</text>
+<text class="ts" x="160.0" y="189" text-anchor="middle">confirmed by a RouteMaker reviewer</text>
+<rect class="bx" x="10" y="212" width="300" height="60" rx="6"/>
+<text class="tb" x="160.0" y="237" text-anchor="middle">Road closed (in a ride)</text>
+<text class="ts" x="160.0" y="257" text-anchor="middle">for that ride only</text>
+<path class="ar" d="M160,274 L160,300" marker-end="url(#ah-closures-n)"/>
+<rect class="bxa" x="10" y="304" width="300" height="60" rx="6"/>
+<text class="tb" x="160.0" y="329" text-anchor="middle">Routes go around</text>
+<text class="ts" x="160.0" y="349" text-anchor="middle">in Go, Plan and rides</text>
+<rect class="bx" x="10" y="396" width="300" height="60" rx="6"/>
+<text class="tb" x="160.0" y="421" text-anchor="middle">DDOT TOPS permits</text>
+<text class="ts" x="160.0" y="441" text-anchor="middle">may close some time this month</text>
+<rect class="bx" x="10" y="464" width="300" height="60" rx="6"/>
+<text class="tb" x="160.0" y="489" text-anchor="middle">National Park Service alerts</text>
+<text class="ts" x="160.0" y="509" text-anchor="middle">park-wide notices</text>
+<path class="ar" d="M160,526 L160,552" marker-end="url(#ah-closures-n)"/>
+<rect class="bx" x="10" y="556" width="300" height="60" rx="6"/>
+<text class="tb" x="160.0" y="581" text-anchor="middle">Never steer a route</text>
+<text class="ts" x="160.0" y="601" text-anchor="middle">shown, never routed round</text>
+<text class="ts" x="10" y="642" text-anchor="start">Permits: Plan&#x27;s DC permits layer,</text>
+<text class="ts" x="10" y="662" text-anchor="start">off by default</text>
+<text class="ts" x="10" y="682" text-anchor="start">NPS: a note on the route</text>
+</svg>
+</div>
 <figcaption>DDOT permits<sup class="cite"><a href="#ref-20" aria-label="source 20">[20]</a></sup> are listed apart because they are not closures in force. The other feeds describe closures in force<sup class="cite"><a href="#ref-18" aria-label="source 18">[18]</a><a href="#ref-19" aria-label="source 19">[19]</a></sup>.</figcaption>
 </figure>
 <details class="more"><summary>More: Closures</summary>
@@ -736,8 +1030,8 @@ on a route through the park, never as closures.</li>
 
 </div></details>
 <h2 id="riding">While you ride</h2>
-<figure id="fig-uturn">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<figure id="fig-uturn" class="has-narrow">
+<div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 760 220" role="img" aria-labelledby="fig-uturn-t fig-uturn-d" focusable="false" style="min-width:547px">
 <title id="fig-uturn-t">The U-turn rule when re-routing</title>
 <desc id="fig-uturn-d">A rider heading east goes off route. RouteMaker plans on from the rider&#x27;s heading, so the default new route continues ahead. A route that turns back, setting off 120 degrees or more from the heading, is used only if it is at least half a mile, 0.8 km, shorter, and then the first cue says Make a U-turn.</desc>
@@ -752,6 +1046,23 @@ on a route through the park, never as closures.</li>
 <path class="ar" d="M380,140 C460,140 480,60 560,60 L700,60" marker-end="url(#ah-uturn)"/>
 <text class="t" x="560" y="44" text-anchor="start">Route ahead: the default</text>
 <text class="ts" x="470" y="205" text-anchor="middle">A route that sets off 120 degrees or more from your heading counts as a U-turn.</text>
+</svg>
+</div>
+<div class="fig-narrow">
+<svg viewBox="0 0 320 306" role="img" aria-labelledby="fig-uturn-n-t fig-uturn-n-d" focusable="false">
+<title id="fig-uturn-n-t">The U-turn rule when re-routing</title>
+<desc id="fig-uturn-n-d">A rider heading east goes off route. RouteMaker plans on from the rider&#x27;s heading, so the default new route continues ahead. A route that turns back, setting off 120 degrees or more from the heading, is used only if it is at least half a mile, 0.8 km, shorter, and then the first cue says Make a U-turn.</desc>
+<defs><marker id="ah-uturn-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<text class="t" x="10" y="24" text-anchor="start">Route behind you: kept only if</text>
+<text class="t" x="10" y="44" text-anchor="start">at least 0.5 mi [0.8 km] shorter</text>
+<path d="M14,140 L220,140" stroke="#57a06c" stroke-width="8" fill="none"/>
+<path class="ard" d="M150,128 C110,74 70,74 24,96" marker-end="url(#ah-uturn-n)"/>
+<circle cx="160" cy="140" r="9" class="fillacc"/>
+<path class="ar" d="M170,140 L230,140 C266,140 270,196 304,196" marker-end="url(#ah-uturn-n)"/>
+<text class="ts" x="130" y="172" text-anchor="middle">You, heading east</text>
+<text class="t" x="310" y="226" text-anchor="end">Route ahead: the default</text>
+<text class="ts" x="10" y="266" text-anchor="start">A route that sets off 120 degrees or more</text>
+<text class="ts" x="10" y="286" text-anchor="start">from your heading counts as a U-turn.</text>
 </svg>
 </div>
 <figcaption>Re-routing keeps your heading. A U-turn is offered only when it saves at least 0.5 mi [0.8 km], and the cue says so plainly.</figcaption>

@@ -87,11 +87,20 @@
   .ln { stroke: var(--accent); stroke-width: 2.5; fill: none; }
   .ln2 { stroke: #c2410c; stroke-width: 2.5; fill: none; stroke-dasharray: 7 4; }
   .fillacc { fill: var(--accent); }
+  .fig-narrow { display: none; }
+  .fig-narrow .t, .fig-narrow .tb { font-size: 15.5px; }
+  .fig-narrow .ts { font-size: 14px; }
+  .fig-narrow .tk, .fig-narrow .tw { font-size: 14.5px; }
+  @media (max-width: 37.5rem) {
+    figure.has-narrow .fig-wide { display: none; }
+    figure.has-narrow .fig-narrow { display: block; }
+  }
   @media (max-width: 30rem) {
     body { font-size: 1rem; }
     h1 { font-size: 1.5rem; }
     th, td { padding: 0.35rem 0.4rem; }
-    figure { padding: 0.4rem; }
+    figure { padding: 0.25rem; }
+    header, main, footer { padding: 0 0.75rem; }
   }
 
   details.more { margin: 0.5rem 0 1rem; border: 1px solid var(--line); border-radius: 6px; }
@@ -105,6 +114,10 @@
   .glance figure { background: var(--bg); }
   .glance ul { padding-left: 1.25rem; }
   .glance .find { margin-bottom: 0; }
+  @media (max-width: 30rem) {
+    .glance { padding: 0.25rem 0.5rem 0.5rem; }
+    details.more > .more-body { padding: 0 0.25rem 0.4rem; }
+  }
 </style>
 </head>
 <body>
@@ -134,8 +147,8 @@ type, see <a href="/about/ride-types.html#adventure">Adventure ride types</a>.</
 
 <div class="glance">
 <h2 id="glance">At a glance</h2>
-<figure id="fig-glance-trails">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<figure id="fig-glance-trails" class="has-narrow">
+<div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 760 212" role="img" aria-labelledby="fig-glance-trails-t fig-glance-trails-d" focusable="false" style="min-width:547px">
 <title id="fig-glance-trails-t">The roles of Mountain Bike, Mountain Goat and Gravel</title>
 <desc id="fig-glance-trails-d">Three off-road ride types with different jobs. Mountain Bike rides mountain-bike trails: it seeks them, up to the hardest level you choose, links them with calm roads, and turns on the trails and topo layers. Mountain Goat rides climbs: it seeks categorized climbs within 1.5 times the direct distance, may use unrated and Green trails, and turns on the climbs and topo layers. Gravel rides mixed surfaces: unpaved roads cost nothing extra, so gravel competes with pavement; it may use unrated and Green trails and turns on the trails and topo layers.</desc>
@@ -170,6 +183,43 @@ type, see <a href="/about/ride-types.html#adventure">Adventure ride types</a>.</
 <text class="ts" x="632.0" y="136.5" text-anchor="middle">unrated and Green trails</text>
 <rect class="bx" x="514" y="162" width="236" height="40" rx="6"/>
 <text class="ts" x="632.0" y="186.5" text-anchor="middle">Turns on: Trails and topo</text>
+</svg>
+</div>
+<div class="fig-narrow">
+<svg viewBox="0 0 320 628" role="img" aria-labelledby="fig-glance-trails-n-t fig-glance-trails-n-d" focusable="false">
+<title id="fig-glance-trails-n-t">The roles of Mountain Bike, Mountain Goat and Gravel</title>
+<desc id="fig-glance-trails-n-d">Three off-road ride types with different jobs. Mountain Bike rides mountain-bike trails: it seeks them, up to the hardest level you choose, links them with calm roads, and turns on the trails and topo layers. Mountain Goat rides climbs: it seeks categorized climbs within 1.5 times the direct distance, may use unrated and Green trails, and turns on the climbs and topo layers. Gravel rides mixed surfaces: unpaved roads cost nothing extra, so gravel competes with pavement; it may use unrated and Green trails and turns on the trails and topo layers.</desc>
+<defs><marker id="ah-glance-trails-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<rect x="10" y="8" width="300" height="50" rx="6" fill="#5b21b6"/>
+<text class="tw" x="160.0" y="29" text-anchor="middle">Mountain Bike</text>
+<text class="tw" x="160.0" y="49" text-anchor="middle" style="font-weight:400">Rides mountain-bike trails</text>
+<rect class="bx" x="10" y="64" width="300" height="94" rx="6"/>
+<text class="ts" x="160.0" y="86.5" text-anchor="middle">Seeks trails, up to the</text>
+<text class="ts" x="160.0" y="106.5" text-anchor="middle">hardest level you choose</text>
+<text class="ts" x="160.0" y="126.5" text-anchor="middle">and links them with</text>
+<text class="ts" x="160.0" y="146.5" text-anchor="middle">calm roads</text>
+<rect class="bx" x="10" y="164" width="300" height="36" rx="6"/>
+<text class="ts" x="160.0" y="187.5" text-anchor="middle">Turns on: Trails and topo</text>
+<rect x="10" y="218" width="300" height="50" rx="6" fill="#9d174d"/>
+<text class="tw" x="160.0" y="239" text-anchor="middle">Mountain Goat</text>
+<text class="tw" x="160.0" y="259" text-anchor="middle" style="font-weight:400">Rides climbs</text>
+<rect class="bx" x="10" y="274" width="300" height="94" rx="6"/>
+<text class="ts" x="160.0" y="296.5" text-anchor="middle">Seeks categorized climbs,</text>
+<text class="ts" x="160.0" y="316.5" text-anchor="middle">up to 1.5 times the</text>
+<text class="ts" x="160.0" y="336.5" text-anchor="middle">direct distance; may use</text>
+<text class="ts" x="160.0" y="356.5" text-anchor="middle">unrated and Green trails</text>
+<rect class="bx" x="10" y="374" width="300" height="36" rx="6"/>
+<text class="ts" x="160.0" y="397.5" text-anchor="middle">Turns on: Climbs and topo</text>
+<rect x="10" y="428" width="300" height="50" rx="6" fill="#8a4b08"/>
+<text class="tw" x="160.0" y="449" text-anchor="middle">Gravel</text>
+<text class="tw" x="160.0" y="469" text-anchor="middle" style="font-weight:400">Rides mixed surfaces</text>
+<rect class="bx" x="10" y="484" width="300" height="94" rx="6"/>
+<text class="ts" x="160.0" y="506.5" text-anchor="middle">Unpaved costs nothing</text>
+<text class="ts" x="160.0" y="526.5" text-anchor="middle">extra, so gravel competes</text>
+<text class="ts" x="160.0" y="546.5" text-anchor="middle">with pavement; may use</text>
+<text class="ts" x="160.0" y="566.5" text-anchor="middle">unrated and Green trails</text>
+<rect class="bx" x="10" y="584" width="300" height="36" rx="6"/>
+<text class="ts" x="160.0" y="607.5" text-anchor="middle">Turns on: Trails and topo</text>
 </svg>
 </div>
 <figcaption>One job each: trails, climbs, or mixed surfaces.</figcaption>
@@ -251,8 +301,8 @@ purpose. It may ride unrated trails and Green trails. The traffic slider starts 
 busier roads than Default.</p>
 
 <h2 id="ratings">Trail ratings and who may ride them</h2>
-<figure id="fig-scales">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<figure id="fig-scales" class="has-narrow">
+<div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 830 424" role="img" aria-labelledby="fig-scales-t fig-scales-d" focusable="false" style="min-width:597px">
 <title id="fig-scales-t">How two OpenStreetMap difficulty scales become one trail level</title>
 <desc id="fig-scales-d">Two scales feed one RouteMaker level. On mtb:scale, S0 is no level (an ordinary unpaved path), S1 is level 1 Green, S2 is level 2 Blue, S3 is level 3 Black, and S4, S5 and S6 are all level 4 Red. On the IMBA scale, 0 is no level, 1 is Green, 2 is Blue, 3 is Black and 4 is Red. When a trail has both ratings the harder level wins. With neither, the trail is Not rated.</desc>
@@ -308,6 +358,79 @@ busier roads than Default.</p>
 <text class="tb" x="715.0" y="330.5" text-anchor="middle">IMBA 4</text>
 <path class="ar" d="M640,326 L474,349" marker-end="url(#ah-scales)"/>
 <text class="ts" x="470" y="410" text-anchor="middle">Both tagged: the harder level wins. Neither tagged: Not rated.</text>
+</svg>
+</div>
+<div class="fig-narrow">
+<svg viewBox="0 0 320 716" role="img" aria-labelledby="fig-scales-n-t fig-scales-n-d" focusable="false">
+<title id="fig-scales-n-t">How two OpenStreetMap difficulty scales become one trail level</title>
+<desc id="fig-scales-n-d">Two scales feed one RouteMaker level. On mtb:scale, S0 is no level (an ordinary unpaved path), S1 is level 1 Green, S2 is level 2 Blue, S3 is level 3 Black, and S4, S5 and S6 are all level 4 Red. On the IMBA scale, 0 is no level, 1 is Green, 2 is Blue, 3 is Black and 4 is Red. When a trail has both ratings the harder level wins. With neither, the trail is Not rated.</desc>
+<defs><marker id="ah-scales-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<text class="tb" x="10" y="20" text-anchor="start">mtb:scale (S0 to S6)</text>
+<text class="ts" x="310" y="20" text-anchor="end">RouteMaker level</text>
+<rect class="bx" x="10" y="43.0" width="90" height="30" rx="6"/>
+<text class="tb" x="55.0" y="63.5" text-anchor="middle">S0</text>
+<path class="ar" d="M100,58.0 L146,58.0" marker-end="url(#ah-scales-n)"/>
+<rect class="bx" x="150" y="27" width="160" height="62" rx="6"/>
+<text class="tb" x="230.0" y="43.5" text-anchor="middle">No level</text>
+<text class="ts" x="230.0" y="63.5" text-anchor="middle">ordinary unpaved</text>
+<text class="ts" x="230.0" y="83.5" text-anchor="middle">path</text>
+<rect class="bx" x="10" y="99.0" width="90" height="30" rx="6"/>
+<text class="tb" x="55.0" y="119.5" text-anchor="middle">S1</text>
+<path class="ar" d="M100,114.0 L146,114.0" marker-end="url(#ah-scales-n)"/>
+<rect x="150" y="96.0" width="160" height="36" rx="6" fill="#28702c" stroke="#1c1917" stroke-width="0.8"/>
+<text class="tw" x="230" y="119.0" text-anchor="middle">1 Green</text>
+<rect class="bx" x="10" y="149.0" width="90" height="30" rx="6"/>
+<text class="tb" x="55.0" y="169.5" text-anchor="middle">S2</text>
+<path class="ar" d="M100,164.0 L146,164.0" marker-end="url(#ah-scales-n)"/>
+<rect x="150" y="146.0" width="160" height="36" rx="6" fill="#1565c0" stroke="#1c1917" stroke-width="0.8"/>
+<text class="tw" x="230" y="169.0" text-anchor="middle">2 Blue</text>
+<rect class="bx" x="10" y="199.0" width="90" height="30" rx="6"/>
+<text class="tb" x="55.0" y="219.5" text-anchor="middle">S3</text>
+<path class="ar" d="M100,214.0 L146,214.0" marker-end="url(#ah-scales-n)"/>
+<rect x="150" y="196.0" width="160" height="36" rx="6" fill="#1c1917" stroke="#1c1917" stroke-width="0.8"/>
+<text class="tw" x="230" y="219.0" text-anchor="middle">3 Black</text>
+<rect class="bx" x="10" y="247.0" width="90" height="30" rx="6"/>
+<text class="tb" x="55.0" y="267.5" text-anchor="middle">S4</text>
+<path class="ar" d="M100,262.0 L146,298.0" marker-end="url(#ah-scales-n)"/>
+<rect class="bx" x="10" y="283.0" width="90" height="30" rx="6"/>
+<text class="tb" x="55.0" y="303.5" text-anchor="middle">S5</text>
+<path class="ar" d="M100,298.0 L146,298.0" marker-end="url(#ah-scales-n)"/>
+<rect class="bx" x="10" y="319.0" width="90" height="30" rx="6"/>
+<text class="tb" x="55.0" y="339.5" text-anchor="middle">S6</text>
+<path class="ar" d="M100,334.0 L146,298.0" marker-end="url(#ah-scales-n)"/>
+<rect x="150" y="280.0" width="160" height="36" rx="6" fill="#c62828" stroke="#1c1917" stroke-width="0.8"/>
+<text class="tw" x="230" y="303.0" text-anchor="middle">4 Red</text>
+<text class="tb" x="10" y="396" text-anchor="start">mtb:scale:imba (0 to 4)</text>
+<text class="ts" x="310" y="396" text-anchor="end">RouteMaker level</text>
+<rect class="bx" x="10" y="419.0" width="90" height="30" rx="6"/>
+<text class="tb" x="55.0" y="439.5" text-anchor="middle">IMBA 0</text>
+<path class="ar" d="M100,434.0 L146,434.0" marker-end="url(#ah-scales-n)"/>
+<rect class="bx" x="150" y="403" width="160" height="62" rx="6"/>
+<text class="tb" x="230.0" y="419.5" text-anchor="middle">No level</text>
+<text class="ts" x="230.0" y="439.5" text-anchor="middle">ordinary unpaved</text>
+<text class="ts" x="230.0" y="459.5" text-anchor="middle">path</text>
+<rect class="bx" x="10" y="475.0" width="90" height="30" rx="6"/>
+<text class="tb" x="55.0" y="495.5" text-anchor="middle">IMBA 1</text>
+<path class="ar" d="M100,490.0 L146,490.0" marker-end="url(#ah-scales-n)"/>
+<rect x="150" y="472.0" width="160" height="36" rx="6" fill="#28702c" stroke="#1c1917" stroke-width="0.8"/>
+<text class="tw" x="230" y="495.0" text-anchor="middle">1 Green</text>
+<rect class="bx" x="10" y="525.0" width="90" height="30" rx="6"/>
+<text class="tb" x="55.0" y="545.5" text-anchor="middle">IMBA 2</text>
+<path class="ar" d="M100,540.0 L146,540.0" marker-end="url(#ah-scales-n)"/>
+<rect x="150" y="522.0" width="160" height="36" rx="6" fill="#1565c0" stroke="#1c1917" stroke-width="0.8"/>
+<text class="tw" x="230" y="545.0" text-anchor="middle">2 Blue</text>
+<rect class="bx" x="10" y="575.0" width="90" height="30" rx="6"/>
+<text class="tb" x="55.0" y="595.5" text-anchor="middle">IMBA 3</text>
+<path class="ar" d="M100,590.0 L146,590.0" marker-end="url(#ah-scales-n)"/>
+<rect x="150" y="572.0" width="160" height="36" rx="6" fill="#1c1917" stroke="#1c1917" stroke-width="0.8"/>
+<text class="tw" x="230" y="595.0" text-anchor="middle">3 Black</text>
+<rect class="bx" x="10" y="625.0" width="90" height="30" rx="6"/>
+<text class="tb" x="55.0" y="645.5" text-anchor="middle">IMBA 4</text>
+<path class="ar" d="M100,640.0 L146,640.0" marker-end="url(#ah-scales-n)"/>
+<rect x="150" y="622.0" width="160" height="36" rx="6" fill="#c62828" stroke="#1c1917" stroke-width="0.8"/>
+<text class="tw" x="230" y="645.0" text-anchor="middle">4 Red</text>
+<text class="ts" x="10" y="690" text-anchor="start">Both tagged: the harder level wins.</text>
+<text class="ts" x="10" y="709" text-anchor="start">Neither tagged: Not rated.</text>
 </svg>
 </div>
 <figcaption>S1 matches IMBA 1, S2 matches IMBA 2, and so on; the steepest three steps of mtb:scale share level 4<sup class="cite"><a href="#ref-1" aria-label="source 1">[1]</a><a href="#ref-2" aria-label="source 2">[2]</a><a href="#ref-12" aria-label="source 12">[12]</a></sup>.</figcaption>
@@ -376,8 +499,8 @@ says "Not rated: no difficulty is mapped for this trail."</li>
 grade counts as a mountain-bike trail. A trail with a hiking grade or a faint line and no sign that
 bikes are allowed is closed. The panel shows both, where mapped<sup class="cite"><a href="#ref-3" aria-label="source 3">[3]</a></sup>.</p>
 <h3>Who may ride each level</h3>
-<figure id="fig-access">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<figure id="fig-access" class="has-narrow">
+<div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 834 332" role="img" aria-labelledby="fig-access-t fig-access-d" focusable="false" style="min-width:600px">
 <title id="fig-access-t">Which mountain-bike trails each ride type may use</title>
 <desc id="fig-access-d">A grid of ride types against trail ratings. Mountain Bike: unrated trails yes, counted as level 2; level 1 Green yes; level 2 Blue yes, the default limit; level 3 Black only if you allow level 3; level 4 Red only if you allow level 4. Gravel and Mountain Goat: unrated yes, Green yes, Blue, Black and Red no. Every other ride type: no trail of any rating. Trails closed to bikes, or where access is unclear, are closed to every ride type.</desc>
@@ -453,6 +576,98 @@ bikes are allowed is closed. The panel shows both, where mapped<sup class="cite"
 <text class="ts" x="508" y="320" text-anchor="middle">Unrated and Green trails: open to all three off-road ride types. Blue, Black, Red: Mountain Bike only.</text>
 </svg>
 </div>
+<div class="fig-narrow">
+<svg viewBox="0 0 320 1058" role="img" aria-labelledby="fig-access-n-t fig-access-n-d" focusable="false">
+<title id="fig-access-n-t">Which mountain-bike trails each ride type may use</title>
+<desc id="fig-access-n-d">A grid of ride types against trail ratings. Mountain Bike: unrated trails yes, counted as level 2; level 1 Green yes; level 2 Blue yes, the default limit; level 3 Black only if you allow level 3; level 4 Red only if you allow level 4. Gravel and Mountain Goat: unrated yes, Green yes, Blue, Black and Red no. Every other ride type: no trail of any rating. Trails closed to bikes, or where access is unclear, are closed to every ride type.</desc>
+<defs><marker id="ah-access-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<text class="tb" x="10" y="20" text-anchor="start">Mountain Bike</text>
+<line x1="12" y1="58.0" x2="52" y2="58.0" stroke="#ffffff" stroke-width="7" stroke-linecap="butt"/><line x1="12" y1="58.0" x2="52" y2="58.0" stroke="#5f6368" stroke-width="3.5" stroke-dasharray="6 3"/><rect x="12" y="54.5" width="40" height="7" fill="none" stroke="#1c1917" stroke-width="0.6"/>
+<text class="t" x="62" y="63.0" text-anchor="start">Unrated</text>
+<rect class="bxa" x="170" y="30" width="140" height="56" rx="6"/>
+<text class="tb" x="240.0" y="53.5" text-anchor="middle">Yes, counts</text>
+<text class="ts" x="240.0" y="73.5" text-anchor="middle">as level 2</text>
+<line x1="12" y1="107.0" x2="52" y2="107.0" stroke="#ffffff" stroke-width="7" stroke-linecap="butt"/><line x1="12" y1="107.0" x2="52" y2="107.0" stroke="#28702c" stroke-width="3.5" stroke-dasharray="18 4.5"/><rect x="12" y="103.5" width="40" height="7" fill="none" stroke="#1c1917" stroke-width="0.6"/>
+<text class="t" x="62" y="112.0" text-anchor="start">1 Green</text>
+<rect class="bxa" x="170" y="92" width="140" height="30" rx="6"/>
+<text class="tb" x="240.0" y="112.5" text-anchor="middle">Yes</text>
+<line x1="12" y1="156.0" x2="52" y2="156.0" stroke="#ffffff" stroke-width="7" stroke-linecap="butt"/><line x1="12" y1="156.0" x2="52" y2="156.0" stroke="#1565c0" stroke-width="3.5" stroke-dasharray="9 4.5"/><rect x="12" y="152.5" width="40" height="7" fill="none" stroke="#1c1917" stroke-width="0.6"/>
+<text class="t" x="62" y="161.0" text-anchor="start">2 Blue</text>
+<rect class="bxa" x="170" y="128" width="140" height="56" rx="6"/>
+<text class="tb" x="240.0" y="151.5" text-anchor="middle">Yes, the</text>
+<text class="ts" x="240.0" y="171.5" text-anchor="middle">default limit</text>
+<line x1="12" y1="218.0" x2="52" y2="218.0" stroke="#ffffff" stroke-width="7" stroke-linecap="butt"/><line x1="12" y1="218.0" x2="52" y2="218.0" stroke="#1c1917" stroke-width="3.5" stroke-dasharray="12 4.5 3 4.5"/><rect x="12" y="214.5" width="40" height="7" fill="none" stroke="#1c1917" stroke-width="0.6"/>
+<text class="t" x="62" y="223.0" text-anchor="start">3 Black</text>
+<rect class="bxa" x="170" y="190" width="140" height="56" rx="6"/>
+<text class="tb" x="240.0" y="213.5" text-anchor="middle">If you</text>
+<text class="ts" x="240.0" y="233.5" text-anchor="middle">allow 3</text>
+<line x1="12" y1="280.0" x2="52" y2="280.0" stroke="#ffffff" stroke-width="7" stroke-linecap="butt"/><line x1="12" y1="280.0" x2="52" y2="280.0" stroke="#c62828" stroke-width="3.5" stroke-dasharray="12 4.5 3 4.5 3 4.5"/><rect x="12" y="276.5" width="40" height="7" fill="none" stroke="#1c1917" stroke-width="0.6"/>
+<text class="t" x="62" y="285.0" text-anchor="start">4 Red</text>
+<rect class="bxa" x="170" y="252" width="140" height="56" rx="6"/>
+<text class="tb" x="240.0" y="275.5" text-anchor="middle">If you</text>
+<text class="ts" x="240.0" y="295.5" text-anchor="middle">allow 4</text>
+<text class="t" x="12" y="332.0" text-anchor="start">Closed to bikes</text>
+<text class="ts" x="12" y="350.0" text-anchor="start">or unclear access</text>
+<rect class="bx" x="170" y="314" width="140" height="42" rx="6"/>
+<text class="tb" x="240.0" y="340.5" text-anchor="middle">No</text>
+<text class="tb" x="10" y="396" text-anchor="start">Gravel</text>
+<line x1="12" y1="421.0" x2="52" y2="421.0" stroke="#ffffff" stroke-width="7" stroke-linecap="butt"/><line x1="12" y1="421.0" x2="52" y2="421.0" stroke="#5f6368" stroke-width="3.5" stroke-dasharray="6 3"/><rect x="12" y="417.5" width="40" height="7" fill="none" stroke="#1c1917" stroke-width="0.6"/>
+<text class="t" x="62" y="426.0" text-anchor="start">Unrated</text>
+<rect class="bxa" x="170" y="406" width="140" height="30" rx="6"/>
+<text class="tb" x="240.0" y="426.5" text-anchor="middle">Yes</text>
+<line x1="12" y1="457.0" x2="52" y2="457.0" stroke="#ffffff" stroke-width="7" stroke-linecap="butt"/><line x1="12" y1="457.0" x2="52" y2="457.0" stroke="#28702c" stroke-width="3.5" stroke-dasharray="18 4.5"/><rect x="12" y="453.5" width="40" height="7" fill="none" stroke="#1c1917" stroke-width="0.6"/>
+<text class="t" x="62" y="462.0" text-anchor="start">1 Green</text>
+<rect class="bxa" x="170" y="442" width="140" height="30" rx="6"/>
+<text class="tb" x="240.0" y="462.5" text-anchor="middle">Yes</text>
+<line x1="12" y1="493.0" x2="52" y2="493.0" stroke="#ffffff" stroke-width="7" stroke-linecap="butt"/><line x1="12" y1="493.0" x2="52" y2="493.0" stroke="#1565c0" stroke-width="3.5" stroke-dasharray="9 4.5"/><rect x="12" y="489.5" width="40" height="7" fill="none" stroke="#1c1917" stroke-width="0.6"/>
+<text class="t" x="62" y="498.0" text-anchor="start">2 Blue</text>
+<rect class="bx" x="170" y="478" width="140" height="30" rx="6"/>
+<text class="tb" x="240.0" y="498.5" text-anchor="middle">No</text>
+<line x1="12" y1="529.0" x2="52" y2="529.0" stroke="#ffffff" stroke-width="7" stroke-linecap="butt"/><line x1="12" y1="529.0" x2="52" y2="529.0" stroke="#1c1917" stroke-width="3.5" stroke-dasharray="12 4.5 3 4.5"/><rect x="12" y="525.5" width="40" height="7" fill="none" stroke="#1c1917" stroke-width="0.6"/>
+<text class="t" x="62" y="534.0" text-anchor="start">3 Black</text>
+<rect class="bx" x="170" y="514" width="140" height="30" rx="6"/>
+<text class="tb" x="240.0" y="534.5" text-anchor="middle">No</text>
+<line x1="12" y1="565.0" x2="52" y2="565.0" stroke="#ffffff" stroke-width="7" stroke-linecap="butt"/><line x1="12" y1="565.0" x2="52" y2="565.0" stroke="#c62828" stroke-width="3.5" stroke-dasharray="12 4.5 3 4.5 3 4.5"/><rect x="12" y="561.5" width="40" height="7" fill="none" stroke="#1c1917" stroke-width="0.6"/>
+<text class="t" x="62" y="570.0" text-anchor="start">4 Red</text>
+<rect class="bx" x="170" y="550" width="140" height="30" rx="6"/>
+<text class="tb" x="240.0" y="570.5" text-anchor="middle">No</text>
+<text class="t" x="12" y="604.0" text-anchor="start">Closed to bikes</text>
+<text class="ts" x="12" y="622.0" text-anchor="start">or unclear access</text>
+<rect class="bx" x="170" y="586" width="140" height="42" rx="6"/>
+<text class="tb" x="240.0" y="612.5" text-anchor="middle">No</text>
+<text class="tb" x="10" y="668" text-anchor="start">Mountain Goat</text>
+<line x1="12" y1="693.0" x2="52" y2="693.0" stroke="#ffffff" stroke-width="7" stroke-linecap="butt"/><line x1="12" y1="693.0" x2="52" y2="693.0" stroke="#5f6368" stroke-width="3.5" stroke-dasharray="6 3"/><rect x="12" y="689.5" width="40" height="7" fill="none" stroke="#1c1917" stroke-width="0.6"/>
+<text class="t" x="62" y="698.0" text-anchor="start">Unrated</text>
+<rect class="bxa" x="170" y="678" width="140" height="30" rx="6"/>
+<text class="tb" x="240.0" y="698.5" text-anchor="middle">Yes</text>
+<line x1="12" y1="729.0" x2="52" y2="729.0" stroke="#ffffff" stroke-width="7" stroke-linecap="butt"/><line x1="12" y1="729.0" x2="52" y2="729.0" stroke="#28702c" stroke-width="3.5" stroke-dasharray="18 4.5"/><rect x="12" y="725.5" width="40" height="7" fill="none" stroke="#1c1917" stroke-width="0.6"/>
+<text class="t" x="62" y="734.0" text-anchor="start">1 Green</text>
+<rect class="bxa" x="170" y="714" width="140" height="30" rx="6"/>
+<text class="tb" x="240.0" y="734.5" text-anchor="middle">Yes</text>
+<line x1="12" y1="765.0" x2="52" y2="765.0" stroke="#ffffff" stroke-width="7" stroke-linecap="butt"/><line x1="12" y1="765.0" x2="52" y2="765.0" stroke="#1565c0" stroke-width="3.5" stroke-dasharray="9 4.5"/><rect x="12" y="761.5" width="40" height="7" fill="none" stroke="#1c1917" stroke-width="0.6"/>
+<text class="t" x="62" y="770.0" text-anchor="start">2 Blue</text>
+<rect class="bx" x="170" y="750" width="140" height="30" rx="6"/>
+<text class="tb" x="240.0" y="770.5" text-anchor="middle">No</text>
+<line x1="12" y1="801.0" x2="52" y2="801.0" stroke="#ffffff" stroke-width="7" stroke-linecap="butt"/><line x1="12" y1="801.0" x2="52" y2="801.0" stroke="#1c1917" stroke-width="3.5" stroke-dasharray="12 4.5 3 4.5"/><rect x="12" y="797.5" width="40" height="7" fill="none" stroke="#1c1917" stroke-width="0.6"/>
+<text class="t" x="62" y="806.0" text-anchor="start">3 Black</text>
+<rect class="bx" x="170" y="786" width="140" height="30" rx="6"/>
+<text class="tb" x="240.0" y="806.5" text-anchor="middle">No</text>
+<line x1="12" y1="837.0" x2="52" y2="837.0" stroke="#ffffff" stroke-width="7" stroke-linecap="butt"/><line x1="12" y1="837.0" x2="52" y2="837.0" stroke="#c62828" stroke-width="3.5" stroke-dasharray="12 4.5 3 4.5 3 4.5"/><rect x="12" y="833.5" width="40" height="7" fill="none" stroke="#1c1917" stroke-width="0.6"/>
+<text class="t" x="62" y="842.0" text-anchor="start">4 Red</text>
+<rect class="bx" x="170" y="822" width="140" height="30" rx="6"/>
+<text class="tb" x="240.0" y="842.5" text-anchor="middle">No</text>
+<text class="t" x="12" y="876.0" text-anchor="start">Closed to bikes</text>
+<text class="ts" x="12" y="894.0" text-anchor="start">or unclear access</text>
+<rect class="bx" x="170" y="858" width="140" height="42" rx="6"/>
+<text class="tb" x="240.0" y="884.5" text-anchor="middle">No</text>
+<text class="tb" x="10" y="940" text-anchor="start">Every other ride type</text>
+<rect class="bx" x="10" y="950" width="300" height="34" rx="6"/>
+<text class="tb" x="160.0" y="972.5" text-anchor="middle">No, at every rating</text>
+<text class="ts" x="10" y="1010" text-anchor="start">Unrated and Green trails: open to all</text>
+<text class="ts" x="10" y="1029" text-anchor="start">three off-road ride types. Blue, Black,</text>
+<text class="ts" x="10" y="1048" text-anchor="start">Red: Mountain Bike only.</text>
+</svg>
+</div>
 <figcaption>Each level has its own color and its own dash pattern, so color is never the only cue. A rating comes from OpenStreetMap's mtb:scale<sup class="cite"><a href="#ref-1" aria-label="source 1">[1]</a></sup> or IMBA rating<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup>, whichever is harder.<sup class="cite"><a href="#ref-12" aria-label="source 12">[12]</a></sup></figcaption>
 </figure>
 <p>Some trails stay closed to every ride type:</p>
@@ -470,8 +685,8 @@ use. Trail names show along the line from zoom 15.</p>
 <p>Turn on Layers, Trails and terrain, Mountain-bike trails. Trails show from zoom 12. While they
 show, a small key under the zoom buttons lists each look: Unrated, 1 Green, 2 Blue, 3 Black and
 4 Red. The key is not shown in Go; the Layers sheet has it there.</p>
-<figure id="fig-tap">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<figure id="fig-tap" class="has-narrow">
+<div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 770 240" role="img" aria-labelledby="fig-tap-t fig-tap-d" focusable="false" style="min-width:554px">
 <title id="fig-tap-t">What a tap on a mountain-bike trail shows</title>
 <desc id="fig-tap-d">Tapping a trail opens a panel with three parts: what the trail is like (its surface, smoothness, width and how easy it is to follow), an elevation profile of the section (length, height up and down, steepest grade), and who can ride it (its rating, or Not rated). If your ride type uses the trail, a Route through this trail button adds a via point on it. The panel shows no traffic stress.</desc>
@@ -496,6 +711,37 @@ show, a small key under the zoom buttons lists each look: Unrated, 1 Green, 2 Bl
 <path class="ar" d="M160,94 L218,170" marker-end="url(#ah-tap)"/>
 <path class="ar" d="M470,102 L528,102" marker-end="url(#ah-tap)"/>
 <text class="ts" x="385" y="226" text-anchor="middle">No traffic stress lines: a trail has no traffic to rate.</text>
+</svg>
+</div>
+<div class="fig-narrow">
+<svg viewBox="0 0 320 430" role="img" aria-labelledby="fig-tap-n-t fig-tap-n-d" focusable="false">
+<title id="fig-tap-n-t">What a tap on a mountain-bike trail shows</title>
+<desc id="fig-tap-n-d">Tapping a trail opens a panel with three parts: what the trail is like (its surface, smoothness, width and how easy it is to follow), an elevation profile of the section (length, height up and down, steepest grade), and who can ride it (its rating, or Not rated). If your ride type uses the trail, a Route through this trail button adds a via point on it. The panel shows no traffic stress.</desc>
+<defs><marker id="ah-tap-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<rect class="bx" x="10" y="8" width="300" height="54" rx="6"/>
+<text class="tb" x="160.0" y="30.5" text-anchor="middle">Tap a trail</text>
+<text class="ts" x="160.0" y="50.5" text-anchor="middle">on the map</text>
+<rect class="bxa" x="40" y="80" width="270" height="70" rx="6"/>
+<text class="tb" x="175.0" y="100.5" text-anchor="middle">What it is like</text>
+<text class="ts" x="175.0" y="120.5" text-anchor="middle">surface, smoothness,</text>
+<text class="ts" x="175.0" y="140.5" text-anchor="middle">width, visibility</text>
+<path class="ar" d="M22,115.0 L38,115.0" marker-end="url(#ah-tap-n)"/>
+<rect class="bxa" x="40" y="162" width="270" height="70" rx="6"/>
+<text class="tb" x="175.0" y="182.5" text-anchor="middle">Elevation profile</text>
+<text class="ts" x="175.0" y="202.5" text-anchor="middle">length, up, down,</text>
+<text class="ts" x="175.0" y="222.5" text-anchor="middle">steepest grade</text>
+<path class="ar" d="M22,197.0 L38,197.0" marker-end="url(#ah-tap-n)"/>
+<rect class="bxa" x="40" y="244" width="270" height="50" rx="6"/>
+<text class="tb" x="175.0" y="264.5" text-anchor="middle">Who can ride it</text>
+<text class="ts" x="175.0" y="284.5" text-anchor="middle">its rating, or Not rated</text>
+<path class="ar" d="M22,269.0 L38,269.0" marker-end="url(#ah-tap-n)"/>
+<path class="ar" d="M22,62 L22,269.0"/>
+<path class="ar" d="M175,294 L175,318" marker-end="url(#ah-tap-n)"/>
+<rect class="bx" x="40" y="322" width="270" height="54" rx="6"/>
+<text class="tb" x="175.0" y="344.5" text-anchor="middle">Route through this trail</text>
+<text class="ts" x="175.0" y="364.5" text-anchor="middle">if your ride type uses it</text>
+<text class="ts" x="10" y="402" text-anchor="start">No traffic stress lines: a trail has no</text>
+<text class="ts" x="10" y="421" text-anchor="start">traffic to rate.</text>
 </svg>
 </div>
 <figcaption>A detail the trail's mappers did not record is left out, never guessed<sup class="cite"><a href="#ref-3" aria-label="source 3">[3]</a></sup>.</figcaption>
@@ -525,8 +771,8 @@ symbol at its top. The number in the symbol is the climb's category, from 5 (sma
 moderate (4% to 7.9%) and a diamond steep (8% or more). The color is what most of the climb is ridden
 on: a road, a paved path with no traffic, gravel or dirt, or a mountain-bike trail. Mountain Goat turns
 the layer on, and its climb search uses the same climbs.</p>
-<figure id="fig-climbs">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<figure id="fig-climbs" class="has-narrow">
+<div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 800 276" role="img" aria-labelledby="fig-climbs-t fig-climbs-d" focusable="false" style="min-width:576px">
 <title id="fig-climbs-t">How the Climbs layer draws a climb</title>
 <desc id="fig-climbs-d">Each climb has a marker at its summit with its category number inside. The marker&#x27;s shape is its average grade: a circle under 4%, a square from 4 to 7.9%, a diamond for 8% or more, so a diamond means steep. The marker&#x27;s color is what most of the climb is ridden on: dark pink for a road, teal for a paved path with no traffic, brown for gravel or dirt, purple for a mountain-bike trail.</desc>
@@ -548,6 +794,32 @@ the layer on, and its climb search uses the same climbs.</p>
 <rect x="417.1" y="201.1" width="25.8" height="25.8" fill="#5b21b6" stroke="#ffffff" stroke-width="2.5"/><rect x="415.5" y="199.5" width="29.0" height="29.0" fill="none" stroke="#1c1917" stroke-width="0.8"/><text class="tw" x="430" y="218.5" text-anchor="middle">4</text>
 <text class="t" x="458" y="219" text-anchor="start">Mountain-bike trail</text>
 <text class="ts" x="20" y="262" text-anchor="start">The number is the climb&#x27;s category: 5 (smallest) to 1, then HC.</text>
+</svg>
+</div>
+<div class="fig-narrow">
+<svg viewBox="0 0 320 458" role="img" aria-labelledby="fig-climbs-n-t fig-climbs-n-d" focusable="false">
+<title id="fig-climbs-n-t">How the Climbs layer draws a climb</title>
+<desc id="fig-climbs-n-d">Each climb has a marker at its summit with its category number inside. The marker&#x27;s shape is its average grade: a circle under 4%, a square from 4 to 7.9%, a diamond for 8% or more, so a diamond means steep. The marker&#x27;s color is what most of the climb is ridden on: dark pink for a road, teal for a paved path with no traffic, brown for gravel or dirt, purple for a mountain-bike trail.</desc>
+<defs><marker id="ah-climbs-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<text class="tb" x="10" y="22" text-anchor="start">Shape: the climb&#x27;s average grade</text>
+<circle cx="34" cy="58" r="15" fill="#9d174d" stroke="#ffffff" stroke-width="2.5"/><circle cx="34" cy="58" r="16.6" fill="none" stroke="#1c1917" stroke-width="0.8"/><text class="tw" x="34" y="62.5" text-anchor="middle">4</text>
+<text class="t" x="64" y="63" text-anchor="start">Gentle: under 4%</text>
+<rect x="21.1" y="89.1" width="25.8" height="25.8" fill="#9d174d" stroke="#ffffff" stroke-width="2.5"/><rect x="19.5" y="87.5" width="29.0" height="29.0" fill="none" stroke="#1c1917" stroke-width="0.8"/><text class="tw" x="34" y="106.5" text-anchor="middle">3</text>
+<text class="t" x="64" y="107" text-anchor="start">Moderate: 4 to 7.9%</text>
+<polygon points="34,128.3 51.7,146 34,163.7 16.3,146" fill="#9d174d" stroke="#ffffff" stroke-width="2.5"/><text class="tw" x="34" y="150.5" text-anchor="middle">2</text>
+<text class="t" x="64" y="151" text-anchor="start">Steep: 8% or more</text>
+<text class="tb" x="10" y="194" text-anchor="start">Color: what most of the climb</text>
+<text class="tb" x="10" y="214" text-anchor="start">is ridden on</text>
+<rect x="21.1" y="237.1" width="25.8" height="25.8" fill="#9d174d" stroke="#ffffff" stroke-width="2.5"/><rect x="19.5" y="235.5" width="29.0" height="29.0" fill="none" stroke="#1c1917" stroke-width="0.8"/><text class="tw" x="34" y="254.5" text-anchor="middle">4</text>
+<text class="t" x="64" y="255" text-anchor="start">Road</text>
+<rect x="21.1" y="281.1" width="25.8" height="25.8" fill="#0f766e" stroke="#ffffff" stroke-width="2.5"/><rect x="19.5" y="279.5" width="29.0" height="29.0" fill="none" stroke="#1c1917" stroke-width="0.8"/><text class="tw" x="34" y="298.5" text-anchor="middle">4</text>
+<text class="t" x="64" y="299" text-anchor="start">Paved path, no traffic</text>
+<rect x="21.1" y="325.1" width="25.8" height="25.8" fill="#8a4b08" stroke="#ffffff" stroke-width="2.5"/><rect x="19.5" y="323.5" width="29.0" height="29.0" fill="none" stroke="#1c1917" stroke-width="0.8"/><text class="tw" x="34" y="342.5" text-anchor="middle">4</text>
+<text class="t" x="64" y="343" text-anchor="start">Gravel or dirt</text>
+<rect x="21.1" y="369.1" width="25.8" height="25.8" fill="#5b21b6" stroke="#ffffff" stroke-width="2.5"/><rect x="19.5" y="367.5" width="29.0" height="29.0" fill="none" stroke="#1c1917" stroke-width="0.8"/><text class="tw" x="34" y="386.5" text-anchor="middle">4</text>
+<text class="t" x="64" y="387" text-anchor="start">Mountain-bike trail</text>
+<text class="ts" x="10" y="428" text-anchor="start">The number is the climb&#x27;s category:</text>
+<text class="ts" x="10" y="447" text-anchor="start">5 (smallest) to 1, then HC.</text>
 </svg>
 </div>
 <figcaption>The climb card and the list of climbs on your route say the surface and the steepness in words too.<sup class="cite"><a href="#ref-8" aria-label="source 8">[8]</a><a href="#ref-12" aria-label="source 12">[12]</a></sup></figcaption>
@@ -629,8 +901,8 @@ uses their formula.</p>
 Strava and Garmin use; RouteMaker adds a Category 5<sup class="cite"><a href="#ref-8" aria-label="source 8">[8]</a></sup>. Length times grade comes to 100
 times the height gained in meters, so the category depends on the net gain. A climb scoring under
 4,000 is not a climb. For example, a climb of 1 mi [1.6 km] at 5% scores about 8,050: Category 4.</p>
-<figure id="fig-cats">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<figure id="fig-cats" class="has-narrow">
+<div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 840 142" role="img" aria-labelledby="fig-cats-t fig-cats-d" focusable="false" style="min-width:600px">
 <title id="fig-cats-t">Climb categories by score, drawn to scale</title>
 <desc id="fig-cats-d">A bar from a score of 0 to 90,000, drawn to scale. Under 4,000 is not a climb. Category 5 runs from 4,000 to 8,000 (131 to 262 feet gained), Category 4 from 8,000 to 16,000 (to 525 feet), Category 3 from 16,000 to 32,000 (to 1,050 feet), Category 2 from 32,000 to 64,000 (to 2,100 feet), Category 1 from 64,000 to 80,000 (to 2,625 feet), and Hors Categorie above 80,000.</desc>
@@ -674,6 +946,56 @@ times the height gained in meters, so the category depends on the net gain. A cl
 <text class="ts" x="715.5555555555555" y="26" text-anchor="middle">2,625 ft</text>
 <text class="ts" x="42.0" y="67" text-anchor="start">none</text>
 <text class="ts" x="420.0" y="130" text-anchor="middle">Bottom: score = length in meters x average grade in percent. Top: height gained.</text>
+</svg>
+</div>
+<div class="fig-narrow">
+<svg viewBox="0 0 320 600" role="img" aria-labelledby="fig-cats-n-t fig-cats-n-d" focusable="false">
+<title id="fig-cats-n-t">Climb categories by score, drawn to scale</title>
+<desc id="fig-cats-n-d">A bar from a score of 0 to 90,000, drawn to scale. Under 4,000 is not a climb. Category 5 runs from 4,000 to 8,000 (131 to 262 feet gained), Category 4 from 8,000 to 16,000 (to 525 feet), Category 3 from 16,000 to 32,000 (to 1,050 feet), Category 2 from 32,000 to 64,000 (to 2,100 feet), Category 1 from 64,000 to 80,000 (to 2,625 feet), and Hors Categorie above 80,000.</desc>
+<defs><marker id="ah-cats-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<text class="tb" x="100" y="22" text-anchor="end">Score</text>
+<text class="tb" x="204" y="22" text-anchor="start">Height gained</text>
+<rect x="108" y="502.7" width="88" height="21.3" fill="none" stroke="#1c1917" stroke-width="0.8" stroke-dasharray="3 3"/>
+<text class="ts" x="152.0" y="518.3333333333334" text-anchor="middle">none</text>
+<rect x="108" y="481.3" width="88" height="21.3" fill="#e7e5e4" stroke="#1c1917" stroke-width="0.8"/>
+<text class="tk" x="152.0" y="497.0" text-anchor="middle">5</text>
+<rect x="108" y="438.7" width="88" height="42.7" fill="#d6d3d1" stroke="#1c1917" stroke-width="0.8"/>
+<text class="tk" x="152.0" y="465.0" text-anchor="middle">Cat 4</text>
+<rect x="108" y="353.3" width="88" height="85.3" fill="#a8a29e" stroke="#1c1917" stroke-width="0.8"/>
+<text class="tk" x="152.0" y="401.0" text-anchor="middle">Cat 3</text>
+<rect x="108" y="182.7" width="88" height="170.7" fill="#78716c" stroke="#1c1917" stroke-width="0.8"/>
+<text class="tw" x="152.0" y="273.0" text-anchor="middle">Cat 2</text>
+<rect x="108" y="97.3" width="88" height="85.3" fill="#57534e" stroke="#1c1917" stroke-width="0.8"/>
+<text class="tw" x="152.0" y="145.0" text-anchor="middle">Cat 1</text>
+<rect x="108" y="44.0" width="88" height="53.3" fill="#292524" stroke="#1c1917" stroke-width="0.8"/>
+<text class="tw" x="152.0" y="75.7" text-anchor="middle">HC</text>
+<line class="axis" x1="102" y1="502.7" x2="108" y2="502.7"/>
+<line class="axis" x1="196" y1="502.7" x2="202" y2="502.7"/>
+<text class="ts" x="98" y="508.6666666666667" text-anchor="end">4,000</text>
+<text class="ts" x="206" y="508.6666666666667" text-anchor="start">131 ft</text>
+<line class="axis" x1="102" y1="481.3" x2="108" y2="481.3"/>
+<line class="axis" x1="196" y1="481.3" x2="202" y2="481.3"/>
+<text class="ts" x="98" y="480.3333333333333" text-anchor="end">8,000</text>
+<text class="ts" x="206" y="480.3333333333333" text-anchor="start">262 ft</text>
+<line class="axis" x1="102" y1="438.7" x2="108" y2="438.7"/>
+<line class="axis" x1="196" y1="438.7" x2="202" y2="438.7"/>
+<text class="ts" x="98" y="443.6666666666667" text-anchor="end">16,000</text>
+<text class="ts" x="206" y="443.6666666666667" text-anchor="start">525 ft</text>
+<line class="axis" x1="102" y1="353.3" x2="108" y2="353.3"/>
+<line class="axis" x1="196" y1="353.3" x2="202" y2="353.3"/>
+<text class="ts" x="98" y="358.33333333333337" text-anchor="end">32,000</text>
+<text class="ts" x="206" y="358.33333333333337" text-anchor="start">1,050 ft</text>
+<line class="axis" x1="102" y1="182.7" x2="108" y2="182.7"/>
+<line class="axis" x1="196" y1="182.7" x2="202" y2="182.7"/>
+<text class="ts" x="98" y="187.66666666666669" text-anchor="end">64,000</text>
+<text class="ts" x="206" y="187.66666666666669" text-anchor="start">2,100 ft</text>
+<line class="axis" x1="102" y1="97.3" x2="108" y2="97.3"/>
+<line class="axis" x1="196" y1="97.3" x2="202" y2="97.3"/>
+<text class="ts" x="98" y="102.33333333333331" text-anchor="end">80,000</text>
+<text class="ts" x="206" y="102.33333333333331" text-anchor="start">2,625 ft</text>
+<text class="ts" x="10" y="554" text-anchor="start">Left: score = length in meters x</text>
+<text class="ts" x="10" y="573" text-anchor="start">average grade in percent.</text>
+<text class="ts" x="10" y="592" text-anchor="start">Right: height gained.</text>
 </svg>
 </div>
 <figcaption>Each category needs double the score of the one below it, except HC, which starts at 80,000. The dashed box is too small to be a climb<sup class="cite"><a href="#ref-8" aria-label="source 8">[8]</a></sup>.</figcaption>
@@ -720,8 +1042,8 @@ OpenTopoMap<sup class="cite"><a href="#ref-10" aria-label="source 10">[10]</a></
 
 </div></details>
 <h2 id="layers">Layers each ride type turns on</h2>
-<figure id="fig-layers">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<figure id="fig-layers" class="has-narrow">
+<div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 760 238" role="img" aria-labelledby="fig-layers-t fig-layers-d" focusable="false" style="min-width:547px">
 <title id="fig-layers-t">The map layers each ride type turns on</title>
 <desc id="fig-layers-d">A grid of ride types against three map layers. Gravel and Mountain Bike turn on the mountain-bike trails and the topo lines. Mountain Goat turns on the topo lines and the climbs. Every other ride type turns on none of them; each layer stays off until you turn it on in Layers, Trails and terrain.</desc>
@@ -759,6 +1081,46 @@ OpenTopoMap<sup class="cite"><a href="#ref-10" aria-label="source 10">[10]</a></
 <text class="ts" x="670.0" y="207.5" text-anchor="middle">Off until you turn it on</text>
 </svg>
 </div>
+<div class="fig-narrow">
+<svg viewBox="0 0 320 370" role="img" aria-labelledby="fig-layers-n-t fig-layers-n-d" focusable="false">
+<title id="fig-layers-n-t">The map layers each ride type turns on</title>
+<desc id="fig-layers-n-d">A grid of ride types against three map layers. Gravel and Mountain Bike turn on the mountain-bike trails and the topo lines. Mountain Goat turns on the topo lines and the climbs. Every other ride type turns on none of them; each layer stays off until you turn it on in Layers, Trails and terrain.</desc>
+<defs><marker id="ah-layers-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<text class="tb" x="57.0" y="20" text-anchor="middle">Mountain-</text>
+<text class="tb" x="57.0" y="39" text-anchor="middle">bike trails</text>
+<text class="tb" x="157.0" y="39" text-anchor="middle">Topo lines</text>
+<text class="tb" x="257.0" y="39" text-anchor="middle">Climbs</text>
+<text class="tb" x="10" y="72" text-anchor="start">Gravel</text>
+<rect class="bxa" x="10" y="80" width="94" height="36" rx="6"/>
+<text class="tb" x="57.0" y="103.5" text-anchor="middle">Turned on</text>
+<rect class="bxa" x="110" y="80" width="94" height="36" rx="6"/>
+<text class="tb" x="157.0" y="103.5" text-anchor="middle">Turned on</text>
+<rect class="bx" x="210" y="80" width="94" height="36" rx="6"/>
+<text class="ts" x="257.0" y="103.5" text-anchor="middle">Off</text>
+<text class="tb" x="10" y="146" text-anchor="start">Mountain Bike</text>
+<rect class="bxa" x="10" y="154" width="94" height="36" rx="6"/>
+<text class="tb" x="57.0" y="177.5" text-anchor="middle">Turned on</text>
+<rect class="bxa" x="110" y="154" width="94" height="36" rx="6"/>
+<text class="tb" x="157.0" y="177.5" text-anchor="middle">Turned on</text>
+<rect class="bx" x="210" y="154" width="94" height="36" rx="6"/>
+<text class="ts" x="257.0" y="177.5" text-anchor="middle">Off</text>
+<text class="tb" x="10" y="220" text-anchor="start">Mountain Goat</text>
+<rect class="bx" x="10" y="228" width="94" height="36" rx="6"/>
+<text class="ts" x="57.0" y="251.5" text-anchor="middle">Off</text>
+<rect class="bxa" x="110" y="228" width="94" height="36" rx="6"/>
+<text class="tb" x="157.0" y="251.5" text-anchor="middle">Turned on</text>
+<rect class="bxa" x="210" y="228" width="94" height="36" rx="6"/>
+<text class="tb" x="257.0" y="251.5" text-anchor="middle">Turned on</text>
+<text class="tb" x="10" y="294" text-anchor="start">Every other ride type</text>
+<rect class="bx" x="10" y="302" width="94" height="36" rx="6"/>
+<text class="ts" x="57.0" y="325.5" text-anchor="middle">Off</text>
+<rect class="bx" x="110" y="302" width="94" height="36" rx="6"/>
+<text class="ts" x="157.0" y="325.5" text-anchor="middle">Off</text>
+<rect class="bx" x="210" y="302" width="94" height="36" rx="6"/>
+<text class="ts" x="257.0" y="325.5" text-anchor="middle">Off</text>
+<text class="ts" x="10" y="358" text-anchor="start">Off: off until you turn it on.</text>
+</svg>
+</div>
 <figcaption>A ride type turns a layer on when you switch to it from a ride type that does not. You can still turn the layer off, and RouteMaker does not save that as your own choice.<sup class="cite"><a href="#ref-12" aria-label="source 12">[12]</a></sup></figcaption>
 </figure>
 <p>All three layers are under Layers, Trails and terrain, for every ride type. Each has its key
@@ -767,8 +1129,8 @@ under its switch.</p>
 <h2 id="settings">Starting settings and sliders</h2>
 <p>Each of the three starts the traffic and hills sliders where its job needs them. You can move both;
 the roles above stay the same.</p>
-<figure id="fig-weigh">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<figure id="fig-weigh" class="has-narrow">
+<div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 800 350" role="img" aria-labelledby="fig-weigh-t fig-weigh-d" focusable="false" style="min-width:576px">
 <title id="fig-weigh-t">How Gravel, Mountain Goat and Mountain Bike weigh traffic, hills and surface</title>
 <desc id="fig-weigh-d">Three scales with a dot for each ride type. Traffic slider start, from 0 direct to 100 calmest: Gravel 40, Mountain Goat 40, Mountain Bike 80. Hills slider start, from minus 100 (avoid hills) to plus 100: Gravel 0, Mountain Goat 100 (seek climbs), Mountain Bike 50 (fine with hills). Rough-surface avoidance, from 0 to 1: Gravel 0, Mountain Goat 0.1, Mountain Bike 0.</desc>
@@ -823,6 +1185,63 @@ the roles above stay the same.</p>
 <circle cx="230.0" cy="244.0" r="12" fill="#5b21b6" stroke="#ffffff" stroke-width="1.5"/>
 <text class="tw" x="230.0" y="248.0" text-anchor="middle" style="font-size:10.5px">MB</text>
 <text class="ts" x="246.0" y="248" text-anchor="start">Mountain Bike 0</text>
+</svg>
+</div>
+<div class="fig-narrow">
+<svg viewBox="0 0 320 504" role="img" aria-labelledby="fig-weigh-n-t fig-weigh-n-d" focusable="false">
+<title id="fig-weigh-n-t">How Gravel, Mountain Goat and Mountain Bike weigh traffic, hills and surface</title>
+<desc id="fig-weigh-n-d">Three scales with a dot for each ride type. Traffic slider start, from 0 direct to 100 calmest: Gravel 40, Mountain Goat 40, Mountain Bike 80. Hills slider start, from minus 100 (avoid hills) to plus 100: Gravel 0, Mountain Goat 100 (seek climbs), Mountain Bike 50 (fine with hills). Rough-surface avoidance, from 0 to 1: Gravel 0, Mountain Goat 0.1, Mountain Bike 0.</desc>
+<defs><marker id="ah-weigh-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<text class="tb" x="10" y="20" text-anchor="start">Traffic slider start</text>
+<line class="axis" x1="22" y1="126" x2="298" y2="126"/>
+<text class="ts" x="16" y="150" text-anchor="start">0 direct</text>
+<text class="ts" x="304" y="150" text-anchor="end">100 calmest</text>
+<line x1="132.4" y1="126" x2="132.4" y2="108.0" stroke="#8a4b08" stroke-width="1.5"/>
+<line x1="132.4" y1="126" x2="132.4" y2="78.0" stroke="#9d174d" stroke-width="1.5"/>
+<line x1="242.8" y1="126" x2="242.8" y2="48.0" stroke="#5b21b6" stroke-width="1.5"/>
+<circle cx="132.4" cy="108.0" r="14" fill="#8a4b08" stroke="#ffffff" stroke-width="1.5"/>
+<text class="tw" x="132.4" y="112.5" text-anchor="middle" style="font-size:12px">G</text>
+<circle cx="132.4" cy="78.0" r="14" fill="#9d174d" stroke="#ffffff" stroke-width="1.5"/>
+<text class="tw" x="132.4" y="82.5" text-anchor="middle" style="font-size:12px">MG</text>
+<circle cx="242.8" cy="48.0" r="14" fill="#5b21b6" stroke="#ffffff" stroke-width="1.5"/>
+<text class="tw" x="242.8" y="52.5" text-anchor="middle" style="font-size:12px">MB</text>
+<text class="ts" x="151.4" y="113.0" text-anchor="start" style="paint-order:stroke;stroke:var(--bg);stroke-width:5px">Gravel 40</text>
+<text class="ts" x="151.4" y="83.0" text-anchor="start" style="paint-order:stroke;stroke:var(--bg);stroke-width:5px">Mountain Goat 40</text>
+<text class="ts" x="223.8" y="53.0" text-anchor="end" style="paint-order:stroke;stroke:var(--bg);stroke-width:5px">Mountain Bike 80</text>
+<text class="tb" x="10" y="190" text-anchor="start">Hills slider start</text>
+<line class="axis" x1="22" y1="296" x2="298" y2="296"/>
+<text class="ts" x="16" y="320" text-anchor="start">-100 avoid hills</text>
+<text class="ts" x="304" y="320" text-anchor="end">+100</text>
+<line class="grid" x1="160.0" y1="290" x2="160.0" y2="302"/>
+<text class="ts" x="160.0" y="320" text-anchor="middle">0</text>
+<line x1="160.0" y1="296" x2="160.0" y2="278.0" stroke="#8a4b08" stroke-width="1.5"/>
+<line x1="298.0" y1="296" x2="298.0" y2="248.0" stroke="#9d174d" stroke-width="1.5"/>
+<line x1="229.0" y1="296" x2="229.0" y2="218.0" stroke="#5b21b6" stroke-width="1.5"/>
+<circle cx="160.0" cy="278.0" r="14" fill="#8a4b08" stroke="#ffffff" stroke-width="1.5"/>
+<text class="tw" x="160.0" y="282.5" text-anchor="middle" style="font-size:12px">G</text>
+<circle cx="298.0" cy="248.0" r="14" fill="#9d174d" stroke="#ffffff" stroke-width="1.5"/>
+<text class="tw" x="298.0" y="252.5" text-anchor="middle" style="font-size:12px">MG</text>
+<circle cx="229.0" cy="218.0" r="14" fill="#5b21b6" stroke="#ffffff" stroke-width="1.5"/>
+<text class="tw" x="229.0" y="222.5" text-anchor="middle" style="font-size:12px">MB</text>
+<text class="ts" x="179.0" y="283.0" text-anchor="start" style="paint-order:stroke;stroke:var(--bg);stroke-width:5px">Gravel 0</text>
+<text class="ts" x="279.0" y="253.0" text-anchor="end" style="paint-order:stroke;stroke:var(--bg);stroke-width:5px">Mountain Goat 100</text>
+<text class="ts" x="210.0" y="223.0" text-anchor="end" style="paint-order:stroke;stroke:var(--bg);stroke-width:5px">Mountain Bike 50</text>
+<text class="tb" x="10" y="360" text-anchor="start">Rough-surface avoidance</text>
+<line class="axis" x1="22" y1="466" x2="298" y2="466"/>
+<text class="ts" x="16" y="490" text-anchor="start">0 none</text>
+<text class="ts" x="304" y="490" text-anchor="end">1 strong</text>
+<line x1="49.6" y1="466" x2="49.6" y2="448.0" stroke="#9d174d" stroke-width="1.5"/>
+<line x1="22.0" y1="466" x2="22.0" y2="418.0" stroke="#8a4b08" stroke-width="1.5"/>
+<line x1="22.0" y1="466" x2="22.0" y2="388.0" stroke="#5b21b6" stroke-width="1.5"/>
+<circle cx="49.6" cy="448.0" r="14" fill="#9d174d" stroke="#ffffff" stroke-width="1.5"/>
+<text class="tw" x="49.6" y="452.5" text-anchor="middle" style="font-size:12px">MG</text>
+<circle cx="22.0" cy="418.0" r="14" fill="#8a4b08" stroke="#ffffff" stroke-width="1.5"/>
+<text class="tw" x="22.0" y="422.5" text-anchor="middle" style="font-size:12px">G</text>
+<circle cx="22.0" cy="388.0" r="14" fill="#5b21b6" stroke="#ffffff" stroke-width="1.5"/>
+<text class="tw" x="22.0" y="392.5" text-anchor="middle" style="font-size:12px">MB</text>
+<text class="ts" x="68.6" y="453.0" text-anchor="start" style="paint-order:stroke;stroke:var(--bg);stroke-width:5px">Mountain Goat 0.1</text>
+<text class="ts" x="41.0" y="423.0" text-anchor="start" style="paint-order:stroke;stroke:var(--bg);stroke-width:5px">Gravel 0</text>
+<text class="ts" x="41.0" y="393.0" text-anchor="start" style="paint-order:stroke;stroke:var(--bg);stroke-width:5px">Mountain Bike 0</text>
 </svg>
 </div>
 <figcaption>Where each ride type starts. You can move both sliders. Gravel and Mountain Goat plan as a cyclocross bike, which takes gravel in its stride; Mountain Bike plans as a mountain bike, which takes every surface<sup class="cite"><a href="#ref-11" aria-label="source 11">[11]</a><a href="#ref-12" aria-label="source 12">[12]</a></sup>.</figcaption>

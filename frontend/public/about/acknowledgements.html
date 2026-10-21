@@ -87,11 +87,20 @@
   .ln { stroke: var(--accent); stroke-width: 2.5; fill: none; }
   .ln2 { stroke: #c2410c; stroke-width: 2.5; fill: none; stroke-dasharray: 7 4; }
   .fillacc { fill: var(--accent); }
+  .fig-narrow { display: none; }
+  .fig-narrow .t, .fig-narrow .tb { font-size: 15.5px; }
+  .fig-narrow .ts { font-size: 14px; }
+  .fig-narrow .tk, .fig-narrow .tw { font-size: 14.5px; }
+  @media (max-width: 37.5rem) {
+    figure.has-narrow .fig-wide { display: none; }
+    figure.has-narrow .fig-narrow { display: block; }
+  }
   @media (max-width: 30rem) {
     body { font-size: 1rem; }
     h1 { font-size: 1.5rem; }
     th, td { padding: 0.35rem 0.4rem; }
-    figure { padding: 0.4rem; }
+    figure { padding: 0.25rem; }
+    header, main, footer { padding: 0 0.75rem; }
   }
 
   details.more { margin: 0.5rem 0 1rem; border: 1px solid var(--line); border-radius: 6px; }
@@ -105,6 +114,10 @@
   .glance figure { background: var(--bg); }
   .glance ul { padding-left: 1.25rem; }
   .glance .find { margin-bottom: 0; }
+  @media (max-width: 30rem) {
+    .glance { padding: 0.25rem 0.5rem 0.5rem; }
+    details.more > .more-body { padding: 0 0.25rem 0.4rem; }
+  }
 </style>
 </head>
 <body>
@@ -133,8 +146,8 @@ and the open source projects it is built from. Thank you.</p>
 
 <div class="glance">
 <h2 id="glance">At a glance</h2>
-<figure id="fig-glance-ack">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<figure id="fig-glance-ack" class="has-narrow">
+<div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 760 162" role="img" aria-labelledby="fig-glance-ack-t fig-glance-ack-d" focusable="false" style="min-width:547px">
 <title id="fig-glance-ack-t">Acknowledgements at a glance</title>
 <desc id="fig-glance-ack-d">Four groups whose work RouteMaker is built on: the volunteers who map the region in OpenStreetMap, the public agencies that publish ratings, traffic counts and closures, the researchers whose methods it follows, and the open source projects it is built from.</desc>
@@ -157,6 +170,32 @@ and the open source projects it is built from. Thank you.</p>
 <path class="ar" d="M662,70 L380,106" marker-end="url(#ah-glance-ack)"/>
 <rect class="bxa" x="290" y="110" width="180" height="40" rx="6"/>
 <text class="tb" x="380.0" y="134.5" text-anchor="middle">RouteMaker</text>
+</svg>
+</div>
+<div class="fig-narrow">
+<svg viewBox="0 0 320 312" role="img" aria-labelledby="fig-glance-ack-n-t fig-glance-ack-n-d" focusable="false">
+<title id="fig-glance-ack-n-t">Acknowledgements at a glance</title>
+<desc id="fig-glance-ack-n-d">Four groups whose work RouteMaker is built on: the volunteers who map the region in OpenStreetMap, the public agencies that publish ratings, traffic counts and closures, the researchers whose methods it follows, and the open source projects it is built from.</desc>
+<defs><marker id="ah-glance-ack-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<rect class="bx" x="10" y="8" width="262" height="54" rx="6"/>
+<text class="tb" x="141.0" y="30.5" text-anchor="middle">Mappers</text>
+<text class="ts" x="141.0" y="50.5" text-anchor="middle">OpenStreetMap volunteers</text>
+<path class="ar" d="M272,35 L296,35"/>
+<rect class="bx" x="10" y="70" width="262" height="54" rx="6"/>
+<text class="tb" x="141.0" y="92.5" text-anchor="middle">Public agencies</text>
+<text class="ts" x="141.0" y="112.5" text-anchor="middle">ratings, counts, closures</text>
+<path class="ar" d="M272,97 L296,97"/>
+<rect class="bx" x="10" y="132" width="262" height="54" rx="6"/>
+<text class="tb" x="141.0" y="154.5" text-anchor="middle">Researchers</text>
+<text class="ts" x="141.0" y="174.5" text-anchor="middle">the LTS method, flow studies</text>
+<path class="ar" d="M272,159 L296,159"/>
+<rect class="bx" x="10" y="194" width="262" height="54" rx="6"/>
+<text class="tb" x="141.0" y="216.5" text-anchor="middle">Open source</text>
+<text class="ts" x="141.0" y="236.5" text-anchor="middle">the software it is built from</text>
+<path class="ar" d="M272,221 L296,221"/>
+<rect class="bxa" x="10" y="264" width="262" height="40" rx="6"/>
+<text class="tb" x="141.0" y="289.5" text-anchor="middle">RouteMaker</text>
+<path class="ar" d="M296,35 L296,284 L274,284" marker-end="url(#ah-glance-ack-n)"/>
 </svg>
 </div>
 <figcaption>Who made RouteMaker possible.</figcaption>
