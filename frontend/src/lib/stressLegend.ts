@@ -124,9 +124,9 @@ export function stressZoomHint(zoom: number | null): string {
   const { min, quiet } = STRESS_ZOOMS;
   let text =
     `${ZOOMED_OUT} A named paved trail counts when it runs ${formatDistance(PAVED_RUN_MI[11] * METRES_PER_MILE)} ` +
-    `or more at zoom 11, or ${formatDistance(PAVED_RUN_MI[10] * METRES_PER_MILE)} at zoom 10; an unpaved one ` +
+    `or more at zoom 11, or ${formatDistance(PAVED_RUN_MI[10] * METRES_PER_MILE)} at zoom 10 and further out; an unpaved one ` +
     `needs a regional bike route or a longer run. Trails beside a road count ` +
-    `the same way. Lines are drawn thinner at zooms 10 and 11. ${ROUTE_AT_EVERY_ZOOM} ` +
+    `the same way. Lines are drawn thinner at zoom 11 and further out. ${ROUTE_AT_EVERY_ZOOM} ` +
     `${everyTrailFrom(quiet)} From zoom ${quiet} the busy roads at LTS 3 and above and the quiet streets, footways and ` +
     `sidewalks show too, the busy roads faintly until zoom ${SOLID_MIN_ZOOM}. Roads bikes may not use, such as expressways, are left unmarked. A busy road with a bike lane ` +
     `or path mapped beside it shows only from zoom ${BESIDE_ROAD_MIN_ZOOM}, and faintly, so the bike lane is the ` +

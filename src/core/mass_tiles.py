@@ -82,7 +82,9 @@ from pipeline.schema import (
 from . import ratelimit, stress_tiles, tile_cache
 
 LAYER = stress_tiles.LAYER
-MIN_ZOOM = stress_tiles.MIN_ZOOM
+# The capacity map starts where the trails' z10 level did (the long trails' farther zooms are
+# the stress map's alone).
+MIN_ZOOM = 10
 # The deepest tile the map asks for (`STRESS_ZOOMS.max` in mapStyle.ts); z15-16 are drawn
 # from the z14 tile, so this set has none of its own.
 MAX_ZOOM = 14
