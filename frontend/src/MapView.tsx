@@ -2440,25 +2440,6 @@ export function MapView(props: Props) {
     if (!props.rideLabels) return;
     collapseCredits(container.current?.querySelector<HTMLElement>(".maplibregl-ctrl-attrib") ?? null);
   }, [props.rideLabels]);
-  // The station names: larger than the street names (railLayer.ts, STATION_NAME_SIZE), and over every other layer
-  // but the hazard marks, ride dots and Review's layers (the owner, 2026-10-20: "Text should be on top in most cases"),
-  // so no pin, line or route hides one; the markers are DOM and stay above. Layers come and go (water, climbs, the route, a style reload), so this listens throughout.
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-    const size = props.rideLabels ? RIDE_STATION_NAME_SIZE : STATION_NAME_SIZE;
-    const apply = () => {
-      if (!map.getLayer(RAIL_LAYERS.names)) return;
-      if (map.getLayoutProperty(RAIL_LAYERS.names, "text-size") !== size) map.setLayoutProperty(RAIL_LAYERS.names, "text-size", size);
-      const move = stationNamesTarget(map.getLayersOrder());
-      if (move) map.moveLayer(RAIL_LAYERS.names, move.before);
-    };
-    apply();
-    map.on("styledata", apply);
-    return () => {
-      map.off("styledata", apply);
-    };
-  }, [props.rideLabels]);
   useEffect(() => () => void riderMarker.current?.remove(), []);
   // Go's "you" dot: a marker only (aria-hidden: Go's start line says where the rider is).
   const youMarker = useRef<Marker | null>(null);

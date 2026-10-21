@@ -3647,8 +3647,8 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
         # how Novice and Nervous gets past them here.
         novice_walks=False,
     )
-    # WMATA's live reading (core.wmata_live), if any: an elevator out on the way costs the trip
-    # a little in the ranking, and the block says the live values (core.transit_live).
+    # WMATA's live reading (core.wmata_live), if any: a trip through a closed station is left out,
+    # and the block says the live values (core.transit_live).
     # A plan for now takes its Metro steps' departures from WMATA's next trains, where they
     # cover them, before it is ranked.
     found = transit_live.with_live_trains(found, live)
