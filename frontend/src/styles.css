@@ -7464,6 +7464,32 @@ details.fold > summary .icon {
   cursor: progress;
 }
 
+/* Save route in the big button's place (the owner, 2026-10-21): its name form and its line drop under the bar,
+   centred on it, on a card of their own so the map behind does not show through. */
+.plan-map-bar:has(.save-route-form, .save-route-said:not(:empty)) {
+  z-index: 3;
+}
+.plan-map-bar > .save-route-bar {
+  pointer-events: auto;
+}
+.plan-map-bar .save-route-bar > .plan-bar-route {
+  box-shadow: var(--shadow);
+}
+.plan-map-bar .save-route-bar .save-route-form,
+.plan-map-bar .save-route-bar .save-route-said:not(:empty) {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: min(360px, calc(100vw - 32px));
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  background: var(--bg);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+}
+
 .app:has(.plan-map-bar) .map-chips {
   top: 72px;
 }
