@@ -239,6 +239,11 @@ class NoRoute(Exception):
         self.no_path = no_path
 
 
+class StraySideRoute(NoRoute):
+    """A side route (a candidate, the way round a junction or through a closure) of such a
+    plan takes a dirt trail no point touches: that side route alone is dropped."""
+
+
 class TooLong(Exception):
     """The router refused the request as beyond one of its limits."""
 
@@ -3078,13 +3083,20 @@ def plan(
                 trail_touched=found.touched,
                 trail_strays=dials.trail_strays + tuple(map(_ring_tuple, found.rings)),
             )
-        except NoRoute:
+        except (NoRoute, DeadlineExceeded, RouterUnavailable):
+            # Leaving the strays out left no route, or no time for another round: the plan
+            # the ride type makes on its own graph, in what is left of the budget.
             if not dials.trail_strays:
                 raise
             logger.info("no route without the dirt trails found; planning without dirt trails")
             break
     dials = dataclasses.replace(dials, trail_touch=False, trail_strays=())
     return _plan(points, preset_name, long_ride, started, dials, quick, candidates)
+
+
+def _over_budget(rings) -> bool:
+    perimeter, vertices = work_zones.rules.budget_used(rings)
+    return perimeter > work_zones.rules.MAX_PERIMETER_M or vertices > work_zones.rules.MAX_VERTICES
 
 
 def _ring_tuple(ring) -> tuple[tuple[float, float], ...]:
@@ -3225,7 +3237,11 @@ def _plan(
         per_point = dials.trail_touched
         if per_point is None:
             per_point = trail_touch.touched(points)
-        touched_trails = frozenset().union(*per_point[0 if dials.ride_replan else 1 :])
+        # Not the start, nor the start again at the end of a loop or a round trip.
+        chosen = per_point if dials.ride_replan else per_point[1:]
+        if not dials.ride_replan and len(points) > 1 and is_round_trip(points):
+            chosen = chosen[:-1]
+        touched_trails = frozenset().union(*chosen)
         any_dirt = dials.ride_replan and (dials.dirt_ridden or bool(per_point[0]))
         if touched_trails or any_dirt:
             variant = Variant.OFFROAD.value
@@ -3276,11 +3292,13 @@ def _plan(
     # The roads the rider marked closed on this ride (v0.8.2): left out as a closure is,
     # after the closures' own rings, and kept out where those are let back in. They take
     # the router's polygon budget first (the latest kept), and the closures fit the rest.
-    # The strips across dirt trails a plan found for itself (`plan`) go first, so the rider's
-    # own keep the latest places; they are a few metres each.
-    blocked = [[list(p) for p in ring] for ring in dials.trail_strays] + work_zones.blocked_rings(
-        dials.blocked
-    )
+    # The strips across dirt trails a plan found for itself (`plan`) are always kept, a few
+    # metres each: the rider's own fit beside them, the earliest let go first.
+    strips = [[list(p) for p in ring] for ring in dials.trail_strays]
+    blocked = work_zones.blocked_rings(dials.blocked)
+    while blocked and _over_budget(strips + blocked):
+        blocked = blocked[1:]
+    blocked = strips + blocked
     zones_plan = work_zones.plan_zones(
         points,
         when,
@@ -3782,7 +3800,7 @@ def _plan(
                 if alternate:
                     # A side route (a candidate, the way round a junction or through a
                     # closure) is dropped, not the plan made again.
-                    raise NoRoute("a side route takes a dirt trail no point touches")
+                    raise StraySideRoute("a side route takes a dirt trail no point touches")
                 _wait_for_delays(delays)
                 raise StrayTrails(tuple(stray), per_point)
             dirt_trails = trail_touch.rides_dirt(pieces, ways)
@@ -4176,6 +4194,8 @@ def _plan(
                 around["extra_distance_m"] = round(around["distance_m"] - body["distance_m"], 1)
                 around["extra_duration_s"] = round(around["duration_s"] - body["duration_s"], 1)
                 body["avoid_alternate"] = around
+            except StraySideRoute:
+                pass
             except (DeadlineExceeded, RouterUnavailable, NoRoute):
                 avoid_info["alternate"] = "time"
         else:
@@ -4222,6 +4242,8 @@ def _plan(
                     _trip_length_m(found), target_m, ceiling
                 )["over_target_m"]
             candidates.append({**candidate, "rank": len(candidates) + 2})
+        except StraySideRoute:
+            continue
         except (DeadlineExceeded, RouterUnavailable, NoRoute):
             break
     body["candidates"] = candidates or None

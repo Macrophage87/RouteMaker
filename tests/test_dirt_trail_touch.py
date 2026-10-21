@@ -213,6 +213,38 @@ class TestThroughTheApi:
         assert body["variant"] == "standard" and body["dirt_trails"] is False
         assert {graph_of(url) for url, _ in routes(fake)} == {"standard"}
 
+    def test_a_loop_from_a_dirt_trail_plans_as_before(self, client, segments, router) -> None:
+        """A loop's end is its start again: still the start alone."""
+        add_trail(segments, TOUCHED, START_TRAIL)
+        fake = router(plain_router())
+        response = post(client, {**good_body(), "loop": True})
+        assert response.status_code == 200, response.content
+        assert response.json()["variant"] == "standard"
+        assert {graph_of(url) for url, _ in routes(fake)} == {"standard"}
+
+    def test_out_of_time_while_leaving_strays_out_plans_without_dirt_trails(
+        self, client, segments, router
+    ) -> None:
+        add_trail(segments, TOUCHED, END_TRAIL)
+        add_trail(segments, STRAY, VERTICES[1:3])
+        graphs: list[str] = []
+
+        def route(payload):
+            graph = graph_of(fake.calls[-1][0])
+            graphs.append(graph)
+            if graph == "offroad" and payload.get("exclude_polygons"):
+                raise routing.DeadlineExceeded("out of time")
+            return route_answer([(VERTICES, 2.2, [10.0, 20.0, 15.0, 30.0])])
+
+        def trace(_payload):
+            edges = STANDARD_EDGES if graphs[-1] == "standard" else STRAY_EDGES
+            return trace_answer(VERTICES, edges)
+
+        fake = router(FakeRouter({"route": route, "trace_attributes": trace}))
+        response = post(client, good_body())
+        assert response.status_code == 200, response.content
+        assert response.json()["variant"] == "standard"
+
     def test_a_ride_re_plan_from_on_a_dirt_trail_may_ride_any(
         self, client, segments, router
     ) -> None:
