@@ -289,6 +289,8 @@ export function tiersFor(palette, strong = false) {
     const keep = shape.tier >= BUSY_MIN_TIER || shape.tier === 2;
     const casing = strong ? strongerCasing(colours.casing, keep) : colours.casing;
     const unpavedCasing = strong ? strongerCasing(unpaved.casing, keep) : unpaved.casing;
+    const gravel = GRAVEL_PALETTES[palette][shape.tier];
+    const gravelCasing = strong ? strongerCasing(gravel.casing, keep) : gravel.casing;
     return {
       ...shape,
       ...colours,
@@ -299,6 +301,10 @@ export function tiersFor(palette, strong = false) {
       unpavedColor: unpaved.color,
       unpavedCasing,
       unpavedGap: unpaved.gap ?? unpavedCasing,
+      // The gravel grey for this tier (GRAVEL_PALETTES), its casing and its gaps' colour.
+      gravelColor: gravel.color,
+      gravelCasing,
+      gravelGap: gravel.gap ?? gravelCasing,
       // The outline on the half step above this level's dash, where it needs one (458b).
       halfOutline: HALF_OUTLINES[palette]?.[shape.tier] ?? null,
       ...(strong
@@ -328,7 +334,7 @@ export function tiersFor(palette, strong = false) {
  */
 /** Whether a tier has a gap colour of its own in some palette (only LTS 2, 356): only such a tier gets a gap layer. */
 export function hasGapLayer(tier) {
-  return Object.values(PALETTES).some((p) => p[tier].gap) || Object.values(UNPAVED_PALETTES).some((p) => p[tier].gap);
+  return [PALETTES, UNPAVED_PALETTES, GRAVEL_PALETTES].some((ps) => Object.values(ps).some((p) => p[tier].gap));
 }
 
 export function gapLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = currentTiers()) {
@@ -346,7 +352,7 @@ export function gapLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = curr
         paint: {
           // Solid, the line's width, under the dashes: what shows between them. Not drawn where the line is
           // faint (the casing is then a ring, FAINT), so a faint road is as it was.
-          "line-color": byUnpaved(tier.unpavedGap, tier.gap),
+          "line-color": byUnpaved(tier.unpavedGap, tier.gap, tier.gravelGap),
           "line-width": byZoom(tier.width, tier.width * FAINT.widthScale, busy, 0, (zoom) => zoomedOutLine(tier, zoom)),
           "line-opacity": byZoom(1, 0, busy),
         },
@@ -417,8 +423,37 @@ export const UNPAVED_PALETTES = {
   },
 };
 
-/** A colour that is `unpaved` on a feature the tiles say is unpaved, else `paved`. */
-const byUnpaved = (unpaved, paved) => ["case", ["==", ["get", "unpaved"], true], unpaved, paved];
+/**
+ * GRAVEL GREY (the owner, 2026-10-21: "Maybe make natural surface trails brown and gravel grey?", after a gravel path
+ * and a dirt trail looked identical on the map). An unpaved way the tiles do not call rough (their "rough": a natural
+ * surface, or a rutted track or bad smoothness; `routemaker.stress.is_rough`) is gravel, compacted or a firm unpaved
+ * surface, and is drawn in this grey ramp in place of the brown one, with the same dashes, widths and dotted mark;
+ * brown is kept for natural surfaces. One ramp in every palette: greys are the same to every colour vision. Like the
+ * brown ramp, every step is 1.5:1 or more darker than the last and 10 or more CIEDE2000 from it under every vision;
+ * the light greys sit on a near-black edge (LTS 2 on its slate-blue one, 356), the dark ones on a pale grey edge.
+ */
+const GRAVEL_RAMP = {
+  1: { color: "#bbbfc5", casing: "#1c1f23" },
+  2: { color: "#92979d", casing: "#1a2638", gap: "#7a8fa3" },
+  3: { color: "#60666d", casing: "#f4f5f6" },
+  4: { color: "#3f4449", casing: "#f4f5f6" },
+  5: { color: "#1e2124", casing: "#f4f5f6" },
+};
+export const GRAVEL_PALETTES = { blended: GRAVEL_RAMP, twotone: GRAVEL_RAMP, cvd: GRAVEL_RAMP };
+
+/**
+ * Whether a feature is an unpaved natural surface (the tiles' "unpaved" and "rough"): brown; other unpaved is gravel grey.
+ * The tiles carry "rough" on every table built since NO-BIKE-PATHS (290, 291); on an older one, without the column, every
+ * unpaved way draws grey here while the route line, which has no `rough` then, draws it brown.
+ */
+const isNatural = ["all", ["==", ["get", "unpaved"], true], ["==", ["get", "rough"], true]];
+
+/**
+ * A colour by surface: `natural` on an unpaved natural surface, `gravel` on any other unpaved way, else `paved`.
+ * With no `gravel` (a caller that has one colour for every unpaved way) both unpaved kinds take `natural`.
+ */
+const byUnpaved = (natural, paved, gravel = natural) =>
+  gravel === natural ? ["case", ["==", ["get", "unpaved"], true], natural, paved] : ["case", isNatural, natural, ["==", ["get", "unpaved"], true], gravel, paved];
 
 /**
  * A path or trail whose surface OpenStreetMap does not give (OWNER-DECISIONS 376, A, from
@@ -1113,7 +1148,8 @@ export function setMassRide(on) {
  * (slice 6) and only the harder ones in this look. This supersedes 290(b)'s "draw them
  * faint" (FOLLOWUP-MTB-FAINT). Since 454 the line is an optional map layer, off until the rider
  * turns it on (mtbTrailsOn, below; lib/mapGlue.ts overlayLayerShown). Not the tiles' `rough`: that is a rough surface (`is_rough`,
- * paved cobbles among them, 440), not this class, and a rough trail draws as any other.
+ * paved cobbles among them, 440), not this class: an unpaved rough way draws brown and any other unpaved one gravel grey
+ * (GRAVEL_PALETTES), whether or not it is a mountain-bike trail.
  *
  * MTB_TRAILS_ROUTABLE is the switch for a future mountain-bike mode: true draws them as any
  * other trail, in the routable layers, and the not-for-routes layer draws nothing (and the
@@ -1167,7 +1203,7 @@ export const mtbHides = ["!=", ["get", "mtb"], true];
 export const isMtbTrail = ["==", ["get", "mtb"], true];
 
 /**
- * The unrated trails' look: a mid-grey dashed line (`dash`, in line widths: a dash one and a half
+ * The unrated trails' look: a brown dashed line (until 2026-10-21 mid-grey, #5f6368; `dash`, in line widths: a dash one and a half
  * widths long, then a gap as long) on the white edge every mountain-bike trail has (MTB_HALO).
  * Until v0.6.0 this was a 1.5 px line of fine dots with no edge, which the owner could hardly
  * see (2026-10-12: "Mountain bike trails seem plotted but don't show up very well"); it is now as
@@ -1179,8 +1215,10 @@ export const isMtbTrail = ["==", ["get", "mtb"], true];
  * (`legendGround`), so it reads as on the map in a dark panel too.
  */
 export const MTB_TRAIL = {
-  color: "#5f6368",
-  strongColor: "#4b5260",
+  // Brown since 2026-10-21 (GRAVEL_PALETTES: "natural surface trails brown and gravel grey"): a dirt trail is brown
+  // like every natural surface, and no longer the grey of a gravel path. Darker with the switch.
+  color: "#7a5536",
+  strongColor: "#5e3f26",
   width: 3,
   strongWidth: 4,
   dash: [1.5, 1.5],
@@ -1458,7 +1496,7 @@ export function stressLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = c
     source: sourceId,
     "source-layer": STRESS_TILE_LAYER,
     filter: filters[`stress-${tier.tier}`],
-    paint: { ...linePaint(byUnpaved(tier.unpavedColor, tier.color), tier.width, tier.tier >= BUSY_MIN_TIER, (zoom) => zoomedOutLine(tier, zoom)), ...(tier.dash ? { "line-dasharray": tier.dash } : {}) },
+    paint: { ...linePaint(byUnpaved(tier.unpavedColor, tier.color, tier.gravelColor), tier.width, tier.tier >= BUSY_MIN_TIER, (zoom) => zoomedOutLine(tier, zoom)), ...(tier.dash ? { "line-dasharray": tier.dash } : {}) },
   }));
 }
 
@@ -1516,7 +1554,7 @@ export function unknownSurfaceLayers(sourceId = "stress", when = DEFAULT_WHEN, t
  * chosen to stand apart from the line), so a gravel trail does not read as a
  * smooth path. Shape, not colour: a dot pattern no tier or facility has. Not
  * drawn where the line is faint or hidden (z12-13 busy roads, alleys).
- * `is_rough` is not in the tiles; only "unpaved" is.
+ * Its colour follows the line's: the brown's casing on a natural surface, the grey's on gravel (GRAVEL_PALETTES).
  */
 export const UNPAVED_DASH = [1, 1.2];
 
@@ -1549,8 +1587,8 @@ export function unpavedLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = 
     "source-layer": STRESS_TILE_LAYER,
     filter: filters[`stress-unpaved-${tier.tier}`],
     paint: {
-      // The dots in the unpaved casing, which stands apart from the brown line (OWNER-DECISIONS 302).
-      "line-color": tier.unpavedCasing,
+      // The dots in the unpaved casing, which stands apart from the brown line (OWNER-DECISIONS 302); on gravel the grey's.
+      "line-color": byUnpaved(tier.unpavedCasing, tier.gravelCasing, tier.gravelCasing),
       "line-width": unpavedWidthByZoom(tier),
       "line-opacity": byZoom(1, 0, tier.tier >= BUSY_MIN_TIER),
       "line-dasharray": UNPAVED_DASH,
@@ -1565,7 +1603,7 @@ export function unpavedLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = 
 function casingPaint(tier) {
   const busy = tier.tier >= BUSY_MIN_TIER;
   const edge = faintEdgeColour(tier);
-  const full = byUnpaved(tier.unpavedCasing, tier.casing);
+  const full = byUnpaved(tier.unpavedCasing, tier.casing, tier.gravelCasing);
   return {
     "line-color": byZoom(full, edge, busy, full),
     "line-width": byZoom(casingWidth(tier), FAINT.edgePx, busy, 0, (zoom) => zoomedOutCasing(tier, zoom)),
@@ -1595,7 +1633,7 @@ export function stressCasingLayers(sourceId = "stress", when = DEFAULT_WHEN, tie
  * and 3:1 or more from the orange and red edges it rings), and keeps both of the owner's
  * colours. Drawn on the map (`ringLayers`, under everything else of the overlay, so a
  * facility rail still shows over it), round the route's sections (`route-ring`) and in
- * the legend's swatches. Paved roads only: an unpaved one is the brown ramp, which is 3:1
+ * the legend's swatches. Paved roads only: an unpaved one is the brown or the gravel grey ramp, each 3:1
  * on its own casing. Not drawn where the line is faint (z12-13), which keeps its own edge.
  * A tier with no `ring` has its ring layer drawn transparent, so a palette flip needs no
  * new layer.

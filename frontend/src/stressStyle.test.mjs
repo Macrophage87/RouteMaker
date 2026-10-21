@@ -598,7 +598,10 @@ test("an alley is not drawn below z16 and is faint from it; a tier-5 road keeps 
   assert.deepEqual(avoid, { opacity: 1, width: DEFAULT_TIERS[4].width });
   const avoidLayer = stressLayers().find((l) => l.id === "stress-5");
   // Its colour when paved: the expression is the surface's (OWNER-DECISIONS 302).
-  assert.deepEqual(avoidLayer.paint["line-color"], ["case", ["==", ["get", "unpaved"], true], DEFAULT_TIERS[4].unpavedColor, DEFAULT_TIERS[4].color]);
+  // Gravel (unpaved, not rough) grey since 2026-10-21.
+  assert.equal(paintValue(avoidLayer, "line-color", { tier: 5 }), DEFAULT_TIERS[4].color);
+  assert.equal(paintValue(avoidLayer, "line-color", { tier: 5, unpaved: true, rough: true }), DEFAULT_TIERS[4].unpavedColor);
+  assert.equal(paintValue(avoidLayer, "line-color", { tier: 5, unpaved: true }), DEFAULT_TIERS[4].gravelColor);
 });
 
 // ---- surface unknown (OWNER-DECISIONS 376, A: PARK-TRAILS-investigation.md) ------------------

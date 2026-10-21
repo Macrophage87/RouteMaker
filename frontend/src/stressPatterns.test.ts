@@ -155,7 +155,9 @@ test("an unpaved road or trail gets a dotted centre mark at every tier, over the
     assert.equal(draws(mark, { tier: tier.tier, unpaved: false }), false);
     assert.equal(draws(mark, { tier: tier.tier === 1 ? 2 : 1, unpaved: true }), false, `only its own tier`);
     assert.deepEqual(mark.paint["line-dasharray"], UNPAVED_DASH);
-    assert.equal(mark.paint["line-color"], tier.unpavedCasing, "the unpaved casing, chosen to stand apart from the brown line (OWNER-DECISIONS 302)");
+    // The brown's casing on a natural surface, chosen to stand apart from the brown line (OWNER-DECISIONS 302); the grey's on gravel.
+    assert.equal(paintAt(mark, "line-color", { tier: tier.tier, unpaved: true, rough: true }), tier.unpavedCasing.toLowerCase());
+    assert.equal(paintAt(mark, "line-color", { tier: tier.tier, unpaved: true }), tier.gravelCasing.toLowerCase());
     assert.equal(paintAt(mark, "line-width", { tier: tier.tier, unpaved: true }, 14), unpavedWidth(tier));
     assert.ok(unpavedWidth(tier) < tier.width && unpavedWidth(tier) >= 1.5);
     // Zoomed out the mark is thinned with its line and stays inside it (OWNER-DECISIONS 375).

@@ -79,6 +79,7 @@ from django.utils import timezone
 
 from pipeline.schema import (
     MASS_WIDTH_COLUMN,
+    ROUGH_COLUMN,
     SIDEPATH_NAME_COLUMN,
     STRESS_HALF_COLUMN,
     TRAIL_NAME_COLUMN,
@@ -598,7 +599,7 @@ def _behind_of(kept: list[tuple[dict, float]]) -> tuple | None:
 # segment nearest the piece on its way. The breakdown sums them; the route's
 # coloured sections (`stress_spans`) keep their order.
 _STRESS_JOIN = """
-SELECT {tier}, {facility}, seg.is_unpaved, seg.road_lanes, seg.road_oneway{capacity_out}{half_out}
+SELECT {tier}, {facility}, seg.is_unpaved, seg.road_lanes, seg.road_oneway{capacity_out}{half_out}{rough_out}
 FROM unnest(%s::bigint[], %s::float8[], %s::float8[])
      WITH ORDINALITY AS p(way_id, lon, lat, ordinality)
 LEFT JOIN LATERAL (
@@ -687,6 +688,10 @@ class PieceClass(tuple):
     # every reader that compares keys read the lower level; the ranking reads the half as
     # the midpoint (`core.refine`, docs/stress/stress-number.md section 3).
     half: bool
+    # Whether the segment's surface sheds riders (`routemaker.stress.is_rough`: dirt, grass and
+    # the like, a rutted track); None where the table has no such column. An unpaved section
+    # that is rough is drawn brown, any other unpaved one gravel grey (the owner, 2026-10-21).
+    rough: bool | None
 
     def __new__(
         cls,
@@ -697,6 +702,7 @@ class PieceClass(tuple):
         oneway: bool | None = None,
         width_m: float | None = None,
         half: bool = False,
+        rough: bool | None = None,
     ):
         pair = super().__new__(cls, (tier, facility))
         pair.unpaved = unpaved
@@ -705,10 +711,11 @@ class PieceClass(tuple):
         pair.width_m = width_m
         pair.rpm = round(flow.level_riders_per_min(width_m)) if width_m is not None else None
         pair.half = bool(half) and tier in ("1", "2", "3", "4")
+        pair.rough = rough
         return pair
 
     def __getnewargs__(self):
-        return (self[0], self[1], self.unpaved, self.lanes, self.oneway, self.width_m, self.half)
+        return (self[0], self[1], self.unpaved, self.lanes, self.oneway, self.width_m, self.half, self.rough)
 
 
 def classify(pieces: list[Piece], when: str, roadway_only: bool = False) -> list[tuple[str, str]]:
@@ -726,13 +733,15 @@ def classify(pieces: list[Piece], when: str, roadway_only: bool = False) -> list
     with_facility = _has_facility_columns(schema)
     with_capacity = _has_capacity_column(schema)
     with_half = _has_half_column(schema)
+    with_rough = segment_info.has_columns(schema, ROUGH_COLUMN)
     query = _STRESS_JOIN.format(
         schema=schema,
         tier=_TIER_AT if with_facility else "seg.stress_tier",
         facility=_FACILITY_AT if with_facility else "NULL",
         columns=("s.facility, s.car_free_when" if with_facility else "NULL AS facility")
         + (f", s.{MASS_WIDTH_COLUMN}" if with_capacity else "")
-        + (f", s.{STRESS_HALF_COLUMN}" if with_half else ""),
+        + (f", s.{STRESS_HALF_COLUMN}" if with_half else "")
+        + (f", s.{ROUGH_COLUMN}" if with_rough else ""),
         traits=(
             "s.road_lanes, s.road_oneway"
             if _has_trait_columns(schema)
@@ -748,6 +757,7 @@ def classify(pieces: list[Piece], when: str, roadway_only: bool = False) -> list
             if with_facility
             else f", seg.{STRESS_HALF_COLUMN}"
         ),
+        rough_out=f", seg.{ROUGH_COLUMN}" if with_rough else "",
     )
     arrays = [[p.way_id for p in pieces], [p.lon for p in pieces], [p.lat for p in pieces]]
     whens = ([when, when] + ([when] if with_half else [])) if with_facility else []
@@ -759,8 +769,13 @@ def classify(pieces: list[Piece], when: str, roadway_only: bool = False) -> list
             unpaved = row[2] if len(row) > 2 and isinstance(row[2], bool) else None
             lanes = row[3] if len(row) > 3 and isinstance(row[3], int) else None
             oneway = row[4] if len(row) > 4 and isinstance(row[4], bool) else None
-            width = row[5] if with_capacity and len(row) > 5 and row[5] is not None else None
-            half = bool(row[-1]) if with_half and row[-1] is True else False
+            # After the five fixed columns: the capacity, the half step and the surface's
+            # roughness, each where the table has it, in that order.
+            extra = list(row[5:])
+            width = extra.pop(0) if with_capacity else None
+            half = extra.pop(0) is True if with_half else False
+            rough = extra.pop(0) if with_rough else None
+            rough = rough if isinstance(rough, bool) else None
             if roadway_only and kind in ROADWAY_ONLY_AS_NONE:
                 kind = "none"
             classes.append(
@@ -772,6 +787,7 @@ def classify(pieces: list[Piece], when: str, roadway_only: bool = False) -> list
                     oneway,
                     None if width is None else float(width),
                     half,
+                    rough,
                 )
             )
     return classes
@@ -810,13 +826,15 @@ MIN_SPAN_M = 10.0
 def stress_spans(stretches: list[tuple], capacity: bool = False) -> list[dict]:
     """The route's coloured sections, in route order.
 
-    `stretches` is (metres, stress key, facility key[, unpaved[, rpm[, outside DC[, half]]]]) in
+    `stretches` is (metres, stress key, facility key[, unpaved[, rpm[, outside DC[, half[, rough]]]]]) in
     the order ridden; the answer is [{from_m, to_m, tier, facility, unpaved}] in whole metres
     along the route, adjacent equal sections merged and those under MIN_SPAN_M
     folded into the one before (or, first on the route, the one after). `tier` is
     1-5 or null (unknown); `facility` is the class or null; `unpaved` True or False
     where the segments say, else null (OWNER-DECISIONS 302: the route line draws an
-    unpaved section in the brown ramp, so a section ends where the surface changes).
+    unpaved section in the brown ramp, so a section ends where the surface changes). An
+    unpaved section also says `rough`: True on a natural surface (brown), False on gravel
+    (grey; the owner, 2026-10-21), None where the table does not say (brown, as before).
 
     With `capacity` (a Mass Ride on a table that has the capacity column; OWNER-DECISIONS
     325-327) a section also ends where the capacity changes band, and carries `rpm`: the
@@ -838,6 +856,9 @@ def stress_spans(stretches: list[tuple], capacity: bool = False) -> list[dict]:
         if len(stretch) > 6 and stretch[6] and tier in ("1", "2", "3", "4"):
             tier = f"{tier}h"
         unpaved = stretch[3] if len(stretch) > 3 else None
+        # The surface key: an unpaved stretch's roughness splits it from gravel (True, False or None).
+        if unpaved is True:
+            unpaved = ("rough", stretch[7] if len(stretch) > 7 else None)
         outside = capacity and len(stretch) > 5 and bool(stretch[5])
         rpm = stretch[4] if capacity and len(stretch) > 4 and not outside else None
         band = (
@@ -877,8 +898,10 @@ def stress_spans(stretches: list[tuple], capacity: bool = False) -> list[dict]:
             "to_m": round(at),
             "tier": int(tier) if tier != "unknown" else None,
             "facility": kind if kind != "unknown" else None,
-            "unpaved": unpaved,
+            "unpaved": unpaved if not isinstance(unpaved, tuple) else True,
         }
+        if isinstance(unpaved, tuple):
+            entry["rough"] = unpaved[1]
         if half:
             entry["half"] = True
         if capacity:
@@ -3989,6 +4012,7 @@ def _plan(
                         getattr(classes[i], "rpm", None),
                         preset_name == "mass-ride" and _outside_dc(pieces[i]),
                         getattr(classes[i], "half", False),
+                        getattr(classes[i], "rough", None),
                     )
                     for i in range(run[0], run[1])
                 )

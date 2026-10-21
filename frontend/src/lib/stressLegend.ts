@@ -63,13 +63,13 @@ export const PAVED_RUN_MI = { 11: 2.5, 10: 5 };
 /**
  * OWNER-DECISIONS 452a: the mountain-bike trails draw in a look of their own that says they are not
  * used for routes (stressStyle.js, MTB_TRAIL), and the legend says so in words in a row of its own,
- * so a rider who cannot see the map knows what the grey dashed line on a ticked white edge is. The row's name and words;
+ * so a rider who cannot see the map knows what the brown dashed line on a ticked white edge is. The row's name and words;
  * null once they are routable (a future mountain-bike mode, MTB_TRAILS_ROUTABLE). Gravel, Mountain Goat and
  * Mountain Bike route on them, the rated ones too since the owner's choice of 2026-10-19 ("Rated, MTB and Gravel").
  */
 export const MTB_LEGEND: { short: string; label: string } | null = MTB_TRAILS_ROUTABLE
   ? null
-  : { short: "Mountain-bike trail", label: "Only off-road ride types route on these (Gravel, Mountain Goat and Mountain Bike): grey dashes on a white edge with dark ticks for an unrated trail. Rated ones show by level below; from the next map update, Gravel and Mountain Goat ride green (level 1)." };
+  : { short: "Mountain-bike trail", label: "Only off-road ride types route on these (Gravel, Mountain Goat and Mountain Bike): brown dashes on a white edge with dark ticks for an unrated trail. Rated ones show by level below; from the next map update, Gravel and Mountain Goat ride green (level 1)." };
 
 type MtbLevel = (typeof MTB_LEVELS)[number];
 
@@ -220,7 +220,11 @@ export function StressPageLink({ className }: { className?: string }): ReactElem
 
 /** The unpaved mark's line in the legend: what it is, and that an unpaved trail has no edge lines. */
 export const UNPAVED_LEGEND =
-  "Brown, darker = busier: gravel, dirt or other unpaved surface, with the dashes above and a dotted center line. An unpaved trail has no edge lines, which a paved path has. A short bridge is drawn like the trail it is on; tap it to read its own surface.";
+  "Brown, darker = busier: dirt, grass or another natural surface, or a rutted unpaved track, with the dashes above and a dotted center line. An unpaved trail has no edge lines, which a paved path has. A short bridge is drawn like the trail it is on; tap it to read its own surface.";
+
+/** The gravel row (the owner, 2026-10-21: "Maybe make natural surface trails brown and gravel grey?"; stressStyle.js GRAVEL_PALETTES). */
+export const GRAVEL_LEGEND =
+  "Grey, darker = busier: gravel, or an unpaved surface with nothing rougher mapped, with the same dashes and dotted center line as dirt.";
 
 /**
  * The surface-unknown line's entry (OWNER-DECISIONS 376, A): the shape that says so, in words, and why.
@@ -273,7 +277,7 @@ export function TierSwatch({ tier, widths }: { tier: Tier; widths: { line: numbe
  * stretch a tier from LTS 1 to Avoid, each on its unpaved casing at LTS 1's
  * widths, with the dotted mark over it in that casing.
  */
-export function UnpavedSwatch({ tiers, widths }: { tiers: readonly Tier[]; widths: { line: number; casing: number } }): ReactElement {
+export function UnpavedSwatch({ tiers, widths, gravel = false }: { tiers: readonly Tier[]; widths: { line: number; casing: number }; gravel?: boolean }): ReactElement {
   const step = LEGEND_SWATCH_PX / tiers.length;
   const mark = unpavedWidth(tiers[0]);
   const seg = (i: number, stroke: string, strokeWidth: number, strokeDasharray?: string) =>
@@ -285,9 +289,9 @@ export function UnpavedSwatch({ tiers, widths }: { tiers: readonly Tier[]; width
       h(
         "g",
         { key: tier.tier },
-        seg(i, tier.unpavedCasing, widths.casing),
-        seg(i, tier.unpavedColor, widths.line),
-        seg(i, tier.unpavedCasing, mark, dashPx(UNPAVED_DASH, mark)),
+        seg(i, gravel ? tier.gravelCasing : tier.unpavedCasing, widths.casing),
+        seg(i, gravel ? tier.gravelColor : tier.unpavedColor, widths.line),
+        seg(i, gravel ? tier.gravelCasing : tier.unpavedCasing, mark, dashPx(UNPAVED_DASH, mark)),
       ),
     ),
   );
@@ -311,7 +315,7 @@ function ticks(strong: boolean): ReactElement {
 }
 
 /**
- * The mountain-bike trail's swatch (452a): its dark ticks, white edge and grey dashes at the map's widths, on a strip of the
+ * The mountain-bike trail's swatch (452a): its dark ticks, white edge and brown dashes at the map's widths, on a strip of the
  * base map's earth colour, as the map draws them, so they read in a dark panel too.
  */
 export function MtbTrailSwatch({ strong }: { strong: boolean }): ReactElement {
@@ -367,7 +371,7 @@ const row = (key: string | number, swatch: ReactElement, short: string, label: s
   );
 
 /**
- * The mountain-bike trail layer's rows (452a, 456): the unrated trails' grey dashes, then each level, in words.
+ * The mountain-bike trail layer's rows (452a, 456): the unrated trails' brown dashes, then each level, in words.
  * Empty once the trails are routable.
  */
 function mtbRows(): ReactElement[] {
@@ -430,7 +434,8 @@ export function StressLegend({
       "ul",
       { className: "legend", "aria-label": "Traffic stress legend" },
       ...tiers.map((tier, i) => row(tier.tier, h(TierSwatch, { tier, widths: widths.tiers[i] }), tier.short, tier.label)),
-      row("unpaved", h(UnpavedSwatch, { tiers, widths: widths.tiers[0] }), "Unpaved", UNPAVED_LEGEND),
+      row("gravel", h(UnpavedSwatch, { tiers, widths: widths.tiers[0], gravel: true }), "Gravel", GRAVEL_LEGEND),
+      row("unpaved", h(UnpavedSwatch, { tiers, widths: widths.tiers[0] }), "Dirt", UNPAVED_LEGEND),
       row("unknown", h(UnknownSurfaceSwatch, { tier: tiers[0], widths: widths.tiers[0] }), "Surface unknown", UNKNOWN_SURFACE_LEGEND),
       // The mountain-bike trails' rows (452a, 456) are in their own key, under their switch in Trails and terrain
       // (MtbTrailLegend), once in Layers.
@@ -471,7 +476,7 @@ export function mtbMapKeyRows(): { key: string; name: string }[] {
 /**
  * The mountain-bike trails' key on the map itself (the owner, 2026-10-19: "Mountain bike trails need to have a
  * key on the map"): while their layer is on and the map is close enough in to draw them (`drawn`), a small box
- * in the map's corner with each look (the unrated grey dashes, then each level) and its short name, and that a
+ * in the map's corner with each look (the unrated brown dashes, then each level) and its short name, and that a
  * tap on a trail tells more. Not a control: it has nothing to press. Layers keeps the long words.
  */
 export function MtbMapKey({ drawn }: { drawn: boolean }): ReactElement | null {
