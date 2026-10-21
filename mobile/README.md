@@ -211,8 +211,9 @@ workflow, a debug build only; by hand (Run workflow), debug or release; never on
 21, the runner's Android SDK; `npm ci`, `npm test`, `npx cap sync android`, a check that the synced
 config names no site, `./gradlew testDebugUnitTest`, then the APK. The checkout keeps no token
 (`persist-credentials: false`); actions are pinned by commit. A pull request's debug APK names no site,
-so it is fine as a public artifact. It uses no repository variables: the build names no server, and its application id is
-`org.routemaker.phone`. Release signing needs these repository secrets:
+so it is fine as a public artifact. It uses no repository variables. The application id comes from the
+`ROUTEMAKER_APP_ID` secret (the owner's reverse domain), for test and store builds alike, so one installs
+over the other; without it (a fork's pull request) it is `org.routemaker.phone`. These repository secrets:
 
 | Name | Kind | Used for |
 | --- | --- | --- |
@@ -221,6 +222,8 @@ so it is fine as a public artifact. It uses no repository variables: the build n
 | `ROUTEMAKER_KEY_ALIAS` | secret | the key's alias |
 | `ROUTEMAKER_KEY_PASSWORD` | secret | the key's password |
 | `ROUTEMAKER_DEBUG_KEYSTORE_BASE64` | secret | optional: a steady key for debug builds only, `base64 -w0 debug.keystore` |
+| `ROUTEMAKER_APP_ID` | secret | the application id, such as `com.example.app`; permanent once on Play |
+| `ROUTEMAKER_SITE_URL` | secret | the site's https origin, baked into the release (store) build only |
 
 The debug key uses Android's standard debug passwords (`android`) and alias (`androiddebugkey`), so it
 is one secret. Make it once with
@@ -232,8 +235,10 @@ that installs over a test build and keeps its data (site address, sign-in, Home)
 the workflow's own artifacts. A local build still uses your own `~/.android/debug.keystore` unless
 `ROUTEMAKER_DEBUG_KEYSTORE_FILE` points at this key.
 
-A `release` run fails at once without the four secrets, writes the key to the runner's temporary
-directory only, and uploads a signed APK and an `.aab` for Play. Make the keystore once, keep it and
+A `release` run is the store build. It fails at once without the four key secrets or
+`ROUTEMAKER_SITE_URL`, bakes the site in (so testers are never asked for it; the owner agreed on
+2026-10-21 that the address may be public in this build), writes the key to the runner's temporary
+directory only, and uploads a signed APK and an `.aab` for Play, kept 3 days. Debug builds still name no site. Make the keystore once, keep it and
 its passwords safe (losing it means a new Play listing):
 `keytool -genkeypair -v -keystore release.jks -alias routemaker -keyalg RSA -keysize 4096 -validity 10000`.
 Never commit it (`mobile/.gitignore` refuses `*.jks` and `*.keystore`).
@@ -248,7 +253,8 @@ npx cap sync android
 cd android && ./gradlew test assembleDebug    # app/build/outputs/apk/debug/app-debug.apk
 ```
 
-Optional, for a local build only (never in CI; `site-config.js` refuses it when `CI` is set):
+Optional, for a local build (in CI only for the release run, which sets `ROUTEMAKER_STORE_BUILD=1`;
+`site-config.js` refuses it there otherwise):
 `ROUTEMAKER_URL=https://your.site npx cap sync android` builds the address in, and the app then opens
 it without asking (the first-launch screen says so if opened). For a development server,
 `ROUTEMAKER_URL=http://10.0.2.2:5173 ROUTEMAKER_ALLOW_HTTP=1` (the emulator's address for the host).

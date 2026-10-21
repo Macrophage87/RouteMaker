@@ -38,8 +38,12 @@ test("ROUTEMAKER_URL, a local build's override: an https origin only; http only 
 });
 
 test("ROUTEMAKER_URL is refused in CI: an Actions artifact of a public repository must name no server", () => {
-  assert.throws(() => buildConfig({ CI: "true", ROUTEMAKER_URL: "https://beta.example.net" }), /local builds only/);
+  assert.throws(() => buildConfig({ CI: "true", ROUTEMAKER_URL: "https://beta.example.net" }), /local builds and the store build only/);
+  assert.throws(() => buildConfig({ CI: "true", ROUTEMAKER_STORE_BUILD: "0", ROUTEMAKER_URL: "https://beta.example.net" }), /store build only/);
   assert.equal(buildConfig({ CI: "true" }).server.url, undefined);
+  // The by-hand store build only, with the same origin rules.
+  assert.equal(buildConfig({ CI: "true", ROUTEMAKER_STORE_BUILD: "1", ROUTEMAKER_URL: "https://site.example.org" }).server.url, "https://site.example.org");
+  assert.throws(() => buildConfig({ CI: "true", ROUTEMAKER_STORE_BUILD: "1", ROUTEMAKER_URL: "http://site.example.org" }), /https/);
 });
 
 test("Android: the legacy bridge the background-location plugin needs; the inspector only when asked", () => {
@@ -144,6 +148,11 @@ test("release signing and the store id come from the environment; no key in the 
   assert.doesNotMatch(workflow, /vars\./);
   assert.doesNotMatch(workflow, /^\s+ROUTEMAKER_URL:/m);
   assert.match(workflow, /No site address in the build/);
+  // Only the by-hand release run reads the site secret and bakes it in; its artifact is short-lived.
+  assert.match(workflow, /STORE_SITE: \$\{\{ env\.BUILD == 'release' && github\.event_name == 'workflow_dispatch' && secrets\.ROUTEMAKER_SITE_URL \|\| '' \}\}/);
+  assert.equal(workflow.match(/ROUTEMAKER_SITE_URL \|\|/g).length, 1, "the site secret is read in one place");
+  assert.match(workflow, /ROUTEMAKER_STORE_BUILD=1 ROUTEMAKER_URL="\$STORE_SITE" npx cap sync android/);
+  assert.match(workflow, /retention-days: \$\{\{ env\.BUILD == 'release' && 3 \|\| 30 \}\}/);
 });
 
 test("the first-launch screen: labelled for screen readers, https only, checked against /healthz, kept on the phone", () => {

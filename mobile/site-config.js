@@ -4,8 +4,8 @@
 //
 // No build carries a site address: the repository is public, and so are its Actions artifacts. On
 // first launch the app asks for the address and keeps it on the phone (SetupActivity.java). For a
-// local build only, ROUTEMAKER_URL bakes one in (never set it in CI); `npx cap sync android` writes it
-// to android/app/src/main/assets/capacitor.config.json, which is git-ignored.
+// local build, and for the store build CI makes by hand, ROUTEMAKER_URL bakes one in; `npx cap sync
+// android` writes it to android/app/src/main/assets/capacitor.config.json, which is git-ignored.
 
 /**
  * The local override from ROUTEMAKER_URL: an https origin, or http only with ROUTEMAKER_ALLOW_HTTP=1
@@ -28,8 +28,10 @@ function siteUrl(env) {
   if ((url.pathname !== "/" && url.pathname !== "") || url.search || url.hash || url.username || url.password) {
     throw new Error("ROUTEMAKER_URL must be the site's origin alone, such as https://routes.example.org");
   }
-  if (env.CI) {
-    throw new Error("ROUTEMAKER_URL is for local builds only: a CI artifact is public and must name no server");
+  // CI may bake an address in only for the owner's by-hand store build (android.yml's release run,
+  // ROUTEMAKER_STORE_BUILD=1, the address from the ROUTEMAKER_SITE_URL secret). Test builds name none.
+  if (env.CI && env.ROUTEMAKER_STORE_BUILD !== "1") {
+    throw new Error("ROUTEMAKER_URL is for local builds and the store build only: a CI test build is public and must name no server");
   }
   return { url: url.origin, cleartext: url.protocol === "http:" };
 }
