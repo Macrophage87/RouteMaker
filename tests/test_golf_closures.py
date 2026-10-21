@@ -87,8 +87,6 @@ def test_a_courses_own_ways_close(tags):
         ({"highway": "path", "bicycle": "designated"}, ra.WHY_GOLF_TAGGED_OPEN),
         ({"highway": "path", "bicycle": "yes", "golf": "cartpath"}, ra.WHY_GOLF_TAGGED_OPEN),
         ({"highway": "service", "access": "yes"}, ra.WHY_GOLF_TAGGED_OPEN),
-        ({"highway": "path", "name": "Sligo Creek Trail"}, ra.WHY_GOLF_TRAIL),
-        ({"highway": "cycleway", "name": "Rock Creek Trail"}, ra.WHY_GOLF_TRAIL),
         ({"highway": "residential", "name": "Fairway Road"}, ra.WHY_GOLF_STREET),
         ({"highway": "residential"}, ra.WHY_GOLF_STREET),
         ({"highway": "tertiary", "name": "Montrose Road"}, ra.WHY_GOLF_STREET),
@@ -104,12 +102,62 @@ def test_a_public_way_through_a_course_stays_open(tags, why):
 def test_a_cart_path_never_opens_by_its_name_or_a_route():
     tags = {"highway": "path", "golf": "cartpath", "name": "Back Nine Path"}
     assert judged(tags).why == ra.WHY_GOLF_CARTPATH
-    assert judged(tags, bicycle_routes={1}).closed
+    assert judged(tags, trail_routes={1}).closed
 
 
-def test_a_bicycle_route_through_a_course_stays_open():
-    m = judged({"highway": "path"}, bicycle_routes={1})
-    assert not m.closed and m.why == ra.WHY_GOLF_BICYCLE_ROUTE
+def test_a_route_relation_through_a_course_stays_open():
+    m = judged({"highway": "footway"}, trail_routes={1})
+    assert not m.closed and m.why == ra.WHY_GOLF_ROUTE
+
+
+# A trail that runs through the course: in, across and out, its pieces outside it.
+(_W, _S, _E, _N), _O, _I = WOODMONT
+WEST_OF = [(_W - 0.004, _S + 0.005), (_W - 0.001, _S + 0.005)]
+ACROSS = [(_W - 0.001, _S + 0.005), (_W + 0.004, _S + 0.005)]
+BRIDGE = [(_W + 0.004, _S + 0.005), (_W + 0.0045, _S + 0.005)]
+ON = [(_W + 0.0045, _S + 0.005), (_W + 0.011, _S + 0.005)]
+
+
+def run(*ways, **kwargs):
+    return {m.way_id: m for m in ra.golf_closures(list(ways), AREAS, **kwargs)}
+
+
+@pytest.mark.parametrize("highway", ["path", "cycleway", "footway"])
+def test_a_trail_that_runs_on_outside_the_course_stays_open(highway):
+    name = {"name": "Sligo Creek Trail"}
+    found = run(
+        (1, {"highway": highway, **name}, WEST_OF),
+        (2, {"highway": highway, **name}, ACROSS),
+        (3, {"highway": "path", "bridge": "yes"}, BRIDGE),
+        (4, {"highway": highway, **name}, ON),
+    )
+    assert 1 not in found
+    assert not found[2].closed and found[2].why == ra.WHY_GOLF_TRAIL
+    # The unnamed bridge between two of its pieces is the trail's.
+    assert not found[3].closed and found[3].why == ra.WHY_GOLF_TRAIL_LINK
+
+
+def test_a_named_cart_path_that_stays_on_the_course_closes():
+    found = run(
+        (1, {"highway": "path", "name": "Sligo Creek Trail"}, WEST_OF),
+        (2, {"highway": "path", "name": "Back Nine Path"}, ACROSS),
+        (3, {"highway": "path"}, BRIDGE),
+    )
+    assert found[2].closed and found[2].why == ra.WHY_GOLF
+    assert found[3].closed
+
+
+def test_a_long_unnamed_loop_off_the_trail_is_a_cart_path():
+    (west, south, _e, _n), _o, _i = WOODMONT
+    start, end = (west + 0.002, south + 0.005), (west + 0.008, south + 0.005)
+    loop = [start, (west + 0.002, south + 0.008), (west + 0.008, south + 0.008), end]
+    found = run(
+        (1, {"highway": "path", "name": "Rock Creek Trail"}, WEST_OF),
+        (2, {"highway": "path", "name": "Rock Creek Trail"}, [start, end]),
+        (3, {"highway": "path"}, loop),
+    )
+    assert not found[2].closed
+    assert found[3].closed
 
 
 def test_an_override_and_ddot_records_reopen_one():

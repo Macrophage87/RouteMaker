@@ -718,13 +718,15 @@ GOLF_DRIVE_ID = 3401
 GOLF_STREET_ID = 3402
 GOLF_TRAIL_ID = 3403
 GOLF_OUTSIDE_ID = 3404
+GOLF_TRAIL_OUTSIDE_ID = 3405
 GOLF_OUTLINE_ID = 3500
 
 
 def build_golf_extract(path: Path) -> None:
     """A golf course inside the District's box: a cart path tagged `highway=path` and
     nothing else, the clubhouse's service drive, a public street across the course, and a
-    named trail through it; south of the course, a public street they all reach."""
+    named trail through it that runs on north of the course; south of the course, a public
+    street they all reach."""
     Path(path).unlink(missing_ok=True)  # osmium refuses to overwrite
     writer = osmium.SimpleWriter(str(path))
     try:
@@ -741,6 +743,7 @@ def build_golf_extract(path: Path) -> None:
             15: (-77.0680, 38.934),
             16: (-77.0640, 38.916),
             17: (-77.0640, 38.929),
+            20: (-77.0640, 38.936),
             18: (-77.085, 38.916),
             19: (-77.055, 38.916),
         }
@@ -753,6 +756,7 @@ def build_golf_extract(path: Path) -> None:
             GOLF_DRIVE_ID: ([12, 13], {"highway": "service"}),
             GOLF_STREET_ID: ([14, 15], {"highway": "residential", "name": "Fairway Road"}),
             GOLF_TRAIL_ID: ([16, 17], {"highway": "path", "name": "Test Creek Trail"}),
+            GOLF_TRAIL_OUTSIDE_ID: ([17, 20], {"highway": "path", "name": "Test Creek Trail"}),
             GOLF_OUTSIDE_ID: (
                 [18, 10, 12, 14, 16, 19],
                 {"highway": "residential", "name": "Outside Street"},

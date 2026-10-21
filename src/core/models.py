@@ -2207,7 +2207,7 @@ class ReviewItem(models.Model):
         DISAGREEMENT = "disagreement", "Rating disagreements"
         SIDEPATH = "sidepath", "Use side path, none mapped"
         NARROW_RURAL = "narrow_rural", "Narrow rural roads with no posted speed"
-        WORKS_CLOSURE = "works_closure", "Industrial-area closures"
+        WORKS_CLOSURE = "works_closure", "Industrial-area and golf course closures"
         REMATCH = "rematch", "Overrides that did not re-match"
         PAINTED_LANE = "painted_lane", "Painted lanes on wide two-way roads"
         DC_NO_BIKE = "dc_no_bike", "DC ways closed to bicycles"

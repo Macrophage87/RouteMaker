@@ -44,8 +44,8 @@ CLASS_CLOSED_HIGHWAY = frozenset({"footway", "pedestrian", "bridleway"})
 MOTORWAY = frozenset({"motorway", "motorway_link"})
 CLOSED_ACCESS = frozenset({"no", "private", "permit", "customers", "restricted"})
 NOT_LISTED_FOOTWAY = frozenset({"crossing", "traffic_island", "access_aisle"})
-# The CBD's sidewalks are District law the owner set (104); an industrial-area closure
-# has its own queue already, and so has a golf course's (golf-closures.csv). The Zoo,
+# The CBD's sidewalks are District law the owner set (104); an industrial-area or golf
+# course closure has its own queue already (Review's "Industrial and golf closures"). The Zoo,
 # military and secured areas close a way whatever its own tags say (`restricted_areas`,
 # `zoo.closed_way`), so a Reopen there, a `bicycle=yes` override, would change nothing:
 # they are not listed.

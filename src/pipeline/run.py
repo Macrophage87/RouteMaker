@@ -2981,7 +2981,8 @@ def build_handlers(
         works_closed = {m.way_id for m in context.works_ways if m.closed}
         # And a golf course's cart paths, walks and drives (owner report 2026-10-21:
         # Woodmont Country Club's plain `highway=path` cart paths drawn as bike paths),
-        # but for the ways the rules above judged. A bicycle route through a course stays.
+        # but for the ways the rules above judged. A bicycle or hiking route through a
+        # course stays.
         routes = route_relations.read_routes(context.source_pbf)
         context.golf_ways = restricted_areas.golf_closures(
             placed,
@@ -2996,7 +2997,7 @@ def build_handlers(
                 for way_id, facts in context.road_facts_by_way.items()
                 if facts.agency == agency_roads.DC_AGENCY
             },
-            bicycle_routes={way_id for way_id, r in routes.items() if r.bicycle_route},
+            trail_routes={w for w, r in routes.items() if r.bicycle_route or r.hiking},
         )
         golf_closed = {m.way_id for m in context.golf_ways if m.closed}
         context.secured_missing = restricted_areas.secured_missing(areas[restricted_areas.SECURED])
