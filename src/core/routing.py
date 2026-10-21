@@ -599,7 +599,8 @@ def _behind_of(kept: list[tuple[dict, float]]) -> tuple | None:
 # segment nearest the piece on its way. The breakdown sums them; the route's
 # coloured sections (`stress_spans`) keep their order.
 _STRESS_JOIN = """
-SELECT {tier}, {facility}, seg.is_unpaved, seg.road_lanes, seg.road_oneway{capacity_out}{half_out}{rough_out}
+SELECT {tier}, {facility}, seg.is_unpaved, seg.road_lanes,
+       seg.road_oneway{capacity_out}{half_out}{rough_out}
 FROM unnest(%s::bigint[], %s::float8[], %s::float8[])
      WITH ORDINALITY AS p(way_id, lon, lat, ordinality)
 LEFT JOIN LATERAL (
@@ -715,7 +716,16 @@ class PieceClass(tuple):
         return pair
 
     def __getnewargs__(self):
-        return (self[0], self[1], self.unpaved, self.lanes, self.oneway, self.width_m, self.half, self.rough)
+        return (
+            self[0],
+            self[1],
+            self.unpaved,
+            self.lanes,
+            self.oneway,
+            self.width_m,
+            self.half,
+            self.rough,
+        )
 
 
 def classify(pieces: list[Piece], when: str, roadway_only: bool = False) -> list[tuple[str, str]]:
@@ -826,10 +836,10 @@ MIN_SPAN_M = 10.0
 def stress_spans(stretches: list[tuple], capacity: bool = False) -> list[dict]:
     """The route's coloured sections, in route order.
 
-    `stretches` is (metres, stress key, facility key[, unpaved[, rpm[, outside DC[, half[, rough]]]]]) in
-    the order ridden; the answer is [{from_m, to_m, tier, facility, unpaved}] in whole metres
-    along the route, adjacent equal sections merged and those under MIN_SPAN_M
-    folded into the one before (or, first on the route, the one after). `tier` is
+    `stretches` is (metres, stress key, facility key[, unpaved[, rpm[, outside DC[, half[,
+    rough]]]]]) in the order ridden; the answer is [{from_m, to_m, tier, facility,
+    unpaved}] in whole metres along the route, adjacent equal sections merged and those
+    under MIN_SPAN_M  folded into the one before (or, first on the route, the one after). `tier` is
     1-5 or null (unknown); `facility` is the class or null; `unpaved` True or False
     where the segments say, else null (OWNER-DECISIONS 302: the route line draws an
     unpaved section in the brown ramp, so a section ends where the surface changes). An
@@ -856,7 +866,8 @@ def stress_spans(stretches: list[tuple], capacity: bool = False) -> list[dict]:
         if len(stretch) > 6 and stretch[6] and tier in ("1", "2", "3", "4"):
             tier = f"{tier}h"
         unpaved = stretch[3] if len(stretch) > 3 else None
-        # The surface key: an unpaved stretch's roughness splits it from gravel (True, False or None).
+        # The surface key: an unpaved stretch's roughness splits it from gravel (True, False or
+        # None).
         if unpaved is True:
             unpaved = ("rough", stretch[7] if len(stretch) > 7 else None)
         outside = capacity and len(stretch) > 5 and bool(stretch[5])

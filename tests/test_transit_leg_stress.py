@@ -83,7 +83,8 @@ class TestLaterRides:
         answer = call["answer"]
         assert last["coordinates"] == answer["geometry"]["coordinates"]
         assert (
-            last["stress_spans"] == [{"rpm": None, "rough": None, **span} for span in answer["stress_spans"]]
+            last["stress_spans"]
+            == [{"rpm": None, "rough": None, **span} for span in answer["stress_spans"]]
             and last["stress_spans"]
         )
         assert set(last["stress_spans"][0]) == set(body["stress_spans"][0])
