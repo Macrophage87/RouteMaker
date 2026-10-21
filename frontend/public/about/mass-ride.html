@@ -100,7 +100,7 @@
     h1 { font-size: 1.5rem; }
     th, td { padding: 0.35rem 0.4rem; }
     figure { padding: 0.25rem; }
-    header, main, footer { padding: 0 0.75rem; }
+    header, main, footer { padding-left: 0.75rem; padding-right: 0.75rem; }
   }
 
   details.more { margin: 0.5rem 0 1rem; border: 1px solid var(--line); border-radius: 6px; }
@@ -699,7 +699,7 @@ practical reason mass rides cork.</p>
 <text class="ts" x="142.72727272727272" y="366" text-anchor="middle">6</text>
 <text class="ts" x="185.63636363636363" y="366" text-anchor="middle">8</text>
 <text class="ts" x="228.54545454545453" y="366" text-anchor="middle">10</text>
-<path class="ln2" d="M121.3,120 L121.3,352"/>
+<path class="ln2" d="M121.3,146 L121.3,174 M121.3,258 L121.3,286 M121.3,314 L121.3,342"/>
 <text class="t" x="14" y="142" text-anchor="start" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">100 riders, two lanes</text>
 <rect x="14" y="150" width="10.8" height="20" class="fillacc"/>
 <circle cx="14" cy="160" r="5" class="ah"/>
@@ -1141,7 +1141,7 @@ marker on the map<sup class="cite"><a href="#ref-5" aria-label="source 5">[5]</a
 </svg>
 </div>
 <div class="fig-narrow">
-<svg viewBox="0 0 320 554" role="img" aria-labelledby="fig-charts-n-t fig-charts-n-d" focusable="false">
+<svg viewBox="0 0 320 572" role="img" aria-labelledby="fig-charts-n-t fig-charts-n-d" focusable="false">
 <title id="fig-charts-n-t">The three route charts of a planned Mass Ride</title>
 <desc id="fig-charts-n-d">Three charts stacked on one shared distance axis, 0 to 10 miles. First, riders per minute: bars filled in the band colors, with dotted guides at 60, 120 and 200, a dashed line for what the ride size needs, and an arrow at the narrowest point, 48 a minute. Second, corker load: a stepped line of how many corkers are holding junctions at once, with a tick at each junction that needs corkers, and a hatched stretch labeled NOT CHECKED where junctions were not checked. Third, elevation: the height line, with steep grades marked in amber. A dashed vertical marker crosses all three at the same mile.</desc>
 <defs><marker id="ah-charts-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
@@ -1160,40 +1160,43 @@ marker on the map<sup class="cite"><a href="#ref-5" aria-label="source 5">[5]</a
 <rect x="214.3" y="47.3" width="39.3" height="132.7" fill="#6a3d9a" opacity="0.85"/>
 <rect x="253.6" y="116.5" width="52.4" height="63.5" fill="#f28e2b" opacity="0.85"/>
 <line x1="44" y1="133.8" x2="306" y2="133.8" class="ln2"/>
-<text class="ts" x="304" y="127.8" text-anchor="end" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">what the ride size needs</text>
+<line x1="44" y1="195" x2="72" y2="195" class="ln2"/>
+<text class="ts" x="80" y="200" text-anchor="start" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">what the ride size needs</text>
 <path class="ar" d="M161.9,34 L161.9,148.3" marker-end="url(#ah-charts-n)"/>
 <text class="ts" x="167.9" y="44" text-anchor="start" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">narrowest point, 48</text>
 <line class="axis" x1="44" y1="180" x2="306" y2="180"/>
-<text class="tb" x="10" y="208" text-anchor="start">2. Corker load</text>
-<path class="ln" d="M44.0,330.0 L44.0,302.5 L70.2,302.5 L70.2,275.0 L109.5,275.0 L109.5,247.5 L148.8,247.5 L148.8,288.8 L188.1,288.8 L188.1,261.2 L214.3,261.2"/>
-<line x1="54.5" y1="330" x2="54.5" y2="321" stroke="var(--fg)" stroke-width="1.5"/>
-<line x1="75.4" y1="330" x2="75.4" y2="321" stroke="var(--fg)" stroke-width="1.5"/>
-<line x1="96.4" y1="330" x2="96.4" y2="321" stroke="var(--fg)" stroke-width="1.5"/>
-<line x1="117.4" y1="330" x2="117.4" y2="321" stroke="var(--fg)" stroke-width="1.5"/>
-<line x1="138.3" y1="330" x2="138.3" y2="321" stroke="var(--fg)" stroke-width="1.5"/>
-<line x1="159.3" y1="330" x2="159.3" y2="321" stroke="var(--fg)" stroke-width="1.5"/>
-<line x1="177.6" y1="330" x2="177.6" y2="321" stroke="var(--fg)" stroke-width="1.5"/>
-<line x1="198.6" y1="330" x2="198.6" y2="321" stroke="var(--fg)" stroke-width="1.5"/>
+<text class="tb" x="10" y="226" text-anchor="start">2. Corker load</text>
+<path class="ln" d="M44.0,348.0 L44.0,320.5 L70.2,320.5 L70.2,293.0 L109.5,293.0 L109.5,265.5 L148.8,265.5 L148.8,306.8 L188.1,306.8 L188.1,279.2 L214.3,279.2"/>
+<line x1="54.5" y1="348" x2="54.5" y2="339" stroke="var(--fg)" stroke-width="1.5"/>
+<line x1="75.4" y1="348" x2="75.4" y2="339" stroke="var(--fg)" stroke-width="1.5"/>
+<line x1="96.4" y1="348" x2="96.4" y2="339" stroke="var(--fg)" stroke-width="1.5"/>
+<line x1="117.4" y1="348" x2="117.4" y2="339" stroke="var(--fg)" stroke-width="1.5"/>
+<line x1="138.3" y1="348" x2="138.3" y2="339" stroke="var(--fg)" stroke-width="1.5"/>
+<line x1="159.3" y1="348" x2="159.3" y2="339" stroke="var(--fg)" stroke-width="1.5"/>
+<line x1="177.6" y1="348" x2="177.6" y2="339" stroke="var(--fg)" stroke-width="1.5"/>
+<line x1="198.6" y1="348" x2="198.6" y2="339" stroke="var(--fg)" stroke-width="1.5"/>
 <defs><pattern id="hatch-charts-n" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="8" stroke="var(--muted)" stroke-width="2"/></pattern></defs>
-<rect x="214.3" y="220" width="91.7" height="110" fill="url(#hatch-charts-n)" stroke="var(--muted)"/>
-<text class="tb" x="260.1" y="271.0" text-anchor="middle" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">NOT</text>
-<text class="tb" x="260.1" y="291.0" text-anchor="middle" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">CHECKED</text>
-<text class="ts" x="38" y="335.0" text-anchor="end">0</text>
-<text class="ts" x="38" y="280.0" text-anchor="end">4</text>
-<text class="ts" x="38" y="225.0" text-anchor="end">8</text>
-<line class="axis" x1="44" y1="330" x2="306" y2="330"/>
-<text class="tb" x="10" y="358" text-anchor="start">3. Elevation</text>
-<path class="ln" d="M44.0,464.3 L70.2,456.4 L96.4,460.4 L122.6,440.7 L138.3,417.1 L161.9,405.4 L188.1,425.0 L214.3,432.9 L237.9,393.6 L253.6,385.7 L279.8,417.1 L306.0,425.0"/>
-<path d="M122.6,440.7 L138.3,417.1" stroke="#d97706" stroke-width="6" stroke-opacity="0.6" fill="none"/>
-<path d="M214.3,432.9 L237.9,393.6" stroke="#d97706" stroke-width="6" stroke-opacity="0.6" fill="none"/>
-<text class="ts" x="304" y="379.6" text-anchor="end" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">steep grades in amber</text>
-<line class="axis" x1="44" y1="480" x2="306" y2="480"/>
-<text class="ts" x="44.0" y="500" text-anchor="middle">0 mi</text>
-<text class="ts" x="175.0" y="500" text-anchor="middle">5 mi</text>
-<text class="ts" x="306.0" y="500" text-anchor="end">10 mi</text>
-<line x1="161.9" y1="30" x2="161.9" y2="480" stroke="var(--accent)" stroke-width="1.2" stroke-dasharray="4 3"/>
-<text class="ts" x="160" y="526" text-anchor="middle">one marker, on all three charts</text>
-<text class="ts" x="160" y="545" text-anchor="middle">and the map</text>
+<rect x="214.3" y="238" width="91.7" height="110" fill="url(#hatch-charts-n)" stroke="var(--muted)"/>
+<text class="tb" x="260.1" y="289.0" text-anchor="middle" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">NOT</text>
+<text class="tb" x="260.1" y="309.0" text-anchor="middle" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">CHECKED</text>
+<text class="ts" x="38" y="353.0" text-anchor="end">0</text>
+<text class="ts" x="38" y="298.0" text-anchor="end">4</text>
+<text class="ts" x="38" y="243.0" text-anchor="end">8</text>
+<line class="axis" x1="44" y1="348" x2="306" y2="348"/>
+<text class="tb" x="10" y="376" text-anchor="start">3. Elevation</text>
+<path class="ln" d="M44.0,482.3 L70.2,474.4 L96.4,478.4 L122.6,458.7 L138.3,435.1 L161.9,423.4 L188.1,443.0 L214.3,450.9 L237.9,411.6 L253.6,403.7 L279.8,435.1 L306.0,443.0"/>
+<path d="M122.6,458.7 L138.3,435.1" stroke="#d97706" stroke-width="6" stroke-opacity="0.6" fill="none"/>
+<path d="M214.3,450.9 L237.9,411.6" stroke="#d97706" stroke-width="6" stroke-opacity="0.6" fill="none"/>
+<text class="ts" x="304" y="397.6" text-anchor="end" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">steep grades in amber</text>
+<line class="axis" x1="44" y1="498" x2="306" y2="498"/>
+<text class="ts" x="44.0" y="518" text-anchor="middle">0 mi</text>
+<text class="ts" x="175.0" y="518" text-anchor="middle">5 mi</text>
+<text class="ts" x="306.0" y="518" text-anchor="end">10 mi</text>
+<line x1="161.9" y1="30" x2="161.9" y2="180" stroke="var(--accent)" stroke-width="1.2" stroke-dasharray="4 3"/>
+<line x1="161.9" y1="238" x2="161.9" y2="348" stroke="var(--accent)" stroke-width="1.2" stroke-dasharray="4 3"/>
+<line x1="161.9" y1="402" x2="161.9" y2="498" stroke="var(--accent)" stroke-width="1.2" stroke-dasharray="4 3"/>
+<text class="ts" x="160" y="544" text-anchor="middle">one marker, on all three charts</text>
+<text class="ts" x="160" y="563" text-anchor="middle">and the map</text>
 </svg>
 </div>
 <figcaption>An example route, not a real ride. Moving along one chart moves the others and the marker on the map.</figcaption>
@@ -1310,7 +1313,7 @@ corker load at each.</p>
 <circle cx="227.8" cy="193.3" r="4" class="fillacc"/>
 <text class="ts" x="234.8" y="186.3" text-anchor="start" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">8%: 54%</text>
 <circle cx="126.2" cy="115.0" r="4" class="fillacc"/>
-<text class="ts" x="126.2" y="137.0" text-anchor="middle" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">-8%: 83%</text>
+<text class="ts" x="118.2" y="107.0" text-anchor="end" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">-8%: 83%</text>
 <text class="ts" x="297.6" y="279.0" text-anchor="end" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">floor 30%</text>
 <text class="ts" x="56.4" y="200.0" text-anchor="start" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">floor 60%</text>
 <text class="tb" x="113.5" y="22" text-anchor="middle">Downhill:</text>
