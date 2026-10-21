@@ -821,6 +821,8 @@ def test_basic_auth_is_on_for_the_whole_https_server_and_off_only_for_robots_and
             # rider's token: never the rider's own sign-in pages.
             CONNECTOR_PATHS,
             "= /delete-account",
+            # The privacy policy (core.privacy_policy), for Google Play's listing.
+            "= /privacy",
             # Link previews (core.share_preview; tests/test_link_preview.py): a shared route's
             # link and image, the app's own preview, and the icons a chat app shows.
             "~ ^/s/[^/]+(/preview\\.png)?$",
@@ -833,6 +835,7 @@ def test_basic_auth_is_on_for_the_whole_https_server_and_off_only_for_robots_and
     # the sign-in it links to.
     deletion = dict(locations(full))["= /delete-account"]
     assert "proxy_pass http://rmbeta_api;" in deletion
+    assert "proxy_pass http://rmbeta_api;" in dict(locations(full))["= /privacy"]
     assert not any(p.startswith(("^~ /auth", "= /auth")) for p in exempt)
     # the sign-in page is reachable only as the 401's error page, never directly
     page = dict(locations(full))["= /rmbeta-401.html"]

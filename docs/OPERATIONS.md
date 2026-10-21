@@ -7397,14 +7397,15 @@ keep its log and read the dry run before `--swap`.
 
 ## Phone app (v0.8.0)
 
-The Android app in `mobile/` names no site in any build: the repository is public, and so are its
-Actions artifacts, so a server's address must not be in one. On first launch the app asks for the
+The Android app's test builds (`mobile/`) name no site: the repository is public, and so are its
+Actions artifacts, so a server's address must not be in one. The store build (`release`, by hand)
+bakes in the `ROUTEMAKER_SITE_URL` secret, the owner's choice for the Play listing. On first launch the app asks for the
 site's address (https only), checks it against `/healthz`, and keeps it in the app's preferences on
 that phone; touching and holding the app's icon and choosing "Site address", or clearing the app's
 storage in Android's settings, asks again. On the beta, the app then shows its own sign-in box for the
 basic-auth password, which it hands to the WebView for that run and never stores. `ROUTEMAKER_URL`
-builds an address in for a local build only; it is never set in CI, and the workflow fails if the
-synced config names a site.
+builds an address in for a local build; in CI only the store build sets it, and a test build fails
+if its synced config names a site.
 
 Builds: Actions, "Android app" (`.github/workflows/android.yml`). A pull request that touches
 `mobile/` or the workflow runs the app's tests and builds a debug APK (no secrets, no site address);
@@ -7412,8 +7413,9 @@ by hand (`workflow_dispatch`), `debug` for a sideloaded test APK or `release` fo
 Play bundle. The workflow uses
 no repository variables. The release key is four repository secrets the owner adds:
 `ROUTEMAKER_KEYSTORE_BASE64`, `ROUTEMAKER_KEYSTORE_PASSWORD`, `ROUTEMAKER_KEY_ALIAS`,
-`ROUTEMAKER_KEY_PASSWORD`; never a file in the repository. A Play id of the owner's own
-(`ROUTEMAKER_APP_ID`) is set in a local build. Changes under `mobile/` never trigger a beta deploy
+`ROUTEMAKER_KEY_PASSWORD`; never a file in the repository. The Play id comes from the
+`ROUTEMAKER_APP_ID` secret (`ROUTEMAKER_SITE_URL` is the store build's site); a debug build adds
+`.debug`, so a test build sits beside the store app. Changes under `mobile/` never trigger a beta deploy
 (`scripts/beta/cd_logic.py`).
 
 The server needs nothing for it: the WebView loads the site at its own origin, so cookies, CSRF and

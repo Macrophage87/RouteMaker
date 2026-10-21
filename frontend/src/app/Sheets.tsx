@@ -14,7 +14,7 @@ import { PresetName } from "../lib/presetName.ts";
 import { filterRideGroups, rideSections, rideTypeCount, RideTypeSearch } from "../lib/rideTypeGroups.ts";
 import { RideTypeCards } from "../lib/rideTypeCards.ts";
 import { toggleFromPicker, useFavoriteRides } from "../lib/favoriteRides.ts";
-import { DELETE_ACCOUNT_PAGE, isPlainClick, rememberPlanForSignIn, tabSession } from "../lib/signIn.ts";
+import { DELETE_ACCOUNT_PAGE, PRIVACY_PAGE, isPlainClick, rememberPlanForPage, rememberPlanForSignIn, tabSession } from "../lib/signIn.ts";
 import { SignOutForm } from "../SignOut.tsx";
 import { AssistantKeySetting } from "../AssistantKey.tsx";
 import { pointName } from "../lib/summary.ts";
@@ -571,6 +571,12 @@ export function SettingsSheet(props: SettingsSheetProps) {
       <section aria-labelledby="settings-about-heading" className="settings-group">
         <h3 id="settings-about-heading">About</h3>
         <DocsPageLink />
+        {/* The privacy policy (core.privacy_policy): here, where it shows signed in or out and on any server. */}
+        <p className="privacy-link">
+          <a href={PRIVACY_PAGE} onClick={(e) => isPlainClick(e) && rememberPlanForPage(tabSession(), window.location.hash)}>
+            Privacy policy
+          </a>
+        </p>
       </section>
     </SheetFrame>
   );
