@@ -117,7 +117,7 @@ class TestEntering:
             },
         )
         assert answer.status_code == 201, answer.content
-        assert answer.json()["message"].startswith("Closure confirmed: Oak Street, closed until ")
+        assert answer.json()["message"].startswith("Closure confirmed: Oak Street, closed through ")
         row = ReviewedClosure.objects.get()
         assert row.osm_way_ids == [WAY] and row.road == "Oak Street"
         assert row.lines == [[[LON, LAT], [LON + 0.002, LAT]]]
@@ -415,3 +415,43 @@ def test_the_migrations_have_a_single_leaf() -> None:
     loader = MigrationLoader(None, ignore_no_migrations=True)
     leaves = loader.graph.leaf_nodes("core")
     assert len(leaves) == 1, leaves
+
+
+@db
+class TestRouteAnswer:
+    def test_a_reviewers_closure_fits_the_route_answers_closure_rows(self, live) -> None:
+        # A route near a reviewer's closure answered 500 (2026-10-21, Lake Frank): the answer's
+        # source lists named only the feeds.
+        from core import api
+        from routemaker import ridetime
+
+        reviewed_closures.create(make_user(), [WAY], "Trail construction", end=days(10))
+        now = timezone.now()
+        plan = workzones.plan_zones([ALONG[0], ALONG[-1]], ridetime.when_at(now))
+        (row,) = workzones.map_rows(ALONG, plan, [], 1.0, now)
+        assert row["source"] == "reviewer"
+        api.ClosureOut(**row)
+        (zone,) = plan.excluded
+        assert (
+            wz.when_text(zone, now, False)
+            == f"Closed through {wz.date_text(zone.end - timedelta(days=1))}"
+        )
+        assert wz.citation(zone).endswith(
+            f", through {wz.date_text(zone.end - timedelta(days=1))}."
+        )
+        on_route = {
+            "id": zone.zone_id,
+            "kind": zone.kind,
+            "penalty_s": zone.penalty_s,
+            "road": zone.road,
+            "description": zone.description,
+            "reason": zone.reason,
+            "from_m": 0,
+            "to_m": 10,
+            "start": None,
+            "end": zone.end.isoformat(),
+            "source": zone.source,
+            "warning": True,
+            "text": wz.heads_up(zone),
+        }
+        api.WorkZoneOut(**on_route)

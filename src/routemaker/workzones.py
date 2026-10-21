@@ -38,7 +38,7 @@ from __future__ import annotations
 import math
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, time, timedelta
 
 CLOSED, UNKNOWN, PENALTY = "closed", "unknown", "penalty"
 # A bike lane blocked with the road open (DDOT's TOPS permits, v0.7.0 "DC closures
@@ -737,7 +737,11 @@ def heads_up(zone: Zone) -> str:
 def citation(zone: Zone) -> str:
     """The small print under a zone's sentence: its source, and until when."""
     source = SOURCES.get(zone.source, zone.source)
-    return f"Source: {source}" + (f", until {date_text(zone.end)}." if zone.end else ".")
+    if zone.end is None:
+        return f"Source: {source}."
+    if zone.source == "reviewer" and _local(zone.end).time() == time(0):
+        return f"Source: {source}, through {date_text(zone.end - timedelta(days=1))}."
+    return f"Source: {source}, until {date_text(zone.end)}."
 
 
 def split_words(zone: Zone | None) -> str:
@@ -822,6 +826,12 @@ def when_text(zone: Zone, now: datetime | None, future: bool, possible: bool = F
             f"{verb} {day_text(start, now)} {clock_text(start)} to "
             f"{day_text(end, now)} {clock_text(end)}"
         )
+    if zone.source == "reviewer" and _local(end).time() == time(0):
+        # A reviewer's closure ends at the midnight after its last day: name that last day.
+        last = date_text(end - timedelta(days=1))
+        if start is not None and now is not None and start > now:
+            return f"{verb} from {date_text(start)} through {last}"
+        return f"{verb} through {last}"
     if start is not None and now is not None and start > now:
         return f"{verb} from {date_text(start)} until {date_text(end)}"
     return f"{verb} until {date_text(end)}"
