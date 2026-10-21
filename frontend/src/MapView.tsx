@@ -610,8 +610,9 @@ export function MapView(props: Props) {
       ],
       // Added below, so it can start collapsed.
       attributionControl: false,
-      // The "i" opens the map's info panel (lib/mapInfo.ts), not only the credits: say so.
-      locale: { "AttributionControl.ToggleAttribution": "Map info and credits" },
+      // The "i" opens the map's info panel (lib/mapInfo.ts), not only the credits: say so. It reads
+      // "Help" on screen, so its name starts with that word.
+      locale: { "AttributionControl.ToggleAttribution": "Help: map info and credits" },
       cooperativeGestures: false,
       // The labels' font comes with the app, not the base map (lib/mapGlyphs.ts).
       transformRequest: mapGlyphRequest,

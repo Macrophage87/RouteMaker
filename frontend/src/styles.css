@@ -1260,10 +1260,42 @@ button.secondary {
 .maplibregl-ctrl-attrib.maplibregl-compact:not(.maplibregl-compact-show)::before {
   content: "© OpenStreetMap" / "";
   display: inline-block;
+  vertical-align: middle;
   padding: 0 6px 0 8px;
   line-height: 20px;
   color: #000;
   white-space: nowrap;
+}
+
+/* The "i" reads "Help" (Stephen 2026-10-21, "Label the (i)"; lib/mapInfo.ts wrapCredits): a pill with the
+   icon at its start, in the line after the OpenStreetMap credit, and the panel's heading row while open. */
+.maplibregl-ctrl-attrib.maplibregl-compact {
+  padding: 2px;
+}
+
+.maplibregl-ctrl-bottom-right > .maplibregl-ctrl-attrib.maplibregl-compact-show {
+  padding: 2px 8px 6px;
+}
+
+.maplibregl-ctrl-attrib.maplibregl-compact .maplibregl-ctrl-attrib-button {
+  position: static;
+  display: inline-block;
+  vertical-align: middle;
+  width: auto;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 10px 0 26px;
+  background-position: 2px center;
+  background-repeat: no-repeat;
+  font: 600 14px/24px var(--font);
+  color: #000;
+  white-space: nowrap;
+}
+
+.maplibregl-ctrl-attrib.maplibregl-compact-show .maplibregl-ctrl-attrib-button {
+  display: block;
+  width: fit-content;
+  margin: 0 0 2px auto;
 }
 
 /* Beside the panel, not under it: a credit hidden behind the panel is not shown. Clear of the

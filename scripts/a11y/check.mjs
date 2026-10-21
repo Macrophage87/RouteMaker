@@ -316,7 +316,7 @@ for (const [width, height] of [[375, 812], [320, 800]]) {
   const p = await open({ width: 1280, height: 900 });
   // The credits hold the map's info panel too (lib/mapInfo.ts), so they start as the i at every width.
   check("credits at 1280 px: start collapsed to the i button", await p.eval("!document.querySelector('.maplibregl-ctrl-attrib').classList.contains('maplibregl-compact-show')"));
-  check("credits at 1280 px: the i is named for the info panel", (await p.eval("document.querySelector('.maplibregl-ctrl-attrib-button').getAttribute('aria-label')")) === "Map info and credits");
+  check("credits at 1280 px: the i reads Help and is named for the info panel", (await p.eval("document.querySelector('.maplibregl-ctrl-attrib-button').getAttribute('aria-label')")) === "Help: map info and credits");
   await p.eval("document.querySelector('.maplibregl-ctrl-attrib-button').click(); true");
   await sleep(200);
   const info = await p.eval(`(() => { const a = document.querySelector('.maplibregl-ctrl-attrib'); const r = a.getBoundingClientRect();

@@ -56,5 +56,8 @@ export function wrapCredits(control: HTMLElement | null, doc: WrapDocument = doc
   info.innerHTML = MAP_INFO;
   inner.replaceWith(body);
   body.append(info, inner);
+  // The "i" says what it is (Stephen 2026-10-21, "Label the (i)"): the docs are behind it.
+  const button = control.querySelector(".maplibregl-ctrl-attrib-button");
+  if (button) button.textContent = "Help";
   return true;
 }
