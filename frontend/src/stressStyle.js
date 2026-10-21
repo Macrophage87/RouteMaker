@@ -747,17 +747,159 @@ export function roadLabelPaint(strong = accessibilityOn()) {
   };
 }
 
-/** The base map's layers with the street names restyled (ROAD_LABEL); every other layer as given. */
+/**
+ * THE NEIGHBOURHOOD AND TOWN NAMES. The owner, 2026-10-21, of the base map's thin, spaced grey capitals ("GLEN
+ * HAVEN", "SLIGO WOODS") and its light town names ("Kemp Mill Estates"): "Make the neighborhood names also in bold
+ * an with the same font so they are readable. Cities too."; then, "Maybe change the font yo a bolder one from the
+ * same family or use small caps so it stands out". The base map's `places_subplace` (neighbourhoods) and
+ * `places_locality` (cities and towns) are drawn here in the street names' family at a heavier weight (Atkinson
+ * Hyperlegible Next ExtraBold, bundled, lib/mapGlyphs.ts), dark on the street names' white halo. A town is in mixed
+ * case; a neighbourhood in capitals at a smaller size with a little spacing (MapLibre has no true small caps), so it
+ * reads apart from a street name and below a town. A town reads above a neighbourhood (larger, darker), and both stay
+ * under the station names' 18 px (v0.11.0, lib/railLayer.ts), the key wayfinders. A neighbourhood is 11 px at zoom
+ * 12, 13 px at 14, 14 px from 17; a town 13 px at zoom 8, 15 px at 11, 16 at 14, 17 from 17; a large one (the base
+ * map's population_rank 9 or more: Silver Spring, Wheaton) 15 px at 8 and 17 px from 11, as the base map draws it
+ * larger too. The sizes do not change in a ride (the
+ * street names are what a rider reads there).
+ * Only the style changes: the names, their filters and their placement are the base map's.
+ */
+export const PLACE_LABEL_LAYER_IDS = ["places_subplace", "places_locality"];
+export const PLACE_LABEL = {
+  font: "Atkinson Hyperlegible Next ExtraBold",
+  neighbourhood: {
+    size: ["interpolate", ["linear"], ["zoom"], 12, 11, 14, 13, 17, 14],
+    transform: "uppercase",
+    letterSpacing: 0.04,
+    color: "#5c5658",
+    strongColor: "#1c1a1b",
+  },
+  town: {
+    transform: "none",
+    letterSpacing: 0,
+    size: ["interpolate", ["linear"], ["zoom"], 8, 13, 11, 15, 14, 16, 17, 17],
+    /** A large town's (population_rank LARGE_TOWN_RANK or more). */
+    largeSize: ["interpolate", ["linear"], ["zoom"], 8, 15, 11, 17],
+    color: "#2e2a2b",
+    strongColor: "#000000",
+  },
+  largeTownRank: 9,
+  halo: "#ffffff",
+  haloWidth: 2.5,
+  strongHaloWidth: 2.75,
+};
+
+/**
+ * A town's size: its ramp, or a large town's. MapLibre allows one zoom ramp, at the top, so the rank is a case at
+ * each zoom of the two ramps' stops together, each ramp read there as MapLibre reads it (linear between stops).
+ */
+export function townLabelSize(town, largeTownRank) {
+  const ramp = (size) => size.slice(3);
+  const at = (stops, zoom) => {
+    if (zoom <= stops[0]) return stops[1];
+    for (let k = 2; k < stops.length; k += 2) if (zoom <= stops[k]) return stops[k - 1] + ((stops[k + 1] - stops[k - 1]) * (zoom - stops[k - 2])) / (stops[k] - stops[k - 2]);
+    return stops[stops.length - 1];
+  };
+  const small = ramp(town.size);
+  const large = ramp(town.largeSize);
+  const zooms = [...new Set([...small, ...large].filter((_, k) => k % 2 === 0))].sort((a, b) => a - b);
+  const isLarge = [">=", ["coalesce", ["get", "population_rank"], 0], largeTownRank];
+  return ["interpolate", ["linear"], ["zoom"], ...zooms.flatMap((zoom) => [zoom, ["case", isLarge, at(large, zoom), at(small, zoom)]])];
+}
+
+/** A place name layer's paint (PLACE_LABEL), plain or with the accessibility switch on. */
+export function placeLabelPaint(id, strong = accessibilityOn()) {
+  const kind = id === "places_locality" ? PLACE_LABEL.town : PLACE_LABEL.neighbourhood;
+  return {
+    "text-color": strong ? kind.strongColor : kind.color,
+    "text-halo-color": PLACE_LABEL.halo,
+    "text-halo-width": strong ? PLACE_LABEL.strongHaloWidth : PLACE_LABEL.haloWidth,
+    "text-halo-blur": 0,
+  };
+}
+
+/**
+ * THE BASE MAP'S OTHER LABELS. The owner, 2026-10-21, of the labels the base map still drew small, light and thin:
+ * "All into stret name style. See if it gets too crowded." Park and place names (`pois`), water names (rivers and
+ * streams, lakes, the bay), islands and house numbers are drawn in the street names' face (Atkinson Hyperlegible
+ * Next SemiBold) on their white halo, each in a dark shade of the colour the base map gives it, 7:1 or more on the
+ * halo, so a park still reads green and a creek blue. Place names are the street names' 15 px; house numbers, one
+ * on every house at zoom 18, 13 px so they do not crowd each other out; the base map's italics and letter spacing go.
+ * The route numbers in their shields are 12 px (the base map's 8) with the shield drawn 1.5 times as large (1.2 for
+ * its 0.8), so the number still fits it. The names, filters and zooms are the base map's own.
+ */
+export const OTHER_LABEL = {
+  font: ROAD_LABEL.font,
+  size: ROAD_LABEL.size,
+  addressSize: 13,
+  halo: "#ffffff",
+  haloWidth: ROAD_LABEL.haloWidth,
+  addressHaloWidth: 3,
+  /** The base map's colour for a kind of place, darkened: green parks, blue transit, violet public places, teal shops, brown food, plum sights; any other kind grey. */
+  poiColors: [
+    [["beach", "forest", "marina", "park", "peak", "zoo", "garden", "bench"], "#166534"],
+    [["aerodrome", "station", "bus_stop", "ferry_terminal"], "#1e40af"],
+    [["stadium", "university", "library", "school", "animal", "toilets", "drinking_water", "post_office", "building", "townhall"], "#4b3f72"],
+    [["supermarket", "convenience", "books", "beauty", "electronics", "clothes"], "#0c4a6e"],
+    [["restaurant", "fast_food", "cafe", "bar"], "#7c2d12"],
+    [["attraction", "museum", "theatre", "artwork"], "#831843"],
+  ],
+  poiOther: ROAD_LABEL.color,
+  water: "#1e3a8a",
+  island: ROAD_LABEL.color,
+  address: "#57534e",
+  shield: { size: 12, iconSize: 1.2, color: "#2e2a2b" },
+};
+export const OTHER_LABEL_LAYER_IDS = ["pois", "water_waterway_label", "water_label_ocean", "water_label_lakes", "earth_label_islands", "address_label", "roads_shields"];
+
+/** One of the base map's other label layers (OTHER_LABEL) as this app draws it. */
+function clearOtherLabel(layer) {
+  const L = OTHER_LABEL;
+  const named = (color, size = L.size, halo = L.haloWidth) => ({
+    ...layer,
+    layout: { ...layer.layout, "text-font": [L.font], "text-size": size, "text-letter-spacing": 0 },
+    paint: { ...layer.paint, "text-color": color, "text-halo-color": L.halo, "text-halo-width": halo, "text-halo-blur": 0 },
+  });
+  switch (layer.id) {
+    case "pois":
+      return named(["case", ...L.poiColors.flatMap(([kinds, color]) => [["in", ["get", "kind"], ["literal", kinds]], color]), L.poiOther]);
+    case "earth_label_islands":
+      return named(L.island);
+    case "address_label":
+      return named(L.address, L.addressSize, L.addressHaloWidth);
+    case "roads_shields":
+      return {
+        ...layer,
+        layout: { ...layer.layout, "text-font": [L.font], "text-size": L.shield.size, "icon-size": L.shield.iconSize },
+        paint: { ...layer.paint, "text-color": L.shield.color },
+      };
+    default:
+      return named(L.water);
+  }
+}
+
+/** The base map's layers with the street names (ROAD_LABEL), place names (PLACE_LABEL) and other labels (OTHER_LABEL) restyled; every other layer as given. */
 export function withClearRoadLabels(layers, strong = accessibilityOn()) {
-  return layers.map((layer) =>
-    ROAD_LABEL_LAYER_IDS.includes(layer.id)
-      ? {
-          ...layer,
-          layout: { ...layer.layout, "text-font": [ROAD_LABEL.font], "text-size": ROAD_LABEL.size },
-          paint: { ...layer.paint, ...roadLabelPaint(strong) },
-        }
-      : layer,
-  );
+  return layers.map((layer) => {
+    if (ROAD_LABEL_LAYER_IDS.includes(layer.id)) {
+      return {
+        ...layer,
+        layout: { ...layer.layout, "text-font": [ROAD_LABEL.font], "text-size": ROAD_LABEL.size },
+        paint: { ...layer.paint, ...roadLabelPaint(strong) },
+      };
+    }
+    if (PLACE_LABEL_LAYER_IDS.includes(layer.id)) {
+      const { town, neighbourhood, largeTownRank } = PLACE_LABEL;
+      const kind = layer.id === "places_locality" ? town : neighbourhood;
+      const size = kind === town ? townLabelSize(town, largeTownRank) : neighbourhood.size;
+      return {
+        ...layer,
+        layout: { ...layer.layout, "text-font": [PLACE_LABEL.font], "text-size": size, "text-transform": kind.transform, "text-letter-spacing": kind.letterSpacing },
+        paint: { ...layer.paint, ...placeLabelPaint(layer.id, strong) },
+      };
+    }
+    if (OTHER_LABEL_LAYER_IDS.includes(layer.id)) return clearOtherLabel(layer);
+    return layer;
+  });
 }
 
 /**
@@ -966,11 +1108,15 @@ function byZoom(full, faint, busy, hidden = 0, zoomedOut = null) {
   // z10 or z11, ahead of the full-width steps. Only for a line that is not a
   // busy road, which the tiles do not carry there.
   const out = zoomedOut && !busy ? zoomedOutStops(zoomedOut) : [];
+  // A plain street at z12 and z13 (STREET_THIN_SCALE): thinner, so a city grid is a mesh and not a carpet.
+  const street = (zoom) => (out.length ? ["case", isPlainStreet, zoomedOut(zoom), at(zoom)] : at(zoom));
   return [
     "step",
     ["zoom"],
     ...out,
-    at(SOLID_MIN_ZOOM - 1),
+    street(FULL_WIDTH_MIN_ZOOM),
+    STREET_THIN_LAST_ZOOM,
+    street(STREET_THIN_LAST_ZOOM),
     SOLID_MIN_ZOOM,
     at(SOLID_MIN_ZOOM),
     BESIDE_ROAD_MIN_ZOOM,
@@ -980,14 +1126,50 @@ function byZoom(full, faint, busy, hidden = 0, zoomedOut = null) {
   ];
 }
 
-/** The line width a tier is drawn at, z10 or z11 (ZOOMED_OUT_SCALE). */
+/**
+ * THE CITY GRID AT Z12-13. The owner, 2026-10-21: "lts colored roads look very crowded at the nax zoom they show up
+ * in urban areas, but it's needed for rural ones. So let's also check to make sure the map doesn't look crowded".
+ * At z12 a downtown block is 2-3 px on screen, so every street at its full width (2.5-3.25 px and a 2 px casing)
+ * filled the grid with colour. A plain street (no bike facility, not a trail, paved, open to cars) is drawn
+ * thinner at z12 and z13, `line` and `casing` scaling its line and its casing's extra; a bike lane, a path, a trail,
+ * an unpaved road and a car-free street keep their widths, so they stand out of the grid as the ways a rider
+ * looks for. Only a street the tiles mark `dense` (a city grid) is thinned; a rural road keeps its full width, as
+ * does every street in a tile drawn before the server marked them.
+ * The busy roads are faint there already (FAINT). From SOLID_MIN_ZOOM (14) every line is its full width. The
+ * casing's dark edge thins with the line (half a pixel a side at z12), which is what lifts the grid's dark mesh;
+ * with the accessibility switch on it stays a full pixel a side, as on the zoomed-out trails (ZOOMED_OUT_MIN_PX).
+ */
+export const STREET_THIN_SCALE = {
+  [FULL_WIDTH_MIN_ZOOM]: { line: 0.4, casing: 0.5 },
+  13: { line: 0.6, casing: 0.75 },
+};
+const STREET_THIN_LAST_ZOOM = 13;
+const isPlainStreet = [
+  "all",
+  // In a dense street grid: the tiles mark a z12-13 street `dense` where its neighbourhood is a city grid
+  // (core/stress_tiles.py), so a rural road keeps its full width (the owner, 2026-10-21: "City only").
+  ["==", ["get", "dense"], true],
+  // The tiles carry `facility` "none" on a street with none (the column's default), and none at all on an older table.
+  ["match", ["coalesce", ["get", "facility"], "none"], "none", true, false],
+  ["!=", ["get", "trail"], true],
+  ["!=", ["get", "unpaved"], true],
+  ["!", ["has", "car_free"]],
+  ["!", ["has", "car_free_only"]],
+  ["!=", ["get", "alley"], true],
+];
+
+/** A zoom's scale: ZOOMED_OUT_SCALE at z10 and z11, STREET_THIN_SCALE (plain streets only) at z12 and z13. */
+const scaleAt = (zoom) => ZOOMED_OUT_SCALE[zoom] ?? STREET_THIN_SCALE[zoom];
+
+/** The line width a tier is drawn at, z10 or z11 (ZOOMED_OUT_SCALE), or a plain street's at z12 or z13 (STREET_THIN_SCALE). */
 export function zoomedOutLine(tier, zoom) {
-  return tier.width * ZOOMED_OUT_SCALE[zoom].line;
+  return tier.width * scaleAt(zoom).line;
 }
 
-/** The casing width at z10 or z11: the thinned line and the casing's thinned extra. */
+/** The casing width at those zooms: the thinned line and the casing's thinned extra. */
 export function zoomedOutCasing(tier, zoom) {
-  return zoomedOutLine(tier, zoom) + (tier.casingExtra ?? CASING_EXTRA_PX) * ZOOMED_OUT_SCALE[zoom].casing;
+  const casing = tier.strong && STREET_THIN_SCALE[zoom] ? 1 : scaleAt(zoom).casing;
+  return zoomedOutLine(tier, zoom) + (tier.casingExtra ?? CASING_EXTRA_PX) * casing;
 }
 
 /** A line's paint, faint and late as byZoom says. */
@@ -1223,7 +1405,8 @@ export const MTB_LINE_LAYER_IDS = [
  */
 export const MTB_LABEL_LAYER_ID = "mtb-trail-label";
 export const MTB_LABEL_MIN_ZOOM = 15;
-export const MTB_LABEL = { font: "Noto Sans Medium", size: 12, halo: "#ffffff", haloWidth: 1.5, padding: 8, spacing: 300, maxAngle: 45 };
+// The street names' size and halo (the owner, 2026-10-21: "All into stret name style"); its face is already theirs (lib/mapGlyphs.ts).
+export const MTB_LABEL = { font: "Noto Sans Medium", size: 15, halo: "#ffffff", haloWidth: 3.5, padding: 8, spacing: 300, maxAngle: 45 };
 
 /** Every layer of the mountain-bike trail map layer (454): its lines, then its names. */
 export const MTB_LAYER_IDS = [...MTB_LINE_LAYER_IDS, MTB_LABEL_LAYER_ID];

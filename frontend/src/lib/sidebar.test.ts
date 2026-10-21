@@ -641,8 +641,8 @@ test("copyText uses the clipboard, falls back to the selection method, and says 
 
 // ---- the bottom bar and its sheets ------------------------------------------------
 
-test("the bottom bar is Plan, Layers, Suggest, Save & load and Settings: real buttons, each with words (the owner's choice 6)", () => {
-  assert.deepEqual(BAR_ITEMS.map((i) => i.label), ["Plan", "Layers", "Suggest", "Save & load", "Settings"]);
+test("the bottom bar is Plan, Layers, Reports, Save & load and Settings: real buttons, each with words (the owner's choice 6)", () => {
+  assert.deepEqual(BAR_ITEMS.map((i) => i.label), ["Plan", "Layers", "Reports", "Save & load", "Settings"]);
   assert.deepEqual(BAR_ITEMS.map((i) => i.opens), ["planner", "layers", "suggest", "gpx", "settings"]);
   assert.equal(BAR_ITEMS[0].id, "plan", "Plan is first (OWNER-DECISIONS 392, 393)");
   assert.ok(BAR_ITEMS.every((i) => i.description.length > 0));
@@ -664,7 +664,7 @@ test("the bottom bar is Plan, Layers, Suggest, Save & load and Settings: real bu
 });
 
 test("a sheet: Back is a labelled button, its heading takes the focus, Escape goes back", () => {
-  assert.deepEqual(Object.values(SHEET_TITLES), ["Layers", "Suggest a change", "Review", "Save and load", "Settings", "Nearest", "Find food", "Ride", "Repair stands and bike shops", "Places to see", "Edit route"]);
+  assert.deepEqual(Object.values(SHEET_TITLES), ["Layers", "Reports", "Review", "Save and load", "Settings", "Nearest", "Find food", "Ride", "Repair stands and bike shops", "Places to see", "Edit route"]);
   // In visible words, not only an arrow, so the name and the label are one (OWNER-DECISIONS 393).
   assert.equal(BACK_LABEL, "Back to planner");
   assert.doesNotMatch(sidebar, /aria-label="Back to the planner"/);
