@@ -187,10 +187,11 @@ export interface RailMap {
 /**
  * ONE NAME PER STATION. The base map's points of interest (@protomaps/basemaps `pois`) name OpenStreetMap's
  * stations too, so a station we draw was named twice: ours in the larger face, the base map's under it (the owner,
- * 2026-10-21: "Metros are sometimes written twice"). The base map's station is left out within this of a station
- * shown; OSM's station node can sit on a platform end, a long platform's half length (about 600 ft) from DC's
- * point. Every other station keeps its base map name (VRE, Amtrak, MARC's other lines, Baltimore's), and so does
- * ours when its toggle is off.
+ * 2026-10-21: "Metros are sometimes written twice"). The base map's station is left out in a square this far each
+ * way of a station shown (about 1,000 ft [300 m]; to 1,400 ft [420 m] at the corners); OSM's station node can sit on a
+ * platform end, a long platform's half length (about 600 ft) from DC's point. A station further off keeps its base
+ * map name (VRE, Amtrak, MARC's other lines, Baltimore's), and so does ours when its toggle is off; one sharing the
+ * spot (VRE at L'Enfant Plaza, Amtrak at Union Station) is named by ours.
  */
 export const BASEMAP_POIS_LAYER = "pois";
 export const BASEMAP_STATION_REACH_M = 300;
