@@ -1,14 +1,15 @@
 """The privacy policy (Google Play asks for a privacy policy's web address for the Android app).
 
 One public page, GET /privacy, in the delete-account page's frame (`account_deletion._page`), and
-linked from it and from Settings > Account. It says, most important first, what the site and the
+linked from it and from Settings > About. It says, most important first, what the site and the
 phone app (mobile/) collect, keep and send, and to whom. Every claim is the code's; where each one
 comes from:
 
 - Location: Ride mode's positions stay on the device (frontend/src/RideMode.tsx, "Privacy"); the
-  app's GPS runs only from Start ride to End ride, never with background-location permission
-  (mobile/README.md, "Privacy"; mobile/test/config.test.mjs); a route request carries points in
-  its body, and the logs keep no query (docs/DEVELOPMENT.md, "Logs and the rider's position").
+  app uses location only while on screen when asked, or during a ride, never with
+  background-location permission (mobile/README.md, "Privacy"; mobile/test/config.test.mjs); a
+  route request carries points in its body, and the logs keep no query (docs/DEVELOPMENT.md,
+  "Logs and the rider's position").
 - Group and Mass Ride: core.ride_presence (20 m grid, memory only, 2 minutes; alerts 10 minutes)
   and frontend/src/RideGroup.tsx (only while sharing and the page is in front, near the route).
 - Discord sign-in: core.discord_oauth (identify scope, no token kept) and core.models.User (the

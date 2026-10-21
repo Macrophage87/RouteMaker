@@ -6,7 +6,7 @@ import java.net.URISyntaxException;
 /**
  * A RouteMaker link shared to the app from another app's Share sheet (Stephen, 2026-10-18: "can links
  * open in the app?"). Android opens a tapped web link in the app only for an address built into the
- * APK, and no build carries one (mobile/README.md), so Share is the way in. The shared text may hold
+ * APK (and a file on the server naming its signing key, not set up; mobile/README.md), so Share is the way in. The shared text may hold
  * words around the link ("Ride with me: https://..."); the first https link in it is taken, and only
  * when it is on the site kept on this phone. Without Android, so it is unit-tested (app/src/test).
  */

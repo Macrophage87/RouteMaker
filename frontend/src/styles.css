@@ -7879,7 +7879,7 @@ details.fold > summary .icon {
   font: inherit;
 }
 
-/* Settings > Account's Delete account and Privacy policy links (core.account_deletion, core.privacy_policy): full-size
+/* The Delete account (Settings > Account) and Privacy policy (Settings > About) links (core.account_deletion, core.privacy_policy): full-size
    targets, not hint text. */
 .delete-account a,
 .privacy-link a {

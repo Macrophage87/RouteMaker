@@ -2,7 +2,7 @@
 // it; test/config.test.mjs tests it). The shell loads the live site, so Ride mode's cues go on with the
 // screen locked (frontend/src/lib/nativeShell.ts is the site's side).
 //
-// No build carries a site address: the repository is public, and so are its Actions artifacts. On
+// No test build carries a site address: the repository is public, and so are its Actions artifacts. On
 // first launch the app asks for the address and keeps it on the phone (SetupActivity.java). For a
 // local build, and for the store build CI makes by hand, ROUTEMAKER_URL bakes one in; `npx cap sync
 // android` writes it to android/app/src/main/assets/capacitor.config.json, which is git-ignored.

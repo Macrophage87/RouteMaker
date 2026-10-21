@@ -27,7 +27,7 @@ older app without the plugin shows no Send to Garmin button.
 `SharedLink.java` takes the first https link in the shared text and opens it only when it is on the site kept
 on this phone; any other link is refused with a short message. A tapped link still opens the browser:
 Android opens a tapped web link in an app only for an address built into the APK (verified App Links, plus
-a file on the server naming the app's signing key), and no build carries one. That can come with a
+a file on the server naming the app's signing key), and none is set up. That can come with a
 production address. Opening a shared link replaces the page shown, a ride in progress included.
 
 There are no new buttons: Start ride, Go and End work as on the website. Distances are the site's
@@ -85,8 +85,9 @@ Capacitor answer `/api` locally.
 
 ## The site address: asked once, kept on the phone
 
-No build carries a site address. The repository is public, and so are its Actions artifacts (any
-signed-in GitHub user can download them), so an APK built there must not name a server. Instead, the
+No test build carries a site address. The repository is public, and so are its Actions artifacts (any
+signed-in GitHub user can download them), so a test APK built there must not name a server (the
+store build, made by hand, bakes in the `ROUTEMAKER_SITE_URL` secret and skips this screen). Instead, the
 first time RouteMaker opens it shows one screen, **"Which RouteMaker site?"**:
 
 - Type the site's address, such as `https://routes.example.org` (typing the name alone adds
@@ -131,6 +132,9 @@ same key and a newer one installs over the last, keeping the app's data. Without
 with a fresh debug key and a newer APK will not install over an older one ("App not installed"):
 uninstall first (the site's data in the app, such as a Home, goes with it, and the next install asks
 for the site address again). The first build after the secret is added also needs one uninstall.
+Test builds made before the `.debug` id (October 2026) are installed under the store id: uninstall
+that one once, or the Play app will not install over it; the new test app asks for the site address
+again.
 
 What to check on the first ride (none of this could be tried here: there is no Android SDK or phone
 in the build environment):
@@ -262,7 +266,7 @@ it without asking (the first-launch screen says so if opened). For a development
 The resolved config, with the address, is written to `android/app/src/main/assets/capacitor.config.json`,
 which is git-ignored; run `npx cap sync android` again without it before building anything to share.
 Such an APK names the server: keep it off public places. `ROUTEMAKER_APP_ID` sets the application id
-(a reverse domain you own, for a Play listing) in a local build the same way.
+(a reverse domain you own, for a Play listing) in a local build the same way; a debug build adds `.debug`.
 `ROUTEMAKER_DEBUG=1` turns on Chrome's inspector (`chrome://inspect`).
 
 ## Files
