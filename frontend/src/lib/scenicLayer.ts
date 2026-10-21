@@ -130,8 +130,9 @@ export function scenicPointLayers(): Record<string, unknown>[] {
       ...base,
       minzoom: SCENIC_LABEL_MIN_ZOOM,
       filter: ["==", ["get", "kind"], "bridge"],
-      layout: { "text-field": ["get", "name"], "text-font": [SCENIC_FONT], "text-size": 12, "text-anchor": "top", "text-offset": [0, 0.8], "text-optional": true },
-      paint: { "text-color": SCENIC_COLOUR, "text-halo-color": "#ffffff", "text-halo-width": 1.5 },
+      layout: { "text-field": ["get", "name"], "text-font": [SCENIC_FONT], "text-size": 15, "text-anchor": "top", "text-offset": [0, 0.8], "text-optional": true },
+      // The street names' size and halo (the owner, 2026-10-21: "All into stret name style").
+      paint: { "text-color": SCENIC_COLOUR, "text-halo-color": "#ffffff", "text-halo-width": 3.5 },
     },
   ];
 }

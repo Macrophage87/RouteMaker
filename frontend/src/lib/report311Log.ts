@@ -10,7 +10,7 @@
  * right-click, or a long press on a phone). Each entry keeps what it is, where (the road's name and the
  * GPS position), when, an optional note, the 311 website that takes it, and when it was reported.
  *
- * The log's list (Report311Log.tsx, in Suggest) is a checklist by website: each site's open entries
+ * The log's list (Report311Log.tsx, in Reports) is a checklist by website: each site's open entries
  * under its name, with "Copy and open" for each; checking an entry archives it (Archived, folded).
  *
  * Signed out, kept on this device (localStorage). Signed in, the account's log (GET and POST
@@ -279,11 +279,27 @@ export interface LogGroup {
   entries: LogEntry[];
 }
 
-export function openGroups(entries: LogEntry[]): LogGroup[] {
+/**
+ * An open entry this old is archived by itself (Stephen, 2026-10-21: "archive stale ones"): kept, under Archived,
+ * marked not reported; checking it there records it as reported.
+ */
+export const STALE_DAYS = 30;
+const DAY_MS = 86_400_000;
+
+export function isStale(entry: LogEntry, now = new Date()): boolean {
+  return entry.reported === null && now.getTime() - Date.parse(entry.at) > STALE_DAYS * DAY_MS;
+}
+
+/** When an entry went to Archived: when it was reported, or when it went stale. */
+export function archivedAt(entry: LogEntry): number {
+  return entry.reported !== null ? Date.parse(entry.reported) : Date.parse(entry.at) + STALE_DAYS * DAY_MS;
+}
+
+export function openGroups(entries: LogEntry[], now = new Date()): LogGroup[] {
   const order: (WhereId | null)[] = [...(Object.keys(JURISDICTIONS) as WhereId[]), null, "none"];
   const groups: LogGroup[] = [];
   for (const where of order) {
-    const these = entries.filter((e) => e.reported === null && e.where === where).sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
+    const these = entries.filter((e) => e.reported === null && !isStale(e, now) && e.where === where).sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
     if (these.length === 0) continue;
     const site = where && where !== "none" ? JURISDICTIONS[where] : null;
     groups.push({ where, heading: site ? site.name : where === null ? WHERE_PENDING : WHERE_NONE, site, entries: these });
@@ -291,8 +307,24 @@ export function openGroups(entries: LogEntry[]): LogGroup[] {
   return groups;
 }
 
-export function archived(entries: LogEntry[]): LogEntry[] {
-  return entries.filter((e) => e.reported !== null).sort((a, b) => Date.parse(b.reported ?? b.at) - Date.parse(a.reported ?? a.at));
+/** How many problems are still to report: the checklist's open entries (stale ones are archived). */
+export function openCount(entries: LogEntry[], now = new Date()): number {
+  return entries.filter((e) => e.reported === null && !isStale(e, now)).length;
+}
+
+/**
+ * The ride summary's line while some are still to report (Stephen, 2026-10-21: "Make a link to find it after the ride
+ * end and tell people where to do so, if 311 reports are still outstanding").
+ */
+export function outstandingSaid(n: number): string {
+  return `${n} ${n === 1 ? "problem" : "problems"} still to report to 311.`;
+}
+/** Where Reports is, said under that line. */
+export const REPORTS_WHERE = "Reports is in Go's Menu and Plan's bottom bar.";
+export const OPEN_REPORTS = "Open Reports";
+
+export function archived(entries: LogEntry[], now = new Date()): LogEntry[] {
+  return entries.filter((e) => e.reported !== null || isStale(e, now)).sort((a, b) => archivedAt(b) - archivedAt(a));
 }
 
 // ---- The store ---------------------------------------------------------------------------------------
@@ -610,5 +642,5 @@ export function panelPlace(title: string | null, point: LonLat): ReportPlace {
 
 /** What the panel says once a problem is logged: "Logged for 311: Pothole on R Street Northeast." */
 export function panelLoggedSaid(entry: LogEntry): string {
-  return `Logged for 311: ${kindLabel(entry.kind)}${entry.place ? ` ${entry.place}` : ""}. It is in your 311 checklist in Suggest.`;
+  return `Logged for 311: ${kindLabel(entry.kind)}${entry.place ? ` ${entry.place}` : ""}. It is in your 311 checklist in Reports.`;
 }

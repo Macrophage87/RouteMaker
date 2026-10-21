@@ -476,7 +476,11 @@ export function GoSheet({
   );
 }
 
-/** Plan's map chips (the mockup's Plan view): Food, Water and Places to see open their sheets in the panel. */
+/**
+ * Plan's map chips (the mockup's Plan view): Food, Water and Places to see open their sheets in the panel. They fold
+ * behind one Find chip (the owner, 2026-10-21: "The food water places to see might want to be on an expansion
+ * button ... It's more room"); a choice folds them again, and Escape folds them with the focus back on Find.
+ */
 export function PlanMapChips({
   onFood,
   onWater,
@@ -486,20 +490,45 @@ export function PlanMapChips({
   onWater: (chip: HTMLButtonElement) => void;
   onPlaces: (chip: HTMLButtonElement) => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const rowId = useId();
+  const toggleRef = useRef<HTMLButtonElement>(null);
+  // The sheet a choice opens hands the focus back to Find (the chip it came from is folded away).
+  const pick = (go: (chip: HTMLButtonElement) => void) => () => {
+    setOpen(false);
+    if (toggleRef.current) go(toggleRef.current);
+  };
   return (
-    <div className="map-chips" role="group" aria-label="Find on the map">
-      <button type="button" className="chip map-chip" onClick={(event) => onFood(event.currentTarget)}>
-        <Icon name="food" size={18} />
-        Food
+    <div
+      className="map-chips"
+      role="group"
+      aria-label="Find on the map"
+      onKeyDown={(event) => {
+        if (event.key === "Escape" && open) {
+          event.preventDefault();
+          setOpen(false);
+          toggleRef.current?.focus();
+        }
+      }}
+    >
+      <button type="button" ref={toggleRef} className="chip map-chip map-chips-toggle" aria-expanded={open} aria-controls={rowId} onClick={() => setOpen(!open)}>
+        <Icon name="search" size={18} />
+        Find
       </button>
-      <button type="button" className="chip map-chip" onClick={(event) => onWater(event.currentTarget)}>
-        <Icon name="water" size={18} />
-        Water
-      </button>
-      <button type="button" className="chip map-chip" onClick={(event) => onPlaces(event.currentTarget)}>
-        <Icon name="camera" size={18} />
-        Places to see
-      </button>
+      <div id={rowId} className="map-chips-row" hidden={!open}>
+        <button type="button" className="chip map-chip" onClick={pick(onFood)}>
+          <Icon name="food" size={18} />
+          Food
+        </button>
+        <button type="button" className="chip map-chip" onClick={pick(onWater)}>
+          <Icon name="water" size={18} />
+          Water
+        </button>
+        <button type="button" className="chip map-chip" onClick={pick(onPlaces)}>
+          <Icon name="camera" size={18} />
+          Places to see
+        </button>
+      </div>
     </div>
   );
 }

@@ -142,6 +142,10 @@ def metro_stations(data: Path = RAIL_DATA) -> list[dict]:
                     _round(p) for p in s["elevators"] + s["osm_elevators"] + s["entrances"]
                 ]
                 or [_round(s["point"])],
+                # Its street elevators the files know: one out where another is known is not a
+                # reason to rank the station down (Stephen, 2026-10-21: "several of these have
+                # redundant elevators, so if one is down, it's not penalized").
+                "street_elevators": len(s["elevators"]) + len(s["osm_elevators"]),
             }
         )
     return out
