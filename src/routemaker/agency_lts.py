@@ -254,11 +254,24 @@ def apply(
     rating is recorded (`agency_ratings`), for the road panel. An agency rating
     replaces the formula's only; a tier the owner set comes later and wins.
     The level used is `map_level`'s: Montgomery's 5 is LTS 4.5. With `facility_mapped` (a
-    bike path or lane on the way) an agency in SUPERSEDED_WHERE_FACILITY is not used; with
+    bike path or lane on the way) an agency in SUPERSEDED_WHERE_FACILITY rating it above the
+    formula is not used; with
     `painted_lane` too, a set-aside level above PAINTED_LANE_LEVEL raises a calmer formula tier
     to PAINTED_LANE_LEVEL."""
     ratings = tuple(ratings)
-    usable = [r for r in ratings if not (facility_mapped and r.agency in SUPERSEDED_WHERE_FACILITY)]
+    formula_level = int(result.tier) + (0.5 if getattr(result, "half", False) else 0)
+    # Set aside only where the old layer rates the way above the formula: a lane built since
+    # makes a road calmer, never busier, and where the agency is the calmer of the two its
+    # rating stands (RL-3, the owner, 2026-10-16: "defer to local government ratings").
+    usable = [
+        r
+        for r in ratings
+        if not (
+            facility_mapped
+            and r.agency in SUPERSEDED_WHERE_FACILITY
+            and map_level(r.agency, r.level) > formula_level
+        )
+    ]
     # Each set-aside rating's reason, appended to the rule: the road panel reads it back
     # (`set_aside`) to tell which rating was used.
     reasons = sorted({SUPERSEDED_WHERE_FACILITY[r.agency] for r in ratings if r not in usable})
@@ -267,7 +280,6 @@ def apply(
         if not ratings:
             return result
         set_aside_level = max(map_level(r.agency, r.level) for r in ratings)
-        formula_level = int(result.tier) + (0.5 if getattr(result, "half", False) else 0)
         if painted_lane and set_aside_level > PAINTED_LANE_LEVEL > formula_level:
             tier, half = tier_of(PAINTED_LANE_LEVEL)
             return replace(

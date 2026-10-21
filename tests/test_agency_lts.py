@@ -599,6 +599,17 @@ def test_a_painted_lane_on_a_road_ddot_rated_higher_is_lts_2_5() -> None:
         assert (kept.tier, kept.half) == (formula, False), (ddot, formula, painted)
 
 
+def test_a_ddot_rating_calmer_than_the_formula_stands_on_a_lane() -> None:
+    """Only a rating above the formula's is set aside: a lane built since makes a road calmer,
+    and on a painted multilane street DDOT's calmer level stands (RL-3, 2026-10-16)."""
+    multilane = StressResult(Stress.LTS3, "bike lane, two-way floor", ())
+    result = agency_lts.apply(
+        multilane, [AgencyRating("ddot", 2)], facility_mapped=True, painted_lane=True
+    )
+    assert result.tier is Stress.LTS2
+    assert json.loads(writers._ratings_json(result))["used"] == "ddot"
+
+
 def test_a_set_aside_rating_gives_way_to_the_next_agency() -> None:
     lane = StressResult(Stress.LTS2, "bike lane, 25 mph", ())
     both = [AgencyRating("ddot", 4), AgencyRating("mdot-sha", 3)]
