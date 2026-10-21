@@ -3325,7 +3325,9 @@ def _plan(
     # `core.trail_touch`). The start alone does not (2026-10-21: "I wouldn't use that as a
     # start for routing unless "opted-in""), but on a ride's re-plan the start is the rider:
     # on a dirt trail, or after one, any dirt trail may be ridden ("If someone goes onto a dirt
-    # trail, any reroutes should include dirt").
+    # trail, any reroutes should include dirt"). A dirt trail the rider marked closed on this
+    # ride says its conditions are bad: no dirt trail at all for the rest of the ride
+    # (2026-10-21: "assume that means bad riding conditions until it's opted back in").
     touched_trails: frozenset[int] = frozenset()
     per_point: tuple[frozenset[int], ...] = ()
     any_dirt = False
@@ -3334,6 +3336,7 @@ def _plan(
         and dials.trail_touch
         and dials.follow is None
         and not dials.straight
+        and not (dials.blocked and trail_touch.closed_on_dirt(dials.blocked))
     ):
         per_point = dials.trail_touched
         if per_point is None:

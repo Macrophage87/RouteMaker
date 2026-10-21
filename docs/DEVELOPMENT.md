@@ -1535,7 +1535,9 @@ curl -s -X POST http://localhost:8000/api/route -H 'Content-Type: application/js
   Green singletrack is always left out. A ride's re-plans send `ride_replan`.
   When the rider is on a dirt trail, or `dirt_ridden` is sent, any dirt trail
   may be ridden. The answer's `dirt_trails` says the route rides one, and Ride
-  then sends `dirt_ridden` for the rest of the ride.
+  then sends `dirt_ridden` for the rest of the ride. A `blocked_lines` stretch whose
+  middle is within 5 m of a dirt trail (Road closed pressed on one) means bad conditions,
+  so that ride's re-plans ride no dirt trail at all (`trail_touch.closed_on_dirt`).
 
 **The stress and hills sliders, measured** (PUBLIC-DIALS, 2026-09-27: a box
 graph, -77.22,38.78,-76.90,39.02, rebuilt from the real extract by the real

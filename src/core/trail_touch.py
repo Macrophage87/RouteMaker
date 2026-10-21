@@ -100,6 +100,44 @@ def touched(points: Sequence[Sequence[float]]) -> tuple[frozenset[int], ...]:
     return tuple(frozenset(ways) for ways in found)
 
 
+# How near the middle of a stretch the rider marked closed lies to a dirt trail to be on it.
+CLOSED_ON_M = 5.0
+
+
+def closed_on_dirt(lines: Sequence[Sequence[Sequence[float]]]) -> bool:
+    """Whether a stretch the rider marked closed on this ride (Ride's Road closed, [lon, lat]
+    lines) is on a dirt trail: its middle within CLOSED_ON_M of one. The owner, 2026-10-21:
+    "If you ride a dirt trail outside of mtb or gravel and it's marked as road closed, assume
+    that means bad riding conditions until it's opted back in": the ride's re-plans then ride
+    no dirt trail at all (`core.routing._plan`)."""
+    lines = [line for line in lines if len(line) >= 2]
+    if not lines:
+        return False
+    schema = validate_schema_name(settings.SEGMENT_SCHEMA_LIVE)
+    if not _reason_known(schema):
+        return False
+    wkts = [
+        "LINESTRING(" + ", ".join(f"{float(p[0])} {float(p[1])}" for p in line) + ")"
+        for line in lines
+    ]
+    sql = f"""
+        WITH m AS (
+            SELECT ST_LineInterpolatePoint(ST_GeomFromText(w, 4326), 0.5) AS g
+            FROM unnest(%s::text[]) AS u(w)
+        )
+        SELECT EXISTS (
+            SELECT 1 FROM m
+            JOIN {schema}.segment AS s
+              ON s.geometry && ST_Expand(m.g, %s)
+             AND s.bike_access_reason = %s
+             AND ST_DWithin(s.geometry::geography, m.g::geography, %s)
+        )
+    """
+    with _cursor() as cursor:
+        cursor.execute(sql, [wkts, TOUCH_DEG, REASON, CLOSED_ON_M])
+        return bool(cursor.fetchone()[0])
+
+
 def off_road_ways(way_ids: Sequence[int]) -> dict[int, str]:
     """Which of `way_ids` the standard graph closes and the off-road graph opens, each with
     its reason (REASON, or `singletrack`)."""

@@ -274,6 +274,33 @@ class TestThroughTheApi:
         assert post(client, body).json()["variant"] == "offroad"
         assert {graph_of(url) for url, _ in routes(fake)} == {"offroad"}
 
+    def test_road_closed_on_a_dirt_trail_closes_dirt_for_the_ride(
+        self, client, segments, router
+    ) -> None:
+        """The owner, 2026-10-21: "If you ride a dirt trail outside of mtb or gravel and it's
+        marked as road closed, assume that means bad riding conditions until it's opted back
+        in"."""
+        add_trail(segments, TOUCHED, START_TRAIL)
+        fake = router(plain_router())
+        body = {
+            **good_body(),
+            "ride_replan": True,
+            "dirt_ridden": True,
+            "blocked_lines": [[list(p) for p in START_TRAIL]],
+        }
+        response = post(client, body)
+        assert response.status_code == 200, response.content
+        assert response.json()["variant"] == "standard"
+        assert {graph_of(url) for url, _ in routes(fake)} == {"standard"}
+
+    def test_road_closed_on_a_road_leaves_dirt_open(self, client, segments, router) -> None:
+        add_trail(segments, TOUCHED, START_TRAIL)
+        fake = router(plain_router())
+        road = [list(VERTICES[2]), [VERTICES[2][0], VERTICES[2][1] + 0.001]]
+        body = {**good_body(), "ride_replan": True, "blocked_lines": [road]}
+        assert post(client, body).json()["variant"] == "offroad"
+        assert "offroad" in {graph_of(url) for url, _ in routes(fake)}
+
     def test_dirt_ridden_alone_is_not_a_ride(self, client, segments, router) -> None:
         router(plain_router())
         assert post(client, {**good_body(), "dirt_ridden": True}).json()["variant"] == "standard"
