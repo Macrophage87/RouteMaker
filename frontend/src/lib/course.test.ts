@@ -12,6 +12,8 @@ import {
   TCX_COURSE_NAME_CHARS,
   TCX_CUE_NAME_CHARS,
   abbreviateStreet,
+  clip,
+  crossName,
   compileCourse,
   courseFileName,
   courseLine,
@@ -281,4 +283,12 @@ test("a jog (Q Street NW, 2026-10-16): each turn its own course point, a bear a 
     rows.map((r) => [r.turn, r.road, r.notes]),
     [["Right", "6th Street Northwest", "Right onto 6th Street Northwest, then immediately bear left onto Rhode Island Avenue Northwest."]],
   );
+});
+
+test("a crossing's note says to cross the road it names, within the device's length", () => {
+  assert.equal(crossName("Redland Road"), "Cross Redland Rd");
+  assert.equal(crossName("unnamed road"), "Cross");
+  assert.equal(crossName(""), "Cross");
+  assert.equal(clip(crossName("Redland Road"), TCX_CUE_NAME_CHARS), "Cross Redl", "TCX's ten characters keep the word");
+  assert.equal(clip(crossName("Redland Road"), GENERIC.cueNameChars), "Cross Redland R");
 });

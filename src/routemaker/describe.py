@@ -79,7 +79,6 @@ from .intersections import (
     CrossingGroup,
     Movement,
     crossing_groups,
-    movement_of,
 )
 
 METRES_PER_MILE = 1609.344
@@ -119,6 +118,27 @@ TURN_WORDS = {
 # straight by at least FORK_CLEAR_DEG (then straight on is plainly the route).
 FORK_AHEAD_DEG = 45.0
 FORK_CLEAR_DEG = 20.0
+# Where the route's own way bends off too, a choice up to FORK_CLEAR_DEG beyond it, as far
+# as FORK_WIDE_MAX_DEG, is as much the way on: a Y whose two branches each lean 60 degrees
+# (the owner, 2026-10-20, on Rock Creek Trail by Norbeck Road: "It missed a trail fork").
+# Only on a trail, and only for another trail-like way: a street that curves at a side
+# street, or a sidepath at a footway, is no question.
+FORK_WIDE_MAX_DEG = 90.0
+TRAIL_USES = frozenset({"cycleway", "footway", "path", "mountain_bike", "bridleway", "track"})
+# A turn this sharp, read from Valhalla's headings (each over the edge's first or last 30 m
+# or so), may have come out the wrong side of straight back: the side is read from the
+# route's own line at the node (`turn_between`; the owner, 2026-10-20, on a ramp up to a
+# bridge by Veirs Mill Road: "This is a right turn up onto a bridge").
+HAIRPIN_DEG = 120.0
+# A short path stretch between two turns that crosses a road (a junction event across it,
+# or a crosswalk) is said as the crossing: "Cross Redland Road, then left onto Redland Road
+# bike lane" (the owner, 2026-10-20: "It should have told me to cross the street and turn
+# left"), not as a bear to stay on the path. The event may lie a little either side of it.
+CROSS_MAX_M = 50.0
+CROSS_NEAR_M = 10.0
+CROSS_KINDS = frozenset({"crossing", "left_across", "along"})
+CROSSING_USE = "pedestrian_crossing"
+CROSS_UNNAMED = "the road"
 # Other ways at a node that never look like the way on: a driveway or a parking
 # aisle off a road, steps, a lift.
 FORK_IGNORED_USES = frozenset(
@@ -298,6 +318,9 @@ class Atom:
     # The other ways, as `others`, at the junctions within SHAPE_NEAR_M short of that
     # node; None where there are none.
     prior: tuple | None = None
+    # The piece's own compass bearing, unwrapped along the trace (`core.routing.Piece`):
+    # two pieces' difference is how far, and to which side, the route turned between.
+    bearing: float | None = None
 
 
 def beside_words(use: str, road: str) -> str | None:
@@ -760,6 +783,9 @@ class _Turn:
     shape: dict | None = None
     # The way off a circle (`circle_exit`): {"number": its exit, "circle": its name}.
     exit: dict | None = None
+    # A short path across a road between two turns: the road crossed, said in place of
+    # the turn ("Cross Redland Road"; CROSS_UNNAMED where the road has no name).
+    cross: str | None = None
 
 
 def _turn_deg(heading_in: float, heading_out: float) -> float:
@@ -767,27 +793,46 @@ def _turn_deg(heading_in: float, heading_out: float) -> float:
     return (heading_out - heading_in + 540.0) % 360.0 - 180.0
 
 
-def _movement_between(before: _Run, after: _Run) -> str | None:
-    """ "left", "right", "bear_left", "bear_right" or "straight" from `before` into
-    `after`, from the headings at the junction; None where one is not known. A
-    bear is a turn of SLIGHT_MIN_DEG to BEAR_MAX_DEG; past it, `movement_of`'s
-    left or right."""
-    a = before.last.heading_out if before.last else None
-    b = after.first.heading_in if after.first else None
+def turn_between(before: Atom | None, after: Atom | None) -> float | None:
+    """The turn from the piece `before` into the piece `after`, clockwise positive:
+    Valhalla's headings at the junction, but past HAIRPIN_DEG on the side the route's
+    own line turns (`Atom.bearing`), so a hairpin right that its headings make a
+    little more than straight back reads as the right it is (+190, not -170). None
+    where a heading is not known."""
+    a = before.heading_out if before else None
+    b = after.heading_in if after else None
     if a is None or b is None:
         return None
     turn = _turn_deg(a, b)
+    if abs(turn) >= HAIRPIN_DEG and before.bearing is not None and after.bearing is not None:
+        # The bearings run on unbroken along the trace, so their difference is how the
+        # route turned between the two pieces; never a turn past 360 - HAIRPIN_DEG.
+        line = after.bearing - before.bearing
+        sides = [t for t in (turn, turn - 360.0, turn + 360.0) if abs(t) <= 360.0 - HAIRPIN_DEG]
+        turn = min(sides, key=lambda t: abs(t - line))
+    return turn
+
+
+def _movement_between(before: _Run, after: _Run) -> str | None:
+    """ "left", "right", "bear_left", "bear_right" or "straight" from `before` into
+    `after`, from the turn at the junction (`turn_between`); None where it is not
+    known. A bear is a turn of SLIGHT_MIN_DEG to BEAR_MAX_DEG; past it, a left or a
+    right, by the side it turns to."""
+    turn = turn_between(before.last, after.first)
+    if turn is None:
+        return None
     if abs(turn) < SLIGHT_MIN_DEG:
         return "straight"
     if abs(turn) <= BEAR_MAX_DEG:
         return "bear_right" if turn > 0 else "bear_left"
-    return movement_of(a, b).value
+    return "right" if turn > 0 else "left"
 
 
 def fork_movement(
     heading_in: float | None,
     heading_out: float | None,
     others: list[tuple[float | None, str | None, str | None]],
+    trail: bool = False,
 ) -> str | None:
     """The movement to say where the route leaves a node that is a fork, else None.
 
@@ -797,7 +842,10 @@ def fork_movement(
     the router did not say). A way a bicycle may not ride away on, or one of
     FORK_IGNORED_USES, is not a choice. The node is a fork where a choice lies
     within FORK_AHEAD_DEG of straight ahead and the route's own way is not nearer
-    straight by FORK_CLEAR_DEG; where the route's way is itself within
+    straight by FORK_CLEAR_DEG; on a trail (`trail`: the route's way is one of
+    TRAIL_USES) whose way bends off itself, another trail-like way within
+    FORK_CLEAR_DEG beyond it (to FORK_WIDE_MAX_DEG) is a fork too (a Y of two leaning
+    branches); where the route's way is itself within
     SLIGHT_MIN_DEG of straight, only a choice straighter still makes a fork (a spur
     a little off a trail carried straight on is no question). A way whose
     cyclability the router did not give (an older router) is taken as a choice.
@@ -808,13 +856,18 @@ def fork_movement(
         return None
     ours = _turn_deg(heading_in, heading_out)
     choices = [
-        _turn_deg(heading_in, heading)
+        (_turn_deg(heading_in, heading), use)
         for heading, use, cyclability in others
         if heading is not None
         and use not in FORK_IGNORED_USES
         and cyclability not in ("none", "backward")
     ]
-    ahead = [d for d in choices if abs(d) <= FORK_AHEAD_DEG]
+    wide = min(abs(ours) + FORK_CLEAR_DEG, FORK_WIDE_MAX_DEG) if trail else FORK_AHEAD_DEG
+    ahead = [
+        d
+        for d, use in choices
+        if abs(d) <= FORK_AHEAD_DEG or (abs(d) <= wide and use in TRAIL_USES)
+    ]
     if not ahead:
         return None
     nearest = min(ahead, key=abs)
@@ -1024,6 +1077,8 @@ def _stretch_sentence(
         movement = turn.movement
         if turn.exit is not None:
             lead = exit_words(turn.exit["number"], _in_sentence(street), turn.exit["circle"])
+        elif turn.cross is not None:
+            lead = f"Cross {turn.cross}"
         elif movement in TURN_WORDS and turn.stay:
             lead = f"{TURN_WORDS[movement]} to stay on {_in_sentence(street)}"
         elif movement in TURN_WORDS:
@@ -1192,6 +1247,43 @@ def _group_run(
     return merged, _then_words(streets)
 
 
+def _crossing(
+    runs: list[_Run], turns: dict[int, _Turn], starts: list[float], events: list, i: int
+) -> str | None:
+    """The road `runs[i]` crosses, where it is a short path across a road between two
+    turns of one leg: a path under CROSS_MAX_M, turned (or forked) into and turned out
+    of, with a junction event across a road (CROSS_KINDS) within CROSS_NEAR_M of it, or
+    begun or ended on a crosswalk. The event's road, else CROSS_UNNAMED; None where it
+    is not such a stretch."""
+    run = runs[i]
+    crosswalk = any(atom is not None and atom.use == CROSSING_USE for atom in (run.first, run.last))
+    if i + 1 >= len(runs) or runs[i + 1].leg != run.leg or not (run.path or crosswalk):
+        return None
+    if run.metres > CROSS_MAX_M or run.untraced or _circle(run):
+        return None
+    into, out = turns.get(i), turns.get(i + 1)
+    if into is None or out is None or into.exit or out.exit:
+        return None
+    if into.movement not in TURN_WORDS or out.movement not in TURN_WORDS:
+        return None
+    start, end = starts[i], starts[i] + run.metres
+    ways = runs[i - 1].names | runs[i + 1].names
+    near = [
+        event
+        for event in events
+        if event.kind in CROSS_KINDS
+        and start - CROSS_NEAR_M <= event.m <= end + CROSS_NEAR_M
+        and (_event_name(event) or "").lower() not in ways
+    ]
+    if near:
+        middle = (start + end) / 2
+        name = _event_name(min(near, key=lambda event: abs(event.m - middle)))
+        return name or CROSS_UNNAMED
+    if crosswalk:
+        return CROSS_UNNAMED
+    return None
+
+
 def _nearest_event(events: list, at_m: float, used: set[int]):
     best, best_gap = None, MATCH_M + 1e-9
     for index, event in enumerate(events):
@@ -1304,9 +1396,13 @@ def describe_both(
             used.add(found)
         movement = _movement_between(before, run)
         # At a fork the route's way is said beside the other branch, whatever the
-        # street (a bend along one street, or a new name straight on, says nothing).
+        # street (a bend along one street, or a new name straight on, says nothing);
+        # a left or a right there on the side the line turns (`turn_between`).
         if _forks(run):
             movement = run.first.fork
+            turn = turn_between(before.last, run.first)
+            if movement in ("left", "right") and turn is not None and abs(turn) > BEAR_MAX_DEG:
+                movement = "right" if turn > 0 else "left"
         event = events[found] if found is not None else None
         if movement is None and event is not None:
             movement = event.movement.value
@@ -1324,12 +1420,23 @@ def describe_both(
             shape = junction_shape(
                 before.last.heading_out, run.first.heading_in, run.first.others, service, main
             )
+            # A hairpin read on the line's side (`turn_between`) is drawn as the plain
+            # arrow: the diagram's headings would show it the other way.
+            hairpin = turn_between(before.last, run.first)
+            if shape is not None and hairpin is not None and abs(hairpin) >= HAIRPIN_DEG:
+                if (shape["out"] > 0) != (movement or "").endswith("right"):
+                    shape = None
         circle = exits.get(id(run.first)) if run.first is not None else None
         exit = None
         if circle is not None and movement is not None and not same:
             exit = {"number": circle["number"], "circle": circle["circle"]}
             shape = circle["shape"]
         turns[i] = _Turn(movement, event, same, shape, exit)
+    for i, turn in turns.items():
+        crossed = _crossing(runs, turns, starts, events, i)
+        if crossed is not None:
+            turn.cross = crossed
+            turn.shape = None
 
     entries: list[tuple[tuple[float, int, int], dict]] = []
     shared: list[tuple[tuple[float, int, int], dict]] = []
@@ -1386,6 +1493,7 @@ def describe_both(
                         **({"stay": True} if turn.stay else {}),
                         **({"shape": turn.shape} if turn.shape else {}),
                         **({"exit": turn.exit} if turn.exit else {}),
+                        **({"cross": turn.cross} if turn.cross else {}),
                     },
                     severity=severity,
                 ),
@@ -1503,6 +1611,7 @@ def describe_both(
                         **({"stay": True} if turn.stay else {}),
                         **({"shape": turn.shape} if turn.shape else {}),
                         **({"exit": turn.exit} if turn.exit else {}),
+                        **({"cross": turn.cross} if turn.cross else {}),
                     },
                     severity=severity,
                 ),

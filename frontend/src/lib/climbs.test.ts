@@ -19,6 +19,7 @@ import {
   CLIMBS_MARKER_LAYER,
   CLIMBS_SOURCE_ID,
   addClimbs,
+  climbsUnder,
   categoryName,
   climbAlongCount,
   climbAlongText,
@@ -364,4 +365,21 @@ test("the file's surface and busy marks are read, said in words, and drawn in th
   for (const { colour } of CLIMB_SURFACES) assert.ok(1.05 / (lum(colour) + 0.05) >= 4.5, colour);
   const line = climbLineLayer() as { paint: Record<string, unknown> };
   assert.deepEqual(line.paint["line-color"], ["match", ["get", "s"], "path", "#0f766e", "gravel", "#8a4b08", "mtb", "#5b21b6", "#9d174d"]);
+});
+
+test("climbs added before the trail names are moved under them once the names come, line under summits", () => {
+  const order = ["route-casing", "climbs-line", CLIMBS_MARKER_LAYER];
+  const map = {
+    getLayer: (id: string) => (order.includes(id) ? {} : undefined),
+    moveLayer: (id: string, before?: string) => {
+      order.splice(order.indexOf(id), 1);
+      order.splice(before ? order.indexOf(before) : order.length, 0, id);
+    },
+  };
+  assert.equal(climbsUnder(map, "trail-name"), false, "no names yet");
+  order.unshift("trail-name");
+  assert.equal(climbsUnder(map, "trail-name"), true);
+  assert.deepEqual(order, ["climbs-line", CLIMBS_MARKER_LAYER, "trail-name", "route-casing"]);
+  const view = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
+  assert.match(view, /if \(added\) climbsUnder\(map, TRAIL_LABEL_LAYER_ID\);/);
 });
