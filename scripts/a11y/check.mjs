@@ -5035,7 +5035,26 @@ const PICK_OPEN_IN_GO = "(() => { const s = document.querySelector('#sheet-setti
   const q = await bare({ width: 1280, height: 900, mobile: false });
   const wide = await q.eval(`({ mode: ${modeNow}, top: !!document.querySelector('nav.go-top'), chips: [...document.querySelectorAll('.map-chips .map-chip')].map((x) => x.textContent.trim()) })`);
   // Places to see joined Plan's map chips in 2b38bf1c ("Go: Repair and Sights behind More; Plan: Places to see").
-  check("go: a shared link opens in Go on a phone, and a wide screen opens in Plan, with Food, Water and Places to see chips on the map", linked === "Go" && wide.mode === "Plan" && !wide.top && JSON.stringify(wide.chips) === JSON.stringify(["Food", "Water", "Places to see"]), JSON.stringify({ linked, wide }));
+  check("go: a shared link opens in Go on a phone, and a wide screen opens in Plan, with Food, Water and Places to see chips on the map (behind Find)", linked === "Go" && wide.mode === "Plan" && !wide.top && JSON.stringify(wide.chips) === JSON.stringify(["Find", "Food", "Water", "Places to see"]), JSON.stringify({ linked, wide }));
+  // Folded behind Find (the owner, 2026-10-21: "It's more room"): Find opens the row, Escape folds it back to Find,
+  // and a choice opens its sheet and folds the row.
+  const fold = "(() => { const t = document.querySelector('.map-chips-toggle'); const r = document.getElementById(t.getAttribute('aria-controls')); return { expanded: t.getAttribute('aria-expanded'), hidden: r.hidden }; })()";
+  const closed = await q.eval(fold);
+  await q.eval("document.querySelector('.map-chips-toggle').focus(); document.querySelector('.map-chips-toggle').click(); true");
+  await sleep(200);
+  const opened = await q.eval(fold);
+  await q.eval("document.querySelector('.map-chips-row .map-chip').focus(); true");
+  await q.escape();
+  await sleep(200);
+  const escaped = { ...(await q.eval(fold)), focus: await q.eval("document.activeElement === document.querySelector('.map-chips-toggle')") };
+  await q.eval("document.querySelector('.map-chips-toggle').click(); true");
+  await sleep(200);
+  await q.eval("[...document.querySelectorAll('.map-chips-row .map-chip')].find((c) => c.textContent.trim() === 'Water').click(); true");
+  await sleep(400);
+  const chose = { ...(await q.eval(fold)), sheet: await q.eval("(() => { const s = document.getElementById('sheet-nearest'); return !!s && !s.hidden; })()") };
+  check("plan: Food, Water and Places to see fold behind Find (collapsed); Find opens them, Escape folds them back to Find, and Water opens its sheet and folds them",
+    closed.expanded === "false" && closed.hidden && opened.expanded === "true" && !opened.hidden && escaped.hidden && escaped.focus && chose.hidden && chose.sheet,
+    JSON.stringify({ closed, opened, escaped, chose }));
   await q.close();
 }
 {
@@ -5161,7 +5180,7 @@ const failed = results.filter((r) => !r.ok);
 // Review mode's own lists (22c2) add six. End ride's slide (#235) adds two: a tap springs back, a slide ends the ride.
 // A lettered pin's card (no auto route, 2026-10-19) adds two: the card a tap opens, and the card the B key opens.
 // The map's info panel adds two at 1280 px: the i named for it, and what it opens.
-const EXPECTED = 679;
+const EXPECTED = 680;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

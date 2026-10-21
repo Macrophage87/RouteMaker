@@ -5390,6 +5390,13 @@ details.zoom-notes {
   gap: 8px;
 }
 
+/* Food, Water and Places to see behind Find (the owner, 2026-10-21), in a row beside it while open. */
+.map-chips-row:not([hidden]) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .map-chips .map-chip {
   background: var(--bg);
   box-shadow: var(--shadow);
