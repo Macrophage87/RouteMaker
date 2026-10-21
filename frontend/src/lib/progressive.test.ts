@@ -341,6 +341,7 @@ test("App: Go's controls are unchanged: no new button or field for any of it", (
   // Go's bar mirroring Plan's (Stephen 2026-10-18: "mirror what plan does in general, but instead of route, we start
   // the ride"): three more, Undo, Redo and the big Start ride / Route, beside the Clear that was the destination's X.
   // Metro behind More (Stephen 2026-10-19: "Metro stops should be on the list in more"): one more, still behind More.
-  assert.equal((go.match(/<button/g) ?? []).length, 26, "the same buttons as before, the Home sheet's, the route card's, Go's bar and More's Metro");
+  // Plan's map chips behind one Find chip (Stephen 2026-10-21: "It's more room"): one more, Find, in Plan only.
+  assert.equal((go.match(/<button/g) ?? []).length, 27, "the same buttons as before, the Home sheet's, the route card's, Go's bar, More's Metro and Plan's Find");
   assert.equal((go.match(/<PlaceSearch/g) ?? []).length, 4, "the same search fields as before, and the Home sheet's");
 });

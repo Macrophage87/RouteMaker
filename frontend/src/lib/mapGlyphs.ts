@@ -15,11 +15,15 @@
  * The layers keep naming the base map's faces ("Noto Sans Medium" and so on, which every label layer and its
  * tests use), and MapView's transformRequest sends a glyph request for a face here to its bundled Atkinson
  * file: Regular for Noto Sans Regular, SemiBold for Noto Sans Medium (the weight the owner picked for the
- * street names), Italic for Noto Sans Italic. Any other range (a name in a script the font does not cover)
- * is left to the base map's Noto file, so such a name is still drawn. The street names name their face
- * outright (stressStyle.js, ROAD_LABEL).
+ * street names), Italic for Noto Sans Italic; ExtraBold (800) for the neighbourhood and town names. Any other range (a name in a script the font does not cover)
+ * is left to the base map's Noto file, so such a name is still drawn. The street names and place names name
+ * their faces outright (stressStyle.js, ROAD_LABEL and PLACE_LABEL), faces the base map has not, so their other
+ * ranges go to Noto Sans Medium.
  */
 export const MAP_LABEL_FONT = "Atkinson Hyperlegible Next SemiBold";
+
+/** The neighbourhood and town names' heavier face (the owner, 2026-10-21: "a bolder one from the same family"; stressStyle.js, PLACE_LABEL). */
+export const PLACE_LABEL_FONT = "Atkinson Hyperlegible Next ExtraBold";
 
 /** The ranges bundled, corridor.ts GLYPH_RANGES: Basic Latin and Latin-1, Latin Extended-A and part of B, General Punctuation. */
 export const MAP_LABEL_RANGES = ["0-255", "256-511", "8192-8447"] as const;
@@ -30,6 +34,7 @@ export const MAP_FACES: Readonly<Record<string, { file: string; base: string }>>
   "Noto Sans Medium": { file: "atkinson-next-semibold", base: "Noto Sans Medium" },
   "Noto Sans Italic": { file: "atkinson-next-italic", base: "Noto Sans Italic" },
   [MAP_LABEL_FONT]: { file: "atkinson-next-semibold", base: "Noto Sans Medium" },
+  [PLACE_LABEL_FONT]: { file: "atkinson-next-extrabold", base: "Noto Sans Medium" },
 };
 
 /** The bundled files by stem and range ("atkinson-next-regular-0-255"), from Vite's glob of their URLs. */

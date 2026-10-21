@@ -4237,6 +4237,32 @@ details.zoom-notes {
   white-space: nowrap;
 }
 
+/* Problems still to report to 311: the count, where Reports is, and Open Reports (Stephen, 2026-10-21). */
+.ride-summary-311 {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.ride-summary-311 p {
+  margin: 0;
+  font-size: 16pt;
+  font-weight: 700;
+}
+
+.ride-summary-311 .hint {
+  display: block;
+  font-weight: 400;
+}
+
+.ride-summary-311 button {
+  min-height: 48px;
+  font-size: 16pt;
+}
+
 .ride-summary-actions {
   flex: none;
   display: flex;
@@ -5390,6 +5416,17 @@ details.zoom-notes {
   gap: 8px;
 }
 
+/* Food, Water and Places to see behind Find (the owner, 2026-10-21), in a row beside it while open. */
+.map-chips {
+  align-items: flex-start;
+}
+
+.map-chips-row:not([hidden]) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .map-chips .map-chip {
   background: var(--bg);
   box-shadow: var(--shadow);
@@ -5943,12 +5980,15 @@ details.fold > summary .icon {
   box-shadow: var(--shadow);
 }
 
+/* The 311 menu shows all six problems at once (Stephen, 2026-10-21: "Expand 311 to show everything"): it may
+   use the side buttons' whole height, up to the top of the map; it scrolls only where even that is too short. */
 .ride-311-menu {
   position: absolute;
   right: calc(100% + 10px);
   bottom: 0;
   width: min(22rem, calc(100vw - 96px));
-  max-height: calc(56vh - 80px);
+  max-height: 100%;
+  box-sizing: border-box;
   overflow-y: auto;
   padding: 10px 12px;
   background: var(--bg);
@@ -5988,7 +6028,9 @@ details.fold > summary .icon {
   margin: 8px 0 0;
   padding: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  /* Always two columns, three rows (a long name wraps inside its button), so all six show without scrolling even
+     on a 360 x 640 phone. */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -6005,7 +6047,7 @@ details.fold > summary .icon {
   font-size: 1rem;
 }
 
-/* What a 311 pick did ("Sent to DC 311."), under the button, with "Add a note" (Go riding fixes item 3). */
+/* What a 311 pick did ("Logged for 311: Pothole."), by the button. */
 .ride-311-said {
   width: min(16rem, calc(100vw - 96px));
   padding: 8px 10px;
@@ -6017,10 +6059,6 @@ details.fold > summary .icon {
 
 .ride-311-said p {
   margin: 0 0 6px;
-}
-
-.ride-311-said button {
-  min-height: 44px;
 }
 
 /* The road panel's "Suggest a change…": the ways to suggest, shown under it. */
@@ -6686,6 +6724,23 @@ details.fold > summary .icon {
   gap: 8px;
   margin-top: 12px;
 }
+/* Start ride on a computer (StartOnComputerDialog): the closure warning's frame, in the plain border. */
+.start-computer-dialog {
+  max-width: min(440px, calc(100vw - 32px));
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  padding: 16px;
+}
+.start-computer-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.45);
+}
+.start-computer-dialog h2 {
+  margin-top: 0;
+}
+
 .closure-choices {
   display: flex;
   flex-wrap: wrap;
@@ -7533,10 +7588,101 @@ details.fold > summary .icon {
   border-radius: 999px;
 }
 
+/* Start ride and Load route beside the big button: the same pill, outlined. */
+.plan-map-bar .plan-bar-route.secondary {
+  background: var(--bg);
+}
+.plan-map-bar .plan-bar-route {
+  white-space: nowrap;
+}
+/* A phone: "Save" and "Start" (their names stay Save route and Start ride). */
+@media (max-width: 599px) {
+  .plan-map-bar .plan-bar-wide {
+    display: none;
+  }
+  .plan-map-bar .plan-bar-route {
+    padding: 0 16px;
+  }
+}
+
 .plan-map-bar .plan-bar-route[aria-disabled="true"],
 .go-destination .plan-bar-route[aria-disabled="true"] {
   opacity: 0.85;
   cursor: progress;
+}
+
+/* Save route in the big button's place (the owner, 2026-10-21): its name form and its line drop under the bar,
+   centred on it, on a card of their own so the map behind does not show through. */
+.plan-map-bar:has(.save-route-form, .save-route-said:not(:empty)) {
+  z-index: 3;
+}
+.plan-map-bar > .save-route-bar {
+  pointer-events: auto;
+}
+.plan-map-bar .save-route-bar > .plan-bar-route {
+  box-shadow: var(--shadow);
+}
+.plan-map-bar .save-route-bar .save-route-form,
+.plan-map-bar .save-route-bar .save-route-said:not(:empty) {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  width: fit-content;
+  max-width: 100%;
+  margin: 8px auto 0;
+  padding: 10px 12px;
+  background: var(--bg);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+}
+/* The form on the map: the name across the top, then Save, Download GPX and Cancel in one centred row of equal
+   height, wrapping where a phone is too narrow for them. */
+.plan-map-bar .save-route-bar .save-route-form {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  align-items: stretch;
+}
+.plan-map-bar .save-route-bar .save-route-form label {
+  flex: 1 0 100%;
+  display: grid;
+  gap: 4px;
+  font-weight: 700;
+}
+.plan-map-bar .save-route-bar .save-route-form input {
+  min-height: 44px;
+  width: 100%;
+  box-sizing: border-box;
+}
+.plan-map-bar .save-route-bar .save-route-form button {
+  min-height: 44px;
+  margin: 0;
+  white-space: nowrap;
+}
+/* Signed out, Save's form offers Discord sign-in in the name's place: a link drawn as the primary button. */
+.save-route-sign-in {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+/* The line that says it saved is not a control: taps go through to the chips under it. */
+.plan-map-bar .save-route-bar .save-route-said {
+  pointer-events: none;
+}
+/* Under the manual mode badge while it shows. */
+.plan-map-bar:has(.plan-bar-manual-badge) .save-route-bar .save-route-form,
+.plan-map-bar:has(.plan-bar-manual-badge) .save-route-bar .save-route-said:not(:empty) {
+  margin-top: 52px;
 }
 
 .app:has(.plan-map-bar) .map-chips {
@@ -7587,6 +7733,11 @@ details.fold > summary .icon {
 
   .app:has(.plan-bar-manual-badge) .map-chips {
     top: 108px;
+  }
+  /* A card opened near the top of the map would sit under the bar and hide its close button (as for the chips,
+     above): the bar steps aside until the card closes. */
+  .app:has(.maplibregl-popup) .plan-map-bar {
+    visibility: hidden;
   }
 }
 
