@@ -327,7 +327,15 @@ class TestAnswer:
         router(standard_router())
         body = post(client, good_body()).json()
         assert body["stress_spans"] == [
-            {"from_m": 0, "to_m": 900, "tier": 3, "facility": "none", "unpaved": None, "rough": None, "rpm": None},
+            {
+                "from_m": 0,
+                "to_m": 900,
+                "tier": 3,
+                "facility": "none",
+                "unpaved": None,
+                "rough": None,
+                "rpm": None,
+            },
             {
                 "from_m": 900,
                 "to_m": 1300,
@@ -2831,11 +2839,15 @@ class TestSurfaceOfPieces:
         tier, facility = classes[2]
         assert tier == "4" and classes[2] == (tier, facility)
 
-    def test_classify_carries_is_rough_and_the_sections_split_gravel_from_dirt(self, segments) -> None:
+    def test_classify_carries_is_rough_and_the_sections_split_gravel_from_dirt(
+        self, segments
+    ) -> None:
         """The owner, 2026-10-21: "Maybe make natural surface trails brown and gravel grey?"
         An unpaved section says whether it is rough (brown) or not (gravel grey)."""
         with connection.cursor() as cursor:
-            cursor.execute(f"UPDATE {segments}.segment SET is_unpaved = true WHERE osm_way_id = 202")
+            cursor.execute(
+                f"UPDATE {segments}.segment SET is_unpaved = true WHERE osm_way_id = 202"
+            )
             cursor.execute(
                 f"UPDATE {segments}.segment SET is_rough = (ordinal = 1) WHERE osm_way_id = 202"
             )
