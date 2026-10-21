@@ -1073,15 +1073,15 @@ class TestProbes:
         cache or as a browser's 304, for a week."""
         assert stress_tiles.FORMAT_VERSION >= 3
 
-    def test_the_format_is_10(self) -> None:
+    def test_the_format_is_11(self) -> None:
         # A forgotten bump would serve the old z10-13 tiles as current (mutation
         # review NIT 7 of ZOOMED-TRAILS): 5 was the long trails (375); 6 was claimed by both
         # the ride layer (391) with the surface-unknown properties (376) and the Mass Ride
         # capacity (325-327), on branches that never shipped alone; 7 is the rebuild bundle;
         # 8 draws a judged trail bridge in its trail's surface (BRIDGE_UNPAVED); 9 carries the
         # mountain-bike trails at z12-13 (v0.7.0); 10 draws every street from z12 (the owner,
-        # 2026-10-17: "Both from 12").
-        assert stress_tiles.FORMAT_VERSION == 10
+        # 2026-10-17: "Both from 12"); 11 carries a major trail's name (`trail_name`).
+        assert stress_tiles.FORMAT_VERSION == 11
 
     def test_a_format_bump_changes_the_etag(self, client, live, monkeypatch) -> None:
         path = url(*tile_of(*CENTRE, 14))
@@ -1741,7 +1741,7 @@ class TestEveryStreetFromZ12:
     def test_the_etag_names_the_column_and_the_format_is_bumped(self, client, ride) -> None:
         insert_ride(ride, run_mi=1.0)
         etag = client.get(url(*tile_of(*CENTRE, 12)))["ETag"]
-        assert "+kcfarmwovshbtl-v10" in etag, etag
+        assert "+kcfarmwovshbtl-v11" in etag, etag
         assert stress_tiles.ETAG_LETTERS[stress_tiles.CALM_RUN_COLUMN] == "k"
         assert len(set(stress_tiles.ETAG_LETTERS.values())) == len(stress_tiles.ETAG_LETTERS)
         assert len(etag) < 64
@@ -1806,7 +1806,7 @@ class TestRoadside:
     def test_the_etag_names_the_column(self, client, beside) -> None:
         self.put(beside, True)
         etag = client.get(url(*tile_of(*CENTRE, 14)))["ETag"]
-        assert "+cfarmwoevshbtl-v10" in etag, etag
+        assert "+cfarmwoevshbtl-v11" in etag, etag
         assert stress_tiles.ETAG_LETTERS[stress_tiles.ROADSIDE_COLUMN] == "e"
         assert len(set(stress_tiles.ETAG_LETTERS.values())) == len(stress_tiles.ETAG_LETTERS)
 
@@ -1878,7 +1878,7 @@ class TestMtbLevel:
     def test_the_etag_names_the_column(self, client, levelled) -> None:
         self.put(levelled, 3400, 2, 0)
         etag = client.get(url(*tile_of(*CENTRE, 14)))["ETag"]
-        assert "+cfarmwdovshbtl-v10" in etag, etag
+        assert "+cfarmwdovshbtl-v11" in etag, etag
         assert stress_tiles.ETAG_LETTERS[stress_tiles.MTB_LEVEL_COLUMN] == "d"
         assert len(set(stress_tiles.ETAG_LETTERS.values())) == len(stress_tiles.ETAG_LETTERS)
         assert stress_tiles.OPTIONAL_PROPERTIES["mtb_level"] == "mtb_level"
@@ -1939,7 +1939,7 @@ class TestMtbName:
     def test_the_etag_names_the_column(self, client, named) -> None:
         self.put(named, 3602, "Fairland Loop", 0)
         etag = client.get(url(*tile_of(*CENTRE, 14)))["ETag"]
-        assert "+cfarmwnovshbtl-v10" in etag, etag
+        assert "+cfarmwnovshbtl-v11" in etag, etag
         assert stress_tiles.ETAG_LETTERS[stress_tiles.MTB_NAME_COLUMN] == "n"
         assert len(set(stress_tiles.ETAG_LETTERS.values())) == len(stress_tiles.ETAG_LETTERS)
         assert stress_tiles.OPTIONAL_PROPERTIES["name"] == "mtb_name"
@@ -1956,6 +1956,67 @@ class TestMtbName:
             )
         layer = decode(client.get(url(*tile_of(*CENTRE, 14))).content)["stress"]
         assert layer.features and all("name" not in f.properties for f in layer.features)
+
+
+@db
+class TestTrailName:
+    """A major trail carries its name as `trail_name` (the owner, 2026-10-21: "Major off road
+    bike trails like the Metropolitan Branch Trail should be named on the map."): a path the
+    z11 map keeps as a long trail, at every zoom, and no other way."""
+
+    @staticmethod
+    def names(client, z) -> list:
+        layers = decode(client.get(url(*tile_of(*CENTRE, z))).content)
+        return [f.properties.get("trail_name") for f in layers["stress"].features] if layers else []
+
+    @pytest.mark.parametrize(
+        ("unpaved", "route", "run_mi", "named"),
+        [
+            (False, 3, 0.2, True),  # on a regional bicycle route
+            (False, 2, 0.2, True),  # on a long walking route
+            (False, 1, 0.2, False),  # a local route is not enough
+            (False, 0, 2.5, True),  # a long enough named run
+            (False, 0, 2.4, False),
+            (True, 0, 4.9, False),  # an unpaved run needs 5 mi
+            (True, 0, 5.0, True),
+            (True, 2, 0.2, False),  # and a walking route keeps only a paved way
+            (True, 3, 0.2, True),  # the C&O towpath's USBR 50
+        ],
+    )
+    @pytest.mark.parametrize("z", [11, 12, 14])
+    def test_a_major_trail_is_named(
+        self, client, segment_schemas, z, unpaved, route, run_mi, named
+    ) -> None:
+        live, _ = segment_schemas
+        insert_trail(live, unpaved, route, run_mi)
+        with connection.cursor() as cursor:
+            cursor.execute(f"UPDATE {live}.segment SET trail_name = 'Metropolitan Branch Trail'")
+        got = self.names(client, z)
+        if z == 11 and not named:
+            assert got == []  # not drawn at all there
+        else:
+            assert got == (["Metropolitan Branch Trail"] if named else [None])
+
+    def test_a_road_is_not_named_as_a_trail(self, client, segment_schemas) -> None:
+        """A calm road carries `trail_name` for its calm run; a road closed to cars at set
+        times keeps its street name. Neither is a trail name."""
+        live, _ = segment_schemas
+        insert_trail(live, False, 3, 10.0, car_free=["weekend"])
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"UPDATE {live}.segment SET facility = 'none', is_trail_class = false, "
+                "trail_name = 'Beach Drive'"
+            )
+        assert self.names(client, 14) == [None]
+
+    def test_a_table_without_the_long_trail_columns_names_nothing(
+        self, client, segment_schemas
+    ) -> None:
+        live, _ = segment_schemas
+        insert_trail(live, False, 3, 10.0)
+        with connection.cursor() as cursor:
+            cursor.execute(f"ALTER TABLE {live}.segment DROP COLUMN trail_run_m")
+        assert self.names(client, 14) == [None]
 
 
 @db
@@ -2021,7 +2082,13 @@ class TestMassCapacity:
 # The riders-a-minute figure each format pair was drawn with. A tuned flow constant
 # (FOLLOWUP-FLOW-CALIBRATION) changes `rpm` in every tile without changing either tile
 # tag, so it has to come with a bump of both FORMAT_VERSIONs and a row here.
-RPM_PER_METRE_BY_FORMAT = {(7, 2): "29.526", (8, 2): "29.526", (9, 2): "29.526", (10, 2): "29.526"}
+RPM_PER_METRE_BY_FORMAT = {
+    (7, 2): "29.526",
+    (8, 2): "29.526",
+    (9, 2): "29.526",
+    (10, 2): "29.526",
+    (11, 2): "29.526",
+}
 
 
 def test_a_tuned_flow_constant_bumps_both_tile_formats() -> None:

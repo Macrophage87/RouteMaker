@@ -683,6 +683,21 @@ alone. Shape comes first and colour second:
   (`MTB_HALO`; `mtb-trail-casing`, `mtb-level-casing-1..4`), unrated as grey
   dashes, over one shared layer of dark cross-ticks (`mtb-trail-ticks`,
   `MTB_TICKS`; LTS 4's casing is white, so the ticks are the 452a mark).
+- **Major trail names (2026-10-21).** The owner: "Major off road bike trails
+  like the Metropolitan Branch Trail should be named on the map." The tiles
+  carry `trail_name` (`core.stress_tiles.trail_name_rule`, format 11) on a
+  traffic-free path that clears the z11 long-trails bar (`Z11_LONG_TRAILS`:
+  a long walking or regional-or-larger bicycle route, or a named run of
+  2.5 mi, 5 mi unpaved), at every zoom, from a table with the long-trail
+  columns; `segment.trail_name` is the way's name, else its route's. The
+  `trail-name` symbol layer (`stressStyle.js`, `trailLabelLayers`,
+  `TRAIL_LABEL`) draws it along the line from zoom 12 in the street names'
+  face, size and halo, in the path rail's purple (`#4c1d95`, 10.9:1;
+  `#2e1065` with the accessibility switch), under the base map's labels so
+  street and station names win; MapView sets 20 px and the shortened field
+  (`rideTrailLabelField`) in a ride and puts the climbs under it. The base
+  map's own path names (z15+, kind `path`) take the same purple
+  (`roadLabelPaint`).
 - **Unpaved in brown (302).** An unpaved road or trail is drawn in one brown
   ramp instead of the stress hues, light to dark from LTS 1 to Avoid, with the
   tier's own dash and width, so the stress still reads without colour

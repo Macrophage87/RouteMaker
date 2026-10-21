@@ -39,7 +39,7 @@ import {
   ROUTE_BAND_WIDTH,
   sectionFeatures,
 } from "./lib/routeColours.ts";
-import { ROAD_LABEL, ROAD_LABEL_LAYER_IDS, mtbTrailsOn, rideRoadLabelField, routableMtbLevel, stressOverlayLayers, subscribeHighStressLanes, subscribeMtbTrails, subscribePalette, subscribeRoutableMtb, withClearRoadLabels } from "./stressStyle.js";
+import { ROAD_LABEL, ROAD_LABEL_LAYER_IDS, TRAIL_LABEL_LAYER_ID, mtbTrailsOn, rideRoadLabelField, rideTrailLabelField, routableMtbLevel, stressOverlayLayers, subscribeHighStressLanes, subscribeMtbTrails, subscribePalette, subscribeRoutableMtb, withClearRoadLabels } from "./stressStyle.js";
 import { subscribeTopoLines, syncTopoLines, topoLinesOn, type TopoMap } from "./lib/topoLines.ts";
 import {
   addStressOverlay,
@@ -705,7 +705,8 @@ export function MapView(props: Props) {
       // "The climb dots go over the road name"): the names are placed first and a summit gives way to one, as two
       // summits give way to each other. Under the route, the water and the stations too. Without the names, the route.
       const layerIds = map.getStyle().layers.map((layer) => layer.id);
-      const underNames = layerIds.find((id) => ROAD_LABEL_LAYER_IDS.includes(id)) ?? ROUTE_BOTTOM_LAYER;
+      // The major trails' names too (stressStyle.js, TRAIL_LABEL), the lowest of them all.
+      const underNames = layerIds.find((id) => id === TRAIL_LABEL_LAYER_ID || ROAD_LABEL_LAYER_IDS.includes(id)) ?? ROUTE_BOTTOM_LAYER;
       addClimbs(map as unknown as ClimbsMap, data, on, iconPixelRatio(), underNames, callbacks.current.climbsFrom ?? CLIMBS_FROM_DEFAULT);
     };
     const anyPopupOpen = () => popupsOpen(popup.current, rail);
@@ -2329,6 +2330,11 @@ export function MapView(props: Props) {
         } else if (baseLabelField.current[id] !== undefined) {
           map.setLayoutProperty(id, "text-field", baseLabelField.current[id]);
         }
+      }
+      // The major trails' names, the same size and shortened alike.
+      if (map.getLayer(TRAIL_LABEL_LAYER_ID)) {
+        map.setLayoutProperty(TRAIL_LABEL_LAYER_ID, "text-size", ride ? ROAD_LABEL.rideSize : ROAD_LABEL.size);
+        map.setLayoutProperty(TRAIL_LABEL_LAYER_ID, "text-field", (ride ? rideTrailLabelField() : ["get", "trail_name"]) as LabelField);
       }
       if (ids.length > 0) map.off("styledata", apply);
     };
