@@ -33,6 +33,8 @@ import {
   TRAIL_LABEL_LAYER_ID,
   trailLabelPaint,
   roadLabelPaint,
+  PLACE_LABEL_LAYER_IDS,
+  placeLabelPaint,
   unpavedLayers,
   halfStepLayers,
   UNPAVED_DASH,
@@ -238,6 +240,11 @@ export function setStressPalette(
   for (const id of ROAD_LABEL_LAYER_IDS) {
     if (!map.getLayer(id)) continue;
     for (const [name, value] of Object.entries(roadLabelPaint())) map.setPaintProperty(id, name, value);
+  }
+  // The neighbourhood and town names likewise (stressStyle.js, PLACE_LABEL).
+  for (const id of PLACE_LABEL_LAYER_IDS) {
+    if (!map.getLayer(id)) continue;
+    for (const [name, value] of Object.entries(placeLabelPaint(id))) map.setPaintProperty(id, name, value);
   }
   // The trail names likewise (stressStyle.js, TRAIL_LABEL).
   if (map.getLayer(TRAIL_LABEL_LAYER_ID)) {

@@ -436,7 +436,7 @@ export function SettingsSheet(props: SettingsSheetProps) {
           </button>
           <button type="button" className="secondary menu-page" onClick={(event) => menu.onSuggest(event.currentTarget)}>
             <Icon name="flag" />
-            Suggest
+            Reports
           </button>
           <button type="button" className="secondary menu-page" onClick={(event) => menu.onGpx(event.currentTarget)}>
             <Icon name="file" />
@@ -584,7 +584,7 @@ export interface SuggestSheetProps {
 }
 
 /**
- * Suggest (the owner's choice 6): the one way in to the suggest tools. Each starts from a road on the map
+ * Reports (Suggest until 2026-10-21; the owner's choice 6): the one way in to the suggest tools. Each starts from a road on the map
  * (the road panel's "Suggest a change…": a road's level, a junction, a Mass Ride hazard), so this says how
  * to get there and opens the panel at the map's centre. The 311 checklist (Report311Log.tsx) lists the problems
  * logged from a ride's 311 button or the road panel's Log for 311, by the website that takes them.
@@ -592,6 +592,8 @@ export interface SuggestSheetProps {
 export function SuggestSheet({ nav, roadInfoAtCentre, onReview }: SuggestSheetProps) {
   return (
     <SheetFrame id="sheet-suggest" title={SHEET_TITLES.suggest} open={nav.view === "suggest"} onBack={nav.back} backLabel={nav.backLabel("suggest")}>
+      {/* The 311 checklist first: the sheet is Reports (Stephen, 2026-10-21), and the ride summary's Open Reports lands here. */}
+      <Report311Log />
       <section aria-labelledby="suggest-map-heading" className="settings-group">
         <h3 id="suggest-map-heading">A road or a junction</h3>
         <p className="hint">
@@ -603,7 +605,6 @@ export function SuggestSheet({ nav, roadInfoAtCentre, onReview }: SuggestSheetPr
           The road at the map's center
         </button>
       </section>
-      <Report311Log />
       {onReview && (
         <section aria-labelledby="suggest-review-heading" className="settings-group">
           <h3 id="suggest-review-heading">Review</h3>

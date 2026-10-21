@@ -45,7 +45,7 @@ export async function connect(port = Number(process.env.A11Y_CDP_PORT || 9222)) 
 }
 
 /** A fresh browser context and page. */
-export async function newPage(b, { width = 1280, height = 900, mobile = false } = {}) {
+export async function newPage(b, { width = 1280, height = 900, mobile = false, computerAsks = false } = {}) {
   const { browserContextId } = await b.send("Target.createBrowserContext", { disposeOnDetach: true });
   const { targetId } = await b.send("Target.createTarget", { url: "about:blank", browserContextId });
   const { sessionId } = await b.send("Target.attachToTarget", { targetId, flatten: true });
@@ -114,6 +114,9 @@ export async function newPage(b, { width = 1280, height = 900, mobile = false } 
   await s("DOM.enable");
   await s("Accessibility.enable");
   await s("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile });
+  // Start ride on a computer asks first (lib/startOnComputer.ts): Start anyway is taken as chosen in this tab, so a
+  // check's Start ride starts, unless the check is about that question (`computerAsks`).
+  if (!computerAsks) await s("Page.addScriptToEvaluateOnNewDocument", { source: "try { sessionStorage.setItem('routemaker.start-on-computer', 'yes'); } catch {}" });
   return page;
 }
 
@@ -134,7 +137,7 @@ export async function media(page, { scheme = "light", forced = false } = {}) {
  * the release, SF1; lifted from its probe's mockDelayed), and `stressTiles: false` answers the
  * stress tiles with an error (the stress map unavailable).
  */
-export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTiles = true, admin = false, suggester = false, hazards = null } = {}) {
+export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTiles = true, admin = false, suggester = false, hazards = null, signIn = false } = {}) {
   page.routeRequests = 0;
   // The bodies of the route requests, and the nearest-stations requests (OWNER-DECISIONS 466a).
   page.routeBodies = [];
@@ -251,6 +254,11 @@ export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTile
       body = JSON.stringify({ id: url.pathname.split("/")[3], category: "2", length_m: 12090, gain_m: 368, avg_grade_pct: 3, max_grade_pct: 9,
         interval_m: 30, m: [0, 30, 60, 90, 120], elevation_m: [150, 152, 155, 158, 160], grade_pct: [6.7, 8, 9, 8.3, 6.7] });
       type = "application/json";
+    } else if (url.pathname.startsWith("/api/shared-routes/") && request.method === "GET" && page.sharedRoute) {
+      // A shared route's link opened (lib/sharedRoutes.ts readShared): the line a check set in `sharedRoute`.
+      status = 200;
+      body = JSON.stringify({ ...page.sharedRoute, id: url.pathname.split("/")[3] });
+      type = "application/json";
     } else if (url.pathname === "/api/shared-routes" && request.method === "POST") {
       // Share keeps the exact line (lib/sharedRoutes.ts storeShared; core.shared_routes): kept, 201.
       (page.sharedRequests ??= []).push(JSON.parse(request.postData ?? "{}"));
@@ -340,7 +348,8 @@ export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTile
       }
     } else if (url.pathname === "/api/me") {
       status = 200;
-      body = JSON.stringify({ signed_in: admin || suggester, can_change_lts: admin, can_suggest: suggester && !admin });
+      // `signIn`: this server signs riders in (both Discord keys set), so a signed-out rider is offered it.
+      body = JSON.stringify({ signed_in: admin || suggester, can_change_lts: admin, can_suggest: suggester && !admin, ...(signIn ? { sign_in: true } : {}) });
       type = "application/json";
     } else if (url.pathname.startsWith("/api/mass-hazards")) {
       // Rider-marked Mass Ride hazards (core/mass_hazards.py; FOLLOWUP-MASSRIDE-MAP part 3): the approved

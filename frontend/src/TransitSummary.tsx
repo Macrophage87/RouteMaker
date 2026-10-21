@@ -84,7 +84,10 @@ export function TransitSummary({
                   if (!busy && onPick && !option.chosen) onPick(option.key);
                 }}
               >
-                <span aria-hidden="true">{optionText(option, index)}</span>
+                <span aria-hidden="true">
+                  {optionText(option, index)}
+                  {option.elevator_out && <Icon name="elevator-out" size={16} />}
+                </span>
                 <span className="visually-hidden">{optionSaid(option, index)}</span>
               </button>
             </li>
