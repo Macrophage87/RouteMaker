@@ -161,6 +161,7 @@ finish() { # word message
 		# The last pass that did something about a release, kept past the idle passes after it.
 		case "$word" in deployed | rolled-back | failed | broken | held | interrupted) [ -z "$report" ] || cp "$report" "$cd_dir/last-release-report.txt" ;; esac
 		notify "$word" "$*"
+		case "$word" in deployed | up-to-date) reports_live ;; esac
 	fi
 }
 # The owner's alert channel (alert.sh, review OPS-1): a result that needs the owner is posted once
@@ -199,6 +200,25 @@ release_notes() { # alert
 			"$1" clear release-notes "the release notes for $tag are posted"
 		else
 			"$1" send release-notes "$tag" "the release notes for $tag were not posted; tried again at the next pass"
+		fi
+	} >>"$run_log" 2>&1 </dev/null
+	return 0
+}
+# The testers' report posts (scripts/discord_reports.py live, docs/BETA-RUNBOOK.md, "Tester
+# reports"): every forum post whose change is in the live release is told it is live, once per
+# tag, only when the owner has stored a bot token in $RM_STATE/discord. A failure is reported
+# once a day in the owner's channel and never fails the pass; the next pass tries again.
+reports_live() {
+	local tag script="$RM_SRC/scripts/discord_reports.py" alert="$cd_dir/bin/alert.sh"
+	tag=$(deployed_tag)
+	is_semver "$tag" && [ -s "$RM_STATE/discord/bot-token" ] && [ -f "$script" ] || return 0
+	! grep -qxF "$tag" "$RM_STATE/alerts/live-posted" 2>/dev/null || return 0
+	{
+		if "$py" "$script" --dir "$RM_STATE/discord" live "$tag"; then
+			mkdir -p "$RM_STATE/alerts" && echo "$tag" >>"$RM_STATE/alerts/live-posted"
+			[ ! -x "$alert" ] || "$alert" clear reports-live "the testers' posts are told $tag is live"
+		else
+			[ ! -x "$alert" ] || "$alert" send reports-live "$tag" "the testers' posts were not all told $tag is live; tried again at the next pass"
 		fi
 	} >>"$run_log" 2>&1 </dev/null
 	return 0

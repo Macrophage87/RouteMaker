@@ -1346,6 +1346,48 @@ Day to day: `journalctl --user -u routemaker-beta-alert --since today` shows eac
 is set, and nothing once `alert-webhook` is removed. An off-host uptime check of the public URL is
 not part of this: if the whole server is down, nothing on it can post.
 
+## Tester reports
+
+Testers report in Discord forums, one post per entry (bug reports, routing issues, road ratings,
+feature requests). `scripts/discord_reports.py` is the owner's bot for them, with three jobs:
+
+- `fetch --out FILE [--days N]` writes the posts to a Markdown file for Claude to read: titles,
+  tags, links and words, with no tester's name (each message is "tester", "owner" or "bot").
+- `merged POST --version vX.Y.Z` is run (from the owner's PC) when a post's change merges into
+  a release branch: the bot replies "This change is in vX.Y.Z, coming in the next beta release."
+  and sets the post's **In next release** tag.
+- `live vX.Y.Z` is run by the release agent after each deploy (and on up-to-date passes until it
+  succeeds, once per tag, `$RM_STATE/alerts/live-posted`): every post tagged **In next release**
+  whose reply names that version or an earlier one gets "vX.Y.Z is live on beta. Give it a try and
+  let us know how it goes." and the tag **Live on beta**. A failure is posted once a day in the
+  alerts channel and never fails a pass.
+
+The owner chose (2026-10-21) that these two replies post without asking each time; anything else
+the bot says waits for his OK. Discord is the record: the tag says where a post stands and the
+bot's own reply names the version, so the beta keeps no list of posts. Mentions are off in every
+post. Each forum needs the two tags **In next release** and **Live on beta**.
+
+**Set up (once).** In the Discord Developer Portal: the RouteMaker application, **Bot**, Reset
+Token (copy it), and turn on **Message Content Intent**. Under **OAuth2, URL Generator**: scope
+`bot`, permissions View Channels, Read Message History, Send Messages in Threads and Manage
+Threads; open the URL and add the bot to the server. In Discord (Developer Mode on), right-click
+each forum and Copy Channel ID. Then on the beta:
+
+```sh
+. "$HOME/routemaker-beta-state/vars.sh"
+cd "$RM_SRC"
+mkdir -p -m 700 "$RM_STATE/discord"
+( umask 077; cat > "$RM_STATE/discord/bot-token" )   # paste the token, Enter, Ctrl-D; never an argument
+cat > "$RM_STATE/discord/forums"                      # the forum ids, one per line, then Ctrl-D
+"${RM_PY:-python3}" scripts/discord_reports.py --dir "$RM_STATE/discord" check   # each forum: ok
+```
+
+On the PC, the same two files go in `~/.config/routemaker-discord` (the script's default folder),
+and `python3 scripts/discord_reports.py check` from the checkout says each forum is ok.
+
+Without `bot-token` nothing is posted and the release agent skips this step. The token is a
+secret like the webhooks: never in chat, the repo or a command line.
+
 ## Operating notes
 
 - **Memory events:** `docker inspect -f '{{.Name}} {{.State.OOMKilled}} {{.RestartCount}}' $(docker ps -q --filter label=com.docker.compose.project=routemaker-beta)`.
