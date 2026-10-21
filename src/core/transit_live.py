@@ -17,9 +17,11 @@ credited "Data: WMATA":
 - WMATA's rail incidents on the lines the trip uses;
 - an elevator out at a station where the rider takes their own bike: "Elevator out at Gallery
   Place: carry your bike on the stairs." It is a warning, not an avoidance (the owner,
-  2026-10-13 11:17 UTC: "many people can walk their bike upstairs"); the trip costs
-  `ELEVATOR_OUT_S` more when the options are ranked, so a station whose elevator works wins a
-  near-tie, and the times the rider sees are unchanged.
+  2026-10-13 11:17 UTC: "many people can walk their bike upstairs"). Where no other street
+  elevator is known to work there (`blocked_stations`), a trip taking its bike in or out there is
+  ranked `ELEVATOR_OUT_S` (15 min) down in the search itself (core.transit.with_elevators_out;
+  Stephen, 2026-10-21: "Most cyclists would just ride from the next station over"), and the
+  times the rider sees are unchanged; one with a spare elevator is said, never ranked down.
 
 With no live reading (no key, or WMATA not answering) nothing is added: the timetable's answer
 is the fallback, and it says "scheduled" as before.
@@ -34,8 +36,8 @@ from datetime import UTC, datetime
 
 from . import presets, transit, wmata_bus, wmata_live, wmata_trains
 
-# The ranking cost of an elevator out on the way (2 min): enough to break a near-tie.
-ELEVATOR_OUT_S = 120.0
+# The ranking cost of an elevator out on the way (15 min; core.transit.ELEVATOR_OUT_S).
+ELEVATOR_OUT_S = transit.ELEVATOR_OUT_S
 METRO = "Metro"
 METROBUS = wmata_bus.METROBUS
 # Trains shown per direction.
@@ -49,14 +51,63 @@ def _metro_ends(leg: transit.Leg, live: wmata_live.Snapshot):
     return live.station_near(leg.coordinates[0]), live.station_near(leg.coordinates[-1])
 
 
-def _outage_stations(option: transit.Option, live: wmata_live.Snapshot) -> list[str]:
-    """The stations, in trip order, where the rider's own bike needs an elevator that is out."""
+# A WMATA station is the map's (core/transitdata/metro-typical.json) within this.
+STREET_MATCH_M = 400.0
+
+
+def street_elevators(station: wmata_live.Station) -> int:
+    """The street elevators the map knows at a WMATA station (`street_elevators` in the typical
+    timetable's stations, from DC's and OpenStreetMap's elevators); 0 where none is known."""
+    rows = transit._typical_doc().get("stations") or []
+    near = [(wmata_live._metres((station.lon, station.lat), tuple(r["point"])), r) for r in rows]
+    near = [(d, r) for d, r in near if d <= STREET_MATCH_M]
+    return int(min(near, key=lambda t: t[0])[1].get("street_elevators", 0)) if near else 0
+
+
+def _blocked(station: wmata_live.Station, live: wmata_live.Snapshot) -> bool | None:
+    """Whether the elevators out leave the bike no way through the station: True, False where
+    another street elevator is known to work (Stephen, 2026-10-21: "several of these have
+    redundant elevators, so if one is down, it's not penalized"), None with none out. A
+    platform elevator out always counts: the platform's is the only one. A garage's elevators
+    are not on the way (`wmata_live.on_the_way`), and count for nothing."""
+    out = live.elevators_out(station)
+    if not out:
+        return None
+    # The platform's own ("mezzanine and platform"); one from the street to the platform is a
+    # street elevator, and another may serve.
+    if any("platform" in o.where.lower() and "street" not in o.where.lower() for o in out):
+        return True
+    return len(out) >= max(1, street_elevators(station))
+
+
+def blocked_stations(live: wmata_live.Snapshot | None) -> list[wmata_live.Station]:
+    """The WMATA stations whose elevators out leave a bike no way through (`_blocked`), one
+    per station (its other platforms' codes left out)."""
+    if live is None:
+        return []
+    out: list[wmata_live.Station] = []
+    for station in live.stations.values():
+        if any(o.name == station.name for o in out):
+            continue
+        if _blocked(station, live):
+            out.append(station)
+    return out
+
+
+def _outage_stations(
+    option: transit.Option, live: wmata_live.Snapshot, blocked: bool = True
+) -> list[str]:
+    """The stations, in trip order, where the rider's own bike needs an elevator that is out
+    and no other known one serves (`_blocked`); with `blocked` False, those where another
+    street elevator still works."""
     out: list[str] = []
     for leg in option.legs:
         if not leg.bike:
             continue
         for station in _metro_ends(leg, live):
-            if station is not None and live.elevators_out(station) and station.name not in out:
+            if station is None or station.name in out:
+                continue
+            if _blocked(station, live) is blocked:
                 out.append(station.name)
     return out
 
@@ -136,22 +187,6 @@ def _it(one: bool) -> str:
 
 def _and(names: list[str]) -> str:
     return names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
-
-
-def rank(plan: transit.Plan, live: wmata_live.Snapshot | None) -> transit.Plan:
-    """The plan's options ranked again with `ELEVATOR_OUT_S` added to a trip that takes the
-    rider's own bike through a station whose elevator is out (Own Bike + 🚆🚌 only). The times
-    are unchanged; only the order may move."""
-    if live is None or plan.mode != presets.BIKE_TRANSIT or not plan.options:
-        return plan
-    cost = {o.key: ELEVATOR_OUT_S * len(_outage_stations(o, live)) for o in plan.options}
-    if not any(cost.values()):
-        return plan
-    chosen = plan.options[plan.chosen].key
-
-    options = sorted(plan.options, key=lambda o: transit.rank_key(o, cost[o.key]))
-    index = 0 if plan.chosen == 0 else next(i for i, o in enumerate(options) if o.key == chosen)
-    return replace(plan, options=options, chosen=index)
 
 
 def _toward(train: wmata_live.Train, board, alight, live: wmata_live.Snapshot) -> bool:
@@ -358,6 +393,10 @@ def annotate(
     if live is not None:
         option = plan.option
         warnings = [wmata_live.elevator_words(name) for name in _outage_stations(option, live)]
+        warnings += [
+            wmata_live.spare_elevator_words(name)
+            for name in _outage_stations(option, live, blocked=False)
+        ]
         used: list[str] = []
         for index, leg in enumerate(option.legs):
             if index < len(steps) and leg.transit and leg.system == METRO:
