@@ -4538,7 +4538,9 @@ export function App() {
           aria-label="Route and edits"
           onFocus={() => (barFocused.current = true)}
           onBlur={(event) => {
-            if (event.relatedTarget) barFocused.current = false;
+            // A button of the bar taken away leaves no focus behind; a click on nothing in particular leaves it on
+            // the page, with the button still there, and is not followed.
+            if (event.relatedTarget || (event.target as Element).isConnected) barFocused.current = false;
           }}
         >
           {can.undo && (
