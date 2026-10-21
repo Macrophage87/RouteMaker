@@ -625,7 +625,7 @@ A bundled asset like Atkinson Hyperlegible above, credited in the shipped `licen
 
 - What it is: the face every map label is set in (the owner, 2026-10-20): Regular (400) where the
   layers name Noto Sans Regular, SemiBold (600) for Noto Sans Medium and the street names, Italic
-  (400) for Noto Sans Italic. MapLibre glyph files for the three Latin ranges, made with
+  (400) for Noto Sans Italic, and ExtraBold (800) for the neighbourhood and town names (2026-10-21). MapLibre glyph files for the three Latin ranges, made with
   `scripts/make_map_glyphs.mjs` from the variable fonts (Version 2.001; sha256 upright
   `5a455d1cfa099b601ab70751bb9673e8fe1854dc4500c80e1a220d0d75e31745`, italic
   `ce9cffed32742ad2d9238c561a93220385e5934cdc02b8eb4097a50efa957dc6`) and bundled as
@@ -643,6 +643,9 @@ A bundled asset like Atkinson Hyperlegible above, credited in the shipped `licen
   - semibold: 0-255 `35d921ecbcf66b3dbd22d8f3b477b0439e1964aad6e02f7d0ba6db04ed35de23`, 256-511
     `a1b1951c109b13efd912668ccfac033d23e1f9e4212cbf61f4c363cddbd6c519`, 8192-8447
     `9c672386bad4edf1bdc08667f7afa9e2e09937cf04a39f148b035323fc10aa2f`
+  - extrabold: 0-255 `3af173972a1d28df2b6b87aa5ba9e30b797208366d1a1d78e7d7565f59b8c0a4`, 256-511
+    `aeaae045c58058f933ba409cd33eced0ba260c329d1cc4b15fbf877de389f76f`, 8192-8447
+    `30d9592456a2007bc1e1bbf3145ce6c2a072a5fbda0db3e11325a386ff627061`
   - italic: 0-255 `59c8fd80148386ba0eb39be4638da48084586872d0b6a81288f5c2cb75fbcf8c`, 256-511
     `c800e0c0e1b4d296ab019a697f40ef3b13d6c2119e8d0db1688cabf5a420deaa`, 8192-8447
     `1ded461996e956998dea030e91d4467aae85637c1f18b727f481903e4bff73f8`
