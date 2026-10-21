@@ -45,11 +45,14 @@ MOTORWAY = frozenset({"motorway", "motorway_link"})
 CLOSED_ACCESS = frozenset({"no", "private", "permit", "customers", "restricted"})
 NOT_LISTED_FOOTWAY = frozenset({"crossing", "traffic_island", "access_aisle"})
 # The CBD's sidewalks are District law the owner set (104); an industrial-area closure
-# has its own queue already. The Zoo, military and secured areas close a way whatever
-# its own tags say (`restricted_areas`, `zoo.closed_way`), so a Reopen there, a
-# `bicycle=yes` override, would change nothing: they are not listed.
+# has its own queue already, and so has a golf course's (golf-closures.csv). The Zoo,
+# military and secured areas close a way whatever its own tags say (`restricted_areas`,
+# `zoo.closed_way`), so a Reopen there, a `bicycle=yes` override, would change nothing:
+# they are not listed.
 # An escalator is closed whatever its tags say (`routemaker.station_links`): not listed either.
-UNLISTED_REASONS = frozenset({CBD_SIDEWALK, "works", "zoo", "military", "secured", "escalator"})
+UNLISTED_REASONS = frozenset(
+    {CBD_SIDEWALK, "works", "golf", "zoo", "military", "secured", "escalator"}
+)
 
 # What the Review card says for each reason; an unknown reason is shown as its code.
 WHY = {
