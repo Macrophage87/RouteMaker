@@ -7448,6 +7448,10 @@ Python 3.11 or later, standard library only.
 - **Upload, after the owner approves that file:**
   `python3 scripts/osm_edit.py upload edit.json --approved` (add `--live` for live OSM).
   It writes `edit.uploaded.json` beside the draft and appends the changeset to
-  `~/.config/routemaker/osm-edits.log`; the same change is refused again from any file. Where routing must change before
+  `~/.config/routemaker/osm-edits.log`; the same change is refused again from any file.
+- **Smoke test:** every upload ends by reading the change back from OSM. The element must
+  carry the approved tags at the version the upload made (a later version by someone else
+  passes), and the changeset must be closed with exactly one change. A failure exits 3 with
+  what differs. `python3 scripts/osm_edit.py check edit.json` runs it again later. Where routing must change before
   the next rebuild, add the matching override as usual; the OSM edit reaches our map with
   the next extract.
