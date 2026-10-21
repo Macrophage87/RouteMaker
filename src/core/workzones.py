@@ -998,8 +998,10 @@ def _until_words(zone: rules.Zone, future: bool = False) -> str:
         return "no end date given"
     from routemaker import ridetime
 
-    local = zone.end.astimezone(ridetime.ZONE)
-    return f"until {local.strftime('%b')} {local.day}, {local.year}"
+    last = rules.last_day(zone.source, zone.end)
+    local = (last or zone.end).astimezone(ridetime.ZONE)
+    word = "through" if last is not None else "until"
+    return f"{word} {local.strftime('%b')} {local.day}, {local.year}"
 
 
 def _mi_km(metres: float) -> str:
