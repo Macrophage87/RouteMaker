@@ -87,11 +87,20 @@
   .ln { stroke: var(--accent); stroke-width: 2.5; fill: none; }
   .ln2 { stroke: #c2410c; stroke-width: 2.5; fill: none; stroke-dasharray: 7 4; }
   .fillacc { fill: var(--accent); }
+  .fig-narrow { display: none; }
+  .fig-narrow .t, .fig-narrow .tb { font-size: 15.5px; }
+  .fig-narrow .ts { font-size: 14px; }
+  .fig-narrow .tk, .fig-narrow .tw { font-size: 14.5px; }
+  @media (max-width: 37.5rem) {
+    figure.has-narrow .fig-wide { display: none; }
+    figure.has-narrow .fig-narrow { display: block; }
+  }
   @media (max-width: 30rem) {
     body { font-size: 1rem; }
     h1 { font-size: 1.5rem; }
     th, td { padding: 0.35rem 0.4rem; }
-    figure { padding: 0.4rem; }
+    figure { padding: 0.25rem; }
+    header, main, footer { padding-left: 0.75rem; padding-right: 0.75rem; }
   }
 
   details.more { margin: 0.5rem 0 1rem; border: 1px solid var(--line); border-radius: 6px; }
@@ -105,6 +114,10 @@
   .glance figure { background: var(--bg); }
   .glance ul { padding-left: 1.25rem; }
   .glance .find { margin-bottom: 0; }
+  @media (max-width: 30rem) {
+    .glance { padding: 0.25rem 0.5rem 0.5rem; }
+    details.more > .more-body { padding: 0 0.25rem 0.4rem; }
+  }
 </style>
 </head>
 <body>
@@ -133,8 +146,8 @@ and adds live data such as closures, bikeshare and transit. Everything is open s
 
 <div class="glance">
 <h2 id="glance">At a glance</h2>
-<figure id="fig-glance-arch">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<figure id="fig-glance-arch" class="has-narrow">
+<div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 760 172" role="img" aria-labelledby="fig-glance-arch-t fig-glance-arch-d" focusable="false" style="min-width:547px">
 <title id="fig-glance-arch-t">Architecture at a glance</title>
 <desc id="fig-glance-arch-d">OpenStreetMap and agency data feed a weekly rebuild, which rates every road and builds the routing graphs and map tiles for one server. The server runs Caddy, Django on PostgreSQL with PostGIS, Valhalla for routing and Photon for search, and reads live feeds for closures, bikeshare and transit. It serves the web app, the Android app and AI assistants through the MCP connector.</desc>
@@ -170,6 +183,45 @@ and adds live data such as closures, bikeshare and transit. Everything is open s
 <path class="ar" d="M492,127 L538,139" marker-end="url(#ah-glance-arch)"/>
 </svg>
 </div>
+<div class="fig-narrow">
+<svg viewBox="0 0 320 578" role="img" aria-labelledby="fig-glance-arch-n-t fig-glance-arch-n-d" focusable="false">
+<title id="fig-glance-arch-n-t">Architecture at a glance</title>
+<desc id="fig-glance-arch-n-d">OpenStreetMap and agency data feed a weekly rebuild, which rates every road and builds the routing graphs and map tiles for one server. The server runs Caddy, Django on PostgreSQL with PostGIS, Valhalla for routing and Photon for search, and reads live feeds for closures, bikeshare and transit. It serves the web app, the Android app and AI assistants through the MCP connector.</desc>
+<defs><marker id="ah-glance-arch-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<rect class="bx" x="10" y="8" width="300" height="54" rx="6"/>
+<text class="tb" x="160.0" y="30.5" text-anchor="middle">OpenStreetMap</text>
+<text class="ts" x="160.0" y="50.5" text-anchor="middle">and agency data</text>
+<path class="ar" d="M160.0,64 L160.0,86" marker-end="url(#ah-glance-arch-n)"/>
+<rect class="bxa" x="10" y="90" width="300" height="74" rx="6"/>
+<text class="tb" x="160.0" y="112.5" text-anchor="middle">Weekly rebuild</text>
+<text class="ts" x="160.0" y="132.5" text-anchor="middle">rates every road, builds</text>
+<text class="ts" x="160.0" y="152.5" text-anchor="middle">routing graphs and tiles</text>
+<path class="ar" d="M70,166 L70,294" marker-end="url(#ah-glance-arch-n)"/>
+<rect class="bx" x="130" y="184" width="180" height="94" rx="6"/>
+<text class="tb" x="220.0" y="206.5" text-anchor="middle">Live feeds</text>
+<text class="ts" x="220.0" y="226.5" text-anchor="middle">closures,</text>
+<text class="ts" x="220.0" y="246.5" text-anchor="middle">bikeshare,</text>
+<text class="ts" x="220.0" y="266.5" text-anchor="middle">transit</text>
+<path class="ar" d="M220,280 L220,294" marker-end="url(#ah-glance-arch-n)"/>
+<rect class="bxa" x="10" y="298" width="300" height="74" rx="6"/>
+<text class="tb" x="160.0" y="320.5" text-anchor="middle">One server</text>
+<text class="ts" x="160.0" y="340.5" text-anchor="middle">Caddy, Django, PostGIS,</text>
+<text class="ts" x="160.0" y="360.5" text-anchor="middle">Valhalla, Photon</text>
+<path class="ar" d="M24,374 L24,543"/>
+<rect class="bx" x="42" y="392" width="268" height="54" rx="6"/>
+<text class="tb" x="176.0" y="414.5" text-anchor="middle">Web app</text>
+<text class="ts" x="176.0" y="434.5" text-anchor="middle">React and MapLibre</text>
+<path class="ar" d="M24,419 L40,419" marker-end="url(#ah-glance-arch-n)"/>
+<rect class="bx" x="42" y="454" width="268" height="54" rx="6"/>
+<text class="tb" x="176.0" y="476.5" text-anchor="middle">Android app</text>
+<text class="ts" x="176.0" y="496.5" text-anchor="middle">a thin shell</text>
+<path class="ar" d="M24,481 L40,481" marker-end="url(#ah-glance-arch-n)"/>
+<rect class="bx" x="42" y="516" width="268" height="54" rx="6"/>
+<text class="tb" x="176.0" y="538.5" text-anchor="middle">AI assistants</text>
+<text class="ts" x="176.0" y="558.5" text-anchor="middle">the MCP connector</text>
+<path class="ar" d="M24,543 L40,543" marker-end="url(#ah-glance-arch-n)"/>
+</svg>
+</div>
 <figcaption>Data in, one server, three ways to use it.</figcaption>
 </figure>
 <ul>
@@ -200,8 +252,8 @@ Discord token.</li>
 </nav>
 
 <h2 id="runtime">The running system</h2>
-<figure id="fig-runtime">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<figure id="fig-runtime" class="has-narrow">
+<div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 960 400" role="img" aria-labelledby="fig-runtime-t fig-runtime-d" focusable="false" style="min-width:600px">
 <title id="fig-runtime-t">The parts of the running system</title>
 <desc id="fig-runtime-d">Your browser or the Android app talks only to the web server, Caddy. Caddy serves the app&#x27;s files, the base map and the contours itself and passes everything else to the app server, Django. The app server asks the Valhalla routers for routes, Photon for place search and the PostGIS database for ratings and saved routes, and reads live data such as bikeshare and transit. A background worker keeps closures and feeds up to date in the database. A weekly rebuild writes a new database table and new router tiles.</desc>
@@ -249,6 +301,57 @@ Discord token.</li>
 <text class="ts" x="898" y="280" text-anchor="start">new map</text>
 </svg>
 </div>
+<div class="fig-narrow">
+<svg viewBox="0 0 320 694" role="img" aria-labelledby="fig-runtime-n-t fig-runtime-n-d" focusable="false">
+<title id="fig-runtime-n-t">The parts of the running system</title>
+<desc id="fig-runtime-n-d">Your browser or the Android app talks only to the web server, Caddy. Caddy serves the app&#x27;s files, the base map and the contours itself and passes everything else to the app server, Django. The app server asks the Valhalla routers for routes, Photon for place search and the PostGIS database for ratings and saved routes, and reads live data such as bikeshare and transit. A background worker keeps closures and feeds up to date in the database. A weekly rebuild writes a new database table and new router tiles.</desc>
+<defs><marker id="ah-runtime-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<rect class="bxa" x="10" y="8" width="300" height="54" rx="6"/>
+<text class="tb" x="160.0" y="30.5" text-anchor="middle">Your browser</text>
+<text class="ts" x="160.0" y="50.5" text-anchor="middle">or the Android app</text>
+<path class="ar" d="M80,62 L80,86" marker-end="url(#ah-runtime-n)"/>
+<rect class="bx" x="10" y="90" width="140" height="74" rx="6"/>
+<text class="tb" x="80.0" y="112.5" text-anchor="middle">Web server</text>
+<text class="ts" x="80.0" y="132.5" text-anchor="middle">Caddy: TLS,</text>
+<text class="ts" x="80.0" y="152.5" text-anchor="middle">files</text>
+<rect class="bx" x="170" y="90" width="140" height="74" rx="6"/>
+<text class="tb" x="240.0" y="112.5" text-anchor="middle">Static files</text>
+<text class="ts" x="240.0" y="132.5" text-anchor="middle">app, base map,</text>
+<text class="ts" x="240.0" y="152.5" text-anchor="middle">contours</text>
+<path class="ar" d="M150,127 L168,127" marker-end="url(#ah-runtime-n)"/>
+<path class="ar" d="M80,164 L80,188" marker-end="url(#ah-runtime-n)"/>
+<rect class="bxa" x="10" y="192" width="300" height="54" rx="6"/>
+<text class="tb" x="160.0" y="214.5" text-anchor="middle">App server</text>
+<text class="ts" x="160.0" y="234.5" text-anchor="middle">Django + Ninja</text>
+<rect class="bx" x="40" y="266" width="250" height="54" rx="6"/>
+<text class="tb" x="165.0" y="288.5" text-anchor="middle">Routers: Valhalla</text>
+<text class="ts" x="165.0" y="308.5" text-anchor="middle">six map variants</text>
+<path class="ar" d="M22,293 L38,293" marker-end="url(#ah-runtime-n)"/>
+<rect class="bx" x="40" y="332" width="250" height="54" rx="6"/>
+<text class="tb" x="165.0" y="354.5" text-anchor="middle">Place search</text>
+<text class="ts" x="165.0" y="374.5" text-anchor="middle">Photon</text>
+<path class="ar" d="M22,359 L38,359" marker-end="url(#ah-runtime-n)"/>
+<rect class="bx" x="40" y="398" width="250" height="54" rx="6"/>
+<text class="tb" x="165.0" y="420.5" text-anchor="middle">Live data</text>
+<text class="ts" x="165.0" y="440.5" text-anchor="middle">bikeshare, transit, alerts</text>
+<path class="ar" d="M22,425 L38,425" marker-end="url(#ah-runtime-n)"/>
+<rect class="bx" x="40" y="464" width="250" height="54" rx="6"/>
+<text class="tb" x="165.0" y="486.5" text-anchor="middle">Database</text>
+<text class="ts" x="165.0" y="506.5" text-anchor="middle">PostgreSQL + PostGIS</text>
+<path class="ar" d="M22,491 L38,491" marker-end="url(#ah-runtime-n)"/>
+<path class="ar" d="M22,246 L22,491"/>
+<rect class="bx" x="40" y="544" width="250" height="54" rx="6"/>
+<text class="tb" x="165.0" y="566.5" text-anchor="middle">Background worker</text>
+<text class="ts" x="165.0" y="586.5" text-anchor="middle">closures, feeds, backups</text>
+<path class="ar" d="M165,544 L165,520" marker-end="url(#ah-runtime-n)"/>
+<rect class="bx" x="40" y="632" width="250" height="54" rx="6"/>
+<text class="tb" x="165.0" y="654.5" text-anchor="middle">Weekly rebuild</text>
+<text class="ts" x="165.0" y="674.5" text-anchor="middle">new map every week</text>
+<path class="ard" d="M290,659 L306,659 L306,293 L292,293" marker-end="url(#ah-runtime-n)"/>
+<path class="ard" d="M306,491 L292,491" marker-end="url(#ah-runtime-n)"/>
+<text class="ts" x="298" y="622" text-anchor="end">new map</text>
+</svg>
+</div>
 <figcaption>Everything runs as Docker containers on one machine. Only the web server is reachable from the internet.<sup class="cite"><a href="#ref-1" aria-label="source 1">[1]</a></sup></figcaption>
 </figure>
 <details class="more"><summary>More: The running system</summary>
@@ -285,8 +388,8 @@ never leave the server.</li>
 
 </div></details>
 <h2 id="rebuild">The weekly rebuild</h2>
-<figure id="fig-rebuild">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<figure id="fig-rebuild" class="has-narrow">
+<div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 900 310" role="img" aria-labelledby="fig-rebuild-t fig-rebuild-d" focusable="false" style="min-width:600px">
 <title id="fig-rebuild-t">The weekly map rebuild</title>
 <desc id="fig-rebuild-d">Nine stages in order. 1 Fetch OpenStreetMap for DC, Maryland, Virginia and West Virginia. 2 Load reference data: traffic counts and agency ratings. 3 Elevation from USGS 3DEP. 4 Rate every road: traffic counts, then LTS. 5 Apply approved corrections. 6 Tag the stress levels into the map data. 7 Write and check road segments. 8 Build tiles for six Valhalla graphs. 9 Swap the new map live, keeping the old one. A change report by county is checked before the swap.</desc>
@@ -329,6 +432,51 @@ never leave the server.</li>
 <text class="ts" x="450" y="296" text-anchor="middle">A change report by county is checked before the swap; the previous map is kept for rollback.</text>
 </svg>
 </div>
+<div class="fig-narrow">
+<svg viewBox="0 0 320 664" role="img" aria-labelledby="fig-rebuild-n-t fig-rebuild-n-d" focusable="false">
+<title id="fig-rebuild-n-t">The weekly map rebuild</title>
+<desc id="fig-rebuild-n-d">Nine stages in order. 1 Fetch OpenStreetMap for DC, Maryland, Virginia and West Virginia. 2 Load reference data: traffic counts and agency ratings. 3 Elevation from USGS 3DEP. 4 Rate every road: traffic counts, then LTS. 5 Apply approved corrections. 6 Tag the stress levels into the map data. 7 Write and check road segments. 8 Build tiles for six Valhalla graphs. 9 Swap the new map live, keeping the old one. A change report by county is checked before the swap.</desc>
+<defs><marker id="ah-rebuild-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<rect class="bx" x="10" y="8" width="300" height="50" rx="6"/>
+<text class="tb" x="160.0" y="28.5" text-anchor="middle">1. Fetch</text>
+<text class="ts" x="160.0" y="48.5" text-anchor="middle">OSM for DC, MD, VA, WV</text>
+<path class="ar" d="M160,58 L160,72" marker-end="url(#ah-rebuild-n)"/>
+<rect class="bx" x="10" y="74" width="300" height="50" rx="6"/>
+<text class="tb" x="160.0" y="94.5" text-anchor="middle">2. Reference</text>
+<text class="ts" x="160.0" y="114.5" text-anchor="middle">counts, agency ratings</text>
+<path class="ar" d="M160,124 L160,138" marker-end="url(#ah-rebuild-n)"/>
+<rect class="bx" x="10" y="140" width="300" height="50" rx="6"/>
+<text class="tb" x="160.0" y="160.5" text-anchor="middle">3. Elevation</text>
+<text class="ts" x="160.0" y="180.5" text-anchor="middle">USGS 3DEP heights</text>
+<path class="ar" d="M160,190 L160,204" marker-end="url(#ah-rebuild-n)"/>
+<rect class="bxa" x="10" y="206" width="300" height="50" rx="6"/>
+<text class="tb" x="160.0" y="226.5" text-anchor="middle">4. Rate</text>
+<text class="ts" x="160.0" y="246.5" text-anchor="middle">traffic counts, then LTS</text>
+<path class="ar" d="M160,256 L160,270" marker-end="url(#ah-rebuild-n)"/>
+<rect class="bx" x="10" y="272" width="300" height="50" rx="6"/>
+<text class="tb" x="160.0" y="292.5" text-anchor="middle">5. Corrections</text>
+<text class="ts" x="160.0" y="312.5" text-anchor="middle">approved overrides</text>
+<path class="ar" d="M160,322 L160,336" marker-end="url(#ah-rebuild-n)"/>
+<rect class="bx" x="10" y="338" width="300" height="50" rx="6"/>
+<text class="tb" x="160.0" y="358.5" text-anchor="middle">6. Tag</text>
+<text class="ts" x="160.0" y="378.5" text-anchor="middle">stress into the map</text>
+<path class="ar" d="M160,388 L160,402" marker-end="url(#ah-rebuild-n)"/>
+<rect class="bx" x="10" y="404" width="300" height="50" rx="6"/>
+<text class="tb" x="160.0" y="424.5" text-anchor="middle">7. Segments</text>
+<text class="ts" x="160.0" y="444.5" text-anchor="middle">write and check</text>
+<path class="ar" d="M160,454 L160,468" marker-end="url(#ah-rebuild-n)"/>
+<rect class="bx" x="10" y="470" width="300" height="50" rx="6"/>
+<text class="tb" x="160.0" y="490.5" text-anchor="middle">8. Router tiles</text>
+<text class="ts" x="160.0" y="510.5" text-anchor="middle">six Valhalla graphs</text>
+<path class="ar" d="M160,520 L160,534" marker-end="url(#ah-rebuild-n)"/>
+<rect class="bxa" x="10" y="536" width="300" height="50" rx="6"/>
+<text class="tb" x="160.0" y="556.5" text-anchor="middle">9. Swap</text>
+<text class="ts" x="160.0" y="576.5" text-anchor="middle">go live, keep the old</text>
+<text class="ts" x="160" y="616" text-anchor="middle">A change report by county is checked</text>
+<text class="ts" x="160" y="635" text-anchor="middle">before the swap; the previous map is</text>
+<text class="ts" x="160" y="654" text-anchor="middle">kept for rollback.</text>
+</svg>
+</div>
 <figcaption>The rebuild runs weekly, or on a rented cloud machine when needed<sup class="cite"><a href="#ref-1" aria-label="source 1">[1]</a><a href="#ref-3" aria-label="source 3">[3]</a><a href="#ref-4" aria-label="source 4">[4]</a><a href="#ref-5" aria-label="source 5">[5]</a><a href="#ref-2" aria-label="source 2">[2]</a></sup>.</figcaption>
 </figure>
 <details class="more"><summary>More: The weekly rebuild</summary>
@@ -340,8 +488,8 @@ reads. It then rates every road (see <a href="/about/stress.html#which-rating">W
 wins</a>), writes the levels into the map data with a Lua script that Valhalla's graph builder runs, and
 builds each router graph. A new map goes live only after a report of every rating that changed, by
 county, has been checked; the old map is kept so a bad build can be rolled back.</p>
-<figure id="fig-time">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<figure id="fig-time" class="has-narrow">
+<div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 860 95" role="img" aria-labelledby="fig-time-t fig-time-d" focusable="false" style="min-width:600px">
 <title id="fig-time-t">How long a rebuild takes</title>
 <desc id="fig-time-d">A stacked bar of about 4.3 hours with four threads: 2 hours 37 minutes preparing data and rating roads, 1 hour 15 minutes building router tiles, 27 minutes checking.</desc>
@@ -357,6 +505,25 @@ county, has been checked; the old map is kept so a bad build can be rolled back.
 <text class="ts" x="758.5173745173745" y="80" text-anchor="start">Checking</text>
 </svg>
 </div>
+<div class="fig-narrow">
+<svg viewBox="0 0 320 206" role="img" aria-labelledby="fig-time-n-t fig-time-n-d" focusable="false">
+<title id="fig-time-n-t">How long a rebuild takes</title>
+<desc id="fig-time-n-d">A stacked bar of about 4.3 hours with four threads: 2 hours 37 minutes preparing data and rating roads, 1 hour 15 minutes building router tiles, 27 minutes checking.</desc>
+<defs><marker id="ah-time-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<rect class="bx" x="10.0" y="8" width="181.9" height="40"/>
+<text class="tb" x="100.92664092664091" y="34" text-anchor="middle">1</text>
+<rect class="bx" x="191.9" y="8" width="86.9" height="40"/>
+<text class="tb" x="235.28957528957525" y="34" text-anchor="middle">2</text>
+<rect class="bx" x="278.7" y="8" width="31.3" height="40"/>
+<text class="tb" x="294.3629343629343" y="34" text-anchor="middle">3</text>
+<text class="tb" x="10" y="80" text-anchor="start">1. 2 h 37 min</text>
+<text class="ts" x="28" y="99" text-anchor="start">Preparing data and rating roads</text>
+<text class="tb" x="10" y="128" text-anchor="start">2. 1 h 15 min</text>
+<text class="ts" x="28" y="147" text-anchor="start">Building router tiles</text>
+<text class="tb" x="10" y="176" text-anchor="start">3. 27 min</text>
+<text class="ts" x="28" y="195" text-anchor="start">Checking</text>
+</svg>
+</div>
 <figcaption>About 1.36 million road segments on 1.34 million OpenStreetMap ways. Each router graph is about 1.1 GB on disk.</figcaption>
 </figure>
 <p>The base map, contour lines, place search index and transit timetables are refreshed on their own,
@@ -365,8 +532,8 @@ elevation with GDAL<sup class="cite"><a href="#ref-14" aria-label="source 14">[1
 
 </div></details>
 <h2 id="request">Planning a route</h2>
-<figure id="fig-request">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<figure id="fig-request" class="has-narrow">
+<div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 880 475" role="img" aria-labelledby="fig-request-t fig-request-d" focusable="false" style="min-width:600px">
 <title id="fig-request-t">What happens when you plan a route</title>
 <desc id="fig-request-d">A sequence between you, the web server, the app server, Valhalla and the database. You ask for a route; the web server passes it to the app server. 1: the app server asks Valhalla for a route with this ride type&#x27;s costing and gets a line and alternatives. 2: it asks which roads were used and gets map-matched road ids. 3: it asks the database for those roads&#x27; stress, facilities and junctions. 4: the calm search asks Valhalla again, avoiding the worst stretches, up to five rounds. 5: it scores the candidates, picks one and writes cues. The route, its stress breakdown and cues go back to you. The whole plan has a 40-second budget and an answer is cached for 10 minutes.</desc>
@@ -398,6 +565,53 @@ elevation with GDAL<sup class="cite"><a href="#ref-14" aria-label="source 14">[1
 <text class="ts" x="430" y="460" text-anchor="middle">A 40-second budget for the whole plan; an answer is cached for 10 minutes.</text>
 </svg>
 </div>
+<div class="fig-narrow">
+<svg viewBox="0 0 320 704" role="img" aria-labelledby="fig-request-n-t fig-request-n-d" focusable="false">
+<title id="fig-request-n-t">What happens when you plan a route</title>
+<desc id="fig-request-n-d">A sequence between you, the web server, the app server, Valhalla and the database. You ask for a route; the web server passes it to the app server. 1: the app server asks Valhalla for a route with this ride type&#x27;s costing and gets a line and alternatives. 2: it asks which roads were used and gets map-matched road ids. 3: it asks the database for those roads&#x27; stress, facilities and junctions. 4: the calm search asks Valhalla again, avoiding the worst stretches, up to five rounds. 5: it scores the candidates, picks one and writes cues. The route, its stress breakdown and cues go back to you. The whole plan has a 40-second budget and an answer is cached for 10 minutes.</desc>
+<defs><marker id="ah-request-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<text class="tb" x="26" y="18" text-anchor="middle">You</text>
+<text class="tb" x="86" y="38" text-anchor="middle">Web server</text>
+<text class="tb" x="150" y="18" text-anchor="middle">App server</text>
+<text class="tb" x="214" y="38" text-anchor="middle">Valhalla</text>
+<text class="tb" x="278" y="18" text-anchor="middle">Database</text>
+<line class="grid" x1="26" y1="25" x2="26" y2="654"/>
+<line class="grid" x1="86" y1="45" x2="86" y2="654"/>
+<line class="grid" x1="150" y1="25" x2="150" y2="654"/>
+<line class="grid" x1="214" y1="45" x2="214" y2="654"/>
+<line class="grid" x1="278" y1="25" x2="278" y2="654"/>
+<text class="ts" x="62.0" y="82" text-anchor="middle" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">Plan this route</text>
+<path class="ar" d="M26,94 L82,94" marker-end="url(#ah-request-n)"/>
+<text class="ts" x="118.0" y="124" text-anchor="middle" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">passes it on</text>
+<path class="ar" d="M86,136 L146,136" marker-end="url(#ah-request-n)"/>
+<text class="ts" x="182.0" y="166" text-anchor="middle" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">1. route, with this ride type&#x27;s</text>
+<text class="ts" x="182.0" y="184" text-anchor="middle" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">costing</text>
+<path class="ar" d="M150,196 L210,196" marker-end="url(#ah-request-n)"/>
+<text class="ts" x="182.0" y="226" text-anchor="middle" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">a line and alternatives</text>
+<path class="ard" d="M214,238 L154,238" marker-end="url(#ah-request-n)"/>
+<text class="ts" x="182.0" y="268" text-anchor="middle" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">2. which roads did it use?</text>
+<path class="ar" d="M150,280 L210,280" marker-end="url(#ah-request-n)"/>
+<text class="ts" x="182.0" y="310" text-anchor="middle" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">map-matched road ids</text>
+<path class="ard" d="M214,322 L154,322" marker-end="url(#ah-request-n)"/>
+<text class="ts" x="214.0" y="352" text-anchor="middle" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">3. stress of those roads</text>
+<path class="ar" d="M150,364 L274,364" marker-end="url(#ah-request-n)"/>
+<text class="ts" x="207.6" y="394" text-anchor="middle" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">levels, facilities, junctions</text>
+<path class="ard" d="M278,406 L154,406" marker-end="url(#ah-request-n)"/>
+<text class="ts" x="182.0" y="436" text-anchor="middle" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">4. calm search: ask again,</text>
+<text class="ts" x="182.0" y="454" text-anchor="middle" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">avoiding the worst</text>
+<path class="ar" d="M150,466 L210,466" marker-end="url(#ah-request-n)"/>
+<text class="ts" x="182.0" y="496" text-anchor="middle" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">up to five rounds</text>
+<path class="ard" d="M214,508 L154,508" marker-end="url(#ah-request-n)"/>
+<rect class="bxa" x="35" y="526" width="230" height="32" rx="6"/>
+<text class="t" x="150" y="547" text-anchor="middle">5. score, pick, write cues</text>
+<text class="ts" x="118.0" y="582" text-anchor="middle" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">route, stress breakdown, cues</text>
+<path class="ard" d="M150,594 L90,594" marker-end="url(#ah-request-n)"/>
+<text class="ts" x="65.6" y="624" text-anchor="middle" style="paint-order:stroke;stroke:var(--bg);stroke-width:4px">shown on the map</text>
+<path class="ard" d="M86,636 L30,636" marker-end="url(#ah-request-n)"/>
+<text class="ts" x="160" y="674" text-anchor="middle">A 40-second budget for the whole plan;</text>
+<text class="ts" x="160" y="693" text-anchor="middle">an answer is cached for 10 minutes.</text>
+</svg>
+</div>
 <figcaption>Solid arrows are requests; dashed arrows are answers. Signed-out plans are never stored.</figcaption>
 </figure>
 <details class="more"><summary>More: Planning a route</summary>
@@ -409,8 +623,8 @@ points; very long plans over 93 mi [150 km] ask for confirmation when signed out
 
 </div></details>
 <h2 id="map">Drawing the map</h2>
-<figure id="fig-layers">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<figure id="fig-layers" class="has-narrow">
+<div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 720 280" role="img" aria-labelledby="fig-layers-t fig-layers-d" focusable="false" style="min-width:518px">
 <title id="fig-layers-t">How the map is layered</title>
 <desc id="fig-layers-d">Five layers, bottom to top: the Protomaps base map, contour lines from USGS heights, traffic stress lines as vector tiles from PostGIS, live closures, docks, water and stations from the app server, and your route and its cues drawn by the app.</desc>
@@ -433,6 +647,32 @@ points; very long plans over 93 mi [150 km] ask for confirmation when signed out
 <text class="tb" x="640" y="40" text-anchor="start">Top</text>
 <text class="tb" x="640" y="250" text-anchor="start">Bottom</text>
 <path class="ar" d="M652,230 L652,60" marker-end="url(#ah-layers)"/>
+</svg>
+</div>
+<div class="fig-narrow">
+<svg viewBox="0 0 320 360" role="img" aria-labelledby="fig-layers-n-t fig-layers-n-d" focusable="false">
+<title id="fig-layers-n-t">How the map is layered</title>
+<desc id="fig-layers-n-d">Five layers, bottom to top: the Protomaps base map, contour lines from USGS heights, traffic stress lines as vector tiles from PostGIS, live closures, docks, water and stations from the app server, and your route and its cues drawn by the app.</desc>
+<defs><marker id="ah-layers-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<text class="tb" x="310" y="18" text-anchor="end">Top</text>
+<rect class="bxa" x="10" y="28" width="270" height="50" rx="6"/>
+<text class="tb" x="145.0" y="48.5" text-anchor="middle">Your route and its cues</text>
+<text class="ts" x="145.0" y="68.5" text-anchor="middle">drawn by the app</text>
+<rect class="bx" x="10" y="86" width="270" height="70" rx="6"/>
+<text class="tb" x="145.0" y="106.5" text-anchor="middle">Closures, docks,</text>
+<text class="tb" x="145.0" y="126.5" text-anchor="middle">water, stations</text>
+<text class="ts" x="145.0" y="146.5" text-anchor="middle">from the app server, live</text>
+<rect class="bxa" x="10" y="164" width="270" height="50" rx="6"/>
+<text class="tb" x="145.0" y="184.5" text-anchor="middle">Traffic stress lines</text>
+<text class="ts" x="145.0" y="204.5" text-anchor="middle">vector tiles from PostGIS, cached</text>
+<rect class="bx" x="10" y="222" width="270" height="50" rx="6"/>
+<text class="tb" x="145.0" y="242.5" text-anchor="middle">Contour lines</text>
+<text class="ts" x="145.0" y="262.5" text-anchor="middle">PMTiles archive from USGS heights</text>
+<rect class="bx" x="10" y="280" width="270" height="50" rx="6"/>
+<text class="tb" x="145.0" y="300.5" text-anchor="middle">Base map</text>
+<text class="ts" x="145.0" y="320.5" text-anchor="middle">Protomaps PMTiles archive</text>
+<path class="ar" d="M298,330 L298,30" marker-end="url(#ah-layers-n)"/>
+<text class="tb" x="310" y="350" text-anchor="end">Bottom</text>
 </svg>
 </div>
 <figcaption>MapLibre draws every layer in the browser<sup class="cite"><a href="#ref-9" aria-label="source 9">[9]</a></sup>. The base map and contours are single files read a piece at a time with range requests<sup class="cite"><a href="#ref-8" aria-label="source 8">[8]</a></sup>; the stress lines are vector tiles<sup class="cite"><a href="#ref-7" aria-label="source 7">[7]</a></sup> made by PostGIS<sup class="cite"><a href="#ref-6" aria-label="source 6">[6]</a></sup> and cached.</figcaption>
