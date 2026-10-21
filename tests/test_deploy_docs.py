@@ -30,6 +30,7 @@ the defect.
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
@@ -1882,10 +1883,18 @@ def test_ci_token_is_read_only_and_actions_are_pinned_by_commit() -> None:
 
 
 def test_the_package_version_is_one_number_in_both_places() -> None:
-    """spec-9: pyproject's version and routemaker.__version__ agree, and neither is 0.1.0."""
+    """spec-9: pyproject's version and routemaker.__version__ agree, and neither is 0.1.0.
+
+    The front end's package.json (and its lockfile) carry it too: it is the version riders
+    see by the title (frontend/src/lib/appVersion.ts).
+    """
     import routemaker
 
     root = Path(__file__).resolve().parents[1]
     found = re.search(r'(?m)^version = "([^"]+)"$', (root / "pyproject.toml").read_text())
     assert found and found.group(1) == routemaker.__version__
     assert routemaker.__version__ != "0.1.0"
+    package = json.loads((root / "frontend/package.json").read_text())
+    lock = json.loads((root / "frontend/package-lock.json").read_text())
+    shown = {package["version"], lock["version"], lock["packages"][""]["version"]}
+    assert shown == {routemaker.__version__}

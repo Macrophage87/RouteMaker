@@ -412,8 +412,13 @@ class TestThePlansRules:
 
 def test_a_dials_loop_defaults_off() -> None:
     assert routing.Dials().loop is False
-    # Appended, so earlier positional uses are unchanged; a re-route's heading came after it.
-    assert [f.name for f in dataclasses.fields(routing.Dials)][-2:] == ["loop", "heading"]
+    # Appended, so earlier positional uses are unchanged; a re-route's heading came after it,
+    # then its keep-going-ahead flag (v0.10.1).
+    assert [f.name for f in dataclasses.fields(routing.Dials)][-3:] == [
+        "loop",
+        "heading",
+        "ahead_only",
+    ]
 
 
 def test_the_overlap_threshold_is_below_the_search_alternates_overlap() -> None:

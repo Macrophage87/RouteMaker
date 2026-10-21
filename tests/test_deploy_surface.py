@@ -218,7 +218,8 @@ def test_the_upstream_is_the_api_on_the_port_the_entrypoint_binds() -> None:
     assert host == "0.0.0.0", (
         f"gunicorn binds {bind.group(1)}, which is not reachable from the caddy container"
     )
-    assert caddy_directives("reverse_proxy") == [f"api:{port}"], (
+    # Every proxy goes to the api: the app's routes and the link preview's (v0.10.1).
+    assert set(caddy_directives("reverse_proxy")) == {f"api:{port}"}, (
         f"the Caddyfile proxies {caddy_directives('reverse_proxy')}, but the api entrypoint "
         f"binds gunicorn to port {port}"
     )
@@ -285,10 +286,15 @@ def test_the_caddyfile_names_no_other_service_at_all() -> None:
     `reverse_proxy`, a `redir` or a directive nobody has reached for yet.
     Comments are exempt - this file explains what it does not route - and
     so is the value of the Content-Security-Policy header, whose directive
-    names (`worker-src`) are the browser's vocabulary, not a service. Names
-    are matched as whole words."""
+    names (`worker-src`) are the browser's vocabulary, not a service, and a
+    `header_regexp` pattern, whose words (the link preview's `bot`) are a
+    User-Agent's. Names are matched as whole words."""
     body = "\n".join(
-        re.sub(r'(header\s+Content-Security-Policy\s+)"[^"]*"', r"\1", line)
+        re.sub(
+            r"(header_regexp\s+\S+\s+)`[^`]*`",
+            r"\1",
+            re.sub(r'(header\s+Content-Security-Policy\s+)"[^"]*"', r"\1", line),
+        )
         for line in CADDY_TEXT.splitlines()
         if not line.strip().startswith("#")
     )

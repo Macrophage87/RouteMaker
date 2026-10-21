@@ -1,0 +1,37 @@
+"""The extract's ways into rail stations (`routemaker.station_links`)."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import osmium
+
+from routemaker import station_links
+
+
+def read_ways_in(pbf: str | Path) -> list[tuple[float, float]]:
+    """Every rail station's ways in from the extract (`station_links.ways_in`): only the
+    nodes the tag filter lets through are read in Python, as `agency_signals` reads signals."""
+    entrances: list[tuple[float, float]] = []
+    stations: list[tuple[float, float]] = []
+    elevators: list[tuple[float, float]] = []
+    processor = osmium.FileProcessor(str(pbf), osmium.osm.NODE).with_filter(
+        osmium.filter.TagFilter(
+            ("railway", "subway_entrance"),
+            ("railway", "train_station_entrance"),
+            ("railway", "station"),
+            ("highway", "elevator"),
+        )
+    )
+    for node in processor:
+        if not node.location.valid():
+            continue
+        tags = {tag.k: tag.v for tag in node.tags}
+        point = (node.location.lon, node.location.lat)
+        if station_links.is_station(tags):
+            stations.append(point)
+        elif station_links.is_way_in(tags):
+            entrances.append(point)
+        elif tags.get("highway") == "elevator":
+            elevators.append(point)
+    return station_links.ways_in(entrances, stations, elevators)
