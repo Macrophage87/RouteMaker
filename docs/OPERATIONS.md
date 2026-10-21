@@ -941,7 +941,7 @@ Creek, Northwest Branch and the Cross County Trail carry an `mtb:scale` on
 asphalt); on the 2026-10-03 extract it changes nothing, since every flagged
 drawn way is flagged by its relation. An unknown surface is paved. The bars
 are the named constants in `pipeline.schema` (`Z11_PAVED_RUN_MI` and its
-siblings). The z10 and z11 tiles are two levels (`core.stress_tiles.TRAILS`
+siblings). The z7-10 and z11 tiles are two levels (`core.stress_tiles.TRAILS`, with z10's bars from z7,
 and `TRAILS_NEAR`), and the front end draws the lines and rails thinner
 there (`ZOOMED_OUT_SCALE` in `frontend/src/stressStyle.js`), never with a
 casing edge, a rail or an unpaved mark under a pixel.
@@ -1306,7 +1306,7 @@ api that read it are safe before it. Every street shows on the Mass Ride map fro
 only the long calm roads do, because those tiles are the ride layer (391, 402a), which carries no
 busy road; trails, paths and alleys never.
 
-Below zoom 10 nothing of the overlay is drawn. The map asks for nothing past
+Below zoom 7 (the map's widest) nothing of the overlay is drawn; from zoom 7 the long trails are, with z10's bars (the owner, 2026-10-21: "Let's have trails show up at the same zoom as roads", then "Long trails as far out as roads"). The Mass Ride tiles still start at zoom 10 (`core.mass_tiles.MIN_ZOOM`). The map asks for nothing past
 z14 (the source's `maxzoom`): it draws z15-16 from the z14 tile, whose 4,096
 units a side are half a pixel each at z16. z15-16 are still served, for the
 contract.
@@ -1487,8 +1487,8 @@ the timed closures (`cardinality(car_free_when) > 0`).
 
 **The tile cache.** A tile, once drawn, is kept in the `stress_tile_cache`
 table (`core/tile_cache.py`, migration `core.0009`) under its ETag and z/x/y,
-and served from there without a draw. Every tile the map asks for - z10-14,
-each one the coverage box reaches, 11,068 tiles and 66 MB, empty ones included
+and served from there without a draw. Every tile the map asks for - z7-14,
+each one the coverage box reaches, 11,086 tiles and 66 MB, empty ones included
 so their requests are lookups too - is drawn ahead after every promotion (the
 owner, 2026-09-28: "It takes a very long time to load those roads.", where:
 "Zoomed in (street level)"; OWNER-DECISIONS 63). The weekly rebuild does it

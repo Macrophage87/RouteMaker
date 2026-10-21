@@ -125,7 +125,11 @@ from routemaker import flow
 from . import ratelimit, tile_cache
 
 LAYER = "stress"
-MIN_ZOOM = 10
+# The long trails come in where the base map's major roads do, at the map's widest zoom
+# (MapView's minZoom, 7; the owner, 2026-10-21: "Let's have trails show up at the same zoom
+# as roads. Buisier roads shouldn't have more precidence than major roads for biking", and
+# "Long trails as far out as roads"). z7 to z10 are one level, `TRAILS`, with z10's bars.
+MIN_ZOOM = 7
 MAX_ZOOM = 16
 
 # THE ZOOMS THE ROADS COME IN AT (the owner, 2026-09-29, OWNER-DECISIONS 73; 2026-10-05,
