@@ -16,6 +16,7 @@ of conduct), so there is no batch mode and at most one retry after a conflict.
         --evidence ... --out DIR
     python scripts/osm_edit.py draft-signal --name ... --place ... --lat ... --lon ... --out DIR
     python scripts/osm_edit.py upload edit.json --approved --live     # live OSM, owner's go
+    python scripts/osm_edit.py upload DIR/*.json --approved --live --one-changeset [--dry-run]
     python scripts/osm_edit.py apply DIR --approved --live --actor ID # OSM + our map, one folder
     python scripts/osm_edit.py load FIXTURE --actor ID [--confirm]    # our map only (e.g. beta)
 
@@ -303,7 +304,8 @@ def _already_done(edit: dict, tags: dict[str, str]) -> bool:
     return all(tags.get(key) == value for key, value in edit["set"].items())
 
 
-def upload(edit_path: Path, edit: dict, *, live: bool) -> int:
+def _ready(edit_path: Path, edit: dict, *, live: bool) -> ET.Element:
+    """The element as OSM holds it now, once every guard before an upload has passed."""
     if edit["server"] == "live" and not live:
         raise EditError("this edit is for live OSM: that needs --live, on the owner's go")
     if edit["server"] != "live" and live:
@@ -315,9 +317,6 @@ def upload(edit_path: Path, edit: dict, *, live: bool) -> int:
         raise EditError(f"this change was already uploaded in {earlier}")
     if REPO in edit_path.resolve().parents:
         raise EditError("keep drafts outside the repo (the scratchpad or the private ride folder)")
-    token = _read_token(edit["server"])
-    base = api_base(edit["server"])
-
     element = fetch_element(edit)
     tags = current_tags(element)
     stale = mismatches(edit, tags)
@@ -325,59 +324,142 @@ def upload(edit_path: Path, edit: dict, *, live: bool) -> int:
         raise EditError("changed on OSM since it was approved: " + "; ".join(stale))
     if _already_done(edit, tags):
         raise EditError("OSM already says this; nothing to upload")
+    return element
 
+
+def _open_changeset(edit: dict, token: str) -> int:
+    base = api_base(edit["server"])
     status, body = _request(
         "PUT", f"{base}/changeset/create", body=changeset_xml(edit), token=token
     )
     if status != 200:
         raise EditError(f"OSM answered {status} opening a changeset: {body[:200]!r}")
-    changeset = int(body.strip())
-    try:
-        for attempt in range(2):
-            url = f"{base}/{edit['element']}/{edit['id']}"
-            status, body = _request(
-                "PUT", url, body=changed_element(element, edit, changeset), token=token
-            )
-            if status == 200:
-                break
-            if status == 409 and attempt == 0:
-                # Someone else saved it in between. Try once more on the new version, and
-                # only if the tags the owner approved changing still say what they were shown.
-                element = fetch_element(edit)
-                tags = current_tags(element)
-                if _already_done(edit, tags):
-                    raise EditError("someone else made this same change while uploading")
-                stale = mismatches(edit, tags)
-                if stale:
-                    raise EditError("someone else changed it while uploading: " + "; ".join(stale))
-                continue
-            raise EditError(f"OSM answered {status} saving the change: {body[:200]!r}")
-        new_version = int(body.strip())
-    finally:
-        try:
-            _request("PUT", f"{base}/changeset/{changeset}/close", token=token)
-        except EditError:
-            # OSM closes an idle changeset by itself after an hour; say which one it is.
-            web = SERVERS[edit["server"]]["web"]
-            print(f"Could not close {web}/changeset/{changeset}", file=sys.stderr)
+    return int(body.strip())
 
+
+def _close_changeset(server: str, changeset: int, token: str) -> None:
+    try:
+        _request("PUT", f"{api_base(server)}/changeset/{changeset}/close", token=token)
+    except EditError:
+        # OSM closes an idle changeset by itself after an hour; say which one it is.
+        print(f"Could not close {SERVERS[server]['web']}/changeset/{changeset}", file=sys.stderr)
+
+
+def _put_change(element: ET.Element, edit: dict, changeset: int, token: str) -> int:
+    """Save one element's change in the open changeset; its new version."""
+    url = f"{api_base(edit['server'])}/{edit['element']}/{edit['id']}"
+    for attempt in range(2):
+        status, body = _request(
+            "PUT", url, body=changed_element(element, edit, changeset), token=token
+        )
+        if status == 200:
+            return int(body.strip())
+        if status == 409 and attempt == 0:
+            # Someone else saved it in between. Try once more on the new version, and
+            # only if the tags the owner approved changing still say what they were shown.
+            element = fetch_element(edit)
+            tags = current_tags(element)
+            if _already_done(edit, tags):
+                raise EditError("someone else made this same change while uploading")
+            stale = mismatches(edit, tags)
+            if stale:
+                raise EditError("someone else changed it while uploading: " + "; ".join(stale))
+            continue
+        raise EditError(f"OSM answered {status} saving the change: {body[:200]!r}")
+    raise EditError("OSM kept answering 409")
+
+
+def _record(edit_path: Path, edit: dict, changeset: int, version: int, changes: int) -> dict:
     web = SERVERS[edit["server"]]["web"]
     result = {
         "changeset": changeset,
         "url": f"{web}/changeset/{changeset}",
         "element": edit["element"],
         "id": edit["id"],
-        "version": new_version,
+        "version": version,
         "set": edit["set"],
         "uploaded_at": datetime.now(UTC).isoformat(timespec="seconds"),
     }
-    result_path.write_text(json.dumps(result, indent=2) + "\n")
+    if changes != 1:
+        result["changes"] = changes
+    _result_path(edit_path).write_text(json.dumps(result, indent=2) + "\n")
     log = _log_path()
     log.parent.mkdir(parents=True, exist_ok=True)
     with log.open("a") as handle:
         handle.write(json.dumps({"server": edit["server"], **result}) + "\n")
+    return result
+
+
+def upload(edit_path: Path, edit: dict, *, live: bool) -> int:
+    element = _ready(edit_path, edit, live=live)
+    token = _read_token(edit["server"])
+    changeset = _open_changeset(edit, token)
+    try:
+        new_version = _put_change(element, edit, changeset, token)
+    finally:
+        _close_changeset(edit["server"], changeset, token)
+    result = _record(edit_path, edit, changeset, new_version, 1)
     print(f"Uploaded: {result['url']}")
     return report_check(edit, result)
+
+
+# One changeset for a set of edits: the owner, 2026-10-21, chose "One changeset for all 74"
+# for the Capitol grounds walks, one tag on many short ways of one small area, all surveyed.
+# Every edit is still reviewed, and the set shares one comment and one source.
+MAX_TOGETHER = 100
+
+
+def upload_together(paths: list[Path], *, live: bool, dry_run: bool) -> int:
+    edits = [(path, load_edit(path)) for path in paths]
+    if len(edits) > MAX_TOGETHER:
+        raise EditError(f"at most {MAX_TOGETHER} edits in one changeset")
+    first = edits[0][1]
+    for path, edit in edits:
+        for key in ("server", "comment", "source"):
+            if edit.get(key, "survey") != first.get(key, "survey"):
+                raise EditError(f"{path.name}: {key} differs; one changeset shares one {key}")
+    targets = [(edit["element"], edit["id"]) for _, edit in edits]
+    if len(set(targets)) != len(targets):
+        raise EditError("the same element appears twice; one change per element")
+    ready, problems = [], []
+    for path, edit in edits:
+        try:
+            ready.append((path, edit, _ready(path, edit, live=live)))
+        except EditError as error:
+            problems.append(f"{path.name}: {error}")
+    if problems:
+        raise EditError("nothing uploaded:\n  " + "\n  ".join(problems))
+    for path, edit, element in ready:
+        print(f"{path.name}: {edit['element']} {edit['id']} v{element.get('version')}")
+        for line in diff_lines(edit, current_tags(element)):
+            print(f"  {line}")
+    print(f"\nOne changeset, {len(ready)} changes. Note: {first['comment']}")
+    if dry_run:
+        print("Dry run: nothing uploaded.")
+        return 0
+    token = _read_token(first["server"])
+    changeset = _open_changeset(first, token)
+    saved: list[tuple[Path, dict, int]] = []
+    failure = None
+    try:
+        for path, edit, element in ready:
+            try:
+                saved.append((path, edit, _put_change(element, edit, changeset, token)))
+            except EditError as error:
+                failure = f"{path.name}: {error}"
+                break
+    finally:
+        _close_changeset(first["server"], changeset, token)
+    results = [_record(path, edit, changeset, version, len(saved)) for path, edit, version in saved]
+    if results:
+        print(f"Uploaded {len(results)} changes: {results[0]['url']}")
+    if failure:
+        rest = " ".join(str(path) for path, _, _ in ready[len(saved) :])
+        print(f"Stopped at {failure}\nNot uploaded: {rest}", file=sys.stderr)
+    worst = 1 if failure else 0
+    for (_, edit, _), result in zip(saved, results, strict=True):
+        worst = max(worst, report_check(edit, result))
+    return worst
 
 
 def check_problems(edit: dict, result: dict) -> list[str]:
@@ -412,8 +494,11 @@ def check_problems(edit: dict, result: dict) -> list[str]:
         else:
             if changeset.get("open") != "false":
                 problems.append(f"changeset {result['changeset']} is still open")
-            if changeset.get("changes_count") not in (None, "1"):
-                problems.append(f"changeset holds {changeset.get('changes_count')} changes, not 1")
+            expected = str(result.get("changes", 1))
+            if changeset.get("changes_count") not in (None, expected):
+                problems.append(
+                    f"changeset holds {changeset.get('changes_count')} changes, not {expected}"
+                )
     return problems
 
 
@@ -939,6 +1024,16 @@ def main(argv: list[str] | None = None) -> int:
     send.add_argument("edit", type=Path, nargs="+")
     send.add_argument("--approved", action="store_true", help="the owner approved this file")
     send.add_argument("--live", action="store_true", help="live OSM, on the owner's go")
+    send.add_argument(
+        "--one-changeset",
+        action="store_true",
+        help="all the files in one changeset (one area, one tag, one note)",
+    )
+    send.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="with --one-changeset: every check and diff, nothing uploaded",
+    )
     for kind, helptext in (
         ("apply", "an approved draft folder: upload its OSM edits, then load our row"),
         ("load", "load an owner flashing-signal file into our map (dry run unless --confirm)"),
@@ -989,8 +1084,12 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "load":
             return load(args, args.fixture, confirm=args.confirm)
         if args.command == "upload":
-            if not args.approved:
+            if args.dry_run and not args.one_changeset:
+                raise EditError("--dry-run goes with --one-changeset; use show for one file")
+            if not args.approved and not args.dry_run:
                 raise EditError("upload needs --approved: the owner approves each edit file")
+            if args.one_changeset:
+                return upload_together(args.edit, live=args.live, dry_run=args.dry_run)
             return upload_all(args.edit, live=args.live)
         edit = load_edit(args.edit)
         if args.command == "show":

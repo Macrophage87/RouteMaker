@@ -7486,6 +7486,13 @@ Python 3.11 or later, standard library only.
     left; rerunning the same line skips the files already uploaded. A draft never overwrites a
     file: if any name is taken, nothing is written. Evidence in a
     row or edit note describes the place, never who reported it.
+- **One changeset for a set (the owner's choice, 2026-10-21, for the Capitol grounds
+  walks):** `upload <files> --approved --live --one-changeset` puts up to 100 reviewed edits
+  of one small area in a single changeset. They must share the server, comment and source,
+  and name each element once. Every file is checked against OSM before anything goes up, so
+  one stale file stops them all; `--dry-run` (no `--approved` needed) prints every diff and
+  uploads nothing. A stop partway records what went in, names what did not, and the smoke
+  test then expects that many changes in the changeset.
 - **Smoke test:** every upload ends by reading the change back from OSM. The element must
   carry the approved tags at the version the upload made (a later version by someone else
   passes), and the changeset must be closed with exactly one change. A failure, or a check

@@ -70,6 +70,9 @@ class FakeOsm:
         self.changes = 0
         self.drop_write = False
         self.area = AREA
+        # Area nodes saved by a PUT, served back by later GETs; ids in `refuse` answer 412.
+        self.saved: dict[str, str] = {}
+        self.refuse: set[str] = set()
         self.calls: list[tuple[str, str, bytes, str | None]] = []
 
 
@@ -105,6 +108,9 @@ def osm(tmp_path, monkeypatch):
                 self._send(200, json.dumps({"user": {"display_name": "Mapper"}}))
             elif self.path.endswith("/node/404"):
                 self._send(410, "")
+            elif "/node/" in self.path and self.path.rsplit("/", 1)[1] in state.saved:
+                saved = state.saved[self.path.rsplit("/", 1)[1]]
+                self._send(200, f'<osm version="0.6">{saved}</osm>')
             elif "/node/" in self.path:
                 wanted = self.path.rsplit("/", 1)[1]
                 for node in ET.fromstring(state.area).iter("node"):
@@ -153,6 +159,16 @@ def osm(tmp_path, monkeypatch):
                     )
                     state.changeset = sent.get("changeset")
                 self._send(200, str(state.version))
+            elif "/node/" in self.path:
+                wanted = self.path.rsplit("/", 1)[1]
+                sent = ET.fromstring(body).find("node")
+                if wanted in state.refuse:
+                    self._send(412, "Precondition failed")
+                    return
+                sent.set("version", str(int(sent.get("version")) + 1))
+                state.saved[wanted] = ET.tostring(sent, encoding="unicode")
+                state.changes += 1
+                self._send(200, sent.get("version"))
             else:
                 self._send(404, "")
 
@@ -802,3 +818,79 @@ def test_load_refuses_an_agency_file(tmp_path, capsys):
     fixture.write_text(json.dumps({"version": 1, "source": "mdot-sha", "rows": []}))
     assert osm_edit.main(["load", str(fixture), "--actor", "42", "--to", "pc"]) == 1
     assert "not an owner flashing-signal file" in capsys.readouterr().err
+
+
+def _together(tmp_path, ids=(201, 202, 203), changes=None):
+    changes = changes or {}
+    paths = []
+    for node in ids:
+        edit = {
+            "server": "dev",
+            "element": "node",
+            "id": node,
+            "expect": {"surface": None},
+            "set": {"surface": "asphalt"},
+            "comment": "Grounds walks: surface, surveyed",
+            "source": "survey",
+        }
+        edit.update(changes.get(node, {}))
+        path = tmp_path / f"n{node}.json"
+        path.write_text(json.dumps(edit))
+        paths.append(str(path))
+    return paths
+
+
+def test_one_changeset_holds_every_edit_and_checks_each(osm, tmp_path, capsys):
+    paths = _together(tmp_path)
+    assert osm_edit.main(["upload", *paths, "--approved", "--one-changeset"]) == 0
+    puts = [p for p, _, _ in _puts(osm)]
+    assert puts.count("/api/0.6/changeset/create") == 1
+    assert [p for p in puts if "/node/" in p] == [f"/api/0.6/node/{n}" for n in (201, 202, 203)]
+    for node in (201, 202, 203):
+        sent = ET.fromstring(osm.saved[str(node)])
+        assert sent.get("changeset") == "555"
+        assert sent.find("tag[@k='surface']").get("v") == "asphalt"
+    out = capsys.readouterr().out
+    assert "Uploaded 3 changes" in out and out.count("Checked:") == 3
+    result = json.loads((tmp_path / "n202.uploaded.json").read_text())
+    assert result["changes"] == 3 and result["changeset"] == 555
+    assert osm_edit.main(["check", paths[1]]) == 0
+
+
+def test_one_changeset_dry_run_needs_no_approval_and_writes_nothing(osm, tmp_path, capsys):
+    paths = _together(tmp_path)
+    assert osm_edit.main(["upload", *paths, "--one-changeset", "--dry-run"]) == 0
+    out = capsys.readouterr().out
+    assert "surface: None -> 'asphalt'" in out and "One changeset, 3 changes" in out
+    assert _puts(osm) == [] and not list(tmp_path.glob("*.uploaded.json"))
+
+
+def test_one_changeset_refuses_mixed_notes_and_stale_tags_before_uploading(osm, tmp_path, capsys):
+    mixed = _together(tmp_path, changes={202: {"comment": "something else"}})
+    assert osm_edit.main(["upload", *mixed, "--approved", "--one-changeset"]) == 1
+    assert "comment differs" in capsys.readouterr().err
+    stale = _together(
+        tmp_path, changes={203: {"expect": {"highway": "residential"}, "set": {"highway": "stop"}}}
+    )
+    assert osm_edit.main(["upload", *stale, "--approved", "--one-changeset"]) == 1
+    err = capsys.readouterr().err
+    assert "nothing uploaded" in err and "n203.json" in err
+    assert _puts(osm) == []
+
+
+def test_one_changeset_stopping_partway_records_and_checks_what_went_in(osm, tmp_path, capsys):
+    osm.refuse = {"203"}
+    paths = _together(tmp_path)
+    assert osm_edit.main(["upload", *paths, "--approved", "--one-changeset"]) == 1
+    err = capsys.readouterr().err
+    assert "Stopped at n203.json" in err and f"Not uploaded: {paths[2]}" in err
+    assert (tmp_path / "n201.uploaded.json").exists() and not (
+        tmp_path / "n203.uploaded.json"
+    ).exists()
+    assert osm.changeset_open is False
+    assert json.loads((tmp_path / "n201.uploaded.json").read_text())["changes"] == 2
+
+
+def test_dry_run_alone_is_refused(osm, tmp_path, capsys):
+    assert osm_edit.main(["upload", str(_edit(tmp_path)), "--dry-run"]) == 1
+    assert "--one-changeset" in capsys.readouterr().err
