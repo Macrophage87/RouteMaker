@@ -774,7 +774,7 @@ scripts/beta/beta-compose.sh restart valhalla-standard valhalla-no-trail valhall
 
 The trail routers (`valhalla-offroad`, `valhalla-mtb`) are left out of every rollback: the release rolled back to may
 cap them at 768M, over the budget. If they run, stop them with `scripts/beta/beta-compose.sh stop valhalla-offroad
-valhalla-mtb` when rolling back to a release before v0.11.0, and start them again on the next release.
+valhalla-mtb` when rolling back to a release before v0.10.1, and start them again on the next release.
 
 If that update also carried a db part (`db --update-data`), do **B** as well, with the
 `pre-update-<time>.dump` it wrote: the graphs and the `live` schema are one build, and the old graphs
@@ -935,7 +935,7 @@ continuous deployment first, as above, and resume it after.
    The pre-draw is not optional: until it finishes, every map view draws its tiles live (step 8,
    "Draw the stress tiles"). Run it before telling the testers the update is in.
 4. `scripts/beta/beta-compose.sh restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend`
-   (a router keeps the old archive mapped until restarted), then the trail routers on their new tiles, from v0.11.0 on
+   (a router keeps the old archive mapped until restarted), then the trail routers on their new tiles, from v0.10.1 on
    (receive-data.sh prints the line): `scripts/beta/beta-compose.sh up -d --force-recreate valhalla-offroad valhalla-mtb`.
 5. `scripts/beta/smoke-test.sh --local`, then `--public`.
 
@@ -1263,10 +1263,10 @@ old `$RM_STATE/cd/node_modules/<hash>` directories. The agent keeps `RM_CD_KEEP`
 **Uninstall:** `"$A" uninstall` stops and removes the timer and units; `rm -rf "$RM_STATE/cd"`
 removes the agent, its logs and its snapshots (owner's say-so: they hold database dumps).
 
-### The trail routers, once, after v0.11.0 deploys
+### The trail routers, once, after v0.10.1 deploys
 
-`valhalla-offroad` (Gravel and Mountain Goat) and `valhalla-mtb` (Mountain Bike) run on the beta from v0.11.0 (the
-owner, 2026-10-20: "Both, raise limit to 7.1 GB"). The agent that deploys v0.11.0 is the one installed before it, which
+`valhalla-offroad` (Gravel and Mountain Goat) and `valhalla-mtb` (Mountain Bike) run on the beta from v0.10.1 (the
+owner, 2026-10-20: "Both, raise limit to 7.1 GB"). The agent that deploys v0.10.1 is the one installed before it, which
 knows only the four routers, so after that deploy, and once the new map's tiles are installed (`$RM_DATA/tiles/offroad/current`
 and `$RM_DATA/tiles/mtb/current` exist):
 

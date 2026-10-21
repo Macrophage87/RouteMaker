@@ -49,10 +49,19 @@ import {
   replanPoints,
   rideModel,
   REPLAN_UTURN,
+  REPLAN_FOUND,
+  REPLAN_REJOIN,
   REPLAN_AHEAD,
   REPLAN_NO_AHEAD,
   UTURNS_BEFORE_AHEAD,
+  UTURN_RECHECK_MS,
+  UTURN_START,
+  UTURN_TAKEN_M,
   keepsAhead,
+  uturnAheadOnly,
+  uturnStep,
+  type UTurnEvent,
+  type UTurnState,
   replanTold,
   says,
   setsOffBack,
@@ -1626,18 +1635,90 @@ test("ahead_only is sent only with a heading", () => {
 test("no way ahead on the third: said plainly once, and the route is left up (the owner, 2026-10-20)", () => {
   assert.equal(REPLAN_NO_AHEAD, "No route found ahead. Make a U-turn.");
   assert.equal(replanTold(false, "stoker", REPLAN_NO_AHEAD), "say");
+  // RideMode keeps the U-turns with uturnStep (below); what it does with its answers is wired there.
   const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
-  assert.match(ride, /uturnHeld\.current = turned && aheadOnly && note !== REPLAN_REJOIN;/);
   // Held, off route promises no new way; the silent check never takes the gate the rider's asks need.
-  assert.match(ride, /prefsRef\.current\.verbosity, auto && !uturnHeld\.current\);/);
+  assert.match(ride, /prefsRef\.current\.verbosity, auto && !uturns\.current\.held\);/);
   assert.match(ride, /if \(check \? gate\.busy \|\| checking\.current : !gate\.begin\(Date\.now\(\)\)\) \{/);
   assert.match(ride, /announcer\.current\?\.say\(note, note === REPLAN_NO_AHEAD\)/);
-  // No automatic re-plan while it is held; turning round as asked lets go of it.
-  assert.match(ride, /if \(!uturnHeld\.current\) void replan\(out\.state\.goodFix\.point\);/);
-  // Checked quietly now and then: a check that still turns round says and shows nothing.
-  assert.match(ride, /Date\.now\(\) - heldCheckAt\.current >= UTURN_RECHECK_MS/);
+  // A check that still turns round says and shows nothing.
   assert.match(ride, /if \(check && \(!found \|\| heading === null \|\| setsOffBack\(found\.geometry\.coordinates, heading\)\)\) return;/);
-  assert.match(ride, /uturnsInARow\.current = 0;\n\s+uturnHeld\.current = false;/);
+  assert.match(ride, /if \(offRoute\.replan === "ask"\) void replan\(out\.state\.goodFix\.point\);\s*(\/\/[^\n]*\s*)?else if \(offRoute\.replan === "check"\) void replan\(out\.state\.goodFix\.point, undefined, false, false, true\);/);
+});
+
+// The U-turn re-routes as a sequence (lib/navigate.ts uturnStep; the v0.10.1 end review asked for it tested, not read).
+const HEADING = 90;
+/** A re-route made moving (heading 90), as RideMode's replan makes it: ahead only from the count, then counted. */
+function reroute(state: UTurnState, turned: boolean, now: number, note = REPLAN_FOUND) {
+  const aheadOnly = uturnAheadOnly(state, HEADING);
+  return { aheadOnly, ...uturnStep(state, { kind: "rerouted", turned, aheadOnly, stopped: false, note, now }) };
+}
+
+test("U-turns: two asked, the third ahead only, and a way ahead starts the count again", () => {
+  let state = UTURN_START;
+  let step = reroute(state, true, 1000);
+  assert.deepEqual([step.aheadOnly, step.note, step.state.inARow, step.state.held], [false, REPLAN_UTURN, 1, false]);
+  step = reroute((state = step.state), true, 2000);
+  assert.deepEqual([step.aheadOnly, step.note, step.state.inARow], [false, REPLAN_UTURN, 2]);
+  step = reroute((state = step.state), false, 3000);
+  assert.deepEqual([step.aheadOnly, step.note, step.state.inARow, step.state.held], [true, REPLAN_AHEAD, 0, false]);
+  // Without a heading (Road closed's turn round) nothing is ahead only.
+  assert.equal(uturnAheadOnly({ ...state, inARow: 5 }, null), false);
+});
+
+test("U-turns: the third still turns round: said once, held, checked silently each minute, let go by a way ahead", () => {
+  let state = reroute(reroute(UTURN_START, true, 0).state, true, 0).state;
+  const third = reroute(state, true, 10_000);
+  assert.deepEqual([third.aheadOnly, third.note, third.state.inARow, third.state.held], [true, REPLAN_NO_AHEAD, 3, true]);
+  state = third.state;
+  const off = (now: number) => uturnStep(state, { kind: "off-route", now });
+  // Off route while held: no re-plan out loud; a silent check once UTURN_RECHECK_MS has passed, and not again at once.
+  assert.equal(off(10_000 + UTURN_RECHECK_MS - 1).replan, null);
+  const checked = off(10_000 + UTURN_RECHECK_MS);
+  assert.equal(checked.replan, "check");
+  state = checked.state;
+  assert.equal(off(10_000 + UTURN_RECHECK_MS + 1).replan, null);
+  // The check finds a way ahead: taken as any re-route is, and the hold is let go.
+  const ahead = reroute(state, false, 80_000);
+  assert.deepEqual([ahead.aheadOnly, ahead.note, ahead.state.held, ahead.state.inARow], [true, REPLAN_AHEAD, false, 0]);
+  assert.equal(uturnStep(ahead.state, { kind: "off-route", now: 80_001 }).replan, "ask");
+});
+
+test("U-turns: a hold is let go by riding the U-turn route, Re-plan from here, or the other line; a way back is never held", () => {
+  const held = reroute(reroute(reroute(UTURN_START, true, 0).state, true, 0).state, true, 0).state;
+  assert.equal(held.held, true);
+  const along = (event: Omit<Extract<UTurnEvent, { kind: "along" }>, "kind">) => uturnStep(held, { kind: "along", ...event }).state;
+  // Turned round as asked, UTURN_TAKEN_M along the U-turn route: the count starts again.
+  assert.deepEqual(along({ onUTurnRoute: true, off: false, progressM: UTURN_TAKEN_M }), { ...held, inARow: 0, held: false });
+  assert.equal(along({ onUTurnRoute: true, off: false, progressM: UTURN_TAKEN_M - 1 }), held);
+  assert.equal(along({ onUTurnRoute: true, off: true, progressM: 500 }), held);
+  // Followed another route that far: the count starts again, the hold (only ever on a U-turn route) stays as it is.
+  assert.deepEqual(along({ onUTurnRoute: false, off: false, progressM: 500 }), { ...held, inARow: 0 });
+  assert.equal(along({ onUTurnRoute: false, off: true, progressM: 500 }), held);
+  // Re-plan from here, standing still: no heading, so nothing turns round and the hold goes; the count stays.
+  const asked = uturnStep(held, { kind: "rerouted", turned: false, aheadOnly: false, stopped: true, note: REPLAN_FOUND, now: 5 });
+  assert.deepEqual([asked.note, asked.state.held, asked.state.inARow], [REPLAN_FOUND, false, 3]);
+  assert.equal(uturnStep(held, { kind: "other-line" }).state.held, false);
+  // A way back to the planned route that turns round is followed as told, not held.
+  const back = reroute({ ...UTURN_START, inARow: 2 }, true, 0, REPLAN_REJOIN);
+  assert.deepEqual([back.note, back.state.held, back.state.inARow], [REPLAN_REJOIN, false, 3]);
+});
+
+test("U-turns: a re-route made while stopped leaves the count, so pausing between ignored U-turns still reaches the third", () => {
+  let state = reroute(UTURN_START, true, 0).state;
+  const stopped = uturnStep(state, { kind: "rerouted", turned: false, aheadOnly: uturnAheadOnly(state, null), stopped: true, note: REPLAN_FOUND, now: 1 });
+  assert.deepEqual([stopped.note, stopped.state.inARow], [REPLAN_FOUND, 1]);
+  state = reroute(stopped.state, true, 2).state;
+  assert.equal(state.inARow, 2);
+  assert.equal(reroute(state, false, 3).aheadOnly, true, "the third is ahead only");
+  // Road closed turns round on purpose (not stopped): its re-route starts the count again, as before.
+  assert.equal(uturnStep(state, { kind: "rerouted", turned: false, aheadOnly: false, stopped: false, note: REPLAN_FOUND, now: 4 }).state.inARow, 0);
+  // Then followed: the count does not carry down the new route to a missed turn miles on.
+  const followed = uturnStep(stopped.state, { kind: "along", onUTurnRoute: false, off: false, progressM: UTURN_TAKEN_M }).state;
+  assert.equal(followed.inARow, 0);
+  assert.equal(reroute(followed, true, 5).aheadOnly, false);
+  const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
+  assert.match(ride, /stopped: heading === null && !turnRound/);
 });
 
 // ---- Crossings between two turns (the owner, 2026-10-20, at Needwood Road and Redland Road: "It should have told me to cross the street and turn left") ----

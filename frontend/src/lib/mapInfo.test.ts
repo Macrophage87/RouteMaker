@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { DOCS_LINKS, INFO_POINTS, MAP_INFO, wrapCredits } from "./mapInfo.ts";
+import { DOCS_LINKS, INFO_POINTS, MAP_INFO, helpExpanded, wrapCredits } from "./mapInfo.ts";
 import { searchLede } from "./sidebar.ts";
 
 const src = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
@@ -31,8 +31,15 @@ class Node {
   innerHTML = "";
   children: Node[] = [];
   parent: Node | null = null;
+  attributes: Record<string, string> = {};
   constructor(className = "") {
     this.className = className;
+  }
+  get classList() {
+    return { contains: (name: string) => this.className.split(" ").includes(name) };
+  }
+  setAttribute(name: string, value: string) {
+    this.attributes[name] = value;
   }
   querySelector(selector: string): Node | null {
     for (const child of this.children) {
@@ -68,6 +75,10 @@ test("the info panel goes over MapLibre's credits in one body, once, and the cre
   assert.equal(body.children[0].innerHTML, MAP_INFO);
   assert.equal(body.children[1], inner, "the same element MapLibre writes the credits into");
   assert.equal((button as unknown as { textContent: string }).textContent, "Help", "the i says what it opens");
+  assert.equal(button.attributes["aria-expanded"], "false", "collapsed at the start, and says so");
+  control.className = "maplibregl-ctrl-attrib maplibregl-compact maplibregl-compact-show";
+  helpExpanded(control, button);
+  assert.equal(button.attributes["aria-expanded"], "true");
   assert.equal(wrapCredits(control as unknown as HTMLElement, doc), false, "not twice");
   assert.equal(wrapCredits(null, doc), false);
 });
@@ -76,6 +87,8 @@ test("the map wraps its credits after collapsing them, behind an i named for the
   const view = src("../MapView.tsx");
   assert.match(view, /customAttribution: MAP_ATTRIBUTION \}\), "bottom-right"\);\s*const credits = [^;]+;\s*collapseCredits\(credits\);[\s\S]{0,300}wrapCredits\(credits\);/);
   assert.match(view, /"AttributionControl\.ToggleAttribution": "Help: map info and credits"/);
+  // A ride starts with the panel closed, so it never covers the rider's dot.
+  assert.match(view, /if \(!props\.rideLabels\) return;\s*collapseCredits\(container\.current\?\.querySelector<HTMLElement>\("\.maplibregl-ctrl-attrib"\) \?\? null\);/);
   // A documentation link keeps the plan for the page's "Back to the map", as StressPageLink does.
   assert.match(view, /a\[href\^="\/about\/"\][\s\S]{0,120}rememberPlanForPage\(tabSession\(\), window\.location\.hash\)/);
 });

@@ -1302,6 +1302,79 @@ export const UTURN_TAKEN_M = 50;
 export function keepsAhead(uturns: number): boolean {
   return uturns >= UTURNS_BEFORE_AHEAD;
 }
+
+/**
+ * A ride's U-turn re-routes, as RideMode keeps them (moved here out of RideMode.tsx so the sequence is tested, the
+ * v0.10.1 end review): how many in a row asked for a U-turn the rider rode on past, whether a U-turn route is held
+ * after "No route found ahead", and when the held route was last checked for a way ahead.
+ */
+export interface UTurnState {
+  inARow: number;
+  held: boolean;
+  checkedAt: number;
+}
+
+export const UTURN_START: UTurnState = { inARow: 0, held: false, checkedAt: 0 };
+
+/** What happened: a re-route's route taken, the rider along the line, off route, or moved to the other line. */
+export type UTurnEvent =
+  /**
+   * A re-route's route taken (a held route's silent check only when it found a way ahead). `note` is what it would
+   * say without the U-turns (REPLAN_FOUND or REPLAN_REJOIN); `stopped`, made without a heading because the rider
+   * had none (not Road closed, which turns round on purpose).
+   */
+  | { kind: "rerouted"; turned: boolean; aheadOnly: boolean; stopped: boolean; note: string; now: number }
+  /** A fix placed on the ride's route; `onUTurnRoute`, that route is one that asked for a U-turn. */
+  | { kind: "along"; onUTurnRoute: boolean; off: boolean; progressM: number | null }
+  /** Off route, with an automatic re-plan allowed (not kept, not fixed, the gate free, a good fix). */
+  | { kind: "off-route"; now: number }
+  /** The rider took the other line (lib/roadClosed.ts onOtherLine). */
+  | { kind: "other-line" };
+
+export interface UTurnStep {
+  state: UTurnState;
+  /** For "rerouted": the note to show and say. */
+  note?: string;
+  /** For "off-route": re-plan out loud, check the held route silently, or nothing. */
+  replan?: "ask" | "check" | null;
+}
+
+/** Whether a re-route made with `headingDeg` sets off ahead whatever turning round saves (keepsAhead). */
+export function uturnAheadOnly(state: UTurnState, headingDeg: number | null): boolean {
+  return headingDeg !== null && keepsAhead(state.inARow);
+}
+
+/**
+ * The U-turn re-routes' next state. Each U-turn re-route counts one; a re-route that keeps ahead starts the count
+ * again, and one made while stopped (no heading) leaves it as it is, so a rider who pauses between U-turns they ride
+ * past is not asked again and again (the v0.10.1 end review). The third, ahead only, that still turns round says
+ * REPLAN_NO_AHEAD once and is held: off route, no re-plan out loud, only a silent check each UTURN_RECHECK_MS. A way
+ * back (REPLAN_REJOIN) is never held. Any re-route taken (Re-plan from here's too), UTURN_TAKEN_M along a U-turn
+ * route, or the other line lets go of a hold.
+ */
+export function uturnStep(state: UTurnState, event: UTurnEvent): UTurnStep {
+  switch (event.kind) {
+    case "rerouted": {
+      const inARow = event.turned ? state.inARow + 1 : event.stopped ? state.inARow : 0;
+      let note = event.note;
+      if (event.turned && note === REPLAN_FOUND) note = REPLAN_UTURN;
+      if (!event.turned && event.aheadOnly && note === REPLAN_FOUND) note = REPLAN_AHEAD;
+      const held = event.turned && event.aheadOnly && note !== REPLAN_REJOIN;
+      return { state: { inARow, held, checkedAt: event.now }, note: held ? REPLAN_NO_AHEAD : note };
+    }
+    case "along":
+      // UTURN_TAKEN_M along the route: the rider follows it, so the count starts again (on any route, so a count a
+      // re-route made while stopped left is not carried down the next one); along the U-turn route the hold goes too.
+      if (event.off || (event.progressM ?? 0) < UTURN_TAKEN_M || (state.inARow === 0 && !state.held)) return { state };
+      return { state: { ...state, inARow: 0, held: event.onUTurnRoute ? false : state.held } };
+    case "off-route":
+      if (!state.held) return { state, replan: "ask" };
+      if (event.now - state.checkedAt >= UTURN_RECHECK_MS) return { state: { ...state, checkedAt: event.now }, replan: "check" };
+      return { state, replan: null };
+    case "other-line":
+      return { state: { ...state, held: false } };
+  }
+}
 /** A start this far off the rider's heading is a U-turn (the API's routing.UTURN_MIN_DEG). */
 export const UTURN_MIN_DEG = 120;
 /** How far along the line its setting-off direction is read: past the snap to the road (routing.UTURN_READ_M). */

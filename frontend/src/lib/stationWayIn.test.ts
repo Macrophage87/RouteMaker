@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import type { LonLat } from "./geo.ts";
 import type { NearestResult } from "./nearest.ts";
 import type { Station } from "./railStations.ts";
-import { QUICKER_BY_S, lonLatKey, quickerWayIn, wayInChecks, wayInPlaces, wayInSaid } from "./stationWayIn.ts";
+import { QUICKER_BY_S, legFrom, lonLatKey, quickerWayIn, wayInChecks, wayInKey, wayInPlaces, wayInSaid } from "./stationWayIn.ts";
 
 const EAST: LonLat = [-77.165, 39.12];
 const WEST: LonLat = [-77.1665, 39.12];
@@ -63,6 +63,28 @@ test("no move without riding times: a straight-line answer or a failed request",
 test("the request's places and the words said", () => {
   const [check] = wayInChecks([start, EAST], [station]);
   assert.deepEqual(wayInPlaces(check).map((p) => p.point), [EAST, WEST]);
-  assert.equal(wayInSaid("End", "Shady Grove Metro station", "elevator"), "End moved to Shady Grove Metro station's elevator that is quicker to reach by bike. Undo puts it back.");
+  assert.equal(
+    wayInSaid([{ pointName: "End", stationName: "Shady Grove Metro station", kind: "elevator" }]),
+    "End moved to Shady Grove Metro station's elevator that is quicker to reach by bike. Undo puts it back.",
+  );
   assert.equal(lonLatKey([-77.123456, 39.000004]), "-77.12346,39.00000");
+});
+
+test("two moves in one change are one message of two sentences at most, and more are counted", () => {
+  const start = { pointName: "Start", stationName: "Glenmont Metro station", kind: "entrance" as const };
+  const end = { pointName: "End", stationName: "Shady Grove Metro station", kind: "osm-elevator" as const };
+  const two = wayInSaid([start, end]);
+  assert.equal(two, "Start moved to Glenmont Metro station's entrance and End to Shady Grove Metro station's elevator, each quicker to reach by bike. Undo puts them back.");
+  assert.equal(two.match(/\. /g)?.length, 1, "two sentences");
+  assert.equal(wayInSaid([start, end, { ...end, pointName: "Stop 1" }]), "3 points moved to station ways in that are quicker to reach by bike. Undo puts them back.");
+  assert.equal(wayInSaid([]), "");
+});
+
+test("a point moved to its quickest way in is remembered as asked, from where its leg then comes", () => {
+  // App.tsx marks the moved point asked, so the change it makes is not a second question to the router.
+  assert.deepEqual(legFrom([start, EAST], 1), start);
+  assert.deepEqual(legFrom([WEST, start], 0), start);
+  assert.equal(wayInKey(WEST, start, "commute"), `${lonLatKey(WEST)}|${lonLatKey(start)}|commute`);
+  const [check] = wayInChecks([start, WEST], [station]);
+  assert.equal(wayInKey(WEST, check.from, "commute"), wayInKey(WEST, legFrom([start, WEST], 1), "commute"));
 });

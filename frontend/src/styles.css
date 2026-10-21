@@ -1278,7 +1278,7 @@ button.secondary {
 }
 
 .maplibregl-ctrl-attrib.maplibregl-compact .maplibregl-ctrl-attrib-button {
-  position: static;
+  position: relative;
   display: inline-block;
   vertical-align: middle;
   width: auto;
@@ -1290,6 +1290,14 @@ button.secondary {
   font: 600 14px/24px var(--font);
   color: #000;
   white-space: nowrap;
+}
+
+/* A 44 px tall target with the pill as drawn (the v0.10.1 end review): the tap reaches 10 px above and below it.
+   In the flow as before (no offsets), positioned only to hold the hit area. */
+.maplibregl-ctrl-attrib.maplibregl-compact .maplibregl-ctrl-attrib-button::before {
+  content: "";
+  position: absolute;
+  inset: -10px 0;
 }
 
 .maplibregl-ctrl-attrib.maplibregl-compact-show .maplibregl-ctrl-attrib-button {

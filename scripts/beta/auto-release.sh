@@ -522,8 +522,8 @@ rollback() { # old-sha old-short
 			restore-index) restore_frontend "$(cat "$cd_dir/run-index" 2>/dev/null)" || { say "FAILED: put the old front end's top-level files back (index.html, beta-build.txt)"; ok=0; } ;;
 			start-app) step "start the api and worker" bc up -d api worker </dev/null || ok=0 ;;
 			# The four only: the release rolled back to may be one whose compose gives the trail routers their old
-			# 768M caps, over the budget, so a rollback never starts them (they stop with a later compose-change deploy
-			# or by hand; docs/BETA-RUNBOOK.md, rollback A).
+			# 768M caps, over the budget, so a rollback never starts them; nothing here stops them either, that is
+			# done by hand (docs/BETA-RUNBOOK.md, rollback A).
 			recreate-services) step "recreate photon and the routers" bc up -d photon $ROUTERS </dev/null || ok=0 ;;
 			restart-routers) step "restart the routers" bc restart $ROUTERS </dev/null || ok=0 ;;
 			# A missing pre-draw only means tiles are drawn on request (OWNER-DECISIONS 436): a warning.

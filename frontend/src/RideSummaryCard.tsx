@@ -6,7 +6,7 @@
  * Not timed: it stays until Done or Undo (WCAG 2.2.1); no Escape, as Done in Go empties the plan. The focus goes to Done; "Ride ended." is said by the
  * page's polite region (App), as a region mounted with its text in it is often not read (review F6).
  */
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { stressBarKey, stressBarLabel } from "./lib/quickFigures.ts";
 import { stressSegments } from "./lib/stressBar.ts";
 import { elevationSpan, summaryRows, type RideStats } from "./lib/rideStats.ts";
@@ -67,6 +67,21 @@ export function RideSummaryCard({
   useEffect(() => {
     done.current?.focus();
   }, []);
+  // A tab stop only while it scrolls (the v0.10.1 end review): otherwise one more stop that does nothing. Measured
+  // again as the screen or the text size changes.
+  const body = useRef<HTMLDivElement>(null);
+  const [scrolls, setScrolls] = useState(false);
+  useEffect(() => {
+    const element = body.current;
+    if (!element) return;
+    const measure = () => setScrolls(element.scrollHeight > element.clientHeight);
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    for (const child of Array.from(element.children)) observer.observe(child);
+    return () => observer.disconnect();
+  }, []);
   const rows = summaryRows(stats, endedAt);
   const ridden = Object.values(stats.stressM).reduce((sum, m) => sum + (m ?? 0), 0);
   const segments = ridden >= STRESS_MIN_M ? stressSegments(stats.stressM) : [];
@@ -75,8 +90,14 @@ export function RideSummaryCard({
       <h2 id={titleId}>{RIDE_SUMMARY_TITLE}</h2>
       {/* The figures, chart and stress fill the screen between the title and the buttons (the owner, 2026-10-20: "The end
           ride panel should be scaled to fill the page, not go over"); where it cannot fit, this part scrolls, and can be
-          reached by keyboard to scroll it. */}
-      <div className="ride-summary-body" role="group" aria-labelledby={titleId} tabIndex={0}>
+          reached by keyboard to scroll it, named by the title then (a tab stop needs a name). */}
+      <div
+        ref={body}
+        className="ride-summary-body"
+        role={scrolls ? "group" : undefined}
+        aria-labelledby={scrolls ? titleId : undefined}
+        tabIndex={scrolls ? 0 : undefined}
+      >
         {note && <p className="hint">{note}</p>}
         <dl className="ride-summary-figures">
           {rows.map((row) => (
