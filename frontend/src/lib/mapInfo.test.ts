@@ -67,6 +67,7 @@ test("the info panel goes over MapLibre's credits in one body, once, and the cre
   assert.deepEqual(body.children.map((c) => c.className), ["map-info", "maplibregl-ctrl-attrib-inner"]);
   assert.equal(body.children[0].innerHTML, MAP_INFO);
   assert.equal(body.children[1], inner, "the same element MapLibre writes the credits into");
+  assert.equal((button as unknown as { textContent: string }).textContent, "Help", "the i says what it opens");
   assert.equal(wrapCredits(control as unknown as HTMLElement, doc), false, "not twice");
   assert.equal(wrapCredits(null, doc), false);
 });
@@ -74,7 +75,7 @@ test("the info panel goes over MapLibre's credits in one body, once, and the cre
 test("the map wraps its credits after collapsing them, behind an i named for the panel", () => {
   const view = src("../MapView.tsx");
   assert.match(view, /customAttribution: MAP_ATTRIBUTION \}\), "bottom-right"\);\s*const credits = [^;]+;\s*collapseCredits\(credits\);[\s\S]{0,300}wrapCredits\(credits\);/);
-  assert.match(view, /"AttributionControl\.ToggleAttribution": "Map info and credits"/);
+  assert.match(view, /"AttributionControl\.ToggleAttribution": "Help: map info and credits"/);
   // A documentation link keeps the plan for the page's "Back to the map", as StressPageLink does.
   assert.match(view, /a\[href\^="\/about\/"\][\s\S]{0,120}rememberPlanForPage\(tabSession\(\), window\.location\.hash\)/);
 });
