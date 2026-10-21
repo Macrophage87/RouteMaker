@@ -1523,6 +1523,19 @@ curl -s -X POST http://localhost:8000/api/route -H 'Content-Type: application/js
   paths; if that router does not answer, the standard graph answers instead
   and `variant` says so. E-bike, Cargo with assist and Mass Ride keep their own
   graphs at the weekend.
+- Dirt trails on a ride type that skips them (`core.trail_touch`, v0.11.0; the
+  owner, 2026-10-21). A stop, via or end within 15 m (50 ft) of a dirt trail
+  (`bike_access_reason` `mtb`) plans the ride on the off-road graph with its own
+  costing, so `variant` is `offroad`. The trail is ridden, and so are trails
+  joined to it, which means less than 30 m (100 ft) of other ways between them.
+  The start alone does not count, nor the start again at a loop's end, because
+  riding dirt depends on the weather. A dirt trail the plan finds for itself is
+  left out by a strip a few metres across, and the plan is made again. This
+  happens up to 3 times, and then the plan is made on the ride type's own graph.
+  Green singletrack is always left out. A ride's re-plans send `ride_replan`.
+  When the rider is on a dirt trail, or `dirt_ridden` is sent, any dirt trail
+  may be ridden. The answer's `dirt_trails` says the route rides one, and Ride
+  then sends `dirt_ridden` for the rest of the ride.
 
 **The stress and hills sliders, measured** (PUBLIC-DIALS, 2026-09-27: a box
 graph, -77.22,38.78,-76.90,39.02, rebuilt from the real extract by the real

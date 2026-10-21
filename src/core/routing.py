@@ -119,6 +119,7 @@ from . import (
     route_hazards,
     segment_info,
     timing,
+    trail_touch,
 )
 from . import workzones as work_zones
 
@@ -210,6 +211,22 @@ class RouterRefused(Exception):
         self.code = code
 
 
+class StrayTrails(Exception):
+    """A route planned on the off-road graph for a dirt trail a point touches
+    (`core.trail_touch`) took dirt trails no point touches: `rings` leave them out, and
+    `plan` plans again; `touched` is the trails each point touches, not looked up again."""
+
+    def __init__(self, rings: tuple, touched: tuple[frozenset[int], ...]) -> None:
+        super().__init__(f"{len(rings)} dirt trail run(s) no point touches")
+        self.rings = rings
+        self.touched = touched
+
+
+# How many times a plan is made again without the dirt trails it found for itself
+# (`StrayTrails`) before it is made on the ride type's own graph, the touched trail closed.
+STRAY_ROUNDS = 3
+
+
 class NoRoute(Exception):
     """No route joins these points on this preset's variant.
 
@@ -220,6 +237,11 @@ class NoRoute(Exception):
     def __init__(self, message: str, no_path: bool = False) -> None:
         super().__init__(message)
         self.no_path = no_path
+
+
+class StraySideRoute(NoRoute):
+    """A side route (a candidate, the way round a junction or through a closure) of such a
+    plan takes a dirt trail no point touches: that side route alone is dropped."""
 
 
 class TooLong(Exception):
@@ -997,6 +1019,20 @@ class Dials:
     mtb_preferred: int | None = None
     # v0.7.0 "Route through anyway": the closures this plan routes through (their ids).
     closure_bypass: tuple[str, ...] = ()
+    # A dirt trail a point is on is ridden on a ride type that does not plan on them
+    # (`core.trail_touch`); False plans on the ride type's own graph alone. Set by `plan`.
+    trail_touch: bool = True
+    # The dirt trails each point touches, in order, once looked up (None: not yet). Set by
+    # `plan`.
+    trail_touched: tuple[frozenset[int], ...] | None = None
+    # A ride's re-plan: the first point is the rider, so a dirt trail there counts, and any
+    # dirt trail may be ridden (`core.trail_touch`). `dirt_ridden`: the rider has been on one
+    # this ride, so any may be ridden wherever the rider is now.
+    ride_replan: bool = False
+    dirt_ridden: bool = False
+    # The dirt trails such a plan found for itself, each a short strip across it (a ring),
+    # left out as `blocked` is. Set by `plan`.
+    trail_strays: tuple[tuple[tuple[float, float], ...], ...] = ()
     # v0.9.1, Go and a ride: DDOT's permits, which say a road may be closed
     # (`routemaker.workzones.possible`), left off the answer. A plan flags them only.
     closures_now: bool = False
@@ -3027,6 +3063,55 @@ def plan(
     quick: bool = False,
     candidates: bool = True,
 ) -> dict:
+    """Route through `points` on `preset_name`, returning the contract's body (`_plan`).
+
+    A plan that rides a dirt trail a point touches and found others for itself
+    (`StrayTrails`) is made again without them, STRAY_ROUNDS times at most, then on the
+    ride type's own graph, the dirt trails closed as before. So it is too where leaving them
+    out leaves no route.
+    """
+    if started is None:
+        started = clock()
+    dials = dials or Dials()
+    for _round in range(STRAY_ROUNDS):
+        try:
+            return _plan(points, preset_name, long_ride, started, dials, quick, candidates)
+        except StrayTrails as found:
+            logger.info("planning again without %s", found)
+            dials = dataclasses.replace(
+                dials,
+                trail_touched=found.touched,
+                trail_strays=dials.trail_strays + tuple(map(_ring_tuple, found.rings)),
+            )
+        except (NoRoute, DeadlineExceeded, RouterUnavailable):
+            # Leaving the strays out left no route, or no time for another round: the plan
+            # the ride type makes on its own graph, in what is left of the budget.
+            if not dials.trail_strays:
+                raise
+            logger.info("no route without the dirt trails found; planning without dirt trails")
+            break
+    dials = dataclasses.replace(dials, trail_touch=False, trail_strays=())
+    return _plan(points, preset_name, long_ride, started, dials, quick, candidates)
+
+
+def _over_budget(rings) -> bool:
+    perimeter, vertices = work_zones.rules.budget_used(rings)
+    return perimeter > work_zones.rules.MAX_PERIMETER_M or vertices > work_zones.rules.MAX_VERTICES
+
+
+def _ring_tuple(ring) -> tuple[tuple[float, float], ...]:
+    return tuple((float(lon), float(lat)) for lon, lat in ring)
+
+
+def _plan(
+    points: list[list[float]],
+    preset_name: str,
+    long_ride: bool = False,
+    started: float | None = None,
+    dials: Dials | None = None,
+    quick: bool = False,
+    candidates: bool = True,
+) -> dict:
     """Route through `points` on `preset_name`, returning the contract's body.
 
     `long_ride` gives the request the long-ride time limits, and `started`
@@ -3132,6 +3217,34 @@ def plan(
     assist = bool(dials.assist) and preset.assist_speed_kmh is not None
     trails_off = bool(dials.trails_off)
     variant = presets.variant_for_ride(preset_name, when, assist, trails_off)
+    # A dirt trail the rider put a stop, via or end on (the owner, 2026-10-20: "Don't plan on
+    # the route, but if you enter it or mark a waypoint in it, it will continue to route
+    # through"): planned on the off-road graph, where it is open, with this ride type's
+    # costing; the dirt trails the plan finds for itself are left out again (`StrayTrails`,
+    # `core.trail_touch`). The start alone does not (2026-10-21: "I wouldn't use that as a
+    # start for routing unless "opted-in""), but on a ride's re-plan the start is the rider:
+    # on a dirt trail, or after one, any dirt trail may be ridden ("If someone goes onto a dirt
+    # trail, any reroutes should include dirt").
+    touched_trails: frozenset[int] = frozenset()
+    per_point: tuple[frozenset[int], ...] = ()
+    any_dirt = False
+    if (
+        variant == Variant.STANDARD.value
+        and dials.trail_touch
+        and dials.follow is None
+        and not dials.straight
+    ):
+        per_point = dials.trail_touched
+        if per_point is None:
+            per_point = trail_touch.touched(points)
+        # Not the start, nor the start again at the end of a loop or a round trip.
+        chosen = per_point if dials.ride_replan else per_point[1:]
+        if not dials.ride_replan and len(points) > 1 and is_round_trip(points):
+            chosen = chosen[:-1]
+        touched_trails = frozenset().union(*chosen)
+        any_dirt = dials.ride_replan and (dials.dirt_ridden or bool(per_point[0]))
+        if touched_trails or any_dirt:
+            variant = Variant.OFFROAD.value
     # Bike lanes are "none" in the breakdown on a ride that takes the roadway (Mass
     # Ride, whose own graph is no-trail), not on every trails-off ride.
     lanes_as_roadway = preset.variant == Variant.NO_TRAIL.value
@@ -3179,7 +3292,13 @@ def plan(
     # The roads the rider marked closed on this ride (v0.8.2): left out as a closure is,
     # after the closures' own rings, and kept out where those are let back in. They take
     # the router's polygon budget first (the latest kept), and the closures fit the rest.
+    # The strips across dirt trails a plan found for itself (`plan`) are always kept, a few
+    # metres each: the rider's own fit beside them, the earliest let go first.
+    strips = [[list(p) for p in ring] for ring in dials.trail_strays]
     blocked = work_zones.blocked_rings(dials.blocked)
+    while blocked and _over_budget(strips + blocked):
+        blocked = blocked[1:]
+    blocked = strips + blocked
     zones_plan = work_zones.plan_zones(
         points,
         when,
@@ -3673,6 +3792,18 @@ def plan(
                 leg_runs.append((start, len(pieces)))
                 raw_junctions.extend(trace_junctions.junctions_of_trace(trace, shape, traced_m))
                 traced_m += sum(piece.metres for piece in pieces[start:])
+        dirt_trails = False
+        if (touched_trails or any_dirt) and variant == Variant.OFFROAD.value:
+            ways = trail_touch.off_road_ways([piece.way_id for piece in pieces])
+            stray = trail_touch.stray_rings(pieces, ways, touched_trails, any_dirt)
+            if stray:
+                if alternate:
+                    # A side route (a candidate, the way round a junction or through a
+                    # closure) is dropped, not the plan made again.
+                    raise StraySideRoute("a side route takes a dirt trail no point touches")
+                _wait_for_delays(delays)
+                raise StrayTrails(tuple(stray), per_point)
+            dirt_trails = trail_touch.rides_dirt(pieces, ways)
         # A long calm plan was searched in legs of its own: the answer has the plan's
         # legs, as the front end reads which leg a point on the line belongs to, and
         # a Mass Ride's stops and the description's are the plan's stops.
@@ -3930,6 +4061,7 @@ def plan(
         return {
             "preset": preset.name,
             "variant": variant,
+            "dirt_trails": dirt_trails,
             "geometry": {
                 "type": "LineString",
                 "coordinates": [[round(lon, 6), round(lat, 6)] for lon, lat in coordinates],
@@ -4062,6 +4194,8 @@ def plan(
                 around["extra_distance_m"] = round(around["distance_m"] - body["distance_m"], 1)
                 around["extra_duration_s"] = round(around["duration_s"] - body["duration_s"], 1)
                 body["avoid_alternate"] = around
+            except StraySideRoute:
+                pass
             except (DeadlineExceeded, RouterUnavailable, NoRoute):
                 avoid_info["alternate"] = "time"
         else:
@@ -4108,6 +4242,8 @@ def plan(
                     _trip_length_m(found), target_m, ceiling
                 )["over_target_m"]
             candidates.append({**candidate, "rank": len(candidates) + 2})
+        except StraySideRoute:
+            continue
         except (DeadlineExceeded, RouterUnavailable, NoRoute):
             break
     body["candidates"] = candidates or None
