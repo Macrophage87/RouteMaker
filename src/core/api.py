@@ -3747,8 +3747,9 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
             busy[found.ride] = _busy_m(answer)
         busy = {index: m for index, m in busy.items() if m is not None}
         # The rider's own pick stays chosen; otherwise the best once routed is (Stephen,
-        # 2026-10-21: a trip that came out at 34 min stayed chosen above riding at 31).
-        keep = body.transit_option is not None and found.asked is None
+        # 2026-10-21: a trip that came out at 34 min stayed chosen above riding at 31). Novice
+        # and Nervous's hop, chosen because the rider asked to skip the busy stretch, stays too.
+        keep = (body.transit_option is not None and found.asked is None) or found.option.hop
         timed = transit.with_rides(found, routed, busy, keep=keep) if routed else found
         if timed.option.key != found.option.key:
             # The chosen trip's departure cannot be caught after all and it was left out, or
