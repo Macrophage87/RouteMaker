@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
-<meta name="description" content="How to use RouteMaker: Go, Plan, the ride screen, layers, saving, sharing and exporting routes, settings, suggestions and ride links.">
+<meta name="description" content="How to use RouteMaker: Go, Plan, the ride screen, layers, saving, sharing and exporting routes, settings, reports and ride links.">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <title>Using RouteMaker - RouteMaker</title>
 <style>
@@ -149,7 +149,7 @@ open More for the detail.</p>
 <div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 760 172" role="img" aria-labelledby="fig-glance-using-t fig-glance-using-d" focusable="false" style="min-width:547px">
 <title id="fig-glance-using-t">Using RouteMaker at a glance</title>
-<desc id="fig-glance-using-d">Three places. Go: Where to? and Start ride, for a quick trip on a phone. Plan: the points, the ride type and the directions, for building a route. Layers is on Go&#x27;s top bar; Save and load, Suggest and Settings are in Go&#x27;s Menu. In Plan, all of them are on the bottom bar. Go and Plan share one route, and you can switch at any time.</desc>
+<desc id="fig-glance-using-d">Three places. Go: Where to? and Start ride, for a quick trip on a phone. Plan: the points, the ride type and the directions, for building a route. Layers is on Go&#x27;s top bar; Save and load, Reports and Settings are in Go&#x27;s Menu. In Plan, all of them are on the bottom bar. Go and Plan share one route, and you can switch at any time.</desc>
 <defs><marker id="ah-glance-using" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
 <rect class="bxa" x="10" y="12" width="236" height="40" rx="6"/>
 <text class="tb" x="128.0" y="36.5" text-anchor="middle">Go</text>
@@ -168,14 +168,14 @@ open More for the detail.</p>
 <path class="ar" d="M632,54 L632,70" marker-end="url(#ah-glance-using)"/>
 <rect class="bx" x="514" y="72" width="236" height="64" rx="6"/>
 <text class="ts" x="632.0" y="100.5" text-anchor="middle">Layers, Save and load</text>
-<text class="ts" x="632.0" y="116.5" text-anchor="middle">Suggest, Settings</text>
+<text class="ts" x="632.0" y="116.5" text-anchor="middle">Reports, Settings</text>
 <text class="ts" x="380" y="160" text-anchor="middle">Go and Plan share one route: switch at any time.</text>
 </svg>
 </div>
 <div class="fig-narrow">
 <svg viewBox="0 0 320 432" role="img" aria-labelledby="fig-glance-using-n-t fig-glance-using-n-d" focusable="false">
 <title id="fig-glance-using-n-t">Using RouteMaker at a glance</title>
-<desc id="fig-glance-using-n-d">Three places. Go: Where to? and Start ride, for a quick trip on a phone. Plan: the points, the ride type and the directions, for building a route. Layers is on Go&#x27;s top bar; Save and load, Suggest and Settings are in Go&#x27;s Menu. In Plan, all of them are on the bottom bar. Go and Plan share one route, and you can switch at any time.</desc>
+<desc id="fig-glance-using-n-d">Three places. Go: Where to? and Start ride, for a quick trip on a phone. Plan: the points, the ride type and the directions, for building a route. Layers is on Go&#x27;s top bar; Save and load, Reports and Settings are in Go&#x27;s Menu. In Plan, all of them are on the bottom bar. Go and Plan share one route, and you can switch at any time.</desc>
 <defs><marker id="ah-glance-using-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
 <rect class="bxa" x="10" y="8" width="300" height="36" rx="6"/>
 <text class="tb" x="160.0" y="31.5" text-anchor="middle">Go</text>
@@ -194,7 +194,7 @@ open More for the detail.</p>
 <path class="ar" d="M160.0,302 L160.0,318" marker-end="url(#ah-glance-using-n)"/>
 <rect class="bx" x="10" y="320" width="300" height="56" rx="6"/>
 <text class="ts" x="160.0" y="343.5" text-anchor="middle">Layers, Save and load</text>
-<text class="ts" x="160.0" y="363.5" text-anchor="middle">Suggest, Settings</text>
+<text class="ts" x="160.0" y="363.5" text-anchor="middle">Reports, Settings</text>
 <text class="ts" x="160.0" y="400" text-anchor="middle">Go and Plan share one route: switch</text>
 <text class="ts" x="160.0" y="420" text-anchor="middle">at any time.</text>
 </svg>
@@ -220,7 +220,7 @@ both are on the bottom bar.</li>
 <li><a href="#layers">Layers and the road panel</a></li>
 <li><a href="#save">Save, share and export</a></li>
 <li><a href="#settings">Settings and your account</a></li>
-<li><a href="#suggest">Suggest, 311 and ride links</a></li>
+<li><a href="#suggest">Reports and ride links</a></li>
 <li><a href="#android">The Android app</a></li>
 <li><a href="#sources">Sources</a></li>
 </ul>
@@ -820,27 +820,35 @@ assistants</a>.</li>
 </ul>
 
 </div></details>
-<h2 id="suggest">Suggest, 311 and ride links</h2>
-<p>Suggest sends a correction to the map's admins; 311 logs a problem on the street for you to report;
-ride links let a group see each other on the route.</p>
-<details class="more"><summary>More: Suggest, 311 and ride links</summary>
+<h2 id="suggest">Reports and ride links</h2>
+<p><strong>Reports</strong> holds your 311 checklist, for problems on the street you report to
+the city, and the ways to suggest a correction to the map's admins. Ride links let a group see each other
+on the route.</p>
+<details class="more"><summary>More: Reports and ride links</summary>
 <div class="more-body">
 
 <h3>Suggest a change</h3>
 <ul>
 <li>Press and hold a road (or right-click it), then <strong>Suggest a change…</strong>: a road's
 traffic stress, a junction, or a hazard on a Mass Ride. <strong>The road at the map's center</strong>
-in the Suggest sheet does the same without the map.</li>
+in Reports does the same without the map.</li>
 <li>Nothing changes until an admin reviews it. Admins work through suggestions, closures and hazards in
 <strong>Review</strong>, beside Go and Plan.</li>
 </ul>
 <h3>311</h3>
 <ul>
-<li>During a ride, the <strong>311</strong> button logs a problem where you are; in Plan, the map's
-right-click or long-press menu has <strong>Log for 311</strong>.</li>
-<li>The log is a checklist in Suggest, grouped by the 311 website for each place (DC 311<sup class="cite"><a href="#ref-5" aria-label="source 5">[5]</a></sup>,
+<li>During a ride, the <strong>311</strong> button shows all six problems at once: Pothole, Downed tree,
+Vehicle parked in a bike lane, Roadway or bikeway obstructed, Streetlight out and Something else. One tap
+logs it where you are, with no note to type. Where RouteMaker can send DC reports itself, a DC
+problem is sent at once and goes straight to Archived. In Plan, the map's right-click or long-press menu has
+<strong>Log for 311</strong>.</li>
+<li>The log is a checklist in Reports, grouped by the 311 website for each place (DC 311<sup class="cite"><a href="#ref-5" aria-label="source 5">[5]</a></sup>,
 Montgomery County, Prince George's County, Baltimore and others). Report each one there, then check it
-off. The log is kept with your account.</li>
+off. Each entry says when it was logged, and once checked off, when it was reported. The log is kept with your account.</li>
+<li>An entry left unchecked for 30 days moves to <strong>Archived</strong> by itself, marked not
+reported. It is kept there, and checking it off there still records it as reported.</li>
+<li>When you end a ride with problems still to report, the ride summary says how many and that Reports is
+in Go's Menu and Plan's bottom bar, with an <strong>Open Reports</strong> button.</li>
 </ul>
 <h3>Group Ride and Mass Ride links</h3>
 <ul>
