@@ -14,7 +14,8 @@ name: Android app
 # build: it bakes in the ROUTEMAKER_SITE_URL secret (the owner OK'd the address being public there,
 # 2026-10-21) and keeps its artifact for 3 days only. site-config.js refuses ROUTEMAKER_URL in CI
 # otherwise, and the step after `cap sync` checks that a test build names no site. The store id comes
-# from the ROUTEMAKER_APP_ID secret, for test and store builds alike, so they update one another.
+# from the ROUTEMAKER_APP_ID secret; a debug build adds ".debug" to it, so a test build sits beside
+# the store app instead of clashing with it (the two are signed with different keys).
 on:
   pull_request:
     paths:
@@ -46,7 +47,8 @@ jobs:
       # A pull request always builds debug, without the inspector; release only by hand.
       BUILD: ${{ github.event_name == 'workflow_dispatch' && inputs.build || 'debug' }}
       ROUTEMAKER_VERSION_CODE: ${{ github.run_number }}
-      ROUTEMAKER_DEBUG: ${{ github.event_name == 'workflow_dispatch' && inputs.inspector && '1' || '0' }}
+      # Never in a store (release) build.
+      ROUTEMAKER_DEBUG: ${{ github.event_name == 'workflow_dispatch' && inputs.inspector && inputs.build != 'release' && '1' || '0' }}
       # Empty on a fork's pull request: Gradle then falls back to the placeholder id.
       ROUTEMAKER_APP_ID: ${{ secrets.ROUTEMAKER_APP_ID }}
     steps:
@@ -79,6 +81,13 @@ jobs:
           else
             npx cap sync android
           fi
+      - name: The store build names its site
+        if: env.BUILD == 'release'
+        run: |
+          node -e '
+            const c = require("./android/app/src/main/assets/capacitor.config.json");
+            if (!(c.server && c.server.url)) { console.error("::error::The store build names no site."); process.exit(1); }
+          '
       - name: No site address in the build
         if: env.BUILD == 'debug'
         run: |

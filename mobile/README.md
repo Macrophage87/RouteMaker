@@ -212,8 +212,9 @@ workflow, a debug build only; by hand (Run workflow), debug or release; never on
 config names no site, `./gradlew testDebugUnitTest`, then the APK. The checkout keeps no token
 (`persist-credentials: false`); actions are pinned by commit. A pull request's debug APK names no site,
 so it is fine as a public artifact. It uses no repository variables. The application id comes from the
-`ROUTEMAKER_APP_ID` secret (the owner's reverse domain), for test and store builds alike, so one installs
-over the other; without it (a fork's pull request) it is `org.routemaker.phone`. These repository secrets:
+`ROUTEMAKER_APP_ID` secret (the owner's reverse domain); a debug build adds `.debug`, so a test build
+sits beside the store app (the two are signed with different keys, so one could never update the
+other). Without the secret (a fork's pull request) it is `org.routemaker.phone`, plus `.debug`. These repository secrets:
 
 | Name | Kind | Used for |
 | --- | --- | --- |
