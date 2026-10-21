@@ -824,6 +824,11 @@ def elevator_words(station_name: str) -> str:
     return f"Elevator out at {station_name}: carry your bike on the stairs."
 
 
+def spare_elevator_words(station_name: str) -> str:
+    """An elevator out where another street elevator works: said, never ranked down."""
+    return f"A street elevator is out at {station_name}: use another one."
+
+
 def train_minutes(train: Train) -> str:
     if train.boarding:
         return "boarding"
