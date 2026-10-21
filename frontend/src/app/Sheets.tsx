@@ -14,7 +14,7 @@ import { PresetName } from "../lib/presetName.ts";
 import { filterRideGroups, rideSections, rideTypeCount, RideTypeSearch } from "../lib/rideTypeGroups.ts";
 import { RideTypeCards } from "../lib/rideTypeCards.ts";
 import { toggleFromPicker, useFavoriteRides } from "../lib/favoriteRides.ts";
-import { DELETE_ACCOUNT_PAGE, isPlainClick, rememberPlanForSignIn, tabSession } from "../lib/signIn.ts";
+import { DELETE_ACCOUNT_PAGE, PRIVACY_PAGE, isPlainClick, rememberPlanForSignIn, tabSession } from "../lib/signIn.ts";
 import { SignOutForm } from "../SignOut.tsx";
 import { AssistantKeySetting } from "../AssistantKey.tsx";
 import { pointName } from "../lib/summary.ts";
@@ -565,6 +565,10 @@ export function SettingsSheet(props: SettingsSheetProps) {
               <a href={DELETE_ACCOUNT_PAGE}>Delete account</a>
             </p>
           )}
+          {/* The privacy policy (core.privacy_policy): one link, signed in or out, after Delete account. */}
+          <p className="privacy-link">
+            <a href={PRIVACY_PAGE}>Privacy policy</a>
+          </p>
         </section>
       )}
       {/* The documentation (the owner, 2026-10-19): one link, last, under its own heading. */}

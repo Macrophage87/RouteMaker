@@ -691,7 +691,7 @@ then `sudo rm -f /var/log/nginx/rmbeta-access.log* /var/log/nginx/rmbeta-error.l
 (the two logs and the password file this step created). The site is then gone and the other sites never noticed.
 
 What the site does, so you can explain it to the owner: only `robots.txt`, `/delete-account`
-(Google Play's account-deletion page) and the port-80 ACME challenge path are public; everything else, including `/healthz`, `/auth/` and the admin path, asks for
+(Google Play's account-deletion page), `/privacy` (the privacy policy) and the port-80 ACME challenge path are public; everything else, including `/healthz`, `/auth/` and the admin path, asks for
 a password. Every response carries `X-Robots-Tag: noindex, nofollow`. `/api` has 75-second timeouts
 (a plan takes up to 47 seconds). JSON and vector tiles are gzipped. The base map answers only this
 site's own pages.

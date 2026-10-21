@@ -7462,7 +7462,8 @@ details.fold > summary .icon {
 #sheet-settings .weight-row .setting-line {
   flex-wrap: nowrap;
 }
-#sheet-settings .delete-account {
+#sheet-settings .delete-account,
+#sheet-settings .privacy-link {
   margin: 4px 0;
 }
 #sheet-settings .setting-row .switch {
@@ -7878,8 +7879,10 @@ details.fold > summary .icon {
   font: inherit;
 }
 
-/* Settings > Account's Delete account link (core.account_deletion): a full-size target, not hint text. */
-.delete-account a {
+/* Settings > Account's Delete account and Privacy policy links (core.account_deletion, core.privacy_policy): full-size
+   targets, not hint text. */
+.delete-account a,
+.privacy-link a {
   display: inline-flex;
   align-items: center;
   min-height: 44px;
