@@ -698,15 +698,18 @@ const endsWith = (v, tail, more = 0) => [
   ["==", ["slice", v, ["-", ["length", v], tail.length]], tail],
 ];
 const cut = (v, n) => ["slice", v, 0, ["-", ["length", v], n]];
-/** @param {unknown} [base] the base map's own text-field, for names in another script */
-export function rideRoadLabelField(base = null) {
+/**
+ * @param {unknown} [base] the base map's own text-field, for names in another script
+ * @param {unknown} [name] the name to shorten: the base map's English name, else its local one (a trail's is its own)
+ */
+export function rideRoadLabelField(base = null, name = ["coalesce", ["get", "name:en"], ["get", "pgf:name"], ["get", "name"], ""]) {
   const n = ["var", "n"];
   const q = ["var", "q"];
   const b = ["var", "b"];
   const short = [
     "let",
     "n",
-    ["coalesce", ["get", "name:en"], ["get", "pgf:name"], ["get", "name"], ""],
+    name,
     [
       "let",
       "q",
@@ -732,10 +735,12 @@ export function rideRoadLabelField(base = null) {
   return base === null ? short : ["case", ["all", ["!", ["has", "name:en"]], ["has", "script"]], base, short];
 }
 
-/** The street names' paint, plain or with the accessibility switch on. */
+/** The street names' paint, plain or with the accessibility switch on. A path's name (the base map's `path` kind,
+ *  named from zoom 15) is in the trail names' purple (TRAIL_LABEL), so a trail reads as one at every zoom. */
 export function roadLabelPaint(strong = accessibilityOn()) {
+  const street = strong ? ROAD_LABEL.strongColor : ROAD_LABEL.color;
   return {
-    "text-color": strong ? ROAD_LABEL.strongColor : ROAD_LABEL.color,
+    "text-color": ["case", ["==", ["get", "kind"], "path"], strong ? TRAIL_LABEL.strongColor : TRAIL_LABEL.color, street],
     "text-halo-color": ROAD_LABEL.halo,
     "text-halo-width": strong ? ROAD_LABEL.strongHaloWidth : ROAD_LABEL.haloWidth,
     "text-halo-blur": ROAD_LABEL.haloBlur,
@@ -753,6 +758,68 @@ export function withClearRoadLabels(layers, strong = accessibilityOn()) {
         }
       : layer,
   );
+}
+
+/**
+ * THE MAJOR TRAILS' NAMES. The owner, 2026-10-21: "Major off road bike trails like the Metropolitan Branch Trail
+ * should be named on the map." The tiles carry `trail_name` on the long trails the zoomed-out map keeps (a path on
+ * a regional-or-larger bicycle route or a long walking route, or in a named run of 2.5 mi or more, 5 mi unpaved;
+ * core/stress_tiles.py, trail_name_rule), so "major" is the rule the map already draws by, not a list. The name is
+ * drawn along the line from TRAIL_LABEL_MIN_ZOOM, the zoom the station names and every street come in at, in the
+ * street names' face, size and white halo (ROAD_LABEL; 20 px and shortened in a ride, as they are) but in the
+ * purple of the off-road path's rails (FACILITIES, `path`): 10.9:1 on the halo, near-black purple (15.2:1) with the
+ * accessibility switch. The layer is under the base map's labels, so a street name or a station's wins a place
+ * both want; and the climbs go under it (MapView). From zoom 15 the base map names every path too, in the same
+ * purple (roadLabelPaint). The name is on the canvas, out of a screen reader's reach; the road panel says it.
+ */
+export const TRAIL_LABEL_LAYER_ID = "trail-name";
+export const TRAIL_LABEL_MIN_ZOOM = 12;
+export const TRAIL_LABEL = {
+  color: "#4c1d95",
+  strongColor: "#2e1065",
+  // MapLibre's own spacing, so a name finds a place between the street and station names; a gentle bend at most, so it reads.
+  spacing: 250,
+  maxAngle: 30,
+  padding: 6,
+};
+
+/** The trail names' paint, plain or with the accessibility switch on. */
+export function trailLabelPaint(strong = accessibilityOn()) {
+  return {
+    "text-color": strong ? TRAIL_LABEL.strongColor : TRAIL_LABEL.color,
+    "text-halo-color": ROAD_LABEL.halo,
+    "text-halo-width": strong ? ROAD_LABEL.strongHaloWidth : ROAD_LABEL.haloWidth,
+    "text-halo-blur": ROAD_LABEL.haloBlur,
+  };
+}
+
+/** A ride's trail names: shortened as the street names are ("Rock Creek Trl"). */
+export function rideTrailLabelField() {
+  return rideRoadLabelField(null, ["get", "trail_name"]);
+}
+
+/** The trail names' layer (2026-10-21): along each major trail, from zoom 12. */
+export function trailLabelLayers(sourceId = "stress", when = DEFAULT_WHEN, strong = accessibilityOn()) {
+  return [
+    {
+      id: TRAIL_LABEL_LAYER_ID,
+      type: "symbol",
+      source: sourceId,
+      "source-layer": STRESS_TILE_LAYER,
+      minzoom: TRAIL_LABEL_MIN_ZOOM,
+      filter: stressFilters(when)[TRAIL_LABEL_LAYER_ID],
+      layout: {
+        "symbol-placement": "line",
+        "symbol-spacing": TRAIL_LABEL.spacing,
+        "text-field": ["get", "trail_name"],
+        "text-font": [ROAD_LABEL.font],
+        "text-size": ROAD_LABEL.size,
+        "text-max-angle": TRAIL_LABEL.maxAngle,
+        "text-padding": TRAIL_LABEL.padding,
+      },
+      paint: trailLabelPaint(strong),
+    },
+  ];
 }
 
 // The stress tiles' layer and property, per the SHARED API CONTRACT for
@@ -1259,6 +1326,9 @@ function stressFiltersOf(when, showHighLanes, routableMtb) {
   // The names (2026-10-10): every mountain-bike trail with one, rated or not.
   // At a level (slice 6) every trail keeps its name, routable or not.
   filters[MTB_LABEL_LAYER_ID] = ["all", drawnAt(when), isMtbTrail, ["has", "name"], ...(upTo !== null ? [] : off)];
+  // The major trails' names (2026-10-21): every way that carries one (never a mountain-bike trail, which the
+  // tiles name as `name`; the cut is the routable layers' all the same).
+  filters[TRAIL_LABEL_LAYER_ID] = ["all", drawnAt(when), ...hidden, ["has", "trail_name"]];
   for (const tier of TIER_SHAPES) {
     const filter = ["all", drawnAt(when), ...hidden, ["==", tierAt(when), tier.tier]];
     // LTS 1's line and edge leave the surface-unknown trails to their own layers.
@@ -1847,6 +1917,8 @@ export function stressOverlayLayers(sourceId = "stress", when = DEFAULT_WHEN, ti
     ...unpavedLayers(sourceId, when, tiers),
     // Half steps' dashes from street level (441r-441v, 458), over their lower level's line.
     ...halfStepLayers(sourceId, when, tiers),
+    // The major trails' names (2026-10-21), over every line.
+    ...trailLabelLayers(sourceId, when),
     // The mountain-bike trails' names (2026-10-10), over every routable line, so a route does not hide them.
     ...mtbLabelLayers(sourceId, when),
     // The Mass Ride map's own layers, over these, from its own tiles (core/mass_tiles.py): drawn

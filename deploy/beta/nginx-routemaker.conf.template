@@ -91,6 +91,16 @@ map "$http_origin|$http_referer" $rmbeta_basemap_foreign {
     "~^\|https://@SERVER_NAME_RE@/" 0;
 }
 
+# A link fetcher (a chat app, social site or search engine making a link's preview), as
+# core.share_preview.is_fetcher and the Caddyfile's @link_fetcher tell it: its User-Agent names a
+# fetcher and it is no browser navigation (tests/test_link_preview.py holds the three patterns
+# equal). Key is "Sec-Fetch-Mode|User-Agent"; the first regex that matches wins.
+map "$http_sec_fetch_mode|$http_user_agent" $rmbeta_link_fetcher {
+    default 0;
+    "~*^navigate\|" 0;
+    "~*^[^|]*\|.*(bot\b|bot/|crawler|spider|facebookexternalhit|facebot|slack|whatsapp|telegram|skypeuripreview|embedly|iframely|mastodon|pleroma|pinterest|vkshare|googlemessages|preview)" 1;
+}
+
 # Port 80: ACME challenges stay answerable (renewals), everything else goes to https.
 server {
     listen 80;
@@ -209,9 +219,46 @@ server {
         proxy_read_timeout 75s;
     }
 
+    # --- public: link previews (core.share_preview) ---------------------------------
+    # A chat app making a link's preview has no password (the owner, 2026-10-20: "Is there a way
+    # to have the icon when shared?"). A shared route's link and its image: the api gives a
+    # fetcher the preview's tags and a browser a redirect into the app, which stays behind the
+    # password. And the app's own address as a fetcher sees it, which `location = /` hands a
+    # fetcher: the name, a line on what the app does and the icon's card. The icons and the
+    # favicon below are outside the password too; they are the repository's own files.
+    location ~ ^/s/[^/]+(/preview\.png)?$ {
+        auth_basic off;
+        proxy_pass http://rmbeta_api;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_connect_timeout 5s;
+        proxy_send_timeout 75s;
+        proxy_read_timeout 75s;
+    }
+
+    location = /link-preview {
+        auth_basic off;
+        proxy_pass http://rmbeta_api;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_connect_timeout 5s;
+        proxy_send_timeout 75s;
+        proxy_read_timeout 75s;
+    }
+
     # --- the front end (Caddyfile @frontend) --------------------------------------
     # The same security headers Caddy sets, the same CSP verbatim.
     location = / {
+        # A link fetcher gets the app's preview tags instead (the map above, /link-preview).
+        if ($rmbeta_link_fetcher) {
+            rewrite ^ /link-preview last;
+        }
         root @DATA_ROOT@/frontend;
         try_files /index.html =404;
         add_header X-Robots-Tag "noindex, nofollow" always;
@@ -261,6 +308,7 @@ server {
     }
 
     location = /favicon.svg {
+        auth_basic off;
         root @DATA_ROOT@/frontend;
         add_header X-Robots-Tag "noindex, nofollow" always;
         add_header Strict-Transport-Security "max-age=86400" always;
@@ -270,8 +318,9 @@ server {
     # The installable app (Caddyfile @frontend; WEB-NAV-plan.md section 8): its service worker and
     # manifest revalidate on every load, as index.html does, so a deploy or the kill switch
     # (docs/OPERATIONS.md) reaches every browser at once; its icons keep a day, like the favicon.
-    # All three stay behind the password: index.html asks for the manifest with credentials
-    # (crossorigin="use-credentials"), and the browser sends them with the worker's own fetches.
+    # The worker and manifest stay behind the password: index.html asks for the manifest with
+    # credentials (crossorigin="use-credentials"), and the browser sends them with the worker's own
+    # fetches. The icons are outside it, for link previews (above).
     # sw-kill.js is not served: it is copied over sw.js on disk when needed.
     location = /sw.js {
         root @DATA_ROOT@/frontend;
@@ -293,6 +342,7 @@ server {
     }
 
     location ^~ /icons/ {
+        auth_basic off;
         root @DATA_ROOT@/frontend;
         add_header X-Robots-Tag "noindex, nofollow" always;
         add_header Strict-Transport-Security "max-age=86400" always;
