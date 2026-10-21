@@ -15,7 +15,7 @@ a message naming `RM_BETA_HOST` when it is missing; on a server set up before v0
 
 | Where | What | Undo |
 | --- | --- | --- |
-| Docker | One compose project, `routemaker-beta`: containers postgis, api, worker, photon and four routers; one network | `scripts/beta/beta-compose.sh down` |
+| Docker | One compose project, `routemaker-beta`: containers postgis, api, worker, photon and four routers, plus the two trail routers (valhalla-offroad, valhalla-mtb) once their tiles are on the host; one network | `scripts/beta/beta-compose.sh down` |
 | `/data/routemaker-src` | The checkout of the exact release sha | `rm -rf` it |
 | `/data/routemaker` | `DATA_ROOT`: tiles, database files, Photon index, base map, front end, backups | `rm -rf` it, only after the owner agrees |
 | `/data/routemaker-incoming` | The bundle as shipped from home (about 4 GB) | `rm -rf` it |
@@ -33,8 +33,8 @@ already exists (`/data` included: it holds other people's data).
 It does not touch the other sites, `nginx.conf`, the firewall, the system packages' configuration,
 or Docker's daemon settings. If a step seems to need any of those, **stop and ask the owner**.
 
-The memory budget is hard: every container has a cap (`compose.beta.yaml`, 7102 MiB = 6.94 GiB
-resident in all, 7358 MiB = 7.19 GiB at the startup peak, against the host's 8.6 GiB available), so a spike restarts a
+The memory budget is hard: every container has a cap (`compose.beta.yaml`, 7230 MiB = 7.06 GiB
+resident in all with the two trail routers, 7486 MiB = 7.31 GiB at the startup peak, against the host's 8.6 GiB available), so a spike restarts a
 RouteMaker container rather than starving another site. Every RouteMaker container also has
 `cpu_shares: 512` and `oom_score_adj: 500`: under CPU contention the other sites win, and a
 host-wide out-of-memory kill picks a RouteMaker process first.
@@ -101,7 +101,7 @@ What to expect on this server (the owner's check, 2026-10-04); a check below tha
 - `/data` is a separate filesystem mounted `nofail`, with far more than the 25 GB this needs;
 - Docker's root may be on the root disk rather than on `/data` (that is why binds never create
   their source: "Reboot and a late `/data`"), so its free space is checked on its own;
-- available memory is at least the 8400 MiB threshold below (the 7358 MiB startup peak plus the
+- available memory is at least the 8510 MiB threshold below (the 7486 MiB startup peak plus the
   checker's 1 GiB margin);
 - an x86_64 machine (the api image is built at home, on x86_64);
 - `beta.example.org` resolves to this server's own public address (checked live below; the
@@ -109,7 +109,7 @@ What to expect on this server (the owner's check, 2026-10-04); a check below tha
 
 ```sh
 . "$HOME/routemaker-beta-state/vars.sh"
-free -m                                  # "available" must be at least 8400 MiB: the 7358 MiB startup peak plus the checker's 1 GiB margin (the caps total 7102 MiB = 6.94 GiB resident)
+free -m                                  # "available" must be at least 8510 MiB: the 7486 MiB startup peak plus the checker's 1 GiB margin (the caps total 7230 MiB = 7.06 GiB resident)
 uname -m; docker info -f '{{.Architecture}}'   # both x86_64: the api image is built at home on x86_64; anything else is a stop
 df -h /data /                            # /data: at least 25 GB free (bundle 4 GB, installed copy 4 GB, backups)
 findmnt -no SOURCE,FSTYPE,OPTIONS /data  # a filesystem of its own; nofail in the options is expected (see "Reboot and a late /data")
@@ -296,7 +296,7 @@ from `.env` (the rendered config holds every secret), only the table and any pro
 prints a problem, stop and report it. It checks: no caddy or rebuild; a memory cap, CPU cap and
 `memswap_limit` on every container; `cpu_shares` below 1024 and `oom_score_adj` at least 500 on
 every container; only the api publishing a port and only on `127.0.0.1`; the resident total under
-7.0 GiB and the startup peak (plus the largest one-shot) leaving 1 GiB of the host's 8.6; at most
+7.1 GiB (the two trail routers always counted) and the startup peak (plus the largest one-shot) leaving 1 GiB of the host's 8.6; at most
 six gunicorn workers with one left free beside the routing, geocoding and tile pools; Photon's heap
 plus capped direct buffers inside its cap; the weekly rebuild paused; every long-running service
 restarting `unless-stopped` and Django debug off; and in `.env`, no `COMPOSE_PROFILES` or
@@ -772,6 +772,10 @@ done
 scripts/beta/beta-compose.sh restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend
 ```
 
+The trail routers (`valhalla-offroad`, `valhalla-mtb`) are left out of every rollback: the release rolled back to may
+cap them at 768M, over the budget. If they run, stop them with `scripts/beta/beta-compose.sh stop valhalla-offroad
+valhalla-mtb` when rolling back to a release before v0.10.1, and start them again on the next release.
+
 If that update also carried a db part (`db --update-data`), do **B** as well, with the
 `pre-update-<time>.dump` it wrote: the graphs and the `live` schema are one build, and the old graphs
 against the new `live` mix segment attributes from one build with edges from another. A Photon index
@@ -931,7 +935,8 @@ continuous deployment first, as above, and resume it after.
    The pre-draw is not optional: until it finishes, every map view draws its tiles live (step 8,
    "Draw the stress tiles"). Run it before telling the testers the update is in.
 4. `scripts/beta/beta-compose.sh restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend`
-   (a router keeps the old archive mapped until restarted).
+   (a router keeps the old archive mapped until restarted), then the trail routers on their new tiles, from v0.10.1 on
+   (receive-data.sh prints the line): `scripts/beta/beta-compose.sh up -d --force-recreate valhalla-offroad valhalla-mtb`.
 5. `scripts/beta/smoke-test.sh --local`, then `--public`.
 
 **A new release sha** (code changes). The order matters: the database is snapshotted **before**
@@ -963,7 +968,8 @@ anything can run `migrate` (rollback C restores that snapshot), and the app star
    exactly the ones that did). The four routers also need a restart if `valhalla/*.json` or `lua/` changed, because
    they read those files only at start and `up -d` sees nothing to recreate:
    `scripts/beta/beta-compose.sh restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend`
-   (the same line as rollback A). Check with `git diff --stat <old sha>..<new sha> -- valhalla lua`.
+   (the same line as rollback A), with `valhalla-offroad valhalla-mtb` added once their tiles are on the host.
+   Check with `git diff --stat <old sha>..<new sha> -- valhalla lua`.
 9. **Only if `git diff --stat <old sha>..<new sha> -- deploy/beta` lists the nginx template** (owner steps, because
    they use sudo): re-render it with the same command and flags as step 9c of the install into `$RM_STATE`, install it
    over the site file (`sudo install -m 644 "$RM_STATE/routemaker-beta.full.conf" "$NGINX_SITE"`), then
@@ -1016,9 +1022,11 @@ live within about 10 minutes, and nothing after it checks what a screen reader h
   handout to the testers once it is deployed, adding the update hours if `RM_CD_WINDOW` is set
   (the sender's notes at its top say how).
 
-- The tagged commit carries the release's version in `pyproject.toml` (`version`) and
-  `src/routemaker/__init__.py` (`__version__`): bump both in the release's last commit
-  (tests/test_deploy_docs.py checks that they agree).
+- The tagged commit carries the release's version in `pyproject.toml` (`version`),
+  `src/routemaker/__init__.py` (`__version__`) and `frontend/package.json` (`version`, and the
+  two `version`s at the top of `frontend/package-lock.json`): bump all of them in the release's
+  last commit (tests/test_deploy_docs.py checks that they agree). The front end's is the one
+  riders see, by Plan's heading, in the tab's title and in the map's Help panel.
 
 ```sh
 # at home, on the owner's go:
@@ -1063,7 +1071,7 @@ A tag is never moved or reused: a fix is the next patch number. The agent's scri
 | docs, reports, `*.md`, `.github/`, fixtures | nothing on the server | ignored |
 | `src/` (not the items below), `frontend/`, `scripts/` | a code release | deploys |
 | `src/*/migrations/` | a migration | deploys; migrate runs after the pre-release snapshot |
-| `valhalla/*.json`, only keys a router reads at start (`logging`, `loki`, `thor`, `service_limits`, `httpd`, `odin`, `meili`, `statsd`, mjolnir's cache keys) | a router setting | deploys, then restarts the four routers (never the offroad one, which does not run on the beta; a runtime-only change to `valhalla/valhalla-offroad.json` restarts nothing) |
+| `valhalla/*.json`, only keys a router reads at start (`logging`, `loki`, `thor`, `service_limits`, `httpd`, `odin`, `meili`, `statsd`, mjolnir's cache keys) | a router setting | deploys, then restarts the routers: the four, and valhalla-offroad and valhalla-mtb once their tiles (`$RM_DATA/tiles/<variant>/current`) are on the host |
 | compose files, other than the lines below | a stack setting | deploys if the compose gate passes, then `up -d` photon and the routers (recreates only those whose settings changed) |
 | `deploy/` (the nginx template, the 401 and 502 pages, the env template) | owner steps with sudo | **stops** |
 | `scripts/prepare_data_root.sh`, a compose line adding a `DATA_ROOT` path | a data directory with sudo | **stops** |
@@ -1256,6 +1264,23 @@ old `$RM_STATE/cd/node_modules/<hash>` directories. The agent keeps `RM_CD_KEEP`
 
 **Uninstall:** `"$A" uninstall` stops and removes the timer and units; `rm -rf "$RM_STATE/cd"`
 removes the agent, its logs and its snapshots (owner's say-so: they hold database dumps).
+
+### The trail routers, once, after v0.10.1 deploys
+
+`valhalla-offroad` (Gravel and Mountain Goat) and `valhalla-mtb` (Mountain Bike) run on the beta from v0.10.1 (the
+owner, 2026-10-20: "Both, raise limit to 7.1 GB"). The agent that deploys v0.10.1 is the one installed before it, which
+knows only the four routers, so after that deploy, and once the new map's tiles are installed (`$RM_DATA/tiles/offroad/current`
+and `$RM_DATA/tiles/mtb/current` exist):
+
+```sh
+. "$HOME/routemaker-beta-state/vars.sh"
+cd "$RM_SRC"
+scripts/beta/auto-release.sh install                                  # the agent that knows the trail routers
+"${RM_PY:-python3}" scripts/check_beta_compose.py --env-file .env      # "beta compose: ok", 7.06 GiB resident
+scripts/beta/beta-compose.sh up -d valhalla-offroad valhalla-mtb
+```
+
+From then on the agent recreates and restarts them beside the four, whenever their tiles are on the host.
 
 ## Alerts
 

@@ -10,10 +10,18 @@ fetcher (`is_fetcher`) gets a page of tags only:
   name, which can hold Home's label or a place;
 - og:description, the distance and the climb, US units first with metric in brackets;
 - og:image, a 1200 x 630 PNG drawn here (`render_png`): the route's line on a plain background,
-  its start, finish and stops, the same stats line and "RouteMaker". No map tiles, and no imaging
-  package (none is a dependency): the line and pins are drawn into a byte buffer and written with
-  zlib, and the text from glyph coverage made once from the page's own font (core.preview_glyphs,
-  scripts/make_preview_glyphs.py).
+  its start, finish and stops, the same stats line, and the app's icon beside "RouteMaker". No
+  map tiles, and no imaging package (none is a dependency): the line and pins are drawn into a
+  byte buffer and written with zlib, the text from glyph coverage made once from the page's own
+  font (core.preview_glyphs, scripts/make_preview_glyphs.py) and the icon from
+  core.preview_icon (scripts/make_share_images.py).
+
+The app's own address (the owner, 2026-10-20: "Is there a way to have the icon when shared?"):
+a link fetcher asking for `/` is handed `site_page` by the edge (the Caddyfile's @link_fetcher,
+the beta's nginx `location = /`), which names the app and shows frontend/public/icons/
+share-card.png, the icon and what the app does. Every address in the tags is made from the
+request's own host, so no host name is written anywhere in the repository. On the beta these,
+the shared links and the icons are outside its password, since a fetcher has none.
 
 Home (the owner, 2026-10-16: "If it doesn't start, end, or stop at home keep showing the route.
 Also, make this an option, default to censor."): a fetcher has no option, so a preview is always
@@ -75,7 +83,7 @@ ZONE_RADIUS_M = HOME_TRIM_M + ZONE_SHIFT_MAX_M + 1
 MIN_DRAWN_M = HOME_TRIM_M / 2
 HOME_ZONE_LABEL = b"routemaker/home-zone/v1"
 # Bumped when the drawing changes, so cached images are drawn again.
-IMAGE_VERSION = "2"
+IMAGE_VERSION = "3"
 # The most points drawn, and the longest stroke in pixels: past it, no image (a fair route of a
 # hundred miles is a few thousand pixels long; this bounds the drawing's time).
 MAX_DRAWN_POINTS = 1500
@@ -95,6 +103,8 @@ START_COLOUR = (21, 128, 61)
 FINISH_COLOUR = (185, 28, 28)
 STOP_COLOUR = (31, 41, 51)
 BRAND = "RouteMaker"
+# The icon beside it (core.preview_icon, scripts/make_share_images.py).
+ICON_SIZE = 56
 # The parameter naming the shared line on the page (sharedRoutes.ts SHARED_PARAM).
 PARAM = "route"
 
@@ -121,7 +131,7 @@ RIDE_NAMES = {
 # on to the page instead.
 FETCHER_RE = re.compile(
     r"bot\b|bot/|crawler|spider|facebookexternalhit|facebot|slack|whatsapp|telegram|"
-    r"skypeuripreview|embedly|iframely|mastodon|pleroma|pinterest|vkshare|preview",
+    r"skypeuripreview|embedly|iframely|mastodon|pleroma|pinterest|vkshare|googlemessages|preview",
     re.IGNORECASE,
 )
 
@@ -359,6 +369,16 @@ def _glyph_data() -> bytes:
     return zlib.decompress(base64.b64decode("".join(preview_glyphs.DATA)))
 
 
+@lru_cache(maxsize=1)
+def _icon_data() -> bytes:
+    import base64
+
+    from . import preview_icon
+
+    assert preview_icon.SIZE == ICON_SIZE
+    return zlib.decompress(base64.b64decode("".join(preview_icon.DATA)))
+
+
 class _Canvas:
     def __init__(self) -> None:
         self.px = bytearray(
@@ -397,6 +417,12 @@ class _Canvas:
                     if c:
                         self.blend(x + left + col, top + row, colour, c / 255)
             x += advance
+
+    def image(self, x: int, y: int, size: int, rgba: bytes) -> None:
+        for row in range(size):
+            for col in range(size):
+                i = (row * size + col) * 4
+                self.blend(x + col, y + row, rgba[i : i + 3], rgba[i + 3] / 255)
 
     def png(self) -> bytes:
         raw = bytearray()
@@ -535,7 +561,10 @@ def render_png(drawn: dict, stats: str) -> bytes | None:
         canvas.blend(x, MAP_H, RULE, 1)
     baseline = MAP_H + (BAND + 24) // 2
     canvas.text(40, baseline, stats, TEXT)
-    canvas.text(WIDTH - 40 - text_width(BRAND), baseline, BRAND, LINE_COLOUR)
+    brand_x = WIDTH - 40 - text_width(BRAND)
+    canvas.text(brand_x, baseline, BRAND, LINE_COLOUR)
+    size = ICON_SIZE
+    canvas.image(brand_x - 14 - size, MAP_H + (BAND - size) // 2, size, _icon_data())
     return canvas.png()
 
 
@@ -643,20 +672,75 @@ def share_page(request, route_id: str):
     ]
     if image:
         names.append(("twitter:image", image_url))
+    return _varied(_tags_page(title(row), description(row), head, names))
+
+
+def _tags_page(page_title: str, words: str, head, names) -> HttpResponse:
+    """A page of the preview's tags, the app's icons and nothing else, never cached."""
     tags = "".join(f'<meta property="{k}" content="{escape(v)}">' for k, v in head) + "".join(
         f'<meta name="{k}" content="{escape(v)}">' for k, v in names
     )
     body = (
         '<!doctype html><html lang="en"><head><meta charset="utf-8">'
-        f"<title>{escape(title(row))}</title>"
-        f'<meta name="description" content="{escape(description(row))}">'
+        f"<title>{escape(page_title)}</title>"
+        f'<meta name="description" content="{escape(words)}">'
         '<meta name="robots" content="noindex">'
-        f"{tags}</head><body><p>{escape(description(row))}</p></body></html>"
+        f"{tags}{ICON_LINKS}</head><body><p>{escape(words)}</p></body></html>"
     )
     response = HttpResponse(body, content_type="text/html; charset=utf-8")
     response["Cache-Control"] = "no-store"
     response["X-Robots-Tag"] = "noindex"
-    return _varied(response)
+    return response
+
+
+# The app's icons, as frontend/index.html links them: a chat app that shows a site's icon beside
+# its preview takes one of these.
+ICON_LINKS = (
+    '<link rel="icon" href="/favicon.svg" type="image/svg+xml">'
+    '<link rel="icon" href="/icons/icon-192.png" type="image/png" sizes="192x192">'
+    '<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">'
+)
+# The app's own preview (frontend/index.html's description, and the card scripts/
+# make_share_images.py draws).
+SITE_DESCRIPTION = (
+    "Bike route planning tool around Washington, DC and Baltimore. No sign-in needed."
+)
+SITE_CARD = "/icons/share-card.png"
+SITE_CARD_ALT = (
+    "The RouteMaker icon, a bicycle with a map pin in its front wheel. "
+    "Bike route planning tool around Washington, DC and Baltimore."
+)
+
+
+@require_safe
+@ratelimit.rate_limited(ratelimit.SHARE_PREVIEWS)
+def site_page(request):
+    """GET /link-preview: the app's own address as a link fetcher sees it (the edge hands it a
+    fetcher's GET /); a browser is sent to the app."""
+    if not is_fetcher(request):
+        response = HttpResponseRedirect("/")
+        response["Cache-Control"] = "no-store"
+        return _varied(response)
+    image_url = request.build_absolute_uri(SITE_CARD)
+    head = [
+        ("og:type", "website"),
+        ("og:site_name", BRAND),
+        ("og:title", BRAND),
+        ("og:description", SITE_DESCRIPTION),
+        ("og:url", request.build_absolute_uri("/")),
+        ("og:image", image_url),
+        ("og:image:type", "image/png"),
+        ("og:image:width", str(WIDTH)),
+        ("og:image:height", str(HEIGHT)),
+        ("og:image:alt", SITE_CARD_ALT),
+    ]
+    names = [
+        ("twitter:card", "summary_large_image"),
+        ("twitter:title", BRAND),
+        ("twitter:description", SITE_DESCRIPTION),
+        ("twitter:image", image_url),
+    ]
+    return _varied(_tags_page(BRAND, SITE_DESCRIPTION, head, names))
 
 
 # The page answers a browser and a fetcher differently: a cache keys on what tells them apart.

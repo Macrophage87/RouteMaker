@@ -44,8 +44,11 @@ export interface RailInteractionOptions {
   loop?(): boolean;
   /** Why the station is closed today with the toggles as they are, or null (railClosures.ts). */
   closedReason?(station: Station): string | null;
-  /** `place` is the name the point carries: the station's, not its entrance's street (stationPlaceName). */
-  onStationPoint(role: StationRole, point: LonLat, place: { name: string; label: string }): void;
+  /**
+   * `place` is the name the point carries: the station's, not its entrance's street (stationPlaceName); `tapped` when
+   * the rider tapped that elevator on the map, which App keeps rather than moving it to a quicker way in.
+   */
+  onStationPoint(role: StationRole, point: LonLat, place: { name: string; label: string; tapped?: boolean }): void;
   /**
    * Go with no route yet (Stephen 2026-10-19: "Ending at a metro assumes going from the current location"): End here
    * is offered with no points, and App routes there from Go's start.
@@ -201,7 +204,11 @@ export function attachRailInteraction(map: MapLibreMap, options: RailInteraction
       const pointFor = (role: StationRole) => {
         const entrance = stationEntrance(station, options.onFoot?.() === true, options.from?.(role) ?? null);
         const point: LonLat = hit.elevator ?? entrance.point;
-        const place = { name: stationPlaceName(station), label: stationPlaceLabel(station, hit.elevator ? "elevator" : entrance.kind) };
+        const place = {
+          name: stationPlaceName(station),
+          label: stationPlaceLabel(station, hit.elevator ? "elevator" : entrance.kind),
+          tapped: hit.elevator !== undefined,
+        };
         return { point, place };
       };
       const content = summary(station, options, hit.elevator !== undefined);

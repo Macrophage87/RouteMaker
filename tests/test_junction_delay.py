@@ -50,6 +50,20 @@ CROSS_STREET = (("road", "residential"), ("road", "residential"))
 
 
 class TestOneJunction:
+    def test_a_crosswalk_over_a_slip_lane_waits_for_a_gap(self) -> None:
+        """The owner, 2026-10-21: riders take an LTS 4 road over a sidewalk, "especially
+        with sliplanes". A last-resort sidewalk's crosswalk over a slip lane (Valhalla's
+        turn channel, at its road's class) gives way to it."""
+        slip = (("turn_channel", "secondary"), ("turn_channel", "secondary"))
+        crossing = junction(
+            *slip,
+            in_class="service_other",
+            out_class="service_other",
+            in_use="pedestrian_crossing",
+            out_use="pedestrian_crossing",
+        )
+        assert d.delay_at(crossing) == d.GIVE_WAY_DELAY_S[d.ROAD_RANK["secondary"]]
+
     def test_a_neighbourhood_crossing_is_a_full_stop(self) -> None:
         assert d.delay_at(junction(*CROSS_STREET)) == d.STOP_DELAY_S
 

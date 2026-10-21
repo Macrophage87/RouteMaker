@@ -246,6 +246,10 @@ HALF_LOW_LANES = 10
 # which never carry the stress mark (lua/routemaker_remap.lua: "never on a trail-class way").
 PATH_USES = frozenset({"cycleway", "footway", "path"})
 TRAIL_USES = PATH_USES | {"steps", "pedestrian", "bridleway", "sidewalk", "mountain_bike"}
+# What a ridden sidewalk's or crosswalk's edge is called in a trace, and the practical speed
+# the transform gives it (`routemaker.sidewalks`; lua/routemaker_remap.lua `SIDEWALK_SPEED`).
+RIDDEN_SIDEWALK_USES = frozenset({"footway", "sidewalk", "pedestrian_crossing"})
+SIDEWALK_SPEED_KPH = 90
 # Uses whose router cost is not traffic: stairs (priced at a walking pace) and ferries. They
 # count at the tier's figure.
 NOT_TRAFFIC_USES = frozenset({"steps", "ferry", "rail-ferry"})
@@ -399,6 +403,19 @@ def edge_factor(road: Road, tier: int, use_roads: float) -> float:
     u = min(max(use_roads, 0.0), 1.0)
     stress = 1.0
     accommodation = 1.0
+    if tier >= SIDEPATH_TIER and road.use in RIDDEN_SIDEWALK_USES:
+        # A sidewalk or crosswalk ridden as a last resort (`routemaker.sidewalks`, rated
+        # LTS 3 or 4; no other footway carries a tier that high): Valhalla prices a
+        # sidewalk's use as a road's (the trace calls it a footway), at the transform's
+        # `SIDEWALK_SPEED`, with the stress mark, and one beside a calmer road with LTS 4's
+        # top lane count. A plain footway link is priced as a path with the mark, which
+        # this reads a little high.
+        road_factor = _road_factor(u)
+        stress = 1.0 + road_factor * ROAD_CLASS_FACTOR.get(road.road_class, 0.5)
+        if road.lanes > 1:
+            stress += (road.lanes - 1) * 0.05 * road_factor
+        stress *= _speed_penalty(SIDEWALK_SPEED_KPH, u)
+        return 1.0 + (1.0 + 3.0 * (1.0 - u)) * stress
     if road.use in PATH_USES:
         accommodation = _path_factor(road, u)
     elif road.use == "living_street":

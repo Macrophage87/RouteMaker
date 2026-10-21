@@ -351,6 +351,14 @@ class RouteIn(Schema):
             " a loop, Bikeshare and the transit ride types."
         ),
     )
+    ahead_only: StrictBool = Field(
+        default=False,
+        description=(
+            "With `heading`: the rider has ridden on past two re-routes' U-turns, so the route"
+            " that sets off ahead is answered whatever turning round would save. A U-turn is"
+            " still answered where there is no way ahead."
+        ),
+    )
     loop: StrictBool = Field(
         default=False,
         description=(
@@ -4157,6 +4165,7 @@ def _bike_dials(body: RouteIn) -> routing.Dials:
         follow_exact=body.follow_exact,
         straight=tuple(body.straight_legs),
         heading=body.heading,
+        ahead_only=body.ahead_only,
     )
 
 
@@ -5028,6 +5037,12 @@ class TrailProfileOut(Schema):
     m: list[int] = Field(description="Metres from the way's first point to each sample.")
     elevation_m: list[float | None]
     grade_pct: list[float | None]
+    start: list[float] | None = Field(
+        default=None, description="The way's first point, [lon, lat]: the chart's left end."
+    )
+    end: list[float] | None = Field(
+        default=None, description="The way's last point, [lon, lat]: the chart's right end."
+    )
 
 
 @api.get(

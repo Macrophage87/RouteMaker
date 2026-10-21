@@ -45,21 +45,23 @@
 #                                                          + ~190M metaspace, code cache, threads, GC
 #                                                          = ~1280M; the 0.74 GB index is mmapped page
 #                                                          cache, reclaimable
-#   valhalla x4         768M    2.0   0.04-0.67 GB each    working set is the mmapped tiles.tar
+#   valhalla x4         640M    2.0   0.04-0.67 GB each    working set is the mmapped tiles.tar
 #                                                          (0.4-0.5 GB) plus 2 workers; mapped file
-#                                                          pages are reclaimed, not OOM-killed
+#                                                          pages are reclaimed, not OOM-killed. 768M
+#                                                          until the trail routers came (2026-10-20)
+#   valhalla x2 trails  320M    1.0   (new)                valhalla-offroad and valhalla-mtb, 1 worker
+#                                                          each; the tiles.tar is paged in as asked
 #   worker              256M    0.5   0.07 GB              nightly pg_dump (streamed) and sweeps only
 #   migrate (one-shot)  256M    0.5   exits before api starts, not counted as resident
 #
-#   resident total: 1024 + 1450 + 1300 + 4*768 + 256 = 7102 MiB = 6.94 GiB, against about
-#   8.6 GiB available, so a spike in every container at once still leaves 1.66 GiB.
-#   The startup peak adds the largest one-shot (migrate, 256M): 7358 MiB = 7.19 GiB.
+#   resident total: 1024 + 1450 + 1300 + 4*640 + 2*320 + 256 = 7230 MiB = 7.06 GiB, against
+#   about 8.6 GiB available, so a spike in every container at once still leaves 1.54 GiB.
+#   The startup peak adds the largest one-shot (migrate, 256M): 7486 MiB = 7.31 GiB.
+#   The ceiling is 7.1 GiB since the owner's choice of 2026-10-20 ("Both, raise limit to
+#   7.1 GB"), which made room for the two trail routers (it was 7.0 GiB, at 6.94 without them).
 #   One-shot management commands go through `exec api ...` (inside the api's own cap) or
 #   `run --rm --no-deps migrate ...` (256M), never `run --rm api ...`, which would start a
 #   second container with the api's 1450M cap beside the running one.
-#   `valhalla-offroad` and `valhalla-mtb` (below) will add 768 MiB each when they ship:
-#   8.44 GiB, over the 7.0 GiB ceiling, so the other caps need a second look at that point
-#   (the beta checker, scripts/check_beta_compose.py, is the gate and will say so).
 #
 # Concurrency (OWNER-DECISIONS 367.2, "Allow 2 at once"): settings.routing_concurrency is
 # workers - 2 - GEOCODE_CONCURRENCY (2), floored at one, and tile_concurrency is
@@ -272,10 +274,10 @@ services:
         target: /conf/lua
         read_only: true
         bind: { create_host_path: false }
-    memswap_limit: 768M
+    memswap_limit: 640M
     deploy:
       resources:
-        limits: { memory: 768M, cpus: "2" }
+        limits: { memory: 640M, cpus: "2" }
   valhalla-no-trail:
     <<: *beta-yield
     volumes:
@@ -299,10 +301,10 @@ services:
         target: /conf/lua
         read_only: true
         bind: { create_host_path: false }
-    memswap_limit: 768M
+    memswap_limit: 640M
     deploy:
       resources:
-        limits: { memory: 768M, cpus: "2" }
+        limits: { memory: 640M, cpus: "2" }
   valhalla-ebike:
     <<: *beta-yield
     volumes:
@@ -326,10 +328,10 @@ services:
         target: /conf/lua
         read_only: true
         bind: { create_host_path: false }
-    memswap_limit: 768M
+    memswap_limit: 640M
     deploy:
       resources:
-        limits: { memory: 768M, cpus: "2" }
+        limits: { memory: 640M, cpus: "2" }
   valhalla-weekend:
     <<: *beta-yield
     volumes:
@@ -353,24 +355,27 @@ services:
         target: /conf/lua
         read_only: true
         bind: { create_host_path: false }
-    memswap_limit: 768M
+    memswap_limit: 640M
     deploy:
       resources:
-        limits: { memory: 768M, cpus: "2" }
+        limits: { memory: 640M, cpus: "2" }
 
   # --- the off-road router (NO-BIKE, in the rebuild bundle) ----------------------
-  # Not started (profile `offroad`). valhalla/valhalla-offroad.json is in the
-  # release and ship-data.sh sends tiles/offroad with the bundle, but starting it
-  # here would take the beta over its memory ceiling (see the header), so the api
-  # answers Gravel and Mountain Goat on the standard graph. Only after re-checking
-  # that budget, start it with
-  #   scripts/beta/beta-compose.sh --profile offroad up -d valhalla-offroad
+  # Gravel and Mountain Goat's graph, with green and unrated mountain-bike trails open.
+  # Behind the profile `offroad` still, so it starts only when named:
+  # scripts/beta/auto-release.sh names it (and valhalla-mtb) once the promoted build is on the
+  # host ($RM_DATA/tiles/offroad/current), since a bind with create_host_path: false would stop
+  # the whole `up` without it. Until then the api answers Gravel and Mountain Goat on the
+  # standard graph. One worker in 320M (the owner's choice of 2026-10-20, "Both, raise limit to
+  # 7.1 GB"): a worker is under 100 MiB, the rest is the archive's file pages, reclaimed.
+  # By hand, once its tiles are there:
+  #   scripts/beta/beta-compose.sh up -d valhalla-offroad valhalla-mtb
   valhalla-offroad:
     <<: *beta-yield
     profiles: ["offroad"]
     restart: ${RESTART_POLICY:-unless-stopped}
     image: ghcr.io/valhalla/valhalla:3.9.1@sha256:4fd114eb1d26b8fc2f43bcb3df234c1b63a0bf13c277405e5943d5361dc575de
-    command: ["valhalla_service", "/conf/valhalla-offroad.json", "2"]
+    command: ["valhalla_service", "/conf/valhalla-offroad.json", "1"]
     volumes:
       - type: bind
         source: ${DATA_ROOT}/tiles/offroad
@@ -392,22 +397,21 @@ services:
         target: /conf/lua
         read_only: true
         bind: { create_host_path: false }
-    memswap_limit: 768M
+    memswap_limit: 320M
     deploy:
       resources:
-        limits: { memory: 768M, cpus: "2" }
+        limits: { memory: 320M, cpus: "1" }
 
-  # The Mountain Bike router (docs/MTB-TOPO-PLAN.md, slice 6): not started either
-  # (profile `offroad`), for the same budget; the api answers Mountain Bike on the
-  # standard graph and says so. Start it beside valhalla-offroad only after the same
-  # re-check, with
-  #   scripts/beta/beta-compose.sh --profile offroad up -d valhalla-offroad valhalla-mtb
+  # The Mountain Bike router (docs/MTB-TOPO-PLAN.md, slice 6): every mountain-bike trail a
+  # bicycle may use open. Started as valhalla-offroad is, once $RM_DATA/tiles/mtb/current
+  # exists; until then the api answers Mountain Bike on the standard graph and says so.
+  # One worker in 320M, as valhalla-offroad.
   valhalla-mtb:
     <<: *beta-yield
     profiles: ["offroad"]
     restart: ${RESTART_POLICY:-unless-stopped}
     image: ghcr.io/valhalla/valhalla:3.9.1@sha256:4fd114eb1d26b8fc2f43bcb3df234c1b63a0bf13c277405e5943d5361dc575de
-    command: ["valhalla_service", "/conf/valhalla-mtb.json", "2"]
+    command: ["valhalla_service", "/conf/valhalla-mtb.json", "1"]
     volumes:
       - type: bind
         source: ${DATA_ROOT}/tiles/mtb
@@ -429,7 +433,7 @@ services:
         target: /conf/lua
         read_only: true
         bind: { create_host_path: false }
-    memswap_limit: 768M
+    memswap_limit: 320M
     deploy:
       resources:
-        limits: { memory: 768M, cpus: "2" }
+        limits: { memory: 320M, cpus: "1" }
