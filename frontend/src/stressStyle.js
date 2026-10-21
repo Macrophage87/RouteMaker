@@ -2082,6 +2082,9 @@ export function legendWidths(tiers = currentTiers()) {
   };
 }
 
+/** The zoom a busy road's rails show from, popular corridors aside (`facilityLayers`). */
+export const BUSY_RAILS_MIN_ZOOM = 14;
+
 /** A facility's rails' layer id: on the calm tiers (LTS 1-2), or with `busy` on LTS 3 and above. */
 export function facilityLayerId(facility, busy = false) {
   return `facility-${facility}${busy ? "-busy" : ""}`;
@@ -2096,6 +2099,10 @@ export function facilityLayers(sourceId = "stress", when = DEFAULT_WHEN, showHig
       "line-width": facilityWidthAt(facility, when),
     };
     if (facility.dash) paint["line-dasharray"] = facility.dash;
+    // A busy road's rails wait for zoom 14, as its faint line does (`byZoom`), unless it is a popular
+    // corridor: at 12-13 downtown they crowded the view (the owner, 2026-10-21: "see what we can do to
+    // declutter certain views").
+    if (busy) paint["line-opacity"] = ["step", ["zoom"], ["case", [">", ["to-number", ["get", "popular"], 0], 0], 1, 0], BUSY_RAILS_MIN_ZOOM, 1];
     return {
       id: facilityLayerId(facility.facility, busy),
       type: "line",

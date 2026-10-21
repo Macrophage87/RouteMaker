@@ -11,7 +11,7 @@
  * The data is amenity-data/water-restrooms.json, built from the project's
  * extract by scripts/build_water_restrooms.py (what counts is in its
  * docstring), loaded the first time the layer is shown. The layer is on by
- * default for every ride type and drawn from zoom 12 in; its switches (the
+ * default for every ride type and drawn from zoom 14 in; its switches (the
  * layer, portable and pit toilets, untreated water) are kept on this device.
  *
  * Each kind has its own shape as well as colour (lib/waterLegend.ts names
@@ -325,8 +325,12 @@ export function waterAlongCount(items: readonly WaterAlong[]): string {
 
 export const WATER_SOURCE_ID = "water-restrooms";
 export const WATER_LAYER = "water-restrooms";
-/** Drawn from street-network zoom in: further out the points would crowd the stress map. */
-export const WATER_MIN_ZOOM = 12;
+/**
+ * Drawn from zoom 14 in, where a block has room for its icons. At 12 and 13 downtown they crowded
+ * the stress map (the owner, 2026-10-21, of central DC at about zoom 13: "see what we can do to
+ * declutter certain views"); the route's list names them at any zoom. The repair stands follow.
+ */
+export const WATER_MIN_ZOOM = 14;
 export const WATER_ICON_PX = 18;
 
 /** One icon per kind the map draws: water alone by source, a restroom by type, with a drop when it has drinking water. */
@@ -372,7 +376,7 @@ export function waterIcon(icon: WaterIcon, pixelRatio = 2, cssSize = WATER_ICON_
     const top = size * 0.02;
     const cy = size * 0.64;
     const r = size * 0.34;
-    // Wide enough to read at the smallest size drawn (0.7 at zoom 12): about 3 px across.
+    // Wide enough to read at the smallest size drawn (0.7 at zoom 14): about 3 px across.
     const slash = 2.2 * pixelRatio;
     return rasterise(size, pixelRatio, (x, y): Rgb | null => {
       if (!inDrop(x, y, c, top, cy, r)) return null;

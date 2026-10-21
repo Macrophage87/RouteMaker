@@ -6,6 +6,7 @@ import {
   BASEMAP,
   popularBandLayers,
   POPULAR_BAND,
+  BUSY_RAILS_MIN_ZOOM,
   drawPriority,
   FACILITY_PRIORITY,
   CALM_STREET_PRIORITY,
@@ -696,6 +697,17 @@ test("no layer of a surface-unknown trail draws the path rails or the dark conti
 // THE POPULAR CORRIDORS AND THE DRAWING PRIORITY (the owner, 2026-10-21: "make those streets show more
 // pronounced than other roads"; "When the roads get crowded with zoom, go in this rough priority: Off road path,
 // protected bike lane, painted bike lane, then the long calm streets").
+
+test("a busy road's rails wait for zoom 14 unless it is a popular corridor; a calm way's show at every zoom (declutter, 2026-10-21)", () => {
+  const busy = facilityLayers("s", undefined, undefined, true);
+  for (const layer of busy) {
+    const opacity = (zoom, popular) => paintValue(layer, "line-opacity", { tier: 4, facility: layer.id.split("-")[1], ...(popular ? { popular } : {}) }, zoom);
+    assert.equal(opacity(13, 0), 0, `${layer.id} z13`);
+    assert.equal(opacity(13, 2), 1, `${layer.id} z13 on a popular corridor`);
+    assert.equal(opacity(BUSY_RAILS_MIN_ZOOM, 0), 1, `${layer.id} z14`);
+  }
+  for (const layer of facilityLayers("s")) assert.equal(layer.paint["line-opacity"], undefined, layer.id);
+});
 
 test("the popular band draws only a way with a class, wider for a busier class, at every zoom it draws", () => {
   const [band] = popularBandLayers("s");

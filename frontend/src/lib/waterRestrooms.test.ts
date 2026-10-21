@@ -200,11 +200,11 @@ test("which icon a point gets", () => {
   );
 });
 
-test("the layer: one symbol layer, its icon by name, from street-network zoom, filtered by the switches", () => {
+test("the layer: one symbol layer, its icon by name, from zoom 14 (decluttered, 2026-10-21), filtered by the switches", () => {
   const layer = waterLayer() as { id: string; type: string; minzoom: number; filter: unknown; layout: Record<string, unknown> };
   assert.equal(layer.id, WATER_LAYER);
   assert.equal(layer.type, "symbol");
-  assert.equal(layer.minzoom, 12);
+  assert.equal(layer.minzoom, 14);
   assert.deepEqual(layer.layout["icon-image"], ["concat", "water-restrooms-", ["get", "icon"]]);
   assert.equal(waterIconId("w-n"), "water-restrooms-w-n");
   assert.deepEqual(layer.filter, waterFilter(WATER_PREFS_DEFAULT));
