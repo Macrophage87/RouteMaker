@@ -815,6 +815,14 @@ class StressSpanOut(Schema):
             " line draws it in the brown ramp); null: not known."
         ),
     )
+    rough: bool | None = Field(
+        default=None,
+        description=(
+            "On an unpaved section: whether its surface is natural or rough (dirt, grass, a"
+            " rutted track; the route line draws it brown) or not (gravel, drawn grey); null:"
+            " not known (drawn brown), and on every paved or unknown section."
+        ),
+    )
     rpm: int | None = Field(
         default=None,
         description=(

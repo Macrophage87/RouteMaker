@@ -325,8 +325,8 @@ for (const { name, on } of REACHABLE) {
       const classes = routeClasses();
       assert.equal(
         classes.length,
-        17,
-        "the traffic-free path, five tiers, five unpaved browns (OWNER-DECISIONS 302), the four Mass Ride capacity bands and its Avoid (325-327) and the unrated",
+        22,
+        "the traffic-free path, five tiers, five unpaved browns (OWNER-DECISIONS 302), five gravel greys (2026-10-21), the four Mass Ride capacity bands and its Avoid (325-327) and the unrated",
       );
       const failures: string[] = [];
       for (const c of classes) {

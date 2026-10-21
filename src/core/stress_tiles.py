@@ -304,8 +304,9 @@ OPTIONAL_PROPERTIES = {
     # trail in its own not-for-routes look, a line on a ticked white edge, and in no
     # routable layer (452a, superseding 452's hiding and 290(b)'s faint drawing;
     # frontend/src/stressStyle.js, `mtb-trail`); a future MTB mode would draw it
-    # as routable. `rough` is not read: such a trail draws as any unpaved one,
-    # with no path rail (290(a)).
+    # as routable. `rough` splits the unpaved ways by colour (the owner, 2026-10-21:
+    # "Maybe make natural surface trails brown and gravel grey?"): rough is brown, any
+    # other unpaved way gravel grey; neither has a path rail (290(a)).
     # Each is true or left out.
     "mtb": MTB_ONLY_COLUMN,
     "rough": ROUGH_COLUMN,

@@ -6050,7 +6050,9 @@ under LTS 4 and Avoid's own colour under Avoid (coral in the default palette, ye
 in `cvd`; with the switch on, black or white under the calm tiers, and a busy tier's
 own casing, which the switch leaves: OWNER-DECISIONS 292), the unpaved casing under
 an unpaved section (item 302: the route has twelve classes, the five unpaved ones
-drawn in the brown ramp with the dotted mark over them, layer `route-unpaved`), the
+drawn in the brown ramp with the dotted mark over them, layer `route-unpaved`; since
+2026-10-21 five more, gravel, `g1`-`g5`, in the grey ramp with the same mark, where the
+API's section says `rough: false`), the
 a dark neutral of its own under the unrated grey (#202326, since 357 softened LTS 1's
 casing, which it was before), and white under the violet. The
 figures below were computed from the colours by the test's rule. The blue stays outside as
