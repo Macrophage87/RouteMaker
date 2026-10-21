@@ -849,6 +849,24 @@ export const OTHER_LABEL = {
   address: "#57534e",
   shield: { size: 12, iconSize: 1.2, color: "#2e2a2b" },
 };
+/**
+ * THE MOTORWAYS' NAMES. The owner, 2026-10-21: "Seeing the map zoomed out, having those huge highway names are silly,
+ * bikes don't use highways. Only show when zoomed further in." A motorway (the base map's road kind "highway": the
+ * interstates and freeways, closed to bikes) is named, and its route shield drawn, only from HIGHWAY_LABEL_MIN_ZOOM,
+ * the zoom every road is drawn solid at, where a rider can need it as a landmark beside a street. Every other road's
+ * name and shield (a US or state route on a major road, which a rider may use) is as the base map has it.
+ */
+export const HIGHWAY_LABEL_MIN_ZOOM = 14;
+const notMotorwayYet = ["any", ["!=", ["get", "kind"], "highway"], [">=", ["zoom"], HIGHWAY_LABEL_MIN_ZOOM]];
+/** A base map road-label layer's filter, its motorways left out below HIGHWAY_LABEL_MIN_ZOOM. */
+function laterMotorways(filter) {
+  // The base map writes roads_labels_major's in the legacy form, ["in", "kind", ...], which cannot sit in an expression.
+  const expression = Array.isArray(filter) && filter[0] === "in" && typeof filter[1] === "string"
+    ? ["in", ["get", filter[1]], ["literal", filter.slice(2)]]
+    : filter;
+  return ["all", expression, notMotorwayYet];
+}
+
 export const OTHER_LABEL_LAYER_IDS = ["pois", "water_waterway_label", "water_label_ocean", "water_label_lakes", "earth_label_islands", "address_label", "roads_shields"];
 
 /** One of the base map's other label layers (OTHER_LABEL) as this app draws it. */
@@ -869,6 +887,7 @@ function clearOtherLabel(layer) {
     case "roads_shields":
       return {
         ...layer,
+        filter: laterMotorways(layer.filter),
         layout: { ...layer.layout, "text-font": [L.font], "text-size": L.shield.size, "icon-size": L.shield.iconSize },
         paint: { ...layer.paint, "text-color": L.shield.color },
       };
@@ -883,6 +902,7 @@ export function withClearRoadLabels(layers, strong = accessibilityOn()) {
     if (ROAD_LABEL_LAYER_IDS.includes(layer.id)) {
       return {
         ...layer,
+        ...(layer.id === "roads_labels_major" ? { filter: laterMotorways(layer.filter) } : {}),
         layout: { ...layer.layout, "text-font": [ROAD_LABEL.font], "text-size": ROAD_LABEL.size },
         paint: { ...layer.paint, ...roadLabelPaint(strong) },
       };
