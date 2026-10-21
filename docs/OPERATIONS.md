@@ -7466,7 +7466,16 @@ Python 3.11 or later, standard library only.
     drafts `highway=traffic_signals` on the nearest junction node within 25 m, where streets
     really meet (not where one street's way is split end to end); a dual carriageway meets a
     street at two nodes, so draft each.
-  - Both print every diff and the one `upload` line to run once approved; `upload` takes
+  - **One line after the owner's go:** `python3 scripts/osm_edit.py apply <folder> --approved
+    --live --actor <owner's Discord id>` uploads every OSM edit in the draft folder (one
+    corner per folder), then loads the owner row on the PC live stack (`~/src/wt/t9`) and on
+    beta (over ssh, through `scripts/beta/beta-compose.sh` in beta's checkout; the host name
+    comes from `ROUTEMAKER_BETA_SSH` or `--beta-host`, never the repo). Each site gets a dry
+    run, the write, and a second dry run that must find the row already there. If the OSM
+    side stops, nothing is loaded; rerunning the line skips what already went up. `--to pc`
+    or `--to beta` limits the sites. `load <file> --actor <id> [--confirm]` does our map
+    alone, for a row OSM needs no edit for.
+  - The drafts print every diff and the `apply` line. `upload` on its own takes
     several files, each its own changeset, and stops at the first failure, naming what is
     left; rerunning the same line skips the files already uploaded. A draft never overwrites a
     file: if any name is taken, nothing is written. Evidence in a
