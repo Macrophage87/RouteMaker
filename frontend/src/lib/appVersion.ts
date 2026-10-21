@@ -8,12 +8,12 @@
  */
 export const APP_VERSION: string = import.meta.env?.VITE_APP_VERSION ?? "";
 
-/** What a screen reader hears for it, and the Help panel's line: "RouteMaker version 0.10.1". */
+/** The Help panel's line: "RouteMaker version 0.10.1". */
 export function versionSaid(version: string = APP_VERSION): string {
   return version ? `RouteMaker version ${version}` : "";
 }
 
-/** The tab's title: "RouteMaker 0.10.1" (just "RouteMaker" with no version). */
-export function tabTitle(version: string): string {
-  return version ? `RouteMaker ${version}` : "RouteMaker";
+/** What a screen reader hears under the heading, which has just said "RouteMaker": "Version 0.10.1". */
+export function versionShort(version: string = APP_VERSION): string {
+  return version ? `Version ${version}` : "";
 }
