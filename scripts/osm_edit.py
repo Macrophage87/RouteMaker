@@ -24,7 +24,7 @@ A null in "expect" means the tag is absent now; a null in "set" removes the tag.
 The OAuth 2.0 token is saved to a file only its owner can read, outside the repo, and is
 never printed or logged. Nothing here reads a GPS track: the edit note describes the place,
 never who rode it or when. Standard library only, so it runs on the host without the
-virtualenv.
+virtualenv (Python 3.11 or later).
 """
 
 from __future__ import annotations
@@ -57,6 +57,7 @@ REDIRECT_URI = "urn:ietf:wg:oauth:2.0:oob"
 SCOPES = "read_prefs write_api"
 USER_AGENT = "RouteMaker-osm-edit/1.0 (bike route planner; one reviewed edit at a time)"
 CREATED_BY = "RouteMaker osm_edit.py"
+REPO = Path(__file__).resolve().parents[1]
 
 # What an edit may touch: lasting facts a rider can see from the road (the proposal's
 # "Yes, first" rows). Deliberately not the whole tag space; `highway` on a way would
@@ -98,8 +99,7 @@ def token_path(server: str) -> Path:
 
 
 def api_base(server: str) -> str:
-    # Tests point this at a local stand-in; it is never set on the owner's PC.
-    return os.environ.get("ROUTEMAKER_OSM_API") or SERVERS[server]["api"]
+    return SERVERS[server]["api"]
 
 
 def _request(
@@ -116,6 +116,9 @@ def _request(
             return response.status, response.read()
     except urllib.error.HTTPError as error:
         return error.code, error.read()
+    except (urllib.error.URLError, OSError) as error:
+        # The token is in the headers, never the URL, so naming the URL is safe.
+        raise EditError(f"could not reach {url}: {error}") from None
 
 
 # --- the edit file -------------------------------------------------------------------
@@ -137,7 +140,7 @@ def edit_problem(edit: object) -> str | None:
         return f"server must be one of {sorted(SERVERS)}"
     if edit.get("element") not in ("node", "way"):
         return "element must be node or way"
-    if not isinstance(edit.get("id"), int) or edit["id"] <= 0:
+    if not isinstance(edit.get("id"), int) or isinstance(edit["id"], bool) or edit["id"] <= 0:
         return "id must be a positive OSM id"
     expect, changes = edit.get("expect"), edit.get("set")
     if not isinstance(expect, dict) or not isinstance(changes, dict) or not changes:
@@ -149,8 +152,10 @@ def edit_problem(edit: object) -> str | None:
     for key, value in changes.items():
         if key not in ALLOWED_KEYS:
             return f"tag {key!r} is not one this tool may change"
-        if value is not None and (not isinstance(value, str) or not value.strip()):
-            return f"set[{key!r}] must be a non-empty string or null"
+        if value is not None and (
+            not isinstance(value, str) or not value.strip() or value != value.strip()
+        ):
+            return f"set[{key!r}] must be a non-empty string with no spaces at the ends, or null"
         if value is not None and len(value) > 255:
             return f"set[{key!r}] is longer than OSM's 255 characters"
         if expect[key] is not None and not isinstance(expect[key], str):
@@ -264,6 +269,31 @@ def _result_path(edit_path: Path) -> Path:
     return edit_path.with_name(edit_path.stem + ".uploaded.json")
 
 
+def _log_path() -> Path:
+    return _state_dir() / "osm-edits.log"
+
+
+def _already_logged(edit: dict) -> str | None:
+    """The changeset URL of an earlier upload of this same change, from any file."""
+    log = _log_path()
+    if not log.exists():
+        return None
+    for line in log.read_text().splitlines():
+        entry = json.loads(line)
+        if (entry["server"], entry["element"], entry["id"], entry["set"]) == (
+            edit["server"],
+            edit["element"],
+            edit["id"],
+            edit["set"],
+        ):
+            return entry["url"]
+    return None
+
+
+def _already_done(edit: dict, tags: dict[str, str]) -> bool:
+    return all(tags.get(key) == value for key, value in edit["set"].items())
+
+
 def upload(edit_path: Path, edit: dict, *, live: bool) -> int:
     if edit["server"] == "live" and not live:
         raise EditError("this edit is for live OSM: that needs --live, on the owner's go")
@@ -272,6 +302,10 @@ def upload(edit_path: Path, edit: dict, *, live: bool) -> int:
     result_path = _result_path(edit_path)
     if result_path.exists():
         raise EditError(f"already uploaded (see {result_path}); one approval, one upload")
+    if (earlier := _already_logged(edit)) is not None:
+        raise EditError(f"this change was already uploaded in {earlier}")
+    if REPO in edit_path.resolve().parents:
+        raise EditError("keep drafts outside the repo (the scratchpad or the private ride folder)")
     token = _read_token(edit["server"])
     base = api_base(edit["server"])
 
@@ -280,7 +314,7 @@ def upload(edit_path: Path, edit: dict, *, live: bool) -> int:
     stale = mismatches(edit, tags)
     if stale:
         raise EditError("changed on OSM since it was approved: " + "; ".join(stale))
-    if all(tags.get(key) == value for key, value in edit["set"].items()):
+    if _already_done(edit, tags):
         raise EditError("OSM already says this; nothing to upload")
 
     status, body = _request(
@@ -301,14 +335,22 @@ def upload(edit_path: Path, edit: dict, *, live: bool) -> int:
                 # Someone else saved it in between. Try once more on the new version, and
                 # only if the tags the owner approved changing still say what they were shown.
                 element = fetch_element(edit)
-                stale = mismatches(edit, current_tags(element))
+                tags = current_tags(element)
+                if _already_done(edit, tags):
+                    raise EditError("someone else made this same change while uploading")
+                stale = mismatches(edit, tags)
                 if stale:
                     raise EditError("someone else changed it while uploading: " + "; ".join(stale))
                 continue
             raise EditError(f"OSM answered {status} saving the change: {body[:200]!r}")
         new_version = int(body.strip())
     finally:
-        _request("PUT", f"{base}/changeset/{changeset}/close", token=token)
+        try:
+            _request("PUT", f"{base}/changeset/{changeset}/close", token=token)
+        except EditError:
+            # OSM closes an idle changeset by itself after an hour; say which one it is.
+            web = SERVERS[edit["server"]]["web"]
+            print(f"Could not close {web}/changeset/{changeset}", file=sys.stderr)
 
     web = SERVERS[edit["server"]]["web"]
     result = {
@@ -321,7 +363,7 @@ def upload(edit_path: Path, edit: dict, *, live: bool) -> int:
         "uploaded_at": datetime.now(UTC).isoformat(timespec="seconds"),
     }
     result_path.write_text(json.dumps(result, indent=2) + "\n")
-    log = _state_dir() / "osm-edits.log"
+    log = _log_path()
     log.parent.mkdir(parents=True, exist_ok=True)
     with log.open("a") as handle:
         handle.write(json.dumps({"server": edit["server"], **result}) + "\n")
@@ -371,14 +413,16 @@ def login(server: str, client_id: str) -> int:
             token = json.loads(response.read())["access_token"]
     except urllib.error.HTTPError as error:
         raise EditError(f"OSM refused the code ({error.code}); run login again") from None
+    except (urllib.error.URLError, OSError) as error:
+        raise EditError(f"could not reach {web}: {error}") from None
     path = token_path(server)
     path.parent.mkdir(parents=True, exist_ok=True)
-    # Created owner-only before anything is written to it, so the token is never readable
-    # by anyone else, even for a moment.
+    # Owner-only before anything is written: os.open's mode only applies to a new file, so an
+    # older, wider file is narrowed first and the token is never readable by anyone else.
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    os.fchmod(fd, 0o600)
     with os.fdopen(fd, "w") as handle:
         handle.write(token)
-    os.chmod(path, 0o600)
     status, body = _request("GET", f"{api_base(server)}/user/details.json", token=token)
     name = json.loads(body)["user"]["display_name"] if status == 200 else "(unknown)"
     print(f"Signed in to {server} as {name}. The token is in {path}, readable only by you.")

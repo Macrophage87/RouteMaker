@@ -14,6 +14,7 @@ import threading
 import xml.etree.ElementTree as ET
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+from urllib.parse import parse_qs
 
 import pytest
 
@@ -37,6 +38,7 @@ class FakeOsm:
         self.extra = ""
         self.conflicts = 0
         self.after_conflict_extra: str | None = None
+        self.token_form: dict[str, list[str]] = {}
         self.calls: list[tuple[str, str, bytes, str | None]] = []
 
 
@@ -59,10 +61,20 @@ def osm(tmp_path, monkeypatch):
             state.calls.append(("GET", self.path, b"", self.headers.get("Authorization")))
             if self.path.endswith("/node/101"):
                 self._send(200, NODE.format(version=state.version, extra=state.extra))
+            elif self.path.endswith("/user/details.json"):
+                self._send(200, json.dumps({"user": {"display_name": "Mapper"}}))
             elif self.path.endswith("/node/404"):
                 self._send(410, "")
             else:
                 self._send(404, "")
+
+        def do_POST(self):
+            length = int(self.headers.get("Content-Length") or 0)
+            state.token_form = parse_qs(self.rfile.read(length).decode())
+            if self.path == "/oauth2/token" and state.token_form.get("code") == ["good"]:
+                self._send(200, json.dumps({"access_token": TOKEN, "token_type": "Bearer"}))
+            else:
+                self._send(400, "invalid_grant")
 
         def do_PUT(self):
             length = int(self.headers.get("Content-Length") or 0)
@@ -91,7 +103,8 @@ def osm(tmp_path, monkeypatch):
 
     server = HTTPServer(("127.0.0.1", 0), Handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
-    monkeypatch.setenv("ROUTEMAKER_OSM_API", f"http://127.0.0.1:{server.server_port}/api/0.6")
+    local = f"http://127.0.0.1:{server.server_port}"
+    monkeypatch.setitem(osm_edit.SERVERS, "dev", {"web": local, "api": f"{local}/api/0.6"})
     monkeypatch.setenv("ROUTEMAKER_OSM_STATE", str(tmp_path / "state"))
     (tmp_path / "state").mkdir()
     (tmp_path / "state" / "osm-dev.token").write_text(TOKEN)
@@ -230,6 +243,8 @@ def test_show_prints_the_diff_and_flags_a_stale_draft(osm, tmp_path, capsys):
         ({"set": {"highway": "motorway"}}, "may only be set to"),
         ({"set": {"highway": "traffic_signals"}, "expect": {}}, "exactly the tags"),
         ({"element": "relation"}, "node or way"),
+        ({"id": True}, "positive OSM id"),
+        ({"set": {"highway": " traffic_signals"}}, "no spaces at the ends"),
         ({"comment": ""}, "changeset note"),
         ({"source": "Google Street View"}, "survey or local_knowledge"),
         (
@@ -255,4 +270,84 @@ def test_not_signed_in(osm, tmp_path, capsys):
     (tmp_path / "state" / "osm-dev.token").unlink()
     assert osm_edit.main(["upload", str(_edit(tmp_path)), "--approved"]) == 1
     assert "not signed in" in capsys.readouterr().err
+    assert _puts(osm) == []
+
+
+def test_login_sends_a_pkce_exchange_and_keeps_the_token_owner_only(
+    osm, tmp_path, monkeypatch, capsys
+):
+    path = tmp_path / "state" / "osm-dev.token"
+    path.unlink()
+    path.write_text("old")
+    path.chmod(0o644)
+    monkeypatch.setattr("builtins.input", lambda prompt: "good")
+    assert osm_edit.main(["login", "--server", "dev", "--client-id", "abc"]) == 0
+    out = capsys.readouterr().out
+    authorize = parse_qs(out.split("/oauth2/authorize?", 1)[1].split()[0])
+    assert authorize["scope"] == ["read_prefs write_api"]
+    assert authorize["code_challenge_method"] == ["S256"]
+    assert authorize["redirect_uri"] == [osm_edit.REDIRECT_URI]
+    form = osm.token_form
+    assert form["grant_type"] == ["authorization_code"] and form["client_id"] == ["abc"]
+    verifier = form["code_verifier"][0]
+    expected = (
+        osm_edit.base64.urlsafe_b64encode(osm_edit.hashlib.sha256(verifier.encode()).digest())
+        .rstrip(b"=")
+        .decode()
+    )
+    assert authorize["code_challenge"] == [expected]
+    assert path.read_text() == TOKEN
+    assert path.stat().st_mode & 0o777 == 0o600
+    assert "Mapper" in out and TOKEN not in out
+
+
+def test_login_with_a_bad_code_writes_nothing(osm, tmp_path, monkeypatch):
+    path = tmp_path / "state" / "osm-dev.token"
+    path.unlink()
+    monkeypatch.setattr("builtins.input", lambda prompt: "bad")
+    assert osm_edit.main(["login", "--server", "dev", "--client-id", "abc"]) == 1
+    assert not path.exists()
+
+
+def test_a_failed_upload_never_prints_the_token(osm, tmp_path, capsys):
+    osm.conflicts = 5
+    assert osm_edit.main(["upload", str(_edit(tmp_path)), "--approved"]) == 1
+    out = capsys.readouterr()
+    assert "Not uploaded" in out.err
+    assert TOKEN not in out.out + out.err
+
+
+def test_the_same_change_from_a_copied_file_is_refused(osm, tmp_path):
+    assert osm_edit.main(["upload", str(_edit(tmp_path)), "--approved"]) == 0
+    copy = tmp_path / "copy.json"
+    copy.write_text((tmp_path / "edit.json").read_text())
+    osm.calls.clear()
+    assert osm_edit.main(["upload", str(copy), "--approved"]) == 1
+    assert _puts(osm) == []
+
+
+def test_a_conflict_where_someone_made_the_same_change_does_not_upload_again(osm, tmp_path):
+    osm.conflicts = 1
+    osm.after_conflict_extra = '<tag k="highway" v="traffic_signals"/>'
+    assert osm_edit.main(["upload", str(_edit(tmp_path)), "--approved"]) == 1
+    node_puts = [p for p, _, _ in _puts(osm) if p.endswith("/node/101")]
+    assert len(node_puts) == 1
+    assert _puts(osm)[-1][0].endswith("/changeset/555/close")
+
+
+def test_an_unreachable_server_is_a_plain_refusal(osm, tmp_path, monkeypatch, capsys):
+    monkeypatch.setitem(
+        osm_edit.SERVERS, "dev", {"web": "http://127.0.0.1:9", "api": "http://127.0.0.1:9/api"}
+    )
+    assert osm_edit.main(["upload", str(_edit(tmp_path)), "--approved"]) == 1
+    assert "could not reach" in capsys.readouterr().err
+
+
+def test_a_draft_inside_the_repo_is_refused(osm, tmp_path):
+    inside = SCRIPT.parent / "osm-edit-test-draft.json"
+    inside.write_text(_edit(tmp_path).read_text())
+    try:
+        assert osm_edit.main(["upload", str(inside), "--approved"]) == 1
+    finally:
+        inside.unlink()
     assert _puts(osm) == []

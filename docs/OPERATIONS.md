@@ -7358,12 +7358,14 @@ This is manual mapping with a helper, not a bot or an import: no batch mode, no 
 most one retry after a version conflict, and a ride alone is never the evidence (the owner
 confirms what was seen). Agency signal lists are places to check, never a source copied in.
 
+Python 3.11 or later, standard library only.
+
 - **Sign in once, on the PC, in a terminal:**
   `python3 scripts/osm_edit.py login --server dev --client-id <id>`. The token goes to
   `~/.config/routemaker/osm-dev.token` (mode 600), outside the repo. Never read, print or
   copy it. `--server live` only on the owner's go.
 - **Draft:** a JSON file outside the repo (the scratchpad, or the PC's private ride
-  folder) naming one node or way, `expect` (the tags as the owner was shown them, null =
+  folder; the script refuses a draft inside the repo) naming one node or way, `expect` (the tags as the owner was shown them, null =
   absent), `set` (null = remove), `comment` and `source` (`survey`). Only the keys in
   `ALLOWED_KEYS` may change, at most four; `highway` only on a node, to a junction control.
   No GPS track, rider or ride date in the comment, source or file.
@@ -7371,7 +7373,7 @@ confirms what was seen). Agency signal lists are places to check, never a source
   and exits 2 if a tag changed since the draft.
 - **Upload, after the owner approves that file:**
   `python3 scripts/osm_edit.py upload edit.json --approved` (add `--live` for live OSM).
-  It writes `edit.uploaded.json` beside the draft (and refuses that file again) and appends
-  the changeset to `~/.config/routemaker/osm-edits.log`. Where routing must change before
+  It writes `edit.uploaded.json` beside the draft and appends the changeset to
+  `~/.config/routemaker/osm-edits.log`; the same change is refused again from any file. Where routing must change before
   the next rebuild, add the matching override as usual; the OSM edit reaches our map with
   the next extract.
