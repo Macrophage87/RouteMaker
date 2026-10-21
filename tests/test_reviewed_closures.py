@@ -347,7 +347,7 @@ class TestSavedRouteAlerts:
         mine.refresh_from_db()
         other.refresh_from_db()
         (alert,) = mine.closure_alerts
-        assert alert["text"].startswith("Closed on your route: Oak Street, until ")
+        assert alert["text"].startswith("Closed on your route: Oak Street, through ")
         assert alert["source"] == "Confirmed by a RouteMaker reviewer"
         assert other.closure_alerts == []
 
@@ -455,3 +455,31 @@ class TestRouteAnswer:
             "text": wz.heads_up(zone),
         }
         api.WorkZoneOut(**on_route)
+
+    def test_a_reviewers_closure_names_its_last_day_everywhere(self) -> None:
+        from datetime import datetime, time
+
+        from core import workzones as core_wz
+        from routemaker import ridetime
+
+        zone_of = ridetime.ZONE
+        now = datetime(2026, 10, 21, 12, 0, tzinfo=zone_of)
+
+        def closure(first: int, after_last: int, source: str = "reviewer") -> wz.Zone:
+            start = datetime.combine(datetime(2026, 10, first).date(), time(0), zone_of)
+            end = datetime.combine(datetime(2026, 10, after_last).date(), time(0), zone_of)
+            return wz.Zone("z", source, wz.CLOSED, 0.0, (), None, None, start, end)
+
+        one_day = closure(22, 23)
+        assert wz.when_text(one_day, now, True) == "Closed tomorrow"
+        assert wz.citation(one_day).endswith(", through Oct 22.")
+        later = closure(24, 31)
+        assert wz.when_text(later, now, True) == "Closed from Oct 24 through Oct 30"
+        assert wz.when_text(closure(1, 31), now, False) == "Closed through Oct 30"
+        assert core_wz._until_words(closure(1, 31)) == "through Oct 30, 2026"
+        assert saved_route_alerts._until(closure(1, 31).end.isoformat(), True) == (
+            "through Oct 30, 2026"
+        )
+        # A feed's end is said as it is given.
+        assert wz.when_text(closure(1, 31, "md"), now, False) == "Closed until Oct 31"
+        assert core_wz._until_words(closure(1, 31, "md")) == "until Oct 31, 2026"
