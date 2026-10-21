@@ -409,3 +409,36 @@ def test_a_later_edit_by_someone_else_does_not_fail_the_check(osm, tmp_path):
 def test_check_needs_a_recorded_upload(osm, tmp_path, capsys):
     assert osm_edit.main(["check", str(_edit(tmp_path))]) == 1
     assert "no upload recorded" in capsys.readouterr().err
+
+
+def test_the_smoke_test_catches_wrong_tags_at_the_uploads_version(osm, tmp_path, capsys):
+    path = _edit(tmp_path)
+    assert osm_edit.main(["upload", str(path), "--approved"]) == 0
+    osm.stored_tags = '<tag k="highway" v="stop"/>'
+    assert osm_edit.main(["check", str(path)]) == 3
+    err = capsys.readouterr().err
+    assert "highway: expected 'traffic_signals', OSM has 'stop'" in err
+    assert "changeset" not in err.split("Check FAILED:")[1]
+
+
+def test_the_smoke_test_catches_a_changeset_with_more_than_one_change(osm, tmp_path, capsys):
+    path = _edit(tmp_path)
+    assert osm_edit.main(["upload", str(path), "--approved"]) == 0
+    osm.changes = 2
+    assert osm_edit.main(["check", str(path)]) == 3
+    assert "holds 2 changes, not 1" in capsys.readouterr().err
+
+
+def test_a_smoke_test_that_cannot_run_never_says_not_uploaded(osm, tmp_path, capsys, monkeypatch):
+    path = _edit(tmp_path)
+    real = osm_edit.check_problems
+
+    def unreachable(edit, result):
+        raise osm_edit.EditError("could not reach the server")
+
+    monkeypatch.setattr(osm_edit, "check_problems", unreachable)
+    assert osm_edit.main(["upload", str(path), "--approved"]) == 3
+    err = capsys.readouterr().err
+    assert "Not uploaded" not in err and "could not check" in err
+    monkeypatch.setattr(osm_edit, "check_problems", real)
+    assert (tmp_path / "edit.uploaded.json").exists()

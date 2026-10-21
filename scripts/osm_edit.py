@@ -410,7 +410,11 @@ def check_problems(edit: dict, result: dict) -> list[str]:
 
 
 def report_check(edit: dict, result: dict) -> int:
-    problems = check_problems(edit, result)
+    try:
+        problems = check_problems(edit, result)
+    except (EditError, ET.ParseError) as error:
+        # After an upload this must never read as "Not uploaded": the change may be in.
+        problems = [f"could not check: {error}"]
     if problems:
         print("Check FAILED:", file=sys.stderr)
         print("\n".join(f"  {line}" for line in problems), file=sys.stderr)
@@ -511,7 +515,8 @@ def main(argv: list[str] | None = None) -> int:
             raise EditError("upload needs --approved: the owner approves each edit file")
         return upload(args.edit, edit, live=args.live)
     except EditError as error:
-        print(f"Not uploaded: {error}", file=sys.stderr)
+        prefix = "Not uploaded" if args.command == "upload" else "Stopped"
+        print(f"{prefix}: {error}", file=sys.stderr)
         return 1
 
 
