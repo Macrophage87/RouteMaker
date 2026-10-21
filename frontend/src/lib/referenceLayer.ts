@@ -70,12 +70,13 @@ export function waypointLayers(): object[] {
       layout: {
         "text-field": ["get", "name"],
         "text-font": [WAYPOINT_FONT],
-        "text-size": 12,
+        // The street names' size and halo (the owner, 2026-10-21: "All into stret name style").
+        "text-size": 15,
         "text-anchor": "top",
         "text-offset": [0, 0.7],
         "text-optional": true,
       },
-      paint: { "text-color": "#4c1d95", "text-halo-color": "#ffffff", "text-halo-width": 1.5 },
+      paint: { "text-color": "#4c1d95", "text-halo-color": "#ffffff", "text-halo-width": 3.5 },
     },
   ];
 }

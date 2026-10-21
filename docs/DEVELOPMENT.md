@@ -4964,15 +4964,30 @@ Tests: `lib/sidebar.test.ts`.
   two files are not both there, or the licence is missing; `notices.test.mjs` checks
   that the credit and the licence text reach `licenses.txt`.
 - **The map's label font (the owner, 2026-10-20).** Every map label is Atkinson Hyperlegible
-  Next; the street names (`stressStyle.js`, `ROAD_LABEL`) are its SemiBold at 15 px. MapLibre
+  Next; the street names (`stressStyle.js`, `ROAD_LABEL`) are its SemiBold at 15 px. The
+  neighbourhood and town names (`PLACE_LABEL`, the base map's `places_subplace` and
+  `places_locality`; the owner, 2026-10-21) are its ExtraBold on a 2.5 px white halo: a
+  neighbourhood in capitals, 11-14 px; a town in mixed case, 13-17 px; a large town
+  (population_rank 9 or more) 15-17 px, so a town reads above a neighbourhood, a neighbourhood
+  apart from a street, and both stay under the station names. The base map's other labels
+  (`OTHER_LABEL`: park and place names, water, islands, house numbers, route shields) and the
+  app's own names (mountain-bike trails, scenic spots, waypoints, route choices at 15 px; mile
+  markers and contour heights at 12-13 px) are SemiBold on a white halo too, in dark shades of
+  their colours (7:1 or more); counts inside icons (climbs, docks, Review badges) keep their
+  sizes. At z12 and z13 a plain street (facility "none", not a trail, paved, open to cars) that
+  the tiles mark `dense` (a city grid: its 1 km square of EPSG:3857 holds 12 km or more of drawn
+  road, `core.stress_tiles.DENSE_RULE`; unmarked, as a rural road or an older tile, it is full width) is
+  drawn thinner (`STREET_THIN_SCALE`: line x0.4 and x0.6, casing extra x0.5 and x0.75, a full
+  pixel a side with the accessibility switch), so a city grid is a mesh, not a carpet; lanes,
+  paths, trails and unpaved roads keep their widths (the owner, 2026-10-21). MapLibre
   draws text from glyph files, not web fonts, and the style has one glyph URL template (the
   base map's `/basemap/fonts/`), so the three Latin ranges (`corridor.ts` `GLYPH_RANGES`) of
-  Regular, SemiBold and Italic are made once with `scripts/make_map_glyphs.mjs` and bundled in
+  Regular, SemiBold, ExtraBold and Italic are made once with `scripts/make_map_glyphs.mjs` and bundled in
   `frontend/src/fonts/map-glyphs/` (sha256 in docs/SOURCES.md). Each file is the font's glyphs
   with the base map's matching Noto Sans face filling the code points the font lacks, since
   MapLibre draws nothing for a code point missing from a range it has. Vite serves them as
   hashed `/assets/*.pbf` files (no edge change) and the service worker precaches them (about
-  800 KB uncompressed, 470 KB gzipped). The layers keep naming the base map's faces; the
+  1.1 MB uncompressed, 640 KB gzipped). The layers keep naming the base map's faces; the
   `transformRequest` of both the app's map (`MapView.tsx`) and the share card's
   (`app/shareCardRender.ts`), `lib/mapGlyphAssets.ts` `mapGlyphRequest`,
   sends a request for Noto Sans Regular, Medium or Italic (or the street names' face) to its

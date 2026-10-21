@@ -995,6 +995,29 @@ def trace_leg(variant: str, costing: dict, shape: str, deadline: Deadline) -> di
     return None
 
 
+def busy_and_waits(
+    variant: str, costing: dict, shape: str, when: str, deadline: Deadline
+) -> tuple[float, float] | None:
+    """One routed leg's metres on busy roads (LTS 3 and up, Avoid included) and its junction
+    waits in seconds (`routemaker.junction_delay`, which `plan` adds to its time), read from
+    its trace as `plan` reads a route's; None where it could not be traced. For the transit
+    ride types' candidate rides (core.transit), which are routed without a trace."""
+    from .flashing_signals import active as active_beacons
+
+    trace = trace_leg(variant, costing, shape, deadline)
+    if trace is None:
+        return None
+    stress, _facility = breakdown(pieces_of_trace(trace), when)
+    junctions = trace_junctions.junctions_of_trace(trace, decode_polyline6(shape), 0.0)
+    beacons = active_beacons()
+    waits = junction_delay.delay_s(
+        junctions,
+        stop_as_yield,
+        lambda lon, lat: intersections.beacon_at(lon, lat, beacons) is not None,
+    )
+    return stress["3"] + stress["4"] + stress["5"], float(waits)
+
+
 @dataclass(frozen=True)
 class Dials:
     """Where the rider has the sliders and the ride-time setting.

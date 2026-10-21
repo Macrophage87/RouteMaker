@@ -4322,6 +4322,9 @@ export function App() {
     onPick: (key: string) => {
       const option = transitOf(shown)?.options.find((o) => o.key === key);
       setTransitPick({ trip, key });
+      // In Plan too a trip picked is planned at once, as Route would (Stephen, 2026-10-21: "I can't even click on
+      // the other options": the pick waited for Update route, and the list showed no change).
+      if (planFirst) setRouteAsk((n) => n + 1);
       if (option) announce(optionChosenSaid(option));
     },
     announce,
