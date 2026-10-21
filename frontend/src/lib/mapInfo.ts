@@ -9,6 +9,7 @@
  */
 import { searchLede } from "./sidebar.ts";
 import { STRESS_PAGE } from "./stressLegend.ts";
+import { versionSaid } from "./appVersion.ts";
 
 /** The rider-facing documentation pages (public/about/), in the hub's order; Acknowledgements is in the credits. */
 export const DOCS_LINKS: ReadonlyArray<{ href: string; text: string }> = [
@@ -33,6 +34,8 @@ export const MAP_INFO: string = [
   `<p><strong>Plan a route.</strong> ${searchLede(false)}</p>`,
   `<ul>${INFO_POINTS.map((point) => `<li>${point}</li>`).join("")}</ul>`,
   `<p>More: ${DOCS_LINKS.map((link) => `<a href="${link.href}">${link.text}</a>`).join(" · ")}</p>`,
+  // Which release this is, for Go and rides, where Plan's heading is out of sight (lib/appVersion.ts).
+  versionSaid() ? `<p>${versionSaid()}.</p>` : "",
   "<p><strong>Credits.</strong></p>",
 ].join("");
 

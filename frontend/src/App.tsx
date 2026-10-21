@@ -3,6 +3,7 @@ import type { Map as MapLibreMap } from "maplibre-gl";
 import { MapView, type Frame, type LineEdit, type StressAvailability } from "./MapView.tsx";
 import { RoadInfoDialog } from "./RoadInfoDialog.tsx";
 import { MapTools } from "./MapTools.tsx";
+import { APP_VERSION, versionShort } from "./lib/appVersion.ts";
 import { ACCESS_LABEL, accessModeToggle, readAccessMode, writeAccessMode } from "./lib/accessMode.ts";
 import { placeAtSpot, requestAfterClose, type InfoRequest, type TrailRider } from "./lib/roadInfo.ts";
 import { stationNearSpot } from "./lib/stationLinks.ts";
@@ -4665,9 +4666,18 @@ export function App() {
         hidden={riding}
       >
         <header className="panel-header">
-          <h1 ref={plannerHeadingRef} tabIndex={-1} className={goMode ? "visually-hidden" : undefined}>
-            {PLANNER_TITLE}
-          </h1>
+          {/* The version under the heading, not in it (lib/appVersion.ts): beside it, a phone's header overflowed. */}
+          <div className="panel-title">
+            <h1 ref={plannerHeadingRef} tabIndex={-1} className={goMode ? "visually-hidden" : undefined}>
+              {PLANNER_TITLE}
+            </h1>
+            {APP_VERSION && !goMode && (
+              <p className="app-version">
+                <span aria-hidden="true">v{APP_VERSION}</span>
+                <span className="visually-hidden">{versionShort()}</span>
+              </p>
+            )}
+          </div>
           {!goMode && <ModeSwitch mode={mode} onChange={changeMode} className="panel-mode" modes={switchModes(canReview)} />}
           <button
             type="button"

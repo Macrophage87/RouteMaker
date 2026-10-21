@@ -1,6 +1,7 @@
 {
   "name": "routemaker-frontend",
   "private": true,
+  "version": "0.10.0",
   "type": "module",
   "scripts": {
     "dev": "vite",

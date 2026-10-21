@@ -1016,9 +1016,11 @@ live within about 10 minutes, and nothing after it checks what a screen reader h
   handout to the testers once it is deployed, adding the update hours if `RM_CD_WINDOW` is set
   (the sender's notes at its top say how).
 
-- The tagged commit carries the release's version in `pyproject.toml` (`version`) and
-  `src/routemaker/__init__.py` (`__version__`): bump both in the release's last commit
-  (tests/test_deploy_docs.py checks that they agree).
+- The tagged commit carries the release's version in `pyproject.toml` (`version`),
+  `src/routemaker/__init__.py` (`__version__`) and `frontend/package.json` (`version`, and the
+  two `version`s at the top of `frontend/package-lock.json`): bump all of them in the release's
+  last commit (tests/test_deploy_docs.py checks that they agree). The front end's is the one
+  riders see, by Plan's heading, in the tab's title and in the map's Help panel.
 
 ```sh
 # at home, on the owner's go:
