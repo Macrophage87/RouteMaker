@@ -4964,7 +4964,11 @@ Tests: `lib/sidebar.test.ts`.
   two files are not both there, or the licence is missing; `notices.test.mjs` checks
   that the credit and the licence text reach `licenses.txt`.
 - **The map's label font (the owner, 2026-10-20).** Every map label is Atkinson Hyperlegible
-  Next; the street names (`stressStyle.js`, `ROAD_LABEL`) are its SemiBold at 15 px. MapLibre
+  Next; the street names (`stressStyle.js`, `ROAD_LABEL`) are its SemiBold at 15 px. The
+  neighbourhood and town names (`PLACE_LABEL`, the base map's `places_subplace` and
+  `places_locality`; the owner, 2026-10-21) are the same SemiBold in mixed case on a 3 px white
+  halo: a neighbourhood 13-16 px, a town 13-17 px, a large town (population_rank 9 or more)
+  15-17 px, so a town reads above a neighbourhood and both stay under the station names. MapLibre
   draws text from glyph files, not web fonts, and the style has one glyph URL template (the
   base map's `/basemap/fonts/`), so the three Latin ranges (`corridor.ts` `GLYPH_RANGES`) of
   Regular, SemiBold and Italic are made once with `scripts/make_map_glyphs.mjs` and bundled in

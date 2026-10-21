@@ -23,7 +23,10 @@ test("road names: both base map name layers are restyled, and only they and the 
       assert.deepEqual(layer.layout?.["text-field"], before[i].layout?.["text-field"]);
       assert.deepEqual((layer as { filter?: unknown }).filter, (before[i] as { filter?: unknown }).filter);
     } else if (PLACE_LABEL_LAYER_IDS.includes(layer.id)) {
-      assert.deepEqual(layer.layout?.["text-field"], before[i].layout?.["text-field"]);
+      // Only the face, size, case and spacing change: the name, placement, icon and filter are the base map's.
+      const restyled = ["text-font", "text-size", "text-transform", "text-letter-spacing"];
+      const keep = (l: Layer) => Object.fromEntries(Object.entries(l.layout ?? {}).filter(([k]) => !restyled.includes(k)));
+      assert.deepEqual(keep(layer), keep(before[i]));
       assert.deepEqual((layer as { filter?: unknown }).filter, (before[i] as { filter?: unknown }).filter);
     } else {
       assert.deepEqual(layer, before[i]);
@@ -190,6 +193,9 @@ test("place names: a town reads above a neighbourhood, both under the station na
     assert.equal(large, sizeAt(PLACE_LABEL.town.largeSize as Stops, zoom));
     assert.equal(small, sizeAt(PLACE_LABEL.town.size as Stops, zoom));
   }
+  // The stops written out, so a fault shared by the style and sizeAt shows.
+  const isLarge = [">=", ["coalesce", ["get", "population_rank"], 0], 9];
+  assert.deepEqual(size.slice(3), [8, ["case", isLarge, 15, 13], 11, ["case", isLarge, 17, 15], 14, ["case", isLarge, 17, 16], 17, ["case", isLarge, 17, 17]]);
   assert.ok(contrastRatio(PLACE_LABEL.town.color, "#ffffff") > contrastRatio(PLACE_LABEL.neighbourhood.color, "#ffffff"));
 });
 
