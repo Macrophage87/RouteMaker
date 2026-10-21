@@ -331,9 +331,23 @@ test("after End ride: how many are still to report, where Reports is, and Open R
   assert.equal(OPEN_REPORTS, "Open Reports");
   const { readFileSync } = await import("node:fs");
   const card = readFileSync(new URL("../RideSummaryCard.tsx", import.meta.url), "utf8");
-  assert.match(card, /\{toReport > 0 && \(/);
+  assert.match(card, /\{owes && \(/);
+  // Unchecking an old reported entry: it is stale once unreported, so it stays in Archived (the review of #339).
+  const reportedLongAgo = { ...entry(), id: "d", at: "2026-09-01T12:00:00Z", reported: "2026-09-05T12:00:00Z" };
+  assert.equal(isStale(reportedLongAgo, now), false);
+  assert.equal(isStale({ ...reportedLongAgo, reported: null }, now), true);
+  const list = readFileSync(new URL("../Report311Log.tsx", import.meta.url), "utf8");
+  assert.match(list, /isStale\(\{ \.\.\.entry, reported: null \}, now\)/);
+  assert.match(list, /openGroups\(entries, now\)/);
+  assert.match(list, /archived\(entries, now\)/);
   assert.match(card, /onClick=\{onReports\}>\s*\{OPEN_REPORTS\}/);
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   assert.match(app, /onReports=\{rideEndReports\}/);
-  assert.match(app, /openView\("suggest", go \? null/);
+  assert.match(app, /const opener = go \? document\.querySelector<HTMLElement>\("\.go-menu"\)/);
+  assert.match(app, /clearPlan\(\);\s*focusAfterRemove\.current = null;/);
+  // Reports opens on the checklist: it comes first in the sheet.
+  const sheets = readFileSync(new URL("../app/Sheets.tsx", import.meta.url), "utf8");
+  const sheet = sheets.slice(sheets.indexOf('id="sheet-suggest"'));
+  assert.ok(sheet.indexOf("<Report311Log />") < sheet.indexOf('aria-labelledby="suggest-map-heading"'));
+  assert.match(app, /announce\(\[RIDE_ENDED_SAID, note, owed > 0/);
 });

@@ -74,7 +74,7 @@ test("6. an End ride button always in view, labelled End ride with its icon, one
   assert.match(summary, /done\.current\?\.focus\(\);/);
   assert.doesNotMatch(summary, /useHoldTimer|setTimeout/);
   // Only "Ride ended." is said (the owner, 2026-10-20: "Just put ride ended."); the figures are on the card.
-  assert.match(app, /announce\(note \? `\$\{RIDE_ENDED_SAID\} \$\{note\}` : RIDE_ENDED_SAID\);/);
+  assert.match(app, /announce\(\[RIDE_ENDED_SAID, note, owed > 0 \? `\$\{outstandingSaid\(owed\)\} \$\{REPORTS_WHERE\}` : null\]\.filter\(Boolean\)\.join\(" "\)\);/);
   assert.match(ride, /rideVoice\.speak\(RIDE_ENDED_SAID, true\);/);
   assert.doesNotMatch(app, /focusStartAfterRide/);
   assert.match(ride, /onFocus: \(\) => timer\.current\?\.focus\(true\)/);

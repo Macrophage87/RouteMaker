@@ -219,7 +219,7 @@ import { NARROW, useLongerThan, useMinute, useNarrow, useSettled } from "./app/h
 import { routeLightMarks, sameLightMarks, type LightMark } from "./lib/lightTimes.ts";
 import { PointsSection, RideSection } from "./app/Planner.tsx";
 import { RouteSection, ShareControls, type Status } from "./app/RoutePanel.tsx";
-import { report311Log } from "./lib/report311Log.ts";
+import { REPORTS_WHERE, openCount, outstandingSaid, report311Log } from "./lib/report311Log.ts";
 import { EditRouteSheet, FoodSheet, GpxSheet, LayersSheet, NearestSheet, RideChips, RideGroupChips, RideSheet, SettingsSheet, SuggestSheet, type SheetNav } from "./app/Sheets.tsx";
 import { GoAddStop, GoRouteCard, GoSheet, GoTopBar, ModeSwitch, PlanMapChips } from "./app/Go.tsx";
 import { useSharedLaunch } from "./app/sharedLaunch.ts";
@@ -3386,7 +3386,9 @@ export function App() {
     setRideView(null);
     setRideEnded((was) => ({ n: (was?.n ?? 0) + 1, stats, at: Date.now(), note }));
     // Said by the page's region, always mounted; the focus goes to Done (RideSummaryCard), not back to Start (review F6).
-    announce(note ? `${RIDE_ENDED_SAID} ${note}` : RIDE_ENDED_SAID);
+    // Problems still to report to 311 are said too: the focus goes to Done, past the summary's line about them.
+    const owed = openCount(report311Log().list());
+    announce([RIDE_ENDED_SAID, note, owed > 0 ? `${outstandingSaid(owed)} ${REPORTS_WHERE}` : null].filter(Boolean).join(" "));
   }, [announce, commit]);
   // A back gesture during a ride does nothing; End ride is the way out (lib/rideBack.ts, review RIDE-2).
   // Each held back is told, politely, once (review RIDE-2).
@@ -3415,14 +3417,19 @@ export function App() {
     if (mode === "go" && pointsRef.current.length > 0) clearPlan();
     else backToRideOpener();
   };
-  // Open Reports on the summary, while 311 problems are still to report: closed as Done closes it, then Reports opens,
-  // its Back to Plan's Start ride (Go's plan is emptied, as Done empties it).
+  // Open Reports on the summary, while 311 problems are still to report: closed as Done closes it, then Reports opens
+  // with the focus on its heading. Back goes to Plan's Start ride, or Go's Menu (Go's plan is emptied, as Done empties
+  // it, without the clear's move of the focus to Where to?).
   const rideEndReports = () => {
     endedRide.current = null;
     setRideEnded(null);
     const go = mode === "go";
-    if (go && pointsRef.current.length > 0) clearPlan();
-    openView("suggest", go ? null : rideOpener.current?.isConnected ? rideOpener.current : startRideRef.current);
+    if (go && pointsRef.current.length > 0) {
+      clearPlan();
+      focusAfterRemove.current = null;
+    }
+    const opener = go ? document.querySelector<HTMLElement>(".go-menu") : rideOpener.current?.isConnected ? rideOpener.current : startRideRef.current;
+    openView("suggest", opener);
   };
   // A new destination or a ride started while the summary is up: the summary goes, so Done can't clear the next trip
   // and Undo can't ride the old one over it (end review M1). The destination, by value: Go's start follows the rider.

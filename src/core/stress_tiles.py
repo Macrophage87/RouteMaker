@@ -640,7 +640,8 @@ def render(
             cursor.execute("SELECT set_config('statement_timeout', %s, true)", [str(timeout_ms)])
             # No JIT, at any level: the city grid's square sums (DENSE_RULE) lift the
             # planner's cost past jit_above_cost, and compiling took ten times as long as the
-            # draw it was for (a synthetic downtown z13 tile, 2026-10-21: 400 ms with it, 45 ms without).
+            # draw it was for (a synthetic downtown z13 tile, 2026-10-21: 400 ms with it,
+            # 45 ms without).
             cursor.execute("SELECT set_config('jit', 'off', true)")
             cursor.execute(tile_sql(level, optional, clip), params)
             oid, tile = cursor.fetchone()

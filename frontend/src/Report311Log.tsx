@@ -100,13 +100,15 @@ export function Report311Log() {
     setCopied("");
     window.setTimeout(() => setCopied(done ? `${kindLabel(entry.kind)} report copied.` : "Could not copy; select the report's text instead."), 150);
   };
-  const groups = openGroups(entries);
-  const old = archived(entries);
+  // One time for both lists, so an entry at the 30-day mark is in exactly one of them.
+  const now = new Date();
+  const groups = openGroups(entries, now);
+  const old = archived(entries, now);
   const check = (entry: LogEntry, checked: boolean) => {
     // The list the entry leaves, if it moves: open ones in the order shown, or Archived. A stale one stays in
     // Archived either way, so the focus stays on it.
     const inArchive = old.some((e) => e.id === entry.id);
-    const staysArchived = inArchive && (checked || isStale(entry));
+    const staysArchived = inArchive && (checked || isStale({ ...entry, reported: null }, now));
     const from = inArchive ? old : groups.flatMap((g) => g.entries);
     nextFocus.current = { id: staysArchived ? entry.id : focusAfter(from, entry.id), to: inArchive ? "archived" : "heading" };
     report311Log().setReported(entry.id, checked);

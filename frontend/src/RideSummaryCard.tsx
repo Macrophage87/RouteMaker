@@ -75,6 +75,9 @@ export function RideSummaryCard({
   // again as the screen or the text size changes.
   const body = useRef<HTMLDivElement>(null);
   const [scrolls, setScrolls] = useState(false);
+  // Problems logged for 311 and not yet reported, on any ride: where to find them, and a way there.
+  const toReport = openCount(useReport311Log());
+  const owes = toReport > 0;
   useEffect(() => {
     const element = body.current;
     if (!element) return;
@@ -85,12 +88,11 @@ export function RideSummaryCard({
     observer.observe(element);
     for (const child of Array.from(element.children)) observer.observe(child);
     return () => observer.disconnect();
-  }, []);
+    // Again when the 311 line comes or goes (an account's log can arrive after the summary is up).
+  }, [owes]);
   const rows = summaryRows(stats, endedAt);
   const ridden = Object.values(stats.stressM).reduce((sum, m) => sum + (m ?? 0), 0);
   const segments = ridden >= STRESS_MIN_M ? stressSegments(stats.stressM) : [];
-  // Problems logged for 311 and not yet reported, on any ride: where to find them, and a way there.
-  const toReport = openCount(useReport311Log());
   return (
     <section className="ride-summary" aria-labelledby={titleId}>
       <h2 id={titleId}>{RIDE_SUMMARY_TITLE}</h2>
@@ -105,7 +107,7 @@ export function RideSummaryCard({
         tabIndex={scrolls ? 0 : undefined}
       >
         {note && <p className="hint">{note}</p>}
-        {toReport > 0 && (
+        {owes && (
           <div className="ride-summary-311">
             <p>
               {outstandingSaid(toReport)} <span className="hint">{REPORTS_WHERE}</span>

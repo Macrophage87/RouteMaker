@@ -2801,20 +2801,25 @@ const levelSlider = `${EDITOR} input[type=range]`;
   // No note in a ride (Stephen, 2026-10-21: "Don't bother with a note as people use it riding"), and the menu shows
   // every problem at once ("Expand 311 to show everything"): on a phone of Stephen's size (412 x 800 CSS px), the
   // six are all inside the menu and the screen, with nothing to scroll.
-  await p.s("Emulation.setDeviceMetricsOverride", { width: 412, height: 800, deviceScaleFactor: 2, mobile: true });
-  await sleep(400);
-  await p.eval("document.querySelector('.ride-311-button').click(); true");
-  await sleep(300);
-  const fit311 = await p.eval(`(() => { const m = document.querySelector('.ride-311-menu'); const box = m.getBoundingClientRect();
-    const kinds = [...m.querySelectorAll('.ride-311-kind')].map((k) => k.getBoundingClientRect());
-    return { shown: !m.hidden, scrolls: m.scrollHeight > m.clientHeight + 1, kinds: kinds.length, inside: kinds.every((r) => r.top >= box.top - 0.5 && r.bottom <= box.bottom + 0.5 && r.bottom <= innerHeight && r.top >= 0),
-      note: !!document.querySelector('.ride-311-said button, .ride-report'), h: Math.round(box.height) }; })()`);
-  await p.escape();
-  await sleep(200);
+  // Also on a small phone (360 x 640), where one column of six would scroll: two columns there.
+  const fits311 = [];
+  for (const [width, height] of [[412, 800], [360, 640]]) {
+    await p.s("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 2, mobile: true });
+    await sleep(400);
+    await p.eval("document.querySelector('.ride-311-button').click(); true");
+    await sleep(300);
+    fits311.push(await p.eval(`(() => { const m = document.querySelector('.ride-311-menu'); const box = m.getBoundingClientRect();
+      const kinds = [...m.querySelectorAll('.ride-311-kind')].map((k) => k.getBoundingClientRect());
+      return { size: innerWidth + "x" + innerHeight, shown: !m.hidden, scrolls: m.scrollHeight > m.clientHeight + 1, kinds: kinds.length, inside: kinds.every((r) => r.top >= box.top - 0.5 && r.bottom <= box.bottom + 0.5 && r.bottom <= innerHeight && r.top >= 0),
+        tall: kinds.every((r) => r.height >= 44), clipped: [...m.querySelectorAll('.ride-311-kind')].filter((k) => k.scrollWidth > k.clientWidth + 1).length, note: !!document.querySelector('.ride-311-said button, .ride-report'), h: Math.round(box.height) }; })()`));
+    await p.escape();
+    await sleep(200);
+  }
   await p.s("Emulation.setDeviceMetricsOverride", { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
   await sleep(400);
+  const fit311 = { all: fits311.every((f) => f.shown && !f.scrolls && f.kinds === 6 && f.inside && f.tall && f.clipped === 0 && !f.note), fits311 };
   check("ride 311: on a phone the menu shows all six problems at once, nothing to scroll; no note to add after a pick",
-    fit311.shown && !fit311.scrolls && fit311.kinds === 6 && fit311.inside && !fit311.note, JSON.stringify(fit311));
+    fit311.all, JSON.stringify(fit311));
   await p.eval("document.querySelector('#ride-heading').focus(); true");
   await sleep(200);
 
@@ -2932,10 +2937,10 @@ const levelSlider = `${EDITOR} input[type=range]`;
   const owed = await p.eval(`(() => { const box = document.querySelector('.ride-summary-311'); const b = box?.querySelector('button'); return { line: box?.querySelector('p')?.textContent, button: b?.textContent, tall: b ? Math.round(b.getBoundingClientRect().height) : 0 }; })()`);
   await p.eval("document.querySelector('.ride-summary-311 button').click(); true");
   await sleep(500);
-  const reports = await p.eval("({ summary: !!document.querySelector('.ride-summary'), sheet: !!document.querySelector('#sheet-suggest') && getComputedStyle(document.querySelector('#sheet-suggest')).display !== 'none', focus: document.activeElement?.id, list: !!document.querySelector('#sheet-suggest .log311-group') })");
+  const reports = await p.eval("({ summary: !!document.querySelector('.ride-summary'), sheet: !!document.querySelector('#sheet-suggest') && getComputedStyle(document.querySelector('#sheet-suggest')).display !== 'none', focus: document.activeElement?.id, list: !!document.querySelector('#sheet-suggest .log311-group'), first: document.querySelector('#sheet-suggest section')?.getAttribute('aria-labelledby') })");
   check("ride: with a problem still to report, the summary says how many and where Reports is, and Open Reports (44 px) opens Reports at the 311 checklist, its heading focused",
     /^1 problem still to report to 311\. Reports is in Go's Menu and Plan's bottom bar\.$/.test(owed.line ?? "") && owed.button === "Open Reports" && owed.tall >= 44 &&
-    !reports.summary && reports.sheet && reports.focus === "sheet-suggest-title" && reports.list, JSON.stringify({ owed, reports }));
+    !reports.summary && reports.sheet && reports.focus === "sheet-suggest-title" && reports.list && reports.first === "suggest-311-heading", JSON.stringify({ owed, reports }));
   await p.close();
 }
 

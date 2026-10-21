@@ -592,6 +592,8 @@ export interface SuggestSheetProps {
 export function SuggestSheet({ nav, roadInfoAtCentre, onReview }: SuggestSheetProps) {
   return (
     <SheetFrame id="sheet-suggest" title={SHEET_TITLES.suggest} open={nav.view === "suggest"} onBack={nav.back} backLabel={nav.backLabel("suggest")}>
+      {/* The 311 checklist first: the sheet is Reports (Stephen, 2026-10-21), and the ride summary's Open Reports lands here. */}
+      <Report311Log />
       <section aria-labelledby="suggest-map-heading" className="settings-group">
         <h3 id="suggest-map-heading">A road or a junction</h3>
         <p className="hint">
@@ -603,7 +605,6 @@ export function SuggestSheet({ nav, roadInfoAtCentre, onReview }: SuggestSheetPr
           The road at the map's center
         </button>
       </section>
-      <Report311Log />
       {onReview && (
         <section aria-labelledby="suggest-review-heading" className="settings-group">
           <h3 id="suggest-review-heading">Review</h3>
