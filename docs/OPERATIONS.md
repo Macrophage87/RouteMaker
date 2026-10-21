@@ -4009,7 +4009,7 @@ things beyond the tags, and none of them comes from the reference install:
 - **`fixtures/cbd/architect-of-the-capitol.geojson`**, read a second way: the walks on
   the US Capitol grounds and in the Senate Parks open to bicycles too
   (`routemaker.capitolgrounds`; the owner, 2026-10-21), logged as "N walks and crossings
-  of the Capitol grounds opened to bicycles" (535 in the 2026-10-20 extract). Roadside
+  of the Capitol grounds opened to bicycles" (513 in the 2026-10-20 extract). Roadside
   sidewalks there keep the sidewalk rule's price instead.
 
 The rebuild refuses, terminally (not retried), when the District, Maryland or

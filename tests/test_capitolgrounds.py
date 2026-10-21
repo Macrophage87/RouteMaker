@@ -69,6 +69,16 @@ class TestOpens:
         ):
             assert not capitolgrounds.opens(tags, line(*WEST_FRONT)), tags
 
+    def test_passages_through_and_under_the_buildings_stay_closed(self) -> None:
+        for extra in (
+            {"tunnel": "building_passage"},
+            {"tunnel": "yes", "layer": "-1"},
+            {"indoor": "yes"},
+            {"covered": "yes"},
+        ):
+            assert not capitolgrounds.opens({**WALK, **extra}, line(*WEST_FRONT)), extra
+        assert capitolgrounds.opens({**WALK, "tunnel": "no", "covered": "no"}, line(*WEST_FRONT))
+
 
 class TestOpenWays:
     def test_opens_the_walk_and_the_crossing_that_meets_it_only(self) -> None:

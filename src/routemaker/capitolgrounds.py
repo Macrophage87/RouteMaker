@@ -22,9 +22,10 @@ Capitol grounds, the Senate Parks north to Union Station's plaza and the buildin
 them. A way is inside when the midpoint of its length is.
 
 Not opened: a way any bicycle, vehicle or closed access key speaks for (OSM's
-`access=private` courtyards and corridors stay closed), steps, natural surfaces, and
-roadside sidewalks (`footway=sidewalk`). The sidewalks are open already, at the
-sidewalk rule's price (`routemaker.sidewalks`; the CBD's ban does not reach the grounds,
+`access=private` courtyards and corridors stay closed), steps, natural surfaces, a
+tunnel, building passage, indoor or covered way (the passages through and under the
+buildings), and roadside sidewalks (`footway=sidewalk`). The sidewalks are open
+already, at the sidewalk rule's price (`routemaker.sidewalks`; the CBD's ban does not reach the grounds,
 `routemaker.cbd`), so a route keeps the street beside them where the street is calm.
 """
 
@@ -35,6 +36,11 @@ from functools import lru_cache
 
 from . import circleparks
 from .cbd import AOC_FILE, Polygon, in_polygons, load, midpoint
+
+# The passages through and under the Capitol's buildings (the East Front's
+# `building_passage` ways, the Old Capitol Tunnel, the Library of Congress Passage):
+# the Police Board's words are about riding on the grounds' walks, not indoors.
+INSIDE_TUNNEL = frozenset({"yes", "building_passage"})
 
 
 @lru_cache(maxsize=1)
@@ -59,6 +65,10 @@ def opens(
         "sidewalk",
         "access_aisle",
     ):
+        return False
+    if tags.get("tunnel") in INSIDE_TUNNEL or tags.get("indoor") not in (None, "no"):
+        return False
+    if tags.get("covered") not in (None, "no"):
         return False
     return circleparks.unspoken(tags) and contains(midpoint(coords), areas)
 
