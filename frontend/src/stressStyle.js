@@ -441,7 +441,11 @@ const GRAVEL_RAMP = {
 };
 export const GRAVEL_PALETTES = { blended: GRAVEL_RAMP, twotone: GRAVEL_RAMP, cvd: GRAVEL_RAMP };
 
-/** Whether a feature is an unpaved natural surface (the tiles' "unpaved" and "rough"): brown; other unpaved is gravel grey. */
+/**
+ * Whether a feature is an unpaved natural surface (the tiles' "unpaved" and "rough"): brown; other unpaved is gravel grey.
+ * The tiles carry "rough" on every table built since NO-BIKE-PATHS (290, 291); on an older one, without the column, every
+ * unpaved way draws grey here while the route line, which has no `rough` then, draws it brown.
+ */
 const isNatural = ["all", ["==", ["get", "unpaved"], true], ["==", ["get", "rough"], true]];
 
 /**
@@ -1077,7 +1081,8 @@ export function setMassRide(on) {
  * (slice 6) and only the harder ones in this look. This supersedes 290(b)'s "draw them
  * faint" (FOLLOWUP-MTB-FAINT). Since 454 the line is an optional map layer, off until the rider
  * turns it on (mtbTrailsOn, below; lib/mapGlue.ts overlayLayerShown). Not the tiles' `rough`: that is a rough surface (`is_rough`,
- * paved cobbles among them, 440), not this class, and a rough trail draws as any other.
+ * paved cobbles among them, 440), not this class: an unpaved rough way draws brown and any other unpaved one gravel grey
+ * (GRAVEL_PALETTES), whether or not it is a mountain-bike trail.
  *
  * MTB_TRAILS_ROUTABLE is the switch for a future mountain-bike mode: true draws them as any
  * other trail, in the routable layers, and the not-for-routes layer draws nothing (and the
@@ -1558,7 +1563,7 @@ export function stressCasingLayers(sourceId = "stress", when = DEFAULT_WHEN, tie
  * and 3:1 or more from the orange and red edges it rings), and keeps both of the owner's
  * colours. Drawn on the map (`ringLayers`, under everything else of the overlay, so a
  * facility rail still shows over it), round the route's sections (`route-ring`) and in
- * the legend's swatches. Paved roads only: an unpaved one is the brown ramp, which is 3:1
+ * the legend's swatches. Paved roads only: an unpaved one is the brown or the gravel grey ramp, each 3:1
  * on its own casing. Not drawn where the line is faint (z12-13), which keeps its own edge.
  * A tier with no `ring` has its ring layer drawn transparent, so a palette flip needs no
  * new layer.

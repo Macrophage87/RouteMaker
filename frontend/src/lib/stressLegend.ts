@@ -224,7 +224,7 @@ export const UNPAVED_LEGEND =
 
 /** The gravel row (the owner, 2026-10-21: "Maybe make natural surface trails brown and gravel grey?"; stressStyle.js GRAVEL_PALETTES). */
 export const GRAVEL_LEGEND =
-  "Grey, darker = busier: gravel or another firm unpaved surface, with the same dashes and dotted center line as dirt.";
+  "Grey, darker = busier: gravel, or an unpaved surface with nothing rougher mapped, with the same dashes and dotted center line as dirt.";
 
 /**
  * The surface-unknown line's entry (OWNER-DECISIONS 376, A): the shape that says so, in words, and why.

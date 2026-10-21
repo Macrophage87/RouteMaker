@@ -268,7 +268,7 @@ for (const [name, gravel, offset] of [["Gravel", true, 0], ["Dirt", false, 1]] a
 }
 
 test("the surface rows' words: grey gravel, brown dirt, in plain words", () => {
-  assert.match(GRAVEL_LEGEND, /^Grey, darker = busier: gravel or another firm unpaved surface/);
+  assert.match(GRAVEL_LEGEND, /^Grey, darker = busier: gravel, or an unpaved surface with nothing rougher mapped/);
   assert.match(UNPAVED_LEGEND, /^Brown, darker = busier: dirt, grass or another natural surface, or a rutted unpaved track, with the dashes above and a dotted center line\. An unpaved trail has no edge lines, which a paved path has\. A short bridge is drawn like the trail it is on; tap it to read its own surface\.$/);
   for (const words of [GRAVEL_LEGEND, UNPAVED_LEGEND]) assert.doesNotMatch(words, /path edges/, "plain words (the a11y review's N2)");
 });

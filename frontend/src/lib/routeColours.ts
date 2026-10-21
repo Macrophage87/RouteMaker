@@ -175,8 +175,8 @@ export function routeClasses(): readonly RouteClass[] {
     // (MapView's route-unpaved layer) as the cue that is not colour.
     ...tiers.map((tier: { tier: number; short: string; label: string; unpavedColor: string; unpavedCasing: string }) => ({
       key: `u${tier.tier}` as RouteClassKey,
-      short: `Unpaved ${tier.short}`,
-      label: `Unpaved: ${tier.label.charAt(0).toLowerCase()}${tier.label.slice(1)}`,
+      short: `Dirt ${tier.short}`,
+      label: `Dirt or other natural surface: ${tier.label.charAt(0).toLowerCase()}${tier.label.slice(1)}`,
       color: tier.unpavedColor,
       halo: tier.unpavedCasing,
       width: ROUTE_SECTION_WIDTHS[`u${tier.tier}` as RouteClassKey],
