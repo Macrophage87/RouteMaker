@@ -103,6 +103,8 @@ START_COLOUR = (21, 128, 61)
 FINISH_COLOUR = (185, 28, 28)
 STOP_COLOUR = (31, 41, 51)
 BRAND = "RouteMaker"
+# The icon beside it (core.preview_icon, scripts/make_share_images.py).
+ICON_SIZE = 56
 # The parameter naming the shared line on the page (sharedRoutes.ts SHARED_PARAM).
 PARAM = "route"
 
@@ -373,6 +375,7 @@ def _icon_data() -> bytes:
 
     from . import preview_icon
 
+    assert preview_icon.SIZE == ICON_SIZE
     return zlib.decompress(base64.b64decode("".join(preview_icon.DATA)))
 
 
@@ -558,11 +561,9 @@ def render_png(drawn: dict, stats: str) -> bytes | None:
         canvas.blend(x, MAP_H, RULE, 1)
     baseline = MAP_H + (BAND + 24) // 2
     canvas.text(40, baseline, stats, TEXT)
-    from . import preview_icon
-
     brand_x = WIDTH - 40 - text_width(BRAND)
     canvas.text(brand_x, baseline, BRAND, LINE_COLOUR)
-    size = preview_icon.SIZE
+    size = ICON_SIZE
     canvas.image(brand_x - 14 - size, MAP_H + (BAND - size) // 2, size, _icon_data())
     return canvas.png()
 
@@ -701,11 +702,13 @@ ICON_LINKS = (
 )
 # The app's own preview (frontend/index.html's description, and the card scripts/
 # make_share_images.py draws).
-SITE_DESCRIPTION = "Plan bike routes around Washington, DC and Baltimore. No sign-in needed."
+SITE_DESCRIPTION = (
+    "Bike route planning tool around Washington, DC and Baltimore. No sign-in needed."
+)
 SITE_CARD = "/icons/share-card.png"
 SITE_CARD_ALT = (
     "The RouteMaker icon, a bicycle with a map pin in its front wheel. "
-    "Bike routes around Washington, DC and Baltimore, rated for traffic stress."
+    "Bike route planning tool around Washington, DC and Baltimore."
 )
 
 

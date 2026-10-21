@@ -3464,7 +3464,8 @@ preview. Two kinds of link get one (`core.share_preview`):
   with the icon beside "RouteMaker" (Home hidden, as before).
 
 Every address in the tags is built from the request's own host, so no host name is in the
-repository and nothing is set per server. Who counts as a fetcher is one pattern in three
+repository and nothing is set per server. A Caddy site needs its Caddyfile re-read once
+("Applying a Caddyfile change" above). Who counts as a fetcher is one pattern in three
 places, held equal by `tests/test_link_preview.py`: `share_preview.FETCHER_RE`, the
 Caddyfile's `@link_fetcher` and the beta nginx map `$rmbeta_link_fetcher`.
 

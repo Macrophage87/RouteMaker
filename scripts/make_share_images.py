@@ -34,7 +34,7 @@ WIDTH, HEIGHT = 1200, 630
 BACKGROUND = (255, 255, 255)
 TEXT = (31, 41, 51)
 QUIET = (75, 85, 99)
-TAGLINE = ("Bike routes around Washington, DC", "and Baltimore, rated for traffic stress")
+TAGLINE = ("Bike route planning tool", "around Washington, DC and Baltimore")
 
 
 def card(icon: Image.Image) -> Image.Image:
