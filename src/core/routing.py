@@ -839,7 +839,7 @@ def stress_spans(stretches: list[tuple], capacity: bool = False) -> list[dict]:
     `stretches` is (metres, stress key, facility key[, unpaved[, rpm[, outside DC[, half[,
     rough]]]]]) in the order ridden; the answer is [{from_m, to_m, tier, facility,
     unpaved}] in whole metres along the route, adjacent equal sections merged and those
-    under MIN_SPAN_M  folded into the one before (or, first on the route, the one after). `tier` is
+    under MIN_SPAN_M folded into the one before (or, first on the route, the one after). `tier` is
     1-5 or null (unknown); `facility` is the class or null; `unpaved` True or False
     where the segments say, else null (OWNER-DECISIONS 302: the route line draws an
     unpaved section in the brown ramp, so a section ends where the surface changes). An
