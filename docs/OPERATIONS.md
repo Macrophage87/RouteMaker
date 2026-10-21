@@ -7348,3 +7348,30 @@ already deployed: before v0.8.0 its compatibility layer gives the old Ride mode 
 voice; from v0.8.0 the site's own bridge does, with the cue notification. Deploying v0.8.0 needs no
 app rebuild. Install steps, permissions, privacy, TalkBack and what to check on a first ride:
 `mobile/README.md`. iOS can be added later from the same shell.
+
+## Fixing OSM from a ride (scripts/osm_edit.py)
+
+When the root-cause analysis of a ride or route shows the cause is wrong OSM data (a signal
+OSM lacks, a path signed open but tagged `bicycle=no`, a wrong surface or difficulty), the
+fix goes to OSM itself, under the owner's own OSM account, one approved change at a time.
+This is manual mapping with a helper, not a bot or an import: no batch mode, no queue, at
+most one retry after a version conflict, and a ride alone is never the evidence (the owner
+confirms what was seen). Agency signal lists are places to check, never a source copied in.
+
+- **Sign in once, on the PC, in a terminal:**
+  `python3 scripts/osm_edit.py login --server dev --client-id <id>`. The token goes to
+  `~/.config/routemaker/osm-dev.token` (mode 600), outside the repo. Never read, print or
+  copy it. `--server live` only on the owner's go.
+- **Draft:** a JSON file outside the repo (the scratchpad, or the PC's private ride
+  folder) naming one node or way, `expect` (the tags as the owner was shown them, null =
+  absent), `set` (null = remove), `comment` and `source` (`survey`). Only the keys in
+  `ALLOWED_KEYS` may change, at most four; `highway` only on a node, to a junction control.
+  No GPS track, rider or ride date in the comment, source or file.
+- **Check:** `python3 scripts/osm_edit.py show edit.json` prints the diff against OSM now
+  and exits 2 if a tag changed since the draft.
+- **Upload, after the owner approves that file:**
+  `python3 scripts/osm_edit.py upload edit.json --approved` (add `--live` for live OSM).
+  It writes `edit.uploaded.json` beside the draft (and refuses that file again) and appends
+  the changeset to `~/.config/routemaker/osm-edits.log`. Where routing must change before
+  the next rebuild, add the matching override as usual; the OSM edit reaches our map with
+  the next extract.
