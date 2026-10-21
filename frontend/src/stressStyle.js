@@ -2099,10 +2099,14 @@ export function facilityLayers(sourceId = "stress", when = DEFAULT_WHEN, showHig
       "line-width": facilityWidthAt(facility, when),
     };
     if (facility.dash) paint["line-dasharray"] = facility.dash;
-    // A busy road's rails wait for zoom 14, as its faint line does (`byZoom`), unless it is a popular
-    // corridor: at 12-13 downtown they crowded the view (the owner, 2026-10-21: "see what we can do to
-    // declutter certain views").
-    if (busy) paint["line-opacity"] = ["step", ["zoom"], ["case", [">", ["to-number", ["get", "popular"], 0], 0], 1, 0], BUSY_RAILS_MIN_ZOOM, 1];
+    // In a city grid a busy road's rails wait for zoom 14, as its faint line does (`byZoom`), unless it is a
+    // popular corridor: at 12-13 downtown they crowded the view (the owner, 2026-10-21: "see what we can do to
+    // declutter certain views"). A rural road keeps them ("this is the same exact zoom in a rural area. Here
+    // it looks fine"): only a feature the tiles mark `dense` (v0.10.2's city grid) is thinned.
+    if (busy) {
+      const shownEarly = ["any", [">", ["to-number", ["get", "popular"], 0], 0], ["!=", ["get", "dense"], true]];
+      paint["line-opacity"] = ["step", ["zoom"], ["case", shownEarly, 1, 0], BUSY_RAILS_MIN_ZOOM, 1];
+    }
     return {
       id: facilityLayerId(facility.facility, busy),
       type: "line",

@@ -11,7 +11,7 @@
  * The data is amenity-data/water-restrooms.json, built from the project's
  * extract by scripts/build_water_restrooms.py (what counts is in its
  * docstring), loaded the first time the layer is shown. The layer is on by
- * default for every ride type and drawn from zoom 14 in; its switches (the
+ * default for every ride type and drawn from zoom 12 in; its switches (the
  * layer, portable and pit toilets, untreated water) are kept on this device.
  *
  * Each kind has its own shape as well as colour (lib/waterLegend.ts names
@@ -325,12 +325,16 @@ export function waterAlongCount(items: readonly WaterAlong[]): string {
 
 export const WATER_SOURCE_ID = "water-restrooms";
 export const WATER_LAYER = "water-restrooms";
+/** Drawn from street-network zoom in: further out the points would crowd the stress map. */
+export const WATER_MIN_ZOOM = 12;
 /**
- * Drawn from zoom 14 in, where a block has room for its icons. At 12 and 13 downtown they crowded
- * the stress map (the owner, 2026-10-21, of central DC at about zoom 13: "see what we can do to
- * declutter certain views"); the route's list names them at any zoom. The repair stands follow.
+ * The room an icon keeps clear around it, in px: an icon that would touch another, or a base-map label,
+ * is left out until the map zooms in far enough to part them. Downtown that thins the drops and
+ * restrooms at zoom 12-13 (the owner, 2026-10-21, of central DC: "see what we can do to declutter
+ * certain views"); in the country, where they are far apart, every one still shows ("this is the same
+ * exact zoom in a rural area. Here it looks fine"). The route's list names them all at any zoom.
  */
-export const WATER_MIN_ZOOM = 14;
+export const WATER_ICON_PADDING_PX = 6;
 export const WATER_ICON_PX = 18;
 
 /** One icon per kind the map draws: water alone by source, a restroom by type, with a drop when it has drinking water. */
@@ -376,7 +380,7 @@ export function waterIcon(icon: WaterIcon, pixelRatio = 2, cssSize = WATER_ICON_
     const top = size * 0.02;
     const cy = size * 0.64;
     const r = size * 0.34;
-    // Wide enough to read at the smallest size drawn (0.7 at zoom 14): about 3 px across.
+    // Wide enough to read at the smallest size drawn (0.7 at zoom 12): about 3 px across.
     const slash = 2.2 * pixelRatio;
     return rasterise(size, pixelRatio, (x, y): Rgb | null => {
       if (!inDrop(x, y, c, top, cy, r)) return null;
@@ -465,10 +469,12 @@ export function waterLayer(prefs: WaterPrefs = WATER_PREFS_DEFAULT, sourceId = W
     layout: {
       "icon-image": waterIconImage(prefs),
       "icon-size": ["interpolate", ["linear"], ["zoom"], WATER_MIN_ZOOM, 0.7, 15, 1, 18, 1.2],
-      "icon-allow-overlap": true,
+      // Thinned where crowded (WATER_ICON_PADDING_PX), never where sparse.
+      "icon-allow-overlap": false,
+      "icon-padding": WATER_ICON_PADDING_PX,
       // The base map's labels still place around them.
       "icon-ignore-placement": true,
-      // A restroom over a water source beside it.
+      // Where two crowd, the drinking water is kept over the restroom beside it.
       "symbol-sort-key": ["case", ["has", "t"], 1, 0],
     },
   };

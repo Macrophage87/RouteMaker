@@ -698,13 +698,14 @@ test("no layer of a surface-unknown trail draws the path rails or the dark conti
 // pronounced than other roads"; "When the roads get crowded with zoom, go in this rough priority: Off road path,
 // protected bike lane, painted bike lane, then the long calm streets").
 
-test("a busy road's rails wait for zoom 14 unless it is a popular corridor; a calm way's show at every zoom (declutter, 2026-10-21)", () => {
+test("in a city grid a busy road's rails wait for zoom 14 unless it is a popular corridor; a rural road's and a calm way's show at every zoom (declutter, 2026-10-21)", () => {
   const busy = facilityLayers("s", undefined, undefined, true);
   for (const layer of busy) {
-    const opacity = (zoom, popular) => paintValue(layer, "line-opacity", { tier: 4, facility: layer.id.split("-")[1], ...(popular ? { popular } : {}) }, zoom);
-    assert.equal(opacity(13, 0), 0, `${layer.id} z13`);
-    assert.equal(opacity(13, 2), 1, `${layer.id} z13 on a popular corridor`);
-    assert.equal(opacity(BUSY_RAILS_MIN_ZOOM, 0), 1, `${layer.id} z14`);
+    const opacity = (zoom, props) => paintValue(layer, "line-opacity", { tier: 4, facility: layer.id.split("-")[1], ...props }, zoom);
+    assert.equal(opacity(13, { dense: true }), 0, `${layer.id} z13 downtown`);
+    assert.equal(opacity(13, { dense: true, popular: 2 }), 1, `${layer.id} z13 on a popular corridor`);
+    assert.equal(opacity(13, {}), 1, `${layer.id} z13 rural ("Here it looks fine")`);
+    assert.equal(opacity(BUSY_RAILS_MIN_ZOOM, { dense: true }), 1, `${layer.id} z14`);
   }
   for (const layer of facilityLayers("s")) assert.equal(layer.paint["line-opacity"], undefined, layer.id);
 });
