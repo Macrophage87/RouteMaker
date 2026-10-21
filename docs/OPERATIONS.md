@@ -866,7 +866,7 @@ no live segment table yet is 404 with `no-store`, which the front end reads as
 
 | Zoom | What is drawn | Measured on a copy of a promoted build |
 | --- | --- | --- |
-| 10-11 | only the long traffic-free paths and trails: the long trails below, roadside trails and roads closed to cars at set times among them (`pipeline.schema.trails_predicate`, then `long_trails_predicate`); one feature per class, simplified | miles of path drawn region-wide (in the Columbia and Patapsco box): every trail 5,461 (311), z11 1,037 (17), z10 894 (15); a read-only measurement on a full-size copy of the 2026-10-03 build, with the rebuild's own code filling the columns |
+| 7-11 | only the long traffic-free paths and trails: the long trails below, roadside trails and roads closed to cars at set times among them (`pipeline.schema.trails_predicate`, then `long_trails_predicate`); one feature per class, simplified | miles of path drawn region-wide (in the Columbia and Patapsco box): every trail 5,461 (311), z11 1,037 (17), z10 894 (15); a read-only measurement on a full-size copy of the 2026-10-03 build, with the rebuild's own code filling the columns |
 | 12-13 | every segment FULL draws (the owner, 2026-10-17: "Both from 12"): the busy roads at LTS 3 and above (faint until z14 in the front end), the quiet streets, footways and mountain-bike trails, but one feature per class, simplified (`core.stress_tiles.STREETS`); no alleys. Until FORMAT_VERSION 10 this was the ride layer (391, 402a, below) | a synthetic downtown grid of 48,050 segments (the density of the 1.2 MB z12 tile over downtown DC on the first promoted build): z12 482 KB merged against 1.33 MB one feature a segment, z13 148 KB against 345 KB; the same grid's z14 is 90 KB (2026-10-17, `tile_sql` on a local PostGIS) |
 | 14-16 | every segment, one feature each, the alleys too (`FULL`, from `SEGMENTS_MIN_ZOOM`) | z14: 8,190 tiles, 49 MB, at most 125 KB (2026-09-28) |
 
@@ -898,7 +898,7 @@ for any format change, so the weekly rebuild's pre-draw draws the same format. T
 `-v10"` (and the mass tags), and a z12 tile over downtown answers 200 with one. The rail
 stations draw from z8 over everything, so zoomed out the map is the paths
 and the Metro and MARC stations; the app has station points, not rail lines.
-**The long trails (z10-11).** The owner, 2026-10-04: "Also zoomed out, can we
+**The long trails (z7-11; z10-11 until 2026-10-21).** The owner, 2026-10-04: "Also zoomed out, can we
 stick to mostly the longer trails, it's getting messy." (OWNER-DECISIONS 375),
 then "Car free roads stay. The point at this zoom is to see what would be a
 great long distance trip." and "Local trails only at higher zooms. Basically,
@@ -907,7 +907,7 @@ at birds eye view I want to see a bicycle version of the interstate routes."
 not include those." (378), for the z11 paved bar of 3 mi that dropped the
 Grist Mill Trail (2.54 mi), "Yes, bring it in." (380: 2.5 mi), and of the
 roads closed to cars for good, "I think off is fine here. Nobody routes
-around the tiny roads." (381). A path or trail is drawn at z10-11 only when
+around the tiny roads." (381). A path or trail is drawn at z7-11 only when
 it is part of something long:
 
 - its `segment.trail_route`, the OSM route relation it is in, is at least 2
@@ -941,8 +941,7 @@ Creek, Northwest Branch and the Cross County Trail carry an `mtb:scale` on
 asphalt); on the 2026-10-03 extract it changes nothing, since every flagged
 drawn way is flagged by its relation. An unknown surface is paved. The bars
 are the named constants in `pipeline.schema` (`Z11_PAVED_RUN_MI` and its
-siblings). The z7-10 and z11 tiles are two levels (`core.stress_tiles.TRAILS`, with z10's bars from z7,
-and `TRAILS_NEAR`), and the front end draws the lines and rails thinner
+siblings). z7-10 (`core.stress_tiles.TRAILS`, z10's bars) and z11 (`TRAILS_NEAR`) are two levels, and the front end draws the lines and rails thinner
 there (`ZOOMED_OUT_SCALE` in `frontend/src/stressStyle.js`), never with a
 casing edge, a rail or an unpaved mark under a pixel.
 
@@ -1188,7 +1187,7 @@ and `e` is `roadside`'s, one letter per column (a test holds them distinct); sin
 solid-below-14 change (390, `SOLID_MIN_ZOOM` 14) is in the rebuild bundle with this, and
 applies to that fallback only.
 
-**What the front end said** until 2026-10-17 (now `STRESS_ZOOMS` is `{ min: 10, quiet: 12,
+**What the front end said** until 2026-10-17 (then `STRESS_ZOOMS` was `{ min: 10, quiet: 12,
 max: 14 }`, the z10-11 notice reads "Zoom in to see more paths and trails and traffic stress
 on every road.", there is no notice from z12, and the hint says every other path and the busy
 roads, quiet streets, footways and sidewalks show from zoom 12, the busy roads faintly until
@@ -1488,7 +1487,7 @@ the timed closures (`cardinality(car_free_when) > 0`).
 **The tile cache.** A tile, once drawn, is kept in the `stress_tile_cache`
 table (`core/tile_cache.py`, migration `core.0009`) under its ETag and z/x/y,
 and served from there without a draw. Every tile the map asks for - z7-14,
-each one the coverage box reaches, 11,086 tiles and 66 MB, empty ones included
+each one the coverage box reaches, 11,086 tiles and about 66 MB (measured before z7-9 were added; those 18 tiles are not yet measured), empty ones included
 so their requests are lookups too - is drawn ahead after every promotion (the
 owner, 2026-09-28: "It takes a very long time to load those roads.", where:
 "Zoomed in (street level)"; OWNER-DECISIONS 63). The weekly rebuild does it
@@ -1514,7 +1513,7 @@ hundred (under 300; `tests/test_mass_tiles.py`), on a table that has
 Measured read-only on the live 2026-10-03 table with a stand-in width (2026-10-05, load
 from another agent's run): the z10 tile over DC 1.0-3.0 s and about 100 KB, z11 0.8-6.2 s
 and 96 KB, z12 0.6 s and 73 KB, z13 0.3 s, z14 0.25 s; well inside the pre-draw's 20 s,
-but a cold z10-11 can pass the 2 s on-request draw timeout and be answered 503 with
+but a cold z7-11 can pass the 2 s on-request draw timeout and be answered 503 with
 Retry-After until the pre-draw has run. Format 2 (2026-10-05, 421, 422) works out the
 Wide open runs over the whole District in each z10-11 query: measured the same way,
 z10 0.7-0.8 s warm (5.5 s the first, cold), z11 0.45-0.6 s, z12 0.26 s. Its tiles
@@ -1728,7 +1727,7 @@ change applies at once; nothing waits for a rebuild except what is listed below.
 4. writes a `stress_edit` row (every touched column before and after: the audit log keeps no
    copy of a row) and one `audit_log` entry (`stress_edit` or `stress_edit_undo`);
 5. bumps the live table's edit generation (`live_edit_generation`, keyed by the table's oid)
-   and deletes only the cached tiles covering the road at z10-16 (plus a tile's margin), for the
+   and deletes only the cached tiles covering the road at z7-16 (plus a tile's margin), for the
    stress and the Mass Ride tiles, re-keying the rest to the new tag so the cache stays warm.
 
 The edit generation is in the tile ETag (`W/"stress-<oid>+<letters>-e<generation>-v8"`), so a
