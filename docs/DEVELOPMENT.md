@@ -688,7 +688,7 @@ alone. Shape comes first and colour second:
   carry `trail_name` (`core.stress_tiles.trail_name_rule`, format 11) on a
   traffic-free path that clears the z11 long-trails bar (`Z11_LONG_TRAILS`:
   a long walking or regional-or-larger bicycle route, or a named run of
-  2.5 mi, 5 mi unpaved), at every zoom, from a table with the long-trail
+  2.5 mi, 5 mi unpaved), from z12, from a table with the long-trail
   columns; `segment.trail_name` is the way's name, else its route's. The
   `trail-name` symbol layer (`stressStyle.js`, `trailLabelLayers`,
   `TRAIL_LABEL`) draws it along the line from zoom 12 in the street names'

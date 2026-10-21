@@ -1962,7 +1962,7 @@ class TestMtbName:
 class TestTrailName:
     """A major trail carries its name as `trail_name` (the owner, 2026-10-21: "Major off road
     bike trails like the Metropolitan Branch Trail should be named on the map."): a path the
-    z11 map keeps as a long trail, at every zoom, and no other way."""
+    z11 map keeps as a long trail, from z12, and no other way."""
 
     @staticmethod
     def names(client, z) -> list:
@@ -1983,7 +1983,7 @@ class TestTrailName:
             (True, 3, 0.2, True),  # the C&O towpath's USBR 50
         ],
     )
-    @pytest.mark.parametrize("z", [11, 12, 14])
+    @pytest.mark.parametrize("z", [12, 13, 14])
     def test_a_major_trail_is_named(
         self, client, segment_schemas, z, unpaved, route, run_mi, named
     ) -> None:
@@ -1991,11 +1991,16 @@ class TestTrailName:
         insert_trail(live, unpaved, route, run_mi)
         with connection.cursor() as cursor:
             cursor.execute(f"UPDATE {live}.segment SET trail_name = 'Metropolitan Branch Trail'")
-        got = self.names(client, z)
-        if z == 11 and not named:
-            assert got == []  # not drawn at all there
-        else:
-            assert got == (["Metropolitan Branch Trail"] if named else [None])
+        assert self.names(client, z) == (["Metropolitan Branch Trail"] if named else [None])
+
+    @pytest.mark.parametrize("z", [10, 11])
+    def test_zoomed_out_tiles_carry_no_name(self, client, segment_schemas, z) -> None:
+        """The map names trails from z12; a name at z10-11 would only split the merged features."""
+        live, _ = segment_schemas
+        insert_trail(live, False, 3, 10.0)
+        with connection.cursor() as cursor:
+            cursor.execute(f"UPDATE {live}.segment SET trail_name = 'Capital Crescent Trail'")
+        assert self.names(client, z) == [None]
 
     def test_a_road_is_not_named_as_a_trail(self, client, segment_schemas) -> None:
         """A calm road carries `trail_name` for its calm run; a road closed to cars at set

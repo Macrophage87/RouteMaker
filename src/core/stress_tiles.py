@@ -424,7 +424,7 @@ LONG_TRAIL_COLUMNS = (TRAIL_ROUTE_COLUMN, TRAIL_RUN_COLUMN, TRAIL_BRIDGE_COLUMN)
 # a traffic-free path (`trails_predicate`, not a road closed to cars only at set times,
 # which keeps its street name) on a regional-or-larger bicycle route or a long walking
 # route, or in a named run of 2.5 mi or more (5 mi and a long bicycle route if unpaved;
-# Z11_LONG_TRAILS, OWNER-DECISIONS 375-380). So "major" is the rule the zoomed-out map
+# Z11_LONG_TRAILS, OWNER-DECISIONS 375-380), from z12. So "major" is the rule the zoomed-out map
 # already draws by, not a list. Left out of every other way, and of a table without the
 # long-trail columns, which the same rebuild writes `trail_name` with. The map draws it
 # along the line (frontend/src/stressStyle.js, TRAIL_LABEL). A mountain-bike trail's
@@ -498,7 +498,9 @@ def tile_sql(level: Level, optional: frozenset[str] = frozenset(), clip: bool = 
         carried["facility"] = f"COALESCE(s.{FACILITY_SHOWN_COLUMN}, s.{FACILITY_COLUMN})"
     has_facility = FACILITY_COLUMN in optional
     has_car_free = CAR_FREE_COLUMN in optional
-    if all(c in optional for c in LONG_TRAIL_COLUMNS):
+    # Only where the map names them (from z12): at z10-11 a name would split the merged
+    # features for nothing.
+    if level.min_zoom >= QUIET_STREETS_MIN_ZOOM and all(c in optional for c in LONG_TRAIL_COLUMNS):
         carried["trail_name"] = trail_name_rule(has_facility)
     if level.predicate is not None:
         where = level.predicate(has_facility, has_car_free)

@@ -2336,12 +2336,15 @@ export function MapView(props: Props) {
         map.setLayoutProperty(TRAIL_LABEL_LAYER_ID, "text-size", ride ? ROAD_LABEL.rideSize : ROAD_LABEL.size);
         map.setLayoutProperty(TRAIL_LABEL_LAYER_ID, "text-field", (ride ? rideTrailLabelField() : ["get", "trail_name"]) as LabelField);
       }
-      if (ids.length > 0) map.off("styledata", apply);
+      // The trail names come with the stress overlay, after the base map's: keep listening until both are set.
+      return ids.length > 0 && Boolean(map.getLayer(TRAIL_LABEL_LAYER_ID));
     };
-    if (ROAD_LABEL_LAYER_IDS.some((id) => map.getLayer(id))) apply();
-    else map.on("styledata", apply);
+    const onStyle = () => {
+      if (apply()) map.off("styledata", onStyle);
+    };
+    if (!apply()) map.on("styledata", onStyle);
     return () => {
-      map.off("styledata", apply);
+      map.off("styledata", onStyle);
     };
   }, [props.rideLabels]);
   useEffect(() => () => void riderMarker.current?.remove(), []);
