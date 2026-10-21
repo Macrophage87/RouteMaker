@@ -4688,7 +4688,7 @@ async function goPressMap(p) {
     track: /Scheduled service; check for track work\./.test(document.querySelector('.transit-scheduled')?.textContent ?? '') }))()`);
   const optionList = await axNode(p, "ol.transit-options");
   check("transit (Go): the trips are a list named Trips, best first, lettered, the chosen one pressed, riding the whole way among them, and the track-work caution shown",
-    optionList?.role === "list" && optionList?.name === "Trips, best first: busy roads count against a trip" && options.buttons.length === 2 && options.buttons[0].text === "A. Ride, Metro to Federal Triangle (Orange Line), ride: about 28 min" && options.buttons[0].pressed === "true" && options.buttons[1].text === "B. Ride the whole way: about 32 min" && options.buttons[1].pressed === "false" && options.track,
+    optionList?.role === "list" && optionList?.name === "Trips, best first, counting busy roads" && options.buttons.length === 2 && options.buttons[0].text === "A. Ride, Metro to Federal Triangle (Orange Line), ride: about 28 min" && options.buttons[0].pressed === "true" && options.buttons[1].text === "B. Ride the whole way: about 32 min" && options.buttons[1].pressed === "false" && options.track,
     JSON.stringify({ optionList, options }));
   check("transit (Go): the day's closed stations are asked for, to strike through on the map", p.closureRequests >= 1, String(p.closureRequests));
   // Start ride follows the first ride, and Ride the rest the last one, after the Metro (Stephen, 2026-10-16:

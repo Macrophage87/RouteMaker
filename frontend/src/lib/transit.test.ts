@@ -142,7 +142,7 @@ test("each Metro and bus step has a text marker, so colour is not the only cue",
 
 test("the options are lettered, best first, with riding the whole way among them", () => {
   // Stephen, 2026-10-21: ranked by time with busy roads and junctions counted against a trip.
-  assert.equal(OPTIONS_LABEL, "Trips, best first: busy roads count against a trip");
+  assert.equal(OPTIONS_LABEL, "Trips, best first, counting busy roads");
   assert.equal(optionText(PLAN.options[0], 0), "A. Ride, Metro to Federal Triangle (Orange Line), ride: about 28 min");
   assert.equal(optionText(PLAN.options[1], 1), "B. Ride the whole way: about 32 min");
   assert.equal(optionChosenSaid(PLAN.options[1]), "Planning Ride the whole way, about 32 min.");

@@ -40,7 +40,7 @@ export const STEPS_LABEL = "Steps, in order";
  * to get there with a penalty for time taken on busy roads and intersections", each row saying its busy riding,
  * "which should explain why they might not be in complete order".
  */
-export const OPTIONS_LABEL = "Trips, best first: busy roads count against a trip";
+export const OPTIONS_LABEL = "Trips, best first, counting busy roads";
 /** The legend's words for the rides: each is coloured by traffic stress, as the route is. */
 export const RIDES_LEGEND = "Every ride is coloured by traffic stress, as on the route, and a thin solid line is a ride whose streets could not be read in time.";
 /** Said under every transit plan: the timetables carry only the closures an agency published in them. */
