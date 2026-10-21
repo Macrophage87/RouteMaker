@@ -64,6 +64,17 @@ area assembly (multipolygon relations and closed ways alike):
   street (`WORKS_PUBLIC_HIGHWAY`), a sidewalk or a walkway tagged public
   (`works_walkway_open`), or another named street, stays open and is listed. Listed
   in the rebuild's `works-closures.csv`.
+- `golf` - `leisure=golf_course`. The owner, 2026-10-21, of Woodmont Country Club,
+  Rockville: "Still showing some bike paths on private property. These are golf
+  courses." A course's cart paths are mapped as plain `highway=path`, `service` or
+  `track`, often with no access tag, so the tag rule for a private golf-cart path
+  (OWNER-DECISIONS 278, 290) missed them. Under "err closed on bike access" (330)
+  every cart path, walkway and drive inside a course closes on every graph
+  (`golf_closures`, `rm:no_bicycle=golf`) and leaves the map, as does a way tagged
+  as a cart path (`golf=cartpath|path`, `golf_cart=*`) outside a mapped course. A
+  public street through a course and its sidewalks stay open, as does a way its own
+  tags open to bicycles, a bicycle route, a named trail, a numbered road and what an
+  owner's override reopens. Listed in the rebuild's `golf-closures.csv`.
 - `park` - `leisure=park` or `nature_reserve`, `boundary=national_park` or
   `protected_area`, or an operator that is the National Park Service. An
   untagged `highway=path` inside one is closed to bicycles, and kept outside
@@ -101,7 +112,8 @@ Area = tuple[tuple[float, float, float, float], list[Ring], list[Ring]]
 MILITARY, CEMETERY, PARKING, PARK = "military", "cemetery", "parking", "park"
 SECURED = "secured"
 WORKS = "works"
-KINDS = (MILITARY, SECURED, CEMETERY, PARKING, PARK, WORKS)
+GOLF = "golf"
+KINDS = (MILITARY, SECURED, CEMETERY, PARKING, PARK, WORKS, GOLF)
 
 # Land uses that are a working site no one may wander into (owner report 2026-10-12):
 # every way inside a quarry or a landfill, and an industrial area's own drives, close.
@@ -136,6 +148,10 @@ def area_kind(tags, osm: str = "") -> str | None:
         return CEMETERY
     if tags.get("amenity") == "parking" or tags.get("parking") in PARKING_VALUES:
         return PARKING
+    # Before the parks: a public course a park agency runs (`operator=National Park
+    # Service`, East Potomac) is still a golf course, its cart paths no trail.
+    if tags.get("leisure") == "golf_course":
+        return GOLF
     if (
         tags.get("leisure") in PARK_LEISURE
         or tags.get("boundary") in PARK_BOUNDARY
@@ -340,8 +356,8 @@ class _Areas(osmium.SimpleHandler):
 
 
 def restricted_areas(pbf: str | Path) -> dict[str, list[Area]]:
-    """Every military, secured, cemetery, parking, park and works area in an extract,
-    by kind."""
+    """Every military, secured, cemetery, parking, park, works and golf area in an
+    extract, by kind."""
     handler = _Areas()
     handler.apply_file(str(pbf), locations=True)
     dropped = unassembled_military(handler.military_relations, handler.areas[MILITARY])
@@ -753,7 +769,7 @@ def reopened_by_override(tags) -> bool:
 
 
 def _shown_tags(tags) -> str:
-    keys = ("access", "bicycle", "foot", "motor_vehicle", "ref", "service", "footway")
+    keys = ("access", "bicycle", "foot", "motor_vehicle", "ref", "service", "footway", "golf")
     return " ".join(f"{k}={tags[k]}" for k in keys if tags.get(k) is not None)
 
 
@@ -1094,6 +1110,167 @@ def works_closures(
             MilitaryWay(
                 osm_id,
                 _works_label(area),
+                highway,
+                tags.get("name") or "",
+                round(_length_m(coords), 1),
+                status,
+                why,
+                _shown_tags(tags),
+                round(share, 3),
+            )
+        )
+    return out
+
+
+# --- Golf courses closed to bicycles (owner report 2026-10-21; OWNER-DECISIONS 330) ----
+
+# The `rm:no_bicycle` reason of a golf course's cart path, walkway or drive.
+GOLF_NO_BICYCLE = "golf"
+WHY_GOLF = "closed: inside a golf course (a cart path, walkway or drive)"
+WHY_GOLF_CARTPATH = "closed: tagged as a golf cart path"
+WHY_GOLF_TAGGED_OPEN = "open: its own access/bicycle tag lets the public ride it"
+WHY_GOLF_ROUTE = "open: part of a bicycle or hiking route relation"
+WHY_GOLF_TRAIL = "open: a trail that runs on outside the course under the same name"
+WHY_GOLF_TRAIL_LINK = "open: an unnamed piece (a bridge, a link) between trail ways"
+WHY_GOLF_STREET = "open: a public street or its sidewalk through the course"
+WHY_GOLF_DC_STREET = WHY_WORKS_DC_STREET
+# The tags that say a way is a cart path wherever it lies: `golf=cartpath` (and the
+# older `golf=path`), or `golf_cart=designated` on a path, a drive or a track (a public
+# street may carry `golf_cart=yes` where carts share it).
+GOLF_CARTPATH = frozenset({"cartpath", "path"})
+GOLF_CART_WAY = TRAIL_CLASS_HIGHWAY | {"service", "track"}
+# The longest unnamed piece between trail ways that is read as the trail's own bridge or
+# link; a longer one that leaves a trail and comes back to it is a cart path's loop.
+GOLF_TRAIL_LINK_MAX_M = 100.0
+# The trail classes a public trail through a course may be mapped as.
+GOLF_TRAIL_HIGHWAY = frozenset({"path", "cycleway", "footway"})
+GOLF_STREET_HIGHWAY = WORKS_PUBLIC_HIGHWAY - {"cycleway"}
+
+
+def golf_cartpath(tags) -> bool:
+    """Tagged as a golf course's cart path (`golf=cartpath|path`, or a path, drive or
+    track designated for golf carts)."""
+    return tags.get("golf") in GOLF_CARTPATH or (
+        tags.get("golf_cart") == "designated" and tags.get("highway") in GOLF_CART_WAY
+    )
+
+
+def golf_open_tags(tags) -> bool:
+    """The way's own tags let the public ride it: a bicycle tag that opens it
+    (`bicycle=yes|designated|permissive`, which outranks `access`), or, with no bicycle
+    tag, `access=yes|permissive` with no `vehicle` key against it. Unlike a working
+    site's (`works_open_tags`), a cycleway's class alone does not: a cart path is
+    sometimes mapped as one."""
+    if tags.get("bicycle") is not None:
+        return tags.get("bicycle") in PUBLIC_BICYCLE
+    if _closing_access(tags, ("access", "vehicle")):
+        return False
+    return tags.get("access") in PUBLIC_ACCESS
+
+
+def golf_street(tags) -> bool:
+    """A public street through a course, or its sidewalk or crossing: a public-class
+    street (`GOLF_STREET_HIGHWAY`) or another named way that is not a service road, a
+    track or a trail class, kept to no one by an access key (`WORKS_CLOSING_ACCESS`).
+    A course's own drives and walks are none of these."""
+    highway = tags.get("highway")
+    if highway in WORKS_WALKWAY:
+        return tags.get("footway") in WORKS_STREET_FOOTWAY and not any(
+            tags.get(key) in WORKS_CLOSING_ACCESS for key in WORKS_WALKWAY_KEYS
+        )
+    return (
+        highway in GOLF_STREET_HIGHWAY
+        or (
+            bool(tags.get("name"))
+            and highway not in ("service", "track")
+            and highway not in TRAIL_CLASS_HIGHWAY
+        )
+    ) and not any(tags.get(key) in WORKS_CLOSING_ACCESS for key in ACCESS_KEYS)
+
+
+def golf_closures(
+    ways,
+    areas: Sequence[Area],
+    reopened: Collection[int] = frozenset(),
+    skip: Collection[int] = frozenset(),
+    dc_streets: Collection[int] = frozenset(),
+    trail_routes: Collection[int] = frozenset(),
+) -> list[MilitaryWay]:
+    """Every highway way inside a golf course (`GOLF`, at least INSIDE_FRACTION of its
+    length), and every way tagged as a cart path (`golf_cartpath`) wherever it lies,
+    closed or (with the reason) left open (owner report 2026-10-21: Woodmont Country
+    Club's cart paths drawn as bike paths; "err closed on bike access", OWNER-DECISIONS
+    330). Open: an override's bicycle permission, a numbered public road, a street
+    DDOT's Roadway Block records hold (`dc_streets`), a way whose own tags let the public
+    ride it (`golf_open_tags`), and, unless tagged as a cart path: a way in a bicycle or
+    hiking route relation (`trail_routes`), a public trail through the course (a path,
+    cycleway or footway whose name a trail outside the course also carries, so a named
+    cart path that stays on the course closes), an unnamed trail piece (a bridge, a short
+    link, up to GOLF_TRAIL_LINK_MAX_M) both of whose ends meet such a trail, and a public
+    street or its sidewalk (`golf_street`). Everything else closes. `skip` are the ways
+    the military, secured and works rules already judged."""
+    shapes = _Shapes(areas) if areas else None
+    found = []
+    outside_trail_names: set[str] = set()
+    # The vertices of the trails a bridge or a link may join: every named trail outside a
+    # course, and (below) the open trails inside one.
+    trail_points: set[tuple[float, float]] = set()
+    for osm_id, tags, coords in ways:
+        highway = tags.get("highway")
+        if highway is None or not coords or osm_id in skip:
+            continue
+        share, area = shapes.share(coords) if shapes is not None else (0.0, None)
+        cartpath = golf_cartpath(tags)
+        if share < INSIDE_FRACTION and not cartpath:
+            if highway in GOLF_TRAIL_HIGHWAY and tags.get("name"):
+                outside_trail_names.add(tags["name"])
+                trail_points.update(coords)
+            continue
+        found.append((osm_id, tags, coords, share, area, cartpath))
+
+    def through_trail(tags) -> bool:
+        return tags.get("highway") in GOLF_TRAIL_HIGHWAY and tags.get("name") in outside_trail_names
+
+    for osm_id, tags, coords, _share, _area, cartpath in found:
+        if not cartpath and (osm_id in trail_routes or through_trail(tags)):
+            trail_points.update(coords)
+    out: list[MilitaryWay] = []
+    for osm_id, tags, coords, share, area, cartpath in found:
+        highway = tags.get("highway")
+        if osm_id in reopened and reopened_by_override(tags):
+            status, why = OPEN, WHY_OVERRIDE
+        elif public_route(tags):
+            status, why = OPEN, WHY_PUBLIC_ROUTE
+        elif osm_id in dc_streets:
+            status, why = OPEN, WHY_GOLF_DC_STREET
+        elif golf_open_tags(tags):
+            status, why = OPEN, WHY_GOLF_TAGGED_OPEN
+        elif cartpath:
+            status, why = CLOSED, WHY_GOLF_CARTPATH
+        elif osm_id in trail_routes:
+            status, why = OPEN, WHY_GOLF_ROUTE
+        elif through_trail(tags):
+            status, why = OPEN, WHY_GOLF_TRAIL
+        elif (
+            highway in GOLF_TRAIL_HIGHWAY
+            and not tags.get("name")
+            and coords[0] in trail_points
+            and coords[-1] in trail_points
+            and _length_m(coords) <= GOLF_TRAIL_LINK_MAX_M
+        ):
+            status, why = OPEN, WHY_GOLF_TRAIL_LINK
+        elif golf_street(tags):
+            status, why = OPEN, WHY_GOLF_STREET
+        else:
+            status, why = CLOSED, WHY_GOLF
+        if area is not None and share >= INSIDE_FRACTION:
+            site = getattr(area, "name", "") or getattr(area, "osm", "") or "golf course"
+        else:
+            site = "golf cart path"
+        out.append(
+            MilitaryWay(
+                osm_id,
+                site,
                 highway,
                 tags.get("name") or "",
                 round(_length_m(coords), 1),
