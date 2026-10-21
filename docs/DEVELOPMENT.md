@@ -4966,17 +4966,18 @@ Tests: `lib/sidebar.test.ts`.
 - **The map's label font (the owner, 2026-10-20).** Every map label is Atkinson Hyperlegible
   Next; the street names (`stressStyle.js`, `ROAD_LABEL`) are its SemiBold at 15 px. The
   neighbourhood and town names (`PLACE_LABEL`, the base map's `places_subplace` and
-  `places_locality`; the owner, 2026-10-21) are the same SemiBold in mixed case on a 3 px white
-  halo: a neighbourhood 13-16 px, a town 13-17 px, a large town (population_rank 9 or more)
-  15-17 px, so a town reads above a neighbourhood and both stay under the station names. MapLibre
+  `places_locality`; the owner, 2026-10-21) are its ExtraBold on a 2.5 px white halo: a
+  neighbourhood in capitals, 11-14 px; a town in mixed case, 13-17 px; a large town
+  (population_rank 9 or more) 15-17 px, so a town reads above a neighbourhood, a neighbourhood
+  apart from a street, and both stay under the station names. MapLibre
   draws text from glyph files, not web fonts, and the style has one glyph URL template (the
   base map's `/basemap/fonts/`), so the three Latin ranges (`corridor.ts` `GLYPH_RANGES`) of
-  Regular, SemiBold and Italic are made once with `scripts/make_map_glyphs.mjs` and bundled in
+  Regular, SemiBold, ExtraBold and Italic are made once with `scripts/make_map_glyphs.mjs` and bundled in
   `frontend/src/fonts/map-glyphs/` (sha256 in docs/SOURCES.md). Each file is the font's glyphs
   with the base map's matching Noto Sans face filling the code points the font lacks, since
   MapLibre draws nothing for a code point missing from a range it has. Vite serves them as
   hashed `/assets/*.pbf` files (no edge change) and the service worker precaches them (about
-  800 KB uncompressed, 470 KB gzipped). The layers keep naming the base map's faces; the
+  1.1 MB uncompressed, 640 KB gzipped). The layers keep naming the base map's faces; the
   `transformRequest` of both the app's map (`MapView.tsx`) and the share card's
   (`app/shareCardRender.ts`), `lib/mapGlyphAssets.ts` `mapGlyphRequest`,
   sends a request for Noto Sans Regular, Medium or Italic (or the street names' face) to its

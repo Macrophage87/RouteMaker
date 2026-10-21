@@ -750,25 +750,32 @@ export function roadLabelPaint(strong = accessibilityOn()) {
 /**
  * THE NEIGHBOURHOOD AND TOWN NAMES. The owner, 2026-10-21, of the base map's thin, spaced grey capitals ("GLEN
  * HAVEN", "SLIGO WOODS") and its light town names ("Kemp Mill Estates"): "Make the neighborhood names also in bold
- * an with the same font so they are readable. Cities too." The base map's `places_subplace` (neighbourhoods) and
- * `places_locality` (cities and towns) are drawn here in the street names' face (Atkinson Hyperlegible Next SemiBold,
- * bundled, lib/mapGlyphs.ts), in mixed case without the letter spacing, dark on the street names' white halo. A town
- * reads above a neighbourhood (larger, darker), and both stay under the station names' 18 px (v0.11.0, lib/railLayer.ts), the
- * key wayfinders. A neighbourhood is 13 px at zoom 12, the street names' 15 px at 14, 16 px from 17; a town 13 px at
- * zoom 8, 15 px at 11, 16 at 14, 17 from 17; a large one (the base map's population_rank 9 or more: Silver Spring,
- * Wheaton) 15 px at 8 and 17 px from 11, as the base map draws it larger too. The sizes do not change in a ride (the
+ * an with the same font so they are readable. Cities too."; then, "Maybe change the font yo a bolder one from the
+ * same family or use small caps so it stands out". The base map's `places_subplace` (neighbourhoods) and
+ * `places_locality` (cities and towns) are drawn here in the street names' family at a heavier weight (Atkinson
+ * Hyperlegible Next ExtraBold, bundled, lib/mapGlyphs.ts), dark on the street names' white halo. A town is in mixed
+ * case; a neighbourhood in capitals at a smaller size with a little spacing (MapLibre has no true small caps), so it
+ * reads apart from a street name and below a town. A town reads above a neighbourhood (larger, darker), and both stay
+ * under the station names' 18 px (v0.11.0, lib/railLayer.ts), the key wayfinders. A neighbourhood is 11 px at zoom
+ * 12, 13 px at 14, 14 px from 17; a town 13 px at zoom 8, 15 px at 11, 16 at 14, 17 from 17; a large one (the base
+ * map's population_rank 9 or more: Silver Spring, Wheaton) 15 px at 8 and 17 px from 11, as the base map draws it
+ * larger too. The sizes do not change in a ride (the
  * street names are what a rider reads there).
  * Only the style changes: the names, their filters and their placement are the base map's.
  */
 export const PLACE_LABEL_LAYER_IDS = ["places_subplace", "places_locality"];
 export const PLACE_LABEL = {
-  font: ROAD_LABEL.font,
+  font: "Atkinson Hyperlegible Next ExtraBold",
   neighbourhood: {
-    size: ["interpolate", ["linear"], ["zoom"], 12, 13, 14, 15, 17, 16],
+    size: ["interpolate", ["linear"], ["zoom"], 12, 11, 14, 13, 17, 14],
+    transform: "uppercase",
+    letterSpacing: 0.04,
     color: "#5c5658",
     strongColor: "#1c1a1b",
   },
   town: {
+    transform: "none",
+    letterSpacing: 0,
     size: ["interpolate", ["linear"], ["zoom"], 8, 13, 11, 15, 14, 16, 17, 17],
     /** A large town's (population_rank LARGE_TOWN_RANK or more). */
     largeSize: ["interpolate", ["linear"], ["zoom"], 8, 15, 11, 17],
@@ -777,8 +784,8 @@ export const PLACE_LABEL = {
   },
   largeTownRank: 9,
   halo: "#ffffff",
-  haloWidth: 3,
-  strongHaloWidth: 3.25,
+  haloWidth: 2.5,
+  strongHaloWidth: 2.75,
 };
 
 /**
@@ -822,10 +829,11 @@ export function withClearRoadLabels(layers, strong = accessibilityOn()) {
     }
     if (PLACE_LABEL_LAYER_IDS.includes(layer.id)) {
       const { town, neighbourhood, largeTownRank } = PLACE_LABEL;
-      const size = layer.id === "places_locality" ? townLabelSize(town, largeTownRank) : neighbourhood.size;
+      const kind = layer.id === "places_locality" ? town : neighbourhood;
+      const size = kind === town ? townLabelSize(town, largeTownRank) : neighbourhood.size;
       return {
         ...layer,
-        layout: { ...layer.layout, "text-font": [PLACE_LABEL.font], "text-size": size, "text-transform": "none", "text-letter-spacing": 0 },
+        layout: { ...layer.layout, "text-font": [PLACE_LABEL.font], "text-size": size, "text-transform": kind.transform, "text-letter-spacing": kind.letterSpacing },
         paint: { ...layer.paint, ...placeLabelPaint(layer.id, strong) },
       };
     }

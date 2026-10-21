@@ -153,20 +153,22 @@ test("place names: the shipped style validates", async () => {
   assert.deepEqual(validateStyleMin(style as never), []);
 });
 
-test("place names: neighbourhoods and towns in the street names' bold face, mixed case, on the white halo", () => {
+test("place names: neighbourhoods and towns in the street names' family, heavier, on the white halo", () => {
   const before = protomapsLayers("protomaps", namedFlavor("light"), { lang: "en" }) as Layer[];
   for (const id of PLACE_LABEL_LAYER_IDS) assert.ok(before.some((l) => l.id === id), `${id} is in the base map`);
-  assert.equal(PLACE_LABEL.font, ROAD_LABEL.font);
+  assert.equal(PLACE_LABEL.font, "Atkinson Hyperlegible Next ExtraBold");
   for (const strong of [false, true]) {
     for (const layer of shipped(strong).filter((l) => PLACE_LABEL_LAYER_IDS.includes(l.id))) {
-      assert.deepEqual(layer.layout?.["text-font"], [ROAD_LABEL.font]);
-      assert.equal(layer.layout?.["text-transform"], "none");
-      assert.equal(layer.layout?.["text-letter-spacing"], 0);
+      assert.deepEqual(layer.layout?.["text-font"], [PLACE_LABEL.font]);
+      // A town in mixed case; a neighbourhood in small capitals, apart from a street name.
+      const town = layer.id === "places_locality";
+      assert.equal(layer.layout?.["text-transform"], town ? "none" : "uppercase");
+      assert.equal(layer.layout?.["text-letter-spacing"], town ? 0 : 0.04);
       const paint = placeLabelPaint(layer.id, strong);
       assert.deepEqual({ ...layer.paint, ...paint }, layer.paint);
       const ratio = contrastRatio(paint["text-color"], paint["text-halo-color"]);
       assert.ok(ratio >= (strong ? 15 : 7), `${layer.id} ${ratio.toFixed(2)}:1 on its halo`);
-      assert.ok(paint["text-halo-width"] >= 2 && paint["text-halo-width"] <= 13 / 4);
+      assert.ok(paint["text-halo-width"] >= 2 && paint["text-halo-width"] <= 11 / 4, "MapLibre draws a halo up to a quarter of the smallest size");
     }
   }
   assert.ok(placeLabelPaint("places_subplace", true)["text-halo-width"] > placeLabelPaint("places_subplace", false)["text-halo-width"]);
@@ -180,7 +182,7 @@ test("place names: a town reads above a neighbourhood, both under the station na
     assert.ok(town > hood, `zoom ${zoom}: town ${town} over neighbourhood ${hood}`);
     assert.ok(large >= town, `zoom ${zoom}: a large town ${large} at least a town's ${town}`);
     assert.ok(large < 18, `zoom ${zoom}: town ${large} under a station's 18 px`);
-    assert.ok(hood >= 13 && hood <= 16);
+    assert.ok(hood >= 11 && hood < ROAD_LABEL.size, `zoom ${zoom}: capitals ${hood} under a street name's ${ROAD_LABEL.size}`);
   }
   const locality = shipped(false).find((l) => l.id === "places_locality");
   // One zoom ramp at the top (MapLibre allows no other), the rank picking each stop's size.
