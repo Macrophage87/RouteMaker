@@ -59,7 +59,9 @@ def test_a_fetcher_gets_the_apps_name_description_and_card(ua: str) -> None:
     tags = dict(re.findall(r'<meta (?:property|name)="([^"]+)" content="([^"]*)"', body))
     assert tags["og:title"] == tags["twitter:title"] == "RouteMaker"
     assert tags["og:description"] == share_preview.SITE_DESCRIPTION
-    assert tags["og:image"] == tags["twitter:image"] == "https://beta.example.org/icons/share-card.png"
+    assert (
+        tags["og:image"] == tags["twitter:image"] == "https://beta.example.org/icons/share-card.png"
+    )
     assert tags["og:url"] == "https://beta.example.org/"
     assert (tags["og:image:width"], tags["og:image:height"]) == ("1200", "630")
     assert tags["twitter:card"] == "summary_large_image"
