@@ -79,9 +79,9 @@ test("with the overlay off, or before the map has a zoom, there is no notice", (
 
 test("the standing hint names the zooms from STRESS_ZOOMS and the zoom the map is at", () => {
   const hint = stressZoomHint(12.7);
-  assert.ok(hint.startsWith(`${ZOOMED_OUT} A named paved trail counts when it runs 2.5 mi (4.0 km) or more at zoom 11, or 5.0 mi (8.0 km) at zoom 10;`));
+  assert.ok(hint.startsWith(`${ZOOMED_OUT} A named paved trail counts when it runs 2.5 mi (4.0 km) or more at zoom 11, or 5.0 mi (8.0 km) at zoom 10 and further out;`));
   assert.ok(hint.includes("an unpaved one needs a regional bike route or a longer run. Trails beside a road count the same way."));
-  assert.ok(hint.includes("Lines are drawn thinner at zooms 10 and 11."));
+  assert.ok(hint.includes("Lines are drawn thinner at zoom 11 and further out."));
   assert.ok(hint.includes(everyTrailFrom(STRESS_ZOOMS.quiet)));
   assert.equal(
     everyTrailFrom(12),
