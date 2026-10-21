@@ -68,14 +68,14 @@ def _blocked(station: wmata_live.Station, live: wmata_live.Snapshot) -> bool | N
     """Whether the elevators out leave the bike no way through the station: True, False where
     another street elevator is known to work (Stephen, 2026-10-21: "several of these have
     redundant elevators, so if one is down, it's not penalized"), None with none out. A
-    platform elevator out always counts: the platform's is the only one."""
+    platform elevator out always counts: the platform's is the only one. A garage's elevators
+    are not on the way (`wmata_live.on_the_way`), and count for nothing."""
     out = live.elevators_out(station)
     if not out:
         return None
-    street = [o for o in out if "street" in o.where.lower()]
-    if len(street) < len(out):
+    if any("platform" in o.where.lower() for o in out):
         return True
-    return len(street) >= max(1, street_elevators(station))
+    return len(out) >= max(1, street_elevators(station))
 
 
 def blocked_stations(live: wmata_live.Snapshot | None) -> list[wmata_live.Station]:

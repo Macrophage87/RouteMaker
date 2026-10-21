@@ -199,6 +199,18 @@ class Outage:
     back: str | None  # the estimated return, as WMATA gives it
 
 
+# An elevator in a station's parking garage or lot is not on the way to the platform (Stephen,
+# 2026-10-21: Glenmont shows 2 of 8 elevators out, "but it's only for the parking garage, which
+# isn't relevant"). WMATA names them in `LocationDescription`: "Garage elevator".
+OFF_THE_WAY = re.compile(r"\b(?:garages?|parking|lots?)\b", re.IGNORECASE)
+
+
+def on_the_way(outage: Outage) -> bool:
+    """Whether an outage is an elevator between the street, the mezzanine and the platform: not
+    an escalator, nor one in the station's garage or parking lot."""
+    return outage.unit == "ELEVATOR" and not OFF_THE_WAY.search(outage.where)
+
+
 @dataclass(frozen=True)
 class Snapshot:
     as_of: float  # epoch seconds of the reading
@@ -226,8 +238,9 @@ class Snapshot:
         return None if station is None else station.name
 
     def elevators_out(self, station: Station) -> list[Outage]:
+        """A station's elevators out on the way to its platform (`on_the_way`)."""
         codes = set(self.codes(station))
-        return [o for o in self.outages if o.station in codes and o.unit == "ELEVATOR"]
+        return [o for o in self.outages if o.station in codes and on_the_way(o)]
 
     def trains_at(self, station: Station) -> list[Train]:
         codes = set(self.codes(station))
@@ -279,7 +292,7 @@ class Snapshot:
         out: set[str] = set()
         for outage in self.outages:
             station = self.stations.get(outage.station)
-            if outage.unit == "ELEVATOR" and station is not None:
+            if on_the_way(outage) and station is not None:
                 out.update(self.codes(station))
         return out
 

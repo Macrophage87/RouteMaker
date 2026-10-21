@@ -717,3 +717,37 @@ def test_a_plan_asked_for_now_says_its_live_departures(
     step = next(s for s in block["transit"]["steps"] if s["mode"] == "metro")
     assert step["source"] == "live" and " live from " in step["text"]
     assert block["transit"]["live_times"]
+
+
+def glenmont(*where: str) -> wmata_live.Snapshot:
+    """The fixture's reading with Glenmont's elevators out at `where` (WMATA's words)."""
+    doc = docs()
+    doc["elevators"]["ElevatorIncidents"] = [
+        {
+            "LocationDescription": w,
+            "StationCode": "B11",
+            "StationName": "Glenmont",
+            "UnitType": "ELEVATOR",
+            "EstimatedReturnToService": None,
+        }
+        for w in where
+    ]
+    return wmata_live.build(doc, 1_790_000_000.0)
+
+
+def test_a_garage_elevator_out_is_not_on_the_way_and_counts_for_nothing() -> None:
+    # Stephen, 2026-10-21: Glenmont shows 2 of 8 out, "but it's only for the parking garage".
+    live = glenmont("Garage elevator", "Garage elevator")
+    station = live.stations["B11"]
+    assert live.elevators_out(station) == []
+    assert "B11" not in live.elevator_out_codes()
+    assert transit_live.blocked_stations(live) == []
+    assert not wmata_live.on_the_way(
+        wmata_live.Outage("B11", "Glenmont", "ELEVATOR", "Elevator in parking lot", None)
+    )
+    # The one between the mezzanine and the platform is the only way down: blocked.
+    live = glenmont("Garage elevator", "Elevator between mezzanine and platform")
+    assert [o.where for o in live.elevators_out(live.stations["B11"])] == [
+        "Elevator between mezzanine and platform"
+    ]
+    assert [s.name for s in transit_live.blocked_stations(live)] == ["Glenmont"]
