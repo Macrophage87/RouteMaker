@@ -309,7 +309,7 @@ test("the trails' key names their line while the layer is on, and nothing while 
 
 // ---- the owner, 2026-10-19: a key on the map, and a tap on a trail tells about it ----
 
-import { mtbTrailPressed } from "./mapGlue.ts";
+import { mtbTrailAt, mtbTrailPressed } from "./mapGlue.ts";
 import { MTB_MAP_KEY_HINT, MTB_MAP_KEY_TITLE, MtbMapKey, mtbMapKeyRows } from "./stressLegend.ts";
 import { segmentInfoUrl, trailNotRouted, TRAIL_VIA_TEXT, type SegmentInfo } from "./roadInfo.ts";
 import { MTB_LINE_LAYER_IDS } from "../stressStyle.js";
@@ -344,6 +344,9 @@ test("a press on a drawn trail line is the trail's, at the nearest point on it, 
   assert.equal(mtbTrailPressed(mapOf([]), { x: 106, y: 30 }, 8, layers), null);
   const none = { ...mapOf([]), getLayer: () => undefined, queryRenderedFeatures: () => assert.fail("not asked") };
   assert.equal(mtbTrailPressed(none, { x: 100, y: 50 }, 8, layers), null);
+  // The hover card's way: the feature's id, else its first point.
+  assert.equal(mtbTrailAt(mapOf([{ ...trail, id: 42 }]), { x: 106, y: 30 }, 8, layers)?.way, "42");
+  assert.equal(mtbTrailAt(mapOf([trail]), { x: 106, y: 30 }, 8, layers)?.way, "0.100000,0.000000");
 });
 
 test("a trail tap asks the road panel for the trail, and offers Route through this trail only where the ride type uses it", () => {

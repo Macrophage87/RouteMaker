@@ -209,6 +209,9 @@ test("the bike entrance: DC's elevator, else OSM's, else the nearest entrance, e
     point: [-77, 38.9],
     kind: "station",
   });
+  // From where the rider comes (Stephen 2026-10-20 at Shady Grove): the elevator nearest them, not the station's middle.
+  assert.deepEqual(bikeEntrance(station, [-77.01, 38.9]), { point: [-77.003, 38.9], kind: "elevator" });
+  assert.deepEqual(bikeEntrance(station, [-77, 38.91]), { point: [-77, 38.902], kind: "elevator" });
   // Real data.
   const kind = (name: string) => bikeEntrance(named(name)).kind;
   assert.equal(kind("Metro Center"), "elevator");

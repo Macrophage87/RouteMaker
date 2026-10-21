@@ -38,6 +38,8 @@ urlpatterns = [
     # A shared route's link and its preview (core.share_preview).
     path("s/<str:route_id>", share_preview.share_page, name="share-page"),
     path("s/<str:route_id>/preview.png", share_preview.share_image, name="share-image"),
+    # The app's own address as a link fetcher sees it (the edge sends a fetcher's GET / here).
+    path("link-preview", share_preview.site_page, name="link-preview"),
     path("auth/login", auth_views.login_start, name="login"),
     path("auth/callback", auth_views.login_callback, name="login-callback"),
     path("auth/logout", auth_views.logout_view, name="logout"),
