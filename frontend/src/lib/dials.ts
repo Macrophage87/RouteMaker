@@ -9,6 +9,7 @@
  * route's `dials` says what the API actually planned with.
  * tests/test_presets.py reads STARTS and holds it equal to the API's table.
  */
+import type { LonLat } from "./geo.ts";
 import { isTransit, usesBikeshare, type PresetId } from "./presets.ts";
 import { DEFAULT_MTB_LEVEL, defaultMtbPreferred, fitMtbLevel, mtbLevelOf, mtbPreferredOf } from "./mtbMode.ts";
 
@@ -108,6 +109,11 @@ export interface Dials {
    * plans them, for a novice rider offered transit where only a busy road connects. In the link; absent is off.
    */
   noviceLegs?: boolean;
+  /**
+   * With `noviceLegs` (v0.11.0): where the Novice route's busiest stretch begins and ends (its `novice.busiest`),
+   * sent as novice_hop, so the transit trips also hop past it (board near its start, get off near its end).
+   */
+  noviceHop?: [LonLat, LonLat];
   /**
    * "Anticipated ride size" (PLAN items 128, 129, 139), Mass Ride only: the riders expected,
    * 100 to 2,000. It sets the group's length, which the corker load is counted over (the
@@ -394,6 +400,7 @@ export function fitDials(preset: PresetId, dials: Partial<Dials>): Dials {
     ...(fitTarget(dials.targetDistanceM) !== undefined ? { targetDistanceM: fitTarget(dials.targetDistanceM) } : {}),
     ...(dials.loop === true ? { loop: true } : {}),
     ...(isTransit(preset) && dials.noviceLegs === true ? { noviceLegs: true } : {}),
+    ...(isTransit(preset) && dials.noviceLegs === true && dials.noviceHop ? { noviceHop: dials.noviceHop } : {}),
     // The level, on Mountain Bike only, and only when it is not the default (the link stays short).
     ...(preset === "mountain-bike" && fitMtbLevel(dials.mtbLevel) !== undefined && fitMtbLevel(dials.mtbLevel) !== DEFAULT_MTB_LEVEL
       ? { mtbLevel: fitMtbLevel(dials.mtbLevel) }
@@ -409,8 +416,8 @@ export function fitDials(preset: PresetId, dials: Partial<Dials>): Dials {
 }
 
 /** The request's dial fields. `when` is left out when the API is to work it out. */
-export function dialFields(dials: Dials): Record<string, string | number | boolean> {
-  const fields: Record<string, string | number | boolean> = { stress: dials.stress, hills: dials.hills };
+export function dialFields(dials: Dials): Record<string, string | number | boolean | LonLat[]> {
+  const fields: Record<string, string | number | boolean | LonLat[]> = { stress: dials.stress, hills: dials.hills };
   if (dials.when) fields.when = dials.when;
   if (dials.carrying) fields.carrying = dials.carrying;
   if (dials.assist) fields.assist = true;
@@ -436,6 +443,7 @@ export function dialFields(dials: Dials): Record<string, string | number | boole
   }
   if (dials.transitOption) fields.transit_option = dials.transitOption;
   if (dials.noviceLegs) fields.novice_legs = true;
+  if (dials.noviceLegs && dials.noviceHop) fields.novice_hop = dials.noviceHop;
   return fields;
 }
 

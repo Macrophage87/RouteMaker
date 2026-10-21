@@ -30,6 +30,7 @@ import { choose as chooseRideType } from "./lib/rideTypeDialog.ts";
 import {
   NOVICE_TRANSIT_CHOICES,
   noviceOfferShown,
+  noviceHopOf,
   noviceTransitDials,
   noviceTransitSaid,
   noviceTripOf,
@@ -3475,7 +3476,8 @@ export function App() {
       setNoviceTrips((was) => (was?.key === noviceKey ? { key: noviceKey, trips: { ...was.trips, [id]: trip } } : was));
     setNoviceTrips({ key: noviceKey, trips: {} });
     for (const choice of NOVICE_TRANSIT_CHOICES) {
-      void requestRoute(ends, choice.preset, { dials: noviceTransitDials(choice.preset) }).then(
+      // The busy stretch's ends (v0.11.0): each trip also tries hopping past it on a train or bus.
+      void requestRoute(ends, choice.preset, { dials: noviceTransitDials(choice.preset, noviceHopOf(shown)) }).then(
         (answer) => found(choice.preset, noviceTripOf(answer)),
         () => found(choice.preset, { kind: "none" }),
       );
@@ -4236,7 +4238,8 @@ export function App() {
     // Novice and Nervous's offer where only a busy road connects (v0.7.0): the trip on a transit ride type, its
     // bike legs still planned as Novice and Nervous plans them (`noviceLegs`, sent as novice_legs, kept in the link).
     onNoviceTransit: (id: PresetId) => {
-      choosePreset(id, { ...chooseRideType(id, null, dials), noviceLegs: true });
+      const hop = noviceHopOf(shown);
+      choosePreset(id, { ...chooseRideType(id, null, dials), noviceLegs: true, ...(hop ? { noviceHop: hop } : {}) });
       const label = NOVICE_TRANSIT_CHOICES.find((c) => c.preset === id)?.label ?? presetSaid(id);
       announce(noviceTransitSaid(label));
     },

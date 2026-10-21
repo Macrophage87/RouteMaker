@@ -1565,6 +1565,35 @@ class TestApi:
         # Midday (the pinned clock): Orange every 12 minutes, so a 6-minute wait.
         assert chosen["steps"][2]["wait_s"] == 360 and chosen["band"] == "midday"
 
+    def test_a_novice_hop_is_planned_past_the_busy_stretch(
+        self, client, segments, router, installed, monkeypatch
+    ) -> None:
+        """v0.11.0: the owner, 2026-10-21, "We might also want to offer transit to avoid
+        particularly problematic sections". The busy stretch's ends (`novice.busiest`'s
+        `from` and `to`) sent as `novice_hop`: the trip boarding near one and getting off
+        near the other is offered and planned, marked `hop`."""
+        monkeypatch.setattr(transit, "RoutingServices", lambda *a, **k: Straight())
+        router(standard_router())
+        response = post_transit(client, [EAST, WEST], novice_legs=True, novice_hop=HOP)
+        assert response.status_code == 200, response.content
+        trip = response.json()["transit"]
+        hops = [o for o in trip["options"] if o["hop"]]
+        assert len(hops) == 1 and hops[0]["chosen"] and trip["key"] == hops[0]["key"]
+        # Another option, chosen, stays chosen.
+        other = next(o["key"] for o in trip["options"] if not o["hop"])
+        again = post_transit(
+            client, [EAST, WEST], novice_legs=True, novice_hop=HOP, transit_option=other
+        )
+        assert again.json()["transit"]["key"] == other
+
+    def test_a_novice_hop_goes_with_novice_legs(self, client, router) -> None:
+        fake = router(standard_router())
+        response = post_transit(client, [EAST, WEST], novice_hop=HOP)
+        assert response.status_code == 400
+        assert fake.calls == []
+        outside = post_transit(client, [EAST, WEST], novice_legs=True, novice_hop=[[0, 0], HOP[1]])
+        assert outside.status_code == 400
+
     @pytest.mark.parametrize("preset", [presets.BIKE_TRANSIT, presets.BIKESHARE_TRANSIT])
     def test_novice_legs_price_the_bike_legs_as_novice_and_nervous(
         self, client, segments, router, installed, monkeypatch, preset
@@ -1858,3 +1887,36 @@ class TestApi:
             "6:00 am",
             "2026-10-01T06:00:00-04:00",
         )
+
+
+# --- Novice and Nervous's hop past a busy stretch (v0.11.0) -------------------------------------
+
+# A busy stretch from by Eastern Market to by Federal Triangle, on a ride from east of the
+# Capitol to west of downtown.
+EAST = [-76.9700, 38.8830]
+WEST = [-77.0450, 38.8990]
+HOP = [[-76.9960, 38.8840], [-77.0280, 38.8950]]
+
+
+def test_a_novice_hop_boards_near_the_busy_stretch_and_is_planned(schedule) -> None:
+    when = at(2026, 9, 30, 8, 0)
+    plain = plan_bike(schedule, EAST, WEST, when)
+    assert not any(o.hop for o in plain.options)
+    plan = transit.plan_bike(schedule, EAST, WEST, when, Straight(), 18.0, hop=HOP)
+    hops = [o for o in plan.options if o.hop]
+    assert len(hops) == 1
+    (hop,) = hops
+    assert hop.key.startswith("h") and ">h" in hop.key
+    # It boards within a mile of where the stretch begins and gets off within a mile of where
+    # it ends.
+    first, last = transit_legs(hop)[0], transit_legs(hop)[-1]
+    assert transit._distance(first.coordinates[0], HOP[0]) <= transit.HOP_NEAR_M
+    assert transit._distance(last.coordinates[-1], HOP[1]) <= transit.HOP_NEAR_M
+    # Planned unless the rider chose another; and said in the block.
+    chosen = transit.choose(plan, None, hop=True)
+    assert chosen.option.hop
+    assert transit.choose(plan, None).chosen == 0
+    other = next(o.key for o in plan.options if not o.hop)
+    assert not transit.choose(plan, other, hop=True).option.hop
+    out = transit.block(chosen, schedule)
+    assert [o["hop"] for o in out["options"]].count(True) == 1

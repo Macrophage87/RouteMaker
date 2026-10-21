@@ -479,6 +479,18 @@ class RouteIn(Schema):
             " that still uses LTS 3 or worse (its `novice.transit`)."
         ),
     )
+    novice_hop: list[LonLat] | None = Field(
+        default=None,
+        min_length=2,
+        max_length=2,
+        description=(
+            "With `novice_legs` (v0.11.0): where the Novice route's busiest stretch begins and"
+            " ends (its `novice.busiest` `from` and `to`). The transit trips also board near"
+            " the first and get off near the second, so one can ride, hop a train or bus past"
+            " the stretch, and ride on; the quickest such trip is planned unless"
+            " `transit_option` asks for another, and is marked `hop`."
+        ),
+    )
     quick: StrictBool = Field(
         default=False,
         description=(
@@ -574,6 +586,8 @@ class RouteIn(Schema):
                 raise ValueError("straight_legs are distinct indices of legs between the points")
         if self.novice_legs and self.preset not in presets.TRANSIT_PRESETS:
             raise ValueError("novice_legs applies to the transit ride types only")
+        if self.novice_hop is not None and not self.novice_legs:
+            raise ValueError("novice_hop goes with novice_legs")
         if self.hills is not None and self.hills > 0 and not preset.hills_seek:
             raise ValueError(
                 "Mass Ride does not look for climbs: a field that slows below balance speed on a"
@@ -658,6 +672,15 @@ class RouteIn(Schema):
                 raise ValueError(f"point {index} is outside the area this map covers")
         if span_m(points) > MAX_SPAN_M:
             raise ValueError(too_long())
+        return points
+
+    @field_validator("novice_hop")
+    @classmethod
+    def hop_inside_coverage(cls, points: list[list[float]] | None) -> list[list[float]] | None:
+        west, south, east, north = settings.COVERAGE_BBOX
+        for lon, lat in points or ():
+            if not (west <= lon <= east and south <= lat <= north):
+                raise ValueError("novice_hop is outside the area this map covers")
         return points
 
     @field_validator("follow")
@@ -2409,6 +2432,13 @@ class TransitOptionOut(Schema):
             " trip is under 1 mi (1.6 km))."
         ),
     )
+    hop: bool = Field(
+        default=False,
+        description=(
+            "Novice and Nervous's hop past the busy stretch (v0.11.0, `novice_hop`): boards near"
+            " where it begins and gets off near where it ends."
+        ),
+    )
     chosen: bool = Field(description="The option this answer plans.")
     legs: list[TransitOptionLegOut] = Field(
         default_factory=list,
@@ -2496,13 +2526,36 @@ class TransitOut(Schema):
 
 
 class NoviceBusiestOut(Schema):
+    model_config = ConfigDict(populate_by_name=True)
+
     name: str | None = Field(description="The road's name, or null where it has none.")
     metres: float
     level: int = Field(description="Its worst real level of traffic stress, 3 to 5 (Avoid).")
+    from_: LonLat = Field(
+        alias="from",
+        description="[lon, lat] where it begins: send it, then `to`, as `novice_hop`.",
+    )
+    to: LonLat = Field(description="[lon, lat] where it ends.")
+
+
+class NoviceWalkOut(Schema):
+    """A short busy stretch the Novice walks the bike past on the sidewalk beside it (v0.11.0,
+    `core.novice_walks`), also a "walk" entry of the directions."""
+
+    from_m: int = Field(description="Where the stretch begins, metres along the route.")
+    to_m: int = Field(description="Where it ends, metres along the route.")
+    road: str | None = Field(description="The busy road's name; null where it has none.")
+    ride_m: float = Field(description="The stretch's length as ridden, metres.")
+    geometry: LineString = Field(description="The walk, on foot (pedestrian costing).")
+    distance_m: float
+    duration_s: float = Field(description="At walking pace beside a bike, in the route's time.")
+    text: str = Field(description="The directions' line for it.")
 
 
 class NoviceOut(Schema):
-    busy_m: float = Field(description="Metres of real LTS 3 or worse on the route.")
+    busy_m: float = Field(
+        description="Metres of real LTS 3 or worse ridden on the route (stretches walked left out)."
+    )
     busiest: NoviceBusiestOut | None = Field(
         description="The longest run of LTS 3 or worse, by road; null where there is none."
     )
@@ -2514,6 +2567,13 @@ class NoviceOut(Schema):
             "Offer Own bike + Transit and Bikeshare + Transit beside this route (each requested"
             " with `novice_legs`): it still uses LTS 3 or worse, or is held at the ceiling."
         )
+    )
+    walked_m: float = Field(
+        default=0.0, description="Metres of real LTS 4 or worse walked past instead of ridden."
+    )
+    walks: list[NoviceWalkOut] = Field(
+        default_factory=list,
+        description="The short busy stretches walked on the sidewalk beside them, in order.",
     )
 
 
@@ -3469,7 +3529,9 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
     )
     start, end = body.points
     if body.preset == presets.BIKESHARE_TRANSIT:
-        found = transit.plan_bikeshare(schedule, start, end, when, services, share_snapshot)
+        found = transit.plan_bikeshare(
+            schedule, start, end, when, services, share_snapshot, hop=body.novice_hop
+        )
         if share_note is not None:
             found.notes.insert(0, share_note)
     else:
@@ -3478,7 +3540,7 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
             "cycling_speed",
             presets.VALHALLA_DEFAULT_SPEED_KMH[options.get("bicycle_type", "Hybrid")],
         )
-        found = transit.plan_bike(schedule, start, end, when, services, speed)
+        found = transit.plan_bike(schedule, start, end, when, services, speed, hop=body.novice_hop)
     searched = routing.clock()
     dials = routing.Dials(
         stress=body.stress,
@@ -3503,7 +3565,9 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
     live = wmata_live.client.snapshot()
     found = transit_live.with_live_trains(found, live)
     found = transit_live.rank(transit_live.skip_closed(found, live), live)
-    found = transit.choose(found, body.transit_option)
+    # Novice and Nervous's hop past the busy stretch (v0.11.0): planned where there is one,
+    # unless the rider chose another option.
+    found = transit.choose(found, body.transit_option, hop=body.novice_hop is not None)
     # The chosen trip's Metrobus steps' next buses (core.wmata_bus, v0.9.0), asked now, beside
     # the routing, so the answer waits for them little if at all.
     bus_ask = _ask_buses(found)

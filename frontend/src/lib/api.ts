@@ -510,6 +510,8 @@ export interface TransitOption {
   direct: boolean;
   /** Walking the whole way (Bikeshare + 🚶🚆🚌, where that is reasonable). */
   walk?: boolean;
+  /** Novice and Nervous's hop past the busy stretch (v0.11.0, `novice_hop`): boards near it and gets off past it. */
+  hop?: boolean;
   chosen: boolean;
   /** Its legs compactly, for its row: "🚶 4 min · 🚲 12 min · 🔴 18 min" (lib/transitMarks.ts). */
   legs?: TripLeg[];
@@ -789,12 +791,31 @@ export interface RoadHazardSpan {
 export interface NoviceNote {
   /** Metres on roads rated LTS 3 or above. */
   busy_m: number;
-  /** The longest named run of them, or null. */
-  busiest: { name: string | null; metres: number; level: number } | null;
+  /**
+   * The longest named run of them, or null; `from` and `to` (v0.11.0) are where it begins and ends, sent as
+   * `novice_hop` so the transit trips offered can hop past it.
+   */
+  busiest: { name: string | null; metres: number; level: number; from?: LonLat; to?: LonLat } | null;
   /** The calm search hit its 1.4 times ceiling. */
   over_ceiling: boolean;
   /** Only a busy road connects: offer transit or bikeshare. */
   transit: boolean;
+  /** Metres of LTS 4 or worse walked past on the sidewalk instead of ridden (v0.11.0; core.novice_walks). */
+  walked_m?: number;
+  /** The short busy stretches walked on the sidewalk beside them, in order; each is also a "walk" entry of the directions. */
+  walks?: NoviceWalk[];
+}
+
+/** A short busy stretch a Novice walks the bike past (v0.11.0; core.api.NoviceWalkOut). */
+export interface NoviceWalk {
+  from_m: number;
+  to_m: number;
+  road: string | null;
+  ride_m: number;
+  geometry: { type: "LineString"; coordinates: LonLat[] };
+  distance_m: number;
+  duration_s: number;
+  text: string;
 }
 
 export interface RouteResponse {

@@ -154,6 +154,12 @@ BUS_STOPS_NEAR = 8  # the nearest bus stops tried, each end
 PER_SYSTEM = 2  # the nearest stations of each rail system tried, each end
 
 STATION_CANDIDATES = 3
+# Novice and Nervous's hop past a busy stretch (v0.11.0; the owner, 2026-10-21: "We might also
+# want to offer transit to avoid particularly problematic sections"): the stations and stops
+# within this of the stretch's ends are tried too, boarding near where it begins and getting
+# off near where it ends (`plan_bike`'s and `plan_bikeshare`'s `hop`), their legs from the
+# start and to the end estimated (no router calls past the budget's).
+HOP_NEAR_M = 1609.0  # 1 mi
 # Router calls for Own Bike + 🚆🚌: three stations each end and the direct ride.
 MAX_ROUTER_CALLS = 2 * STATION_CANDIDATES + 1
 # The options each answer lists (the owner, 2026-10-12 15:00): riding directly there always,
@@ -1509,6 +1515,9 @@ class Option:
     legs: tuple[Leg, ...]
     direct: bool = False
     walk: bool = False  # walking the whole way (Bikeshare + 🚶🚆🚌)
+    # Novice and Nervous's hop past the busy stretch (`HOP_NEAR_M`): boards near where it
+    # begins and gets off near where it ends.
+    hop: bool = False
     # Found on the other service day (around 1 to 5 am): that day's moment; else the plan's.
     moment: Moment | None = None
 
@@ -1628,17 +1637,24 @@ def rank_key(option: Option, extra_s: float = 0.0) -> tuple:
 
 
 def _ranked(
-    direct: Option | None, transit: list[Option], walk: Option | None = None
+    direct: Option | None,
+    transit: list[Option],
+    walk: Option | None = None,
+    hops: list[Option] | None = None,
 ) -> list[Option]:
     """The direct ride always (and walking the whole way, where it is offered), then the
     quickest of each kind of transit trip (one per signature), up to `TRANSIT_OPTIONS`; all of
-    them by total time, quickest first."""
+    them by total time, quickest first. The quickest of `hops` (Novice and Nervous's hop past
+    the busy stretch) is kept too, marked, even where it is not among the quickest."""
     best: dict[tuple, Option] = {}
     for option in transit:
         held = best.get(option.signature)
         if held is None or (option.total_s, option.key) < (held.total_s, held.key):
             best[option.signature] = option
     kept = sorted(best.values(), key=lambda o: (o.total_s, o.key))[:TRANSIT_OPTIONS]
+    if hops:
+        hop = min(hops, key=lambda o: (o.total_s, o.key))
+        kept = [o for o in kept if o.signature != hop.signature] + [hop]
     kept += [o for o in (direct, walk) if o is not None]
     # A tie to the minute (the same train) goes to the simpler trip: fewer transit legs.
     return sorted(kept, key=rank_key)
@@ -1731,8 +1747,14 @@ class Plan:
         return None if direct is None else direct.total_s
 
 
-def choose(plan: Plan, key: str | None) -> Plan:
-    """The plan with the option `key` chosen; the quickest where it is not (or no longer) one."""
+def choose(plan: Plan, key: str | None, hop: bool = False) -> Plan:
+    """The plan with the option `key` chosen; the quickest where it is not (or no longer) one.
+    With no key and `hop` (Novice and Nervous's hop asked for), the hop past the busy stretch
+    where there is one."""
+    if key is None and hop:
+        for index, option in enumerate(plan.options):
+            if option.hop:
+                return replace(plan, chosen=index, asked=None)
     if key is None:
         return plan
     for index, option in enumerate(plan.options):
@@ -1983,9 +2005,31 @@ def _search_days(day: _Day, moments: list[Moment], starts, ends, speed: float) -
     return found
 
 
-def plan_bike(schedule, start, end, when: datetime, services: Services, speed_kmh: float) -> Plan:
+def _hop_stops(schedule: Schedule, point, bike: bool) -> list[Stop]:
+    """The stations and stops a hop past a busy stretch tries at one of its ends."""
+    near, more = _candidates(schedule, point, bike, HOP_NEAR_M, HOP_NEAR_M)
+    return near + more
+
+
+def _hops(day: _Day, moments, starts: list[_End], ends: dict[int, _End], speed: float):
+    """The trips from `starts` to `ends` (each a hop's), marked `hop`, with keys of their own."""
+    starts = [replace(s, key=f"h{s.key}") for s in starts]
+    ends = {stop: replace(e, key=f"h{e.key}") for stop, e in ends.items()}
+    return [replace(o, hop=True) for o in _search_days(day, moments, starts, ends, speed)]
+
+
+def plan_bike(
+    schedule,
+    start,
+    end,
+    when: datetime,
+    services: Services,
+    speed_kmh: float,
+    hop: list | None = None,
+) -> Plan:
     """Own Bike + 🚆🚌: the bike goes the whole way. Riding directly there, and up to two
-    transit legs (Metro, a train, a bus's rack) with rides between. Never a leg on foot."""
+    transit legs (Metro, a train, a bus's rack) with rides between. Never a leg on foot.
+    `hop`: Novice and Nervous's busy stretch, where it begins and ends (`HOP_NEAR_M`)."""
     moments = moments_of(when)
     moment = moments[0]
     day = _Day(schedule, moment, bike=True)
@@ -2004,6 +2048,7 @@ def plan_bike(schedule, start, end, when: datetime, services: Services, speed_km
     )
     near_start, more_start = _candidates(schedule, start, True, BIKE_TO_STATION_M, RIDE_TO_STOP_M)
     near_end, more_end = _candidates(schedule, end, True, BIKE_TO_STATION_M, RIDE_TO_STOP_M)
+    hops: list[Option] = []
     if not notes:
         starts = [
             _ride_to(schedule, start, s, services.ride(start, list(s.bike_entrance)), speed_kmh)
@@ -2018,7 +2063,17 @@ def plan_bike(schedule, start, end, when: datetime, services: Services, speed_km
         for s in more_end:
             ends[s.index] = _ride_from(schedule, end, s, None, speed_kmh)
         found = _search_days(day, moments, starts, ends, speed_kmh)
-        if not found:
+        if hop:
+            hop_starts = [
+                _ride_to(schedule, start, s, None, speed_kmh)
+                for s in _hop_stops(schedule, hop[0], True)
+            ]
+            hop_ends = {
+                s.index: _ride_from(schedule, end, s, None, speed_kmh)
+                for s in _hop_stops(schedule, hop[1], True)
+            }
+            hops = _hops(day, moments, hop_starts, hop_ends, speed_kmh)
+        if not found and not hops:
             where = "the start" if not near_start else "the destination"
             notes.append(
                 NO_TRANSIT_WORDS
@@ -2029,7 +2084,9 @@ def plan_bike(schedule, start, end, when: datetime, services: Services, speed_km
         notes += _idle(day, near_start + more_start + near_end + more_end)
     if schedule.note:
         notes.append(schedule.note)
-    return Plan(presets.BIKE_TRANSIT, _ranked(direct, found), moment, notes, _credits(schedule))
+    return Plan(
+        presets.BIKE_TRANSIT, _ranked(direct, found, hops=hops), moment, notes, _credits(schedule)
+    )
 
 
 def _share_direct(start, end, services: Services, snapshot) -> Option | None:
@@ -2063,10 +2120,19 @@ def walk_offered(start, end, walk_total_s: float, others: list[Option]) -> bool:
     return bool(others) and walk_total_s < min(o.total_s for o in others)
 
 
-def plan_bikeshare(schedule, start, end, when: datetime, services: Services, snapshot) -> Plan:
+def plan_bikeshare(
+    schedule,
+    start,
+    end,
+    when: datetime,
+    services: Services,
+    snapshot,
+    hop: list | None = None,
+) -> Plan:
     """Bikeshare + 🚶🚆🚌: bikeshare the whole way, or each end on foot or by bikeshare,
     whichever is quicker (a bikeshare bike is docked before boarding), with up to two transit
-    legs between; and walking the whole way where that is reasonable (`walk_offered`)."""
+    legs between; and walking the whole way where that is reasonable (`walk_offered`).
+    `hop`: Novice and Nervous's busy stretch, where it begins and ends (`HOP_NEAR_M`)."""
     moments = moments_of(when)
     moment = moments[0]
     day = _Day(schedule, moment, bike=False)
@@ -2078,6 +2144,7 @@ def plan_bikeshare(schedule, start, end, when: datetime, services: Services, sna
     direct = _share_direct(start, end, services, snapshot)
     near_start, more_start = _candidates(schedule, start, False, BIKE_TO_STATION_M, WALK_TO_STOP_M)
     near_end, more_end = _candidates(schedule, end, False, BIKE_TO_STATION_M, WALK_TO_STOP_M)
+    hops: list[Option] = []
     if not _window_note(schedule, moment):
         starts = _best_few(
             [
@@ -2092,24 +2159,42 @@ def plan_bikeshare(schedule, start, end, when: datetime, services: Services, sna
             if quick is not None:
                 ends[s.index] = quick
         found = _search_days(day, moments, starts, ends, BIKESHARE_SPEED_KMH)
-        if not found:
+        if hop:
+            hop_starts = _best_few(
+                [
+                    _share_to(schedule, s, start, snapshot)
+                    for s in _hop_stops(schedule, hop[0], False)
+                ],
+                STATION_CANDIDATES + BUS_STOPS_NEAR,
+            )
+            hop_ends = {}
+            for s in _hop_stops(schedule, hop[1], False):
+                shared = _share_from(schedule, s, end, snapshot)
+                if shared is not None:
+                    hop_ends[s.index] = shared
+            hops = _hops(day, moments, hop_starts, hop_ends, BIKESHARE_SPEED_KMH)
+        if not found and not hops:
             notes.append(NO_TRANSIT_WORDS)
         notes += _idle(day, near_start + more_start + near_end + more_end)
     if schedule.note:
         notes.append(schedule.note)
     # Walking the whole way: decided on the straight line's estimate (no router call where it
     # is plainly out), then walked by the router for its time and line.
-    others = [o for o in (direct, *found) if o is not None]
+    others = [o for o in (direct, *found, *hops) if o is not None]
     walk = None
     if walk_offered(start, end, walk_s(start, end), others):
         walk = _walk_whole(start, end, services)
-    if direct is None and not found and walk is None:
+    if direct is None and not found and not hops and walk is None:
         raise NoTransit(
             "No dock with a classic bike near the start has a free dock near the destination,"
             " and no transit is in reach on foot or by bikeshare at both ends."
         )
     return Plan(
-        presets.BIKESHARE_TRANSIT, _ranked(direct, found, walk), moment, notes, _credits(schedule)
+        presets.BIKESHARE_TRANSIT,
+        _ranked(direct, found, walk, hops),
+        moment,
+        notes,
+        _credits(schedule),
     )
 
 
@@ -2458,6 +2543,7 @@ def block(plan: Plan, schedule: Schedule | None = None) -> dict:
                 "minutes": minutes(o.total_s),
                 "direct": o.direct,
                 "walk": o.walk,
+                "hop": o.hop,
                 "chosen": index == plan.chosen,
                 "legs": option_legs(o),
             }
