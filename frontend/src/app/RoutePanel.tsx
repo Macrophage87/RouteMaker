@@ -14,7 +14,7 @@ import { presetLabel, presetSaid, type PresetId } from "../lib/presets.ts";
 import { NOVICE_TRANSIT_CHOICES, noviceOfferText, noviceTripLine, noviceTripShort, type NoviceTrip } from "../lib/noviceOffer.ts";
 import { stressSegments, type StressSegment } from "../lib/stressBar.ts";
 import { lightLine, type LightMark } from "../lib/lightTimes.ts";
-import { calmSearchNote, detourView, paceText, stillPlanningSaid, movedPointsNote, walkInNote } from "../lib/summary.ts";
+import { calmSearchNote, detourView, paceText, stillPlanningSaid, movedPointsNote, noviceWalksNote, walkInNote } from "../lib/summary.ts";
 import { isCancelKey } from "../lib/sheet.ts";
 import { useStressStyle } from "../useStressStyle.ts";
 import { CandidatePicker } from "../lib/candidatePicker.ts";
@@ -593,6 +593,9 @@ function noteLines(route: RouteResponse, points: LonLat[], light: readonly Light
   // The ride stops short of a point, and the rider walks the bike the rest (the API's `walk_in`).
   const walkIn = walkInNote(route);
   if (walkIn) lines.push({ key: "walk-in", className: "notice walk-in", icon: "pin", text: walkIn });
+  // Novice and Nervous walk the bike past a short busy stretch on the sidewalk (v0.11.0; the API's `novice.walks`).
+  const pastBusy = noviceWalksNote(route);
+  if (pastBusy) lines.push({ key: "novice-walks", className: "notice walk-in", icon: "pin", text: pastBusy });
   // A Mass Ride that leaves the District (OWNER-DECISIONS 418a): shown here, and said in the route's
   // live region with the rest of the route's sentence (lib/summary.ts announceRoute).
   const outsideDc = outsideDcNote(route);

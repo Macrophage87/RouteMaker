@@ -218,6 +218,57 @@ for (const [label, size] of [["phone", { width: 390, height: 844, mobile: true }
   await p.close();
 }
 
+// ---- 1c. Save route in the big button's place (the owner, 2026-10-21): signed in, a route up to date and chosen (one
+// route is chosen as drawn) shows Save route there; it opens the name form, and a change brings Update route back ----
+for (const [label, size] of [["phone", { width: 390, height: 844, mobile: true }], ["computer", { width: 1280, height: 900 }]]) {
+  const p = await open({ ...size, ride: false, suggester: true });
+  const names = () => p.eval("[...document.querySelectorAll('.plan-map-bar button')].map((b) => b.getAttribute('aria-label') || b.textContent.trim())");
+  const upToDate = await names();
+  const big = await p.eval("(() => { const b = document.querySelector('.plan-map-bar .save-route-open'); if (!b) return null; const r = b.getBoundingClientRect(); return { h: Math.round(r.height), top: Math.round(r.top), expanded: b.getAttribute('aria-expanded') }; })()");
+  await p.eval("document.querySelector('.plan-map-bar .save-route-open').click(); true");
+  await sleep(300);
+  const form = await p.eval("(() => { const f = document.querySelector('.plan-map-bar .save-route-form'); const i = f?.querySelector('input'); const b = document.querySelector('.plan-map-bar .save-route-open'); return { open: !!f, focused: document.activeElement === i, name: i?.value, expanded: b?.getAttribute('aria-expanded') }; })()");
+  await p.escape();
+  await sleep(200);
+  const escBack = await p.eval("document.activeElement === document.querySelector('.plan-map-bar .save-route-open')");
+  await p.eval("document.querySelector('.plan-map-bar .save-route-open').click(); true");
+  await sleep(300);
+  // The form whole on the screen, under the bar.
+  const fits = await p.eval("(() => { const r = document.querySelector('.plan-map-bar .save-route-form').getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth; })()");
+  await p.eval("[...document.querySelectorAll('.plan-map-bar .save-route-form button')].find((b) => b.textContent.trim() === 'Cancel').click(); true");
+  await sleep(200);
+  const back = escBack && fits && await p.eval("document.activeElement === document.querySelector('.plan-map-bar .save-route-open')");
+  await p.eval("(() => { const i = document.querySelector('.dial input[type=range]'); const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; const d = Number(i.step || 1) * 5; const v = Number(i.value); set.call(i, String(v - d >= Number(i.min) ? v - d : v + d)); i.dispatchEvent(new Event('input', { bubbles: true })); i.dispatchEvent(new FocusEvent('focusout', { bubbles: true })); return true; })()");
+  await sleep(600);
+  const changed = await names();
+  // Update route pressed: once the route is up to date, Save route takes its place and the focus with it.
+  await p.eval("[...document.querySelectorAll('.plan-map-bar button')].find((b) => b.textContent.trim() === 'Update route').focus(); true");
+  await p.enter();
+  await sleep(3500);
+  const handed = await p.eval("document.activeElement === document.querySelector('.plan-map-bar .save-route-open')");
+  check(`plan bar (${label}): pressing Update route hands the focus to Save route in its place`, handed, await p.eval("document.activeElement?.textContent?.trim() || document.activeElement?.tagName"));
+  check(`plan bar (${label}): signed in, the route up to date shows Save route big in Update route's place; it opens the name form (focused, named, whole on the screen), Escape and Cancel return to it, and a change brings Update route back in its place`,
+    JSON.stringify(upToDate) === JSON.stringify(["Save route", "Manual mode", "Clear the plan"]) && big?.h >= 52 && big.top <= 16 && big.expanded === "false" &&
+      form.open && form.focused && !!form.name && form.expanded === "true" && back &&
+      JSON.stringify(changed) === JSON.stringify(["Update route", "Manual mode", "Clear the plan"]),
+    JSON.stringify({ upToDate, big, form, back, changed }));
+  await p.close();
+}
+
+// ---- 1d. Save route waits for a route chosen among several (the owner, 2026-10-21: "once an option was chosen") ----
+{
+  const p = await open({ route: S_CHOICES, hash: hashFor("trailmaxxing", 100), ride: false, suggester: true });
+  const has = () => p.eval("!!document.querySelector('.plan-map-bar .save-route-open')");
+  const before = await has();
+  await p.eval("(() => { const d = document.querySelector('fieldset.candidates')?.closest('details'); if (d && !d.open) d.querySelector('summary').click(); return true; })()");
+  await sleep(200);
+  await p.eval("document.querySelectorAll('fieldset.candidates input')[1].click(); true");
+  await sleep(400);
+  const after = await has();
+  check("plan bar: with routes to choose from, Save route shows only once one is chosen", before === false && after === true, JSON.stringify({ before, after }));
+  await p.close();
+}
+
 // ---- 2. The card from the list: focus stays, Escape closes it ----
 {
   const p = await open();
@@ -5059,7 +5110,7 @@ const failed = results.filter((r) => !r.ok);
 // A lettered pin's card (no auto route, 2026-10-19) adds two: the card a tap opens, and the card the B key opens.
 // The map's info panel adds two at 1280 px: the i named for it, and what it opens.
 // Plan starting as a loop (2026-10-20) adds one: the loop box unticked and ticked again.
-const EXPECTED = 670;
+const EXPECTED = 675;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

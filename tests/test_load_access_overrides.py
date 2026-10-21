@@ -1195,3 +1195,22 @@ class TestTheCrosswalkLinksFile:
         # Nothing about who rides it, or how often.
         for phrase in (" rides", "ride's", "privacy", "regularly", "private"):
             assert phrase not in text, phrase
+
+
+REDLAND_SIDEWALK = REPO / "fixtures" / "overrides" / "2026-10-21-owner-redland-sidewalk.json"
+
+
+class TestTheRedlandSidewalkFile:
+    """The owner, 2026-10-21: the short sidewalk between the paved path and the side path
+    "is intended to be ridden on and isn't illegal": opened with bicycle=yes, so it rides
+    as a path, not as a last-resort sidewalk."""
+
+    def test_it_opens_the_one_sidewalk(self, admin):
+        from core.models import Override
+
+        actor = str(admin.discord_user_id)
+        dry = load(str(REDLAND_SIDEWALK), "--actor", actor)
+        assert dry.count("create: way ") == 1 and "disagrees" not in dry
+        load(str(REDLAND_SIDEWALK), "--actor", actor, "--confirm")
+        (row,) = Override.objects.filter(approved=True)
+        assert (row.kind, row.osm_way_id, row.value) == ("access", 448386707, {"bicycle": "yes"})

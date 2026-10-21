@@ -227,6 +227,22 @@ button.access-link {
   font-size: 1.25rem;
 }
 
+/* The heading with the version under it (lib/appVersion.ts): small and muted, and within the height of
+   the Go/Plan switch beside them, so the header grows no taller and fits a 320 px phone. */
+.panel-title {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.panel-header .app-version {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.2;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
 /* The body is a column: the banner, the part that scrolls, then what is pinned under it (the route's
    GPX and link, the bottom bar), which stay in view (OWNER-DECISIONS 312). */
 .panel-body {
@@ -7464,6 +7480,41 @@ details.fold > summary .icon {
 .go-destination .plan-bar-route[aria-disabled="true"] {
   opacity: 0.85;
   cursor: progress;
+}
+
+/* Save route in the big button's place (the owner, 2026-10-21): its name form and its line drop under the bar,
+   centred on it, on a card of their own so the map behind does not show through. */
+.plan-map-bar:has(.save-route-form, .save-route-said:not(:empty)) {
+  z-index: 3;
+}
+.plan-map-bar > .save-route-bar {
+  pointer-events: auto;
+}
+.plan-map-bar .save-route-bar > .plan-bar-route {
+  box-shadow: var(--shadow);
+}
+.plan-map-bar .save-route-bar .save-route-form,
+.plan-map-bar .save-route-bar .save-route-said:not(:empty) {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  width: fit-content;
+  max-width: 100%;
+  margin: 8px auto 0;
+  padding: 10px 12px;
+  background: var(--bg);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+}
+/* The line that says it saved is not a control: taps go through to the chips under it. */
+.plan-map-bar .save-route-bar .save-route-said {
+  pointer-events: none;
+}
+/* Under the manual mode badge while it shows. */
+.plan-map-bar:has(.plan-bar-manual-badge) .save-route-bar .save-route-form,
+.plan-map-bar:has(.plan-bar-manual-badge) .save-route-bar .save-route-said:not(:empty) {
+  margin-top: 52px;
 }
 
 .app:has(.plan-map-bar) .map-chips {
