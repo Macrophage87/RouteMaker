@@ -3451,6 +3451,44 @@ carries the edge changes they need; **the owner ships them by hand**, as every
 The Content-Security-Policy needs no change: `worker-src 'self'` allows the worker,
 and `manifest-src` falls back to `default-src 'self'`.
 
+## Link previews: the icon when a link is shared (v0.10.1)
+
+A chat app (Discord, Google Messages, iMessage, WhatsApp, Slack) fetches a link to draw its
+preview. Two kinds of link get one (`core.share_preview`):
+
+- **The app's own address** (`/`, and the ride-type links such as `/gravel`, which redirect
+  there): a fetcher is handed `/link-preview` by the edge, a page of Open Graph and Twitter
+  card tags naming RouteMaker with `icons/share-card.png` (1200 x 630: the icon, the name and
+  a line on what the app does). A browser still gets the app.
+- **A shared route** (`/s/<id>`): its ride type and distance, and its line drawn on an image
+  with the icon beside "RouteMaker" (Home hidden, as before).
+
+Every address in the tags is built from the request's own host, so no host name is in the
+repository and nothing is set per server. Who counts as a fetcher is one pattern in three
+places, held equal by `tests/test_link_preview.py`: `share_preview.FETCHER_RE`, the
+Caddyfile's `@link_fetcher` and the beta nginx map `$rmbeta_link_fetcher`.
+
+**The beta's password.** A fetcher has no password, so on the beta these paths are outside it:
+`/s/<id>` and `/s/<id>/preview.png`, `/link-preview`, `/icons/` and `/favicon.svg`. Nothing
+else is: a browser following a shared link is redirected into the app and still meets the
+password, and `/index.html`, the API and the map stay behind it. Re-render and install the
+template as BETA-RUNBOOK.md, "Shipping an update later", step 9 says, then check without the
+password:
+
+```sh
+curl -s -A 'Mozilla/5.0 (compatible; Discordbot/2.0)' https://<site>/ | grep -o 'og:image" content="[^"]*'
+# og:image" content="https://<site>/icons/share-card.png
+curl -sI https://<site>/icons/share-card.png | head -1
+# 200
+curl -sI -A 'Mozilla/5.0 Chrome/130.0' https://<site>/ | head -1
+# 401: a browser still meets the password
+```
+
+Chat apps keep a preview for a while (Discord about a day; Messages and iMessage per chat), so a
+link already posted keeps its old blank preview: try a link not shared before, or add `?v=2`.
+Redraw the card and the route image's icon when the icon changes:
+`python3 scripts/make_share_images.py`.
+
 ## The app's service worker: updates, rollback and the kill switch
 
 `/sw.js` is written by the build (`frontend/src/sw/swPlugin.mjs` from `swCore.mjs`)
