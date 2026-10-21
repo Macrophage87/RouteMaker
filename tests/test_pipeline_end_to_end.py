@@ -643,14 +643,16 @@ def test_a_sidewalk_is_ridden_as_a_last_resort_but_not_on_mass_rides(
     assert SUBURBAN_SIDEWALK_ID in context.sidewalk_rides
     assert CBD_SIDEWALK_ID not in context.sidewalk_rides
     assert CIRCLE_CROSSING_ID not in context.sidewalk_rides, "the circle parks open it outright"
-    assert int(context.stress_by_way[SUBURBAN_SIDEWALK_ID].tier) == 3
+    # Beside no road rated 4.5 or Avoid: priced above an LTS 4 road (2026-10-21).
+    assert SUBURBAN_SIDEWALK_ID in context.sidewalk_last_resort
+    assert int(context.stress_by_way[SUBURBAN_SIDEWALK_ID].tier) == 4
     seen = set()
     for variant in Variant:
         tags = {w.osm_id: w.tags for w in read_ways(context.variant_pbf(variant))}
         if SUBURBAN_SIDEWALK_ID not in tags:
             continue
         seen.add(variant)
-        expected = None if variant is Variant.NO_TRAIL else "yes"
+        expected = None if variant is Variant.NO_TRAIL else "last_resort"
         assert tags[SUBURBAN_SIDEWALK_ID].get("rm:sidewalk") == expected, variant.value
     assert Variant.STANDARD in seen
 

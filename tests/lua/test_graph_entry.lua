@@ -314,6 +314,13 @@ check("a ridden sidewalk reaches the graph open to bicycles",
   link_out.bike_forward == "true" and link_out.bike_backward == "true",
   tostring(link_out.bicycle) .. " " .. tostring(link_out.bike_forward) .. "/" .. tostring(link_out.bike_backward))
 check("and the mark never reaches the tile build", link_out["rm:sidewalk"] == nil)
+local _, last_out = transform_way({
+  highway = "footway", footway = "sidewalk", ["rm:sidewalk"] = "last_resort",
+  ["rm:trail_class"] = "yes", ["rm:stress_tier"] = "4",
+})
+check("a last-resort sidewalk reaches the graph with LTS 4's lanes",
+  last_out.bike_forward == "true" and last_out["lanes:forward"] == "15",
+  tostring(last_out.bike_forward) .. " " .. tostring(last_out["lanes:forward"]))
 
 -- A walk-your-bike station link (routemaker.station_links) reaches the graph open both ways.
 local _, walk_out = transform_way({
