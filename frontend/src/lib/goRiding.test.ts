@@ -57,7 +57,9 @@ test("6. an End ride button always in view, labelled End ride with its icon, one
   // Plain vh first, for WebViews without dvh (Android 7 and up).
   assert.match(css, /\.ride-summary \{[^}]*max-height: calc\(100vh - 16px\);\s*max-height: calc\(100dvh/);
   assert.match(css, /\.ride-summary-body \{[^}]*min-height: 0;\s*overflow-y: auto;/);
-  assert.match(summary, /<div className="ride-summary-body" role="group" aria-labelledby=\{titleId\} tabIndex=\{0\}>[\s\S]*<\/figure>\s*\)\}\s*<\/div>\s*<div className="ride-summary-actions">/);
+  assert.match(summary, /<div ref=\{body\} className="ride-summary-body" tabIndex=\{scrolls \? 0 : undefined\}>[\s\S]*<\/figure>\s*\)\}\s*<\/div>\s*<div className="ride-summary-actions">/);
+  // A tab stop only while it scrolls, with no second name the same as the section's.
+  assert.match(summary, /setScrolls\(element\.scrollHeight > element\.clientHeight\)/);
   // Done: Go emptied for the next trip, Plan's plan kept (the owner, 2026-10-20).
   const finish = app.slice(app.indexOf("const finishRide = () => {"), app.indexOf("// The first ride's question"));
   assert.match(finish, /endedRide\.current = null;\s*setRideEnded\(null\);\s*if \(mode === "go" && pointsRef\.current\.length > 0\) clearPlan\(\);\s*else backToRideOpener\(\);/);

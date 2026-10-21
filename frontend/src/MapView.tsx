@@ -84,7 +84,7 @@ import type { FederalStatus } from "./lib/federalLegend.ts";
 import { attachFederalInteraction } from "./federalInteraction.ts";
 import { addWaterRestrooms, setWaterPrefs, WATER_SOURCE_ID, type WaterMap, type WaterPoint, type WaterPrefs } from "./lib/waterRestrooms.ts";
 import { attachWaterInteraction } from "./waterInteraction.ts";
-import { addClimbs, CLIMBS_FROM_DEFAULT, CLIMBS_SOURCE_ID, setClimbsFrom, setClimbsOn, setTrailClimbs, subscribeHideBusy, type Climb, type ClimbCategory, type ClimbsMap } from "./lib/climbs.ts";
+import { addClimbs, climbsUnder, CLIMBS_FROM_DEFAULT, CLIMBS_SOURCE_ID, setClimbsFrom, setClimbsOn, setTrailClimbs, subscribeHideBusy, type Climb, type ClimbCategory, type ClimbsMap } from "./lib/climbs.ts";
 import { attachClimbInteraction } from "./climbInteraction.ts";
 import { climbCardAfterClose } from "./lib/climbCard.ts";
 import type { When } from "./lib/dials.ts";
@@ -1138,6 +1138,8 @@ export function MapView(props: Props) {
       if (added) setHazardData(map, callbacks.current.massHazards ?? null);
       // A route already up fades the road colours it is drawn over (an overlay that came after the route).
       if (added) setOverlayFade(map, routeOverlayFade(callbacks.current.route));
+      // Climbs that came first are under the trail names it brings, as syncClimbs puts them when the names are there.
+      if (added) climbsUnder(map, TRAIL_LABEL_LAYER_ID);
       return added;
     };
 
@@ -2347,6 +2349,12 @@ export function MapView(props: Props) {
     return () => {
       map.off("styledata", onStyle);
     };
+  }, [props.rideLabels]);
+  // A ride starts with the map's Help panel closed (the v0.10.1 end review): left open from planning, it covered the
+  // rider's dot. The Help button opens it again.
+  useEffect(() => {
+    if (!props.rideLabels) return;
+    collapseCredits(container.current?.querySelector<HTMLElement>(".maplibregl-ctrl-attrib") ?? null);
   }, [props.rideLabels]);
   useEffect(() => () => void riderMarker.current?.remove(), []);
   // Go's "you" dot: a marker only (aria-hidden: Go's start line says where the rider is).

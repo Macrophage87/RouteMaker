@@ -99,7 +99,7 @@ import { bikeshareOf } from "./lib/bikeshare.ts";
 import { carries, hillsWords, seeksClimbs, startDials, stressMax, stressWords, trailsAreOff, type Dials } from "./lib/dials.ts";
 import { WeightStore, defaultSplit, withWeight, type StoredWeight } from "./lib/weight.ts";
 import { stationEdit, stationMoves, stationPlaceLabel, stationPlaceName, type RailVisibility, type Station, type StationRole } from "./lib/railStations.ts";
-import { lonLatKey, quickerWayIn, wayInChecks, wayInPlaces, wayInSaid } from "./lib/stationWayIn.ts";
+import { legFrom, lonLatKey, quickerWayIn, wayInChecks, wayInKey, wayInPlaces, wayInSaid, type WayInMove } from "./lib/stationWayIn.ts";
 import { RAIL_STATIONS, WMATA_SLUGS, stationEntranceForPlace } from "./lib/railData.ts";
 import { federalShown, type FederalData } from "./lib/federalLand.ts";
 import { FEDERAL_POINTS_NONE, type FederalStatus } from "./lib/federalLegend.ts";
@@ -1730,7 +1730,7 @@ export function App() {
   useEffect(() => {
     if (riding || endsOnFoot(preset)) return;
     const asking = wayInChecks(points, RAIL_STATIONS).filter((check) => {
-      const key = `${lonLatKey(points[check.index])}|${lonLatKey(check.from)}|${preset}`;
+      const key = wayInKey(points[check.index], check.from, preset);
       if (wayInKept.current.has(lonLatKey(points[check.index])) || wayInAsked.current.has(key)) return false;
       wayInAsked.current.add(key);
       return true;
@@ -1741,27 +1741,34 @@ export function App() {
       // Only onto the plan as it was asked about: a later edit has its own question.
       const current = pointsRef.current;
       if (ridingNow.current || rideRef.current.preset !== preset || current.length !== asked.length || current.some((p, i) => p !== asked[i])) {
-        asking.forEach((check) => wayInAsked.current.delete(`${lonLatKey(asked[check.index])}|${lonLatKey(check.from)}|${preset}`));
+        asking.forEach((check) => wayInAsked.current.delete(wayInKey(asked[check.index], check.from, preset)));
         return;
       }
       const moved = [...current];
       const naming = namePoints(current, VIA_MARKS.isVia, loopVias);
-      const said: string[] = [];
+      const said: WayInMove[] = [];
       asking.forEach((check, i) => {
         const result = results[i];
         // A request that failed is asked again on the next change.
-        if (!result.ok) wayInAsked.current.delete(`${lonLatKey(asked[check.index])}|${lonLatKey(check.from)}|${preset}`);
+        if (!result.ok) wayInAsked.current.delete(wayInKey(asked[check.index], check.from, preset));
         const point = current[check.index];
         const to = quickerWayIn(point, check, result);
         if (!to) return;
         moved[check.index] = VIA_MARKS.moved(point, [to[0], to[1]]);
         wayInKept.current.add(lonLatKey(point));
         namer.remember(moved[check.index], stationPlaceName(check.station), stationPlaceLabel(check.station, check.kind));
-        said.push(wayInSaid(naming[check.index]?.name ?? "A point", stationPlaceName(check.station), check.kind));
+        said.push({ pointName: naming[check.index]?.name ?? "A point", stationName: stationPlaceName(check.station), kind: check.kind });
       });
       if (said.length === 0) return;
+      // A moved point is at its quickest way in from where its leg comes from: marked asked, so the move is not
+      // a second question (the v0.10.1 end review). A leg whose start moved too is asked again, as it should be.
+      asking.forEach((check) => {
+        if (moved[check.index] !== current[check.index] && legFrom(moved, check.index) === check.from) {
+          wayInAsked.current.add(wayInKey(moved[check.index], check.from, preset));
+        }
+      });
       commit(moved);
-      announce(said.join(" "));
+      announce(wayInSaid(said));
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- asked again on a change of the points, ride type or ride only
   }, [points, preset, riding]);

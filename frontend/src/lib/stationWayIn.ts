@@ -17,6 +17,12 @@ import { AT_ENTRANCE_M, bikeWaysIn, type BikeEntrance, type Station } from "./ra
 /** A point as text, to remember it by: five decimals, as a shared link keeps it (about 1 m). */
 export const lonLatKey = (point: LonLat): string => `${point[0].toFixed(5)},${point[1].toFixed(5)}`;
 
+/** What one question is remembered by: the point, where its leg comes from, and the ride type. */
+export const wayInKey = (point: LonLat, from: LonLat, preset: string): string => `${lonLatKey(point)}|${lonLatKey(from)}|${preset}`;
+
+/** Where the leg to a plan's point comes from: the point before, or for a start the point after. */
+export const legFrom = (points: readonly LonLat[], index: number): LonLat => (index === 0 ? points[1] : points[index - 1]);
+
 /** A different way in must save at least this much riding to move the point: no moves for a few seconds. */
 export const QUICKER_BY_S = 15;
 
@@ -39,7 +45,7 @@ export function wayInChecks(points: readonly LonLat[], stations: readonly Statio
     for (const station of stations) {
       const { kind, points: ways } = bikeWaysIn(station);
       if (ways.length < 2 || !ways.some((way) => haversineM(way, point) <= AT_ENTRANCE_M)) continue;
-      const from = index === 0 ? points[1] : points[index - 1];
+      const from = legFrom(points, index);
       if (haversineM(from, point) <= AT_ENTRANCE_M) return;
       checks.push({ index, station, kind, ways, from });
       return;
@@ -72,8 +78,29 @@ export function wayInPlaces(check: WayInCheck): NearestPlace[] {
   return check.ways.map((point, i) => ({ id: `${check.station.id}-way-${i}`, kind: "metro", point, title: check.station.name, details: [] }));
 }
 
-/** "End moved to Shady Grove Metro station's elevator that is quicker to reach by bike. Undo puts it back." */
-export function wayInSaid(pointName: string, stationName: string, kind: BikeEntrance["kind"]): string {
-  const way = kind === "elevator" || kind === "osm-elevator" ? "elevator" : "entrance";
-  return `${pointName} moved to ${stationName}'s ${way} that is quicker to reach by bike. Undo puts it back.`;
+/** One point moved to a quicker way in, as wayInSaid names it. */
+export interface WayInMove {
+  pointName: string;
+  stationName: string;
+  kind: BikeEntrance["kind"];
+}
+
+const wayWord = (kind: BikeEntrance["kind"]): string => (kind === "elevator" || kind === "osm-elevator" ? "elevator" : "entrance");
+
+/**
+ * The words for the moves of one change, one message however many moved (the v0.10.1 end review: two moves were
+ * two of the same sentence): "End moved to Shady Grove Metro station's elevator that is quicker to reach by bike.
+ * Undo puts it back." Two are named in one sentence; more are counted.
+ */
+export function wayInSaid(moves: readonly WayInMove[]): string {
+  if (moves.length === 0) return "";
+  if (moves.length === 1) {
+    const [move] = moves;
+    return `${move.pointName} moved to ${move.stationName}'s ${wayWord(move.kind)} that is quicker to reach by bike. Undo puts it back.`;
+  }
+  if (moves.length === 2) {
+    const [a, b] = moves;
+    return `${a.pointName} moved to ${a.stationName}'s ${wayWord(a.kind)} and ${b.pointName} to ${b.stationName}'s ${wayWord(b.kind)}, each quicker to reach by bike. Undo puts them back.`;
+  }
+  return `${moves.length} points moved to station ways in that are quicker to reach by bike. Undo puts them back.`;
 }
