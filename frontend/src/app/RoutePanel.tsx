@@ -26,6 +26,7 @@ import { IntersectionList } from "../IntersectionList.tsx";
 import { AvoidNotice } from "../AvoidNotice.tsx";
 import { avoidItems, avoidNoticeFor } from "../lib/avoidJunctions.ts";
 import { ElevationChart } from "../ElevationChart.tsx";
+import { tripRoute } from "../lib/tripRides.ts";
 import { chartKind, corkerFigure, foldName, usableProfile } from "../lib/profileChart.ts";
 import { RouteDescription } from "../RouteDescription.tsx";
 import { RIDE_SAFETY, RideSettingsFields } from "../RideMode.tsx";
@@ -741,7 +742,9 @@ export function RouteSummary({
   const segments = capacity ? [] : stressSegments(route.stress_m);
   const notes = noteLines(route, points, light);
   const pace = paceText(route);
-  const profile = usableProfile(route);
+  // A transit trip's rides joined (lib/tripRides.ts): the distance ridden, the climb and the chart are every ride's.
+  const trip = tripRoute(route);
+  const profile = usableProfile(trip);
   // The Avoid-rated junctions count with the rest, and keep the fold where the others could not be read.
   const avoidCount = avoidItems(route).length;
   const junctions = route.intersections == null ? (avoidCount > 0 ? avoidCount : null) : junctionItems(route).length + avoidCount;
@@ -861,8 +864,8 @@ export function RouteSummary({
               <dd>{timeText}</dd>
             </div>
             <div className="stat-distance">
-              <dt className="visually-hidden">{transit ? "First ride's distance" : "Distance"}</dt>
-              <dd>{formatDistance(route.distance_m)}</dd>
+              <dt className="visually-hidden">{transit ? "Distance ridden" : "Distance"}</dt>
+              <dd>{formatDistance(trip.distance_m)}</dd>
             </div>
             {go.peek && alertCount > 0 ? (
               <div className="total-alerts">
@@ -877,7 +880,7 @@ export function RouteSummary({
                 <dt className="visually-hidden">Climb</dt>
                 <dd>
                   <Icon name="mountain" size={14} />
-                  {formatClimb(route.climb_m)}
+                  {formatClimb(trip.climb_m)}
                 </dd>
               </div>
             )}
@@ -934,7 +937,7 @@ export function RouteSummary({
         {/* The elevation chart (Stephen 2026-10-13: "on Go, add an elevation chart to the map as well, even if
             relatively flat"), at the full sheet only (review F8: at half it made the sheet more than a screen), under
             Start and the route's options so it never pushes them down; its key and tables stay in Plan. */}
-        {go.full && profile && chartKind(route) !== "mass" && <ElevationChart route={route} profile={profile} onScrub={onScrub} compact />}
+        {go.full && profile && chartKind(route) !== "mass" && <ElevationChart route={trip} profile={profile} onScrub={onScrub} compact />}
         {!go.peek && picker && (
           <div id={routesId} className="go-routes" hidden={!routesOpen}>
             {picker}
@@ -956,21 +959,21 @@ export function RouteSummary({
             <dd>{timeText}</dd>
           </div>
           <div className="stat-distance">
-            <dt className="visually-hidden">{transit ? "First ride's distance" : "Distance"}</dt>
-            <dd>{formatDistance(route.distance_m)}</dd>
+            <dt className="visually-hidden">{transit ? "Distance ridden" : "Distance"}</dt>
+            <dd>{formatDistance(trip.distance_m)}</dd>
           </div>
           <div className="total-climb">
             <dt className="visually-hidden">Climb</dt>
             <dd>
               <span aria-hidden="true">↑ </span>
-              {formatClimb(route.climb_m)}
+              {formatClimb(trip.climb_m)}
             </dd>
           </div>
           <div className="total-descent">
             <dt className="visually-hidden">Descent</dt>
             <dd>
               <span aria-hidden="true">↓ </span>
-              {formatClimb(route.descent_m)}
+              {formatClimb(trip.descent_m)}
             </dd>
           </div>
         </dl>
@@ -998,7 +1001,7 @@ export function RouteSummary({
           open={chartFoldOpen(narrow)}
           className="elevation-fold"
         >
-          {profile && <ElevationChart route={route} profile={profile} onScrub={onScrub} rideSize={rideSize} />}
+          {profile && <ElevationChart route={trip} profile={profile} onScrub={onScrub} rideSize={rideSize} />}
           {/* The climbs on the route (the Climbs layer's list), in this fold (the mockup's table). */}
           {climbs && <ClimbsAlongList items={climbs} headingId="climbs-along-planner-heading" level="h4" />}
         </Fold>
