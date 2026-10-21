@@ -288,8 +288,9 @@ test("F15. Go's route chips stay one row at 390 px: Save shown short, no icons, 
   assert.match(chips, /<SaveRoute \{\.\.\.actions\.save\} label=\{SAVE_ROUTE\} shown=\{SAVE_SHORT\} chip \/>/);
   // Named "Save route", shown "Save": the words shown are in the name.
   const save = read("../SaveRoute.tsx");
-  assert.match(save, /aria-label=\{shown \? label : undefined\}/);
-  assert.match(save, /\{shown \?\? label\}/);
+  // (The map bar's Save is named for its label too: it shows "Save" on a phone.)
+  assert.match(save, /aria-label=\{shown \|\| bar \? label : undefined\}/);
+  assert.match(save, /\(shown \?\? label\)/);
   // The ride type and Plan left the row (edit-route redesign): the routes and Save, without icons.
   assert.equal((chips.match(/<Icon /g) ?? []).length, 0);
   assert.doesNotMatch(chips, /go-ride-chip|go-plan-chip/);

@@ -292,7 +292,7 @@ test("the 311 button shows anywhere on the route; its menu has the six problems 
   assert.match(ride, /\{show311 && \(/);
   assert.match(ride, /aria-label=\{RIDE_311_NAME\}\s+aria-expanded=\{menu311\}\s+aria-controls=\{menu311Id\}/);
   assert.match(ride, /const pick311 = \(kind: ReportKind\) => \{\s*setMenu311\(false\);\s*button311\.current\?\.focus\(\);/);
-  assert.match(ride, /<details className="fold ride-report" open=\{open\} onToggle=\{\(event\) => onOpen\(event\.currentTarget\.open\)\}>/);
+  assert.doesNotMatch(ride, /className="fold ride-report"/, "no note fold after a pick (2026-10-21)");
   assert.match(ride, /if \(event\.key === "Escape" && menu311\) \{\s*event\.preventDefault\(\);\s*close311\(\);/);
   // About 60 px round, in the side buttons on the right edge (the owner, 2026-10-17).
   const css = src("../styles.css");

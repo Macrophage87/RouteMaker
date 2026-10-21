@@ -250,12 +250,13 @@ export function milesLabelLayer(): Record<string, unknown> {
     layout: {
       "text-field": ["concat", "MM ", ["get", "label"]],
       "text-font": [MILES_FONT],
-      "text-size": 11,
+      // The street names' face, a little smaller: a number, not a name (the owner, 2026-10-21: "All into stret name style").
+      "text-size": 13,
       "text-anchor": "left",
       "text-offset": [0.7, 0],
       "text-optional": true,
     },
-    paint: { "text-color": MILES_COLOUR, "text-halo-color": "#ffffff", "text-halo-width": 1.5 },
+    paint: { "text-color": MILES_COLOUR, "text-halo-color": "#ffffff", "text-halo-width": 3 },
   };
 }
 

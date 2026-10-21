@@ -1638,7 +1638,9 @@ class TestApi:
             assert costing["bicycle"]["cycling_speed"] == presets.BIKESHARE_CLASSIC_SPEED_KMH
             assert line_speeds == {presets.BIKESHARE_CLASSIC_SPEED_KMH}
         else:
-            assert costing is None
+            # Novice's pricing at the rider's sliders (here its own start), as the line's is.
+            stress = presets.stress_start(presets.NOVICE)
+            assert costing == presets.costing(presets.NOVICE, stress, None)
             novice = presets.costing(presets.NOVICE)["bicycle"].get("cycling_speed")
             assert line_speeds == {novice}
 

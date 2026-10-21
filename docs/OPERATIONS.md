@@ -1520,7 +1520,7 @@ z10 0.7-0.8 s warm (5.5 s the first, cold), z11 0.45-0.6 s, z12 0.26 s. Its tile
 are new tiles (the tag's `-v2`), drawn by the next pre-draw.
 An eviction keeps both the stress and the Mass Ride tags of the live table
 (`tile_cache.evict(..., also_keep=...)`), so neither evicts the other. Their own
-format is `core.mass_tiles.FORMAT_VERSION` (2), apart from the stress tiles' 8: a
+format is `core.mass_tiles.FORMAT_VERSION` (2), apart from the stress tiles' 12: a
 change to one re-draws only its own tiles. A new DC boundary file changes the
 digest, so its tiles are new too; re-run the pre-draw after deploying one. The
 draw slots, the draw timeout, the per-address limit and the Retry-After answers
@@ -1533,7 +1533,8 @@ the cache existed (the first deploy of this change), after a deploy that
 changes `core.stress_tiles.FORMAT_VERSION` (every cached tile is then stale:
 3 was the zoomed-out tiles becoming the paths and trails alone, 4 the busy
 roads at z12-13 and the quiet streets from z14, 5 the long trails only at
-z10-11, 10 every street from z12), and after
+z10-11, 10 every street from z12, 11 a major trail's name, 12 the `dense`
+mark on city-grid streets at z12-13), and after
 `rollback_rebuild`, which puts back a table the last pre-draw cleared the tiles
 of. The weekly rebuild's own pre-draw runs in the `rebuild` service, so a
 change to what it draws reaches it with the pipeline image. It skips what is
@@ -4005,6 +4006,11 @@ things beyond the tags, and none of them comes from the reference install:
   logged as "N walkways and crossings of DC's circle parks opened to bicycles". Baked into
   the pipeline image like the two above; the planner reads the same polygons to
   keep a trip point inside a circle off the underpass below it.
+- **`fixtures/cbd/architect-of-the-capitol.geojson`**, read a second way: the walks on
+  the US Capitol grounds and in the Senate Parks open to bicycles too
+  (`routemaker.capitolgrounds`; the owner, 2026-10-21), logged as "N walks and crossings
+  of the Capitol grounds opened to bicycles" (513 in the 2026-10-20 extract). Roadside
+  sidewalks there keep the sidewalk rule's price instead.
 
 The rebuild refuses, terminally (not retried), when the District, Maryland or
 Virginia has no closed boundary in the merged extract, or holds no way:

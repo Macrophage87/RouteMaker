@@ -9,6 +9,7 @@ import { loopView } from "./loop.ts";
 import { dialFields, type Dials } from "./dials.ts";
 import {
   OPTIONS_LABEL,
+  busyText,
   STEPS_LABEL,
   TRACK_WORK,
   timesFromText,
@@ -139,8 +140,9 @@ test("each Metro and bus step has a text marker, so colour is not the only cue",
   assert.equal(drawOf({ mode: "subway" }), "transit");
 });
 
-test("the options are lettered, quickest first, with riding the whole way among them", () => {
-  assert.equal(OPTIONS_LABEL, "Trips, quickest first");
+test("the options are lettered, best first, with riding the whole way among them", () => {
+  // Stephen, 2026-10-21: ranked by time with busy roads and junctions counted against a trip.
+  assert.equal(OPTIONS_LABEL, "Trips, best first, counting busy roads");
   assert.equal(optionText(PLAN.options[0], 0), "A. Ride, Metro to Federal Triangle (Orange Line), ride: about 28 min");
   assert.equal(optionText(PLAN.options[1], 1), "B. Ride the whole way: about 32 min");
   assert.equal(optionChosenSaid(PLAN.options[1]), "Planning Ride the whole way, about 32 min.");
@@ -249,7 +251,18 @@ test("a transit trip's row shows its legs as marks, and a screen reader hears th
   assert.equal(optionSaid(walk, 0), "A. Walk the whole way: about 7 min");
   // The button shows the marks aria-hidden and the words beside them.
   const summary = readFileSync(new URL("../TransitSummary.tsx", import.meta.url), "utf8");
-  assert.match(summary, /<span aria-hidden="true">\{optionText\(option, index\)\}<\/span>\n\s*<span className="visually-hidden">\{optionSaid\(option, index\)\}<\/span>/);
+  assert.match(summary, /<span aria-hidden="true">\n\s*\{optionText\(option, index\)\}\n\s*\{option\.elevator_out && <Icon name="elevator-out" size=\{16\} \/>\}\n\s*<\/span>\n\s*<span className="visually-hidden">\{optionSaid\(option, index\)\}<\/span>/);
+});
+
+test("each option says its busy riding after its time, and an elevator out in words", () => {
+  // Stephen, 2026-10-21: "You'd say arrive in X min with x mi of busy roads etc."
+  const option = { label: "Ride, Metro, ride", minutes: 34, busy_m: 644, legs: [{ mode: "ride", minutes: 4 }, { mode: "metro", system: "Metro", lines: ["Red Line"], minutes: 18 }] };
+  assert.equal(optionText(option, 0), "A. 🚲 4 min · 🔴 18 min: about 34 min, 0.4 mi (0.6 km) busy");
+  assert.equal(optionSaid(option, 0), "A. bike 4 minutes, Red Line 18 minutes: about 34 min, 0.4 mi (0.6 km) on busy roads");
+  assert.equal(optionText({ ...option, busy_m: 40 }, 0), "A. 🚲 4 min · 🔴 18 min: about 34 min, no busy roads");
+  assert.equal(optionText({ ...option, busy_m: null }, 0), "A. 🚲 4 min · 🔴 18 min: about 34 min");
+  assert.equal(busyText(undefined, "busy"), "");
+  assert.match(optionSaid({ ...option, elevator_out: true }, 0), /; an elevator is out on the way, so it is ranked lower$/);
 });
 
 test("the total's name says live where a departure is WMATA's prediction", () => {

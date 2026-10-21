@@ -26,14 +26,14 @@
  *   these as circle icons on the side"): Where am I? (re-centring too), Large text, Detour (water or restroom), on a
  *   share bike the dock button with the time undocked (lib/rideDock.ts), 311 anywhere on the route, and the Settings gear; each a round
  *   icon with its name for screen readers, its menu opening beside it. The bottom panel shows only when it
- *   has something to say or ask: GPS and screen notes, off route, Ride the rest, the note for a problem just logged for 311.
+ *   has something to say or ask: GPS and screen notes, off route, Ride the rest.
  *   Answers asked for (Where am I?, a detour's progress) show for a few seconds by the buttons.
  *
  * Privacy (plan section 7): positions stay in memory for the ride; nothing is stored or logged; the only
  * ones sent are a re-plan's start point and, when the rider asks for the nearest water or restroom, the
  * search's own (POST /api/nearest), each in a POST body, as planning with "Use my location" sends it.
  */
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FocusEvent, type PointerEvent, type RefObject } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FocusEvent, type PointerEvent } from "react";
 import { HoldTimer } from "./lib/holdTimer.ts";
 import { startsWayBack, wayBackRoute } from "./lib/rejoin.ts";
 import {
@@ -143,7 +143,7 @@ import { clearCorridor, copyCorridor, keepCorridor } from "./lib/corridorStore.t
 import { lastRideAdopter } from "./lib/offlineKeep.ts";
 import { blockOf, rescueRideFocus, type RideBlock } from "./lib/rideFocus.ts";
 import { REPORT_SENT, report311Enabled, sendReport311, reportPlace, type ReportKind } from "./lib/report311.ts";
-import { NOTE_MAX, entryText, kindLabel, report311Log, useReport311Log, type LogEntry } from "./lib/report311Log.ts";
+import { entryText, kindLabel, report311Log, type LogEntry } from "./lib/report311Log.ts";
 import { RIDE_311_NAME, RIDE_311_TEXT, Ride311Menu, ride311Shown } from "./lib/ride311.ts";
 import {
   DOCKED_SHOWN,
@@ -213,7 +213,7 @@ export const RIDE_SETTINGS_TEXT = "Settings";
 export const RIDE_SETTINGS_TITLE = "Ride settings";
 /** What End ride leaves behind (lib/navigate.ts planAfterEnd): the plan from here, or as it was. */
 export type EndedPlan = ReturnType<typeof planAfterEnd>;
-/** How long the 311 line ("Sent to DC 311." and Add a note) stays (review F4); held the same way. */
+/** How long the 311 line ("Logged for 311: Pothole.") stays (review F4); held the same way. */
 export const SAID_311_MS = 8_000;
 /** Said when a 311 pick has no place on the route yet. */
 export const NO_PLACE_311 = "Your place on the route is not known yet, so nothing was logged.";
@@ -525,48 +525,6 @@ export function RideSettingsFields({
   );
 }
 
-/**
- * The note for the problem just logged (lib/report311Log.ts; v0.7.0 "Go riding fixes" item 3: the note comes
- * after, never before): the entry as it will read on the 311 site, and its note, saved as it is typed. The
- * 311 button's "Add a note" opens it; the checklist in Suggest has the rest.
- */
-function Note311({
-  entry,
-  open,
-  onOpen,
-  summaryRef,
-  noteRef,
-}: {
-  entry: LogEntry;
-  open: boolean;
-  onOpen: (open: boolean) => void;
-  summaryRef: RefObject<HTMLElement | null>;
-  noteRef?: RefObject<HTMLInputElement | null>;
-}) {
-  return (
-    <details className="fold ride-report" open={open} onToggle={(event) => onOpen(event.currentTarget.open)}>
-      <summary ref={summaryRef}>{`Note for the ${kindLabel(entry.kind).toLowerCase()}`}</summary>
-      <div className="fold-body">
-        <p className="ride-report-text">{entryText(entry)}</p>
-        <label className="ride-report-note">
-          Note (optional)
-          <input
-            ref={noteRef}
-            type="text"
-            value={entry.note}
-            maxLength={NOTE_MAX}
-            onChange={(event) => report311Log().setNote(entry.id, event.target.value)}
-          />
-        </label>
-        <p className="hint">{NOTE_311_HINT}</p>
-      </div>
-    </details>
-  );
-}
-
-/** Under the note: where the log is, and that it stays on the rider's own phone and account. */
-export const NOTE_311_HINT = "Saved in your 311 checklist in Suggest, with the site to report it on. Only you see it.";
-
 /** The way back to the planned route, said: "The planned route is 300 feet to the left." */
 /** Said off a fixed route, before the way back: it is not re-routed (the review of #191). */
 export const FIXED_SAID = "This ride stays on its route, never re-routed.";
@@ -747,27 +705,15 @@ export function RideMode({
     settingsPanel.current?.scrollIntoView?.({ block: "nearest" });
     settingsPanel.current?.focus({ preventScroll: true });
   }, [settingsOpen]);
-  // The 311 button's menu (lib/ride311.ts; the owner's choice 9), and the entry just logged, whose note
-  // "Add a note" opens.
-  const log311 = useReport311Log();
-  const [lastEntryId, setLastEntryId] = useState<string | null>(null);
-  const lastEntry = lastEntryId === null ? null : (log311.find((e) => e.id === lastEntryId) ?? null);
-  const [reportOpen, setReportOpen] = useState(false);
+  // The 311 button's menu (lib/ride311.ts; the owner's choice 9). One tap logs; no note in a ride (Stephen,
+  // 2026-10-21: "Don't bother with a note as people use it riding"): the checklist in Reports keeps the rest.
   const [menu311, setMenu311] = useState(false);
   const menu311Id = useId();
   const menu311Heading = useRef<HTMLHeadingElement>(null);
   const button311 = useRef<HTMLButtonElement>(null);
-  const reportSummary = useRef<HTMLElement>(null);
-  const focusReport = useRef(false);
   useEffect(() => {
     if (menu311) menu311Heading.current?.focus();
   }, [menu311]);
-  useEffect(() => {
-    if (!reportOpen || !focusReport.current) return;
-    focusReport.current = false;
-    reportSummary.current?.focus();
-    reportSummary.current?.scrollIntoView?.({ block: "start" });
-  }, [reportOpen]);
   const close311 = () => {
     setMenu311(false);
     button311.current?.focus();
@@ -793,8 +739,6 @@ export function RideMode({
     else said311Timer.timer.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the timer is the same object every render
   }, [said311, said311Shown]);
-  const noteInput = useRef<HTMLInputElement>(null);
-  const focusNote = useRef(false);
   const tell311 = useCallback((text: string) => {
     setSaid311(text);
     announcer.current?.answer(text);
@@ -813,7 +757,6 @@ export function RideMode({
     }
     const place = reportPlace(modelRef.current, progress, milesRef.current);
     const entry = report311Log().add(kind, place);
-    setLastEntryId(entry.id);
     if (serverOn311 && entry.where === "dc") {
       setSaid311("Sending to DC 311…");
       void sendReport311(window.location.origin, kind, place, entryText(entry)).then((sent) => {
@@ -823,19 +766,6 @@ export function RideMode({
       });
     } else tell311(loggedSaid(entry));
   };
-  // "Add a note" (after, never before): the report opens with the focus in its note field.
-  const addNote = () => {
-    focusNote.current = true;
-    if (reportOpen) {
-      focusNote.current = false;
-      noteInput.current?.focus();
-    } else setReportOpen(true);
-  };
-  useEffect(() => {
-    if (!reportOpen || !focusNote.current) return;
-    focusNote.current = false;
-    noteInput.current?.focus();
-  }, [reportOpen]);
   // An answer the rider asked for (Where am I?, a detour's progress, a new route), shown by the side buttons
   // for SAID_311_MS and held while focused or hovered; it is said through the rider's outputs as well.
   const [toast, setToast] = useState({ text: "", n: 0 });
@@ -1813,7 +1743,7 @@ export function RideMode({
     setReplanNote("");
   }, [replanNote, offNow, showToast]);
   const notesShown = !!((gps && ride.fix) || paused || wakeNote || (ride.off && replanNote) || corridorText);
-  const sheetShown = notesShown || ride.off || restShown || reportOpen;
+  const sheetShown = notesShown || ride.off || restShown;
   // The map's scales and credits sit at the bottom of the screen in a ride (the owner, 2026-10-17: "on the bottom
   // of the page in a ride"), just above the bottom panel while it shows (styles.css --ride-sheet-h).
   const sheetRef = useRef<HTMLDivElement>(null);
@@ -2260,12 +2190,6 @@ export function RideMode({
                 <div className="ride-311-said" {...said311Timer.hold}>
                   {/* Shown, not a live region: it is said through the rider's own outputs (tell311). */}
                   <p>{said311}</p>
-                  {/* Sent by the server already: a note would be a second report of the same problem (v0.7.0 end review). */}
-                  {said311 !== REPORT_SENT && (
-                    <button type="button" className="secondary" onClick={addNote}>
-                      Add a note
-                    </button>
-                  )}
                 </div>
               )}
             </div>
@@ -2329,19 +2253,6 @@ export function RideMode({
                 {RIDE_REST_HINT}
               </p>
             </div>
-          )}
-          {reportOpen && lastEntry && (
-            <Note311
-              entry={lastEntry}
-              open={reportOpen}
-              onOpen={(open) => {
-                setReportOpen(open);
-                // Closed, the note goes from the page: the focus goes to Where am I?, not to the page's top.
-                if (!open) whereRef.current?.focus({ preventScroll: true });
-              }}
-              summaryRef={reportSummary}
-              noteRef={noteInput}
-            />
           )}
         </div>
       )}

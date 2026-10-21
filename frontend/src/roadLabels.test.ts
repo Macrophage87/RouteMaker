@@ -3,13 +3,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { layers as protomapsLayers, namedFlavor } from "@protomaps/basemaps";
-import { PLACE_LABEL, PLACE_LABEL_LAYER_IDS, ROAD_LABEL, ROAD_LABEL_LAYER_IDS, TRAIL_LABEL, TRAIL_LABEL_LAYER_ID, TRAIL_LABEL_MIN_ZOOM, contrastRatio, placeLabelPaint, rideRoadLabelField, rideTrailLabelField, roadLabelPaint, stressFilters, trailLabelLayers, trailLabelPaint, withClearRoadLabels } from "./stressStyle.js";
+import { OTHER_LABEL, OTHER_LABEL_LAYER_IDS, PLACE_LABEL, PLACE_LABEL_LAYER_IDS, ROAD_LABEL, ROAD_LABEL_LAYER_IDS, placeLabelPaint, TRAIL_LABEL, TRAIL_LABEL_LAYER_ID, TRAIL_LABEL_MIN_ZOOM, contrastRatio, rideRoadLabelField, rideTrailLabelField, roadLabelPaint, stressFilters, trailLabelLayers, trailLabelPaint, withClearRoadLabels } from "./stressStyle.js";
 import { setStressPalette } from "./lib/mapGlue.ts";
 
 type Layer = { id: string; type: string; layout?: Record<string, unknown>; paint?: Record<string, unknown> };
 const shipped = (strong: boolean) => withClearRoadLabels(protomapsLayers("protomaps", namedFlavor("light"), { lang: "en" }), strong) as Layer[];
 
-test("road names: both base map name layers are restyled, and only they and the place names", () => {
+test("road names: both base map name layers are restyled, and only they, the place names and the other labels", () => {
   const before = protomapsLayers("protomaps", namedFlavor("light"), { lang: "en" }) as Layer[];
   const after = shipped(false);
   assert.equal(after.length, before.length);
@@ -20,6 +20,9 @@ test("road names: both base map name layers are restyled, and only they and the 
       assert.equal(layer.layout?.["text-size"], ROAD_LABEL.size);
       assert.ok(ROAD_LABEL.size > (before[i].layout?.["text-size"] as number), "a size larger than the base map's");
       // The name, placement and filter are the base map's own.
+      assert.deepEqual(layer.layout?.["text-field"], before[i].layout?.["text-field"]);
+      assert.deepEqual((layer as { filter?: unknown }).filter, (before[i] as { filter?: unknown }).filter);
+    } else if (OTHER_LABEL_LAYER_IDS.includes(layer.id)) {
       assert.deepEqual(layer.layout?.["text-field"], before[i].layout?.["text-field"]);
       assert.deepEqual((layer as { filter?: unknown }).filter, (before[i] as { filter?: unknown }).filter);
     } else if (PLACE_LABEL_LAYER_IDS.includes(layer.id)) {
@@ -211,4 +214,36 @@ test("a ride's trail names are shortened as the street names are", async () => {
   assert.equal(shown("Rock Creek Trail"), "Rock Creek Trl");
   assert.equal(shown("Metropolitan Branch Trail"), "Metropolitan Branch Trl");
   assert.equal(shown("Anacostia Riverwalk"), "Anacostia Riverwalk");
+});
+
+// The owner, 2026-10-21, of the base map's other small, light labels: "All into stret name style."
+test("other labels: park, water, island and house names in the street names' face on their white halo, 7:1 or more", () => {
+  const before = protomapsLayers("protomaps", namedFlavor("light"), { lang: "en" }) as Layer[];
+  for (const id of OTHER_LABEL_LAYER_IDS) assert.ok(before.some((l) => l.id === id), `${id} is in the base map`);
+  for (const layer of shipped(false).filter((l) => OTHER_LABEL_LAYER_IDS.includes(l.id))) {
+    assert.deepEqual(layer.layout?.["text-font"], [ROAD_LABEL.font], layer.id);
+    if (layer.id === "roads_shields") {
+      // The number still fits its shield: both grown by the same factor.
+      const base = before.find((l) => l.id === layer.id)!;
+      const grown = (key: string) => (layer.layout?.[key] as number) / (base.layout?.[key] as number);
+      assert.ok(Math.abs(grown("text-size") - grown("icon-size")) < 1e-9, `text ${grown("text-size")}, shield ${grown("icon-size")}`);
+      continue;
+    }
+    assert.equal(layer.layout?.["text-size"], layer.id === "address_label" ? OTHER_LABEL.addressSize : ROAD_LABEL.size);
+    assert.equal(layer.layout?.["text-letter-spacing"], 0);
+    assert.equal(layer.paint?.["text-halo-color"], "#ffffff");
+    const width = layer.paint?.["text-halo-width"] as number;
+    assert.ok(width >= 2 && width <= (layer.layout?.["text-size"] as number) / 4, `${layer.id} halo ${width}`);
+    const colour = layer.paint?.["text-color"];
+    const colours = typeof colour === "string" ? [colour] : (colour as unknown[]).filter((c): c is string => typeof c === "string" && c.startsWith("#"));
+    assert.ok(colours.length > 0);
+    for (const c of colours) assert.ok(contrastRatio(c, "#ffffff") >= 7, `${layer.id} ${c} ${contrastRatio(c, "#ffffff").toFixed(2)}:1`);
+  }
+});
+
+test("other labels: the shipped style validates", async () => {
+  const { validateStyleMin } = await import("@maplibre/maplibre-gl-style-spec");
+  const layers = shipped(false).filter((l) => OTHER_LABEL_LAYER_IDS.includes(l.id));
+  const style = { version: 8, glyphs: "https://x/{fontstack}/{range}.pbf", sources: { protomaps: { type: "vector", url: "https://x/t.json" } }, layers };
+  assert.deepEqual(validateStyleMin(style as never), []);
 });

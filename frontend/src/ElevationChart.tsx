@@ -20,7 +20,7 @@
  * as a table. Everything it says is made in lib/profileChart.ts.
  */
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
-import type { RouteProfile, RouteResponse } from "./lib/api.ts";
+import type { RouteProfile } from "./lib/api.ts";
 import type { LonLat } from "./lib/geo.ts";
 import {
   AVOID_FILL,
@@ -50,7 +50,6 @@ import {
   gradeBandShapes,
   jumpTargets,
   linear,
-  lonLatAt,
   positionAfterKey,
   readingAt,
   sectionWords,
@@ -62,6 +61,7 @@ import {
   type StripSection,
 } from "./lib/profileChart.ts";
 import { spanClass } from "./lib/routeColours.ts";
+import { tripPointAt, type TripRoute } from "./lib/tripRides.ts";
 import { AvoidPattern, CrossingMarker, GradePatterns, JunctionKey, LEFT, RIGHT, Tables, WIDTH, capitalise, feet, metres } from "./chartParts.tsx";
 import { MassRideCharts } from "./MassRideCharts.tsx";
 
@@ -76,7 +76,7 @@ const LAYOUT = {
 } as const;
 
 interface ChartProps {
-  route: RouteResponse;
+  route: TripRoute;
   profile: RouteProfile;
   /** The map point under the scrub, or null when there is none (the chart lost it). */
   onScrub?: (point: LonLat | null) => void;
@@ -116,7 +116,8 @@ function StressChart({ route, profile, onScrub, compact = false }: ChartProps) {
   // The map marker follows the scrub; it goes when the chart does.
   useEffect(() => {
     if (!heard.current) return;
-    heard.current(active === null ? null : lonLatAt(route.geometry.coordinates, reading.m, total));
+    // A transit trip's chart is every ride's (lib/tripRides.ts): the point is on the ride it falls in.
+    heard.current(active === null ? null : tripPointAt(route, reading.m, total));
   }, [active, reading.m, route, total]);
   useEffect(() => () => heard.current?.(null), []);
 
