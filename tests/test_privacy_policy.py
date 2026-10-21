@@ -1,5 +1,5 @@
 """The privacy policy (core.privacy_policy; Google Play's privacy-policy link): one public page,
-GET /privacy, in the delete-account page's frame, linked from it and from Settings > Account.
+GET /privacy, in the delete-account page's frame, linked from it and from Settings > About.
 
 The page is the same for everyone, names no host, and leads with what matters most.
 """
@@ -11,6 +11,7 @@ from html import escape
 from pathlib import Path
 
 import pytest
+from django.test import override_settings
 from test_accounts import addr, signed_in
 
 from core import account_deletion, privacy_policy
@@ -34,6 +35,9 @@ class TestPage:
         first_section = body.index("<h2>")
         assert body.index(escape(privacy_policy.NO_ADS)) < first_section
         assert body.index(f'href="{account_deletion.PATH}"') < first_section
+        assert body.index(escape(privacy_policy.WHERE_YOU_ARE)) < first_section
+        assert body.index(f'<time datetime="{privacy_policy.LAST_UPDATED[0]}">') < first_section
+        assert "Last updated: <time" in body
 
     def test_every_section_is_a_heading_in_order(self, client) -> None:
         _, body, _ = get(client)
@@ -51,7 +55,8 @@ class TestPage:
         status, body, _ = get(mine)
         assert status == 200 and body == signed_out
 
-    def test_only_get(self, client) -> None:
+    def test_only_get_and_head(self, client) -> None:
+        assert client.head(privacy_policy.PATH, **addr()).status_code == 200
         assert client.post(privacy_policy.PATH, **addr()).status_code in (403, 405)
 
     def test_it_has_the_deletion_page_s_frame_and_no_link_to_itself(self, client) -> None:
@@ -61,6 +66,7 @@ class TestPage:
         assert f'href="{privacy_policy.PATH}"' not in body
         assert '<a href="/">Back to RouteMaker</a>' in body
 
+    @override_settings(PRIVACY_CONTACT="")
     def test_it_names_no_host_and_no_e_mail(self, client) -> None:
         _, body, _ = get(client)
         assert not re.search(r"https?://", body)
@@ -68,6 +74,26 @@ class TestPage:
         source = (ROOT / "src/core/privacy_policy.py").read_text()
         assert not re.search(r"https?://", source)
 
+    @override_settings(PRIVACY_CONTACT="privacy@example.org")
+    def test_a_configured_e_mail_is_the_contact_and_the_only_one(self, client) -> None:
+        _, body, _ = get(client)
+        assert '<a href="mailto:privacy@example.org">privacy@example.org</a>' in body
+        assert escape(privacy_policy.CONTACT) not in body
+        others = set(re.findall(r"[\w.+-]+@[\w-]+\.[\w.]+", body)) - {"privacy@example.org"}
+        assert not others and not re.search(r"https?://", body)
+
+    @override_settings(PRIVACY_CONTACT="https://example.org/contact")
+    def test_a_configured_web_address_is_a_link(self, client) -> None:
+        _, body, _ = get(client)
+        assert '<a href="https://example.org/contact">https://example.org/contact</a>' in body
+        assert re.findall(r"https?://[^\s\"<]+", body) == ["https://example.org/contact"] * 2
+
+    @override_settings(PRIVACY_CONTACT='<script>"x"</script>')
+    def test_a_configured_contact_is_escaped(self, client) -> None:
+        _, body, _ = get(client)
+        assert "<script>" not in body and "&lt;script&gt;" in body
+
+    @override_settings(PRIVACY_CONTACT="")
     def test_the_claims_the_code_backs(self, client) -> None:
         _, body, _ = get(client)
         text = re.sub(r"<[^>]+>", " ", body).replace("&#x27;", "'").replace("&quot;", '"')
@@ -77,6 +103,10 @@ class TestPage:
             "10 minutes",  # ride_presence.ALERT_TTL_S
             "Discord account number",  # core.models.User: discord_user_id only
             "Riding with RouteMaker",  # the app's foreground-service notification
+            "keeps going with the screen locked",  # the app's foreground service, Start to End
+            "bikeshare docks",  # POST /api/bikeshare/stations takes a point
+            "including the internet address, for a short time",  # error logs
+            "A note that an account was deleted, and when",  # account_deletion.KEPT
             "never asks for location all the time",  # no ACCESS_BACKGROUND_LOCATION
             "a year after it was last opened",  # shared_routes.KEEP
             "24 hours",  # signed_out_suggestions: SignedOutSend
@@ -115,7 +145,10 @@ class TestLinks:
         sign_in = (ROOT / "frontend/src/lib/signIn.ts").read_text()
         assert f'PRIVACY_PAGE = "{privacy_policy.PATH}"' in sign_in
         sheets = (ROOT / "frontend/src/app/Sheets.tsx").read_text()
-        assert "<a href={PRIVACY_PAGE}>Privacy policy</a>" in sheets
+        about = sheets[sheets.index('<h3 id="settings-about-heading">') :]
+        about = about[: about.index("</section>")]
+        assert "<a href={PRIVACY_PAGE}" in about and "Privacy policy" in about
+        assert "PRIVACY_PAGE}" not in sheets[: sheets.index('<h3 id="settings-about-heading">')]
 
     def test_the_url_is_routed(self) -> None:
         from django.urls import resolve

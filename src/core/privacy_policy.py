@@ -34,14 +34,25 @@ from __future__ import annotations
 
 from html import escape
 
-from django.views.decorators.http import require_GET
+from django.conf import settings
+from django.views.decorators.http import require_safe
 
 from . import account_deletion
 
 PATH = account_deletion.PRIVACY_PATH
 TITLE = "RouteMaker privacy policy"
+# Change with the text: the date a rider reads as when this page last said something new.
+LAST_UPDATED = ("2026-10-21", "October 21, 2026")
+# Unless the deployment sets PRIVACY_CONTACT (an e-mail address or a web address).
 CONTACT = "Questions, or a request about your data: ask the site's owner on Discord."
+CONTACT_LEAD = "Questions, or a request about your data: "
 NO_ADS = "No ads, no analytics, no tracking, and nothing about you is sold or shared for marketing."
+WHERE_YOU_ARE = (
+    "Your location is used on your phone or computer to plan and guide your ride. The server "
+    "keeps no record of where you are, only places you choose to save or share (Home, saved and "
+    "shared routes, a 311 problem’s spot) and, while you share on a Group or Mass Ride, your "
+    "rounded dot for 2 minutes and an alert’s spot for 10 minutes."
+)
 
 
 def _p(text: str) -> str:
@@ -52,17 +63,21 @@ def _ul(items: list[str]) -> str:
     return "<ul>" + "".join(f"<li>{escape(i)}</li>" for i in items) + "</ul>"
 
 
-SUMMARY = _ul(
-    [
-        NO_ADS,
-        "You can use RouteMaker without an account. Your location is used to plan and guide your "
-        "ride, on your phone or computer; the server does not store it.",
-        "Signing in with Discord keeps your Discord account number, not your name or e-mail, and "
-        "what you choose to save.",
-    ]
-) + (
-    f'<p>You can delete your account at any time: <a href="{account_deletion.PATH}">'
-    "Delete your account</a>.</p>"
+SUMMARY = (
+    f'<p>Last updated: <time datetime="{LAST_UPDATED[0]}">{LAST_UPDATED[1]}</time>.</p>'
+    + _ul(
+        [
+            NO_ADS,
+            "You can use RouteMaker without an account.",
+            WHERE_YOU_ARE,
+            "Signing in with Discord keeps your Discord account number, not your name or e-mail, "
+            "and what you choose to save.",
+        ]
+    )
+    + (
+        f'<p>You can delete your account at any time: <a href="{account_deletion.PATH}">'
+        "Delete your account</a>.</p>"
+    )
 )
 
 SECTIONS: list[tuple[str, str]] = [
@@ -73,16 +88,18 @@ SECTIONS: list[tuple[str, str]] = [
             "sharing your dot on a Group or Mass Ride."
         )
         + _p(
-            "In the Android app, the GPS runs only from Start ride to End ride, while the app is "
-            "running, including with the screen locked; the notification “Riding with "
-            "RouteMaker” shows while it does. The app never asks for location all the time."
+            "In the Android app, location is used while the app is on screen when you ask for "
+            "it; from Start ride to End ride it also keeps going with the screen locked, with the "
+            "“Riding with RouteMaker” notification showing. The app never asks for "
+            "location all the time."
         )
         + _p(
             "Your positions stay on your device. One is sent to the server only as part of "
             "something you use: planning or re-planning a route from where you are, naming "
-            "a place, finding the nearest water or restroom, finding which 311 website covers a "
-            "problem you log, and Group or Mass Ride sharing. The server answers and does not "
-            "store it; the one position kept is that of a problem you log for 311 (below)."
+            "a place, finding the nearest water, restroom or bikeshare docks, finding which 311 "
+            "website covers a problem you log, and Group or Mass Ride sharing. The server answers "
+            "and does not store it, except places you choose to save or share and ride sharing "
+            "(below)."
         )
         + _p(
             "A route’s link holds its points, so a route planned from your location carries "
@@ -105,11 +122,14 @@ SECTIONS: list[tuple[str, str]] = [
     ),
     (
         "If you sign in with Discord",
-        _p(
-            "RouteMaker asks Discord only for your identity. It keeps your Discord account "
-            "number and when your account was made, and each sign-in records when it was last "
-            "used. Not your name, e-mail, picture or servers. Discord’s sign-in tokens are "
-            "thrown away, not kept."
+        _ul(
+            [
+                "RouteMaker asks Discord only for your identity.",
+                "It keeps your Discord account number and when your account was made; each "
+                "sign-in records when it was last used.",
+                "Not your name, e-mail, picture or servers.",
+                "Discord’s sign-in tokens are thrown away, not kept.",
+            ]
         )
         + _p(
             "If the site’s owner connects a Discord server, its bot keeps which of that "
@@ -138,16 +158,18 @@ SECTIONS: list[tuple[str, str]] = [
     ),
     (
         "Shared links",
-        _p(
-            "Share keeps the route under a random link. Anyone with the link can open it. Shared "
-            "signed in, the link records your account, so only you can turn it off; shared signed "
-            "out, it records nothing of you. Your weight is taken out. When a route starts, ends "
-            "or stops at your Home, the preview a chat app shows leaves out the part near it."
-        )
-        + _p(
-            "A link is kept a year after it was last opened, unless you choose to keep it "
-            "permanently or until a date. A link you turn off loses its route and only says it "
-            "was turned off."
+        _ul(
+            [
+                "Share keeps the route under a random link. Anyone with the link can open it.",
+                "Shared signed in, the link records your account, so only you can turn it off. "
+                "Shared signed out, it records nothing of you.",
+                "Your weight is taken out.",
+                "When a route starts, ends or stops at your Home, the preview a chat app shows "
+                "leaves out the part near it.",
+                "A link is kept a year after it was last opened, unless you choose to keep it "
+                "permanently or until a date.",
+                "A link you turn off loses its route and only says it was turned off.",
+            ]
         ),
     ),
     (
@@ -177,7 +199,7 @@ SECTIONS: list[tuple[str, str]] = [
             "Your browser and the app talk only to this site: the map, place search and routing "
             "run on the site’s own servers. The exceptions are Discord’s pages when you "
             "sign in, links you choose to open, such as a street photo on Mapillary or a 311 "
-            "website, and, in the Android app, a course you send to Garmin Connect."
+            "website, and a course you send to Garmin Connect."
         )
         + _p("The site’s server contacts, with nothing about you:")
         + _ul(
@@ -206,22 +228,24 @@ SECTIONS: list[tuple[str, str]] = [
         )
         + _p(
             "Your browser or the app keeps your settings, Home, weight, offline routes and 311 log "
-            "until you clear its storage. The Android app also keeps the site address you typed. "
-            "It has no analytics or crash reporting, and its data is left out of phone backups."
+            "until you clear its storage. The Android app also keeps the site address. It has no "
+            "analytics or crash reporting, and its data is left out of phone backups."
         ),
     ),
     (
         "Server logs",
-        _p(
-            "The access logs keep the time, the page asked for without its query, the result, its "
-            "size, how long it took and the browser’s name. No internet address, and no "
-            "request body, so no route points or positions. Map tile requests show which area was "
-            "viewed. The logs are capped in size, so old lines are overwritten. When a request "
-            "fails, an error log may keep more of it."
-        )
-        + _p(
-            "Request limits count a one-way code made from your internet address, deleted within "
-            "about 30 hours."
+        _ul(
+            [
+                "The access logs keep the time, the page asked for without its query, the result, "
+                "its size, how long it took and the browser’s name.",
+                "No internet address, and no request body, so no route points or positions.",
+                "Map tile requests show which area was viewed.",
+                "The app’s own logs are capped in size, so old lines are overwritten.",
+                "When a request fails, an error log may keep more of it, including the internet "
+                "address, for a short time.",
+                "Request limits count a one-way code made from your internet address, deleted "
+                "within about 30 hours.",
+            ]
         ),
     ),
     (
@@ -236,6 +260,7 @@ SECTIONS: list[tuple[str, str]] = [
                 "left out of them.",
                 "Suggestions already decided stay as the map’s history, with nothing linking "
                 "them to you once your account is deleted.",
+                "A note that an account was deleted, and when, under an account number.",
             ]
         ),
     ),
@@ -245,15 +270,33 @@ SECTIONS: list[tuple[str, str]] = [
         "under Settings, Account, Delete account. It says what is deleted and what is kept, and "
         "asks once.</p>",
     ),
-    ("Contact", _p(CONTACT)),
+    # The contact is the deployment's (`contact`), filled in at request time.
+    ("Contact", ""),
 ]
 
 
+def contact() -> str:
+    """The Contact section: settings.PRIVACY_CONTACT as a link (an e-mail address or a web
+    address) or as text, or, unset, the Discord wording."""
+    value = (getattr(settings, "PRIVACY_CONTACT", "") or "").strip()
+    if not value:
+        return _p(CONTACT)
+    if value.partition(":")[0] in ("https", "http"):
+        shown = f'<a href="{escape(value)}">{escape(value)}</a>'
+    elif "@" in value and " " not in value:
+        shown = f'<a href="mailto:{escape(value)}">{escape(value)}</a>'
+    else:
+        shown = escape(value)
+    return f"<p>{escape(CONTACT_LEAD)}{shown}.</p>"
+
+
 def body() -> str:
-    return SUMMARY + "".join(f"<h2>{escape(h)}</h2>{content}" for h, content in SECTIONS)
+    return SUMMARY + "".join(
+        f"<h2>{escape(h)}</h2>{contact() if h == 'Contact' else content}" for h, content in SECTIONS
+    )
 
 
-@require_GET
+@require_safe
 def page(request):
-    """GET: the policy, the same for everyone, signed in or not."""
+    """GET or HEAD: the policy, the same for everyone, signed in or not."""
     return account_deletion._page(body(), title=TITLE, privacy=False)

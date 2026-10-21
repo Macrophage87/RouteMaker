@@ -130,5 +130,5 @@ export function planToOpen(storage: StorageLike | null, hash: string): string {
  * offers without the app, which says what is deleted and asks once. */
 export const DELETE_ACCOUNT_PAGE = "/delete-account";
 
-/** The privacy policy (core.privacy_policy.PATH), linked from Settings > Account and from the deletion page. */
+/** The privacy policy (core.privacy_policy.PATH), linked from Settings > About and from the deletion page. */
 export const PRIVACY_PAGE = "/privacy";
