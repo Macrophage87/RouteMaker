@@ -114,6 +114,8 @@ body {
   height: 100%;
   width: 100%;
   overflow: hidden;
+  /* The planner card's width on a computer; the map's chips and bars sit just right of it. */
+  --panel-w: 400px;
 }
 
 .map {
@@ -199,7 +201,7 @@ button.access-link {
   position: absolute;
   top: 12px;
   left: 12px;
-  width: 400px;
+  width: var(--panel-w);
   max-height: calc(100% - 24px);
   display: flex;
   flex-direction: column;
@@ -1287,7 +1289,7 @@ button.secondary {
 @media (min-width: 721px) {
   .maplibregl-ctrl-bottom-right .maplibregl-ctrl-attrib {
     box-sizing: border-box;
-    max-width: calc(100vw - 510px);
+    max-width: calc(100vw - 510px - var(--out-w, 0px));
   }
 }
 
@@ -2509,7 +2511,7 @@ dialog.weight-dialog h2 {
    over the map. Its text follows the rider's font size; the chip is 44 px at least. */
 .beta-chip {
   position: absolute;
-  left: 424px;
+  left: calc(var(--panel-w) + 24px);
   bottom: 10px;
   z-index: 2;
   display: flex;
@@ -5325,7 +5327,7 @@ details.zoom-notes {
 .map-chips {
   position: absolute;
   top: 12px;
-  left: 424px;
+  left: calc(var(--panel-w) + 24px);
   z-index: 2;
   display: flex;
   gap: 8px;
@@ -7429,8 +7431,8 @@ details.fold > summary .icon {
 .plan-map-bar {
   position: absolute;
   top: 10px;
-  left: 424px;
-  right: 60px;
+  left: calc(var(--panel-w) + 24px);
+  right: calc(60px + var(--out-w, 0px));
   z-index: 2;
   display: flex;
   justify-content: center;
@@ -7905,4 +7907,45 @@ details.fold > summary .icon {
 
 .log311-archived .log311-check {
   font-weight: 400;
+}
+
+/*
+ * Plan on a wide screen (Stephen 2026-10-21: "Plan is now a massive scrolling mess again ... on a wider screen
+ * there's a lot of room"; "the left panel has all of the parameters to adjust, and the right would have the
+ * outputs", "one column on each side"): with a route shown, the route (totals, Start, folds) is its own card on the
+ * map's right, scrolling on its own, and the planner on the left keeps the points, the ride and Route. Placement
+ * only: the route stays where it is in the DOM, so the reading and Tab order are the planner's, then the route's.
+ * The map's right-hand controls and Plan's map bar step left of the card (--out-w), and App's framePadding keeps a
+ * framed route clear of it.
+ */
+@media (min-width: 1200px) {
+  .app:not(.go-mode):has(.panel.open .planner-view:not([hidden]) > .route-section .summary) {
+    --out-w: calc(var(--panel-w) + 12px);
+  }
+
+  .app:not(.go-mode) .panel.open .planner-view:not([hidden]) > .route-section:has(.summary) {
+    position: fixed;
+    top: 12px;
+    right: 12px;
+    width: var(--panel-w);
+    max-height: calc(100% - 24px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 4px 14px 12px;
+    background: var(--bg);
+    color: var(--text);
+    border-radius: 10px;
+    box-shadow: var(--shadow);
+    z-index: 2;
+  }
+
+  .app:not(.go-mode) .maplibregl-ctrl-top-right,
+  .app:not(.go-mode) .maplibregl-ctrl-bottom-right {
+    right: var(--out-w, 0px);
+  }
+
+  /* The trail key stays under the zoom buttons. */
+  .app:not(.go-mode) .mtb-map-key {
+    right: calc(10px + var(--out-w, 0px));
+  }
 }
