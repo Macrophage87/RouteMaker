@@ -1,4 +1,5 @@
 import { defineConfig } from "vite";
+import pkg from "./package.json" with { type: "json" };
 import react from "@vitejs/plugin-react";
 import { licenceNotices } from "./src/licences/notices.mjs";
 import { railFixtures } from "./src/lib/railFixturesPlugin.mjs";
@@ -25,11 +26,21 @@ const toStack = {
 
 const frontendRoot = new URL(".", import.meta.url).pathname;
 
+// The app's version, shown by Plan's heading, in the tab's title and in Help (src/lib/appVersion.ts).
+const appVersion: string = pkg.version;
+
 export default defineConfig({
   // licenceNotices completes what build.license writes (src/licences/notices.mjs);
   // railFixtures refuses rail fixtures that no longer fit (src/lib/railFixturesPlugin.mjs); appWorker
   // writes the installable app's service worker, sw.js and its kill switch sw-kill.js (src/sw/swPlugin.mjs).
-  plugins: [react(), licenceNotices(frontendRoot), railFixtures(`${frontendRoot}src/rail-data`), appWorker()],
+  plugins: [
+    react(),
+    licenceNotices(frontendRoot),
+    railFixtures(`${frontendRoot}src/rail-data`),
+    appWorker(),
+    { name: "app-version-title", transformIndexHtml: (html) => html.replace("<title>RouteMaker</title>", `<title>RouteMaker ${appVersion}</title>`) },
+  ],
+  define: { "import.meta.env.VITE_APP_VERSION": JSON.stringify(appVersion) },
   // MapLibre's worker imports a chunk it shares with the main bundle.
   worker: { format: "es" },
   build: {

@@ -225,6 +225,22 @@ button.access-link {
   font-size: 1.25rem;
 }
 
+/* The heading with the version under it (lib/appVersion.ts): small and muted, and within the height of
+   the Go/Plan switch beside them, so the header grows no taller and fits a 320 px phone. */
+.panel-title {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.panel-header .app-version {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.2;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
 /* The body is a column: the banner, the part that scrolls, then what is pinned under it (the route's
    GPX and link, the bottom bar), which stay in view (OWNER-DECISIONS 312). */
 .panel-body {
