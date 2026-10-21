@@ -4,9 +4,9 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { layers as protomapsLayers, namedFlavor } from "@protomaps/basemaps";
-import { MAP_FACES, MAP_LABEL_FONT, MAP_LABEL_RANGES, bundledFace, bundledGlyphs, glyphRequestUrl } from "./mapGlyphs.ts";
+import { MAP_FACES, MAP_LABEL_FONT, PLACE_LABEL_FONT, MAP_LABEL_RANGES, bundledFace, bundledGlyphs, glyphRequestUrl } from "./mapGlyphs.ts";
 import { GLYPH_RANGES, fontStacks } from "./corridor.ts";
-import { ROAD_LABEL, stressOverlayLayers, withClearRoadLabels } from "../stressStyle.js";
+import { PLACE_LABEL, ROAD_LABEL, stressOverlayLayers, withClearRoadLabels } from "../stressStyle.js";
 
 const DIR = new URL("../fonts/map-glyphs/", import.meta.url);
 const STEMS = [...new Set(Object.values(MAP_FACES).map((f) => f.file))];
@@ -17,6 +17,13 @@ const BASE = "https://example.org/basemap/fonts";
 test("map glyphs: the street names' face is a bundled one", () => {
   assert.equal(ROAD_LABEL.font, MAP_LABEL_FONT);
   assert.ok(bundledFace(MAP_LABEL_FONT));
+});
+
+test("map glyphs: the place names' ExtraBold is bundled, its other ranges the base map's Noto Sans Medium", () => {
+  assert.equal(PLACE_LABEL.font, PLACE_LABEL_FONT);
+  assert.ok(bundledFace(PLACE_LABEL_FONT));
+  assert.equal(glyphRequestUrl(`${BASE}/${encodeURIComponent(PLACE_LABEL_FONT)}/0-255.pbf`, BUNDLED), "https://example.org/assets/atkinson-next-extrabold-0-255-hash.pbf");
+  assert.equal(glyphRequestUrl(`${BASE}/${encodeURIComponent(PLACE_LABEL_FONT)}/1024-1279.pbf`, BUNDLED), `${BASE}/Noto%20Sans%20Medium/1024-1279.pbf`);
 });
 
 test("map glyphs: each base map face's Latin ranges go to its Atkinson file, spaces raw or escaped", () => {
@@ -93,6 +100,7 @@ test("map glyphs: each file carries every code point its base map face does, so 
   const want: Record<string, number[]> = {
     "atkinson-next-regular": [195, 256, 194],
     "atkinson-next-semibold": [193, 256, 194],
+    "atkinson-next-extrabold": [193, 256, 194],
     "atkinson-next-italic": [193, 256, 186],
   };
   const sample = ["Street é ñ", "ō Ũ ŉ Ơ ư", "\u2010\u2011\u2032\u2033\u203c—’"];

@@ -4,8 +4,8 @@
  * parked in a bike lane, Roadway or bikeway obstructed, Streetlight out, Something else." The menu names the
  * rider's place, as the entry will. A pick is logged (lib/report311Log.ts; Stephen, 2026-10-20: "enable it
  * everywhere as a log with what website to go to and the description of where"), so the button shows
- * anywhere on the route, not only in DC; the checklist in Suggest says which website takes each one. The
- * note comes after ("Add a note").
+ * anywhere on the route, not only in DC; the checklist in Reports says which website takes each one. One tap
+ * logs it, with no note (Stephen, 2026-10-21: "Don't bother with a note as people use it riding").
  *
  * A createElement module, so a test renders it (node's runner reads .ts, not .tsx).
  */

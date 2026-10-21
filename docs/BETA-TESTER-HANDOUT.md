@@ -147,7 +147,8 @@ For short rides, up to 30 miles (48 km), on a phone with the screen on and the p
 For longer rides, use Download GPX with a bike computer, which keeps going with the screen off.
 You stay responsible for riding safely; the route can be wrong.
 
-- Plan a route, then press "Start ride", under the route's figures or in Directions. The
+- Plan a route, then press "Start ride", on the bar at the top of the map (once you've picked a
+  route), under the route's figures or in Directions. The
   browser asks to use your location.
 - The first time, it asks how to say the cues: with your screen reader, RouteMaker's voice,
   both, or neither (on screen only), and how much: Full (every turn, early and again close to
@@ -175,12 +176,16 @@ You stay responsible for riding safely; the route can be wrong.
   downed tree, a vehicle parked in a bike lane, a roadway or bikeway obstructed, a streetlight
   out or something else. The entry keeps the road you are on, a cross street when one is within
   about 500 feet, your GPS position and the time, for example "on R Street Northwest near Q
-  Street Northwest. GPS 38.91234, -77.03890." "Add a note" adds a few words. Off a ride,
-  right-click a road on the map (press and hold on a phone) and choose Log for 311.
-- Your 311 checklist is in Suggest (Go's Menu, or Plan's bottom bar). It lists what you logged
-  under the website that takes it (DC 311, MC311, PGC311, Baltimore 311, Arlington, Alexandria,
-  VDOT and the rest), each with Copy report. Paste the report into the site, then check the
-  entry off and it moves to Archived. Texting DC 311 (32311) is gone: DC's text line answers
+  Street Northwest. GPS 38.91234, -77.03890." One tap logs it; the menu shows all six at once,
+  and there is no note to type while riding. Off a ride, right-click a road on the map (press
+  and hold on a phone) and choose Log for 311.
+- Your 311 checklist is in Reports (Go's Menu, or Plan's bottom bar; it was called Suggest). It
+  lists what you logged under the website that takes it (DC 311, MC311, PGC311, Baltimore 311,
+  Arlington, Alexandria, VDOT and the rest), each with when you logged it and Copy report. Paste
+  the report into the site, then check the entry off and it moves to Archived, with when you
+  reported it. One left unchecked for 30 days moves to Archived by itself, marked not reported;
+  nothing is deleted. When you end a ride with problems still to report, the ride's summary says
+  how many and has Open Reports. Texting DC 311 (32311) is gone: DC's text line answers
   only "Welcome to DC311". Signed in, the checklist follows you to your other devices; signed
   out, it is this device's own, and what you logged signed out joins your account when you sign
   in. Where the server can send DC reports itself, a DC problem is sent at once and goes straight
@@ -234,7 +239,10 @@ descriptions. Plan's "Change" ride type list has the same search and groups. Typ
 "walk", "train" or "bus" finds both transit types. A screen reader says their names in words:
 "Own bike plus train or bus" and "Bikeshare plus walk, train or bus".
 
-- Both transit types list a few trips, quickest first. "Ride the whole way" is always one of
+- Both transit types list a few trips. Bikeshare plus transit lists the quickest first. Own bike
+  plus transit lists the best first: time to get there, with time on busy roads and waiting at
+  junctions counting against a trip, so each trip says how far it rides on busy roads ("0.4 mi
+  (0.6 km) busy"), which explains a list out of time order. "Ride the whole way" is always one of
   them. Press a trip to put it on the map and in the steps.
 - A transit trip lists its legs with their minutes: "🚶 4 min · 🚲 12 min · 🔴 18 min". 🚶 is a
   walk and 🚲 a bike. Metro shows its line's colour (🔴 Red, 🟠 Orange, 🔵 Blue, 🟢 Green, 🟡
