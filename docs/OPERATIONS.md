@@ -4006,6 +4006,11 @@ things beyond the tags, and none of them comes from the reference install:
   logged as "N walkways and crossings of DC's circle parks opened to bicycles". Baked into
   the pipeline image like the two above; the planner reads the same polygons to
   keep a trip point inside a circle off the underpass below it.
+- **`fixtures/cbd/architect-of-the-capitol.geojson`**, read a second way: the walks on
+  the US Capitol grounds and in the Senate Parks open to bicycles too
+  (`routemaker.capitolgrounds`; the owner, 2026-10-21), logged as "N walks and crossings
+  of the Capitol grounds opened to bicycles" (535 in the 2026-10-20 extract). Roadside
+  sidewalks there keep the sidewalk rule's price instead.
 
 The rebuild refuses, terminally (not retried), when the District, Maryland or
 Virginia has no closed boundary in the merged extract, or holds no way:
