@@ -511,7 +511,7 @@ def test_draft_beacon_writes_blinker_edits_and_our_row(osm, tmp_path, capsys, be
     assert row["evidence"] == "flashing all day, seen 2026-10-21"
     printed = capsys.readouterr().out
     assert "traffic_signals: 'signal' -> 'blinker'" in printed
-    assert "302" in printed and "upload main-st-side-st-town-301.json --approved" in printed
+    assert "302" in printed and f"apply {out} --approved --actor" in printed
     assert _puts(osm) == []
 
 
@@ -625,3 +625,180 @@ def test_a_rerun_after_a_failure_skips_what_already_went_up(osm, tmp_path, capsy
     assert "already uploaded" not in out.err
     assert osm_edit.main(["upload", str(first), "--approved"]) == 1
     assert "every file is already uploaded" in capsys.readouterr().err
+
+
+FAKE_LOADER = """#!/usr/bin/env python3
+import json, sys
+from pathlib import Path
+state = Path(sys.argv[1])
+args = sys.argv[2:]
+assert args[:6] == ["exec", "-T", "api", "python", "manage.py", "load_flashing_signals"], args
+assert args[6:9] == ["-", "--actor", "42"], args
+rows = json.loads(sys.stdin.read())["rows"]
+loaded = state.read_text().split() if state.exists() else []
+if "--confirm" in args:
+    if state.with_suffix(".broken").exists():
+        print("written")
+        sys.exit(0)
+    state.write_text(" ".join(loaded + [r["id"] for r in rows]))
+    print("written")
+    sys.exit(0)
+new = [r for r in rows if r["id"] not in loaded]
+for r in new:
+    print(f"create: {r['id']} {r['name']}")
+counts = {"create": len(new), "present": len(rows) - len(new)}
+print("<stdin>: owner, " + ", ".join(f"{n} {a}" for a, n in sorted(counts.items()) if n))
+print("dry run: nothing written; pass --confirm to write")
+"""
+
+
+@pytest.fixture
+def stack(tmp_path):
+    loader = tmp_path / "fake-compose"
+    loader.write_text(FAKE_LOADER)
+    loader.chmod(0o755)
+    return tmp_path, f"{loader} {tmp_path / 'loaded'}"
+
+
+def _apply(out, stack, *extra):
+    folder, compose = stack
+    argv = ["apply", str(out), "--actor", "42", "--to", "pc", "--stack", str(folder)]
+    return osm_edit.main([*argv, "--compose", compose, *extra])
+
+
+def _owner_file(folder, row_id="x"):
+    row = {"id": row_id, "name": "X", "lat": 39.0, "lon": -77.0, "evidence": "e"}
+    path = folder / f"2026-10-21-owner-{row_id}.json"
+    path.write_text(json.dumps({"version": 1, "source": "owner", "rows": [row]}))
+    return path
+
+
+def test_apply_uploads_the_osm_edits_then_loads_and_checks_our_row(osm, tmp_path, capsys, stack):
+    _edit(tmp_path)
+    _owner_file(tmp_path)
+    assert _apply(tmp_path, stack) == 1  # not approved
+    assert _puts(osm) == []
+    assert _apply(tmp_path, stack, "--approved") == 0
+    printed = capsys.readouterr().out
+    assert "Uploaded:" in printed and "create: x X" in printed
+    assert "Checked: 1 row(s) active on pc" in printed
+    assert (tmp_path / "loaded").read_text() == "x"
+    # A rerun skips the upload and finds the row already there.
+    assert _apply(tmp_path, stack, "--approved") == 0
+    assert "already uploaded, skipped" in capsys.readouterr().out
+
+
+def test_apply_loads_nothing_when_the_osm_side_stops(osm, tmp_path, capsys, stack):
+    edit = _edit(tmp_path)
+    edit.write_text(edit.read_text().replace('"id": 101', '"id": 404'))
+    _owner_file(tmp_path)
+    assert _apply(tmp_path, stack, "--approved") == 1
+    assert "Our map not loaded" in capsys.readouterr().err
+    assert not (tmp_path / "loaded").exists()
+
+
+def test_apply_needs_the_actor_for_our_row(osm, tmp_path, capsys):
+    _edit(tmp_path)
+    _owner_file(tmp_path)
+    assert osm_edit.main(["apply", str(tmp_path), "--approved"]) == 1
+    assert "--actor" in capsys.readouterr().err
+    assert _puts(osm) == []
+
+
+def test_load_is_a_dry_run_without_confirm_and_checks_after(tmp_path, capsys, stack):
+    fixture = _owner_file(tmp_path)
+    folder, compose = stack
+    argv = ["load", str(fixture), "--actor", "42", "--to", "pc", "--stack", str(folder)]
+    argv += ["--compose", compose]
+    assert osm_edit.main(argv) == 0
+    assert not (tmp_path / "loaded").exists()
+    assert "add --confirm" in capsys.readouterr().out
+    (tmp_path / "loaded.broken").write_text("")
+    assert osm_edit.main([*argv, "--confirm"]) == 3
+    err = capsys.readouterr().err
+    assert "pc: the row is not active after the load" in err and "--to pc --confirm" in err
+
+
+def test_load_reaches_beta_over_ssh_through_its_compose_wrapper(tmp_path, monkeypatch, capsys):
+    fixture = _owner_file(tmp_path)
+    argv = ["load", str(fixture), "--actor", "42"]
+    monkeypatch.delenv("ROUTEMAKER_BETA_SSH", raising=False)
+    assert osm_edit.main([*argv, "--to", "beta"]) == 1
+    assert "ROUTEMAKER_BETA_SSH" in capsys.readouterr().err
+    calls = []
+
+    def run(command, cwd, stdin, **kwargs):
+        calls.append((command, cwd, stdin.read()))
+        return osm_edit.subprocess.CompletedProcess(command, 0, "dry run\n", "")
+
+    monkeypatch.setattr(osm_edit.subprocess, "run", run)
+    monkeypatch.setenv("ROUTEMAKER_BETA_SSH", "beta-box")
+    assert osm_edit.main(argv) == 0  # both sites by default
+    (pc, pc_cwd, _), (beta, beta_cwd, sent) = calls
+    assert pc[:2] == ["docker", "compose"] and pc_cwd == osm_edit.DEFAULT_STACK
+    assert beta[:2] == ["ssh", "beta-box"] and beta_cwd is None
+    assert beta[2].endswith(
+        "scripts/beta/beta-compose.sh exec -T api python manage.py load_flashing_signals - "
+        "--actor 42"
+    )
+    assert json.loads(sent)["rows"][0]["id"] == "x"
+
+
+def test_apply_checks_every_site_before_anything_goes_to_osm(
+    osm, tmp_path, capsys, stack, monkeypatch
+):
+    _edit(tmp_path)
+    _owner_file(tmp_path)
+    folder, compose = stack
+    monkeypatch.delenv("ROUTEMAKER_BETA_SSH", raising=False)
+    argv = ["apply", str(tmp_path), "--approved", "--actor", "42", "--stack", str(folder)]
+    assert osm_edit.main([*argv, "--compose", compose]) == 1  # pc and beta by default
+    assert "ROUTEMAKER_BETA_SSH" in capsys.readouterr().err
+    assert _puts(osm) == [] and not (tmp_path / "loaded").exists()
+
+
+def test_one_site_failing_does_not_stop_the_other(tmp_path, capsys, stack, monkeypatch):
+    fixture = _owner_file(tmp_path)
+    folder, compose = stack
+    real = osm_edit._loader
+
+    def beta_down_on_write(args, site, path, confirm):
+        if site == "beta":
+            if confirm:
+                raise osm_edit.EditError("ssh: connection refused")
+            return "<stdin>: owner, 1 create\n"
+        return real(args, site, path, confirm)
+
+    monkeypatch.setattr(osm_edit, "_loader", beta_down_on_write)
+    argv = ["load", str(fixture), "--actor", "42", "--stack", str(folder), "--compose", compose]
+    assert osm_edit.main([*argv, "--to", "beta", "--to", "pc", "--confirm"]) == 3
+    out = capsys.readouterr()
+    assert "active on pc" in out.out and (tmp_path / "loaded").read_text() == "x"
+    assert "beta: ssh: connection refused" in out.err and "--to beta --confirm" in out.err
+
+
+def test_the_load_check_needs_the_loaders_all_present_line(tmp_path, capsys, monkeypatch):
+    fixture = _owner_file(tmp_path)
+    for said in (
+        "",
+        "withdrawn: x X (an admin withdrew it; left alone)\n<stdin>: owner, 1 withdrawn\n",
+    ):
+        monkeypatch.setattr(osm_edit, "_loader", lambda *a, said=said, **k: said)
+        argv = ["load", str(fixture), "--actor", "42", "--to", "pc", "--confirm"]
+        assert osm_edit.main(argv) == 3
+        assert "not active after the load" in capsys.readouterr().err
+
+
+def test_an_edit_whose_name_says_owner_is_still_an_edit(osm, tmp_path, capsys, stack):
+    edit = _edit(tmp_path)
+    edit.rename(tmp_path / "old-owner-rd-town-101.json")
+    assert _apply(tmp_path, stack, "--approved") == 0
+    assert "Uploaded:" in capsys.readouterr().out
+    assert not (tmp_path / "loaded").exists()
+
+
+def test_load_refuses_an_agency_file(tmp_path, capsys):
+    fixture = tmp_path / "flashing-signals.json"
+    fixture.write_text(json.dumps({"version": 1, "source": "mdot-sha", "rows": []}))
+    assert osm_edit.main(["load", str(fixture), "--actor", "42", "--to", "pc"]) == 1
+    assert "not an owner flashing-signal file" in capsys.readouterr().err
