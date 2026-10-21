@@ -742,17 +742,98 @@ export function roadLabelPaint(strong = accessibilityOn()) {
   };
 }
 
-/** The base map's layers with the street names restyled (ROAD_LABEL); every other layer as given. */
+/**
+ * THE NEIGHBOURHOOD AND TOWN NAMES. The owner, 2026-10-21, of the base map's thin, spaced grey capitals ("GLEN
+ * HAVEN", "SLIGO WOODS") and its light town names ("Kemp Mill Estates"): "Make the neighborhood names also in bold
+ * an with the same font so they are readable. Cities too."; then, "Maybe change the font yo a bolder one from the
+ * same family or use small caps so it stands out". The base map's `places_subplace` (neighbourhoods) and
+ * `places_locality` (cities and towns) are drawn here in the street names' family at a heavier weight (Atkinson
+ * Hyperlegible Next ExtraBold, bundled, lib/mapGlyphs.ts), dark on the street names' white halo. A town is in mixed
+ * case; a neighbourhood in capitals at a smaller size with a little spacing (MapLibre has no true small caps), so it
+ * reads apart from a street name and below a town. A town reads above a neighbourhood (larger, darker), and both stay
+ * under the station names' 18 px (v0.11.0, lib/railLayer.ts), the key wayfinders. A neighbourhood is 11 px at zoom
+ * 12, 13 px at 14, 14 px from 17; a town 13 px at zoom 8, 15 px at 11, 16 at 14, 17 from 17; a large one (the base
+ * map's population_rank 9 or more: Silver Spring, Wheaton) 15 px at 8 and 17 px from 11, as the base map draws it
+ * larger too. The sizes do not change in a ride (the
+ * street names are what a rider reads there).
+ * Only the style changes: the names, their filters and their placement are the base map's.
+ */
+export const PLACE_LABEL_LAYER_IDS = ["places_subplace", "places_locality"];
+export const PLACE_LABEL = {
+  font: "Atkinson Hyperlegible Next ExtraBold",
+  neighbourhood: {
+    size: ["interpolate", ["linear"], ["zoom"], 12, 11, 14, 13, 17, 14],
+    transform: "uppercase",
+    letterSpacing: 0.04,
+    color: "#5c5658",
+    strongColor: "#1c1a1b",
+  },
+  town: {
+    transform: "none",
+    letterSpacing: 0,
+    size: ["interpolate", ["linear"], ["zoom"], 8, 13, 11, 15, 14, 16, 17, 17],
+    /** A large town's (population_rank LARGE_TOWN_RANK or more). */
+    largeSize: ["interpolate", ["linear"], ["zoom"], 8, 15, 11, 17],
+    color: "#2e2a2b",
+    strongColor: "#000000",
+  },
+  largeTownRank: 9,
+  halo: "#ffffff",
+  haloWidth: 2.5,
+  strongHaloWidth: 2.75,
+};
+
+/**
+ * A town's size: its ramp, or a large town's. MapLibre allows one zoom ramp, at the top, so the rank is a case at
+ * each zoom of the two ramps' stops together, each ramp read there as MapLibre reads it (linear between stops).
+ */
+export function townLabelSize(town, largeTownRank) {
+  const ramp = (size) => size.slice(3);
+  const at = (stops, zoom) => {
+    if (zoom <= stops[0]) return stops[1];
+    for (let k = 2; k < stops.length; k += 2) if (zoom <= stops[k]) return stops[k - 1] + ((stops[k + 1] - stops[k - 1]) * (zoom - stops[k - 2])) / (stops[k] - stops[k - 2]);
+    return stops[stops.length - 1];
+  };
+  const small = ramp(town.size);
+  const large = ramp(town.largeSize);
+  const zooms = [...new Set([...small, ...large].filter((_, k) => k % 2 === 0))].sort((a, b) => a - b);
+  const isLarge = [">=", ["coalesce", ["get", "population_rank"], 0], largeTownRank];
+  return ["interpolate", ["linear"], ["zoom"], ...zooms.flatMap((zoom) => [zoom, ["case", isLarge, at(large, zoom), at(small, zoom)]])];
+}
+
+/** A place name layer's paint (PLACE_LABEL), plain or with the accessibility switch on. */
+export function placeLabelPaint(id, strong = accessibilityOn()) {
+  const kind = id === "places_locality" ? PLACE_LABEL.town : PLACE_LABEL.neighbourhood;
+  return {
+    "text-color": strong ? kind.strongColor : kind.color,
+    "text-halo-color": PLACE_LABEL.halo,
+    "text-halo-width": strong ? PLACE_LABEL.strongHaloWidth : PLACE_LABEL.haloWidth,
+    "text-halo-blur": 0,
+  };
+}
+
+/** The base map's layers with the street names (ROAD_LABEL) and place names (PLACE_LABEL) restyled; every other layer as given. */
 export function withClearRoadLabels(layers, strong = accessibilityOn()) {
-  return layers.map((layer) =>
-    ROAD_LABEL_LAYER_IDS.includes(layer.id)
-      ? {
-          ...layer,
-          layout: { ...layer.layout, "text-font": [ROAD_LABEL.font], "text-size": ROAD_LABEL.size },
-          paint: { ...layer.paint, ...roadLabelPaint(strong) },
-        }
-      : layer,
-  );
+  return layers.map((layer) => {
+    if (ROAD_LABEL_LAYER_IDS.includes(layer.id)) {
+      return {
+        ...layer,
+        layout: { ...layer.layout, "text-font": [ROAD_LABEL.font], "text-size": ROAD_LABEL.size },
+        paint: { ...layer.paint, ...roadLabelPaint(strong) },
+      };
+    }
+    if (PLACE_LABEL_LAYER_IDS.includes(layer.id)) {
+      const { town, neighbourhood, largeTownRank } = PLACE_LABEL;
+      const kind = layer.id === "places_locality" ? town : neighbourhood;
+      const size = kind === town ? townLabelSize(town, largeTownRank) : neighbourhood.size;
+      return {
+        ...layer,
+        layout: { ...layer.layout, "text-font": [PLACE_LABEL.font], "text-size": size, "text-transform": kind.transform, "text-letter-spacing": kind.letterSpacing },
+        paint: { ...layer.paint, ...placeLabelPaint(layer.id, strong) },
+      };
+    }
+    return layer;
+  });
 }
 
 // The stress tiles' layer and property, per the SHARED API CONTRACT for
