@@ -387,6 +387,9 @@ export function App() {
   // start or end, or another ride type, starts from the quickest again. Request only, never the link.
   const [transitPick, setTransitPick] = useState<TransitPick | null>(null);
   const trip = optionsKey(points, preset);
+  // Novice and Nervous's busy stretch to hop past (v0.11.0), set when its transit offer is taken: for that trip only
+  // (a new start or end, or another ride type, drops it). Request only, never the link.
+  const [noviceHopPick, setNoviceHopPick] = useState<{ trip: string; hop: [LonLat, LonLat] } | null>(null);
   // "Route through anyway" (v0.7.0, lib/closureMap.ts): the closures the rider chose to route through, for this plan
   // (its start and end) only; request only, never the link. Undo takes one back out.
   const [closureBypass, setClosureBypass] = useState<Bypass | null>(null);
@@ -397,11 +400,12 @@ export function App() {
   // lib/dials.ts closuresNow); Plan keeps them, for planning a later ride. Start ride and a ride's re-plans set it too.
   const goNow = mode === "go";
   const planDials = useMemo(() => {
-    const made = withTransitOption(withStations(withWeight(routeDials, weight), stationChoice), preset, transitPick, trip);
+    const base = withTransitOption(withStations(withWeight(routeDials, weight), stationChoice), preset, transitPick, trip);
+    const made = noviceHopPick?.trip === trip && base.noviceLegs ? { ...base, noviceHop: noviceHopPick.hop } : base;
     const now = goNow ? { ...made, closuresNow: true } : made;
     return bypassIds.length ? { ...now, closureBypass: bypassIds } : now;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the ids' text, not the array
-  }, [routeKey, weight, stationChoice, preset, transitPick, trip, bypassKey, goNow]);
+  }, [routeKey, weight, stationChoice, preset, transitPick, trip, bypassKey, goNow, noviceHopPick]);
   // Everything the request is made from, as a key (v0.7.0): in Plan a station or a transit option chosen, a
   // weight or a slider moved, all mark the plan changed until Route or Update route.
   // The key leaves closuresNow out: switching between Go and Plan keeps the route (changeMode), not marked changed.
@@ -4238,8 +4242,10 @@ export function App() {
     // Novice and Nervous's offer where only a busy road connects (v0.7.0): the trip on a transit ride type, its
     // bike legs still planned as Novice and Nervous plans them (`noviceLegs`, sent as novice_legs, kept in the link).
     onNoviceTransit: (id: PresetId) => {
+      // The busy stretch to hop past (v0.11.0), for this trip only, as a chosen transit option is.
       const hop = noviceHopOf(shown);
-      choosePreset(id, { ...chooseRideType(id, null, dials), noviceLegs: true, ...(hop ? { noviceHop: hop } : {}) });
+      setNoviceHopPick(hop ? { trip: optionsKey(points, id), hop } : null);
+      choosePreset(id, { ...chooseRideType(id, null, dials), noviceLegs: true });
       const label = NOVICE_TRANSIT_CHOICES.find((c) => c.preset === id)?.label ?? presetSaid(id);
       announce(noviceTransitSaid(label));
     },

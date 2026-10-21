@@ -1048,6 +1048,9 @@ class Dials:
     # own. Set only by a transit trip's lines priced as Novice on a share bike (`api._transit_body`,
     # `novice_legs` on Bikeshare + Transit), so the lines are timed as its candidates were.
     cycling_speed_kmh: float | None = None
+    # Novice and Nervous's walks past a short busy stretch (`core.novice_walks`); off for a
+    # transit trip's lines priced as Novice (`novice_legs`), which say no walks.
+    novice_walks: bool = True
     # An opened file's line to follow exactly, [(lon, lat), ...] (`core.follow`); None: plan.
     follow: tuple[tuple[float, float], ...] | None = None
     # Follow it exactly, rules or not (`core.follow.EXACT`): the manual mode.
@@ -1100,8 +1103,9 @@ NOVICE_BUSY_SLACK_M = 80.0
 def busiest_stretch(pieces: list, classes: list) -> dict | None:
     """The longest run of real LTS 3 or worse along a route, by the road's name: its name
     (None where the road has none), its metres, its worst level, and where it begins and
-    ends (`from` and `to`, [lon, lat] at its first and last pieces; v0.11.0, the transit
-    hop past it, `transit.plan_bike`'s `hop`). None where there is no such run."""
+    ends (`from` and `to`, [lon, lat], the middles of its first and last pieces, near
+    enough for the stations around them; v0.11.0, the transit hop past it,
+    `transit.plan_bike`'s `hop`). None where there is no such run."""
     runs: list[list] = []  # [name, metres, worst, first piece, last piece]
     last = None
     for piece, cls in zip(pieces, classes, strict=False):
@@ -4162,15 +4166,25 @@ def _plan(
         # candidates do not spend its time.
         walked: list[dict] = []
         novice_classes = classes
-        if preset_name == presets.NOVICE and not over_budget and not quick and not alternate:
+        if (
+            preset_name == presets.NOVICE
+            and dials.novice_walks
+            and not over_budget
+            and not quick
+            and not alternate
+        ):
+            # One small budget for all of them, so they never hold a slow plan up.
+            walks_until = Deadline(
+                min(deadline.at, clock() + novice_walks.BUDGET_S), deadline.per_call_s
+            )
             walked = novice_walks.walks(
                 novice_walks.stretches(leg_runs, pieces, classes),
                 coordinates,
                 sum(p.metres for p in pieces)
                 + sum(float(r) for r in leg_runs if not isinstance(r, tuple)),
                 route_m,
-                lambda a, b: walk_leg(a, b, deadline, prefer_walkways=True),
-                lambda line: walk_roadside_m(line, deadline),
+                lambda a, b: walk_leg(a, b, walks_until, prefer_walkways=True),
+                lambda line: walk_roadside_m(line, walks_until),
             )
             if walked:
                 described_full = novice_walks.with_entries(described_full, walked)
@@ -4179,7 +4193,13 @@ def _plan(
                 novice_classes = [
                     PieceClass("1", "none") if i in gone else cls for i, cls in enumerate(classes)
                 ]
-        walked_m = sum(walk["ride_m"] for walk in walked)
+        # The walked pieces' own metres, as `stress` counts them (a join gap left out).
+        walked_m = sum(
+            pieces[i].metres
+            for walk in walked
+            for i in walk["pieces"]
+            if classes[i][0] in novice_walks.WALK_TIERS
+        )
         walk_change_s = novice_walks.time_change_s(walked, route_m, route_s)
         return {
             "preset": preset.name,

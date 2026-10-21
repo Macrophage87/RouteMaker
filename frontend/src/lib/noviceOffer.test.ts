@@ -81,7 +81,9 @@ test("the route summary shows the offer with the warnings, in Go and in Plan, th
   assert.match(panel, /<span id=\{`\$\{id\}-\$\{choice\.preset\}`\} className="visually-hidden">\s*\{noviceTripLine/);
   assert.match(panel, /<span className="novice-trip-note" aria-hidden="true">\s*\{noviceTripShort\(trips\?\.\[choice\.preset\]\)\}/);
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
-  assert.match(app, /choosePreset\(id, \{ \.\.\.chooseRideType\(id, null, dials\), noviceLegs: true, \.\.\.\(hop \? \{ noviceHop: hop \} : \{\}\) \}\);/);
+  assert.match(app, /choosePreset\(id, \{ \.\.\.chooseRideType\(id, null, dials\), noviceLegs: true \}\);/);
+  assert.match(app, /setNoviceHopPick\(hop \? \{ trip: optionsKey\(points, id\), hop \} : null\);/);
+  assert.match(app, /noviceHopPick\?\.trip === trip && base\.noviceLegs \? \{ \.\.\.base, noviceHop: noviceHopPick\.hop \} : base/);
   // Found as the offer shows, without a press: both ride types, keyed on the routed points.
   assert.match(app, /const noviceKey = noviceOfferShown\(shown, preset\) \? JSON\.stringify\(routedPoints\) : null;/);
   assert.match(app, /requestRoute\(ends, choice\.preset, \{ dials: noviceTransitDials\(choice\.preset, noviceHopOf\(shown\)\) \}\)/);
@@ -101,9 +103,9 @@ test("the transit trips hop past the busy stretch: its ends in the request and t
   // Never without the novice legs, and never on another ride type.
   assert.equal(fitDials("bike-transit", { ...startDials("bike-transit"), noviceHop: hop }).noviceHop, undefined);
   assert.equal(fitDials("novice", { ...startDials("novice"), noviceLegs: true, noviceHop: hop }).noviceHop, undefined);
+  // For the trip the offer was taken on only, and never in the link (as a chosen transit option).
   const hash = encodePlan([[-77.0, 38.9], [-77.1, 38.9]], "bike-transit", dials);
-  assert.deepEqual(decodePlan(hash).dials.noviceHop, hop);
-  assert.equal(decodePlan(hash.replace(/hop=[^&]*/, "hop=1%2C2")).dials.noviceHop, undefined);
+  assert.equal(decodePlan(hash).dials.noviceHop, undefined);
   // The option that hops says so, on screen and heard.
   const option = { label: "Ride, Metro, ride", minutes: 25, legs: [], hop: true };
   assert.equal(optionText(option, 1), "B. Ride, Metro, ride, skips the busy stretch: about 25 min");

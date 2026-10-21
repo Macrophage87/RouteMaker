@@ -72,8 +72,6 @@ export function encodePlan(
     if (dials.trailsOff) params.set("trailsoff", "1");
     // A novice rider's transit plan (v0.7.0): its bike legs as Novice and Nervous plans them.
     if (dials.noviceLegs) params.set("novice", "1");
-    // And the busy stretch it hops past (v0.11.0): its two ends, "lon,lat,lon,lat".
-    if (dials.noviceLegs && dials.noviceHop) params.set("hop", dials.noviceHop.flat().map((n) => n.toFixed(6)).join(","));
     // The target distance in miles, to a tenth. Absent is none; an older link has none.
     if (dials.targetDistanceM) params.set("targetmi", (dials.targetDistanceM / METRES_PER_MILE).toFixed(1));
     // Never the rider and bike weight (OWNER-DECISIONS 313): it is private.
@@ -91,13 +89,6 @@ export function encodePlan(
     if (dials.mtbPreferred) params.set("prefer", String(dials.mtbPreferred));
   }
   return `#${params.toString().replaceAll("%2C", ",").replaceAll("%3B", ";")}`;
-}
-
-/** A link's "hop" (v0.11.0): the busy stretch's two ends, or nothing where it is not four numbers. */
-function hopOf(value: string | null): { noviceHop?: [LonLat, LonLat] } {
-  const n = (value ?? "").split(",").map(Number);
-  if (n.length !== 4 || n.some((x) => !Number.isFinite(x))) return {};
-  return { noviceHop: [[n[0], n[1]], [n[2], n[3]]] };
 }
 
 function numberOrUndefined(value: string | null): number | undefined {
@@ -157,7 +148,6 @@ export function decodePlan(hash: string): Plan {
     avoidGravel: params.get("avoidgravel") === "1",
     trailsOff: params.get("trailsoff") === "1",
     noviceLegs: params.get("novice") === "1",
-    ...hopOf(params.get("hop")),
     ...(isBike(params.get("bike")) ? { bike: params.get("bike") as "classic" | "ebike" } : {}),
     ...(params.get("ending") === "outside" ? { ending: "outside_dock" as const } : {}),
     rideSize: numberOrUndefined(params.get("riders")),

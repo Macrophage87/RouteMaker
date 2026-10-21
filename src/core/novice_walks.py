@@ -26,13 +26,16 @@ from routemaker.geo import Point, haversine
 WALK_TIERS = frozenset({"4", "5"})
 # Shorter than this is a crossing of the road, not riding on it (`routing.NOVICE_BUSY_SLACK_M`).
 MIN_M = 80.0
-# About half a mile (the decision card: "up to about 0.5 mi of walking per stretch"); the
-# walk's own cap is `routing.WALK_IN_MAX_M`, the same.
+# About half a mile (the decision card: "up to about 0.5 mi of walking per stretch"). The
+# walk itself is capped at `routing.WALK_IN_MAX_M`, the same, which is tighter than
+# DETOUR_RATIO for a stretch over about 530 m.
 MAX_M = 800.0
 # Two busy runs this close are one stretch: a side street's mouth does not end the walk.
 JOIN_GAP_M = 25.0
-# The most stretches one route asks walks for, so the plan's time is not spent on them.
+# The most stretches one route asks walks for, and the time all of their calls may take
+# together, so the plan's time is not spent on them.
 MOST = 3
+BUDGET_S = 3.0
 # A walk longer than this many times the stretch (or than the stretch and DETOUR_SLACK_M)
 # goes the long way round rather than along the sidewalk, and is not offered.
 DETOUR_RATIO = 1.5
@@ -212,7 +215,8 @@ def with_entries(description: list[dict] | None, found: list[dict]) -> list[dict
 
 def time_change_s(found: list[dict], route_m: float, route_s: float) -> float:
     """What the walks add to the route's time: each walk's time less the time the route
-    took to ride the stretch (its share of the route's riding time)."""
+    took to ride the stretch, its share of the router's time by length (an estimate; the
+    junction delay along it is kept)."""
     if route_m <= 0:
         return 0.0
     per_m = route_s / route_m

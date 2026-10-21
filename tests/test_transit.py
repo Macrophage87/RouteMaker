@@ -1579,6 +1579,8 @@ class TestApi:
         trip = response.json()["transit"]
         hops = [o for o in trip["options"] if o["hop"]]
         assert len(hops) == 1 and hops[0]["chosen"] and trip["key"] == hops[0]["key"]
+        # The trip's lines say no walks past busy stretches: the trip is how it gets past.
+        assert not [e for e in response.json()["description"] or [] if e["kind"] == "walk"]
         # Another option, chosen, stays chosen.
         other = next(o["key"] for o in trip["options"] if not o["hop"])
         again = post_transit(
@@ -1586,13 +1588,19 @@ class TestApi:
         )
         assert again.json()["transit"]["key"] == other
 
-    def test_a_novice_hop_goes_with_novice_legs(self, client, router) -> None:
+    def test_a_novice_hop_goes_with_novice_legs(
+        self, client, segments, router, installed, monkeypatch
+    ) -> None:
+        monkeypatch.setattr(transit, "RoutingServices", lambda *a, **k: Straight())
         fake = router(standard_router())
         response = post_transit(client, [EAST, WEST], novice_hop=HOP)
         assert response.status_code == 400
         assert fake.calls == []
+        # A hop outside the area (an edited link) is left out, not refused.
+        router(standard_router())
         outside = post_transit(client, [EAST, WEST], novice_legs=True, novice_hop=[[0, 0], HOP[1]])
-        assert outside.status_code == 400
+        assert outside.status_code == 200, outside.content
+        assert not any(o["hop"] for o in outside.json()["transit"]["options"])
 
     @pytest.mark.parametrize("preset", [presets.BIKE_TRANSIT, presets.BIKESHARE_TRANSIT])
     def test_novice_legs_price_the_bike_legs_as_novice_and_nervous(
@@ -1616,6 +1624,10 @@ class TestApi:
         assert response.json()["preset"] == preset
         assert response.json()["novice"] is None
         bike = [p["costing_options"].get("bicycle") for _u, p in fake.calls]
+        # Its lines ask no walks past busy stretches (those prefer sidewalks): the trip is
+        # how it gets past them.
+        on_foot = [p for _u, p in fake.calls if p["costing"] == "pedestrian"]
+        assert not [p for p in on_foot if "sidewalk_factor" in p["costing_options"]["pedestrian"]]
         assert any(b and b["use_roads"] == 0.0 for b in bike)
         leg_preset, costing = seen[0]
         assert leg_preset == presets.NOVICE
@@ -1918,5 +1930,27 @@ def test_a_novice_hop_boards_near_the_busy_stretch_and_is_planned(schedule) -> N
     assert transit.choose(plan, None).chosen == 0
     other = next(o.key for o in plan.options if not o.hop)
     assert not transit.choose(plan, other, hop=True).option.hop
+    # It boards before the stretch and gets off after it: nearer its start, then its end.
+    assert transit._distance(first.coordinates[0], HOP[0]) < transit._distance(
+        first.coordinates[0], HOP[1]
+    )
+    assert transit._distance(last.coordinates[-1], HOP[1]) < transit._distance(
+        last.coordinates[-1], HOP[0]
+    )
     out = transit.block(chosen, schedule)
     assert [o["hop"] for o in out["options"]].count(True) == 1
+    assert len(plan.options) <= transit.TRANSIT_OPTIONS + 2  # with riding directly there
+
+
+def test_a_much_slower_hop_is_listed_but_not_planned(schedule, monkeypatch) -> None:
+    plan = transit.plan_bike(schedule, EAST, WEST, at(2026, 9, 30, 8, 0), Straight(), 18.0, hop=HOP)
+    hop = next(o for o in plan.options if o.hop)
+    # Another transit trip, as quick as the hop (the same legs, not a hop).
+    plan = replace(plan, options=[*plan.options, replace(hop, key="other", hop=False)])
+    quickest = hop.total_s
+    # Within the slack, the hop is planned; past it, the quickest is, the hop still listed.
+    monkeypatch.setattr(transit, "HOP_SLACK_S", hop.total_s - quickest + 1.0)
+    assert transit.choose(plan, None, hop=True).option.hop
+    monkeypatch.setattr(transit, "HOP_SLACK_S", hop.total_s - quickest - 1.0)
+    assert transit.choose(plan, None, hop=True).chosen == 0
+    assert any(o.hop for o in plan.options)

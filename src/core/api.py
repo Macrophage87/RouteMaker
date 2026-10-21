@@ -677,10 +677,12 @@ class RouteIn(Schema):
     @field_validator("novice_hop")
     @classmethod
     def hop_inside_coverage(cls, points: list[list[float]] | None) -> list[list[float]] | None:
+        """A hop outside the area (an edited link) is left out, not refused: the trip is
+        still planned, without it."""
         west, south, east, north = settings.COVERAGE_BBOX
         for lon, lat in points or ():
             if not (west <= lon <= east and south <= lat <= north):
-                raise ValueError("novice_hop is outside the area this map covers")
+                return None
         return points
 
     @field_validator("follow")
@@ -3557,6 +3559,9 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
         cycling_speed_kmh=(
             leg_costing["bicycle"]["cycling_speed"] if leg_costing is not None else None
         ),
+        # A trip's lines say no walks past busy stretches (`core.novice_walks`): the trip is
+        # how Novice and Nervous gets past them here.
+        novice_walks=False,
     )
     # WMATA's live reading (core.wmata_live), if any: an elevator out on the way costs the trip
     # a little in the ranking, and the block says the live values (core.transit_live).

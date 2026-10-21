@@ -160,6 +160,10 @@ STATION_CANDIDATES = 3
 # off near where it ends (`plan_bike`'s and `plan_bikeshare`'s `hop`), their legs from the
 # start and to the end estimated (no router calls past the budget's).
 HOP_NEAR_M = 1609.0  # 1 mi
+# The hop is planned unasked only where it is at most this much slower than the quickest
+# other transit trip (riding directly there rides the stretch, so is not compared); past it,
+# it is listed and the quickest is planned.
+HOP_SLACK_S = 900.0  # 15 min
 # Router calls for Own Bike + 🚆🚌: three stations each end and the direct ride.
 MAX_ROUTER_CALLS = 2 * STATION_CANDIDATES + 1
 # The options each answer lists (the owner, 2026-10-12 15:00): riding directly there always,
@@ -1654,7 +1658,8 @@ def _ranked(
     kept = sorted(best.values(), key=lambda o: (o.total_s, o.key))[:TRANSIT_OPTIONS]
     if hops:
         hop = min(hops, key=lambda o: (o.total_s, o.key))
-        kept = [o for o in kept if o.signature != hop.signature] + [hop]
+        kept = [o for o in kept if o.signature != hop.signature]
+        kept = kept[: TRANSIT_OPTIONS - 1] + [hop]
     kept += [o for o in (direct, walk) if o is not None]
     # A tie to the minute (the same train) goes to the simpler trip: fewer transit legs.
     return sorted(kept, key=rank_key)
@@ -1752,8 +1757,11 @@ def choose(plan: Plan, key: str | None, hop: bool = False) -> Plan:
     With no key and `hop` (Novice and Nervous's hop asked for), the hop past the busy stretch
     where there is one."""
     if key is None and hop:
+        # Against the other transit trips only: riding directly there rides the stretch.
+        others = [o.total_s for o in plan.options if not (o.hop or o.direct or o.walk)]
+        quickest = min(others, default=float("inf"))
         for index, option in enumerate(plan.options):
-            if option.hop:
+            if option.hop and option.total_s <= quickest + HOP_SLACK_S:
                 return replace(plan, chosen=index, asked=None)
     if key is None:
         return plan
@@ -2005,10 +2013,12 @@ def _search_days(day: _Day, moments: list[Moment], starts, ends, speed: float) -
     return found
 
 
-def _hop_stops(schedule: Schedule, point, bike: bool) -> list[Stop]:
-    """The stations and stops a hop past a busy stretch tries at one of its ends."""
+def _hop_stops(schedule: Schedule, point, other, bike: bool) -> list[Stop]:
+    """The stations and stops a hop past a busy stretch tries at one of its ends, `point`:
+    only those nearer it than the stretch's `other` end, so the hop boards before the
+    stretch and gets off after it."""
     near, more = _candidates(schedule, point, bike, HOP_NEAR_M, HOP_NEAR_M)
-    return near + more
+    return [s for s in near + more if _distance(s.point, point) < _distance(s.point, other)]
 
 
 def _hops(day: _Day, moments, starts: list[_End], ends: dict[int, _End], speed: float):
@@ -2066,11 +2076,11 @@ def plan_bike(
         if hop:
             hop_starts = [
                 _ride_to(schedule, start, s, None, speed_kmh)
-                for s in _hop_stops(schedule, hop[0], True)
+                for s in _hop_stops(schedule, hop[0], hop[1], True)
             ]
             hop_ends = {
                 s.index: _ride_from(schedule, end, s, None, speed_kmh)
-                for s in _hop_stops(schedule, hop[1], True)
+                for s in _hop_stops(schedule, hop[1], hop[0], True)
             }
             hops = _hops(day, moments, hop_starts, hop_ends, speed_kmh)
         if not found and not hops:
@@ -2163,12 +2173,12 @@ def plan_bikeshare(
             hop_starts = _best_few(
                 [
                     _share_to(schedule, s, start, snapshot)
-                    for s in _hop_stops(schedule, hop[0], False)
+                    for s in _hop_stops(schedule, hop[0], hop[1], False)
                 ],
                 STATION_CANDIDATES + BUS_STOPS_NEAR,
             )
             hop_ends = {}
-            for s in _hop_stops(schedule, hop[1], False):
+            for s in _hop_stops(schedule, hop[1], hop[0], False):
                 shared = _share_from(schedule, s, end, snapshot)
                 if shared is not None:
                     hop_ends[s.index] = shared

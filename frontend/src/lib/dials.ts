@@ -111,7 +111,8 @@ export interface Dials {
   noviceLegs?: boolean;
   /**
    * With `noviceLegs` (v0.11.0): where the Novice route's busiest stretch begins and ends (its `novice.busiest`),
-   * sent as novice_hop, so the transit trips also hop past it (board near its start, get off near its end).
+   * sent as novice_hop, so the transit trips also hop past it (board near its start, get off near its end). For the
+   * trip the offer was taken on only (App's noviceHopPick, as transitOption): request only, never the link.
    */
   noviceHop?: [LonLat, LonLat];
   /**
