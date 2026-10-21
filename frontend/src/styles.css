@@ -1273,7 +1273,7 @@ button.secondary {
 @media (min-width: 721px) {
   .maplibregl-ctrl-bottom-right .maplibregl-ctrl-attrib {
     box-sizing: border-box;
-    max-width: calc(100vw - 510px);
+    max-width: calc(100vw - 510px - var(--out-w, 0px));
   }
 }
 
@@ -7891,5 +7891,10 @@ details.fold > summary .icon {
   .app:not(.go-mode) .maplibregl-ctrl-top-right,
   .app:not(.go-mode) .maplibregl-ctrl-bottom-right {
     right: var(--out-w, 0px);
+  }
+
+  /* The trail key stays under the zoom buttons. */
+  .app:not(.go-mode) .mtb-map-key {
+    right: calc(10px + var(--out-w, 0px));
   }
 }

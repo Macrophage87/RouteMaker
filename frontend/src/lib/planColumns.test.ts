@@ -31,6 +31,9 @@ test("the panel's width is one variable, and what sits right of the planner foll
   assert.match(css, /--panel-w: 400px;/);
   assert.match(css, /\.panel \{[^}]*width: var\(--panel-w\);/);
   assert.doesNotMatch(css, /left: 424px;/);
+  // The credits and the trail key move with the right-hand controls, clear of the route card.
+  assert.match(css, /max-width: calc\(100vw - 510px - var\(--out-w, 0px\)\);/);
+  assert.match(css, /\.mtb-map-key \{\s*right: calc\(10px \+ var\(--out-w, 0px\)\);/);
   assert.match(css, /\.plan-map-bar \{[^}]*right: calc\(60px \+ var\(--out-w, 0px\)\);/);
 });
 
@@ -38,8 +41,11 @@ test("the route summary's folds share one name, so one is open at a time", () =>
   const html = renderToStaticMarkup(h(Fold, { title: "Stress and facilities", name: ROUTE_FOLD_GROUP }, "body"));
   assert.match(html, /<details class="fold" name="route-folds">/);
   const panel = read("../app/RoutePanel.tsx");
-  const summary = panel.slice(panel.indexOf('className="elevation-fold"'));
-  assert.equal((summary.match(/name=\{ROUTE_FOLD_GROUP\}/g) ?? []).length, 6, "elevation, capacity, facilities, junctions, choices, water");
+  // Every fold of the route summary, from the chart's to the end of the panel, is in the group.
+  const summary = panel.slice(panel.lastIndexOf("<Fold", panel.indexOf('className="elevation-fold"')));
+  const folds = summary.split("<Fold").slice(1);
+  assert.equal(folds.length, 6, "elevation, capacity, facilities, junctions, choices, water");
+  for (const fold of folds) assert.match(fold.slice(0, fold.indexOf(">\n")), /name=\{ROUTE_FOLD_GROUP\}/);
   assert.match(read("../RouteDescription.tsx"), /className="route-description"\s*name=\{ROUTE_FOLD_GROUP\}/);
   // Folds outside the summary (bikeshare and transit plans, the ride sheet) keep their own open state.
   assert.doesNotMatch(panel, /bikeshare-fold"[^>]*name=/);
