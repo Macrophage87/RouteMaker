@@ -450,6 +450,11 @@ test("the casing layers carry the edge exactly where the line is faint: z12-13 b
         assert.equal(gap, 0, where);
         // A plain street is thinner at z12 and z13 (STREET_THIN_SCALE, the owner 2026-10-21: the city grid "very crowded").
         const plainThin = Object.keys(props).length === 0 && zoom < SOLID_MIN_ZOOM;
+        if (plainThin && !busy) {
+          // A plain street as the tiles carry it: facility "none", trail and unpaved false (stress_tiles.py).
+          const real = { facility: "none", trail: false, unpaved: false };
+          assert.equal(paintAt(casings[i], "line-width", real, zoom), zoomedOutCasing(tier, zoom), `${where} (as tiled)`);
+        }
         assert.equal(width, plainThin ? zoomedOutCasing(tier, zoom) : tier.width + 2, where);
         assert.equal(colour, tier.casing, where);
       }
@@ -534,11 +539,13 @@ test("city grid: a plain street is thinner at z12 and z13, a bike lane, path, tr
       if (tier.tier >= BUSY_MIN_TIER) return;
       for (const zoom of [12, 13]) {
         const scale = STREET_THIN_SCALE[zoom as 12 | 13];
-        assert.equal(paintAt(lines[i], "line-width", {}, zoom), tier.width * scale.line, `${tier.short} plain z${zoom}`);
+        for (const plain of [{}, { facility: "none", trail: false, unpaved: false }]) {
+          assert.equal(paintAt(lines[i], "line-width", plain, zoom), tier.width * scale.line, `${tier.short} plain ${JSON.stringify(plain)} z${zoom}`);
+        }
         // The edge: half a pixel a side at z12 plain; a full pixel with the switch.
         const edge = ((paintAt(casings[i], "line-width", {}, zoom) as number) - tier.width * scale.line) / 2;
         assert.ok(edge >= (strong ? 1 : 0.5) - 1e-9, `${tier.short} z${zoom} edge ${edge}`);
-        for (const props of [{ facility: "lane" }, { trail: true }, { unpaved: true }, { car_free: "weekend" }]) {
+        for (const props of [{ facility: "lane" }, { facility: "protected" }, { facility: "path" }, { trail: true }, { unpaved: true }, { car_free: "weekend" }]) {
           assert.equal(paintAt(lines[i], "line-width", props, zoom), tier.width, `${tier.short} ${JSON.stringify(props)} z${zoom}`);
         }
       }

@@ -1145,7 +1145,8 @@ export const STREET_THIN_SCALE = {
 const STREET_THIN_LAST_ZOOM = 13;
 const isPlainStreet = [
   "all",
-  ["!", ["has", "facility"]],
+  // The tiles carry `facility` "none" on a street with none (the column's default), and none at all on an older table.
+  ["match", ["coalesce", ["get", "facility"], "none"], "none", true, false],
   ["!=", ["get", "trail"], true],
   ["!=", ["get", "unpaved"], true],
   ["!", ["has", "car_free"]],

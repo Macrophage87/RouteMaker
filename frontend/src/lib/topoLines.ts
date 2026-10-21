@@ -150,7 +150,7 @@ export function topoLayers(visible = true): Record<string, unknown>[] {
         paint: {
           "text-color": TOPO_COLOURS.label,
           "text-halo-color": TOPO_COLOURS.halo,
-          "text-halo-width": 1.5,
+          "text-halo-width": 3,
         },
       });
     }
