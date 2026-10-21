@@ -2,9 +2,12 @@
  * Save route (v0.7.0 plan, "Discord sign-in on, with saved settings and routes", item 3): beside Share, signed
  * in only. It asks for a name only (offered as "Start to End") and says what happened politely.
  */
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Icon } from "./Icon.tsx";
 import { NAME_MAX } from "./lib/savedRoutes.ts";
+
+/** How long the bar's "Saved" line stays on the map. */
+export const SAID_ON_MAP_MS = 6000;
 
 export interface SaveRouteProps {
   label: string;
@@ -27,6 +30,12 @@ export function SaveRoute({ label, defaultName, onSave, chip = false, shown, bar
   const [said, setSaid] = useState({ text: "", count: 0 });
   const openerRef = useRef<HTMLButtonElement>(null);
   const formId = useId();
+  // On the map, the line that says it saved goes after a while: it would cover the map chips under the bar.
+  useEffect(() => {
+    if (!bar || !said.text) return;
+    const timer = setTimeout(() => setSaid((s) => ({ ...s, text: "" })), SAID_ON_MAP_MS);
+    return () => clearTimeout(timer);
+  }, [bar, said]);
   const close = () => {
     setAsking(false);
     openerRef.current?.focus();

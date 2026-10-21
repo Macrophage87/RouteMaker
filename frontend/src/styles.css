@@ -7479,15 +7479,24 @@ details.fold > summary .icon {
 .plan-map-bar .save-route-bar .save-route-said:not(:empty) {
   position: absolute;
   top: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  width: max-content;
-  max-width: min(360px, calc(100vw - 32px));
-  margin: 8px 0 0;
+  left: 0;
+  right: 0;
+  width: fit-content;
+  max-width: 100%;
+  margin: 8px auto 0;
   padding: 10px 12px;
   background: var(--bg);
   border-radius: 10px;
   box-shadow: var(--shadow);
+}
+/* The line that says it saved is not a control: taps go through to the chips under it. */
+.plan-map-bar .save-route-bar .save-route-said {
+  pointer-events: none;
+}
+/* Under the manual mode badge while it shows. */
+.plan-map-bar:has(.plan-bar-manual-badge) .save-route-bar .save-route-form,
+.plan-map-bar:has(.plan-bar-manual-badge) .save-route-bar .save-route-said:not(:empty) {
+  margin-top: 52px;
 }
 
 .app:has(.plan-map-bar) .map-chips {
