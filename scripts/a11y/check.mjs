@@ -69,7 +69,7 @@ async function open({ route = S_DEFAULT, hash = hashFor("default", 70), width = 
 }
 
 /**
- * Opens a bottom-bar sheet by its button's label ("Layers", "Suggest", "Save & load", "Settings"; Plan's GPX was Export from 5efab18a, Files in v0.8.2, Save & load since v0.9.0). UI-CLEANUP: "Map
+ * Opens a bottom-bar sheet by its button's label ("Layers", "Reports", "Save & load", "Settings"; Plan's GPX was Export from 5efab18a, Files in v0.8.2, Save & load since v0.9.0). UI-CLEANUP: "Map
  * layers" is "Layers", and "Legend" is Layers with every section open, each with its key inside (the owner, 2026-10-19: "include the
  * legend within the accordion settings in layers"; there is no Legend sheet any more). "Review" is the admin's Review mode
  * (ReviewMode.tsx), opened from Suggest's Review button on its Rider suggestions list; "Review hazards" is the same mode on its Mass Ride
@@ -78,7 +78,7 @@ async function open({ route = S_DEFAULT, hash = hashFor("default", 70), width = 
 async function openSheet(p, label = "Layers") {
   const name = label === "Map layers" ? "Layers" : label;
   const review = name === "Review" || name === "Review hazards";
-  const bar = name === "Legend" ? "Layers" : review ? "Suggest" : name;
+  const bar = name === "Legend" ? "Layers" : review ? "Reports" : name;
   await p.eval(`[...document.querySelectorAll('.bar-button')].find((b) => b.textContent.startsWith(${JSON.stringify(bar)}))?.click(); true`);
   await sleep(250);
   if (review) {
@@ -985,7 +985,7 @@ for (const mobile of [false, true]) {
 {
   const p = await open();
   const bar = await p.eval("[...document.querySelectorAll('.bar-button')].map((x) => x.querySelector('span').textContent)");
-  check("settings: the bottom bar is Plan, Layers, Suggest, Save & load, Settings (UI-CLEANUP, the owner's choice 6; GPX renamed Export in 5efab18a, Files in v0.8.2, then Save & load in v0.9.0)", JSON.stringify(bar) === JSON.stringify(["Plan", "Layers", "Suggest", "Save & load", "Settings"]), JSON.stringify(bar));
+  check("settings: the bottom bar is Plan, Layers, Reports, Save & load, Settings (UI-CLEANUP, the owner's choice 6; GPX renamed Export in 5efab18a, Files in v0.8.2, then Save & load in v0.9.0)", JSON.stringify(bar) === JSON.stringify(["Plan", "Layers", "Reports", "Save & load", "Settings"]), JSON.stringify(bar));
   await openSheet(p, "Settings");
   check("settings: opening it puts the focus on its heading, \"Settings\"", (await p.eval("document.activeElement?.textContent")) === "Settings" && (await p.eval("document.activeElement?.tagName")) === "H2", await focused(p));
   const inSettings = await axNode(p, "#settings-contrast-switch");
@@ -1119,7 +1119,7 @@ const FIRST_HINT = "Place the starting point, then a stop or two along the way."
     const ax = await axNode(p, `#bar-${id}`);
     names.push([ax?.role, ax?.name]);
   }
-  check("plan: the five bar buttons are named exactly Plan, Layers, Suggest, Save & load, Settings", JSON.stringify(names) === JSON.stringify([["button", "Plan"], ["button", "Layers"], ["button", "Suggest"], ["button", "Save & load"], ["button", "Settings"]]), JSON.stringify(names));
+  check("plan: the five bar buttons are named exactly Plan, Layers, Reports, Save & load, Settings", JSON.stringify(names) === JSON.stringify([["button", "Plan"], ["button", "Layers"], ["button", "Reports"], ["button", "Save & load"], ["button", "Settings"]]), JSON.stringify(names));
   const hints = await p.eval("[...document.querySelectorAll('.bar-button')].map((x) => { const h = document.getElementById(x.getAttribute('aria-describedby')); return { hidden: h.hidden && h.getBoundingClientRect().height === 0, inButton: x.contains(h), text: h.textContent.length > 0 }; })");
   const described = [];
   for (const id of ["plan", "layers", "suggest", "gpx", "settings"]) described.push((await axNode(p, `#bar-${id}`))?.description?.length > 0);
@@ -1981,15 +1981,15 @@ async function saidInDialog(p, text) {
     return { expanded: b.getAttribute('aria-expanded'), hidden: document.getElementById(b.getAttribute('aria-controls'))?.hidden, focus: document.activeElement === b, said: document.querySelector('dialog.road-info .road-info-logged')?.textContent, kind: e?.kind, lat: e?.lat, at: e?.at }; })()`);
   check("road panel: Log for 311 shows its six problems (44 px or taller) under the row; a pick logs it, says Logged for 311 and where it is kept, and hides the list, the focus back on Log for 311",
     logList.expanded === "true" && logList.shown && logList.name === "Log for 311" && JSON.stringify(logList.kinds) === JSON.stringify(["Pothole", "Downed tree", "Vehicle parked in a bike lane", "Roadway or bikeway obstructed", "Streetlight out", "Something else"]) && logList.small === 0 &&
-      panelLogged.expanded === "false" && panelLogged.hidden && panelLogged.focus && /^Logged for 311: Pothole( on .+)?\. It is in your 311 checklist in Suggest\.$/.test(panelLogged.said ?? "") && panelLogged.kind === "pothole" && typeof panelLogged.lat === "number",
+      panelLogged.expanded === "false" && panelLogged.hidden && panelLogged.focus && /^Logged for 311: Pothole( on .+)?\. It is in your 311 checklist in Reports\.$/.test(panelLogged.said ?? "") && panelLogged.kind === "pothole" && typeof panelLogged.lat === "number",
     JSON.stringify({ logList, panelLogged }));
   await armInfoClose(p);
   await p.escape();
   const shutFirst = await infoClosed(p, "true");
-  // The 311 checklist in Suggest (Stephen, 2026-10-20: "a checklist of what needs to be logged to 311 and which website,
+  // The 311 checklist in Reports (Stephen, 2026-10-20: "a checklist of what needs to be logged to 311 and which website,
   // by location. Checking archives it."): a heading per website with its Open link, a checkbox per problem whose place
   // describes it, Copy report; checking it moves it to Archived.
-  await openSheet(p, "Suggest");
+  await openSheet(p, "Reports");
   const list311 = await p.eval(`(() => { const s = document.querySelector('#sheet-suggest section[aria-labelledby="suggest-311-heading"]'); const g = s?.querySelector('.log311-group'); const a = g?.querySelector('a'); const box = g?.querySelector('input[type=checkbox]');
     return { heading: s?.querySelector('h3')?.textContent, group: g?.querySelector('h4')?.textContent, link: a ? { text: a.textContent, href: a.getAttribute('href'), target: a.target, rel: a.rel } : null,
       label: box?.closest('label')?.textContent, place: document.getElementById(box?.getAttribute('aria-describedby') ?? '')?.textContent, copy: g?.querySelector('.log311-copy')?.textContent,
@@ -2798,22 +2798,23 @@ const levelSlider = `${EDITOR} input[type=range]`;
     closed311.hidden && closed311.focus && closed311.riding && picked.menu && picked.focus && picked.said === "Logged for 311: Downed tree." && picked.added === 1 &&
       picked.kind === "tree" && picked.where === "dc" && /^on R Street Northwest( near Q Street Northwest)?$/.test(picked.place ?? "") && picked.reported === null,
     JSON.stringify({ closed311, picked }));
-  // The note comes after (v0.7.0 "Go riding fixes" item 3): Add a note opens the entry as it will read on the 311 site,
-  // with a labelled note field, focused, that saves as it is typed.
-  await p.eval("[...document.querySelectorAll('.ride-311-said button')].find((b) => b.textContent === 'Add a note').click(); true");
+  // No note in a ride (Stephen, 2026-10-21: "Don't bother with a note as people use it riding"), and the menu shows
+  // every problem at once ("Expand 311 to show everything"): on a phone of Stephen's size (412 x 800 CSS px), the
+  // six are all inside the menu and the screen, with nothing to scroll.
+  await p.s("Emulation.setDeviceMetricsOverride", { width: 412, height: 800, deviceScaleFactor: 2, mobile: true });
+  await sleep(400);
+  await p.eval("document.querySelector('.ride-311-button').click(); true");
   await sleep(300);
-  await p.s("Input.insertText", { text: "Across the bike lane" });
-  await sleep(300);
-  const note311 = await p.eval(`(() => { const d = document.querySelector('.ride-report'); const input = d?.querySelector('input[type=text]');
-    const small = [...d.querySelectorAll('summary, input[type=text]')].filter((e) => e.getBoundingClientRect().height < 43.5).map((e) => e.textContent || e.tagName);
-    const e = ${logged}.reduce((a, b) => (a && a.at > b.at ? a : b), null);
-    return { open: d?.open, text: d?.querySelector('.ride-report-text')?.textContent, label: input?.closest('label')?.textContent.trim(), focus: document.activeElement === input, small, note: e?.note }; })()`);
-  check("ride 311: Add a note opens the entry as the site will get it (the problem, the place from the route's streets, Washington, DC, GPS, when, then the note) and a labelled note, focused, saved as typed; every control 44 px or taller",
-    note311.open && /^Downed tree\. Location: on R Street Northwest( near Q Street Northwest)?, Washington, DC\. GPS 38\.\d{5}, -7[67]\.\d{5}\. Seen [A-Z][a-z]{2} \d{1,2}, \d{1,2}:\d{2} [AP]M\. Across the bike lane\.$/.test(note311.text ?? "") &&
-      note311.label === "Note (optional)" && note311.focus && note311.note === "Across the bike lane" && note311.small.length === 0,
-    JSON.stringify(note311));
-  await p.eval("document.querySelector('.ride-report').open = false; true");
+  const fit311 = await p.eval(`(() => { const m = document.querySelector('.ride-311-menu'); const box = m.getBoundingClientRect();
+    const kinds = [...m.querySelectorAll('.ride-311-kind')].map((k) => k.getBoundingClientRect());
+    return { shown: !m.hidden, scrolls: m.scrollHeight > m.clientHeight + 1, kinds: kinds.length, inside: kinds.every((r) => r.top >= box.top - 0.5 && r.bottom <= box.bottom + 0.5 && r.bottom <= innerHeight && r.top >= 0),
+      note: !!document.querySelector('.ride-311-said button, .ride-report'), h: Math.round(box.height) }; })()`);
+  await p.escape();
   await sleep(200);
+  await p.s("Emulation.setDeviceMetricsOverride", { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
+  await sleep(400);
+  check("ride 311: on a phone the menu shows all six problems at once, nothing to scroll; no note to add after a pick",
+    fit311.shown && !fit311.scrolls && fit311.kinds === 6 && fit311.inside && !fit311.note, JSON.stringify(fit311));
   await p.eval("document.querySelector('#ride-heading').focus(); true");
   await sleep(200);
 
@@ -2926,6 +2927,15 @@ const levelSlider = `${EDITOR} input[type=range]`;
   check("ride: End ride clears the map kept for dead spots", cleared.bucket === false && cleared.stamp === null, JSON.stringify(cleared));
   const ranges = await p.eval(idb("store.count()"));
   check("ride: End ride empties the base map's kept ranges (IndexedDB)", sentinel === 1 && ranges === 0, JSON.stringify({ sentinel, ranges }));
+  // The pothole logged above is still to report: the summary says so, says where Reports is, and Open Reports
+  // closes the summary and opens Reports at the 311 checklist (Stephen, 2026-10-21).
+  const owed = await p.eval(`(() => { const box = document.querySelector('.ride-summary-311'); const b = box?.querySelector('button'); return { line: box?.querySelector('p')?.textContent, button: b?.textContent, tall: b ? Math.round(b.getBoundingClientRect().height) : 0 }; })()`);
+  await p.eval("document.querySelector('.ride-summary-311 button').click(); true");
+  await sleep(500);
+  const reports = await p.eval("({ summary: !!document.querySelector('.ride-summary'), sheet: !!document.querySelector('#sheet-suggest') && getComputedStyle(document.querySelector('#sheet-suggest')).display !== 'none', focus: document.activeElement?.id, list: !!document.querySelector('#sheet-suggest .log311-group') })");
+  check("ride: with a problem still to report, the summary says how many and where Reports is, and Open Reports (44 px) opens Reports at the 311 checklist, its heading focused",
+    /^1 problem still to report to 311\. Reports is in Go's Menu and Plan's bottom bar\.$/.test(owed.line ?? "") && owed.button === "Open Reports" && owed.tall >= 44 &&
+    !reports.summary && reports.sheet && reports.focus === "sheet-suggest-title" && reports.list, JSON.stringify({ owed, reports }));
   await p.close();
 }
 
@@ -4368,7 +4378,7 @@ const modeNow = "(() => [...document.querySelectorAll('.mode-switch')].filter((g
   await p.eval("document.querySelector('.go-menu').click(); true");
   await sleep(400);
   const menu = await p.eval("({ shown: !document.getElementById('sheet-settings').hidden, pages: [...document.querySelectorAll('#sheet-settings .menu-page')].map((x) => x.textContent.trim()), back: document.querySelector('#sheet-settings .sheet-back')?.textContent.trim() })");
-  check("go: Menu opens the Settings sheet as Go's menu, with Plan, Suggest and Save & load first, and a Close button", menu.shown && ["Plan", "Suggest", "Save & load"].every((x) => menu.pages.includes(x)) && menu.back === "Close", JSON.stringify(menu));
+  check("go: Menu opens the Settings sheet as Go's menu, with Plan, Reports and Save & load first, and a Close button", menu.shown && ["Plan", "Reports", "Save & load"].every((x) => menu.pages.includes(x)) && menu.back === "Close", JSON.stringify(menu));
   await p.eval("document.querySelector('#sheet-settings .sheet-back').click(); true");
   await sleep(300);
   await p.eval("document.querySelector('.go-sheet .ride-more').click(); true");
@@ -5046,7 +5056,7 @@ const failed = results.filter((r) => !r.ok);
 // Review mode's own lists (22c2) add six. End ride's slide (#235) adds two: a tap springs back, a slide ends the ride.
 // A lettered pin's card (no auto route, 2026-10-19) adds two: the card a tap opens, and the card the B key opens.
 // The map's info panel adds two at 1280 px: the i named for it, and what it opens.
-const EXPECTED = 669;
+const EXPECTED = 670;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

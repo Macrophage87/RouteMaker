@@ -11,11 +11,13 @@ import {
   LOG_MAX_BYTES,
   MAX_ENTRIES,
   NOTE_MAX,
+  STALE_DAYS,
   Report311LogStore,
   WHERE_PENDING,
   archived,
   capLog,
   entryText,
+  isStale,
   lookUpWhere,
   mergeLogs,
   newEntry,
@@ -89,6 +91,21 @@ test("the checklist: open entries by website, newest first; not looked up last; 
   );
   assert.equal(groups[0].site?.url, "https://311.dc.gov/citizen/s/");
   assert.deepEqual(archived([a, e]).map((x) => x.id), ["e"]);
+});
+
+test("stale: an open entry older than 30 days goes to Archived by itself, not reported; nothing is deleted", () => {
+  const now = new Date("2026-11-25T12:00:00Z");
+  const old = entry({ id: "old", at: "2026-10-20T12:00:00.000Z" });
+  const fresh = entry({ id: "fresh", at: "2026-11-20T12:00:00.000Z" });
+  const done = entry({ id: "done", at: "2026-11-24T12:00:00.000Z", reported: "2026-11-24T13:00:00.000Z" });
+  assert.equal(STALE_DAYS, 30);
+  assert.ok(isStale(old, now) && !isStale(fresh, now) && !isStale(done, now));
+  assert.deepEqual(openGroups([old, fresh, done], now).flatMap((g) => g.entries.map((e) => e.id)), ["fresh"]);
+  assert.deepEqual(archived([old, fresh, done], now).map((e) => e.id), ["done", "old"], "newest to Archived first");
+  assert.equal(old.reported, null, "kept as not reported");
+  const view = readFileSync(new URL("../Report311Log.tsx", import.meta.url), "utf8");
+  assert.match(view, /` Not reported; archived after \$\{STALE_DAYS\} days\.`/);
+  assert.match(view, /` Reported \$\{whenWords\(entry\.reported\)\}\.`/);
 });
 
 test("every website is an https address with a short name; Virginia's VDOT counties go to VDOT", () => {
@@ -282,14 +299,14 @@ test("the road panel's Log for 311: the road's name and its nearest point; an un
   assert.deepEqual(panelPlace("R Street Northeast", [-77, 38.9]), { words: "on R Street Northeast", point: [-77, 38.9] });
   assert.equal(panelPlace("unnamed path", [-77, 38.9]).words, null);
   assert.equal(panelPlace(null, [-77, 38.9]).words, null);
-  assert.equal(panelLoggedSaid(entry()), "Logged for 311: Pothole on R Street Northeast. It is in your 311 checklist in Suggest.");
+  assert.equal(panelLoggedSaid(entry()), "Logged for 311: Pothole on R Street Northeast. It is in your 311 checklist in Reports.");
   const panel = readFileSync(new URL("../RoadInfoDialog.tsx", import.meta.url), "utf8");
   assert.match(panel, /aria-expanded=\{logMenu\} aria-controls=\{logMenuId\} onClick=\{\(\) => setLogMenu\(!logMenu\)\}>\s*\{LOG_311_TEXT\}/);
   assert.match(panel, /report311Log\(\)\.add\(k\.kind, panelPlace\(ready\?\.title \?\? null, ready\?\.on_way \?\? request\.point\)\)/);
   assert.match(panel, /logButton\.current\?\.focus\(\);/, "the focus goes back to Log for 311 as its list hides");
 });
 
-test("the checklist in Suggest: a heading per website with its Open link, checkboxes, Archived folded", () => {
+test("the checklist in Reports: a heading per website with its Open link, checkboxes, Archived folded", () => {
   const sheets = readFileSync(new URL("../app/Sheets.tsx", import.meta.url), "utf8");
   assert.match(sheets, /<Report311Log \/>/);
   const view = readFileSync(new URL("../Report311Log.tsx", import.meta.url), "utf8");
@@ -299,4 +316,24 @@ test("the checklist in Suggest: a heading per website with its Open link, checkb
   assert.match(view, /<h3 id="suggest-311-heading" tabIndex=\{-1\}>\s*\{LOG_HEADING\}\s*<\/h3>/);
   assert.match(view, /\{`Open \$\{group\.site\.site\} \(new tab\)`\}/);
   assert.match(view, /target="_blank" rel="noopener noreferrer"/);
+});
+
+test("after End ride: how many are still to report, where Reports is, and Open Reports (Stephen, 2026-10-21)", async () => {
+  const { openCount, outstandingSaid, OPEN_REPORTS, REPORTS_WHERE } = await import("./report311Log.ts");
+  const now = new Date("2026-10-21T12:00:00Z");
+  const fresh = { ...entry(), id: "a", at: "2026-10-20T12:00:00Z", reported: null };
+  const done = { ...entry(), id: "b", at: "2026-10-20T12:00:00Z", reported: "2026-10-20T13:00:00Z" };
+  const old = { ...entry(), id: "c", at: "2026-08-01T12:00:00Z", reported: null };
+  assert.equal(openCount([fresh, done, old], now), 1);
+  assert.equal(outstandingSaid(1), "1 problem still to report to 311.");
+  assert.equal(outstandingSaid(3), "3 problems still to report to 311.");
+  assert.equal(REPORTS_WHERE, "Reports is in Go's Menu and Plan's bottom bar.");
+  assert.equal(OPEN_REPORTS, "Open Reports");
+  const { readFileSync } = await import("node:fs");
+  const card = readFileSync(new URL("../RideSummaryCard.tsx", import.meta.url), "utf8");
+  assert.match(card, /\{toReport > 0 && \(/);
+  assert.match(card, /onClick=\{onReports\}>\s*\{OPEN_REPORTS\}/);
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  assert.match(app, /onReports=\{rideEndReports\}/);
+  assert.match(app, /openView\("suggest", go \? null/);
 });

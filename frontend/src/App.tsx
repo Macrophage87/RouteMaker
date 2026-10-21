@@ -3415,6 +3415,15 @@ export function App() {
     if (mode === "go" && pointsRef.current.length > 0) clearPlan();
     else backToRideOpener();
   };
+  // Open Reports on the summary, while 311 problems are still to report: closed as Done closes it, then Reports opens,
+  // its Back to Plan's Start ride (Go's plan is emptied, as Done empties it).
+  const rideEndReports = () => {
+    endedRide.current = null;
+    setRideEnded(null);
+    const go = mode === "go";
+    if (go && pointsRef.current.length > 0) clearPlan();
+    openView("suggest", go ? null : rideOpener.current?.isConnected ? rideOpener.current : startRideRef.current);
+  };
   // A new destination or a ride started while the summary is up: the summary goes, so Done can't clear the next trip
   // and Undo can't ride the old one over it (end review M1). The destination, by value: Go's start follows the rider.
   const summaryEnd = useRef<string | null>(null);
@@ -4631,6 +4640,7 @@ export function App() {
           note={rideEnded.note}
           onUndo={undoEndRide}
           onDone={finishRide}
+          onReports={rideEndReports}
         />
       )}
       {riding && rideStart && (

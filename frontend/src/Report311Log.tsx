@@ -1,6 +1,6 @@
 /**
  * The 311 checklist (lib/report311Log.ts; Stephen, 2026-10-20: "put a checklist of what needs to be logged
- * to 311 and which website, by location. Checking archives it."), in Suggest, in Go's Menu and Plan alike.
+ * to 311 and which website, by location. Checking archives it."), in Reports, in Go's Menu and Plan alike.
  *
  * Each website is a heading with its one "Open" link; under it, its open entries as checkboxes, each with
  * where it is and "Copy report" (the words to paste into the site). Checking one archives it; Archived is a
@@ -16,7 +16,9 @@ import { useEffect, useId, useRef, useState } from "react";
 import { copyText, selectionCopy } from "./lib/sidebar.ts";
 import { gpsWords } from "./lib/report311.ts";
 import {
+  STALE_DAYS,
   archived,
+  isStale,
   entryPoint,
   entryText,
   kindLabel,
@@ -29,18 +31,19 @@ import {
 
 export const LOG_HEADING = "Your 311 checklist";
 export const LOG_HINT =
-  "Log a problem with a ride's 311 button, or right-click a road (press and hold on a phone) and choose Log for 311. Copy the report into the site, then check it off.";
+  `Log a problem with a ride's 311 button, or right-click a road (press and hold on a phone) and choose Log for 311. Copy the report into the site, then check it off. One left unchecked is archived after ${STALE_DAYS} days.`;
 export const LOG_EMPTY = "Nothing to report yet.";
 
-/** What the checkbox says: "Pothole, Oct 20, 10:29 AM". */
+/** What the checkbox says: the problem and when it was logged, "Pothole, Oct 20, 10:29 AM". */
 export function entryLabel(entry: LogEntry): string {
   return `${kindLabel(entry.kind)}, ${whenWords(entry.at)}`;
 }
 
-/** The line under it: the place words, then the GPS position. */
-export function entryPlace(entry: LogEntry): string {
+/** The line under it: the place words, the GPS position, the note; archived, when it was reported, or that it went stale. */
+export function entryPlace(entry: LogEntry, now = new Date()): string {
   const words = entry.place ? `${entry.place[0].toUpperCase()}${entry.place.slice(1)}. ` : "";
-  return `${words}${gpsWords(entryPoint(entry))}.${entry.note ? ` ${entry.note}` : ""}`;
+  const done = entry.reported !== null ? ` Reported ${whenWords(entry.reported)}.` : isStale(entry, now) ? ` Not reported; archived after ${STALE_DAYS} days.` : "";
+  return `${words}${gpsWords(entryPoint(entry))}.${entry.note ? ` ${entry.note}` : ""}${done}`;
 }
 
 function Entry({ entry, onCopy, onCheck }: { entry: LogEntry; onCopy: (entry: LogEntry) => void; onCheck: (entry: LogEntry, checked: boolean) => void }) {
@@ -100,12 +103,17 @@ export function Report311Log() {
   const groups = openGroups(entries);
   const old = archived(entries);
   const check = (entry: LogEntry, checked: boolean) => {
-    // The list the entry leaves: open ones in the order shown, or Archived.
-    const from = checked ? groups.flatMap((g) => g.entries) : old;
-    nextFocus.current = { id: focusAfter(from, entry.id), to: checked ? "heading" : "archived" };
+    // The list the entry leaves, if it moves: open ones in the order shown, or Archived. A stale one stays in
+    // Archived either way, so the focus stays on it.
+    const inArchive = old.some((e) => e.id === entry.id);
+    const staysArchived = inArchive && (checked || isStale(entry));
+    const from = inArchive ? old : groups.flatMap((g) => g.entries);
+    nextFocus.current = { id: staysArchived ? entry.id : focusAfter(from, entry.id), to: inArchive ? "archived" : "heading" };
     report311Log().setReported(entry.id, checked);
+    const kind = kindLabel(entry.kind);
+    const said = !checked ? (staysArchived ? `${kind} marked not reported.` : `${kind} back on the checklist.`) : inArchive ? `${kind} marked reported.` : `${kind} archived.`;
     setCopied("");
-    window.setTimeout(() => setCopied(checked ? `${kindLabel(entry.kind)} archived.` : `${kindLabel(entry.kind)} back on the checklist.`), 150);
+    window.setTimeout(() => setCopied(said), 150);
   };
   return (
     <section ref={section} aria-labelledby="suggest-311-heading" className="settings-group log311">

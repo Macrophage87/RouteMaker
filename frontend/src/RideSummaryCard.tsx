@@ -11,6 +11,7 @@ import { stressBarKey, stressBarLabel } from "./lib/quickFigures.ts";
 import { stressSegments } from "./lib/stressBar.ts";
 import { elevationSpan, summaryRows, type RideStats } from "./lib/rideStats.ts";
 import { METRES_PER_MILE, formatClimb } from "./lib/format.ts";
+import { OPEN_REPORTS, REPORTS_WHERE, openCount, outstandingSaid, useReport311Log } from "./lib/report311Log.ts";
 
 export const RIDE_SUMMARY_TITLE = "Ride ended";
 /** The stress shares are shown once this much was ridden along the route. */
@@ -54,6 +55,7 @@ export function RideSummaryCard({
   note,
   onDone,
   onUndo,
+  onReports,
 }: {
   stats: RideStats;
   endedAt: number;
@@ -61,6 +63,8 @@ export function RideSummaryCard({
   note?: string | null;
   onDone: () => void;
   onUndo: () => void;
+  /** Closes the summary, as Done does, and opens Reports at the 311 checklist. */
+  onReports: () => void;
 }) {
   const done = useRef<HTMLButtonElement>(null);
   const titleId = useId();
@@ -85,6 +89,8 @@ export function RideSummaryCard({
   const rows = summaryRows(stats, endedAt);
   const ridden = Object.values(stats.stressM).reduce((sum, m) => sum + (m ?? 0), 0);
   const segments = ridden >= STRESS_MIN_M ? stressSegments(stats.stressM) : [];
+  // Problems logged for 311 and not yet reported, on any ride: where to find them, and a way there.
+  const toReport = openCount(useReport311Log());
   return (
     <section className="ride-summary" aria-labelledby={titleId}>
       <h2 id={titleId}>{RIDE_SUMMARY_TITLE}</h2>
@@ -99,6 +105,16 @@ export function RideSummaryCard({
         tabIndex={scrolls ? 0 : undefined}
       >
         {note && <p className="hint">{note}</p>}
+        {toReport > 0 && (
+          <div className="ride-summary-311">
+            <p>
+              {outstandingSaid(toReport)} <span className="hint">{REPORTS_WHERE}</span>
+            </p>
+            <button type="button" className="secondary" onClick={onReports}>
+              {OPEN_REPORTS}
+            </button>
+          </div>
+        )}
         <dl className="ride-summary-figures">
           {rows.map((row) => (
             <div key={row.name}>

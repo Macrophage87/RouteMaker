@@ -4237,6 +4237,32 @@ details.zoom-notes {
   white-space: nowrap;
 }
 
+/* Problems still to report to 311: the count, where Reports is, and Open Reports (Stephen, 2026-10-21). */
+.ride-summary-311 {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.ride-summary-311 p {
+  margin: 0;
+  font-size: 16pt;
+  font-weight: 700;
+}
+
+.ride-summary-311 .hint {
+  display: block;
+  font-weight: 400;
+}
+
+.ride-summary-311 button {
+  min-height: 48px;
+  font-size: 16pt;
+}
+
 .ride-summary-actions {
   flex: none;
   display: flex;
@@ -5943,12 +5969,15 @@ details.fold > summary .icon {
   box-shadow: var(--shadow);
 }
 
+/* The 311 menu shows all six problems at once (Stephen, 2026-10-21: "Expand 311 to show everything"): it may
+   use the side buttons' whole height, up to the top of the map; it scrolls only where even that is too short. */
 .ride-311-menu {
   position: absolute;
   right: calc(100% + 10px);
   bottom: 0;
   width: min(22rem, calc(100vw - 96px));
-  max-height: calc(56vh - 80px);
+  max-height: 100%;
+  box-sizing: border-box;
   overflow-y: auto;
   padding: 10px 12px;
   background: var(--bg);
@@ -6005,7 +6034,7 @@ details.fold > summary .icon {
   font-size: 1rem;
 }
 
-/* What a 311 pick did ("Sent to DC 311."), under the button, with "Add a note" (Go riding fixes item 3). */
+/* What a 311 pick did ("Logged for 311: Pothole."), by the button. */
 .ride-311-said {
   width: min(16rem, calc(100vw - 96px));
   padding: 8px 10px;
@@ -6017,10 +6046,6 @@ details.fold > summary .icon {
 
 .ride-311-said p {
   margin: 0 0 6px;
-}
-
-.ride-311-said button {
-  min-height: 44px;
 }
 
 /* The road panel's "Suggest a change…": the ways to suggest, shown under it. */

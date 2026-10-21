@@ -175,12 +175,14 @@ You stay responsible for riding safely; the route can be wrong.
   downed tree, a vehicle parked in a bike lane, a roadway or bikeway obstructed, a streetlight
   out or something else. The entry keeps the road you are on, a cross street when one is within
   about 500 feet, your GPS position and the time, for example "on R Street Northwest near Q
-  Street Northwest. GPS 38.91234, -77.03890." "Add a note" adds a few words. Off a ride,
-  right-click a road on the map (press and hold on a phone) and choose Log for 311.
-- Your 311 checklist is in Suggest (Go's Menu, or Plan's bottom bar). It lists what you logged
+  Street Northwest. GPS 38.91234, -77.03890." One tap logs it; the menu shows all six at once,
+  and there is no note to type while riding. Off a ride, right-click a road on the map (press and hold on a phone) and choose Log for 311.
+- Your 311 checklist is in Reports (Go's Menu, or Plan's bottom bar; it was called Suggest). When
+  you end a ride with problems still to report, the ride's summary says how many and has Open Reports. It lists what you logged
   under the website that takes it (DC 311, MC311, PGC311, Baltimore 311, Arlington, Alexandria,
-  VDOT and the rest), each with Copy report. Paste the report into the site, then check the
-  entry off and it moves to Archived. Texting DC 311 (32311) is gone: DC's text line answers
+  VDOT and the rest), each with when you logged it and Copy report. Paste the report into the
+  site, then check the entry off and it moves to Archived, with when you reported it. One left
+  unchecked for 30 days moves to Archived by itself, marked not reported; nothing is deleted. Texting DC 311 (32311) is gone: DC's text line answers
   only "Welcome to DC311". Signed in, the checklist follows you to your other devices; signed
   out, it is this device's own, and what you logged signed out joins your account when you sign
   in. Where the server can send DC reports itself, a DC problem is sent at once and goes straight
