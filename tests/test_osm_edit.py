@@ -643,10 +643,12 @@ if "--confirm" in args:
     state.write_text(" ".join(loaded + [r["id"] for r in rows]))
     print("written")
     sys.exit(0)
-for r in rows:
-    if r["id"] not in loaded:
-        print(f"create: {r['id']} {r['name']}")
-print("<stdin>: owner, dry run")
+new = [r for r in rows if r["id"] not in loaded]
+for r in new:
+    print(f"create: {r['id']} {r['name']}")
+counts = {"create": len(new), "present": len(rows) - len(new)}
+print("<stdin>: owner, " + ", ".join(f"{n} {a}" for a, n in sorted(counts.items()) if n))
+print("dry run: nothing written; pass --confirm to write")
 """
 
 
@@ -713,7 +715,8 @@ def test_load_is_a_dry_run_without_confirm_and_checks_after(tmp_path, capsys, st
     assert "add --confirm" in capsys.readouterr().out
     (tmp_path / "loaded.broken").write_text("")
     assert osm_edit.main([*argv, "--confirm"]) == 3
-    assert "not active: create: x X" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "pc: the row is not active after the load" in err and "--to pc --confirm" in err
 
 
 def test_load_reaches_beta_over_ssh_through_its_compose_wrapper(tmp_path, monkeypatch, capsys):
@@ -739,3 +742,63 @@ def test_load_reaches_beta_over_ssh_through_its_compose_wrapper(tmp_path, monkey
         "--actor 42"
     )
     assert json.loads(sent)["rows"][0]["id"] == "x"
+
+
+def test_apply_checks_every_site_before_anything_goes_to_osm(
+    osm, tmp_path, capsys, stack, monkeypatch
+):
+    _edit(tmp_path)
+    _owner_file(tmp_path)
+    folder, compose = stack
+    monkeypatch.delenv("ROUTEMAKER_BETA_SSH", raising=False)
+    argv = ["apply", str(tmp_path), "--approved", "--actor", "42", "--stack", str(folder)]
+    assert osm_edit.main([*argv, "--compose", compose]) == 1  # pc and beta by default
+    assert "ROUTEMAKER_BETA_SSH" in capsys.readouterr().err
+    assert _puts(osm) == [] and not (tmp_path / "loaded").exists()
+
+
+def test_one_site_failing_does_not_stop_the_other(tmp_path, capsys, stack, monkeypatch):
+    fixture = _owner_file(tmp_path)
+    folder, compose = stack
+    real = osm_edit._loader
+
+    def beta_down_on_write(args, site, path, confirm):
+        if site == "beta":
+            if confirm:
+                raise osm_edit.EditError("ssh: connection refused")
+            return "<stdin>: owner, 1 create\n"
+        return real(args, site, path, confirm)
+
+    monkeypatch.setattr(osm_edit, "_loader", beta_down_on_write)
+    argv = ["load", str(fixture), "--actor", "42", "--stack", str(folder), "--compose", compose]
+    assert osm_edit.main([*argv, "--to", "beta", "--to", "pc", "--confirm"]) == 3
+    out = capsys.readouterr()
+    assert "active on pc" in out.out and (tmp_path / "loaded").read_text() == "x"
+    assert "beta: ssh: connection refused" in out.err and "--to beta --confirm" in out.err
+
+
+def test_the_load_check_needs_the_loaders_all_present_line(tmp_path, capsys, monkeypatch):
+    fixture = _owner_file(tmp_path)
+    for said in (
+        "",
+        "withdrawn: x X (an admin withdrew it; left alone)\n<stdin>: owner, 1 withdrawn\n",
+    ):
+        monkeypatch.setattr(osm_edit, "_loader", lambda *a, said=said, **k: said)
+        argv = ["load", str(fixture), "--actor", "42", "--to", "pc", "--confirm"]
+        assert osm_edit.main(argv) == 3
+        assert "not active after the load" in capsys.readouterr().err
+
+
+def test_an_edit_whose_name_says_owner_is_still_an_edit(osm, tmp_path, capsys, stack):
+    edit = _edit(tmp_path)
+    edit.rename(tmp_path / "old-owner-rd-town-101.json")
+    assert _apply(tmp_path, stack, "--approved") == 0
+    assert "Uploaded:" in capsys.readouterr().out
+    assert not (tmp_path / "loaded").exists()
+
+
+def test_load_refuses_an_agency_file(tmp_path, capsys):
+    fixture = tmp_path / "flashing-signals.json"
+    fixture.write_text(json.dumps({"version": 1, "source": "mdot-sha", "rows": []}))
+    assert osm_edit.main(["load", str(fixture), "--actor", "42", "--to", "pc"]) == 1
+    assert "not an owner flashing-signal file" in capsys.readouterr().err

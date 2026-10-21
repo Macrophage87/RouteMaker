@@ -7470,9 +7470,13 @@ Python 3.11 or later, standard library only.
     --live --actor <owner's Discord id>` uploads every OSM edit in the draft folder (one
     corner per folder), then loads the owner row on the PC live stack (`~/src/wt/t9`) and on
     beta (over ssh, through `scripts/beta/beta-compose.sh` in beta's checkout; the host name
-    comes from `ROUTEMAKER_BETA_SSH` or `--beta-host`, never the repo). Each site gets a dry
-    run, the write, and a second dry run that must find the row already there. If the OSM
-    side stops, nothing is loaded; rerunning the line skips what already went up. `--to pc`
+    comes from `ROUTEMAKER_BETA_SSH` or `--beta-host`, never the repo; the PC folder from
+    `ROUTEMAKER_LIVE_DIR` or `--stack`). It uploads every edit in the folder, so keep one corner
+    per folder. Every site gets a dry run before anything is written anywhere, so a wrong actor
+    or an unreachable site stops it before OSM. Then come the OSM uploads, the write at each
+    site, and a second dry run that must report every row present. If the OSM side stops,
+    nothing is loaded; a site that fails does not stop the other, and the line to rerun for it
+    is printed; rerunning skips what already went up. `--to pc`
     or `--to beta` limits the sites. `load <file> --actor <id> [--confirm]` does our map
     alone, for a row OSM needs no edit for.
   - The drafts print every diff and the `apply` line. `upload` on its own takes

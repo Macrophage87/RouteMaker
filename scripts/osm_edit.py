@@ -554,7 +554,7 @@ def _report_drafts(paths: list[Path], extra: list[str]) -> int:
     for line in extra:
         print(line)
     folder = paths[0].parent
-    owner_row = any(folder.glob("*-owner-*.json"))
+    owner_row = any(_is_owner_file(path) for path in folder.glob("*.json"))
     print(
         "\nAfter the owner approves, one line does OSM"
         + (" and our map" if owner_row else "")
@@ -779,8 +779,9 @@ def upload_all(paths: list[Path], *, live: bool, rerun_ok: bool = False) -> int:
 # input because the api image has no fixtures/ (load_flashing_signals docstring). The PC's
 # live stack is a compose folder here; beta is reached over ssh and runs it from its own
 # checkout through beta-compose.sh (docs/BETA-RUNBOOK.md, sections 0 and 1). The ssh host
-# name stays out of the repo: it comes from ROUTEMAKER_BETA_SSH or --beta-host.
-DEFAULT_STACK = Path.home() / "src" / "wt" / "t9"
+# name stays out of the repo: it comes from ROUTEMAKER_BETA_SSH or --beta-host. The PC's
+# stack folder can move: ROUTEMAKER_LIVE_DIR or --stack.
+DEFAULT_STACK = Path(os.environ.get("ROUTEMAKER_LIVE_DIR", Path.home() / "src" / "wt" / "t9"))
 SITES = ("pc", "beta")
 BETA_CD = '. "$HOME/routemaker-beta-state/vars.sh" && cd "$RM_SRC" && scripts/beta/beta-compose.sh'
 NOT_YET = ("create:", "update:", "restore:", "withdrawn:")
@@ -814,29 +815,71 @@ def _loader(args: argparse.Namespace, site: str, fixture: Path, confirm: bool) -
     return done.stdout
 
 
-def load(args: argparse.Namespace, fixture: Path, *, confirm: bool) -> int:
-    """For each site: a dry run; with confirm, the write and then a dry run again that must
-    find every row already there (the read-back for our side)."""
-    rows = json.loads(fixture.read_text()).get("rows", [])
+def _is_owner_file(path: Path) -> bool:
+    try:
+        document = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return False
+    return isinstance(document, dict) and document.get("source") == "owner" and "rows" in document
+
+
+def _owner_rows(fixture: Path) -> list[dict]:
+    if not _is_owner_file(fixture):
+        raise EditError(f"{fixture.name} is not an owner flashing-signal file")
+    rows = json.loads(fixture.read_text())["rows"]
     if not rows:
         raise EditError(f"{fixture.name} has no rows")
-    worst = 0
+    return rows
+
+
+def _all_present(output: str, rows: list[dict]) -> bool:
+    """The loader's dry run finds every row active and unchanged: its summary line is
+    '<stdin>: owner, N present' and nothing else (load_flashing_signals, handle)."""
+    lines = output.splitlines()
+    return not any(line.startswith(NOT_YET) for line in lines) and any(
+        line.endswith(f": owner, {len(rows)} present") for line in lines
+    )
+
+
+def _preflight(args: argparse.Namespace, fixture: Path) -> None:
+    """A dry run at every site, before anything is written anywhere: a wrong actor, a missing
+    ssh host or an unreachable site stops here, not after the OSM upload."""
     for site in args.to:
         print(f"Our map on {site}, dry run:")
         _loader(args, site, fixture, confirm=False)
-        if not confirm:
-            print("Nothing written; add --confirm to load it.")
-            continue
-        print(f"Loading on {site}:")
-        _loader(args, site, fixture, confirm=True)
-        after = _loader(args, site, fixture, confirm=False)
-        left = [line for line in after.splitlines() if line.startswith(NOT_YET)]
-        if left:
-            print(f"Check FAILED on {site}: not active: " + "; ".join(left), file=sys.stderr)
-            worst = 3
-        else:
-            print(f"Checked: {len(rows)} row(s) active on {site}, from the next plan")
-    return worst
+
+
+def load(args: argparse.Namespace, fixture: Path, *, confirm: bool, checked: bool = False) -> int:
+    """For each site: a dry run (unless done already); with confirm, the write and then a dry
+    run again that must find every row there (the read-back for our side). A site that
+    fails does not stop the next one."""
+    rows = _owner_rows(fixture)
+    if not checked:
+        _preflight(args, fixture)
+    if not confirm:
+        print("Nothing written; add --confirm to load it.")
+        return 0
+    done, failed = [], []
+    for site in args.to:
+        try:
+            print(f"Loading on {site}:")
+            _loader(args, site, fixture, confirm=True)
+            if not _all_present(_loader(args, site, fixture, confirm=False), rows):
+                raise EditError("the row is not active after the load")
+            done.append(site)
+        except EditError as e:
+            failed.append(f"{site}: {e}")
+    if done:
+        print(f"Checked: {len(rows)} row(s) active on {', '.join(done)}, from the next plan")
+    if failed:
+        print("Check FAILED: " + "; ".join(failed), file=sys.stderr)
+        again = " ".join(f"--to {f.split(':')[0]}" for f in failed)
+        print(
+            f"Rerun for the rest: load {fixture} --actor {args.actor} {again} --confirm",
+            file=sys.stderr,
+        )
+        return 3
+    return 0
 
 
 def apply(args: argparse.Namespace) -> int:
@@ -845,7 +888,7 @@ def apply(args: argparse.Namespace) -> int:
     if not folder.is_dir():
         raise EditError(f"{folder} is not a draft folder")
     files = sorted(p for p in folder.glob("*.json") if not p.name.endswith(".uploaded.json"))
-    fixtures = [p for p in files if "-owner-" in p.name]
+    fixtures = [p for p in files if _is_owner_file(p)]
     edits = [p for p in files if p not in fixtures]
     if len(fixtures) > 1:
         raise EditError(f"more than one owner file in {folder}: one corner per folder")
@@ -853,11 +896,17 @@ def apply(args: argparse.Namespace) -> int:
         raise EditError("loading our row needs --actor (the owner's Discord id)")
     if not edits and not fixtures:
         raise EditError(f"nothing to apply in {folder}")
+    for path in edits:
+        if problem := edit_problem(load_edit(path)):
+            raise EditError(f"{path.name}: {problem}")
+    if fixtures:
+        _owner_rows(fixtures[0])
+        _preflight(args, fixtures[0])
     if edits and (code := upload_all(edits, live=args.live, rerun_ok=True)):
         print("Our map not loaded: the OSM side stopped first.", file=sys.stderr)
         return code
     if fixtures:
-        return load(args, fixtures[0], confirm=True)
+        return load(args, fixtures[0], confirm=True, checked=True)
     return 0
 
 
@@ -917,10 +966,12 @@ def main(argv: list[str] | None = None) -> int:
         step.add_argument("--compose", default="docker compose", help=argparse.SUPPRESS)
         step.add_argument("--beta-host", help="beta's ssh host (or ROUTEMAKER_BETA_SSH)")
         if kind == "apply":
-            step.add_argument("--approved", action="store_true")
-            step.add_argument("--live", action="store_true")
+            step.add_argument(
+                "--approved", action="store_true", help="the owner approved this folder"
+            )
+            step.add_argument("--live", action="store_true", help="live OSM, on the owner's go")
         else:
-            step.add_argument("--confirm", action="store_true")
+            step.add_argument("--confirm", action="store_true", help="write (dry run without it)")
     args = parser.parse_args(argv)
     if args.command in ("apply", "load"):
         args.to = list(dict.fromkeys(args.to or SITES))
@@ -946,7 +997,7 @@ def main(argv: list[str] | None = None) -> int:
             return show(edit)
         return check(args.edit, edit)
     except EditError as error:
-        prefix = "Not uploaded" if args.command in ("upload", "apply") else "Stopped"
+        prefix = "Not uploaded" if args.command == "upload" else "Stopped"
         print(f"{prefix}: {error}", file=sys.stderr)
         return 1
 
