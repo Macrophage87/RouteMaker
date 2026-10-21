@@ -753,7 +753,7 @@ export function roadLabelPaint(strong = accessibilityOn()) {
  * an with the same font so they are readable. Cities too." The base map's `places_subplace` (neighbourhoods) and
  * `places_locality` (cities and towns) are drawn here in the street names' face (Atkinson Hyperlegible Next SemiBold,
  * bundled, lib/mapGlyphs.ts), in mixed case without the letter spacing, dark on the street names' white halo. A town
- * reads above a neighbourhood (larger, darker), and both stay under the station names' 18 px (lib/railLayer.ts), the
+ * reads above a neighbourhood (larger, darker), and both stay under the station names' 18 px (v0.11.0, lib/railLayer.ts), the
  * key wayfinders. A neighbourhood is 13 px at zoom 12, the street names' 15 px at 14, 16 px from 17; a town 13 px at
  * zoom 8, 15 px at 11, 16 at 14, 17 from 17; a large one (the base map's population_rank 9 or more: Silver Spring,
  * Wheaton) 15 px at 8 and 17 px from 11, as the base map draws it larger too. The sizes do not change in a ride (the
