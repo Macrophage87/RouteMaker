@@ -32,7 +32,7 @@ length is, as for the CBD and the Zoo.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from functools import lru_cache
 from pathlib import Path
 
@@ -94,16 +94,22 @@ def is_link(tags: dict[str, str]) -> bool:
     )
 
 
-def open_ways(ways: Iterable, areas: list[Polygon] | None = None) -> set[int]:
+def open_ways(
+    ways: Iterable,
+    areas: list[Polygon] | None = None,
+    rule: Callable[..., bool] | None = None,
+) -> set[int]:
     """Write `bicycle=yes` on the working tags of every circle-park walkway the rule
     opens, and of every crossing that touches one (so the walkways meet the street
-    instead of being an island the router cannot reach), and return their ids."""
+    instead of being an island the router cannot reach), and return their ids.
+    `rule` replaces `opens` for another area's walkways (`routemaker.capitolgrounds`)."""
+    rule = rule or opens
     # Only walkways are read past their tags: the rest of the region's ways never are.
     ways = [way for way in ways if way.tags.get("highway") in OPENED_HIGHWAY]
     opened: set[int] = set()
     nodes: set[int] = set()
     for way in ways:
-        if opens(way.tags, way.coordinates, areas):
+        if rule(way.tags, way.coordinates, areas):
             opened.add(way.osm_id)
             nodes.update(way.node_ids)
     links = {
