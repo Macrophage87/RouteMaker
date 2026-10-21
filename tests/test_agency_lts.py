@@ -573,6 +573,32 @@ def test_a_mapped_facility_sets_ddots_2020_rating_aside() -> None:
     assert agency_lts.apply(lane, [AgencyRating("ddot", 4)]).tier is Stress.LTS4
 
 
+def test_a_painted_lane_on_a_road_ddot_rated_higher_is_lts_2_5() -> None:
+    """The owner, 2026-10-21: "In some cases where it might be the case that it's a higher
+    stress bike lane, let's put them at 2.5" ("Some parts of R street for instance")."""
+    calm = StressResult(Stress.LTS1, "bike lane, 25 mph", ())
+    result = agency_lts.apply(
+        calm, [AgencyRating("ddot", 4)], facility_mapped=True, painted_lane=True
+    )
+    assert (result.tier, result.half) == (Stress.LTS2, True)
+    assert (result.formula_tier, result.formula_rule) == (Stress.LTS1, "bike lane, 25 mph")
+    held = json.loads(writers._ratings_json(result))
+    assert held["used"] == agency_lts.PAINTED_LANE_USED
+    rows = segment_info.rating_rows({"stress_ratings": json.dumps(held)})
+    assert any(row["label"] == "Used" and "LTS 2.5" in row["value"] for row in rows)
+    # DDOT at 2.5 or below, a formula already at 2.5 or above, or a protected lane: the formula's.
+    for ddot, formula, painted in (
+        (2.5, Stress.LTS1, True),
+        (4, Stress.LTS3, True),
+        (4, Stress.LTS1, False),
+    ):
+        kept = agency_lts.apply(
+            StressResult(formula, "x", ()), [AgencyRating("ddot", ddot)], facility_mapped=True,
+            painted_lane=painted,
+        )  # fmt: skip
+        assert (kept.tier, kept.half) == (formula, False), (ddot, formula, painted)
+
+
 def test_a_set_aside_rating_gives_way_to_the_next_agency() -> None:
     lane = StressResult(Stress.LTS2, "bike lane, 25 mph", ())
     both = [AgencyRating("ddot", 4), AgencyRating("mdot-sha", 3)]

@@ -709,6 +709,8 @@ _USED_WORDS = {
     "rural floor": "raised to LTS 2: rural roads open to cars are LTS 2 at least",
     agency_lts.FORMULA_USED: "RouteMaker's formula is used: the agency's rating predates the "
     "bike facility mapped here",
+    agency_lts.PAINTED_LANE_USED: "set to LTS 2.5: the agency's rating predates the painted "
+    "lane mapped here, but a lane on a road it rated this busy may still be stressful",
 }
 
 
@@ -768,10 +770,12 @@ def rating_rows(row: dict) -> list[dict]:
             value += f" ({rule_words(str(held['formula_rule']))})"
         rows.append(_row("RouteMaker's formula", value, CLASSIFIER))
     if used in _USED_WORDS:
-        whose = {agency_lts.COMMUNITY: COMMUNITY, agency_lts.FORMULA_USED: CLASSIFIER}.get(
-            used, OWNER
-        )
-        rows.append(_row("Used", _USED_WORDS[used].capitalize(), whose))
+        whose = {
+            agency_lts.COMMUNITY: COMMUNITY,
+            agency_lts.FORMULA_USED: CLASSIFIER,
+            agency_lts.PAINTED_LANE_USED: CLASSIFIER,
+        }.get(used, OWNER)
+        rows.append(_row("Used", _USED_WORDS[used][:1].upper() + _USED_WORDS[used][1:], whose))
     return rows
 
 

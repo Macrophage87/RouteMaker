@@ -245,6 +245,8 @@ def _ratings_json(stress: StressResult) -> str | None:
 
     from routemaker.agency_lts import (
         FORMULA_USED,
+        PAINTED_LANE_REASON,
+        PAINTED_LANE_USED,
         adjustment_source,
         chosen,
         set_aside,
@@ -266,6 +268,8 @@ def _ratings_json(stress: StressResult) -> str | None:
         }
     elif RURAL_FLOOR_RULE in (stress.rule or ""):
         used = "rural floor"
+    elif PAINTED_LANE_REASON in (stress.rule or ""):
+        used = PAINTED_LANE_USED
     else:
         # A rating set aside (DDOT's 2020 layer where a bike facility is mapped) is not used:
         # the next agency's is, or the formula's where none is left.

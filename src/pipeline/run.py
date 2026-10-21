@@ -2399,6 +2399,7 @@ def build_handlers(
                     current,
                     ratings,
                     facility_mapped=facility.facility(tags) is not facility.Facility.NONE,
+                    painted_lane=facility.facility(tags) is facility.Facility.LANE,
                 ),
                 context.class_tags_by_way.get(way_id, tags),
                 urban=way_id in reference.urban_way_ids,
