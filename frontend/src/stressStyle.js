@@ -1133,7 +1133,8 @@ function byZoom(full, faint, busy, hidden = 0, zoomedOut = null) {
  * filled the grid with colour. A plain street (no bike facility, not a trail, paved, open to cars) is drawn
  * thinner at z12 and z13, `line` and `casing` scaling its line and its casing's extra; a bike lane, a path, a trail,
  * an unpaved road and a car-free street keep their widths, so they stand out of the grid as the ways a rider
- * looks for. A rural road is a plain street too and stays drawn, every one, only thinner: a lone line still reads.
+ * looks for. Only a street the tiles mark `dense` (a city grid) is thinned; a rural road keeps its full width, as
+ * does every street in a tile drawn before the server marked them.
  * The busy roads are faint there already (FAINT). From SOLID_MIN_ZOOM (14) every line is its full width. The
  * casing's dark edge thins with the line (half a pixel a side at z12), which is what lifts the grid's dark mesh;
  * with the accessibility switch on it stays a full pixel a side, as on the zoomed-out trails (ZOOMED_OUT_MIN_PX).
@@ -1145,6 +1146,9 @@ export const STREET_THIN_SCALE = {
 const STREET_THIN_LAST_ZOOM = 13;
 const isPlainStreet = [
   "all",
+  // In a dense street grid: the tiles mark a z12-13 street `dense` where its neighbourhood is a city grid
+  // (core/stress_tiles.py), so a rural road keeps its full width (the owner, 2026-10-21: "City only").
+  ["==", ["get", "dense"], true],
   // The tiles carry `facility` "none" on a street with none (the column's default), and none at all on an older table.
   ["match", ["coalesce", ["get", "facility"], "none"], "none", true, false],
   ["!=", ["get", "trail"], true],
