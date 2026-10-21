@@ -12,8 +12,9 @@ of conduct), so there is no batch mode and at most one retry after a conflict.
     python scripts/osm_edit.py show edit.json                         # the diff, no upload
     python scripts/osm_edit.py upload edit.json --approved            # dev server
     python scripts/osm_edit.py check edit.json                        # re-run the smoke test
-    python scripts/osm_edit.py draft-beacon --name ... --lat ... --lon ... --evidence ... --out DIR
-    python scripts/osm_edit.py draft-signal --name ... --lat ... --lon ... --out DIR
+    python scripts/osm_edit.py draft-beacon --name ... --place ... --lat ... --lon ...
+        --evidence ... --out DIR
+    python scripts/osm_edit.py draft-signal --name ... --place ... --lat ... --lon ... --out DIR
     python scripts/osm_edit.py upload edit.json --approved --live     # live OSM, owner's go
 
 An edit file:
@@ -519,21 +520,26 @@ def fetch_area(server: str, lat: float, lon: float, reach_m: float) -> ET.Elemen
     return ET.fromstring(body)
 
 
-def _slug(name: str) -> str:
-    words = "".join(c if c.isalnum() else " " for c in name.lower()).split()
-    if not words:
-        raise EditError("--name must name the place, e.g. 'Connecticut Ave and Washington St'")
-    return "-".join(w for w in words if w != "and")
+def _slug(name: str, place: str) -> str:
+    words = "".join(c if c.isalnum() else " " for c in f"{name} {place}".lower()).split()
+    slug = "-".join(w for w in words if w != "and")[:80].strip("-")
+    if not slug:
+        raise EditError(
+            "--name and --place must name the corner, e.g. 'Connecticut Ave and "
+            "Washington St' in 'Kensington'"
+        )
+    return slug
 
 
-def _write_edit(out: Path, name: str, edit: dict) -> Path:
-    problem = edit_problem(edit)
-    if problem:
-        raise EditError(problem)
-    path = out / name
-    if path.exists():
-        raise EditError(f"{path} already exists; draft into a new folder or remove it")
-    path.write_text(json.dumps(edit, indent=2) + "\n")
+def _claim(*paths: Path) -> None:
+    """Refuse before writing anything if any draft would overwrite a file."""
+    taken = [str(path) for path in paths if path.exists()]
+    if taken:
+        raise EditError(f"already exists: {', '.join(taken)}; draft into a new folder")
+
+
+def _write_json(path: Path, value: dict) -> Path:
+    path.write_text(json.dumps(value, indent=2) + "\n")
     return path
 
 
@@ -552,6 +558,29 @@ def _report_drafts(paths: list[Path], extra: list[str]) -> int:
     return 0
 
 
+def _fixture_dirs() -> list[Path]:
+    # The repo's own when run from a checkout; the PC's checkout when run from the copy
+    # outside it (docs/OPERATIONS.md, "Fixing OSM from a ride").
+    candidates = [
+        REPO / "fixtures" / "flashing-signals",
+        Path.home() / "src" / "RouteMaker" / "fixtures" / "flashing-signals",
+    ]
+    return [path for path in candidates if path.is_dir()]
+
+
+def _nearby_owner_beacons(lat: float, lon: float) -> list[str] | None:
+    """Owner beacon rows already checked in near the point, or None if none could be read."""
+    dirs = _fixture_dirs()
+    if not dirs:
+        return None
+    found = []
+    for path in sorted(dirs[0].glob("*.json")):
+        for row in json.loads(path.read_text()).get("rows", []):
+            if _metres(lat, lon, row["lat"], row["lon"]) <= 2 * BEACON_REACH_M:
+                found.append(f"{row['id']} ({path.name})")
+    return found
+
+
 def draft_beacon(args: argparse.Namespace) -> int:
     """A signal that runs as a flashing beacon: OSM's signal nodes there become blinkers,
     and an owner flashing-signal row is written for our own map (no rebuild)."""
@@ -568,71 +597,113 @@ def draft_beacon(args: argparse.Namespace) -> int:
             f"OSM has no highway=traffic_signals node within {BEACON_REACH_M:.0f} m; "
             "check the point, or this is a missing signal (draft-signal), not a beacon"
         )
-    slug = _slug(args.name)
-    out = args.out
-    out.mkdir(parents=True, exist_ok=True)
-    paths, skipped = [], []
-    for node in nodes:
-        tags = current_tags(node)
-        if tags.get("traffic_signals") == "blinker":
-            skipped.append(node.get("id"))
-            continue
-        edit = {
+    slug = _slug(args.name, args.place)
+    label = f"{args.name}, {args.place}"
+    today = datetime.now(UTC).date().isoformat()
+    nearby = _nearby_owner_beacons(args.lat, args.lon)
+    to_edit = [n for n in nodes if current_tags(n).get("traffic_signals") != "blinker"]
+    skipped = [n.get("id") for n in nodes if n not in to_edit]
+    edits = {
+        args.out / f"{slug}-{node.get('id')}.json": {
             "server": args.server,
             "element": "node",
             "id": int(node.get("id")),
-            "expect": {"traffic_signals": tags.get("traffic_signals")},
+            "expect": {"traffic_signals": current_tags(node).get("traffic_signals")},
             "set": {"traffic_signals": "blinker"},
-            "comment": f"{args.name}: signal runs as a flashing beacon (surveyed)",
+            "comment": f"{label}: signal runs as a flashing beacon (surveyed)",
             "source": "survey",
         }
-        paths.append(_write_edit(out, f"{slug}-{node.get('id')}.json", edit))
-    beacon = {
-        "version": 1,
-        "source": "owner",
-        "decided": datetime.now(UTC).date().isoformat(),
-        "decided_by": "the deployment owner",
-        "status": "Load with load_flashing_signals (dry run first); takes effect at the next "
-        "plan, no rebuild.",
-        "rows": [
-            {
-                "id": slug,
-                "name": args.name,
-                "lon": round(args.lon, 7),
-                "lat": round(args.lat, 7),
-                "evidence": args.evidence,
-            }
-        ],
+        for node in to_edit
     }
-    fixture = out / f"beacon-{slug}.json"
-    if fixture.exists():
-        raise EditError(f"{fixture} already exists; draft into a new folder or remove it")
-    fixture.write_text(json.dumps(beacon, indent=2) + "\n")
-    extra = [
-        f"\nOur map: {fixture.name} (load_flashing_signals, then commit it to "
-        "fixtures/flashing-signals/)"
-    ]
+    for edit in edits.values():
+        if problem := edit_problem(edit):
+            raise EditError(problem)
+    # Named as the checked-in owner files are, so it can be committed as it is.
+    fixture = args.out / f"{today}-owner-{slug}.json"
+    _claim(fixture, *edits)
+    args.out.mkdir(parents=True, exist_ok=True)
+    paths = [_write_json(path, edit) for path, edit in edits.items()]
+    extra = []
+    if nearby:
+        # A second owner row at the same corner would be a duplicate: owner loads never
+        # withdraw one. The OSM edits still stand on their own.
+        extra.append(
+            f"\nOur map already has an owner beacon here: {', '.join(nearby)}. No new row written."
+        )
+    else:
+        _write_json(
+            fixture,
+            {
+                "version": 1,
+                "source": "owner",
+                "decided": today,
+                "decided_by": "the deployment owner",
+                "status": "Load with load_flashing_signals (dry run first); takes effect at the "
+                "next plan, no rebuild.",
+                "rows": [
+                    {
+                        "id": slug,
+                        "name": label,
+                        "lon": round(args.lon, 7),
+                        "lat": round(args.lat, 7),
+                        "evidence": args.evidence,
+                    }
+                ],
+            },
+        )
+        extra.append(
+            f"\nOur map: {fixture.name} (load_flashing_signals, then commit it to "
+            "fixtures/flashing-signals/)"
+        )
+        if nearby is None:
+            extra.append(
+                "Could not read the checked-in beacon files: check for a row here before loading."
+            )
     if skipped:
         extra.append(f"Already blinkers on OSM, left alone: {', '.join(skipped)}")
     if not paths:
         print("\n".join(extra))
-        print("OSM already has every signal there as a blinker: only our map needs the row.")
+        print("OSM already has every signal there as a blinker.")
         return 0
     return _report_drafts(paths, extra)
+
+
+def _way_tag(way: ET.Element, key: str) -> str:
+    tag = way.find(f"tag[@k='{key}']")
+    return tag.get("v") if tag is not None else ""
+
+
+def _junction_nodes(root: ET.Element) -> set[str]:
+    """Nodes where streets meet: on three or more highway ways, inside one way and on
+    another, or ending two ways of different streets. Two ways that just continue one
+    street end to end (a split at a bridge or a tag change) are not a junction."""
+    ways: dict[str, list[tuple[bool, str]]] = {}
+    for way in root.iter("way"):
+        if way.find("tag[@k='highway']") is None:
+            continue
+        refs = [nd.get("ref") for nd in way.iter("nd")]
+        street = _way_tag(way, "name") or _way_tag(way, "ref") or way.get("id")
+        closed = len(refs) > 1 and refs[0] == refs[-1]
+        for ref in dict.fromkeys(refs):
+            at_end = not closed and ref in (refs[0], refs[-1])
+            ways.setdefault(ref, []).append((at_end, street))
+    junctions = set()
+    for ref, uses in ways.items():
+        if len(uses) >= 3 or (
+            len(uses) == 2 and (not uses[0][0] or not uses[1][0] or uses[0][1] != uses[1][1])
+        ):
+            junctions.add(ref)
+    return junctions
 
 
 def draft_signal(args: argparse.Namespace) -> int:
     """A working signal OSM lacks: the junction node nearest the point gets
     highway=traffic_signals."""
     root = fetch_area(args.server, args.lat, args.lon, JUNCTION_REACH_M)
-    uses: dict[str, int] = {}
-    for way in root.iter("way"):
-        if way.find("tag[@k='highway']") is not None:
-            for nd in {nd.get("ref") for nd in way.iter("nd")}:
-                uses[nd] = uses.get(nd, 0) + 1
+    junctions = _junction_nodes(root)
     best, best_m = None, JUNCTION_REACH_M
     for node in root.iter("node"):
-        if uses.get(node.get("id"), 0) < 2:
+        if node.get("id") not in junctions:
             continue
         m = _metres(args.lat, args.lon, float(node.get("lat")), float(node.get("lon")))
         if m <= best_m:
@@ -646,17 +717,21 @@ def draft_signal(args: argparse.Namespace) -> int:
         raise EditError(
             f"node {best.get('id')} is highway={tags['highway']}; change that by hand in an editor"
         )
-    args.out.mkdir(parents=True, exist_ok=True)
     edit = {
         "server": args.server,
         "element": "node",
         "id": int(best.get("id")),
         "expect": {"highway": None},
         "set": {"highway": "traffic_signals"},
-        "comment": f"{args.name}: traffic signal (surveyed)",
+        "comment": f"{args.name}, {args.place}: traffic signal (surveyed)",
         "source": "survey",
     }
-    path = _write_edit(args.out, f"{_slug(args.name)}-{best.get('id')}.json", edit)
+    if problem := edit_problem(edit):
+        raise EditError(problem)
+    path = args.out / f"{_slug(args.name, args.place)}-{best.get('id')}.json"
+    _claim(path)
+    args.out.mkdir(parents=True, exist_ok=True)
+    _write_json(path, edit)
     extra = [
         f"\nJunction node {best.get('id')}, {best_m:.0f} m from the point. A dual carriageway "
         "meets a street at two nodes: if so, draft the other one too."
@@ -680,6 +755,7 @@ def main(argv: list[str] | None = None) -> int:
     ):
         draft = commands.add_parser(kind, help=helptext)
         draft.add_argument("--name", required=True, help="e.g. 'Connecticut Ave and Washington St'")
+        draft.add_argument("--place", required=True, help="the town or area, e.g. 'Kensington'")
         draft.add_argument("--lat", type=float, required=True)
         draft.add_argument("--lon", type=float, required=True)
         draft.add_argument("--server", choices=sorted(SERVERS), default="live")
@@ -704,10 +780,23 @@ def main(argv: list[str] | None = None) -> int:
             if not args.approved:
                 raise EditError("upload needs --approved: the owner approves each edit file")
             edits = [(path, load_edit(path)) for path in args.edit]
-            for path, edit in edits:
+            # A rerun of the same line after a failure picks up where it stopped.
+            pending = [(path, edit) for path, edit in edits if not _result_path(path).exists()]
+            for path, _ in edits:
+                if (path, _) not in pending:
+                    print(f"{path.name}: already uploaded, skipped")
+            if not pending:
+                raise EditError("every file is already uploaded; one approval, one upload")
+            for done, (path, edit) in enumerate(pending):
                 print(f"{path.name}:")
-                code = upload(path, edit, live=args.live)
+                try:
+                    code = upload(path, edit, live=args.live)
+                except EditError as e:
+                    print(f"Not uploaded: {e}", file=sys.stderr)
+                    code = 1
                 if code:
+                    rest = " ".join(str(p) for p, _ in pending[done:])
+                    print(f"Stopped. Still to upload: {rest}", file=sys.stderr)
                     return code
             return 0
         edit = load_edit(args.edit)

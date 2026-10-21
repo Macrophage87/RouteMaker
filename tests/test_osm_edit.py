@@ -479,28 +479,39 @@ def test_a_smoke_test_that_cannot_run_never_says_not_uploaded(osm, tmp_path, cap
 
 def _draft(kind, tmp_path, *extra):
     out = tmp_path / "drafts"
-    argv = [kind, "--name", "Main St and Side St", "--lat", "39.0225574", "--lon", "-77.0763584"]
+    argv = [kind, "--name", "Main St and Side St", "--place", "Town"]
+    argv += ["--lat", "39.0225574", "--lon", "-77.0763584"]
     argv += ["--server", "dev", "--out", str(out), *extra]
     return osm_edit.main(argv), out
 
 
-def test_draft_beacon_writes_blinker_edits_and_our_row(osm, tmp_path, capsys):
+@pytest.fixture
+def beacon_files(tmp_path, monkeypatch):
+    folder = tmp_path / "fixtures"
+    folder.mkdir()
+    monkeypatch.setattr(osm_edit, "_fixture_dirs", lambda: [folder])
+    return folder
+
+
+def test_draft_beacon_writes_blinker_edits_and_our_row(osm, tmp_path, capsys, beacon_files):
     code, out = _draft("draft-beacon", tmp_path, "--evidence", "flashing all day, seen 2026-10-21")
     assert code == 0
-    edit = json.loads((out / "main-st-side-st-301.json").read_text())
+    edit = json.loads((out / "main-st-side-st-town-301.json").read_text())
     assert edit["expect"] == {"traffic_signals": "signal"}
     assert edit["set"] == {"traffic_signals": "blinker"}
     assert edit["server"] == "dev" and edit["source"] == "survey"
-    assert not (out / "main-st-side-st-302.json").exists()  # already a blinker
-    assert not (out / "main-st-side-st-303.json").exists()  # too far
-    beacon = json.loads((out / "beacon-main-st-side-st.json").read_text())
+    assert not (out / "main-st-side-st-town-302.json").exists()  # already a blinker
+    assert not (out / "main-st-side-st-town-303.json").exists()  # too far
+    (fixture,) = out.glob("*-owner-main-st-side-st-town.json")
+    beacon = json.loads(fixture.read_text())
     (row,) = beacon["rows"]
-    assert beacon["source"] == "owner" and row["id"] == "main-st-side-st"
+    assert beacon["source"] == "owner" and row["id"] == "main-st-side-st-town"
+    assert row["name"] == "Main St and Side St, Town"
     assert (row["lat"], row["lon"]) == (39.0225574, -77.0763584)
     assert row["evidence"] == "flashing all day, seen 2026-10-21"
     printed = capsys.readouterr().out
     assert "traffic_signals: 'signal' -> 'blinker'" in printed
-    assert "302" in printed and "upload main-st-side-st-301.json --approved" in printed
+    assert "302" in printed and "upload main-st-side-st-town-301.json --approved" in printed
     assert _puts(osm) == []
 
 
@@ -515,7 +526,7 @@ def test_draft_signal_picks_the_nearest_junction_node(osm, tmp_path, capsys):
     osm.area = osm.area.replace('<tag k="highway" v="traffic_signals"/>', "")
     code, out = _draft("draft-signal", tmp_path)
     assert code == 0
-    edit = json.loads((out / "main-st-side-st-202.json").read_text())
+    edit = json.loads((out / "main-st-side-st-town-202.json").read_text())
     assert edit["expect"] == {"highway": None}
     assert edit["set"] == {"highway": "traffic_signals"}
     assert "two nodes" in capsys.readouterr().out
@@ -534,15 +545,64 @@ def test_draft_signal_refuses_a_junction_that_already_has_a_highway_tag(osm, tmp
 
 
 def test_drafts_refuse_a_folder_inside_the_repo(osm, tmp_path):
-    argv = ["draft-signal", "--name", "X and Y", "--lat", "39", "--lon", "-77"]
+    argv = ["draft-signal", "--name", "X and Y", "--place", "Z", "--lat", "39", "--lon", "-77"]
     argv += ["--out", str(SCRIPT.parent / "drafts-test")]
     assert osm_edit.main(argv) == 1
     assert not (SCRIPT.parent / "drafts-test").exists()
 
 
-def test_drafts_never_overwrite(osm, tmp_path):
+def test_drafts_never_overwrite(osm, tmp_path, beacon_files):
     assert _draft("draft-beacon", tmp_path, "--evidence", "x")[0] == 0
+    edit = tmp_path / "drafts" / "main-st-side-st-town-301.json"
+    edit.write_text("{}")
     assert _draft("draft-beacon", tmp_path, "--evidence", "x")[0] == 1
+    assert edit.read_text() == "{}"
+
+
+def test_a_taken_name_stops_every_draft_before_any_is_written(osm, tmp_path, beacon_files):
+    out = tmp_path / "drafts"
+    out.mkdir()
+    (out / "main-st-side-st-town-301.json").write_text("{}")
+    assert _draft("draft-beacon", tmp_path, "--evidence", "x")[0] == 1
+    assert sorted(p.name for p in out.iterdir()) == ["main-st-side-st-town-301.json"]
+
+
+def test_draft_beacon_writes_no_second_row_where_we_already_have_one(
+    osm, tmp_path, capsys, beacon_files
+):
+    row = {"id": "old", "name": "old", "lat": 39.02256, "lon": -77.07636, "evidence": "x"}
+    (beacon_files / "2026-10-20-owner-old.json").write_text(json.dumps({"rows": [row]}))
+    code, out = _draft("draft-beacon", tmp_path, "--evidence", "x")
+    assert code == 0
+    assert (out / "main-st-side-st-town-301.json").exists()
+    assert not list(out.glob("*-owner-*"))
+    assert "already has an owner beacon here: old" in capsys.readouterr().out
+
+
+def test_slugs_fit_the_loader_and_need_a_real_name():
+    with pytest.raises(osm_edit.EditError):
+        osm_edit._slug("and", "&")
+    assert len(osm_edit._slug("Very Long Street " * 10, "Town")) <= 80
+    assert osm_edit._slug("Very Long Street " * 10, "Town")[-1] != "-"
+
+
+def test_a_street_split_end_to_end_is_not_a_junction(osm, tmp_path, capsys):
+    osm.area = """<osm version="0.6">
+      <node id="1" version="1" lat="39.0225" lon="-77.0765"/>
+      <node id="2" version="1" lat="39.0225574" lon="-77.0763584"/>
+      <node id="3" version="1" lat="39.0226" lon="-77.0762"/>
+      <way id="10"><nd ref="1"/><nd ref="2"/><tag k="highway" v="primary"/>
+        <tag k="name" v="Main St"/></way>
+      <way id="11"><nd ref="2"/><nd ref="3"/><tag k="highway" v="primary"/>
+        <tag k="name" v="Main St"/><tag k="bridge" v="yes"/></way>
+    </osm>"""
+    code, _ = _draft("draft-signal", tmp_path)
+    assert code == 1
+    assert "no junction node" in capsys.readouterr().err
+    osm.area = osm.area.replace(
+        '<tag k="name" v="Main St"/><tag k="bridge"', '<tag k="name" v="Side St"/><tag k="bridge"'
+    )
+    assert _draft("draft-signal", tmp_path)[0] == 0
 
 
 def test_upload_takes_several_files_and_stops_at_the_first_failure(osm, tmp_path):
@@ -551,3 +611,17 @@ def test_upload_takes_several_files_and_stops_at_the_first_failure(osm, tmp_path
     second.write_text(first.read_text().replace('"id": 101', '"id": 404'))
     assert osm_edit.main(["upload", str(first), str(second), "--approved"]) == 1
     assert (tmp_path / "edit.uploaded.json").exists()
+
+
+def test_a_rerun_after_a_failure_skips_what_already_went_up(osm, tmp_path, capsys):
+    first = _edit(tmp_path)
+    second = tmp_path / "second.json"
+    second.write_text(first.read_text().replace('"id": 101', '"id": 404'))
+    assert osm_edit.main(["upload", str(first), str(second), "--approved"]) == 1
+    assert f"Still to upload: {second}" in capsys.readouterr().err
+    assert osm_edit.main(["upload", str(first), str(second), "--approved"]) == 1
+    out = capsys.readouterr()
+    assert "edit.json: already uploaded, skipped" in out.out
+    assert "already uploaded" not in out.err
+    assert osm_edit.main(["upload", str(first), "--approved"]) == 1
+    assert "every file is already uploaded" in capsys.readouterr().err
