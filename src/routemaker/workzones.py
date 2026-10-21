@@ -739,8 +739,9 @@ def citation(zone: Zone) -> str:
     source = SOURCES.get(zone.source, zone.source)
     if zone.end is None:
         return f"Source: {source}."
-    if zone.source == "reviewer" and _local(zone.end).time() == time(0):
-        return f"Source: {source}, through {date_text(zone.end - timedelta(days=1))}."
+    last = last_day(zone.source, zone.end)
+    if last is not None:
+        return f"Source: {source}, through {date_text(last)}."
     return f"Source: {source}, until {date_text(zone.end)}."
 
 
@@ -788,6 +789,15 @@ def date_text(moment: datetime) -> str:
     return f"{_MONTHS[local.month - 1]} {local.day}"
 
 
+def last_day(source: str, end: datetime) -> datetime | None:
+    """A reviewer's closure ends at the midnight after its last day
+    (`core.reviewed_closures.window`): that last day, to say "through Feb 28" rather than
+    "until Mar 1". None for any other end."""
+    if source == "reviewer" and _local(end).time() == time(0):
+        return end - timedelta(days=1)
+    return None
+
+
 def day_text(moment: datetime, now: datetime | None) -> str:
     """'today', 'tomorrow', or 'Sat, Oct 17', in the region's time."""
     local = _local(moment)
@@ -819,6 +829,14 @@ def when_text(zone: Zone, now: datetime | None, future: bool, possible: bool = F
         if future:
             return f"{lead}; no end time given, so it may still apply on your ride day"
         return f"{lead}; no end time given"
+    last = last_day(zone.source, end)
+    if last is not None:
+        # Whole days: a one-day closure is not "midnight to midnight".
+        if start is not None and now is not None and start > now:
+            if _local(start).date() == _local(last).date():
+                return f"{verb} {day_text(start, now)}"
+            return f"{verb} from {date_text(start)} through {date_text(last)}"
+        return f"{verb} through {date_text(last)}"
     if start is not None and _local(start).date() == _local(end).date():
         return f"{verb} {day_text(start, now)} {clock_text(start)} to {clock_text(end)}"
     if start is not None and (end - start).total_seconds() < 36 * 3600:
@@ -826,12 +844,6 @@ def when_text(zone: Zone, now: datetime | None, future: bool, possible: bool = F
             f"{verb} {day_text(start, now)} {clock_text(start)} to "
             f"{day_text(end, now)} {clock_text(end)}"
         )
-    if zone.source == "reviewer" and _local(end).time() == time(0):
-        # A reviewer's closure ends at the midnight after its last day: name that last day.
-        last = date_text(end - timedelta(days=1))
-        if start is not None and now is not None and start > now:
-            return f"{verb} from {date_text(start)} through {last}"
-        return f"{verb} through {last}"
     if start is not None and now is not None and start > now:
         return f"{verb} from {date_text(start)} until {date_text(end)}"
     return f"{verb} until {date_text(end)}"
