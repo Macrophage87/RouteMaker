@@ -180,6 +180,41 @@ export interface RailMap {
   getLayer(id: string): unknown;
   hasImage(id: string): boolean;
   addImage(id: string, image: Omit<Raster, "pixelRatio">, options: { pixelRatio: number }): void;
+  getFilter?(id: string): unknown;
+  setFilter?(id: string, filter: unknown): void;
+}
+
+/**
+ * ONE NAME PER STATION. The base map's points of interest (@protomaps/basemaps `pois`) name OpenStreetMap's
+ * stations too, so a station we draw was named twice: ours in the larger face, the base map's under it (the owner,
+ * 2026-10-21: "Metros are sometimes written twice"). The base map's station is left out within this of a station
+ * shown; OSM's station node can sit on a platform end, a long platform's half length (about 600 ft) from DC's
+ * point. Every other station keeps its base map name (VRE, Amtrak, MARC's other lines, Baltimore's), and so does
+ * ours when its toggle is off.
+ */
+export const BASEMAP_POIS_LAYER = "pois";
+export const BASEMAP_STATION_REACH_M = 300;
+const M_PER_DEGREE_LAT = 111_320;
+const basemapPoisFilters = new WeakMap<object, unknown>();
+
+/** The base map's `pois` filter with the stations shown here left out. */
+export function basemapPoisFilter(base: unknown, stations: readonly Station[], visibility: RailVisibility): unknown {
+  const squares = stations
+    .filter((station) => visibleLines(station, visibility).length > 0)
+    .map(({ point: [lon, lat] }) => {
+      const dLat = BASEMAP_STATION_REACH_M / M_PER_DEGREE_LAT;
+      const dLon = dLat / Math.cos((lat * Math.PI) / 180);
+      return [[[lon - dLon, lat - dLat], [lon + dLon, lat - dLat], [lon + dLon, lat + dLat], [lon - dLon, lat + dLat], [lon - dLon, lat - dLat]]];
+    });
+  if (squares.length === 0) return base;
+  const ours = ["all", ["==", ["get", "kind"], "station"], ["within", { type: "MultiPolygon", coordinates: squares }]];
+  return base === undefined || base === null ? ["!", ours] : ["all", base, ["!", ours]];
+}
+
+function hideBasemapStationNames(map: RailMap, stations: readonly Station[], visibility: RailVisibility): void {
+  if (!map.setFilter || !map.getFilter || !map.getLayer(BASEMAP_POIS_LAYER)) return;
+  if (!basemapPoisFilters.has(map)) basemapPoisFilters.set(map, map.getFilter(BASEMAP_POIS_LAYER));
+  map.setFilter(BASEMAP_POIS_LAYER, basemapPoisFilter(basemapPoisFilters.get(map), stations, visibility));
 }
 
 /** Every image the layers can ask for: one per combination of lines, and the elevator. */
@@ -222,6 +257,7 @@ export function addRailStations(
   map.addSource(RAIL_SOURCE_ID, { type: "geojson", data: railFeatures(stations, visibility, isClosed, badges) });
   const before = map.getLayer(ROUTE_BOTTOM_LAYER) ? ROUTE_BOTTOM_LAYER : undefined;
   for (const layer of railLayers()) map.addLayer(layer, before);
+  hideBasemapStationNames(map, stations, visibility);
   return true;
 }
 
@@ -235,6 +271,7 @@ export function setRailVisibility(
 ): void {
   const source = map.getSource(RAIL_SOURCE_ID) as { setData?: (data: unknown) => void } | undefined;
   source?.setData?.(railFeatures(stations, visibility, isClosed, badges));
+  hideBasemapStationNames(map, stations, visibility);
 }
 
 /** The rail feature under a click, if any: a station, or one of its elevators. */
