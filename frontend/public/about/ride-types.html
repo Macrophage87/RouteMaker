@@ -392,7 +392,7 @@ to a station or stop and takes the train or bus the rest of the way.</p>
 <div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 920 160" role="img" aria-labelledby="fig-transit-t fig-transit-d" focusable="false" style="min-width:600px">
 <title id="fig-transit-t">A transit trip</title>
-<desc id="fig-transit-d">A trip in five steps: start at your door, ride or walk up to 5 miles [8 km] to a station, take a train or bus at the next predicted departure where WMATA predicts one, else at scheduled times, ride or walk to the end, finish. At most two transit legs. Metro only through stations with elevators. On Bikeshare plus transit the bike is docked before boarding.</desc>
+<desc id="fig-transit-d">A trip in five steps: start at your door, ride or walk up to 5 miles [8 km] to a station, take a train or bus at the next predicted departure where WMATA predicts one, else at scheduled times, ride or walk to the end, finish. At most two transit legs. Every Metro station takes a bike. On Bikeshare plus transit the bike is docked before boarding.</desc>
 <defs><marker id="ah-transit" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
 <rect class="bx" x="10" y="40" width="130" height="56" rx="6"/>
 <text class="tb" x="75.0" y="64.5" text-anchor="middle">Start</text>
@@ -412,14 +412,14 @@ to a station or stop and takes the train or bus the rest of the way.</p>
 <path class="ar" d="M340,68 L388,68" marker-end="url(#ah-transit)"/>
 <path class="ar" d="M550,68 L598,68" marker-end="url(#ah-transit)"/>
 <path class="ar" d="M750,68 L798,68" marker-end="url(#ah-transit)"/>
-<text class="ts" x="470" y="130" text-anchor="middle">At most two transit legs. Metro only through stations with elevators.</text>
+<text class="ts" x="470" y="130" text-anchor="middle">At most two transit legs. Every Metro station takes a bike.</text>
 <text class="ts" x="470" y="147" text-anchor="middle">Bikeshare + transit docks the bike before boarding.</text>
 </svg>
 </div>
 <div class="fig-narrow">
 <svg viewBox="0 0 320 498" role="img" aria-labelledby="fig-transit-n-t fig-transit-n-d" focusable="false">
 <title id="fig-transit-n-t">A transit trip</title>
-<desc id="fig-transit-n-d">A trip in five steps: start at your door, ride or walk up to 5 miles [8 km] to a station, take a train or bus at the next predicted departure where WMATA predicts one, else at scheduled times, ride or walk to the end, finish. At most two transit legs. Metro only through stations with elevators. On Bikeshare plus transit the bike is docked before boarding.</desc>
+<desc id="fig-transit-n-d">A trip in five steps: start at your door, ride or walk up to 5 miles [8 km] to a station, take a train or bus at the next predicted departure where WMATA predicts one, else at scheduled times, ride or walk to the end, finish. At most two transit legs. Every Metro station takes a bike. On Bikeshare plus transit the bike is docked before boarding.</desc>
 <defs><marker id="ah-transit-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
 <rect class="bx" x="10" y="8" width="300" height="60" rx="6"/>
 <text class="tb" x="160.0" y="33" text-anchor="middle">Start</text>
@@ -438,8 +438,8 @@ to a station or stop and takes the train or bus the rest of the way.</p>
 <text class="ts" x="160.0" y="305" text-anchor="middle">to the end</text>
 <path class="ar" d="M160.0,322 L160.0,341" marker-end="url(#ah-transit-n)"/>
 <rect class="bx" x="10" y="344" width="300" height="40" rx="6"/>
-<text class="tb" x="160.0" y="369" text-anchor="middle">Finish</text><text class="ts" x="10" y="412" text-anchor="start">At most two transit legs. Metro only</text>
-<text class="ts" x="10" y="432" text-anchor="start">through stations with elevators.</text><text class="ts" x="10" y="458" text-anchor="start">Bikeshare + transit docks the bike before</text>
+<text class="tb" x="160.0" y="369" text-anchor="middle">Finish</text><text class="ts" x="10" y="412" text-anchor="start">At most two transit legs. Every Metro</text>
+<text class="ts" x="10" y="432" text-anchor="start">station takes a bike.</text><text class="ts" x="10" y="458" text-anchor="start">Bikeshare + transit docks the bike before</text>
 <text class="ts" x="10" y="478" text-anchor="start">boarding.</text>
 </svg>
 </div>
@@ -454,14 +454,18 @@ next predicted bus. Those departures say "live"; the time on board stays the tim
 no prediction you can catch keeps its timetable time and says "scheduled". MARC, Light RailLink and
 VRE are always scheduled. The plan's total reads "Door-to-door time, with live departures".</li>
 <li>Live Metro data also changes which trips are offered and their order. With Own Bike + transit, a trip that takes your bike
-through a station WMATA reports closed is dropped, unless every trip would be. Each broken elevator on
-a trip moves it down the list, as if it took 2 minutes longer. Live arrivals, incidents and elevator
+through a station WMATA reports closed is dropped, unless every trip would be. A street elevator out at a station with no working spare, or a platform elevator out,
+moves the trip down the list as if it took 15 minutes longer, without changing its time, and the trip
+shows an elevator-out icon. Elevators in a station's parking garage or lot are ignored. Live arrivals, incidents and elevator
 outages are shown beside the plan. An elevator outage is a warning, never a reason to skip a
 station.</li>
 <li>Limits: walk up to 1 mi [1.6 km] to a station or 0.4 mi [0.6 km] to a bus stop; ride up to
 5 mi [8 km] to a station. A trip under 1 mi [1.6 km] is offered as walking.</li>
-<li>Metro is used only through stations with elevators, and not on days when bikes are not allowed on
-trains, such as July 4.</li>
+<li>Trips are ranked by when you get there, with time on busy roads and waiting at junctions
+counting against a trip, and ranked again once the chosen trip is routed. Each trip says how far you
+would ride on busy roads, which is why the list is not always in strict time order.</li>
+<li>Every Metro station takes a bike; steps say "by the elevator" only where an elevator is known.
+Metro is not used on days when bikes are not allowed on trains, such as July 4.</li>
 <li>With a bike, a start, stop or end you put at a Metro or MARC station moves to the station's elevator
 quickest to ride to from where that leg comes from, not the far side of the tracks. If that moves your
 point, the app says so, and Undo puts it back. An elevator you tap on the map stays where you put it.</li>
