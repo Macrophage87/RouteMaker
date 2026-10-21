@@ -214,9 +214,9 @@ class RouterRefused(Exception):
 class StrayTrails(Exception):
     """A route planned on the off-road graph for a dirt trail a point touches
     (`core.trail_touch`) took dirt trails no point touches: `rings` leave them out, and
-    `plan` plans again; `touched` is the trails the points touch, not looked up again."""
+    `plan` plans again; `touched` is the trails each point touches, not looked up again."""
 
-    def __init__(self, rings: tuple, touched: frozenset[int]) -> None:
+    def __init__(self, rings: tuple, touched: tuple[frozenset[int], ...]) -> None:
         super().__init__(f"{len(rings)} dirt trail run(s) no point touches")
         self.rings = rings
         self.touched = touched
@@ -1017,8 +1017,14 @@ class Dials:
     # A dirt trail a point is on is ridden on a ride type that does not plan on them
     # (`core.trail_touch`); False plans on the ride type's own graph alone. Set by `plan`.
     trail_touch: bool = True
-    # The dirt trails the points touch, once looked up (None: not yet). Set by `plan`.
-    trail_touched: frozenset[int] | None = None
+    # The dirt trails each point touches, in order, once looked up (None: not yet). Set by
+    # `plan`.
+    trail_touched: tuple[frozenset[int], ...] | None = None
+    # A ride's re-plan: the first point is the rider, so a dirt trail there counts, and any
+    # dirt trail may be ridden (`core.trail_touch`). `dirt_ridden`: the rider has been on one
+    # this ride, so any may be ridden wherever the rider is now.
+    ride_replan: bool = False
+    dirt_ridden: bool = False
     # The dirt trails such a plan found for itself, each a short strip across it (a ring),
     # left out as `blocked` is. Set by `plan`.
     trail_strays: tuple[tuple[tuple[float, float], ...], ...] = ()
@@ -3199,21 +3205,29 @@ def _plan(
     assist = bool(dials.assist) and preset.assist_speed_kmh is not None
     trails_off = bool(dials.trails_off)
     variant = presets.variant_for_ride(preset_name, when, assist, trails_off)
-    # A dirt trail the rider is on or put a point on (the owner, 2026-10-20: "Don't plan on the
-    # route, but if you enter it or mark a waypoint in it, it will continue to route through"):
-    # planned on the off-road graph, where it is open, with this ride type's costing; the dirt
-    # trails the plan finds for itself are left out again (`StrayTrails`, `core.trail_touch`).
+    # A dirt trail the rider put a stop, via or end on (the owner, 2026-10-20: "Don't plan on
+    # the route, but if you enter it or mark a waypoint in it, it will continue to route
+    # through"): planned on the off-road graph, where it is open, with this ride type's
+    # costing; the dirt trails the plan finds for itself are left out again (`StrayTrails`,
+    # `core.trail_touch`). The start alone does not (2026-10-21: "I wouldn't use that as a
+    # start for routing unless "opted-in""), but on a ride's re-plan the start is the rider:
+    # on a dirt trail, or after one, any dirt trail may be ridden ("If someone goes onto a dirt
+    # trail, any reroutes should include dirt").
     touched_trails: frozenset[int] = frozenset()
+    per_point: tuple[frozenset[int], ...] = ()
+    any_dirt = False
     if (
         variant == Variant.STANDARD.value
         and dials.trail_touch
         and dials.follow is None
         and not dials.straight
     ):
-        touched_trails = dials.trail_touched
-        if touched_trails is None:
-            touched_trails = trail_touch.touched(points)
-        if touched_trails:
+        per_point = dials.trail_touched
+        if per_point is None:
+            per_point = trail_touch.touched(points)
+        touched_trails = frozenset().union(*per_point[0 if dials.ride_replan else 1 :])
+        any_dirt = dials.ride_replan and (dials.dirt_ridden or bool(per_point[0]))
+        if touched_trails or any_dirt:
             variant = Variant.OFFROAD.value
     # Bike lanes are "none" in the breakdown on a ride that takes the roadway (Mass
     # Ride, whose own graph is no-trail), not on every trails-off ride.
@@ -3760,16 +3774,18 @@ def _plan(
                 leg_runs.append((start, len(pieces)))
                 raw_junctions.extend(trace_junctions.junctions_of_trace(trace, shape, traced_m))
                 traced_m += sum(piece.metres for piece in pieces[start:])
-        if touched_trails and variant == Variant.OFFROAD.value:
-            dirt = trail_touch.off_road_ways([piece.way_id for piece in pieces])
-            stray = trail_touch.stray_rings(pieces, dirt, touched_trails)
+        dirt_trails = False
+        if (touched_trails or any_dirt) and variant == Variant.OFFROAD.value:
+            ways = trail_touch.off_road_ways([piece.way_id for piece in pieces])
+            stray = trail_touch.stray_rings(pieces, ways, touched_trails, any_dirt)
             if stray:
                 if alternate:
                     # A side route (a candidate, the way round a junction or through a
                     # closure) is dropped, not the plan made again.
                     raise NoRoute("a side route takes a dirt trail no point touches")
                 _wait_for_delays(delays)
-                raise StrayTrails(tuple(stray), touched_trails)
+                raise StrayTrails(tuple(stray), per_point)
+            dirt_trails = trail_touch.rides_dirt(pieces, ways)
         # A long calm plan was searched in legs of its own: the answer has the plan's
         # legs, as the front end reads which leg a point on the line belongs to, and
         # a Mass Ride's stops and the description's are the plan's stops.
@@ -4027,6 +4043,7 @@ def _plan(
         return {
             "preset": preset.name,
             "variant": variant,
+            "dirt_trails": dirt_trails,
             "geometry": {
                 "type": "LineString",
                 "coordinates": [[round(lon, 6), round(lat, 6)] for lon, lat in coordinates],

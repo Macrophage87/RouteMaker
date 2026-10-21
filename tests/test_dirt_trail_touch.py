@@ -28,9 +28,13 @@ pytestmark = pytest.mark.usefixtures("weekday_clock")
 
 db = pytest.mark.django_db(transaction=True)
 
-# A dirt trail (way 404) under the route's start, and another (way 505) along its middle.
+# A dirt trail (way 404) under the route's end, and another (way 505) along its middle.
 TOUCHED = 404
 STRAY = 505
+END_TRAIL = [VERTICES[-1], (VERTICES[-1][0], VERTICES[-1][1] + 0.001)]
+START_TRAIL = [VERTICES[0], (VERTICES[0][0], VERTICES[0][1] + 0.001)]
+# The route the first time: on to 505, then a road, then to the end on 404.
+STRAY_EDGES = [(101, 0, 1, 0.9), (STRAY, 1, 2, 0.4), (202, 2, 3, 0.4), (TOUCHED, 3, 4, 0.5)]
 
 
 def add_trail(live: str, way: int, line, reason: str = "mtb") -> None:
@@ -63,10 +67,10 @@ def plain_router() -> FakeRouter:
 
 @db
 class TestThroughTheApi:
-    def test_a_start_on_a_dirt_trail_is_planned_on_the_off_road_graph(
+    def test_an_end_on_a_dirt_trail_is_planned_on_the_off_road_graph(
         self, client, segments, router
     ) -> None:
-        add_trail(segments, TOUCHED, [VERTICES[0], (VERTICES[0][0], VERTICES[0][1] + 0.001)])
+        add_trail(segments, TOUCHED, END_TRAIL)
         fake = router(plain_router())
         response = post(client, good_body())
         assert response.status_code == 200, response.content
@@ -85,7 +89,7 @@ class TestThroughTheApi:
     def test_without_the_off_road_graph_it_is_planned_on_the_standard_one(
         self, client, segments, router, monkeypatch
     ) -> None:
-        add_trail(segments, TOUCHED, [VERTICES[0], (VERTICES[0][0], VERTICES[0][1] + 0.001)])
+        add_trail(segments, TOUCHED, END_TRAIL)
         monkeypatch.setattr(routing, "_offroad_is_promoted", lambda: False)
         fake = router(plain_router())
         assert post(client, good_body()).json()["variant"] == "standard"
@@ -94,11 +98,10 @@ class TestThroughTheApi:
     def test_a_dirt_trail_the_plan_found_for_itself_is_left_out(
         self, client, segments, router
     ) -> None:
-        """The route starts on way 404 and, the first time, takes dirt trail 505 a road away:
+        """The route ends on way 404 and, the first time, takes dirt trail 505 a road away:
         planned again with 505 left out (a strip across it in `exclude_polygons`)."""
-        add_trail(segments, TOUCHED, [VERTICES[0], (VERTICES[0][0], VERTICES[0][1] + 0.001)])
-        add_trail(segments, STRAY, VERTICES[2:4])
-        stray_edges = [(TOUCHED, 0, 1, 0.9), (202, 1, 2, 0.4), (STRAY, 2, 3, 0.4), (303, 3, 4, 0.5)]
+        add_trail(segments, TOUCHED, END_TRAIL)
+        add_trail(segments, STRAY, VERTICES[1:3])
         asked: list[dict] = []
 
         def route(payload):
@@ -107,7 +110,7 @@ class TestThroughTheApi:
 
         def trace(_payload):
             left_out = bool(asked[-1].get("exclude_polygons"))
-            edges = STANDARD_EDGES if left_out else stray_edges
+            edges = STANDARD_EDGES if left_out else STRAY_EDGES
             return trace_answer(VERTICES, edges)
 
         router(FakeRouter({"route": route, "trace_attributes": trace}))
@@ -117,15 +120,14 @@ class TestThroughTheApi:
         assert not asked[0].get("exclude_polygons")
         ring = asked[-1]["exclude_polygons"][0]
         lons = [p[0] for p in ring]
-        # Across 505 (between the third and fourth vertices), nowhere near the start.
-        assert VERTICES[2][0] < min(lons) and max(lons) < VERTICES[3][0]
+        # Across 505 (between the second and third vertices), nowhere near the end.
+        assert VERTICES[1][0] < min(lons) and max(lons) < VERTICES[2][0]
 
     def test_a_dirt_trail_the_plan_keeps_finding_is_planned_without_any(
         self, client, segments, router
     ) -> None:
-        add_trail(segments, TOUCHED, [VERTICES[0], (VERTICES[0][0], VERTICES[0][1] + 0.001)])
-        add_trail(segments, STRAY, VERTICES[2:4])
-        stray_edges = [(TOUCHED, 0, 1, 0.9), (202, 1, 2, 0.4), (STRAY, 2, 3, 0.4), (303, 3, 4, 0.5)]
+        add_trail(segments, TOUCHED, END_TRAIL)
+        add_trail(segments, STRAY, VERTICES[1:3])
         fake = router(
             FakeRouter(
                 {
@@ -134,7 +136,7 @@ class TestThroughTheApi:
                         VERTICES,
                         STANDARD_EDGES
                         if graph_of(fake.calls[-1][0]) == "standard"
-                        else stray_edges,
+                        else STRAY_EDGES,
                     ),
                 }
             )
@@ -149,9 +151,8 @@ class TestThroughTheApi:
     def test_green_singletrack_the_plan_found_is_left_out_too(
         self, client, segments, router
     ) -> None:
-        add_trail(segments, TOUCHED, [VERTICES[0], (VERTICES[0][0], VERTICES[0][1] + 0.001)])
-        add_trail(segments, STRAY, VERTICES[2:4], reason="singletrack")
-        stray_edges = [(TOUCHED, 0, 1, 0.9), (202, 1, 2, 0.4), (STRAY, 2, 3, 0.4), (303, 3, 4, 0.5)]
+        add_trail(segments, TOUCHED, END_TRAIL)
+        add_trail(segments, STRAY, VERTICES[1:3], reason="singletrack")
         asked: list[dict] = []
 
         def route(payload):
@@ -159,7 +160,7 @@ class TestThroughTheApi:
             return route_answer([(VERTICES, 2.2, [10.0, 20.0, 15.0, 30.0])])
 
         def trace(_payload):
-            edges = STANDARD_EDGES if asked[-1].get("exclude_polygons") else stray_edges
+            edges = STANDARD_EDGES if asked[-1].get("exclude_polygons") else STRAY_EDGES
             return trace_answer(VERTICES, edges)
 
         router(FakeRouter({"route": route, "trace_attributes": trace}))
@@ -171,9 +172,8 @@ class TestThroughTheApi:
     def test_no_route_once_a_stray_is_left_out_plans_without_dirt_trails(
         self, client, segments, router
     ) -> None:
-        add_trail(segments, TOUCHED, [VERTICES[0], (VERTICES[0][0], VERTICES[0][1] + 0.001)])
-        add_trail(segments, STRAY, VERTICES[2:4])
-        stray_edges = [(TOUCHED, 0, 1, 0.9), (202, 1, 2, 0.4), (STRAY, 2, 3, 0.4), (303, 3, 4, 0.5)]
+        add_trail(segments, TOUCHED, END_TRAIL)
+        add_trail(segments, STRAY, VERTICES[1:3])
         graphs: list[str] = []
 
         def route(payload):
@@ -184,7 +184,7 @@ class TestThroughTheApi:
             return route_answer([(VERTICES, 2.2, [10.0, 20.0, 15.0, 30.0])])
 
         def trace(_payload):
-            edges = STANDARD_EDGES if graphs[-1] == "standard" else stray_edges
+            edges = STANDARD_EDGES if graphs[-1] == "standard" else STRAY_EDGES
             return trace_answer(VERTICES, edges)
 
         fake = router(FakeRouter({"route": route, "trace_attributes": trace}))
@@ -203,6 +203,69 @@ class TestThroughTheApi:
         assert response.status_code == 200, response.content
         assert response.json()["variant"] == "offroad"
         assert {graph_of(url) for url, _ in routes(fake)} == {"offroad"}
+
+    def test_a_start_alone_on_a_dirt_trail_plans_as_before(self, client, segments, router) -> None:
+        """Plan and Go: standing on a trail is not choosing it (the owner, 2026-10-21: "I
+        wouldn't use that as a start for routing unless "opted-in"")."""
+        add_trail(segments, TOUCHED, START_TRAIL)
+        fake = router(plain_router())
+        body = post(client, good_body()).json()
+        assert body["variant"] == "standard" and body["dirt_trails"] is False
+        assert {graph_of(url) for url, _ in routes(fake)} == {"standard"}
+
+    def test_a_ride_re_plan_from_on_a_dirt_trail_may_ride_any(
+        self, client, segments, router
+    ) -> None:
+        """'If someone goes onto a dirt trail, any reroutes should include dirt': 505 is not
+        joined to the 404 the rider is on, and is ridden all the same."""
+        add_trail(segments, TOUCHED, START_TRAIL)
+        add_trail(segments, STRAY, VERTICES[2:4])
+        edges = [(TOUCHED, 0, 1, 0.9), (202, 1, 2, 0.4), (STRAY, 2, 3, 0.4), (303, 3, 4, 0.5)]
+        asked: list[dict] = []
+
+        def route(payload):
+            asked.append(payload)
+            return route_answer([(VERTICES, 2.2, [10.0, 20.0, 15.0, 30.0])])
+
+        router(FakeRouter({"route": route, "trace_attributes": trace_answer(VERTICES, edges)}))
+        response = post(client, {**good_body(), "ride_replan": True})
+        assert response.status_code == 200, response.content
+        body = response.json()
+        assert body["variant"] == "offroad" and body["dirt_trails"] is True
+        assert len(asked) == 1 and not asked[0].get("exclude_polygons")
+
+    def test_after_a_dirt_trail_a_ride_re_plan_from_a_road_may_ride_any(
+        self, client, segments, router
+    ) -> None:
+        fake = router(plain_router())
+        body = {**good_body(), "ride_replan": True, "dirt_ridden": True}
+        assert post(client, body).json()["variant"] == "offroad"
+        assert {graph_of(url) for url, _ in routes(fake)} == {"offroad"}
+
+    def test_dirt_ridden_alone_is_not_a_ride(self, client, segments, router) -> None:
+        router(plain_router())
+        assert post(client, {**good_body(), "dirt_ridden": True}).json()["variant"] == "standard"
+
+    def test_green_singletrack_stays_closed_on_a_ride_re_plan(
+        self, client, segments, router
+    ) -> None:
+        add_trail(segments, TOUCHED, START_TRAIL)
+        add_trail(segments, STRAY, VERTICES[2:4], reason="singletrack")
+        edges = [(TOUCHED, 0, 1, 0.9), (202, 1, 2, 0.4), (STRAY, 2, 3, 0.4), (303, 3, 4, 0.5)]
+        asked: list[dict] = []
+
+        def route(payload):
+            asked.append(payload)
+            return route_answer([(VERTICES, 2.2, [10.0, 20.0, 15.0, 30.0])])
+
+        def trace(_payload):
+            left_out = bool(asked[-1].get("exclude_polygons"))
+            return trace_answer(VERTICES, STANDARD_EDGES if left_out else edges)
+
+        router(FakeRouter({"route": route, "trace_attributes": trace}))
+        response = post(client, {**good_body(), "ride_replan": True})
+        assert response.status_code == 200, response.content
+        assert asked[-1].get("exclude_polygons")
 
 
 class TestRuns:
@@ -238,3 +301,28 @@ class TestRuns:
         across = (max(lats) - min(lats)) * 110_540.0
         assert along == pytest.approx(trail_touch.BLOCK_ALONG_M, rel=0.05)
         assert across == pytest.approx(trail_touch.BLOCK_ACROSS_M, rel=0.05)
+
+
+class TestStrayRings:
+    @staticmethod
+    def pieces(ways):
+        from types import SimpleNamespace
+
+        return [
+            SimpleNamespace(
+                way_id=w, lon=-77.0 + i * 0.001, lat=38.9, metres=100.0, heading_in=90.0
+            )
+            for i, w in enumerate(ways)
+        ]
+
+    def test_singletrack_joined_to_a_touched_trail_is_still_left_out(self) -> None:
+        ways = {1: "mtb", 2: "singletrack"}
+        rings = trail_touch.stray_rings(self.pieces([1, 2]), ways, frozenset({1}))
+        assert len(rings) == 1
+        assert min(p[0] for p in rings[0]) > -77.0 + 0.0005
+
+    def test_any_dirt_leaves_out_only_singletrack(self) -> None:
+        ways = {1: "mtb", 3: "mtb", 2: "singletrack"}
+        pieces = self.pieces([1, 9, 3, 9, 2])
+        assert len(trail_touch.stray_rings(pieces, ways, frozenset(), any_dirt=True)) == 1
+        assert len(trail_touch.stray_rings(pieces, ways, frozenset())) == 3

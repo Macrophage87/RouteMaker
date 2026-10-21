@@ -871,6 +871,8 @@ export interface RouteResponse {
   neighbour?: { kind: NeighbourKind; stress: number; line: string } | null;
   preset: PresetId;
   variant: "standard" | "no-trail" | "ebike" | "weekend" | "offroad" | "mtb";
+  /** A ride type that skips dirt trails rides one here (a point on one opened it, core/trail_touch.py). A ride then opens them all to its re-plans. */
+  dirt_trails?: boolean;
   /** Trip points the planner moved: one inside the National Zoo goes to its bike racks. */
   moved_points?: { index: number; asked: LonLat; routed: LonLat; reason: "zoo_racks"; note: string }[];
   /**
@@ -1268,6 +1270,10 @@ export interface RouteRequestOptions {
   blocked?: readonly (readonly LonLat[])[];
   /** A ride's re-route: the rider's heading at the first point (degrees), so a U-turn is taken only where it saves half a mile. */
   heading?: number | null;
+  /** A ride's re-plan, whose first point is the rider: a dirt trail there opens them all (the API's `ride_replan`). */
+  rideReplan?: boolean;
+  /** With `rideReplan`: the rider has been on a dirt trail this ride, so the re-plan may ride any (`dirt_ridden`). */
+  dirtRidden?: boolean;
 }
 
 /** Most points of a line to follow (core/follow.py MAX_POINTS). */
@@ -1308,6 +1314,8 @@ export function routeRequestBody(points: readonly LonLat[], preset: PresetId, op
     ...(options.blocked?.length ? { blocked_lines: options.blocked.map((line) => line.map((p) => [p[0], p[1]])) } : {}),
     // The way the rider is going, for a ride's re-route: the API weighs a U-turn against the way ahead.
     ...(options.heading != null && Number.isFinite(options.heading) ? { heading: ((options.heading % 360) + 360) % 360 } : {}),
+    // A ride's re-plan starts at the rider: a dirt trail there, or one ridden earlier, opens them all.
+    ...(options.rideReplan ? { ride_replan: true, ...(options.dirtRidden ? { dirt_ridden: true } : {}) } : {}),
   });
 }
 

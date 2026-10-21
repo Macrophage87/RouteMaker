@@ -42,6 +42,7 @@ ROUTE_PATH = "/api/route"
 CONTRACT_KEYS = {
     "preset",
     "variant",
+    "dirt_trails",
     "geometry",
     "distance_m",
     "duration_s",

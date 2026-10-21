@@ -351,6 +351,23 @@ class RouteIn(Schema):
             " a loop, Bikeshare and the transit ride types."
         ),
     )
+    ride_replan: StrictBool = Field(
+        default=False,
+        description=(
+            "A ride's re-plan: the first point is the rider. On a ride type that does not plan"
+            " on dirt trails, a dirt trail there opens them all to this plan (the owner,"
+            ' 2026-10-21: "If someone goes onto a dirt trail, any reroutes should include'
+            ' dirt"). Elsewhere a dirt trail under a stop, via or end is ridden, with the'
+            " trails joined to it, but one under the start alone is not."
+        ),
+    )
+    dirt_ridden: StrictBool = Field(
+        default=False,
+        description=(
+            "With `ride_replan`: the rider has been on a dirt trail this ride (an answer's"
+            " `dirt_trails`), so this re-plan may ride any dirt trail wherever the rider is."
+        ),
+    )
     loop: StrictBool = Field(
         default=False,
         description=(
@@ -2068,6 +2085,9 @@ class WorkZonesOut(Schema):
 class RouteBody(Schema):
     preset: PresetName
     variant: Literal["standard", "no-trail", "ebike", "weekend", "offroad", "mtb"]
+    # A ride type that does not plan on dirt trails rides one here, as a point on one, or a
+    # ride's re-plan, opened it (`core.trail_touch`). A ride sends `dirt_ridden` after one.
+    dirt_trails: bool = False
     geometry: LineString
     distance_m: float
     # The router's time plus `junction_delay_s`.
@@ -4157,6 +4177,8 @@ def _bike_dials(body: RouteIn) -> routing.Dials:
         follow_exact=body.follow_exact,
         straight=tuple(body.straight_legs),
         heading=body.heading,
+        ride_replan=body.ride_replan,
+        dirt_ridden=body.ride_replan and body.dirt_ridden,
     )
 
 

@@ -645,6 +645,9 @@ export function RideMode({
 }) {
   const [route, setRoute] = useState(plannedRoute);
   const routeRef = useRef(route);
+  // The rider's route has ridden a dirt trail on a ride type that skips them (the owner, 2026-10-21: "If someone
+  // goes onto a dirt trail, any reroutes should include dirt"): every re-plan of the ride may ride any dirt trail.
+  const dirtRidden = useRef(Boolean(plannedRoute.dirt_trails));
   routeRef.current = route;
   // What a re-plan builds on: the plan's points at first, then the last re-plan's (never a loop: its end is sent).
   const plan = useRef({ points: plannedPoints, loop: plannedLoop });
@@ -1008,7 +1011,7 @@ export function RideMode({
       // The rider is riding a plan already made: a long one is not asked to be confirmed again (a signed-out
       // rider's re-plan of a long ride was refused for want of it).
       const ask = (to: LonLat[]) =>
-        requestRoute(to, preset, { dials: { ...dials, loop: false }, vias: viaIndices(to, VIA_MARKS.isVia), straight: drawnLegs(to), routeOnly: true, confirmLong: true, blocked: blockedRef.current, heading });
+        requestRoute(to, preset, { dials: { ...dials, loop: false }, vias: viaIndices(to, VIA_MARKS.isVia), straight: drawnLegs(to), routeOnly: true, confirmLong: true, blocked: blockedRef.current, heading, rideReplan: true, dirtRidden: dirtRidden.current });
       const result = await ask(points);
       // No new route to the end: the way back to the planned route, which goes on from there (lib/rejoin.ts;
       // the owner, 2026-10-17). Not for a detour, whose place the planned route does not pass. The no-signal
@@ -1053,6 +1056,7 @@ export function RideMode({
       if (turned && note === REPLAN_FOUND) note = REPLAN_UTURN;
       const model = modelOf(found, points);
       modelRef.current = model;
+      if (found.dirt_trails) dirtRidden.current = true;
       setRoute(found);
       // The new route's own standard way through a closure it goes round, if any (none past a road marked closed).
       const through = blockedRef.current.length ? null : (found.closure_through ?? null);
