@@ -7451,6 +7451,22 @@ Python 3.11 or later, standard library only.
   `~/.config/routemaker/osm-edits.log`; the same change is refused again from any file.
   Where routing must change before the next rebuild, add the matching override as usual;
   the OSM edit reaches our map with the next extract.
+- **Field reports, drafted in one command.** When the owner or a tester reports a corner
+  (the reporter's own sighting, never Street View or another map):
+  - A signal that runs as a flashing beacon:
+    `python3 scripts/osm_edit.py draft-beacon --name "Connecticut Ave and Washington St"
+    --lat 39.0225574 --lon -77.0763584 --evidence "<what was seen>" --out <new folder>`.
+    It drafts `traffic_signals=blinker` for every OSM signal node within 40 m (skipping ones
+    already blinkers) and writes `beacon-<slug>.json`, an owner flashing-signal file for our
+    map: load it with `load_flashing_signals` (dry run, then `--confirm`) for an immediate
+    fix, and commit it to `fixtures/flashing-signals/`. Our map does not read OSM's
+    `blinker` tag, so the row is what changes our routing.
+  - A working signal OSM lacks: `draft-signal --name ... --lat ... --lon ... --out ...`
+    drafts `highway=traffic_signals` on the nearest junction node within 25 m (a dual
+    carriageway meets a street at two nodes; draft each).
+  - Both print every diff and the one `upload` line to run once approved; `upload` takes
+    several files, each its own changeset, and stops at the first failure. Evidence in a
+    row or edit note describes the place, never who reported it.
 - **Smoke test:** every upload ends by reading the change back from OSM. The element must
   carry the approved tags at the version the upload made (a later version by someone else
   passes), and the changeset must be closed with exactly one change. A failure, or a check

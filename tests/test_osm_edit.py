@@ -30,6 +30,28 @@ NODE = (
     'changeset="{changeset}" timestamp="2026-01-01T00:00:00Z" user="someone" uid="7" '
     'lat="38.9" lon="-77.0">{tags}</node></osm>'
 )
+# A junction: Main St (two carriageways, ways 1 and 2) crosses Side St (way 3) at nodes 201
+# and 202, with signal nodes 301 (signal) and 302 (already a blinker) beside them, and a
+# signal 303 about 90 m away that a report at the junction must leave alone.
+AREA = """<osm version="0.6">
+<node id="201" version="2" lat="39.0225800" lon="-77.0764850"/>
+<node id="202" version="1" lat="39.0225497" lon="-77.0763385"/>
+<node id="203" version="1" lat="39.0230000" lon="-77.0764000"/>
+<node id="204" version="1" lat="39.0220000" lon="-77.0763000"/>
+<node id="205" version="1" lat="39.0225600" lon="-77.0770000"/>
+<node id="301" version="1" lat="39.0226500" lon="-77.0764000">
+  <tag k="highway" v="traffic_signals"/><tag k="traffic_signals" v="signal"/></node>
+<node id="302" version="1" lat="39.0224800" lon="-77.0763600">
+  <tag k="highway" v="traffic_signals"/><tag k="traffic_signals" v="blinker"/></node>
+<node id="303" version="1" lat="39.0233600" lon="-77.0764000">
+  <tag k="highway" v="traffic_signals"/></node>
+<way id="1" version="1"><nd ref="203"/><nd ref="201"/><nd ref="204"/>
+  <tag k="highway" v="primary"/></way>
+<way id="2" version="1"><nd ref="204"/><nd ref="202"/><nd ref="203"/>
+  <tag k="highway" v="primary"/></way>
+<way id="3" version="1"><nd ref="205"/><nd ref="201"/><nd ref="202"/>
+  <tag k="highway" v="residential"/></way>
+</osm>"""
 CHANGESET = '<osm><changeset id="555" open="{open}" changes_count="{count}"/></osm>'
 
 
@@ -47,6 +69,7 @@ class FakeOsm:
         self.changeset_open = True
         self.changes = 0
         self.drop_write = False
+        self.area = AREA
         self.calls: list[tuple[str, str, bytes, str | None]] = []
 
 
@@ -67,7 +90,9 @@ def osm(tmp_path, monkeypatch):
 
         def do_GET(self):
             state.calls.append(("GET", self.path, b"", self.headers.get("Authorization")))
-            if self.path.endswith("/node/101"):
+            if "/map?bbox=" in self.path:
+                self._send(200, state.area)
+            elif self.path.endswith("/node/101"):
                 tags = state.stored_tags
                 if tags is None:
                     tags = '<tag k="name" v="Corner"/>' + state.extra
@@ -80,6 +105,14 @@ def osm(tmp_path, monkeypatch):
                 self._send(200, json.dumps({"user": {"display_name": "Mapper"}}))
             elif self.path.endswith("/node/404"):
                 self._send(410, "")
+            elif "/node/" in self.path:
+                wanted = self.path.rsplit("/", 1)[1]
+                for node in ET.fromstring(state.area).iter("node"):
+                    if node.get("id") == wanted:
+                        body = ET.tostring(node, encoding="unicode")
+                        self._send(200, f'<osm version="0.6">{body}</osm>')
+                        return
+                self._send(404, "")
             else:
                 self._send(404, "")
 
@@ -441,4 +474,80 @@ def test_a_smoke_test_that_cannot_run_never_says_not_uploaded(osm, tmp_path, cap
     err = capsys.readouterr().err
     assert "Not uploaded" not in err and "could not check" in err
     monkeypatch.setattr(osm_edit, "check_problems", real)
+    assert (tmp_path / "edit.uploaded.json").exists()
+
+
+def _draft(kind, tmp_path, *extra):
+    out = tmp_path / "drafts"
+    argv = [kind, "--name", "Main St and Side St", "--lat", "39.0225574", "--lon", "-77.0763584"]
+    argv += ["--server", "dev", "--out", str(out), *extra]
+    return osm_edit.main(argv), out
+
+
+def test_draft_beacon_writes_blinker_edits_and_our_row(osm, tmp_path, capsys):
+    code, out = _draft("draft-beacon", tmp_path, "--evidence", "flashing all day, seen 2026-10-21")
+    assert code == 0
+    edit = json.loads((out / "main-st-side-st-301.json").read_text())
+    assert edit["expect"] == {"traffic_signals": "signal"}
+    assert edit["set"] == {"traffic_signals": "blinker"}
+    assert edit["server"] == "dev" and edit["source"] == "survey"
+    assert not (out / "main-st-side-st-302.json").exists()  # already a blinker
+    assert not (out / "main-st-side-st-303.json").exists()  # too far
+    beacon = json.loads((out / "beacon-main-st-side-st.json").read_text())
+    (row,) = beacon["rows"]
+    assert beacon["source"] == "owner" and row["id"] == "main-st-side-st"
+    assert (row["lat"], row["lon"]) == (39.0225574, -77.0763584)
+    assert row["evidence"] == "flashing all day, seen 2026-10-21"
+    printed = capsys.readouterr().out
+    assert "traffic_signals: 'signal' -> 'blinker'" in printed
+    assert "302" in printed and "upload main-st-side-st-301.json --approved" in printed
+    assert _puts(osm) == []
+
+
+def test_draft_beacon_with_no_signal_there_points_to_draft_signal(osm, tmp_path, capsys):
+    osm.area = '<osm version="0.6"></osm>'
+    code, _ = _draft("draft-beacon", tmp_path, "--evidence", "x")
+    assert code == 1
+    assert "draft-signal" in capsys.readouterr().err
+
+
+def test_draft_signal_picks_the_nearest_junction_node(osm, tmp_path, capsys):
+    osm.area = osm.area.replace('<tag k="highway" v="traffic_signals"/>', "")
+    code, out = _draft("draft-signal", tmp_path)
+    assert code == 0
+    edit = json.loads((out / "main-st-side-st-202.json").read_text())
+    assert edit["expect"] == {"highway": None}
+    assert edit["set"] == {"highway": "traffic_signals"}
+    assert "two nodes" in capsys.readouterr().out
+    assert _puts(osm) == []
+
+
+def test_draft_signal_refuses_a_junction_that_already_has_a_highway_tag(osm, tmp_path, capsys):
+    osm.area = osm.area.replace(
+        '<node id="202" version="1" lat="39.0225497" lon="-77.0763385"/>',
+        '<node id="202" version="1" lat="39.0225497" lon="-77.0763385">'
+        '<tag k="highway" v="stop"/></node>',
+    )
+    code, _ = _draft("draft-signal", tmp_path)
+    assert code == 1
+    assert "highway=stop" in capsys.readouterr().err
+
+
+def test_drafts_refuse_a_folder_inside_the_repo(osm, tmp_path):
+    argv = ["draft-signal", "--name", "X and Y", "--lat", "39", "--lon", "-77"]
+    argv += ["--out", str(SCRIPT.parent / "drafts-test")]
+    assert osm_edit.main(argv) == 1
+    assert not (SCRIPT.parent / "drafts-test").exists()
+
+
+def test_drafts_never_overwrite(osm, tmp_path):
+    assert _draft("draft-beacon", tmp_path, "--evidence", "x")[0] == 0
+    assert _draft("draft-beacon", tmp_path, "--evidence", "x")[0] == 1
+
+
+def test_upload_takes_several_files_and_stops_at_the_first_failure(osm, tmp_path):
+    first = _edit(tmp_path)
+    second = tmp_path / "second.json"
+    second.write_text(first.read_text().replace('"id": 101', '"id": 404'))
+    assert osm_edit.main(["upload", str(first), str(second), "--approved"]) == 1
     assert (tmp_path / "edit.uploaded.json").exists()
