@@ -413,6 +413,8 @@ class Schedule:
 # score only, never the time shown, and "15 minutes for everyone". In the search, so the same
 # line's next station is kept where it wins.
 ELEVATOR_OUT_S = 900.0
+# Stops of one station (its platforms) lie within this much of each other beyond the nearest.
+SAME_STATION_M = 60.0
 
 
 def with_elevators_out(schedule: Schedule, points, cost_s: float = ELEVATOR_OUT_S) -> Schedule:
@@ -421,15 +423,22 @@ def with_elevators_out(schedule: Schedule, points, cost_s: float = ELEVATOR_OUT_
     if not points:
         return schedule
     metro = {s.index for s in schedule.systems if s.id == METRO_SYSTEM}
+    rail = [stop for stop in schedule.stops if stop.rail and stop.system in metro]
+    # Only the station at each point, not the next one over (Farragut North and West are
+    # 227 m apart): the nearest Metro stop, and any of the same station's within
+    # SAME_STATION_M more.
+    marked: set[int] = set()
+    for p in points:
+        near = [(_distance(stop.point, p), stop.index) for stop in rail]
+        near = [(d, i) for d, i in near if d <= STATION_NEAR_M]
+        if near:
+            closest = min(d for d, _ in near)
+            marked.update(i for d, i in near if d <= closest + SAME_STATION_M)
 
-    def out(stop: Stop) -> bool:
-        return (
-            stop.rail
-            and stop.system in metro
-            and any(_distance(stop.point, p) <= STATION_NEAR_M for p in points)
-        )
-
-    stops = [replace(stop, elevator_out_s=cost_s) if out(stop) else stop for stop in schedule.stops]
+    stops = [
+        replace(stop, elevator_out_s=cost_s) if stop.index in marked else stop
+        for stop in schedule.stops
+    ]
     return replace(schedule, stops=stops)
 
 
