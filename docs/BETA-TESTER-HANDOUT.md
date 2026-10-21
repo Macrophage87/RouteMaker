@@ -147,7 +147,8 @@ For short rides, up to 30 miles (48 km), on a phone with the screen on and the p
 For longer rides, use Download GPX with a bike computer, which keeps going with the screen off.
 You stay responsible for riding safely; the route can be wrong.
 
-- Plan a route, then press "Start ride", under the route's figures or in Directions. The
+- Plan a route, then press "Start ride", on the bar at the top of the map (once you've picked a
+  route), under the route's figures or in Directions. The
   browser asks to use your location.
 - The first time, it asks how to say the cues: with your screen reader, RouteMaker's voice,
   both, or neither (on screen only), and how much: Full (every turn, early and again close to
@@ -238,7 +239,10 @@ descriptions. Plan's "Change" ride type list has the same search and groups. Typ
 "walk", "train" or "bus" finds both transit types. A screen reader says their names in words:
 "Own bike plus train or bus" and "Bikeshare plus walk, train or bus".
 
-- Both transit types list a few trips, quickest first. "Ride the whole way" is always one of
+- Both transit types list a few trips. Bikeshare plus transit lists the quickest first. Own bike
+  plus transit lists the best first: time to get there, with time on busy roads and waiting at
+  junctions counting against a trip, so each trip says how far it rides on busy roads ("0.4 mi
+  (0.6 km) busy"), which explains a list out of time order. "Ride the whole way" is always one of
   them. Press a trip to put it on the map and in the steps.
 - A transit trip lists its legs with their minutes: "🚶 4 min · 🚲 12 min · 🔴 18 min". 🚶 is a
   walk and 🚲 a bike. Metro shows its line's colour (🔴 Red, 🟠 Orange, 🔵 Blue, 🟢 Green, 🟡
