@@ -46,9 +46,9 @@
 #      is snapshotted (pg_dump into $RM_STATE/cd/backups), the front end's top-level files
 #      (index.html, beta-build.txt) are saved, the checkout moves to the tag, TAG is set in .env,
 #      the compose gate runs, migrations run (only after the snapshot), the front end is installed
-#      (index.html last), the api and worker start, photon and the four routers are recreated if a
-#      compose file changed, the four routers restart if a valhalla/*.json they read changed (never
-#      for valhalla-offroad.json or valhalla-mtb.json: those routers do not run on the beta), /healthz is waited for,
+#      (index.html last), the api and worker start, photon and the routers are recreated if a
+#      compose file changed, the routers restart if a valhalla/*.json changed (the routers: the
+#      four, and valhalla-offroad and valhalla-mtb once their tiles are on the host), /healthz is waited for,
 #      `migrate --check` and collectstatic run in the api, and the local smoke tests run. The
 #      release is then recorded as deployed. Last,
 #      if a tile FORMAT_VERSION changed, the pre-draw runs and is waited for (OWNER-DECISIONS 436);
@@ -81,6 +81,10 @@ export LC_ALL=C
 NODE_IMAGE="docker.io/library/node@sha256:363e1587494626837fa7f9a23bdb453d13b0ff3c67c705c2805cfc69c2d2fad7"
 API_IMAGE="ghcr.io/macrophage87/routemaker-api"
 ROUTERS="valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend"
+# The trail routers (Gravel and Mountain Goat's, Mountain Bike's; profile `offroad`, which naming
+# them turns on): run beside the four once their promoted build is on the host, never before, since
+# a bind with create_host_path: false stops the whole `up` without it (the owner, 2026-10-20).
+TRAIL_ROUTERS="valhalla-offroad valhalla-mtb"
 SECRET_KEYS="PGPASSWORD DJANGO_SECRET_KEY KEY_ENCRYPTION_KEY DISCORD_CLIENT_SECRET DISCORD_BOT_TOKEN BOT_INTERNAL_SECRET"
 UNIT=routemaker-beta-cd
 
@@ -123,6 +127,14 @@ load_vars() {
 
 dk() { "${DOCKER:-docker}" "$@"; }
 bc() { "$RM_SRC/scripts/beta/beta-compose.sh" "$@"; }
+# The routers this host runs: the four, then each trail router whose tiles are here.
+routers() {
+	printf '%s' "$ROUTERS"
+	for router in $TRAIL_ROUTERS; do
+		[ -L "$RM_DATA/tiles/${router#valhalla-}/current" ] && printf ' %s' "$router"
+	done
+	echo
+}
 gitc() { git -C "$RM_SRC" "$@"; }
 # The pass runs under umask 077 (its logs and snapshots are the operator's alone), but the
 # release's files are read inside the containers as another user: a checkout or an exported
@@ -509,6 +521,9 @@ rollback() { # old-sha old-short
 				;;
 			restore-index) restore_frontend "$(cat "$cd_dir/run-index" 2>/dev/null)" || { say "FAILED: put the old front end's top-level files back (index.html, beta-build.txt)"; ok=0; } ;;
 			start-app) step "start the api and worker" bc up -d api worker </dev/null || ok=0 ;;
+			# The four only: the release rolled back to may be one whose compose gives the trail routers their old
+			# 768M caps, over the budget, so a rollback never starts them; nothing here stops them either, that is
+			# done by hand (docs/BETA-RUNBOOK.md, rollback A).
 			recreate-services) step "recreate photon and the routers" bc up -d photon $ROUTERS </dev/null || ok=0 ;;
 			restart-routers) step "restart the routers" bc restart $ROUTERS </dev/null || ok=0 ;;
 			# A missing pre-draw only means tiles are drawn on request (OWNER-DECISIONS 436): a warning.
@@ -604,13 +619,16 @@ deploy() { # tag new-sha gate-file
 	fi
 	mark started "start the api and worker" || return 1
 	step "start the api and worker" bc up -d api worker </dev/null || return 1
+	# The routers to recreate or restart: the four, and each trail router whose tiles are there.
+	local -a running
+	read -ra running <<<"$(routers)"
 	if [ "$(kv compose_changed "$gate_file")" = 1 ]; then
 		mark services "recreate photon and the routers whose compose settings changed" || return 1
-		step "recreate photon and the routers" bc up -d photon $ROUTERS </dev/null || return 1
+		step "recreate photon and the routers" bc up -d photon "${running[@]}" </dev/null || return 1
 	fi
 	if [ "$(kv routers_restart "$gate_file")" = 1 ]; then
-		mark routers "restart the four routers (a valhalla/*.json they read changed)" || return 1
-		step "restart the routers" bc restart $ROUTERS </dev/null || return 1
+		mark routers "restart the routers (a valhalla/*.json they read changed)" || return 1
+		step "restart the routers" bc restart "${running[@]}" </dev/null || return 1
 	fi
 	wait_healthy || { say "FAILED: /healthz did not answer 200 (60 tries, 3 s apart)"; return 1; }
 	step "migrations check" bc exec -T api ./manage.py migrate --check </dev/null || return 1

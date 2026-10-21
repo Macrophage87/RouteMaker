@@ -406,8 +406,31 @@ class TestOwnCost:
         assert fast_ratio > 2 * slow_ratio
 
     def test_a_trail_class_way_never_carries_the_stress_mark(self) -> None:
-        path = road(use="footway", road_class="service_other")
+        path = road(use="cycleway", road_class="service_other")
         assert calm.edge_factor(path, 3, 0.1) == calm.edge_factor(path, 1, 0.1)
+
+    def test_a_ridden_sidewalk_costs_between_lts_3_and_lts_4(self) -> None:
+        """routemaker.sidewalks: rated LTS 3 and priced as a road at the sidewalk speed with
+        the stress mark, so it costs more than an LTS 3 street and less than a graded one."""
+        sidewalk = road(use="footway", road_class="service_other")
+        u = presets.use_roads_for(70)
+        lts3 = road(road_class="secondary", lanes=2, speed_limit_kph=56)
+        lts4 = road(road_class="secondary", lanes=calm.GRADED_LANES, speed_limit_kph=56)
+        own = calm.edge_factor(sidewalk, 3, u)
+        assert own > calm.edge_factor(sidewalk, 1, u), "the LTS 3 rating marks it"
+        assert calm.edge_factor(lts3, 3, u) < own < calm.edge_factor(lts4, 4, u)
+
+    def test_a_last_resort_sidewalk_costs_more_than_one_beside_a_45_road(self) -> None:
+        """Beside a calmer road (2026-10-21, "Beside 4.5/Avoid only"): LTS 4's top lane
+        count on the sidewalk prices it above the other ridden sidewalks at every slider
+        position. (On a tile build it also loses to an LTS 4 road everywhere,
+        tests/test_tile_build_sidewalk_price.py: the graph adds a sidewalk's own use factor,
+        which this model leaves out.)"""
+        last = road(use="footway", road_class="service_other", lanes=calm.GRADED_LANES)
+        beside = road(use="footway", road_class="service_other")
+        for stress in (0, 40, 70, 100):
+            u = presets.use_roads_for(stress)
+            assert calm.edge_factor(last, 4, u) > calm.edge_factor(beside, 3, u), stress
 
     def test_above_80_the_calm_rate_is_added_to_the_roads_own_cost(self) -> None:
         at90 = calm.Pricing(

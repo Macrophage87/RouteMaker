@@ -270,7 +270,7 @@ class TestThePlan:
         import ast
         import inspect
 
-        tree = ast.parse(inspect.getsource(routing.plan))
+        tree = ast.parse(inspect.getsource(routing._plan))
         calls = [
             node
             for node in ast.walk(tree)
