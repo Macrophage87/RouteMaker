@@ -53,7 +53,9 @@ function seen(strong: boolean, zoom: number, facility: Facility = FACILITIES[0])
 test("the widths are thinned below the zoom the busy roads come in at, which is the style's", () => {
   assert.equal(FULL_WIDTH_MIN_ZOOM, STRESS_ZOOMS.quiet);
   assert.equal(ZOOMED_OUT_NEAR_ZOOM, 11, "core.stress_tiles.TRAILS_NEAR_MIN_ZOOM, which tests/test_stress_tiles.py holds");
-  assert.deepEqual(Object.keys(ZOOMED_OUT_SCALE).map(Number), [STRESS_ZOOMS.min, ZOOMED_OUT_NEAR_ZOOM]);
+  // z10's grade is drawn at every zoom further out too (from STRESS_ZOOMS.min, the long trails as far out as roads).
+  assert.deepEqual(Object.keys(ZOOMED_OUT_SCALE).map(Number), [10, ZOOMED_OUT_NEAR_ZOOM]);
+  assert.ok(STRESS_ZOOMS.min <= 10);
 });
 
 for (const strong of [false, true]) {

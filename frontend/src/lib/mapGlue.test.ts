@@ -766,10 +766,10 @@ test("a layer shows by the switch and the mode: the capacity layers only in Mass
   for (const mass of [true, false]) for (const id of ["stress-1", "mass-line-good"]) assert.equal(overlayLayerShown(id, false, mass), false);
 });
 
-test("the Mass Ride tiles' source: its own path, the stress tiles' zooms", () => {
+test("the Mass Ride tiles' source: its own path, its own widest zoom (z10), the stress tiles' closest", () => {
   const source = massSource("https://example.test");
   assert.match(source.tiles[0], /\/tiles\/mass\/\{z\}\/\{x\}\/\{y\}\.pbf$/);
-  assert.equal(source.minzoom, stressSource("https://example.test").minzoom);
+  assert.equal(source.minzoom, 10);
   assert.equal(source.maxzoom, stressSource("https://example.test").maxzoom);
 });
 

@@ -15,7 +15,7 @@
 import { MASS_BANDS, MASS_WIDE_RUN_MI, bandIndex, massBandsAt } from "../massStyle.js";
 import type { RouteResponse, StressSpan } from "./api.ts";
 import { formatDistance, formatRunMiles, formatSpeedRange } from "./format.ts";
-import { STRESS_ZOOMS } from "./mapStyle.ts";
+import { MASS_MIN_ZOOM } from "./mapStyle.ts";
 import { wholePercents } from "./stressBar.ts";
 
 /** The ride type this is the capacity map of. */
@@ -59,7 +59,7 @@ export const MASS_ZOOM_IN = "Zoom in to see roads and how many riders per minute
  */
 export function massZoomNotice(zoom: number | null, shown: boolean): string | null {
   if (zoom === null || !shown) return null;
-  if (zoom < STRESS_ZOOMS.min) return MASS_ZOOM_IN;
+  if (zoom < MASS_MIN_ZOOM) return MASS_ZOOM_IN;
   return null;
 }
 
@@ -111,7 +111,7 @@ export function massBandsChangeSaid(before: string | null, now: string | null, l
 
 /** The standing note under the legend: where roads come in, and what this map leaves out (417, 417a, 421, 422). */
 export const MASS_ZOOM_HINT =
-  `Roads in DC show their riders per minute from zoom ${STRESS_ZOOMS.min}, busy roads included: ` +
+  `Roads in DC show their riders per minute from zoom ${MASS_MIN_ZOOM}, busy roads included: ` +
   `at zoom 10 and 11 only wide open roads that run ${formatRunMiles(MASS_WIDE_RUN_MI)} or more, at zoom 12 and 13 good roads too, ` +
   "and every road from zoom 14. Stretches marked Avoid show at every zoom. " +
   "Trails, paths, protected bike lanes and bike lanes are not drawn on this map at any zoom, and nor are alleys.";
