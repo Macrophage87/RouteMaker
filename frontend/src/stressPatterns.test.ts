@@ -205,21 +205,26 @@ test("a flip of the accessibility switch repaints the unpaved marks too, in colo
 // ---- unpaved trails have no path rail (OWNER-DECISIONS 290) -----------------
 
 test("an unpaved trail gets no path rail, at every tier and ride time; a paved one keeps it, and so does a road of unknown surface; a trail of unknown surface has none (376)", () => {
-  const path = (when?: string) => (facilityLayers("s", when as never) as Layer[]).find((l) => l.id === "facility-path") as Layer;
+  // The path rails' calm-tier layer and its busy-tier twin: a feature is drawn by either.
+  const rails = (when?: string) =>
+    [...(facilityLayers("s", when as never) as Layer[]), ...(facilityLayers("s", when as never, undefined, true) as Layer[])].filter((l) =>
+      l.id.startsWith("facility-path"),
+    );
+  const drawn = (layers: Layer[], props: Record<string, unknown>) => layers.some((layer) => draws(layer, props));
   for (const when of [undefined, "weekend", "weekday_rush"]) {
-    const layer = path(when);
+    const layer = rails(when);
     for (const tier of [1, 2, 3, 4, 5]) {
-      assert.equal(draws(layer, { tier, facility: "path", trail: true, unpaved: true }), false, `LTS ${tier} unpaved trail (${when})`);
-      assert.equal(draws(layer, { tier, facility: "path", trail: true, unpaved: false }), true, `LTS ${tier} paved trail`);
-      assert.equal(draws(layer, { tier, facility: "path", trail: true }), false, `LTS ${tier} trail of unknown surface: no rails (376, A)`);
-      assert.equal(draws(layer, { tier, facility: "path", trail: false }), true, `LTS ${tier} road closed to cars, no surface tag`);
+      assert.equal(drawn(layer, { tier, facility: "path", trail: true, unpaved: true }), false, `LTS ${tier} unpaved trail (${when})`);
+      assert.equal(drawn(layer, { tier, facility: "path", trail: true, unpaved: false }), true, `LTS ${tier} paved trail`);
+      assert.equal(drawn(layer, { tier, facility: "path", trail: true }), false, `LTS ${tier} trail of unknown surface: no rails (376, A)`);
+      assert.equal(drawn(layer, { tier, facility: "path", trail: false }), true, `LTS ${tier} road closed to cars, no surface tag`);
     }
   }
   // A road closed to cars this weekend draws as a path: paved, its rails; unpaved, none.
-  assert.equal(draws(path("weekend"), { tier: 3, facility: "none", car_free: "weekend" }), true);
-  assert.equal(draws(path("weekend"), { tier: 3, facility: "none", car_free: "weekend", unpaved: true }), false);
+  assert.equal(drawn(rails("weekend"), { tier: 3, facility: "none", car_free: "weekend" }), true);
+  assert.equal(drawn(rails("weekend"), { tier: 3, facility: "none", car_free: "weekend", unpaved: true }), false);
   // A zoomed-out tile's merged feature carries "unpaved" too (core/stress_tiles.py PROPERTIES), whatever else it carries.
-  assert.equal(draws(path(), { tier: 1, facility: "path", trail: true, unpaved: true, car_free_only: ["weekday_offpeak", "weekday_rush", "weekend"] }), false);
+  assert.equal(drawn(rails(), { tier: 1, facility: "path", trail: true, unpaved: true, car_free_only: ["weekday_offpeak", "weekday_rush", "weekend"] }), false);
 });
 
 test("an unpaved trail still draws its tier's line and the dotted mark, and the other rails ignore the surface", () => {

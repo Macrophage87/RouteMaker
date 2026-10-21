@@ -881,7 +881,7 @@ export function withClearRoadLabels(layers, strong = accessibilityOn()) {
  * should be named on the map." The tiles carry `trail_name` on the long trails the zoomed-out map keeps (a path on
  * a regional-or-larger bicycle route or a long walking route, or in a named run of 2.5 mi or more, 5 mi unpaved;
  * core/stress_tiles.py, trail_name_rule), so "major" is the rule the map already draws by, not a list. The name is
- * drawn along the line from TRAIL_LABEL_MIN_ZOOM, the zoom the station names and every street come in at, in the
+ * drawn along the line from TRAIL_LABEL_MIN_ZOOM (zoom 10 since the owner's "label the long ones"), in the
  * street names' face, size and white halo (ROAD_LABEL; 20 px and shortened in a ride, as they are) but in the
  * purple of the off-road path's rails (FACILITIES, `path`): 10.9:1 on the halo, near-black purple (15.2:1) with the
  * accessibility switch. The layer is under the base map's labels, so a street name or a station's wins a place
@@ -889,7 +889,9 @@ export function withClearRoadLabels(layers, strong = accessibilityOn()) {
  * purple (roadLabelPaint). The name is on the canvas, out of a screen reader's reach; the road panel says it.
  */
 export const TRAIL_LABEL_LAYER_ID = "trail-name";
-export const TRAIL_LABEL_MIN_ZOOM = 12;
+// From zoom 10 (the owner, 2026-10-21: "And futher out obviously label the long ones" ... "Basically
+// anything long"): the zoomed-out tiles carry the long trails' names too (core/stress_tiles.py).
+export const TRAIL_LABEL_MIN_ZOOM = 10;
 export const TRAIL_LABEL = {
   color: "#4c1d95",
   strongColor: "#2e1065",
@@ -914,7 +916,7 @@ export function rideTrailLabelField() {
   return rideRoadLabelField(null, ["get", "trail_name"]);
 }
 
-/** The trail names' layer (2026-10-21): along each major trail, from zoom 12. */
+/** The trail names' layer (2026-10-21): along each major trail, from zoom 10. */
 export function trailLabelLayers(sourceId = "stress", when = DEFAULT_WHEN, strong = accessibilityOn()) {
   return [
     {
@@ -1448,6 +1450,8 @@ function stressFiltersOf(when, showHighLanes, routableMtb) {
   // The major trails' names (2026-10-21): every way that carries one (never a mountain-bike trail, which the
   // tiles name as `name`; the cut is the routable layers' all the same).
   filters[TRAIL_LABEL_LAYER_ID] = ["all", drawnAt(when), ...hidden, ["has", "trail_name"]];
+  // The popular corridors' band (2026-10-21): every routable way with a class.
+  filters[POPULAR_BAND_LAYER_ID] = ["all", drawnAt(when), ...hidden, [">", ["to-number", ["get", "popular"], 0], 0]];
   for (const tier of TIER_SHAPES) {
     const filter = ["all", drawnAt(when), ...hidden, ["==", tierAt(when), tier.tier]];
     // LTS 1's line and edge leave the surface-unknown trails to their own layers.
@@ -1482,10 +1486,86 @@ function stressFiltersOf(when, showHighLanes, routableMtb) {
     // (a missing tier counts as 0, which draws it, as a rating-less road
     // has no stress to be high). The tile's own tier: a road closed to cars
     // is a path in this ride time, and is not in this layer at all.
-    if (facility.facility === "lane" && !showHighLanes) filter.push(["<", ["to-number", ["get", "tier"], 0], HIGH_STRESS_LANE_MIN_TIER]);
-    filters[`facility-${facility.facility}`] = filter;
+    const cut = facility.facility === "lane" && !showHighLanes ? [["<", ["to-number", ["get", "tier"], 0], HIGH_STRESS_LANE_MIN_TIER]] : [];
+    // The rails in two layers, by the drawing priority (2026-10-21, `drawPriority`): a busy road's under every
+    // calmer line, a calm way's over every busy one, so a path's rails are not cut by the road it crosses.
+    // A rating-less road (no tier) counts as calm.
+    const tier = ["case", carFreeNow(when), 1, ["to-number", ["get", "tier"], 0]];
+    filters[facilityLayerId(facility.facility)] = [...filter, ["<", tier, BUSY_MIN_TIER], ...cut];
+    filters[facilityLayerId(facility.facility, true)] = [...filter, [">=", tier, BUSY_MIN_TIER], ...cut];
   }
   return filters;
+}
+
+/**
+ * THE DRAWING PRIORITY (the owner, 2026-10-21: "When the roads get crowded with zoom, go in this
+ * rough priority: Off road path, protected bike lane, painted bike lane, then the long calm streets
+ * that don't have to keep waiting at semi-controlled intersections", and "In general they tend to
+ * follow this pattern anyway"). The overlay draws its tiers calmest on top (`calmestOnTop`), so a busy road no
+ * longer paints over the path that crosses it ("basically showing where not to cycle"); within a
+ * tier each layer sorts its lines by this key, higher on top: the facility first, then a long
+ * calm street (the tiles' `calm`), then the popular class (`popular`).
+ */
+export const FACILITY_PRIORITY = { path: 30, protected: 20, lane: 10 };
+export const CALM_STREET_PRIORITY = 5;
+export const drawPriority = (when = DEFAULT_WHEN) => [
+  "+",
+  ["match", facilityAt(when), "path", FACILITY_PRIORITY.path, "protected", FACILITY_PRIORITY.protected, "lane", FACILITY_PRIORITY.lane, 0],
+  ["case", ["==", ["get", "calm"], true], CALM_STREET_PRIORITY, 0],
+  ["to-number", ["get", "popular"], 0],
+];
+
+/** The tier a per-tier layer (`stress-<kind>-<tier>`) draws. */
+const tierOfLayer = (layer) => Number(layer.id.match(/-(\d)$/)?.[1] ?? 0);
+
+/** A group of per-tier layers bottom first for drawing: Avoid lowest, LTS 1 on top. */
+export function calmestOnTop(layers) {
+  return [...layers].sort((a, b) => tierOfLayer(b) - tierOfLayer(a));
+}
+
+/** The busy tiers' layers of a group (LTS 3 and above), or with `calm` the calm tiers' (LTS 1-2), calmest on top. */
+function tierGroup(layers, calm = false) {
+  return calmestOnTop(layers.filter((layer) => (tierOfLayer(layer) < BUSY_MIN_TIER) === calm));
+}
+
+/**
+ * THE POPULAR BIKE CORRIDORS (the owner, 2026-10-21: "use the Cabi heatmap if you can, and make those
+ * streets show more pronounced than other roads"; "Let's focus on the major cycling corridors, which are
+ * well known"). The tiles' `popular`, 1 to 3 (core/stress_tiles.py: the Capital Bikeshare model and the
+ * owner's named corridors), is drawn as a soft band under everything else of the overlay, wider for the
+ * busier class, so a corridor reads at a glance while its line keeps its own stress colour and facility
+ * rails on top. A band, not a colour: it changes no tier's look, and the stress line inside it still says
+ * what riding there is like. Width in px by zoom, for each class; `opacity` keeps the base map legible.
+ */
+export const POPULAR_BAND_LAYER_ID = "popular-band";
+export const POPULAR_BAND = {
+  color: "#f59e0b",
+  opacity: 0.35,
+  // [zoom, [class 1, class 2, class 3]]
+  widths: [
+    [10, [0, 6, 8]],
+    [12, [8, 11, 14]],
+    [16, [14, 20, 26]],
+  ],
+};
+
+export function popularBandLayers(sourceId = "stress", when = DEFAULT_WHEN) {
+  const byClass = (widths) => ["match", ["to-number", ["get", "popular"], 0], 1, widths[0], 2, widths[1], 3, widths[2], 0];
+  return [
+    {
+      id: POPULAR_BAND_LAYER_ID,
+      type: "line",
+      source: sourceId,
+      "source-layer": STRESS_TILE_LAYER,
+      filter: stressFilters(when)[POPULAR_BAND_LAYER_ID],
+      layout: { "line-cap": "round", "line-join": "round" },
+      paint: {
+        "line-color": POPULAR_BAND.color,
+        "line-opacity": POPULAR_BAND.opacity,
+        "line-width": ["interpolate", ["linear"], ["zoom"], ...POPULAR_BAND.widths.flatMap(([zoom, widths]) => [zoom, byClass(widths)])],
+      },
+    },
+  ];
 }
 
 export function stressLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = currentTiers()) {
@@ -1496,6 +1576,7 @@ export function stressLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = c
     source: sourceId,
     "source-layer": STRESS_TILE_LAYER,
     filter: filters[`stress-${tier.tier}`],
+    layout: { "line-sort-key": drawPriority(when) },
     paint: { ...linePaint(byUnpaved(tier.unpavedColor, tier.color, tier.gravelColor), tier.width, tier.tier >= BUSY_MIN_TIER, (zoom) => zoomedOutLine(tier, zoom)), ...(tier.dash ? { "line-dasharray": tier.dash } : {}) },
   }));
 }
@@ -1621,6 +1702,7 @@ export function stressCasingLayers(sourceId = "stress", when = DEFAULT_WHEN, tie
     source: sourceId,
     "source-layer": STRESS_TILE_LAYER,
     filter: filters[`stress-casing-${tier.tier}`],
+    layout: { "line-sort-key": drawPriority(when) },
     paint: casingPaint(tier),
   }));
 }
@@ -1996,7 +2078,12 @@ export function legendWidths(tiers = currentTiers()) {
   };
 }
 
-export function facilityLayers(sourceId = "stress", when = DEFAULT_WHEN, showHighLanes = highStressLanesOn()) {
+/** A facility's rails' layer id: on the calm tiers (LTS 1-2), or with `busy` on LTS 3 and above. */
+export function facilityLayerId(facility, busy = false) {
+  return `facility-${facility}${busy ? "-busy" : ""}`;
+}
+
+export function facilityLayers(sourceId = "stress", when = DEFAULT_WHEN, showHighLanes = highStressLanesOn(), busy = false) {
   const filters = stressFilters(when, showHighLanes);
   const ordered = FACILITY_DRAW_ORDER.map((name) => FACILITIES.find((f) => f.facility === name));
   return ordered.map((facility) => {
@@ -2006,11 +2093,11 @@ export function facilityLayers(sourceId = "stress", when = DEFAULT_WHEN, showHig
     };
     if (facility.dash) paint["line-dasharray"] = facility.dash;
     return {
-      id: `facility-${facility.facility}`,
+      id: facilityLayerId(facility.facility, busy),
       type: "line",
       source: sourceId,
       "source-layer": STRESS_TILE_LAYER,
-      filter: filters[`facility-${facility.facility}`],
+      filter: filters[facilityLayerId(facility.facility, busy)],
       paint,
     };
   });
@@ -2025,15 +2112,25 @@ export function facilityLayers(sourceId = "stress", when = DEFAULT_WHEN, showHig
  */
 export function stressOverlayLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = currentTiers()) {
   return [
+    // The popular corridors' band (2026-10-21), under every line.
+    ...popularBandLayers(sourceId, when),
     // The mountain-bike trails' layer (452a, 454, 456), under every routable layer.
     ...mtbTrailLayers(sourceId, when),
-    ...ringLayers(sourceId, when, tiers),
+    // The drawing priority (2026-10-21, `drawPriority`): the busy roads (LTS 3, LTS 4, Avoid) whole, rails, casings,
+    // lines and marks, then the calm ways (LTS 1-2) whole over them, each group calmest on top, so a busy road
+    // does not paint over the path or the calm street that crosses it.
+    ...calmestOnTop(ringLayers(sourceId, when, tiers)),
+    ...facilityLayers(sourceId, when, highStressLanesOn(), true),
+    ...tierGroup(stressCasingLayers(sourceId, when, tiers)),
+    ...tierGroup(gapLayers(sourceId, when, tiers)),
+    ...tierGroup(stressLayers(sourceId, when, tiers)),
+    ...tierGroup(unpavedLayers(sourceId, when, tiers)),
     ...facilityLayers(sourceId, when),
-    ...stressCasingLayers(sourceId, when, tiers),
-    ...gapLayers(sourceId, when, tiers),
+    ...tierGroup(stressCasingLayers(sourceId, when, tiers), true),
+    ...tierGroup(gapLayers(sourceId, when, tiers), true),
     ...unknownSurfaceLayers(sourceId, when, tiers),
-    ...stressLayers(sourceId, when, tiers),
-    ...unpavedLayers(sourceId, when, tiers),
+    ...tierGroup(stressLayers(sourceId, when, tiers), true),
+    ...tierGroup(unpavedLayers(sourceId, when, tiers), true),
     // Half steps' dashes from street level (441r-441v, 458), over their lower level's line.
     ...halfStepLayers(sourceId, when, tiers),
     // The major trails' names (2026-10-21), over every line.

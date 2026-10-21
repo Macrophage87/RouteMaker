@@ -547,3 +547,21 @@ def test_the_ddot_level_field_is_found_on_any_record_not_only_the_first(tmp_path
     assert [r["id"] for r in module.ddot(tmp_path, dropped)] == ["ddot-2-0"]
     assert dropped["ddot: no rating (0 or empty)"] == 1
     assert "LTS_SCORE" not in module.DDOT_LEVEL_FIELDS, "MDOT's preliminary score's name"
+
+
+def test_a_mapped_facility_sets_ddots_2020_rating_aside() -> None:
+    """The owner, 2026-10-21, of 14th Street NW, choosing "Formula wins where newer": DDOT's 2020
+    layer predates lanes built since, so where a bike facility is mapped the formula's tier stands;
+    the rating is still recorded for the road panel."""
+    lane = StressResult(Stress.LTS2, "bike lane, 25 mph", ())
+    result = agency_lts.apply(lane, [AgencyRating("ddot", 4)], facility_mapped=True)
+    assert result.tier is Stress.LTS2
+    assert result.agency_ratings == (AgencyRating("ddot", 4),)
+    assert agency_lts.SUPERSEDED_WHERE_FACILITY["ddot"] in result.rule
+    # With no facility mapped DDOT's level is used, as before.
+    assert agency_lts.apply(lane, [AgencyRating("ddot", 4)]).tier is Stress.LTS4
+
+
+def test_a_mapped_facility_does_not_set_aside_a_current_agency() -> None:
+    result = agency_lts.apply(FORMULA, [AgencyRating("moco", 2)], facility_mapped=True)
+    assert result.tier is Stress.LTS2

@@ -655,7 +655,12 @@ test("the ride time changes the overlay's filters and the rails' widths, and not
   assert.deepEqual(filters, stressFilters("weekend"));
   assert.deepEqual(
     paints,
-    Object.fromEntries(F.map((f: { facility: string }) => [`facility-${f.facility}.line-width`, facilityWidthAt(f, "weekend")])),
+    Object.fromEntries(
+      F.flatMap((f: { facility: string }) => [
+        [`facility-${f.facility}.line-width`, facilityWidthAt(f, "weekend")],
+        [`facility-${f.facility}-busy.line-width`, facilityWidthAt(f, "weekend")],
+      ]),
+    ),
   );
   assert.notDeepEqual(stressFilters("weekend"), stressFilters("weekday_rush"));
 });

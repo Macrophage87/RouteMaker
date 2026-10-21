@@ -4,6 +4,11 @@ import assert from "node:assert/strict";
 import { massFilters, massLayers } from "./massStyle.js";
 import {
   BASEMAP,
+  popularBandLayers,
+  POPULAR_BAND,
+  drawPriority,
+  FACILITY_PRIORITY,
+  CALM_STREET_PRIORITY,
   stressLayers,
   stressCasingLayers,
   gapLayers,
@@ -234,7 +239,9 @@ test("the overlay is added casings first: every casing under every tier", () => 
   const ids = stressOverlayLayers("s").map((l) => l.id);
   const tiers = stressLayers("s").map((l) => l.id);
   const casings = stressCasingLayers("s").map((l) => l.id);
-  const rails = facilityLayers("s").map((l) => l.id);
+  const calmRails = facilityLayers("s").map((l) => l.id);
+  const busyRails = facilityLayers("s", undefined, undefined, true).map((l) => l.id);
+  const rails = [...busyRails, ...calmRails];
   const marks = unpavedLayers("s").map((l) => l.id);
   const halves = halfStepLayers("s").map((l) => l.id);
   const gaps = gapLayers("s").map((l) => l.id);
@@ -250,8 +257,12 @@ test("the overlay is added casings first: every casing under every tier", () => 
     ["mtb-trail-ticks", "mtb-trail-casing", "mtb-level-casing-1", "mtb-level-casing-2", "mtb-level-casing-3", "mtb-level-casing-4", "mtb-trail", "mtb-level-1", "mtb-level-2", "mtb-level-3", "mtb-level-4"],
     "the shared not-for-routes ticks (452a), every white edge (the unrated trails', then each level's; v0.6.0), then the unrated trails' dashes (OWNER-DECISIONS 452a) and each level's line (456)",
   );
-  // The whole mountain-bike layer under every routable line, and its names (2026-10-10) over them, under the Mass Ride's.
-  assert.deepEqual(ids.slice(0, mtb.length), mtb);
+  // The popular corridors' band (2026-10-21) under everything, then the whole mountain-bike layer under every
+  // routable line, and its names (2026-10-10) over them, under the Mass Ride's.
+  const band = popularBandLayers("s").map((l) => l.id);
+  assert.deepEqual(band, ["popular-band"]);
+  assert.equal(ids[0], "popular-band");
+  assert.deepEqual(ids.slice(1, 1 + mtb.length), mtb);
   const names = mtbLabelLayers("s").map((l) => l.id);
   assert.deepEqual(names, ["mtb-trail-label"]);
   assert.deepEqual(ids.slice(-mass.length - 1, -mass.length), names);
@@ -259,12 +270,12 @@ test("the overlay is added casings first: every casing under every tier", () => 
   const trailNames = trailLabelLayers("s").map((l) => l.id);
   assert.deepEqual(trailNames, ["trail-name"]);
   assert.deepEqual(ids.slice(-mass.length - 2, -mass.length - 1), trailNames);
-  assert.deepEqual([...ids].sort(), [...mtb, ...rings, ...rails, ...tiers, ...casings, ...gaps, ...unknown, ...marks, ...halves, ...trailNames, ...names, ...mass].sort(), "each layer once");
+  assert.deepEqual([...ids].sort(), [...band, ...mtb, ...rings, ...rails, ...tiers, ...casings, ...gaps, ...unknown, ...marks, ...halves, ...trailNames, ...names, ...mass].sort(), "each layer once");
   // A half step's outline under its dash, both over every tier line (458).
   for (let tier = 1; tier <= 4; tier++) assert.ok(ids.indexOf(`stress-half-outline-${tier}`) < ids.indexOf(`stress-half-${tier}`));
   assert.ok(Math.min(...halves.map((h) => ids.indexOf(h))) > Math.max(...tiers.map((t) => ids.indexOf(t))), "the half-step dashes are drawn over every tier line");
   // The mountain-bike layer under everything, so every routable line draws over it.
-  assert.equal(ids[0], "mtb-trail-ticks", "the mountain-bike trails' shared ticks under everything");
+  assert.equal(ids[1], "mtb-trail-ticks", "the mountain-bike trails' shared ticks under every line");
   assert.ok(ids.indexOf("stress-unknown-casing") < ids.indexOf("stress-unknown"), "the edge under its line");
   assert.ok(Math.max(...casings.map((c) => ids.indexOf(c))) < ids.indexOf("stress-unknown-casing"), "after every casing");
   // The Mass Ride's layers (massStyle.js) are drawn over every stress layer, in their own order.
@@ -273,14 +284,21 @@ test("the overlay is added casings first: every casing under every tier", () => 
   assert.ok(Math.max(...rings.map((r) => ids.indexOf(r))) < Math.min(...rails.map((r) => ids.indexOf(r))));
   // The gap line lies over its casing and under its dashes.
   assert.ok(ids.indexOf("stress-casing-2") < ids.indexOf("stress-gap-2") && ids.indexOf("stress-gap-2") < ids.indexOf("stress-2"));
-  assert.ok(Math.min(...marks.map((m) => ids.indexOf(m))) > Math.max(...tiers.map((t) => ids.indexOf(t))), "the surface mark is drawn over every tier line");
   casings.forEach((casing, i) => assert.ok(ids.indexOf(casing) < ids.indexOf(tiers[i]), `${casing} is drawn over its tier`));
-  const lastCasing = Math.max(...casings.map((c) => ids.indexOf(c)));
-  const firstTier = Math.min(...tiers.map((t) => ids.indexOf(t)));
-  assert.ok(lastCasing < firstTier, "a casing is drawn over another tier's line");
-  const lastRail = Math.max(...rails.map((r) => ids.indexOf(r)));
-  const firstCasing = Math.min(...casings.map((c) => ids.indexOf(c)));
-  assert.ok(lastRail < firstCasing, "a facility's rails are drawn over a stress line");
+  // The drawing priority (2026-10-21): the busy tiers (LTS 3, 4, Avoid) whole, then the calm ones (LTS 1-2) whole
+  // over them. Within each group, every rail under every casing under every line.
+  const at = (list) => list.map((id) => ids.indexOf(id));
+  const tierOf = (id) => Number(id.at(-1));
+  for (const [name, busy] of [["busy", true], ["calm", false]]) {
+    const mine = (list) => list.filter((id) => (tierOf(id) >= 3) === busy);
+    const groupRails = busy ? busyRails : calmRails;
+    assert.ok(Math.max(...at(groupRails)) < Math.min(...at(mine(casings))), `${name}: rails under every casing`);
+    assert.ok(Math.max(...at(mine(casings))) < Math.min(...at(mine(tiers))), `${name}: every casing under every line`);
+    assert.ok(Math.min(...at(mine(marks))) > Math.max(...at(mine(tiers))), `${name}: the surface mark over every line`);
+  }
+  const busyIds = [...busyRails, ...casings, ...tiers, ...marks].filter((id) => busyRails.includes(id) || tierOf(id) >= 3);
+  const calmIds = [...calmRails, ...casings, ...tiers, ...marks].filter((id) => calmRails.includes(id) || tierOf(id) < 3);
+  assert.ok(Math.max(...at(busyIds)) < Math.min(...at(calmIds)), "every busy road's layer under every calm way's: a path is not cut by the road it crosses");
   // Every stress-map layer reads the source it is given; the Mass Ride layers read their own tiles (core/mass_tiles.py), and the hazards' rails their own GeoJSON (part 3).
   for (const layer of stressOverlayLayers("s")) assert.equal(layer.source, mass.includes(layer.id) ? (layer.id.startsWith("mass-hazard-") ? "mass-hazards" : "mass") : "s");
 });
@@ -673,3 +691,49 @@ test("no layer of a surface-unknown trail draws the path rails or the dark conti
   assert.ok(drawn.includes("stress-unknown") && drawn.includes("stress-unknown-casing"));
 });
 
+
+
+// THE POPULAR CORRIDORS AND THE DRAWING PRIORITY (the owner, 2026-10-21: "make those streets show more
+// pronounced than other roads"; "When the roads get crowded with zoom, go in this rough priority: Off road path,
+// protected bike lane, painted bike lane, then the long calm streets").
+
+test("the popular band draws only a way with a class, wider for a busier class, at every zoom it draws", () => {
+  const [band] = popularBandLayers("s");
+  for (const popular of [1, 2, 3]) assert.equal(draws(band, { tier: 2, facility: "none", popular }), true);
+  assert.equal(draws(band, { tier: 2, facility: "none" }), false, "no class, no band");
+  for (const zoom of [12, 14, 16]) {
+    const widths = [1, 2, 3].map((popular) => paintValue(band, "line-width", { popular }, zoom));
+    assert.ok(widths[0] > 0 && widths[0] < widths[1] && widths[1] < widths[2], `z${zoom}: ${widths}`);
+  }
+  // Zoomed out the tiles carry only classes 2 and 3 (core/stress_tiles.py); class 1 is not drawn there.
+  assert.equal(paintValue(band, "line-width", { popular: 1 }, 10), 0);
+  assert.ok(paintValue(band, "line-width", { popular: 3 }, 10) > 0);
+  assert.ok(POPULAR_BAND.opacity < 0.5, "the base map stays legible under it");
+});
+
+test("the drawing priority: a path over a protected lane over a painted lane over a long calm street over the rest", () => {
+  const expression = spec.createExpression(drawPriority("weekday_offpeak"), "line-sort-key", spec.latest.layout_line["line-sort-key"]);
+  assert.equal(expression.result, "success", JSON.stringify(expression.value));
+  const key = (props) => expression.value.evaluate({ zoom: 14 }, { type: 2, properties: props, geometry: [] });
+  const path = key({ tier: 1, facility: "path" });
+  const protectedLane = key({ tier: 1, facility: "protected" });
+  const lane = key({ tier: 2, facility: "lane" });
+  const calm = key({ tier: 2, facility: "none", calm: true });
+  const plain = key({ tier: 2, facility: "none" });
+  assert.ok(path > protectedLane && protectedLane > lane && lane > calm && calm > plain, [path, protectedLane, lane, calm, plain].join(" "));
+  // The popular class breaks ties inside a step, never across one.
+  assert.ok(key({ tier: 2, facility: "lane", popular: 3 }) < protectedLane);
+  assert.ok(key({ tier: 2, facility: "none", calm: true, popular: 3 }) < lane);
+  assert.ok(CALM_STREET_PRIORITY + 3 < FACILITY_PRIORITY.lane);
+  for (const layer of [...stressLayers("s"), ...stressCasingLayers("s")]) {
+    assert.deepEqual(layer.layout["line-sort-key"], drawPriority("weekday_offpeak"), layer.id);
+  }
+});
+
+test("the overlay draws each tier group calmest on top, so a busy road does not paint over a path", () => {
+  const ids = stressOverlayLayers("s").map((l) => l.id);
+  for (const kind of ["stress-casing", "stress"]) {
+    const order = [5, 4, 3, 2, 1].map((tier) => ids.indexOf(`${kind}-${tier}`));
+    assert.deepEqual([...order].sort((a, b) => a - b), order, `${kind}: Avoid lowest, LTS 1 on top`);
+  }
+});

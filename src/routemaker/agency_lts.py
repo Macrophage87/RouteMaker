@@ -52,6 +52,15 @@ AGENCIES: dict[str, tuple[str, int]] = {
 
 AGENCY_RULE = "agency rating"
 
+# An agency layer older than the bike facilities on the ground. DDOT's is its 2020 Level of
+# Traffic Stress (`scripts/install_agency_lts.py`), from before K Street's, Irving Street's and
+# other lanes since. The owner, 2026-10-21, of 14th Street NW ("there's a bike lane on 14th street
+# but it's not shown that way"; "It's some frankenstein hybrid of LTS4 and LTS1"), choosing
+# "Formula wins where newer": the layer stays, but where a bike facility is mapped on the way the
+# formula's tier stands, since the formula reads the facility as it is now. The rating is still
+# recorded for the road panel.
+SUPERSEDED_WHERE_FACILITY = {"ddot": "DDOT's 2020 layer predates the bike facility mapped here"}
+
 # An agency level that says bicycles may not use the road at all, which is a fact about
 # access and not a stress level (the owner, 2026-10-19: "MDOT LTS 5 means that bikes are
 # prohibited. MoCo LTS5 is extremely high stress but allowed." and "Just don't draw them or
@@ -215,17 +224,28 @@ def chosen(ratings: Iterable[AgencyRating]) -> AgencyRating | None:
     return ranked[0] if ranked else None
 
 
-def apply(result: StressResult, ratings: Iterable[AgencyRating]) -> StressResult:
+def apply(
+    result: StressResult, ratings: Iterable[AgencyRating], facility_mapped: bool = False
+) -> StressResult:
     """The way's tier with the agency's level in place of the classifier's.
 
     The classifier's tier is kept (`formula_tier`, `formula_rule`) and every
     rating is recorded (`agency_ratings`), for the road panel. An agency rating
     replaces the formula's only; a tier the owner set comes later and wins.
-    The level used is `map_level`'s: Montgomery's 5 is LTS 4.5."""
+    The level used is `map_level`'s: Montgomery's 5 is LTS 4.5. With `facility_mapped` (a
+    bike path or lane on the way) an agency in SUPERSEDED_WHERE_FACILITY is not used."""
     ratings = tuple(ratings)
-    pick = chosen(ratings)
+    usable = [r for r in ratings if not (facility_mapped and r.agency in SUPERSEDED_WHERE_FACILITY)]
+    pick = chosen(usable)
     if pick is None:
-        return result
+        if not ratings:
+            return result
+        reasons = sorted({SUPERSEDED_WHERE_FACILITY[r.agency] for r in ratings})
+        return replace(
+            result,
+            rule=", ".join([result.rule, *reasons]),
+            agency_ratings=tuple(sorted(ratings, key=lambda r: r.rank)),
+        )
     level = map_level(pick.agency, pick.level)
     if level < pick.level and result.tier is Stress.AVOID:
         # A level read as a lower one (Montgomery's 5 as 4.5) does not lower the

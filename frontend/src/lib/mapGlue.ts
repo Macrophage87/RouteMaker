@@ -7,6 +7,7 @@ import {
   FACILITIES,
   STRESS_TILE_LAYER,
   currentTiers,
+  facilityLayerId,
   facilityWidthAt,
   stressCasingLayers,
   gapLayers,
@@ -170,8 +171,10 @@ export function setStressWhen(map: OverlayMap, when: When): void {
     if (map.getLayer(id)) map.setFilter(id, filter);
   }
   for (const facility of FACILITIES) {
-    const id = `facility-${facility.facility}`;
-    if (map.getLayer(id)) map.setPaintProperty(id, "line-width", facilityWidthAt(facility, when));
+    // The calm tiers' rails and the busy tiers' (stressStyle.js, facilityLayerId).
+    for (const id of [facilityLayerId(facility.facility), facilityLayerId(facility.facility, true)]) {
+      if (map.getLayer(id)) map.setPaintProperty(id, "line-width", facilityWidthAt(facility, when));
+    }
   }
 }
 
@@ -214,8 +217,10 @@ export function setStressPalette(
     if (layer.id.startsWith("stress-half-outline-")) map.setPaintProperty(layer.id, "line-dasharray", layer.paint["line-dasharray"]);
   }
   for (const facility of FACILITIES) {
-    const id = `facility-${facility.facility}`;
-    if (map.getLayer(id)) map.setPaintProperty(id, "line-width", facilityWidthAt(facility, when));
+    // The calm tiers' rails and the busy tiers' (stressStyle.js, facilityLayerId).
+    for (const id of [facilityLayerId(facility.facility), facilityLayerId(facility.facility, true)]) {
+      if (map.getLayer(id)) map.setPaintProperty(id, "line-width", facilityWidthAt(facility, when));
+    }
   }
   // The unrated mountain-bike trails' line (452a): wider and darker with the accessibility switch, and its white edge wider.
   if (map.getLayer(MTB_TRAIL_LAYER_ID)) {
