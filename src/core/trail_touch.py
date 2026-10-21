@@ -100,6 +100,53 @@ def touched(points: Sequence[Sequence[float]]) -> tuple[frozenset[int], ...]:
     return tuple(frozenset(ways) for ways in found)
 
 
+# A stretch the rider marked closed is on a dirt trail where at least CLOSED_ON_POINTS of the
+# points at CLOSED_SAMPLES of its length lie within TOUCH_M of one: a road that only crosses a
+# trail has one point near it at most, and a bending trail keeps most of them near.
+CLOSED_SAMPLES = (0.25, 0.5, 0.75)
+CLOSED_ON_POINTS = 2
+
+
+def closed_on_dirt(lines: Sequence[Sequence[Sequence[float]]]) -> bool:
+    """Whether a stretch the rider marked closed on this ride (Ride's Road closed, [lon, lat]
+    lines) is on a dirt trail (CLOSED_SAMPLES, CLOSED_ON_POINTS). The owner, 2026-10-21:
+    "If you ride a dirt trail outside of mtb or gravel and it's marked as road closed, assume
+    that means bad riding conditions until it's opted back in": the ride's re-plans then ride
+    no dirt trail at all (`core.routing._plan`)."""
+    lines = [line for line in lines if len(line) >= 2]
+    if not lines:
+        return False
+    schema = validate_schema_name(settings.SEGMENT_SCHEMA_LIVE)
+    if not _reason_known(schema):
+        return False
+    wkts = [
+        "LINESTRING(" + ", ".join(f"{float(p[0])} {float(p[1])}" for p in line) + ")"
+        for line in lines
+    ]
+    sql = f"""
+        WITH m AS (
+            SELECT u.i, ST_LineInterpolatePoint(ST_GeomFromText(u.w, 4326), f) AS g
+            FROM unnest(%s::text[]) WITH ORDINALITY AS u(w, i)
+            CROSS JOIN unnest(%s::float8[]) AS f
+        ), near AS (
+            SELECT m.i FROM m
+            WHERE EXISTS (
+                SELECT 1 FROM {schema}.segment AS s
+                WHERE s.geometry && ST_Expand(m.g, %s)
+                  AND s.bike_access_reason = %s
+                  AND ST_DWithin(s.geometry::geography, m.g::geography, %s)
+            )
+        )
+        SELECT EXISTS (SELECT 1 FROM near GROUP BY i HAVING count(*) >= %s)
+    """
+    with _cursor() as cursor:
+        cursor.execute(
+            sql,
+            [wkts, list(CLOSED_SAMPLES), TOUCH_DEG, REASON, TOUCH_M, CLOSED_ON_POINTS],
+        )
+        return bool(cursor.fetchone()[0])
+
+
 def off_road_ways(way_ids: Sequence[int]) -> dict[int, str]:
     """Which of `way_ids` the standard graph closes and the off-road graph opens, each with
     its reason (REASON, or `singletrack`)."""
