@@ -102,6 +102,7 @@ export function Fold({
   count,
   icon,
   said,
+  name,
   children,
 }: {
   title: string;
@@ -115,6 +116,8 @@ export function Fold({
   /** UI-CLEANUP: the fold's count on the right of its line ("11 steps", "55% quiet"), read after the title in brackets. */
   count?: string | number | null;
   icon?: IconName;
+  /** The folds that share a name open one at a time (a native exclusive accordion): the route summary's. */
+  name?: string;
   children?: ReactNode;
 }): ReactElement {
   const shown = count === undefined || count === null || count === "" ? null : String(count);
@@ -123,6 +126,7 @@ export function Fold({
     {
       className: className ? `fold ${className}` : "fold",
       open,
+      name,
       onToggle: onToggle ? (event: { currentTarget: { open: boolean } }) => onToggle(event.currentTarget.open) : undefined,
     },
     h(

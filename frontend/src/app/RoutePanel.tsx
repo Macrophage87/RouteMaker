@@ -45,7 +45,7 @@ import { outsideDcNote } from "../lib/dcBoundary.ts";
 import { SaveRoute, type SaveRouteProps } from "../SaveRoute.tsx";
 import { SAVE_ROUTE, SAVE_SHORT } from "../lib/savedRoutes.ts";
 import { Fold, QuickFigures } from "../Sidebar.tsx";
-import { COPY_LINK, ROUTE_FOLDS, chartFoldOpen } from "../lib/sidebar.ts";
+import { COPY_LINK, ROUTE_FOLDS, ROUTE_FOLD_GROUP, chartFoldOpen } from "../lib/sidebar.ts";
 import { SHARE_LABEL, SHARE_RIDE_LABEL } from "../lib/share.ts";
 import { SHARE_IMAGE_LABEL } from "../lib/shareCard.ts";
 import {
@@ -998,6 +998,7 @@ export function RouteSummary({
           // Closed by default, on a computer too (the owner's choice 7).
           open={chartFoldOpen(narrow)}
           className="elevation-fold"
+          name={ROUTE_FOLD_GROUP}
         >
           {profile && <ElevationChart route={route} profile={profile} onScrub={onScrub} rideSize={rideSize} />}
           {/* The climbs on the route (the Climbs layer's list), in this fold (the mockup's table). */}
@@ -1006,7 +1007,7 @@ export function RouteSummary({
       )}
       {capacity && (
         // A Mass Ride's fold is about riders per minute, in place of the stress and facility figures (OWNER-DECISIONS 325).
-        <Fold title={CAPACITY_FOLD_TITLE} heading={CAPACITY_FOLD_TITLE} open={ROUTE_FOLDS.facilities.open} icon="road">
+        <Fold title={CAPACITY_FOLD_TITLE} heading={CAPACITY_FOLD_TITLE} open={ROUTE_FOLDS.facilities.open} icon="road" name={ROUTE_FOLD_GROUP}>
           <CapacityFigures route={route} />
         </Fold>
       )}
@@ -1018,6 +1019,7 @@ export function RouteSummary({
           icon="road"
           count={calm === null ? null : `${calm}% quiet`}
           className="facilities-fold"
+          name={ROUTE_FOLD_GROUP}
         >
           {/* The four quick figures, first in the fold (the owner's choice 4). */}
           <QuickFigures figures={quickFigures(route)} />
@@ -1043,12 +1045,12 @@ export function RouteSummary({
       )}
       <RouteDescription route={route} fold rideAction={rideAction} federal={federal} />
       {junctions !== null && (
-        <Fold title={ROUTE_FOLDS.junctions.title} count={junctions} heading={ROUTE_FOLDS.junctions.title} open={ROUTE_FOLDS.junctions.open} icon="junction">
+        <Fold title={ROUTE_FOLDS.junctions.title} count={junctions} heading={ROUTE_FOLDS.junctions.title} open={ROUTE_FOLDS.junctions.open} icon="junction" name={ROUTE_FOLD_GROUP}>
           <IntersectionList route={route} onSelect={onSelectJunction} />
         </Fold>
       )}
       {picker && (
-        <Fold title={ROUTE_FOLDS.choices.title} count={pickerCount} heading={ROUTE_FOLDS.choices.title} open={ROUTE_FOLDS.choices.open} icon="routes">
+        <Fold title={ROUTE_FOLDS.choices.title} count={pickerCount} heading={ROUTE_FOLDS.choices.title} open={ROUTE_FOLDS.choices.open} icon="routes" name={ROUTE_FOLD_GROUP}>
           {picker}
         </Fold>
       )}
@@ -1061,6 +1063,7 @@ export function RouteSummary({
           open={ROUTE_FOLDS.water.open}
           icon="water"
           className="water-fold"
+          name={ROUTE_FOLD_GROUP}
         >
           <WaterAlongList items={water.items} onAddStop={water.onAddStop} headingId="water-along-planner-heading" level="h4" />
         </Fold>

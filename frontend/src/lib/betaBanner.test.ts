@@ -113,7 +113,7 @@ test("the chip sits in the map's free bottom-left corner: 44 px, a rem font size
   const css = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
   assert.doesNotMatch(css, /\.beta-banner/, "the old banner's rules are gone");
   const chip = css.match(/\.beta-chip \{([^}]*)\}/)?.[1] ?? "";
-  assert.match(chip, /position: absolute;\s*left: 424px;\s*bottom: 10px;/);
+  assert.match(chip, /position: absolute;\s*left: calc\(var\(--panel-w\) \+ 24px\);\s*bottom: 10px;/);
   assert.match(chip, /font-size: 0\.875rem/);
   const rules = [...css.matchAll(/\.beta-chip[^{]*\{([^}]*)\}/g)].map((m) => m[1]).join("\n");
   assert.doesNotMatch(rules, /font-size:\s*[0-9.]+px/);
