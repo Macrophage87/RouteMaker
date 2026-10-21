@@ -208,12 +208,17 @@ def beside(
     for _road_id, coords in roads:
         points = [_xy(lon, lat, lat0) for lon, lat in coords]
         for a, b in zip(points, points[1:], strict=False):
-            x0, x1 = sorted((a[0], b[0]))
-            y0, y1 = sorted((a[1], b[1]))
-            for gx in range(int(x0 // cell) - 1, int(x1 // cell) + 2):
-                for gy in range(int(y0 // cell) - 1, int(y1 // cell) + 2):
-                    if (gx, gy) in wanted:
-                        grid.setdefault((gx, gy), []).append((a, b))
+            # The cells along the segment and their neighbours, not its bounding box: a
+            # long diagonal segment (a gap where a clipped extract lost nodes) stays linear.
+            steps = max(1, math.ceil(math.dist(a, b) / (cell / 2)))
+            cells = set()
+            for k in range(steps + 1):
+                x = a[0] + (b[0] - a[0]) * k / steps
+                y = a[1] + (b[1] - a[1]) * k / steps
+                cx, cy = int(x // cell), int(y // cell)
+                cells.update((cx + i, cy + j) for i in (-1, 0, 1) for j in (-1, 0, 1))
+            for key in cells & wanted:
+                grid.setdefault(key, []).append((a, b))
     found: set[int] = set()
     for osm_id, points in asked:
         total = near = 0.0

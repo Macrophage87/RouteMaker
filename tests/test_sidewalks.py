@@ -254,6 +254,16 @@ def _stress(tier, half=False):
     return StressResult(tier=Stress(tier), rule="formula", half=half)
 
 
+def _owners_45():
+    """An owner's override row rating the road 4.5: the half step is on the adjustment."""
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    return replace(
+        _stress(4), rule="override: stress adjustment 9", adjustment=SimpleNamespace(half=True)
+    )
+
+
 def test_only_sidewalks_beside_a_45_or_avoid_road_keep_the_lower_price():
     from pipeline.run import last_resort_sidewalks
 
@@ -269,6 +279,7 @@ def test_only_sidewalks_beside_a_45_or_avoid_road_keep_the_lower_price():
         (_stress(4, half=True), {11}),
         (_stress(5), {11}),
         (_stress(3), set()),
+        (_owners_45(), {11}),
     ):
         last = last_resort_sidewalks(ways, {10: rating}, ridden, links)
         assert last == ridden - links - cheap, rating

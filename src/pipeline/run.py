@@ -1808,7 +1808,8 @@ def very_stressful(stress) -> bool:
     if stress is None or stress.tier is None:
         return False
     tier = int(stress.tier)
-    return tier >= int(Stress.AVOID) or (tier == 4 and bool(getattr(stress, "half", False)))
+    # An owner's half step is on the adjustment, an agency's on the rating (`writers._half`).
+    return tier >= int(Stress.AVOID) or (tier == 4 and writers._half(stress))
 
 
 def last_resort_sidewalks(

@@ -6020,9 +6020,11 @@ router prices LTS 4 and 4.5 roads alike, so the rebuild sorts the sidewalks inst
 within 100 ft (30 m) of a road rated 4.5 or Avoid and parallel to it along most of its
 length, keep `rm:sidewalk=yes` and are rated LTS 3; every other ridden sidewalk and
 crosswalk gets `rm:sidewalk=last_resort`, which also writes LTS 4's top lane count, and is
-rated LTS 4. On tile builds (tests/test_tile_build_sidewalk_price.py, and 0.5 mi and 3 mi
-(800 m and 5 km) sweeps with side streets and slip lanes) the first kind loses to the road
-beside it at LTS 1 to 3.5 and wins over LTS 4, 4.5 and Avoid from the slider's 40 up; the
+rated LTS 4. A crosswalk is never beside a road, so even on a corridor beside a 4.5 or
+Avoid road its crosswalks are last resort: short, they barely move the price. On tile
+builds (tests/test_tile_build_sidewalk_price.py; one-off sweeps of 0.5 mi and 3 mi (800 m
+and 5 km) roads with side streets and slip lanes, not kept in the repo) the first kind loses
+to the road beside it at LTS 1 to 3.5 and wins over LTS 4, 4.5 and Avoid from the slider's 40 up; the
 second loses to LTS 4 and 4.5 roads at every slider position and is taken over an Avoid
 road only on short stretches, or where nothing else connects. A crosswalk over a slip lane
 (a turn channel) gives way to it in the junction delay (`routemaker.junction_delay`, 12 to
