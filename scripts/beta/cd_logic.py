@@ -134,10 +134,6 @@ PLAIN_PATH = re.compile(r"[A-Za-z0-9._/+@=,~-]+")
 # Paths that never affect the server (documentation, reports, CI, the phone app): ignored entirely.
 INERT_PREFIXES = ("docs/", "reports/", ".github/", "fixtures/", "mobile/")
 INERT_SUFFIXES = (".md",)
-OFFROAD_CONFIG = "valhalla/valhalla-offroad.json"
-# The routers behind the compose profile `offroad`, never started on the beta: the off-road
-# one and the Mountain Bike one (docs/MTB-TOPO-PLAN.md, slice 6).
-UNSTARTED_CONFIGS = (OFFROAD_CONFIG, "valhalla/valhalla-mtb.json")
 COMPOSE_FILES = ("compose.yaml", "compose.beta.yaml")
 # A FORMAT_VERSION change in either tile module needs no data from home: the tile cache is
 # keyed on the version, so the release deploys and the agent runs the pre-draw (OWNER-DECISIONS
@@ -292,15 +288,9 @@ def gate(
                     f"{path}: a graph-build setting changed ({', '.join(keys[:5])}): "
                     "rebuild the graphs at home"
                 )
-            elif kind == "runtime" and path in UNSTARTED_CONFIGS:
-                # valhalla-offroad and valhalla-mtb are never started on the beta (compose
-                # profile `offroad`).
-                router = "offroad" if path == OFFROAD_CONFIG else "mtb"
-                result["notes"].append(
-                    f"{path}: runtime settings only ({', '.join(keys[:5])}); "
-                    f"the {router} router does not run on the beta, so no restart"
-                )
             elif kind == "runtime":
+                # Every router restarts, valhalla-offroad and valhalla-mtb among them once their
+                # tiles are on the host (auto-release.sh `routers`; the owner, 2026-10-20).
                 result["routers_restart"] = True
                 result["notes"].append(
                     f"{path}: runtime settings only ({', '.join(keys[:5])}); the routers restart"
@@ -345,7 +335,7 @@ STEPS = (
     "frontend",  # front end install started (the index may be the new one)
     "started",  # api and worker started on the new image
     "services",  # photon and the routers recreated for a compose change
-    "routers",  # the four routers restarted for a valhalla/*.json change
+    "routers",  # the routers restarted for a valhalla/*.json change
 )
 
 

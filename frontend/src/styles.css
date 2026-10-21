@@ -225,6 +225,22 @@ button.access-link {
   font-size: 1.25rem;
 }
 
+/* The heading with the version under it (lib/appVersion.ts): small and muted, and within the height of
+   the Go/Plan switch beside them, so the header grows no taller and fits a 320 px phone. */
+.panel-title {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.panel-header .app-version {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.2;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
 /* The body is a column: the banner, the part that scrolls, then what is pinned under it (the route's
    GPX and link, the bottom bar), which stay in view (OWNER-DECISIONS 312). */
 .panel-body {
@@ -625,6 +641,30 @@ details.how summary {
    map, so the route line under it can still be hovered and dragged. */
 .rail-hover {
   pointer-events: none;
+}
+
+/* A climb's or a mountain-bike trail's hover card (featureHoverCard.ts; the owner, 2026-10-20: "sort of like how our
+   metros do now"): the name, a line about it, and its profile once asked for; the profile's key and caption are the
+   whole card's, so the hover stays small. */
+.feature-hover-card {
+  width: 260px;
+}
+
+.feature-hover-detail {
+  margin: 4px 0 0;
+}
+
+.feature-hover-profile:empty {
+  display: none;
+}
+
+.feature-hover-profile .climb-profile {
+  margin: 6px 0 0;
+}
+
+.feature-hover-profile .climb-profile-key,
+.feature-hover-profile .climb-profile-text {
+  display: none;
 }
 
 .rail-popup .maplibregl-popup-close-button {
@@ -1236,10 +1276,50 @@ button.secondary {
 .maplibregl-ctrl-attrib.maplibregl-compact:not(.maplibregl-compact-show)::before {
   content: "© OpenStreetMap" / "";
   display: inline-block;
+  vertical-align: middle;
   padding: 0 6px 0 8px;
   line-height: 20px;
   color: #000;
   white-space: nowrap;
+}
+
+/* The "i" reads "Help" (Stephen 2026-10-21, "Label the (i)"; lib/mapInfo.ts wrapCredits): a pill with the
+   icon at its start, in the line after the OpenStreetMap credit, and the panel's heading row while open. */
+.maplibregl-ctrl-attrib.maplibregl-compact {
+  padding: 2px;
+}
+
+.maplibregl-ctrl-bottom-right > .maplibregl-ctrl-attrib.maplibregl-compact-show {
+  padding: 2px 8px 6px;
+}
+
+.maplibregl-ctrl-attrib.maplibregl-compact .maplibregl-ctrl-attrib-button {
+  position: relative;
+  display: inline-block;
+  vertical-align: middle;
+  width: auto;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 10px 0 26px;
+  background-position: 2px center;
+  background-repeat: no-repeat;
+  font: 600 14px/24px var(--font);
+  color: #000;
+  white-space: nowrap;
+}
+
+/* A 44 px tall target with the pill as drawn (the v0.10.1 end review): the tap reaches 10 px above and below it.
+   In the flow as before (no offsets), positioned only to hold the hit area. */
+.maplibregl-ctrl-attrib.maplibregl-compact .maplibregl-ctrl-attrib-button::before {
+  content: "";
+  position: absolute;
+  inset: -10px 0;
+}
+
+.maplibregl-ctrl-attrib.maplibregl-compact-show .maplibregl-ctrl-attrib-button {
+  display: block;
+  width: fit-content;
+  margin: 0 0 2px auto;
 }
 
 /* Beside the panel, not under it: a credit hidden behind the panel is not shown. Clear of the
@@ -3108,6 +3188,13 @@ details.zoom-notes {
   font-family: var(--font);
 }
 
+/* A trail's or a climb's compass point at each end of its profile (the owner, 2026-10-20: "If the trail goes from N to S
+   put those directions on each end"): bold and in the text colour, so the letter stands out from its distance. */
+.pc-compass {
+  font-weight: 700;
+  fill: var(--text);
+}
+
 /* The guides' figures are in the text colour, not the band colours (2.4:1 to 3.7:1 as small text: the
    a11y review's S1); the band colour is on the line and the swatch beside the figure. */
 .pc-cross-text,
@@ -3729,6 +3816,19 @@ details.zoom-notes {
   gap: 6px;
 }
 
+/* The route chart's area and line colours (.elevation-chart's), which a climb's or a trail's profile is drawn outside
+   of: without them the area fell back to black. */
+.climb-profile {
+  --pc-area: #c3c9d4;
+  --pc-line: var(--text);
+}
+
+@media (prefers-color-scheme: dark) {
+  .climb-profile {
+    --pc-area: #3a4250;
+  }
+}
+
 .climb-popup .climb-profile {
   margin: 6px 0 0;
 }
@@ -4013,17 +4113,25 @@ details.zoom-notes {
   }
 }
 
-/* The ride's summary after End ride (RideSummaryCard): over the planner, with Done and Undo. Large text always (the
-   owner, 2026-10-20: "Just use large for everything"): one figure a line, nothing under 16 pt, as the ride's Large. */
+/* The ride's summary after End ride (RideSummaryCard), over the planner. It fits the screen and never runs past it (the
+   owner, 2026-10-20: "The end ride panel should be scaled to fill the page, not go over"): the title at the top, Done
+   and Undo at the foot, and between them each figure on one row, label and value, the elevation chart shrinking to fit.
+   Large text always ("Just use large for everything"): nothing under 16 pt. Where even then it cannot fit (a short or
+   landscape screen, large system text), only the figures scroll, the buttons staying in view. Plain vh and px first
+   for older WebViews without dvh or max(). */
 .ride-summary {
   position: fixed;
+  bottom: 8px;
+  bottom: max(8px, env(safe-area-inset-bottom));
+  max-height: calc(100vh - 16px);
+  max-height: calc(100dvh - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
   left: 50%;
-  bottom: 16px;
   transform: translateX(-50%);
   z-index: 30;
-  width: min(560px, calc(100vw - 32px));
-  max-height: calc(100dvh - 32px);
-  overflow-y: auto;
+  width: min(560px, calc(100vw - 16px));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   box-sizing: border-box;
   padding: 12px 16px;
   background: var(--bg);
@@ -4034,15 +4142,39 @@ details.zoom-notes {
 }
 
 .ride-summary h2 {
-  margin: 0 0 8px;
-  font-size: 2rem;
+  margin: 0;
+  font-size: 1.75rem;
+  line-height: 1.15;
+}
+
+.ride-summary-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ride-summary-body > * {
+  flex: none;
+  margin: 0;
 }
 
 .ride-summary-figures {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 8px;
-  margin: 0 0 12px;
+  gap: 2px;
+}
+
+/* Label and value on one row, the value to the right; a long value wraps under its label. */
+.ride-summary-figures > div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  column-gap: 12px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
 }
 
 .ride-summary-figures dt,
@@ -4058,31 +4190,26 @@ details.zoom-notes {
 }
 
 .ride-summary-figures dd {
-  margin: 0;
-  font-size: 1.75rem;
+  margin: 0 0 0 auto;
+  font-size: max(16pt, 1.375rem);
   font-weight: 700;
+  text-align: right;
 }
 
-/* Balanced lines, no lone last word. */
-.ride-summary-figures dd,
-.ride-summary .stress-key,
-.ride-summary-elevation p {
+.ride-summary .stress-key {
   text-wrap: balance;
-}
-
-.ride-summary-stress,
-.ride-summary-elevation {
-  margin: 0 0 12px;
 }
 
 .ride-summary figcaption {
   margin-bottom: 4px;
 }
 
+/* The chart takes a share of the screen's height, never below a readable strip. */
 .ride-summary-elevation svg {
   display: block;
   width: 100%;
-  height: 72px;
+  height: clamp(48px, 12vh, 96px);
+  height: clamp(48px, 12dvh, 96px);
 }
 
 .ride-summary-elevation-area {
@@ -4096,12 +4223,22 @@ details.zoom-notes {
   stroke-width: 2;
 }
 
+/* Lowest and Highest side by side where they fit, else one under the other; each kept whole. */
 .ride-summary-elevation p {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  column-gap: 12px;
   margin: 4px 0 0;
   color: var(--text-muted);
 }
 
+.ride-summary-elevation p span {
+  white-space: nowrap;
+}
+
 .ride-summary-actions {
+  flex: none;
   display: flex;
   gap: 12px;
 }
@@ -4202,9 +4339,11 @@ details.zoom-notes {
   font-size: 1rem;
 }
 
+/* A value too long for the rest of its label's line goes whole onto the next, not split under itself. */
 .ride-togo div {
   display: flex;
-  gap: 6px;
+  flex-wrap: wrap;
+  gap: 0 6px;
 }
 
 .ride-togo dt {
@@ -4417,7 +4556,7 @@ details.zoom-notes {
   box-sizing: border-box;
 }
 
-.ride-large .cue-card > :not(.ride-top, .ride-mode-settings, .ride-togo) {
+.ride-large .cue-card > :not(.ride-top, .ride-light-below, .ride-mode-settings, .ride-togo) {
   flex: 1 0 auto;
 }
 
@@ -4454,8 +4593,9 @@ details.zoom-notes {
   font-size: max(16pt, 0.5em);
 }
 
+/* The instruction never smaller than the small print under it. */
 .ride-large .cue-text {
-  font-size: calc(var(--cue-fit, 1) * 1.9rem);
+  font-size: max(18pt, calc(var(--cue-fit, 1) * 1.9rem));
 }
 
 .ride-large .cue-more,
@@ -4471,6 +4611,16 @@ details.zoom-notes {
 }
 
 .ride-large .ride-togo dt {
+  white-space: nowrap;
+}
+
+/* Where the turn's words do not fit at their smallest, To the end gives way to them (RideMode's fit); screen readers keep it. */
+.ride-large .cue-crowded .ride-togo-end {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
   white-space: nowrap;
 }
 

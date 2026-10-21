@@ -9,6 +9,7 @@
  */
 import { searchLede } from "./sidebar.ts";
 import { STRESS_PAGE } from "./stressLegend.ts";
+import { versionSaid } from "./appVersion.ts";
 
 /** The rider-facing documentation pages (public/about/), in the hub's order; Acknowledgements is in the credits. */
 export const DOCS_LINKS: ReadonlyArray<{ href: string; text: string }> = [
@@ -33,6 +34,8 @@ export const MAP_INFO: string = [
   `<p><strong>Plan a route.</strong> ${searchLede(false)}</p>`,
   `<ul>${INFO_POINTS.map((point) => `<li>${point}</li>`).join("")}</ul>`,
   `<p>More: ${DOCS_LINKS.map((link) => `<a href="${link.href}">${link.text}</a>`).join(" · ")}</p>`,
+  // Which release this is, for Go and rides, where Plan's heading is out of sight (lib/appVersion.ts).
+  versionSaid() ? `<p>${versionSaid()}.</p>` : "",
   "<p><strong>Credits.</strong></p>",
 ].join("");
 
@@ -56,5 +59,26 @@ export function wrapCredits(control: HTMLElement | null, doc: WrapDocument = doc
   info.innerHTML = MAP_INFO;
   inner.replaceWith(body);
   body.append(info, inner);
+  // The "i" says what it is (Stephen 2026-10-21, "Label the (i)"): the docs are behind it.
+  const button = control.querySelector(".maplibregl-ctrl-attrib-button");
+  if (button) {
+    button.textContent = "Help";
+    // And whether it is open (the v0.10.1 end review): MapLibre's class says so, set by a tap, the map's first drag,
+    // collapseCredits or a ride's start (MapView.tsx), so the button follows the class, not its own clicks.
+    const sync = () => helpExpanded(control, button);
+    sync();
+    if (typeof MutationObserver !== "undefined") new MutationObserver(sync).observe(control, { attributes: true, attributeFilter: ["class"] });
+  }
   return true;
+}
+
+/** The parts of the control and its button helpExpanded touches. */
+export interface HelpParts {
+  control: { classList: { contains(name: string): boolean } };
+  button: { setAttribute(name: string, value: string): void };
+}
+
+/** Set the Help button's aria-expanded from whether the panel shows (MapLibre's maplibregl-compact-show). */
+export function helpExpanded(control: HelpParts["control"], button: HelpParts["button"]): void {
+  button.setAttribute("aria-expanded", String(control.classList.contains("maplibregl-compact-show")));
 }

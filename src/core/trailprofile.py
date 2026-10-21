@@ -151,6 +151,11 @@ def profile(way_id: int) -> dict | None:
         else [None] * len(where)
     )
     body = body_of(way_id, at, heights, step)
+    if body is not None:
+        # The way's two ends, so the chart can say which way it runs (the owner, 2026-10-20: "If the
+        # trail goes from N to S put those directions on each end").
+        body["start"] = [round(line[0][0], 6), round(line[0][1], 6)]
+        body["end"] = [round(line[-1][0], 6), round(line[-1][1], 6)]
     _kept[key] = body
     while len(_kept) > KEEP:
         _kept.popitem(last=False)

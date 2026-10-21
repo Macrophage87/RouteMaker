@@ -58,3 +58,13 @@ test("Gravel and Mountain Bike bring the trails and contours, Mountain Goat the 
   assert.deepEqual(layersTurnedOn("gravel", "mountain-bike"), { mtb: false, topo: false, climbs: false });
   assert.deepEqual(layersTurnedOn("mountain-bike", "mountain-goat"), { mtb: false, topo: false, climbs: true });
 });
+
+test("a trail's chart says which way it runs where the answer has its ends (the owner, 2026-10-20)", () => {
+  const html = renderToStaticMarkup(
+    createElement(TrailProfileBody, { state: { kind: "ready", profile: { ...PROFILE, start: [-77.0, 38.91], end: [-77.0, 38.9] } }, uid: "t1" }),
+  );
+  assert.match(html, /Runs north to south\./);
+  assert.match(html, /<tspan class="pc-compass">N <\/tspan>/);
+  // An older answer, without them: no letters, as before.
+  assert.doesNotMatch(renderToStaticMarkup(createElement(TrailProfileBody, { state: { kind: "ready", profile: PROFILE }, uid: "t1" })), /pc-compass/);
+});
