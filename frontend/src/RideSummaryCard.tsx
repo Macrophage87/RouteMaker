@@ -90,8 +90,14 @@ export function RideSummaryCard({
       <h2 id={titleId}>{RIDE_SUMMARY_TITLE}</h2>
       {/* The figures, chart and stress fill the screen between the title and the buttons (the owner, 2026-10-20: "The end
           ride panel should be scaled to fill the page, not go over"); where it cannot fit, this part scrolls, and can be
-          reached by keyboard to scroll it. No name of its own: the section's title names it already. */}
-      <div ref={body} className="ride-summary-body" tabIndex={scrolls ? 0 : undefined}>
+          reached by keyboard to scroll it, named by the title then (a tab stop needs a name). */}
+      <div
+        ref={body}
+        className="ride-summary-body"
+        role={scrolls ? "group" : undefined}
+        aria-labelledby={scrolls ? titleId : undefined}
+        tabIndex={scrolls ? 0 : undefined}
+      >
         {note && <p className="hint">{note}</p>}
         <dl className="ride-summary-figures">
           {rows.map((row) => (

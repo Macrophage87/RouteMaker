@@ -1363,8 +1363,10 @@ export function uturnStep(state: UTurnState, event: UTurnEvent): UTurnStep {
       return { state: { inARow, held, checkedAt: event.now }, note: held ? REPLAN_NO_AHEAD : note };
     }
     case "along":
-      if (event.onUTurnRoute && !event.off && (event.progressM ?? 0) >= UTURN_TAKEN_M) return { state: { ...state, inARow: 0, held: false } };
-      return { state };
+      // UTURN_TAKEN_M along the route: the rider follows it, so the count starts again (on any route, so a count a
+      // re-route made while stopped left is not carried down the next one); along the U-turn route the hold goes too.
+      if (event.off || (event.progressM ?? 0) < UTURN_TAKEN_M || (state.inARow === 0 && !state.held)) return { state };
+      return { state: { ...state, inARow: 0, held: event.onUTurnRoute ? false : state.held } };
     case "off-route":
       if (!state.held) return { state, replan: "ask" };
       if (event.now - state.checkedAt >= UTURN_RECHECK_MS) return { state: { ...state, checkedAt: event.now }, replan: "check" };

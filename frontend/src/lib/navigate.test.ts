@@ -1692,7 +1692,9 @@ test("U-turns: a hold is let go by riding the U-turn route, Re-plan from here, o
   assert.deepEqual(along({ onUTurnRoute: true, off: false, progressM: UTURN_TAKEN_M }), { ...held, inARow: 0, held: false });
   assert.equal(along({ onUTurnRoute: true, off: false, progressM: UTURN_TAKEN_M - 1 }), held);
   assert.equal(along({ onUTurnRoute: true, off: true, progressM: 500 }), held);
-  assert.equal(along({ onUTurnRoute: false, off: false, progressM: 500 }), held);
+  // Followed another route that far: the count starts again, the hold (only ever on a U-turn route) stays as it is.
+  assert.deepEqual(along({ onUTurnRoute: false, off: false, progressM: 500 }), { ...held, inARow: 0 });
+  assert.equal(along({ onUTurnRoute: false, off: true, progressM: 500 }), held);
   // Re-plan from here, standing still: no heading, so nothing turns round and the hold goes; the count stays.
   const asked = uturnStep(held, { kind: "rerouted", turned: false, aheadOnly: false, stopped: true, note: REPLAN_FOUND, now: 5 });
   assert.deepEqual([asked.note, asked.state.held, asked.state.inARow], [REPLAN_FOUND, false, 3]);
@@ -1711,6 +1713,10 @@ test("U-turns: a re-route made while stopped leaves the count, so pausing betwee
   assert.equal(reroute(state, false, 3).aheadOnly, true, "the third is ahead only");
   // Road closed turns round on purpose (not stopped): its re-route starts the count again, as before.
   assert.equal(uturnStep(state, { kind: "rerouted", turned: false, aheadOnly: false, stopped: false, note: REPLAN_FOUND, now: 4 }).state.inARow, 0);
+  // Then followed: the count does not carry down the new route to a missed turn miles on.
+  const followed = uturnStep(stopped.state, { kind: "along", onUTurnRoute: false, off: false, progressM: UTURN_TAKEN_M }).state;
+  assert.equal(followed.inARow, 0);
+  assert.equal(reroute(followed, true, 5).aheadOnly, false);
   const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
   assert.match(ride, /stopped: heading === null && !turnRound/);
 });
