@@ -821,6 +821,12 @@ def test_basic_auth_is_on_for_the_whole_https_server_and_off_only_for_robots_and
             # rider's token: never the rider's own sign-in pages.
             CONNECTOR_PATHS,
             "= /delete-account",
+            # Link previews (core.share_preview; tests/test_link_preview.py): a shared route's
+            # link and image, the app's own preview, and the icons a chat app shows.
+            "~ ^/s/[^/]+(/preview\\.png)?$",
+            "= /link-preview",
+            "^~ /icons/",
+            "= /favicon.svg",
         ]
     ), exempt
     # Google Play's deletion link (core.account_deletion): that exact path, to the api, and not
@@ -1050,7 +1056,8 @@ def test_the_installable_app_is_served_as_the_caddyfile_serves_it() -> None:
     files, listed in the Caddyfile's @frontend and given a location here each, from the app's
     own root; the worker and manifest revalidate on every load, the icons keep a day, and
     the manifest has its own type even on an nginx whose mime.types lacks it. The kill
-    switch is not served by either edge, and all of it stays behind the password."""
+    switch is not served by either edge, and the worker and manifest stay behind the password
+    (the icons are outside it, for link previews)."""
     frontend = re.search(r"@frontend path (.+)", CADDYFILE).group(1).split()
     for path in ("/sw.js", "/manifest.webmanifest", "/icons/*"):
         assert path in frontend, path
@@ -1077,7 +1084,8 @@ def test_the_installable_app_is_served_as_the_caddyfile_serves_it() -> None:
         body = by_path[path]
         assert re.findall(r"^\s*root (\S+);", body, re.M) == root, path
         assert f'add_header Cache-Control "{cache}" always;' in body, path
-        assert "auth_basic off" not in body, path
+        # the icons are outside the password, for link previews (tests/test_link_preview.py)
+        assert ("auth_basic off" in body) == (path == "^~ /icons/"), path
     manifest = by_path["= /manifest.webmanifest"]
     assert "types { }" in manifest and "default_type application/manifest+json;" in manifest
     assert "sw-kill" not in " ".join(path for path, _ in locations(full))
