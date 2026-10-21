@@ -141,8 +141,9 @@ export function topoLayers(visible = true): Record<string, unknown>[] {
           "symbol-placement": "line",
           "symbol-spacing": 400,
           "text-field": topoLabelExpression(),
-          "text-font": ["Noto Sans Regular"],
-          "text-size": interpolate([10, 10, 15, 11, 18, 12]),
+          // The street names' face (the owner, 2026-10-21: "All into stret name style"), smaller: a height, not a name.
+          "text-font": ["Noto Sans Medium"],
+          "text-size": interpolate([10, 12, 15, 13, 18, 13]),
           "text-max-angle": 30,
           "text-padding": 4,
         },

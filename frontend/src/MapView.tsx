@@ -1307,13 +1307,14 @@ export function MapView(props: Props) {
         layout: {
           "text-field": ["get", "name"],
           "text-font": [LABEL_FONT],
-          "text-size": 13,
+          // The street names' size and halo (the owner, 2026-10-21: "All into stret name style").
+          "text-size": 15,
           "text-anchor": "bottom",
           "text-offset": [0, -0.6],
           "text-max-width": 16,
           "text-allow-overlap": true,
         },
-        paint: { "text-color": ["get", "color"], "text-halo-color": "#ffffff", "text-halo-width": 2 },
+        paint: { "text-color": ["get", "color"], "text-halo-color": "#ffffff", "text-halo-width": 3.5 },
       });
       // Closures in force at the ride (v0.7.0, lib/closureMap.ts): over the route, so a closed stretch on it shows.
       // A white casing, then red (closed) or amber (bike lane blocked); dashed where it "may still apply". Their

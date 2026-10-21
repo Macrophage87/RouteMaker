@@ -16,6 +16,7 @@ import {
   FAINT,
   PALETTES,
   SOLID_MIN_ZOOM,
+  STREET_THIN_SCALE,
   contrastRatio,
   faintEdgeColour,
   relativeLuminance,
@@ -23,6 +24,7 @@ import {
   stressCasingLayers,
   stressLayers,
   tiersFor,
+  zoomedOutCasing,
 } from "./stressStyle.js";
 import { paintAt } from "./testSupport/paintAt.ts";
 import { VISIONS, adjacentDeltas, closestPair, deltaE2000, simulate } from "./testSupport/colourVision.ts";
@@ -446,7 +448,9 @@ test("the casing layers carry the edge exactly where the line is faint: z12-13 b
       } else {
         assert.equal(opacity, 1, where);
         assert.equal(gap, 0, where);
-        assert.equal(width, tier.width + 2, where);
+        // A plain street is thinner at z12 and z13 (STREET_THIN_SCALE, the owner 2026-10-21: the city grid "very crowded").
+        const plainThin = Object.keys(props).length === 0 && zoom < SOLID_MIN_ZOOM;
+        assert.equal(width, plainThin ? zoomedOutCasing(tier, zoom) : tier.width + 2, where);
         assert.equal(colour, tier.casing, where);
       }
     }
@@ -518,4 +522,27 @@ test("with the switch on, the swatch border is the strengthened border, at least
     assert.equal(pick("--swatch-border"), pick("--border"), `block ${i}`);
     assert.ok(contrastRatio(pick("--swatch-border"), plain[i].bg) >= contrastRatio(plain[i].swatch, plain[i].bg), `block ${i}`);
   });
+});
+
+// The owner, 2026-10-21: "lts colored roads look very crowded at the nax zoom they show up in urban areas, but it's needed for rural ones."
+test("city grid: a plain street is thinner at z12 and z13, a bike lane, path, trail or unpaved road is not, and all are full from z14", () => {
+  for (const strong of [false, true]) {
+    const tiers = tiersFor(DEFAULT_PALETTE, strong);
+    const lines = stressLayers("s", undefined, tiers) as Array<{ id: string; paint: Record<string, unknown> }>;
+    const casings = stressCasingLayers("s", undefined, tiers) as Array<{ id: string; paint: Record<string, unknown> }>;
+    tiers.forEach((tier: Tier, i: number) => {
+      if (tier.tier >= BUSY_MIN_TIER) return;
+      for (const zoom of [12, 13]) {
+        const scale = STREET_THIN_SCALE[zoom as 12 | 13];
+        assert.equal(paintAt(lines[i], "line-width", {}, zoom), tier.width * scale.line, `${tier.short} plain z${zoom}`);
+        // The edge: half a pixel a side at z12 plain; a full pixel with the switch.
+        const edge = ((paintAt(casings[i], "line-width", {}, zoom) as number) - tier.width * scale.line) / 2;
+        assert.ok(edge >= (strong ? 1 : 0.5) - 1e-9, `${tier.short} z${zoom} edge ${edge}`);
+        for (const props of [{ facility: "lane" }, { trail: true }, { unpaved: true }, { car_free: "weekend" }]) {
+          assert.equal(paintAt(lines[i], "line-width", props, zoom), tier.width, `${tier.short} ${JSON.stringify(props)} z${zoom}`);
+        }
+      }
+      assert.equal(paintAt(lines[i], "line-width", {}, SOLID_MIN_ZOOM), tier.width);
+    });
+  }
 });
