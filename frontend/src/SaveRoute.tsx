@@ -16,9 +16,11 @@ export interface SaveRouteProps {
   chip?: boolean;
   /** Shorter words shown in place of the label, which stays the button's name. */
   shown?: string;
+  /** Plan's big button at the top of the map, in Update route's place once a route is chosen. */
+  bar?: boolean;
 }
 
-export function SaveRoute({ label, defaultName, onSave, chip = false, shown }: SaveRouteProps) {
+export function SaveRoute({ label, defaultName, onSave, chip = false, shown, bar = false }: SaveRouteProps) {
   const [asking, setAsking] = useState(false);
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
@@ -30,11 +32,11 @@ export function SaveRoute({ label, defaultName, onSave, chip = false, shown }: S
     openerRef.current?.focus();
   };
   return (
-    <div className="save-route">
+    <div className={bar ? "save-route save-route-bar" : "save-route"}>
       <button
         type="button"
         ref={openerRef}
-        className={chip ? "chip save-route-chip" : "secondary save-route-open"}
+        className={bar ? "plan-bar-route save-route-open" : chip ? "chip save-route-chip" : "secondary save-route-open"}
         aria-expanded={asking}
         aria-controls={formId}
         aria-label={shown ? label : undefined}
@@ -45,6 +47,7 @@ export function SaveRoute({ label, defaultName, onSave, chip = false, shown }: S
       >
         {/* Go's chip row is words only but the ride type's (review F15); a chip without shorter words keeps its icon. */}
         {chip && !shown && <Icon name="download" size={18} />}
+        {bar && <Icon name="save" size={20} />}
         {shown ?? label}
       </button>
       {asking && (

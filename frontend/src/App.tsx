@@ -63,7 +63,7 @@ import { skipToPlanner, SKIP_LINK_TEXT, SKIP_TO_RIDE_TEXT } from "./lib/skipLink
 import { BetaChip, betaReportUrl, isBetaBuild } from "./lib/betaBanner.ts";
 import { MtbMapKey } from "./lib/stressLegend.ts";
 import { useHideBusyClimbs, useTrailClimbs } from "./lib/climbsLegend.ts";
-import { announceHow, candidateRoute } from "./lib/candidates.ts";
+import { announceHow, candidateRoute, candidateRows } from "./lib/candidates.ts";
 import { canReverse, loopStops, loopView, reversedPoints } from "./lib/loop.ts";
 import { FINDING_ORDER_SAID, STILL_FINDING_ORDER_SAID, applyAnswer, requestStopOrder, stopsThatMove } from "./lib/stopOrder.ts";
 import {
@@ -4162,15 +4162,22 @@ export function App() {
   // big one after routing, Clear after clearing) moves to the panel's Route button where it shows, else the map
   // (never to Clear, where a second Enter would clear the plan).
   const barRoute = planFirst && (routingNow || routeNow.unavailable === null);
-  const planBar = planFirst && (barRoute || can.undo || can.redo || points.length > 0);
+  // Once the route is up to date and chosen, the big button saves it (the owner, 2026-10-21: "plan should offer an
+  // option to save the route in the same button location as the update route ... Basically once an option was
+  // chosen"). A route without others to choose from is chosen as drawn. Signed in only, as Save route is.
+  const barSave =
+    planFirst && !barRoute && !!saveProps && !!shown && !stale && routedPoints === points && (chosen || candidateRows(picked) === null);
+  const planBar = planFirst && (barRoute || barSave || can.undo || can.redo || points.length > 0);
   const barFocused = useRef(false);
   useEffect(() => {
     if (!barFocused.current) return;
     const active = document.activeElement;
     if (active && active !== document.body && active.isConnected) return;
     barFocused.current = false;
+    // Update route gone for Save route in its place: the focus stays in that place, so the new name is read.
+    const save = document.querySelector<HTMLElement>(".plan-map-bar .save-route-open");
     const route = document.querySelector<HTMLElement>(".plan-panel .route-button");
-    (route?.offsetParent ? route : document.querySelector<HTMLElement>(".maplibregl-canvas"))?.focus();
+    (save ?? (route?.offsetParent ? route : document.querySelector<HTMLElement>(".maplibregl-canvas")))?.focus();
   });
   // Go's bar mirrors Plan's (the owner, 2026-10-18: "mirror what plan does in general, but instead of route, we
   // start the ride"): Undo, Redo, the big button and Clear, each while it has something to do. The big button is
@@ -4557,6 +4564,7 @@ export function App() {
               {routingNow ? ROUTING_LABEL : routeNow.label}
             </button>
           )}
+          {barSave && saveProps && <SaveRoute {...saveProps} label={SAVE_ROUTE} bar />}
           {manualOffered && (
             <button
               type="button"
