@@ -3500,8 +3500,8 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
         when=body.when or routing.default_when(),
     )
     start, end = body.points
-    # WMATA's live reading (core.wmata_live), if any: read before the search, which leaves out
-    # a station whose elevators are all out, and used after it (below).
+    # WMATA's live reading (core.wmata_live), if any: read before the search, which ranks a
+    # station with no working elevator on the way 15 min down, and used after it (below).
     live = wmata_live.client.snapshot()
     if body.preset == presets.BIKESHARE_TRANSIT:
         found = transit.plan_bikeshare(schedule, start, end, when, services, share_snapshot)

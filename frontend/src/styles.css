@@ -7734,6 +7734,11 @@ details.fold > summary .icon {
   .app:has(.plan-bar-manual-badge) .map-chips {
     top: 108px;
   }
+  /* A card opened near the top of the map would sit under the bar and hide its close button (as for the chips,
+     above): the bar steps aside until the card closes. */
+  .app:has(.maplibregl-popup) .plan-map-bar {
+    visibility: hidden;
+  }
 }
 
 /* Ride mode's compass (the owner, 2026-10-17: "a minimalist compass rose"): a needle at the map's top left

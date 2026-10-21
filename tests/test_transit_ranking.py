@@ -187,6 +187,16 @@ def test_an_elevator_out_with_no_spare_costs_15_min_on_the_score_only(schedule) 
     assert transit.with_elevators_out(schedule, []) is schedule
 
 
+def test_an_elevator_out_marks_only_its_own_station_not_the_next_one_over() -> None:
+    # Farragut North and Farragut West are 227 m apart, inside STATION_NEAR_M: riding on to
+    # the next station over is the way round an outage, so it must not be marked too.
+    typical = transit.typical_only(date(2026, 9, 30))
+    north = stop_named(typical, "Farragut North")
+    out = transit.with_elevators_out(typical, [list(north.point)])
+    assert stop_named(out, "Farragut North").elevator_out_s == transit.ELEVATOR_OUT_S
+    assert stop_named(out, "Farragut West").elevator_out_s == 0
+
+
 # --- Every ride's length, climb and profile on its step --------------------------------------
 
 
