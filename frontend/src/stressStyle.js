@@ -851,10 +851,10 @@ export const OTHER_LABEL = {
 };
 /**
  * THE MOTORWAYS' NAMES. The owner, 2026-10-21: "Seeing the map zoomed out, having those huge highway names are silly,
- * bikes don't use highways. Only show when zoomed further in." A motorway (the base map's road kind "highway": the
- * interstates and freeways, closed to bikes) is named, and its route shield drawn, only from HIGHWAY_LABEL_MIN_ZOOM,
+ * bikes don't use highways. Only show when zoomed further in." A motorway (the base map's road kind "highway": OSM's
+ * motorway and motorway_link, the interstates; a trunk road such as a parkway is a "major_road") is named, and its route shield drawn, only from HIGHWAY_LABEL_MIN_ZOOM,
  * the zoom every road is drawn solid at, where a rider can need it as a landmark beside a street. Every other road's
- * name and shield (a US or state route on a major road, which a rider may use) is as the base map has it.
+ * name and shield (a US or state route on a major or trunk road, which a rider may use) is as the base map has it.
  */
 export const HIGHWAY_LABEL_MIN_ZOOM = 14;
 const notMotorwayYet = ["any", ["!=", ["get", "kind"], "highway"], [">=", ["zoom"], HIGHWAY_LABEL_MIN_ZOOM]];
