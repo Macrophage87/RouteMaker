@@ -195,22 +195,28 @@ def metro_option(plan: transit.Plan) -> transit.Option:
     return next(o for o in plan.options if transit_legs(o) and transit_legs(o)[0].system == "Metro")
 
 
-def test_an_elevator_out_is_a_warning_and_a_small_ranking_cost_not_an_avoidance(schedule):
+def test_an_elevator_out_is_a_warning_and_a_15_min_ranking_cost_not_an_avoidance(schedule):
     plan = plan_bike(schedule, CAPITOL_HILL, DOWNTOWN, at(2026, 9, 30, 8, 0))
     metro = metro_option(plan)
     assert transit_legs(metro)[0].to == "Federal Triangle"
-    ranked = transit_live.rank(plan, snapshot())
-    # Still offered, with the same times.
-    again = next(o for o in ranked.options if o.key == metro.key)
-    assert again.total_s == metro.total_s
-
-    def cost(o):
-        out = transit_live._outage_stations(o, snapshot())
-        return o.total_s + transit_live.ELEVATOR_OUT_S * len(out)
-
-    order = [transit.minutes(cost(o)) for o in ranked.options]
+    # Federal Triangle's one street elevator is out (the fixture): the station is blocked.
+    blocked = transit_live.blocked_stations(snapshot())
+    assert [s.name for s in blocked] == ["Federal Triangle"]
+    marked = transit.with_elevators_out(schedule, [(s.lon, s.lat) for s in blocked])
+    ranked = plan_bike(marked, CAPITOL_HILL, DOWNTOWN, at(2026, 9, 30, 8, 0))
+    # The same Orange Line trip rides on to the next station over (Stephen, 2026-10-21: "Most
+    # cyclists would just ride from the next station over"): Federal Triangle costs 15 min.
+    assert transit.ELEVATOR_OUT_S == 900.0
+    lines = transit_legs(metro)[0].lines
+    orange = next(
+        o for o in ranked.options if len(transit_legs(o)) == 1 and transit_legs(o)[0].lines == lines
+    )
+    assert transit_legs(orange)[0].to == "Metro Center"
+    assert not any(leg.elevator_out for leg in orange.legs)
+    order = [transit.rank_key(o) for o in ranked.options]
     assert order == sorted(order)
-    chosen = transit.choose(ranked, metro.key)
+    # A trip through Federal Triangle chosen all the same is planned, with the warning said.
+    chosen = transit.choose(plan, metro.key)
     block = transit_live.annotate(transit.block(chosen, schedule), chosen, snapshot())
     assert block["live"]["warnings"] == [
         "Elevator out at Federal Triangle: carry your bike on the stairs."
@@ -231,7 +237,7 @@ def test_an_elevator_out_is_a_warning_and_a_small_ranking_cost_not_an_avoidance(
 
 def test_with_no_reading_the_plan_is_the_timetables_alone(schedule) -> None:
     plan = plan_bike(schedule, CAPITOL_HILL, DOWNTOWN, at(2026, 9, 30, 8, 0))
-    assert transit_live.rank(plan, None) is plan
+    assert transit_live.blocked_stations(None) == []
     block = transit_live.annotate(transit.block(plan, schedule), plan, None)
     assert block["live"] is None and all(s["live"] is None for s in block["steps"])
 
@@ -245,7 +251,7 @@ def test_bikeshare_and_transit_warns_of_no_elevator(schedule) -> None:
         plan.moment,
         [],
     )
-    assert transit_live.rank(walked, snapshot()) is walked
+    assert all(transit_live._outage_stations(o, snapshot()) == [] for o in walked.options)
     chosen = transit.choose(walked, metro_option(walked).key)
     block = transit_live.annotate(transit.block(chosen, schedule), chosen, snapshot())
     assert block["live"]["warnings"] == []
@@ -303,10 +309,11 @@ class TestApi:
         trip = post_transit(client, [CAPITOL_HILL, DOWNTOWN], transit_option=metro["key"])
         assert trip.status_code == 200, trip.content
         block = trip.json()["transit"]
-        assert block["live"]["warnings"] == [
-            "Elevator out at Federal Triangle: carry your bike on the stairs."
-        ]
+        # Federal Triangle's only street elevator is out: the Orange Line trip rides on to the
+        # next station over (Stephen, 2026-10-21), so there is nothing to warn of.
         step = next(s for s in block["steps"] if s["mode"] == "metro")
+        assert step["to"] == "Metro Center" and not metro["elevator_out"]
+        assert block["live"]["warnings"] == []
         assert step["live"]["text"].startswith("Live: Orange Line toward Vienna")
 
 
