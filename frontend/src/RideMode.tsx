@@ -68,7 +68,11 @@ import {
   type GpsWeakness,
   REPLAN_FAILED,
   REPLAN_FOUND,
-  REPLAN_UTURN,
+  REPLAN_NO_AHEAD,
+  UTURN_START,
+  type UTurnState,
+  uturnAheadOnly,
+  uturnStep,
   setsOffBack,
   withUTurn,
   REPLAN_NO_SIGNAL,
@@ -304,6 +308,8 @@ function arrowFor(cue: Cue | null): "left" | "right" | "bear_left" | "bear_right
   if (!cue) return "straight";
   if (cue.kind === "end") return "end";
   if (cue.kind === "stop") return "stop";
+  // A crossing between two turns (lib/navigate.ts crossWords): straight across.
+  if (cue.cross) return "straight";
   if (cue.movement) return cue.movement;
   if (cue.kind === "hazard" || cue.kind === "walk") return "warn";
   return "straight";
@@ -654,6 +660,10 @@ export function RideMode({
   // The via points are not announced (v0.7.0): the model leaves them out of its cues.
   // A re-route that turns the rider round starts with "Make a U-turn." (lib/navigate.ts withUTurn).
   const uturnRoute = useRef<RouteResponse | null>(null);
+  // Re-routes in a row that asked for a U-turn the rider rode on past, and whether, with no way ahead even then
+  // (REPLAN_NO_AHEAD), the U-turn route is held: left up and not re-planned again on its own (lib/navigate.ts uturnStep).
+  const uturns = useRef<UTurnState>(UTURN_START);
+  const checking = useRef(false);
   const modelOf = (r: RouteResponse, points: readonly LonLat[]) => {
     const built = rideModel(r, viaIndices(points, VIA_MARKS.isVia));
     return r === uturnRoute.current ? withUTurn(built) : built;
@@ -965,26 +975,34 @@ export function RideMode({
   // With `via`, a detour: from here to that place first, then on through what was left (the nearest water
   // or restroom, below). A detour's place becomes a stop of the new route, so it is cued and arrived at.
   const replan = useCallback(
-    async (here: LonLat, via?: LonLat, asked = false, turnRound = false) => {
+    async (here: LonLat, via?: LonLat, asked = false, turnRound = false, check = false) => {
       if (ended.current) return;
       const current = rideRef.current;
       // The way the rider is going (the owner, 2026-10-18: "Penalize U turns", "For rerouting"): the new route sets
       // off ahead unless turning round saves half a mile. Not after Road closed, where turning round is the point.
       const heading = turnRound ? null : (current.goodFix?.headingDeg ?? null);
+      // Two U-turns ridden past: the rider means to stay on this way, so this one sets off ahead whatever turning saves.
+      const aheadOnly = uturnAheadOnly(uturns.current, heading);
       const left = replanPoints(modelRef.current, current.progressM ?? 0, here, plan.current.points, plan.current.loop);
       const points = via ? detourPoints(left, via) : left;
       if (!points) {
         sayDetour(DETOUR_FULL);
         return;
       }
-      if (!gate.begin(Date.now())) {
+      // A held U-turn's silent check does not take the gate, so the rider's own asks are never held up by it; one of
+      // theirs voids it (the ticket).
+      if (check ? gate.busy || checking.current : !gate.begin(Date.now())) {
         // Only a detour is the rider's own ask; an automatic re-plan held back by the gate says nothing.
         if (via) sayDetour(DETOUR_BUSY);
         return;
       }
       const ticket = (replanTicket.current += 1);
-      setReplanning(true);
-      setReplanNote("");
+      if (check) checking.current = true;
+      // A held U-turn's check for a way ahead (UTURN_RECHECK_MS) is silent: nothing shown or said unless it finds one.
+      if (!check) {
+        setReplanning(true);
+        setReplanNote("");
+      }
       // The quiet level hears nothing unprompted but arrival, and the stoker only that a new route was
       // found (plan section 3, off route said once); the note stays on screen for all. A detour's outcome
       // answers the rider's ask, so it is said whatever the level (sayDetour); so is Re-plan from here's.
@@ -994,7 +1012,7 @@ export function RideMode({
           return;
         }
         const told = replanTold(asked, prefsRef.current.verbosity, note);
-        if (told === "say") announcer.current?.say(note, false);
+        if (told === "say") announcer.current?.say(note, note === REPLAN_NO_AHEAD);
         if (told === "answer") {
           announcer.current?.answer(note);
           if (prefsRef.current.output === "neither") setPolite((s) => ({ text: note, count: s.count + 1 }));
@@ -1003,7 +1021,7 @@ export function RideMode({
       // No answer in REPLAN_TIMEOUT_MS: the rider is told there is no signal, while the request goes on
       // (the gate stays busy until it settles, so no second one joins it at the server; a late new
       // route is still taken).
-      const timer = window.setTimeout(() => {
+      const timer = check ? undefined : window.setTimeout(() => {
         if (ended.current || ticket !== replanTicket.current) return;
         setReplanNote(REPLAN_NO_SIGNAL);
         tell(REPLAN_NO_SIGNAL);
@@ -1011,7 +1029,7 @@ export function RideMode({
       // The rider is riding a plan already made: a long one is not asked to be confirmed again (a signed-out
       // rider's re-plan of a long ride was refused for want of it).
       const ask = (to: LonLat[]) =>
-        requestRoute(to, preset, { dials: { ...dials, loop: false }, vias: viaIndices(to, VIA_MARKS.isVia), straight: drawnLegs(to), routeOnly: true, confirmLong: true, blocked: blockedRef.current, heading, rideReplan: true, dirtRidden: dirtRidden.current });
+        requestRoute(to, preset, { dials: { ...dials, loop: false }, vias: viaIndices(to, VIA_MARKS.isVia), straight: drawnLegs(to), routeOnly: true, confirmLong: true, blocked: blockedRef.current, heading, aheadOnly, rideReplan: true, dirtRidden: dirtRidden.current });
       const result = await ask(points);
       // No new route to the end: the way back to the planned route, which goes on from there (lib/rejoin.ts;
       // the owner, 2026-10-17). Not for a detour, whose place the planned route does not pass. The no-signal
@@ -1020,7 +1038,7 @@ export function RideMode({
       let failed = result.ok ? null : result.error.kind;
       let note = REPLAN_FOUND;
       const voided = () => ended.current || ticket !== replanTicket.current;
-      if (!result.ok && !via && startsWayBack(result.error.kind) && !voided()) {
+      if (!result.ok && !via && !check && startsWayBack(result.error.kind) && !voided()) {
         const kept = replanKept(modelRef.current, current.progressM ?? 0, plan.current.points, plan.current.loop);
         // Never back onto a road the rider marked closed: the way back joins the route past it.
         const closed = blockedUntil.current?.model === modelRef.current ? blockedUntil.current.untilM : -Infinity;
@@ -1030,16 +1048,19 @@ export function RideMode({
         note = REPLAN_REJOIN;
       }
       window.clearTimeout(timer);
-      gate.finish(found !== null);
+      if (check) checking.current = false;
+      else gate.finish(found !== null);
       // Road closed pressed while this one was under way: this answer did not leave that road out, so it is
       // dropped (the press voided it) and the ride is planned again from where the rider is now.
-      if (closedPending.current && !ended.current) {
+      if (!check && closedPending.current && !ended.current) {
         closedPending.current = false;
         gate.online();
         void replanRef.current(rideRef.current.goodFix?.point ?? here, undefined, true, true);
         return;
       }
       if (voided()) return;
+      // Still no way ahead: the held route stays as it is, and nothing is said.
+      if (check && (!found || heading === null || setsOffBack(found.geometry.coordinates, heading))) return;
       setReplanning(false);
       if (!found) {
         const said = failed === "network" ? REPLAN_NO_SIGNAL : REPLAN_FAILED;
@@ -1053,7 +1074,11 @@ export function RideMode({
       // Turned round (the API keeps a U-turn only where it saves half a mile): said plainly, and the first cue.
       const turned = heading !== null && setsOffBack(found.geometry.coordinates, heading);
       uturnRoute.current = turned ? found : null;
-      if (turned && note === REPLAN_FOUND) note = REPLAN_UTURN;
+      // Counted, said and held there; a way back that turns round is not held (the rider was told to follow it), and
+      // a re-route made while stopped (no heading; not Road closed) leaves the count as it is.
+      const counted = uturnStep(uturns.current, { kind: "rerouted", turned, aheadOnly, stopped: heading === null && !turnRound, note, now: Date.now() });
+      uturns.current = counted.state;
+      note = counted.note ?? note;
       const model = modelOf(found, points);
       modelRef.current = model;
       if (found.dirt_trails) dirtRidden.current = true;
@@ -1085,6 +1110,7 @@ export function RideMode({
     const nextModel = otherModelRef.current;
     if (!next || !nextModel) return;
     replanTicket.current += 1;
+    uturns.current = uturnStep(uturns.current, { kind: "other-line" }).state;
     onStandard.current = !onStandard.current;
     announcer.current?.drop();
     routeRef.current = next;
@@ -1134,7 +1160,8 @@ export function RideMode({
       const auto = !keepRef.current && !fixedRef.current;
       // Walking to the dock, nothing is placed on the line or taken as off route (lib/rideTrip.ts).
       const wasWalking = tripRef.current.walking;
-      const stepped = tripStep(modelRef.current, trip, { ...tripRef.current, ride: rideRef.current }, fix, prefsRef.current.verbosity, auto);
+      // Held after "No route found ahead": off route says no "finding a new way", as none is looked for out loud.
+      const stepped = tripStep(modelRef.current, trip, { ...tripRef.current, ride: rideRef.current }, fix, prefsRef.current.verbosity, auto && !uturns.current.held);
       tripRef.current = stepped.state;
       for (const note of stepped.notes) notify(note);
       if (wasWalking && !stepped.state.walking) {
@@ -1184,6 +1211,8 @@ export function RideMode({
         }
       }
       say(out.events);
+      // Turned round as asked: the next U-turn re-route counts from one again.
+      uturns.current = uturnStep(uturns.current, { kind: "along", onUTurnRoute: uturnRoute.current === routeRef.current, off: out.state.off, progressM: out.state.progressM }).state;
       // A fixed route: leaving it says the way back, once, as Keep the planned route does.
       if (fixedRef.current && out.events.some((e) => e.kind === "off-route")) {
         const back = wayBack(modelRef.current, out.state);
@@ -1192,7 +1221,14 @@ export function RideMode({
       // Back on the planned route: "Keep" has done its work; leaving it again re-plans as usual.
       if (out.events.some((e) => e.kind === "back-on-route") || (keepRef.current && !out.state.off)) setKeepPlanned(false);
       // Never from a poor fix: a re-plan from a Wi-Fi guess 300 m out would be wrong at once.
-      if (out.state.off && auto && !gate.busy && fix.accuracyM <= POOR_FIX_M && out.state.goodFix) void replan(out.state.goodFix.point);
+      // Not after "No route found ahead": that route stays up (Re-plan from here still asks again), checked quietly.
+      if (out.state.off && auto && !gate.busy && fix.accuracyM <= POOR_FIX_M && out.state.goodFix) {
+        const offRoute = uturnStep(uturns.current, { kind: "off-route", now: Date.now() });
+        uturns.current = offRoute.state;
+        if (offRoute.replan === "ask") void replan(out.state.goodFix.point);
+        // Held: a quiet look now and then for a way ahead (the owner, 2026-10-20: "check periodically... but should do so silently").
+        else if (offRoute.replan === "check") void replan(out.state.goodFix.point, undefined, false, false, true);
+      }
       if (sayWhereNext.current && out.state.progressM !== null) {
         sayWhereNext.current = false;
         announcer.current?.answer(whereAmI(modelRef.current, out.state, false, milesRef.current));
@@ -1291,7 +1327,7 @@ export function RideMode({
     const onOnline = () => {
       gate.online();
       const state = rideRef.current;
-      if (state.off && !keepRef.current && !fixedRef.current && state.goodFix) void replan(state.goodFix.point);
+      if (state.off && !keepRef.current && !fixedRef.current && !uturns.current.held && state.goodFix) void replan(state.goodFix.point);
     };
     window.addEventListener("online", onOnline);
     return () => window.removeEventListener("online", onOnline);
@@ -1622,7 +1658,8 @@ export function RideMode({
   const togo = progress === null ? null : toGo(model, progress);
   const cueShown = cueParts(cue ? (cue.rideText ?? cue.text) : "");
   // The distance's metric in brackets a size smaller, so the line stays one line with large text.
-  const distanceWords = cue && progress !== null ? formatDistance(cue.atM - progress) : "";
+  // A U-turn is now: no distance (it is at the line's start, behind the rider).
+  const distanceWords = cue && progress !== null && cue.movement !== "uturn" ? formatDistance(cue.atM - progress) : "";
   const metricAt = distanceWords.indexOf(" (");
   const distanceShown = metricAt < 0 ? { us: distanceWords, metric: "" } : { us: distanceWords.slice(0, metricAt), metric: distanceWords.slice(metricAt + 1) };
   // Large: the turn's arrow and words as big as the card has room for (the owner, 2026-10-20: "take up as much
@@ -1640,8 +1677,10 @@ export function RideMode({
     }
     // The ride's settings open in the card: the size stays as it was while they show.
     if (settingsOpen) return;
-    // Two scales: the distance line's (and the arrow's), as big as its one line fits across; then the instruction's, as
-    // big as the card's height allows under it, so its lines fill the rest.
+    // Two scales: the distance line's (and the arrow's), as big as its one line fits across and at most half the card
+    // under the top row, whatever the cue says (the owner, 2026-10-20: "When there are multiple options the arrow and
+    // distance shrink, which are the most important parts"); then the instruction's, as big as the card's height allows
+    // under it. Where even the smallest words do not fit, To the end gives way (kept for screen readers).
     const set = (name: string, k: number) => card.style.setProperty(name, String(k));
     const inside = (selector: string) => {
       const right = card.getBoundingClientRect().right;
@@ -1658,13 +1697,7 @@ export function RideMode({
       }
       return Math.floor(lo * 0.94 * 100) / 100;
     };
-    const fit = () => {
-      set("--cue-fit", 0.5);
-      const distance = largest((k) => {
-        set("--cue-fit-d", k);
-        return inside(".cue-distance") && fitsAll();
-      });
-      set("--cue-fit-d", distance);
+    const words = () =>
       set(
         "--cue-fit",
         largest((k) => {
@@ -1672,6 +1705,22 @@ export function RideMode({
           return inside(".cue-text, .cue-more, .cue-then") && fitsAll();
         }),
       );
+    const fit = () => {
+      card.classList.remove("cue-crowded");
+      set("--cue-fit", 0.5);
+      const box = card.getBoundingClientRect();
+      const top = [...card.querySelectorAll<HTMLElement>(":scope > .ride-top, :scope > .ride-light-below")].reduce((m, e) => Math.max(m, e.getBoundingClientRect().bottom), box.top);
+      const below = box.bottom - top;
+      const tall = () => [...card.querySelectorAll<HTMLElement>(".cue-shape, .cue-distance")].every((e) => e.getBoundingClientRect().height <= below / 2);
+      const distance = largest((k) => {
+        set("--cue-fit-d", k);
+        return inside(".cue-distance") && tall();
+      });
+      set("--cue-fit-d", distance);
+      words();
+      if (fitsAll()) return;
+      card.classList.add("cue-crowded");
+      words();
     };
     fit();
     // Fitted again, once a frame at most, when the screen or the top row changes size, when a line comes or goes in the
@@ -1930,7 +1979,7 @@ export function RideMode({
               {/* Greyed while GPS is weak or lost (any GPS note): the distance is from an old fix, not where the rider is. */}
               <p className={gps ? "cue-distance cue-distance-weak" : "cue-distance"}>
                 {/* Fewer words, larger type (the owner, 2026-10-20); "In" stays for screen readers. */}
-                <span className="visually-hidden">In </span>
+                {distanceShown.us && <span className="visually-hidden">In </span>}
                 {distanceShown.us}
                 {distanceShown.metric && <span className="cue-distance-metric"> {distanceShown.metric}</span>}
               </p>
@@ -1967,7 +2016,7 @@ export function RideMode({
                 </dd>
               </div>
             )}
-            <div>
+            <div className="ride-togo-end">
               <dt>To the end</dt>
               <dd>
                 {formatDistance(togo.end.metres)}

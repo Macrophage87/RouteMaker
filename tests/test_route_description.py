@@ -404,6 +404,31 @@ class TestPieces:
         (piece,) = routing.pieces_of_trace(trace)
         assert piece.names == ("Main St",)
 
+    def test_each_piece_carries_its_bearing_unwrapped_along_the_trace(self):
+        # North 40 m, then a hairpin right: east 10 m, then a little west of south 40 m. The
+        # bearings run on past 180 (0, 90, about 190), never back through 0.
+        lat = 39.08
+        north = 40 / 111_195
+        east = 10 / (111_195 * 0.776)
+        shape = [
+            (-77.08, lat),
+            (-77.08, lat + north),
+            (-77.08 + east, lat + north),
+            (-77.08 + east * 0.4, lat + north * 0.05),
+        ]
+        trace = {
+            "units": "kilometers",
+            "shape": encode_polyline6(shape),
+            "edges": [
+                {"way_id": 1, "begin_shape_index": 0, "end_shape_index": 1, "length": 0.04},
+                {"way_id": 2, "begin_shape_index": 1, "end_shape_index": 3, "length": 0.05},
+            ],
+        }
+        bearings = [p.bearing for p in routing.pieces_of_trace(trace)]
+        assert bearings[0] == pytest.approx(0.0, abs=1)
+        assert bearings[1] == pytest.approx(90.0, abs=1)
+        assert 185 < bearings[2] < 215
+
     def test_the_new_fields_are_not_part_of_a_pieces_identity(self):
         a = routing.Piece(1, -77.0, 38.9, 10.0, names=("A",), use="road", heading_in=1.0)
         assert a == routing.Piece(1, -77.0, 38.9, 10.0)

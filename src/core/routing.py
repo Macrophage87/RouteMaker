@@ -463,6 +463,11 @@ class Piece:
     # as `others`: where a main road was crossed just before a turn onto its service
     # road; None elsewhere.
     prior: tuple | None = field(default=None, compare=False)
+    # The compass bearing of the piece's own stretch, unwrapped along the trace: each
+    # piece's is the one before's plus the turn between them (-180 to 180), so the
+    # difference between two pieces' is the way the route really turned between them
+    # (`describe.turn_between`: a hairpin right reads +190, never a left of -170).
+    bearing: float | None = field(default=None, compare=False)
 
 
 def _heading(value) -> float | None:
@@ -478,6 +483,8 @@ def pieces_of_trace(trace: dict) -> list[Piece]:
     # kept, with its length, for the junctions just short of that node.
     before: dict | None = None
     kept: list[tuple[dict, float]] = []
+    # The last stretch's bearing, unwrapped (`Piece.bearing`).
+    unwrapped: float | None = None
     for edge in trace.get("edges", []):
         length = float(edge.get("length") or 0.0) * to_metres
         begin, end = edge.get("begin_shape_index"), edge.get("end_shape_index")
@@ -515,6 +522,12 @@ def pieces_of_trace(trace: dict) -> list[Piece]:
             continue
         for a, b, d in stretches:
             if d > 0:
+                compass = bearing(Point(*a), Point(*b))
+                unwrapped = (
+                    compass
+                    if unwrapped is None
+                    else unwrapped + (compass - unwrapped + 540.0) % 360.0 - 180.0
+                )
                 pieces.append(
                     Piece(
                         way_id,
@@ -525,6 +538,7 @@ def pieces_of_trace(trace: dict) -> list[Piece]:
                         fork=fork,
                         others=others,
                         prior=prior,
+                        bearing=unwrapped,
                     )
                 )
                 fork = None
@@ -543,7 +557,10 @@ def _fork_of(before: dict | None, edge: dict) -> str | None:
         for other in (before.get("end_node") or {}).get("intersecting_edges") or []
     ]
     return describe.fork_movement(
-        _heading(before.get("end_heading")), _heading(edge.get("begin_heading")), others
+        _heading(before.get("end_heading")),
+        _heading(edge.get("begin_heading")),
+        others,
+        trail=edge.get("use") in describe.TRAIL_USES,
     )
 
 
@@ -1065,6 +1082,10 @@ class Dials:
     # north), so the route sets off that way rather than turning round (`plan_onward`); None:
     # either way.
     heading: float | None = None
+    # A re-route after the rider has ridden on past two U-turns (the owner, 2026-10-20: "give two
+    # reroutes and on the third time assume that the user wants to stay on that path"): the route
+    # that sets off ahead is taken whatever turning round would save (`plan_onward`).
+    ahead_only: bool = False
 
 
 def _same_pace(options: dict, request: dict) -> dict:
@@ -2554,6 +2575,7 @@ def describe_route(
                             pieces[i].fork,
                             pieces[i].others,
                             pieces[i].prior,
+                            bearing=pieces[i].bearing,
                         )
                         for i in range(run[0], run[1])
                     ]
@@ -4441,8 +4463,9 @@ def plan_onward(
 ) -> dict:
     """`plan`, with a re-route's U-turn penalised: where `dials.heading` is given and the route
     sets off back the other way, the best route that sets off ahead is planned too, and the
-    U-turn kept only where it saves UTURN_SAVING_M. Anything that stops the second plan (no
-    route ahead, no time left) keeps the first: the rider is never left without one."""
+    U-turn kept only where it saves UTURN_SAVING_M (never with `dials.ahead_only`). Anything
+    that stops the second plan (no route ahead, no time left) keeps the first: the rider is
+    never left without one."""
     dials = dials or Dials()
     heading = dials.heading
     asked = dict(long_ride=long_ride, started=started, quick=quick, candidates=candidates)
@@ -4465,7 +4488,7 @@ def plan_onward(
         return answered
     saving = float(ahead["distance_m"]) - float(answered["distance_m"])
     # The router takes the way back where it has no way ahead within its tolerance.
-    if saving >= UTURN_SAVING_M or sets_off_back(ahead, heading):
+    if (saving >= UTURN_SAVING_M and not dials.ahead_only) or sets_off_back(ahead, heading):
         logger.info("a re-route turns round: it saves %.0f m", saving)
         return answered
     return ahead

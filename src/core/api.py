@@ -368,6 +368,14 @@ class RouteIn(Schema):
             " `dirt_trails`), so this re-plan may ride any dirt trail wherever the rider is."
         ),
     )
+    ahead_only: StrictBool = Field(
+        default=False,
+        description=(
+            "With `heading`: the rider has ridden on past two re-routes' U-turns, so the route"
+            " that sets off ahead is answered whatever turning round would save. A U-turn is"
+            " still answered where there is no way ahead."
+        ),
+    )
     loop: StrictBool = Field(
         default=False,
         description=(
@@ -4248,6 +4256,7 @@ def _bike_dials(body: RouteIn) -> routing.Dials:
         heading=body.heading,
         ride_replan=body.ride_replan,
         dirt_ridden=body.ride_replan and body.dirt_ridden,
+        ahead_only=body.ahead_only,
     )
 
 

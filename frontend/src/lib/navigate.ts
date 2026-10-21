@@ -223,6 +223,8 @@ export interface Cue {
   junction?: JunctionShape;
   /** The way off a circle (v0.10.0): its exit, said ("take the 3rd exit") and drawn as a ring. */
   exit?: CircleExit;
+  /** A short path across a road between two turns: the road, said in place of the turn ("Cross Redland Road."), drawn straight on. */
+  cross?: string;
   /** A closure's source and until when (v0.8.2): shown in small print on the card, never said. */
   citation?: string;
   /** The description entry's kind it came from (a course export keeps Avoid and work-zone hazards); absent on the end. */
@@ -501,7 +503,9 @@ export function rideModel(route: RouteResponse, vias: readonly number[] = []): R
         text:
           kind === "stop"
             ? `Stop ${entry.via ?? cues.filter((c) => c.kind === "stop").length + 1}.`
-            : kind === "turn"
+            : kind === "turn" && entry.turn?.cross
+              ? crossWords(entry.turn.cross)
+              : kind === "turn"
               ? turnWords(entry.turn?.movement as TurnMovement, entry.turn?.onto ?? entry.street ?? null, entry.turn?.stay === true, entry.turn?.exit ?? null)
               : kind === "onto"
                 ? ontoWords(entry.street as string)
@@ -509,7 +513,8 @@ export function rideModel(route: RouteResponse, vias: readonly number[] = []): R
         ...(kind === "hazard" && entry.kind === "junction" && !entry.group ? { rideText: crossingWords(entry.street, entry.turn?.control) } : {}),
         ...(entry.kind === "hazard" ? { rideText: roadHazardWords(entry.text) } : {}),
         ...(entry.citation ? { citation: entry.citation } : {}),
-        ...(kind === "turn" && entry.turn?.shape ? { junction: entry.turn.shape } : {}),
+        ...(kind === "turn" && entry.turn?.shape && !entry.turn.cross ? { junction: entry.turn.shape } : {}),
+        ...(kind === "turn" && entry.turn?.cross ? { cross: entry.turn.cross } : {}),
         ...(kind === "turn" && entry.turn?.exit ? { exit: entry.turn.exit } : {}),
         movement: kind === "turn" ? (entry.turn?.movement as TurnMovement) : null,
         street: entry.turn?.onto ?? entry.street ?? null,
@@ -533,9 +538,20 @@ export function rideModel(route: RouteResponse, vias: readonly number[] = []): R
   return { coordinates, along, lengthM, cues, stretches, paceMs, ...(vias.length ? { passes } : {}) };
 }
 
-/** ", then immediately bear left onto Rhode Island Avenue.": a jog's second turn, after the first. */
-function thenWords(then: NonNullable<Cue["then"]>): string {
-  return `, then immediately ${lowerFirst(turnWords(then.movement, then.street, false, then.exit ?? null))}`;
+/** The road crossed where it has no name (describe.CROSS_UNNAMED). */
+export const CROSS_UNNAMED = "the road";
+
+/** "Cross Redland Road.": a short path across a road between two turns (describe._crossing). */
+export function crossWords(road: string): string {
+  return `Cross ${wayWords(road)}.`;
+}
+
+/**
+ * ", then immediately bear left onto Rhode Island Avenue.": a jog's second turn, after the first; after a crossing
+ * only ", then left onto ..." (the owner, 2026-10-20: "cross the street and turn left").
+ */
+function thenWords(then: NonNullable<Cue["then"]>, crossing = false): string {
+  return `, then ${crossing ? "" : "immediately "}${lowerFirst(turnWords(then.movement, then.street, false, then.exit ?? null))}`;
 }
 
 /**
@@ -548,9 +564,11 @@ function joinJogs(cues: Cue[]): void {
     const first = cues[i];
     const second = cues[i + 1];
     if (first.kind !== "turn" || second.kind !== "turn" || first.joined || !first.movement || !second.movement) continue;
+    // A crossing is never said as a turn after another: it leads its own cue, with the turn after it.
+    if (second.cross) continue;
     if (second.atM - first.atM > JOG_M) continue;
     first.then = { movement: second.movement, street: second.street, ...(second.exit ? { exit: second.exit } : {}) };
-    first.text = first.text.replace(/\.$/, "") + thenWords(first.then);
+    first.text = first.text.replace(/\.$/, "") + thenWords(first.then, first.cross !== undefined);
     second.joined = true;
   }
 }
@@ -741,7 +759,9 @@ export function cueSpoken(cue: Cue, phase: Phase, distanceM: number, first = pha
   if (cue.kind === "stop") return `You have reached stop ${cue.stop}.`;
   if (phase === "now" && cue.movement) {
     // A jog's "now" is short, the second turn being only seconds on: "Right now, then bear left onto ...".
-    if (cue.then) return `${cue.exit ? "Exit" : MOVEMENT_WORDS[cue.movement]} now, then ${lowerFirst(turnWords(cue.then.movement, cue.then.street, false, cue.then.exit ?? null))}`;
+    const lead = cue.cross ? `Cross ${wayWords(cue.cross)}` : cue.exit ? "Exit" : MOVEMENT_WORDS[cue.movement];
+    if (cue.then) return `${lead} now, then ${lowerFirst(turnWords(cue.then.movement, cue.then.street, false, cue.then.exit ?? null))}`;
+    if (cue.cross) return `Cross ${wayWords(cue.cross)} now.`;
     if (cue.movement === "uturn") return "Make a U-turn now.";
     if (cue.exit) return `Exit now${cue.street && !isUnnamed(cue.street) ? ` onto ${wayWords(cue.street)}` : ""}.`;
     return `${MOVEMENT_WORDS[cue.movement]} now${cue.street ? ` onto ${wayWords(cue.street)}` : ""}.`;
@@ -918,9 +938,21 @@ export function step(
 
 // ---- What the screen shows and "Where am I?" says ---------------------------------------------------
 
+/**
+ * Whether a cue is still ahead of the rider: past its point by less than a metre, or a re-route's U-turn (at the
+ * line's start, so never ahead) until the rider is PASSED_M along the new way, turned round (the owner, 2026-10-20:
+ * "There's no U turn symbol.").
+ */
+function ahead(model: RideModel, cue: Cue, progressM: number): boolean {
+  if (cue.atM > progressM + 1) return true;
+  // A next cue close to the start takes over halfway to it, as the voice turns to it.
+  const then = model.cues[cue.index + 1]?.atM ?? Infinity;
+  return cue.movement === "uturn" && progressM < Math.min(PASSED_M, then / 2);
+}
+
 /** The next turn, new named way, flagged junction or walk: what the cue card leads with. */
 export function nextAction(model: RideModel, progressM: number): Cue | null {
-  return model.cues.find((c) => c.atM > progressM + 1 && (c.kind === "turn" || c.kind === "onto" || c.kind === "hazard" || c.kind === "walk" || c.kind === "stop" || c.kind === "end")) ?? null;
+  return model.cues.find((c) => ahead(model, c, progressM) && (c.kind === "turn" || c.kind === "onto" || c.kind === "hazard" || c.kind === "walk" || c.kind === "stop" || c.kind === "end")) ?? null;
 }
 
 /** The stretch the rider is on: its street as the API names it, or null. */
@@ -1128,8 +1160,9 @@ export function whereAmI(model: RideModel, state: RideState, metric = false, mil
         : `On ${way}.`,
   ];
   const progress = state.progressM;
-  const cue = model.cues.find((c) => c.atM > progress + 1 && (c.kind === "turn" || c.kind === "onto" || c.kind === "hazard" || c.kind === "walk"));
-  if (cue) {
+  const cue = model.cues.find((c) => ahead(model, c, progress) && (c.kind === "turn" || c.kind === "onto" || c.kind === "hazard" || c.kind === "walk"));
+  if (cue?.movement === "uturn") sentences.push(`Next: ${lowerFirst(cue.text)}`);
+  else if (cue) {
     const text = metric ? (cue.rideText ?? cue.text) : withoutMetric(cue.rideText ?? cue.text);
     sentences.push(`Next, in ${dist(cue.atM - state.progressM)}: ${lowerFirst(text)}`);
   }
@@ -1247,6 +1280,101 @@ export const REPLAN_FOUND = "New route found.";
 /** A re-route that sets off back the way the rider came (the owner, 2026-10-18: "clearly announce make a u turn"). */
 export const REPLAN_UTURN = "New route found. Make a U-turn.";
 export const UTURN_SAID = "Make a U-turn.";
+/** A re-route that keeps the rider's way after they rode on past UTURNS_BEFORE_AHEAD U-turns. */
+export const REPLAN_AHEAD = "New route found. Keep going ahead.";
+/**
+ * Re-routes in a row that may ask for a U-turn before the next one keeps the rider's way (the owner, 2026-10-20:
+ * "give two reroutes and on the third time assume that the user wants to stay on that path").
+ */
+export const UTURNS_BEFORE_AHEAD = 2;
+/**
+ * That third re-route still turns round: there is no way ahead (or the map is wrong there). Said plainly, once; the
+ * route is left up and not re-planned again until the rider turns round or asks (the owner, 2026-10-20: "There is no
+ * route found ahead, make a U Turn. It could also be a mapping error, so just leave it up and don't keep annoying the user").
+ */
+export const REPLAN_NO_AHEAD = "No route found ahead. Make a U-turn.";
+/** How often a held U-turn route is checked, silently, for a way ahead (the owner: "check periodically... silently"). */
+export const UTURN_RECHECK_MS = 60_000;
+/** How far along a U-turn route the rider is once they have turned round as asked: the count of U-turns starts again. */
+export const UTURN_TAKEN_M = 50;
+
+/** Whether the next re-route keeps the rider's way, after `uturns` U-turn re-routes in a row they rode on past. */
+export function keepsAhead(uturns: number): boolean {
+  return uturns >= UTURNS_BEFORE_AHEAD;
+}
+
+/**
+ * A ride's U-turn re-routes, as RideMode keeps them (moved here out of RideMode.tsx so the sequence is tested, the
+ * v0.10.1 end review): how many in a row asked for a U-turn the rider rode on past, whether a U-turn route is held
+ * after "No route found ahead", and when the held route was last checked for a way ahead.
+ */
+export interface UTurnState {
+  inARow: number;
+  held: boolean;
+  checkedAt: number;
+}
+
+export const UTURN_START: UTurnState = { inARow: 0, held: false, checkedAt: 0 };
+
+/** What happened: a re-route's route taken, the rider along the line, off route, or moved to the other line. */
+export type UTurnEvent =
+  /**
+   * A re-route's route taken (a held route's silent check only when it found a way ahead). `note` is what it would
+   * say without the U-turns (REPLAN_FOUND or REPLAN_REJOIN); `stopped`, made without a heading because the rider
+   * had none (not Road closed, which turns round on purpose).
+   */
+  | { kind: "rerouted"; turned: boolean; aheadOnly: boolean; stopped: boolean; note: string; now: number }
+  /** A fix placed on the ride's route; `onUTurnRoute`, that route is one that asked for a U-turn. */
+  | { kind: "along"; onUTurnRoute: boolean; off: boolean; progressM: number | null }
+  /** Off route, with an automatic re-plan allowed (not kept, not fixed, the gate free, a good fix). */
+  | { kind: "off-route"; now: number }
+  /** The rider took the other line (lib/roadClosed.ts onOtherLine). */
+  | { kind: "other-line" };
+
+export interface UTurnStep {
+  state: UTurnState;
+  /** For "rerouted": the note to show and say. */
+  note?: string;
+  /** For "off-route": re-plan out loud, check the held route silently, or nothing. */
+  replan?: "ask" | "check" | null;
+}
+
+/** Whether a re-route made with `headingDeg` sets off ahead whatever turning round saves (keepsAhead). */
+export function uturnAheadOnly(state: UTurnState, headingDeg: number | null): boolean {
+  return headingDeg !== null && keepsAhead(state.inARow);
+}
+
+/**
+ * The U-turn re-routes' next state. Each U-turn re-route counts one; a re-route that keeps ahead starts the count
+ * again, and one made while stopped (no heading) leaves it as it is, so a rider who pauses between U-turns they ride
+ * past is not asked again and again (the v0.10.1 end review). The third, ahead only, that still turns round says
+ * REPLAN_NO_AHEAD once and is held: off route, no re-plan out loud, only a silent check each UTURN_RECHECK_MS. A way
+ * back (REPLAN_REJOIN) is never held. Any re-route taken (Re-plan from here's too), UTURN_TAKEN_M along a U-turn
+ * route, or the other line lets go of a hold.
+ */
+export function uturnStep(state: UTurnState, event: UTurnEvent): UTurnStep {
+  switch (event.kind) {
+    case "rerouted": {
+      const inARow = event.turned ? state.inARow + 1 : event.stopped ? state.inARow : 0;
+      let note = event.note;
+      if (event.turned && note === REPLAN_FOUND) note = REPLAN_UTURN;
+      if (!event.turned && event.aheadOnly && note === REPLAN_FOUND) note = REPLAN_AHEAD;
+      const held = event.turned && event.aheadOnly && note !== REPLAN_REJOIN;
+      return { state: { inARow, held, checkedAt: event.now }, note: held ? REPLAN_NO_AHEAD : note };
+    }
+    case "along":
+      // UTURN_TAKEN_M along the route: the rider follows it, so the count starts again (on any route, so a count a
+      // re-route made while stopped left is not carried down the next one); along the U-turn route the hold goes too.
+      if (event.off || (event.progressM ?? 0) < UTURN_TAKEN_M || (state.inARow === 0 && !state.held)) return { state };
+      return { state: { ...state, inARow: 0, held: event.onUTurnRoute ? false : state.held } };
+    case "off-route":
+      if (!state.held) return { state, replan: "ask" };
+      if (event.now - state.checkedAt >= UTURN_RECHECK_MS) return { state: { ...state, checkedAt: event.now }, replan: "check" };
+      return { state, replan: null };
+    case "other-line":
+      return { state: { ...state, held: false } };
+  }
+}
 /** A start this far off the rider's heading is a U-turn (the API's routing.UTURN_MIN_DEG). */
 export const UTURN_MIN_DEG = 120;
 /** How far along the line its setting-off direction is read: past the snap to the road (routing.UTURN_READ_M). */
@@ -1286,11 +1414,11 @@ export const REPLAN_STILL_WAITING = "Still waiting for the last re-plan.";
 /**
  * How a re-plan's outcome reaches the rider: one the rider asked for (Re-plan from here) is answered
  * whatever the level, as a detour's is (review RIDE-5); an automatic one is said at the full level, and
- * at the stoker's only when a new route (or a way back to the planned one) was found; the quiet level
+ * at the stoker's only when a new route (one that keeps going ahead, or a way back to the planned one) was found; the quiet level
  * hears it on screen only.
  */
 export function replanTold(asked: boolean, level: Verbosity, note: string): "answer" | "say" | "quiet" {
   if (asked) return "answer";
-  if (level === "full" || (level === "stoker" && (note === REPLAN_FOUND || note === REPLAN_REJOIN))) return "say";
+  if (level === "full" || (level === "stoker" && (note === REPLAN_FOUND || note === REPLAN_AHEAD || note === REPLAN_NO_AHEAD || note === REPLAN_REJOIN))) return "say";
   return "quiet";
 }
