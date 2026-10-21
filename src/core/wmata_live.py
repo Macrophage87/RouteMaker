@@ -201,14 +201,19 @@ class Outage:
 
 # An elevator in a station's parking garage or lot is not on the way to the platform (Stephen,
 # 2026-10-21: Glenmont shows 2 of 8 elevators out, "but it's only for the parking garage, which
-# isn't relevant"). WMATA names them in `LocationDescription`: "Garage elevator".
+# isn't relevant"). WMATA names them in `LocationDescription`: "Garage elevator". One between a
+# garage or lot and the mezzanine, street or platform is a way in, and counts.
 OFF_THE_WAY = re.compile(r"\b(?:garages?|parking|lots?)\b", re.IGNORECASE)
+ON_THE_WAY = re.compile(r"\b(?:street|mezzanine|platforms?)\b", re.IGNORECASE)
 
 
 def on_the_way(outage: Outage) -> bool:
-    """Whether an outage is an elevator between the street, the mezzanine and the platform: not
-    an escalator, nor one in the station's garage or parking lot."""
-    return outage.unit == "ELEVATOR" and not OFF_THE_WAY.search(outage.where)
+    """Whether an outage is an elevator on the way to the platform: not an escalator, nor one
+    in the station's garage or parking lot that goes nowhere else."""
+    where = outage.where
+    return outage.unit == "ELEVATOR" and (
+        not OFF_THE_WAY.search(where) or bool(ON_THE_WAY.search(where))
+    )
 
 
 @dataclass(frozen=True)

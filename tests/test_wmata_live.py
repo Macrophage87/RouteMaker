@@ -751,3 +751,18 @@ def test_a_garage_elevator_out_is_not_on_the_way_and_counts_for_nothing() -> Non
         "Elevator between mezzanine and platform"
     ]
     assert [s.name for s in transit_live.blocked_stations(live)] == ["Glenmont"]
+
+
+def test_a_garage_elevator_to_the_mezzanine_and_a_street_to_platform_one_are_on_the_way(
+    monkeypatch,
+) -> None:
+    to_mezzanine = "Elevator between parking garage and mezzanine"
+    live = glenmont(to_mezzanine)
+    assert [o.where for o in live.elevators_out(live.stations["B11"])] == [to_mezzanine]
+    # With Glenmont's two street elevators known, one out is a spare, not a block; a street to
+    # platform one is a street elevator too (surface and elevated stations).
+    monkeypatch.setattr(transit_live, "street_elevators", lambda station: 2)
+    assert transit_live.blocked_stations(live) == []
+    assert transit_live.blocked_stations(glenmont("Elevator between street and platform")) == []
+    both = glenmont("Elevator between street and platform", to_mezzanine)
+    assert [s.name for s in transit_live.blocked_stations(both)] == ["Glenmont"]

@@ -73,7 +73,9 @@ def _blocked(station: wmata_live.Station, live: wmata_live.Snapshot) -> bool | N
     out = live.elevators_out(station)
     if not out:
         return None
-    if any("platform" in o.where.lower() for o in out):
+    # The platform's own ("mezzanine and platform"); one from the street to the platform is a
+    # street elevator, and another may serve.
+    if any("platform" in o.where.lower() and "street" not in o.where.lower() for o in out):
         return True
     return len(out) >= max(1, street_elevators(station))
 
