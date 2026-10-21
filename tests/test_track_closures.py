@@ -48,6 +48,10 @@ def judged(tags, osm_id=1, coords=None, **kwargs):
         {"highway": "track", "access": "destination"},
         # A trail only for walkers is not a bicycle's.
         {"highway": "track", "foot": "yes"},
+        {"highway": "track", "foot": "designated"},
+        # A bicycle value the tag rules do not close is judged like none.
+        {"highway": "track", "bicycle": "dismount"},
+        {"highway": "track", "bicycle": "unknown"},
     ],
 )
 def test_a_farm_track_closes(tags):
@@ -64,7 +68,10 @@ def test_a_farm_track_closes(tags):
         ({"highway": "track", "access": "permissive"}, ra.WHY_TRACK_TAGGED_OPEN),
         ({"highway": "track", "access": "yes"}, ra.WHY_TRACK_TAGGED_OPEN),
         ({"highway": "track", "motor_vehicle": "yes"}, ra.WHY_TRACK_TAGGED_OPEN),
-        ({"highway": "track", "foot": "designated"}, ra.WHY_TRACK_TAGGED_OPEN),
+        (
+            {"highway": "track", "access": "private", "bicycle": "permissive"},
+            ra.WHY_TRACK_TAGGED_OPEN,
+        ),
         ({"highway": "track", "name": "Old Hundred Road"}, ra.WHY_TRACK_NAMED),
         ({"highway": "track", "ref": "CR 12"}, ra.WHY_PUBLIC_ROUTE),
     ],
@@ -83,6 +90,27 @@ def test_a_track_in_a_park_stays_open():
     assert judged({"highway": "track"}, coords=mostly_out).closed
 
 
+@pytest.mark.parametrize(
+    "tags",
+    [
+        {"boundary": "protected_area", "ownership": "private"},
+        {"boundary": "protected_area", "access": "private"},
+        {"boundary": "protected_area", "protection_title": "Agricultural Preservation Easement"},
+    ],
+)
+def test_private_land_under_an_easement_is_no_park_for_a_track(tags):
+    assert ra.area_kind(tags) == ra.PARK
+    assert not ra.public_land(tags)
+    easement = ra.named_area(LITTLE_BENNETT, "Farm easement", "w3", "", public=False)
+    m = ra.track_closures([(1, {"highway": "track"}, IN_PARK)], [easement])[0]
+    assert m.closed and m.why == ra.WHY_TRACK
+
+
+def test_a_public_park_is_public_land():
+    assert ra.public_land({"leisure": "park", "operator": "M-NCPPC"})
+    assert ra.public_land({"boundary": "protected_area", "ownership": "state"})
+
+
 def test_a_route_relation_and_an_override_reopen_one():
     m = judged({"highway": "track"}, trail_routes={1})
     assert not m.closed and m.why == ra.WHY_TRACK_ROUTE
@@ -99,6 +127,8 @@ def test_a_route_relation_and_an_override_reopen_one():
         {"highway": "track", "access": "agricultural"},
         {"highway": "track", "access": "forestry"},
         {"highway": "track", "vehicle": "private"},
+        {"highway": "track", "access": "yes", "vehicle": "private"},
+        {"highway": "track", "bicycle": "use_sidepath"},
         {"highway": "track", "bicycle": "no"},
         {"highway": "track", "bicycle": "private"},
         # Not a track.

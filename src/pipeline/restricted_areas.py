@@ -327,10 +327,28 @@ class _NamedArea(tuple):
     landuse: str = ""
 
 
-def named_area(area: Area, name: str = "", osm: str = "", landuse: str = "") -> _NamedArea:
+def named_area(
+    area: Area, name: str = "", osm: str = "", landuse: str = "", public: bool = True
+) -> _NamedArea:
     named = _NamedArea(area)
-    named.name, named.osm, named.landuse = name, osm, landuse
+    named.name, named.osm, named.landuse, named.public = name, osm, landuse, public
     return named
+
+
+# A protected area that is private land under an easement (a farm under an agricultural or
+# conservation easement in Montgomery County's Agricultural Reserve), not land the public may
+# enter: its own `ownership` or `access`, or a `protection_title` naming an easement.
+PRIVATE_OWNERSHIP = frozenset({"private"})
+PRIVATE_AREA_ACCESS = frozenset({"private", "no"})
+
+
+def public_land(tags) -> bool:
+    """A park or protected area the public may enter, as far as its own tags say: not
+    `ownership=private`, not `access=private|no`, and no easement in `protection_title`.
+    Only the track rule reads it (`track_closures`)."""
+    if tags.get("ownership") in PRIVATE_OWNERSHIP or tags.get("access") in PRIVATE_AREA_ACCESS:
+        return False
+    return "easement" not in (tags.get("protection_title") or "").lower()
 
 
 class _Areas(osmium.SimpleHandler):
@@ -362,7 +380,13 @@ class _Areas(osmium.SimpleHandler):
         xs, ys = [p[0] for p in points], [p[1] for p in points]
         area = ((min(xs), min(ys), max(xs), max(ys)), outers, inners)
         self.areas[kind].append(
-            named_area(area, a.tags.get("name") or "", osm, a.tags.get("landuse") or "")
+            named_area(
+                area,
+                a.tags.get("name") or "",
+                osm,
+                a.tags.get("landuse") or "",
+                public=kind != PARK or public_land(a.tags),
+            )
         )
 
 
@@ -1312,15 +1336,22 @@ PUBLIC_MOTOR_VEHICLE = frozenset({"yes", "permissive", "designated"})
 # those with a right to be there), under the tag rules: the public kept out
 # (`NO_PUBLIC_ACCESS`), and what upstream closes outright (agricultural, forestry, ...).
 TRACK_CLOSED_ACCESS = NO_PUBLIC_ACCESS | ACCESS_CLOSES
+# The `bicycle` values that already close a track or keep it to those with a right to be
+# there (the map hides them as private, `routemaker.facility`).
+TRACK_CLOSED_BICYCLE = frozenset({"no", "private", "permit", "residents", "use_sidepath"})
 
 
 def track_closed_by_tags(tags) -> bool:
-    """The track's own tags already speak against a bicycle: a bicycle tag that does not
-    open it, or, with none, an `access` or `vehicle` value in `TRACK_CLOSED_ACCESS`. The
-    tag rules (the map's private reading, upstream's access tables) have it already."""
+    """The track's own tags already speak against a bicycle: a bicycle tag that closes it
+    (`TRACK_CLOSED_BICYCLE`), or, with no bicycle tag that opens it, an `access` or
+    `vehicle` value in `TRACK_CLOSED_ACCESS`. The tag rules (the map's private reading,
+    upstream's access tables) have it already. Any other bicycle value (`dismount`,
+    `unknown`) is judged here like no tag at all."""
     bicycle = tags.get("bicycle")
-    if bicycle is not None:
-        return bicycle not in PUBLIC_BICYCLE
+    if bicycle in TRACK_CLOSED_BICYCLE:
+        return True
+    if bicycle in PUBLIC_BICYCLE:
+        return False
     return any(tags.get(key) in TRACK_CLOSED_ACCESS for key in ("access", "vehicle"))
 
 
@@ -1328,14 +1359,13 @@ def track_open_tags(tags) -> bool:
     """The track's own tags let the public ride it: a bicycle tag that opens it
     (`bicycle=yes|designated|permissive`, which outranks the rest), or, with no bicycle
     tag, `access`, `vehicle` or `motor_vehicle` yes or permissive (`motor_vehicle` also
-    designated), or `foot=designated` (a signed trail on a track bed)."""
+    designated). A foot permission alone does not: walkers welcome says nothing of bicycles."""
     if tags.get("bicycle") is not None:
         return tags.get("bicycle") in PUBLIC_BICYCLE
     return (
         tags.get("access") in PUBLIC_ACCESS
         or tags.get("vehicle") in PUBLIC_ACCESS
         or tags.get("motor_vehicle") in PUBLIC_MOTOR_VEHICLE
-        or tags.get("foot") == "designated"
     )
 
 
@@ -1352,13 +1382,15 @@ def track_closures(
     closed on bike access", OWNER-DECISIONS 330). Open: an override's bicycle permission,
     a numbered public road, a track whose own tags let the public ride it
     (`track_open_tags`), one at least INSIDE_FRACTION of whose length lies in a park or
-    protected area (`park_areas`: county, state and national parks, nature reserves), a
+    protected area the public may enter (`park_areas`: county, state and national parks,
+    nature reserves; not private land under an easement, `public_land`), a
     way in a bicycle or hiking route relation (`trail_routes`), and a named track (a
     public dirt road, or a trail on an old farm road). Everything else closes. A track
     whose `access`, `vehicle` or `bicycle` already keeps the public off
     (`NO_PUBLIC_ACCESS`, or upstream's agricultural and forestry) is the tag rules'
     and is not listed; `skip` are the ways the area rules already judged."""
-    shapes = _Shapes(park_areas) if park_areas else None
+    public = [area for area in park_areas if getattr(area, "public", True)]
+    shapes = None
     out: list[MilitaryWay] = []
     for osm_id, tags, coords in ways:
         if tags.get("highway") != "track" or not coords or osm_id in skip:
@@ -1377,6 +1409,10 @@ def track_closures(
         elif tags.get("name"):
             status, why = OPEN, WHY_TRACK_NAMED
         else:
+            # Built on the first track that needs it: most of a region's tracks are
+            # opened by their tags or name first, or the extract holds no park at all.
+            if shapes is None and public:
+                shapes = _Shapes(public)
             share, area = shapes.share(coords) if shapes is not None else (0.0, None)
             if share >= INSIDE_FRACTION:
                 status, why = OPEN, WHY_TRACK_PARK

@@ -3060,6 +3060,12 @@ def build_handlers(
         logger.info(
             "%s", restricted_areas.military_summary(context.track_ways, "farm and forest tracks")
         )
+        named_tracks = [m for m in context.track_ways if m.why == restricted_areas.WHY_TRACK_NAMED]
+        logger.info(
+            "named tracks left open for the owner to check (track-closures.csv): %d (%.1f mi)",
+            len(named_tracks),
+            sum(m.length_m for m in named_tracks) / 1609.344,
+        )
         missing_pentagon = restricted_areas.pentagon_open_missing(context.military_ways)
         if missing_pentagon:
             logger.warning(
