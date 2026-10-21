@@ -1,6 +1,6 @@
 // The panel's icons: the approved UI mockup's own line icons (reports/v0.5.0/ui-mockup.html, 2026-10-11),
 // plus a cargo bike, a bikeshare dock, a downed tree, a text-size "Aa" (the owner's choice 11; the ride's Large text button since 2026-10-20; before that unused once Big text
-// moved to Settings, 2026-10-17), and Plan's map bar's undo, redo and clear, and the points list's grip (drag to reorder, 2026-10-18). Each is drawn with currentColor and hidden from assistive technology: every control that
+// moved to Settings, 2026-10-17), and Plan's map bar's undo, redo and clear, and the points list's grip (drag to reorder, 2026-10-18), and a struck-through elevator for a transit trip through a Metro station whose elevators are out (2026-10-21). Each is drawn with currentColor and hidden from assistive technology: every control that
 // shows one also shows its words.
 
 export const ICON_PATHS = {
@@ -75,6 +75,7 @@ export const ICON_PATHS = {
   "trash": "<path d=\"M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6\"/>",
   "grip": "<circle cx=\"9\" cy=\"6\" r=\"1.4\" fill=\"currentColor\"/><circle cx=\"15\" cy=\"6\" r=\"1.4\" fill=\"currentColor\"/><circle cx=\"9\" cy=\"12\" r=\"1.4\" fill=\"currentColor\"/><circle cx=\"15\" cy=\"12\" r=\"1.4\" fill=\"currentColor\"/><circle cx=\"9\" cy=\"18\" r=\"1.4\" fill=\"currentColor\"/><circle cx=\"15\" cy=\"18\" r=\"1.4\" fill=\"currentColor\"/>",
   "camera": "<path d=\"M4 7h3l2-3h6l2 3h3v13H4z\"/><circle cx=\"12\" cy=\"13\" r=\"3.5\"/>",
+  "elevator-out": "<rect x=\"5\" y=\"3\" width=\"14\" height=\"18\" rx=\"2\"/><path d=\"M9.5 10 12 7l2.5 3M9.5 14l2.5 3 2.5-3M3 21 21 3\"/>",
 } as const;
 
 export type IconName = keyof typeof ICON_PATHS;

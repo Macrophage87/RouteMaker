@@ -195,22 +195,28 @@ def metro_option(plan: transit.Plan) -> transit.Option:
     return next(o for o in plan.options if transit_legs(o) and transit_legs(o)[0].system == "Metro")
 
 
-def test_an_elevator_out_is_a_warning_and_a_small_ranking_cost_not_an_avoidance(schedule):
+def test_an_elevator_out_is_a_warning_and_a_15_min_ranking_cost_not_an_avoidance(schedule):
     plan = plan_bike(schedule, CAPITOL_HILL, DOWNTOWN, at(2026, 9, 30, 8, 0))
     metro = metro_option(plan)
     assert transit_legs(metro)[0].to == "Federal Triangle"
-    ranked = transit_live.rank(plan, snapshot())
-    # Still offered, with the same times.
-    again = next(o for o in ranked.options if o.key == metro.key)
-    assert again.total_s == metro.total_s
-
-    def cost(o):
-        out = transit_live._outage_stations(o, snapshot())
-        return o.total_s + transit_live.ELEVATOR_OUT_S * len(out)
-
-    order = [transit.minutes(cost(o)) for o in ranked.options]
+    # Federal Triangle's one street elevator is out (the fixture): the station is blocked.
+    blocked = transit_live.blocked_stations(snapshot())
+    assert [s.name for s in blocked] == ["Federal Triangle"]
+    marked = transit.with_elevators_out(schedule, [(s.lon, s.lat) for s in blocked])
+    ranked = plan_bike(marked, CAPITOL_HILL, DOWNTOWN, at(2026, 9, 30, 8, 0))
+    # The same Orange Line trip rides on to the next station over (Stephen, 2026-10-21: "Most
+    # cyclists would just ride from the next station over"): Federal Triangle costs 15 min.
+    assert transit.ELEVATOR_OUT_S == 900.0
+    lines = transit_legs(metro)[0].lines
+    orange = next(
+        o for o in ranked.options if len(transit_legs(o)) == 1 and transit_legs(o)[0].lines == lines
+    )
+    assert transit_legs(orange)[0].to == "Metro Center"
+    assert not any(leg.elevator_out for leg in orange.legs)
+    order = [transit.rank_key(o) for o in ranked.options]
     assert order == sorted(order)
-    chosen = transit.choose(ranked, metro.key)
+    # A trip through Federal Triangle chosen all the same is planned, with the warning said.
+    chosen = transit.choose(plan, metro.key)
     block = transit_live.annotate(transit.block(chosen, schedule), chosen, snapshot())
     assert block["live"]["warnings"] == [
         "Elevator out at Federal Triangle: carry your bike on the stairs."
@@ -231,7 +237,7 @@ def test_an_elevator_out_is_a_warning_and_a_small_ranking_cost_not_an_avoidance(
 
 def test_with_no_reading_the_plan_is_the_timetables_alone(schedule) -> None:
     plan = plan_bike(schedule, CAPITOL_HILL, DOWNTOWN, at(2026, 9, 30, 8, 0))
-    assert transit_live.rank(plan, None) is plan
+    assert transit_live.blocked_stations(None) == []
     block = transit_live.annotate(transit.block(plan, schedule), plan, None)
     assert block["live"] is None and all(s["live"] is None for s in block["steps"])
 
@@ -245,7 +251,7 @@ def test_bikeshare_and_transit_warns_of_no_elevator(schedule) -> None:
         plan.moment,
         [],
     )
-    assert transit_live.rank(walked, snapshot()) is walked
+    assert all(transit_live._outage_stations(o, snapshot()) == [] for o in walked.options)
     chosen = transit.choose(walked, metro_option(walked).key)
     block = transit_live.annotate(transit.block(chosen, schedule), chosen, snapshot())
     assert block["live"]["warnings"] == []
@@ -303,10 +309,11 @@ class TestApi:
         trip = post_transit(client, [CAPITOL_HILL, DOWNTOWN], transit_option=metro["key"])
         assert trip.status_code == 200, trip.content
         block = trip.json()["transit"]
-        assert block["live"]["warnings"] == [
-            "Elevator out at Federal Triangle: carry your bike on the stairs."
-        ]
+        # Federal Triangle's only street elevator is out: the Orange Line trip rides on to the
+        # next station over (Stephen, 2026-10-21), so there is nothing to warn of.
         step = next(s for s in block["steps"] if s["mode"] == "metro")
+        assert step["to"] == "Metro Center" and not metro["elevator_out"]
+        assert block["live"]["warnings"] == []
         assert step["live"]["text"].startswith("Live: Orange Line toward Vienna")
 
 
@@ -710,3 +717,52 @@ def test_a_plan_asked_for_now_says_its_live_departures(
     step = next(s for s in block["transit"]["steps"] if s["mode"] == "metro")
     assert step["source"] == "live" and " live from " in step["text"]
     assert block["transit"]["live_times"]
+
+
+def glenmont(*where: str) -> wmata_live.Snapshot:
+    """The fixture's reading with Glenmont's elevators out at `where` (WMATA's words)."""
+    doc = docs()
+    doc["elevators"]["ElevatorIncidents"] = [
+        {
+            "LocationDescription": w,
+            "StationCode": "B11",
+            "StationName": "Glenmont",
+            "UnitType": "ELEVATOR",
+            "EstimatedReturnToService": None,
+        }
+        for w in where
+    ]
+    return wmata_live.build(doc, 1_790_000_000.0)
+
+
+def test_a_garage_elevator_out_is_not_on_the_way_and_counts_for_nothing() -> None:
+    # Stephen, 2026-10-21: Glenmont shows 2 of 8 out, "but it's only for the parking garage".
+    live = glenmont("Garage elevator", "Garage elevator")
+    station = live.stations["B11"]
+    assert live.elevators_out(station) == []
+    assert "B11" not in live.elevator_out_codes()
+    assert transit_live.blocked_stations(live) == []
+    assert not wmata_live.on_the_way(
+        wmata_live.Outage("B11", "Glenmont", "ELEVATOR", "Elevator in parking lot", None)
+    )
+    # The one between the mezzanine and the platform is the only way down: blocked.
+    live = glenmont("Garage elevator", "Elevator between mezzanine and platform")
+    assert [o.where for o in live.elevators_out(live.stations["B11"])] == [
+        "Elevator between mezzanine and platform"
+    ]
+    assert [s.name for s in transit_live.blocked_stations(live)] == ["Glenmont"]
+
+
+def test_a_garage_elevator_to_the_mezzanine_and_a_street_to_platform_one_are_on_the_way(
+    monkeypatch,
+) -> None:
+    to_mezzanine = "Elevator between parking garage and mezzanine"
+    live = glenmont(to_mezzanine)
+    assert [o.where for o in live.elevators_out(live.stations["B11"])] == [to_mezzanine]
+    # With Glenmont's two street elevators known, one out is a spare, not a block; a street to
+    # platform one is a street elevator too (surface and elevated stations).
+    monkeypatch.setattr(transit_live, "street_elevators", lambda station: 2)
+    assert transit_live.blocked_stations(live) == []
+    assert transit_live.blocked_stations(glenmont("Elevator between street and platform")) == []
+    both = glenmont("Elevator between street and platform", to_mezzanine)
+    assert [s.name for s in transit_live.blocked_stations(both)] == ["Glenmont"]

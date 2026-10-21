@@ -11,6 +11,7 @@
  */
 import type { ClosedStation, RouteResponse, StressSpan, TransitOption, TransitPlan, TransitStep } from "./api.ts";
 import type { Dials } from "./dials.ts";
+import { formatDistance } from "./format.ts";
 import type { LonLat } from "./geo.ts";
 import { isTransit, presetSaid, type PresetId } from "./presets.ts";
 import { stressShares } from "./profileChart.ts";
@@ -34,8 +35,12 @@ export function transitTimeName(plan: Pick<TransitPlan, "scheduled" | "live_time
 
 /** The list's name, which a screen reader announces with the list. */
 export const STEPS_LABEL = "Steps, in order";
-/** The options' list's name (the owner, 2026-10-12: riding directly there always, then the quickest). */
-export const OPTIONS_LABEL = "Trips, quickest first";
+/**
+ * The options' list's name (the owner, 2026-10-12: riding directly there always). Stephen, 2026-10-21: "order by time
+ * to get there with a penalty for time taken on busy roads and intersections", each row saying its busy riding,
+ * "which should explain why they might not be in complete order".
+ */
+export const OPTIONS_LABEL = "Trips, best first, counting busy roads";
 /** The legend's words for the rides: each is coloured by traffic stress, as the route is. */
 export const RIDES_LEGEND = "Every ride is coloured by traffic stress, as on the route, and a thin solid line is a ride whose streets could not be read in time.";
 /** Said under every transit plan: the timetables carry only the closures an agency published in them. */
@@ -78,15 +83,31 @@ function marked(option: Pick<TransitOption, "legs">): boolean {
  * An option as its button shows it: "A. Ride the whole way: about 12 min", and a transit trip by its
  * legs, "B. 🚶 4 min · 🔴 18 min · 🚶 3 min: about 25 min" (the marks aria-hidden: `optionSaid`).
  */
-export function optionText(option: Pick<TransitOption, "label" | "minutes" | "legs">, index: number): string {
+export function optionText(option: Pick<TransitOption, "label" | "minutes" | "legs" | "busy_m">, index: number): string {
   const what = marked(option) ? legsText(option.legs ?? []) : option.label;
-  return `${String.fromCharCode(65 + index)}. ${what}: about ${option.minutes} min`;
+  return `${String.fromCharCode(65 + index)}. ${what}: about ${option.minutes} min${busyText(option.busy_m, "busy")}`;
 }
 
+/**
+ * An option's busy riding after its time (Stephen, 2026-10-21: "arrive in X min with x mi of busy roads"):
+ * ", 0.4 mi (0.6 km) busy" on screen, "on busy roads" said; ", no busy roads" under a tenth of a mile (a crossing,
+ * a driveway); nothing where it is not known.
+ */
+export function busyText(busyM: number | null | undefined, words: string): string {
+  if (busyM == null || !Number.isFinite(busyM)) return "";
+  if (busyM < NO_BUSY_M) return ", no busy roads";
+  return `, ${formatDistance(busyM)} ${words}`;
+}
+const NO_BUSY_M = 160;
+
+/** Said with an option whose row shows the elevator icon (`TransitOption.elevator_out`). */
+export const ELEVATOR_OUT_SAID = "an elevator is out on the way, so it is ranked lower";
+
 /** The same option in words: "B. walk 4 minutes, Red Line 18 minutes, walk 3 minutes: about 25 min". */
-export function optionSaid(option: Pick<TransitOption, "label" | "minutes" | "legs">, index: number): string {
+export function optionSaid(option: Pick<TransitOption, "label" | "minutes" | "legs" | "busy_m" | "elevator_out">, index: number): string {
   const what = marked(option) ? legsSaid(option.legs ?? []) : option.label;
-  return `${String.fromCharCode(65 + index)}. ${what}: about ${option.minutes} min`;
+  const elevator = option.elevator_out ? `; ${ELEVATOR_OUT_SAID}` : "";
+  return `${String.fromCharCode(65 + index)}. ${what}: about ${option.minutes} min${busyText(option.busy_m, "on busy roads")}${elevator}`;
 }
 
 /** What is said when an option is chosen. */
