@@ -99,8 +99,11 @@ def test_every_diagram_is_an_image_with_a_title_and_a_description(name: str) -> 
         assert title and desc, attrs
         # The description carries the content: a sentence or more, not a label.
         assert len(desc.group(1)) > 80, desc.group(1)
-    # Each diagram sits in a scrollable figure a keyboard can reach.
-    assert page.count('<div class="fig-scroll" tabindex="0"') == len(svgs)
+    # Each diagram sits in a scrollable figure a keyboard can reach; a phone layout, where there is
+    # one, fits the width and needs no scrolling.
+    narrow = page.count('<div class="fig-narrow">')
+    assert page.count('<div class="fig-scroll') + narrow == len(svgs)
+    assert page.count('tabindex="0" role="group" aria-label="Diagram') == len(svgs) - narrow
 
 
 CITED = (

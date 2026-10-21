@@ -110,6 +110,7 @@ from pipeline.schema import (
     SEPARATE_BIKEWAY_COLUMN,
     STRESS_HALF_COLUMN,
     TRAIL_BRIDGE_COLUMN,
+    TRAIL_NAME_COLUMN,
     TRAIL_NETWORK_FACILITY,
     TRAIL_ROUTE_COLUMN,
     TRAIL_RUN_COLUMN,
@@ -166,8 +167,9 @@ CONTENT_TYPE = "application/vnd.mapbox-vector-tile"
 # NO-BIKE-PATHS' `mtb` and `rough` (290, 291). 8: a judged trail bridge's `unpaved` is its
 # trail's surface, not its deck's (BRIDGE_UNPAVED). 9: the z12-13 ride layer carries the
 # mountain-bike trails (v0.7.0). 10: every street from z12, merged at z12-13, and no ride
-# layer (the owner, 2026-10-17: "Both from 12").
-FORMAT_VERSION = 10
+# layer (the owner, 2026-10-17: "Both from 12"). 11: a major trail's name, `trail_name`
+# (TRAIL_NAME_RULE).
+FORMAT_VERSION = 11
 
 # Five minutes (OWNER-DECISIONS 460.6, "5 min sounds good"): an instance admin's change in
 # the road panel (core.stress_edits) is in the tiles at once, and other riders' browsers
@@ -414,6 +416,26 @@ FALLBACKS = {"facility": TRAIL_NETWORK_FACILITY}
 # only where all three are there. A data rebuild adds them; nothing else does.
 LONG_TRAIL_COLUMNS = (TRAIL_ROUTE_COLUMN, TRAIL_RUN_COLUMN, TRAIL_BRIDGE_COLUMN)
 
+
+# THE MAJOR TRAILS' NAMES. The owner, 2026-10-21: "Major off road bike trails like the
+# Metropolitan Branch Trail should be named on the map." A way carries its trail's name as
+# `trail_name` (the way's OSM name, else its long route relation's: `segment.trail_name`,
+# `pipeline.trail_routes.way_name`) where it is one of the long trails the z11 map keeps:
+# a traffic-free path (`trails_predicate`, not a road closed to cars only at set times,
+# which keeps its street name) on a regional-or-larger bicycle route or a long walking
+# route, or in a named run of 2.5 mi or more (5 mi and a long bicycle route if unpaved;
+# Z11_LONG_TRAILS, OWNER-DECISIONS 375-380), from z12. So "major" is the rule the zoomed-out map
+# already draws by, not a list. Left out of every other way, and of a table without the
+# long-trail columns, which the same rebuild writes `trail_name` with. The map draws it
+# along the line (frontend/src/stressStyle.js, TRAIL_LABEL). A mountain-bike trail's
+# name is `name` (MTB_NAME_COLUMN), not this.
+def trail_name_rule(has_facility: bool) -> str:
+    return (
+        f"CASE WHEN {trails_predicate(has_facility)} AND "
+        f"{long_trails_predicate(Z11_LONG_TRAILS)} THEN s.{TRAIL_NAME_COLUMN} END"
+    )
+
+
 _MERGED = """
 WITH bounds AS (SELECT ST_TileEnvelope(%(z)s, %(x)s, %(y)s) AS env),
 features AS (
@@ -476,6 +498,10 @@ def tile_sql(level: Level, optional: frozenset[str] = frozenset(), clip: bool = 
         carried["facility"] = f"COALESCE(s.{FACILITY_SHOWN_COLUMN}, s.{FACILITY_COLUMN})"
     has_facility = FACILITY_COLUMN in optional
     has_car_free = CAR_FREE_COLUMN in optional
+    # Only where the map names them (from z12): at z10-11 a name would split the merged
+    # features for nothing.
+    if level.min_zoom >= QUIET_STREETS_MIN_ZOOM and all(c in optional for c in LONG_TRAIL_COLUMNS):
+        carried["trail_name"] = trail_name_rule(has_facility)
     if level.predicate is not None:
         where = level.predicate(has_facility, has_car_free)
         if level.long_trails is not None and all(c in optional for c in LONG_TRAIL_COLUMNS):

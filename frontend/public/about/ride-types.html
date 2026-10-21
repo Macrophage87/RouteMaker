@@ -87,11 +87,20 @@
   .ln { stroke: var(--accent); stroke-width: 2.5; fill: none; }
   .ln2 { stroke: #c2410c; stroke-width: 2.5; fill: none; stroke-dasharray: 7 4; }
   .fillacc { fill: var(--accent); }
+  .fig-narrow { display: none; }
+  .fig-narrow .t, .fig-narrow .tb { font-size: 15.5px; }
+  .fig-narrow .ts { font-size: 14px; }
+  .fig-narrow .tk, .fig-narrow .tw { font-size: 14.5px; }
+  @media (max-width: 37.5rem) {
+    figure.has-narrow .fig-wide { display: none; }
+    figure.has-narrow .fig-narrow { display: block; }
+  }
   @media (max-width: 30rem) {
     body { font-size: 1rem; }
     h1 { font-size: 1.5rem; }
     th, td { padding: 0.35rem 0.4rem; }
-    figure { padding: 0.4rem; }
+    figure { padding: 0.25rem; }
+    header, main, footer { padding-left: 0.75rem; padding-right: 0.75rem; }
   }
 
   details.more { margin: 0.5rem 0 1rem; border: 1px solid var(--line); border-radius: 6px; }
@@ -105,6 +114,10 @@
   .glance figure { background: var(--bg); }
   .glance ul { padding-left: 1.25rem; }
   .glance .find { margin-bottom: 0; }
+  @media (max-width: 30rem) {
+    .glance { padding: 0.25rem 0.5rem 0.5rem; }
+    details.more > .more-body { padding: 0 0.25rem 0.4rem; }
+  }
 </style>
 </head>
 <body>
@@ -134,8 +147,8 @@ ratings</a>.</p>
 
 <div class="glance">
 <h2 id="glance">At a glance</h2>
-<figure id="fig-glance-ride-types">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<figure id="fig-glance-ride-types" class="has-narrow">
+<div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 760 206" role="img" aria-labelledby="fig-glance-ride-types-t fig-glance-ride-types-d" focusable="false" style="min-width:547px">
 <title id="fig-glance-ride-types-t">Ride types at a glance</title>
 <desc id="fig-glance-ride-types-d">Fifteen ride types in three groups. Transportation: Default, Novice and Nervous, E-bike, Cargo Bike, Bikeshare, Own Bike + transit and Bikeshare + transit. Adventure: Fast, Trailmaxxing, Gravel, Mountain Goat, Mountain Bike and Rebalance Ride. Group: Group Ride and Mass Ride. All use the same stress ratings; each sets how much a calmer road is worth, how it treats hills and surfaces, and the pace.</desc>
@@ -160,6 +173,35 @@ ratings</a>.</p>
 <text class="ts" x="632.0" y="110.5" text-anchor="middle">Group Ride</text>
 <text class="ts" x="632.0" y="126.5" text-anchor="middle">Mass Ride</text>
 <text class="ts" x="380" y="194" text-anchor="middle">Same ratings for all; each sets how much a calmer road is worth, hills, surfaces and pace.</text>
+</svg>
+</div>
+<div class="fig-narrow">
+<svg viewBox="0 0 320 490" role="img" aria-labelledby="fig-glance-ride-types-n-t fig-glance-ride-types-n-d" focusable="false">
+<title id="fig-glance-ride-types-n-t">Ride types at a glance</title>
+<desc id="fig-glance-ride-types-n-d">Fifteen ride types in three groups. Transportation: Default, Novice and Nervous, E-bike, Cargo Bike, Bikeshare, Own Bike + transit and Bikeshare + transit. Adventure: Fast, Trailmaxxing, Gravel, Mountain Goat, Mountain Bike and Rebalance Ride. Group: Group Ride and Mass Ride. All use the same stress ratings; each sets how much a calmer road is worth, how it treats hills and surfaces, and the pace.</desc>
+<defs><marker id="ah-glance-ride-types-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<rect class="bxa" x="10" y="8" width="300" height="36" rx="6"/>
+<text class="tb" x="160.0" y="31.5" text-anchor="middle">Transportation</text>
+<rect class="bx" x="10" y="50" width="300" height="96" rx="6"/>
+<text class="ts" x="160.0" y="73.5" text-anchor="middle">Default, Novice and Nervous</text>
+<text class="ts" x="160.0" y="93.5" text-anchor="middle">E-bike, Cargo Bike, Bikeshare</text>
+<text class="ts" x="160.0" y="113.5" text-anchor="middle">Own Bike + transit</text>
+<text class="ts" x="160.0" y="133.5" text-anchor="middle">Bikeshare + transit</text>
+<rect class="bxa" x="10" y="162" width="300" height="36" rx="6"/>
+<text class="tb" x="160.0" y="185.5" text-anchor="middle">Adventure</text>
+<rect class="bx" x="10" y="204" width="300" height="96" rx="6"/>
+<text class="ts" x="160.0" y="227.5" text-anchor="middle">Fast, Trailmaxxing</text>
+<text class="ts" x="160.0" y="247.5" text-anchor="middle">Gravel, Mountain Goat</text>
+<text class="ts" x="160.0" y="267.5" text-anchor="middle">Mountain Bike</text>
+<text class="ts" x="160.0" y="287.5" text-anchor="middle">Rebalance Ride</text>
+<rect class="bxa" x="10" y="316" width="300" height="36" rx="6"/>
+<text class="tb" x="160.0" y="339.5" text-anchor="middle">Group</text>
+<rect class="bx" x="10" y="358" width="300" height="56" rx="6"/>
+<text class="ts" x="160.0" y="381.5" text-anchor="middle">Group Ride</text>
+<text class="ts" x="160.0" y="401.5" text-anchor="middle">Mass Ride</text>
+<text class="ts" x="160.0" y="438" text-anchor="middle">Same ratings for all; each sets how</text>
+<text class="ts" x="160.0" y="458" text-anchor="middle">much a calmer road is worth, hills,</text>
+<text class="ts" x="160.0" y="478" text-anchor="middle">surfaces and pace.</text>
 </svg>
 </div>
 <figcaption>Every ride type, by group.</figcaption>
@@ -192,8 +234,8 @@ transit.</li>
 </nav>
 
 <h2 id="compare">Ride types compared</h2>
-<figure id="fig-starts">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<figure id="fig-starts" class="has-narrow">
+<div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 800 412" role="img" aria-labelledby="fig-starts-t fig-starts-d" focusable="false" style="min-width:576px">
 <title id="fig-starts-t">Where each ride type starts the traffic slider</title>
 <desc id="fig-starts-d">A dot chart of starting slider positions. Mass Ride 0, locked. Fast 10. Group Ride, Gravel and Mountain Goat 40. Default, E-bike, Own Bike plus transit and Cargo Bike carrying cargo 70. Cargo Bike with passengers, Bikeshare, Bikeshare plus transit, Rebalance Ride and Mountain Bike 80. Novice and Nervous and Trailmaxxing 100. From 80 up, RouteMaker&#x27;s own calm search runs.</desc>
@@ -256,6 +298,60 @@ transit.</li>
 <text class="ts" x="500.0" y="402" text-anchor="middle">Traffic slider: 0 = direct, 100 = calmest. Shaded: RouteMaker&#x27;s calm search runs.</text>
 </svg>
 </div>
+<div class="fig-narrow">
+<svg viewBox="0 0 320 548" role="img" aria-labelledby="fig-starts-n-t fig-starts-n-d" focusable="false">
+<title id="fig-starts-n-t">Where each ride type starts the traffic slider</title>
+<desc id="fig-starts-n-d">A dot chart of starting slider positions. Mass Ride 0, locked. Fast 10. Group Ride, Gravel and Mountain Goat 40. Default, E-bike, Own Bike plus transit and Cargo Bike carrying cargo 70. Cargo Bike with passengers, Bikeshare, Bikeshare plus transit, Rebalance Ride and Mountain Bike 80. Novice and Nervous and Trailmaxxing 100. From 80 up, RouteMaker&#x27;s own calm search runs.</desc>
+<defs><marker id="ah-starts-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<rect x="242.8" y="10" width="57.2" height="452" fill="#57a06c" opacity="0.15"/>
+<line class="grid" x1="14.0" y1="10" x2="14.0" y2="462"/>
+<text class="ts" x="14.0" y="482" text-anchor="middle">0</text>
+<line class="grid" x1="71.2" y1="10" x2="71.2" y2="462"/>
+<text class="ts" x="71.2" y="482" text-anchor="middle">20</text>
+<line class="grid" x1="128.4" y1="10" x2="128.4" y2="462"/>
+<text class="ts" x="128.4" y="482" text-anchor="middle">40</text>
+<line class="grid" x1="185.6" y1="10" x2="185.6" y2="462"/>
+<text class="ts" x="185.6" y="482" text-anchor="middle">60</text>
+<line class="grid" x1="242.8" y1="10" x2="242.8" y2="462"/>
+<text class="ts" x="242.8" y="482" text-anchor="middle">80</text>
+<line class="grid" x1="300.0" y1="10" x2="300.0" y2="462"/>
+<text class="ts" x="300.0" y="482" text-anchor="middle">100</text>
+<circle cx="14.0" cy="26" r="6" class="fillacc"/>
+<text class="t" x="26.0" y="31" text-anchor="start">Mass Ride (locked)</text>
+<circle cx="42.6" cy="54" r="6" class="fillacc"/>
+<text class="t" x="54.6" y="59" text-anchor="start">Fast</text>
+<circle cx="128.4" cy="82" r="6" class="fillacc"/>
+<text class="t" x="140.4" y="87" text-anchor="start">Group Ride</text>
+<circle cx="128.4" cy="110" r="6" class="fillacc"/>
+<text class="t" x="140.4" y="115" text-anchor="start">Gravel</text>
+<circle cx="128.4" cy="138" r="6" class="fillacc"/>
+<text class="t" x="140.4" y="143" text-anchor="start">Mountain Goat</text>
+<circle cx="214.2" cy="166" r="6" class="fillacc"/>
+<text class="t" x="202.2" y="171" text-anchor="end">Default</text>
+<circle cx="214.2" cy="194" r="6" class="fillacc"/>
+<text class="t" x="202.2" y="199" text-anchor="end">E-bike</text>
+<circle cx="214.2" cy="222" r="6" class="fillacc"/>
+<text class="t" x="202.2" y="227" text-anchor="end">Own Bike + transit</text>
+<circle cx="214.2" cy="250" r="6" class="fillacc"/>
+<text class="t" x="202.2" y="255" text-anchor="end">Cargo Bike, cargo</text>
+<circle cx="242.8" cy="278" r="6" class="fillacc"/>
+<text class="t" x="230.8" y="283" text-anchor="end">Cargo Bike, passengers</text>
+<circle cx="242.8" cy="306" r="6" class="fillacc"/>
+<text class="t" x="230.8" y="311" text-anchor="end">Bikeshare</text>
+<circle cx="242.8" cy="334" r="6" class="fillacc"/>
+<text class="t" x="230.8" y="339" text-anchor="end">Bikeshare + transit</text>
+<circle cx="242.8" cy="362" r="6" class="fillacc"/>
+<text class="t" x="230.8" y="367" text-anchor="end">Rebalance Ride</text>
+<circle cx="242.8" cy="390" r="6" class="fillacc"/>
+<text class="t" x="230.8" y="395" text-anchor="end">Mountain Bike</text>
+<circle cx="300.0" cy="418" r="6" class="fillacc"/>
+<text class="t" x="288.0" y="423" text-anchor="end">Novice and Nervous</text>
+<circle cx="300.0" cy="446" r="6" class="fillacc"/>
+<text class="t" x="288.0" y="451" text-anchor="end">Trailmaxxing</text>
+<text class="ts" x="10" y="508" text-anchor="start">Traffic slider: 0 = direct, 100 = calmest.</text>
+<text class="ts" x="10" y="528" text-anchor="start">Shaded: RouteMaker&#x27;s calm search runs.</text>
+</svg>
+</div>
 <figcaption>You can move the slider on every ride type except Mass Ride.<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup></figcaption>
 </figure>
 <details class="more"><summary>More: Ride types compared</summary>
@@ -292,8 +388,8 @@ settings<sup class="cite"><a href="#ref-1" aria-label="source 1">[1]</a></sup> t
 <p>Two ride types combine a bike with Metro, buses or trains: <strong>Own Bike + transit</strong> takes
 your bike on board, and <strong>Bikeshare + transit</strong> docks a shared bike before you board. Each plan rides
 to a station or stop and takes the train or bus the rest of the way.</p>
-<figure id="fig-transit">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<figure id="fig-transit" class="has-narrow">
+<div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 920 160" role="img" aria-labelledby="fig-transit-t fig-transit-d" focusable="false" style="min-width:600px">
 <title id="fig-transit-t">A transit trip</title>
 <desc id="fig-transit-d">A trip in five steps: start at your door, ride or walk up to 5 miles [8 km] to a station, take a train or bus at the next predicted departure where WMATA predicts one, else at scheduled times, ride or walk to the end, finish. At most two transit legs. Metro only through stations with elevators. On Bikeshare plus transit the bike is docked before boarding.</desc>
@@ -320,6 +416,33 @@ to a station or stop and takes the train or bus the rest of the way.</p>
 <text class="ts" x="470" y="147" text-anchor="middle">Bikeshare + transit docks the bike before boarding.</text>
 </svg>
 </div>
+<div class="fig-narrow">
+<svg viewBox="0 0 320 498" role="img" aria-labelledby="fig-transit-n-t fig-transit-n-d" focusable="false">
+<title id="fig-transit-n-t">A transit trip</title>
+<desc id="fig-transit-n-d">A trip in five steps: start at your door, ride or walk up to 5 miles [8 km] to a station, take a train or bus at the next predicted departure where WMATA predicts one, else at scheduled times, ride or walk to the end, finish. At most two transit legs. Metro only through stations with elevators. On Bikeshare plus transit the bike is docked before boarding.</desc>
+<defs><marker id="ah-transit-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<rect class="bx" x="10" y="8" width="300" height="60" rx="6"/>
+<text class="tb" x="160.0" y="33" text-anchor="middle">Start</text>
+<text class="ts" x="160.0" y="53" text-anchor="middle">your door</text>
+<path class="ar" d="M160.0,70 L160.0,89" marker-end="url(#ah-transit-n)"/>
+<rect class="bx" x="10" y="92" width="300" height="60" rx="6"/>
+<text class="tb" x="160.0" y="117" text-anchor="middle">Ride or walk</text>
+<text class="ts" x="160.0" y="137" text-anchor="middle">up to 5 mi to a station</text>
+<path class="ar" d="M160.0,154 L160.0,173" marker-end="url(#ah-transit-n)"/>
+<rect class="bxa" x="10" y="176" width="300" height="60" rx="6"/>
+<text class="tb" x="160.0" y="201" text-anchor="middle">Train or bus</text>
+<text class="ts" x="160.0" y="221" text-anchor="middle">live where predicted</text>
+<path class="ar" d="M160.0,238 L160.0,257" marker-end="url(#ah-transit-n)"/>
+<rect class="bx" x="10" y="260" width="300" height="60" rx="6"/>
+<text class="tb" x="160.0" y="285" text-anchor="middle">Ride or walk</text>
+<text class="ts" x="160.0" y="305" text-anchor="middle">to the end</text>
+<path class="ar" d="M160.0,322 L160.0,341" marker-end="url(#ah-transit-n)"/>
+<rect class="bx" x="10" y="344" width="300" height="40" rx="6"/>
+<text class="tb" x="160.0" y="369" text-anchor="middle">Finish</text><text class="ts" x="10" y="412" text-anchor="start">At most two transit legs. Metro only</text>
+<text class="ts" x="10" y="432" text-anchor="start">through stations with elevators.</text><text class="ts" x="10" y="458" text-anchor="start">Bikeshare + transit docks the bike before</text>
+<text class="ts" x="10" y="478" text-anchor="start">boarding.</text>
+</svg>
+</div>
 <figcaption>Transit ride types compare riding the whole way with the quickest transit trips<sup class="cite"><a href="#ref-4" aria-label="source 4">[4]</a><a href="#ref-5" aria-label="source 5">[5]</a><a href="#ref-6" aria-label="source 6">[6]</a></sup>.</figcaption>
 </figure>
 <ul>
@@ -339,6 +462,13 @@ station.</li>
 5 mi [8 km] to a station. A trip under 1 mi [1.6 km] is offered as walking.</li>
 <li>Metro is used only through stations with elevators, and not on days when bikes are not allowed on
 trains, such as July 4.</li>
+<li>With a bike, a start, stop or end you put at a Metro or MARC station moves to the station's elevator
+quickest to ride to from where that leg comes from, not the far side of the tracks. If that moves your
+point, the app says so, and Undo puts it back. An elevator you tap on the map stays where you put it.</li>
+<li>From the next map update, routes walk into Metro and MARC stations: the walking tunnels and the last
+footways between a station's entrances or elevator and the nearest road or bike path are walk-your-bike
+links, at most about 800 ft [250 m], and the directions say "walk your bike here", and, from the same update,
+escalators are closed to bikes.</li>
 <li>Own Bike + transit never leaves the bike. Bikeshare + transit docks the shared bike before you
 board.</li>
 </ul>
@@ -348,8 +478,8 @@ board.</li>
 counts as more, as if it were longer. The traffic slider and the ride type together decide how
 much more. <a href="/about/routing.html#costs">Routing</a> has the cost of each level on every ride
 type, and everything else a route pays for.</p>
-<figure id="fig-weights">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<figure id="fig-weights" class="has-narrow">
+<div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 800 336" role="img" aria-labelledby="fig-weights-t fig-weights-d" focusable="false" style="min-width:576px">
 <title id="fig-weights-t">How heavily each ride type counts busy roads</title>
 <desc id="fig-weights-d">Three sets of weights used when RouteMaker compares routes. Standard, for most ride types: LTS 2 0, LTS 3 1, LTS 4 2, Avoid 3. Stress-averse, for Bikeshare, Rebalance Ride, Bikeshare plus transit and Mountain Bike: LTS 3 1, LTS 4 8, Avoid 16. Not in control, for Trailmaxxing and Cargo Bike with passengers: the same plus LTS 2 at 0.25.</desc>
@@ -404,6 +534,61 @@ type, and everything else a route pays for.</p>
 <text class="ts" x="570.0" y="326" text-anchor="middle">How much each metre counts against a route, LTS 3 = 1</text>
 </svg>
 </div>
+<div class="fig-narrow">
+<svg viewBox="0 0 320 528" role="img" aria-labelledby="fig-weights-n-t fig-weights-n-d" focusable="false">
+<title id="fig-weights-n-t">How heavily each ride type counts busy roads</title>
+<desc id="fig-weights-n-d">Three sets of weights used when RouteMaker compares routes. Standard, for most ride types: LTS 2 0, LTS 3 1, LTS 4 2, Avoid 3. Stress-averse, for Bikeshare, Rebalance Ride, Bikeshare plus transit and Mountain Bike: LTS 3 1, LTS 4 8, Avoid 16. Not in control, for Trailmaxxing and Cargo Bike with passengers: the same plus LTS 2 at 0.25.</desc>
+<defs><marker id="ah-weights-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<text class="tb" x="10" y="26" text-anchor="start">Standard: most ride types</text>
+<text class="ts" x="66" y="51" text-anchor="end">LTS 2</text>
+<text class="ts" x="80.0" y="51" text-anchor="start">0</text>
+<text class="ts" x="66" y="73" text-anchor="end">LTS 3</text>
+<rect x="74" y="60" width="12.2" height="16" fill="#f3c81a" stroke="#1c1917" stroke-width="0.8"/>
+<text class="ts" x="92.25" y="73" text-anchor="start">1</text>
+<text class="ts" x="66" y="95" text-anchor="end">LTS 4</text>
+<rect x="74" y="82" width="24.5" height="16" fill="#f28c28" stroke="#1c1917" stroke-width="0.8"/>
+<text class="ts" x="104.5" y="95" text-anchor="start">2</text>
+<text class="ts" x="66" y="117" text-anchor="end">Avoid</text>
+<rect x="74" y="104" width="36.8" height="16" fill="#111111" stroke="#1c1917" stroke-width="0.8"/>
+<text class="ts" x="116.75" y="117" text-anchor="start">3</text>
+<text class="tb" x="10" y="158" text-anchor="start">Stress-averse: Bikeshare, Rebalance,</text>
+<text class="tb" x="10" y="178" text-anchor="start">Mountain Bike</text>
+<text class="ts" x="66" y="203" text-anchor="end">LTS 2</text>
+<text class="ts" x="80.0" y="203" text-anchor="start">0</text>
+<text class="ts" x="66" y="225" text-anchor="end">LTS 3</text>
+<rect x="74" y="212" width="12.2" height="16" fill="#f3c81a" stroke="#1c1917" stroke-width="0.8"/>
+<text class="ts" x="92.25" y="225" text-anchor="start">1</text>
+<text class="ts" x="66" y="247" text-anchor="end">LTS 4</text>
+<rect x="74" y="234" width="98.0" height="16" fill="#f28c28" stroke="#1c1917" stroke-width="0.8"/>
+<text class="ts" x="178.0" y="247" text-anchor="start">8</text>
+<text class="ts" x="66" y="269" text-anchor="end">Avoid</text>
+<rect x="74" y="256" width="196.0" height="16" fill="#111111" stroke="#1c1917" stroke-width="0.8"/>
+<text class="ts" x="276.0" y="269" text-anchor="start">16</text>
+<text class="tb" x="10" y="310" text-anchor="start">Not in control: Trailmaxxing, Cargo</text>
+<text class="tb" x="10" y="330" text-anchor="start">with passengers</text>
+<text class="ts" x="66" y="355" text-anchor="end">LTS 2</text>
+<rect x="74" y="342" width="3.1" height="16" fill="#57a06c" stroke="#1c1917" stroke-width="0.8"/>
+<text class="ts" x="83.0625" y="355" text-anchor="start">0.25</text>
+<text class="ts" x="66" y="377" text-anchor="end">LTS 3</text>
+<rect x="74" y="364" width="12.2" height="16" fill="#f3c81a" stroke="#1c1917" stroke-width="0.8"/>
+<text class="ts" x="92.25" y="377" text-anchor="start">1</text>
+<text class="ts" x="66" y="399" text-anchor="end">LTS 4</text>
+<rect x="74" y="386" width="98.0" height="16" fill="#f28c28" stroke="#1c1917" stroke-width="0.8"/>
+<text class="ts" x="178.0" y="399" text-anchor="start">8</text>
+<text class="ts" x="66" y="421" text-anchor="end">Avoid</text>
+<rect x="74" y="408" width="196.0" height="16" fill="#111111" stroke="#1c1917" stroke-width="0.8"/>
+<text class="ts" x="276.0" y="421" text-anchor="start">16</text>
+<line class="grid" x1="74.0" y1="440" x2="74.0" y2="446"/>
+<text class="ts" x="74.0" y="462" text-anchor="middle">0</text>
+<line class="grid" x1="172.0" y1="440" x2="172.0" y2="446"/>
+<text class="ts" x="172.0" y="462" text-anchor="middle">8</text>
+<line class="grid" x1="270.0" y1="440" x2="270.0" y2="446"/>
+<text class="ts" x="270.0" y="462" text-anchor="middle">16</text>
+<line class="axis" x1="74" y1="440" x2="270" y2="440"/>
+<text class="ts" x="10" y="488" text-anchor="start">How much each metre counts against a</text>
+<text class="ts" x="10" y="508" text-anchor="start">route, LTS 3 = 1</text>
+</svg>
+</div>
 <figcaption>Stress-averse and not-in-control ride types also never accept more LTS 4 or Avoid than the router's own first route. Novice and Nervous uses the not-in-control weights and reads every road and junction one level busier than it is.<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup></figcaption>
 </figure>
 <details class="more"><summary>More: How much a busy road costs</summary>
@@ -440,8 +625,8 @@ switches to the e-bike map and a faster pace, but hills still count.</p>
 
 </div></details>
 <h2 id="transit">Bikeshare</h2>
-<figure id="fig-bikeshare">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<figure id="fig-bikeshare" class="has-narrow">
+<div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 930 125" role="img" aria-labelledby="fig-bikeshare-t fig-bikeshare-d" focusable="false" style="min-width:600px">
 <title id="fig-bikeshare-t">A bikeshare trip</title>
 <desc id="fig-bikeshare-d">Start, walk to a dock with a bike, ride dock to dock on calm streets, walk from a dock with space, finish. Docks are ranked by walking time plus extra riding, from live availability.</desc>
@@ -464,6 +649,31 @@ switches to the e-bike map and a faster pace, but hills still count.</p>
 <path class="ar" d="M570,55 L618,55" marker-end="url(#ah-bikeshare)"/>
 <path class="ar" d="M790,55 L838,55" marker-end="url(#ah-bikeshare)"/>
 <text class="ts" x="465" y="112" text-anchor="middle">Docks ranked by walking time plus extra riding, from live availability.</text>
+</svg>
+</div>
+<div class="fig-narrow">
+<svg viewBox="0 0 320 432" role="img" aria-labelledby="fig-bikeshare-n-t fig-bikeshare-n-d" focusable="false">
+<title id="fig-bikeshare-n-t">A bikeshare trip</title>
+<desc id="fig-bikeshare-n-d">Start, walk to a dock with a bike, ride dock to dock on calm streets, walk from a dock with space, finish. Docks are ranked by walking time plus extra riding, from live availability.</desc>
+<defs><marker id="ah-bikeshare-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<rect class="bx" x="10" y="8" width="300" height="40" rx="6"/>
+<text class="tb" x="160.0" y="33" text-anchor="middle">Start</text>
+<path class="ar" d="M160.0,50 L160.0,69" marker-end="url(#ah-bikeshare-n)"/>
+<rect class="bx" x="10" y="72" width="300" height="60" rx="6"/>
+<text class="tb" x="160.0" y="97" text-anchor="middle">Walk</text>
+<text class="ts" x="160.0" y="117" text-anchor="middle">to a dock with a bike</text>
+<path class="ar" d="M160.0,134 L160.0,153" marker-end="url(#ah-bikeshare-n)"/>
+<rect class="bxa" x="10" y="156" width="300" height="60" rx="6"/>
+<text class="tb" x="160.0" y="181" text-anchor="middle">Ride</text>
+<text class="ts" x="160.0" y="201" text-anchor="middle">dock to dock, calm streets</text>
+<path class="ar" d="M160.0,218 L160.0,237" marker-end="url(#ah-bikeshare-n)"/>
+<rect class="bx" x="10" y="240" width="300" height="60" rx="6"/>
+<text class="tb" x="160.0" y="265" text-anchor="middle">Walk</text>
+<text class="ts" x="160.0" y="285" text-anchor="middle">from a dock with space</text>
+<path class="ar" d="M160.0,302 L160.0,321" marker-end="url(#ah-bikeshare-n)"/>
+<rect class="bx" x="10" y="324" width="300" height="40" rx="6"/>
+<text class="tb" x="160.0" y="349" text-anchor="middle">Finish</text><text class="ts" x="10" y="392" text-anchor="start">Docks ranked by walking time plus extra</text>
+<text class="ts" x="10" y="412" text-anchor="start">riding, from live availability.</text>
 </svg>
 </div>
 <figcaption>Capital Bikeshare's live station feed<sup class="cite"><a href="#ref-3" aria-label="source 3">[3]</a></sup>. The e-bike option can end outside a dock where that is allowed.</figcaption>
@@ -563,7 +773,7 @@ riding. Press a line or its row to ride it; your own setting stays as it was.</l
 <p class="next">Next: <a href="/about/stress.html">Stress ratings</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.10.0. The code is
+  <p>Part of RouteMaker's documentation. It describes version 0.10.1. The code is
   open source under the MIT licence:
   <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
   <p><a href="/">Back to the map</a></p>
