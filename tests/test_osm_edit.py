@@ -26,10 +26,11 @@ osm_edit = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(osm_edit)
 
 NODE = (
-    '<osm version="0.6"><node id="101" visible="true" version="{version}" changeset="9" '
-    'timestamp="2026-01-01T00:00:00Z" user="someone" uid="7" lat="38.9" lon="-77.0">'
-    '<tag k="name" v="Corner"/>{extra}</node></osm>'
+    '<osm version="0.6"><node id="101" visible="true" version="{version}" '
+    'changeset="{changeset}" timestamp="2026-01-01T00:00:00Z" user="someone" uid="7" '
+    'lat="38.9" lon="-77.0">{tags}</node></osm>'
 )
+CHANGESET = '<osm><changeset id="555" open="{open}" changes_count="{count}"/></osm>'
 
 
 class FakeOsm:
@@ -39,6 +40,13 @@ class FakeOsm:
         self.conflicts = 0
         self.after_conflict_extra: str | None = None
         self.token_form: dict[str, list[str]] = {}
+        # What a successful PUT stored (the node's tags and its changeset), served back by
+        # later GETs; `drop_write` accepts a PUT without storing it, for the smoke test.
+        self.stored_tags: str | None = None
+        self.changeset = "9"
+        self.changeset_open = True
+        self.changes = 0
+        self.drop_write = False
         self.calls: list[tuple[str, str, bytes, str | None]] = []
 
 
@@ -60,7 +68,14 @@ def osm(tmp_path, monkeypatch):
         def do_GET(self):
             state.calls.append(("GET", self.path, b"", self.headers.get("Authorization")))
             if self.path.endswith("/node/101"):
-                self._send(200, NODE.format(version=state.version, extra=state.extra))
+                tags = state.stored_tags
+                if tags is None:
+                    tags = '<tag k="name" v="Corner"/>' + state.extra
+                node = NODE.format(version=state.version, changeset=state.changeset, tags=tags)
+                self._send(200, node)
+            elif self.path.endswith("/changeset/555"):
+                open_ = "true" if state.changeset_open else "false"
+                self._send(200, CHANGESET.format(open=open_, count=state.changes))
             elif self.path.endswith("/user/details.json"):
                 self._send(200, json.dumps({"user": {"display_name": "Mapper"}}))
             elif self.path.endswith("/node/404"):
@@ -83,6 +98,7 @@ def osm(tmp_path, monkeypatch):
             if self.path.endswith("/changeset/create"):
                 self._send(200, "555")
             elif self.path.endswith("/changeset/555/close"):
+                state.changeset_open = False
                 self._send(200, "")
             elif self.path.endswith("/node/101"):
                 if state.conflicts:
@@ -97,6 +113,12 @@ def osm(tmp_path, monkeypatch):
                     self._send(409, "Version mismatch")
                     return
                 state.version += 1
+                state.changes += 1
+                if not state.drop_write:
+                    state.stored_tags = "".join(
+                        ET.tostring(tag, encoding="unicode") for tag in sent.iter("tag")
+                    )
+                    state.changeset = sent.get("changeset")
                 self._send(200, str(state.version))
             else:
                 self._send(404, "")
@@ -351,3 +373,72 @@ def test_a_draft_inside_the_repo_is_refused(osm, tmp_path):
     finally:
         inside.unlink()
     assert _puts(osm) == []
+
+
+def test_upload_ends_with_a_passing_smoke_test(osm, tmp_path, capsys):
+    path = _edit(tmp_path)
+    assert osm_edit.main(["upload", str(path), "--approved"]) == 0
+    assert "Checked: node 101 has the change, changeset closed" in capsys.readouterr().out
+    assert osm_edit.main(["check", str(path)]) == 0
+
+
+def test_the_smoke_test_catches_an_upload_that_did_not_land(osm, tmp_path, capsys):
+    osm.drop_write = True
+    assert osm_edit.main(["upload", str(_edit(tmp_path)), "--approved"]) == 3
+    err = capsys.readouterr().err
+    assert "Check FAILED" in err
+    assert "version 4 belongs to changeset 9" in err
+
+
+def test_the_smoke_test_catches_an_open_changeset(osm, tmp_path, capsys):
+    path = _edit(tmp_path)
+    assert osm_edit.main(["upload", str(path), "--approved"]) == 0
+    osm.changeset_open = True
+    assert osm_edit.main(["check", str(path)]) == 3
+    assert "still open" in capsys.readouterr().err
+
+
+def test_a_later_edit_by_someone_else_does_not_fail_the_check(osm, tmp_path):
+    path = _edit(tmp_path)
+    assert osm_edit.main(["upload", str(path), "--approved"]) == 0
+    osm.version += 1
+    osm.stored_tags = '<tag k="name" v="Renamed"/>'
+    assert osm_edit.main(["check", str(path)]) == 0
+
+
+def test_check_needs_a_recorded_upload(osm, tmp_path, capsys):
+    assert osm_edit.main(["check", str(_edit(tmp_path))]) == 1
+    assert "no upload recorded" in capsys.readouterr().err
+
+
+def test_the_smoke_test_catches_wrong_tags_at_the_uploads_version(osm, tmp_path, capsys):
+    path = _edit(tmp_path)
+    assert osm_edit.main(["upload", str(path), "--approved"]) == 0
+    osm.stored_tags = '<tag k="highway" v="stop"/>'
+    assert osm_edit.main(["check", str(path)]) == 3
+    err = capsys.readouterr().err
+    assert "highway: expected 'traffic_signals', OSM has 'stop'" in err
+    assert "changeset" not in err.split("Check FAILED:")[1]
+
+
+def test_the_smoke_test_catches_a_changeset_with_more_than_one_change(osm, tmp_path, capsys):
+    path = _edit(tmp_path)
+    assert osm_edit.main(["upload", str(path), "--approved"]) == 0
+    osm.changes = 2
+    assert osm_edit.main(["check", str(path)]) == 3
+    assert "holds 2 changes, not 1" in capsys.readouterr().err
+
+
+def test_a_smoke_test_that_cannot_run_never_says_not_uploaded(osm, tmp_path, capsys, monkeypatch):
+    path = _edit(tmp_path)
+    real = osm_edit.check_problems
+
+    def unreachable(edit, result):
+        raise osm_edit.EditError("could not reach the server")
+
+    monkeypatch.setattr(osm_edit, "check_problems", unreachable)
+    assert osm_edit.main(["upload", str(path), "--approved"]) == 3
+    err = capsys.readouterr().err
+    assert "Not uploaded" not in err and "could not check" in err
+    monkeypatch.setattr(osm_edit, "check_problems", real)
+    assert (tmp_path / "edit.uploaded.json").exists()

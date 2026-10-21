@@ -11,6 +11,7 @@ of conduct), so there is no batch mode and at most one retry after a conflict.
     python scripts/osm_edit.py login --server dev --client-id <id>   # once, in a terminal
     python scripts/osm_edit.py show edit.json                         # the diff, no upload
     python scripts/osm_edit.py upload edit.json --approved            # dev server
+    python scripts/osm_edit.py check edit.json                        # re-run the smoke test
     python scripts/osm_edit.py upload edit.json --approved --live     # live OSM, owner's go
 
 An edit file:
@@ -368,7 +369,65 @@ def upload(edit_path: Path, edit: dict, *, live: bool) -> int:
     with log.open("a") as handle:
         handle.write(json.dumps({"server": edit["server"], **result}) + "\n")
     print(f"Uploaded: {result['url']}")
+    return report_check(edit, result)
+
+
+def check_problems(edit: dict, result: dict) -> list[str]:
+    """What OSM says now that does not match the upload recorded in `result`.
+
+    The smoke test after an upload: the element carries the approved tags at the version
+    the upload made (or a later one, if someone has edited since), and the changeset is
+    closed with exactly one change in it.
+    """
+    problems = []
+    element = fetch_element(edit)
+    version = int(element.get("version"))
+    if version < result["version"]:
+        problems.append(f"OSM is at version {version}, older than the upload's {result['version']}")
+    elif version == result["version"] and element.get("changeset") != str(result["changeset"]):
+        problems.append(f"version {version} belongs to changeset {element.get('changeset')}")
+    if version == result["version"]:
+        tags = current_tags(element)
+        problems += [
+            f"{key}: expected {value!r}, OSM has {tags.get(key)!r}"
+            for key, value in edit["set"].items()
+            if tags.get(key) != value
+        ]
+    url = f"{api_base(edit['server'])}/changeset/{result['changeset']}"
+    status, body = _request("GET", url)
+    if status != 200:
+        problems.append(f"OSM answered {status} reading changeset {result['changeset']}")
+    else:
+        changeset = ET.fromstring(body).find("changeset")
+        if changeset is None:
+            problems.append("OSM's answer held no changeset")
+        else:
+            if changeset.get("open") != "false":
+                problems.append(f"changeset {result['changeset']} is still open")
+            if changeset.get("changes_count") not in (None, "1"):
+                problems.append(f"changeset holds {changeset.get('changes_count')} changes, not 1")
+    return problems
+
+
+def report_check(edit: dict, result: dict) -> int:
+    try:
+        problems = check_problems(edit, result)
+    except (EditError, ET.ParseError) as error:
+        # After an upload this must never read as "Not uploaded": the change may be in.
+        problems = [f"could not check: {error}"]
+    if problems:
+        print("Check FAILED:", file=sys.stderr)
+        print("\n".join(f"  {line}" for line in problems), file=sys.stderr)
+        return 3
+    print(f"Checked: {edit['element']} {edit['id']} has the change, changeset closed")
     return 0
+
+
+def check(edit_path: Path, edit: dict) -> int:
+    result_path = _result_path(edit_path)
+    if not result_path.exists():
+        raise EditError(f"no upload recorded for {edit_path} ({result_path} is missing)")
+    return report_check(edit, json.loads(result_path.read_text()))
 
 
 def _pkce() -> tuple[str, str]:
@@ -437,6 +496,8 @@ def main(argv: list[str] | None = None) -> int:
     sign_in.add_argument("--client-id", required=True)
     look = commands.add_parser("show", help="print the change against OSM as it is now")
     look.add_argument("edit", type=Path)
+    again = commands.add_parser("check", help="re-check an uploaded edit against OSM now")
+    again.add_argument("edit", type=Path)
     send = commands.add_parser("upload", help="upload one approved edit")
     send.add_argument("edit", type=Path)
     send.add_argument("--approved", action="store_true", help="the owner approved this file")
@@ -448,11 +509,14 @@ def main(argv: list[str] | None = None) -> int:
         edit = load_edit(args.edit)
         if args.command == "show":
             return show(edit)
+        if args.command == "check":
+            return check(args.edit, edit)
         if not args.approved:
             raise EditError("upload needs --approved: the owner approves each edit file")
         return upload(args.edit, edit, live=args.live)
     except EditError as error:
-        print(f"Not uploaded: {error}", file=sys.stderr)
+        prefix = "Not uploaded" if args.command == "upload" else "Stopped"
+        print(f"{prefix}: {error}", file=sys.stderr)
         return 1
 
 
