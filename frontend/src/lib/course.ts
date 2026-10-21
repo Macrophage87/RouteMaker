@@ -29,7 +29,7 @@ import { COPYRIGHT_AUTHOR, CREATOR } from "./gpx.ts";
 import { elevationsAlong, exportFileName, exportName } from "./gpxText.ts";
 import { writeFit } from "./fit.ts";
 import { writeTcx } from "./tcx.ts";
-import { rideModel, turnWords, type Cue } from "./navigate.ts";
+import { CROSS_UNNAMED, rideModel, turnWords, type Cue } from "./navigate.ts";
 import { presetSaid } from "./presets.ts";
 
 export type CourseFormat = "fit" | "tcx";
@@ -149,6 +149,14 @@ function named(street: string | null): string | null {
   return s && !/^unnamed\b/i.test(s) ? s : null;
 }
 
+/**
+ * A crossing's note: "Cross Redland Rd", or "Cross" for a road with no name. Clipped to the device's length like any
+ * cue's name (compileCourse), so "Cross" always shows and the road's name as much as fits.
+ */
+export function crossName(cross: string): string {
+  return named(cross) && cross !== CROSS_UNNAMED ? `Cross ${abbreviateStreet(cross.trim())}` : "Cross";
+}
+
 /** A cue's kind, short name and how much it matters, from Ride's cue. */
 function fromRide(cue: Cue): { type: CourseCueType; name: string; priority: number } | null {
   const street = named(cue.street);
@@ -156,6 +164,9 @@ function fromRide(cue: Cue): { type: CourseCueType; name: string; priority: numb
     case "turn": {
       // A re-route's U-turn (Ride only): a left, by its name.
       if (cue.movement === "uturn") return { type: "left", name: "U-turn", priority: 4 };
+      // A crossing between two turns (navigate.crossWords): a note that says to cross, by the road's name (the v0.10.1
+      // end review: the name alone read as one more street); the turn after it is the device's turn.
+      if (cue.cross) return { type: "note", name: crossName(cue.cross), priority: 3 };
       const turn = TURN_TYPES[cue.movement ?? "right"];
       return { type: turn, name: street ? abbreviateStreet(street) : TURN_NAMES[turn], priority: street ? 4 : 3 };
     }

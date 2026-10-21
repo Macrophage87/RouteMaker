@@ -233,10 +233,12 @@ test("each shape's meaning, as the legend says it", () => {
 test("the profile chart is a picture with its text alternative", () => {
   const html = renderToStaticMarkup(createElement(ClimbCardView, { climb: climb({ lengthM: 1290 }), state: { kind: "ready", profile: PROFILE }, uid: "u", onRide: () => {} }));
   // Named once: the picture's own label; the caption beside it is for the eye.
-  assert.ok(html.includes('role="img" aria-label="Climbs 240 ft (73 m) over 0.8 mi (1.3 km), steepest 9%."'));
+  assert.ok(html.includes('role="img" aria-label="Climbs 240 ft (73 m) over 0.8 mi (1.3 km), steepest 9%. Runs west to east."'));
   assert.ok(html.includes('id="u-profile-text" class="climb-profile-text" aria-hidden="true"'));
-  assert.ok(html.includes("Climbs 240 ft (73 m) over 0.8 mi (1.3 km), steepest 9%."));
+  assert.ok(html.includes("Climbs 240 ft (73 m) over 0.8 mi (1.3 km), steepest 9%. Runs west to east."));
   assert.ok(html.includes('class="pc-line"'), "the route chart's line");
+  // Which way it runs, a letter at each end (the owner, 2026-10-20).
+  assert.ok(html.includes('<tspan class="pc-compass">W </tspan>') && html.includes('<tspan class="pc-compass"> E</tspan>'));
   assert.ok(html.includes("<dt>Steepest</dt><dd>9%</dd>"));
 });
 
@@ -343,4 +345,17 @@ test("a press on the climb whose card is open only closes it; on another climb, 
   assert.match(interaction, /close\(\);\s*shownId = c\.id;/);
   assert.match(interaction, /popup = null;\s*shownId = null;/);
   assert.match(interaction, /shown: \(\) => \(popup \? shownId : null\),/);
+});
+
+test("a profile's ends say which way it runs, a letter at each end and in words (the owner, 2026-10-20)", async () => {
+  const { profileEnds, ElevationProfileChart } = await import("./climbCard.ts");
+  // South: the left end is the north one.
+  assert.deepEqual(profileEnds([-77.0, 38.91], [-77.0, 38.9]), { start: "N", end: "S", words: "Runs north to south." });
+  assert.deepEqual(profileEnds([-77.01, 38.9], [-77.0, 38.91]), { start: "SW", end: "NE", words: "Runs southwest to northeast." });
+  // A loop's ends meet: no direction.
+  assert.equal(profileEnds([-77.0, 38.9], [-77.0001, 38.9001]), null);
+  const profile = { interval_m: 30, m: [0, 30, 60], elevation_m: [10, 12, 15], grade_pct: [null, 6.7, 10] };
+  const html = renderToStaticMarkup(createElement(ElevationProfileChart, { profile, summary: "x", uid: "u", ends: profileEnds([-77.0, 38.91], [-77.0, 38.9]) }));
+  assert.match(html, /<tspan class="pc-compass">N <\/tspan>/);
+  assert.match(html, /<tspan class="pc-compass"> S<\/tspan>/);
 });

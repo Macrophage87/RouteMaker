@@ -305,6 +305,32 @@ check("and destination-only (upstream's private flag)", spur_out.private == "tru
   tostring(spur_out.private))
 check("and the mark never reaches the tile build", spur_out["rm:destination_only"] == nil)
 
+-- A sidewalk ridden as a last resort (routemaker.sidewalks) reaches the graph open both ways.
+local _, link_out = transform_way({
+  highway = "footway", footway = "sidewalk", ["rm:sidewalk"] = "yes", ["rm:trail_class"] = "yes",
+  ["rm:stress_tier"] = "3",
+})
+check("a ridden sidewalk reaches the graph open to bicycles",
+  link_out.bike_forward == "true" and link_out.bike_backward == "true",
+  tostring(link_out.bicycle) .. " " .. tostring(link_out.bike_forward) .. "/" .. tostring(link_out.bike_backward))
+check("and the mark never reaches the tile build", link_out["rm:sidewalk"] == nil)
+local _, last_out = transform_way({
+  highway = "footway", footway = "sidewalk", ["rm:sidewalk"] = "last_resort",
+  ["rm:trail_class"] = "yes", ["rm:stress_tier"] = "4",
+})
+check("a last-resort sidewalk reaches the graph with LTS 4's lanes",
+  last_out.bike_forward == "true" and last_out["lanes:forward"] == "15",
+  tostring(last_out.bike_forward) .. " " .. tostring(last_out["lanes:forward"]))
+
+-- A walk-your-bike station link (routemaker.station_links) reaches the graph open both ways.
+local _, walk_out = transform_way({
+  highway = "footway", footway = "sidewalk", ["rm:walk_link"] = "yes", ["rm:trail_class"] = "yes",
+})
+check("a station link reaches the graph open to bicycles, dismounted",
+  walk_out.bicycle == "dismount" and walk_out.bike_forward == "true" and walk_out.bike_backward == "true",
+  tostring(walk_out.bicycle) .. " " .. tostring(walk_out.bike_forward) .. "/" .. tostring(walk_out.bike_backward))
+check("and that mark never reaches the tile build", walk_out["rm:walk_link"] == nil)
+
 -- OWNER-DECISIONS 111: singletrack reaches the graph with upstream's alley use.
 local _, single_out = transform_way({
   highway = "path", surface = "dirt", ["mtb:scale"] = "2", ["rm:no_bicycle"] = "singletrack",
