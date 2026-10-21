@@ -196,7 +196,7 @@ test("RideMode: round side buttons with names; the bottom panel only when it has
   assert.match(ride, /<Icon name="detour" size=\{24\} \/>/);
   assert.match(ride, /\{shareBike && !ride\.arrived && \(/);
   // The bottom panel is gone by default.
-  assert.match(ride, /const sheetShown = notesShown \|\| ride\.off \|\| restShown \|\| reportOpen;/);
+  assert.match(ride, /const sheetShown = notesShown \|\| ride\.off \|\| restShown;/);
   assert.match(ride, /\{sheetShown && \(\s*<div ref=\{sheetRef\} className="ride-controls">/);
   assert.match(ride, /const corridorText = corridorWorry\(corridor\);/);
   // The time starts at the dock (or the start with no walk), and again on riding off from a dock.
