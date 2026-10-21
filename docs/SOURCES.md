@@ -487,6 +487,16 @@ No credit: nothing from these is used.
   extraction, correlating the data with personal information, and access other than through the
   provided interface. No attribution is required: the credit is the owner's choice (item 301). The
   operator may terminate at will. Not legal advice.
+- Trip history (v0.11.0, the popular bike corridors): the monthly trip files at
+  <https://s3.amazonaws.com/capitalbikeshare-data/index.html>, under the same agreement.
+  `scripts/build_bikeshare_trips.py` counts trips between each pair of docks (12 or more trips over
+  the period; round trips to the same dock and dockless trips left out) into
+  `reference/bikeshare-trips.json`, and the rebuild routes those counts over the street network
+  (`pipeline.bikeshare_corridors`) into each street's corridor class. Only the class reaches the
+  tiles; the trip files and the counts file are never in the repository or published, because the
+  agreement forbids handing the data on as a stand-alone dataset. First built 2026-10-21 from October
+  2025 to September 2026: 870 docks, 42,133 dock pairs, about 11,900 trips a day. The trip files hold
+  docks and times, never the path ridden, so the corridors are modelled, not observed.
 - Not used: the operator's no-parking zones, which exist only inside its app (OWNER-DECISIONS 305);
   its undocumented map endpoints and its points values (OWNER-DECISIONS 451).
 - Records: docs/OPERATIONS.md, "Bikeshare feeds"; docs/DEVELOPMENT.md, "Bikeshare".

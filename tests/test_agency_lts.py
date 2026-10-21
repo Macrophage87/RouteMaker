@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
+from core import segment_info
+from pipeline import writers
 from routemaker import agency_lts
 from routemaker.agency_lts import AgencyRating
 from routemaker.stress import Stress, StressResult, rural_floor
@@ -558,8 +562,23 @@ def test_a_mapped_facility_sets_ddots_2020_rating_aside() -> None:
     assert result.tier is Stress.LTS2
     assert result.agency_ratings == (AgencyRating("ddot", 4),)
     assert agency_lts.SUPERSEDED_WHERE_FACILITY["ddot"] in result.rule
+    assert (result.formula_tier, result.formula_rule) == (Stress.LTS2, "bike lane, 25 mph")
+    # The road panel says the formula's tier is used, not DDOT's, and why.
+    held = json.loads(writers._ratings_json(result))
+    assert held["used"] == agency_lts.FORMULA_USED and held["formula"] == 2
+    rows = segment_info.rating_rows({"stress_ratings": json.dumps(held)})
+    assert not any("(used" in row["value"] for row in rows if "DDOT" in row["label"])
+    assert any(row["label"] == "Used" and "predates" in row["value"] for row in rows)
     # With no facility mapped DDOT's level is used, as before.
     assert agency_lts.apply(lane, [AgencyRating("ddot", 4)]).tier is Stress.LTS4
+
+
+def test_a_set_aside_rating_gives_way_to_the_next_agency() -> None:
+    lane = StressResult(Stress.LTS2, "bike lane, 25 mph", ())
+    both = [AgencyRating("ddot", 4), AgencyRating("mdot-sha", 3)]
+    result = agency_lts.apply(lane, both, facility_mapped=True)
+    assert result.tier is Stress.LTS3
+    assert json.loads(writers._ratings_json(result))["used"] == "mdot-sha"
 
 
 def test_a_mapped_facility_does_not_set_aside_a_current_agency() -> None:

@@ -5141,6 +5141,43 @@ the host (the cloud send refuses such a folder, above); the layer then has the O
 designations only. The switch itself is the rider's; there is no
 server flag, and a layer nobody turns on draws nothing.
 
+## Popular bike corridors (v0.11.0)
+
+The owner, 2026-10-21: "use the Cabi heatmap if you can, and make those streets show more
+pronounced than other roads". The map draws a soft cyan band under each street's corridor
+class (`segment.bike_popular`, 1 to 3), from two inputs:
+
+- **The owner's named corridors** (`fixtures/bike-corridors/`, `pipeline.major_corridors`):
+  always class 3. Read from the repository; nothing to install. Corridors that match no way
+  are listed in a `major bike corridors that matched no way` warning.
+- **Capital Bikeshare trips** (`reference/bikeshare-trips.json`, `pipeline.bikeshare_corridors`):
+  each pair of docks' trips routed over the street network, calm streets preferred. Class 3
+  from 200 trips a day, 2 from 75, 1 from 25. Never commit or publish this file (docs/SOURCES.md,
+  "Capital Bikeshare").
+
+1. **Build the counts** (any machine with network; about 12 monthly downloads of 10-20 MB each):
+
+   ```sh
+   python3 scripts/build_bikeshare_trips.py --months 202510-202609 --out bikeshare-trips.json --cache ~/cabi-zips
+   ```
+
+2. **Install them** into the data root:
+
+   ```sh
+   docker compose exec -T rebuild python3 scripts/install_reference_data.py \
+       --data-root /data --bikeshare-trips /data/reference/inputs/bikeshare-trips.json
+   ```
+
+   It prints `wrote .../bikeshare-trips.json: N docks, N dock pairs`. A file whose pairs name a
+   dock it does not list is refused.
+
+3. **After the rebuild**, read the log: `major bike corridors (ways a corridor): ...`, then
+   `Capital Bikeshare corridors: ...` with the docks placed, the pairs no route reached, the
+   seconds routing (27 s on a synthetic 202,000-junction grid) and the miles in each class. Without the file the rebuild warns `... is absent` and only the named corridors are
+   popular; `scripts/cloud/send-inputs.sh` refuses a reference folder without it.
+
+Refresh it about once a year: the classes are for drawing, not routing, and change slowly.
+
 ## Deployment actions
 
 - Add a `check_operations` cron entry, or point an existing monitor at it.

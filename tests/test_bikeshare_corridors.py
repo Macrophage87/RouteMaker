@@ -9,6 +9,7 @@ import csv
 import importlib.util
 import io
 import json
+import math
 import subprocess
 import sys
 import zipfile
@@ -81,6 +82,15 @@ class TestRouting:
         trips = bc.Trips(docks_at((0, 0), (10, 10)), [(0, 1, 365)], 365)
         rows, stats = bc.corridor_trips(ladder() + island, trips)
         assert rows == {} and stats["pairs no route reached"] == 1
+
+    def test_a_junction_east_of_a_dock_within_reach_is_found(self) -> None:
+        # 240 m due east: inside SNAP_M, but past one grid cell east-west at DC's latitude.
+        east = 240 / (111_320 * math.cos(math.radians(LAT)))
+        graph = bc.Graph(
+            [bc.Vertex(1, round((LON + east) * G), round(LAT * G), 0, 2, False),
+             bc.Vertex(1, round((LON + east + 0.01) * G), round(LAT * G), 860, 2, False)]
+        )  # fmt: skip
+        assert graph.nearest(LON, LAT) == 0
 
     @pytest.mark.parametrize(
         ("a_day", "level"), [(0, 0), (24.9, 0), (25, 1), (74.9, 1), (75, 2), (200, 3), (900, 3)]

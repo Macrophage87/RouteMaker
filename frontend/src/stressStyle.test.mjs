@@ -273,7 +273,6 @@ test("the overlay is added casings first: every casing under every tier", () => 
   assert.deepEqual([...ids].sort(), [...band, ...mtb, ...rings, ...rails, ...tiers, ...casings, ...gaps, ...unknown, ...marks, ...halves, ...trailNames, ...names, ...mass].sort(), "each layer once");
   // A half step's outline under its dash, both over every tier line (458).
   for (let tier = 1; tier <= 4; tier++) assert.ok(ids.indexOf(`stress-half-outline-${tier}`) < ids.indexOf(`stress-half-${tier}`));
-  assert.ok(Math.min(...halves.map((h) => ids.indexOf(h))) > Math.max(...tiers.map((t) => ids.indexOf(t))), "the half-step dashes are drawn over every tier line");
   // The mountain-bike layer under everything, so every routable line draws over it.
   assert.equal(ids[1], "mtb-trail-ticks", "the mountain-bike trails' shared ticks under every line");
   assert.ok(ids.indexOf("stress-unknown-casing") < ids.indexOf("stress-unknown"), "the edge under its line");
@@ -295,9 +294,10 @@ test("the overlay is added casings first: every casing under every tier", () => 
     assert.ok(Math.max(...at(groupRails)) < Math.min(...at(mine(casings))), `${name}: rails under every casing`);
     assert.ok(Math.max(...at(mine(casings))) < Math.min(...at(mine(tiers))), `${name}: every casing under every line`);
     assert.ok(Math.min(...at(mine(marks))) > Math.max(...at(mine(tiers))), `${name}: the surface mark over every line`);
+    assert.ok(Math.min(...at(mine(halves))) > Math.max(...at(mine(tiers))), `${name}: the half-step dashes over every line`);
   }
-  const busyIds = [...busyRails, ...casings, ...tiers, ...marks].filter((id) => busyRails.includes(id) || tierOf(id) >= 3);
-  const calmIds = [...calmRails, ...casings, ...tiers, ...marks].filter((id) => calmRails.includes(id) || tierOf(id) < 3);
+  const busyIds = [...busyRails, ...casings, ...tiers, ...marks, ...halves].filter((id) => busyRails.includes(id) || tierOf(id) >= 3);
+  const calmIds = [...calmRails, ...casings, ...tiers, ...marks, ...halves].filter((id) => calmRails.includes(id) || tierOf(id) < 3);
   assert.ok(Math.max(...at(busyIds)) < Math.min(...at(calmIds)), "every busy road's layer under every calm way's: a path is not cut by the road it crosses");
   // Every stress-map layer reads the source it is given; the Mass Ride layers read their own tiles (core/mass_tiles.py), and the hazards' rails their own GeoJSON (part 3).
   for (const layer of stressOverlayLayers("s")) assert.equal(layer.source, mass.includes(layer.id) ? (layer.id.startsWith("mass-hazard-") ? "mass-hazards" : "mass") : "s");
@@ -709,6 +709,12 @@ test("the popular band draws only a way with a class, wider for a busier class, 
   assert.equal(paintValue(band, "line-width", { popular: 1 }, 10), 0);
   assert.ok(paintValue(band, "line-width", { popular: 3 }, 10) > 0);
   assert.ok(POPULAR_BAND.opacity < 0.5, "the base map stays legible under it");
+  const strong = popularBandLayers("s", undefined, tiersFor(DEFAULT_PALETTE, true))[0];
+  assert.equal(strong.paint["line-opacity"], POPULAR_BAND.strongOpacity, "stronger with the accessibility switch");
+  assert.ok(POPULAR_BAND.strongOpacity > POPULAR_BAND.opacity);
+  // A hue of its own: no tier's line or casing, in any palette, and no rail.
+  const used = [...Object.values(PALETTES).flatMap((p) => Object.values(p).flatMap((t) => [t.color, t.casing])), ...FACILITIES.map((f) => f.color)];
+  assert.ok(!used.includes(POPULAR_BAND.color));
 });
 
 test("the drawing priority: a path over a protected lane over a painted lane over a long calm street over the rest", () => {

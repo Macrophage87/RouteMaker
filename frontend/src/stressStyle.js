@@ -1539,8 +1539,12 @@ function tierGroup(layers, calm = false) {
  */
 export const POPULAR_BAND_LAYER_ID = "popular-band";
 export const POPULAR_BAND = {
-  color: "#f59e0b",
-  opacity: 0.35,
+  // Cyan: a hue no tier, rail or trail colour uses in any palette (the tiers' greens, yellows, oranges and
+  // reds, the cvd palette's blues are darker, the rails' purple and magenta), so a band never reads as a
+  // wider busy road. Stronger with the accessibility switch.
+  color: "#06b6d4",
+  opacity: 0.3,
+  strongOpacity: 0.5,
   // [zoom, [class 1, class 2, class 3]]
   widths: [
     [10, [0, 6, 8]],
@@ -1549,7 +1553,7 @@ export const POPULAR_BAND = {
   ],
 };
 
-export function popularBandLayers(sourceId = "stress", when = DEFAULT_WHEN) {
+export function popularBandLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = currentTiers()) {
   const byClass = (widths) => ["match", ["to-number", ["get", "popular"], 0], 1, widths[0], 2, widths[1], 3, widths[2], 0];
   return [
     {
@@ -1561,7 +1565,7 @@ export function popularBandLayers(sourceId = "stress", when = DEFAULT_WHEN) {
       layout: { "line-cap": "round", "line-join": "round" },
       paint: {
         "line-color": POPULAR_BAND.color,
-        "line-opacity": POPULAR_BAND.opacity,
+        "line-opacity": tiers[0]?.strong ? POPULAR_BAND.strongOpacity : POPULAR_BAND.opacity,
         "line-width": ["interpolate", ["linear"], ["zoom"], ...POPULAR_BAND.widths.flatMap(([zoom, widths]) => [zoom, byClass(widths)])],
       },
     },
@@ -2113,7 +2117,7 @@ export function facilityLayers(sourceId = "stress", when = DEFAULT_WHEN, showHig
 export function stressOverlayLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = currentTiers()) {
   return [
     // The popular corridors' band (2026-10-21), under every line.
-    ...popularBandLayers(sourceId, when),
+    ...popularBandLayers(sourceId, when, tiers),
     // The mountain-bike trails' layer (452a, 454, 456), under every routable layer.
     ...mtbTrailLayers(sourceId, when),
     // The drawing priority (2026-10-21, `drawPriority`): the busy roads (LTS 3, LTS 4, Avoid) whole, rails, casings,
@@ -2125,6 +2129,7 @@ export function stressOverlayLayers(sourceId = "stress", when = DEFAULT_WHEN, ti
     ...tierGroup(gapLayers(sourceId, when, tiers)),
     ...tierGroup(stressLayers(sourceId, when, tiers)),
     ...tierGroup(unpavedLayers(sourceId, when, tiers)),
+    ...tierGroup(halfStepLayers(sourceId, when, tiers)),
     ...facilityLayers(sourceId, when),
     ...tierGroup(stressCasingLayers(sourceId, when, tiers), true),
     ...tierGroup(gapLayers(sourceId, when, tiers), true),
@@ -2132,7 +2137,7 @@ export function stressOverlayLayers(sourceId = "stress", when = DEFAULT_WHEN, ti
     ...tierGroup(stressLayers(sourceId, when, tiers), true),
     ...tierGroup(unpavedLayers(sourceId, when, tiers), true),
     // Half steps' dashes from street level (441r-441v, 458), over their lower level's line.
-    ...halfStepLayers(sourceId, when, tiers),
+    ...tierGroup(halfStepLayers(sourceId, when, tiers), true),
     // The major trails' names (2026-10-21), over every line.
     ...trailLabelLayers(sourceId, when),
     // The mountain-bike trails' names (2026-10-10), over every routable line, so a route does not hide them.

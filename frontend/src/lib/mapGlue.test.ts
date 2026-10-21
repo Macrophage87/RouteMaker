@@ -636,12 +636,13 @@ test("a coverage ring needs four positions, first and last the same; three is no
   assert.equal(await fetchCoverage("o", serve(ring(3))), null);
 });
 
-test("the ride time changes the overlay's filters and the rails' widths, and nothing else", async () => {
+test("the ride time changes the overlay's filters, the rails' widths and the drawing priority, and nothing else", async () => {
   const { setStressWhen } = await import("./mapGlue.ts");
   const { stressFilters, facilityWidthAt, FACILITIES: F } = await import("../stressStyle.js");
   const ids = stressOverlayLayers(STRESS_SOURCE_ID).map((l: { id: string }) => l.id);
   const filters: Record<string, unknown> = {};
   const paints: Record<string, unknown> = {};
+  const layouts: Record<string, unknown> = {};
   const map = {
     getLayer: (id: string) => (ids.includes(id) ? {} : undefined),
     setFilter: (id: string, filter: unknown) => {
@@ -650,8 +651,15 @@ test("the ride time changes the overlay's filters and the rails' widths, and not
     setPaintProperty: (id: string, name: string, value: unknown) => {
       paints[`${id}.${name}`] = value;
     },
+    setLayoutProperty: (id: string, name: string, value: unknown) => {
+      layouts[`${id}.${name}`] = value;
+    },
   } as unknown as OverlayMap;
   setStressWhen(map, "weekend");
+  // The drawing priority on every tier's line and casing, for the ride time (a road closed to cars is a path).
+  const { drawPriority } = await import("../stressStyle.js");
+  const sorted = ids.filter((id: string) => /^stress-(casing-)?\d$/.test(id));
+  assert.deepEqual(layouts, Object.fromEntries(sorted.map((id: string) => [`${id}.line-sort-key`, drawPriority("weekend")])));
   assert.deepEqual(filters, stressFilters("weekend"));
   assert.deepEqual(
     paints,
@@ -679,6 +687,7 @@ function filterMap() {
       filters[id] = filter;
     },
     setPaintProperty: () => {},
+    setLayoutProperty: () => {},
   } as unknown as OverlayMap;
   return { map, filters, calls: () => calls };
 }

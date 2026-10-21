@@ -60,6 +60,8 @@ AGENCY_RULE = "agency rating"
 # formula's tier stands, since the formula reads the facility as it is now. The rating is still
 # recorded for the road panel.
 SUPERSEDED_WHERE_FACILITY = {"ddot": "DDOT's 2020 layer predates the bike facility mapped here"}
+# The road panel's `used` where every rating on the way was set aside.
+FORMULA_USED = "formula"
 
 # An agency level that says bicycles may not use the road at all, which is a fact about
 # access and not a stress level (the owner, 2026-10-19: "MDOT LTS 5 means that bikes are
@@ -216,6 +218,13 @@ def tier_of(level: float) -> tuple[Stress, bool]:
     return Stress(whole), level != whole
 
 
+def set_aside(rule: str | None) -> frozenset[str]:
+    """The agencies whose rating `apply` set aside on a way, read from its rule."""
+    return frozenset(
+        agency for agency, reason in SUPERSEDED_WHERE_FACILITY.items() if reason in (rule or "")
+    )
+
+
 def chosen(ratings: Iterable[AgencyRating]) -> AgencyRating | None:
     """The rating the map uses: the most local agency's. Two agencies at the same
     rank on one way (two counties meeting at a line) take the higher level, the
@@ -236,14 +245,18 @@ def apply(
     bike path or lane on the way) an agency in SUPERSEDED_WHERE_FACILITY is not used."""
     ratings = tuple(ratings)
     usable = [r for r in ratings if not (facility_mapped and r.agency in SUPERSEDED_WHERE_FACILITY)]
+    # Each set-aside rating's reason, appended to the rule: the road panel reads it back
+    # (`set_aside`) to tell which rating was used.
+    reasons = sorted({SUPERSEDED_WHERE_FACILITY[r.agency] for r in ratings if r not in usable})
     pick = chosen(usable)
     if pick is None:
         if not ratings:
             return result
-        reasons = sorted({SUPERSEDED_WHERE_FACILITY[r.agency] for r in ratings})
         return replace(
             result,
             rule=", ".join([result.rule, *reasons]),
+            formula_tier=result.tier,
+            formula_rule=result.rule,
             agency_ratings=tuple(sorted(ratings, key=lambda r: r.rank)),
         )
     level = map_level(pick.agency, pick.level)
@@ -258,6 +271,7 @@ def apply(
     why = f"{AGENCY_RULE}: {pick.name} LTS {pick.level:g}"
     if level != pick.level:
         why += f", {READ_AS_REASON}"
+    why = ", ".join([why, *reasons])
     return replace(
         result,
         tier=tier,

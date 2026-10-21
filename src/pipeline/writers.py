@@ -233,7 +233,7 @@ def _half(stress: StressResult) -> bool:
 def _ratings_json(stress: StressResult) -> str | None:
     """Every rating held for the way, for the road panel (`segment.stress_ratings`):
     the classifier's tier and each agency's level, and which one set the way's
-    tier (`used`: `owner`, `community`, `rural floor`, or the agency). None where
+    tier (`used`: `owner`, `community`, `rural floor`, `formula`, or the agency). None where
     no agency rated the way, which the panel reads as the classifier's tier
     standing alone.
 
@@ -243,7 +243,13 @@ def _ratings_json(stress: StressResult) -> str | None:
     2026-10-01) and its level; it set the tier, so it is `used`."""
     import json
 
-    from routemaker.agency_lts import adjustment_source, chosen, source_name
+    from routemaker.agency_lts import (
+        FORMULA_USED,
+        adjustment_source,
+        chosen,
+        set_aside,
+        source_name,
+    )
     from routemaker.stress import RURAL_FLOOR_RULE
 
     ratings = getattr(stress, "agency_ratings", ())
@@ -261,7 +267,11 @@ def _ratings_json(stress: StressResult) -> str | None:
     elif RURAL_FLOOR_RULE in (stress.rule or ""):
         used = "rural floor"
     else:
-        used = chosen(ratings).agency
+        # A rating set aside (DDOT's 2020 layer where a bike facility is mapped) is not used:
+        # the next agency's is, or the formula's where none is left.
+        aside = set_aside(stress.rule)
+        pick = chosen([r for r in ratings if r.agency not in aside])
+        used = pick.agency if pick is not None else FORMULA_USED
     formula = getattr(stress, "formula_tier", None)
     held = {
         "formula": None if formula is None else int(formula),
