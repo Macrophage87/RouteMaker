@@ -3473,7 +3473,11 @@ export function App() {
       // The attribution sits above the sheet on a phone; leave room for it too.
       return { top: 40, left: 30, right: 30, bottom: (panel?.height ?? 0) + 90 };
     }
-    return { top: 60, bottom: 60, right: 60, left: (panel?.right ?? 0) + 40 };
+    // On a wide screen the route is a card on the map's right (styles.css, Plan on a wide screen): clear of it too.
+    const out = panelRef.current?.querySelector<HTMLElement>(".planner-view:not([hidden]) > .route-section");
+    const card = out && getComputedStyle(out).position === "fixed" ? out.getBoundingClientRect() : null;
+    const right = card && card.width > 0 ? window.innerWidth - card.left + 40 : 60;
+    return { top: 60, bottom: 60, right, left: (panel?.right ?? 0) + 40 };
   }, []);
 
   // Copy link keeps full precision; when the rider's location or Home is in the plan it says so (review privacy-2).

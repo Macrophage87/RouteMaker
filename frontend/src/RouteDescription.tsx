@@ -27,7 +27,7 @@ import { FEDERAL_UNCHECKED } from "./lib/federalStops.ts";
 import { hazardLines } from "./lib/massHazards.ts";
 import { RouteHazardSwatch } from "./lib/routeHazards.ts";
 import { useHighStressLanes } from "./useStressStyle.ts";
-import { ROUTE_FOLDS, copyText, selectionCopy, stepsCount } from "./lib/sidebar.ts";
+import { ROUTE_FOLDS, ROUTE_FOLD_GROUP, copyText, selectionCopy, stepsCount } from "./lib/sidebar.ts";
 import { Fold } from "./lib/sidebarParts.ts";
 import {
   DESCRIPTION_HEADING,
@@ -221,6 +221,7 @@ export function RouteDescription({
         headingId="route-description-heading"
         open={open}
         className="route-description"
+        name={ROUTE_FOLD_GROUP}
         onToggle={(now) => {
           if (now !== open) {
             setOpen(now);

@@ -43,6 +43,7 @@ CONTRACT_KEYS = {
     "preset",
     "variant",
     "dirt_trails",
+    "dirt_closed",
     "geometry",
     "distance_m",
     "duration_s",

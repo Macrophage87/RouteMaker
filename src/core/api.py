@@ -376,6 +376,15 @@ class RouteIn(Schema):
             " still answered where there is no way ahead."
         ),
     )
+    dirt_closed: StrictBool = Field(
+        default=False,
+        description=(
+            "With `ride_replan`: the rider marked a dirt trail closed earlier this ride (an"
+            " answer's `dirt_closed`), which says its conditions are bad (the owner,"
+            " 2026-10-21: \"assume that means bad riding conditions until it's opted back"
+            ' in"): this re-plan rides no dirt trail on a ride type that skips them.'
+        ),
+    )
     loop: StrictBool = Field(
         default=False,
         description=(
@@ -2121,6 +2130,9 @@ class RouteBody(Schema):
     # A ride type that does not plan on dirt trails rides one here, as a point on one, or a
     # ride's re-plan, opened it (`core.trail_touch`). A ride sends `dirt_ridden` after one.
     dirt_trails: bool = False
+    # Such a ride type's ride marked a dirt trail closed (`blocked_lines`, `dirt_closed`): no
+    # dirt trail is ridden, and the ride sends `dirt_closed` for the rest of it.
+    dirt_closed: bool = False
     geometry: LineString
     distance_m: float
     # The router's time plus `junction_delay_s`.
@@ -4257,6 +4269,7 @@ def _bike_dials(body: RouteIn) -> routing.Dials:
         ride_replan=body.ride_replan,
         dirt_ridden=body.ride_replan and body.dirt_ridden,
         ahead_only=body.ahead_only,
+        dirt_closed=body.ride_replan and body.dirt_closed,
     )
 
 

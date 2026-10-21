@@ -654,6 +654,9 @@ export function RideMode({
   // The rider's route has ridden a dirt trail on a ride type that skips them (the owner, 2026-10-21: "If someone
   // goes onto a dirt trail, any reroutes should include dirt"): every re-plan of the ride may ride any dirt trail.
   const dirtRidden = useRef(Boolean(plannedRoute.dirt_trails));
+  // Road closed on a dirt trail (the owner, 2026-10-21: "assume that means bad riding conditions until it's opted
+  // back in"): no re-plan of the ride rides one, even once that stretch has dropped out of the ones sent.
+  const dirtClosed = useRef(false);
   routeRef.current = route;
   // What a re-plan builds on: the plan's points at first, then the last re-plan's (never a loop: its end is sent).
   const plan = useRef({ points: plannedPoints, loop: plannedLoop });
@@ -1029,7 +1032,7 @@ export function RideMode({
       // The rider is riding a plan already made: a long one is not asked to be confirmed again (a signed-out
       // rider's re-plan of a long ride was refused for want of it).
       const ask = (to: LonLat[]) =>
-        requestRoute(to, preset, { dials: { ...dials, loop: false }, vias: viaIndices(to, VIA_MARKS.isVia), straight: drawnLegs(to), routeOnly: true, confirmLong: true, blocked: blockedRef.current, heading, aheadOnly, rideReplan: true, dirtRidden: dirtRidden.current });
+        requestRoute(to, preset, { dials: { ...dials, loop: false }, vias: viaIndices(to, VIA_MARKS.isVia), straight: drawnLegs(to), routeOnly: true, confirmLong: true, blocked: blockedRef.current, heading, aheadOnly, rideReplan: true, dirtRidden: dirtRidden.current, dirtClosed: dirtClosed.current });
       const result = await ask(points);
       // No new route to the end: the way back to the planned route, which goes on from there (lib/rejoin.ts;
       // the owner, 2026-10-17). Not for a detour, whose place the planned route does not pass. The no-signal
@@ -1082,6 +1085,7 @@ export function RideMode({
       const model = modelOf(found, points);
       modelRef.current = model;
       if (found.dirt_trails) dirtRidden.current = true;
+      if (found.dirt_closed) dirtClosed.current = true;
       setRoute(found);
       // The new route's own standard way through a closure it goes round, if any (none past a road marked closed).
       const through = blockedRef.current.length ? null : (found.closure_through ?? null);

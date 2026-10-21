@@ -72,7 +72,7 @@ import { transitRideLines, transitRideSections } from "./transit.ts";
 /** The parts of a MapLibre map these use. */
 export interface OverlayMap {
   getSource(id: string): unknown;
-  addSource(id: string, source: ReturnType<typeof stressSource> | { type: "geojson"; data: object }): void;
+  addSource(id: string, source: ReturnType<typeof stressSource> | ReturnType<typeof massSource> | { type: "geojson"; data: object }): void;
   getStyle(): { layers: ReadonlyArray<{ id: string; type: string }> };
   addLayer(layer: object, beforeId?: string): void;
   getLayer(id: string): unknown;

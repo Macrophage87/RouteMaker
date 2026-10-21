@@ -218,6 +218,9 @@ export function stepsCount(n: number): string {
   return n === 1 ? "1 step" : `${n} steps`;
 }
 
+/** The route summary's folds open one at a time (Stephen 2026-10-21, Plan scrolling): their shared details name. */
+export const ROUTE_FOLD_GROUP = "route-folds";
+
 /**
  * The route summary's folds: each one's heading (an h3, for a screen reader's
  * heading list: the a11y review's S5) and whether it starts open. Since UI-CLEANUP

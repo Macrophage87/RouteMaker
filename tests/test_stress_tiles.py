@@ -457,7 +457,7 @@ class TestLevels:
         assert got == expected(lambda tier, rule: True)
         assert got[(1, False, False)] and got[(4, False, False)]
 
-    @pytest.mark.parametrize("z", [10, 11])
+    @pytest.mark.parametrize("z", [7, 10, 11])
     def test_zoomed_out_only_the_paths_and_trails(self, client, live, z) -> None:
         """The owner, 2026-09-28: "Zoomed out just show the trails." - no
         road, however busy, and no trail a bicycle may not ride; and
@@ -483,6 +483,7 @@ class TestLevels:
         2026-10-05 12 and 13 were the ride layer (391); and from 2026-10-17 every street
         from 12: "Both from 12". Merged at z12-13, one feature a segment from z14."""
         assert (stress_tiles.QUIET_STREETS_MIN_ZOOM, stress_tiles.SEGMENTS_MIN_ZOOM) == (12, 14)
+        assert stress_tiles.level_for(7) is stress_tiles.level_for(9) is stress_tiles.TRAILS
         assert stress_tiles.level_for(10) is stress_tiles.TRAILS
         assert stress_tiles.level_for(11) is stress_tiles.TRAILS_NEAR
         assert stress_tiles.level_for(12) is stress_tiles.level_for(13) is stress_tiles.STREETS
@@ -847,14 +848,14 @@ class TestFacility:
             }
         )
 
-    @pytest.mark.parametrize("z", [10, 11])
+    @pytest.mark.parametrize("z", [7, 10, 11])
     def test_zoomed_out_only_the_paths_are_kept(self, client, with_facility, z):
         """The path on a footway is kept by its facility, whatever its kind of
         way; the protected lane tagged on its street is not (owner, 2026-09-28:
         "Zoomed out just show the trails.")."""
         assert self.facilities(client, z) == Counter({"path": 1})
 
-    @pytest.mark.parametrize("z", [10, 11])
+    @pytest.mark.parametrize("z", [7, 10, 11])
     def test_zoomed_out_a_roadside_trail_is_kept_and_a_track_on_the_road_is_not(
         self, client, with_facility, z
     ):

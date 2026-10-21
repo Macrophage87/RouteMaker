@@ -1148,7 +1148,7 @@ order), and nothing asks for hazards.
   (`overlayLayerShown`; OWNER-DECISIONS 417: "Mass rides should mainly only show capacity and
   federal land. Trails and PBLs aren't relevant here."; 417a: "The major trail PBL etc should not
   be shown at any zoom in mass ride."): the LTS colours, the path, protected-lane and painted-lane
-  rails, the trails and surface marks, the z10-11 long trails and the z12-13 ride layer's calm
+  rails, the trails and surface marks, the z7-11 long trails and the z12-13 ride layer's calm
   roads. The base map's `roads_labels_minor` names no path then (`MASS_PATH_LABEL_FILTER`: no
   trail-name labels); the base map itself, the federal-land overlay, the rail stations and the
   planned route with its markers stay. Every other ride type is unchanged. (`massHides` is still
@@ -1550,7 +1550,11 @@ curl -s -X POST http://localhost:8000/api/route -H 'Content-Type: application/js
   Green singletrack is always left out. A ride's re-plans send `ride_replan`.
   When the rider is on a dirt trail, or `dirt_ridden` is sent, any dirt trail
   may be ridden. The answer's `dirt_trails` says the route rides one, and Ride
-  then sends `dirt_ridden` for the rest of the ride.
+  then sends `dirt_ridden` for the rest of the ride. A `blocked_lines` stretch with
+  two of its quarter, half and three-quarter points within 15 m of a dirt trail (Road
+  closed pressed on one; a road crossing a trail has one at most) means bad conditions:
+  that re-plan rides no dirt trail (`trail_touch.closed_on_dirt`), its answer's
+  `dirt_closed` says so, and Ride sends `dirt_closed` for the rest of the ride.
 
 **The stress and hills sliders, measured** (PUBLIC-DIALS, 2026-09-27: a box
 graph, -77.22,38.78,-76.90,39.02, rebuilt from the real extract by the real
@@ -2024,7 +2028,7 @@ curl -s -o /tmp/t.pbf -w '%{http_code} %{size_download}\n' http://localhost:8000
 ```
 
 A tile is served from the `stress_tile_cache` table once drawn
-(`core/tile_cache.py`); `python manage.py predraw_stress_tiles` fills z10-14 for
+(`core/tile_cache.py`); `python manage.py predraw_stress_tiles` fills z7-14 for
 the live table, and a local `runserver` with an empty cache draws on request.
 What each zoom draws, the limits, the cache, the draw slots and timeout and the
 overview index are in docs/OPERATIONS.md, "The stress tiles". `tests/mvt.py` decodes a tile for

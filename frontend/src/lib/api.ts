@@ -899,6 +899,8 @@ export interface RouteResponse {
   variant: "standard" | "no-trail" | "ebike" | "weekend" | "offroad" | "mtb";
   /** A ride type that skips dirt trails rides one here (a point on one opened it, core/trail_touch.py). A ride then opens them all to its re-plans. */
   dirt_trails?: boolean;
+  /** A ride marked a dirt trail closed (bad conditions): no dirt trail is ridden, and the ride's re-plans say so after. */
+  dirt_closed?: boolean;
   /** Trip points the planner moved: one inside the National Zoo goes to its bike racks. */
   moved_points?: { index: number; asked: LonLat; routed: LonLat; reason: "zoo_racks"; note: string }[];
   /**
@@ -1302,6 +1304,8 @@ export interface RouteRequestOptions {
   dirtRidden?: boolean;
   /** With `heading`: the rider rode on past two U-turns, so the route that sets off ahead is taken (lib/navigate.ts keepsAhead). */
   aheadOnly?: boolean;
+  /** With `rideReplan`: the rider marked a dirt trail closed this ride, so the re-plan rides none (`dirt_closed`). */
+  dirtClosed?: boolean;
 }
 
 /** Most points of a line to follow (core/follow.py MAX_POINTS). */
@@ -1343,7 +1347,9 @@ export function routeRequestBody(points: readonly LonLat[], preset: PresetId, op
     // The way the rider is going, for a ride's re-route: the API weighs a U-turn against the way ahead.
     ...(options.heading != null && Number.isFinite(options.heading) ? { heading: ((options.heading % 360) + 360) % 360, ...(options.aheadOnly ? { ahead_only: true } : {}) } : {}),
     // A ride's re-plan starts at the rider: a dirt trail there, or one ridden earlier, opens them all.
-    ...(options.rideReplan ? { ride_replan: true, ...(options.dirtRidden ? { dirt_ridden: true } : {}) } : {}),
+    ...(options.rideReplan
+      ? { ride_replan: true, ...(options.dirtRidden ? { dirt_ridden: true } : {}), ...(options.dirtClosed ? { dirt_closed: true } : {}) }
+      : {}),
   });
 }
 
