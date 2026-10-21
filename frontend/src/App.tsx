@@ -3153,9 +3153,11 @@ export function App() {
   // The voice is unlocked first, synchronously inside the press (iOS speaks only in a gesture; after the
   // check's await it would be too late). A press that asks the first-ride question unlocks in that dialog.
   const [computerAsk, setComputerAsk] = useState(false);
+  // Start anyway, kept in memory too: a tab that cannot store it (a private window) still starts.
+  const computerOk = useRef(false);
   const startRideChecked = () => {
     // On a computer, asked first (lib/startOnComputer.ts): Go back, or Start anyway, which presses again.
-    if (askBeforeStart(looksLikePhone(), tabSession())) {
+    if (!computerOk.current && askBeforeStart(looksLikePhone(), tabSession())) {
       setComputerAsk(true);
       return;
     }
@@ -4521,6 +4523,7 @@ export function App() {
         open={computerAsk}
         onBack={() => setComputerAsk(false)}
         onAnyway={() => {
+          computerOk.current = true;
           rememberStartAnyway(tabSession());
           setComputerAsk(false);
           startRideChecked();
