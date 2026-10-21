@@ -76,6 +76,14 @@ class FakeOsm:
         self.calls: list[tuple[str, str, bytes, str | None]] = []
 
 
+def _element_key(path: str) -> str | None:
+    """'node/201' or 'way/3' for an element URL of the fake API, else None."""
+    parts = path.split("?")[0].rsplit("/", 2)
+    if len(parts) == 3 and parts[1] in ("node", "way") and parts[2].isdigit():
+        return f"{parts[1]}/{parts[2]}"
+    return None
+
+
 @pytest.fixture
 def osm(tmp_path, monkeypatch):
     state = FakeOsm()
@@ -108,12 +116,12 @@ def osm(tmp_path, monkeypatch):
                 self._send(200, json.dumps({"user": {"display_name": "Mapper"}}))
             elif self.path.endswith("/node/404"):
                 self._send(410, "")
-            elif "/node/" in self.path and self.path.rsplit("/", 1)[1] in state.saved:
-                saved = state.saved[self.path.rsplit("/", 1)[1]]
+            elif _element_key(self.path) in state.saved:
+                saved = state.saved[_element_key(self.path)]
                 self._send(200, f'<osm version="0.6">{saved}</osm>')
-            elif "/node/" in self.path:
-                wanted = self.path.rsplit("/", 1)[1]
-                for node in ET.fromstring(state.area).iter("node"):
+            elif _element_key(self.path):
+                kind, wanted = _element_key(self.path).split("/")
+                for node in ET.fromstring(state.area).iter(kind):
                     if node.get("id") == wanted:
                         body = ET.tostring(node, encoding="unicode")
                         self._send(200, f'<osm version="0.6">{body}</osm>')
@@ -135,6 +143,8 @@ def osm(tmp_path, monkeypatch):
             body = self.rfile.read(length)
             state.calls.append(("PUT", self.path, body, self.headers.get("Authorization")))
             if self.path.endswith("/changeset/create"):
+                # Every changeset is 555 here; a new one starts empty and open.
+                state.changes, state.changeset_open = 0, True
                 self._send(200, "555")
             elif self.path.endswith("/changeset/555/close"):
                 state.changeset_open = False
@@ -159,9 +169,9 @@ def osm(tmp_path, monkeypatch):
                     )
                     state.changeset = sent.get("changeset")
                 self._send(200, str(state.version))
-            elif "/node/" in self.path:
-                wanted = self.path.rsplit("/", 1)[1]
-                sent = ET.fromstring(body).find("node")
+            elif _element_key(self.path):
+                wanted = _element_key(self.path)
+                sent = ET.fromstring(body).find(wanted.split("/")[0])
                 if wanted in state.refuse:
                     self._send(412, "Precondition failed")
                     return
@@ -847,7 +857,7 @@ def test_one_changeset_holds_every_edit_and_checks_each(osm, tmp_path, capsys):
     assert puts.count("/api/0.6/changeset/create") == 1
     assert [p for p in puts if "/node/" in p] == [f"/api/0.6/node/{n}" for n in (201, 202, 203)]
     for node in (201, 202, 203):
-        sent = ET.fromstring(osm.saved[str(node)])
+        sent = ET.fromstring(osm.saved[f"node/{node}"])
         assert sent.get("changeset") == "555"
         assert sent.find("tag[@k='surface']").get("v") == "asphalt"
     out = capsys.readouterr().out
@@ -879,11 +889,11 @@ def test_one_changeset_refuses_mixed_notes_and_stale_tags_before_uploading(osm, 
 
 
 def test_one_changeset_stopping_partway_records_and_checks_what_went_in(osm, tmp_path, capsys):
-    osm.refuse = {"203"}
+    osm.refuse = {"node/203"}
     paths = _together(tmp_path)
-    assert osm_edit.main(["upload", *paths, "--approved", "--one-changeset"]) == 1
+    assert osm_edit.main(["upload", *paths, "--approved", "--one-changeset"]) == 3
     err = capsys.readouterr().err
-    assert "Stopped at n203.json" in err and f"Not uploaded: {paths[2]}" in err
+    assert "Stopped at n203.json" in err and paths[2] in err.split("Not uploaded")[1]
     assert (tmp_path / "n201.uploaded.json").exists() and not (
         tmp_path / "n203.uploaded.json"
     ).exists()
@@ -894,3 +904,56 @@ def test_one_changeset_stopping_partway_records_and_checks_what_went_in(osm, tmp
 def test_dry_run_alone_is_refused(osm, tmp_path, capsys):
     assert osm_edit.main(["upload", str(_edit(tmp_path)), "--dry-run"]) == 1
     assert "--one-changeset" in capsys.readouterr().err
+
+
+def test_a_rerun_after_a_stop_uploads_only_what_is_left(osm, tmp_path, capsys):
+    osm.refuse = {"node/203"}
+    paths = _together(tmp_path)
+    assert osm_edit.main(["upload", *paths, "--approved", "--one-changeset"]) == 3
+    osm.refuse = set()
+    capsys.readouterr()
+    assert osm_edit.main(["upload", *paths, "--approved", "--one-changeset"]) == 0
+    out = capsys.readouterr().out
+    assert "n201.json: already uploaded, skipped" in out and "One changeset, 1 changes" in out
+    assert (tmp_path / "n203.uploaded.json").exists()
+
+
+def test_an_interruption_mid_set_still_records_what_went_in(osm, tmp_path, monkeypatch):
+    real = osm_edit._put_change
+    calls = []
+
+    def interrupted(element, edit, changeset, token):
+        calls.append(edit["id"])
+        if len(calls) == 3:
+            raise KeyboardInterrupt
+        return real(element, edit, changeset, token)
+
+    monkeypatch.setattr(osm_edit, "_put_change", interrupted)
+    with pytest.raises(KeyboardInterrupt):
+        osm_edit.main(["upload", *_together(tmp_path), "--approved", "--one-changeset"])
+    assert (tmp_path / "n201.uploaded.json").exists() and (tmp_path / "n202.uploaded.json").exists()
+    assert not (tmp_path / "n203.uploaded.json").exists()
+    assert osm.changeset_open is False
+
+
+def test_one_changeset_of_ways_keeps_their_nodes(osm, tmp_path, capsys):
+    paths = []
+    for way in (1, 2, 3):
+        edit = {
+            "server": "dev",
+            "element": "way",
+            "id": way,
+            "expect": {"bicycle": None},
+            "set": {"bicycle": "yes"},
+            "comment": "Grounds walks: bicycles allowed, surveyed",
+            "source": "survey",
+        }
+        path = tmp_path / f"w{way}.json"
+        path.write_text(json.dumps(edit))
+        paths.append(str(path))
+    assert osm_edit.main(["upload", *paths, "--approved", "--one-changeset"]) == 0
+    sent = ET.fromstring(osm.saved["way/3"])
+    assert [nd.get("ref") for nd in sent.iter("nd")] == ["205", "201", "202"]
+    assert sent.find("tag[@k='highway']").get("v") == "residential"
+    assert sent.find("tag[@k='bicycle']").get("v") == "yes"
+    assert capsys.readouterr().out.count("Checked: way") == 3

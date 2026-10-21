@@ -7491,10 +7491,11 @@ Python 3.11 or later, standard library only.
   of one small area in a single changeset. They must share the server, comment and source,
   and name each element once. Every file is checked against OSM before anything goes up, so
   one stale file stops them all; `--dry-run` (no `--approved` needed) prints every diff and
-  uploads nothing. A stop partway records what went in, names what did not, and the smoke
-  test then expects that many changes in the changeset.
+  uploads nothing. A stop partway (a refusal or Ctrl-C) records what went in, names what did
+  not and exits 3; the smoke test then expects that many changes in the changeset, and
+  rerunning the same line skips the files already uploaded, in a new changeset.
 - **Smoke test:** every upload ends by reading the change back from OSM. The element must
   carry the approved tags at the version the upload made (a later version by someone else
-  passes), and the changeset must be closed with exactly one change. A failure, or a check
+  passes), and the changeset must be closed holding exactly the upload's changes. A failure, or a check
   that could not run, exits 3 with what differs.
   `python3 scripts/osm_edit.py check edit.json` runs it again later.

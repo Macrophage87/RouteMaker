@@ -6,7 +6,9 @@ OSM data is wrong, we change it"). A drafted edit is a small JSON file naming on
 way, the tag values the owner was shown ("expect") and the values to write ("set"). Each
 upload is one change in one changeset, approved by the owner for that exact file: this is
 manual mapping with a helper, never a bot, a queue or an import (OSM's Automated Edits code
-of conduct), so there is no batch mode and at most one retry after a conflict.
+of conduct), with at most one retry after a conflict. The one exception is
+--one-changeset: a set of reviewed edits of one small area, sharing one note, that the
+owner chose to put up together.
 
     python scripts/osm_edit.py login --server dev --client-id <id>   # once, in a terminal
     python scripts/osm_edit.py show edit.json                         # the diff, no upload
@@ -422,6 +424,13 @@ def upload_together(paths: list[Path], *, live: bool, dry_run: bool) -> int:
     if len(set(targets)) != len(targets):
         raise EditError("the same element appears twice; one change per element")
     ready, problems = [], []
+    # A rerun of the same line after a stop picks up where it stopped.
+    done = [path for path, _ in edits if _result_path(path).exists()]
+    for path in done:
+        print(f"{path.name}: already uploaded, skipped")
+    edits = [(path, edit) for path, edit in edits if path not in done]
+    if not edits:
+        raise EditError("every file is already uploaded; one approval, one upload")
     for path, edit in edits:
         try:
             ready.append((path, edit, _ready(path, edit, live=live)))
@@ -441,6 +450,7 @@ def upload_together(paths: list[Path], *, live: bool, dry_run: bool) -> int:
     changeset = _open_changeset(first, token)
     saved: list[tuple[Path, dict, int]] = []
     failure = None
+    results: list[dict] = []
     try:
         for path, edit, element in ready:
             try:
@@ -449,14 +459,24 @@ def upload_together(paths: list[Path], *, live: bool, dry_run: bool) -> int:
                 failure = f"{path.name}: {error}"
                 break
     finally:
+        # Whatever stopped the loop (a refusal, Ctrl-C, an odd answer), what went in is
+        # recorded, so it is never uploaded twice and the smoke test can find it.
         _close_changeset(first["server"], changeset, token)
-    results = [_record(path, edit, changeset, version, len(saved)) for path, edit, version in saved]
-    if results:
-        print(f"Uploaded {len(results)} changes: {results[0]['url']}")
-    if failure:
-        rest = " ".join(str(path) for path, _, _ in ready[len(saved) :])
-        print(f"Stopped at {failure}\nNot uploaded: {rest}", file=sys.stderr)
-    worst = 1 if failure else 0
+        results = [
+            _record(path, edit, changeset, version, len(saved)) for path, edit, version in saved
+        ]
+        if results:
+            print(f"Uploaded {len(results)} changes: {results[0]['url']}")
+        rest = [str(path) for path, _, _ in ready[len(saved) :]]
+        if rest:
+            print(f"Stopped at {failure or 'an interruption'}", file=sys.stderr)
+            print(
+                "Not uploaded (OSM may still hold the one it stopped on; the check says): "
+                + " ".join(rest),
+                file=sys.stderr,
+            )
+    # Once anything went in, a stop is never a plain "not uploaded": 3, as the single upload.
+    worst = 3 if failure and saved else 1 if failure else 0
     for (_, edit, _), result in zip(saved, results, strict=True):
         worst = max(worst, report_check(edit, result))
     return worst
@@ -467,7 +487,7 @@ def check_problems(edit: dict, result: dict) -> list[str]:
 
     The smoke test after an upload: the element carries the approved tags at the version
     the upload made (or a later one, if someone has edited since), and the changeset is
-    closed with exactly one change in it.
+    closed holding exactly the changes the upload made (one, or a --one-changeset set).
     """
     problems = []
     element = fetch_element(edit)
