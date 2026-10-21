@@ -420,6 +420,18 @@ class TestOwnCost:
         assert own > calm.edge_factor(sidewalk, 1, u), "the LTS 3 rating marks it"
         assert calm.edge_factor(lts3, 3, u) < own < calm.edge_factor(lts4, 4, u)
 
+    def test_a_last_resort_sidewalk_costs_more_than_one_beside_a_45_road(self) -> None:
+        """Beside a calmer road (2026-10-21, "Beside 4.5/Avoid only"): LTS 4's top lane
+        count on the sidewalk prices it above the other ridden sidewalks at every slider
+        position. (On a tile build it also loses to an LTS 4 road everywhere,
+        tests/test_tile_build_sidewalk_price.py: the graph adds a sidewalk's own use factor,
+        which this model leaves out.)"""
+        last = road(use="footway", road_class="service_other", lanes=calm.GRADED_LANES)
+        beside = road(use="footway", road_class="service_other")
+        for stress in (0, 40, 70, 100):
+            u = presets.use_roads_for(stress)
+            assert calm.edge_factor(last, 4, u) > calm.edge_factor(beside, 3, u), stress
+
     def test_above_80_the_calm_rate_is_added_to_the_roads_own_cost(self) -> None:
         at90 = calm.Pricing(
             use_roads=presets.use_roads_for(90), rate=presets.calm_rate_for(90), weights=(1, 2, 3)

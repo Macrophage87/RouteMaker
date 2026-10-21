@@ -861,6 +861,8 @@ class RebuildContext:
     # Sidewalks, crosswalks and short footway links ridden as a last resort
     # (`routemaker.sidewalks`), rated `sidewalks.TIER`.
     sidewalk_rides: set[int] = field(default_factory=set)
+    # Those of them priced above an LTS 4 road (`sidewalks.LAST_RESORT`), rated LTS 4.
+    sidewalk_last_resort: set[int] = field(default_factory=set)
     # Footways into rail stations opened as walk-your-bike links
     # (`routemaker.station_links`), all of them in `walk_bike` too.
     walk_links: set[int] = field(default_factory=set)
@@ -1801,17 +1803,53 @@ def car_free_tier_1(way, stress_by_way: dict) -> bool:
     return True
 
 
-def raise_ridden_sidewalks(stress_by_way: dict, ridden: Collection[int]) -> None:
-    """Rate a ridden sidewalk as the graph prices it (`sidewalks.TIER`), never lower
-    than a rating already says, and never over the owner's own (an override row)."""
+def very_stressful(stress) -> bool:
+    """Rated 4.5 or Avoid."""
+    if stress is None or stress.tier is None:
+        return False
+    tier = int(stress.tier)
+    return tier >= int(Stress.AVOID) or (tier == 4 and bool(getattr(stress, "half", False)))
+
+
+def last_resort_sidewalks(
+    ways: Collection,
+    stress_by_way: dict,
+    ridden: Collection[int],
+    links: Collection[int],
+) -> set[int]:
+    """The ridden footways priced above an LTS 4 road (`sidewalks.LAST_RESORT`; the owner,
+    2026-10-21, "Beside 4.5/Avoid only"): all but the links and the sidewalks running
+    beside a road rated 4.5 or Avoid (`sidewalks.beside`)."""
+    from routemaker.classes import TRAIL_CLASS_HIGHWAY
+
+    asked, roads = [], []
+    for way in ways:
+        if way.osm_id in ridden:
+            if way.osm_id not in links and way.tags.get("footway") == "sidewalk":
+                asked.append((way.osm_id, way.coordinates))
+        elif way.tags.get("highway") not in TRAIL_CLASS_HIGHWAY and very_stressful(
+            stress_by_way.get(way.osm_id)
+        ):
+            roads.append((way.osm_id, way.coordinates))
+    return set(ridden) - set(links) - sidewalks.beside(asked, roads)
+
+
+def raise_ridden_sidewalks(
+    stress_by_way: dict, ridden: Collection[int], last_resort: Collection[int] = frozenset()
+) -> None:
+    """Rate a ridden sidewalk as the graph prices it (`sidewalks.TIER`, or
+    `sidewalks.LAST_RESORT_TIER` for those in `last_resort`), never lower than a rating
+    already says, and never over the owner's own (an override row)."""
     for way_id in ridden:
         current = stress_by_way.get(way_id)
         if current is None or getattr(current, "adjustment", None) is not None:
             continue
-        if int(current.tier) < sidewalks.TIER:
-            stress_by_way[way_id] = replace(
-                current, tier=Stress(sidewalks.TIER), half=False, rule=sidewalks.RULE
-            )
+        if way_id in last_resort:
+            tier, rule = sidewalks.LAST_RESORT_TIER, sidewalks.LAST_RESORT_RULE
+        else:
+            tier, rule = sidewalks.TIER, sidewalks.RULE
+        if int(current.tier) < tier:
+            stress_by_way[way_id] = replace(current, tier=Stress(tier), half=False, rule=rule)
 
 
 def facility_derived(
@@ -3051,8 +3089,13 @@ def build_handlers(
         trail_closures.add_station_links(nobike, context.ways, context.station_ways_in)
         context.walk_bike = nobike.walk_bike
         context.sidewalk_rides = nobike.sidewalk_rides
+        context.sidewalk_last_resort = last_resort_sidewalks(
+            context.ways, context.stress_by_way, nobike.sidewalk_rides, nobike.sidewalk_links
+        )
         context.walk_links = nobike.walk_links
-        raise_ridden_sidewalks(context.stress_by_way, nobike.sidewalk_rides)
+        raise_ridden_sidewalks(
+            context.stress_by_way, nobike.sidewalk_rides, context.sidewalk_last_resort
+        )
         context.destination_only = nobike.destination_only
         context.mtb_only = nobike.mtb_only()
         context.cbd_sidewalks = {w for w, r in nobike.reasons.items() if r == cbd.NO_BICYCLE}
@@ -3391,7 +3434,11 @@ def build_handlers(
                     way.osm_id in context.sidewalk_rides
                     and variant is not variants.Variant.NO_TRAIL
                 ):
-                    derived["sidewalk"] = True
+                    derived["sidewalk"] = (
+                        sidewalks.LAST_RESORT
+                        if way.osm_id in context.sidewalk_last_resort
+                        else True
+                    )
                 # A known hazard (v0.10.0; the owner, 2026-10-19: "Roads with hazards like
                 # this should get a major penalty"): cobbles or rails anywhere on the way,
                 # which lua/routemaker_remap.lua prices as LTS 4 without changing its rating.

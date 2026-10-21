@@ -128,6 +128,8 @@ class TrailClosures:
     # sidewalks, crosswalks and short footway links ridden as a last resort
     # (`routemaker.sidewalks`; the owner, 2026-10-20)
     sidewalk_rides: set[int] = field(default_factory=set)
+    # the short links among them, where a bike way stops (`sidewalks.links`)
+    sidewalk_links: set[int] = field(default_factory=set)
     # footways into rail stations, walked (`routemaker.station_links`), each also in
     # `walk_bike`
     walk_links: set[int] = field(default_factory=set)
@@ -272,18 +274,25 @@ def closures(
 def add_sidewalk_rides(result: TrailClosures, ways: Iterable[Way]) -> None:
     """Find the footways ridden as a last resort (`routemaker.sidewalks`) once every closure
     is in `result.reasons`, the agency prohibitions included."""
-    result.sidewalk_rides = sidewalks.rides(
-        [
-            (
-                way.osm_id,
-                way.tags,
-                way.node_ids,
-                node_coordinates(way) if sidewalks.is_link_candidate(way.tags) else (),
-            )
-            for way in ways
-        ],
-        closed=set(result.reasons) | result.destination_only,
+    ways = list(ways)
+    closed = set(result.reasons) | result.destination_only
+    result.sidewalk_links = set(
+        sidewalks.links(
+            [
+                (
+                    way.osm_id,
+                    way.tags,
+                    way.node_ids,
+                    node_coordinates(way) if sidewalks.is_link_candidate(way.tags) else (),
+                )
+                for way in ways
+            ],
+            closed=closed,
+        )
     )
+    result.sidewalk_rides = result.sidewalk_links | {
+        way.osm_id for way in ways if way.osm_id not in closed and sidewalks.rideable(way.tags)
+    }
 
 
 def add_station_links(
@@ -310,6 +319,7 @@ def add_station_links(
     result.walk_bike |= set(found)
     # Walked, not ridden: a station's footway is no last-resort sidewalk.
     result.sidewalk_rides -= set(found)
+    result.sidewalk_links -= set(found)
 
 
 def node_coordinates(way: Way) -> list[tuple[float, float] | None]:

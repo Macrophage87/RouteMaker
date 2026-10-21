@@ -235,3 +235,51 @@ def test_a_ridden_sidewalk_is_rated_lts_3_unless_the_owner_rated_it():
     assert int(ratings[1].tier) == sw.TIER and ratings[1].rule == sw.RULE
     assert ratings[2] is owners, "the owner's rating stands"
     assert ratings[3] is busy, "never lowered"
+
+
+def test_a_sidewalk_beside_a_road_is_found_and_a_crosswalk_is_not():
+    road = [at(0.0, 0.0), at(400.0, 0.0)]
+    near = [at(20.0, 12.0), at(380.0, 12.0)]
+    far = [at(20.0, 60.0), at(380.0, 60.0)]
+    across = [at(200.0, -12.0), at(200.0, 12.0)]
+    half_way = [at(-300.0, 12.0), at(100.0, 12.0)]
+    found = sw.beside([(1, near), (2, far), (3, across), (4, half_way)], [(9, road)])
+    assert found == {1}, "within 30 m and parallel along most of its length"
+    assert sw.beside([(1, near)], []) == set()
+
+
+def _stress(tier, half=False):
+    from routemaker.stress import Stress, StressResult
+
+    return StressResult(tier=Stress(tier), rule="formula", half=half)
+
+
+def test_only_sidewalks_beside_a_45_or_avoid_road_keep_the_lower_price():
+    from pipeline.run import last_resort_sidewalks
+
+    ways = [
+        way(10, {"highway": "primary"}, [(0.0, 0.0), (400.0, 0.0)]),
+        way(11, dict(SIDEWALK), [(20.0, 12.0), (380.0, 12.0)]),
+        way(12, {"highway": "footway", "footway": "crossing"}, [(0.0, -12.0), (0.0, 12.0)]),
+        way(13, dict(SIDEWALK), [(500.0, 0.0), (600.0, 0.0)]),
+    ]
+    ridden, links = {11, 12, 13}, {13}
+    for rating, cheap in (
+        (_stress(4), set()),
+        (_stress(4, half=True), {11}),
+        (_stress(5), {11}),
+        (_stress(3), set()),
+    ):
+        last = last_resort_sidewalks(ways, {10: rating}, ridden, links)
+        assert last == ridden - links - cheap, rating
+    assert 13 not in last, "a link keeps its price"
+
+
+def test_a_last_resort_sidewalk_is_rated_lts_4():
+    from pipeline.run import raise_ridden_sidewalks
+
+    ratings = {1: _stress(1), 2: _stress(1)}
+    raise_ridden_sidewalks(ratings, {1, 2}, {2})
+    assert int(ratings[1].tier) == sw.TIER
+    assert int(ratings[2].tier) == sw.LAST_RESORT_TIER
+    assert ratings[2].rule == sw.LAST_RESORT_RULE

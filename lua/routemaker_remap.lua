@@ -875,9 +875,20 @@ function M.remap_way(tags, derived)
   -- at LTS 1 to 3.5 at every slider position, and wins over LTS 4, 4.5 and Avoid from
   -- the slider's 40 up; below that the road is taken. Only cost moves: a bicycle's time
   -- comes from its own speed. Only where no bicycle tag speaks and no closure stands.
+  --
+  -- The owner, 2026-10-21: "a lot of people would still ride on some lts 4 roads than take
+  -- the sidewalk, especially with sliplanes", choosing "Beside 4.5/Avoid only". So a
+  -- sidewalk beside a calmer road (`rm:sidewalk=last_resort`, `M.LAST_RESORT_SIDEWALK`)
+  -- also carries LTS 4's top lane count: on the same tile build it loses to LTS 4 and 4.5
+  -- roads at every slider position and is taken only over Avoid or where nothing else
+  -- connects. The links, and the sidewalks beside a 4.5 or Avoid road, keep the price above.
   if derived.sidewalk and tags.bicycle == nil and out.bicycle == nil and not derived.no_bicycle then
     out.bicycle = M.STRESS_PENALTY_BICYCLE
     out["maxspeed:practical"] = M.SIDEWALK_SPEED
+    if derived.sidewalk == M.LAST_RESORT_SIDEWALK then
+      out["lanes:forward"] = M.GRADED_LANES
+      out["lanes:backward"] = M.GRADED_LANES
+    end
   end
 
   -- A paved way is not a mountain-bike trail (`M.strip_paved_ratings`).
@@ -1524,6 +1535,8 @@ end
 -- A ridden sidewalk's practical speed (kph; see `remap_way`, `rm:sidewalk`), which sets
 -- the roadway stress Valhalla prices a sidewalk's or crosswalk's use at.
 M.SIDEWALK_SPEED = "90"
+-- `rm:sidewalk`'s value for a sidewalk priced above an LTS 4 road (routemaker.sidewalks).
+M.LAST_RESORT_SIDEWALK = "last_resort"
 
 -- Half steps' marks (see `remap_way`): 3.5's practical speed (kph) and lanes
 -- each way, between a road's own and LTS 4's `GRADED_*`, and 2.5's lanes.

@@ -1,7 +1,8 @@
 """A ridden sidewalk's price, checked in real Valhalla tiles (routemaker.sidewalks).
 
 The owner, 2026-10-20, chose "Also sidewalks as last resort": a sidewalk is ridden
-where the road beside it is very stressful, and not otherwise. The transform prices it
+where the road beside it is very stressful, and not otherwise; then, 2026-10-21, "Beside
+4.5/Avoid only": a sidewalk beside a calmer road loses to an LTS 4 road too. The transform prices it
 (`rm:sidewalk`, lua/routemaker_remap.lua `SIDEWALK_SPEED`) and the claim is about what
 Valhalla's bicycle costing then chooses, so this builds a road with a sidewalk beside it,
 reached from side streets at both ends, once per road rating, and asks which way a
@@ -32,6 +33,7 @@ SIDEWALK = {
     "rm:sidewalk": "yes",
     "rm:stress_tier": "3",
 }
+LAST_RESORT = {**SIDEWALK, "rm:sidewalk": "last_resort", "rm:stress_tier": "4"}
 SIDE_STREET = {"highway": "residential", "rm:stress_tier": "1"}
 
 
@@ -42,17 +44,25 @@ def road(tier: int, half: bool = False) -> dict[str, str]:
     return tags
 
 
-# (name, road tags, slider position, whether the route rides the sidewalk)
+# (name, road tags, slider position, the sidewalk's tags, whether the route rides it).
+# `SIDEWALK` is one beside a 4.5 or Avoid road, or a link; `LAST_RESORT` one beside a
+# calmer road (the owner, 2026-10-21, "Beside 4.5/Avoid only"). The road's own rating is
+# what the router reads; which sidewalk is which the rebuild decides.
 CASES = [
-    ("LTS 2 at Default", road(2), 70, False),
-    ("LTS 3 at Default", road(3), 70, False),
-    ("LTS 3 at the calm end", road(3), 80, False),
-    ("LTS 3.5 at Default", road(3, half=True), 70, False),
-    ("LTS 4 at Default", road(4), 70, True),
-    ("LTS 4 at Balanced", road(4), 40, True),
-    ("LTS 4 at the direct end", road(4), 0, False),
-    ("LTS 4.5 at Default", road(4, half=True), 70, True),
-    ("Avoid at Default", road(5), 70, True),
+    ("LTS 2 at Default", road(2), 70, SIDEWALK, False),
+    ("LTS 3 at Default", road(3), 70, SIDEWALK, False),
+    ("LTS 3 at the calm end", road(3), 80, SIDEWALK, False),
+    ("LTS 3.5 at Default", road(3, half=True), 70, SIDEWALK, False),
+    ("LTS 4 at Default", road(4), 70, SIDEWALK, True),
+    ("LTS 4 at Balanced", road(4), 40, SIDEWALK, True),
+    ("LTS 4 at the direct end", road(4), 0, SIDEWALK, False),
+    ("LTS 4.5 at Default", road(4, half=True), 70, SIDEWALK, True),
+    ("Avoid at Default", road(5), 70, SIDEWALK, True),
+    ("last resort beside LTS 4 at Default", road(4), 70, LAST_RESORT, False),
+    ("last resort beside LTS 4 at the calm end", road(4), 100, LAST_RESORT, False),
+    ("last resort beside LTS 4 at Balanced", road(4), 40, LAST_RESORT, False),
+    ("last resort beside LTS 3.5 at Default", road(3, half=True), 70, LAST_RESORT, False),
+    ("last resort beside Avoid at Default", road(5), 70, LAST_RESORT, True),
 ]
 
 
@@ -67,7 +77,7 @@ def _osm() -> tuple[str, dict[str, tuple[tuple[float, float], tuple[float, float
     nodes: dict[int, tuple[float, float]] = {}
     ways = []
     where = {}
-    for index, (name, road_tags, _, _) in enumerate(CASES):
+    for index, (name, road_tags, _, sidewalk_tags, _) in enumerate(CASES):
         north = index * 400.0
         base = 1000 * (index + 1)
         on_road, beside = [], []
@@ -79,10 +89,10 @@ def _osm() -> tuple[str, dict[str, tuple[tuple[float, float], tuple[float, float
         for offset, east in ((200, 0), (201, 800)):
             nodes[base + offset] = _at(east, north - 150)
         way = 10 * (index + 1)
-        crossing = {**SIDEWALK, "footway": "crossing"}
+        crossing = {**sidewalk_tags, "footway": "crossing"}
         ways += [
             (way, on_road, road_tags),
-            (way + 1, beside, SIDEWALK),
+            (way + 1, beside, sidewalk_tags),
             (way + 2, [on_road[0], beside[0]], crossing),
             (way + 3, [beside[-1], on_road[-1]], crossing),
             (way + 4, [base + 200, on_road[0]], SIDE_STREET),
@@ -166,7 +176,7 @@ def test_a_sidewalk_is_ridden_only_beside_a_very_stressful_road(tmp_path: Path) 
                     pytest.fail("valhalla_service did not come up")
                 time.sleep(0.2)
         wrong = []
-        for name, _, stress, rides in CASES:
+        for name, _, stress, _, rides in CASES:
             start, end, sidewalk = where[name]
             ridden = sidewalk in _ways_ridden(port, start, end, stress)
             if ridden != rides:

@@ -11,11 +11,20 @@ more rural parts", and on the choice put to him, "Also sidewalks as last resort"
 "Generally sidewalks adjacent to busy roads don't have a lot of pedestrian traffic so
 it's less problematic. Not the most fun option".
 
-So two sets of footways are ridden (`rides`), and lua/routemaker_remap.lua prices each as
-a last resort (`rm:sidewalk`): costlier than any road up to LTS 3.5, cheaper than LTS 4,
-4.5 and Avoid from the slider's middle up. The rebuild rates them LTS 3 (`TIER`), so the
-route's stress, the rolling stress chart and RouteMaker's own ranking count them as the
-router prices them, not as a quiet trail.
+Then, 2026-10-21: "a lot of people would still ride on some lts 4 roads than take the
+sidewalk, especially with sliplanes", choosing "Beside 4.5/Avoid only".
+
+So two sets of footways are ridden (`rides`), and lua/routemaker_remap.lua prices them
+(`rm:sidewalk`) at one of two levels:
+- a link, and a sidewalk running beside a road rated 4.5 or Avoid (`beside`): costlier than
+  any road up to LTS 3.5, cheaper than LTS 4, 4.5 and Avoid from the slider's middle up,
+  rated LTS 3 (`TIER`);
+- every other sidewalk and crosswalk (`LAST_RESORT`): a little costlier than an LTS 4 road
+  at every slider position, so it is ridden only where nothing else connects or beside an
+  Avoid road, rated LTS 4 (`LAST_RESORT_TIER`). The router prices LTS 4 and 4.5 roads alike,
+  which is why the rebuild tells the two kinds apart rather than the price.
+The ratings let the route's stress, the rolling stress chart and RouteMaker's own ranking
+count them as the router prices them, not as a quiet trail.
 
 - `rideable`: a sidewalk or crosswalk (`footway=sidewalk` or `crossing`) no bicycle tag
   speaks for or against, open on foot. Riding a sidewalk is legal in DC outside the
@@ -48,10 +57,25 @@ from collections.abc import Sequence, Set
 
 from . import tags as osm_tags
 from . import trailaccess
+from .facility import _angle_between, _bearing, _point_segment_m, _samples, _xy
 
-# What a ridden sidewalk is rated: LTS 3, as the graph prices it (see the module's note).
+# What a link, or a sidewalk beside a 4.5 or Avoid road, is rated: LTS 3, as the graph
+# prices it (see the module's note).
 TIER = 3
 RULE = "sidewalk ridden as a last resort (the owner, 2026-10-20)"
+# Every other ridden sidewalk and crosswalk: priced above an LTS 4 road, rated LTS 4.
+LAST_RESORT = "last_resort"
+LAST_RESORT_TIER = 4
+LAST_RESORT_RULE = (
+    "sidewalk beside a calmer road, ridden only where nothing else connects (the owner, 2026-10-21)"
+)
+# A sidewalk is beside a road when at least BESIDE_FRACTION of its length lies within
+# BESIDE_M of the road's centreline (a wide verge or a slip lane between them) and within
+# BESIDE_ANGLE of parallel to it, looked at every BESIDE_STEP_M.
+BESIDE_M = 30.0
+BESIDE_ANGLE = 30.0
+BESIDE_FRACTION = 0.6
+BESIDE_STEP_M = 5.0
 SIDEWALK_KINDS = frozenset({"sidewalk", "crossing"})
 # The longest gap a link may bridge, along the footways (about 160 ft).
 GAP_M = 50.0
@@ -156,6 +180,53 @@ def rides(ways: Sequence[Placed], closed: Set[int] = frozenset()) -> set[int]:
     found.update(
         osm_id for osm_id, tags, _nodes, _coords in ways if osm_id not in closed and rideable(tags)
     )
+    return found
+
+
+def beside(
+    sidewalks: Sequence[tuple[int, Sequence[tuple[float, float]]]],
+    roads: Sequence[tuple[int, Sequence[tuple[float, float]]]],
+) -> set[int]:
+    """The sidewalks lying beside one of `roads`, each (osm id, [(lon, lat), ...]): at
+    least BESIDE_FRACTION of the sidewalk's length within BESIDE_M of a road's centreline
+    and within BESIDE_ANGLE of parallel to it there. A crosswalk, across the road, is never
+    beside it."""
+    lat0 = 38.9
+    cell = BESIDE_M
+    asked = [
+        (osm_id, [_xy(lon, lat, lat0) for lon, lat in coords])
+        for osm_id, coords in sidewalks
+        if len(coords) >= 2
+    ]
+    if not asked or not roads:
+        return set()
+    wanted: set[tuple[int, int]] = set()
+    for _osm_id, points in asked:
+        for p, _bearing_at, _metres_at in _samples(points, BESIDE_STEP_M):
+            wanted.add((int(p[0] // cell), int(p[1] // cell)))
+    grid: dict[tuple[int, int], list[tuple[tuple[float, float], tuple[float, float]]]] = {}
+    for _road_id, coords in roads:
+        points = [_xy(lon, lat, lat0) for lon, lat in coords]
+        for a, b in zip(points, points[1:], strict=False):
+            x0, x1 = sorted((a[0], b[0]))
+            y0, y1 = sorted((a[1], b[1]))
+            for gx in range(int(x0 // cell) - 1, int(x1 // cell) + 2):
+                for gy in range(int(y0 // cell) - 1, int(y1 // cell) + 2):
+                    if (gx, gy) in wanted:
+                        grid.setdefault((gx, gy), []).append((a, b))
+    found: set[int] = set()
+    for osm_id, points in asked:
+        total = near = 0.0
+        for p, bearing, metres in _samples(points, BESIDE_STEP_M):
+            total += metres
+            if any(
+                _point_segment_m(p, a, b) <= BESIDE_M
+                and _angle_between(bearing, _bearing(a, b)) <= BESIDE_ANGLE
+                for a, b in grid.get((int(p[0] // cell), int(p[1] // cell)), ())
+            ):
+                near += metres
+        if total > 0 and near >= BESIDE_FRACTION * total:
+            found.add(osm_id)
     return found
 
 
