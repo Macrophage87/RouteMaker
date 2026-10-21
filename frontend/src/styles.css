@@ -7585,6 +7585,9 @@ details.fold > summary .icon {
   align-items: center;
   gap: 8px;
   pointer-events: none;
+  /* Its own width, not the window's, says when Save and Start drop their second word: on a wide screen the map
+     sits between the planner and the results (v0.11.0), so the bar can be narrower than a phone's. */
+  container-type: inline-size;
 }
 
 .plan-map-bar > button {
@@ -7595,6 +7598,7 @@ details.fold > summary .icon {
 .plan-map-bar .plan-bar-small,
 .go-destination .plan-bar-small {
   width: 44px;
+  flex-shrink: 0;
   min-height: 44px;
   padding: 0;
   display: inline-flex;
@@ -7629,8 +7633,8 @@ details.fold > summary .icon {
 .plan-map-bar .plan-bar-route {
   white-space: nowrap;
 }
-/* A phone: "Save" and "Start" (their names stay Save route and Start ride). */
-@media (max-width: 599px) {
+/* A phone, or a narrow map between the panels: "Save" and "Start" (their names stay Save route and Start ride). */
+@container (max-width: 459px) {
   .plan-map-bar .plan-bar-wide {
     display: none;
   }
