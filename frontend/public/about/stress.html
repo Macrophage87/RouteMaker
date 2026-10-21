@@ -87,11 +87,20 @@
   .ln { stroke: var(--accent); stroke-width: 2.5; fill: none; }
   .ln2 { stroke: #c2410c; stroke-width: 2.5; fill: none; stroke-dasharray: 7 4; }
   .fillacc { fill: var(--accent); }
+  .fig-narrow { display: none; }
+  .fig-narrow .t, .fig-narrow .tb { font-size: 15.5px; }
+  .fig-narrow .ts { font-size: 14px; }
+  .fig-narrow .tk, .fig-narrow .tw { font-size: 14.5px; }
+  @media (max-width: 37.5rem) {
+    figure.has-narrow .fig-wide { display: none; }
+    figure.has-narrow .fig-narrow { display: block; }
+  }
   @media (max-width: 30rem) {
     body { font-size: 1rem; }
     h1 { font-size: 1.5rem; }
     th, td { padding: 0.35rem 0.4rem; }
-    figure { padding: 0.4rem; }
+    figure { padding: 0.25rem; }
+    header, main, footer { padding-left: 0.75rem; padding-right: 0.75rem; }
   }
   .lead { font-size: 1.1rem; }
   .note { background: var(--panel); border-left: 4px solid var(--muted); padding: 0.6rem 0.9rem; margin: 1rem 0; }
@@ -113,6 +122,10 @@
   .glance figure { background: var(--bg); }
   .glance ul { padding-left: 1.25rem; }
   .glance .find { margin-bottom: 0; }
+  @media (max-width: 30rem) {
+    .glance { padding: 0.25rem 0.5rem 0.5rem; }
+    details.more > .more-body { padding: 0 0.25rem 0.4rem; }
+  }
 </style>
 </head>
 <body>
@@ -141,8 +154,8 @@
 
 <div class="glance">
 <h2 id="glance">At a glance</h2>
-<figure id="fig-glance-stress">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<figure id="fig-glance-stress" class="has-narrow">
+<div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 760 240" role="img" aria-labelledby="fig-glance-stress-t fig-glance-stress-d" focusable="false" style="min-width:547px">
 <title id="fig-glance-stress-t">Stress ratings at a glance</title>
 <desc id="fig-glance-stress-d">Four sources can rate a road, and the first that does wins: community corrections approved by hand, a local agency (Montgomery County or DDOT), the state agency (Maryland&#x27;s State Highway Administration), then RouteMaker&#x27;s own LTS formula from OpenStreetMap and street facts. Each road gets one level: LTS 1, 2, 3, 4, 4.5 or Avoid. The level colors the map and sets what the road costs when a route is chosen.</desc>
@@ -177,6 +190,43 @@
 <rect class="bx" x="510" y="156" width="240" height="58" rx="6"/>
 <text class="tb" x="630.0" y="181.5" text-anchor="middle">Sets routing costs</text>
 <text class="ts" x="630.0" y="197.5" text-anchor="middle">busier roads count as longer</text>
+</svg>
+</div>
+<div class="fig-narrow">
+<svg viewBox="0 0 320 616" role="img" aria-labelledby="fig-glance-stress-n-t fig-glance-stress-n-d" focusable="false">
+<title id="fig-glance-stress-n-t">Stress ratings at a glance</title>
+<desc id="fig-glance-stress-n-d">Four sources can rate a road, and the first that does wins: community corrections approved by hand, a local agency (Montgomery County or DDOT), the state agency (Maryland&#x27;s State Highway Administration), then RouteMaker&#x27;s own LTS formula from OpenStreetMap and street facts. Each road gets one level: LTS 1, 2, 3, 4, 4.5 or Avoid. The level colors the map and sets what the road costs when a route is chosen.</desc>
+<defs><marker id="ah-glance-stress-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<text class="tb" x="10" y="22" text-anchor="start">Who rates the road</text>
+<text class="tb" x="10" y="42" text-anchor="start">(first one wins)</text>
+<rect class="bxa" x="10" y="54" width="300" height="54" rx="6"/>
+<text class="tb" x="160.0" y="76.5" text-anchor="middle">1. Community corrections</text>
+<text class="ts" x="160.0" y="96.5" text-anchor="middle">approved by hand</text>
+<rect class="bx" x="10" y="114" width="300" height="54" rx="6"/>
+<text class="tb" x="160.0" y="136.5" text-anchor="middle">2. Local agency</text>
+<text class="ts" x="160.0" y="156.5" text-anchor="middle">MoCo, DDOT</text>
+<rect class="bx" x="10" y="174" width="300" height="54" rx="6"/>
+<text class="tb" x="160.0" y="196.5" text-anchor="middle">3. State agency</text>
+<text class="ts" x="160.0" y="216.5" text-anchor="middle">MDOT SHA</text>
+<rect class="bx" x="10" y="234" width="300" height="54" rx="6"/>
+<text class="tb" x="160.0" y="256.5" text-anchor="middle">4. LTS formula</text>
+<text class="ts" x="160.0" y="276.5" text-anchor="middle">OpenStreetMap, street facts</text>
+<path class="ar" d="M160.0,294 L160.0,316" marker-end="url(#ah-glance-stress-n)"/>
+<text class="tb" x="10" y="340" text-anchor="start">One level per road</text>
+<rect x="10" y="352" width="100" height="34" fill="#9ed3ac" stroke="#1c1917" stroke-width="0.8"/><text class="tk" x="60.0" y="373.5" text-anchor="middle">LTS 1</text>
+<rect x="110" y="352" width="100" height="34" fill="#57a06c" stroke="#1c1917" stroke-width="0.8"/><text class="tk" x="160.0" y="373.5" text-anchor="middle">LTS 2</text>
+<rect x="210" y="352" width="100" height="34" fill="#f3c81a" stroke="#1c1917" stroke-width="0.8"/><text class="tk" x="260.0" y="373.5" text-anchor="middle">LTS 3</text>
+<rect x="10" y="392" width="100" height="34" fill="#f28c28" stroke="#1c1917" stroke-width="0.8"/><text class="tk" x="60.0" y="413.5" text-anchor="middle">LTS 4</text>
+<rect x="110" y="392" width="100" height="34" fill="#c81e1e" stroke="#1c1917" stroke-width="0.8"/><text class="tw" x="160.0" y="413.5" text-anchor="middle">LTS 4.5</text>
+<rect x="210" y="392" width="100" height="34" fill="#111111" stroke="#1c1917" stroke-width="0.8"/><text class="tw" x="260.0" y="413.5" text-anchor="middle">Avoid</text>
+<path class="ar" d="M160.0,434 L160.0,456" marker-end="url(#ah-glance-stress-n)"/>
+<text class="tb" x="10" y="480" text-anchor="start">What it does</text>
+<rect class="bx" x="10" y="492" width="300" height="54" rx="6"/>
+<text class="tb" x="160.0" y="514.5" text-anchor="middle">Colors the map</text>
+<text class="ts" x="160.0" y="534.5" text-anchor="middle">one color and dash per level</text>
+<rect class="bx" x="10" y="554" width="300" height="54" rx="6"/>
+<text class="tb" x="160.0" y="576.5" text-anchor="middle">Sets routing costs</text>
+<text class="ts" x="160.0" y="596.5" text-anchor="middle">busier roads count as longer</text>
 </svg>
 </div>
 <figcaption>Where a rating comes from, and what it is used for.</figcaption>
@@ -310,8 +360,8 @@ change it.</li>
     <h2 id="which-rating">Which rating wins</h2>
 <p>Several sources can rate the same road. RouteMaker uses the first one that does, in this
     order:</p>
-<figure id="fig-priority">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<figure id="fig-priority" class="has-narrow">
+<div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 770 290" role="img" aria-labelledby="fig-priority-t fig-priority-d" focusable="false" style="min-width:554px">
 <title id="fig-priority-t">Which rating wins</title>
 <desc id="fig-priority-d">Four sources of a rating, in order. First, community input: corrections from riders and the owner, each approved by hand. Second, a local agency&#x27;s rating: Montgomery County Planning, or DDOT in the District. Third, a state agency&#x27;s rating: Maryland DOT State Highway Administration. Fourth, RouteMaker&#x27;s own formula from the published LTS tables. A source lower down is used only when nothing above it rates the road.</desc>
@@ -336,6 +386,36 @@ change it.</li>
 <text class="ts" x="660" y="240" text-anchor="start">Used only when</text>
 <text class="ts" x="660" y="255" text-anchor="start">nothing above it</text>
 <text class="ts" x="660" y="270" text-anchor="start">rates the road</text>
+</svg>
+</div>
+<div class="fig-narrow">
+<svg viewBox="0 0 320 502" role="img" aria-labelledby="fig-priority-n-t fig-priority-n-d" focusable="false">
+<title id="fig-priority-n-t">Which rating wins</title>
+<desc id="fig-priority-n-d">Four sources of a rating, in order. First, community input: corrections from riders and the owner, each approved by hand. Second, a local agency&#x27;s rating: Montgomery County Planning, or DDOT in the District. Third, a state agency&#x27;s rating: Maryland DOT State Highway Administration. Fourth, RouteMaker&#x27;s own formula from the published LTS tables. A source lower down is used only when nothing above it rates the road.</desc>
+<defs><marker id="ah-priority-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<text class="tb" x="10" y="22" text-anchor="start">Wins</text>
+<rect class="bxa" x="44" y="34" width="266" height="80" rx="6"/>
+<text class="tb" x="177.0" y="59" text-anchor="middle">1. Community input</text>
+<text class="ts" x="177.0" y="79" text-anchor="middle">Corrections from riders and the</text>
+<text class="ts" x="177.0" y="99" text-anchor="middle">owner, each approved by hand</text>
+<path class="ar" d="M177,116 L177,139" marker-end="url(#ah-priority-n)"/>
+<rect class="bx" x="44" y="142" width="266" height="80" rx="6"/>
+<text class="tb" x="177.0" y="167" text-anchor="middle">2. Local agency rating</text>
+<text class="ts" x="177.0" y="187" text-anchor="middle">Montgomery County Planning; DDOT in</text>
+<text class="ts" x="177.0" y="207" text-anchor="middle">the District</text>
+<path class="ar" d="M177,224 L177,247" marker-end="url(#ah-priority-n)"/>
+<rect class="bx" x="44" y="250" width="266" height="80" rx="6"/>
+<text class="tb" x="177.0" y="275" text-anchor="middle">3. State agency rating</text>
+<text class="ts" x="177.0" y="295" text-anchor="middle">Maryland DOT State Highway</text>
+<text class="ts" x="177.0" y="315" text-anchor="middle">Administration</text>
+<path class="ar" d="M177,332 L177,355" marker-end="url(#ah-priority-n)"/>
+<rect class="bx" x="44" y="358" width="266" height="80" rx="6"/>
+<text class="tb" x="177.0" y="383" text-anchor="middle">4. The LTS formula</text>
+<text class="ts" x="177.0" y="403" text-anchor="middle">RouteMaker&#x27;s own reading of the</text>
+<text class="ts" x="177.0" y="423" text-anchor="middle">published LTS tables</text>
+<path class="ar" d="M22,32 L22,434" marker-end="url(#ah-priority-n)"/>
+<text class="ts" x="10" y="462" text-anchor="start">Used only when nothing above it</text>
+<text class="ts" x="10" y="482" text-anchor="start">rates the road</text>
 </svg>
 </div>
 <figcaption>The first source that rates a road decides its level. The road panel lists every rating a road has and says which one is used. One rule sits above them all: a rural road open to cars is at least LTS 2, whichever source rates it.</figcaption>
@@ -376,8 +456,8 @@ change it.</li>
     <p>Inside Montgomery County both the county and the state rate many of the same roads. They mostly
     agree, but where they differ the county is usually the stricter one, and usually closer to how the
     road feels:</p>
-    <figure id="fig-compare">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+    <figure id="fig-compare" class="has-narrow">
+<div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 880 192" role="img" aria-labelledby="fig-compare-t fig-compare-d" focusable="false" style="min-width:600px">
 <title id="fig-compare-t">Montgomery County and Maryland ratings compared</title>
 <desc id="fig-compare-d">Horizontal bars over the 2,893 miles [4,656 km] of road in Montgomery County that both agencies rate. Montgomery rates 196 miles [315 km] two or more levels more stressful, 6.8 percent, and 510 miles [821 km] a half to one and a half levels more stressful, 17.6 percent. 1,988 miles [3,199 km], 68.7 percent, get the same level. Maryland rates 154 miles [248 km] a half to one and a half levels more stressful, 5.3 percent, and 45 miles [72 km] two or more levels more stressful, 1.6 percent.</desc>
@@ -398,6 +478,30 @@ change it.</li>
 <rect class="fillacc" x="340" y="152" width="8.6" height="20" rx="2"/>
 <text class="ts" x="354.55" y="167" text-anchor="start">45 mi [72 km], 1.6%</text>
 <line class="axis" x1="340" y1="8" x2="340" y2="184"/>
+</svg>
+</div>
+<div class="fig-narrow">
+<svg viewBox="0 0 320 386" role="img" aria-labelledby="fig-compare-n-t fig-compare-n-d" focusable="false">
+<title id="fig-compare-n-t">Montgomery County and Maryland ratings compared</title>
+<desc id="fig-compare-n-d">Horizontal bars over the 2,893 miles [4,656 km] of road in Montgomery County that both agencies rate. Montgomery rates 196 miles [315 km] two or more levels more stressful, 6.8 percent, and 510 miles [821 km] a half to one and a half levels more stressful, 17.6 percent. 1,988 miles [3,199 km], 68.7 percent, get the same level. Maryland rates 154 miles [248 km] a half to one and a half levels more stressful, 5.3 percent, and 45 miles [72 km] two or more levels more stressful, 1.6 percent.</desc>
+<defs><marker id="ah-compare-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<text class="t" x="18" y="24" text-anchor="start">Montgomery 2 or more levels stricter</text>
+<text class="ts" x="18" y="42" text-anchor="start">196 mi [315 km], 6.8%</text>
+<rect class="fillacc" x="11" y="50" width="29.0" height="16" rx="2"/>
+<text class="t" x="18" y="94" text-anchor="start">Montgomery a half to 1.5 levels</text>
+<text class="t" x="18" y="114" text-anchor="start">stricter</text>
+<text class="ts" x="18" y="132" text-anchor="start">510 mi [821 km], 17.6%</text>
+<rect class="fillacc" x="11" y="140" width="75.5" height="16" rx="2"/>
+<text class="t" x="18" y="184" text-anchor="start">Same level</text>
+<text class="ts" x="18" y="202" text-anchor="start">1,988 mi [3,199 km], 68.7%</text>
+<rect class="fillacc" x="11" y="210" width="294.2" height="16" rx="2"/>
+<text class="t" x="18" y="254" text-anchor="start">Maryland a half to 1.5 levels stricter</text>
+<text class="ts" x="18" y="272" text-anchor="start">154 mi [248 km], 5.3%</text>
+<rect class="fillacc" x="11" y="280" width="22.8" height="16" rx="2"/>
+<text class="t" x="18" y="324" text-anchor="start">Maryland 2 or more levels stricter</text>
+<text class="ts" x="18" y="342" text-anchor="start">45 mi [72 km], 1.6%</text>
+<rect class="fillacc" x="11" y="350" width="6.7" height="16" rx="2"/>
+<line class="axis" x1="10" y1="4" x2="10" y2="378"/>
 </svg>
 </div>
 <figcaption>RouteMaker's own comparison, October 2026, over 2,893 mi [4,656 km] of road both agencies rate<sup class="cite"><a href="#ref-1" aria-label="source 1">[1]</a><a href="#ref-3" aria-label="source 3">[3]</a></sup>. They give the same level on 69% of it, and are within one and a half levels on 92%.</figcaption>
@@ -478,8 +582,8 @@ change it.</li>
     <h2 id="formula">The formula in detail</h2>
 <p>Where no correction or agency rates a road, RouteMaker rates it from the published LTS
     tables<sup class="cite"><a href="#ref-13" aria-label="source 13">[13]</a></sup>, written fresh from the tables rather than copied from another tool:</p>
-<figure id="fig-steps">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<figure id="fig-steps" class="has-narrow">
+<div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 440 412" role="img" aria-labelledby="fig-steps-t fig-steps-d" focusable="false" style="min-width:316px">
 <title id="fig-steps-t">The formula, step by step</title>
 <desc id="fig-steps-d">Seven steps in order. One: a trail, path or separated bike lane is LTS 1. Two: speed, the posted limit or else a cautious default. Three: a bike lane or shoulder is read on the bike-lane table, otherwise the mixed-traffic table. Four: traffic volume moves a quiet road one level down and a busy one level up. Five: road-type floors keep main roads at LTS 3 or above. Six: rural roads open to cars are at least LTS 2. Seven: a rough surface keeps a road out of LTS 1.</desc>
@@ -513,6 +617,40 @@ change it.</li>
 <text class="ts" x="220.0" y="392.5" text-anchor="middle">dirt, grass or rough: not LTS 1</text>
 </svg>
 </div>
+<div class="fig-narrow">
+<svg viewBox="0 0 320 580" role="img" aria-labelledby="fig-steps-n-t fig-steps-n-d" focusable="false">
+<title id="fig-steps-n-t">The formula, step by step</title>
+<desc id="fig-steps-n-d">Seven steps in order. One: a trail, path or separated bike lane is LTS 1. Two: speed, the posted limit or else a cautious default. Three: a bike lane or shoulder is read on the bike-lane table, otherwise the mixed-traffic table. Four: traffic volume moves a quiet road one level down and a busy one level up. Five: road-type floors keep main roads at LTS 3 or above. Six: rural roads open to cars are at least LTS 2. Seven: a rough surface keeps a road out of LTS 1.</desc>
+<defs><marker id="ah-steps-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<rect class="bx" x="10" y="8" width="300" height="60" rx="6"/>
+<text class="tb" x="160.0" y="33" text-anchor="middle">Trail, path or separated lane?</text>
+<text class="ts" x="160.0" y="53" text-anchor="middle">LTS 1</text>
+<path class="ar" d="M160.0,70 L160.0,89" marker-end="url(#ah-steps-n)"/>
+<rect class="bx" x="10" y="92" width="300" height="60" rx="6"/>
+<text class="tb" x="160.0" y="117" text-anchor="middle">Speed</text>
+<text class="ts" x="160.0" y="137" text-anchor="middle">posted limit, else a cautious default</text>
+<path class="ar" d="M160.0,154 L160.0,173" marker-end="url(#ah-steps-n)"/>
+<rect class="bx" x="10" y="176" width="300" height="60" rx="6"/>
+<text class="tb" x="160.0" y="201" text-anchor="middle">Bike lane or shoulder?</text>
+<text class="ts" x="160.0" y="221" text-anchor="middle">lane table; else mixed-traffic table</text>
+<path class="ar" d="M160.0,238 L160.0,257" marker-end="url(#ah-steps-n)"/>
+<rect class="bx" x="10" y="260" width="300" height="60" rx="6"/>
+<text class="tb" x="160.0" y="285" text-anchor="middle">Traffic volume</text>
+<text class="ts" x="160.0" y="305" text-anchor="middle">quiet: one level down; busy: one up</text>
+<path class="ar" d="M160.0,322 L160.0,341" marker-end="url(#ah-steps-n)"/>
+<rect class="bx" x="10" y="344" width="300" height="60" rx="6"/>
+<text class="tb" x="160.0" y="369" text-anchor="middle">Road type floors</text>
+<text class="ts" x="160.0" y="389" text-anchor="middle">main roads at least LTS 3</text>
+<path class="ar" d="M160.0,406 L160.0,425" marker-end="url(#ah-steps-n)"/>
+<rect class="bx" x="10" y="428" width="300" height="60" rx="6"/>
+<text class="tb" x="160.0" y="453" text-anchor="middle">Rural floor</text>
+<text class="ts" x="160.0" y="473" text-anchor="middle">rural roads open to cars at least LTS 2</text>
+<path class="ar" d="M160.0,490 L160.0,509" marker-end="url(#ah-steps-n)"/>
+<rect class="bx" x="10" y="512" width="300" height="60" rx="6"/>
+<text class="tb" x="160.0" y="537" text-anchor="middle">Surface</text>
+<text class="ts" x="160.0" y="557" text-anchor="middle">dirt, grass or rough: not LTS 1</text>
+</svg>
+</div>
 <figcaption>Where a fact is missing, every step assumes the more stressful answer and records that it did.</figcaption>
 </figure>
 <details class="more"><summary>More: The formula in detail</summary>
@@ -523,8 +661,8 @@ change it.</li>
     District's default is its legal 20 mph [32 km/h]<sup class="cite"><a href="#ref-10" aria-label="source 10">[10]</a></sup>. An unpaved rural road is read at no
     more than 30 mph [48 km/h], and a narrow or winding rural road with no traffic count at 25 mph
     [40 km/h].</p>
-    <figure id="fig-mixed">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+    <figure id="fig-mixed" class="has-narrow">
+<div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 570 250" role="img" aria-labelledby="fig-mixed-t fig-mixed-d" focusable="false" style="min-width:410px">
 <title id="fig-mixed-t">Streets with no bike lane: speed and lanes</title>
 <desc id="fig-mixed-d">A grid of the level for a street with no bike facility. At 20 mph [32 km/h] or less: LTS 1 with one lane each way, LTS 2 with more. At 25 mph [40 km/h]: LTS 2 and LTS 3. At 30 mph [48 km/h]: LTS 3 and LTS 4. At 35 mph [56 km/h] or more: LTS 4 either way.</desc>
@@ -545,10 +683,35 @@ change it.</li>
 <rect x="390" y="164" width="160" height="40" fill="#f28c28" stroke="#1c1917" stroke-width="0.8"/><text class="tk" x="470.0" y="188.5" text-anchor="middle">LTS 4</text></g>
 </svg>
 </div>
+<div class="fig-narrow">
+<svg viewBox="0 0 320 412" role="img" aria-labelledby="fig-mixed-n-t fig-mixed-n-d" focusable="false">
+<title id="fig-mixed-n-t">Streets with no bike lane: speed and lanes</title>
+<desc id="fig-mixed-n-d">A grid of the level for a street with no bike facility. At 20 mph [32 km/h] or less: LTS 1 with one lane each way, LTS 2 with more. At 25 mph [40 km/h]: LTS 2 and LTS 3. At 30 mph [48 km/h]: LTS 3 and LTS 4. At 35 mph [56 km/h] or more: LTS 4 either way.</desc>
+<defs><marker id="ah-mixed-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<text class="tb" x="10" y="22" text-anchor="start">Table A. No bike lane: you ride in</text>
+<text class="tb" x="10" y="42" text-anchor="start">the traffic lane</text>
+<text class="tb" x="85" y="68" text-anchor="middle">One lane</text>
+<text class="tb" x="85" y="88" text-anchor="middle">each way</text>
+<text class="tb" x="240" y="68" text-anchor="middle">Two or more</text>
+<text class="tb" x="240" y="88" text-anchor="middle">lanes each way</text>
+<text class="t" x="10" y="118" text-anchor="start">20 mph [32 km/h] or less</text>
+<rect x="10" y="128" width="145" height="40" fill="#9ed3ac" stroke="#1c1917" stroke-width="0.8"/><text class="tk" x="82.5" y="152.5" text-anchor="middle">LTS 1</text>
+<rect x="165" y="128" width="145" height="40" fill="#57a06c" stroke="#1c1917" stroke-width="0.8"/><text class="tk" x="237.5" y="152.5" text-anchor="middle">LTS 2</text>
+<text class="t" x="10" y="194" text-anchor="start">25 mph [40 km/h]</text>
+<rect x="10" y="204" width="145" height="40" fill="#57a06c" stroke="#1c1917" stroke-width="0.8"/><text class="tk" x="82.5" y="228.5" text-anchor="middle">LTS 2</text>
+<rect x="165" y="204" width="145" height="40" fill="#f3c81a" stroke="#1c1917" stroke-width="0.8"/><text class="tk" x="237.5" y="228.5" text-anchor="middle">LTS 3</text>
+<text class="t" x="10" y="270" text-anchor="start">30 mph [48 km/h]</text>
+<rect x="10" y="280" width="145" height="40" fill="#f3c81a" stroke="#1c1917" stroke-width="0.8"/><text class="tk" x="82.5" y="304.5" text-anchor="middle">LTS 3</text>
+<rect x="165" y="280" width="145" height="40" fill="#f28c28" stroke="#1c1917" stroke-width="0.8"/><text class="tk" x="237.5" y="304.5" text-anchor="middle">LTS 4</text>
+<text class="t" x="10" y="346" text-anchor="start">35 mph [56 km/h] or more</text>
+<rect x="10" y="356" width="145" height="40" fill="#f28c28" stroke="#1c1917" stroke-width="0.8"/><text class="tk" x="82.5" y="380.5" text-anchor="middle">LTS 4</text>
+<rect x="165" y="356" width="145" height="40" fill="#f28c28" stroke="#1c1917" stroke-width="0.8"/><text class="tk" x="237.5" y="380.5" text-anchor="middle">LTS 4</text>
+</svg>
+</div>
 <figcaption>Table A is for a street where you share the lane with cars, from Furth's tables<sup class="cite"><a href="#ref-13" aria-label="source 13">[13]</a></sup>. Traffic volume then moves a two-lane road one level (below). Inside an urban area a multi-lane street is read on the one-lane row, but never below LTS 3.</figcaption>
 </figure>
-    <figure id="fig-lane">
-<div class="fig-scroll" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+    <figure id="fig-lane" class="has-narrow">
+<div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 605 250" role="img" aria-labelledby="fig-lane-t fig-lane-d" focusable="false" style="min-width:435px">
 <title id="fig-lane-t">Streets with a painted bike lane</title>
 <desc id="fig-lane-d">A grid of the level for a street with a painted bike lane. Under 30 mph [48 km/h] with one lane: LTS 1 if the lane is adequate, LTS 2 if narrow. At 30 mph [48 km/h], or with two or more lanes each way: LTS 2 and LTS 3. At 35 mph [56 km/h]: LTS 3 either way. At 40 mph [64 km/h] or more: LTS 4 either way.</desc>
@@ -567,6 +730,29 @@ change it.</li>
 <text class="t" x="255" y="190" text-anchor="end">40 mph [64 km/h] or more</text>
 <rect x="265" y="164" width="160" height="40" fill="#f28c28" stroke="#1c1917" stroke-width="0.8"/><text class="tk" x="345.0" y="188.5" text-anchor="middle">LTS 4</text>
 <rect x="435" y="164" width="160" height="40" fill="#f28c28" stroke="#1c1917" stroke-width="0.8"/><text class="tk" x="515.0" y="188.5" text-anchor="middle">LTS 4</text></g>
+</svg>
+</div>
+<div class="fig-narrow">
+<svg viewBox="0 0 320 392" role="img" aria-labelledby="fig-lane-n-t fig-lane-n-d" focusable="false">
+<title id="fig-lane-n-t">Streets with a painted bike lane</title>
+<desc id="fig-lane-n-d">A grid of the level for a street with a painted bike lane. Under 30 mph [48 km/h] with one lane: LTS 1 if the lane is adequate, LTS 2 if narrow. At 30 mph [48 km/h], or with two or more lanes each way: LTS 2 and LTS 3. At 35 mph [56 km/h]: LTS 3 either way. At 40 mph [64 km/h] or more: LTS 4 either way.</desc>
+<defs><marker id="ah-lane-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<text class="tb" x="10" y="22" text-anchor="start">Table B. A painted bike lane: you</text>
+<text class="tb" x="10" y="42" text-anchor="start">ride beside the traffic</text>
+<text class="tb" x="85" y="68" text-anchor="middle">Adequate lane</text>
+<text class="tb" x="240" y="68" text-anchor="middle">Narrow lane</text>
+<text class="t" x="10" y="98" text-anchor="start">Under 30 mph [48 km/h], one lane</text>
+<rect x="10" y="108" width="145" height="40" fill="#9ed3ac" stroke="#1c1917" stroke-width="0.8"/><text class="tk" x="82.5" y="132.5" text-anchor="middle">LTS 1</text>
+<rect x="165" y="108" width="145" height="40" fill="#57a06c" stroke="#1c1917" stroke-width="0.8"/><text class="tk" x="237.5" y="132.5" text-anchor="middle">LTS 2</text>
+<text class="t" x="10" y="174" text-anchor="start">30 mph [48 km/h], or 2+ lanes</text>
+<rect x="10" y="184" width="145" height="40" fill="#57a06c" stroke="#1c1917" stroke-width="0.8"/><text class="tk" x="82.5" y="208.5" text-anchor="middle">LTS 2</text>
+<rect x="165" y="184" width="145" height="40" fill="#f3c81a" stroke="#1c1917" stroke-width="0.8"/><text class="tk" x="237.5" y="208.5" text-anchor="middle">LTS 3</text>
+<text class="t" x="10" y="250" text-anchor="start">35 mph [56 km/h]</text>
+<rect x="10" y="260" width="145" height="40" fill="#f3c81a" stroke="#1c1917" stroke-width="0.8"/><text class="tk" x="82.5" y="284.5" text-anchor="middle">LTS 3</text>
+<rect x="165" y="260" width="145" height="40" fill="#f3c81a" stroke="#1c1917" stroke-width="0.8"/><text class="tk" x="237.5" y="284.5" text-anchor="middle">LTS 3</text>
+<text class="t" x="10" y="326" text-anchor="start">40 mph [64 km/h] or more</text>
+<rect x="10" y="336" width="145" height="40" fill="#f28c28" stroke="#1c1917" stroke-width="0.8"/><text class="tk" x="82.5" y="360.5" text-anchor="middle">LTS 4</text>
+<rect x="165" y="336" width="145" height="40" fill="#f28c28" stroke="#1c1917" stroke-width="0.8"/><text class="tk" x="237.5" y="360.5" text-anchor="middle">LTS 4</text>
 </svg>
 </div>
 <figcaption>Table B is for a street with a painted bike lane<sup class="cite"><a href="#ref-13" aria-label="source 13">[13]</a></sup>. The lane gives you your own space, so the same speed rates calmer than in Table A. Adequate means at least 15 ft [4.6 m] of lane and parking together beside parked cars, or at least 5.6 ft [1.7 m] with no parking. When the width or the parking is not mapped, RouteMaker assumes the worse case. A separated bike lane or a trail is LTS 1.</figcaption>
