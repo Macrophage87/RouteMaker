@@ -504,6 +504,32 @@ CASES: list[tuple[str, dict[str, str], bool | tuple[bool, bool]]] = [
         {"highway": "footway", "footway": "sidewalk", "bicycle": "no", "rm:trail_class": "yes"},
         CLOSED,
     ),
+    (
+        "a walk-your-bike station link (routemaker.station_links)",
+        {
+            "highway": "footway",
+            "footway": "sidewalk",
+            "rm:trail_class": "yes",
+            "rm:walk_link": "yes",
+        },
+        OPEN,
+    ),
+    (
+        "a sidewalk ridden as a last resort (routemaker.sidewalks)",
+        {
+            "highway": "footway",
+            "footway": "sidewalk",
+            "rm:trail_class": "yes",
+            "rm:sidewalk": "yes",
+            "rm:stress_tier": "3",
+        },
+        OPEN,
+    ),
+    (
+        "the same sidewalk unmarked (the ridden-sidewalk control)",
+        {"highway": "footway", "footway": "sidewalk", "rm:trail_class": "yes"},
+        CLOSED,
+    ),
     # FOLLOWUP-VALHALLA-36-LEFTOVERS, item 3: upstream reads no `sac_scale` for a
     # bicycle, so the class decides (`trailaccess.upstream_open`).
     ("a footway rated sac_scale=hiking", {"highway": "footway", "sac_scale": "hiking"}, CLOSED),

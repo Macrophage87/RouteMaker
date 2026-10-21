@@ -279,11 +279,11 @@ def test_the_predraw_flag_is_off_for_anything_else() -> None:
 
 
 @pytest.mark.parametrize("router", ["offroad", "mtb"])
-def test_the_offroad_router_config_never_restarts_the_beta_routers(router: str) -> None:
+def test_a_trail_router_config_restarts_the_routers(router: str) -> None:
+    # The trail routers run on the beta once their tiles are there (the owner, 2026-10-20).
     path = f"valhalla/valhalla-{router}.json"
     runtime = _gate({path: (_vjson(), _vjson(logging__color=True))})
-    assert runtime["verdict"] == "deploy" and not runtime["routers_restart"]
-    assert f"the {router} router does not run on the beta" in " ".join(runtime["notes"])
+    assert runtime["verdict"] == "deploy" and runtime["routers_restart"]
     build = _gate({path: (_vjson(), _vjson(mjolnir__hierarchy=False))})
     assert build["verdict"] == "stop"
 
@@ -1166,14 +1166,25 @@ def test_a_valhalla_runtime_change_restarts_exactly_the_four_routers(beta: Beta)
     _order(calls, "up -d api worker", f"restart {ROUTERS}", "smoke --local")
 
 
-def test_a_runtime_change_to_the_offroad_config_restarts_no_router(beta: Beta) -> None:
+def test_a_trail_router_without_its_tiles_is_never_named(beta: Beta) -> None:
     beta.release("v0.2.0", {"valhalla/valhalla-offroad.json": _vjson(logging__color=True)})
     done = beta.agent("run", STUB_HAS_IMAGES="1", STUB_RUNNING="postgis")
     assert done.returncode == 0, done.stdout + done.stderr
     assert "deployed: v0.2.0" in beta.status()
-    assert _restarts(beta.calls()) == []
-    assert "offroad" not in beta.calls()
-    assert "the offroad router does not run on the beta" in done.stdout
+    assert _restarts(beta.calls()) == [f"restart {ROUTERS}"]
+    assert "valhalla-offroad" not in beta.calls() and "valhalla-mtb" not in beta.calls()
+
+
+def test_a_trail_router_with_its_tiles_restarts_beside_the_four(beta: Beta) -> None:
+    # A promoted build on the host (`tiles/<variant>/current`) is what lets a trail router run.
+    (beta.data / "tiles" / "offroad" / "b1").mkdir(parents=True)
+    (beta.data / "tiles" / "offroad" / "current").symlink_to("b1")
+    beta.release("v0.2.0", {"valhalla/valhalla-offroad.json": _vjson(logging__color=True)})
+    done = beta.agent("run", STUB_HAS_IMAGES="1", STUB_RUNNING="postgis")
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "deployed: v0.2.0" in beta.status()
+    assert _restarts(beta.calls()) == [f"restart {ROUTERS} valhalla-offroad"]
+    assert "valhalla-mtb" not in beta.calls()
 
 
 def test_a_rollback_after_a_router_restart_restarts_the_same_four(beta: Beta) -> None:

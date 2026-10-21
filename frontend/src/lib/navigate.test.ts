@@ -1,6 +1,7 @@
 // Ride mode's engine (WEB-NAV-plan.md sections 2-4): progress along the line, the cue schedule per
 // level, off route with its hysteresis, the re-plan's points and gate, and the words.
 import { test } from "node:test";
+import { routeRequestBody } from "./api.ts";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import type { DescriptionEntry, RouteResponse } from "./api.ts";
@@ -48,6 +49,20 @@ import {
   replanPoints,
   rideModel,
   REPLAN_UTURN,
+  REPLAN_FOUND,
+  REPLAN_REJOIN,
+  REPLAN_AHEAD,
+  REPLAN_NO_AHEAD,
+  UTURNS_BEFORE_AHEAD,
+  UTURN_RECHECK_MS,
+  UTURN_START,
+  UTURN_TAKEN_M,
+  keepsAhead,
+  uturnAheadOnly,
+  uturnStep,
+  type UTurnEvent,
+  type UTurnState,
+  replanTold,
   says,
   setsOffBack,
   UTURN_SAID,
@@ -55,6 +70,7 @@ import {
   sentenceOf,
   snap,
   startState,
+  PASSED_M,
   step,
   toGo,
   turnWords,
@@ -1489,6 +1505,18 @@ test("a U-turn re-route says it plainly: first on the card, said at once, then t
   assert.equal(model.cues[0].movement, "uturn");
   assert.deepEqual(model.cues.map((c) => c.index), model.cues.map((_, i) => i));
   assert.equal(model.cues[1].text, "Left onto B Street.");
+  // The card leads with it (the owner, 2026-10-20: "There's no U turn symbol."), until the rider is on the way.
+  assert.equal(nextAction(model, 0)?.movement, "uturn");
+  assert.equal(nextAction(model, 9.9)?.movement, "uturn");
+  assert.equal(nextAction(model, PASSED_M)?.text, "Left onto B Street.");
+  assert.equal(nextAction(model, 20)?.text, "Left onto B Street.");
+  assert.equal(whereAmI(model, { ...startState(), progressM: 0 }).includes("Next: make a U-turn."), true);
+  // Without a U-turn, the start is as before: the first turn.
+  assert.equal(nextAction(rideModel(lRoute()), 0)?.text, "Left onto B Street.");
+  // A first turn within 10 m of the start: the card moves on to it when the voice does.
+  const near = withUTurn({ ...rideModel(lRoute()), cues: rideModel(lRoute()).cues.map((c, i) => (i === 0 ? { ...c, atM: 6 } : c)) });
+  assert.equal(nextAction(near, 2)?.movement, "uturn");
+  assert.equal(nextAction(near, 3.5)?.text, "Left onto B Street.");
   const out = step(model, startState(), fix(at(0, 0)), "full");
   assert.ok(out.events.some((e) => e.spoken === "Make a U-turn now."), JSON.stringify(out.events.map((e) => e.spoken)));
   const { events } = ride(model, "full", 0, 1100, 20);
@@ -1584,4 +1612,153 @@ test("a ring kept as its own short stretch, then the way off: the jog says the e
   // An exit with a turn right after it: its own "now" is the exit.
   const exitFirst = { ...second, joined: false, then: { movement: "right" as const, street: "Q Street Northwest" } };
   assert.equal(cueSpoken(exitFirst, "now", 5), "Exit now, then right onto Q Street Northwest.");
+});
+
+test("two U-turn re-routes ridden past, then the third keeps the rider's way (the owner, 2026-10-20)", () => {
+  assert.equal(UTURNS_BEFORE_AHEAD, 2);
+  assert.equal(keepsAhead(0), false);
+  assert.equal(keepsAhead(1), false);
+  assert.equal(keepsAhead(2), true);
+  assert.equal(REPLAN_AHEAD, "New route found. Keep going ahead.");
+  // Said at the stoker's level, as "New route found." was before it.
+  assert.equal(replanTold(false, "stoker", REPLAN_AHEAD), "say");
+  assert.equal(replanTold(false, "quiet", REPLAN_AHEAD), "quiet");
+});
+
+test("ahead_only is sent only with a heading", () => {
+  const body = (options: Parameters<typeof routeRequestBody>[2]) => JSON.parse(routeRequestBody([[-77, 38.9], [-77.01, 38.9]], "default", options));
+  assert.equal(body({ heading: 90, aheadOnly: true }).ahead_only, true);
+  assert.equal(body({ heading: 90 }).ahead_only, undefined);
+  assert.equal(body({ heading: null, aheadOnly: true }).ahead_only, undefined);
+});
+
+test("no way ahead on the third: said plainly once, and the route is left up (the owner, 2026-10-20)", () => {
+  assert.equal(REPLAN_NO_AHEAD, "No route found ahead. Make a U-turn.");
+  assert.equal(replanTold(false, "stoker", REPLAN_NO_AHEAD), "say");
+  // RideMode keeps the U-turns with uturnStep (below); what it does with its answers is wired there.
+  const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
+  // Held, off route promises no new way; the silent check never takes the gate the rider's asks need.
+  assert.match(ride, /prefsRef\.current\.verbosity, auto && !uturns\.current\.held\);/);
+  assert.match(ride, /if \(check \? gate\.busy \|\| checking\.current : !gate\.begin\(Date\.now\(\)\)\) \{/);
+  assert.match(ride, /announcer\.current\?\.say\(note, note === REPLAN_NO_AHEAD\)/);
+  // A check that still turns round says and shows nothing.
+  assert.match(ride, /if \(check && \(!found \|\| heading === null \|\| setsOffBack\(found\.geometry\.coordinates, heading\)\)\) return;/);
+  assert.match(ride, /if \(offRoute\.replan === "ask"\) void replan\(out\.state\.goodFix\.point\);\s*(\/\/[^\n]*\s*)?else if \(offRoute\.replan === "check"\) void replan\(out\.state\.goodFix\.point, undefined, false, false, true\);/);
+});
+
+// The U-turn re-routes as a sequence (lib/navigate.ts uturnStep; the v0.10.1 end review asked for it tested, not read).
+const HEADING = 90;
+/** A re-route made moving (heading 90), as RideMode's replan makes it: ahead only from the count, then counted. */
+function reroute(state: UTurnState, turned: boolean, now: number, note = REPLAN_FOUND) {
+  const aheadOnly = uturnAheadOnly(state, HEADING);
+  return { aheadOnly, ...uturnStep(state, { kind: "rerouted", turned, aheadOnly, stopped: false, note, now }) };
+}
+
+test("U-turns: two asked, the third ahead only, and a way ahead starts the count again", () => {
+  let state = UTURN_START;
+  let step = reroute(state, true, 1000);
+  assert.deepEqual([step.aheadOnly, step.note, step.state.inARow, step.state.held], [false, REPLAN_UTURN, 1, false]);
+  step = reroute((state = step.state), true, 2000);
+  assert.deepEqual([step.aheadOnly, step.note, step.state.inARow], [false, REPLAN_UTURN, 2]);
+  step = reroute((state = step.state), false, 3000);
+  assert.deepEqual([step.aheadOnly, step.note, step.state.inARow, step.state.held], [true, REPLAN_AHEAD, 0, false]);
+  // Without a heading (Road closed's turn round) nothing is ahead only.
+  assert.equal(uturnAheadOnly({ ...state, inARow: 5 }, null), false);
+});
+
+test("U-turns: the third still turns round: said once, held, checked silently each minute, let go by a way ahead", () => {
+  let state = reroute(reroute(UTURN_START, true, 0).state, true, 0).state;
+  const third = reroute(state, true, 10_000);
+  assert.deepEqual([third.aheadOnly, third.note, third.state.inARow, third.state.held], [true, REPLAN_NO_AHEAD, 3, true]);
+  state = third.state;
+  const off = (now: number) => uturnStep(state, { kind: "off-route", now });
+  // Off route while held: no re-plan out loud; a silent check once UTURN_RECHECK_MS has passed, and not again at once.
+  assert.equal(off(10_000 + UTURN_RECHECK_MS - 1).replan, null);
+  const checked = off(10_000 + UTURN_RECHECK_MS);
+  assert.equal(checked.replan, "check");
+  state = checked.state;
+  assert.equal(off(10_000 + UTURN_RECHECK_MS + 1).replan, null);
+  // The check finds a way ahead: taken as any re-route is, and the hold is let go.
+  const ahead = reroute(state, false, 80_000);
+  assert.deepEqual([ahead.aheadOnly, ahead.note, ahead.state.held, ahead.state.inARow], [true, REPLAN_AHEAD, false, 0]);
+  assert.equal(uturnStep(ahead.state, { kind: "off-route", now: 80_001 }).replan, "ask");
+});
+
+test("U-turns: a hold is let go by riding the U-turn route, Re-plan from here, or the other line; a way back is never held", () => {
+  const held = reroute(reroute(reroute(UTURN_START, true, 0).state, true, 0).state, true, 0).state;
+  assert.equal(held.held, true);
+  const along = (event: Omit<Extract<UTurnEvent, { kind: "along" }>, "kind">) => uturnStep(held, { kind: "along", ...event }).state;
+  // Turned round as asked, UTURN_TAKEN_M along the U-turn route: the count starts again.
+  assert.deepEqual(along({ onUTurnRoute: true, off: false, progressM: UTURN_TAKEN_M }), { ...held, inARow: 0, held: false });
+  assert.equal(along({ onUTurnRoute: true, off: false, progressM: UTURN_TAKEN_M - 1 }), held);
+  assert.equal(along({ onUTurnRoute: true, off: true, progressM: 500 }), held);
+  // Followed another route that far: the count starts again, the hold (only ever on a U-turn route) stays as it is.
+  assert.deepEqual(along({ onUTurnRoute: false, off: false, progressM: 500 }), { ...held, inARow: 0 });
+  assert.equal(along({ onUTurnRoute: false, off: true, progressM: 500 }), held);
+  // Re-plan from here, standing still: no heading, so nothing turns round and the hold goes; the count stays.
+  const asked = uturnStep(held, { kind: "rerouted", turned: false, aheadOnly: false, stopped: true, note: REPLAN_FOUND, now: 5 });
+  assert.deepEqual([asked.note, asked.state.held, asked.state.inARow], [REPLAN_FOUND, false, 3]);
+  assert.equal(uturnStep(held, { kind: "other-line" }).state.held, false);
+  // A way back to the planned route that turns round is followed as told, not held.
+  const back = reroute({ ...UTURN_START, inARow: 2 }, true, 0, REPLAN_REJOIN);
+  assert.deepEqual([back.note, back.state.held, back.state.inARow], [REPLAN_REJOIN, false, 3]);
+});
+
+test("U-turns: a re-route made while stopped leaves the count, so pausing between ignored U-turns still reaches the third", () => {
+  let state = reroute(UTURN_START, true, 0).state;
+  const stopped = uturnStep(state, { kind: "rerouted", turned: false, aheadOnly: uturnAheadOnly(state, null), stopped: true, note: REPLAN_FOUND, now: 1 });
+  assert.deepEqual([stopped.note, stopped.state.inARow], [REPLAN_FOUND, 1]);
+  state = reroute(stopped.state, true, 2).state;
+  assert.equal(state.inARow, 2);
+  assert.equal(reroute(state, false, 3).aheadOnly, true, "the third is ahead only");
+  // Road closed turns round on purpose (not stopped): its re-route starts the count again, as before.
+  assert.equal(uturnStep(state, { kind: "rerouted", turned: false, aheadOnly: false, stopped: false, note: REPLAN_FOUND, now: 4 }).state.inARow, 0);
+  // Then followed: the count does not carry down the new route to a missed turn miles on.
+  const followed = uturnStep(stopped.state, { kind: "along", onUTurnRoute: false, off: false, progressM: UTURN_TAKEN_M }).state;
+  assert.equal(followed.inARow, 0);
+  assert.equal(reroute(followed, true, 5).aheadOnly, false);
+  const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
+  assert.match(ride, /stopped: heading === null && !turnRound/);
+});
+
+// ---- Crossings between two turns (the owner, 2026-10-20, at Needwood Road and Redland Road: "It should have told me to cross the street and turn left") ----
+
+test("crossing: a short path across a road between two turns is said as the crossing, then the turn, drawn straight on", () => {
+  const model = rideModel(
+    straightRoute([
+      stretch(0, 900, "Needwood Road bike lane.", { street: "Needwood Road bike lane" }),
+      stretch(900, 925, "Cross Redland Road.", {
+        street: "Needwood Road bike lane",
+        turn: { ...turning("bear_right", "Needwood Road bike lane"), stay: true, cross: "Redland Road", shape: { out: 30, others: [-60] } },
+      }),
+      stretch(925, 2200, "Left onto Redland Road bike lane.", { street: "Redland Road bike lane", turn: turning("left", "Redland Road bike lane") }),
+    ]),
+  );
+  const [first, second] = model.cues;
+  assert.equal(first.cross, "Redland Road");
+  assert.equal(first.junction, undefined);
+  assert.equal(first.text, "Cross Redland Road, then left onto Redland Road bike lane.");
+  assert.equal(cueSpoken(first, "now", 0), "Cross Redland Road now, then left onto Redland Road bike lane.");
+  assert.equal(cueSpoken(first, "advance", 152.4), `In ${spokenDistance(152.4)}, cross Redland Road, then left onto Redland Road bike lane.`);
+  assert.ok(second.joined && second.movement === "left");
+  // On its own, the crossing says the road at "now".
+  assert.equal(cueSpoken({ ...first, then: undefined }, "now", 0), "Cross Redland Road now.");
+});
+
+test("crossing: a turn just before a crossing is not joined to it; the crossing keeps its own cue with the turn after", () => {
+  const model = rideModel(
+    straightRoute([
+      stretch(0, 900, "A Street.", { street: "A Street" }),
+      stretch(900, 960, "Left onto Needwood Road bike lane.", { street: "Needwood Road bike lane", turn: turning("left", "Needwood Road bike lane") }),
+      stretch(960, 985, "Cross Redland Road.", {
+        street: "Needwood Road bike lane",
+        turn: { ...turning("bear_right", "Needwood Road bike lane"), stay: true, cross: "Redland Road" },
+      }),
+      stretch(985, 2200, "Left onto Redland Road bike lane.", { street: "Redland Road bike lane", turn: turning("left", "Redland Road bike lane") }),
+    ]),
+  );
+  const [left, crossing] = model.cues;
+  assert.equal(left.text, "Left onto Needwood Road bike lane.");
+  assert.equal(crossing.text, "Cross Redland Road, then left onto Redland Road bike lane.");
+  assert.ok(!crossing.joined);
 });
