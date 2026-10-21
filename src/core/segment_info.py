@@ -236,6 +236,7 @@ ACCESS_WORDS = {
     "impassable": (False, "Closed: mapped as impassable"),
     "cbd_sidewalk": (False, "Closed: a downtown sidewalk where riding is not allowed"),
     "zoo": (False, "Closed: a National Zoo path closed to bicycles"),
+    "escalator": (False, "Closed: an escalator; take a bicycle by the elevator"),
     "singletrack": (
         False,
         "Closed: mountain-bike singletrack, not used for routes except by the Mountain Bike"
@@ -1096,6 +1097,7 @@ ACCESS_SHORT = {
     "impassable": "mapped as impassable",
     "cbd_sidewalk": "downtown sidewalk",
     "zoo": "National Zoo path",
+    "escalator": "escalator",
     "singletrack": "mountain-bike singletrack",
     "mtb": "mountain-bike trail",
     "dismount": "walk-your-bike stretch",

@@ -844,13 +844,51 @@ function M.remap_way(tags, derived)
   -- cemetery's ways, `access=destination` is upstream's destination-only, so a
   -- route may enter only to end there; and `bicycle=destination` opens the
   -- footways and sidewalks the spur runs over, which upstream closes by class
-  -- (or by `bicycle=no`). The spur is the one place this remap widens a bicycle
-  -- tag, and only for the ways the rebuild names.
+  -- (or by `bicycle=no`). The spur, the station links and the ridden sidewalks below are the only places
+  -- this remap widens a bicycle tag, and only for the ways the rebuild names.
   if derived.destination_only then
     if tags.access == nil or M.PERMISSIVE_ACCESS[tags.access] then
       out.access = M.CEMETERY_ACCESS
     end
     out.bicycle = "destination"
+  end
+
+  -- A footway into a rail station (`rm:walk_link`, routemaker.station_links; the owner,
+  -- 2026-10-20, "Yes, walk your bike"): open at a walk, as OSM's own short
+  -- `bicycle=dismount` connectors are (OWNER-DECISIONS 291(5)). Upstream closes a
+  -- footway with no bicycle tag by its class; walking a bicycle is walking, so this
+  -- widens nothing a pedestrian may not do. Only where no bicycle tag speaks and no
+  -- closure reason stands. Before the ridden sidewalks, so a station's stays walked.
+  if derived.walk_link and tags.bicycle == nil and out.bicycle == nil and not derived.no_bicycle then
+    out.bicycle = "dismount"
+  end
+
+  -- A sidewalk ridden as a last resort (`rm:sidewalk`, routemaker.sidewalks; the
+  -- owner, 2026-10-20: "Bikes can go on sidewalks, especially in more rural parts",
+  -- then "Also sidewalks as last resort"): a sidewalk or crosswalk, or a short footway
+  -- link where a bike way stops, that no bicycle tag speaks for. Upstream closes a
+  -- footway with no bicycle tag by its class; `use_sidepath` opens it, as upstream reads
+  -- it, and adds the stress penalty, and `SIDEWALK_SPEED` raises its roadway stress:
+  -- Valhalla prices a sidewalk's or crosswalk's use as a road's (sif/bicyclecost.cc,
+  -- 3.9.1), from its speed. Together, on a tile build of a road and the sidewalk beside
+  -- it (docs/OPERATIONS.md, "Sidewalks as a last resort"), the sidewalk loses to the road
+  -- at LTS 1 to 3.5 at every slider position, and wins over LTS 4, 4.5 and Avoid from
+  -- the slider's 40 up; below that the road is taken. Only cost moves: a bicycle's time
+  -- comes from its own speed. Only where no bicycle tag speaks and no closure stands.
+  --
+  -- The owner, 2026-10-21: "a lot of people would still ride on some lts 4 roads than take
+  -- the sidewalk, especially with sliplanes", choosing "Beside 4.5/Avoid only". So a
+  -- sidewalk beside a calmer road (`rm:sidewalk=last_resort`, `M.LAST_RESORT_SIDEWALK`)
+  -- also carries LTS 4's top lane count: on the same tile build it loses to LTS 4 and 4.5
+  -- roads at every slider position and is taken only over Avoid or where nothing else
+  -- connects. The links, and the sidewalks beside a 4.5 or Avoid road, keep the price above.
+  if derived.sidewalk and tags.bicycle == nil and out.bicycle == nil and not derived.no_bicycle then
+    out.bicycle = M.STRESS_PENALTY_BICYCLE
+    out["maxspeed:practical"] = M.SIDEWALK_SPEED
+    if derived.sidewalk == M.LAST_RESORT_SIDEWALK then
+      out["lanes:forward"] = M.GRADED_LANES
+      out["lanes:backward"] = M.GRADED_LANES
+    end
   end
 
   -- A paved way is not a mountain-bike trail (`M.strip_paved_ratings`).
@@ -1493,6 +1531,12 @@ function M.hazard_priced(derived)
   priced.stress_half = false
   return priced
 end
+
+-- A ridden sidewalk's practical speed (kph; see `remap_way`, `rm:sidewalk`), which sets
+-- the roadway stress Valhalla prices a sidewalk's or crosswalk's use at.
+M.SIDEWALK_SPEED = "90"
+-- `rm:sidewalk`'s value for a sidewalk priced above an LTS 4 road (routemaker.sidewalks).
+M.LAST_RESORT_SIDEWALK = "last_resort"
 
 -- Half steps' marks (see `remap_way`): 3.5's practical speed (kph) and lanes
 -- each way, between a road's own and LTS 4's `GRADED_*`, and 2.5's lanes.

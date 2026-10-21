@@ -138,7 +138,7 @@ test("a route everyone shares stays fixed on the ride: off route, the way back, 
   assert.match(app, /fixed=\{rideStart\.fixed\}/);
   // No automatic re-plan, from a fix or when the signal comes back.
   assert.match(ride, /const auto = !keepRef\.current && !fixedRef\.current;/);
-  assert.match(ride, /if \(state\.off && !keepRef\.current && !fixedRef\.current && state\.goodFix\) void replan/);
+  assert.match(ride, /if \(state\.off && !keepRef\.current && !fixedRef\.current && !uturns\.current\.held && state\.goodFix\) void replan/);
   // The way back is said once on leaving it and shown while off; Keep is not offered (it is always kept).
   assert.match(ride, /if \(fixedRef\.current && out\.events\.some\(\(e\) => e\.kind === "off-route"\)\) \{\s*const back = wayBack\(modelRef\.current, out\.state\);\s*if \(back\) announcer\.current\?\.answer\(`\$\{FIXED_SAID\} \$\{wayBackSaid\(back\)\}`\);/);
   assert.match(ride, /\{\(keepPlanned \|\| fixedRef\.current\) && back && \(/);

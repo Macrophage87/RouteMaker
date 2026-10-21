@@ -39,7 +39,7 @@ import {
   ROUTE_BAND_WIDTH,
   sectionFeatures,
 } from "./lib/routeColours.ts";
-import { ROAD_LABEL, ROAD_LABEL_LAYER_IDS, mtbTrailsOn, rideRoadLabelField, routableMtbLevel, stressOverlayLayers, subscribeHighStressLanes, subscribeMtbTrails, subscribePalette, subscribeRoutableMtb, withClearRoadLabels } from "./stressStyle.js";
+import { ROAD_LABEL, ROAD_LABEL_LAYER_IDS, TRAIL_LABEL_LAYER_ID, mtbTrailsOn, rideRoadLabelField, rideTrailLabelField, routableMtbLevel, stressOverlayLayers, subscribeHighStressLanes, subscribeMtbTrails, subscribePalette, subscribeRoutableMtb, withClearRoadLabels } from "./stressStyle.js";
 import { subscribeTopoLines, syncTopoLines, topoLinesOn, type TopoMap } from "./lib/topoLines.ts";
 import {
   addStressOverlay,
@@ -84,7 +84,7 @@ import type { FederalStatus } from "./lib/federalLegend.ts";
 import { attachFederalInteraction } from "./federalInteraction.ts";
 import { addWaterRestrooms, setWaterPrefs, WATER_SOURCE_ID, type WaterMap, type WaterPoint, type WaterPrefs } from "./lib/waterRestrooms.ts";
 import { attachWaterInteraction } from "./waterInteraction.ts";
-import { addClimbs, CLIMBS_FROM_DEFAULT, CLIMBS_SOURCE_ID, setClimbsFrom, setClimbsOn, setTrailClimbs, subscribeHideBusy, type Climb, type ClimbCategory, type ClimbsMap } from "./lib/climbs.ts";
+import { addClimbs, climbsUnder, CLIMBS_FROM_DEFAULT, CLIMBS_SOURCE_ID, setClimbsFrom, setClimbsOn, setTrailClimbs, subscribeHideBusy, type Climb, type ClimbCategory, type ClimbsMap } from "./lib/climbs.ts";
 import { attachClimbInteraction } from "./climbInteraction.ts";
 import { climbCardAfterClose } from "./lib/climbCard.ts";
 import type { When } from "./lib/dials.ts";
@@ -316,7 +316,7 @@ interface Props {
   /** The road panel's "Climb details": open this climb's card with the focus in it; `n` changes for each ask. */
   climbCardRequest?: { climb: Climb; n: number } | null;
   /** A station's Start here / End here / Add as stop, with its bike entrance. */
-  onStationPoint: (role: StationRole, point: LonLat, place: { name: string; label: string }) => void;
+  onStationPoint: (role: StationRole, point: LonLat, place: { name: string; label: string; tapped?: boolean }) => void;
   /** Go with no route yet: a station card's End here rides there from the rider's start (App's goTo). */
   stationEndFromHere?: boolean;
   /** The ride reaches places on foot (presets.ts, endsOnFoot): a station card's points are its nearest entrance. */
@@ -648,8 +648,9 @@ export function MapView(props: Props) {
       ],
       // Added below, so it can start collapsed.
       attributionControl: false,
-      // The "i" opens the map's info panel (lib/mapInfo.ts), not only the credits: say so.
-      locale: { "AttributionControl.ToggleAttribution": "Map info and credits" },
+      // The "i" opens the map's info panel (lib/mapInfo.ts), not only the credits: say so. It reads
+      // "Help" on screen, so its name starts with that word.
+      locale: { "AttributionControl.ToggleAttribution": "Help: map info and credits" },
       cooperativeGestures: false,
       // The labels' font comes with the app, not the base map (lib/mapGlyphs.ts).
       transformRequest: mapGlyphRequest,
@@ -743,7 +744,8 @@ export function MapView(props: Props) {
       // "The climb dots go over the road name"): the names are placed first and a summit gives way to one, as two
       // summits give way to each other. Under the route, the water and the stations too. Without the names, the route.
       const layerIds = map.getStyle().layers.map((layer) => layer.id);
-      const underNames = layerIds.find((id) => ROAD_LABEL_LAYER_IDS.includes(id)) ?? ROUTE_BOTTOM_LAYER;
+      // The major trails' names too (stressStyle.js, TRAIL_LABEL), the lowest of them all.
+      const underNames = layerIds.find((id) => id === TRAIL_LABEL_LAYER_ID || ROAD_LABEL_LAYER_IDS.includes(id)) ?? ROUTE_BOTTOM_LAYER;
       addClimbs(map as unknown as ClimbsMap, data, on, iconPixelRatio(), underNames, callbacks.current.climbsFrom ?? CLIMBS_FROM_DEFAULT);
     };
     const anyPopupOpen = () => popupsOpen(popup.current, rail);
@@ -1177,6 +1179,8 @@ export function MapView(props: Props) {
       if (added) setHazardData(map, callbacks.current.massHazards ?? null);
       // A route already up fades the road colours it is drawn over (an overlay that came after the route).
       if (added) setOverlayFade(map, routeOverlayFade(callbacks.current.route));
+      // Climbs that came first are under the trail names it brings, as syncClimbs puts them when the names are there.
+      if (added) climbsUnder(map, TRAIL_LABEL_LAYER_ID);
       return added;
     };
 
@@ -2394,12 +2398,20 @@ export function MapView(props: Props) {
           map.setLayoutProperty(id, "text-field", baseLabelField.current[id]);
         }
       }
-      if (ids.length > 0) map.off("styledata", apply);
+      // The major trails' names, the same size and shortened alike.
+      if (map.getLayer(TRAIL_LABEL_LAYER_ID)) {
+        map.setLayoutProperty(TRAIL_LABEL_LAYER_ID, "text-size", ride ? ROAD_LABEL.rideSize : ROAD_LABEL.size);
+        map.setLayoutProperty(TRAIL_LABEL_LAYER_ID, "text-field", (ride ? rideTrailLabelField() : ["get", "trail_name"]) as LabelField);
+      }
+      // The trail names come with the stress overlay, after the base map's: keep listening until both are set.
+      return ids.length > 0 && Boolean(map.getLayer(TRAIL_LABEL_LAYER_ID));
     };
-    if (ROAD_LABEL_LAYER_IDS.some((id) => map.getLayer(id))) apply();
-    else map.on("styledata", apply);
+    const onStyle = () => {
+      if (apply()) map.off("styledata", onStyle);
+    };
+    if (!apply()) map.on("styledata", onStyle);
     return () => {
-      map.off("styledata", apply);
+      map.off("styledata", onStyle);
     };
   }, [props.rideLabels]);
   // The station names: larger than the street names (railLayer.ts, STATION_NAME_SIZE), and over every other layer
@@ -2420,6 +2432,12 @@ export function MapView(props: Props) {
     return () => {
       map.off("styledata", apply);
     };
+  }, [props.rideLabels]);
+  // A ride starts with the map's Help panel closed (the v0.10.1 end review): left open from planning, it covered the
+  // rider's dot. The Help button opens it again.
+  useEffect(() => {
+    if (!props.rideLabels) return;
+    collapseCredits(container.current?.querySelector<HTMLElement>(".maplibregl-ctrl-attrib") ?? null);
   }, [props.rideLabels]);
   useEffect(() => () => void riderMarker.current?.remove(), []);
   // Go's "you" dot: a marker only (aria-hidden: Go's start line says where the rider is).

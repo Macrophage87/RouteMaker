@@ -59,5 +59,26 @@ export function wrapCredits(control: HTMLElement | null, doc: WrapDocument = doc
   info.innerHTML = MAP_INFO;
   inner.replaceWith(body);
   body.append(info, inner);
+  // The "i" says what it is (Stephen 2026-10-21, "Label the (i)"): the docs are behind it.
+  const button = control.querySelector(".maplibregl-ctrl-attrib-button");
+  if (button) {
+    button.textContent = "Help";
+    // And whether it is open (the v0.10.1 end review): MapLibre's class says so, set by a tap, the map's first drag,
+    // collapseCredits or a ride's start (MapView.tsx), so the button follows the class, not its own clicks.
+    const sync = () => helpExpanded(control, button);
+    sync();
+    if (typeof MutationObserver !== "undefined") new MutationObserver(sync).observe(control, { attributes: true, attributeFilter: ["class"] });
+  }
   return true;
+}
+
+/** The parts of the control and its button helpExpanded touches. */
+export interface HelpParts {
+  control: { classList: { contains(name: string): boolean } };
+  button: { setAttribute(name: string, value: string): void };
+}
+
+/** Set the Help button's aria-expanded from whether the panel shows (MapLibre's maplibregl-compact-show). */
+export function helpExpanded(control: HelpParts["control"], button: HelpParts["button"]): void {
+  button.setAttribute("aria-expanded", String(control.classList.contains("maplibregl-compact-show")));
 }

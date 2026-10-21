@@ -432,6 +432,7 @@ ONE_WAY_ID = 1002
 SEPARATE_ROAD_ID = 700
 CIRCLE_WALKWAY_ID = 1100
 CIRCLE_CROSSING_ID = 1101
+SUBURBAN_SIDEWALK_ID = 1102
 BESIDE_TRAIL_ID = 701
 
 
@@ -481,6 +482,9 @@ def build_dials_extract(path: Path, singletrack_tags: dict[str, str] | None = No
             23: (-77.0436, 38.9097),
             24: (-77.0432, 38.9097),
             25: (-77.0424, 38.9097),
+            # An untagged sidewalk outside the District's downtown (`routemaker.sidewalks`).
+            26: (-77.110, 38.930),
+            27: (-77.105, 38.930),
         }
         for node_id, (lon, lat) in nodes.items():
             writer.add_node(
@@ -555,6 +559,7 @@ def build_dials_extract(path: Path, singletrack_tags: dict[str, str] | None = No
             ONE_WAY_ID: ([21, 22], {**divided_avenue, "name": "One Way Street"}),
             CIRCLE_WALKWAY_ID: ([23, 24], {"highway": "footway"}),
             CIRCLE_CROSSING_ID: ([24, 25], {"highway": "footway", "footway": "crossing"}),
+            SUBURBAN_SIDEWALK_ID: ([26, 27], {"highway": "footway", "footway": "sidewalk"}),
         }
         for way_id in sorted(ways):
             node_ids, tags = ways[way_id]

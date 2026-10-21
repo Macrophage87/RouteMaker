@@ -276,6 +276,11 @@ export interface DescriptionEntry {
     shape?: { out: number; others: number[]; main?: "before" | "after" | null; ring?: "right" | "left" | null } | null;
     /** The way off a circle (v0.10.0, describe.circle_exit): "Take the 3rd exit onto P Street Northwest at Dupont Circle Northwest". */
     exit?: { number: number; circle: string | null } | null;
+    /**
+     * A short path across a road between two turns (describe._crossing; the owner, 2026-10-20: "It should have told
+     * me to cross the street and turn left"): the road crossed, said in place of the turn ("Cross Redland Road").
+     */
+    cross?: string | null;
   } | null;
   severity?: "orange" | "red" | "avoid" | null;
   via?: number | null;
@@ -1297,6 +1302,8 @@ export interface RouteRequestOptions {
   rideReplan?: boolean;
   /** With `rideReplan`: the rider has been on a dirt trail this ride, so the re-plan may ride any (`dirt_ridden`). */
   dirtRidden?: boolean;
+  /** With `heading`: the rider rode on past two U-turns, so the route that sets off ahead is taken (lib/navigate.ts keepsAhead). */
+  aheadOnly?: boolean;
   /** With `rideReplan`: the rider marked a dirt trail closed this ride, so the re-plan rides none (`dirt_closed`). */
   dirtClosed?: boolean;
 }
@@ -1338,7 +1345,7 @@ export function routeRequestBody(points: readonly LonLat[], preset: PresetId, op
     // The roads the rider marked closed on this ride (Ride's Road closed): sent with its re-plans only.
     ...(options.blocked?.length ? { blocked_lines: options.blocked.map((line) => line.map((p) => [p[0], p[1]])) } : {}),
     // The way the rider is going, for a ride's re-route: the API weighs a U-turn against the way ahead.
-    ...(options.heading != null && Number.isFinite(options.heading) ? { heading: ((options.heading % 360) + 360) % 360 } : {}),
+    ...(options.heading != null && Number.isFinite(options.heading) ? { heading: ((options.heading % 360) + 360) % 360, ...(options.aheadOnly ? { ahead_only: true } : {}) } : {}),
     // A ride's re-plan starts at the rider: a dirt trail there, or one ridden earlier, opens them all.
     ...(options.rideReplan
       ? { ride_replan: true, ...(options.dirtRidden ? { dirt_ridden: true } : {}), ...(options.dirtClosed ? { dirt_closed: true } : {}) }
