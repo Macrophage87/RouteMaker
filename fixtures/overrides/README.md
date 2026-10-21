@@ -471,3 +471,9 @@ in the database still names it: delete that row in the admin when loading the fi
   other Harford Road ways overlap the old line without lying along it. The old row was
   still loaded at the v0.7.0 staging rebuild and applied to nothing, so the file also
   `retire`s it: loading the file deletes it and adds the three.
+
+- `2026-10-21-owner-redland-sidewalk.json`: one concrete sidewalk, way 448386707
+  (575 ft, 175 m), between a `bicycle=designated` paved path and a
+  `bicycle=designated` side path in Derwood, opened with a `bicycle=yes` access row.
+  The owner, 2026-10-21: "that short redland road sidewalk is intended to be ridden on
+  and isn't illegal". With a fingerprint. Load it in step H.

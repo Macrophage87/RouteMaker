@@ -3,6 +3,7 @@ import type { Map as MapLibreMap } from "maplibre-gl";
 import { MapView, type Frame, type LineEdit, type StressAvailability } from "./MapView.tsx";
 import { RoadInfoDialog } from "./RoadInfoDialog.tsx";
 import { MapTools } from "./MapTools.tsx";
+import { APP_VERSION, versionShort } from "./lib/appVersion.ts";
 import { ACCESS_LABEL, accessModeToggle, readAccessMode, writeAccessMode } from "./lib/accessMode.ts";
 import { placeAtSpot, requestAfterClose, type InfoRequest, type TrailRider } from "./lib/roadInfo.ts";
 import { stationNearSpot } from "./lib/stationLinks.ts";
@@ -30,6 +31,7 @@ import { choose as chooseRideType } from "./lib/rideTypeDialog.ts";
 import {
   NOVICE_TRANSIT_CHOICES,
   noviceOfferShown,
+  noviceHopOf,
   noviceTransitDials,
   noviceTransitSaid,
   noviceTripOf,
@@ -62,7 +64,7 @@ import { skipToPlanner, SKIP_LINK_TEXT, SKIP_TO_RIDE_TEXT } from "./lib/skipLink
 import { BetaChip, betaReportUrl, isBetaBuild } from "./lib/betaBanner.ts";
 import { MtbMapKey } from "./lib/stressLegend.ts";
 import { useHideBusyClimbs, useTrailClimbs } from "./lib/climbsLegend.ts";
-import { announceHow, candidateRoute } from "./lib/candidates.ts";
+import { announceHow, candidateRoute, candidateRows } from "./lib/candidates.ts";
 import { canReverse, loopStops, loopView, planStartDials, reversedPoints, withLoop } from "./lib/loop.ts";
 import { FINDING_ORDER_SAID, STILL_FINDING_ORDER_SAID, applyAnswer, requestStopOrder, stopsThatMove } from "./lib/stopOrder.ts";
 import {
@@ -386,6 +388,9 @@ export function App() {
   // start or end, or another ride type, starts from the quickest again. Request only, never the link.
   const [transitPick, setTransitPick] = useState<TransitPick | null>(null);
   const trip = optionsKey(points, preset);
+  // Novice and Nervous's busy stretch to hop past (v0.11.0), set when its transit offer is taken: for that trip only
+  // (a new start or end, or another ride type, drops it). Request only, never the link.
+  const [noviceHopPick, setNoviceHopPick] = useState<{ trip: string; hop: [LonLat, LonLat] } | null>(null);
   // "Route through anyway" (v0.7.0, lib/closureMap.ts): the closures the rider chose to route through, for this plan
   // (its start and end) only; request only, never the link. Undo takes one back out.
   const [closureBypass, setClosureBypass] = useState<Bypass | null>(null);
@@ -396,11 +401,12 @@ export function App() {
   // lib/dials.ts closuresNow); Plan keeps them, for planning a later ride. Start ride and a ride's re-plans set it too.
   const goNow = mode === "go";
   const planDials = useMemo(() => {
-    const made = withTransitOption(withStations(withWeight(routeDials, weight), stationChoice), preset, transitPick, trip);
+    const base = withTransitOption(withStations(withWeight(routeDials, weight), stationChoice), preset, transitPick, trip);
+    const made = noviceHopPick?.trip === trip && base.noviceLegs ? { ...base, noviceHop: noviceHopPick.hop } : base;
     const now = goNow ? { ...made, closuresNow: true } : made;
     return bypassIds.length ? { ...now, closureBypass: bypassIds } : now;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the ids' text, not the array
-  }, [routeKey, weight, stationChoice, preset, transitPick, trip, bypassKey, goNow]);
+  }, [routeKey, weight, stationChoice, preset, transitPick, trip, bypassKey, goNow, noviceHopPick]);
   // Everything the request is made from, as a key (v0.7.0): in Plan a station or a transit option chosen, a
   // weight or a slider moved, all mark the plan changed until Route or Update route.
   // The key leaves closuresNow out: switching between Go and Plan keeps the route (changeMode), not marked changed.
@@ -3479,7 +3485,8 @@ export function App() {
       setNoviceTrips((was) => (was?.key === noviceKey ? { key: noviceKey, trips: { ...was.trips, [id]: trip } } : was));
     setNoviceTrips({ key: noviceKey, trips: {} });
     for (const choice of NOVICE_TRANSIT_CHOICES) {
-      void requestRoute(ends, choice.preset, { dials: noviceTransitDials(choice.preset) }).then(
+      // The busy stretch's ends (v0.11.0): each trip also tries hopping past it on a train or bus.
+      void requestRoute(ends, choice.preset, { dials: noviceTransitDials(choice.preset, noviceHopOf(shown)) }).then(
         (answer) => found(choice.preset, noviceTripOf(answer)),
         () => found(choice.preset, { kind: "none" }),
       );
@@ -4138,15 +4145,22 @@ export function App() {
   // big one after routing, Clear after clearing) moves to the panel's Route button where it shows, else the map
   // (never to Clear, where a second Enter would clear the plan).
   const barRoute = planFirst && (routingNow || routeNow.unavailable === null);
-  const planBar = planFirst && (barRoute || can.undo || can.redo || points.length > 0);
+  // Once the route is up to date and chosen, the big button saves it (the owner, 2026-10-21: "plan should offer an
+  // option to save the route in the same button location as the update route ... Basically once an option was
+  // chosen"). A route without others to choose from is chosen as drawn. Signed in only, as Save route is.
+  const barSave =
+    planFirst && !barRoute && !!saveProps && !!shown && !stale && routedPoints === points && (chosen || candidateRows(picked) === null);
+  const planBar = planFirst && (barRoute || barSave || can.undo || can.redo || points.length > 0);
   const barFocused = useRef(false);
   useEffect(() => {
     if (!barFocused.current) return;
     const active = document.activeElement;
     if (active && active !== document.body && active.isConnected) return;
     barFocused.current = false;
+    // Update route gone for Save route in its place: the focus stays in that place, so the new name is read.
+    const save = document.querySelector<HTMLElement>(".plan-map-bar .save-route-open");
     const route = document.querySelector<HTMLElement>(".plan-panel .route-button");
-    (route?.offsetParent ? route : document.querySelector<HTMLElement>(".maplibregl-canvas"))?.focus();
+    (save ?? (route?.offsetParent ? route : document.querySelector<HTMLElement>(".maplibregl-canvas")))?.focus();
   });
   // Go's bar mirrors Plan's (the owner, 2026-10-18: "mirror what plan does in general, but instead of route, we
   // start the ride"): Undo, Redo, the big button and Clear, each while it has something to do. The big button is
@@ -4240,6 +4254,9 @@ export function App() {
     // Novice and Nervous's offer where only a busy road connects (v0.7.0): the trip on a transit ride type, its
     // bike legs still planned as Novice and Nervous plans them (`noviceLegs`, sent as novice_legs, kept in the link).
     onNoviceTransit: (id: PresetId) => {
+      // The busy stretch to hop past (v0.11.0), for this trip only, as a chosen transit option is.
+      const hop = noviceHopOf(shown);
+      setNoviceHopPick(hop ? { trip: optionsKey(points, id), hop } : null);
       choosePreset(id, { ...chooseRideType(id, null, dials), noviceLegs: true });
       const label = NOVICE_TRANSIT_CHOICES.find((c) => c.preset === id)?.label ?? presetSaid(id);
       announce(noviceTransitSaid(label));
@@ -4512,7 +4529,9 @@ export function App() {
           aria-label="Route and edits"
           onFocus={() => (barFocused.current = true)}
           onBlur={(event) => {
-            if (event.relatedTarget) barFocused.current = false;
+            // A button of the bar taken away leaves no focus behind; a click on nothing in particular leaves it on
+            // the page, with the button still there, and is not followed.
+            if (event.relatedTarget || (event.target as Element).isConnected) barFocused.current = false;
           }}
         >
           {can.undo && (
@@ -4538,6 +4557,7 @@ export function App() {
               {routingNow ? ROUTING_LABEL : routeNow.label}
             </button>
           )}
+          {barSave && saveProps && <SaveRoute {...saveProps} label={SAVE_ROUTE} bar />}
           {manualOffered && (
             <button
               type="button"
@@ -4650,9 +4670,18 @@ export function App() {
         hidden={riding}
       >
         <header className="panel-header">
-          <h1 ref={plannerHeadingRef} tabIndex={-1} className={goMode ? "visually-hidden" : undefined}>
-            {PLANNER_TITLE}
-          </h1>
+          {/* The version under the heading, not in it (lib/appVersion.ts): beside it, a phone's header overflowed. */}
+          <div className="panel-title">
+            <h1 ref={plannerHeadingRef} tabIndex={-1} className={goMode ? "visually-hidden" : undefined}>
+              {PLANNER_TITLE}
+            </h1>
+            {APP_VERSION && !goMode && (
+              <p className="app-version">
+                <span aria-hidden="true">v{APP_VERSION}</span>
+                <span className="visually-hidden">{versionShort()}</span>
+              </p>
+            )}
+          </div>
           {!goMode && <ModeSwitch mode={mode} onChange={changeMode} className="panel-mode" modes={switchModes(canReview)} />}
           <button
             type="button"

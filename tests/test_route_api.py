@@ -834,9 +834,14 @@ class TestWhatIsSentToTheRouter:
         else:
             assert fake.endpoints() == ["route", "trace_attributes"]
         assert all(url.startswith(base + "/") for url, _ in fake.calls)
-        assert all(p["costing_options"] in (presets.costing(name), middle) for _, p in fake.calls)
+        # Novice and Nervous (v0.11.0, `core.novice_walks`) also asks on foot for the walk
+        # past a short busy stretch; every other call is the ride type's own.
+        on_foot = [p for _, p in fake.calls if p["costing"] == "pedestrian"]
+        assert not on_foot or name == "novice"
+        ridden = [p for _, p in fake.calls if p["costing"] != "pedestrian"]
+        assert all(p["costing_options"] in (presets.costing(name), middle) for p in ridden)
         assert fake.calls[0][1]["costing_options"] == presets.costing(name)
-        assert all(p["costing"] == "bicycle" for _, p in fake.calls)
+        assert all(p["costing"] == "bicycle" for p in ridden)
 
     def test_the_points_are_sent_in_order_as_lon_lat(self, client, segments, router) -> None:
         fake = router(standard_router())
