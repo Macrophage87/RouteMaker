@@ -1031,6 +1031,9 @@ class Dials:
     # this ride, so any may be ridden wherever the rider is now.
     ride_replan: bool = False
     dirt_ridden: bool = False
+    # With `ride_replan`: the rider marked a dirt trail closed earlier this ride (an answer's
+    # `dirt_closed`), so no dirt trail is ridden, whatever `blocked` still holds.
+    dirt_closed: bool = False
     # The dirt trails such a plan found for itself, each a short strip across it (a ring),
     # left out as `blocked` is. Set by `plan`.
     trail_strays: tuple[tuple[tuple[float, float], ...], ...] = ()
@@ -3330,25 +3333,29 @@ def _plan(
     # (2026-10-21: "assume that means bad riding conditions until it's opted back in").
     touched_trails: frozenset[int] = frozenset()
     per_point: tuple[frozenset[int], ...] = ()
+    dirt_closed = False
     any_dirt = False
     if (
         variant == Variant.STANDARD.value
         and dials.trail_touch
         and dials.follow is None
         and not dials.straight
-        and not (dials.blocked and trail_touch.closed_on_dirt(dials.blocked))
     ):
-        per_point = dials.trail_touched
-        if per_point is None:
-            per_point = trail_touch.touched(points)
-        # Not the start, nor the start again at the end of a loop or a round trip.
-        chosen = per_point if dials.ride_replan else per_point[1:]
-        if not dials.ride_replan and len(points) > 1 and is_round_trip(points):
-            chosen = chosen[:-1]
-        touched_trails = frozenset().union(*chosen)
-        any_dirt = dials.ride_replan and (dials.dirt_ridden or bool(per_point[0]))
-        if touched_trails or any_dirt:
-            variant = Variant.OFFROAD.value
+        dirt_closed = dials.dirt_closed or (
+            bool(dials.blocked) and trail_touch.closed_on_dirt(dials.blocked)
+        )
+        if not dirt_closed:
+            per_point = dials.trail_touched
+            if per_point is None:
+                per_point = trail_touch.touched(points)
+            # Not the start, nor the start again at the end of a loop or a round trip.
+            chosen = per_point if dials.ride_replan else per_point[1:]
+            if not dials.ride_replan and len(points) > 1 and is_round_trip(points):
+                chosen = chosen[:-1]
+            touched_trails = frozenset().union(*chosen)
+            any_dirt = dials.ride_replan and (dials.dirt_ridden or bool(per_point[0]))
+            if touched_trails or any_dirt:
+                variant = Variant.OFFROAD.value
     # Bike lanes are "none" in the breakdown on a ride that takes the roadway (Mass
     # Ride, whose own graph is no-trail), not on every trails-off ride.
     lanes_as_roadway = preset.variant == Variant.NO_TRAIL.value
@@ -4208,6 +4215,7 @@ def _plan(
             "preset": preset.name,
             "variant": variant,
             "dirt_trails": dirt_trails,
+            "dirt_closed": dirt_closed,
             "geometry": {
                 "type": "LineString",
                 "coordinates": [[round(lon, 6), round(lat, 6)] for lon, lat in coordinates],

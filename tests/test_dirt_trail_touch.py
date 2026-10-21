@@ -33,6 +33,13 @@ TOUCHED = 404
 STRAY = 505
 END_TRAIL = [VERTICES[-1], (VERTICES[-1][0], VERTICES[-1][1] + 0.001)]
 START_TRAIL = [VERTICES[0], (VERTICES[0][0], VERTICES[0][1] + 0.001)]
+# Ride's Road closed stretch on START_TRAIL as the app sends it: the road ahead, a few points,
+# a few metres off the mapped line.
+ALONG_TRAIL = [
+    [VERTICES[0][0] + 0.00003, VERTICES[0][1] + 0.0002],
+    [VERTICES[0][0], VERTICES[0][1] + 0.0005],
+    [VERTICES[0][0] - 0.00003, VERTICES[0][1] + 0.0008],
+]
 # The route the first time: on to 505, then a road, then to the end on 404.
 STRAY_EDGES = [(101, 0, 1, 0.9), (STRAY, 1, 2, 0.4), (202, 2, 3, 0.4), (TOUCHED, 3, 4, 0.5)]
 
@@ -286,12 +293,41 @@ class TestThroughTheApi:
             **good_body(),
             "ride_replan": True,
             "dirt_ridden": True,
-            "blocked_lines": [[list(p) for p in START_TRAIL]],
+            "blocked_lines": [ALONG_TRAIL],
         }
         response = post(client, body)
         assert response.status_code == 200, response.content
         assert response.json()["variant"] == "standard"
+        assert response.json()["dirt_closed"] is True
         assert {graph_of(url) for url, _ in routes(fake)} == {"standard"}
+
+    def test_a_road_closed_across_a_dirt_trail_leaves_dirt_open(
+        self, client, segments, router
+    ) -> None:
+        add_trail(segments, TOUCHED, START_TRAIL)
+        router(plain_router())
+        lon, lat = VERTICES[0]
+        across = [[lon - 0.001, lat + 0.0005], [lon + 0.001, lat + 0.0005]]
+        body = {**good_body(), "ride_replan": True, "blocked_lines": [across]}
+        answer = post(client, body).json()
+        assert answer["variant"] == "offroad" and answer["dirt_closed"] is False
+
+    def test_dirt_closed_earlier_in_the_ride_overrides_a_stop_on_a_trail(
+        self, client, segments, router
+    ) -> None:
+        """Once the ride said a dirt trail was closed, a stop or end on one no longer opens
+        them, though the stretch has dropped out of the ones the ride sends."""
+        add_trail(segments, TOUCHED, END_TRAIL)
+        fake = router(plain_router())
+        body = {**good_body(), "ride_replan": True, "dirt_closed": True}
+        answer = post(client, body).json()
+        assert answer["variant"] == "standard" and answer["dirt_closed"] is True
+        assert {graph_of(url) for url, _ in routes(fake)} == {"standard"}
+
+    def test_dirt_closed_alone_is_not_a_ride(self, client, segments, router) -> None:
+        add_trail(segments, TOUCHED, END_TRAIL)
+        router(plain_router())
+        assert post(client, {**good_body(), "dirt_closed": True}).json()["variant"] == "offroad"
 
     def test_road_closed_on_a_road_leaves_dirt_open(self, client, segments, router) -> None:
         add_trail(segments, TOUCHED, START_TRAIL)
