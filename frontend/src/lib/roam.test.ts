@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { LonLat } from "./geo.ts";
-import { HeadingTrack, aheadSaid, foodNearestPlaces, headingOf, linesOf, mapLines, onRoadSaid, roadsAhead, type RoadLine, type RoamMap, type StressLine } from "./roam.ts";
+import { solarDay } from "./lightTimes.ts";
+import { HeadingTrack, aheadSaid, foodNearestPlaces, headingOf, linesOf, mapLines, onRoadSaid, roadsAhead, roamLight, roamLink, roamLinkFrom, type RoadLine, type RoamMap, type StressLine } from "./roam.ts";
 
 // A small grid near Dupont Circle: metres to degrees, close enough at this latitude.
 const O: LonLat = [-77.04, 38.91];
@@ -183,4 +184,50 @@ test("App: Roam is Go's one button with no destination, a detour's end comes bac
   assert.match(app, /useEffect\(\(\) => closeStopCard\(\), \[onBike, mode\]\);/);
   assert.match(app, /onMapClick=\{onBike \|\| reviewing \? ignore : place\}/);
   assert.doesNotMatch(app, /\bon=\{[^}]*&& !riding\}/);
+});
+
+test("a Roam broadcast's link: the ride's id and the leader key in the fragment, read back; anything else is not one", () => {
+  const id = "0123456789abcdef0123456789abcdef";
+  const lead = "fedcba9876543210fedcba9876543210";
+  const link = roamLink("https://example.org", id, lead);
+  assert.equal(link, `https://example.org/#roam=${id}&lead=${lead}`);
+  assert.deepEqual(roamLinkFrom(new URL(link).hash), { id, lead });
+  assert.equal(roamLinkFrom(`#roam=${id}`), null);
+  assert.equal(roamLinkFrom(`#roam=xyz&lead=${lead}`), null);
+  assert.equal(roamLinkFrom("#p=1,2;3,4"), null);
+});
+
+test("sunrise and sunset: the next of each, in order, with the time till it within the hour", () => {
+  const dc: LonLat = [-77.04, 38.91];
+  // 2026-10-22 at noon in Washington (16:00 UTC): sunset comes first, then tomorrow's sunrise.
+  const noon = Date.UTC(2026, 9, 22, 16, 0);
+  const day = roamLight(noon, dc);
+  assert.ok(day);
+  assert.match(day.shown[0], /^Sunset [56]:\d\d PM$/);
+  assert.match(day.shown[1], /^Sunrise 7:\d\d AM$/);
+  assert.match(day.said, /^Sunset [56]:\d\d PM; Sunrise 7:\d\d AM\.$/);
+  // Half an hour before sunset: the time till it, shown and said.
+  const sunset = solarDay(noon, dc[1], dc[0]).sunset!;
+  const soon = roamLight(sunset - 30 * 60_000, dc)!;
+  assert.match(soon.shown[0], /^Sunset \d+:\d\d PM \(30 min\)$/);
+  assert.match(soon.said, /^Sunset \d+:\d\d PM, in 30 minutes;/);
+  // Just after sunset: tomorrow's sunrise first, then tomorrow's sunset.
+  const after = roamLight(sunset + 60_000, dc)!;
+  assert.match(after.shown[0], /^Sunrise /);
+  assert.match(after.shown[1], /^Sunset /);
+});
+
+test("App: Broadcast is a tap within Roam; the leader leads a ride with no route, and one who opens the link follows", async () => {
+  const { readFileSync } = await import("node:fs");
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  // The share sheet opens before any await: the press's activation holds.
+  assert.match(app, /const broadcastRoam = async \(\): Promise<string> => \{[^]*?const done = await shareLink\(navigator,/);
+  const before = app.slice(app.indexOf("const broadcastRoam"), app.indexOf("const done = await shareLink(navigator,"));
+  assert.doesNotMatch(before, /await /);
+  assert.match(app, /leadConsent\(await roamRideId\(id\), lead\.token\);/);
+  assert.match(app, /onBroadcast=\{canShare \? broadcastRoam : null\}/);
+  assert.match(app, /const ROAM_FOLLOW = roamLinkFrom\(window\.location\.hash\);/);
+  assert.match(app, /broadcast=\{\{ \.\.\.roamBroadcast, roam: true \}\}/);
+  // It ends with the roam.
+  assert.match(app, /const endRoam = \(\) => \{[^]*?setRoamBroadcast\(\(b\) => \(b\?\.leading \? null : b\)\);/);
 });

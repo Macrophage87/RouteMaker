@@ -14,7 +14,7 @@
  * Privacy (the owner, 2026-10-22: nothing kept on the server): the position stays on the phone. Only a Detour search
  * (POST /api/nearest) and the ride it starts send where the rider is, in a POST body, as Ride mode's detours do.
  */
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Icon } from "./Icon.tsx";
 import { LiveRegion, SlideToEnd, rideVoice } from "./RideMode.tsx";
 import { currentTiers } from "./stressStyle.js";
@@ -50,6 +50,7 @@ import {
   NO_NAMED_ROAD,
   NO_ROAD_YET,
   ROAM_DETOUR_HELP,
+  ROAM_BROADCAST_NAME,
   ROAM_NAME,
   aheadSaid,
   aheadShown,
@@ -58,6 +59,7 @@ import {
   mapLines,
   onRoadSaid,
   roadsAhead,
+  roamLight,
   roamTier,
   type RoadsAhead,
   type RoamMap,
@@ -106,6 +108,8 @@ export function RoamMode({
   onView,
   onDetour,
   onEnd,
+  onBroadcast = null,
+  broadcasting = false,
   geoEnv,
 }: {
   getMap: () => RoamMap | null;
@@ -124,6 +128,11 @@ export function RoamMode({
   /** Ride here: a ride from `here` to the place starts; null, else the words to say why not. */
   onDetour: (here: LonLat, place: NearestPlace) => Promise<string | null>;
   onEnd: () => void;
+  /** Broadcast (Stephen 2026-10-22): opens the share sheet with a link others follow; answers what to say. Null where
+   * this browser has no share sheet. */
+  onBroadcast?: (() => Promise<string>) | null;
+  /** The rider leads a broadcast now. */
+  broadcasting?: boolean;
   geoEnv?: RideGeoEnv;
 }) {
   const env = useRef(geoEnv ?? rideGeoEnv()).current;
@@ -313,16 +322,70 @@ export function RoamMode({
     }
   };
 
+  // Sunrise and sunset (Stephen 2026-10-22: "Also add sunrise and sunset"): the next of each at the rider, in the
+  // heading's corner as Ride mode shows them, worked out again each minute.
+  const [minute, setMinute] = useState(() => Math.floor(Date.now() / 60_000));
+  useEffect(() => {
+    const timer = window.setInterval(() => setMinute(Math.floor(Date.now() / 60_000)), 15_000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const lightAt = fix ? `${fix.point[0].toFixed(2)},${fix.point[1].toFixed(2)}` : null;
+  const light = useMemo(() => {
+    if (lightAt === null) return null;
+    const [lon, lat] = lightAt.split(",").map(Number);
+    return roamLight(minute * 60_000, [lon, lat]);
+  }, [lightAt, minute]);
+
+  const broadcastBusy = useRef(false);
+  const broadcast = async () => {
+    if (!onBroadcast || broadcastBusy.current) return;
+    broadcastBusy.current = true;
+    try {
+      const said = await onBroadcast();
+      if (said && !gone.current) answer(said);
+    } finally {
+      broadcastBusy.current = false;
+    }
+  };
+
+  // A broadcast's riders and Alert sit just under the card, never over the road names (its height changes as they do).
+  const cardRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const card = cardRef.current;
+    const app = card?.closest<HTMLElement>(".app");
+    if (!card || !app || typeof ResizeObserver === "undefined") return;
+    const place = () => app.style.setProperty("--roam-card-bottom", `${Math.round(card.getBoundingClientRect().bottom - app.getBoundingClientRect().top)}px`);
+    const watch = new ResizeObserver(place);
+    watch.observe(card);
+    place();
+    return () => {
+      watch.disconnect();
+      app.style.removeProperty("--roam-card-bottom");
+    };
+  }, []);
+
   const slideHint = () => answer(`Slide ${END_ROAM_NAME} to the right to end it.`);
   const on = roads?.on ?? null;
   return (
     <section className="ride roam" aria-labelledby="ride-heading">
       <LiveRegion said={polite} urgent={false} />
-      <div className="cue-card">
+      <div ref={cardRef} className="cue-card">
         <div className="ride-top">
-          <h2 id="ride-heading" ref={headingRef} tabIndex={-1} className="ride-heading">
-            {ROAM_NAME}
+          <h2 id="ride-heading" ref={headingRef} tabIndex={-1} className={light ? "ride-heading ride-light" : "ride-heading"}>
+            {light ? (
+              <>
+                <span className="visually-hidden">{ROAM_NAME}</span>
+                <span className="ride-light-lines" aria-hidden="true">
+                  {light.shown.map((line) => (
+                    <span key={line}>{line}</span>
+                  ))}
+                </span>
+              </>
+            ) : (
+              ROAM_NAME
+            )}
           </h2>
+          {light && <p className="visually-hidden">{light.said}</p>}
           <div className="ride-top-actions">
             <SlideToEnd onEnd={onEnd} onTap={slideHint} name={END_ROAM_NAME} />
           </div>
@@ -371,6 +434,17 @@ export function RoamMode({
           >
             <Icon name="locate" size={24} />
           </button>
+          {onBroadcast && (
+            <button
+              type="button"
+              className={`ride-round${broadcasting ? " ride-round-on" : ""}`}
+              onClick={() => void broadcast()}
+              aria-label={broadcasting ? `${ROAM_BROADCAST_NAME}: on. Share the link again` : `${ROAM_BROADCAST_NAME}: share a link others follow you with`}
+              title={ROAM_BROADCAST_NAME}
+            >
+              <Icon name="broadcast" size={24} />
+            </button>
+          )}
           <div
             className="ride-pop ride-detour"
             onKeyDown={(event) => {

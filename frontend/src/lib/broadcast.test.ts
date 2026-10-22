@@ -164,7 +164,7 @@ test("opening a broadcast follows the leader: in Plan too, the map eased to the 
   assert.match(app, /const SHARED_LEAD = SHARED_RIDE \? leadKeyFrom\(window\.location\.hash, window\.location\.search\) : null;/);
   assert.match(app, /const rideBroadcast = onShared\?\.ride && onShared\.id && onShared\.lead \? \{ id: onShared\.id, lead: onShared\.lead, leading: onShared\.own === true \} : null;/);
   const group = read("../RideGroup.tsx");
-  assert.match(group, /void \(broadcast \? broadcastRideId\(broadcast\.id\) : rideId\(type, points\)\)/);
+  assert.match(group, /void \(broadcast \? \(broadcast\.roam \? roamRideId\(broadcast\.id\) : broadcastRideId\(broadcast\.id\)\) : rideId\(type, points\)\)/);
   // Shown as it shares, but a later "No" stands.
   assert.match(group, /if \(leading && kept === null\) kept = keepConsent\(id, "yes", Date\.now\(\), undefined, undefined, "lead"\);/);
   // The leader is posted on or off the route; the follower reads with the key before answering.

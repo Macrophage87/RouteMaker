@@ -258,12 +258,12 @@ import { bypassFor, bypassPlanKey, bypassSaid, toggleBypass, type Bypass } from 
 import { permitsShown, readPermitsLayer, savePermitsLayer } from "./lib/permitLayer.ts";
 import { RideGroup } from "./RideGroup.tsx";
 import { RoamMode } from "./RoamMode.tsx";
-import { BACK_TO_ROAM, ROAM_ENDED, ROAM_NAME, ROAM_STARTED, STILL_ROAMING_SAID, type RoamMap } from "./lib/roam.ts";
+import { BACK_TO_ROAM, ROAM_BROADCAST_NOT_READY, ROAM_BROADCAST_ON, ROAM_BROADCAST_TEXT, ROAM_BROADCAST_TITLE, ROAM_ENDED, ROAM_NAME, ROAM_STARTED, STILL_ROAMING_SAID, roamLink, roamLinkFrom, type RoamMap } from "./lib/roam.ts";
 import { BikeshareDocksOverlay, type DocksReport } from "./BikeshareDocks.tsx";
 import { KNOWN_OPERATORS, docksStatus, mergeOperators, operatorsToAsk, readOperatorChoices, saveOperatorChoices, type OperatorInfo } from "./lib/bikeshareDocks.ts";
 import { SaveRoute } from "./SaveRoute.tsx";
 import { SAVE_ROUTE } from "./lib/savedRoutes.ts";
-import { broadcastRideId, isRideLink, leadConsent, leaderKey, newToken, type RideLinkType } from "./lib/rideGroup.ts";
+import { broadcastRideId, isRideLink, leadConsent, leaderKey, newToken, roamRideId, type RideLinkType } from "./lib/rideGroup.ts";
 
 // Before the map adds the stress source (MapView, after its first probe).
 // With Ride mode's kept tiles behind the network, for dead spots (lib/corridorStore.ts).
@@ -331,6 +331,9 @@ if (SHARED_ID && (window.location.pathname.startsWith(SHARED_PATH) || new URLSea
   query.delete("route");
   window.history.replaceState(window.history.state, "", `/${query.size ? `?${query}` : ""}${window.location.hash}`);
 }
+// A broadcast from Roam (Stephen 2026-10-22): the link names a ride with no route and its leader; one who opens it
+// follows the leader's dot, read once here (the plan's own fragment is written over it later).
+const ROAM_FOLLOW = roamLinkFrom(window.location.hash);
 let sharedArrived: () => void = () => {};
 // Its owner turned the link off: the plan it carries is not planned (the first plan after the wait, and that plan
 // again on Try again); the page says so plainly (SHARED_REVOKED).
@@ -3536,7 +3539,30 @@ export function App() {
     setRoaming(true);
     announce(ROAM_STARTED);
   };
+  // Broadcast from Roam (Stephen 2026-10-22: "have it as a tap within roam"): a link to a ride with no route, led by
+  // the rider; those who open it follow the rider's dot. The share sheet opens inside the press (no await before it);
+  // the rider leads only once the link was sent with its key. Answers what to say, "" for nothing.
+  const [roamBroadcast, setRoamBroadcast] = useState<{ id: string; lead: string; leading: boolean } | null>(() =>
+    ROAM_FOLLOW ? { ...ROAM_FOLLOW, leading: false } : null,
+  );
+  const broadcastRoam = async (): Promise<string> => {
+    const mine = roamBroadcast?.leading ? roamBroadcast : null;
+    const lead = mine ? leads.current.get(`roam|${mine.id}`) : leadPrep.current;
+    if (!lead) return ROAM_BROADCAST_NOT_READY;
+    const id = mine?.id ?? newSharedId();
+    const done = await shareLink(navigator, { title: ROAM_BROADCAST_TITLE, text: ROAM_BROADCAST_TEXT, url: roamLink(window.location.origin, id, lead.key) });
+    if (done !== "shared") return shareSaidFor(done);
+    if (mine) return "";
+    if (!roamingNow.current) return "";
+    leadConsent(await roamRideId(id), lead.token);
+    leads.current.set(`roam|${id}`, lead);
+    prepareLead();
+    setRoamBroadcast({ id, lead: lead.key, leading: true });
+    return ROAM_BROADCAST_ON;
+  };
   const endRoam = () => {
+    // The broadcast ends with the roam: its followers see the leader's dot go within two minutes.
+    setRoamBroadcast((b) => (b?.leading ? null : b));
     setRoaming(false);
     setRoamRider(null);
     announce(ROAM_ENDED);
@@ -4559,7 +4585,7 @@ export function App() {
     (goMode || riding || (rideBroadcast && !rideBroadcast.leading)) && rideGroupType && rideGroupRoute ? (rideGroupRoute.geometry.coordinates as LonLat[]) : null;
 
   return (
-    <div className={`app${onBike ? " riding" : ""}${goMode && !onBike ? " go-mode" : ""}`}>
+    <div className={`app${onBike ? " riding" : ""}${roaming ? " roaming" : ""}${goMode && !onBike ? " go-mode" : ""}`}>
       {/* Past the map, its markers and its controls (up to 150 junction
           markers come before the planner), to the planner (lib/skipLink.ts). */}
       {/* The page's first stop and first in a screen reader's order, hidden until focused: accessibility mode's
@@ -4705,6 +4731,18 @@ export function App() {
         pixelRatio={Math.min(2, Math.max(1, Math.round(window.devicePixelRatio || 1)))}
         onReport={onDocksReport}
       />
+      {roamBroadcast && (roamBroadcast.leading ? onBike : !rideGroupLine) && (
+        <RideGroup
+          type="group-ride"
+          points={NO_POINTS}
+          line={NO_POINTS}
+          getMap={getMap}
+          here={rideView?.rider?.point ?? roamRider?.point ?? (here ? here.point : null)}
+          broadcast={{ ...roamBroadcast, roam: true }}
+          riding={onBike}
+          leaderRoute={null}
+        />
+      )}
       {rideGroupLine && (
         <RideGroup
           type={rideGroupType ?? "group-ride"}
@@ -4941,6 +4979,8 @@ export function App() {
           onView={setRoamRider}
           onDetour={roamDetour}
           onEnd={endRoam}
+          onBroadcast={canShare ? broadcastRoam : null}
+          broadcasting={roamBroadcast?.leading === true}
         />
       )}
       {/* Hidden, not removed, during a ride: the planner keeps its state, and Sign in is out of reach (plan section 7). */}

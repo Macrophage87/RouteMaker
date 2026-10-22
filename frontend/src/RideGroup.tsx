@@ -50,6 +50,8 @@ import {
   alertRefusal,
   alertText,
   broadcastRideId,
+  roamRideId,
+  awayWords,
   clearAlert,
   consentFor,
   countText,
@@ -102,7 +104,7 @@ export interface RideGroupProps {
    * A broadcast ride: the shared line's id, the link's leader key, and whether this page is the sharer's (who leads).
    * Null: a Mass Ride or Group Ride by its points, as before.
    */
-  broadcast?: { id: string; lead: string | null; leading: boolean } | null;
+  broadcast?: { id: string; lead: string | null; leading: boolean; roam?: boolean } | null;
   /** This page is riding (Ride mode follows the rider, so the map does not follow the leader). */
   riding?: boolean;
   /** The route this page is riding now, re-routes included (the leader sends it to those following). */
@@ -183,10 +185,10 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
   const say = (text: string) => setSaid((s) => ({ text, count: s.count + 1 }));
 
   // The ride, and the rider's answer for it (asked when the link opens).
-  const key = broadcast ? `broadcast|${broadcast.id}` : points.map((p) => `${p[0].toFixed(5)},${p[1].toFixed(5)}`).join(";");
+  const key = broadcast ? `${broadcast.roam ? "roam" : "broadcast"}|${broadcast.id}` : points.map((p) => `${p[0].toFixed(5)},${p[1].toFixed(5)}`).join(";");
   useEffect(() => {
     let live = true;
-    void (broadcast ? broadcastRideId(broadcast.id) : rideId(type, points)).then((id) => {
+    void (broadcast ? (broadcast.roam ? roamRideId(broadcast.id) : broadcastRideId(broadcast.id)) : rideId(type, points)).then((id) => {
       if (!live) return;
       setRide(id);
       // The sharer leads: sharing is what they pressed (App.tsx keeps the answer as it shares; kept here too).
@@ -240,7 +242,7 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
     previousAlerts.current = got.alerts;
     if (fresh.length) {
       // Essentials: said at once, whatever the announcement level, and felt.
-      setUrgent((u) => ({ text: fresh.map((a) => alertText(a, line, myAlongRef.current)).join(" "), count: u.count + 1 }));
+      setUrgent((u) => ({ text: fresh.map((a) => alertText(a, line, myAlongRef.current, 0, meRef.current)).join(" "), count: u.count + 1 }));
       try {
         navigator.vibrate?.([200, 100, 200]);
       } catch {
@@ -324,6 +326,10 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
   }, [leading, riding, shareOn, front, ride, token, origin, routeNowKey, now]);
 
   const me = fix ?? here;
+  const meRef = useRef<LonLat | null>(null);
+  meRef.current = me;
+  // A broadcast from Roam has no route: places are said from you in a straight line (lib/rideGroup.ts awayWords).
+  const noLine = line.length === 0;
   // On an out-and-back the last place along the route says which pass a position is on (yours, and each dot's).
   const myAlongRef = useRef<number | null>(null);
   const myAlong = me ? project(line, me, myAlongRef.current).alongM : null;
@@ -391,7 +397,8 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
       if (!coords) return;
       const along = Number(f?.properties?.along);
       const isLeader = f?.properties?.leader === true || f?.properties?.leader === "true";
-      const text = dotSaid(age, dotName(roleOf(f?.properties?.role), Number.isFinite(along) ? along : project(line, coords).alongM, myAlongRef.current, isLeader));
+      const away = line.length === 0 ? awayWords(meRef.current, coords) : undefined;
+      const text = dotSaid(age, dotName(roleOf(f?.properties?.role), Number.isFinite(along) ? along : project(line, coords).alongM, myAlongRef.current, isLeader, away));
       setDotInfo(text);
       say(text);
     };
@@ -468,10 +475,10 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
       <div className="ride-group-bar">
         <button type="button" className="chip ride-riders" aria-expanded={ridersOpen} aria-controls={ridersPanel} onClick={() => {
           setRidersOpen(!ridersOpen);
-          if (!ridersOpen) setRidersSaidText(ridersSaid(dots, myAlong));
+          if (!ridersOpen) setRidersSaidText(ridersSaid(dots, myAlong, noLine ? { here: me } : null));
         }}>
           <Icon name="user" size={18} />
-          {countText(dots.length)}
+          {countText(dots.length, !noLine)}
         </button>
         <button type="button" className="chip ride-alert-button" aria-expanded={alertOpen} aria-controls={alertPanel} aria-describedby={`${alertPanel}-note`} onClick={() => setAlertOpen(!alertOpen)}>
           <Icon name="warn" size={18} />
@@ -593,7 +600,7 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
           {alerts.map((a) => (
             <li key={a.id} className="ride-alert-banner">
               <Icon name="warn" size={18} />
-              <span>{alertText(a, line, myAlong, sinceS)}</span>
+              <span>{alertText(a, line, myAlong, sinceS, me)}</span>
               {a.call_911 && (
                 <a className="call-911" href={CALL_911_HREF}>
                   {CALL_911}

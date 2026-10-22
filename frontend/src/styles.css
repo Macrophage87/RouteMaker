@@ -5869,7 +5869,8 @@ details.fold > summary .icon {
 }
 
 .ride .ride-round[aria-expanded="true"],
-.ride .ride-round-alert {
+.ride .ride-round-alert,
+.ride .ride-round-on {
   background: var(--accent);
   color: var(--accent-text);
   border-color: var(--bg);
@@ -6597,6 +6598,10 @@ details.fold > summary .icon {
 }
 .app.riding .ride-group {
   top: 64px;
+}
+/* Roam's broadcast: just under Roam's card (RoamMode sets its bottom), so the road names stay in view. */
+.app.roaming .ride-group {
+  top: calc(var(--roam-card-bottom, 64px) + 8px);
 }
 .ride-group > * {
   pointer-events: auto;

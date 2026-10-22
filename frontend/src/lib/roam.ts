@@ -9,7 +9,8 @@
  */
 import type { FoodPlace } from "./food.ts";
 import { foodKindText } from "./food.ts";
-import { formatDistance, spokenDistance } from "./format.ts";
+import { formatDistance, formatDuration, spokenDistance } from "./format.ts";
+import { lightClock, solarDay } from "./lightTimes.ts";
 import { haversineM, type LonLat } from "./geo.ts";
 import { BASEMAP_SOURCE_ID, STRESS_SOURCE_ID } from "./mapStyle.ts";
 import type { NearestPlace } from "./nearest.ts";
@@ -353,3 +354,61 @@ export function mapLines(map: RoamMap, rider: LonLat, reach = AHEAD_M + 200): { 
   }
   return { roads, stress };
 }
+
+// ---- Broadcast from Roam (Stephen 2026-10-22: "Yes, but have it as a tap within roam") ----------------------------
+
+/** Roam's Broadcast: one tap on the Roam screen opens the share sheet; those who open the link follow the rider. */
+export const ROAM_BROADCAST_NAME = "Broadcast";
+export const ROAM_BROADCAST_TITLE = "Follow my ride";
+export const ROAM_BROADCAST_TEXT = "Follow my ride on RouteMaker: my dot and the way I've ridden, while my app is open.";
+export const ROAM_BROADCAST_ON = "Broadcasting. Those who open your link see your dot and the way you ride.";
+/** The link went without the leader key (not ready yet, or no SHA-256 here): nothing is broadcast. */
+export const ROAM_BROADCAST_NOT_READY = "Broadcast is not ready yet; try again in a moment.";
+
+/** The fragment keys of a Roam broadcast link: the ride's random id and the leader key. */
+export const ROAM_PARAM = "roam";
+const HEX32 = /^[0-9a-f]{32}$/;
+
+/** A Roam broadcast's link: the page's own address, its fragment naming the ride and its leader, nothing else. */
+export function roamLink(origin: string, id: string, lead: string): string {
+  return `${origin}/#${ROAM_PARAM}=${id}&lead=${lead}`;
+}
+
+/** The ride a Roam broadcast link names, and its leader key, or null for any other address. */
+export function roamLinkFrom(hash: string): { id: string; lead: string } | null {
+  const params = new URLSearchParams(hash.replace(/^#/, ""));
+  const id = params.get(ROAM_PARAM);
+  const lead = params.get("lead");
+  return id && lead && HEX32.test(id) && HEX32.test(lead) ? { id, lead } : null;
+}
+
+// ---- Sunrise and sunset (Stephen 2026-10-22: "Also add sunrise and sunset") -------------------------------------
+
+/**
+ * Roam's corner: the next sunrise and the next sunset at the rider, in the order they come, each with the time
+ * till it within the hour ("Sunset 6:19 PM (42 min)"). `said` is the whole of it in words. Null with no sun times
+ * (none in the region's year, but kept safe).
+ */
+export function roamLight(nowMs: number, at: LonLat): { shown: string[]; said: string } | null {
+  const next = (kind: "sunrise" | "sunset"): number | null => {
+    for (let day = 0; day < 2; day += 1) {
+      const t = solarDay(nowMs + day * 86_400_000, at[1], at[0])[kind];
+      if (t !== null && t > nowMs) return t;
+    }
+    return null;
+  };
+  const events = (["sunrise", "sunset"] as const)
+    .map((kind) => ({ kind, at: next(kind) }))
+    .filter((e): e is { kind: "sunrise" | "sunset"; at: number } => e.at !== null)
+    .sort((a, b) => a.at - b.at);
+  if (events.length === 0) return null;
+  const name = (kind: "sunrise" | "sunset") => (kind === "sunrise" ? "Sunrise" : "Sunset");
+  const soon = (t: number) => t - nowMs <= 3_600_000 && t - nowMs >= 30_000;
+  const shown = events.map((e) => `${name(e.kind)} ${lightClock(e.at)}${soon(e.at) ? ` (${formatDuration((e.at - nowMs) / 1000)})` : ""}`);
+  const said = events.map((e) => {
+    const minutes = Math.max(1, Math.round((e.at - nowMs) / 60_000));
+    return `${name(e.kind)} ${lightClock(e.at)}${soon(e.at) ? `, in ${minutes} minute${minutes === 1 ? "" : "s"}` : ""}`;
+  });
+  return { shown, said: `${said.join("; ")}.` };
+}
+
