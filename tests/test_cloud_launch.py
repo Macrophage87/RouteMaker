@@ -828,8 +828,8 @@ def test_a_spot_box_that_stops_offers_the_on_demand_box(fake) -> None:
     assert done.returncode == 1
     assert "or a spot reclaim" in done.stderr
     assert (
-        f"scripts/cloud/launch.sh --no-send --on-demand-instance-id {ONDEMAND} --box on-demand {URL}"
-        in done.stderr
+        "scripts/cloud/launch.sh --no-send"
+        f" --on-demand-instance-id {ONDEMAND} --box on-demand {URL}" in done.stderr
     )
 
 
@@ -842,8 +842,8 @@ def test_an_on_demand_box_that_stops_keeps_its_box_in_the_resume_hint(fake) -> N
     assert done.returncode == 1
     assert "spot reclaim" not in done.stderr and "on-demand box takes the run" not in done.stderr
     assert (
-        f"scripts/cloud/launch.sh --no-send --box on-demand --on-demand-instance-id {ONDEMAND} {URL}"
-        in done.stderr
+        "scripts/cloud/launch.sh --no-send"
+        f" --box on-demand --on-demand-instance-id {ONDEMAND} {URL}" in done.stderr
     )
 
 
