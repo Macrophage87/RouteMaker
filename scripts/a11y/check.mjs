@@ -5088,7 +5088,7 @@ const PICK_OPEN_IN_GO = "(() => { const s = document.querySelector('#sheet-setti
   // My Go signed out: kept on this device.
   const p = await bare({ width: 1280, height: 900, mobile: false });
   await openSheet(p, "Settings");
-  const section = await p.eval("(() => { const s = document.querySelector('#sheet-settings .my-go'); return s ? { heading: s.querySelector('h3')?.textContent, options: [...s.querySelectorAll('.open-in select option')].map((o) => o.textContent), status: s.querySelector('.my-go-said')?.getAttribute('role') } : null; })()");
+  const section = await p.eval("(() => { const s = document.querySelector('#sheet-settings .my-go'); return s ? { heading: s.querySelector('h3')?.textContent, options: [...document.querySelectorAll('#sheet-settings .settings-more .open-in select option')].map((o) => o.textContent), status: s.querySelector('.my-go-said')?.getAttribute('role') } : null; })()");
   const openInAx = await axNode(p, "#sheet-settings .open-in select");
   await p.eval(PICK_OPEN_IN_GO);
   await sleep(500);
@@ -5108,6 +5108,25 @@ const PICK_OPEN_IN_GO = "(() => { const s = document.querySelector('#sheet-setti
   const homeSearch = await p.eval("!!document.querySelector('#sheet-settings .my-go-home input')");
   check("my go: signed in, a choice is saved to the account (POST /api/me/go with the CSRF header, open_in go), said politely, and Home can be set there",
     !!post && post.body?.open_in === "go" && csrf === "layout-check-token" && homeSearch && (await p.eval("document.querySelector('.my-go-said').textContent")) === "My Go saved to your account.", JSON.stringify({ post: post?.body, csrf: csrf !== undefined, homeSearch }));
+  await p.close();
+}
+{
+  // Settings scrolling (Stephen 2026-10-22: "still a lot of scrolling"): a Home set is one line with Change, which opens
+  // the search with the focus in it; Open in and the weight (set once) are behind one closed More settings fold.
+  const home = JSON.stringify({ open_in: "", ride: "", home: { lon: -77.04, lat: 38.91, label: "Home" } });
+  const p = await bare({ width: 1280, height: 900, mobile: false, init: `try { localStorage.setItem('routemaker.my-go', ${JSON.stringify(home)}); } catch {}` });
+  await openSheet(p, "Settings");
+  const read = () => p.eval(`(() => { const s = document.querySelector('#sheet-settings'); const f = s.querySelector('details.settings-more'); const c = s.querySelector('.my-go .home-line button');
+    return { line: s.querySelector('.my-go .home-line .home-now')?.textContent, change: c && { name: c.getAttribute('aria-label'), h: Math.round(c.getBoundingClientRect().height) }, search: !!s.querySelector('.my-go-home input'),
+      fold: f && { open: f.open, summary: f.querySelector('summary').textContent, h: Math.round(f.querySelector('summary').getBoundingClientRect().height), holds: ['.open-in select', '.weight-row'].every((q) => !!f.querySelector(q)) && !f.querySelector('.announce-level') },
+      focus: document.activeElement?.tagName }; })()`);
+  const before = await read();
+  await p.eval("document.querySelector('#sheet-settings .my-go .home-line button').click(); true");
+  await sleep(300);
+  const after = await read();
+  check("settings: a Home set is one line with Change (44 px), which opens the search with the focus in it; Open in and the weight are behind one closed More settings fold (44 px summary), Announcements stays in Display",
+    before.line === "Home: Home" && before.change?.name === "Change Home" && before.change.h >= 44 && !before.search && before.fold?.open === false && before.fold.summary === "More settings" && before.fold.h >= 44 && before.fold.holds &&
+      after.search && after.focus === "INPUT" && !after.change, JSON.stringify({ before, after }));
   await p.close();
 }
 {
@@ -5208,7 +5227,8 @@ const failed = results.filter((r) => !r.ok);
 // A lettered pin's card (no auto route, 2026-10-19) adds two: the card a tap opens, and the card the B key opens.
 // The map's info panel adds two at 1280 px: the i named for it, and what it opens.
 // Plan starting as a loop (2026-10-20) adds one: the loop box unticked and ticked again.
-const EXPECTED = 682;
+// Settings scrolling (2026-10-22) adds one: Home's one line with Change, and the More settings fold.
+const EXPECTED = 683;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

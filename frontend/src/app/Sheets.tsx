@@ -58,7 +58,7 @@ import { WeightSetting } from "../lib/weightDialog.ts";
 import { Report311Log } from "../Report311Log.tsx";
 import { OPEN_IN_HINT, OPEN_IN_LABEL, type AppMode, type OpenIn } from "../lib/appMode.ts";
 import type { Home, MyGo } from "../lib/myGo.ts";
-import { homeFromPlace } from "../lib/homeSet.ts";
+import { homeFromPlace, homeName } from "../lib/homeSet.ts";
 import { HomeSetter } from "./Go.tsx";
 import { SIGN_IN_LINE } from "../lib/accountSettings.ts";
 import type { GeoGate, Place } from "../lib/geocode.ts";
@@ -334,13 +334,32 @@ function OpenInChoice({ value, onChange, idBase, hint }: { value: OpenIn; onChan
 }
 
 /**
- * My Go (the owner's choice 2): the Home that Go's Home chip rides to, Go's ride type and where the app opens,
- * saved to the account when signed in and on this device when not. First in Settings: Home is what a rider
- * comes here to set (Settings tidy, Stephen 2026-10-19: "still very clunky").
+ * My Go (the owner's choice 2): the Home that Go's Home chip rides to and Go's ride type (where the app opens,
+ * also My Go's, is under More settings), saved to the account when signed in and on this device when not. First
+ * in Settings: Home is what a rider comes here to set (Settings tidy, Stephen 2026-10-19: "still very clunky").
  */
 function MyGoSection({ controls }: { controls: MyGoControls }) {
   const { myGo, signedIn, save, setHome, said, geoGate, searchBias } = controls;
   const [infoOpen, setInfoOpen] = useState(false);
+  // A Home set is one line with Change (Settings scrolling, Stephen 2026-10-22: "still a lot of scrolling"); the search
+  // and Clear Home open under Change, and stay open while no Home is set.
+  const [changing, setChanging] = useState(false);
+  const changeRef = useRef<HTMLButtonElement>(null);
+  const homeBox = useRef<HTMLDivElement>(null);
+  const homeWas = useRef(myGo.home);
+  useEffect(() => {
+    if (homeWas.current === myGo.home) return;
+    homeWas.current = myGo.home;
+    // A new Home picked: back to its line, the focus on its Change (the search it was in is gone).
+    if (changing && myGo.home) {
+      setChanging(false);
+      requestAnimationFrame(() => changeRef.current?.focus());
+    }
+  }, [myGo.home, changing]);
+  const openChange = () => {
+    setChanging(true);
+    requestAnimationFrame(() => homeBox.current?.querySelector<HTMLInputElement>("input")?.focus());
+  };
   return (
     <section aria-labelledby="settings-my-go-heading" className="settings-group my-go">
       <div className="setting-line">
@@ -351,13 +370,28 @@ function MyGoSection({ controls }: { controls: MyGoControls }) {
         {signedIn ? "Kept with your Discord account, on every device you sign in on." : "Kept on this device. Sign in to keep it with your account."}
       </p>
       {/* The same Home sheet as Go's (lib/homeSet.ts), without the map way: the map is behind Settings. */}
-      <div className="my-go-home">
-        {!myGo.home && (
-          <p>
-            <strong>Home: </strong>not set
-          </p>
+      <div className="my-go-home" ref={homeBox}>
+        {myGo.home && !changing ? (
+          <div className="setting-line home-line">
+            <p className="home-now" id="settings-home-now">
+              <strong>Home: </strong>
+              {homeName(myGo.home)}
+            </p>
+            <button type="button" ref={changeRef} className="secondary" aria-label="Change Home" aria-describedby="settings-home-now" onClick={openChange}>
+              Change
+            </button>
+            <span className="info-spacer" aria-hidden="true" />
+          </div>
+        ) : (
+          <>
+            {!myGo.home && (
+              <p>
+                <strong>Home: </strong>not set
+              </p>
+            )}
+            <HomeSetter home={myGo.home} geoGate={geoGate} searchBias={searchBias} onPlace={(place: Place) => setHome(homeFromPlace(place))} onClear={() => setHome(null)} />
+          </>
         )}
-        <HomeSetter home={myGo.home} geoGate={geoGate} searchBias={searchBias} onPlace={(place: Place) => setHome(homeFromPlace(place))} onClear={() => setHome(null)} />
       </div>
       <SettingRow infoId="settings-go-ride-info" about="Go's ride type">
         <SettingSelect
@@ -367,7 +401,6 @@ function MyGoSection({ controls }: { controls: MyGoControls }) {
           onChange={(ride) => save({ ...myGo, ride: ride === "default" ? null : ride })}
         />
       </SettingRow>
-      <OpenInChoice value={myGo.openIn} onChange={(openIn) => save({ ...myGo, openIn })} idBase="my-go" hint={OPEN_IN_HINT} />
       <p className="hint my-go-said" role="status">
         {said}
       </p>
@@ -476,13 +509,6 @@ export function SettingsSheet(props: SettingsSheetProps) {
             </span>
           </button>
         </SettingRow>
-        {/* Rider and bike weight, for how hard hills feel (the owner, 2026-10-18: "probably belongs in settings"); set once, so last. */}
-        <div className="setting-row weight-row">
-          <div className="setting-line">
-            <WeightSetting {...props.weight} />
-            <span className="info-spacer" aria-hidden="true" />
-          </div>
-        </div>
       </section>
       <section aria-labelledby="settings-display-heading" className="settings-group">
         <h3 id="settings-display-heading">Display</h3>
@@ -532,6 +558,21 @@ export function SettingsSheet(props: SettingsSheetProps) {
           />
         </SettingRow>
       </section>
+      {/* Set once and seldom changed (Settings scrolling, Stephen 2026-10-22: "still a lot of scrolling"): behind one
+          fold, so the sheet's first screen is the settings a rider changes. */}
+      <details className="fold settings-more">
+        <summary>More settings</summary>
+        <div className="fold-body">
+          <OpenInChoice value={myGo.myGo.openIn} onChange={(openIn) => myGo.save({ ...myGo.myGo, openIn })} idBase="my-go" hint={OPEN_IN_HINT} />
+          {/* Rider and bike weight, for how hard hills feel (the owner, 2026-10-18: "probably belongs in settings"). */}
+          <div className="setting-row weight-row">
+            <div className="setting-line">
+              <WeightSetting {...props.weight} />
+              <span className="info-spacer" aria-hidden="true" />
+            </div>
+          </div>
+        </div>
+      </details>
       {/* The installable app (WEB-NAV-plan.md section 8, P4), under its own heading when the browser offers it. The
           routes saved and kept for offline are in Save and load (YourRoutes.tsx; the owner, 2026-10-18). */}
       <InstallOffer idBase="settings-install" onSay={announce} />
@@ -570,13 +611,16 @@ export function SettingsSheet(props: SettingsSheetProps) {
       {/* The documentation (the owner, 2026-10-19): one link, last, under its own heading. */}
       <section aria-labelledby="settings-about-heading" className="settings-group">
         <h3 id="settings-about-heading">About</h3>
-        <DocsPageLink />
-        {/* The privacy policy (core.privacy_policy): here, where it shows signed in or out and on any server. */}
-        <p className="privacy-link">
-          <a href={PRIVACY_PAGE} onClick={(e) => isPlainClick(e) && rememberPlanForPage(tabSession(), window.location.hash)}>
-            Privacy policy
-          </a>
-        </p>
+        {/* Side by side when they fit: two short links, one line. */}
+        <div className="about-links">
+          <DocsPageLink />
+          {/* The privacy policy (core.privacy_policy): here, where it shows signed in or out and on any server. */}
+          <p className="privacy-link">
+            <a href={PRIVACY_PAGE} onClick={(e) => isPlainClick(e) && rememberPlanForPage(tabSession(), window.location.hash)}>
+              Privacy policy
+            </a>
+          </p>
+        </div>
       </section>
     </SheetFrame>
   );
