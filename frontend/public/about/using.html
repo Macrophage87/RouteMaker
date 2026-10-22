@@ -879,17 +879,35 @@ in Go's Menu and Plan's bottom bar, with an <strong>Open Reports</strong> button
 </ul>
 <h3>Group Ride and Mass Ride links</h3>
 <ul>
-<li>Everyone who opens the same <strong>Share ride</strong> link is on the same ride, and sees the
-others as dots, with no names.</li>
+<li><strong>Broadcast</strong>, a small button beside Start ride in Plan and Go, opens your phone's
+share sheet with a link to the route. Once you send it, your ride starts and you are its leader. If the
+route isn't ready or the share fails, it says so beside the button and nothing starts.
+<strong>Share ride</strong> makes you the leader too, and sharing the same route again, to another chat,
+keeps you the leader of both.</li>
+<li>Everyone who opens the same link is on the same ride, and sees the others as dots, with no names.</li>
+<li>Opening the link <strong>follows the leader</strong>: the map moves with the leader's dot, which has a
+wide ring round it, and you see it at once, before you answer whether to show yourself. The leader's
+phone sends the route it is riding (dashed, so a re-route shows) and the path it has taken (solid) about
+every 2 minutes and whenever the route changes, so someone who opens the link late sees the whole path,
+except its first 650 ft [200 m], as rides often start at home. Moving or zooming the map stops following;
+<strong>Follow the leader</strong>, under the riders count, turns it back on. While you ride yourself,
+the map follows you instead. A link opened in Plan follows the leader too, so someone at home can watch
+the ride.</li>
 <li>When the link opens, it asks once whether to <strong>show me as a dot</strong>, and your role:
 <strong>Participant</strong>, <strong>Lead line</strong>, <strong>Sweep</strong> or
-<strong>Corker</strong>. Your dot is sent only while the app is open and you are within a quarter mile
-[400 m] of the route, and stops when you turn it off, close the app, are off the route for 10 minutes,
-or 12 hours after the start. The server keeps a dot for 2 minutes, in memory only.</li>
+<strong>Corker</strong>. Your dot is sent only while the app is open. While you ride, it is shown on or
+off the route, so the leader and riders who get separated can find each other; otherwise only within a
+quarter mile [400 m] of the route. It stops when you turn it off (Show me as a dot, under the riders
+count), close the app, are off the route for 10 minutes when not riding, or 12 hours after the start.</li>
 <li><strong>Alert</strong> sends one tap to everyone on the link with your location. A Group Ride has
-Rider off the back, Crash, Mechanical or flat, Wrong turn and Other; a Mass Ride has Extensive rider
-spread, Emergency vehicle coming through, Aggressive person, Medical emergency or crash, Rerouting and
-Other. Crash and Medical ask first and offer to call 911.</li>
+Rider off the back, Crash, Mechanical or flat, Wrong turn, Lost (separated from the group), Wait up
+(regroup) and Other; a Mass Ride has Extensive rider spread, Emergency vehicle coming through,
+Aggressive person, Medical emergency or crash, Rerouting, Lost (separated from the ride) and Other. Crash
+and Medical ask first and offer to call 911. In Other, where your browser supports it,
+<strong>Speak</strong> fills the box from what you say; check it, then tap Send. Your browser's maker
+(Google for Chrome, Apple for Safari) turns the recording into text.</li>
+<li>Nothing about a ride stays on the server for more than 2 minutes: dots, the leader's route and path,
+and alerts are kept in memory only, and forgotten 2 minutes after they were last sent.</li>
 <li>Planning a Mass Ride: <a href="/about/mass-ride.html">Mass Ride</a>.</li>
 </ul>
 
@@ -919,7 +937,7 @@ Other. Crash and Medical ask first and offer to call 911.</li>
 <p class="next">Next: <a href="/about/accessibility.html">Accessibility</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.11.0. The code is
+  <p>Part of RouteMaker's documentation. It describes version 0.12.0. The code is
   open source under the MIT licence:
   <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
   <p><a href="/">Back to the map</a></p>
