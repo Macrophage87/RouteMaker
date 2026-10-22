@@ -186,6 +186,7 @@ def test_the_alert_lists_are_the_plan_s() -> None:
         "Aggressive person",
         "Medical emergency or crash",
         "Rerouting, road closed",
+        "Lost, separated from the ride",
         "Other",
     ]
     assert group == [
@@ -193,6 +194,8 @@ def test_the_alert_lists_are_the_plan_s() -> None:
         "Crash",
         "Mechanical or flat, stopping",
         "Wrong turn",
+        "Lost, separated from the group",
+        "Wait up, regroup",
         "Other",
     ]
     confirm = {k.id for ks in rp.ALERT_KINDS.values() for k in ks if k.confirm}
@@ -404,3 +407,106 @@ def test_the_endpoints_are_limited_per_address_and_writes_per_ride(client, monke
 def test_a_foreign_page_is_refused(client) -> None:
     r = client.get(f"/api/rides/{RIDE}", HTTP_X_RIDE_TOKEN=ME, HTTP_SEC_FETCH_SITE="cross-site")
     assert r.status_code == 403
+
+
+def test_a_broadcast_links_leader_key_marks_the_sharers_dot_only(clock) -> None:
+    rp.post_position(RIDE, ME, *SPOT, role="lead", now=clock)
+    rp.post_position(RIDE, THEM, SPOT[0] + 0.001, SPOT[1], role="lead", now=clock)
+    key = rp.leader_key(ME)
+    assert rp.LEADER_KEY.match(key) and key != ME  # the link never carries the token itself
+    dots = rp.read(RIDE, YOU, now=clock, leader=key)["dots"]
+    leaders = [d for d in dots if d.get("leader")]
+    assert len(leaders) == 1
+    assert (leaders[0]["lon"], leaders[0]["lat"]) == rp.rounded(*SPOT)
+    # Without a key, or with one that is not 32 hex digits, no dot is marked.
+    assert not any(d.get("leader") for d in rp.read(RIDE, THEM, now=clock)["dots"])
+    clock.t += 5
+    assert not any(d.get("leader") for d in rp.read(RIDE, YOU, now=clock, leader="x" * 32)["dots"])
+
+
+@pytest.mark.django_db
+def test_the_api_reads_the_leader_key_from_its_header(client, clock, monkeypatch) -> None:
+    monkeypatch.setattr(rp.time, "time", clock)
+    client.post(
+        f"/api/rides/{RIDE}/here",
+        data=json.dumps({"token": ME, "lon": SPOT[0], "lat": SPOT[1], "role": "lead"}),
+        content_type="application/json",
+    )
+    r = client.get(
+        f"/api/rides/{RIDE}", HTTP_X_RIDE_TOKEN=YOU, HTTP_X_RIDE_LEADER=rp.leader_key(ME)
+    )
+    assert r.status_code == 200
+    assert r.json()["dots"][0]["leader"] is True
+
+
+ROUTE = [[-77.03651, 38.89768], [-77.03, 38.9], [-77.02, 38.91]]
+
+
+def test_the_leaders_path_reaches_only_readers_with_its_key_and_goes_after_2_minutes(clock) -> None:
+    rp.post_path(RIDE, ME, ROUTE, [list(SPOT), [SPOT[0] + 0.001, SPOT[1]]], now=clock)
+    key = rp.leader_key(ME)
+    path = rp.read(RIDE, YOU, now=clock, leader=key)["leader_path"]
+    assert path["route"] == [[round(x, 5), round(y, 5)] for x, y in ROUTE]
+    # The ridden path is on the dots' 20 m grid.
+    assert path["trail"][0] == list(rp.rounded(*SPOT))
+    assert path["age_s"] == 0
+    # No key, or another rider's key: no path.
+    assert "leader_path" not in rp.read(RIDE, THEM, now=clock)
+    clock.t += 5
+    assert "leader_path" not in rp.read(RIDE, THEM, now=clock, leader=rp.leader_key(YOU))
+    # Gone 2 minutes after it was sent: the phone sends it again before then.
+    clock.t += rp.PATH_TTL_S
+    assert "leader_path" not in rp.read(RIDE, YOU, now=clock, leader=key)
+
+
+def test_a_path_is_bounded_checked_and_not_sent_too_often(clock) -> None:
+    rp.post_path(RIDE, ME, ROUTE, [], now=clock)
+    with pytest.raises(rp.Refused) as soon:
+        rp.post_path(RIDE, ME, ROUTE, [], now=clock)
+    assert soon.value.status == 429
+    clock.t += rp.MIN_PATH_INTERVAL_S
+    rp.post_path(RIDE, ME, ROUTE[:2], None, now=clock)
+    # Points outside the map's area are left out, not refused.
+    rp.post_path(RIDE, THEM, [[0, 0], ROUTE[0]], [], now=clock)
+    key = rp.leader_key(THEM)
+    assert rp.read(RIDE, YOU, now=clock, leader=key)["leader_path"]["route"] == [ROUTE[0]]
+    for bad in ([[1, "x"]], [[-77.0, 38.9, 3]], "nope", [[-77.0, 38.9]] * (rp.PATH_MAX_POINTS + 1)):
+        with pytest.raises(rp.Refused) as refused:
+            rp.post_path(RIDE, YOU, bad, [], now=clock)
+        assert refused.value.status == 400
+    # Leaving drops the path at once.
+    rp.leave(RIDE, ME, now=clock)
+    assert "leader_path" not in rp.read(RIDE, YOU, now=clock, leader=rp.leader_key(ME))
+
+
+def test_a_ride_holds_a_few_paths_at_most(clock) -> None:
+    for i in range(rp.PATHS_PER_RIDE):
+        rp.post_path(RIDE, f"{i:032x}", ROUTE, [], now=clock)
+    with pytest.raises(rp.Refused) as full:
+        rp.post_path(RIDE, "f" * 32, ROUTE, [], now=clock)
+    assert full.value.status == 503
+
+
+@pytest.mark.django_db
+def test_the_api_takes_a_path_in_a_post_body(client, clock, monkeypatch) -> None:
+    monkeypatch.setattr(rp.time, "time", clock)
+    r = client.post(
+        f"/api/rides/{RIDE}/path",
+        data=json.dumps({"token": ME, "route": ROUTE, "trail": [list(SPOT)]}),
+        content_type="application/json",
+    )
+    assert r.status_code == 200
+    key = rp.leader_key(ME)
+    r = client.get(f"/api/rides/{RIDE}", HTTP_X_RIDE_TOKEN=YOU, HTTP_X_RIDE_LEADER=key)
+    assert len(r.json()["leader_path"]["route"]) == 3
+
+
+def test_nothing_about_a_ride_stays_past_2_minutes(clock) -> None:
+    # Stephen 2026-10-22: "For privacy, nothing stays on the server for more than 2 min".
+    rp.post_position(RIDE, ME, *SPOT, now=clock)
+    rp.post_path(RIDE, ME, ROUTE, [list(SPOT)], now=clock)
+    rp.send_alert(RIDE, ME, rp.GROUP_RIDE, "lost", "", *SPOT, now=clock)
+    clock.t += rp.KEEP_S + 1
+    rp.read(RIDE, YOU, now=clock)  # a read prunes
+    with rp.store().ride(RIDE, create=False) as state:
+        assert state == {"riders": {}, "alerts": []}

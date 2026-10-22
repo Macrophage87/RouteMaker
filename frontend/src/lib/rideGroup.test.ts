@@ -166,9 +166,9 @@ test("sharing stops when turned off, after 10 minutes off the route, or 12 hours
 test("the alert lists are the plan's, and Medical emergency or crash and Crash ask first", () => {
   assert.deepEqual(
     ALERT_KINDS["mass-ride"].map((k) => k.label),
-    ["Extensive rider spread", "Emergency vehicle coming through", "Aggressive person", "Medical emergency or crash", "Rerouting, road closed", "Other"],
+    ["Extensive rider spread", "Emergency vehicle coming through", "Aggressive person", "Medical emergency or crash", "Rerouting, road closed", "Lost, separated from the ride", "Other"],
   );
-  assert.deepEqual(ALERT_KINDS["group-ride"].map((k) => k.label), ["Rider off the back", "Crash", "Mechanical or flat, stopping", "Wrong turn", "Other"]);
+  assert.deepEqual(ALERT_KINDS["group-ride"].map((k) => k.label), ["Rider off the back", "Crash", "Mechanical or flat, stopping", "Wrong turn", "Lost, separated from the group", "Wait up, regroup", "Other"]);
   const asks = [...ALERT_KINDS["mass-ride"], ...ALERT_KINDS["group-ride"]].filter((k) => k.confirm).map((k) => k.id);
   assert.deepEqual(asks, ["medical", "crash"]);
 });
@@ -320,12 +320,12 @@ test("the map draws each role's mark by age, the lead line's chevron turned alon
     addImage: (id: string) => void images.add(id),
   };
   showRideDots(map, shown, [alert()], 0, 1);
-  // Pulse, the marks, the chevrons, the alert pin and its faded hole.
-  assert.equal(added.length, 5);
+  // The leader's route, path and ring, the pulse, the marks, the chevrons, the alert pin and its faded hole.
+  assert.equal(added.length, 8);
   assert.equal(images.size, 12);
   assert.ok(images.has(dotImageId("lead", "ring")) && images.has(dotImageId("participant", "fresh")));
   showRideDots(map, shown, [alert()], 0, 1);
-  assert.equal(added.length, 5);
+  assert.equal(added.length, 8);
   showRideDots(map, null);
   assert.equal(added.length, 0);
   assert.equal(sources.size, 0);
@@ -419,7 +419,7 @@ test("the page asks the role in the one question, keeps Go clean and names the k
   assert.match(group, /if \(kept === null\) window\.setTimeout\(\(\) => live && say\(CONSENT_QUESTION\), 150\);/);
   // A role change moves the next post up, and the post sends the consent's (new) role.
   assert.match(group, /const changeRole[\s\S]*?keepConsent\(ride, consent\.answer, Date\.now\(\), undefined, undefined, role\)[\s\S]*?share\.current\.lastPost = postSoonAfter\(share\.current\.lastPost\)/);
-  assert.match(group, /\}, \[fix, now, shareOn, ride, token, consent, line, origin\]\);/);
+  assert.match(group, /\}, \[fix, now, shareOn, ride, token, consent, line, origin, isBroadcast, riding, leading\]\);/);
   assert.match(group, /<\/button>\s*\)\}\s*\{consent && <RolePicker name="ride-role" value=\{consent\.role\} onChange=\{changeRole\} \/>\}\s*<\/div>/);
   assert.match(group, /sendPosition\(origin, ride, token, fix, consent\.role\)/);
   // Go's bar keeps its two buttons.

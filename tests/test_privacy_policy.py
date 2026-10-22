@@ -100,7 +100,7 @@ class TestPage:
         for claim in (
             "never on disk or in a log",  # core.ride_presence
             "2 minutes",  # ride_presence.DOT_TTL_S
-            "10 minutes",  # ride_presence.ALERT_TTL_S
+            "Nothing about a ride is kept longer",  # ride_presence.KEEP_S
             "Discord account number",  # core.models.User: discord_user_id only
             "Riding with RouteMaker",  # the app's foreground-service notification
             "keeps going with the screen locked",  # the app's foreground service, Start to End
@@ -124,7 +124,8 @@ class TestPage:
         from config import procrastinate
         from core import ratelimit, revocation, ride_presence, shared_routes
 
-        assert ride_presence.DOT_TTL_S == 120 and ride_presence.ALERT_TTL_S == 600
+        assert ride_presence.DOT_TTL_S == 120 and ride_presence.ALERT_TTL_S == 120
+        assert ride_presence.KEEP_S == 120 and ride_presence.PATH_TTL_S == 120
         assert ride_presence.GRID_M == 20.0
         assert procrastinate.BACKUP_KEEP == 7
         assert {"app_session", "django_session", "rate_limit_window", "cached_membership"} <= set(

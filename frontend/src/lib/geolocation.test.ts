@@ -671,7 +671,7 @@ test("privacy: the location state reaches only the note, the hint and the circle
     /if \(!\(here && pointsRef\.current\.includes\(here\.point\)\)\) setHere\(result\.fix\);/,
     /const lastHere = \(\): LonLat \| null => here\?\.point \?\? \(goStartRef\.current\.kind === "here" \? goStartRef\.current\.point : null\);/,
     // A Mass Ride or Group Ride link (v0.7.0): the others on the route, shared only after the rider says yes there.
-    /<RideGroup type=\{rideGroupType \?\? "group-ride"\} points=\{rideGroupPoints\} line=\{rideGroupLine\} getMap=\{getMap\} here=\{rideView\?\.rider\?\.point \?\? \(here \? here\.point : null\)\} \/>/,
+    /^\s*here=\{rideView\?\.rider\?\.point \?\? \(here \? here\.point : null\)\}$/,
   ];
   for (const rule of allowed) assert.ok(lines.some((line) => rule.test(line)), `still used: ${rule.source}`);
   for (const line of lines) assert.ok(allowed.some((rule) => rule.test(line)), `unexpected use: ${line.trim()}`);

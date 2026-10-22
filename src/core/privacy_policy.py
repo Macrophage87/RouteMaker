@@ -10,7 +10,8 @@ comes from:
   background-location permission (mobile/README.md, "Privacy"; mobile/test/config.test.mjs); a
   route request carries points in its body, and the logs keep no query (docs/DEVELOPMENT.md,
   "Logs and the rider's position").
-- Group and Mass Ride: core.ride_presence (20 m grid, memory only, 2 minutes; alerts 10 minutes)
+- Group and Mass Ride: core.ride_presence (20 m grid, memory only; dots, alerts and a leader's
+  path 2 minutes, nothing longer)
   and frontend/src/RideGroup.tsx (only while sharing and the page is in front, near the route).
 - Discord sign-in: core.discord_oauth (identify scope, no token kept) and core.models.User (the
   Discord id and dates only); the bot's role cache: core.membership.
@@ -52,7 +53,7 @@ WHERE_YOU_ARE = (
     "Your location is used on your phone or computer to plan and guide your ride. The server "
     "keeps no record of where you are, only places you choose to save or share (Home, saved and "
     "shared routes, a 311 problem’s spot) and, while you share on a Group or Mass Ride, your "
-    "rounded dot for 2 minutes and an alert’s spot for 10 minutes."
+    "rounded dot for 2 minutes and an alert’s spot for 2 minutes."
 )
 
 
@@ -117,7 +118,18 @@ SECTIONS: list[tuple[str, str]] = [
                 "memory, never on disk or in a log, and dropped 2 minutes after it was sent.",
                 "Other riders on the same ride see an unnamed dot. No account or name is sent: "
                 "your phone makes a new random code for each ride.",
-                "An alert you send keeps your rounded spot for 10 minutes, or until you clear it.",
+                "An alert you send keeps your rounded spot for 2 minutes, or until you clear it.",
+                "Share ride and Broadcast make you the ride leader, shown as a dot from the start "
+                "of your ride. While you ride a shared ride, you and anyone on it who chooses to "
+                "be shown are shown on or off the route, so riders who get separated can find "
+                "each other; once the ride ends, the quarter-mile rule is back.",
+                "As leader, your phone also sends the route you are riding and the path you have "
+                "ridden (rounded the same way, without its first 650 ft (200 m), as rides often "
+                "start at home) about every 2 minutes; the server keeps each only in memory and "
+                "drops it after 2 minutes. Only those with your link see it.",
+                "Speak, in an alert's Other box, uses your browser's speech recognition: the "
+                "browser's maker (Google for Chrome, Apple for Safari) turns the recording into "
+                "text. The words go only into the box until you tap Send.",
             ]
         ),
     ),
@@ -254,7 +266,8 @@ SECTIONS: list[tuple[str, str]] = [
         _ul(
             [
                 "What you save with your account: until you delete it, or the account.",
-                "Group and Mass Ride positions: 2 minutes; alerts: 10 minutes.",
+                "Group and Mass Ride positions, alerts and a leader's path: 2 minutes. Nothing "
+                "about a ride is kept longer.",
                 "Shared links: as above.",
                 "Database backups: one a night, the last seven kept, so deleted data can stay in "
                 "them for up to a week. Sign-ins, request limits and the Discord role list are "

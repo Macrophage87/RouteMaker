@@ -6791,7 +6791,9 @@ def _ride_body(request):
 @decorate_view(*RIDE_READ_GUARDS)
 def ride_read(request, ride_id: str):
     token = request.META.get("HTTP_X_RIDE_TOKEN", "")
-    return _ride_call(request, lambda rp: rp.read(ride_id, token))
+    # A broadcast link's leader key (core.ride_presence.leader_key): marks the sharer's dot.
+    leader = request.META.get("HTTP_X_RIDE_LEADER", "")
+    return _ride_call(request, lambda rp: rp.read(ride_id, token, leader=leader))
 
 
 @api.post("/rides/{ride_id}/here", summary="Show this rider as a dot (rounded to 20 m) for 2 min")
@@ -6804,6 +6806,27 @@ def ride_here(request, ride_id: str):
         request,
         lambda rp: rp.post_position(
             ride_id, body.get("token", ""), body.get("lon"), body.get("lat"), body.get("role")
+        ),
+    )
+
+
+@api.post(
+    "/rides/{ride_id}/path",
+    summary="A broadcast leader's route and ridden path, kept in memory for 2 min",
+)
+@decorate_view(*RIDE_WRITE_GUARDS)
+def ride_path(request, ride_id: str):
+    from . import ride_presence
+
+    body, refusal = _json_body(request, ride_presence.PATH_BODY_BYTES)
+    if refusal is None and not isinstance(body, dict):
+        refusal = _stress_error(400, "Send an object.")
+    if refusal is not None:
+        return refusal
+    return _ride_call(
+        request,
+        lambda rp: rp.post_path(
+            ride_id, body.get("token", ""), body.get("route"), body.get("trail")
         ),
     )
 

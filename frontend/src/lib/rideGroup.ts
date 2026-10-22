@@ -46,6 +46,24 @@ export async function rideId(preset: PresetId, points: readonly LonLat[]): Promi
   return hex(digest);
 }
 
+/**
+ * A broadcast ride (Share ride or Broadcast, Stephen 2026-10-22): the ride is the shared line's id, which the sharer
+ * and everyone who opens the link both hold whatever each of them rides, so the leader is always on the same ride.
+ */
+export async function broadcastRideId(sharedId: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`broadcast|${sharedId}`));
+  return hex(digest);
+}
+
+/**
+ * The leader key a broadcast link carries (core.ride_presence.leader_key): the first 32 hex digits of the SHA-256 of
+ * the sharer's token. It names the sharer's dot to the server; only the sharer, who holds the token, posts as it.
+ */
+export async function leaderKey(token: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
+  return hex(digest).slice(0, 32);
+}
+
 /** A rider's random token for one ride: 32 hex digits. */
 export function newToken(): string {
   const bytes = new Uint8Array(16);
@@ -152,8 +170,28 @@ export function keepConsent(
   return record;
 }
 
+/**
+ * The sharer's answer for the ride they broadcast: shown, as Lead line, under the token whose leader key the link
+ * carries (a token kept from an earlier share of the same line is replaced, so the link's key names this dot).
+ */
+export function leadConsent(ride: string, token: string, now = Date.now(), store: Store | null = local()): RideConsent {
+  const all = readAll(store);
+  const kept: Record<string, RideConsent> = {};
+  for (const [id, c] of Object.entries(all)) if (c && typeof c.since === "number" && now - c.since < RIDE_LIFE_MS) kept[id] = c;
+  const record: RideConsent = { answer: "yes", token, since: kept[ride]?.since ?? now, role: "lead" };
+  kept[ride] = record;
+  try {
+    store?.setItem(CONSENT_KEY, JSON.stringify(kept));
+  } catch {
+    // Not kept: the ride's page asks again.
+  }
+  return record;
+}
+
 export const CONSENT_QUESTION = "Show me as a dot to others on this ride?";
 export const CONSENT_NOTE = `Only while the app is open and you are within ${QUARTER_MILE} of the route. No name; positions are rounded and gone after 2 minutes.`;
+/** On a broadcast: shown on or off the route, so the leader and the riders can find each other. */
+export const BROADCAST_CONSENT_NOTE = "Only while the app is open, on or off the route, so the leader and riders can find each other. No name; positions are rounded and gone after 2 minutes.";
 export const CONSENT_YES = "Yes";
 export const CONSENT_NO = "No";
 
@@ -250,11 +288,14 @@ export function ageWords(ageS: number): string {
  * (0.8 km) behind", "Lead line, 1.2 mi (1.9 km) ahead", "Corker, beside you"; without your position,
  * "Participant, 4.2 mi (6.8 km) along the route".
  */
-export function dotName(role: RideRole, alongM: number, myAlongM: number | null): string {
+export function dotName(role: RideRole, alongM: number, myAlongM: number | null, leader = false): string {
   const diff = myAlongM === null ? null : alongM - myAlongM;
   const where = diff === null || Math.abs(diff) < 30 ? relativeWords(alongM, myAlongM) : `${formatDistance(Math.abs(diff))} ${diff > 0 ? "ahead" : "behind"}`;
-  return `${roleLabel(role)}, ${where}`;
+  return `${leader ? LEADER_LABEL : roleLabel(role)}, ${where}`;
 }
+
+/** The sharer of a broadcast ride, as the key and the dots name them. */
+export const LEADER_LABEL = "Ride leader";
 
 /** What tapping a dot says: "Sweep, 0.5 mi (0.8 km) behind. Seen 40 s ago." */
 export function dotSaid(ageS: number, name: string | null = null): string {
@@ -270,6 +311,8 @@ export interface Dot {
   age_s: number;
   /** Absent from an older server: a participant. */
   role?: RideRole;
+  /** The broadcast's sharer (core.ride_presence.read with the link's leader key). */
+  leader?: boolean;
 }
 
 export interface ShownDot extends Dot {
@@ -289,6 +332,8 @@ export const PULSE_S = 2;
 export interface DotHints {
   previous?: readonly ShownDot[];
   myAlongM?: number | null;
+  /** A broadcast: every dot is drawn, on or off the route, so riders who get separated can find each other. */
+  anywhere?: boolean;
 }
 
 /** A dot's last reading is not named (dots are anonymous): the nearest one drawn last time of the same role, within 200 m. */
@@ -312,7 +357,10 @@ function hintFor(d: Dot, hints: DotHints): number | null {
 
 /**
  * The dots to draw: within a quarter mile of the route and under 2 minutes old, aged by the seconds since the
- * poll; a reading newer than the last poll pulses for the first PULSE_S seconds.
+ * poll; a reading newer than the last poll pulses for the first PULSE_S seconds. The ride leader is drawn off the
+ * route too: the sharer may re-route, and those following go where the leader goes. On a broadcast every dot is
+ * (`anywhere`; Stephen 2026-10-22: "Both the leader dot and any followers show up on the map, so if they get
+ * separated they can find each other").
  */
 export function shownDots(line: readonly LonLat[], dots: readonly Dot[], sinceS = 0, hints: DotHints = {}): ShownDot[] {
   const out: ShownDot[] = [];
@@ -321,9 +369,10 @@ export function shownDots(line: readonly LonLat[], dots: readonly Dot[], sinceS 
     const f = freshness(age);
     if (f === "gone") continue;
     const at = project(line, [d.lon, d.lat], hintFor(d, hints));
-    if (at.offM > NEAR_ROUTE_M) continue;
+    if (at.offM > NEAR_ROUTE_M && !d.leader && !hints.anywhere) continue;
     out.push({
       ...d,
+      leader: d.leader === true,
       role: roleOf(d.role),
       age_s: age,
       freshness: f,
@@ -352,18 +401,47 @@ export function countText(n: number): string {
  */
 export function ridersSaid(dots: readonly ShownDot[], myAlongM: number | null): string {
   const count = `${countText(dots.length)}.`;
-  if (!dots.length || myAlongM === null) return count;
+  if (!dots.length) return count;
+  if (myAlongM === null) {
+    const leader = dots.find((d) => d.leader);
+    return leader ? `${count} ${dotName(leader.role, leader.alongM, null, true)}, seen ${ageWords(leader.age_s)}.` : count;
+  }
   const ahead = dots.filter((d) => d.alongM >= myAlongM).sort((a, b) => a.alongM - b.alongM)[0];
   const behind = dots.filter((d) => d.alongM < myAlongM).sort((a, b) => b.alongM - a.alongM)[0];
   const nearest = ahead ?? behind;
   const which = ahead ? "ahead" : "behind";
+  const leader = dots.find((d) => d.leader);
+  const lead = leader ? ` ${dotName(leader.role, leader.alongM, myAlongM, true)}, seen ${ageWords(leader.age_s)}.` : "";
   const roles = RIDE_ROLES.filter((r) => r.id !== DEFAULT_ROLE)
     .map((r) => dots.filter((d) => d.role === r.id).sort((a, b) => Math.abs(a.alongM - myAlongM) - Math.abs(b.alongM - myAlongM))[0])
     .filter((d): d is ShownDot => d !== undefined)
     .map((d) => ` ${dotName(d.role, d.alongM, myAlongM)}.`)
     .join("");
-  return `${count} Nearest rider ${which}, ${formatDistance(Math.abs(nearest.alongM - myAlongM))}, seen ${ageWords(nearest.age_s)}.${roles}`;
+  return `${count}${lead} Nearest rider ${which}, ${formatDistance(Math.abs(nearest.alongM - myAlongM))}, seen ${ageWords(nearest.age_s)}.${roles}`;
 }
+
+// ---- following the leader -------------------------------------------------------------------------
+
+/** The leader's path as this page saw it: kept in memory on this device only, never sent or stored. */
+export const TRAIL_MAX_POINTS = 2000;
+/** A reading within this of the last one adds nothing (the server's grid is 20 m). */
+export const TRAIL_STEP_M = 15;
+
+/** The trail with the leader's new reading added, or the same trail where it has not moved. */
+export function extendTrail(trail: readonly LonLat[], p: LonLat): readonly LonLat[] {
+  const last = trail[trail.length - 1];
+  if (last) {
+    const kx = M_PER_DEG * Math.cos((p[1] * Math.PI) / 180);
+    if (Math.hypot((p[0] - last[0]) * kx, (p[1] - last[1]) * M_PER_DEG) < TRAIL_STEP_M) return trail;
+  }
+  const next = [...trail, p];
+  return next.length > TRAIL_MAX_POINTS ? next.slice(next.length - TRAIL_MAX_POINTS) : next;
+}
+
+export const FOLLOW_LEADER = "Follow the leader";
+export const FOLLOWING_SAID = "Following the ride leader on the map.";
+export const NOT_FOLLOWING_SAID = "Stopped following the ride leader. Turn on Follow the leader to follow again.";
+export const LEADING_SAID = "You lead this ride: those who open your link follow your dot while the app is open.";
 
 // ---- sharing your own dot --------------------------------------------------------------------------
 
@@ -410,6 +488,8 @@ export const ALERT_KINDS: Record<RideLinkType, readonly AlertKind[]> = {
     { id: "aggressive", label: "Aggressive person" },
     { id: "medical", label: "Medical emergency or crash", confirm: true, call911: true },
     { id: "reroute", label: "Rerouting, road closed" },
+    // Stephen 2026-10-22: "Followers and leaders can text between each other as well with common issues, lost, mechanical, etc".
+    { id: "lost", label: "Lost, separated from the ride" },
     { id: "other", label: "Other" },
   ],
   "group-ride": [
@@ -417,6 +497,8 @@ export const ALERT_KINDS: Record<RideLinkType, readonly AlertKind[]> = {
     { id: "crash", label: "Crash", confirm: true, call911: true },
     { id: "mechanical", label: "Mechanical or flat, stopping" },
     { id: "wrong_turn", label: "Wrong turn" },
+    { id: "lost", label: "Lost, separated from the group" },
+    { id: "wait", label: "Wait up, regroup" },
     { id: "other", label: "Other" },
   ],
 };
@@ -471,17 +553,34 @@ export function newAlerts(previous: readonly RideAlert[], next: readonly RideAle
 
 type Fetch = typeof fetch;
 
+/** A broadcast leader's route and ridden path, as its phone last sent them (core.ride_presence.post_path). */
+export interface LeaderPath {
+  route: LonLat[];
+  trail: LonLat[];
+  age_s: number;
+}
+
 export interface RideRead {
   dots: Dot[];
   alerts: RideAlert[];
+  /** With the link's leader key, while the leader's phone is sending it. */
+  leaderPath?: LeaderPath;
 }
 
-export async function readRide(origin: string, ride: string, token: string, get: Fetch = fetch): Promise<RideRead | null> {
+const isLine = (v: unknown): v is LonLat[] =>
+  Array.isArray(v) && v.every((p) => Array.isArray(p) && p.length === 2 && p.every((n) => typeof n === "number" && Number.isFinite(n)));
+
+export async function readRide(origin: string, ride: string, token: string, get: Fetch = fetch, leader: string | null = null): Promise<RideRead | null> {
   try {
-    const response = await get(`${origin}/api/rides/${ride}`, { headers: { Accept: "application/json", "X-Ride-Token": token } });
+    const headers: Record<string, string> = { Accept: "application/json", "X-Ride-Token": token };
+    if (leader) headers["X-Ride-Leader"] = leader;
+    const response = await get(`${origin}/api/rides/${ride}`, { headers });
     if (!response.ok) return null;
-    const body = (await response.json()) as Partial<RideRead>;
-    return { dots: Array.isArray(body.dots) ? body.dots : [], alerts: Array.isArray(body.alerts) ? body.alerts : [] };
+    const body = (await response.json()) as Partial<RideRead> & { leader_path?: Partial<LeaderPath> };
+    const out: RideRead = { dots: Array.isArray(body.dots) ? body.dots : [], alerts: Array.isArray(body.alerts) ? body.alerts : [] };
+    const path = body.leader_path;
+    if (path && isLine(path.route) && isLine(path.trail)) out.leaderPath = { route: path.route, trail: path.trail, age_s: Number(path.age_s) || 0 };
+    return out;
   } catch {
     return null;
   }
@@ -503,6 +602,56 @@ async function post(origin: string, path: string, body: unknown, send: Fetch): P
 
 export async function sendPosition(origin: string, ride: string, token: string, p: LonLat, role: RideRole = DEFAULT_ROLE, send: Fetch = fetch): Promise<boolean> {
   return (await post(origin, `/api/rides/${ride}/here`, { token, lon: p[0], lat: p[1], role }, send)).ok;
+}
+
+/**
+ * The leader's route and ridden path (Stephen 2026-10-22: "Rebroadcast the route every 2 min or when it changes, not
+ * keeping it on the server"): sent about every PATH_EVERY_MS and whenever the route changes; the server keeps each 2
+ * minutes in memory, so the next must come before then.
+ */
+export const PATH_EVERY_MS = 100_000;
+/** The soonest the server takes another (core.ride_presence.MIN_PATH_INTERVAL_S). */
+export const PATH_MIN_GAP_MS = 25_000;
+/** The most points the server takes in each line (core.ride_presence.PATH_MAX_POINTS). */
+export const PATH_MAX_POINTS = 600;
+
+/** A line of at most `max` points, its ends kept, the rest evenly picked; rounded to 5 decimals (about 1 m). */
+export function thinLine(line: readonly LonLat[], max = PATH_MAX_POINTS): LonLat[] {
+  const r = (p: LonLat): LonLat => [Math.round(p[0] * 1e5) / 1e5, Math.round(p[1] * 1e5) / 1e5];
+  if (line.length <= max) return line.map(r);
+  const out: LonLat[] = [];
+  const step = (line.length - 1) / (max - 1);
+  for (let i = 0; i < max; i += 1) out.push(r(line[Math.round(i * step)]));
+  return out;
+}
+
+/** When the leader sends its path: the route changed, or the last went PATH_EVERY_MS ago (never sooner than the server takes). */
+export function pathDue(lastAt: number, lastRouteKey: string, routeKey: string, now: number): boolean {
+  if (now - lastAt < PATH_MIN_GAP_MS) return false;
+  return routeKey !== lastRouteKey || now - lastAt >= PATH_EVERY_MS;
+}
+
+/** A route's identity for "it changed": its length and ends. */
+export function routeKeyOf(line: readonly LonLat[]): string {
+  if (!line.length) return "";
+  const end = line[line.length - 1];
+  return `${line.length}|${line[0].join(",")}|${end.join(",")}`;
+}
+
+/** The ridden path's first stretch left out (the ride often starts at home): this far from its first point. */
+export const PRIVATE_START_M = 200;
+
+/** The ridden path from where it first goes PRIVATE_START_M from its start; nothing while it has not. */
+export function withoutStart(trail: readonly LonLat[]): readonly LonLat[] {
+  const first = trail[0];
+  if (!first) return trail;
+  const kx = M_PER_DEG * Math.cos((first[1] * Math.PI) / 180);
+  const away = trail.findIndex((p) => Math.hypot((p[0] - first[0]) * kx, (p[1] - first[1]) * M_PER_DEG) >= PRIVATE_START_M);
+  return away < 0 ? [] : trail.slice(away);
+}
+
+export async function sendPath(origin: string, ride: string, token: string, route: readonly LonLat[], trail: readonly LonLat[], send: Fetch = fetch): Promise<boolean> {
+  return (await post(origin, `/api/rides/${ride}/path`, { token, route: thinLine(route), trail: thinLine(withoutStart(trail)) }, send)).ok;
 }
 
 export async function leaveRide(origin: string, ride: string, token: string, send: Fetch = fetch): Promise<boolean> {
