@@ -68,7 +68,9 @@ export function gpxStartRide(now: PresetId): PresetId {
  * The opened file as the rider chose: on the ride type picked (the file's own sliders kept when it names the same
  * one), and followed exactly or not.
  */
-export function withGpxChoice<P extends { preset: PresetId | null; dials?: unknown; exact?: boolean }>(plan: P, choice: GpxChoice): P {
+export function withGpxChoice<P extends { preset: PresetId | null; dials?: unknown; exact?: boolean; notes?: readonly { kind: string }[] }>(plan: P, choice: GpxChoice): P {
   const same = plan.preset === choice.preset;
-  return { ...plan, preset: choice.preset, dials: same ? plan.dials : undefined, exact: choice.exact };
+  // The file's own ride type no longer being offered says nothing once the rider picked one.
+  const notes = plan.notes?.filter((n) => n.kind !== "preset-gone");
+  return { ...plan, preset: choice.preset, dials: same ? plan.dials : undefined, exact: choice.exact, ...(notes ? { notes } : {}) };
 }

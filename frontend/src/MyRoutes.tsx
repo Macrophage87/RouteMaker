@@ -172,6 +172,7 @@ export function MyRoutes({ version, onOpen, onExport, announce, versions = false
                       onClick={() => {
                         setMore(more === r.id ? null : r.id);
                         setDeleting(null);
+                        setShowing(null);
                       }}
                     >
                       More

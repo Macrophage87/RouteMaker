@@ -3337,6 +3337,8 @@ export function App() {
   }, [route]);
   // My routes: open as saved (the line unchanged), or export.
   const openSaved = (saved: Pick<SavedRoute, "name" | "source" | "distance_m" | "line" | "inputs" | "answer" | "gpx"> & { id?: number | string }, said = OPENED_SAID(saved.name)) => {
+    // A choice from Load route's popup is for a file picked there, not a saved route.
+    gpxChoice.current = null;
     showPlanner(true);
     setSharedNote(null);
     setSavedNote(null);
@@ -5044,9 +5046,14 @@ export function App() {
                 fileInput: (input: HTMLInputElement | null) => {
                   gpxInput.current = input;
                 },
+                // Only a file from the popup opens the sheet to say why; one from the sheet says it there already.
                 onOpenFailed: () => {
+                  if (!gpxChoice.current) return;
                   gpxChoice.current = null;
                   openView("gpx", null);
+                },
+                onPick: () => {
+                  gpxChoice.current = null;
                 }, getMap, downloadRoute, sendToGarmin: sendToGarminRoute,
                 ...(mode === "go" ? {} : { downloadCourse: downloadCourseRoute }),
                 // Snapping an opened track (lib/gpxMatch.ts) opens the plan along the snapped line: one edit, like the file.

@@ -264,6 +264,7 @@ export interface GpxSheetProps {
   /** Load route's popup opens the panel's file picker (GpxPanel); a file it cannot open opens this sheet to say why. */
   fileInput?: (input: HTMLInputElement | null) => void;
   onOpenFailed?: () => void;
+  onPick?: () => void;
   refineImported: (next: LonLat[]) => void;
   getMap: () => MapLibreMap | null;
   /** Download GPX: the page checks closures first, and an unedited opened file downloads as it came. */
@@ -282,7 +283,7 @@ export interface GpxSheetProps {
 
 /** The GPX sheet. */
 export function GpxSheet(props: GpxSheetProps) {
-  const { nav, shown, routedPoints, routedLoop, federalRoute, points, status, imported, openImported, fileInput, onOpenFailed, refineImported, getMap, downloadRoute, downloadCourse, sendToGarmin, match, shareControls, routes } = props;
+  const { nav, shown, routedPoints, routedLoop, federalRoute, points, status, imported, openImported, fileInput, onOpenFailed, onPick, refineImported, getMap, downloadRoute, downloadCourse, sendToGarmin, match, shareControls, routes } = props;
   return (
     <SheetFrame id="sheet-gpx" title={SHEET_TITLES.gpx} open={nav.view === "gpx"} onBack={nav.back} backLabel={nav.backLabel("gpx")}>
       {/* Save and Share first, then your routes to load (in Go, the way to start a saved route), then the files. */}
@@ -299,6 +300,7 @@ export function GpxSheet(props: GpxSheetProps) {
         onImport={openImported}
         fileInput={fileInput}
         onOpenFailed={onOpenFailed}
+        onPick={onPick}
         onRefine={refineImported}
         getMap={getMap}
         onDownload={downloadRoute}

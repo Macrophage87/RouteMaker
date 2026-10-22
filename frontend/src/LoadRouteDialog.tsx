@@ -71,9 +71,11 @@ export function LoadRouteDialog({ open, onClose, signedIn, signIn, preset, onGpx
       dialog.showModal?.();
       // The first of the big buttons: Sign in with Discord signed out, else Open GPX file.
       dialog.querySelector<HTMLElement>(".load-route-top a, .load-route-top button")?.focus();
-    } else if (!open && dialog.open) {
-      dialog.close();
+    } else if (!open && opener.current) {
+      // Closed here, or already by Choose file (before the picker): the focus goes back to Load route either way.
+      if (dialog.open) dialog.close();
       if (opener.current instanceof HTMLElement && opener.current.isConnected) opener.current.focus();
+      opener.current = null;
     }
   }, [open]);
   // Read each time it opens: a route saved or kept since is listed.
@@ -136,6 +138,8 @@ export function LoadRouteDialog({ open, onClose, signedIn, signIn, preset, onGpx
           className="load-route-gpx-ask"
           onSubmit={(event) => {
             event.preventDefault();
+            // The modal goes first: while it is open the page's file input is inert, and some browsers then open no picker.
+            dialogRef.current?.close();
             onGpx(gpx);
           }}
           onKeyDown={(event) => {
