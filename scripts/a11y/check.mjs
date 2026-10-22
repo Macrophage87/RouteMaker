@@ -309,6 +309,8 @@ for (const [label, size] of [["phone", { width: 390, height: 844, mobile: true }
   await p.s("Page.navigate", { url: `http://127.0.0.1:${PORT}/` });
   await p.waitFor("!!document.querySelector('.plan-map-bar .plan-bar-load')", 30000);
   const load = await p.eval("(() => { const b = document.querySelector('.plan-map-bar .plan-bar-load'); const r = b.getBoundingClientRect(); return { name: b.textContent.trim(), h: Math.round(r.height) }; })()");
+  // Once the server has said it signs riders in (Settings' Account shows), as a rider's press comes after.
+  await p.waitFor("!!document.getElementById('settings-signin-heading')", 10000);
   await p.eval("document.querySelector('.plan-map-bar .plan-bar-load').focus(); true");
   await p.enter();
   await sleep(500);
