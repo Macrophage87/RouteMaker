@@ -440,6 +440,8 @@ SEPARATE_ROAD_ID = 700
 CIRCLE_WALKWAY_ID = 1100
 CIRCLE_CROSSING_ID = 1101
 SUBURBAN_SIDEWALK_ID = 1102
+CAPITOL_WALK_ID = 1103
+CAPITOL_SIDEWALK_ID = 1104
 BESIDE_TRAIL_ID = 701
 
 
@@ -492,6 +494,12 @@ def build_dials_extract(path: Path, singletrack_tags: dict[str, str] | None = No
             # An untagged sidewalk outside the District's downtown (`routemaker.sidewalks`).
             26: (-77.110, 38.930),
             27: (-77.105, 38.930),
+            # A walk across the Capitol's West Front lawn and a sidewalk on the grounds
+            # (`routemaker.capitolgrounds`).
+            28: (-77.0118, 38.8895),
+            29: (-77.0112, 38.8895),
+            30: (-77.0118, 38.8899),
+            31: (-77.0112, 38.8899),
         }
         for node_id, (lon, lat) in nodes.items():
             writer.add_node(
@@ -567,6 +575,8 @@ def build_dials_extract(path: Path, singletrack_tags: dict[str, str] | None = No
             CIRCLE_WALKWAY_ID: ([23, 24], {"highway": "footway"}),
             CIRCLE_CROSSING_ID: ([24, 25], {"highway": "footway", "footway": "crossing"}),
             SUBURBAN_SIDEWALK_ID: ([26, 27], {"highway": "footway", "footway": "sidewalk"}),
+            CAPITOL_WALK_ID: ([28, 29], {"highway": "footway", "foot": "yes"}),
+            CAPITOL_SIDEWALK_ID: ([30, 31], {"highway": "footway", "footway": "sidewalk"}),
         }
         for way_id in sorted(ways):
             node_ids, tags = ways[way_id]

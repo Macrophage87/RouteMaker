@@ -2431,6 +2431,23 @@ class TransitStepOut(Schema):
             " body's `stress_spans`. Null where it was not routed in time (a plain line)."
         ),
     )
+    distance_m: float | None = Field(
+        default=None,
+        description="A ride after the route line, routed: its length, metres. Null otherwise.",
+    )
+    climb_m: float | None = Field(
+        default=None, description="That ride's climb, metres, as the body's `climb_m`."
+    )
+    descent_m: float | None = Field(
+        default=None, description="That ride's descent, metres, as the body's `descent_m`."
+    )
+    profile: ProfileOut | None = Field(
+        default=None,
+        description=(
+            "That ride's elevation profile, as the body's `profile`, so the trip's chart and"
+            " climbs cover every ride. Null where it was not routed in time."
+        ),
+    )
     live: TransitStepLiveOut | None = Field(
         default=None,
         description=(
@@ -2470,6 +2487,23 @@ class TransitOptionOut(Schema):
         ),
     )
     chosen: bool = Field(description="The option this answer plans.")
+    busy_m: float | None = Field(
+        default=None,
+        description=(
+            "Its rides' metres on busy roads (LTS 3 and up), said with its time (Stephen,"
+            ' 2026-10-21: "arrive in X min with x mi of busy roads"); the options are ranked'
+            " by their time with that riding and their junction waits counted again, so the"
+            " list need not be in order of time. Null where a ride's roads are not known."
+        ),
+    )
+    elevator_out: bool = Field(
+        default=False,
+        description=(
+            "It takes the rider's own bike through a Metro station whose elevators are all out:"
+            " ranked 15 min down, its time unchanged; the row shows the outage (Stephen,"
+            " 2026-10-21)."
+        ),
+    )
     legs: list[TransitOptionLegOut] = Field(
         default_factory=list,
         description=(
@@ -3552,12 +3586,25 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
     if body.novice_legs and body.preset == presets.BIKESHARE_TRANSIT:
         leg_costing = presets.costing(presets.NOVICE)
         leg_costing["bicycle"]["cycling_speed"] = presets.BIKESHARE_CLASSIC_SPEED_KMH
-    services = (
-        transit.RoutingServices(candidates_until, leg_preset)
-        if leg_costing is None
-        else transit.RoutingServices(candidates_until, leg_preset, costing=leg_costing)
+    candidate_costing = leg_costing
+    if candidate_costing is None:
+        # The candidates priced at the rider's own traffic and hills sliders, as the answer's
+        # line is (routing.plan): candidates timed at the ride type's own settings ranked one
+        # trip quickest that came out slower once its line was routed at the rider's.
+        stress = body.stress
+        if stress is None:
+            stress = presets.stress_start(leg_preset, body.carrying)
+        candidate_costing = presets.costing(leg_preset, stress, body.hills)
+    services = transit.RoutingServices(
+        candidates_until,
+        leg_preset,
+        costing=candidate_costing,
+        when=body.when or routing.default_when(),
     )
     start, end = body.points
+    # WMATA's live reading (core.wmata_live), if any: read before the search, which ranks a
+    # station with no working elevator on the way 15 min down, and used after it (below).
+    live = wmata_live.client.snapshot()
     if body.preset == presets.BIKESHARE_TRANSIT:
         found = transit.plan_bikeshare(
             schedule, start, end, when, services, share_snapshot, hop=body.novice_hop
@@ -3570,7 +3617,16 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
             "cycling_speed",
             presets.VALHALLA_DEFAULT_SPEED_KMH[options.get("bicycle_type", "Hybrid")],
         )
-        found = transit.plan_bike(schedule, start, end, when, services, speed, hop=body.novice_hop)
+        # A station whose elevators are all out is ranked 15 min down for the bike, so the
+        # next one over usually wins (Stephen, 2026-10-21).
+        blocked = transit_live.blocked_stations(live)
+        bike_schedule = transit.with_elevators_out(
+            schedule,
+            [(station.lon, station.lat) for station in blocked],
+        )
+        found = transit.plan_bike(
+            bike_schedule, start, end, when, services, speed, hop=body.novice_hop
+        )
     searched = routing.clock()
     dials = routing.Dials(
         stress=body.stress,
@@ -3591,16 +3647,15 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
         # how Novice and Nervous gets past them here.
         novice_walks=False,
     )
-    # WMATA's live reading (core.wmata_live), if any: an elevator out on the way costs the trip
-    # a little in the ranking, and the block says the live values (core.transit_live).
+    # WMATA's live reading (core.wmata_live), if any: a trip through a closed station is left out,
+    # and the block says the live values (core.transit_live).
     # A plan for now takes its Metro steps' departures from WMATA's next trains, where they
     # cover them, before it is ranked.
-    live = wmata_live.client.snapshot()
     found = transit_live.with_live_trains(found, live)
-    found = transit_live.rank(transit_live.skip_closed(found, live), live)
+    found = transit_live.skip_closed(found, live)
     # Novice and Nervous's hop past the busy stretch (v0.11.0): planned where there is one,
     # unless the rider chose another option.
-    found = transit.choose(found, body.transit_option, hop=body.novice_hop is not None)
+    found = transit.choose(found, body.transit_option, schedule, hop=body.novice_hop is not None)
     # The chosen trip's Metrobus steps' next buses (core.wmata_bus, v0.9.0), asked now, beside
     # the routing, so the answer waits for them little if at all.
     bus_ask = _ask_buses(found)
@@ -3686,12 +3741,21 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
         routed = {index: float(a["duration_s"]) for index, a in lines.items()}
         if retime:
             routed[found.ride] = float(answer["duration_s"])
-        timed = transit.with_rides(found, routed) if routed else found
+        # Their busy metres too, from the answers' own stress breakdowns, as the options say.
+        busy = {index: _busy_m(a) for index, a in lines.items()}
+        if retime:
+            busy[found.ride] = _busy_m(answer)
+        busy = {index: m for index, m in busy.items() if m is not None}
+        # The rider's own pick stays chosen; otherwise the best once routed is (Stephen,
+        # 2026-10-21: a trip that came out at 34 min stayed chosen above riding at 31). Novice
+        # and Nervous's hop, chosen because the rider asked to skip the busy stretch, stays too.
+        keep = (body.transit_option is not None and found.asked is None) or found.option.hop
+        timed = transit.with_rides(found, routed, busy, keep=keep) if routed else found
         if timed.option.key != found.option.key:
-            # The chosen trip's departure cannot be caught after all and it was left out: the
-            # quickest left is planned, its own line routed (or drawn start to end), and its
-            # later rides routed for their colours. Their times stay the plan's own: timing
-            # them again could drop this option too.
+            # The chosen trip's departure cannot be caught after all and it was left out, or
+            # as routed it is no longer the best: the best left is planned, its own line routed
+            # (or drawn start to end), and its later rides routed for their colours. Their
+            # times stay the plan's own: timing them again could drop this option too.
             leg = timed.legs[timed.ride]
             if timed.option.walk:
                 return answered(_walked_line(timed, body.preset, dials), timed)
@@ -3730,6 +3794,14 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
         routing.clock() - searched,
     )
     return answer
+
+
+def _busy_m(answered: dict) -> float | None:
+    """A routed answer's metres on busy roads (LTS 3 and up), or None without its breakdown."""
+    stress = answered.get("stress_m")
+    if not stress:
+        return None
+    return float(sum(stress.get(key, 0.0) for key in ("3", "4", "5")))
 
 
 def _later_rides(
@@ -3811,6 +3883,12 @@ def _with_leg_lines(block: dict, lines: dict[int, dict]) -> dict:
             continue
         steps[index]["coordinates"] = coordinates
         steps[index]["stress_spans"] = spans
+        # Its length, climb and elevation, so the trip's totals and chart cover every ride, not
+        # the first alone (Stephen, 2026-10-21: "The elevation and climbs are only shown for
+        # the first stretch in a multi-modal trip").
+        for field in ("distance_m", "climb_m", "descent_m", "profile"):
+            if answered.get(field) is not None:
+                steps[index][field] = answered[field]
     return block
 
 

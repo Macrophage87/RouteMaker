@@ -36,6 +36,8 @@ from rebuild_fixtures import (
     BARE_PATH_NEXT_ID,
     BASE_CYCLEWAY_ID,
     BESIDE_TRAIL_ID,
+    CAPITOL_SIDEWALK_ID,
+    CAPITOL_WALK_ID,
     CBD_CYCLE_TRACK_ID,
     CBD_SIDEWALK_ID,
     CIRCLE_CROSSING_ID,
@@ -635,6 +637,32 @@ def test_a_circle_parks_walkway_and_its_crossing_open_to_bicycles(
                 assert tags[way_id].get("rm:no_bicycle") is None, (variant.value, way_id)
     assert seen
     assert CIRCLE_WALKWAY_ID not in context.no_bicycle
+
+
+def test_a_capitol_grounds_walk_opens_and_its_sidewalk_keeps_the_sidewalk_rule(
+    tmp_path, segment_schemas, states
+) -> None:
+    """The owner, 2026-10-21: "The paths on the capitol complex are legal for use and are
+    common routes." An untagged walk on the West Front lawn carries bicycle=yes into every
+    graph that keeps footways; a sidewalk on the grounds is not opened outright and is
+    ridden at the sidewalk rule's price instead (the CBD's ban does not reach it)."""
+    from pipeline.extract import read_ways
+
+    context, _stored = run_dials_extract(tmp_path)
+    assert context.capitol_ways == {CAPITOL_WALK_ID}
+    assert CAPITOL_WALK_ID not in context.no_bicycle
+    assert CAPITOL_SIDEWALK_ID not in context.no_bicycle
+    assert CAPITOL_SIDEWALK_ID in context.sidewalk_rides
+    seen = 0
+    for variant in Variant:
+        tags = {w.osm_id: w.tags for w in read_ways(context.variant_pbf(variant))}
+        if CAPITOL_WALK_ID in tags:
+            seen += 1
+            assert tags[CAPITOL_WALK_ID].get("bicycle") == "yes", variant.value
+            assert tags[CAPITOL_WALK_ID].get("rm:no_bicycle") is None, variant.value
+        if CAPITOL_SIDEWALK_ID in tags:
+            assert tags[CAPITOL_SIDEWALK_ID].get("bicycle") is None, variant.value
+    assert seen
 
 
 def test_a_sidewalk_is_ridden_as_a_last_resort_but_not_on_mass_rides(

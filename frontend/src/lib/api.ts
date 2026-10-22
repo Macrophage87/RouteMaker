@@ -507,6 +507,12 @@ export interface TransitStep {
    * routed in time (an older API too): the step is then drawn as a plain line.
    */
   stress_spans?: StressSpan[] | null;
+  /** A ride after the route line, routed: its length, climb and descent (metres) and elevation profile, so the
+   * trip's totals and chart cover every ride (Stephen, 2026-10-21). Absent where it was not routed in time. */
+  distance_m?: number | null;
+  climb_m?: number | null;
+  descent_m?: number | null;
+  profile?: RouteProfile | null;
 }
 
 /** One way to make the trip (the owner, 2026-10-12): riding the whole way, walking it, or a transit trip. */
@@ -523,6 +529,17 @@ export interface TransitOption {
   /** Novice and Nervous's hop past the busy stretch (v0.11.0, `novice_hop`): boards near it and gets off past it. */
   hop?: boolean;
   chosen: boolean;
+  /**
+   * Its rides' metres on busy roads (LTS 3 and up); null where a ride's roads are not known (absent from an older
+   * API). The options are ranked by their time with that riding and their junction waits counted again (Stephen,
+   * 2026-10-21), so this is what explains a slower trip listed above a quicker one.
+   */
+  busy_m?: number | null;
+  /**
+   * It takes the rider's own bike through a Metro station whose elevators are all out: ranked 15 min down, its time
+   * unchanged (Stephen, 2026-10-21); the row shows the elevator icon. Absent from an older API.
+   */
+  elevator_out?: boolean;
   /** Its legs compactly, for its row: "🚶 4 min · 🚲 12 min · 🔴 18 min" (lib/transitMarks.ts). */
   legs?: TripLeg[];
 }

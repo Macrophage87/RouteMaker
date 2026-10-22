@@ -2116,6 +2116,129 @@ def test_a_tuned_flow_constant_bumps_both_tile_formats() -> None:
     )
 
 
+# ---- THE CITY GRID (the owner, 2026-10-21: "City only, via a server flag") ---------------------
+
+R_3857 = 6378137
+WORLD_M = 2 * math.pi * R_3857
+
+
+def _cell_centre(lon: float, lat: float) -> tuple[float, float]:
+    """The middle of the DENSE_CELL_M square holding (lon, lat), in EPSG:3857 metres."""
+    cell = stress_tiles.DENSE_CELL_M
+    x = R_3857 * math.radians(lon)
+    y = R_3857 * math.log(math.tan(math.pi / 4 + math.radians(lat) / 2))
+    return (math.floor(x / cell) + 0.5) * cell, (math.floor(y / cell) + 0.5) * cell
+
+
+def _lonlat(x: float, y: float) -> tuple[float, float]:
+    return math.degrees(x / R_3857), math.degrees(2 * math.atan(math.exp(y / R_3857)) - math.pi / 2)
+
+
+def insert_streets(schema, count: int, *, length_m=500.0, first_way=1000) -> tuple[float, float]:
+    """`count` plain streets of `length_m` (EPSG:3857 metres) east-west across the middle
+    of the square holding CENTRE, 30 m apart; the square's middle, in degrees."""
+    cx, cy = _cell_centre(*CENTRE)
+    with connection.cursor() as cursor:
+        for i in range(count):
+            y = cy - 450 + i * 30
+            (w, s), (e, n) = _lonlat(cx - length_m / 2, y), _lonlat(cx + length_m / 2, y)
+            cursor.execute(
+                f"INSERT INTO {schema}.segment (osm_way_id, ordinal, geometry, stress_tier, "
+                "stress_rule, is_trail_class, is_unpaved, facility) VALUES (%s, 0, ST_MakeLine("
+                "ST_MakePoint(%s, %s), ST_MakePoint(%s, %s)), 2, 'x', false, false, 'none')",
+                [first_way + i, w, s, e, n],
+            )
+    return _lonlat(cx, cy)
+
+
+@db
+class TestCityGrid:
+    """A z12-13 feature carries `dense` where its ways lie in a square of at least
+    DENSE_ROAD_M of road; elsewhere (a rural road, a suburb's loops) it carries nothing, and
+    the map keeps the street at full width."""
+
+    @pytest.mark.parametrize("z", [12, 13])
+    def test_a_city_grid_is_dense(self, client, segment_schemas, z) -> None:
+        live, _ = segment_schemas
+        count = math.ceil(stress_tiles.DENSE_ROAD_M / 500) + 1
+        middle = insert_streets(live, count)
+        (feature,) = decode(client.get(url(*tile_of(*middle, z))).content)["stress"].features
+        assert feature.properties.get("dense") is True
+        assert len(feature.lines) == count
+
+    @pytest.mark.parametrize("z", [12, 13])
+    @pytest.mark.parametrize("streets", [1, math.floor(stress_tiles.DENSE_ROAD_M / 500) - 1])
+    def test_a_rural_road_or_a_square_under_the_bar_is_not(
+        self, client, segment_schemas, z, streets
+    ) -> None:
+        live, _ = segment_schemas
+        middle = insert_streets(live, streets)
+        (feature,) = decode(client.get(url(*tile_of(*middle, z))).content)["stress"].features
+        assert "dense" not in feature.properties
+
+    def test_the_grid_splits_only_its_square(self, client, segment_schemas) -> None:
+        """A road in the next square along keeps full width, drawn in the same tile."""
+        live, _ = segment_schemas
+        middle = insert_streets(live, math.ceil(stress_tiles.DENSE_ROAD_M / 500) + 1)
+        cx, cy = _cell_centre(*CENTRE)
+        (w, s), (e, n) = (_lonlat(cx + stress_tiles.DENSE_CELL_M + d, cy) for d in (-200, 200))
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"INSERT INTO {live}.segment (osm_way_id, ordinal, geometry, stress_tier, "
+                "stress_rule, is_trail_class, is_unpaved, facility) VALUES (9, 0, ST_MakeLine("
+                "ST_MakePoint(%s, %s), ST_MakePoint(%s, %s)), 2, 'x', false, false, 'none')",
+                [w, s, e, n],
+            )
+        features = decode(client.get(url(*tile_of(*middle, 12))).content)["stress"].features
+        assert sorted(f.properties.get("dense", False) for f in features) == [False, True]
+
+    def test_a_square_across_a_tile_edge_reads_the_same_from_both_tiles(
+        self, client, segment_schemas
+    ) -> None:
+        """Ways the tile does not draw, starting in a square it touches, count: one short
+        street just inside a tile's east edge is dense because of the grid just outside it,
+        and the grid is dense from its own tile."""
+        live, _ = segment_schemas
+        cell = stress_tiles.DENSE_CELL_M
+        for z in (12, 13):
+            for dx in range(-3, 4):
+                _, tx, ty = tile_of(*CENTRE, z)
+                tx += dx
+                edge = (tx + 1) * WORLD_M / 2**z - WORLD_M / 2  # the tile's east edge, x
+                west, east = edge - math.floor(edge / cell) * cell, cell - edge % cell
+                if west > 300 and east > 400 and east < cell:
+                    break
+            else:
+                continue
+            break
+        cy = _cell_centre(*CENTRE)[1]
+        count = math.ceil(stress_tiles.DENSE_ROAD_M / 200) + 1
+        with connection.cursor() as cursor:
+            # Past the west tile's buffer (76 m at z12), so it draws only its own street.
+            rows = [(edge + 100, edge + 300, cy - 450 + i * 900 / count) for i in range(count)]
+            rows.append((edge - 250, edge - 50, cy))
+            for way, (x0, x1, y) in enumerate(rows):
+                (w, s), (e, n) = _lonlat(x0, y), _lonlat(x1, y)
+                cursor.execute(
+                    f"INSERT INTO {live}.segment (osm_way_id, ordinal, geometry, stress_tier, "
+                    "stress_rule, is_trail_class, is_unpaved, facility) VALUES (%s, 0, "
+                    "ST_MakeLine(ST_MakePoint(%s, %s), ST_MakePoint(%s, %s)), 2, 'x', false, "
+                    "false, 'none')",
+                    [2000 + way, w, s, e, n],
+                )
+        ty = tile_of(*_lonlat(edge - 150, cy), z)[2]
+        for tile_x in (tx, tx + 1):
+            features = decode(client.get(url(z, tile_x, ty)).content)["stress"].features
+            assert features and all(f.properties.get("dense") is True for f in features)
+        (inside,) = decode(client.get(url(z, tx, ty)).content)["stress"].features
+        assert len(inside.lines) == 1  # the one street the west tile draws: the grid is past it
+
+    def test_the_street_zoom_reads_it_and_no_other(self) -> None:
+        assert "AS dense" in stress_tiles.tile_sql(stress_tiles.STREETS)
+        for level in (stress_tiles.FULL, stress_tiles.TRAILS, stress_tiles.TRAILS_NEAR):
+            assert "dense" not in stress_tiles.tile_sql(level)
+
+
 @db
 class TestPopularCorridors:
     """The popular bike corridors (the owner, 2026-10-21: "make those streets show more

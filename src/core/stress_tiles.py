@@ -176,8 +176,9 @@ CONTENT_TYPE = "application/vnd.mapbox-vector-tile"
 # trail's surface, not its deck's (BRIDGE_UNPAVED). 9: the z12-13 ride layer carries the
 # mountain-bike trails (v0.7.0). 10: every street from z12, merged at z12-13, and no ride
 # layer (the owner, 2026-10-17: "Both from 12"). 11: a major trail's name, `trail_name`
-# (TRAIL_NAME_RULE). 12 is v0.10.2's `dense`. 13: the popular bike corridors' `popular`, z10-11
-# keep them and the long calm roads (`popular_and_calm`), and a long trail's name from z10.
+# (TRAIL_NAME_RULE). 12: a z12-13 feature in a city grid carries `dense` (DENSE_RULE; v0.10.2).
+# 13: the popular bike corridors' `popular`, z10-11 keep them and the long calm roads
+# (`popular_and_calm`), and a long trail's name from z10.
 FORMAT_VERSION = 13
 
 # Five minutes (OWNER-DECISIONS 460.6, "5 min sounds good"): an instance admin's change in
@@ -223,6 +224,8 @@ class Level:
     # that has all three long-trail columns (LONG_TRAIL_COLUMNS); on one
     # without, today's tiles are drawn.
     long_trails: LongTrails | None = None
+    # Whether a feature carries `dense`, true in a city grid (DENSE_RULE).
+    dense: bool = False
     # Zoomed out, the popular bike corridors of at least this class (`bike_popular`) and the
     # calm roads in a run of at least this many miles (`calm_run_m`), kept beside the long
     # trails (`popular_and_calm`); None keeps neither.
@@ -293,7 +296,7 @@ TRAILS_NEAR = Level(
 )
 # Every segment from z12 (the owner, 2026-10-17: "Both from 12"), merged into one feature
 # a class at z12-13, where one a segment is 1.33 MB a dense tile (the module's docstring).
-STREETS = Level("streets", QUIET_STREETS_MIN_ZOOM, 4096, 32, None, merged=True)
+STREETS = Level("streets", QUIET_STREETS_MIN_ZOOM, 4096, 32, None, merged=True, dense=True)
 FULL = Level("full", SEGMENTS_MIN_ZOOM, 4096, 64, None, merged=False)
 LEVELS = (FULL, STREETS, TRAILS_NEAR, TRAILS)
 
@@ -527,6 +530,58 @@ SELECT '{table}'::regclass::oid,
        (SELECT ST_AsMVT(features.*, '{layer}', %(extent)s, 'geom') FROM features)
 """
 
+# THE CITY GRID. The owner, 2026-10-21: "lts colored roads look very crowded at the nax
+# zoom they show up in urban areas, but it's needed for rural ones", then, of thinner
+# streets everywhere or only in the city: "City only, via a server flag". At z12-13 a
+# feature carries `dense` (true, else nothing) where its ways lie in a square of
+# DENSE_CELL_M a side, in EPSG:3857 metres, holding at least DENSE_ROAD_M of drawn road,
+# counted where each way starts; the map draws a plain street there thinner
+# (frontend/src/stressStyle.js, STREET_THIN_SCALE). The squares are fixed on the
+# projection's grid, and every way that starts in a square the tile touches is counted
+# (any way within DENSE_CELL_M of the tile, whatever the coverage clip), so a square reads
+# the same from each tile it is drawn in. A way starting further out than that is judged
+# by a square counted in part; the segments are split at every junction, so in a grid
+# none is that long. 12 km in a
+# kilometre square (about 15 km of road a square kilometre on the ground at DC's
+# latitude) is a downtown or rowhouse grid of 100-150 m blocks, where a suburb of loops
+# and cul-de-sacs is about half that and a rural road a tenth; tune it on the real map.
+DENSE_CELL_M = 1000
+DENSE_ROAD_M = 12_000
+DENSE_RULE = f"CASE WHEN cells.road_m >= {DENSE_ROAD_M} THEN true END"
+
+_MERGED_DENSE = """
+WITH bounds AS (SELECT ST_TileEnvelope(%(z)s, %(x)s, %(y)s) AS env),
+cells AS (
+    SELECT floor(ST_X(start) / {cell}) AS cx, floor(ST_Y(start) / {cell}) AS cy,
+           sum(ST_Length(ST_Transform(s.geometry, 3857))) AS road_m
+    FROM {table} AS s,
+         LATERAL (SELECT ST_Transform(ST_StartPoint(s.geometry), 3857) AS start) AS p
+    WHERE s.geometry && ST_Transform(
+              ST_Expand(ST_TileEnvelope(%(z)s, %(x)s, %(y)s, margin => %(margin)s), {cell}), 4326)
+      AND {where}
+    GROUP BY 1, 2
+),
+features AS (
+    SELECT {columns},
+           ST_AsMVTGeom(
+               ST_Simplify(ST_Collect(ST_Transform({geometry}, 3857)), %(unit)s),
+               bounds.env, %(extent)s, %(buffer)s, true
+           ) AS geom
+    FROM {table} AS s
+    CROSS JOIN bounds
+    CROSS JOIN LATERAL (SELECT ST_Transform(ST_StartPoint(s.geometry), 3857) AS start) AS p
+    LEFT JOIN cells
+        ON cells.cx = floor(ST_X(p.start) / {cell}) AND cells.cy = floor(ST_Y(p.start) / {cell})
+    WHERE s.geometry && ST_Transform(
+              ST_TileEnvelope(%(z)s, %(x)s, %(y)s, margin => %(margin)s), 4326)
+      {coverage}
+      AND {where}
+    GROUP BY {group_by}, bounds.env
+)
+SELECT '{table}'::regclass::oid,
+       (SELECT ST_AsMVT(features.*, '{layer}', %(extent)s, 'geom') FROM features)
+"""
+
 _PER_SEGMENT = """
 WITH bounds AS (SELECT ST_TileEnvelope(%(z)s, %(x)s, %(y)s) AS env),
 features AS (
@@ -557,7 +612,7 @@ _COVERAGE_BOX = "ST_MakeEnvelope(%(c_west)s, %(c_south)s, %(c_east)s, %(c_north)
 def tile_sql(level: Level, optional: frozenset[str] = frozenset(), clip: bool = False) -> str:
     """The level's query, carrying the optional columns in `optional` too, and
     with `clip`, drawing only what lies inside the coverage box."""
-    template = _MERGED if level.merged else _PER_SEGMENT
+    template = _MERGED_DENSE if level.dense else _MERGED if level.merged else _PER_SEGMENT
     carried = {name: f"s.{column}" for name, column in PROPERTIES.items()}
     if TRAIL_BRIDGE_COLUMN in optional:
         carried["unpaved"] = BRIDGE_UNPAVED
@@ -612,8 +667,11 @@ def tile_sql(level: Level, optional: frozenset[str] = frozenset(), clip: bool = 
             carried["alley"] = f"CASE WHEN s.{MAP_CLASS_COLUMN} = 'alley' THEN true END"
     else:
         where = f"({where}) AND NOT {MOTOR_ONLY_RULE}"
+    if level.dense:
+        carried["dense"] = DENSE_RULE
     return template.format(
         table=_table(),
+        cell=DENSE_CELL_M,
         where=where,
         geometry=f"ST_ClipByBox2D(s.geometry, {_COVERAGE_BOX})" if clip else "s.geometry",
         coverage=f"AND s.geometry && {_COVERAGE_BOX}" if clip else "",
@@ -659,6 +717,11 @@ def render(
     try:
         with transaction.atomic(), connection.cursor() as cursor:
             cursor.execute("SELECT set_config('statement_timeout', %s, true)", [str(timeout_ms)])
+            # No JIT, at any level: the city grid's square sums (DENSE_RULE) lift the
+            # planner's cost past jit_above_cost, and compiling took ten times as long as the
+            # draw it was for (a synthetic downtown z13 tile, 2026-10-21: 400 ms with it,
+            # 45 ms without).
+            cursor.execute("SELECT set_config('jit', 'off', true)")
             cursor.execute(tile_sql(level, optional, clip), params)
             oid, tile = cursor.fetchone()
     except OperationalError as error:

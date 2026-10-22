@@ -74,7 +74,7 @@ test("6. an End ride button always in view, labelled End ride with its icon, one
   assert.match(summary, /done\.current\?\.focus\(\);/);
   assert.doesNotMatch(summary, /useHoldTimer|setTimeout/);
   // Only "Ride ended." is said (the owner, 2026-10-20: "Just put ride ended."); the figures are on the card.
-  assert.match(app, /announce\(note \? `\$\{RIDE_ENDED_SAID\} \$\{note\}` : RIDE_ENDED_SAID\);/);
+  assert.match(app, /announce\(\[RIDE_ENDED_SAID, note, owed > 0 \? `\$\{outstandingSaid\(owed\)\} \$\{REPORTS_WHERE\}` : null\]\.filter\(Boolean\)\.join\(" "\)\);/);
   assert.match(ride, /rideVoice\.speak\(RIDE_ENDED_SAID, true\);/);
   assert.doesNotMatch(app, /focusStartAfterRide/);
   assert.match(ride, /onFocus: \(\) => timer\.current\?\.focus\(true\)/);
@@ -82,20 +82,19 @@ test("6. an End ride button always in view, labelled End ride with its icon, one
   assert.match(app, /startRideGesture\(ridePrefs\);\s*setResumeStats\(ended\.stats\);\s*setRideStart\(ended\.start\);/);
 });
 
-test("3. 311: the pick is logged (and sent where the server has DC's key); the note after, never before", () => {
-  const pick = ride.slice(ride.indexOf("const pick311 = (kind: ReportKind) => {"), ride.indexOf("const addNote = () => {"));
+test("3. 311: one tap logs the pick (and sends it where the server has DC's key); no note in a ride (2026-10-21)", () => {
+  const pick = ride.slice(ride.indexOf("const pick311 = (kind: ReportKind) => {"), ride.indexOf("// An answer the rider asked for"));
+  assert.ok(pick.length > 100);
   assert.match(pick, /const entry = report311Log\(\)\.add\(kind, place\);/);
   assert.match(pick, /if \(serverOn311 && entry\.where === "dc"\)/);
   assert.match(pick, /sendReport311\(window\.location\.origin, kind, place, entryText\(entry\)\)/);
   assert.match(pick, /if \(sent\) report311Log\(\)\.setReported\(entry\.id, true\);/);
   assert.match(pick, /tell311\(loggedSaid\(entry\)\)/);
   assert.doesNotMatch(ride, /smsHref|sms:/, "no text message: DC's text line answers only Welcome (2026-10-20)");
-  // The confirmation line and Add a note under the button.
+  // The confirmation line under the button, and nothing to type: a rider is riding (Stephen, 2026-10-21).
   // Review F4: the line clears after SAID_311_MS, held while focused or hovered (the spread handlers).
-  assert.match(ride, /<div className="ride-311-said" \{\.\.\.said311Timer\.hold\}>\s*\{\/\*[^*]*\*\/\}\s*<p>\{said311\}<\/p>\s*\{\/\*[^*]*\*\/\}\s*\{said311 !== REPORT_SENT && \(\s*<button type="button" className="secondary" onClick=\{addNote\}>\s*Add a note/);
-  // The note fold edits the entry just logged, saved as typed.
-  const fold = ride.slice(ride.indexOf("function Note311("), ride.indexOf("export function RideMode("));
-  assert.match(fold, /onChange=\{\(event\) => report311Log\(\)\.setNote\(entry\.id, event\.target\.value\)\}/);
+  assert.match(ride, /<div className="ride-311-said" \{\.\.\.said311Timer\.hold\}>\s*\{\/\*[^*]*\*\/\}\s*<p>\{said311\}<\/p>\s*<\/div>/);
+  assert.doesNotMatch(ride, /Add a note|Note311|setNote/);
 });
 
 test("F1. Start unlocks the voice synchronously in the press, before the closure check's await", () => {
@@ -126,7 +125,9 @@ test("Ride settings in reach: a gear at the end of the side buttons opens them j
   assert.match(top, /\{!walking && !ride\.arrived && \(\s*<button type="button" className="secondary ride-road-closed" onClick=\{roadClosed\} aria-label=\{ROAD_CLOSED_NAME\} title=\{ROAD_CLOSED_NAME\}>/);
   // Road closed keeps its words at every size (the owner, 2026-10-20: "make everything have the big button").
   assert.match(top, /<span className="ride-top-label">\{ROAD_CLOSED_TEXT\}<\/span>/);
-  assert.doesNotMatch(css, /@container|\.ride-top-label \{\s*position: absolute;/);
+  // No size query hides it (the Plan bar's own @container, styles.css, is the only one, and names no ride label).
+  assert.doesNotMatch(css, /\.ride-top-label \{\s*position: absolute;/);
+  assert.deepEqual([...css.matchAll(/@container[^{]*\{([^@]*)/g)].map((m) => /ride-/.test(m[1])), [false]);
   assert.match(top, /ref=\{settingsPanel\}\s+id=\{`\$\{settingsId\}-settings`\}\s+className="ride-mode-settings"\s+role="group"\s+aria-label=\{RIDE_SETTINGS_TITLE\}\s+hidden=\{!settingsOpen\}\s+tabIndex=\{-1\}/);
   // The gear comes after the panel: opened, the focus goes into it; Escape there closes it, back to the gear.
   assert.match(ride, /settingsPanel\.current\?\.focus\(\{ preventScroll: true \}\);/);

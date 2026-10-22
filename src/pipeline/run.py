@@ -39,6 +39,7 @@ from routemaker import (
     agency_roads,
     bike_bans,
     bike_lanes,
+    capitolgrounds,
     cbd,
     circleparks,
     corridors,
@@ -900,6 +901,8 @@ class RebuildContext:
     bicycle_override_ways: frozenset[int] = frozenset()
     # The circle parks' walkways opened to bicycles (`routemaker.circleparks`).
     circle_park_ways: set[int] = field(default_factory=set)
+    # The Capitol grounds' walks opened to bicycles (`routemaker.capitolgrounds`).
+    capitol_ways: set[int] = field(default_factory=set)
     # Open networks inside a base that meet the outside network at two or more points
     # for no listed reason (`restricted_areas.through_networks`); VALIDATE_SEGMENTS
     # refuses any.
@@ -2855,6 +2858,12 @@ def build_handlers(
             logger.info(
                 "%d walkways and crossings of DC's circle parks opened to bicycles",
                 len(context.circle_park_ways),
+            )
+            # The Capitol grounds' walks (`routemaker.capitolgrounds`, owner 2026-10-21).
+            context.capitol_ways = capitolgrounds.open_ways(context.ways)
+            logger.info(
+                "%d walks and crossings of the Capitol grounds opened to bicycles",
+                len(context.capitol_ways),
             )
         except overrides.OverrideRefused as refused:
             # The same door as the unhandled kind above and it has to close the
