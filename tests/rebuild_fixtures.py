@@ -86,7 +86,14 @@ def build_toy_extract(path: Path, *, changed: bool = False) -> None:
                     id=300,
                     nodes=[5, 6],
                     version=1,
-                    tags={"highway": "track", "surface": "gravel", "tracktype": "grade2"},
+                    # Named, so the farm-track rule (`restricted_areas.track_closures`)
+                    # leaves it open: a public gravel lane.
+                    tags={
+                        "highway": "track",
+                        "surface": "gravel",
+                        "tracktype": "grade2",
+                        "name": "Test Farm Lane",
+                    },
                 )
             )
         # A path e-bikes are barred from, and a bridge whose only bike provision

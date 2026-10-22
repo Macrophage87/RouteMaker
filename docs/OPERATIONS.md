@@ -6260,9 +6260,24 @@ Travilah quarry pit off Shady Grove Rd over nine ways tagged only `highway=track
   trail outside the course also carries (a public trail through it, such as a creek trail past a
   park course), an unnamed piece of up to 100 m (330 ft) between such trail ways (a bridge), and
   a public street or its sidewalk or crossing. Every way is in
-  `<DATA_ROOT>/rebuild/reports/golf-closures.csv`; its closed ways join Review's "Industrial and
-  golf closures" list, where Reopen writes a `bicycle=yes` access override for a public trail
-  the rule closed.
+  `<DATA_ROOT>/rebuild/reports/golf-closures.csv`; its closed ways join Review's "Industrial,
+  golf and track closures" list, where Reopen writes a `bicycle=yes` access override for a
+  public trail the rule closed.
+- Farm and forest tracks (owner report 2026-10-21, rural Montgomery County around Dickerson and
+  Barnesville: "there's some track roads on the rural part that are likely private roads that we
+  can't legally use"). A `highway=track` with no access tag is opened by Valhalla by class and
+  was drawn as a calm road. From the next rebuild such a track is closed on every graph
+  (`restricted_areas.track_closures`, `rm:no_bicycle=track`, the road panel's "private farm
+  track") and hidden from the stress map. Open: an owner's override, a numbered public road, a
+  track whose own `bicycle` tag (or, with none, `access` or `vehicle` yes|permissive,
+  `motor_vehicle` yes|permissive|designated) opens it, a track in a
+  bicycle or hiking route relation, a named track (a public dirt road, or a trail on an old farm
+  road), and one half or more of whose length lies in a park or protected area (the `park` kind:
+  county, state and national parks, nature reserves) that is not private land under an
+  easement (`ownership=private`, `access=private|no`, or "easement" in `protection_title`). A track whose own `access`, `vehicle` or
+  `bicycle` already closes it (private, no, agricultural, forestry ...) is left to the tag rules
+  and not listed. The rebuild log counts the named tracks it left open, for the owner to check. Every judged track is in `<DATA_ROOT>/rebuild/reports/track-closures.csv`; its
+  closed ones join the same Review list, where Reopen writes a `bicycle=yes` access override.
 - Now, without a rebuild: `routemaker.climb_exclusions.EXCLUDED` lists a climb by id with its
   reason and source, and the builder, the hill seek (`core.hillseek.parse`) and the map
   (`frontend/src/lib/climbExclusions.ts`, the same ids) all drop it, so the committed file need not
