@@ -2937,6 +2937,26 @@ def test_the_renderer_can_leave_out_the_sign_in_page() -> None:
     assert "auth_basic_user_file" in without.stdout and "location = /robots.txt" in without.stdout
 
 
+@needs_sh
+def test_the_renderer_can_leave_out_the_password() -> None:
+    """The owner opened the beta (2026-10-22): a re-render must not bring the password back."""
+    args = ["--stage", "full", "--env-file", "/nonexistent", "--cert-fullchain", "/c/f.pem"]
+    args += ["--server-name", "beta.example.org", "--cert-key", "/c/k.pem"]
+    gated = run("sh", "scripts/beta/render-nginx.sh", *args)
+    opened = run("sh", "scripts/beta/render-nginx.sh", *args, "--no-password")
+    assert gated.returncode == 0 and opened.returncode == 0, opened.stderr
+    assert re.search(r'^\s*auth_basic\s+"RouteMaker beta";', gated.stdout, re.M)
+    assert not re.search(r'^\s*auth_basic\s+"', opened.stdout, re.M)
+    assert "auth_basic_user_file" not in opened.stdout
+    assert not re.search(r"^\s*error_page 401", opened.stdout, re.M)
+    assert "location = /rmbeta-401.html" not in opened.stdout
+    # what keeps the beta out of search engines, and the "back soon" page, stay
+    assert 'add_header X-Robots-Tag "noindex, nofollow" always;' in opened.stdout
+    assert "location = /robots.txt" in opened.stdout
+    assert "error_page 502 /rmbeta-502.html;" in opened.stdout
+    assert opened.stdout.count("{") == opened.stdout.count("}")
+
+
 def test_the_sign_in_page_says_to_use_a_real_browser() -> None:
     page = (REPO / "deploy" / "beta" / "401.html").read_text()
     assert "rather than inside another app" in page  # re-check a11y N3
