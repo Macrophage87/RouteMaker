@@ -50,6 +50,9 @@ interface Props {
   /** The file opened last, until the plan is cleared. */
   imported: ImportedPlan | null;
   onImport: (plan: ImportedPlan) => void;
+  /** Load route's popup (LoadRouteDialog.tsx) opens this panel's file picker; a file it cannot open shows here. */
+  fileInput?: (input: HTMLInputElement | null) => void;
+  onOpenFailed?: () => void;
   /** Replace the plan's points with a closer fit to the opened track. */
   onRefine: (points: LonLat[]) => void;
   getMap: () => MapLibreMap | null;
@@ -273,7 +276,7 @@ type Reading = { kind: "idle" } | { kind: "reading"; name: string } | { kind: "e
  * route on screen (gpx.ts). Nothing is sent or saved.
  */
 export function GpxPanel(props: Props) {
-  const { route, routedPoints, points, planStatus, imported, onImport, onRefine, getMap, onDownload, onDownloadCourse, onSendToGarmin, loop = false, federal = [] } = props;
+  const { route, routedPoints, points, planStatus, imported, onImport, fileInput, onOpenFailed, onRefine, getMap, onDownload, onDownloadCourse, onSendToGarmin, loop = false, federal = [] } = props;
   const [kept, setChoice] = useState(readChoice);
   // Go adds no control (the owner's rule): there, the file type is GPX and no choice is shown.
   const courses = onDownloadCourse !== undefined;
@@ -403,6 +406,7 @@ export function GpxPanel(props: Props) {
       frame(outcome.plan);
     } else {
       setReading({ kind: "error", message: outcome.message });
+      onOpenFailed?.();
     }
   };
 
@@ -499,7 +503,10 @@ export function GpxPanel(props: Props) {
         )}
       </div>
       <input
-        ref={input}
+        ref={(el) => {
+          input.current = el;
+          fileInput?.(el);
+        }}
         type="file"
         accept=".gpx,application/gpx+xml"
         hidden

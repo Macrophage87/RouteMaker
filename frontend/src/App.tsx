@@ -251,6 +251,8 @@ import type { DeviceProfileId } from "./lib/deviceProfiles.ts";
 import { SHARED_GONE, SHARED_INPUTS_ONLY, SHARED_OPENED, SHARED_PATH, SHARED_REVOKED, SHARED_REVOKED_ERROR, SHARE_KEEP_DEFAULT, SHARE_RIDE_WAIT, BROADCAST_NO_LEAD, asRideLink, leadKeyFrom, gpxShareFile, keepFields, newSharedId, previewImageOk, readShared, rideLinkFrom, sharedBody, sharedIdFrom, storeShared, withSharedId, type ShareKeep } from "./lib/sharedRoutes.ts";
 import { ClosureDialog, type ClosureAsk } from "./ClosureDialog.tsx";
 import { StartOnComputerDialog } from "./StartOnComputerDialog.tsx";
+import { LoadRouteDialog } from "./LoadRouteDialog.tsx";
+import { withGpxChoice, type GpxChoice } from "./lib/loadRoute.ts";
 import { askBeforeStart, looksLikePhone, rememberStartAnyway } from "./lib/startOnComputer.ts";
 import { ShareCardDialog, type ShareCardSource } from "./ShareCardDialog.tsx";
 import { usableProfile } from "./lib/profileChart.ts";
@@ -3316,7 +3318,11 @@ export function App() {
       });
   };
   // An opened file is checked at once, against its own track.
-  const openImportedChecked = (plan: ImportedPlan) => {
+  const openImportedChecked = (asOpened: ImportedPlan) => {
+    // A file chosen from Load route's popup opens on the ride type picked there, followed as chosen there.
+    const choice = gpxChoice.current;
+    gpxChoice.current = null;
+    const plan = choice ? withGpxChoice(asOpened, choice) : asOpened;
     // Another file is not the saved route on screen (a saved file reopened sets it again, openSaved).
     openSavedRoute.current = null;
     openImported(plan);
@@ -4284,9 +4290,13 @@ export function App() {
   // save, but also allow a GPX export too"); signed out, it offers Discord sign-in in the name's place.
   const barSave =
     planFirst && !barRoute && !!shown && !stale && routedPoints === points && (chosen || candidateRows(picked) === null);
-  // An empty plan: Load route there (the owner, 2026-10-21: "Also, add a load route"), opening Save & load.
+  // An empty plan: Load route there (the owner, 2026-10-21: "Also, add a load route"), opening its popup (the owner,
+  // 2026-10-22: "Load route should have a popup ... Basically let people load a gpx or select their saved routes").
   const barLoad = planFirst && points.length === 0 && !routingNow;
   const planBar = planFirst && (barRoute || barSave || barLoad || can.undo || can.redo || points.length > 0);
+  const [loadOpen, setLoadOpen] = useState(false);
+  const gpxInput = useRef<HTMLInputElement | null>(null);
+  const gpxChoice = useRef<GpxChoice | null>(null);
   const barFocused = useRef(false);
   useEffect(() => {
     if (!barFocused.current) return;
@@ -4646,6 +4656,31 @@ export function App() {
           leaderRoute={rideBroadcast?.leading ? ((riding && rideView ? rideView.route : shown)?.geometry.coordinates as LonLat[] | undefined) : null}
         />
       )}
+      <LoadRouteDialog
+        open={loadOpen && barLoad}
+        onClose={() => setLoadOpen(false)}
+        signedIn={me.signed_in}
+        signIn={signInFromSave}
+        preset={preset}
+        onGpx={(choice) => {
+          // The picker opens within the press; the popup goes, and the file opens as Save & load's Open GPX… does, on
+          // the ride type chosen and followed as chosen. Cancelled, the choice is dropped.
+          const input = gpxInput.current;
+          if (!input) return;
+          gpxChoice.current = choice;
+          input.addEventListener("cancel", () => (gpxChoice.current = null), { once: true });
+          input.click();
+          setLoadOpen(false);
+        }}
+        onOpenSaved={(route) => {
+          setLoadOpen(false);
+          openSaved(route);
+        }}
+        onOpenKept={(route) => {
+          setLoadOpen(false);
+          openKept(route);
+        }}
+      />
       <StartOnComputerDialog
         open={computerAsk}
         onBack={() => setComputerAsk(false)}
@@ -4739,7 +4774,7 @@ export function App() {
             />
           )}
           {barLoad && (
-            <button type="button" className="secondary plan-bar-route plan-bar-load" onClick={(event) => openView("gpx", event.currentTarget)}>
+            <button type="button" className="secondary plan-bar-route plan-bar-load" aria-haspopup="dialog" onClick={() => setLoadOpen(true)}>
               <Icon name="file" size={20} />
               Load route
             </button>
@@ -5004,7 +5039,15 @@ export function App() {
             <GpxSheet
               {...{
                 nav: sheetNav, shown, routedPoints, routedLoop, federalRoute, points, status, imported,
-                openImported: openImportedChecked, refineImported, getMap, downloadRoute, sendToGarmin: sendToGarminRoute,
+                openImported: openImportedChecked, refineImported,
+                // Load route's popup opens this file picker; a file that cannot be opened says why in Save & load.
+                fileInput: (input: HTMLInputElement | null) => {
+                  gpxInput.current = input;
+                },
+                onOpenFailed: () => {
+                  gpxChoice.current = null;
+                  openView("gpx", null);
+                }, getMap, downloadRoute, sendToGarmin: sendToGarminRoute,
                 ...(mode === "go" ? {} : { downloadCourse: downloadCourseRoute }),
                 // Snapping an opened track (lib/gpxMatch.ts) opens the plan along the snapped line: one edit, like the file.
                 ...(mode === "go" ? {} : {
