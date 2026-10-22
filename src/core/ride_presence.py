@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import contextlib
 import fcntl
+import hashlib
 import json
 import math
 import os
@@ -100,6 +101,15 @@ ROLES = (PARTICIPANT, "lead", "sweep", "corker")
 
 RIDE_ID = re.compile(r"^[0-9a-f]{64}$")
 TOKEN = re.compile(r"^[0-9a-f]{32}$")
+LEADER_KEY = TOKEN
+
+
+def leader_key(token: str) -> str:
+    """The ride leader's mark in a broadcast link: the first 32 hex digits of the SHA-256 of the
+    sharer's token. A reader holding it learns which dot is the sharer's, and nothing else; only the
+    sharer, who holds the token, can post as that dot (Stephen 2026-10-22: "the ride leader is the
+    person who shared")."""
+    return hashlib.sha256(token.encode("ascii")).hexdigest()[:32]
 
 
 class Refused(Exception):
@@ -444,10 +454,12 @@ def _alert_out(alert: dict, token: str, t: float) -> dict:
     }
 
 
-def read(ride_id: str, token: str, now: Callable[[], float] = time.time) -> dict:
+def read(ride_id: str, token: str, now: Callable[[], float] = time.time, leader: str = "") -> dict:
     """The other riders' dots (not this one's own) with their ages and roles, and the ride's
-    alerts."""
+    alerts. With a broadcast link's `leader` key, the sharer's dot carries "leader": true."""
     _check(ride_id, token)
+    if not LEADER_KEY.match(leader or ""):
+        leader = ""
     t = now()
     with store().ride(ride_id, create=False) as state:
         _prune(state, t)
@@ -460,16 +472,19 @@ def read(ride_id: str, token: str, now: Callable[[], float] = time.time) -> dict
                     429, "Too soon; the dots update every 15 seconds.", MIN_POLL_INTERVAL_S
                 )
             rider["polled"] = t
-        dots = [
-            {
+        dots = []
+        for other, r in state["riders"].items():
+            if other == token or "at" not in r:
+                continue
+            dot = {
                 "lon": r["lon"],
                 "lat": r["lat"],
                 "age_s": max(0, int(t - r["at"])),
                 "role": r.get("role", PARTICIPANT),
             }
-            for other, r in state["riders"].items()
-            if other != token and "at" in r
-        ]
+            if leader and leader_key(other) == leader:
+                dot["leader"] = True
+            dots.append(dot)
         alerts = [_alert_out(a, token, t) for a in state["alerts"]]
     return {"dots": dots, "alerts": alerts}
 

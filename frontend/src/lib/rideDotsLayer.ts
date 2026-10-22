@@ -33,6 +33,14 @@ export const PULSE_LAYER = "ride-dots-pulse";
 export const ALERTS_STALE_LAYER = "ride-alerts-stale";
 export const ALERTS_SOURCE = "ride-alerts";
 export const ALERTS_LAYER = "ride-alerts-pin";
+/**
+ * A broadcast ride's leader (Stephen 2026-10-22): a wide ring round the sharer's mark, whatever role they ride as,
+ * and the path the leader has taken since the link opened, a dashed line under the marks (kept on this device only).
+ */
+export const LEADER_LAYER = "ride-dots-leader";
+export const TRAIL_SOURCE = "ride-leader-trail";
+export const TRAIL_LAYER = "ride-leader-trail-line";
+export const LEADER_RING = "#220044";
 /** Every layer a tap on a rider's mark is heard on. */
 export const RIDER_LAYERS = [DOTS_LAYER, LEAD_LAYER] as const;
 
@@ -166,7 +174,7 @@ export function dotFeatures(dots: readonly ShownDot[]): { type: "FeatureCollecti
     type: "FeatureCollection",
     features: dots.map((d) => ({
       type: "Feature",
-      properties: { freshness: d.freshness, pulse: d.pulse, age: d.age_s, role: d.role, bearing: d.bearing, along: Math.round(d.alongM) },
+      properties: { freshness: d.freshness, pulse: d.pulse, age: d.age_s, role: d.role, bearing: d.bearing, along: Math.round(d.alongM), leader: d.leader === true },
       geometry: { type: "Point", coordinates: [d.lon, d.lat] },
     })),
   };
@@ -204,8 +212,35 @@ const markLayout = {
   "icon-ignore-placement": true,
 };
 
+export function trailFeature(trail: readonly LonLat[]): object {
+  return {
+    type: "FeatureCollection",
+    features: trail.length >= 2 ? [{ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: trail } }] : [],
+  };
+}
+
 export function dotsLayers(): object[] {
   return [
+    {
+      id: TRAIL_LAYER,
+      type: "line",
+      source: TRAIL_SOURCE,
+      layout: { "line-cap": "round", "line-join": "round" },
+      paint: { "line-color": LEADER_RING, "line-width": 4, "line-dasharray": [1.5, 1.5], "line-opacity": 0.85 },
+    },
+    {
+      id: LEADER_LAYER,
+      type: "circle",
+      source: DOTS_SOURCE,
+      filter: ["==", ["get", "leader"], true],
+      paint: {
+        "circle-radius": 19,
+        "circle-color": HOLE,
+        "circle-opacity": 0.6,
+        "circle-stroke-color": LEADER_RING,
+        "circle-stroke-width": 3,
+      },
+    },
     {
       id: PULSE_LAYER,
       type: "circle",
@@ -262,11 +297,14 @@ function setData(map: DotsMap, id: string, data: object): void {
   else map.addSource(id, { type: "geojson", data });
 }
 
-/** Draw the dots and alert pins, adding the images and layers the first time; null removes them (the ride link closed). */
-export function showRideDots(map: DotsMap, dots: readonly ShownDot[] | null, alerts: readonly RideAlert[] = [], sinceS = 0, pixelRatio = 2): void {
+/**
+ * Draw the dots, alert pins and the leader's path, adding the images and layers the first time; null removes them
+ * (the ride link closed).
+ */
+export function showRideDots(map: DotsMap, dots: readonly ShownDot[] | null, alerts: readonly RideAlert[] = [], sinceS = 0, pixelRatio = 2, trail: readonly LonLat[] = []): void {
   if (dots === null) {
-    for (const id of [ALERTS_STALE_LAYER, ALERTS_LAYER, LEAD_LAYER, DOTS_LAYER, PULSE_LAYER]) if (map.getLayer(id)) map.removeLayer(id);
-    for (const id of [DOTS_SOURCE, ALERTS_SOURCE]) if (map.getSource(id)) map.removeSource(id);
+    for (const id of [ALERTS_STALE_LAYER, ALERTS_LAYER, LEAD_LAYER, DOTS_LAYER, PULSE_LAYER, LEADER_LAYER, TRAIL_LAYER]) if (map.getLayer(id)) map.removeLayer(id);
+    for (const id of [DOTS_SOURCE, ALERTS_SOURCE, TRAIL_SOURCE]) if (map.getSource(id)) map.removeSource(id);
     return;
   }
   if (!map.hasImage(dotImageId("participant", "fresh"))) {
@@ -278,6 +316,7 @@ export function showRideDots(map: DotsMap, dots: readonly ShownDot[] | null, ale
   }
   setData(map, DOTS_SOURCE, dotFeatures(dots));
   setData(map, ALERTS_SOURCE, alertFeatures(alerts, sinceS));
+  setData(map, TRAIL_SOURCE, trailFeature(trail));
   for (const layer of dotsLayers()) {
     const id = (layer as { id: string }).id;
     if (!map.getLayer(id)) map.addLayer(layer);

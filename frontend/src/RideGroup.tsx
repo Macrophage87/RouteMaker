@@ -10,12 +10,19 @@
  *
  * Privacy: the watch runs only while the rider shares and the page is in front, and stops when it is hidden;
  * a position is sent only within a quarter mile of the route, in a POST body, and kept nowhere on the device.
+ *
+ * A broadcast (Share ride or Broadcast, Stephen 2026-10-22: "the ride leader is the person who shared. Opening the
+ * link will follow the leader and share the path"): the ride is the shared line's id. The sharer leads: shown from
+ * the share on, on or off the route (they may re-route), while the page is in front. Those who open the link see
+ * the leader at once, without answering the question, and the map follows the leader (until they move the map, or
+ * while they ride themselves, when the ride follows them); the leader's path since the link opened is drawn from
+ * the dots this page saw, kept in memory here only.
  */
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { Map as MapLibreMap, MapLayerMouseEvent } from "maplibre-gl";
 import { Icon } from "./Icon.tsx";
 import type { LonLat } from "./lib/geo.ts";
-import { RIDER_LAYERS, ROLE_COLOURS, roleSwatchPoints, showRideDots } from "./lib/rideDotsLayer.ts";
+import { LEADER_RING, RIDER_LAYERS, ROLE_COLOURS, roleSwatchPoints, showRideDots } from "./lib/rideDotsLayer.ts";
 import {
   ALERT_KINDS,
   ALERT_LABEL,
@@ -28,6 +35,11 @@ import {
   CONSENT_QUESTION,
   CONSENT_YES,
   DEFAULT_ROLE,
+  FOLLOW_LEADER,
+  FOLLOWING_SAID,
+  LEADER_LABEL,
+  LEADING_SAID,
+  NOT_FOLLOWING_SAID,
   OTHER_MAX,
   POLL_EVERY_MS,
   POST_EVERY_MS,
@@ -36,14 +48,17 @@ import {
   SHARE_STOPPED_SAID,
   alertRefusal,
   alertText,
+  broadcastRideId,
   clearAlert,
   consentFor,
   countText,
   dotName,
   dotSaid,
+  extendTrail,
   keepConsent,
   leaveRide,
   nearRoute,
+  newToken,
   newAlerts,
   project,
   readRide,
@@ -76,6 +91,13 @@ export interface RideGroupProps {
   getMap: () => MapLibreMap | null;
   /** The rider's position the page already has (Ride mode's, or Use my location), when it has one. */
   here: LonLat | null;
+  /**
+   * A broadcast ride: the shared line's id, the link's leader key, and whether this page is the sharer's (who leads).
+   * Null: a Mass Ride or Group Ride by its points, as before.
+   */
+  broadcast?: { id: string; lead: string | null; leading: boolean } | null;
+  /** This page is riding (Ride mode follows the rider, so the map does not follow the leader). */
+  riding?: boolean;
 }
 
 const TICK_MS = 5000;
@@ -84,7 +106,10 @@ function visible(): boolean {
   return typeof document === "undefined" || document.visibilityState !== "hidden";
 }
 
-export function RideGroup({ type, points, line, getMap, here }: RideGroupProps) {
+export function RideGroup({ type, points, line, getMap, here, broadcast = null, riding = false }: RideGroupProps) {
+  const leading = broadcast?.leading === true;
+  // The leader key a follower reads with (the leader needs none: it does not see its own dot).
+  const followKey = broadcast && !leading ? broadcast.lead : null;
   const origin = window.location.origin;
   const [ride, setRide] = useState<string | null>(null);
   const [consent, setConsent] = useState<RideConsent | null>(null);
@@ -113,13 +138,16 @@ export function RideGroup({ type, points, line, getMap, here }: RideGroupProps) 
   const say = (text: string) => setSaid((s) => ({ text, count: s.count + 1 }));
 
   // The ride, and the rider's answer for it (asked when the link opens).
-  const key = points.map((p) => `${p[0].toFixed(5)},${p[1].toFixed(5)}`).join(";");
+  const key = broadcast ? `broadcast|${broadcast.id}` : points.map((p) => `${p[0].toFixed(5)},${p[1].toFixed(5)}`).join(";");
   useEffect(() => {
     let live = true;
-    void rideId(type, points).then((id) => {
+    void (broadcast ? broadcastRideId(broadcast.id) : rideId(type, points)).then((id) => {
       if (!live) return;
       setRide(id);
-      const kept = consentFor(id);
+      // The sharer leads: sharing is what they pressed (App.tsx keeps the answer as it shares; kept here too).
+      let kept = consentFor(id);
+      if (leading && kept?.answer !== "yes") kept = keepConsent(id, "yes", Date.now(), undefined, undefined, "lead");
+      if (leading) window.setTimeout(() => live && say(LEADING_SAID), 150);
       setConsent(kept);
       setAsked(kept !== null);
       setShareOn(kept?.answer === "yes");
@@ -132,7 +160,7 @@ export function RideGroup({ type, points, line, getMap, here }: RideGroupProps) 
     };
     // The points' text is the ride's identity; the array itself changes on every render upstream.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [type, key]);
+  }, [type, key, leading]);
 
   const answer = (yes: boolean) => {
     if (!ride) return;
@@ -150,12 +178,15 @@ export function RideGroup({ type, points, line, getMap, here }: RideGroupProps) 
     share.current.lastPost = postSoonAfter(share.current.lastPost);
     say(shareOn ? `You are shown as ${roleLabel(role)}; others see it within 15 seconds.` : `Your role is ${roleLabel(role)}, shown when you turn on Show me as a dot.`);
   };
-  const token = consent?.token ?? null;
+  // A broadcast's follower sees the leader before answering: a token for reading only, which the server keeps
+  // nothing of until it posts (core.ride_presence.read).
+  const [watchToken] = useState(newToken);
+  const token = consent?.token ?? (broadcast ? watchToken : null);
 
   // Seeing the others: every 15 s while the page is in front.
   const poll = useCallback(async () => {
     if (!ride || !token || !visible()) return;
-    const got = await readRide(origin, ride, token);
+    const got = await readRide(origin, ride, token, fetch, followKey);
     if (!got) return;
     setRead(got);
     setPolledAt(Date.now());
@@ -170,7 +201,7 @@ export function RideGroup({ type, points, line, getMap, here }: RideGroupProps) 
         // No vibration here.
       }
     }
-  }, [ride, token, origin, line]);
+  }, [ride, token, origin, line, followKey]);
   useEffect(() => {
     if (!ride || !token) return;
     void poll();
@@ -209,7 +240,8 @@ export function RideGroup({ type, points, line, getMap, here }: RideGroupProps) 
   useEffect(() => {
     if (!shareOn || !fix || !ride || !token || !consent) return;
     const t = Date.now();
-    const near = nearRoute(line, fix);
+    // The leader is shown on or off the route: those following go where the leader goes.
+    const near = leading || nearRoute(line, fix);
     if (near) share.current.lastNearAt = t;
     const stop = shareStop({ on: true, since: consent.since, lastNearAt: share.current.lastNearAt, startedAt: share.current.startedAt }, t);
     if (stop) {
@@ -222,7 +254,7 @@ export function RideGroup({ type, points, line, getMap, here }: RideGroupProps) 
       share.current.lastPost = t;
       void sendPosition(origin, ride, token, fix, consent.role);
     }
-  }, [fix, now, shareOn, ride, token, consent, line, origin]);
+  }, [fix, now, shareOn, ride, token, consent, line, origin, leading]);
 
   const me = fix ?? here;
   // On an out-and-back the last place along the route says which pass a position is on (yours, and each dot's).
@@ -239,10 +271,41 @@ export function RideGroup({ type, points, line, getMap, here }: RideGroupProps) 
   const alerts = read.alerts.filter((a) => a.age_s + sinceS <= 600);
   const roleRows = roleKey(dots);
 
+  // Following the leader: the leader's dot, the path it has taken since this page opened, and the map kept on it.
+  const leaderDot = followKey ? (dots.find((d) => d.leader) ?? null) : null;
+  const leaderAt: LonLat | null = leaderDot ? [leaderDot.lon, leaderDot.lat] : null;
+  const [trail, setTrail] = useState<readonly LonLat[]>([]);
+  const [following, setFollowing] = useState(true);
+  const leaderSpot = leaderAt ? `${leaderAt[0]},${leaderAt[1]}` : "";
+  useEffect(() => {
+    if (!leaderAt) return;
+    setTrail((t) => extendTrail(t, leaderAt));
+    const map = getMap();
+    if (following && !riding && map) map.easeTo({ center: leaderAt, duration: 800 });
+    // The spot's text is the leader's reading; the array is new each render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leaderSpot, following, riding, getMap]);
+  const followingRef = useRef(following);
+  followingRef.current = following;
+  useEffect(() => {
+    const map = getMap();
+    if (!map || !followKey) return;
+    // Moving the map by hand stops following (a move the page makes has no originalEvent).
+    const onDrag = (event: { originalEvent?: unknown }) => {
+      if (!event.originalEvent || !followingRef.current) return;
+      setFollowing(false);
+      say(NOT_FOLLOWING_SAID);
+    };
+    map.on("dragstart", onDrag);
+    return () => {
+      map.off("dragstart", onDrag);
+    };
+  }, [getMap, followKey]);
+
   // The map: dots and pins, drawn again as they age; a tap on a dot says its age.
   useEffect(() => {
     const map = getMap();
-    if (map) showRideDots(map, dots, alerts, sinceS, Math.min(3, Math.max(1, Math.ceil(window.devicePixelRatio || 1))));
+    if (map) showRideDots(map, dots, alerts, sinceS, Math.min(3, Math.max(1, Math.ceil(window.devicePixelRatio || 1))), trail);
   });
   useEffect(() => {
     const map = getMap();
@@ -253,7 +316,8 @@ export function RideGroup({ type, points, line, getMap, here }: RideGroupProps) 
       const age = Number(f?.properties?.age ?? 0);
       if (!coords) return;
       const along = Number(f?.properties?.along);
-      const text = dotSaid(age, dotName(roleOf(f?.properties?.role), Number.isFinite(along) ? along : project(line, coords).alongM, myAlongRef.current));
+      const isLeader = f?.properties?.leader === true || f?.properties?.leader === "true";
+      const text = dotSaid(age, dotName(roleOf(f?.properties?.role), Number.isFinite(along) ? along : project(line, coords).alongM, myAlongRef.current, isLeader));
       setDotInfo(text);
       say(text);
     };
@@ -343,8 +407,32 @@ export function RideGroup({ type, points, line, getMap, here }: RideGroupProps) 
       <div id={ridersPanel} className="ride-riders-panel" hidden={!ridersOpen}>
         <p role="status">{ridersSaidText}</p>
         {dotInfo && <p className="hint">{dotInfo}</p>}
+        {followKey && (
+          <button
+            type="button"
+            role="switch"
+            className="switch"
+            aria-checked={following}
+            onClick={() => {
+              const next = !following;
+              setFollowing(next);
+              say(next ? FOLLOWING_SAID : NOT_FOLLOWING_SAID);
+            }}
+          >
+            <span className="switch-label">{FOLLOW_LEADER}</span>
+            <span className="switch-state" aria-hidden="true">
+              {following ? "On" : "Off"}
+            </span>
+          </button>
+        )}
         {roleRows.length > 0 && (
           <ul role="list" className="ride-role-key" aria-label="Roles on this ride">
+            {leaderDot && (
+              <li>
+                <LeaderSwatch />
+                {LEADER_LABEL}
+              </li>
+            )}
             {roleRows.map((k) => (
               <li key={k.role}>
                 <RoleSwatch role={k.role} />
@@ -480,6 +568,15 @@ function RoleSwatch({ role }: { role: RideRole }) {
       ) : (
         <circle cx="12" cy="12" r="6.7" fill={colour} stroke="#ffffff" strokeWidth="2" />
       )}
+    </svg>
+  );
+}
+
+/** The leader's ring as the map draws it; decoration only. */
+function LeaderSwatch() {
+  return (
+    <svg className="ride-role-swatch" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <circle cx="12" cy="12" r="9.5" fill="#ffffff" stroke={LEADER_RING} strokeWidth="3" />
     </svg>
   );
 }

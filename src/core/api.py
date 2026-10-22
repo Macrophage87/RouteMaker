@@ -6791,7 +6791,9 @@ def _ride_body(request):
 @decorate_view(*RIDE_READ_GUARDS)
 def ride_read(request, ride_id: str):
     token = request.META.get("HTTP_X_RIDE_TOKEN", "")
-    return _ride_call(request, lambda rp: rp.read(ride_id, token))
+    # A broadcast link's leader key (core.ride_presence.leader_key): marks the sharer's dot.
+    leader = request.META.get("HTTP_X_RIDE_LEADER", "")
+    return _ride_call(request, lambda rp: rp.read(ride_id, token, leader=leader))
 
 
 @api.post("/rides/{ride_id}/here", summary="Show this rider as a dot (rounded to 20 m) for 2 min")

@@ -404,3 +404,33 @@ def test_the_endpoints_are_limited_per_address_and_writes_per_ride(client, monke
 def test_a_foreign_page_is_refused(client) -> None:
     r = client.get(f"/api/rides/{RIDE}", HTTP_X_RIDE_TOKEN=ME, HTTP_SEC_FETCH_SITE="cross-site")
     assert r.status_code == 403
+
+
+def test_a_broadcast_links_leader_key_marks_the_sharers_dot_only(clock) -> None:
+    rp.post_position(RIDE, ME, *SPOT, role="lead", now=clock)
+    rp.post_position(RIDE, THEM, SPOT[0] + 0.001, SPOT[1], role="lead", now=clock)
+    key = rp.leader_key(ME)
+    assert rp.LEADER_KEY.match(key) and key != ME  # the link never carries the token itself
+    dots = rp.read(RIDE, YOU, now=clock, leader=key)["dots"]
+    leaders = [d for d in dots if d.get("leader")]
+    assert len(leaders) == 1
+    assert (leaders[0]["lon"], leaders[0]["lat"]) == rp.rounded(*SPOT)
+    # Without a key, or with one that is not 32 hex digits, no dot is marked.
+    assert not any(d.get("leader") for d in rp.read(RIDE, THEM, now=clock)["dots"])
+    clock.t += 5
+    assert not any(d.get("leader") for d in rp.read(RIDE, YOU, now=clock, leader="x" * 32)["dots"])
+
+
+@pytest.mark.django_db
+def test_the_api_reads_the_leader_key_from_its_header(client, clock, monkeypatch) -> None:
+    monkeypatch.setattr(rp.time, "time", clock)
+    client.post(
+        f"/api/rides/{RIDE}/here",
+        data=json.dumps({"token": ME, "lon": SPOT[0], "lat": SPOT[1], "role": "lead"}),
+        content_type="application/json",
+    )
+    r = client.get(
+        f"/api/rides/{RIDE}", HTTP_X_RIDE_TOKEN=YOU, HTTP_X_RIDE_LEADER=rp.leader_key(ME)
+    )
+    assert r.status_code == 200
+    assert r.json()["dots"][0]["leader"] is True

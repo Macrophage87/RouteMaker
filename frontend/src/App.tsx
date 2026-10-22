@@ -248,7 +248,7 @@ import { downloadText, trackGpx, verbatimDownload, verbatimFileName } from "./li
 import { readGpx } from "./lib/gpxImport.ts";
 import { GPX_SAID_OPENED, GPX_SAID_ROUTE, GPX_SAID_TRACK, downloadCourse, downloadGpx, routeGpxFile, sendCourseToGarmin, type FileFormat, type Said } from "./GpxPanel.tsx";
 import type { DeviceProfileId } from "./lib/deviceProfiles.ts";
-import { SHARED_GONE, SHARED_INPUTS_ONLY, SHARED_OPENED, SHARED_PATH, SHARED_REVOKED, SHARED_REVOKED_ERROR, SHARE_KEEP_DEFAULT, SHARE_RIDE_WAIT, asRideLink, gpxShareFile, keepFields, newSharedId, previewImageOk, readShared, rideLinkFrom, sharedBody, sharedIdFrom, storeShared, withSharedId, type ShareKeep } from "./lib/sharedRoutes.ts";
+import { SHARED_GONE, SHARED_INPUTS_ONLY, SHARED_OPENED, SHARED_PATH, SHARED_REVOKED, SHARED_REVOKED_ERROR, SHARE_KEEP_DEFAULT, SHARE_RIDE_WAIT, asRideLink, leadKeyFrom, gpxShareFile, keepFields, newSharedId, previewImageOk, readShared, rideLinkFrom, sharedBody, sharedIdFrom, storeShared, withSharedId, type ShareKeep } from "./lib/sharedRoutes.ts";
 import { ClosureDialog, type ClosureAsk } from "./ClosureDialog.tsx";
 import { StartOnComputerDialog } from "./StartOnComputerDialog.tsx";
 import { askBeforeStart, looksLikePhone, rememberStartAnyway } from "./lib/startOnComputer.ts";
@@ -261,7 +261,7 @@ import { BikeshareDocksOverlay, type DocksReport } from "./BikeshareDocks.tsx";
 import { KNOWN_OPERATORS, docksStatus, mergeOperators, operatorsToAsk, readOperatorChoices, saveOperatorChoices, type OperatorInfo } from "./lib/bikeshareDocks.ts";
 import { SaveRoute } from "./SaveRoute.tsx";
 import { SAVE_ROUTE } from "./lib/savedRoutes.ts";
-import { isRideLink, type RideLinkType } from "./lib/rideGroup.ts";
+import { broadcastRideId, isRideLink, leadConsent, leaderKey, newToken, type RideLinkType } from "./lib/rideGroup.ts";
 
 // Before the map adds the stress source (MapView, after its first probe).
 // With Ride mode's kept tiles behind the network, for dead spots (lib/corridorStore.ts).
@@ -322,6 +322,8 @@ const OPEN_AT = atFromHash(window.location.hash);
 const SHARED_ID = sharedIdFrom(window.location.hash, window.location.search, window.location.pathname);
 // Shared as a ride (Share ride; lib/sharedRoutes.ts RIDE_PARAM), not only as a route.
 const SHARED_RIDE = SHARED_ID !== null && rideLinkFrom(window.location.hash, window.location.search);
+// A ride link's leader (Share ride or Broadcast, 2026-10-22): the key that names the sharer's dot, followed on the map.
+const SHARED_LEAD = SHARED_RIDE ? leadKeyFrom(window.location.hash, window.location.search) : null;
 if (SHARED_ID && (window.location.pathname.startsWith(SHARED_PATH) || new URLSearchParams(window.location.search).has("route"))) {
   const query = new URLSearchParams(window.location.search);
   query.delete("route");
@@ -2837,22 +2839,36 @@ export function App() {
     if (sharedLine.current?.kept === kept) sharedLine.current = null;
     return null;
   };
-  // Share ride: the same link marked as a ride (lib/sharedRoutes.ts RIDE_PARAM), opened fixed with location sharing.
-  const shareRoute = async (ride = false) => {
-    if (!shown || sharing.current) return;
+  // The sharer's token and its leader key, made before the press: the share sheet needs the press's own activation,
+  // which an await before it would spend. A new pair after each ride shared.
+  const leadPrep = useRef<{ token: string; key: string } | null>(null);
+  const prepareLead = useCallback(() => {
+    const token = newToken();
+    void leaderKey(token).then((key) => {
+      leadPrep.current = { token, key };
+    });
+  }, []);
+  useEffect(prepareLead, [prepareLead]);
+  // Share ride: the same link marked as a ride (lib/sharedRoutes.ts RIDE_PARAM), opened fixed with location sharing,
+  // and led by the sharer (LEAD_PARAM). Answers whether it was shared as a ride the sharer leads (Broadcast starts it).
+  const shareRoute = async (ride = false): Promise<boolean> => {
+    if (!shown || sharing.current) return false;
     const press = ++sharePresses.current;
     // A ride only with its exact line, kept with the route shown for it: while the route is still being planned the
     // link would plan again, a route, so it is said rather than shared.
     if (ride && !shareExact()?.save.answer) {
       setShareSaid((before) => ({ text: SHARE_RIDE_WAIT, count: before.count + 1 }));
-      return;
+      return false;
     }
     sharing.current = true;
+    let led = false;
     setShareSaid((before) => ({ text: "", count: before.count }));
     const distanceM = !stale && routedPoints === points ? shown.distance_m : null;
     const now = sharedLinkNow();
     const { kept, exact } = now;
-    const link = ride && kept ? asRideLink(now.link) : now.link;
+    const lead = ride && kept ? leadPrep.current : null;
+    const sharedId = sharedLine.current?.id ?? null;
+    const link = ride && kept ? asRideLink(now.link, lead?.key ?? null) : now.link;
     const file = exact?.file ? gpxShareFile(exact.file.text, exact.file.fileName) : null;
     const content = withGpxFile(navigator, shareContent(link, distanceM, presetSaid(preset)), file);
     const outcome = shareLink(navigator, content);
@@ -2868,15 +2884,22 @@ export function App() {
       } else if (ride && kept && done === "shared") {
         // The one who shared a ride has the same location sharing, but leads it: re-routed off it as any ride is (the
         // owner, 2026-10-18: "Maybe make the sharer able to reroute").
-        setSharedOpen({ answer: shown, ride: true, own: true });
+        // The sharer leads it (Stephen 2026-10-22): shown as Lead line under the token the link's key names.
+        if (lead && sharedId) {
+          leadConsent(await broadcastRideId(sharedId), lead.token);
+          prepareLead();
+          led = true;
+        }
+        setSharedOpen({ answer: shown, ride: true, own: true, id: sharedId ?? undefined, lead: lead && sharedId ? lead.key : null });
       }
     } finally {
       sharing.current = false;
     }
-    if (!said) return;
-    window.setTimeout(() => {
-      if (press === sharePresses.current) setShareSaid((before) => ({ text: said, count: before.count + 1 }));
-    }, 150);
+    if (said)
+      window.setTimeout(() => {
+        if (press === sharePresses.current) setShareSaid((before) => ({ text: said, count: before.count + 1 }));
+      }, 150);
+    return led;
   };
 
   // Start ride (plan Q1, Q3): the first ride asks how to say the cues; later rides start at once. The
@@ -3205,6 +3228,15 @@ export function App() {
       window.clearTimeout(slow);
     });
   };
+  // Broadcast (Stephen 2026-10-22: "a small button next to start ... You then get a share screen and send it"): Share
+  // ride's link, led by the sharer, then the ride starts as Start's does. The voice is unlocked inside the press, as
+  // the share sheet's own wait would spend it; nothing starts where the link was not sent or its line not kept.
+  const broadcastRide = () => {
+    if (ridePrefs.chosen || mode === "go") primeRideVoice(ridePrefs);
+    void shareRoute(true).then((led) => {
+      if (led) startRideChecked();
+    });
+  };
   // Ride the rest (lib/rideTrip.ts): after a transit plan's transit, a ride for its last riding leg, planned
   // as a normal route request from where the rider is (the ride's fix) to the destination, on the leg's
   // ride type; from the trip panel, or with no fix yet, from the leg's own start (no new location look-up).
@@ -3347,7 +3379,8 @@ export function App() {
   // route: while it is the route shown or ridden, a ride is ridden fixed with location sharing offered (RideGroup),
   // and a route is the opener's own to change and ride, even a Mass Ride's. `own`: the ride this rider shared, not
   // held to it.
-  const [sharedOpen, setSharedOpen] = useState<{ answer: RouteResponse; ride: boolean; own?: boolean } | null>(null);
+  // `id` and `lead`: a broadcast's shared line and leader key (RideGroup follows the leader; the sharer leads).
+  const [sharedOpen, setSharedOpen] = useState<{ answer: RouteResponse; ride: boolean; own?: boolean; id?: string; lead?: string | null } | null>(null);
   // The "planned again" line is about the plan the link named: a change to the plan clears it.
   useEffect(() => setSharedNote(null), [points, preset, dials]);
   useEffect(() => {
@@ -3367,7 +3400,7 @@ export function App() {
         // The open's own check stands for the link's first-answer check.
         checkFirstAnswer.current = false;
         openSaved(shared, SHARED_OPENED(shared.name));
-        if (shared.answer) setSharedOpen({ answer: shared.answer, ride: SHARED_RIDE });
+        if (shared.answer) setSharedOpen({ answer: shared.answer, ride: SHARED_RIDE, id: SHARED_ID, lead: SHARED_LEAD });
       } else {
         setSharedNote(SHARED_GONE);
         announce(SHARED_GONE);
@@ -4402,7 +4435,7 @@ export function App() {
         mode, actions, stations, go, transitControls,
         stale, routeHeadingRef, status, announcement, slow, preset, dials, points, cancelLong, planButtonRef,
         confirmLong, errorRef, retry, shown, answer: picked, choice, aroundAvoid, setAroundAvoid, routedPoints, federalRoute,
-        narrow, setJunctionFocus, setScrubPoint, choose, startRide: startRideChecked, startRideRef, rideSize, setDials,
+        narrow, setJunctionFocus, setScrubPoint, choose, startRide: startRideChecked, broadcastRide: canShare ? broadcastRide : null, startRideRef, rideSize, setDials,
         waterStatus, waterAlong, addWaterStop, rideAsk, setRideAsk, backToRideOpener, ridePrefs, changeRidePrefs,
         rideStartFirstRef, beginRide, climbsOn, climbsStatus, climbsAlong, light,
       }}
@@ -4430,7 +4463,11 @@ export function App() {
   const rideGroupRoute = onShared ? onShared.answer : riding && rideView ? rideView.route : shown;
   const rideGroupType: RideLinkType | null =
     onShared && !onShared.ride ? null : isRideLink(preset, rideGroupPoints) ? preset : onShared && rideGroupPoints.length >= 2 ? "group-ride" : null;
-  const rideGroupLine = (goMode || riding) && rideGroupType && rideGroupRoute ? (rideGroupRoute.geometry.coordinates as LonLat[]) : null;
+  // A broadcast (a ride link with its leader): the sharer leads it, and one who opened it follows the leader, in Plan
+  // too (watching from a computer), not only in Go or riding.
+  const rideBroadcast = onShared?.ride && onShared.id && onShared.lead ? { id: onShared.id, lead: onShared.lead, leading: onShared.own === true } : null;
+  const rideGroupLine =
+    (goMode || riding || (rideBroadcast && !rideBroadcast.leading)) && rideGroupType && rideGroupRoute ? (rideGroupRoute.geometry.coordinates as LonLat[]) : null;
 
   return (
     <div className={`app${riding ? " riding" : ""}${goMode && !riding ? " go-mode" : ""}`}>
@@ -4580,7 +4617,15 @@ export function App() {
         onReport={onDocksReport}
       />
       {rideGroupLine && (
-        <RideGroup type={rideGroupType ?? "group-ride"} points={rideGroupPoints} line={rideGroupLine} getMap={getMap} here={rideView?.rider?.point ?? (here ? here.point : null)} />
+        <RideGroup
+          type={rideGroupType ?? "group-ride"}
+          points={rideGroupPoints}
+          line={rideGroupLine}
+          getMap={getMap}
+          here={rideView?.rider?.point ?? (here ? here.point : null)}
+          broadcast={rideBroadcast}
+          riding={riding}
+        />
       )}
       <StartOnComputerDialog
         open={computerAsk}

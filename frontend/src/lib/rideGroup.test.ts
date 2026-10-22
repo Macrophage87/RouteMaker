@@ -320,12 +320,12 @@ test("the map draws each role's mark by age, the lead line's chevron turned alon
     addImage: (id: string) => void images.add(id),
   };
   showRideDots(map, shown, [alert()], 0, 1);
-  // Pulse, the marks, the chevrons, the alert pin and its faded hole.
-  assert.equal(added.length, 5);
+  // The leader's path and ring, the pulse, the marks, the chevrons, the alert pin and its faded hole.
+  assert.equal(added.length, 7);
   assert.equal(images.size, 12);
   assert.ok(images.has(dotImageId("lead", "ring")) && images.has(dotImageId("participant", "fresh")));
   showRideDots(map, shown, [alert()], 0, 1);
-  assert.equal(added.length, 5);
+  assert.equal(added.length, 7);
   showRideDots(map, null);
   assert.equal(added.length, 0);
   assert.equal(sources.size, 0);
@@ -419,7 +419,7 @@ test("the page asks the role in the one question, keeps Go clean and names the k
   assert.match(group, /if \(kept === null\) window\.setTimeout\(\(\) => live && say\(CONSENT_QUESTION\), 150\);/);
   // A role change moves the next post up, and the post sends the consent's (new) role.
   assert.match(group, /const changeRole[\s\S]*?keepConsent\(ride, consent\.answer, Date\.now\(\), undefined, undefined, role\)[\s\S]*?share\.current\.lastPost = postSoonAfter\(share\.current\.lastPost\)/);
-  assert.match(group, /\}, \[fix, now, shareOn, ride, token, consent, line, origin\]\);/);
+  assert.match(group, /\}, \[fix, now, shareOn, ride, token, consent, line, origin, leading\]\);/);
   assert.match(group, /<\/button>\s*\)\}\s*\{consent && <RolePicker name="ride-role" value=\{consent\.role\} onChange=\{changeRole\} \/>\}\s*<\/div>/);
   assert.match(group, /sendPosition\(origin, ride, token, fix, consent\.role\)/);
   // Go's bar keeps its two buttons.

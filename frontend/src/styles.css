@@ -8162,3 +8162,34 @@ details.fold > summary .icon {
     right: calc(10px + var(--out-w, 0px));
   }
 }
+
+/* Broadcast, beside Start (Stephen 2026-10-22: "a small button next to start"): Start keeps the row's width. */
+.go-start {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.go-start .start-button {
+  flex: 1 1 0;
+  width: auto;
+}
+
+.go-start > .hint,
+.go-start > p {
+  flex-basis: 100%;
+}
+
+.broadcast-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 48px;
+  padding: 0 12px;
+  flex: 0 0 auto;
+}
+
+.go-start .broadcast-button {
+  min-height: 52px;
+}
