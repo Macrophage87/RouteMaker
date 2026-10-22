@@ -8358,6 +8358,7 @@ details.fold > summary .icon {
 }
 .load-route-dialog .closure-choices button {
   min-height: 44px;
+}
 
 /*
  * Roam (RoamMode.tsx; the owner, 2026-10-22): the road ridden large, the roads ahead under it (street names 20 px in
