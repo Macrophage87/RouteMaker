@@ -240,7 +240,7 @@ test("the points come first, the how-to is behind Points' Info, Swap and Undo be
   assert.ok(panel.indexOf('className="actions plan-reset-clear" hidden={!moreOpen}') > panel.indexOf('aria-label="More: Reset and Clear"'));
   assert.ok(panel.indexOf("{RESET_LABEL}") < panel.indexOf("{CLEAR_LABEL}"));
   assert.doesNotMatch(app, /className="actions point-add"|ref=\{addRef\}/);
-  assert.match(app, /accessMode && !riding \? \(\s*<MapTools\s+toggleRef=\{toolsToggleRef\}\s+onAddPoint=\{addAtCentre\}/);
+  assert.match(app, /accessMode && !onBike \? \(\s*<MapTools\s+toggleRef=\{toolsToggleRef\}\s+onAddPoint=\{addAtCentre\}/);
   assert.equal(
     searchLede(false),
     "Search or click the map: start, then end. Later clicks add stops. For keyboard or screen reader use, turn on accessibility mode (the first button on the page, or in Settings).",
@@ -360,7 +360,7 @@ test("Mass Ride's points on federal land: a warning on each row and marker, and 
   // Handed on to Plan's point boxes, which list them (Plan streamline, 2026-10-17).
   assert.match(points, /pointWarnings=\{pointWarnings\}/);
   assert.match(src("../app/Planner.tsx"), /onRemove=\{removeAt\}\s+warnings=\{pointWarnings\}/);
-  assert.match(app, /pointWarnings=\{riding \|\| reviewing \? undefined : pointWarnings\}/);
+  assert.match(app, /pointWarnings=\{onBike \|\| reviewing \? undefined : pointWarnings\}/);
   // The Map layers sheet keeps its own list.
   const html = renderToStaticMarkup(
     createElement(FederalPointsList, {

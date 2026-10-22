@@ -5869,7 +5869,8 @@ details.fold > summary .icon {
 }
 
 .ride .ride-round[aria-expanded="true"],
-.ride .ride-round-alert {
+.ride .ride-round-alert,
+.ride .ride-round-on {
   background: var(--accent);
   color: var(--accent-text);
   border-color: var(--bg);
@@ -6597,6 +6598,10 @@ details.fold > summary .icon {
 }
 .app.riding .ride-group {
   top: 64px;
+}
+/* Roam's broadcast: just under Roam's card (RoamMode sets its bottom), so the road names stay in view. */
+.app.roaming .ride-group {
+  top: calc(var(--roam-card-bottom, 64px) + 8px);
 }
 .ride-group > * {
   pointer-events: auto;
@@ -8202,4 +8207,57 @@ details.fold > summary .icon {
 
 .broadcast-note:empty {
   display: none;
+}
+
+/*
+ * Roam (RoamMode.tsx; the owner, 2026-10-22): the road ridden large, the roads ahead under it (street names 20 px in
+ * a ride), each with its stress level as a swatch in the map's colours and its words, never colour alone.
+ */
+.roam-road {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+}
+
+.roam-ahead {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.roam-ahead li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 10px;
+  font-size: 1.25rem;
+  line-height: 1.3;
+}
+
+.roam-ahead-name {
+  font-weight: 600;
+}
+
+.roam-ahead-far {
+  color: var(--text-muted);
+}
+
+.roam-tier {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 1rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.roam-swatch {
+  display: inline-block;
+  width: 22px;
+  height: 10px;
+  border-radius: 3px;
+  border: 2px solid transparent;
 }
