@@ -488,6 +488,8 @@ export const ALERT_KINDS: Record<RideLinkType, readonly AlertKind[]> = {
     { id: "aggressive", label: "Aggressive person" },
     { id: "medical", label: "Medical emergency or crash", confirm: true, call911: true },
     { id: "reroute", label: "Rerouting, road closed" },
+    // Stephen 2026-10-22: "Followers and leaders can text between each other as well with common issues, lost, mechanical, etc".
+    { id: "lost", label: "Lost, separated from the ride" },
     { id: "other", label: "Other" },
   ],
   "group-ride": [
@@ -495,6 +497,8 @@ export const ALERT_KINDS: Record<RideLinkType, readonly AlertKind[]> = {
     { id: "crash", label: "Crash", confirm: true, call911: true },
     { id: "mechanical", label: "Mechanical or flat, stopping" },
     { id: "wrong_turn", label: "Wrong turn" },
+    { id: "lost", label: "Lost, separated from the group" },
+    { id: "wait", label: "Wait up, regroup" },
     { id: "other", label: "Other" },
   ],
 };
@@ -549,10 +553,22 @@ export function newAlerts(previous: readonly RideAlert[], next: readonly RideAle
 
 type Fetch = typeof fetch;
 
+/** A broadcast leader's route and ridden path, as its phone last sent them (core.ride_presence.post_path). */
+export interface LeaderPath {
+  route: LonLat[];
+  trail: LonLat[];
+  age_s: number;
+}
+
 export interface RideRead {
   dots: Dot[];
   alerts: RideAlert[];
+  /** With the link's leader key, while the leader's phone is sending it. */
+  leaderPath?: LeaderPath;
 }
+
+const isLine = (v: unknown): v is LonLat[] =>
+  Array.isArray(v) && v.every((p) => Array.isArray(p) && p.length === 2 && p.every((n) => typeof n === "number" && Number.isFinite(n)));
 
 export async function readRide(origin: string, ride: string, token: string, get: Fetch = fetch, leader: string | null = null): Promise<RideRead | null> {
   try {
@@ -560,8 +576,11 @@ export async function readRide(origin: string, ride: string, token: string, get:
     if (leader) headers["X-Ride-Leader"] = leader;
     const response = await get(`${origin}/api/rides/${ride}`, { headers });
     if (!response.ok) return null;
-    const body = (await response.json()) as Partial<RideRead>;
-    return { dots: Array.isArray(body.dots) ? body.dots : [], alerts: Array.isArray(body.alerts) ? body.alerts : [] };
+    const body = (await response.json()) as Partial<RideRead> & { leader_path?: Partial<LeaderPath> };
+    const out: RideRead = { dots: Array.isArray(body.dots) ? body.dots : [], alerts: Array.isArray(body.alerts) ? body.alerts : [] };
+    const path = body.leader_path;
+    if (path && isLine(path.route) && isLine(path.trail)) out.leaderPath = { route: path.route, trail: path.trail, age_s: Number(path.age_s) || 0 };
+    return out;
   } catch {
     return null;
   }
@@ -583,6 +602,44 @@ async function post(origin: string, path: string, body: unknown, send: Fetch): P
 
 export async function sendPosition(origin: string, ride: string, token: string, p: LonLat, role: RideRole = DEFAULT_ROLE, send: Fetch = fetch): Promise<boolean> {
   return (await post(origin, `/api/rides/${ride}/here`, { token, lon: p[0], lat: p[1], role }, send)).ok;
+}
+
+/**
+ * The leader's route and ridden path (Stephen 2026-10-22: "Rebroadcast the route every 2 min or when it changes, not
+ * keeping it on the server"): sent about every PATH_EVERY_MS and whenever the route changes; the server keeps each 2
+ * minutes in memory, so the next must come before then.
+ */
+export const PATH_EVERY_MS = 100_000;
+/** The soonest the server takes another (core.ride_presence.MIN_PATH_INTERVAL_S). */
+export const PATH_MIN_GAP_MS = 20_000;
+/** The most points the server takes in each line (core.ride_presence.PATH_MAX_POINTS). */
+export const PATH_MAX_POINTS = 1500;
+
+/** A line of at most `max` points, its ends kept, the rest evenly picked; rounded to 5 decimals (about 1 m). */
+export function thinLine(line: readonly LonLat[], max = PATH_MAX_POINTS): LonLat[] {
+  const r = (p: LonLat): LonLat => [Math.round(p[0] * 1e5) / 1e5, Math.round(p[1] * 1e5) / 1e5];
+  if (line.length <= max) return line.map(r);
+  const out: LonLat[] = [];
+  const step = (line.length - 1) / (max - 1);
+  for (let i = 0; i < max; i += 1) out.push(r(line[Math.round(i * step)]));
+  return out;
+}
+
+/** When the leader sends its path: the route changed, or the last went PATH_EVERY_MS ago (never sooner than the server takes). */
+export function pathDue(lastAt: number, lastRouteKey: string, routeKey: string, now: number): boolean {
+  if (now - lastAt < PATH_MIN_GAP_MS) return false;
+  return routeKey !== lastRouteKey || now - lastAt >= PATH_EVERY_MS;
+}
+
+/** A route's identity for "it changed": its length and ends. */
+export function routeKeyOf(line: readonly LonLat[]): string {
+  if (!line.length) return "";
+  const end = line[line.length - 1];
+  return `${line.length}|${line[0].join(",")}|${end.join(",")}`;
+}
+
+export async function sendPath(origin: string, ride: string, token: string, route: readonly LonLat[], trail: readonly LonLat[], send: Fetch = fetch): Promise<boolean> {
+  return (await post(origin, `/api/rides/${ride}/path`, { token, route: thinLine(route), trail: thinLine(trail) }, send)).ok;
 }
 
 export async function leaveRide(origin: string, ride: string, token: string, send: Fetch = fetch): Promise<boolean> {

@@ -60,6 +60,9 @@ import {
   leaveRide,
   nearRoute,
   newToken,
+  pathDue,
+  routeKeyOf,
+  sendPath,
   newAlerts,
   project,
   readRide,
@@ -99,6 +102,8 @@ export interface RideGroupProps {
   broadcast?: { id: string; lead: string | null; leading: boolean } | null;
   /** This page is riding (Ride mode follows the rider, so the map does not follow the leader). */
   riding?: boolean;
+  /** The route this page is riding now, re-routes included (the leader sends it to those following). */
+  leaderRoute?: readonly LonLat[] | null;
 }
 
 const TICK_MS = 5000;
@@ -107,7 +112,7 @@ function visible(): boolean {
   return typeof document === "undefined" || document.visibilityState !== "hidden";
 }
 
-export function RideGroup({ type, points, line, getMap, here, broadcast = null, riding = false }: RideGroupProps) {
+export function RideGroup({ type, points, line, getMap, here, broadcast = null, riding = false, leaderRoute = null }: RideGroupProps) {
   const leading = broadcast?.leading === true;
   const isBroadcast = broadcast !== null;
   // The leader key a follower reads with (the leader needs none: it does not see its own dot).
@@ -148,7 +153,8 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
       setRide(id);
       // The sharer leads: sharing is what they pressed (App.tsx keeps the answer as it shares; kept here too).
       let kept = consentFor(id);
-      if (leading && kept?.answer !== "yes") kept = keepConsent(id, "yes", Date.now(), undefined, undefined, "lead");
+      // A "No" the leader gave later, with Show me as a dot, stands (review: never switched back on by a remount).
+      if (leading && kept === null) kept = keepConsent(id, "yes", Date.now(), undefined, undefined, "lead");
       if (leading) window.setTimeout(() => live && say(LEADING_SAID), 150);
       setConsent(kept);
       setAsked(kept !== null);
@@ -242,9 +248,10 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
   useEffect(() => {
     if (!shareOn || !fix || !ride || !token || !consent) return;
     const t = Date.now();
-    // On a broadcast everyone shown is shown on or off the route: those following go where the leader goes, and
-    // riders who get separated find each other.
-    const near = isBroadcast || nearRoute(line, fix);
+    // On a broadcast everyone shown is shown on or off the route while they ride: those following go where the leader
+    // goes, and riders who get separated find each other. Not riding (the ride ended, or watching), the quarter-mile
+    // rule and its 10-minute stop are back, so a dot never follows anyone home.
+    const near = (isBroadcast && riding) || nearRoute(line, fix);
     if (near) share.current.lastNearAt = t;
     const stop = shareStop({ on: true, since: consent.since, lastNearAt: share.current.lastNearAt, startedAt: share.current.startedAt }, t);
     if (stop) {
@@ -257,7 +264,24 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
       share.current.lastPost = t;
       void sendPosition(origin, ride, token, fix, consent.role);
     }
-  }, [fix, now, shareOn, ride, token, consent, line, origin, isBroadcast]);
+    if (leading && near) setOwnTrail((t) => extendTrail(t, fix));
+  }, [fix, now, shareOn, ride, token, consent, line, origin, isBroadcast, riding, leading]);
+
+  // The leader's route and ridden path, sent again about every 2 minutes and whenever the route changes (Stephen
+  // 2026-10-22: "Rebroadcast the route every 2 min or when it changes, not keeping it on the server"), while riding.
+  const [ownTrail, setOwnTrail] = useState<readonly LonLat[]>([]);
+  const pathSent = useRef({ at: 0, routeKey: "" });
+  const routeNow = leaderRoute ?? line;
+  const routeNowKey = routeKeyOf(routeNow);
+  useEffect(() => {
+    if (!leading || !riding || !shareOn || !front || !ride || !token) return;
+    const t = Date.now();
+    if (!pathDue(pathSent.current.at, pathSent.current.routeKey, routeNowKey, t)) return;
+    pathSent.current = { at: t, routeKey: routeNowKey };
+    void sendPath(origin, ride, token, routeNow, ownTrail);
+    // routeNow is named by its key; ownTrail goes with the next send as it is then.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leading, riding, shareOn, front, ride, token, origin, routeNowKey, now]);
 
   const me = fix ?? here;
   // On an out-and-back the last place along the route says which pass a position is on (yours, and each dot's).
@@ -280,6 +304,10 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
   const [trail, setTrail] = useState<readonly LonLat[]>([]);
   const [following, setFollowing] = useState(true);
   const leaderSpot = leaderAt ? `${leaderAt[0]},${leaderAt[1]}` : "";
+  // The leader's phone's own route and path (sent every 2 minutes), else the path this page saw.
+  const sentPath = followKey ? (read.leaderPath ?? null) : null;
+  const shownTrail = sentPath && sentPath.trail.length >= trail.length ? sentPath.trail : trail;
+  const shownRoute = sentPath?.route ?? [];
   useEffect(() => {
     if (!leaderAt) return;
     setTrail((t) => extendTrail(t, leaderAt));
@@ -293,22 +321,24 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
   useEffect(() => {
     const map = getMap();
     if (!map || !followKey) return;
-    // Moving the map by hand stops following (a move the page makes has no originalEvent).
-    const onDrag = (event: { originalEvent?: unknown }) => {
+    // Moving, zooming or turning the map by hand stops following (a move the page makes has no originalEvent).
+    const onMove = (event: { originalEvent?: unknown }) => {
       if (!event.originalEvent || !followingRef.current) return;
       setFollowing(false);
       say(NOT_FOLLOWING_SAID);
     };
-    map.on("dragstart", onDrag);
+    const kinds = ["dragstart", "zoomstart", "rotatestart"] as const;
+    for (const kind of kinds) map.on(kind, onMove);
     return () => {
-      map.off("dragstart", onDrag);
+      for (const kind of kinds) map.off(kind, onMove);
     };
-  }, [getMap, followKey]);
+    // Tried again once the leader shows, where the map was not there at first.
+  }, [getMap, followKey, leaderSpot !== ""]);
 
   // The map: dots and pins, drawn again as they age; a tap on a dot says its age.
   useEffect(() => {
     const map = getMap();
-    if (map) showRideDots(map, dots, alerts, sinceS, Math.min(3, Math.max(1, Math.ceil(window.devicePixelRatio || 1))), trail);
+    if (map) showRideDots(map, dots, alerts, sinceS, Math.min(3, Math.max(1, Math.ceil(window.devicePixelRatio || 1))), shownTrail, shownRoute);
   });
   useEffect(() => {
     const map = getMap();

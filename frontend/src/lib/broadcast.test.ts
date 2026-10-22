@@ -7,6 +7,8 @@ import { readFileSync } from "node:fs";
 import type { LonLat } from "./geo.ts";
 import {
   CONSENT_KEY,
+  PATH_EVERY_MS,
+  PATH_MAX_POINTS,
   TRAIL_MAX_POINTS,
   broadcastRideId,
   consentFor,
@@ -14,10 +16,13 @@ import {
   keepConsent,
   leadConsent,
   leaderKey,
+  pathDue,
   readRide,
   rideId,
   ridersSaid,
+  routeKeyOf,
   shownDots,
+  thinLine,
 } from "./rideGroup.ts";
 import { asRideLink, leadKeyFrom, rideLinkFrom } from "./sharedRoutes.ts";
 import { BROADCAST_LABEL } from "./share.ts";
@@ -139,12 +144,16 @@ test("Broadcast is one small button beside Start, in Plan and Go: the share shee
   assert.match(panel, /<div className="actions start-ride go-start">\s*\{start\}/);
   const app = read("../App.tsx");
   // Only where the browser has a share sheet, as Share ride.
-  assert.match(app, /broadcastRide: canShare \? broadcastRide : null/);
+  assert.match(app, /broadcastRide: canShare \? \{ onPress: broadcastRide, note: broadcastNote \} : null/);
   // The voice unlocked within the press; the ride starts only once the link was sent and its line kept.
   const fn = app.slice(app.indexOf("const broadcastRide = () => {"), app.indexOf("\n  };\n", app.indexOf("const broadcastRide = () => {")));
-  assert.match(fn, /if \(ridePrefs\.chosen \|\| mode === "go"\) primeRideVoice\(ridePrefs\);\s*void shareRoute\(true\)\.then\(\(led\) => \{\s*if \(led\) startRideChecked\(\);/);
+  assert.match(fn, /if \(ridePrefs\.chosen \|\| mode === "go"\) primeRideVoice\(ridePrefs\);[\s\S]*void shareRoute\(true\)\.then\(\(\{ led, said \}\) => \{\s*if \(led\) startRideChecked\(\);\s*else if \(said\) setBroadcastNote/);
+  // What went wrong is shown and said beside the button.
+  assert.match(panel, /<p className="hint broadcast-note" role="status">/);
+  // The same line shared again goes with the same leader key; the ride starts with the sharer free to re-route.
+  assert.match(app, /const lead = ride && kept \? \(\(sharedId \? leads\.current\.get\(sharedId\) : undefined\) \?\? leadPrep\.current\) : null;/);
+  assert.match(app, /const opened = sharedOpenNow\.current\?\.answer === route \? sharedOpenNow\.current : null;/);
   // The sharer's key is made before the press, so no await comes before the share sheet.
-  assert.match(app, /const lead = ride && kept \? leadPrep\.current : null;/);
   assert.match(app, /useEffect\(prepareLead, \[prepareLead\]\);/);
 });
 
@@ -154,9 +163,15 @@ test("opening a broadcast follows the leader: in Plan too, the map eased to the 
   assert.match(app, /const rideBroadcast = onShared\?\.ride && onShared\.id && onShared\.lead \? \{ id: onShared\.id, lead: onShared\.lead, leading: onShared\.own === true \} : null;/);
   const group = read("../RideGroup.tsx");
   assert.match(group, /void \(broadcast \? broadcastRideId\(broadcast\.id\) : rideId\(type, points\)\)/);
-  assert.match(group, /if \(leading && kept\?\.answer !== "yes"\) kept = keepConsent\(id, "yes", Date\.now\(\), undefined, undefined, "lead"\);/);
+  // Shown as it shares, but a later "No" stands.
+  assert.match(group, /if \(leading && kept === null\) kept = keepConsent\(id, "yes", Date\.now\(\), undefined, undefined, "lead"\);/);
   // The leader is posted on or off the route; the follower reads with the key before answering.
-  assert.match(group, /const near = isBroadcast \|\| nearRoute\(line, fix\);/);
+  // Off the route only while riding: after End ride the quarter-mile rule and its stop are back.
+  assert.match(group, /const near = \(isBroadcast && riding\) \|\| nearRoute\(line, fix\);/);
+  // The leader's route and path, sent while riding when due; a follower draws the phone's own over what it saw.
+  assert.match(group, /if \(!leading \|\| !riding \|\| !shareOn \|\| !front \|\| !ride \|\| !token\) return;[\s\S]*?if \(!pathDue\(pathSent\.current\.at, pathSent\.current\.routeKey, routeNowKey, t\)\) return;[\s\S]*?void sendPath\(origin, ride, token, routeNow, ownTrail\);/);
+  assert.match(group, /const shownTrail = sentPath && sentPath\.trail\.length >= trail\.length \? sentPath\.trail : trail;/);
+  assert.match(group, /const kinds = \["dragstart", "zoomstart", "rotatestart"\] as const;/);
   assert.match(group, /anywhere: isBroadcast \}\)/);
   assert.match(group, /\{broadcast \? BROADCAST_CONSENT_NOTE : CONSENT_NOTE\}/);
   assert.match(group, /const token = consent\?\.token \?\? \(broadcast \? watchToken : null\);/);
@@ -166,4 +181,38 @@ test("opening a broadcast follows the leader: in Plan too, the map eased to the 
   const bar = group.slice(group.indexOf('className="ride-group-bar"'), group.indexOf("id={ridersPanel}"));
   assert.equal((bar.match(/<button/g) ?? []).length, 2);
   assert.match(group, /<span className="switch-label">\{FOLLOW_LEADER\}<\/span>/);
+});
+
+test("the leader's path goes again about every 2 minutes or when the route changes, never sooner than the server takes", () => {
+  const route: LonLat[] = [
+    [-77, 38.9],
+    [-76.99, 38.91],
+  ];
+  const key = routeKeyOf(route);
+  assert.equal(pathDue(0, "", key, 1_000_000), true, "the first");
+  assert.equal(pathDue(1_000_000, key, key, 1_000_000 + 60_000), false, "the same route a minute later");
+  assert.equal(pathDue(1_000_000, key, key, 1_000_000 + PATH_EVERY_MS), true, "the same route, due");
+  assert.ok(PATH_EVERY_MS < 120_000, "before the server's 2 minutes run out");
+  const rerouted = routeKeyOf([...route, [-76.98, 38.92]]);
+  assert.equal(pathDue(1_000_000, key, rerouted, 1_000_000 + 25_000), true, "a re-route");
+  assert.equal(pathDue(1_000_000, key, rerouted, 1_000_000 + 5_000), false, "not sooner than 20 s");
+});
+
+test("a sent line is at most the server's 1500 points, its ends kept, rounded to 5 decimals", () => {
+  const long: LonLat[] = Array.from({ length: 4000 }, (_, i) => [-77 + i * 0.0000123456, 38.9] as LonLat);
+  const thin = thinLine(long);
+  assert.equal(thin.length, PATH_MAX_POINTS);
+  assert.deepEqual(thin[0], [-77, 38.9]);
+  assert.deepEqual(thin[thin.length - 1], [Math.round(long[3999][0] * 1e5) / 1e5, 38.9]);
+  assert.equal(thinLine(long.slice(0, 3)).length, 3);
+});
+
+test("a follower's read keeps the leader's sent route and path; a malformed one is left out", async () => {
+  const answer = (body: object) =>
+    (async () => new Response(JSON.stringify(body), { status: 200 })) as unknown as typeof fetch;
+  const path = { route: [[-77, 38.9], [-76.99, 38.91]], trail: [[-77, 38.9]], age_s: 30 };
+  const got = await readRide("https://x.test", "a".repeat(64), "1".repeat(32), answer({ dots: [], alerts: [], leader_path: path }), KEY);
+  assert.deepEqual(got?.leaderPath, path);
+  const bad = await readRide("https://x.test", "a".repeat(64), "1".repeat(32), answer({ dots: [], alerts: [], leader_path: { route: "x", trail: [] } }), KEY);
+  assert.equal(bad?.leaderPath, undefined);
 });

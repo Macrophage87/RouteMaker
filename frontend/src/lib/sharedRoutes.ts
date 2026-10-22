@@ -60,6 +60,8 @@ export const SHARED_REVOKED_ERROR: RouteError = { kind: "no-route", status: 410,
 export const RIDE_PARAM = "ride";
 /** What each Share button does, said by the info beside them (the owner: "Make that clear in a tooltip"). */
 export const SHARE_ROUTE_ABOUT = "Share route: others can look it over, change it or ride it on their own.";
+/** Broadcast's link went without the leader's key (the page could not make it): nothing starts. */
+export const BROADCAST_NO_LEAD = "The link went without you as its leader, so the ride did not start. Press Start to ride.";
 export const SHARE_RIDE_WAIT = "Share ride needs the route ready. Try again once it shows.";
 export const SHARE_RIDE_ABOUT =
   "Share ride: you lead. Everyone rides this exact route, never re-routed; those who open it follow your dot and the path you take, and each can choose to show where they are.";

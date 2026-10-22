@@ -6810,6 +6810,27 @@ def ride_here(request, ride_id: str):
     )
 
 
+@api.post(
+    "/rides/{ride_id}/path",
+    summary="A broadcast leader's route and ridden path, kept in memory for 2 min",
+)
+@decorate_view(*RIDE_WRITE_GUARDS)
+def ride_path(request, ride_id: str):
+    from . import ride_presence
+
+    body, refusal = _json_body(request, ride_presence.PATH_BODY_BYTES)
+    if refusal is None and not isinstance(body, dict):
+        refusal = _stress_error(400, "Send an object.")
+    if refusal is not None:
+        return refusal
+    return _ride_call(
+        request,
+        lambda rp: rp.post_path(
+            ride_id, body.get("token", ""), body.get("route"), body.get("trail")
+        ),
+    )
+
+
 @api.post("/rides/{ride_id}/leave", summary="Stop showing this rider's dot at once")
 @decorate_view(*RIDE_WRITE_GUARDS)
 def ride_leave(request, ride_id: str):

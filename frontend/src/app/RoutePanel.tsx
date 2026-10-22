@@ -232,7 +232,7 @@ export interface RouteSectionProps {
   choose: (index: number) => void;
   startRide: () => void;
   /** Broadcast, beside Start: Share ride's link (the sharer leads), then the ride. Null without a share sheet. */
-  broadcastRide: (() => void) | null;
+  broadcastRide: { onPress: () => void; note: { text: string; count: number } } | null;
   startRideRef: RefObject<HTMLButtonElement | null>;
   rideSize: number | undefined;
   setDials: Dispatch<SetStateAction<Dials>>;
@@ -349,7 +349,7 @@ export function RouteSection(props: RouteSectionProps) {
             )
           }
           pickerCount={candidateRows(answer)?.length ?? 0}
-          ride={{ onStart: startRide, onBroadcast: broadcastRide, startRef: startRideRef }}
+          ride={{ onStart: startRide, onBroadcast: broadcastRide?.onPress ?? null, broadcastNote: broadcastRide?.note, startRef: startRideRef }}
           rideSize={rideSizeOf({ rideSize })}
           onEnding={(ending) => setDials((d) => ({ ...d, ending }))}
           water={waterStatus === "ready" ? { items: waterAlong, onAddStop: addWaterStop } : null}
@@ -713,7 +713,7 @@ export function RouteSummary({
   federal: readonly string[];
   narrow: boolean;
   /** Ride mode's Start ride (WEB-NAV-plan.md Q1): offered beside the totals and with the directions. */
-  ride: { onStart: () => void; onBroadcast?: (() => void) | null; startRef: RefObject<HTMLButtonElement | null> };
+  ride: { onStart: () => void; onBroadcast?: (() => void) | null; broadcastNote?: { text: string; count: number }; startRef: RefObject<HTMLButtonElement | null> };
   onSelectJunction: (index: number) => void;
   /** The chart's scrub: the map point it reads, or null. */
   onScrub: (point: LonLat | null) => void;
@@ -790,6 +790,13 @@ export function RouteSummary({
         <span id="broadcast-about" className="visually-hidden">
           {BROADCAST_ABOUT}
         </span>
+      )}
+      {/* What went wrong (the route not ready, the sheet failed, the link without its leader), shown and said. */}
+      {ride.onBroadcast && (
+        <p className="hint broadcast-note" role="status">
+          {ride.broadcastNote?.text}
+          {(ride.broadcastNote?.count ?? 0) % 2 ? " " : ""}
+        </p>
       )}
     </>
   ) : null;

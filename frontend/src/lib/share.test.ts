@@ -121,13 +121,13 @@ test("share() is called within the press: synchronously in shareLink, and before
   void shareLink({ share: async () => void (called = true) }, shareContent("https://x.test/", 1, "Default"));
   assert.equal(called, true, "share() called synchronously");
   // App's handler: no await before shareLink(...), and a press while a sheet is open is skipped.
-  const start = app.indexOf("const shareRoute = async (ride = false): Promise<boolean> => {");
+  const start = app.indexOf("const shareRoute = async (ride = false): Promise<{ led: boolean; said: string }> => {");
   assert.ok(start > 0);
   const body = app.slice(start, app.indexOf("\n  };\n", start));
   const call = body.indexOf("shareLink(navigator, content)");
   assert.ok(call > 0, "shareRoute calls shareLink");
   assert.doesNotMatch(body.slice(0, call).replace(/\/\/[^\n]*/g, ""), /\bawait\b/, "no await before shareLink");
-  assert.match(body, /if \(!shown \|\| sharing\.current\) return false;/);
-  assert.match(body, /return false;\s*\}\s*sharing\.current = true;/);
+  assert.match(body, /if \(!shown \|\| sharing\.current\) return \{ led: false, said: "" \};/);
+  assert.match(body, /return \{ led: false, said: SHARE_RIDE_WAIT \};\s*\}\s*sharing\.current = true;/);
   assert.match(body, /finally \{\s*sharing\.current = false;\s*\}/);
 });

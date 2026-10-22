@@ -248,7 +248,7 @@ import { downloadText, trackGpx, verbatimDownload, verbatimFileName } from "./li
 import { readGpx } from "./lib/gpxImport.ts";
 import { GPX_SAID_OPENED, GPX_SAID_ROUTE, GPX_SAID_TRACK, downloadCourse, downloadGpx, routeGpxFile, sendCourseToGarmin, type FileFormat, type Said } from "./GpxPanel.tsx";
 import type { DeviceProfileId } from "./lib/deviceProfiles.ts";
-import { SHARED_GONE, SHARED_INPUTS_ONLY, SHARED_OPENED, SHARED_PATH, SHARED_REVOKED, SHARED_REVOKED_ERROR, SHARE_KEEP_DEFAULT, SHARE_RIDE_WAIT, asRideLink, leadKeyFrom, gpxShareFile, keepFields, newSharedId, previewImageOk, readShared, rideLinkFrom, sharedBody, sharedIdFrom, storeShared, withSharedId, type ShareKeep } from "./lib/sharedRoutes.ts";
+import { SHARED_GONE, SHARED_INPUTS_ONLY, SHARED_OPENED, SHARED_PATH, SHARED_REVOKED, SHARED_REVOKED_ERROR, SHARE_KEEP_DEFAULT, SHARE_RIDE_WAIT, BROADCAST_NO_LEAD, asRideLink, leadKeyFrom, gpxShareFile, keepFields, newSharedId, previewImageOk, readShared, rideLinkFrom, sharedBody, sharedIdFrom, storeShared, withSharedId, type ShareKeep } from "./lib/sharedRoutes.ts";
 import { ClosureDialog, type ClosureAsk } from "./ClosureDialog.tsx";
 import { StartOnComputerDialog } from "./StartOnComputerDialog.tsx";
 import { askBeforeStart, looksLikePhone, rememberStartAnyway } from "./lib/startOnComputer.ts";
@@ -2849,25 +2849,31 @@ export function App() {
     });
   }, []);
   useEffect(prepareLead, [prepareLead]);
+  // The lead each shared line went out with: the same line shared again (to another chat) goes with the same key, so
+  // the first link's followers keep their leader.
+  const leads = useRef(new Map<string, { token: string; key: string }>());
   // Share ride: the same link marked as a ride (lib/sharedRoutes.ts RIDE_PARAM), opened fixed with location sharing,
-  // and led by the sharer (LEAD_PARAM). Answers whether it was shared as a ride the sharer leads (Broadcast starts it).
-  const shareRoute = async (ride = false): Promise<boolean> => {
-    if (!shown || sharing.current) return false;
+  // and led by the sharer (LEAD_PARAM). Answers whether it was shared as a ride the sharer leads (Broadcast starts it),
+  // and what was said.
+  const shareRoute = async (ride = false): Promise<{ led: boolean; said: string }> => {
+    if (!shown || sharing.current) return { led: false, said: "" };
     const press = ++sharePresses.current;
     // A ride only with its exact line, kept with the route shown for it: while the route is still being planned the
     // link would plan again, a route, so it is said rather than shared.
     if (ride && !shareExact()?.save.answer) {
       setShareSaid((before) => ({ text: SHARE_RIDE_WAIT, count: before.count + 1 }));
-      return false;
+      return { led: false, said: SHARE_RIDE_WAIT };
     }
     sharing.current = true;
     let led = false;
+    // Shared as a ride without the leader's key (not ready, or no SHA-256 here): Broadcast says so and starts nothing.
+    let unled = false;
     setShareSaid((before) => ({ text: "", count: before.count }));
     const distanceM = !stale && routedPoints === points ? shown.distance_m : null;
     const now = sharedLinkNow();
     const { kept, exact } = now;
-    const lead = ride && kept ? leadPrep.current : null;
     const sharedId = sharedLine.current?.id ?? null;
+    const lead = ride && kept ? ((sharedId ? leads.current.get(sharedId) : undefined) ?? leadPrep.current) : null;
     const link = ride && kept ? asRideLink(now.link, lead?.key ?? null) : now.link;
     const file = exact?.file ? gpxShareFile(exact.file.text, exact.file.fileName) : null;
     const content = withGpxFile(navigator, shareContent(link, distanceM, presetSaid(preset)), file);
@@ -2887,10 +2893,15 @@ export function App() {
         // The sharer leads it (Stephen 2026-10-22): shown as Lead line under the token the link's key names.
         if (lead && sharedId) {
           leadConsent(await broadcastRideId(sharedId), lead.token);
-          prepareLead();
+          if (!leads.current.has(sharedId)) {
+            leads.current.set(sharedId, lead);
+            prepareLead();
+          }
           led = true;
-        }
-        setSharedOpen({ answer: shown, ride: true, own: true, id: sharedId ?? undefined, lead: lead && sharedId ? lead.key : null });
+        } else unled = true;
+        const open = { answer: shown, ride: true, own: true, id: sharedId ?? undefined, lead: lead && sharedId ? lead.key : null };
+        sharedOpenNow.current = open;
+        setSharedOpen(open);
       }
     } finally {
       sharing.current = false;
@@ -2899,7 +2910,7 @@ export function App() {
       window.setTimeout(() => {
         if (press === sharePresses.current) setShareSaid((before) => ({ text: said, count: before.count + 1 }));
       }, 150);
-    return led;
+    return { led, said: unled ? BROADCAST_NO_LEAD : said };
   };
 
   // Start ride (plan Q1, Q3): the first ride asks how to say the cues; later rides start at once. The
@@ -2917,7 +2928,7 @@ export function App() {
     // defeats the purpose"; "ride is the fixed one ... route is so people can review or do it themselves
     // separately"): a link shared as a ride, opened unchanged; a Mass Ride or Group Ride, unless shared as a route.
     // Its sharer is not held to it ("Maybe make the sharer able to reroute").
-    const opened = sharedOpen?.answer === route ? sharedOpen : null;
+    const opened = sharedOpenNow.current?.answer === route ? sharedOpenNow.current : null;
     const fixed = fixedRide(leg, opened, !!rest);
     setResumeStats(null);
     setRideStart((before) => ({ route, ...leg, dials: rideDials({ ...planDials, closuresNow: true }, rest ? null : route), fixed, n: (before?.n ?? 0) + 1 }));
@@ -3231,10 +3242,14 @@ export function App() {
   // Broadcast (Stephen 2026-10-22: "a small button next to start ... You then get a share screen and send it"): Share
   // ride's link, led by the sharer, then the ride starts as Start's does. The voice is unlocked inside the press, as
   // the share sheet's own wait would spend it; nothing starts where the link was not sent or its line not kept.
+  // What went wrong is said beside the button (Go's Route file sheet, where Share says it, is usually closed).
+  const [broadcastNote, setBroadcastNote] = useState({ text: "", count: 0 });
   const broadcastRide = () => {
     if (ridePrefs.chosen || mode === "go") primeRideVoice(ridePrefs);
-    void shareRoute(true).then((led) => {
+    setBroadcastNote((n) => ({ text: "", count: n.count }));
+    void shareRoute(true).then(({ led, said }) => {
       if (led) startRideChecked();
+      else if (said) setBroadcastNote((n) => ({ text: said, count: n.count + 1 }));
     });
   };
   // Ride the rest (lib/rideTrip.ts): after a transit plan's transit, a ride for its last riding leg, planned
@@ -3381,6 +3396,9 @@ export function App() {
   // held to it.
   // `id` and `lead`: a broadcast's shared line and leader key (RideGroup follows the leader; the sharer leads).
   const [sharedOpen, setSharedOpen] = useState<{ answer: RouteResponse; ride: boolean; own?: boolean; id?: string; lead?: string | null } | null>(null);
+  // The shared ride in a ref too: Broadcast starts the ride from its own press's closure, before the state re-renders.
+  const sharedOpenNow = useRef(sharedOpen);
+  sharedOpenNow.current = sharedOpen;
   // The "planned again" line is about the plan the link named: a change to the plan clears it.
   useEffect(() => setSharedNote(null), [points, preset, dials]);
   useEffect(() => {
@@ -4435,7 +4453,7 @@ export function App() {
         mode, actions, stations, go, transitControls,
         stale, routeHeadingRef, status, announcement, slow, preset, dials, points, cancelLong, planButtonRef,
         confirmLong, errorRef, retry, shown, answer: picked, choice, aroundAvoid, setAroundAvoid, routedPoints, federalRoute,
-        narrow, setJunctionFocus, setScrubPoint, choose, startRide: startRideChecked, broadcastRide: canShare ? broadcastRide : null, startRideRef, rideSize, setDials,
+        narrow, setJunctionFocus, setScrubPoint, choose, startRide: startRideChecked, broadcastRide: canShare ? { onPress: broadcastRide, note: broadcastNote } : null, startRideRef, rideSize, setDials,
         waterStatus, waterAlong, addWaterStop, rideAsk, setRideAsk, backToRideOpener, ridePrefs, changeRidePrefs,
         rideStartFirstRef, beginRide, climbsOn, climbsStatus, climbsAlong, light,
       }}
@@ -4625,6 +4643,7 @@ export function App() {
           here={rideView?.rider?.point ?? (here ? here.point : null)}
           broadcast={rideBroadcast}
           riding={riding}
+          leaderRoute={rideBroadcast?.leading ? ((riding && rideView ? rideView.route : shown)?.geometry.coordinates as LonLat[] | undefined) : null}
         />
       )}
       <StartOnComputerDialog

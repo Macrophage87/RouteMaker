@@ -40,6 +40,9 @@ export const ALERTS_LAYER = "ride-alerts-pin";
 export const LEADER_LAYER = "ride-dots-leader";
 export const TRAIL_SOURCE = "ride-leader-trail";
 export const TRAIL_LAYER = "ride-leader-trail-line";
+/** The route the leader's phone last sent (it may have re-routed off the shared one): dashed, as the way ahead. */
+export const LEADER_ROUTE_SOURCE = "ride-leader-route";
+export const LEADER_ROUTE_LAYER = "ride-leader-route-line";
 export const LEADER_RING = "#220044";
 /** Every layer a tap on a rider's mark is heard on. */
 export const RIDER_LAYERS = [DOTS_LAYER, LEAD_LAYER] as const;
@@ -222,11 +225,19 @@ export function trailFeature(trail: readonly LonLat[]): object {
 export function dotsLayers(): object[] {
   return [
     {
+      id: LEADER_ROUTE_LAYER,
+      type: "line",
+      source: LEADER_ROUTE_SOURCE,
+      layout: { "line-cap": "round", "line-join": "round" },
+      paint: { "line-color": LEADER_RING, "line-width": 3, "line-dasharray": [1.5, 1.5], "line-opacity": 0.85 },
+    },
+    {
+      // Where the leader has been: solid and wide, under the marks.
       id: TRAIL_LAYER,
       type: "line",
       source: TRAIL_SOURCE,
       layout: { "line-cap": "round", "line-join": "round" },
-      paint: { "line-color": LEADER_RING, "line-width": 4, "line-dasharray": [1.5, 1.5], "line-opacity": 0.85 },
+      paint: { "line-color": LEADER_RING, "line-width": 5, "line-opacity": 0.55 },
     },
     {
       id: LEADER_LAYER,
@@ -301,10 +312,18 @@ function setData(map: DotsMap, id: string, data: object): void {
  * Draw the dots, alert pins and the leader's path, adding the images and layers the first time; null removes them
  * (the ride link closed).
  */
-export function showRideDots(map: DotsMap, dots: readonly ShownDot[] | null, alerts: readonly RideAlert[] = [], sinceS = 0, pixelRatio = 2, trail: readonly LonLat[] = []): void {
+export function showRideDots(
+  map: DotsMap,
+  dots: readonly ShownDot[] | null,
+  alerts: readonly RideAlert[] = [],
+  sinceS = 0,
+  pixelRatio = 2,
+  trail: readonly LonLat[] = [],
+  leaderRoute: readonly LonLat[] = [],
+): void {
   if (dots === null) {
-    for (const id of [ALERTS_STALE_LAYER, ALERTS_LAYER, LEAD_LAYER, DOTS_LAYER, PULSE_LAYER, LEADER_LAYER, TRAIL_LAYER]) if (map.getLayer(id)) map.removeLayer(id);
-    for (const id of [DOTS_SOURCE, ALERTS_SOURCE, TRAIL_SOURCE]) if (map.getSource(id)) map.removeSource(id);
+    for (const id of [ALERTS_STALE_LAYER, ALERTS_LAYER, LEAD_LAYER, DOTS_LAYER, PULSE_LAYER, LEADER_LAYER, TRAIL_LAYER, LEADER_ROUTE_LAYER]) if (map.getLayer(id)) map.removeLayer(id);
+    for (const id of [DOTS_SOURCE, ALERTS_SOURCE, TRAIL_SOURCE, LEADER_ROUTE_SOURCE]) if (map.getSource(id)) map.removeSource(id);
     return;
   }
   if (!map.hasImage(dotImageId("participant", "fresh"))) {
@@ -317,6 +336,7 @@ export function showRideDots(map: DotsMap, dots: readonly ShownDot[] | null, ale
   setData(map, DOTS_SOURCE, dotFeatures(dots));
   setData(map, ALERTS_SOURCE, alertFeatures(alerts, sinceS));
   setData(map, TRAIL_SOURCE, trailFeature(trail));
+  setData(map, LEADER_ROUTE_SOURCE, trailFeature(leaderRoute));
   for (const layer of dotsLayers()) {
     const id = (layer as { id: string }).id;
     if (!map.getLayer(id)) map.addLayer(layer);

@@ -130,7 +130,7 @@ test("a line the server does not answer for is given up on, so Share and Copy li
 test("a route everyone shares stays fixed on the ride: off route, the way back, never re-planned on its own", () => {
   const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
   // A link shared as a ride; a Mass Ride or Group Ride unless shared as a route; not Ride the rest or a trip.
-  assert.match(app, /const opened = sharedOpen\?\.answer === route \? sharedOpen : null;/);
+  assert.match(app, /const opened = sharedOpenNow\.current\?\.answer === route \? sharedOpenNow\.current : null;/);
   // Others are placed along the shared line, not the sharer's re-route off it.
   assert.match(app, /const rideGroupRoute = onShared \? onShared\.answer : riding && rideView \? rideView\.route : shown;/);
   // Its sharer is not held to it (the owner, 2026-10-18: "Maybe make the sharer able to reroute").
@@ -160,8 +160,8 @@ test("Share route or Share ride: a ride's link opens fixed, with location sharin
   // Only with its exact line kept is a link a ride; the sharer rides it as its openers do.
   assert.match(app, /const link = ride && kept \? asRideLink\(now\.link, lead\?\.key \?\? null\) : now\.link;/);
   // Only once the sheet shared it with the line kept; while the route is still planned, Share ride says to wait.
-  assert.match(app, /\} else if \(ride && kept && done === "shared"\) \{(\s*\/\/[^\n]*\n)+\s*if \(lead && sharedId\) \{\s*leadConsent\(await broadcastRideId\(sharedId\), lead\.token\);[\s\S]*?setSharedOpen\(\{ answer: shown, ride: true, own: true, id: sharedId \?\? undefined, lead: lead && sharedId \? lead\.key : null \}\);/);
-  assert.match(app, /if \(ride && !shareExact\(\)\?\.save\.answer\) \{\s*setShareSaid\(\(before\) => \(\{ text: SHARE_RIDE_WAIT, count: before\.count \+ 1 \}\)\);\s*return false;\s*\}/);
+  assert.match(app, /\} else if \(ride && kept && done === "shared"\) \{(\s*\/\/[^\n]*\n)+\s*if \(lead && sharedId\) \{\s*leadConsent\(await broadcastRideId\(sharedId\), lead\.token\);[\s\S]*?const open = \{ answer: shown, ride: true, own: true, id: sharedId \?\? undefined, lead: lead && sharedId \? lead\.key : null \};\s*sharedOpenNow\.current = open;\s*setSharedOpen\(open\);/);
+  assert.match(app, /if \(ride && !shareExact\(\)\?\.save\.answer\) \{\s*setShareSaid\(\(before\) => \(\{ text: SHARE_RIDE_WAIT, count: before\.count \+ 1 \}\)\);\s*return \{ led: false, said: SHARE_RIDE_WAIT \};\s*\}/);
   assert.match(app, /if \(shared\.answer\) setSharedOpen\(\{ answer: shared\.answer, ride: SHARED_RIDE, id: SHARED_ID, lead: SHARED_LEAD \}\);/);
   // What each does, on an Info button beside them (a phone has no hover) and as each button's description.
   const panel = readFileSync(new URL("../app/RoutePanel.tsx", import.meta.url), "utf8");

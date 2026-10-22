@@ -51,6 +51,15 @@ TOKEN_TTL_S = 12 * 3600
 # Bounds on memory, whatever a client sends.
 MAX_RIDERS_PER_RIDE = 3000
 MAX_RIDES = 500
+# A broadcast's leader path (Stephen 2026-10-22: "Rebroadcast the route every 2 min or when it
+# changes, not keeping it on the server"): the leader's phone sends the route it is riding and
+# the path it has ridden, about every 2 minutes and whenever the route changes; each is dropped
+# 2 minutes after it was sent, as a dot is, so a phone that stops sending leaves nothing behind.
+PATH_TTL_S = DOT_TTL_S
+MIN_PATH_INTERVAL_S = 20
+PATH_MAX_POINTS = 1500
+PATHS_PER_RIDE = 5
+PATH_BODY_BYTES = 96 * 1024
 # Alerts live on one ride at a time; a newer one past this drops the oldest.
 LIVE_ALERTS_PER_RIDE = 20
 
@@ -83,6 +92,9 @@ ALERT_KINDS: dict[str, tuple[AlertKind, ...]] = {
         AlertKind("aggressive", "Aggressive person"),
         AlertKind("medical", "Medical emergency or crash", confirm=True, call_911=True),
         AlertKind("reroute", "Rerouting, road closed"),
+        # Stephen 2026-10-22: "Followers and leaders can text between each other as well with
+        # common issues, lost, mechanical, etc".
+        AlertKind("lost", "Lost, separated from the ride"),
         AlertKind("other", "Other"),
     ),
     GROUP_RIDE: (
@@ -90,6 +102,8 @@ ALERT_KINDS: dict[str, tuple[AlertKind, ...]] = {
         AlertKind("crash", "Crash", confirm=True, call_911=True),
         AlertKind("mechanical", "Mechanical or flat, stopping"),
         AlertKind("wrong_turn", "Wrong turn"),
+        AlertKind("lost", "Lost, separated from the group"),
+        AlertKind("wait", "Wait up, regroup"),
         AlertKind("other", "Other"),
     ),
 }
@@ -366,6 +380,8 @@ def _prune(state: dict, now: float) -> None:
             # The position goes at 2 minutes; the token's counts stay for the ride's limits.
             for key in ("lon", "lat", "at", "role"):
                 rider.pop(key, None)
+        if "path" in rider and now - rider["path"]["at"] > PATH_TTL_S:
+            del rider["path"]
     state["alerts"] = [a for a in state["alerts"] if now - a["last"] <= ALERT_TTL_S]
 
 
@@ -425,6 +441,50 @@ def post_position(
         rider.update(lon=spot[0], lat=spot[1], at=t, posted=t, role=role)
 
 
+def _line(points, rounding: bool) -> list[list[float]]:
+    """A list of [lon, lat] within the map's area, at most PATH_MAX_POINTS long; the ridden path is
+    put on the 20 m grid, as a dot is (`rounding`), the planned route to 5 decimals."""
+    from django.conf import settings
+
+    if points is None:
+        return []
+    if not isinstance(points, list) or len(points) > PATH_MAX_POINTS:
+        raise Refused(400, f"A path is a list of at most {PATH_MAX_POINTS} [lon, lat] points.")
+    west, south, east, north = settings.COVERAGE_BBOX
+    out: list[list[float]] = []
+    for p in points:
+        ok = isinstance(p, list) and len(p) == 2
+        ok = ok and all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in p)
+        if not ok or not all(math.isfinite(v) for v in p):
+            raise Refused(400, "A path point is [lon, lat] in numbers.")
+        lon, lat = float(p[0]), float(p[1])
+        if not (west <= lon <= east and south <= lat <= north):
+            raise Refused(400, "That path leaves the area this map covers.")
+        spot = rounded(lon, lat) if rounding else (round(lon, 5), round(lat, 5))
+        if not out or out[-1] != list(spot):
+            out.append(list(spot))
+    return out
+
+
+def post_path(ride_id: str, token: str, route, trail, now: Callable[[], float] = time.time) -> None:
+    """Keep this rider's route and ridden path for 2 minutes (a broadcast's leader sends them; a
+    reader sees them only with the link's leader key)."""
+    _check(ride_id, token)
+    route_line = _line(route, rounding=False)
+    trail_line = _line(trail, rounding=True)
+    t = now()
+    with store().ride(ride_id) as state:
+        _prune(state, t)
+        rider = _rider(state, token, t)
+        if t - rider.get("path_posted", 0) < MIN_PATH_INTERVAL_S:
+            raise Refused(429, "Too soon; the path goes again shortly.", MIN_PATH_INTERVAL_S)
+        others = sum(1 for k, r in state["riders"].items() if k != token and "path" in r)
+        if "path" not in rider and others >= PATHS_PER_RIDE:
+            raise Refused(503, "This ride has too many paths shared right now.")
+        rider["path_posted"] = t
+        rider["path"] = {"route": route_line, "trail": trail_line, "at": t}
+
+
 def leave(ride_id: str, token: str, now: Callable[[], float] = time.time) -> None:
     """Drop this rider's dot at once (sharing turned off)."""
     _check(ride_id, token)
@@ -432,7 +492,7 @@ def leave(ride_id: str, token: str, now: Callable[[], float] = time.time) -> Non
         _prune(state, now())
         rider = state["riders"].get(token)
         if rider is not None:
-            for key in ("lon", "lat", "at", "role"):
+            for key in ("lon", "lat", "at", "role", "path"):
                 rider.pop(key, None)
 
 
@@ -486,7 +546,20 @@ def read(ride_id: str, token: str, now: Callable[[], float] = time.time, leader:
                 dot["leader"] = True
             dots.append(dot)
         alerts = [_alert_out(a, token, t) for a in state["alerts"]]
-    return {"dots": dots, "alerts": alerts}
+        path = None
+        if leader:
+            for other, r in state["riders"].items():
+                if other != token and "path" in r and leader_key(other) == leader:
+                    p = r["path"]
+                    path = {
+                        "route": p["route"],
+                        "trail": p["trail"],
+                        "age_s": max(0, int(t - p["at"])),
+                    }
+    answer = {"dots": dots, "alerts": alerts}
+    if path is not None:
+        answer["leader_path"] = path
+    return answer
 
 
 def send_alert(
