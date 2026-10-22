@@ -118,13 +118,16 @@ SECTIONS: list[tuple[str, str]] = [
                 "Other riders on the same ride see an unnamed dot. No account or name is sent: "
                 "your phone makes a new random code for each ride.",
                 "An alert you send keeps your rounded spot for 10 minutes, or until you clear it.",
-                "Share ride and Broadcast make you the ride leader: your dot is shown from the "
-                "moment you share, anywhere on or off the route, while RouteMaker is on screen. "
-                "On those rides, anyone who chooses to show their dot is shown on or off the "
-                "route too, so riders who get separated can find each other.",
-                "Those who open your link see which dot is yours and the path it has taken since "
-                "they opened it; that path stays on their device. Turn sharing off with Show me "
-                "as a dot.",
+                "Share ride and Broadcast make you the ride leader, shown as a dot from the start "
+                "of your ride. While you ride a shared ride, you and anyone on it who chooses to "
+                "be shown are shown on or off the route, so riders who get separated can find "
+                "each other; once the ride ends, the quarter-mile rule is back.",
+                "As leader, your phone also sends the route you are riding and the path you have "
+                "ridden (rounded the same way) about every 2 minutes; the server keeps each only "
+                "in memory and drops it after 2 minutes. Only those with your link see it.",
+                "Speak, in an alert's Other box, uses your browser's speech recognition; Chrome "
+                "sends the recording to Google to turn it into text. The words go only into the "
+                "box until you tap Send.",
             ]
         ),
     ),

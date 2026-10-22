@@ -85,6 +85,7 @@ import {
   type ShownDot,
 } from "./lib/rideGroup.ts";
 import { browserRideEnv, watchRide } from "./lib/rideWatch.ts";
+import { LISTENING_SAID, SPEAK_LABEL, listenOnce, speechSupported } from "./lib/speechInput.ts";
 
 export interface RideGroupProps {
   type: RideLinkType;
@@ -134,6 +135,33 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
   const [confirming, setConfirming] = useState<AlertKind | null>(null);
   const [otherText, setOtherText] = useState("");
   const [otherOpen, setOtherOpen] = useState(false);
+  // Speak (lib/speechInput.ts): only where the browser turns speech into text; the words fill the box, Send sends.
+  const [canSpeak] = useState(() => speechSupported());
+  const stopListening = useRef<(() => void) | null>(null);
+  const [listening, setListening] = useState(false);
+  const speak = () => {
+    if (listening) {
+      stopListening.current?.();
+      return;
+    }
+    const stop = listenOnce(
+      (text) => setOtherText(text),
+      (failed) => {
+        stopListening.current = null;
+        setListening(false);
+        if (failed) say(failed);
+      },
+      OTHER_MAX,
+    );
+    if (!stop) return;
+    stopListening.current = stop;
+    setListening(true);
+    say(LISTENING_SAID);
+  };
+  useEffect(() => () => stopListening.current?.(), []);
+  useEffect(() => {
+    if (!otherOpen) stopListening.current?.();
+  }, [otherOpen]);
   const [sent, setSent] = useState<number[]>([]);
   const [said, setSaid] = useState({ text: "", count: 0 });
   const [urgent, setUrgent] = useState({ text: "", count: 0 });
@@ -524,6 +552,12 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
               What is the issue? (up to {OTHER_MAX} characters)
               <input type="text" maxLength={OTHER_MAX} value={otherText} onChange={(e) => setOtherText(e.target.value)} autoFocus />
             </label>
+            {canSpeak && (
+              <button type="button" className="secondary ride-speak" aria-pressed={listening} onClick={speak}>
+                <Icon name="voice" size={18} />
+                {SPEAK_LABEL}
+              </button>
+            )}
             <button type="submit">Send</button>
             <button type="button" className="secondary" onClick={() => setOtherOpen(false)}>
               Cancel
