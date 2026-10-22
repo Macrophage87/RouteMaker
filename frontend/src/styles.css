@@ -7591,6 +7591,10 @@ details.fold > summary .icon {
   flex: 0 0 auto;
   min-height: 44px;
 }
+#sheet-settings .my-go-home .home-cancel {
+  min-height: 44px;
+  margin-top: 8px;
+}
 /* More settings: one fold, its summary a full 44 px target. */
 #sheet-settings details.settings-more {
   margin: 4px 0 8px;

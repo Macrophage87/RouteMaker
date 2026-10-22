@@ -338,7 +338,7 @@ function OpenInChoice({ value, onChange, idBase, hint }: { value: OpenIn; onChan
  * also My Go's, is under More settings), saved to the account when signed in and on this device when not. First
  * in Settings: Home is what a rider comes here to set (Settings tidy, Stephen 2026-10-19: "still very clunky").
  */
-function MyGoSection({ controls }: { controls: MyGoControls }) {
+function MyGoSection({ controls, open }: { controls: MyGoControls; open: boolean }) {
   const { myGo, signedIn, save, setHome, said, geoGate, searchBias } = controls;
   const [infoOpen, setInfoOpen] = useState(false);
   // A Home set is one line with Change (Settings scrolling, Stephen 2026-10-22: "still a lot of scrolling"); the search
@@ -346,19 +346,31 @@ function MyGoSection({ controls }: { controls: MyGoControls }) {
   const [changing, setChanging] = useState(false);
   const changeRef = useRef<HTMLButtonElement>(null);
   const homeBox = useRef<HTMLDivElement>(null);
-  const homeWas = useRef(myGo.home);
+  // The Home's place and name, not the object: an account's answer to any save brings a new copy of the same Home.
+  const homeKey = myGo.home ? `${myGo.home.point[0]},${myGo.home.point[1]},${myGo.home.label}` : "";
+  const homeWas = useRef(homeKey);
   useEffect(() => {
-    if (homeWas.current === myGo.home) return;
-    homeWas.current = myGo.home;
-    // A new Home picked: back to its line, the focus on its Change (the search it was in is gone).
-    if (changing && myGo.home) {
-      setChanging(false);
-      requestAnimationFrame(() => changeRef.current?.focus());
-    }
-  }, [myGo.home, changing]);
+    if (homeWas.current === homeKey) return;
+    homeWas.current = homeKey;
+    if (!homeKey) return;
+    // A Home picked (the first, or under Change): back to its line. The search the focus was in is gone, so the
+    // focus goes to Change; a Home that arrives (the account's) while the focus is elsewhere leaves it there.
+    const active = document.activeElement;
+    const lost = !active || active === document.body || !!homeBox.current?.contains(active);
+    setChanging(false);
+    if (lost) requestAnimationFrame(() => changeRef.current?.focus());
+  }, [homeKey]);
+  // Leaving Settings closes an open Change (the sheet stays mounted), so the next visit opens on the Home's line.
+  useEffect(() => {
+    if (!open) setChanging(false);
+  }, [open]);
   const openChange = () => {
     setChanging(true);
     requestAnimationFrame(() => homeBox.current?.querySelector<HTMLInputElement>("input")?.focus());
+  };
+  const keepHome = () => {
+    setChanging(false);
+    requestAnimationFrame(() => changeRef.current?.focus());
   };
   return (
     <section aria-labelledby="settings-my-go-heading" className="settings-group my-go">
@@ -390,6 +402,12 @@ function MyGoSection({ controls }: { controls: MyGoControls }) {
               </p>
             )}
             <HomeSetter home={myGo.home} geoGate={geoGate} searchBias={searchBias} onPlace={(place: Place) => setHome(homeFromPlace(place))} onClear={() => setHome(null)} />
+            {/* Change pressed by mistake: Cancel keeps the Home and goes back to its line. */}
+            {myGo.home && (
+              <button type="button" className="secondary home-cancel" onClick={keepHome}>
+                Cancel
+              </button>
+            )}
           </>
         )}
       </div>
@@ -485,7 +503,7 @@ export function SettingsSheet(props: SettingsSheetProps) {
         </nav>
       )}
       {/* Most used first (Settings tidy, Stephen 2026-10-19): My Go with Home, then Riding, Display and Account. */}
-      <MyGoSection controls={myGo} />
+      <MyGoSection controls={myGo} open={nav.view === "settings"} />
       {/* Ride mode's choices (WEB-NAV-plan.md section 3): the same ones the first Start ride asks, kept on this device. */}
       <section aria-labelledby="settings-ride-heading" className="settings-group">
         <h3 id="settings-ride-heading">Riding</h3>

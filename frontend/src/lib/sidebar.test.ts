@@ -972,7 +972,7 @@ test("the Settings sheet (384): My Go, Riding, Display and Account, most used fi
   assert.match(sheet, /title=\{go \? MENU_TITLE : SHEET_TITLES\.settings\}\s+open=\{nav\.view === "settings"\}\s+onBack=\{nav\.back\}\s+backLabel=\{nav\.backLabel\("settings"\)\}\s+headingRef=\{settingsHeadingRef\}/);
   // This device's routes moved to Save and load (the owner, 2026-10-18); the install offer has its own heading.
   assert.doesNotMatch(sheet, /settings-device-heading/);
-  const order = ["<MyGoSection controls={myGo} />", ...["settings-ride-heading", "settings-display-heading", "settings-signin-heading"].map((id) => `<h3 id="${id}">`)].map((at) => sheet.indexOf(at));
+  const order = ['<MyGoSection controls={myGo} open={nav.view === "settings"} />', ...["settings-ride-heading", "settings-display-heading", "settings-signin-heading"].map((id) => `<h3 id="${id}">`)].map((at) => sheet.indexOf(at));
   assert.ok(order.every((i) => i > 0), JSON.stringify(order));
   assert.match(app, /<section aria-labelledby="settings-my-go-heading" className="settings-group my-go">\s*<div className="setting-line">\s*<h3 id="settings-my-go-heading">My Go<\/h3>/);
   assert.deepEqual(order, [...order].sort((a, b) => a - b));

@@ -931,6 +931,9 @@ const federalFetched = (p) =>
 {
   const p = await open({ route: S_TRAIL, hash: hashFor("trailmaxxing", 100) });
   await openSheet(p, "Settings");
+  // In the More settings fold since 2026-10-22 (set once): opened first, as a rider does.
+  await p.eval("document.querySelector('#sheet-settings details.settings-more').open = true; true");
+  await sleep(150);
   const change = await axNode(p, ".weight-setting > button");
   check("weight: Change is a button named for what it changes, described by the line", change?.role === "button" && change?.name === "Change rider and bike weight" && change?.description === "Rider and bike weight: not set, defaults used", JSON.stringify(change));
   await p.eval("document.querySelector('.weight-setting > button').focus(); true");
@@ -5088,6 +5091,8 @@ const PICK_OPEN_IN_GO = "(() => { const s = document.querySelector('#sheet-setti
   // My Go signed out: kept on this device.
   const p = await bare({ width: 1280, height: 900, mobile: false });
   await openSheet(p, "Settings");
+  await p.eval("document.querySelector('#sheet-settings details.settings-more').open = true; true");
+  await sleep(150);
   const section = await p.eval("(() => { const s = document.querySelector('#sheet-settings .my-go'); return s ? { heading: s.querySelector('h3')?.textContent, options: [...document.querySelectorAll('#sheet-settings .settings-more .open-in select option')].map((o) => o.textContent), status: s.querySelector('.my-go-said')?.getAttribute('role') } : null; })()");
   const openInAx = await axNode(p, "#sheet-settings .open-in select");
   await p.eval(PICK_OPEN_IN_GO);
@@ -5124,9 +5129,19 @@ const PICK_OPEN_IN_GO = "(() => { const s = document.querySelector('#sheet-setti
   await p.eval("document.querySelector('#sheet-settings .my-go .home-line button').click(); true");
   await sleep(300);
   const after = await read();
-  check("settings: a Home set is one line with Change (44 px), which opens the search with the focus in it; Open in and the weight are behind one closed More settings fold (44 px summary), Announcements stays in Display",
+  await p.eval("document.querySelector('#sheet-settings .home-cancel').click(); true");
+  await sleep(300);
+  const cancelled = { ...(await read()), onChange: await p.eval("document.activeElement === document.querySelector('#sheet-settings .home-line button')") };
+  // Leaving Settings with Change open closes it: the next visit opens on the Home's line.
+  await p.eval("document.querySelector('#sheet-settings .home-line button').click(); true");
+  await sleep(300);
+  await p.eval("document.querySelector('#sheet-settings .sheet-back').click(); true");
+  await sleep(300);
+  await openSheet(p, "Settings");
+  const reopened = await read();
+  check("settings: a Home set is one line with Change (44 px), which opens the search with the focus in it; Cancel goes back with the focus on Change, and so does leaving Settings; Open in and the weight are behind one closed More settings fold (44 px summary), Announcements stays in Display",
     before.line === "Home: Home" && before.change?.name === "Change Home" && before.change.h >= 44 && !before.search && before.fold?.open === false && before.fold.summary === "More settings" && before.fold.h >= 44 && before.fold.holds &&
-      after.search && after.focus === "INPUT" && !after.change, JSON.stringify({ before, after }));
+      after.search && after.focus === "INPUT" && !after.change && !cancelled.search && cancelled.onChange && !reopened.search && !!reopened.change, JSON.stringify({ before, after, cancelled, reopened }));
   await p.close();
 }
 {
