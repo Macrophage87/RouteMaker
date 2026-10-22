@@ -7134,7 +7134,7 @@ next rebuild (its DDL is in `SEGMENT_DDL`; until then the endpoint tolerates its
 The front end and the API may ship in either order: an old API answers 404 for the
 endpoint and the panel says the information is not available right now. The beta's nginx
 template changed (the location regex): re-render it with `scripts/beta/render-nginx.sh` on
-the next beta deploy.
+the next beta deploy (with `--no-password` since the beta was opened; BETA-RUNBOOK, before step 10).
 
 **Tests.** `tests/test_segment_info_api.py` (the answer on a real live table with the router
 faked at `segment_info.locate_edges`; no road; a hidden sidewalk nearer than the road; an
