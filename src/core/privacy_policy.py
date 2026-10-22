@@ -120,9 +120,11 @@ SECTIONS: list[tuple[str, str]] = [
                 "An alert you send keeps your rounded spot for 10 minutes, or until you clear it.",
                 "Share ride and Broadcast make you the ride leader: your dot is shown from the "
                 "moment you share, anywhere on or off the route, while RouteMaker is on screen. "
+                "On those rides, anyone who chooses to show their dot is shown on or off the "
+                "route too, so riders who get separated can find each other.",
                 "Those who open your link see which dot is yours and the path it has taken since "
-                "they opened it; that path stays on their device. Turn it off with Show me as a "
-                "dot.",
+                "they opened it; that path stays on their device. Turn sharing off with Show me "
+                "as a dot.",
             ]
         ),
     ),

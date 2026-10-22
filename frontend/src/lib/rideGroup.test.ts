@@ -419,7 +419,7 @@ test("the page asks the role in the one question, keeps Go clean and names the k
   assert.match(group, /if \(kept === null\) window\.setTimeout\(\(\) => live && say\(CONSENT_QUESTION\), 150\);/);
   // A role change moves the next post up, and the post sends the consent's (new) role.
   assert.match(group, /const changeRole[\s\S]*?keepConsent\(ride, consent\.answer, Date\.now\(\), undefined, undefined, role\)[\s\S]*?share\.current\.lastPost = postSoonAfter\(share\.current\.lastPost\)/);
-  assert.match(group, /\}, \[fix, now, shareOn, ride, token, consent, line, origin, leading\]\);/);
+  assert.match(group, /\}, \[fix, now, shareOn, ride, token, consent, line, origin, isBroadcast\]\);/);
   assert.match(group, /<\/button>\s*\)\}\s*\{consent && <RolePicker name="ride-role" value=\{consent\.role\} onChange=\{changeRole\} \/>\}\s*<\/div>/);
   assert.match(group, /sendPosition\(origin, ride, token, fix, consent\.role\)/);
   // Go's bar keeps its two buttons.

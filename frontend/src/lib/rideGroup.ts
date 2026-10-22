@@ -190,6 +190,8 @@ export function leadConsent(ride: string, token: string, now = Date.now(), store
 
 export const CONSENT_QUESTION = "Show me as a dot to others on this ride?";
 export const CONSENT_NOTE = `Only while the app is open and you are within ${QUARTER_MILE} of the route. No name; positions are rounded and gone after 2 minutes.`;
+/** On a broadcast: shown on or off the route, so the leader and the riders can find each other. */
+export const BROADCAST_CONSENT_NOTE = "Only while the app is open, on or off the route, so the leader and riders can find each other. No name; positions are rounded and gone after 2 minutes.";
 export const CONSENT_YES = "Yes";
 export const CONSENT_NO = "No";
 
@@ -330,6 +332,8 @@ export const PULSE_S = 2;
 export interface DotHints {
   previous?: readonly ShownDot[];
   myAlongM?: number | null;
+  /** A broadcast: every dot is drawn, on or off the route, so riders who get separated can find each other. */
+  anywhere?: boolean;
 }
 
 /** A dot's last reading is not named (dots are anonymous): the nearest one drawn last time of the same role, within 200 m. */
@@ -354,7 +358,9 @@ function hintFor(d: Dot, hints: DotHints): number | null {
 /**
  * The dots to draw: within a quarter mile of the route and under 2 minutes old, aged by the seconds since the
  * poll; a reading newer than the last poll pulses for the first PULSE_S seconds. The ride leader is drawn off the
- * route too: the sharer may re-route, and those following go where the leader goes.
+ * route too: the sharer may re-route, and those following go where the leader goes. On a broadcast every dot is
+ * (`anywhere`; Stephen 2026-10-22: "Both the leader dot and any followers show up on the map, so if they get
+ * separated they can find each other").
  */
 export function shownDots(line: readonly LonLat[], dots: readonly Dot[], sinceS = 0, hints: DotHints = {}): ShownDot[] {
   const out: ShownDot[] = [];
@@ -363,7 +369,7 @@ export function shownDots(line: readonly LonLat[], dots: readonly Dot[], sinceS 
     const f = freshness(age);
     if (f === "gone") continue;
     const at = project(line, [d.lon, d.lat], hintFor(d, hints));
-    if (at.offM > NEAR_ROUTE_M && !d.leader) continue;
+    if (at.offM > NEAR_ROUTE_M && !d.leader && !hints.anywhere) continue;
     out.push({
       ...d,
       leader: d.leader === true,

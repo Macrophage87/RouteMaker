@@ -27,6 +27,7 @@ import {
   ALERT_KINDS,
   ALERT_LABEL,
   ALERT_NOTE,
+  BROADCAST_CONSENT_NOTE,
   CALL_911,
   CALL_911_HREF,
   CONFIRM_QUESTION,
@@ -108,6 +109,7 @@ function visible(): boolean {
 
 export function RideGroup({ type, points, line, getMap, here, broadcast = null, riding = false }: RideGroupProps) {
   const leading = broadcast?.leading === true;
+  const isBroadcast = broadcast !== null;
   // The leader key a follower reads with (the leader needs none: it does not see its own dot).
   const followKey = broadcast && !leading ? broadcast.lead : null;
   const origin = window.location.origin;
@@ -169,7 +171,7 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
     setAsked(true);
     setShareOn(yes);
     share.current = { lastNearAt: null, startedAt: Date.now(), lastPost: 0 };
-    say(yes ? `You are shown as a dot, ${roleLabel(kept.role)}, while you are near the route and the app is open.` : "You are not shown. You still see the others.");
+    say(yes ? `You are shown as a dot, ${roleLabel(kept.role)}, while ${isBroadcast ? "" : "you are near the route and "}the app is open.` : "You are not shown. You still see the others.");
   };
   const changeRole = (role: RideRole) => {
     if (!ride || !consent) return;
@@ -240,8 +242,9 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
   useEffect(() => {
     if (!shareOn || !fix || !ride || !token || !consent) return;
     const t = Date.now();
-    // The leader is shown on or off the route: those following go where the leader goes.
-    const near = leading || nearRoute(line, fix);
+    // On a broadcast everyone shown is shown on or off the route: those following go where the leader goes, and
+    // riders who get separated find each other.
+    const near = isBroadcast || nearRoute(line, fix);
     if (near) share.current.lastNearAt = t;
     const stop = shareStop({ on: true, since: consent.since, lastNearAt: share.current.lastNearAt, startedAt: share.current.startedAt }, t);
     if (stop) {
@@ -254,7 +257,7 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
       share.current.lastPost = t;
       void sendPosition(origin, ride, token, fix, consent.role);
     }
-  }, [fix, now, shareOn, ride, token, consent, line, origin, leading]);
+  }, [fix, now, shareOn, ride, token, consent, line, origin, isBroadcast]);
 
   const me = fix ?? here;
   // On an out-and-back the last place along the route says which pass a position is on (yours, and each dot's).
@@ -264,8 +267,8 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
   const sinceS = Math.max(0, Math.floor((now - polledAt) / 1000));
   const previousDots = useRef<ShownDot[]>([]);
   const dots = useMemo(
-    () => shownDots(line, read.dots, sinceS, { previous: previousDots.current, myAlongM: myAlongRef.current }),
-    [line, read.dots, sinceS],
+    () => shownDots(line, read.dots, sinceS, { previous: previousDots.current, myAlongM: myAlongRef.current, anywhere: isBroadcast }),
+    [line, read.dots, sinceS, isBroadcast],
   );
   previousDots.current = dots;
   const alerts = read.alerts.filter((a) => a.age_s + sinceS <= 600);
@@ -368,7 +371,7 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
             <strong>{CONSENT_QUESTION}</strong>
           </p>
           <p id="ride-consent-note" className="hint">
-            {CONSENT_NOTE}
+            {broadcast ? BROADCAST_CONSENT_NOTE : CONSENT_NOTE}
           </p>
           {/* Compact here (Go's map stays clear): one labelled list, Participant chosen; the panel has the radio buttons. */}
           <label className="ride-role-select">
@@ -453,7 +456,7 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
               setConsent(keepConsent(ride, next ? "yes" : "no"));
               setShareOn(next);
               share.current = { lastNearAt: null, startedAt: Date.now(), lastPost: 0 };
-              say(next ? "You are shown as a dot while you are near the route." : SHARE_STOPPED_SAID.off);
+              say(next ? (isBroadcast ? "You are shown as a dot while the app is open." : "You are shown as a dot while you are near the route.") : SHARE_STOPPED_SAID.off);
             }}
           >
             <span className="switch-label">Show me as a dot</span>

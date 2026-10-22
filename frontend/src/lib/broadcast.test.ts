@@ -87,6 +87,14 @@ test("the leader is drawn off the route too (the sharer may re-route); the other
   assert.equal(shown[1].leader, false);
 });
 
+test("on a broadcast every dot is drawn, on or off the route, so separated riders can find each other", () => {
+  const off = { lon: -77.02, lat: 38.92, age_s: 1 };
+  assert.equal(shownDots(LINE, [off]).length, 0);
+  const shown = shownDots(LINE, [off], 0, { anywhere: true });
+  assert.equal(shown.length, 1);
+  assert.equal(shown[0].leader, false);
+});
+
 test("the riders line names the ride leader first, with or without the rider's own place", () => {
   const shown = shownDots(LINE, [
     { lon: -77.01, lat: 38.9, age_s: 5, role: "lead", leader: true },
@@ -148,7 +156,9 @@ test("opening a broadcast follows the leader: in Plan too, the map eased to the 
   assert.match(group, /void \(broadcast \? broadcastRideId\(broadcast\.id\) : rideId\(type, points\)\)/);
   assert.match(group, /if \(leading && kept\?\.answer !== "yes"\) kept = keepConsent\(id, "yes", Date\.now\(\), undefined, undefined, "lead"\);/);
   // The leader is posted on or off the route; the follower reads with the key before answering.
-  assert.match(group, /const near = leading \|\| nearRoute\(line, fix\);/);
+  assert.match(group, /const near = isBroadcast \|\| nearRoute\(line, fix\);/);
+  assert.match(group, /anywhere: isBroadcast \}\)/);
+  assert.match(group, /\{broadcast \? BROADCAST_CONSENT_NOTE : CONSENT_NOTE\}/);
   assert.match(group, /const token = consent\?\.token \?\? \(broadcast \? watchToken : null\);/);
   assert.match(group, /if \(following && !riding && map\) map\.easeTo\(\{ center: leaderAt, duration: 800 \}\);/);
   assert.match(group, /if \(!event\.originalEvent \|\| !followingRef\.current\) return;\s*setFollowing\(false\);/);
