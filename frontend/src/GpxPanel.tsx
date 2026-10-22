@@ -489,9 +489,8 @@ export function GpxPanel(props: Props) {
         <button
           type="button"
           onClick={() => {
-            if (reading.kind === "reading") return;
-            onPick?.();
-            input.current?.click();
+            if (reading.kind !== "reading") onPick?.();
+            if (reading.kind !== "reading") input.current?.click();
           }}
           aria-disabled={reading.kind === "reading" || undefined}
         >
