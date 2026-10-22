@@ -303,16 +303,39 @@ for (const [label, size] of [["phone", { width: 390, height: 844, mobile: true }
 for (const [label, size] of [["phone", { width: 390, height: 844, mobile: true }], ["computer", { width: 1280, height: 900 }]]) {
   const p = await newPage(b, size);
   if (size.mobile) await p.s("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
-  await mock(p, S_DEFAULT, {});
+  await mock(p, S_DEFAULT, { signIn: true });
   await media(p, {});
   await p.s("Page.addScriptToEvaluateOnNewDocument", { source: "try { sessionStorage.setItem('routemaker.tab-mode', 'plan'); } catch {}" });
   await p.s("Page.navigate", { url: `http://127.0.0.1:${PORT}/` });
   await p.waitFor("!!document.querySelector('.plan-map-bar .plan-bar-load')", 30000);
   const load = await p.eval("(() => { const b = document.querySelector('.plan-map-bar .plan-bar-load'); const r = b.getBoundingClientRect(); return { name: b.textContent.trim(), h: Math.round(r.height) }; })()");
-  await p.eval("document.querySelector('.plan-map-bar .plan-bar-load').click(); true");
+  // Once the server has said it signs riders in (Settings' Account shows), as a rider's press comes after.
+  await p.waitFor("!!document.getElementById('settings-signin-heading')", 10000);
+  await p.eval("document.querySelector('.plan-map-bar .plan-bar-load').focus(); true");
+  await p.enter();
   await sleep(500);
-  const sheet = await p.eval("(() => { const s = document.getElementById('sheet-gpx'); return !!s && !s.hidden && !!s.offsetParent; })()");
-  check(`plan bar (${label}): an empty plan offers Load route big at the top of the map, and it opens Save & load`, load.name === "Load route" && load.h >= 52 && sheet, JSON.stringify({ load, sheet }));
+  // Load route's popup (the owner, 2026-10-22): signed out, Sign in with Discord (its logo) first, then Open GPX file.
+  const popup = await p.eval("(() => { const d = document.querySelector('.load-route-dialog'); const s = document.getElementById('sheet-gpx'); const tall = [...d.querySelectorAll('.load-route-top a, .load-route-top button')].map((x) => Math.round(x.getBoundingClientRect().height)); return { open: !!d?.open, items: [...d.querySelectorAll('.load-route-top a, .load-route-top button')].map((x) => x.textContent.trim()), logo: !!d.querySelector('.load-route-sign-in svg.discord-logo'), href: d.querySelector('.load-route-sign-in')?.getAttribute('href'), focus: document.activeElement?.textContent.trim(), tall, sheet: !!s && !s.hidden }; })()");
+  const named = await axNode(p, ".load-route-dialog");
+  await p.eval("document.querySelector('.load-route-dialog .load-route-gpx').click(); true");
+  await sleep(300);
+  // Open GPX file asks the ride type and how the file is followed first, the ride type focused.
+  const ask = await p.eval("(() => { const d = document.querySelector('.load-route-dialog'); return { heading: d.querySelector('h2')?.textContent.trim(), focus: document.activeElement?.tagName, options: d.querySelectorAll('select option').length, transit: !!d.querySelector('select option[value=bike-transit]'), radios: [...d.querySelectorAll('input[type=radio]')].map((r) => [r.parentElement.querySelector('.load-route-name').textContent.trim(), r.checked]), choose: d.querySelector('button[type=submit]')?.textContent.trim() }; })()");
+  await p.escape();
+  await sleep(300);
+  const stepBack = await p.eval("({ open: document.querySelector('.load-route-dialog').open, focus: document.activeElement === document.querySelector('.load-route-dialog .load-route-gpx') })");
+  await p.escape();
+  await sleep(300);
+  const closed = await p.eval("({ closed: !document.querySelector('.load-route-dialog').open, focus: document.activeElement === document.querySelector('.plan-map-bar .plan-bar-load') })");
+  check(`plan bar (${label}): an empty plan offers Load route big at the top of the map, and it opens a popup named Load route (not Save & load) with Sign in with Discord (logo, focused) and Open GPX file, big`,
+    load.name === "Load route" && load.h >= 52 && popup.open && !popup.sheet && named?.role === "dialog" && named?.name === "Load route" &&
+      JSON.stringify(popup.items) === JSON.stringify(["Sign in with Discord", "Open GPX file"]) && popup.logo && popup.href === "/auth/login" && popup.focus === "Sign in with Discord" && popup.tall.every((h) => h >= 52),
+    JSON.stringify({ load, popup, named: [named?.role, named?.name] }));
+  check(`load route (${label}): Open GPX file asks the ride type (no transit types) and Snap to roads or Exactly as drawn first; Escape steps back, then closes to Load route`,
+    ask.heading === "Open GPX file" && ask.focus === "SELECT" && ask.options > 3 && !ask.transit &&
+      JSON.stringify(ask.radios) === JSON.stringify([["Snap to roads", true], ["Exactly as drawn", false]]) && ask.choose === "Choose file" &&
+      stepBack.open && stepBack.focus && closed.closed && closed.focus,
+    JSON.stringify({ ask, stepBack, closed }));
   await p.close();
 }
 {
@@ -5209,7 +5232,7 @@ const failed = results.filter((r) => !r.ok);
 // A lettered pin's card (no auto route, 2026-10-19) adds two: the card a tap opens, and the card the B key opens.
 // The map's info panel adds two at 1280 px: the i named for it, and what it opens.
 // Plan starting as a loop (2026-10-20) adds one: the loop box unticked and ticked again.
-const EXPECTED = 682;
+const EXPECTED = 684;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);
