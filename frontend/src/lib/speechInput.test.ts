@@ -37,7 +37,7 @@ test("Speak shows only where the browser turns speech into text", () => {
 test("the words fill the box as they come, cut to the alert's 80 characters, and a stop ends it", () => {
   const texts: string[] = [];
   const ends: (string | null)[] = [];
-  const stop = listenOnce((t) => texts.push(t), (f) => ends.push(f), 80, env)!;
+  const { stop } = listenOnce((t) => texts.push(t), (f) => ends.push(f), 80, env)!;
   const rec = FakeRecognition.last!;
   assert.ok(rec.started && rec.interimResults && !rec.continuous);
   rec.onresult?.({ results: [[{ transcript: "flat tire " }], [{ transcript: "at the bridge" }]] });
@@ -64,7 +64,9 @@ test("the Speak button sits in Alert > Other only, keeps its name, and nothing i
   const group = readFileSync(new URL("../RideGroup.tsx", import.meta.url), "utf8");
   const other = group.slice(group.indexOf(") : otherOpen ? ("), group.indexOf('<ul role="list" className="ride-alert-kinds">'));
   assert.match(other, /\{canSpeak && \(\s*<button type="button" className="secondary ride-speak" aria-pressed=\{listening\} onClick=\{speak\}>[\s\S]*?\{SPEAK_LABEL\}/);
-  assert.match(group, /\(text\) => setOtherText\(text\)/);
+  // Said words go after typed ones; closing the box aborts (no late words in a closed box).
+  assert.match(group, /\(text\) => setOtherText\(typed \? `\$\{typed\} \$\{text\}`\.slice\(0, OTHER_MAX\) : text\)/);
+  assert.match(group, /if \(!otherOpen\) abortListening\.current\?\.\(\);/);
   assert.match(group, /say\(LISTENING_SAID\)/);
   assert.equal(LISTENING_SAID, "Listening. Say the issue, then tap Send.");
   const bar = group.slice(group.indexOf('className="ride-group-bar"'), group.indexOf("id={ridersPanel}"));

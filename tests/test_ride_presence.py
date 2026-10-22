@@ -466,7 +466,11 @@ def test_a_path_is_bounded_checked_and_not_sent_too_often(clock) -> None:
     assert soon.value.status == 429
     clock.t += rp.MIN_PATH_INTERVAL_S
     rp.post_path(RIDE, ME, ROUTE[:2], None, now=clock)
-    for bad in ([[0, 0]], [[1, "x"]], [[-77.0, 38.9, 3]], "nope", [[-77.0, 38.9]] * 1501):
+    # Points outside the map's area are left out, not refused.
+    rp.post_path(RIDE, THEM, [[0, 0], ROUTE[0]], [], now=clock)
+    key = rp.leader_key(THEM)
+    assert rp.read(RIDE, YOU, now=clock, leader=key)["leader_path"]["route"] == [ROUTE[0]]
+    for bad in ([[1, "x"]], [[-77.0, 38.9, 3]], "nope", [[-77.0, 38.9]] * (rp.PATH_MAX_POINTS + 1)):
         with pytest.raises(rp.Refused) as refused:
             rp.post_path(RIDE, YOU, bad, [], now=clock)
         assert refused.value.status == 400
@@ -495,3 +499,14 @@ def test_the_api_takes_a_path_in_a_post_body(client, clock, monkeypatch) -> None
     key = rp.leader_key(ME)
     r = client.get(f"/api/rides/{RIDE}", HTTP_X_RIDE_TOKEN=YOU, HTTP_X_RIDE_LEADER=key)
     assert len(r.json()["leader_path"]["route"]) == 3
+
+
+def test_nothing_about_a_ride_stays_past_2_minutes(clock) -> None:
+    # Stephen 2026-10-22: "For privacy, nothing stays on the server for more than 2 min".
+    rp.post_position(RIDE, ME, *SPOT, now=clock)
+    rp.post_path(RIDE, ME, ROUTE, [list(SPOT)], now=clock)
+    rp.send_alert(RIDE, ME, rp.GROUP_RIDE, "lost", "", *SPOT, now=clock)
+    clock.t += rp.KEEP_S + 1
+    rp.read(RIDE, YOU, now=clock)  # a read prunes
+    with rp.store().ride(RIDE, create=False) as state:
+        assert state == {"riders": {}, "alerts": []}

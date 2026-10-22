@@ -8193,3 +8193,13 @@ details.fold > summary .icon {
 .go-start .broadcast-button {
   min-height: 52px;
 }
+
+.start-ride .broadcast-note,
+.route-actions-row > .broadcast-note {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+.broadcast-note:empty {
+  display: none;
+}

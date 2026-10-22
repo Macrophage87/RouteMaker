@@ -9,6 +9,7 @@ import {
   CONSENT_KEY,
   PATH_EVERY_MS,
   PATH_MAX_POINTS,
+  PRIVATE_START_M,
   TRAIL_MAX_POINTS,
   broadcastRideId,
   consentFor,
@@ -23,6 +24,7 @@ import {
   routeKeyOf,
   shownDots,
   thinLine,
+  withoutStart,
 } from "./rideGroup.ts";
 import { asRideLink, leadKeyFrom, rideLinkFrom } from "./sharedRoutes.ts";
 import { BROADCAST_LABEL } from "./share.ts";
@@ -169,7 +171,7 @@ test("opening a broadcast follows the leader: in Plan too, the map eased to the 
   // Off the route only while riding: after End ride the quarter-mile rule and its stop are back.
   assert.match(group, /const near = \(isBroadcast && riding\) \|\| nearRoute\(line, fix\);/);
   // The leader's route and path, sent while riding when due; a follower draws the phone's own over what it saw.
-  assert.match(group, /if \(!leading \|\| !riding \|\| !shareOn \|\| !front \|\| !ride \|\| !token\) return;[\s\S]*?if \(!pathDue\(pathSent\.current\.at, pathSent\.current\.routeKey, routeNowKey, t\)\) return;[\s\S]*?void sendPath\(origin, ride, token, routeNow, ownTrail\);/);
+  assert.match(group, /if \(!leading \|\| !riding \|\| !shareOn \|\| !front \|\| !ride \|\| !token\) return;[\s\S]*?if \(!pathDue\(pathSent\.current\.at, pathSent\.current\.routeKey, routeNowKey, t\)\) return;[\s\S]*?void sendPath\(origin, ride, token, routeNow, ownTrail\)\.then\(\(ok\) => \{\s*if \(!ok && pathSent\.current\.at === t\) pathSent\.current = \{ at: t - PATH_EVERY_MS \+ PATH_MIN_GAP_MS, routeKey: "" \};/);
   assert.match(group, /const shownTrail = sentPath && sentPath\.trail\.length >= trail\.length \? sentPath\.trail : trail;/);
   assert.match(group, /const kinds = \["dragstart", "zoomstart", "rotatestart"\] as const;/);
   assert.match(group, /anywhere: isBroadcast \}\)/);
@@ -215,4 +217,13 @@ test("a follower's read keeps the leader's sent route and path; a malformed one 
   assert.deepEqual(got?.leaderPath, path);
   const bad = await readRide("https://x.test", "a".repeat(64), "1".repeat(32), answer({ dots: [], alerts: [], leader_path: { route: "x", trail: [] } }), KEY);
   assert.equal(bad?.leaderPath, undefined);
+});
+
+test("the ridden path goes without its first 650 ft (200 m): rides often start at home", () => {
+  const start: LonLat = [-77, 38.9];
+  const near: LonLat = [-77.001, 38.9]; // about 87 m
+  const away: LonLat = [-77.003, 38.9]; // about 260 m
+  assert.deepEqual(withoutStart([start, near]), []);
+  assert.deepEqual(withoutStart([start, near, away, [-77.004, 38.9]]), [away, [-77.004, 38.9]]);
+  assert.equal(PRIVATE_START_M, 200);
 });

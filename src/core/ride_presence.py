@@ -10,8 +10,11 @@ Privacy is the shape of this module:
 - A rider is a random per-ride token the device makes (it changes each ride); no account, name or
   address is kept with it. A ride is a digest of the link's plan, so the server never holds the
   route either.
-- An alert keeps its sender's rounded spot for as long as the alert lasts (10 minutes, or until
-  the sender clears it), because the alert is useless without it. Nothing outlives the ride.
+- An alert keeps its sender's rounded spot for as long as the alert lasts (2 minutes, or until
+  the sender clears it), because the alert is useless without it.
+- Nothing stays longer than 2 minutes (Stephen 2026-10-22: "For privacy, nothing stays on the
+  server for more than 2 min"): a dot, a leader's path and an alert each 2 minutes after it was
+  sent, and a rider's token and counts 2 minutes after its phone last asked or sent anything.
 
 "Memory" across the api's gunicorn workers: each worker is its own process, so a dict in one is
 not seen by the others. The shared store is a directory on a tmpfs (by default /dev/shm, which is
@@ -45,9 +48,9 @@ GRID_M = 20.0
 MIN_POST_INTERVAL_S = 10
 # A device asks for the dots about every 15 s; one sooner than this is refused (429).
 MIN_POLL_INTERVAL_S = 3
-# A token is forgotten this long after it first appeared (sharing ends 12 hours after the ride's
-# start; the alert counts go with it).
-TOKEN_TTL_S = 12 * 3600
+# The most anything is kept: a token (and its counts) is forgotten this long after its phone last
+# read or sent anything; a phone in front reads every 15 s, so its limits hold while it rides.
+KEEP_S = 120
 # Bounds on memory, whatever a client sends.
 MAX_RIDERS_PER_RIDE = 3000
 MAX_RIDES = 500
@@ -57,14 +60,14 @@ MAX_RIDES = 500
 # 2 minutes after it was sent, as a dot is, so a phone that stops sending leaves nothing behind.
 PATH_TTL_S = DOT_TTL_S
 MIN_PATH_INTERVAL_S = 20
-PATH_MAX_POINTS = 1500
-PATHS_PER_RIDE = 5
-PATH_BODY_BYTES = 96 * 1024
+PATH_MAX_POINTS = 600
+PATHS_PER_RIDE = 3
+PATH_BODY_BYTES = 48 * 1024
 # Alerts live on one ride at a time; a newer one past this drops the oldest.
 LIVE_ALERTS_PER_RIDE = 20
 
 # Alerts (the plan's lists, limits and merge rule).
-ALERT_TTL_S = 10 * 60
+ALERT_TTL_S = KEEP_S
 ALERT_MIN_INTERVAL_S = 60
 ALERTS_PER_RIDE = 10
 MERGE_WITHIN_S = 120
@@ -373,7 +376,8 @@ def _is_empty(state: dict) -> bool:
 
 def _prune(state: dict, now: float) -> None:
     for token, rider in list(state["riders"].items()):
-        if now - rider.get("since", now) > TOKEN_TTL_S:
+        last = max(rider.get(k, 0) for k in ("since", "posted", "polled", "alerted", "path_posted"))
+        if now - last > KEEP_S:
             del state["riders"][token]
             continue
         if "at" in rider and now - rider["at"] > DOT_TTL_S:
@@ -459,7 +463,8 @@ def _line(points, rounding: bool) -> list[list[float]]:
             raise Refused(400, "A path point is [lon, lat] in numbers.")
         lon, lat = float(p[0]), float(p[1])
         if not (west <= lon <= east and south <= lat <= north):
-            raise Refused(400, "That path leaves the area this map covers.")
+            # Ridden out of the map's area: those points are left out, the rest still go.
+            continue
         spot = rounded(lon, lat) if rounding else (round(lon, 5), round(lat, 5))
         if not out or out[-1] != list(spot):
             out.append(list(spot))

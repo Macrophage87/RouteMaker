@@ -60,6 +60,8 @@ import {
   leaveRide,
   nearRoute,
   newToken,
+  PATH_EVERY_MS,
+  PATH_MIN_GAP_MS,
   pathDue,
   routeKeyOf,
   sendPath,
@@ -144,29 +146,37 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
       stopListening.current?.();
       return;
     }
+    // Said words go after any typed already.
+    const typed = otherText.trim();
     const stop = listenOnce(
-      (text) => setOtherText(text),
+      (text) => setOtherText(typed ? `${typed} ${text}`.slice(0, OTHER_MAX) : text),
       (failed) => {
         stopListening.current = null;
+        abortListening.current = null;
         setListening(false);
         if (failed) say(failed);
       },
       OTHER_MAX,
     );
     if (!stop) return;
-    stopListening.current = stop;
+    stopListening.current = stop.stop;
+    abortListening.current = stop.abort;
     setListening(true);
     say(LISTENING_SAID);
   };
-  useEffect(() => () => stopListening.current?.(), []);
+  // Closed or gone: dropped, not finished, so no late words land in a closed box.
+  const abortListening = useRef<(() => void) | null>(null);
+  useEffect(() => () => abortListening.current?.(), []);
   useEffect(() => {
-    if (!otherOpen) stopListening.current?.();
+    if (!otherOpen) abortListening.current?.();
   }, [otherOpen]);
   const [sent, setSent] = useState<number[]>([]);
   const [said, setSaid] = useState({ text: "", count: 0 });
   const [urgent, setUrgent] = useState({ text: "", count: 0 });
   const [dotInfo, setDotInfo] = useState("");
   const share = useRef({ lastNearAt: null as number | null, startedAt: Date.now(), lastPost: 0 });
+  // The leader's own ridden path, in memory on this phone (sent with the route while riding).
+  const [ownTrail, setOwnTrail] = useState<readonly LonLat[]>([]);
   const previousAlerts = useRef<RideAlert[]>([]);
   const ridersPanel = useId();
   const alertPanel = useId();
@@ -297,7 +307,6 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
 
   // The leader's route and ridden path, sent again about every 2 minutes and whenever the route changes (Stephen
   // 2026-10-22: "Rebroadcast the route every 2 min or when it changes, not keeping it on the server"), while riding.
-  const [ownTrail, setOwnTrail] = useState<readonly LonLat[]>([]);
   const pathSent = useRef({ at: 0, routeKey: "" });
   const routeNow = leaderRoute ?? line;
   const routeNowKey = routeKeyOf(routeNow);
@@ -306,7 +315,10 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
     const t = Date.now();
     if (!pathDue(pathSent.current.at, pathSent.current.routeKey, routeNowKey, t)) return;
     pathSent.current = { at: t, routeKey: routeNowKey };
-    void sendPath(origin, ride, token, routeNow, ownTrail);
+    // Not taken: tried again in about PATH_MIN_GAP_MS, before the server's 2 minutes run out.
+    void sendPath(origin, ride, token, routeNow, ownTrail).then((ok) => {
+      if (!ok && pathSent.current.at === t) pathSent.current = { at: t - PATH_EVERY_MS + PATH_MIN_GAP_MS, routeKey: "" };
+    });
     // routeNow is named by its key; ownTrail goes with the next send as it is then.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leading, riding, shareOn, front, ride, token, origin, routeNowKey, now]);
@@ -323,7 +335,8 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
     [line, read.dots, sinceS, isBroadcast],
   );
   previousDots.current = dots;
-  const alerts = read.alerts.filter((a) => a.age_s + sinceS <= 600);
+  // An alert lasts 2 minutes (core.ride_presence.ALERT_TTL_S: nothing stays on the server longer).
+  const alerts = read.alerts.filter((a) => a.age_s + sinceS <= 120);
   const roleRows = roleKey(dots);
 
   // Following the leader: the leader's dot, the path it has taken since this page opened, and the map kept on it.
@@ -554,7 +567,7 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
             </label>
             {canSpeak && (
               <button type="button" className="secondary ride-speak" aria-pressed={listening} onClick={speak}>
-                <Icon name="voice" size={18} />
+                <Icon name="mic" size={18} />
                 {SPEAK_LABEL}
               </button>
             )}

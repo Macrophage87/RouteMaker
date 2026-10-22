@@ -611,9 +611,9 @@ export async function sendPosition(origin: string, ride: string, token: string, 
  */
 export const PATH_EVERY_MS = 100_000;
 /** The soonest the server takes another (core.ride_presence.MIN_PATH_INTERVAL_S). */
-export const PATH_MIN_GAP_MS = 20_000;
+export const PATH_MIN_GAP_MS = 25_000;
 /** The most points the server takes in each line (core.ride_presence.PATH_MAX_POINTS). */
-export const PATH_MAX_POINTS = 1500;
+export const PATH_MAX_POINTS = 600;
 
 /** A line of at most `max` points, its ends kept, the rest evenly picked; rounded to 5 decimals (about 1 m). */
 export function thinLine(line: readonly LonLat[], max = PATH_MAX_POINTS): LonLat[] {
@@ -638,8 +638,20 @@ export function routeKeyOf(line: readonly LonLat[]): string {
   return `${line.length}|${line[0].join(",")}|${end.join(",")}`;
 }
 
+/** The ridden path's first stretch left out (the ride often starts at home): this far from its first point. */
+export const PRIVATE_START_M = 200;
+
+/** The ridden path from where it first goes PRIVATE_START_M from its start; nothing while it has not. */
+export function withoutStart(trail: readonly LonLat[]): readonly LonLat[] {
+  const first = trail[0];
+  if (!first) return trail;
+  const kx = M_PER_DEG * Math.cos((first[1] * Math.PI) / 180);
+  const away = trail.findIndex((p) => Math.hypot((p[0] - first[0]) * kx, (p[1] - first[1]) * M_PER_DEG) >= PRIVATE_START_M);
+  return away < 0 ? [] : trail.slice(away);
+}
+
 export async function sendPath(origin: string, ride: string, token: string, route: readonly LonLat[], trail: readonly LonLat[], send: Fetch = fetch): Promise<boolean> {
-  return (await post(origin, `/api/rides/${ride}/path`, { token, route: thinLine(route), trail: thinLine(trail) }, send)).ok;
+  return (await post(origin, `/api/rides/${ride}/path`, { token, route: thinLine(route), trail: thinLine(withoutStart(trail)) }, send)).ok;
 }
 
 export async function leaveRide(origin: string, ride: string, token: string, send: Fetch = fetch): Promise<boolean> {

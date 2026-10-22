@@ -2,7 +2,8 @@
  * Speak an alert's words (Stephen 2026-10-22, "Is there a way to enable speech to text and send that?" ... "yes.
  * option 2"): a Speak button in Alert > Other fills the box from the browser's speech recognition; the rider reads
  * it and taps Send, as with typed words. Shown only where the browser has it (Chrome on Android, desktop Chrome and
- * Edge, Safari). Chrome sends the clip to Google to turn it into text, which the privacy page says; nothing is kept
+ * Edge, Safari). The browser's maker turns the clip into text on its servers (Google for Chrome, Apple for
+ * Safari), which the privacy page says; nothing is kept
  * here. The button keeps its name; pressed (aria-pressed) while it listens, and a second press stops it.
  */
 
@@ -54,7 +55,7 @@ export function listenOnce(
   onEnd: (failed: string | null) => void,
   max: number,
   env: SpeechEnv | undefined = browserEnv(),
-): (() => void) | null {
+): { stop: () => void; abort: () => void } | null {
   const Ctor = ctorOf(env);
   if (!Ctor) return null;
   const rec = new Ctor();
@@ -78,11 +79,13 @@ export function listenOnce(
     onEnd(SPEECH_OTHER_FAILED);
     return null;
   }
-  return () => {
+  const call = (fn: () => void) => () => {
     try {
-      rec.stop();
+      fn();
     } catch {
       // Already stopped.
     }
   };
+  // Stop keeps what was heard; abort (the box closed) drops it.
+  return { stop: call(() => rec.stop()), abort: call(() => rec.abort()) };
 }
