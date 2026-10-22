@@ -373,7 +373,7 @@ function CueShape({ shape, junction, exit }: { shape: ReturnType<typeof arrowFor
  * screen reader's adjust gestures move it too. A tap on the track that jumps it more than half way is a
  * tap, not a slide: it springs back and says how. Let go short of the end, or left part way, it springs back.
  */
-function SlideToEnd({ onEnd, onTap }: { onEnd: () => void; onTap: () => void }) {
+export function SlideToEnd({ onEnd, onTap, name = END_RIDE_NAME }: { onEnd: () => void; onTap: () => void; name?: string }) {
   const [value, setValue] = useState(0);
   const last = useRef(0);
   const key = useRef(false);
@@ -391,7 +391,7 @@ function SlideToEnd({ onEnd, onTap }: { onEnd: () => void; onTap: () => void }) 
   return (
     <div className="ride-end ride-slide">
       <span className="ride-slide-text" aria-hidden="true">
-        {END_RIDE_NAME}
+        {name}
         <span className="ride-slide-arrows">››</span>
       </span>
       <input
@@ -401,7 +401,7 @@ function SlideToEnd({ onEnd, onTap }: { onEnd: () => void; onTap: () => void }) 
         max={100}
         step={25}
         value={value}
-        aria-label={END_RIDE_NAME}
+        aria-label={name}
         aria-valuetext={value === 0 ? SLIDE_TO_END : `${value}%`}
         onKeyDown={(event) => {
           // Only the keys that move a range count as a step, so a stray key never lets a tap through.
@@ -436,7 +436,7 @@ function SlideToEnd({ onEnd, onTap }: { onEnd: () => void; onTap: () => void }) 
 }
 
 /** A live region that says the same sentence twice when it is set twice (App's count trick). */
-function LiveRegion({ said, urgent }: { said: { text: string; count: number }; urgent: boolean }) {
+export function LiveRegion({ said, urgent }: { said: { text: string; count: number }; urgent: boolean }) {
   return (
     <p className="visually-hidden" role={urgent ? "alert" : "status"} aria-live={urgent ? "assertive" : "polite"}>
       {said.text}

@@ -257,6 +257,8 @@ import { usableProfile } from "./lib/profileChart.ts";
 import { bypassFor, bypassPlanKey, bypassSaid, toggleBypass, type Bypass } from "./lib/closureMap.ts";
 import { permitsShown, readPermitsLayer, savePermitsLayer } from "./lib/permitLayer.ts";
 import { RideGroup } from "./RideGroup.tsx";
+import { RoamMode } from "./RoamMode.tsx";
+import { BACK_TO_ROAM, ROAM_ENDED, ROAM_NAME, ROAM_STARTED, type RoamMap } from "./lib/roam.ts";
 import { BikeshareDocksOverlay, type DocksReport } from "./BikeshareDocks.tsx";
 import { KNOWN_OPERATORS, docksStatus, mergeOperators, operatorsToAsk, readOperatorChoices, saveOperatorChoices, type OperatorInfo } from "./lib/bikeshareDocks.ts";
 import { SaveRoute } from "./SaveRoute.tsx";
@@ -842,6 +844,12 @@ export function App() {
   // A ride's re-plans live here, not in `points`, so the address bar keeps the plan as started (plan Q2).
   const [ridePrefs, setRidePrefs] = useState<RidePrefs>(() => readRidePrefs());
   const [riding, setRiding] = useState(false);
+  // Roam (RoamMode.tsx, lib/roam.ts; the owner, 2026-10-22): a ride with no destination, from Go's Roam button. The
+  // rider for the map, in memory only, as a ride's is. A detour from it is an ordinary ride (`rideStart.roam`), and
+  // ending that ride comes back here.
+  const [roaming, setRoaming] = useState(false);
+  const [roamRider, setRoamRider] = useState<{ point: LonLat; headingDeg: number | null; accuracyM: number } | null>(null);
+  const onBike = riding || roaming;
   // What the ride started from, captured at Start ride: the ride never follows the planner's own route,
   // which a failed or changed plan could take away mid-ride.
   // On a Bikeshare or transit plan, the points, loop and ride type are the riding leg's (lib/rideTrip.ts
@@ -855,6 +863,8 @@ export function App() {
     trip: RideTrip | null;
     /** The route everyone shares: never re-planned on its own during the ride (RideMode `fixed`). */
     fixed: boolean;
+    /** A detour from Roam: ending it goes back to roaming, with no summary. */
+    roam?: boolean;
     n: number;
   } | null>(null);
   const [rideAsk, setRideAsk] = useState(false);
@@ -2917,7 +2927,7 @@ export function App() {
   // voice is unlocked inside this press (iOS speaks only after a gesture).
   // unlocked: Start's own press has already unlocked the voice (startRideChecked), before its closure check.
   // `rest`: Ride the rest's own route (rideRest, below), ridden in place of the plan's.
-  const beginRide = (prefs: RidePrefs, unlocked = false, rest?: { route: RouteResponse; points: LonLat[] }) => {
+  const beginRide = (prefs: RidePrefs, unlocked = false, rest?: { route: RouteResponse; points: LonLat[]; roam?: boolean }) => {
     const route = rest?.route ?? shown;
     if (!route) return;
     if (!unlocked) startRideGesture(prefs);
@@ -2931,7 +2941,7 @@ export function App() {
     const opened = sharedOpenNow.current?.answer === route ? sharedOpenNow.current : null;
     const fixed = fixedRide(leg, opened, !!rest);
     setResumeStats(null);
-    setRideStart((before) => ({ route, ...leg, dials: rideDials({ ...planDials, closuresNow: true }, rest ? null : route), fixed, n: (before?.n ?? 0) + 1 }));
+    setRideStart((before) => ({ route, ...leg, dials: rideDials({ ...planDials, closuresNow: true }, rest ? null : route), fixed, roam: rest?.roam === true, n: (before?.n ?? 0) + 1 }));
     // The installed app keeps the ride's route as the last ride (OWNER-DECISIONS 465a); End ride gives it
     // the map the ride kept. A browser tab keeps nothing unless the rider presses Keep for offline.
     // A Keep for offline still fetching stops: the ride keeps its own corridor, and two walks would share the page's queue.
@@ -3455,6 +3465,16 @@ export function App() {
   rideNow.current = { start: rideStart, mode };
   const endRide = useCallback((after: EndedPlan, stats: RideStats) => {
     const { start, mode: endedIn } = rideNow.current;
+    // A detour from Roam: back to roaming, with no summary (the ride was a short way to water, a restroom or food).
+    if (start?.roam) {
+      setRiding(false);
+      setRideStart(null);
+      setRideView(null);
+      setFollow(true);
+      setRoaming(true);
+      announce(BACK_TO_ROAM);
+      return;
+    }
     // Go: the plan is left as it was until Done, which empties Go for the next trip; Undo rides it again.
     // Plan: the plan stays, every route of it, to adjust and ride again (the owner, 2026-10-16: "You should keep
     // all the routes ... But be able to adjust things"). Part way, it starts where the rider is ("If you went part
@@ -3481,7 +3501,7 @@ export function App() {
   }, [announce, commit]);
   // A back gesture during a ride does nothing; End ride is the way out (lib/rideBack.ts, review RIDE-2).
   // Each held back is told, politely, once (review RIDE-2).
-  useEffect(() => (riding ? holdBackDuringRide(window, () => announce(STILL_RIDING_SAID)) : undefined), [riding, announce]);
+  useEffect(() => (onBike ? holdBackDuringRide(window, () => announce(STILL_RIDING_SAID)) : undefined), [onBike, announce]);
   // No ride is on at load: a ride's entry left by a reload is the page's own again.
   useEffect(() => forgetStaleRideEntry(window), []);
   const undoEndRide = () => {
@@ -3506,6 +3526,48 @@ export function App() {
     if (mode === "go" && pointsRef.current.length > 0) clearPlan();
     else backToRideOpener();
   };
+  // Roam (RoamMode.tsx): Go's one button while Go has no destination. The voice is unlocked inside the press (iOS).
+  const startRoam = () => {
+    startRideGesture(ridePrefs);
+    endedRide.current = null;
+    setRideEnded(null);
+    setFollow(true);
+    setRoamRider(null);
+    setRoaming(true);
+    announce(ROAM_STARTED);
+  };
+  const endRoam = () => {
+    setRoaming(false);
+    setRoamRider(null);
+    announce(ROAM_ENDED);
+    // Back to Go's Menu, the first control of its bar (the Roam button is under it).
+    window.setTimeout(() => document.querySelector<HTMLElement>(".go-menu")?.focus(), 0);
+  };
+  // Ride here from Roam's Detour: a route from where the rider is to the place, on Go's ride type and settings, ridden
+  // as any ride is; its end comes back to Roam (endRide). Answers the words to say why not, or null once it started.
+  const roamDetour = async (from: LonLat, place: { point: LonLat }): Promise<string | null> => {
+    const asked: LonLat[] = [from, place.point];
+    const result = await requestRoute(asked, preset, { dials: { ...planDials, loop: false, closuresNow: true }, routeOnly: true });
+    if (!roamingNow.current) return null;
+    if (!result.ok) return `${result.error.title}. ${result.error.message}`;
+    if (!rideableRoute(result.route)) return RIDE_TOO_LONG;
+    setRoaming(false);
+    setRoamRider(null);
+    beginRide(ridePrefs, false, { route: result.route, points: asked, roam: true });
+    return null;
+  };
+  const roamingNow = useRef(roaming);
+  roamingNow.current = roaming;
+  // Find food's file, loaded once (shared with the Food sheet's search); a load that failed is asked again next time.
+  const ensureFood = useCallback(() => {
+    if (!foodLoad.current) {
+      foodLoad.current = loadFood(foodUrl).then((data) => {
+        if (!data) foodLoad.current = null;
+        return data;
+      });
+    }
+    return foodLoad.current;
+  }, []);
   // Open Reports on the summary, while 311 problems are still to report: closed as Done closes it, then Reports opens
   // with the focus on its heading. Back goes to Plan's Start ride, or Go's Menu (Go's plan is emptied, as Done empties
   // it, without the clear's move of the focus to Where to?).
@@ -4308,7 +4370,10 @@ export function App() {
       ? { label: "Start ride", start: true, busy: false, onPress: startRideChecked }
       : points.length >= 2 && routeNow.unavailable === null
         ? { label: routeNow.label, start: false, busy: false, onPress: pressRoute }
-        : null;
+        : // No destination yet: Roam, a ride with no destination (the owner, 2026-10-22; one control for the feature).
+          points.length === 0 && !isMassRide(preset)
+          ? { label: ROAM_NAME, start: true, busy: false, onPress: startRoam }
+          : null;
   const goBar =
     mode === "go" && !riding && (goBig !== null || can.undo || can.redo || points.length > 0)
       ? { onUndo: can.undo ? undo : null, onRedo: can.redo ? redo : null, big: goBig, onClear: points.length > 0 ? clearPlan : null }
@@ -4488,7 +4553,7 @@ export function App() {
     (goMode || riding || (rideBroadcast && !rideBroadcast.leading)) && rideGroupType && rideGroupRoute ? (rideGroupRoute.geometry.coordinates as LonLat[]) : null;
 
   return (
-    <div className={`app${riding ? " riding" : ""}${goMode && !riding ? " go-mode" : ""}`}>
+    <div className={`app${onBike ? " riding" : ""}${goMode && !onBike ? " go-mode" : ""}`}>
       {/* Past the map, its markers and its controls (up to 150 junction
           markers come before the planner), to the planner (lib/skipLink.ts). */}
       {/* The page's first stop and first in a screen reader's order, hidden until focused: accessibility mode's
@@ -4496,8 +4561,8 @@ export function App() {
       <button type="button" className="access-link" aria-pressed={accessMode} onClick={() => toggleAccessMode(true)}>
         {ACCESS_LABEL}
       </button>
-      {riding ? (
-        // During a ride the planner is hidden: the link goes to Ride mode instead.
+      {onBike ? (
+        // During a ride (or Roam) the planner is hidden: the link goes to Ride mode instead.
         <a className="skip-link" href="#ride-heading" onClick={(event) => skipToPlanner(event, document.getElementById("ride-heading"))}>
           {SKIP_TO_RIDE_TEXT}
         </a>
@@ -4507,7 +4572,7 @@ export function App() {
         </a>
       )}
       {/* Go's bar over the map, first in the reading order as it is at the top of the screen. */}
-      {!riding && goMode && (
+      {!onBike && goMode && (
         <GoTopBar
           mode={mode}
           onMode={changeMode}
@@ -4521,11 +4586,11 @@ export function App() {
         />
       )}
       <MapView
-        points={riding || reviewing ? NO_POINTS : points}
+        points={onBike || reviewing ? NO_POINTS : points}
         loopVias={loopVias}
         openAt={OPEN_AT}
-        pointWarnings={riding || reviewing ? undefined : pointWarnings}
-        route={riding && rideView ? rideView.route : reviewing ? null : shown}
+        pointWarnings={onBike || reviewing ? undefined : pointWarnings}
+        route={riding && rideView ? rideView.route : reviewing || roaming ? null : shown}
         stale={riding ? false : stale || planEdited}
         permitsOn={!riding && permitsShown(permitsOn, mode)}
         // Plan's ghost of the last route; else the standard way through a closure the route goes round, dashed
@@ -4537,8 +4602,8 @@ export function App() {
         when={mapWhen(dials.when ?? null)}
         framePadding={framePadding}
         onStressAvailability={setStress}
-        onMapClick={riding || reviewing ? ignore : place}
-        onMovePoint={riding ? ignore : move}
+        onMapClick={onBike || reviewing ? ignore : place}
+        onMovePoint={onBike ? ignore : move}
         lineEdit={riding || reviewing ? null : lineEdit}
         choices={choices}
         routeColour={routeColour}
@@ -4548,16 +4613,16 @@ export function App() {
         onRemovePoint={riding ? ignore : removeFromMap}
         onSwitchKind={riding ? ignore : switchKind}
         markerReset={markerReset}
-        accuracy={riding ? rideCircle : hereCircle}
-        rider={riding && rideView?.rider ? rideView.rider : null}
+        accuracy={riding ? rideCircle : roaming ? (roamRider ? { centre: roamRider.point, radiusM: roamRider.accuracyM } : null) : hereCircle}
+        rider={riding && rideView?.rider ? rideView.rider : roaming ? roamRider : null}
         nextVehicle={riding ? (rideView?.vehicle ?? null) : null}
         // Go, before a destination: its start, the location found, drawn as the ride's still dot (the owner,
         // 2026-10-17: the location centred, so it is seen). With a route its start pin marks it.
-        youDot={!riding && mode === "go" && points.length === 0 && goStart.kind === "here" ? goStart.point : null}
-        follow={riding && follow}
-        rideLabels={riding}
+        youDot={!onBike && mode === "go" && points.length === 0 && goStart.kind === "here" ? goStart.point : null}
+        follow={onBike && follow}
+        rideLabels={onBike}
         // The owner, 2026-10-20: the map's junction buttons, zoom and credits are only extra swipes for a screen reader in a ride.
-        screenReaderRide={riding && ridePrefs.output === "screen-reader"}
+        screenReaderRide={onBike && ridePrefs.output === "screen-reader"}
         headingUp={headingUp}
         onFollowBroken={() => setFollow(false)}
         junctionFocus={junctionFocus}
@@ -4605,9 +4670,9 @@ export function App() {
         stationEndFromHere={mode === "go" && !riding}
         stationOnFoot={endsOnFoot(preset)}
         stationFrom={walkFrom}
-        onRoadInfo={riding ? ignore : setRoadInfo /* no road panel (and its Add a stop) during a ride */}
+        onRoadInfo={onBike ? ignore : setRoadInfo /* no road panel (and its Add a stop) during a ride or Roam */}
         tools={
-          accessMode && !riding ? (
+          accessMode && !onBike ? (
           <MapTools
             toggleRef={toolsToggleRef}
             onAddPoint={addAtCentre}
@@ -4855,6 +4920,23 @@ export function App() {
           fixed={rideStart.fixed}
         />
       )}
+      {roaming && (
+        <RoamMode
+          getMap={getMap as () => RoamMap | null}
+          prefs={ridePrefs}
+          follow={follow}
+          onFollow={setFollow}
+          headingUp={headingUp}
+          onHeadingUp={setHeadingUp}
+          preset={preset}
+          dials={planDials}
+          water={ensureWater}
+          food={ensureFood}
+          onView={setRoamRider}
+          onDetour={roamDetour}
+          onEnd={endRoam}
+        />
+      )}
       {/* Hidden, not removed, during a ride: the planner keeps its state, and Sign in is out of reach (plan section 7). */}
       <aside
         ref={panelRef}
@@ -4862,7 +4944,7 @@ export function App() {
         tabIndex={-1}
         className={`panel ${panelOpen ? "open" : "closed"}${goMode ? ` go-panel go-${goSheet}` : ""}${reviewing ? " review-panel" : ""}`}
         aria-label="Route planner"
-        hidden={riding}
+        hidden={onBike}
       >
         <header className="panel-header">
           {/* The version under the heading, not in it (lib/appVersion.ts): beside it, a phone's header overflowed. */}
