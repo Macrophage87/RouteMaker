@@ -301,7 +301,7 @@ VIA_MARKS.markAt(initialPlan.points, initialPlan.vias);
 VIA_MARKS.markDrawn(initialPlan.points, initialPlan.drawn);
 
 // Go or Plan (lib/appMode.ts; the owner's choices 1 and 2 of 2026-10-11): the tab's own view, else Plan for a
-// link with a plan in it, else My Go's Open in (the account's copy or this device's), else by screen size.
+// link with a plan in it on a wide screen, else by screen size: Plan on a computer, Go on a phone.
 const START_MY_GO = readStartMyGo();
 /** A Go sheet's way back: to the map and the Go sheet, not a planner it does not show. */
 const GO_CLOSE_LABEL = "Close";
@@ -310,7 +310,7 @@ const GO_EARLY_MAX_KM = 40;
 /** A fresh location this far (about 80 ft) from the last one lists the places near you again from it. */
 const MOVED_M = 25;
 const PLAN_LINK = hasPlanLink(window.location.hash) || initialPlan.points.length > 0;
-const OPENING = openingMode({ tab: readTabMode(), planLink: PLAN_LINK, openIn: START_MY_GO.myGo.openIn, wide: !window.matchMedia(NARROW).matches });
+const OPENING = openingMode({ tab: readTabMode(), planLink: PLAN_LINK, wide: !window.matchMedia(NARROW).matches });
 // Go with nothing linked starts on My Go's ride type (the rider's saved settings, used as they are).
 const GO_START_RIDE = OPENING.mode === "go" && !PLAN_LINK && START_MY_GO.myGo.ride ? START_MY_GO.myGo.ride : null;
 // A spot link (`#at=lon,lat`, a rider suggestion's Discord post): the map opens there.
@@ -807,7 +807,7 @@ export function App() {
     goPending.current = null;
     goAwaiting.current = false;
   };
-  // Leaving Go (the switch, or the account's Open in once read): Plan does not route a destination Go was keeping
+  // Leaving Go (the switch): Plan does not route a destination Go was keeping
   // for a start, and its notice ("To <spot>: finding your location…") goes with it.
   const leaveGo = () => {
     if (goPending.current) setNotice(null);
@@ -1305,8 +1305,8 @@ export function App() {
   }, [announce]);
 
   // My Go (lib/myGo.ts; the owner's choice 2): signed in it is the account's (GET /api/me/go, read once
-  // the page knows it is signed in), and an account's Open in or ride may still move a view that was only
-  // the screen's guess; signed out, the device's. A save goes to the account only once it has been read,
+  // the page knows it is signed in), and an account's ride may still set Go's ride type while the view is
+  // only the screen's guess; signed out, the device's. A save goes to the account only once it has been read,
   // so a Home is never overwritten by a save made before the page knew it.
   const accountMyGoRead = useRef(false);
   const rideTouched = useRef(false);
@@ -1422,14 +1422,10 @@ export function App() {
       saveAccountCopy(account);
       // A Home kept on this device while signed out: offered to the account, never merged silently.
       setHomeAsk(homeOffer(deviceHome(), account.home));
-      if (laterMyGoApplies(OPENING.by, modeSwitched.current)) {
-        const later = openingMode({ tab: null, planLink: false, openIn: account.openIn, wide: !window.matchMedia(NARROW).matches }).mode;
-        setModeState((now) => (now === later ? now : later));
-        if (later !== "go") leaveGo();
-        if (later === "go" && account.ride && !PLAN_LINK && !rideTouched.current && pointsRef.current.length === 0) {
-          setPreset(account.ride);
-          setDials(startDials(account.ride));
-        }
+      // The view stays the screen's; Go still takes the account's ride type if nothing has been touched.
+      if (laterMyGoApplies(OPENING.by, modeSwitched.current) && OPENING.mode === "go" && account.ride && !PLAN_LINK && !rideTouched.current && pointsRef.current.length === 0) {
+        setPreset(account.ride);
+        setDials(startDials(account.ride));
       }
     });
     return () => {
@@ -2725,8 +2721,8 @@ export function App() {
   };
   const sheetNav: SheetNav = { view, back: backToPlanner, backLabel };
 
-  // Go and Plan (lib/appMode.ts): the switch changes the view, keeps the route, and is remembered as My Go's
-  // Open in (the account's signed in, this device's not) and for this tab.
+  // Go and Plan (lib/appMode.ts): the switch changes the view, keeps the route, and is remembered for this tab
+  // only; the next visit opens by screen size (the owner, 2026-10-22).
   const changeMode = (next: AppMode) => {
     if (next === mode) return;
     modeSwitched.current = true;
@@ -2738,9 +2734,8 @@ export function App() {
     setModeState(next);
     if (next !== "go") leaveGo();
     announceExtra(modeSaid(next));
-    // Review is remembered on this device; Go and Plan are My Go's Open in, as before.
+    // Review is remembered on this device.
     writeLastReview(next === "review");
-    if (next !== "review") saveMyGoNow({ ...myGoRef.current, openIn: next }, false);
   };
   // A place shared to RouteMaker (the Share sheet, or a geo: link on desktop): Go's destination (app/sharedLaunch.ts).
   useSharedLaunch((place) => {

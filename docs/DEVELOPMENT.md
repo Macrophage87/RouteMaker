@@ -4771,9 +4771,11 @@ puts it, at most two presses away.
   box, four place chips, the commute ride types, then the route's time, stress bar, one
   alert and Start), and Plan, the full panel. Same state, same link. Which one opens:
   the tab's own (sessionStorage, so a reload stays), else Plan for a link with a plan in
-  it, else My Go's Open in, else a phone (`NARROW`) opens in Go and a wider screen in Plan.
+  it on a wider screen, else a phone (`NARROW`) opens in Go and a wider screen in Plan. My Go's
+  Open in was dropped on 2026-10-22 (the owner: "It should open in plan on a computer and go on
+  a phone"); a saved `open_in` is kept in the data but never read to choose a view.
   The switch (`app/Go.tsx` `ModeSwitch`: `aria-pressed` buttons in a named group, Go and Plan, plus
-  Review for an admin) is in Go's bar over the map and Plan's header; a press is remembered as My Go's Open in.
+  Review for an admin) is in Go's bar over the map and Plan's header; a press is remembered for the tab only.
 - **Go** (`app/Go.tsx`): `GoTopBar` (Menu, the switch, Layers, Locate, and the destination
   with a clear button) is before the map in the page, as it is at the top of the screen.
   `GoSheet` (inside the panel, `peek`/`half`/`full` by its handle) holds `PlaceSearch
@@ -4858,9 +4860,9 @@ puts it, at most two presses away.
   (`lib/pointText.ts` `START_GLYPH`, `END_GLYPH`, hidden; the pins' names stay "Start", "End" and
   "Start and finish"), so A, B, C are only the offered places; stops keep their numbers.
 - **My Go** (`lib/myGo.ts`; `core.models.MyGo`, migration 0019; GET/POST `/api/me/go`):
-  Open in, Go's ride type and, signed in, Home. Signed in it is the account's (saved only
+  Go's ride type and Home (`open_in` stays in the saved shape, unused). Signed in it is the account's (saved only
   after it has been read, so an early save never clears a Home), with a copy on the device
-  (without Home) so the next visit opens in the right view at once; signed out it is the
+  (without Home) so the next visit has the ride type at once; signed out it is the
   device's. The POST needs the CSRF cookie the GET sets, a JSON body and a same-site
   request; Home must be in the coverage box and is rounded to 5 places; the row goes with the
   account and is deleted when the account is marked deleted; `my_go` never ships to the beta
@@ -4880,9 +4882,8 @@ puts it, at most two presses away.
   Suggest, GPX and Settings. Layers holds the switches only, with a Legend button that opens
   the Legend sheet one step in; Suggest says how to suggest from the road panel and opens it
   at the map's center, with DC 311 and an admin's Review; Settings is My Go (Home, one line with
-  Change, and Go's ride type), Riding, Display (High contrast, Accessibility mode, Announcements),
-  a closed More settings fold (Open in, rider and bike weight) and Account, most used first, one
-  row per setting; on a phone it takes the panel's whole height.
+  Change, and Go's ride type), Riding (cues, large text, rider and bike weight), Display (High
+  contrast, Accessibility mode, Announcements) and Account, most used first, one row per setting; on a phone it takes the panel's whole height.
   Plan's map has Food and Water chips (`PlanMapChips`), which open the Find food and Nearest
   sheets. `openOnto`/`backFrom` keep the way back through nested sheets; Back returns the
   focus to what opened the sheet, and a sheet's heading takes it on the way in.

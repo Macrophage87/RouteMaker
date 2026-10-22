@@ -931,9 +931,6 @@ const federalFetched = (p) =>
 {
   const p = await open({ route: S_TRAIL, hash: hashFor("trailmaxxing", 100) });
   await openSheet(p, "Settings");
-  // In the More settings fold since 2026-10-22 (set once): opened first, as a rider does.
-  await p.eval("document.querySelector('#sheet-settings details.settings-more').open = true; true");
-  await sleep(150);
   const change = await axNode(p, ".weight-setting > button");
   check("weight: Change is a button named for what it changes, described by the line", change?.role === "button" && change?.name === "Change rider and bike weight" && change?.description === "Rider and bike weight: not set, defaults used", JSON.stringify(change));
   await p.eval("document.querySelector('.weight-setting > button').focus(); true");
@@ -5016,8 +5013,8 @@ async function goPressMap(p) {
       pins.end?.text === "" && pins.end.rect && pins.end.hidden === "true" && /^End\.( |$)/.test(pins.end.name ?? "") /* the drag hint is the title's alone since 7120fdb7 */, JSON.stringify(pins));
   await p.close();
 }
-/** My Go's Open in picker set to Go, as a rider's pick fires it. */
-const PICK_OPEN_IN_GO = "(() => { const s = document.querySelector('#sheet-settings .open-in select'); s.value = 'go'; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()";
+/** My Go's ride type picker set to Cargo Bike, as a rider's pick fires it. */
+const PICK_GO_RIDE = "(() => { const s = [...document.querySelectorAll('#sheet-settings .my-go select')].find((x) => x.closest('label').querySelector('.setting-name').textContent === \"Go's ride type\"); s.value = 'cargo'; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()";
 {
   // Announcements (Settings > Display): Brief in Go unless chosen; Full is kept on this device.
   const p = await bare();
@@ -5088,42 +5085,41 @@ const PICK_OPEN_IN_GO = "(() => { const s = document.querySelector('#sheet-setti
   await q.close();
 }
 {
-  // My Go signed out: kept on this device.
-  const p = await bare({ width: 1280, height: 900, mobile: false });
+  // My Go signed out: kept on this device. There is no Open in (the owner, 2026-10-22: "It should open in plan on a
+  // computer and go on a phone"): a wide screen opens in Plan even with an old saved open_in of Go.
+  const p = await bare({ width: 1280, height: 900, mobile: false, init: "try { localStorage.setItem('routemaker.my-go', JSON.stringify({ open_in: 'go', ride: '', home: null })); } catch {}" });
+  const opened = await p.eval(modeNow);
   await openSheet(p, "Settings");
-  await p.eval("document.querySelector('#sheet-settings details.settings-more').open = true; true");
-  await sleep(150);
-  const section = await p.eval("(() => { const s = document.querySelector('#sheet-settings .my-go'); return s ? { heading: s.querySelector('h3')?.textContent, options: [...document.querySelectorAll('#sheet-settings .settings-more .open-in select option')].map((o) => o.textContent), status: s.querySelector('.my-go-said')?.getAttribute('role') } : null; })()");
-  const openInAx = await axNode(p, "#sheet-settings .open-in select");
-  await p.eval(PICK_OPEN_IN_GO);
+  const section = await p.eval("(() => { const s = document.querySelector('#sheet-settings .my-go'); return s ? { heading: s.querySelector('h3')?.textContent, status: s.querySelector('.my-go-said')?.getAttribute('role'), openIn: !!document.querySelector('#sheet-settings .open-in'), names: [...document.querySelectorAll('#sheet-settings .setting-name')].map((n) => n.textContent) } : null; })()");
+  await p.eval(PICK_GO_RIDE);
   await sleep(500);
   const saved = await p.eval("({ kept: localStorage.getItem('routemaker.my-go'), said: document.querySelector('.my-go-said')?.textContent })");
-  check("my go: signed out, Open in (By screen size, Go, Plan) is a picker in Settings, described by what By screen size means; a choice is kept on this device and said politely",
-    !!section && /^My Go/.test(section.heading) && JSON.stringify(section.options) === JSON.stringify(["By screen size", "Go", "Plan"]) && openInAx?.name === "Open in" && /^By screen size: a phone opens in Go/.test(openInAx?.description ?? "") && section.status === "status" && /"open_in":"go"/.test(saved.kept ?? "") && saved.said === "My Go saved on this device." && !(p.myGoRequests ?? []).some((r) => r.method === "POST"), JSON.stringify({ section, openInAx, saved }));
+  check("my go: a wide screen opens in Plan even with an old saved Open in of Go, and Settings has no Open in; signed out, Go's ride type is kept on this device and said politely",
+    opened === "Plan" && !!section && /^My Go/.test(section.heading) && !section.openIn && !section.names.includes("Open in") && section.status === "status" && /"ride":"cargo"/.test(saved.kept ?? "") && saved.said === "My Go saved on this device." && !(p.myGoRequests ?? []).some((r) => r.method === "POST"), JSON.stringify({ opened, section, saved }));
   await p.close();
 }
 {
-  // My Go signed in: saved to the Discord account, with the CSRF header; it then opens the app in Go on a wide screen.
+  // My Go signed in: saved to the Discord account, with the CSRF header.
   const p = await bare({ width: 1280, height: 900, mobile: false, suggester: true, init: "document.cookie = 'csrftoken=layout-check-token; path=/';" });
   await openSheet(p, "Settings");
-  await p.eval(PICK_OPEN_IN_GO);
+  await p.eval(PICK_GO_RIDE);
   await p.waitFor("/saved to your account/.test(document.querySelector('.my-go-said')?.textContent ?? '')", 8000);
   const post = (p.myGoRequests ?? []).find((r) => r.method === "POST");
   const csrf = post && Object.entries(post.headers).find(([k]) => k.toLowerCase() === "x-csrftoken")?.[1];
   const homeSearch = await p.eval("!!document.querySelector('#sheet-settings .my-go-home input')");
-  check("my go: signed in, a choice is saved to the account (POST /api/me/go with the CSRF header, open_in go), said politely, and Home can be set there",
-    !!post && post.body?.open_in === "go" && csrf === "layout-check-token" && homeSearch && (await p.eval("document.querySelector('.my-go-said').textContent")) === "My Go saved to your account.", JSON.stringify({ post: post?.body, csrf: csrf !== undefined, homeSearch }));
+  check("my go: signed in, a choice is saved to the account (POST /api/me/go with the CSRF header, ride cargo), said politely, and Home can be set there",
+    !!post && post.body?.ride === "cargo" && csrf === "layout-check-token" && homeSearch && (await p.eval("document.querySelector('.my-go-said').textContent")) === "My Go saved to your account.", JSON.stringify({ post: post?.body, csrf: csrf !== undefined, homeSearch }));
   await p.close();
 }
 {
   // Settings scrolling (Stephen 2026-10-22: "still a lot of scrolling"): a Home set is one line with Change, which opens
-  // the search with the focus in it; Open in and the weight (set once) are behind one closed More settings fold.
+  // the search with the focus in it; Cancel, or leaving Settings, goes back to the line.
   const home = JSON.stringify({ open_in: "", ride: "", home: { lon: -77.04, lat: 38.91, label: "Home" } });
   const p = await bare({ width: 1280, height: 900, mobile: false, init: `try { localStorage.setItem('routemaker.my-go', ${JSON.stringify(home)}); } catch {}` });
   await openSheet(p, "Settings");
-  const read = () => p.eval(`(() => { const s = document.querySelector('#sheet-settings'); const f = s.querySelector('details.settings-more'); const c = s.querySelector('.my-go .home-line button');
+  const read = () => p.eval(`(() => { const s = document.querySelector('#sheet-settings'); const c = s.querySelector('.my-go .home-line button');
     return { line: s.querySelector('.my-go .home-line .home-now')?.textContent, change: c && { name: c.getAttribute('aria-label'), h: Math.round(c.getBoundingClientRect().height) }, search: !!s.querySelector('.my-go-home input'),
-      fold: f && { open: f.open, summary: f.querySelector('summary').textContent, h: Math.round(f.querySelector('summary').getBoundingClientRect().height), holds: ['.open-in select', '.weight-row'].every((q) => !!f.querySelector(q)) && !f.querySelector('.announce-level') },
+      weightInRiding: s.querySelector('.weight-row')?.closest('section')?.querySelector('h3')?.textContent === 'Riding',
       focus: document.activeElement?.tagName }; })()`);
   const before = await read();
   await p.eval("document.querySelector('#sheet-settings .my-go .home-line button').click(); true");
@@ -5139,8 +5135,8 @@ const PICK_OPEN_IN_GO = "(() => { const s = document.querySelector('#sheet-setti
   await sleep(300);
   await openSheet(p, "Settings");
   const reopened = await read();
-  check("settings: a Home set is one line with Change (44 px), which opens the search with the focus in it; Cancel goes back with the focus on Change, and so does leaving Settings; Open in and the weight are behind one closed More settings fold (44 px summary), Announcements stays in Display",
-    before.line === "Home: Home" && before.change?.name === "Change Home" && before.change.h >= 44 && !before.search && before.fold?.open === false && before.fold.summary === "More settings" && before.fold.h >= 44 && before.fold.holds &&
+  check("settings: a Home set is one line with Change (44 px), which opens the search with the focus in it; Cancel goes back with the focus on Change, and so does leaving Settings; the weight is the last row of Riding",
+    before.line === "Home: Home" && before.change?.name === "Change Home" && before.change.h >= 44 && !before.search && before.weightInRiding &&
       after.search && after.focus === "INPUT" && !after.change && !cancelled.search && cancelled.onChange && !reopened.search && !!reopened.change, JSON.stringify({ before, after, cancelled, reopened }));
   await p.close();
 }
@@ -5242,7 +5238,7 @@ const failed = results.filter((r) => !r.ok);
 // A lettered pin's card (no auto route, 2026-10-19) adds two: the card a tap opens, and the card the B key opens.
 // The map's info panel adds two at 1280 px: the i named for it, and what it opens.
 // Plan starting as a loop (2026-10-20) adds one: the loop box unticked and ticked again.
-// Settings scrolling (2026-10-22) adds one: Home's one line with Change, and the More settings fold.
+// Settings scrolling (2026-10-22) adds one: Home's one line with Change, Cancel, and leaving Settings.
 const EXPECTED = 683;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);

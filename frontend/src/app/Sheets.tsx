@@ -56,7 +56,7 @@ import { InstallOffer } from "../InstallableApp.tsx";
 import type { Split, StoredWeight } from "../lib/weight.ts";
 import { WeightSetting } from "../lib/weightDialog.ts";
 import { Report311Log } from "../Report311Log.tsx";
-import { OPEN_IN_HINT, OPEN_IN_LABEL, type AppMode, type OpenIn } from "../lib/appMode.ts";
+import type { AppMode } from "../lib/appMode.ts";
 import type { Home, MyGo } from "../lib/myGo.ts";
 import { homeFromPlace, homeName } from "../lib/homeSet.ts";
 import { HomeSetter } from "./Go.tsx";
@@ -318,24 +318,9 @@ export interface MyGoControls {
   searchBias: () => LonLat | undefined;
 }
 
-/** "Open in": By screen size, Go or Plan, as a picker, with what "By screen size" means behind an (i). */
-function OpenInChoice({ value, onChange, idBase, hint }: { value: OpenIn; onChange: (next: OpenIn) => void; idBase: string; hint?: string }) {
-  return (
-    <SettingRow infoId={`${idBase}-open-in-info`} about="open in" info={hint} className="open-in">
-      <SettingSelect
-        label="Open in"
-        value={value}
-        options={(["", "go", "plan"] as OpenIn[]).map((option) => [option, OPEN_IN_LABEL[option]] as const)}
-        onChange={onChange}
-        describedBy={hint ? `${idBase}-open-in-info` : undefined}
-      />
-    </SettingRow>
-  );
-}
-
 /**
- * My Go (the owner's choice 2): the Home that Go's Home chip rides to and Go's ride type (where the app opens,
- * also My Go's, is under More settings), saved to the account when signed in and on this device when not. First
+ * My Go (the owner's choice 2): the Home that Go's Home chip rides to and Go's ride type, saved to the account
+ * when signed in and on this device when not. First
  * in Settings: Home is what a rider comes here to set (Settings tidy, Stephen 2026-10-19: "still very clunky").
  */
 function MyGoSection({ controls, open }: { controls: MyGoControls; open: boolean }) {
@@ -527,6 +512,13 @@ export function SettingsSheet(props: SettingsSheetProps) {
             </span>
           </button>
         </SettingRow>
+        {/* Rider and bike weight, for how hard hills feel (the owner, 2026-10-18: "probably belongs in settings"); set once, so last. */}
+        <div className="setting-row weight-row">
+          <div className="setting-line">
+            <WeightSetting {...props.weight} />
+            <span className="info-spacer" aria-hidden="true" />
+          </div>
+        </div>
       </section>
       <section aria-labelledby="settings-display-heading" className="settings-group">
         <h3 id="settings-display-heading">Display</h3>
@@ -576,21 +568,6 @@ export function SettingsSheet(props: SettingsSheetProps) {
           />
         </SettingRow>
       </section>
-      {/* Set once and seldom changed (Settings scrolling, Stephen 2026-10-22: "still a lot of scrolling"): behind one
-          fold, so the sheet's first screen is the settings a rider changes. */}
-      <details className="fold settings-more">
-        <summary>More settings</summary>
-        <div className="fold-body">
-          <OpenInChoice value={myGo.myGo.openIn} onChange={(openIn) => myGo.save({ ...myGo.myGo, openIn })} idBase="my-go" hint={OPEN_IN_HINT} />
-          {/* Rider and bike weight, for how hard hills feel (the owner, 2026-10-18: "probably belongs in settings"). */}
-          <div className="setting-row weight-row">
-            <div className="setting-line">
-              <WeightSetting {...props.weight} />
-              <span className="info-spacer" aria-hidden="true" />
-            </div>
-          </div>
-        </div>
-      </details>
       {/* The installable app (WEB-NAV-plan.md section 8, P4), under its own heading when the browser offers it. The
           routes saved and kept for offline are in Save and load (YourRoutes.tsx; the owner, 2026-10-18). */}
       <InstallOffer idBase="settings-install" onSay={announce} />

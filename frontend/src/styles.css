@@ -7595,16 +7595,6 @@ details.fold > summary .icon {
   min-height: 44px;
   margin-top: 8px;
 }
-/* More settings: one fold, its summary a full 44 px target. */
-#sheet-settings details.settings-more {
-  margin: 4px 0 8px;
-}
-#sheet-settings details.settings-more > summary {
-  min-height: 44px;
-}
-#sheet-settings details.settings-more > .fold-body {
-  padding: 0 8px 8px 12px;
-}
 #sheet-settings .about-links {
   display: flex;
   flex-wrap: wrap;

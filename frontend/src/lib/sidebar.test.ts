@@ -647,7 +647,7 @@ test("the bottom bar is Plan, Layers, Reports, Save & load and Settings: real bu
   assert.deepEqual(BAR_ITEMS.map((i) => i.opens), ["planner", "layers", "suggest", "gpx", "settings"]);
   assert.equal(BAR_ITEMS[0].id, "plan", "Plan is first (OWNER-DECISIONS 392, 393)");
   assert.ok(BAR_ITEMS.every((i) => i.description.length > 0));
-  assert.equal(BAR_ITEMS[4].description, "Opens the settings: My Go (Home, ride type, Open in), riding, display and your account.");
+  assert.equal(BAR_ITEMS[4].description, "Opens the settings: My Go (Home, ride type), riding, display and your account.");
   assert.equal(BAR_NAME, "Panel pages", "a landmark name that says what the bar is (the a11y review's N3)");
   assert.match(sidebar, /<nav aria-label=\{BAR_NAME\} className="bottom-bar">/);
   assert.match(sidebar, /<Fragment key=\{item\.id\}>\s*<button\s+id=\{`bar-\$\{item\.id\}`\}\s+type="button"/);
