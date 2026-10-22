@@ -4493,8 +4493,9 @@ const modeNow = "(() => [...document.querySelectorAll('.mode-switch')].filter((g
       chips: names('.go-places .place-chip'), rides: names('.go-sheet .ride-chips button'), search: !!document.querySelector('.go-sheet input[type=search], .go-sheet input[role=combobox], .go-sheet input'),
       small: [...document.querySelectorAll('.go-top button, .go-sheet button, .go-sheet input')].filter((e) => e.getClientRects().length && (e.getBoundingClientRect().height < 44 || e.getBoundingClientRect().width < 44)).map((e) => e.className + ':' + e.textContent.trim()),
       scroll: document.documentElement.scrollWidth > innerWidth }; })()`);
-  check("go: a phone with no link opens in Go: Menu, the Go/Plan switch (Go pressed), Layers and Locate over the map, and no bottom bar",
-    go.mode === "Go" && go.top && !go.bar && JSON.stringify(go.topButtons) === JSON.stringify(["Menu", "Go", "Plan", "Layers", "Locate"]), JSON.stringify(go));
+  // With no destination, the bar under them holds Roam (a ride with no destination; the owner, 2026-10-22).
+  check("go: a phone with no link opens in Go: Menu, the Go/Plan switch (Go pressed), Layers and Locate over the map, Roam under them, and no bottom bar",
+    go.mode === "Go" && go.top && !go.bar && JSON.stringify(go.topButtons) === JSON.stringify(["Menu", "Go", "Plan", "Layers", "Locate", "Roam"]), JSON.stringify(go));
   // The owner, 2026-10-12: the rider's own ride type first (My Go; Default until set), then the two transit types.
   // More, with Repair and Sights behind it, follow the four since 2b38bf1c ("Go: Repair and Sights behind More"),
   // and Metro first behind it since Stephen 2026-10-19 ("Metro stops should be on the list in more").

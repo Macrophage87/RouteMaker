@@ -672,6 +672,8 @@ test("privacy: the location state reaches only the note, the hint and the circle
     /const lastHere = \(\): LonLat \| null => here\?\.point \?\? \(goStartRef\.current\.kind === "here" \? goStartRef\.current\.point : null\);/,
     // A Mass Ride or Group Ride link (v0.7.0): the others on the route, shared only after the rider says yes there.
     /^\s*here=\{rideView\?\.rider\?\.point \?\? \(here \? here\.point : null\)\}$/,
+    // A broadcast from Roam (2026-10-22): the same, the roaming rider's fix before Go's.
+    /^\s*here=\{rideView\?\.rider\?\.point \?\? roamRider\?\.point \?\? \(here \? here\.point : null\)\}$/,
   ];
   for (const rule of allowed) assert.ok(lines.some((line) => rule.test(line)), `still used: ${rule.source}`);
   for (const line of lines) assert.ok(allowed.some((rule) => rule.test(line)), `unexpected use: ${line.trim()}`);
@@ -680,7 +682,7 @@ test("privacy: the location state reaches only the note, the hint and the circle
     /const linkNote =|const note = linkNote;|linkNote \? "link-note"|\{linkNote && \(|\{linkNote\}|isPlainClick\(e\) && rememberPlanForSignIn\(tabSession\(\), window\.location\.hash, linkNote !== ""\)|^\s*routedLoop, copyLink, linkNote, shareImage|const \{ copyLink, linkNote, shareImage,|linkNote: string;|const \{ save, canShare, ready, shareRoute, shareKeep, onShareKeep, shareSaid, linkNote \} = props;|linkNote \? "share-link-note"|const note = linkNote \? " share-link-note" : "";|\{canShare && ready && linkNote && \(|linkNote=\{linkNote\}/;
   for (const line of app.split("\n").filter((l) => /\blinkNote\b/.test(l))) assert.match(line, noteUse, line.trim());
   // The circle round the located point goes to the map's accuracy prop and nowhere else.
-  const circleUse = /const hereCircle =|accuracy=\{riding \? rideCircle : hereCircle\}/;
+  const circleUse = /const hereCircle =|accuracy=\{riding \? rideCircle : roaming \? \(roamRider \? \{ centre: roamRider\.point, radiusM: roamRider\.accuracyM \} : null\) : hereCircle\}/;
   for (const line of app.split("\n").filter((l) => /\bhereCircle\b/.test(l))) assert.match(line, circleUse, line.trim());
   assert.doesNotMatch(app, /downloadGpx\([^)]*(here|fromHere|linkNote)/);
   assert.doesNotMatch(app, /(encodePlan|linkToCopy)\([^)]*(here|fromHere|linkNote)/);

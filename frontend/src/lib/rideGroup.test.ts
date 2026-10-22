@@ -10,6 +10,9 @@ import {
   ageWords,
   alertRefusal,
   alertText,
+  awayWords,
+  roamRideId,
+  broadcastRideId as broadcastIdForRoamTest,
   consentFor,
   countText,
   dotName,
@@ -490,4 +493,29 @@ test("review: a role change posts as soon as the server takes a position, with t
   }) as unknown as typeof fetch;
   await sendPosition("https://x.test", "f".repeat(64), kept.token, [-77, 38.9], consentFor("r9", 2, store)!.role, fake);
   assert.equal(bodies[0].role, "corker");
+});
+
+test("a broadcast from Roam (no route): straight-line words from you, its own ride id", async () => {
+  const me: LonLat = [-77.04, 38.91];
+  const near: LonLat = [-77.0401, 38.9101];
+  const far: LonLat = [-77.04, 38.92];
+  assert.equal(awayWords(me, near), "beside you");
+  assert.match(awayWords(me, far) ?? "", /^0\.\d mi \(\d\.\d km\) away$/);
+  assert.equal(awayWords(null, far), null);
+  assert.equal(dotName("participant", 0, null, true, awayWords(me, far)), `${dotName("participant", 0, null, true, null)}, ${awayWords(me, far)}`);
+  assert.equal(dotName("participant", 0, null, false, null), "Participant");
+  const alert = { id: "a", kind: "lost", label: "Lost", text: "", lon: far[0], lat: far[1], age_s: 0, count: 1, mine: false, call_911: false };
+  assert.match(alertText(alert, [], null, 0, me), /^Lost, 0\.\d mi \(\d\.\d km\) away, /);
+  // Without your position, no place words at all.
+  assert.equal(alertText(alert, [], null, 0, null), "Lost, just now.");
+  const dots = [
+    { lon: far[0], lat: far[1], age_s: 5, leader: true, role: "participant" as const, freshness: "live" as const, alongM: 0, bearing: 0, pulse: false },
+    { lon: near[0], lat: near[1], age_s: 5, role: "participant" as const, freshness: "live" as const, alongM: 0, bearing: 0, pulse: false },
+  ];
+  const said = ridersSaid(dots, null, { here: me });
+  assert.match(said, /^2 riders\. .*away, seen .*\. Nearest rider beside you, seen /);
+  // Not the id of a shared line's broadcast with the same random id.
+  const id = "0123456789abcdef0123456789abcdef";
+  assert.notEqual(await roamRideId(id), await broadcastIdForRoamTest(id));
+  assert.match(await roamRideId(id), /^[0-9a-f]{64}$/);
 });
