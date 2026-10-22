@@ -135,13 +135,15 @@ case "$url" in s3://?*/?*) ;; *) die "RUN_URL must be s3://<bucket>/.../<run>, n
 run=${url##*/}
 [[ "$run" =~ ^[a-z0-9][a-z0-9-]{0,62}$ ]] || die "the run name '$run' must be lowercase letters, digits and hyphens"
 [[ "$url" =~ ^s3://[a-z0-9.-]+/[A-Za-z0-9._/-]+$ ]] || die "RUN_URL has a character it should not: $url"
+[ -z "$ondemand_instance" ] || [[ "$ondemand_instance" =~ ^i-[0-9a-f]{8,17}$ ]] ||
+	die "--on-demand-instance-id must look like i-0123456789abcdef0, not $ondemand_instance"
+[ -z "$ondemand_instance" ] || [ "$ondemand_instance" != "$instance" ] ||
+	die "the on-demand box and the spot box are the same instance, $instance"
 case "$box_kind" in
 	spot) [ -n "$instance" ] || die "no box: give --instance-id (or CLOUD_INSTANCE_ID)" ;;
 	on-demand)
 		[ -n "$ondemand_instance" ] ||
 			die "no on-demand box: give --on-demand-instance-id (or CLOUD_ONDEMAND_INSTANCE_ID); OPERATIONS.md, \"The launcher\", says how to make one"
-		[[ "$ondemand_instance" =~ ^i-[0-9a-f]{8,17}$ ]] ||
-			die "--on-demand-instance-id must look like i-0123456789abcdef0, not $ondemand_instance"
 		instance=$ondemand_instance ;;
 	*) die "--box is spot or on-demand, not $box_kind" ;;
 esac
@@ -223,7 +225,7 @@ resume() {
 # On the spot box, where else the run can go when spot room is short.
 more_room() {
 	[ "$box_kind" = spot ] && [ -n "$ondemand_instance" ] || return 0
-	echo ". If spot room stays short, the on-demand box takes the run (it starts the rebuild over there; its inputs are sent already): $(resume --box on-demand)"
+	echo ". If spot room stays short, the on-demand box takes the run (it starts the rebuild over there; its inputs are sent already). Stop the spot box $instance first, and any loop that resumes it, so only one box works on the run: $(resume --box on-demand)"
 }
 box_state() { aws_box ec2 describe-instances --instance-ids "$instance" \
 	--query 'Reservations[0].Instances[0].State.Name' --output text; }
@@ -348,7 +350,7 @@ wait_for() { # what, seconds, test command...
 	local what=$1 limit=$2 waited=0
 	shift 2
 	until "$@"; do
-		[ "$waited" -lt "$limit" ] || fail "$what after $((limit / 60)) minutes; giving up. Then: $(resume)"
+		[ "$waited" -lt "$limit" ] || fail "$what after $((limit / 60)) minutes; giving up. Then: $(resume)$(more_room)"
 		sleep "$START_POLL_S"
 		waited=$((waited + START_POLL_S))
 	done
