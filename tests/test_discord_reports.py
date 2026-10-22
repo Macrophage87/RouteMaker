@@ -117,23 +117,23 @@ class FakeDiscord:
 
 
 @pytest.fixture
-def settings(tmp_path: Path) -> Path:
+def bot_dir(tmp_path: Path) -> Path:
     (tmp_path / "bot-token").write_text("secret-token\n")
     (tmp_path / "bot-token").chmod(0o600)
     (tmp_path / "forums").write_text(f"# bug reports\n{BUGS}\n")
     return tmp_path
 
 
-def run(settings: Path, fake: FakeDiscord, *args: str) -> int:
-    return mod.main(["--dir", str(settings), *args], api=fake)
+def run(bot_dir: Path, fake: FakeDiscord, *args: str) -> int:
+    return mod.main(["--dir", str(bot_dir), *args], api=fake)
 
 
-def test_merged_replies_with_the_version_and_sets_the_status_tag(settings, capsys) -> None:
+def test_merged_replies_with_the_version_and_sets_the_status_tag(bot_dir, capsys) -> None:
     fake = FakeDiscord()
     post = fake.add("Crash on Plan", ["1", "3"], [(TESTER, "It crashes")])
     assert (
         run(
-            settings,
+            bot_dir,
             fake,
             "merged",
             f"https://discord.com/channels/{GUILD}/{post}",
@@ -148,7 +148,7 @@ def test_merged_replies_with_the_version_and_sets_the_status_tag(settings, capsy
     assert sent["allowed_mentions"] == {"parse": []}
 
 
-def test_live_tells_only_posts_whose_change_has_shipped(settings) -> None:
+def test_live_tells_only_posts_whose_change_has_shipped(bot_dir) -> None:
     fake = FakeDiscord()
     shipped = fake.add(
         "A",
@@ -170,7 +170,7 @@ def test_live_tells_only_posts_whose_change_has_shipped(settings) -> None:
     impostor = fake.add(
         "E", ["2"], [(TESTER, "This change is in v0.11.0, coming in the next beta release.")]
     )
-    assert run(settings, fake, "live", "v0.11.0") == 0
+    assert run(bot_dir, fake, "live", "v0.11.0") == 0
     told = dict(fake.posted())
     assert set(told) == {shipped, earlier}
     assert told[shipped] == "v0.11.0 is live on beta. Give it a try and let us know how it goes."
@@ -180,19 +180,19 @@ def test_live_tells_only_posts_whose_change_has_shipped(settings) -> None:
         assert post not in told
     # A second pass finds nothing left to tell.
     fake.calls.clear()
-    assert run(settings, fake, "live", "v0.11.0") == 0
+    assert run(bot_dir, fake, "live", "v0.11.0") == 0
     assert fake.posted() == []
 
 
-def test_dry_run_posts_nothing(settings, capsys) -> None:
+def test_dry_run_posts_nothing(bot_dir, capsys) -> None:
     fake = FakeDiscord()
     fake.add("A", ["2"], [(BOT, "This change is in v0.11.0, coming in the next beta release.")])
-    assert run(settings, fake, "live", "v0.11.0", "--dry-run") == 0
+    assert run(bot_dir, fake, "live", "v0.11.0", "--dry-run") == 0
     assert not [c for c in fake.calls if c[0] != "GET"]
     assert "would post" in capsys.readouterr().out
 
 
-def test_a_locked_post_is_skipped_so_it_cannot_fail_every_pass(settings) -> None:
+def test_a_locked_post_is_skipped_so_it_cannot_fail_every_pass(bot_dir) -> None:
     fake = FakeDiscord()
     fake.add(
         "A",
@@ -203,11 +203,11 @@ def test_a_locked_post_is_skipped_so_it_cannot_fail_every_pass(settings) -> None
     ok = fake.add(
         "B", ["2"], [(BOT, "This change is in v0.11.0, coming in the next beta release.")]
     )
-    assert run(settings, fake, "live", "v0.11.0") == 0
+    assert run(bot_dir, fake, "live", "v0.11.0") == 0
     assert [p for p, _ in fake.posted()] == [ok]
 
 
-def test_fetch_writes_posts_without_tester_names(settings, tmp_path) -> None:
+def test_fetch_writes_posts_without_tester_names(bot_dir, tmp_path) -> None:
     fake = FakeDiscord()
     fake.add(
         "Crash on Plan",
@@ -215,31 +215,31 @@ def test_fetch_writes_posts_without_tester_names(settings, tmp_path) -> None:
         [(TESTER, "It crashes"), (OWNER, "Thanks"), (BOT, "This change is in v0.11.0")],
     )
     out = tmp_path / "reports.md"
-    assert run(settings, fake, "fetch", "--out", str(out)) == 0
+    assert run(bot_dir, fake, "fetch", "--out", str(out)) == 0
     text = out.read_text()
     assert "## #bug-reports: Crash on Plan" in text and "tags: Phone app" in text
     assert "**tester**" in text and "**owner**" in text and "**bot**" in text
     assert TESTER not in text.replace(snowflake(1), "")
 
 
-def test_settings_are_checked(settings, capsys) -> None:
-    (settings / "bot-token").chmod(0o644)
-    assert run(settings, FakeDiscord(), "check") == 2
+def test_settings_are_checked(bot_dir, capsys) -> None:
+    (bot_dir / "bot-token").chmod(0o644)
+    assert run(bot_dir, FakeDiscord(), "check") == 2
     assert "chmod 600" in capsys.readouterr().err
-    (settings / "bot-token").chmod(0o600)
-    (settings / "forums").write_text("not-an-id\n")
-    assert run(settings, FakeDiscord(), "check") == 2
+    (bot_dir / "bot-token").chmod(0o600)
+    (bot_dir / "forums").write_text("not-an-id\n")
+    assert run(bot_dir, FakeDiscord(), "check") == 2
 
 
-def test_check_names_missing_status_tags(settings, capsys, monkeypatch) -> None:
+def test_check_names_missing_status_tags(bot_dir, capsys, monkeypatch) -> None:
     monkeypatch.setattr(mod, "STATUS_TAGS", ("In next release", "Live on beta", "Shipped"))
-    assert run(settings, FakeDiscord(), "check") == 1
+    assert run(bot_dir, FakeDiscord(), "check") == 1
     assert "add the tags Shipped" in capsys.readouterr().out
 
 
 @pytest.mark.parametrize("bad", ["0.11.0", "v0.11", "latest"])
-def test_versions_must_be_tags(settings, bad) -> None:
-    assert run(settings, FakeDiscord(), "live", bad) == 2
+def test_versions_must_be_tags(bot_dir, bad) -> None:
+    assert run(bot_dir, FakeDiscord(), "live", bad) == 2
 
 
 def test_post_links_and_ids() -> None:
@@ -253,25 +253,25 @@ def test_post_links_and_ids() -> None:
 NEXT = "This change is in v0.11.0, coming in the next beta release."
 
 
-def test_a_failed_tag_change_posts_nothing_so_a_retry_cannot_repeat_it(settings) -> None:
+def test_a_failed_tag_change_posts_nothing_so_a_retry_cannot_repeat_it(bot_dir) -> None:
     fake = FakeDiscord()
     post = fake.add("A", ["2"], [(BOT, NEXT)])
     fake.fail_patch = True  # e.g. the bot lacks Manage Threads
     for _ in range(3):  # the release agent retries on each pass
-        assert run(settings, fake, "live", "v0.11.0") == 1
+        assert run(bot_dir, fake, "live", "v0.11.0") == 1
     assert fake.posted() == []
     fake.fail_patch = False
-    assert run(settings, fake, "live", "v0.11.0") == 0
-    assert run(settings, fake, "live", "v0.11.0") == 0
+    assert run(bot_dir, fake, "live", "v0.11.0") == 0
+    assert run(bot_dir, fake, "live", "v0.11.0") == 0
     assert [p for p, _ in fake.posted()] == [post]
 
 
-def test_archived_posts_and_long_posts_are_read_across_pages(settings) -> None:
+def test_archived_posts_and_long_posts_are_read_across_pages(bot_dir) -> None:
     fake = FakeDiscord()
     fake.page = 2
     archived = [fake.add(f"old {i}", ["2"], [(BOT, NEXT)], archived=True) for i in range(5)]
     long = fake.add("long", ["2"], [(BOT, NEXT)] + [(TESTER, f"reply {i}") for i in range(250)])
-    assert run(settings, fake, "live", "v0.11.0") == 0
+    assert run(bot_dir, fake, "live", "v0.11.0") == 0
     assert sorted(p for p, _ in fake.posted()) == sorted([*archived, long])
 
 
