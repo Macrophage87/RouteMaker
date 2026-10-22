@@ -147,6 +147,8 @@ def fake(tmp_path):
         "CLOUD_BOX_REGION",
         "CLOUD_BUCKET_REGION",
         "CLOUD_LAUNCH_TIMEOUT_S",
+        "CLOUD_BOX",
+        "CLOUD_ONDEMAND_INSTANCE_ID",
     ):
         env.pop(key, None)
 
@@ -785,3 +787,86 @@ def test_the_launcher_parses_and_shellcheck_is_clean_when_available() -> None:
             ["shellcheck", "--severity=warning", str(LAUNCH)], capture_output=True, text=True
         )
         assert done.returncode == 0, done.stdout
+
+
+ONDEMAND = "i-0aaaaaaaaaaaaaaaa"
+
+
+def test_box_on_demand_runs_on_the_on_demand_box(fake) -> None:
+    done = fake.run(URL, "--box", "on-demand", CLOUD_ONDEMAND_INSTANCE_ID=ONDEMAND)
+
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert f"the on-demand box {ONDEMAND}" in done.stdout
+    assert fake.called("start-instances --instance-ids " + ONDEMAND)
+    assert fake.called("send-command --instance-ids " + ONDEMAND)
+    assert fake.called("stop-instances --instance-ids " + ONDEMAND)
+    assert not any(INSTANCE in line for line in fake.calls()), "the spot box is not touched"
+
+
+def test_box_on_demand_with_no_on_demand_box_is_refused_before_anything(fake) -> None:
+    done = fake.run(URL, "--box", "on-demand")
+
+    assert done.returncode == 2
+    assert "no on-demand box" in done.stderr
+    assert fake.calls() == []
+
+
+def test_box_takes_only_spot_or_on_demand(fake) -> None:
+    done = fake.run(URL, "--box", "ondemand", "--on-demand-instance-id", ONDEMAND)
+
+    assert done.returncode == 2
+    assert "--box is spot or on-demand" in done.stderr
+    assert fake.calls() == []
+
+
+def test_a_spot_box_that_stops_offers_the_on_demand_box(fake) -> None:
+    (fake.dir / "states").write_text("stopped\nstopped\nrunning\nrunning\nstopped\n")
+    (fake.dir / "result_after").write_text("99")
+
+    done = fake.run(URL, "--on-demand-instance-id", ONDEMAND)
+
+    assert done.returncode == 1
+    assert "or a spot reclaim" in done.stderr
+    assert (
+        f"scripts/cloud/launch.sh --no-send --on-demand-instance-id {ONDEMAND} --box on-demand {URL}"
+        in done.stderr
+    )
+
+
+def test_an_on_demand_box_that_stops_keeps_its_box_in_the_resume_hint(fake) -> None:
+    (fake.dir / "states").write_text("stopped\nstopped\nrunning\nrunning\nstopped\n")
+    (fake.dir / "result_after").write_text("99")
+
+    done = fake.run(URL, "--box", "on-demand", "--on-demand-instance-id", ONDEMAND)
+
+    assert done.returncode == 1
+    assert "spot reclaim" not in done.stderr and "on-demand box takes the run" not in done.stderr
+    assert (
+        f"scripts/cloud/launch.sh --no-send --box on-demand --on-demand-instance-id {ONDEMAND} {URL}"
+        in done.stderr
+    )
+
+
+def test_cloud_box_from_the_environment_picks_the_on_demand_box(fake) -> None:
+    done = fake.run(URL, CLOUD_BOX="on-demand", CLOUD_ONDEMAND_INSTANCE_ID=ONDEMAND)
+
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert fake.called("start-instances --instance-ids " + ONDEMAND)
+
+
+@pytest.mark.parametrize("ondemand", ["i-bad", INSTANCE])
+def test_a_wrong_on_demand_box_is_refused_before_anything(fake, ondemand) -> None:
+    done = fake.run(URL, "--on-demand-instance-id", ondemand)
+
+    assert done.returncode == 2
+    assert fake.calls() == []
+
+
+def test_a_spot_box_that_cannot_start_offers_the_on_demand_box(fake) -> None:
+    (fake.dir / "start_fails").touch()
+
+    done = fake.run(URL, "--on-demand-instance-id", ONDEMAND)
+
+    assert done.returncode == 1
+    assert "no spot room" in done.stderr
+    assert "--box on-demand" in done.stderr and "Stop the spot box" in done.stderr
