@@ -7024,7 +7024,8 @@ fallback yet; this host stays the fallback, and its weekly rebuild is unchanged.
   root volume, a security group with **no inbound rules** (the shell is Session Manager),
   IMDSv2 required, and spot with request type **Persistent** and interruption behaviour
   **Stop** (AWS refuses Stop with the default one-time request). Shutdown behaviour
-  **Stop**, so `box-rebuild.sh`'s power-off stops it. Any region: the launcher takes
+  **Stop**, so `box-rebuild.sh`'s power-off stops it. Optionally a second, on-demand box
+  from the same template ("Two boxes: spot and on-demand", below). Any region: the launcher takes
   the box's (`us-east-1` by default) and the bucket's (`us-west-2` by default) apart, and
   the box reaches the bucket across regions. That costs money: S3 traffic between two
   regions is billed per GB, both ways (the inputs down to the box, the graphs and the
@@ -7277,7 +7278,8 @@ Once, put the box and the bucket where the launcher finds them, e.g. in `~/.bash
 are this deployment's, so never in the repository):
 
 ```sh
-export CLOUD_INSTANCE_ID=i-...        # the box
+export CLOUD_INSTANCE_ID=i-...        # the box (the spot one)
+export CLOUD_ONDEMAND_INSTANCE_ID=i-...  # only with an on-demand box, below
 export CLOUD_BUCKET=<bucket>
 export CLOUD_PROFILE=<name>           # if you sign in with --profile
 # CLOUD_BOX_REGION [us-east-1], CLOUD_BUCKET_REGION [us-west-2],
@@ -7367,6 +7369,30 @@ to you). **That this prevents the restart is not verified**: after the first
 reclaim, look in the console (EC2, Instances) an hour or so later and stop the box if it
 is running; the budget alarm is the backstop.
 
+**Two boxes: spot and on-demand.** Spot is cheap but can be short: on 2026-10-22 the
+m7i.2xlarge spot box in us-east-1 was reclaimed five times in a morning, the last ones
+minutes after each restart. An on-demand box costs more an hour but is never reclaimed.
+Both are standing boxes, started and stopped the same way; `--box on-demand` (or
+`CLOUD_BOX=on-demand`) runs on the on-demand one, and everything else is the same. Made
+once, in the console:
+
+1. EC2, Launch Templates, the box's template, Actions, **Modify template (Create new
+   version)**, described "on-demand": under Advanced details, Purchasing option **Don't
+   include in launch template** (no market setting means on-demand; "Discard Spot instance
+   options" if the spot settings stay shown), Shutdown behaviour still
+   **Stop**. Do not make it the default version; the default stays spot. ("Launch instance
+   from template" greys the purchasing option out: the template decides it.)
+2. Actions, **Launch instance from template**, Source template version the on-demand one.
+   When it is up, stop it (never terminate: its disk keeps a run's state), and put its id
+   in `CLOUD_ONDEMAND_INSTANCE_ID`.
+3. Add its ARN to the launcher's `ec2:StartInstances`/`ec2:StopInstances` and
+   `ssm:SendCommand` resources (the permissions below take a list).
+
+A run on the spot box that stops with no result names the same run on the on-demand box
+too, when one is set. It starts the rebuild over there: the inputs are in the bucket
+already, but the progress is on the spot box's disk. Only one box at a time on a run:
+stop the other (and any loop that resumes it) first.
+
 **The sign-in can run out during a run.** The wait is hours, longer than an `aws login`
 session may last. If a check fails while it waits, the launcher says so and keeps
 waiting; run `aws login --remote` again in another window and it carries on. The box does
@@ -7386,10 +7412,12 @@ encrypted with your own KMS key, starting it also needs `kms:CreateGrant` on tha
   {"Effect": "Allow", "Action": ["signin:AuthorizeOAuth2Access", "signin:CreateOAuth2Token"],
    "Resource": "*"},
   {"Effect": "Allow", "Action": ["ec2:StartInstances", "ec2:StopInstances"],
-   "Resource": "arn:aws:ec2:us-east-1:<account>:instance/<instance-id>"},
+   "Resource": ["arn:aws:ec2:us-east-1:<account>:instance/<instance-id>",
+                "arn:aws:ec2:us-east-1:<account>:instance/<on-demand-instance-id>"]},
   {"Effect": "Allow", "Action": "ec2:DescribeInstances", "Resource": "*"},
   {"Effect": "Allow", "Action": "ssm:SendCommand",
    "Resource": ["arn:aws:ec2:us-east-1:<account>:instance/<instance-id>",
+                "arn:aws:ec2:us-east-1:<account>:instance/<on-demand-instance-id>",
                 "arn:aws:ssm:us-east-1::document/AWS-RunShellScript"]},
   {"Effect": "Allow", "Action": ["ssm:GetCommandInvocation",
                                  "ssm:DescribeInstanceInformation"], "Resource": "*"},
