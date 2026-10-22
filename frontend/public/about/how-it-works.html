@@ -281,12 +281,16 @@ steps for roads between two levels.</p>
 <a href="/about/stress.html#rating">how a road gets its rating</a>,
 <a href="/about/stress.html#formula">the formula in detail</a> and
 <a href="/about/stress.html#special">special cases</a>.</p>
+<p>From the next map update, the map also marks the busiest bike corridors with a soft cyan band,
+modelled from a year of Capital Bikeshare trips<sup class="cite"><a href="#ref-3" aria-label="source 3">[3]</a></sup>, plus the region's well-known routes. The band
+never changes a rating or a route. More: <a href="/about/stress.html#popular">popular corridors</a>.</p>
 
 </div></details>
 <h2 id="which-rating">Which rating wins</h2>
 <p>A road's level comes from the first of these that rates it: community corrections, approved by hand;
 a local agency (Montgomery County or the District); a state agency (Maryland's State Highway
-Administration); then RouteMaker's own formula. Every place publishes different data, so the evidence
+Administration); then RouteMaker's own formula. From the next map update, DDOT's 2020 rating gives way to the formula where a bike lane or path
+is mapped and DDOT rated the road busier (a painted lane there is never rated calmer than LTS 2.5). Every place publishes different data, so the evidence
 behind a rating changes when you cross a county or state line. More:
 <a href="/about/stress.html#which-rating">which rating wins and why</a> and
 <a href="/about/stress.html#places">what each place tells us</a>.</p>
@@ -338,13 +342,14 @@ of every rating that changed, by county, before the new map goes live. More:
 build. <a href="/about/assistants.html">AI assistants</a> explains how to plan routes from Claude or
 another assistant. <a href="/about/acknowledgements.html">Acknowledgements</a> credits every data
 source and open source project. The developer notes, with every threshold and the reasons for each, are
-in the repository<sup class="cite"><a href="#ref-3" aria-label="source 3">[3]</a></sup>.</p>
+in the repository<sup class="cite"><a href="#ref-4" aria-label="source 4">[4]</a></sup>.</p>
 
 <h2 id="sources">Sources</h2>
 <ol class="refs">
   <li id="ref-1">Mekuria, Furth and Nixon, "Low-Stress Bicycling and Network Connectivity", Mineta Transportation Institute Report 11-19 (2012). <a href="https://transweb.sjsu.edu/sites/default/files/1005-low-stress-bicycling-network-connectivity.pdf">transweb.sjsu.edu</a></li>
   <li id="ref-2">Peter G. Furth, Level of Traffic Stress criteria, version 2.0 (2017) and the tables of version 2.2 (2022). <a href="https://peterfurth.sites.northeastern.edu/level-of-traffic-stress/">peterfurth.sites.northeastern.edu</a>; <a href="https://bpb-us-e1.wpmucdn.com/sites.northeastern.edu/dist/e/618/files/2014/05/LTS-Tables-v2.2.pdf">LTS tables v2.2 (PDF)</a></li>
-  <li id="ref-3">RouteMaker's full list of data sources with licences and download records: <a href="https://github.com/Macrophage87/RouteMaker/blob/main/docs/SOURCES.md">docs/SOURCES.md</a>; developer notes on the stress method: <a href="https://github.com/Macrophage87/RouteMaker/tree/main/docs/stress">docs/stress</a></li>
+  <li id="ref-3">Capital Bikeshare, system trip history, October 2025 to September 2026, under the Capital Bikeshare Data License Agreement; trips between each pair of docks are routed over RouteMaker's streets, and only each street's corridor class is kept. Capital Bikeshare is named as the source only: it has not endorsed RouteMaker. <a href="https://capitalbikeshare.com/system-data">capitalbikeshare.com</a></li>
+  <li id="ref-4">RouteMaker's full list of data sources with licences and download records: <a href="https://github.com/Macrophage87/RouteMaker/blob/main/docs/SOURCES.md">docs/SOURCES.md</a>; developer notes on the stress method: <a href="https://github.com/Macrophage87/RouteMaker/tree/main/docs/stress">docs/stress</a></li>
 </ol>
 <p class="next">Next: <a href="/about/using.html">Using RouteMaker</a></p>
 </main>

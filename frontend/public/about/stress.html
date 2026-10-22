@@ -247,6 +247,7 @@ change it.</li>
     <h2 id="contents-heading">On this page</h2>
     <ul>
       <li><a href="#levels">The levels</a></li>
+      <li><a href="#popular">Popular corridors</a></li>
       <li><a href="#rating">How a road gets its rating</a></li>
       <li><a href="#which-rating">Which rating wins</a></li>
       <li><a href="#places">What each place tells us</a></li>
@@ -303,6 +304,28 @@ change it.</li>
     switch, in Map layers and in Settings, changes the map to colors that don't rely
     on red and green, draws the lines a little bolder, and makes the street names darker.
     The dash patterns stay the same.</p>
+  </div></details>
+</section>
+
+  <section>
+    <h2 id="popular">Popular corridors</h2>
+<p>From the next map update, the busiest bike corridors have a soft cyan band under them, wider
+    for busier ones. The line inside keeps its own color, so the band shows where riders most likely
+    go and the line still says how stressful it is. The band never changes a rating or a route.</p>
+<details class="more"><summary>More: Popular corridors</summary>
+<div class="more-body">
+    
+    <p>The corridors are modelled from a year of Capital Bikeshare trips<sup class="cite"><a href="#ref-1" aria-label="source 1">[1]</a></sup>: each
+    trip's two docks are joined by a route over RouteMaker's streets, so they are not traced from
+    where riders went. Well-known routes, such as the Rock Creek Trail, the Capital Crescent, the
+    Mount Vernon Trail, Q and R Streets and Pennsylvania Avenue, are added by hand and always get the
+    widest band. The legend has a <strong>Popular corridor</strong> row, and with High contrast the
+    band is stronger.</p>
+    <p>Where lines cross, the calmer road is drawn on top: LTS 1 over LTS 2, and both over the busy
+    roads. Among lines at the same level, an off-road path goes on top, then a protected lane, a
+    painted lane and a long calm street. In the city, bike lane markings on busy roads wait for
+    zoom 14, except on the popular corridors. During a ride the band is hidden and busy roads fade
+    further, so your route and the calm streets beside it stand out.</p>
   </div></details>
 </section>
 
@@ -433,11 +456,16 @@ change it.</li>
       reasons such as fast drivers, poor sightlines or a dangerous merge. Each one is approved by hand;
       none is applied automatically.</li>
       <li><strong>Local agency ratings.</strong> Montgomery County Planning's Bicycle Level of Traffic
-      Stress<sup class="cite"><a href="#ref-1" aria-label="source 1">[1]</a></sup> and DDOT's Bicycle Level of Traffic Stress in the District<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup>. A county
-      knows its roads better than a state does.</li>
+      Stress<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup> and DDOT's Bicycle Level of Traffic Stress in the District<sup class="cite"><a href="#ref-3" aria-label="source 3">[3]</a></sup>. A county
+      knows its roads better than a state does. DDOT's ratings date from 2020, before many of
+      the District's newer bike lanes, so from the next map update, where a bike lane or path is
+      mapped and DDOT rated the road busier than the formula does, the formula's rating is used.
+      But a painted lane on a road DDOT rated above LTS 2.5 is never rated calmer than LTS 2.5,
+      since paint on a busy road may still be stressful. The road panel says which rating is used
+      and why.</li>
       <li><strong>State agency ratings.</strong> Maryland DOT State Highway Administration's statewide
-      ratings<sup class="cite"><a href="#ref-3" aria-label="source 3">[3]</a></sup>, read from its adjusted score.</li>
-      <li><strong>The LTS formula.</strong> RouteMaker's own rating from OpenStreetMap<sup class="cite"><a href="#ref-4" aria-label="source 4">[4]</a></sup> and
+      ratings<sup class="cite"><a href="#ref-4" aria-label="source 4">[4]</a></sup>, read from its adjusted score.</li>
+      <li><strong>The LTS formula.</strong> RouteMaker's own rating from OpenStreetMap<sup class="cite"><a href="#ref-5" aria-label="source 5">[5]</a></sup> and
       street facts, described below. It rates every road the same way on both sides of every county and
       state line.</li>
     </ol>
@@ -446,12 +474,12 @@ change it.</li>
 <caption>How each agency's levels are read</caption>
 <thead><tr><th scope="col">Agency</th><th scope="col">Area</th><th scope="col">Their level</th><th scope="col">RouteMaker reads it as</th></tr></thead>
 <tbody>
-<tr><th scope="row">Montgomery County Planning<sup class="cite"><a href="#ref-1" aria-label="source 1">[1]</a></sup></th><td>Montgomery County</td><td>1 to 4, with half steps</td><td>The same level</td></tr>
+<tr><th scope="row">Montgomery County Planning<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup></th><td>Montgomery County</td><td>1 to 4, with half steps</td><td>The same level</td></tr>
 <tr><th scope="row">Montgomery County Planning</th><td></td><td>5</td><td>LTS 4.5 (very high stress, but allowed), from the next map update; Avoid until then</td></tr>
-<tr><th scope="row">DDOT<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup></th><td>District of Columbia</td><td>1 to 4</td><td>The same level</td></tr>
+<tr><th scope="row">DDOT<sup class="cite"><a href="#ref-3" aria-label="source 3">[3]</a></sup></th><td>District of Columbia</td><td>1 to 4</td><td>The same level</td></tr>
 <tr><th scope="row">DDOT</th><td></td><td>5</td><td>Avoid</td></tr>
 <tr><th scope="row">DDOT</th><td></td><td>100 (not rated)</td><td>Ignored: the formula rates the road</td></tr>
-<tr><th scope="row">MDOT SHA<sup class="cite"><a href="#ref-3" aria-label="source 3">[3]</a></sup></th><td>Maryland state roads</td><td>1 to 4</td><td>The same level</td></tr>
+<tr><th scope="row">MDOT SHA<sup class="cite"><a href="#ref-4" aria-label="source 4">[4]</a></sup></th><td>Maryland state roads</td><td>1 to 4</td><td>The same level</td></tr>
 <tr><th scope="row">MDOT SHA</th><td></td><td>5 (bicycles prohibited)</td><td>Closed to bikes: not drawn or routed, from the next map update; Avoid until then</td></tr>
 </tbody>
 </table>
@@ -508,7 +536,7 @@ change it.</li>
 <line class="axis" x1="10" y1="4" x2="10" y2="378"/>
 </svg>
 </div>
-<figcaption>RouteMaker's own comparison, October 2026, over 2,893 mi [4,656 km] of road both agencies rate<sup class="cite"><a href="#ref-1" aria-label="source 1">[1]</a><a href="#ref-3" aria-label="source 3">[3]</a></sup>. They give the same level on 69% of it, and are within one and a half levels on 92%.</figcaption>
+<figcaption>RouteMaker's own comparison, October 2026, over 2,893 mi [4,656 km] of road both agencies rate<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a><a href="#ref-4" aria-label="source 4">[4]</a></sup>. They give the same level on 69% of it, and are within one and a half levels on 92%.</figcaption>
 </figure>
     <ul>
       <li><strong>Rural roads upcounty</strong> (about 120 mi [190 km]), such as Peach Tree, Sugarland and
@@ -542,7 +570,7 @@ change it.</li>
 </table>
 </div>
     <p>Arlington's and Alexandria's maps are used for comparison only. Alexandria's recorded speed
-    limits<sup class="cite"><a href="#ref-5" aria-label="source 5">[5]</a></sup> feed the formula as street facts.</p>
+    limits<sup class="cite"><a href="#ref-6" aria-label="source 6">[6]</a></sup> feed the formula as street facts.</p>
   </div></details>
 </section>
 
@@ -562,12 +590,12 @@ change it.</li>
 <caption>What each place's data covers</caption>
 <thead><tr><th scope="col">Place</th><th scope="col">Stress rating</th><th scope="col">Street facts</th><th scope="col">Traffic counts</th><th scope="col">Closures</th><th scope="col">Also</th></tr></thead>
 <tbody>
-<tr><th scope="row">District of Columbia</th><td>DDOT's LTS<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup></td><td>DC's street records: speed, lanes, one-way, bike lanes, parking</td><td>DDOT<sup class="cite"><a href="#ref-6" aria-label="source 6">[6]</a></sup></td><td>DDOT permits (Plan layer only), police and AlertDC closures, park notes<sup class="cite"><a href="#ref-7" aria-label="source 7">[7]</a><a href="#ref-8" aria-label="source 8">[8]</a></sup></td><td>Pavement condition<sup class="cite"><a href="#ref-9" aria-label="source 9">[9]</a></sup>; 20 mph [32 km/h] default<sup class="cite"><a href="#ref-10" aria-label="source 10">[10]</a></sup></td></tr>
-<tr><th scope="row">Montgomery County</th><td>The county's LTS<sup class="cite"><a href="#ref-1" aria-label="source 1">[1]</a></sup>; Maryland's on state roads, shown in the road panel</td><td>OpenStreetMap<sup class="cite"><a href="#ref-4" aria-label="source 4">[4]</a></sup></td><td>Maryland, state roads<sup class="cite"><a href="#ref-6" aria-label="source 6">[6]</a></sup></td><td>Maryland work zones<sup class="cite"><a href="#ref-11" aria-label="source 11">[11]</a></sup></td><td>Rustic Roads on the Scenic layer</td></tr>
-<tr><th scope="row">Other Maryland counties, such as Prince George's, Howard and Anne Arundel</th><td>Maryland's LTS on state roads<sup class="cite"><a href="#ref-3" aria-label="source 3">[3]</a></sup>; the formula elsewhere</td><td>OpenStreetMap</td><td>Maryland, state roads</td><td>Maryland work zones</td><td>Scenic Byways on the Scenic layer</td></tr>
-<tr><th scope="row">Baltimore City</th><td>Maryland's LTS on state roads; the formula elsewhere</td><td>OpenStreetMap, with the city's speeds, one-way streets, bike lanes and trails<sup class="cite"><a href="#ref-12" aria-label="source 12">[12]</a></sup></td><td>Maryland, state roads</td><td>Maryland work zones</td><td></td></tr>
+<tr><th scope="row">District of Columbia</th><td>DDOT's LTS<sup class="cite"><a href="#ref-3" aria-label="source 3">[3]</a></sup></td><td>DC's street records: speed, lanes, one-way, bike lanes, parking</td><td>DDOT<sup class="cite"><a href="#ref-7" aria-label="source 7">[7]</a></sup></td><td>DDOT permits (Plan layer only), police and AlertDC closures, park notes<sup class="cite"><a href="#ref-8" aria-label="source 8">[8]</a><a href="#ref-9" aria-label="source 9">[9]</a></sup></td><td>Pavement condition<sup class="cite"><a href="#ref-10" aria-label="source 10">[10]</a></sup>; 20 mph [32 km/h] default<sup class="cite"><a href="#ref-11" aria-label="source 11">[11]</a></sup></td></tr>
+<tr><th scope="row">Montgomery County</th><td>The county's LTS<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup>; Maryland's on state roads, shown in the road panel</td><td>OpenStreetMap<sup class="cite"><a href="#ref-5" aria-label="source 5">[5]</a></sup></td><td>Maryland, state roads<sup class="cite"><a href="#ref-7" aria-label="source 7">[7]</a></sup></td><td>Maryland work zones<sup class="cite"><a href="#ref-12" aria-label="source 12">[12]</a></sup></td><td>Rustic Roads on the Scenic layer</td></tr>
+<tr><th scope="row">Other Maryland counties, such as Prince George's, Howard and Anne Arundel</th><td>Maryland's LTS on state roads<sup class="cite"><a href="#ref-4" aria-label="source 4">[4]</a></sup>; the formula elsewhere</td><td>OpenStreetMap</td><td>Maryland, state roads</td><td>Maryland work zones</td><td>Scenic Byways on the Scenic layer</td></tr>
+<tr><th scope="row">Baltimore City</th><td>Maryland's LTS on state roads; the formula elsewhere</td><td>OpenStreetMap, with the city's speeds, one-way streets, bike lanes and trails<sup class="cite"><a href="#ref-13" aria-label="source 13">[13]</a></sup></td><td>Maryland, state roads</td><td>Maryland work zones</td><td></td></tr>
 <tr><th scope="row">Virginia: Arlington, Fairfax and others</th><td>The formula</td><td>OpenStreetMap</td><td>VDOT</td><td>VDOT work zones</td><td>Arlington's and Fairfax's maps for comparison only</td></tr>
-<tr><th scope="row">City of Alexandria</th><td>The formula</td><td>OpenStreetMap, with the city's recorded speed limits<sup class="cite"><a href="#ref-5" aria-label="source 5">[5]</a></sup></td><td>VDOT</td><td>VDOT work zones</td><td></td></tr>
+<tr><th scope="row">City of Alexandria</th><td>The formula</td><td>OpenStreetMap, with the city's recorded speed limits<sup class="cite"><a href="#ref-6" aria-label="source 6">[6]</a></sup></td><td>VDOT</td><td>VDOT work zones</td><td></td></tr>
 </tbody>
 </table>
 </div>
@@ -585,7 +613,7 @@ change it.</li>
   <section>
     <h2 id="formula">The formula in detail</h2>
 <p>Where no correction or agency rates a road, RouteMaker rates it from the published LTS
-    tables<sup class="cite"><a href="#ref-13" aria-label="source 13">[13]</a></sup>, written fresh from the tables rather than copied from another tool:</p>
+    tables<sup class="cite"><a href="#ref-14" aria-label="source 14">[14]</a></sup>, written fresh from the tables rather than copied from another tool:</p>
 <figure id="fig-steps" class="has-narrow">
 <div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 440 412" role="img" aria-labelledby="fig-steps-t fig-steps-d" focusable="false" style="min-width:316px">
@@ -661,8 +689,8 @@ change it.</li>
 <div class="more-body">
     
     
-    <p>Where no speed limit is mapped, "town" means inside a 2020 Census urban area<sup class="cite"><a href="#ref-14" aria-label="source 14">[14]</a></sup>, and the
-    District's default is its legal 20 mph [32 km/h]<sup class="cite"><a href="#ref-10" aria-label="source 10">[10]</a></sup>. An unpaved rural road is read at no
+    <p>Where no speed limit is mapped, "town" means inside a 2020 Census urban area<sup class="cite"><a href="#ref-15" aria-label="source 15">[15]</a></sup>, and the
+    District's default is its legal 20 mph [32 km/h]<sup class="cite"><a href="#ref-11" aria-label="source 11">[11]</a></sup>. An unpaved rural road is read at no
     more than 30 mph [48 km/h], and a narrow or winding rural road with no traffic count at 25 mph
     [40 km/h].</p>
     <figure id="fig-mixed" class="has-narrow">
@@ -712,7 +740,7 @@ change it.</li>
 <rect x="165" y="356" width="145" height="40" fill="#f28c28" stroke="#1c1917" stroke-width="0.8"/><text class="tk" x="237.5" y="380.5" text-anchor="middle">LTS 4</text>
 </svg>
 </div>
-<figcaption>Table A is for a street where you share the lane with cars, from Furth's tables<sup class="cite"><a href="#ref-13" aria-label="source 13">[13]</a></sup>. Traffic volume then moves a two-lane road one level (below). Inside an urban area a multi-lane street is read on the one-lane row, but never below LTS 3.</figcaption>
+<figcaption>Table A is for a street where you share the lane with cars, from Furth's tables<sup class="cite"><a href="#ref-14" aria-label="source 14">[14]</a></sup>. Traffic volume then moves a two-lane road one level (below). Inside an urban area a multi-lane street is read on the one-lane row, but never below LTS 3.</figcaption>
 </figure>
     <figure id="fig-lane" class="has-narrow">
 <div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
@@ -759,10 +787,10 @@ change it.</li>
 <rect x="165" y="336" width="145" height="40" fill="#f28c28" stroke="#1c1917" stroke-width="0.8"/><text class="tk" x="237.5" y="360.5" text-anchor="middle">LTS 4</text>
 </svg>
 </div>
-<figcaption>Table B is for a street with a painted bike lane<sup class="cite"><a href="#ref-13" aria-label="source 13">[13]</a></sup>. The lane gives you your own space, so the same speed rates calmer than in Table A. Adequate means at least 15 ft [4.6 m] of lane and parking together beside parked cars, or at least 5.6 ft [1.7 m] with no parking. When the width or the parking is not mapped, RouteMaker assumes the worse case. A separated bike lane or a trail is LTS 1.</figcaption>
+<figcaption>Table B is for a street with a painted bike lane<sup class="cite"><a href="#ref-14" aria-label="source 14">[14]</a></sup>. The lane gives you your own space, so the same speed rates calmer than in Table A. Adequate means at least 15 ft [4.6 m] of lane and parking together beside parked cars, or at least 5.6 ft [1.7 m] with no parking. When the width or the parking is not mapped, RouteMaker assumes the worse case. A separated bike lane or a trail is LTS 1.</figcaption>
 </figure>
     <p>A paved shoulder at least 4 ft [1.2 m] wide is read like a bike lane, and never worse than having
-    none. On a road with one lane each way and no bike facility, traffic counts<sup class="cite"><a href="#ref-6" aria-label="source 6">[6]</a></sup> move the
+    none. On a road with one lane each way and no bike facility, traffic counts<sup class="cite"><a href="#ref-7" aria-label="source 7">[7]</a></sup> move the
     level: 1,500 vehicles a day or fewer lowers it one level, and 8,000 or more raises it one level.
     Without a bike facility, trunk, primary and secondary roads are at least LTS 3, and tertiary roads
     at least LTS 2.</p>
@@ -796,7 +824,7 @@ change it.</li>
       Capitol grounds are exempt from the District's sidewalk ban. At memorials where you must walk, such
       as the Martin Luther King Jr. and Franklin Delano Roosevelt memorials, routes take you there and
       you walk the last bit. From the next map update, the walks, paths and plazas on the US Capitol grounds, in the Senate
-      Parks and round Union Square are open to bikes too, as the Capitol Police Board's rules allow<sup class="cite"><a href="#ref-15" aria-label="source 15">[15]</a></sup>.
+      Parks and round Union Square are open to bikes too, as the Capitol Police Board's rules allow<sup class="cite"><a href="#ref-16" aria-label="source 16">[16]</a></sup>.
       Steps, closed courtyards, dirt paths and the passages through and under the buildings stay
       closed.</li>
     </ul>
@@ -813,7 +841,7 @@ change it.</li>
       <li><strong>Scenic roads.</strong> The Scenic layer (Montgomery County Rustic Roads, Maryland
       Scenic Byways, the East Coast Greenway, U.S. Bicycle Routes, covered bridges) is off by default
       and never changes a rating or a route.</li>
-      <li><strong>Pavement.</strong> DC's Pavement Condition Index<sup class="cite"><a href="#ref-9" aria-label="source 9">[9]</a></sup> makes a rough DC street cost
+      <li><strong>Pavement.</strong> DC's Pavement Condition Index<sup class="cite"><a href="#ref-10" aria-label="source 10">[10]</a></sup> makes a rough DC street cost
       a little more to ride; it never changes the street's stress level.</li>
       <li><strong>Hills.</strong> The Hills slider and the climb layer change effort, not stress.</li>
       <li><strong>Hazard reports</strong> on Mass Ride appear only on the Mass Ride map, after
@@ -1166,21 +1194,22 @@ change it.</li>
       <li>Riders a minute on the Mass Ride map: RouteMaker Mass Ride model, from
       OpenStreetMap and DC Roadway Block (DC Open Data, CC BY 4.0, adapted), and DC
       Bike Party counts.</li>
-      <li id="ref-1">Montgomery County Planning Department, Bicycle Level of Traffic Stress (dataset, ArcGIS item fb903d1ffbc84b219bdb47629bd02b82), and Bicycle Master Plan, Appendix D. https://www.arcgis.com/home/item.html?id=fb903d1ffbc84b219bdb47629bd02b82; Appendix D (PDF) (https://montgomeryplanning.org/wp-content/uploads/2017/11/Appendix-D.pdf)</li>
-      <li id="ref-2">District Department of Transportation, Bicycle Level of Traffic Stress (2020) and Roadway Block (item 6fcba8618ae744949630da3ea12d90eb), Open Data DC, CC BY 4.0. https://opendata.dc.gov/</li>
-      <li id="ref-3">Maryland Department of Transportation State Highway Administration, Maryland Bicycle Level of Traffic Stress (2022, ArcGIS item fc3c7b650076475ba9a4b0232f6d8655), and "Bicycle Level of Traffic Stress (LTS) Metadata and Methodology". https://www.arcgis.com/home/item.html?id=fc3c7b650076475ba9a4b0232f6d8655; methodology (PDF) (https://www.mdot.maryland.gov/OPCP/MDOT_LTS_Metadata_Methodology_Full.pdf)</li>
-      <li id="ref-4">OpenStreetMap contributors, map data under the Open Database License 1.0. https://www.openstreetmap.org/copyright</li>
-      <li id="ref-5">City of Alexandria GIS, Transport Streets (CC0). Alexandria OpenData (https://cityofalexandria-alexgis.opendata.arcgis.com/)</li>
-      <li id="ref-6">Traffic counts: DDOT Traffic Volume 2024 (Open Data DC, CC BY 4.0); VDOT traffic volume (https://www.virginiaroads.org/); MDOT SHA Annual Average Daily Traffic (Maryland iMAP (https://services.arcgis.com/njFNhDsUCentVYJW/arcgis/rest/services/MDOT_SHA_Annual_Average_Daily_Traffic/FeatureServer/1))</li>
-      <li id="ref-7">District Department of Transportation, TOPS occupancy permits (CC BY 4.0). DC GIS (https://maps2.dcgis.dc.gov/dcgis/rest/services/DDOT/TOPS/MapServer/1); https://catalog.data.gov/dataset/occupancy-permits-via-ddot-tops</li>
-      <li id="ref-8">Metropolitan Police Department traffic advisories (https://mpdc.dc.gov/newsroom), AlertDC from DC HSEMA, and the National Park Service alerts API (nps.gov developer (https://www.nps.gov/subjects/developer/api-documentation.htm))</li>
-      <li id="ref-9">DDOT Pavement Condition Index, FY 2025. DC GIS (https://rh.dcgis.dc.gov/dcgis/rest/services/DDOT/PavementConditionIndex/FeatureServer/5)</li>
-      <li id="ref-10">District Department of Transportation, "20 MPH default speed limit: frequently asked questions". https://ddot.dc.gov/page/twenty-mph-20-mph-default-speed-limit-frequently-asked-questions</li>
-      <li id="ref-11">Work Zone Data Exchange feeds: Maryland DOT SHA (CC0, RITIS (https://filter.ritis.org/wzdx_v4.1/mdot.geojson)) and VDOT through SmarterRoads; specification at https://github.com/usdot-jpo-ode/wzdx</li>
-      <li id="ref-12">City of Baltimore, Open Baltimore: Street Centerline, DOT BMC Bike Facilities and Multiuse Trails (open under Baltimore City Code Art. 1 §9-1(h)). https://data.baltimorecity.gov/</li>
-      <li id="ref-13">Peter G. Furth, Level of Traffic Stress criteria, version 2.0 (2017) and the tables of version 2.2 (2022). https://peterfurth.sites.northeastern.edu/level-of-traffic-stress/; LTS tables v2.2 (PDF) (https://bpb-us-e1.wpmucdn.com/sites.northeastern.edu/dist/e/618/files/2014/05/LTS-Tables-v2.2.pdf)</li>
-      <li id="ref-14">U.S. Census Bureau, TIGER/Line Shapefiles, 2020 Urban Areas. https://www.census.gov/geographies/mapping-files/time-series/geo/tiger-line-file.html</li>
-      <li id="ref-15">Capitol Police Board, US Capitol Grounds Traffic Regulations: no prohibition on riding a bicycle on the grounds' walks so long as the rider creates no hazard. uscp.gov (PDF) (https://www.uscp.gov/sites/evo-subsites/www.uscp.gov/files/documents/Capitol%20Police%20Board%20US%20Capitol%20Grounds%20Traffic%20Regulations%20-%20For%20Public%20Release.pdf)</li>
+      <li id="ref-1">Capital Bikeshare, system trip history, October 2025 to September 2026, under the Capital Bikeshare Data License Agreement; trips between each pair of docks are routed over RouteMaker's streets, and only each street's corridor class is kept. Capital Bikeshare is named as the source only: it has not endorsed RouteMaker. https://capitalbikeshare.com/system-data</li>
+      <li id="ref-2">Montgomery County Planning Department, Bicycle Level of Traffic Stress (dataset, ArcGIS item fb903d1ffbc84b219bdb47629bd02b82), and Bicycle Master Plan, Appendix D. https://www.arcgis.com/home/item.html?id=fb903d1ffbc84b219bdb47629bd02b82; Appendix D (PDF) (https://montgomeryplanning.org/wp-content/uploads/2017/11/Appendix-D.pdf)</li>
+      <li id="ref-3">District Department of Transportation, Bicycle Level of Traffic Stress (2020) and Roadway Block (item 6fcba8618ae744949630da3ea12d90eb), Open Data DC, CC BY 4.0. https://opendata.dc.gov/</li>
+      <li id="ref-4">Maryland Department of Transportation State Highway Administration, Maryland Bicycle Level of Traffic Stress (2022, ArcGIS item fc3c7b650076475ba9a4b0232f6d8655), and "Bicycle Level of Traffic Stress (LTS) Metadata and Methodology". https://www.arcgis.com/home/item.html?id=fc3c7b650076475ba9a4b0232f6d8655; methodology (PDF) (https://www.mdot.maryland.gov/OPCP/MDOT_LTS_Metadata_Methodology_Full.pdf)</li>
+      <li id="ref-5">OpenStreetMap contributors, map data under the Open Database License 1.0. https://www.openstreetmap.org/copyright</li>
+      <li id="ref-6">City of Alexandria GIS, Transport Streets (CC0). Alexandria OpenData (https://cityofalexandria-alexgis.opendata.arcgis.com/)</li>
+      <li id="ref-7">Traffic counts: DDOT Traffic Volume 2024 (Open Data DC, CC BY 4.0); VDOT traffic volume (https://www.virginiaroads.org/); MDOT SHA Annual Average Daily Traffic (Maryland iMAP (https://services.arcgis.com/njFNhDsUCentVYJW/arcgis/rest/services/MDOT_SHA_Annual_Average_Daily_Traffic/FeatureServer/1))</li>
+      <li id="ref-8">District Department of Transportation, TOPS occupancy permits (CC BY 4.0). DC GIS (https://maps2.dcgis.dc.gov/dcgis/rest/services/DDOT/TOPS/MapServer/1); https://catalog.data.gov/dataset/occupancy-permits-via-ddot-tops</li>
+      <li id="ref-9">Metropolitan Police Department traffic advisories (https://mpdc.dc.gov/newsroom), AlertDC from DC HSEMA, and the National Park Service alerts API (nps.gov developer (https://www.nps.gov/subjects/developer/api-documentation.htm))</li>
+      <li id="ref-10">DDOT Pavement Condition Index, FY 2025. DC GIS (https://rh.dcgis.dc.gov/dcgis/rest/services/DDOT/PavementConditionIndex/FeatureServer/5)</li>
+      <li id="ref-11">District Department of Transportation, "20 MPH default speed limit: frequently asked questions". https://ddot.dc.gov/page/twenty-mph-20-mph-default-speed-limit-frequently-asked-questions</li>
+      <li id="ref-12">Work Zone Data Exchange feeds: Maryland DOT SHA (CC0, RITIS (https://filter.ritis.org/wzdx_v4.1/mdot.geojson)) and VDOT through SmarterRoads; specification at https://github.com/usdot-jpo-ode/wzdx</li>
+      <li id="ref-13">City of Baltimore, Open Baltimore: Street Centerline, DOT BMC Bike Facilities and Multiuse Trails (open under Baltimore City Code Art. 1 §9-1(h)). https://data.baltimorecity.gov/</li>
+      <li id="ref-14">Peter G. Furth, Level of Traffic Stress criteria, version 2.0 (2017) and the tables of version 2.2 (2022). https://peterfurth.sites.northeastern.edu/level-of-traffic-stress/; LTS tables v2.2 (PDF) (https://bpb-us-e1.wpmucdn.com/sites.northeastern.edu/dist/e/618/files/2014/05/LTS-Tables-v2.2.pdf)</li>
+      <li id="ref-15">U.S. Census Bureau, TIGER/Line Shapefiles, 2020 Urban Areas. https://www.census.gov/geographies/mapping-files/time-series/geo/tiger-line-file.html</li>
+      <li id="ref-16">Capitol Police Board, US Capitol Grounds Traffic Regulations: no prohibition on riding a bicycle on the grounds' walks so long as the rider creates no hazard. uscp.gov (PDF) (https://www.uscp.gov/sites/evo-subsites/www.uscp.gov/files/documents/Capitol%20Police%20Board%20US%20Capitol%20Grounds%20Traffic%20Regulations%20-%20For%20Public%20Release.pdf)</li>
     </ul>
     <p>Every source, with links and licences, is on the
     <a href="/about/acknowledgements.html">Acknowledgements</a> page.</p>
