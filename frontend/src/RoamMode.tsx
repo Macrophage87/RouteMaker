@@ -12,7 +12,8 @@
  * - End roam, slid as End ride is, so a bump does not end it.
  *
  * Privacy (the owner, 2026-10-22: nothing kept on the server): the position stays on the phone. Only a Detour search
- * (POST /api/nearest) and the ride it starts send where the rider is, in a POST body, as Ride mode's detours do.
+ * (POST /api/nearest) and the ride it starts send where the rider is, in a POST body, as Ride mode's detours do; and
+ * while the rider broadcasts, the position and trail go to /api/rides as any broadcast's do, kept 2 minutes there.
  */
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Icon } from "./Icon.tsx";

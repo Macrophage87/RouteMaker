@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { LonLat } from "./geo.ts";
-import { solarDay } from "./lightTimes.ts";
+import { lightClock, solarDay } from "./lightTimes.ts";
 import { HeadingTrack, aheadSaid, foodNearestPlaces, headingOf, linesOf, mapLines, onRoadSaid, roadsAhead, roamLight, roamLink, roamLinkFrom, type RoadLine, type RoamMap, type StressLine } from "./roam.ts";
 
 // A small grid near Dupont Circle: metres to degrees, close enough at this latitude.
@@ -230,4 +230,23 @@ test("App: Broadcast is a tap within Roam; the leader leads a ride with no route
   assert.match(app, /broadcast=\{\{ \.\.\.roamBroadcast, roam: true \}\}/);
   // It ends with the roam.
   assert.match(app, /const endRoam = \(\) => \{[^]*?setRoamBroadcast\(\(b\) => \(b\?\.leading \? null : b\)\);/);
+});
+
+test("sunrise and sunset: before dawn, today's sunrise then today's sunset; across the spring clock change, tomorrow's", () => {
+  const dc: LonLat = [-77.04, 38.91];
+  const sunrise = solarDay(Date.UTC(2026, 9, 22, 16, 0), dc[1], dc[0]).sunrise!;
+  const early = roamLight(sunrise - 4 * 3_600_000, dc)!;
+  assert.match(early.shown[0], /^Sunrise 7:\d\d AM$/);
+  assert.match(early.shown[1], /^Sunset [56]:\d\d PM$/);
+  // 2027-03-13 at 11:30 PM in Washington (04:30 UTC on the 14th), the night before clocks go forward: the 14th's sunrise.
+  const night = Date.UTC(2027, 2, 14, 4, 30);
+  const next = solarDay(Date.UTC(2027, 2, 14, 17, 0), dc[1], dc[0]).sunrise!;
+  assert.equal(roamLight(night, dc)!.shown[0], `Sunrise ${lightClock(next)}`);
+});
+
+test("App: a Roam link opened in a tab already on the app follows it and keeps the plan; leading, a detour starts no other group", async () => {
+  const { readFileSync } = await import("node:fs");
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  assert.match(app, /const follow = roamLinkFrom\(window\.location\.hash\);\s*if \(follow\) \{\s*setRoamBroadcast\(\(b\) => \(b\?\.leading \? b : \{ \.\.\.follow, leading: false \}\)\);\s*return;\s*\}\s*const plan = decodePlan/);
+  assert.match(app, /const rideGroupLine =\s*!roamBroadcast\?\.leading && \(goMode/);
 });

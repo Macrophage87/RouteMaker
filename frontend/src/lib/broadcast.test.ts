@@ -169,7 +169,7 @@ test("opening a broadcast follows the leader: in Plan too, the map eased to the 
   assert.match(group, /if \(leading && kept === null\) kept = keepConsent\(id, "yes", Date\.now\(\), undefined, undefined, "lead"\);/);
   // The leader is posted on or off the route; the follower reads with the key before answering.
   // Off the route only while riding: after End ride the quarter-mile rule and its stop are back.
-  assert.match(group, /const near = \(isBroadcast && riding\) \|\| nearRoute\(line, fix\);/);
+  assert.match(group, /const near = \(isBroadcast && \(riding \|\| line\.length === 0\)\) \|\| nearRoute\(line, fix\);/);
   // The leader's route and path, sent while riding when due; a follower draws the phone's own over what it saw.
   assert.match(group, /if \(!leading \|\| !riding \|\| !shareOn \|\| !front \|\| !ride \|\| !token\) return;[\s\S]*?if \(!pathDue\(pathSent\.current\.at, pathSent\.current\.routeKey, routeNowKey, t\)\) return;[\s\S]*?void sendPath\(origin, ride, token, routeNow, ownTrail\)\.then\(\(ok\) => \{\s*if \(!ok && pathSent\.current\.at === t\) pathSent\.current = \{ at: t - PATH_EVERY_MS \+ PATH_MIN_GAP_MS, routeKey: "" \};/);
   assert.match(group, /const shownTrail = sentPath && sentPath\.trail\.length >= trail\.length \? sentPath\.trail : trail;/);

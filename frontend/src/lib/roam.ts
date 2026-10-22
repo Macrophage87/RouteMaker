@@ -391,11 +391,14 @@ export function roamLinkFrom(hash: string): { id: string; lead: string } | null 
  */
 export function roamLight(nowMs: number, at: LonLat): { shown: string[]; said: string } | null {
   const next = (kind: "sunrise" | "sunset"): number | null => {
-    for (let day = 0; day < 2; day += 1) {
-      const t = solarDay(nowMs + day * 86_400_000, at[1], at[0])[kind];
-      if (t !== null && t > nowMs) return t;
+    // Every 12 hours over the next day and a half: each lands in today or a day after, so the earliest one still to
+    // come is the next, whatever a clock change does to the day's length.
+    let soonest: number | null = null;
+    for (let step = 0; step <= 3; step += 1) {
+      const t = solarDay(nowMs + step * 43_200_000, at[1], at[0])[kind];
+      if (t !== null && t > nowMs && (soonest === null || t < soonest)) soonest = t;
     }
-    return null;
+    return soonest;
   };
   const events = (["sunrise", "sunset"] as const)
     .map((kind) => ({ kind, at: next(kind) }))

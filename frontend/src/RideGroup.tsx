@@ -291,7 +291,8 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
     // On a broadcast everyone shown is shown on or off the route while they ride: those following go where the leader
     // goes, and riders who get separated find each other. Not riding (the ride ended, or watching), the quarter-mile
     // rule and its 10-minute stop are back, so a dot never follows anyone home.
-    const near = (isBroadcast && riding) || nearRoute(line, fix);
+    // A broadcast from Roam has no route: one who said yes is shown while the app is open, riding or not.
+    const near = (isBroadcast && (riding || line.length === 0)) || nearRoute(line, fix);
     if (near) share.current.lastNearAt = t;
     const stop = shareStop({ on: true, since: consent.since, lastNearAt: share.current.lastNearAt, startedAt: share.current.startedAt }, t);
     if (stop) {

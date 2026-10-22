@@ -1146,6 +1146,12 @@ export function App() {
   useEffect(() => {
     const onHash = () => {
       if (window.location.hash === writtenHash.current) return;
+      // A Roam broadcast's link opened in this tab: follow its leader; the plan stays as it is.
+      const follow = roamLinkFrom(window.location.hash);
+      if (follow) {
+        setRoamBroadcast((b) => (b?.leading ? b : { ...follow, leading: false }));
+        return;
+      }
       const plan = decodePlan(window.location.hash);
       setConfirmedKm(null);
       // Another plan: undo does not reach back into the one before it.
@@ -4581,8 +4587,9 @@ export function App() {
   // A broadcast (a ride link with its leader): the sharer leads it, and one who opened it follows the leader, in Plan
   // too (watching from a computer), not only in Go or riding.
   const rideBroadcast = onShared?.ride && onShared.id && onShared.lead ? { id: onShared.id, lead: onShared.lead, leading: onShared.own === true } : null;
+  // While leading a broadcast from Roam, its own riders' group is the only one (a Group Ride detour starts none).
   const rideGroupLine =
-    (goMode || riding || (rideBroadcast && !rideBroadcast.leading)) && rideGroupType && rideGroupRoute ? (rideGroupRoute.geometry.coordinates as LonLat[]) : null;
+    !roamBroadcast?.leading && (goMode || riding || (rideBroadcast && !rideBroadcast.leading)) && rideGroupType && rideGroupRoute ? (rideGroupRoute.geometry.coordinates as LonLat[]) : null;
 
   return (
     <div className={`app${onBike ? " riding" : ""}${roaming ? " roaming" : ""}${goMode && !onBike ? " go-mode" : ""}`}>
