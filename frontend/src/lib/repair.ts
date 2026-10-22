@@ -317,7 +317,7 @@ export function repairLayer(minzoom: number): Record<string, unknown> {
       // Thinned where crowded, as the water layer is (waterRestrooms.ts WATER_ICON_PADDING_PX).
       "icon-allow-overlap": false,
       "icon-padding": WATER_ICON_PADDING_PX,
-      "icon-ignore-placement": true,
+      "icon-ignore-placement": false,
     },
   };
 }

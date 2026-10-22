@@ -208,6 +208,7 @@ test("the layer: one symbol layer, its icon by name, from street-network zoom, t
   assert.equal(layer.minzoom, 12);
   assert.equal(layer.layout["icon-allow-overlap"], false, "thinned downtown");
   assert.equal(layer.layout["icon-padding"], WATER_ICON_PADDING_PX);
+  assert.equal(layer.layout["icon-ignore-placement"], false, "each icon blocks the next, or nothing is thinned");
   assert.deepEqual(layer.layout["icon-image"], ["concat", "water-restrooms-", ["get", "icon"]]);
   assert.equal(waterIconId("w-n"), "water-restrooms-w-n");
   assert.deepEqual(layer.filter, waterFilter(WATER_PREFS_DEFAULT));

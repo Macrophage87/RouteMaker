@@ -471,8 +471,8 @@ export function setOverlayFade(map: Pick<RouteSectionsMap, "getLayer" | "setPain
  * happen when in a ride. Prioritize the path and wayfinding."): the popular corridors' band, a planning
  * aid, is not drawn, and the busy roads (LTS 3, LTS 4, Avoid) and their rails fade by RIDE_BUSY_FADE on
  * top of the route's own fade, so the calm ways a rider might turn onto stand out. Street and station
- * names, the route, closures and hazards are untouched. Not with the High contrast switch, whose edges
- * are measured at full strength (routeOverlayFade).
+ * names, the route, closures and hazards are untouched. The busy roads keep full strength with the High contrast switch, whose
+ * edges are measured at it (routeOverlayFade); the band goes with or without it.
  */
 export const RIDE_BUSY_FADE = 0.5;
 let rideFocus = false;

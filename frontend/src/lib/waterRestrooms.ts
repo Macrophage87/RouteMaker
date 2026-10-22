@@ -469,11 +469,11 @@ export function waterLayer(prefs: WaterPrefs = WATER_PREFS_DEFAULT, sourceId = W
     layout: {
       "icon-image": waterIconImage(prefs),
       "icon-size": ["interpolate", ["linear"], ["zoom"], WATER_MIN_ZOOM, 0.7, 15, 1, 18, 1.2],
-      // Thinned where crowded (WATER_ICON_PADDING_PX), never where sparse.
+      // Thinned where crowded (WATER_ICON_PADDING_PX), never where sparse: each icon takes its room in the
+      // collision index, so two crowding icons keep one; a name over one wins its spot.
       "icon-allow-overlap": false,
       "icon-padding": WATER_ICON_PADDING_PX,
-      // The base map's labels still place around them.
-      "icon-ignore-placement": true,
+      "icon-ignore-placement": false,
       // Where two crowd, the drinking water is kept over the restroom beside it.
       "symbol-sort-key": ["case", ["has", "t"], 1, 0],
     },
