@@ -65,6 +65,7 @@ import {
   solidRouteFilter,
   setMassMode,
   setOverlayFade,
+  setRideFocus,
   routeOverlayFade,
   setHazardData,
   ROUTE_BAND_LAYER_ID,
@@ -2433,6 +2434,11 @@ export function MapView(props: Props) {
     return () => {
       map.off("styledata", apply);
     };
+  }, [props.rideLabels]);
+  // In a ride the route and the way come first (lib/mapGlue.ts, setRideFocus): the corridor band goes, busy roads fade.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (map) setRideFocus(map, Boolean(props.rideLabels), callbacks.current.route);
   }, [props.rideLabels]);
   // A ride starts with the map's Help panel closed (the v0.10.1 end review): left open from planning, it covered the
   // rider's dot. The Help button opens it again.

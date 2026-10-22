@@ -596,6 +596,12 @@ def main(argv: list[str] | None = None) -> int:
         "--alexandria-signals", type=Path, help="Alexandria signalised intersections, GeoJSON"
     )
     parser.add_argument("--alexandria-hawks", type=Path, help="Alexandria HAWKs, GeoJSON")
+    parser.add_argument(
+        "--bikeshare-trips",
+        type=Path,
+        help="the dock-to-dock trip counts (scripts/build_bikeshare_trips.py), for the "
+        "popular bike corridors; never published",
+    )
     parser.add_argument("--byway-name-field", default=None)
     parser.add_argument("--rustic-name-field", default=None)
     args = parser.parse_args(argv)
@@ -770,6 +776,22 @@ def main(argv: list[str] | None = None) -> int:
             target = reference / agency_signals.BEACONS_FILE_NAME
             target.write_text(json.dumps(beacons, separators=(",", ":")))
             print(f"wrote {target}: {len(beacons['rows'])} junction beacons")
+
+    if args.bikeshare_trips is not None:
+        # Capital Bikeshare's trips, routed into the popular corridors at the rebuild
+        # (pipeline.bikeshare_corridors). Checked by the rebuild's own reader, so a bad
+        # file is refused here, not after the segments are written.
+        from pipeline import bikeshare_corridors
+
+        try:
+            trips = bikeshare_corridors.load(args.bikeshare_trips)
+        except (ValueError, KeyError, TypeError) as error:
+            parser.error(f"--bikeshare-trips: {args.bikeshare_trips}: {error}")
+        if trips is None:
+            parser.error(f"--bikeshare-trips: {args.bikeshare_trips} not found")
+        target = reference / bikeshare_corridors.FILE_NAME
+        shutil.copyfile(args.bikeshare_trips, target)
+        print(f"wrote {target}: {len(trips.docks)} docks, {len(trips.pairs)} dock pairs")
 
     missing = [name for name in REQUIRED if not (reference / name).exists()]
     for name in missing:

@@ -75,6 +75,7 @@ from . import (
     aadt_smoothing,
     agency_ratings,
     agency_signals,
+    bikeshare_corridors,
     borders,
     checkpoint,
     conflation,
@@ -83,6 +84,7 @@ from . import (
     extract,
     hazard_layer,
     lts_sentinels,
+    major_corridors,
     mass_capacity,
     overrides,
     promotion,
@@ -2408,9 +2410,15 @@ def build_handlers(
             current = context.stress_by_way.get(way_id)
             if current is None or way_id in laned:
                 continue
+            tags = tags_of[way_id]
             result = rural_floor(
-                agency_lts.apply(current, ratings),
-                context.class_tags_by_way.get(way_id, tags_of[way_id]),
+                agency_lts.apply(
+                    current,
+                    ratings,
+                    facility_mapped=facility.facility(tags) is not facility.Facility.NONE,
+                    painted_lane=facility.facility(tags) is facility.Facility.LANE,
+                ),
+                context.class_tags_by_way.get(way_id, tags),
                 urban=way_id in reference.urban_way_ids,
             )
             changed += result.tier != current.tier or result.half != current.half
@@ -3945,6 +3953,27 @@ def build_handlers(
         trail_routes.derive_trail_runs(context.staging_schema)
         trail_routes.derive_calm_runs(context.staging_schema)
         trail_routes.derive_roadside(context.staging_schema)
+        # The popular bike corridors (the owner, 2026-10-21): the corridors the owner named,
+        # then the Capital Bikeshare model, which never lowers a named one.
+        major_ids, major_counts = major_corridors.way_ids(
+            ((way.osm_id, way.tags, way.coordinates) for way in context.ways),
+            context.route_names,
+            sidepath_names,
+            major_corridors.load(),
+        )
+        logger.info(
+            "major bike corridors (ways a corridor): %s; rows set: %d",
+            major_counts,
+            major_corridors.apply(context.staging_schema, major_ids),
+        )
+        logger.info(
+            "Capital Bikeshare corridors: %s",
+            bikeshare_corridors.derive(
+                context.staging_schema,
+                context.reference_dir / bikeshare_corridors.FILE_NAME,
+            )
+            or "no trip counts installed",
+        )
         levels = trail_routes.mtb_level_counts(context.staging_schema)
         named, mountain_bike_ways = trail_routes.mtb_name_counts(context.staging_schema)
         logger.info(
