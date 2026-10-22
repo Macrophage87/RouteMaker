@@ -258,7 +258,7 @@ import { bypassFor, bypassPlanKey, bypassSaid, toggleBypass, type Bypass } from 
 import { permitsShown, readPermitsLayer, savePermitsLayer } from "./lib/permitLayer.ts";
 import { RideGroup } from "./RideGroup.tsx";
 import { RoamMode } from "./RoamMode.tsx";
-import { BACK_TO_ROAM, ROAM_ENDED, ROAM_NAME, ROAM_STARTED, type RoamMap } from "./lib/roam.ts";
+import { BACK_TO_ROAM, ROAM_ENDED, ROAM_NAME, ROAM_STARTED, STILL_ROAMING_SAID, type RoamMap } from "./lib/roam.ts";
 import { BikeshareDocksOverlay, type DocksReport } from "./BikeshareDocks.tsx";
 import { KNOWN_OPERATORS, docksStatus, mergeOperators, operatorsToAsk, readOperatorChoices, saveOperatorChoices, type OperatorInfo } from "./lib/bikeshareDocks.ts";
 import { SaveRoute } from "./SaveRoute.tsx";
@@ -3501,7 +3501,7 @@ export function App() {
   }, [announce, commit]);
   // A back gesture during a ride does nothing; End ride is the way out (lib/rideBack.ts, review RIDE-2).
   // Each held back is told, politely, once (review RIDE-2).
-  useEffect(() => (onBike ? holdBackDuringRide(window, () => announce(STILL_RIDING_SAID)) : undefined), [onBike, announce]);
+  useEffect(() => (onBike ? holdBackDuringRide(window, () => announce(roaming ? STILL_ROAMING_SAID : STILL_RIDING_SAID)) : undefined), [onBike, roaming, announce]);
   // No ride is on at load: a ride's entry left by a reload is the page's own again.
   useEffect(() => forgetStaleRideEntry(window), []);
   const undoEndRide = () => {
@@ -3547,7 +3547,13 @@ export function App() {
   // as any ride is; its end comes back to Roam (endRide). Answers the words to say why not, or null once it started.
   const roamDetour = async (from: LonLat, place: { point: LonLat }): Promise<string | null> => {
     const asked: LonLat[] = [from, place.point];
-    const result = await requestRoute(asked, preset, { dials: { ...planDials, loop: false, closuresNow: true }, routeOnly: true });
+    // A Bikeshare or transit ride type rides the detour as the default ride does (as the nearest search measures it),
+    // never a dock or a train to a water fountain.
+    const plain = twoPointsOnly(preset);
+    const detourDials: Dials = plain
+      ? { ...planDials, bike: undefined, ending: undefined, pickupStation: undefined, dropoffStation: undefined, loop: false, closuresNow: true }
+      : { ...planDials, loop: false, closuresNow: true };
+    const result = await requestRoute(asked, plain ? "default" : preset, { dials: detourDials, routeOnly: true });
     if (!roamingNow.current) return null;
     if (!result.ok) return `${result.error.title}. ${result.error.message}`;
     if (!rideableRoute(result.route)) return RIDE_TOO_LONG;
@@ -4034,7 +4040,7 @@ export function App() {
   };
   const stopActionNow = useRef<StopActionFor>(() => null);
   stopActionNow.current = (point, name) => {
-    if (riding) return null;
+    if (onBike) return null;
     if (mode === "go") {
       if (!goStops) return { text: ROUTE_HERE, run: () => goToLettered(point, name) };
       return {
@@ -4057,7 +4063,7 @@ export function App() {
   };
   const stopActionFor = useCallback<StopActionFor>((point, name) => stopActionNow.current(point, name), []);
   // A card's action is for the state it opened in: a ride starting or Go and Plan swapping closes it.
-  useEffect(() => closeStopCard(), [riding, mode]);
+  useEffect(() => closeStopCard(), [onBike, mode]);
   /** The lettered place at `index`, as its card shows it. */
   const letteredStop = (index: number): { point: LonLat; words: StopCardWords } | null => {
     const at = new Date();
@@ -4660,14 +4666,14 @@ export function App() {
         climbs={climbsData}
         climbsOn={climbsOn}
         climbsFrom={climbsFrom}
-        onRideClimb={riding ? ignore : rideClimb}
+        onRideClimb={onBike ? ignore : rideClimb}
         climbCardRequest={climbCardRequest}
         federalVisible={federalShown(preset, federalOn)}
         federalWanted={federalShown(preset, true) /* Mass Ride: the planner's points list needs the data whatever the switch says */}
         onFederalStatus={setFederalStatus}
         onFederalData={setFederalData}
-        onStationPoint={riding ? ignore : placeStation}
-        stationEndFromHere={mode === "go" && !riding}
+        onStationPoint={onBike ? ignore : placeStation}
+        stationEndFromHere={mode === "go" && !onBike}
         stationOnFoot={endsOnFoot(preset)}
         stationFrom={walkFrom}
         onRoadInfo={onBike ? ignore : setRoadInfo /* no road panel (and its Add a stop) during a ride or Roam */}
@@ -4685,12 +4691,12 @@ export function App() {
           ) : null
         }
       />
-      <RepairStandsOverlay getMap={getMap} places={Array.isArray(repairData) ? repairData : null} on={waterPrefs.on && !riding} pixelRatio={Math.min(2, Math.max(1, Math.round(window.devicePixelRatio || 1)))} actionFor={stopActionFor} />
-      <PlacesOverlay getMap={getMap} places={Array.isArray(placesData) ? placesData : null} on={placesOn && !riding} actionFor={stopActionFor} />
-      <FoodOverlay getMap={getMap} results={foodAll} on={letteredOf === "food" && !riding} actionFor={stopActionFor} />
+      <RepairStandsOverlay getMap={getMap} places={Array.isArray(repairData) ? repairData : null} on={waterPrefs.on && !onBike} pixelRatio={Math.min(2, Math.max(1, Math.round(window.devicePixelRatio || 1)))} actionFor={stopActionFor} />
+      <PlacesOverlay getMap={getMap} places={Array.isArray(placesData) ? placesData : null} on={placesOn && !onBike} actionFor={stopActionFor} />
+      <FoodOverlay getMap={getMap} results={foodAll} on={letteredOf === "food" && !onBike} actionFor={stopActionFor} />
       <TrailMilesOverlay getMap={getMap} data={trailMiles} />
       {/* Not in Go, and not on the Mass Ride map (lib/scenicLayer.ts scenicShown). */}
-      <ScenicOverlay getMap={getMap} places={Array.isArray(placesData) ? placesData : null} on={scenicShown(scenicOn, mode, massMap)} placesOn={placesOn && !riding} />
+      <ScenicOverlay getMap={getMap} places={Array.isArray(placesData) ? placesData : null} on={scenicShown(scenicOn, mode, massMap)} placesOn={placesOn && !onBike} />
       <BikeshareDocksOverlay
         active={docksActive}
         getMap={getMap}

@@ -54,7 +54,7 @@ import {
   aheadSaid,
   aheadShown,
   foodNearestPlaces,
-  headingOf,
+  HeadingTrack,
   mapLines,
   onRoadSaid,
   roadsAhead,
@@ -180,14 +180,14 @@ export function RoamMode({
   }, [env, wake]);
 
   // The rider on the map, and the roads ahead worked out again as they move (at most every AHEAD_EVERY_MS).
-  const earlier = useRef<LonLat | null>(null);
   const last = useRef<{ at: number; point: LonLat } | null>(null);
   const pending = useRef<{ name: string | null; count: number }>({ name: null, count: 0 });
   const saidRoad = useRef<string | null | undefined>(undefined);
+  // The heading kept between fixes that give none (lib/roam.ts HeadingTrack), so the card and the arrow hold steady.
+  const track = useRef(new HeadingTrack()).current;
   useEffect(() => {
     if (!fix) return;
-    const h = headingOf(fix.point, fix.headingDeg, earlier.current);
-    if (!earlier.current || haversineM(earlier.current, fix.point) >= 10) earlier.current = fix.point;
+    const h = track.step(fix.point, fix.headingDeg);
     setHeading(h);
     onView({ point: fix.point, headingDeg: h, accuracyM: fix.accuracyM });
     const was = last.current;
@@ -205,7 +205,7 @@ export function RoamMode({
       saidRoad.current = name;
       say([onRoadSaid(found.on), aheadSaid(found.ahead)].filter(Boolean).join(" "));
     }
-  }, [fix, getMap, onView, say]);
+  }, [fix, getMap, onView, say, track]);
   useEffect(() => () => onView(null), [onView]);
 
   // Where am I? (as Ride mode's): the road and the roads ahead said now, and the map following again.
@@ -229,7 +229,16 @@ export function RoamMode({
   const [detourStatus, setDetourStatus] = useState("");
   const [found, setFound] = useState<{ kind: RoamKind; items: Nearby[] } | null>(null);
   const busy = useRef(false);
+  // Ended (End roam, or a detour's ride started): a search answering late says and shows nothing.
+  const gone = useRef(false);
+  useEffect(() => {
+    gone.current = false;
+    return () => {
+      gone.current = true;
+    };
+  }, []);
   const sayDetour = (text: string) => {
+    if (gone.current) return;
     setDetourStatus(text);
     say(text);
   };
@@ -261,6 +270,7 @@ export function RoamMode({
           return;
         }
         const items = rankNearest(candidates, result.answer);
+        if (gone.current) return;
         setFound({ kind, items });
         sayDetour(items.length > 0 ? `${items.length} nearest places to eat. ${items.map(nearbyShort).join(" ")}` : "No places to eat found nearby.");
         return;
@@ -276,6 +286,7 @@ export function RoamMode({
         stations: [],
         request,
       });
+      if (gone.current) return;
       if (outcome.found) setFound({ kind, items: outcome.found.items });
       sayDetour(outcome.said);
     } finally {

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { LonLat } from "./geo.ts";
-import { aheadSaid, foodNearestPlaces, headingOf, linesOf, mapLines, onRoadSaid, roadsAhead, type RoadLine, type RoamMap, type StressLine } from "./roam.ts";
+import { HeadingTrack, aheadSaid, foodNearestPlaces, headingOf, linesOf, mapLines, onRoadSaid, roadsAhead, type RoadLine, type RoamMap, type StressLine } from "./roam.ts";
 
 // A small grid near Dupont Circle: metres to degrees, close enough at this latitude.
 const O: LonLat = [-77.04, 38.91];
@@ -139,4 +139,48 @@ test("the map's own tiles: named roads from the base map, levels from the stress
   // No map sources yet (the map still loading): nothing, and nothing asked.
   const bare = mapLines({ getSource: () => undefined, querySourceFeatures: () => { throw new Error("asked"); } }, at(0, 0));
   assert.deepEqual(bare, { roads: [], stress: [] });
+});
+
+test("a road that ends just short of the one ridden (a T junction mapped 2 m off) is met; a path alongside is not", () => {
+  const roads: RoadLine[] = [
+    { name: "Main St", lines: [[at(0, -600), at(0, 1000)]] },
+    // Ends 2 m east of Main St: no crossing, only the end meets it.
+    { name: "E St", lines: [[at(2, 300), at(400, 300)]] },
+    // A named path 2 m beside Main St, its bends all within 3 m of it, ending well past the half mile.
+    { name: "Main St Trail", lines: [[at(2, -900), at(2, 100), at(2.5, 400), at(2, 1200)]] },
+  ];
+  const stress: StressLine[] = [{ tier: 3, lines: [[at(2, 300), at(400, 300)]] }];
+  const found = roadsAhead(at(0, 0), 0, roads, stress);
+  assert.deepEqual(
+    found.ahead.map((r) => [r.name, Math.round(r.distanceM), r.tier]),
+    [["E St", 300, 3]],
+  );
+});
+
+test("the heading holds between fixes too close to take one from (a phone with no GPS heading at 5 m a second)", () => {
+  const track = new HeadingTrack();
+  const headings = [0, 5, 10, 15, 20, 25, 30].map((north) => track.step(at(0, north), null));
+  // None until 10 m have been ridden; north from then on, every fix, never back to none.
+  assert.deepEqual(headings.map((h) => (h === null ? null : Math.round(h))), [null, null, 0, 0, 0, 0, 0]);
+  // Turning east: the new way once 10 m on from the last point taken.
+  const east = [5, 10, 15].map((e) => track.step(at(e, 30), null));
+  assert.ok(east[2] !== null && Math.round(east[2]) > 45, String(east));
+  // The GPS's own heading wins while it gives one.
+  assert.equal(track.step(at(20, 30), 180), 180);
+});
+
+test("App: Roam is Go's one button with no destination, a detour's end comes back to it, and the plan is shut while roaming", async () => {
+  const { readFileSync } = await import("node:fs");
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  assert.match(app, /points\.length === 0 && !isMassRide\(preset\)\s*\? \{ label: ROAM_NAME, start: true, busy: false, onPress: startRoam \}/);
+  assert.match(app, /if \(start\?\.roam\) \{\s*setRiding\(false\);\s*setRideStart\(null\);\s*setRideView\(null\);\s*setFollow\(true\);\s*setRoaming\(true\);\s*announce\(BACK_TO_ROAM\);\s*return;/);
+  assert.match(app, /beginRide\(ridePrefs, false, \{ route: result\.route, points: asked, roam: true \}\);/);
+  // A bikeshare or transit ride type rides the detour as the default ride.
+  assert.match(app, /requestRoute\(asked, plain \? "default" : preset,/);
+  // Nothing on the map changes the plan while roaming: the stop cards offer nothing, and the overlays are off.
+  assert.match(app, /const onBike = riding \|\| roaming;/);
+  assert.match(app, /if \(onBike\) return null;/);
+  assert.match(app, /useEffect\(\(\) => closeStopCard\(\), \[onBike, mode\]\);/);
+  assert.match(app, /onMapClick=\{onBike \|\| reviewing \? ignore : place\}/);
+  assert.doesNotMatch(app, /\bon=\{[^}]*&& !riding\}/);
 });

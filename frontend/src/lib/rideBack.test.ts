@@ -82,7 +82,7 @@ test("an entry the page replaced during the ride is not taken off at End", () =>
 
 test("App holds the back gesture for exactly the ride", () => {
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
-  assert.match(app, /useEffect\(\(\) => \(onBike \? holdBackDuringRide\(window, \(\) => announce\(STILL_RIDING_SAID\)\) : undefined\), \[onBike, announce\]\);/);
+  assert.match(app, /useEffect\(\(\) => \(onBike \? holdBackDuringRide\(window, \(\) => announce\(roaming \? STILL_ROAMING_SAID : STILL_RIDING_SAID\)\) : undefined\), \[onBike, roaming, announce\]\);/);
   // A ride or Roam (RoamMode.tsx): both are on the bike.
   assert.match(app, /const onBike = riding \|\| roaming;/);
   assert.match(app, /useEffect\(\(\) => forgetStaleRideEntry\(window\), \[\]\);/);

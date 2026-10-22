@@ -10,7 +10,7 @@
 import type { FoodPlace } from "./food.ts";
 import { foodKindText } from "./food.ts";
 import { formatDistance, spokenDistance } from "./format.ts";
-import type { LonLat } from "./geo.ts";
+import { haversineM, type LonLat } from "./geo.ts";
 import { BASEMAP_SOURCE_ID, STRESS_SOURCE_ID } from "./mapStyle.ts";
 import type { NearestPlace } from "./nearest.ts";
 import { STRESS_TILE_LAYER } from "../stressStyle.js";
@@ -23,6 +23,8 @@ export const ROAM_STARTED = "Roaming. The map follows you and shows the roads ah
 export const ROAM_ENDED = "Roam ended.";
 /** Said and shown when a detour ends (End ride, or arrived and ended): the ride goes back to roaming. */
 export const BACK_TO_ROAM = "Back to roaming.";
+/** Said when a back gesture is held during Roam (lib/rideBack.ts holds it, as during a ride). */
+export const STILL_ROAMING_SAID = "Still roaming. Use End roam to stop.";
 /** Shown on the card before the map has a road near the rider. */
 export const NO_ROAD_YET = "Looking for the road you're on…";
 /** No named road near: on an unnamed path, or off the map's roads. */
@@ -120,6 +122,8 @@ function along(from: XY, to: XY, metres: number): XY {
 interface FlatRoad {
   name: string;
   segs: Array<[XY, XY]>;
+  /** Each line's first and last segment, the end first: where the road may end on another (a T junction). */
+  ends: Array<[XY, XY]>;
 }
 
 /** Each road's segments in the flat view, those with no point within `reach` metres of the rider left out. */
@@ -128,14 +132,18 @@ function flatRoads(roads: readonly RoadLine[], to: (p: LonLat) => XY, reach: num
   for (const road of roads) {
     if (!road.name) continue;
     const segs: Array<[XY, XY]> = [];
+    const ends: Array<[XY, XY]> = [];
     for (const line of road.lines) {
       for (let i = 1; i < line.length; i++) {
         const a = to(line[i - 1]);
         const b = to(line[i]);
-        if (closest([0, 0], a, b).m <= reach) segs.push([a, b]);
+        if (closest([0, 0], a, b).m > reach) continue;
+        segs.push([a, b]);
+        if (i === 1) ends.push([a, b]);
+        if (i === line.length - 1) ends.push([b, a]);
       }
     }
-    if (segs.length > 0) out.push({ name: road.name, segs });
+    if (segs.length > 0) out.push({ name: road.name, segs, ends });
   }
   return out;
 }
@@ -212,12 +220,14 @@ export function roadsAhead(rider: LonLat, headingDeg: number | null, roads: read
       for (const [a, b] of ridden) {
         const x = crossing(a, b, c, d);
         if (x) consider(road.name, x, c, d);
-        // A road that ends on the one ridden (a T junction): its end within MEETS_M of it.
-        for (const end of [c, d]) {
-          if (x) break;
-          const hit = closest(end, a, b);
-          if (hit.m <= MEETS_M) consider(road.name, hit.at, c, d);
-        }
+      }
+    }
+    // A road that ends on the one ridden (a T junction): a line's end within MEETS_M of it. Only the ends, so a path
+    // mapped alongside the road a few metres off is not a road met at every bend.
+    for (const [end, next] of road.ends) {
+      for (const [a, b] of ridden) {
+        const hit = closest(end, a, b);
+        if (hit.m <= MEETS_M) consider(road.name, hit.at, end, next);
       }
     }
   }
@@ -258,6 +268,22 @@ export function headingOf(now: LonLat, gpsHeading: number | null, earlier: LonLa
   const v = flat(earlier)(now);
   if (len(v) < minM) return null;
   return ((Math.atan2(v[0], v[1]) * 180) / Math.PI + 360) % 360;
+}
+
+/**
+ * The rider's heading fix by fix: `headingOf` from the last point at least 10 m back, and between fixes that give
+ * none (no GPS heading, and too close to the last point to take one), the last heading kept, so the card and the
+ * arrow hold steady at riding speed.
+ */
+export class HeadingTrack {
+  private earlier: LonLat | null = null;
+  private last: number | null = null;
+  step(point: LonLat, gpsHeading: number | null): number | null {
+    const h = headingOf(point, gpsHeading, this.earlier) ?? this.last;
+    this.last = h;
+    if (!this.earlier || haversineM(this.earlier, point) >= 10) this.earlier = point;
+    return h;
+  }
 }
 
 /** Find food's places as the nearest search's, so Roam's Detour lists food by riding distance as it does water. */
