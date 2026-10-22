@@ -30,6 +30,7 @@ from .restricted_areas import (
     GOLF_NO_BICYCLE,
     MILITARY_NO_BICYCLE,
     SECURED_NO_BICYCLE,
+    TRACK_NO_BICYCLE,
     WORKS_NO_BICYCLE,
     Area,
     reopened_by_override,
@@ -49,12 +50,14 @@ PARK_RULES: Mapping[int, str] = {}
 # reopens it, the off-road one included, whatever else the way is; and a secured
 # federal compound's (`restricted_areas.secured_closures`, owner report 2026-10-06) next,
 # and a working site's (`restricted_areas.works_closures`, owner report 2026-10-12), and a
-# golf course's (`restricted_areas.golf_closures`, owner report 2026-10-21).
+# golf course's (`restricted_areas.golf_closures`, owner report 2026-10-21), and a farm
+# track's (`restricted_areas.track_closures`, owner report 2026-10-21).
 ORDER = (
     MILITARY_NO_BICYCLE,
     SECURED_NO_BICYCLE,
     WORKS_NO_BICYCLE,
     GOLF_NO_BICYCLE,
+    TRACK_NO_BICYCLE,
     "zoo",
     singletrack.NO_BICYCLE,
     cbd.NO_BICYCLE,
@@ -205,12 +208,14 @@ def closures(
     reopened: Collection[int] = frozenset(),
     works: Collection[int] = frozenset(),
     golf: Collection[int] = frozenset(),
+    tracks: Collection[int] = frozenset(),
 ) -> TrailClosures:
     """Every NO-BIKE-PATHS closure, by way, and the ways `military` names (closed
     inside a military area, owner report 2026-10-05) and `secured` names (closed
     inside a secured federal compound, 2026-10-06) and `works` names (closed inside a
     quarry, a landfill or an industrial area, 2026-10-12) and `golf` names (a golf
-    course's cart paths and drives, 2026-10-21) under their own reasons.
+    course's cart paths and drives, 2026-10-21) and `tracks` names (a farm or forest
+    track with no sign it is public, 2026-10-21) under their own reasons.
 
     `reopened` are the ways an approved access override wrote a bicycle key on. A
     mountain-bike-class way whose override lets a bicycle through is open, and so
@@ -234,7 +239,11 @@ def closures(
     for way in ways:
         osm_id, tags = way.osm_id, way.tags
         if osm_id in spur and not (
-            osm_id in military or osm_id in secured or osm_id in works or osm_id in golf
+            osm_id in military
+            or osm_id in secured
+            or osm_id in works
+            or osm_id in golf
+            or osm_id in tracks
         ):
             # Open and destination-only: no rule closes it (and nothing but the
             # Zoo rule would), so it is not asked.
@@ -249,6 +258,8 @@ def closures(
             reason = WORKS_NO_BICYCLE
         elif osm_id in golf:
             reason = GOLF_NO_BICYCLE
+        elif osm_id in tracks:
+            reason = TRACK_NO_BICYCLE
         elif zoo.closed_way(osm_id, tags, way.coordinates, zoo_polygon):
             reason = zoo.NO_BICYCLE
         elif singletrack.is_singletrack(tags):
