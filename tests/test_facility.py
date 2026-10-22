@@ -471,6 +471,8 @@ def test_beside_needs_most_of_the_way():
         ({"highway": "residential"}, "road"),
         ({"highway": "corridor", "indoor": "yes", "level": "1"}, "hidden"),  # BWI's terminal
         ({"highway": "corridor"}, "hidden"),
+        ({"highway": "via_ferrata", "name": "Go Ape"}, "hidden"),  # a zip-line course (2026-10-22)
+        ({"highway": "via_ferrata", "bicycle": "yes"}, "hidden"),
         ({"highway": "footway", "indoor": "yes"}, "hidden"),
         # A footway no bicycle tag opens is barred, not drawn as a bike path
         # (OWNER-DECISIONS 278, 290(b)).
