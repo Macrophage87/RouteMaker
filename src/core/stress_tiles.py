@@ -94,16 +94,20 @@ from django.utils.http import parse_etags
 from django.views.decorators.http import require_http_methods
 
 from pipeline.schema import (
+    BIKE_POPULAR_COLUMN,
+    CALM_ROAD_MAX_TIER,
     CALM_RUN_COLUMN,
     CAR_FREE_COLUMN,
     FACILITY_COLUMN,
     FACILITY_SHOWN_COLUMN,
     MAP_CLASS_COLUMN,
     MASS_WIDTH_COLUMN,
+    METRES_PER_MILE,
     MOTOR_ONLY_RULE,
     MTB_LEVEL_COLUMN,
     MTB_NAME_COLUMN,
     MTB_ONLY_COLUMN,
+    RIDE_ROAD_RUN_MI,
     ROADSIDE_COLUMN,
     ROUGH_COLUMN,
     SCENIC_COLUMN,
@@ -172,8 +176,9 @@ CONTENT_TYPE = "application/vnd.mapbox-vector-tile"
 # trail's surface, not its deck's (BRIDGE_UNPAVED). 9: the z12-13 ride layer carries the
 # mountain-bike trails (v0.7.0). 10: every street from z12, merged at z12-13, and no ride
 # layer (the owner, 2026-10-17: "Both from 12"). 11: a major trail's name, `trail_name`
-# (TRAIL_NAME_RULE).
-FORMAT_VERSION = 11
+# (TRAIL_NAME_RULE). 12 is v0.10.2's `dense`. 13: the popular bike corridors' `popular`, z10-11
+# keep them and the long calm roads (`popular_and_calm`), and a long trail's name from z10.
+FORMAT_VERSION = 13
 
 # Five minutes (OWNER-DECISIONS 460.6, "5 min sounds good"): an instance admin's change in
 # the road panel (core.stress_edits) is in the tiles at once, and other riders' browsers
@@ -218,6 +223,46 @@ class Level:
     # that has all three long-trail columns (LONG_TRAIL_COLUMNS); on one
     # without, today's tiles are drawn.
     long_trails: LongTrails | None = None
+    # Zoomed out, the popular bike corridors of at least this class (`bike_popular`) and the
+    # calm roads in a run of at least this many miles (`calm_run_m`), kept beside the long
+    # trails (`popular_and_calm`); None keeps neither.
+    popular_min: int | None = None
+    calm_road_run_mi: float | None = None
+
+
+# THE POPULAR CORRIDORS AND THE LONG CALM ROADS ZOOMED OUT. The owner, 2026-10-21: "Are
+# there any good open source cycling heatmaps, those corridors should be shown first", "make
+# those streets show more pronounced than other roads", and "Where it's out further, we can
+# mostly focus on the longer low-stress routes too." So z10-11 keep, beside the long trails,
+# the popular bike corridors (`bike_popular`: `pipeline.bikeshare_corridors` and the named
+# ones of `pipeline.major_corridors`; class 3 at z10, 2 and up at z11) and the calm roads
+# (LTS 1-2, `pipeline.calm_roads`) in a run as long as the long trails' paved bars. Each only
+# on a table with its column.
+Z10_POPULAR_MIN = 3
+Z11_POPULAR_MIN = 2
+Z10_CALM_ROAD_RUN_MI = Z10_LONG_TRAILS.paved_run_mi
+Z11_CALM_ROAD_RUN_MI = Z11_LONG_TRAILS.paved_run_mi
+
+
+def popular_and_calm(level: Level, optional: frozenset[str]) -> list[str]:
+    """The terms a zoomed-out level keeps beside its long trails."""
+    terms = []
+    if level.popular_min is not None and BIKE_POPULAR_COLUMN in optional:
+        terms.append(f"s.{BIKE_POPULAR_COLUMN} >= {level.popular_min}")
+    # Only on a table built with `bike_popular`, which has the index the term reads through
+    # (`pipeline.schema.ZOOMED_OUT_INDEX_PREDICATE`); a table from before has `calm_run_m`
+    # and no such index, and its z10-11 tiles stay the long trails.
+    if (
+        level.calm_road_run_mi is not None
+        and CALM_RUN_COLUMN in optional
+        and BIKE_POPULAR_COLUMN in optional
+    ):
+        run_m = round(level.calm_road_run_mi * METRES_PER_MILE)
+        terms.append(
+            f"(s.stress_tier <= {CALM_ROAD_MAX_TIER} AND NOT s.is_trail_class "
+            f"AND s.{CALM_RUN_COLUMN} >= {run_m})"
+        )
+    return terms
 
 
 # The thresholds are the named constants in `pipeline.schema`, from
@@ -231,6 +276,8 @@ TRAILS = Level(
     merged=True,
     predicate=trails_predicate,
     long_trails=Z10_LONG_TRAILS,
+    popular_min=Z10_POPULAR_MIN,
+    calm_road_run_mi=Z10_CALM_ROAD_RUN_MI,
 )
 TRAILS_NEAR = Level(
     "trails-near",
@@ -241,6 +288,8 @@ TRAILS_NEAR = Level(
     merged=True,
     predicate=trails_predicate,
     long_trails=Z11_LONG_TRAILS,
+    popular_min=Z11_POPULAR_MIN,
+    calm_road_run_mi=Z11_CALM_ROAD_RUN_MI,
 )
 # Every segment from z12 (the owner, 2026-10-17: "Both from 12"), merged into one feature
 # a class at z12-13, where one a segment is 1.33 MB a dense tile (the module's docstring).
@@ -350,6 +399,10 @@ OPTIONAL_PROPERTIES = {
     # (`routemaker.facility.shown_facility`), so such a lane draws as a lane; the
     # tier and the routing price stay on the rider with the traffic.
     "contraflow": FACILITY_SHOWN_COLUMN,
+    # The popular bike corridors (the owner, 2026-10-21: "make those streets show more
+    # pronounced than other roads"): 1 to 3, or left out (`bike_popular`,
+    # `pipeline.bikeshare_corridors`). The map draws a wider band under the way for it.
+    "popular": BIKE_POPULAR_COLUMN,
 }
 
 # The tile property `rpm` is rounded down to a multiple of this (OPTIONAL_EXPRESSIONS).
@@ -381,6 +434,7 @@ OPTIONAL_EXPRESSIONS = {
     "half": f"NULLIF(s.{STRESS_HALF_COLUMN}, false)",
     "scenic": f"CASE WHEN s.{SCENIC_COLUMN} IS NOT NULL THEN true END",
     "contraflow": f"CASE WHEN s.{FACILITY_SHOWN_COLUMN} IS NOT NULL THEN true END",
+    "popular": f"NULLIF(s.{BIKE_POPULAR_COLUMN}, 0)",
     # `rpm`: the Mass Ride capacity, riders a minute, rounded DOWN to a multiple of
     # RPM_STEP. The Mass Ride bands (60, 120, 200) are multiples of it, so a
     # feature never moves band; and the zoomed-out levels, which collect every
@@ -439,6 +493,19 @@ def trail_name_rule(has_facility: bool) -> str:
         f"CASE WHEN {trails_predicate(has_facility)} AND "
         f"{long_trails_predicate(Z11_LONG_TRAILS)} THEN s.{TRAIL_NAME_COLUMN} END"
     )
+
+
+# THE LONG CALM STREETS. The owner, 2026-10-21: "When the roads get crowded with zoom, go in this
+# rough priority: Off road path, protected bike lane, painted bike lane, then the long calm
+# streets that don't have to keep waiting at semi-controlled intersections". A calm street is a
+# road at LTS 1-2 in a calm run (`calm_run_m`, `pipeline.calm_roads`: broken at every junction
+# with a busy road) of at least the ride layer's bar, RIDE_ROAD_RUN_MI; it carries `calm`, true
+# or left out, which the map draws it above the other streets by (frontend/src/stressStyle.js,
+# `drawPriority`).
+CALM_STREET_RULE = (
+    f"CASE WHEN s.stress_tier <= {CALM_ROAD_MAX_TIER} AND NOT s.is_trail_class "
+    f"AND s.{CALM_RUN_COLUMN} >= {round(RIDE_ROAD_RUN_MI * METRES_PER_MILE)} THEN true END"
+)
 
 
 _MERGED = """
@@ -503,21 +570,27 @@ def tile_sql(level: Level, optional: frozenset[str] = frozenset(), clip: bool = 
         carried["facility"] = f"COALESCE(s.{FACILITY_SHOWN_COLUMN}, s.{FACILITY_COLUMN})"
     has_facility = FACILITY_COLUMN in optional
     has_car_free = CAR_FREE_COLUMN in optional
-    # Only where the map names them (from z12): at z10-11 a name would split the merged
-    # features for nothing.
-    if level.min_zoom >= QUIET_STREETS_MIN_ZOOM and all(c in optional for c in LONG_TRAIL_COLUMNS):
+    # At every level (the owner, 2026-10-21: "And futher out obviously label the long ones"
+    # ... "Basically anything long"): a z10-11 tile's trails are the long ones, so a name
+    # splits its merged features by trail and no further.
+    if all(c in optional for c in LONG_TRAIL_COLUMNS):
         carried["trail_name"] = trail_name_rule(has_facility)
+    if CALM_RUN_COLUMN in optional:
+        carried["calm"] = CALM_STREET_RULE
     if level.predicate is not None:
         where = level.predicate(has_facility, has_car_free)
         if level.long_trails is not None and all(c in optional for c in LONG_TRAIL_COLUMNS):
             rule = long_trails_predicate(level.long_trails, has_car_free)
             where = f"({where}) AND {rule}"
+        extra = popular_and_calm(level, optional)
+        if extra:
+            where = " OR ".join([f"({where})", *extra])
         if has_car_free:
             # A road closed to cars at set times is in a zoomed-out tile that
             # would not otherwise hold it only for those times: it carries them
             # as `car_free_only`, and the map draws it only in one of them. A
             # way the level holds anyway keeps `car_free` as it is.
-            kept = level.predicate(has_facility)
+            kept = " OR ".join([f"({level.predicate(has_facility)})", *extra])
             expression = carried.pop("car_free")
             carried["car_free"] = f"CASE WHEN {kept} THEN {expression} END"
             carried["car_free_only"] = f"CASE WHEN NOT {kept} THEN {expression} END"
@@ -643,6 +716,8 @@ ETAG_LETTERS = {
     SCENIC_COLUMN: "v",
     # `a` for against the traffic: the class shown on a contraflow-only lane.
     FACILITY_SHOWN_COLUMN: "a",
+    # `p` for popular.
+    BIKE_POPULAR_COLUMN: "p",
 }
 
 
@@ -654,14 +729,14 @@ def etag_for(oid: int, optional: frozenset[str] = frozenset(), generation: int =
     # optional columns are in it because a column added to the live table in
     # place (the facility, by hand) changes the tiles but not the table's oid.
     # Each column by a letter of its own, so the tag fits the cache's 64-character
-    # key with all of them (a `+` and one letter each, sixteen in all: `W/"stress-` and a
-    # ten-digit oid, `+` and sixteen letters, `-v8"`, 41 characters), in the order of the
+    # key with all of them (a `+` and one letter each, eighteen in all: `W/"stress-` and a
+    # ten-digit oid, `+` and eighteen letters, `-v13"`, 44 characters), in the order of the
     # column names.
     carried = "".join(ETAG_LETTERS[column] for column in sorted(optional))
     # And the table's edit generation (`core.stress_edits`), once it has had one: an edit
     # updates rows in place, which changes the tiles and not the oid, so without it a
     # browser's revalidation would be answered 304 for the old tile. `-e` and up to six
-    # digits makes the longest tag 49 characters, inside the cache's 64.
+    # digits makes the longest tag 52 characters, inside the cache's 64.
     edited = f"-e{generation}" if generation else ""
     return f'W/"stress-{oid}{"+" + carried if carried else ""}{edited}-v{FORMAT_VERSION}"'
 

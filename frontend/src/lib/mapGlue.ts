@@ -7,6 +7,7 @@ import {
   FACILITIES,
   STRESS_TILE_LAYER,
   currentTiers,
+  facilityLayerId,
   facilityWidthAt,
   stressCasingLayers,
   gapLayers,
@@ -14,6 +15,10 @@ import {
   unknownSurfaceLayers,
   stressFilters,
   stressLayers,
+  drawPriority,
+  popularBandLayers,
+  POPULAR_BAND_LAYER_ID,
+  BUSY_MIN_TIER,
   stressOverlayLayers,
   mtbTrailPaint,
   mtbTrailsOn,
@@ -76,7 +81,7 @@ export interface OverlayMap {
   getStyle(): { layers: ReadonlyArray<{ id: string; type: string }> };
   addLayer(layer: object, beforeId?: string): void;
   getLayer(id: string): unknown;
-  setLayoutProperty(id: string, name: string, value: string): void;
+  setLayoutProperty(id: string, name: string, value: unknown): void;
   setFilter(id: string, filter: unknown): void;
   setPaintProperty(id: string, name: string, value: unknown): void;
   /** MapLibre's; a stand-in may leave it out (the base map's path names then stay as they are). */
@@ -170,8 +175,14 @@ export function setStressWhen(map: OverlayMap, when: When): void {
     if (map.getLayer(id)) map.setFilter(id, filter);
   }
   for (const facility of FACILITIES) {
-    const id = `facility-${facility.facility}`;
-    if (map.getLayer(id)) map.setPaintProperty(id, "line-width", facilityWidthAt(facility, when));
+    // The calm tiers' rails and the busy tiers' (stressStyle.js, facilityLayerId).
+    for (const id of [facilityLayerId(facility.facility), facilityLayerId(facility.facility, true)]) {
+      if (map.getLayer(id)) map.setPaintProperty(id, "line-width", facilityWidthAt(facility, when));
+    }
+  }
+  // The drawing priority reads the ride time too: a road closed to cars draws as a path.
+  for (const layer of [...stressLayers(STRESS_SOURCE_ID, when), ...stressCasingLayers(STRESS_SOURCE_ID, when)] as Array<{ id: string; layout: object }>) {
+    if (map.getLayer(layer.id)) map.setLayoutProperty(layer.id, "line-sort-key", drawPriority(when));
   }
 }
 
@@ -214,8 +225,14 @@ export function setStressPalette(
     if (layer.id.startsWith("stress-half-outline-")) map.setPaintProperty(layer.id, "line-dasharray", layer.paint["line-dasharray"]);
   }
   for (const facility of FACILITIES) {
-    const id = `facility-${facility.facility}`;
-    if (map.getLayer(id)) map.setPaintProperty(id, "line-width", facilityWidthAt(facility, when));
+    // The calm tiers' rails and the busy tiers' (stressStyle.js, facilityLayerId).
+    for (const id of [facilityLayerId(facility.facility), facilityLayerId(facility.facility, true)]) {
+      if (map.getLayer(id)) map.setPaintProperty(id, "line-width", facilityWidthAt(facility, when));
+    }
+  }
+  // The popular corridors' band: stronger with the accessibility switch.
+  for (const layer of popularBandLayers(STRESS_SOURCE_ID, when, tiers) as Array<{ id: string; paint: Record<string, unknown> }>) {
+    if (map.getLayer(layer.id)) map.setPaintProperty(layer.id, "line-opacity", layer.paint["line-opacity"]);
   }
   // The unrated mountain-bike trails' line (452a): wider and darker with the accessibility switch, and its white edge wider.
   if (map.getLayer(MTB_TRAIL_LAYER_ID)) {
@@ -445,8 +462,38 @@ export function fadedOpacity(base: unknown, fade: number): unknown {
 export function setOverlayFade(map: Pick<RouteSectionsMap, "getLayer" | "setPaintProperty">, fade: number): void {
   for (const layer of stressOverlayLayers(STRESS_SOURCE_ID) as Array<{ id: string; type: string; paint?: Record<string, unknown> }>) {
     if (layer.type !== "line" || keptUnderRoute(layer.id) || !map.getLayer?.(layer.id)) continue;
-    map.setPaintProperty(layer.id, "line-opacity", fadedOpacity(layer.paint?.["line-opacity"], fade));
+    map.setPaintProperty(layer.id, "line-opacity", fadedOpacity(layer.paint?.["line-opacity"], fade * rideFocusFade(layer.id)));
   }
+}
+
+/**
+ * In a ride the map is for the route and finding the way (the owner, 2026-10-21: "A similar pass should
+ * happen when in a ride. Prioritize the path and wayfinding."): the popular corridors' band, a planning
+ * aid, is not drawn, and the busy roads (LTS 3, LTS 4, Avoid) and their rails fade by RIDE_BUSY_FADE on
+ * top of the route's own fade, so the calm ways a rider might turn onto stand out. Street and station
+ * names, the route, closures and hazards are untouched. The busy roads keep full strength with the High contrast switch, whose
+ * edges are measured at it (routeOverlayFade); the band goes with or without it.
+ */
+export const RIDE_BUSY_FADE = 0.5;
+let rideFocus = false;
+
+/** The extra fade a layer takes in a ride (1 outside one). */
+export function rideFocusFade(id: string, riding: boolean = rideFocus): number {
+  if (!riding) return 1;
+  if (id === POPULAR_BAND_LAYER_ID) return 0;
+  if (accessibilityOn() || id.startsWith("mtb-")) return 1;
+  const tier = Number(id.match(/-(\d)$/)?.[1] ?? 0);
+  return id.endsWith("-busy") || tier >= BUSY_MIN_TIER ? RIDE_BUSY_FADE : 1;
+}
+
+/** A ride started or ended: the overlay's fade under `route` set again with the ride's focus, or without. */
+export function setRideFocus(
+  map: Pick<RouteSectionsMap, "getLayer" | "setPaintProperty">,
+  riding: boolean,
+  route: Pick<RouteResponse, "geometry" | "stress_spans"> | null | undefined,
+): void {
+  rideFocus = riding;
+  setOverlayFade(map, routeOverlayFade(route));
 }
 
 /** Show or hide every overlay layer that is on the map. */

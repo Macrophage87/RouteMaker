@@ -503,6 +503,23 @@ STRESS_HALF_COLUMN = "stress_half"
 # Mass Ride map as it was.
 MASS_WIDTH_COLUMN = "mass_usable_width_m"
 
+# THE POPULAR BIKE CORRIDORS (the owner, 2026-10-21: "use the Cabi heatmap if you can, and
+# make those streets show more pronounced than other roads"): `bike_trips`, the Capital
+# Bikeshare trips a day the rebuild's model routes along the way (`pipeline.
+# bikeshare_corridors`), null where none does; and `bike_popular`, its class, 0 to 3, or 3 on
+# a way of a corridor the owner named (`pipeline.major_corridors`). The stress tiles carry
+# the class as `popular` and the map draws those streets wider.
+BIKE_TRIPS_COLUMN = "bike_trips"
+BIKE_POPULAR_COLUMN = "bike_popular"
+# The zoomed-out tiles keep them beside the long trails, with the calm roads in a run as long
+# as the long trails' paved bar ("Where it's out further, we can mostly focus on the longer
+# low-stress routes too."; `core.stress_tiles.popular_and_calm`); this partial index holds
+# just those rows, at the z11 bar (the z10 one is longer). `calm_run_m` bare, not COALESCEd,
+# so the planner reads the column's statistics.
+ZOOMED_OUT_INDEX_PREDICATE = (
+    f"{BIKE_POPULAR_COLUMN} > 0 OR {CALM_RUN_COLUMN} >= {round(Z11_PAVED_RUN_MI * METRES_PER_MILE)}"
+)
+
 # On a table from before those columns, the public roads a bicycle may not
 # use are what the classifier recorded as motor-only: a motorway or its ramp.
 MOTOR_ONLY_RULE = "starts_with(stress_rule, 'motor-only classification (')"
@@ -742,6 +759,12 @@ CREATE TABLE {schema}.segment (
     -- of a table built before the column existed (the panel then says the reason comes
     -- with the next data update).
     bike_access_reason text,
+    -- The popular bike corridors (BIKE_TRIPS_COLUMN, BIKE_POPULAR_COLUMN): the modelled
+    -- Capital Bikeshare trips a day along the way, null where none, and the class the map
+    -- draws it wider for, 0 to 3. 0 on every row of a rebuild without the trip counts and
+    -- off every named corridor.
+    bike_trips      integer     CHECK (bike_trips >= 0),
+    bike_popular    smallint    NOT NULL DEFAULT 0 CHECK (bike_popular BETWEEN 0 AND 3),
     CONSTRAINT segment_key UNIQUE (osm_way_id, ordinal)
 );
 
@@ -761,6 +784,9 @@ CREATE INDEX segment_seek_geom_idx ON {schema}.segment USING gist (geometry)
 -- The z12-13 ride layer's tiles (RIDE_INDEX_PREDICATE).
 CREATE INDEX segment_ride_geom_idx ON {schema}.segment USING gist (geometry)
     WHERE {ride};
+-- The popular corridors and long calm roads the z10-11 tiles keep (ZOOMED_OUT_INDEX_PREDICATE).
+CREATE INDEX segment_zoomed_out_geom_idx ON {schema}.segment USING gist (geometry)
+    WHERE {zoomed_out};
 
 -- What each synthetic border-control node means. The node ids are reassigned
 -- every rebuild, so this table describes one particular graph and changes
@@ -792,6 +818,7 @@ def create_segment_schema(schema: str) -> None:
                 overview=OVERVIEW_INDEX_PREDICATE,
                 seek=SEEK_INDEX_PREDICATE,
                 ride=RIDE_INDEX_PREDICATE,
+                zoomed_out=ZOOMED_OUT_INDEX_PREDICATE,
             )
         )
 

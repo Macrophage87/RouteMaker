@@ -168,12 +168,12 @@ test("place names: the switch repaints them in place", () => {
 // THE MAJOR TRAILS' NAMES (the owner, 2026-10-21: "Major off road bike trails like the Metropolitan Branch Trail should be
 // named on the map."): the tiles' `trail_name`, along the line, from the zoom every street comes in at, in the street
 // names' face, size and halo, in the path rails' purple.
-test("trail names: along each major trail from zoom 12, in the street names' face and size", () => {
+test("trail names: along each major trail from zoom 10 (\"label the long ones\"), in the street names' face and size", () => {
   const [layer] = trailLabelLayers("s", "weekday_offpeak", false) as Layer[] & { minzoom?: number; filter?: unknown }[];
   assert.equal(layer.id, TRAIL_LABEL_LAYER_ID);
   assert.equal(layer.type, "symbol");
   assert.equal((layer as { minzoom?: number }).minzoom, TRAIL_LABEL_MIN_ZOOM);
-  assert.equal(TRAIL_LABEL_MIN_ZOOM, 12);
+  assert.equal(TRAIL_LABEL_MIN_ZOOM, 10);
   assert.equal(layer.layout?.["symbol-placement"], "line");
   assert.deepEqual(layer.layout?.["text-field"], ["get", "trail_name"]);
   assert.deepEqual(layer.layout?.["text-font"], [ROAD_LABEL.font]);
