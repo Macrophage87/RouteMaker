@@ -4373,8 +4373,8 @@ const SHARE_STUB = `window.__shared = []; window.__shareMode = "ok"; window.__no
   await sleep(600);
   const sent = await p.eval("({ shared: window.__shared, noActivation: window.__noActivation })");
   const url = sent.shared[0]?.url ?? "";
-  check("share ride: Enter hands the sheet the kept line's link, marked as a ride, within the press",
-    sent.noActivation === 0 && sent.shared.length === 1 && /\/s\/[0-9a-f]{32}#.*&route=[0-9a-f]{32}&ride=1$/.test(url), JSON.stringify(sent));
+  check("share ride: Enter hands the sheet the kept line's link, marked as a ride with the sharer as leader, within the press",
+    sent.noActivation === 0 && sent.shared.length === 1 && /\/s\/[0-9a-f]{32}#.*&route=[0-9a-f]{32}&ride=1&lead=[0-9a-f]{32}$/.test(url), JSON.stringify(sent));
   await p.close();
 }
 // MARK_SHARE marks the Save & load sheet's Share (open it first: openSheet(p, "Save & load")).
