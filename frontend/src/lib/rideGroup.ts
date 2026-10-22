@@ -20,7 +20,7 @@
  *   spot sent once with it, at most 1 a minute and 10 a ride per device. Each carries its age in words.
  */
 import { QUARTER_MILE, formatDistance } from "./format.ts";
-import type { LonLat } from "./geo.ts";
+import { haversineM, type LonLat } from "./geo.ts";
 import type { PresetId } from "./presets.ts";
 
 export const RIDE_LINK_TYPES: readonly PresetId[] = ["mass-ride", "group-ride"];
@@ -52,6 +52,15 @@ export async function rideId(preset: PresetId, points: readonly LonLat[]): Promi
  */
 export async function broadcastRideId(sharedId: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`broadcast|${sharedId}`));
+  return hex(digest);
+}
+
+/**
+ * A broadcast from Roam (Stephen 2026-10-22: Broadcast "as a tap within roam"): a ride with no route, named by a random
+ * id its link carries, and kept apart from a shared line's broadcast by its prefix.
+ */
+export async function roamRideId(roamId: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`roam|${roamId}`));
   return hex(digest);
 }
 
@@ -256,6 +265,16 @@ export function nearRoute(line: readonly LonLat[], p: LonLat): boolean {
   return project(line, p).offM <= NEAR_ROUTE_M;
 }
 
+/**
+ * A broadcast from Roam (no route to be along): how far a spot is from you in a straight line, "0.3 mi (0.5 km) away",
+ * "beside you"; null without your position.
+ */
+export function awayWords(here: LonLat | null, p: LonLat): string | null {
+  if (!here) return null;
+  const m = haversineM(here, p);
+  return m < 30 ? "beside you" : `${formatDistance(m)} away`;
+}
+
 /** "0.3 mi (0.5 km) behind you", "ahead of you", "beside you"; without your position, "4.2 mi (6.8 km) along the route". */
 export function relativeWords(otherAlongM: number, myAlongM: number | null): string {
   if (myAlongM === null) return `${formatDistance(otherAlongM)} along the route`;
@@ -288,7 +307,9 @@ export function ageWords(ageS: number): string {
  * (0.8 km) behind", "Lead line, 1.2 mi (1.9 km) ahead", "Corker, beside you"; without your position,
  * "Participant, 4.2 mi (6.8 km) along the route".
  */
-export function dotName(role: RideRole, alongM: number, myAlongM: number | null, leader = false): string {
+export function dotName(role: RideRole, alongM: number, myAlongM: number | null, leader = false, away: string | null | undefined = undefined): string {
+  // A broadcast from Roam has no route: where the dot is from you in a straight line, or nothing without your position.
+  if (away !== undefined) return away ? `${leader ? LEADER_LABEL : roleLabel(role)}, ${away}` : leader ? LEADER_LABEL : roleLabel(role);
   const diff = myAlongM === null ? null : alongM - myAlongM;
   const where = diff === null || Math.abs(diff) < 30 ? relativeWords(alongM, myAlongM) : `${formatDistance(Math.abs(diff))} ${diff > 0 ? "ahead" : "behind"}`;
   return `${leader ? LEADER_LABEL : roleLabel(role)}, ${where}`;
@@ -390,18 +411,31 @@ export function roleKey(dots: readonly ShownDot[]): { role: RideRole; label: str
 }
 
 /** "23 riders on the route", "1 rider on the route", "No other riders on the route yet". */
-export function countText(n: number): string {
-  if (n === 0) return "No other riders on the route yet";
-  return `${n} ${n === 1 ? "rider" : "riders"} on the route`;
+export function countText(n: number, onRoute = true): string {
+  // A broadcast from Roam has no route: "No other riders yet", "2 riders".
+  const where = onRoute ? " on the route" : "";
+  if (n === 0) return `No other riders${where} yet`;
+  return `${n} ${n === 1 ? "rider" : "riders"}${where}`;
 }
 
 /**
  * Said on request: the count, the nearest rider ahead (else behind) with its age, then the nearest of each
  * other role on the ride by name: "Lead line, 1.2 mi (1.9 km) ahead. Sweep, 0.5 mi (0.8 km) behind."
  */
-export function ridersSaid(dots: readonly ShownDot[], myAlongM: number | null): string {
-  const count = `${countText(dots.length)}.`;
+export function ridersSaid(dots: readonly ShownDot[], myAlongM: number | null, around: { here: LonLat | null } | null = null): string {
+  const count = `${countText(dots.length, around === null)}.`;
   if (!dots.length) return count;
+  // No route (a broadcast from Roam): the leader and the nearest rider, each from you in a straight line.
+  if (around) {
+    const from = (d: ShownDot) => awayWords(around.here, [d.lon, d.lat]);
+    const leader = dots.find((d) => d.leader);
+    const lead = leader ? ` ${dotName(leader.role, 0, null, true, from(leader))}, seen ${ageWords(leader.age_s)}.` : "";
+    const here = around.here;
+    const others = dots.filter((d) => !d.leader);
+    const nearest = here ? others.sort((a, b) => haversineM(here, [a.lon, a.lat]) - haversineM(here, [b.lon, b.lat]))[0] : undefined;
+    const near = nearest ? ` Nearest rider ${from(nearest)}, seen ${ageWords(nearest.age_s)}.` : "";
+    return `${count}${lead}${near}`;
+  }
   if (myAlongM === null) {
     const leader = dots.find((d) => d.leader);
     return leader ? `${count} ${dotName(leader.role, leader.alongM, null, true)}, seen ${ageWords(leader.age_s)}.` : count;
@@ -537,11 +571,12 @@ export interface RideAlert {
 }
 
 /** The banner's words: "Rider off the back, 0.3 mi (0.5 km) behind you, just now. 2 riders reported." */
-export function alertText(alert: RideAlert, line: readonly LonLat[], myAlongM: number | null, sinceS = 0): string {
+export function alertText(alert: RideAlert, line: readonly LonLat[], myAlongM: number | null, sinceS = 0, here: LonLat | null = null): string {
   const what = alert.kind === "other" && alert.text ? `${alert.label}: ${alert.text}` : alert.label;
-  const where = relativeWords(project(line, [alert.lon, alert.lat]).alongM, myAlongM);
+  // No route (a broadcast from Roam): from you in a straight line, or no place words without your position.
+  const where = line.length === 0 ? awayWords(here, [alert.lon, alert.lat]) : relativeWords(project(line, [alert.lon, alert.lat]).alongM, myAlongM);
   const reported = alert.count > 1 ? ` ${alert.count} riders reported.` : "";
-  return `${what}, ${where}, ${ageWords(alert.age_s + sinceS)}.${reported}`;
+  return `${what}${where ? `, ${where}` : ""}, ${ageWords(alert.age_s + sinceS)}.${reported}`;
 }
 
 /** Alerts not seen before: announced at once (assertive; they are essentials, said even at Brief) and vibrated. */

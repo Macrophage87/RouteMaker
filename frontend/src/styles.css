@@ -5869,7 +5869,8 @@ details.fold > summary .icon {
 }
 
 .ride .ride-round[aria-expanded="true"],
-.ride .ride-round-alert {
+.ride .ride-round-alert,
+.ride .ride-round-on {
   background: var(--accent);
   color: var(--accent-text);
   border-color: var(--bg);
@@ -6597,6 +6598,10 @@ details.fold > summary .icon {
 }
 .app.riding .ride-group {
   top: 64px;
+}
+/* Roam's broadcast: just under Roam's card (RoamMode sets its bottom), so the road names stay in view. */
+.app.roaming .ride-group {
+  top: calc(var(--roam-card-bottom, 64px) + 8px);
 }
 .ride-group > * {
   pointer-events: auto;
@@ -8240,4 +8245,208 @@ details.fold > summary .icon {
 
 .broadcast-note:empty {
   display: none;
+}
+
+/* Sign in with Discord (the owner, 2026-10-22: "make those prompts buttons, ideally if we could use the logo"): Discord's
+   blurple with its mark; white on #5865F2 is 4.6:1. */
+.save-route-sign-in {
+  gap: 8px;
+  background: #5865f2;
+  color: #fff;
+}
+.discord-logo {
+  flex: none;
+}
+
+/* Load route's popup (LoadRouteDialog.tsx): two big buttons, then the rider's routes as plain rows, one tap each. */
+.load-route-dialog {
+  width: min(440px, calc(100vw - 32px));
+  max-height: calc(100dvh - 48px);
+  box-sizing: border-box;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  padding: 16px;
+}
+.load-route-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.45);
+}
+.load-route-dialog h2 {
+  margin-top: 0;
+}
+.load-route-top {
+  display: grid;
+  gap: 8px;
+}
+.load-route-top .load-route-sign-in,
+.load-route-top .load-route-gpx {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 52px;
+  margin: 0;
+  border-radius: 8px;
+  font-size: 1.1rem;
+  font-weight: 700;
+  white-space: normal;
+}
+.load-route-why {
+  margin: 6px 0 0;
+}
+.load-route-dialog .route-search {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 44px;
+  margin-top: 12px;
+}
+.load-route-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  border-top: 1px solid var(--border);
+}
+.load-route-list li {
+  border-bottom: 1px solid var(--border);
+}
+.load-route-row {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  min-height: 52px;
+  padding: 8px 4px;
+  text-align: left;
+  background: transparent;
+  color: var(--text);
+  border: 0;
+  border-radius: 0;
+}
+.load-route-row:hover {
+  background: rgba(127, 127, 127, 0.12);
+}
+.load-route-name {
+  font-weight: 700;
+  font-size: 15px;
+}
+.load-route-detail {
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+/* Saved routes in Save & load: the name with More beside it, its line under; GPX, Rename, Versions and Delete behind More. */
+.my-route-open {
+  font-weight: 700;
+  text-align: left;
+}
+.my-route-more {
+  order: 1;
+  margin-left: auto;
+  min-height: 44px;
+}
+.my-route-details {
+  order: 2;
+}
+.my-route-actions {
+  order: 3;
+  flex-basis: 100%;
+}
+.my-route-actions[hidden] {
+  display: none;
+}
+.my-route-versions {
+  order: 4;
+}
+.load-route-field {
+  display: grid;
+  gap: 4px;
+  margin: 0 0 12px;
+  font-weight: 700;
+}
+.load-route-field select {
+  min-height: 44px;
+  font: inherit;
+}
+.load-route-how {
+  border: 0;
+  padding: 0;
+}
+.load-route-how legend {
+  padding: 0;
+  margin-bottom: 4px;
+}
+.load-route-radio {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-height: 44px;
+  padding: 6px 0;
+  font-weight: 400;
+}
+.load-route-radio input {
+  width: 22px;
+  height: 22px;
+  margin: 2px 0 0;
+  flex: none;
+}
+.load-route-radio > span {
+  display: grid;
+  gap: 2px;
+}
+.load-route-dialog .closure-choices button {
+  min-height: 44px;
+}
+
+/*
+ * Roam (RoamMode.tsx; the owner, 2026-10-22): the road ridden large, the roads ahead under it (street names 20 px in
+ * a ride), each with its stress level as a swatch in the map's colours and its words, never colour alone.
+ */
+.roam-road {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+}
+
+.roam-ahead {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.roam-ahead li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 10px;
+  font-size: 1.25rem;
+  line-height: 1.3;
+}
+
+.roam-ahead-name {
+  font-weight: 600;
+}
+
+.roam-ahead-far {
+  color: var(--text-muted);
+}
+
+.roam-tier {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 1rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.roam-swatch {
+  display: inline-block;
+  width: 22px;
+  height: 10px;
+  border-radius: 3px;
+  border: 2px solid transparent;
 }

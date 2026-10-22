@@ -326,6 +326,25 @@ kept with your account when you are signed in.</li>
 RouteMaker as the destination.</li>
 </ul>
 
+<h3 id="roam">Roam</h3>
+<p>With nothing planned in Go (no start or destination), on any ride type but Mass Ride, the big
+button is <strong>Roam</strong>: a ride with nowhere set.</p>
+<ul>
+<li>The map follows you, and the card names the road you are on and, once you are moving, up to three roads ahead, within
+about half a mile [800 m], each with how far it is in a straight line and its stress level. They are
+read from the map already on your phone, so nothing is sent.</li>
+<li><strong>Detour</strong> finds the three nearest <strong>Water</strong>, <strong>Restroom</strong>
+or <strong>Food</strong> places by bike. <strong>Ride here</strong> starts an ordinary ride there, and
+ending that ride brings you back to roaming.</li>
+<li><strong>Broadcast</strong>, a round button, shares a link others can follow your dot and the way you
+ride with, while your app is open (see <a href="#suggest">ride links</a>).</li>
+<li>The next sunrise and sunset show in the corner, with the minutes left once it is within the
+hour.</li>
+<li><strong>End roam</strong> is slid, like End ride, so a bump does not end it.</li>
+<li>Your position stays on your phone, except when you search for a Detour or ride to one, and while
+you broadcast, when the server keeps it for 2 minutes.</li>
+</ul>
+
 </div></details>
 <h2 id="plan">Plan</h2>
 <p>Plan is the full planner: build the route point by point, choose how it should ride, and read its
@@ -782,13 +801,17 @@ OSM</strong> to fix the map itself.</li>
 <h3>Keep</h3>
 <ul>
 <li><strong>Save route</strong> (signed in) puts the route in <strong>My routes</strong>, up to 200,
-each with Rename, Versions, GPX and Delete. A search box finds a route by name. In Plan, once the route is up to date and you've picked it (when there is more than one line
+each with a <strong>More</strong> button that opens its GPX, Rename, Versions (in Plan) and Delete. A search box finds a route by name. In Plan, once the route is up to date and you've picked it (when there is more than one line
 to choose from), the big button at the top of the map, where <strong>Update route</strong> sits, becomes <strong>Save route</strong>, with <strong>Start ride</strong>
 beside it (on a phone they read Save and Start). That Save also has <strong>Download GPX</strong>, and not
 signed in it offers <strong>Sign in with Discord</strong> (where available; your plan is kept) or
 Download GPX. A route someone sent you by link can be saved the same way. Any change to the plan brings
 Update route back. With nothing planned yet, that button is <strong>Load route</strong>, which
-opens Save and load.</li>
+opens a short list. Not signed in, <strong>Sign in with Discord</strong> comes first (where
+available). Then <strong>Open GPX file</strong> asks the ride type and whether to <strong>Snap to roads</strong>
+(streets and paths bikes may ride; the default) or keep it <strong>Exactly as drawn</strong> (even where bikes may not ride), then
+<strong>Choose file</strong>. Below are your saved routes, then the routes kept on this device; one tap opens one.
+A search box appears once there are more than six.</li>
 <li><strong>Keep for offline</strong> keeps a planned route on this device, up to 10, so it opens
 without signal, in the installed app or a browser tab. The last ride is kept too.</li>
 <li>Before a route is exported or kept, RouteMaker warns if it goes through a closure.</li>
@@ -820,7 +843,7 @@ course fit what it can hold.</li>
 <li><strong>Open GPX…</strong> reads a file in your browser; it is never uploaded. Up to 20 MB and
 100,000 points.</li>
 <li>In Plan, <strong>Snap to the map's streets</strong> turns the track into a plan you can change, or
-<strong>Follow the file exactly</strong> rides it as drawn, for a road closed for an event.</li>
+<strong>Follow the file exactly</strong> rides it as drawn, for a road closed for an event. Load route's <strong>Snap to roads</strong> and <strong>Exactly as drawn</strong> are the same choice, made before the file opens.</li>
 </ul>
 
 </div></details>
