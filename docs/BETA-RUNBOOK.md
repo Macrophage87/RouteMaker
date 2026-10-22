@@ -697,6 +697,12 @@ a password. Every response carries `X-Robots-Tag: noindex, nofollow`. `/api` has
 (a plan takes up to 47 seconds). JSON and vector tiles are gzipped. The base map answers only this
 site's own pages.
 
+**No site password (the owner's call, 2026-10-22).** The beta has been open since then: add
+`--no-password` to the stage-full render above (it leaves out the gate's `auth_basic` lines and the
+sign-in page; robots.txt and noindex stay), expect 200 instead of 401 from the curl check, and run
+the smoke test below with `--open` in place of `--passwords-file ...`. Without `--no-password`, a
+re-render (a release that changes the template, say) puts the password back.
+
 ## 10. Smoke test through nginx
 
 ```sh
