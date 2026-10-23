@@ -29,9 +29,8 @@ export const CALMER_STEPS: readonly number[] = [10, 20, 40, 70, 80, 90, 95];
  * grades, avoids hills. */
 export const FLATTER_STEPS: readonly number[] = [50, 0, -40, HILLS_MIN];
 
-/** The words on each button: few on screen (the owner, 2026-10-20); the name says the rest. */
-export const EASE_TEXT: Record<Ease, string> = { calmer: "Calmer", flatter: "Flatter" };
-/** Each button's name, heard by screen readers in full. */
+/** Each button's name, heard by screen readers in full; on screen the symbol alone (a car or a mountain, each with a
+ * down arrow; the owner, 2026-10-23: "Take the words out. Symbol should be clear"). */
 export const EASE_NAME: Record<Ease, string> = {
   calmer: "Calmer: less traffic, plan again from here",
   flatter: "Flatter: fewer hills, plan again from here",

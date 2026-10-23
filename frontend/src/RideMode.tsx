@@ -177,7 +177,7 @@ import { NextVehicleLine } from "./NextVehicleLine.tsx";
 import type { VehicleMark } from "./lib/nextVehicle.ts";
 import { SettingRow, SettingSelect } from "./SettingRow.tsx";
 import { shortLabel } from "./lib/shortLabel.ts";
-import { EASE_AT_END, EASE_NAME, EASE_SAME, EASE_TEXT, easeFinding, eased, sameLine, type Ease } from "./lib/rideEase.ts";
+import { EASE_AT_END, EASE_NAME, EASE_SAME, easeFinding, eased, sameLine, type Ease } from "./lib/rideEase.ts";
 import { RING, junctionPaths, ringPaths, type JunctionShape } from "./lib/junctionShape.ts";
 import {
   RIDE_REST,
@@ -2065,7 +2065,7 @@ export function RideMode({
             <Icon name="textsize" size={24} />
           </button>
           {/* Calmer and Flatter (lib/rideEase.ts; the owner, 2026-10-23): one press, a step down the slider and a new
-              route from here. Their word on screen, the rest in the name. Not on a route everyone shares (`fixed`). */}
+              route from here. A symbol alone on screen (the owner, 2026-10-23: "Take the words out. Symbol should be clear"), the words in the name. Not on a route everyone shares (`fixed`). */}
           {!fixed && !ride.arrived &&
             (["calmer", "flatter"] as const).map((which) => (
               <button
@@ -2076,8 +2076,7 @@ export function RideMode({
                 aria-label={EASE_NAME[which]}
                 title={EASE_NAME[which]}
               >
-                <Icon name={which === "calmer" ? "traffic-down" : "hills-down"} size={26} />
-                <span aria-hidden="true">{EASE_TEXT[which]}</span>
+                <Icon name={which === "calmer" ? "traffic-down" : "hills-down"} size={30} />
               </button>
             ))}
           {water && (

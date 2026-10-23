@@ -65,8 +65,8 @@ export const ICON_PATHS = {
   "cargo": "<circle cx=\"5\" cy=\"17\" r=\"3\"/><circle cx=\"19\" cy=\"17\" r=\"3\"/><path d=\"M5 17h7l3-7h-3M15 10l4 7M8 9h5v5H8z\"/>",
   "textsize": "<path d=\"M2.5 19 8 5h1.2l5.5 14M4.6 14h8.1\"/><path d=\"M14.5 19l3.6-8.5h.9L22.5 19M15.8 16h5.5\"/>",
   "tree": "<path d=\"M12 21v-6M12 3l6 8h-3l4 5H5l4-5H6z\"/>",
-  "hills-down": "<path d=\"M1.5 20 7.5 9l3.5 6 2-3 4 8z\"/><path d=\"M20 3.5v11M17 11.5l3 3 3-3\"/>",
-  "traffic-down": "<path d=\"M3.3 15H1.5v-3.5l2-1.2L6 6.5h5.5l2.6 3.8 1 1V15h-1.6M7 15h2.6M3.5 10.3h10.6\"/><circle cx=\"5.2\" cy=\"15.5\" r=\"1.9\"/><circle cx=\"11.4\" cy=\"15.5\" r=\"1.9\"/><path d=\"M20 3.5v11M17 11.5l3 3 3-3\"/>",
+  "hills-down": "<path d=\"M1.5 20 7.5 9l3.5 6 2-3 4 8z\" fill=\"currentColor\"/><path d=\"M20 3.5v11M17 11.5l3 3 3-3\"/>",
+  "traffic-down": "<path d=\"M4.6 6.3c.2-.6.8-1 1.4-1h5c.6 0 1.2.4 1.4 1l1.6 4.7v6.5c0 .4-.4.8-.8.8h-.9c-.4 0-.8-.4-.8-.8v-.9H5.5v.9c0 .4-.4.8-.8.8h-.9c-.4 0-.8-.4-.8-.8V11zM5.3 10.2l.95-2.75h4.5l.95 2.75zM4.2 13.4a1.1 1.1 0 1 0 2.2 0a1.1 1.1 0 1 0-2.2 0zM10.6 13.4a1.1 1.1 0 1 0 2.2 0a1.1 1.1 0 1 0-2.2 0z\" fill=\"currentColor\" fill-rule=\"evenodd\" stroke=\"none\"/><path d=\"M20 3.5v11M17 11.5l3 3 3-3\"/>",
   "bikeshare": "<rect x=\"3\" y=\"3\" width=\"7\" height=\"18\" rx=\"1.5\"/><circle cx=\"15\" cy=\"17\" r=\"3\"/><path d=\"M15 17l2.5-6H21M13 11h4\"/>",
   // v0.7.0: farm stands and markets (an apple), repair stands (a wrench), bike shops (a shop front), sights
   // (a camera); "More" is the mockup's own.

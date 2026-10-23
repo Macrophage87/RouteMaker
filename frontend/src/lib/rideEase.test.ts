@@ -4,10 +4,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { startDials, stressWords, hillsWords, type Dials } from "./dials.ts";
-import { CALMER_STEPS, EASE_AT_END, EASE_NAME, EASE_SAME, EASE_TEXT, FLATTER_STEPS, easeFinding, eased, sameLine } from "./rideEase.ts";
+import { CALMER_STEPS, EASE_AT_END, EASE_NAME, EASE_SAME, FLATTER_STEPS, easeFinding, eased, sameLine } from "./rideEase.ts";
 
 const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
-const css = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
 const dials = (stress: number, hills: number): Dials => ({ ...startDials("default"), stress, hills });
 
 test("calmer: each press is the next step up the traffic slider, until 95, short of the target-distance top", () => {
@@ -61,8 +60,7 @@ test("same line: a new route made of the old line's own points is the same route
   assert.equal(EASE_SAME.flatter, "Same route: no less steep way from here.");
 });
 
-test("the words: one on screen, the rest in the name and said", () => {
-  assert.deepEqual(EASE_TEXT, { calmer: "Calmer", flatter: "Flatter" });
+test("the words: in the name and said, the symbol alone on screen", () => {
   assert.match(EASE_NAME.calmer, /^Calmer: less traffic/);
   assert.match(EASE_NAME.flatter, /^Flatter: fewer hills/);
   assert.equal(EASE_AT_END.calmer, "Already the calmest route.");
@@ -80,9 +78,8 @@ test("ride: the buttons re-plan from here with the ride's own dials, kept only w
   // Not counted as riding past a U-turn; the same line is said as such.
   assert.match(ride, /stopped: \(heading === null && !turnRound\) \|\| press !== null/);
   assert.match(ride, /sameLine\(found\.geometry\.coordinates, press\.before\.geometry\.coordinates\)\) note = EASE_SAME\[press\.which\];/);
-  // Not on a route everyone shares, nor once arrived; named in full, one word shown.
+  // Not on a route everyone shares, nor once arrived; named in full, the symbol alone shown.
   assert.match(ride, /\{!fixed && !ride\.arrived &&\n\s*\(\["calmer", "flatter"\] as const\)\.map/);
   assert.match(ride, /aria-label=\{EASE_NAME\[which\]\}/);
-  assert.match(ride, /<span aria-hidden="true">\{EASE_TEXT\[which\]\}<\/span>/);
-  assert.match(css, /\.ride \.ride-ease \{[^}]*font-size: 0\.8rem;/);
+  assert.match(ride, /<Icon name=\{which === "calmer" \? "traffic-down" : "hills-down"\} size=\{30\} \/>\n\s*<\/button>/);
 });

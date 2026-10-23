@@ -5868,14 +5868,6 @@ details.fold > summary .icon {
   display: none;
 }
 
-/* Calmer and Flatter (lib/rideEase.ts): the icon over its one word, small enough to fit the round button. */
-.ride .ride-ease {
-  gap: 1px;
-  font-size: 0.8rem;
-  font-weight: 700;
-  line-height: 1;
-}
-
 .ride .ride-round[aria-expanded="true"],
 .ride .ride-round-alert,
 .ride .ride-round-on {
