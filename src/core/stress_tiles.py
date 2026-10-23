@@ -108,6 +108,7 @@ from pipeline.schema import (
     MTB_NAME_COLUMN,
     MTB_ONLY_COLUMN,
     RIDE_ROAD_RUN_MI,
+    ROAD_LINK_COLUMN,
     ROADSIDE_COLUMN,
     ROUGH_COLUMN,
     SCENIC_COLUMN,
@@ -180,7 +181,7 @@ CONTENT_TYPE = "application/vnd.mapbox-vector-tile"
 # 13: the popular bike corridors' `popular`, z10-11 keep them and the long calm roads
 # (`popular_and_calm`), and a long trail's name from z10. 14: a major corridor's name,
 # `trail_name` on a way of the top popular class (POPULAR_NAMED_MIN_CLASS), and `dense` from
-# 8 km a square (DENSE_ROAD_M).
+# 8 km a square (DENSE_ROAD_M), and a slip road's `link`.
 FORMAT_VERSION = 14
 
 # Five minutes (OWNER-DECISIONS 460.6, "5 min sounds good"): an instance admin's change in
@@ -409,6 +410,10 @@ OPTIONAL_PROPERTIES = {
     # `pipeline.bikeshare_corridors`). The map keeps a class 2-3 street's full width in a city
     # grid and sorts every class over its stress level's other lines.
     "popular": BIKE_POPULAR_COLUMN,
+    # A slip road, an on- or off-ramp (`road_link`): true, or left out. The map leaves it out
+    # until the city ladder's street zoom (the owner, 2026-10-23: "the various onramps and
+    # offramps aren't needed at this level"; frontend/src/stressStyle.js, `cityShown`).
+    "link": ROAD_LINK_COLUMN,
 }
 
 # The tile property `rpm` is rounded down to a multiple of this (OPTIONAL_EXPRESSIONS).
@@ -441,6 +446,7 @@ OPTIONAL_EXPRESSIONS = {
     "scenic": f"CASE WHEN s.{SCENIC_COLUMN} IS NOT NULL THEN true END",
     "contraflow": f"CASE WHEN s.{FACILITY_SHOWN_COLUMN} IS NOT NULL THEN true END",
     "popular": f"NULLIF(s.{BIKE_POPULAR_COLUMN}, 0)",
+    "link": f"NULLIF(s.{ROAD_LINK_COLUMN}, false)",
     # `rpm`: the Mass Ride capacity, riders a minute, rounded DOWN to a multiple of
     # RPM_STEP. The Mass Ride bands (60, 120, 200) are multiples of it, so a
     # feature never moves band; and the zoomed-out levels, which collect every
@@ -806,6 +812,8 @@ ETAG_LETTERS = {
     FACILITY_SHOWN_COLUMN: "a",
     # `p` for popular.
     BIKE_POPULAR_COLUMN: "p",
+    # `i` for an interchange's ramp: `l` is the trail run's.
+    ROAD_LINK_COLUMN: "i",
 }
 
 

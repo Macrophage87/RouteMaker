@@ -405,3 +405,15 @@ def segment_row(
     """Build one segment row from a piece of way geometry."""
     wkt = "LINESTRING(" + ",".join(f"{lon} {lat}" for lon, lat in coordinates) + ")"
     return {"osm_way_id": way_id, "ordinal": ordinal, "wkt": wkt, "stress": stress, **extra}
+
+
+def mark_links(schema: str, way_ids: Iterable[int]) -> int:
+    """Mark the slip roads, on- and off-ramps (`road_link`; `routemaker.agency_roads.is_link`),
+    by their OSM way ids. Returns the rows marked."""
+    validate_schema_name(schema)
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"UPDATE {schema}.segment SET road_link = true WHERE osm_way_id = ANY(%s::bigint[])",
+            [sorted(set(way_ids))],
+        )
+        return cursor.rowcount

@@ -511,6 +511,10 @@ MASS_WIDTH_COLUMN = "mass_usable_width_m"
 # the class as `popular` and the map draws those streets wider.
 BIKE_TRIPS_COLUMN = "bike_trips"
 BIKE_POPULAR_COLUMN = "bike_popular"
+# A slip road, an on- or off-ramp (`highway=*_link`; `routemaker.agency_roads.is_link`), which
+# the map leaves out until the city ladder's street zoom (the owner, 2026-10-23: "the various
+# onramps and offramps aren't needed at this level"). The stress tiles carry it as `link`.
+ROAD_LINK_COLUMN = "road_link"
 # The zoomed-out tiles keep them beside the long trails, with the calm roads in a run as long
 # as the long trails' paved bar ("Where it's out further, we can mostly focus on the longer
 # low-stress routes too."; `core.stress_tiles.popular_and_calm`); this partial index holds
@@ -765,6 +769,8 @@ CREATE TABLE {schema}.segment (
     -- off every named corridor.
     bike_trips      integer     CHECK (bike_trips >= 0),
     bike_popular    smallint    NOT NULL DEFAULT 0 CHECK (bike_popular BETWEEN 0 AND 3),
+    -- A slip road (ROAD_LINK_COLUMN; `pipeline.writers.mark_links`). Display only.
+    road_link       boolean     NOT NULL DEFAULT false,
     CONSTRAINT segment_key UNIQUE (osm_way_id, ordinal)
 );
 

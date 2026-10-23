@@ -3946,6 +3946,13 @@ def build_handlers(
                 hazard_ways += rows[-1]["hazard"] is not None
         logger.info("segments marked with a hazard (cobbles, rails): %d", hazard_ways)
         writers.write_segments(context.staging_schema, rows)
+        logger.info(
+            "slip roads (ramps) marked for the map: %d",
+            writers.mark_links(
+                context.staging_schema,
+                (way.osm_id for way in context.ways if agency_roads.is_link(way.tags)),
+            ),
+        )
         # Not kept on the context any more: this stage runs before the tile build
         # now, and millions of row dicts held through it are memory the host does
         # not have. Nothing read them.
