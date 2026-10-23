@@ -2329,7 +2329,7 @@ avoid, though rare").
 | `MAX_CROSSING_FT` | 4,500 | 10,560 | 2.00 [3.22] |
 | `ORANGE_MIN_FT` | 600 | 800 | 0.15 [0.24] |
 | `RED_MIN_FT` (and the search trigger `REFINE_MIN_EVENT_FT`) | 2,000 | 3,100 (2,900 in 468; raised 2026-10-10, below) | 0.59 [0.94] (was 0.55 [0.88]) |
-| `TIME_FACTORS`, `NIGHT_URBAN_FACTOR`, `NIGHT_RURAL_FACTOR` (468a, 469c-469e) | none | weekday rush x1.25, weekday off-peak (to 9 PM) x1.0, weekend daytime x0.85, night (9 PM-7 AM, any day) x0.5 in a Census urban area and x0.85 outside one | on busy-road junctions only; the crossed road's `road_urban` decides, and where a table has no such column, x0.85 |
+| `TIME_FACTORS`, `NIGHT_URBAN_FACTOR`, `NIGHT_RURAL_FACTOR` (468a, 469c-469e) | none | weekday rush x1.25 (x2, `UNSIGNALISED_RUSH_FACTOR`, giving way to an LTS 4 or Avoid road no signal stops, and a crossing, join or left there never under 1.86 calm mi [3.0 km], ten minutes' riding, `UNSIGNALISED_RUSH_MIN_FT`: 2026-10-23), weekday off-peak (to 9 PM) x1.0, weekend daytime x0.85, night (9 PM-7 AM, any day) x0.5 in a Census urban area and x0.85 outside one | on busy-road junctions only; the crossed road's `road_urban` decides, and where a table has no such column, x0.85 |
 
 The ride time is the plan's `when` (`weekday_rush`, `weekday_offpeak`, `weekend`, `night`).
 The owner's words: "Put some more intersection stress during rush hour too and a little less
@@ -6906,7 +6906,7 @@ target, the graph and `refine.quiet_cost_per_m`):
   a protected lane `(1 + (0.15 + 0.6u) x 1.2) / 2.2`, a painted lane
   `(1 + (0.9 + 0.05u) x 1.2) / 2.2`, a quiet street 1 (all 1 on the no-trail graph).
 - Every junction the model charges for, flagged or not, adds what the ranking charges for
-  it, at its point: its cost (`cost_ft`, after the ride-time factor: rush hour x1.25,
+  it, at its point: its cost (`cost_ft`, after the ride-time factor: rush hour x1.25 (x2, and at least 1.86 calm mi [3.0 km], unsignalised on LTS 4 or Avoid),
   weekend x0.85, night x0.5 in town and x0.85 outside; "Intersection costs", option C)
   times `refine.intersection_weight` at the slider
   position (461d: "times its factors and the preset's intersection weight"; 0.25 at 0,
