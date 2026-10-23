@@ -775,6 +775,7 @@ test("the network's shape at z12-13: a join from z12 busy or not, an orphan and 
         for (const overview of [1, 4]) assert.ok(at({ dense, overview }, zoom) > 0, `${layer.id} join ${overview} z${zoom}`);
         assert.equal(at({ dense, overview: 2, facility: "path" }, zoom), 0, `${layer.id} orphan z${zoom}`);
         assert.equal(at({ dense, overview: 3 }, zoom), 0, `${layer.id} dead end z${zoom}`);
+        assert.equal(at({ dense, overview: 3, calm: true }, zoom), 0, `${layer.id} calm cul-de-sac z${zoom}`);
         assert.equal(at({ dense, overview: 1, link: true }, zoom), 0, `${layer.id} ramp join z${zoom}`);
       }
       for (const overview of [2, 3]) assert.ok(at({ dense, overview }, 14) > 0, `${layer.id} ${overview} z14`);
