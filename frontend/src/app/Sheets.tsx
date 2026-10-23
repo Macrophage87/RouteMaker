@@ -17,6 +17,7 @@ import { toggleFromPicker, useFavoriteRides } from "../lib/favoriteRides.ts";
 import { DELETE_ACCOUNT_PAGE, PRIVACY_PAGE, isPlainClick, rememberPlanForPage, rememberPlanForSignIn, tabSession } from "../lib/signIn.ts";
 import { SignOutForm } from "../SignOut.tsx";
 import { AssistantKeySetting } from "../AssistantKey.tsx";
+import { GarminSetting } from "../GarminSetting.tsx";
 import { pointName } from "../lib/summary.ts";
 import { accessibilityOn, accessibilitySource, paletteSetByAddress, setAccessibility, setHighStressLanes, setMtbTrails } from "../stressStyle.js";
 import { HighStressLanesSwitch } from "../lib/highStressLanesSwitch.ts";
@@ -420,6 +421,8 @@ function MyGoSection({ controls, open }: { controls: MyGoControls; open: boolean
 
 export interface SettingsSheetProps {
   nav: SheetNav;
+  /** What Garmin's return said (lib/garminLink.ts garminReturnFrom), once, or null. */
+  garminReturned?: string | null;
   settingsHeadingRef: RefObject<HTMLHeadingElement | null>;
   ridePrefs: RidePrefs;
   changeRidePrefs: (next: RidePrefs) => void;
@@ -461,7 +464,7 @@ function ContrastRow() {
 
 /** The Settings sheet (Go's Menu): My Go, Riding, Display and Account, most used first. */
 export function SettingsSheet(props: SettingsSheetProps) {
-  const { nav, settingsHeadingRef, ridePrefs, changeRidePrefs, announce, linkNote, accessMode, toggleAccessMode, myGo, mode, menu, announcements, signInAvailable } = props;
+  const { nav, settingsHeadingRef, ridePrefs, changeRidePrefs, announce, linkNote, accessMode, toggleAccessMode, myGo, mode, menu, announcements, signInAvailable, garminReturned } = props;
   const go = mode === "go";
   return (
     <SheetFrame
@@ -601,6 +604,8 @@ export function SettingsSheet(props: SettingsSheetProps) {
           ) : null}
           {/* The save-only key an AI assistant's MCP server saves routes with (the owner, 2026-10-18). */}
           {myGo.signedIn && <AssistantKeySetting />}
+          {/* Send to Garmin straight into Garmin Connect (the owner, 2026-10-23); shown only where the server can. */}
+          {myGo.signedIn && <GarminSetting returned={garminReturned ?? null} />}
           {/* A page of its own (core.account_deletion), the same one the web offers without the app: it says what goes
               and what is kept, and asks once. Last: nobody needs it often. */}
           {myGo.signedIn && (

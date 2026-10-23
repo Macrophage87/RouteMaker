@@ -101,6 +101,8 @@ if [ "$mode" = public ]; then
 	check_body "robots.txt disallows everything" 'Disallow: /' "$base/robots.txt"
 	check_status "the account-deletion page is public" 200 "$base/delete-account"
 	check_status "the privacy policy is public" 200 "$base/privacy"
+	# POST only, so a GET reaching the api without a password is refused by the api (405), not 401.
+	check_status "Garmin's deregistration notice reaches the api" 405 "$base/garmin/deregistrations"
 	check_status "the front end is behind basic auth (no credentials)" 401 "$base/"
 	check_status "the api is behind basic auth (no credentials)" 401 "$base/healthz"
 	check_status "a wrong password is refused" 401 -u "nobody:wrong" "$base/"

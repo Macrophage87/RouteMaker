@@ -20,6 +20,7 @@ from core import (
     account_deletion,
     auth_views,
     connector,
+    garmin_views,
     health,
     mass_tiles,
     privacy_policy,
@@ -44,6 +45,10 @@ urlpatterns = [
     path("auth/login", auth_views.login_start, name="login"),
     path("auth/callback", auth_views.login_callback, name="login-callback"),
     path("auth/logout", auth_views.logout_view, name="logout"),
+    # Connecting a rider's Garmin account, for Send to Garmin (core.garmin_views).
+    path("auth/garmin/start", garmin_views.connect_start, name="garmin-start"),
+    path("auth/garmin/callback", garmin_views.connect_callback, name="garmin-callback"),
+    path("garmin/deregistrations", garmin_views.deregistrations, name="garmin-deregistrations"),
     # The site's own MCP connector and its sign-in (core.connector; v0.10.0).
     path("mcp", connector.mcp_endpoint, name="mcp"),
     path("mcp/gpx/<str:token>", connector.draft_gpx, name="mcp-gpx"),

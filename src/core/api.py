@@ -5978,6 +5978,50 @@ def assistant_key_delete(request):
     return _private(JsonResponse(_assistant_key_out(None)))
 
 
+# The rider's Garmin connection (core.garmin_views; the owner, 2026-10-23): Settings shows it and
+# disconnects it. Connecting is a page visit (/auth/garmin/start), since Garmin's consent is a page.
+
+
+def _garmin_out(user) -> dict:
+    from . import garmin
+    from .models import GarminLink
+
+    link = GarminLink.objects.filter(user=user).first()
+    return {
+        "available": garmin.offered(),
+        "connected": link is not None,
+        "connected_at": link.created_at.isoformat() if link else None,
+        "last_used_at": link.last_used_at.isoformat() if link and link.last_used_at else None,
+    }
+
+
+@api.get("/me/garmin", summary="Whether the rider's Garmin account is connected")
+@decorate_view(
+    signed_in_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.ME),
+    errors_as_json,
+)
+def garmin_read(request):
+    return _private(JsonResponse(_garmin_out(request.user)))
+
+
+@api.post("/me/garmin/delete", summary="Disconnect the rider's Garmin account")
+@decorate_view(
+    ratelimit.user_rate_limited(ratelimit.ACCOUNT_WRITES),
+    csrf_protected,
+    signed_in_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+def garmin_delete(request):
+    from .garmin_views import disconnect
+
+    disconnect(request.user)
+    return _private(JsonResponse(_garmin_out(request.user)))
+
+
 # Assistant apps the rider connected through the site's own MCP connector (core.connector; the
 # owner, 2026-10-19: "Sure, add that in"): listed beside the AI assistant key, each with
 # Disconnect, which ends that app's access at once.

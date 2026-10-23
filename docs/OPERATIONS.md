@@ -2327,7 +2327,8 @@ not already remembered. With under 4 s left the way round is not asked, and the 
 `pg_dump -Fc` to `<DATA_ROOT>/backups/routemaker-<UTC instant>.dump`, excluding
 the data of every table in `BACKUP_EXCLUDED_TABLES` (`config/procrastinate.py`):
 `cached_membership`, `app_session`, `django_session`, `rate_limit_window`,
-`stress_tile_cache`, `bikeshare_feed_cache` and `signed_out_send`. Verified by reading the
+`stress_tile_cache`, `bikeshare_feed_cache`, `signed_out_send` and `garmin_link` (riders'
+encrypted Garmin tokens: a restore asks them to connect again). Verified by reading the
 archive's own table of contents back with `pg_restore --list` — an archive with
 no table data at all is a dump of nothing, which is what a wrong database name
 produces while `pg_dump` exits zero.

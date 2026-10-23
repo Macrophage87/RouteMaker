@@ -7,12 +7,13 @@ Settings > Account links to it, so the app and the web share one confirmation an
 
 The account row itself is deleted, not flagged. What is the rider's own goes with it, by the models'
 CASCADE (sessions, My Go with Home, synced settings, the 311 log, saved routes and their versions,
-the AI assistant key), or here, before it (shared links, suggestions still waiting, agree or
-disagree on others' suggestions, the bot's cached Discord roles). What is the map's record is kept
-with the link to the account cleared (SET_NULL): a decided suggestion, and an admin's edits and
-rulings. The audit log keeps an account number, never a Discord id (`audit.record`), and one row
-says this account was deleted. Signing in again with the same Discord account makes a new, empty
-account; a banned account cannot reach this page, and its ban tombstone is kept by the ban.
+the AI assistant key, the Garmin connection), or here, before it (shared links, suggestions still
+waiting, agree or disagree on others' suggestions, the bot's cached Discord roles). What is the
+map's record is kept with the link to the account cleared (SET_NULL): a decided suggestion, and
+an admin's edits and rulings. The audit log keeps an account number, never a Discord id
+(`audit.record`), and one row says this account was deleted. Signing in again with the same
+Discord account makes a new, empty account; a banned account cannot reach this page, and its ban
+tombstone is kept by the ban.
 
 The deployment's last instance admin is refused (`check_last_instance_admin`), as every other
 path that removes one is: there is no login that could restore an admin.
@@ -48,6 +49,10 @@ DELETED = [
     "Your suggestions and hazard reports still waiting for review, and your agree or disagree "
     "on other riders' suggestions",
 ]
+# Listed only where riders can connect Garmin, or for an account that has (core.garmin).
+GARMIN_LINE = (
+    "Your Garmin connection: Garmin is told, and the app leaves your Garmin Connect account"
+)
 KEPT = [
     "Suggestions already approved or declined, and map changes made from them, as part of the "
     "map's history, with nothing linking them to you",
@@ -80,8 +85,9 @@ def delete_account(user) -> None:
 
     Raises `LastAdminRefused` for the last instance admin, with nothing changed.
     """
-    from . import shared_routes
+    from . import garmin, shared_routes
     from .audit import record
+    from .garmin_views import access_for
     from .models import (
         AuditLogEntry,
         CachedMembership,
@@ -94,6 +100,14 @@ def delete_account(user) -> None:
         User,
         check_last_instance_admin,
     )
+
+    # A Garmin connection is read before the account goes (its row goes by CASCADE) and Garmin is
+    # told after, so a refused deletion leaves it connected.
+    garmin_transport = garmin.Transport()
+    try:
+        garmin_access = access_for(user, garmin_transport)
+    except garmin.GarminError:
+        garmin_access = None
 
     now = timezone.now()
     with transaction.atomic():
@@ -142,8 +156,10 @@ def delete_account(user) -> None:
             detail="deleted by the account holder",
         )
         # The rest goes by CASCADE: the sessions (so every device is signed out at its next
-        # request), My Go, settings, saved routes and versions, the assistant key.
+        # request), My Go, settings, saved routes and versions, the assistant key, the Garmin link.
         user.delete()
+    if garmin_access is not None:
+        garmin.deregister(garmin_access, garmin_transport)
 
 
 def _page(
@@ -183,12 +199,23 @@ def _list(items: list[str]) -> str:
     return "<ul>" + "".join(f"<li>{escape(i)}.</li>" for i in items) + "</ul>"
 
 
-def _explanation(signed_in: bool = False) -> str:
+def _deleted(user=None) -> list[str]:
+    from . import garmin
+    from .models import GarminLink
+
+    has_link = user is not None and GarminLink.objects.filter(user=user).exists()
+    if not (garmin.offered() or has_link):
+        return DELETED
+    # Beside the other connected services, before the suggestions line.
+    return [*DELETED[:-1], GARMIN_LINE, DELETED[-1]]
+
+
+def _explanation(signed_in: bool = False, user=None) -> str:
     """What deletion does. The banned-account line is for the signed-out page only: a rider
     signed in is not banned."""
     return (
         "<h2>Deleted at once</h2>"
-        + _list(DELETED)
+        + _list(_deleted(user))
         + "<p>You are signed out on every device.</p>"
         + "<h2>Kept</h2>"
         + _list(KEPT)
@@ -231,12 +258,17 @@ def page(request):
     if not signed_in(request):
         return _page(_signed_out() + _explanation(), status=200 if request.method == "GET" else 401)
     if request.method == "GET":
-        return _page(_form(request) + _explanation(signed_in=True))
+        return _page(_form(request) + _explanation(signed_in=True, user=request.user))
     if request.POST.get(CONFIRM_FIELD) != "yes":
-        return _page(_form(request, NOT_CONFIRMED) + _explanation(signed_in=True), status=400)
+        return _page(
+            _form(request, NOT_CONFIRMED) + _explanation(signed_in=True, user=request.user),
+            status=400,
+        )
     try:
         delete_account(request.user)
     except LastAdminRefused:
-        return _page(_form(request, LAST_ADMIN) + _explanation(signed_in=True), status=409)
+        return _page(
+            _form(request, LAST_ADMIN) + _explanation(signed_in=True, user=request.user), status=409
+        )
     django_logout(request)
     return _page(f'<p class="note" role="status">{escape(DONE)}</p><p>{escape(AGAIN)}</p>')

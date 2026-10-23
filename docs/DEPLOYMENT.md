@@ -254,7 +254,9 @@ question rather than being surprised by it.
 **`KEY_ENCRYPTION_KEY`: not rotatable in phase 1.** It keys the ban
 tombstones, the stored tombstone is the HMAC and nothing else, and there is no
 second key path. See docs/DEVELOPMENT.md, "`KEY_ENCRYPTION_KEY` — required, no
-default", for what a rotation would silently do.
+default", for what a rotation would silently do. It also derives the key riders'
+Garmin tokens are encrypted under (`core.garmin`): after a change no token
+decrypts, each connection ends at its next use, and riders connect again.
 
 **`DISCORD_CLIENT_SECRET`: rotate it at Discord first, then here, then
 `up -d`.** It is not one of the four generated values — it is issued by the
@@ -266,6 +268,13 @@ is no re-encryption anywhere. The only window is between Discord issuing the
 new secret and the container holding it, during which every `/auth/callback`
 fails the code exchange and the user gets a sign-in refusal; it is seconds if
 the `.env` edit is ready before the rotation.
+
+**`GARMIN_CLIENT_SECRET`: rotate it in Garmin's developer portal first, then
+here, then `up -d`.** It is issued with the Connect Developer Program app.
+`api` uses it to exchange a rider's sign-in code and to refresh their token;
+the riders' tokens are not encrypted under it, so they survive a rotation.
+Between the portal issuing the new secret and the container holding it, new
+connections and refreshes fail and Send to Garmin says to try again.
 
 `docker compose up -d`, **not** `docker compose restart`. Compose reads `.env`
 when it *creates* a container; `restart` restarts the process the container

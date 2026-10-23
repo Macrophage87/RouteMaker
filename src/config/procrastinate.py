@@ -138,6 +138,9 @@ BACKUP_EXCLUDED_TABLES = (
     "bikeshare_feed_cache",
     # Salted daily hashes of signed-out suggesters' addresses, v0.7.0: kept 24 hours.
     "signed_out_send",
+    # Riders' Garmin tokens (core.models.GarminLink): encrypted, and still a credential; a restore
+    # asks riders to connect again rather than keeping a week of them in every dump.
+    "garmin_link",
 )
 
 # How many dumps stay on the data volume. They never leave this machine - the

@@ -2048,6 +2048,33 @@ class AssistantKey(models.Model):
         return f"AI assistant key for account {self.user_id}"
 
 
+class GarminLink(models.Model):
+    """A rider's Garmin Connect connection (core.garmin; the owner, 2026-10-23, "Keep it,
+    encrypted"): what Send to Garmin uses to add a course to their Garmin Connect account.
+
+    The one third-party credential the deployment keeps, so narrow: one per account, made only by
+    the rider in Settings, for the Courses API alone. Both tokens are AES-GCM encrypted under a key
+    derived from KEY_ENCRYPTION_KEY and bound to this account (`garmin.seal`), and the table is
+    left out of the nightly backup. Garmin's user id is kept to match Garmin's deregistration
+    notice; it is not unique, since one Garmin account may be connected to two RouteMaker accounts.
+    """
+
+    user = models.OneToOneField("User", on_delete=models.CASCADE, related_name="garmin_link")
+    garmin_user_id = models.CharField(max_length=64, db_index=True)
+    access_token = models.TextField()
+    access_expires_at = models.DateTimeField()
+    refresh_token = models.TextField()
+    refresh_expires_at = models.DateTimeField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_used_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "garmin_link"
+
+    def __str__(self) -> str:
+        return f"Garmin connection for account {self.user_id}"
+
+
 class SavedRouteVersion(models.Model):
     """An earlier version of a saved route: what it was before it was saved again with changes,
     or before an earlier version was restored (core.api, /me/routes/{id}/versions).
