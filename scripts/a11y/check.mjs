@@ -2886,7 +2886,7 @@ const levelSlider = `${EDITOR} input[type=range]`;
   const ax311 = await axNode(p, ".ride-311-button");
   check("ride 311 button: a round button of about 60 px at the right edge, in the lower half (thumb height), named Log for 311 with its visible 311, closed",
     !!b311 && b311.w >= 56 && b311.w <= 72 && b311.h >= 56 && b311.round && b311.right <= 24 && b311.mid >= 45 && b311.mid <= 96 && b311.text === "311" && b311.expanded === "false" && ax311?.role === "button" && ax311?.name === "Log for 311" &&
-      JSON.stringify(rail.map((x) => x.name)) === JSON.stringify(["Where am I?", "Large text", "Detour: water or restroom", "Log for 311", "Settings"]) && rail.every((x) => x.round && x.w >= 44),
+      JSON.stringify(rail.map((x) => x.name)) === JSON.stringify(["Where am I?", "Large text", "Calmer: less traffic, plan again from here", "Flatter: fewer hills, plan again from here", "Detour: water or restroom", "Log for 311", "Settings"]) && rail.every((x) => x.round && x.w >= 44),
     JSON.stringify({ b311, ax311, rail }));
   // The top row (the owner, 2026-10-19: "switch end ride and road closed"): End ride, then Road closed ahead with its
   // words (2026-10-20), one line.

@@ -390,7 +390,7 @@ test("Ride mode wires the detour: the ride's fix, the ride's settings without th
   const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
   assert.match(ride, /const points = via \? detourPoints\(left, via\) : left;/);
   assert.match(ride, /locate: async \(\) => rideLocate\(fix\)/);
-  assert.match(ride, /requestNearest\(from, places, preset, \{ \.\.\.dials, loop: false \}\)/);
+  assert.match(ride, /requestNearest\(from, places, preset, \{ \.\.\.dialsRef\.current, loop: false \}\)/);
   assert.match(ride, /void replan\(here, item\.place\.point\);/);
   // The rider's own ask is never dropped in silence: a full route, a busy gate and the outcome are said
   // through sayDetour (an answer, whatever the verbosity), and the focus goes to Where am I?.
