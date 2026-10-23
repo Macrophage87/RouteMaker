@@ -1299,9 +1299,37 @@ def test_between_endurance_pace_and_ftp_the_penalty_grows_exponentially():
         assert rate(past) == pytest.approx(approved, abs=0.15)
     seconds = 1000.0 / hill_cost.V_MIN_MS
     need = hill_cost.power_needed_w(lt1, 90.0)
-    _t, penalty_s = hill_cost.window_cost_s(1000.0, lt1, 90.0, 5.0, lt1)
+    # On a climb long enough that W' adds nothing, the rate is the table's.
+    _t, penalty_s = hill_cost.window_cost_s(1000.0, lt1, 90.0, 5.0, lt1, math.inf)
     assert penalty_s == pytest.approx(seconds * rate((need - pace) / ftp))
     assert hill_cost.window_cost_s(1000.0, 0.02, 90.0, 5.0, lt1)[1] == 0, "under the pace"
+
+
+def test_a_short_kick_costs_far_less_than_a_long_climb_at_the_same_grade():
+    """A climb is weighed as the sustained effort it equals over its length (W_PRIME_S): the
+    owner, "10% can be done for 100m of riding, people would just sprint before it", and
+    "more long term stamina than short term". At 3% easy (the 2026-10-23 PC check that gave
+    0.75 mi and Reno Rd to save 3 m of climb), a 1,000 ft (300 m) pitch at 6% costs about a
+    minute, where it cost a quarter of an hour, and a 2 mi (3 km) climb still costs its full
+    rate."""
+    hills = -71
+    assert hill_cost.lt1_grade_for(hills) == pytest.approx(0.03, abs=0.001)
+
+    def ramp(run_m, grade):
+        n = int(run_m // 30)
+        return [(i * run_m / n, i * run_m / n * grade) for i in range(n + 1)]
+
+    kick = hill_cost.profile_cost_s(ramp(300.0, 0.06), 90.0, 5.0, hills)[1]
+    assert 30.0 < kick < 120.0
+    lt1 = hill_cost.lt1_grade_for(hills)
+    unscaled = hill_cost.window_cost_s(300.0, 0.06, 90.0, 5.0, lt1, math.inf)[1]
+    assert kick < unscaled / 10, "a quarter of an hour before W'"
+    long_s = hill_cost.profile_cost_s(ramp(3000.0, 0.06), 90.0, 5.0, hills)[1]
+    sustained = hill_cost.window_cost_s(3000.0, 0.06, 90.0, 5.0, lt1, math.inf)[1]
+    assert long_s > 0.6 * sustained
+    # The windows of one climb share its length: ten 300 m pieces of the long ramp are not
+    # ten kicks.
+    assert long_s > 50 * kick
 
 
 def test_pushing_the_bike_up_is_a_last_resort():

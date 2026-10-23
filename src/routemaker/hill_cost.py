@@ -88,6 +88,15 @@ V_MIN_MS = 8.0 / 3.6
 # (2.7 km/h) at 10%, 1.4 mph (2.2 km/h) at 15%. WALK_MS is the fastest it gets.
 WALK_MS = 4.0 / 3.6
 PUSH_SHARE = 0.75
+# W', the work a rider can do past critical power (taken as FTP), as seconds of FTP: about
+# 17 kJ at 240 W; cyclists in the recovery studies averaged 18 to 23 kJ (Weigend et al.,
+# arXiv 2108.04510, 2021). On a climb of t seconds the power-duration curve (Monod and
+# Scherrer 1965; Skiba et al. 2012) lets a rider hold FTP x (1 + W_PRIME_S / t), so a short
+# climb weighs as the gentler sustained effort it equals: the owner, 2026-09-28, "10% can be
+# done for 100m of riding, people would just sprint before it. If continued over
+# kilometers, that becomes a hike-a-bike", and 2026-10-23, "more long term stamina than
+# short term".
+W_PRIME_S = 70.0
 # The penalty per second of pushing the bike: as dear as riding at about 125% of FTP, so
 # 0.6 mi (1 km) pushed at 10% costs about 1.5 hours more than its time.
 WALK_PENALTY = 4.0
@@ -154,10 +163,25 @@ def steepness_rate(past: float) -> float:
     return math.expm1(past / FTP_EFOLD) / math.expm1((1.0 - ENDURANCE) / FTP_EFOLD)
 
 
+def _climb_ms(grade: float, flat_ms: float, lt1_grade: float) -> float:
+    """The standard rider's speed up `grade` at the endurance pace, between V_MIN_MS and the
+    flat speed."""
+    pace = endurance_power_w(lt1_grade, effort.MASS_KG, flat_ms)
+    return min(flat_ms, max(_speed_ms(round(grade, 4), effort.MASS_KG, round(pace, 1)), V_MIN_MS))
+
+
 def window_cost_s(
-    run_m: float, grade: float, mass_kg: float, flat_ms: float, lt1_grade: float
+    run_m: float,
+    grade: float,
+    mass_kg: float,
+    flat_ms: float,
+    lt1_grade: float,
+    climb_s: float | None = None,
 ) -> tuple[float, float]:
-    """(extra seconds over the flat, steepness penalty seconds) for `run_m` metres at `grade`.
+    """(extra seconds over the flat, steepness penalty seconds) for `run_m` metres at `grade`,
+    on a climb that takes `climb_s` seconds in all (None: this window's own time). The
+    effort is weighed as the sustained effort it equals over that climb (W_PRIME_S), so a
+    short pitch costs little and a long one its full rate.
 
     The effort, and so the penalty, is the slider's alone: it is worked out for the standard
     rider and bike (effort.MASS_KG) whose LT1 grade the slider sets, at `steepness_rate`. The
@@ -174,9 +198,10 @@ def window_cost_s(
     std = effort.MASS_KG
     pace = endurance_power_w(lt1_grade, std, flat_ms)
     ftp = lt1_power_w(lt1_grade, std) / ZONE2_TOP
-    climb_ms = min(flat_ms, max(_speed_ms(round(grade, 4), std, round(pace, 1)), V_MIN_MS))
+    climb_ms = _climb_ms(grade, flat_ms, lt1_grade)
     need = power_needed_w(grade, std, climb_ms)
-    past = (need - pace) / ftp
+    lasting_s = climb_s if climb_s else run_m / climb_ms
+    past = (need / (1.0 + W_PRIME_S / lasting_s) - pace) / ftp
     # (A hair over 0 is the speed's bisection, not an overload.)
     penalty_s = run_m / climb_ms * steepness_rate(past) if past > 1e-6 else 0.0
     # The rider's own speed at that power, at their weight.
@@ -199,15 +224,30 @@ def profile_cost_s(
 ) -> tuple[float, float]:
     """A profile's (`core.routing.grade_profile`) climbing time and steepness penalty,
     seconds, over its rising windows (`window_cost_s`), at the LT1 grade the hills slider
-    sets."""
+    sets. A climb is a run of rising windows end to end; each window is weighed over the
+    time the whole climb takes."""
     lt1 = lt1_grade_for(hills)
+    windows = [(s, e, r) for s, e, r in effort.windows_along(profile) if e > s]
+    # Each window's climb: the time of the run of rising windows it is in.
+    climb_of: list[float] = [0.0] * len(windows)
+    run_start, run_s = 0, 0.0
+    for i, (start, end, rise) in enumerate(windows):
+        rising = rise > 0
+        joined = i > 0 and windows[i - 1][2] > 0 and windows[i - 1][1] == start
+        if not (rising and joined):
+            for k in range(run_start, i):
+                climb_of[k] = run_s
+            run_start, run_s = i, 0.0
+        if rising:
+            run_s += (end - start) / _climb_ms(rise / (end - start), flat_ms, lt1)
+    for k in range(run_start, len(windows)):
+        climb_of[k] = run_s
     time_s = penalty_s = 0.0
-    for start, end, rise in effort.windows_along(profile):
+    for (start, end, rise), climb_s in zip(windows, climb_of, strict=True):
         run = end - start
-        if run > 0:
-            t, p = window_cost_s(run, rise / run, mass_kg, flat_ms, lt1)
-            time_s += t
-            penalty_s += p
+        t, p = window_cost_s(run, rise / run, mass_kg, flat_ms, lt1, climb_s or None)
+        time_s += t
+        penalty_s += p
     return time_s, penalty_s
 
 
