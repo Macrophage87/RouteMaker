@@ -716,7 +716,7 @@ penalty below does not change with weight, since loaded bikes usually have low g
 <h3>Past your grade</h3>
 <p>The penalty follows a power curve, though you set only the grade: your grade is where holding 5 mph
 [8 km/h] in a low gear takes the top of Zone 2, 75% of FTP<sup class="cite"><a href="#ref-17" aria-label="source 17">[17]</a></sup>, about where breathing starts to
-get harder<sup class="cite"><a href="#ref-18" aria-label="source 18">[18]</a></sup>. Where a climb takes more than the endurance pace, each second of it adds a
+get harder<sup class="cite"><a href="#ref-18" aria-label="source 18">[18]</a></sup>. Where a climb's effort, weighed by how long it lasts (below), is more than the endurance pace, each second of it adds a
 penalty that grows quickly with the power past that pace:</p>
 <div class="table-wrap" tabindex="0" role="region" aria-label="The steepness penalty, past the endurance pace">
 <table>
@@ -734,19 +734,20 @@ penalty that grows quickly with the power past that pace:</p>
 </div>
 <p><strong>How long a climb lasts.</strong> You can hold more power for two minutes than for twenty,
 so each stretch is weighed as the steady effort it equals over the whole climb, by the critical power
-model<sup class="cite"><a href="#ref-19" aria-label="source 19">[19]</a></sup>: the power it takes divided by 1 plus (70 seconds ÷ the climb's riding time). A
-2-minute pitch weighs a little over a third less, a 20-minute climb about 5% less, and your own grade held
-for several minutes costs nothing past its time. A climb runs until the road drops 10 ft [3 m] below its
-top or levels off for about 1,500 ft [450 m], so small bumps in the elevation data and the points you add
+model<sup class="cite"><a href="#ref-19" aria-label="source 19">[19]</a></sup>, with FTP taken as critical power: the power it takes divided by 1 plus (70 seconds ÷
+the climb's riding time). A 2-minute pitch weighs a little over a third less, a 20-minute climb about 5%
+less. Your own grade costs nothing past its time for up to about 7 minutes, 0.62 mi [1 km], and only a
+little more on a longer climb: about 1 minute over 1.2 mi [2 km]. A climb runs until the road drops more
+than 10 ft [3 m] below its top or runs level for about 2,000 ft [600 m], so small bumps in the elevation data and the points you add
 do not split it into short pitches. At 3%, a 1,000 ft [300 m] pitch at 6% costs 1.2 minutes of extra
 time and 1.0 minute of penalty.</p>
 <p><strong>Pushing.</strong> Where riding a stretch would cost more than pushing the bike up it, it is
 pushed, at three quarters of the standard hiking speed<sup class="cite"><a href="#ref-20" aria-label="source 20">[20]</a></sup>: 1.9 mph [3.1 km/h] at 6%, 1.7 mph
 [2.7 km/h] at 10% and 1.4 mph [2.2 km/h] at 15%. Each second pushed costs its time plus 4 seconds of
 penalty, so a route you would have to push loses to almost any you can ride.</p>
-<div class="table-wrap" tabindex="0" role="region" aria-label="What 0.62 mi [1 km] of climbing costs a rider and bike of 198 lb [90 kg] at 11 mph [18 km/h]">
+<div class="table-wrap" tabindex="0" role="region" aria-label="What a climb of 0.62 mi [1 km], on its own, costs a rider and bike of 198 lb [90 kg] at 11 mph [18 km/h]">
 <table>
-<caption>What 0.62 mi [1 km] of climbing costs a rider and bike of 198 lb [90 kg] at 11 mph [18 km/h]</caption>
+<caption>What a climb of 0.62 mi [1 km], on its own, costs a rider and bike of 198 lb [90 kg] at 11 mph [18 km/h]</caption>
 <thead><tr><th scope="col">Your grade</th><th scope="col">The climb</th><th scope="col">Extra time over the flat</th><th scope="col">Penalty</th></tr></thead>
 <tbody>
 <tr><th scope="row">8%, the middle</th><td>8%</td><td>4.2 min</td><td>none</td></tr>
@@ -1117,7 +1118,7 @@ climbing.</li>
   <li id="ref-16">U.S. Geological Survey, 3D Elevation Program, 1 arc-second elevation. <a href="https://www.usgs.gov/3d-elevation-program">usgs.gov/3d-elevation-program</a></li>
   <li id="ref-17">Allen, Coggan and McGregor, Training and Racing with a Power Meter, 3rd edition (VeloPress, 2019): power training levels, Zone 2 up to 75% of FTP. <a href="https://www.simonandschuster.net/books/Training-and-Racing-with-a-Power-Meter/Hunter-Allen/9781948006101">simonandschuster.net</a></li>
   <li id="ref-18">American Council on Exercise, "ACE-sponsored research: validating the talk test as a measure of exercise intensity": the talk test and the ventilatory threshold. <a href="https://acefitness.org/certifiednewsarticle/888/ace-sponsored-research-validating-the-talk-test-as-a-measure-of-exercise-intensity">acefitness.org</a></li>
-  <li id="ref-19">Skiba, Chidnok, Vanhatalo and Jones, "Modeling the expenditure and reconstitution of work capacity above critical power", Medicine and Science in Sports and Exercise 44 (2012): the critical power model and W′. <a href="https://pubmed.ncbi.nlm.nih.gov/22382171/">pubmed.ncbi.nlm.nih.gov</a></li>
+  <li id="ref-19">Skiba, Chidnok, Vanhatalo and Jones, "Modeling the expenditure and reconstitution of work capacity above critical power", Medicine and Science in Sports and Exercise 44 (2012): critical power and W′, the work capacity above it. <a href="https://pubmed.ncbi.nlm.nih.gov/22382171/">pubmed.ncbi.nlm.nih.gov</a></li>
   <li id="ref-20">Tobler, "Three Presentations on Geographical Analysis and Modeling", NCGIA Technical Report 93-1 (1993): the hiking function. <a href="https://escholarship.org/uc/item/05r820mz">escholarship.org</a></li>
   <li id="ref-21">District Department of Transportation, Bicycle Level of Traffic Stress (2020) and Roadway Block (item 6fcba8618ae744949630da3ea12d90eb), Open Data DC, CC BY 4.0. <a href="https://opendata.dc.gov/">opendata.dc.gov</a></li>
   <li id="ref-22">Work Zone Data Exchange feeds: Maryland DOT SHA (CC0, <a href="https://filter.ritis.org/wzdx_v4.1/mdot.geojson">RITIS</a>) and VDOT through SmarterRoads; specification at <a href="https://github.com/usdot-jpo-ode/wzdx">github.com/usdot-jpo-ode/wzdx</a></li>
