@@ -6085,6 +6085,15 @@ hides sidewalks (OWNER-DECISIONS 82). The rebuild log's facility line counts the
 ("footways ridden as a last resort"). The stress change report shows the sidewalks moving
 from LTS 1 to 3 or 4.
 
+**Short informal connectors (v0.12.0, with the next map update).** A worn path or footway
+(`informal=yes`, no bicycle tag, the whole way within 160 ft (50 m)) that would make a
+link as above, and that nothing but its informality closes, is walked, not ridden (the
+owner, 2026-10-23, after Glen Haven Park's paved path in Silver Spring was
+reachable only from Windham Lane because its 36 to 64 ft (11 to 20 m) links to Glenhaven
+Drive, Francis Drive and Huntley Avenue are all mapped `informal=yes`): its `informal`
+closure comes off and it gets `rm:walk_link`, `bicycle=dismount`, as a station's footway
+does, so the route says to walk the bike.
+
 **NPS units.** Tag rules only. A per-park "paved and designated only" rule goes
 in `pipeline.trail_closures.PARK_RULES` after that park's compendium has been
 read, which needs the owner's approval as a fetch.
