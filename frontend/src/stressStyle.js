@@ -1186,6 +1186,17 @@ function byZoom(full, faint, busy, hidden = 0, zoomedOut = null) {
 }
 
 /**
+ * THE POPULAR BIKE CORRIDORS (the owner, 2026-10-21: "use the Cabi heatmap if you can, and make those
+ * streets show more pronounced than other roads"). The tiles' `popular`, 1 to 3 (core/stress_tiles.py: the
+ * Capital Bikeshare model and the owner's named corridors), draws no layer of its own: a band under them made
+ * the map look busy (the owner, 2026-10-23: "The blue just makes things look busy / just prioritize those
+ * streets in view"). Instead a street of class POPULAR_PRIORITY_MIN_CLASS or more is drawn from z12 in a city
+ * grid, with the paths and protected lanes, busy or not (CITY_LADDER), and class 1 from z13 with the painted lanes;
+ * every class sorts over the lines of its tier (`drawPriority`).
+ */
+export const POPULAR_PRIORITY_MIN_CLASS = 2;
+
+/**
  * THE CITY LADDER. In a city grid (a feature the tiles mark `dense` at z12-13, core/stress_tiles.py DENSE_RULE) the
  * ways a rider looks for come in first, as a car map draws the interstates, then the arterials, then the side
  * streets (the owner, 2026-10-23: "Kind of like how you'd see interstate highways at highest zoom, then arterial
@@ -1205,7 +1216,7 @@ const isDense = ["==", ["get", "dense"], true];
 const cityMajor = [
   "any",
   ["match", ["coalesce", ["get", "facility"], "none"], ["path", "protected"], true, false],
-  [">=", ["to-number", ["get", "popular"], 0], 2],
+  [">=", ["to-number", ["get", "popular"], 0], POPULAR_PRIORITY_MIN_CLASS],
   ["==", ["get", "calm"], true],
   ["has", "trail_name"],
   ["has", "car_free"],
@@ -1658,16 +1669,6 @@ function tierGroup(layers, calm = false) {
   return calmestOnTop(layers.filter((layer) => (tierOfLayer(layer) < BUSY_MIN_TIER) === calm));
 }
 
-/**
- * THE POPULAR BIKE CORRIDORS (the owner, 2026-10-21: "use the Cabi heatmap if you can, and make those
- * streets show more pronounced than other roads"). The tiles' `popular`, 1 to 3 (core/stress_tiles.py: the
- * Capital Bikeshare model and the owner's named corridors), draws no layer of its own: a band under them made
- * the map look busy (the owner, 2026-10-23: "The blue just makes things look busy / just prioritize those
- * streets in view"). Instead a street of class POPULAR_PRIORITY_MIN_CLASS or more is drawn from z12 in a city
- * grid, with the paths and protected lanes, busy or not (CITY_LADDER), and class 1 from z13 with the painted lanes;
- * every class sorts over the lines of its tier (`drawPriority`).
- */
-export const POPULAR_PRIORITY_MIN_CLASS = 2;
 
 export function stressLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = currentTiers()) {
   const filters = stressFilters(when);

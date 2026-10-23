@@ -355,6 +355,39 @@ class TestTidy:
         )
         assert found == {1: 3, 2: 3, 3: 3, 4: 3, 5: 0}
 
+    def test_a_cross_street_between_two_parallel_corridors_is_no_gap(self, segment_schemas) -> None:
+        """Q and R Street NW run about 360 ft apart: the blocks between them stay as they are,
+        and so does a short loop off one corridor."""
+        _, staging = segment_schemas
+        found, stats = self.classes(
+            staging,
+            [
+                (1, ((0, 0), (5, 0)), 3),
+                (2, ((5, 0), (10, 0)), 3),
+                (3, ((0, 1), (5, 1)), 3),
+                (4, ((5, 1), (10, 1)), 3),
+                (5, ((5, 0), (5, 1)), 0),  # 111 m across
+                (6, ((2, 0), (2, -1)), 0),  # a loop off the south corridor: out ...
+                (7, ((2, -1), (3, -1)), 0),
+                (8, ((3, -1), (3, 0)), 0),  # ... and back
+            ],
+        )
+        assert {way: found[way] for way in (5, 6, 7, 8)} == {5: 0, 6: 0, 7: 0, 8: 0}
+        assert stats["joined to 3"] == 0
+
+    def test_a_named_corridor_is_never_trimmed(self, segment_schemas) -> None:
+        """The Capital Bikeshare model "never lowers a named one" (pipeline/run.py)."""
+        _, staging = segment_schemas
+        self.insert(staging, [(1, ((0, 0), (2, 0)), 2), (2, ((0, 5), (2, 5)), 2)])
+        with connection.cursor() as cursor:
+            cursor.execute(f"UPDATE {staging}.segment SET bike_popular = 3")
+        stats = bc.tidy(staging, named=[1])
+        with connection.cursor() as cursor:
+            cursor.execute(f"SELECT osm_way_id, bike_popular FROM {staging}.segment")
+            assert dict(cursor.fetchall()) == {1: 3, 2: 1}
+        assert stats["trimmed from 3"] == 1
+        assert stats["trimmed from 2"] == 1
+
     def test_a_short_street_between_two_bike_lanes_links_them(self, segment_schemas) -> None:
         """'basically, there should be some obvious routes to connect the bike lanes
         together': the link takes class 1, which the city ladder draws with the lanes."""
