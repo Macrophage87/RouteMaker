@@ -16,7 +16,7 @@
         android:theme="@style/AppTheme">
 
         <!-- The launcher: opens the site at once when an address is kept on this phone, else asks for it
-             (no build carries one). Its long-press shortcut "Site address" changes it. -->
+             (no test build carries one; the store build does). Its long-press shortcut "Site address" changes it. -->
         <activity
             android:name=".SetupActivity"
             android:label="@string/app_name"
@@ -29,7 +29,7 @@
             </intent-filter>
 
             <!-- Share a RouteMaker link to the app from any app's Share sheet (SharedLink.java). A tapped
-                 link cannot open the app: that needs the site's address in the APK, and no build has one. -->
+                 link cannot open the app: that needs the site's address in the APK plus a file on the server naming the signing key, and neither is set up. -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />

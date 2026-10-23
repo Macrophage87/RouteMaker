@@ -20,15 +20,15 @@ import { ROUTE_AVOID_HALO, ROUTE_AVOID_MAGENTA, ROUTE_AVOID_MARK, ROUTE_AVOID_MA
 export { ROUTE_AVOID_HALO, ROUTE_AVOID_MAGENTA, ROUTE_AVOID_MARK, ROUTE_AVOID_MARK_DASH } from "./avoidColour.ts";
 
 export type MassClassKey = "m0" | "m1" | "m2" | "m3" | "mavoid";
-export type RouteClassKey = "path" | "1" | "2" | "3" | "4" | "5" | "u1" | "u2" | "u3" | "u4" | "u5" | "unknown" | MassClassKey;
+export type RouteClassKey = "path" | "1" | "2" | "3" | "4" | "5" | "u1" | "u2" | "u3" | "u4" | "u5" | "g1" | "g2" | "g3" | "g4" | "g5" | "unknown" | MassClassKey;
 
 /** A Mass Ride's classes (massStyle.js): the capacity bands, and a stretch marked Avoid with no capacity colour. */
 export const MASS_CLASS_KEYS: readonly MassClassKey[] = ["m0", "m1", "m2", "m3", "mavoid"];
 
 export const isMassClass = (key: RouteClassKey): key is MassClassKey => (MASS_CLASS_KEYS as readonly string[]).includes(key);
 
-/** Whether a class is one of the unpaved browns. */
-export const isUnpavedClass = (key: RouteClassKey): boolean => key.startsWith("u") && key !== "unknown";
+/** Whether a class is unpaved: one of the browns (natural surface) or the gravel greys (2026-10-21). */
+export const isUnpavedClass = (key: RouteClassKey): boolean => (key.startsWith("u") && key !== "unknown") || key.startsWith("g");
 
 /** The dotted mark over an unpaved section: a little under half its width, at least 1.5 px (as the map's, stressStyle.js unpavedWidth). */
 export const routeMarkWidth = (width: number): number => Math.max(1.5, width * 0.4);
@@ -82,6 +82,12 @@ export const ROUTE_SECTION_WIDTHS: Readonly<Record<RouteClassKey, number>> = {
   u3: 5,
   u4: 5.5,
   u5: 6,
+  // Gravel: the same ladder.
+  g1: 4,
+  g2: 4.5,
+  g3: 5,
+  g4: 5.5,
+  g5: 6,
   unknown: 5,
   // A Mass Ride's: the capacity bands' own widths, rising with the capacity (OWNER-DECISIONS 327).
   m0: MASS_BANDS[0].width,
@@ -129,7 +135,7 @@ const PATH = FACILITIES.find((facility) => facility.facility === "path");
 const avoidOnTheRoute = (c: RouteClass): RouteClass =>
   c.key === "5" || c.key === "mavoid"
     ? { ...c, color: ROUTE_AVOID_MAGENTA, halo: ROUTE_AVOID_HALO, mark: ROUTE_AVOID_MARK }
-    : c.key === "u5"
+    : c.key === "u5" || c.key === "g5"
       ? { ...c, color: ROUTE_AVOID_MAGENTA, halo: ROUTE_AVOID_HALO }
       : c;
 
@@ -169,12 +175,23 @@ export function routeClasses(): readonly RouteClass[] {
     // (MapView's route-unpaved layer) as the cue that is not colour.
     ...tiers.map((tier: { tier: number; short: string; label: string; unpavedColor: string; unpavedCasing: string }) => ({
       key: `u${tier.tier}` as RouteClassKey,
-      short: `Unpaved ${tier.short}`,
-      label: `Unpaved: ${tier.label.charAt(0).toLowerCase()}${tier.label.slice(1)}`,
+      short: `Dirt ${tier.short}`,
+      label: `Dirt or other natural surface: ${tier.label.charAt(0).toLowerCase()}${tier.label.slice(1)}`,
       color: tier.unpavedColor,
       halo: tier.unpavedCasing,
       width: ROUTE_SECTION_WIDTHS[`u${tier.tier}` as RouteClassKey],
       haloWidth: ROUTE_SECTION_WIDTHS[`u${tier.tier}` as RouteClassKey] + ROUTE_HALO_EXTRA,
+    })),
+    // Gravel (an unpaved section the API says is not rough), in the grey ramp (the owner, 2026-10-21:
+    // "Maybe make natural surface trails brown and gravel grey?"; stressStyle.js GRAVEL_PALETTES), with the same dots.
+    ...tiers.map((tier: { tier: number; short: string; label: string; gravelColor: string; gravelCasing: string }) => ({
+      key: `g${tier.tier}` as RouteClassKey,
+      short: `Gravel ${tier.short}`,
+      label: `Gravel: ${tier.label.charAt(0).toLowerCase()}${tier.label.slice(1)}`,
+      color: tier.gravelColor,
+      halo: tier.gravelCasing,
+      width: ROUTE_SECTION_WIDTHS[`g${tier.tier}` as RouteClassKey],
+      haloWidth: ROUTE_SECTION_WIDTHS[`g${tier.tier}` as RouteClassKey] + ROUTE_HALO_EXTRA,
     })),
     // A Mass Ride's classes: the capacity bands and Avoid (massStyle.js). Drawn when the API's spans carry `rpm`.
     ...MASS_BANDS.map((band: (typeof MASS_BANDS)[number], i: number) => ({
@@ -226,12 +243,12 @@ function classByKey(key: RouteClassKey): RouteClass | undefined {
 }
 
 /**
- * A section's class: unpaved (the API's `unpaved: true`) in its tier's brown, a
+ * A section's class: unpaved (the API's `unpaved: true`) in its tier's brown, or its grey on gravel (`rough: false`), a
  * traffic-free path at LTS 1's when it has no tier; else traffic-free before its
  * tier, and unknown without one. An unknown surface (null, or an older API) is drawn as paved.
  */
 export function spanClass(
-  span: Pick<StressSpan, "tier" | "facility"> & Partial<Pick<StressSpan, "unpaved" | "rpm" | "outside_dc">>,
+  span: Pick<StressSpan, "tier" | "facility"> & Partial<Pick<StressSpan, "unpaved" | "rough" | "rpm" | "outside_dc">>,
   capacity = false,
 ): RouteClass {
   // A Mass Ride's section (`capacity`: the route's sections carry riders per minute, usesCapacity): by
@@ -245,7 +262,8 @@ export function spanClass(
   }
   if (span.unpaved === true) {
     const tier = span.tier ?? (span.facility === "path" ? 1 : null);
-    const brown = tier !== null ? classByKey(`u${tier}` as RouteClassKey) : undefined;
+    // Gravel grey only where the API says it is not rough; rough, or not said (an older API or table), brown.
+    const brown = tier !== null ? classByKey(`${span.rough === false ? "g" : "u"}${tier}` as RouteClassKey) : undefined;
     if (brown) return brown;
   }
   // Avoid before traffic-free: a path rated Avoid (only an access override could make one) is drawn

@@ -97,7 +97,7 @@ export const WALK_DASH: [number, number] = [0.1, 2];
 
 export interface WalkFeatureCollection {
   type: "FeatureCollection";
-  features: { type: "Feature"; properties: { leg: "start" | "end" }; geometry: { type: "LineString"; coordinates: LonLat[] } }[];
+  features: { type: "Feature"; properties: { leg: "start" | "end" | "past" }; geometry: { type: "LineString"; coordinates: LonLat[] } }[];
 }
 
 export function walkFeatures(plan: BikesharePlan | null): WalkFeatureCollection {
@@ -119,6 +119,10 @@ export function routeWalkFeatures(route: RouteResponse | null): WalkFeatureColle
   for (const leg of ["start", "end"] as const) {
     const walk = route?.walk_in?.[leg];
     if (walk && walk.geometry.coordinates.length >= 2) features.push({ type: "Feature", properties: { leg }, geometry: walk.geometry });
+  }
+  // Novice and Nervous's walks past a short busy stretch, on the sidewalk beside it (v0.11.0; core.novice_walks).
+  for (const walk of route?.novice?.walks ?? []) {
+    if (walk.geometry.coordinates.length >= 2) features.push({ type: "Feature", properties: { leg: "past" }, geometry: walk.geometry });
   }
   return { type: "FeatureCollection", features };
 }

@@ -360,3 +360,21 @@ test("a ride that stops short of the destination says to walk the bike the rest 
   assert.equal(walkInNote({ walk_in: null } as never), null);
   assert.equal(walkInNote({} as never), null);
 });
+
+test("a Novice route says the busy stretches it walks past on the sidewalk, and draws them (v0.11.0; the owner, 2026-10-21)", async () => {
+  const { noviceWalksNote } = await import("./summary.ts");
+  const { routeWalkFeatures } = await import("./bikeshare.ts");
+  const walk = (road: string | null, m: number) => ({ from_m: 1000, to_m: 1300, road, ride_m: 300, geometry: { type: "LineString", coordinates: [[-77.15, 39.12], [-77.151, 39.121]] }, distance_m: m, duration_s: m / 1.3, text: "" });
+  const novice = (walks: unknown[]) => ({ busy_m: 0, busiest: null, over_ceiling: false, transit: false, walked_m: 300, walks });
+  const one = { distance_m: 5000, duration_s: 1200, climb_m: 10, preset: "novice", novice: novice([walk("Redland Road", 320)]) } as unknown as RouteResponse;
+  assert.equal(noviceWalksNote(one), "Walk your bike on the sidewalk along Redland Road, 0.2 mi (0.3 km).");
+  assert.ok(announceRoute(one, [[-77.15, 39.12], [-77.16, 39.13]]).includes("Walk your bike on the sidewalk along Redland Road"));
+  const two = { novice: novice([walk("Redland Road", 320), walk(null, 480)]) } as unknown as RouteResponse;
+  assert.match(noviceWalksNote(two) ?? "", /^Walk your bike on the sidewalk past 2 busy stretches, 0\.5 mi/);
+  assert.equal(noviceWalksNote({ novice: novice([]) } as never), null);
+  assert.equal(noviceWalksNote({ novice: null } as never), null);
+  assert.equal(noviceWalksNote({} as never), null);
+  assert.deepEqual(routeWalkFeatures(two).features.map((f) => f.properties.leg), ["past", "past"]);
+  const app = appSource();
+  assert.match(app, /if \(pastBusy\) lines\.push\(\{ key: "novice-walks"/);
+});
