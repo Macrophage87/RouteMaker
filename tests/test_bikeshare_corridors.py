@@ -302,3 +302,53 @@ class TestDerive:
         self.insert(staging, [(1, ((0, 0), (1, 0)), 2)])
         assert bc.derive(staging, tmp_path / bc.FILE_NAME) == {}
         assert self.popular(staging) == {1: (None, 0)}
+
+
+@pytest.mark.django_db(transaction=True)
+class TestTidy:
+    """The owner, 2026-10-23: "there's a couple of those short segments. If they can be
+    connected due to an obvious path, do so, otherwise trim them." """
+
+    insert = TestDerive.insert
+
+    def classes(self, schema, rows) -> dict:
+        self.insert(schema, [(way, ends, 2) for way, ends, _ in rows])
+        with connection.cursor() as cursor:
+            for way, _, level in rows:
+                cursor.execute(
+                    f"UPDATE {schema}.segment SET bike_popular = %s WHERE osm_way_id = %s",
+                    [level, way],
+                )
+        stats = bc.tidy(schema)
+        with connection.cursor() as cursor:
+            cursor.execute(f"SELECT osm_way_id, bike_popular FROM {schema}.segment")
+            return dict(cursor.fetchall()), stats
+
+    def test_a_short_gap_between_two_pieces_of_a_class_is_joined(self, segment_schemas) -> None:
+        _, staging = segment_schemas
+        # Five steps of class 3 (about 435 m), a one-step gap (87 m) at class 0, five more.
+        found, stats = self.classes(
+            staging, [(1, ((0, 0), (5, 0)), 3), (2, ((5, 0), (6, 0)), 0), (3, ((6, 0), (11, 0)), 3)]
+        )
+        assert found == {1: 3, 2: 3, 3: 3}
+        assert stats["joined to 3"] == 1
+
+    def test_a_long_gap_is_not_joined(self, segment_schemas) -> None:
+        _, staging = segment_schemas
+        found, _ = self.classes(
+            staging, [(1, ((0, 0), (5, 0)), 3), (2, ((5, 0), (7, 0)), 0), (3, ((7, 0), (12, 0)), 3)]
+        )
+        assert found[2] == 0, "two steps (174 m) is more than JOIN_MAX_M"
+
+    def test_a_stray_bit_drops_a_class_and_a_long_piece_stays(self, segment_schemas) -> None:
+        _, staging = segment_schemas
+        found, stats = self.classes(
+            staging,
+            [
+                (1, ((0, 0), (2, 0)), 3),  # 174 m alone: drops to 2, then to 1
+                (2, ((0, 5), (6, 5)), 2),  # 522 m: stays
+                (3, ((0, 9), (2, 9)), 2),  # 174 m alone: drops to 1
+            ],
+        )
+        assert found == {1: 1, 2: 2, 3: 1}
+        assert stats["trimmed from 3"] == 1

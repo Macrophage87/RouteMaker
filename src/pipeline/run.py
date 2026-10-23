@@ -3974,6 +3974,10 @@ def build_handlers(
             )
             or "no trip counts installed",
         )
+        logger.info(
+            "popular corridors joined up and trimmed: %s",
+            bikeshare_corridors.tidy(context.staging_schema),
+        )
         levels = trail_routes.mtb_level_counts(context.staging_schema)
         named, mountain_bike_ways = trail_routes.mtb_name_counts(context.staging_schema)
         logger.info(

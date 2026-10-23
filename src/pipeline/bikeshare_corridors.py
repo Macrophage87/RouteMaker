@@ -375,3 +375,62 @@ def derive(schema: str, path: Path) -> dict:
         stats["miles by class"] = {int(level): int(mi) for level, mi in cursor.fetchall()}
     stats["rows with trips"] = len(rows)
     return stats
+
+
+# THE CORRIDORS JOINED UP (the owner, 2026-10-23, of the zoomed-out map: "there's a couple of
+# those short segments. If they can be connected due to an obvious path, do so, otherwise trim
+# them. It makes the map look meessy"). After the classes are set, for class 3 and then 2:
+# a way of a lower class no longer than JOIN_MAX_M, both of whose ends meet ways of the class,
+# is a gap in one corridor, and takes the class; then a connected piece of the class shorter
+# than TRIM_MIN_M in all is a stray bit, and drops a class. The zoomed-out map draws classes 2
+# and 3 (core/stress_tiles.py), the city ladder class 2 and up from z12
+# (frontend/src/stressStyle.js).
+JOIN_MAX_M = 150.0  # about 500 ft: a junction's width or a block's missing link
+TRIM_MIN_M = 400.0  # about a quarter mile
+# Ends this close (degrees, about 1 m) meet.
+TOUCH_DEG = 0.00001
+
+_JOIN_SQL = """
+UPDATE {schema}.segment AS s SET {col} = %(level)s
+WHERE s.{col} < %(level)s
+  AND ST_Length(s.geometry::geography) <= %(join_max)s
+  AND EXISTS (SELECT 1 FROM {schema}.segment AS a WHERE a.{col} >= %(level)s AND a.id <> s.id
+              AND ST_DWithin(a.geometry, ST_StartPoint(s.geometry), %(touch)s))
+  AND EXISTS (SELECT 1 FROM {schema}.segment AS b WHERE b.{col} >= %(level)s AND b.id <> s.id
+              AND ST_DWithin(b.geometry, ST_EndPoint(s.geometry), %(touch)s))
+"""
+
+_TRIM_SQL = """
+WITH pieces AS (
+    SELECT id, ST_Length(geometry::geography) AS m,
+           ST_ClusterDBSCAN(geometry, eps := %(touch)s, minpoints := 1) OVER () AS piece
+    FROM {schema}.segment WHERE {col} >= %(level)s
+), short AS (
+    SELECT piece FROM pieces GROUP BY piece HAVING sum(m) < %(trim_min)s
+)
+UPDATE {schema}.segment AS s SET {col} = %(level)s - 1
+FROM pieces AS p JOIN short USING (piece)
+WHERE s.id = p.id AND s.{col} = %(level)s
+"""
+
+
+def tidy(schema: str) -> dict[str, int]:
+    """Join the corridors' short gaps and drop their stray bits (JOIN_MAX_M, TRIM_MIN_M).
+    Returns the rows joined and trimmed at each class, for the log."""
+    from django.db import connection
+
+    validate_schema_name(schema)
+    stats: dict[str, int] = {}
+    with connection.cursor() as cursor:
+        for level in (3, 2):
+            params = {
+                "level": level,
+                "join_max": JOIN_MAX_M,
+                "trim_min": TRIM_MIN_M,
+                "touch": TOUCH_DEG,
+            }
+            cursor.execute(_JOIN_SQL.format(schema=schema, col=BIKE_POPULAR_COLUMN), params)
+            stats[f"joined to {level}"] = cursor.rowcount
+            cursor.execute(_TRIM_SQL.format(schema=schema, col=BIKE_POPULAR_COLUMN), params)
+            stats[f"trimmed from {level}"] = cursor.rowcount
+    return stats
