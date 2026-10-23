@@ -140,19 +140,20 @@ def test_no_discord_token_is_persisted_anywhere(client, monkeypatch) -> None:
     nothing to encrypt, refresh, leak, or revoke on deletion. Asserted rather than
     described - the OAuth module had six tests and none of them covered this.
 
-    The one per-user third-party credential kept anywhere is a rider's Garmin
-    connection (core.garmin; the owner, 2026-10-23, "Keep it, encrypted"), which
-    the rider makes in Settings for sending courses, kept encrypted; tests/test_garmin.py
-    covers it. No other table may grow a token column.
+    The only per-user third-party credentials kept anywhere are a rider's Garmin
+    and Wahoo connections (core.garmin, core.wahoo; the owner, 2026-10-23, "Keep it,
+    encrypted"), which the rider makes in Settings for sending courses and routes,
+    kept encrypted; tests/test_garmin.py and tests/test_wahoo.py cover them. No other
+    table may grow a token column.
     """
     from django.apps import apps
 
-    from core.models import GarminLink, Session, User
+    from core.models import GarminLink, Session, User, WahooLink
 
     # No column anywhere else could hold one.
     suspicious = {"access_token", "refresh_token", "token", "discord_token", "oauth_token"}
     for model in apps.get_app_config("core").get_models():
-        if model is GarminLink:
+        if model in (GarminLink, WahooLink):
             continue
         names = {field.name for field in model._meta.fields}
         assert not (names & suspicious), f"{model.__name__} has a token column"
