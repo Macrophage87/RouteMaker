@@ -2054,9 +2054,14 @@ class ClosureOut(Schema):
         description='The source as the card names it: "MPD traffic advisory, Oct 15".'
     )
     url: str | None = Field(description="The source's own page.")
-    kind: Literal["closed", "unknown", "lane"]
+    kind: Literal["closed", "unknown", "lane", "penalty"] = Field(
+        description='"penalty" (v0.12.0): a rideable work zone, on the map with no route only.'
+    )
     severity: Literal["red", "amber"] = Field(
-        description='"red": a closed stretch (a barrier icon); "amber": a bike lane blocked.'
+        description=(
+            '"red": a closed stretch (a barrier icon); "amber": a bike lane blocked, or'
+            " construction that can be ridden through."
+        )
     )
     title: str = Field(
         description='What is closed: "Constitution Avenue NW closed, 14th St to 18th St".'
@@ -6672,6 +6677,41 @@ def my_shared_route_regenerate(request, route_id: str):
 # The closures a kept line runs along now (v0.7.0 plan, "GPX export as close to identical as
 # possible, closure warning first", with its correction: mainly when a kept route is opened or
 # ridden). Public, like planning; the line is only measured, never kept.
+class AreaClosuresIn(Schema):
+    bbox: str = Field(
+        max_length=120,
+        description="The map's view: west,south,east,north in degrees, at most 0.4 by 0.3.",
+    )
+    permits: bool = Field(
+        default=False,
+        description="Also DDOT's permits (Plan's DC permits switch); off by default.",
+    )
+
+
+class AreaClosuresOut(Schema):
+    closures: list[ClosureOut]
+
+
+# GET /api/closures/map?bbox=west,south,east,north (v0.12.0): the closures in force now in the
+# map's view, drawn with no route as with one (core.workzones.area_rows). A GET of a map view,
+# as a tile is: no point of the rider's is in it.
+@api.get(
+    "/closures/map",
+    response={200: AreaClosuresOut, 400: ErrorOut, 429: ErrorOut, 500: ErrorOut},
+    summary="The closures and construction in force now in a map view",
+)
+@decorate_view(ratelimit.rate_limited(ratelimit.CLOSURES_MAP), errors_as_json)
+def closures_map(request, params: Query[AreaClosuresIn], response: HttpResponse):
+    from . import workzones as work_zones
+
+    response["Cache-Control"] = "no-store"
+    try:
+        box = work_zones.parse_area(params.bbox)
+    except ValueError as error:
+        return Status(400, {"error": str(error)})
+    return Status(200, {"closures": work_zones.area_rows(box, permits=params.permits)})
+
+
 CLOSURE_LINE_MAX_POINTS = 10_000
 CLOSURE_BODY_MAX_BYTES = 512 * 1024
 CLOSURE_BYPASS_MAX = 50
