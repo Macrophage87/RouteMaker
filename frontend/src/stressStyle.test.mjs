@@ -11,7 +11,7 @@ import {
   stressLayers,
   stressCasingLayers,
   BUSY_MIN_TIER,
-  STREET_HIDDEN_ZOOM,
+  CITY_LADDER,
   POPULAR_PRIORITY_MIN_CLASS,
   gapLayers,
   ringLayers,
@@ -706,28 +706,58 @@ test("in a city grid a busy road's rails wait for zoom 14 unless it is a popular
     assert.equal(opacity(13, {}), 1, `${layer.id} z13 rural ("Here it looks fine")`);
     assert.equal(opacity(BUSY_RAILS_MIN_ZOOM, { dense: true }), 1, `${layer.id} z14`);
   }
-  for (const layer of facilityLayers("s")) assert.equal(layer.paint["line-opacity"], undefined, layer.id);
 });
 
-test("in a city grid at z12 a plain street is not drawn, busy or not; a popular corridor, a bike lane and a rural road are (the owner, 2026-10-23)", () => {
+// The owner, 2026-10-23: "Kind of like how you'd see interstate highways at highest zoom, then arterial roads, then
+// collector roads, then the neighborhood streets for cars. For bikes, we want something similar."
+test("the city ladder: in a city grid the paths, protected lanes, popular corridors and calm streets from z12, painted lanes from z13, the rest from z14; a rural way at every zoom", () => {
+  assert.deepEqual(CITY_LADDER, { major: 12, lane: 13, street: 14 });
+  const cases = [
+    // [props, first zoom in a city grid]
+    [{ facility: "path", trail: true }, 12],
+    [{ facility: "protected" }, 12],
+    [{ facility: "none", popular: 2 }, 12],
+    [{ facility: "none", calm: true }, 12],
+    [{ facility: "none", trail: true, trail_name: "Metropolitan Branch Trail" }, 12],
+    [{ facility: "none", car_free: "weekend" }, 12],
+    [{ facility: "lane" }, 13],
+    [{ facility: "none", popular: 1 }, 13],
+    [{ facility: "none" }, 14],
+    [{ facility: "none", trail: true }, 14], // a sidewalk
+    [{}, 14],
+  ];
   for (const layer of [...stressLayers("s"), ...stressCasingLayers("s")]) {
     const tier = Number(layer.id.at(-1));
-    const at = (zoom, props) => paintValue(layer, "line-opacity", { tier, facility: "none", ...props }, zoom);
-    assert.equal(at(STREET_HIDDEN_ZOOM, { dense: true }), 0, `${layer.id} downtown`);
-    assert.ok(at(STREET_HIDDEN_ZOOM, { dense: true, popular: POPULAR_PRIORITY_MIN_CLASS }) > 0, `${layer.id} popular`);
-    assert.ok(at(STREET_HIDDEN_ZOOM, { dense: true, popular: 1 }) === 0, `${layer.id} class 1 is most of downtown`);
-    assert.ok(at(STREET_HIDDEN_ZOOM, { dense: true, facility: "lane" }) > 0, `${layer.id} bike lane`);
-    assert.ok(at(STREET_HIDDEN_ZOOM, {}) > 0, `${layer.id} rural`);
-    assert.ok(at(13, { dense: true }) > 0, `${layer.id} z13 thin, not hidden`);
+    if (tier >= BUSY_MIN_TIER) continue;
+    for (const [props, first] of cases) {
+      for (const zoom of [12, 13, 14]) {
+        const opacity = paintValue(layer, "line-opacity", { tier, dense: true, ...props }, zoom);
+        assert.equal(opacity > 0, zoom >= first, `${layer.id} ${JSON.stringify(props)} z${zoom}`);
+        assert.ok(paintValue(layer, "line-opacity", { tier, ...props }, zoom) > 0, `${layer.id} rural ${JSON.stringify(props)} z${zoom}`);
+      }
+    }
+  }
+  // A busy road waits for z14 in a city grid unless it is a popular corridor, bike lane or not.
+  for (const layer of stressLayers("s").filter((l) => Number(l.id.at(-1)) >= BUSY_MIN_TIER)) {
+    const tier = Number(layer.id.at(-1));
+    const at = (props, zoom) => paintValue(layer, "line-opacity", { tier, dense: true, ...props }, zoom);
+    for (const zoom of [12, 13]) {
+      assert.equal(at({ facility: "lane" }, zoom), 0, `${layer.id} z${zoom}`);
+      assert.ok(at({ facility: "none", popular: POPULAR_PRIORITY_MIN_CLASS }, zoom) > 0, `${layer.id} popular z${zoom}`);
+    }
+    assert.ok(at({ facility: "none" }, 14) > 0, `${layer.id} z14`);
   }
 });
 
-test("a popular corridor keeps its full width in a city grid at z13", () => {
-  for (const layer of stressLayers("s")) {
-    const tier = Number(layer.id.at(-1));
-    if (tier >= BUSY_MIN_TIER) continue;
-    const width = (props) => paintValue(layer, "line-width", { tier, facility: "none", dense: true, ...props }, 13);
-    assert.ok(width({ popular: POPULAR_PRIORITY_MIN_CLASS }) > width({}), layer.id);
+test("the calm tiers' rails come in with their line in a city grid; at every zoom elsewhere", () => {
+  for (const layer of facilityLayers("s")) {
+    const facility = layer.id.split("-")[1];
+    const at = (zoom, props = {}) => paintValue(layer, "line-opacity", { tier: 2, facility, ...props }, zoom);
+    const first = facility === "lane" ? 13 : 12;
+    for (const zoom of [12, 13, 14]) {
+      assert.equal(at(zoom, { dense: true }) > 0, zoom >= first, `${layer.id} z${zoom} downtown`);
+      assert.equal(at(zoom), 1, `${layer.id} z${zoom} rural`);
+    }
   }
 });
 

@@ -375,3 +375,114 @@ def derive(schema: str, path: Path) -> dict:
         stats["miles by class"] = {int(level): int(mi) for level, mi in cursor.fetchall()}
     stats["rows with trips"] = len(rows)
     return stats
+
+
+# THE CORRIDORS JOINED UP (the owner, 2026-10-23, of the zoomed-out map: "there's a couple of
+# those short segments. If they can be connected due to an obvious path, do so, otherwise trim
+# them. It makes the map look meessy"; then "Also short gaps"). After the classes are set:
+# first a gap of one or two ways no longer than JOIN_MAX_M in all, both of whose far ends meet
+# a bike lane, protected lane or path, is the obvious link between them and takes
+# class 1, which the city ladder draws with the painted lanes from z13; then for class 3 and
+# then 2, such a gap between ways of the class takes the class, and a connected piece of the
+# class shorter than TRIM_MIN_M in all is a stray bit, and drops a class (but never a named
+# corridor's way). The zoomed-out map draws classes 2 and 3 (core/stress_tiles.py), the city
+# ladder class 2 and up from z12 (frontend/src/stressStyle.js).
+JOIN_MAX_M = 200.0  # about 650 ft: a junction's width or a block or two of missing link
+TRIM_MIN_M = 400.0  # about a quarter mile
+# Ends this close (degrees, about 1 m) meet; two ways' shared end is the same point rounded to
+# this grid (an equality, so the two-way gaps hash-join).
+TOUCH_DEG = 0.00001
+
+# The ways a gap may join: a bike facility (as the map shows it) at class 1, not a popular
+# way of class 1, which covers most of downtown; a way of the class itself at 2 and 3.
+_FACILITY_ENDS = "COALESCE({a}.facility_shown, {a}.facility) <> 'none'"
+_CLASS_ENDS = "{a}.{col} >= %(level)s"
+
+# One way or two, each below the class (and, for the facility links, not a facility itself),
+# whose far ends are each where a way the gap joins ends: only one such way meets the point,
+# and meets it with an end, so a cross street between two parallel corridors (Q and R Street
+# NW, about 360 ft apart), which meet it running through the junction, is no gap.
+_JOIN_SQL = """
+WITH cand AS (
+    SELECT s.id, ST_Length(s.geometry::geography) AS m,
+           round(ST_X(ST_StartPoint(s.geometry)) / %(touch)s)::bigint AS x0,
+           round(ST_Y(ST_StartPoint(s.geometry)) / %(touch)s)::bigint AS y0,
+           round(ST_X(ST_EndPoint(s.geometry)) / %(touch)s)::bigint AS x1,
+           round(ST_Y(ST_EndPoint(s.geometry)) / %(touch)s)::bigint AS y1,
+           (SELECT count(*) = 1 AND bool_and(ST_DWithin(ST_Boundary(a.geometry),
+                                                         ST_StartPoint(s.geometry), %(touch)s))
+            FROM {schema}.segment AS a WHERE {ends_a} AND a.id <> s.id
+              AND ST_DWithin(a.geometry, ST_StartPoint(s.geometry), %(touch)s)) AS at0,
+           (SELECT count(*) = 1 AND bool_and(ST_DWithin(ST_Boundary(b.geometry),
+                                                         ST_EndPoint(s.geometry), %(touch)s))
+            FROM {schema}.segment AS b WHERE {ends_b} AND b.id <> s.id
+              AND ST_DWithin(b.geometry, ST_EndPoint(s.geometry), %(touch)s)) AS at1
+    FROM {schema}.segment AS s
+    WHERE s.{col} < %(level)s AND {gap}
+      AND ST_Length(s.geometry::geography) <= %(join_max)s
+), ends AS (
+    SELECT id, m, x0 AS hx, y0 AS hy FROM cand WHERE at1 AND NOT at0
+    UNION ALL
+    SELECT id, m, x1 AS hx, y1 AS hy FROM cand WHERE at0 AND NOT at1
+), linked AS (
+    SELECT id FROM cand WHERE at0 AND at1
+    UNION
+    SELECT unnest(ARRAY[x.id, y.id]) FROM ends AS x JOIN ends AS y
+        ON x.hx = y.hx AND x.hy = y.hy AND x.id < y.id
+    WHERE x.m + y.m <= %(join_max)s
+)
+UPDATE {schema}.segment AS s SET {col} = %(level)s FROM linked WHERE s.id = linked.id
+"""
+
+
+def _join_sql(schema: str, ends: str, gap: str) -> str:
+    return _JOIN_SQL.format(
+        schema=schema,
+        col=BIKE_POPULAR_COLUMN,
+        ends_a=ends.format(a="a", col=BIKE_POPULAR_COLUMN),
+        ends_b=ends.format(a="b", col=BIKE_POPULAR_COLUMN),
+        gap=gap,
+    )
+
+
+_TRIM_SQL = """
+WITH pieces AS (
+    SELECT id, ST_Length(geometry::geography) AS m,
+           ST_ClusterDBSCAN(geometry, eps := %(touch)s, minpoints := 1) OVER () AS piece
+    FROM {schema}.segment WHERE {col} >= %(level)s
+), short AS (
+    SELECT piece FROM pieces GROUP BY piece HAVING sum(m) < %(trim_min)s
+)
+UPDATE {schema}.segment AS s SET {col} = %(level)s - 1
+FROM pieces AS p JOIN short USING (piece)
+WHERE s.id = p.id AND s.{col} = %(level)s AND s.osm_way_id <> ALL(%(named)s::bigint[])
+"""
+
+
+def tidy(schema: str, named: Iterable[int] = ()) -> dict[str, int]:
+    """Link the bike lanes and corridors across their short gaps and drop the corridors'
+    stray bits (JOIN_MAX_M, TRIM_MIN_M); a way of a corridor the owner named (`named`, its
+    OSM way ids) is never trimmed. Returns the rows linked, joined and trimmed, for the log."""
+    from django.db import connection
+
+    validate_schema_name(schema)
+    stats: dict[str, int] = {}
+    params = {
+        "join_max": JOIN_MAX_M,
+        "trim_min": TRIM_MIN_M,
+        "touch": TOUCH_DEG,
+        "named": sorted(set(named)),
+    }
+    with connection.cursor() as cursor:
+        cursor.execute(
+            _join_sql(schema, _FACILITY_ENDS, "COALESCE(s.facility_shown, s.facility) = 'none'"),
+            {**params, "level": 1},
+        )
+        stats["links between bike lanes"] = cursor.rowcount
+        for level in (3, 2):
+            params["level"] = level
+            cursor.execute(_join_sql(schema, _CLASS_ENDS, "true"), params)
+            stats[f"joined to {level}"] = cursor.rowcount
+            cursor.execute(_TRIM_SQL.format(schema=schema, col=BIKE_POPULAR_COLUMN), params)
+            stats[f"trimmed from {level}"] = cursor.rowcount
+    return stats

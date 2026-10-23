@@ -179,7 +179,8 @@ CONTENT_TYPE = "application/vnd.mapbox-vector-tile"
 # (TRAIL_NAME_RULE). 12: a z12-13 feature in a city grid carries `dense` (DENSE_RULE; v0.10.2).
 # 13: the popular bike corridors' `popular`, z10-11 keep them and the long calm roads
 # (`popular_and_calm`), and a long trail's name from z10. 14: a major corridor's name,
-# `trail_name` on a way of the top popular class (POPULAR_NAMED_MIN_CLASS).
+# `trail_name` on a way of the top popular class (POPULAR_NAMED_MIN_CLASS), and `dense` from
+# 8 km a square (DENSE_ROAD_M).
 FORMAT_VERSION = 14
 
 # Five minutes (OWNER-DECISIONS 460.6, "5 min sounds good"): an instance admin's change in
@@ -553,18 +554,21 @@ SELECT '{table}'::regclass::oid,
 # everywhere or only in the city: "City only, via a server flag". At z12-13 a feature
 # carries `dense` (true, else nothing) where its ways lie in a square of DENSE_CELL_M a
 # side, in EPSG:3857 metres, holding at least DENSE_ROAD_M of drawn road, counted where each
-# way starts; the map does not draw a plain street there at z12 and draws it thinner at z13
-# (frontend/src/stressStyle.js, STREET_HIDDEN_ZOOM, STREET_THIN_SCALE). The squares are
+# way starts; there the map draws the main bike routes first and the plain streets from z14
+# (frontend/src/stressStyle.js, CITY_LADDER). The squares are
 # fixed on the projection's grid, and every way that starts in a square the tile touches is
 # counted (any way within DENSE_CELL_M of the tile, whatever the coverage clip), so a square
 # reads the same from each tile it is drawn in. A way starting further out than that is
 # judged by a square counted in part; the segments are split at every junction, so in a grid
 # none is that long. 12 km in a kilometre square (about 15 km of road a square kilometre on
 # the ground at DC's latitude) is a downtown or rowhouse grid of 100-150 m blocks, where a
-# suburb of loops and cul-de-sacs is about half that and a rural road a tenth; tune it on
-# the real map.
+# suburb of loops and cul-de-sacs is about half that and a rural road a tenth. Tuned on the
+# real map (2026-10-23, the live tiles of 2026-10-22 at z12.3): at 12 km only 36% of the squares
+# in a view of central DC qualified, so most of Northwest, Northeast, Capitol Hill and
+# Arlington kept every street ("There's still a lot of clutter"); at 8 km 64% of DC's squares
+# do, against 31% around Gaithersburg, whose country roads still keep their lines.
 DENSE_CELL_M = 1000
-DENSE_ROAD_M = 12_000
+DENSE_ROAD_M = 8_000
 DENSE_RULE = f"CASE WHEN cells.road_m >= {DENSE_ROAD_M} THEN true END"
 
 _MERGED_DENSE = """

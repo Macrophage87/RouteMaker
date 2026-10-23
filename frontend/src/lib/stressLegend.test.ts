@@ -88,11 +88,12 @@ test("the standing hint names the zooms from STRESS_ZOOMS and the zoom the map i
     everyTrailFrom(12),
     "Every other path and trail, the short ones too, shows from zoom 12. Mountain-bike trails show from zoom 12 when their layer is on.",
   );
-  // The owner, 2026-10-17: "Both from 12": no where-to-ride view at zoom 12-13 any more.
-  assert.doesNotMatch(hint, /where to ride|from zoom 14\./);
+  // The owner, 2026-10-17: "Both from 12": no where-to-ride view at zoom 12-13 any more (in the country; a city grid
+  // has its ladder since 2026-10-23).
+  assert.doesNotMatch(hint, /where to ride/);
   assert.ok(hint.includes(ROUTE_AT_EVERY_ZOOM));
   assert.match(ROUTE_AT_EVERY_ZOOM, /own busy stretches and junction warnings at every zoom/);
-  assert.ok(hint.includes(`From zoom ${STRESS_ZOOMS.quiet} the busy roads at LTS 3 and above and the quiet streets, footways and sidewalks show too, the busy roads faintly until zoom 14. In a dense city grid a street with no bike lane waits for zoom 13 and is drawn thin until zoom 14.`));
+  assert.ok(hint.includes(`From zoom ${STRESS_ZOOMS.quiet} the busy roads at LTS 3 and above and the quiet streets, footways and sidewalks show too, the busy roads faintly until zoom 14. In a dense city grid the main bike routes come first: paths, protected lanes, popular corridors and long calm streets from zoom 12, painted lanes from zoom 13, and every other street and sidewalk from zoom 14.`));
   assert.ok(hint.includes("Roads bikes may not use, such as expressways, are left unmarked."));
   assert.ok(hint.includes("shows only from zoom 15, and faintly, so the bike lane is the main line."));
   assert.ok(hint.includes("Alleys show only from zoom 16, faintly, and the roads inside cemeteries, parking lots, military bases, airports and secure government sites, such as prisons and guarded research campuses, not at all, but for the numbered public roads and the few streets open to the public through them."));

@@ -4993,11 +4993,14 @@ Tests: `lib/sidebar.test.ts`.
   app's own names (mountain-bike trails, scenic spots, waypoints, route choices at 15 px; mile
   markers and contour heights at 12-13 px) are SemiBold on a white halo too, in dark shades of
   their colours (7:1 or more); counts inside icons (climbs, docks, Review badges) keep their
-  sizes. At z12 (`STREET_HIDDEN_ZOOM`, the owner 2026-10-23) a plain street, busy or not, that the tiles mark `dense` is not drawn at all, and at z13 a plain street (facility "none", not a trail, paved, open to cars) that
-  the tiles mark `dense` (a city grid: its 1 km square of EPSG:3857 holds 12 km or more of drawn
-  road, `core.stress_tiles.DENSE_RULE`, tile format 12; unmarked, as a rural road or an older tile, it is full width) is
-  drawn thinner (`STREET_THIN_SCALE`: line x0.6, casing extra x0.75, a full
-  pixel a side with the accessibility switch), so a city grid is a mesh, not a carpet; lanes,
+  sizes. In a city grid (a feature the tiles mark `dense`: its 1 km square of EPSG:3857 holds
+  8 km or more of drawn road, `core.stress_tiles.DENSE_RULE`, tile format 12; unmarked, as a
+  rural road or an older tile, it is always drawn) the map climbs a bike ladder (`CITY_LADDER`,
+  the owner 2026-10-23: "Kind of like how you'd see interstate highways at highest zoom, then
+  arterial roads ... For bikes, we want something similar"): from z12 paths, protected lanes,
+  popular class 2-3 corridors, long calm streets and named trails; from z13 painted lanes and
+  class 1 (the short links between lanes, `pipeline.bikeshare_corridors.tidy`); from z14 every
+  other street and sidewalk, so a city grid is a mesh, not a carpet. Lanes,
   paths, trails and unpaved roads keep their widths (the owner, 2026-10-21). MapLibre
   draws text from glyph files, not web fonts, and the style has one glyph URL template (the
   base map's `/basemap/fonts/`), so the three Latin ranges (`corridor.ts` `GLYPH_RANGES`) of

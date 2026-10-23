@@ -302,3 +302,124 @@ class TestDerive:
         self.insert(staging, [(1, ((0, 0), (1, 0)), 2)])
         assert bc.derive(staging, tmp_path / bc.FILE_NAME) == {}
         assert self.popular(staging) == {1: (None, 0)}
+
+
+@pytest.mark.django_db(transaction=True)
+class TestTidy:
+    """The owner, 2026-10-23: "there's a couple of those short segments. If they can be
+    connected due to an obvious path, do so, otherwise trim them." """
+
+    insert = TestDerive.insert
+
+    def classes(self, schema, rows) -> dict:
+        self.insert(schema, [(way, ends, 2) for way, ends, _ in rows])
+        with connection.cursor() as cursor:
+            for way, _, level in rows:
+                cursor.execute(
+                    f"UPDATE {schema}.segment SET bike_popular = %s WHERE osm_way_id = %s",
+                    [level, way],
+                )
+        stats = bc.tidy(schema)
+        with connection.cursor() as cursor:
+            cursor.execute(f"SELECT osm_way_id, bike_popular FROM {schema}.segment")
+            return dict(cursor.fetchall()), stats
+
+    def test_a_short_gap_between_two_pieces_of_a_class_is_joined(self, segment_schemas) -> None:
+        _, staging = segment_schemas
+        # Five steps of class 3 (about 435 m), a one-step gap (87 m) at class 0, five more.
+        found, stats = self.classes(
+            staging, [(1, ((0, 0), (5, 0)), 3), (2, ((5, 0), (6, 0)), 0), (3, ((6, 0), (11, 0)), 3)]
+        )
+        assert found == {1: 3, 2: 3, 3: 3}
+        assert stats["joined to 3"] == 1
+
+    def test_a_long_gap_is_not_joined(self, segment_schemas) -> None:
+        _, staging = segment_schemas
+        found, _ = self.classes(
+            staging, [(1, ((0, 0), (5, 0)), 3), (2, ((5, 0), (8, 0)), 0), (3, ((8, 0), (13, 0)), 3)]
+        )
+        assert found[2] == 0, "three steps (261 m) is more than JOIN_MAX_M"
+
+    def test_a_gap_of_two_short_ways_is_joined(self, segment_schemas) -> None:
+        """The owner, 2026-10-23: "Also short gaps". A block split at a junction is two ways."""
+        _, staging = segment_schemas
+        found, _ = self.classes(
+            staging,
+            [
+                (1, ((0, 0), (5, 0)), 3),
+                (2, ((5, 0), (6, 0)), 0),
+                (3, ((6, 0), (7, 0)), 0),
+                (4, ((7, 0), (12, 0)), 3),
+                (5, ((6, 0), (6, 1)), 0),  # the side street at the junction stays
+            ],
+        )
+        assert found == {1: 3, 2: 3, 3: 3, 4: 3, 5: 0}
+
+    def test_a_cross_street_between_two_parallel_corridors_is_no_gap(self, segment_schemas) -> None:
+        """Q and R Street NW run about 360 ft apart: the blocks between them stay as they are,
+        and so does a short loop off one corridor."""
+        _, staging = segment_schemas
+        found, stats = self.classes(
+            staging,
+            [
+                (1, ((0, 0), (5, 0)), 3),
+                (2, ((5, 0), (10, 0)), 3),
+                (3, ((0, 1), (5, 1)), 3),
+                (4, ((5, 1), (10, 1)), 3),
+                (5, ((5, 0), (5, 1)), 0),  # 111 m across
+                (6, ((2, 0), (2, -1)), 0),  # a loop off the south corridor: out ...
+                (7, ((2, -1), (3, -1)), 0),
+                (8, ((3, -1), (3, 0)), 0),  # ... and back
+            ],
+        )
+        assert {way: found[way] for way in (5, 6, 7, 8)} == {5: 0, 6: 0, 7: 0, 8: 0}
+        assert stats["joined to 3"] == 0
+
+    def test_a_named_corridor_is_never_trimmed(self, segment_schemas) -> None:
+        """The Capital Bikeshare model "never lowers a named one" (pipeline/run.py)."""
+        _, staging = segment_schemas
+        self.insert(staging, [(1, ((0, 0), (2, 0)), 2), (2, ((0, 5), (2, 5)), 2)])
+        with connection.cursor() as cursor:
+            cursor.execute(f"UPDATE {staging}.segment SET bike_popular = 3")
+        stats = bc.tidy(staging, named=[1])
+        with connection.cursor() as cursor:
+            cursor.execute(f"SELECT osm_way_id, bike_popular FROM {staging}.segment")
+            assert dict(cursor.fetchall()) == {1: 3, 2: 1}
+        assert stats["trimmed from 3"] == 1
+        assert stats["trimmed from 2"] == 1
+
+    def test_a_short_street_between_two_bike_lanes_links_them(self, segment_schemas) -> None:
+        """'basically, there should be some obvious routes to connect the bike lanes
+        together': the link takes class 1, which the city ladder draws with the lanes."""
+        _, staging = segment_schemas
+        self.insert(
+            staging,
+            [
+                (1, ((0, 0), (3, 0)), 2),
+                (2, ((3, 0), (4, 0)), 2),
+                (3, ((4, 0), (7, 0)), 2),
+                (4, ((7, 0), (10, 0)), 2),  # a lane's dead end: nothing beyond to link
+            ],
+        )
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"UPDATE {staging}.segment SET facility = 'lane' WHERE osm_way_id IN (1, 3)"
+            )
+        stats = bc.tidy(staging)
+        with connection.cursor() as cursor:
+            cursor.execute(f"SELECT osm_way_id, bike_popular FROM {staging}.segment")
+            assert dict(cursor.fetchall()) == {1: 0, 2: 1, 3: 0, 4: 0}
+        assert stats["links between bike lanes"] == 1
+
+    def test_a_stray_bit_drops_a_class_and_a_long_piece_stays(self, segment_schemas) -> None:
+        _, staging = segment_schemas
+        found, stats = self.classes(
+            staging,
+            [
+                (1, ((0, 0), (2, 0)), 3),  # 174 m alone: drops to 2, then to 1
+                (2, ((0, 5), (6, 5)), 2),  # 522 m: stays
+                (3, ((0, 9), (2, 9)), 2),  # 174 m alone: drops to 1
+            ],
+        )
+        assert found == {1: 1, 2: 2, 3: 1}
+        assert stats["trimmed from 3"] == 1

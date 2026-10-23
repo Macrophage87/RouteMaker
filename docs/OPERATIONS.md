@@ -5153,9 +5153,12 @@ server flag, and a layer nobody turns on draws nothing.
 The owner, 2026-10-21: "use the Cabi heatmap if you can, and make those streets show more
 pronounced than other roads". Each street has a corridor class (`segment.bike_popular`, 1 to
 3). Since v0.12.0 the map draws no band for it (the owner, 2026-10-23: "The blue just makes
-things look busy / just prioritize those streets in view"): a class 2 or 3 street keeps its
-full width in a city grid where other streets are hidden (z12) or thin (z13), and every class
-sorts over the lines of its stress level. A class 3 way carries its corridor's name for the
+things look busy / just prioritize those streets in view"): in a city grid a class 2 or 3
+street is drawn from z12 and a class 1 street from z13 (the city ladder, frontend
+`CITY_LADDER`), and every class sorts over the lines of its stress level. After the classes
+are set the rebuild links bike lanes, protected lanes and paths across gaps of one or two
+ways up to 200 m (650 ft) at class 1, joins a class's short gaps and drops its stray bits
+(`bikeshare_corridors.tidy`; the log line "popular corridors joined up and trimmed"). A class 3 way carries its corridor's name for the
 map's labels (`trail_name`; tile format 14). The class comes from two inputs:
 
 - **The owner's named corridors** (`fixtures/bike-corridors/`, `pipeline.major_corridors`):

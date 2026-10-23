@@ -2174,7 +2174,7 @@ def insert_streets(schema, count: int, *, length_m=500.0, first_way=1000) -> tup
 class TestCityGrid:
     """A z12-13 feature carries `dense` where its ways lie in a square of at least
     DENSE_ROAD_M of road; elsewhere (a rural road, a suburb's loops) it carries nothing, and
-    the map keeps the street at full width."""
+    the map draws the street at every zoom (the city ladder waits only on a dense one)."""
 
     @pytest.mark.parametrize("z", [12, 13])
     def test_a_city_grid_is_dense(self, client, segment_schemas, z) -> None:
