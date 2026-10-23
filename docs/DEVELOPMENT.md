@@ -1797,9 +1797,25 @@ model's forces (`routemaker.effort`, Martin et al. 1998: rolling resistance 0.00
   (`hill_cost.steepness_rate`), with `d` the power past the endurance pace as a share of
   FTP: 0.06 s a second at 70%, 0.24 at 80%, 0.52 at 90%, 1 at FTP, 1.8 at 110%, 3.1 at
   120%. It sits close to the table the owner approved ("That table looks about right":
-  0.08, 0.33, 0.66, 1, 2.4 at 110%). A critical-power W' balance (Skiba et al., 2012)
-  was tried for past FTP and dropped: the exponential gives the same sharp rise with one
-  model.
+  0.08, 0.33, 0.66, 1, 2.4 at 110%).
+- **How long the climb lasts.** A climb is the rising windows around a window, until
+  the road drops more than 10 ft (3 m, `climbs.DIP_M`) below the climb's top or goes
+  two windows without rising; elevation noise and via points do not split it. Each
+  window's effort is weighed as the sustained effort it equals over the whole climb's
+  riding time `t` (the standard rider's, at the pace above): the power needed divided
+  by `1 + W'/t`, with W' = 70 s of FTP. The whole effort is scaled, so the endurance
+  pace and LT1 move with it: the slider's own grade, held for the several minutes the
+  slider's help asks about (up to about 7.5 minutes, where LT1 power over `1 + W'/t`
+  reaches the endurance pace), costs nothing past its time, and a little more on longer
+  climbs (about 49 s over 1.2 mi (2 km), 105 s over 1.9 mi (3 km)) (`hill_cost.W_PRIME_S`; the power-duration curve
+  FTP x (1 + W'/t), Monod and Scherrer 1965, Skiba et al. 2012; cyclists' W' of 18 to
+  23 kJ, Weigend et al. 2021, arXiv 2108.04510). The owner: "10% can be done for 100m
+  of riding, people would just sprint before it" and "more long term stamina than short
+  term". A 2-minute pitch weighs a little over a third less, a 20-minute climb about 5% less. Added
+  after the PC check of 2026-10-23, where at 3% Georgetown to Tenleytown took 0.75 mi
+  more, Reno Rd and a busier junction to save 10 ft (3 m) of climb: without it a 1,000
+  ft (300 m) pitch at 6% cost a quarter of an hour of penalty at 3%; now it costs a
+  minute.
 - **Pushing is a last resort.** Where riding a window would cost more than pushing it,
   it is pushed, at Tobler's hiking speed (Tobler 1993, NCGIA 93-1:
   `6 e^(-3.5 |grade + 0.05|)` km/h) times 0.75 for the bike (`hill_cost.push_ms`; the
@@ -1810,9 +1826,10 @@ model's forces (`routemaker.effort`, Martin et al. 1998: rolling resistance 0.00
 The penalty is for choosing routes only: no time shown to riders includes it. Descents
 add nothing here; riding the brakes is still priced from the ride type's brake grade
 (the table above). At 198 lb (90 kg) and 11 mph (18 km/h), 0.6 mi (1 km) costs, in
-minutes of time plus penalty: at the detent (8%), 4.2 + 1.0 at 8%, 4.2 + 4.5 at 10% and
-4.2 + 12.6 at 12%; at Cargo's start, -60 (3.8%, shown as 4%), 4.2 + 1.5 at 4%, 4.2 + 14.4 at 6% and, pushed, 19.2 +
-90.2 at 10%; at Fast's start, 40 (10.8%, shown as 11%), 4.2 + 2.2 at 12%.
+minutes of time plus penalty: at the detent (8%), 4.2 + 0 at 8%, 4.2 + 1.7 at 10% and
+4.2 + 5.2 at 12%; at Cargo's start, -60 (3.8%, shown as 4%), 4.2 + 0.2 at 4%, 4.2 + 6.0
+at 6% and, pushed, 19.2 + 90.2 at 10%; at Fast's start, 40 (10.8%, shown as 11%), 4.2 +
+0.6 at 12%. At 3% (-71), 1,000 ft (300 m) at 6% costs 1.2 + 1.0.
 
 Where it is used. Valhalla's own climbing charge (the router's cost per metre climbed
 at the request's `use_hills`, the table above, read between its 1.0, 0.4 and 0.0 rows:
