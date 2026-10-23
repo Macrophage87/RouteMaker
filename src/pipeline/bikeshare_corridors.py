@@ -46,6 +46,8 @@ from .schema import (
     BIKE_TRIPS_COLUMN,
     FACILITY_COLUMN,
     MTB_ONLY_COLUMN,
+    OVERVIEW_COLUMN,
+    OVERVIEW_LINK,
     validate_schema_name,
 )
 
@@ -381,8 +383,9 @@ def derive(schema: str, path: Path) -> dict:
 # those short segments. If they can be connected due to an obvious path, do so, otherwise trim
 # them. It makes the map look meessy"; then "Also short gaps"). After the classes are set:
 # first a gap of one or two ways no longer than JOIN_MAX_M in all, both of whose far ends meet
-# a bike lane, protected lane or path, is the obvious link between them and takes
-# class 1, which the city ladder draws with the painted lanes from z13; then for class 3 and
+# a bike lane, protected lane or path, is the obvious link between them (a crossing, say) and
+# is marked OVERVIEW_LINK, which the city ladder draws with the paths from z12 (the owner,
+# 2026-10-23: "connect the lanes across roads"); then for class 3 and
 # then 2, such a gap between ways of the class takes the class, and a connected piece of the
 # class shorter than TRIM_MIN_M in all is a stray bit, and drops a class (but never a named
 # corridor's way). The zoomed-out map draws classes 2 and 3 (core/stress_tiles.py), the city
@@ -431,14 +434,16 @@ WITH cand AS (
         ON x.hx = y.hx AND x.hy = y.hy AND x.id < y.id
     WHERE x.m + y.m <= %(join_max)s
 )
-UPDATE {schema}.segment AS s SET {col} = %(level)s FROM linked WHERE s.id = linked.id
+UPDATE {schema}.segment AS s SET {target} FROM linked WHERE s.id = linked.id
 """
 
 
-def _join_sql(schema: str, ends: str, gap: str) -> str:
+def _join_sql(schema: str, ends: str, gap: str, target: str | None = None) -> str:
+    """`target`, the SET clause, is the class (`bike_popular`) by default."""
     return _JOIN_SQL.format(
         schema=schema,
         col=BIKE_POPULAR_COLUMN,
+        target=target or f"{BIKE_POPULAR_COLUMN} = %(level)s",
         ends_a=ends.format(a="a", col=BIKE_POPULAR_COLUMN),
         ends_b=ends.format(a="b", col=BIKE_POPULAR_COLUMN),
         gap=gap,
@@ -475,7 +480,12 @@ def tidy(schema: str, named: Iterable[int] = ()) -> dict[str, int]:
     }
     with connection.cursor() as cursor:
         cursor.execute(
-            _join_sql(schema, _FACILITY_ENDS, "COALESCE(s.facility_shown, s.facility) = 'none'"),
+            _join_sql(
+                schema,
+                _FACILITY_ENDS,
+                "COALESCE(s.facility_shown, s.facility) = 'none'",
+                f"{OVERVIEW_COLUMN} = {OVERVIEW_LINK}",
+            ),
             {**params, "level": 1},
         )
         stats["links between bike lanes"] = cursor.rowcount

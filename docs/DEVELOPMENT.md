@@ -5096,11 +5096,25 @@ Tests: `lib/sidebar.test.ts`.
   the owner 2026-10-23: "Kind of like how you'd see interstate highways at highest zoom, then
   arterial roads ... For bikes, we want something similar"): from z12 paths, protected lanes,
   popular class 2-3 corridors, long calm streets and named trails; from z13 painted lanes and
-  class 1 (the short links between lanes, `pipeline.bikeshare_corridors.tidy`); from z14 every
+  class 1; from z14 every
   other street and sidewalk, so a city grid is a mesh, not a carpet. An on- or off-ramp (tile
   `link`, `segment.road_link`) waits for z14 in a city grid or not, unless it is on the
   ladder (the owner 2026-10-23: "the various onramps and offramps aren't needed at this
-  level"). Lanes,
+  level"). The tile `overview` (`segment.overview`, `pipeline.bike_network`, after `tidy` in
+  the rebuild) shapes z12-13 in a city grid or not: 1 a short street or crossing (one or two
+  ways, 650 ft (200 m) or less) between two bike facilities, or an LTS 1-2 way of 1,300 ft
+  (400 m) or less joining a bit of the network under half a mile (800 m) to the rest; 4 the
+  calmest way (cost by LTS: 1, 1.15, 2, 4 times its length; no sidewalks) from a z11 piece to
+  its nearest other piece within a cost of 800 m (half a mile), or 3 km (1.9 mi) between two
+  pieces of a mile or more, plus every off-road path in a joined piece of a mile or more (the
+  owner: "make connections across from the MBT to Rock Creek trail ... Include the minor
+  trails"); both draw from z12, busy or not (a ramp still waits for z14), and 4 also zoomed out with the long trails, from z7 (`popular_and_calm`). The joins found in every box are taken shortest first (Kruskal) and kept only where the pieces they join reach a mile; the search for them passes through smaller pieces and uses a 0.04-degree margin. A way of LTS 3 or more, 820 ft (250 m) or less, between two drawn ways running on in the same direction (within 30 degrees) is a join too (`overview` 1), so a calm street does not break at one busy block. A join inside a bit that joins nothing becomes an orphan with it. 2 a bit of
+  the network under 800 m that could not be joined ("If it doesn't connect to anything, don't
+  include it") and 3 a dead end of 800 m or less off it, sidewalks not counted ("all these
+  cul-de-sacs") wait for z14; 3 only where the ladder would not draw the way anyway. Zoomed out,
+  `segment.stray_zoom` (10 or 11, `bike_network.mark_strays`) leaves out of the z10 or z11 tiles
+  a piece of what they draw under a mile long ("These bits too"). The graph is worked in
+  0.05-degree boxes with a 0.02-degree margin, cut at shared vertices. Lanes,
   paths, trails and unpaved roads keep their widths (the owner, 2026-10-21). MapLibre
   draws text from glyph files, not web fonts, and the style has one glyph URL template (the
   base map's `/basemap/fonts/`), so the three Latin ranges (`corridor.ts` `GLYPH_RANGES`) of

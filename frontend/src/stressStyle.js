@@ -1228,15 +1228,25 @@ const cityMajor = [
   ["has", "car_free_only"],
 ];
 const cityLane = ["any", ["==", ["get", "facility"], "lane"], [">=", ["to-number", ["get", "popular"], 0], 1]];
+// The bike network's shape at z12-13 (the tiles' `overview`, pipeline/bike_network.py): 1 a calm street or crossing
+// that joins two bits of it, 4 a way joining the trails (both drawn from z12, busy or not: "connect the lanes across
+// roads", "make connections across from the MBT to Rock Creek trail"); 2 a bit of it joined to nothing ("If it
+// doesn't connect to anything, don't include it") and 3 a dead end off it ("all these cul-de-sacs. They aren't useful
+// for transportation"), both left to z14, in a city grid or not. A ramp waits for z14 all the same.
+const overview = ["to-number", ["get", "overview"], 0];
+const isJoin = ["all", ["match", overview, [1, 4], true, false], ["!", isLink]];
+const isOrphan = ["==", overview, 2];
+const isSpur = ["==", overview, 3];
 /**
  * Whether a way is drawn at `zoom` (12 or 13) by the city ladder: always outside a city grid, but for a slip road. A busy road (LTS 3 and
  * above, `busy`) and its rails wait for z14 there unless it is a popular corridor (2026-10-21: "major cycling lanes,
- * metro stops, etc. beat more notice about high-speed roads we wouldn't use").
+ * metro stops, etc. beat more notice about high-speed roads we wouldn't use"). A join comes in at z12; an orphan, and
+ * a dead end the ladder would not draw anyway, wait for z14 (`overview`).
  */
 export function cityShown(zoom, busy = false) {
-  if (busy) return ["any", outsideLadder, [">=", ["to-number", ["get", "popular"], 0], POPULAR_PRIORITY_MIN_CLASS]];
-  const ladder = zoom >= CITY_LADDER.lane ? ["any", cityMajor, cityLane] : cityMajor;
-  return ["any", outsideLadder, ladder];
+  const popular = [">=", ["to-number", ["get", "popular"], 0], POPULAR_PRIORITY_MIN_CLASS];
+  const ladder = busy ? popular : zoom >= CITY_LADDER.lane ? ["any", cityMajor, cityLane] : cityMajor;
+  return ["all", ["!", isOrphan], ["any", isJoin, ladder, ["all", outsideLadder, ["!", isSpur]]]];
 }
 
 /** The ladder as a line's opacity below z14: 1 where `cityShown`, else 0. */

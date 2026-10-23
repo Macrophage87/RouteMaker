@@ -75,6 +75,7 @@ from . import (
     aadt_smoothing,
     agency_ratings,
     agency_signals,
+    bike_network,
     bikeshare_corridors,
     borders,
     checkpoint,
@@ -3984,6 +3985,18 @@ def build_handlers(
         logger.info(
             "popular corridors joined up and trimmed: %s",
             bikeshare_corridors.tidy(context.staging_schema, major_ids),
+        )
+        logger.info(
+            "trails joined up for the zoomed-out map: %s",
+            bike_network.connect(context.staging_schema),
+        )
+        logger.info(
+            "bike network for the zoomed-out map (links, orphans, dead ends): %s",
+            bike_network.mark(context.staging_schema),
+        )
+        logger.info(
+            "zoomed-out stray bits left out (rows by zoom): %s",
+            bike_network.mark_strays(context.staging_schema),
         )
         levels = trail_routes.mtb_level_counts(context.staging_schema)
         named, mountain_bike_ways = trail_routes.mtb_name_counts(context.staging_schema)

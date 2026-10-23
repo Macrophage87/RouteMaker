@@ -5157,8 +5157,14 @@ things look busy / just prioritize those streets in view"): in a city grid a cla
 street is drawn from z12 and a class 1 street from z13 (the city ladder, frontend
 `CITY_LADDER`), and every class sorts over the lines of its stress level. After the classes
 are set the rebuild links bike lanes, protected lanes and paths across gaps of one or two
-ways up to 200 m (650 ft) at class 1, joins a class's short gaps and drops its stray bits
-(`bikeshare_corridors.tidy`; the log line "popular corridors joined up and trimmed"). A class 3 way carries its corridor's name for the
+ways up to 200 m (650 ft) (marked a join, `overview` 1, drawn from z12), joins a class's short gaps and drops its stray bits
+(`bikeshare_corridors.tidy`; the log line "popular corridors joined up and trimmed"). Then
+`pipeline.bike_network` joins the zoomed-out trails along the calmest streets and marks the
+minor trails between them (log line "trails joined up for the zoomed-out map"), links or
+hides the short bits of the network and marks the dead ends left to z14 ("bike network for
+the zoomed-out map (links, orphans, dead ends)"), and leaves stray bits under a mile out of
+the z10-11 tiles ("zoomed-out stray bits left out (rows by zoom)"); docs/DEVELOPMENT.md,
+the city ladder, has the rules. A class 3 way carries its corridor's name for the
 map's labels (`trail_name`; tile format 14). The class comes from two inputs:
 
 - **The owner's named corridors** (`fixtures/bike-corridors/`, `pipeline.major_corridors`):
