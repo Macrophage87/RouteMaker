@@ -74,11 +74,24 @@ function withSwitch(on: boolean, body: () => void): void {
 }
 
 /** The rail layer for a facility, and its width and dash at a tier (in the tiers in use). */
-function rail(facility: string, tier: Tier) {
+function rail(facility: string, tier: Tier, zoom = 14) {
   const layer = (facilityLayers("s") as Layer[]).find((l) => l.id === `facility-${facility}`) as Layer;
-  const width = paintAt(layer, "line-width", { tier: tier.tier, facility }, 14) as number;
-  return { layer, width, dash: layer.paint["line-dasharray"] as number[] | undefined };
+  const width = paintAt(layer, "line-width", { tier: tier.tier, facility }, zoom) as number;
+  const raw = layer.paint["line-dasharray"] as unknown[] | undefined;
+  // A plain list, or a zoom step (ZOOMED_OUT_FACILITY_DASH) to evaluate.
+  const dash = raw && typeof raw[0] === "string" ? (paintAt(layer, "line-dasharray", { tier: tier.tier, facility }, zoom) as number[]) : (raw as number[] | undefined);
+  return { layer, width, dash };
 }
+
+test("zoomed out a protected lane's rails are still posts, not a fuzz of pixel-wide dashes", () => {
+  // The owner, 2026-10-23: "protected bike lanes tend to get a strange 'feathered look'".
+  for (const zoom of [10, 11]) {
+    for (const tier of currentTiers() as Tier[]) {
+      const { width, dash } = rail("protected", tier, zoom);
+      assert.ok(dash && dash[0] * width >= 3 && dash[1] * width >= 1.5, `z${zoom} over ${tier.short}: ${dash?.map((d) => (d * width).toFixed(1))}px`);
+    }
+  }
+});
 
 test("a facility's rail is the same pattern over every tier: its dash is its own, not the tier's, and the solid casing lies between", () => {
   for (const strong of strengths) withSwitch(strong, () => {

@@ -1207,12 +1207,17 @@ export const POPULAR_PRIORITY_MIN_CLASS = 2;
  * - z12 (`major`): an off-road path or a protected lane, a popular corridor of POPULAR_PRIORITY_MIN_CLASS or more, a
  *   long calm street (`calm`, the links between the lanes), a named major trail, a road closed to cars at set times;
  * - z13 (`lane`): a painted lane, a street of the lowest popular class;
- * - z14 (`street`): every other street, sidewalk and footway, busy or not.
+ * - z14 (`street`): every other street, sidewalk and footway, busy or not, and every on- and off-ramp (`link`), in a
+ *   city grid or not.
  * A rural way, and every way in a tile drawn before the server marked them, draws as before at every zoom (the
  * owner, 2026-10-21: "City only"). The base map draws the streets the ladder leaves out.
  */
 export const CITY_LADDER = { major: 12, lane: 13, street: 14 };
 const isDense = ["==", ["get", "dense"], true];
+// A slip road, an on- or off-ramp (the tiles' `link`), climbs the ladder wherever it is (the owner, 2026-10-23: "the
+// various onramps and offramps aren't needed at this level").
+const isLink = ["==", ["get", "link"], true];
+const outsideLadder = ["all", ["!", isDense], ["!", isLink]];
 const cityMajor = [
   "any",
   ["match", ["coalesce", ["get", "facility"], "none"], ["path", "protected"], true, false],
@@ -1224,14 +1229,14 @@ const cityMajor = [
 ];
 const cityLane = ["any", ["==", ["get", "facility"], "lane"], [">=", ["to-number", ["get", "popular"], 0], 1]];
 /**
- * Whether a way is drawn at `zoom` (12 or 13) by the city ladder: always outside a city grid. A busy road (LTS 3 and
+ * Whether a way is drawn at `zoom` (12 or 13) by the city ladder: always outside a city grid, but for a slip road. A busy road (LTS 3 and
  * above, `busy`) and its rails wait for z14 there unless it is a popular corridor (2026-10-21: "major cycling lanes,
  * metro stops, etc. beat more notice about high-speed roads we wouldn't use").
  */
 export function cityShown(zoom, busy = false) {
-  if (busy) return ["any", ["!", isDense], [">=", ["to-number", ["get", "popular"], 0], POPULAR_PRIORITY_MIN_CLASS]];
+  if (busy) return ["any", outsideLadder, [">=", ["to-number", ["get", "popular"], 0], POPULAR_PRIORITY_MIN_CLASS]];
   const ladder = zoom >= CITY_LADDER.lane ? ["any", cityMajor, cityLane] : cityMajor;
-  return ["any", ["!", isDense], ladder];
+  return ["any", outsideLadder, ladder];
 }
 
 /** The ladder as a line's opacity below z14: 1 where `cityShown`, else 0. */
@@ -1997,6 +2002,21 @@ export const FACILITIES = [
   { facility: "lane", short: "Painted", label: "Painted lane (no separation)", color: "#9370f0", rail: 1, strongRail: 1.5, dash: [0.14, 0.4] },
 ];
 
+/**
+ * A rail's dashes zoomed out (z10-11), in line widths. The dashes are measured in the rails' whole width, which
+ * is thinned there (ZOOMED_OUT_SCALE), so the protected lane's short posts shrank to about a pixel and the rail
+ * read as a fuzz along the line (the owner, 2026-10-23: "protected bike lanes tend to get a strange 'feathered
+ * look'"). Zoomed out its posts are longer, so they still read as posts; the painted lane's dots keep their own.
+ */
+export const ZOOMED_OUT_FACILITY_DASH = { protected: [2, 1] };
+
+/** A facility rail's `line-dasharray`: ZOOMED_OUT_FACILITY_DASH at z10-11, its own dashes from z12. */
+export function facilityDashByZoom(facility) {
+  const out = ZOOMED_OUT_FACILITY_DASH[facility.facility];
+  if (!out) return facility.dash;
+  return ["step", ["zoom"], ...zoomedOutStops(() => ["literal", out]), ["literal", facility.dash]];
+}
+
 /** The rails' drawing order, bottom first: painted under protected under path. */
 export const FACILITY_DRAW_ORDER = ["lane", "protected", "path"];
 
@@ -2196,7 +2216,7 @@ export function facilityLayers(sourceId = "stress", when = DEFAULT_WHEN, showHig
       "line-color": facility.color,
       "line-width": facilityWidthAt(facility, when),
     };
-    if (facility.dash) paint["line-dasharray"] = facility.dash;
+    if (facility.dash) paint["line-dasharray"] = facilityDashByZoom(facility);
     // In a city grid the rails come in with their line (CITY_LADDER, `cityShown`): a painted lane's at z13, a busy
     // road's at z14 unless it is a popular corridor (the owner, 2026-10-21: "see what we can do to declutter
     // certain views"). A rural road keeps them ("this is the same exact zoom in a rural area. Here it looks fine").
