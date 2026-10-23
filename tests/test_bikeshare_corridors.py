@@ -232,6 +232,17 @@ class TestMajorCorridors:
         }
         assert counts["capital-crescent-trail"] == 1
 
+    def test_the_irving_and_kenyon_bikeway(self) -> None:
+        """The owner, 2026-10-23: "Add the Irving and Kenyon bikeway to the map"."""
+        ways = [
+            (1, {"highway": "cycleway"}, [(-77.022, 38.9295)]),  # Kenyon's cycle track
+            (2, {"name": "Kenyon Street Northwest", "highway": "residential"}, [(-77.022, 38.93)]),
+            (830423224, {"highway": "cycleway"}, [(-77.007, 38.928)]),  # unnamed in OSM
+        ]
+        ids, counts = mc.way_ids(ways, {}, {1: "Kenyon Street Northwest bike lane"}, mc.load())
+        assert ids == {1: "Kenyon Street Northwest", 830423224: "Irving Street Northwest"}
+        assert counts["irving-street-bikeway"] == 2
+
     def test_a_corridor_matching_nothing_is_warned_about(self, caplog) -> None:
         mc.way_ids([], {}, {}, mc.load())
         assert "matched no way" in caplog.text and "rock-creek-trail" in caplog.text

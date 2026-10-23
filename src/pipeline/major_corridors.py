@@ -41,6 +41,8 @@ class Corridor:
     # Only the bike ways along the street (its cycle track, by name or by the street it
     # runs beside), not the road itself.
     bike_ways_only: bool = False
+    # Ways OSM leaves unnamed, by id, with the name they are drawn and labelled by.
+    ways: tuple[tuple[int, str], ...] = ()
 
     def holds(self, names: Iterable[str | None], point: tuple[float, float]) -> bool:
         return self.matched(names, point) is not None
@@ -73,6 +75,7 @@ def load(directory: Path = FIXTURE_DIR) -> tuple[Corridor, ...]:
                     names=tuple(re.compile(name, re.IGNORECASE) for name in row["names"]),
                     box=box,
                     bike_ways_only=bool(row.get("bike_ways_only", False)),
+                    ways=tuple((int(way), str(name)) for way, name in row.get("ways", {}).items()),
                 )
             )
     return tuple(corridors)
@@ -106,7 +109,13 @@ def way_ids(
     0 is warned about: its name is spelt differently in OSM, or it moved)."""
     found: dict[int, str] = {}
     counts = {corridor.id: 0 for corridor in corridors}
+    by_id = {way: (corridor.id, name) for corridor in corridors for way, name in corridor.ways}
     for osm_id, tags, coordinates in ways:
+        if osm_id in by_id:
+            corridor_id, name = by_id[osm_id]
+            found.setdefault(osm_id, name)
+            counts[corridor_id] += 1
+            continue
         point = middle(coordinates)
         if point is None:
             continue
