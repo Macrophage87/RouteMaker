@@ -494,6 +494,10 @@ def pieces_of_trace(trace: dict) -> list[Piece]:
     kept: list[tuple[dict, float]] = []
     # The last stretch's bearing, unwrapped (`Piece.bearing`).
     unwrapped: float | None = None
+    # How far along the route's line each piece begins, on the line's own measure
+    # (`_one_turn_per_junction`).
+    along: list[float] = []
+    walked = 0.0
     # The vertices the trace's edges begin at: its nodes (`_line_point`).
     nodes = frozenset(
         e["begin_shape_index"]
@@ -524,7 +528,11 @@ def pieces_of_trace(trace: dict) -> list[Piece]:
         if before is not None:
             line_in, line_out, first, last = _line_headings(shape, begin, nodes)
             turn = _line_turn(shape, line_in, line_out, first, last)
-            choice = _choice_of(before)
+            choice = _choice_of(
+                before,
+                line_in if line_in is not None else _heading(before.get("end_heading")),
+                line_out if line_out is not None else info["heading_in"],
+            )
         fork = _fork_of(before, edge, line_in, line_out)
         others = _others_of(before)
         prior = _behind_of(kept)
@@ -537,6 +545,7 @@ def pieces_of_trace(trace: dict) -> list[Piece]:
         if ground <= 0:
             # A degenerate edge: all its length on its first vertex.
             (lon, lat) = shape[begin]
+            along.append(walked)
             pieces.append(
                 Piece(
                     way_id,
@@ -554,6 +563,8 @@ def pieces_of_trace(trace: dict) -> list[Piece]:
             continue
         for a, b, d in stretches:
             if d > 0:
+                along.append(walked)
+                walked += d
                 compass = bearing(Point(*a), Point(*b))
                 unwrapped = (
                     compass
@@ -580,20 +591,21 @@ def pieces_of_trace(trace: dict) -> list[Piece]:
                 prior = None
                 turn = None
                 choice = None
-    return _one_turn_per_junction(pieces)
+    return _one_turn_per_junction(pieces, along)
 
 
-def _one_turn_per_junction(pieces: list[Piece]) -> list[Piece]:
+def _one_turn_per_junction(pieces: list[Piece], along: list[float]) -> list[Piece]:
     """`pieces` with each junction's turn read once. Nodes nearer one another than
-    `describe.JUNCTION_M` are one junction, and the line is read through them all
-    (`_line_point`), so each reads the same turn: it is left on one of them, the one
-    where the way changes (the turn is onto it) or else the sharpest, and the others
-    are straight on, with no fork of their own."""
+    `describe.JUNCTION_M` along the line (`along`: where each piece begins, on the line's
+    own measure, never the trace's lengths, so the two always agree) are one junction,
+    and the line is read through them all (`_line_point`), so each reads the same turn:
+    it is left on one of them, the one where the way changes (the turn is onto it) or
+    else the sharpest, and the others are straight on, with no fork of their own. Nodes
+    further apart each read their own turn, the line stopping at the other."""
     nodes = [i for i, p in enumerate(pieces) if p.turn is not None]
-    at = list(itertools.accumulate((p.metres for p in pieces), initial=0.0))
     clusters: list[list[int]] = []
     for i in nodes:
-        if clusters and at[i] - at[clusters[-1][-1]] < describe.JUNCTION_M:
+        if clusters and along[i] - along[clusters[-1][-1]] < describe.JUNCTION_M:
             clusters[-1].append(i)
         else:
             clusters.append([i])
@@ -683,11 +695,26 @@ def _line_turn(
     return min(sides, key=lambda t: abs(t - wound))
 
 
-def _choice_of(before: dict) -> bool:
+def _choice_of(before: dict, heading_in: float | None, heading_out: float | None) -> bool:
     """Whether another way a bicycle may ride away on meets the node `before` ends at
-    (`Piece.choice`): not one of `describe.FORK_IGNORED_USES`, nor a sidewalk."""
+    (`Piece.choice`): not one of `describe.FORK_IGNORED_USES`, nor a sidewalk, nor one
+    that runs back nearly the way the rider came (`describe.CHOICE_BACK_DEG`) and lies
+    well off the route's own way out (`describe.CHOICE_BACK_CLEAR_DEG`), which no one
+    takes for the way on (Rock Creek Trail, the Mount Vernon and Custis Trails)."""
+
+    def apart(a: float, b: float) -> float:
+        return abs((a - b + 540.0) % 360.0 - 180.0)
+
     return any(
-        _heading(other.get("begin_heading")) is not None
+        (heading := _heading(other.get("begin_heading"))) is not None
+        and (
+            heading_in is None
+            or apart(heading, heading_in) <= describe.CHOICE_BACK_DEG
+            or (
+                heading_out is not None
+                and apart(heading, heading_out) <= describe.CHOICE_BACK_CLEAR_DEG
+            )
+        )
         and other.get("use") not in describe.FORK_IGNORED_USES
         and other.get("use") not in describe.SHAPE_IGNORED_USES
         and other.get("cyclability") not in ("none", "backward")

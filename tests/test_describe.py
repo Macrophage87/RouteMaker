@@ -2208,3 +2208,17 @@ class TestClearTurnsOffCircles:
         ]
         turn = d.describe(legs)[-1]["turn"]
         assert turn["exit"]["number"] >= 1, turn
+
+
+class TestCueCheckOnRealRoutes:
+    """From the 2026-10-23 check of the clear-turn cues on real routes."""
+
+    def test_a_clear_bend_is_a_bear_to_its_own_side_past_a_sharper_branch(self):
+        # Capital Crescent Trail onto the Georgetown Branch Trail: the line bends 50
+        # right, a footway goes off 65 right.
+        assert d.fork_movement(0, 50, [(65, "footway", "both")], trail=True) == "bear_right"
+        assert d.fork_movement(0, 310, [(295, "footway", "both")], trail=True) == "bear_left"
+        # A gentler lean is still said against the other branch, and so is a clear one
+        # beside a rideable leg further that side (a Y of two right-leaning legs).
+        assert d.fork_movement(0, 25, [(40, "path", "both")], trail=True) == "bear_left"
+        assert d.fork_movement(0, 50, [(58, "cycleway", "both")], trail=True) == "bear_left"
