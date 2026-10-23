@@ -466,8 +466,11 @@ class TestTheSearchInTheAnswer:
         routes = [p for url, p in fake.calls if url.endswith("/route")]
         assert len(routes) == 2
         assert "exclude_locations" not in routes[0]
-        (excluded,) = routes[1]["exclude_locations"]
+        excluded, junction = routes[1]["exclude_locations"]
         assert excluded["lon"] < JUNCTION[0], "a point on the edge the route arrives by"
+        # And the junction itself, every edge within 15 m of it.
+        assert (junction["lon"], junction["lat"]) == pytest.approx(JUNCTION, abs=1e-4)
+        assert junction["radius"] == 15
         assert body["calm_search"]["rate"] == 0.0
         assert body["calm_search"]["rounds"] == 1
 

@@ -18,8 +18,9 @@ Four mutants that were tried and are not in the list are equivalent, not
 survivors: `use_roads_for` and `calm_rate_for` are continuous at the positions
 the first pass moved (70, 80: both branches give the same value there), and
 `rounds = REFINE_MAX_ROUNDS if ctx.rate > 0 else CROSSING_ONLY_ROUNDS` is
-guarded twice (crossing targets are only taken in the first
-`CROSSING_ONLY_ROUNDS`), so removing either guard alone changes nothing.
+guarded twice (crossing targets are only taken in the first `crossing_rounds`,
+which is `CROSSING_ONLY_ROUNDS` at a calm rate of 0), so removing either guard
+alone changes nothing.
 `slip lane beside a quiet street` (always pricing the slip lane) is masked: a
 junction with no busy road is reset to the neighbourhood cost afterwards.
 
@@ -439,8 +440,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "patience",
         R,
-        "            if stale >= REFINE_PATIENCE:",
-        "            if stale > REFINE_PATIENCE:",
+        "            if stale >= REFINE_PATIENCE and ctx.rate > 0:",
+        "            if stale > REFINE_PATIENCE and ctx.rate > 0:",
         REFINE,
     ),
     (
@@ -474,7 +475,7 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "crossing rounds forever",
         R,
-        "new = crossing_targets(current, ctx) if number < CROSSING_ONLY_ROUNDS else []",
+        "new = crossing_targets(current, ctx) if number < crossing_rounds else []",
         "new = crossing_targets(current, ctx)",
         REFINE,
     ),

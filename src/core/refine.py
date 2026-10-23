@@ -121,9 +121,15 @@ logger = logging.getLogger(__name__)
 
 # The most rounds of exclusion and re-routing. Crossing avoidance alone gets
 # fewer: it runs for most plans, where the calm search runs only past the old
-# top of the slider.
+# top of the slider. More than one, each excluding the red crossings the last round's
+# route took on top of those already excluded: a way round one unsignalised crossing of
+# a busy road is often the next unsignalised crossing of the same road, and only a
+# second or third round reaches a signal (PR #409's check, 2026-10-23, rush hour:
+# Connecticut Avenue in Chevy Chase and Georgia Avenue in Wheaton each swapped one red
+# crossing for the next one along and stopped there). Past the calm rate's 0 the
+# crossings are the first round's alone, the rest are the busy stretches'.
 REFINE_MAX_ROUNDS = 5
-CROSSING_ONLY_ROUNDS = 1
+CROSSING_ONLY_ROUNDS = 3
 # Seconds, at most, the whole search may take; and the least a round may be
 # started with (a /route, its trace, the joins and a /locate), and what is kept
 # back from the request's budget for the answer's own traces.
@@ -1162,8 +1168,10 @@ def _exclusion(lon: float, lat: float, ctx: Context, radius: int | None = None) 
 
 
 def crossing_targets(analysis: Analysis, ctx: Context) -> list[Target]:
-    """The Avoid-rated junctions the route passes, then the approaches to the worst
-    junctions."""
+    """The Avoid-rated junctions the route passes, then the worst junctions: for each,
+    the approach (a point on the edge the route arrives by) and the junction itself, every
+    edge within `avoid_junctions.MATCH_RADIUS_M` of it, so that the next round cannot
+    come at the same crossing by another street (review of PR #421)."""
     avoid = avoid_targets(analysis, ctx)
     if ctx.group or not analysis.events:
         return avoid
@@ -1171,14 +1179,17 @@ def crossing_targets(analysis: Analysis, ctx: Context) -> list[Target]:
         (e for e in analysis.events if e.approach and e.cost_ft >= REFINE_MIN_EVENT_FT),
         key=lambda e: -e.cost_ft,
     )
-    return (
-        avoid
-        + [
-            Target(e.approach, 4)
-            for e in worst
-            if _clear_of_ends(e.m, analysis.length_m, analysis.via_m)
-        ][:CROSSING_POINTS_PER_ROUND]
-    )
+    chosen = [e for e in worst if _clear_of_ends(e.m, analysis.length_m, analysis.via_m)][
+        :CROSSING_POINTS_PER_ROUND
+    ]
+    return avoid + [
+        target
+        for e in chosen
+        for target in (
+            Target(e.approach, 4),
+            Target((e.lon, e.lat), 4, int(avoid_model.MATCH_RADIUS_M)),
+        )
+    ]
 
 
 def refine(trip: dict, ctx: Context) -> tuple[dict, dict]:
@@ -2111,8 +2122,13 @@ def _search(trip, best, first_exposure, stop_at, ctx: Context, info: dict):
     # Every exclusion set sent, so that none is sent twice (in any order).
     sent: set[frozenset] = set()
     stale = 0
+    crossing_rounds = 1 if ctx.rate > 0 else CROSSING_ONLY_ROUNDS
     for number in range(rounds):
-        new = crossing_targets(current, ctx) if number < CROSSING_ONLY_ROUNDS else []
+        # A crossing-only search past its first round is an answer as good as it was with
+        # that round alone (before CROSSING_ONLY_ROUNDS was 3): a later round that cannot
+        # run or fails leaves `limited` unset, so the answer is cached and says nothing.
+        said = ctx.rate > 0 or number == 0
+        new = crossing_targets(current, ctx) if number < crossing_rounds else []
         if ctx.rate > 0:
             # LTS 4 and Avoid first, if the route has any; then everything busy.
             worst_first = number == 0 and any(c[0] in ("4", "5") for c in current.classes)
@@ -2130,7 +2146,8 @@ def _search(trip, best, first_exposure, stop_at, ctx: Context, info: dict):
             break
         new = new[:room]
         if stop_at - routing.clock() < REFINE_ROUND_MIN_S:
-            info["limited"] = "time"
+            if said:
+                info["limited"] = "time"
             break
         round_deadline = routing.Deadline(
             stop_at, min(ctx.deadline.per_call_s, routing.ALTERNATES_TIMEOUT_S)
@@ -2173,16 +2190,19 @@ def _search(trip, best, first_exposure, stop_at, ctx: Context, info: dict):
                 # `ceiling`: the routes found were past the ceiling, which says
                 # nothing of whether one is within the target (combined correctness
                 # review, S2: it is not the no-fit answer's `target_distance`).
-                info["limited"] = "ceiling" if over else "no_route"
+                if said:
+                    info["limited"] = "ceiling" if over else "no_route"
                 break
             current = analyse(candidate, ctx, routing.Deadline(stop_at, ctx.deadline.per_call_s))
         except (routing.DeadlineExceeded, routing.RouterUnavailable):
-            info["limited"] = "time"
+            if said:
+                info["limited"] = "time"
             break
         excluded = asked
         info["excluded"] = len(excluded)
         if current is None:
-            info["limited"] = "untraceable"
+            if said:
+                info["limited"] = "untraceable"
             break
         info["rounds"] += 1
         busier = _busier(current, first_exposure, ctx)
@@ -2205,7 +2225,10 @@ def _search(trip, best, first_exposure, stop_at, ctx: Context, info: dict):
             ctx.kept_excludes = [t.point for t in excluded]
         elif not held:
             stale += 1
-            if stale >= REFINE_PATIENCE:
+            # A crossing-only round that was not better is often one that found the next
+            # red crossing along the same road: the next round, excluding both, is the
+            # one that can reach a signal, so the crossing rounds all run.
+            if stale >= REFINE_PATIENCE and ctx.rate > 0:
                 break
     return best, best_trip
 
