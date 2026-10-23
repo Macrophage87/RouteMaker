@@ -1441,8 +1441,10 @@ def describe_both(
                     )
                 )
             continue
+        # The ways off circles are read from the marked atoms: the runs begin with them.
+        content = _said_turns(content)
         exits.update(_circle_exits(content))
-        leg_runs = _coalesce(_runs_of(_said_turns(content), leg))
+        leg_runs = _coalesce(_runs_of(content, leg))
         runs.extend(_absorb_tiny(leg_runs))
     traced = sum(run.metres for run in runs)
     scale = total_m / traced if total_m and total_m > 0 and traced > 0 else 1.0

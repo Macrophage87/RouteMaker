@@ -1038,3 +1038,20 @@ class TestClearTurnsFromTheTrace:
             (trail, "cycleway", [(315, 300)], []),
         )
         assert said(trace) == [("Sligo Creek Trail", None)]
+
+    def test_a_node_3_m_short_of_a_right_turn_adds_nothing(self):
+        # Nearer than JUNCTION_M: the line runs on through the corner, read once, there.
+        trace = traced(
+            (("X Street",), "road", [(0, 300)], [(270, "footway", "both")]),
+            (("X Street",), "road", [(0, 3)], [(270, "road", "both")]),
+            (("Y Street",), "road", [(90, 300)], []),
+        )
+        assert said(trace) == [("X Street", None), ("Y Street", "right")]
+
+    def test_a_turnaround_with_a_new_name_just_past_it_is_said_once(self):
+        trace = traced(
+            (("T Trail",), "cycleway", [(0, 300)], [(0, *self.PATH)]),
+            (("T Trail",), "cycleway", [(170, 3)], [(90, *self.PATH)]),
+            (("U Trail",), "cycleway", [(170, 300)], []),
+        )
+        assert said(trace) == [("T Trail", None), ("U Trail", "right")]

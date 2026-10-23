@@ -580,7 +580,38 @@ def pieces_of_trace(trace: dict) -> list[Piece]:
                 prior = None
                 turn = None
                 choice = None
-    return pieces
+    return _one_turn_per_junction(pieces)
+
+
+def _one_turn_per_junction(pieces: list[Piece]) -> list[Piece]:
+    """`pieces` with each junction's turn read once. Nodes nearer one another than
+    `describe.JUNCTION_M` are one junction, and the line is read through them all
+    (`_line_point`), so each reads the same turn: it is left on one of them, the one
+    where the way changes (the turn is onto it) or else the sharpest, and the others
+    are straight on, with no fork of their own."""
+    nodes = [i for i, p in enumerate(pieces) if p.turn is not None]
+    at = list(itertools.accumulate((p.metres for p in pieces), initial=0.0))
+    clusters: list[list[int]] = []
+    for i in nodes:
+        if clusters and at[i] - at[clusters[-1][-1]] < describe.JUNCTION_M:
+            clusters[-1].append(i)
+        else:
+            clusters.append([i])
+    out = list(pieces)
+    for cluster in clusters:
+        if len(cluster) < 2:
+            continue
+        changes = [
+            i
+            for i in cluster
+            if i > 0
+            and (pieces[i].names, pieces[i].use) != (pieces[i - 1].names, pieces[i - 1].use)
+        ]
+        keep = max(changes or cluster, key=lambda i: abs(pieces[i].turn))
+        for i in cluster:
+            if i != keep:
+                out[i] = dataclasses.replace(pieces[i], turn=0.0, fork=None)
+    return out
 
 
 def _line_point(shape: list, at: int, step: int, nodes: frozenset[int]) -> tuple:

@@ -2195,3 +2195,16 @@ class TestClearTurns:
             )
         ]
         assert d.describe(legs)[1]["turn"]["movement"] == "bear_left"
+
+
+class TestClearTurnsOffCircles:
+    def test_a_marked_way_off_a_circle_keeps_its_exit(self):
+        legs = [
+            flat(
+                road("A Street", 1, 300, 0, 0),
+                [replace(a, roundabout=True) for a in road(None, 1, 40, 90, 270)],
+                turned(road("B Street", 1, 300, 230, 230), -130),
+            )
+        ]
+        turn = d.describe(legs)[-1]["turn"]
+        assert turn["exit"]["number"] >= 1, turn
