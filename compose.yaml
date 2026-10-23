@@ -211,6 +211,8 @@ services:
       # DC 311's Open311 key (core.dc311): unset, Ride mode's 311 opens the phone's text
       # app instead of sending from here. A secret, read by this service alone.
       DC311_API_KEY: ${DC311_API_KEY:-}
+      # The privacy policy's contact (core.privacy_policy): unset, it says to ask on Discord.
+      PRIVACY_CONTACT: ${PRIVACY_CONTACT:-}
       # The removal window. Read where a removal is scheduled, which is the
       # admin, which is this service.
       INSTANCE_ADMIN_REMOVAL_DELAY_SECONDS: ${INSTANCE_ADMIN_REMOVAL_DELAY_SECONDS:-3600}

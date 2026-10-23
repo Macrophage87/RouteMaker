@@ -382,6 +382,10 @@ NOT_A_WAY_HIGHWAY = frozenset(
         "construction",
         "raceway",
         "escape",
+        # A zip-line or ropes course (Go Ape at Lake Needwood, tagged `highway=via_ferrata`: the
+        # owner, 2026-10-22, "All of those things are for zip lining", "all of those structures but
+        # beach drive should be taken out"; it drew as LTS 3). Valhalla routes no bicycle on one.
+        "via_ferrata",
     }
 )
 

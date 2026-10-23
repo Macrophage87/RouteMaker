@@ -77,8 +77,13 @@ def _until(end: str | None, reviewer: bool = False) -> str:
 
     if not end:
         return "until a reviewer ends it" if reviewer else "no end date given"
-    local = datetime.fromisoformat(end).astimezone(ridetime.ZONE)
-    return f"until {local.strftime('%b')} {local.day}, {local.year}"
+    from routemaker import workzones as rules
+
+    moment = datetime.fromisoformat(end)
+    last = rules.last_day("reviewer", moment) if reviewer else None
+    local = (last or moment).astimezone(ridetime.ZONE)
+    word = "through" if last is not None else "until"
+    return f"{word} {local.strftime('%b')} {local.day}, {local.year}"
 
 
 def box_of(line) -> tuple[float, float, float, float] | None:

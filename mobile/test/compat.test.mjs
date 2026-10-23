@@ -215,7 +215,7 @@ test("Ride mode's screen is what the layer looks for, and sharing's panel is not
   // Mass Ride sharing, v0.8.0) renders no such section, so its watch never looks like Ride mode's.
   assert.match(SCRIPT, /querySelector\('section\.ride\[aria-labelledby="ride-heading"\]'\)/);
   const ride = readFileSync(here("../../frontend/src/RideMode.tsx"), "utf8");
-  assert.match(ride, /<section [^>]*className=\{`ride \$\{[^>]*aria-labelledby="ride-heading"/);
+  assert.match(ride, /<section [^>]*className=\{`ride(?: |\$\{)[^>]*aria-labelledby="ride-heading"/);
   const group = readFileSync(here("../../frontend/src/RideGroup.tsx"), "utf8");
   assert.doesNotMatch(group, /ride-heading/);
   assert.doesNotMatch(group, /className="ride"|className=\{`ride /);

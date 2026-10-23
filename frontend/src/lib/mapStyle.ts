@@ -151,7 +151,7 @@ export function massSource(origin: string) {
   return {
     type: "vector" as const,
     tiles: [massTileTemplate(origin)],
-    minzoom: STRESS_ZOOMS.min,
+    minzoom: MASS_MIN_ZOOM,
     maxzoom: STRESS_ZOOMS.max,
   };
 }
@@ -171,4 +171,8 @@ export function massSource(origin: string) {
  * maxzoom: the deepest tile the map asks for, all of them drawn ahead after
  * each rebuild (core/tile_cache.py), and z15-16 are drawn from the z14 tile.
  */
-export const STRESS_ZOOMS = { min: 10, quiet: 12, max: 14 } as const;
+// `min` 7 (the map's widest, MapView's minZoom; was 10): the long trails as far out as the base map's major roads (the
+// owner, 2026-10-21: "Long trails as far out as roads").
+export const STRESS_ZOOMS = { min: 7, quiet: 12, max: 14 } as const;
+/** The Mass Ride capacity tiles' widest zoom (core/mass_tiles.py MIN_ZOOM): z10, where the stress tiles began before. */
+export const MASS_MIN_ZOOM = 10;

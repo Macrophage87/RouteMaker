@@ -8,6 +8,7 @@
  * whole. "Up to date" is said on the button itself, and Reset and Clear sit behind one "More" button.
  */
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
+import { FINDING_LOCATION } from "../lib/geolocation.ts";
 import { CLEAR_LABEL, RESET_LABEL, ROUTE_UP_TO_DATE, type Phrase } from "../lib/planFirst.ts";
 
 export interface PlanPanelProps {
@@ -28,10 +29,19 @@ export interface PlanPanelProps {
   onReset: () => void;
   clearDisabled: boolean;
   onClear: () => void;
+  /**
+   * With no point yet, Route's place holds "Start at current location" (Stephen 2026-10-20: "where it currently has
+   * route, have a button that says start at current location when no route has started"); null once there is a
+   * start. `busy` while the location is being found; `unavailable` why this browser cannot find it, or null.
+   */
+  locate?: { onLocate: () => void; busy: boolean; unavailable: string | null } | null;
 }
 
+/** The button in Route's place on an empty plan. */
+export const START_HERE_LABEL = "Start at current location";
+
 export function PlanPanel(props: PlanPanelProps) {
-  const { sentences, button, onRoute, routing, onCancel, change, details, onCloseChange, resetUnavailable, onReset, clearDisabled, onClear } = props;
+  const { sentences, button, onRoute, routing, onCancel, change, details, onCloseChange, resetUnavailable, onReset, clearDisabled, onClear, locate } = props;
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const moreId = useId();
@@ -40,6 +50,7 @@ export function PlanPanel(props: PlanPanelProps) {
   const detailsId = useId();
   const routeWhy = useId();
   const resetWhy = useId();
+  const busyId = useId();
   const routeRef = useRef<HTMLButtonElement | null>(null);
   const cancelRef = useRef<HTMLButtonElement | null>(null);
   const routeHadFocus = useRef(false);
@@ -88,28 +99,56 @@ export function PlanPanel(props: PlanPanelProps) {
         </div>
       ) : (
         <div className="plan-route">
-          <button
-            type="button"
-            ref={routeRef}
-            className="route-button"
-            aria-disabled={button.unavailable ? true : undefined}
-            aria-describedby={button.unavailable ? `${routeWhy} ${planId}` : planId}
-            aria-keyshortcuts="Control+Enter Meta+Enter"
-            onFocus={() => (routeHadFocus.current = true)}
-            onBlur={(event) => {
-              if (event.relatedTarget) routeHadFocus.current = false;
-            }}
-            onClick={route}
-          >
-            {button.label}
-            {upToDate && (
-              <span className="route-state" aria-hidden="true">
-                {" "}✓ up to date
-              </span>
-            )}
-          </button>
-          {button.unavailable && (
-            <span id={routeWhy} className={upToDate ? "visually-hidden" : "hint"}>
+          {locate ? (
+            // aria-disabled, not disabled, as Use my location is (PlaceSearch.tsx): it stays in the Tab order with its
+            // reason as its description; a press while finding starts no second look-up, and is answered again.
+            <button
+              type="button"
+              className="route-button start-here"
+              aria-disabled={locate.unavailable !== null || locate.busy || undefined}
+              aria-describedby={`${locate.unavailable ? `${routeWhy} ` : locate.busy ? `${busyId} ` : ""}${planId}`}
+              onClick={() => {
+                if (locate.unavailable === null) locate.onLocate();
+              }}
+            >
+              {START_HERE_LABEL}
+            </button>
+          ) : (
+            <button
+              type="button"
+              ref={routeRef}
+              className="route-button"
+              aria-disabled={button.unavailable ? true : undefined}
+              aria-describedby={button.unavailable ? `${routeWhy} ${planId}` : planId}
+              aria-keyshortcuts="Control+Enter Meta+Enter"
+              onFocus={() => (routeHadFocus.current = true)}
+              onBlur={(event) => {
+                if (event.relatedTarget) routeHadFocus.current = false;
+              }}
+              onClick={route}
+            >
+              {button.label}
+              {upToDate && (
+                <span className="route-state" aria-hidden="true">
+                  {" "}✓ up to date
+                </span>
+              )}
+            </button>
+          )}
+          {locate?.busy && (
+            <span id={busyId} className="visually-hidden">
+              {FINDING_LOCATION}
+            </span>
+          )}
+          {locate?.unavailable && (
+            <span id={routeWhy} className="hint">
+              {locate.unavailable}
+            </span>
+          )}
+          {button.unavailable && !locate && (
+            // Said with the button, not shown: the points above show what is missing (Stephen 2026-10-20: "it needs to
+            // be simpler, still a wall of text").
+            <span id={routeWhy} className="visually-hidden">
               {button.unavailable}
             </span>
           )}

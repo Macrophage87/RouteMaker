@@ -25,8 +25,8 @@ import java.util.concurrent.Executors;
 /**
  * The launcher. With a site address kept (or a local build's own), it opens the site (MainActivity) at
  * once. Without one, it asks once: the rider types the address, it is checked against the site's
- * public /healthz (SiteAddress), and kept in the app's preferences on this phone. No build carries an
- * address, so a downloaded APK names no server.
+ * public /healthz (SiteAddress), and kept in the app's preferences on this phone. No test build carries
+ * an address, so a downloaded test APK names no server; the store build carries its own.
  *
  * The launcher icon's long-press shortcut "Site address" opens this screen again to change it; clearing
  * the app's storage also brings it back.
