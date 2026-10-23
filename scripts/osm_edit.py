@@ -1108,9 +1108,11 @@ def main(argv: list[str] | None = None) -> int:
                 raise EditError("--dry-run goes with --one-changeset; use show for one file")
             if not args.approved and not args.dry_run:
                 raise EditError("upload needs --approved: the owner approves each edit file")
+            # A rerun with the same DIR/*.json also matches the result files; skip them.
+            edits = [p for p in args.edit if not p.name.endswith(".uploaded.json")]
             if args.one_changeset:
-                return upload_together(args.edit, live=args.live, dry_run=args.dry_run)
-            return upload_all(args.edit, live=args.live)
+                return upload_together(edits, live=args.live, dry_run=args.dry_run)
+            return upload_all(edits, live=args.live)
         edit = load_edit(args.edit)
         if args.command == "show":
             return show(edit)

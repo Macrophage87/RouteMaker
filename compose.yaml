@@ -218,6 +218,8 @@ services:
       DC311_API_KEY: ${DC311_API_KEY:-}
       # The privacy policy's contact (core.privacy_policy): unset, it says to ask on Discord.
       PRIVACY_CONTACT: ${PRIVACY_CONTACT:-}
+      # Who hosts the server, named by the privacy policy: unset, it says the site's owner runs it.
+      PRIVACY_HOSTING: ${PRIVACY_HOSTING:-}
       # The removal window. Read where a removal is scheduled, which is the
       # admin, which is this service.
       INSTANCE_ADMIN_REMOVAL_DELAY_SECONDS: ${INSTANCE_ADMIN_REMOVAL_DELAY_SECONDS:-3600}

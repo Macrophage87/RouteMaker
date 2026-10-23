@@ -52,7 +52,7 @@ from django.db.models import BooleanField, Count, Exists, ExpressionWrapper, F, 
 from django.utils import timezone
 
 from pipeline.schema import validate_schema_name
-from routemaker import agency_lts, bike_bans
+from routemaker import agency_lts, bike_bans, sidewalks
 from routemaker.stress import NARROW_ROAD_RULE, NARROW_RURAL_ROAD_MPH
 
 from . import audit, road_names, segment_info, stress_changes, stress_edits
@@ -744,10 +744,18 @@ def change_kind(old: float, new: float, old_closed: bool, new_closed: bool) -> s
     return f"{old:g}-{new:g}"
 
 
+# The ridden sidewalks' and crosswalks' rules (`routemaker.sidewalks`): their level follows the
+# road beside them, so a level change of theirs is no road's change and stays out of the
+# rebuild's list (the owner, 2026-10-22: the first build with the rule listed 240,260 of them).
+SIDEWALK_RULES = (sidewalks.RULE, sidewalks.LAST_RESORT_RULE)
+
+
 def compute_rebuild(
     build_id: str, live: str, staging: str, *, router: _Router | None = None
 ) -> int:
-    """The rebuild's changes: every way in both tables whose level or bicycle access differs."""
+    """The rebuild's changes: every way in both tables whose level or bicycle access differs,
+    less the ridden sidewalks and crosswalks whose only change is their level (`SIDEWALK_RULES`).
+    """
     validate_schema_name(live)
     validate_schema_name(staging)
     if not (_table_exists(live) and _table_exists(staging)):
@@ -781,9 +789,17 @@ def compute_rebuild(
                        '[]'::jsonb, NULL, 0, NULL, 0, '', '[]'::jsonb, %s
                 FROM ({_agg_sql(live)}) o JOIN ({_agg_sql(staging)}) n
                   ON o.osm_way_id = n.osm_way_id
-                WHERE o.step IS DISTINCT FROM n.step OR o.closed IS DISTINCT FROM n.closed
+                WHERE (o.step IS DISTINCT FROM n.step OR o.closed IS DISTINCT FROM n.closed)
+                  AND NOT (n.rule IN (%s, %s) AND o.closed IS NOT DISTINCT FROM n.closed)
                 """,
-                [Queue.REBUILD.value, build_id, timezone.now(), CLOSED_CLASS, CLOSED_CLASS],
+                [
+                    Queue.REBUILD.value,
+                    build_id,
+                    timezone.now(),
+                    CLOSED_CLASS,
+                    CLOSED_CLASS,
+                    *SIDEWALK_RULES,
+                ],
             )
             count = cursor.rowcount
         _fill_facts(Queue.REBUILD, staging, build_id)
