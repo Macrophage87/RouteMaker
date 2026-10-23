@@ -177,7 +177,7 @@ import { NextVehicleLine } from "./NextVehicleLine.tsx";
 import type { VehicleMark } from "./lib/nextVehicle.ts";
 import { SettingRow, SettingSelect } from "./SettingRow.tsx";
 import { shortLabel } from "./lib/shortLabel.ts";
-import { EASE_AT_END, EASE_NAME, EASE_TEXT, easeFinding, eased, type Ease } from "./lib/rideEase.ts";
+import { EASE_AT_END, EASE_NAME, EASE_SAME, EASE_TEXT, easeFinding, eased, sameLine, type Ease } from "./lib/rideEase.ts";
 import { RING, junctionPaths, ringPaths, type JunctionShape } from "./lib/junctionShape.ts";
 import {
   RIDE_REST,
@@ -621,6 +621,8 @@ export function RideMode({
   // The dials every re-plan and detour of this ride asks with: the plan's at first, then a step calmer or flatter
   // for each Calmer or Flatter press that found a route (lib/rideEase.ts); Plan's own sliders are left as they were.
   const dialsRef = useRef(dials);
+  // A Calmer or Flatter press under way: its re-plan's ticket, the route before it, and how it came out.
+  const easing = useRef<{ which: Ease; ticket: number; before: RouteResponse; outcome: "pending" | "found" | "rejoin" } | null>(null);
   // What a re-plan builds on: the plan's points at first, then the last re-plan's (never a loop: its end is sent).
   const plan = useRef({ points: plannedPoints, loop: plannedLoop });
   // The via points are not announced (v0.7.0): the model leaves them out of its cues.
@@ -1014,9 +1016,15 @@ export function RideMode({
       uturnRoute.current = turned ? found : null;
       // Counted, said and held there; a way back that turns round is not held (the rider was told to follow it), and
       // a re-route made while stopped (no heading; not Road closed) leaves the count as it is.
-      const counted = uturnStep(uturns.current, { kind: "rerouted", turned, aheadOnly, stopped: heading === null && !turnRound, note, now: Date.now() });
+      // A Calmer or Flatter press is not riding past a U-turn either: it leaves the count as it is (lib/rideEase.ts).
+      const press = easing.current?.ticket === ticket ? easing.current : null;
+      const counted = uturnStep(uturns.current, { kind: "rerouted", turned, aheadOnly, stopped: (heading === null && !turnRound) || press !== null, note, now: Date.now() });
       uturns.current = counted.state;
       note = counted.note ?? note;
+      if (press) {
+        press.outcome = note === REPLAN_REJOIN ? "rejoin" : "found";
+        if (press.outcome === "found" && !turned && sameLine(found.geometry.coordinates, press.before.geometry.coordinates)) note = EASE_SAME[press.which];
+      }
       const model = modelOf(found, points);
       modelRef.current = model;
       if (found.dirt_trails) dirtRidden.current = true;
@@ -1498,8 +1506,13 @@ export function RideMode({
     setKeepPlanned(false);
     gate.online();
     answer(easeFinding(preset, next, which));
-    const found = await replan(here, undefined, true);
-    if (!found && dialsRef.current === next) dialsRef.current = was;
+    const press = { which, ticket: replanTicket.current + 1, before: routeRef.current, outcome: "pending" as "pending" | "found" | "rejoin" };
+    easing.current = press;
+    await replan(here, undefined, true);
+    if (easing.current === press) easing.current = null;
+    // Undone when no route came, or only the way back to the old line; kept when a newer press, Road closed or Keep
+    // the planned route took over (the ticket moved on): what comes next is planned with it.
+    if (press.outcome !== "found" && replanTicket.current === press.ticket && dialsRef.current === next) dialsRef.current = was;
   };
 
   // Water or restroom on the way (the owner, 2026-10-10: "If navigating, water sources and restrooms can be

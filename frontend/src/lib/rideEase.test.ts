@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { startDials, stressWords, hillsWords, type Dials } from "./dials.ts";
-import { CALMER_STEPS, EASE_AT_END, EASE_NAME, EASE_TEXT, FLATTER_STEPS, easeFinding, eased } from "./rideEase.ts";
+import { CALMER_STEPS, EASE_AT_END, EASE_NAME, EASE_SAME, EASE_TEXT, FLATTER_STEPS, easeFinding, eased, sameLine } from "./rideEase.ts";
 
 const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
 const css = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
@@ -15,9 +15,11 @@ test("calmer: each press is the next step up the traffic slider, until 95, short
   let d: Dials | null = dials(70, 0);
   while ((d = eased("default", d, "calmer"))) seen.push(d.stress);
   assert.deepEqual(seen, [80, 90, 95]);
-  assert.equal(eased("default", dials(0, 0), "calmer")?.stress, 10);
-  // Between steps: the next one up, never the same position again.
+  // 0 and 10 both read "Traffic tolerant".
+  assert.equal(eased("default", dials(0, 0), "calmer")?.stress, 20);
+  // Between steps: the next one up whose words differ, never the same position or the same words again.
   assert.equal(eased("default", dials(72, 0), "calmer")?.stress, 80);
+  assert.equal(eased("default", dials(76, 0), "calmer")?.stress, 90);
   assert.equal(eased("default", dials(95, 0), "calmer"), null);
   assert.equal(eased("default", dials(100, 0), "calmer"), null);
   // The hills and everything else are left as they were.
@@ -35,6 +37,8 @@ test("flatter: each press is the next step down the hills slider, until Avoids h
   assert.deepEqual(seen, [50, 0, -40, -100]);
   assert.equal(eased("default", dials(70, -100), "flatter"), null);
   assert.equal(eased("default", dials(70, -60), "flatter")?.hills, -100);
+  // Already "Avoids hills" (-85): -100 reads the same, so there is no further step.
+  assert.equal(eased("default", dials(70, -85), "flatter"), null);
   assert.equal(eased("default", dials(40, 0), "flatter")?.stress, 40);
 });
 
@@ -45,6 +49,16 @@ test("the steps are where the sliders' words change: every press reads different
   for (let i = 1; i < FLATTER_STEPS.length; i += 1) {
     assert.notEqual(hillsWords(FLATTER_STEPS[i], true), hillsWords(FLATTER_STEPS[i - 1], true), String(FLATTER_STEPS[i]));
   }
+});
+
+test("same line: a new route made of the old line's own points is the same route", () => {
+  const line: [number, number][] = Array.from({ length: 20 }, (_, i) => [-77 + i * 0.001, 38.9]);
+  // From the rider's spot (not on the old line's points) onto the rest of the old line.
+  assert.equal(sameLine([[-76.99951, 38.90002], ...line.slice(1)], line), true);
+  const other: [number, number][] = line.map(([x, y], i) => (i > 5 ? [x, y + 0.002] : [x, y]));
+  assert.equal(sameLine(other, line), false);
+  assert.equal(sameLine([], line), false);
+  assert.equal(EASE_SAME.flatter, "Same route: no less steep way from here.");
 });
 
 test("the words: one on screen, the rest in the name and said", () => {
@@ -61,7 +75,11 @@ test("ride: the buttons re-plan from here with the ride's own dials, kept only w
   assert.doesNotMatch(ride, /\{ \.\.\.dials, loop: false \}/);
   assert.match(ride, /requestRoute\(to, preset, \{ dials: \{ \.\.\.dialsRef\.current, loop: false \}/);
   // The press: a step, then Re-plan from here's own path (the way ahead, the U-turn rules), undone if nothing came.
-  assert.match(ride, /dialsRef\.current = next;[\s\S]{0,200}const found = await replan\(here, undefined, true\);\n\s*if \(!found && dialsRef\.current === next\) dialsRef\.current = was;/);
+  assert.match(ride, /dialsRef\.current = next;[\s\S]{0,400}await replan\(here, undefined, true\);/);
+  assert.match(ride, /if \(press\.outcome !== "found" && replanTicket\.current === press\.ticket && dialsRef\.current === next\) dialsRef\.current = was;/);
+  // Not counted as riding past a U-turn; the same line is said as such.
+  assert.match(ride, /stopped: \(heading === null && !turnRound\) \|\| press !== null/);
+  assert.match(ride, /sameLine\(found\.geometry\.coordinates, press\.before\.geometry\.coordinates\)\) note = EASE_SAME\[press\.which\];/);
   // Not on a route everyone shares, nor once arrived; named in full, one word shown.
   assert.match(ride, /\{!fixed && !ride\.arrived &&\n\s*\(\["calmer", "flatter"\] as const\)\.map/);
   assert.match(ride, /aria-label=\{EASE_NAME\[which\]\}/);

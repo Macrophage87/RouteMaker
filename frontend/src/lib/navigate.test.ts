@@ -1718,7 +1718,7 @@ test("U-turns: a re-route made while stopped leaves the count, so pausing betwee
   assert.equal(followed.inARow, 0);
   assert.equal(reroute(followed, true, 5).aheadOnly, false);
   const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
-  assert.match(ride, /stopped: heading === null && !turnRound/);
+  assert.match(ride, /stopped: \(heading === null && !turnRound\) \|\| press !== null/);
 });
 
 // ---- Crossings between two turns (the owner, 2026-10-20, at Needwood Road and Redland Road: "It should have told me to cross the street and turn left") ----
