@@ -254,8 +254,8 @@ question rather than being surprised by it.
 **`KEY_ENCRYPTION_KEY`: not rotatable in phase 1.** It keys the ban
 tombstones, the stored tombstone is the HMAC and nothing else, and there is no
 second key path. See docs/DEVELOPMENT.md, "`KEY_ENCRYPTION_KEY` — required, no
-default", for what a rotation would silently do. It also derives the key riders'
-Garmin tokens are encrypted under (`core.garmin`): after a change no token
+default", for what a rotation would silently do. It also derives the keys riders'
+Garmin and Wahoo tokens are encrypted under (`core.garmin`, `core.wahoo`): after a change no token
 decrypts, each connection ends at its next use, and riders connect again.
 
 **`DISCORD_CLIENT_SECRET`: rotate it at Discord first, then here, then
@@ -275,6 +275,14 @@ here, then `up -d`.** It is issued with the Connect Developer Program app.
 the riders' tokens are not encrypted under it, so they survive a rotation.
 Between the portal issuing the new secret and the container holding it, new
 connections and refreshes fail and Send to Garmin says to try again.
+
+**`WAHOO_CLIENT_SECRET`: rotate it in Wahoo's developer portal first, then
+here, then `up -d`.** It is issued with the Wahoo Cloud API app. `api` uses it
+to exchange a rider's sign-in code and to refresh their token; the riders'
+tokens are encrypted under a subkey of `KEY_ENCRYPTION_KEY`, not under it, so
+they survive a rotation. Between the portal issuing the new secret and the
+container holding it, new connections and refreshes fail and Send to Wahoo
+saves the FIT file instead.
 
 `docker compose up -d`, **not** `docker compose restart`. Compose reads `.env`
 when it *creates* a container; `restart` restarts the process the container
