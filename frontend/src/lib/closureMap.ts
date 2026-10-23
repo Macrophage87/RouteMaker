@@ -33,7 +33,8 @@ export interface ClosureItem {
   source: string;
   source_name: string;
   url: string | null;
-  kind: "closed" | "unknown" | "lane";
+  /** "penalty" (v0.12.0): a work zone that can be ridden through; on the map with no route only (orange). */
+  kind: "closed" | "unknown" | "lane" | "penalty";
   severity: "red" | "amber";
   title: string;
   road: string | null;
@@ -77,6 +78,125 @@ export function closuresOf(route: WithClosures | null | undefined, permits = fal
   return permits ? items : items.filter((item) => item.effect !== "possible");
 }
 
+// --- Closures with no route (v0.12.0) -------------------------------------------------------
+//
+// The owner, 2026-10-23 (Lake Frank): "When a closure happens, we should get one of those red construction symbols",
+// "with a red path on the closed parts", "or orange for construction you can get around"; DC's permits off by
+// default. GET /api/closures/map answers the closures in force now in the map's view (core.workzones.area_rows):
+// asked after the map moves and every few minutes while the page is in front, so one past its end date leaves.
+
+export const AREA_MIN_ZOOM = 11;
+export const AREA_POLL_MS = 5 * 60_000;
+/** The largest view the server answers (core.workzones.AREA_MAX_*), a hair under. */
+export const AREA_MAX_LON = 0.399;
+export const AREA_MAX_LAT = 0.299;
+
+export interface View {
+  west: number;
+  south: number;
+  east: number;
+  north: number;
+}
+
+/**
+ * What to ask for the map's view: the view padded to twice its size around its middle, cut to the server's largest,
+ * so small moves (the ride's follow camera eases every fix) stay inside what was asked and ask nothing more
+ * (`viewInside`). Null when zoomed out.
+ */
+export function areaClosuresAsk(view: View, zoom: number, permits = false): { path: string; box: View } | null {
+  if (zoom < AREA_MIN_ZOOM) return null;
+  const cx = (view.west + view.east) / 2;
+  const cy = (view.south + view.north) / 2;
+  const halfLon = Math.min((view.east - view.west) * 2, AREA_MAX_LON) / 2;
+  const halfLat = Math.min((view.north - view.south) * 2, AREA_MAX_LAT) / 2;
+  const r = (v: number) => Math.round(v * 1e4) / 1e4;
+  const box = { west: r(cx - halfLon), south: r(cy - halfLat), east: r(cx + halfLon), north: r(cy + halfLat) };
+  const bbox = [box.west, box.south, box.east, box.north].join(",");
+  return { path: `/api/closures/map?bbox=${encodeURIComponent(bbox)}${permits ? "&permits=true" : ""}`, box };
+}
+
+/** The request's path for the map's view (`areaClosuresAsk`); null when zoomed out. */
+export function areaClosuresPath(view: View, zoom: number, permits = false): string | null {
+  return areaClosuresAsk(view, zoom, permits)?.path ?? null;
+}
+
+/** Whether the view lies wholly inside what was asked. */
+export function viewInside(view: View, box: View | null): boolean {
+  return !!box && view.west >= box.west && view.east <= box.east && view.south >= box.south && view.north <= box.north;
+}
+
+/** What tells two answers apart for the map: the same ids, ends and wording draw the same, so the map is left alone. */
+export function closuresKey(items: readonly ClosureItem[]): string {
+  return items.map((i) => `${i.id}|${i.end ?? ""}|${i.when_text}|${i.severity}`).join("\n");
+}
+
+/** The answer's closures, each checked; [] when it is not the answer's shape. */
+export function parseAreaClosures(value: unknown): ClosureItem[] {
+  const list = (value as { closures?: unknown } | null)?.closures;
+  if (!Array.isArray(list)) return [];
+  return list.filter(
+    (c): c is ClosureItem =>
+      !!c &&
+      typeof c.id === "string" &&
+      typeof c.title === "string" &&
+      Array.isArray(c.point) &&
+      Array.isArray(c.line) &&
+      (c.severity === "red" || c.severity === "amber"),
+  );
+}
+
+/** GET the view's closures; [] when it could not be asked (offline, refused); null when aborted. */
+export async function loadAreaClosures(
+  path: string,
+  signal?: AbortSignal,
+  fetcher: (url: string, init?: RequestInit) => Promise<{ ok: boolean; json(): Promise<unknown> }> = (u, init) => fetch(u, init),
+): Promise<ClosureItem[] | null> {
+  try {
+    const response = await fetcher(path, { signal, credentials: "same-origin" });
+    if (signal?.aborted || !response.ok) return null;
+    return parseAreaClosures(await response.json());
+  } catch {
+    return null;
+  }
+}
+
+/** The closures to draw: the route's (with its delays and choices), then the view's that the route does not carry. */
+export function mergeClosures(route: readonly ClosureItem[], area: readonly ClosureItem[], permits = false): ClosureItem[] {
+  const seen = new Set(route.map((item) => item.id));
+  return [...route, ...area.filter((item) => !seen.has(item.id) && (permits || item.effect !== "possible"))];
+}
+
+/**
+ * The closures that get a marker. A reviewer's closure is one zone per road piece ("reviewer-<closure>-<piece>"), so
+ * Lake Frank's trail closure was ten barriers in a row: with no route, one marker per closure, on its middle piece,
+ * and every piece still drawn red. A route's pieces keep a marker each, since each has its own "Route through anyway".
+ */
+export function markerItems(items: readonly ClosureItem[]): ClosureItem[] {
+  const groups = new Map<string, ClosureItem[]>();
+  const out: ClosureItem[] = [];
+  for (const item of items) {
+    const piece = /^(reviewer-\d+)-(\d+)$/.exec(item.id);
+    if (!piece || (item.effect !== "none" && item.effect !== "possible")) {
+      out.push(item);
+      continue;
+    }
+    const group = groups.get(piece[1]);
+    if (group) group.push(item);
+    else {
+      groups.set(piece[1], [item]);
+      out.push(item);
+    }
+  }
+  return out.map((item) => {
+    const piece = /^(reviewer-\d+)-/.exec(item.id);
+    const group = piece && (item.effect === "none" || item.effect === "possible") ? groups.get(piece[1]) : undefined;
+    if (!group || group.length < 2) return item;
+    const order = (i: ClosureItem) => Number(i.id.slice(i.id.lastIndexOf("-") + 1));
+    const sorted = [...group].sort((a, b) => order(a) - order(b));
+    return sorted[Math.floor((sorted.length - 1) / 2)];
+  });
+}
+
 /** The notices with a place on the map: the parks' (a District-wide notice has none). */
 export function parkNoticesOf(route: WithClosures | null | undefined): ClosureNotice[] {
   return (route?.work_zones?.notices ?? []).filter((n) => n.point !== null);
@@ -108,7 +228,9 @@ export function closureMarkerName(item: ClosureItem): string {
       ? item.kind === "lane" ? "Bike lane may be blocked" : "Possible closure"
       : item.kind === "lane"
         ? "Bike lane blocked"
-        : "Road closed";
+        : item.kind === "penalty"
+          ? "Construction"
+          : "Road closed";
   return `${lead}: ${item.title}. ${item.effect_text.replace(/\.$/, "")}`;
 }
 
@@ -138,7 +260,9 @@ export function closureCard(item: ClosureItem): ClosureCard {
       ? item.kind === "lane" ? "Bike lane may be blocked (permit)" : "Possible closure (permit)"
       : item.kind === "lane"
         ? "Bike lane blocked"
-        : "Road closed";
+        : item.kind === "penalty"
+          ? "Construction"
+          : "Road closed";
   let action: ClosureCard["action"] = null;
   if (item.bypassed) action = { label: UNDO_BYPASS_LABEL, bypass: false };
   else if (item.can_bypass && (item.effect === "routed_round" || item.effect === "may_still_apply" || item.effect === "on_route"))

@@ -480,7 +480,7 @@ server {
     # (v0.7.0), and from v0.7.0 too /api/junction-suggestions/at?lat=..&lon=..,
     # /api/stress-suggestions/ticket?way=.., /api/stress-suggestions/mine?way=..,
     # /api/transit/station-times?lon=..&lat=.., /api/transit/next-vehicle?lon=..&lat=.. (v0.9.0),
-    # /api/bikeshare/docks?bbox=.., and Review's
+    # /api/bikeshare/docks?bbox=.., /api/closures/map?bbox=.. (v0.12.0), and Review's
     # /api/review/items?way=.., /api/review/map?west=.., /api/review/next?way=..,
     # /api/review/road/<way> and /api/review/street-photo?lon=..&lat=.. (a way, a point or the
     # area viewed). An upstream error line (a
@@ -488,7 +488,7 @@ server {
     # request with its query, so these log only `crit` errors, to their own file
     # (OWNER-DECISIONS 395). This loses their upstream diagnostics; the api's own log still
     # has its side. The proxy settings are location /'s below, line for line.
-    location ~ ^/api/(reverse|geocode|segment-info|street-photo|junction-suggestions/at|stress-suggestions/ticket|stress-suggestions/mine|transit/station-times|transit/next-vehicle|bikeshare/docks|review/items|review/map|review/next|review/road/[0-9]+|review/street-photo)/?$ {
+    location ~ ^/api/(reverse|geocode|segment-info|street-photo|junction-suggestions/at|stress-suggestions/ticket|stress-suggestions/mine|transit/station-times|transit/next-vehicle|bikeshare/docks|closures/map|review/items|review/map|review/next|review/road/[0-9]+|review/street-photo)/?$ {
         error_log /var/log/nginx/rmbeta-error.log crit;
         proxy_pass http://rmbeta_api;
         proxy_http_version 1.1;
