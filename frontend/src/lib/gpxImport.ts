@@ -8,6 +8,18 @@ import { ImportError, planFromGpx, verbatimTrack, type ImportedPlan } from "./gp
 
 export type ImportOutcome = { ok: true; plan: ImportedPlan } | { ok: false; message: string };
 
+/**
+ * The file picker's filter. Android's picker (the phone app's and Chrome's) filters by MIME type alone,
+ * and a downloaded GPX file there is usually labelled application/octet-stream, so with the filter every
+ * GPX file in Downloads is greyed out (the owner, 2026-10-23: "I can't open any GPX files on my phone").
+ * On Android any file can be picked; readGpx says in a sentence when it is not GPX.
+ */
+export const GPX_ACCEPT = ".gpx,application/gpx+xml";
+
+export function gpxAccept(userAgent: string = globalThis.navigator?.userAgent ?? ""): string | undefined {
+  return /Android/i.test(userAgent) ? undefined : GPX_ACCEPT;
+}
+
 /** Anything unexpected is still a sentence, not a stack trace. */
 function failure(error: unknown): ImportOutcome {
   if (error instanceof GpxError || error instanceof ImportError) return { ok: false, message: error.message };
