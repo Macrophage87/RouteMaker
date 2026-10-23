@@ -7,12 +7,13 @@ Settings > Account links to it, so the app and the web share one confirmation an
 
 The account row itself is deleted, not flagged. What is the rider's own goes with it, by the models'
 CASCADE (sessions, My Go with Home, synced settings, the 311 log, saved routes and their versions,
-the AI assistant key), or here, before it (shared links, suggestions still waiting, agree or
-disagree on others' suggestions, the bot's cached Discord roles). What is the map's record is kept
-with the link to the account cleared (SET_NULL): a decided suggestion, and an admin's edits and
-rulings. The audit log keeps an account number, never a Discord id (`audit.record`), and one row
-says this account was deleted. Signing in again with the same Discord account makes a new, empty
-account; a banned account cannot reach this page, and its ban tombstone is kept by the ban.
+the AI assistant key, the Garmin connection), or here, before it (shared links, suggestions still
+waiting, agree or disagree on others' suggestions, the bot's cached Discord roles). What is the
+map's record is kept with the link to the account cleared (SET_NULL): a decided suggestion, and
+an admin's edits and rulings. The audit log keeps an account number, never a Discord id
+(`audit.record`), and one row says this account was deleted. Signing in again with the same
+Discord account makes a new, empty account; a banned account cannot reach this page, and its ban
+tombstone is kept by the ban.
 
 The deployment's last instance admin is refused (`check_last_instance_admin`), as every other
 path that removes one is: there is no login that could restore an admin.
@@ -45,6 +46,7 @@ DELETED = [
     "Your 311 log",
     "Links you shared while signed in: they stop working",
     "Your AI assistant key, the apps connected to your account, and the routes they drafted",
+    "Your Garmin connection: Garmin is told, and the app leaves your Garmin Connect account",
     "Your suggestions and hazard reports still waiting for review, and your agree or disagree "
     "on other riders' suggestions",
 ]
@@ -80,8 +82,9 @@ def delete_account(user) -> None:
 
     Raises `LastAdminRefused` for the last instance admin, with nothing changed.
     """
-    from . import shared_routes
+    from . import garmin, shared_routes
     from .audit import record
+    from .garmin_views import access_for
     from .models import (
         AuditLogEntry,
         CachedMembership,
@@ -94,6 +97,14 @@ def delete_account(user) -> None:
         User,
         check_last_instance_admin,
     )
+
+    # A Garmin connection is read before the account goes (its row goes by CASCADE) and Garmin is
+    # told after, so a refused deletion leaves it connected.
+    garmin_transport = garmin.Transport()
+    try:
+        garmin_access = access_for(user, garmin_transport)
+    except garmin.GarminError:
+        garmin_access = None
 
     now = timezone.now()
     with transaction.atomic():
@@ -142,8 +153,10 @@ def delete_account(user) -> None:
             detail="deleted by the account holder",
         )
         # The rest goes by CASCADE: the sessions (so every device is signed out at its next
-        # request), My Go, settings, saved routes and versions, the assistant key.
+        # request), My Go, settings, saved routes and versions, the assistant key, the Garmin link.
         user.delete()
+    if garmin_access is not None:
+        garmin.deregister(garmin_access, garmin_transport)
 
 
 def _page(

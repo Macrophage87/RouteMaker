@@ -10,9 +10,10 @@ in even if a login had been reachable - and no login was, since nothing routed t
 the callback at all.
 
 No Discord token is retained. The exchange yields a user id and the access and
-refresh tokens are discarded rather than stored, so there is no per-user
-third-party credential anywhere in this deployment: nothing to encrypt, refresh,
-leak, or revoke on deletion.
+refresh tokens are discarded rather than stored, so there is no Discord credential
+anywhere in this deployment: nothing to encrypt, refresh, leak, or revoke on
+deletion. (The one per-user third-party credential kept is a rider's own Garmin
+connection, made in Settings and encrypted; see core.garmin.)
 """
 
 from __future__ import annotations

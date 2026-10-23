@@ -17,6 +17,7 @@ import { betterRouteSaid, EarlyStart, takesRefined } from "./lib/progressive.ts"
 import { RAIL_STATUS_MS, closedReason, matchAlerts, withMetroClosed, matchClosures, requestClosures, type RailStatus } from "./lib/railClosures.ts";
 import { COVERAGE_BBOX, MAX_POINTS, addPoint, haversineM, insideCoverage, type LonLat } from "./lib/geo.ts";
 import { formatSeconds } from "./lib/format.ts";
+import { RETURN_PARAM as GARMIN_RETURN_PARAM, garminReturnFrom, withoutReturn } from "./lib/garminLink.ts";
 import { endsOnFoot, layersTurnedOn, presetSaid, twoPointsOnly, usesBikeshare, type PresetId } from "./lib/presets.ts";
 import { atFromHash, decodePlan, encodePlan } from "./lib/planHash.ts";
 import { RouteScheduler, type SchedulerState } from "./lib/routeScheduler.ts";
@@ -332,6 +333,12 @@ if (SHARED_ID && (window.location.pathname.startsWith(SHARED_PATH) || new URLSea
   const query = new URLSearchParams(window.location.search);
   query.delete("route");
   window.history.replaceState(window.history.state, "", `/${query.size ? `?${query}` : ""}${window.location.hash}`);
+}
+// Back from Garmin's consent page (lib/garminLink.ts): read once and taken off the address, so Settings opens and
+// says what happened, and a reload says nothing.
+const GARMIN_RETURNED = garminReturnFrom(window.location.search);
+if (new URLSearchParams(window.location.search).has(GARMIN_RETURN_PARAM)) {
+  window.history.replaceState(window.history.state, "", `${window.location.pathname}${withoutReturn(window.location.search)}${window.location.hash}`);
 }
 // A broadcast from Roam (Stephen 2026-10-22): the link names a ride with no route and its leader; one who opens it
 // follows the leader's dot, read once here (the plan's own fragment is written over it later).
@@ -2726,6 +2733,11 @@ export function App() {
     setView(next);
   };
   const openSheet = (item: BarItem, button: HTMLButtonElement) => openView(item.opens, button);
+  // Back from Garmin: Settings, where the Garmin line says what happened.
+  useEffect(() => {
+    if (GARMIN_RETURNED !== null) openView("settings", null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on arrival
+  }, []);
   // Back (or Escape): to the sheet this one was opened from, or the planner, and the focus to what opened it.
   const backToPlanner = () => {
     const step = backFrom(opened.current);
@@ -5228,6 +5240,7 @@ export function App() {
             />
             <SettingsSheet
               {...{
+                garminReturned: GARMIN_RETURNED,
                 rideText: { size: rideText, onChange: setRideText },
                 // The rider and bike weight (OWNER-DECISIONS 313-318), in Settings (the owner, 2026-10-18).
                 weight: {
