@@ -1376,7 +1376,8 @@ export function App() {
       const plan = planFromSetting(step.doc.plan);
       if (plan && !PLAN_LINK && !rideTouched.current && pointsRef.current.length === 0 && modeRef.current !== "go") {
         setPreset(plan.preset);
-        setDials(plan.dials);
+        // An empty plan in Plan still starts as a loop when the account's plan replaces the dials.
+        setDials(modeRef.current === "plan" ? planStartDials(plan.preset, plan.dials) : plan.dials);
       }
       if (!sameSettings(step.doc, device)) announce(ACCOUNT_SETTINGS_USED);
     }

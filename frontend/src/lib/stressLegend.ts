@@ -275,7 +275,7 @@ export function TierSwatch({ tier, widths }: { tier: Tier; widths: { line: numbe
 
 /** The popular corridors' row (2026-10-21; stressStyle.js POPULAR_BAND): what the band is, and that the line inside keeps its stress. */
 export const POPULAR_LEGEND =
-  "A soft cyan band under the busiest bike corridors: the streets and trails Capital Bikeshare riders use most, and well-known routes like the Capital Crescent and Rock Creek trails. Wider = busier. The line inside still shows how stressful it is.";
+  "A soft cyan band, wider where busier, under the busiest bike corridors: the streets and trails Capital Bikeshare riders use most, and well-known routes like the Capital Crescent and Rock Creek trails. The line inside still shows how stressful it is.";
 
 /** The popular corridors' swatch: the band at its widest, with LTS 1's line inside it. */
 export function PopularSwatch({ tier, widths }: { tier: Tier; widths: { line: number; casing: number } }): ReactElement {
