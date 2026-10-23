@@ -447,10 +447,12 @@ def apply(
             report.applied.append(
                 Applied(way.osm_id, corridor.id, entry.id, entry.role, before, after, why)
             )
-            if after != before:
+            # The owner's whole tier replaces a half step too (an agency's, a painted lane's 2.5).
+            if after != before or (not why and getattr(current, "half", False)):
                 stress_by_way[way.osm_id] = replace(
                     current,
                     tier=type(current.tier)(after),
+                    half=False,
                     rule=f"named corridor: {corridor.id}, {entry.id}",
                     # The owner's tier is the junction's too: a pre-smoothing
                     # tier no longer describes the way.

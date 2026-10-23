@@ -36,9 +36,14 @@ import { appSource } from "../testSupport/appSource.mjs";
 
 /** Whether a layer's filter draws a feature with these properties. */
 function draws(layerId: string, properties: Record<string, unknown>, showHigh: boolean, when?: string): boolean {
-  const layer = facilityLayers("s", when as never, showHigh).find((l: { id: string }) => l.id === layerId) as { id: string; filter: unknown };
-  const { filter } = spec.featureFilter(layer.filter as never, `layers[${layer.id}].filter`);
-  return filter({ zoom: 14 } as never, { type: 2, properties, geometry: [] } as never);
+  // The rails' calm-tier layer and its busy-tier twin (stressStyle.js facilityLayerId): drawn by either.
+  const layers = [...facilityLayers("s", when as never, showHigh), ...facilityLayers("s", when as never, showHigh, true)];
+  return layers
+    .filter((l: { id: string }) => l.id === layerId || l.id === `${layerId}-busy`)
+    .some((layer: { id: string; filter: unknown }) => {
+      const { filter } = spec.featureFilter(layer.filter as never, `layers[${layer.id}].filter`);
+      return filter({ zoom: 14 } as never, { type: 2, properties, geometry: [] } as never);
+    });
 }
 
 function memoryStorage(initial: Record<string, string> = {}) {
@@ -76,7 +81,7 @@ test("only the painted layer's filter changes with the switch: the stress layers
   const off = stressFilters(undefined, false);
   const on = stressFilters(undefined, true);
   for (const id of Object.keys(off)) {
-    if (id === "facility-lane") assert.notDeepEqual(off[id], on[id]);
+    if (id === "facility-lane" || id === "facility-lane-busy") assert.notDeepEqual(off[id], on[id]);
     else assert.deepEqual(off[id], on[id], id);
   }
 });

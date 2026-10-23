@@ -52,6 +52,26 @@ AGENCIES: dict[str, tuple[str, int]] = {
 
 AGENCY_RULE = "agency rating"
 
+# An agency layer older than the bike facilities on the ground. DDOT's is its 2020 Level of
+# Traffic Stress (`scripts/install_agency_lts.py`), from before K Street's, Irving Street's and
+# other lanes since. The owner, 2026-10-21, of 14th Street NW ("there's a bike lane on 14th street
+# but it's not shown that way"; "It's some frankenstein hybrid of LTS4 and LTS1"), choosing
+# "Formula wins where newer": the layer stays, but where a bike facility is mapped on the way the
+# formula's tier stands, since the formula reads the facility as it is now. The rating is still
+# recorded for the road panel.
+SUPERSEDED_WHERE_FACILITY = {"ddot": "DDOT's 2020 layer predates the bike facility mapped here"}
+# The road panel's `used` where every rating on the way was set aside.
+FORMULA_USED = "formula"
+
+# A painted lane where the set-aside layer rated the road higher than LTS 2.5: the lane may be
+# newer than the rating, but paint on a road the agency found stressful may still be a higher
+# stress lane, so the way takes LTS 2.5 rather than the formula's calmer tier (the owner,
+# 2026-10-21: "In some cases where it might be the case that it's a higher stress bike lane,
+# let's put them at 2.5"). A protected lane or a path keeps the formula's tier.
+PAINTED_LANE_LEVEL = 2.5
+PAINTED_LANE_REASON = "a painted lane on a road the agency rated higher: LTS 2.5"
+PAINTED_LANE_USED = "painted lane"
+
 # An agency level that says bicycles may not use the road at all, which is a fact about
 # access and not a stress level (the owner, 2026-10-19: "MDOT LTS 5 means that bikes are
 # prohibited. MoCo LTS5 is extremely high stress but allowed." and "Just don't draw them or
@@ -207,6 +227,13 @@ def tier_of(level: float) -> tuple[Stress, bool]:
     return Stress(whole), level != whole
 
 
+def set_aside(rule: str | None) -> frozenset[str]:
+    """The agencies whose rating `apply` set aside on a way, read from its rule."""
+    return frozenset(
+        agency for agency, reason in SUPERSEDED_WHERE_FACILITY.items() if reason in (rule or "")
+    )
+
+
 def chosen(ratings: Iterable[AgencyRating]) -> AgencyRating | None:
     """The rating the map uses: the most local agency's. Two agencies at the same
     rank on one way (two counties meeting at a line) take the higher level, the
@@ -215,17 +242,63 @@ def chosen(ratings: Iterable[AgencyRating]) -> AgencyRating | None:
     return ranked[0] if ranked else None
 
 
-def apply(result: StressResult, ratings: Iterable[AgencyRating]) -> StressResult:
+def apply(
+    result: StressResult,
+    ratings: Iterable[AgencyRating],
+    facility_mapped: bool = False,
+    painted_lane: bool = False,
+) -> StressResult:
     """The way's tier with the agency's level in place of the classifier's.
 
     The classifier's tier is kept (`formula_tier`, `formula_rule`) and every
     rating is recorded (`agency_ratings`), for the road panel. An agency rating
     replaces the formula's only; a tier the owner set comes later and wins.
-    The level used is `map_level`'s: Montgomery's 5 is LTS 4.5."""
+    The level used is `map_level`'s: Montgomery's 5 is LTS 4.5. With `facility_mapped` (a
+    bike path or lane on the way) an agency in SUPERSEDED_WHERE_FACILITY rating it above the
+    formula is not used; with
+    `painted_lane` too, a set-aside level above PAINTED_LANE_LEVEL raises a calmer formula tier
+    to PAINTED_LANE_LEVEL."""
     ratings = tuple(ratings)
-    pick = chosen(ratings)
+    formula_level = int(result.tier) + (0.5 if getattr(result, "half", False) else 0)
+    # Set aside only where the old layer rates the way above the formula: a lane built since
+    # makes a road calmer, never busier, and where the agency is the calmer of the two its
+    # rating stands (RL-3, the owner, 2026-10-16: "defer to local government ratings").
+    usable = [
+        r
+        for r in ratings
+        if not (
+            facility_mapped
+            and r.agency in SUPERSEDED_WHERE_FACILITY
+            and map_level(r.agency, r.level) > formula_level
+        )
+    ]
+    # Each set-aside rating's reason, appended to the rule: the road panel reads it back
+    # (`set_aside`) to tell which rating was used.
+    reasons = sorted({SUPERSEDED_WHERE_FACILITY[r.agency] for r in ratings if r not in usable})
+    pick = chosen(usable)
     if pick is None:
-        return result
+        if not ratings:
+            return result
+        set_aside_level = max(map_level(r.agency, r.level) for r in ratings)
+        if painted_lane and set_aside_level > PAINTED_LANE_LEVEL > formula_level:
+            tier, half = tier_of(PAINTED_LANE_LEVEL)
+            return replace(
+                result,
+                tier=tier,
+                half=half,
+                rule=", ".join([result.rule, *reasons, PAINTED_LANE_REASON]),
+                formula_tier=result.tier,
+                formula_rule=result.rule,
+                agency_ratings=tuple(sorted(ratings, key=lambda r: r.rank)),
+                unsmoothed_tier=None,
+            )
+        return replace(
+            result,
+            rule=", ".join([result.rule, *reasons]),
+            formula_tier=result.tier,
+            formula_rule=result.rule,
+            agency_ratings=tuple(sorted(ratings, key=lambda r: r.rank)),
+        )
     level = map_level(pick.agency, pick.level)
     if level < pick.level and result.tier is Stress.AVOID:
         # A level read as a lower one (Montgomery's 5 as 4.5) does not lower the
@@ -238,6 +311,7 @@ def apply(result: StressResult, ratings: Iterable[AgencyRating]) -> StressResult
     why = f"{AGENCY_RULE}: {pick.name} LTS {pick.level:g}"
     if level != pick.level:
         why += f", {READ_AS_REASON}"
+    why = ", ".join([why, *reasons])
     return replace(
         result,
         tier=tier,

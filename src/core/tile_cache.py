@@ -13,7 +13,7 @@ a drawn tile is good until then.
   already reaches the database from every worker, a lookup is one indexed
   read, and a new file tree would need its own writer, volume and Caddy route.
   It is excluded from the nightly dump and refills itself.
-- What is kept for good: every z10-14 tile over the coverage box, drawn ahead
+- What is kept for good: every z7-14 tile over the coverage box, drawn ahead
   by `predraw` after every promotion (the weekly rebuild calls it; so does
   `manage.py predraw_stress_tiles`). The map asks for nothing past z14 (it
   draws z15-16 from the z14 tile), so once the pre-draw has run no tile the
@@ -172,7 +172,7 @@ def tile_index(lon: float, lat: float, z: int) -> tuple[int, int]:
 
 
 def tiles_in_coverage(max_zoom: int) -> list[tuple[int, int, int]]:
-    """Every tile from z10 to `max_zoom` that the coverage box reaches, in
+    """Every tile from z7 (`stress_tiles.MIN_ZOOM`) to `max_zoom` that the coverage box reaches, in
     zoom order.
 
     Every one, not only those holding a segment's end: a long segment crosses
@@ -228,7 +228,7 @@ def predraw(
     budget_s: float = PREDRAW_BUDGET_S,
     workers: int | None = None,
 ) -> Predrawn:
-    """Draw every z10-`max_zoom` tile over the coverage box not yet cached, and then
+    """Draw every z7-`max_zoom` tile over the coverage box not yet cached, and then
     every Mass Ride tile over the District's box (core.mass_tiles, OWNER-DECISIONS 415):
     187 more at 2026-10-03's counts (z10 4, z11 6, z12 12, z13 35, z14 130), drawn only
     from a table with the capacity column.

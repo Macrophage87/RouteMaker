@@ -106,6 +106,8 @@ export const UPDATE_LABEL = "Update route";
 /** The map bar's big button while routing (its progress is in the plan panel). */
 export const ROUTING_LABEL = "Routing…";
 export const ROUTE_NEEDS_POINTS = "Add a start and an end first.";
+/** A loop needs a start and one stop (OWNER-DECISIONS 374). */
+export const ROUTE_NEEDS_STOP = "Add a start and a stop first.";
 export const ROUTE_UP_TO_DATE = "The route shown is up to date.";
 export const RESET_LABEL = "Reset";
 export const RESET_NOTHING = "Nothing changed since the route was drawn";
@@ -118,9 +120,9 @@ export const CLEARED_SAID = "Plan cleared. Undo brings it back.";
 export const CLEAR_FOCUS_WAIT_MS = 1000;
 
 /** The Route button: its label, and why it does nothing now (null: it routes). */
-export function routeButton(state: { points: number; drawn: boolean; changed: boolean; routeShown: boolean }): { label: string; unavailable: string | null } {
+export function routeButton(state: { points: number; drawn: boolean; changed: boolean; routeShown: boolean; loop?: boolean }): { label: string; unavailable: string | null } {
   const label = state.drawn && (state.changed || !state.routeShown) ? UPDATE_LABEL : ROUTE_LABEL;
-  if (state.points < 2) return { label: ROUTE_LABEL, unavailable: ROUTE_NEEDS_POINTS };
+  if (state.points < 2) return { label: ROUTE_LABEL, unavailable: state.loop ? ROUTE_NEEDS_STOP : ROUTE_NEEDS_POINTS };
   if (state.drawn && state.routeShown && !state.changed) return { label, unavailable: ROUTE_UP_TO_DATE };
   return { label, unavailable: null };
 }
