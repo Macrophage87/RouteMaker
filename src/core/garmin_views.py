@@ -107,9 +107,10 @@ def _keep(user, garmin_user: str, tokens: garmin.Tokens) -> None:
     )
 
 
-def access_for(user, transport: garmin.Transport | None = None) -> str:
-    """A live access token for the account, refreshed first when it is near its end. Raises
-    NotConnected (the link is then gone) or GarminError (try again later)."""
+def access_for(user, transport: garmin.Transport | None = None, fresh: bool = False) -> str:
+    """A live access token for the account, refreshed first when it is near its end (or always,
+    with `fresh`: Garmin refused the one kept). Raises NotConnected (the link is then gone) or
+    GarminError (try again later)."""
     from .models import GarminLink
 
     now = timezone.now()
@@ -120,7 +121,7 @@ def access_for(user, transport: garmin.Transport | None = None) -> str:
         if link is None:
             raise garmin.NotConnected("Garmin is not connected.")
         try:
-            if not garmin.needs_refresh(link.access_expires_at, now):
+            if not fresh and not garmin.needs_refresh(link.access_expires_at, now):
                 access = garmin.unseal(link.access_token, user.pk)
             else:
                 old = garmin.unseal(link.refresh_token, user.pk)

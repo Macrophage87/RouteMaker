@@ -6022,6 +6022,49 @@ def garmin_delete(request):
     return _private(JsonResponse(_garmin_out(request.user)))
 
 
+# Garmin's own per-rider cap is 200 calls a day; a send is one or two.
+GARMIN_COURSE_MAX_BYTES = 2 * 1024 * 1024
+
+
+@api.post("/me/garmin/courses", summary="Send the route shown to the rider's Garmin as a course")
+@decorate_view(
+    ratelimit.user_rate_limited(ratelimit.ACCOUNT_WRITES),
+    csrf_protected,
+    signed_in_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+def garmin_course_send(request):
+    """Body: {"name", "preset", "line": [[lon, lat, ele], ...], "saved_route": id or null}.
+    200 {"sent": "added" | "updated"}; 409 {"error", "code": "not_connected"} when there is no
+    live connection (Settings offers Connect again); 502 {"error"} when Garmin refused or could
+    not be reached; 400 for a line no course can be made from."""
+    from . import garmin, garmin_courses
+
+    body, error = _json_body(request, GARMIN_COURSE_MAX_BYTES)
+    if error is not None:
+        return error
+    if not isinstance(body, dict):
+        return _stress_error(400, "Send an object.")
+    saved = body.get("saved_route")
+    if saved is not None and (not isinstance(saved, int) or isinstance(saved, bool)):
+        return _stress_error(400, "saved_route is a route's id, or null.", field="saved_route")
+    try:
+        course = garmin_courses.build(
+            str(body.get("name") or ""), str(body.get("preset") or ""), body.get("line")
+        )
+    except garmin_courses.BadLine as bad:
+        return _stress_error(400, str(bad), field="line")
+    try:
+        sent, _course_id = garmin_courses.send(request.user, course, saved)
+    except garmin.NotConnected as ended:
+        return _stress_error(409, str(ended), code="not_connected")
+    except garmin.GarminError as failed:
+        return _stress_error(502, str(failed))
+    return _private(JsonResponse({"sent": sent}))
+
+
 # Assistant apps the rider connected through the site's own MCP connector (core.connector; the
 # owner, 2026-10-19: "Sure, add that in"): listed beside the AI assistant key, each with
 # Disconnect, which ends that app's access at once.

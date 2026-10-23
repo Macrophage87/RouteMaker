@@ -87,3 +87,41 @@ export async function disconnectGarmin(origin: string, post: Fetch = fetch, cook
     return null;
   }
 }
+
+/** What Send to Garmin says when it went through the connection (core.garmin_courses). */
+export const COURSE_ADDED = "Course added to Garmin Connect. It syncs to your Garmin.";
+export const COURSE_UPDATED = "Course updated in Garmin Connect. It syncs to your Garmin.";
+export const COURSE_FAILED = "Could not send the course to Garmin. Try again shortly.";
+export const CONNECTION_ENDED = "Garmin is no longer connected, so the course went as a file.";
+
+export interface DirectCourse {
+  name: string;
+  preset: string;
+  /** [lon, lat] or [lon, lat, ele]: Garmin works out the turns from the line. */
+  line: (readonly [number, number] | readonly [number, number, number])[];
+  /** The saved route on screen: sent again, its course is updated in place. */
+  saved_route: number | null;
+}
+
+/**
+ * Send the course through the connection: the line to say, or "not-connected" where the server has no live
+ * connection (the caller hands the file on instead).
+ */
+export async function sendDirect(origin: string, course: DirectCourse, post: Fetch = fetch, cookie = docCookie()): Promise<string | "not-connected"> {
+  const token = csrfFromCookie(cookie);
+  try {
+    const response = await post(`${origin}/api/me/garmin/courses`, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { Accept: "application/json", "Content-Type": "application/json", ...(token ? { "X-CSRFToken": token } : {}) },
+      body: JSON.stringify(course),
+    });
+    const body = (await response.json().catch(() => ({}))) as { sent?: string; error?: string; code?: string };
+    if (response.ok) return body.sent === "updated" ? COURSE_UPDATED : COURSE_ADDED;
+    if (response.status === 409 && body.code === "not_connected") return "not-connected";
+    // The server's own words (too long, Garmin's permission, Garmin busy), else the general line.
+    return typeof body.error === "string" && body.error && response.status !== 403 ? body.error : COURSE_FAILED;
+  } catch {
+    return COURSE_FAILED;
+  }
+}

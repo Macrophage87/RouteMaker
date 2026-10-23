@@ -57,10 +57,9 @@ class NotConnected(GarminError):
     """The account has no live Garmin connection (none, or Garmin refused its refresh token)."""
 
 
-# Whether Send to Garmin sends through the connection yet. Until the Courses API call is wired in
-# (it waits on Garmin's Courses API specification), Settings does not offer Connect even where the
-# keys are set, so no rider connects to something that does nothing; the sign-in itself works, for
-# testing it end to end.
+# Whether Settings offers Connect. The course send is wired in (core.garmin_courses), but the
+# privacy page still says the connection is not offered: it is turned on with that page's update,
+# once v0.11.1's page is in this release. Until then the sign-in and the send work for testing.
 COURSES_WIRED = False
 
 
@@ -174,6 +173,11 @@ class Transport:
     def get_json(self, url: str, access: str) -> tuple[int, dict]:
         request = urllib.request.Request(url, headers={"Authorization": f"Bearer {access}"})
         return self._send(request)
+
+    def send_json(self, method: str, url: str, access: str, body: dict) -> tuple[int, dict]:
+        headers = {"Authorization": f"Bearer {access}", "Content-Type": "application/json"}
+        data = json.dumps(body).encode()
+        return self._send(urllib.request.Request(url, data=data, headers=headers, method=method))
 
     def delete(self, url: str, access: str) -> tuple[int, dict]:
         request = urllib.request.Request(

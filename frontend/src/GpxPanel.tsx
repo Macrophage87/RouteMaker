@@ -7,6 +7,8 @@ import { REFINE_ROUNDS, nextFitStep, prunedCount, startFit, type Fit, type Impor
 import { gpxWorker, importGpx } from "./lib/gpxImport.ts";
 import {
   againstTrafficNotice,
+  elevationsAlong,
+  exportName,
   exportFileName,
   exportOf,
   fidelityNotice,
@@ -26,6 +28,7 @@ import { DEFAULT_PROFILE, DEVICE_PROFILES, deviceProfile, type DeviceProfileId }
 import { writeFit } from "./lib/fit.ts";
 import { writeTcx } from "./lib/tcx.ts";
 import { SEND_LABEL, browserSendEnv, canSendToGarmin, courseTrimmed, sendCourse } from "./lib/sendToGarmin.ts";
+import { CONNECTION_ENDED, readGarmin, sendDirect } from "./lib/garminLink.ts";
 import { cueSheetDocument, cueSheetFileName, cueSheetLine, type CueSheetKind } from "./lib/cueSheetPdf.ts";
 import { lockCancelledLine, lockPartButton, lockPartLine, lockScreenFileNames, lockScreenLine, lockSharedLine } from "./lib/lockScreen.ts";
 import { renderLockScreens } from "./app/lockScreenRender.ts";
@@ -217,15 +220,34 @@ export function downloadCourse(route: RouteResponse, routedPoints: LonLat[], for
 }
 
 /**
- * Send to Garmin (lib/sendToGarmin.ts): the route shown as a FIT course for a Garmin Edge, handed to the phone for
- * Garmin Connect; the line says what happened, with what fitting it left out, if anything. A course with more cues
- * it must keep than the unit shows is not sent: its line says to split the route.
+ * Send to Garmin. With Garmin connected in Settings (lib/garminLink.ts), the route's line goes to Garmin Connect
+ * directly as a course, and a saved route sent again updates its course. Otherwise (lib/sendToGarmin.ts) it is a
+ * FIT course for a Garmin Edge, handed to the phone for Garmin Connect; the line says what happened, with what
+ * fitting it left out, if anything. A course with more cues it must keep than the unit shows is not handed on: its
+ * line says to split the route.
  */
-export async function sendCourseToGarmin(route: RouteResponse, routedPoints: LonLat[]): Promise<string> {
+export async function sendCourseToGarmin(
+  route: RouteResponse,
+  routedPoints: LonLat[],
+  savedRoute: number | null = null,
+  origin = window.location.origin,
+): Promise<string> {
+  const state = await readGarmin(origin);
+  let ended = "";
+  if (state?.connected) {
+    const elevations = elevationsAlong(route.geometry.coordinates, route.profile);
+    const line = route.geometry.coordinates.map(([lon, lat], i) => {
+      const ele = elevations[i];
+      return typeof ele === "number" && Number.isFinite(ele) ? ([lon, lat, ele] as const) : ([lon, lat] as const);
+    });
+    const said = await sendDirect(origin, { name: exportName(route), preset: route.preset, line, saved_route: savedRoute });
+    if (said !== "not-connected") return said;
+    ended = `${CONNECTION_ENDED} `;
+  }
   const course = compileCourse(route, deviceProfile("garmin-edge"), "fit", viaIndices(routedPoints, VIA_MARKS.isVia));
-  if (course.trim.protectedOver) return courseLine(course);
+  if (course.trim.protectedOver) return ended + courseLine(course);
   const line = await sendCourse(writeFit(course), courseFileName(route, "fit"), browserSendEnv((bytes, type, name) => saveFile(bytes, type, name)));
-  return courseTrimmed(course) ? `${line} ${courseLine(course)}` : line;
+  return ended + (courseTrimmed(course) ? `${line} ${courseLine(course)}` : line);
 }
 
 export type ExportFormat = "gpx" | FileFormat;
