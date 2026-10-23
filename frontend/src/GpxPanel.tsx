@@ -258,7 +258,8 @@ async function sendOnce(route: RouteResponse, routedPoints: LonLat[], savedRoute
     ended = `${outcome.asFile} `;
   }
   const course = compileCourse(route, deviceProfile("garmin-edge"), "fit", viaIndices(routedPoints, VIA_MARKS.isVia));
-  if (course.trim.protectedOver) return ended + courseLine(course);
+  // Not handed on: the line says to split the route, and nothing claims a file went.
+  if (course.trim.protectedOver) return courseLine(course);
   const line = await sendCourse(writeFit(course), courseFileName(route, "fit"), browserSendEnv((bytes, type, name) => saveFile(bytes, type, name)));
   return ended + (courseTrimmed(course) ? `${line} ${courseLine(course)}` : line);
 }
