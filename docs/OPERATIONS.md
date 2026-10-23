@@ -6061,7 +6061,13 @@ footways reach another bicycle-open way within 160 ft (50 m) (one end a trail, e
 footway at most 1,000 ft (300 m), since a tag opens the whole way). Nothing a closure
 reason closes is ridden (the CBD's sidewalks, military, secured, the Zoo, an agency
 prohibition), nor an informal footway, an area or an indoor one, and Mass Ride's graph
-rides none. They get `rm:sidewalk`, and the remap writes `bicycle=use_sidepath` and
+rides none. A short informal connector (`informal=yes`, a worn path or footway with no
+bicycle tag, the whole way within 160 ft (50 m)) that makes such a link is walked instead
+(v0.12.0; the owner, 2026-10-23, after Glen Haven Park's paved path in Silver Spring was
+reachable only from Windham Lane because its 36 to 64 ft (11 to 20 m) links to Glenhaven
+Drive, Francis Drive and Huntley Avenue are all mapped `informal=yes`): its `informal`
+closure comes off and it gets `rm:walk_link`, `bicycle=dismount`, as a station's footway
+does, so the route says to walk the bike. They get `rm:sidewalk`, and the remap writes `bicycle=use_sidepath` and
 `maxspeed:practical=90`: Valhalla prices a sidewalk's or crosswalk's use as a road's, from
 its speed. Then, 2026-10-21: "a lot of people would still ride on some lts 4 roads than
 take the sidewalk, especially with sliplanes", choosing "Beside 4.5/Avoid only". The
