@@ -611,8 +611,8 @@ length, the one with fewer stops is preferred.</p>
 <h2 id="hills">Hills</h2>
 <p>Hills count in the same calm miles as traffic. The Hills slider is a grade: the steepest you can climb
 for several minutes in your lowest gears without labored breathing, from 1% to 15%, with 8% in the middle.
-Every climb costs the time it takes. Past your grade a climb also costs a penalty that grows the steeper
-it gets, and having to push the bike is a last resort. The penalty only helps choose a route: no time
+Every climb costs the time it takes. Past your grade a climb also costs a penalty: grades past yours count
+for more the harder and longer they get, and a short steep pitch you can power up counts for little. Having to push the bike is a last resort. The penalty only helps choose a route: no time
 you see includes it. Avoiding hills never makes a route busier. Not sure of your grade? Leave the slider
 where your ride type starts it: a rough guess plans much the same routes.</p>
 <figure id="fig-hills" class="has-narrow">
@@ -721,7 +721,7 @@ penalty that grows quickly with the power past that pace:</p>
 <div class="table-wrap" tabindex="0" role="region" aria-label="The steepness penalty, past the endurance pace">
 <table>
 <caption>The steepness penalty, past the endurance pace</caption>
-<thead><tr><th scope="col">Power a climb takes, as a share of FTP</th><th scope="col">Penalty for each second of it</th></tr></thead>
+<thead><tr><th scope="col">Power a climb takes, as a share of FTP, weighed by how long it lasts</th><th scope="col">Penalty for each second of it</th></tr></thead>
 <tbody>
 <tr><th scope="row">70%</th><td>0.06 s</td></tr>
 <tr><th scope="row">80%</th><td>0.24 s</td></tr>
@@ -732,8 +732,16 @@ penalty that grows quickly with the power past that pace:</p>
 </tbody>
 </table>
 </div>
+<p><strong>How long a climb lasts.</strong> You can hold more power for two minutes than for twenty,
+so each stretch is weighed as the steady effort it equals over the whole climb, by the critical power
+model<sup class="cite"><a href="#ref-19" aria-label="source 19">[19]</a></sup>: the power it takes divided by 1 plus (70 seconds ÷ the climb's riding time). A
+2-minute pitch weighs a little over a third less, a 20-minute climb about 5% less, and your own grade held
+for several minutes costs nothing past its time. A climb runs until the road drops 10 ft [3 m] below its
+top or levels off for about 1,500 ft [450 m], so small bumps in the elevation data and the points you add
+do not split it into short pitches. At 3%, a 1,000 ft [300 m] pitch at 6% costs 1.2 minutes of extra
+time and 1.0 minute of penalty.</p>
 <p><strong>Pushing.</strong> Where riding a stretch would cost more than pushing the bike up it, it is
-pushed, at three quarters of the standard hiking speed<sup class="cite"><a href="#ref-19" aria-label="source 19">[19]</a></sup>: 1.9 mph [3.1 km/h] at 6%, 1.7 mph
+pushed, at three quarters of the standard hiking speed<sup class="cite"><a href="#ref-20" aria-label="source 20">[20]</a></sup>: 1.9 mph [3.1 km/h] at 6%, 1.7 mph
 [2.7 km/h] at 10% and 1.4 mph [2.2 km/h] at 15%. Each second pushed costs its time plus 4 seconds of
 penalty, so a route you would have to push loses to almost any you can ride.</p>
 <div class="table-wrap" tabindex="0" role="region" aria-label="What 0.62 mi [1 km] of climbing costs a rider and bike of 198 lb [90 kg] at 11 mph [18 km/h]">
@@ -741,13 +749,13 @@ penalty, so a route you would have to push loses to almost any you can ride.</p>
 <caption>What 0.62 mi [1 km] of climbing costs a rider and bike of 198 lb [90 kg] at 11 mph [18 km/h]</caption>
 <thead><tr><th scope="col">Your grade</th><th scope="col">The climb</th><th scope="col">Extra time over the flat</th><th scope="col">Penalty</th></tr></thead>
 <tbody>
-<tr><th scope="row">8%, the middle</th><td>8%</td><td>4.2 min</td><td>1.0 min</td></tr>
-<tr><th scope="row">8%</th><td>10%</td><td>4.2 min</td><td>4.5 min</td></tr>
-<tr><th scope="row">8%</th><td>12%</td><td>4.2 min</td><td>12.6 min</td></tr>
-<tr><th scope="row">Cargo Bike's start (3.8%)</th><td>4%</td><td>4.2 min</td><td>1.5 min</td></tr>
-<tr><th scope="row">Cargo Bike's start (3.8%)</th><td>6%</td><td>4.2 min</td><td>14.4 min</td></tr>
+<tr><th scope="row">8%, the middle</th><td>8%</td><td>4.2 min</td><td>none</td></tr>
+<tr><th scope="row">8%</th><td>10%</td><td>4.2 min</td><td>1.7 min</td></tr>
+<tr><th scope="row">8%</th><td>12%</td><td>4.2 min</td><td>5.2 min</td></tr>
+<tr><th scope="row">Cargo Bike's start (3.8%)</th><td>4%</td><td>4.2 min</td><td>0.2 min</td></tr>
+<tr><th scope="row">Cargo Bike's start (3.8%)</th><td>6%</td><td>4.2 min</td><td>6.0 min</td></tr>
 <tr><th scope="row">Cargo Bike's start (3.8%)</th><td>10%, pushed</td><td>19.2 min</td><td>90.2 min</td></tr>
-<tr><th scope="row">Fast's start (10.8%)</th><td>12%</td><td>4.2 min</td><td>2.2 min</td></tr>
+<tr><th scope="row">Fast's start (10.8%)</th><td>12%</td><td>4.2 min</td><td>0.6 min</td></tr>
 </tbody>
 </table>
 </div>
@@ -893,7 +901,7 @@ them work quite differently: <a href="/about/mass-ride.html">Mass Ride</a> and
 <ul>
 <li><strong>The block.</strong> The shorter route starts down 18th Street NW from Massachusetts Avenue
 to N Street: about 400 ft [120 m] of three-lane road with no bike lane, which DDOT rates
-LTS 4<sup class="cite"><a href="#ref-20" aria-label="source 20">[20]</a></sup>. RouteMaker keeps the agency's rating, since an agency's data outranks the formula and a
+LTS 4<sup class="cite"><a href="#ref-21" aria-label="source 21">[21]</a></sup>. RouteMaker keeps the agency's rating, since an agency's data outranks the formula and a
 rating is lowered only with a clear reason.</li>
 <li><strong>What it costs.</strong> In the routing engine's own cost, that one block counts for about
 1,000 seconds of riding, under Default's costs and Trailmaxxing's alike. That is far more than the shorter
@@ -908,9 +916,9 @@ busy road can be worth a detour of a third of a mile [half a kilometre] or more.
 </div></details>
 <h2 id="closures">Closures</h2>
 <p>Only Maryland and Virginia publish work-zone feeds in the national Work Zone Data Exchange
-format<sup class="cite"><a href="#ref-21" aria-label="source 21">[21]</a></sup>: dated, mapped closures in force, with whether bikes can pass. The District publishes
+format<sup class="cite"><a href="#ref-22" aria-label="source 22">[22]</a></sup>: dated, mapped closures in force, with whether bikes can pass. The District publishes
 no such feed. What it has instead is a mix: police traffic advisories and AlertDC emergency
-closures<sup class="cite"><a href="#ref-22" aria-label="source 22">[22]</a></sup>, which name streets in words and are matched to the map; DDOT's TOPS permits<sup class="cite"><a href="#ref-23" aria-label="source 23">[23]</a></sup>,
+closures<sup class="cite"><a href="#ref-23" aria-label="source 23">[23]</a></sup>, which name streets in words and are matched to the map; DDOT's TOPS permits<sup class="cite"><a href="#ref-24" aria-label="source 24">[24]</a></sup>,
 which say a street may be occupied some time in the coming month, not that it is closed now; and
 National Park Service alerts for the parks. So a closure in the District is usually known from an
 advisory or a reviewer, not from an official work-zone record, and planned roadwork in the District
@@ -993,17 +1001,17 @@ where one is set up.</p>
 <text class="ts" x="10" y="682" text-anchor="start">NPS: a note on the route</text>
 </svg>
 </div>
-<figcaption>DDOT permits<sup class="cite"><a href="#ref-23" aria-label="source 23">[23]</a></sup> are listed apart because they are not closures in force. The other feeds describe closures in force<sup class="cite"><a href="#ref-21" aria-label="source 21">[21]</a><a href="#ref-22" aria-label="source 22">[22]</a></sup>.</figcaption>
+<figcaption>DDOT permits<sup class="cite"><a href="#ref-24" aria-label="source 24">[24]</a></sup> are listed apart because they are not closures in force. The other feeds describe closures in force<sup class="cite"><a href="#ref-22" aria-label="source 22">[22]</a><a href="#ref-23" aria-label="source 23">[23]</a></sup>.</figcaption>
 </figure>
 <details class="more"><summary>More: Closures</summary>
 <div class="more-body">
 
 
 <ul>
-<li><strong>State work zones</strong> from Maryland's and Virginia's feeds<sup class="cite"><a href="#ref-21" aria-label="source 21">[21]</a></sup>: a road closed to
+<li><strong>State work zones</strong> from Maryland's and Virginia's feeds<sup class="cite"><a href="#ref-22" aria-label="source 22">[22]</a></sup>: a road closed to
 bikes is left out; a closure that does not mention bikes costs about 10 minutes and gets a warning;
 lane and shoulder work cost a little.</li>
-<li><strong>Police and city alerts</strong> (MPD traffic advisories and AlertDC)<sup class="cite"><a href="#ref-22" aria-label="source 22">[22]</a></sup> are
+<li><strong>Police and city alerts</strong> (MPD traffic advisories and AlertDC)<sup class="cite"><a href="#ref-23" aria-label="source 23">[23]</a></sup> are
 matched to the streets they name and routed around.</li>
 <li><strong>Reviewed closures</strong>, entered or confirmed by a RouteMaker reviewer, are routed
 around and credited to the reviewer. Saved routes get an alert when one affects them.</li>
@@ -1012,10 +1020,10 @@ route detours round a closure, the standard way is shown too, and you are follow
 take. On ride types that skip dirt trails, Road closed on a dirt trail is taken as a sign
 the trails are in bad shape: the rest of that ride's re-routes stay off dirt trails, even to a stop on one,
 and a new plan opts back in. A road that only crosses a dirt trail does not count.</li>
-<li><strong>DDOT TOPS permits</strong><sup class="cite"><a href="#ref-23" aria-label="source 23">[23]</a></sup> are permission to occupy a street some time in the
+<li><strong>DDOT TOPS permits</strong><sup class="cite"><a href="#ref-24" aria-label="source 24">[24]</a></sup> are permission to occupy a street some time in the
 coming month. They never move a route, in Go, Plan or anywhere else, and they raise no warnings. Plan
 has a DC permits layer, off by default, for anyone who wants to look.</li>
-<li><strong>National Park Service alerts</strong><sup class="cite"><a href="#ref-22" aria-label="source 22">[22]</a></sup> are park-wide notices, shown as a note
+<li><strong>National Park Service alerts</strong><sup class="cite"><a href="#ref-23" aria-label="source 23">[23]</a></sup> are park-wide notices, shown as a note
 on a route through the park, never as closures.</li>
 </ul>
 
@@ -1109,11 +1117,12 @@ climbing.</li>
   <li id="ref-16">U.S. Geological Survey, 3D Elevation Program, 1 arc-second elevation. <a href="https://www.usgs.gov/3d-elevation-program">usgs.gov/3d-elevation-program</a></li>
   <li id="ref-17">Allen, Coggan and McGregor, Training and Racing with a Power Meter, 3rd edition (VeloPress, 2019): power training levels, Zone 2 up to 75% of FTP. <a href="https://www.simonandschuster.net/books/Training-and-Racing-with-a-Power-Meter/Hunter-Allen/9781948006101">simonandschuster.net</a></li>
   <li id="ref-18">American Council on Exercise, "ACE-sponsored research: validating the talk test as a measure of exercise intensity": the talk test and the ventilatory threshold. <a href="https://acefitness.org/certifiednewsarticle/888/ace-sponsored-research-validating-the-talk-test-as-a-measure-of-exercise-intensity">acefitness.org</a></li>
-  <li id="ref-19">Tobler, "Three Presentations on Geographical Analysis and Modeling", NCGIA Technical Report 93-1 (1993): the hiking function. <a href="https://escholarship.org/uc/item/05r820mz">escholarship.org</a></li>
-  <li id="ref-20">District Department of Transportation, Bicycle Level of Traffic Stress (2020) and Roadway Block (item 6fcba8618ae744949630da3ea12d90eb), Open Data DC, CC BY 4.0. <a href="https://opendata.dc.gov/">opendata.dc.gov</a></li>
-  <li id="ref-21">Work Zone Data Exchange feeds: Maryland DOT SHA (CC0, <a href="https://filter.ritis.org/wzdx_v4.1/mdot.geojson">RITIS</a>) and VDOT through SmarterRoads; specification at <a href="https://github.com/usdot-jpo-ode/wzdx">github.com/usdot-jpo-ode/wzdx</a></li>
-  <li id="ref-22">Metropolitan Police Department traffic advisories (<a href="https://mpdc.dc.gov/newsroom">mpdc.dc.gov/newsroom</a>), AlertDC from DC HSEMA, and the National Park Service alerts API (<a href="https://www.nps.gov/subjects/developer/api-documentation.htm">nps.gov developer</a>)</li>
-  <li id="ref-23">District Department of Transportation, TOPS occupancy permits (CC BY 4.0). <a href="https://maps2.dcgis.dc.gov/dcgis/rest/services/DDOT/TOPS/MapServer/1">DC GIS</a>; <a href="https://catalog.data.gov/dataset/occupancy-permits-via-ddot-tops">catalog.data.gov</a></li>
+  <li id="ref-19">Skiba, Chidnok, Vanhatalo and Jones, "Modeling the expenditure and reconstitution of work capacity above critical power", Medicine and Science in Sports and Exercise 44 (2012): the critical power model and W′. <a href="https://pubmed.ncbi.nlm.nih.gov/22382171/">pubmed.ncbi.nlm.nih.gov</a></li>
+  <li id="ref-20">Tobler, "Three Presentations on Geographical Analysis and Modeling", NCGIA Technical Report 93-1 (1993): the hiking function. <a href="https://escholarship.org/uc/item/05r820mz">escholarship.org</a></li>
+  <li id="ref-21">District Department of Transportation, Bicycle Level of Traffic Stress (2020) and Roadway Block (item 6fcba8618ae744949630da3ea12d90eb), Open Data DC, CC BY 4.0. <a href="https://opendata.dc.gov/">opendata.dc.gov</a></li>
+  <li id="ref-22">Work Zone Data Exchange feeds: Maryland DOT SHA (CC0, <a href="https://filter.ritis.org/wzdx_v4.1/mdot.geojson">RITIS</a>) and VDOT through SmarterRoads; specification at <a href="https://github.com/usdot-jpo-ode/wzdx">github.com/usdot-jpo-ode/wzdx</a></li>
+  <li id="ref-23">Metropolitan Police Department traffic advisories (<a href="https://mpdc.dc.gov/newsroom">mpdc.dc.gov/newsroom</a>), AlertDC from DC HSEMA, and the National Park Service alerts API (<a href="https://www.nps.gov/subjects/developer/api-documentation.htm">nps.gov developer</a>)</li>
+  <li id="ref-24">District Department of Transportation, TOPS occupancy permits (CC BY 4.0). <a href="https://maps2.dcgis.dc.gov/dcgis/rest/services/DDOT/TOPS/MapServer/1">DC GIS</a>; <a href="https://catalog.data.gov/dataset/occupancy-permits-via-ddot-tops">catalog.data.gov</a></li>
 </ol>
 <p class="next">Next: <a href="/about/trails.html">Mountain Bike, Mountain Goat and Gravel</a></p>
 </main>
