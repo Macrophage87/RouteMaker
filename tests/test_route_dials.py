@@ -2031,7 +2031,14 @@ class TestStressSpans:
         )
         assert spans == [
             {"from_m": 0, "to_m": 100, "tier": 1, "facility": "path", "unpaved": False},
-            {"from_m": 100, "to_m": 300, "tier": 1, "facility": "path", "unpaved": True},
+            {
+                "from_m": 100,
+                "to_m": 300,
+                "tier": 1,
+                "facility": "path",
+                "unpaved": True,
+                "rough": None,
+            },
         ]
 
     def test_a_short_unpaved_piece_is_folded_into_the_one_before(self):
@@ -2098,6 +2105,7 @@ class TestStressSpansThroughThePlan:
             "tier": 1,
             "facility": "path",
             "unpaved": None,
+            "rough": None,
             "rpm": None,
         }
         assert spans[-1] == {
@@ -2106,6 +2114,7 @@ class TestStressSpansThroughThePlan:
             "tier": None,
             "facility": None,
             "unpaved": None,
+            "rough": None,
             "rpm": None,
         }
 

@@ -8,6 +8,8 @@ const NOW = { preset: "default" as const, dials: { ...startDials("default"), str
 
 test("a file that names no ride type leaves the ride type and sliders as they are", () => {
   assert.deepEqual(rideAfterImport({ preset: null }, NOW), NOW);
+  // ...but not Plan's loop: another app's file is the ride, end and all (Plan starts as a loop since 2026-10-20).
+  assert.deepEqual(rideAfterImport({ preset: null }, { ...NOW, dials: { ...NOW.dials, loop: true } }), NOW);
 });
 
 test("a ride type the file names is chosen as the dialog chooses it: its sliders, the rider's ride time", () => {

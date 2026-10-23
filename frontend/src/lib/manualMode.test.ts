@@ -106,7 +106,9 @@ test("Plan's map bar has the switch, and the page sends and keeps the drawn legs
   assert.match(source("../RideMode.tsx"), /straight: drawnLegs\(to\)/);
   assert.match(app, /VIA_MARKS\.markDrawn\(initialPlan\.points, initialPlan\.drawn\)/);
   // Only in Plan, and not on a loop or a two-point ride type.
-  assert.match(app, /const manualOffered = mode === "plan" && !loopVias && !twoPointsOnly\(preset\);/);
+  // Offered on a loop too (Plan starts as one, Stephen 2026-10-20); on there, it turns the loop off.
+  assert.match(app, /const manualOffered = mode === "plan" && !twoPointsOnly\(preset\);\s+const manual = manualOn && manualOffered && !loopVias;/);
+  assert.match(app, /if \(!manual && loopVias\) setDials\(withLoop\(dials, false\)\);/);
   // viaIndices is untouched by the drawn marks.
   const marks = new ViaMarks();
   assert.deepEqual(viaIndices([p(0), marks.drawn(p(1)), p(2)], marks.isVia), []);

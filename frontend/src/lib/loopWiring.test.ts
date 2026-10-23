@@ -68,7 +68,10 @@ test("App: every way of adding, setting or removing a point is handed the toggle
   assert.match(app, /addPoint\(current, point, loopVias\)/);
   assert.match(app, /const said = kindSaid\(next, index, VIA_MARKS\.isVia, loopVias, "added"\);/);
   assert.match(app, /stationEdit\(pointsRef\.current, point, role, loopVias\)/);
-  assert.match(app, /announce\(stationSaid\(edit\.index, edit\.next\.length, loopVias\)\)/);
+  assert.match(app, /announce\(loopOff \? `\$\{stationSaid\(edit\.index, edit\.next\.length, false\)\} Loop off\.` : stationSaid\(edit\.index, edit\.next\.length, loopVias\)\)/);
+  // An end set on a loop (a station's End here, the road panel's Set as end) turns the loop off in the same edit.
+  assert.match(app, /const loopOff = loopVias && role === "end";[\s\S]{0,120}commit\(edit\.next, loopOff \? \{ \.\.\.ride, dials: withLoop\(ride\.dials, false\) \} : undefined\)/);
+  assert.match(app, /commit\(placed\.next, placed\.loopOff \? \{ \.\.\.ride, dials: withLoop\(ride\.dials, false\) \} : undefined\)/);
   assert.match(app, /kindSaid\(current, index, VIA_MARKS\.isVia, loopVias, "removed"\)/);
   assert.match(app, /insertIntoRide\(routed, leg, VIA_MARKS\.via\(point\), loopVias\)/);
   assert.match(app, /announce\(insertedSaid\(leg, next\.length, loopVias, VIA_POINT_NAME\)\)/);
@@ -81,7 +84,9 @@ test("App: the line's legs, Reverse, the hints and the toggle's announcement use
   const app = appSource();
   assert.match(app, /const legs = legPoints\(routedPoints, loopVias\);/);
   assert.match(app, /ends: legEnds\(path, legs, shown\.leg_ends\), points: routedPoints, legPoints: legs/);
-  assert.match(app, /\}, \[shown, stale, routedPoints, points, loopVias\]\);/);
+  assert.match(app, /\}, \[shown, stale, routedPoints, points, loopVias, mode, preset\]\);/);
+  // Before a route, Plan's straight lines are what is dragged (lib/planLegs.ts planLegEdit), a loop's closing leg too.
+  assert.match(app, /const linesShown = !shown \|\| stale \|\| routedPoints !== points;\s+return linesShown && mode === "plan" && !twoPointsOnly\(preset\) \? planLegEdit\(points, loopVias\) : null;/);
   assert.match(app, /if \(!canReverse\(current, loopVias\)\) return;\s+const reversed = reversedPoints\(current, loopVias\);/);
   assert.match(app, /announce\(reversedSaid\(loopVias\)\);/);
   assert.match(app, /\{emptyPlanHint\(preset, loopVias, accessMode\)\}/);
@@ -99,7 +104,7 @@ test("App: the toggle, the ride type and undo or redo say when they rename the p
   assert.match(
     app,
     // Said with a station point's move when one moves (walkEntrance.test.ts), else alone.
-    /const choosePreset = \(id: PresetId, next: Dials\) => \{\s+const loopSaid = loopChangeSaid\(\{ preset, dials \}, \{ preset: id, dials: next \}, points\.length\);[\s\S]*?const said: string\[\] = loopSaid \? \[loopSaid\] : \[\];[\s\S]*?if \(loopSaid\) announce\(loopSaid\);/,
+    /const choosePreset = \(id: PresetId, chosen: Dials\) => \{[\s\S]{0,200}const next = mode === "plan" && points\.length === 0 \? planStartDials\(id, chosen\) : chosen;\s+const loopSaid = loopChangeSaid\(\{ preset, dials \}, \{ preset: id, dials: next \}, points\.length\);[\s\S]*?const said: string\[\] = loopSaid \? \[loopSaid\] : \[\];[\s\S]*?if \(loopSaid\) announce\(loopSaid\);/,
   );
   assert.match(
     app,

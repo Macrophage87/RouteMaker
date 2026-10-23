@@ -10,7 +10,7 @@ import org.json.JSONObject;
 
 /**
  * The site, in Capacitor's WebView. Opened by SetupActivity once a site address is kept on this phone;
- * the address goes into the bridge's config here, since no build carries one (mobile/README.md).
+ * the address goes into the bridge's config here, since a test build carries none (mobile/README.md).
  */
 public class MainActivity extends BridgeActivity {
 

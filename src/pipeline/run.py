@@ -75,6 +75,7 @@ from . import (
     aadt_smoothing,
     agency_ratings,
     agency_signals,
+    bikeshare_corridors,
     borders,
     checkpoint,
     conflation,
@@ -83,6 +84,7 @@ from . import (
     extract,
     hazard_layer,
     lts_sentinels,
+    major_corridors,
     mass_capacity,
     overrides,
     promotion,
@@ -141,6 +143,12 @@ SECURED_REPORT_NAME = "secured-closures.csv"
 # And every way inside a quarry, a landfill or an industrial area (owner report
 # 2026-10-12; `restricted_areas.works_closures`), the same columns, `site` for `installation`.
 WORKS_REPORT_NAME = "works-closures.csv"
+# Every way inside a golf course, or tagged as a cart path (owner report 2026-10-21;
+# `restricted_areas.golf_closures`), the same columns, `course` for `installation`.
+GOLF_REPORT_NAME = "golf-closures.csv"
+# Every farm or forest track the tag rules leave open, closed or left open (owner report
+# 2026-10-21; `restricted_areas.track_closures`), the same columns, `place` for `installation`.
+TRACK_REPORT_NAME = "track-closures.csv"
 
 
 def write_reports(work_dir: Path, files: dict[str, str], what: str) -> None:
@@ -909,6 +917,12 @@ class RebuildContext:
     # The ways inside a quarry, a landfill or an industrial area, closed or left open
     # (`restricted_areas.works_closures`; owner report 2026-10-12; works-closures.csv).
     works_ways: list[restricted_areas.MilitaryWay] = field(default_factory=list)
+    # Every way inside a golf course or tagged as a cart path, closed or left open
+    # (`restricted_areas.golf_closures`; owner report 2026-10-21; golf-closures.csv).
+    golf_ways: list[restricted_areas.MilitaryWay] = field(default_factory=list)
+    # Every farm or forest track the tag rules leave open, closed or left open
+    # (`restricted_areas.track_closures`; owner report 2026-10-21; track-closures.csv).
+    track_ways: list[restricted_areas.MilitaryWay] = field(default_factory=list)
     border_nodes_by_way: dict[int, list[borders.BorderNode]] = field(default_factory=dict)
     override_report: overrides.OverrideReport | None = None
     # The fixture ways an approved access override wrote a `bicycle`,
@@ -995,6 +1009,8 @@ class RebuildContext:
             "military_ways",
             "secured_ways",
             "works_ways",
+            "golf_ways",
+            "track_ways",
         ):
             setattr(self, name, type(getattr(self, name))())
         self.reference = None
@@ -2394,9 +2410,15 @@ def build_handlers(
             current = context.stress_by_way.get(way_id)
             if current is None or way_id in laned:
                 continue
+            tags = tags_of[way_id]
             result = rural_floor(
-                agency_lts.apply(current, ratings),
-                context.class_tags_by_way.get(way_id, tags_of[way_id]),
+                agency_lts.apply(
+                    current,
+                    ratings,
+                    facility_mapped=facility.facility(tags) is not facility.Facility.NONE,
+                    painted_lane=facility.facility(tags) is facility.Facility.LANE,
+                ),
+                context.class_tags_by_way.get(way_id, tags),
                 urban=way_id in reference.urban_way_ids,
             )
             changed += result.tier != current.tier or result.half != current.half
@@ -2981,6 +3003,47 @@ def build_handlers(
             },
         )
         works_closed = {m.way_id for m in context.works_ways if m.closed}
+        # And a golf course's cart paths, walks and drives (owner report 2026-10-21:
+        # Woodmont Country Club's plain `highway=path` cart paths drawn as bike paths),
+        # but for the ways the rules above judged. A bicycle or hiking route through a
+        # course stays.
+        routes = route_relations.read_routes(context.source_pbf)
+        context.golf_ways = restricted_areas.golf_closures(
+            placed,
+            areas.get(restricted_areas.GOLF, []),
+            reopened=context.bicycle_override_ways,
+            skip={
+                m.way_id
+                for m in (*context.military_ways, *context.secured_ways, *context.works_ways)
+            },
+            dc_streets={
+                way_id
+                for way_id, facts in context.road_facts_by_way.items()
+                if facts.agency == agency_roads.DC_AGENCY
+            },
+            trail_routes={w for w, r in routes.items() if r.bicycle_route or r.hiking},
+        )
+        golf_closed = {m.way_id for m in context.golf_ways if m.closed}
+        # And a farm or forest track with nothing that says the public may use it (owner
+        # report 2026-10-21: rural tracks around Dickerson "likely private roads that we
+        # can't legally use"), but for the ways the area rules judged. A track in a park,
+        # a named one and one on a bicycle or hiking route stay.
+        context.track_ways = restricted_areas.track_closures(
+            placed,
+            areas[restricted_areas.PARK],
+            reopened=context.bicycle_override_ways,
+            skip={
+                m.way_id
+                for m in (
+                    *context.military_ways,
+                    *context.secured_ways,
+                    *context.works_ways,
+                    *context.golf_ways,
+                )
+            },
+            trail_routes={w for w, r in routes.items() if r.bicycle_route or r.hiking},
+        )
+        track_closed = {m.way_id for m in context.track_ways if m.closed}
         context.secured_missing = restricted_areas.secured_missing(areas[restricted_areas.SECURED])
         if context.secured_missing:
             logger.warning(
@@ -2990,7 +3053,13 @@ def build_handlers(
             )
         context.short_paths_hidden |= {
             m.way_id
-            for m in (*context.military_ways, *context.secured_ways, *context.works_ways)
+            for m in (
+                *context.military_ways,
+                *context.secured_ways,
+                *context.works_ways,
+                *context.golf_ways,
+                *context.track_ways,
+            )
             if m.closed and m.highway not in restricted_areas.TRAIL_CLASS_HIGHWAY
         }
         logger.info("%s", restricted_areas.military_summary(context.military_ways))
@@ -3003,6 +3072,16 @@ def build_handlers(
             restricted_areas.military_summary(
                 context.works_ways, "quarries, landfills and industrial areas"
             ),
+        )
+        logger.info("%s", restricted_areas.military_summary(context.golf_ways, "golf courses"))
+        logger.info(
+            "%s", restricted_areas.military_summary(context.track_ways, "farm and forest tracks")
+        )
+        named_tracks = [m for m in context.track_ways if m.why == restricted_areas.WHY_TRACK_NAMED]
+        logger.info(
+            "named tracks left open for the owner to check (track-closures.csv): %d (%.1f mi)",
+            len(named_tracks),
+            sum(m.length_m for m in named_tracks) / 1609.344,
         )
         missing_pentagon = restricted_areas.pentagon_open_missing(context.military_ways)
         if missing_pentagon:
@@ -3036,12 +3115,15 @@ def build_handlers(
                     context.secured_ways, "facility"
                 ),
                 WORKS_REPORT_NAME: restricted_areas.military_report_csv(context.works_ways, "site"),
+                GOLF_REPORT_NAME: restricted_areas.military_report_csv(context.golf_ways, "course"),
+                TRACK_REPORT_NAME: restricted_areas.military_report_csv(
+                    context.track_ways, "place"
+                ),
             },
             "military-closure",
         )
         context.short_paths_hidden |= context.cemetery_ways
         context.short_paths_hidden |= restricted_areas.parking_ways(placed, areas["parking"])
-        routes = route_relations.read_routes(context.source_pbf)
         nobike = trail_closures.closures(
             context.ways,
             routes,
@@ -3050,6 +3132,8 @@ def build_handlers(
             secured=secured_closed,
             reopened=context.bicycle_override_ways,
             works=works_closed,
+            golf=golf_closed,
+            tracks=track_closed,
         )
         context.no_bicycle = nobike.reasons
         write_bike_bans(placed, areas[restricted_areas.PARK])
@@ -3869,6 +3953,27 @@ def build_handlers(
         trail_routes.derive_trail_runs(context.staging_schema)
         trail_routes.derive_calm_runs(context.staging_schema)
         trail_routes.derive_roadside(context.staging_schema)
+        # The popular bike corridors (the owner, 2026-10-21): the corridors the owner named,
+        # then the Capital Bikeshare model, which never lowers a named one.
+        major_ids, major_counts = major_corridors.way_ids(
+            ((way.osm_id, way.tags, way.coordinates) for way in context.ways),
+            context.route_names,
+            sidepath_names,
+            major_corridors.load(),
+        )
+        logger.info(
+            "major bike corridors (ways a corridor): %s; rows set: %d",
+            major_counts,
+            major_corridors.apply(context.staging_schema, major_ids),
+        )
+        logger.info(
+            "Capital Bikeshare corridors: %s",
+            bikeshare_corridors.derive(
+                context.staging_schema,
+                context.reference_dir / bikeshare_corridors.FILE_NAME,
+            )
+            or "no trip counts installed",
+        )
         levels = trail_routes.mtb_level_counts(context.staging_schema)
         named, mountain_bike_ways = trail_routes.mtb_name_counts(context.staging_schema)
         logger.info(

@@ -866,7 +866,7 @@ no live segment table yet is 404 with `no-store`, which the front end reads as
 
 | Zoom | What is drawn | Measured on a copy of a promoted build |
 | --- | --- | --- |
-| 10-11 | only the long traffic-free paths and trails: the long trails below, roadside trails and roads closed to cars at set times among them (`pipeline.schema.trails_predicate`, then `long_trails_predicate`); one feature per class, simplified | miles of path drawn region-wide (in the Columbia and Patapsco box): every trail 5,461 (311), z11 1,037 (17), z10 894 (15); a read-only measurement on a full-size copy of the 2026-10-03 build, with the rebuild's own code filling the columns |
+| 7-11 | only the long traffic-free paths and trails: the long trails below, roadside trails and roads closed to cars at set times among them (`pipeline.schema.trails_predicate`, then `long_trails_predicate`); one feature per class, simplified | miles of path drawn region-wide (in the Columbia and Patapsco box): every trail 5,461 (311), z11 1,037 (17), z10 894 (15); a read-only measurement on a full-size copy of the 2026-10-03 build, with the rebuild's own code filling the columns |
 | 12-13 | every segment FULL draws (the owner, 2026-10-17: "Both from 12"): the busy roads at LTS 3 and above (faint until z14 in the front end), the quiet streets, footways and mountain-bike trails, but one feature per class, simplified (`core.stress_tiles.STREETS`); no alleys. Until FORMAT_VERSION 10 this was the ride layer (391, 402a, below) | a synthetic downtown grid of 48,050 segments (the density of the 1.2 MB z12 tile over downtown DC on the first promoted build): z12 482 KB merged against 1.33 MB one feature a segment, z13 148 KB against 345 KB; the same grid's z14 is 90 KB (2026-10-17, `tile_sql` on a local PostGIS) |
 | 14-16 | every segment, one feature each, the alleys too (`FULL`, from `SEGMENTS_MIN_ZOOM`) | z14: 8,190 tiles, 49 MB, at most 125 KB (2026-09-28) |
 
@@ -898,7 +898,7 @@ for any format change, so the weekly rebuild's pre-draw draws the same format. T
 `-v10"` (and the mass tags), and a z12 tile over downtown answers 200 with one. The rail
 stations draw from z8 over everything, so zoomed out the map is the paths
 and the Metro and MARC stations; the app has station points, not rail lines.
-**The long trails (z10-11).** The owner, 2026-10-04: "Also zoomed out, can we
+**The long trails (z7-11; z10-11 until 2026-10-21).** The owner, 2026-10-04: "Also zoomed out, can we
 stick to mostly the longer trails, it's getting messy." (OWNER-DECISIONS 375),
 then "Car free roads stay. The point at this zoom is to see what would be a
 great long distance trip." and "Local trails only at higher zooms. Basically,
@@ -907,7 +907,7 @@ at birds eye view I want to see a bicycle version of the interstate routes."
 not include those." (378), for the z11 paved bar of 3 mi that dropped the
 Grist Mill Trail (2.54 mi), "Yes, bring it in." (380: 2.5 mi), and of the
 roads closed to cars for good, "I think off is fine here. Nobody routes
-around the tiny roads." (381). A path or trail is drawn at z10-11 only when
+around the tiny roads." (381). A path or trail is drawn at z7-11 only when
 it is part of something long:
 
 - its `segment.trail_route`, the OSM route relation it is in, is at least 2
@@ -941,8 +941,7 @@ Creek, Northwest Branch and the Cross County Trail carry an `mtb:scale` on
 asphalt); on the 2026-10-03 extract it changes nothing, since every flagged
 drawn way is flagged by its relation. An unknown surface is paved. The bars
 are the named constants in `pipeline.schema` (`Z11_PAVED_RUN_MI` and its
-siblings). The z10 and z11 tiles are two levels (`core.stress_tiles.TRAILS`
-and `TRAILS_NEAR`), and the front end draws the lines and rails thinner
+siblings). z7-10 (`core.stress_tiles.TRAILS`, z10's bars) and z11 (`TRAILS_NEAR`) are two levels, and the front end draws the lines and rails thinner
 there (`ZOOMED_OUT_SCALE` in `frontend/src/stressStyle.js`), never with a
 casing edge, a rail or an unpaved mark under a pixel.
 
@@ -1188,7 +1187,7 @@ and `e` is `roadside`'s, one letter per column (a test holds them distinct); sin
 solid-below-14 change (390, `SOLID_MIN_ZOOM` 14) is in the rebuild bundle with this, and
 applies to that fallback only.
 
-**What the front end said** until 2026-10-17 (now `STRESS_ZOOMS` is `{ min: 10, quiet: 12,
+**What the front end said** until 2026-10-17 (then `STRESS_ZOOMS` was `{ min: 10, quiet: 12,
 max: 14 }`, the z10-11 notice reads "Zoom in to see more paths and trails and traffic stress
 on every road.", there is no notice from z12, and the hint says every other path and the busy
 roads, quiet streets, footways and sidewalks show from zoom 12, the busy roads faintly until
@@ -1306,7 +1305,7 @@ api that read it are safe before it. Every street shows on the Mass Ride map fro
 only the long calm roads do, because those tiles are the ride layer (391, 402a), which carries no
 busy road; trails, paths and alleys never.
 
-Below zoom 10 nothing of the overlay is drawn. The map asks for nothing past
+Below zoom 7 (the map's widest) nothing of the overlay is drawn; from zoom 7 the long trails are, with z10's bars (the owner, 2026-10-21: "Let's have trails show up at the same zoom as roads", then "Long trails as far out as roads"). The Mass Ride tiles still start at zoom 10 (`core.mass_tiles.MIN_ZOOM`). The map asks for nothing past
 z14 (the source's `maxzoom`): it draws z15-16 from the z14 tile, whose 4,096
 units a side are half a pixel each at z16. z15-16 are still served, for the
 contract.
@@ -1487,8 +1486,8 @@ the timed closures (`cardinality(car_free_when) > 0`).
 
 **The tile cache.** A tile, once drawn, is kept in the `stress_tile_cache`
 table (`core/tile_cache.py`, migration `core.0009`) under its ETag and z/x/y,
-and served from there without a draw. Every tile the map asks for - z10-14,
-each one the coverage box reaches, 11,068 tiles and 66 MB, empty ones included
+and served from there without a draw. Every tile the map asks for - z7-14,
+each one the coverage box reaches, 11,086 tiles and about 66 MB (measured before z7-9 were added; those 18 tiles are not yet measured), empty ones included
 so their requests are lookups too - is drawn ahead after every promotion (the
 owner, 2026-09-28: "It takes a very long time to load those roads.", where:
 "Zoomed in (street level)"; OWNER-DECISIONS 63). The weekly rebuild does it
@@ -1514,7 +1513,7 @@ hundred (under 300; `tests/test_mass_tiles.py`), on a table that has
 Measured read-only on the live 2026-10-03 table with a stand-in width (2026-10-05, load
 from another agent's run): the z10 tile over DC 1.0-3.0 s and about 100 KB, z11 0.8-6.2 s
 and 96 KB, z12 0.6 s and 73 KB, z13 0.3 s, z14 0.25 s; well inside the pre-draw's 20 s,
-but a cold z10-11 can pass the 2 s on-request draw timeout and be answered 503 with
+but a cold z7-11 can pass the 2 s on-request draw timeout and be answered 503 with
 Retry-After until the pre-draw has run. Format 2 (2026-10-05, 421, 422) works out the
 Wide open runs over the whole District in each z10-11 query: measured the same way,
 z10 0.7-0.8 s warm (5.5 s the first, cold), z11 0.45-0.6 s, z12 0.26 s. Its tiles
@@ -1729,7 +1728,7 @@ change applies at once; nothing waits for a rebuild except what is listed below.
 4. writes a `stress_edit` row (every touched column before and after: the audit log keeps no
    copy of a row) and one `audit_log` entry (`stress_edit` or `stress_edit_undo`);
 5. bumps the live table's edit generation (`live_edit_generation`, keyed by the table's oid)
-   and deletes only the cached tiles covering the road at z10-16 (plus a tile's margin), for the
+   and deletes only the cached tiles covering the road at z7-16 (plus a tile's margin), for the
    stress and the Mass Ride tiles, re-keying the rest to the new tag so the cache stays warm.
 
 The edit generation is in the tile ETag (`W/"stress-<oid>+<letters>-e<generation>-v8"`), so a
@@ -5148,6 +5147,43 @@ the host (the cloud send refuses such a folder, above); the layer then has the O
 designations only. The switch itself is the rider's; there is no
 server flag, and a layer nobody turns on draws nothing.
 
+## Popular bike corridors (v0.11.0)
+
+The owner, 2026-10-21: "use the Cabi heatmap if you can, and make those streets show more
+pronounced than other roads". The map draws a soft cyan band under each street's corridor
+class (`segment.bike_popular`, 1 to 3), from two inputs:
+
+- **The owner's named corridors** (`fixtures/bike-corridors/`, `pipeline.major_corridors`):
+  always class 3. Read from the repository; nothing to install. Corridors that match no way
+  are listed in a `major bike corridors that matched no way` warning.
+- **Capital Bikeshare trips** (`reference/bikeshare-trips.json`, `pipeline.bikeshare_corridors`):
+  each pair of docks' trips routed over the street network, calm streets preferred. Class 3
+  from 200 trips a day, 2 from 75, 1 from 25. Never commit or publish this file (docs/SOURCES.md,
+  "Capital Bikeshare").
+
+1. **Build the counts** (any machine with network; about 12 monthly downloads of 10-20 MB each):
+
+   ```sh
+   python3 scripts/build_bikeshare_trips.py --months 202510-202609 --out bikeshare-trips.json --cache ~/cabi-zips
+   ```
+
+2. **Install them** into the data root:
+
+   ```sh
+   docker compose exec -T rebuild python3 scripts/install_reference_data.py \
+       --data-root /data --bikeshare-trips /data/reference/inputs/bikeshare-trips.json
+   ```
+
+   It prints `wrote .../bikeshare-trips.json: N docks, N dock pairs`. A file whose pairs name a
+   dock it does not list is refused.
+
+3. **After the rebuild**, read the log: `major bike corridors (ways a corridor): ...`, then
+   `Capital Bikeshare corridors: ...` with the docks placed, the pairs no route reached, the
+   seconds routing (27 s on a synthetic 202,000-junction grid) and the miles in each class. Without the file the rebuild warns `... is absent` and only the named corridors are
+   popular; `scripts/cloud/send-inputs.sh` refuses a reference folder without it.
+
+Refresh it about once a year: the classes are for drawing, not routing, and change slowly.
+
 ## Deployment actions
 
 - Add a `check_operations` cron entry, or point an existing monitor at it.
@@ -6126,12 +6162,12 @@ pattern, unrated as grey dots. Not used for routes; Gravel and Mountain Goat may
 **Since v0.6.0** (the owner, 2026-10-12: "Mountain bike trails seem plotted but don't show up very
 well"; front end only, no rebuild) every level is a 3 px line (4 px with the accessibility switch) on
 a solid white edge 1.5 px a side (2 px with the switch, `MTB_HALO`), level 1 and 2's gaps 1.5 widths
-([6, 1.5], [3, 1.5]); an unrated trail is grey dashes [1.5, 1.5] on the same edge, not dots. The
+([6, 1.5], [3, 1.5]); an unrated trail is brown dashes [1.5, 1.5] (grey until 2026-10-21) on the same edge, not dots. The
 not-for-routes mark is the dark cross-ticks, now one shared layer outside the white edge
 (`mtb-trail-ticks`, `MTB_TICKS`: 2 px past it a side, about a 2 px tick every 12 px), since LTS 4's
 casing is white too; every tier's casing and ring is solid in every palette (mtbLevels.test.ts). The
 Mountain Bike ride type is unchanged (slice 6): trails up to the rider's level draw as routable, the
-harder ones in this look. Words: "on a white edge with dark ticks", "unrated as grey dashes". Still
+harder ones in this look. Words: "on a white edge with dark ticks", "unrated as brown dashes". Still
 from zoom 14, where the tiles carry them.
 
 **Trail names** (the owner, 2026-10-10 (15:16 UTC): "Also, for mountain bikes, try to make sure trail names are added in if they are available."). The rebuild writes `segment.mtb_name` (text, null otherwise; core
@@ -6254,6 +6290,37 @@ Travilah quarry pit off Shady Grove Rd over nine ways tagged only `highway=track
   1379220522 to 1379220572) is not closed as `works`, and warns if fewer than nine are in the
   extract. The climbs file then loses such climbs when it
   is written again after that rebuild.
+- Golf courses (owner report 2026-10-21, Woodmont Country Club in Rockville: "Still showing
+  some bike paths on private property. These are golf courses."). The cart paths there are plain
+  `highway=path` with no access tag, so the private-access tag rule missed them. From the next
+  rebuild every way inside a `leisure=golf_course` (half its length or more) is closed on every
+  graph (`restricted_areas.golf_closures`, `rm:no_bicycle=golf`, the road panel's "golf
+  course"): a closed path is left to the base map, a closed drive hidden. So is a way tagged
+  `golf=cartpath|path`, or a path or drive tagged `golf_cart=designated`, wherever it lies. Open:
+  an owner's override, a numbered public road, a DDOT Roadway Block street, a way whose own
+  `bicycle` tag (or, with none, `access=yes|permissive`) opens it, and, unless tagged as a cart
+  path, a way in a bicycle or hiking route relation, a path, cycleway or footway whose name a
+  trail outside the course also carries (a public trail through it, such as a creek trail past a
+  park course), an unnamed piece of up to 100 m (330 ft) between such trail ways (a bridge), and
+  a public street or its sidewalk or crossing. Every way is in
+  `<DATA_ROOT>/rebuild/reports/golf-closures.csv`; its closed ways join Review's "Industrial,
+  golf and track closures" list, where Reopen writes a `bicycle=yes` access override for a
+  public trail the rule closed.
+- Farm and forest tracks (owner report 2026-10-21, rural Montgomery County around Dickerson and
+  Barnesville: "there's some track roads on the rural part that are likely private roads that we
+  can't legally use"). A `highway=track` with no access tag is opened by Valhalla by class and
+  was drawn as a calm road. From the next rebuild such a track is closed on every graph
+  (`restricted_areas.track_closures`, `rm:no_bicycle=track`, the road panel's "private farm
+  track") and hidden from the stress map. Open: an owner's override, a numbered public road, a
+  track whose own `bicycle` tag (or, with none, `access` or `vehicle` yes|permissive,
+  `motor_vehicle` yes|permissive|designated) opens it, a track in a
+  bicycle or hiking route relation, a named track (a public dirt road, or a trail on an old farm
+  road), and one half or more of whose length lies in a park or protected area (the `park` kind:
+  county, state and national parks, nature reserves) that is not private land under an
+  easement (`ownership=private`, `access=private|no`, or "easement" in `protection_title`). A track whose own `access`, `vehicle` or
+  `bicycle` already closes it (private, no, agricultural, forestry ...) is left to the tag rules
+  and not listed. The rebuild log counts the named tracks it left open, for the owner to check. Every judged track is in `<DATA_ROOT>/rebuild/reports/track-closures.csv`; its
+  closed ones join the same Review list, where Reopen writes a `bicycle=yes` access override.
 - Now, without a rebuild: `routemaker.climb_exclusions.EXCLUDED` lists a climb by id with its
   reason and source, and the builder, the hill seek (`core.hillseek.parse`) and the map
   (`frontend/src/lib/climbExclusions.ts`, the same ids) all drop it, so the committed file need not
@@ -6957,7 +7024,8 @@ fallback yet; this host stays the fallback, and its weekly rebuild is unchanged.
   root volume, a security group with **no inbound rules** (the shell is Session Manager),
   IMDSv2 required, and spot with request type **Persistent** and interruption behaviour
   **Stop** (AWS refuses Stop with the default one-time request). Shutdown behaviour
-  **Stop**, so `box-rebuild.sh`'s power-off stops it. Any region: the launcher takes
+  **Stop**, so `box-rebuild.sh`'s power-off stops it. Optionally a second, on-demand box
+  from the same template ("Two boxes: spot and on-demand", below). Any region: the launcher takes
   the box's (`us-east-1` by default) and the bucket's (`us-west-2` by default) apart, and
   the box reaches the bucket across regions. That costs money: S3 traffic between two
   regions is billed per GB, both ways (the inputs down to the box, the graphs and the
@@ -7210,7 +7278,8 @@ Once, put the box and the bucket where the launcher finds them, e.g. in `~/.bash
 are this deployment's, so never in the repository):
 
 ```sh
-export CLOUD_INSTANCE_ID=i-...        # the box
+export CLOUD_INSTANCE_ID=i-...        # the box (the spot one)
+export CLOUD_ONDEMAND_INSTANCE_ID=i-...  # only with an on-demand box, below
 export CLOUD_BUCKET=<bucket>
 export CLOUD_PROFILE=<name>           # if you sign in with --profile
 # CLOUD_BOX_REGION [us-east-1], CLOUD_BUCKET_REGION [us-west-2],
@@ -7300,6 +7369,30 @@ to you). **That this prevents the restart is not verified**: after the first
 reclaim, look in the console (EC2, Instances) an hour or so later and stop the box if it
 is running; the budget alarm is the backstop.
 
+**Two boxes: spot and on-demand.** Spot is cheap but can be short: on 2026-10-22 the
+m7i.2xlarge spot box in us-east-1 was reclaimed five times in a morning, the last ones
+minutes after each restart. An on-demand box costs more an hour but is never reclaimed.
+Both are standing boxes, started and stopped the same way; `--box on-demand` (or
+`CLOUD_BOX=on-demand`) runs on the on-demand one, and everything else is the same. Made
+once, in the console:
+
+1. EC2, Launch Templates, the box's template, Actions, **Modify template (Create new
+   version)**, described "on-demand": under Advanced details, Purchasing option **Don't
+   include in launch template** (no market setting means on-demand; "Discard Spot instance
+   options" if the spot settings stay shown), Shutdown behaviour still
+   **Stop**. Do not make it the default version; the default stays spot. ("Launch instance
+   from template" greys the purchasing option out: the template decides it.)
+2. Actions, **Launch instance from template**, Source template version the on-demand one.
+   When it is up, stop it (never terminate: its disk keeps a run's state), and put its id
+   in `CLOUD_ONDEMAND_INSTANCE_ID`.
+3. Add its ARN to the launcher's `ec2:StartInstances`/`ec2:StopInstances` and
+   `ssm:SendCommand` resources (the permissions below take a list).
+
+A run on the spot box that stops with no result names the same run on the on-demand box
+too, when one is set. It starts the rebuild over there: the inputs are in the bucket
+already, but the progress is on the spot box's disk. Only one box at a time on a run:
+stop the other (and any loop that resumes it) first.
+
 **The sign-in can run out during a run.** The wait is hours, longer than an `aws login`
 session may last. If a check fails while it waits, the launcher says so and keeps
 waiting; run `aws login --remote` again in another window and it carries on. The box does
@@ -7319,10 +7412,12 @@ encrypted with your own KMS key, starting it also needs `kms:CreateGrant` on tha
   {"Effect": "Allow", "Action": ["signin:AuthorizeOAuth2Access", "signin:CreateOAuth2Token"],
    "Resource": "*"},
   {"Effect": "Allow", "Action": ["ec2:StartInstances", "ec2:StopInstances"],
-   "Resource": "arn:aws:ec2:us-east-1:<account>:instance/<instance-id>"},
+   "Resource": ["arn:aws:ec2:us-east-1:<account>:instance/<instance-id>",
+                "arn:aws:ec2:us-east-1:<account>:instance/<on-demand-instance-id>"]},
   {"Effect": "Allow", "Action": "ec2:DescribeInstances", "Resource": "*"},
   {"Effect": "Allow", "Action": "ssm:SendCommand",
    "Resource": ["arn:aws:ec2:us-east-1:<account>:instance/<instance-id>",
+                "arn:aws:ec2:us-east-1:<account>:instance/<on-demand-instance-id>",
                 "arn:aws:ssm:us-east-1::document/AWS-RunShellScript"]},
   {"Effect": "Allow", "Action": ["ssm:GetCommandInvocation",
                                  "ssm:DescribeInstanceInformation"], "Resource": "*"},
@@ -7404,14 +7499,15 @@ keep its log and read the dry run before `--swap`.
 
 ## Phone app (v0.8.0)
 
-The Android app in `mobile/` names no site in any build: the repository is public, and so are its
-Actions artifacts, so a server's address must not be in one. On first launch the app asks for the
+The Android app's test builds (`mobile/`) name no site: the repository is public, and so are its
+Actions artifacts, so a server's address must not be in one. The store build (`release`, by hand)
+bakes in the `ROUTEMAKER_SITE_URL` secret, the owner's choice for the Play listing. On first launch the app asks for the
 site's address (https only), checks it against `/healthz`, and keeps it in the app's preferences on
 that phone; touching and holding the app's icon and choosing "Site address", or clearing the app's
 storage in Android's settings, asks again. On the beta, the app then shows its own sign-in box for the
 basic-auth password, which it hands to the WebView for that run and never stores. `ROUTEMAKER_URL`
-builds an address in for a local build only; it is never set in CI, and the workflow fails if the
-synced config names a site.
+builds an address in for a local build; in CI only the store build sets it, and a test build fails
+if its synced config names a site.
 
 Builds: Actions, "Android app" (`.github/workflows/android.yml`). A pull request that touches
 `mobile/` or the workflow runs the app's tests and builds a debug APK (no secrets, no site address);
@@ -7419,8 +7515,9 @@ by hand (`workflow_dispatch`), `debug` for a sideloaded test APK or `release` fo
 Play bundle. The workflow uses
 no repository variables. The release key is four repository secrets the owner adds:
 `ROUTEMAKER_KEYSTORE_BASE64`, `ROUTEMAKER_KEYSTORE_PASSWORD`, `ROUTEMAKER_KEY_ALIAS`,
-`ROUTEMAKER_KEY_PASSWORD`; never a file in the repository. A Play id of the owner's own
-(`ROUTEMAKER_APP_ID`) is set in a local build. Changes under `mobile/` never trigger a beta deploy
+`ROUTEMAKER_KEY_PASSWORD`; never a file in the repository. The Play id comes from the
+`ROUTEMAKER_APP_ID` secret (`ROUTEMAKER_SITE_URL` is the store build's site); a debug build adds
+`.debug`, so a test build sits beside the store app. Changes under `mobile/` never trigger a beta deploy
 (`scripts/beta/cd_logic.py`).
 
 The server needs nothing for it: the WebView loads the site at its own origin, so cookies, CSRF and
@@ -7429,3 +7526,78 @@ already deployed: before v0.8.0 its compatibility layer gives the old Ride mode 
 voice; from v0.8.0 the site's own bridge does, with the cue notification. Deploying v0.8.0 needs no
 app rebuild. Install steps, permissions, privacy, TalkBack and what to check on a first ride:
 `mobile/README.md`. iOS can be added later from the same shell.
+
+## Fixing OSM from a ride (scripts/osm_edit.py)
+
+When the root-cause analysis of a ride or route shows the cause is wrong OSM data (a signal
+OSM lacks, a path signed open but tagged `bicycle=no`, a wrong surface or difficulty), the
+fix goes to OSM itself, under the owner's own OSM account, one approved change at a time.
+This is manual mapping with a helper, not a bot or an import: no batch mode, no queue, at
+most one retry after a version conflict, and a ride alone is never the evidence (the owner
+confirms what was seen). Agency signal lists are places to check, never a source copied in.
+
+Python 3.11 or later, standard library only.
+
+- **Sign in once, on the PC, in a terminal:**
+  `python3 scripts/osm_edit.py login --server dev --client-id <id>`. The token goes to
+  `~/.config/routemaker/osm-dev.token` (mode 600), outside the repo. Never read, print or
+  copy it. `--server live` only on the owner's go.
+- **Draft:** a JSON file outside the repo (the scratchpad, or the PC's private ride
+  folder; the script refuses a draft inside the repo) naming one node or way, `expect` (the tags as the owner was shown them, null =
+  absent), `set` (null = remove), `comment` and `source` (`survey`). Only the keys in
+  `ALLOWED_KEYS` may change, at most four; `highway` only on a node, to a junction control.
+  No GPS track, rider or ride date in the comment, source or file.
+- **Check:** `python3 scripts/osm_edit.py show edit.json` prints the diff against OSM now
+  and exits 2 if a tag changed since the draft.
+- **Upload, after the owner approves that file:**
+  `python3 scripts/osm_edit.py upload edit.json --approved` (add `--live` for live OSM).
+  It writes `edit.uploaded.json` beside the draft and appends the changeset to
+  `~/.config/routemaker/osm-edits.log`; the same change is refused again from any file.
+  Where routing must change before the next rebuild, add the matching override as usual;
+  the OSM edit reaches our map with the next extract.
+- **Field reports, drafted in one command.** When the owner or a tester reports a corner
+  (the reporter's own sighting, never Street View or another map):
+  - A signal that runs as a flashing beacon:
+    `python3 scripts/osm_edit.py draft-beacon --name "Connecticut Ave and Washington St"
+    --place Kensington --lat 39.0225574 --lon -77.0763584 --evidence "<what was seen>"
+    --out <new folder>`.
+    It drafts `traffic_signals=blinker` for every OSM signal node within 40 m (skipping ones
+    already blinkers) and writes `<date>-owner-<slug>.json`, an owner flashing-signal file for
+    our map, unless a checked-in owner row already lies within 80 m (it says so instead): load it with `load_flashing_signals` (dry run, then `--confirm`) for an immediate
+    fix, and commit it to `fixtures/flashing-signals/`. Our map does not read OSM's
+    `blinker` tag, so the row is what changes our routing.
+  - A working signal OSM lacks: `draft-signal --name ... --place ... --lat ... --lon ... --out ...`
+    drafts `highway=traffic_signals` on the nearest junction node within 25 m, where streets
+    really meet (not where one street's way is split end to end); a dual carriageway meets a
+    street at two nodes, so draft each.
+  - **One line after the owner's go:** `python3 scripts/osm_edit.py apply <folder> --approved
+    --live --actor <owner's Discord id>` uploads every OSM edit in the draft folder (one
+    corner per folder), then loads the owner row on the PC live stack (`~/src/wt/t9`) and on
+    beta (over ssh, through `scripts/beta/beta-compose.sh` in beta's checkout; the host name
+    comes from `ROUTEMAKER_BETA_SSH` or `--beta-host`, never the repo; the PC folder from
+    `ROUTEMAKER_LIVE_DIR` or `--stack`). It uploads every edit in the folder, so keep one corner
+    per folder. Every site gets a dry run before anything is written anywhere, so a wrong actor
+    or an unreachable site stops it before OSM. Then come the OSM uploads, the write at each
+    site, and a second dry run that must report every row present. If the OSM side stops,
+    nothing is loaded; a site that fails does not stop the other, and the line to rerun for it
+    is printed; rerunning skips what already went up. `--to pc`
+    or `--to beta` limits the sites. `load <file> --actor <id> [--confirm]` does our map
+    alone, for a row OSM needs no edit for.
+  - The drafts print every diff and the `apply` line. `upload` on its own takes
+    several files, each its own changeset, and stops at the first failure, naming what is
+    left; rerunning the same line skips the files already uploaded. A draft never overwrites a
+    file: if any name is taken, nothing is written. Evidence in a
+    row or edit note describes the place, never who reported it.
+- **One changeset for a set (the owner's choice, 2026-10-21, for the Capitol grounds
+  walks):** `upload <files> --approved --live --one-changeset` puts up to 100 reviewed edits
+  of one small area in a single changeset. They must share the server, comment and source,
+  and name each element once. Every file is checked against OSM before anything goes up, so
+  one stale file stops them all; `--dry-run` (no `--approved` needed) prints every diff and
+  uploads nothing. A stop partway (a refusal or Ctrl-C) records what went in, names what did
+  not and exits 3; the smoke test then expects that many changes in the changeset, and
+  rerunning the same line skips the files already uploaded, in a new changeset.
+- **Smoke test:** every upload ends by reading the change back from OSM. The element must
+  carry the approved tags at the version the upload made (a later version by someone else
+  passes), and the changeset must be closed holding exactly the upload's changes. A failure, or a check
+  that could not run, exits 3 with what differs.
+  `python3 scripts/osm_edit.py check edit.json` runs it again later.

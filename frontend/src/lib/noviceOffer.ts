@@ -8,6 +8,7 @@
 import type { NoviceNote, RouteResponse } from "./api.ts";
 import { fitDials, startDials, type Dials } from "./dials.ts";
 import { formatDistance } from "./format.ts";
+import type { LonLat } from "./geo.ts";
 import type { PresetId } from "./presets.ts";
 
 /** The two ways offered, in the order shown. */
@@ -16,9 +17,18 @@ export const NOVICE_TRANSIT_CHOICES: readonly { preset: PresetId; label: string 
   { preset: "bikeshare-transit", label: "Bikeshare + transit" },
 ];
 
-/** A transit ride type's dials for the offer: its own starting sliders, its bike legs as Novice and Nervous's. */
-export function noviceTransitDials(preset: PresetId): Dials {
-  return fitDials(preset, { ...startDials(preset), noviceLegs: true });
+/**
+ * A transit ride type's dials for the offer: its own starting sliders, its bike legs as Novice and Nervous's, and
+ * (v0.11.0) the busy stretch to hop past, where the route says where it is (`noviceHopOf`).
+ */
+export function noviceTransitDials(preset: PresetId, hop: [LonLat, LonLat] | null = null): Dials {
+  return fitDials(preset, { ...startDials(preset), noviceLegs: true, ...(hop ? { noviceHop: hop } : {}) });
+}
+
+/** Where the Novice route's busiest stretch begins and ends (v0.11.0), for the transit trip to hop past it; or null. */
+export function noviceHopOf(route: Pick<RouteResponse, "novice"> | null): [LonLat, LonLat] | null {
+  const busiest = route?.novice?.busiest;
+  return busiest?.from && busiest.to ? [busiest.from, busiest.to] : null;
 }
 
 /** The points a transit trip is asked through: its start and its end only (a transit ride type takes two). */

@@ -257,6 +257,7 @@ database initialised with the old one. The required values and what is optional:
 | `WMATA_API_KEY`, `MAPILLARY_ACCESS_TOKEN` | no | v0.7.0 live data. The owner pastes them into `.env` himself (nobody else reads or types them); then `beta-compose.sh up -d api`. Empty: timetable times only, no street photo. Allow outbound `api.wmata.com`, `graph.mapillary.com` and `*.fbcdn.net` from the api: the server fetches the photo's file from Mapillary's image host and serves the browser its own copy, so the CSP's `img-src` stays `'self'` and the browser never contacts Mapillary. Check: a Metro station's card says "live" and "Data: WMATA"; a road panel shows "Photo from <month year>" or "No street photo here." |
 | `DC311_API_KEY` | no | v0.7.0 Ride mode's 311 sent from the server (`core/dc311.py`), read by the api. The owner pastes it himself, only once DC issues one; then `beta-compose.sh up -d api`. Empty: Ride mode opens the phone's text app to 311 instead. Allow outbound `app.311.dc.gov` from the api. Each send needs a 15-minute ticket from `GET /api/report311`, and at most 60 reports an hour leave the server in all. |
 | `NPS_API_KEY` | no | v0.7.0 National Park Service closure alerts, read by the **worker** (`refresh_dc_closures`). The owner pastes it himself; then `beta-compose.sh up -d worker`. Empty: the NPS feed is skipped, the DC feeds still run. Allow outbound `developer.nps.gov` from the worker, beside the DC closure hosts below. |
+| `PRIVACY_CONTACT` | no | The privacy policy's contact (`/privacy`, `core/privacy_policy.py`): an e-mail address or a web address, read by the api. Empty: the page says to ask the site's owner on Discord. The owner fills it in; then `beta-compose.sh up -d api`. |
 | `SUGGEST_SIGNED_OUT_MIN_AGREE` | no | `1` (the default): every signed-out LTS suggestion shows in the review list. Raise it (e.g. `2`) once volume grows, so a road's signed-out sends show only when that many agree; then `beta-compose.sh up -d api`. |
 | VDOT token | no | this release has no such variable; there is nothing to set |
 
@@ -691,10 +692,18 @@ then `sudo rm -f /var/log/nginx/rmbeta-access.log* /var/log/nginx/rmbeta-error.l
 (the two logs and the password file this step created). The site is then gone and the other sites never noticed.
 
 What the site does, so you can explain it to the owner: only `robots.txt`, `/delete-account`
-(Google Play's account-deletion page) and the port-80 ACME challenge path are public; everything else, including `/healthz`, `/auth/` and the admin path, asks for
+(Google Play's account-deletion page), `/privacy` (the privacy policy) and the port-80 ACME challenge path are public; everything else, including `/healthz`, `/auth/` and the admin path, asks for
 a password. Every response carries `X-Robots-Tag: noindex, nofollow`. `/api` has 75-second timeouts
 (a plan takes up to 47 seconds). JSON and vector tiles are gzipped. The base map answers only this
 site's own pages.
+
+**No site password (the owner's call, 2026-10-22).** The beta has been open since then, so what
+this runbook says about the password (step 9's `make-htpasswd.sh`, `/healthz` asking for it, step
+10's 401 checks) is for a gated beta only: add
+`--no-password` to the stage-full render above (it leaves out the gate's `auth_basic` lines and the
+sign-in page; robots.txt and noindex stay), expect 200 instead of 401 from the curl check, and run
+the smoke test below with `--open` in place of `--passwords-file ...`. Without `--no-password`, a
+re-render (a release that changes the template, say) puts the password back.
 
 ## 10. Smoke test through nginx
 
@@ -1018,7 +1027,7 @@ live within about 10 minutes, and nothing after it checks what a screen reader h
   landmarks, the headings, the beta notice and its Beta chip), update the handout in
   the same release and send it to the testers again once the release is deployed.
 - The release that brings this agent (wip/beta-cd) also adds a paragraph about updates to the
-  handout's section 8 (what testers hear during a deploy, and how long to wait): resend the
+  handout's section 4 (what testers hear during a deploy, and how long to wait): resend the
   handout to the testers once it is deployed, adding the update hours if `RM_CD_WINDOW` is set
   (the sender's notes at its top say how).
 
@@ -1103,7 +1112,7 @@ A tag is never moved or reused: a fix is the next patch number. The agent's scri
    still serves the page, so testers see it open, but planning a route says "Router unavailable",
    place search and the road information say they are "not available right now", and Sign in
    shows the "Back soon" page (`deploy/beta/502.html`; nginx's bare "502 Bad Gateway" on a site
-   file rendered before that page existed, or with `--no-401-page`). The handout's section 8 tells
+   file rendered before that page existed, or with `--no-401-page`). The handout's section 4 tells
    testers to wait about 20 minutes. Set `RM_CD_WINDOW` to quiet hours. Then: snapshot the
    database (`receive-data.sh --backups-dir "$RM_STATE/cd/backups" snapshot-db`:
    `pg_dump` through `beta-compose.sh exec -T postgis`, into a directory of the user's own, so no
@@ -1344,6 +1353,48 @@ Day to day: `journalctl --user -u routemaker-beta-alert --since today` shows eac
 `alert.sh uninstall` stops the checks; the agent then posts only its own results while a webhook
 is set, and nothing once `alert-webhook` is removed. An off-host uptime check of the public URL is
 not part of this: if the whole server is down, nothing on it can post.
+
+## Tester reports
+
+Testers report in Discord forums, one post per entry (bug reports, routing issues, road ratings,
+feature requests). `scripts/discord_reports.py` is the owner's bot for them, with three jobs:
+
+- `fetch --out FILE [--days N]` writes the posts to a Markdown file for Claude to read: titles,
+  tags, links and words, with no tester's name (each message is "tester", "owner" or "bot").
+- `merged POST --version vX.Y.Z` is run (from the owner's PC) when a post's change merges into
+  a release branch: the bot replies "This change is in vX.Y.Z, coming in the next beta release."
+  and sets the post's **In next release** tag.
+- `live vX.Y.Z` is run by the release agent after each deploy (and on up-to-date passes until it
+  succeeds, once per tag, `$RM_STATE/alerts/live-posted`): every post tagged **In next release**
+  whose reply names that version or an earlier one gets "vX.Y.Z is live on beta. Give it a try and
+  let us know how it goes." and the tag **Live on beta**. A failure is posted once a day in the
+  alerts channel and never fails a pass.
+
+The owner chose (2026-10-21) that these two replies post without asking each time; anything else
+the bot says waits for his OK. Discord is the record: the tag says where a post stands and the
+bot's own reply names the version, so the beta keeps no list of posts. Mentions are off in every
+post. Each forum needs the two tags **In next release** and **Live on beta**.
+
+**Set up (once).** In the Discord Developer Portal: the RouteMaker application, **Bot**, Reset
+Token (copy it), and turn on **Message Content Intent**. Under **OAuth2, URL Generator**: scope
+`bot`, permissions View Channels, Read Message History, Send Messages in Threads and Manage
+Threads; open the URL and add the bot to the server. In Discord (Developer Mode on), right-click
+each forum and Copy Channel ID. Then on the beta:
+
+```sh
+. "$HOME/routemaker-beta-state/vars.sh"
+cd "$RM_SRC"
+mkdir -p -m 700 "$RM_STATE/discord"
+( umask 077; cat > "$RM_STATE/discord/bot-token" )   # paste the token, Enter, Ctrl-D; never an argument
+cat > "$RM_STATE/discord/forums"                      # the forum ids, one per line, then Ctrl-D
+"${RM_PY:-python3}" scripts/discord_reports.py --dir "$RM_STATE/discord" check   # each forum: ok
+```
+
+On the PC, the same two files go in `~/.config/routemaker-discord` (the script's default folder),
+and `python3 scripts/discord_reports.py check` from the checkout says each forum is ok.
+
+Without `bot-token` nothing is posted and the release agent skips this step. The token is a
+secret like the webhooks: never in chat, the repo or a command line.
 
 ## Operating notes
 

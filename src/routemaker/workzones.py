@@ -38,7 +38,7 @@ from __future__ import annotations
 import math
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, time, timedelta
 
 CLOSED, UNKNOWN, PENALTY = "closed", "unknown", "penalty"
 # A bike lane blocked with the road open (DDOT's TOPS permits, v0.7.0 "DC closures
@@ -737,7 +737,12 @@ def heads_up(zone: Zone) -> str:
 def citation(zone: Zone) -> str:
     """The small print under a zone's sentence: its source, and until when."""
     source = SOURCES.get(zone.source, zone.source)
-    return f"Source: {source}" + (f", until {date_text(zone.end)}." if zone.end else ".")
+    if zone.end is None:
+        return f"Source: {source}."
+    last = last_day(zone.source, zone.end)
+    if last is not None:
+        return f"Source: {source}, through {date_text(last)}."
+    return f"Source: {source}, until {date_text(zone.end)}."
 
 
 def split_words(zone: Zone | None) -> str:
@@ -784,6 +789,16 @@ def date_text(moment: datetime) -> str:
     return f"{_MONTHS[local.month - 1]} {local.day}"
 
 
+def last_day(source: str, end: datetime) -> datetime | None:
+    """A reviewer's closure ends at the midnight after its last day
+    (`core.reviewed_closures.window`): that last day, to say "through Feb 28" rather than
+    "until Mar 1". None for any other end. The day is taken off in the region's time, so a
+    last day that starts or ends daylight saving is not 23 or 25 hours long."""
+    if source == "reviewer" and _local(end).time() == time(0):
+        return _local(end) - timedelta(days=1)
+    return None
+
+
 def day_text(moment: datetime, now: datetime | None) -> str:
     """'today', 'tomorrow', or 'Sat, Oct 17', in the region's time."""
     local = _local(moment)
@@ -815,6 +830,14 @@ def when_text(zone: Zone, now: datetime | None, future: bool, possible: bool = F
         if future:
             return f"{lead}; no end time given, so it may still apply on your ride day"
         return f"{lead}; no end time given"
+    last = last_day(zone.source, end)
+    if last is not None:
+        # Whole days: a one-day closure is not "midnight to midnight".
+        if start is not None and now is not None and start > now:
+            if _local(start).date() == _local(last).date():
+                return f"{verb} {day_text(start, now)}"
+            return f"{verb} from {date_text(start)} through {date_text(last)}"
+        return f"{verb} through {date_text(last)}"
     if start is not None and _local(start).date() == _local(end).date():
         return f"{verb} {day_text(start, now)} {clock_text(start)} to {clock_text(end)}"
     if start is not None and (end - start).total_seconds() < 36 * 3600:

@@ -180,8 +180,9 @@ export function PointsSection(props: PointsSectionProps) {
         <InstallOffer idBase="tips-install" compact onSay={announce} />
       </div>
       {loop && (
-        // Shown while the box is checked (what a loop needs next); read as its description either way.
-        <p className="hint loop-hint" id={loopHintId} hidden={!loop.checked}>
+        // The box's description, said and not shown: the map's lines show the way back to the start (Stephen
+        // 2026-10-20: "it needs to be simpler, still a wall of text").
+        <p className="visually-hidden loop-hint" id={loopHintId}>
           {loop.hint}
         </p>
       )}
@@ -215,7 +216,9 @@ export function PointsSection(props: PointsSectionProps) {
         orderFocused={orderFocused}
         ordering={ordering}
       />
-      {points.length === 1 && <p className="hint">{loneStartHint(preset, loopVias, accessMode)}</p>}
+      {/* What to do after the start, said where it plans and not shown (as the empty plan's line): the Points list and
+          the map show it. In accessibility mode it shows, with its Map tools way in. */}
+      {points.length === 1 && <p className={accessMode ? "hint" : "visually-hidden"}>{loneStartHint(preset, loopVias, accessMode)}</p>}
       {usesBikeshare(preset) && (
         <p className="hint">
           Bikeshare plans, Rebalance Rides too, take a start and an end only: the stations and the walks are chosen for you, unless you choose a
@@ -337,12 +340,14 @@ function PointBoxes(props: PointBoxesProps) {
         afterPick.current = variant;
         pickPlace(place, choice);
       }}
-      // "Use my location" beside the first box a plan needs (From, then To); Add a stop has "Your location" in its list.
+      // "Use my location" beside the box a plan needs (To, or From when changing the start); Add a stop has "Your
+      // location" in its list.
       locate={{
         support: locateReady,
         busy: locating,
         note: locateNote,
-        listOnly: variant === "add",
+        // An empty plan's From: "Start at current location" is in Route's place (PlanPanel), so here it is in the list only.
+        listOnly: variant === "add" || (variant === "from" && points.length === 0),
         onLocate: (choice) => {
           setChanging(null);
           afterPick.current = variant;
@@ -357,10 +362,10 @@ function PointBoxes(props: PointBoxesProps) {
     <div id="points-search" ref={pointsSearchRef} className="points-controls plan-points">
       {showFrom && editing === null && search("from")}
       {points.length === 0 ? (
-        // Shown in accessibility mode (its Map tools way in) and for a loop (the info panel says start, then
-        // end); otherwise it is in the map's info panel (lib/mapInfo.ts, Stephen 2026-10-19), and a screen
-        // reader still hears it here, where it plans.
-        <p className={accessMode || loopVias ? "hint" : "visually-hidden"}>{searchLede(loopVias, accessMode)}</p>
+        // Shown in accessibility mode (its Map tools way in); otherwise it is in the map's info panel (lib/mapInfo.ts,
+        // Stephen 2026-10-19), and a screen reader still hears it here, where it plans. Not shown for a loop either,
+        // now that Plan starts as one (Stephen 2026-10-20: "it needs to be simpler").
+        <p className={accessMode ? "hint" : "visually-hidden"}>{searchLede(loopVias, accessMode)}</p>
       ) : (
         <PointsList
           rows={pointRows(points, names, loopVias, VIA_MARKS.isVia)}

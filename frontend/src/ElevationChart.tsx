@@ -181,7 +181,7 @@ function StressChart({ route, profile, onScrub, compact = false }: ChartProps) {
       <pattern id={`${uid}-t4`} width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(-45)">
         <rect width="1.5" height="4" fill="rgba(255,255,255,0.4)" />
       </pattern>
-      {/* Unpaved: the map's dotted mark over the brown (OWNER-DECISIONS 302). */}
+      {/* Unpaved: the map's dotted mark over the brown or the gravel grey (OWNER-DECISIONS 302). */}
       <pattern id={`${uid}-unpaved`} width="5" height="6" patternUnits="userSpaceOnUse">
         <circle cx="2.5" cy="3" r="1" fill="rgba(255,255,255,0.75)" />
       </pattern>

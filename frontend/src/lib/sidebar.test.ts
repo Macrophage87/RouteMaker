@@ -207,7 +207,8 @@ test("App puts the ride type's button first and every dial behind the Ride setti
   assert.match(app, /const loopHintId = useId\(\);/, "a generated id, not a fixed one");
   // The hint is plain visible text: a paragraph with the id the box points at, and no live region or hidden class on it.
   // Shown while the box is checked (what a loop needs next); its description either way.
-  assert.match(points, /<p className="hint loop-hint" id=\{loopHintId\} hidden=\{!loop\.checked\}>\s*\{loop\.hint\}\s*<\/p>/);
+  // The box's description, said and not shown (Stephen 2026-10-20: "it needs to be simpler").
+  assert.match(points, /<p className="visually-hidden loop-hint" id=\{loopHintId\}>\s*\{loop\.hint\}\s*<\/p>/);
   assert.match(points, /commitDials\(withLoop\(dials, event\.target\.checked\)\)/, "its change goes through the announcing commit");
   assert.match(app, /const loop = loopView\(preset, dials\.loop, points\);/);
   // The weight row moved to Settings (the owner, 2026-10-18): status only, Change opening the private dialog.
@@ -789,7 +790,7 @@ test("the Layers sheet holds the switches in the mockup's order, each section wi
   // the junctions' are in the traffic stress section, before the next section.
   assert.ok(!app.includes('id="sheet-legend"') && !app.includes("legend-button") && !app.includes("openLegend"));
   const stress = sheet.slice(sheet.indexOf('switchId="show-stress"'), sheet.indexOf("<FederalLandFor"));
-  assert.match(stress, /<StressSectionKey [^\n]*\/>[\s\S]*<JunctionLegend \/>\s*<\/LayerSection>/);
+  assert.match(stress, /<StressSectionKey [^\n]*\/>[\s\S]*<JunctionLegend \/>\s*\{\/\*[\s\S]*?\*\/\}\s*<RouteHazardKey \/>\s*<\/LayerSection>/);
   assert.match(app, /<StressLegend facilities=\{facilitiesShown\} zoom=\{zoom\} shown=\{stressVisible\} foldedZoom \/>/);
   assert.match(sheet, /\{!federalShown\(preset, true\) && <p className="hint mass-ride-layers">\{MASS_RIDE_LAYERS_NOTE\}<\/p>\}/);
   assert.equal(MASS_RIDE_LAYERS_NOTE, "Mass Ride has its own layers, such as federal land.");

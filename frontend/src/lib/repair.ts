@@ -19,6 +19,7 @@ import { detourOf, projector, type RouteForDetour } from "./food.ts";
 import { formatDistance, formatExtra, milesFigure } from "./format.ts";
 import { haversineM, type LonLat } from "./geo.ts";
 import { hexToRgb, rasterise, type Raster, type Rgb } from "./stationIcons.ts";
+import { WATER_ICON_PADDING_PX } from "./waterRestrooms.ts";
 
 export interface RepairPlace {
   /** The OSM element, "n123" or "w456". */
@@ -313,8 +314,10 @@ export function repairLayer(minzoom: number): Record<string, unknown> {
     layout: {
       "icon-image": REPAIR_ICON_ID,
       "icon-size": ["interpolate", ["linear"], ["zoom"], minzoom, 0.7, 15, 1, 18, 1.2],
-      "icon-allow-overlap": true,
-      "icon-ignore-placement": true,
+      // Thinned where crowded, as the water layer is (waterRestrooms.ts WATER_ICON_PADDING_PX).
+      "icon-allow-overlap": false,
+      "icon-padding": WATER_ICON_PADDING_PX,
+      "icon-ignore-placement": false,
     },
   };
 }

@@ -1,0 +1,6 @@
+<?xml version='1.0' encoding='utf-8'?>
+<!-- A test (debug) build sits beside the store app (".debug" id), so it is named apart. -->
+<resources>
+    <string name="app_name">RouteMaker test</string>
+    <string name="title_activity_main">RouteMaker test</string>
+</resources>
