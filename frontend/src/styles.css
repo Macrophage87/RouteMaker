@@ -7535,10 +7535,6 @@ details.fold > summary .icon {
   border-radius: 8px;
   text-align: start;
 }
-#sheet-settings .setting-row .select-setting select {
-  flex: 0 0 11rem;
-  width: 11rem;
-}
 #sheet-settings .contrast-row {
   grid-template-columns: 1fr auto;
 }
@@ -7569,6 +7565,48 @@ details.fold > summary .icon {
   margin-left: auto;
 }
 #sheet-settings .my-go-home p {
+  margin: 4px 0;
+}
+/*
+ * Settings scrolling (Stephen 2026-10-22: "still a lot of scrolling"): a row never wraps its (i) onto a line of its
+ * own. The name takes what is left and wraps inside itself; every picker is one width, so they line up,
+ * and gives way only where one long word (Announcements) needs the room on a narrow phone.
+ */
+#sheet-settings .setting-line {
+  flex-wrap: nowrap;
+}
+#sheet-settings .setting-row .select-setting .setting-name {
+  flex: 1 1 0;
+  min-width: min-content;
+}
+#sheet-settings .setting-row .select-setting select {
+  flex: 0 1 9.5rem;
+  width: 9.5rem;
+  min-width: 5.5rem;
+  text-overflow: ellipsis;
+}
+/* Home set: its name and Change on one line. */
+#sheet-settings .home-line .home-now {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+#sheet-settings .home-line button {
+  flex: 0 0 auto;
+  min-height: 44px;
+}
+#sheet-settings .my-go-home .home-cancel {
+  min-height: 44px;
+  margin-top: 8px;
+}
+#sheet-settings .about-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 20px;
+}
+#sheet-settings .about-links p {
   margin: 4px 0;
 }
 /* Kept in the page while empty: a live region that appears with its words is not always read. */
