@@ -303,7 +303,8 @@ WITH cand AS (
     CROSS JOIN LATERAL (VALUES (0, ST_StartPoint(c.geometry)), (1, ST_EndPoint(c.geometry)))
         AS e (n, p)
     JOIN {schema}.segment AS s
-      ON s.id <> c.id AND ST_DWithin(ST_Boundary(s.geometry), e.p, %(touch)s)
+      ON s.id <> c.id AND s.geometry && ST_Expand(e.p, %(touch)s)
+         AND ST_DWithin(ST_Boundary(s.geometry), e.p, %(touch)s)
          AND s.map_class = 'road' AND {drawn}
     GROUP BY c.id, e.n
 )
