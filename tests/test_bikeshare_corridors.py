@@ -390,7 +390,8 @@ class TestTidy:
 
     def test_a_short_street_between_two_bike_lanes_links_them(self, segment_schemas) -> None:
         """'basically, there should be some obvious routes to connect the bike lanes
-        together': the link takes class 1, which the city ladder draws with the lanes."""
+        together': the link is marked a join (`overview` 1), which the city ladder draws from
+        z12 ("connect the lanes across roads")."""
         _, staging = segment_schemas
         self.insert(
             staging,
@@ -407,8 +408,9 @@ class TestTidy:
             )
         stats = bc.tidy(staging)
         with connection.cursor() as cursor:
-            cursor.execute(f"SELECT osm_way_id, bike_popular FROM {staging}.segment")
-            assert dict(cursor.fetchall()) == {1: 0, 2: 1, 3: 0, 4: 0}
+            cursor.execute(f"SELECT osm_way_id, overview, bike_popular FROM {staging}.segment")
+            found = {way: (overview, popular) for way, overview, popular in cursor.fetchall()}
+        assert found == {1: (0, 0), 2: (1, 0), 3: (0, 0), 4: (0, 0)}
         assert stats["links between bike lanes"] == 1
 
     def test_a_stray_bit_drops_a_class_and_a_long_piece_stays(self, segment_schemas) -> None:

@@ -764,6 +764,24 @@ test("an on- or off-ramp waits for z14 in a city grid or not, unless it carries 
   }
 });
 
+test("the network's shape at z12-13: a join from z12 busy or not, an orphan and a dead end at z14", () => {
+  // The owner, 2026-10-23: "If it doesn't connect to anything, don't include it", "all these cul-de-sacs. They aren't
+  // useful for transportation", "connect the lanes across roads".
+  for (const layer of [...stressLayers("s"), ...stressCasingLayers("s")]) {
+    const tier = Number(layer.id.at(-1));
+    const at = (props, zoom) => paintValue(layer, "line-opacity", { tier, facility: "none", ...props }, zoom);
+    for (const dense of [true, false]) {
+      for (const zoom of [12, 13]) {
+        for (const overview of [1, 4]) assert.ok(at({ dense, overview }, zoom) > 0, `${layer.id} join ${overview} z${zoom}`);
+        assert.equal(at({ dense, overview: 2, facility: "path" }, zoom), 0, `${layer.id} orphan z${zoom}`);
+        assert.equal(at({ dense, overview: 3 }, zoom), 0, `${layer.id} dead end z${zoom}`);
+      }
+      for (const overview of [2, 3]) assert.ok(at({ dense, overview }, 14) > 0, `${layer.id} ${overview} z14`);
+    }
+    if (tier < BUSY_MIN_TIER) assert.ok(at({ dense: true, overview: 3, facility: "path" }, 12) > 0, `${layer.id} path dead end`);
+  }
+});
+
 test("the calm tiers' rails come in with their line in a city grid; at every zoom elsewhere", () => {
   for (const layer of facilityLayers("s")) {
     const facility = layer.id.split("-")[1];
