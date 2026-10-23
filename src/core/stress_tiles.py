@@ -178,8 +178,9 @@ CONTENT_TYPE = "application/vnd.mapbox-vector-tile"
 # layer (the owner, 2026-10-17: "Both from 12"). 11: a major trail's name, `trail_name`
 # (TRAIL_NAME_RULE). 12: a z12-13 feature in a city grid carries `dense` (DENSE_RULE; v0.10.2).
 # 13: the popular bike corridors' `popular`, z10-11 keep them and the long calm roads
-# (`popular_and_calm`), and a long trail's name from z10.
-FORMAT_VERSION = 13
+# (`popular_and_calm`), and a long trail's name from z10. 14: a major corridor's name,
+# `trail_name` on a way of the top popular class (POPULAR_NAMED_MIN_CLASS).
+FORMAT_VERSION = 14
 
 # Five minutes (OWNER-DECISIONS 460.6, "5 min sounds good"): an instance admin's change in
 # the road panel (core.stress_edits) is in the tiles at once, and other riders' browsers
@@ -404,7 +405,8 @@ OPTIONAL_PROPERTIES = {
     "contraflow": FACILITY_SHOWN_COLUMN,
     # The popular bike corridors (the owner, 2026-10-21: "make those streets show more
     # pronounced than other roads"): 1 to 3, or left out (`bike_popular`,
-    # `pipeline.bikeshare_corridors`). The map draws a wider band under the way for it.
+    # `pipeline.bikeshare_corridors`). The map keeps a class 2-3 street's full width in a city
+    # grid and sorts every class over its stress level's other lines.
     "popular": BIKE_POPULAR_COLUMN,
 }
 
@@ -491,10 +493,26 @@ LONG_TRAIL_COLUMNS = (TRAIL_ROUTE_COLUMN, TRAIL_RUN_COLUMN, TRAIL_BRIDGE_COLUMN)
 # long-trail columns, which the same rebuild writes `trail_name` with. The map draws it
 # along the line (frontend/src/stressStyle.js, TRAIL_LABEL). A mountain-bike trail's
 # name is `name` (MTB_NAME_COLUMN), not this.
-def trail_name_rule(has_facility: bool) -> str:
+#
+# And a major corridor's (the owner, 2026-10-23: "the trails should be lableled at this zoom"
+# ... "and the major corridors"): a way of the top popular class carries its `trail_name`
+# too, which the rebuild gives a named corridor's ways (`pipeline.major_corridors.apply`)
+# and a long calm road already has, so Q Street or the 15th Street lane is named where the
+# zoomed-out map draws it: at z10-11 only, as from z12 the base map names the street itself
+# (a second name, in the off-road paths' purple, would read as a trail). Only on a table with
+# `bike_popular`.
+POPULAR_NAMED_MIN_CLASS = 3
+
+
+def trail_name_rule(has_facility: bool, has_popular: bool = False) -> str:
+    corridor = (
+        f" WHEN s.{BIKE_POPULAR_COLUMN} >= {POPULAR_NAMED_MIN_CLASS} THEN s.{TRAIL_NAME_COLUMN}"
+        if has_popular
+        else ""
+    )
     return (
         f"CASE WHEN {trails_predicate(has_facility)} AND "
-        f"{long_trails_predicate(Z11_LONG_TRAILS)} THEN s.{TRAIL_NAME_COLUMN} END"
+        f"{long_trails_predicate(Z11_LONG_TRAILS)} THEN s.{TRAIL_NAME_COLUMN}{corridor} END"
     )
 
 
@@ -530,21 +548,21 @@ SELECT '{table}'::regclass::oid,
        (SELECT ST_AsMVT(features.*, '{layer}', %(extent)s, 'geom') FROM features)
 """
 
-# THE CITY GRID. The owner, 2026-10-21: "lts colored roads look very crowded at the nax
-# zoom they show up in urban areas, but it's needed for rural ones", then, of thinner
-# streets everywhere or only in the city: "City only, via a server flag". At z12-13 a
-# feature carries `dense` (true, else nothing) where its ways lie in a square of
-# DENSE_CELL_M a side, in EPSG:3857 metres, holding at least DENSE_ROAD_M of drawn road,
-# counted where each way starts; the map draws a plain street there thinner
-# (frontend/src/stressStyle.js, STREET_THIN_SCALE). The squares are fixed on the
-# projection's grid, and every way that starts in a square the tile touches is counted
-# (any way within DENSE_CELL_M of the tile, whatever the coverage clip), so a square reads
-# the same from each tile it is drawn in. A way starting further out than that is judged
-# by a square counted in part; the segments are split at every junction, so in a grid
-# none is that long. 12 km in a
-# kilometre square (about 15 km of road a square kilometre on the ground at DC's
-# latitude) is a downtown or rowhouse grid of 100-150 m blocks, where a suburb of loops
-# and cul-de-sacs is about half that and a rural road a tenth; tune it on the real map.
+# THE CITY GRID. The owner, 2026-10-21: "lts colored roads look very crowded at the nax zoom
+# they show up in urban areas, but it's needed for rural ones", then, of thinner streets
+# everywhere or only in the city: "City only, via a server flag". At z12-13 a feature
+# carries `dense` (true, else nothing) where its ways lie in a square of DENSE_CELL_M a
+# side, in EPSG:3857 metres, holding at least DENSE_ROAD_M of drawn road, counted where each
+# way starts; the map does not draw a plain street there at z12 and draws it thinner at z13
+# (frontend/src/stressStyle.js, STREET_HIDDEN_ZOOM, STREET_THIN_SCALE). The squares are
+# fixed on the projection's grid, and every way that starts in a square the tile touches is
+# counted (any way within DENSE_CELL_M of the tile, whatever the coverage clip), so a square
+# reads the same from each tile it is drawn in. A way starting further out than that is
+# judged by a square counted in part; the segments are split at every junction, so in a grid
+# none is that long. 12 km in a kilometre square (about 15 km of road a square kilometre on
+# the ground at DC's latitude) is a downtown or rowhouse grid of 100-150 m blocks, where a
+# suburb of loops and cul-de-sacs is about half that and a rural road a tenth; tune it on
+# the real map.
 DENSE_CELL_M = 1000
 DENSE_ROAD_M = 12_000
 DENSE_RULE = f"CASE WHEN cells.road_m >= {DENSE_ROAD_M} THEN true END"
@@ -629,7 +647,10 @@ def tile_sql(level: Level, optional: frozenset[str] = frozenset(), clip: bool = 
     # ... "Basically anything long"): a z10-11 tile's trails are the long ones, so a name
     # splits its merged features by trail and no further.
     if all(c in optional for c in LONG_TRAIL_COLUMNS):
-        carried["trail_name"] = trail_name_rule(has_facility)
+        # A corridor's name only at z10-11 (the levels that keep the popular corridors): from
+        # z12 the base map names every street itself (PR #383 review).
+        named = level.popular_min is not None and BIKE_POPULAR_COLUMN in optional
+        carried["trail_name"] = trail_name_rule(has_facility, named)
     if CALM_RUN_COLUMN in optional:
         carried["calm"] = CALM_STREET_RULE
     if level.predicate is not None:

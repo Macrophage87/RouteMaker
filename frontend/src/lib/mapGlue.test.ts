@@ -928,12 +928,11 @@ test("watchCentre: the crosshair follows the map's padded centre, until it is st
 
 // ---- A ride's focus (the owner, 2026-10-21: "A similar pass should happen when in a ride. Prioritize the path and wayfinding.") ----
 
-test("in a ride the corridor band goes and the busy roads and their rails fade further; calm ways, mountain-bike levels and the rest stay", async () => {
+test("in a ride the busy roads and their rails fade further; calm ways, mountain-bike levels and the rest stay", async () => {
   const { rideFocusFade, RIDE_BUSY_FADE } = await import("./mapGlue.ts");
-  assert.equal(rideFocusFade("popular-band", true), 0);
   for (const id of ["stress-3", "stress-casing-4", "stress-5", "stress-ring-3", "facility-path-busy", "stress-half-3"]) assert.equal(rideFocusFade(id, true), RIDE_BUSY_FADE, id);
   for (const id of ["stress-1", "stress-casing-2", "facility-path", "stress-half-2", "stress-unknown", "mtb-level-3", "mtb-level-casing-4"]) assert.equal(rideFocusFade(id, true), 1, id);
-  for (const id of ["popular-band", "stress-4", "facility-lane-busy"]) assert.equal(rideFocusFade(id, false), 1, `${id} outside a ride`);
+  for (const id of ["stress-4", "facility-lane-busy"]) assert.equal(rideFocusFade(id, false), 1, `${id} outside a ride`);
 });
 
 test("a ride's start sets the overlay's fade again with its focus, and its end puts it back", async () => {
@@ -945,12 +944,10 @@ test("a ride's start sets the overlay's fade again with its focus, and its end p
   const map = { getLayer: (id: string) => (ids.includes(id) ? {} : undefined), setPaintProperty: (id: string, _n: string, v: unknown) => void (set[id] = v) };
   try {
     setRideFocus(map as never, true, null);
-    assert.equal(set["popular-band"], 0);
     assert.deepEqual(set["stress-1"], own("stress-1"), "a calm way keeps its own opacity");
     assert.equal(JSON.stringify(set["stress-4"]).includes(String(RIDE_BUSY_FADE)), true, JSON.stringify(set["stress-4"]));
   } finally {
     setRideFocus(map as never, false, null);
   }
-  assert.equal(set["popular-band"], own("popular-band"));
   assert.deepEqual(set["stress-4"], own("stress-4"), "the busy roads back to their own");
 });

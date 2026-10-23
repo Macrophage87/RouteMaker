@@ -961,7 +961,9 @@ export function withClearRoadLabels(layers, strong = accessibilityOn()) {
  * THE MAJOR TRAILS' NAMES. The owner, 2026-10-21: "Major off road bike trails like the Metropolitan Branch Trail
  * should be named on the map." The tiles carry `trail_name` on the long trails the zoomed-out map keeps (a path on
  * a regional-or-larger bicycle route or a long walking route, or in a named run of 2.5 mi or more, 5 mi unpaved;
- * core/stress_tiles.py, trail_name_rule), so "major" is the rule the map already draws by, not a list. The name is
+ * core/stress_tiles.py, trail_name_rule), so "major" is the rule the map already draws by, not a list; and, since
+ * the owner's "and the major corridors" (2026-10-23), a way of the top popular class carries its corridor's name
+ * (Q Street, the 15th Street lane) in the same field, drawn the same way. The name is
  * drawn along the line from TRAIL_LABEL_MIN_ZOOM (zoom 10 since the owner's "label the long ones"), in the
  * street names' face, size and white halo (ROAD_LABEL; 20 px and shortened in a ride, as they are) but in the
  * purple of the off-road path's rails (FACILITIES, `path`): 10.9:1 on the halo, near-black purple (15.2:1) with the
@@ -1165,13 +1167,14 @@ function byZoom(full, faint, busy, hidden = 0, zoomedOut = null) {
   // z10 or z11, ahead of the full-width steps. Only for a line that is not a
   // busy road, which the tiles do not carry there.
   const out = zoomedOut && !busy ? zoomedOutStops(zoomedOut) : [];
-  // A plain street at z12 and z13 (STREET_THIN_SCALE): thinner, so a city grid is a mesh and not a carpet.
+  // A plain street in a city grid is not drawn at z12 (STREET_HIDDEN_ZOOM), busy or not, and is thinner at z13
+  // (STREET_THIN_SCALE), so a city grid is a mesh and not a carpet.
   const street = (zoom) => (out.length ? ["case", isPlainStreet, zoomedOut(zoom), at(zoom)] : at(zoom));
   return [
     "step",
     ["zoom"],
     ...out,
-    street(FULL_WIDTH_MIN_ZOOM),
+    ["case", isPlainStreet, hidden, at(STREET_HIDDEN_ZOOM)],
     STREET_THIN_LAST_ZOOM,
     street(STREET_THIN_LAST_ZOOM),
     SOLID_MIN_ZOOM,
@@ -1187,19 +1190,26 @@ function byZoom(full, faint, busy, hidden = 0, zoomedOut = null) {
  * THE CITY GRID AT Z12-13. The owner, 2026-10-21: "lts colored roads look very crowded at the nax zoom they show up
  * in urban areas, but it's needed for rural ones. So let's also check to make sure the map doesn't look crowded".
  * At z12 a downtown block is 2-3 px on screen, so every street at its full width (2.5-3.25 px and a 2 px casing)
- * filled the grid with colour. A plain street (no bike facility, not a trail, paved, open to cars) is drawn
- * thinner at z12 and z13, `line` and `casing` scaling its line and its casing's extra; a bike lane, a path, a trail,
+ * filled the grid with colour. A plain street (no bike facility, not a trail, paved, open to cars) is not drawn at
+ * z12 (STREET_HIDDEN_ZOOM) and is drawn thinner at z13, `line` and `casing` scaling its line and its casing's extra; a bike lane, a path, a trail,
  * an unpaved road and a car-free street keep their widths, so they stand out of the grid as the ways a rider
- * looks for. Only a street the tiles mark `dense` (a city grid) is thinned; a rural road keeps its full width, as
+ * looks for. Only a street the tiles mark `dense` (a city grid) is hidden or thinned; a rural road keeps its full width, as
  * does every street in a tile drawn before the server marked them.
  * The busy roads are faint there already (FAINT). From SOLID_MIN_ZOOM (14) every line is its full width. The
- * casing's dark edge thins with the line (half a pixel a side at z12), which is what lifts the grid's dark mesh;
+ * casing's dark edge thins with the line (three quarters of a pixel a side at z13), which is what lifts the grid's dark mesh;
  * with the accessibility switch on it stays a full pixel a side, as on the zoomed-out trails (ZOOMED_OUT_MIN_PX).
  */
 export const STREET_THIN_SCALE = {
-  [FULL_WIDTH_MIN_ZOOM]: { line: 0.4, casing: 0.5 },
   13: { line: 0.6, casing: 0.75 },
 };
+/**
+ * The owner, 2026-10-23, of the city at z11 (only the trails, the bike lanes and the popular corridors drawn): "This
+ * one looks pretty nice ... Sorta keep going a zoom level or so". So at z12 a plain street in a city grid (isPlainStreet:
+ * no bike facility, not a trail, not a popular corridor, the tiles' `dense`) is not drawn at all, busy or not; the base
+ * map still draws it, and a rural road keeps its line. From z13 it is drawn thin (STREET_THIN_SCALE), from
+ * SOLID_MIN_ZOOM (14) at its full width.
+ */
+export const STREET_HIDDEN_ZOOM = FULL_WIDTH_MIN_ZOOM;
 const STREET_THIN_LAST_ZOOM = 13;
 const isPlainStreet = [
   "all",
@@ -1213,12 +1223,15 @@ const isPlainStreet = [
   ["!", ["has", "car_free"]],
   ["!", ["has", "car_free_only"]],
   ["!=", ["get", "alley"], true],
+  // A popular corridor keeps its full width (POPULAR_PRIORITY_MIN_CLASS; the owner, 2026-10-23: "just prioritize
+  // those streets in view").
+  ["<", ["to-number", ["get", "popular"], 0], 2],
 ];
 
-/** A zoom's scale: ZOOMED_OUT_SCALE at z10 and z11, STREET_THIN_SCALE (plain streets only) at z12 and z13. */
+/** A zoom's scale: ZOOMED_OUT_SCALE at z10 and z11, STREET_THIN_SCALE (plain streets only) at z13. */
 const scaleAt = (zoom) => ZOOMED_OUT_SCALE[zoom] ?? STREET_THIN_SCALE[zoom];
 
-/** The line width a tier is drawn at, z10 or z11 (ZOOMED_OUT_SCALE), or a plain street's at z12 or z13 (STREET_THIN_SCALE). */
+/** The line width a tier is drawn at, z10 or z11 (ZOOMED_OUT_SCALE), or a plain street's at z13 (STREET_THIN_SCALE). */
 export function zoomedOutLine(tier, zoom) {
   return tier.width * scaleAt(zoom).line;
 }
@@ -1572,8 +1585,6 @@ function stressFiltersOf(when, showHighLanes, routableMtb) {
   // The major trails' names (2026-10-21): every way that carries one (never a mountain-bike trail, which the
   // tiles name as `name`; the cut is the routable layers' all the same).
   filters[TRAIL_LABEL_LAYER_ID] = ["all", drawnAt(when), ...hidden, ["has", "trail_name"]];
-  // The popular corridors' band (2026-10-21): every routable way with a class.
-  filters[POPULAR_BAND_LAYER_ID] = ["all", drawnAt(when), ...hidden, [">", ["to-number", ["get", "popular"], 0], 0]];
   for (const tier of TIER_SHAPES) {
     const filter = ["all", drawnAt(when), ...hidden, ["==", tierAt(when), tier.tier]];
     // LTS 1's line and edge leave the surface-unknown trails to their own layers.
@@ -1652,47 +1663,16 @@ function tierGroup(layers, calm = false) {
 
 /**
  * THE POPULAR BIKE CORRIDORS (the owner, 2026-10-21: "use the Cabi heatmap if you can, and make those
- * streets show more pronounced than other roads"; "Let's focus on the major cycling corridors, which are
- * well known"). The tiles' `popular`, 1 to 3 (core/stress_tiles.py: the Capital Bikeshare model and the
- * owner's named corridors), is drawn as a soft band under everything else of the overlay, wider for the
- * busier class, so a corridor reads at a glance while its line keeps its own stress colour and facility
- * rails on top. A band, not a colour: it changes no tier's look, and the stress line inside it still says
- * what riding there is like. Width in px by zoom, for each class; `opacity` keeps the base map legible.
+ * streets show more pronounced than other roads"). The tiles' `popular`, 1 to 3 (core/stress_tiles.py: the
+ * Capital Bikeshare model and the owner's named corridors), draws no layer of its own: a band under them made
+ * the map look busy (the owner, 2026-10-23: "The blue just makes things look busy / just prioritize those
+ * streets in view"). Instead a street of class POPULAR_PRIORITY_MIN_CLASS or more keeps its full width in a
+ * city grid at z12-13 where plain streets hide or thin (STREET_HIDDEN_ZOOM, STREET_THIN_SCALE), keeps its rails there on a busy road
+ * (`facilityLayers`), and sorts over the lines of its tier (`drawPriority`). Class 1 covers most of downtown,
+ * so it only sorts.
  */
-export const POPULAR_BAND_LAYER_ID = "popular-band";
-export const POPULAR_BAND = {
-  // Cyan: a hue no tier, rail or trail colour uses in any palette (the tiers' greens, yellows, oranges and
-  // reds, the cvd palette's blues are darker, the rails' purple and magenta), so a band never reads as a
-  // wider busy road. Stronger with the accessibility switch.
-  color: "#06b6d4",
-  opacity: 0.3,
-  strongOpacity: 0.5,
-  // [zoom, [class 1, class 2, class 3]]
-  widths: [
-    [10, [0, 6, 8]],
-    [12, [8, 11, 14]],
-    [16, [14, 20, 26]],
-  ],
-};
-
-export function popularBandLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = currentTiers()) {
-  const byClass = (widths) => ["match", ["to-number", ["get", "popular"], 0], 1, widths[0], 2, widths[1], 3, widths[2], 0];
-  return [
-    {
-      id: POPULAR_BAND_LAYER_ID,
-      type: "line",
-      source: sourceId,
-      "source-layer": STRESS_TILE_LAYER,
-      filter: stressFilters(when)[POPULAR_BAND_LAYER_ID],
-      layout: { "line-cap": "round", "line-join": "round" },
-      paint: {
-        "line-color": POPULAR_BAND.color,
-        "line-opacity": tiers[0]?.strong ? POPULAR_BAND.strongOpacity : POPULAR_BAND.opacity,
-        "line-width": ["interpolate", ["linear"], ["zoom"], ...POPULAR_BAND.widths.flatMap(([zoom, widths]) => [zoom, byClass(widths)])],
-      },
-    },
-  ];
-}
+export const POPULAR_PRIORITY_MIN_CLASS = 2;
+const popularClass = ["to-number", ["get", "popular"], 0];
 
 export function stressLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = currentTiers()) {
   const filters = stressFilters(when);
@@ -2226,7 +2206,7 @@ export function facilityLayers(sourceId = "stress", when = DEFAULT_WHEN, showHig
     // declutter certain views"). A rural road keeps them ("this is the same exact zoom in a rural area. Here
     // it looks fine"): only a feature the tiles mark `dense` (v0.10.2's city grid) is thinned.
     if (busy) {
-      const shownEarly = ["any", [">", ["to-number", ["get", "popular"], 0], 0], ["!=", ["get", "dense"], true]];
+      const shownEarly = ["any", [">=", popularClass, POPULAR_PRIORITY_MIN_CLASS], ["!=", ["get", "dense"], true]];
       paint["line-opacity"] = ["step", ["zoom"], ["case", shownEarly, 1, 0], BUSY_RAILS_MIN_ZOOM, 1];
     }
     return {
@@ -2249,8 +2229,6 @@ export function facilityLayers(sourceId = "stress", when = DEFAULT_WHEN, showHig
  */
 export function stressOverlayLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = currentTiers()) {
   return [
-    // The popular corridors' band (2026-10-21), under every line.
-    ...popularBandLayers(sourceId, when, tiers),
     // The mountain-bike trails' layer (452a, 454, 456), under every routable layer.
     ...mtbTrailLayers(sourceId, when),
     // The drawing priority (2026-10-21, `drawPriority`): the busy roads (LTS 3, LTS 4, Avoid) whole, rails, casings,

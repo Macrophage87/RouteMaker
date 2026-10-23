@@ -223,7 +223,13 @@ class TestMajorCorridors:
             {5: "15th Street Northwest protected bike lane"},
             corridors,
         )
-        assert ids == frozenset({1, 3, 5, 7})
+        assert ids == {
+            1: "Capital Crescent Trail",
+            3: "Q Street Northwest",
+            # Named by the street it runs beside, so the map can label it.
+            5: "15th Street Northwest",
+            7: "Washington & Old Dominion Railroad Trail",
+        }
         assert counts["capital-crescent-trail"] == 1
 
     def test_a_corridor_matching_nothing_is_warned_about(self, caplog) -> None:
@@ -249,6 +255,20 @@ class TestDerive:
             cursor.execute(f"SELECT osm_way_id, bike_trips, bike_popular FROM {schema}.segment")
             return {way: (trips, level) for way, trips, level in cursor.fetchall()}
 
+    def test_a_named_corridor_is_named_for_the_map_unless_it_has_a_name(
+        self, segment_schemas
+    ) -> None:
+        """The owner, 2026-10-23: "the trails should be lableled at this zoom" ... "and the
+        major corridors". A calm road's or a long trail's own `trail_name` stands."""
+        _, staging = segment_schemas
+        self.insert(staging, [(1, ((0, 0), (1, 0)), 2), (2, ((1, 0), (2, 0)), 2)])
+        with connection.cursor() as cursor:
+            cursor.execute(f"UPDATE {staging}.segment SET trail_name = 'Own' WHERE osm_way_id = 2")
+        assert mc.apply(staging, {1: "Q Street Northwest", 2: "Q Street Northwest"}) == 2
+        with connection.cursor() as cursor:
+            cursor.execute(f"SELECT osm_way_id, trail_name FROM {staging}.segment ORDER BY 1")
+            assert cursor.fetchall() == [(1, "Q Street Northwest"), (2, "Own")]
+
     def test_the_rows_on_the_way_take_the_trips_and_a_named_corridor_keeps_its_class(
         self, segment_schemas, tmp_path
     ) -> None:
@@ -258,7 +278,7 @@ class TestDerive:
             [(1, ((0, 0), (1, 0)), 2), (2, ((1, 0), (2, 0)), 2), (3, ((2, 0), (2, 1)), 2),
              (4, ((5, 5), (6, 5)), 2)],
         )  # fmt: skip
-        assert mc.apply(staging, frozenset({2})) == 1
+        assert mc.apply(staging, {2: "Q Street Northwest"}) == 1
         (tmp_path / bc.FILE_NAME).write_text(
             json.dumps(
                 {
