@@ -1246,7 +1246,10 @@ const isSpur = ["==", overview, 3];
 export function cityShown(zoom, busy = false) {
   const popular = [">=", ["to-number", ["get", "popular"], 0], POPULAR_PRIORITY_MIN_CLASS];
   const ladder = busy ? popular : zoom >= CITY_LADDER.lane ? ["any", cityMajor, cityLane] : cityMajor;
-  return ["all", ["!", isOrphan], ["any", isJoin, ladder, ["all", outsideLadder, ["!", isSpur]]]];
+  // A dead end shows early only for a bike way of its own: a cul-de-sac in a long calm network is `calm` too.
+  const shown = ["any", ladder, outsideLadder];
+  const spur = ["all", ["!=", ["get", "calm"], true], ladder];
+  return ["all", ["!", isOrphan], ["any", isJoin, ["case", isSpur, spur, shown]]];
 }
 
 /** The ladder as a line's opacity below z14: 1 where `cityShown`, else 0. */
