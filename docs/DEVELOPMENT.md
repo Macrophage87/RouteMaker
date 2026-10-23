@@ -2602,7 +2602,15 @@ never one that is busier than the router's own route ("Traffic wins", OWNER-DECI
 cent and 50 m more LTS 3, 4 and Avoid exposure (`EXPOSURE_TOLERANCE`,
 `EXPOSURE_SLACK_M`) is not taken however many crossings it avoids (measured on
 the live router, before the guard: Rockville to Silver Spring at the old top of the
-slider traded 1.6 mi more LTS 3-4 for fewer crossings). It stops after two rounds that do not improve it, when no route is left (every way
+slider traded 1.6 mi more LTS 3-4 for fewer crossings). The guard counts the red
+junctions' cost (`Analysis.red_m`, quiet metres) as exposure on both sides, one for
+one, as it counts an Avoid-rated junction's penalty (2026-10-23, the owner of an
+unsignalised crossing of Connecticut Ave at Decatur Ave at rush hour: "essentially
+impassable"): on beta the search had excluded both red crossings there and the router
+found the way by the Plyers Mill Rd signal, 0.3 mi (0.5 km) longer with 0.2 mi
+(0.3 km) more LTS 3 and no red junction, which the guard refused for its LTS 3 alone.
+A metre of a red junction's cost is a metre of LTS 3 and half a metre of LTS 4
+(weight 2), so one 4,500 ft red crossing still never buys a kilometre of LTS 4. It stops after two rounds that do not improve it, when no route is left (every way
 out excluded: asked again once with only the LTS 4 stretches), when a round
 cannot be started with five seconds left, and never excludes within 500 m of the
 route's ends or of a via point (a trailhead's only way out is often the one busy
