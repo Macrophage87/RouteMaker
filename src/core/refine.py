@@ -1162,8 +1162,13 @@ def _exclusion(lon: float, lat: float, ctx: Context, radius: int | None = None) 
 
 
 def crossing_targets(analysis: Analysis, ctx: Context) -> list[Target]:
-    """The Avoid-rated junctions the route passes, then the approaches to the worst
-    junctions."""
+    """The Avoid-rated junctions the route passes, then the worst junctions themselves:
+    each junction's point with `avoid_junctions.MATCH_RADIUS_M`, so every edge there goes,
+    as for an Avoid-rated one. An exclusion on the edge the route arrived by alone (its
+    `Event.approach`) only made the router come at the same crossing another way (the
+    2026-10-23 check of PR #409 at rush hour: an unsignalised Connecticut Avenue crossing
+    in Chevy Chase came back 146 m longer through the same junction, and a Georgia Avenue
+    one in Wheaton came back unchanged)."""
     avoid = avoid_targets(analysis, ctx)
     if ctx.group or not analysis.events:
         return avoid
@@ -1174,7 +1179,7 @@ def crossing_targets(analysis: Analysis, ctx: Context) -> list[Target]:
     return (
         avoid
         + [
-            Target(e.approach, 4)
+            Target((e.lon, e.lat), 4, int(avoid_model.MATCH_RADIUS_M))
             for e in worst
             if _clear_of_ends(e.m, analysis.length_m, analysis.via_m)
         ][:CROSSING_POINTS_PER_ROUND]

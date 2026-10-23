@@ -64,7 +64,7 @@ def analysis(
 def event(m: float, cost_ft: float = 3300.0, approach=None) -> Event:
     return Event(
         m=m,
-        lon=BASE[0],
+        lon=BASE[0] + m * 1e-5,
         lat=BASE[1],
         kind="crossing",
         movement=Movement.STRAIGHT,
@@ -197,7 +197,7 @@ class TestJunctionDelay:
 
 
 class TestCrossingAvoidance:
-    def test_the_worst_crossings_approaches_are_excluded_and_a_better_route_kept(
+    def test_the_worst_crossings_are_excluded_and_a_better_route_kept(
         self, monkeypatch
     ) -> None:
         original = analysis(
@@ -211,7 +211,10 @@ class TestCrossingAvoidance:
         # The two red events (3,100 ft and up since 2026-10-10; 2,900 from 468, 2,000
         # before); an orange one is not worth a second route.
         assert len(world.requests[0]["exclude_locations"]) == 2
-        assert world.excluded(0)[0] == pytest.approx((BASE[0] + 1500.0 * 1e-5, BASE[1] + 1e-5))
+        # Each the junction itself, every edge at it (PR #409's check: excluding the edge the
+        # route arrived by brought it back through the same crossing another way).
+        assert world.excluded(0)[0] == pytest.approx((BASE[0] + 1500.0 * 1e-5, BASE[1]))
+        assert world.requests[0]["exclude_locations"][0]["radius"] == 15
         assert "alternates" not in world.requests[0], "one route, not alternatives"
         assert world.requests[0]["elevation_interval"] == 30
         assert info["extra_distance_m"] == 0.0 or info["extra_distance_m"] == pytest.approx(0.0)
