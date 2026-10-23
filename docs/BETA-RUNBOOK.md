@@ -259,6 +259,7 @@ database initialised with the old one. The required values and what is optional:
 | `NPS_API_KEY` | no | v0.7.0 National Park Service closure alerts, read by the **worker** (`refresh_dc_closures`). The owner pastes it himself; then `beta-compose.sh up -d worker`. Empty: the NPS feed is skipped, the DC feeds still run. Allow outbound `developer.nps.gov` from the worker, beside the DC closure hosts below. |
 | `GARMIN_CLIENT_ID`, `GARMIN_CLIENT_SECRET`, `GARMIN_REDIRECT_URI` | no | Garmin Connect (`core/garmin.py`): the Connect Developer Program app's client id and secret from Garmin's developer portal, and `https://beta.example.org/auth/garmin/callback`, which must match the portal's redirect exactly. Empty: Settings offers no Garmin connection. The host must reach `diauth.garmin.com` and `apis.garmin.com` (443). In the portal, point the deregistration notice at `https://beta.example.org/garmin/deregistrations`. Then `beta-compose.sh up -d api`. |
 | `PRIVACY_CONTACT` | no | The privacy policy's contact (`/privacy`, `core/privacy_policy.py`): an e-mail address or a web address, read by the api. Empty: the page says to ask the site's owner on Discord. The owner fills it in; then `beta-compose.sh up -d api`. |
+| `PRIVACY_HOSTING` | no | Who hosts the server, named in the privacy policy's "Where your data is kept" (Garmin's developer program asks for every party that stores riders' data), for example `Amazon Web Services (AWS)`. Empty: the page says the owner runs it at home or with a hosting company, which is vaguer than Garmin wants, so set it on beta. Not in `env.beta.template` (a template change holds the release agent): add the line to `.env` by hand, then `beta-compose.sh up -d api`. |
 | `SUGGEST_SIGNED_OUT_MIN_AGREE` | no | `1` (the default): every signed-out LTS suggestion shows in the review list. Raise it (e.g. `2`) once volume grows, so a road's signed-out sends show only when that many agree; then `beta-compose.sh up -d api`. |
 | VDOT token | no | this release has no such variable; there is nothing to set |
 
@@ -698,6 +699,14 @@ a password. Every response carries `X-Robots-Tag: noindex, nofollow`. `/api` has
 (a plan takes up to 47 seconds). JSON and vector tiles are gzipped. The base map answers only this
 site's own pages.
 
+**No site password (the owner's call, 2026-10-22).** The beta has been open since then, so what
+this runbook says about the password (step 9's `make-htpasswd.sh`, `/healthz` asking for it, step
+10's 401 checks) is for a gated beta only: add
+`--no-password` to the stage-full render above (it leaves out the gate's `auth_basic` lines and the
+sign-in page; robots.txt and noindex stay), expect 200 instead of 401 from the curl check, and run
+the smoke test below with `--open` in place of `--passwords-file ...`. Without `--no-password`, a
+re-render (a release that changes the template, say) puts the password back.
+
 ## 10. Smoke test through nginx
 
 ```sh
@@ -1020,7 +1029,7 @@ live within about 10 minutes, and nothing after it checks what a screen reader h
   landmarks, the headings, the beta notice and its Beta chip), update the handout in
   the same release and send it to the testers again once the release is deployed.
 - The release that brings this agent (wip/beta-cd) also adds a paragraph about updates to the
-  handout's section 8 (what testers hear during a deploy, and how long to wait): resend the
+  handout's section 4 (what testers hear during a deploy, and how long to wait): resend the
   handout to the testers once it is deployed, adding the update hours if `RM_CD_WINDOW` is set
   (the sender's notes at its top say how).
 
@@ -1105,7 +1114,7 @@ A tag is never moved or reused: a fix is the next patch number. The agent's scri
    still serves the page, so testers see it open, but planning a route says "Router unavailable",
    place search and the road information say they are "not available right now", and Sign in
    shows the "Back soon" page (`deploy/beta/502.html`; nginx's bare "502 Bad Gateway" on a site
-   file rendered before that page existed, or with `--no-401-page`). The handout's section 8 tells
+   file rendered before that page existed, or with `--no-401-page`). The handout's section 4 tells
    testers to wait about 20 minutes. Set `RM_CD_WINDOW` to quiet hours. Then: snapshot the
    database (`receive-data.sh --backups-dir "$RM_STATE/cd/backups" snapshot-db`:
    `pg_dump` through `beta-compose.sh exec -T postgis`, into a directory of the user's own, so no

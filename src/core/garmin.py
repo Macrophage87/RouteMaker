@@ -57,10 +57,10 @@ class NotConnected(GarminError):
     """The account has no live Garmin connection (none, or Garmin refused its refresh token)."""
 
 
-# Whether Settings offers Connect. The course send is wired in (core.garmin_courses), but the
-# privacy page still says the connection is not offered: it is turned on with that page's update,
-# once v0.11.1's page is in this release. Until then the sign-in and the send work for testing.
-COURSES_WIRED = False
+# Whether Settings offers Connect: on since the course send (core.garmin_courses) and the privacy
+# page's Garmin section (core.privacy_policy) both shipped. Off, the sign-in and the send still
+# work, for testing, but no rider is offered them.
+COURSES_WIRED = True
 
 
 def offered() -> bool:

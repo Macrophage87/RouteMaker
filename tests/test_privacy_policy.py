@@ -44,9 +44,10 @@ class TestPage:
         headings = re.findall(r"<h2>([^<]+)</h2>", body)
         assert headings == [escape(h) for h, _ in privacy_policy.SECTIONS]
         needed = ["Your location", "Group and Mass Ride sharing", "If you sign in with Discord",
-                  "Shared links", "Suggestions and reports", "Who else is contacted",
-                  "Cookies and your device", "Server logs", "How long data is kept",
-                  "Deleting your account", "Contact"]  # fmt: skip
+                  "If you connect Garmin", "Shared links", "Suggestions and reports",
+                  "Who else is contacted", "Cookies and your device", "Server logs",
+                  "Where your data is kept", "How long data is kept", "Deleting your account",
+                  "Contact"]  # fmt: skip
         assert [h for h in headings if h in needed] == needed
 
     def test_it_is_the_same_signed_in(self, client) -> None:
@@ -92,6 +93,46 @@ class TestPage:
     def test_a_configured_contact_is_escaped(self, client) -> None:
         _, body, _ = get(client)
         assert "<script>" not in body and "&lt;script&gt;" in body
+
+    @override_settings(PRIVACY_HOSTING="")
+    def test_unset_hosting_says_the_owner_runs_it(self, client) -> None:
+        _, body, _ = get(client)
+        hosted = body[body.index("<h2>Where your data is kept</h2>") :]
+        hosted = hosted[: hosted.index("<h2>", 4)]
+        assert escape(privacy_policy.HOSTING) in hosted
+        assert escape(privacy_policy.HOSTING_LEAD) not in body
+
+    @override_settings(PRIVACY_HOSTING="Amazon Web Services (AWS)")
+    def test_a_configured_host_is_named(self, client) -> None:
+        _, body, _ = get(client)
+        named = escape(
+            privacy_policy.HOSTING_LEAD + "Amazon Web Services (AWS)" + privacy_policy.HOSTING_TAIL
+        )
+        assert named in body and escape(privacy_policy.HOSTING) not in body
+
+    @override_settings(PRIVACY_HOSTING='<b onclick="x">Host</b>')
+    def test_a_configured_host_is_escaped(self, client) -> None:
+        _, body, _ = get(client)
+        assert "<b onclick" not in body and "&lt;b onclick=" in body
+
+    def test_garmin_s_requirements_are_answered(self, client) -> None:
+        """Garmin's developer program asks the policy to say how Garmin data is used, who stores
+        it, that it is not sold, whether AI touches it, and how to delete it or withdraw."""
+        _, body, _ = get(client)
+        garmin = body[body.index("<h2>If you connect Garmin</h2>") :]
+        garmin = garmin[: garmin.index("<h2>", 4)]
+        text = re.sub(r"<[^>]+>", " ", garmin).replace("&#x27;", "'").replace("’", "'")
+        for claim in (
+            "your choice, in Settings",
+            "encrypted",
+            "only to send the courses you choose",
+            "never reads your activities, health data",
+            privacy_policy.GARMIN_NO_AI,
+            "deletes the token and tells Garmin",
+            "Deleting your account does the same",
+            "nothing else to see, correct or export",
+        ):
+            assert claim in text, claim
 
     @override_settings(PRIVACY_CONTACT="")
     def test_the_claims_the_code_backs(self, client) -> None:

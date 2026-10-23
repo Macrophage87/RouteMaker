@@ -27,6 +27,12 @@ comes from:
   'self'`), core.street_photo, core.gbfs, core.wmata_live, core.closure_sources, core.dc311.
 - Logs, limits and backups: docker/api-entrypoint.sh (the access log's format), core.ratelimit,
   config.procrastinate (BACKUP_KEEP, BACKUP_EXCLUDED_TABLES); sessions: core.revocation.
+- Garmin: core.garmin (the encrypted token, offered only with core.garmin.COURSES_WIRED),
+  core.garmin_views (connect, Disconnect, Garmin's deregistration notice), core.garmin_courses
+  (the course sent, and GarminLink.courses, which course each saved route was sent as). Garmin's
+  developer program reviews this page before an app may connect riders.
+- Hosting: settings.PRIVACY_HOSTING, the deployment's own (Garmin asks that every party storing
+  riders' data be named).
 
 Change the page when the code changes what it collects. It names no host: every address is a path
 on the site itself.
@@ -44,11 +50,19 @@ from . import account_deletion
 PATH = account_deletion.PRIVACY_PATH
 TITLE = "RouteMaker privacy policy"
 # Change with the text: the date a rider reads as when this page last said something new.
-LAST_UPDATED = ("2026-10-21", "October 21, 2026")
+LAST_UPDATED = ("2026-10-23", "October 23, 2026")
 # Unless the deployment sets PRIVACY_CONTACT (an e-mail address or a web address).
 CONTACT = "Questions, or a request about your data: ask the site's owner on Discord."
 CONTACT_LEAD = "Questions, or a request about your data: "
 NO_ADS = "No ads, no analytics, no tracking, and nothing about you is sold or shared for marketing."
+# Unless the deployment sets PRIVACY_HOSTING (the hosting provider's name).
+HOSTING = (
+    "The site's owner runs the server and its database, at home or with a hosting company, which "
+    "stores the data only to run the site."
+)
+HOSTING_LEAD = "The server and its database run at "
+HOSTING_TAIL = ", which stores the data only to run the site. No other company stores your data."
+GARMIN_NO_AI = "Nothing from Garmin is sold, shared, given to AI services, or used to train AI."
 WHERE_YOU_ARE = (
     "Your location is used on your phone or computer to plan and guide your ride. The server "
     "keeps no record of where you are, only places you choose to save or share (Home, saved and "
@@ -170,6 +184,29 @@ SECTIONS: list[tuple[str, str]] = [
         ),
     ),
     (
+        "If you connect Garmin",
+        _p("Connecting a Garmin account is your choice, in Settings. It works like this:")
+        + _ul(
+            [
+                "Send to Garmin then adds the course to your Garmin Connect account directly, "
+                "without opening the Garmin Connect app.",
+                "RouteMaker keeps only Garmin’s sign-in token for your account, encrypted, "
+                "your Garmin account number, which Garmin course each saved route was sent as (so "
+                "sending it again updates that course), and when you connected and last sent a "
+                "course. It uses them only to send the courses you choose.",
+                "Other than your account number, it never reads your activities, health data or "
+                "anything else from Garmin.",
+                GARMIN_NO_AI,
+                "Settings shows whether you are connected. Disconnect there at any time: "
+                "RouteMaker deletes the token and tells Garmin. Deleting your account does the "
+                "same. Disconnect in Garmin Connect instead, and RouteMaker deletes it when Garmin "
+                "says so.",
+                "That connection is all RouteMaker keeps from Garmin, so there is nothing else to "
+                "see, correct or export. To fix it, disconnect and connect again.",
+            ]
+        ),
+    ),
+    (
         "Shared links",
         _ul(
             [
@@ -211,8 +248,9 @@ SECTIONS: list[tuple[str, str]] = [
         _p(
             "Your browser and the app talk only to this site: the map, place search and routing "
             "run on the site’s own servers. The exceptions are Discord’s pages when you "
-            "sign in, links you choose to open, such as a street photo on Mapillary or a 311 "
-            "website, and a course you send to Garmin Connect."
+            "sign in, Garmin’s pages when you connect Garmin, links you choose to open, such "
+            "as a street photo on Mapillary or a 311 website, and a course file you hand to "
+            "Garmin Connect."
         )
         + _p("The site’s server contacts, with nothing about you:")
         + _ul(
@@ -224,6 +262,15 @@ SECTIONS: list[tuple[str, str]] = [
                 "The National Park Service and DC’s road-closure notices, for closures.",
                 "DC 311, as above.",
                 "Discord, to finish your sign-in and for the bot.",
+            ]
+        )
+        + _p("Where you connect Garmin, the server also contacts Garmin:")
+        + _ul(
+            [
+                "Your Garmin sign-in token: to finish connecting, to keep you connected, and to "
+                "end the connection when you disconnect.",
+                "A course you choose to send: the route’s line with its heights, its name, "
+                "distance, climb and descent, and the kind of ride.",
             ]
         )
         + _p(
@@ -261,6 +308,8 @@ SECTIONS: list[tuple[str, str]] = [
             ]
         ),
     ),
+    # The hosting provider is the deployment's (`hosting`), filled in at request time.
+    ("Where your data is kept", ""),
     (
         "How long data is kept",
         _ul(
@@ -270,8 +319,8 @@ SECTIONS: list[tuple[str, str]] = [
                 "about a ride is kept longer.",
                 "Shared links: as above.",
                 "Database backups: one a night, the last seven kept, so deleted data can stay in "
-                "them for up to a week. Sign-ins, request limits and the Discord role list are "
-                "left out of them.",
+                "them for up to a week. Sign-ins, request limits, the Discord role list and Garmin "
+                "connections are left out of them.",
                 "Suggestions already decided stay as the map’s history, with nothing linking "
                 "them to you once your account is deleted.",
                 "A note that an account was deleted, and when, under an account number.",
@@ -304,9 +353,22 @@ def contact() -> str:
     return f"<p>{escape(CONTACT_LEAD)}{shown}.</p>"
 
 
+def hosting() -> str:
+    """The Where your data is kept section: settings.PRIVACY_HOSTING named as the host, or, unset,
+    the owner-run wording."""
+    value = (getattr(settings, "PRIVACY_HOSTING", "") or "").strip()
+    if not value:
+        return _p(HOSTING)
+    return _p(f"{HOSTING_LEAD}{value}{HOSTING_TAIL}")
+
+
+# The sections whose text is the deployment's, made at request time.
+FILLED = {"Contact": contact, "Where your data is kept": hosting}
+
+
 def body() -> str:
     return SUMMARY + "".join(
-        f"<h2>{escape(h)}</h2>{contact() if h == 'Contact' else content}" for h, content in SECTIONS
+        f"<h2>{escape(h)}</h2>{FILLED[h]() if h in FILLED else content}" for h, content in SECTIONS
     )
 
 

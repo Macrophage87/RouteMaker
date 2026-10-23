@@ -918,6 +918,23 @@ def test_a_rerun_after_a_stop_uploads_only_what_is_left(osm, tmp_path, capsys):
     assert (tmp_path / "n203.uploaded.json").exists()
 
 
+def test_a_rerun_with_the_same_glob_skips_the_result_files(osm, tmp_path, capsys):
+    osm.refuse = {"node/203"}
+    _together(tmp_path)
+    assert (
+        osm_edit.main(
+            ["upload", *map(str, sorted(tmp_path.glob("n*.json"))), "--approved", "--one-changeset"]
+        )
+        == 3
+    )
+    osm.refuse = set()
+    capsys.readouterr()
+    again = [str(p) for p in sorted(tmp_path.glob("n*.json"))]
+    assert any(p.endswith(".uploaded.json") for p in again)
+    assert osm_edit.main(["upload", *again, "--approved", "--one-changeset"]) == 0
+    assert (tmp_path / "n203.uploaded.json").exists()
+
+
 def test_an_interruption_mid_set_still_records_what_went_in(osm, tmp_path, monkeypatch):
     real = osm_edit._put_change
     calls = []

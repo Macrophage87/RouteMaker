@@ -106,7 +106,7 @@ export function PlanPanel(props: PlanPanelProps) {
               type="button"
               className="route-button start-here"
               aria-disabled={locate.unavailable !== null || locate.busy || undefined}
-              aria-describedby={locate.unavailable ? routeWhy : locate.busy ? busyId : undefined}
+              aria-describedby={`${locate.unavailable ? `${routeWhy} ` : locate.busy ? `${busyId} ` : ""}${planId}`}
               onClick={() => {
                 if (locate.unavailable === null) locate.onLocate();
               }}
