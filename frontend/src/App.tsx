@@ -31,6 +31,7 @@ import { choose as chooseRideType } from "./lib/rideTypeDialog.ts";
 import {
   NOVICE_TRANSIT_CHOICES,
   noviceOfferShown,
+  noviceHopOf,
   noviceTransitDials,
   noviceTransitSaid,
   noviceTripOf,
@@ -64,7 +65,7 @@ import { BetaChip, betaReportUrl, isBetaBuild } from "./lib/betaBanner.ts";
 import { MtbMapKey } from "./lib/stressLegend.ts";
 import { useHideBusyClimbs, useTrailClimbs } from "./lib/climbsLegend.ts";
 import { announceHow, candidateRoute, candidateRows } from "./lib/candidates.ts";
-import { canReverse, loopStops, loopView, reversedPoints } from "./lib/loop.ts";
+import { canReverse, LOOP_ENDED_BY_SEARCH, loopStops, loopView, planStartDials, reversedPoints, withLoop } from "./lib/loop.ts";
 import { FINDING_ORDER_SAID, STILL_FINDING_ORDER_SAID, applyAnswer, requestStopOrder, stopsThatMove } from "./lib/stopOrder.ts";
 import {
   VIA_MARKS,
@@ -86,7 +87,7 @@ import {
   viaIndices,
   viaPointsNamed,
 } from "./lib/pointKinds.ts";
-import { MANUAL_BADGE } from "./lib/planLegs.ts";
+import { MANUAL_BADGE, planLegEdit } from "./lib/planLegs.ts";
 import { insertedSaid, loopChangeSaid,reversedSaid, reverseUnavailableHint, stationSaid } from "./lib/pointText.ts";
 import { avoidNearSpot, shownRoute } from "./lib/avoidJunctions.ts";
 import { shownNear } from "./lib/junctionSuggest.ts";
@@ -340,6 +341,8 @@ const SHARED_WAIT: Promise<void> | null = SHARED_ID
 /** The points notice for a point outside the map, from a click, a station, or the rider's location. */
 /** During a ride the map takes no edits and shows no plan pins (plan Q2: the plan stays as started). */
 const NO_POINTS: LonLat[] = [];
+/** A loop's plan lines: none drawn by hand (the API plans every leg of a loop). */
+const NO_LEGS: number[] = [];
 const ignore = () => undefined;
 
 const OUTSIDE_NOTICE = "That point is outside the area this map covers (the DC region to Baltimore).";
@@ -388,6 +391,9 @@ export function App() {
   // start or end, or another ride type, starts from the quickest again. Request only, never the link.
   const [transitPick, setTransitPick] = useState<TransitPick | null>(null);
   const trip = optionsKey(points, preset);
+  // Novice and Nervous's busy stretch to hop past (v0.11.0), set when its transit offer is taken: for that trip only
+  // (a new start or end, or another ride type, drops it). Request only, never the link.
+  const [noviceHopPick, setNoviceHopPick] = useState<{ trip: string; hop: [LonLat, LonLat] } | null>(null);
   // "Route through anyway" (v0.7.0, lib/closureMap.ts): the closures the rider chose to route through, for this plan
   // (its start and end) only; request only, never the link. Undo takes one back out.
   const [closureBypass, setClosureBypass] = useState<Bypass | null>(null);
@@ -398,11 +404,12 @@ export function App() {
   // lib/dials.ts closuresNow); Plan keeps them, for planning a later ride. Start ride and a ride's re-plans set it too.
   const goNow = mode === "go";
   const planDials = useMemo(() => {
-    const made = withTransitOption(withStations(withWeight(routeDials, weight), stationChoice), preset, transitPick, trip);
+    const base = withTransitOption(withStations(withWeight(routeDials, weight), stationChoice), preset, transitPick, trip);
+    const made = noviceHopPick?.trip === trip && base.noviceLegs ? { ...base, noviceHop: noviceHopPick.hop } : base;
     const now = goNow ? { ...made, closuresNow: true } : made;
     return bypassIds.length ? { ...now, closureBypass: bypassIds } : now;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the ids' text, not the array
-  }, [routeKey, weight, stationChoice, preset, transitPick, trip, bypassKey, goNow]);
+  }, [routeKey, weight, stationChoice, preset, transitPick, trip, bypassKey, goNow, noviceHopPick]);
   // Everything the request is made from, as a key (v0.7.0): in Plan a station or a transit option chosen, a
   // weight or a slider moved, all mark the plan changed until Route or Update route.
   // The key leaves closuresNow out: switching between Go and Plan keeps the route (changeMode), not marked changed.
@@ -415,20 +422,31 @@ export function App() {
   planDialsNow.current = planDials;
   // "Make it a loop" chosen (OWNER-DECISIONS 374): the first point is the start and finish, every later one a stop.
   const loopVias = loopStops(preset, dials.loop);
+  // Plan starts as a loop (lib/loop.ts planStartDials): on coming into Plan with no points (opening in it too), and
+  // Clear and an empty plan's ride type do the same in their own edits (clearAll, choosePreset). Go has no loop
+  // before a destination, so coming into Go with no points takes it off. Only on the change of view, so an Undo or a
+  // removal that empties the plan never turns it back on unseen.
+  useEffect(() => {
+    if (points.length > 0) return;
+    if (mode === "plan") setDials((now) => planStartDials(preset, now));
+    else if (mode === "go") setDials((now) => (now.loop ? withLoop(now, false) : now));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- on the change of view only
+  }, [mode]);
   // Plan's manual mode (v0.9.1, Stephen 2026-10-19: "a 'manual mode' where you can just route directly"): while
-  // on, each point tapped on the map is joined to the one before by a straight line, not a route. Not on a loop or
-  // a two-point ride type, where the API plans every leg (core/routing.py `_drawn`).
+  // on, each point tapped on the map is joined to the one before by a straight line, not a route. Not on a two-point
+  // ride type, and not with a loop, where the API plans every leg (core/routing.py `_drawn`): the switch is offered on
+  // a loop too, now that Plan starts as one, and turning it on there turns the loop off.
   const [manualOn, setManualOn] = useState(false);
-  const manualOffered = mode === "plan" && !loopVias && !twoPointsOnly(preset);
-  const manual = manualOn && manualOffered;
+  const manualOffered = mode === "plan" && !twoPointsOnly(preset);
+  const manual = manualOn && manualOffered && !loopVias;
   // The legs drawn by hand, for the map's dashed lines (lib/planLegs.ts).
   const planDrawn = useMemo(() => drawnLegs(points), [points]);
   const manualRef = useRef(manual);
   manualRef.current = manual;
-  // Off whenever it is not offered (Go, a loop, a two-point ride type), so it never comes back on unseen.
+  // Off whenever it is not offered (Go, a two-point ride type) or the loop goes on, so it never comes back on unseen.
   useEffect(() => {
-    if (!manualOffered) setManualOn(false);
-  }, [manualOffered]);
+    if (!manualOffered || loopVias) setManualOn(false);
+  }, [manualOffered, loopVias]);
   // What the planner answered, and which of its routes to choose from is shown
   // (OWNER-DECISIONS 265): 0 is the answer, the others its candidates.
   const [answer, setRoute] = useState<RouteResponse | null>(null);
@@ -1358,7 +1376,8 @@ export function App() {
       const plan = planFromSetting(step.doc.plan);
       if (plan && !PLAN_LINK && !rideTouched.current && pointsRef.current.length === 0 && modeRef.current !== "go") {
         setPreset(plan.preset);
-        setDials(plan.dials);
+        // An empty plan in Plan still starts as a loop when the account's plan replaces the dials.
+        setDials(modeRef.current === "plan" ? planStartDials(plan.preset, plan.dials) : plan.dials);
       }
       if (!sameSettings(step.doc, device)) announce(ACCOUNT_SETTINGS_USED);
     }
@@ -1799,8 +1818,11 @@ export function App() {
     setNotice(null);
     // Named for the station, not the street its bike entrance is on (PLAN.md, the stationBikeEntrance naming).
     namer.remember(point, place.name, place.label);
-    commit(edit.next);
-    announce(stationSaid(edit.index, edit.next.length, loopVias));
+    // End here on a loop ends the ride at the station and turns the loop off, in one edit (railStations.ts stationRoles).
+    const loopOff = loopVias && role === "end";
+    const ride = rideRef.current;
+    commit(edit.next, loopOff ? { ...ride, dials: withLoop(ride.dials, false) } : undefined);
+    announce(loopOff ? `${stationSaid(edit.index, edit.next.length, false)} Loop off.` : stationSaid(edit.index, edit.next.length, loopVias));
   }, [commit, announce, loopVias, namer]);
 
   // The road panel's Set as start / Set as end / Add as stop (OWNER-DECISIONS 441n): the spot
@@ -1820,7 +1842,9 @@ export function App() {
     }
     setNotice(null);
     const placed = placeAtSpot(pointsRef.current, point, choice, loopVias);
-    commit(placed.next);
+    // An end set on a loop turns the loop off in the same edit, so Undo puts both back.
+    const ride = rideRef.current;
+    commit(placed.next, placed.loopOff ? { ...ride, dials: withLoop(ride.dials, false) } : undefined);
     announce(placed.said);
   }, [commit, announce, loopVias]);
 
@@ -1958,15 +1982,22 @@ export function App() {
   // (geocode.ts, applyPlace), named as it was found, and the map goes there.
   const pickPlace = (found: Place, choice: PlaceChoice) => {
     cancelLocateNotice();
+    // A destination picked on a loop ends the ride there and turns the loop off, in one edit (as Set as end does).
+    const endsLoop = loopVias && choice === "end" && pointsRef.current.length >= 1;
+    const commitPick = (next: LonLat[]) => {
+      const ride = rideRef.current;
+      commit(next, endsLoop ? { ...ride, dials: withLoop(ride.dials, false) } : undefined);
+    };
     const point = pickIntoPlan(found, choice, {
       current: () => pointsRef.current,
-      commit,
+      commit: commitPick,
       loop: loopVias,
       remember: (p, name, label) => namer.remember(p, name, label),
       entrance: (place) => entranceForPlace(place, choice),
     });
     if (point === null) return;
     setNotice(null);
+    if (endsLoop) announce(LOOP_ENDED_BY_SEARCH);
     const map = mapRef.current;
     map?.flyTo({ center: point, zoom: Math.max(map.getZoom(), 14) });
   };
@@ -2514,7 +2545,10 @@ export function App() {
     const ride = rideRef.current;
     // Cleared, the next save is a new saved route.
     openSavedRoute.current = null;
-    commit([], ride.imported ? { ...ride, imported: null } : undefined);
+    // In Plan the cleared plan starts as a loop again (planStartDials), in the same edit, so Undo puts back the loop
+    // state the points had.
+    const startDials = modeRef.current === "plan" ? planStartDials(ride.preset, ride.dials) : ride.dials;
+    commit([], ride.imported || startDials !== ride.dials ? { ...ride, imported: null, dials: startDials } : undefined);
     // Said, and the focus to the place search, as every other removal hands it on (review a11y-1).
     announce(CLEARED_SAID);
     focusAfterRemove.current = -1;
@@ -2588,7 +2622,9 @@ export function App() {
   // A new ride type moves the sliders to where it starts them (RideTypePicker)
   // and keeps Make it a loop (rideTypeDialog.choose). Mass Ride has no loop, so
   // into or out of it renames the points; between two others nothing is said.
-  const choosePreset = (id: PresetId, next: Dials) => {
+  const choosePreset = (id: PresetId, chosen: Dials) => {
+    // An empty plan in Plan starts as a loop on whatever ride type is chosen (lib/loop.ts planStartDials).
+    const next = mode === "plan" && points.length === 0 ? planStartDials(id, chosen) : chosen;
     const loopSaid = loopChangeSaid({ preset, dials }, { preset: id, dials: next }, points.length);
     rideTouched.current = true;
     // Mountain Bike and Gravel turn the mountain-bike trails and contour layers on, Mountain Goat the contours
@@ -3471,7 +3507,11 @@ export function App() {
       // The attribution sits above the sheet on a phone; leave room for it too.
       return { top: 40, left: 30, right: 30, bottom: (panel?.height ?? 0) + 90 };
     }
-    return { top: 60, bottom: 60, right: 60, left: (panel?.right ?? 0) + 40 };
+    // On a wide screen the route is a card on the map's right (styles.css, Plan on a wide screen): clear of it too.
+    const out = panelRef.current?.querySelector<HTMLElement>(".planner-view:not([hidden]) > .route-section");
+    const card = out && getComputedStyle(out).position === "fixed" ? out.getBoundingClientRect() : null;
+    const right = card && card.width > 0 ? window.innerWidth - card.left + 40 : 60;
+    return { top: 60, bottom: 60, right, left: (panel?.right ?? 0) + 40 };
   }, []);
 
   // Copy link keeps full precision; when the rider's location or Home is in the plan it says so (review privacy-2).
@@ -3535,7 +3575,8 @@ export function App() {
       setNoviceTrips((was) => (was?.key === noviceKey ? { key: noviceKey, trips: { ...was.trips, [id]: trip } } : was));
     setNoviceTrips({ key: noviceKey, trips: {} });
     for (const choice of NOVICE_TRANSIT_CHOICES) {
-      void requestRoute(ends, choice.preset, { dials: noviceTransitDials(choice.preset) }).then(
+      // The busy stretch's ends (v0.11.0): each trip also tries hopping past it on a train or bus.
+      void requestRoute(ends, choice.preset, { dials: noviceTransitDials(choice.preset, noviceHopOf(shown)) }).then(
         (answer) => found(choice.preset, noviceTripOf(answer)),
         () => found(choice.preset, { kind: "none" }),
       );
@@ -4029,7 +4070,13 @@ export function App() {
   const lineEdit = useMemo<LineEdit | null>(() => {
     const routeShown = shown !== null;
     const vertexCount = shown?.geometry.coordinates.length ?? 0;
-    if (!shown || !canDragLine({ routeShown, stale, routedIsCurrent: routedPoints === points, vertexCount })) return null;
+    if (!shown || !canDragLine({ routeShown, stale, routedIsCurrent: routedPoints === points, vertexCount })) {
+      // Plan's straight lines, while they show (no route, or not one for the points as they are: MapView planLegsData):
+      // a drag on one adds a via in that leg, as on the route (lib/planLegs.ts planLegEdit). Not on a ride type of a
+      // start and an end only.
+      const linesShown = !shown || stale || routedPoints !== points;
+      return linesShown && mode === "plan" && !twoPointsOnly(preset) ? planLegEdit(points, loopVias) : null;
+    }
     // A bikeshare ride runs dock to dock, not between the points, and a transit ride's line is its
     // first ride only: neither line is theirs to drag.
     if (bikeshareOf(shown) || shown.transit) return null;
@@ -4038,7 +4085,7 @@ export function App() {
     // leg ends fit them.
     const legs = legPoints(routedPoints, loopVias);
     return { path, ends: legEnds(path, legs, shown.leg_ends), points: routedPoints, legPoints: legs };
-  }, [shown, stale, routedPoints, points, loopVias]);
+  }, [shown, stale, routedPoints, points, loopVias, mode, preset]);
   // On a phone the sheet is half the screen; a route that is showing (a
   // shared link, usually), a question or an error comes first in it, before
   // the ride types (sheet.ts).
@@ -4180,7 +4227,7 @@ export function App() {
     setChangeDetails([]);
     clearAll();
   };
-  const routeNow = routeButton({ points: points.length, drawn: drawn !== null, changed: planEdited, routeShown: shown !== null });
+  const routeNow = routeButton({ points: points.length, drawn: drawn !== null, changed: planEdited, routeShown: shown !== null, loop: loopVias });
   // Plan's bar at the top of the map (the owner, 2026-10-17: "In plan, make "Update route" a big button at the top of
   // the map ... Update route or start route. don't show if there's nothing to change. Also put the undo and clear there
   // as well, smaller"): the Route button big while there is something to route (or it is routing), Undo, Redo and
@@ -4246,6 +4293,11 @@ export function App() {
       onReset={resetPlan}
       clearDisabled={points.length === 0}
       onClear={clearPlan}
+      locate={
+        points.length === 0
+          ? { onLocate: () => void useMyLocation("start"), busy: locating, unavailable: locateReady.available ? null : locateReady.reason }
+          : null
+      }
     />
   );
   const pointsSection = (
@@ -4304,6 +4356,9 @@ export function App() {
     // Novice and Nervous's offer where only a busy road connects (v0.7.0): the trip on a transit ride type, its
     // bike legs still planned as Novice and Nervous plans them (`noviceLegs`, sent as novice_legs, kept in the link).
     onNoviceTransit: (id: PresetId) => {
+      // The busy stretch to hop past (v0.11.0), for this trip only, as a chosen transit option is.
+      const hop = noviceHopOf(shown);
+      setNoviceHopPick(hop ? { trip: optionsKey(points, id), hop } : null);
       choosePreset(id, { ...chooseRideType(id, null, dials), noviceLegs: true });
       const label = NOVICE_TRANSIT_CHOICES.find((c) => c.preset === id)?.label ?? presetSaid(id);
       announce(noviceTransitSaid(label));
@@ -4429,7 +4484,7 @@ export function App() {
         // Plan's ghost of the last route; else the standard way through a closure the route goes round, dashed
         // beside it (v0.8.2), in Go and Plan, and on the ride the line not being followed.
         ghost={riding ? (rideView?.other ?? null) : reviewing ? null : (ghost ?? shown?.closure_through?.geometry.coordinates ?? null)}
-        planLegs={riding || reviewing || mode !== "plan" || loopVias ? null : planDrawn}
+        planLegs={riding || reviewing || mode !== "plan" ? null : loopVias ? NO_LEGS : planDrawn}
         lightMarks={riding || mode !== "plan" ? null : light}
         stressVisible={stressVisible && stress === "available"}
         when={mapWhen(dials.when ?? null)}
@@ -4649,8 +4704,10 @@ export function App() {
               aria-label={MANUAL_LABEL}
               title={MANUAL_TITLE}
               onClick={() => {
+                // On a loop, manual mode turns the loop off: each tap is then the new end, joined by a straight line.
+                if (!manual && loopVias) setDials(withLoop(dials, false));
                 setManualOn(!manual);
-                announce(manual ? MANUAL_OFF_SAID : MANUAL_ON_SAID);
+                announce(manual ? MANUAL_OFF_SAID : loopVias ? `${MANUAL_ON_SAID} Loop off.` : MANUAL_ON_SAID);
               }}
             >
               <Icon name="draw" size={20} />

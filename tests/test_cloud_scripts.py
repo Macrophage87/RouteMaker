@@ -252,6 +252,7 @@ def home(fake):
         (data / part / f"{part}.file").write_text(part)
     (data / "reference" / "agency-lts.json").write_text(AGENCY_LTS)
     (data / "reference" / "scenic.json").write_text(SCENIC)
+    (data / "reference" / "bikeshare-trips.json").write_text('{"stations":[],"pairs":[],"days":1}')
     ship = fake.root / "bin" / "ship-db"
     ship.write_text(FAKE_SHIP_DB)
     ship.chmod(0o755)
@@ -405,6 +406,23 @@ def test_send_refuses_a_reference_folder_without_every_agencys_ratings(
     assert not fake.in_bucket("in").exists()
 
 
+@pytest.mark.parametrize("body", [None, ""])
+def test_send_refuses_a_reference_folder_without_the_bikeshare_trips(fake, home, body) -> None:
+    """The popular corridors' trip counts are optional to the rebuild, which only warns, as
+    the Scenic layer's were; the send refuses a folder without them before any upload."""
+    _, data = home
+    path = data / "reference" / "bikeshare-trips.json"
+    if body is None:
+        path.unlink()
+    else:
+        path.write_text(body)
+
+    done = send(fake, home)
+
+    assert done.returncode == 2 and "bikeshare-trips.json is missing or empty" in done.stderr
+    assert not fake.in_bucket("in").exists()
+
+
 def test_the_sends_agency_list_is_the_approved_agencies() -> None:
     from routemaker.agency_lts import AGENCIES
 
@@ -476,6 +494,7 @@ def test_send_takes_another_reference_folder_only_with_the_live_builds_files(fak
     (other / "reference.file").write_text("an older copy")
     (other / "agency-lts.json").write_text(AGENCY_LTS)
     (other / "scenic.json").write_text(SCENIC)
+    (other / "bikeshare-trips.json").write_text('{"stations":[],"pairs":[],"days":1}')
     (other / "agency" / "layer.json").write_text("live layer")
 
     done = send(fake, home, "--reference-dir", str(other))

@@ -5,9 +5,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import type { ProfileCrossing, RouteProfile, RouteResponse } from "./api.ts";
+import type { ProfileCrossing, RouteProfile, RouteResponse, StressSpan } from "./api.ts";
 import { contrastRatio } from "../stressStyle.js";
-import { ROUTE_AVOID_MAGENTA } from "./routeColours.ts";
+import { ROUTE_AVOID_MAGENTA, spanClass } from "./routeColours.ts";
 import {
   AVOID_FILL,
   AVOID_FRAME,
@@ -425,8 +425,8 @@ test("stress sections are clipped to the axis", () => {
   ];
   const got = stripSections(spans, 1000);
   assert.deepEqual(got, [
-    { from_m: 0, to_m: 500, tier: 1, facility: "path", unpaved: null },
-    { from_m: 500, to_m: 1000, tier: 4, facility: "none", unpaved: null },
+    { from_m: 0, to_m: 500, tier: 1, facility: "path", unpaved: null, rough: null },
+    { from_m: 500, to_m: 1000, tier: 4, facility: "none", unpaved: null, rough: null },
   ]);
   assert.equal(stripSections([{ from_m: 0, to_m: 10, tier: 2, facility: "none", unpaved: true }], 10)[0].unpaved, true);
   assert.deepEqual(stripSections(undefined, 1000), []);
@@ -526,6 +526,10 @@ test("the stress said at a spot: tiers, Avoid, a path and an unpaved stretch as 
   // A path rated Avoid is said as it is drawn (routeColours.ts spanClass): Avoid (r4 a11y A-SF1).
   assert.equal(sectionWords({ tier: 5, facility: "path" }), "Avoid");
   assert.equal(sectionWords({ tier: 5, facility: "path", unpaved: true }), "unpaved, Avoid");
+  // Gravel grey and dirt brown, said as drawn (2026-10-21).
+  assert.equal(sectionWords({ tier: 2, facility: "none", unpaved: true, rough: false }), "gravel, LTS 2");
+  assert.equal(sectionWords({ tier: 2, facility: "none", unpaved: true, rough: true }), "dirt, LTS 2");
+  assert.equal(sectionWords({ tier: 1, facility: "path", unpaved: true, rough: false }), "gravel traffic-free path");
   assert.equal(sectionWords({ tier: 5, facility: "lane" }), "Avoid");
   assert.equal(sectionWords({ tier: null, facility: "path" }), "traffic-free path");
   const { route, profile } = build();
@@ -810,4 +814,14 @@ test("427: the chart says in words that Mass Ride figures outside DC are not sup
   assert.ok(summaryText(route, outside).includes(OUTSIDE_DC_FIGURES));
   assert.ok(!summaryText(route, profile).includes(OUTSIDE_DC_FIGURES));
   assert.equal(ridersWords(outside, 120, 200, 0), "outside DC, no riders-per-minute figure yet");
+});
+
+test("the strip keeps a section's roughness, so gravel is keyed grey and dirt brown, gravel first (2026-10-21)", () => {
+  const spans = [
+    { from_m: 0, to_m: 100, tier: 2, facility: "none", unpaved: true, rough: true },
+    { from_m: 100, to_m: 200, tier: 2, facility: "none", unpaved: true, rough: false },
+  ] as StressSpan[];
+  const sections = stripSections(spans, 200);
+  assert.deepEqual(sections.map((s) => s.rough), [true, false]);
+  assert.deepEqual(stripKey(sections).map((s) => spanClass(s).key), ["g2", "u2"]);
 });

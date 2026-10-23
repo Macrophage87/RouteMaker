@@ -125,7 +125,9 @@ test("Ride settings in reach: a gear at the end of the side buttons opens them j
   assert.match(top, /\{!walking && !ride\.arrived && \(\s*<button type="button" className="secondary ride-road-closed" onClick=\{roadClosed\} aria-label=\{ROAD_CLOSED_NAME\} title=\{ROAD_CLOSED_NAME\}>/);
   // Road closed keeps its words at every size (the owner, 2026-10-20: "make everything have the big button").
   assert.match(top, /<span className="ride-top-label">\{ROAD_CLOSED_TEXT\}<\/span>/);
-  assert.doesNotMatch(css, /@container|\.ride-top-label \{\s*position: absolute;/);
+  // No size query hides it (the Plan bar's own @container, styles.css, is the only one, and names no ride label).
+  assert.doesNotMatch(css, /\.ride-top-label \{\s*position: absolute;/);
+  assert.deepEqual([...css.matchAll(/@container[^{]*\{([^@]*)/g)].map((m) => /ride-/.test(m[1])), [false]);
   assert.match(top, /ref=\{settingsPanel\}\s+id=\{`\$\{settingsId\}-settings`\}\s+className="ride-mode-settings"\s+role="group"\s+aria-label=\{RIDE_SETTINGS_TITLE\}\s+hidden=\{!settingsOpen\}\s+tabIndex=\{-1\}/);
   // The gear comes after the panel: opened, the focus goes into it; Escape there closes it, back to the gear.
   assert.match(ride, /settingsPanel\.current\?\.focus\(\{ preventScroll: true \}\);/);

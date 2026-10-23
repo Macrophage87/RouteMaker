@@ -7,7 +7,7 @@ import java.util.Locale;
 /**
  * The site address the rider types on first launch (SetupActivity): checked here, without Android, so
  * it is unit-tested (app/src/test). The address is kept only on this phone, in the app's preferences;
- * no build carries one (mobile/README.md).
+ * no test build carries one (mobile/README.md).
  */
 public final class SiteAddress {
 

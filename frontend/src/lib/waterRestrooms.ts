@@ -327,6 +327,14 @@ export const WATER_SOURCE_ID = "water-restrooms";
 export const WATER_LAYER = "water-restrooms";
 /** Drawn from street-network zoom in: further out the points would crowd the stress map. */
 export const WATER_MIN_ZOOM = 12;
+/**
+ * The room an icon keeps clear around it, in px: an icon that would touch another, or a base-map label,
+ * is left out until the map zooms in far enough to part them. Downtown that thins the drops and
+ * restrooms at zoom 12-13 (the owner, 2026-10-21, of central DC: "see what we can do to declutter
+ * certain views"); in the country, where they are far apart, every one still shows ("this is the same
+ * exact zoom in a rural area. Here it looks fine"). The route's list names them all at any zoom.
+ */
+export const WATER_ICON_PADDING_PX = 6;
 export const WATER_ICON_PX = 18;
 
 /** One icon per kind the map draws: water alone by source, a restroom by type, with a drop when it has drinking water. */
@@ -461,10 +469,12 @@ export function waterLayer(prefs: WaterPrefs = WATER_PREFS_DEFAULT, sourceId = W
     layout: {
       "icon-image": waterIconImage(prefs),
       "icon-size": ["interpolate", ["linear"], ["zoom"], WATER_MIN_ZOOM, 0.7, 15, 1, 18, 1.2],
-      "icon-allow-overlap": true,
-      // The base map's labels still place around them.
-      "icon-ignore-placement": true,
-      // A restroom over a water source beside it.
+      // Thinned where crowded (WATER_ICON_PADDING_PX), never where sparse: each icon takes its room in the
+      // collision index, so two crowding icons keep one; a name over one wins its spot.
+      "icon-allow-overlap": false,
+      "icon-padding": WATER_ICON_PADDING_PX,
+      "icon-ignore-placement": false,
+      // Where two crowd, the drinking water is kept over the restroom beside it.
       "symbol-sort-key": ["case", ["has", "t"], 1, 0],
     },
   };

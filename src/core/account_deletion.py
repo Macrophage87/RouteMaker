@@ -35,6 +35,8 @@ from . import ratelimit
 
 PATH = "/delete-account"
 CONFIRM_FIELD = "confirm"
+# The privacy policy (core.privacy_policy), linked from this page.
+PRIVACY_PATH = "/privacy"
 
 TITLE = "Delete your RouteMaker account"
 DELETED = [
@@ -144,11 +146,16 @@ def delete_account(user) -> None:
         user.delete()
 
 
-def _page(body: str, status: int = 200) -> HttpResponse:
+def _page(
+    body: str, status: int = 200, *, title: str = TITLE, privacy: bool = True
+) -> HttpResponse:
+    """The page's frame, shared with the privacy policy (core.privacy_policy), which passes its own
+    title and leaves out the link to itself."""
+    links = f'<p><a href="{PRIVACY_PATH}">Privacy policy</a></p>' if privacy else ""
     html = (
         '<!doctype html><html lang="en"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width, initial-scale=1">'
-        f"<title>{escape(TITLE)}</title>"
+        f"<title>{escape(title)}</title>"
         '<meta name="robots" content="noindex">'
         "<style>"
         "body{font:16px/1.5 system-ui,sans-serif;max-width:40rem;margin:0 auto;padding:1rem;"
@@ -161,8 +168,8 @@ def _page(body: str, status: int = 200) -> HttpResponse:
         "input[type=checkbox]{width:1.4rem;height:1.4rem;flex:none}"
         ".note{font-weight:600}"
         "</style></head><body><main>"
-        f"<h1>{escape(TITLE)}</h1>{body}"
-        '<p><a href="/">Back to RouteMaker</a></p>'
+        f"<h1>{escape(title)}</h1>{body}"
+        f'{links}<p><a href="/">Back to RouteMaker</a></p>'
         "</main></body></html>"
     )
     response = HttpResponse(html, status=status, content_type="text/html; charset=utf-8")

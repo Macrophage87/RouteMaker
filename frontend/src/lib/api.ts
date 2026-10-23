@@ -35,6 +35,11 @@ export interface StressSpan {
    */
   unpaved?: boolean | null;
   /**
+   * On an unpaved section: true on a natural or rough surface (dirt, grass, a rutted track),
+   * drawn brown; false on gravel, drawn grey (2026-10-21); null or absent: not known, brown.
+   */
+  rough?: boolean | null;
+  /**
    * A Mass Ride's only (OWNER-DECISIONS 325-327, 387): the section's capacity in riders per
    * minute on the flat, the lowest along it (its narrowest point), or null where the table has
    * none for it. Absent on every other ride type, and from an older API or a table built before
@@ -521,6 +526,8 @@ export interface TransitOption {
   direct: boolean;
   /** Walking the whole way (Bikeshare + 🚶🚆🚌, where that is reasonable). */
   walk?: boolean;
+  /** Novice and Nervous's hop past the busy stretch (v0.11.0, `novice_hop`): boards near it and gets off past it. */
+  hop?: boolean;
   chosen: boolean;
   /**
    * Its rides' metres on busy roads (LTS 3 and up); null where a ride's roads are not known (absent from an older
@@ -811,12 +818,31 @@ export interface RoadHazardSpan {
 export interface NoviceNote {
   /** Metres on roads rated LTS 3 or above. */
   busy_m: number;
-  /** The longest named run of them, or null. */
-  busiest: { name: string | null; metres: number; level: number } | null;
+  /**
+   * The longest named run of them, or null; `from` and `to` (v0.11.0) are where it begins and ends, sent as
+   * `novice_hop` so the transit trips offered can hop past it.
+   */
+  busiest: { name: string | null; metres: number; level: number; from?: LonLat; to?: LonLat } | null;
   /** The calm search hit its 1.4 times ceiling. */
   over_ceiling: boolean;
   /** Only a busy road connects: offer transit or bikeshare. */
   transit: boolean;
+  /** Metres of LTS 4 or worse walked past on the sidewalk instead of ridden (v0.11.0; core.novice_walks). */
+  walked_m?: number;
+  /** The short busy stretches walked on the sidewalk beside them, in order; each is also a "walk" entry of the directions. */
+  walks?: NoviceWalk[];
+}
+
+/** A short busy stretch a Novice walks the bike past (v0.11.0; core.api.NoviceWalkOut). */
+export interface NoviceWalk {
+  from_m: number;
+  to_m: number;
+  road: string | null;
+  ride_m: number;
+  geometry: { type: "LineString"; coordinates: LonLat[] };
+  distance_m: number;
+  duration_s: number;
+  text: string;
 }
 
 export interface RouteResponse {
@@ -893,6 +919,10 @@ export interface RouteResponse {
   neighbour?: { kind: NeighbourKind; stress: number; line: string } | null;
   preset: PresetId;
   variant: "standard" | "no-trail" | "ebike" | "weekend" | "offroad" | "mtb";
+  /** A ride type that skips dirt trails rides one here (a point on one opened it, core/trail_touch.py). A ride then opens them all to its re-plans. */
+  dirt_trails?: boolean;
+  /** A ride marked a dirt trail closed (bad conditions): no dirt trail is ridden, and the ride's re-plans say so after. */
+  dirt_closed?: boolean;
   /** Trip points the planner moved: one inside the National Zoo goes to its bike racks. */
   moved_points?: { index: number; asked: LonLat; routed: LonLat; reason: "zoo_racks"; note: string }[];
   /**
@@ -1290,8 +1320,14 @@ export interface RouteRequestOptions {
   blocked?: readonly (readonly LonLat[])[];
   /** A ride's re-route: the rider's heading at the first point (degrees), so a U-turn is taken only where it saves half a mile. */
   heading?: number | null;
+  /** A ride's re-plan, whose first point is the rider: a dirt trail there opens them all (the API's `ride_replan`). */
+  rideReplan?: boolean;
+  /** With `rideReplan`: the rider has been on a dirt trail this ride, so the re-plan may ride any (`dirt_ridden`). */
+  dirtRidden?: boolean;
   /** With `heading`: the rider rode on past two U-turns, so the route that sets off ahead is taken (lib/navigate.ts keepsAhead). */
   aheadOnly?: boolean;
+  /** With `rideReplan`: the rider marked a dirt trail closed this ride, so the re-plan rides none (`dirt_closed`). */
+  dirtClosed?: boolean;
 }
 
 /** Most points of a line to follow (core/follow.py MAX_POINTS). */
@@ -1332,6 +1368,10 @@ export function routeRequestBody(points: readonly LonLat[], preset: PresetId, op
     ...(options.blocked?.length ? { blocked_lines: options.blocked.map((line) => line.map((p) => [p[0], p[1]])) } : {}),
     // The way the rider is going, for a ride's re-route: the API weighs a U-turn against the way ahead.
     ...(options.heading != null && Number.isFinite(options.heading) ? { heading: ((options.heading % 360) + 360) % 360, ...(options.aheadOnly ? { ahead_only: true } : {}) } : {}),
+    // A ride's re-plan starts at the rider: a dirt trail there, or one ridden earlier, opens them all.
+    ...(options.rideReplan
+      ? { ride_replan: true, ...(options.dirtRidden ? { dirt_ridden: true } : {}), ...(options.dirtClosed ? { dirt_closed: true } : {}) }
+      : {}),
   });
 }
 
