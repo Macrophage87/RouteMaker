@@ -865,7 +865,14 @@ change it.</li>
     there at all, and routes do not use it. Examples are roads and paths inside
     military bases and secured government sites, and ways signed no bicycles. When
     it is unclear whether bikes are allowed, RouteMaker treats the way as closed. A
-    closed way can be reopened by hand when there is evidence that bikes may use it.</p>
+    closed way can be reopened by hand when there is evidence that bikes may use it.
+    From the next map update three more kinds are closed. A farm or forest track (OpenStreetMap's
+    <code>highway=track</code>) is closed when nothing shows it is public: no route number, no tag
+    opening it, no name, not on a bike or hiking route and not mostly inside a park. That is about
+    1,500 mi [2,500 km] of tracks, no longer drawn in stress colors. Golf course cart paths, walks and drives are
+    closed; public streets, their sidewalks and trails that run on beyond the course stay open.
+    Zip-line courses (<code>highway=via_ferrata</code>) were never routed and are no longer drawn
+    in stress colors either.</p>
     <p>Sidewalks are the exception, from the next map update. A sidewalk or crosswalk with no bike
     tag is ridden as a last resort. Beside a road rated 4.5 or Avoid it counts as LTS 3, and a route
     takes it over that road from the middle of the traffic slider toward Calm at any cost. Beside a calmer road, LTS 4
