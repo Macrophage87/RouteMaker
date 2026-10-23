@@ -459,6 +459,10 @@ test("by default a pick is the start, then the destination, then a stop where it
   assert.deepEqual(applyPlace([A, B], between, defaultChoice(2)), [A, between, B]);
   // "Make this the destination" is still a pick's other choice; a full route takes no stop, so a new destination.
   assert.deepEqual(applyPlace([A, B], C, "end"), [A, C]);
+  // On a loop, the destination goes after the start and the stops; it never replaces a stop (App ends the loop).
+  assert.deepEqual(applyPlace([A, B], C, "end", true), [A, B, C]);
+  assert.equal(placeEffect(2, "end", true), "end");
+  assert.equal(placeEffect(2, "via", true), "via");
   assert.equal(defaultChoice(MAX_POINTS, false, true), "end");
 });
 

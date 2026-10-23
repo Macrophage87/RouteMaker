@@ -45,7 +45,7 @@ test("Reset goes back to the drawn plan without routing, Clear keeps the ride, a
 
 test("Clear says so and hands the focus to the place search; Plan's Clear stays focusable (review a11y-1)", () => {
   assert.equal(CLEARED_SAID, "Plan cleared. Undo brings it back.");
-  assert.match(app, /commit\(\[\], ride\.imported \? \{ \.\.\.ride, imported: null \} : undefined\);\s*\/\/[^\n]*\n\s*announce\(CLEARED_SAID\);\s*focusAfterRemove\.current = -1;/);
+  assert.match(app, /commit\(\[\], ride\.imported \|\| startDials !== ride\.dials \? \{ \.\.\.ride, imported: null, dials: startDials \} : undefined\);\s*\/\/[^\n]*\n\s*announce\(CLEARED_SAID\);\s*focusAfterRemove\.current = -1;/);
   // -1: no Remove button, the search; Go's Where to? waits for the cleared route to stop hiding it.
   assert.match(app, /const target = index < 0 \? null : removeRefs\.current/);
   assert.match(app, /panelRef\.current\?\.querySelector\("\.go-search"\)/);

@@ -195,6 +195,13 @@ done
 [ ${#undesignated[@]} -eq 0 ] ||
 	die "$scenic_json has no lines from ${undesignated[*]}; reinstall it with both layers: docs/OPERATIONS.md, \"The Scenic layer (v0.8.0)\""
 
+# The popular bike corridors' trip counts (pipeline.bikeshare_corridors): optional to the
+# rebuild, which only warns without them, as the Scenic layer's were. Refused here so a map is
+# never built with no popular corridors but the named ones.
+bikeshare_trips="$reference_dir/bikeshare-trips.json"
+$SUDO test -s "$bikeshare_trips" ||
+	die "$bikeshare_trips is missing or empty; the map would draw only the named corridors as popular. Install it first: docs/OPERATIONS.md, \"Popular bike corridors (v0.11.0)\""
+
 [ -n "$stage" ] || stage="$HOME/cloud-runs/$run/in"
 # Checked before anything is created, so a mistaken --stage never writes into DATA_ROOT.
 stage=$(realpath -m "$stage")

@@ -48,6 +48,11 @@ from rebuild_fixtures import (
     DIVIDED_NORTH_ID,
     DIVIDED_SOUTH_ID,
     GIB,
+    GOLF_CART_PATH_ID,
+    GOLF_DRIVE_ID,
+    GOLF_OUTSIDE_ID,
+    GOLF_STREET_ID,
+    GOLF_TRAIL_ID,
     INDUSTRIAL_DC_STREET_ID,
     INDUSTRIAL_DC_STREET_LINE,
     INDUSTRIAL_DRIVE_ID,
@@ -81,6 +86,7 @@ from rebuild_fixtures import (
     box,
     build_contraflow_extract,
     build_dials_extract,
+    build_golf_extract,
     build_long_trails_extract,
     build_named_bridge_extract,
     build_parallel_extract,
@@ -917,6 +923,87 @@ def test_a_quarry_and_an_industrial_area_close_their_own_ways_through_the_rebuil
         reasons = dict(cursor.fetchall())
     assert reasons[QUARRY_TRACK_ID] == "works"
     assert reasons[WORKS_OUTSIDE_ID] is None
+
+
+def test_a_golf_courses_cart_paths_close_through_the_rebuild(
+    tmp_path, segment_schemas, states
+) -> None:
+    """The golf rule wired through the rebuild (owner report 2026-10-21: Woodmont Country
+    Club's cart paths, plain `highway=path`, drawn as bike paths). The cart path closes on
+    every graph and is left to the base map, the clubhouse drive closes and is hidden, and
+    the public street and the named trail across the course stay drawn and open."""
+    from pipeline import restricted_areas
+    from pipeline.extract import read_ways
+    from pipeline.run import DISCREPANCY_REPORT_DIR, GOLF_REPORT_NAME
+
+    source = install_source_extract(tmp_path, build_golf_extract)
+    context, report = run_pipeline(source, tmp_path, skip=NOT_SWAPPED)
+
+    assert Stage.VALIDATE_TILES in report.completed
+    golf = {m.way_id: m for m in context.golf_ways}
+    assert golf[GOLF_CART_PATH_ID].closed
+    assert golf[GOLF_CART_PATH_ID].installation == "Test Country Club"
+    assert golf[GOLF_DRIVE_ID].closed
+    assert not golf[GOLF_STREET_ID].closed
+    assert not golf[GOLF_TRAIL_ID].closed
+    assert GOLF_OUTSIDE_ID not in golf
+    for way_id in (GOLF_CART_PATH_ID, GOLF_DRIVE_ID):
+        assert context.no_bicycle[way_id] == restricted_areas.GOLF_NO_BICYCLE
+    for way_id in (GOLF_STREET_ID, GOLF_TRAIL_ID, GOLF_OUTSIDE_ID):
+        assert way_id not in context.no_bicycle
+    for variant in Variant:
+        tags = {w.osm_id: w.tags for w in read_ways(context.variant_pbf(variant))}
+        if GOLF_CART_PATH_ID in tags:
+            assert tags[GOLF_CART_PATH_ID].get("rm:no_bicycle") == "golf", variant.value
+    rows = list(
+        csv.DictReader((context.work_dir / DISCREPANCY_REPORT_DIR / GOLF_REPORT_NAME).open())
+    )
+    assert {(int(r["way_id"]), r["status"]) for r in rows} == {
+        (GOLF_CART_PATH_ID, "closed"),
+        (GOLF_DRIVE_ID, "closed"),
+        (GOLF_STREET_ID, "open"),
+        (GOLF_TRAIL_ID, "open"),
+    }
+    drawn = stored_map_class(context)
+    assert drawn[GOLF_CART_PATH_ID] == "barred"
+    assert drawn[GOLF_DRIVE_ID] == "hidden"
+    assert drawn[GOLF_STREET_ID] == "road"
+    assert drawn[GOLF_TRAIL_ID] == "road"
+    assert drawn[GOLF_OUTSIDE_ID] == "road"
+
+
+def test_a_farm_track_closes_through_the_rebuild(tmp_path, segment_schemas, states) -> None:
+    """The track rule wired through the rebuild (owner report 2026-10-21: rural farm
+    tracks around Dickerson "likely private roads that we can't legally use"). A bare
+    `highway=track` closes on every graph, is listed, and is hidden from the map; the
+    trails beside it are not tracks and are not judged."""
+    from pipeline import restricted_areas
+    from pipeline.extract import read_ways
+    from pipeline.run import DISCREPANCY_REPORT_DIR, TRACK_REPORT_NAME
+
+    source = install_source_extract(tmp_path, build=build_long_trails_extract)
+    context, report = run_pipeline(source, tmp_path, skip=NOT_SWAPPED)
+
+    assert report.completed
+    tracks = {m.way_id: m for m in context.track_ways}
+    for way_id in (TRACK_NO_SURFACE_ID, TRACK_GRADE1_ID):
+        assert tracks[way_id].closed
+        assert context.no_bicycle[way_id] == restricted_areas.TRACK_NO_BICYCLE
+    assert BARE_PATH_ID not in tracks and BARE_PATH_ID not in context.no_bicycle
+    for variant in Variant:
+        tags = {w.osm_id: w.tags for w in read_ways(context.variant_pbf(variant))}
+        if TRACK_NO_SURFACE_ID in tags:
+            assert tags[TRACK_NO_SURFACE_ID].get("rm:no_bicycle") == "track", variant.value
+    rows = list(
+        csv.DictReader((context.work_dir / DISCREPANCY_REPORT_DIR / TRACK_REPORT_NAME).open())
+    )
+    assert {(int(r["way_id"]), r["status"]) for r in rows} == {
+        (TRACK_NO_SURFACE_ID, "closed"),
+        (TRACK_GRADE1_ID, "closed"),
+    }
+    drawn = stored_map_class(context)
+    assert drawn[TRACK_NO_SURFACE_ID] == "hidden"
+    assert drawn[BARE_PATH_ID] == "road"
 
 
 DIALS_IDS = (

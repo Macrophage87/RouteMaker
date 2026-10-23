@@ -7,6 +7,7 @@ import {
   busiestSaid,
   noviceOfferShown,
   noviceOfferText,
+  noviceHopOf,
   noviceTransitDials,
   noviceTransitSaid,
   noviceTripLine,
@@ -81,8 +82,35 @@ test("the route summary shows the offer with the warnings, in Go and in Plan, th
   assert.match(panel, /<span className="novice-trip-note" aria-hidden="true">\s*\{noviceTripShort\(trips\?\.\[choice\.preset\]\)\}/);
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   assert.match(app, /choosePreset\(id, \{ \.\.\.chooseRideType\(id, null, dials\), noviceLegs: true \}\);/);
+  assert.match(app, /setNoviceHopPick\(hop \? \{ trip: optionsKey\(points, id\), hop \} : null\);/);
+  assert.match(app, /noviceHopPick\?\.trip === trip && base\.noviceLegs \? \{ \.\.\.base, noviceHop: noviceHopPick\.hop \} : base/);
   // Found as the offer shows, without a press: both ride types, keyed on the routed points.
   assert.match(app, /const noviceKey = noviceOfferShown\(shown, preset\) \? JSON\.stringify\(routedPoints\) : null;/);
-  assert.match(app, /requestRoute\(ends, choice\.preset, \{ dials: noviceTransitDials\(choice\.preset\) \}\)/);
+  assert.match(app, /requestRoute\(ends, choice\.preset, \{ dials: noviceTransitDials\(choice\.preset, noviceHopOf\(shown\)\) \}\)/);
   assert.match(app, /noviceTrips: noviceTripsShown,/);
+});
+
+test("the transit trips hop past the busy stretch: its ends in the request and the link (v0.11.0)", async () => {
+  const { optionSaid, optionText } = await import("./transit.ts");
+  const hop: [[number, number], [number, number]] = [[-77.156815, 39.123002], [-77.15778, 39.124309]];
+  const route = { novice: { ...note, busiest: { ...note.busiest, from: hop[0], to: hop[1] } } };
+  assert.deepEqual(noviceHopOf(route), hop);
+  assert.equal(noviceHopOf({ novice: note }), null);
+  assert.equal(noviceHopOf(null), null);
+  const dials = noviceTransitDials("bike-transit", hop);
+  assert.deepEqual(dialFields(dials).novice_hop, hop);
+  assert.equal("novice_hop" in dialFields(noviceTransitDials("bike-transit")), false);
+  // Never without the novice legs, and never on another ride type.
+  assert.equal(fitDials("bike-transit", { ...startDials("bike-transit"), noviceHop: hop }).noviceHop, undefined);
+  assert.equal(fitDials("novice", { ...startDials("novice"), noviceLegs: true, noviceHop: hop }).noviceHop, undefined);
+  // For the trip the offer was taken on only, and never in the link (as a chosen transit option).
+  const hash = encodePlan([[-77.0, 38.9], [-77.1, 38.9]], "bike-transit", dials);
+  assert.equal(decodePlan(hash).dials.noviceHop, undefined);
+  // The option that hops says so, on screen and heard.
+  const option = { label: "Ride, Metro, ride", minutes: 25, legs: [], hop: true };
+  assert.equal(optionText(option, 1), "B. Ride, Metro, ride, skips the busy stretch: about 25 min");
+  assert.equal(optionSaid(option, 1), "B. Ride, Metro, ride, skips the busy stretch: about 25 min");
+  assert.equal(optionText({ ...option, hop: false }, 0), "A. Ride, Metro, ride: about 25 min");
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  assert.match(app, /noviceTransitDials\(choice\.preset, noviceHopOf\(shown\)\)/);
 });
