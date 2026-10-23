@@ -636,12 +636,13 @@ test("a coverage ring needs four positions, first and last the same; three is no
   assert.equal(await fetchCoverage("o", serve(ring(3))), null);
 });
 
-test("the ride time changes the overlay's filters and the rails' widths, and nothing else", async () => {
+test("the ride time changes the overlay's filters, the rails' widths and the drawing priority, and nothing else", async () => {
   const { setStressWhen } = await import("./mapGlue.ts");
   const { stressFilters, facilityWidthAt, FACILITIES: F } = await import("../stressStyle.js");
   const ids = stressOverlayLayers(STRESS_SOURCE_ID).map((l: { id: string }) => l.id);
   const filters: Record<string, unknown> = {};
   const paints: Record<string, unknown> = {};
+  const layouts: Record<string, unknown> = {};
   const map = {
     getLayer: (id: string) => (ids.includes(id) ? {} : undefined),
     setFilter: (id: string, filter: unknown) => {
@@ -650,12 +651,24 @@ test("the ride time changes the overlay's filters and the rails' widths, and not
     setPaintProperty: (id: string, name: string, value: unknown) => {
       paints[`${id}.${name}`] = value;
     },
+    setLayoutProperty: (id: string, name: string, value: unknown) => {
+      layouts[`${id}.${name}`] = value;
+    },
   } as unknown as OverlayMap;
   setStressWhen(map, "weekend");
+  // The drawing priority on every tier's line and casing, for the ride time (a road closed to cars is a path).
+  const { drawPriority } = await import("../stressStyle.js");
+  const sorted = ids.filter((id: string) => /^stress-(casing-)?\d$/.test(id));
+  assert.deepEqual(layouts, Object.fromEntries(sorted.map((id: string) => [`${id}.line-sort-key`, drawPriority("weekend")])));
   assert.deepEqual(filters, stressFilters("weekend"));
   assert.deepEqual(
     paints,
-    Object.fromEntries(F.map((f: { facility: string }) => [`facility-${f.facility}.line-width`, facilityWidthAt(f, "weekend")])),
+    Object.fromEntries(
+      F.flatMap((f: { facility: string }) => [
+        [`facility-${f.facility}.line-width`, facilityWidthAt(f, "weekend")],
+        [`facility-${f.facility}-busy.line-width`, facilityWidthAt(f, "weekend")],
+      ]),
+    ),
   );
   assert.notDeepEqual(stressFilters("weekend"), stressFilters("weekday_rush"));
 });
@@ -674,6 +687,7 @@ function filterMap() {
       filters[id] = filter;
     },
     setPaintProperty: () => {},
+    setLayoutProperty: () => {},
   } as unknown as OverlayMap;
   return { map, filters, calls: () => calls };
 }
@@ -766,10 +780,10 @@ test("a layer shows by the switch and the mode: the capacity layers only in Mass
   for (const mass of [true, false]) for (const id of ["stress-1", "mass-line-good"]) assert.equal(overlayLayerShown(id, false, mass), false);
 });
 
-test("the Mass Ride tiles' source: its own path, the stress tiles' zooms", () => {
+test("the Mass Ride tiles' source: its own path, its own widest zoom (z10), the stress tiles' closest", () => {
   const source = massSource("https://example.test");
   assert.match(source.tiles[0], /\/tiles\/mass\/\{z\}\/\{x\}\/\{y\}\.pbf$/);
-  assert.equal(source.minzoom, stressSource("https://example.test").minzoom);
+  assert.equal(source.minzoom, 10);
   assert.equal(source.maxzoom, stressSource("https://example.test").maxzoom);
 });
 
@@ -910,4 +924,33 @@ test("watchCentre: the crosshair follows the map's padded centre, until it is st
   stop();
   assert.equal(listeners.get("move")?.size, 0);
   assert.equal(listeners.get("resize")?.size, 0);
+});
+
+// ---- A ride's focus (the owner, 2026-10-21: "A similar pass should happen when in a ride. Prioritize the path and wayfinding.") ----
+
+test("in a ride the corridor band goes and the busy roads and their rails fade further; calm ways, mountain-bike levels and the rest stay", async () => {
+  const { rideFocusFade, RIDE_BUSY_FADE } = await import("./mapGlue.ts");
+  assert.equal(rideFocusFade("popular-band", true), 0);
+  for (const id of ["stress-3", "stress-casing-4", "stress-5", "stress-ring-3", "facility-path-busy", "stress-half-3"]) assert.equal(rideFocusFade(id, true), RIDE_BUSY_FADE, id);
+  for (const id of ["stress-1", "stress-casing-2", "facility-path", "stress-half-2", "stress-unknown", "mtb-level-3", "mtb-level-casing-4"]) assert.equal(rideFocusFade(id, true), 1, id);
+  for (const id of ["popular-band", "stress-4", "facility-lane-busy"]) assert.equal(rideFocusFade(id, false), 1, `${id} outside a ride`);
+});
+
+test("a ride's start sets the overlay's fade again with its focus, and its end puts it back", async () => {
+  const { setRideFocus, RIDE_BUSY_FADE } = await import("./mapGlue.ts");
+  const layers = stressOverlayLayers(STRESS_SOURCE_ID) as Array<{ id: string; paint?: Record<string, unknown> }>;
+  const ids = layers.map((l) => l.id);
+  const own = (id: string) => layers.find((l) => l.id === id)!.paint?.["line-opacity"] ?? 1;
+  const set: Record<string, unknown> = {};
+  const map = { getLayer: (id: string) => (ids.includes(id) ? {} : undefined), setPaintProperty: (id: string, _n: string, v: unknown) => void (set[id] = v) };
+  try {
+    setRideFocus(map as never, true, null);
+    assert.equal(set["popular-band"], 0);
+    assert.deepEqual(set["stress-1"], own("stress-1"), "a calm way keeps its own opacity");
+    assert.equal(JSON.stringify(set["stress-4"]).includes(String(RIDE_BUSY_FADE)), true, JSON.stringify(set["stress-4"]));
+  } finally {
+    setRideFocus(map as never, false, null);
+  }
+  assert.equal(set["popular-band"], own("popular-band"));
+  assert.deepEqual(set["stress-4"], own("stress-4"), "the busy roads back to their own");
 });

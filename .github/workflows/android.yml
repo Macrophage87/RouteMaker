@@ -10,8 +10,12 @@ name: Android app
 #
 # No build carries a site address: this repository is public, and so are its Actions artifacts (any
 # signed-in GitHub user can download them), so nothing here may name a server. The app asks for the
-# address on first launch and keeps it on the phone. ROUTEMAKER_URL is for local builds only: it is
-# never set here, site-config.js refuses it when CI is set, and the step after `cap sync` checks it.
+# address on first launch and keeps it on the phone. The one exception is the by-hand release (store)
+# build: it bakes in the ROUTEMAKER_SITE_URL secret (the owner OK'd the address being public there,
+# 2026-10-21) and keeps its artifact for 3 days only. site-config.js refuses ROUTEMAKER_URL in CI
+# otherwise, and the step after `cap sync` checks that a test build names no site. The store id comes
+# from the ROUTEMAKER_APP_ID secret; a debug build adds ".debug" to it, so a test build sits beside
+# the store app instead of clashing with it (the two are signed with different keys).
 on:
   pull_request:
     paths:
@@ -43,7 +47,10 @@ jobs:
       # A pull request always builds debug, without the inspector; release only by hand.
       BUILD: ${{ github.event_name == 'workflow_dispatch' && inputs.build || 'debug' }}
       ROUTEMAKER_VERSION_CODE: ${{ github.run_number }}
-      ROUTEMAKER_DEBUG: ${{ github.event_name == 'workflow_dispatch' && inputs.inspector && '1' || '0' }}
+      # Never in a store (release) build.
+      ROUTEMAKER_DEBUG: ${{ github.event_name == 'workflow_dispatch' && inputs.inspector && inputs.build != 'release' && '1' || '0' }}
+      # Empty on a fork's pull request: Gradle then falls back to the placeholder id.
+      ROUTEMAKER_APP_ID: ${{ secrets.ROUTEMAKER_APP_ID }}
     steps:
       # Pinned by commit (the tag each pointed to), as ci.yml pins its own; bump deliberately.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -61,8 +68,28 @@ jobs:
       - run: npm ci
       - run: npm test
       # Writes the resolved config and the plugin projects into android/; none of it is committed.
-      - run: npx cap sync android
+      - name: Sync (a test build names no site; the store build bakes in ROUTEMAKER_SITE_URL)
+        env:
+          STORE_SITE: ${{ env.BUILD == 'release' && github.event_name == 'workflow_dispatch' && secrets.ROUTEMAKER_SITE_URL || '' }}
+        run: |
+          if [ "$BUILD" = release ]; then
+            if [ -z "$STORE_SITE" ]; then
+              echo "::error::A release (store) build needs the ROUTEMAKER_SITE_URL secret, the site's https origin (mobile/README.md)."
+              exit 1
+            fi
+            ROUTEMAKER_STORE_BUILD=1 ROUTEMAKER_URL="$STORE_SITE" npx cap sync android
+          else
+            npx cap sync android
+          fi
+      - name: The store build names its site
+        if: env.BUILD == 'release'
+        run: |
+          node -e '
+            const c = require("./android/app/src/main/assets/capacitor.config.json");
+            if (!(c.server && c.server.url)) { console.error("::error::The store build names no site."); process.exit(1); }
+          '
       - name: No site address in the build
+        if: env.BUILD == 'debug'
         run: |
           node -e '
             const c = require("./android/app/src/main/assets/capacitor.config.json");
@@ -110,4 +137,5 @@ jobs:
             mobile/android/app/build/outputs/apk/${{ env.BUILD }}/*.apk
             mobile/android/app/build/outputs/bundle/release/*.aab
           if-no-files-found: error
-          retention-days: 30
+          # The store build names the site: kept just long enough to upload to Play.
+          retention-days: ${{ env.BUILD == 'release' && 3 || 30 }}

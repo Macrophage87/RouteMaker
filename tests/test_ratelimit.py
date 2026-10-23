@@ -376,6 +376,7 @@ UNLIMITED_ON_PURPOSE = {
     "healthz": "the container healthcheck: one fixed query, polled by the orchestrator",
     "api/openapi.json": "the API's schema: no data, the same answer for everyone",
     "admin": "the staff admin: behind its own sign-in, never a public page",
+    "privacy": "the privacy policy: fixed text, no data, the same answer for everyone",
 }
 
 

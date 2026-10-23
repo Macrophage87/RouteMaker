@@ -83,9 +83,17 @@ function marked(option: Pick<TransitOption, "legs">): boolean {
  * An option as its button shows it: "A. Ride the whole way: about 12 min", and a transit trip by its
  * legs, "B. 🚶 4 min · 🔴 18 min · 🚶 3 min: about 25 min" (the marks aria-hidden: `optionSaid`).
  */
-export function optionText(option: Pick<TransitOption, "label" | "minutes" | "legs" | "busy_m">, index: number): string {
+export function optionText(
+  option: Pick<TransitOption, "label" | "minutes" | "legs" | "hop" | "busy_m">,
+  index: number,
+): string {
   const what = marked(option) ? legsText(option.legs ?? []) : option.label;
-  return `${String.fromCharCode(65 + index)}. ${what}: about ${option.minutes} min${busyText(option.busy_m, "busy")}`;
+  return `${String.fromCharCode(65 + index)}. ${what}${hopWords(option)}: about ${option.minutes} min${busyText(option.busy_m, "busy")}`;
+}
+
+/** Novice and Nervous's hop past the busy stretch (v0.11.0): ", skips the busy stretch", on screen and said. */
+function hopWords(option: Pick<TransitOption, "hop">): string {
+  return option.hop ? ", skips the busy stretch" : "";
 }
 
 /**
@@ -104,10 +112,13 @@ const NO_BUSY_M = 160;
 export const ELEVATOR_OUT_SAID = "an elevator is out on the way, so it is ranked lower";
 
 /** The same option in words: "B. walk 4 minutes, Red Line 18 minutes, walk 3 minutes: about 25 min". */
-export function optionSaid(option: Pick<TransitOption, "label" | "minutes" | "legs" | "busy_m" | "elevator_out">, index: number): string {
+export function optionSaid(
+  option: Pick<TransitOption, "label" | "minutes" | "legs" | "hop" | "busy_m" | "elevator_out">,
+  index: number,
+): string {
   const what = marked(option) ? legsSaid(option.legs ?? []) : option.label;
   const elevator = option.elevator_out ? `; ${ELEVATOR_OUT_SAID}` : "";
-  return `${String.fromCharCode(65 + index)}. ${what}: about ${option.minutes} min${busyText(option.busy_m, "on busy roads")}${elevator}`;
+  return `${String.fromCharCode(65 + index)}. ${what}${hopWords(option)}: about ${option.minutes} min${busyText(option.busy_m, "on busy roads")}${elevator}`;
 }
 
 /** What is said when an option is chosen. */

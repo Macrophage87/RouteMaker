@@ -104,7 +104,7 @@ test("the toggle can be chosen with the start alone, and its hint no longer says
   assert.deepEqual([implied.checked, implied.implied], [true, true]);
 });
 
-test("search: in a loop a place is the start or a stop, never the destination", () => {
+test("search: in a loop a place is the start or a stop; Make this the destination ends the loop", () => {
   assert.deepEqual(choicesFor(1, false, true), ["start", "via"]);
   assert.deepEqual(choicesFor(3, false, true), ["start", "via"]);
   assert.deepEqual(choicesFor(MAX_POINTS, true, true), ["start"]);
@@ -113,7 +113,8 @@ test("search: in a loop a place is the start or a stop, never the destination", 
   assert.equal(defaultChoice(1), "end");
   assert.equal(choiceInForce("end", 2, false, true), "via");
   assert.equal(placeEffect(1, "via", true), "via");
-  assert.equal(placeEffect(2, "end", true), "via");
+  // "Make this the destination" on a loop: after the stops (the owner, 2026-10-22; App turns the loop off).
+  assert.equal(placeEffect(2, "end", true), "end");
   assert.equal(placeEffect(2, "start", true), "replace-start");
   assert.deepEqual(applyPlace([A], B, "via", true), [A, B]);
   assert.deepEqual(applyPlace([A, B], D, defaultChoice(2, true), true), [A, B, D]);
@@ -122,15 +123,18 @@ test("search: in a loop a place is the start or a stop, never the destination", 
   assert.deepEqual([view.choice, view.effect], ["via", "via"]);
 });
 
-test("rail stations: a loop offers start and stop, not end", () => {
-  assert.deepEqual(stationRoles(1, true), ["start", "via"]);
-  assert.deepEqual(stationRoles(3, true), ["start", "via"]);
+test("rail stations: a loop offers start, stop and an end that turns it off (Stephen 2026-10-20)", () => {
+  assert.deepEqual(stationRoles(1, true), ["start", "end", "via"]);
+  assert.deepEqual(stationRoles(3, true), ["start", "end", "via"]);
   assert.deepEqual(stationRoles(MAX_POINTS, true), ["start"]);
   assert.deepEqual(stationRoles(1), ["start", "end"]);
   assert.deepEqual(placeAtStation([A], B, "via", true), [A, B]);
-  assert.deepEqual(placeAtStation([A, B], D, "end", true), [A, B]);
+  // An end on a loop comes after the start and every stop; App turns the loop off in the same edit.
+  assert.deepEqual(placeAtStation([A, B], D, "end", true), [A, B, D]);
+  assert.deepEqual(placeAtStation([A], D, "end", true), [A, D]);
   assert.deepEqual(stationEdit([A, B], D, "via", true), { next: [A, B, D], index: 2 });
-  assert.deepEqual(stationEdit([A, B], D, "end", true), { refused: "role" });
+  assert.deepEqual(stationEdit([A, B], D, "end", true), { next: [A, B, D], index: 2 });
+  assert.deepEqual(stationEdit(Array(MAX_POINTS).fill(A), D, "end", true), { refused: "role" });
 });
 
 test("the GPX of a chosen loop names its points as a loop, and reads back without those as place names", () => {

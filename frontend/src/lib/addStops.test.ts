@@ -28,13 +28,21 @@ test("each result row offers 'Make this the destination' as an option of its own
   const search = source("../PlaceSearch.tsx");
   assert.match(search, /export const MAKE_DESTINATION = "Make this the destination";/);
   // Plan's Add a stop box offers it too (Plan streamline, 2026-10-17).
-  assert.match(search, /const offersDestination = \(variant === "plan" \|\| variant === "add"\) && !loop && effect === "via";/);
+  // In a loop too, where it ends the loop (the owner, 2026-10-22: "Setting a destination should end the loop").
+  assert.match(search, /const offersDestination = \(variant === "plan" \|\| variant === "add"\) && effect === "via";/);
   assert.match(search, /offered\.flatMap\(\(place\) => \[place, \{ destination: place \}\]\)/);
   // An option in the listbox, reached by the arrows and said with its place.
   assert.match(search, /aria-label=\{`\$\{MAKE_DESTINATION\}: \$\{item\.destination\.name\}`\}/);
   assert.match(search, /onClick=\{\(\) => pick\(item\.destination, "end"\)\}/);
   // Go's field adds a stop; Plan's From, To and Add a stop each pass their own choice.
   assert.match(search, /onPick\(place, as \?\? boxChoice \?\? \(variant === "stop" \? "via" : single \? "end" : choice\)\);/);
+});
+
+test("a destination picked from search on a loop ends the loop there, in one edit", () => {
+  const app = source("../App.tsx");
+  assert.match(app, /const endsLoop = loopVias && choice === "end" && pointsRef\.current\.length >= 1;/);
+  assert.match(app, /commit\(next, endsLoop \? \{ \.\.\.ride, dials: withLoop\(ride\.dials, false\) \} : undefined\);/);
+  assert.match(app, /if \(endsLoop\) announce\(LOOP_ENDED_BY_SEARCH\);/);
 });
 
 test("Go's route sheet keeps one 'Add a stop' field, under the route card, with Best order, never during a ride", () => {

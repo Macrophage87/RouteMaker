@@ -1,4 +1,5 @@
 import { test } from "node:test";
+import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
 import type { LonLat } from "./geo.ts";
 import type { DescriptionEntry, RouteResponse } from "./api.ts";
@@ -6,6 +7,7 @@ import { ViaMarks } from "./pointKinds.ts";
 import {
   RESET_NOTHING,
   ROUTE_NEEDS_POINTS,
+  ROUTE_NEEDS_STOP,
   ROUTE_UP_TO_DATE,
   changeSummary,
   elapsedText,
@@ -64,6 +66,8 @@ test("an unfinished plan says what to do next, and a loop starts and finishes at
 
 test("the Route button: Route, then Update route after a change; unavailable with its reason", () => {
   assert.deepEqual(routeButton({ points: 1, drawn: false, changed: false, routeShown: false }), { label: "Route", unavailable: ROUTE_NEEDS_POINTS });
+  // A loop needs a stop, not an end.
+  assert.deepEqual(routeButton({ points: 1, drawn: false, changed: false, routeShown: false, loop: true }), { label: "Route", unavailable: ROUTE_NEEDS_STOP });
   assert.deepEqual(routeButton({ points: 2, drawn: false, changed: false, routeShown: false }), { label: "Route", unavailable: null });
   assert.deepEqual(routeButton({ points: 2, drawn: true, changed: false, routeShown: true }), { label: "Route", unavailable: ROUTE_UP_TO_DATE });
   assert.deepEqual(routeButton({ points: 3, drawn: true, changed: true, routeShown: true }), { label: "Update route", unavailable: null });
@@ -132,4 +136,16 @@ test("the per-leg details: each leg's length and change, new legs, and legs no l
   );
   // Legs that do not fit the points (an older API): no details rather than wrong ones.
   assert.deepEqual(legChanges(before, { ...after, route: line([a, b, d], [2]) }, isVia, nameOf), []);
+});
+
+test("an empty plan has Start at current location in Route's place, and From keeps it in its list only", () => {
+  const panel = readFileSync(new URL("../app/PlanPanel.tsx", import.meta.url), "utf8");
+  assert.match(panel, /export const START_HERE_LABEL = "Start at current location";/);
+  assert.match(panel, /\{locate \? \([\s\S]{0,400}className="route-button start-here"[\s\S]{0,300}if \(locate\.unavailable === null\) locate\.onLocate\(\);/);
+  // Why Route is unavailable is said with it, not shown (Stephen 2026-10-20: simpler).
+  assert.match(panel, /<span id=\{routeWhy\} className="visually-hidden">/);
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  assert.match(app, /\? \{ onLocate: \(\) => void useMyLocation\("start"\), busy: locating, unavailable: locateReady\.available \? null : locateReady\.reason \}/);
+  const planner = readFileSync(new URL("../app/Planner.tsx", import.meta.url), "utf8");
+  assert.match(planner, /listOnly: variant === "add" \|\| \(variant === "from" && points\.length === 0\),/);
 });
