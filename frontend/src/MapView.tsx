@@ -157,6 +157,11 @@ import {
   closureFeatures,
   closureMarkerName,
   closuresOf,
+  AREA_POLL_MS,
+  areaClosuresPath,
+  markerItems,
+  mergeClosures,
+  loadAreaClosures,
   noticeCard,
   noticeMarkerName,
   parkNoticesOf,
@@ -623,6 +628,10 @@ export function MapView(props: Props) {
   const fitted = useRef(false);
   const callbacks = useRef(props);
   callbacks.current = props;
+  /** The closures in force now in the map's view, route or no route (v0.12.0, lib/closureMap.ts). */
+  const [areaClosures, setAreaClosures] = useState<ClosureItem[]>([]);
+  const areaClosuresRef = useRef<ClosureItem[]>([]);
+  areaClosuresRef.current = areaClosures;
 
   // The map itself, once.
   useEffect(() => {
@@ -1384,7 +1393,16 @@ export function MapView(props: Props) {
       // Closures in force at the ride (v0.7.0, lib/closureMap.ts): over the route, so a closed stretch on it shows.
       // A white casing, then red (closed) or amber (bike lane blocked); dashed where it "may still apply". Their
       // markers (buttons) carry the names and open the cards.
-      map.addSource(CLOSURE_SOURCE, { type: "geojson", data: closureFeatures(closuresOf(callbacks.current.route, callbacks.current.permitsOn)) });
+      map.addSource(CLOSURE_SOURCE, {
+        type: "geojson",
+        data: closureFeatures(
+          mergeClosures(
+            callbacks.current.route && !callbacks.current.stale ? closuresOf(callbacks.current.route, callbacks.current.permitsOn) : [],
+            areaClosuresRef.current,
+            callbacks.current.permitsOn,
+          ),
+        ),
+      });
       map.addLayer({
         id: "closure-casing",
         type: "line",
@@ -2117,6 +2135,47 @@ export function MapView(props: Props) {
   // Enter or Space opens the card, which takes the focus and gives it back on close; Escape closes it.
   const closureMarkers = useRef<Marker[]>([]);
   const closurePopup = useRef<Popup | null>(null);
+  // The view's closures (v0.12.0): asked after the map settles and every few minutes while the page is in front, so a
+  // closure past its end date leaves the map; nothing is asked zoomed out past zoom 11.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    let controller: AbortController | null = null;
+    let settle = 0;
+    const refresh = async () => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      const b = map.getBounds();
+      const path = areaClosuresPath({ west: b.getWest(), south: b.getSouth(), east: b.getEast(), north: b.getNorth() }, map.getZoom(), props.permitsOn);
+      controller?.abort();
+      if (!path) {
+        setAreaClosures([]);
+        return;
+      }
+      const mine = new AbortController();
+      controller = mine;
+      // Offline or refused: the last closures stay drawn until the next ask.
+      const items = await loadAreaClosures(path, mine.signal);
+      if (items && !mine.signal.aborted) setAreaClosures(items);
+    };
+    const onMove = () => {
+      window.clearTimeout(settle);
+      settle = window.setTimeout(() => void refresh(), 400);
+    };
+    const onVisible = () => {
+      if (document.visibilityState !== "hidden") void refresh();
+    };
+    map.on("moveend", onMove);
+    document.addEventListener("visibilitychange", onVisible);
+    const poll = window.setInterval(() => void refresh(), AREA_POLL_MS);
+    void refresh();
+    return () => {
+      controller?.abort();
+      window.clearTimeout(settle);
+      window.clearInterval(poll);
+      map.off("moveend", onMove);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [props.permitsOn]);
   useEffect(() => {
     const map = mapRef.current;
     closurePopup.current?.remove();
@@ -2124,7 +2183,7 @@ export function MapView(props: Props) {
     closureMarkers.current.forEach((marker) => marker.remove());
     closureMarkers.current = [];
     if (!map) return;
-    const items = props.route && !props.stale ? closuresOf(props.route, props.permitsOn) : [];
+    const items = mergeClosures(props.route && !props.stale ? closuresOf(props.route, props.permitsOn) : [], areaClosures, props.permitsOn);
     const source = map.getSource(CLOSURE_SOURCE) as GeoJSONSource | undefined;
     source?.setData(closureFeatures(items));
     const open = (opener: HTMLButtonElement, at: LonLat, card: ClosureCard, item: ClosureItem | null) => {
@@ -2150,7 +2209,7 @@ export function MapView(props: Props) {
       element.addEventListener("dblclick", (event) => event.stopPropagation());
       return element;
     };
-    for (const item of items) {
+    for (const item of markerItems(items)) {
       const element = button(
         `closure-marker closure-${item.bypassed ? "bypassed" : item.severity}`,
         closureMarkerName(item),
@@ -2174,7 +2233,7 @@ export function MapView(props: Props) {
       });
       closureMarkers.current.push(new maplibregl.Marker({ element, anchor: "center" }).setLngLat(point).addTo(map));
     }
-  }, [props.route, props.stale, props.permitsOn]);
+  }, [props.route, props.stale, props.permitsOn, areaClosures]);
 
   // Where the next train or bus is (v0.9.0): a mark named in words ("Next bus: Bus 52 is 0.8 mi away (1.3 km), 3
   // stops back (Data: WMATA, live)"), not a button (it does nothing when pressed); moved in place at each answer.

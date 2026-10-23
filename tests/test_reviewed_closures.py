@@ -483,3 +483,61 @@ class TestRouteAnswer:
         # A feed's end is said as it is given.
         assert wz.when_text(closure(1, 31, "md"), now, False) == "Closed until Oct 31"
         assert core_wz._until_words(closure(1, 31, "md")) == "until Oct 31, 2026"
+
+
+@db
+class TestAreaClosures:
+    def test_the_map_shows_closures_with_no_route_until_they_end(self, live) -> None:
+        # The owner, 2026-10-23 (Lake Frank): closures on the map with a red line, linked, gone
+        # after the end date; DC permits off by default.
+        reviewed_closures.create(
+            make_user(), [WAY], "Trail construction", end=days(10), url="https://example.org/n"
+        )
+        box = f"{LON - 0.01},{LAT - 0.01},{LON + 0.01},{LAT + 0.01}"
+        answer = Client().get(f"/api/closures/map?bbox={box}", **addr())
+        assert answer.status_code == 200, answer.content
+        (row,) = answer.json()["closures"]
+        assert (row["source"], row["kind"], row["severity"]) == ("reviewer", "closed", "red")
+        assert row["url"] == "https://example.org/n"
+        assert row["effect"] == "none" and row["can_bypass"] is False
+        assert row["effect_text"] == "Closed to bikes: routes go round it."
+        assert row["when_text"].startswith("Closed through ")
+        # Elsewhere, nothing; a view too big is refused.
+        far = f"{LON + 1},{LAT + 1},{LON + 1.01},{LAT + 1.01}"
+        assert Client().get(f"/api/closures/map?bbox={far}", **addr()).json() == {"closures": []}
+        huge = f"{LON - 1},{LAT - 1},{LON + 1},{LAT + 1}"
+        assert Client().get(f"/api/closures/map?bbox={huge}", **addr()).status_code == 400
+        # Past its end it is gone.
+        later = timezone.now() + timedelta(days=12)
+        assert (
+            workzones.area_rows((LON - 0.01, LAT - 0.01, LON + 0.01, LAT + 0.01), now=later) == []
+        )
+
+    def test_construction_is_orange_and_permits_only_when_asked(self, monkeypatch) -> None:
+        from datetime import UTC, datetime
+
+        now = datetime(2026, 10, 23, 12, tzinfo=UTC)
+
+        def zone(zone_id: str, source: str, kind: str) -> wz.Zone:
+            line = ((LON, LAT), (LON + 0.002, LAT))
+            return wz.Zone(zone_id, source, kind, 60.0, line, "Oak Street", None, None, None)
+
+        zones = (
+            zone("md-1", "md", wz.PENALTY),
+            zone("md-2", "md", wz.CLOSED),
+            zone("dc-1", "dc", wz.CLOSED),
+        )
+        monkeypatch.setattr(workzones, "snapshot", lambda: workzones.Snapshot(zones, {}))
+        box = (LON - 0.01, LAT - 0.01, LON + 0.01, LAT + 0.01)
+        rows = workzones.area_rows(box, now=now)
+        assert [(r["id"], r["severity"]) for r in rows] == [("md-2", "red"), ("md-1", "amber")]
+        works = rows[1]
+        assert works["title"] == "Oak Street: construction"
+        assert works["effect_text"].startswith("Construction: still rideable")
+        from core import api
+
+        for row in rows:
+            api.ClosureOut(**row)
+        with_permits = workzones.area_rows(box, permits=True, now=now)
+        assert [r["id"] for r in with_permits] == ["md-2", "md-1", "dc-1"]
+        assert with_permits[2]["effect"] == "possible"

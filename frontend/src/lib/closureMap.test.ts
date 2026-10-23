@@ -5,6 +5,10 @@ import assert from "node:assert/strict";
 import {
   ROUTE_THROUGH_LABEL,
   UNDO_BYPASS_LABEL,
+  areaClosuresPath,
+  markerItems,
+  mergeClosures,
+  parseAreaClosures,
   bypassFor,
   bypassPlanKey,
   closureCard,
@@ -211,4 +215,57 @@ test("DDOT's permits are flagged only: drawn behind Plan's DC permits switch, of
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   assert.match(app, /permitsOn=\{!riding && permitsShown\(permitsOn, mode\)\}/);
   assert.match(app, /permits: mode === "go" \? null : \{ on: permitsOn, onChange: changePermitsOn \}/);
+});
+
+
+// v0.12.0 (the owner, 2026-10-23, Lake Frank): closures on the map with no route, red closed and orange construction.
+test("the view's closures are asked for zoomed in only, cut to the server's largest view, permits only when on", () => {
+  const view = { west: -77.2, south: 39.0, east: -77.0, north: 39.2 };
+  assert.equal(areaClosuresPath(view, 10.9), null);
+  assert.equal(areaClosuresPath(view, 14), `/api/closures/map?bbox=${encodeURIComponent("-77.2,39,-77,39.2")}`);
+  assert.ok(areaClosuresPath(view, 14, true)!.endsWith("&permits=true"));
+  const wide = areaClosuresPath({ west: -78, south: 38, east: -76, north: 40 }, 12)!;
+  const [w, s, e, n] = decodeURIComponent(wide.split("bbox=")[1]).split(",").map(Number);
+  assert.ok(e - w <= 0.4 && n - s <= 0.3, wide);
+  assert.ok(Math.abs((w + e) / 2 + 77) < 1e-6 && Math.abs((s + n) / 2 - 39) < 1e-6);
+});
+
+test("the view's closures are drawn beside the route's, never twice, and permits stay off unless switched on", () => {
+  const onRoute = item({ id: "a" });
+  const area = [
+    item({ id: "a", effect: "none", can_bypass: false }),
+    item({ id: "reviewer-3-0", source: "reviewer", effect: "none", can_bypass: false }),
+    item({ id: "works", kind: "penalty", severity: "amber", effect: "none", can_bypass: false }),
+    item({ id: "permit", source: "dc", effect: "possible", can_bypass: false }),
+  ];
+  assert.deepEqual(mergeClosures([onRoute], area).map((i) => i.id), ["a", "reviewer-3-0", "works"]);
+  assert.deepEqual(mergeClosures([], area, true).map((i) => i.id), ["a", "reviewer-3-0", "works", "permit"]);
+  // Red for a closed stretch, orange for construction you can ride round.
+  const drawn = closureFeatures(mergeClosures([], area)).features.map((f) => f.properties.severity);
+  assert.deepEqual(drawn, ["red", "red", "amber"]);
+});
+
+test("a closure with no route has its source linked and no Route through button; construction says so", () => {
+  const closed = item({ id: "reviewer-3-0", source: "reviewer", effect: "none", can_bypass: false, effect_text: "Closed to bikes: routes go round it." });
+  const card = closureCard(closed);
+  assert.equal(card.heading, "Road closed");
+  assert.equal(card.source.url, "https://mpdc.dc.gov/node/1845231");
+  assert.equal(card.action, null);
+  const works = item({ kind: "penalty", severity: "amber", effect: "none", can_bypass: false, title: "Old Georgetown Rd: construction", effect_text: "Construction: still rideable, with care." });
+  assert.equal(closureCard(works).heading, "Construction");
+  assert.ok(closureMarkerName(works).startsWith("Construction: Old Georgetown Rd: construction."));
+});
+
+test("an answer not of the right shape draws nothing", () => {
+  assert.deepEqual(parseAreaClosures(null), []);
+  assert.deepEqual(parseAreaClosures({ closures: "x" }), []);
+  assert.deepEqual(parseAreaClosures({ closures: [{ id: 1 }, item()] }).map((i) => i.id), ["mpd-1845231-0"]);
+});
+
+test("a reviewer's closure gets one marker on its middle piece with no route, and one per piece on a route", () => {
+  const pieces = [0, 1, 2, 3, 4].map((i) => item({ id: `reviewer-4-${i}`, source: "reviewer", effect: "none", can_bypass: false }));
+  const other = item({ id: "reviewer-3-0", source: "reviewer", effect: "none", can_bypass: false });
+  assert.deepEqual(markerItems([...pieces, other, item()]).map((i) => i.id), ["reviewer-4-2", "reviewer-3-0", "mpd-1845231-0"]);
+  const onRoute = pieces.map((p) => ({ ...p, effect: "routed_round" as const, can_bypass: true }));
+  assert.equal(markerItems(onRoute).length, 5);
 });
