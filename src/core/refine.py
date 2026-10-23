@@ -1956,8 +1956,9 @@ def _busier(read: Analysis, first_exposure: float, ctx: Context) -> bool:
     Plyers Mill Rd signal (about 0.3 mi (0.5 km) longer, 0.2 mi (0.3 km) more LTS 3 and
     no red junction), which this guard refused for its LTS 3 alone. A red junction counts
     one for one, as an Avoid-rated one does: a metre of its cost is a metre of LTS 3, and
-    buys half a metre of LTS 4 (weight 2), so the guard still refuses a kilometre of LTS 4
-    for one 4,500 ft red crossing. With no Avoid or red junction on either it is
+    buys half a metre of LTS 4 at the standard weights (LTS 4 weighs 2; 8 on a stress-averse
+    ride), so the guard still refuses 0.6 mi (1 km) of LTS 4 for one 4,500 ft (1,372 m) red
+    crossing. With no Avoid or red junction on either it is
     the plain guard. The guard's tolerance (`_allowance`) is on the exposure alone: the
     first route's junctions are added at their cost, not scaled up with it. The
     exposure is the rated metres' (`Analysis.rated_exposure_m`, 409): hill avoidance never

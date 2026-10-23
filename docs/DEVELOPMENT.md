@@ -2609,8 +2609,9 @@ unsignalised crossing of Connecticut Ave at Decatur Ave at rush hour: "essential
 impassable"): on beta the search had excluded both red crossings there and the router
 found the way by the Plyers Mill Rd signal, 0.3 mi (0.5 km) longer with 0.2 mi
 (0.3 km) more LTS 3 and no red junction, which the guard refused for its LTS 3 alone.
-A metre of a red junction's cost is a metre of LTS 3 and half a metre of LTS 4
-(weight 2), so one 4,500 ft red crossing still never buys a kilometre of LTS 4. It stops after two rounds that do not improve it, when no route is left (every way
+A metre of a red junction's cost is a metre of LTS 3 and, at the standard weights,
+half a metre of LTS 4 (weight 2; 8 on a stress-averse ride), so one 4,500 ft (1,372 m)
+red crossing still never buys 0.6 mi (1 km) of LTS 4. It stops after two rounds that do not improve it, when no route is left (every way
 out excluded: asked again once with only the LTS 4 stretches), when a round
 cannot be started with five seconds left, and never excludes within 500 m of the
 route's ends or of a via point (a trailhead's only way out is often the one busy
