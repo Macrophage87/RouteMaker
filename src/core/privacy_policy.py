@@ -191,14 +191,16 @@ SECTIONS: list[tuple[str, str]] = [
                 "Send to Garmin then adds the course to your Garmin Connect account directly, "
                 "without opening the Garmin Connect app.",
                 "RouteMaker keeps only Garmin’s sign-in token for your account, encrypted, "
-                "your Garmin account number, and which Garmin course each saved route was sent "
-                "as, so sending it again updates that course. It uses them only to send the "
-                "courses you choose.",
-                "It never reads your activities, health data or anything else from Garmin.",
+                "your Garmin account number, which Garmin course each saved route was sent as (so "
+                "sending it again updates that course), and when you connected and last sent a "
+                "course. It uses them only to send the courses you choose.",
+                "Other than your account number, it never reads your activities, health data or "
+                "anything else from Garmin.",
                 GARMIN_NO_AI,
-                "Settings shows whether you are connected. Disconnect there, or in Garmin "
-                "Connect, at any time: RouteMaker deletes the token and tells Garmin. Deleting "
-                "your account does the same.",
+                "Settings shows whether you are connected. Disconnect there at any time: "
+                "RouteMaker deletes the token and tells Garmin. Deleting your account does the "
+                "same. Disconnect in Garmin Connect instead, and RouteMaker deletes it when Garmin "
+                "says so.",
                 "That connection is all RouteMaker keeps from Garmin, so there is nothing else to "
                 "see, correct or export. To fix it, disconnect and connect again.",
             ]
@@ -265,10 +267,10 @@ SECTIONS: list[tuple[str, str]] = [
         + _p("Where you connect Garmin, the server also contacts Garmin:")
         + _ul(
             [
-                "To finish connecting, keep the connection signed in, and end it when you "
-                "disconnect: your Garmin sign-in token.",
-                "To send a course you choose: the route’s line, its name, its climb and the kind "
-                "of ride.",
+                "Your Garmin sign-in token: to finish connecting, to keep you connected, and to "
+                "end the connection when you disconnect.",
+                "A course you choose to send: the route’s line with its heights, its name, "
+                "distance, climb and descent, and the kind of ride.",
             ]
         )
         + _p(

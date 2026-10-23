@@ -549,7 +549,7 @@ class TestSendingCourses:
         mine, _user, csrf = self._linked(courses)
         courses.answers = [400]
         r = self._send(mine, csrf)
-        assert r.status_code == 502 and "as a file" in r.json()["error"]
+        assert r.status_code == 502 and "could not read" in r.json()["error"]
 
     def test_someone_else_s_saved_route_is_not_used(self, courses) -> None:
         mine, _user, csrf = self._linked(courses)
@@ -567,7 +567,7 @@ class TestSendingCourses:
         assert courses.calls[2][2]["access"] == "access-2"
 
     @pytest.mark.parametrize(
-        ("status", "words"), [(412, "Allow it in Garmin Connect"), (429, "Try again in a few")]
+        ("status", "words"), [(412, "Allow it in Garmin Connect"), (429, "too many courses")]
     )
     def test_garmin_s_refusals_are_said(self, courses, status, words) -> None:
         mine, _user, csrf = self._linked(courses)
