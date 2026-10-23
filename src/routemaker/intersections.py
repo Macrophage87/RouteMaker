@@ -188,13 +188,42 @@ TIME_FACTORS = {
 }
 NIGHT_URBAN_FACTOR = 0.5
 NIGHT_RURAL_FACTOR = 0.85
+# An LTS 4 or Avoid road (`severe`) crossed or joined with no signal to stop its
+# traffic - a stop or yield sign on the rider's side, or nothing mapped - at weekday
+# rush hour, in place of rush hour's x1.25: the rider waits for a gap in peak traffic
+# on a multi-lane arterial, and gaps get rare. The owner, 2026-10-23, of an unsignalised
+# crossing of Connecticut Ave at Decatur Ave, Kensington, at 7:42 AM: "essentially
+# impassable", then "Raise their rush hour weight. That's typically where they are the
+# problem." Signals, all-way stops, junctions where the cross traffic stops and LTS 3
+# roads keep x1.25 (so a plain unsignalised left onto an LTS 3 road stays orange at
+# rush hour, 2026-10-10). A typical value, not measured; MAX_CROSSING_FT still caps it.
+UNSIGNALISED_RUSH_FACTOR = 2.0
+# And at least this much, whatever the road's speed and lanes, for crossing such a road,
+# joining it, or turning left across it: the owner, 2026-10-23, "It's not just time but
+# stress here. Most people would rather bike 10 minutes than wait 5 minutes at a busy
+# crossing for an opening. There are rarely openings." Ten minutes of quiet riding at
+# the Default ride's speed (Valhalla's Hybrid 18 km/h, 11.2 mph): 1.86 calm mi (3.0 km).
+UNSIGNALISED_RUSH_MIN_FT = 9840.0
+# The kinds that wait for a gap in the busy road's traffic (not a right turn onto it,
+# riding along it, or a slip lane).
+GAP_WAIT_KINDS = frozenset({"crossing", "left_onto", "straight_onto", "left_across", "left_from"})
 
 
-def time_factor(when: str | None, urban: bool | None = None) -> float:
+def time_factor(
+    when: str | None,
+    urban: bool | None = None,
+    control: Control | None = None,
+    severe_road: bool = False,
+) -> float:
     """The multiplier on a busy-road junction's cost at a ride time; 1.0 where
-    the setting is unknown. At night it depends on `urban`, the crossed road's."""
+    the setting is unknown. At night it depends on `urban`, the crossed road's; at
+    rush hour on `control`, the junction's, and `severe_road`, whether the road is
+    LTS 4 or Avoid (UNSIGNALISED_RUSH_FACTOR where the rider gives way to such a
+    road's traffic and no signal stops it)."""
     if when == ridetime.NIGHT:
         return NIGHT_URBAN_FACTOR if urban else NIGHT_RURAL_FACTOR
+    if when == ridetime.WEEKDAY_RUSH and severe_road and control in GIVE_WAY_CONTROLS:
+        return UNSIGNALISED_RUSH_FACTOR
     return TIME_FACTORS.get(when or "", 1.0)
 
 
@@ -395,6 +424,10 @@ class Control(StrEnum):
     ALL_STOP = "all_stop"
     # Nothing known: no signal and no sign in the data.
     NONE = "none"
+
+
+# The controls where the rider gives way to traffic no signal stops (`time_factor`).
+GIVE_WAY_CONTROLS = frozenset({Control.STOP, Control.NONE})
 
 
 @dataclass(frozen=True)
@@ -878,15 +911,21 @@ def assess(junction: Junction, group: bool = False, when: str | None = None) -> 
         # is fixed, as a person set it.
         model = cost
         if kind != "neighbourhood" and about is not None:
-            model = min(cost * time_factor(when, about.urban), MAX_CROSSING_FT)
+            model = min(
+                cost * time_factor(when, about.urban, junction.control, severe(about)),
+                MAX_CROSSING_FT,
+            )
         return rated(junction, kind, about, model, group)
     if kind == "neighbourhood" or about is None:
         return None
     # 468a, 469c-469e: a busy-road junction costs more at rush hour, less at the
     # weekend and at night.
-    factor = time_factor(when, about.urban)
+    factor = time_factor(when, about.urban, junction.control, severe(about))
     untimed = min(cost, MAX_CROSSING_FT)
     cost = min(cost * factor, MAX_CROSSING_FT)
+    if factor == UNSIGNALISED_RUSH_FACTOR and kind in GAP_WAIT_KINDS:
+        # Rarely an opening at rush hour: never less than ten minutes' riding.
+        cost = max(cost, UNSIGNALISED_RUSH_MIN_FT)
     if kind == "left_from" and junction.control is Control.SIGNAL:
         # The box turn is the way out at any hour (468: "box-turn cap at
         # signals"), so rush hour cannot lift a signalised left above it.

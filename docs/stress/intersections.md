@@ -159,7 +159,15 @@ where a busy road meets there (`:572-576`).
 - **Time of day** (`time_factor`, `:170-196`; applied in `assess`, `:708-711`): a
   junction with a busy road is multiplied by a factor for the plan's ride time (`when`,
   `src/routemaker/ridetime.py:39-48`). Weekday rush hours, 7 to 10 AM and 4 to 7 PM, are
-  x1.25. Other weekday hours, to 9 PM, are x1.0. Weekend daytime, federal holidays
+  x1.25, and x2 (`UNSIGNALISED_RUSH_FACTOR`) where the rider gives way to an LTS 4 or
+  Avoid road that no signal stops: a stop or yield sign on the rider's side, or nothing
+  mapped (the owner, 2026-10-23, of Connecticut Ave at Decatur Ave at 7:42 AM: "Raise
+  their rush hour weight. That's typically where they are the problem."). Crossing such a
+  road, joining it or turning left across it then costs at least 1.86 calm mi (3.0 km),
+  ten minutes of riding at the Default ride's 11.2 mph (18 km/h)
+  (`UNSIGNALISED_RUSH_MIN_FT`; the owner: "Most people would rather bike 10 minutes than
+  wait 5 minutes at a busy crossing for an opening. There are rarely openings."). Signals,
+  all-way stops, cross traffic that stops, and LTS 3 roads keep x1.25. Other weekday hours, to 9 PM, are x1.0. Weekend daytime, federal holidays
   included, is x0.85. Night, 9 PM to 7 AM on every day of the week, weekend nights
   included, is x0.5 where the crossed road lies in a Census urban area and x0.85 where it
   does not (decisions 468a and 469c to 469e). A road whose urban flag is not known (a
