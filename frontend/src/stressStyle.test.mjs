@@ -377,7 +377,9 @@ test("each facility layer draws its own dash, or none", () => {
   // map: both are bold violet (mutation review, round 1).
   facilityLayers("s").forEach((layer) => {
     const facility = FACILITIES.find((f) => `facility-${f.facility}` === layer.id);
-    assert.deepEqual(layer.paint["line-dasharray"], facility.dash ?? undefined);
+    const dash = layer.paint["line-dasharray"];
+    // From z12 the facility's own dashes (a zoomed-out step ends on them: ZOOMED_OUT_FACILITY_DASH).
+    assert.deepEqual(Array.isArray(dash) && dash[0] === "step" ? dash.at(-1)[1] : dash, facility.dash ?? undefined);
   });
 });
 
@@ -746,6 +748,19 @@ test("the city ladder: in a city grid the paths, protected lanes, popular corrid
       assert.ok(at({ facility: "none", popular: POPULAR_PRIORITY_MIN_CLASS }, zoom) > 0, `${layer.id} popular z${zoom}`);
     }
     assert.ok(at({ facility: "none" }, 14) > 0, `${layer.id} z14`);
+  }
+});
+
+test("an on- or off-ramp waits for z14 in a city grid or not, unless it carries a bike route", () => {
+  // The owner, 2026-10-23: "the various onramps and offramps aren't needed at this level".
+  for (const layer of [...stressLayers("s"), ...stressCasingLayers("s")]) {
+    const tier = Number(layer.id.at(-1));
+    const at = (props, zoom) => paintValue(layer, "line-opacity", { tier, facility: "none", link: true, ...props }, zoom);
+    for (const dense of [true, false]) {
+      for (const zoom of [12, 13]) assert.equal(at({ dense }, zoom), 0, `${layer.id} dense ${dense} z${zoom}`);
+      assert.ok(at({ dense }, 14) > 0, `${layer.id} dense ${dense} z14`);
+      assert.ok(at({ dense, popular: POPULAR_PRIORITY_MIN_CLASS }, 12) > 0, `${layer.id} popular ramp z12`);
+    }
   }
 });
 

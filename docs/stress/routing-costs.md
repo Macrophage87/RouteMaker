@@ -156,7 +156,9 @@ at most 3 (`crossing_targets`, `:740-752`). Mass Ride is skipped (`ctx.group`).
 
 - **Traffic wins**: a candidate whose exposure is more than 2% plus 164 ft [50 m] over
   the router's first route's is not taken (`EXPOSURE_TOLERANCE`, `EXPOSURE_SLACK_M`,
-  `refine.py:131-138`, `_allowance` `:1446-1449`).
+  `refine.py`, `_allowance`, `_busier`). Avoid-rated junctions' penalties and
+  red junctions' costs count as exposure on both sides, one for one (`_busier`), so a
+  way round a red crossing is not refused for the LTS 3 it rides instead (2026-10-23).
 - **`calmer_or_own`**: an alternative the hills slider picked is kept only if its
   exposure is no worse than the router's own route (`routing.py:1009-1044`).
 - **LTS 4 hold** (stress-averse rides only): refuse a candidate whose top figure (LTS 4

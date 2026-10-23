@@ -423,3 +423,23 @@ class TestTidy:
         )
         assert found == {1: 1, 2: 2, 3: 1}
         assert stats["trimmed from 3"] == 1
+
+
+@pytest.mark.django_db(transaction=True)
+class TestMarkLinks:
+    def test_the_ramps_are_marked(self, segment_schemas) -> None:
+        from pipeline import writers
+
+        _, staging = segment_schemas
+        TestDerive.insert(None, staging, [(1, ((0, 0), (1, 0)), 4), (2, ((1, 0), (2, 0)), 4)])
+        assert writers.mark_links(staging, [2, 77]) == 1
+        with connection.cursor() as cursor:
+            cursor.execute(f"SELECT osm_way_id, road_link FROM {staging}.segment ORDER BY 1")
+            assert cursor.fetchall() == [(1, False), (2, True)]
+
+    def test_the_live_table_is_refused(self, segment_schemas) -> None:
+        from pipeline import writers
+
+        live, _ = segment_schemas
+        with pytest.raises(Exception, match="live"):
+            writers.mark_links(live, [1])

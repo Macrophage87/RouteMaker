@@ -370,6 +370,10 @@ class Context:
     # The router's first route's `Analysis.avoid_junction_m` (set by `refine`), which the
     # Traffic-wins guard counts with its exposure (`_busier`).
     first_avoid_m: float = 0.0
+    # The router's first route's `Analysis.red_m` (set by `refine`), which the guard
+    # counts the same way: a way round a red crossing is not "busier" for the LTS 3 it
+    # rides in place of it.
+    first_red_m: float = 0.0
     # The approved rider ratings of junctions (`core.junction_suggestions.approved_ratings`,
     # OWNER-DECISIONS 232), which set a rated junction's cost and marker.
     junction_ratings: tuple = ()
@@ -1195,6 +1199,7 @@ def refine(trip: dict, ctx: Context) -> tuple[dict, dict]:
     # The Traffic-wins guard's reference, in rated metres (61, 409: `rated_exposure_m`).
     first_exposure = best.rated_exposure_m
     ctx.first_avoid_m = best.avoid_junction_m
+    ctx.first_red_m = best.red_m
     original = best
     info["original_m"] = round(best.length_m, 1)
     info["exposure_before_m"] = round(best.exposure_m, 1)
@@ -1942,16 +1947,25 @@ def _allowance(exposure_m: float) -> float:
 def _busier(read: Analysis, first_exposure: float, ctx: Context) -> bool:
     """The Traffic-wins guard against the router's first route, with each pass through
     an Avoid-rated junction counted as exposure at its penalty's quiet metres
-    (`Analysis.avoid_junction_m`), on both sides: a way round an Avoid junction is not
-    "busier" for the LTS 3 it takes on in place of it (308: the route uses one only
-    where there is no reasonable alternative). With no Avoid junction on either it is
+    (`Analysis.avoid_junction_m`), and each red junction at its own cost in quiet metres
+    (`Analysis.red_m`), on both sides: a way round an Avoid junction is not "busier" for
+    the LTS 3 it takes on in place of it (308: the route uses one only where there is no
+    reasonable alternative), nor is a way round a red crossing. The owner, 2026-10-23, of
+    an unsignalised crossing of Connecticut Ave at Decatur Ave, Kensington, at rush hour:
+    "essentially impassable". The search excluded it and the router found the way by the
+    Plyers Mill Rd signal (about 0.3 mi (0.5 km) longer, 0.2 mi (0.3 km) more LTS 3 and
+    no red junction), which this guard refused for its LTS 3 alone. A red junction counts
+    one for one, as an Avoid-rated one does: a metre of its cost is a metre of LTS 3, and
+    buys half a metre of LTS 4 at the standard weights (LTS 4 weighs 2; 8 on a stress-averse
+    ride), so the guard still refuses 0.6 mi (1 km) of LTS 4 for one 4,500 ft (1,372 m) red
+    crossing. With no Avoid or red junction on either it is
     the plain guard. The guard's tolerance (`_allowance`) is on the exposure alone: the
-    first route's Avoid junctions are added at their penalty, not scaled up with it. The
+    first route's junctions are added at their cost, not scaled up with it. The
     exposure is the rated metres' (`Analysis.rated_exposure_m`, 409): hill avoidance never
     makes a route busier (61), so leaving out a busy climb does not excuse more busy road."""
     return (
-        read.rated_exposure_m + read.avoid_junction_m
-        > _allowance(first_exposure) + ctx.first_avoid_m
+        read.rated_exposure_m + read.avoid_junction_m + read.red_m
+        > _allowance(first_exposure) + ctx.first_avoid_m + ctx.first_red_m
     )
 
 

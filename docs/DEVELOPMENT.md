@@ -2602,7 +2602,16 @@ never one that is busier than the router's own route ("Traffic wins", OWNER-DECI
 cent and 50 m more LTS 3, 4 and Avoid exposure (`EXPOSURE_TOLERANCE`,
 `EXPOSURE_SLACK_M`) is not taken however many crossings it avoids (measured on
 the live router, before the guard: Rockville to Silver Spring at the old top of the
-slider traded 1.6 mi more LTS 3-4 for fewer crossings). It stops after two rounds that do not improve it, when no route is left (every way
+slider traded 1.6 mi more LTS 3-4 for fewer crossings). The guard counts the red
+junctions' cost (`Analysis.red_m`, quiet metres) as exposure on both sides, one for
+one, as it counts an Avoid-rated junction's penalty (2026-10-23, the owner of an
+unsignalised crossing of Connecticut Ave at Decatur Ave at rush hour: "essentially
+impassable"): on beta the search had excluded both red crossings there and the router
+found the way by the Plyers Mill Rd signal, 0.3 mi (0.5 km) longer with 0.2 mi
+(0.3 km) more LTS 3 and no red junction, which the guard refused for its LTS 3 alone.
+A metre of a red junction's cost is a metre of LTS 3 and, at the standard weights,
+half a metre of LTS 4 (weight 2; 8 on a stress-averse ride), so one 4,500 ft (1,372 m)
+red crossing still never buys 0.6 mi (1 km) of LTS 4. It stops after two rounds that do not improve it, when no route is left (every way
 out excluded: asked again once with only the LTS 4 stretches), when a round
 cannot be started with five seconds left, and never excludes within 500 m of the
 route's ends or of a via point (a trailhead's only way out is often the one busy
@@ -5000,7 +5009,10 @@ Tests: `lib/sidebar.test.ts`.
   arterial roads ... For bikes, we want something similar"): from z12 paths, protected lanes,
   popular class 2-3 corridors, long calm streets and named trails; from z13 painted lanes and
   class 1 (the short links between lanes, `pipeline.bikeshare_corridors.tidy`); from z14 every
-  other street and sidewalk, so a city grid is a mesh, not a carpet. Lanes,
+  other street and sidewalk, so a city grid is a mesh, not a carpet. An on- or off-ramp (tile
+  `link`, `segment.road_link`) waits for z14 in a city grid or not, unless it is on the
+  ladder (the owner 2026-10-23: "the various onramps and offramps aren't needed at this
+  level"). Lanes,
   paths, trails and unpaved roads keep their widths (the owner, 2026-10-21). MapLibre
   draws text from glyph files, not web fonts, and the style has one glyph URL template (the
   base map's `/basemap/fonts/`), so the three Latin ranges (`corridor.ts` `GLYPH_RANGES`) of
