@@ -58,8 +58,9 @@ routes and keeping your 311 checklist on your other devices.
   and says "Some on" and which. Expand a row for each layer's own switch, a one-line hint, and
   its key (what each line, color and symbol means) with the longer explanation.
 - Plan starts as a loop: the "Loop" box is ticked, so each point after the start is a stop and the
-  ride comes back. To finish somewhere else, untick it, or right-click the map (press and hold on
-  a phone) and choose "Set as end" ("End here" on a station's card): the loop turns off and says so.
+  ride comes back. To finish somewhere else, untick it, choose "Make this the destination" under a
+  search result, or right-click the map (press and hold on a phone) and choose "Set as end" ("End
+  here" on a station's card): the loop turns off and says so.
   With no points yet, "Start at current location" sits where the "Route" button goes.
 - In Plan, the "Manual mode" switch in the map's bar joins each point you tap to the last by a
   straight line, for a path the planner won't take; turned on during a loop, it turns the loop off.

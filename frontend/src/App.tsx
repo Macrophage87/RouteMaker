@@ -65,7 +65,7 @@ import { BetaChip, betaReportUrl, isBetaBuild } from "./lib/betaBanner.ts";
 import { MtbMapKey } from "./lib/stressLegend.ts";
 import { useHideBusyClimbs, useTrailClimbs } from "./lib/climbsLegend.ts";
 import { announceHow, candidateRoute, candidateRows } from "./lib/candidates.ts";
-import { canReverse, loopStops, loopView, planStartDials, reversedPoints, withLoop } from "./lib/loop.ts";
+import { canReverse, LOOP_ENDED_BY_SEARCH, loopStops, loopView, planStartDials, reversedPoints, withLoop } from "./lib/loop.ts";
 import { FINDING_ORDER_SAID, STILL_FINDING_ORDER_SAID, applyAnswer, requestStopOrder, stopsThatMove } from "./lib/stopOrder.ts";
 import {
   VIA_MARKS,
@@ -1982,15 +1982,22 @@ export function App() {
   // (geocode.ts, applyPlace), named as it was found, and the map goes there.
   const pickPlace = (found: Place, choice: PlaceChoice) => {
     cancelLocateNotice();
+    // A destination picked on a loop ends the ride there and turns the loop off, in one edit (as Set as end does).
+    const endsLoop = loopVias && choice === "end" && pointsRef.current.length >= 1;
+    const commitPick = (next: LonLat[]) => {
+      const ride = rideRef.current;
+      commit(next, endsLoop ? { ...ride, dials: withLoop(ride.dials, false) } : undefined);
+    };
     const point = pickIntoPlan(found, choice, {
       current: () => pointsRef.current,
-      commit,
+      commit: commitPick,
       loop: loopVias,
       remember: (p, name, label) => namer.remember(p, name, label),
       entrance: (place) => entranceForPlace(place, choice),
     });
     if (point === null) return;
     setNotice(null);
+    if (endsLoop) announce(LOOP_ENDED_BY_SEARCH);
     const map = mapRef.current;
     map?.flyTo({ center: point, zoom: Math.max(map.getZoom(), 14) });
   };
