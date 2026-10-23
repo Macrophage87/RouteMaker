@@ -43,14 +43,18 @@ class Corridor:
     bike_ways_only: bool = False
 
     def holds(self, names: Iterable[str | None], point: tuple[float, float]) -> bool:
+        return self.matched(names, point) is not None
+
+    def matched(self, names: Iterable[str | None], point: tuple[float, float]) -> str | None:
+        """The first of `names` the corridor holds at `point`, or None."""
         west, south, east, north = self.box
         lon, lat = point
         if not (west <= lon <= east and south <= lat <= north):
-            return False
-        return any(
-            name and any(pattern.fullmatch(name.strip()) for pattern in self.names)
-            for name in names
-        )
+            return None
+        for name in names:
+            if name and any(pattern.fullmatch(name.strip()) for pattern in self.names):
+                return name.strip()
+        return None
 
 
 def load(directory: Path = FIXTURE_DIR) -> tuple[Corridor, ...]:
@@ -96,10 +100,11 @@ def way_ids(
     route_names: Mapping[int, str],
     sidepath_names: Mapping[int, str],
     corridors: Sequence[Corridor],
-) -> tuple[frozenset[int], dict[str, int]]:
-    """The ids of the ways in a named corridor, and how many ways each corridor took (a
-    corridor at 0 is warned about: its name is spelt differently in OSM, or it moved)."""
-    found: set[int] = set()
+) -> tuple[dict[int, str], dict[str, int]]:
+    """The ways in a named corridor, each with the name it matched by (its own, its route's
+    or, for a bike way, its street's), and how many ways each corridor took (a corridor at
+    0 is warned about: its name is spelt differently in OSM, or it moved)."""
+    found: dict[int, str] = {}
     counts = {corridor.id: 0 for corridor in corridors}
     for osm_id, tags, coordinates in ways:
         point = middle(coordinates)
@@ -113,8 +118,9 @@ def way_ids(
         for corridor in corridors:
             if corridor.bike_ways_only and not bike_way:
                 continue
-            if corridor.holds(names, point):
-                found.add(osm_id)
+            name = corridor.matched(names, point)
+            if name is not None:
+                found.setdefault(osm_id, name)
                 counts[corridor.id] += 1
     missing = [name for name, count in counts.items() if count == 0]
     if missing:
@@ -123,22 +129,27 @@ def way_ids(
             "are not drawn as popular: %s",
             ", ".join(missing),
         )
-    return frozenset(found), counts
+    return found, counts
 
 
-def apply(schema: str, ids: frozenset[int]) -> int:
-    """Put the staging schema's rows of `ids` in MAJOR_CLASS. Returns the rows set."""
+def apply(schema: str, ways: Mapping[int, str]) -> int:
+    """Put the staging schema's rows of `ways` in MAJOR_CLASS, each named by its corridor
+    name where it has no `trail_name` yet, so the map can label it (the owner, 2026-10-23,
+    of the zoomed-out map: "the trails should be lableled at this zoom" ... "and the major
+    corridors"; `core.stress_tiles.trail_name_rule`). Returns the rows set."""
     from django.db import connection
 
-    from .schema import BIKE_POPULAR_COLUMN, validate_schema_name
+    from .schema import BIKE_POPULAR_COLUMN, TRAIL_NAME_COLUMN, validate_schema_name
 
     validate_schema_name(schema)
-    if not ids:
+    if not ways:
         return 0
+    ids = sorted(ways)
     with connection.cursor() as cursor:
         cursor.execute(
-            f"UPDATE {schema}.segment SET {BIKE_POPULAR_COLUMN} = %s "
-            "WHERE osm_way_id = ANY(%s::bigint[])",
-            [MAJOR_CLASS, sorted(ids)],
+            f"UPDATE {schema}.segment AS s SET {BIKE_POPULAR_COLUMN} = %s, "
+            f"{TRAIL_NAME_COLUMN} = COALESCE(s.{TRAIL_NAME_COLUMN}, v.name) "
+            "FROM unnest(%s::bigint[], %s::text[]) AS v (id, name) WHERE s.osm_way_id = v.id",
+            [MAJOR_CLASS, ids, [ways[i] for i in ids]],
         )
         return cursor.rowcount

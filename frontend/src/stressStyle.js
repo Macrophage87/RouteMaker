@@ -961,7 +961,9 @@ export function withClearRoadLabels(layers, strong = accessibilityOn()) {
  * THE MAJOR TRAILS' NAMES. The owner, 2026-10-21: "Major off road bike trails like the Metropolitan Branch Trail
  * should be named on the map." The tiles carry `trail_name` on the long trails the zoomed-out map keeps (a path on
  * a regional-or-larger bicycle route or a long walking route, or in a named run of 2.5 mi or more, 5 mi unpaved;
- * core/stress_tiles.py, trail_name_rule), so "major" is the rule the map already draws by, not a list. The name is
+ * core/stress_tiles.py, trail_name_rule), so "major" is the rule the map already draws by, not a list; and, since
+ * the owner's "and the major corridors" (2026-10-23), a way of the top popular class carries its corridor's name
+ * (Q Street, the 15th Street lane) in the same field, drawn the same way. The name is
  * drawn along the line from TRAIL_LABEL_MIN_ZOOM (zoom 10 since the owner's "label the long ones"), in the
  * street names' face, size and white halo (ROAD_LABEL; 20 px and shortened in a ride, as they are) but in the
  * purple of the off-road path's rails (FACILITIES, `path`): 10.9:1 on the halo, near-black purple (15.2:1) with the
