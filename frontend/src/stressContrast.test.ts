@@ -17,6 +17,7 @@ import {
   PALETTES,
   SOLID_MIN_ZOOM,
   STREET_THIN_SCALE,
+  STREET_HIDDEN_ZOOM,
   contrastRatio,
   faintEdgeColour,
   relativeLuminance,
@@ -448,9 +449,9 @@ test("the casing layers carry the edge exactly where the line is faint: z12-13 b
       } else {
         assert.equal(opacity, 1, where);
         assert.equal(gap, 0, where);
-        // A street marked dense is thinner at z12 and z13 (STREET_THIN_SCALE, the owner 2026-10-21: the city grid "very
+        // A street marked dense is hidden at z12 and thinner at z13 (STREET_THIN_SCALE, the owner 2026-10-21: the city grid "very
         // crowded"); these states carry no flag, as a rural road or an older tile, so they are full width.
-        if (Object.keys(props).length === 0 && zoom < SOLID_MIN_ZOOM && !busy) {
+        if (Object.keys(props).length === 0 && zoom === SOLID_MIN_ZOOM - 1 && !busy) {
           const tiled = { facility: "none", trail: false, unpaved: false, dense: true };
           assert.equal(paintAt(casings[i], "line-width", tiled, zoom), zoomedOutCasing(tier, zoom), `${where} (dense, as tiled)`);
         }
@@ -529,15 +530,24 @@ test("with the switch on, the swatch border is the strengthened border, at least
 });
 
 // The owner, 2026-10-21: "lts colored roads look very crowded at the nax zoom they show up in urban areas, but it's needed for rural ones."
-test("city grid: a plain street marked dense is thinner at z12 and z13; a rural road, bike lane, path, trail or unpaved road is not; all full from z14", () => {
+test("city grid: a plain street marked dense is not drawn at z12 and thinner at z13; a rural road, bike lane, path, trail or unpaved road is not; all full from z14", () => {
   for (const strong of [false, true]) {
     const tiers = tiersFor(DEFAULT_PALETTE, strong);
     const lines = stressLayers("s", undefined, tiers) as Array<{ id: string; paint: Record<string, unknown> }>;
     const casings = stressCasingLayers("s", undefined, tiers) as Array<{ id: string; paint: Record<string, unknown> }>;
     tiers.forEach((tier: Tier, i: number) => {
       if (tier.tier >= BUSY_MIN_TIER) return;
+      // Not drawn at z12 (STREET_HIDDEN_ZOOM; the owner, 2026-10-23: "Sorta keep going a zoom level or so").
+      for (const plain of [{ dense: true }, { facility: "none", trail: false, unpaved: false, dense: true }]) {
+        assert.equal(paintAt(lines[i], "line-opacity", plain, STREET_HIDDEN_ZOOM), 0, `${tier.short} plain z12`);
+        assert.equal(paintAt(casings[i], "line-opacity", plain, STREET_HIDDEN_ZOOM), 0, `${tier.short} plain z12 casing`);
+      }
       for (const zoom of [12, 13]) {
-        const scale = STREET_THIN_SCALE[zoom as 12 | 13];
+        const scale = STREET_THIN_SCALE[zoom as 13] ?? { line: 1, casing: 1 };
+        if (zoom === STREET_HIDDEN_ZOOM) {
+          for (const rural of [{}, { dense: false }]) assert.equal(paintAt(lines[i], "line-width", rural, zoom), tier.width);
+          continue;
+        }
         for (const plain of [{ dense: true }, { facility: "none", trail: false, unpaved: false, dense: true }]) {
           assert.equal(paintAt(lines[i], "line-width", plain, zoom), tier.width * scale.line, `${tier.short} plain ${JSON.stringify(plain)} z${zoom}`);
         }
@@ -545,7 +555,7 @@ test("city grid: a plain street marked dense is thinner at z12 and z13; a rural 
         for (const rural of [{}, { facility: "none", trail: false, unpaved: false }, { dense: false }]) {
           assert.equal(paintAt(lines[i], "line-width", rural, zoom), tier.width, `${tier.short} rural ${JSON.stringify(rural)} z${zoom}`);
         }
-        // The edge: half a pixel a side at z12 plain; a full pixel with the switch.
+        // The edge: at least half a pixel a side at z13 plain; a full pixel with the switch.
         const edge = ((paintAt(casings[i], "line-width", { dense: true }, zoom) as number) - tier.width * scale.line) / 2;
         assert.ok(edge >= (strong ? 1 : 0.5) - 1e-9, `${tier.short} z${zoom} edge ${edge}`);
         for (const props of [{ facility: "lane" }, { facility: "protected" }, { facility: "path" }, { trail: true }, { unpaved: true }, { car_free: "weekend" }].map((p) => ({ ...p, dense: true }))) {

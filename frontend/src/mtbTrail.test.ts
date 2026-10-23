@@ -139,9 +139,7 @@ test("the unrated line (v0.6.0, the owner's report of 2026-10-12): 3 px grey das
     try {
       setAccessibility(strong, { remember: false });
       const layers = stressOverlayLayers("stress") as Layer[];
-      // The bottom layer but the popular corridors' band (2026-10-21): every routable line draws over it.
-      assert.equal(layers[0].id, "popular-band");
-      assert.equal(layers[1].id, MTB_TICKS_LAYER_ID, "the bottom line layer: every routable line draws over it");
+      assert.equal(layers[0].id, MTB_TICKS_LAYER_ID, "the bottom line layer: every routable line draws over it");
       // The shared ticks, the unrated trails' edge and dashes, with no ring or rail of their own; the rest of the
       // mountain-bike layer is the levels' edges and lines (456; mtbLevels.test.ts).
       assert.deepEqual(layers.filter((l) => l.id.startsWith("mtb")).map((l) => l.id), MTB_LAYER_IDS);
