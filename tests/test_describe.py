@@ -2218,5 +2218,7 @@ class TestCueCheckOnRealRoutes:
         # right, a footway goes off 65 right.
         assert d.fork_movement(0, 50, [(65, "footway", "both")], trail=True) == "bear_right"
         assert d.fork_movement(0, 310, [(295, "footway", "both")], trail=True) == "bear_left"
-        # A gentler lean is still said against the other branch.
+        # A gentler lean is still said against the other branch, and so is a clear one
+        # beside a rideable leg further that side (a Y of two right-leaning legs).
         assert d.fork_movement(0, 25, [(40, "path", "both")], trail=True) == "bear_left"
+        assert d.fork_movement(0, 50, [(58, "cycleway", "both")], trail=True) == "bear_left"

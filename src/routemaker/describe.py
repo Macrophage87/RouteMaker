@@ -37,7 +37,8 @@ The rules:
   Trail": the owner, 2026-10-18, "missing some important turns, especially when it
   seems straight is the default"). A stretch begun at a fork is never folded away.
 - A clear turn is said too (`_said_turns`), as a fork is: along one street, a turn of
-  more than ALONG_TURN_DEG (45 degrees) at a node where another way meets it ("Left
+  more than ALONG_TURN_DEG (45 degrees) at a node where another way meets it (not one
+  running back the way the rider came, CHOICE_BACK_DEG) ("Left
   to stay on Metropolitan Branch Trail" off the trail onto its side path: the owner,
   2026-10-23, "It missed a clear left turn"); onto any way, a turn of HAIRPIN_DEG or
   more (a turnaround: "Another sharp turnaround missed"). Nodes within JUNCTION_M of
@@ -151,11 +152,12 @@ LINE_SPAN_M = 20.0
 # corner): the line is read on past them, and only the sharpest is said (`_said_turns`).
 # The line stops at a node further off, so a turn there never tilts this one.
 JUNCTION_M = 5.0
-# The trace's lengths and the line's own measure differ a little, so nodes up to this much
-# further apart still count as one junction when its turn is kept on one of them
-# (`core.routing._one_turn_per_junction`): two nodes 5 m apart on R Street NW at the 17th
-# Street path read the one left twice.
-JUNCTION_SLACK_M = 2.0
+# A way that leaves a node within this much of straight back the way the rider came is
+# no choice there, unless it lies within CHOICE_BACK_CLEAR_DEG of the route's own way
+# out: no one takes it for the way on at a bend (Rock Creek Trail, the Mount Vernon and
+# Custis Trails; `core.routing._choice_of`).
+CHOICE_BACK_DEG = 150.0
+CHOICE_BACK_CLEAR_DEG = 90.0
 # A short path stretch between two turns that crosses a road (a junction event across it,
 # or a crosswalk) is said as the crossing: "Cross Redland Road, then left onto Redland Road
 # bike lane" (the owner, 2026-10-20: "It should have told me to cross the street and turn
@@ -437,7 +439,7 @@ def _said_turns(atoms: list[Atom]) -> list[Atom]:
     out = list(atoms)
     for at, i in marks:
         sharpest = max(
-            (j for m, j in marks if abs(m - at) < JUNCTION_M + JUNCTION_SLACK_M),
+            (j for m, j in marks if abs(m - at) < JUNCTION_M),
             key=lambda j: (abs(atoms[j].turn), -j),
         )
         if sharpest != i:
@@ -930,7 +932,8 @@ def fork_movement(
     cyclability the router did not give (an older router) is taken as a choice.
     Then: past BEAR_MAX_DEG the route's way is a left
     or a right; else it is a bear to the side the route's way lies of the nearest
-    choice ("bear_right" where it is the right-hand branch of a Y)."""
+    choice ("bear_right" where it is the right-hand branch of a Y), except a way bent
+    past ALONG_TURN_DEG with only footways beyond it that side, a bear to its own side."""
     if heading_in is None or heading_out is None:
         return None
     ours = _turn_deg(heading_in, heading_out)
@@ -956,11 +959,20 @@ def fork_movement(
         return None
     if abs(ours) > BEAR_MAX_DEG:
         return "right" if ours > 0 else "left"
-    # A way that bends clearly off to one side (past ALONG_TURN_DEG), with the other
-    # branch further that side still, is a bear to its own side: the line bends right, so
-    # "Bear right", not a left read against the footway beyond it (Capital Crescent Trail
-    # onto the Georgetown Branch Trail in Bethesda).
-    if abs(ours) > ALONG_TURN_DEG and (ours > 0) == (nearest > 0):
+    # A way that bends clearly off to one side (past ALONG_TURN_DEG), where the only
+    # branches further that side are footways, is a bear to its own side: the line bends
+    # right, so "Bear right", not a left read against the footway beyond it (Capital
+    # Crescent Trail onto the Georgetown Branch Trail in Bethesda). A rideable branch there
+    # (two legs of a Y) is still told apart by the side the route's leg lies of it.
+    if (
+        abs(ours) > ALONG_TURN_DEG
+        and (ours > 0) == (nearest > 0)
+        and all(
+            use == "footway"
+            for d, use in choices
+            if (d > 0) == (ours > 0) and abs(d) > abs(ours) and d in ahead
+        )
+    ):
         return "bear_right" if ours > 0 else "bear_left"
     return "bear_right" if ours > nearest else "bear_left"
 
