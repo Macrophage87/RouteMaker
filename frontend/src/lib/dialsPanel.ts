@@ -255,7 +255,6 @@ export const HILLS_HOW =
   "Every climb counts as the time it takes. Past this grade it counts for more when choosing a route, more again the " +
   "harder it gets, and having to push the bike counts as a last resort. (With a power meter: the grade you climb at " +
   "the top of Zone 2, 75% of FTP. That is only the curve's shape; you set nothing but the grade.)";
-  `Steep grades cost more the steeper they are; long climbs, and on some ride types long steep descents, count most, short kicks little. Weighed among a few alternative routes for a start and an end up to ${formatRoughDistance(AVOID_MAX_SPAN_M)} apart.`;
 
 /**
  * The panel for a ride type, the committed dials, and the position being

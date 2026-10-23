@@ -1789,7 +1789,8 @@ model's forces (`routemaker.effort`, Martin et al. 1998: rolling resistance 0.00
   (300 m), so a short kick averages out) the standard rider climbs at the endurance
   pace, never faster than the flat speed and never slower than 5 mph. The request's
   system weight moves at that same power, so a loaded bike climbs slower, down to
-  pushing pace in its low gears; that is the only thing weight changes. The extra
+  pushing pace in its low gears; the steepness penalty never changes with weight (the
+  calm search's effort blend and Mountain Goat's effort tiebreak still weigh it). The extra
   seconds over the flat cost what the same seconds of flat riding do.
 - **Past the endurance pace**, where holding 5 mph takes more, the penalty is the
   window's seconds times `(e^(d / 0.2) - 1) / (e^(0.35 / 0.2) - 1)`
@@ -1810,8 +1811,8 @@ The penalty is for choosing routes only: no time shown to riders includes it. De
 add nothing here; riding the brakes is still priced from the ride type's brake grade
 (the table above). At 198 lb (90 kg) and 11 mph (18 km/h), 0.6 mi (1 km) costs, in
 minutes of time plus penalty: at the detent (8%), 4.2 + 1.0 at 8%, 4.2 + 4.5 at 10% and
-4.2 + 12.6 at 12%; at Cargo's 4%, 4.2 + 1.5 at 4%, 4.2 + 14.4 at 6% and, pushed, 19.2 +
-90.2 at 10%; at Fast's 11%, 4.2 + 2.2 at 12%.
+4.2 + 12.6 at 12%; at Cargo's start, -60 (3.8%, shown as 4%), 4.2 + 1.5 at 4%, 4.2 + 14.4 at 6% and, pushed, 19.2 +
+90.2 at 10%; at Fast's start, 40 (10.8%, shown as 11%), 4.2 + 2.2 at 12%.
 
 Where it is used. Valhalla's own climbing charge (the router's cost per metre climbed
 at the request's `use_hills`, the table above, read between its 1.0, 0.4 and 0.0 rows:
