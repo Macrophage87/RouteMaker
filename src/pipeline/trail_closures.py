@@ -136,8 +136,8 @@ class TrailClosures:
     sidewalk_rides: set[int] = field(default_factory=set)
     # the short links among them, where a bike way stops (`sidewalks.links`)
     sidewalk_links: set[int] = field(default_factory=set)
-    # footways into rail stations, walked (`routemaker.station_links`), each also in
-    # `walk_bike`
+    # footways into rail stations (`routemaker.station_links`) and short informal
+    # connectors (`sidewalks.is_informal_connector`), walked, each also in `walk_bike`
     walk_links: set[int] = field(default_factory=set)
     # the Zoo spur: open, destination-only
     destination_only: set[int] = field(default_factory=set)
@@ -293,23 +293,45 @@ def closures(
 
 def add_sidewalk_rides(result: TrailClosures, ways: Iterable[Way]) -> None:
     """Find the footways ridden as a last resort (`routemaker.sidewalks`) once every closure
-    is in `result.reasons`, the agency prohibitions included."""
+    is in `result.reasons`, the agency prohibitions included, and the short informal
+    connectors a link walks (`sidewalks.is_informal_connector`), opened as walk-your-bike
+    links (`walk_links`, `walk_bike`)."""
     ways = list(ways)
-    closed = set(result.reasons) | result.destination_only
-    result.sidewalk_links = set(
+    # An informal connector closed only for being informal, by the trail rules
+    # (`trailaccess.INFORMAL`) or by upstream (a footway with no bicycle tag): `links` may
+    # open it, walked (the owner, 2026-10-23, Glen Haven Park). One the rules leave open
+    # (on a national bicycle route) is ridden already and left alone.
+    walkable = {
+        way.osm_id
+        for way in ways
+        if sidewalks.is_informal_connector(way.tags)
+        and (
+            result.reasons.get(way.osm_id) == trailaccess.INFORMAL
+            or (way.osm_id not in result.reasons and trailaccess.upstream_open(way.tags) is False)
+        )
+    }
+    closed = (set(result.reasons) - walkable) | result.destination_only
+    found = set(
         sidewalks.links(
             [
                 (
                     way.osm_id,
                     way.tags,
                     way.node_ids,
-                    node_coordinates(way) if sidewalks.is_link_candidate(way.tags) else (),
+                    node_coordinates(way) if sidewalks.takes_part(way.tags) else (),
                 )
                 for way in ways
             ],
             closed=closed,
+            walkable=walkable,
         )
     )
+    walked = found & walkable
+    for osm_id in walked:
+        result.reasons.pop(osm_id, None)
+    result.walk_links |= walked
+    result.walk_bike |= walked
+    result.sidewalk_links = found - walked
     result.sidewalk_rides = result.sidewalk_links | {
         way.osm_id for way in ways if way.osm_id not in closed and sidewalks.rideable(way.tags)
     }

@@ -75,7 +75,7 @@ def test_a_footway_barred_on_foot_or_indoors_is_no_link():
 
 
 def test_an_informal_area_or_pedestrian_footway():
-    assert sw.links(redland({**SIDEWALK, "informal": "yes"})) == {}
+    assert sw.links(redland({**SIDEWALK, "informal": "yes"})) == {}, "175 m: too long to walk"
     assert sw.links(redland({**SIDEWALK, "area": "yes"})) == {}
     assert set(sw.links(redland({"highway": "pedestrian"}))) == {3}
 
@@ -294,3 +294,110 @@ def test_a_last_resort_sidewalk_is_rated_lts_4():
     assert int(ratings[1].tier) == sw.TIER
     assert int(ratings[2].tier) == sw.LAST_RESORT_TIER
     assert ratings[2].rule == sw.LAST_RESORT_RULE
+
+
+# Glen Haven Park, Silver Spring (the owner, 2026-10-23: "Some paths that have short sidewalk
+# connections aren't available for routing"): the park's paved path meets the streets beside
+# it only through worn connectors, `highway=path` + `informal=yes`, 11 to 20 m long. In metres:
+# the park path runs east along y=0; Glenhaven Drive ends 20 m west of its west end, and
+# Huntley Avenue comes up from the south and stops 18 m short of its middle.
+PARK_PATH = {"highway": "footway", "bicycle": "yes", "surface": "concrete"}
+WORN = {"highway": "path", "informal": "yes", "surface": "grass"}
+
+
+def glen_haven(worn=WORN, west_gap=20.0, make=placed):
+    return [
+        make(100, PARK_PATH, [(0.0, 0.0), (150.0, 0.0), (310.0, 0.0)]),
+        make(101, {"highway": "residential"}, [(-west_gap - 200.0, 0.0), (-west_gap, 0.0)]),
+        make(102, dict(worn), [(-west_gap, 0.0), (0.0, 0.0)]),
+        make(103, {"highway": "residential"}, [(150.0, -200.0), (150.0, -18.0)]),
+        make(104, dict(worn), [(150.0, -18.0), (150.0, -11.0)]),
+        make(105, {**worn, "surface": "asphalt"}, [(150.0, -11.0), (150.0, 0.0)]),
+        # The east end's open footway to Windham Lane: the path's one way in before.
+        make(106, {"highway": "footway", "bicycle": "yes"}, [(310.0, 0.0), (318.0, 0.0)]),
+        make(107, {"highway": "residential"}, [(318.0, 0.0), (318.0, -200.0)]),
+    ]
+
+
+WALKABLE = frozenset({102, 104, 105})
+
+
+def test_a_short_informal_connector_is_a_link():
+    assert sw.links(glen_haven()) == {}, "only the connectors the caller names"
+    found = sw.links(glen_haven(), walkable=WALKABLE)
+    assert set(found) == {102, 104, 105}
+    assert round(found[102]) == 20 and round(found[104]) == round(found[105]) == 18
+
+
+def test_an_informal_connector_is_walked_only_when_short():
+    assert sw.links(glen_haven(west_gap=sw.INFORMAL_WAY_MAX_M + 5), walkable=WALKABLE).keys() == {
+        104,
+        105,
+    }
+    ways = glen_haven()
+    # A long worn path, only 20 m of it the gap: opening it would open all of it.
+    ways[2] = placed(102, WORN, [(-20.0, 0.0), (0.0, 0.0), (0.0, 80.0)])
+    assert 102 not in sw.links(ways, walkable=WALKABLE)
+
+
+def test_an_informal_connector_a_tag_closes_is_left_alone():
+    for extra in ({"bicycle": "no"}, {"foot": "no"}, {"access": "private"}, {"area": "yes"}):
+        assert not sw.is_informal_connector({**WORN, **extra}), extra
+        ways = glen_haven({**WORN, **extra}, make=way)
+        result = tc.closures(ways, {}, [])
+        tc.add_sidewalk_rides(result, ways)
+        assert not WALKABLE & result.walk_links, extra
+    assert not sw.is_informal_connector({**WORN, "informal": "no"})
+    assert sw.is_informal_connector({"highway": "footway", "informal": "yes"})
+
+
+def test_the_rebuild_walks_the_informal_connectors_and_rides_nothing_new():
+    ways = glen_haven(make=way)
+    result = tc.closures(ways, {}, [])
+    assert result.reasons[102] == "informal", "the trail rules close a worn path"
+    tc.add_sidewalk_rides(result, ways)
+    assert {102, 104, 105} <= result.walk_links
+    assert {102, 104, 105} <= result.walk_bike, "walk your bike"
+    assert not {102, 104, 105} & set(result.reasons)
+    assert not {102, 104, 105} & (result.sidewalk_rides | result.sidewalk_links), "walked"
+
+
+def test_an_informal_footway_upstream_closes_is_walked_too():
+    ways = glen_haven({"highway": "footway", "informal": "yes"}, make=way)
+    result = tc.closures(ways, {}, [])
+    tc.add_sidewalk_rides(result, ways)
+    assert {102, 104, 105} <= result.walk_links
+    assert not {102, 104, 105} & result.sidewalk_rides
+
+
+def test_a_long_informal_path_stays_closed():
+    ways = glen_haven(west_gap=80.0, make=way)
+    result = tc.closures(ways, {}, [])
+    tc.add_sidewalk_rides(result, ways)
+    assert result.reasons[102] == "informal"
+    assert 102 not in result.walk_links
+
+
+def test_a_connector_another_rule_closes_stays_closed():
+    for kwargs, reason in (({"military": {102}}, "military"), ({"golf": {102}}, "golf")):
+        ways = glen_haven(make=way)
+        result = tc.closures(ways, {}, [], **kwargs)
+        tc.add_sidewalk_rides(result, ways)
+        assert 102 not in result.walk_links, reason
+        assert reason in result.reasons[102]
+    ways = glen_haven({**WORN, "sac_scale": "hiking"}, make=way)
+    result = tc.closures(ways, {}, [])
+    tc.add_sidewalk_rides(result, ways)
+    assert result.reasons[102] == "sac_scale" and 102 not in result.walk_links
+
+
+def test_an_informal_path_the_rules_leave_open_is_still_ridden():
+    """On a national bicycle route the trail rules keep a worn path open: it is ridden
+    already, and never made a walk."""
+    from routemaker.trailaccess import WayRoutes
+
+    ways = glen_haven(make=way)
+    result = tc.closures(ways, {102: WayRoutes(bicycle_networks=frozenset({"ncn"}))}, [])
+    assert 102 not in result.reasons
+    tc.add_sidewalk_rides(result, ways)
+    assert 102 not in result.walk_links and 102 not in result.walk_bike
