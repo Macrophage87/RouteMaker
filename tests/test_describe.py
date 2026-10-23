@@ -2090,10 +2090,10 @@ class TestCrossings:
         assert "cross" not in self.needwood([crossing])[1]["turn"]
 
 
-def turned(atoms, turn, others=((90, "cycleway", None, None),)):
+def turned(atoms, turn, choice=True):
     """`atoms` with the first beginning a traced edge whose line turns `turn` degrees
-    there (`Atom.turn`), other ways meeting the node as `others`."""
-    return [replace(atoms[0], turn=turn, others=others), *atoms[1:]]
+    there (`Atom.turn`), another rideable way meeting the node where `choice`."""
+    return [replace(atoms[0], turn=turn, choice=choice), *atoms[1:]]
 
 
 class TestClearTurns:
@@ -2153,19 +2153,7 @@ class TestClearTurns:
         legs = [
             flat(
                 road("A Trail", 1, 600, 0, 0, "path", "cycleway"),
-                turned(road("A Trail", 1, 300, 270, 270, "path", "cycleway"), -90, others=()),
-            )
-        ]
-        assert len(d.describe(legs)) == 1
-        # Nor is a driveway or a crosswalk a way on.
-        legs = [
-            flat(
-                road("A Trail", 1, 600, 0, 0, "path", "cycleway"),
-                turned(
-                    road("A Trail", 1, 300, 270, 270, "path", "cycleway"),
-                    -90,
-                    others=((90, "driveway", None, None), (0, "pedestrian_crossing", None, None)),
-                ),
+                turned(road("A Trail", 1, 300, 270, 270, "path", "cycleway"), -90, choice=False),
             )
         ]
         assert len(d.describe(legs)) == 1
@@ -2175,7 +2163,7 @@ class TestClearTurns:
         legs = [
             flat(
                 road("Metropolitan Branch Trail", 1, 800, 225, 225, "path", "cycleway"),
-                turned(road(None, 1, 40, 20, 20, "path", "footway"), 155, others=()),
+                turned(road(None, 1, 40, 20, 20, "path", "footway"), 155, choice=False),
                 road(None, 1, 100, 110, 110, use="service_road"),
                 road("Maple Street Northwest", 1, 400, 20, 20),
             )
@@ -2189,7 +2177,7 @@ class TestClearTurns:
         legs = [
             flat(
                 road("A Trail", 1, 600, 0, 0, "path", "cycleway"),
-                turned(road("A Trail", 1, 300, 170, 170, "path", "cycleway"), -165, others=()),
+                turned(road("A Trail", 1, 300, 170, 170, "path", "cycleway"), -165, choice=False),
             )
         ]
         entries = d.describe(legs)

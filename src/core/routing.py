@@ -470,9 +470,13 @@ class Piece:
     # (`describe.turn_between`: a hairpin right reads +190, never a left of -170).
     bearing: float | None = field(default=None, compare=False)
     # The turn the route's own line makes at the node the piece's edge begins at, clockwise
-    # positive, each side a chord over `describe.LINE_SPAN_M` (`_line_headings`); None on
-    # every piece of an edge but its first, and where the line does not reach that far.
+    # positive, each side a chord over up to `describe.LINE_SPAN_M` (`_line_headings`); None
+    # on every piece of an edge but its first, and where the line runs out within
+    # `describe.JUNCTION_M` of the node.
     turn: float | None = field(default=None, compare=False)
+    # Whether another way a bicycle may ride away on meets that node (`_choice_of`); None
+    # where `turn` is.
+    choice: bool | None = field(default=None, compare=False)
 
 
 def _heading(value) -> float | None:
@@ -490,6 +494,12 @@ def pieces_of_trace(trace: dict) -> list[Piece]:
     kept: list[tuple[dict, float]] = []
     # The last stretch's bearing, unwrapped (`Piece.bearing`).
     unwrapped: float | None = None
+    # The vertices the trace's edges begin at: its nodes (`_line_point`).
+    nodes = frozenset(
+        e["begin_shape_index"]
+        for e in trace.get("edges", [])
+        if isinstance(e.get("begin_shape_index"), int)
+    )
     for edge in trace.get("edges", []):
         length = float(edge.get("length") or 0.0) * to_metres
         begin, end = edge.get("begin_shape_index"), edge.get("end_shape_index")
@@ -509,8 +519,12 @@ def pieces_of_trace(trace: dict) -> list[Piece]:
             "heading_out": _heading(edge.get("end_heading")),
             "road": calm.road_of_edge(edge, miles=trace.get("units") == "miles"),
         }
-        line_in, line_out = _line_headings(shape, begin) if before is not None else (None, None)
-        turn = _line_turn(shape, begin, line_in, line_out)
+        line_in = line_out = turn = None
+        choice = None
+        if before is not None:
+            line_in, line_out, first, last = _line_headings(shape, begin, nodes)
+            turn = _line_turn(shape, line_in, line_out, first, last)
+            choice = _choice_of(before)
         fork = _fork_of(before, edge, line_in, line_out)
         others = _others_of(before)
         prior = _behind_of(kept)
@@ -534,6 +548,7 @@ def pieces_of_trace(trace: dict) -> list[Piece]:
                     others=others,
                     prior=prior,
                     turn=turn,
+                    choice=choice,
                 )
             )
             continue
@@ -557,70 +572,71 @@ def pieces_of_trace(trace: dict) -> list[Piece]:
                         prior=prior,
                         bearing=unwrapped,
                         turn=turn,
+                        choice=choice,
                     )
                 )
                 fork = None
                 others = None
                 prior = None
                 turn = None
+                choice = None
     return pieces
 
 
-def _line_point(shape: list, at: int, step: int, span: float) -> tuple | None:
-    """The point `span` metres along the shape from vertex `at`, walking `step` (1 on,
-    -1 back), or the shape's end short of that; None where there is no shape that way."""
+def _line_point(shape: list, at: int, step: int, nodes: frozenset[int]) -> tuple:
+    """Where the route's line is `describe.LINE_SPAN_M` from vertex `at`, walking `step`
+    (1 on, -1 back): (the point, the last vertex walked to). It stops short at another
+    node at least `describe.JUNCTION_M` away, so a turn at the next junction never tilts
+    this one, and goes on past a nearer one, as part of the same junction. The point is
+    None where the line runs out within JUNCTION_M."""
     here = shape[at]
     gone = 0.0
     j = at
     while 0 <= j + step < len(shape):
+        if j != at and j in nodes and gone >= describe.JUNCTION_M:
+            return here, j
         nxt = shape[j + step]
         d = haversine(Point(*here), Point(*nxt))
-        if d > 0 and gone + d >= span:
-            f = (span - gone) / d
-            return (here[0] + (nxt[0] - here[0]) * f, here[1] + (nxt[1] - here[1]) * f)
+        if d > 0 and gone + d >= describe.LINE_SPAN_M:
+            f = (describe.LINE_SPAN_M - gone) / d
+            return (here[0] + (nxt[0] - here[0]) * f, here[1] + (nxt[1] - here[1]) * f), j + step
         gone += d
         here = nxt
         j += step
-    return here if gone > 0 else None
+    return (here if gone >= describe.JUNCTION_M else None), j
 
 
-def _line_headings(shape: list, at: int) -> tuple[float | None, float | None]:
+def _line_headings(shape: list, at: int, nodes: frozenset[int]) -> tuple:
     """The compass headings the route's own line arrives at shape vertex `at` on and
-    leaves it on, each a chord over `describe.LINE_SPAN_M`, across as many edges as it
-    takes. Valhalla's headings are the edge's own, so a tiny edge at a junction (a kerb
+    leaves it on, each a chord to `_line_point`, and the first and last vertices they
+    span. Valhalla's headings are the edge's own, so a tiny edge at a junction (a kerb
     or crossing node a few metres on) can tilt them far off the way the rider goes (the
     owner, 2026-10-23, on Sligo Creek Trail: "Left to stay on" a gentle bend)."""
     if not 0 <= at < len(shape):
-        return None, None
+        return None, None, at, at
     node = Point(*shape[at])
-    back = _line_point(shape, at, -1, describe.LINE_SPAN_M)
-    ahead = _line_point(shape, at, 1, describe.LINE_SPAN_M)
+    back, first = _line_point(shape, at, -1, nodes)
+    ahead, last = _line_point(shape, at, 1, nodes)
     return (
         bearing(Point(*back), node) if back is not None else None,
         bearing(node, Point(*ahead)) if ahead is not None else None,
+        first,
+        last,
     )
 
 
-def _line_turn(shape: list, at: int, line_in: float | None, line_out: float | None) -> float | None:
-    """The turn the route's line makes at shape vertex `at` (`Piece.turn`), clockwise
-    positive: from its chords (`_line_headings`), but past `describe.HAIRPIN_DEG` on the
-    side the line itself winds over the same stretch (its segments' turns added up), so a
+def _line_turn(
+    shape: list, line_in: float | None, line_out: float | None, first: int, last: int
+) -> float | None:
+    """The turn the route's line makes at a node (`Piece.turn`), clockwise positive: from
+    its chords (`_line_headings`), but past `describe.HAIRPIN_DEG` on the side the line
+    itself winds between vertices `first` and `last` (its segments' turns added up), so a
     turnaround right a little past straight back reads +190, never -170."""
     if line_in is None or line_out is None:
         return None
     turn = (line_out - line_in + 540.0) % 360.0 - 180.0
     if abs(turn) < describe.HAIRPIN_DEG:
         return turn
-    # The segments within LINE_SPAN_M either side of the vertex, in order.
-    first, last = at, at
-    gone = 0.0
-    while first > 0 and gone < describe.LINE_SPAN_M:
-        gone += haversine(Point(*shape[first - 1]), Point(*shape[first]))
-        first -= 1
-    gone = 0.0
-    while last < len(shape) - 1 and gone < describe.LINE_SPAN_M:
-        gone += haversine(Point(*shape[last]), Point(*shape[last + 1]))
-        last += 1
     wound = 0.0
     previous = None
     for a, b in zip(shape[first:last], shape[first + 1 : last + 1], strict=True):
@@ -634,6 +650,18 @@ def _line_turn(shape: list, at: int, line_in: float | None, line_out: float | No
         t for t in (turn, turn - 360.0, turn + 360.0) if abs(t) <= 360.0 - describe.HAIRPIN_DEG
     ]
     return min(sides, key=lambda t: abs(t - wound))
+
+
+def _choice_of(before: dict) -> bool:
+    """Whether another way a bicycle may ride away on meets the node `before` ends at
+    (`Piece.choice`): not one of `describe.FORK_IGNORED_USES`, nor a sidewalk."""
+    return any(
+        _heading(other.get("begin_heading")) is not None
+        and other.get("use") not in describe.FORK_IGNORED_USES
+        and other.get("use") not in describe.SHAPE_IGNORED_USES
+        and other.get("cyclability") not in ("none", "backward")
+        for other in (before.get("end_node") or {}).get("intersecting_edges") or []
+    )
 
 
 def _fork_of(
@@ -2732,6 +2760,7 @@ def describe_route(
                             pieces[i].prior,
                             bearing=pieces[i].bearing,
                             turn=pieces[i].turn,
+                            choice=bool(pieces[i].choice),
                         )
                         for i in range(run[0], run[1])
                     ]
