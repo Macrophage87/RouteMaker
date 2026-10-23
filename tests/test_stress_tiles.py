@@ -2019,10 +2019,12 @@ class TestTrailName:
         assert self.names(client, 14) == [None]
 
     @pytest.mark.parametrize(("popular", "named"), [(3, True), (2, False), (None, False)])
-    @pytest.mark.parametrize("z", [11, 14])
+    @pytest.mark.parametrize("z", [10, 11, 12, 14])
     def test_a_major_corridor_is_named(self, client, segment_schemas, z, popular, named) -> None:
         """The owner, 2026-10-23: "the trails should be lableled at this zoom" ... "and the
-        major corridors". A street of the top popular class carries its name."""
+        major corridors". A street of the top popular class carries its name at z10-11; from
+        z12 the base map names it."""
+        named = named and z < 12
         live, _ = segment_schemas
         insert_trail(live, False, 3, 10.0)
         with connection.cursor() as cursor:

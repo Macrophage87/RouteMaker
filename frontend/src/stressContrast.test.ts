@@ -449,7 +449,7 @@ test("the casing layers carry the edge exactly where the line is faint: z12-13 b
       } else {
         assert.equal(opacity, 1, where);
         assert.equal(gap, 0, where);
-        // A street marked dense is thinner at z12 and z13 (STREET_THIN_SCALE, the owner 2026-10-21: the city grid "very
+        // A street marked dense is hidden at z12 and thinner at z13 (STREET_THIN_SCALE, the owner 2026-10-21: the city grid "very
         // crowded"); these states carry no flag, as a rural road or an older tile, so they are full width.
         if (Object.keys(props).length === 0 && zoom === SOLID_MIN_ZOOM - 1 && !busy) {
           const tiled = { facility: "none", trail: false, unpaved: false, dense: true };
