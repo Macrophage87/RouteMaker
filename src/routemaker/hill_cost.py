@@ -64,7 +64,7 @@ import math
 from collections.abc import Sequence
 from functools import lru_cache
 
-from routemaker import effort
+from routemaker import climbs, effort
 
 # The LT1 grade (where LT1 power holds V_MIN_MS) at the hills slider's two ends, rise over run.
 LT1_GRADE_MIN = 0.01
@@ -224,21 +224,26 @@ def profile_cost_s(
 ) -> tuple[float, float]:
     """A profile's (`core.routing.grade_profile`) climbing time and steepness penalty,
     seconds, over its rising windows (`window_cost_s`), at the LT1 grade the hills slider
-    sets. A climb is a run of rising windows end to end; each window is weighed over the
-    time the whole climb takes."""
+    sets. Each window is weighed over the time its whole climb takes."""
     lt1 = lt1_grade_for(hills)
     windows = [(s, e, r) for s, e, r in effort.windows_along(profile) if e > s]
-    # Each window's climb: the time of the run of rising windows it is in.
+    # Each window's climb: the riding time of the rising windows around it, until the road
+    # drops more than climbs.DIP_M below the climb's top or runs two windows without rising
+    # (so a few centimetres of elevation noise or a via point do not split one climb
+    # into kicks, and a descent or a long flat between two kicks does).
     climb_of: list[float] = [0.0] * len(windows)
-    run_start, run_s = 0, 0.0
+    run_start, run_s, below_top, level_m = 0, 0.0, math.inf, 0.0
     for i, (start, end, rise) in enumerate(windows):
-        rising = rise > 0
-        joined = i > 0 and windows[i - 1][2] > 0 and windows[i - 1][1] == start
-        if not (rising and joined):
+        level_m = 0.0 if rise > 0 else level_m + end - start
+        if below_top < math.inf:
+            below_top = max(0.0, below_top - rise)
+        elif rise > 0:
+            below_top = 0.0
+        if below_top > climbs.DIP_M or level_m > effort.WINDOW_M * 1.5:
             for k in range(run_start, i):
                 climb_of[k] = run_s
-            run_start, run_s = i, 0.0
-        if rising:
+            run_start, run_s, below_top, level_m = i, 0.0, math.inf, 0.0
+        if rise > 0:
             run_s += (end - start) / _climb_ms(rise / (end - start), flat_ms, lt1)
     for k in range(run_start, len(windows)):
         climb_of[k] = run_s

@@ -1330,6 +1330,25 @@ def test_a_short_kick_costs_far_less_than_a_long_climb_at_the_same_grade():
     # The windows of one climb share its length: ten 300 m pieces of the long ramp are not
     # ten kicks.
     assert long_s > 50 * kick
+    # Elevation noise does not split a climb into kicks: a 0.3 m dip every 600 m leaves the
+    # 3 km climb whole. A real descent between two kicks keeps them apart.
+    noisy = []
+    for step in range(5):
+        base = step * 900.0, step * 600.0 * 0.06 - step * 0.3
+        noisy += [(base[0] + x, base[1] + y) for x, y in ramp(600.0, 0.06)]
+        noisy += [(base[0] + 600.0 + x, base[1] + 36.0 - 0.001 * x) for x, _ in ramp(300.0, 0.0)][
+            1:
+        ]
+    noisy_s = hill_cost.profile_cost_s(noisy, 90.0, 5.0, hills)[1]
+    assert noisy_s == pytest.approx(long_s, rel=0.05)
+    apart = ramp(300.0, 0.06) + [(300.0 + x, 18.0 - 0.03 * x) for x, _ in ramp(600.0, 0.0)][1:]
+    apart += [(900.0 + x, y) for x, y in ramp(300.0, 0.06)][1:]
+    assert hill_cost.profile_cost_s(apart, 90.0, 5.0, hills)[1] == pytest.approx(2 * kick, rel=0.1)
+    # Nor does a via point (`grade_profile`'s gap between legs).
+    gapped = ramp(3000.0, 0.06)
+    gapped = gapped[:51] + [(gapped[50][0] + 1.0, None)] + gapped[51:]
+    gapped_s = hill_cost.profile_cost_s(gapped, 90.0, 5.0, hills)[1]
+    assert gapped_s == pytest.approx(long_s, rel=0.05)
 
 
 def test_pushing_the_bike_up_is_a_last_resort():
