@@ -1148,7 +1148,7 @@ order), and nothing asks for hazards.
   (`overlayLayerShown`; OWNER-DECISIONS 417: "Mass rides should mainly only show capacity and
   federal land. Trails and PBLs aren't relevant here."; 417a: "The major trail PBL etc should not
   be shown at any zoom in mass ride."): the LTS colours, the path, protected-lane and painted-lane
-  rails, the trails and surface marks, the z10-11 long trails and the z12-13 ride layer's calm
+  rails, the trails and surface marks, the z7-11 long trails and the z12-13 ride layer's calm
   roads. The base map's `roads_labels_minor` names no path then (`MASS_PATH_LABEL_FILTER`: no
   trail-name labels); the base map itself, the federal-land overlay, the rail stations and the
   planned route with its markers stay. Every other ride type is unchanged. (`massHides` is still
@@ -1538,6 +1538,23 @@ curl -s -X POST http://localhost:8000/api/route -H 'Content-Type: application/js
   paths; if that router does not answer, the standard graph answers instead
   and `variant` says so. E-bike, Cargo with assist and Mass Ride keep their own
   graphs at the weekend.
+- Dirt trails on a ride type that skips them (`core.trail_touch`, v0.11.0; the
+  owner, 2026-10-21). A stop, via or end within 15 m (50 ft) of a dirt trail
+  (`bike_access_reason` `mtb`) plans the ride on the off-road graph with its own
+  costing, so `variant` is `offroad`. The trail is ridden, and so are trails
+  joined to it, which means less than 30 m (100 ft) of other ways between them.
+  The start alone does not count, nor the start again at a loop's end, because
+  riding dirt depends on the weather. A dirt trail the plan finds for itself is
+  left out by a strip a few metres across, and the plan is made again. This
+  happens up to 3 times, and then the plan is made on the ride type's own graph.
+  Green singletrack is always left out. A ride's re-plans send `ride_replan`.
+  When the rider is on a dirt trail, or `dirt_ridden` is sent, any dirt trail
+  may be ridden. The answer's `dirt_trails` says the route rides one, and Ride
+  then sends `dirt_ridden` for the rest of the ride. A `blocked_lines` stretch with
+  two of its quarter, half and three-quarter points within 15 m of a dirt trail (Road
+  closed pressed on one; a road crossing a trail has one at most) means bad conditions:
+  that re-plan rides no dirt trail (`trail_touch.closed_on_dirt`), its answer's
+  `dirt_closed` says so, and Ride sends `dirt_closed` for the rest of the ride.
 
 **The stress and hills sliders, measured** (PUBLIC-DIALS, 2026-09-27: a box
 graph, -77.22,38.78,-76.90,39.02, rebuilt from the real extract by the real
@@ -2011,7 +2028,7 @@ curl -s -o /tmp/t.pbf -w '%{http_code} %{size_download}\n' http://localhost:8000
 ```
 
 A tile is served from the `stress_tile_cache` table once drawn
-(`core/tile_cache.py`); `python manage.py predraw_stress_tiles` fills z10-14 for
+(`core/tile_cache.py`); `python manage.py predraw_stress_tiles` fills z7-14 for
 the live table, and a local `runserver` with an empty cache draws on request.
 What each zoom draws, the limits, the cache, the draw slots and timeout and the
 overview index are in docs/OPERATIONS.md, "The stress tiles". `tests/mvt.py` decodes a tile for
@@ -6058,7 +6075,9 @@ under LTS 4 and Avoid's own colour under Avoid (coral in the default palette, ye
 in `cvd`; with the switch on, black or white under the calm tiers, and a busy tier's
 own casing, which the switch leaves: OWNER-DECISIONS 292), the unpaved casing under
 an unpaved section (item 302: the route has twelve classes, the five unpaved ones
-drawn in the brown ramp with the dotted mark over them, layer `route-unpaved`), the
+drawn in the brown ramp with the dotted mark over them, layer `route-unpaved`; since
+2026-10-21 five more, gravel, `g1`-`g5`, in the grey ramp with the same mark, where the
+API's section says `rough: false`), the
 a dark neutral of its own under the unrated grey (#202326, since 357 softened LTS 1's
 casing, which it was before), and white under the violet. The
 figures below were computed from the colours by the test's rule. The blue stays outside as
@@ -7115,7 +7134,7 @@ next rebuild (its DDL is in `SEGMENT_DDL`; until then the endpoint tolerates its
 The front end and the API may ship in either order: an old API answers 404 for the
 endpoint and the panel says the information is not available right now. The beta's nginx
 template changed (the location regex): re-render it with `scripts/beta/render-nginx.sh` on
-the next beta deploy.
+the next beta deploy (with `--no-password` since the beta was opened; BETA-RUNBOOK, before step 10).
 
 **Tests.** `tests/test_segment_info_api.py` (the answer on a real live table with the router
 faked at `segment_info.locate_edges`; no road; a hidden sidewalk nearer than the road; an

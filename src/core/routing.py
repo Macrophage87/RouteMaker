@@ -79,6 +79,7 @@ from django.utils import timezone
 
 from pipeline.schema import (
     MASS_WIDTH_COLUMN,
+    ROUGH_COLUMN,
     SIDEPATH_NAME_COLUMN,
     STRESS_HALF_COLUMN,
     TRAIL_NAME_COLUMN,
@@ -114,6 +115,7 @@ from . import (
     beside_roads,
     mass_hazards,
     mtb,
+    novice_walks,
     parallel,
     presets,
     route_hazards,
@@ -214,9 +216,9 @@ class RouterRefused(Exception):
 class StrayTrails(Exception):
     """A route planned on the off-road graph for a dirt trail a point touches
     (`core.trail_touch`) took dirt trails no point touches: `rings` leave them out, and
-    `plan` plans again; `touched` is the trails the points touch, not looked up again."""
+    `plan` plans again; `touched` is the trails each point touches, not looked up again."""
 
-    def __init__(self, rings: tuple, touched: frozenset[int]) -> None:
+    def __init__(self, rings: tuple, touched: tuple[frozenset[int], ...]) -> None:
         super().__init__(f"{len(rings)} dirt trail run(s) no point touches")
         self.rings = rings
         self.touched = touched
@@ -237,6 +239,11 @@ class NoRoute(Exception):
     def __init__(self, message: str, no_path: bool = False) -> None:
         super().__init__(message)
         self.no_path = no_path
+
+
+class StraySideRoute(NoRoute):
+    """A side route (a candidate, the way round a junction or through a closure) of such a
+    plan takes a dirt trail no point touches: that side route alone is dropped."""
 
 
 class TooLong(Exception):
@@ -592,7 +599,8 @@ def _behind_of(kept: list[tuple[dict, float]]) -> tuple | None:
 # segment nearest the piece on its way. The breakdown sums them; the route's
 # coloured sections (`stress_spans`) keep their order.
 _STRESS_JOIN = """
-SELECT {tier}, {facility}, seg.is_unpaved, seg.road_lanes, seg.road_oneway{capacity_out}{half_out}
+SELECT {tier}, {facility}, seg.is_unpaved, seg.road_lanes,
+       seg.road_oneway{capacity_out}{half_out}{rough_out}
 FROM unnest(%s::bigint[], %s::float8[], %s::float8[])
      WITH ORDINALITY AS p(way_id, lon, lat, ordinality)
 LEFT JOIN LATERAL (
@@ -681,6 +689,10 @@ class PieceClass(tuple):
     # every reader that compares keys read the lower level; the ranking reads the half as
     # the midpoint (`core.refine`, docs/stress/stress-number.md section 3).
     half: bool
+    # Whether the segment's surface sheds riders (`routemaker.stress.is_rough`: dirt, grass and
+    # the like, a rutted track); None where the table has no such column. An unpaved section
+    # that is rough is drawn brown, any other unpaved one gravel grey (the owner, 2026-10-21).
+    rough: bool | None
 
     def __new__(
         cls,
@@ -691,6 +703,7 @@ class PieceClass(tuple):
         oneway: bool | None = None,
         width_m: float | None = None,
         half: bool = False,
+        rough: bool | None = None,
     ):
         pair = super().__new__(cls, (tier, facility))
         pair.unpaved = unpaved
@@ -699,10 +712,20 @@ class PieceClass(tuple):
         pair.width_m = width_m
         pair.rpm = round(flow.level_riders_per_min(width_m)) if width_m is not None else None
         pair.half = bool(half) and tier in ("1", "2", "3", "4")
+        pair.rough = rough
         return pair
 
     def __getnewargs__(self):
-        return (self[0], self[1], self.unpaved, self.lanes, self.oneway, self.width_m, self.half)
+        return (
+            self[0],
+            self[1],
+            self.unpaved,
+            self.lanes,
+            self.oneway,
+            self.width_m,
+            self.half,
+            self.rough,
+        )
 
 
 def classify(pieces: list[Piece], when: str, roadway_only: bool = False) -> list[tuple[str, str]]:
@@ -720,13 +743,15 @@ def classify(pieces: list[Piece], when: str, roadway_only: bool = False) -> list
     with_facility = _has_facility_columns(schema)
     with_capacity = _has_capacity_column(schema)
     with_half = _has_half_column(schema)
+    with_rough = segment_info.has_columns(schema, ROUGH_COLUMN)
     query = _STRESS_JOIN.format(
         schema=schema,
         tier=_TIER_AT if with_facility else "seg.stress_tier",
         facility=_FACILITY_AT if with_facility else "NULL",
         columns=("s.facility, s.car_free_when" if with_facility else "NULL AS facility")
         + (f", s.{MASS_WIDTH_COLUMN}" if with_capacity else "")
-        + (f", s.{STRESS_HALF_COLUMN}" if with_half else ""),
+        + (f", s.{STRESS_HALF_COLUMN}" if with_half else "")
+        + (f", s.{ROUGH_COLUMN}" if with_rough else ""),
         traits=(
             "s.road_lanes, s.road_oneway"
             if _has_trait_columns(schema)
@@ -742,6 +767,7 @@ def classify(pieces: list[Piece], when: str, roadway_only: bool = False) -> list
             if with_facility
             else f", seg.{STRESS_HALF_COLUMN}"
         ),
+        rough_out=f", seg.{ROUGH_COLUMN}" if with_rough else "",
     )
     arrays = [[p.way_id for p in pieces], [p.lon for p in pieces], [p.lat for p in pieces]]
     whens = ([when, when] + ([when] if with_half else [])) if with_facility else []
@@ -753,8 +779,13 @@ def classify(pieces: list[Piece], when: str, roadway_only: bool = False) -> list
             unpaved = row[2] if len(row) > 2 and isinstance(row[2], bool) else None
             lanes = row[3] if len(row) > 3 and isinstance(row[3], int) else None
             oneway = row[4] if len(row) > 4 and isinstance(row[4], bool) else None
-            width = row[5] if with_capacity and len(row) > 5 and row[5] is not None else None
-            half = bool(row[-1]) if with_half and row[-1] is True else False
+            # After the five fixed columns: the capacity, the half step and the surface's
+            # roughness, each where the table has it, in that order.
+            extra = list(row[5:])
+            width = extra.pop(0) if with_capacity else None
+            half = extra.pop(0) is True if with_half else False
+            rough = extra.pop(0) if with_rough else None
+            rough = rough if isinstance(rough, bool) else None
             if roadway_only and kind in ROADWAY_ONLY_AS_NONE:
                 kind = "none"
             classes.append(
@@ -766,6 +797,7 @@ def classify(pieces: list[Piece], when: str, roadway_only: bool = False) -> list
                     oneway,
                     None if width is None else float(width),
                     half,
+                    rough,
                 )
             )
     return classes
@@ -804,13 +836,15 @@ MIN_SPAN_M = 10.0
 def stress_spans(stretches: list[tuple], capacity: bool = False) -> list[dict]:
     """The route's coloured sections, in route order.
 
-    `stretches` is (metres, stress key, facility key[, unpaved[, rpm[, outside DC[, half]]]]) in
-    the order ridden; the answer is [{from_m, to_m, tier, facility, unpaved}] in whole metres
-    along the route, adjacent equal sections merged and those under MIN_SPAN_M
-    folded into the one before (or, first on the route, the one after). `tier` is
+    `stretches` is (metres, stress key, facility key[, unpaved[, rpm[, outside DC[, half[,
+    rough]]]]]) in the order ridden; the answer is [{from_m, to_m, tier, facility,
+    unpaved}] in whole metres along the route, adjacent equal sections merged and those
+    under MIN_SPAN_M folded into the one before (or, first on the route, the one after). `tier` is
     1-5 or null (unknown); `facility` is the class or null; `unpaved` True or False
     where the segments say, else null (OWNER-DECISIONS 302: the route line draws an
-    unpaved section in the brown ramp, so a section ends where the surface changes).
+    unpaved section in the brown ramp, so a section ends where the surface changes). An
+    unpaved section also says `rough`: True on a natural surface (brown), False on gravel
+    (grey; the owner, 2026-10-21), None where the table does not say (brown, as before).
 
     With `capacity` (a Mass Ride on a table that has the capacity column; OWNER-DECISIONS
     325-327) a section also ends where the capacity changes band, and carries `rpm`: the
@@ -832,6 +866,10 @@ def stress_spans(stretches: list[tuple], capacity: bool = False) -> list[dict]:
         if len(stretch) > 6 and stretch[6] and tier in ("1", "2", "3", "4"):
             tier = f"{tier}h"
         unpaved = stretch[3] if len(stretch) > 3 else None
+        # The surface key: an unpaved stretch's roughness splits it from gravel (True, False or
+        # None).
+        if unpaved is True:
+            unpaved = ("rough", stretch[7] if len(stretch) > 7 else None)
         outside = capacity and len(stretch) > 5 and bool(stretch[5])
         rpm = stretch[4] if capacity and len(stretch) > 4 and not outside else None
         band = (
@@ -871,8 +909,10 @@ def stress_spans(stretches: list[tuple], capacity: bool = False) -> list[dict]:
             "to_m": round(at),
             "tier": int(tier) if tier != "unknown" else None,
             "facility": kind if kind != "unknown" else None,
-            "unpaved": unpaved,
+            "unpaved": unpaved if not isinstance(unpaved, tuple) else True,
         }
+        if isinstance(unpaved, tuple):
+            entry["rough"] = unpaved[1]
         if half:
             entry["half"] = True
         if capacity:
@@ -1057,8 +1097,17 @@ class Dials:
     # A dirt trail a point is on is ridden on a ride type that does not plan on them
     # (`core.trail_touch`); False plans on the ride type's own graph alone. Set by `plan`.
     trail_touch: bool = True
-    # The dirt trails the points touch, once looked up (None: not yet). Set by `plan`.
-    trail_touched: frozenset[int] | None = None
+    # The dirt trails each point touches, in order, once looked up (None: not yet). Set by
+    # `plan`.
+    trail_touched: tuple[frozenset[int], ...] | None = None
+    # A ride's re-plan: the first point is the rider, so a dirt trail there counts, and any
+    # dirt trail may be ridden (`core.trail_touch`). `dirt_ridden`: the rider has been on one
+    # this ride, so any may be ridden wherever the rider is now.
+    ride_replan: bool = False
+    dirt_ridden: bool = False
+    # With `ride_replan`: the rider marked a dirt trail closed earlier this ride (an answer's
+    # `dirt_closed`), so no dirt trail is ridden, whatever `blocked` still holds.
+    dirt_closed: bool = False
     # The dirt trails such a plan found for itself, each a short strip across it (a ring),
     # left out as `blocked` is. Set by `plan`.
     trail_strays: tuple[tuple[tuple[float, float], ...], ...] = ()
@@ -1076,6 +1125,9 @@ class Dials:
     # own. Set only by a transit trip's lines priced as Novice on a share bike (`api._transit_body`,
     # `novice_legs` on Bikeshare + Transit), so the lines are timed as its candidates were.
     cycling_speed_kmh: float | None = None
+    # Novice and Nervous's walks past a short busy stretch (`core.novice_walks`); off for a
+    # transit trip's lines priced as Novice (`novice_legs`), which say no walks.
+    novice_walks: bool = True
     # An opened file's line to follow exactly, [(lon, lat), ...] (`core.follow`); None: plan.
     follow: tuple[tuple[float, float], ...] | None = None
     # Follow it exactly, rules or not (`core.follow.EXACT`): the manual mode.
@@ -1131,9 +1183,11 @@ NOVICE_BUSY_SLACK_M = 80.0
 
 def busiest_stretch(pieces: list, classes: list) -> dict | None:
     """The longest run of real LTS 3 or worse along a route, by the road's name: its name
-    (None where the road has none), its metres and its worst level. None where there is
-    no such run."""
-    runs: list[list] = []  # [name, metres, worst]
+    (None where the road has none), its metres, its worst level, and where it begins and
+    ends (`from` and `to`, [lon, lat], the middles of its first and last pieces, near
+    enough for the stations around them; v0.11.0, the transit hop past it,
+    `transit.plan_bike`'s `hop`). None where there is no such run."""
+    runs: list[list] = []  # [name, metres, worst, first piece, last piece]
     last = None
     for piece, cls in zip(pieces, classes, strict=False):
         tier = cls[0]
@@ -1146,26 +1200,43 @@ def busiest_stretch(pieces: list, classes: list) -> dict | None:
         if last is not None and last[0] == name:
             last[1] += piece.metres
             last[2] = max(last[2], int(tier))
+            last[4] = piece
         else:
-            last = [name, piece.metres, int(tier)]
+            last = [name, piece.metres, int(tier), piece, piece]
             runs.append(last)
     if not runs:
         return None
-    name, metres, worst = max(runs, key=lambda run: run[1])
-    return {"name": name, "metres": round(metres, 1), "level": worst}
+    name, metres, worst, first, final = max(runs, key=lambda run: run[1])
+    return {
+        "name": name,
+        "metres": round(metres, 1),
+        "level": worst,
+        "from": [round(first.lon, 6), round(first.lat, 6)],
+        "to": [round(final.lon, 6), round(final.lat, 6)],
+    }
 
 
-def novice_note(stress_m: dict, calm_search: dict | None, busiest: dict | None) -> dict:
+def novice_note(
+    stress_m: dict,
+    calm_search: dict | None,
+    busiest: dict | None,
+    walked_m: float = 0.0,
+    walks: list[dict] | None = None,
+) -> dict:
     """Novice and Nervous's reading of its own route (v0.7.0 plan, item 4): its real LTS 3
-    and worse metres, the busiest stretch, whether the search was held at the ceiling, and
-    whether to offer Own bike + Transit and Bikeshare + Transit beside it."""
-    busy_m = sum(float(stress_m.get(key, 0.0)) for key in ("3", "4", "5"))
+    and worse metres ridden, the busiest stretch ridden, whether the search was held at the
+    ceiling, and whether to offer Own bike + Transit and Bikeshare + Transit beside it. The
+    busy stretches walked instead (v0.11.0, `core.novice_walks`: `walked_m` of them, the
+    walks themselves in `walks`) are not ridden, and are left out of the busy metres."""
+    busy_m = max(0.0, sum(float(stress_m.get(key, 0.0)) for key in ("3", "4", "5")) - walked_m)
     held = bool(calm_search) and (calm_search or {}).get("limited") == "ceiling"
     return {
         "busy_m": round(busy_m, 1),
         "busiest": busiest,
         "over_ceiling": held,
         "transit": busy_m > NOVICE_BUSY_SLACK_M or held,
+        "walked_m": round(walked_m, 1),
+        "walks": walks or [],
     }
 
 
@@ -2989,15 +3060,29 @@ WALK_IN_MIN_LEFT_S = 1.0
 WALK_IN_CALL_S = 2.0
 
 
-def walk_leg(a: list[float], b: list[float], deadline: Deadline) -> dict | None:
+# A walk past a busy stretch (`novice_walks`) prefers sidewalks and footpaths to the
+# road's own edge by this factor (Valhalla's `sidewalk_factor` and `walkway_factor`): a
+# sidewalk mapped as its own way is only reached by crossing to it, which a walk that
+# starts on the road would otherwise not do.
+WALKWAY_PREFERENCE = 0.5
+
+
+def walk_leg(
+    a: list[float], b: list[float], deadline: Deadline, prefer_walkways: bool = False
+) -> dict | None:
     """The walk from `a` to `b` on the standard graph's pedestrian costing, as the answer
-    carries it, or None where there is none on foot, it is too long, or no time is left."""
+    carries it, or None where there is none on foot, it is too long, or no time is left.
+    `prefer_walkways`: keep to sidewalks and paths where there are (`WALKWAY_PREFERENCE`)."""
     if deadline.at - clock() < WALK_IN_MIN_LEFT_S:
         return None
+    pedestrian: dict = {"walking_speed": WALK_IN_SPEED_KMH}
+    if prefer_walkways:
+        pedestrian["sidewalk_factor"] = WALKWAY_PREFERENCE
+        pedestrian["walkway_factor"] = WALKWAY_PREFERENCE
     payload = {
         "locations": [{"lon": p[0], "lat": p[1], "type": "break"} for p in (a, b)],
         "costing": "pedestrian",
-        "costing_options": {"pedestrian": {"walking_speed": WALK_IN_SPEED_KMH}},
+        "costing_options": {"pedestrian": pedestrian},
         "directions_type": "none",
         "units": "kilometers",
     }
@@ -3029,6 +3114,70 @@ def walk_leg(a: list[float], b: list[float], deadline: Deadline) -> dict | None:
         "distance_m": round(metres, 1),
         "duration_s": round(float((legs[0].get("summary") or {}).get("time", 0.0)), 1),
     }
+
+
+# What a walk beside a busy road may be on (`walk_roadside_m`): Valhalla's uses that are
+# not a carriageway, and the road classes a walk may follow without a sidewalk.
+WALKWAY_USES = frozenset(
+    {
+        "footway",
+        "sidewalk",
+        "path",
+        "pedestrian",
+        "cycleway",
+        "pedestrian_crossing",
+        "steps",
+        "mountain_bike",
+        "bridleway",
+        "living_street",
+        "elevator",
+    }
+)
+MAIN_ROAD_CLASSES = frozenset(
+    {"motorway", "trunk", "primary", "secondary", "tertiary", "unclassified"}
+)
+
+
+def walk_roadside_m(line: list, deadline: Deadline) -> float | None:
+    """The metres of a walk (`walk_leg`'s line) along a main road's carriageway with no
+    sidewalk mapped on it, as the standard graph's pedestrian costing traces it; None
+    where it cannot be traced or no time is left (`novice_walks`: such a walk is not
+    offered)."""
+    if len(line) < 2 or deadline.at - clock() < WALK_IN_MIN_LEFT_S:
+        return None
+    payload = {
+        "shape": [{"lon": p[0], "lat": p[1]} for p in line],
+        "shape_match": "edge_walk",
+        "costing": "pedestrian",
+        "costing_options": {"pedestrian": {"walking_speed": WALK_IN_SPEED_KMH}},
+        "filters": {
+            "attributes": ["edge.length", "edge.use", "edge.road_class", "edge.sidewalk"],
+            "action": "include",
+        },
+        "units": "kilometers",
+    }
+    try:
+        answer = _call(
+            Variant.STANDARD.value,
+            "trace_attributes",
+            payload,
+            Deadline(deadline.at, min(deadline.per_call_s, WALK_IN_CALL_S)),
+        )
+    except (RouterRefused, DeadlineExceeded, RouterUnavailable):
+        return None
+    edges = answer.get("edges") or []
+    if not edges:
+        return None
+    metres = 0.0
+    for edge in edges:
+        if str(edge.get("use") or "") in WALKWAY_USES:
+            continue
+        if str(edge.get("road_class") or "") not in MAIN_ROAD_CLASSES:
+            continue
+        if str(edge.get("sidewalk") or "none") in ("left", "right", "both"):
+            continue
+        metres += float(edge.get("length") or 0.0) * 1000.0
+    return round(metres, 1)
 
 
 def walk_in(
@@ -3117,13 +3266,20 @@ def plan(
                 trail_touched=found.touched,
                 trail_strays=dials.trail_strays + tuple(map(_ring_tuple, found.rings)),
             )
-        except NoRoute:
+        except (NoRoute, DeadlineExceeded, RouterUnavailable):
+            # Leaving the strays out left no route, or no time for another round: the plan
+            # the ride type makes on its own graph, in what is left of the budget.
             if not dials.trail_strays:
                 raise
             logger.info("no route without the dirt trails found; planning without dirt trails")
             break
     dials = dataclasses.replace(dials, trail_touch=False, trail_strays=())
     return _plan(points, preset_name, long_ride, started, dials, quick, candidates)
+
+
+def _over_budget(rings) -> bool:
+    perimeter, vertices = work_zones.rules.budget_used(rings)
+    return perimeter > work_zones.rules.MAX_PERIMETER_M or vertices > work_zones.rules.MAX_VERTICES
 
 
 def _ring_tuple(ring) -> tuple[tuple[float, float], ...]:
@@ -3244,22 +3400,41 @@ def _plan(
     assist = bool(dials.assist) and preset.assist_speed_kmh is not None
     trails_off = bool(dials.trails_off)
     variant = presets.variant_for_ride(preset_name, when, assist, trails_off)
-    # A dirt trail the rider is on or put a point on (the owner, 2026-10-20: "Don't plan on the
-    # route, but if you enter it or mark a waypoint in it, it will continue to route through"):
-    # planned on the off-road graph, where it is open, with this ride type's costing; the dirt
-    # trails the plan finds for itself are left out again (`StrayTrails`, `core.trail_touch`).
+    # A dirt trail the rider put a stop, via or end on (the owner, 2026-10-20: "Don't plan on
+    # the route, but if you enter it or mark a waypoint in it, it will continue to route
+    # through"): planned on the off-road graph, where it is open, with this ride type's
+    # costing; the dirt trails the plan finds for itself are left out again (`StrayTrails`,
+    # `core.trail_touch`). The start alone does not (2026-10-21: "I wouldn't use that as a
+    # start for routing unless "opted-in""), but on a ride's re-plan the start is the rider:
+    # on a dirt trail, or after one, any dirt trail may be ridden ("If someone goes onto a dirt
+    # trail, any reroutes should include dirt"). A dirt trail the rider marked closed on this
+    # ride says its conditions are bad: no dirt trail at all for the rest of the ride
+    # (2026-10-21: "assume that means bad riding conditions until it's opted back in").
     touched_trails: frozenset[int] = frozenset()
+    per_point: tuple[frozenset[int], ...] = ()
+    dirt_closed = False
+    any_dirt = False
     if (
         variant == Variant.STANDARD.value
         and dials.trail_touch
         and dials.follow is None
         and not dials.straight
     ):
-        touched_trails = dials.trail_touched
-        if touched_trails is None:
-            touched_trails = trail_touch.touched(points)
-        if touched_trails:
-            variant = Variant.OFFROAD.value
+        dirt_closed = dials.dirt_closed or (
+            bool(dials.blocked) and trail_touch.closed_on_dirt(dials.blocked)
+        )
+        if not dirt_closed:
+            per_point = dials.trail_touched
+            if per_point is None:
+                per_point = trail_touch.touched(points)
+            # Not the start, nor the start again at the end of a loop or a round trip.
+            chosen = per_point if dials.ride_replan else per_point[1:]
+            if not dials.ride_replan and len(points) > 1 and is_round_trip(points):
+                chosen = chosen[:-1]
+            touched_trails = frozenset().union(*chosen)
+            any_dirt = dials.ride_replan and (dials.dirt_ridden or bool(per_point[0]))
+            if touched_trails or any_dirt:
+                variant = Variant.OFFROAD.value
     # Bike lanes are "none" in the breakdown on a ride that takes the roadway (Mass
     # Ride, whose own graph is no-trail), not on every trails-off ride.
     lanes_as_roadway = preset.variant == Variant.NO_TRAIL.value
@@ -3307,11 +3482,13 @@ def _plan(
     # The roads the rider marked closed on this ride (v0.8.2): left out as a closure is,
     # after the closures' own rings, and kept out where those are let back in. They take
     # the router's polygon budget first (the latest kept), and the closures fit the rest.
-    # The strips across dirt trails a plan found for itself (`plan`) go first, so the rider's
-    # own keep the latest places; they are a few metres each.
-    blocked = [[list(p) for p in ring] for ring in dials.trail_strays] + work_zones.blocked_rings(
-        dials.blocked
-    )
+    # The strips across dirt trails a plan found for itself (`plan`) are always kept, a few
+    # metres each: the rider's own fit beside them, the earliest let go first.
+    strips = [[list(p) for p in ring] for ring in dials.trail_strays]
+    blocked = work_zones.blocked_rings(dials.blocked)
+    while blocked and _over_budget(strips + blocked):
+        blocked = blocked[1:]
+    blocked = strips + blocked
     zones_plan = work_zones.plan_zones(
         points,
         when,
@@ -3805,16 +3982,18 @@ def _plan(
                 leg_runs.append((start, len(pieces)))
                 raw_junctions.extend(trace_junctions.junctions_of_trace(trace, shape, traced_m))
                 traced_m += sum(piece.metres for piece in pieces[start:])
-        if touched_trails and variant == Variant.OFFROAD.value:
-            dirt = trail_touch.off_road_ways([piece.way_id for piece in pieces])
-            stray = trail_touch.stray_rings(pieces, dirt, touched_trails)
+        dirt_trails = False
+        if (touched_trails or any_dirt) and variant == Variant.OFFROAD.value:
+            ways = trail_touch.off_road_ways([piece.way_id for piece in pieces])
+            stray = trail_touch.stray_rings(pieces, ways, touched_trails, any_dirt)
             if stray:
                 if alternate:
                     # A side route (a candidate, the way round a junction or through a
                     # closure) is dropped, not the plan made again.
-                    raise NoRoute("a side route takes a dirt trail no point touches")
+                    raise StraySideRoute("a side route takes a dirt trail no point touches")
                 _wait_for_delays(delays)
-                raise StrayTrails(tuple(stray), touched_trails)
+                raise StrayTrails(tuple(stray), per_point)
+            dirt_trails = trail_touch.rides_dirt(pieces, ways)
         # A long calm plan was searched in legs of its own: the answer has the plan's
         # legs, as the front end reads which leg a point on the line belongs to, and
         # a Mass Ride's stops and the description's are the plan's stops.
@@ -3867,6 +4046,7 @@ def _plan(
                         getattr(classes[i], "rpm", None),
                         preset_name == "mass-ride" and _outside_dc(pieces[i]),
                         getattr(classes[i], "half", False),
+                        getattr(classes[i], "rough", None),
                     )
                     for i in range(run[0], run[1])
                 )
@@ -4069,15 +4249,59 @@ def _plan(
             stop_as_yield,
             lambda lon, lat: intersections.beacon_at(lon, lat, beacons) is not None,
         )
+        route_m = round(float(summary.get("length", 0.0)) * 1000.0, 1)
+        route_s = float(summary.get("time", 0.0))
+        # Novice and Nervous (v0.11.0, `core.novice_walks`): the short stretches of real LTS 4
+        # or worse with a sidewalk beside them, walked; on the plan's own route only, so the
+        # candidates do not spend its time.
+        walked: list[dict] = []
+        novice_classes = classes
+        if (
+            preset_name == presets.NOVICE
+            and dials.novice_walks
+            and not over_budget
+            and not quick
+            and not alternate
+        ):
+            # One small budget for all of them, so they never hold a slow plan up.
+            walks_until = Deadline(
+                min(deadline.at, clock() + novice_walks.BUDGET_S), deadline.per_call_s
+            )
+            walked = novice_walks.walks(
+                novice_walks.stretches(leg_runs, pieces, classes),
+                coordinates,
+                sum(p.metres for p in pieces)
+                + sum(float(r) for r in leg_runs if not isinstance(r, tuple)),
+                route_m,
+                lambda a, b: walk_leg(a, b, walks_until, prefer_walkways=True),
+                lambda line: walk_roadside_m(line, walks_until),
+            )
+            if walked:
+                described_full = novice_walks.with_entries(described_full, walked)
+                described_overview = novice_walks.with_entries(described_overview, walked)
+                gone = {i for walk in walked for i in walk["pieces"]}
+                novice_classes = [
+                    PieceClass("1", "none") if i in gone else cls for i, cls in enumerate(classes)
+                ]
+        # The walked pieces' own metres, as `stress` counts them (a join gap left out).
+        walked_m = sum(
+            pieces[i].metres
+            for walk in walked
+            for i in walk["pieces"]
+            if classes[i][0] in novice_walks.WALK_TIERS
+        )
+        walk_change_s = novice_walks.time_change_s(walked, route_m, route_s)
         return {
             "preset": preset.name,
             "variant": variant,
+            "dirt_trails": dirt_trails,
+            "dirt_closed": dirt_closed,
             "geometry": {
                 "type": "LineString",
                 "coordinates": [[round(lon, 6), round(lat, 6)] for lon, lat in coordinates],
             },
             "distance_m": round(float(summary.get("length", 0.0)) * 1000.0, 1),
-            "duration_s": round(float(summary.get("time", 0.0)) + delay, 1),
+            "duration_s": round(route_s + delay + walk_change_s, 1),
             "junction_delay_s": round(delay, 1),
             "climb_m": round(climb, 1),
             "descent_m": round(descent, 1),
@@ -4138,7 +4362,13 @@ def _plan(
             # Not on a first route (`quick`): the offer is decided on the route the search
             # settles, so it does not come and go as the better route arrives.
             "novice": (
-                novice_note(stress, refined, busiest_stretch(pieces, classes))
+                novice_note(
+                    stress,
+                    refined,
+                    busiest_stretch(pieces, novice_classes),
+                    walked_m,
+                    novice_walks.public(walked),
+                )
                 if preset_name == presets.NOVICE and not over_budget and not quick
                 else None
             ),
@@ -4204,6 +4434,8 @@ def _plan(
                 around["extra_distance_m"] = round(around["distance_m"] - body["distance_m"], 1)
                 around["extra_duration_s"] = round(around["duration_s"] - body["duration_s"], 1)
                 body["avoid_alternate"] = around
+            except StraySideRoute:
+                pass
             except (DeadlineExceeded, RouterUnavailable, NoRoute):
                 avoid_info["alternate"] = "time"
         else:
@@ -4250,6 +4482,8 @@ def _plan(
                     _trip_length_m(found), target_m, ceiling
                 )["over_target_m"]
             candidates.append({**candidate, "rank": len(candidates) + 2})
+        except StraySideRoute:
+            continue
         except (DeadlineExceeded, RouterUnavailable, NoRoute):
             break
     body["candidates"] = candidates or None

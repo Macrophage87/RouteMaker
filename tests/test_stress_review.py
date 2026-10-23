@@ -32,12 +32,13 @@ from core.models import (
     ReviewRuling,
     StressEdit,
 )
-from routemaker import agency_lts
+from routemaker import agency_lts, sidewalks
 
 db = pytest.mark.django_db(transaction=True)
 
 BUILD = "20261016T120000Z"
 DROP, SAME, CLOSED, RISE, NEW_ONLY, RATED, CLOSE_RATED, NARROW = range(9001, 9009)
+SIDEWALK, SIDEWALK_CLOSED = 9009, 9010
 LON, LAT = -77.0300, 38.8990
 RATINGS = {
     "formula": 4,
@@ -136,6 +137,19 @@ class TestPrecompute:
         stress_review.compute_rebuild(BUILD, live, staging)
         assert ReviewItem.objects.filter(queue="rebuild").count() == 3
 
+    def test_a_ridden_sidewalks_level_change_is_no_rebuild_change(self, tables) -> None:
+        """The owner, 2026-10-22: the sidewalk rule moved 240,260 ways into the list."""
+        live, staging = tables
+        seg(live, SIDEWALK, 1)
+        seg(staging, SIDEWALK, 4, rule=sidewalks.LAST_RESORT_RULE)
+        seg(live, SIDEWALK_CLOSED, 1)
+        seg(staging, SIDEWALK_CLOSED, 3, rule=sidewalks.RULE, map_class="barred")
+        assert stress_review.compute_rebuild(BUILD, live, staging) == 4
+        found = items("rebuild")
+        assert SIDEWALK not in found
+        # a sidewalk that closes (or opens) is still a change
+        assert found[SIDEWALK_CLOSED].kind == "closed"
+
     def test_disagreements_count_a_whole_step_and_a_pending_agency(self, tables) -> None:
         _live, staging = tables
         pending = {SAME: [("arlington", 4.0)]}
@@ -208,6 +222,32 @@ class TestPrecompute:
         assert summary["sidepath"]["note"] == "No report from this build"
         assert summary["sidepath"]["wired"] is False and summary["sidepath"]["total"] == 0
         assert summary["disagreement"]["note"] == "" and summary["disagreement"]["wired"]
+
+    def test_a_golf_courses_closures_join_the_industrial_list(self, tables, tmp_path) -> None:
+        """The golf rule's report (owner report 2026-10-21) is read into the same list as the
+        works rule's: its closed ways listed, its open ones not, each row naming its report;
+        with only one of the two reports the list is still wired."""
+        live, staging = tables
+        header = "way_id,course,highway,name,length_m,status,why,tags\n"
+        (tmp_path / "golf-closures.csv").write_text(
+            header + f"{CLOSED},Woodmont Country Club,path,,80.0,closed,"
+            '"closed: inside a golf course (a cart path, walkway or drive)",\n'
+            f"{SAME},Woodmont Country Club,path,Creek Trail,90.0,open,open: a trail,\n"
+        )
+        counts = stress_review.compute_all(BUILD, live, staging, tmp_path)
+        assert counts["works_closure"] == 1
+        found = items("works_closure")
+        assert set(found) == {CLOSED}
+        assert found[CLOSED].reason.startswith("closed: inside a golf course")
+        assert found[CLOSED].details["report"] == "golf-closures.csv"
+        assert stress_review.actions(found[CLOSED]) == ["accept", "reject"]
+        (tmp_path / "works-closures.csv").write_text(
+            header.replace("course", "site") + f"{DROP},Test Park,service,,40.0,closed,closed,\n"
+        )
+        stress_review.compute_all(BUILD, live, staging, tmp_path)
+        found = items("works_closure")
+        assert set(found) == {CLOSED, DROP}
+        assert found[DROP].details["report"] == "works-closures.csv"
 
     def test_the_painted_lane_list(self, tables, tmp_path, settings) -> None:
         """Review RL-3: the rebuild's list of painted lanes on wide two-way roads, DDOT's or

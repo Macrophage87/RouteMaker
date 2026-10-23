@@ -3,6 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { MAX_POINTS } from "./geo.ts";
 import {
+  LOOP_ENDED_SAID,
   LONG_PRESS_MS,
   LONG_PRESS_SLOP_PX,
   LongPress,
@@ -115,8 +116,14 @@ test("the top row offers start, end and stop as the search does, each unavailabl
   assert.deepEqual(row(1), ["Set as start", "Set as end", "Add as stop (Set an end first.)"]);
   assert.deepEqual(row(2), ["Set as start", "Set as end", "Add as stop"]);
   assert.deepEqual(row(MAX_POINTS), ["Set as start", "Set as end", `Add as stop (The route has the most points it can (${MAX_POINTS}).)`]);
-  // A loop finishes at its start: no end to set, and a stop can follow the start alone.
-  assert.deepEqual(row(1, true), ["Set as start", "Add as stop"]);
+  // A loop: a stop can follow the start alone, and Set as end ends the ride there, turning the loop off (Stephen 2026-10-20).
+  assert.deepEqual(row(0, true), ["Set as start", "Set as end (Set a start first.)", "Add as stop (Set a start first.)"]);
+  assert.deepEqual(row(1, true), ["Set as start", "Set as end", "Add as stop"]);
+  assert.deepEqual(row(MAX_POINTS, true), [
+    "Set as start",
+    `Set as end (The route has the most points it can (${MAX_POINTS}).)`,
+    `Add as stop (The route has the most points it can (${MAX_POINTS}).)`,
+  ]);
 });
 
 test("a top-row button places the spot as the search's choice would, and says so", () => {
@@ -128,6 +135,9 @@ test("a top-row button places the spot as the search's choice would, and says so
   assert.deepEqual(placeAtSpot([a], spot, "end", false), { next: [a, spot], said: "End set here." });
   assert.deepEqual(placeAtSpot([a, b], spot, "end", false), { next: [a, spot], said: "End set here." });
   assert.deepEqual(placeAtSpot([a, b], spot, "via", false), { next: [a, spot, b], said: "Stop 1 set here." });
+  // On a loop, an end goes after the start and the stops, and the loop goes off with it.
+  assert.deepEqual(placeAtSpot([a, b], spot, "end", true), { next: [a, b, spot], said: LOOP_ENDED_SAID, loopOff: true });
+  assert.deepEqual(placeAtSpot([a], spot, "end", true), { next: [a, spot], said: LOOP_ENDED_SAID, loopOff: true });
 });
 
 test("the help says where the summary and the details are", () => {
