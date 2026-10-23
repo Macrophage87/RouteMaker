@@ -2435,7 +2435,7 @@ export function MapView(props: Props) {
       map.off("styledata", apply);
     };
   }, [props.rideLabels]);
-  // In a ride the route and the way come first (lib/mapGlue.ts, setRideFocus): the corridor band goes, busy roads fade.
+  // In a ride the route and the way come first (lib/mapGlue.ts, setRideFocus): busy roads fade.
   useEffect(() => {
     const map = mapRef.current;
     if (map) setRideFocus(map, Boolean(props.rideLabels), callbacks.current.route);

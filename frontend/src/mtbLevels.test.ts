@@ -113,8 +113,7 @@ test("the layer: the ticks, every white edge, then the unrated dashes and each l
       const layers = mtbTrailLayers("stress") as Layer[];
       assert.deepEqual(layers.map((l) => l.id), MTB_LINE_LAYER_IDS);
       const all = (stressOverlayLayers("stress") as Layer[]).map((l) => l.id);
-      // Over the popular corridors' band alone (2026-10-21).
-      assert.deepEqual(all.slice(1, 1 + MTB_LINE_LAYER_IDS.length), MTB_LINE_LAYER_IDS, "every routable line draws over them");
+      assert.deepEqual(all.slice(0, MTB_LINE_LAYER_IDS.length), MTB_LINE_LAYER_IDS, "every routable line draws over them");
       for (const shape of MTB_LEVELS as Shape[]) {
         const casing = layers.find((l) => l.id === mtbLevelCasingLayerId(shape.level))!;
         const line = layers.find((l) => l.id === mtbLevelLayerId(shape.level))!;

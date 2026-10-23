@@ -23,7 +23,6 @@ import {
   StressLegend,
   StressZoomNotes,
   UNKNOWN_SURFACE_LEGEND,
-  POPULAR_LEGEND,
   GRAVEL_LEGEND,
   UNPAVED_LEGEND,
   ZOOMED_OUT,
@@ -37,7 +36,6 @@ import {
 import {
   FACILITIES,
   LEGEND_SWATCH_PX,
-  POPULAR_BAND,
   PALETTES,
   UNKNOWN_SURFACE_DASH,
   UNPAVED_DASH,
@@ -94,10 +92,10 @@ test("the standing hint names the zooms from STRESS_ZOOMS and the zoom the map i
   assert.doesNotMatch(hint, /where to ride|from zoom 14\./);
   assert.ok(hint.includes(ROUTE_AT_EVERY_ZOOM));
   assert.match(ROUTE_AT_EVERY_ZOOM, /own busy stretches and junction warnings at every zoom/);
-  assert.ok(hint.includes(`From zoom ${STRESS_ZOOMS.quiet} the busy roads at LTS 3 and above and the quiet streets, footways and sidewalks show too, the busy roads faintly until zoom 14.`));
+  assert.ok(hint.includes(`From zoom ${STRESS_ZOOMS.quiet} the busy roads at LTS 3 and above and the quiet streets, footways and sidewalks show too, the busy roads faintly until zoom 14. In a dense city grid a street with no bike lane waits for zoom 13 and is drawn thin until zoom 14.`));
   assert.ok(hint.includes("Roads bikes may not use, such as expressways, are left unmarked."));
   assert.ok(hint.includes("shows only from zoom 15, and faintly, so the bike lane is the main line."));
-  assert.ok(hint.includes("Alleys show only from zoom 16, faintly, and the roads inside cemeteries, parking lots, military bases and secure government sites, such as prisons and guarded research campuses, not at all, but for the numbered public roads and the few streets open to the public through them."));
+  assert.ok(hint.includes("Alleys show only from zoom 16, faintly, and the roads inside cemeteries, parking lots, military bases, airports and secure government sites, such as prisons and guarded research campuses, not at all, but for the numbered public roads and the few streets open to the public through them."));
   assert.match(hint, new RegExp(`Further out than zoom ${STRESS_ZOOMS.min} nothing`));
   assert.match(hint, / The map is at zoom 12\.$/);
   assert.doesNotMatch(stressZoomHint(null), /The map is at/);
@@ -276,19 +274,13 @@ test("the surface rows' words: grey gravel, brown dirt, in plain words", () => {
 });
 
 
-test("the legend has the popular corridors' row after the surfaces: the band's colour under LTS 1's line, in words", () => {
-  const rows = swatches(legendHtml());
-  const popular = rows[currentTiers().length + 3];
-  assert.ok(popular.text.startsWith("Popular corridor"), popular.text);
-  assert.equal(popular.lines[0].stroke, POPULAR_BAND.color);
-  assert.equal(popular.lines.at(-1)!.stroke, currentTiers()[0].color);
-  assert.match(POPULAR_LEGEND, /Capital Bikeshare/);
-  assert.match(POPULAR_LEGEND, /still shows how stressful/);
+test("the legend has no popular corridors' row: the band is gone (the owner, 2026-10-23: \"The blue just makes things look busy\")", () => {
+  assert.ok(!swatches(legendHtml()).some((row) => row.text.startsWith("Popular")));
 });
 
 test("the bike-facility legend lists the rails the map has drawn, in FACILITIES' order, each with its dash under the casing", () => {
   const widths = legendWidths(currentTiers());
-  const rows = swatches(legendHtml()).slice(currentTiers().length + 4);
+  const rows = swatches(legendHtml()).slice(currentTiers().length + 3);
   assert.deepEqual(rows.map((r) => r.text.split(" ")[0]), FACILITIES.map((f) => f.short));
   FACILITIES.forEach((facility, i) => {
     const [rail, casing] = rows[i].lines;
@@ -299,7 +291,7 @@ test("the bike-facility legend lists the rails the map has drawn, in FACILITIES'
     assert.equal(Number(casing["stroke-width"]), widths.facilityCasing);
   });
   // Only what the map has drawn; none, and there is no facility legend at all.
-  assert.deepEqual(swatches(legendHtml(new Set(["lane"]))).slice(currentTiers().length + 4).map((r) => r.text.split(" ")[0]), ["Painted"]);
+  assert.deepEqual(swatches(legendHtml(new Set(["lane"]))).slice(currentTiers().length + 3).map((r) => r.text.split(" ")[0]), ["Painted"]);
   assert.doesNotMatch(legendHtml(new Set()), /Bike facility legend|Sharrows/);
 });
 

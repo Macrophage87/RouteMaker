@@ -23,8 +23,8 @@ import {
   MTB_HALO,
   MTB_LEVELS,
   MTB_MIN_ZOOM,
-  POPULAR_BAND,
   SOLID_MIN_ZOOM,
+  STREET_HIDDEN_ZOOM,
   UNKNOWN_SURFACE_DASH,
   UNPAVED_DASH,
   accessibilityOn,
@@ -129,10 +129,11 @@ export function stressZoomHint(zoom: number | null): string {
     `needs a regional bike route or a longer run. Trails beside a road count ` +
     `the same way. Lines are drawn thinner at zoom 11 and further out. ${ROUTE_AT_EVERY_ZOOM} ` +
     `${everyTrailFrom(quiet)} From zoom ${quiet} the busy roads at LTS 3 and above and the quiet streets, footways and ` +
-    `sidewalks show too, the busy roads faintly until zoom ${SOLID_MIN_ZOOM}. Roads bikes may not use, such as expressways, are left unmarked. A busy road with a bike lane ` +
+    `sidewalks show too, the busy roads faintly until zoom ${SOLID_MIN_ZOOM}. In a dense city grid a street with no bike lane ` +
+    `waits for zoom ${STREET_HIDDEN_ZOOM + 1} and is drawn thin until zoom ${SOLID_MIN_ZOOM}. Roads bikes may not use, such as expressways, are left unmarked. A busy road with a bike lane ` +
     `or path mapped beside it shows only from zoom ${BESIDE_ROAD_MIN_ZOOM}, and faintly, so the bike lane is the ` +
     `main line. Alleys show only from zoom ${ALLEY_MIN_ZOOM}, faintly, and the roads inside cemeteries, parking ` +
-    `lots, military bases and secure government sites, such as prisons and guarded research campuses, not at ` +
+    `lots, military bases, airports and secure government sites, such as prisons and guarded research campuses, not at ` +
     `all, but for the numbered public roads and the few streets open to the public through them. Further out than zoom ${min} nothing is drawn, and streets with no ` +
     `stress rating are not drawn.`;
   if (zoom !== null) text += ` The map is at zoom ${Math.floor(zoom)}.`;
@@ -270,22 +271,6 @@ export function TierSwatch({ tier, widths }: { tier: Tier; widths: { line: numbe
     line(6, tier.casing, widths.casing),
     tier.dash ? line(6, tier.gap ?? tier.casing, widths.line) : null,
     line(6, tier.color, widths.line, dashPx(tier.dash, widths.line)),
-  );
-}
-
-/** The popular corridors' row (2026-10-21; stressStyle.js POPULAR_BAND): what the band is, and that the line inside keeps its stress. */
-export const POPULAR_LEGEND =
-  "A soft cyan band under the busiest bike corridors: the streets and trails Capital Bikeshare riders use most, and well-known routes like the Capital Crescent and Rock Creek trails. Wider = busier. The line inside still shows how stressful it is.";
-
-/** The popular corridors' swatch: the band at its widest, with LTS 1's line inside it. */
-export function PopularSwatch({ tier, widths }: { tier: Tier; widths: { line: number; casing: number } }): ReactElement {
-  const opacity = tier.strong ? POPULAR_BAND.strongOpacity : POPULAR_BAND.opacity;
-  return h(
-    "svg",
-    { width: SVG_WIDTH, height: 14, "aria-hidden": "true" },
-    h("line", { x1: X1, y1: 7, x2: X2, y2: 7, stroke: POPULAR_BAND.color, strokeWidth: 14, strokeOpacity: opacity, strokeLinecap: "round" }),
-    line(7, tier.casing, widths.casing),
-    line(7, tier.color, widths.line, dashPx(tier.dash, widths.line)),
   );
 }
 
@@ -454,7 +439,6 @@ export function StressLegend({
       row("gravel", h(UnpavedSwatch, { tiers, widths: widths.tiers[0], gravel: true }), "Gravel", GRAVEL_LEGEND),
       row("unpaved", h(UnpavedSwatch, { tiers, widths: widths.tiers[0] }), "Dirt", UNPAVED_LEGEND),
       row("unknown", h(UnknownSurfaceSwatch, { tier: tiers[0], widths: widths.tiers[0] }), "Surface unknown", UNKNOWN_SURFACE_LEGEND),
-      row("popular", h(PopularSwatch, { tier: tiers[0], widths: widths.tiers[0] }), "Popular corridor", POPULAR_LEGEND),
       // The mountain-bike trails' rows (452a, 456) are in their own key, under their switch in Trails and terrain
       // (MtbTrailLegend), once in Layers.
     ),

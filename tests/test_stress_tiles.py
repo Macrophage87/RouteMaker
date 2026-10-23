@@ -1083,8 +1083,8 @@ class TestProbes:
         # mountain-bike trails at z12-13 (v0.7.0); 10 draws every street from z12 (the owner,
         # 2026-10-17: "Both from 12"); 11 carries a major trail's name (`trail_name`); 12 is
         # v0.10.2's `dense`; 13 carries `popular` and keeps the popular corridors and long calm
-        # roads at z10-11, with the long trails' names.
-        assert stress_tiles.FORMAT_VERSION == 13
+        # roads at z10-11, with the long trails' names; 14 names a major corridor's ways.
+        assert stress_tiles.FORMAT_VERSION == 14
 
     def test_a_format_bump_changes_the_etag(self, client, live, monkeypatch) -> None:
         path = url(*tile_of(*CENTRE, 14))
@@ -1744,7 +1744,7 @@ class TestEveryStreetFromZ12:
     def test_the_etag_names_the_column_and_the_format_is_bumped(self, client, ride) -> None:
         insert_ride(ride, run_mi=1.0)
         etag = client.get(url(*tile_of(*CENTRE, 12)))["ETag"]
-        assert "+pkcfarmwovshbtl-v13" in etag, etag
+        assert "+pkcfarmwovshbtl-v14" in etag, etag
         assert stress_tiles.ETAG_LETTERS[stress_tiles.CALM_RUN_COLUMN] == "k"
         assert len(set(stress_tiles.ETAG_LETTERS.values())) == len(stress_tiles.ETAG_LETTERS)
         assert len(etag) < 64
@@ -1809,7 +1809,7 @@ class TestRoadside:
     def test_the_etag_names_the_column(self, client, beside) -> None:
         self.put(beside, True)
         etag = client.get(url(*tile_of(*CENTRE, 14)))["ETag"]
-        assert "+pcfarmwoevshbtl-v13" in etag, etag
+        assert "+pcfarmwoevshbtl-v14" in etag, etag
         assert stress_tiles.ETAG_LETTERS[stress_tiles.ROADSIDE_COLUMN] == "e"
         assert len(set(stress_tiles.ETAG_LETTERS.values())) == len(stress_tiles.ETAG_LETTERS)
 
@@ -1881,7 +1881,7 @@ class TestMtbLevel:
     def test_the_etag_names_the_column(self, client, levelled) -> None:
         self.put(levelled, 3400, 2, 0)
         etag = client.get(url(*tile_of(*CENTRE, 14)))["ETag"]
-        assert "+pcfarmwdovshbtl-v13" in etag, etag
+        assert "+pcfarmwdovshbtl-v14" in etag, etag
         assert stress_tiles.ETAG_LETTERS[stress_tiles.MTB_LEVEL_COLUMN] == "d"
         assert len(set(stress_tiles.ETAG_LETTERS.values())) == len(stress_tiles.ETAG_LETTERS)
         assert stress_tiles.OPTIONAL_PROPERTIES["mtb_level"] == "mtb_level"
@@ -1942,7 +1942,7 @@ class TestMtbName:
     def test_the_etag_names_the_column(self, client, named) -> None:
         self.put(named, 3602, "Fairland Loop", 0)
         etag = client.get(url(*tile_of(*CENTRE, 14)))["ETag"]
-        assert "+pcfarmwnovshbtl-v13" in etag, etag
+        assert "+pcfarmwnovshbtl-v14" in etag, etag
         assert stress_tiles.ETAG_LETTERS[stress_tiles.MTB_NAME_COLUMN] == "n"
         assert len(set(stress_tiles.ETAG_LETTERS.values())) == len(stress_tiles.ETAG_LETTERS)
         assert stress_tiles.OPTIONAL_PROPERTIES["name"] == "mtb_name"
@@ -2017,6 +2017,24 @@ class TestTrailName:
                 "trail_name = 'Beach Drive'"
             )
         assert self.names(client, 14) == [None]
+
+    @pytest.mark.parametrize(("popular", "named"), [(3, True), (2, False), (None, False)])
+    @pytest.mark.parametrize("z", [10, 11, 12, 14])
+    def test_a_major_corridor_is_named(self, client, segment_schemas, z, popular, named) -> None:
+        """The owner, 2026-10-23: "the trails should be lableled at this zoom" ... "and the
+        major corridors". A street of the top popular class carries its name at z10-11; from
+        z12 the base map names it."""
+        named = named and z < 12
+        live, _ = segment_schemas
+        insert_trail(live, False, 3, 10.0)
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"UPDATE {live}.segment SET facility = 'none', is_trail_class = false, "
+                "trail_name = 'Q Street Northwest', bike_popular = %s",
+                [popular or 0],
+            )
+        names = self.names(client, z)
+        assert names == (["Q Street Northwest"] if named else [None] if names else [])
 
     def test_a_table_without_the_long_trail_columns_names_nothing(
         self, client, segment_schemas
@@ -2098,6 +2116,7 @@ RPM_PER_METRE_BY_FORMAT = {
     (10, 2): "29.526",
     (11, 2): "29.526",
     (13, 2): "29.526",
+    (14, 2): "29.526",
 }
 
 
@@ -2318,7 +2337,7 @@ class TestPopularCorridors:
         live, _ = segment_schemas
         self.put(live, popular=1)
         etag = client.get(url(*tile_of(*CENTRE, 14)))["ETag"]
-        assert "+pcfarmwovshbtl-v13" in etag, etag
+        assert "+pcfarmwovshbtl-v14" in etag, etag
         assert len(etag) < 64
 
     @pytest.mark.parametrize("calm", [False, True])

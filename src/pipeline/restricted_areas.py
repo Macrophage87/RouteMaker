@@ -49,21 +49,22 @@ area assembly (multipolygon relations and closed ways alike):
   unnamed service roads, footways and paths inside a lot are left off the map;
   routing is unchanged, since a lot can be a fair connector.
 
-- `works` - `landuse=quarry`, `landfill` or `industrial`: a working site. The owner,
-  2026-10-12: "A marked climb appears to be a quarry, which isn't likely open to the
-  public. Ensure only public roads open to bikes are marked." (the Travilah quarry's haul
-  roads, nine `highway=track` ways with no other tag, carried a Cat 4 climb). Under "err
-  closed on bike access" (OWNER-DECISIONS 330) its ways are closed to bicycles on every
-  graph (`works_closures`, `rm:no_bicycle=works`) and left off the map, unless the way's
-  own tags open it (`bicycle=yes|designated|permissive`, or with no bicycle tag
-  `access=yes|permissive` or a cycleway; `works_open_tags`), it is a numbered public
-  road, or an owner's override reopens it. An
-  industrial area holds public streets as well as its own drives (an industrial park's
-  roads, a business district's streets and sidewalks), so there only its service roads,
-  tracks, unnamed ways of an unclear class and untagged walkways close; a public-class
-  street (`WORKS_PUBLIC_HIGHWAY`), a sidewalk or a walkway tagged public
-  (`works_walkway_open`), or another named street, stays open and is listed. Listed
-  in the rebuild's `works-closures.csv`.
+- `works` - `landuse=quarry`, `landfill` or `industrial`, or `aeroway=aerodrome`: a
+  working site. The owner, 2026-10-12: "A marked climb appears to be a quarry, which isn't
+  likely open to the public. Ensure only public roads open to bikes are marked." (the
+  Travilah quarry's haul roads, nine `highway=track` ways with no other tag, carried a Cat
+  4 climb). Under "err closed on bike access" (OWNER-DECISIONS 330) its ways are closed to
+  bicycles on every graph (`works_closures`, `rm:no_bicycle=works`) and left off the map,
+  unless the way's own tags open it (`bicycle=yes|designated|permissive`, or with no
+  bicycle tag `access=yes|permissive` or a cycleway; `works_open_tags`), it is a numbered
+  public road, or an owner's override reopens it. An industrial area holds public streets
+  as well as its own drives (an industrial park's roads, a business district's streets and
+  sidewalks), so there only its service roads, tracks, unnamed ways of an unclear class
+  and untagged walkways close; a public-class street (`WORKS_PUBLIC_HIGHWAY`), a sidewalk
+  or a walkway tagged public (`works_walkway_open`), or another named street, stays open
+  and is listed. An airport is read as an industrial area (2026-10-23: its airside service
+  roads were drawn and routed across National Airport's airfield). Listed in the rebuild's
+  `works-closures.csv`.
 - `golf` - `leisure=golf_course`. The owner, 2026-10-21, of Woodmont Country Club,
   Rockville: "Still showing some bike paths on private property. These are golf
   courses." A course's cart paths are mapped as plain `highway=path`, `service` or
@@ -129,6 +130,10 @@ KINDS = (MILITARY, SECURED, CEMETERY, PARKING, PARK, WORKS, GOLF)
 # Land uses that are a working site no one may wander into (owner report 2026-10-12):
 # every way inside a quarry or a landfill, and an industrial area's own drives, close.
 WORKS_LANDUSE = frozenset({"quarry", "landfill", "industrial"})
+# An airport is a working site of the industrial kind (the owner, 2026-10-23, of the lines on
+# National Airport's airfield: "there's some airport runways shown" ... "or some service roads
+# for it"): its airside service roads and tracks close; its public streets and trails stay open.
+WORKS_AEROWAY = frozenset({"aerodrome"})
 # The working sites whose every way closes, a named one included; in the others
 # (industrial) a named street that is not a service road or a track stays open.
 WORKS_ALL_WAYS = frozenset({"quarry", "landfill"})
@@ -169,7 +174,7 @@ def area_kind(tags, osm: str = "") -> str | None:
         or (tags.get("operator") or "").startswith("National Park Service")
     ):
         return PARK
-    if tags.get("landuse") in WORKS_LANDUSE:
+    if tags.get("landuse") in WORKS_LANDUSE or tags.get("aeroway") in WORKS_AEROWAY:
         return WORKS
     return None
 
@@ -384,7 +389,7 @@ class _Areas(osmium.SimpleHandler):
                 area,
                 a.tags.get("name") or "",
                 osm,
-                a.tags.get("landuse") or "",
+                a.tags.get("landuse") or a.tags.get("aeroway") or "",
                 public=kind != PARK or public_land(a.tags),
             )
         )
@@ -986,7 +991,7 @@ def secured_missing(areas: Sequence[Area]) -> list[str]:
 
 # The `rm:no_bicycle` reason of a way inside a quarry, a landfill or an industrial area.
 WORKS_NO_BICYCLE = "works"
-WHY_WORKS = "closed: inside a working site (quarry, landfill or industrial)"
+WHY_WORKS = "closed: inside a working site (quarry, landfill, industrial area or airport)"
 WHY_WORKS_TAGGED_OPEN = "open: its own access/bicycle tag lets the public ride it"
 WHY_WORKS_STREET = (
     "open: a public street or path in an industrial area; owner to check it is public"
