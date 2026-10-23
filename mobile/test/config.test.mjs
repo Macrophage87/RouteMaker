@@ -16,7 +16,7 @@ test("no site address in the build: the app asks for it on first launch", () => 
   assert.equal(siteUrl({}), null);
   assert.equal(siteUrl({ ROUTEMAKER_URL: "  " }), null);
   assert.equal(config.server.errorPath, "offline.html");
-  assert.deepEqual(config.server.allowNavigation, ["discord.com", "sso.garmin.com", "connect.garmin.com"], "the Discord sign-in and Connect Garmin round trips only");
+  assert.deepEqual(config.server.allowNavigation, ["discord.com", "sso.garmin.com", "connect.garmin.com", "api.wahooligan.com"], "the Discord sign-in, Connect Garmin and Connect Wahoo round trips only");
   assert.ok(existsSync(here("../www/offline.html")));
   assert.ok(existsSync(here("../www/index.html")));
   // The bundled page is a placeholder: no script, nothing sent.

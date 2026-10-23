@@ -2080,6 +2080,36 @@ class GarminLink(models.Model):
         return f"Garmin connection for account {self.user_id}"
 
 
+class WahooLink(models.Model):
+    """A rider's Wahoo connection (core.wahoo; the owner, 2026-10-23): what Send to Wahoo uses to
+    add a route to the rider's Wahoo app, which sends it on to their ELEMNT.
+
+    Kept like GarminLink: one per account, made only by the rider in Settings, for routes alone
+    (the app's scopes are routes_read and routes_write, with Wahoo's required user_read). Both
+    tokens are AES-GCM encrypted under a key derived from KEY_ENCRYPTION_KEY and bound to this
+    account (`wahoo.seal`), and the table is left out of the nightly backup.
+
+    `routes` maps a saved route's id (as text) to the Wahoo route it was sent as, so sending that
+    route again updates it in place. It goes with the link: a new connection may be another Wahoo
+    account.
+    """
+
+    user = models.OneToOneField("User", on_delete=models.CASCADE, related_name="wahoo_link")
+    wahoo_user_id = models.CharField(max_length=64)
+    access_token = models.TextField()
+    access_expires_at = models.DateTimeField()
+    refresh_token = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_used_at = models.DateTimeField(null=True, blank=True)
+    routes = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        db_table = "wahoo_link"
+
+    def __str__(self) -> str:
+        return f"Wahoo connection for account {self.user_id}"
+
+
 class SavedRouteVersion(models.Model):
     """An earlier version of a saved route: what it was before it was saved again with changes,
     or before an earlier version was restored (core.api, /me/routes/{id}/versions).

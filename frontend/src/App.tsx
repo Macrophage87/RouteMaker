@@ -18,6 +18,7 @@ import { RAIL_STATUS_MS, closedReason, matchAlerts, withMetroClosed, matchClosur
 import { COVERAGE_BBOX, MAX_POINTS, addPoint, haversineM, insideCoverage, type LonLat } from "./lib/geo.ts";
 import { formatSeconds } from "./lib/format.ts";
 import { RETURN_PARAM as GARMIN_RETURN_PARAM, garminReturnFrom, withoutReturn } from "./lib/garminLink.ts";
+import { RETURN_PARAM as WAHOO_RETURN_PARAM, wahooReturnFrom } from "./lib/wahooLink.ts";
 import { endsOnFoot, layersTurnedOn, presetSaid, twoPointsOnly, usesBikeshare, type PresetId } from "./lib/presets.ts";
 import { atFromHash, decodePlan, encodePlan } from "./lib/planHash.ts";
 import { RouteScheduler, type SchedulerState } from "./lib/routeScheduler.ts";
@@ -247,7 +248,7 @@ import { OPENED_SAID, SAVED_SAID, SAVE_FAILED, UNCHANGED_SAID, UPDATE_ROUTE, VER
 import { checkClosures, closedStretches, reroutedSaid, spliceDetours, type Closure, type CheckFor } from "./lib/closureCheck.ts";
 import { downloadText, trackGpx, verbatimDownload, verbatimFileName } from "./lib/gpxVerbatim.ts";
 import { readGpx } from "./lib/gpxImport.ts";
-import { GPX_SAID_OPENED, GPX_SAID_ROUTE, GPX_SAID_TRACK, downloadCourse, downloadGpx, routeGpxFile, sendCourseToGarmin, type FileFormat, type Said } from "./GpxPanel.tsx";
+import { GPX_SAID_OPENED, GPX_SAID_ROUTE, GPX_SAID_TRACK, downloadCourse, downloadGpx, routeGpxFile, sendCourseToGarmin, sendCourseToWahoo, type FileFormat, type Said } from "./GpxPanel.tsx";
 import type { DeviceProfileId } from "./lib/deviceProfiles.ts";
 import { SHARED_GONE, SHARED_INPUTS_ONLY, SHARED_OPENED, SHARED_PATH, SHARED_REVOKED, SHARED_REVOKED_ERROR, SHARE_KEEP_DEFAULT, SHARE_RIDE_WAIT, BROADCAST_NO_LEAD, asRideLink, leadKeyFrom, gpxShareFile, keepFields, newSharedId, previewImageOk, readShared, rideLinkFrom, sharedBody, sharedIdFrom, storeShared, withSharedId, type ShareKeep } from "./lib/sharedRoutes.ts";
 import { ClosureDialog, type ClosureAsk } from "./ClosureDialog.tsx";
@@ -339,6 +340,11 @@ if (SHARED_ID && (window.location.pathname.startsWith(SHARED_PATH) || new URLSea
 const GARMIN_RETURNED = garminReturnFrom(window.location.search);
 if (new URLSearchParams(window.location.search).has(GARMIN_RETURN_PARAM)) {
   window.history.replaceState(window.history.state, "", `${window.location.pathname}${withoutReturn(window.location.search)}${window.location.hash}`);
+}
+// Back from Wahoo's consent page (lib/wahooLink.ts), likewise.
+const WAHOO_RETURNED = wahooReturnFrom(window.location.search);
+if (new URLSearchParams(window.location.search).has(WAHOO_RETURN_PARAM)) {
+  window.history.replaceState(window.history.state, "", `${window.location.pathname}${withoutReturn(window.location.search, WAHOO_RETURN_PARAM)}${window.location.hash}`);
 }
 // A broadcast from Roam (Stephen 2026-10-22): the link names a ride with no route and its leader; one who opens it
 // follows the leader's dot, read once here (the plan's own fragment is written over it later).
@@ -2741,9 +2747,9 @@ export function App() {
     setView(next);
   };
   const openSheet = (item: BarItem, button: HTMLButtonElement) => openView(item.opens, button);
-  // Back from Garmin: Settings, where the Garmin line says what happened.
+  // Back from Garmin or Wahoo: Settings, where its line says what happened.
   useEffect(() => {
-    if (GARMIN_RETURNED !== null) openView("settings", null);
+    if (GARMIN_RETURNED !== null || WAHOO_RETURNED !== null) openView("settings", null);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on arrival
   }, []);
   // Back (or Escape): to the sheet this one was opened from, or the planner, and the focus to what opened it.
@@ -3246,6 +3252,13 @@ export function App() {
     const route = shown;
     const at = routedPoints;
     void checkThen("download", route.geometry.coordinates, false, () => void sendCourseToGarmin(route, at, openSavedRoute.current).then(said));
+  };
+  // Send to Wahoo (the GPX sheet, once Wahoo is connected): the route on screen as a FIT course for the Wahoo app.
+  const sendToWahooRoute = (said: Said) => {
+    if (!shown) return;
+    const route = shown;
+    const at = routedPoints;
+    void checkThen("download", route.geometry.coordinates, false, () => void sendCourseToWahoo(route, at, openSavedRoute.current).then(said));
   };
   // Start ride: the line about to be ridden, checked first ("Ride it anyway" goes on to the ride).
   // The voice is unlocked first, synchronously inside the press (iOS speaks only in a gesture; after the
@@ -5205,6 +5218,8 @@ export function App() {
                 onPick: () => {
                   gpxChoice.current = null;
                 }, getMap, downloadRoute, sendToGarmin: sendToGarminRoute,
+                // Only signed in: Send to Wahoo needs the account's connection, and is then shown only once connected.
+                ...(me.signed_in ? { sendToWahoo: sendToWahooRoute } : {}),
                 ...(mode === "go" ? {} : { downloadCourse: downloadCourseRoute }),
                 // Snapping an opened track (lib/gpxMatch.ts) opens the plan along the snapped line: one edit, like the file.
                 ...(mode === "go" ? {} : {
@@ -5249,6 +5264,7 @@ export function App() {
             <SettingsSheet
               {...{
                 garminReturned: GARMIN_RETURNED,
+                wahooReturned: WAHOO_RETURNED,
                 rideText: { size: rideText, onChange: setRideText },
                 // The rider and bike weight (OWNER-DECISIONS 313-318), in Settings (the owner, 2026-10-18).
                 weight: {

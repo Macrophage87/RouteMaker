@@ -141,6 +141,8 @@ BACKUP_EXCLUDED_TABLES = (
     # Riders' Garmin tokens (core.models.GarminLink): encrypted, and still a credential; a restore
     # asks riders to connect again rather than keeping a week of them in every dump.
     "garmin_link",
+    # Riders' Wahoo tokens (core.models.WahooLink), for the same reason.
+    "wahoo_link",
 )
 
 # How many dumps stay on the data volume. They never leave this machine - the
