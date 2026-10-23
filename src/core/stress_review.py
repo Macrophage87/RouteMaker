@@ -24,11 +24,12 @@ heaviest compares two whole segment tables:
   pending file for comparison (`compute_painted_lane`).
 
 A ruling (`rule`) is Accept (recorded only), Reject (a rebuild change: the level it had before,
-or a road the build closed reopened; an industrial-area closure reopened) or Change LTS. A level
-is the road panel's own change (`stress_edits.apply`): an approved owner override that outranks
-the agencies and the formula, written to the live table at once, kept in the stress-edit history
-and re-applied by the swap. A reopening is an approved access override, applied at the next
-rebuild. Every ruling is audited and can be undone within the editor's undo window.
+or a road the build closed reopened; an industrial-area, golf course or farm track closure
+reopened) or Change LTS. A level is the road panel's own change (`stress_edits.apply`): an
+approved owner override that outranks the agencies and the formula, written to the live table at
+once, kept in the stress-edit history and re-applied by the swap. A reopening is an approved
+access override, applied at the next rebuild. Every ruling is audited and can be undone within
+the editor's undo window.
 """
 
 from __future__ import annotations
@@ -51,7 +52,7 @@ from django.db.models import BooleanField, Count, Exists, ExpressionWrapper, F, 
 from django.utils import timezone
 
 from pipeline.schema import validate_schema_name
-from routemaker import agency_lts, bike_bans
+from routemaker import agency_lts, bike_bans, sidewalks
 from routemaker.stress import NARROW_ROAD_RULE, NARROW_RURAL_ROAD_MPH
 
 from . import audit, road_names, segment_info, stress_changes, stress_edits
@@ -743,10 +744,18 @@ def change_kind(old: float, new: float, old_closed: bool, new_closed: bool) -> s
     return f"{old:g}-{new:g}"
 
 
+# The ridden sidewalks' and crosswalks' rules (`routemaker.sidewalks`): their level follows the
+# road beside them, so a level change of theirs is no road's change and stays out of the
+# rebuild's list (the owner, 2026-10-22: the first build with the rule listed 240,260 of them).
+SIDEWALK_RULES = (sidewalks.RULE, sidewalks.LAST_RESORT_RULE)
+
+
 def compute_rebuild(
     build_id: str, live: str, staging: str, *, router: _Router | None = None
 ) -> int:
-    """The rebuild's changes: every way in both tables whose level or bicycle access differs."""
+    """The rebuild's changes: every way in both tables whose level or bicycle access differs,
+    less the ridden sidewalks and crosswalks whose only change is their level (`SIDEWALK_RULES`).
+    """
     validate_schema_name(live)
     validate_schema_name(staging)
     if not (_table_exists(live) and _table_exists(staging)):
@@ -780,9 +789,17 @@ def compute_rebuild(
                        '[]'::jsonb, NULL, 0, NULL, 0, '', '[]'::jsonb, %s
                 FROM ({_agg_sql(live)}) o JOIN ({_agg_sql(staging)}) n
                   ON o.osm_way_id = n.osm_way_id
-                WHERE o.step IS DISTINCT FROM n.step OR o.closed IS DISTINCT FROM n.closed
+                WHERE (o.step IS DISTINCT FROM n.step OR o.closed IS DISTINCT FROM n.closed)
+                  AND NOT (n.rule IN (%s, %s) AND o.closed IS NOT DISTINCT FROM n.closed)
                 """,
-                [Queue.REBUILD.value, build_id, timezone.now(), CLOSED_CLASS, CLOSED_CLASS],
+                [
+                    Queue.REBUILD.value,
+                    build_id,
+                    timezone.now(),
+                    CLOSED_CLASS,
+                    CLOSED_CLASS,
+                    *SIDEWALK_RULES,
+                ],
             )
             count = cursor.rowcount
         _fill_facts(Queue.REBUILD, staging, build_id)
@@ -998,6 +1015,9 @@ class FileQueue:
     keep: Callable[[dict], bool]
     reason: Callable[[dict], str]
     closed: bool = False
+    # More reports read into the same queue, laid out as `file` is (the golf courses' closures
+    # beside the working sites'); the queue is unwired only when none of them is there.
+    also: tuple[str, ...] = ()
 
 
 FILE_QUEUES = (
@@ -1010,7 +1030,10 @@ FILE_QUEUES = (
         lambda r: r.get("reason") or r.get("why") or "Tagged to use a side path; none is mapped",
     ),
     # Footways and residential streets closed inside industrial areas (the works rule's report,
-    # laid out as `restricted_areas.military_report_csv`: a `status` of closed or open).
+    # laid out as `restricted_areas.military_report_csv`: a `status` of closed or open), and a
+    # golf course's cart paths and drives (the golf rule's, laid out the same; owner report
+    # 2026-10-21), and the farm and forest tracks closed as likely private (the track rule's,
+    # the same day), where a public trail or road the rule missed is reopened.
     FileQueue(
         Queue.WORKS_CLOSURE,
         "works-closures.csv",
@@ -1018,6 +1041,7 @@ FILE_QUEUES = (
         lambda r: (r.get("status") or "closed") == "closed",
         lambda r: r.get("why") or r.get("reason") or "Closed inside an industrial area",
         closed=True,
+        also=("golf-closures.csv", "track-closures.csv"),
     ),
     # Override rows the rebuild could not find their way again for (`pipeline.rematch`).
     FileQueue(
@@ -1046,22 +1070,27 @@ def compute_file_queue(
     """The queue from its report, or None where this build has no such report: its rows are
     then cleared and its state says so (`NO_REPORT`), so an older build's list is never shown
     as this one's."""
-    path = reports / spec.file if reports else None
-    if path is None or not path.is_file():
+    paths = [reports / name for name in (spec.file, *spec.also)] if reports else []
+    paths = [path for path in paths if path.is_file()]
+    if not paths:
         with transaction.atomic():
             ReviewItem.objects.filter(queue=spec.queue).delete()
             write_state(spec.queue, build_id, note=NO_REPORT)
         return None
     rows: dict[int, dict] = {}
-    for row in _read_csv(path):
-        if not spec.keep(row):
-            continue
-        for column in spec.way_columns:
-            try:
-                rows.setdefault(int(row[column]), row)
-                break
-            except (KeyError, TypeError, ValueError):
+    files: dict[int, str] = {}
+    for path in paths:
+        for row in _read_csv(path):
+            if not spec.keep(row):
                 continue
+            for column in spec.way_columns:
+                try:
+                    way = int(row[column])
+                except (KeyError, TypeError, ValueError):
+                    continue
+                if way not in rows:
+                    rows[way], files[way] = row, path.name
+                break
     present = _table_exists(schema)
     now = (
         {r["way"]: r for r in _way_rows(schema, "WHERE osm_way_id = ANY(%s)", [sorted(rows)])}
@@ -1080,7 +1109,7 @@ def compute_file_queue(
                 kind=(row.get("kind") or row.get("highway") or "")[:40],
                 new_step=current["step"] if current else None,
                 new_closed=spec.closed or bool(current and current["closed"]),
-                details={"new": _raw(current), "report": spec.file},
+                details={"new": _raw(current), "report": files[way]},
                 reason=reason,
                 inputs=_digest(reason, current and current["step"], _raw(current)),
             )

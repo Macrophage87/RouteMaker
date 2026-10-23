@@ -29,7 +29,12 @@ export function rideAfterImport(
   plan: Pick<ImportedPlan, "preset" | "dials">,
   now: { preset: PresetId; dials: Dials },
 ): { preset: PresetId; dials: Dials } {
-  if (!plan.preset) return { preset: now.preset, dials: now.dials };
+  // A file that names no ride type (another app's) keeps the page's ride, but never Plan's loop: its points are
+  // the ride, end and all, and the page may have the loop on only because Plan starts as one.
+  if (!plan.preset) {
+    const { loop: _loop, ...dials } = now.dials;
+    return { preset: now.preset, dials };
+  }
   // Whether the ride is a loop is the file's (loop=1 in its sliders), so a
   // loop the page had on before is not carried as the dialog carries it.
   const dials = plan.dials

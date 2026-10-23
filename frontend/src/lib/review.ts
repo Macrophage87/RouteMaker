@@ -135,7 +135,7 @@ export const LISTS: { key: ListKey; label: string }[] = [
   { key: "disagreement", label: "Rating disagreements" },
   { key: "narrow_rural", label: "Narrow rural roads" },
   { key: "sidepath", label: "Side path not mapped" },
-  { key: "works_closure", label: "Industrial-area closures" },
+  { key: "works_closure", label: "Industrial, golf and track closures" },
   { key: "rematch", label: "Overrides not re-matched" },
   { key: "painted_lane", label: "Painted lanes, agency against formula" },
   { key: "dc_no_bike", label: "DC ways closed to bikes" },

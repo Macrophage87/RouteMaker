@@ -11,6 +11,8 @@ import {
   RAIL_LAYERS,
   RAIL_SOURCE_ID,
   ROUTE_BOTTOM_LAYER,
+  BASEMAP_POIS_LAYER,
+  basemapPoisFilter,
   addRailStations,
   railHitFrom,
   railLayers,
@@ -311,4 +313,62 @@ test("the station names go over every layer but the hazard marks, the ride dots 
   assert.equal(stationNamesTarget(["route-line", names, "route-hazard-marks", "route-hazard-marks-along"]), null);
   assert.equal(stationNamesTarget(["route-line", names]), null);
   assert.equal(stationNamesTarget(["route-line", "review-dots", names]) !== null, true);
+});
+
+// One name per station (the owner, 2026-10-21: "Metros are sometimes written twice"): the base map's `pois` layer,
+// filter as the shipped package writes it, run by MapLibre's own filter code on a z14 tile's points.
+test("the base map no longer names a station the map names itself, and still names every other", async () => {
+  const spec = await import("@maplibre/maplibre-gl-style-spec");
+  const { layers: protomapsLayers, namedFlavor } = await import("@protomaps/basemaps");
+  const pois = (protomapsLayers("protomaps", namedFlavor("light"), { lang: "en" }) as Array<{ id: string; filter?: unknown }>).find(
+    (layer) => layer.id === BASEMAP_POIS_LAYER,
+  );
+  assert.ok(pois, "the base map still has its pois layer");
+  const shadyGrove = REAL.find((s) => s.name === "Shady Grove");
+  assert.ok(shadyGrove);
+  const z = 14;
+  const tileOf = ([lon, lat]: [number, number]) => {
+    const n = 2 ** z;
+    const x = ((lon + 180) / 360) * n;
+    const y = ((1 - Math.log(Math.tan((lat * Math.PI) / 180) + 1 / Math.cos((lat * Math.PI) / 180)) / Math.PI) / 2) * n;
+    return { x, y };
+  };
+  const shows = (filter: unknown, kind: string, at: [number, number]) => {
+    const { x, y } = tileOf(at);
+    const canonical = { z, x: Math.floor(x), y: Math.floor(y) };
+    const point = { x: Math.round((x % 1) * 8192), y: Math.round((y % 1) * 8192) };
+    const feature = { type: 1, properties: { kind, name: "x", min_zoom: 10 }, geometry: [[point]] };
+    return spec.featureFilter(filter as never, "layers[pois].filter").filter({ zoom: z }, feature as never, canonical);
+  };
+  const [lon, lat] = shadyGrove.point;
+  const near: [number, number] = [lon + 0.001, lat + 0.001]; // ~130 m off, as an OSM node on the platform
+  const far: [number, number] = [lon + 0.02, lat]; // ~1 mi east
+  const filter = basemapPoisFilter(pois.filter, REAL, ALL);
+  const style = {
+    version: 8,
+    sources: { protomaps: { type: "vector", tiles: ["https://example.invalid/{z}/{x}/{y}.pbf"] } },
+    layers: [{ ...pois, filter }],
+  };
+  assert.deepEqual(spec.validateStyleMin(style as never).map((e) => e.message), [], "a valid filter");
+  assert.equal(shows(pois.filter, "station", near), true, "named twice before");
+  assert.equal(shows(filter, "station", near), false, "the base map's name is gone");
+  assert.equal(shows(filter, "station", far), true, "a station we do not draw keeps its name");
+  assert.equal(shows(filter, "park", near), true, "the park beside it keeps its name");
+  // A toggle off hands the name back to the base map.
+  assert.equal(shows(basemapPoisFilter(pois.filter, REAL, { metro: false, marc: true }), "station", near), true);
+  assert.equal(basemapPoisFilter(pois.filter, REAL, { metro: false, marc: false }), pois.filter);
+});
+
+test("the stations set the base map's pois filter, and the toggles reset it from the original", () => {
+  const { map } = fakeMap([...BASE, { id: BASEMAP_POIS_LAYER, type: "symbol" }, ...ROUTE]);
+  const original = ["==", "kind", "station"];
+  const filters = new Map<string, unknown>([[BASEMAP_POIS_LAYER, original]]);
+  map.getFilter = (id) => filters.get(id);
+  map.setFilter = (id, filter) => filters.set(id, filter);
+  addRailStations(map, STATIONS, ALL, PENN_COLOUR, 2);
+  assert.deepEqual(filters.get(BASEMAP_POIS_LAYER), basemapPoisFilter(original, STATIONS, ALL));
+  setRailVisibility(map, STATIONS, { metro: false, marc: false });
+  assert.equal(filters.get(BASEMAP_POIS_LAYER), original);
+  setRailVisibility(map, STATIONS, { metro: true, marc: false });
+  assert.deepEqual(filters.get(BASEMAP_POIS_LAYER), basemapPoisFilter(original, STATIONS, { metro: true, marc: false }));
 });

@@ -220,6 +220,16 @@ ACCESS_WORDS = {
         "Closed: inside a quarry, landfill or industrial site"
         " (closed unless there is evidence bikes are allowed)",
     ),
+    "golf": (
+        False,
+        "Closed: a golf course's cart path or drive"
+        " (closed unless there is evidence bikes are allowed)",
+    ),
+    "track": (
+        False,
+        "Closed: a farm or forest track, likely private"
+        " (closed unless there is evidence bikes are allowed)",
+    ),
     "bicycle_no": (False, "Closed: no bicycles (a no-bike sign or rule, as mapped)"),
     # MDOT SHA's LTS 5, "Bicycle access is prohibited by managing roadway agency"
     # (`agency_lts.PROHIBITED_NO_BICYCLE`; the owner, 2026-10-19).
@@ -707,6 +717,10 @@ _USED_WORDS = {
     "owner": "the owner's rating is used: owner and community ratings come first",
     "community": "the community's rating is used: owner and community ratings come first",
     "rural floor": "raised to LTS 2: rural roads open to cars are LTS 2 at least",
+    agency_lts.FORMULA_USED: "RouteMaker's formula is used: the agency's rating predates the "
+    "bike facility mapped here",
+    agency_lts.PAINTED_LANE_USED: "set to LTS 2.5: the agency's rating predates the painted "
+    "lane mapped here, but a lane on a road it rated this busy may still be stressful",
 }
 
 
@@ -766,8 +780,12 @@ def rating_rows(row: dict) -> list[dict]:
             value += f" ({rule_words(str(held['formula_rule']))})"
         rows.append(_row("RouteMaker's formula", value, CLASSIFIER))
     if used in _USED_WORDS:
-        whose = COMMUNITY if used == agency_lts.COMMUNITY else OWNER
-        rows.append(_row("Used", _USED_WORDS[used].capitalize(), whose))
+        whose = {
+            agency_lts.COMMUNITY: COMMUNITY,
+            agency_lts.FORMULA_USED: CLASSIFIER,
+            agency_lts.PAINTED_LANE_USED: CLASSIFIER,
+        }.get(used, OWNER)
+        rows.append(_row("Used", _USED_WORDS[used][:1].upper() + _USED_WORDS[used][1:], whose))
     return rows
 
 
@@ -1031,7 +1049,11 @@ def access_rows(row: dict, bicycle: bool | None) -> tuple[bool | None, list[dict
             if reason.startswith("override")
             else MDOT_ACCESS_SOURCE
             if reason == agency_lts.PROHIBITED_NO_BICYCLE
-            else (CLASSIFIER if reason in ("military", "secured", "works", "err_closed") else OSM)
+            else (
+                CLASSIFIER
+                if reason in ("military", "secured", "works", "golf", "track", "err_closed")
+                else OSM
+            )
         )
         words = known[1]
         if reason == singletrack.NO_BICYCLE and not offroad_rides_green(row):
@@ -1089,6 +1111,8 @@ ACCESS_SHORT = {
     "military": "military area",
     "secured": "secure government site",
     "works": "quarry, landfill or industrial site",
+    "golf": "golf course",
+    "track": "private farm track",
     "bicycle_no": "no-bike rule",
     agency_lts.PROHIBITED_NO_BICYCLE: "prohibited by MDOT SHA",
     "motorway": "freeway",

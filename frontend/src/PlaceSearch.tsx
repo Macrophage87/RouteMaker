@@ -194,8 +194,8 @@ export function PlaceSearch({
   const showHere = locate?.support.available === true && locationMatches(query);
   // A pick that adds a stop (Plan with a start and an end) offers the place as the destination too, on a row
   // of its own under it, so it is an option a keyboard and a screen reader reach like any other.
-  // Plan's Add a stop keeps it too (Plan streamline).
-  const offersDestination = (variant === "plan" || variant === "add") && !loop && effect === "via";
+  // Plan's Add a stop keeps it too (Plan streamline). In a loop it ends the loop there (the owner, 2026-10-22).
+  const offersDestination = (variant === "plan" || variant === "add") && effect === "via";
   const sharedItems: Place[] = shared && "place" in shared ? [shared.place] : [];
   const sharedSaid = shared && "said" in shared ? shared.said : "";
   // The empty box lists the last places picked (v0.6.1), under "Your location".
@@ -396,7 +396,9 @@ export function PlaceSearch({
           {FINDING_LOCATION}
         </p>
       )}
-      {locate && !locate.listOnly && !locate.busy && locate.note && <p className="hint">{locate.note}</p>}
+      {/* The located point's note shows under whichever box is open, Add a stop too: a loop has no To box (Plan starts
+          as a loop, Stephen 2026-10-20), and the note is what says the point is approximate. */}
+      {locate && !locate.busy && locate.note && <p className="hint">{locate.note}</p>}
       <ul id={listId} role="listbox" aria-label={empty ? "Your location and recent places" : "Places found"} className="place-results" hidden={!expanded}>
         {items.map((item, i) =>
           item === HERE ? (

@@ -65,6 +65,7 @@ import {
   solidRouteFilter,
   setMassMode,
   setOverlayFade,
+  setRideFocus,
   routeOverlayFade,
   setHazardData,
   ROUTE_BAND_LAYER_ID,
@@ -175,6 +176,11 @@ export interface LineEdit {
   points: LonLat[];
   /** The points the legs run between: `points`, and in a loop the start again (lineEdit.ts, legPoints). */
   legPoints: LonLat[];
+  /**
+   * Plan's straight lines before a route (lib/planLegs.ts planLegEdit): a drag drops a via, but a click is not one,
+   * so a tap near a line still places the next point as ever.
+   */
+  dragOnly?: boolean;
 }
 
 /** Pixels on each side of the map that the panel covers. */
@@ -360,9 +366,42 @@ const ROUTE_SOURCE = "route";
 const GHOST_SOURCE = "route-ghost";
 const PLAN_LEGS_SOURCE = "plan-legs";
 const ROUTE_DRAWN_SOURCE = "route-drawn";
-/** The faint plan lines' grey, and the drawn legs' dash (lib/planLegs.ts). */
-const PLAN_LEG_COLOUR = "#374151";
+/**
+ * The plan lines' near-black on a white edge, and the drawn legs' dash (lib/planLegs.ts). Strong enough to read over
+ * the stress overlay (Stephen 2026-10-20: "make the straight line more apparent"), with arrows for which way each runs.
+ */
+const PLAN_LEG_COLOUR = "#1f2937";
+const PLAN_LEG_WIDTH = 4;
 const DRAWN_DASH = [2, 1.5];
+/** The arrow along the plan lines: its image's name and spacing in pixels. */
+const PLAN_ARROW = "plan-leg-arrow";
+const PLAN_ARROW_SPACING = 70;
+
+/** A chevron pointing along the line (east, as a line symbol's icon is laid along its line), white-edged. */
+function planArrowImage(ratio: number): { width: number; height: number; data: Uint8ClampedArray } | null {
+  const size = Math.round(18 * ratio);
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const g = canvas.getContext("2d");
+  if (!g) return null;
+  g.lineCap = "round";
+  g.lineJoin = "round";
+  const chevron = () => {
+    g.beginPath();
+    g.moveTo(size * 0.32, size * 0.2);
+    g.lineTo(size * 0.68, size * 0.5);
+    g.lineTo(size * 0.32, size * 0.8);
+    g.stroke();
+  };
+  g.strokeStyle = "#ffffff";
+  g.lineWidth = size * 0.3;
+  chevron();
+  g.strokeStyle = PLAN_LEG_COLOUR;
+  g.lineWidth = size * 0.14;
+  chevron();
+  return { width: size, height: size, data: g.getImageData(0, 0, size, size).data };
+}
 const CHOICE_SOURCE = "route-choice";
 const NO_CHOICES = { type: "FeatureCollection", features: [] };
 
@@ -373,8 +412,8 @@ function ghostData(line: readonly LonLat[] | null | undefined): object {
     : { type: "FeatureCollection", features: [] };
 }
 /** Plan's faint leg lines (lib/planLegs.ts): shown with no route, or a route greyed for a new plan. */
-function planLegsData(props: Pick<Props, "points" | "planLegs" | "route" | "stale">): object {
-  return planLegLines(props.planLegs && (!props.route || props.stale) ? props.points : [], props.planLegs ?? []);
+function planLegsData(props: Pick<Props, "points" | "planLegs" | "route" | "stale" | "loopVias">): object {
+  return planLegLines(props.planLegs && (!props.route || props.stale) ? props.points : [], props.planLegs ?? [], props.loopVias === true);
 }
 /** The route's sections by traffic stress (lib/routeColours.ts). */
 const ROUTE_STRESS_SOURCE = ROUTE_STRESS_SOURCE_ID;
@@ -1053,7 +1092,10 @@ export function MapView(props: Props) {
       const touch = (event.originalEvent as PointerEvent).pointerType === "touch";
       const onCanvas = event.originalEvent.target === canvas;
       const under = onCanvas
-        ? { station: stationAt(event.point), line: lineAt(event.point, touch ? TOUCH_HIT_PX : MOUSE_HIT_PX) }
+        ? {
+            station: stationAt(event.point),
+            line: callbacks.current.lineEdit?.dragOnly ? null : lineAt(event.point, touch ? TOUCH_HIT_PX : MOUSE_HIT_PX),
+          }
         : { station: null, line: null };
       const point: LonLat = [event.lngLat.lng, event.lngLat.lat];
       const goPress = callbacks.current.pressSetsEnd === true;
@@ -1176,16 +1218,24 @@ export function MapView(props: Props) {
         layout: { "line-join": "round", "line-cap": "butt" },
         paint: { "line-color": "#4b5563", "line-width": 4, "line-opacity": 0.8, "line-dasharray": [2, 1.5] },
       });
-      // Plan's legs as planned (v0.10.0, lib/planLegs.ts): faint straight lines between the points until the route
-      // comes, solid where it will be routed, dashed where drawn by hand. Under the route.
+      // Plan's legs as planned (v0.10.0, lib/planLegs.ts): straight lines between the points until the route comes,
+      // solid where it will be routed, dashed where drawn by hand, on a white edge, with arrows the way each leg runs;
+      // a loop's closing leg back to the start too. Under the route. A drag on one adds a via (planLegEdit).
       map.addSource(PLAN_LEGS_SOURCE, { type: "geojson", data: planLegsData(callbacks.current) as never });
+      map.addLayer({
+        id: "plan-legs-casing",
+        type: "line",
+        source: PLAN_LEGS_SOURCE,
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: { "line-color": "#ffffff", "line-width": PLAN_LEG_WIDTH + 4 },
+      });
       map.addLayer({
         id: "plan-legs-routed",
         type: "line",
         source: PLAN_LEGS_SOURCE,
         filter: ["!", ["get", "drawn"]],
         layout: { "line-join": "round", "line-cap": "round" },
-        paint: { "line-color": PLAN_LEG_COLOUR, "line-width": 3, "line-opacity": 0.45 },
+        paint: { "line-color": PLAN_LEG_COLOUR, "line-width": PLAN_LEG_WIDTH },
       });
       map.addLayer({
         id: "plan-legs-drawn",
@@ -1193,7 +1243,22 @@ export function MapView(props: Props) {
         source: PLAN_LEGS_SOURCE,
         filter: ["get", "drawn"],
         layout: { "line-join": "round", "line-cap": "butt" },
-        paint: { "line-color": PLAN_LEG_COLOUR, "line-width": 3, "line-opacity": 0.45, "line-dasharray": DRAWN_DASH },
+        paint: { "line-color": PLAN_LEG_COLOUR, "line-width": PLAN_LEG_WIDTH, "line-dasharray": DRAWN_DASH },
+      });
+      const arrow = planArrowImage(iconPixelRatio());
+      if (arrow && !map.hasImage(PLAN_ARROW)) map.addImage(PLAN_ARROW, arrow, { pixelRatio: iconPixelRatio() });
+      map.addLayer({
+        id: "plan-legs-arrows",
+        type: "symbol",
+        source: PLAN_LEGS_SOURCE,
+        layout: {
+          "symbol-placement": "line",
+          "symbol-spacing": PLAN_ARROW_SPACING,
+          "icon-image": PLAN_ARROW,
+          "icon-allow-overlap": true,
+          "icon-ignore-placement": true,
+          "icon-rotation-alignment": "map",
+        },
       });
       // Go's other routes to choose from (lib/routeChoice.ts): under the route, fainter, each in its colour on a
       // white edge so it reads over the roads; a press on one chooses it (the click handler above).
@@ -1290,7 +1355,7 @@ export function MapView(props: Props) {
         layout: { "line-join": "round", "line-cap": "butt" },
         paint: { "line-color": "#ffffff", "line-width": ROUTE_LINE_WIDTH + 1, "line-dasharray": [1.2, 1.2] },
       });
-      // The known hazards the route rides (v0.10.0, lib/routeHazards.ts): amber triangles over the route only.
+      // The known hazards the route rides (v0.10.0, lib/routeHazards.ts): dark circles over the route only.
       if (!map.hasImage(ROUTE_HAZARD_ICON)) {
         const { pixelRatio: ratio, ...icon } = routeHazardIcon(iconPixelRatio());
         map.addImage(ROUTE_HAZARD_ICON, icon, { pixelRatio: ratio });
@@ -1717,7 +1782,7 @@ export function MapView(props: Props) {
     const map = mapRef.current;
     if (!map || !loaded.current) return;
     (map.getSource(PLAN_LEGS_SOURCE) as GeoJSONSource | undefined)?.setData(planLegsData(props) as never);
-  }, [props.points, props.planLegs, props.route, props.stale]);
+  }, [props.points, props.planLegs, props.route, props.stale, props.loopVias]);
 
   // Plan mode's ghost of the route before the last update (v0.7.0).
   useEffect(() => {
@@ -2351,12 +2416,6 @@ export function MapView(props: Props) {
       map.off("styledata", onStyle);
     };
   }, [props.rideLabels]);
-  // A ride starts with the map's Help panel closed (the v0.10.1 end review): left open from planning, it covered the
-  // rider's dot. The Help button opens it again.
-  useEffect(() => {
-    if (!props.rideLabels) return;
-    collapseCredits(container.current?.querySelector<HTMLElement>(".maplibregl-ctrl-attrib") ?? null);
-  }, [props.rideLabels]);
   // The station names: larger than the street names (railLayer.ts, STATION_NAME_SIZE), and over every other layer
   // but the hazard marks, ride dots and Review's layers (the owner, 2026-10-20: "Text should be on top in most cases"),
   // so no pin, line or route hides one; the markers are DOM and stay above. Layers come and go (water, climbs, the route, a style reload), so this listens throughout.
@@ -2375,6 +2434,17 @@ export function MapView(props: Props) {
     return () => {
       map.off("styledata", apply);
     };
+  }, [props.rideLabels]);
+  // In a ride the route and the way come first (lib/mapGlue.ts, setRideFocus): the corridor band goes, busy roads fade.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (map) setRideFocus(map, Boolean(props.rideLabels), callbacks.current.route);
+  }, [props.rideLabels]);
+  // A ride starts with the map's Help panel closed (the v0.10.1 end review): left open from planning, it covered the
+  // rider's dot. The Help button opens it again.
+  useEffect(() => {
+    if (!props.rideLabels) return;
+    collapseCredits(container.current?.querySelector<HTMLElement>(".maplibregl-ctrl-attrib") ?? null);
   }, [props.rideLabels]);
   useEffect(() => () => void riderMarker.current?.remove(), []);
   // Go's "you" dot: a marker only (aria-hidden: Go's start line says where the rider is).

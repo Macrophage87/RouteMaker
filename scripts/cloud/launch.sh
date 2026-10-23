@@ -44,7 +44,13 @@
 # command with this run's URL.
 #
 # Options:
-#   --instance-id ID     the box [$CLOUD_INSTANCE_ID]
+#   --box spot|on-demand which box runs it [$CLOUD_BOX, or spot]: two standing boxes made
+#                        from the same launch template, one bought as spot (cheap, can be
+#                        reclaimed) and one on-demand (dearer, never reclaimed); everything
+#                        else is the same for both
+#   --instance-id ID     the spot box [$CLOUD_INSTANCE_ID]
+#   --on-demand-instance-id ID
+#                        the on-demand box [$CLOUD_ONDEMAND_INSTANCE_ID]
 #   --box-region R       the box's region [$CLOUD_BOX_REGION, or us-east-1]
 #   --bucket-region R    the bucket's region [$CLOUD_BUCKET_REGION, or us-west-2]
 #   --bucket NAME        [$CLOUD_BUCKET]
@@ -77,6 +83,8 @@ note() { echo "launch: $(date -u +%H:%M:%SZ) $*"; }
 
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 instance=${CLOUD_INSTANCE_ID:-}
+ondemand_instance=${CLOUD_ONDEMAND_INSTANCE_ID:-}
+box_kind=${CLOUD_BOX:-spot}
 box_region=${CLOUD_BOX_REGION:-us-east-1}
 bucket_region=${CLOUD_BUCKET_REGION:-us-west-2}
 bucket=${CLOUD_BUCKET:-}
@@ -88,7 +96,9 @@ timeout_hours=30 dry_run=0 attach=0
 given=("$@")
 while [ $# -gt 0 ]; do
 	case "$1" in
+		--box) [ $# -ge 2 ] || die "$1 needs a value"; box_kind=$2; shift 2 ;;
 		--instance-id) [ $# -ge 2 ] || die "$1 needs a value"; instance=$2; shift 2 ;;
+		--on-demand-instance-id) [ $# -ge 2 ] || die "$1 needs a value"; ondemand_instance=$2; shift 2 ;;
 		--box-region) [ $# -ge 2 ] || die "$1 needs a value"; box_region=$2; shift 2 ;;
 		--bucket-region) [ $# -ge 2 ] || die "$1 needs a value"; bucket_region=$2; shift 2 ;;
 		--bucket) [ $# -ge 2 ] || die "$1 needs a value"; bucket=$2; shift 2 ;;
@@ -125,7 +135,18 @@ case "$url" in s3://?*/?*) ;; *) die "RUN_URL must be s3://<bucket>/.../<run>, n
 run=${url##*/}
 [[ "$run" =~ ^[a-z0-9][a-z0-9-]{0,62}$ ]] || die "the run name '$run' must be lowercase letters, digits and hyphens"
 [[ "$url" =~ ^s3://[a-z0-9.-]+/[A-Za-z0-9._/-]+$ ]] || die "RUN_URL has a character it should not: $url"
-[ -n "$instance" ] || die "no box: give --instance-id (or CLOUD_INSTANCE_ID)"
+[ -z "$ondemand_instance" ] || [[ "$ondemand_instance" =~ ^i-[0-9a-f]{8,17}$ ]] ||
+	die "--on-demand-instance-id must look like i-0123456789abcdef0, not $ondemand_instance"
+[ -z "$ondemand_instance" ] || [ "$ondemand_instance" != "$instance" ] ||
+	die "the on-demand box and the spot box are the same instance, $instance"
+case "$box_kind" in
+	spot) [ -n "$instance" ] || die "no box: give --instance-id (or CLOUD_INSTANCE_ID)" ;;
+	on-demand)
+		[ -n "$ondemand_instance" ] ||
+			die "no on-demand box: give --on-demand-instance-id (or CLOUD_ONDEMAND_INSTANCE_ID); OPERATIONS.md, \"The launcher\", says how to make one"
+		instance=$ondemand_instance ;;
+	*) die "--box is spot or on-demand, not $box_kind" ;;
+esac
 [[ "$instance" =~ ^i-[0-9a-f]{8,17}$ ]] || die "--instance-id must look like i-0123456789abcdef0, not $instance"
 for r in "$box_region" "$bucket_region"; do
 	[[ "$r" =~ ^[a-z]{2}(-[a-z]+)+-[0-9]$ ]] || die "'$r' is not a region name like us-east-1"
@@ -192,7 +213,7 @@ while [ "$i" -lt "${#given[@]}" ]; do
 		--run | --bucket | --prefix) i=$((i + 2)) ;;
 		--no-send | --refire | --dry-run) i=$((i + 1)) ;;
 		--attach) i=$((i + 2)) ;;
-		--instance-id | --box-region | --bucket-region | --profile | --live-dir | --repo-url | --timeout-hours)
+		--box | --instance-id | --on-demand-instance-id | --box-region | --bucket-region | --profile | --live-dir | --repo-url | --timeout-hours)
 			kept+=("$a" "${given[$((i + 1))]}"); i=$((i + 2)) ;;
 		-*) kept+=("$a"); i=$((i + 1)) ;;
 		*) i=$((i + 1)) ;; # RUN_URL
@@ -200,6 +221,11 @@ while [ "$i" -lt "${#given[@]}" ]; do
 done
 resume() {
 	quoted scripts/cloud/launch.sh --no-send "${kept[@]}" "$@" "$url"
+}
+# On the spot box, where else the run can go when spot room is short.
+more_room() {
+	[ "$box_kind" = spot ] && [ -n "$ondemand_instance" ] || return 0
+	echo ". If spot room stays short, the on-demand box takes the run (it starts the rebuild over there; its inputs are sent already). Stop the spot box $instance first, and any loop that resumes it, so only one box works on the run: $(resume --box on-demand)"
 }
 box_state() { aws_box ec2 describe-instances --instance-ids "$instance" \
 	--query 'Reservations[0].Instances[0].State.Name' --output text; }
@@ -317,14 +343,14 @@ fail() { echo "launch: $*" >&2; exit 1; }
 if [ "$dry_run" = 1 ]; then
 	note "--dry-run: these are the commands, in order; nothing is run"
 fi
-note "run $run at $url; the box $instance in $box_region, the bucket in $bucket_region"
+note "run $run at $url; the $box_kind box $instance in $box_region, the bucket in $bucket_region"
 
 # --- 1. checks, then the inputs ---------------------------------------------------------
 wait_for() { # what, seconds, test command...
 	local what=$1 limit=$2 waited=0
 	shift 2
 	until "$@"; do
-		[ "$waited" -lt "$limit" ] || fail "$what after $((limit / 60)) minutes; giving up. Then: $(resume)"
+		[ "$waited" -lt "$limit" ] || fail "$what after $((limit / 60)) minutes; giving up. Then: $(resume)$(more_room)"
 		sleep "$START_POLL_S"
 		waited=$((waited + START_POLL_S))
 	done
@@ -446,7 +472,7 @@ else
 			# No signal between the start and `started=1`, or the trap would not stop it.
 			trap '' INT TERM HUP
 			aws_box ec2 start-instances --instance-ids "$instance" --output text >/dev/null ||
-				fail "AWS did not start $instance (no spot room just now is the usual reason). Try again later: $(resume)"
+				fail "AWS did not start $instance ($([ "$box_kind" = spot ] && echo "no spot room just now is the usual reason" || echo "no on-demand room of that type in its zone just now, or the sign-in"))$(more_room). Try again later: $(resume)"
 			started=1
 			trap 'exit 130' INT
 			trap 'exit 143' TERM HUP ;;
@@ -566,7 +592,7 @@ while :; do
 					note "WARNING: could not stop $instance again; check in the console that it stays stopped"
 			fi
 			stopped=1
-			fail "the box $state with no result: a failed rebuild (it powers itself off; its log is in $url/failed/ and under ~/cloud-runs/$run/ on the box) or a spot reclaim. Carry the run on: $(resume) (after a failed rebuild: $(resume --refire))" ;;
+			fail "the box $state with no result: a failed rebuild (it powers itself off; its log is in $url/failed/ and under ~/cloud-runs/$run/ on the box)$([ "$box_kind" = spot ] && echo " or a spot reclaim"). Carry the run on: $(resume) (after a failed rebuild: $(resume --refire))$(more_room)" ;;
 	esac
 	now=$(date +%s)
 	[ "$now" -lt "$deadline" ] ||
