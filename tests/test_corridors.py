@@ -567,3 +567,14 @@ def test_the_avoid_rows_432_replaces_are_out_of_the_east_of_anacostia_file() -> 
         for r in document["retire"]
         if r["osm_way_id"] in SOUTH_CAPITOL_MLK_TO_MISSISSIPPI
     )
+
+
+def test_the_owners_tier_replaces_a_half_step_too() -> None:
+    """A way at a half step (an agency's, or a painted lane's 2.5) that a corridor entry names
+    takes the entry's whole tier, not the entry's tier and the old half (review of PR #352)."""
+    ways = north_capitol()
+    whole, _ = apply(ways)
+    halved = {w.osm_id: StressResult(Stress.LTS2, "x", (), half=True) for w in ways}
+    corridors.apply([nc()], ways, halved)
+    for way_id in SECOND_SIDES_LTS3:
+        assert (halved[way_id].tier, halved[way_id].half) == (whole[way_id].tier, False), way_id

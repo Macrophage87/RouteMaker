@@ -38,7 +38,8 @@ who uses them (`:155-162`; OWNER-DECISIONS 321). The CVD palette keeps every adj
 pair CIEDE2000 20 or more apart under protanopia, deuteranopia and tritanopia (Machado
 2009), and its lightness falls tier by tier (`:105-118`; `stressContrast.test.ts`).
 Unpaved ways use a brown ramp per palette, darker for busier
-(`UNPAVED_PALETTES`, `:377-400`), with a dotted center mark (`UNPAVED_DASH`, `:1040`).
+(`UNPAVED_PALETTES`, `:377-400`), on a natural or rough surface, and one grey ramp on
+any other, gravel (`GRAVEL_PALETTES`; the owner, 2026-10-21), each with a dotted center mark (`UNPAVED_DASH`, `:1040`).
 A trail with no surface mapped is dashed [2, 1.5] (`UNKNOWN_SURFACE_DASH`, `:425`).
 
 **There is no dark-mode map palette.** `prefers-color-scheme: dark` restyles the panels

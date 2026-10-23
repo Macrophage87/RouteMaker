@@ -139,6 +139,11 @@ ADMIN_BASEMAP_TILE_URL = os.environ.get("ADMIN_BASEMAP_TILE_URL", "").strip()
 # DC and sets it in the deployment's environment file; it is never written anywhere else.
 DC311_API_KEY = os.environ.get("DC311_API_KEY", "").strip()
 
+# Who to ask about privacy (core.privacy_policy, GET /privacy's Contact section): an e-mail
+# address or a web address, set by the owner in the deployment's environment file, so the public
+# repository names nobody. Empty (the default): the page says to ask the site's owner on Discord.
+PRIVACY_CONTACT = os.environ.get("PRIVACY_CONTACT", "").strip()
+
 # Everything with state in it lives on the separate data volume, so nothing
 # durable sits on the root volume and the code directory holds no data. The
 # scheduled tasks resolve their paths from here rather than from their own

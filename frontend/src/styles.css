@@ -114,6 +114,8 @@ body {
   height: 100%;
   width: 100%;
   overflow: hidden;
+  /* The planner card's width on a computer; the map's chips and bars sit just right of it. */
+  --panel-w: 400px;
 }
 
 .map {
@@ -199,7 +201,7 @@ button.access-link {
   position: absolute;
   top: 12px;
   left: 12px;
-  width: 400px;
+  width: var(--panel-w);
   max-height: calc(100% - 24px);
   display: flex;
   flex-direction: column;
@@ -1327,7 +1329,7 @@ button.secondary {
 @media (min-width: 721px) {
   .maplibregl-ctrl-bottom-right .maplibregl-ctrl-attrib {
     box-sizing: border-box;
-    max-width: calc(100vw - 510px);
+    max-width: calc(100vw - 510px - var(--out-w, 0px));
   }
 }
 
@@ -2549,7 +2551,7 @@ dialog.weight-dialog h2 {
    over the map. Its text follows the rider's font size; the chip is 44 px at least. */
 .beta-chip {
   position: absolute;
-  left: 424px;
+  left: calc(var(--panel-w) + 24px);
   bottom: 10px;
   z-index: 2;
   display: flex;
@@ -3086,6 +3088,37 @@ details.zoom-notes {
   align-items: center;
   gap: 8px;
   padding: 2px 0;
+}
+
+/* The route hazard mark's key (lib/routeHazards.ts), set as the Junctions key: the mark, then the words with the
+   row's whole width. The mark stays by the first line when the words wrap. */
+.route-hazard-key {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+  font-size: 0.88rem;
+}
+
+.route-hazard-key li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 2px 0;
+}
+
+.route-hazard-key .route-hazard-swatch {
+  flex: none;
+  margin-top: 1px;
+}
+
+.route-hazard-name {
+  font-weight: 600;
+}
+
+/* The mark in the directions' hazard line, on the text's baseline. */
+.route-hazard-symbol .route-hazard-swatch {
+  vertical-align: -2px;
+  margin-right: 4px;
 }
 
 /*
@@ -5410,7 +5443,7 @@ details.zoom-notes {
 .map-chips {
   position: absolute;
   top: 12px;
-  left: 424px;
+  left: calc(var(--panel-w) + 24px);
   z-index: 2;
   display: flex;
   gap: 8px;
@@ -7484,7 +7517,8 @@ details.fold > summary .icon {
 #sheet-settings .weight-row .setting-line {
   flex-wrap: nowrap;
 }
-#sheet-settings .delete-account {
+#sheet-settings .delete-account,
+#sheet-settings .privacy-link {
   margin: 4px 0;
 }
 #sheet-settings .setting-row .switch {
@@ -7543,14 +7577,17 @@ details.fold > summary .icon {
 .plan-map-bar {
   position: absolute;
   top: 10px;
-  left: 424px;
-  right: 60px;
+  left: calc(var(--panel-w) + 24px);
+  right: calc(60px + var(--out-w, 0px));
   z-index: 2;
   display: flex;
   justify-content: center;
   align-items: center;
   gap: 8px;
   pointer-events: none;
+  /* Its own width, not the window's, says when Save and Start drop their second word: on a wide screen the map
+     sits between the planner and the results (v0.11.0), so the bar can be narrower than a phone's. */
+  container-type: inline-size;
 }
 
 .plan-map-bar > button {
@@ -7561,6 +7598,7 @@ details.fold > summary .icon {
 .plan-map-bar .plan-bar-small,
 .go-destination .plan-bar-small {
   width: 44px;
+  flex-shrink: 0;
   min-height: 44px;
   padding: 0;
   display: inline-flex;
@@ -7595,8 +7633,8 @@ details.fold > summary .icon {
 .plan-map-bar .plan-bar-route {
   white-space: nowrap;
 }
-/* A phone: "Save" and "Start" (their names stay Save route and Start ride). */
-@media (max-width: 599px) {
+/* A phone, or a narrow map between the panels: "Save" and "Start" (their names stay Save route and Start ride). */
+@container (max-width: 459px) {
   .plan-map-bar .plan-bar-wide {
     display: none;
   }
@@ -7961,8 +7999,10 @@ details.fold > summary .icon {
   font: inherit;
 }
 
-/* Settings > Account's Delete account link (core.account_deletion): a full-size target, not hint text. */
-.delete-account a {
+/* The Delete account (Settings > Account) and Privacy policy (Settings > About) links (core.account_deletion, core.privacy_policy): full-size
+   targets, not hint text. */
+.delete-account a,
+.privacy-link a {
   display: inline-flex;
   align-items: center;
   min-height: 44px;
@@ -8080,4 +8120,45 @@ details.fold > summary .icon {
 
 .log311-archived .log311-check {
   font-weight: 400;
+}
+
+/*
+ * Plan on a wide screen (Stephen 2026-10-21: "Plan is now a massive scrolling mess again ... on a wider screen
+ * there's a lot of room"; "the left panel has all of the parameters to adjust, and the right would have the
+ * outputs", "one column on each side"): with a route shown, the route (totals, Start, folds) is its own card on the
+ * map's right, scrolling on its own, and the planner on the left keeps the points, the ride and Route. Placement
+ * only: the route stays where it is in the DOM, so the reading and Tab order are the planner's, then the route's.
+ * The map's right-hand controls and Plan's map bar step left of the card (--out-w), and App's framePadding keeps a
+ * framed route clear of it.
+ */
+@media (min-width: 1200px) {
+  .app:not(.go-mode):has(.panel.open .planner-view:not([hidden]) > .route-section .summary) {
+    --out-w: calc(var(--panel-w) + 12px);
+  }
+
+  .app:not(.go-mode) .panel.open .planner-view:not([hidden]) > .route-section:has(.summary) {
+    position: fixed;
+    top: 12px;
+    right: 12px;
+    width: var(--panel-w);
+    max-height: calc(100% - 24px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 4px 14px 12px;
+    background: var(--bg);
+    color: var(--text);
+    border-radius: 10px;
+    box-shadow: var(--shadow);
+    z-index: 2;
+  }
+
+  .app:not(.go-mode) .maplibregl-ctrl-top-right,
+  .app:not(.go-mode) .maplibregl-ctrl-bottom-right {
+    right: var(--out-w, 0px);
+  }
+
+  /* The trail key stays under the zoom buttons. */
+  .app:not(.go-mode) .mtb-map-key {
+    right: calc(10px + var(--out-w, 0px));
+  }
 }

@@ -22,6 +22,9 @@
 #   --env-file FILE          [<repo>/.env]
 #   --no-ipv6                drop the `listen [::]:...` lines (for a host whose other
 #                            sites do not listen on IPv6; docs/BETA-RUNBOOK.md, step 1)
+#   --no-password            no site password (the owner opened the beta, 2026-10-22): leave out
+#                            the gate's auth_basic lines and the sign-in page (error_page 401 and
+#                            its location); robots.txt, noindex and the "back soon" page stay
 #   --no-401-page            leave out the sign-in page (error_page 401 and its location), so
 #                            Cancel shows nginx's own 401 page: the runbook's recovery when nginx
 #                            cannot read deploy/beta/401.html (step 10). The "back soon" page
@@ -42,9 +45,11 @@ cert_fullchain=""; cert_key=""; tls_include=""; env_file="$repo/.env"
 
 ipv6=1
 page401=1
+password=1
 while [ $# -gt 0 ]; do
 	if [ "$1" = --no-ipv6 ]; then ipv6=0; shift; continue; fi
 	if [ "$1" = --no-401-page ]; then page401=0; shift; continue; fi
+	if [ "$1" = --no-password ]; then password=0; shift; continue; fi
 	[ $# -ge 2 ] || die "$1 needs a value"
 	case "$1" in
 		--stage) stage=$2 ;;
@@ -142,6 +147,19 @@ if [ "$page401" = 0 ]; then
 	rendered=$(printf '%s\n' "$rendered" | awk '
 		/^[[:space:]]*error_page (401|502) / { next }
 		/^[[:space:]]*location = \/rmbeta-(401|502)\.html \{/ { skip = 1; next }
+		skip && /^[[:space:]]*\}[[:space:]]*$/ { skip = 0; next }
+		!skip { print }
+	')
+fi
+
+if [ "$password" = 0 ]; then
+	# the gate's password (the locations' own `auth_basic off;` lines are harmless without it),
+	# and the sign-in page that only a 401 shows
+	rendered=$(printf '%s\n' "$rendered" | awk '
+		/^[[:space:]]*auth_basic[[:space:]]+"/ { next }
+		/^[[:space:]]*auth_basic_user_file[[:space:]]/ { next }
+		/^[[:space:]]*error_page 401 / { next }
+		/^[[:space:]]*location = \/rmbeta-401\.html \{/ { skip = 1; next }
 		skip && /^[[:space:]]*\}[[:space:]]*$/ { skip = 0; next }
 		!skip { print }
 	')
