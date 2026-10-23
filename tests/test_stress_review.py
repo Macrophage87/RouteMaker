@@ -32,12 +32,13 @@ from core.models import (
     ReviewRuling,
     StressEdit,
 )
-from routemaker import agency_lts
+from routemaker import agency_lts, sidewalks
 
 db = pytest.mark.django_db(transaction=True)
 
 BUILD = "20261016T120000Z"
 DROP, SAME, CLOSED, RISE, NEW_ONLY, RATED, CLOSE_RATED, NARROW = range(9001, 9009)
+SIDEWALK, SIDEWALK_CLOSED = 9009, 9010
 LON, LAT = -77.0300, 38.8990
 RATINGS = {
     "formula": 4,
@@ -135,6 +136,19 @@ class TestPrecompute:
         # Computed again, the queue is replaced, not doubled.
         stress_review.compute_rebuild(BUILD, live, staging)
         assert ReviewItem.objects.filter(queue="rebuild").count() == 3
+
+    def test_a_ridden_sidewalks_level_change_is_no_rebuild_change(self, tables) -> None:
+        """The owner, 2026-10-22: the sidewalk rule moved 240,260 ways into the list."""
+        live, staging = tables
+        seg(live, SIDEWALK, 1)
+        seg(staging, SIDEWALK, 4, rule=sidewalks.LAST_RESORT_RULE)
+        seg(live, SIDEWALK_CLOSED, 1)
+        seg(staging, SIDEWALK_CLOSED, 3, rule=sidewalks.RULE, map_class="barred")
+        assert stress_review.compute_rebuild(BUILD, live, staging) == 4
+        found = items("rebuild")
+        assert SIDEWALK not in found
+        # a sidewalk that closes (or opens) is still a change
+        assert found[SIDEWALK_CLOSED].kind == "closed"
 
     def test_disagreements_count_a_whole_step_and_a_pending_agency(self, tables) -> None:
         _live, staging = tables

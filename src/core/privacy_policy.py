@@ -27,6 +27,14 @@ comes from:
   'self'`), core.street_photo, core.gbfs, core.wmata_live, core.closure_sources, core.dc311.
 - Logs, limits and backups: docker/api-entrypoint.sh (the access log's format), core.ratelimit,
   config.procrastinate (BACKUP_KEEP, BACKUP_EXCLUDED_TABLES); sessions: core.revocation.
+- Garmin: the one section written ahead of its code, and the page says so ("not offered yet").
+  Garmin's developer program reviews this page before an app may connect riders, so the promises
+  come first and the connection (one encrypted token per rider, the Courses API only, Disconnect)
+  is built to them, including the handler for Garmin's deregistration notice (a rider who
+  disconnects in Garmin Connect); when it ships, drop "not offered yet", point this line at its
+  module, and add Garmin to "Who else is contacted" (the server then sends it the token).
+- Hosting: settings.PRIVACY_HOSTING, the deployment's own (Garmin asks that every party storing
+  riders' data be named).
 
 Change the page when the code changes what it collects. It names no host: every address is a path
 on the site itself.
@@ -44,11 +52,19 @@ from . import account_deletion
 PATH = account_deletion.PRIVACY_PATH
 TITLE = "RouteMaker privacy policy"
 # Change with the text: the date a rider reads as when this page last said something new.
-LAST_UPDATED = ("2026-10-21", "October 21, 2026")
+LAST_UPDATED = ("2026-10-23", "October 23, 2026")
 # Unless the deployment sets PRIVACY_CONTACT (an e-mail address or a web address).
 CONTACT = "Questions, or a request about your data: ask the site's owner on Discord."
 CONTACT_LEAD = "Questions, or a request about your data: "
 NO_ADS = "No ads, no analytics, no tracking, and nothing about you is sold or shared for marketing."
+# Unless the deployment sets PRIVACY_HOSTING (the hosting provider's name).
+HOSTING = (
+    "The site's owner runs the server and its database, at home or with a hosting company, which "
+    "stores the data only to run the site."
+)
+HOSTING_LEAD = "The server and its database run at "
+HOSTING_TAIL = ", which stores the data only to run the site. No other company stores your data."
+GARMIN_NO_AI = "Nothing from Garmin is sold, shared, given to AI services, or used to train AI."
 WHERE_YOU_ARE = (
     "Your location is used on your phone or computer to plan and guide your ride. The server "
     "keeps no record of where you are, only places you choose to save or share (Home, saved and "
@@ -170,6 +186,29 @@ SECTIONS: list[tuple[str, str]] = [
         ),
     ),
     (
+        "If you connect Garmin",
+        _p(
+            "Connecting a Garmin account is not offered yet. When it is, it will be your choice, "
+            "in Settings, and it will work like this:"
+        )
+        + _ul(
+            [
+                "Send to Garmin then adds the course to your Garmin Connect account directly, "
+                "without opening the Garmin Connect app.",
+                "RouteMaker keeps only Garmin’s sign-in token for your account, encrypted, "
+                "and your Garmin account number. It uses them only to send the courses you "
+                "choose.",
+                "It never reads your activities, health data or anything else from Garmin.",
+                GARMIN_NO_AI,
+                "Settings shows whether you are connected. Disconnect there, or in Garmin "
+                "Connect, at any time: RouteMaker deletes the token and tells Garmin. Deleting "
+                "your account does the same.",
+                "That connection is all RouteMaker keeps from Garmin, so there is nothing else to "
+                "see, correct or export. To fix it, disconnect and connect again.",
+            ]
+        ),
+    ),
+    (
         "Shared links",
         _ul(
             [
@@ -261,6 +300,8 @@ SECTIONS: list[tuple[str, str]] = [
             ]
         ),
     ),
+    # The hosting provider is the deployment's (`hosting`), filled in at request time.
+    ("Where your data is kept", ""),
     (
         "How long data is kept",
         _ul(
@@ -304,9 +345,22 @@ def contact() -> str:
     return f"<p>{escape(CONTACT_LEAD)}{shown}.</p>"
 
 
+def hosting() -> str:
+    """The Where your data is kept section: settings.PRIVACY_HOSTING named as the host, or, unset,
+    the owner-run wording."""
+    value = (getattr(settings, "PRIVACY_HOSTING", "") or "").strip()
+    if not value:
+        return _p(HOSTING)
+    return _p(f"{HOSTING_LEAD}{value}{HOSTING_TAIL}")
+
+
+# The sections whose text is the deployment's, made at request time.
+FILLED = {"Contact": contact, "Where your data is kept": hosting}
+
+
 def body() -> str:
     return SUMMARY + "".join(
-        f"<h2>{escape(h)}</h2>{contact() if h == 'Contact' else content}" for h, content in SECTIONS
+        f"<h2>{escape(h)}</h2>{FILLED[h]() if h in FILLED else content}" for h, content in SECTIONS
     )
 
 
