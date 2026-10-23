@@ -36,6 +36,16 @@ The rules:
   nearer, the rider is told which to take ("Bear right to stay on Paint Branch
   Trail": the owner, 2026-10-18, "missing some important turns, especially when it
   seems straight is the default"). A stretch begun at a fork is never folded away.
+- A clear turn is said too (`_said_turns`), as a fork is: along one street, a turn of
+  more than ALONG_TURN_DEG (45 degrees) at a node where another way meets it ("Left
+  to stay on Metropolitan Branch Trail" off the trail onto its side path: the owner,
+  2026-10-23, "It missed a clear left turn"); onto any way, a turn of HAIRPIN_DEG or
+  more (a turnaround: "Another sharp turnaround missed"). Nodes within JUNCTION_M of
+  one another are one junction, and only the sharpest of them is said. Every turn
+  and a fork's own way are read from the route's own line over LINE_SPAN_M either
+  side of the node, short of the next node (`Atom.turn`), where it was read, not
+  from the edges' headings, which a tiny edge at a junction can tilt: a gentle bend
+  is never said as a left (Sligo Creek Trail).
 - A leg boundary (a via point, named "Stop N") is its own entry, and a stretch
   never spans it.
 - A turn names the street it turns onto and, where the junction model has read
@@ -130,6 +140,17 @@ TRAIL_USES = frozenset({"cycleway", "footway", "path", "mountain_bike", "bridlew
 # route's own line at the node (`turn_between`; the owner, 2026-10-20, on a ramp up to a
 # bridge by Veirs Mill Road: "This is a right turn up onto a bridge").
 HAIRPIN_DEG = 120.0
+# A turn along one street this far off straight, at a node another way meets, is said
+# (`_said_turns`): the owner, 2026-10-23, on the Metropolitan Branch Trail, where it
+# turns off onto its side path along a road, "It missed a clear left turn".
+ALONG_TURN_DEG = 45.0
+# The route's own line is read this far either side of a node for its turn there
+# (`Atom.turn`, `core.routing._line_headings`).
+LINE_SPAN_M = 20.0
+# Nodes nearer one another than this are one junction (a kerb or crossing node beside the
+# corner): the line is read on past them, and only the sharpest is said (`_said_turns`).
+# The line stops at a node further off, so a turn there never tilts this one.
+JUNCTION_M = 5.0
 # A short path stretch between two turns that crosses a road (a junction event across it,
 # or a crosswalk) is said as the crossing: "Cross Redland Road, then left onto Redland Road
 # bike lane" (the owner, 2026-10-20: "It should have told me to cross the street and turn
@@ -321,6 +342,12 @@ class Atom:
     # The piece's own compass bearing, unwrapped along the trace (`core.routing.Piece`):
     # two pieces' difference is how far, and to which side, the route turned between.
     bearing: float | None = None
+    # Where the piece begins a traced edge: the turn the route's own line makes at that
+    # node, clockwise positive, read over LINE_SPAN_M either side; None elsewhere.
+    turn: float | None = None
+    # Whether another way a bicycle may ride away on meets that node (not a sidewalk, a
+    # driveway or a crosswalk); False elsewhere.
+    choice: bool = False
 
 
 def beside_words(use: str, road: str) -> str | None:
@@ -376,6 +403,44 @@ def _run_of(atom: Atom, leg: int) -> _Run:
         unpaved_m=atom.metres if atom.unpaved else 0.0,
         service=None if atom.names else SERVICE_WORDS.get(atom.use),
     )
+
+
+def _same_way(a: Atom, b: Atom) -> bool:
+    """Whether two pieces are one street, as `_same_street` reads two stretches."""
+    if not a.names and not b.names:
+        return SERVICE_WORDS.get(a.use) == SERVICE_WORDS.get(b.use)
+    return bool({n.lower() for n in a.names} & {n.lower() for n in b.names})
+
+
+def _said_turns(atoms: list[Atom]) -> list[Atom]:
+    """`atoms` with each clear turn the fork rule missed marked as one (`Atom.fork`), so
+    it is said and never folded away: a turnaround (HAIRPIN_DEG or more) onto any way,
+    and a turn of more than ALONG_TURN_DEG along one street where another way a bicycle
+    may take meets the node (`Atom.choice`; a bend with nothing to choose is no question).
+    Read from the line (`Atom.turn`); of nodes within JUNCTION_M of one another, only
+    the sharpest is marked, as the line is read through all of them."""
+    at = 0.0
+    marks: list[tuple[float, int]] = []
+    for i, atom in enumerate(atoms):
+        if i > 0 and atom.fork is None and atom.turn is not None and not atom.roundabout:
+            turn = abs(atom.turn)
+            if turn >= HAIRPIN_DEG or (
+                turn > ALONG_TURN_DEG and atom.choice and _same_way(atoms[i - 1], atom)
+            ):
+                marks.append((at, i))
+        at += atom.metres
+    out = list(atoms)
+    for at, i in marks:
+        sharpest = max(
+            (j for m, j in marks if abs(m - at) < JUNCTION_M),
+            key=lambda j: (abs(atoms[j].turn), -j),
+        )
+        if sharpest != i:
+            continue
+        turn = atoms[i].turn
+        side = "right" if turn > 0 else "left"
+        out[i] = replace(atoms[i], fork=side if abs(turn) > BEAR_MAX_DEG else f"bear_{side}")
+    return out
 
 
 def _runs_of(atoms: list[Atom], leg: int) -> list[_Run]:
@@ -813,12 +878,21 @@ def turn_between(before: Atom | None, after: Atom | None) -> float | None:
     return turn
 
 
+def _turn_at(before: _Run, after: _Run) -> float | None:
+    """The turn from `before` into `after`: the route's own line at the node (`Atom.turn`)
+    where it was read and the two meet at one node, else `turn_between`'s headings."""
+    line = after.first.turn if after.first is not None else None
+    if line is not None and not before.folded_end and not after.folded_start:
+        return line
+    return turn_between(before.last, after.first)
+
+
 def _movement_between(before: _Run, after: _Run) -> str | None:
     """ "left", "right", "bear_left", "bear_right" or "straight" from `before` into
-    `after`, from the turn at the junction (`turn_between`); None where it is not
+    `after`, from the turn at the junction (`_turn_at`); None where it is not
     known. A bear is a turn of SLIGHT_MIN_DEG to BEAR_MAX_DEG; past it, a left or a
     right, by the side it turns to."""
-    turn = turn_between(before.last, after.first)
+    turn = _turn_at(before, after)
     if turn is None:
         return None
     if abs(turn) < SLIGHT_MIN_DEG:
@@ -1367,6 +1441,8 @@ def describe_both(
                     )
                 )
             continue
+        # The ways off circles are read from the marked atoms: the runs begin with them.
+        content = _said_turns(content)
         exits.update(_circle_exits(content))
         leg_runs = _coalesce(_runs_of(content, leg))
         runs.extend(_absorb_tiny(leg_runs))
@@ -1400,7 +1476,7 @@ def describe_both(
         # a left or a right there on the side the line turns (`turn_between`).
         if _forks(run):
             movement = run.first.fork
-            turn = turn_between(before.last, run.first)
+            turn = _turn_at(before, run)
             if movement in ("left", "right") and turn is not None and abs(turn) > BEAR_MAX_DEG:
                 movement = "right" if turn > 0 else "left"
         event = events[found] if found is not None else None
@@ -1420,11 +1496,10 @@ def describe_both(
             shape = junction_shape(
                 before.last.heading_out, run.first.heading_in, run.first.others, service, main
             )
-            # A hairpin read on the line's side (`turn_between`) is drawn as the plain
-            # arrow: the diagram's headings would show it the other way.
-            hairpin = turn_between(before.last, run.first)
-            if shape is not None and hairpin is not None and abs(hairpin) >= HAIRPIN_DEG:
-                if (shape["out"] > 0) != (movement or "").endswith("right"):
+            # A turn said on the line's side (`_turn_at`, a hairpin by `turn_between`)
+            # that the diagram's headings would draw the other way is the plain arrow.
+            if shape is not None and movement in ("left", "right"):
+                if (shape["out"] > 0) != (movement == "right"):
                     shape = None
         circle = exits.get(id(run.first)) if run.first is not None else None
         exit = None
