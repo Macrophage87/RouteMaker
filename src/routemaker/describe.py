@@ -36,6 +36,14 @@ The rules:
   nearer, the rider is told which to take ("Bear right to stay on Paint Branch
   Trail": the owner, 2026-10-18, "missing some important turns, especially when it
   seems straight is the default"). A stretch begun at a fork is never folded away.
+- A clear turn is said too (`_said_turns`), as a fork is: along one street, a turn of
+  more than ALONG_TURN_DEG (45 degrees) at a node where another way meets it ("Left
+  to stay on Metropolitan Branch Trail" off the trail onto its side path: the owner,
+  2026-10-23, "It missed a clear left turn"); onto any way, a turn of HAIRPIN_DEG or
+  more (a turnaround: "Another sharp turnaround missed"). Both are read from the
+  route's own line over LINE_SPAN_M either side of the node (`Atom.turn`), not from
+  the edges' headings, which a tiny edge at a junction can tilt; so is a fork's own
+  way, so a gentle bend is never said as a left (Sligo Creek Trail).
 - A leg boundary (a via point, named "Stop N") is its own entry, and a stretch
   never spans it.
 - A turn names the street it turns onto and, where the junction model has read
@@ -130,6 +138,13 @@ TRAIL_USES = frozenset({"cycleway", "footway", "path", "mountain_bike", "bridlew
 # route's own line at the node (`turn_between`; the owner, 2026-10-20, on a ramp up to a
 # bridge by Veirs Mill Road: "This is a right turn up onto a bridge").
 HAIRPIN_DEG = 120.0
+# A turn along one street this far off straight, at a node another way meets, is said
+# (`_said_turns`): the owner, 2026-10-23, on the Metropolitan Branch Trail, where it
+# turns off onto its side path along a road, "It missed a clear left turn".
+ALONG_TURN_DEG = 45.0
+# The route's own line is read this far either side of a node for its turn there
+# (`Atom.turn`, `core.routing._line_headings`).
+LINE_SPAN_M = 20.0
 # A short path stretch between two turns that crosses a road (a junction event across it,
 # or a crosswalk) is said as the crossing: "Cross Redland Road, then left onto Redland Road
 # bike lane" (the owner, 2026-10-20: "It should have told me to cross the street and turn
@@ -321,6 +336,9 @@ class Atom:
     # The piece's own compass bearing, unwrapped along the trace (`core.routing.Piece`):
     # two pieces' difference is how far, and to which side, the route turned between.
     bearing: float | None = None
+    # Where the piece begins a traced edge: the turn the route's own line makes at that
+    # node, clockwise positive, read over LINE_SPAN_M either side; None elsewhere.
+    turn: float | None = None
 
 
 def beside_words(use: str, road: str) -> str | None:
@@ -376,6 +394,39 @@ def _run_of(atom: Atom, leg: int) -> _Run:
         unpaved_m=atom.metres if atom.unpaved else 0.0,
         service=None if atom.names else SERVICE_WORDS.get(atom.use),
     )
+
+
+def _same_way(a: Atom, b: Atom) -> bool:
+    """Whether two pieces are one street, as `_same_street` reads two stretches."""
+    if not a.names and not b.names:
+        return SERVICE_WORDS.get(a.use) == SERVICE_WORDS.get(b.use)
+    return bool({n.lower() for n in a.names} & {n.lower() for n in b.names})
+
+
+def _said_turns(atoms: list[Atom]) -> list[Atom]:
+    """`atoms` with each clear turn the fork rule missed marked as one (`Atom.fork`), so
+    it is said and never folded away: a turnaround (HAIRPIN_DEG or more) onto any way,
+    and a turn of more than ALONG_TURN_DEG along one street where another way meets the
+    node (a bend with nothing to choose is no question). Read from the line (`Atom.turn`)."""
+    out = list(atoms)
+    for i in range(1, len(out)):
+        atom = out[i]
+        if atom.fork is not None or atom.turn is None or atom.roundabout:
+            continue
+        turn = atom.turn
+        if abs(turn) < HAIRPIN_DEG:
+            if abs(turn) <= ALONG_TURN_DEG or not _same_way(out[i - 1], atom):
+                continue
+            choices = [
+                h
+                for h, use, *_rest in atom.others or ()
+                if h is not None and use not in FORK_IGNORED_USES
+            ]
+            if not choices:
+                continue
+        side = "right" if turn > 0 else "left"
+        out[i] = replace(atom, fork=side if abs(turn) > BEAR_MAX_DEG else f"bear_{side}")
+    return out
 
 
 def _runs_of(atoms: list[Atom], leg: int) -> list[_Run]:
@@ -1368,7 +1419,7 @@ def describe_both(
                 )
             continue
         exits.update(_circle_exits(content))
-        leg_runs = _coalesce(_runs_of(content, leg))
+        leg_runs = _coalesce(_runs_of(_said_turns(content), leg))
         runs.extend(_absorb_tiny(leg_runs))
     traced = sum(run.metres for run in runs)
     scale = total_m / traced if total_m and total_m > 0 and traced > 0 else 1.0
@@ -1400,7 +1451,10 @@ def describe_both(
         # a left or a right there on the side the line turns (`turn_between`).
         if _forks(run):
             movement = run.first.fork
-            turn = turn_between(before.last, run.first)
+            # The line's own turn where it was read (`Atom.turn`), else the headings'.
+            turn = run.first.turn
+            if turn is None:
+                turn = turn_between(before.last, run.first)
             if movement in ("left", "right") and turn is not None and abs(turn) > BEAR_MAX_DEG:
                 movement = "right" if turn > 0 else "left"
         event = events[found] if found is not None else None

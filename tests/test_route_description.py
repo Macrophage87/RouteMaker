@@ -760,6 +760,105 @@ class TestForksFromTheTrace:
         # And the other ways at the node, for the ride card's junction diagram.
         assert [p.others for p in pieces] == [None, ((3.0, "cycleway", None, None),), None]
 
+    @staticmethod
+    def walk(start, *legs):
+        """Points from `start` (lon, lat), each leg (compass heading, metres) on from the last."""
+        import math
+
+        points = [start]
+        for heading, metres in legs:
+            lon, lat = points[-1]
+            north = metres * math.cos(math.radians(heading)) / 111320.0
+            east = (
+                metres * math.sin(math.radians(heading)) / (111320.0 * math.cos(math.radians(lat)))
+            )
+            points.append((lon + east, lat + north))
+        return points
+
+    def test_a_tiny_edge_at_a_junction_does_not_make_a_bend_a_left(self):
+        """The owner, 2026-10-23, on Sligo Creek Trail: "Left to stay on" a gentle bend.
+        A 3 m edge on from the node leans 70 degrees left; the trail bends 25, a footway
+        goes off 70 left."""
+        from test_route_api import encode_polyline6
+
+        points = self.walk((-77.0, 39.0), (340, 100), (270, 3), (315, 100))
+        trail = {"names": ["Sligo Creek Trail"], "use": "cycleway"}
+        trace = {
+            "units": "kilometers",
+            "shape": encode_polyline6(points),
+            "edges": [
+                {
+                    **trail,
+                    "way_id": 1,
+                    "length": 0.1,
+                    "begin_shape_index": 0,
+                    "end_shape_index": 1,
+                    "begin_heading": 340,
+                    "end_heading": 340,
+                    # A footway off to the west.
+                    "end_node": {
+                        "intersecting_edges": [
+                            {"begin_heading": 270, "use": "footway", "cyclability": "both"}
+                        ]
+                    },
+                },
+                {
+                    **trail,
+                    "way_id": 2,
+                    "length": 0.003,
+                    "begin_shape_index": 1,
+                    "end_shape_index": 2,
+                    "begin_heading": 270,
+                    "end_heading": 270,
+                },
+                {
+                    **trail,
+                    "way_id": 3,
+                    "length": 0.1,
+                    "begin_shape_index": 2,
+                    "end_shape_index": 3,
+                    "begin_heading": 315,
+                    "end_heading": 315,
+                },
+            ],
+        }
+        firsts = {p.way_id: p for p in reversed(routing.pieces_of_trace(trace))}
+        # Valhalla's headings alone would make it a left at a fork.
+        assert describe.fork_movement(340, 270, [(270, "footway", "both")], trail=True) == "left"
+        assert firsts[2].fork is None
+        assert firsts[2].turn == pytest.approx(-30, abs=5)
+        assert firsts[1].turn is None
+
+    def test_a_turnaround_reads_on_the_side_the_line_winds(self):
+        from test_route_api import encode_polyline6
+
+        # North, then a tight hairpin right round past south: the chords alone read a left.
+        points = self.walk((-77.0, 39.0), (0, 100), (90, 4), (215, 100))
+        trace = {
+            "units": "kilometers",
+            "shape": encode_polyline6(points),
+            "edges": [
+                {
+                    "way_id": 1,
+                    "length": 0.1,
+                    "begin_shape_index": 0,
+                    "end_shape_index": 2,
+                    "begin_heading": 0,
+                    "end_heading": 0,
+                },
+                {
+                    "way_id": 2,
+                    "length": 0.1,
+                    "begin_shape_index": 2,
+                    "end_shape_index": 3,
+                    "begin_heading": 215,
+                    "end_heading": 215,
+                },
+            ],
+        }
+        firsts = {p.way_id: p for p in reversed(routing.pieces_of_trace(trace))}
+        assert firsts[2].turn > 180
+
     def test_the_ways_just_short_of_a_node_ride_on_the_edge_after_it(self):
         """A main road crossed within `describe.SHAPE_NEAR_M` before a turn: its ways
         are the turn's `prior` (the owner, 2026-10-20, on a left onto a service road)."""
