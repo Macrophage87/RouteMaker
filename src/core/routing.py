@@ -524,7 +524,9 @@ def pieces_of_trace(trace: dict) -> list[Piece]:
         if before is not None:
             line_in, line_out, first, last = _line_headings(shape, begin, nodes)
             turn = _line_turn(shape, line_in, line_out, first, last)
-            choice = _choice_of(before)
+            choice = _choice_of(
+                before, line_in if line_in is not None else _heading(before.get("end_heading"))
+            )
         fork = _fork_of(before, edge, line_in, line_out)
         others = _others_of(before)
         prior = _behind_of(kept)
@@ -593,7 +595,10 @@ def _one_turn_per_junction(pieces: list[Piece]) -> list[Piece]:
     at = list(itertools.accumulate((p.metres for p in pieces), initial=0.0))
     clusters: list[list[int]] = []
     for i in nodes:
-        if clusters and at[i] - at[clusters[-1][-1]] < describe.JUNCTION_M:
+        if (
+            clusters
+            and at[i] - at[clusters[-1][-1]] < describe.JUNCTION_M + describe.JUNCTION_SLACK_M
+        ):
             clusters[-1].append(i)
         else:
             clusters.append([i])
@@ -683,11 +688,17 @@ def _line_turn(
     return min(sides, key=lambda t: abs(t - wound))
 
 
-def _choice_of(before: dict) -> bool:
+def _choice_of(before: dict, heading_in: float | None) -> bool:
     """Whether another way a bicycle may ride away on meets the node `before` ends at
-    (`Piece.choice`): not one of `describe.FORK_IGNORED_USES`, nor a sidewalk."""
+    (`Piece.choice`): not one of `describe.FORK_IGNORED_USES`, nor a sidewalk, nor one
+    that runs back nearly the way the rider came (`describe.SHAPE_BACK_DEG`), which no
+    one takes for the way on (Rock Creek Trail, the Mount Vernon and Custis Trails)."""
     return any(
-        _heading(other.get("begin_heading")) is not None
+        (heading := _heading(other.get("begin_heading"))) is not None
+        and (
+            heading_in is None
+            or abs((heading - heading_in + 540.0) % 360.0 - 180.0) <= describe.SHAPE_BACK_DEG
+        )
         and other.get("use") not in describe.FORK_IGNORED_USES
         and other.get("use") not in describe.SHAPE_IGNORED_USES
         and other.get("cyclability") not in ("none", "backward")

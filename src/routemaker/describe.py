@@ -151,6 +151,11 @@ LINE_SPAN_M = 20.0
 # corner): the line is read on past them, and only the sharpest is said (`_said_turns`).
 # The line stops at a node further off, so a turn there never tilts this one.
 JUNCTION_M = 5.0
+# The trace's lengths and the line's own measure differ a little, so nodes up to this much
+# further apart still count as one junction when its turn is kept on one of them
+# (`core.routing._one_turn_per_junction`): two nodes 5 m apart on R Street NW at the 17th
+# Street path read the one left twice.
+JUNCTION_SLACK_M = 2.0
 # A short path stretch between two turns that crosses a road (a junction event across it,
 # or a crosswalk) is said as the crossing: "Cross Redland Road, then left onto Redland Road
 # bike lane" (the owner, 2026-10-20: "It should have told me to cross the street and turn
@@ -432,7 +437,7 @@ def _said_turns(atoms: list[Atom]) -> list[Atom]:
     out = list(atoms)
     for at, i in marks:
         sharpest = max(
-            (j for m, j in marks if abs(m - at) < JUNCTION_M),
+            (j for m, j in marks if abs(m - at) < JUNCTION_M + JUNCTION_SLACK_M),
             key=lambda j: (abs(atoms[j].turn), -j),
         )
         if sharpest != i:
@@ -951,6 +956,12 @@ def fork_movement(
         return None
     if abs(ours) > BEAR_MAX_DEG:
         return "right" if ours > 0 else "left"
+    # A way that bends clearly off to one side (past ALONG_TURN_DEG), with the other
+    # branch further that side still, is a bear to its own side: the line bends right, so
+    # "Bear right", not a left read against the footway beyond it (Capital Crescent Trail
+    # onto the Georgetown Branch Trail in Bethesda).
+    if abs(ours) > ALONG_TURN_DEG and (ours > 0) == (nearest > 0):
+        return "bear_right" if ours > 0 else "bear_left"
     return "bear_right" if ours > nearest else "bear_left"
 
 

@@ -1055,3 +1055,19 @@ class TestClearTurnsFromTheTrace:
             (("U Trail",), "cycleway", [(170, 300)], []),
         )
         assert said(trace) == [("T Trail", None), ("U Trail", "right")]
+
+    def test_a_bend_where_only_a_way_back_meets_is_not_said(self):
+        trace = traced(
+            (self.MBT, "cycleway", [(0, 300)], [(170, *self.PATH)]),
+            (self.MBT, "cycleway", [(270, 200)], []),
+        )
+        assert said(trace) == [("Metropolitan Branch Trail", None)]
+
+    def test_nodes_a_little_over_5_m_apart_say_one_turn(self):
+        # A left onto R Street with another node 5.5 m on, where a footway meets.
+        trace = traced(
+            (("17th Street path",), "cycleway", [(0, 300)], [(90, "road", "both")]),
+            (("R Street Northwest",), "road", [(270, 5.5)], [(0, "footway", "both")]),
+            (("R Street Northwest",), "road", [(270, 300)], []),
+        )
+        assert said(trace) == [("17th Street path", None), ("R Street Northwest", "left")]
