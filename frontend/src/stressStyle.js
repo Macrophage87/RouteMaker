@@ -1232,9 +1232,9 @@ const cityLane = ["any", ["==", ["get", "facility"], "lane"], [">=", ["to-number
 // that joins two bits of it, 4 a way joining the trails (both drawn from z12, busy or not: "connect the lanes across
 // roads", "make connections across from the MBT to Rock Creek trail"); 2 a bit of it joined to nothing ("If it
 // doesn't connect to anything, don't include it") and 3 a dead end off it ("all these cul-de-sacs. They aren't useful
-// for transportation"), both left to z14, in a city grid or not.
+// for transportation"), both left to z14, in a city grid or not. A ramp waits for z14 all the same.
 const overview = ["to-number", ["get", "overview"], 0];
-const isJoin = ["match", overview, [1, 4], true, false];
+const isJoin = ["all", ["match", overview, [1, 4], true, false], ["!", isLink]];
 const isOrphan = ["==", overview, 2];
 const isSpur = ["==", overview, 3];
 /**

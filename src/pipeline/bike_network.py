@@ -21,7 +21,8 @@ They aren't useful for transportation". So, after the popular corridors are set 
   network itself is never pruned. The map leaves it out until zoom 14.
 
 The work is done in boxes of BOX_DEG with a margin of MARGIN_DEG round each, wider than any
-of the distances above, so a box sees everything that decides its rows; a row belongs to the
+of the distances above (CONNECT_MARGIN_DEG for the trail joins), so a box sees everything
+that decides its rows; a row belongs to the
 box its first point is in. Display only: routing reads none of it.
 """
 
@@ -234,8 +235,8 @@ def _spurs(graph: Graph, keep: set[int]) -> set[int]:
     return {pieces[i][0] for i in gone} - rows_left
 
 
-def _graphs(cursor, schema: str, sql: str):
-    """Each box's Graph (BOX_DEG, MARGIN_DEG) that has rows of its own."""
+def _graphs(cursor, schema: str, sql: str, margin: float = MARGIN_DEG):
+    """Each box's Graph (BOX_DEG, with `margin` round it) that has rows of its own."""
     cursor.execute(f"SELECT ST_XMin(e), ST_YMin(e), ST_XMax(e), ST_YMax(e) FROM "
                    f"(SELECT ST_Extent(geometry) AS e FROM {schema}.segment) AS t")  # fmt: skip
     west, south, east, north = cursor.fetchone()
@@ -246,7 +247,7 @@ def _graphs(cursor, schema: str, sql: str):
         y = south
         while y <= north:
             box = {"west": x, "south": y, "east": x + BOX_DEG, "north": y + BOX_DEG,
-                   "margin": MARGIN_DEG}  # fmt: skip
+                   "margin": margin}  # fmt: skip
             cursor.execute(sql, box)
             graph = Graph(cursor.fetchall())
             if graph.own:
@@ -255,11 +256,52 @@ def _graphs(cursor, schema: str, sql: str):
         x += BOX_DEG
 
 
+# A busy block on a street the map draws on both sides of it (the owner, 2026-10-23, of the
+# streets near NoMa at z13: "So much are broken up"; a street at LTS 1-2 but for one block
+# rated LTS 3, such as E Street NE, broke at that block): one way of BRIDGE_MAX_M or less whose
+# both ends meet a drawn way running on in the same direction (BRIDGE_TURN_DEG) is a link.
+BRIDGE_MAX_M = 250.0  # about 820 ft
+BRIDGE_TURN_DEG = 30.0
+# Drawn at z12-13 in a city grid, near enough (frontend `cityShown`): the network, calm or a
+# corridor of class 2 or more.
+_DRAWN_SQL = (
+    f"({NETWORK_SQL} AND (s.stress_tier <= {CALM_ROAD_MAX_TIER}"
+    f" OR s.{BIKE_POPULAR_COLUMN} >= 2 OR s.{OVERVIEW_COLUMN} <> 0))"
+)
+
+_BRIDGE = """
+WITH cand AS (
+    SELECT s.id, s.geometry, degrees(ST_Azimuth(ST_StartPoint(s.geometry),
+                                                ST_EndPoint(s.geometry))) AS bearing
+    FROM {schema}.segment AS s
+    WHERE s.map_class = 'road' AND s.stress_tier > {calm} AND s.{overview} = 0
+      AND NOT s.is_trail_class AND NOT ({drawn})
+      AND ST_Length(s.geometry::geography) <= %(bridge_max)s
+), ends AS (
+    SELECT c.id, e.n, bool_or(abs(mod((degrees(ST_Azimuth(ST_StartPoint(s.geometry),
+                                                         ST_EndPoint(s.geometry)))
+                                      - c.bearing + 360)::numeric, 180) - 90)
+                              >= 90 - %(turn)s) AS straight
+    FROM cand AS c
+    CROSS JOIN LATERAL (VALUES (0, ST_StartPoint(c.geometry)), (1, ST_EndPoint(c.geometry)))
+        AS e (n, p)
+    JOIN {schema}.segment AS s
+      ON s.id <> c.id AND ST_DWithin(ST_Boundary(s.geometry), e.p, %(touch)s)
+         AND s.map_class = 'road' AND {drawn}
+    GROUP BY c.id, e.n
+)
+UPDATE {schema}.segment AS s SET {overview} = {link}
+FROM (SELECT id FROM ends GROUP BY id HAVING count(*) FILTER (WHERE straight) = 2) AS b
+WHERE s.id = b.id
+"""
+
+
 def mark(schema: str) -> dict[str, int]:
     """Set `overview` (OVERVIEW_LINK, OVERVIEW_ORPHAN, OVERVIEW_SPUR) on the staging table.
     Returns the rows of each, for the log."""
     from django.db import connection
 
+    from .bikeshare_corridors import TOUCH_DEG
     from .writers import refuse_live_schema
 
     validate_schema_name(schema)
@@ -275,23 +317,40 @@ def mark(schema: str) -> dict[str, int]:
     orphans: set[int] = set()
     spurs: set[int] = set()
     with connection.cursor() as cursor:
+        cursor.execute(
+            _BRIDGE.format(
+                schema=schema,
+                calm=CALM_ROAD_MAX_TIER,
+                overview=OVERVIEW_COLUMN,
+                link=OVERVIEW_LINK,
+                drawn=_DRAWN_SQL,
+            ),
+            {"bridge_max": BRIDGE_MAX_M, "turn": BRIDGE_TURN_DEG, "touch": TOUCH_DEG},
+        )
+        bridges = cursor.rowcount
         for graph in _graphs(cursor, schema, sql):
             found = _box(graph)
             links |= found[0]
             orphans |= found[1]
             spurs |= found[2]
         spurs -= links | orphans
-        for value, ids in (
-            (OVERVIEW_LINK, links),
-            (OVERVIEW_ORPHAN, orphans),
-            (OVERVIEW_SPUR, spurs),
+        # A join inside a bit that joins nothing is an orphan with it.
+        for value, ids, over in (
+            (OVERVIEW_LINK, links, [0]),
+            (OVERVIEW_ORPHAN, orphans, [0, OVERVIEW_LINK, OVERVIEW_CONNECTOR]),
+            (OVERVIEW_SPUR, spurs, [0]),
         ):
             cursor.execute(
                 f"UPDATE {schema}.segment SET {OVERVIEW_COLUMN} = %s "
-                f"WHERE id = ANY(%s::bigint[]) AND {OVERVIEW_COLUMN} = 0",
-                [value, sorted(ids)],
+                f"WHERE id = ANY(%s::bigint[]) AND {OVERVIEW_COLUMN} = ANY(%s::smallint[])",
+                [value, sorted(ids), over],
             )
-    return {"links": len(links), "orphans": len(orphans), "spurs": len(spurs)}
+    return {
+        "busy blocks bridged": bridges,
+        "links": len(links),
+        "orphans": len(orphans),
+        "spurs": len(spurs),
+    }
 
 
 def _box(graph: Graph) -> tuple[set[int], set[int], set[int]]:
@@ -369,6 +428,8 @@ def mark_strays(schema: str) -> dict[int, int]:
 CONNECT_COST = {1: 1.0, 2: 1.15, 3: 2.0, 4: 4.0}
 CONNECT_MAX_M = 800.0
 MAJOR_CONNECT_MAX_M = 3000.0
+# The margin round each box for those searches: about 2.1 mi (3.4 km) east-west.
+CONNECT_MARGIN_DEG = 0.04
 
 _MINOR_TRAIL_SQL = (
     f"(COALESCE(s.{FACILITY_SHOWN_COLUMN}, s.{FACILITY_COLUMN}) = 'path'"
@@ -389,9 +450,10 @@ SELECT id, kept, piece, sum(m) OVER (PARTITION BY piece) FROM pieces
 """
 
 
-def _connect_box(graph: Graph, piece_of: dict[int, int], metres: dict[int, float], joined):
-    """The rows of the calmest ways from each piece with rows of the box's own to its nearest
-    other piece (and, for a piece of a mile or more, its nearest such piece)."""
+def _connect_box(graph: Graph, piece_of: dict[int, int], metres: dict[int, float]):
+    """The calmest ways from each piece with rows of the box's own to its nearest other piece
+    within CONNECT_MAX_M and, for a piece of a mile or more, to its nearest such piece within
+    MAJOR_CONNECT_MAX_M (through any smaller piece on the way): (cost, piece, piece, rows)."""
     adjacent: dict = defaultdict(list)
     node_piece: dict = {}
     for row, a, b, m in graph.pieces:
@@ -409,10 +471,10 @@ def _connect_box(graph: Graph, piece_of: dict[int, int], metres: dict[int, float
     nodes_of: dict = defaultdict(list)
     for node, piece in node_piece.items():
         nodes_of[piece].append(node)
-    found: set[int] = set()
-    for piece in {piece_of[row] for row in graph.own if row in piece_of}:
+    found = []
+    for piece in sorted({piece_of[row] for row in graph.own if row in piece_of}):
         searches = [(CONNECT_MAX_M, False)]
-        if metres[joined(piece)] >= STRAY_MIN_M:
+        if metres[piece] >= STRAY_MIN_M:
             searches.append((MAJOR_CONNECT_MAX_M, True))
         for limit, major in searches:
             best = dict.fromkeys(nodes_of[piece], 0.0)
@@ -424,15 +486,15 @@ def _connect_box(graph: Graph, piece_of: dict[int, int], metres: dict[int, float
                 if d > best.get(node, float("inf")):
                     continue
                 other = node_piece.get(node)
-                if other is not None and joined(other) != joined(piece):
-                    if major and metres[joined(other)] < STRAY_MIN_M:
-                        continue
-                    while node in came:
-                        node, row = came[node]
-                        if row not in piece_of:
-                            found.add(row)
-                    joined(piece, other)
-                    break
+                if other is not None and other != piece:
+                    if not major or metres[other] >= STRAY_MIN_M:
+                        rows = set()
+                        while node in came:
+                            node, row = came[node]
+                            if row not in piece_of:
+                                rows.add(row)
+                        found.append((d, piece, other, frozenset(rows)))
+                        break
                 for nxt, cost, row in adjacent[node]:
                     nd = d + cost
                     if nd <= limit and nd < best.get(nxt, float("inf")):
@@ -443,7 +505,9 @@ def _connect_box(graph: Graph, piece_of: dict[int, int], metres: dict[int, float
 
 
 def connect(schema: str) -> dict[str, int]:
-    """Mark OVERVIEW_CONNECTOR on the staging table (see above). Returns the rows marked."""
+    """Mark OVERVIEW_CONNECTOR on the staging table (see above): the ways found in every box
+    are joined shortest first (so the result does not hang on the order the boxes are read),
+    and kept only where the pieces they join reach STRAY_MIN_M. Returns the rows marked."""
     from django.db import connection
 
     from core import stress_tiles
@@ -468,18 +532,6 @@ def connect(schema: str) -> dict[str, int]:
             metres[piece] = float(piece_m)
             if not kept:
                 minor[row] = piece
-        parent: dict[int, int] = {}
-
-        def joined(a: int, b: int | None = None) -> int:
-            while parent.setdefault(a, a) != a:
-                a = parent[a]
-            if b is not None:
-                root = joined(b)
-                if root != a:
-                    parent[root] = a
-                    metres[a] = metres[a] + metres[root]
-            return a
-
         sql = _GRAPH.format(
             schema=schema,
             network=NETWORK_SQL,
@@ -487,10 +539,28 @@ def connect(schema: str) -> dict[str, int]:
             mtb=MTB_ONLY_COLUMN,
             grid=_GRID,
         )
-        ways: set[int] = set()
-        for graph in _graphs(cursor, schema, sql):
-            ways |= _connect_box(graph, piece_of, metres, joined)
-        trails = {row for row, piece in minor.items() if metres[joined(piece)] >= STRAY_MIN_M}
+        candidates = []
+        for graph in _graphs(cursor, schema, sql, CONNECT_MARGIN_DEG):
+            candidates += _connect_box(graph, piece_of, metres)
+    parent: dict[int, int] = {}
+    total = dict(metres)
+
+    def find(a: int) -> int:
+        while parent.setdefault(a, a) != a:
+            parent[a] = parent[parent[a]]
+            a = parent[a]
+        return a
+
+    taken = []
+    for _, a, b, rows in sorted(candidates, key=lambda c: (c[0], c[1], c[2])):
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[rb] = ra
+            total[ra] += total[rb]
+            taken.append((a, rows))
+    ways = {row for a, rows in taken if total[find(a)] >= STRAY_MIN_M for row in rows}
+    trails = {row for row, piece in minor.items() if total[find(piece)] >= STRAY_MIN_M}
+    with connection.cursor() as cursor:
         cursor.execute(
             f"UPDATE {schema}.segment SET {OVERVIEW_COLUMN} = {OVERVIEW_CONNECTOR} "
             f"WHERE id = ANY(%s::bigint[])",

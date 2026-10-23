@@ -88,6 +88,28 @@ class TestMark:
         bn.mark(staging)
         assert found(staging)[20] == bn.OVERVIEW_SPUR
 
+    def test_one_busy_block_on_a_drawn_street_is_bridged(self, segment_schemas) -> None:
+        """The owner, 2026-10-23, near NoMa: "So much are broken up"."""
+        _, staging = segment_schemas
+        lane(staging, 1, (0, 0), (6, 0))
+        insert(staging, 2, (6, 0), (8, 0), tier=3)  # 174 m at LTS 3, the street runs on
+        lane(staging, 3, (8, 0), (14, 0))
+        insert(staging, 4, (6, 0), (6, 2), tier=3)  # a busy cross street: no
+        insert(staging, 5, (0, 3), (12, 3), tier=3)  # long and not between drawn ways: no
+        stats = bn.mark(staging)
+        marks = found(staging)
+        assert marks[2] == bn.OVERVIEW_LINK and marks[5] == 0
+        assert marks[4] != bn.OVERVIEW_LINK
+        assert stats["busy blocks bridged"] == 1
+
+    def test_a_join_inside_a_bit_that_joins_nothing_is_an_orphan(self, segment_schemas) -> None:
+        _, staging = segment_schemas
+        lane(staging, 1, (0, 0), (2, 0))
+        insert(staging, 2, (2, 0), (3, 0), tier=2, overview=bn.OVERVIEW_LINK)  # from `tidy`
+        lane(staging, 3, (3, 0), (5, 0))
+        bn.mark(staging)
+        assert found(staging) == {1: 2, 2: 2, 3: 2}
+
     def test_the_live_table_is_refused(self, segment_schemas) -> None:
         live, _ = segment_schemas
         with pytest.raises(Exception, match="live"):
@@ -103,6 +125,44 @@ class TestZoomedOut:
         stats = bn.mark_strays(staging)
         assert found(staging, "stray_zoom") == {1: 11, 2: 0}
         assert stats[11] == 1
+
+    def test_a_bit_left_out_at_zoom_10_but_joined_at_zoom_11(self, segment_schemas) -> None:
+        _, staging = segment_schemas
+        insert(staging, 1, (0, 0), (2, 0), bike_popular=3)  # 174 m of class 3 ...
+        insert(staging, 2, (2, 0), (25, 0), bike_popular=2)  # ... on 2,000 m of class 2
+        bn.mark_strays(staging)
+        assert found(staging, "stray_zoom") == {1: 10, 2: 0}
+
+    def test_a_join_passes_through_a_small_piece_and_a_small_pair_is_not_joined(
+        self, segment_schemas
+    ) -> None:
+        _, staging = segment_schemas
+        insert(staging, 1, (0, 0), (20, 0), bike_popular=3)
+        insert(staging, 2, (0, 10), (20, 10), bike_popular=3)
+        insert(staging, 3, (0, 0), (0, 4), tier=2)
+        insert(staging, 4, (0, 4), (0, 5), facility="path", is_trail_class=True)  # 111 m
+        insert(staging, 5, (0, 5), (0, 10), tier=2)
+        # Two scraps of path 222 m apart, far from the rest: joining them makes no mile.
+        insert(staging, 6, (40, 40), (41, 40), facility="path", is_trail_class=True)
+        insert(staging, 7, (41, 40), (41, 42), tier=1)
+        insert(staging, 8, (41, 42), (42, 42), facility="path", is_trail_class=True)
+        bn.connect(staging)
+        marks = found(staging)
+        assert {way: marks[way] for way in (3, 4, 5)} == {3: 4, 4: 4, 5: 4}
+        assert {way: marks[way] for way in (6, 7, 8)} == {6: 0, 7: 0, 8: 0}
+
+    def test_two_trails_in_different_boxes_join(self, segment_schemas) -> None:
+        """Each trail's first point in its own box (BOX_DEG), the street between them
+        crossing the edge."""
+        _, staging = segment_schemas
+        # x 0-20 and x 50-70: 30 steps (about 2,600 m) of street between them.
+        insert(staging, 1, (0, 0), (20, 0), bike_popular=3)
+        insert(staging, 2, (35, 0), (50, 0), tier=1)
+        insert(staging, 3, (20, 0), (35, 0), tier=1)
+        insert(staging, 4, (50, 0), (70, 0), bike_popular=3)
+        bn.connect(staging)
+        marks = found(staging)
+        assert marks[2] == 4 and marks[3] == 4
 
     def test_two_trails_join_along_the_calmest_street_and_a_minor_trail_joins_them(
         self, segment_schemas

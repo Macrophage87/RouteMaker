@@ -423,7 +423,8 @@ OPTIONAL_PROPERTIES = {
     "link": ROAD_LINK_COLUMN,
     # The zoomed-out map's network marks (`pipeline.bike_network`): 1 a link the city ladder
     # draws with the main bike ways from z12, 2 a piece of the network that joins nothing and 3
-    # a dead end, both left out until z14; or left out (frontend/src/stressStyle.js, `cityShown`).
+    # a dead end, both left out until z14, 4 a way joining the trails, kept zoomed out with the
+    # long trails and drawn from z12; or left out (frontend/src/stressStyle.js, `cityShown`).
     "overview": OVERVIEW_COLUMN,
 }
 
