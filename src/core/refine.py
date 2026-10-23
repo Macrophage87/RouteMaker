@@ -2124,6 +2124,10 @@ def _search(trip, best, first_exposure, stop_at, ctx: Context, info: dict):
     stale = 0
     crossing_rounds = 1 if ctx.rate > 0 else CROSSING_ONLY_ROUNDS
     for number in range(rounds):
+        # A crossing-only search past its first round is an answer as good as it was with
+        # that round alone (before CROSSING_ONLY_ROUNDS was 3): a later round that cannot
+        # run or fails leaves `limited` unset, so the answer is cached and says nothing.
+        said = ctx.rate > 0 or number == 0
         new = crossing_targets(current, ctx) if number < crossing_rounds else []
         if ctx.rate > 0:
             # LTS 4 and Avoid first, if the route has any; then everything busy.
@@ -2142,10 +2146,7 @@ def _search(trip, best, first_exposure, stop_at, ctx: Context, info: dict):
             break
         new = new[:room]
         if stop_at - routing.clock() < REFINE_ROUND_MIN_S:
-            # A crossing-only search that has had its first round is an answer as good as
-            # it was with that one round alone (before CROSSING_ONLY_ROUNDS was 3), and
-            # is cached as one.
-            if ctx.rate > 0 or number == 0:
+            if said:
                 info["limited"] = "time"
             break
         round_deadline = routing.Deadline(
@@ -2189,16 +2190,19 @@ def _search(trip, best, first_exposure, stop_at, ctx: Context, info: dict):
                 # `ceiling`: the routes found were past the ceiling, which says
                 # nothing of whether one is within the target (combined correctness
                 # review, S2: it is not the no-fit answer's `target_distance`).
-                info["limited"] = "ceiling" if over else "no_route"
+                if said:
+                    info["limited"] = "ceiling" if over else "no_route"
                 break
             current = analyse(candidate, ctx, routing.Deadline(stop_at, ctx.deadline.per_call_s))
         except (routing.DeadlineExceeded, routing.RouterUnavailable):
-            info["limited"] = "time"
+            if said:
+                info["limited"] = "time"
             break
         excluded = asked
         info["excluded"] = len(excluded)
         if current is None:
-            info["limited"] = "untraceable"
+            if said:
+                info["limited"] = "untraceable"
             break
         info["rounds"] += 1
         busier = _busier(current, first_exposure, ctx)

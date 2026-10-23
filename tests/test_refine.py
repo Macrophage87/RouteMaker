@@ -273,6 +273,19 @@ class TestCrossingAvoidance:
         assert kept["legs"][0]["shape"] == "s"
         assert len(world.requests) == info["rounds"] == refine.CROSSING_ONLY_ROUNDS == 3
 
+    def test_a_later_crossing_round_that_fails_says_nothing(self, monkeypatch) -> None:
+        """The first round's route is the answer, as it was with one round, and is cached:
+        a second round the router does not answer leaves `limited` unset (review of PR
+        #421)."""
+        shapes = {
+            "o": analysis("o", events=[event(1500.0, 3300.0), event(2500.0, 3300.0)]),
+            "a1": analysis("a1", cost_s=3900.0, events=[event(2700.0, 3300.0)]),
+        }
+        World(monkeypatch, shapes, [trip_of("a1", 4.1), routing.RouterUnavailable("gone")])
+        kept, info = refine.refine(trip_of("o", 4.0), context())
+        assert kept["legs"][0]["shape"] == "a1"
+        assert info["limited"] is None and info["rounds"] == 1
+
     def test_crossing_avoidance_alone_is_at_most_three_rounds(self, monkeypatch) -> None:
         shapes = {"o": analysis("o", events=[event(1500.0, 3300.0)])}
         for n in range(1, 6):
