@@ -2967,9 +2967,8 @@ def test_the_handout_keeps_the_senders_notes_out_of_what_testers_get() -> None:
     handout = (REPO / "docs" / "BETA-TESTER-HANDOUT.md").read_text()
     cut = handout.index("cut here: send everything below")
     sender, tester = handout[:cut], handout[cut:]
-    assert "shred -u" in sender and "shred -u" not in tester
-    assert "many browsers block or warn" in sender
-    assert "user name and password lines" in sender and "two lines" not in handout
+    assert "no site password" in sender and "no site password" not in tester
+    assert "Address line" in sender and "Address:" in tester
     assert "a landmark" in tester and "complementary" in tester
     assert "Color-blind" not in handout and "color-blind" not in handout
 
@@ -3556,7 +3555,7 @@ def test_the_tester_handout_says_how_to_install_and_keep_routes_for_offline() ->
     the page has them, the iOS line, the kept routes' privacy, and the screen-reader notes."""
     handout = (REPO / "docs" / "BETA-TESTER-HANDOUT.md").read_text()
     tester = handout[handout.index("cut here: send everything below") :]
-    section = tester[tester.index("10. Installing RouteMaker") :]
+    section = tester[tester.index("6. Installing RouteMaker") :]
     page_words = (REPO / "frontend" / "src" / "lib" / "installOffer.ts").read_text()
     kept_words = (REPO / "frontend" / "src" / "lib" / "offlineRoutes.ts").read_text()
     worker_words = (REPO / "frontend" / "src" / "lib" / "appWorker.ts").read_text()
@@ -3571,20 +3570,17 @@ def test_the_tester_handout_says_how_to_install_and_keep_routes_for_offline() ->
         assert needed in source, f"{needed!r} is not the page's own wording"
     for needed in ("never sent anywhere", "Use my location", "seven days", "End ride", "Remove"):
         assert needed in section, needed
-    six = tester[tester.index("6. Once you are in") : tester.index("7. Reporting")]
+    six = tester[tester.index("2. Once you are in") : tester.index("3. Reporting")]
     assert "Routes kept for offline" in six and "never move your focus" in six
 
 
 def test_the_tester_handout_covers_what_the_sign_in_box_cannot_say() -> None:
-    """Final review, accessibility S4, and OWNER-DECISIONS 382 for where to report."""
+    """Final review, accessibility S4, and OWNER-DECISIONS 382 for where to report. The beta
+    has no site password since the owner's call of 2026-10-22, so no sign-in box to explain."""
     handout = (REPO / "docs" / "BETA-TESTER-HANDOUT.md").read_text()
     for needed in (
         "real browser",
-        "not from RouteMaker",
-        "case-sensitive",
-        "paste",
-        "say yes",
-        "box comes back",
+        "nothing asks for a password",
         "Skip to the route planner",
         "Beta notice",
         "Route planner",

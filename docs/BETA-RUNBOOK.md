@@ -1027,7 +1027,7 @@ live within about 10 minutes, and nothing after it checks what a screen reader h
   landmarks, the headings, the beta notice and its Beta chip), update the handout in
   the same release and send it to the testers again once the release is deployed.
 - The release that brings this agent (wip/beta-cd) also adds a paragraph about updates to the
-  handout's section 8 (what testers hear during a deploy, and how long to wait): resend the
+  handout's section 4 (what testers hear during a deploy, and how long to wait): resend the
   handout to the testers once it is deployed, adding the update hours if `RM_CD_WINDOW` is set
   (the sender's notes at its top say how).
 
@@ -1112,7 +1112,7 @@ A tag is never moved or reused: a fix is the next patch number. The agent's scri
    still serves the page, so testers see it open, but planning a route says "Router unavailable",
    place search and the road information say they are "not available right now", and Sign in
    shows the "Back soon" page (`deploy/beta/502.html`; nginx's bare "502 Bad Gateway" on a site
-   file rendered before that page existed, or with `--no-401-page`). The handout's section 8 tells
+   file rendered before that page existed, or with `--no-401-page`). The handout's section 4 tells
    testers to wait about 20 minutes. Set `RM_CD_WINDOW` to quiet hours. Then: snapshot the
    database (`receive-data.sh --backups-dir "$RM_STATE/cd/backups" snapshot-db`:
    `pg_dump` through `beta-compose.sh exec -T postgis`, into a directory of the user's own, so no

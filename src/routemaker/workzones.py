@@ -792,9 +792,10 @@ def date_text(moment: datetime) -> str:
 def last_day(source: str, end: datetime) -> datetime | None:
     """A reviewer's closure ends at the midnight after its last day
     (`core.reviewed_closures.window`): that last day, to say "through Feb 28" rather than
-    "until Mar 1". None for any other end."""
+    "until Mar 1". None for any other end. The day is taken off in the region's time, so a
+    last day that starts or ends daylight saving is not 23 or 25 hours long."""
     if source == "reviewer" and _local(end).time() == time(0):
-        return end - timedelta(days=1)
+        return _local(end) - timedelta(days=1)
     return None
 
 

@@ -1695,7 +1695,7 @@ def test_the_handout_and_runbook_say_what_a_deploy_looks_like() -> None:
     """Re-check r3: accessibility SF (the handout), operations N1 and spec SF1 (the runbook)."""
     handout = (REPO / "docs" / "BETA-TESTER-HANDOUT.md").read_text()
     tester = handout[handout.index("cut here: send everything below") :]
-    section7 = tester[tester.index("7. Reporting a problem") :]
+    section7 = tester[tester.index("3. Reporting a problem") :]
     for needed in (
         "Router unavailable",
         "not available right now",
@@ -1703,7 +1703,7 @@ def test_the_handout_and_runbook_say_what_a_deploy_looks_like() -> None:
         "half an hour",
     ):
         assert needed in section7, needed
-    assert '"Back soon"' in tester[tester.index("8. Updates") :]
+    assert '"Back soon"' in tester[tester.index("4. Updates") :]
     assert "nightly" not in tester.lower() and "every night" not in tester.lower()
     runbook = (REPO / "docs" / "BETA-RUNBOOK.md").read_text()
     by_hand = runbook[

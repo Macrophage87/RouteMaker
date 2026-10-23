@@ -105,6 +105,9 @@ export function planStartDials(preset: PresetId, dials: Dials): Dials {
   return withLoop(dials, true);
 }
 
+/** Said when a destination picked from search ends a loop (the owner, 2026-10-22, App pickPlace). */
+export const LOOP_ENDED_BY_SEARCH = "Destination set. Loop off: the ride ends there.";
+
 /** The dials with the loop on, or off (taken off the object). */
 export function withLoop(dials: Dials, on: boolean): Dials {
   const next: Dials = { ...dials };
