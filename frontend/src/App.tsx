@@ -5217,7 +5217,9 @@ export function App() {
                 },
                 onPick: () => {
                   gpxChoice.current = null;
-                }, getMap, downloadRoute, sendToGarmin: sendToGarminRoute, sendToWahoo: sendToWahooRoute,
+                }, getMap, downloadRoute, sendToGarmin: sendToGarminRoute,
+                // Only signed in: Send to Wahoo needs the account's connection, and is then shown only once connected.
+                ...(me.signed_in ? { sendToWahoo: sendToWahooRoute } : {}),
                 ...(mode === "go" ? {} : { downloadCourse: downloadCourseRoute }),
                 // Snapping an opened track (lib/gpxMatch.ts) opens the plan along the snapped line: one edit, like the file.
                 ...(mode === "go" ? {} : {

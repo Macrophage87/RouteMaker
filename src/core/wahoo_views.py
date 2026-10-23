@@ -12,6 +12,7 @@ actions; the Settings endpoints are in core.api beside Garmin's.
 
 from __future__ import annotations
 
+import time
 from datetime import datetime
 
 from django.conf import settings
@@ -25,8 +26,11 @@ from . import ratelimit, wahoo
 STATE_SESSION_KEY = "wahoo_connect_request"
 BACK = "/?wahoo="
 OFF = "Wahoo is not set up on this server."
-# Account deletion removes at most this many of the rider's routes from Wahoo, one call each.
+# Account deletion removes at most this many of the rider's routes from Wahoo, one call each, within
+# REMOVE_DEADLINE_S, so the deletion request finishes well inside the api's 60 s worker timeout
+# (docker/api-entrypoint.sh). The privacy page says "up to 100".
 MAX_ROUTES_REMOVED = 100
+REMOVE_DEADLINE_S = 20.0
 
 
 def _signed_in(request) -> bool:
@@ -142,14 +146,21 @@ def sent_route_ids(user) -> list:
     return list((link.routes or {}).values()) if link else []
 
 
-def remove_routes(access: str, route_ids: list, transport: wahoo.Transport) -> int:
+def remove_routes(
+    access: str, route_ids: list, transport: wahoo.Transport, clock=time.monotonic
+) -> int:
     """Delete these routes from the rider's Wahoo library (account deletion), best effort: stops at
-    the first call that does not reach Wahoo. Returns how many went."""
-    removed = 0
+    the first call that does not reach Wahoo, at Wahoo refusing the token or asking to slow down
+    (401, 429), and at the deadline. Returns how many went."""
+    removed, end = 0, clock() + REMOVE_DEADLINE_S
     for route_id in route_ids[:MAX_ROUTES_REMOVED]:
+        if clock() >= end:
+            break
         try:
             status, _ = transport.delete(f"{wahoo.ROUTES_URL}/{route_id}", access)
         except wahoo.WahooError:
+            break
+        if status in (401, 429):
             break
         removed += status in (200, 204)
     return removed

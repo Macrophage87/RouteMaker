@@ -17,7 +17,7 @@ import { toggleFromPicker, useFavoriteRides } from "../lib/favoriteRides.ts";
 import { DELETE_ACCOUNT_PAGE, PRIVACY_PAGE, isPlainClick, rememberPlanForPage, rememberPlanForSignIn, tabSession } from "../lib/signIn.ts";
 import { SignOutForm } from "../SignOut.tsx";
 import { AssistantKeySetting } from "../AssistantKey.tsx";
-import { GarminSetting, WahooSetting } from "../GarminSetting.tsx";
+import { GarminSetting, WahooSetting } from "../ConnectionSetting.tsx";
 import { pointName } from "../lib/summary.ts";
 import { accessibilityOn, accessibilitySource, paletteSetByAddress, setAccessibility, setHighStressLanes, setMtbTrails } from "../stressStyle.js";
 import { HighStressLanesSwitch } from "../lib/highStressLanesSwitch.ts";

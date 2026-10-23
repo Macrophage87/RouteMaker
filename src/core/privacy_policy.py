@@ -228,7 +228,8 @@ SECTIONS: list[tuple[str, str]] = [
                 "Settings shows whether you are connected. Disconnect there at any time: "
                 "RouteMaker deletes the token and withdraws its access at Wahoo. The routes "
                 "already sent stay in your Wahoo app. Deleting your account does the same and "
-                "also deletes from Wahoo the routes RouteMaker sent.",
+                "also deletes from Wahoo up to 100 routes RouteMaker sent through that "
+                "connection; any it could not reach stay in your Wahoo app, to delete there.",
                 "That connection is all RouteMaker keeps from Wahoo, so there is nothing else to "
                 "see, correct or export. To fix it, disconnect and connect again.",
             ]

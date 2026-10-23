@@ -56,8 +56,8 @@ GARMIN_LINE = (
 )
 # Listed only where riders can connect Wahoo, or for an account that has (core.wahoo).
 WAHOO_LINE = (
-    "Your Wahoo connection, and the routes RouteMaker sent to your Wahoo app: they are deleted "
-    "from Wahoo too"
+    "Your Wahoo connection, and up to 100 routes RouteMaker sent through it: they are deleted "
+    "from your Wahoo app too"
 )
 KEPT = [
     "Suggestions already approved or declined, and map changes made from them, as part of the "

@@ -263,6 +263,22 @@ class TestUsingAndEnding:
             [f"{wahoo.ROUTES_URL}/101", f"{wahoo.ROUTES_URL}/102", wahoo.PERMISSIONS_URL]
         )
 
+    def test_removing_routes_stops_when_wahoo_slows_down_or_time_runs_out(self) -> None:
+        class Slow(FakeWahoo):
+            def delete(self, url, access):
+                self.calls.append(("DELETE", url, {"access": access}))
+                return (429, {}) if len(self.calls) == 2 else (204, {})
+
+        slow = Slow()
+        assert wahoo_views.remove_routes("a", [1, 2, 3], slow) == 1 and len(slow.calls) == 2
+        ticks = iter([0.0, 0.0, wahoo_views.REMOVE_DEADLINE_S, 99.0])
+        fake = FakeWahoo()
+        assert wahoo_views.remove_routes("a", [1, 2, 3], fake, clock=lambda: next(ticks)) == 1
+        assert len(fake.calls) == 1
+        many = FakeWahoo()
+        wahoo_views.remove_routes("a", list(range(150)), many)
+        assert len(many.calls) == wahoo_views.MAX_ROUTES_REMOVED == wahoo_routes.MAX_REMEMBERED
+
     def test_a_refused_account_deletion_keeps_everything(self, fake) -> None:
         mine, user, _ = self._linked(fake)
         assert delete(mine, page_csrf(mine), confirm=False).status_code == 400

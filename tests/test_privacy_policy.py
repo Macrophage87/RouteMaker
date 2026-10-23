@@ -135,6 +135,26 @@ class TestPage:
         ):
             assert claim in text, claim
 
+    def test_wahoo_s_requirements_are_answered(self, client) -> None:
+        """Wahoo's API agreement asks for a privacy policy saying how its data is handled and that
+        a rider's data is deleted on request; the section says what the code keeps and removes."""
+        _, body, _ = get(client)
+        section = body[body.index("<h2>If you connect Wahoo</h2>") :]
+        section = section[: section.index("<h2>", 4)]
+        text = re.sub(r"<[^>]+>", " ", section).replace("&#x27;", "'").replace("’", "'")
+        for claim in (
+            "your choice, in Settings",
+            "encrypted",
+            "only to send the routes you choose",
+            "never reads your rides, workouts, plans",
+            privacy_policy.WAHOO_NO_AI,
+            "withdraws its access at Wahoo",
+            "routes already sent stay in your Wahoo app",
+            "up to 100 routes",
+            "nothing else to see, correct or export",
+        ):
+            assert claim in text, claim
+
     @override_settings(PRIVACY_CONTACT="")
     def test_the_claims_the_code_backs(self, client) -> None:
         _, body, _ = get(client)

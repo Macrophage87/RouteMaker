@@ -26,13 +26,15 @@ from .garmin_courses import BadLine, _metres, read_line
 
 log = logging.getLogger(__name__)
 
-# A FIT course of the longest route a Wahoo keeps is well under this (lib/deviceProfiles.ts).
+# A FIT course is about 16 bytes a point, so even the Wahoo profile's 20,000 points
+# (lib/deviceProfiles.ts) is well under this; a larger file is refused and saved instead.
 MAX_FIT_BYTES = 2 * 1024 * 1024
 MAX_NAME = 100
 # Every Wahoo route family that is cycling is BIKING (0); the kind of ride is not Wahoo's to know.
 BIKING = 0
-# How many routes one link remembers; past it, routes not saved are sent but not remembered.
-MAX_REMEMBERED = 500
+# How many routes one link remembers, as many as deleting the account removes
+# (wahoo_views.MAX_ROUTES_REMOVED); past it, routes not saved are sent but not remembered.
+MAX_REMEMBERED = 100
 
 BAD_FILE = "The course file is not a FIT file."
 TOO_BIG = "This route's course file is too large to send to Wahoo."
