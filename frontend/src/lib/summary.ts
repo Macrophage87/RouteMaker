@@ -272,7 +272,7 @@ export function announceRoute(route: RouteResponse, points: readonly LonLat[] = 
     `${formatDuration(route.duration_s)} moving time, climb ${formatClimb(route.climb_m)}.`;
   const others = !how.chosen && how.others ? othersSaid(how.others) : null;
   // A Mass Ride's rider-marked hazards (FOLLOWUP-MASSRIDE-MAP part 3, 325: "announced"), after the junctions.
-  return [figures, movedPointsNote(route, points.length), walkInNote(route), outsideDcNote(route), detourSaid(route, points), redJunctionsSaid(route), hazardsSaid(route), roadHazardsSaid(route), targetSaid(route), loopNote(route), mtbSaid(route.mtb), others]
+  return [figures, movedPointsNote(route, points.length), walkInNote(route), noviceWalksNote(route), outsideDcNote(route), detourSaid(route, points), redJunctionsSaid(route), hazardsSaid(route), roadHazardsSaid(route), targetSaid(route), loopNote(route), mtbSaid(route.mtb), others]
     .filter(Boolean)
     .join(" ");
 }
@@ -302,6 +302,20 @@ export function walkInNote(route: Pick<RouteResponse, "walk_in">): string | null
   if (walks.start) said.push(`Walk your bike ${formatDistance(walks.start.distance_m)} to where the ride starts.`);
   if (walks.end) said.push(`Walk your bike the last ${formatDistance(walks.end.distance_m)} to your destination.`);
   return said.length ? said.join(" ") : null;
+}
+
+/**
+ * Novice and Nervous's walks past a short busy stretch (v0.11.0; core.novice_walks; the owner, 2026-10-21: "walk a
+ * bike on sidewalk mode should definitely be a consideration"): "Walk your bike on the sidewalk along Redland Road,
+ * 0.2 mi (0.3 km)." or, for more than one, "Walk your bike on the sidewalk past 2 busy stretches, 0.5 mi (0.8 km)."
+ * Null where none is walked.
+ */
+export function noviceWalksNote(route: Pick<RouteResponse, "novice">): string | null {
+  const walks = route.novice?.walks ?? [];
+  if (!walks.length) return null;
+  const metres = walks.reduce((sum, walk) => sum + walk.distance_m, 0);
+  if (walks.length === 1) return `Walk your bike on the sidewalk along ${walks[0].road ?? "a busy road"}, ${formatDistance(metres)}.`;
+  return `Walk your bike on the sidewalk past ${walks.length} busy stretches, ${formatDistance(metres)}.`;
 }
 
 /** "2 other routes to choose from, under Routes to choose from." */

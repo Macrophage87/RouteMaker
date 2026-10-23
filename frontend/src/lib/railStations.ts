@@ -584,8 +584,9 @@ export type StationRole = "start" | "end" | "via";
 export function stationRoles(count: number, loop = false): StationRole[] {
   const roles: StationRole[] = ["start"];
   // A loop finishes at its start and has no end to set; a stop can follow the start alone (OWNER-DECISIONS 374).
+  // An end on a loop ends the ride there and turns the loop off (App placeStation; Stephen 2026-10-20).
   if (loop) {
-    if (count >= 1 && count < MAX_POINTS) roles.push("via");
+    if (count >= 1 && count < MAX_POINTS) roles.push("end", "via");
     return roles;
   }
   if (count >= 1) roles.push("end");
@@ -601,7 +602,7 @@ export function stationRoles(count: number, loop = false): StationRole[] {
 export function placeAtStation(points: readonly LonLat[], point: LonLat, role: StationRole, loop = false): LonLat[] {
   if (!stationRoles(points.length, loop).includes(role)) return [...points];
   if (role === "start") return points.length === 0 ? [point] : [point, ...points.slice(1)];
-  if (role === "end") return points.length === 1 ? [points[0], point] : [...points.slice(0, -1), point];
+  if (role === "end") return loop || points.length === 1 ? [...points, point] : [...points.slice(0, -1), point];
   return addPoint(points, point, loop);
 }
 

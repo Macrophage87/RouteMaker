@@ -5,7 +5,7 @@
  * it if it's routed on".
  *
  * So the route network prices them as LTS 4 (lua/routemaker_remap.lua) and only a route that still rides one shows
- * it: a small amber warning triangle repeated along the stretch, over the route line, never on the rest of the map.
+ * it: a small dark disc with an amber "!" repeated along the stretch, over the route line, never on the rest of the map.
  * Never the symbol alone: each stretch is a line of the directions ("Rails in the road on H Street Northeast, ..."),
  * Ride says it ahead, and the route's announcement counts them (`roadHazardsSaid`). Written with createElement so a
  * test renders the key.
@@ -19,41 +19,34 @@ export const ROUTE_HAZARD_SOURCE = "route-hazards";
 export const ROUTE_HAZARD_LAYER = "route-hazard-marks";
 export const ROUTE_HAZARD_ICON = "route-hazard";
 export const ROUTE_HAZARD_ICON_PX = 18;
-/** Amber with a near-black edge and mark: 10.7:1 between the two, and the edge 3:1 or more on every map surface. */
-export const ROUTE_HAZARD_FILL = "#fbbf24";
-export const ROUTE_HAZARD_EDGE = "#111827";
+/**
+ * A near-black disc, an amber "!" and a white rim (the owner, 2026-10-20: "the on a route marker looks identical to a
+ * higher stress intersection"). Not a triangle or a diamond, the junction markers' shapes, and dark where they are
+ * light: told apart by shape and by lightness, not by hue alone. The "!" 10.7:1 on the disc; the rim parts it
+ * from the route line and a dark map.
+ */
+export const ROUTE_HAZARD_FILL = "#111827";
+export const ROUTE_HAZARD_MARK = "#fbbf24";
+export const ROUTE_HAZARD_EDGE = "#ffffff";
 /** Pixels between two marks along the stretch, and a mark at the middle of one too short for two. */
 export const ROUTE_HAZARD_SPACING_PX = 90;
 
-/** How far (x, y) lies inside the upward triangle filling a box of `size` (negative outside), in pixels. */
-function triangleDepth(x: number, y: number, size: number): number {
-  const top: [number, number] = [size / 2, 1];
-  const left: [number, number] = [1, size - 2];
-  const right: [number, number] = [size - 1, size - 2];
-  const side = (a: [number, number], b: [number, number]) => {
-    // Distance from the edge a-b, positive on the triangle's side (the edges run clockwise).
-    const dx = b[0] - a[0];
-    const dy = b[1] - a[1];
-    return ((y - a[1]) * dx - (x - a[0]) * dy) / Math.hypot(dx, dy);
-  };
-  return Math.min(side(top, right), side(right, left), side(left, top));
-}
-
-/** The mark: an amber triangle with a near-black edge, and a near-black "!" in the middle. */
+/** The mark: a near-black disc with a white rim, and an amber "!" in the middle. */
 export function routeHazardIcon(pixelRatio = 2, cssSize = ROUTE_HAZARD_ICON_PX): Raster {
   const size = Math.round(cssSize * pixelRatio);
-  const edge = 1.5 * pixelRatio;
+  const rim = 1.5 * pixelRatio;
   const fill: Rgb = hexToRgb(ROUTE_HAZARD_FILL);
-  const dark: Rgb = hexToRgb(ROUTE_HAZARD_EDGE);
+  const mark: Rgb = hexToRgb(ROUTE_HAZARD_MARK);
+  const edge: Rgb = hexToRgb(ROUTE_HAZARD_EDGE);
   const c = size / 2;
-  const bar = 0.055 * size;
+  const bar = 0.06 * size;
   return rasterise(size, pixelRatio, (x, y): Rgb | null => {
-    const depth = triangleDepth(x, y, size);
-    if (depth < 0) return null;
-    if (depth < edge) return dark;
+    const r = Math.hypot(x - c, y - c);
+    if (r > c - 0.5) return null;
+    if (r > c - 0.5 - rim) return edge;
     // The "!": a bar, a gap and a dot.
-    if (Math.abs(x - c) <= bar && y >= 0.42 * size && y <= 0.68 * size) return dark;
-    if (Math.hypot(x - c, y - 0.8 * size) <= bar * 1.2) return dark;
+    if (Math.abs(x - c) <= bar && y >= 0.24 * size && y <= 0.6 * size) return mark;
+    if (Math.hypot(x - c, y - 0.74 * size) <= bar * 1.25) return mark;
     return fill;
   });
 }
@@ -139,26 +132,44 @@ export function roadHazardsSaid(route: Partial<Pick<RouteResponse, "road_hazards
   return `This route rides ${n} known ${n === 1 ? "hazard" : "hazards"}: ${names}. The directions list ${n === 1 ? "it" : "them"}.`;
 }
 
+/** The key's name for the mark, its shape in a hint as the junctions' key says theirs ("Higher stress (triangle)"). */
+export const ROUTE_HAZARD_KEY_NAME = "Road hazard";
+export const ROUTE_HAZARD_KEY_SHAPE = "dark circle";
 export const ROUTE_HAZARD_KEY_TEXT =
-  "On a route, amber triangles mark cobblestones or rails in the road. From the next map update, routes avoid them where they can and the directions name each.";
+  "Cobblestones or rails in the road, marked on a route only. From the next map update, routes avoid them where they can and the directions name each.";
 
-/** The key's one entry, in the Traffic stress section of Layers: the mark, and the words. */
+/** The mark as a small inline picture: the key's swatch and the directions' symbol. Seen, not heard. */
+export function RouteHazardSwatch({ size = 16 }: { size?: number }): ReactElement {
+  const c = size / 2;
+  return h(
+    "svg",
+    { width: size, height: size, viewBox: `0 0 ${size} ${size}`, "aria-hidden": "true", focusable: "false", className: "route-hazard-swatch" },
+    h("circle", { cx: c, cy: c, r: c - 0.75, fill: ROUTE_HAZARD_FILL, stroke: ROUTE_HAZARD_EDGE, strokeWidth: 1.5 }),
+    h("rect", { x: c - 0.06 * size, y: 0.24 * size, width: 0.12 * size, height: 0.36 * size, fill: ROUTE_HAZARD_MARK }),
+    h("circle", { cx: c, cy: 0.74 * size, r: 0.075 * size, fill: ROUTE_HAZARD_MARK }),
+  );
+}
+
+/**
+ * The key's one entry, in the Traffic stress section of Layers, laid out as the Junctions key under it: the mark,
+ * then its name and words with the row's whole width (the owner, 2026-10-20: the text "has very short margins",
+ * squeezed into the stress key's 52 px figure column).
+ */
 export function RouteHazardKey(): ReactElement {
-  const s = 16;
   return h(
     "ul",
-    { className: "legend route-hazard-key", "aria-label": "Route hazards key" },
+    { className: "route-hazard-key", "aria-label": "Route hazards key" },
     h(
       "li",
       { key: "hazard" },
+      h(RouteHazardSwatch, { size: 20 }),
       h(
-        "svg",
-        { width: s, height: s, viewBox: `0 0 ${s} ${s}`, "aria-hidden": "true", className: "route-hazard-swatch" },
-        h("polygon", { points: `${s / 2},1 ${s - 1},${s - 1} 1,${s - 1}`, fill: ROUTE_HAZARD_FILL, stroke: ROUTE_HAZARD_EDGE, strokeWidth: 1.5, strokeLinejoin: "round" }),
-        h("rect", { x: s / 2 - 0.9, y: 6, width: 1.8, height: 4.5, fill: ROUTE_HAZARD_EDGE }),
-        h("circle", { cx: s / 2, cy: 12.4, r: 1, fill: ROUTE_HAZARD_EDGE }),
+        "span",
+        null,
+        h("span", { className: "route-hazard-name" }, ROUTE_HAZARD_KEY_NAME),
+        h("span", { className: "hint" }, ` (${ROUTE_HAZARD_KEY_SHAPE}): `),
+        ROUTE_HAZARD_KEY_TEXT,
       ),
-      h("span", { className: "stress-label" }, ROUTE_HAZARD_KEY_TEXT),
     ),
   );
 }

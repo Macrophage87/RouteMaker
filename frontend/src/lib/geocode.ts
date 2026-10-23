@@ -677,7 +677,9 @@ export function placeEffectHint(effect: PlaceEffect, loop = false): string {
 export function placeEffect(count: number, choice: PlaceChoice, loop = false): PlaceEffect {
   if (count === 0) return "start";
   if (choice === "start") return "replace-start";
-  if (loop) return "via";
+  // In a loop, "Make this the destination" ends the ride there, after the stops (the owner, 2026-10-22: "Setting a
+  // destination should end the loop"); App's pickPlace turns the loop off in the same edit.
+  if (loop) return choice === "end" ? "end" : "via";
   if (choice === "via" && count >= 2) return "via";
   return count === 1 ? "end" : "replace-end";
 }

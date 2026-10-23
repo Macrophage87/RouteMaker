@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "source": "owner",
+  "decided": "2026-10-21",
+  "decided_by": "the deployment owner",
+  "status": "Load with load_flashing_signals (dry run first); takes effect at the next plan, no rebuild.",
+  "rows": [
+    {
+      "id": "connecticut-ave-washington-st-kensington",
+      "name": "Connecticut Ave and Washington St",
+      "lon": -77.0763584,
+      "lat": 39.0225574,
+      "evidence": "The owner, 2026-10-21: \"There's a flashing signal that appears to be read as a traffic light\", \"It's nonstandard. See how the bottom is smaller on the cross, and there's only 2 on the main street\" and \"it matches my memory\". OSM maps it as four highway=traffic_signals nodes and MDOT SHA Traffic Signals lists it as TCD_Type 1 (SIGNAL_ID 09018c660bbd0067005ed376c4175c0a, MD 185 at Washington St, Kensington), whose point this is; the owner's sighting outranks both."
+    }
+  ]
+}

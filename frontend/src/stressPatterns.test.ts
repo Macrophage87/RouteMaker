@@ -155,7 +155,9 @@ test("an unpaved road or trail gets a dotted centre mark at every tier, over the
     assert.equal(draws(mark, { tier: tier.tier, unpaved: false }), false);
     assert.equal(draws(mark, { tier: tier.tier === 1 ? 2 : 1, unpaved: true }), false, `only its own tier`);
     assert.deepEqual(mark.paint["line-dasharray"], UNPAVED_DASH);
-    assert.equal(mark.paint["line-color"], tier.unpavedCasing, "the unpaved casing, chosen to stand apart from the brown line (OWNER-DECISIONS 302)");
+    // The brown's casing on a natural surface, chosen to stand apart from the brown line (OWNER-DECISIONS 302); the grey's on gravel.
+    assert.equal(paintAt(mark, "line-color", { tier: tier.tier, unpaved: true, rough: true }), tier.unpavedCasing.toLowerCase());
+    assert.equal(paintAt(mark, "line-color", { tier: tier.tier, unpaved: true }), tier.gravelCasing.toLowerCase());
     assert.equal(paintAt(mark, "line-width", { tier: tier.tier, unpaved: true }, 14), unpavedWidth(tier));
     assert.ok(unpavedWidth(tier) < tier.width && unpavedWidth(tier) >= 1.5);
     // Zoomed out the mark is thinned with its line and stays inside it (OWNER-DECISIONS 375).
@@ -203,21 +205,26 @@ test("a flip of the accessibility switch repaints the unpaved marks too, in colo
 // ---- unpaved trails have no path rail (OWNER-DECISIONS 290) -----------------
 
 test("an unpaved trail gets no path rail, at every tier and ride time; a paved one keeps it, and so does a road of unknown surface; a trail of unknown surface has none (376)", () => {
-  const path = (when?: string) => (facilityLayers("s", when as never) as Layer[]).find((l) => l.id === "facility-path") as Layer;
+  // The path rails' calm-tier layer and its busy-tier twin: a feature is drawn by either.
+  const rails = (when?: string) =>
+    [...(facilityLayers("s", when as never) as Layer[]), ...(facilityLayers("s", when as never, undefined, true) as Layer[])].filter((l) =>
+      l.id.startsWith("facility-path"),
+    );
+  const drawn = (layers: Layer[], props: Record<string, unknown>) => layers.some((layer) => draws(layer, props));
   for (const when of [undefined, "weekend", "weekday_rush"]) {
-    const layer = path(when);
+    const layer = rails(when);
     for (const tier of [1, 2, 3, 4, 5]) {
-      assert.equal(draws(layer, { tier, facility: "path", trail: true, unpaved: true }), false, `LTS ${tier} unpaved trail (${when})`);
-      assert.equal(draws(layer, { tier, facility: "path", trail: true, unpaved: false }), true, `LTS ${tier} paved trail`);
-      assert.equal(draws(layer, { tier, facility: "path", trail: true }), false, `LTS ${tier} trail of unknown surface: no rails (376, A)`);
-      assert.equal(draws(layer, { tier, facility: "path", trail: false }), true, `LTS ${tier} road closed to cars, no surface tag`);
+      assert.equal(drawn(layer, { tier, facility: "path", trail: true, unpaved: true }), false, `LTS ${tier} unpaved trail (${when})`);
+      assert.equal(drawn(layer, { tier, facility: "path", trail: true, unpaved: false }), true, `LTS ${tier} paved trail`);
+      assert.equal(drawn(layer, { tier, facility: "path", trail: true }), false, `LTS ${tier} trail of unknown surface: no rails (376, A)`);
+      assert.equal(drawn(layer, { tier, facility: "path", trail: false }), true, `LTS ${tier} road closed to cars, no surface tag`);
     }
   }
   // A road closed to cars this weekend draws as a path: paved, its rails; unpaved, none.
-  assert.equal(draws(path("weekend"), { tier: 3, facility: "none", car_free: "weekend" }), true);
-  assert.equal(draws(path("weekend"), { tier: 3, facility: "none", car_free: "weekend", unpaved: true }), false);
+  assert.equal(drawn(rails("weekend"), { tier: 3, facility: "none", car_free: "weekend" }), true);
+  assert.equal(drawn(rails("weekend"), { tier: 3, facility: "none", car_free: "weekend", unpaved: true }), false);
   // A zoomed-out tile's merged feature carries "unpaved" too (core/stress_tiles.py PROPERTIES), whatever else it carries.
-  assert.equal(draws(path(), { tier: 1, facility: "path", trail: true, unpaved: true, car_free_only: ["weekday_offpeak", "weekday_rush", "weekend"] }), false);
+  assert.equal(drawn(rails(), { tier: 1, facility: "path", trail: true, unpaved: true, car_free_only: ["weekday_offpeak", "weekday_rush", "weekend"] }), false);
 });
 
 test("an unpaved trail still draws its tier's line and the dotted mark, and the other rails ignore the surface", () => {

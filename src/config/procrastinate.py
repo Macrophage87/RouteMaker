@@ -545,7 +545,7 @@ def _run_and_classify(context, run_rebuild, build_handlers):
 
 
 def _predraw_stress_tiles(deadline: float | None = None) -> str:
-    """Draw the new table's z10-14 stress tiles - every tile the map asks for
+    """Draw the new table's z7-14 stress tiles - every tile the map asks for
     - into the cache, after the swap.
 
     Until they are drawn a tile is drawn on its first request, through the api's
