@@ -309,22 +309,24 @@ change it.</li>
 
   <section>
     <h2 id="popular">Popular corridors</h2>
-<p>From the next map update, the busiest bike corridors have a soft cyan band under them, wider
-    for busier ones. The line inside keeps its own color, so the band shows where riders most likely
-    go and the line still says how stressful it is. The band never changes a rating or a route.</p>
+<p>The busiest bike corridors stand out in their own line. In a city, where other streets wait for
+    zoom 13 and are thin until zoom 14, a busier corridor keeps its full width, and every corridor is
+    drawn over the plain streets of its level. The well-known corridors, such as Q Street, R Street and
+    Pennsylvania Avenue, are named at zoom 10 and 11 as the long trails are, from the next map update
+    (closer in, the base map names them). A
+    corridor never changes a rating or a route.</p>
 <details class="more"><summary>More: Popular corridors</summary>
 <div class="more-body">
     
     <p>The corridors are modelled from a year of Capital Bikeshare trips<sup class="cite"><a href="#ref-1" aria-label="source 1">[1]</a></sup>: each
     trip's two docks are joined by a route over RouteMaker's streets, so they are not traced from
     where riders went. Well-known routes, such as the Rock Creek Trail, the Capital Crescent, the
-    Mount Vernon Trail, Q and R Streets and Pennsylvania Avenue, are added by hand and always get the
-    widest band. The legend has a <strong>Popular corridor</strong> row, and with High contrast the
-    band is stronger.</p>
+    Mount Vernon Trail, Q and R Streets and Pennsylvania Avenue, are added by hand and always count in the
+    busiest class.</p>
     <p>Where lines cross, the calmer road is drawn on top: LTS 1 over LTS 2, and both over the busy
     roads. Among lines at the same level, an off-road path goes on top, then a protected lane, a
     painted lane and a long calm street. In the city, bike lane markings on busy roads wait for
-    zoom 14, except on the popular corridors. During a ride the band is hidden and busy roads fade
+    zoom 14, except on the busier popular corridors. During a ride busy roads fade
     further, so your route and the calm streets beside it stand out.</p>
   </div></details>
 </section>
@@ -873,7 +875,10 @@ change it.</li>
     closed, as is a mapped cart path anywhere. Public streets, their sidewalks, numbered roads, ways on
     a bike route or tagged open to bikes, and trails that run on beyond the course stay open.
     Zip-line courses (<code>highway=via_ferrata</code>) were never routed and are no longer drawn
-    in stress colors either.</p>
+    in stress colors either.
+    Airports are closed too, as working sites: their service roads, tracks and airfield paths are no longer
+    routed or drawn, while public streets and the trails past them, such as the Mount Vernon Trail,
+    stay open.</p>
     <p>Sidewalks are the exception, from the next map update. A sidewalk or crosswalk with no bike
     tag is ridden as a last resort. Beside a road rated 4.5 or Avoid it counts as LTS 3, and a route
     takes it over that road from the middle of the traffic slider toward Calm at any cost. Beside a calmer road, LTS 4
