@@ -130,6 +130,7 @@ class TestPage:
             privacy_policy.GARMIN_NO_AI,
             "deletes the token and tells Garmin",
             "Deleting your account does the same",
+            "nothing else to see, correct or export",
         ):
             assert claim in text, claim
 

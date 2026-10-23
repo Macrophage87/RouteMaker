@@ -146,7 +146,8 @@ PRIVACY_CONTACT = os.environ.get("PRIVACY_CONTACT", "").strip()
 # Who hosts the server and its database (core.privacy_policy, "Where your data is kept"): the
 # provider's name as riders should read it, for example a cloud company, set by the owner in the
 # deployment's environment file. Garmin's developer program asks that the policy name every party
-# that stores its riders' data, hosting included. Empty: the page says the site's owner runs it.
+# that stores its riders' data, hosting included. Empty: the page says the owner runs it at
+# home or with a hosting company.
 PRIVACY_HOSTING = os.environ.get("PRIVACY_HOSTING", "").strip()
 
 # Everything with state in it lives on the separate data volume, so nothing

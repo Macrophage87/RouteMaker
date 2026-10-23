@@ -29,7 +29,9 @@ comes from:
 - Garmin: the one section written ahead of its code, and the page says so ("not offered yet").
   Garmin's developer program reviews this page before an app may connect riders, so the promises
   come first and the connection (one encrypted token per rider, the Courses API only, Disconnect)
-  is built to them; when it ships, drop "not offered yet" and point this line at its module.
+  is built to them, including the handler for Garmin's deregistration notice (a rider who
+  disconnects in Garmin Connect); when it ships, drop "not offered yet", point this line at its
+  module, and add Garmin to "Who else is contacted" (the server then sends it the token).
 - Hosting: settings.PRIVACY_HOSTING, the deployment's own (Garmin asks that every party storing
   riders' data be named).
 
@@ -55,11 +57,12 @@ CONTACT = "Questions, or a request about your data: ask the site's owner on Disc
 CONTACT_LEAD = "Questions, or a request about your data: "
 NO_ADS = "No ads, no analytics, no tracking, and nothing about you is sold or shared for marketing."
 # Unless the deployment sets PRIVACY_HOSTING (the hosting provider's name).
-HOSTING = "The site's owner runs the server and its database, and no one else stores your data."
-HOSTING_LEAD = "The server and its database run at "
-HOSTING_TAIL = (
-    ", which stores the data for the site and does not use it. No other company stores your data."
+HOSTING = (
+    "The site's owner runs the server and its database, at home or with a hosting company, which "
+    "stores the data only to run the site."
 )
+HOSTING_LEAD = "The server and its database run at "
+HOSTING_TAIL = ", which stores the data only to run the site. No other company stores your data."
 GARMIN_NO_AI = "Nothing from Garmin is sold, shared, given to AI services, or used to train AI."
 WHERE_YOU_ARE = (
     "Your location is used on your phone or computer to plan and guide your ride. The server "
@@ -178,8 +181,8 @@ SECTIONS: list[tuple[str, str]] = [
         )
         + _ul(
             [
-                "It lets Send to Garmin put a course straight into your Garmin Connect account, "
-                "which then syncs it to your Garmin.",
+                "Send to Garmin then adds the course to your Garmin Connect account directly, "
+                "without opening the Garmin Connect app.",
                 "RouteMaker keeps only Garmin’s sign-in token for your account, encrypted, "
                 "and your Garmin account number. It uses them only to send the courses you "
                 "choose.",
@@ -188,6 +191,8 @@ SECTIONS: list[tuple[str, str]] = [
                 "Settings shows whether you are connected. Disconnect there, or in Garmin "
                 "Connect, at any time: RouteMaker deletes the token and tells Garmin. Deleting "
                 "your account does the same.",
+                "That connection is all RouteMaker keeps from Garmin, so there is nothing else to "
+                "see, correct or export. To fix it, disconnect and connect again.",
             ]
         ),
     ),
