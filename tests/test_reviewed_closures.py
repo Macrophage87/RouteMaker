@@ -457,7 +457,7 @@ class TestRouteAnswer:
         api.WorkZoneOut(**on_route)
 
     def test_a_reviewers_closure_names_its_last_day_everywhere(self) -> None:
-        from datetime import datetime, time
+        from datetime import UTC, date, datetime, time
 
         from core import workzones as core_wz
         from routemaker import ridetime
@@ -480,6 +480,9 @@ class TestRouteAnswer:
         assert saved_route_alerts._until(closure(1, 31).end.isoformat(), True) == (
             "through Oct 30, 2026"
         )
+        # A last day on which daylight saving starts is still that day (end-review fix).
+        spring = datetime.combine(datetime(2027, 3, 15).date(), time(0), zone_of)
+        assert wz.last_day("reviewer", spring.astimezone(UTC)).date() == date(2027, 3, 14)
         # A feed's end is said as it is given.
         assert wz.when_text(closure(1, 31, "md"), now, False) == "Closed until Oct 31"
         assert core_wz._until_words(closure(1, 31, "md")) == "until Oct 31, 2026"
