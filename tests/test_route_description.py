@@ -1085,6 +1085,17 @@ class TestClearTurnsFromTheTrace:
         trace["edges"][1]["length"] = 0.006
         assert said(trace) == [("17th Street path", None), ("R Street Northwest", "left")]
 
+    def test_two_turns_over_5_m_apart_on_the_line_are_each_said(self):
+        # A left then a right on one trail 5.3 m apart on the line, which the trace's
+        # lengths put 4.8 m apart: each is its own junction.
+        trace = traced(
+            (("Trail",), "cycleway", [(0, 300)], [(135, *self.PATH)]),
+            (("Trail",), "cycleway", [(270, 5.3)], [(45, *self.PATH)]),
+            (("Trail",), "cycleway", [(0, 300)], []),
+        )
+        trace["edges"][1]["length"] = 0.0048
+        assert said(trace) == [("Trail", None), ("Trail", "left"), ("Trail", "right")]
+
     def test_two_turns_6_m_apart_are_each_said(self):
         trace = traced(
             (("Road A",), "road", [(0, 300)], [(0, "road", "both")]),

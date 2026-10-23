@@ -424,29 +424,19 @@ def _said_turns(atoms: list[Atom]) -> list[Atom]:
     it is said and never folded away: a turnaround (HAIRPIN_DEG or more) onto any way,
     and a turn of more than ALONG_TURN_DEG along one street where another way a bicycle
     may take meets the node (`Atom.choice`; a bend with nothing to choose is no question).
-    Read from the line (`Atom.turn`); of nodes within JUNCTION_M of one another, only
-    the sharpest is marked, as the line is read through all of them."""
-    at = 0.0
-    marks: list[tuple[float, int]] = []
-    for i, atom in enumerate(atoms):
-        if i > 0 and atom.fork is None and atom.turn is not None and not atom.roundabout:
-            turn = abs(atom.turn)
-            if turn >= HAIRPIN_DEG or (
-                turn > ALONG_TURN_DEG and atom.choice and _same_way(atoms[i - 1], atom)
-            ):
-                marks.append((at, i))
-        at += atom.metres
+    Read from the line (`Atom.turn`), which is kept on only one node of a junction
+    (`core.routing._one_turn_per_junction`, by the line's own measure: the atoms' lengths
+    are the trace's, which can differ by a fraction of a metre at JUNCTION_M)."""
     out = list(atoms)
-    for at, i in marks:
-        sharpest = max(
-            (j for m, j in marks if abs(m - at) < JUNCTION_M),
-            key=lambda j: (abs(atoms[j].turn), -j),
-        )
-        if sharpest != i:
+    for i, atom in enumerate(atoms):
+        if i == 0 or atom.fork is not None or atom.turn is None or atom.roundabout:
             continue
-        turn = atoms[i].turn
-        side = "right" if turn > 0 else "left"
-        out[i] = replace(atoms[i], fork=side if abs(turn) > BEAR_MAX_DEG else f"bear_{side}")
+        turn = abs(atom.turn)
+        if turn >= HAIRPIN_DEG or (
+            turn > ALONG_TURN_DEG and atom.choice and _same_way(atoms[i - 1], atom)
+        ):
+            side = "right" if atom.turn > 0 else "left"
+            out[i] = replace(atom, fork=side if turn > BEAR_MAX_DEG else f"bear_{side}")
     return out
 
 
