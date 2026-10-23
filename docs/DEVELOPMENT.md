@@ -1804,8 +1804,10 @@ model's forces (`routemaker.effort`, Martin et al. 1998: rolling resistance 0.00
   window's effort is weighed as the sustained effort it equals over the whole climb's
   riding time `t` (the standard rider's, at the pace above): the power needed divided
   by `1 + W'/t`, with W' = 70 s of FTP. The whole effort is scaled, so the endurance
-  pace and LT1 move with it: the slider's own grade held for several minutes, as the
-  slider's help asks, costs nothing past its time (`hill_cost.W_PRIME_S`; the power-duration curve
+  pace and LT1 move with it: the slider's own grade, held for the several minutes the
+  slider's help asks about (up to about 7.5 minutes, where LT1 power over `1 + W'/t`
+  reaches the endurance pace), costs nothing past its time, and a little more on longer
+  climbs (about 49 s over 1.2 mi (2 km), 105 s over 1.9 mi (3 km)) (`hill_cost.W_PRIME_S`; the power-duration curve
   FTP x (1 + W'/t), Monod and Scherrer 1965, Skiba et al. 2012; cyclists' W' of 18 to
   23 kJ, Weigend et al. 2021, arXiv 2108.04510). The owner: "10% can be done for 100m
   of riding, people would just sprint before it" and "more long term stamina than short
