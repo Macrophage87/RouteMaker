@@ -254,8 +254,8 @@ question rather than being surprised by it.
 **`KEY_ENCRYPTION_KEY`: not rotatable in phase 1.** It keys the ban
 tombstones, the stored tombstone is the HMAC and nothing else, and there is no
 second key path. See docs/DEVELOPMENT.md, "`KEY_ENCRYPTION_KEY` — required, no
-default", for what a rotation would silently do. It also derives the key riders'
-Garmin tokens are encrypted under (`core.garmin`): after a change no token
+default", for what a rotation would silently do. It also derives the keys riders'
+Garmin and Wahoo tokens are encrypted under (`core.garmin`, `core.wahoo`): after a change no token
 decrypts, each connection ends at its next use, and riders connect again.
 
 **`DISCORD_CLIENT_SECRET`: rotate it at Discord first, then here, then
