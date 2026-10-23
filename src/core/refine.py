@@ -126,10 +126,13 @@ logger = logging.getLogger(__name__)
 # a busy road is often the next unsignalised crossing of the same road, and only a
 # second or third round reaches a signal (PR #409's check, 2026-10-23, rush hour:
 # Connecticut Avenue in Chevy Chase and Georgia Avenue in Wheaton each swapped one red
-# crossing for the next one along and stopped there). Past the calm rate's 0 the
-# crossings are the first round's alone, the rest are the busy stretches'.
+# crossing for the next one along and stopped there). Every round takes the red crossings
+# of the route before it, at every calm rate, and crossing avoidance alone has as many
+# rounds as the calm search (the PC's check of a NoMa to Twinbrook commute at Default,
+# 2026-10-23: the third round still swapped a red for the next one, which a fourth
+# excluded; above Default, crossings only in the first round kept a 16th St stop sign).
 REFINE_MAX_ROUNDS = 5
-CROSSING_ONLY_ROUNDS = 3
+CROSSING_ONLY_ROUNDS = REFINE_MAX_ROUNDS
 # Seconds, at most, the whole search may take; and the least a round may be
 # started with (a /route, its trace, the joins and a /locate), and what is kept
 # back from the request's budget for the answer's own traces.
@@ -816,14 +819,69 @@ def calmer(read: Analysis, best: Analysis, ctx: Context) -> bool:
     return False
 
 
+# Seconds of riding a route may add, below the top of the slider, for each red junction it
+# leaves out, before the score is asked (the owner, 2026-10-23, of the unsignalised
+# crossings of University Blvd and Connecticut Ave in Kensington at rush hour: "essentially
+# impassable", and a rider would rather ride 10 minutes more). The score alone weighed a
+# red as its junction cost, the same as an equal sum of orange ones: on the PC's check of
+# a NoMa to Twinbrook commute at Default, a detour with one red where the router's route
+# had two scored 606 s worse for its oranges and delay, and a red-free one 40 s worse off
+# peak. Scaled by the intersection weight (`intersection_weight`): all of it from Default
+# up, a quarter at the traffic tolerant end.
+RED_DETOUR_S = 600.0
+
+
+def red_count(read: Analysis) -> int:
+    """The route's red junctions (with a shift, its orange ones too, as `Analysis.red_m`)."""
+    return sum(
+        1
+        for e in read.events or ()
+        if presets.shifted_severity(e.severity, read.shift) == "red"
+    )
+
+
+def ride_s(read: Analysis, ctx: Context) -> float:
+    """The route's riding time as `RED_DETOUR_S` reads it: its distance and what its
+    climbing is worth in flat metres (`charged_m`) at the request's flat speed, and its
+    junction delay."""
+    return charged_m(read, ctx) / flat_speed_ms(ctx.costing) + read.junction_delay_s
+
+
+def fewer_reds(read: Analysis, best: Analysis, ctx: Context) -> bool | None:
+    """Below the top of the slider, whether red junctions decide between `read` and
+    `best`: True where `read` has fewer and adds no more than `RED_DETOUR_S` for each it
+    leaves out, False where `best` has fewer and does the same; None where they have as
+    many, or the one with fewer adds more than that or rides more LTS 4 and Avoid (by
+    more than `MAXCALM_STEPS`' first step: the score decides, which prices it), or
+    either's junctions could not be read. A red is never left out for busier road: the
+    Traffic-wins guard (`_busier`) holds the LTS 3 a way round may take on."""
+    if read.events is None or best.events is None:
+        return None
+    gap = red_count(best) - red_count(read)
+    if gap == 0:
+        return None
+    allowance = RED_DETOUR_S * ctx.weight * abs(gap)
+    fewer, more = (read, best) if gap > 0 else (best, read)
+    if ride_s(fewer, ctx) - ride_s(more, ctx) > allowance:
+        return None
+    if fewer.lts4_m - more.lts4_m > MAXCALM_STEPS[0]:
+        return None
+    return gap > 0
+
+
 def better(read: Analysis, best: Analysis, ctx: Context, rest_m: float = 0.0) -> bool:
-    """Whether `read` is to replace `best`: below the top of the slider, by the
-    score (IMPROVEMENT_EPS_S), a longer route also worth its extra miles (`worth_it`,
-    435 "One rule"); at the top, by `MAXCALM_STEPS` down `Analysis.key`
-    (`calmer`), with diminishing returns on the distance (`worth_it`): a longer
-    route must be calmer and worth its extra miles, and a shorter one replaces a
-    calmer longer one whose extra miles were not worth it. `rest_m`: see `worth_it`."""
+    """Whether `read` is to replace `best`: below the top of the slider, by its red
+    junctions where they decide (`fewer_reds`), else by the score (IMPROVEMENT_EPS_S),
+    a longer route also worth its extra miles (`worth_it`, 435 "One rule"); at the top,
+    by `MAXCALM_STEPS` down `Analysis.key` (`calmer`), with diminishing returns on the
+    distance (`worth_it`): a longer route must be calmer and worth its extra miles, and a
+    shorter one replaces a calmer longer one whose extra miles were not worth it.
+    `rest_m`: see `worth_it`."""
     if not ctx.maxcalm:
+        # Fewer red junctions first, within `RED_DETOUR_S` for each.
+        reds = fewer_reds(read, best, ctx)
+        if reds is not None:
+            return reds
         # Below the top a longer route must also be worth its miles (OWNER-DECISIONS
         # 435, "One rule"; `worth_ratio`), wherever the calm search runs.
         if read.score(ctx) >= best.score(ctx) - IMPROVEMENT_EPS_S:
@@ -2122,13 +2180,13 @@ def _search(trip, best, first_exposure, stop_at, ctx: Context, info: dict):
     # Every exclusion set sent, so that none is sent twice (in any order).
     sent: set[frozenset] = set()
     stale = 0
-    crossing_rounds = 1 if ctx.rate > 0 else CROSSING_ONLY_ROUNDS
     for number in range(rounds):
-        # A crossing-only search past its first round is an answer as good as it was with
-        # that round alone (before CROSSING_ONLY_ROUNDS was 3): a later round that cannot
-        # run or fails leaves `limited` unset, so the answer is cached and says nothing.
+        # A crossing-only search past its first round is an answer as good as it was
+        # with that round alone (before CROSSING_ONLY_ROUNDS was more than one): a later
+        # round that cannot run or fails leaves `limited` unset, so the answer is cached
+        # and says nothing.
         said = ctx.rate > 0 or number == 0
-        new = crossing_targets(current, ctx) if number < crossing_rounds else []
+        new = crossing_targets(current, ctx)
         if ctx.rate > 0:
             # LTS 4 and Avoid first, if the route has any; then everything busy.
             worst_first = number == 0 and any(c[0] in ("4", "5") for c in current.classes)

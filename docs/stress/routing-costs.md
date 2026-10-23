@@ -99,10 +99,13 @@ every preset except Mass Ride, which is locked at 0 (`stress_max=0`, `presets.py
 | Riding with kids | standard | 100 | 0.0 | 10 (strict order) | 1.0 | 1 / 8 / 16, LTS 2 0.5 | yes | Hybrid, 6.2 mph [10 km/h] | yes, except past 18.6 mi [30 km] of straight line |
 
 Every preset sends `alley_penalty` 1,800 s (`presets.py:462`). "Calm search runs" means
-`refine.refine` is called: at a calm rate of 0 it makes up to three crossing-only rounds, each
-excluding the red crossings the last round's route took as well, and all three run even
-when a round finds only the next red crossing along (`CROSSING_ONLY_ROUNDS`), and above 0 up to 5 exclusion
-rounds (`REFINE_MAX_ROUNDS`, `:88`). The search does not run for Mass Ride, fewer than
+`refine.refine` is called: at a calm rate of 0 it makes up to five crossing-only rounds, each
+excluding the red crossings the last round's route took as well, and all of them run even
+when a round finds only the next red crossing along (`CROSSING_ONLY_ROUNDS`); above 0 up to 5 exclusion
+rounds (`REFINE_MAX_ROUNDS`, `:88`), each taking the last route's red crossings too. Below the
+top of the slider a route with fewer red junctions wins before the score is asked, where it
+adds no more than 10 minutes of riding for each red it leaves out (`RED_DETOUR_S`, scaled by the
+intersection weight). The search does not run for Mass Ride, fewer than
 2 points, a long ride, a climb seek, a span over 18.6 mi [30 km] (except
 Trailmaxxing), or too little time (`routing.py:1193-1220`). The exposure weights
 come from `Exposure` (`presets.py:339-355`), chosen per carrying choice on Cargo Bike
