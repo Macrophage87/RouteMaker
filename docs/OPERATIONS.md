@@ -6061,13 +6061,7 @@ footways reach another bicycle-open way within 160 ft (50 m) (one end a trail, e
 footway at most 1,000 ft (300 m), since a tag opens the whole way). Nothing a closure
 reason closes is ridden (the CBD's sidewalks, military, secured, the Zoo, an agency
 prohibition), nor an informal footway, an area or an indoor one, and Mass Ride's graph
-rides none. A short informal connector (`informal=yes`, a worn path or footway with no
-bicycle tag, the whole way within 160 ft (50 m)) that makes such a link is walked instead
-(v0.12.0; the owner, 2026-10-23, after Glen Haven Park's paved path in Silver Spring was
-reachable only from Windham Lane because its 36 to 64 ft (11 to 20 m) links to Glenhaven
-Drive, Francis Drive and Huntley Avenue are all mapped `informal=yes`): its `informal`
-closure comes off and it gets `rm:walk_link`, `bicycle=dismount`, as a station's footway
-does, so the route says to walk the bike. They get `rm:sidewalk`, and the remap writes `bicycle=use_sidepath` and
+rides none. They get `rm:sidewalk`, and the remap writes `bicycle=use_sidepath` and
 `maxspeed:practical=90`: Valhalla prices a sidewalk's or crosswalk's use as a road's, from
 its speed. Then, 2026-10-21: "a lot of people would still ride on some lts 4 roads than
 take the sidewalk, especially with sliplanes", choosing "Beside 4.5/Avoid only". The
@@ -6090,6 +6084,15 @@ override row stands over either rating. The route's stress, the rolling stress c
 hides sidewalks (OWNER-DECISIONS 82). The rebuild log's facility line counts them
 ("footways ridden as a last resort"). The stress change report shows the sidewalks moving
 from LTS 1 to 3 or 4.
+
+**Short informal connectors (v0.12.0, with the next map update).** A worn path or footway
+(`informal=yes`, no bicycle tag, the whole way within 160 ft (50 m)) that would make a
+link as above, and that nothing but its informality closes, is walked, not ridden (the
+owner, 2026-10-23, after Glen Haven Park's paved path in Silver Spring was
+reachable only from Windham Lane because its 36 to 64 ft (11 to 20 m) links to Glenhaven
+Drive, Francis Drive and Huntley Avenue are all mapped `informal=yes`): its `informal`
+closure comes off and it gets `rm:walk_link`, `bicycle=dismount`, as a station's footway
+does, so the route says to walk the bike.
 
 **NPS units.** Tag rules only. A per-park "paved and designated only" rule goes
 in `pipeline.trail_closures.PARK_RULES` after that park's compendium has been

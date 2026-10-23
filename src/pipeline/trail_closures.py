@@ -297,15 +297,20 @@ def add_sidewalk_rides(result: TrailClosures, ways: Iterable[Way]) -> None:
     connectors a link walks (`sidewalks.is_informal_connector`), opened as walk-your-bike
     links (`walk_links`, `walk_bike`)."""
     ways = list(ways)
-    # A short informal connector is closed only for being informal (`trailaccess.INFORMAL`):
-    # `links` may open it, walked (the owner, 2026-10-23, Glen Haven Park).
-    informal = {
+    # An informal connector closed only for being informal, by the trail rules
+    # (`trailaccess.INFORMAL`) or by upstream (a footway with no bicycle tag): `links` may
+    # open it, walked (the owner, 2026-10-23, Glen Haven Park). One the rules leave open
+    # (on a national bicycle route) is ridden already and left alone.
+    walkable = {
         way.osm_id
         for way in ways
-        if result.reasons.get(way.osm_id) == trailaccess.INFORMAL
-        and sidewalks.is_informal_connector(way.tags)
+        if sidewalks.is_informal_connector(way.tags)
+        and (
+            result.reasons.get(way.osm_id) == trailaccess.INFORMAL
+            or (way.osm_id not in result.reasons and trailaccess.upstream_open(way.tags) is False)
+        )
     }
-    closed = (set(result.reasons) - informal) | result.destination_only
+    closed = (set(result.reasons) - walkable) | result.destination_only
     found = set(
         sidewalks.links(
             [
@@ -318,14 +323,10 @@ def add_sidewalk_rides(result: TrailClosures, ways: Iterable[Way]) -> None:
                 for way in ways
             ],
             closed=closed,
+            walkable=walkable,
         )
     )
-    # Walked, not ridden: a worn connector, whether the trail rules or upstream closed it.
-    walked = {
-        way.osm_id
-        for way in ways
-        if way.osm_id in found and sidewalks.is_informal_connector(way.tags)
-    }
+    walked = found & walkable
     for osm_id in walked:
         result.reasons.pop(osm_id, None)
     result.walk_links |= walked

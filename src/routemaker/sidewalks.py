@@ -284,13 +284,16 @@ def _length(coords: Sequence[tuple[float, float] | None]) -> float:
 MANY = -1
 
 
-def links(ways: Sequence[Placed], closed: Set[int] = frozenset()) -> dict[int, float]:
+def links(
+    ways: Sequence[Placed], closed: Set[int] = frozenset(), walkable: Set[int] = frozenset()
+) -> dict[int, float]:
     """The footways to open as links, each with the shortest gap (in
     metres) of a link it is part of. `ways` is (id, tags, node ids, a coordinate per
     node id, None where the extract has none; only a link candidate's are read, so
-    other ways may carry none); `closed` the ways a closure rule closes. An informal
-    connector (`is_informal_connector`) takes part unless `closed` names it; the
-    caller tells the walked ones from the ridden by that test.
+    other ways may carry none); `closed` the ways a closure rule closes; `walkable` the
+    informal connectors (`is_informal_connector`) closed only for being informal, which
+    take part as footways, never as bicycle-open ways, and only when the whole way is
+    within INFORMAL_WAY_MAX_M. The caller walks those it finds.
 
     Two passes, so a region's million ways cost little: the footway network first, then
     the bicycle-open ways only at the nodes it reaches."""
@@ -298,10 +301,12 @@ def links(ways: Sequence[Placed], closed: Set[int] = frozenset()) -> dict[int, f
     lengths: dict[int, float] = {}
     informal: set[int] = set()
     for osm_id, tags, node_ids, coords in ways:
-        if osm_id in closed or len(node_ids) < 2 or not takes_part(tags):
+        if osm_id in closed or len(node_ids) < 2:
             continue
-        if is_informal_connector(tags):
+        if osm_id in walkable:
             informal.add(osm_id)
+        elif not is_link_candidate(tags):
+            continue
         lengths[osm_id] = _length(coords)
         for i in range(len(node_ids) - 1):
             a, b = coords[i], coords[i + 1]
@@ -317,10 +322,8 @@ def links(ways: Sequence[Placed], closed: Set[int] = frozenset()) -> dict[int, f
     ends: list[tuple[int, int]] = []
     trail_ways: set[int] = set()
     for osm_id, tags, node_ids, _coords in ways:
-        if osm_id in closed or len(node_ids) < 2 or not bicycle_open(tags):
+        if osm_id in closed or osm_id in walkable or len(node_ids) < 2 or not bicycle_open(tags):
             continue
-        if is_informal_connector(tags):
-            continue  # upstream opens a worn path by class; the trail rules close it
         trail = tags.get("highway") in TRAIL_HIGHWAY
         if trail:
             trail_ways.add(osm_id)
