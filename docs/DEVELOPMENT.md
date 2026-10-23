@@ -5322,7 +5322,7 @@ is not in control of the ride is stress-averse.
   `calm.added_cost`, over `QUIET_COST_FACTOR`; about 4 at 80). So at 80 a metre of LTS 2
   costs about 1 quiet metre more, a quarter of LTS 3's added cost, as 240 (A) asks. The
   slider does not move, the calm search does not turn on, and the router's requests are
-  unchanged: only the choice among the routes it returns (the crossing round's) changes.
+  unchanged: only the choice among the routes it returns (the crossing rounds') changes.
   Default, Bikeshare and carrying cargo weigh LTS 2 at 0, so their scores are unchanged.
   The term follows the ride, not the preset's start: Trailmaxxing (0.25) and Riding with
   kids (0.5) get it too when the rider moves their slider down to 80 or below. It fades

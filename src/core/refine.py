@@ -1168,8 +1168,10 @@ def _exclusion(lon: float, lat: float, ctx: Context, radius: int | None = None) 
 
 
 def crossing_targets(analysis: Analysis, ctx: Context) -> list[Target]:
-    """The Avoid-rated junctions the route passes, then the approaches to the worst
-    junctions."""
+    """The Avoid-rated junctions the route passes, then the worst junctions: for each,
+    the approach (a point on the edge the route arrives by) and the junction itself, every
+    edge within `avoid_junctions.MATCH_RADIUS_M` of it, so that the next round cannot
+    come at the same crossing by another street (review of PR #421)."""
     avoid = avoid_targets(analysis, ctx)
     if ctx.group or not analysis.events:
         return avoid
@@ -1177,14 +1179,17 @@ def crossing_targets(analysis: Analysis, ctx: Context) -> list[Target]:
         (e for e in analysis.events if e.approach and e.cost_ft >= REFINE_MIN_EVENT_FT),
         key=lambda e: -e.cost_ft,
     )
-    return (
-        avoid
-        + [
-            Target(e.approach, 4)
-            for e in worst
-            if _clear_of_ends(e.m, analysis.length_m, analysis.via_m)
-        ][:CROSSING_POINTS_PER_ROUND]
-    )
+    chosen = [e for e in worst if _clear_of_ends(e.m, analysis.length_m, analysis.via_m)][
+        :CROSSING_POINTS_PER_ROUND
+    ]
+    return avoid + [
+        target
+        for e in chosen
+        for target in (
+            Target(e.approach, 4),
+            Target((e.lon, e.lat), 4, int(avoid_model.MATCH_RADIUS_M)),
+        )
+    ]
 
 
 def refine(trip: dict, ctx: Context) -> tuple[dict, dict]:
@@ -2117,8 +2122,8 @@ def _search(trip, best, first_exposure, stop_at, ctx: Context, info: dict):
     # Every exclusion set sent, so that none is sent twice (in any order).
     sent: set[frozenset] = set()
     stale = 0
+    crossing_rounds = 1 if ctx.rate > 0 else CROSSING_ONLY_ROUNDS
     for number in range(rounds):
-        crossing_rounds = 1 if ctx.rate > 0 else CROSSING_ONLY_ROUNDS
         new = crossing_targets(current, ctx) if number < crossing_rounds else []
         if ctx.rate > 0:
             # LTS 4 and Avoid first, if the route has any; then everything busy.
@@ -2137,7 +2142,11 @@ def _search(trip, best, first_exposure, stop_at, ctx: Context, info: dict):
             break
         new = new[:room]
         if stop_at - routing.clock() < REFINE_ROUND_MIN_S:
-            info["limited"] = "time"
+            # A crossing-only search that has had its first round is an answer as good as
+            # it was with that one round alone (before CROSSING_ONLY_ROUNDS was 3), and
+            # is cached as one.
+            if ctx.rate > 0 or number == 0:
+                info["limited"] = "time"
             break
         round_deadline = routing.Deadline(
             stop_at, min(ctx.deadline.per_call_s, routing.ALTERNATES_TIMEOUT_S)
@@ -2212,7 +2221,10 @@ def _search(trip, best, first_exposure, stop_at, ctx: Context, info: dict):
             ctx.kept_excludes = [t.point for t in excluded]
         elif not held:
             stale += 1
-            if stale >= REFINE_PATIENCE:
+            # A crossing-only round that was not better is often one that found the next
+            # red crossing along the same road: the next round, excluding both, is the
+            # one that can reach a signal, so the crossing rounds all run.
+            if stale >= REFINE_PATIENCE and ctx.rate > 0:
                 break
     return best, best_trip
 

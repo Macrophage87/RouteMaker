@@ -64,7 +64,7 @@ def analysis(
 def event(m: float, cost_ft: float = 3300.0, approach=None) -> Event:
     return Event(
         m=m,
-        lon=BASE[0],
+        lon=BASE[0] + m * 1e-5,
         lat=BASE[1],
         kind="crossing",
         movement=Movement.STRAIGHT,
@@ -210,8 +210,11 @@ class TestCrossingAvoidance:
         assert info["rounds"] == 1 and info["limited"] is None
         # The two red events (3,100 ft and up since 2026-10-10; 2,900 from 468, 2,000
         # before); an orange one is not worth a second route.
-        assert len(world.requests[0]["exclude_locations"]) == 2
+        # Each red junction's approach and the junction itself (every edge within 15 m).
+        assert len(world.requests[0]["exclude_locations"]) == 4
         assert world.excluded(0)[0] == pytest.approx((BASE[0] + 1500.0 * 1e-5, BASE[1] + 1e-5))
+        assert world.excluded(0)[1] == pytest.approx((BASE[0] + 1500.0 * 1e-5, BASE[1]))
+        assert world.requests[0]["exclude_locations"][1]["radius"] == 15
         assert "alternates" not in world.requests[0], "one route, not alternatives"
         assert world.requests[0]["elevation_interval"] == 30
         assert info["extra_distance_m"] == 0.0 or info["extra_distance_m"] == pytest.approx(0.0)
@@ -253,17 +256,43 @@ class TestCrossingAvoidance:
         kept, info = refine.refine(trip_of("o", 4.0), context())
         assert kept["legs"][0]["shape"] == "s"
         assert len(world.requests) == info["rounds"] == 2
-        assert len(world.excluded(1)) == 2 and set(world.excluded(0)) < set(world.excluded(1))
+        assert len(world.excluded(1)) == 4 and set(world.excluded(0)) < set(world.excluded(1))
+
+    def test_two_next_red_crossings_in_a_row_still_reach_the_signal(self, monkeypatch) -> None:
+        """Rounds that only found the next red crossing along are not better, but the
+        search's patience does not stop the crossing rounds (review of PR #421)."""
+        shapes = {
+            "o": analysis("o", events=[event(1500.0, 3300.0)]),
+            "a1": analysis("a1", cost_s=4100.0, events=[event(1700.0, 3300.0)]),
+            "a2": analysis("a2", cost_s=4200.0, events=[event(1900.0, 3300.0)]),
+            "s": analysis("s", cost_s=4300.0, events=[]),
+        }
+        routes = [trip_of(n, 4.1) for n in ("a1", "a2", "s")]
+        world = World(monkeypatch, shapes, routes)
+        kept, info = refine.refine(trip_of("o", 4.0), context())
+        assert kept["legs"][0]["shape"] == "s"
+        assert len(world.requests) == info["rounds"] == refine.CROSSING_ONLY_ROUNDS == 3
 
     def test_crossing_avoidance_alone_is_at_most_three_rounds(self, monkeypatch) -> None:
         shapes = {"o": analysis("o", events=[event(1500.0, 3300.0)])}
-        for n in range(1, 5):
+        for n in range(1, 6):
             shapes[f"a{n}"] = analysis(
                 f"a{n}", cost_s=4000.0 + 100 * n, events=[event(1500.0 + 200 * n, 3300.0)]
             )
-        world = World(monkeypatch, shapes, [trip_of(f"a{n}", 4.1) for n in range(1, 5)])
+        world = World(monkeypatch, shapes, [trip_of(f"a{n}", 4.1) for n in range(1, 6)])
         refine.refine(trip_of("o", 4.0), context())
-        assert len(world.requests) <= refine.CROSSING_ONLY_ROUNDS == 3
+        assert len(world.requests) == refine.CROSSING_ONLY_ROUNDS == 3
+
+    def test_the_same_junction_by_another_street_is_excluded_too(self, monkeypatch) -> None:
+        """The junction itself is excluded with its approach: a route back through it by
+        another street is not what the next round has to clear (review of PR #421)."""
+        original = analysis("o", events=[event(1500.0, 3300.0)])
+        world = World(monkeypatch, {"o": original}, [])
+        ctx = context()
+        targets = refine.crossing_targets(original, ctx)
+        assert [t.radius for t in targets] == [None, 15]
+        assert targets[1].point == pytest.approx((BASE[0] + 1500.0 * 1e-5, BASE[1]))
+        assert world.requests == []
 
     def test_only_red_junctions_are_worth_a_second_route(self) -> None:
         assert refine.REFINE_MIN_EVENT_FT == model.RED_MIN_FT
