@@ -2,13 +2,10 @@ For the sender (do not send this part)
 =====================================
 
 - Send everything below the cut line, as it is: plain text in the body of a message, or as a
-  .txt file. Fill in the user name and password lines for each person first.
-- Send the user name and password as text the tester can copy. Not by voice, not in an image
-  or screenshot, and never as a link with the password in it (https://name:password@...):
-  many browsers block or warn about those, and they end up in history.
-- The passwords are in the file make-htpasswd.sh wrote (docs/BETA-RUNBOOK.md, step 9a). Delete
-  that file (shred -u) once every tester has theirs.
-- Section 8 (Updates) gives no hours. If the beta's agent has an update window
+  .txt file. Put the beta's address in the Address line first.
+- The beta has no site password (the owner's call, 2026-10-22), so there is nothing else to
+  send: no user name, no password.
+- Section 4 (Updates) gives no hours. If the beta's agent has an update window
   (RM_CD_WINDOW in the server's vars.sh), you may add a sentence there with those hours, for
   example "Updates usually happen between 2 and 6 in the morning, Eastern time." Without
   one, updates can come at any hour, so do not promise nights.
@@ -19,11 +16,9 @@ RouteMaker beta: how to get in
 ==============================
 
     Address:    https://beta.example.org
-    User name:  (filled in by whoever gives you access)
-    Password:   (sent with it, as text you can copy)
 
-RouteMaker plans bike routes for the DC region and Baltimore. This is a private test version
-for friends and family, so it asks for a password before it shows anything.
+RouteMaker plans bike routes for the DC region and Baltimore. This is a test version, so
+some things may be rough or change; nothing asks for a password.
 
 
 1. Open it in a real browser
@@ -31,42 +26,14 @@ for friends and family, so it asks for a password before it shows anything.
 
 Use Safari, Chrome, Firefox or Edge itself. Do not open the link from inside a messaging or
 mail app (Messages, WhatsApp, Discord, Messenger, Gmail and the like): their built-in
-browsers often cannot show the sign-in box and forget saved passwords. If you tapped the link
-there, choose "Open in browser", or copy the address into your browser.
+browsers often cannot sign you in, install the app or keep routes for offline. If you tapped
+the link there, choose "Open in browser", or copy the address into your browser.
+
+You don't need an account to plan or ride. Signing in (with Discord) is only for saving
+routes and keeping your 311 checklist on your other devices.
 
 
-2. The sign-in box is your browser's own
-----------------------------------------
-
-Before any page appears, your browser shows a small box asking for a user name and a
-password. It comes from the browser, not from RouteMaker, and it may not mention RouteMaker
-at all. With a screen reader, focus is normally already in the user name field.
-
-
-3. Type the user name exactly
------------------------------
-
-The user name is case-sensitive. It is all lowercase, exactly as it was given to you.
-
-
-4. Paste the password, and save it
-----------------------------------
-
-Copy the password from the message and paste it rather than typing it. It is four groups of
-five lowercase letters and digits joined by dashes, and the dashes are part of it. It never
-uses the characters l, 1, o, 0 or i, so nothing in it looks like something else. When your
-browser or password manager offers to save it, say yes: next time it fills in for you.
-
-
-5. A wrong password just shows the box again
---------------------------------------------
-
-There is no error message. If the box comes back, check that the user name is all lowercase
-and paste the password again. If you press Cancel, you get a short page that says sign-in is
-needed; reload the page to get the box back.
-
-
-6. Once you are in (for screen-reader users)
+2. Once you are in (for screen-reader users)
 --------------------------------------------
 
 - The first thing on the page is a button, "Accessibility mode", a switch that starts off.
@@ -90,10 +57,17 @@ needed; reload the page to get the box back.
   remembers which of its layers were on, and on brings those back. With only some on, it is on
   and says "Some on" and which. Expand a row for each layer's own switch, a one-line hint, and
   its key (what each line, color and symbol means) with the longer explanation.
+- Plan starts as a loop: the "Loop" box is ticked, so each point after the start is a stop and the
+  ride comes back. To finish somewhere else, untick it, choose "Make this the destination" under a
+  search result, or right-click the map (press and hold on a phone) and choose "Set as end" ("End
+  here" on a station's card): the loop turns off and says so.
+  With no points yet, "Start at current location" sits where the "Route" button goes.
 - In Plan, the "Manual mode" switch in the map's bar joins each point you tap to the last by a
-  straight line, for a path the planner won't take. It says when it turns on and off, and a
-  "Manual mode: taps join with straight lines" label shows under the bar while it is on. Until the route comes, faint lines join
-  your points: solid for legs to be routed, dashed for legs you drew. Drawn legs stay dashed on the route.
+  straight line, for a path the planner won't take; turned on during a loop, it turns the loop off.
+  It says when it turns on and off, and a "Manual mode: taps join with straight lines" label shows
+  under the bar while it is on. Until the route comes, bold lines with arrows join your points in
+  the order you'll ride them (a loop's way back to the start too): solid for legs to be routed,
+  dashed for legs you drew. Drag a line to add a via point in that leg. Drawn legs stay dashed on the route.
 - To delete your account: Settings, Account, Delete account. The page says what is deleted and
   what is kept, and asks you to tick one box first.
 - The "High contrast" switch is on the "Settings" page (the last button in the same bar). It
@@ -103,21 +77,21 @@ needed; reload the page to get the box back.
   and offers "Climb details": the climb's card, with its length, gain, grades, a described
   elevation profile and "Ride this climb". "Show climbs from" beside the switch hides the smaller
   categories.
-- Ride mode (section 9) has its own heading, "Ride mode", which takes the focus when a ride
+- Ride mode (section 5) has its own heading, "Ride mode", which takes the focus when a ride
   starts. While it is on, the skip link says "Skip to ride mode" and the planner is hidden. Cues
   never move your focus: they are said through two live regions (the urgent ones, such as
   "Left now" and leaving the route, interrupt), or by RouteMaker's own voice, as you chose. With
   the focus anywhere in Ride mode, W says where you are and C puts the map back on you. "End
   ride" is a slider until you arrive: move it to the end (the arrow keys or End, or your screen
   reader's adjust gesture) to end the ride.
-- Installing and offline (section 10): "Install the app" and "Routes kept for offline" are
+- Installing and offline (section 6): "Install the app" and "Routes kept for offline" are
   headings on the Settings page. Each kept route has an "Open" and a "Remove" button that name
   the route. Remove says what it removed and puts the focus on the next route's Remove, or on
   the heading when none is left. "A new version of RouteMaker is ready" and "You are offline"
   are said once, politely, and never move your focus.
 
 
-7. Reporting a problem
+3. Reporting a problem
 ----------------------
 
 Tell the person who gave you access. It helps to include:
@@ -130,7 +104,7 @@ Tell the person who gave you access. It helps to include:
 If the beta notice (the "Beta" button in the map's corner) shows a "Report a problem" link,
 you can use that instead.
 
-8. Updates
+4. Updates
 ----------
 
 Now and then the beta is updated to a new version. For about 10 to 20 minutes the page still
@@ -140,7 +114,7 @@ page (the browser's Back button takes you back to your route). That is the updat
 Wait about 20 minutes and try again. Report it only if it lasts more than half an hour.
 
 
-9. Ride mode: directions while you ride
+5. Ride mode: directions while you ride
 ---------------------------------------
 
 For short rides, up to 30 miles (48 km), on a phone with the screen on and the page in front.
@@ -203,8 +177,8 @@ You stay responsible for riding safely; the route can be wrong.
 - The Large text button on the ride's side (the "Aa") puts the next turn as big as it fits on the top half of the screen, with the map below, for bright sun or near sight; press it again for the normal card. "Large text during a ride" in Settings is the same switch. Ending the ride goes back to the planner.
 
 
-10. Installing RouteMaker, and routes for places with no signal
----------------------------------------------------------------
+6. Installing RouteMaker, and routes for places with no signal
+--------------------------------------------------------------
 
 RouteMaker can be installed like an app: it then opens from your home screen in its own window
 (the phone's clock and battery stay in view), and it opens even with no signal.
@@ -214,8 +188,6 @@ RouteMaker can be installed like an app: it then opens from your home screen in 
   the browser's menu has "Install app" or "Add to Home screen".
 - iPhone or iPad: press Share, then Add to Home Screen. Safari, Chrome and the other browsers
   there all have it. The Settings page says the same.
-- The installed app may ask for the beta's user name and password once more the first time it
-  opens. That is expected.
 - "Keep for offline", under a route, saves the route and the map along it on this device. Open
   it again from Save & load, "Routes kept for offline", with no signal at all; the planner says it
   is the route you kept and may be out of date. "Remove" there deletes it. Up to 10 routes.
@@ -229,8 +201,8 @@ RouteMaker can be installed like an app: it then opens from your home screen in 
   RouteMaker is ready." with a "Reload" button. It never interrupts a ride: it waits until you
   use "End ride". With no signal, a line there says you are offline.
 
-11. Bike and transit together
------------------------------
+7. Bike and transit together
+----------------------------
 
 In Go, the three main buttons are "Default" (your own ride type), "Own Bike + 🚆🚌" and
 "Bikeshare + 🚶🚆🚌". Cargo and plain Bikeshare are under "More ride types", where every ride
@@ -287,8 +259,8 @@ descriptions. Plan's "Change" ride type list has the same search and groups. Typ
   see them.
 
 
-12. Climbs on the map
----------------------
+8. Climbs on the map
+--------------------
 
 Turn on "Climbs" in Map layers. The number at a climb's top is its category; the shape around it
 is its steepness: a circle is gentle (under 4%), a square moderate (4 to 7.9%), a diamond steep

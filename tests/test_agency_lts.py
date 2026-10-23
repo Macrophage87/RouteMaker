@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
+from core import segment_info
+from pipeline import writers
 from routemaker import agency_lts
 from routemaker.agency_lts import AgencyRating
 from routemaker.stress import Stress, StressResult, rural_floor
@@ -547,3 +551,73 @@ def test_the_ddot_level_field_is_found_on_any_record_not_only_the_first(tmp_path
     assert [r["id"] for r in module.ddot(tmp_path, dropped)] == ["ddot-2-0"]
     assert dropped["ddot: no rating (0 or empty)"] == 1
     assert "LTS_SCORE" not in module.DDOT_LEVEL_FIELDS, "MDOT's preliminary score's name"
+
+
+def test_a_mapped_facility_sets_ddots_2020_rating_aside() -> None:
+    """The owner, 2026-10-21, of 14th Street NW, choosing "Formula wins where newer": DDOT's 2020
+    layer predates lanes built since, so where a bike facility is mapped the formula's tier stands;
+    the rating is still recorded for the road panel."""
+    lane = StressResult(Stress.LTS2, "bike lane, 25 mph", ())
+    result = agency_lts.apply(lane, [AgencyRating("ddot", 4)], facility_mapped=True)
+    assert result.tier is Stress.LTS2
+    assert result.agency_ratings == (AgencyRating("ddot", 4),)
+    assert agency_lts.SUPERSEDED_WHERE_FACILITY["ddot"] in result.rule
+    assert (result.formula_tier, result.formula_rule) == (Stress.LTS2, "bike lane, 25 mph")
+    # The road panel says the formula's tier is used, not DDOT's, and why.
+    held = json.loads(writers._ratings_json(result))
+    assert held["used"] == agency_lts.FORMULA_USED and held["formula"] == 2
+    rows = segment_info.rating_rows({"stress_ratings": json.dumps(held)})
+    assert not any("(used" in row["value"] for row in rows if "DDOT" in row["label"])
+    assert any(row["label"] == "Used" and "predates" in row["value"] for row in rows)
+    # With no facility mapped DDOT's level is used, as before.
+    assert agency_lts.apply(lane, [AgencyRating("ddot", 4)]).tier is Stress.LTS4
+
+
+def test_a_painted_lane_on_a_road_ddot_rated_higher_is_lts_2_5() -> None:
+    """The owner, 2026-10-21: "In some cases where it might be the case that it's a higher
+    stress bike lane, let's put them at 2.5" ("Some parts of R street for instance")."""
+    calm = StressResult(Stress.LTS1, "bike lane, 25 mph", ())
+    result = agency_lts.apply(
+        calm, [AgencyRating("ddot", 4)], facility_mapped=True, painted_lane=True
+    )
+    assert (result.tier, result.half) == (Stress.LTS2, True)
+    assert (result.formula_tier, result.formula_rule) == (Stress.LTS1, "bike lane, 25 mph")
+    held = json.loads(writers._ratings_json(result))
+    assert held["used"] == agency_lts.PAINTED_LANE_USED
+    rows = segment_info.rating_rows({"stress_ratings": json.dumps(held)})
+    assert any(row["label"] == "Used" and "LTS 2.5" in row["value"] for row in rows)
+    # DDOT at 2.5 or below, a formula already at 2.5 or above, or a protected lane: the formula's.
+    for ddot, formula, painted in (
+        (2.5, Stress.LTS1, True),
+        (4, Stress.LTS3, True),
+        (4, Stress.LTS1, False),
+    ):
+        kept = agency_lts.apply(
+            StressResult(formula, "x", ()), [AgencyRating("ddot", ddot)], facility_mapped=True,
+            painted_lane=painted,
+        )  # fmt: skip
+        assert (kept.tier, kept.half) == (formula, False), (ddot, formula, painted)
+
+
+def test_a_ddot_rating_calmer_than_the_formula_stands_on_a_lane() -> None:
+    """Only a rating above the formula's is set aside: a lane built since makes a road calmer,
+    and on a painted multilane street DDOT's calmer level stands (RL-3, 2026-10-16)."""
+    multilane = StressResult(Stress.LTS3, "bike lane, two-way floor", ())
+    result = agency_lts.apply(
+        multilane, [AgencyRating("ddot", 2)], facility_mapped=True, painted_lane=True
+    )
+    assert result.tier is Stress.LTS2
+    assert json.loads(writers._ratings_json(result))["used"] == "ddot"
+
+
+def test_a_set_aside_rating_gives_way_to_the_next_agency() -> None:
+    lane = StressResult(Stress.LTS2, "bike lane, 25 mph", ())
+    both = [AgencyRating("ddot", 4), AgencyRating("mdot-sha", 3)]
+    result = agency_lts.apply(lane, both, facility_mapped=True)
+    assert result.tier is Stress.LTS3
+    assert json.loads(writers._ratings_json(result))["used"] == "mdot-sha"
+
+
+def test_a_mapped_facility_does_not_set_aside_a_current_agency() -> None:
+    result = agency_lts.apply(FORMULA, [AgencyRating("moco", 2)], facility_mapped=True)
+    assert result.tier is Stress.LTS2

@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { RouteResponse } from "./api.ts";
 import { dialFields, fitDials, startDials } from "./dials.ts";
-import { LOOP_FIRST_HINT, LOOP_LABEL, LOOP_SAME_M, isRoundTrip, loopNote, loopView } from "./loop.ts";
+import { LOOP_FIRST_HINT, LOOP_LABEL, LOOP_SAME_M, isRoundTrip, loopNote, loopView, planStartDials } from "./loop.ts";
+import { readFileSync } from "node:fs";
 import { decodePlan, encodePlan } from "./planHash.ts";
 import { announceRoute } from "./summary.ts";
 import { panelView } from "./dialsPanel.ts";
@@ -100,4 +101,21 @@ test("a screen reader hears the loop's note with the route, once", () => {
   assert.match(said, /^Route planned: 12\.4 mi/);
   assert.match(said, /18% of the way back/);
   assert.doesNotMatch(announceRoute(route(null)), /way back/);
+});
+
+test("Plan starts as a loop (Stephen 2026-10-20: \"For plan we should do loop as default\"), where the ride type has one", () => {
+  const dials = startDials("default");
+  assert.equal(planStartDials("default", dials).loop, true);
+  const on = { ...dials, loop: true };
+  assert.equal(planStartDials("default", on), on, "the same object when it is on already");
+  assert.equal(planStartDials("mass-ride", dials), dials, "Mass Ride has no loop");
+  assert.equal(planStartDials("bikeshare", dials), dials, "nor a ride type of a start and an end only");
+  // Set on coming into Plan with no points (and taken off coming into Go), only on the change of view, so an Undo or a
+  // removal that empties the plan never turns it on unseen; Clear and an empty plan's ride type set it in their own edit.
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  assert.match(
+    app,
+    /useEffect\(\(\) => \{\s+if \(points\.length > 0\) return;\s+if \(mode === "plan"\) setDials\(\(now\) => planStartDials\(preset, now\)\);\s+else if \(mode === "go"\) setDials\(\(now\) => \(now\.loop \? withLoop\(now, false\) : now\)\);[\s\S]{0,120}\}, \[mode\]\);/,
+  );
+  assert.match(app, /const startDials = modeRef\.current === "plan" \? planStartDials\(ride\.preset, ride\.dials\) : ride\.dials;/);
 });

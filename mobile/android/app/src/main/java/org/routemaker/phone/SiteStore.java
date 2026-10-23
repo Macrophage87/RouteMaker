@@ -11,8 +11,9 @@ import org.json.JSONObject;
 
 /**
  * Where the site address lives: the app's own preferences on this phone (cleared with the app's
- * storage, which brings the first-launch screen back). A local build may instead carry one from
- * ROUTEMAKER_URL in capacitor.config.json (never a CI build); that one wins, since it was asked for.
+ * storage, which brings the first-launch screen back). A local build or the store build may instead
+ * carry one from ROUTEMAKER_URL in capacitor.config.json (never a CI test build); that one wins, since
+ * it was asked for.
  */
 final class SiteStore {
 

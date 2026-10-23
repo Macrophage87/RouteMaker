@@ -1695,7 +1695,7 @@ def test_the_handout_and_runbook_say_what_a_deploy_looks_like() -> None:
     """Re-check r3: accessibility SF (the handout), operations N1 and spec SF1 (the runbook)."""
     handout = (REPO / "docs" / "BETA-TESTER-HANDOUT.md").read_text()
     tester = handout[handout.index("cut here: send everything below") :]
-    section7 = tester[tester.index("7. Reporting a problem") :]
+    section7 = tester[tester.index("3. Reporting a problem") :]
     for needed in (
         "Router unavailable",
         "not available right now",
@@ -1703,7 +1703,7 @@ def test_the_handout_and_runbook_say_what_a_deploy_looks_like() -> None:
         "half an hour",
     ):
         assert needed in section7, needed
-    assert '"Back soon"' in tester[tester.index("8. Updates") :]
+    assert '"Back soon"' in tester[tester.index("4. Updates") :]
     assert "nightly" not in tester.lower() and "every night" not in tester.lower()
     runbook = (REPO / "docs" / "BETA-RUNBOOK.md").read_text()
     by_hand = runbook[
@@ -1834,3 +1834,58 @@ def test_a_held_release_posts_no_release_notes(beta: Beta) -> None:
     beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"}, annotated=False)
     beta.agent("run", STUB_ALERTS=str(beta.tmp / "alerts.log"))
     assert not any(line.startswith("release-notes|") for line in _alerts(beta))
+
+
+# --- the testers' report posts (discord_reports.py live) ---
+
+STUB_REPORTS = """import os, sys
+with open(os.environ["STUB_REPORTS"], "a") as log:
+    log.write(" ".join(sys.argv[1:]) + "\\n")
+sys.exit(int(os.environ.get("STUB_REPORTS_RC", "0")))
+"""
+
+
+def _bot_token(beta: Beta) -> None:
+    (beta.state / "discord").mkdir(exist_ok=True)
+    (beta.state / "discord" / "bot-token").write_text("token\n")
+
+
+def _reports(beta: Beta) -> list[str]:
+    path = beta.tmp / "reports.log"
+    return path.read_text().splitlines() if path.exists() else []
+
+
+def test_a_deploy_tells_the_testers_posts_once_per_tag(beta: Beta) -> None:
+    _bot_token(beta)
+    beta.release("v0.2.0", {"scripts/discord_reports.py": STUB_REPORTS})
+    log = str(beta.tmp / "reports.log")
+    done = beta.agent("run", **DEPLOY, STUB_REPORTS=log)
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert _reports(beta) == [f"--dir {beta.state / 'discord'} live v0.2.0"]
+    assert (beta.state / "alerts" / "live-posted").read_text() == "v0.2.0\n"
+    beta.agent("run", STUB_REPORTS=log)  # up to date: already told
+    assert len(_reports(beta)) == 1
+
+
+def test_no_bot_token_means_no_report_posts(beta: Beta) -> None:
+    beta.release("v0.2.0", {"scripts/discord_reports.py": STUB_REPORTS})
+    done = beta.agent("run", **DEPLOY, STUB_REPORTS=str(beta.tmp / "reports.log"))
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert _reports(beta) == []
+
+
+def test_a_failing_report_post_is_reported_retried_and_never_fails_the_pass(beta: Beta) -> None:
+    _alert_stub(beta)
+    _bot_token(beta)
+    beta.release("v0.2.0", {"scripts/discord_reports.py": STUB_REPORTS})
+    env = {
+        "STUB_REPORTS": str(beta.tmp / "reports.log"),
+        "STUB_ALERTS": str(beta.tmp / "alerts.log"),
+    }
+    done = beta.agent("run", **DEPLOY, **env, STUB_REPORTS_RC="1")
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "deployed: v0.2.0" in beta.status()
+    assert any(line.startswith("send|reports-live|v0.2.0|") for line in _alerts(beta))
+    beta.agent("run", **env)
+    assert len(_reports(beta)) == 2
+    assert _alerts(beta)[-1].startswith("clear|reports-live|")

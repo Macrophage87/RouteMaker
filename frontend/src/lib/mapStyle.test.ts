@@ -43,9 +43,9 @@ test("the stress tiles are the contract's path, absolute, within its zooms", () 
   const source = stressSource(ORIGIN);
   assert.deepEqual(source.tiles.map(httpUrl), [`${ORIGIN}/tiles/stress/{z}/{x}/{y}.pbf`]);
   assert.ok(source.tiles.every((url) => url.startsWith(`${STRESS_PROTOCOL}://`)));
-  // SHARED API CONTRACT: served for z 10-16; the map asks for z10-14 and
+  // SHARED API CONTRACT: served for z 7-16; the map asks for z7-14 and
   // draws z15-16 from the z14 tile (every one of them drawn ahead).
-  assert.equal(source.minzoom, 10);
+  assert.equal(source.minzoom, 7);
   assert.equal(source.maxzoom, 14);
   assert.equal(STRESS_SOURCE_ID.length > 0, true);
 });

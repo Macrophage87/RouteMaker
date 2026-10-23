@@ -117,7 +117,7 @@ class TestEntering:
             },
         )
         assert answer.status_code == 201, answer.content
-        assert answer.json()["message"].startswith("Closure confirmed: Oak Street, closed until ")
+        assert answer.json()["message"].startswith("Closure confirmed: Oak Street, closed through ")
         row = ReviewedClosure.objects.get()
         assert row.osm_way_ids == [WAY] and row.road == "Oak Street"
         assert row.lines == [[[LON, LAT], [LON + 0.002, LAT]]]
@@ -347,7 +347,7 @@ class TestSavedRouteAlerts:
         mine.refresh_from_db()
         other.refresh_from_db()
         (alert,) = mine.closure_alerts
-        assert alert["text"].startswith("Closed on your route: Oak Street, until ")
+        assert alert["text"].startswith("Closed on your route: Oak Street, through ")
         assert alert["source"] == "Confirmed by a RouteMaker reviewer"
         assert other.closure_alerts == []
 
@@ -415,3 +415,75 @@ def test_the_migrations_have_a_single_leaf() -> None:
     loader = MigrationLoader(None, ignore_no_migrations=True)
     leaves = loader.graph.leaf_nodes("core")
     assert len(leaves) == 1, leaves
+
+
+@db
+class TestRouteAnswer:
+    def test_a_reviewers_closure_fits_the_route_answers_closure_rows(self, live) -> None:
+        # A route near a reviewer's closure answered 500 (2026-10-21, Lake Frank): the answer's
+        # source lists named only the feeds.
+        from core import api
+        from routemaker import ridetime
+
+        reviewed_closures.create(make_user(), [WAY], "Trail construction", end=days(10))
+        now = timezone.now()
+        plan = workzones.plan_zones([ALONG[0], ALONG[-1]], ridetime.when_at(now))
+        (row,) = workzones.map_rows(ALONG, plan, [], 1.0, now)
+        assert row["source"] == "reviewer"
+        api.ClosureOut(**row)
+        (zone,) = plan.excluded
+        assert (
+            wz.when_text(zone, now, False)
+            == f"Closed through {wz.date_text(zone.end - timedelta(days=1))}"
+        )
+        assert wz.citation(zone).endswith(
+            f", through {wz.date_text(zone.end - timedelta(days=1))}."
+        )
+        on_route = {
+            "id": zone.zone_id,
+            "kind": zone.kind,
+            "penalty_s": zone.penalty_s,
+            "road": zone.road,
+            "description": zone.description,
+            "reason": zone.reason,
+            "from_m": 0,
+            "to_m": 10,
+            "start": None,
+            "end": zone.end.isoformat(),
+            "source": zone.source,
+            "warning": True,
+            "text": wz.heads_up(zone),
+        }
+        api.WorkZoneOut(**on_route)
+
+    def test_a_reviewers_closure_names_its_last_day_everywhere(self) -> None:
+        from datetime import UTC, date, datetime, time
+
+        from core import workzones as core_wz
+        from routemaker import ridetime
+
+        zone_of = ridetime.ZONE
+        now = datetime(2026, 10, 21, 12, 0, tzinfo=zone_of)
+
+        def closure(first: int, after_last: int, source: str = "reviewer") -> wz.Zone:
+            start = datetime.combine(datetime(2026, 10, first).date(), time(0), zone_of)
+            end = datetime.combine(datetime(2026, 10, after_last).date(), time(0), zone_of)
+            return wz.Zone("z", source, wz.CLOSED, 0.0, (), None, None, start, end)
+
+        one_day = closure(22, 23)
+        assert wz.when_text(one_day, now, True) == "Closed tomorrow"
+        assert wz.citation(one_day).endswith(", through Oct 22.")
+        later = closure(24, 31)
+        assert wz.when_text(later, now, True) == "Closed from Oct 24 through Oct 30"
+        assert wz.when_text(closure(1, 31), now, False) == "Closed through Oct 30"
+        assert core_wz._until_words(closure(1, 31)) == "through Oct 30, 2026"
+        assert saved_route_alerts._until(closure(1, 31).end.isoformat(), True) == (
+            "through Oct 30, 2026"
+        )
+        # A last day on which daylight saving starts is still that day (end-review fix).
+        spring = datetime.combine(datetime(2027, 3, 15).date(), time(0), zone_of)
+        last = wz.last_day("reviewer", spring.astimezone(UTC))
+        assert last.astimezone(zone_of).date() == date(2027, 3, 14)
+        # A feed's end is said as it is given.
+        assert wz.when_text(closure(1, 31, "md"), now, False) == "Closed until Oct 31"
+        assert core_wz._until_words(closure(1, 31, "md")) == "until Oct 31, 2026"
