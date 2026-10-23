@@ -14,6 +14,9 @@
 #       BETA_USER, if set). The password is read from that file, never printed, and handed to
 #       curl on standard input, so it is in no process listing, history line or transcript.
 #       BETA_USER=alice BETA_PASSWORD=... in the environment works too, without the file.
+#   scripts/beta/smoke-test.sh --public https://beta.example.org --open
+#       The same for a beta with no site password (the owner removed it, 2026-10-22): no
+#       credentials, and the front end and the api must answer without them instead of 401.
 #   --no-401-page
 #       With --public, after the runbook's step 10 recovery (render-nginx.sh --no-401-page): skip
 #       the check of the sign-in page's text, which nginx's own 401 page does not carry.
@@ -21,7 +24,7 @@
 # Exit status 0 only if every check passed.
 set -uo pipefail
 
-mode=""; port=""; host=""; base=""; passwords_file=""; page401=1
+mode=""; port=""; host=""; base=""; passwords_file=""; page401=1; open=0
 while [ $# -gt 0 ]; do
 	case "$1" in
 		--local) mode=local; shift ;;
@@ -30,6 +33,7 @@ while [ $# -gt 0 ]; do
 		--host) host=${2:-}; shift 2 ;;
 		--passwords-file) passwords_file=${2:-}; shift 2 ;;
 		--no-401-page) page401=0; shift ;;
+		--open) open=1; shift ;;
 		-h | --help) sed -n '2,/^set -uo/p' "${BASH_SOURCE[0]}" | sed '$d' | sed 's/^# \{0,1\}//'; exit 0 ;;
 		*) echo "smoke-test: unknown argument $1" >&2; exit 2 ;;
 	esac
@@ -95,7 +99,10 @@ if [ "$mode" = public ] && [ -n "$passwords_file" ]; then
 fi
 
 if [ "$mode" = public ]; then
-	[ -n "${BETA_USER:-}" ] && [ -n "${BETA_PASSWORD:-}" ] || { echo "smoke-test: give --passwords-file, or set BETA_USER and BETA_PASSWORD, for --public" >&2; exit 2; }
+	if [ "$open" = 0 ] && { [ -z "${BETA_USER:-}" ] || [ -z "${BETA_PASSWORD:-}" ]; }; then
+		echo "smoke-test: give --passwords-file, or set BETA_USER and BETA_PASSWORD, for --public (or --open for a beta with no password)" >&2
+		exit 2
+	fi
 	AUTH=
 	check_status "robots.txt is public" 200 "$base/robots.txt"
 	check_body "robots.txt disallows everything" 'Disallow: /' "$base/robots.txt"
@@ -103,15 +110,20 @@ if [ "$mode" = public ]; then
 	check_status "the privacy policy is public" 200 "$base/privacy"
 	# POST only, so a GET reaching the api without a password is refused by the api (405), not 401.
 	check_status "Garmin's deregistration notice reaches the api" 405 "$base/garmin/deregistrations"
-	check_status "the front end is behind basic auth (no credentials)" 401 "$base/"
-	check_status "the api is behind basic auth (no credentials)" 401 "$base/healthz"
-	check_status "a wrong password is refused" 401 -u "nobody:wrong" "$base/"
-	unauthorized=$(curl_run -D - -o /dev/null "$base/" | tr -d '\r')
-	if grep -qi '^www-authenticate: basic' <<<"$unauthorized"; then ok "the 401 asks for a password (WWW-Authenticate: Basic)"; else bad "the 401 has no WWW-Authenticate: Basic, so browsers will not show their sign-in box"; fi
-	if [ "$page401" = 1 ]; then
-		check_body "the 401 page says how to get in" 'person who gave you access' "$base/"
+	if [ "$open" = 1 ]; then
+		check_status "the front end is open (no credentials; --open)" 200 "$base/"
+		check_status "the api is open (no credentials; --open)" 200 "$base/healthz"
 	else
-		printf 'SKIP  %s\n' "the 401 page's text (--no-401-page: the site was rendered without it)"
+		check_status "the front end is behind basic auth (no credentials)" 401 "$base/"
+		check_status "the api is behind basic auth (no credentials)" 401 "$base/healthz"
+		check_status "a wrong password is refused" 401 -u "nobody:wrong" "$base/"
+		unauthorized=$(curl_run -D - -o /dev/null "$base/" | tr -d '\r')
+		if grep -qi '^www-authenticate: basic' <<<"$unauthorized"; then ok "the 401 asks for a password (WWW-Authenticate: Basic)"; else bad "the 401 has no WWW-Authenticate: Basic, so browsers will not show their sign-in box"; fi
+		if [ "$page401" = 1 ]; then
+			check_body "the 401 page says how to get in" 'person who gave you access' "$base/"
+		else
+			printf 'SKIP  %s\n' "the 401 page's text (--no-401-page: the site was rendered without it)"
+		fi
 	fi
 	headers=$(curl_run -I "$base/robots.txt" | tr -d '\r')
 	if grep -qi '^x-robots-tag: noindex, nofollow' <<<"$headers"; then ok "X-Robots-Tag: noindex, nofollow on robots.txt"; else bad "no X-Robots-Tag on robots.txt"; fi

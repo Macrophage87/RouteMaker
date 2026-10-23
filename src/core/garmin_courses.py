@@ -41,14 +41,16 @@ ACTIVITY = {
     "gravel": "GRAVEL_CYCLING",
 }
 
-TOO_LONG = "This route has too many points for one Garmin course. Split it, then send each part."
+TOO_LONG = "This route has too many points for one Garmin course."
 NO_PERMISSION = (
     "Garmin Connect has not allowed RouteMaker to add courses. Allow it in Garmin Connect, "
     "under your connected apps, then send again."
 )
-BUSY = "Garmin is taking too many courses just now. Try again in a few minutes."
-REFUSED = "Garmin did not take the course. Try again later."
-NOT_TAKEN = "Garmin could not read this route as a course. Send it as a file instead."
+BUSY = "Garmin is taking too many courses just now."
+# Each said with "It went as a file instead." (the app then hands the file on; frontend
+# lib/garminLink.ts sendDirect), so none says to try again.
+REFUSED = "Garmin did not take the course."
+NOT_TAKEN = "Garmin could not read this route as a course."
 
 
 class BadLine(ValueError):

@@ -6051,7 +6051,7 @@ def garmin_course_send(request):
     """Body: {"name", "preset", "line": [[lon, lat, ele], ...], "saved_route": id or null}.
     200 {"sent": "added" | "updated"}; 409 {"error", "code": "not_connected"} when there is no
     live connection (Settings offers Connect again); 502 {"error"} when Garmin refused or could
-    not be reached; 400 for a line no course can be made from."""
+    not be reached (the app then hands the file on); 400 for a line no course can be made from."""
     from . import garmin, garmin_courses
 
     body, error = _json_body(request, GARMIN_COURSE_MAX_BYTES)

@@ -108,6 +108,7 @@ from pipeline.schema import (
     MTB_NAME_COLUMN,
     MTB_ONLY_COLUMN,
     RIDE_ROAD_RUN_MI,
+    ROAD_LINK_COLUMN,
     ROADSIDE_COLUMN,
     ROUGH_COLUMN,
     SCENIC_COLUMN,
@@ -180,7 +181,7 @@ CONTENT_TYPE = "application/vnd.mapbox-vector-tile"
 # 13: the popular bike corridors' `popular`, z10-11 keep them and the long calm roads
 # (`popular_and_calm`), and a long trail's name from z10. 14: a major corridor's name,
 # `trail_name` on a way of the top popular class (POPULAR_NAMED_MIN_CLASS), and `dense` from
-# 8 km a square (DENSE_ROAD_M).
+# 8 km a square (DENSE_ROAD_M), and a slip road's `link`.
 FORMAT_VERSION = 14
 
 # Five minutes (OWNER-DECISIONS 460.6, "5 min sounds good"): an instance admin's change in
@@ -409,6 +410,10 @@ OPTIONAL_PROPERTIES = {
     # `pipeline.bikeshare_corridors`). The map keeps a class 2-3 street's full width in a city
     # grid and sorts every class over its stress level's other lines.
     "popular": BIKE_POPULAR_COLUMN,
+    # A slip road, an on- or off-ramp (`road_link`): true, or left out. The map leaves it out
+    # until the city ladder's street zoom (the owner, 2026-10-23: "the various onramps and
+    # offramps aren't needed at this level"; frontend/src/stressStyle.js, `cityShown`).
+    "link": ROAD_LINK_COLUMN,
 }
 
 # The tile property `rpm` is rounded down to a multiple of this (OPTIONAL_EXPRESSIONS).
@@ -441,6 +446,7 @@ OPTIONAL_EXPRESSIONS = {
     "scenic": f"CASE WHEN s.{SCENIC_COLUMN} IS NOT NULL THEN true END",
     "contraflow": f"CASE WHEN s.{FACILITY_SHOWN_COLUMN} IS NOT NULL THEN true END",
     "popular": f"NULLIF(s.{BIKE_POPULAR_COLUMN}, 0)",
+    "link": f"NULLIF(s.{ROAD_LINK_COLUMN}, false)",
     # `rpm`: the Mass Ride capacity, riders a minute, rounded DOWN to a multiple of
     # RPM_STEP. The Mass Ride bands (60, 120, 200) are multiples of it, so a
     # feature never moves band; and the zoomed-out levels, which collect every
@@ -806,6 +812,8 @@ ETAG_LETTERS = {
     FACILITY_SHOWN_COLUMN: "a",
     # `p` for popular.
     BIKE_POPULAR_COLUMN: "p",
+    # `i` for an interchange's ramp: `l` is the trail run's.
+    ROAD_LINK_COLUMN: "i",
 }
 
 
@@ -817,14 +825,14 @@ def etag_for(oid: int, optional: frozenset[str] = frozenset(), generation: int =
     # optional columns are in it because a column added to the live table in
     # place (the facility, by hand) changes the tiles but not the table's oid.
     # Each column by a letter of its own, so the tag fits the cache's 64-character
-    # key with all of them (a `+` and one letter each, eighteen in all: `W/"stress-` and a
-    # ten-digit oid, `+` and eighteen letters, `-v13"`, 44 characters), in the order of the
+    # key with all of them (a `+` and one letter each, nineteen in all: `W/"stress-` and a
+    # ten-digit oid, `+` and nineteen letters, `-v14"`, 45 characters), in the order of the
     # column names.
     carried = "".join(ETAG_LETTERS[column] for column in sorted(optional))
     # And the table's edit generation (`core.stress_edits`), once it has had one: an edit
     # updates rows in place, which changes the tiles and not the oid, so without it a
     # browser's revalidation would be answered 304 for the old tile. `-e` and up to six
-    # digits makes the longest tag 52 characters, inside the cache's 64.
+    # digits makes the longest tag 53 characters, inside the cache's 64.
     edited = f"-e{generation}" if generation else ""
     return f'W/"stress-{oid}{"+" + carried if carried else ""}{edited}-v{FORMAT_VERSION}"'
 

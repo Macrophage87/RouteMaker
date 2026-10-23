@@ -406,19 +406,31 @@ class TestTrafficWins:
         return kept["legs"][0]["shape"]
 
     def test_fewer_crossings_do_not_buy_more_busy_road(self, monkeypatch) -> None:
+        # 1 km of LTS 4 is 2,000 m of exposure, past 500 m and the 4,500 ft (1,372 m)
+        # crossing's cost, which the guard counts one for one.
         busier = analysis("c", "1" * 10 + "4" * 10 + "1" * 20, cost_s=4000.0, events=[])
         assert busier.score(context()) < analysis(
             "o", "1" * 10 + "3" * 5 + "1" * 25, cost_s=4000.0, events=[event(1500.0, 4500.0)]
         ).score(context()), "it would win on score alone"
         assert self.routes(monkeypatch, busier) == "o"
 
+    def test_a_way_round_a_red_crossing_may_ride_more_lts3(self, monkeypatch) -> None:
+        """The red crossing's cost counts as exposure on both sides (2026-10-23, an
+        unsignalised Connecticut Ave crossing at rush hour: "essentially impassable"): 300 m
+        more LTS 3 in place of a 4,500 ft crossing is not busier."""
+        round_it = analysis("c", "1" * 10 + "3" * 8 + "1" * 22, cost_s=4000.0, events=[])
+        assert round_it.exposure_m > refine._allowance(500.0), "busier on its roads alone"
+        assert self.routes(monkeypatch, round_it) == "c"
+
     def test_the_same_exposure_is_fine(self, monkeypatch) -> None:
         same = analysis("c", "1" * 20 + "3" * 5 + "1" * 15, cost_s=4000.0, events=[])
         assert self.routes(monkeypatch, same) == "c"
 
     def test_a_little_more_is_within_the_tolerance(self, monkeypatch) -> None:
-        # 5 pieces of LTS 3 is 500 weighted metres; a sixth piece is 20 per cent more.
-        a_bit = 500.0 * (1 + refine.EXPOSURE_TOLERANCE) + refine.EXPOSURE_SLACK_M
+        # 5 pieces of LTS 3 is 500 weighted metres; a sixth piece is 20 per cent more. The
+        # original's red crossing (4,500 ft) counts too, one for one, untolerated.
+        red_m = 4500.0 / model.FEET_PER_METRE
+        a_bit = 500.0 * (1 + refine.EXPOSURE_TOLERANCE) + refine.EXPOSURE_SLACK_M + red_m
         assert a_bit > 500.0
         within = analysis("c", "1" * 20 + "3" * 5 + "1" * 15, cost_s=4000.0, events=[])
         within.exposure_m = a_bit
