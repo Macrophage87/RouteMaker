@@ -114,9 +114,13 @@ def analysed(
     brake_grade: float | None = None,
     exposure: presets.Exposure = presets.EXPOSURE_STANDARD,
     rate: float = 10.0,
+    climb_time: bool = False,
 ) -> refine.Analysis:
     """The real `refine.analyse` of a route of (metres, tier) stretches on a steady grade,
-    the router and the traces stubbed."""
+    the router and the traces stubbed. Without `climb_time` the climb's own price (its time
+    and steepness, `Analysis.hill_m`, in place of the router's charge) is left out, so these
+    tests read the hill factor alone; tests/test_hill_cost.py and test_route_dials.py price
+    the climb."""
     pieces = [SimpleNamespace(metres=m) for m, _tier in tiers]
     classes = [routing.PieceClass(tier, "none") for _m, tier in tiers]
     monkeypatch.setattr(routing, "_trace", lambda *args: {})
@@ -130,7 +134,7 @@ def analysed(
     length = sum(m for m, _tier in tiers)
     read = refine.analyse(_trip(length, heights(length, grade)), ctx, ctx.deadline, False)
     assert read is not None
-    return read
+    return read if climb_time else dataclasses.replace(read, hill_m=0.0, router_climb_m=0.0)
 
 
 def figures(read: refine.Analysis) -> tuple:
@@ -230,6 +234,15 @@ class TestEveryConsumerReadsTheOneFigure:
         saved = refine.stress_saved_m(up, quiet, test_refine.context(rate=10.0))
         assert saved == pytest.approx(2 * self.weighted(), rel=0.01)
         assert saved == pytest.approx(refine.stress_weight_m(up, None))
+
+    def test_the_score_swaps_the_routers_climb_charge_for_the_riders(self, monkeypatch):
+        priced = analysed(monkeypatch, [(1000.0, "4")], 0.06, climb_time=True)
+        ctx = test_refine.context(rate=10.0)
+        assert priced.hill_m > 0 and priced.router_climb_m > 0
+        assert priced.score(ctx) == pytest.approx(
+            priced.cost_s
+            + ctx.quiet_cost * (10.0 * priced.exposure_m + priced.hill_m - priced.router_climb_m)
+        )
 
     def test_a_long_plans_legs(self, up, monkeypatch):
         flat = analysed(monkeypatch, [(1000.0, "4")], 0.0)

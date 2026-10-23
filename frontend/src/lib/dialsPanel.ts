@@ -46,6 +46,10 @@ import {
   warnsTrafficTolerant,
   type Dials,
   worthRatio,
+  LT1_GRADE_MAX_PCT,
+  LT1_GRADE_MIN_PCT,
+  hillsAtGrade,
+  hillsGradePosition,
 } from "./dials.ts";
 
 export interface SliderView {
@@ -53,6 +57,12 @@ export interface SliderView {
   max: number;
   /** The slider's step; absent is 5. */
   step?: number;
+  /**
+   * Where the slider shows another scale than the dial's own: the dial's value on the slider,
+   * and back. The Hills slider shows grade percent (Stephen, 2026-10-23: "Can the slider
+   * positions just be percent?").
+   */
+  scale?: { toSlider: (value: number) => number; fromSlider: (position: number) => number };
   words: string;
   ends: [string, string, string];
   disabled: boolean;
@@ -226,11 +236,25 @@ export const SEEK_CALM_NOTE =
   "At this Traffic setting, looking for climbs only chooses between equally calm routes, preferring the one that climbs more.";
 /** "Fine with hills", the right half on every ride type but Mountain Goat (FOLLOWUP-HILLS-TOLERATE, OWNER-DECISIONS 242). */
 export const TOLERATE_NOTE =
-  `Climbs count for less: the shorter or more direct of a few routes wins even where it climbs more, but never a busier one. Compared for a start and an end up to ${formatRoughDistance(AVOID_MAX_SPAN_M)} apart.`;
-/** At the top of the traffic slider the stress order decides, and its distance counts no climbing. */
+  `Climbs up to this grade cost only the time they take, so a shorter route over a hill wins where it is quicker, but never a busier one. Compared for a start and an end up to ${formatRoughDistance(AVOID_MAX_SPAN_M)} apart.`;
+/** At the top of the traffic slider the stress order decides; its distance counts each climb's time. */
 export const TOLERATE_CALM_NOTE =
-  "At this Traffic setting the calmest route decides, and climbing is not counted against it.";
+  "At this Traffic setting the calmest route decides; climbing counts as the time it takes.";
 export const AVOID_NOTE =
+  `Climbs cost the time they take, and grades past this one cost more the steeper and longer they are, as do long steep descents on some ride types. Weighed among a few alternative routes for a start and an end up to ${formatRoughDistance(AVOID_MAX_SPAN_M)} apart.`;
+/**
+ * The Hills slider's help (Stephen, 2026-10-23): "have the rider estimate the steepest they can climb for several
+ * minutes without any labored breating using their lowest gears. If they are metric people then say upper end of
+ * Zone 2 Power (75% FTP)", "And just leave as is and adjust if not sure", and "Just make it clear that while we're
+ * using an FTP model, were just basing it on a comfortable climb grade". The slider sets that grade
+ * (`routemaker.hill_cost.lt1_grade_for`).
+ */
+export const HILLS_HOW =
+  "Set this to the steepest grade you can climb for several minutes in your lowest gears without labored breathing. " +
+  "Not sure? Leave it where it starts and adjust after a ride or two; a rough guess plans much the same routes. " +
+  "Every climb counts as the time it takes. Past this grade it counts for more when choosing a route, more again the " +
+  "harder it gets, and having to push the bike counts as a last resort. (With a power meter: the grade you climb at " +
+  "the top of Zone 2, 75% of FTP. That is only the curve's shape; you set nothing but the grade.)";
   `Steep grades cost more the steeper they are; long climbs, and on some ride types long steep descents, count most, short kicks little. Weighed among a few alternative routes for a start and an end up to ${formatRoughDistance(AVOID_MAX_SPAN_M)} apart.`;
 
 /**
@@ -279,14 +303,29 @@ export function panelView(preset: PresetId, dials: Dials, draft: Dials = dials):
       ...(!locked && draft.stress >= STRESS_MAX ? { how: CALM_HOW } : {}),
     },
     warning: warnsTrafficTolerant(preset, draft.stress) ? TRAFFIC_TOLERANT_WARNING : null,
-    hills: {
-      min: HILLS_MIN,
-      max: hillsMax(preset),
-      words: hillsWords(draft.hills, climbs),
-      ends: seek ? ["Avoid hills", "Fastest", climbs ? "Seek hills" : "Fine with hills"] : ["Avoid hills", "", "Fastest"],
-      disabled: false,
-      note: hillsNote,
-    },
+    hills: climbs
+      ? {
+          min: HILLS_MIN,
+          max: hillsMax(preset),
+          words: hillsWords(draft.hills, climbs),
+          ends: ["Avoid hills", "Fastest", "Seek hills"],
+          disabled: false,
+          note: hillsNote,
+          how: HILLS_HOW,
+        }
+      : {
+          min: LT1_GRADE_MIN_PCT,
+          max: hillsGradePosition(hillsMax(preset)),
+          step: 1,
+          scale: { toSlider: hillsGradePosition, fromSlider: hillsAtGrade },
+          words: hillsWords(draft.hills, climbs),
+          ends: seek
+            ? [`${LT1_GRADE_MIN_PCT}%`, `${hillsGradePosition(0)}%`, `${LT1_GRADE_MAX_PCT}%`]
+            : [`${LT1_GRADE_MIN_PCT}%`, "", `${hillsGradePosition(0)}%`],
+          disabled: false,
+          note: hillsNote,
+          how: HILLS_HOW,
+        },
     rideSize: offersRideSize(preset) ? rideSizeView(rideSizeOf(draft)) : null,
     target: offersTargetDistance(preset, dials.stress) ? targetView(dials) : null,
     trailsOff: {
