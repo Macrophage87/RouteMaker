@@ -84,23 +84,17 @@ SIDEWALK_SQL = (
     f" AND COALESCE(s.{ROADSIDE_COLUMN}, false))"
 )
 
-_GRAPH = """
-WITH cand AS (
-    SELECT s.id, s.geometry, s.stress_tier AS tier, {network} AS net, {sidewalk} AS sidewalk,
-           ST_X(ST_StartPoint(s.geometry)) >= %(west)s
-           AND ST_X(ST_StartPoint(s.geometry)) < %(east)s
-           AND ST_Y(ST_StartPoint(s.geometry)) >= %(south)s
-           AND ST_Y(ST_StartPoint(s.geometry)) < %(north)s AS own
-    FROM {schema}.segment AS s
-    WHERE s.map_class = 'road' AND NOT s.{mtb}
-      AND s.geometry && ST_MakeEnvelope(%(west)s - %(margin)s, %(south)s - %(margin)s,
-                                        %(east)s + %(margin)s, %(north)s + %(margin)s, 4326)
-),
-pts AS (
-    SELECT c.id, d.path[1] AS n, d.geom AS g,
+# Every way's ends and the vertices it shares with another way, with the distance along it:
+# made once (`_vertices`), then read box by box (_GRAPH) through the table's spatial index.
+_VERTICES = """
+DROP TABLE IF EXISTS bike_network_vertex;
+CREATE TEMP TABLE bike_network_vertex AS
+WITH pts AS (
+    SELECT s.id, d.path[1] AS n, d.geom AS g,
            round(ST_X(d.geom) * {grid})::bigint AS kx,
            round(ST_Y(d.geom) * {grid})::bigint AS ky
-    FROM cand AS c CROSS JOIN LATERAL ST_DumpPoints(c.geometry) AS d
+    FROM {schema}.segment AS s CROSS JOIN LATERAL ST_DumpPoints(s.geometry) AS d
+    WHERE s.map_class = 'road' AND NOT s.{mtb}
 ),
 shared AS (
     SELECT kx, ky FROM pts GROUP BY kx, ky HAVING count(DISTINCT id) > 1
@@ -115,11 +109,25 @@ steps AS (
 along AS (
     SELECT *, sum(step) OVER (PARTITION BY id ORDER BY n) AS at_m FROM steps
 )
-SELECT a.id, a.kx, a.ky, a.at_m, c.tier, c.net, c.sidewalk, c.own
-FROM along AS a JOIN cand AS c ON c.id = a.id
+SELECT a.id, a.n, a.kx, a.ky, a.at_m
+FROM along AS a
 WHERE a.n = 1 OR a.n = a.last
-   OR EXISTS (SELECT 1 FROM shared AS h WHERE h.kx = a.kx AND h.ky = a.ky)
-ORDER BY a.id, a.n
+   OR EXISTS (SELECT 1 FROM shared AS h WHERE h.kx = a.kx AND h.ky = a.ky);
+CREATE INDEX ON bike_network_vertex (id, n);
+ANALYZE bike_network_vertex;
+"""
+
+_GRAPH = """
+SELECT v.id, v.kx, v.ky, v.at_m, s.stress_tier, {network}, {sidewalk},
+       ST_X(ST_StartPoint(s.geometry)) >= %(west)s
+       AND ST_X(ST_StartPoint(s.geometry)) < %(east)s
+       AND ST_Y(ST_StartPoint(s.geometry)) >= %(south)s
+       AND ST_Y(ST_StartPoint(s.geometry)) < %(north)s
+FROM {schema}.segment AS s JOIN bike_network_vertex AS v ON v.id = s.id
+WHERE s.map_class = 'road' AND NOT s.{mtb}
+  AND s.geometry && ST_MakeEnvelope(%(west)s - %(margin)s, %(south)s - %(margin)s,
+                                    %(east)s + %(margin)s, %(north)s + %(margin)s, 4326)
+ORDER BY v.id, v.n
 """
 
 
@@ -237,6 +245,7 @@ def _spurs(graph: Graph, keep: set[int]) -> set[int]:
 
 def _graphs(cursor, schema: str, sql: str, margin: float = MARGIN_DEG):
     """Each box's Graph (BOX_DEG, with `margin` round it) that has rows of its own."""
+    cursor.execute(_VERTICES.format(schema=schema, mtb=MTB_ONLY_COLUMN, grid=_GRID))
     cursor.execute(f"SELECT ST_XMin(e), ST_YMin(e), ST_XMax(e), ST_YMax(e) FROM "
                    f"(SELECT ST_Extent(geometry) AS e FROM {schema}.segment) AS t")  # fmt: skip
     west, south, east, north = cursor.fetchone()
@@ -311,7 +320,6 @@ def mark(schema: str) -> dict[str, int]:
         network=NETWORK_SQL,
         sidewalk=SIDEWALK_SQL,
         mtb=MTB_ONLY_COLUMN,
-        grid=_GRID,
     )
     links: set[int] = set()
     orphans: set[int] = set()
@@ -537,7 +545,6 @@ def connect(schema: str) -> dict[str, int]:
             network=NETWORK_SQL,
             sidewalk=SIDEWALK_SQL,
             mtb=MTB_ONLY_COLUMN,
-            grid=_GRID,
         )
         candidates = []
         for graph in _graphs(cursor, schema, sql, CONNECT_MARGIN_DEG):
