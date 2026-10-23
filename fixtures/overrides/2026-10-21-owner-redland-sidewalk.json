@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "decided": "2026-10-21",
+  "decided_by": "the deployment owner",
+  "status": "approved by the owner on 2026-10-21 (09:16 UTC). Load with load_access_overrides (dry run first); takes effect on the next rebuild.",
+  "annotations": "One concrete sidewalk, way 448386707 (575 ft, 175 m), joining a bicycle=designated paved path to a bicycle=designated side path in Montgomery County, opened with a bicycle=yes access row, so it is ridden as a path rather than as a last-resort sidewalk (routemaker.sidewalks).",
+  "rows": [
+    {
+      "kind": "access",
+      "osm_way_id": 448386707,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "The owner, 2026-10-21 09:16 UTC: \"I just checked, that short redland road sidewalk is intended to be ridden on and isn't illegal.\"",
+      "evidence": "OSM, 2026-10-20 extract: way 448386707, highway=footway, footway=sidewalk, surface=concrete, no bicycle tag, so closed to bicycles by its class; it joins path 710999916 (bicycle=designated) to side path 448386711 (bicycle=designated). Checked on the ground by the owner, 2026-10-21.",
+      "fingerprint": {
+        "name": null,
+        "highway": "footway",
+        "length_m": 175.3,
+        "line": "-77.156815,39.123002 -77.156955,39.123128 -77.157372,39.123403 -77.157490,39.123523 -77.157668,39.123765 -77.157725,39.123912 -77.157787,39.124201 -77.157780,39.124309"
+      }
+    }
+  ]
+}

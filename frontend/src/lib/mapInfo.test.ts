@@ -93,6 +93,10 @@ test("the map wraps its credits after collapsing them, behind an i named for the
   assert.match(view, /a\[href\^="\/about\/"\][\s\S]{0,120}rememberPlanForPage\(tabSession\(\), window\.location\.hash\)/);
 });
 
-test("Plan shows the how-to in accessibility mode and for a loop; otherwise a screen reader still hears it there", () => {
-  assert.match(src("../app/Planner.tsx"), /<p className=\{accessMode \|\| loopVias \? "hint" : "visually-hidden"\}>\{searchLede\(loopVias, accessMode\)\}<\/p>/);
+test("Plan shows the how-to in accessibility mode only; otherwise a screen reader still hears it there (Stephen 2026-10-20: simpler)", () => {
+  const planner = src("../app/Planner.tsx");
+  assert.match(planner, /<p className=\{accessMode \? "hint" : "visually-hidden"\}>\{searchLede\(loopVias, accessMode\)\}<\/p>/);
+  assert.match(planner, /<p className=\{accessMode \? "hint" : "visually-hidden"\}>\{loneStartHint\(preset, loopVias, accessMode\)\}<\/p>/);
+  // The loop's hint is the box's description, never shown.
+  assert.match(planner, /<p className="visually-hidden loop-hint" id=\{loopHintId\}>/);
 });

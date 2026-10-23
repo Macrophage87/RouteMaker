@@ -23,6 +23,8 @@ import {
   StressLegend,
   StressZoomNotes,
   UNKNOWN_SURFACE_LEGEND,
+  POPULAR_LEGEND,
+  GRAVEL_LEGEND,
   UNPAVED_LEGEND,
   ZOOMED_OUT,
   dashPx,
@@ -35,6 +37,7 @@ import {
 import {
   FACILITIES,
   LEGEND_SWATCH_PX,
+  POPULAR_BAND,
   PALETTES,
   UNKNOWN_SURFACE_DASH,
   UNPAVED_DASH,
@@ -79,9 +82,9 @@ test("with the overlay off, or before the map has a zoom, there is no notice", (
 
 test("the standing hint names the zooms from STRESS_ZOOMS and the zoom the map is at", () => {
   const hint = stressZoomHint(12.7);
-  assert.ok(hint.startsWith(`${ZOOMED_OUT} A named paved trail counts when it runs 2.5 mi (4.0 km) or more at zoom 11, or 5.0 mi (8.0 km) at zoom 10;`));
+  assert.ok(hint.startsWith(`${ZOOMED_OUT} A named paved trail counts when it runs 2.5 mi (4.0 km) or more at zoom 11, or 5.0 mi (8.0 km) at zoom 10 and further out;`));
   assert.ok(hint.includes("an unpaved one needs a regional bike route or a longer run. Trails beside a road count the same way."));
-  assert.ok(hint.includes("Lines are drawn thinner at zooms 10 and 11."));
+  assert.ok(hint.includes("Lines are drawn thinner at zoom 11 and further out."));
   assert.ok(hint.includes(everyTrailFrom(STRESS_ZOOMS.quiet)));
   assert.equal(
     everyTrailFrom(12),
@@ -231,8 +234,8 @@ test("a swatch is long enough for a whole dash cycle of every tier, rail and the
   const rows = swatches(legendHtml());
   rows.forEach((row, r) => {
     assert.equal(row.svgWidth, LEGEND_SWATCH_PX + 4);
-    if (r === currentTiers().length) {
-      // The unpaved ramp: its stretches, one a tier, run the swatch's length end to end.
+    if (r === currentTiers().length || r === currentTiers().length + 1) {
+      // The gravel and dirt ramps: their stretches, one a tier, run the swatch's length end to end.
       const casings = row.lines.filter((_, i) => i % 3 === 0);
       assert.equal(Number(casings.at(-1)!.x2) - Number(casings[0].x1), LEGEND_SWATCH_PX, row.text);
       return;
@@ -241,33 +244,51 @@ test("a swatch is long enough for a whole dash cycle of every tier, rail and the
   });
 });
 
-test("the Unpaved row draws the brown ramp light to dark, each on its casing with the map's dots, and says so in words (OWNER-DECISIONS 302)", () => {
-  for (const strong of [false, true]) {
-    withSwitches(strong, false, () => {
-      const tiers = currentTiers();
-      const widths = legendWidths(tiers);
-      const row = swatches(legendHtml())[tiers.length];
-      assert.equal(row.text, `Unpaved ${UNPAVED_LEGEND}`);
-      assert.equal(row.lines.length, 3 * tiers.length);
-      tiers.forEach((tier, i) => {
-        const [casing, line, mark] = row.lines.slice(3 * i, 3 * i + 3);
-        assert.equal(casing.stroke, tier.unpavedCasing, `${tier.short} casing`);
-        assert.equal(Number(casing["stroke-width"]), widths.tiers[0].casing);
-        assert.equal(line.stroke, tier.unpavedColor, `${tier.short} brown`);
-        assert.equal(line["stroke-dasharray"], undefined);
-        assert.equal(mark.stroke, tier.unpavedCasing);
-        assert.equal(Number(mark["stroke-width"]), unpavedWidth(tiers[0]));
-        assert.equal(mark["stroke-dasharray"], dashPx(UNPAVED_DASH, unpavedWidth(tiers[0])));
+for (const [name, gravel, offset] of [["Gravel", true, 0], ["Dirt", false, 1]] as const) {
+  test(`the ${name} row draws its ramp light to dark, each on its casing with the map's dots, and says so in words (OWNER-DECISIONS 302; the owner, 2026-10-21)`, () => {
+    for (const strong of [false, true]) {
+      withSwitches(strong, false, () => {
+        const tiers = currentTiers();
+        const widths = legendWidths(tiers);
+        const row = swatches(legendHtml())[tiers.length + offset];
+        assert.equal(row.text, `${name} ${gravel ? GRAVEL_LEGEND : UNPAVED_LEGEND}`);
+        assert.equal(row.lines.length, 3 * tiers.length);
+        tiers.forEach((tier, i) => {
+          const [casing, line, mark] = row.lines.slice(3 * i, 3 * i + 3);
+          const edge = gravel ? tier.gravelCasing : tier.unpavedCasing;
+          assert.equal(casing.stroke, edge, `${tier.short} casing`);
+          assert.equal(Number(casing["stroke-width"]), widths.tiers[0].casing);
+          assert.equal(line.stroke, gravel ? tier.gravelColor : tier.unpavedColor, `${tier.short} line`);
+          assert.equal(line["stroke-dasharray"], undefined);
+          assert.equal(mark.stroke, edge);
+          assert.equal(Number(mark["stroke-width"]), unpavedWidth(tiers[0]));
+          assert.equal(mark["stroke-dasharray"], dashPx(UNPAVED_DASH, unpavedWidth(tiers[0])));
+        });
       });
-    });
-  }
-  assert.match(UNPAVED_LEGEND, /^Brown, darker = busier: gravel, dirt or other unpaved surface, with the dashes above and a dotted center line\. An unpaved trail has no edge lines, which a paved path has\. A short bridge is drawn like the trail it is on; tap it to read its own surface\.$/);
-  assert.doesNotMatch(UNPAVED_LEGEND, /path edges/, "plain words (the a11y review's N2)");
+    }
+  });
+}
+
+test("the surface rows' words: grey gravel, brown dirt, in plain words", () => {
+  assert.match(GRAVEL_LEGEND, /^Grey, darker = busier: gravel, or an unpaved surface with nothing rougher mapped/);
+  assert.match(UNPAVED_LEGEND, /^Brown, darker = busier: dirt, grass or another natural surface, or a rutted unpaved track, with the dashes above and a dotted center line\. An unpaved trail has no edge lines, which a paved path has\. A short bridge is drawn like the trail it is on; tap it to read its own surface\.$/);
+  for (const words of [GRAVEL_LEGEND, UNPAVED_LEGEND]) assert.doesNotMatch(words, /path edges/, "plain words (the a11y review's N2)");
+});
+
+
+test("the legend has the popular corridors' row after the surfaces: the band's colour under LTS 1's line, in words", () => {
+  const rows = swatches(legendHtml());
+  const popular = rows[currentTiers().length + 3];
+  assert.ok(popular.text.startsWith("Popular corridor"), popular.text);
+  assert.equal(popular.lines[0].stroke, POPULAR_BAND.color);
+  assert.equal(popular.lines.at(-1)!.stroke, currentTiers()[0].color);
+  assert.match(POPULAR_LEGEND, /Capital Bikeshare/);
+  assert.match(POPULAR_LEGEND, /still shows how stressful/);
 });
 
 test("the bike-facility legend lists the rails the map has drawn, in FACILITIES' order, each with its dash under the casing", () => {
   const widths = legendWidths(currentTiers());
-  const rows = swatches(legendHtml()).slice(currentTiers().length + 2);
+  const rows = swatches(legendHtml()).slice(currentTiers().length + 4);
   assert.deepEqual(rows.map((r) => r.text.split(" ")[0]), FACILITIES.map((f) => f.short));
   FACILITIES.forEach((facility, i) => {
     const [rail, casing] = rows[i].lines;
@@ -278,7 +299,7 @@ test("the bike-facility legend lists the rails the map has drawn, in FACILITIES'
     assert.equal(Number(casing["stroke-width"]), widths.facilityCasing);
   });
   // Only what the map has drawn; none, and there is no facility legend at all.
-  assert.deepEqual(swatches(legendHtml(new Set(["lane"]))).slice(currentTiers().length + 2).map((r) => r.text.split(" ")[0]), ["Painted"]);
+  assert.deepEqual(swatches(legendHtml(new Set(["lane"]))).slice(currentTiers().length + 4).map((r) => r.text.split(" ")[0]), ["Painted"]);
   assert.doesNotMatch(legendHtml(new Set()), /Bike facility legend|Sharrows/);
 });
 
@@ -304,7 +325,7 @@ test("the legend passes the zoom and whether the overlay is on to the zoom notes
 test("the trails' key has a row for their line, in words, at every zoom, while their layer is on, and the stress list does not repeat it (OWNER-DECISIONS 452a, 454; the owner, 2026-10-19)", () => {
   assert.deepEqual(MTB_LEGEND, {
     short: "Mountain-bike trail",
-    label: "Only off-road ride types route on these (Gravel, Mountain Goat and Mountain Bike): grey dashes on a white edge with dark ticks for an unrated trail. Rated ones show by level below; from the next map update, Gravel and Mountain Goat ride green (level 1).",
+    label: "Only off-road ride types route on these (Gravel, Mountain Goat and Mountain Bike): brown dashes on a white edge with dark ticks for an unrated trail. Rated ones show by level below; from the next map update, Gravel and Mountain Goat ride green (level 1).",
   });
   for (const strong of [false, true]) {
     withSwitches(strong, false, () => {
@@ -400,7 +421,7 @@ test("the legend has a Surface unknown row: LTS 1's casing and line in short das
       const tiers = currentTiers();
       const widths = legendWidths(tiers);
       const rows = swatches(legendHtml());
-      const row = rows[tiers.length + 1];
+      const row = rows[tiers.length + 2];
       assert.ok(row.text.startsWith("Surface unknown"), row.text);
       assert.ok(row.text.includes(UNKNOWN_SURFACE_LEGEND));
       const [casing, line] = row.lines;
