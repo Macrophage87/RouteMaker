@@ -5,8 +5,11 @@ import assert from "node:assert/strict";
 import {
   ROUTE_THROUGH_LABEL,
   UNDO_BYPASS_LABEL,
+  areaClosuresAsk,
   areaClosuresPath,
+  closuresKey,
   markerItems,
+  viewInside,
   mergeClosures,
   parseAreaClosures,
   bypassFor,
@@ -222,7 +225,13 @@ test("DDOT's permits are flagged only: drawn behind Plan's DC permits switch, of
 test("the view's closures are asked for zoomed in only, cut to the server's largest view, permits only when on", () => {
   const view = { west: -77.2, south: 39.0, east: -77.0, north: 39.2 };
   assert.equal(areaClosuresPath(view, 10.9), null);
-  assert.equal(areaClosuresPath(view, 14), `/api/closures/map?bbox=${encodeURIComponent("-77.2,39,-77,39.2")}`);
+  const small = { west: -77.11, south: 39.1, east: -77.09, north: 39.12 };
+  // Padded to twice the view, so a nudge asks nothing more.
+  assert.equal(areaClosuresPath(small, 14), `/api/closures/map?bbox=${encodeURIComponent("-77.12,39.09,-77.08,39.13")}`);
+  const ask = areaClosuresAsk(small, 14)!;
+  assert.ok(viewInside({ west: -77.105, south: 39.105, east: -77.085, north: 39.125 }, ask.box));
+  assert.ok(!viewInside({ west: -77.2, south: 39.105, east: -77.085, north: 39.125 }, ask.box));
+  assert.ok(!viewInside(small, null));
   assert.ok(areaClosuresPath(view, 14, true)!.endsWith("&permits=true"));
   const wide = areaClosuresPath({ west: -78, south: 38, east: -76, north: 40 }, 12)!;
   const [w, s, e, n] = decodeURIComponent(wide.split("bbox=")[1]).split(",").map(Number);
@@ -268,4 +277,11 @@ test("a reviewer's closure gets one marker on its middle piece with no route, an
   assert.deepEqual(markerItems([...pieces, other, item()]).map((i) => i.id), ["reviewer-4-2", "reviewer-3-0", "mpd-1845231-0"]);
   const onRoute = pieces.map((p) => ({ ...p, effect: "routed_round" as const, can_bypass: true }));
   assert.equal(markerItems(onRoute).length, 5);
+});
+
+test("the same answer again leaves the map alone; a changed end or wording redraws it", () => {
+  const a = [item({ id: "reviewer-3-0", end: "2027-03-01T05:00:00Z" })];
+  assert.equal(closuresKey(a), closuresKey([{ ...a[0] }]));
+  assert.notEqual(closuresKey(a), closuresKey([{ ...a[0], end: "2027-03-02T05:00:00Z" }]));
+  assert.notEqual(closuresKey(a), closuresKey([]));
 });

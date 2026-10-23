@@ -825,8 +825,9 @@ def closure_row(
 
 # The kinds drawn with no route: the route map's, and a rideable work zone (orange).
 AREA_KINDS = (*MAP_KINDS, rules.PENALTY)
-# At most this many in one view, red first.
-AREA_MOST = 150
+# At most this many in one view (each is a marker a keyboard reaches): red first, then
+# nearest the view's middle.
+AREA_MOST = 60
 # The largest view asked about, degrees (about 21 by 21 mi here).
 AREA_MAX_LON = 0.4
 AREA_MAX_LAT = 0.3
@@ -862,12 +863,17 @@ def area_rows(box, permits: bool = False, now: datetime | None = None) -> list[d
     (`closure_row`, effect "none", with words for the map instead of a route's)."""
     now = now or _now()
     west, south, east, north = box
+    cx, cy = (west + east) / 2, (south + north) / 2
     rows = []
     for zone in snapshot().zones:
         if zone.kind not in AREA_KINDS or not rules.active(zone, now) or len(zone.line) < 2:
             continue
         possible = rules.possible(zone)
         if possible and (not permits or zone.kind == rules.PENALTY):
+            continue
+        lons = [lon for lon, _lat in zone.line]
+        lats = [lat for _lon, lat in zone.line]
+        if max(lons) < west or min(lons) > east or max(lats) < south or min(lats) > north:
             continue
         if not any(west <= lon <= east and south <= lat <= north for lon, lat in zone.line):
             continue
@@ -879,7 +885,14 @@ def area_rows(box, permits: bool = False, now: datetime | None = None) -> list[d
         if not possible:
             row["effect_text"] = AREA_EFFECT_TEXT[zone.kind]
         rows.append(row)
-    rows.sort(key=lambda r: (r["effect"] == rules.POSSIBLE, r["severity"] != "red", r["id"]))
+    rows.sort(
+        key=lambda r: (
+            r["effect"] == rules.POSSIBLE,
+            r["severity"] != "red",
+            (r["point"][0] - cx) ** 2 + (r["point"][1] - cy) ** 2,
+            r["id"],
+        )
+    )
     return rows[:AREA_MOST]
 
 

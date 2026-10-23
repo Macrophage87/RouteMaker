@@ -158,7 +158,9 @@ import {
   closureMarkerName,
   closuresOf,
   AREA_POLL_MS,
-  areaClosuresPath,
+  areaClosuresAsk,
+  closuresKey,
+  viewInside,
   markerItems,
   mergeClosures,
   loadAreaClosures,
@@ -2142,32 +2144,48 @@ export function MapView(props: Props) {
     if (!map) return;
     let controller: AbortController | null = null;
     let settle = 0;
-    const refresh = async () => {
+    let asked: { west: number; south: number; east: number; north: number } | null = null;
+    let shown = "";
+    const refresh = async (force: boolean) => {
       if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
       const b = map.getBounds();
-      const path = areaClosuresPath({ west: b.getWest(), south: b.getSouth(), east: b.getEast(), north: b.getNorth() }, map.getZoom(), props.permitsOn);
+      const view = { west: b.getWest(), south: b.getSouth(), east: b.getEast(), north: b.getNorth() };
+      const ask = areaClosuresAsk(view, map.getZoom(), props.permitsOn);
+      // A small move (the ride's follow camera, a nudge) stays inside what was asked: nothing more is asked, and an
+      // open card stays open.
+      if (!force && ask && viewInside(view, asked)) return;
       controller?.abort();
-      if (!path) {
-        setAreaClosures([]);
+      if (!ask) {
+        asked = null;
+        if (shown !== "") {
+          shown = "";
+          setAreaClosures([]);
+        }
         return;
       }
       const mine = new AbortController();
       controller = mine;
       // Offline or refused: the last closures stay drawn until the next ask.
-      const items = await loadAreaClosures(path, mine.signal);
-      if (items && !mine.signal.aborted) setAreaClosures(items);
+      const items = await loadAreaClosures(ask.path, mine.signal);
+      if (!items || mine.signal.aborted) return;
+      asked = ask.box;
+      // The same closures as drawn: the markers, and any open card, are left as they are.
+      const key = closuresKey(items);
+      if (key === shown) return;
+      shown = key;
+      setAreaClosures(items);
     };
     const onMove = () => {
       window.clearTimeout(settle);
-      settle = window.setTimeout(() => void refresh(), 400);
+      settle = window.setTimeout(() => void refresh(false), 400);
     };
     const onVisible = () => {
-      if (document.visibilityState !== "hidden") void refresh();
+      if (document.visibilityState !== "hidden") void refresh(true);
     };
     map.on("moveend", onMove);
     document.addEventListener("visibilitychange", onVisible);
-    const poll = window.setInterval(() => void refresh(), AREA_POLL_MS);
-    void refresh();
+    const poll = window.setInterval(() => void refresh(true), AREA_POLL_MS);
+    void refresh(true);
     return () => {
       controller?.abort();
       window.clearTimeout(settle);

@@ -534,6 +534,7 @@ class TestAreaClosures:
         works = rows[1]
         assert works["title"] == "Oak Street: construction"
         assert works["effect_text"].startswith("Construction: still rideable")
+        assert works["when_text"].startswith("Construction"), works["when_text"]
         from core import api
 
         for row in rows:

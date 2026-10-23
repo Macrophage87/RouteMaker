@@ -98,16 +98,36 @@ export interface View {
   north: number;
 }
 
-/** The request's path for the map's view, cut to the server's largest around its middle; null when zoomed out. */
-export function areaClosuresPath(view: View, zoom: number, permits = false): string | null {
+/**
+ * What to ask for the map's view: the view padded to twice its size around its middle, cut to the server's largest,
+ * so small moves (the ride's follow camera eases every fix) stay inside what was asked and ask nothing more
+ * (`viewInside`). Null when zoomed out.
+ */
+export function areaClosuresAsk(view: View, zoom: number, permits = false): { path: string; box: View } | null {
   if (zoom < AREA_MIN_ZOOM) return null;
   const cx = (view.west + view.east) / 2;
   const cy = (view.south + view.north) / 2;
-  const halfLon = Math.min(view.east - view.west, AREA_MAX_LON) / 2;
-  const halfLat = Math.min(view.north - view.south, AREA_MAX_LAT) / 2;
+  const halfLon = Math.min((view.east - view.west) * 2, AREA_MAX_LON) / 2;
+  const halfLat = Math.min((view.north - view.south) * 2, AREA_MAX_LAT) / 2;
   const r = (v: number) => Math.round(v * 1e4) / 1e4;
-  const bbox = [r(cx - halfLon), r(cy - halfLat), r(cx + halfLon), r(cy + halfLat)].join(",");
-  return `/api/closures/map?bbox=${encodeURIComponent(bbox)}${permits ? "&permits=true" : ""}`;
+  const box = { west: r(cx - halfLon), south: r(cy - halfLat), east: r(cx + halfLon), north: r(cy + halfLat) };
+  const bbox = [box.west, box.south, box.east, box.north].join(",");
+  return { path: `/api/closures/map?bbox=${encodeURIComponent(bbox)}${permits ? "&permits=true" : ""}`, box };
+}
+
+/** The request's path for the map's view (`areaClosuresAsk`); null when zoomed out. */
+export function areaClosuresPath(view: View, zoom: number, permits = false): string | null {
+  return areaClosuresAsk(view, zoom, permits)?.path ?? null;
+}
+
+/** Whether the view lies wholly inside what was asked. */
+export function viewInside(view: View, box: View | null): boolean {
+  return !!box && view.west >= box.west && view.east <= box.east && view.south >= box.south && view.north <= box.north;
+}
+
+/** What tells two answers apart for the map: the same ids, ends and wording draw the same, so the map is left alone. */
+export function closuresKey(items: readonly ClosureItem[]): string {
+  return items.map((i) => `${i.id}|${i.end ?? ""}|${i.when_text}|${i.severity}`).join("\n");
 }
 
 /** The answer's closures, each checked; [] when it is not the answer's shape. */
