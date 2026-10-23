@@ -179,7 +179,8 @@ CONTENT_TYPE = "application/vnd.mapbox-vector-tile"
 # (TRAIL_NAME_RULE). 12: a z12-13 feature in a city grid carries `dense` (DENSE_RULE; v0.10.2).
 # 13: the popular bike corridors' `popular`, z10-11 keep them and the long calm roads
 # (`popular_and_calm`), and a long trail's name from z10. 14: a major corridor's name,
-# `trail_name` on a way of the top popular class (POPULAR_NAMED_MIN_CLASS).
+# `trail_name` on a way of the top popular class (POPULAR_NAMED_MIN_CLASS), and `dense` from
+# 8 km a square (DENSE_ROAD_M).
 FORMAT_VERSION = 14
 
 # Five minutes (OWNER-DECISIONS 460.6, "5 min sounds good"): an instance admin's change in

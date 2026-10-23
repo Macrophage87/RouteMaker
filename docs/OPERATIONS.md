@@ -5156,7 +5156,8 @@ pronounced than other roads". Each street has a corridor class (`segment.bike_po
 things look busy / just prioritize those streets in view"): in a city grid a class 2 or 3
 street is drawn from z12 and a class 1 street from z13 (the city ladder, frontend
 `CITY_LADDER`), and every class sorts over the lines of its stress level. After the classes
-are set the rebuild joins a class's short gaps and drops its stray bits
+are set the rebuild links bike lanes, protected lanes and paths across gaps of one or two
+ways up to 200 m (650 ft) at class 1, joins a class's short gaps and drops its stray bits
 (`bikeshare_corridors.tidy`; the log line "popular corridors joined up and trimmed"). A class 3 way carries its corridor's name for the
 map's labels (`trail_name`; tile format 14). The class comes from two inputs:
 
