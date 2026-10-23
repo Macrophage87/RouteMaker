@@ -479,7 +479,17 @@ def chain(length: float, turns: int) -> list[routing.Piece]:
     ]
 
 
-def read(length=1000.0, turns=0, lts3=0.0, lts4=0.0, red=(), orange=(), events=True, effort=None):
+def read(
+    length=1000.0,
+    turns=0,
+    lts3=0.0,
+    lts4=0.0,
+    red=(),
+    orange=(),
+    events=True,
+    effort=None,
+    hill=0.0,
+):
     evs = [event(100.0 + 10 * i, c) for i, c in enumerate([*red, *orange])] if events else None
     return dataclasses.replace(
         analysis("r", events=evs),
@@ -488,6 +498,7 @@ def read(length=1000.0, turns=0, lts3=0.0, lts4=0.0, red=(), orange=(), events=T
         lts4_m=lts4,
         length_m=length,
         effort_m=length if effort is None else effort,
+        hill_m=hill,
     )
 
 
@@ -643,15 +654,9 @@ class TestTheVerdict:
 
     def test_it_is_never_removed_for_a_worse_blended_distance(self) -> None:
         ctx = context(rate=10.0, maxcalm=True)
-        ctx.hills_weight = 1.0
-        steeper = verdict(
-            read(length=1000.0, turns=2, effort=1000.0), read(length=900.0, effort=1100.0), ctx
-        )
+        steeper = verdict(read(length=1000.0, turns=2), read(length=900.0, hill=200.0), ctx)
         assert not steeper.remove and steeper.reason == "hills"
-        ctx.hills_weight = 0.0
-        assert verdict(
-            read(length=1000.0, turns=2, effort=1000.0), read(length=900.0, effort=1100.0), ctx
-        ).remove
+        assert verdict(read(length=1000.0, turns=2), read(length=900.0, hill=50.0), ctx).remove
 
     def test_junctions_read_for_one_and_not_the_other_cannot_be_weighed(self) -> None:
         a = verdict(read(turns=2, events=False), read())
@@ -1646,11 +1651,10 @@ class TestPinnedBounds:
 
     def test_the_hills_slack_is_a_metre(self) -> None:
         ctx = context(rate=10.0)
-        ctx.hills_weight = 1.0
-        dodge = read(length=1000.0, turns=2, effort=1000.0)
-        got = verdict(dodge, read(length=999.0, effort=1002.0), ctx)
+        dodge = read(length=1000.0, turns=2)
+        got = verdict(dodge, read(length=999.0, hill=3.0), ctx)
         assert not got.remove and got.reason == "hills"
-        assert verdict(dodge, read(length=999.0, effort=1000.9), ctx).remove
+        assert verdict(dodge, read(length=999.0, hill=1.9), ctx).remove
 
     def test_the_same_road_comes_back_within_90_degrees(self) -> None:
         assert dedodge.SAME_ROAD_HEADING_DEG == 90.0

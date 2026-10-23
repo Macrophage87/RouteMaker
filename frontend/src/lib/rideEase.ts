@@ -25,8 +25,8 @@ export type Ease = "calmer" | "flatter";
 
 /** The traffic slider's steps, low to high (calmer); 95 is "Calmest", short of the target-distance top. */
 export const CALMER_STEPS: readonly number[] = [10, 20, 40, 70, 80, 90, 95];
-/** The hills slider's steps, high to low (flatter): hills matter less (or some extra climbing), fastest time, gentler
- * grades, avoids hills. */
+/** The hills slider's steps, high to low (flatter): easy up to 12% (Mountain Goat: some extra climbing), 8%, 5%
+ * and 1%, the grades the slider sets there (`lt1GradePct`). */
 export const FLATTER_STEPS: readonly number[] = [50, 0, -40, HILLS_MIN];
 
 /** Each button's name, heard by screen readers in full; on screen the symbol alone (a car or a mountain, each with a

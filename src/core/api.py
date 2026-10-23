@@ -248,11 +248,12 @@ class RouteIn(Schema):
         ge=presets.HILLS_MIN,
         le=presets.HILLS_MAX,
         description=(
-            "The hills slider: -100 avoids climbing, 0 is the fastest time. Above 0 on every"
-            ' ride type but Mountain Goat it is "fine with hills": that share of the'
-            " router's own climbing charge is taken off, so the more direct of the router's"
-            " routes wins even where it climbs more (two-point plans up to 16 mi (25 km) of"
-            " straight line; `hills_tolerate` in the answer). On Mountain Goat above 0 looks"
+            "The hills slider. Every climb costs the extra time it takes; the slider sets the"
+            " rider's LT1 grade, past which a steepness penalty adds on: 1% at -100, 8% at 0,"
+            " 15% at 100. Above 0 on every"
+            ' ride type but Mountain Goat it is "fine with hills": the router\'s routes are'
+            " compared that way (two-point plans up to 16 mi (25 km) of straight line;"
+            " `hills_tolerate` in the answer). On Mountain Goat above 0 looks"
             " for climbs among the router's alternatives (two-point plans up to 31 mi (50 km)"
             " of straight line). Absent: the preset's own start. Mass Ride stops at 0."
         ),
@@ -954,17 +955,23 @@ class StressAdjustmentOut(Schema):
 
 
 class HillsAvoidOut(Schema):
-    """Present when the hills slider was below its detent: sustained climbs and
-    brake-riding descents weighed among the router's alternatives."""
+    """Present when the hills slider was below its detent: the router's alternatives
+    weighed with each climb at its real time plus a steepness penalty past the LT1 grade
+    the slider sets (`routemaker.hill_cost`), and brake-riding descents."""
 
     candidates: int = Field(description="Routes compared, the router's own included.")
     chosen: int = Field(description="Which was kept; 0 is the router's own route.")
-    weight: float = Field(description="How much the sustained-grade cost counted: -hills/100.")
+    weight: float = Field(description="How much the brake-riding descent cost counted: -hills/100.")
     brake_grade: float | None = Field(
         description="The ride type's grade past which a descent costs; null: never."
     )
-    grade_cost_s: float = Field(description="The kept route's sustained climb and descent cost.")
-    direct_grade_cost_s: float
+    grade_cost_s: float = Field(
+        description=(
+            "The kept route's climbing and descent cost, in the router's cost seconds, over its"
+            " cost with the router's own climbing charge taken off (`routing.hill_s`)."
+        )
+    )
+    direct_grade_cost_s: float = Field(description="The same for the router's own route.")
     extra_distance_m: float
     limited: Literal["two_points", "long_ride", "timed_out"] | None = Field(
         description="Why no alternatives were compared, if none were."
@@ -980,17 +987,17 @@ class HillsAvoidOut(Schema):
 class HillsTolerateOut(Schema):
     """Present when the hills slider was past its detent on a ride type where that means
     "fine with hills" (every one but Mountain Goat; FOLLOWUP-HILLS-TOLERATE, OWNER-DECISIONS
-    242): the router's routes compared with their climbing charge discounted."""
+    242): the router's routes compared with each climb at its real time and a steepness
+    penalty only past the LT1 grade the slider sets, 8% to 15% (`routemaker.hill_cost`)."""
 
     candidates: int = Field(description="Routes compared, the router's own included.")
     chosen: int = Field(description="Which was kept; 0 is the router's own route.")
-    weight: float = Field(
-        description="The share of the router's climbing charge taken off: hills/100."
-    )
+    weight: float = Field(description="The slider's position over 100.")
     discount_s: float = Field(
         description=(
-            "What was taken off the kept route's cost, in the router's cost seconds; 0 at"
-            " the top of the stress slider (`calm_first`)."
+            "The steepness penalty the detent would charge the kept route and this position"
+            " does not, in the router's cost seconds; 0 at the top of the stress slider"
+            " (`calm_first`)."
         )
     )
     extra_climb_m: float = Field(description="The kept route's climb over the router's own.")

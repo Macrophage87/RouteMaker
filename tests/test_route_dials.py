@@ -9,6 +9,7 @@ real, because the breakdown is a PostGIS join.
 from __future__ import annotations
 
 import json
+import math
 from datetime import UTC, datetime
 
 import pytest
@@ -27,7 +28,7 @@ from test_route_api import (
 )
 
 from core import presets, refine, routing, segment_info
-from routemaker import ridetime
+from routemaker import climbs, hill_cost, ridetime
 
 # A route test plans a weekday ride unless it says otherwise: the weekend router
 # is chosen by the day the suite runs on (conftest `weekday_clock`).
@@ -995,15 +996,29 @@ LONG_STEEP_DOWN = ramp_profile([(1500, -0.09)])
 GENTLE_DOWN = ramp_profile([(1500, -0.02)])
 
 
+def with_climb_charge(trip: dict, use_hills: float) -> dict:
+    """`trip` with the router cost (`summary.cost`) the live router gives it on a quiet
+    street at a Hybrid's 11.2 mph (18 km/h): its metres at the quiet cost, plus the climbing
+    charge it adds at `use_hills` (`climbs.router_climb_m`)."""
+    charge_m = climbs.router_climb_m(routing.grade_profile(trip), use_hills)
+    metres = trip["summary"]["length"] * 1000.0
+    trip["summary"]["cost"] = QUIET_HYBRID * (metres + charge_m)
+    return trip
+
+
 def avoid_router(first, alternates) -> FakeRouter:
-    return FakeRouter(
-        {
-            "route": {
-                "trip": _trip(VERTICES, *first),
-                "alternates": [{"trip": _trip(VERTICES, km, elev)} for km, elev in alternates],
-            },
-            "trace_attributes": trace_answer(VERTICES, [(101, 0, 4, 2.0)]),
+    def route(payload):
+        use_hills = payload["costing_options"]["bicycle"].get("use_hills", 1.0)
+        return {
+            "trip": with_climb_charge(_trip(VERTICES, *first), use_hills),
+            "alternates": [
+                {"trip": with_climb_charge(_trip(VERTICES, km, elev), use_hills)}
+                for km, elev in alternates
+            ],
         }
+
+    return FakeRouter(
+        {"route": route, "trace_attributes": trace_answer(VERTICES, [(101, 0, 4, 2.0)])}
     )
 
 
@@ -1015,14 +1030,16 @@ class TestAvoidingSustainedGrades:
         router(avoid_router((2.0, LONG_STEEP), [(2.4, KICK_THEN_FLAT)]))
         body = post(client, {**good_body(), "hills": -60}).json()
         assert body["hills_avoid"]["chosen"] == 1
-        assert body["hills_avoid"]["grade_cost_s"] == 0
+        # The kick still costs its time; the long climb far more.
+        assert 0 < body["hills_avoid"]["grade_cost_s"] < 500
         assert body["hills_avoid"]["direct_grade_cost_s"] > 500
         assert body["hills_avoid"]["weight"] == 0.6
         assert body["distance_m"] == pytest.approx(2400.0)
 
     def test_a_short_kick_is_kept(self, client, facility_segments, router):
+        # At -30 (an LT1 grade of 5.9%) a 120 m kick at 10% costs less than 400 m more riding.
         router(avoid_router((2.0, KICK_THEN_FLAT), [(2.4, ramp_profile([(1500, 0.0)]))]))
-        assert post(client, {**good_body(), "hills": -60}).json()["hills_avoid"]["chosen"] == 0
+        assert post(client, {**good_body(), "hills": -30}).json()["hills_avoid"]["chosen"] == 0
 
     def test_a_steep_descent_is_avoided_by_cargo_and_kept_by_fast(
         self, client, facility_segments, router
@@ -1036,8 +1053,9 @@ class TestAvoidingSustainedGrades:
         assert (fast["chosen"], fast["brake_grade"]) == (0, None)
 
     def test_the_slider_scales_it(self, client, facility_segments, router):
-        # 100 s longer: more than the climb costs at -5, less than at -100.
-        routes = ((2.0, LONG_STEEP), [(3.0, KICK_THEN_FLAT)])
+        # 4 km longer: more than the 9% climb costs at -5 (an LT1 grade of 7.9%), less than
+        # at -100 (1%; `hill_cost.lt1_grade_for`).
+        routes = ((2.0, LONG_STEEP), [(6.0, KICK_THEN_FLAT)])
         router(avoid_router(*routes))
         assert post(client, {**good_body(), "hills": -5}).json()["hills_avoid"]["chosen"] == 0
         router(avoid_router(*routes))
@@ -1081,9 +1099,21 @@ def test_grade_profile_splits_legs():
     assert profile[5] == (90.0, 4.0)
 
 
-def test_choose_gentlest_keeps_the_router_route_on_a_tie():
+def _price(hills=-100, use_hills=None, brake_grade=0.06):
+    """The Default rider's `routing.HillPrice` at a hills slider position."""
+    return routing.HillPrice(
+        mass_kg=90.0,
+        flat_ms=18.0 / 3.6,
+        hills=hills,
+        use_hills=presets.use_hills_for(hills) if use_hills is None else use_hills,
+        descent_weight=max(-hills, 0) / 100,
+        brake_grade=brake_grade,
+    )
+
+
+def test_choose_by_hills_keeps_the_router_route_on_a_tie():
     trips = [_trip(VERTICES, 2.0, LONG_STEEP), _trip(VERTICES, 2.0, LONG_STEEP)]
-    assert routing.choose_gentlest(trips, 1.0, 0.06) == 0
+    assert routing.choose_by_hills(trips, _price(), QUIET_HYBRID) == 0
 
 
 # --- The avoid half ranks by the router's cost (correctness review, 2026-09-28) ---
@@ -1105,13 +1135,16 @@ def test_a_faster_but_busier_alternate_is_not_taken():
     own["summary"]["time"] = 1693.0
     douglass = _costed(VERTICES, 2.5, flat, 4346.0)
     douglass["summary"]["time"] = 1072.0
-    assert routing.choose_gentlest([own, douglass], 0.95, 0.04) == 0
+    assert (
+        routing.choose_by_hills([own, douglass], _price(-95, brake_grade=0.04), QUIET_HYBRID) == 0
+    )
 
 
 def test_a_dearer_alternate_still_wins_on_a_long_climb_it_avoids():
-    own = _costed(VERTICES, 2.0, LONG_STEEP, 1000.0)
-    gentle = _costed(VERTICES, 2.4, KICK_THEN_FLAT, 1100.0)
-    assert routing.choose_gentlest([own, gentle], 1.0, 0.06) == 1
+    own = with_climb_charge(_trip(VERTICES, 2.0, LONG_STEEP), 0.0)
+    gentle = with_climb_charge(_trip(VERTICES, 2.4, KICK_THEN_FLAT), 0.0)
+    gentle["summary"]["cost"] = max(gentle["summary"]["cost"], own["summary"]["cost"]) + 100.0
+    assert routing.choose_by_hills([own, gentle], _price(-100), QUIET_HYBRID) == 1
 
 
 def test_a_trip_without_a_cost_falls_back_to_its_time():
@@ -1202,9 +1235,8 @@ class TestTheAvoidHalfNeverTradesCalmForBusy:
 
 # --- The right half: "fine with hills" (FOLLOWUP-HILLS-TOLERATE, OWNER-DECISIONS 242) --
 
-# 2 km at 5%: 100 m of climbing, which the router's own cost at the detent charges
-# about 13 flat metres a metre climbed (`climbs.ROUTER_CLIMB_FLAT_M`).
-STEADY_5PCT = ramp_profile([(2000, 0.05)])
+# 2 km at 11%: 220 m of climbing, past the detent's LT1 grade (8%) and under the far end's.
+STEADY_11PCT = ramp_profile([(2000, 0.11)])
 QUIET_HYBRID = refine.QUIET_COST_FACTOR * 3.6 / 18.0
 
 
@@ -1216,28 +1248,108 @@ def _costed(vertices, length_km, elevations, cost_s):
     return trip
 
 
-def test_choose_direct_takes_the_climbing_charge_off_by_the_slider():
-    """A longer flat route (cost 300) against a shorter one the router charged 600 for,
-    most of it climbing: at the detent the router's own wins; at the top the climbing
-    charge is gone and the shorter route wins; halfway it is not enough."""
-    flat = _costed(VERTICES, 2.4, [10.0] * 80, 300.0)
-    hilly = _costed(VERTICES, 2.0, STEADY_5PCT, 600.0)
-    charge = routing.tolerated_climb_s(hilly, 1.0, QUIET_HYBRID)
-    assert charge == pytest.approx(100.0 * 13.0 * QUIET_HYBRID, rel=0.02)
-    assert routing.choose_direct([flat, hilly], 0.0, QUIET_HYBRID) == 0
-    assert routing.choose_direct([flat, hilly], 0.5, QUIET_HYBRID) == 0
-    assert routing.choose_direct([flat, hilly], 1.0, QUIET_HYBRID) == 1
+def test_a_climb_under_the_lt1_grade_costs_only_its_time():
+    """The owner, 2026-10-23: "Below LT1 you can basically downshift and chill, so it's
+    essentially the same as a slightly longer flat piece". A 2 km climb at 4%, under the
+    detent's 8% LT1 grade, costs its extra time and nothing more; the router's own charge
+    for it is taken off."""
+    hilly = _trip(VERTICES, 2.0, ramp_profile([(2000, 0.04)]))
+    profile = routing.grade_profile(hilly)
+    time_s, penalty_s = hill_cost.profile_cost_s(profile, 90.0, 5.0, 0)
+    assert penalty_s == 0 and time_s > 0
+    charge_m = climbs.router_climb_m(profile, 1.0)
+    assert routing.hill_s(hilly, _price(0), QUIET_HYBRID) == pytest.approx(
+        QUIET_HYBRID * (time_s * 5.0 - charge_m)
+    )
 
 
-def test_choose_direct_never_credits_a_climb():
-    """Only the router's own climbing charge comes off: of two routes the router priced
-    alike once that charge is gone, the hillier never wins (that is Mountain Goat's climb
-    search), and a tie keeps the first."""
-    flat = _costed(VERTICES, 2.0, [10.0] * 67, 400.0)
-    charge = routing.tolerated_climb_s(_trip(VERTICES, 2.0, STEADY_5PCT), 1.0, QUIET_HYBRID)
-    hilly = _costed(VERTICES, 2.0, STEADY_5PCT, 400.0 + charge)
-    assert routing.choose_direct([flat, hilly], 1.0, QUIET_HYBRID) == 0
-    assert routing.choose_direct([hilly, flat], 1.0, QUIET_HYBRID) == 0
+def test_the_slider_sets_the_lt1_grade():
+    """The owner, 2026-10-23: "You can use the slider standards for the levels ... or 1-15".
+    The slider sets the LT1 grade, 1% at full avoid to 15% at the far end, so the same 8%
+    climb costs less the further right the slider is, and next to nothing past its time at 100."""
+    assert hill_cost.lt1_grade_for(-100) == pytest.approx(0.01)
+    assert hill_cost.lt1_grade_for(0) == pytest.approx(0.08)
+    assert hill_cost.lt1_grade_for(100) == pytest.approx(0.15)
+    steep = _trip(VERTICES, 2.0, ramp_profile([(2000, 0.08)]))
+    cost = {
+        h: routing.hill_s(steep, _price(h, use_hills=1.0), QUIET_HYBRID) for h in (-100, 0, 100)
+    }
+    assert cost[-100] > cost[0] > cost[100]
+    assert hill_cost.profile_cost_s(routing.grade_profile(steep), 90.0, 5.0, 100)[1] < 1.0
+
+
+def test_between_endurance_pace_and_ftp_the_penalty_grows_exponentially():
+    """ "start at a small penalty at 65% which grows until FTP, with a sharp increase after",
+    "Exponential growth curve": past the casual endurance pace (the slider's grade is LT1,
+    75% of FTP) the penalty per second is exponential in the share of FTP past the pace,
+    0 at 65%, 1 at FTP."""
+    lt1 = hill_cost.lt1_grade_for(0)
+    pace = hill_cost.endurance_power_w(lt1, 90.0, 5.0)
+    ftp = hill_cost.lt1_power_w(lt1, 90.0) / 0.75
+    assert pace == pytest.approx(ftp * 0.65)
+    rate = hill_cost.steepness_rate
+    assert rate(0.0) == 0 and rate(-0.1) == 0
+    assert rate(0.05) == pytest.approx(0.06, abs=0.01), "small just past 65%"
+    assert rate(0.35) == pytest.approx(1.0), "one second a second at FTP"
+    assert (rate(0.55) - rate(0.35)) / (rate(0.35) - rate(0.15)) == pytest.approx(math.e), (
+        "e-fold per 20% of FTP"
+    )
+    # The owner's approved table: 0.08, 0.33, 0.66 and 1 s a second at 70, 80, 90 and 100%.
+    for past, approved in [(0.05, 0.08), (0.15, 0.33), (0.25, 0.66), (0.35, 1.0)]:
+        assert rate(past) == pytest.approx(approved, abs=0.15)
+    seconds = 1000.0 / hill_cost.V_MIN_MS
+    need = hill_cost.power_needed_w(lt1, 90.0)
+    _t, penalty_s = hill_cost.window_cost_s(1000.0, lt1, 90.0, 5.0, lt1)
+    assert penalty_s == pytest.approx(seconds * rate((need - pace) / ftp))
+    assert hill_cost.window_cost_s(1000.0, 0.02, 90.0, 5.0, lt1)[1] == 0, "under the pace"
+
+
+def test_pushing_the_bike_up_is_a_last_resort():
+    """The owner, 2026-10-23: "if you are having to push a bike up a hill it's going to be a
+    last resort". Where riding would cost more than pushing, the climb is pushed: its time
+    plus WALK_PENALTY a second pushed, which caps the curve on a grade far past the rider."""
+    lt1 = hill_cost.lt1_grade_for(-60)
+
+    def pushed(grade):
+        push_s = 1000.0 / hill_cost.push_ms(grade)
+        return (push_s - 1000.0 / 5.0, push_s * hill_cost.WALK_PENALTY)
+
+    assert hill_cost.window_cost_s(1000.0, 0.10, 90.0, 5.0, lt1) == pytest.approx(pushed(0.10))
+    assert hill_cost.window_cost_s(1000.0, 0.15, 90.0, 5.0, lt1) == pytest.approx(pushed(0.15))
+    assert sum(pushed(0.10)) > 60 * 60, "an hour and more for 0.6 mi (1 km) pushed"
+    # "pushing a bike up a steep hill is still pretty challenging. 2.5 mph is probably fast":
+    # slower the steeper it is.
+    assert hill_cost.push_ms(0.15) < hill_cost.push_ms(0.06) < hill_cost.WALK_MS
+    ridden = hill_cost.window_cost_s(1000.0, 0.06, 90.0, 5.0, lt1)
+    assert 0 < sum(ridden) < sum(pushed(0.06))
+    # At the detent 14% is still ridden, dearly.
+    assert sum(hill_cost.window_cost_s(1000.0, 0.14, 90.0, 5.0, 0.08)) < sum(pushed(0.14))
+
+
+def test_weight_changes_the_climbing_time_only_and_the_slider_the_penalty():
+    """The owner, 2026-10-23: "Weight should only really affect the extra time component, as
+    heavily loaded touring bikes tend to have good climbing gears. Penalty is by slider." """
+    lt1 = hill_cost.lt1_grade_for(0)
+    light_t, light_p = hill_cost.window_cost_s(1000.0, 0.09, 90.0, 5.0, lt1)
+    heavy_t, heavy_p = hill_cost.window_cost_s(1000.0, 0.09, 130.0, 5.0, lt1)
+    assert heavy_t > light_t
+    assert heavy_p == light_p > 0
+    # A loaded bike crawls in low gears, but no slower than pushing it.
+    walk_s = 1000.0 / hill_cost.push_ms(0.05) - 1000.0 / 5.0
+    assert hill_cost.window_cost_s(1000.0, 0.05, 300.0, 5.0, lt1)[0] <= walk_s
+
+
+def test_fine_with_hills_takes_the_shorter_route_only_where_it_is_quick_enough():
+    """A 2 km climb at 11% against flat routes: at "fine with hills" (LT1 15%) it costs its
+    time alone and beats a flat route 2.6 km longer, not one 0.4 km longer; at the detent
+    (LT1 8%) its steepness penalty keeps even the longer flat one."""
+    flat_long = _costed(VERTICES, 4.6, [10.0] * 80, 4600.0 * QUIET_HYBRID)
+    flat_short = _costed(VERTICES, 2.4, [10.0] * 80, 2400.0 * QUIET_HYBRID)
+    steep = with_climb_charge(_trip(VERTICES, 2.0, STEADY_11PCT), 1.0)
+    top = _price(100, use_hills=1.0)
+    assert routing.choose_by_hills([flat_long, steep], top, QUIET_HYBRID) == 1
+    assert routing.choose_by_hills([flat_short, steep], top, QUIET_HYBRID) == 0
+    assert routing.choose_by_hills([flat_long, steep], _price(0), QUIET_HYBRID) == 0
 
 
 @db
@@ -1245,8 +1357,13 @@ class TestFineWithHills:
     """The right half of the hills slider on every ride type but Mountain Goat."""
 
     def router_with(self, own_way=101, alternate_way=101):
-        own = _costed(VERTICES, 2.4, [10.0] * 80, 300.0)
-        alternate = _costed(list(reversed(VERTICES)), 2.0, STEADY_5PCT, 600.0)
+        # A long flat route, and a short one up 2 km at 11% that the router charged for
+        # its climbing as the live router does at the detent.
+        own = _costed(VERTICES, 4.6, [10.0] * 80, 4600.0 * QUIET_HYBRID)
+        alternate = _trip(list(reversed(VERTICES)), 2.0, STEADY_11PCT)
+        alternate["summary"]["cost"] = QUIET_HYBRID * (
+            2000.0 + climbs.router_climb_m(routing.grade_profile(alternate), 1.0)
+        )
         alternate_shape = alternate["legs"][0]["shape"]
         calls = []
 
@@ -1272,7 +1389,7 @@ class TestFineWithHills:
         assert tolerate["weight"] == 1.0
         assert tolerate["discount_s"] > 0
         assert tolerate["extra_climb_m"] > 0
-        assert tolerate["extra_distance_m"] == pytest.approx(-400.0)
+        assert tolerate["extra_distance_m"] == pytest.approx(-2600.0)
 
     def test_a_little_tolerance_keeps_the_routers_route(self, client, facility_segments, router):
         transport, _calls = self.router_with()
@@ -1316,9 +1433,9 @@ class TestFineWithHills:
         assert body["hills_tolerate"]["limited"] == "long_ride"
 
 
-def test_the_calm_search_discounts_the_climbing_charge_too():
-    """`refine.Analysis.score` takes the same share of the router's climbing charge off
-    (`Context.hills_tolerate_weight`), so the calm search ranks as the choice did."""
+def test_the_calm_search_swaps_the_routers_climbing_charge_for_the_riders():
+    """`refine.Analysis.score` takes the router's climbing charge off and adds the rider's
+    (`hill_m`), so the calm search ranks as the choice did."""
     read = refine.Analysis(
         length_m=2000.0,
         cost_s=600.0,
@@ -1328,13 +1445,11 @@ def test_the_calm_search_discounts_the_climbing_charge_too():
         classes=[],
         events=None,
         router_climb_m=1300.0,
+        hill_m=2000.0,
     )
     ctx = type("Ctx", (), {})()
-    ctx.rate, ctx.weight, ctx.climb_weight, ctx.quiet_cost = 0.0, 1.0, 0.0, 0.44
-    ctx.hills_tolerate_weight = 0.0
-    assert read.score(ctx) == pytest.approx(600.0)
-    ctx.hills_tolerate_weight = 0.5
-    assert read.score(ctx) == pytest.approx(600.0 - 0.5 * 1300.0 * 0.44)
+    ctx.rate, ctx.weight, ctx.quiet_cost = 0.0, 1.0, 0.44
+    assert read.score(ctx) == pytest.approx(600.0 + 0.44 * (2000.0 - 1300.0))
 
 
 @db

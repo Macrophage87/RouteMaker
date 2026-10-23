@@ -609,100 +609,94 @@ length, the one with fewer stops is preferred.</p>
 
 </div></details>
 <h2 id="hills">Hills</h2>
-<p>Hills count in the same calm miles as traffic. Climbing always costs something, because the routing
-engine slows you down uphill. The Hills slider adds to that: left of the middle, steep and long climbs,
-descents where you ride the brakes and the effort of climbing all count more; right of the middle,
-climbing is forgiven, or on Mountain Goat sought out. Avoiding hills never makes a route busier.</p>
+<p>Hills count in the same calm miles as traffic. The Hills slider is a grade: the steepest you can climb
+for several minutes in your lowest gears without labored breathing, from 1% to 15%, with 8% in the middle.
+Every climb costs the time it takes. Past your grade a climb also costs a penalty that grows the steeper
+it gets, and having to push the bike is a last resort. The penalty only helps choose a route: no time
+you see includes it. Avoiding hills never makes a route busier. Not sure of your grade? Leave the slider
+where your ride type starts it: a rough guess plans much the same routes.</p>
 <figure id="fig-hills" class="has-narrow">
 <div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 760 304" role="img" aria-labelledby="fig-hills-t fig-hills-d" focusable="false" style="min-width:547px">
 <title id="fig-hills-t">What the Hills slider turns on</title>
-<desc id="fig-hills-d">The Hills slider runs from Avoids hills on the left, through Fastest time in the middle, to Fine with hills on the right (Seeks hills on Mountain Goat). At every position the routing engine times a climb at a slower speed, so each foot climbed adds about 12 to 31 feet of flat riding. Left of the middle, three costs grow toward the left end: the engine&#x27;s own hill penalty; a price on long climbs and on descents steep enough to ride the brakes, by grade and length together; and the effort of the route counting as distance. Right of the middle, the engine&#x27;s climbing charge is taken off, all of it at the right end; on Mountain Goat the route instead seeks climbs, up to 1.5 times the direct distance. In the calm search, hills also multiply traffic stress: by half the extra effort at the left, a quarter at the middle, and not at all at the right.</desc>
+<desc id="fig-hills-d">The Hills slider runs from 1% on the left, through 8% in the middle, to 15% on the right (Seeks hills on Mountain Goat). At every position each climb costs the time it takes, at an easy pace, no slower than 5 mph [8 km/h] for a standard rider; past the grade you set a steepness penalty grows, for choosing a route only, and pushing the bike is a last resort. Left of the middle, the routing engine&#x27;s own hill penalty shapes which routes it offers, and descents steep enough to ride the brakes are priced by grade and length, both more toward 1%. On Mountain Goat, right of the middle the route seeks climbs, up to 1.5 times the length of the router&#x27;s direct route. In the calm search, hills also multiply traffic stress: by half the extra effort at the left, a quarter at the middle, and not at all at the right.</desc>
 <defs><marker id="ah-hills" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
-<text class="tb" x="20" y="16" text-anchor="start">Avoids hills</text>
-<text class="tb" x="380" y="16" text-anchor="middle">Fastest time</text>
-<text class="tb" x="740" y="16" text-anchor="end">Fine with hills (Mountain Goat: Seeks hills)</text>
+<text class="tb" x="20" y="16" text-anchor="start">1%: avoids hills</text>
+<text class="tb" x="380" y="16" text-anchor="middle">8%</text>
+<text class="tb" x="740" y="16" text-anchor="end">15% (Mountain Goat: Seeks hills)</text>
 <rect class="bx" x="20" y="24" width="720" height="12" rx="6"/>
 <rect x="378" y="20" width="4" height="20" fill="#1c1917"/>
 <rect class="bx" x="20" y="54" width="720" height="42" rx="6"/>
-<text class="tb" x="380.0" y="71.5" text-anchor="middle">Slower uphill speed, at every position</text>
-<text class="ts" x="380.0" y="87.5" text-anchor="middle">each foot climbed adds about 12 to 31 ft of flat riding</text>
-<rect class="bx" x="20" y="104" width="356" height="42" rx="6"/>
-<text class="tb" x="198.0" y="121.5" text-anchor="middle">The engine&#x27;s own hill penalty</text>
-<text class="ts" x="198.0" y="137.5" text-anchor="middle">none at the middle, full at the left</text>
-<rect class="bxa" x="384" y="104" width="356" height="42" rx="6"/>
-<text class="tb" x="562.0" y="121.5" text-anchor="middle">Fine with hills: climbing charge taken off</text>
-<text class="ts" x="562.0" y="137.5" text-anchor="middle">none at the middle, all of it at the right</text>
+<text class="tb" x="380.0" y="71.5" text-anchor="middle">Every climb costs the time it takes</text>
+<text class="ts" x="380.0" y="87.5" text-anchor="middle">at an easy pace; 5 mph [8 km/h] at the least for a standard rider</text>
+<rect class="bx" x="20" y="104" width="720" height="42" rx="6"/>
+<text class="tb" x="380.0" y="121.5" text-anchor="middle">Past your grade, a steepness penalty; pushing the bike is a last resort</text>
+<text class="ts" x="380.0" y="137.5" text-anchor="middle">for choosing a route only: the lower the grade you set, the sooner it starts</text>
 <rect class="bx" x="20" y="154" width="356" height="42" rx="6"/>
-<text class="tb" x="198.0" y="171.5" text-anchor="middle">Long climbs and brake-riding descents</text>
-<text class="ts" x="198.0" y="187.5" text-anchor="middle">priced by grade and length together</text>
+<text class="tb" x="198.0" y="171.5" text-anchor="middle">The engine&#x27;s own hill penalty</text>
+<text class="ts" x="198.0" y="187.5" text-anchor="middle">shapes which routes it offers; full at 1%</text>
 <rect class="bxa" x="384" y="154" width="356" height="42" rx="6"/>
 <text class="tb" x="562.0" y="171.5" text-anchor="middle">Mountain Goat only: seeks climbs</text>
-<text class="ts" x="562.0" y="187.5" text-anchor="middle">up to 1.5 times the direct distance</text>
+<text class="ts" x="562.0" y="187.5" text-anchor="middle">up to 1.5 times the direct route</text>
 <rect class="bx" x="20" y="204" width="356" height="42" rx="6"/>
-<text class="tb" x="198.0" y="221.5" text-anchor="middle">Effort counts as distance</text>
-<text class="ts" x="198.0" y="237.5" text-anchor="middle">half at the halfway point, all at the left</text>
+<text class="tb" x="198.0" y="221.5" text-anchor="middle">Brake-riding descents</text>
+<text class="ts" x="198.0" y="237.5" text-anchor="middle">priced by grade and length; more toward 1%</text>
 <rect class="bx" x="20" y="254" width="720" height="42" rx="6"/>
 <text class="tb" x="380.0" y="271.5" text-anchor="middle">Hills multiply traffic stress (the calm search)</text>
 <text class="ts" x="380.0" y="287.5" text-anchor="middle">x 0.5 of the extra effort at the left, x 0.25 at the middle, none at the right</text>
 </svg>
 </div>
 <div class="fig-narrow">
-<svg viewBox="0 0 320 970" role="img" aria-labelledby="fig-hills-n-t fig-hills-n-d" focusable="false">
+<svg viewBox="0 0 320 862" role="img" aria-labelledby="fig-hills-n-t fig-hills-n-d" focusable="false">
 <title id="fig-hills-n-t">What the Hills slider turns on</title>
-<desc id="fig-hills-n-d">The Hills slider runs from Avoids hills on the left, through Fastest time in the middle, to Fine with hills on the right (Seeks hills on Mountain Goat). At every position the routing engine times a climb at a slower speed, so each foot climbed adds about 12 to 31 feet of flat riding. Left of the middle, three costs grow toward the left end: the engine&#x27;s own hill penalty; a price on long climbs and on descents steep enough to ride the brakes, by grade and length together; and the effort of the route counting as distance. Right of the middle, the engine&#x27;s climbing charge is taken off, all of it at the right end; on Mountain Goat the route instead seeks climbs, up to 1.5 times the direct distance. In the calm search, hills also multiply traffic stress: by half the extra effort at the left, a quarter at the middle, and not at all at the right.</desc>
+<desc id="fig-hills-n-d">The Hills slider runs from 1% on the left, through 8% in the middle, to 15% on the right (Seeks hills on Mountain Goat). At every position each climb costs the time it takes, at an easy pace, no slower than 5 mph [8 km/h] for a standard rider; past the grade you set a steepness penalty grows, for choosing a route only, and pushing the bike is a last resort. Left of the middle, the routing engine&#x27;s own hill penalty shapes which routes it offers, and descents steep enough to ride the brakes are priced by grade and length, both more toward 1%. On Mountain Goat, right of the middle the route seeks climbs, up to 1.5 times the length of the router&#x27;s direct route. In the calm search, hills also multiply traffic stress: by half the extra effort at the left, a quarter at the middle, and not at all at the right.</desc>
 <defs><marker id="ah-hills-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
 <rect class="bx" x="10" y="12" width="300" height="12" rx="6"/>
 <rect x="158" y="8" width="4" height="20" fill="#1c1917"/>
-<text class="tb" x="10" y="48" text-anchor="start">Avoids hills</text>
-<text class="tb" x="310" y="48" text-anchor="end">Fine with hills</text>
-<text class="tb" x="160" y="70" text-anchor="middle">Fastest time (middle)</text>
+<text class="tb" x="10" y="48" text-anchor="start">1%: avoids hills</text>
+<text class="tb" x="310" y="48" text-anchor="end">15%</text>
+<text class="tb" x="160" y="70" text-anchor="middle">8% (middle)</text>
 <text class="ts" x="310" y="92" text-anchor="end">(Mountain Goat: Seeks hills)</text>
 <text class="tb" x="10" y="130" text-anchor="start">At every position</text>
 <rect class="bx" x="10" y="140" width="300" height="8" rx="4"/>
 <rect class="fillacc" x="10" y="140" width="300" height="8" rx="4"/>
 <rect x="159" y="136" width="2" height="16" fill="#1c1917"/>
 <rect class="bx" x="10" y="160" width="300" height="100" rx="6"/>
-<text class="tb" x="160.0" y="185" text-anchor="middle">Slower uphill speed, at every</text>
-<text class="tb" x="160.0" y="205" text-anchor="middle">position</text>
-<text class="ts" x="160.0" y="225" text-anchor="middle">each foot climbed adds about 12 to 31 ft</text>
-<text class="ts" x="160.0" y="245" text-anchor="middle">of flat riding</text>
-<text class="tb" x="10" y="296" text-anchor="start">Left of the middle</text>
-<rect class="bx" x="10" y="306" width="300" height="8" rx="4"/>
-<rect class="fillacc" x="10" y="306" width="150.0" height="8" rx="4"/>
-<rect x="159" y="302" width="2" height="16" fill="#1c1917"/>
-<rect class="bx" x="10" y="326" width="300" height="60" rx="6"/>
-<text class="tb" x="160.0" y="351" text-anchor="middle">The engine&#x27;s own hill penalty</text>
-<text class="ts" x="160.0" y="371" text-anchor="middle">none at the middle, full at the left</text>
-<rect class="bx" x="10" y="394" width="300" height="80" rx="6"/>
-<text class="tb" x="160.0" y="419" text-anchor="middle">Long climbs and brake-riding</text>
-<text class="tb" x="160.0" y="439" text-anchor="middle">descents</text>
-<text class="ts" x="160.0" y="459" text-anchor="middle">priced by grade and length together</text>
-<rect class="bx" x="10" y="482" width="300" height="80" rx="6"/>
-<text class="tb" x="160.0" y="507" text-anchor="middle">Effort counts as distance</text>
-<text class="ts" x="160.0" y="527" text-anchor="middle">half at the halfway point, all at the</text>
-<text class="ts" x="160.0" y="547" text-anchor="middle">left</text>
+<text class="tb" x="160.0" y="185" text-anchor="middle">Every climb costs the time it</text>
+<text class="tb" x="160.0" y="205" text-anchor="middle">takes</text>
+<text class="ts" x="160.0" y="225" text-anchor="middle">at an easy pace; 5 mph [8 km/h] at</text>
+<text class="ts" x="160.0" y="245" text-anchor="middle">the least for a standard rider</text>
+<rect class="bx" x="10" y="268" width="300" height="100" rx="6"/>
+<text class="tb" x="160.0" y="293" text-anchor="middle">Past your grade, a steepness</text>
+<text class="tb" x="160.0" y="313" text-anchor="middle">penalty</text>
+<text class="ts" x="160.0" y="333" text-anchor="middle">for choosing a route only; pushing</text>
+<text class="ts" x="160.0" y="353" text-anchor="middle">the bike is a last resort</text>
+<text class="tb" x="10" y="404" text-anchor="start">Left of the middle</text>
+<rect class="bx" x="10" y="414" width="300" height="8" rx="4"/>
+<rect class="fillacc" x="10" y="414" width="150.0" height="8" rx="4"/>
+<rect x="159" y="410" width="2" height="16" fill="#1c1917"/>
+<rect class="bx" x="10" y="434" width="300" height="60" rx="6"/>
+<text class="tb" x="160.0" y="459" text-anchor="middle">The engine&#x27;s own hill penalty</text>
+<text class="ts" x="160.0" y="479" text-anchor="middle">shapes which routes it offers</text>
+<rect class="bx" x="10" y="502" width="300" height="60" rx="6"/>
+<text class="tb" x="160.0" y="527" text-anchor="middle">Brake-riding descents</text>
+<text class="ts" x="160.0" y="547" text-anchor="middle">priced by grade and length</text>
 <text class="tb" x="10" y="598" text-anchor="start">Right of the middle</text>
 <rect class="bx" x="10" y="608" width="300" height="8" rx="4"/>
 <rect class="fillacc" x="160.0" y="608" width="150.0" height="8" rx="4"/>
 <rect x="159" y="604" width="2" height="16" fill="#1c1917"/>
-<rect class="bxa" x="10" y="628" width="300" height="100" rx="6"/>
-<text class="tb" x="160.0" y="653" text-anchor="middle">Fine with hills: climbing charge</text>
-<text class="tb" x="160.0" y="673" text-anchor="middle">taken off</text>
-<text class="ts" x="160.0" y="693" text-anchor="middle">none at the middle, all of it at the</text>
-<text class="ts" x="160.0" y="713" text-anchor="middle">right</text>
-<rect class="bxa" x="10" y="736" width="300" height="60" rx="6"/>
-<text class="tb" x="160.0" y="761" text-anchor="middle">Mountain Goat only: seeks climbs</text>
-<text class="ts" x="160.0" y="781" text-anchor="middle">up to 1.5 times the direct distance</text>
-<text class="tb" x="10" y="832" text-anchor="start">In the calm search</text>
-<rect class="bx" x="10" y="842" width="300" height="8" rx="4"/>
-<rect class="fillacc" x="10" y="842" width="300" height="8" rx="4"/>
-<rect x="159" y="838" width="2" height="16" fill="#1c1917"/>
-<rect class="bx" x="10" y="862" width="300" height="100" rx="6"/>
-<text class="tb" x="160.0" y="887" text-anchor="middle">Hills multiply traffic stress</text>
-<text class="tb" x="160.0" y="907" text-anchor="middle">(the calm search)</text>
-<text class="ts" x="160.0" y="927" text-anchor="middle">x 0.5 of the extra effort at the left,</text>
-<text class="ts" x="160.0" y="947" text-anchor="middle">x 0.25 at the middle, none at the right</text>
+<rect class="bxa" x="10" y="628" width="300" height="60" rx="6"/>
+<text class="tb" x="160.0" y="653" text-anchor="middle">Mountain Goat only: seeks climbs</text>
+<text class="ts" x="160.0" y="673" text-anchor="middle">up to 1.5 times the direct route</text>
+<text class="tb" x="10" y="724" text-anchor="start">In the calm search</text>
+<rect class="bx" x="10" y="734" width="300" height="8" rx="4"/>
+<rect class="fillacc" x="10" y="734" width="300" height="8" rx="4"/>
+<rect x="159" y="730" width="2" height="16" fill="#1c1917"/>
+<rect class="bx" x="10" y="754" width="300" height="100" rx="6"/>
+<text class="tb" x="160.0" y="779" text-anchor="middle">Hills multiply traffic stress</text>
+<text class="tb" x="160.0" y="799" text-anchor="middle">(the calm search)</text>
+<text class="ts" x="160.0" y="819" text-anchor="middle">x 0.5 of the extra effort at the left,</text>
+<text class="ts" x="160.0" y="839" text-anchor="middle">x 0.25 at the middle, none at the right</text>
 </svg>
 </div>
 <figcaption>Which hill costs apply at each position of the Hills slider.</figcaption>
@@ -711,61 +705,59 @@ climbing is forgiven, or on Mountain Goat sought out. Avoiding hills never makes
 <div class="more-body">
 
 
-<h3>How hard a grade is</h3>
-<p>RouteMaker measures a grade by the effort it takes, from the standard cycling power model<sup class="cite"><a href="#ref-14" aria-label="source 14">[14]</a></sup>:
-the force of rolling, air and climbing at a steady 12.4 mph [20 km/h]<sup class="cite"><a href="#ref-15" aria-label="source 15">[15]</a></sup>. The first column
-below is that effort, as distance on the flat. A heavier rider and bike pay more for a climb: the weight
-saved in Settings is used, from 55 to 1,543 lb [25 to 700 kg]. A descent never counts as less than the
-flat, so it can never pay for a climb. Grades are read over at least 1,000 ft [300 m], because the
+<h3>Time, always</h3>
+<p>RouteMaker works a climb out with the standard cycling power model<sup class="cite"><a href="#ref-14" aria-label="source 14">[14]</a></sup><sup class="cite"><a href="#ref-15" aria-label="source 15">[15]</a></sup>. Grades are read over at least 1,000 ft [300 m], because the
 elevation data<sup class="cite"><a href="#ref-16" aria-label="source 16">[16]</a></sup>, sampled every 98 ft [30 m], is too noisy for steeper pitches over a shorter
-distance to be trusted.</p>
-<div class="table-wrap" tabindex="0" role="region" aria-label="What a grade costs, for a rider and bike of 198 lb [90 kg] together">
+distance to be trusted, and a short kick averages out. On each rise a standard rider and bike of 198 lb
+[90 kg] climb at an easy endurance pace, 65% of FTP, never faster than the ride's speed on the flat and never
+slower than 5 mph [8 km/h]. The extra seconds over the flat cost what the same seconds of flat riding do.
+Your weight in Settings moves at that same power, so a loaded bike climbs slower, down to walking pace; the
+penalty below does not change with weight, since loaded bikes usually have low gears.</p>
+<h3>Past your grade</h3>
+<p>The penalty follows a power curve, though you set only the grade: your grade is where holding 5 mph
+[8 km/h] in a low gear takes the top of Zone 2, 75% of FTP<sup class="cite"><a href="#ref-17" aria-label="source 17">[17]</a></sup>, about where breathing starts to
+get harder<sup class="cite"><a href="#ref-18" aria-label="source 18">[18]</a></sup>. Where a climb takes more than the endurance pace, each second of it adds a
+penalty that grows quickly with the power past that pace:</p>
+<div class="table-wrap" tabindex="0" role="region" aria-label="The steepness penalty, past the endurance pace">
 <table>
-<caption>What a grade costs, for a rider and bike of 198 lb [90 kg] together</caption>
-<thead><tr><th scope="col">Grade</th><th scope="col">Effort: each foot ridden counts as</th><th scope="col">Routing engine: each foot climbed adds</th></tr></thead>
+<caption>The steepness penalty, past the endurance pace</caption>
+<thead><tr><th scope="col">Power a climb takes, as a share of FTP</th><th scope="col">Penalty for each second of it</th></tr></thead>
 <tbody>
-<tr><th scope="row">3%</th><td>3.1 ft on the flat</td><td>12 ft of flat riding</td></tr>
-<tr><th scope="row">4%</th><td>3.7 ft</td><td>12.5 ft</td></tr>
-<tr><th scope="row">6%</th><td>5.1 ft</td><td>16 ft</td></tr>
-<tr><th scope="row">8%</th><td>6.5 ft</td><td>20 ft</td></tr>
-<tr><th scope="row">10%</th><td>7.8 ft</td><td>20 ft</td></tr>
-<tr><th scope="row">15%</th><td>11.2 ft</td><td>31 ft</td></tr>
+<tr><th scope="row">70%</th><td>0.06 s</td></tr>
+<tr><th scope="row">80%</th><td>0.24 s</td></tr>
+<tr><th scope="row">90%</th><td>0.52 s</td></tr>
+<tr><th scope="row">100%</th><td>1 s</td></tr>
+<tr><th scope="row">110%</th><td>1.8 s</td></tr>
+<tr><th scope="row">120%</th><td>3.1 s</td></tr>
 </tbody>
 </table>
 </div>
-<p>The second column is what the routing engine<sup class="cite"><a href="#ref-1" aria-label="source 1">[1]</a></sup> charges at the middle of the slider,
-measured on RouteMaker's own router: it times a climb at a slower speed, so each foot climbed costs as
-much as some feet of flat riding. That charge applies at every position of the slider.</p>
-<h3>Left of the middle: avoiding hills</h3>
-<p>Three costs grow from nothing at the middle to their full size at the far left:</p>
-<ul>
-<li><strong>The engine's own hill penalty</strong><sup class="cite"><a href="#ref-1" aria-label="source 1">[1]</a></sup>, which grows steeply with grade. It
-prices each street on its own, so it cannot tell a short kick from a long climb.</li>
-<li><strong>Long climbs and descents.</strong> RouteMaker reads each route's elevation as a series of
-sustained climbs and descents and prices each by grade and length together. The first 500 ft [150 m] of a
-climb is free, since you can sprint a short kick. Grades up to 3% are free, since you can ride them
-seated all day. Past 3% the cost grows faster than the grade: per foot climbed, a 10% climb costs 3.5
-times a 5% one. And a long climb costs more than in proportion: the price per foot doubles 0.62 mi [1 km]
-past the first 500 ft and triples at 1.24 mi [2 km]. A descent steeper than the ride type's braking grade costs
-the same way, since you are riding the brakes. The engine offers a few routes, and one of its others
-wins only when what it saves here outweighs its other costs.</li>
-<li><strong>Effort as distance.</strong> In the calm search, the distance a route is charged for becomes a
-blend of the real distance and the effort distance: half each at the halfway point, all effort at the far
-left.</li>
-</ul>
-<div class="table-wrap" tabindex="0" role="region" aria-label="What a sustained climb or descent adds, at the far left of the slider">
+<p><strong>Pushing.</strong> Where riding a stretch would cost more than pushing the bike up it, it is
+pushed, at three quarters of the standard hiking speed<sup class="cite"><a href="#ref-19" aria-label="source 19">[19]</a></sup>: 1.9 mph [3.1 km/h] at 6%, 1.7 mph
+[2.7 km/h] at 10% and 1.4 mph [2.2 km/h] at 15%. Each second pushed costs its time plus 4 seconds of
+penalty, so a route you would have to push loses to almost any you can ride.</p>
+<div class="table-wrap" tabindex="0" role="region" aria-label="What 0.62 mi [1 km] of climbing costs a rider and bike of 198 lb [90 kg] at 11 mph [18 km/h]">
 <table>
-<caption>What a sustained climb or descent adds, at the far left of the slider</caption>
-<thead><tr><th scope="col">Climb or descent</th><th scope="col">Added time</th></tr></thead>
+<caption>What 0.62 mi [1 km] of climbing costs a rider and bike of 198 lb [90 kg] at 11 mph [18 km/h]</caption>
+<thead><tr><th scope="col">Your grade</th><th scope="col">The climb</th><th scope="col">Extra time over the flat</th><th scope="col">Penalty</th></tr></thead>
 <tbody>
-<tr><th scope="row">1,000 ft [300 m] up at 6%</th><td>18 seconds</td></tr>
-<tr><th scope="row">0.62 mi [1 km] up at 5%</th><td>about 1.5 minutes</td></tr>
-<tr><th scope="row">0.62 mi [1 km] up at 8%</th><td>about 6 minutes, about what walking it would add</td></tr>
-<tr><th scope="row">1.24 mi [2 km] up at 6%</th><td>about 9 minutes</td></tr>
-<tr><th scope="row">0.62 mi [1 km] down at 8%, on Default (brakes from 6%)</th><td>about 1.5 minutes</td></tr>
+<tr><th scope="row">8%, the middle</th><td>8%</td><td>4.2 min</td><td>1.0 min</td></tr>
+<tr><th scope="row">8%</th><td>10%</td><td>4.2 min</td><td>4.5 min</td></tr>
+<tr><th scope="row">8%</th><td>12%</td><td>4.2 min</td><td>12.6 min</td></tr>
+<tr><th scope="row">Cargo Bike's start (3.8%)</th><td>4%</td><td>4.2 min</td><td>1.5 min</td></tr>
+<tr><th scope="row">Cargo Bike's start (3.8%)</th><td>6%</td><td>4.2 min</td><td>14.4 min</td></tr>
+<tr><th scope="row">Cargo Bike's start (3.8%)</th><td>10%, pushed</td><td>19.2 min</td><td>90.2 min</td></tr>
+<tr><th scope="row">Fast's start (10.8%)</th><td>12%</td><td>4.2 min</td><td>2.2 min</td></tr>
 </tbody>
 </table>
 </div>
+<h3>Choosing among routes</h3>
+<p>Away from the middle of the slider, RouteMaker asks the routing engine<sup class="cite"><a href="#ref-1" aria-label="source 1">[1]</a></sup> for a few
+routes, for a start and an end up to 16 mi [25 km] apart. Left of the middle the engine's own hill
+penalty, full at 1%, shapes which ones it offers. RouteMaker then takes the engine's climbing charge off
+each route, puts your hill cost in its place, and keeps the best; left of the middle, descents steep enough
+to ride the brakes count there too, more toward 1%. In the calm search, at any setting, the distance a
+route is charged for counts its climbing as the flat riding it is worth.</p>
 <div class="table-wrap" tabindex="0" role="region" aria-label="Where a descent starts to cost, by ride type">
 <table>
 <caption>Where a descent starts to cost, by ride type</caption>
@@ -787,30 +779,27 @@ past the ride type's braking grade count too. A 0.62 mi [1 km] climb at 4% on an
 of about 1.7, so it counts as about 0.43 mi [0.69 km] more LTS 3 riding than the same road on the flat;
 at 6%, about 2.0 and 0.64 mi [1.03 km]. On LTS 4, which weighs twice as much, it counts twice that. The
 map's colors and the ratings do not change.</p>
-<h3>Right of the middle</h3>
-<ul>
-<li><strong>Fine with hills</strong>, on every ride type but Mountain Goat: part of the engine's
-climbing charge is taken off, all of it at the far right, where a climb costs what the same distance on
-the flat would. So the shorter route wins even when it climbs more. No more than the engine charged is
-ever taken off, so climbing never earns a route a credit.</li>
-<li><strong>Seeks hills</strong>, on Mountain Goat: the route that climbs most wins, within a distance
-budget of up to 1.25 times the direct route halfway right and 1.5 times at the far right. Among equally
-calm routes, the one that climbs more ranks first. See
-<a href="/about/trails.html">Mountain Bike, Mountain Goat and Gravel</a>.</li>
-</ul>
+<h3>Mountain Goat</h3>
+<p>Mountain Goat's slider keeps its own scale: right of the middle it <strong>seeks hills</strong>. The route
+that climbs most wins, within a distance budget of up to 1.25 times the length of the router's direct route
+halfway right and 1.5 times at the far right. At the top of the Traffic slider the calm search decides
+instead, and among equally calm routes the one that climbs more ranks first. See
+<a href="/about/trails.html">Mountain Bike, Mountain Goat and Gravel</a>.</p>
 <h3>Traffic wins</h3>
-<p>If avoiding hills would give a busier route than the middle of the slider gives, the middle's route
+<p>If your grade would give a busier route than the middle of the slider gives, the middle's route
 is kept. Every ride type starts the slider somewhere, and you can move it:</p>
 <div class="table-wrap" tabindex="0" role="region" aria-label="Where each ride type starts the Hills slider">
 <table>
 <caption>Where each ride type starts the Hills slider</caption>
 <thead><tr><th scope="col">Starts at</th><th scope="col">Ride types</th></tr></thead>
 <tbody>
-<tr><th scope="row">Nearly the far left</th><td>Mass Ride (95% of the way to Avoids hills)</td></tr>
-<tr><th scope="row">60% of the way left</th><td>Bikeshare, Bikeshare + transit, Cargo Bike, Novice and Nervous, Rebalance Ride</td></tr>
-<tr><th scope="row">Halfway left</th><td>Group Ride</td></tr>
-<tr><th scope="row">The middle, Fastest time</th><td>Default, Own Bike + transit, Fast, Trailmaxxing, Gravel</td></tr>
-<tr><th scope="row">Halfway right</th><td>E-bike, Mountain Bike</td></tr>
+<tr><th scope="row">1%</th><td>Mass Ride</td></tr>
+<tr><th scope="row">4%</th><td>Bikeshare (classic bike), Bikeshare + transit, Cargo Bike, Novice and Nervous, Rebalance Ride</td></tr>
+<tr><th scope="row">5%</th><td>Group Ride</td></tr>
+<tr><th scope="row">7%</th><td>Bikeshare (e-bike)</td></tr>
+<tr><th scope="row">8%, the middle</th><td>Default, Own Bike + transit, Trailmaxxing, Gravel</td></tr>
+<tr><th scope="row">11%</th><td>Fast</td></tr>
+<tr><th scope="row">12%</th><td>E-bike, Mountain Bike</td></tr>
 <tr><th scope="row">The far right, Seeks hills</th><td>Mountain Goat</td></tr>
 </tbody>
 </table>
@@ -904,7 +893,7 @@ them work quite differently: <a href="/about/mass-ride.html">Mass Ride</a> and
 <ul>
 <li><strong>The block.</strong> The shorter route starts down 18th Street NW from Massachusetts Avenue
 to N Street: about 400 ft [120 m] of three-lane road with no bike lane, which DDOT rates
-LTS 4<sup class="cite"><a href="#ref-17" aria-label="source 17">[17]</a></sup>. RouteMaker keeps the agency's rating, since an agency's data outranks the formula and a
+LTS 4<sup class="cite"><a href="#ref-20" aria-label="source 20">[20]</a></sup>. RouteMaker keeps the agency's rating, since an agency's data outranks the formula and a
 rating is lowered only with a clear reason.</li>
 <li><strong>What it costs.</strong> In the routing engine's own cost, that one block counts for about
 1,000 seconds of riding, under Default's costs and Trailmaxxing's alike. That is far more than the shorter
@@ -919,9 +908,9 @@ busy road can be worth a detour of a third of a mile [half a kilometre] or more.
 </div></details>
 <h2 id="closures">Closures</h2>
 <p>Only Maryland and Virginia publish work-zone feeds in the national Work Zone Data Exchange
-format<sup class="cite"><a href="#ref-18" aria-label="source 18">[18]</a></sup>: dated, mapped closures in force, with whether bikes can pass. The District publishes
+format<sup class="cite"><a href="#ref-21" aria-label="source 21">[21]</a></sup>: dated, mapped closures in force, with whether bikes can pass. The District publishes
 no such feed. What it has instead is a mix: police traffic advisories and AlertDC emergency
-closures<sup class="cite"><a href="#ref-19" aria-label="source 19">[19]</a></sup>, which name streets in words and are matched to the map; DDOT's TOPS permits<sup class="cite"><a href="#ref-20" aria-label="source 20">[20]</a></sup>,
+closures<sup class="cite"><a href="#ref-22" aria-label="source 22">[22]</a></sup>, which name streets in words and are matched to the map; DDOT's TOPS permits<sup class="cite"><a href="#ref-23" aria-label="source 23">[23]</a></sup>,
 which say a street may be occupied some time in the coming month, not that it is closed now; and
 National Park Service alerts for the parks. So a closure in the District is usually known from an
 advisory or a reviewer, not from an official work-zone record, and planned roadwork in the District
@@ -1004,17 +993,17 @@ where one is set up.</p>
 <text class="ts" x="10" y="682" text-anchor="start">NPS: a note on the route</text>
 </svg>
 </div>
-<figcaption>DDOT permits<sup class="cite"><a href="#ref-20" aria-label="source 20">[20]</a></sup> are listed apart because they are not closures in force. The other feeds describe closures in force<sup class="cite"><a href="#ref-18" aria-label="source 18">[18]</a><a href="#ref-19" aria-label="source 19">[19]</a></sup>.</figcaption>
+<figcaption>DDOT permits<sup class="cite"><a href="#ref-23" aria-label="source 23">[23]</a></sup> are listed apart because they are not closures in force. The other feeds describe closures in force<sup class="cite"><a href="#ref-21" aria-label="source 21">[21]</a><a href="#ref-22" aria-label="source 22">[22]</a></sup>.</figcaption>
 </figure>
 <details class="more"><summary>More: Closures</summary>
 <div class="more-body">
 
 
 <ul>
-<li><strong>State work zones</strong> from Maryland's and Virginia's feeds<sup class="cite"><a href="#ref-18" aria-label="source 18">[18]</a></sup>: a road closed to
+<li><strong>State work zones</strong> from Maryland's and Virginia's feeds<sup class="cite"><a href="#ref-21" aria-label="source 21">[21]</a></sup>: a road closed to
 bikes is left out; a closure that does not mention bikes costs about 10 minutes and gets a warning;
 lane and shoulder work cost a little.</li>
-<li><strong>Police and city alerts</strong> (MPD traffic advisories and AlertDC)<sup class="cite"><a href="#ref-19" aria-label="source 19">[19]</a></sup> are
+<li><strong>Police and city alerts</strong> (MPD traffic advisories and AlertDC)<sup class="cite"><a href="#ref-22" aria-label="source 22">[22]</a></sup> are
 matched to the streets they name and routed around.</li>
 <li><strong>Reviewed closures</strong>, entered or confirmed by a RouteMaker reviewer, are routed
 around and credited to the reviewer. Saved routes get an alert when one affects them.</li>
@@ -1023,10 +1012,10 @@ route detours round a closure, the standard way is shown too, and you are follow
 take. On ride types that skip dirt trails, Road closed on a dirt trail is taken as a sign
 the trails are in bad shape: the rest of that ride's re-routes stay off dirt trails, even to a stop on one,
 and a new plan opts back in. A road that only crosses a dirt trail does not count.</li>
-<li><strong>DDOT TOPS permits</strong><sup class="cite"><a href="#ref-20" aria-label="source 20">[20]</a></sup> are permission to occupy a street some time in the
+<li><strong>DDOT TOPS permits</strong><sup class="cite"><a href="#ref-23" aria-label="source 23">[23]</a></sup> are permission to occupy a street some time in the
 coming month. They never move a route, in Go, Plan or anywhere else, and they raise no warnings. Plan
 has a DC permits layer, off by default, for anyone who wants to look.</li>
-<li><strong>National Park Service alerts</strong><sup class="cite"><a href="#ref-19" aria-label="source 19">[19]</a></sup> are park-wide notices, shown as a note
+<li><strong>National Park Service alerts</strong><sup class="cite"><a href="#ref-22" aria-label="source 22">[22]</a></sup> are park-wide notices, shown as a note
 on a route through the park, never as closures.</li>
 </ul>
 
@@ -1116,12 +1105,15 @@ climbing.</li>
   <li id="ref-12">Washington Area Bicyclist Association, "Bicycle Stop as Yield Arrives in DC", on the District's Safer Streets Amendment Act of 2022. <a href="https://waba.org/?p=54522">waba.org</a></li>
   <li id="ref-13">Transportation Research Board, Highway Capacity Manual, 6th edition (2016), Exhibit 20-2: levels of service at two-way stop-controlled intersections. <a href="https://www.trb.org/Main/Blurbs/175169.aspx">trb.org</a></li>
   <li id="ref-14">Martin, Milliken, Cobb, McCole and Coggan, "Validation of a mathematical model for road cycling power", Journal of Applied Biomechanics 14 (1998). <a href="https://doi.org/10.1123/jab.14.3.276">doi.org/10.1123/jab.14.3.276</a></li>
-  <li id="ref-15">RouteMaker's hill costs, in the code: <a href="https://github.com/Macrophage87/RouteMaker/blob/main/src/routemaker/effort.py">effort.py</a>, <a href="https://github.com/Macrophage87/RouteMaker/blob/main/src/routemaker/climbs.py">climbs.py</a>, <a href="https://github.com/Macrophage87/RouteMaker/blob/main/src/routemaker/grade_stress.py">grade_stress.py</a></li>
+  <li id="ref-15">RouteMaker's hill costs, in the code: <a href="https://github.com/Macrophage87/RouteMaker/blob/main/src/routemaker/effort.py">effort.py</a>, <a href="https://github.com/Macrophage87/RouteMaker/blob/main/src/routemaker/climbs.py">climbs.py</a>, <a href="https://github.com/Macrophage87/RouteMaker/blob/main/src/routemaker/grade_stress.py">grade_stress.py</a>, <a href="https://github.com/Macrophage87/RouteMaker/blob/main/src/routemaker/hill_cost.py">hill_cost.py</a></li>
   <li id="ref-16">U.S. Geological Survey, 3D Elevation Program, 1 arc-second elevation. <a href="https://www.usgs.gov/3d-elevation-program">usgs.gov/3d-elevation-program</a></li>
-  <li id="ref-17">District Department of Transportation, Bicycle Level of Traffic Stress (2020) and Roadway Block (item 6fcba8618ae744949630da3ea12d90eb), Open Data DC, CC BY 4.0. <a href="https://opendata.dc.gov/">opendata.dc.gov</a></li>
-  <li id="ref-18">Work Zone Data Exchange feeds: Maryland DOT SHA (CC0, <a href="https://filter.ritis.org/wzdx_v4.1/mdot.geojson">RITIS</a>) and VDOT through SmarterRoads; specification at <a href="https://github.com/usdot-jpo-ode/wzdx">github.com/usdot-jpo-ode/wzdx</a></li>
-  <li id="ref-19">Metropolitan Police Department traffic advisories (<a href="https://mpdc.dc.gov/newsroom">mpdc.dc.gov/newsroom</a>), AlertDC from DC HSEMA, and the National Park Service alerts API (<a href="https://www.nps.gov/subjects/developer/api-documentation.htm">nps.gov developer</a>)</li>
-  <li id="ref-20">District Department of Transportation, TOPS occupancy permits (CC BY 4.0). <a href="https://maps2.dcgis.dc.gov/dcgis/rest/services/DDOT/TOPS/MapServer/1">DC GIS</a>; <a href="https://catalog.data.gov/dataset/occupancy-permits-via-ddot-tops">catalog.data.gov</a></li>
+  <li id="ref-17">Allen, Coggan and McGregor, Training and Racing with a Power Meter, 3rd edition (VeloPress, 2019): power training levels, Zone 2 up to 75% of FTP. <a href="https://www.simonandschuster.net/books/Training-and-Racing-with-a-Power-Meter/Hunter-Allen/9781948006101">simonandschuster.net</a></li>
+  <li id="ref-18">American Council on Exercise, "ACE-sponsored research: validating the talk test as a measure of exercise intensity": the talk test and the ventilatory threshold. <a href="https://acefitness.org/certifiednewsarticle/888/ace-sponsored-research-validating-the-talk-test-as-a-measure-of-exercise-intensity">acefitness.org</a></li>
+  <li id="ref-19">Tobler, "Three Presentations on Geographical Analysis and Modeling", NCGIA Technical Report 93-1 (1993): the hiking function. <a href="https://escholarship.org/uc/item/05r820mz">escholarship.org</a></li>
+  <li id="ref-20">District Department of Transportation, Bicycle Level of Traffic Stress (2020) and Roadway Block (item 6fcba8618ae744949630da3ea12d90eb), Open Data DC, CC BY 4.0. <a href="https://opendata.dc.gov/">opendata.dc.gov</a></li>
+  <li id="ref-21">Work Zone Data Exchange feeds: Maryland DOT SHA (CC0, <a href="https://filter.ritis.org/wzdx_v4.1/mdot.geojson">RITIS</a>) and VDOT through SmarterRoads; specification at <a href="https://github.com/usdot-jpo-ode/wzdx">github.com/usdot-jpo-ode/wzdx</a></li>
+  <li id="ref-22">Metropolitan Police Department traffic advisories (<a href="https://mpdc.dc.gov/newsroom">mpdc.dc.gov/newsroom</a>), AlertDC from DC HSEMA, and the National Park Service alerts API (<a href="https://www.nps.gov/subjects/developer/api-documentation.htm">nps.gov developer</a>)</li>
+  <li id="ref-23">District Department of Transportation, TOPS occupancy permits (CC BY 4.0). <a href="https://maps2.dcgis.dc.gov/dcgis/rest/services/DDOT/TOPS/MapServer/1">DC GIS</a>; <a href="https://catalog.data.gov/dataset/occupancy-permits-via-ddot-tops">catalog.data.gov</a></li>
 </ol>
 <p class="next">Next: <a href="/about/trails.html">Mountain Bike, Mountain Goat and Gravel</a></p>
 </main>

@@ -4220,7 +4220,7 @@ const JUNCTION_BUTTON = "Suggest a junction change";
   const traffic = await axNode(p, ".dials input[type=range]");
   const sliders = await p.eval("[...document.querySelectorAll('.dials input[type=range]')].slice(0, 2).map((e) => ({ value: Number(e.value), words: e.getAttribute('aria-valuetext') }))");
   check("kids: the sliders moved to its start and say so in words",
-    sliders[0]?.value === 100 && sliders[1]?.value === -60 && traffic?.name === "Traffic" && /^Calmest: /.test(traffic?.valuetext ?? "") && sliders[1]?.words === "Gentler grades" /* -60, Novice's start */,
+    sliders[0]?.value === 100 && sliders[1]?.value === 4 && traffic?.name === "Traffic" && /^Calmest: /.test(traffic?.valuetext ?? "") && sliders[1]?.words === "Easy up to 4%" /* -60, Novice's start, on the slider's grade percent */,
     JSON.stringify({ sliders, traffic }));
   // Edit-route redesign (2026-10-18): the ride type's own button says the type; the Ride settings line, the sliders.
   const line = await axNode(p, ".ride-line-button");

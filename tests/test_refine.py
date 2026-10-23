@@ -85,7 +85,6 @@ def trip_of(name: str, km: float, cost: float = 0.0) -> dict:
 def context(
     rate=0.0,
     weight=1.0,
-    climb_weight=0.0,
     group=False,
     maxcalm=False,
     ceiling_m=None,
@@ -109,7 +108,6 @@ def context(
         group=group,
         rate=rate,
         weight=weight,
-        climb_weight=climb_weight,
         quiet_cost=QUIET_COST,
         maxcalm=maxcalm,
         ceiling_m=ceiling_m,
@@ -145,10 +143,12 @@ class World:
 
 class TestScore:
     def test_the_routers_cost_plus_the_extra_price_in_its_own_units(self) -> None:
-        a = analysis("a", "1133", cost_s=1000.0, events=[event(0, 1000.0)], climb_m=10.0)
-        ctx = context(rate=2.0, weight=0.5, climb_weight=3.0)
+        a = analysis("a", "1133", cost_s=1000.0, events=[event(0, 1000.0)])
+        a = dataclasses.replace(a, hill_m=300.0, router_climb_m=120.0)
+        ctx = context(rate=2.0, weight=0.5)
         penalty_m = 1000.0 / model.FEET_PER_METRE
-        extra = 2.0 * a.exposure_m + 0.5 * penalty_m + 3.0 * 10.0
+        # The router's own climbing charge is swapped for the rider's (`hill_m`, 2026-10-23).
+        extra = 2.0 * a.exposure_m + 0.5 * penalty_m + 300.0 - 120.0
         assert a.score(ctx) == pytest.approx(1000.0 + QUIET_COST * extra)
 
     def test_a_route_with_no_events_costs_no_penalty(self) -> None:
@@ -330,14 +330,16 @@ class TestCalmDetour:
         assert info["original_m"] == 4000.0 and info["excluded"] > 0
 
     def test_a_calm_route_with_a_climb_is_not_free(self, monkeypatch) -> None:
+        """A calm detour that climbs pays the climb's cost (`Analysis.hill_m`), so a big
+        enough climb keeps the original."""
         orig = analysis("o", self.stretch(), cost_s=4000.0)
-        flat = analysis("f", "1" * 40, cost_s=4200.0, climb_m=0.0)
-        hilly = analysis("h", "1" * 40, cost_s=4200.0, climb_m=600.0)
-        for climb_weight, shape in ((0.0, "h"), (12.0, "o")):
+        for hill_m, shape in ((0.0, "h"), (4000.0, "o")):
+            hilly = dataclasses.replace(
+                analysis("h", "1" * 40, cost_s=4200.0, climb_m=600.0), hill_m=hill_m
+            )
             World(monkeypatch, {"o": orig, "h": hilly}, [trip_of("h", 4.0)] * 5)
-            kept, _ = refine.refine(trip_of("o", 4.0), context(rate=1.0, climb_weight=climb_weight))
-            assert kept["legs"][0]["shape"] == shape, climb_weight
-        assert flat.climb_m == 0
+            kept, _ = refine.refine(trip_of("o", 4.0), context(rate=1.0))
+            assert kept["legs"][0]["shape"] == shape, hill_m
 
 
 class TestNoRoute:
