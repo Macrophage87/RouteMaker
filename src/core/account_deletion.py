@@ -46,10 +46,13 @@ DELETED = [
     "Your 311 log",
     "Links you shared while signed in: they stop working",
     "Your AI assistant key, the apps connected to your account, and the routes they drafted",
-    "Your Garmin connection: Garmin is told, and the app leaves your Garmin Connect account",
     "Your suggestions and hazard reports still waiting for review, and your agree or disagree "
     "on other riders' suggestions",
 ]
+# Listed only where riders can connect Garmin, or for an account that has (core.garmin).
+GARMIN_LINE = (
+    "Your Garmin connection: Garmin is told, and the app leaves your Garmin Connect account"
+)
 KEPT = [
     "Suggestions already approved or declined, and map changes made from them, as part of the "
     "map's history, with nothing linking them to you",
@@ -196,12 +199,23 @@ def _list(items: list[str]) -> str:
     return "<ul>" + "".join(f"<li>{escape(i)}.</li>" for i in items) + "</ul>"
 
 
-def _explanation(signed_in: bool = False) -> str:
+def _deleted(user=None) -> list[str]:
+    from . import garmin
+    from .models import GarminLink
+
+    has_link = user is not None and GarminLink.objects.filter(user=user).exists()
+    if not (garmin.offered() or has_link):
+        return DELETED
+    # Beside the other connected services, before the suggestions line.
+    return [*DELETED[:-1], GARMIN_LINE, DELETED[-1]]
+
+
+def _explanation(signed_in: bool = False, user=None) -> str:
     """What deletion does. The banned-account line is for the signed-out page only: a rider
     signed in is not banned."""
     return (
         "<h2>Deleted at once</h2>"
-        + _list(DELETED)
+        + _list(_deleted(user))
         + "<p>You are signed out on every device.</p>"
         + "<h2>Kept</h2>"
         + _list(KEPT)
@@ -244,12 +258,17 @@ def page(request):
     if not signed_in(request):
         return _page(_signed_out() + _explanation(), status=200 if request.method == "GET" else 401)
     if request.method == "GET":
-        return _page(_form(request) + _explanation(signed_in=True))
+        return _page(_form(request) + _explanation(signed_in=True, user=request.user))
     if request.POST.get(CONFIRM_FIELD) != "yes":
-        return _page(_form(request, NOT_CONFIRMED) + _explanation(signed_in=True), status=400)
+        return _page(
+            _form(request, NOT_CONFIRMED) + _explanation(signed_in=True, user=request.user),
+            status=400,
+        )
     try:
         delete_account(request.user)
     except LastAdminRefused:
-        return _page(_form(request, LAST_ADMIN) + _explanation(signed_in=True), status=409)
+        return _page(
+            _form(request, LAST_ADMIN) + _explanation(signed_in=True, user=request.user), status=409
+        )
     django_logout(request)
     return _page(f'<p class="note" role="status">{escape(DONE)}</p><p>{escape(AGAIN)}</p>')

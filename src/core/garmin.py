@@ -25,6 +25,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
+import http.client
 import json
 import os
 import secrets
@@ -188,7 +189,7 @@ class Transport:
                 return response.status, _json(response.read())
         except urllib.error.HTTPError as error:
             return error.code, _json(error.read())
-        except (urllib.error.URLError, TimeoutError, OSError) as error:
+        except (urllib.error.URLError, http.client.HTTPException, TimeoutError, OSError) as error:
             raise GarminError("Garmin could not be reached just now.") from error
 
 
@@ -218,8 +219,10 @@ def exchange(code: str, verifier: str, now: datetime, transport: Transport) -> T
 
 
 def refresh(refresh_token: str, now: datetime, transport: Transport) -> Tokens:
-    """New tokens from the refresh token. Garmin answers 400 or 401 when it has expired or the
-    rider withdrew consent; that is NotConnected, and the link should go."""
+    """New tokens from the refresh token. Garmin answers `invalid_grant` when it has expired or the
+    rider withdrew consent; that is NotConnected, and the link should go. Any other refusal (our
+    own client secret wrong or mid-rotation: `invalid_client`) is a GarminError, and every link is
+    kept for when the secret is right again."""
     status, body = transport.post_form(
         TOKEN_URL,
         {
@@ -229,7 +232,7 @@ def refresh(refresh_token: str, now: datetime, transport: Transport) -> Tokens:
             "refresh_token": refresh_token,
         },
     )
-    if status in (400, 401, 403):
+    if status in (400, 401) and body.get("error") == "invalid_grant":
         raise NotConnected("The Garmin connection has ended. Connect again in Settings.")
     if status != 200:
         raise GarminError("Garmin could not be reached just now.")

@@ -5,7 +5,7 @@
 - GET /auth/garmin/callback: checks the state, exchanges the code once, reads the Garmin user id,
   keeps the encrypted tokens (core.models.GarminLink) and sends the rider back to the app with
   `?garmin=connected` (or `declined`, `failed`), which Settings reads to say what happened.
-- POST /api/garmin/deregistrations: Garmin's notice that riders disconnected in Garmin Connect;
+- POST /garmin/deregistrations: Garmin's notice that riders disconnected in Garmin Connect;
   their links are deleted. It carries no secret, so the most a forged one can do is end a
   connection, which the rider makes again in one tap, and only for a Garmin user id the sender
   already knows (Garmin's are opaque).
@@ -17,6 +17,7 @@ actions; the Settings endpoints are in core.api beside the AI assistant key.
 from __future__ import annotations
 
 import json
+from datetime import datetime
 
 from django.conf import settings
 from django.db import transaction
@@ -69,7 +70,7 @@ def connect_callback(request, transport: garmin.Transport | None = None):
         garmin.Pending(
             state=stored["state"],
             verifier=stored["verifier"],
-            issued_at=timezone.datetime.fromisoformat(stored["issued_at"]),
+            issued_at=datetime.fromisoformat(stored["issued_at"]),
         )
         if isinstance(stored, dict)
         else None

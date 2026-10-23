@@ -17,7 +17,7 @@ from django.utils import timezone
 from test_account_deletion import delete, page_csrf
 from test_accounts import addr, make_user, send, signed_in
 
-from core import garmin, garmin_views
+from core import account_deletion, garmin, garmin_views
 from core.models import GarminLink, User
 
 db = pytest.mark.django_db(transaction=True)
@@ -34,13 +34,14 @@ class FakeGarmin(garmin.Transport):
     def __init__(self, token_status: int = 200, user: str = "garmin-user-1") -> None:
         self.calls: list[tuple[str, str, dict]] = []
         self.token_status = token_status
+        self.token_error = "invalid_grant"
         self.user = user
         self.issued = 0
 
     def post_form(self, url, form):
         self.calls.append(("POST", url, dict(form)))
         if self.token_status != 200:
-            return self.token_status, {"error": "invalid_grant"}
+            return self.token_status, {"error": self.token_error}
         self.issued += 1
         return 200, {
             "access_token": f"access-{self.issued}",
@@ -210,6 +211,18 @@ class TestConnecting:
         assert r["Location"] == "/?garmin=failed"
         assert not GarminLink.objects.filter(user=user).exists() and fake.calls == []
 
+    def test_a_state_from_another_session_connects_nothing(self, fake) -> None:
+        # Someone else's sign-in, finished in this rider's browser, must not link their Garmin here.
+        theirs, _, _ = signed_in()
+        start = theirs.get("/auth/garmin/start", **addr())
+        state = parse_qs(urlparse(start["Location"]).query)["state"][0]
+        mine, user, _ = signed_in()
+        mine.get("/auth/garmin/start", **addr())
+        r = mine.get("/auth/garmin/callback", {"code": "the-code", "state": state}, **addr())
+        assert r["Location"] == "/?garmin=failed"
+        assert fake.calls == []
+        assert not GarminLink.objects.filter(user=user).exists()
+
     def test_saying_no_at_garmin(self, fake) -> None:
         mine, user, _ = signed_in()
         start = mine.get("/auth/garmin/start", **addr())
@@ -266,6 +279,17 @@ class TestUsingAndEnding:
             garmin_views.access_for(user)
         assert not GarminLink.objects.filter(user=user).exists()
 
+    def test_our_own_refused_secret_keeps_every_connection(self, fake) -> None:
+        # A wrong or mid-rotation GARMIN_CLIENT_SECRET is ours to fix, not the rider's to redo.
+        _mine, user, _ = self._linked(fake)
+        GarminLink.objects.filter(user=user).update(access_expires_at=timezone.now())
+        fake.token_status, fake.token_error = 401, "invalid_client"
+        with pytest.raises(garmin.GarminError) as raised:
+            garmin_views.access_for(user)
+        assert not isinstance(raised.value, garmin.NotConnected)
+        link = GarminLink.objects.get(user=user)
+        assert garmin.unseal(link.refresh_token, user.pk) == "refresh-1"
+
     def test_a_token_that_does_not_decrypt_ends_the_connection(self, fake) -> None:
         _mine, user, _ = self._linked(fake)
         other = make_user()
@@ -312,6 +336,31 @@ class TestUsingAndEnding:
         )
         assert r.status_code == 400
         assert GarminLink.objects.filter(user=user).exists()
+
+    def test_the_notice_is_not_there_without_keys(self, fake, settings) -> None:
+        _mine, user, _ = self._linked(fake)
+        settings.GARMIN_CLIENT_SECRET = ""
+        r = Client().post(
+            "/garmin/deregistrations",
+            data=json.dumps({"deregistrations": [{"userId": "garmin-user-1"}]}),
+            content_type="application/json",
+            **addr(),
+        )
+        assert r.status_code == 404
+        assert GarminLink.objects.filter(user=user).exists()
+
+    def test_a_refused_account_deletion_keeps_the_connection(self, fake) -> None:
+        mine, user, _ = self._linked(fake)
+        r = delete(mine, page_csrf(mine), confirm=False)
+        assert r.status_code == 400
+        assert GarminLink.objects.filter(user=user).exists()
+        assert fake.calls == []
+
+    def test_the_deletion_page_names_garmin_only_where_it_applies(self, fake) -> None:
+        mine, _user, _ = self._linked(fake)
+        assert "Garmin" in mine.get(account_deletion.PATH, **addr()).content.decode()
+        other, _, _ = signed_in()
+        assert "Garmin" not in other.get(account_deletion.PATH, **addr()).content.decode()
 
     def test_deleting_the_account_tells_garmin(self, fake) -> None:
         mine, user, _ = self._linked(fake)

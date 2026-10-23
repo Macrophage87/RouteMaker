@@ -20,8 +20,14 @@ import {
 
 export function GarminSetting({ origin = window.location.origin, returned = null }: { origin?: string; returned?: string | null }) {
   const [state, setState] = useState<GarminState | null | undefined>(undefined);
-  const [said, setSaid] = useState(returned ?? "");
+  // Empty at first and filled after mount, so a screen reader hears what Garmin's return said: a live region
+  // announces changes, not the text it was created with.
+  const [said, setSaid] = useState("");
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (returned) setSaid(returned);
+  }, [returned]);
 
   useEffect(() => {
     let live = true;
@@ -29,16 +35,18 @@ export function GarminSetting({ origin = window.location.origin, returned = null
       if (!live) return;
       if (read === undefined) {
         setState(null);
-        setSaid(READ_FAILED);
+        // Kept beside what the return said, not over it.
+        setSaid(returned ? `${returned} ${READ_FAILED}` : READ_FAILED);
       } else setState(read);
     });
     return () => {
       live = false;
     };
-  }, [origin]);
+  }, [origin, returned]);
 
-  // Not set up on this server (or not read yet, or not readable): nothing to offer, so nothing shown.
-  if (!state?.available && !returned) return null;
+  // Nothing to offer and nothing to end (not set up here, not read yet, or not readable): nothing shown. A rider
+  // already connected always sees Disconnect, even where Connect is not offered.
+  if (!state?.available && !state?.connected && !returned) return null;
 
   const disconnect = async () => {
     if (!window.confirm(DISCONNECT_ASK)) return;
@@ -60,19 +68,20 @@ export function GarminSetting({ origin = window.location.origin, returned = null
         </span>
       </summary>
       <p className="hint">{GARMIN_HELP}</p>
-      {state?.available &&
-        (state.connected ? (
-          <div className="assistant-key-actions">
-            <button type="button" className="secondary" disabled={busy} onClick={() => void disconnect()}>
-              Disconnect
-            </button>
-          </div>
-        ) : (
+      {state?.connected ? (
+        <div className="assistant-key-actions">
+          <button type="button" className="secondary" disabled={busy} onClick={() => void disconnect()}>
+            Disconnect
+          </button>
+        </div>
+      ) : (
+        state?.available && (
           // A link, as Sign in with Discord is: it leaves for Garmin's page and comes back here.
           <p className="hint sign-in-line">
             <a href={CONNECT_PATH}>Connect Garmin</a>
           </p>
-        ))}
+        )
+      )}
       <p className="hint" role="status">
         {said}
       </p>
