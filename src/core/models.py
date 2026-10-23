@@ -2057,6 +2057,10 @@ class GarminLink(models.Model):
     derived from KEY_ENCRYPTION_KEY and bound to this account (`garmin.seal`), and the table is
     left out of the nightly backup. Garmin's user id is kept to match Garmin's deregistration
     notice; it is not unique, since one Garmin account may be connected to two RouteMaker accounts.
+
+    `courses` maps a saved route's id (as text) to the Garmin course it was sent as, so sending
+    that route again updates the course in place instead of adding another (core.garmin_courses).
+    It goes with the link: a new connection may be another Garmin account.
     """
 
     user = models.OneToOneField("User", on_delete=models.CASCADE, related_name="garmin_link")
@@ -2067,6 +2071,7 @@ class GarminLink(models.Model):
     refresh_expires_at = models.DateTimeField()
     created_at = models.DateTimeField(auto_now_add=True)
     last_used_at = models.DateTimeField(null=True, blank=True)
+    courses = models.JSONField(default=dict, blank=True)
 
     class Meta:
         db_table = "garmin_link"

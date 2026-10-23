@@ -375,3 +375,215 @@ def test_the_table_is_left_out_of_backups() -> None:
     from config import procrastinate
 
     assert "garmin_link" in procrastinate.BACKUP_EXCLUDED_TABLES
+
+
+class CourseGarmin(FakeGarmin):
+    """FakeGarmin with the Courses API: course ids from 100, answers set per call."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.answers: list[int] = []
+        self.next_id = 100
+
+    def send_json(self, method, url, access, body):
+        self.calls.append((method, url, {"access": access, "body": body}))
+        status = self.answers.pop(0) if self.answers else (200 if method == "POST" else 204)
+        if method == "POST" and status == 200:
+            self.next_id += 1
+            return 200, {**body, "courseId": self.next_id}
+        return status, {}
+
+
+@pytest.fixture
+def courses(monkeypatch) -> CourseGarmin:
+    instance = CourseGarmin()
+    monkeypatch.setattr(garmin, "Transport", lambda: instance)
+    return instance
+
+
+# About 1.1 km due north along a meridian, rising 20 m then falling 5 m.
+LINE = [[-77.0, 38.9, 10.0], [-77.0, 38.905, 30.0], [-77.0, 38.91, 25.0]]
+
+
+class TestCourseBody:
+    def test_points_are_filled_in_to_every_100_m_and_totals_computed(self) -> None:
+        from core import garmin_courses
+
+        body = garmin_courses.build("To the market", "gravel", LINE)
+        points = body["geoPoints"]
+        steps = [
+            garmin_courses._metres((a["longitude"], a["latitude"]), (b["longitude"], b["latitude"]))
+            for a, b in zip(points, points[1:], strict=False)
+        ]
+        assert max(steps) <= garmin_courses.MAX_GAP_M + 0.01
+        assert body["distance"] == pytest.approx(1112, abs=2)
+        assert body["elevationGain"] == pytest.approx(20)
+        assert body["elevationLoss"] == pytest.approx(5)
+        assert body["activityType"] == "GRAVEL_CYCLING" and body["coordinateSystem"] == "WGS84"
+        assert body["courseName"] == "To the market"
+
+    def test_ride_types_map_to_garmin_activities(self) -> None:
+        from core import garmin_courses
+
+        assert garmin_courses.build("x", "mountain-bike", LINE)["activityType"] == "MOUNTAIN_BIKING"
+        assert garmin_courses.build("x", "novice", LINE)["activityType"] == "ROAD_CYCLING"
+
+    def test_missing_elevations_are_left_out_not_made_up(self) -> None:
+        from core import garmin_courses
+
+        body = garmin_courses.build("", "default", [[-77.0, 38.9], [-77.0, 38.9005]])
+        assert all("elevation" not in p for p in body["geoPoints"])
+        assert body["elevationGain"] == 0 and body["courseName"] == "RouteMaker route"
+
+    def test_a_dense_line_is_thinned_and_gaps_in_elevation_filled(self) -> None:
+        from core import garmin_courses
+
+        # A point every metre for 2 km, the middle ones without elevation.
+        line = [
+            [-77.0, 38.9 + i * 0.000009, 10.0 if i < 5 or i > 1995 else None] for i in range(2001)
+        ]
+        body = garmin_courses.build("x", "default", line)
+        assert len(body["geoPoints"]) < 500
+        assert all(p["elevation"] == 10.0 for p in body["geoPoints"])
+        assert body["distance"] == pytest.approx(2001, abs=5)
+
+    def test_an_out_of_range_elevation_is_dropped_not_an_error(self) -> None:
+        from core import garmin_courses
+
+        body = garmin_courses.build("x", "default", [[-77.0, 38.9, 10**400], [-77.0, 38.9005, 12]])
+        assert body["geoPoints"][0]["elevation"] == 12
+
+    def test_a_route_over_the_point_cap_is_refused(self) -> None:
+        from core import garmin_courses
+
+        with pytest.raises(garmin_courses.BadLine, match="too many points"):
+            garmin_courses.build("x", "default", [[-77.0, 38.0], [-77.0, 47.5]])
+
+    @pytest.mark.parametrize("line", [None, [[0, 0]], [[0, 0], ["a", 0]], [[0, 0], [0, 91]]])
+    def test_bad_lines_are_refused(self, line) -> None:
+        from core import garmin_courses
+
+        with pytest.raises(garmin_courses.BadLine):
+            garmin_courses.build("x", "default", line)
+
+
+@db
+@pytest.mark.usefixtures("keys")
+class TestSendingCourses:
+    def _linked(self, courses) -> tuple[Client, User, str]:
+        mine, user, csrf = signed_in()
+        connect(mine)
+        courses.calls.clear()
+        return mine, user, csrf
+
+    def _send(self, client, csrf, saved=None):
+        body = {"name": "Loop", "preset": "default", "line": LINE, "saved_route": saved}
+        return send(client, "post", "/api/me/garmin/courses", body, csrf)
+
+    def _saved(self, user) -> int:
+        from core.models import SavedRoute
+
+        return SavedRoute.objects.create(user=user, name="Loop", line=LINE, distance_m=1112).pk
+
+    def test_a_route_not_saved_is_added_each_time(self, courses) -> None:
+        mine, _user, csrf = self._linked(courses)
+        assert self._send(mine, csrf).json() == {"sent": "added"}
+        assert self._send(mine, csrf).json() == {"sent": "added"}
+        assert [c[0] for c in courses.calls] == ["POST", "POST"]
+        assert courses.calls[0][2]["access"] == "access-1"
+
+    def test_a_saved_route_sent_again_updates_its_course(self, courses) -> None:
+        mine, user, csrf = self._linked(courses)
+        saved = self._saved(user)
+        assert self._send(mine, csrf, saved).json() == {"sent": "added"}
+        assert self._send(mine, csrf, saved).json() == {"sent": "updated"}
+        method, url, data = courses.calls[1]
+        assert method == "PUT" and url.endswith("/course/101") and data["body"]["courseId"] == 101
+
+    def test_a_course_deleted_in_garmin_connect_is_added_again(self, courses) -> None:
+        mine, user, csrf = self._linked(courses)
+        saved = self._saved(user)
+        self._send(mine, csrf, saved)
+        courses.answers = [404]
+        assert self._send(mine, csrf, saved).json() == {"sent": "added"}
+        assert GarminLink.objects.get(user=user).courses == {str(saved): 102}
+
+    def test_a_course_of_another_garmin_account_is_added_again(self, courses) -> None:
+        mine, user, csrf = self._linked(courses)
+        saved = self._saved(user)
+        self._send(mine, csrf, saved)
+        courses.answers = [403]
+        assert self._send(mine, csrf, saved).json() == {"sent": "added"}
+
+    def test_connecting_another_garmin_account_forgets_the_courses(self, courses) -> None:
+        mine, user, csrf = self._linked(courses)
+        saved = self._saved(user)
+        self._send(mine, csrf, saved)
+        connect(mine)
+        assert GarminLink.objects.get(user=user).courses == {str(saved): 101}
+        courses.user = "garmin-user-2"
+        connect(mine)
+        assert GarminLink.objects.get(user=user).courses == {}
+
+    def test_a_deleted_saved_route_is_let_go(self, courses) -> None:
+        from core.models import SavedRoute
+
+        mine, user, csrf = self._linked(courses)
+        first, second = self._saved(user), self._saved(user)
+        self._send(mine, csrf, first)
+        SavedRoute.objects.filter(pk=first).delete()
+        self._send(mine, csrf, second)
+        assert GarminLink.objects.get(user=user).courses == {str(second): 102}
+
+    def test_a_refusal_after_the_refresh_ends_the_connection(self, courses) -> None:
+        mine, user, csrf = self._linked(courses)
+        courses.answers = [401]
+        courses.token_status = 400
+        r = self._send(mine, csrf)
+        assert r.status_code == 409 and r.json()["code"] == "not_connected"
+        assert not GarminLink.objects.filter(user=user).exists()
+
+    def test_a_course_garmin_cannot_read_says_so(self, courses) -> None:
+        mine, _user, csrf = self._linked(courses)
+        courses.answers = [400]
+        r = self._send(mine, csrf)
+        assert r.status_code == 502 and "as a file" in r.json()["error"]
+
+    def test_someone_else_s_saved_route_is_not_used(self, courses) -> None:
+        mine, _user, csrf = self._linked(courses)
+        other = make_user()
+        theirs = self._saved(other)
+        assert self._send(mine, csrf, theirs).json() == {"sent": "added"}
+        assert self._send(mine, csrf, theirs).json() == {"sent": "added"}
+
+    def test_a_refused_token_is_refreshed_once(self, courses) -> None:
+        mine, _user, csrf = self._linked(courses)
+        courses.answers = [401, 200]
+        assert self._send(mine, csrf).json() == {"sent": "added"}
+        kinds = [(c[0], c[2].get("grant_type")) for c in courses.calls]
+        assert kinds == [("POST", None), ("POST", "refresh_token"), ("POST", None)]
+        assert courses.calls[2][2]["access"] == "access-2"
+
+    @pytest.mark.parametrize(
+        ("status", "words"), [(412, "Allow it in Garmin Connect"), (429, "Try again in a few")]
+    )
+    def test_garmin_s_refusals_are_said(self, courses, status, words) -> None:
+        mine, _user, csrf = self._linked(courses)
+        courses.answers = [status]
+        r = self._send(mine, csrf)
+        assert r.status_code == 502 and words in r.json()["error"]
+
+    def test_without_a_connection_it_says_so(self, courses) -> None:
+        mine, _user, csrf = signed_in()
+        r = self._send(mine, csrf)
+        assert r.status_code == 409 and r.json()["code"] == "not_connected"
+        assert courses.calls == []
+
+    def test_a_bad_line_sends_nothing(self, courses) -> None:
+        mine, _user, csrf = self._linked(courses)
+        r = send(mine, "post", "/api/me/garmin/courses", {"line": [[0, 0]]}, csrf)
+        assert r.status_code == 400 and courses.calls == []
+
+    def test_it_needs_the_csrf_token(self, courses) -> None:
+        mine, _user, _ = self._linked(courses)
+        assert self._send(mine, None).status_code == 403

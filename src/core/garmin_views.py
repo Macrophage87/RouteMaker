@@ -95,9 +95,12 @@ def connect_callback(request, transport: garmin.Transport | None = None):
 def _keep(user, garmin_user: str, tokens: garmin.Tokens) -> None:
     from .models import GarminLink
 
+    # Courses sent before belong to the Garmin account connected then: kept only for that one.
+    same = GarminLink.objects.filter(user=user, garmin_user_id=garmin_user).exists()
     GarminLink.objects.update_or_create(
         user=user,
         defaults={
+            **({} if same else {"courses": {}}),
             "garmin_user_id": garmin_user,
             "access_token": garmin.seal(tokens.access, user.pk),
             "access_expires_at": tokens.access_expires_at,
@@ -107,9 +110,10 @@ def _keep(user, garmin_user: str, tokens: garmin.Tokens) -> None:
     )
 
 
-def access_for(user, transport: garmin.Transport | None = None) -> str:
-    """A live access token for the account, refreshed first when it is near its end. Raises
-    NotConnected (the link is then gone) or GarminError (try again later)."""
+def access_for(user, transport: garmin.Transport | None = None, fresh: bool = False) -> str:
+    """A live access token for the account, refreshed first when it is near its end (or always,
+    with `fresh`: Garmin refused the one kept). Raises NotConnected (the link is then gone) or
+    GarminError (try again later)."""
     from .models import GarminLink
 
     now = timezone.now()
@@ -120,7 +124,7 @@ def access_for(user, transport: garmin.Transport | None = None) -> str:
         if link is None:
             raise garmin.NotConnected("Garmin is not connected.")
         try:
-            if not garmin.needs_refresh(link.access_expires_at, now):
+            if not fresh and not garmin.needs_refresh(link.access_expires_at, now):
                 access = garmin.unseal(link.access_token, user.pk)
             else:
                 old = garmin.unseal(link.refresh_token, user.pk)
