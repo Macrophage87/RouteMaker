@@ -2076,7 +2076,7 @@ export function RideMode({
                 aria-label={EASE_NAME[which]}
                 title={EASE_NAME[which]}
               >
-                <Icon name={which === "calmer" ? "tree" : "flat"} size={20} />
+                <Icon name={which === "calmer" ? "traffic-down" : "hills-down"} size={26} />
                 <span aria-hidden="true">{EASE_TEXT[which]}</span>
               </button>
             ))}
