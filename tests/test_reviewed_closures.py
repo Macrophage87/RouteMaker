@@ -482,7 +482,8 @@ class TestRouteAnswer:
         )
         # A last day on which daylight saving starts is still that day (end-review fix).
         spring = datetime.combine(datetime(2027, 3, 15).date(), time(0), zone_of)
-        assert wz.last_day("reviewer", spring.astimezone(UTC)).date() == date(2027, 3, 14)
+        last = wz.last_day("reviewer", spring.astimezone(UTC))
+        assert last.astimezone(zone_of).date() == date(2027, 3, 14)
         # A feed's end is said as it is given.
         assert wz.when_text(closure(1, 31, "md"), now, False) == "Closed until Oct 31"
         assert core_wz._until_words(closure(1, 31, "md")) == "until Oct 31, 2026"
