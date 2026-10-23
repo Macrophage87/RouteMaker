@@ -24,7 +24,7 @@ import {
   MTB_LEVELS,
   MTB_MIN_ZOOM,
   SOLID_MIN_ZOOM,
-  STREET_HIDDEN_ZOOM,
+  CITY_LADDER,
   UNKNOWN_SURFACE_DASH,
   UNPAVED_DASH,
   accessibilityOn,
@@ -129,8 +129,9 @@ export function stressZoomHint(zoom: number | null): string {
     `needs a regional bike route or a longer run. Trails beside a road count ` +
     `the same way. Lines are drawn thinner at zoom 11 and further out. ${ROUTE_AT_EVERY_ZOOM} ` +
     `${everyTrailFrom(quiet)} From zoom ${quiet} the busy roads at LTS 3 and above and the quiet streets, footways and ` +
-    `sidewalks show too, the busy roads faintly until zoom ${SOLID_MIN_ZOOM}. In a dense city grid a street with no bike lane ` +
-    `waits for zoom ${STREET_HIDDEN_ZOOM + 1} and is drawn thin until zoom ${SOLID_MIN_ZOOM}. Roads bikes may not use, such as expressways, are left unmarked. A busy road with a bike lane ` +
+    `sidewalks show too, the busy roads faintly until zoom ${SOLID_MIN_ZOOM}. In a dense city grid the main bike routes come first: ` +
+    `paths, protected lanes, popular corridors and long calm streets from zoom ${CITY_LADDER.major}, painted lanes from zoom ` +
+    `${CITY_LADDER.lane}, and every other street and sidewalk from zoom ${CITY_LADDER.street}. Roads bikes may not use, such as expressways, are left unmarked. A busy road with a bike lane ` +
     `or path mapped beside it shows only from zoom ${BESIDE_ROAD_MIN_ZOOM}, and faintly, so the bike lane is the ` +
     `main line. Alleys show only from zoom ${ALLEY_MIN_ZOOM}, faintly, and the roads inside cemeteries, parking ` +
     `lots, military bases, airports and secure government sites, such as prisons and guarded research campuses, not at ` +
