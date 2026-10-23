@@ -28,7 +28,7 @@ import { DEFAULT_PROFILE, DEVICE_PROFILES, deviceProfile, type DeviceProfileId }
 import { writeFit } from "./lib/fit.ts";
 import { writeTcx } from "./lib/tcx.ts";
 import { SEND_LABEL, browserSendEnv, canSendToGarmin, courseTrimmed, sendCourse } from "./lib/sendToGarmin.ts";
-import { CONNECTION_ENDED, readGarmin, sendDirect } from "./lib/garminLink.ts";
+import { CONNECTION_ENDED, COURSE_FAILED, COURSE_FAILED_FILE, SENDING, readGarmin, sendDirect } from "./lib/garminLink.ts";
 import { cueSheetDocument, cueSheetFileName, cueSheetLine, type CueSheetKind } from "./lib/cueSheetPdf.ts";
 import { lockCancelledLine, lockPartButton, lockPartLine, lockScreenFileNames, lockScreenLine, lockSharedLine } from "./lib/lockScreen.ts";
 import { renderLockScreens } from "./app/lockScreenRender.ts";
@@ -221,17 +221,30 @@ export function downloadCourse(route: RouteResponse, routedPoints: LonLat[], for
 
 /**
  * Send to Garmin. With Garmin connected in Settings (lib/garminLink.ts), the route's line goes to Garmin Connect
- * directly as a course, and a saved route sent again updates its course. Otherwise (lib/sendToGarmin.ts) it is a
+ * directly as a course, named as saved, and a saved route sent again updates its course; where Garmin fails, the
+ * file goes as below. A second press while one send runs is ignored. Otherwise (lib/sendToGarmin.ts) it is a
  * FIT course for a Garmin Edge, handed to the phone for Garmin Connect; the line says what happened, with what
  * fitting it left out, if anything. A course with more cues it must keep than the unit shows is not handed on: its
  * line says to split the route.
  */
+let sending = false;
+
 export async function sendCourseToGarmin(
   route: RouteResponse,
   routedPoints: LonLat[],
-  savedRoute: number | null = null,
+  savedRoute: { id: number; name: string } | null = null,
   origin = window.location.origin,
 ): Promise<string> {
+  if (sending) return SENDING;
+  sending = true;
+  try {
+    return await sendOnce(route, routedPoints, savedRoute, origin);
+  } finally {
+    sending = false;
+  }
+}
+
+async function sendOnce(route: RouteResponse, routedPoints: LonLat[], savedRoute: { id: number; name: string } | null, origin: string): Promise<string> {
   const state = await readGarmin(origin);
   let ended = "";
   if (state?.connected) {
@@ -240,9 +253,10 @@ export async function sendCourseToGarmin(
       const ele = elevations[i];
       return typeof ele === "number" && Number.isFinite(ele) ? ([lon, lat, ele] as const) : ([lon, lat] as const);
     });
-    const said = await sendDirect(origin, { name: exportName(route), preset: route.preset, line, saved_route: savedRoute });
-    if (said !== "not-connected") return said;
-    ended = `${CONNECTION_ENDED} `;
+    const said = await sendDirect(origin, { name: savedRoute?.name ?? exportName(route), preset: route.preset, line, saved_route: savedRoute?.id ?? null });
+    if (said === "not-connected") ended = `${CONNECTION_ENDED} `;
+    else if (said === COURSE_FAILED) ended = `${COURSE_FAILED_FILE} `;
+    else return said;
   }
   const course = compileCourse(route, deviceProfile("garmin-edge"), "fit", viaIndices(routedPoints, VIA_MARKS.isVia));
   if (course.trim.protectedOver) return ended + courseLine(course);

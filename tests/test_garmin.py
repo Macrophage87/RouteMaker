@@ -435,10 +435,28 @@ class TestCourseBody:
         assert all("elevation" not in p for p in body["geoPoints"])
         assert body["elevationGain"] == 0 and body["courseName"] == "RouteMaker route"
 
+    def test_a_dense_line_is_thinned_and_gaps_in_elevation_filled(self) -> None:
+        from core import garmin_courses
+
+        # A point every metre for 2 km, the middle ones without elevation.
+        line = [
+            [-77.0, 38.9 + i * 0.000009, 10.0 if i < 5 or i > 1995 else None] for i in range(2001)
+        ]
+        body = garmin_courses.build("x", "default", line)
+        assert len(body["geoPoints"]) < 500
+        assert all(p["elevation"] == 10.0 for p in body["geoPoints"])
+        assert body["distance"] == pytest.approx(2001, abs=5)
+
+    def test_an_out_of_range_elevation_is_dropped_not_an_error(self) -> None:
+        from core import garmin_courses
+
+        body = garmin_courses.build("x", "default", [[-77.0, 38.9, 10**400], [-77.0, 38.9005, 12]])
+        assert body["geoPoints"][0]["elevation"] == 12
+
     def test_a_route_over_the_point_cap_is_refused(self) -> None:
         from core import garmin_courses
 
-        with pytest.raises(garmin_courses.BadLine, match="too long"):
+        with pytest.raises(garmin_courses.BadLine, match="too many points"):
             garmin_courses.build("x", "default", [[-77.0, 38.0], [-77.0, 47.5]])
 
     @pytest.mark.parametrize("line", [None, [[0, 0]], [[0, 0], ["a", 0]], [[0, 0], [0, 91]]])
@@ -489,6 +507,47 @@ class TestSendingCourses:
         courses.answers = [404]
         assert self._send(mine, csrf, saved).json() == {"sent": "added"}
         assert GarminLink.objects.get(user=user).courses == {str(saved): 102}
+
+    def test_a_course_of_another_garmin_account_is_added_again(self, courses) -> None:
+        mine, user, csrf = self._linked(courses)
+        saved = self._saved(user)
+        self._send(mine, csrf, saved)
+        courses.answers = [403]
+        assert self._send(mine, csrf, saved).json() == {"sent": "added"}
+
+    def test_connecting_another_garmin_account_forgets_the_courses(self, courses) -> None:
+        mine, user, csrf = self._linked(courses)
+        saved = self._saved(user)
+        self._send(mine, csrf, saved)
+        connect(mine)
+        assert GarminLink.objects.get(user=user).courses == {str(saved): 101}
+        courses.user = "garmin-user-2"
+        connect(mine)
+        assert GarminLink.objects.get(user=user).courses == {}
+
+    def test_a_deleted_saved_route_is_let_go(self, courses) -> None:
+        from core.models import SavedRoute
+
+        mine, user, csrf = self._linked(courses)
+        first, second = self._saved(user), self._saved(user)
+        self._send(mine, csrf, first)
+        SavedRoute.objects.filter(pk=first).delete()
+        self._send(mine, csrf, second)
+        assert GarminLink.objects.get(user=user).courses == {str(second): 102}
+
+    def test_a_refusal_after_the_refresh_ends_the_connection(self, courses) -> None:
+        mine, user, csrf = self._linked(courses)
+        courses.answers = [401]
+        courses.token_status = 400
+        r = self._send(mine, csrf)
+        assert r.status_code == 409 and r.json()["code"] == "not_connected"
+        assert not GarminLink.objects.filter(user=user).exists()
+
+    def test_a_course_garmin_cannot_read_says_so(self, courses) -> None:
+        mine, _user, csrf = self._linked(courses)
+        courses.answers = [400]
+        r = self._send(mine, csrf)
+        assert r.status_code == 502 and "as a file" in r.json()["error"]
 
     def test_someone_else_s_saved_route_is_not_used(self, courses) -> None:
         mine, _user, csrf = self._linked(courses)

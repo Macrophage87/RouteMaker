@@ -93,6 +93,8 @@ export const COURSE_ADDED = "Course added to Garmin Connect. It syncs to your Ga
 export const COURSE_UPDATED = "Course updated in Garmin Connect. It syncs to your Garmin.";
 export const COURSE_FAILED = "Could not send the course to Garmin. Try again shortly.";
 export const CONNECTION_ENDED = "Garmin is no longer connected, so the course went as a file.";
+export const COURSE_FAILED_FILE = "Garmin could not be reached, so the course went as a file.";
+export const SENDING = "Still sending the last course.";
 
 export interface DirectCourse {
   name: string;

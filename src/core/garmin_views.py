@@ -95,9 +95,12 @@ def connect_callback(request, transport: garmin.Transport | None = None):
 def _keep(user, garmin_user: str, tokens: garmin.Tokens) -> None:
     from .models import GarminLink
 
+    # Courses sent before belong to the Garmin account connected then: kept only for that one.
+    same = GarminLink.objects.filter(user=user, garmin_user_id=garmin_user).exists()
     GarminLink.objects.update_or_create(
         user=user,
         defaults={
+            **({} if same else {"courses": {}}),
             "garmin_user_id": garmin_user,
             "access_token": garmin.seal(tokens.access, user.pk),
             "access_expires_at": tokens.access_expires_at,

@@ -6,21 +6,26 @@ points, their elevations, the distance, the climb and descent, the name and the 
 A saved route sent again updates its course in place (GarminLink.courses), so the rider's list in
 Garmin Connect does not fill with copies; a route not saved is a new course each time.
 
-The line is filled in so no two points are more than `MAX_GAP_M` apart, as Garmin asks, and a
-course is at most `MAX_POINTS` points, about 600 miles (965 km); a longer route is refused with a
-line saying to split it. HTTP goes through `garmin.Transport`, replaced in the tests.
+The line is thinned first (points closer than `MIN_STEP_M` to the last one kept add nothing a
+unit can show), then filled in so no two points are more than `MAX_GAP_M` apart, as Garmin asks.
+A course is at most `MAX_POINTS` points, about 600 miles (965 km); a longer route is refused with
+a line saying to split it. HTTP goes through `garmin.Transport`, replaced in the tests.
 """
 
 from __future__ import annotations
 
+import logging
 import math
 
 from django.db import transaction
 
 from . import garmin
 
+log = logging.getLogger(__name__)
+
 COURSE_URL = "https://apis.garmin.com/training-api/courses/v1/course"
 MAX_GAP_M = 100.0
+MIN_STEP_M = 5.0
 MAX_POINTS = 10_000
 MAX_NAME = 100
 # What the request may carry before filling in: generous for a planned line, which is denser.
@@ -36,16 +41,14 @@ ACTIVITY = {
     "gravel": "GRAVEL_CYCLING",
 }
 
-TOO_LONG = (
-    "This route is too long for one Garmin course (about 600 miles [965 km]). Split it, "
-    "then send each part."
-)
+TOO_LONG = "This route has too many points for one Garmin course. Split it, then send each part."
 NO_PERMISSION = (
     "Garmin Connect has not allowed RouteMaker to add courses. Allow it in Garmin Connect, "
     "under your connected apps, then send again."
 )
 BUSY = "Garmin is taking too many courses just now. Try again in a few minutes."
 REFUSED = "Garmin did not take the course. Try again later."
+NOT_TAKEN = "Garmin could not read this route as a course. Send it as a file instead."
 
 
 class BadLine(ValueError):
@@ -77,10 +80,39 @@ def read_line(raw) -> list[tuple[float, float, float | None]]:
         ele = values[2] if len(values) == 3 else None
         if lon is None or lat is None or not (-180 <= lon <= 180 and -90 <= lat <= 90):
             raise BadLine("A point is not a longitude and latitude.")
-        if ele is not None and not (math.isfinite(ele) and -500 <= ele <= 9000):
+        # A comparison, not math.isfinite: a JSON integer can be too big for a float (and NaN
+        # and infinities fail it too).
+        if ele is not None and not -500 <= ele <= 9000:
             ele = None
         points.append((float(lon), float(lat), None if ele is None else float(ele)))
     return points
+
+
+def _thinned(
+    points: list[tuple[float, float, float | None]],
+) -> list[tuple[float, float, float | None]]:
+    """The line without points closer than MIN_STEP_M to the last one kept (the end is kept)."""
+    out = [points[0]]
+    for point in points[1:-1]:
+        if _metres(out[-1], point) >= MIN_STEP_M:
+            out.append(point)
+    out.append(points[-1])
+    return out
+
+
+def _with_elevations(
+    points: list[tuple[float, float, float | None]],
+) -> list[tuple[float, float, float | None]]:
+    """Each missing elevation from the nearest known one before it (or after, at the start), so
+    every point Garmin gets has one; a line with none known keeps none."""
+    first = next((p[2] for p in points if p[2] is not None), None)
+    if first is None:
+        return points
+    out, last = [], first
+    for lon, lat, ele in points:
+        last = ele if ele is not None else last
+        out.append((lon, lat, last))
+    return out
 
 
 def _filled(
@@ -105,7 +137,7 @@ def _filled(
 
 def build(name: str, preset: str, raw_line) -> dict:
     """The Courses API body for the line. Raises BadLine."""
-    points = _filled(read_line(raw_line))
+    points = _filled(_with_elevations(_thinned(read_line(raw_line))))
     distance = sum(_metres(a, b) for a, b in zip(points, points[1:], strict=False))
     known = [p[2] for p in points if p[2] is not None]
     rises = [b - a for a, b in zip(known, known[1:], strict=False)]
@@ -136,8 +168,13 @@ def _call(user, method: str, url: str, body: dict, transport: garmin.Transport) 
         status, answer = transport.send_json(
             method, url, access_for(user, transport, fresh=True), body
         )
+    if status not in (200, 204, 404):
+        # What Garmin said, for the operator: never the token, at most the start of its answer.
+        log.warning("Garmin Courses %s answered %s: %.300s", method, status, answer)
     if status == 401:
         raise garmin.GarminError(REFUSED)
+    if status == 400:
+        raise garmin.GarminError(NOT_TAKEN)
     if status == 412:
         raise garmin.GarminError(NO_PERMISSION)
     if status == 429:
@@ -165,9 +202,9 @@ def send(user, course: dict, saved_route_id: int | None, transport: garmin.Trans
         )
         if status in (200, 204):
             return "updated", known
-        if status != 404:
+        if status not in (403, 404):
             raise garmin.GarminError(REFUSED)
-        # Deleted in Garmin Connect since: added again.
+        # Deleted in Garmin Connect since (404), or not this Garmin account's (403): added again.
     status, answer = _call(user, "POST", COURSE_URL, course, transport)
     course_id = answer.get("courseId") if status == 200 else None
     if not isinstance(course_id, int | str) or isinstance(course_id, bool) or course_id == "":
@@ -188,7 +225,7 @@ def _remember(user, key: str, course_id) -> None:
         live = {
             str(i)
             for i in SavedRoute.objects.filter(
-                user=user, pk__in=[*map(int, link.courses or {}), int(key)]
+                user=user, pk__in=[int(k) for k in [*(link.courses or {}), key] if str(k).isdigit()]
             ).values_list("pk", flat=True)
         }
         courses = {k: v for k, v in (link.courses or {}).items() if k in live}
