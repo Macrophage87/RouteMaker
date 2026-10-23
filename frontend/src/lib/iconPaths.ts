@@ -1,6 +1,6 @@
 // The panel's icons: the approved UI mockup's own line icons (reports/v0.5.0/ui-mockup.html, 2026-10-11),
 // plus a cargo bike, a bikeshare dock, a downed tree, a text-size "Aa" (the owner's choice 11; the ride's Large text button since 2026-10-20; before that unused once Big text
-// moved to Settings, 2026-10-17), and Plan's map bar's undo, redo and clear, and the points list's grip (drag to reorder, 2026-10-18), and a struck-through elevator for a transit trip through a Metro station whose elevators are out (2026-10-21). Each is drawn with currentColor and hidden from assistive technology: every control that
+// moved to Settings, 2026-10-17), and Plan's map bar's undo, redo and clear, and the points list's grip (drag to reorder, 2026-10-18), and a struck-through elevator for a transit trip through a Metro station whose elevators are out (2026-10-21), and a low hill for the ride's Flatter button (2026-10-23). Each is drawn with currentColor and hidden from assistive technology: every control that
 // shows one also shows its words.
 
 export const ICON_PATHS = {
@@ -65,6 +65,7 @@ export const ICON_PATHS = {
   "cargo": "<circle cx=\"5\" cy=\"17\" r=\"3\"/><circle cx=\"19\" cy=\"17\" r=\"3\"/><path d=\"M5 17h7l3-7h-3M15 10l4 7M8 9h5v5H8z\"/>",
   "textsize": "<path d=\"M2.5 19 8 5h1.2l5.5 14M4.6 14h8.1\"/><path d=\"M14.5 19l3.6-8.5h.9L22.5 19M15.8 16h5.5\"/>",
   "tree": "<path d=\"M12 21v-6M12 3l6 8h-3l4 5H5l4-5H6z\"/>",
+  "flat": "<path d=\"M2 17c4-3.5 7-4 10-4s6 .5 10 4\"/><path d=\"M2 20.5h20\"/>",
   "bikeshare": "<rect x=\"3\" y=\"3\" width=\"7\" height=\"18\" rx=\"1.5\"/><circle cx=\"15\" cy=\"17\" r=\"3\"/><path d=\"M15 17l2.5-6H21M13 11h4\"/>",
   // v0.7.0: farm stands and markets (an apple), repair stands (a wrench), bike shops (a shop front), sights
   // (a camera); "More" is the mockup's own.

@@ -1642,7 +1642,7 @@ test("no way ahead on the third: said plainly once, and the route is left up (th
   assert.match(ride, /if \(check \? gate\.busy \|\| checking\.current : !gate\.begin\(Date\.now\(\)\)\) \{/);
   assert.match(ride, /announcer\.current\?\.say\(note, note === REPLAN_NO_AHEAD\)/);
   // A check that still turns round says and shows nothing.
-  assert.match(ride, /if \(check && \(!found \|\| heading === null \|\| setsOffBack\(found\.geometry\.coordinates, heading\)\)\) return;/);
+  assert.match(ride, /if \(check && \(!found \|\| heading === null \|\| setsOffBack\(found\.geometry\.coordinates, heading\)\)\) return false;/);
   assert.match(ride, /if \(offRoute\.replan === "ask"\) void replan\(out\.state\.goodFix\.point\);\s*(\/\/[^\n]*\s*)?else if \(offRoute\.replan === "check"\) void replan\(out\.state\.goodFix\.point, undefined, false, false, true\);/);
 });
 
