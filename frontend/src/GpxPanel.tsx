@@ -4,7 +4,7 @@ import type { RouteResponse } from "./lib/api.ts";
 import type { LonLat } from "./lib/geo.ts";
 import { writeGpx } from "./lib/gpx.ts";
 import { REFINE_ROUNDS, nextFitStep, prunedCount, startFit, type Fit, type ImportedPlan } from "./lib/gpxPlan.ts";
-import { gpxWorker, importGpx } from "./lib/gpxImport.ts";
+import { gpxAccept, gpxWorker, importGpx } from "./lib/gpxImport.ts";
 import {
   againstTrafficNotice,
   elevationsAlong,
@@ -601,7 +601,7 @@ export function GpxPanel(props: Props) {
           fileInput?.(el);
         }}
         type="file"
-        accept=".gpx,application/gpx+xml"
+        accept={gpxAccept()}
         hidden
         onChange={(event) => {
           const file = event.target.files?.[0];
