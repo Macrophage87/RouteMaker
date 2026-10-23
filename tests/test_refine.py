@@ -64,7 +64,7 @@ def analysis(
 def event(m: float, cost_ft: float = 3300.0, approach=None) -> Event:
     return Event(
         m=m,
-        lon=BASE[0] + m * 1e-5,
+        lon=BASE[0],
         lat=BASE[1],
         kind="crossing",
         movement=Movement.STRAIGHT,
@@ -197,7 +197,7 @@ class TestJunctionDelay:
 
 
 class TestCrossingAvoidance:
-    def test_the_worst_crossings_are_excluded_and_a_better_route_kept(
+    def test_the_worst_crossings_approaches_are_excluded_and_a_better_route_kept(
         self, monkeypatch
     ) -> None:
         original = analysis(
@@ -211,10 +211,7 @@ class TestCrossingAvoidance:
         # The two red events (3,100 ft and up since 2026-10-10; 2,900 from 468, 2,000
         # before); an orange one is not worth a second route.
         assert len(world.requests[0]["exclude_locations"]) == 2
-        # Each the junction itself, every edge at it (PR #409's check: excluding the edge the
-        # route arrived by brought it back through the same crossing another way).
-        assert world.excluded(0)[0] == pytest.approx((BASE[0] + 1500.0 * 1e-5, BASE[1]))
-        assert world.requests[0]["exclude_locations"][0]["radius"] == 15
+        assert world.excluded(0)[0] == pytest.approx((BASE[0] + 1500.0 * 1e-5, BASE[1] + 1e-5))
         assert "alternates" not in world.requests[0], "one route, not alternatives"
         assert world.requests[0]["elevation_interval"] == 30
         assert info["extra_distance_m"] == 0.0 or info["extra_distance_m"] == pytest.approx(0.0)
@@ -241,12 +238,32 @@ class TestCrossingAvoidance:
         assert kept == trip_of("o", 4.0) and world.requests == []
         assert info["rounds"] == 0 and info["limited"] is None
 
-    def test_crossing_avoidance_alone_is_one_round(self, monkeypatch) -> None:
+    def test_crossing_avoidance_alone_goes_on_past_the_next_red_crossing(self, monkeypatch) -> None:
+        """PR #409's check (2026-10-23, rush hour): the way round one unsignalised
+        crossing of a busy road was the next one along; a second round, excluding both,
+        reaches the signal."""
         original = analysis("o", events=[event(1500.0, 3300.0)])
-        again = analysis("a", cost_s=4100.0, events=[event(1700.0, 3300.0)])
-        world = World(monkeypatch, {"o": original, "a": again}, [trip_of("a", 4.1)] * 3)
+        next_one = analysis("a", cost_s=4100.0, events=[event(1700.0, 3300.0)])
+        signal = analysis("s", cost_s=4300.0, events=[])
+        world = World(
+            monkeypatch,
+            {"o": original, "a": next_one, "s": signal},
+            [trip_of("a", 4.1), trip_of("s", 4.3)],
+        )
+        kept, info = refine.refine(trip_of("o", 4.0), context())
+        assert kept["legs"][0]["shape"] == "s"
+        assert len(world.requests) == info["rounds"] == 2
+        assert len(world.excluded(1)) == 2 and set(world.excluded(0)) < set(world.excluded(1))
+
+    def test_crossing_avoidance_alone_is_at_most_three_rounds(self, monkeypatch) -> None:
+        shapes = {"o": analysis("o", events=[event(1500.0, 3300.0)])}
+        for n in range(1, 5):
+            shapes[f"a{n}"] = analysis(
+                f"a{n}", cost_s=4000.0 + 100 * n, events=[event(1500.0 + 200 * n, 3300.0)]
+            )
+        world = World(monkeypatch, shapes, [trip_of(f"a{n}", 4.1) for n in range(1, 5)])
         refine.refine(trip_of("o", 4.0), context())
-        assert len(world.requests) == refine.CROSSING_ONLY_ROUNDS == 1
+        assert len(world.requests) <= refine.CROSSING_ONLY_ROUNDS == 3
 
     def test_only_red_junctions_are_worth_a_second_route(self) -> None:
         assert refine.REFINE_MIN_EVENT_FT == model.RED_MIN_FT

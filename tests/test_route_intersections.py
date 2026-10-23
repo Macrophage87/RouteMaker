@@ -458,7 +458,7 @@ class TestEveryRideType:
 
 @db
 class TestTheSearchInTheAnswer:
-    def test_a_default_ride_over_a_red_crossing_asks_the_router_once_more_without_it(
+    def test_a_default_ride_over_a_red_crossing_asks_the_router_once_more_without_the_approach(
         self, client, arterial, router
     ) -> None:
         fake = router(world())
@@ -467,9 +467,7 @@ class TestTheSearchInTheAnswer:
         assert len(routes) == 2
         assert "exclude_locations" not in routes[0]
         (excluded,) = routes[1]["exclude_locations"]
-        # The junction itself, every edge at it.
-        assert (excluded["lon"], excluded["lat"]) == pytest.approx(JUNCTION, abs=1e-4)
-        assert excluded["radius"] == 15
+        assert excluded["lon"] < JUNCTION[0], "a point on the edge the route arrives by"
         assert body["calm_search"]["rate"] == 0.0
         assert body["calm_search"]["rounds"] == 1
 

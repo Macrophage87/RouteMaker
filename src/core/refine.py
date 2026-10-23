@@ -121,9 +121,15 @@ logger = logging.getLogger(__name__)
 
 # The most rounds of exclusion and re-routing. Crossing avoidance alone gets
 # fewer: it runs for most plans, where the calm search runs only past the old
-# top of the slider.
+# top of the slider. More than one, each excluding the red crossings the last round's
+# route took on top of those already excluded: a way round one unsignalised crossing of
+# a busy road is often the next unsignalised crossing of the same road, and only a
+# second or third round reaches a signal (PR #409's check, 2026-10-23, rush hour:
+# Connecticut Avenue in Chevy Chase and Georgia Avenue in Wheaton each swapped one red
+# crossing for the next one along and stopped there). Past the calm rate's 0 the
+# crossings are the first round's alone, the rest are the busy stretches'.
 REFINE_MAX_ROUNDS = 5
-CROSSING_ONLY_ROUNDS = 1
+CROSSING_ONLY_ROUNDS = 3
 # Seconds, at most, the whole search may take; and the least a round may be
 # started with (a /route, its trace, the joins and a /locate), and what is kept
 # back from the request's budget for the answer's own traces.
@@ -1162,13 +1168,8 @@ def _exclusion(lon: float, lat: float, ctx: Context, radius: int | None = None) 
 
 
 def crossing_targets(analysis: Analysis, ctx: Context) -> list[Target]:
-    """The Avoid-rated junctions the route passes, then the worst junctions themselves:
-    each junction's point with `avoid_junctions.MATCH_RADIUS_M`, so every edge there goes,
-    as for an Avoid-rated one. An exclusion on the edge the route arrived by alone (its
-    `Event.approach`) only made the router come at the same crossing another way (the
-    2026-10-23 check of PR #409 at rush hour: an unsignalised Connecticut Avenue crossing
-    in Chevy Chase came back 146 m longer through the same junction, and a Georgia Avenue
-    one in Wheaton came back unchanged)."""
+    """The Avoid-rated junctions the route passes, then the approaches to the worst
+    junctions."""
     avoid = avoid_targets(analysis, ctx)
     if ctx.group or not analysis.events:
         return avoid
@@ -1179,7 +1180,7 @@ def crossing_targets(analysis: Analysis, ctx: Context) -> list[Target]:
     return (
         avoid
         + [
-            Target((e.lon, e.lat), 4, int(avoid_model.MATCH_RADIUS_M))
+            Target(e.approach, 4)
             for e in worst
             if _clear_of_ends(e.m, analysis.length_m, analysis.via_m)
         ][:CROSSING_POINTS_PER_ROUND]
@@ -2117,7 +2118,8 @@ def _search(trip, best, first_exposure, stop_at, ctx: Context, info: dict):
     sent: set[frozenset] = set()
     stale = 0
     for number in range(rounds):
-        new = crossing_targets(current, ctx) if number < CROSSING_ONLY_ROUNDS else []
+        crossing_rounds = 1 if ctx.rate > 0 else CROSSING_ONLY_ROUNDS
+        new = crossing_targets(current, ctx) if number < crossing_rounds else []
         if ctx.rate > 0:
             # LTS 4 and Avoid first, if the route has any; then everything busy.
             worst_first = number == 0 and any(c[0] in ("4", "5") for c in current.classes)
