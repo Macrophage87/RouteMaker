@@ -163,12 +163,12 @@ class TestConnecting:
             assert mine.get("/auth/garmin/callback", **addr()).status_code == 503
             assert mine.get("/api/me/garmin", **addr()).json()["available"] is False
 
-    def test_settings_offers_it_only_once_courses_are_wired(self, monkeypatch) -> None:
+    def test_settings_offers_it_where_courses_are_wired(self, monkeypatch) -> None:
         mine, _user, _ = signed_in()
-        assert garmin.COURSES_WIRED is False
-        assert mine.get("/api/me/garmin", **addr()).json()["available"] is False
-        monkeypatch.setattr(garmin, "COURSES_WIRED", True)
+        assert garmin.COURSES_WIRED is True
         assert mine.get("/api/me/garmin", **addr()).json()["available"] is True
+        monkeypatch.setattr(garmin, "COURSES_WIRED", False)
+        assert mine.get("/api/me/garmin", **addr()).json()["available"] is False
 
     def test_signed_out_is_sent_back_to_sign_in(self, client) -> None:
         r = client.get("/auth/garmin/start", **addr())
@@ -356,10 +356,12 @@ class TestUsingAndEnding:
         assert GarminLink.objects.filter(user=user).exists()
         assert fake.calls == []
 
-    def test_the_deletion_page_names_garmin_only_where_it_applies(self, fake) -> None:
+    def test_the_deletion_page_names_garmin_only_where_it_applies(self, fake, monkeypatch) -> None:
         mine, _user, _ = self._linked(fake)
-        assert "Garmin" in mine.get(account_deletion.PATH, **addr()).content.decode()
         other, _, _ = signed_in()
+        assert "Garmin" in other.get(account_deletion.PATH, **addr()).content.decode()
+        monkeypatch.setattr(garmin, "COURSES_WIRED", False)
+        assert "Garmin" in mine.get(account_deletion.PATH, **addr()).content.decode()
         assert "Garmin" not in other.get(account_deletion.PATH, **addr()).content.decode()
 
     def test_deleting_the_account_tells_garmin(self, fake) -> None:
