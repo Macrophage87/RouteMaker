@@ -195,20 +195,34 @@ export interface RailMap {
  */
 export const BASEMAP_POIS_LAYER = "pois";
 export const BASEMAP_STATION_REACH_M = 300;
+/**
+ * An airport named by its station: the base map's airport label is left out this far each way of a station shown whose
+ * name is an airport's (the owner, 2026-10-23, of National Airport's two labels: "This one is redunant as well, since we
+ * have labels for each"). About 2 mi (3.2 km): the base map puts the airport's name near its middle, a mile or more from
+ * the station at National (about 0.6 mi [1 km]), Dulles and BWI's rail station.
+ */
+export const BASEMAP_AIRPORT_REACH_M = 3200;
+const AIRPORT_STATION = /\bAirport\b/i;
 const M_PER_DEGREE_LAT = 111_320;
 const basemapPoisFilters = new WeakMap<object, unknown>();
 
-/** The base map's `pois` filter with the stations shown here left out. */
+/** The squares `reach_m` each way of each point, as a MultiPolygon's coordinates. */
+function squaresAround(points: readonly Station["point"][], reachM: number) {
+  return points.map(([lon, lat]) => {
+    const dLat = reachM / M_PER_DEGREE_LAT;
+    const dLon = dLat / Math.cos((lat * Math.PI) / 180);
+    return [[[lon - dLon, lat - dLat], [lon + dLon, lat - dLat], [lon + dLon, lat + dLat], [lon - dLon, lat + dLat], [lon - dLon, lat - dLat]]];
+  });
+}
+
+/** The base map's `pois` filter with the stations shown here left out, and the airports a shown station names. */
 export function basemapPoisFilter(base: unknown, stations: readonly Station[], visibility: RailVisibility): unknown {
-  const squares = stations
-    .filter((station) => visibleLines(station, visibility).length > 0)
-    .map(({ point: [lon, lat] }) => {
-      const dLat = BASEMAP_STATION_REACH_M / M_PER_DEGREE_LAT;
-      const dLon = dLat / Math.cos((lat * Math.PI) / 180);
-      return [[[lon - dLon, lat - dLat], [lon + dLon, lat - dLat], [lon + dLon, lat + dLat], [lon - dLon, lat + dLat], [lon - dLon, lat - dLat]]];
-    });
-  if (squares.length === 0) return base;
-  const ours = ["all", ["==", ["get", "kind"], "station"], ["within", { type: "MultiPolygon", coordinates: squares }]];
+  const shown = stations.filter((station) => visibleLines(station, visibility).length > 0);
+  if (shown.length === 0) return base;
+  const left: unknown[] = [["all", ["==", ["get", "kind"], "station"], ["within", { type: "MultiPolygon", coordinates: squaresAround(shown.map((s) => s.point), BASEMAP_STATION_REACH_M) }]]];
+  const airports = shown.filter((station) => AIRPORT_STATION.test(station.name)).map((s) => s.point);
+  if (airports.length > 0) left.push(["all", ["==", ["get", "kind"], "aerodrome"], ["within", { type: "MultiPolygon", coordinates: squaresAround(airports, BASEMAP_AIRPORT_REACH_M) }]]);
+  const ours = left.length === 1 ? left[0] : ["any", ...left];
   return base === undefined || base === null ? ["!", ours] : ["all", base, ["!", ours]];
 }
 
