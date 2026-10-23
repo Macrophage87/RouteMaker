@@ -7,8 +7,9 @@ Settings > Account links to it, so the app and the web share one confirmation an
 
 The account row itself is deleted, not flagged. What is the rider's own goes with it, by the models'
 CASCADE (sessions, My Go with Home, synced settings, the 311 log, saved routes and their versions,
-the AI assistant key, the Garmin connection), or here, before it (shared links, suggestions still
-waiting, agree or disagree on others' suggestions, the bot's cached Discord roles). What is the
+the AI assistant key, the Garmin and Wahoo connections), or here, before it (shared links,
+suggestions still waiting, agree or disagree on others' suggestions, the bot's cached Discord
+roles). What is the
 map's record is kept with the link to the account cleared (SET_NULL): a decided suggestion, and
 an admin's edits and rulings. The audit log keeps an account number, never a Discord id
 (`audit.record`), and one row says this account was deleted. Signing in again with the same
@@ -53,6 +54,11 @@ DELETED = [
 GARMIN_LINE = (
     "Your Garmin connection: Garmin is told, and the app leaves your Garmin Connect account"
 )
+# Listed only where riders can connect Wahoo, or for an account that has (core.wahoo).
+WAHOO_LINE = (
+    "Your Wahoo connection, and the routes RouteMaker sent to your Wahoo app: they are deleted "
+    "from Wahoo too"
+)
 KEPT = [
     "Suggestions already approved or declined, and map changes made from them, as part of the "
     "map's history, with nothing linking them to you",
@@ -85,7 +91,7 @@ def delete_account(user) -> None:
 
     Raises `LastAdminRefused` for the last instance admin, with nothing changed.
     """
-    from . import garmin, shared_routes
+    from . import garmin, shared_routes, wahoo, wahoo_views
     from .audit import record
     from .garmin_views import access_for
     from .models import (
@@ -108,6 +114,14 @@ def delete_account(user) -> None:
         garmin_access = access_for(user, garmin_transport)
     except garmin.GarminError:
         garmin_access = None
+    # Wahoo's likewise, with the routes sent through it (the owner, 2026-10-23: deleting the
+    # account takes them out of the rider's Wahoo app too).
+    wahoo_transport = wahoo.Transport()
+    wahoo_routes = wahoo_views.sent_route_ids(user)
+    try:
+        wahoo_access = wahoo_views.access_for(user, wahoo_transport)
+    except wahoo.WahooError:
+        wahoo_access = None
 
     now = timezone.now()
     with transaction.atomic():
@@ -156,10 +170,14 @@ def delete_account(user) -> None:
             detail="deleted by the account holder",
         )
         # The rest goes by CASCADE: the sessions (so every device is signed out at its next
-        # request), My Go, settings, saved routes and versions, the assistant key, the Garmin link.
+        # request), My Go, settings, saved routes and versions, the assistant key, the Garmin and
+        # Wahoo links.
         user.delete()
     if garmin_access is not None:
         garmin.deregister(garmin_access, garmin_transport)
+    if wahoo_access is not None:
+        wahoo_views.remove_routes(wahoo_access, wahoo_routes, wahoo_transport)
+        wahoo.revoke(wahoo_access, wahoo_transport)
 
 
 def _page(
@@ -200,14 +218,16 @@ def _list(items: list[str]) -> str:
 
 
 def _deleted(user=None) -> list[str]:
-    from . import garmin
-    from .models import GarminLink
+    from . import garmin, wahoo
+    from .models import GarminLink, WahooLink
 
-    has_link = user is not None and GarminLink.objects.filter(user=user).exists()
-    if not (garmin.offered() or has_link):
-        return DELETED
+    services = []
+    if garmin.offered() or (user is not None and GarminLink.objects.filter(user=user).exists()):
+        services.append(GARMIN_LINE)
+    if wahoo.offered() or (user is not None and WahooLink.objects.filter(user=user).exists()):
+        services.append(WAHOO_LINE)
     # Beside the other connected services, before the suggestions line.
-    return [*DELETED[:-1], GARMIN_LINE, DELETED[-1]]
+    return [*DELETED[:-1], *services, DELETED[-1]]
 
 
 def _explanation(signed_in: bool = False, user=None) -> str:

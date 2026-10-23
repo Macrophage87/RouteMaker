@@ -40,15 +40,15 @@ export function garminReturnFrom(search: string): string | null {
   return outcome !== null && Object.hasOwn(RETURNED, outcome) ? RETURNED[outcome] : null;
 }
 
-/** The address without the return's parameter, so a reload does not say it again. */
-export function withoutReturn(search: string): string {
+/** The address without the return's parameter (Garmin's, or another service's), so a reload does not say it again. */
+export function withoutReturn(search: string, param = RETURN_PARAM): string {
   const query = new URLSearchParams(search);
-  query.delete(RETURN_PARAM);
+  query.delete(param);
   return query.size ? `?${query}` : "";
 }
 
-/** The fold's line: "Connected since Oct 23" or "Not connected". */
-export function garminSummary(state: GarminState | null | undefined): string {
+/** The fold's line: "Connected since Oct 23" or "Not connected" (Wahoo's too, lib/wahooLink.ts). */
+export function garminSummary(state: Pick<GarminState, "connected" | "connected_at"> | null | undefined): string {
   if (!state) return "…";
   if (!state.connected) return GARMIN_NOT_CONNECTED;
   const when = state.connected_at ? new Date(state.connected_at) : null;

@@ -655,6 +655,14 @@ GARMIN_REDIRECT_URI = (
     or "http://localhost:8000/auth/garmin/callback"
 )
 
+# Wahoo (core.wahoo): the Wahoo Cloud API app's client id and secret, from Wahoo's developer
+# portal. Unset, Settings offers no Wahoo connection. The redirect URI must match the portal's.
+WAHOO_CLIENT_ID = os.environ.get("WAHOO_CLIENT_ID", "").strip()
+WAHOO_CLIENT_SECRET = os.environ.get("WAHOO_CLIENT_SECRET", "").strip()
+WAHOO_REDIRECT_URI = (
+    os.environ.get("WAHOO_REDIRECT_URI", "").strip() or "http://localhost:8000/auth/wahoo/callback"
+)
+
 # Mass Ride and Group Ride dots and alerts (core.ride_presence): shared between the api's
 # workers through this directory, which must be on a tmpfs (RAM; Docker gives every container
 # one at /dev/shm). Positions are never written to disk: a directory that is not a tmpfs is
@@ -703,6 +711,12 @@ TOMBSTONE_KEY = hmac.new(_key_encryption_key.encode(), TOMBSTONE_KEY_LABEL, hash
 GARMIN_TOKEN_KEY_LABEL = b"routemaker/garmin-token/v1"
 GARMIN_TOKEN_KEY = hmac.new(
     _key_encryption_key.encode(), GARMIN_TOKEN_KEY_LABEL, hashlib.sha256
+).digest()
+# Riders' Wahoo tokens (core.wahoo), likewise: a third subkey, so neither service's key opens the
+# other's tokens.
+WAHOO_TOKEN_KEY_LABEL = b"routemaker/wahoo-token/v1"
+WAHOO_TOKEN_KEY = hmac.new(
+    _key_encryption_key.encode(), WAHOO_TOKEN_KEY_LABEL, hashlib.sha256
 ).digest()
 del _key_encryption_key
 

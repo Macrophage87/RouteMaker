@@ -17,7 +17,7 @@ import { toggleFromPicker, useFavoriteRides } from "../lib/favoriteRides.ts";
 import { DELETE_ACCOUNT_PAGE, PRIVACY_PAGE, isPlainClick, rememberPlanForPage, rememberPlanForSignIn, tabSession } from "../lib/signIn.ts";
 import { SignOutForm } from "../SignOut.tsx";
 import { AssistantKeySetting } from "../AssistantKey.tsx";
-import { GarminSetting } from "../GarminSetting.tsx";
+import { GarminSetting, WahooSetting } from "../GarminSetting.tsx";
 import { pointName } from "../lib/summary.ts";
 import { accessibilityOn, accessibilitySource, paletteSetByAddress, setAccessibility, setHighStressLanes, setMtbTrails } from "../stressStyle.js";
 import { HighStressLanesSwitch } from "../lib/highStressLanesSwitch.ts";
@@ -274,6 +274,8 @@ export interface GpxSheetProps {
   downloadCourse?: (format: FileFormat, profile: DeviceProfileId, said: Said) => void;
   /** Send to Garmin: the route shown as a FIT course, handed to the phone for Garmin Connect (GpxPanel). */
   sendToGarmin?: (said: Said) => void;
+  /** Send to Wahoo: the route shown as a FIT course, added to the rider's Wahoo app (GpxPanel; once connected). */
+  sendToWahoo?: (said: Said) => void;
   /** Plan only: snap an opened track to the map's ways (GpxPanel, lib/gpxMatch.ts); absent in Go. */
   match?: GpxPanelProps["match"];
   /** Save route (signed in) and Share, for the route shown or the file opened (RoutePanel.tsx ShareControls); null with neither. */
@@ -284,7 +286,7 @@ export interface GpxSheetProps {
 
 /** The GPX sheet. */
 export function GpxSheet(props: GpxSheetProps) {
-  const { nav, shown, routedPoints, routedLoop, federalRoute, points, status, imported, openImported, fileInput, onOpenFailed, onPick, refineImported, getMap, downloadRoute, downloadCourse, sendToGarmin, match, shareControls, routes } = props;
+  const { nav, shown, routedPoints, routedLoop, federalRoute, points, status, imported, openImported, fileInput, onOpenFailed, onPick, refineImported, getMap, downloadRoute, downloadCourse, sendToGarmin, sendToWahoo, match, shareControls, routes } = props;
   return (
     <SheetFrame id="sheet-gpx" title={SHEET_TITLES.gpx} open={nav.view === "gpx"} onBack={nav.back} backLabel={nav.backLabel("gpx")}>
       {/* Save and Share first, then your routes to load (in Go, the way to start a saved route), then the files. */}
@@ -307,6 +309,7 @@ export function GpxSheet(props: GpxSheetProps) {
         onDownload={downloadRoute}
         onDownloadCourse={downloadCourse}
         onSendToGarmin={sendToGarmin}
+        onSendToWahoo={sendToWahoo}
         match={match}
       />
     </SheetFrame>
@@ -423,6 +426,8 @@ export interface SettingsSheetProps {
   nav: SheetNav;
   /** What Garmin's return said (lib/garminLink.ts garminReturnFrom), once, or null. */
   garminReturned?: string | null;
+  /** What Wahoo's return said (lib/wahooLink.ts wahooReturnFrom), once, or null. */
+  wahooReturned?: string | null;
   settingsHeadingRef: RefObject<HTMLHeadingElement | null>;
   ridePrefs: RidePrefs;
   changeRidePrefs: (next: RidePrefs) => void;
@@ -464,7 +469,7 @@ function ContrastRow() {
 
 /** The Settings sheet (Go's Menu): My Go, Riding, Display and Account, most used first. */
 export function SettingsSheet(props: SettingsSheetProps) {
-  const { nav, settingsHeadingRef, ridePrefs, changeRidePrefs, announce, linkNote, accessMode, toggleAccessMode, myGo, mode, menu, announcements, signInAvailable, garminReturned } = props;
+  const { nav, settingsHeadingRef, ridePrefs, changeRidePrefs, announce, linkNote, accessMode, toggleAccessMode, myGo, mode, menu, announcements, signInAvailable, garminReturned, wahooReturned } = props;
   const go = mode === "go";
   return (
     <SheetFrame
@@ -606,6 +611,8 @@ export function SettingsSheet(props: SettingsSheetProps) {
           {myGo.signedIn && <AssistantKeySetting />}
           {/* Send to Garmin straight into Garmin Connect (the owner, 2026-10-23); shown only where the server can. */}
           {myGo.signedIn && <GarminSetting returned={garminReturned ?? null} />}
+          {/* Send to Wahoo straight into the Wahoo app (the owner, 2026-10-23); shown only where the server can. */}
+          {myGo.signedIn && <WahooSetting returned={wahooReturned ?? null} />}
           {/* A page of its own (core.account_deletion), the same one the web offers without the app: it says what goes
               and what is kept, and asks once. Last: nobody needs it often. */}
           {myGo.signedIn && (

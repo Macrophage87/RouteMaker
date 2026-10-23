@@ -144,6 +144,8 @@ API_IMAGE="ghcr.io/macrophage87/routemaker-api"
 #                                     they saw each problem (v0.10.0; core.models.Report311Log).
 #   garmin_link                       user_id -> app_user: a rider's encrypted Garmin tokens
 #                                     (v0.12.0; core.models.GarminLink). Never shipped.
+#   wahoo_link                        user_id -> app_user: a rider's encrypted Wahoo tokens
+#                                     (v0.12.0; core.models.WahooLink). Never shipped.
 # tests/test_beta_overlay.py asserts this list, and that every table pointing at one of these is
 # excluded too or blanked (below); ship-data.sh refuses a dump that carries data for any name in it.
 EXCLUDED_TABLE_DATA=(
@@ -155,7 +157,7 @@ EXCLUDED_TABLE_DATA=(
 	my_go account_settings saved_route saved_route_version signed_out_send shared_route reviewed_closure
 	review_item review_ruling review_queue_state
 	stress_suggestion_review assistant_key connector_client connector_grant connector_draft
-	report311_log garmin_link
+	report311_log garmin_link wahoo_link
 )
 # Tables the beta needs from home that also name a person or carry a rider's words: shipped with
 # those columns blanked, never whole. Each is left out of the dump and written instead as

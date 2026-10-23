@@ -6070,6 +6070,91 @@ def garmin_course_send(request):
     return _private(JsonResponse({"sent": sent}))
 
 
+# The rider's Wahoo connection (core.wahoo_views; the owner, 2026-10-23), as Garmin's above.
+
+
+def _wahoo_out(user) -> dict:
+    from . import wahoo
+    from .models import WahooLink
+
+    link = WahooLink.objects.filter(user=user).first()
+    return {
+        "available": wahoo.offered(),
+        "connected": link is not None,
+        "connected_at": link.created_at.isoformat() if link else None,
+        "last_used_at": link.last_used_at.isoformat() if link and link.last_used_at else None,
+    }
+
+
+@api.get("/me/wahoo", summary="Whether the rider's Wahoo account is connected")
+@decorate_view(
+    signed_in_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.ME),
+    errors_as_json,
+)
+def wahoo_read(request):
+    return _private(JsonResponse(_wahoo_out(request.user)))
+
+
+@api.post("/me/wahoo/delete", summary="Disconnect the rider's Wahoo account")
+@decorate_view(
+    ratelimit.user_rate_limited(ratelimit.ACCOUNT_WRITES),
+    csrf_protected,
+    signed_in_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+def wahoo_delete(request):
+    from .wahoo_views import disconnect
+
+    disconnect(request.user)
+    return _private(JsonResponse(_wahoo_out(request.user)))
+
+
+# The FIT file as base64 (at most 2 MB, core.wahoo_routes.MAX_FIT_BYTES) and the line beside it;
+# the account's paths take bodies up to 5 MB (Caddyfile @routes_body, the beta's nginx).
+WAHOO_ROUTE_MAX_BYTES = 4 * 1024 * 1024
+
+
+@api.post("/me/wahoo/routes", summary="Send the route shown to the rider's Wahoo app")
+@decorate_view(
+    ratelimit.user_rate_limited(ratelimit.ACCOUNT_WRITES),
+    csrf_protected,
+    signed_in_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+def wahoo_route_send(request):
+    """Body: {"name", "line": [[lon, lat, ele], ...], "fit": base64, "saved_route": id or null}.
+    200 {"sent": "added" | "updated"}; 409 {"error", "code": "not_connected"} when there is no
+    live connection; 502 {"error"} when Wahoo refused or could not be reached; 400 for a line or
+    file no route can be made from. In each failure the app hands the file on instead."""
+    from . import wahoo, wahoo_routes
+
+    body, error = _json_body(request, WAHOO_ROUTE_MAX_BYTES)
+    if error is not None:
+        return error
+    if not isinstance(body, dict):
+        return _stress_error(400, "Send an object.")
+    saved = body.get("saved_route")
+    if saved is not None and (not isinstance(saved, int) or isinstance(saved, bool)):
+        return _stress_error(400, "saved_route is a route's id, or null.", field="saved_route")
+    try:
+        form = wahoo_routes.build(str(body.get("name") or ""), body.get("line"), body.get("fit"))
+    except wahoo_routes.BadLine as bad:
+        return _stress_error(400, str(bad), field="line")
+    try:
+        sent, _route_id = wahoo_routes.send(request.user, form, saved)
+    except wahoo.NotConnected as ended:
+        return _stress_error(409, str(ended), code="not_connected")
+    except wahoo.WahooError as failed:
+        return _stress_error(502, str(failed))
+    return _private(JsonResponse({"sent": sent}))
+
+
 # Assistant apps the rider connected through the site's own MCP connector (core.connector; the
 # owner, 2026-10-19: "Sure, add that in"): listed beside the AI assistant key, each with
 # Disconnect, which ends that app's access at once.
