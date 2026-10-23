@@ -1,7 +1,7 @@
 /** The Garmin connection's words and requests (lib/garminLink.ts). */
 import assert from "node:assert/strict";
 import test from "node:test";
-import { COURSE_ADDED, COURSE_FAILED, COURSE_UPDATED, GARMIN_NOT_CONNECTED, RETURNED, disconnectGarmin, garminReturnFrom, garminSummary, readGarmin, sendDirect, withoutReturn } from "./garminLink.ts";
+import { AS_FILE, CONNECTION_ENDED, COURSE_ADDED, COURSE_FAILED_FILE, COURSE_UPDATED, GARMIN_NOT_CONNECTED, RETURNED, disconnectGarmin, garminReturnFrom, garminSummary, readGarmin, sendDirect, withoutReturn } from "./garminLink.ts";
 
 const ok = (body: unknown, status = 200) => Promise.resolve(new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } }));
 
@@ -39,7 +39,7 @@ test("reading and disconnecting send the session's requests with the CSRF token"
   assert.equal(await disconnectGarmin("https://x", failing), null);
 });
 
-test("a course sent through the connection says added, updated, or the server's reason", async () => {
+test("a course sent through the connection says added or updated, or why it went as a file", async () => {
   const course = { name: "Loop", preset: "default", line: [[-77, 38.9, 10] as const, [-77, 38.91] as const], saved_route: 7 };
   const sent: RequestInit[] = [];
   const answer = (body: unknown, status = 200) =>
@@ -47,13 +47,15 @@ test("a course sent through the connection says added, updated, or the server's 
       if (init) sent.push(init);
       return ok(body, status);
     }) as typeof fetch;
-  assert.equal(await sendDirect("https://x", course, answer({ sent: "added" }), "csrftoken=tok"), COURSE_ADDED);
+  assert.deepEqual(await sendDirect("https://x", course, answer({ sent: "added" }), "csrftoken=tok"), { said: COURSE_ADDED });
   assert.deepEqual(JSON.parse(String(sent[0].body)), { ...course, line: [[-77, 38.9, 10], [-77, 38.91]] });
   assert.equal((sent[0].headers as Record<string, string>)["X-CSRFToken"], "tok");
-  assert.equal(await sendDirect("https://x", course, answer({ sent: "updated" })), COURSE_UPDATED);
-  assert.equal(await sendDirect("https://x", course, answer({ error: "Gone", code: "not_connected" }, 409)), "not-connected");
-  assert.equal(await sendDirect("https://x", course, answer({ error: "Garmin is busy." }, 502)), "Garmin is busy.");
-  assert.equal(await sendDirect("https://x", course, answer({}, 500)), COURSE_FAILED);
+  assert.deepEqual(await sendDirect("https://x", course, answer({ sent: "updated" })), { said: COURSE_UPDATED });
+  assert.deepEqual(await sendDirect("https://x", course, answer({ error: "Gone", code: "not_connected" }, 409)), { asFile: CONNECTION_ENDED });
+  assert.deepEqual(await sendDirect("https://x", course, answer({ error: "Garmin is busy." }, 502)), { asFile: `Garmin is busy. ${AS_FILE}` });
+  assert.deepEqual(await sendDirect("https://x", course, answer({ error: "Too many points." }, 400)), { asFile: `Too many points. ${AS_FILE}` });
+  assert.deepEqual(await sendDirect("https://x", course, answer({ error: "CSRF" }, 403)), { asFile: COURSE_FAILED_FILE });
+  assert.deepEqual(await sendDirect("https://x", course, answer({}, 500)), { asFile: COURSE_FAILED_FILE });
   const offline = (() => Promise.reject(new TypeError("offline"))) as typeof fetch;
-  assert.equal(await sendDirect("https://x", course, offline), COURSE_FAILED);
+  assert.deepEqual(await sendDirect("https://x", course, offline), { asFile: COURSE_FAILED_FILE });
 });

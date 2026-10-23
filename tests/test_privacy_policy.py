@@ -123,7 +123,7 @@ class TestPage:
         garmin = garmin[: garmin.index("<h2>", 4)]
         text = re.sub(r"<[^>]+>", " ", garmin).replace("&#x27;", "'").replace("’", "'")
         for claim in (
-            "not offered yet",
+            "your choice, in Settings",
             "encrypted",
             "only to send the courses you choose",
             "never reads your activities, health data",

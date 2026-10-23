@@ -11,7 +11,7 @@ export const RETURN_PARAM = "garmin";
 
 export const GARMIN_LABEL = "Garmin";
 export const GARMIN_HELP =
-  "Connect your Garmin account and Send to Garmin adds courses to Garmin Connect directly. RouteMaker can only send courses: it reads nothing from your Garmin.";
+  "Connect your Garmin account and Send to Garmin adds courses to Garmin Connect directly. RouteMaker can only send courses: it reads nothing from your Garmin but your account number.";
 export const GARMIN_CONNECTED = "Connected";
 export const GARMIN_NOT_CONNECTED = "Not connected";
 export const DISCONNECT_ASK = "Disconnect Garmin? Send to Garmin then hands the file to the Garmin Connect app instead.";
@@ -91,9 +91,10 @@ export async function disconnectGarmin(origin: string, post: Fetch = fetch, cook
 /** What Send to Garmin says when it went through the connection (core.garmin_courses). */
 export const COURSE_ADDED = "Course added to Garmin Connect. It syncs to your Garmin.";
 export const COURSE_UPDATED = "Course updated in Garmin Connect. It syncs to your Garmin.";
-export const COURSE_FAILED = "Could not send the course to Garmin. Try again shortly.";
 export const CONNECTION_ENDED = "Garmin is no longer connected, so the course went as a file.";
 export const COURSE_FAILED_FILE = "Garmin could not be reached, so the course went as a file.";
+/** After Garmin's own reason (the server's words): the file goes instead. */
+export const AS_FILE = "It went as a file instead.";
 export const SENDING = "Still sending the last course.";
 
 export interface DirectCourse {
@@ -105,11 +106,14 @@ export interface DirectCourse {
   saved_route: number | null;
 }
 
+/** What sending through the connection came to: the line to say, or the line to say before handing the file on. */
+export type DirectOutcome = { said: string } | { asFile: string };
+
 /**
- * Send the course through the connection: the line to say, or "not-connected" where the server has no live
- * connection (the caller hands the file on instead).
+ * Send the course through the connection. Sent, it says so. Otherwise (not connected any more, refused by Garmin or
+ * for the line itself, or not reached at all) the caller hands the file on instead, after the reason.
  */
-export async function sendDirect(origin: string, course: DirectCourse, post: Fetch = fetch, cookie = docCookie()): Promise<string | "not-connected"> {
+export async function sendDirect(origin: string, course: DirectCourse, post: Fetch = fetch, cookie = docCookie()): Promise<DirectOutcome> {
   const token = csrfFromCookie(cookie);
   try {
     const response = await post(`${origin}/api/me/garmin/courses`, {
@@ -119,11 +123,14 @@ export async function sendDirect(origin: string, course: DirectCourse, post: Fet
       body: JSON.stringify(course),
     });
     const body = (await response.json().catch(() => ({}))) as { sent?: string; error?: string; code?: string };
-    if (response.ok) return body.sent === "updated" ? COURSE_UPDATED : COURSE_ADDED;
-    if (response.status === 409 && body.code === "not_connected") return "not-connected";
-    // The server's own words (too long, Garmin's permission, Garmin busy), else the general line.
-    return typeof body.error === "string" && body.error && response.status !== 403 ? body.error : COURSE_FAILED;
+    const reason = typeof body.error === "string" ? body.error.trim() : "";
+    if (response.ok) return { said: body.sent === "updated" ? COURSE_UPDATED : COURSE_ADDED };
+    if (response.status === 409 && body.code === "not_connected") return { asFile: CONNECTION_ENDED };
+    // The reason in the server's words: Garmin's refusal (its permission, too many courses, the course not read) or
+    // the line's (too many points; the file is fitted to the unit, lib/course.ts).
+    if ((response.status === 502 || response.status === 400) && reason) return { asFile: `${reason} ${AS_FILE}` };
+    return { asFile: COURSE_FAILED_FILE };
   } catch {
-    return COURSE_FAILED;
+    return { asFile: COURSE_FAILED_FILE };
   }
 }

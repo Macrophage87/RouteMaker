@@ -27,12 +27,10 @@ comes from:
   'self'`), core.street_photo, core.gbfs, core.wmata_live, core.closure_sources, core.dc311.
 - Logs, limits and backups: docker/api-entrypoint.sh (the access log's format), core.ratelimit,
   config.procrastinate (BACKUP_KEEP, BACKUP_EXCLUDED_TABLES); sessions: core.revocation.
-- Garmin: the one section written ahead of its code, and the page says so ("not offered yet").
-  Garmin's developer program reviews this page before an app may connect riders, so the promises
-  come first and the connection (one encrypted token per rider, the Courses API only, Disconnect)
-  is built to them, including the handler for Garmin's deregistration notice (a rider who
-  disconnects in Garmin Connect); when it ships, drop "not offered yet", point this line at its
-  module, and add Garmin to "Who else is contacted" (the server then sends it the token).
+- Garmin: core.garmin (the encrypted token, offered only with core.garmin.COURSES_WIRED),
+  core.garmin_views (connect, Disconnect, Garmin's deregistration notice), core.garmin_courses
+  (the course sent, and GarminLink.courses, which course each saved route was sent as). Garmin's
+  developer program reviews this page before an app may connect riders.
 - Hosting: settings.PRIVACY_HOSTING, the deployment's own (Garmin asks that every party storing
   riders' data be named).
 
@@ -187,22 +185,22 @@ SECTIONS: list[tuple[str, str]] = [
     ),
     (
         "If you connect Garmin",
-        _p(
-            "Connecting a Garmin account is not offered yet. When it is, it will be your choice, "
-            "in Settings, and it will work like this:"
-        )
+        _p("Connecting a Garmin account is your choice, in Settings. It works like this:")
         + _ul(
             [
                 "Send to Garmin then adds the course to your Garmin Connect account directly, "
                 "without opening the Garmin Connect app.",
                 "RouteMaker keeps only Garmin’s sign-in token for your account, encrypted, "
-                "and your Garmin account number. It uses them only to send the courses you "
-                "choose.",
-                "It never reads your activities, health data or anything else from Garmin.",
+                "your Garmin account number, which Garmin course each saved route was sent as (so "
+                "sending it again updates that course), and when you connected and last sent a "
+                "course. It uses them only to send the courses you choose.",
+                "Other than your account number, it never reads your activities, health data or "
+                "anything else from Garmin.",
                 GARMIN_NO_AI,
-                "Settings shows whether you are connected. Disconnect there, or in Garmin "
-                "Connect, at any time: RouteMaker deletes the token and tells Garmin. Deleting "
-                "your account does the same.",
+                "Settings shows whether you are connected. Disconnect there at any time: "
+                "RouteMaker deletes the token and tells Garmin. Deleting your account does the "
+                "same. Disconnect in Garmin Connect instead, and RouteMaker deletes it when Garmin "
+                "says so.",
                 "That connection is all RouteMaker keeps from Garmin, so there is nothing else to "
                 "see, correct or export. To fix it, disconnect and connect again.",
             ]
@@ -250,8 +248,9 @@ SECTIONS: list[tuple[str, str]] = [
         _p(
             "Your browser and the app talk only to this site: the map, place search and routing "
             "run on the site’s own servers. The exceptions are Discord’s pages when you "
-            "sign in, links you choose to open, such as a street photo on Mapillary or a 311 "
-            "website, and a course you send to Garmin Connect."
+            "sign in, Garmin’s pages when you connect Garmin, links you choose to open, such "
+            "as a street photo on Mapillary or a 311 website, and a course file you hand to "
+            "Garmin Connect."
         )
         + _p("The site’s server contacts, with nothing about you:")
         + _ul(
@@ -263,6 +262,15 @@ SECTIONS: list[tuple[str, str]] = [
                 "The National Park Service and DC’s road-closure notices, for closures.",
                 "DC 311, as above.",
                 "Discord, to finish your sign-in and for the bot.",
+            ]
+        )
+        + _p("Where you connect Garmin, the server also contacts Garmin:")
+        + _ul(
+            [
+                "Your Garmin sign-in token: to finish connecting, to keep you connected, and to "
+                "end the connection when you disconnect.",
+                "A course you choose to send: the route’s line with its heights, its name, "
+                "distance, climb and descent, and the kind of ride.",
             ]
         )
         + _p(
@@ -311,8 +319,8 @@ SECTIONS: list[tuple[str, str]] = [
                 "about a ride is kept longer.",
                 "Shared links: as above.",
                 "Database backups: one a night, the last seven kept, so deleted data can stay in "
-                "them for up to a week. Sign-ins, request limits and the Discord role list are "
-                "left out of them.",
+                "them for up to a week. Sign-ins, request limits, the Discord role list and Garmin "
+                "connections are left out of them.",
                 "Suggestions already decided stay as the map’s history, with nothing linking "
                 "them to you once your account is deleted.",
                 "A note that an account was deleted, and when, under an account number.",
