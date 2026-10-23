@@ -923,8 +923,15 @@ def assess(junction: Junction, group: bool = False, when: str | None = None) -> 
     factor = time_factor(when, about.urban, junction.control, severe(about))
     untimed = min(cost, MAX_CROSSING_FT)
     cost = min(cost * factor, MAX_CROSSING_FT)
-    if factor == UNSIGNALISED_RUSH_FACTOR and kind in GAP_WAIT_KINDS:
-        # Rarely an opening at rush hour: never less than ten minutes' riding.
+    gap_wait = (
+        when == ridetime.WEEKDAY_RUSH
+        and severe(about)
+        and junction.control in GIVE_WAY_CONTROLS
+        and kind in GAP_WAIT_KINDS
+    )
+    if gap_wait:
+        # Rarely an opening at rush hour: never less than ten minutes' riding (a divided
+        # road's median refuge still takes its credit when the carriageways merge).
         cost = max(cost, UNSIGNALISED_RUSH_MIN_FT)
     if kind == "left_from" and junction.control is Control.SIGNAL:
         # The box turn is the way out at any hour (468: "box-turn cap at

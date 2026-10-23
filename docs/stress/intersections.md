@@ -156,7 +156,7 @@ where a busy road meets there (`:572-576`).
 
 ## 7. Time of day, combining, severity and the avoidance trigger
 
-- **Time of day** (`time_factor`, `:170-196`; applied in `assess`, `:708-711`): a
+- **Time of day** (`time_factor` and `assess` in `src/routemaker/intersections.py`): a
   junction with a busy road is multiplied by a factor for the plan's ride time (`when`,
   `src/routemaker/ridetime.py:39-48`). Weekday rush hours, 7 to 10 AM and 4 to 7 PM, are
   x1.25, and x2 (`UNSIGNALISED_RUSH_FACTOR`) where the rider gives way to an LTS 4 or
@@ -166,7 +166,9 @@ where a busy road meets there (`:572-576`).
   road, joining it or turning left across it then costs at least 1.86 calm mi (3.0 km),
   ten minutes of riding at the Default ride's 11.2 mph (18 km/h)
   (`UNSIGNALISED_RUSH_MIN_FT`; the owner: "Most people would rather bike 10 minutes than
-  wait 5 minutes at a busy crossing for an opening. There are rarely openings."). Signals,
+  wait 5 minutes at a busy crossing for an opening. There are rarely openings."). A trail
+  crossing gets the floor too (its colour stays capped at orange), and a divided road's
+  median refuge still takes its x0.75 below it. Signals,
   all-way stops, cross traffic that stops, and LTS 3 roads keep x1.25. Other weekday hours, to 9 PM, are x1.0. Weekend daytime, federal holidays
   included, is x0.85. Night, 9 PM to 7 AM on every day of the week, weekend nights
   included, is x0.5 where the crossed road lies in a Census urban area and x0.85 where it

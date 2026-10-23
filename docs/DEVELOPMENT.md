@@ -6906,7 +6906,7 @@ target, the graph and `refine.quiet_cost_per_m`):
   a protected lane `(1 + (0.15 + 0.6u) x 1.2) / 2.2`, a painted lane
   `(1 + (0.9 + 0.05u) x 1.2) / 2.2`, a quiet street 1 (all 1 on the no-trail graph).
 - Every junction the model charges for, flagged or not, adds what the ranking charges for
-  it, at its point: its cost (`cost_ft`, after the ride-time factor: rush hour x1.25 (x2 unsignalised on LTS 4 or Avoid),
+  it, at its point: its cost (`cost_ft`, after the ride-time factor: rush hour x1.25 (x2, and at least 1.86 calm mi [3.0 km], unsignalised on LTS 4 or Avoid),
   weekend x0.85, night x0.5 in town and x0.85 outside; "Intersection costs", option C)
   times `refine.intersection_weight` at the slider
   position (461d: "times its factors and the preset's intersection weight"; 0.25 at 0,
