@@ -5000,7 +5000,10 @@ Tests: `lib/sidebar.test.ts`.
   arterial roads ... For bikes, we want something similar"): from z12 paths, protected lanes,
   popular class 2-3 corridors, long calm streets and named trails; from z13 painted lanes and
   class 1 (the short links between lanes, `pipeline.bikeshare_corridors.tidy`); from z14 every
-  other street and sidewalk, so a city grid is a mesh, not a carpet. Lanes,
+  other street and sidewalk, so a city grid is a mesh, not a carpet. An on- or off-ramp (tile
+  `link`, `segment.road_link`) waits for z14 in a city grid or not, unless it is on the
+  ladder (the owner 2026-10-23: "the various onramps and offramps aren't needed at this
+  level"). Lanes,
   paths, trails and unpaved roads keep their widths (the owner, 2026-10-21). MapLibre
   draws text from glyph files, not web fonts, and the style has one glyph URL template (the
   base map's `/basemap/fonts/`), so the three Latin ranges (`corridor.ts` `GLYPH_RANGES`) of

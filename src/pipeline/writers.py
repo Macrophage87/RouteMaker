@@ -411,6 +411,7 @@ def mark_links(schema: str, way_ids: Iterable[int]) -> int:
     """Mark the slip roads, on- and off-ramps (`road_link`; `routemaker.agency_roads.is_link`),
     by their OSM way ids. Returns the rows marked."""
     validate_schema_name(schema)
+    refuse_live_schema(schema)
     with connection.cursor() as cursor:
         cursor.execute(
             f"UPDATE {schema}.segment SET road_link = true WHERE osm_way_id = ANY(%s::bigint[])",

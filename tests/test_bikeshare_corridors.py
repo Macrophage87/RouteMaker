@@ -436,3 +436,10 @@ class TestMarkLinks:
         with connection.cursor() as cursor:
             cursor.execute(f"SELECT osm_way_id, road_link FROM {staging}.segment ORDER BY 1")
             assert cursor.fetchall() == [(1, False), (2, True)]
+
+    def test_the_live_table_is_refused(self, segment_schemas) -> None:
+        from pipeline import writers
+
+        live, _ = segment_schemas
+        with pytest.raises(Exception, match="live"):
+            writers.mark_links(live, [1])

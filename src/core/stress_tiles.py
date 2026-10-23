@@ -825,14 +825,14 @@ def etag_for(oid: int, optional: frozenset[str] = frozenset(), generation: int =
     # optional columns are in it because a column added to the live table in
     # place (the facility, by hand) changes the tiles but not the table's oid.
     # Each column by a letter of its own, so the tag fits the cache's 64-character
-    # key with all of them (a `+` and one letter each, eighteen in all: `W/"stress-` and a
-    # ten-digit oid, `+` and eighteen letters, `-v13"`, 44 characters), in the order of the
+    # key with all of them (a `+` and one letter each, nineteen in all: `W/"stress-` and a
+    # ten-digit oid, `+` and nineteen letters, `-v14"`, 45 characters), in the order of the
     # column names.
     carried = "".join(ETAG_LETTERS[column] for column in sorted(optional))
     # And the table's edit generation (`core.stress_edits`), once it has had one: an edit
     # updates rows in place, which changes the tiles and not the oid, so without it a
     # browser's revalidation would be answered 304 for the old tile. `-e` and up to six
-    # digits makes the longest tag 52 characters, inside the cache's 64.
+    # digits makes the longest tag 53 characters, inside the cache's 64.
     edited = f"-e{generation}" if generation else ""
     return f'W/"stress-{oid}{"+" + carried if carried else ""}{edited}-v{FORMAT_VERSION}"'
 
