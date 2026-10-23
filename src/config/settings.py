@@ -143,6 +143,11 @@ DC311_API_KEY = os.environ.get("DC311_API_KEY", "").strip()
 # address or a web address, set by the owner in the deployment's environment file, so the public
 # repository names nobody. Empty (the default): the page says to ask the site's owner on Discord.
 PRIVACY_CONTACT = os.environ.get("PRIVACY_CONTACT", "").strip()
+# Who hosts the server and its database (core.privacy_policy, "Where your data is kept"): the
+# provider's name as riders should read it, for example a cloud company, set by the owner in the
+# deployment's environment file. Garmin's developer program asks that the policy name every party
+# that stores its riders' data, hosting included. Empty: the page says the site's owner runs it.
+PRIVACY_HOSTING = os.environ.get("PRIVACY_HOSTING", "").strip()
 
 # Everything with state in it lives on the separate data volume, so nothing
 # durable sits on the root volume and the code directory holds no data. The
