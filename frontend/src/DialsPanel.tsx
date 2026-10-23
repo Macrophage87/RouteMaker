@@ -67,12 +67,15 @@ function Slider(props: {
         min={view.min}
         max={view.max}
         step={view.step ?? 5}
-        value={props.value}
+        value={view.scale ? view.scale.toSlider(props.value) : props.value}
         aria-labelledby={nameId}
         aria-valuetext={view.words}
         aria-describedby={view.note ? noteId : undefined}
         disabled={view.disabled}
-        onChange={(event) => props.onDraft(Number(event.target.value))}
+        onChange={(event) => {
+          const position = Number(event.target.value);
+          props.onDraft(view.scale ? view.scale.fromSlider(position) : position);
+        }}
         onPointerUp={() => props.onRelease(false)}
         onKeyUp={() => props.onRelease(true)}
         onBlur={() => props.onRelease(false)}

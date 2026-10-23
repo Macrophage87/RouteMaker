@@ -29,15 +29,16 @@ test("calmer: never past the ride type's own top (Mass Ride's traffic slider is 
   assert.equal(eased("mass-ride", { ...startDials("mass-ride") }, "calmer"), null);
 });
 
-test("flatter: each press is the next step down the hills slider, until Avoids hills at the end", () => {
+test("flatter: each press is the next step down the hills slider, until 1% at the end", () => {
   const seen: number[] = [];
   let d: Dials | null = dials(70, 100);
   while ((d = eased("mountain-goat", d, "flatter"))) seen.push(d.hills);
   assert.deepEqual(seen, [50, 0, -40, -100]);
   assert.equal(eased("default", dials(70, -100), "flatter"), null);
   assert.equal(eased("default", dials(70, -60), "flatter")?.hills, -100);
-  // Already "Avoids hills" (-85): -100 reads the same, so there is no further step.
-  assert.equal(eased("default", dials(70, -85), "flatter"), null);
+  // Already "Easy up to 1%" (-95): -100 reads the same, so there is no further step; -85 is 2%.
+  assert.equal(eased("default", dials(70, -95), "flatter"), null);
+  assert.equal(eased("default", dials(70, -85), "flatter")?.hills, -100);
   assert.equal(eased("default", dials(40, 0), "flatter")?.stress, 40);
 });
 
@@ -65,7 +66,7 @@ test("the words: in the name and said, the symbol alone on screen", () => {
   assert.match(EASE_NAME.flatter, /^Flatter: fewer hills/);
   assert.equal(EASE_AT_END.calmer, "Already the calmest route.");
   assert.equal(easeFinding("default", dials(80, 0), "calmer"), `Finding a calmer route. ${stressWords(80)}.`);
-  assert.equal(easeFinding("default", dials(70, -40), "flatter"), "Finding a flatter route. Gentler grades.");
+  assert.equal(easeFinding("default", dials(70, -40), "flatter"), "Finding a flatter route. Easy up to 5%.");
 });
 
 test("ride: the buttons re-plan from here with the ride's own dials, kept only when a route was found", () => {

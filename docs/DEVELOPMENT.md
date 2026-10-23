@@ -1438,11 +1438,14 @@ curl -s -X POST http://localhost:8000/api/route -H 'Content-Type: application/js
   `lua/routemaker_remap.lua`), and Valhalla weighs that `3 * (1 - use_roads)`,
   so one graph serves every position. LTS 4 and up cost more again ("Graded
   stress", below).
-- `hills`, integer -100-100, detent at 0: below it `use_hills = 1 + hills/100`
-  (0 is `use_hills` 1.0, no grade penalty, the fastest time). Above it, on every
+- `hills`, integer -100-100, detent at 0: it sets the rider's LT1 grade, 1% at
+  -100, 8% at 0 and 15% at 100 in a straight line (`hill_cost.lt1_grade_for`;
+  "Hill cost past LT1", below). Below the detent `use_hills = 1 + hills/100` still
+  shapes what the router offers, but every route is scored with the rider's own
+  hill cost in place of the router's climbing charge. Above it, on every
   ride type but Mountain Goat, "fine with hills" (FOLLOWUP-HILLS-TOLERATE,
-  OWNER-DECISIONS 242; "Fine with hills", below): `hills/100` of the router's own
-  climbing charge comes off each of its `alternates`, and `hills_tolerate` says
+  OWNER-DECISIONS 242): the same scoring at a steeper LT1 grade, and `hills_tolerate`
+  says
   what was compared and chosen. On Mountain Goat above it a climb
   search among the router's `alternates` (3), choosing the one that climbs most
   within `1 + 0.5 * hills/100` of the direct route's length, with routes through
@@ -1742,6 +1745,91 @@ ride type but Mountain Goat): `candidates`, `chosen` (0 is the router's own),
 `extra_climb_m` and `extra_distance_m` (the kept route against the router's own,
 negative where shorter), and `limited` (`two_points`, `long_ride`, `timed_out`,
 `calm_first`).
+
+**Hill cost past LT1** (v0.12.0; this replaces the sustained-grade price and the
+"fine with hills" discount above as the hills slider's weighing, which are kept as
+the record of how it got here). The owner, 2026-10-23: "I'm thinking for hill stress
+to always assume time equivalent, but the slider should determine a further penalty
+for steepness. We could have the penalty start around the max steepness someone can
+ride an extended period without labored breating ( LT1 threshold essentially)";
+"Below LT1 you can basically downshift and chill, so it's essentially the same as a
+slightly longer flat piece. Above that, fatigue can set in. Above FTP, fatigue is
+even higher, so a higher penalty. Let's mainly try to focus on one metric and
+extrapolate. Simplicity is better."; "Just do a standard model ... nobody wants to
+put in 50 parameters"; "You can use the slider standards for the levels ... or
+1-15"; "The curve should probably start around 65% of FTP as thats a casual
+endurance pace"; "then go much more rapidly after FTP. look at a stanard power
+curve"; "In general it's more long term stamina than short term."; "Just make it clear
+that while we're using an FTP model, were just basing it on a comfortable climb grade.
+It's unlikely that a precise number would change routing much. Weight should only really
+affect the extra time component, as heavily loaded touring bikes tend to have good
+climbing gears. Penalty is by slider."; "mostly a hidden calculation, less so for the
+actual time. Basically if you are having to push a bike up a hill it's going to be a
+last resort"; and "Can the slider positions just be percent?"
+
+The one metric is the rider's **LT1 grade**: the steepest grade they can climb for
+several minutes in their lowest gear without labored breathing. The hills slider shows
+it in whole percent, 1% at full avoid, 8% at the detent and 15% at the far end, in a
+straight line (`hill_cost.lt1_grade_for`; the front end's `hillsGradePosition` and
+`hillsAtGrade` map the slider's percent to the API's `hills`, -100 to 100, which is
+unchanged); each ride type's start is its standard rider (Cargo -60 is 4%, Fast 40 is
+11%). Mountain Goat keeps its old slider, whose right half seeks climbs. FTP is only
+the shape of the curve: the rider sets nothing but the grade. The effort is worked out
+for a standard rider and bike of 198 lb (90 kg, `effort.MASS_KG`) with the effort
+model's forces (`routemaker.effort`, Martin et al. 1998: rolling resistance 0.006, CdA
+0.4 m², air 1.225 kg/m³), 95% drivetrain, so the penalty follows the slider alone:
+
+- **LT1 power** is what holds 5 mph (8 km/h), a hybrid's lowest gear at an easy
+  cadence, on the LT1 grade. It is the top of Zone 2, 75% of FTP (Allen and Coggan,
+  "Training and Racing with a Power Meter"; LT1 is the first ventilatory threshold,
+  the talk-test intensity, Foster and Porcari, ACE 2010). So FTP = LT1 power / 0.75.
+- **Endurance pace**, 65% of FTP and never less than what holds the ride's flat speed
+  on the flat, is the power the rider climbs at.
+- **Time, always.** Over each of the effort model's rising windows (at least 984 ft
+  (300 m), so a short kick averages out) the standard rider climbs at the endurance
+  pace, never faster than the flat speed and never slower than 5 mph. The request's
+  system weight moves at that same power, so a loaded bike climbs slower, down to
+  pushing pace in its low gears; the steepness penalty never changes with weight (the
+  calm search's effort blend and Mountain Goat's effort tiebreak still weigh it). The extra
+  seconds over the flat cost what the same seconds of flat riding do.
+- **Past the endurance pace**, where holding 5 mph takes more, the penalty is the
+  window's seconds times `(e^(d / 0.2) - 1) / (e^(0.35 / 0.2) - 1)`
+  (`hill_cost.steepness_rate`), with `d` the power past the endurance pace as a share of
+  FTP: 0.06 s a second at 70%, 0.24 at 80%, 0.52 at 90%, 1 at FTP, 1.8 at 110%, 3.1 at
+  120%. It sits close to the table the owner approved ("That table looks about right":
+  0.08, 0.33, 0.66, 1, 2.4 at 110%). A critical-power W' balance (Skiba et al., 2012)
+  was tried for past FTP and dropped: the exponential gives the same sharp rise with one
+  model.
+- **Pushing is a last resort.** Where riding a window would cost more than pushing it,
+  it is pushed, at Tobler's hiking speed (Tobler 1993, NCGIA 93-1:
+  `6 e^(-3.5 |grade + 0.05|)` km/h) times 0.75 for the bike (`hill_cost.push_ms`; the
+  owner: "2.5 mph is probably fast"): 1.9 mph (3.1 km/h) at 6%, 1.7 mph (2.7 km/h) at
+  10%, 1.4 mph (2.2 km/h) at 15%. It costs its time plus 4 s of penalty a second pushed
+  (`WALK_PENALTY`), so a route that needs pushing loses to almost any ridable one.
+
+The penalty is for choosing routes only: no time shown to riders includes it. Descents
+add nothing here; riding the brakes is still priced from the ride type's brake grade
+(the table above). At 198 lb (90 kg) and 11 mph (18 km/h), 0.6 mi (1 km) costs, in
+minutes of time plus penalty: at the detent (8%), 4.2 + 1.0 at 8%, 4.2 + 4.5 at 10% and
+4.2 + 12.6 at 12%; at Cargo's start, -60 (3.8%, shown as 4%), 4.2 + 1.5 at 4%, 4.2 + 14.4 at 6% and, pushed, 19.2 +
+90.2 at 10%; at Fast's start, 40 (10.8%, shown as 11%), 4.2 + 2.2 at 12%.
+
+Where it is used. Valhalla's own climbing charge (the router's cost per metre climbed
+at the request's `use_hills`, the table above, read between its 1.0, 0.4 and 0.0 rows:
+`climbs.router_climb_m`) is taken off each route and the rider's hill cost
+(`hill_cost.hill_cost_m`, metres of flat riding at the ride's speed) put in its place:
+
+- the router's alternatives, on both halves of the slider for every ride type but
+  Mountain Goat (`routing.choose_by_hills`, `routing.hill_s`; an alternative must save
+  5 cost seconds, `HILLS_EPS_S`), still never a busier route (`routing.calmer_or_own`)
+  and with the same limits (two points, up to 16 mi (25 km) apart);
+- the calm search's score (`refine.Analysis.score`: `hill_m - router_climb_m`) and its
+  distance level (`refine.level3`: length plus `hill_m`), so at the top of the stress
+  slider climbing counts as the time it takes and the penalty past LT1.
+
+`hills_avoid.grade_cost_s` and `direct_grade_cost_s` are now the rider's hill cost in
+cost seconds (`routing.rider_hill_s`); `hills_tolerate.discount_s` is the climbing cost
+the kept route saves against the detent. Scoring only: nothing is rebuilt.
 
 **The climb card** (v0.6.0; the owner, 2026-10-12). A press on a climb's summit marker (in Go,
 its dashed line too) opens its card (`climbInteraction.ts`, `lib/climbCard.ts`): MapView's click asks
