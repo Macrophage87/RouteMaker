@@ -813,6 +813,89 @@ def closure_row(
     }
 
 
+# --- Closures on the map with no route (v0.12.0) -----------------------------------
+#
+# The owner, 2026-10-23 (Lake Frank): "When a closure happens, we should get one of those red
+# construction symbols", "with a red path on the closed parts", "or orange for construction you
+# can get around"; "Disable the DC ones by default as those aren't that reliable"; "We can link
+# to a website and automatically remove them once the end date happens". So the map draws the
+# closures in force now in the view, route or no route: closed in red, a blocked bike lane or a
+# rideable work zone in orange. DDOT's permits only with Plan's DC permits switch on. A closure
+# past its end is not in force (`rules.active`), so it leaves the map at the next ask.
+
+# The kinds drawn with no route: the route map's, and a rideable work zone (orange).
+AREA_KINDS = (*MAP_KINDS, rules.PENALTY)
+# At most this many in one view (each is a marker a keyboard reaches): red first, then
+# nearest the view's middle.
+AREA_MOST = 60
+# The largest view asked about, degrees (about 21 by 21 mi here).
+AREA_MAX_LON = 0.4
+AREA_MAX_LAT = 0.3
+
+AREA_EFFECT_TEXT = {
+    rules.CLOSED: "Closed to bikes: routes go round it.",
+    rules.UNKNOWN: (
+        "Every lane closed; the agency does not say whether bicycles can pass. Routes go round it."
+    ),
+    rules.LANE: "The bike lane is blocked here; the road stays open.",
+    rules.PENALTY: "Construction: still rideable, with care. Routes count it as slower.",
+}
+
+
+def parse_area(text: str) -> tuple[float, float, float, float]:
+    """The view as west,south,east,north in degrees: in range, and not too big."""
+    parts = text.split(",")
+    if len(parts) != 4:
+        raise ValueError("bbox is west,south,east,north")
+    try:
+        west, south, east, north = (float(p) for p in parts)
+    except ValueError as error:
+        raise ValueError("bbox is four numbers") from error
+    if not (-180 <= west < east <= 180 and -90 <= south < north <= 90):
+        raise ValueError("bbox is west,south,east,north, each in range, west before east")
+    if east - west > AREA_MAX_LON or north - south > AREA_MAX_LAT:
+        raise ValueError("zoom in: the view is too large to show closures")
+    return west, south, east, north
+
+
+def area_rows(box, permits: bool = False, now: datetime | None = None) -> list[dict]:
+    """The closures in force now with any point in `box`, as the map and its card show them
+    (`closure_row`, effect "none", with words for the map instead of a route's)."""
+    now = now or _now()
+    west, south, east, north = box
+    cx, cy = (west + east) / 2, (south + north) / 2
+    rows = []
+    for zone in snapshot().zones:
+        if zone.kind not in AREA_KINDS or not rules.active(zone, now) or len(zone.line) < 2:
+            continue
+        possible = rules.possible(zone)
+        if possible and (not permits or zone.kind == rules.PENALTY):
+            continue
+        lons = [lon for lon, _lat in zone.line]
+        lats = [lat for _lon, lat in zone.line]
+        if max(lons) < west or min(lons) > east or max(lats) < south or min(lats) > north:
+            continue
+        if not any(west <= lon <= east and south <= lat <= north for lon, lat in zone.line):
+            continue
+        effect = rules.POSSIBLE if possible else rules.NO_EFFECT
+        row = closure_row(zone, effect, None, now, False)
+        if zone.kind == rules.PENALTY:
+            row["severity"] = "amber"
+        row["can_bypass"] = False
+        if not possible:
+            row["effect_text"] = AREA_EFFECT_TEXT[zone.kind]
+        rows.append(row)
+    rows.sort(
+        key=lambda r: (
+            r["effect"] == rules.POSSIBLE,
+            r["severity"] != "red",
+            (r["point"][0] - cx) ** 2 + (r["point"][1] - cy) ** 2,
+            r["id"],
+        )
+    )
+    return rows[:AREA_MOST]
+
+
 def _possible_title(zone: rules.Zone) -> str:
     """A permit's title (v0.9.1): what it may close, never "closed"; the stored title says
     "road closed", so it is not used."""
@@ -826,6 +909,8 @@ def _title(zone: rules.Zone) -> str:
         return f"{road}: bike lane blocked"
     if zone.kind == rules.UNKNOWN:
         return f"{road}: every lane closed"
+    if zone.kind == rules.PENALTY:
+        return f"{road}: construction"
     return f"{road}: closed"
 
 
