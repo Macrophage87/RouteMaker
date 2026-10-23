@@ -4,14 +4,15 @@ import assert from "node:assert/strict";
 import { massFilters, massLayers } from "./massStyle.js";
 import {
   BASEMAP,
-  popularBandLayers,
-  POPULAR_BAND,
   BUSY_RAILS_MIN_ZOOM,
   drawPriority,
   FACILITY_PRIORITY,
   CALM_STREET_PRIORITY,
   stressLayers,
   stressCasingLayers,
+  BUSY_MIN_TIER,
+  STREET_HIDDEN_ZOOM,
+  POPULAR_PRIORITY_MIN_CLASS,
   gapLayers,
   ringLayers,
   mtbTrailLayers,
@@ -258,12 +259,10 @@ test("the overlay is added casings first: every casing under every tier", () => 
     ["mtb-trail-ticks", "mtb-trail-casing", "mtb-level-casing-1", "mtb-level-casing-2", "mtb-level-casing-3", "mtb-level-casing-4", "mtb-trail", "mtb-level-1", "mtb-level-2", "mtb-level-3", "mtb-level-4"],
     "the shared not-for-routes ticks (452a), every white edge (the unrated trails', then each level's; v0.6.0), then the unrated trails' dashes (OWNER-DECISIONS 452a) and each level's line (456)",
   );
-  // The popular corridors' band (2026-10-21) under everything, then the whole mountain-bike layer under every
-  // routable line, and its names (2026-10-10) over them, under the Mass Ride's.
-  const band = popularBandLayers("s").map((l) => l.id);
-  assert.deepEqual(band, ["popular-band"]);
-  assert.equal(ids[0], "popular-band");
-  assert.deepEqual(ids.slice(1, 1 + mtb.length), mtb);
+  // The whole mountain-bike layer under every routable line, and its names (2026-10-10) over them, under the
+  // Mass Ride's. No popular corridors' band (the owner, 2026-10-23: "The blue just makes things look busy").
+  assert.ok(!ids.some((id) => id.startsWith("popular")));
+  assert.deepEqual(ids.slice(0, mtb.length), mtb);
   const names = mtbLabelLayers("s").map((l) => l.id);
   assert.deepEqual(names, ["mtb-trail-label"]);
   assert.deepEqual(ids.slice(-mass.length - 1, -mass.length), names);
@@ -271,11 +270,11 @@ test("the overlay is added casings first: every casing under every tier", () => 
   const trailNames = trailLabelLayers("s").map((l) => l.id);
   assert.deepEqual(trailNames, ["trail-name"]);
   assert.deepEqual(ids.slice(-mass.length - 2, -mass.length - 1), trailNames);
-  assert.deepEqual([...ids].sort(), [...band, ...mtb, ...rings, ...rails, ...tiers, ...casings, ...gaps, ...unknown, ...marks, ...halves, ...trailNames, ...names, ...mass].sort(), "each layer once");
+  assert.deepEqual([...ids].sort(), [...mtb, ...rings, ...rails, ...tiers, ...casings, ...gaps, ...unknown, ...marks, ...halves, ...trailNames, ...names, ...mass].sort(), "each layer once");
   // A half step's outline under its dash, both over every tier line (458).
   for (let tier = 1; tier <= 4; tier++) assert.ok(ids.indexOf(`stress-half-outline-${tier}`) < ids.indexOf(`stress-half-${tier}`));
   // The mountain-bike layer under everything, so every routable line draws over it.
-  assert.equal(ids[1], "mtb-trail-ticks", "the mountain-bike trails' shared ticks under every line");
+  assert.equal(ids[0], "mtb-trail-ticks", "the mountain-bike trails' shared ticks under every line");
   assert.ok(ids.indexOf("stress-unknown-casing") < ids.indexOf("stress-unknown"), "the edge under its line");
   assert.ok(Math.max(...casings.map((c) => ids.indexOf(c))) < ids.indexOf("stress-unknown-casing"), "after every casing");
   // The Mass Ride's layers (massStyle.js) are drawn over every stress layer, in their own order.
@@ -710,24 +709,26 @@ test("in a city grid a busy road's rails wait for zoom 14 unless it is a popular
   for (const layer of facilityLayers("s")) assert.equal(layer.paint["line-opacity"], undefined, layer.id);
 });
 
-test("the popular band draws only a way with a class, wider for a busier class, at every zoom it draws", () => {
-  const [band] = popularBandLayers("s");
-  for (const popular of [1, 2, 3]) assert.equal(draws(band, { tier: 2, facility: "none", popular }), true);
-  assert.equal(draws(band, { tier: 2, facility: "none" }), false, "no class, no band");
-  for (const zoom of [12, 14, 16]) {
-    const widths = [1, 2, 3].map((popular) => paintValue(band, "line-width", { popular }, zoom));
-    assert.ok(widths[0] > 0 && widths[0] < widths[1] && widths[1] < widths[2], `z${zoom}: ${widths}`);
+test("in a city grid at z12 a plain street is not drawn, busy or not; a popular corridor, a bike lane and a rural road are (the owner, 2026-10-23)", () => {
+  for (const layer of [...stressLayers("s"), ...stressCasingLayers("s")]) {
+    const tier = Number(layer.id.at(-1));
+    const at = (zoom, props) => paintValue(layer, "line-opacity", { tier, facility: "none", ...props }, zoom);
+    assert.equal(at(STREET_HIDDEN_ZOOM, { dense: true }), 0, `${layer.id} downtown`);
+    assert.ok(at(STREET_HIDDEN_ZOOM, { dense: true, popular: POPULAR_PRIORITY_MIN_CLASS }) > 0, `${layer.id} popular`);
+    assert.ok(at(STREET_HIDDEN_ZOOM, { dense: true, popular: 1 }) === 0, `${layer.id} class 1 is most of downtown`);
+    assert.ok(at(STREET_HIDDEN_ZOOM, { dense: true, facility: "lane" }) > 0, `${layer.id} bike lane`);
+    assert.ok(at(STREET_HIDDEN_ZOOM, {}) > 0, `${layer.id} rural`);
+    assert.ok(at(13, { dense: true }) > 0, `${layer.id} z13 thin, not hidden`);
   }
-  // Zoomed out the tiles carry only classes 2 and 3 (core/stress_tiles.py); class 1 is not drawn there.
-  assert.equal(paintValue(band, "line-width", { popular: 1 }, 10), 0);
-  assert.ok(paintValue(band, "line-width", { popular: 3 }, 10) > 0);
-  assert.ok(POPULAR_BAND.opacity < 0.5, "the base map stays legible under it");
-  const strong = popularBandLayers("s", undefined, tiersFor(DEFAULT_PALETTE, true))[0];
-  assert.equal(strong.paint["line-opacity"], POPULAR_BAND.strongOpacity, "stronger with the accessibility switch");
-  assert.ok(POPULAR_BAND.strongOpacity > POPULAR_BAND.opacity);
-  // A hue of its own: no tier's line or casing, in any palette, and no rail.
-  const used = [...Object.values(PALETTES).flatMap((p) => Object.values(p).flatMap((t) => [t.color, t.casing])), ...FACILITIES.map((f) => f.color)];
-  assert.ok(!used.includes(POPULAR_BAND.color));
+});
+
+test("a popular corridor keeps its full width in a city grid at z13", () => {
+  for (const layer of stressLayers("s")) {
+    const tier = Number(layer.id.at(-1));
+    if (tier >= BUSY_MIN_TIER) continue;
+    const width = (props) => paintValue(layer, "line-width", { tier, facility: "none", dense: true, ...props }, 13);
+    assert.ok(width({ popular: POPULAR_PRIORITY_MIN_CLASS }) > width({}), layer.id);
+  }
 });
 
 test("the drawing priority: a path over a protected lane over a painted lane over a long calm street over the rest", () => {

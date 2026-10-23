@@ -23,7 +23,6 @@ import {
   MTB_HALO,
   MTB_LEVELS,
   MTB_MIN_ZOOM,
-  POPULAR_BAND,
   SOLID_MIN_ZOOM,
   UNKNOWN_SURFACE_DASH,
   UNPAVED_DASH,
@@ -273,22 +272,6 @@ export function TierSwatch({ tier, widths }: { tier: Tier; widths: { line: numbe
   );
 }
 
-/** The popular corridors' row (2026-10-21; stressStyle.js POPULAR_BAND): what the band is, and that the line inside keeps its stress. */
-export const POPULAR_LEGEND =
-  "A soft cyan band under the busiest bike corridors: the streets and trails Capital Bikeshare riders use most, and well-known routes like the Capital Crescent and Rock Creek trails. Wider = busier. The line inside still shows how stressful it is.";
-
-/** The popular corridors' swatch: the band at its widest, with LTS 1's line inside it. */
-export function PopularSwatch({ tier, widths }: { tier: Tier; widths: { line: number; casing: number } }): ReactElement {
-  const opacity = tier.strong ? POPULAR_BAND.strongOpacity : POPULAR_BAND.opacity;
-  return h(
-    "svg",
-    { width: SVG_WIDTH, height: 14, "aria-hidden": "true" },
-    h("line", { x1: X1, y1: 7, x2: X2, y2: 7, stroke: POPULAR_BAND.color, strokeWidth: 14, strokeOpacity: opacity, strokeLinecap: "round" }),
-    line(7, tier.casing, widths.casing),
-    line(7, tier.color, widths.line, dashPx(tier.dash, widths.line)),
-  );
-}
-
 /**
  * The unpaved swatch (OWNER-DECISIONS 302): the brown ramp, light to dark, one
  * stretch a tier from LTS 1 to Avoid, each on its unpaved casing at LTS 1's
@@ -454,7 +437,6 @@ export function StressLegend({
       row("gravel", h(UnpavedSwatch, { tiers, widths: widths.tiers[0], gravel: true }), "Gravel", GRAVEL_LEGEND),
       row("unpaved", h(UnpavedSwatch, { tiers, widths: widths.tiers[0] }), "Dirt", UNPAVED_LEGEND),
       row("unknown", h(UnknownSurfaceSwatch, { tier: tiers[0], widths: widths.tiers[0] }), "Surface unknown", UNKNOWN_SURFACE_LEGEND),
-      row("popular", h(PopularSwatch, { tier: tiers[0], widths: widths.tiers[0] }), "Popular corridor", POPULAR_LEGEND),
       // The mountain-bike trails' rows (452a, 456) are in their own key, under their switch in Trails and terrain
       // (MtbTrailLegend), once in Layers.
     ),
