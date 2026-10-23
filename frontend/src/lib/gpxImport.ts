@@ -8,14 +8,16 @@ import { ImportError, planFromGpx, verbatimTrack, type ImportedPlan } from "./gp
 
 export type ImportOutcome = { ok: true; plan: ImportedPlan } | { ok: false; message: string };
 
+/** The file picker's filter, where it is used. */
+export const GPX_ACCEPT = ".gpx,application/gpx+xml";
+
 /**
  * The file picker's filter. Android's picker (the phone app's and Chrome's) filters by MIME type alone,
  * and a downloaded GPX file there is usually labelled application/octet-stream, so with the filter every
  * GPX file in Downloads is greyed out (the owner, 2026-10-23: "I can't open any GPX files on my phone").
- * On Android any file can be picked; readGpx says in a sentence when it is not GPX.
+ * On Android any file can be picked; readGpx says in a sentence when it is not GPX. A tablet in Chrome's
+ * "Desktop site" mode does not say Android and keeps the filter.
  */
-export const GPX_ACCEPT = ".gpx,application/gpx+xml";
-
 export function gpxAccept(userAgent: string = globalThis.navigator?.userAgent ?? ""): string | undefined {
   return /Android/i.test(userAgent) ? undefined : GPX_ACCEPT;
 }
