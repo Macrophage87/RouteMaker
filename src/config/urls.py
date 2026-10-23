@@ -22,6 +22,7 @@ from core import (
     connector,
     health,
     mass_tiles,
+    privacy_policy,
     share_preview,
     stress_tiles,
 )
@@ -54,4 +55,6 @@ urlpatterns = [
     path("oauth/token", connector.token, name="oauth-token"),
     # Deleting an account, from Settings or from the web without the app (core.account_deletion).
     path("delete-account", account_deletion.page, name="delete-account"),
+    # The privacy policy, public, for Google Play's listing and Settings (core.privacy_policy).
+    path("privacy", privacy_policy.page, name="privacy"),
 ]

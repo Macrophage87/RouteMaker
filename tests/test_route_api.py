@@ -42,6 +42,8 @@ ROUTE_PATH = "/api/route"
 CONTRACT_KEYS = {
     "preset",
     "variant",
+    "dirt_trails",
+    "dirt_closed",
     "geometry",
     "distance_m",
     "duration_s",
@@ -325,13 +327,22 @@ class TestAnswer:
         router(standard_router())
         body = post(client, good_body()).json()
         assert body["stress_spans"] == [
-            {"from_m": 0, "to_m": 900, "tier": 3, "facility": "none", "unpaved": None, "rpm": None},
+            {
+                "from_m": 0,
+                "to_m": 900,
+                "tier": 3,
+                "facility": "none",
+                "unpaved": None,
+                "rough": None,
+                "rpm": None,
+            },
             {
                 "from_m": 900,
                 "to_m": 1300,
                 "tier": 1,
                 "facility": "none",
                 "unpaved": None,
+                "rough": None,
                 "rpm": None,
             },
             {
@@ -340,6 +351,7 @@ class TestAnswer:
                 "tier": 4,
                 "facility": "none",
                 "unpaved": None,
+                "rough": None,
                 "rpm": None,
             },
             {
@@ -348,6 +360,7 @@ class TestAnswer:
                 "tier": None,
                 "facility": None,
                 "unpaved": None,
+                "rough": None,
                 "rpm": None,
             },
         ]
@@ -725,6 +738,7 @@ class TestStressBreakdown:
                 "tier": None,
                 "facility": None,
                 "unpaved": None,
+                "rough": None,
                 "rpm": None,
             }
         ]
@@ -833,9 +847,14 @@ class TestWhatIsSentToTheRouter:
         else:
             assert fake.endpoints() == ["route", "trace_attributes"]
         assert all(url.startswith(base + "/") for url, _ in fake.calls)
-        assert all(p["costing_options"] in (presets.costing(name), middle) for _, p in fake.calls)
+        # Novice and Nervous (v0.11.0, `core.novice_walks`) also asks on foot for the walk
+        # past a short busy stretch; every other call is the ride type's own.
+        on_foot = [p for _, p in fake.calls if p["costing"] == "pedestrian"]
+        assert not on_foot or name == "novice"
+        ridden = [p for _, p in fake.calls if p["costing"] != "pedestrian"]
+        assert all(p["costing_options"] in (presets.costing(name), middle) for p in ridden)
         assert fake.calls[0][1]["costing_options"] == presets.costing(name)
-        assert all(p["costing"] == "bicycle" for _, p in fake.calls)
+        assert all(p["costing"] == "bicycle" for p in ridden)
 
     def test_the_points_are_sent_in_order_as_lon_lat(self, client, segments, router) -> None:
         fake = router(standard_router())
@@ -1657,6 +1676,7 @@ class TestTimeBudget:
                 "tier": None,
                 "facility": None,
                 "unpaved": None,
+                "rough": None,
                 "rpm": None,
             }
         ]
@@ -2818,6 +2838,36 @@ class TestSurfaceOfPieces:
         assert [c[0] for c in classes] == ["3", "1", "4"] and all(len(c) == 2 for c in classes)
         tier, facility = classes[2]
         assert tier == "4" and classes[2] == (tier, facility)
+
+    def test_classify_carries_is_rough_and_the_sections_split_gravel_from_dirt(
+        self, segments
+    ) -> None:
+        """The owner, 2026-10-21: "Maybe make natural surface trails brown and gravel grey?"
+        An unpaved section says whether it is rough (brown) or not (gravel grey)."""
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"UPDATE {segments}.segment SET is_unpaved = true WHERE osm_way_id = 202"
+            )
+            cursor.execute(
+                f"UPDATE {segments}.segment SET is_rough = (ordinal = 1) WHERE osm_way_id = 202"
+            )
+        pieces = [
+            routing.Piece(202, -77.0375, LAT, 100.0),
+            routing.Piece(202, -77.025, LAT, 100.0),
+        ]
+        classes = routing.classify(pieces, "weekday_offpeak")
+        assert [c.unpaved for c in classes] == [True, True]
+        assert [c.rough for c in classes] == [False, True]
+        stretches = [
+            (p.metres, *c, c.unpaved, c.rpm, False, c.half, c.rough)
+            for p, c in zip(pieces, classes, strict=True)
+        ]
+        spans = routing.stress_spans(stretches)
+        assert [(s["unpaved"], s.get("rough")) for s in spans] == [(True, False), (True, True)]
+        # A paved section carries no roughness, and an older stretch with none is unknown.
+        paved = routing.stress_spans([(100.0, "2", "none", False)])
+        assert "rough" not in paved[0]
+        assert routing.stress_spans([(100.0, "2", "none", True)])[0]["rough"] is None
 
     def test_the_no_trail_graph_keeps_the_surface(self, segments) -> None:
         """Mutation review X31: a ride on the no-trail variant (Group Ride, trails off)

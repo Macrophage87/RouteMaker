@@ -43,6 +43,10 @@ android {
         }
     }
     buildTypes {
+        // A test build sits beside the store app: different keys, so neither could update the other.
+        debug {
+            applicationIdSuffix ".debug"
+        }
         release {
             if (releaseKeystore) {
                 signingConfig signingConfigs.release

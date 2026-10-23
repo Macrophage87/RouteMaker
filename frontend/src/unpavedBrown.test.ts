@@ -82,19 +82,22 @@ test("each tier keeps its own dash and width when unpaved: the overlay's line la
         for (const unpaved of [true, false, undefined]) {
           assert.equal(paintAt(layer, "line-width", { tier: tier.tier, unpaved }, 15), tier.width, `${tier.short} width`);
         }
-        assert.equal(paintAt(layer, "line-color", { tier: tier.tier, unpaved: true }, 15), tier.unpavedColor, `${palette} ${tier.short} unpaved`);
+        assert.equal(paintAt(layer, "line-color", { tier: tier.tier, unpaved: true, rough: true }, 15), tier.unpavedColor, `${palette} ${tier.short} unpaved`);
+        assert.equal(paintAt(layer, "line-color", { tier: tier.tier, unpaved: true }, 15), tier.gravelColor, `${palette} ${tier.short} gravel`);
         assert.equal(paintAt(layer, "line-color", { tier: tier.tier, unpaved: false }, 15), tier.color, "paved");
         assert.equal(paintAt(layer, "line-color", { tier: tier.tier }, 15), tier.color, "an unknown surface is drawn as paved");
       });
       const casings = stressCasingLayers("s", undefined, tiers) as Layer[];
       tiers.forEach((tier, i) => {
-        assert.equal(paintAt(casings[i], "line-color", { tier: tier.tier, unpaved: true }, 15), tier.unpavedCasing, `${tier.short} unpaved casing`);
+        assert.equal(paintAt(casings[i], "line-color", { tier: tier.tier, unpaved: true, rough: true }, 15), tier.unpavedCasing, `${tier.short} unpaved casing`);
+        assert.equal(paintAt(casings[i], "line-color", { tier: tier.tier, unpaved: true }, 15), tier.gravelCasing, `${tier.short} gravel casing`);
         assert.equal(paintAt(casings[i], "line-color", { tier: tier.tier, unpaved: false }, 15), tier.casing);
       });
       // The dotted mark, the cue that is not colour, in the unpaved casing over the brown.
       const marks = unpavedLayers("s", undefined, tiers) as Layer[];
       tiers.forEach((tier, i) => {
-        assert.equal(marks[i].paint["line-color"], tier.unpavedCasing);
+        assert.equal(paintAt(marks[i], "line-color", { tier: tier.tier, unpaved: true, rough: true }, 15), tier.unpavedCasing);
+        assert.equal(paintAt(marks[i], "line-color", { tier: tier.tier, unpaved: true }, 15), tier.gravelCasing);
         assert.deepEqual(marks[i].paint["line-dasharray"], UNPAVED_DASH);
         assert.ok(JSON.stringify(marks[i].filter).includes(JSON.stringify(["==", ["get", "unpaved"], true])));
       });
@@ -246,7 +249,24 @@ test("an unpaved section of the route is drawn in its tier's brown, with its unp
   assert.equal(spanClass({ tier: 3, facility: "none", unpaved: null }).key, "3", "an unknown surface is drawn as paved");
   assert.equal(spanClass({ tier: 3, facility: "none" }).key, "3", "an older API");
   assert.equal(spanClass({ tier: null, facility: "none", unpaved: true }).key, "unknown", "no tier: the unrated grey");
-  assert.equal(routeClasses().filter((c) => isUnpavedClass(c.key)).length, 5);
+  assert.equal(routeClasses().filter((c) => isUnpavedClass(c.key)).length, 10, "five browns and five gravel greys");
+});
+
+test("a gravel section of the route (unpaved, not rough) is drawn in its tier's grey; rough or not said, brown (2026-10-21)", () => {
+  const tiers = tiersFor(DEFAULT_PALETTE) as Tier[];
+  for (const tier of tiers) {
+    const cls = spanClass({ tier: tier.tier, facility: "none", unpaved: true, rough: false });
+    assert.equal(cls.key, `g${tier.tier}`);
+    if (tier.tier !== 5) {
+      assert.equal(cls.color, tier.gravelColor);
+      assert.equal(cls.halo, tier.gravelCasing);
+    }
+    assert.equal(cls.width, spanClass({ tier: tier.tier, facility: "none" }).width, "the paved tier's width");
+    assert.ok(isUnpavedClass(cls.key), "it keeps the dotted unpaved mark");
+    assert.equal(spanClass({ tier: tier.tier, facility: "none", unpaved: true, rough: true }).key, `u${tier.tier}`);
+    assert.equal(spanClass({ tier: tier.tier, facility: "none", unpaved: true, rough: null }).key, `u${tier.tier}`);
+  }
+  assert.equal(spanClass({ tier: 3, facility: "none", unpaved: false, rough: false }).key, "3", "paved stays paved");
 });
 
 test("the route's unpaved sections carry the dotted mark: a layer over them in their halo, the map's own dash", () => {

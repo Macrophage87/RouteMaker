@@ -289,6 +289,8 @@ export function tiersFor(palette, strong = false) {
     const keep = shape.tier >= BUSY_MIN_TIER || shape.tier === 2;
     const casing = strong ? strongerCasing(colours.casing, keep) : colours.casing;
     const unpavedCasing = strong ? strongerCasing(unpaved.casing, keep) : unpaved.casing;
+    const gravel = GRAVEL_PALETTES[palette][shape.tier];
+    const gravelCasing = strong ? strongerCasing(gravel.casing, keep) : gravel.casing;
     return {
       ...shape,
       ...colours,
@@ -299,6 +301,10 @@ export function tiersFor(palette, strong = false) {
       unpavedColor: unpaved.color,
       unpavedCasing,
       unpavedGap: unpaved.gap ?? unpavedCasing,
+      // The gravel grey for this tier (GRAVEL_PALETTES), its casing and its gaps' colour.
+      gravelColor: gravel.color,
+      gravelCasing,
+      gravelGap: gravel.gap ?? gravelCasing,
       // The outline on the half step above this level's dash, where it needs one (458b).
       halfOutline: HALF_OUTLINES[palette]?.[shape.tier] ?? null,
       ...(strong
@@ -328,7 +334,7 @@ export function tiersFor(palette, strong = false) {
  */
 /** Whether a tier has a gap colour of its own in some palette (only LTS 2, 356): only such a tier gets a gap layer. */
 export function hasGapLayer(tier) {
-  return Object.values(PALETTES).some((p) => p[tier].gap) || Object.values(UNPAVED_PALETTES).some((p) => p[tier].gap);
+  return [PALETTES, UNPAVED_PALETTES, GRAVEL_PALETTES].some((ps) => Object.values(ps).some((p) => p[tier].gap));
 }
 
 export function gapLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = currentTiers()) {
@@ -346,7 +352,7 @@ export function gapLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = curr
         paint: {
           // Solid, the line's width, under the dashes: what shows between them. Not drawn where the line is
           // faint (the casing is then a ring, FAINT), so a faint road is as it was.
-          "line-color": byUnpaved(tier.unpavedGap, tier.gap),
+          "line-color": byUnpaved(tier.unpavedGap, tier.gap, tier.gravelGap),
           "line-width": byZoom(tier.width, tier.width * FAINT.widthScale, busy, 0, (zoom) => zoomedOutLine(tier, zoom)),
           "line-opacity": byZoom(1, 0, busy),
         },
@@ -417,8 +423,37 @@ export const UNPAVED_PALETTES = {
   },
 };
 
-/** A colour that is `unpaved` on a feature the tiles say is unpaved, else `paved`. */
-const byUnpaved = (unpaved, paved) => ["case", ["==", ["get", "unpaved"], true], unpaved, paved];
+/**
+ * GRAVEL GREY (the owner, 2026-10-21: "Maybe make natural surface trails brown and gravel grey?", after a gravel path
+ * and a dirt trail looked identical on the map). An unpaved way the tiles do not call rough (their "rough": a natural
+ * surface, or a rutted track or bad smoothness; `routemaker.stress.is_rough`) is gravel, compacted or a firm unpaved
+ * surface, and is drawn in this grey ramp in place of the brown one, with the same dashes, widths and dotted mark;
+ * brown is kept for natural surfaces. One ramp in every palette: greys are the same to every colour vision. Like the
+ * brown ramp, every step is 1.5:1 or more darker than the last and 10 or more CIEDE2000 from it under every vision;
+ * the light greys sit on a near-black edge (LTS 2 on its slate-blue one, 356), the dark ones on a pale grey edge.
+ */
+const GRAVEL_RAMP = {
+  1: { color: "#bbbfc5", casing: "#1c1f23" },
+  2: { color: "#92979d", casing: "#1a2638", gap: "#7a8fa3" },
+  3: { color: "#60666d", casing: "#f4f5f6" },
+  4: { color: "#3f4449", casing: "#f4f5f6" },
+  5: { color: "#1e2124", casing: "#f4f5f6" },
+};
+export const GRAVEL_PALETTES = { blended: GRAVEL_RAMP, twotone: GRAVEL_RAMP, cvd: GRAVEL_RAMP };
+
+/**
+ * Whether a feature is an unpaved natural surface (the tiles' "unpaved" and "rough"): brown; other unpaved is gravel grey.
+ * The tiles carry "rough" on every table built since NO-BIKE-PATHS (290, 291); on an older one, without the column, every
+ * unpaved way draws grey here while the route line, which has no `rough` then, draws it brown.
+ */
+const isNatural = ["all", ["==", ["get", "unpaved"], true], ["==", ["get", "rough"], true]];
+
+/**
+ * A colour by surface: `natural` on an unpaved natural surface, `gravel` on any other unpaved way, else `paved`.
+ * With no `gravel` (a caller that has one colour for every unpaved way) both unpaved kinds take `natural`.
+ */
+const byUnpaved = (natural, paved, gravel = natural) =>
+  gravel === natural ? ["case", ["==", ["get", "unpaved"], true], natural, paved] : ["case", isNatural, natural, ["==", ["get", "unpaved"], true], gravel, paved];
 
 /**
  * A path or trail whose surface OpenStreetMap does not give (OWNER-DECISIONS 376, A, from
@@ -849,6 +884,24 @@ export const OTHER_LABEL = {
   address: "#57534e",
   shield: { size: 12, iconSize: 1.2, color: "#2e2a2b" },
 };
+/**
+ * THE MOTORWAYS' NAMES. The owner, 2026-10-21: "Seeing the map zoomed out, having those huge highway names are silly,
+ * bikes don't use highways. Only show when zoomed further in." A motorway (the base map's road kind "highway": OSM's
+ * motorway and motorway_link, the interstates; a trunk road such as a parkway is a "major_road") is named, and its route shield drawn, only from HIGHWAY_LABEL_MIN_ZOOM,
+ * the zoom every road is drawn solid at, where a rider can need it as a landmark beside a street. Every other road's
+ * name and shield (a US or state route on a major or trunk road, which a rider may use) is as the base map has it.
+ */
+export const HIGHWAY_LABEL_MIN_ZOOM = 14;
+const notMotorwayYet = ["any", ["!=", ["get", "kind"], "highway"], [">=", ["zoom"], HIGHWAY_LABEL_MIN_ZOOM]];
+/** A base map road-label layer's filter, its motorways left out below HIGHWAY_LABEL_MIN_ZOOM. */
+function laterMotorways(filter) {
+  // The base map writes roads_labels_major's in the legacy form, ["in", "kind", ...], which cannot sit in an expression.
+  const expression = Array.isArray(filter) && filter[0] === "in" && typeof filter[1] === "string"
+    ? ["in", ["get", filter[1]], ["literal", filter.slice(2)]]
+    : filter;
+  return ["all", expression, notMotorwayYet];
+}
+
 export const OTHER_LABEL_LAYER_IDS = ["pois", "water_waterway_label", "water_label_ocean", "water_label_lakes", "earth_label_islands", "address_label", "roads_shields"];
 
 /** One of the base map's other label layers (OTHER_LABEL) as this app draws it. */
@@ -869,6 +922,7 @@ function clearOtherLabel(layer) {
     case "roads_shields":
       return {
         ...layer,
+        filter: laterMotorways(layer.filter),
         layout: { ...layer.layout, "text-font": [L.font], "text-size": L.shield.size, "icon-size": L.shield.iconSize },
         paint: { ...layer.paint, "text-color": L.shield.color },
       };
@@ -883,6 +937,7 @@ export function withClearRoadLabels(layers, strong = accessibilityOn()) {
     if (ROAD_LABEL_LAYER_IDS.includes(layer.id)) {
       return {
         ...layer,
+        ...(layer.id === "roads_labels_major" ? { filter: laterMotorways(layer.filter) } : {}),
         layout: { ...layer.layout, "text-font": [ROAD_LABEL.font], "text-size": ROAD_LABEL.size },
         paint: { ...layer.paint, ...roadLabelPaint(strong) },
       };
@@ -907,7 +962,7 @@ export function withClearRoadLabels(layers, strong = accessibilityOn()) {
  * should be named on the map." The tiles carry `trail_name` on the long trails the zoomed-out map keeps (a path on
  * a regional-or-larger bicycle route or a long walking route, or in a named run of 2.5 mi or more, 5 mi unpaved;
  * core/stress_tiles.py, trail_name_rule), so "major" is the rule the map already draws by, not a list. The name is
- * drawn along the line from TRAIL_LABEL_MIN_ZOOM, the zoom the station names and every street come in at, in the
+ * drawn along the line from TRAIL_LABEL_MIN_ZOOM (zoom 10 since the owner's "label the long ones"), in the
  * street names' face, size and white halo (ROAD_LABEL; 20 px and shortened in a ride, as they are) but in the
  * purple of the off-road path's rails (FACILITIES, `path`): 10.9:1 on the halo, near-black purple (15.2:1) with the
  * accessibility switch. The layer is under the base map's labels, so a street name or a station's wins a place
@@ -915,7 +970,9 @@ export function withClearRoadLabels(layers, strong = accessibilityOn()) {
  * purple (roadLabelPaint). The name is on the canvas, out of a screen reader's reach; the road panel says it.
  */
 export const TRAIL_LABEL_LAYER_ID = "trail-name";
-export const TRAIL_LABEL_MIN_ZOOM = 12;
+// From zoom 10 (the owner, 2026-10-21: "And futher out obviously label the long ones" ... "Basically
+// anything long"): the zoomed-out tiles carry the long trails' names too (core/stress_tiles.py).
+export const TRAIL_LABEL_MIN_ZOOM = 10;
 export const TRAIL_LABEL = {
   color: "#4c1d95",
   strongColor: "#2e1065",
@@ -940,7 +997,7 @@ export function rideTrailLabelField() {
   return rideRoadLabelField(null, ["get", "trail_name"]);
 }
 
-/** The trail names' layer (2026-10-21): along each major trail, from zoom 12. */
+/** The trail names' layer (2026-10-21): along each major trail, from zoom 10. */
 export function trailLabelLayers(sourceId = "stress", when = DEFAULT_WHEN, strong = accessibilityOn()) {
   return [
     {
@@ -1214,7 +1271,8 @@ export function setMassRide(on) {
  * (slice 6) and only the harder ones in this look. This supersedes 290(b)'s "draw them
  * faint" (FOLLOWUP-MTB-FAINT). Since 454 the line is an optional map layer, off until the rider
  * turns it on (mtbTrailsOn, below; lib/mapGlue.ts overlayLayerShown). Not the tiles' `rough`: that is a rough surface (`is_rough`,
- * paved cobbles among them, 440), not this class, and a rough trail draws as any other.
+ * paved cobbles among them, 440), not this class: an unpaved rough way draws brown and any other unpaved one gravel grey
+ * (GRAVEL_PALETTES), whether or not it is a mountain-bike trail.
  *
  * MTB_TRAILS_ROUTABLE is the switch for a future mountain-bike mode: true draws them as any
  * other trail, in the routable layers, and the not-for-routes layer draws nothing (and the
@@ -1268,7 +1326,7 @@ export const mtbHides = ["!=", ["get", "mtb"], true];
 export const isMtbTrail = ["==", ["get", "mtb"], true];
 
 /**
- * The unrated trails' look: a mid-grey dashed line (`dash`, in line widths: a dash one and a half
+ * The unrated trails' look: a brown dashed line (until 2026-10-21 mid-grey, #5f6368; `dash`, in line widths: a dash one and a half
  * widths long, then a gap as long) on the white edge every mountain-bike trail has (MTB_HALO).
  * Until v0.6.0 this was a 1.5 px line of fine dots with no edge, which the owner could hardly
  * see (2026-10-12: "Mountain bike trails seem plotted but don't show up very well"); it is now as
@@ -1280,8 +1338,10 @@ export const isMtbTrail = ["==", ["get", "mtb"], true];
  * (`legendGround`), so it reads as on the map in a dark panel too.
  */
 export const MTB_TRAIL = {
-  color: "#5f6368",
-  strongColor: "#4b5260",
+  // Brown since 2026-10-21 (GRAVEL_PALETTES: "natural surface trails brown and gravel grey"): a dirt trail is brown
+  // like every natural surface, and no longer the grey of a gravel path. Darker with the switch.
+  color: "#7a5536",
+  strongColor: "#5e3f26",
   width: 3,
   strongWidth: 4,
   dash: [1.5, 1.5],
@@ -1512,6 +1572,8 @@ function stressFiltersOf(when, showHighLanes, routableMtb) {
   // The major trails' names (2026-10-21): every way that carries one (never a mountain-bike trail, which the
   // tiles name as `name`; the cut is the routable layers' all the same).
   filters[TRAIL_LABEL_LAYER_ID] = ["all", drawnAt(when), ...hidden, ["has", "trail_name"]];
+  // The popular corridors' band (2026-10-21): every routable way with a class.
+  filters[POPULAR_BAND_LAYER_ID] = ["all", drawnAt(when), ...hidden, [">", ["to-number", ["get", "popular"], 0], 0]];
   for (const tier of TIER_SHAPES) {
     const filter = ["all", drawnAt(when), ...hidden, ["==", tierAt(when), tier.tier]];
     // LTS 1's line and edge leave the surface-unknown trails to their own layers.
@@ -1546,10 +1608,90 @@ function stressFiltersOf(when, showHighLanes, routableMtb) {
     // (a missing tier counts as 0, which draws it, as a rating-less road
     // has no stress to be high). The tile's own tier: a road closed to cars
     // is a path in this ride time, and is not in this layer at all.
-    if (facility.facility === "lane" && !showHighLanes) filter.push(["<", ["to-number", ["get", "tier"], 0], HIGH_STRESS_LANE_MIN_TIER]);
-    filters[`facility-${facility.facility}`] = filter;
+    const cut = facility.facility === "lane" && !showHighLanes ? [["<", ["to-number", ["get", "tier"], 0], HIGH_STRESS_LANE_MIN_TIER]] : [];
+    // The rails in two layers, by the drawing priority (2026-10-21, `drawPriority`): a busy road's under every
+    // calmer line, a calm way's over every busy one, so a path's rails are not cut by the road it crosses.
+    // A rating-less road (no tier) counts as calm.
+    const tier = ["case", carFreeNow(when), 1, ["to-number", ["get", "tier"], 0]];
+    filters[facilityLayerId(facility.facility)] = [...filter, ["<", tier, BUSY_MIN_TIER], ...cut];
+    filters[facilityLayerId(facility.facility, true)] = [...filter, [">=", tier, BUSY_MIN_TIER], ...cut];
   }
   return filters;
+}
+
+/**
+ * THE DRAWING PRIORITY (the owner, 2026-10-21: "When the roads get crowded with zoom, go in this
+ * rough priority: Off road path, protected bike lane, painted bike lane, then the long calm streets
+ * that don't have to keep waiting at semi-controlled intersections", and "In general they tend to
+ * follow this pattern anyway"). The overlay draws its tiers calmest on top (`calmestOnTop`), so a busy road no
+ * longer paints over the path that crosses it ("basically showing where not to cycle"); within a
+ * tier each layer sorts its lines by this key, higher on top: the facility first, then a long
+ * calm street (the tiles' `calm`), then the popular class (`popular`).
+ */
+export const FACILITY_PRIORITY = { path: 30, protected: 20, lane: 10 };
+export const CALM_STREET_PRIORITY = 5;
+export const drawPriority = (when = DEFAULT_WHEN) => [
+  "+",
+  ["match", facilityAt(when), "path", FACILITY_PRIORITY.path, "protected", FACILITY_PRIORITY.protected, "lane", FACILITY_PRIORITY.lane, 0],
+  ["case", ["==", ["get", "calm"], true], CALM_STREET_PRIORITY, 0],
+  ["to-number", ["get", "popular"], 0],
+];
+
+/** The tier a per-tier layer (`stress-<kind>-<tier>`) draws. */
+const tierOfLayer = (layer) => Number(layer.id.match(/-(\d)$/)?.[1] ?? 0);
+
+/** A group of per-tier layers bottom first for drawing: Avoid lowest, LTS 1 on top. */
+export function calmestOnTop(layers) {
+  return [...layers].sort((a, b) => tierOfLayer(b) - tierOfLayer(a));
+}
+
+/** The busy tiers' layers of a group (LTS 3 and above), or with `calm` the calm tiers' (LTS 1-2), calmest on top. */
+function tierGroup(layers, calm = false) {
+  return calmestOnTop(layers.filter((layer) => (tierOfLayer(layer) < BUSY_MIN_TIER) === calm));
+}
+
+/**
+ * THE POPULAR BIKE CORRIDORS (the owner, 2026-10-21: "use the Cabi heatmap if you can, and make those
+ * streets show more pronounced than other roads"; "Let's focus on the major cycling corridors, which are
+ * well known"). The tiles' `popular`, 1 to 3 (core/stress_tiles.py: the Capital Bikeshare model and the
+ * owner's named corridors), is drawn as a soft band under everything else of the overlay, wider for the
+ * busier class, so a corridor reads at a glance while its line keeps its own stress colour and facility
+ * rails on top. A band, not a colour: it changes no tier's look, and the stress line inside it still says
+ * what riding there is like. Width in px by zoom, for each class; `opacity` keeps the base map legible.
+ */
+export const POPULAR_BAND_LAYER_ID = "popular-band";
+export const POPULAR_BAND = {
+  // Cyan: a hue no tier, rail or trail colour uses in any palette (the tiers' greens, yellows, oranges and
+  // reds, the cvd palette's blues are darker, the rails' purple and magenta), so a band never reads as a
+  // wider busy road. Stronger with the accessibility switch.
+  color: "#06b6d4",
+  opacity: 0.3,
+  strongOpacity: 0.5,
+  // [zoom, [class 1, class 2, class 3]]
+  widths: [
+    [10, [0, 6, 8]],
+    [12, [8, 11, 14]],
+    [16, [14, 20, 26]],
+  ],
+};
+
+export function popularBandLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = currentTiers()) {
+  const byClass = (widths) => ["match", ["to-number", ["get", "popular"], 0], 1, widths[0], 2, widths[1], 3, widths[2], 0];
+  return [
+    {
+      id: POPULAR_BAND_LAYER_ID,
+      type: "line",
+      source: sourceId,
+      "source-layer": STRESS_TILE_LAYER,
+      filter: stressFilters(when)[POPULAR_BAND_LAYER_ID],
+      layout: { "line-cap": "round", "line-join": "round" },
+      paint: {
+        "line-color": POPULAR_BAND.color,
+        "line-opacity": tiers[0]?.strong ? POPULAR_BAND.strongOpacity : POPULAR_BAND.opacity,
+        "line-width": ["interpolate", ["linear"], ["zoom"], ...POPULAR_BAND.widths.flatMap(([zoom, widths]) => [zoom, byClass(widths)])],
+      },
+    },
+  ];
 }
 
 export function stressLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = currentTiers()) {
@@ -1560,7 +1702,8 @@ export function stressLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = c
     source: sourceId,
     "source-layer": STRESS_TILE_LAYER,
     filter: filters[`stress-${tier.tier}`],
-    paint: { ...linePaint(byUnpaved(tier.unpavedColor, tier.color), tier.width, tier.tier >= BUSY_MIN_TIER, (zoom) => zoomedOutLine(tier, zoom)), ...(tier.dash ? { "line-dasharray": tier.dash } : {}) },
+    layout: { "line-sort-key": drawPriority(when) },
+    paint: { ...linePaint(byUnpaved(tier.unpavedColor, tier.color, tier.gravelColor), tier.width, tier.tier >= BUSY_MIN_TIER, (zoom) => zoomedOutLine(tier, zoom)), ...(tier.dash ? { "line-dasharray": tier.dash } : {}) },
   }));
 }
 
@@ -1618,7 +1761,7 @@ export function unknownSurfaceLayers(sourceId = "stress", when = DEFAULT_WHEN, t
  * chosen to stand apart from the line), so a gravel trail does not read as a
  * smooth path. Shape, not colour: a dot pattern no tier or facility has. Not
  * drawn where the line is faint or hidden (z12-13 busy roads, alleys).
- * `is_rough` is not in the tiles; only "unpaved" is.
+ * Its colour follows the line's: the brown's casing on a natural surface, the grey's on gravel (GRAVEL_PALETTES).
  */
 export const UNPAVED_DASH = [1, 1.2];
 
@@ -1651,8 +1794,8 @@ export function unpavedLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = 
     "source-layer": STRESS_TILE_LAYER,
     filter: filters[`stress-unpaved-${tier.tier}`],
     paint: {
-      // The dots in the unpaved casing, which stands apart from the brown line (OWNER-DECISIONS 302).
-      "line-color": tier.unpavedCasing,
+      // The dots in the unpaved casing, which stands apart from the brown line (OWNER-DECISIONS 302); on gravel the grey's.
+      "line-color": byUnpaved(tier.unpavedCasing, tier.gravelCasing, tier.gravelCasing),
       "line-width": unpavedWidthByZoom(tier),
       "line-opacity": byZoom(1, 0, tier.tier >= BUSY_MIN_TIER),
       "line-dasharray": UNPAVED_DASH,
@@ -1667,7 +1810,7 @@ export function unpavedLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = 
 function casingPaint(tier) {
   const busy = tier.tier >= BUSY_MIN_TIER;
   const edge = faintEdgeColour(tier);
-  const full = byUnpaved(tier.unpavedCasing, tier.casing);
+  const full = byUnpaved(tier.unpavedCasing, tier.casing, tier.gravelCasing);
   return {
     "line-color": byZoom(full, edge, busy, full),
     "line-width": byZoom(casingWidth(tier), FAINT.edgePx, busy, 0, (zoom) => zoomedOutCasing(tier, zoom)),
@@ -1685,6 +1828,7 @@ export function stressCasingLayers(sourceId = "stress", when = DEFAULT_WHEN, tie
     source: sourceId,
     "source-layer": STRESS_TILE_LAYER,
     filter: filters[`stress-casing-${tier.tier}`],
+    layout: { "line-sort-key": drawPriority(when) },
     paint: casingPaint(tier),
   }));
 }
@@ -1697,7 +1841,7 @@ export function stressCasingLayers(sourceId = "stress", when = DEFAULT_WHEN, tie
  * and 3:1 or more from the orange and red edges it rings), and keeps both of the owner's
  * colours. Drawn on the map (`ringLayers`, under everything else of the overlay, so a
  * facility rail still shows over it), round the route's sections (`route-ring`) and in
- * the legend's swatches. Paved roads only: an unpaved one is the brown ramp, which is 3:1
+ * the legend's swatches. Paved roads only: an unpaved one is the brown or the gravel grey ramp, each 3:1
  * on its own casing. Not drawn where the line is faint (z12-13), which keeps its own edge.
  * A tier with no `ring` has its ring layer drawn transparent, so a palette flip needs no
  * new layer.
@@ -2060,7 +2204,15 @@ export function legendWidths(tiers = currentTiers()) {
   };
 }
 
-export function facilityLayers(sourceId = "stress", when = DEFAULT_WHEN, showHighLanes = highStressLanesOn()) {
+/** The zoom a busy road's rails show from, popular corridors aside (`facilityLayers`). */
+export const BUSY_RAILS_MIN_ZOOM = 14;
+
+/** A facility's rails' layer id: on the calm tiers (LTS 1-2), or with `busy` on LTS 3 and above. */
+export function facilityLayerId(facility, busy = false) {
+  return `facility-${facility}${busy ? "-busy" : ""}`;
+}
+
+export function facilityLayers(sourceId = "stress", when = DEFAULT_WHEN, showHighLanes = highStressLanesOn(), busy = false) {
   const filters = stressFilters(when, showHighLanes);
   const ordered = FACILITY_DRAW_ORDER.map((name) => FACILITIES.find((f) => f.facility === name));
   return ordered.map((facility) => {
@@ -2069,12 +2221,20 @@ export function facilityLayers(sourceId = "stress", when = DEFAULT_WHEN, showHig
       "line-width": facilityWidthAt(facility, when),
     };
     if (facility.dash) paint["line-dasharray"] = facility.dash;
+    // In a city grid a busy road's rails wait for zoom 14, as its faint line does (`byZoom`), unless it is a
+    // popular corridor: at 12-13 downtown they crowded the view (the owner, 2026-10-21: "see what we can do to
+    // declutter certain views"). A rural road keeps them ("this is the same exact zoom in a rural area. Here
+    // it looks fine"): only a feature the tiles mark `dense` (v0.10.2's city grid) is thinned.
+    if (busy) {
+      const shownEarly = ["any", [">", ["to-number", ["get", "popular"], 0], 0], ["!=", ["get", "dense"], true]];
+      paint["line-opacity"] = ["step", ["zoom"], ["case", shownEarly, 1, 0], BUSY_RAILS_MIN_ZOOM, 1];
+    }
     return {
-      id: `facility-${facility.facility}`,
+      id: facilityLayerId(facility.facility, busy),
       type: "line",
       source: sourceId,
       "source-layer": STRESS_TILE_LAYER,
-      filter: filters[`facility-${facility.facility}`],
+      filter: filters[facilityLayerId(facility.facility, busy)],
       paint,
     };
   });
@@ -2089,17 +2249,28 @@ export function facilityLayers(sourceId = "stress", when = DEFAULT_WHEN, showHig
  */
 export function stressOverlayLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = currentTiers()) {
   return [
+    // The popular corridors' band (2026-10-21), under every line.
+    ...popularBandLayers(sourceId, when, tiers),
     // The mountain-bike trails' layer (452a, 454, 456), under every routable layer.
     ...mtbTrailLayers(sourceId, when),
-    ...ringLayers(sourceId, when, tiers),
+    // The drawing priority (2026-10-21, `drawPriority`): the busy roads (LTS 3, LTS 4, Avoid) whole, rails, casings,
+    // lines and marks, then the calm ways (LTS 1-2) whole over them, each group calmest on top, so a busy road
+    // does not paint over the path or the calm street that crosses it.
+    ...calmestOnTop(ringLayers(sourceId, when, tiers)),
+    ...facilityLayers(sourceId, when, highStressLanesOn(), true),
+    ...tierGroup(stressCasingLayers(sourceId, when, tiers)),
+    ...tierGroup(gapLayers(sourceId, when, tiers)),
+    ...tierGroup(stressLayers(sourceId, when, tiers)),
+    ...tierGroup(unpavedLayers(sourceId, when, tiers)),
+    ...tierGroup(halfStepLayers(sourceId, when, tiers)),
     ...facilityLayers(sourceId, when),
-    ...stressCasingLayers(sourceId, when, tiers),
-    ...gapLayers(sourceId, when, tiers),
+    ...tierGroup(stressCasingLayers(sourceId, when, tiers), true),
+    ...tierGroup(gapLayers(sourceId, when, tiers), true),
     ...unknownSurfaceLayers(sourceId, when, tiers),
-    ...stressLayers(sourceId, when, tiers),
-    ...unpavedLayers(sourceId, when, tiers),
+    ...tierGroup(stressLayers(sourceId, when, tiers), true),
+    ...tierGroup(unpavedLayers(sourceId, when, tiers), true),
     // Half steps' dashes from street level (441r-441v, 458), over their lower level's line.
-    ...halfStepLayers(sourceId, when, tiers),
+    ...tierGroup(halfStepLayers(sourceId, when, tiers), true),
     // The major trails' names (2026-10-21), over every line.
     ...trailLabelLayers(sourceId, when),
     // The mountain-bike trails' names (2026-10-10), over every routable line, so a route does not hide them.
