@@ -359,27 +359,28 @@ transit.</li>
 <div class="table-wrap" tabindex="0" role="region" aria-label="Ride types compared">
 <table>
 <caption>Ride types compared</caption>
-<thead><tr><th scope="col">Ride type</th><th scope="col">Traffic slider starts</th><th scope="col">Hills</th><th scope="col">Surfaces</th><th scope="col">Pace (for times)</th><th scope="col">Map used</th></tr></thead>
+<thead><tr><th scope="col">Ride type</th><th scope="col">Traffic slider starts</th><th scope="col">Hills slider starts</th><th scope="col">Surfaces</th><th scope="col">Pace (for times)</th><th scope="col">Map used</th></tr></thead>
 <tbody>
-<tr><th scope="row">Default</th><td>70</td><td>Neutral</td><td>Prefers pavement a little</td><td>Valhalla's hybrid bike, 11 mph [18 km/h]</td><td>Standard</td></tr>
-<tr><th scope="row">Novice and Nervous</th><td>100, every road read one level busier</td><td>Avoids hills</td><td>Prefers pavement a little</td><td>11 mph [18 km/h]</td><td>Standard</td></tr>
-<tr><th scope="row">E-bike</th><td>70</td><td>Fine with hills</td><td>Prefers pavement a little</td><td>15 mph [24 km/h]</td><td>E-bike (leaves out ways closed to e-bikes)</td></tr>
-<tr><th scope="row">Cargo Bike</th><td>70 carrying cargo, 80 with passengers</td><td>Avoids hills</td><td>Avoids rough surfaces</td><td>8.7 mph [14 km/h]; assist 11 mph [18 km/h]</td><td>Standard (e-bike with assist)</td></tr>
-<tr><th scope="row">Fast</th><td>10</td><td>Neutral</td><td>Strongly prefers pavement</td><td>11 mph [18 km/h]</td><td>Standard</td></tr>
-<tr><th scope="row">Group Ride</th><td>40</td><td>Avoids hills somewhat</td><td>Prefers pavement a little</td><td>12.4 mph [20 km/h]</td><td>Standard</td></tr>
-<tr><th scope="row">Mass Ride</th><td>0, locked</td><td>Avoids hills strongly</td><td>Prefers pavement a little</td><td>6 mph [9.7 km/h]</td><td>Roads only, no trails</td></tr>
-<tr><th scope="row">Trailmaxxing</th><td>100</td><td>Neutral</td><td>Gravel is fine</td><td>12.4 mph [20 km/h]</td><td>Standard</td></tr>
-<tr><th scope="row">Gravel</th><td>40</td><td>Neutral</td><td>Unpaved costs nothing extra</td><td>12.4 mph [20 km/h]</td><td>Off-road</td></tr>
+<tr><th scope="row">Default</th><td>70</td><td>8%</td><td>Prefers pavement a little</td><td>Valhalla's hybrid bike, 11 mph [18 km/h]</td><td>Standard</td></tr>
+<tr><th scope="row">Novice and Nervous</th><td>100, every road read one level busier</td><td>4%</td><td>Prefers pavement a little</td><td>11 mph [18 km/h]</td><td>Standard</td></tr>
+<tr><th scope="row">E-bike</th><td>70</td><td>12%</td><td>Prefers pavement a little</td><td>15 mph [24 km/h]</td><td>E-bike (leaves out ways closed to e-bikes)</td></tr>
+<tr><th scope="row">Cargo Bike</th><td>70 carrying cargo, 80 with passengers</td><td>4%</td><td>Avoids rough surfaces</td><td>8.7 mph [14 km/h]; assist 11 mph [18 km/h]</td><td>Standard (e-bike with assist)</td></tr>
+<tr><th scope="row">Fast</th><td>10</td><td>11%</td><td>Strongly prefers pavement</td><td>11 mph [18 km/h]</td><td>Standard</td></tr>
+<tr><th scope="row">Group Ride</th><td>40</td><td>5%</td><td>Prefers pavement a little</td><td>12.4 mph [20 km/h]</td><td>Standard</td></tr>
+<tr><th scope="row">Mass Ride</th><td>0, locked</td><td>1%</td><td>Prefers pavement a little</td><td>6 mph [9.7 km/h]</td><td>Roads only, no trails</td></tr>
+<tr><th scope="row">Trailmaxxing</th><td>100</td><td>8%</td><td>Gravel is fine</td><td>12.4 mph [20 km/h]</td><td>Standard</td></tr>
+<tr><th scope="row">Gravel</th><td>40</td><td>8%</td><td>Unpaved costs nothing extra</td><td>12.4 mph [20 km/h]</td><td>Off-road</td></tr>
 <tr><th scope="row">Mountain Goat</th><td>40</td><td>Seeks climbs</td><td>Gravel is fine</td><td>12.4 mph [20 km/h]</td><td>Off-road</td></tr>
-<tr><th scope="row">Mountain Bike</th><td>80</td><td>Fine with hills</td><td>Unpaved costs nothing extra</td><td>10 mph [16 km/h]; 6.2 mph [10 km/h] on singletrack</td><td>Mountain-bike trails</td></tr>
-<tr><th scope="row">Bikeshare</th><td>80</td><td>Avoids hills (classic bike)</td><td>Avoids rough surfaces</td><td>8 mph [13 km/h] classic; 12.4 mph [20 km/h] e-bike</td><td>Standard</td></tr>
-<tr><th scope="row">Rebalance Ride</th><td>80</td><td>Avoids hills</td><td>Avoids rough surfaces</td><td>As Bikeshare</td><td>Standard</td></tr>
-<tr><th scope="row">Own Bike + transit</th><td>70</td><td>Neutral</td><td>Prefers pavement a little</td><td>11 mph [18 km/h]</td><td>Standard</td></tr>
-<tr><th scope="row">Bikeshare + transit</th><td>80</td><td>Avoids hills</td><td>Avoids rough surfaces</td><td>8 mph [13 km/h]</td><td>Standard</td></tr>
+<tr><th scope="row">Mountain Bike</th><td>80</td><td>12%</td><td>Unpaved costs nothing extra</td><td>10 mph [16 km/h]; 6.2 mph [10 km/h] on singletrack</td><td>Mountain-bike trails</td></tr>
+<tr><th scope="row">Bikeshare</th><td>80</td><td>4% classic bike, 7% e-bike</td><td>Avoids rough surfaces</td><td>8 mph [13 km/h] classic; 12.4 mph [20 km/h] e-bike</td><td>Standard</td></tr>
+<tr><th scope="row">Rebalance Ride</th><td>80</td><td>4%</td><td>Avoids rough surfaces</td><td>As Bikeshare</td><td>Standard</td></tr>
+<tr><th scope="row">Own Bike + transit</th><td>70</td><td>8%</td><td>Prefers pavement a little</td><td>11 mph [18 km/h]</td><td>Standard</td></tr>
+<tr><th scope="row">Bikeshare + transit</th><td>80</td><td>4%</td><td>Avoids rough surfaces</td><td>8 mph [13 km/h]</td><td>Standard</td></tr>
 </tbody>
 </table>
 </div>
-<p>Paces are only for estimating times. "Hills" and "Surfaces" describe Valhalla's bike costing
+<p>Paces are only for estimating times. The Hills column is the grade the Hills slider starts at: the steepest you climb
+comfortably (<a href="/about/routing.html#hills">Hills</a>). "Surfaces" describes Valhalla's bike costing
 settings<sup class="cite"><a href="#ref-1" aria-label="source 1">[1]</a></sup> that each ride type sends<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup>.</p>
 
 
@@ -624,7 +625,7 @@ road with no sidewalk is still ridden. Novice and Nervous's Own Bike + transit a
 riding to a station or stop near where the busiest stretch begins, taking the train or bus past it and
 riding on; that trip's row says "skips the busy stretch".</p>
 <h3>E-bike</h3>
-<p>Leaves out ways mapped as closed to e-bikes, starts fine with hills (the more direct route wins), and
+<p>Leaves out ways mapped as closed to e-bikes, starts the Hills slider at 12%, so a more direct route over a hill wins where it is quicker, and
 times trips at an assisted 15 mph [24 km/h].</p>
 <h3>Cargo Bike</h3>
 <p>A long, heavy bike. Gentle grades, few gates or barriers (each costs about 5 minutes, against 30
@@ -753,9 +754,10 @@ unlike any other ride type's: <a href="/about/mass-ride.html">Mass Ride</a> expl
 <ul>
 <li><strong>Traffic slider:</strong> named notches from Traffic tolerant (10) through Direct (25),
 Balanced (40), Prefers quiet (70), Low-stress (80) and Calm (90) to Calmest (100).</li>
-<li><strong>Hills slider:</strong> left of centre avoids hills more; right of centre is fine with
-hills. Mountain Goat alone uses the right half to seek climbs. A route never gets busier just because
-you asked it to avoid hills.</li>
+<li><strong>Hills slider:</strong> the steepest grade you can climb for several minutes in your lowest gears without
+labored breathing, 1% to 15%. Every climb counts as the time it takes, and grades past yours count for more.
+Mountain Goat alone keeps its right half to seek climbs. A route never gets busier just because you set a
+lower grade.</li>
 <li><strong>Avoid gravel</strong> strongly prefers pavement on any ride type.</li>
 <li><strong>Keep to roads, not trails</strong> uses the roads-only map.</li>
 <li><strong>Weekend rides</strong> treat roads closed to cars at weekends as paths.</li>
