@@ -689,6 +689,9 @@ export function MapView(props: Props) {
           width: box?.clientWidth ?? 0,
           height: box?.clientHeight ?? 0,
           covered: callbacks.current.coveredBelow?.() ?? 0,
+          // Not yet set while the map is made: no padding, north up.
+          padding: mapRef.current?.getPadding(),
+          bearing: mapRef.current?.getBearing(),
         });
         return { center: new maplibregl.LngLat(next.lng, next.lat), zoom: z };
       },
