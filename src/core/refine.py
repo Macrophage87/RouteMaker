@@ -834,9 +834,7 @@ RED_DETOUR_S = 600.0
 def red_count(read: Analysis) -> int:
     """The route's red junctions (with a shift, its orange ones too, as `Analysis.red_m`)."""
     return sum(
-        1
-        for e in read.events or ()
-        if presets.shifted_severity(e.severity, read.shift) == "red"
+        1 for e in read.events or () if presets.shifted_severity(e.severity, read.shift) == "red"
     )
 
 
