@@ -1642,7 +1642,7 @@ test("no way ahead on the third: said plainly once, and the route is left up (th
   assert.match(ride, /if \(check \? gate\.busy \|\| checking\.current : !gate\.begin\(Date\.now\(\)\)\) \{/);
   assert.match(ride, /announcer\.current\?\.say\(note, note === REPLAN_NO_AHEAD\)/);
   // A check that still turns round says and shows nothing.
-  assert.match(ride, /if \(check && \(!found \|\| heading === null \|\| setsOffBack\(found\.geometry\.coordinates, heading\)\)\) return;/);
+  assert.match(ride, /if \(check && \(!found \|\| heading === null \|\| setsOffBack\(found\.geometry\.coordinates, heading\)\)\) return false;/);
   assert.match(ride, /if \(offRoute\.replan === "ask"\) void replan\(out\.state\.goodFix\.point\);\s*(\/\/[^\n]*\s*)?else if \(offRoute\.replan === "check"\) void replan\(out\.state\.goodFix\.point, undefined, false, false, true\);/);
 });
 
@@ -1718,7 +1718,7 @@ test("U-turns: a re-route made while stopped leaves the count, so pausing betwee
   assert.equal(followed.inARow, 0);
   assert.equal(reroute(followed, true, 5).aheadOnly, false);
   const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
-  assert.match(ride, /stopped: heading === null && !turnRound/);
+  assert.match(ride, /stopped: \(heading === null && !turnRound\) \|\| press !== null/);
 });
 
 // ---- Crossings between two turns (the owner, 2026-10-20, at Needwood Road and Redland Road: "It should have told me to cross the street and turn left") ----

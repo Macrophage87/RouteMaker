@@ -6,9 +6,11 @@ than stored. That is why revoking the application in Discord's authorized-apps
 page does not log anyone out here and does not need to: the tokens it revokes
 were never kept, and standing comes from the bot's view of the roster instead.
 
-The consequence worth stating is that this system holds no per-user third-party
-credential at all. There is nothing to encrypt, refresh, leak, or revoke on
-deletion, and a database compromise yields no access to anyone's Discord account.
+The consequence worth stating is that this system holds no Discord credential at
+all. There is nothing to encrypt, refresh, leak, or revoke on deletion, and a
+database compromise yields no access to anyone's Discord account. (A rider's own
+Garmin and Wahoo connections, for sending courses, are the third-party credentials
+kept, encrypted; see core.garmin and core.wahoo.)
 """
 
 from __future__ import annotations
