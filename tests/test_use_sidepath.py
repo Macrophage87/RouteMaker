@@ -419,6 +419,11 @@ def test_write_segments_writes_the_access_reason_and_side_path_name(tmp_path, mo
         monkeypatch.setattr(run_module.trail_routes, name, lambda schema: None)
     monkeypatch.setattr(run_module.trail_routes, "mtb_level_counts", lambda schema: {})
     monkeypatch.setattr(run_module.trail_routes, "mtb_name_counts", lambda schema: (0, 0))
+    monkeypatch.setattr(run_module.writers, "mark_links", lambda schema, ids: 0)
+    monkeypatch.setattr(run_module.bikeshare_corridors, "tidy", lambda schema, named=(): {})
+    monkeypatch.setattr(run_module.bike_network, "connect", lambda schema: {})
+    monkeypatch.setattr(run_module.bike_network, "mark", lambda schema: {})
+    monkeypatch.setattr(run_module.bike_network, "mark_strays", lambda schema: {})
     handlers[Stage.WRITE_SEGMENTS]()
     by_way = {row["osm_way_id"]: row for row in written}
     assert by_way[WITH_PATH]["bike_access_reason"] == "bicycle_use_sidepath"

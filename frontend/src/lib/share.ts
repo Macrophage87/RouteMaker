@@ -14,6 +14,9 @@ export const SHARE_LABEL = "Share route";
 export const SHARE_NAME = "Share route";
 /** Share ride (lib/sharedRoutes.ts RIDE_PARAM): the same link, ridden fixed, with location sharing offered. */
 export const SHARE_RIDE_LABEL = "Share ride";
+/** Beside Start (Stephen 2026-10-22): Share ride's link, led by the sharer, then the ride. */
+export const BROADCAST_LABEL = "Broadcast";
+export const BROADCAST_ABOUT = "Broadcast: send a link and start the ride. You lead: those who open it follow your dot and the path you take.";
 export const SHARE_TITLE = "RouteMaker route";
 export const SHARE_FAILED = "Could not open the share sheet. Use Copy link instead.";
 

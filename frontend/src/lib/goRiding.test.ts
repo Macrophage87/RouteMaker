@@ -182,7 +182,9 @@ test("End ride is slid until the rider has arrived (the owner, 2026-10-19: \"Add
   const slide = ride.slice(ride.indexOf("function SlideToEnd("), ride.indexOf("/** A live region"));
   // A native range, named End ride, so arrows and a screen reader's adjust gestures move it; the end ends the ride.
   assert.match(slide, /type="range"[\s\S]*min=\{0\}\s*max=\{100\}\s*step=\{25\}/);
-  assert.match(slide, /aria-label=\{END_RIDE_NAME\}/);
+  // Named End ride unless told otherwise (Roam's is End roam: RoamMode.tsx).
+  assert.match(slide, /function SlideToEnd\(\{ onEnd, onTap, name = END_RIDE_NAME \}/);
+  assert.match(slide, /aria-label=\{name\}/);
   assert.match(slide, /if \(next >= 100\) onEnd\(\);/);
   // A tap that jumps it past half way springs back and says how; let go short of the end, it springs back.
   assert.match(slide, /if \(!byKey && next - last\.current > 50\) \{\s*back\(\);\s*onTap\(\);\s*return;/);

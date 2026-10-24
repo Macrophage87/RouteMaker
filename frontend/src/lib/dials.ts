@@ -207,7 +207,8 @@ export const STARTS: Record<PresetId, Start> = {
   // Slice 6: the old top of the traffic slider, hills at "fine with hills" (core.presets MTB_HILLS).
   "mountain-bike": { stress: 80, hills: 50, seek: true },
   gravel: { stress: 40, hills: 0, seek: true },
-  fast: { stress: 10, hills: 0, seek: true },
+  // A strong rider: an LT1 grade of about 11% (`core.presets.FAST_HILLS`; Stephen, 2026-10-23: "More for fast").
+  fast: { stress: 10, hills: 40, seek: true },
   cargo: { stress: 70, hills: -60, seek: true, carrying: { cargo: 70, people: 80 }, assist: true },
   // Toward "fine with hills" (242): `core.presets.EBIKE_HILLS`.
   ebike: { stress: 70, hills: 50, seek: true },
@@ -478,18 +479,30 @@ export function stressWords(stress: number): string {
   return "Calmest: the least stressful route, aiming at your target distance";
 }
 
-/**
- * The words for a hills position. Right of the middle they depend on the ride type
- * (FOLLOWUP-HILLS-TOLERATE, OWNER-DECISIONS 242): Mountain Goat seeks climbs (`climbs`),
- * every other ride type is "fine with hills".
- */
+/** The rider's LT1 grade (percent) the hills slider sets: 1% at full avoid to 15% at the far end, in a straight line
+ * (`routemaker.hill_cost.lt1_grade_for`; Stephen, 2026-10-23: "Maybe 0-15% ... or 1-15"). */
+export const LT1_GRADE_MIN_PCT = 1;
+export const LT1_GRADE_MAX_PCT = 15;
+export function lt1GradePct(hills: number): number {
+  const share = (Math.min(Math.max(hills, HILLS_MIN), HILLS_MAX) - HILLS_MIN) / (HILLS_MAX - HILLS_MIN);
+  return LT1_GRADE_MIN_PCT + (LT1_GRADE_MAX_PCT - LT1_GRADE_MIN_PCT) * share;
+}
+
+/** The hills dial's grade, whole percent: its place on the slider, which shows grade percent. */
+export function hillsGradePosition(hills: number): number {
+  return Math.round(lt1GradePct(hills));
+}
+
+/** The hills dial at a whole-percent grade on the slider (the inverse of `hillsGradePosition`). */
+export function hillsAtGrade(pct: number): number {
+  const share = (pct - LT1_GRADE_MIN_PCT) / (LT1_GRADE_MAX_PCT - LT1_GRADE_MIN_PCT);
+  return Math.round(HILLS_MIN + (HILLS_MAX - HILLS_MIN) * Math.min(Math.max(share, 0), 1));
+}
+
+/** The hills slider in words: the grade it sets, whole percent; Mountain Goat's right half seeks climbs. */
 export function hillsWords(hills: number, climbs: boolean): string {
-  if (hills <= -80) return "Avoids hills";
-  if (hills < -10) return "Gentler grades";
-  if (hills <= 10) return "Fastest time";
-  if (!climbs) return hills < 80 ? "Hills matter less" : "Fine with hills";
-  if (hills < 80) return "Some extra climbing";
-  return "Seeks hills";
+  if (climbs && hills > 10) return hills < 80 ? "Some extra climbing" : "Seeks hills";
+  return `Easy up to ${Math.round(lt1GradePct(hills))}%`;
 }
 
 export function isWhen(value: unknown): value is When {

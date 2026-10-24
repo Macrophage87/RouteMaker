@@ -35,5 +35,5 @@ test("Go with no route: a station card's End here rides there from Go's start", 
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   // Said as a pressed destination is ("Destination set"): pressed = true.
   assert.match(app, /role === "end" && modeRef\.current === "go" && pointsRef\.current\.length === 0\) \{[\s\S]{0,120}goToRef\.current\(point, place\.name, true\)/);
-  assert.match(app, /stationEndFromHere=\{mode === "go" && !riding\}/);
+  assert.match(app, /stationEndFromHere=\{mode === "go" && !onBike\}/);
 });
