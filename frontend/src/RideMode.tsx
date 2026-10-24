@@ -52,7 +52,24 @@ import {
 } from "./lib/roadClosed.ts";
 import { requestRoute, type RouteResponse } from "./lib/api.ts";
 import { VIA_MARKS, drawnLegs, stopNames, viaIndices, type RideStopMark } from "./lib/pointKinds.ts";
-import { SKIP_STOP, detourButtonName, insteadLabel, insteadName, insteadSaid, nextStopLine, skippingSaid, withoutStop } from "./lib/rideStops.ts";
+import {
+  SKIP_STOP,
+  detourButtonName,
+  insteadLabel,
+  insteadName,
+  insteadSaid,
+  nextStopLine,
+  restartKept,
+  restartReplanSaid,
+  restartSaid,
+  restartStops,
+  restartUnchanged,
+  skippingSaid,
+  withoutStop,
+  type RestartStop,
+} from "./lib/rideStops.ts";
+import { RestartStopsDialog } from "./RestartStopsDialog.tsx";
+import { keepLeftRide } from "./lib/rideResume.ts";
 import type { Dials } from "./lib/dials.ts";
 import { haversineM, type LonLat } from "./lib/geo.ts";
 import type { PresetId } from "./lib/presets.ts";
@@ -587,6 +604,7 @@ export function RideMode({
   fixed = false,
   onBroadcast = null,
   broadcasting = false,
+  keepLeft = false,
 }: {
   route: RouteResponse;
   /** The points the route was planned with, and whether it is a loop: what a re-plan builds on. */
@@ -652,6 +670,8 @@ export function RideMode({
   onBroadcast?: (() => Promise<string>) | null;
   /** This ride is broadcast, led by this rider: Broadcast shows on, and a press shares the same link again. */
   broadcasting?: boolean;
+  /** The ride is kept on this device to resume (lib/rideResume.ts): each new route is kept in its place. */
+  keepLeft?: boolean;
 }) {
   const [route, setRoute] = useState(plannedRoute);
   const routeRef = useRef(route);
@@ -964,7 +984,7 @@ export function RideMode({
   // With `via`, a detour: from here to that place first, then on through what was left (the nearest water
   // or restroom, below). A detour's place becomes a stop of the new route, so it is cued and arrived at.
   const replan = useCallback(
-    async (here: LonLat, via?: LonLat, asked = false, turnRound = false, check = false, skip?: number): Promise<boolean> => {
+    async (here: LonLat, via?: LonLat, asked = false, turnRound = false, check = false, skip?: number, done?: ReadonlySet<number>): Promise<boolean> => {
       if (ended.current) return false;
       const current = rideRef.current;
       // The way the rider is going (the owner, 2026-10-18: "Penalize U turns", "For rerouting"): the new route sets
@@ -975,7 +995,10 @@ export function RideMode({
       // A re-route: via points close ahead are guides and dropped, stops kept (2026-10-24); the stop the rider
       // skipped (Skip this stop, or a place chosen instead of it) is left out.
       // The same kept points for the way back below, so its stops keep their numbers in the new plan.
-      const keptPoints = replanKept(modelRef.current, current.progressM ?? 0, plan.current.points, plan.current.loop, true).filter((i) => i !== skip);
+      // A restart part way (`done`, RestartStopsDialog): the stops the rider left unticked, behind or not.
+      const keptPoints = done
+        ? restartKept(modelRef.current, current.progressM ?? 0, plan.current.points, plan.current.loop, done)
+        : replanKept(modelRef.current, current.progressM ?? 0, plan.current.points, plan.current.loop, true).filter((i) => i !== skip);
       const left = withoutStop(plan.current.points, keptPoints, here, skip ?? -1);
       const points = via ? detourPoints(left, via) : left;
       if (!points) {
@@ -1083,6 +1106,8 @@ export function RideMode({
       if (found.dirt_trails) dirtRidden.current = true;
       if (found.dirt_closed) dirtClosed.current = true;
       setRoute(found);
+      // The ride as it now stands is what a page closed mid-ride resumes (lib/rideResume.ts); never a trip's leg.
+      if (!trip && keepLeft) keepLeftRide({ route: found, points, loop: false, preset, dials: dialsRef.current, fixed: fixedRef.current }, VIA_MARKS, Date.now());
       // The new route's own standard way through a closure it goes round, if any (none past a road marked closed).
       const through = blockedRef.current.length ? null : (found.closure_through ?? null);
       otherRef.current = through;
@@ -1097,7 +1122,7 @@ export function RideMode({
       tell(note);
       return true;
     },
-    [preset, gate, sayDetour],
+    [preset, gate, sayDetour, trip, keepLeft],
   );
   const replanRef = useRef(replan);
   replanRef.current = replan;
@@ -1147,6 +1172,13 @@ export function RideMode({
     return () => window.clearInterval(timer);
   }, [checkCueSheet]);
 
+  // Restarting part way: asked at the first fix past a stop, never after Undo (it carries on) or on a trip's leg (its
+  // walk to the dock comes first). The defaults ride on as the ride is; other picks plan again from here.
+  const restartAsked = useRef(resumeStats !== null || trip !== null);
+  const [restart, setRestart] = useState<RestartStop[] | null>(null);
+  // While it is asked, no re-route of its own: the stops it lists are the plan's as it stands (review of #444).
+  const restartOpen = useRef(false);
+  restartOpen.current = restart !== null;
   const onFix = useCallback(
     (fix: RideFix) => {
       if (ended.current) return;
@@ -1158,7 +1190,7 @@ export function RideMode({
       if (weighed.sayNow) notify(GPS_WEAK_SAID);
       setGps(weighed.weak ? GPS_WEAK_SAID : "");
       checkCueSheet(lastFixAt.current);
-      const auto = !keepRef.current && !fixedRef.current;
+      const auto = !keepRef.current && !fixedRef.current && !restartOpen.current;
       // Walking to the dock, nothing is placed on the line or taken as off route (lib/rideTrip.ts).
       const wasWalking = tripRef.current.walking;
       // Held after "No route found ahead": off route says no "finding a new way", as none is looked for out loud.
@@ -1203,6 +1235,17 @@ export function RideMode({
         ? statsPause(statsRef.current)
         : statsStep(statsRef.current, fix, out.state, modelRef.current, routeRef.current.profile);
       if (stepped.state.walking) return;
+      // Restarted part way (Stephen 2026-10-24): the first place on the line past a stop asks, once, which are done.
+      if (!restartAsked.current && out.state.progressM !== null) {
+        restartAsked.current = true;
+        const stops = restartStops(modelRef.current, out.state.progressM);
+        if (stops) {
+          const named = stops.map((s) => (s.name ? s : { ...s, name: stopName?.(plan.current.points[s.index]) }));
+          restartOpen.current = true;
+          setRestart(named);
+          notify(restartSaid(named));
+        }
+      }
       // Off this line but on the other one (the standard way, or the detour): followed there, not re-planned.
       if (out.state.off && fix.accuracyM <= POOR_FIX_M) {
         const at = onOtherLine(otherModelRef.current, fix.point, fix.accuracyM, out.state.progressM ?? -Infinity);
@@ -1235,7 +1278,7 @@ export function RideMode({
         announcer.current?.answer(whereAmI(modelRef.current, out.state, false, milesRef.current));
       }
     },
-    [gate, replan, say, notify, checkCueSheet, approach, trip, takeOther],
+    [gate, replan, say, notify, checkCueSheet, approach, trip, takeOther, stopName],
   );
   const onFixRef = useRef(onFix);
   onFixRef.current = onFix;
@@ -1328,7 +1371,7 @@ export function RideMode({
     const onOnline = () => {
       gate.online();
       const state = rideRef.current;
-      if (state.off && !keepRef.current && !fixedRef.current && !uturns.current.held && state.goodFix) void replan(state.goodFix.point);
+      if (state.off && !keepRef.current && !fixedRef.current && !restartOpen.current && !uturns.current.held && state.goodFix) void replan(state.goodFix.point);
     };
     window.addEventListener("online", onOnline);
     return () => window.removeEventListener("online", onOnline);
@@ -1663,6 +1706,28 @@ export function RideMode({
   // in More, Instead of stop N in the Detour menu, so the ride screen gains no button. Each is the rider's own ask, as
   // Detour here is. From More the focus stays on More (`fromMore`); from Detour it goes to Where am I?.
   const stopIndex = (stop: RideStopMark) => plan.current.points.indexOf(stop.point);
+  // Restarting part way: the defaults ride on as the ride is; other picks plan again from here.
+  const continueRestart = (done: ReadonlySet<number>) => {
+    const stops = restart;
+    restartOpen.current = false;
+    setRestart(null);
+    if (!stops || restartUnchanged(stops, done)) return;
+    const here = rideRef.current.goodFix?.point ?? rideRef.current.fix?.point;
+    if (!here) {
+      sayDetour(NO_FIX_YET);
+      return;
+    }
+    if (gate.busy) {
+      sayDetour(DETOUR_BUSY);
+      return;
+    }
+    setKeepPlanned(false);
+    gate.online();
+    sayDetour(restartReplanSaid(stops, done));
+    // Back to a stop behind: turning round is the point, as after Road closed.
+    const back = stops.some((s) => s.passed && !done.has(s.index));
+    void replan(here, undefined, true, back, false, undefined, done);
+  };
   const changeStop = (stop: RideStopMark, place?: { point: LonLat; title: string }, keepFocus = false) => {
     const here = rideRef.current.goodFix?.point ?? rideRef.current.fix?.point;
     const skip = stopIndex(stop);
@@ -2517,6 +2582,7 @@ export function RideMode({
           )}
         </div>
       )}
+      <RestartStopsDialog stops={restart} onContinue={continueRestart} />
     </section>
   );
 }

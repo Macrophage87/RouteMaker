@@ -8519,6 +8519,26 @@ details.fold > summary .icon {
   padding: 8px;
 }
 
+/* Restarting part way (2026-10-24): one stop a row, big enough to tick on the bike; the list scrolls past a screenful. */
+.restart-stops {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+.restart-stops label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  font-size: 1.125rem;
+}
+.restart-stops input {
+  width: 24px;
+  height: 24px;
+}
+
 /* The ride's stops ahead (2026-10-24: "Stops should appear on the map when riding"): the stop's pin, its name beside
    it at the ride's street-name size (20 px), in the app's font, haloed to read over any map. Not pressable. */
 .ride-stop {
