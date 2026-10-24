@@ -266,7 +266,7 @@ export const REPLAN_TIMEOUT_MS = 25_000;
 export const GPS_LOST_MS = 30_000;
 export const GPS_LOST_SAID = "No GPS signal: the cues are paused until it comes back.";
 
-/** The rider's responsibility and the battery, said before the first ride (plan sections 5 and 10). */
+/** The rider's responsibility and the battery, in the ride's settings (plan sections 5 and 10). */
 export const RIDE_SAFETY_BROWSER =
   "Ride mode guides you along the planned route; you stay responsible for riding safely and obeying the rules of the road, and the route can be wrong. It needs the screen on and this page in front, and GPS with a lit screen drains the battery quickly.";
 /** In the phone app (v0.8.0) the cues go on with the screen locked, so the screen sentence is not said. */
@@ -456,7 +456,7 @@ export function RideSettingsFields({
   prefs: RidePrefs;
   onChange: (prefs: RidePrefs) => void;
   idBase: string;
-  /** Settings: two pickers, with what each level says behind an (i) (the first Start ride keeps the radios). */
+  /** Settings: two pickers, with what each level says behind an (i); the ride's own settings keep the radios. */
   compact?: boolean;
 }) {
   if (compact) {

@@ -61,7 +61,7 @@ test("6. an End ride button always in view, labelled End ride with its icon, one
   // A tab stop only while it scrolls, with no second name the same as the section's.
   assert.match(summary, /setScrolls\(element\.scrollHeight > element\.clientHeight\)/);
   // Done: Go emptied for the next trip, Plan's plan kept (the owner, 2026-10-20).
-  const finish = app.slice(app.indexOf("const finishRide = () => {"), app.indexOf("// The first ride's question"));
+  const finish = app.slice(app.indexOf("const finishRide = () => {"), app.indexOf("  // Roam (RoamMode.tsx)"));
   assert.match(finish, /endedRide\.current = null;\s*setRideEnded\(null\);\s*if \(mode === "go" && pointsRef\.current\.length > 0\) clearPlan\(\);\s*else backToRideOpener\(\);/);
   // Undo carries on from the ended ride's figures; a new Start begins from nought.
   assert.match(app, /setResumeStats\(ended\.stats\);\s*setRideStart\(ended\.start\);/);
