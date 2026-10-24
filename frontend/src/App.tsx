@@ -249,6 +249,8 @@ import { ACCOUNT_SETTINGS_USED, applyToDevice, deviceSettings, fetchSettings, on
 import { HOME_KEPT, HOME_MOVED, answerHomeOffer, deviceHome, homeOffer, type HomeOffer } from "./lib/homeMove.ts";
 import { OPENED_SAID, SAVED_SAID, SAVE_FAILED, UNCHANGED_SAID, UPDATE_ROUTE, VERSION_SAID, defaultRouteName, differenceLine, differsTooMuch, gpxSave, afterDelete, afterRename, planSave, saveAsVersion, savedAnswer, versionOf, type OpenSaved, type SavedRoute } from "./lib/savedRoutes.ts";
 import { checkClosures, closedStretches, reroutedSaid, spliceDetours, type Closure, type CheckFor } from "./lib/closureCheck.ts";
+import { ROUTE_WEATHER_MS, weatherPoints } from "./lib/weather.ts";
+import { useWeather } from "./useWeather.ts";
 import { downloadText, trackGpx, verbatimDownload, verbatimFileName } from "./lib/gpxVerbatim.ts";
 import { readGpx } from "./lib/gpxImport.ts";
 import { GPX_SAID_OPENED, GPX_SAID_ROUTE, GPX_SAID_TRACK, downloadCourse, downloadGpx, routeGpxFile, sendCourseToGarmin, sendCourseToWahoo, type FileFormat, type Said } from "./GpxPanel.tsx";
@@ -3786,6 +3788,14 @@ export function App() {
     if (!sameLightMarks(lightKept.current, next)) lightKept.current = next;
     return lightKept.current;
   }, [shown, minute, dials.when]);
+  // Weather along the route (lib/weather.ts, Stephen 2026-10-24): the NWS alerts and rain coming, leaving now, shown
+  // with the route's warnings in Go and Plan; checked when the route changes and every 10 minutes while it shows.
+  const weatherKey = shown !== null && !riding && (mode === "plan" || mode === "go") ? lineKey(shown.geometry.coordinates) : null;
+  const weather = useWeather(
+    weatherKey,
+    () => (shown && shown.duration_s > 0 ? weatherPoints(shown.geometry.coordinates, 0, shown.distance_m / shown.duration_s) : null),
+    ROUTE_WEATHER_MS,
+  );
   // Share as image (ShareCardDialog, lib/shareCard.ts), beside Share in Plan's More: the route shown, the rider's
   // Home (an end or stop there is cut out of the image unless the rider unchecks it), and an opened file's own name.
   const [shareCardOpen, setShareCardOpen] = useState(false);
@@ -4676,7 +4686,7 @@ export function App() {
         stale, routeHeadingRef, status, announcement, slow, preset, dials, points, cancelLong, planButtonRef,
         confirmLong, errorRef, retry, shown, answer: picked, choice, aroundAvoid, setAroundAvoid, routedPoints, federalRoute,
         narrow, setJunctionFocus, setScrubPoint, choose, startRide: startRideChecked, broadcastRide: canShare ? { onPress: broadcastRide, note: broadcastNote } : null, startRideRef, rideSize, setDials,
-        waterStatus, waterAlong, addWaterStop, climbsOn, climbsStatus, climbsAlong, light,
+        waterStatus, waterAlong, addWaterStop, climbsOn, climbsStatus, climbsAlong, light, weather,
       }}
     />
   );
