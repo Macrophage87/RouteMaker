@@ -25,6 +25,8 @@ import java.io.IOException;
  * The file is written to the app's cache (courses/, the one file sent last only) and lent to the chosen app
  * through the app's FileProvider with read access alone. Its type is the provider's answer for the file's
  * extension, as a file manager's would be. Nothing is sent anywhere by the app itself.
+ * Send to Wahoo's file (frontend/src/lib/wahooLink.ts handWahooFile) passes anyApp: the "Open with" list only, never
+ * Garmin Connect.
  */
 @CapacitorPlugin(name = "RouteMakerFiles")
 public class FilesPlugin extends Plugin {
@@ -68,9 +70,11 @@ public class FilesPlugin extends Plugin {
         }
         // Garmin Connect itself when it takes the file, by "Open with" or by Share: one tap fewer, and the rider
         // is not left to find it in a list. Otherwise every app that opens the file, to choose from.
+        // Send to Wahoo's file (anyApp): never Garmin Connect, always the list, for the rider to pick the Wahoo app.
+        boolean anyApp = Boolean.TRUE.equals(call.getBoolean("anyApp", false));
         PackageManager pm = getContext().getPackageManager();
         Intent target = null;
-        for (Intent candidate : new Intent[] { viewIntent(uri, type), sendIntent(uri, type) }) {
+        for (Intent candidate : anyApp ? new Intent[0] : new Intent[] { viewIntent(uri, type), sendIntent(uri, type) }) {
             candidate.setPackage(GARMIN_CONNECT);
             if (candidate.resolveActivity(pm) != null) {
                 target = candidate;

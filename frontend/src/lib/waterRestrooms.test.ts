@@ -43,6 +43,7 @@ import {
   type WaterPoint,
   type WaterPrefs,
   WATER_ICON_PADDING_PX,
+  WATER_ICON_CITY_PADDING_PX,
 } from "./waterRestrooms.ts";
 import {
   WATER_ALONG_NO_ROUTE,
@@ -207,7 +208,8 @@ test("the layer: one symbol layer, its icon by name, from street-network zoom, t
   assert.equal(layer.type, "symbol");
   assert.equal(layer.minzoom, 12);
   assert.equal(layer.layout["icon-allow-overlap"], false, "thinned downtown");
-  assert.equal(layer.layout["icon-padding"], WATER_ICON_PADDING_PX);
+  assert.deepEqual(layer.layout["icon-padding"], ["step", ["zoom"], WATER_ICON_CITY_PADDING_PX, 14, WATER_ICON_PADDING_PX], "wider below zoom 14 (2026-10-23)");
+  assert.ok(WATER_ICON_CITY_PADDING_PX > 2 * WATER_ICON_PADDING_PX);
   assert.equal(layer.layout["icon-ignore-placement"], false, "each icon blocks the next, or nothing is thinned");
   assert.deepEqual(layer.layout["icon-image"], ["concat", "water-restrooms-", ["get", "icon"]]);
   assert.equal(waterIconId("w-n"), "water-restrooms-w-n");

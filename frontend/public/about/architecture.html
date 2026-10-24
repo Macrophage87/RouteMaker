@@ -715,6 +715,10 @@ offline on a planned route (up to 10).</li>
 background location, a screen wake lock and spoken cues during a ride.</li>
 <li><strong>Accounts.</strong> Sign-in uses Discord with the narrowest permission (your user id).
 RouteMaker exchanges the sign-in code once and keeps no Discord token.</li>
+<li><strong>Garmin and Wahoo.</strong> When you connect Garmin or Wahoo in Settings, the server
+keeps that service's sign-in token, encrypted under a key that is never in the database. It contacts
+Garmin (diauth.garmin.com to sign in and renew the token, apis.garmin.com for the rest) or api.wahooligan.com only to send the routes you choose, read your account number once, and end the
+connection when you disconnect or delete your account. Deleting your account also removes from Wahoo up to 100 routes RouteMaker sent there.</li>
 <li><strong>Sharing.</strong> A shared route stores the exact line under a random link, kept for a year
 after it was last opened. Its preview image hides the area around Home.</li>
 <li><strong>AI assistants.</strong> RouteMaker has a Model Context Protocol<sup class="cite"><a href="#ref-16" aria-label="source 16">[16]</a></sup> server, so an AI
@@ -768,7 +772,7 @@ release has short rider-facing notes.</li>
 <p class="next">Next: <a href="/about/acknowledgements.html">Acknowledgements</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.11.0. The code is
+  <p>Part of RouteMaker's documentation. It describes version 0.12.0. The code is
   open source under the MIT licence:
   <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
   <p><a href="/">Back to the map</a></p>
