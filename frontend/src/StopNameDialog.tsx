@@ -39,7 +39,7 @@ export function StopNameDialog({ ask, onDone, onCancel }: { ask: StopNameAsk | n
   return (
     <dialog
       ref={dialogRef}
-      className="start-computer-dialog stop-name-dialog"
+      className="ask-dialog stop-name-dialog"
       aria-labelledby={headingId}
       onCancel={(event) => {
         event.preventDefault();

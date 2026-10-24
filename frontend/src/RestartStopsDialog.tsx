@@ -38,7 +38,7 @@ export function RestartStopsDialog({ stops, onContinue }: { stops: RestartStop[]
   return (
     <dialog
       ref={dialogRef}
-      className="start-computer-dialog restart-stops-dialog"
+      className="ask-dialog restart-stops-dialog"
       aria-labelledby={headingId}
       aria-describedby={leadId}
       onCancel={(event) => {

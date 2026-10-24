@@ -27,7 +27,7 @@ export function ResumeRideDialog({ open, onResume, onNotNow, onLater }: { open: 
   return (
     <dialog
       ref={dialogRef}
-      className="start-computer-dialog"
+      className="ask-dialog resume-ride-dialog"
       aria-labelledby={headingId}
       aria-describedby={leadId}
       onCancel={(event) => {
