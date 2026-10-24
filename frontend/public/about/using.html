@@ -341,8 +341,8 @@ for any name, shop or address ("grocery", "bike shop"), with your position round
 across. The matches from both are measured by bike together and the three nearest are listed. A word for one of the
 buttons ("bathroom", "pump", "lunch") does that button's search instead. <strong>Ride here</strong> starts an ordinary ride there, and
 ending that ride brings you back to roaming.</li>
-<li><strong>Weather</strong> where you are is checked every 5 minutes: an alert in force there, or rain within
-15 minutes, is said and shown until you dismiss it.</li>
+<li><strong>Weather</strong> where you are is checked every 5 minutes, for alerts and for rain in the next hour
+("Rain expected in about 45 min, where you are."), said and shown as in a ride.</li>
 <li><strong>Broadcast</strong>, a round button, shares a link others can follow your dot and the way you
 ride with, while your app is open (see <a href="#suggest">ride links</a>).</li>
 <li>The next sunrise and sunset show in the corner, with the minutes left once it is within the
@@ -495,7 +495,8 @@ On a screen at least 1200 px wide, the route's results (its totals, Start ride, 
 sit in their own card on the right of the map, and the planner on the left keeps the points, the ride type,
 its settings and the Route button.</p>
 <p><strong>Weather.</strong> In Go and Plan, the route's warnings include any National
-Weather Service alert in force along it while you would ride it if you left now, each with an <strong>NWS notice</strong> link to the
+Weather Service alert in force along it while you would ride it, leaving now (a plan set for another time is
+not checked), each with an <strong>NWS notice</strong> link to the
 NWS's page for the place, and a rain line such as "Rain expected in about 20 min, near mile 5.0 (8.0 km)." with
 <strong>Forecast: Open-Meteo</strong> beside it. Start ride never waits for this. See
 <a href="/about/routing.html#weather">Weather</a> for which alerts are shown.</p>
@@ -649,10 +650,11 @@ removes it. If the app closes during a ride, opening it again within 12 hours of
 forgets it; Escape only puts the question off until the app next opens. Roam, Ride the rest, a Roam detour and
 Bikeshare or transit legs cannot be resumed yet.</li>
 <li><strong>Weather</strong> is checked once the ride knows where you are on the route, and every 5 minutes, along the rest of
-the route. A new alert is said once ("Weather alert: Severe Thunderstorm Warning until 6:45 PM."), interrupting
+the route. A new alert is said once ("Weather alert: Severe Thunderstorm Warning until 6:45 PM.", with "until" only where
+the NWS gives the end time), and again only if the NWS changes its end time or severity, interrupting
 for an Extreme alert or a Severe warning; rain is said when it is first forecast, when it comes within 15 minutes,
-and when it turns heavy. Both stay in the bottom panel until you press <strong>Dismiss</strong>; anything new (an alert, an
-alert ending, or rain appearing, coming within 15 minutes or turning heavy) brings them back.</li>
+and when it turns heavy. Both stay in the bottom panel until you press <strong>Dismiss</strong>; an alert you have not dismissed, or rain
+coming within 15 minutes or turning heavy, brings them back.</li>
 <li><strong>Off the route</strong>, RouteMaker plans again from where you are. Whenever the ride plans again (off the route,
 Re-plan from here, Road closed, Less traffic, Fewer hills or a Detour), it keeps every stop still ahead but treats via
 points as guides: one less than half a mile [800 m] ahead is dropped, so you are never sent back to touch
