@@ -248,11 +248,12 @@ class RouteIn(Schema):
         ge=presets.HILLS_MIN,
         le=presets.HILLS_MAX,
         description=(
-            "The hills slider: -100 avoids climbing, 0 is the fastest time. Above 0 on every"
-            ' ride type but Mountain Goat it is "fine with hills": that share of the'
-            " router's own climbing charge is taken off, so the more direct of the router's"
-            " routes wins even where it climbs more (two-point plans up to 16 mi (25 km) of"
-            " straight line; `hills_tolerate` in the answer). On Mountain Goat above 0 looks"
+            "The hills slider. Every climb costs the extra time it takes; the slider sets the"
+            " rider's LT1 grade, past which a steepness penalty adds on: 1% at -100, 8% at 0,"
+            " 15% at 100. Above 0 on every"
+            ' ride type but Mountain Goat it is "fine with hills": the router\'s routes are'
+            " compared that way (two-point plans up to 16 mi (25 km) of straight line;"
+            " `hills_tolerate` in the answer). On Mountain Goat above 0 looks"
             " for climbs among the router's alternatives (two-point plans up to 31 mi (50 km)"
             " of straight line). Absent: the preset's own start. Mass Ride stops at 0."
         ),
@@ -954,17 +955,23 @@ class StressAdjustmentOut(Schema):
 
 
 class HillsAvoidOut(Schema):
-    """Present when the hills slider was below its detent: sustained climbs and
-    brake-riding descents weighed among the router's alternatives."""
+    """Present when the hills slider was below its detent: the router's alternatives
+    weighed with each climb at its real time plus a steepness penalty past the LT1 grade
+    the slider sets (`routemaker.hill_cost`), and brake-riding descents."""
 
     candidates: int = Field(description="Routes compared, the router's own included.")
     chosen: int = Field(description="Which was kept; 0 is the router's own route.")
-    weight: float = Field(description="How much the sustained-grade cost counted: -hills/100.")
+    weight: float = Field(description="How much the brake-riding descent cost counted: -hills/100.")
     brake_grade: float | None = Field(
         description="The ride type's grade past which a descent costs; null: never."
     )
-    grade_cost_s: float = Field(description="The kept route's sustained climb and descent cost.")
-    direct_grade_cost_s: float
+    grade_cost_s: float = Field(
+        description=(
+            "The kept route's climbing and descent cost, in the router's cost seconds, over its"
+            " cost with the router's own climbing charge taken off (`routing.hill_s`)."
+        )
+    )
+    direct_grade_cost_s: float = Field(description="The same for the router's own route.")
     extra_distance_m: float
     limited: Literal["two_points", "long_ride", "timed_out"] | None = Field(
         description="Why no alternatives were compared, if none were."
@@ -980,17 +987,17 @@ class HillsAvoidOut(Schema):
 class HillsTolerateOut(Schema):
     """Present when the hills slider was past its detent on a ride type where that means
     "fine with hills" (every one but Mountain Goat; FOLLOWUP-HILLS-TOLERATE, OWNER-DECISIONS
-    242): the router's routes compared with their climbing charge discounted."""
+    242): the router's routes compared with each climb at its real time and a steepness
+    penalty only past the LT1 grade the slider sets, 8% to 15% (`routemaker.hill_cost`)."""
 
     candidates: int = Field(description="Routes compared, the router's own included.")
     chosen: int = Field(description="Which was kept; 0 is the router's own route.")
-    weight: float = Field(
-        description="The share of the router's climbing charge taken off: hills/100."
-    )
+    weight: float = Field(description="The slider's position over 100.")
     discount_s: float = Field(
         description=(
-            "What was taken off the kept route's cost, in the router's cost seconds; 0 at"
-            " the top of the stress slider (`calm_first`)."
+            "The steepness penalty the detent would charge the kept route and this position"
+            " does not, in the router's cost seconds; 0 at the top of the stress slider"
+            " (`calm_first`)."
         )
     )
     extra_climb_m: float = Field(description="The kept route's climb over the router's own.")
@@ -2054,9 +2061,14 @@ class ClosureOut(Schema):
         description='The source as the card names it: "MPD traffic advisory, Oct 15".'
     )
     url: str | None = Field(description="The source's own page.")
-    kind: Literal["closed", "unknown", "lane"]
+    kind: Literal["closed", "unknown", "lane", "penalty"] = Field(
+        description='"penalty" (v0.12.0): a rideable work zone, on the map with no route only.'
+    )
     severity: Literal["red", "amber"] = Field(
-        description='"red": a closed stretch (a barrier icon); "amber": a bike lane blocked.'
+        description=(
+            '"red": a closed stretch (a barrier icon); "amber": a bike lane blocked, or'
+            " construction that can be ridden through."
+        )
     )
     title: str = Field(
         description='What is closed: "Constitution Avenue NW closed, 14th St to 18th St".'
@@ -5978,6 +5990,178 @@ def assistant_key_delete(request):
     return _private(JsonResponse(_assistant_key_out(None)))
 
 
+# The rider's Garmin connection (core.garmin_views; the owner, 2026-10-23): Settings shows it and
+# disconnects it. Connecting is a page visit (/auth/garmin/start), since Garmin's consent is a page.
+
+
+def _garmin_out(user) -> dict:
+    from . import garmin
+    from .models import GarminLink
+
+    link = GarminLink.objects.filter(user=user).first()
+    return {
+        "available": garmin.offered(),
+        "connected": link is not None,
+        "connected_at": link.created_at.isoformat() if link else None,
+        "last_used_at": link.last_used_at.isoformat() if link and link.last_used_at else None,
+    }
+
+
+@api.get("/me/garmin", summary="Whether the rider's Garmin account is connected")
+@decorate_view(
+    signed_in_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.ME),
+    errors_as_json,
+)
+def garmin_read(request):
+    return _private(JsonResponse(_garmin_out(request.user)))
+
+
+@api.post("/me/garmin/delete", summary="Disconnect the rider's Garmin account")
+@decorate_view(
+    ratelimit.user_rate_limited(ratelimit.ACCOUNT_WRITES),
+    csrf_protected,
+    signed_in_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+def garmin_delete(request):
+    from .garmin_views import disconnect
+
+    disconnect(request.user)
+    return _private(JsonResponse(_garmin_out(request.user)))
+
+
+# Garmin's own per-rider cap is 200 calls a day; a send is one or two.
+GARMIN_COURSE_MAX_BYTES = 2 * 1024 * 1024
+
+
+@api.post("/me/garmin/courses", summary="Send the route shown to the rider's Garmin as a course")
+@decorate_view(
+    ratelimit.user_rate_limited(ratelimit.ACCOUNT_WRITES),
+    csrf_protected,
+    signed_in_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+def garmin_course_send(request):
+    """Body: {"name", "preset", "line": [[lon, lat, ele], ...], "saved_route": id or null}.
+    200 {"sent": "added" | "updated"}; 409 {"error", "code": "not_connected"} when there is no
+    live connection (Settings offers Connect again); 502 {"error"} when Garmin refused or could
+    not be reached (the app then hands the file on); 400 for a line no course can be made from."""
+    from . import garmin, garmin_courses
+
+    body, error = _json_body(request, GARMIN_COURSE_MAX_BYTES)
+    if error is not None:
+        return error
+    if not isinstance(body, dict):
+        return _stress_error(400, "Send an object.")
+    saved = body.get("saved_route")
+    if saved is not None and (not isinstance(saved, int) or isinstance(saved, bool)):
+        return _stress_error(400, "saved_route is a route's id, or null.", field="saved_route")
+    try:
+        course = garmin_courses.build(
+            str(body.get("name") or ""), str(body.get("preset") or ""), body.get("line")
+        )
+    except garmin_courses.BadLine as bad:
+        return _stress_error(400, str(bad), field="line")
+    try:
+        sent, _course_id = garmin_courses.send(request.user, course, saved)
+    except garmin.NotConnected as ended:
+        return _stress_error(409, str(ended), code="not_connected")
+    except garmin.GarminError as failed:
+        return _stress_error(502, str(failed))
+    return _private(JsonResponse({"sent": sent}))
+
+
+# The rider's Wahoo connection (core.wahoo_views; the owner, 2026-10-23), as Garmin's above.
+
+
+def _wahoo_out(user) -> dict:
+    from . import wahoo
+    from .models import WahooLink
+
+    link = WahooLink.objects.filter(user=user).first()
+    return {
+        "available": wahoo.offered(),
+        "connected": link is not None,
+        "connected_at": link.created_at.isoformat() if link else None,
+        "last_used_at": link.last_used_at.isoformat() if link and link.last_used_at else None,
+    }
+
+
+@api.get("/me/wahoo", summary="Whether the rider's Wahoo account is connected")
+@decorate_view(
+    signed_in_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.ME),
+    errors_as_json,
+)
+def wahoo_read(request):
+    return _private(JsonResponse(_wahoo_out(request.user)))
+
+
+@api.post("/me/wahoo/delete", summary="Disconnect the rider's Wahoo account")
+@decorate_view(
+    ratelimit.user_rate_limited(ratelimit.ACCOUNT_WRITES),
+    csrf_protected,
+    signed_in_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+def wahoo_delete(request):
+    from .wahoo_views import disconnect
+
+    disconnect(request.user)
+    return _private(JsonResponse(_wahoo_out(request.user)))
+
+
+# The FIT file as base64 (at most 2 MB, core.wahoo_routes.MAX_FIT_BYTES) and the line beside it;
+# the account's paths take bodies up to 5 MB (Caddyfile @routes_body, the beta's nginx).
+WAHOO_ROUTE_MAX_BYTES = 4 * 1024 * 1024
+
+
+@api.post("/me/wahoo/routes", summary="Send the route shown to the rider's Wahoo app")
+@decorate_view(
+    ratelimit.user_rate_limited(ratelimit.ACCOUNT_WRITES),
+    csrf_protected,
+    signed_in_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+def wahoo_route_send(request):
+    """Body: {"name", "line": [[lon, lat, ele], ...], "fit": base64, "saved_route": id or null}.
+    200 {"sent": "added" | "updated"}; 409 {"error", "code": "not_connected"} when there is no
+    live connection; 502 {"error"} when Wahoo refused or could not be reached; 400 for a line or
+    file no route can be made from. In each failure the app hands the file on instead."""
+    from . import wahoo, wahoo_routes
+
+    body, error = _json_body(request, WAHOO_ROUTE_MAX_BYTES)
+    if error is not None:
+        return error
+    if not isinstance(body, dict):
+        return _stress_error(400, "Send an object.")
+    saved = body.get("saved_route")
+    if saved is not None and (not isinstance(saved, int) or isinstance(saved, bool)):
+        return _stress_error(400, "saved_route is a route's id, or null.", field="saved_route")
+    try:
+        form = wahoo_routes.build(str(body.get("name") or ""), body.get("line"), body.get("fit"))
+    except wahoo_routes.BadLine as bad:
+        return _stress_error(400, str(bad), field="line")
+    try:
+        sent, _route_id = wahoo_routes.send(request.user, form, saved)
+    except wahoo.NotConnected as ended:
+        return _stress_error(409, str(ended), code="not_connected")
+    except wahoo.WahooError as failed:
+        return _stress_error(502, str(failed))
+    return _private(JsonResponse({"sent": sent}))
+
+
 # Assistant apps the rider connected through the site's own MCP connector (core.connector; the
 # owner, 2026-10-19: "Sure, add that in"): listed beside the AI assistant key, each with
 # Disconnect, which ends that app's access at once.
@@ -6585,6 +6769,41 @@ def my_shared_route_regenerate(request, route_id: str):
 # The closures a kept line runs along now (v0.7.0 plan, "GPX export as close to identical as
 # possible, closure warning first", with its correction: mainly when a kept route is opened or
 # ridden). Public, like planning; the line is only measured, never kept.
+class AreaClosuresIn(Schema):
+    bbox: str = Field(
+        max_length=120,
+        description="The map's view: west,south,east,north in degrees, at most 0.4 by 0.3.",
+    )
+    permits: bool = Field(
+        default=False,
+        description="Also DDOT's permits (Plan's DC permits switch); off by default.",
+    )
+
+
+class AreaClosuresOut(Schema):
+    closures: list[ClosureOut]
+
+
+# GET /api/closures/map?bbox=west,south,east,north (v0.12.0): the closures in force now in the
+# map's view, drawn with no route as with one (core.workzones.area_rows). A GET of a map view,
+# as a tile is: no point of the rider's is in it.
+@api.get(
+    "/closures/map",
+    response={200: AreaClosuresOut, 400: ErrorOut, 429: ErrorOut, 500: ErrorOut},
+    summary="The closures and construction in force now in a map view",
+)
+@decorate_view(ratelimit.rate_limited(ratelimit.CLOSURES_MAP), errors_as_json)
+def closures_map(request, params: Query[AreaClosuresIn], response: HttpResponse):
+    from . import workzones as work_zones
+
+    response["Cache-Control"] = "no-store"
+    try:
+        box = work_zones.parse_area(params.bbox)
+    except ValueError as error:
+        return Status(400, {"error": str(error)})
+    return Status(200, {"closures": work_zones.area_rows(box, permits=params.permits)})
+
+
 CLOSURE_LINE_MAX_POINTS = 10_000
 CLOSURE_BODY_MAX_BYTES = 512 * 1024
 CLOSURE_BYPASS_MAX = 50
@@ -6791,7 +7010,9 @@ def _ride_body(request):
 @decorate_view(*RIDE_READ_GUARDS)
 def ride_read(request, ride_id: str):
     token = request.META.get("HTTP_X_RIDE_TOKEN", "")
-    return _ride_call(request, lambda rp: rp.read(ride_id, token))
+    # A broadcast link's leader key (core.ride_presence.leader_key): marks the sharer's dot.
+    leader = request.META.get("HTTP_X_RIDE_LEADER", "")
+    return _ride_call(request, lambda rp: rp.read(ride_id, token, leader=leader))
 
 
 @api.post("/rides/{ride_id}/here", summary="Show this rider as a dot (rounded to 20 m) for 2 min")
@@ -6804,6 +7025,27 @@ def ride_here(request, ride_id: str):
         request,
         lambda rp: rp.post_position(
             ride_id, body.get("token", ""), body.get("lon"), body.get("lat"), body.get("role")
+        ),
+    )
+
+
+@api.post(
+    "/rides/{ride_id}/path",
+    summary="A broadcast leader's route and ridden path, kept in memory for 2 min",
+)
+@decorate_view(*RIDE_WRITE_GUARDS)
+def ride_path(request, ride_id: str):
+    from . import ride_presence
+
+    body, refusal = _json_body(request, ride_presence.PATH_BODY_BYTES)
+    if refusal is None and not isinstance(body, dict):
+        refusal = _stress_error(400, "Send an object.")
+    if refusal is not None:
+        return refusal
+    return _ride_call(
+        request,
+        lambda rp: rp.post_path(
+            ride_id, body.get("token", ""), body.get("route"), body.get("trail")
         ),
     )
 
