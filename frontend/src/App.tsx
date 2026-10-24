@@ -137,7 +137,7 @@ import {
   type LocateResult,
 } from "./lib/geolocation.ts";
 import { usePlaceNames } from "./usePlaceNames.ts";
-import { fetchPlaces, pickIntoPlan, placeFromSearch, reverseUrl, searchBiasPoint, type Place, type ViewBounds, type PlaceChoice } from "./lib/geocode.ts";
+import { MAX_DETOUR_SEARCH, fetchPlaces, pickIntoPlan, placeFromSearch, reverseUrl, searchBiasPoint, searchUrl, type Place, type ViewBounds, type PlaceChoice } from "./lib/geocode.ts";
 import { HOME_CLEARED, HOME_PICK_CANCELLED, HOME_PICK_LINE, homeAtSpot, homeFromPlace, homeSetSaid, nameWithoutHome } from "./lib/homeSet.ts";
 import { BottomBar } from "./Sidebar.tsx";
 import {
@@ -612,17 +612,20 @@ export function App() {
   // and the places to see (their own layer, off by default, kept on this device). Each loaded when first needed;
   // a load that failed is asked again next time.
   const [repairData, setRepairData] = useState<RepairPlace[] | "unavailable" | null>(null);
-  const repairLoad = useRef(false);
+  // One load at a time, shared by the layer, Go's Repair list and a ride's Detour (which waits on it).
+  const repairLoad = useRef<Promise<RepairPlace[] | null> | null>(null);
   const ensureRepair = useCallback(() => {
-    if (repairLoad.current) return;
-    repairLoad.current = true;
-    void loadRepair(waterRestroomsUrl).then((data) => {
-      if (!data) repairLoad.current = false;
-      setRepairData(data ?? "unavailable");
-    });
+    if (!repairLoad.current) {
+      repairLoad.current = loadRepair(waterRestroomsUrl).then((data) => {
+        if (!data) repairLoad.current = null;
+        setRepairData(data ?? "unavailable");
+        return data;
+      });
+    }
+    return repairLoad.current;
   }, []);
   useEffect(() => {
-    if (waterOn) ensureRepair();
+    if (waterOn) void ensureRepair();
   }, [waterOn, ensureRepair]);
   // Bikeshare docks and free e-bikes (v0.7.0; BikeshareDocks.tsx): shown while Capital Bikeshare's switch in
   // Layers is on. It is on by default in the bikeshare ride types and off in the others (the owner, 2026-10-17),
@@ -960,6 +963,11 @@ export function App() {
   const focusAfterRemove = useRef<number | null>(null);
   const writtenHash = useRef<string>("");
   const { gate: geoGate, namer } = usePlaceNames(points);
+  // A ride's Detour search box (lib/detourSearch.ts): through the page's one gate, ahead of names, as Where to?'s.
+  const detourGeocode = useCallback(
+    (query: string, near: LonLat) => geoGate.run(() => fetchPlaces(searchUrl(query, near, MAX_DETOUR_SEARCH)), true),
+    [geoGate],
+  );
   // A ride's stop names (2026-10-24): one function for the ride, so its stops on the map are worked out only as it moves.
   // A stop renamed in place (its pair unchanged): the link is written again for it.
   const [namesVersion, setNamesVersion] = useState(0);
@@ -4079,7 +4087,7 @@ export function App() {
     });
   };
   const openRepair = (chip: HTMLElement) => {
-    ensureRepair();
+    void ensureRepair();
     setPlacesAsked((n) => n + 1);
     openView("repair", chip);
     placesFromNow();
@@ -5120,6 +5128,9 @@ export function App() {
           onEnd={endRide}
           resumeStats={resumeStats}
           water={ensureWater}
+          food={ensureFood}
+          repair={ensureRepair}
+          geocode={detourGeocode}
           stopName={rideStopName}
           trailMiles={trailMiles}
           keepLastRide={isStandalone()}
@@ -5142,6 +5153,8 @@ export function App() {
           dials={planDials}
           water={ensureWater}
           food={ensureFood}
+          repair={ensureRepair}
+          geocode={detourGeocode}
           onView={setRoamRider}
           onDetour={roamDetour}
           onEnd={endRoam}

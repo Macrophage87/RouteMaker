@@ -24,7 +24,7 @@
  *   the route's street names (lib/report311.ts, lib/report311Log.ts; N6; OWNER-DECISIONS 369, 465).
  * - The side buttons (the owner, 2026-10-17: "Remove that bottom part when routing by default. instead put
  *   these as circle icons on the side"): Where am I? (re-centring too), Large text, Broadcast (2026-10-24: "Let people
- *   broadcast from a ride"), Detour (water or restroom), on a share bike the dock button with the time undocked
+ *   broadcast from a ride"), Detour (water, restroom, food, repair or a search, lib/detourSearch.ts), on a share bike the dock button with the time undocked
  *   (lib/rideDock.ts), 311 anywhere on the route, and More; each a round icon with its name for screen readers, its menu
  *   opening beside it. More opens, under the top row, the route's changes (Less traffic and Fewer hills, one step down
  *   the traffic or hills slider and a new route from here, lib/rideEase.ts; Skip this stop, lib/rideStops.ts) above the
@@ -54,7 +54,7 @@ import { requestRoute, type RouteResponse } from "./lib/api.ts";
 import { VIA_MARKS, drawnLegs, stopNames, viaIndices, type RideStopMark } from "./lib/pointKinds.ts";
 import { SKIP_STOP, detourButtonName, insteadLabel, insteadName, insteadSaid, nextStopLine, skippingSaid, withoutStop } from "./lib/rideStops.ts";
 import type { Dials } from "./lib/dials.ts";
-import { haversineM, insideCoverage, type LonLat } from "./lib/geo.ts";
+import { haversineM, type LonLat } from "./lib/geo.ts";
 import type { PresetId } from "./lib/presets.ts";
 import { formatDistance, formatDuration, spokenDistance } from "./lib/format.ts";
 import { cueParts } from "./lib/cueShown.ts";
@@ -123,22 +123,27 @@ import {
   DETOUR_BUSY,
   DETOUR_FULL,
   DETOUR_HELP,
-  DETOUR_KINDS,
-  DETOUR_SUMMARY,
-  NEAREST_KINDS,
   NO_FIX_YET,
   STILL_SEARCHING,
   detourPoints,
-  findingSaid,
   nearbyText,
-  nounOf,
   requestNearest,
-  rideLocate,
-  searchNearest,
-  type Found,
   type Nearby,
-  type NearestKind,
 } from "./lib/nearest.ts";
+import {
+  DETOUR_CHOICES,
+  DETOUR_SEARCH_BUTTON,
+  DETOUR_SEARCH_HINT,
+  DETOUR_SEARCH_LABEL,
+  DETOUR_SUMMARY,
+  detourFindingSaid,
+  findDetour as searchDetour,
+  type DetourAsk,
+  type DetourDeps,
+  type DetourFound,
+} from "./lib/detourSearch.ts";
+import type { FoodPlace } from "./lib/food.ts";
+import type { RepairPlace } from "./lib/repair.ts";
 import type { WaterPoint } from "./lib/waterRestrooms.ts";
 import type { TrailMiles } from "./lib/trailMiles.ts";
 import { WATER_CAUTION } from "./lib/waterRestrooms.ts";
@@ -548,6 +553,10 @@ function wayBackSaid(back: { metres: number; direction: string }): string {
   return `The planned route is ${spokenDistance(back.metres)} to the ${back.direction}.`;
 }
 
+/** No food, repair or place search given (a test's ride): those detours say they are unavailable. */
+const noPlaces = async () => null;
+const noSearch: DetourDeps["geocode"] = async () => ({ ok: false, status: 0 });
+
 export function RideMode({
   route: plannedRoute,
   points: plannedPoints,
@@ -566,6 +575,9 @@ export function RideMode({
   onEnd,
   resumeStats = null,
   water,
+  food = noPlaces,
+  repair = noPlaces,
+  geocode = noSearch,
   stopName,
   trailMiles = null,
   geoEnv,
@@ -599,6 +611,12 @@ export function RideMode({
   resumeStats?: RideStats | null;
   /** The water layer's points, loaded if they are not yet (App's ensureWater); for the detours. */
   water?: () => Promise<WaterPoint[] | null>;
+  /** Find food's places, loaded if they are not yet (App's ensureFood); for the detours (Stephen 2026-10-24). */
+  food?: () => Promise<FoodPlace[] | null>;
+  /** The repair stands and bike shops, loaded if they are not yet; for the detours. */
+  repair?: () => Promise<RepairPlace[] | null>;
+  /** The place search, through the page's one geocoding gate; for Detour's search box. */
+  geocode?: DetourDeps["geocode"];
   /** A stop's name to show and say: its own (lib/pointKinds.ts), else the map's name for the spot. */
   stopName?: (point: LonLat) => string | undefined;
   /**
@@ -932,7 +950,8 @@ export function RideMode({
 
   // The detour's own status (below): said like an answer, since the rider asked for it.
   const [detourStatus, setDetourStatus] = useState("");
-  const [detourList, setDetourList] = useState<Found | null>(null);
+  const [detourList, setDetourList] = useState<DetourFound | null>(null);
+  const [detourQuery, setDetourQuery] = useState("");
   const sayDetour = useCallback((text: string) => {
     setDetourStatus(text);
     // Shown in the detour's menu while it is open; by the side buttons otherwise (the dock's, a re-plan's outcome).
@@ -1583,7 +1602,9 @@ export function RideMode({
   // detours"): the three nearest by bike from the rider's position, on the ride's own settings; Detour here
   // re-plans through the chosen one. The position is the ride's own fix; nothing new is looked up.
   const detourBusy = useRef(false);
-  const findDetour = async (kind: NearestKind) => {
+  // Stephen 2026-10-24: "Detours should include food too and anything that a user would search for", "repair stands
+  // too": Food and Repair beside them, and a search box for anything else (lib/detourSearch.ts).
+  const findDetour = async (ask: DetourAsk) => {
     if (detourBusy.current) {
       sayDetour(STILL_SEARCHING);
       return;
@@ -1591,24 +1612,24 @@ export function RideMode({
     if (!water) return;
     detourBusy.current = true;
     setDetourList(null);
-    sayDetour(findingSaid(kind));
+    sayDetour(detourFindingSaid(ask));
     try {
       const fix = rideRef.current.goodFix ?? rideRef.current.fix;
       if (!fix) {
         sayDetour(NO_FIX_YET);
         return;
       }
-      const outcome = await searchNearest({
-        kind,
-        from: "location",
-        locate: async () => rideLocate(fix),
-        start: () => null,
-        centre: () => null,
-        inside: insideCoverage,
-        water,
-        stations: [],
-        request: (from, places) => requestNearest(from, places, preset, { ...dialsRef.current, loop: false }),
-      });
+      const outcome = await searchDetour(
+        {
+          here: fix.point,
+          water,
+          food,
+          repair,
+          geocode,
+          request: (from, places) => requestNearest(from, places, preset, { ...dialsRef.current, loop: false }),
+        },
+        ask,
+      );
       if (ended.current) return;
       if (outcome.found) setDetourList(outcome.found);
       sayDetour(outcome.said);
@@ -2250,18 +2271,43 @@ export function RideMode({
                   </button>
                 </div>
                 <div className="actions nearest-kinds">
-                  {NEAREST_KINDS.filter((k) => DETOUR_KINDS.includes(k.kind)).map(({ kind, label }) => (
-                    <button key={kind} type="button" className="secondary" onClick={() => void findDetour(kind)}>
-                      <Icon name={kind === "water" ? "water" : "wc"} size={20} />
+                  {DETOUR_CHOICES.map(({ kind, label, icon }) => (
+                    <button key={kind} type="button" className="secondary" onClick={() => void findDetour({ kind })}>
+                      <Icon name={icon} size={20} />
                       {label}
                     </button>
                   ))}
                 </div>
+                <form
+                  className="detour-search"
+                  role="search"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void findDetour({ query: detourQuery });
+                  }}
+                >
+                  <label htmlFor={`${detourId}-search`}>{DETOUR_SEARCH_LABEL}</label>
+                  <span className="detour-search-row">
+                    <input
+                      id={`${detourId}-search`}
+                      type="search"
+                      enterKeyHint="search"
+                      autoComplete="off"
+                      placeholder={DETOUR_SEARCH_HINT}
+                      value={detourQuery}
+                      onChange={(event) => setDetourQuery(event.target.value)}
+                    />
+                    <button type="submit" className="secondary">
+                      <Icon name="search" size={20} />
+                      {DETOUR_SEARCH_BUTTON}
+                    </button>
+                  </span>
+                </form>
                 {/* Shown, not a live region: what it says is said through the ride's own outputs (sayDetour). */}
                 <p className="hint nearest-status">{detourStatus}</p>
                 {detourList && detourList.items.length > 0 && (
                   <div className="nearest-list">
-                    <h4 id={`${settingsId}-detour`}>{`Nearest ${nounOf(detourList.kind)}`}</h4>
+                    <h4 id={`${settingsId}-detour`}>{detourList.heading}</h4>
                     <ol role="list" aria-labelledby={`${settingsId}-detour`}>
                       {detourList.items.map((item) => (
                         <li key={item.place.id}>
@@ -2289,7 +2335,7 @@ export function RideMode({
                         </li>
                       ))}
                     </ol>
-                    <p className="hint">{WATER_CAUTION}</p>
+                    {(detourList.kind === "water" || detourList.kind === "restroom") && <p className="hint">{WATER_CAUTION}</p>}
                   </div>
                 )}
                 <p className="hint">{DETOUR_HELP}</p>
