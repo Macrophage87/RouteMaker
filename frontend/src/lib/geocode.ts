@@ -43,6 +43,8 @@ export const MIN_QUERY_CHARS = 3;
 /** The API's own ceiling, so a longer paste is cut rather than refused. */
 export const MAX_QUERY_CHARS = 200;
 export const SEARCH_RESULTS = 6;
+/** A ride's Detour search asks for the API's most (core.geocode.MAX_RESULTS), to measure by bike with food's matches. */
+export const MAX_DETOUR_SEARCH = 10;
 /** Typing pauses this long before a search is sent. */
 export const SEARCH_DEBOUNCE_MS = 250;
 /** Points that change settle this long before they are named. */
