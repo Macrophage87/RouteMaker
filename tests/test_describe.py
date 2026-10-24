@@ -2327,6 +2327,53 @@ class TestFarSideTurns:
         after = road("Saint Paul Street bike lane", 1, 600, 90, 90, "protected", "cycleway")
         after[0] = replace(after[0], others=(), turn=90.0)
         entries = d.describe([flat(before, [walk_on, middle], after)])
-        turned_entry = next(e for e in entries if e.get("turn"))
-        assert turned_entry["turn"]["across"] == "Saint Paul Street"
-        assert turned_entry["turn"]["movement"] == "right"
+        turned = [e for e in entries if e.get("turn")]
+        assert len(turned) == 1
+        assert turned[0]["turn"]["across"] == "Saint Paul Street"
+        assert turned[0]["turn"]["movement"] == "right"
+        # Said where the route leaves the avenue or at the turn, never past it.
+        assert 400 <= turned[0]["from_m"] <= 420
+
+    def test_a_road_on_the_other_side_only_is_no_crossing(self):
+        # A side street meets from the left; the path turned right onto is on the near side.
+        left_only = ((270.0, "road", "residential", "both"),)
+        assert "across" not in self.route(others=left_only)[1]["turn"]
+
+    def test_a_turn_short_of_the_road_is_not_said_as_the_crossing(self):
+        # Bear right onto a side path short of the road, over it, then right onto a path
+        # that runs on as one stretch with it: the bear is not the far side turn.
+        before = road("Guilford Avenue", 2, 400, 0, 0)
+        side = road("", 1, 15, 40, 40, "path", "cycleway")
+        side[0] = replace(side[0], others=(), turn=40.0)
+        across = replace(
+            road("", 1, 20, 0, 0, "path", "cycleway")[0], others=self.CROSS_ROAD, turn=-40.0
+        )
+        after = road("", 1, 400, 90, 90, "path", "cycleway")
+        after[0] = replace(after[0], others=(), turn=90.0)
+        entries = d.describe([flat(before, side, [across], after)])
+        assert all("across" not in (e.get("turn") or {}) for e in entries)
+
+    def test_a_curve_between_the_road_and_the_turn_is_no_crossing(self):
+        before = road("Guilford Avenue", 2, 400, 0, 0)
+        across = replace(
+            road("Guilford Avenue", 2, 10, 0, 0)[0], others=self.CROSS_ROAD, turn=0.0, bearing=0.0
+        )
+        curve = replace(road("Guilford Avenue", 2, 10, 0, 0)[0], bearing=60.0)
+        after = road("Saint Paul Street bike lane", 1, 400, 90, 90, "protected", "cycleway")
+        after[0] = replace(after[0], others=(), turn=90.0, bearing=90.0)
+        entries = d.describe([flat(before, [across, curve], after)])
+        assert "across" not in entries[1]["turn"]
+
+    def test_the_crossing_and_the_turn_each_say_their_own_control(self):
+        crossing = event(400, "straight", kind="crossing", names=("east mount royal avenue",))
+        at_turn = event(
+            420, "right", Control.STOP, None, kind="right_onto", flagged=False, names=("x",)
+        )
+        entries = self.route([crossing, at_turn])
+        said = entries[1]["text"].split(": ", 1)[1]
+        assert said.startswith(
+            "Cross East Mount Royal Avenue at a signal (Higher stress junction), then right onto"
+        )
+        assert "bike lane at a stop sign," in said
+        # The crossing is not said again as an entry of its own.
+        assert [e["kind"] for e in entries] == ["stretch", "stretch"]
