@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { PRESETS } from "./presets.ts";
-import { HILLS_MAX, HILLS_MIN, STRESS_MAX, TRAFFIC_TOLERANT_WARNING, startDials } from "./dials.ts";
+import { HILLS_MAX, HILLS_MIN, STRESS_MAX, TRAFFIC_TOLERANT_WARNING, hillsWords, startDials } from "./dials.ts";
 import {
   AVOID_NOTE,
   CALM_HOW,
@@ -47,31 +47,40 @@ test("Mass Ride's traffic slider is locked, and says why; no other ride type's i
   }
 });
 
-test("Mass Ride's hills slider stops at Fastest and says why; Mountain Goat seeks, the others are fine with hills", () => {
+test("the hills slider is in grade percent and Mass Ride's stops at 8%; Mountain Goat's seeks", () => {
+  // Stephen, 2026-10-23: "Can the slider positions just be percent?"
   const mass = panelView("mass-ride", startDials("mass-ride")).hills;
-  assert.deepEqual([mass.min, mass.max], [HILLS_MIN, 0]);
+  assert.deepEqual([mass.min, mass.max, mass.step], [1, 8, 1]);
   assert.equal(mass.note, MASS_RIDE_HILLS_NOTE);
-  assert.deepEqual(mass.ends, ["Avoid hills", "", "Fastest"]);
+  assert.deepEqual(mass.ends, ["1%", "", "8%"]);
   const dials = startDials("default");
   const hills = panelView("default", dials).hills;
-  assert.deepEqual([hills.min, hills.max], [HILLS_MIN, HILLS_MAX]);
-  // FOLLOWUP-HILLS-TOLERATE (OWNER-DECISIONS 242): the right half is "fine with hills" on every ride type but Mountain Goat.
-  assert.deepEqual(hills.ends, ["Avoid hills", "Fastest", "Fine with hills"]);
+  assert.deepEqual([hills.min, hills.max, hills.step], [1, 15, 1]);
+  assert.deepEqual(hills.ends, ["1%", "8%", "15%"]);
+  // Each whole percent on the slider is a dial position that reads back as that percent.
+  for (let pct = 1; pct <= 15; pct++) {
+    const dial = hills.scale!.fromSlider(pct);
+    assert.ok(dial >= HILLS_MIN && dial <= HILLS_MAX);
+    assert.equal(hills.scale!.toSlider(dial), pct);
+    assert.equal(hillsWords(dial, false), `Easy up to ${pct}%`);
+  }
+  assert.equal(hills.scale!.toSlider(0), 8);
   assert.equal(hills.note, undefined);
   assert.equal(panelView("default", dials, { ...dials, hills: 40 }).hills.note, TOLERATE_NOTE);
-  assert.equal(panelView("default", dials, { ...dials, hills: 40 }).hills.words, "Hills matter less");
+  assert.equal(panelView("default", dials, { ...dials, hills: 40 }).hills.words, "Easy up to 11%");
   assert.equal(panelView("default", dials, { ...dials, hills: -40 }).hills.note, AVOID_NOTE);
   assert.match(TOLERATE_NOTE, /never a busier one/);
   assert.match(TOLERATE_NOTE, /16 mi \(25 km\)/);
   const goat = startDials("mountain-goat");
   const climbing = panelView("mountain-goat", goat).hills;
   assert.deepEqual(climbing.ends, ["Avoid hills", "Fastest", "Seek hills"]);
+  assert.deepEqual([climbing.min, climbing.max, climbing.scale], [HILLS_MIN, HILLS_MAX, undefined]);
   assert.equal(climbing.note, SEEK_NOTE);
   assert.equal(climbing.words, "Seeks hills");
   for (const preset of PRESETS) {
     if (preset.id === "mass-ride") continue;
     const ends = panelView(preset.id, startDials(preset.id)).hills.ends;
-    assert.equal(ends[2], preset.id === "mountain-goat" ? "Seek hills" : "Fine with hills", preset.id);
+    assert.equal(ends[2], preset.id === "mountain-goat" ? "Seek hills" : "15%", preset.id);
   }
 });
 
@@ -80,14 +89,14 @@ test("the E-bike ride type starts fine with hills (242)", () => {
   assert.ok(ebike.hills > 0);
   const view = panelView("ebike", ebike).hills;
   assert.equal(view.note, TOLERATE_NOTE);
-  assert.equal(view.words, "Hills matter less");
+  assert.equal(view.words, hillsWords(ebike.hills, false));
 });
 
 test("the words follow the position being dragged", () => {
   const dials = startDials("default");
   const view = panelView("default", dials, { ...dials, stress: 50, hills: -90 });
   assert.equal(view.traffic.words, "Balanced");
-  assert.equal(view.hills.words, "Avoids hills");
+  assert.equal(view.hills.words, "Easy up to 2%");
 });
 
 test("electric assist is offered on Cargo Bike alone, with its note while it is on", () => {

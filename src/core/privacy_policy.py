@@ -10,7 +10,8 @@ comes from:
   background-location permission (mobile/README.md, "Privacy"; mobile/test/config.test.mjs); a
   route request carries points in its body, and the logs keep no query (docs/DEVELOPMENT.md,
   "Logs and the rider's position").
-- Group and Mass Ride: core.ride_presence (20 m grid, memory only, 2 minutes; alerts 10 minutes)
+- Group and Mass Ride: core.ride_presence (20 m grid, memory only; dots, alerts and a leader's
+  path 2 minutes, nothing longer)
   and frontend/src/RideGroup.tsx (only while sharing and the page is in front, near the route).
 - Discord sign-in: core.discord_oauth (identify scope, no token kept) and core.models.User (the
   Discord id and dates only); the bot's role cache: core.membership.
@@ -26,12 +27,14 @@ comes from:
   'self'`), core.street_photo, core.gbfs, core.wmata_live, core.closure_sources, core.dc311.
 - Logs, limits and backups: docker/api-entrypoint.sh (the access log's format), core.ratelimit,
   config.procrastinate (BACKUP_KEEP, BACKUP_EXCLUDED_TABLES); sessions: core.revocation.
-- Garmin: the one section written ahead of its code, and the page says so ("not offered yet").
-  Garmin's developer program reviews this page before an app may connect riders, so the promises
-  come first and the connection (one encrypted token per rider, the Courses API only, Disconnect)
-  is built to them, including the handler for Garmin's deregistration notice (a rider who
-  disconnects in Garmin Connect); when it ships, drop "not offered yet", point this line at its
-  module, and add Garmin to "Who else is contacted" (the server then sends it the token).
+- Garmin: core.garmin (the encrypted token, offered only with core.garmin.COURSES_WIRED),
+  core.garmin_views (connect, Disconnect, Garmin's deregistration notice), core.garmin_courses
+  (the course sent, and GarminLink.courses, which course each saved route was sent as). Garmin's
+  developer program reviews this page before an app may connect riders.
+- Wahoo: core.wahoo (the encrypted token, offered where the Wahoo keys are set),
+  core.wahoo_views (connect, Disconnect, removing the routes sent when the account is deleted),
+  core.wahoo_routes (the route sent, and WahooLink.routes, the Wahoo routes sent). Wahoo's API
+  agreement asks for a privacy policy and for deletion on request.
 - Hosting: settings.PRIVACY_HOSTING, the deployment's own (Garmin asks that every party storing
   riders' data be named).
 
@@ -64,11 +67,12 @@ HOSTING = (
 HOSTING_LEAD = "The server and its database run at "
 HOSTING_TAIL = ", which stores the data only to run the site. No other company stores your data."
 GARMIN_NO_AI = "Nothing from Garmin is sold, shared, given to AI services, or used to train AI."
+WAHOO_NO_AI = "Nothing from Wahoo is sold, shared, given to AI services, or used to train AI."
 WHERE_YOU_ARE = (
     "Your location is used on your phone or computer to plan and guide your ride. The server "
     "keeps no record of where you are, only places you choose to save or share (Home, saved and "
     "shared routes, a 311 problem’s spot) and, while you share on a Group or Mass Ride, your "
-    "rounded dot for 2 minutes and an alert’s spot for 10 minutes."
+    "rounded dot for 2 minutes and an alert’s spot for 2 minutes."
 )
 
 
@@ -133,7 +137,19 @@ SECTIONS: list[tuple[str, str]] = [
                 "memory, never on disk or in a log, and dropped 2 minutes after it was sent.",
                 "Other riders on the same ride see an unnamed dot. No account or name is sent: "
                 "your phone makes a new random code for each ride.",
-                "An alert you send keeps your rounded spot for 10 minutes, or until you clear it.",
+                "An alert you send keeps your rounded spot for 2 minutes, or until you clear it.",
+                "Share ride and Broadcast make you the ride leader, shown as a dot from the start "
+                "of your ride. While you ride a shared ride, you and anyone on it who chooses to "
+                "be shown are shown on or off the route, so riders who get separated can find "
+                "each other; once the ride ends, the quarter-mile rule is back.",
+                "As leader, your phone also sends the route you are riding and the path you have "
+                "ridden (rounded the same way, without its first 650 ft (200 m), as rides often "
+                "start at home) about every 2 minutes; the server keeps each only in memory and "
+                "drops it after 2 minutes. Only those with your link see it. The link itself, "
+                "like any shared route, shows where the route starts.",
+                "Speak, in an alert's Other box, uses your browser's speech recognition: the "
+                "browser's maker (Google for Chrome, Apple for Safari) turns the recording into "
+                "text. The words go only into the box until you tap Send.",
             ]
         ),
     ),
@@ -175,23 +191,47 @@ SECTIONS: list[tuple[str, str]] = [
     ),
     (
         "If you connect Garmin",
-        _p(
-            "Connecting a Garmin account is not offered yet. When it is, it will be your choice, "
-            "in Settings, and it will work like this:"
-        )
+        _p("Connecting a Garmin account is your choice, in Settings. It works like this:")
         + _ul(
             [
                 "Send to Garmin then adds the course to your Garmin Connect account directly, "
                 "without opening the Garmin Connect app.",
                 "RouteMaker keeps only Garmin’s sign-in token for your account, encrypted, "
-                "and your Garmin account number. It uses them only to send the courses you "
-                "choose.",
-                "It never reads your activities, health data or anything else from Garmin.",
+                "your Garmin account number, which Garmin course each saved route was sent as (so "
+                "sending it again updates that course), and when you connected and last sent a "
+                "course. It uses them only to send the courses you choose.",
+                "Other than your account number, it never reads your activities, health data or "
+                "anything else from Garmin.",
                 GARMIN_NO_AI,
-                "Settings shows whether you are connected. Disconnect there, or in Garmin "
-                "Connect, at any time: RouteMaker deletes the token and tells Garmin. Deleting "
-                "your account does the same.",
+                "Settings shows whether you are connected. Disconnect there at any time: "
+                "RouteMaker deletes the token and tells Garmin. Deleting your account does the "
+                "same. Disconnect in Garmin Connect instead, and RouteMaker deletes it when Garmin "
+                "says so.",
                 "That connection is all RouteMaker keeps from Garmin, so there is nothing else to "
+                "see, correct or export. To fix it, disconnect and connect again.",
+            ]
+        ),
+    ),
+    (
+        "If you connect Wahoo",
+        _p("Connecting a Wahoo account is your choice, in Settings. It works like this:")
+        + _ul(
+            [
+                "Send to Wahoo then adds the route to your Wahoo app directly, with its turn "
+                "cues, and the app sends it to your ELEMNT.",
+                "RouteMaker keeps only Wahoo’s sign-in token for your account, encrypted, your "
+                "Wahoo account number, which Wahoo routes it sent (so sending a saved route again "
+                "updates it, and deleting your account removes them), and when you connected and "
+                "last sent a route. It uses them only to send the routes you choose.",
+                "Other than your account number, it never reads your rides, workouts, plans or "
+                "anything else from Wahoo.",
+                WAHOO_NO_AI,
+                "Settings shows whether you are connected. Disconnect there at any time: "
+                "RouteMaker deletes the token and withdraws its access at Wahoo. The routes "
+                "already sent stay in your Wahoo app. Deleting your account does the same and "
+                "also deletes from Wahoo up to 100 routes RouteMaker sent through that "
+                "connection; any it could not reach stay in your Wahoo app, to delete there.",
+                "That connection is all RouteMaker keeps from Wahoo, so there is nothing else to "
                 "see, correct or export. To fix it, disconnect and connect again.",
             ]
         ),
@@ -238,8 +278,9 @@ SECTIONS: list[tuple[str, str]] = [
         _p(
             "Your browser and the app talk only to this site: the map, place search and routing "
             "run on the site’s own servers. The exceptions are Discord’s pages when you "
-            "sign in, links you choose to open, such as a street photo on Mapillary or a 311 "
-            "website, and a course you send to Garmin Connect."
+            "sign in, Garmin’s or Wahoo’s pages when you connect them, links you choose to "
+            "open, such as a street photo on Mapillary or a 311 website, and a course file you "
+            "hand to Garmin Connect."
         )
         + _p("The site’s server contacts, with nothing about you:")
         + _ul(
@@ -252,6 +293,20 @@ SECTIONS: list[tuple[str, str]] = [
                 "DC 311, as above.",
                 "Discord, to finish your sign-in and for the bot.",
             ]
+        )
+        + _p("Where you connect Garmin, the server also contacts Garmin:")
+        + _ul(
+            [
+                "Your Garmin sign-in token: to finish connecting, to keep you connected, and to "
+                "end the connection when you disconnect.",
+                "A course you choose to send: the route’s line with its heights, its name, "
+                "distance, climb and descent, and the kind of ride.",
+            ]
+        )
+        + _p(
+            "Where you connect Wahoo, the server also contacts Wahoo, with your Wahoo sign-in "
+            "token and a route you choose to send: its course file with turn cues, its name, "
+            "start, distance, climb and descent."
         )
         + _p(
             "If you connect an AI assistant app, the routes it plans go to that app and its "
@@ -295,11 +350,12 @@ SECTIONS: list[tuple[str, str]] = [
         _ul(
             [
                 "What you save with your account: until you delete it, or the account.",
-                "Group and Mass Ride positions: 2 minutes; alerts: 10 minutes.",
+                "Group and Mass Ride positions, alerts and a leader's path: 2 minutes. Nothing "
+                "about a ride is kept longer.",
                 "Shared links: as above.",
                 "Database backups: one a night, the last seven kept, so deleted data can stay in "
-                "them for up to a week. Sign-ins, request limits and the Discord role list are "
-                "left out of them.",
+                "them for up to a week. Sign-ins, request limits, the Discord role list and Garmin "
+                "and Wahoo connections are left out of them.",
                 "Suggestions already decided stay as the map’s history, with nothing linking "
                 "them to you once your account is deleted.",
                 "A note that an account was deleted, and when, under an account number.",

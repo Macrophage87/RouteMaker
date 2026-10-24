@@ -24,7 +24,7 @@ import { readFileSync } from "node:fs";
 import { OPENING_ZOOM } from "./mapStyle.ts";
 import { STATION_MIN_ZOOM, railImages } from "./railLayer.ts";
 import { stationsFromTexts, RAIL_FIXTURE_FILES, type RailTexts } from "./railFixtures.ts";
-import { PENN_COLOUR, iconId, iconShape, lineStyle, visibleLines, type Station } from "./railStations.ts";
+import { PENN_COLOUR, iconId, iconShape, lineStyle, visibleLines, railFeatures, stationMapName, type Station } from "./railStations.ts";
 
 function fakeMap(initial: Array<{ id: string; type: string }>) {
   const layers = [...initial];
@@ -357,6 +357,22 @@ test("the base map no longer names a station the map names itself, and still nam
   // A toggle off hands the name back to the base map.
   assert.equal(shows(basemapPoisFilter(pois.filter, REAL, { metro: false, marc: true }), "station", near), true);
   assert.equal(basemapPoisFilter(pois.filter, REAL, { metro: false, marc: false }), pois.filter);
+  // An airport its station names (the owner, 2026-10-23: "This one is redunant as well, since we have labels for each").
+  const dca = REAL.find((s) => s.name === "Ronald Reagan Washington National Airport")!;
+  const airfield: [number, number] = [dca.point[0] + 0.008, dca.point[1] - 0.004]; // the base map's label, ~0.5 mi off
+  assert.equal(shows(pois.filter, "aerodrome", airfield), true, "named twice before");
+  assert.equal(shows(filter, "aerodrome", airfield), false, "the station names it");
+  assert.equal(shows(filter, "aerodrome", [-76.9223, 38.9806]), true, "College Park Airport, no station, keeps its name");
+  assert.equal(shows(filter, "station", airfield), true, "the reach is the airport's alone");
+});
+
+test("National Airport's station is labelled as DC says it, and keeps WMATA's name everywhere else", () => {
+  const dca = REAL.find((s) => s.name === "Ronald Reagan Washington National Airport")!;
+  assert.equal(stationMapName(dca), "National Airport (DCA)");
+  const feature = railFeatures([dca], ALL).features.find((f) => f.properties.kind === "station")!;
+  assert.equal(feature.properties.name, "National Airport (DCA)");
+  const other = REAL.find((s) => s.name === "Shady Grove")!;
+  assert.equal(stationMapName(other), "Shady Grove");
 });
 
 test("the stations set the base map's pois filter, and the toggles reset it from the original", () => {

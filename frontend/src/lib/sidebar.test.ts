@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { startDials, type Dials } from "./dials.ts";
+import { hillsWords, startDials, type Dials } from "./dials.ts";
 import { hillsShort, rideSummary, rideSummarySpoken, settingsSummary, settingsSummarySpoken, targetShort, trafficShort, whenShort } from "./rideSummary.ts";
 import { NOT_AVAILABLE, calmPercent, heavyMetres, junctionFigure, quickFigures, stressBarKey, stressBarLabel } from "./quickFigures.ts";
 import {
@@ -68,15 +68,15 @@ const css = src("../styles.css");
 // ---- the Ride line ----------------------------------------------------------
 
 test("the Ride line: the mockup's words for a Default ride, ride type first", () => {
-  assert.equal(rideSummary("default", startDials("default")), "Default · quiet streets · balanced hills · now");
-  assert.equal(rideSummarySpoken("default", startDials("default")), "Default, quiet streets, balanced hills, now");
+  assert.equal(rideSummary("default", startDials("default")), "Default · quiet streets · hills up to 8% · now");
+  assert.equal(rideSummarySpoken("default", startDials("default")), "Default, quiet streets, hills up to 8%, now");
 });
 
 test("the Ride line follows the sliders, the ride time, the loop and gravel; and names a moved ride Custom", () => {
   const dials: Dials = { ...startDials("default", null, "weekend"), stress: 100, hills: -90, loop: true, avoidGravel: true };
   assert.equal(
     rideSummary("default", dials),
-    "Custom (based on Default) · calmest · avoids hills · weekend · loop · avoids gravel",
+    "Custom (based on Default) · calmest · hills up to 2% · weekend · loop · avoids gravel",
   );
   assert.equal(whenShort("weekday_rush"), "weekday rush");
   assert.equal(whenShort("weekday_offpeak"), "weekday off-hours");
@@ -94,18 +94,24 @@ test("every slider position has words, and Mass Ride's locked slider says what i
     [51, "quiet streets"], [74, "quiet streets"], [75, "low stress"], [80, "low stress"], [81, "calm"], [94, "calm"], [95, "calmest"],
   ];
   for (const [stress, words] of traffic) assert.equal(trafficShort(stress), words, `traffic ${stress}`);
+  // The hills chip says the grade, as the slider does (review N1: "Easy up to 8%" on the slider, "hills up to 8%" here).
+  for (let value = -100; value <= 100; value += 1) {
+    for (const climbs of [false, true]) {
+      const slider = hillsWords(value, climbs);
+      assert.equal(hillsShort(value, climbs), slider.startsWith("Easy ") ? `hills ${slider.slice(5)}` : slider.toLowerCase(), `hills ${value}`);
+    }
+  }
   const hills: Array<[number, string]> = [
-    [-80, "avoids hills"], [-79, "gentler hills"], [-11, "gentler hills"], [-10, "balanced hills"], [10, "balanced hills"],
-    [11, "some climbing"], [79, "some climbing"], [80, "seeks hills"],
+    [-100, "hills up to 1%"], [0, "hills up to 8%"], [10, "hills up to 9%"], [11, "some extra climbing"], [79, "some extra climbing"], [80, "seeks hills"],
   ];
   for (const [value, words] of hills) assert.equal(hillsShort(value, true), words, `hills ${value}`);
-  // Right of the middle on every ride type but Mountain Goat: fine with hills (OWNER-DECISIONS 242).
-  const tolerant: Array<[number, string]> = [[10, "balanced hills"], [11, "hills matter less"], [79, "hills matter less"], [80, "fine with hills"]];
+  // Right of the middle on every ride type but Mountain Goat: the grade goes on up (OWNER-DECISIONS 242).
+  const tolerant: Array<[number, string]> = [[11, "hills up to 9%"], [40, "hills up to 11%"], [100, "hills up to 15%"]];
   for (const [value, words] of tolerant) assert.equal(hillsShort(value, false), words, `hills ${value}`);
-  assert.match(rideSummary("ebike", startDials("ebike")), /^E-bike · quiet streets · hills matter less · now$/);
+  assert.match(rideSummary("ebike", startDials("ebike")), /^E-bike · quiet streets · hills up to \d+% · now$/);
   assert.match(rideSummary("mountain-goat", startDials("mountain-goat")), / · seeks hills · /);
   assert.match(rideSummary("default", { ...startDials("default"), assist: true }), /^Default, electric assist · /);
-  assert.match(rideSummary("mass-ride", startDials("mass-ride")), /^Mass Ride · most direct roadway · avoids hills · now$/);
+  assert.match(rideSummary("mass-ride", startDials("mass-ride")), /^Mass Ride · most direct roadway · hills up to \d+% · now$/);
   // A loop set on a Mass Ride is hidden there (374): the summary does not say it.
   assert.doesNotMatch(rideSummary("mass-ride", { ...startDials("mass-ride"), loop: true }), /loop/);
   // Cargo says its load.
@@ -116,8 +122,8 @@ test("the Ride line says a set target distance, miles first, after when (312's o
   assert.equal(targetShort(undefined), null);
   assert.equal(targetShort(32187), "about 20.0 mi (32.2 km)");
   const dials: Dials = { ...startDials("default"), targetDistanceM: 32187, loop: true };
-  assert.equal(rideSummary("default", dials), "Default · quiet streets · balanced hills · now · about 20.0 mi (32.2 km) · loop");
-  assert.equal(rideSummarySpoken("default", dials), "Default, quiet streets, balanced hills, now, about 20.0 mi (32.2 km), loop");
+  assert.equal(rideSummary("default", dials), "Default · quiet streets · hills up to 8% · now · about 20.0 mi (32.2 km) · loop");
+  assert.equal(rideSummarySpoken("default", dials), "Default, quiet streets, hills up to 8%, now, about 20.0 mi (32.2 km), loop");
 });
 
 test("the Ride line never carries the rider and bike weight (313-314): not a figure, not the dial", () => {
@@ -164,8 +170,8 @@ test("App puts the ride type's button first and every dial behind the Ride setti
   );
   assert.match(app, /const presetsSection = typeCard \? <RideTypePicker key="presets" preset=\{preset\} dials=\{dials\} onChoose=\{choosePreset\} \/> : null;/);
   assert.match(src("../App.tsx"), /typeCard: mode !== "go",/);
-  assert.equal(settingsSummary("default", startDials("default")), "quiet streets · balanced hills · now");
-  assert.equal(settingsSummarySpoken("default", startDials("default")), "quiet streets, balanced hills, now");
+  assert.equal(settingsSummary("default", startDials("default")), "quiet streets · hills up to 8% · now");
+  assert.equal(settingsSummarySpoken("default", startDials("default")), "quiet streets, hills up to 8%, now");
   const dials = src("../DialsPanel.tsx");
   const at = (text: string) => {
     const i = dials.indexOf(text);
@@ -240,7 +246,7 @@ test("the points come first, the how-to is behind Points' Info, Swap and Undo be
   assert.ok(panel.indexOf('className="actions plan-reset-clear" hidden={!moreOpen}') > panel.indexOf('aria-label="More: Reset and Clear"'));
   assert.ok(panel.indexOf("{RESET_LABEL}") < panel.indexOf("{CLEAR_LABEL}"));
   assert.doesNotMatch(app, /className="actions point-add"|ref=\{addRef\}/);
-  assert.match(app, /accessMode && !riding \? \(\s*<MapTools\s+toggleRef=\{toolsToggleRef\}\s+onAddPoint=\{addAtCentre\}/);
+  assert.match(app, /accessMode && !onBike \? \(\s*<MapTools\s+toggleRef=\{toolsToggleRef\}\s+onAddPoint=\{addAtCentre\}/);
   assert.equal(
     searchLede(false),
     "Search or click the map: start, then end. Later clicks add stops. For keyboard or screen reader use, turn on accessibility mode (the first button on the page, or in Settings).",
@@ -360,7 +366,7 @@ test("Mass Ride's points on federal land: a warning on each row and marker, and 
   // Handed on to Plan's point boxes, which list them (Plan streamline, 2026-10-17).
   assert.match(points, /pointWarnings=\{pointWarnings\}/);
   assert.match(src("../app/Planner.tsx"), /onRemove=\{removeAt\}\s+warnings=\{pointWarnings\}/);
-  assert.match(app, /pointWarnings=\{riding \|\| reviewing \? undefined : pointWarnings\}/);
+  assert.match(app, /pointWarnings=\{onBike \|\| reviewing \? undefined : pointWarnings\}/);
   // The Map layers sheet keeps its own list.
   const html = renderToStaticMarkup(
     createElement(FederalPointsList, {
@@ -647,7 +653,7 @@ test("the bottom bar is Plan, Layers, Reports, Save & load and Settings: real bu
   assert.deepEqual(BAR_ITEMS.map((i) => i.opens), ["planner", "layers", "suggest", "gpx", "settings"]);
   assert.equal(BAR_ITEMS[0].id, "plan", "Plan is first (OWNER-DECISIONS 392, 393)");
   assert.ok(BAR_ITEMS.every((i) => i.description.length > 0));
-  assert.equal(BAR_ITEMS[4].description, "Opens the settings: My Go (Home, ride type, Open in), riding, display and your account.");
+  assert.equal(BAR_ITEMS[4].description, "Opens the settings: My Go (Home, ride type), riding, display and your account.");
   assert.equal(BAR_NAME, "Panel pages", "a landmark name that says what the bar is (the a11y review's N3)");
   assert.match(sidebar, /<nav aria-label=\{BAR_NAME\} className="bottom-bar">/);
   assert.match(sidebar, /<Fragment key=\{item\.id\}>\s*<button\s+id=\{`bar-\$\{item\.id\}`\}\s+type="button"/);
@@ -972,7 +978,7 @@ test("the Settings sheet (384): My Go, Riding, Display and Account, most used fi
   assert.match(sheet, /title=\{go \? MENU_TITLE : SHEET_TITLES\.settings\}\s+open=\{nav\.view === "settings"\}\s+onBack=\{nav\.back\}\s+backLabel=\{nav\.backLabel\("settings"\)\}\s+headingRef=\{settingsHeadingRef\}/);
   // This device's routes moved to Save and load (the owner, 2026-10-18); the install offer has its own heading.
   assert.doesNotMatch(sheet, /settings-device-heading/);
-  const order = ["<MyGoSection controls={myGo} />", ...["settings-ride-heading", "settings-display-heading", "settings-signin-heading"].map((id) => `<h3 id="${id}">`)].map((at) => sheet.indexOf(at));
+  const order = ['<MyGoSection controls={myGo} open={nav.view === "settings"} />', ...["settings-ride-heading", "settings-display-heading", "settings-signin-heading"].map((id) => `<h3 id="${id}">`)].map((at) => sheet.indexOf(at));
   assert.ok(order.every((i) => i > 0), JSON.stringify(order));
   assert.match(app, /<section aria-labelledby="settings-my-go-heading" className="settings-group my-go">\s*<div className="setting-line">\s*<h3 id="settings-my-go-heading">My Go<\/h3>/);
   assert.deepEqual(order, [...order].sort((a, b) => a - b));

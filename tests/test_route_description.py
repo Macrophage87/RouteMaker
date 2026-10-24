@@ -42,6 +42,11 @@ def named_world(names=("Quiet Street",), **kwargs):
     return fake
 
 
+def no_line(shape, at, nodes):
+    """`routing._line_headings` where the route's line is not read: the edges' headings."""
+    return None, None, at, at
+
+
 @db
 @pytest.mark.usefixtures("arterial")
 class TestInTheAnswer:
@@ -96,7 +101,9 @@ class TestInTheAnswer:
         router(fake)
         assert post(client, good_body()).json()["description"][0]["kind"] == "stretch"
 
-    def test_a_street_change_is_a_turn_with_its_signal(self, client, router):
+    def test_a_street_change_is_a_turn_with_its_signal(self, client, router, monkeypatch):
+        # The world's line runs straight: the edges' headings stand in for the turn.
+        monkeypatch.setattr(routing, "_line_headings", no_line)
         fake = named_world()
         edges = fake.answers["trace_attributes"]["edges"]
         edges[1]["names"] = ["Second Street"]
@@ -110,8 +117,9 @@ class TestInTheAnswer:
         assert entries[1]["turn"]["onto"] == "Second Street"
         assert entries[1]["text"].split(": ")[1].startswith("Left onto Second Street")
 
-    def test_a_bear_is_answered_in_both_lists(self, client, router):
+    def test_a_bear_is_answered_in_both_lists(self, client, router, monkeypatch):
         # v0.7.0 answered 500 here: the response schema had no bears.
+        monkeypatch.setattr(routing, "_line_headings", no_line)
         fake = named_world()
         edges = fake.answers["trace_attributes"]["edges"]
         edges[1]["names"] = ["Second Street"]
@@ -760,6 +768,105 @@ class TestForksFromTheTrace:
         # And the other ways at the node, for the ride card's junction diagram.
         assert [p.others for p in pieces] == [None, ((3.0, "cycleway", None, None),), None]
 
+    @staticmethod
+    def walk(start, *legs):
+        """Points from `start` (lon, lat), each leg (compass heading, metres) on from the last."""
+        import math
+
+        points = [start]
+        for heading, metres in legs:
+            lon, lat = points[-1]
+            north = metres * math.cos(math.radians(heading)) / 111320.0
+            east = (
+                metres * math.sin(math.radians(heading)) / (111320.0 * math.cos(math.radians(lat)))
+            )
+            points.append((lon + east, lat + north))
+        return points
+
+    def test_a_tiny_edge_at_a_junction_does_not_make_a_bend_a_left(self):
+        """The owner, 2026-10-23, on Sligo Creek Trail: "Left to stay on" a gentle bend.
+        A 3 m edge on from the node leans 70 degrees left; the trail bends 25, a footway
+        goes off 70 left."""
+        from test_route_api import encode_polyline6
+
+        points = self.walk((-77.0, 39.0), (340, 100), (270, 3), (315, 100))
+        trail = {"names": ["Sligo Creek Trail"], "use": "cycleway"}
+        trace = {
+            "units": "kilometers",
+            "shape": encode_polyline6(points),
+            "edges": [
+                {
+                    **trail,
+                    "way_id": 1,
+                    "length": 0.1,
+                    "begin_shape_index": 0,
+                    "end_shape_index": 1,
+                    "begin_heading": 340,
+                    "end_heading": 340,
+                    # A footway off to the west.
+                    "end_node": {
+                        "intersecting_edges": [
+                            {"begin_heading": 270, "use": "footway", "cyclability": "both"}
+                        ]
+                    },
+                },
+                {
+                    **trail,
+                    "way_id": 2,
+                    "length": 0.003,
+                    "begin_shape_index": 1,
+                    "end_shape_index": 2,
+                    "begin_heading": 270,
+                    "end_heading": 270,
+                },
+                {
+                    **trail,
+                    "way_id": 3,
+                    "length": 0.1,
+                    "begin_shape_index": 2,
+                    "end_shape_index": 3,
+                    "begin_heading": 315,
+                    "end_heading": 315,
+                },
+            ],
+        }
+        firsts = {p.way_id: p for p in reversed(routing.pieces_of_trace(trace))}
+        # Valhalla's headings alone would make it a left at a fork.
+        assert describe.fork_movement(340, 270, [(270, "footway", "both")], trail=True) == "left"
+        assert firsts[2].fork is None
+        assert firsts[2].turn == pytest.approx(-30, abs=5)
+        assert firsts[1].turn is None
+
+    def test_a_turnaround_reads_on_the_side_the_line_winds(self):
+        from test_route_api import encode_polyline6
+
+        # North, then a tight hairpin right round past south: the chords alone read a left.
+        points = self.walk((-77.0, 39.0), (0, 100), (90, 4), (215, 100))
+        trace = {
+            "units": "kilometers",
+            "shape": encode_polyline6(points),
+            "edges": [
+                {
+                    "way_id": 1,
+                    "length": 0.1,
+                    "begin_shape_index": 0,
+                    "end_shape_index": 2,
+                    "begin_heading": 0,
+                    "end_heading": 0,
+                },
+                {
+                    "way_id": 2,
+                    "length": 0.1,
+                    "begin_shape_index": 2,
+                    "end_shape_index": 3,
+                    "begin_heading": 215,
+                    "end_heading": 215,
+                },
+            ],
+        }
+        firsts = {p.way_id: p for p in reversed(routing.pieces_of_trace(trace))}
+        assert firsts[2].turn > 180
+
     def test_the_ways_just_short_of_a_node_ride_on_the_edge_after_it(self):
         """A main road crossed within `describe.SHAPE_NEAR_M` before a turn: its ways
         are the turn's `prior` (the owner, 2026-10-20, on a left onto a service road)."""
@@ -797,3 +904,202 @@ class TestForksFromTheTrace:
         trace["edges"][1]["length"] = 0.08
         firsts = {p.way_id: p for p in reversed(routing.pieces_of_trace(trace))}
         assert firsts[3].prior is None
+
+
+def traced(*edges, start=(-77.0, 39.0)):
+    """A trace of `edges`, each (names, use, [(compass heading, metres), ...], the ways
+    meeting the node it ends at as (heading, use, cyclability)), its line drawn from
+    `start`, with Valhalla's headings taken from each edge's own first and last legs."""
+    import math
+
+    from test_route_api import encode_polyline6
+
+    points = [start]
+    out = []
+    for way, (names, use, legs, ways) in enumerate(edges, 1):
+        begin = len(points) - 1
+        for heading, metres in legs:
+            lon, lat = points[-1]
+            north = metres * math.cos(math.radians(heading)) / 111320.0
+            east = (
+                metres * math.sin(math.radians(heading)) / (111320.0 * math.cos(math.radians(lat)))
+            )
+            points.append((lon + east, lat + north))
+        out.append(
+            {
+                "way_id": way,
+                "names": list(names),
+                "use": use,
+                "length": sum(m for _h, m in legs) / 1000.0,
+                "begin_shape_index": begin,
+                "end_shape_index": len(points) - 1,
+                "begin_heading": legs[0][0],
+                "end_heading": legs[-1][0],
+                "end_node": {
+                    "intersecting_edges": [
+                        {"begin_heading": h, "use": u, "cyclability": c} for h, u, c in ways
+                    ]
+                },
+            }
+        )
+    return {"units": "kilometers", "shape": encode_polyline6(points), "edges": out}
+
+
+def said(trace):
+    """The description of `trace`: each stretch's (street, the movement into it)."""
+    pieces = routing.pieces_of_trace(trace)
+    atoms = [
+        describe.Atom(
+            p.metres,
+            "1",
+            "path" if p.use in describe.PATH_USES else "none",
+            p.names,
+            p.use,
+            p.heading_in,
+            p.heading_out,
+            fork=p.fork,
+            others=p.others,
+            bearing=p.bearing,
+            turn=p.turn,
+            choice=bool(p.choice),
+        )
+        for p in pieces
+    ]
+    return [
+        (e["street"], e["turn"]["movement"] if e["turn"] else None)
+        for e in describe.describe([atoms])
+        if e["kind"] == "stretch"
+    ]
+
+
+class TestClearTurnsFromTheTrace:
+    """The owner's 2026-10-23 ride, end to end from a trace's line: a clear turn along one
+    trail and a turnaround are said, once, and nodes beside a turn add nothing."""
+
+    MBT = ("Metropolitan Branch Trail",)
+    PATH = ("cycleway", "both")
+
+    def test_a_left_onto_the_trail_s_side_path_is_said(self):
+        trace = traced(
+            (self.MBT, "cycleway", [(0, 300)], [(90, *self.PATH)]),
+            (self.MBT, "cycleway", [(265, 200)], []),
+        )
+        assert said(trace) == [
+            ("Metropolitan Branch Trail", None),
+            ("Metropolitan Branch Trail", "left"),
+        ]
+
+    def test_a_bend_where_only_a_sidewalk_meets_is_not_said(self):
+        trace = traced(
+            (self.MBT, "cycleway", [(0, 300)], [(90, "sidewalk", "both")]),
+            (self.MBT, "cycleway", [(265, 200)], []),
+        )
+        assert said(trace) == [("Metropolitan Branch Trail", None)]
+
+    def test_a_turnaround_onto_a_short_path_is_said_once(self):
+        # A node 6 m on from the apex, where a footway meets, reads the turn too.
+        trace = traced(
+            (self.MBT, "cycleway", [(225, 300)], []),
+            ((), "footway", [(30, 6)], [(300, "footway", "both")]),
+            ((), "footway", [(30, 40)], [(120, "road", "both")]),
+            ((), "service_road", [(110, 100)], [(20, "road", "both")]),
+            (("Maple Street Northwest",), "road", [(20, 300)], []),
+        )
+        assert said(trace) == [
+            ("Metropolitan Branch Trail", None),
+            ("path", "right"),
+            ("service road", "right"),
+            ("Maple Street Northwest", "left"),
+        ]
+
+    def test_a_node_just_past_a_right_turn_adds_nothing(self):
+        # X Street north to a T, right onto Y Street, a footway meeting Y 8 m on.
+        trace = traced(
+            (("X Street",), "road", [(0, 300)], [(270, "road", "both")]),
+            (("Y Street",), "road", [(90, 8)], [(0, "footway", "both")]),
+            (("Y Street",), "road", [(90, 300)], []),
+        )
+        assert said(trace) == [("X Street", None), ("Y Street", "right")]
+
+    def test_a_node_just_short_of_a_right_turn_adds_nothing(self):
+        trace = traced(
+            (("X Street",), "road", [(0, 300)], [(270, *self.PATH)]),
+            (("X Street",), "road", [(0, 8)], [(270, "road", "both")]),
+            (("Y Street",), "road", [(90, 300)], []),
+        )
+        assert said(trace) == [("X Street", None), ("Y Street", "right")]
+
+    def test_a_gentle_bend_past_a_tiny_tilted_edge_is_not_said(self):
+        # Sligo Creek Trail: a 3 m edge leans 70 left, the trail bends 25, a path goes west.
+        trail = ("Sligo Creek Trail",)
+        trace = traced(
+            (trail, "cycleway", [(340, 300)], [(270, "footway", "both"), (90, "road", "both")]),
+            (trail, "cycleway", [(270, 3)], []),
+            (trail, "cycleway", [(315, 300)], []),
+        )
+        assert said(trace) == [("Sligo Creek Trail", None)]
+
+    def test_a_node_3_m_short_of_a_right_turn_adds_nothing(self):
+        # Nearer than JUNCTION_M: the line runs on through the corner, read once, there.
+        trace = traced(
+            (("X Street",), "road", [(0, 300)], [(270, "footway", "both")]),
+            (("X Street",), "road", [(0, 3)], [(270, "road", "both")]),
+            (("Y Street",), "road", [(90, 300)], []),
+        )
+        assert said(trace) == [("X Street", None), ("Y Street", "right")]
+
+    def test_a_turnaround_with_a_new_name_just_past_it_is_said_once(self):
+        trace = traced(
+            (("T Trail",), "cycleway", [(0, 300)], [(0, *self.PATH)]),
+            (("T Trail",), "cycleway", [(170, 3)], [(90, *self.PATH)]),
+            (("U Trail",), "cycleway", [(170, 300)], []),
+        )
+        assert said(trace) == [("T Trail", None), ("U Trail", "right")]
+
+    def test_a_bend_where_only_a_way_back_meets_is_not_said(self):
+        trace = traced(
+            (self.MBT, "cycleway", [(0, 300)], [(170, *self.PATH)]),
+            (self.MBT, "cycleway", [(270, 200)], []),
+        )
+        assert said(trace) == [("Metropolitan Branch Trail", None)]
+
+    def test_a_sharp_turn_beside_a_spur_back_its_way_is_said(self):
+        # The trail turns 100 right; a spur goes off 160 right, near the way out.
+        trace = traced(
+            (self.MBT, "cycleway", [(0, 300)], [(160, *self.PATH)]),
+            (self.MBT, "cycleway", [(100, 200)], []),
+        )
+        assert said(trace) == [
+            ("Metropolitan Branch Trail", None),
+            ("Metropolitan Branch Trail", "right"),
+        ]
+
+    def test_nodes_under_5_m_apart_on_the_line_say_one_turn(self):
+        # A left onto R Street with another node 4 m on, which the trace's lengths put
+        # 6 m on: the line reads through both, so the turn is said once.
+        trace = traced(
+            (("17th Street path",), "cycleway", [(0, 300)], [(90, "road", "both")]),
+            (("R Street Northwest",), "road", [(270, 4)], [(0, "footway", "both")]),
+            (("R Street Northwest",), "road", [(270, 300)], []),
+        )
+        trace["edges"][1]["length"] = 0.006
+        assert said(trace) == [("17th Street path", None), ("R Street Northwest", "left")]
+
+    def test_two_turns_over_5_m_apart_on_the_line_are_each_said(self):
+        # A left then a right on one trail 5.3 m apart on the line, which the trace's
+        # lengths put 4.8 m apart: each is its own junction.
+        trace = traced(
+            (("Trail",), "cycleway", [(0, 300)], [(135, *self.PATH)]),
+            (("Trail",), "cycleway", [(270, 5.3)], [(45, *self.PATH)]),
+            (("Trail",), "cycleway", [(0, 300)], []),
+        )
+        trace["edges"][1]["length"] = 0.0048
+        assert said(trace) == [("Trail", None), ("Trail", "left"), ("Trail", "right")]
+
+    def test_two_turns_6_m_apart_are_each_said(self):
+        trace = traced(
+            (("Road A",), "road", [(0, 300)], [(0, "road", "both")]),
+            (("Path",), "cycleway", [(270, 6)], [(270, "road", "both")]),
+            (("Path B",), "cycleway", [(0, 300)], []),
+        )
+        assert said(trace) == [("Road A", None), ("Path", "left"), ("Path B", "right")]
