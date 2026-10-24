@@ -257,9 +257,10 @@ def _entrance_kind(tags: dict[str, str]) -> str | None:
 # building's entrance=main is not read: within reach of a city station it is as
 # often an office block's door.) Baltimore Penn Station: with nothing tagged,
 # routes went for the station node by the tracks and on past the front doors,
-# which face the drop-off loop off N Charles St.
+# which face the drop-off loop off N Charles St (placed where the reporter stood
+# at the doors).
 REPORTED_ENTRANCES: dict[str, list[tuple[float, float]]] = {
-    "Baltimore Penn Station": [(-76.6155, 39.30712)],
+    "Baltimore Penn Station": [(-76.6155, 39.30703)],
 }
 
 
