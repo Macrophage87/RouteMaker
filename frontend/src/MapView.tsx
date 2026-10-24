@@ -279,6 +279,10 @@ interface Props {
   /** A ride whose cues go to the screen reader alone: the map is out of its reach (inert), so swiping goes cue card to side buttons. */
   screenReaderRide?: boolean;
   onFollowBroken?: () => void;
+  /** The rider moved the map by hand during a ride (a pan, a pinch, a turn): the view is off the ride's own (lib/idleRecentre.ts). */
+  onRiderMoved?: () => void;
+  /** Changed: the follow camera goes back to the ride's own zoom at the next fix, as at a ride's start (lib/idleRecentre.ts). */
+  followReset?: number;
   onReady: (map: MapLibreMap) => void;
   onCanvasFocus: (focused: boolean) => void;
   /** Which rail stations show (the panel's toggles). */
@@ -430,6 +434,8 @@ const ACCURACY_SOURCE = "location-accuracy";
 /** Where a ride holds the rider while following track-up: two thirds of the way down the map the rider can see,
  *  between the cue card and the bottom panel or the screen's foot (v0.9.0, the owner, 2026-10-17). */
 export const RIDER_AT = 2 / 3;
+/** The ride's own zoom: the follow camera closes in to it as following starts, and goes back to it after the screen is left alone. */
+export const FOLLOW_ZOOM = 16;
 const NO_PADDING = { top: 0, bottom: 0, left: 0, right: 0 };
 const reducedMotion = () => typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -2410,6 +2416,7 @@ export function MapView(props: Props) {
   // Ride mode's "you" marker and the follow camera.
   const riderMarker = useRef<Marker | null>(null);
   const following = useRef(false);
+  const resetSeen = useRef(props.followReset);
   useEffect(() => {
     const map = mapRef.current;
     const rider = props.rider ?? null;
@@ -2444,8 +2451,11 @@ export function MapView(props: Props) {
     // Track-up: the rider's heading; with none yet, north-up, and with none for now (stopped at a light),
     // the bearing the map has, so it does not swing north and back.
     const bearing = props.headingUp && rider.headingDeg !== null ? rider.headingDeg : props.headingUp && following.current ? map.getBearing() : 0;
-    // Close in once as following starts; a pinch out after that is kept (it does not stop following).
-    const zoom = following.current ? map.getZoom() : Math.max(map.getZoom(), 16);
+    // Close in once as following starts; a pinch out after that is kept (it does not stop following). Back on the
+    // rider after the screen was left alone (followReset), the ride's own zoom.
+    const reset = props.followReset !== resetSeen.current;
+    resetSeen.current = props.followReset;
+    const zoom = reset ? FOLLOW_ZOOM : following.current ? map.getZoom() : Math.max(map.getZoom(), FOLLOW_ZOOM);
     following.current = true;
     // A moving map once a second is too much for some: with reduced motion asked for, it jumps.
     const still = reducedMotion();
@@ -2455,7 +2465,7 @@ export function MapView(props: Props) {
     // Padding left by the planner's framing (a junction or the chart's scrub) is cleared, so the offset is from the middle.
     const ahead = riderOffset(map.getContainer(), props.headingUp ? RIDER_AT : 1 / 2);
     map.easeTo({ center: rider.point, bearing, zoom, offset: [0, ahead], padding: NO_PADDING, duration: still ? 0 : 400 });
-  }, [props.rider, props.follow, props.headingUp]);
+  }, [props.rider, props.follow, props.headingUp, props.followReset]);
 
   // In a ride the street names are larger and shortened ("R St NW"), to be read at a glance (the owner, 2026-10-20),
   // and go back after.
@@ -2558,6 +2568,24 @@ export function MapView(props: Props) {
       map.off("rotatestart", broken);
     };
   }, [props.follow]);
+
+  // Any move by hand during a ride, a pinch too, is heard, so a screen left alone goes back to the rider (lib/idleRecentre.ts).
+  const onRide = !!props.rider;
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !onRide) return;
+    const moved = (event: { originalEvent?: unknown }) => {
+      if (event.originalEvent) callbacks.current.onRiderMoved?.();
+    };
+    map.on("movestart", moved);
+    map.on("rotatestart", moved);
+    map.on("pitchstart", moved);
+    return () => {
+      map.off("movestart", moved);
+      map.off("rotatestart", moved);
+      map.off("pitchstart", moved);
+    };
+  }, [onRide]);
 
   // The rail stations' toggles.
   useEffect(() => {
