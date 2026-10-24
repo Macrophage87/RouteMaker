@@ -11,14 +11,17 @@ so, and seasonal posts lead the list in season and wait in a fold out of it.
 
 from __future__ import annotations
 
+import json
 import re
 import struct
 from datetime import date
+from decimal import Decimal
 from itertools import count
 from pathlib import Path
 
 import pytest
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.test import Client
 from django.utils import timezone
 
@@ -189,6 +192,65 @@ def test_the_page_is_laid_out_as_the_owner_asked() -> None:
     assert '<script type="module" src="/post.js"></script>' in body
     assert response["Content-Security-Policy"].startswith("default-src 'self'; script-src 'self'")
     assert 'system_weight_kg": 92' not in body
+
+
+def test_a_sections_stretch_is_cut_from_the_line_at_its_miles_on_the_routes_own_distance() -> None:
+    # 2.0 mi of route over a line of 59 equal steps: mile 0.5 to 1.0 is the line's second quarter.
+    stretch = route_posts.section_line(LINE, 2 * 1609.344, 0.5, 1.0)
+    assert stretch[0] == pytest.approx([LINE[0][0] + 59 * 0.0004 / 4, LINE[0][1] + 59 * 0.0003 / 4])
+    assert stretch[-1] == pytest.approx(
+        [LINE[0][0] + 59 * 0.0004 / 2, LINE[0][1] + 59 * 0.0003 / 2]
+    )
+    assert all(len(p) == 2 for p in stretch) and len(stretch) > 10
+    # Past the end it stops at the finish; wholly past it, or backwards, there is none.
+    assert route_posts.section_line(LINE, 2 * 1609.344, 1.5, 9.0)[-1] == pytest.approx(LINE[-1][:2])
+    assert route_posts.section_line(LINE, 2 * 1609.344, 3.0, 4.0) == []
+    assert route_posts.section_line(LINE, 2 * 1609.344, 1.0, 0.5) == []
+    assert route_posts.section_line(LINE, 2 * 1609.344, None, None) == []
+
+
+@db
+def test_a_section_with_a_stretch_has_a_small_map_of_it_and_says_where_it_is() -> None:
+    post = make_post()
+    for position, (heading, start, end) in enumerate(
+        [
+            ("First", "0.5", "1.0"),
+            ("No map", None, None),
+            ("Off the end", "3", "4"),
+            ("Last", "1.5", "9"),
+        ]
+    ):
+        RoutePostSection.objects.create(
+            post=post,
+            position=position,
+            heading=heading,
+            body="Wide paths.",
+            start_mi=start and Decimal(start),
+            end_mi=end and Decimal(end),
+        )
+    body = Client().get("/routes/mall-loop").content.decode()
+    assert body.count('class="section-map"') == 2
+    assert (
+        '<h3>First</h3><figure class="section-map" data-section="0">'
+        "<figcaption>Mile 0.5 to 1.0 (km 0.8 to 1.6)</figcaption></figure><p>Wide paths.</p>"
+    ) in body
+    # A stretch past the finish is said, as it is drawn, to end there.
+    assert (
+        '<h3>Last</h3><figure class="section-map" data-section="1">'
+        "<figcaption>Mile 1.5 to 2.0 (km 2.4 to 3.2)</figcaption></figure>"
+    ) in body
+    assert "<h3>No map</h3><p>" in body and "<h3>Off the end</h3><p>" in body
+    data = json.loads(re.search(r'id="post-data"[^>]*>(.*?)</script>', body).group(1))
+    lines = data["sections"]
+    assert len(lines) == 2
+    assert lines[0][0] == pytest.approx(route_posts.section_line(LINE, 3218.7, 0.5, 1.0)[0])
+    assert lines[1][-1] == pytest.approx(LINE[-1][:2])
+    with pytest.raises(ValidationError):
+        RoutePostSection(post=post, heading="Half", start_mi=Decimal("1")).full_clean()
+    with pytest.raises(ValidationError):
+        RoutePostSection(
+            post=post, heading="Back", start_mi=Decimal("2"), end_mi=Decimal("1")
+        ).full_clean()
 
 
 @db
@@ -389,6 +451,15 @@ def test_an_instance_admin_writes_a_post_from_their_saved_route_in_the_admin() -
     post.refresh_from_db()
     assert post.title == "Mall loop, fixed" and post.route_id == kept_route
     assert post.saved_route_id == saved.pk
+    # A section's stretch must start on the route, or it would get no map.
+    past = {
+        **edit,
+        "sections-TOTAL_FORMS": "1",
+        "sections-0-start_mi": "5",
+        "sections-0-end_mi": "6",
+    }
+    refused = second.post(f"/{settings.ADMIN_PATH}core/routepost/{post.pk}/change/", past)
+    assert refused.status_code == 200 and b"The route is 2.0 mi long." in refused.content
 
 
 @db

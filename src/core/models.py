@@ -2556,10 +2556,24 @@ class RoutePostSection(models.Model):
     position = models.PositiveSmallIntegerField(default=0)
     heading = models.CharField(max_length=120)
     body = models.TextField(blank=True, default="")
+    # The stretch the section is about, in miles along the post's route from its start: with
+    # both set, the post page draws a small map of just that stretch (route_posts.section_line).
+    start_mi = models.DecimalField(
+        "From mile", max_digits=6, decimal_places=2, null=True, blank=True
+    )
+    end_mi = models.DecimalField("To mile", max_digits=6, decimal_places=2, null=True, blank=True)
 
     class Meta:
         db_table = "route_post_section"
         ordering = ("position", "id")
+
+    def clean(self) -> None:
+        from django.core.exceptions import ValidationError
+
+        if (self.start_mi is None) != (self.end_mi is None):
+            raise ValidationError("Give both miles for a map of the stretch, or neither.")
+        if self.start_mi is not None and not 0 <= self.start_mi < self.end_mi:
+            raise ValidationError({"end_mi": "The stretch must end after it starts."})
 
     def __str__(self) -> str:
         return self.heading

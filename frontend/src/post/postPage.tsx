@@ -8,6 +8,9 @@
  *   chart under it (ElevationChart.tsx), whose scrub moves a marker on the map as in Plan;
  * - Send to Garmin and Send to Wahoo, as the app's own (GpxPanel.tsx): to the rider's connected account when there is
  *   one, else the FIT course handed to the phone or saved;
+ * - a small map under each highlighted section that names its stretch (From mile, To mile in the admin): the whole
+ *   route faint, the stretch drawn over it and filling the map, made as the reader scrolls near it and let go once
+ *   far past, so a long post never holds more than a few maps;
  * - for an instance admin, "Use this map as the link picture": the post's map drawn at 1200 by 630 with its credits,
  *   sent to the server as the link preview's picture.
  */
@@ -35,6 +38,7 @@ import { stressBarKey, stressBarLabel } from "../lib/quickFigures.ts";
 import { ROUTE_BLUE } from "../lib/routeColours.ts";
 import { handCourseToWahoo, sendCourseToGarmin, sendCourseToWahoo } from "../GpxPanel.tsx";
 import { readWahoo } from "../lib/wahooLink.ts";
+import { MINIMAP_LABEL, showMinimaps } from "./minimaps.ts";
 
 /** What the server puts in the page (route_posts.page_data). */
 export interface PostData {
@@ -45,6 +49,8 @@ export interface PostData {
   points: LonLat[];
   admin: boolean;
   csrf?: string;
+  /** The line of each highlighted section's stretch, in page order (route_posts.section_line). */
+  sections?: number[][][];
 }
 
 export const SENDING_SAID = "Sending…";
@@ -158,6 +164,51 @@ function scrubber(map: MapLibreMap | null) {
   return (point: LonLat | null) => {
     const source = map?.getSource(SCRUB_SOURCE) as GeoJSONSource | undefined;
     source?.setData(point ? { type: "Feature", properties: {}, geometry: { type: "Point", coordinates: [point[0], point[1]] } } : { type: "FeatureCollection", features: [] });
+  };
+}
+
+const WHOLE_ROUTE_COLOUR = "#64748b";
+
+/** One section's small map: the whole route faint, the stretch over it, fitted to the stretch. Still, so the page
+ * scrolls past it; the main map above is the one to explore. Returns what lets it go. */
+function showMinimap(host: HTMLElement, data: PostData, stretch: number[][]): () => void {
+  const box = document.createElement("div");
+  box.className = "minimap";
+  host.prepend(box);
+  let map: MapLibreMap;
+  try {
+    map = new maplibregl.Map({
+      container: box,
+      style: mapStyle(),
+      bounds: extent(stretch),
+      fitBoundsOptions: { padding: 24, maxZoom: 16 },
+      interactive: false,
+      attributionControl: false,
+      transformRequest: mapGlyphRequest,
+    });
+  } catch (error) {
+    // No WebGL: no empty box, the caption on its own.
+    box.remove();
+    throw error;
+  }
+  map.addControl(new maplibregl.AttributionControl({ compact: false, customAttribution: MAP_CREDITS[0] }), "bottom-right");
+  // The figure's caption says where the stretch is; the label only says what the picture is.
+  map.getCanvas().setAttribute("role", "img");
+  map.getCanvas().setAttribute("aria-label", MINIMAP_LABEL);
+  const lineOf = (line: number[][]) => ({ type: "Feature" as const, properties: {}, geometry: { type: "LineString" as const, coordinates: line.map((p) => [p[0], p[1]]) } });
+  map.on("load", () => {
+    map.addSource("post-whole", { type: "geojson", data: lineOf(data.line) });
+    map.addLayer({ id: "post-whole", type: "line", source: "post-whole", layout: { "line-join": "round", "line-cap": "round" }, paint: { "line-color": WHOLE_ROUTE_COLOUR, "line-width": 3, "line-opacity": 0.6 } });
+    map.addSource("post-stretch", { type: "geojson", data: lineOf(stretch) });
+    map.addLayer({ id: "post-stretch-casing", type: "line", source: "post-stretch", layout: { "line-join": "round", "line-cap": "round" }, paint: { "line-color": "#ffffff", "line-width": 9 } });
+    map.addLayer({ id: "post-stretch", type: "line", source: "post-stretch", layout: { "line-join": "round", "line-cap": "round" }, paint: { "line-color": ROUTE_BLUE, "line-width": 5 } });
+    const ends = { type: "FeatureCollection" as const, features: [stretch[0], stretch[stretch.length - 1]].map((p, i) => ({ type: "Feature" as const, properties: { kind: i ? "finish" : "start" }, geometry: { type: "Point" as const, coordinates: [p[0], p[1]] } })) };
+    map.addSource("post-stretch-ends", { type: "geojson", data: ends });
+    map.addLayer({ id: "post-stretch-ends", type: "circle", source: "post-stretch-ends", paint: { "circle-radius": 6, "circle-color": ["match", ["get", "kind"], "start", START_COLOUR, FINISH_COLOUR], "circle-stroke-color": "#ffffff", "circle-stroke-width": 2 } });
+  });
+  return () => {
+    map.remove();
+    box.remove();
   };
 }
 
@@ -314,6 +365,7 @@ export function start(doc: Document = document): void {
   }
   const charts = doc.getElementById("post-charts");
   if (charts && data.answer) showCharts(charts, data, map);
+  showMinimaps(doc, data.sections ?? [], (host, line) => showMinimap(host, data, line));
   wireSends(data, doc.getElementById("send-said"));
   wirePicture(data);
 }

@@ -35,7 +35,7 @@ from django.utils import timezone
 from django.views.decorators.cache import never_cache
 from django.views.decorators.csrf import csrf_protect
 
-from . import route_posts
+from . import route_posts, share_preview
 from .audit import record as record_audit
 from .models import (
     AuditLogEntry,
@@ -1806,12 +1806,29 @@ class RoutePostForm(forms.ModelForm):
         return cleaned
 
 
+class RoutePostSectionFormSet(forms.BaseInlineFormSet):
+    """Refuses a stretch that starts past the end of the post's route, which would get no map.
+    A post whose route is being picked now has no figures yet and is not checked."""
+
+    def clean(self):
+        super().clean()
+        distance = (getattr(self.instance, "stats", None) or {}).get("distance_m")
+        if not distance:
+            return
+        miles = distance / share_preview.METRES_PER_MILE
+        for form in self.forms:
+            start = (getattr(form, "cleaned_data", None) or {}).get("start_mi")
+            if start is not None and float(start) >= miles:
+                form.add_error("start_mi", f"The route is {miles:.1f} mi long.")
+
+
 class RoutePostSectionInline(admin.StackedInline):
     """The post's highlighted sections, in order."""
 
     model = RoutePostSection
+    formset = RoutePostSectionFormSet
     extra = 1
-    fields = ("position", "heading", "body")
+    fields = ("position", "heading", ("start_mi", "end_mi"), "body")
 
     def _is_instance_admin(self, request) -> bool:
         return bool(getattr(request.user, "is_instance_admin", False))

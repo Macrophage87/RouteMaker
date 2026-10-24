@@ -3502,7 +3502,10 @@ at `/routes/` and from Go's More > Featured routes. Instance admins write them:
 2. In the admin, **Route posts > Add**: title, address (slug), the saved route, "About this ride",
    "Who it's for", the highlighted sections, and optionally a season (label and month-day window,
    such as `03-20` to `04-15`; a window may run past New Year). Saving copies the route as it is
-   now; editing the saved route later changes nothing. Pick it again to replace it.
+   now; editing the saved route later changes nothing. Pick it again to replace it. Give a
+   section **From mile** and **To mile** (along the route from its start, as the app's charts
+   count them) and the page draws a small map of just that stretch under its heading; leave both
+   blank for none.
 3. Save as **Draft** first and press **View on site**: the page shows only to instance admins.
    Press **Use this map as the link picture** under the post; the browser draws the map at
    1200 x 630 with its credits and sends it, and chat apps then show the map. Until then they show
