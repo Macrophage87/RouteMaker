@@ -338,3 +338,39 @@ def test_a_turn_off_a_carriageway_is_not_a_u_turn() -> None:
     found = divided.median_uturns(ways)
     assert all({a, b} <= {425007803, 425007808, 425007797} for a, _, b in found)
     assert (425007797, frederick()[1][N], 425007803) not in found
+
+
+@pytest.mark.parametrize(
+    "beyond",
+    [
+        {"highway": "proposed"},
+        {"highway": "construction"},
+        {"highway": "motorway_link"},
+        {"highway": "footway"},
+        {"highway": "primary", "access": "private"},
+        {"highway": "primary", "bicycle": "no"},
+    ],
+)
+def test_a_way_on_no_bicycle_can_take_leaves_the_nose_a_dead_end(beyond) -> None:
+    """Review of #450: a nose with only a proposed road, a ramp, a footway or a
+    closed road beyond it is a dead end, and keeps its U-turn."""
+    ways, nodes = frederick({425007800: {**beyond, "oneway": "no", "name": "Beyond"}})
+    assert divided.median_uturns(ways) == [(425007803, nodes[W], 425007808)]
+
+
+def test_a_variant_that_drops_the_way_on_keeps_the_u_turn() -> None:
+    """`pipeline.run.median_restrictions` reads one variant's ways after its drops:
+    without the road beyond the east nose, only the west nose is restricted, and
+    each restriction is from, via, to with the plain no-U-turn tags."""
+    from pipeline import extract, run
+
+    ways, nodes = frederick()
+    kept = [way for way in ways if way.osm_id != 425007800]
+    assert run.median_restrictions(kept) == [
+        (
+            extract.SYNTHETIC_RELATION_ID_FLOOR,
+            [("w", 425007803, "from"), ("n", nodes[W], "via"), ("w", 425007808, "to")],
+            {"type": "restriction", "restriction": "no_u_turn"},
+        )
+    ]
+    assert len(run.median_restrictions(ways)) == 2

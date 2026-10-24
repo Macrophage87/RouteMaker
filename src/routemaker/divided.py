@@ -277,13 +277,14 @@ def median_uturns(
     closes into a ring that reads as a traffic island there, and its U-turn is
     across the island all the same. The rider has another way on from the node: a
     divided road that ends in a point, with no road beyond, keeps its U-turn,
-    which is its only way back. A carriageway open to bicycles both ways
+    which is its only way back (`_way_on` says what a way on is; run per variant,
+    on the ways the variant keeps). A carriageway open to bicycles both ways
     (`two_way_for_bicycles`, a contraflow lane) is no U-turn at all and is left
     out."""
     ways = [w for w in ways if len(w.coordinates) >= 2]
     touching: dict[int, set[int]] = defaultdict(set)
     for way in ways:
-        if way.tags.get("highway"):
+        if _way_on(way.tags):
             for node in way.node_ids:
                 touching[node].add(way.osm_id)
     arriving: dict[int, list[tuple]] = defaultdict(list)
@@ -313,6 +314,23 @@ def median_uturns(
                 if onward or touching[node] - {from_id, to_id}:
                     found.append((from_id, node, to_id))
     return sorted(found)
+
+
+# The ways that count as a way on from a median's end: roads and cycle tracks a
+# bicycle may use. Not a footway or path (closed to bicycles unless the rebuild
+# opens it, which differs by variant), a motorway, or a road proposed or under
+# construction: a nose with only those beyond it is a dead end, and keeps its
+# U-turn.
+WAY_ON_HIGHWAY = DIVIDED_HIGHWAY | {"residential", "living_street", "service", "cycleway"}
+CLOSED_ACCESS = frozenset({"no", "private"})
+
+
+def _way_on(tags) -> bool:
+    return (
+        tags.get("highway") in WAY_ON_HIGHWAY
+        and tags.get("bicycle") not in CLOSED_ACCESS
+        and (tags.get("access") not in CLOSED_ACCESS or tags.get("bicycle") is not None)
+    )
 
 
 def _chord(points, i: int, step: int) -> tuple[float, float]:

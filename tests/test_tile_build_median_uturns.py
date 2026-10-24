@@ -5,7 +5,7 @@ The owner, 2026-10-24, Frederick Road (MD 144) at the Beltway in Catonsville:
 possible". The two carriageways round the island meet the two-way road at a node
 each end, and the router turned from one onto the other there as at any junction.
 This builds the island as OSM maps it, through the rebuild's own reading
-(`routemaker.divided.median_uturns`) and writer (`pipeline.extract.write_extract`)
+(`pipeline.run.median_restrictions`) and writer (`pipeline.extract.write_extract`)
 and the repo's graph.lua, and routes a bicycle from the westbound carriageway to the
 eastbound one: with the restrictions it must find another way than the U-turn.
 
@@ -75,8 +75,7 @@ def _osm_xml() -> str:
 def route_km(work: Path, restrict: bool) -> tuple[float, list]:
     """Build the island into tiles, with the median ends' restrictions or without,
     and the bicycle route's length from START to END; with the restrictions found."""
-    from pipeline import extract, variants
-    from routemaker import divided
+    from pipeline import extract, run
 
     work.mkdir(parents=True, exist_ok=True)
     (work / "raw.osm").write_text(_osm_xml())
@@ -84,13 +83,9 @@ def route_km(work: Path, restrict: bool) -> tuple[float, list]:
         ["osmium", "cat", "-O", str(work / "raw.osm"), "-o", str(work / "raw.osm.pbf")],
         check=True, capture_output=True, timeout=60,
     )  # fmt: skip
-    uturns = divided.median_uturns(extract.read_ways(work / "raw.osm.pbf"),
-                                   variants.has_contraflow_tag)  # fmt: skip
-    relations = [
-        (extract.SYNTHETIC_RELATION_ID_FLOOR + i,
-         [("w", a, "from"), ("n", node, "via"), ("w", b, "to")], dict(divided.NO_UTURN_TAGS))
-        for i, (a, node, b) in enumerate(uturns)
-    ] if restrict else []  # fmt: skip
+    found = run.median_restrictions(extract.read_ways(work / "raw.osm.pbf"))
+    uturns = [tuple(ref for _, ref, _ in members) for _, members, _ in found]
+    relations = found if restrict else []
     extract.write_extract(work / "raw.osm.pbf", work / "fixture.osm.pbf", {}, [], {},
                           new_relations=relations)  # fmt: skip
     (work / "tiles").mkdir(exist_ok=True)
