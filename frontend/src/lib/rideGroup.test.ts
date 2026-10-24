@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import type { LonLat } from "./geo.ts";
 import {
   ALERT_KINDS,
+  ROAM_ALERT_KINDS,
   CONSENT_KEY,
   CONSENT_QUESTION,
   RIDE_ROLES,
@@ -174,6 +175,27 @@ test("the alert lists are the plan's, and Medical emergency or crash and Crash a
   assert.deepEqual(ALERT_KINDS["group-ride"].map((k) => k.label), ["Rider off the back", "Crash", "Mechanical or flat, stopping", "Wrong turn", "Lost, separated from the group", "Wait up, regroup", "Other"]);
   const asks = [...ALERT_KINDS["mass-ride"], ...ALERT_KINDS["group-ride"]].filter((k) => k.confirm).map((k) => k.id);
   assert.deepEqual(asks, ["medical", "crash"]);
+});
+
+test("Roam's broadcast has its own alerts: no route, so no Wrong turn or Rider off the back (review N3)", () => {
+  assert.deepEqual(ROAM_ALERT_KINDS.map((k) => k.label), ["Lost, separated from the group", "Wait up, regroup", "Mechanical or flat, stopping", "Crash", "Other"]);
+  // The Group Ride's own kinds (the server takes them for that ride type), Crash still asking first and calling 911.
+  for (const kind of ROAM_ALERT_KINDS) assert.ok(ALERT_KINDS["group-ride"].includes(kind));
+  assert.deepEqual(ROAM_ALERT_KINDS.filter((k) => k.call911).map((k) => k.id), ["crash"]);
+  const group = readFileSync(new URL("../RideGroup.tsx", import.meta.url), "utf8");
+  assert.match(group, /\{\(broadcast\?\.roam \? ROAM_ALERT_KINDS : ALERT_KINDS\[type\]\)\.map\(\(kind\) => \(/);
+});
+
+test("Alert's choices and Other's Speak, Send and Cancel are ride-sized, with no list bullets (review S3)", () => {
+  const css = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+  assert.match(css, /\.ride-alert-kinds \{\s*list-style: none;\s*padding: 0;\s*\}/);
+  assert.match(css, /\.ride-alert-panel button \{\s*min-height: 48px;\s*\}/);
+  const group = readFileSync(new URL("../RideGroup.tsx", import.meta.url), "utf8");
+  // Every Alert button is inside the panel: its kinds, the confirm, and Other's form.
+  const panel = group.slice(group.indexOf('className="ride-alert-panel"'), group.indexOf("{alerts.length > 0 && ("));
+  assert.match(panel, /className="secondary ride-speak"/);
+  assert.match(panel, /<button type="submit">Send<\/button>/);
+  assert.match(panel, /className="ride-alert-kinds"/);
 });
 
 test("one alert a minute and ten a ride per device", () => {

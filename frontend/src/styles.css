@@ -6596,8 +6596,9 @@ details.fold > summary .icon {
   gap: 6px;
   pointer-events: none;
 }
+/* A ride's riders and Alert: just under the cue card (RideMode sets its bottom), so the turn's arrow and distance stay in view. */
 .app.riding .ride-group {
-  top: 64px;
+  top: calc(var(--ride-card-bottom, 64px) + 8px);
 }
 /* Roam's broadcast: just under Roam's card (RoamMode sets its bottom), so the road names stay in view. */
 .app.roaming .ride-group {
@@ -6629,6 +6630,14 @@ details.fold > summary .icon {
   flex-wrap: wrap;
   gap: 6px;
   margin-top: 6px;
+}
+.ride-alert-kinds {
+  list-style: none;
+  padding: 0;
+}
+/* Alert's choices, its confirm, and Other's Speak, Send and Cancel: ride-sized targets (Crash calls 911). */
+.ride-alert-panel button {
+  min-height: 48px;
 }
 /* The rider's role (in the one question, and beside "Show me as a dot") and the key of the roles on the ride. */
 .ride-role {

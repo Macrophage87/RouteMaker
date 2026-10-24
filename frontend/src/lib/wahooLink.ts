@@ -6,6 +6,7 @@
  * riders who never connect see no new control.
  */
 import { csrfFromCookie } from "./stressEditor.ts";
+import { FILES_PLUGIN, FIT_TYPE, canSendToGarmin, toBase64, type SendEnv } from "./sendToGarmin.ts";
 
 export const CONNECT_PATH = "/auth/wahoo/start";
 export const RETURN_PARAM = "wahoo";
@@ -82,6 +83,32 @@ export const UNREACHED = "Wahoo could not be reached.";
 /** After the reason: the FIT course is saved instead, for the Wahoo app to open. */
 export const AS_FILE = "The FIT course was saved instead: open it with the Wahoo app.";
 export const SENDING = "Still sending the last route.";
+/** The same, in the phone app: a WebView saves no file a page makes, so the file goes to Android's "Open with" list. */
+export const AS_FILE_CHOOSER = "Choose the Wahoo app to open the FIT course instead. Not listed? Install it from Google Play, then send again.";
+/** An app from before the plugin took anyApp handed it to Garmin Connect. */
+export const AS_FILE_GARMIN = "The FIT course went to Garmin Connect instead. Update the RouteMaker app to choose the Wahoo app.";
+export const AS_FILE_FAILED = "The FIT course could not be handed on either. Is the Wahoo app installed?";
+/** An app from before the plugin: it can neither save nor hand on a file. */
+export const AS_FILE_NONE = "This version of the RouteMaker app cannot hand on the FIT course. Update it, or send from the website.";
+
+/**
+ * Where Wahoo did not take the route: the FIT course for the Wahoo app to open. In a browser it is saved (a download);
+ * in the phone app, where a download does nothing (mobile/README.md), it goes to the RouteMakerFiles plugin as Send
+ * to Garmin's does, with anyApp, so Android lists the apps that open it rather than Garmin Connect. Answers the line.
+ */
+export async function handWahooFile(bytes: Uint8Array<ArrayBuffer>, fileName: string, env: Pick<SendEnv, "bridge" | "save">): Promise<string> {
+  if (!env.bridge) {
+    env.save(bytes, FIT_TYPE, fileName);
+    return AS_FILE;
+  }
+  if (!canSendToGarmin(env.bridge)) return AS_FILE_NONE;
+  try {
+    const done = (await env.bridge.nativePromise(FILES_PLUGIN, "openWith", { name: fileName, data: toBase64(bytes), anyApp: true })) as { app?: string } | null;
+    return done?.app === "garmin-connect" ? AS_FILE_GARMIN : AS_FILE_CHOOSER;
+  } catch {
+    return AS_FILE_FAILED;
+  }
+}
 
 export interface WahooRoute {
   name: string;
