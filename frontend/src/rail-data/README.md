@@ -37,7 +37,7 @@ regeneration on 2026-09-28 gave `marc-penn-stations.geojson` byte for byte
 On 2026-10-24 the script gained Baltimore Penn Station's reported front doors
 (below), which every regeneration adds while OSM tags no way in there; the
 fixture now ends with that one entrance (sha256
-`ab87902fe7179fe852acfb8b479d585ee38754b3740e1c1df3fc4cef3352bdd3`).
+`72093b508638e97f857e0ec8682cbe9486f02f0af0bc8a2232f763286e4b5492`).
 `metro-osm-elevators.geojson` is sha256
 `80e60ff87c593b2f431ea3e57ab32941c9b4594d47e13a6f97cc5c2c3b9c9145`.
 

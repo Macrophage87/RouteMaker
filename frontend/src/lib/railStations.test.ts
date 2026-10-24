@@ -365,7 +365,7 @@ test("a ride to Baltimore Penn Station ends at its front doors, not by the track
   const penn = stations.find((s) => s.name === "Baltimore Penn Station")!;
   // Coming from the south (Charles St) or the north-east (St Paul St): the same front doors.
   for (const from of [[-76.6165, 39.3], [-76.612, 39.312]] as LonLat[]) {
-    assert.deepEqual(bikeEntrance(penn, from), { point: [-76.6155, 39.30712], kind: "entrance" });
+    assert.deepEqual(bikeEntrance(penn, from), { point: [-76.6155, 39.30703], kind: "entrance" });
   }
 });
 
