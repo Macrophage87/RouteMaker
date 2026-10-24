@@ -15,6 +15,8 @@ Privacy is the shape of this module:
 - Nothing stays longer than 2 minutes (Stephen 2026-10-22: "For privacy, nothing stays on the
   server for more than 2 min"): a dot, a leader's path and an alert each 2 minutes after it was
   sent, and a rider's token and counts 2 minutes after its phone last asked or sent anything.
+  Each api process sweeps every ride for this every `SWEEP_S`, so a ride nobody opens again is
+  emptied as well.
 
 "Memory" across the api's gunicorn workers: each worker is its own process, so a dict in one is
 not seen by the others. The shared store is a directory on a tmpfs (by default /dev/shm, which is
@@ -72,6 +74,9 @@ ALERT_MIN_INTERVAL_S = 60
 ALERTS_PER_RIDE = 10
 MERGE_WITHIN_S = 120
 MERGE_WITHIN_M = 200
+# How often each api process sweeps every ride for what has outlived its 2 minutes, so a ride
+# nobody opens again is emptied too, not only one a phone still reads (v0.12.0 end review).
+SWEEP_S = 10
 OTHER_TEXT_MAX = 80
 
 MASS_RIDE = "mass-ride"
@@ -222,6 +227,15 @@ class MemoryStore:
         with self._lock:
             self._rides.clear()
 
+    def sweep(self, now: float | None = None) -> None:
+        """Prune every ride, and drop each one left empty."""
+        now = time.time() if now is None else now
+        with self._lock:
+            for ride_id in list(self._rides):
+                _prune(self._rides[ride_id], now)
+                if _is_empty(self._rides[ride_id]):
+                    del self._rides[ride_id]
+
 
 def _full() -> Refused:
     return Refused(503, "Too many rides are sharing right now; try again shortly.")
@@ -306,6 +320,42 @@ class TmpfsStore:
             finally:
                 os.close(fd)
 
+    def sweep(self, now: float | None = None) -> None:
+        """Prune every ride's file, each under its own lock: a file left empty is unlinked, and
+        one that lost anything is written back without it."""
+        try:
+            names = [n for n in os.listdir(self.directory) if n.endswith(".json")]
+        except OSError:
+            return
+        now = time.time() if now is None else now
+        for name in names:
+            path = os.path.join(self.directory, name)
+            try:
+                fd = self._locked(path)
+            except (OSError, Refused):
+                continue
+            try:
+                with os.fdopen(os.dup(fd), "r+", encoding="utf-8") as handle:
+                    raw = handle.read()
+                    try:
+                        state = json.loads(raw or "null") or _empty()
+                    except ValueError:
+                        state = _empty()
+                    _prune(state, now)
+                    if _is_empty(state):
+                        os.unlink(path)
+                        continue
+                    out = json.dumps(state, separators=(",", ":"))
+                    if out != raw:
+                        handle.seek(0)
+                        handle.truncate()
+                        handle.write(out)
+                        handle.flush()
+            except (OSError, KeyError, TypeError, AttributeError):
+                pass
+            finally:
+                os.close(fd)
+
     @contextlib.contextmanager
     def ride(self, ride_id: str, create: bool = True) -> Iterator[dict]:
         """As MemoryStore.ride."""
@@ -344,6 +394,28 @@ _store: MemoryStore | TmpfsStore | None = None
 _store_for: str | None = None
 
 
+def _sweep_forever(target: MemoryStore | TmpfsStore) -> None:
+    """Sweep `target` every `SWEEP_S` while it is still this process's store."""
+    import time as clock  # not this module's `time`, which the suite swaps for a fake clock
+
+    while True:
+        clock.sleep(SWEEP_S)
+        if _store is not target:
+            return
+        try:
+            target.sweep(clock.time())
+        except Exception:  # noqa: BLE001 - the sweeper must outlive any one bad sweep
+            pass
+
+
+def _start_sweeper(target: MemoryStore | TmpfsStore) -> None:
+    """A daemon thread, so it never holds the process open; one per gunicorn worker, each
+    started with the worker's first store, after the fork."""
+    threading.Thread(
+        target=_sweep_forever, args=(target,), name="ride-presence-sweep", daemon=True
+    ).start()
+
+
 def store():
     """The store for `settings.RIDE_PRESENCE_DIR`: a tmpfs directory, or this process's memory."""
     from django.conf import settings
@@ -360,6 +432,9 @@ def store():
             except OSError:
                 pass
         _store, _store_for = chosen, directory
+        if directory:
+            # The deployed api (the test suite, with no directory, sweeps by hand).
+            _start_sweeper(chosen)
     return _store
 
 
