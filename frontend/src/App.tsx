@@ -256,6 +256,8 @@ import type { DeviceProfileId } from "./lib/deviceProfiles.ts";
 import { SHARED_GONE, SHARED_INPUTS_ONLY, SHARED_OPENED, SHARED_PATH, SHARED_REVOKED, SHARED_REVOKED_ERROR, SHARE_KEEP_DEFAULT, SHARE_RIDE_WAIT, BROADCAST_NO_LEAD, BROADCAST_RIDE_FAILED, BROADCAST_RIDE_NO_LEAD, BROADCAST_SHARE_FAILED, asRideLink, leadKeyFrom, gpxShareFile, keepFields, newSharedId, previewImageOk, readShared, rideLinkFrom, sharedBody, sharedIdFrom, storeShared, withSharedId, type ShareKeep } from "./lib/sharedRoutes.ts";
 import { ClosureDialog, type ClosureAsk } from "./ClosureDialog.tsx";
 import { StartOnComputerDialog } from "./StartOnComputerDialog.tsx";
+import { ResumeRideDialog } from "./ResumeRideDialog.tsx";
+import { forgetLeftRide, keepLeftRide, leftRide } from "./lib/rideResume.ts";
 import { StopNameDialog, type StopNameAsk } from "./StopNameDialog.tsx";
 import { LoadRouteDialog } from "./LoadRouteDialog.tsx";
 import { withGpxChoice, type GpxChoice } from "./lib/loadRoute.ts";
@@ -3035,7 +3037,12 @@ export function App() {
     const opened = sharedOpenNow.current?.answer === route ? sharedOpenNow.current : null;
     const fixed = fixedRide(leg, opened, !!rest);
     setResumeStats(null);
-    setRideStart((before) => ({ route, ...leg, dials: rideDials({ ...planDials, closuresNow: true }, rest ? null : route), fixed, roam: rest?.roam === true, n: (before?.n ?? 0) + 1 }));
+    const rideDialsNow = rideDials({ ...planDials, closuresNow: true }, rest ? null : route);
+    setRideStart((before) => ({ route, ...leg, dials: rideDialsNow, fixed, roam: rest?.roam === true, n: (before?.n ?? 0) + 1 }));
+    // Kept on this device so a page closed mid-ride can resume it (lib/rideResume.ts); a trip's leg, Ride the rest
+    // and a detour from Roam are not.
+    if (!rest && !leg.trip) keepLeftRide({ route, points: leg.points, loop: leg.loop, preset: leg.preset, dials: rideDialsNow, fixed }, VIA_MARKS, Date.now());
+    else forgetLeftRide();
     // The installed app keeps the ride's route as the last ride (OWNER-DECISIONS 465a); End ride gives it
     // the map the ride kept. A browser tab keeps nothing unless the rider presses Keep for offline.
     // A Keep for offline still fetching stops: the ride keeps its own corridor, and two walks would share the page's queue.
@@ -3581,6 +3588,7 @@ export function App() {
   rideNow.current = { start: rideStart, mode };
   const endRide = useCallback((after: EndedPlan, stats: RideStats) => {
     const { start, mode: endedIn } = rideNow.current;
+    forgetLeftRide();
     // A detour from Roam: back to roaming, with no summary (the ride was a short way to water, a restroom or food).
     if (start?.roam) {
       setRiding(false);
@@ -3633,6 +3641,27 @@ export function App() {
   }, [onBike]);
   // No ride is on at load: a ride's entry left by a reload is the page's own again.
   useEffect(() => forgetStaleRideEntry(window), []);
+  // A ride left going when the page closed (lib/rideResume.ts): asked once at load. Resume starts it again from where
+  // the rider is (the voice unlocked inside the press); its first fix past a stop asks which are done.
+  const [leftAsk, setLeftAsk] = useState(() => leftRide(VIA_MARKS, Date.now()));
+  const resumeLeft = () => {
+    const left = leftAsk;
+    setLeftAsk(null);
+    if (!left) return;
+    startRideGesture(ridePrefs);
+    endedRide.current = null;
+    setRideEnded(null);
+    setResumeStats(null);
+    setRideStart((before) => ({ ...left, trip: null, n: (before?.n ?? 0) + 1 }));
+    keepLeftRide(left, VIA_MARKS, Date.now());
+    setFollow(true);
+    setRideView(null);
+    setRiding(true);
+  };
+  const dropLeft = () => {
+    setLeftAsk(null);
+    forgetLeftRide();
+  };
   const undoEndRide = () => {
     const ended = endedRide.current;
     endedRide.current = null;
@@ -3643,6 +3672,7 @@ export function App() {
     startRideGesture(ridePrefs);
     setResumeStats(ended.stats);
     setRideStart(ended.start);
+    if (!ended.start.roam && !ended.start.trip) keepLeftRide(ended.start, VIA_MARKS, Date.now());
     setFollow(true);
     setRideView(null);
     setRiding(true);
@@ -4912,6 +4942,7 @@ export function App() {
         }}
       />
       <StopNameDialog ask={stopAsk} onDone={stopNamed} onCancel={() => setStopAsk(null)} />
+      <ResumeRideDialog open={leftAsk !== null && !riding && !roaming} onResume={resumeLeft} onNotNow={dropLeft} onLater={() => setLeftAsk(null)} />
       <StartOnComputerDialog
         open={computerAsk !== null}
         onBack={() => setComputerAsk(null)}
