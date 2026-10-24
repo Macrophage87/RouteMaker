@@ -3,16 +3,22 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
+  NOTHING_DISMISSED,
   WEATHER_MAX_POINTS,
+  alertKey,
   alertLine,
   alertSaid,
   alertUrgent,
   checkWeather,
+  dismissWeather,
   newAlerts,
   rainLine,
   rainSays,
   rainStage,
+  roamPoints,
   weatherPoints,
+  weatherSaid,
+  weatherToShow,
   type WeatherAlert,
   type WeatherRain,
 } from "./weather.ts";
@@ -102,15 +108,45 @@ test("a ride says rain when it first comes, when it gets close, and when it turn
   assert.ok(!rainSays(rainStage(rain()), null));
 });
 
-test("an alert is said once", () => {
-  const report = { alerts: [alert(), alert({ id: "a2" })], rain: null, unchecked: [], alongM: [] };
-  assert.deepEqual(newAlerts(report, new Set(["a1"])).map((a) => a.id), ["a2"]);
+test("an alert is said once, an NWS update of it (a new id) not again unless its end or severity changes", () => {
+  const said = new Set([alertKey(alert())]);
+  const update = alert({ id: "a1-update" });
+  const extended = alert({ id: "a1-ext", ends: "2026-10-24T23:30:00Z" });
+  const report = { alerts: [update, extended, alert({ id: "a2", event: "Flash Flood Warning" })], rain: null, unchecked: [], alongM: [] };
+  assert.deepEqual(newAlerts(report, said).map((a) => a.id), ["a1-ext", "a2"]);
   assert.deepEqual(newAlerts(null, new Set()), []);
+});
+
+test("Dismiss sticks: back only for an alert not dismissed or rain at a new stage", () => {
+  const heat = alert({ id: "h", event: "Heat Advisory", severity: "Moderate" });
+  const first = { alerts: [heat], rain: rain(), unchecked: [], alongM: [0, 8000] };
+  const dismissed = dismissWeather(first, NOTHING_DISMISSED);
+  assert.equal(weatherToShow(first, dismissed), null);
+  // The rain gone, the advisory the same (even under a new id): still hidden.
+  assert.equal(weatherToShow({ ...first, alerts: [{ ...heat, id: "h2" }], rain: null }, dismissed), null);
+  // Rain coming within 15 min, or a new alert: shown again.
+  assert.ok(weatherToShow({ ...first, rain: rain({ starts_in_s: 300 }) }, dismissed));
+  assert.ok(weatherToShow({ ...first, alerts: [heat, alert()] }, dismissed));
+  assert.equal(weatherToShow({ alerts: [], rain: null, unchecked: [], alongM: [] }, NOTHING_DISMISSED), null);
+});
+
+test("Roam asks about its one place now and over the next hour; rain there is where you are", () => {
+  const { points, alongM } = roamPoints([-77.03, 38.9]);
+  assert.deepEqual(points.map((p) => p[2]), [0, 900, 1800, 2700, 3600]);
+  assert.ok(points.every((p) => p[0] === -77.03 && p[1] === 38.9));
+  assert.equal(rainLine(rain({ index: 3, starts_in_s: 2700 }), alongM, true), "Rain expected in about 45 min, where you are.");
+});
+
+test("before Start a screen reader hears it all in one status line", () => {
+  const report = { alerts: [alert()], rain: rain(), unchecked: [], alongM: [0, 8000] };
+  assert.equal(weatherSaid(report, NOW), "Weather alert: Severe Thunderstorm Warning until 6:45 PM. Rain expected in about 45 min, near mile 5.0 (8.0 km).");
+  assert.equal(weatherSaid(null, NOW), "");
 });
 
 test("wired into Go and Plan (with the warnings), Ride mode and Roam; never in Start's path", () => {
   const panel = readFileSync(new URL("../app/RoutePanel.tsx", import.meta.url), "utf8");
   assert.match(panel, /<WeatherLines report=\{weather\} riding=\{false\}/);
+  assert.match(panel, /role="status">\s*\{weatherSaid\(weather/);
   const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
   assert.match(ride, /useWeather\(/);
   assert.match(ride, /<WeatherLines report=\{weatherShown\} riding/);
@@ -119,6 +155,7 @@ test("wired into Go and Plan (with the warnings), Ride mode and Roam; never in S
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   const start = app.slice(app.indexOf("const startRideChecked"), app.indexOf("const [broadcastNote"));
   assert.doesNotMatch(start, /weather/i, "Start never waits on the weather");
+  assert.match(app, /&& !dials\.when \? lineKey/, "a plan set to another time is not checked against leaving now");
   // The NWS link opens a new tab, named for a screen reader.
   const lines = readFileSync(new URL("../WeatherLines.tsx", import.meta.url), "utf8");
   assert.match(lines, /target="_blank" rel="noopener noreferrer" aria-label=\{nwsLinkName\(alert\)\}/);

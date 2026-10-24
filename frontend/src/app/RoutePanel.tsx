@@ -14,7 +14,7 @@ import { presetLabel, presetSaid, type PresetId } from "../lib/presets.ts";
 import { NOVICE_TRANSIT_CHOICES, noviceOfferText, noviceTripLine, noviceTripShort, type NoviceTrip } from "../lib/noviceOffer.ts";
 import { stressSegments, type StressSegment } from "../lib/stressBar.ts";
 import { lightLine, type LightMark } from "../lib/lightTimes.ts";
-import type { WeatherReport } from "../lib/weather.ts";
+import { weatherSaid, type WeatherReport } from "../lib/weather.ts";
 import { WeatherLines } from "../WeatherLines.tsx";
 import { calmSearchNote, detourView, paceText, stillPlanningSaid, movedPointsNote, noviceWalksNote, walkInNote } from "../lib/summary.ts";
 import { isCancelKey } from "../lib/sheet.ts";
@@ -772,6 +772,10 @@ export function RouteSummary({
       {/* Weather along the route (Stephen 2026-10-24): the NWS alerts, each linked to its notice, and rain coming. A
           notice only: Start never waits for it. */}
       <WeatherLines report={weather} riding={false} now={Date.now()} />
+      {/* The same in words for a screen reader as it arrives, after the route (the region is always there). */}
+      <p className="visually-hidden weather-status" role="status">
+        {weatherSaid(weather, Date.now())}
+      </p>
     </>
   );
   const alertCount = (avoidNoticeFor(answer, choice) ? 1 : 0) + facilityNoticeCount(route) + (weather?.alerts.length ?? 0);

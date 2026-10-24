@@ -182,7 +182,7 @@ import { SettingRow, SettingSelect } from "./SettingRow.tsx";
 import { shortLabel } from "./lib/shortLabel.ts";
 import { EASE_AT_END, EASE_NAME, EASE_SAME, EASE_SHOWN, easeFinding, eased, sameLine, type Ease } from "./lib/rideEase.ts";
 import { RING, junctionPaths, ringPaths, type JunctionShape } from "./lib/junctionShape.ts";
-import { RIDE_WEATHER_MS, alertSaid, alertUrgent, newAlerts, rainLine, rainSays, rainStage, weatherPoints } from "./lib/weather.ts";
+import { NOTHING_DISMISSED, RIDE_WEATHER_MS, alertKey, alertSaid, alertUrgent, dismissWeather, newAlerts, rainLine, rainSays, rainStage, weatherPoints, weatherToShow } from "./lib/weather.ts";
 import { useWeather } from "./useWeather.ts";
 import { WeatherLines } from "./WeatherLines.tsx";
 import {
@@ -1862,8 +1862,7 @@ export function RideMode({
     RIDE_WEATHER_MS,
   );
   const weatherSaid = useRef({ alerts: new Set<string>(), rain: "" });
-  const [weatherDismissed, setWeatherDismissed] = useState("");
-  const weatherShownKey = weather ? `${weather.alerts.map((a) => a.id).join("|")}~${rainStage(weather.rain)}` : "";
+  const [weatherDismissed, setWeatherDismissed] = useState(NOTHING_DISMISSED);
   useEffect(() => {
     if (!weather) return;
     const said = weatherSaid.current;
@@ -1874,15 +1873,14 @@ export function RideMode({
     };
     const fresh = newAlerts(weather, said.alerts);
     for (const alert of fresh) {
-      said.alerts.add(alert.id);
+      said.alerts.add(alertKey(alert));
       tell(alertSaid(alert, Date.now()), alertUrgent(alert));
     }
     if (rainSays(said.rain, weather.rain) && weather.rain) tell(rainLine(weather.rain, weather.alongM, true), false);
     said.rain = rainStage(weather.rain);
-    // Something new shows again after a Dismiss.
-    if (fresh.length > 0) setWeatherDismissed("");
   }, [weather, deliver]);
-  const weatherShown = weather && weatherShownKey !== weatherDismissed && (weather.alerts.length > 0 || weather.rain) ? weather : null;
+  // Shown until dismissed; again only for an alert not dismissed or rain at a new stage.
+  const weatherShown = weatherToShow(weather, weatherDismissed);
   // "Ride mode" is for screen readers only and the two buttons fill the row (the owner, 2026-10-20: "People know it's
   // ride mode anyway"). Near dawn or dusk the light times take the corner while they fit beside the buttons on one
   // line, measured, as a phone's own text size can be larger than the page knows; else they go just under the row.
@@ -2471,7 +2469,7 @@ export function RideMode({
             <div className="ride-notes">
               {gps && ride.fix && <p className="hint">{gps}</p>}
               {corridorText && <p className="hint ride-corridor">{corridorText}</p>}
-              {weatherShown && <WeatherLines report={weatherShown} riding now={Date.now()} onDismiss={() => setWeatherDismissed(weatherShownKey)} />}
+              {weatherShown && <WeatherLines report={weatherShown} riding now={Date.now()} onDismiss={() => setWeatherDismissed((d) => dismissWeather(weatherShown, d))} />}
               {wakeNote && <p className="hint">{wakeNote}</p>}
               {ride.off && replanNote && <p className="hint">{replanNote}</p>}
               {paused && (

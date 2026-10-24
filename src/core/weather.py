@@ -182,7 +182,9 @@ def parse_alerts(doc: object, at: tuple[float, float]) -> list[dict]:
         props = feature.get("properties") if isinstance(feature, dict) else None
         if not isinstance(props, dict) or not relevant(props):
             continue
-        ends = _when(props.get("ends")) or _when(props.get("expires"))
+        # Only the hazard's own end: `expires` is when the NWS replaces the message, not when the
+        # hazard ends, so a statement without `ends` is shown with no "until".
+        ends = _when(props.get("ends"))
         onset = _when(props.get("onset")) or _when(props.get("effective"))
         instruction = props.get("instruction") if isinstance(props.get("instruction"), str) else ""
         instruction = " ".join(instruction.split())
@@ -250,11 +252,17 @@ def first_rain(
     return None
 
 
-def in_ride(alert: dict, now: datetime, ride_s: float) -> bool:
-    """An alert in force at some moment between now and the ride's end."""
+# Seconds before the rider reaches a point that an alert found there still counts: points are
+# about 5 mi apart, and the alert's area reaches back along the line between them.
+ARRIVE_SLACK_S = 30 * 60
+
+
+def in_ride(alert: dict, now: datetime, ride_s: float, at_s: float = 0.0) -> bool:
+    """An alert found at a point the rider reaches in `at_s` seconds, in force while the rider is
+    near it: not over before then (less `ARRIVE_SLACK_S`), not starting after the ride ends."""
     ends = _when(alert.get("ends"))
     onset = _when(alert.get("onset"))
-    if ends is not None and ends <= now:
+    if ends is not None and ends.timestamp() <= now.timestamp() + max(0.0, at_s - ARRIVE_SLACK_S):
         return False
     return onset is None or onset.timestamp() <= now.timestamp() + ride_s
 
@@ -262,12 +270,37 @@ def in_ride(alert: dict, now: datetime, ride_s: float) -> bool:
 class Weather:
     """The check, with its per-cell memory (`KEEP_S`). One per process."""
 
-    def __init__(self, fetch: Fetch = http_get, clock: Callable[[], float] = time.time):
+    def __init__(
+        self,
+        fetch: Fetch = http_get,
+        clock: Callable[[], float] = time.time,
+        later: Callable[[float, Callable[[], None]], None] | None = None,
+    ):
         self.fetch = fetch
         self.clock = clock
+        # Runs a function after a delay: a sweep that drops what is `KEEP_S` old even when no
+        # other check comes (a quiet server would otherwise keep the last ride's cells).
+        self.later = later or _daemon_timer
+        self._sweep_due = False
         self._lock = threading.Lock()
         self._alerts: dict[tuple[float, float], tuple[float, list[dict]]] = {}
         self._rain: dict[tuple[float, float], tuple[float, list[tuple[float, float]]]] = {}
+
+    def _sweep(self) -> None:
+        with self._lock:
+            self._sweep_due = False
+            now = self.clock()
+            self._prune(now)
+            kept = [at for at, _ in [*self._alerts.values(), *self._rain.values()]]
+            if kept:
+                # Next when the oldest left turns `KEEP_S` old, so none outlives it.
+                self._schedule(max(0.0, min(kept) + KEEP_S - now))
+
+    def _schedule(self, delay: float = KEEP_S) -> None:
+        """A sweep in `delay` seconds, unless one is due (called with the lock held)."""
+        if not self._sweep_due:
+            self._sweep_due = True
+            self.later(delay, self._sweep)
 
     def _prune(self, now: float) -> None:
         for kept in (self._alerts, self._rain):
@@ -303,10 +336,17 @@ class Weather:
         unchecked: list[str] = []
 
         missing = [c for c in unique if c not in alerts_kept]
+        need = [c for c in unique if c not in rain_kept]
         alerts_failed = 0
-        if missing:
-            with ThreadPoolExecutor(max_workers=min(6, len(missing))) as pool:
+        answers: list[list[dict] | None] = []
+        rain_steps: list[list[tuple[float, float]]] | None = None
+        if missing or need:
+            # The rain and every point's alerts asked at once: a slow service holds the request
+            # for one timeout, not one after another.
+            with ThreadPoolExecutor(max_workers=min(6, len(missing)) + 1) as pool:
+                rain_job = pool.submit(self._try_rain, need) if need else None
                 answers = list(pool.map(self._try_alerts, missing))
+                rain_steps = rain_job.result() if rain_job else None
             for c, found in zip(missing, answers, strict=True):
                 if found is None:
                     alerts_failed += 1
@@ -314,20 +354,15 @@ class Weather:
                 alerts_kept[c] = found
                 with self._lock:
                     self._alerts[c] = (now, found)
+                    self._schedule()
         if alerts_failed == len(unique):
             unchecked.append("alerts")
-
-        need = [c for c in unique if c not in rain_kept]
-        if need:
-            try:
-                for c, steps in zip(need, self._rain_at(need), strict=True):
-                    rain_kept[c] = steps
-                    with self._lock:
-                        self._rain[c] = (now, steps)
-            except (Unavailable, ValueError, TypeError) as error:
-                logger.warning(
-                    "Weather: the rain forecast did not answer: %s", type(error).__name__
-                )
+        if rain_steps is not None:
+            for c, steps in zip(need, rain_steps, strict=True):
+                rain_kept[c] = steps
+                with self._lock:
+                    self._rain[c] = (now, steps)
+                    self._schedule()
         rain = None
         if all(c in rain_kept for c in cells):
             rain = first_rain(points, [rain_kept[c] for c in cells], now)
@@ -337,14 +372,21 @@ class Weather:
         ride_s = max((p[2] for p in points), default=0.0)
         moment = datetime.fromtimestamp(now, UTC)
         seen: dict[str, dict] = {}
-        for c in cells:
+        for c, (_lon, _lat, at_s) in zip(cells, points, strict=True):
             for alert in alerts_kept.get(c, []):
-                if alert["id"] not in seen and in_ride(alert, moment, ride_s):
+                if alert["id"] not in seen and in_ride(alert, moment, ride_s, at_s):
                     seen[alert["id"]] = alert
         alerts = sorted(
             seen.values(), key=lambda a: (SEVERITY_RANK.get(a["severity"], 4), a["event"])
         )
         return {"alerts": alerts, "rain": rain, "unchecked": unchecked}
+
+    def _try_rain(self, cells: list[tuple[float, float]]) -> list[list[tuple[float, float]]] | None:
+        try:
+            return self._rain_at(cells)
+        except (Unavailable, ValueError, TypeError) as error:
+            logger.warning("Weather: the rain forecast did not answer: %s", type(error).__name__)
+            return None
 
     def _try_alerts(self, at: tuple[float, float]) -> list[dict] | None:
         try:
@@ -352,6 +394,12 @@ class Weather:
         except (Unavailable, ValueError, TypeError) as error:
             logger.warning("Weather: the NWS alerts did not answer: %s", type(error).__name__)
             return None
+
+
+def _daemon_timer(delay: float, run: Callable[[], None]) -> None:
+    timer = threading.Timer(delay, run)
+    timer.daemon = True
+    timer.start()
 
 
 _shared: Weather | None = None

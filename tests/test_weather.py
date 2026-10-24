@@ -173,6 +173,44 @@ def test_nothing_is_kept_past_two_minutes() -> None:
     assert all(at >= clock[0] - weather.KEEP_S for at, _ in w._alerts.values())
 
 
+def test_a_quiet_server_drops_the_cells_on_its_own() -> None:
+    """No later check needed: a sweep drops each answer once it is KEEP_S old."""
+    clock = [NOW]
+    timers: list[tuple[float, object]] = []
+    fake = Fake(rain=rain_doc([[0.0] * 8]))
+    w = weather.Weather(
+        fetch=fake, clock=lambda: clock[0], later=lambda d, f: timers.append((d, f))
+    )
+    w.check([(-77.0, 38.9, 0)])
+    assert len(timers) == 1 and timers[0][0] == weather.KEEP_S
+    clock[0] += 60
+    w.check([(-77.1, 38.9, 0)])  # a second cell, a minute later: no second timer
+    assert len(timers) == 1
+    clock[0] += 60
+    timers.pop()[1]()
+    # The first cell is gone at 2 minutes; the second is swept when it turns 2 minutes old.
+    assert set(w._alerts) == {weather.cell(-77.1, 38.9)}
+    assert timers[0][0] == pytest.approx(60)
+    clock[0] += 60
+    timers.pop()[1]()
+    assert not w._alerts and not w._rain and not timers
+
+
+def test_until_is_the_hazards_end_never_the_messages_expiry() -> None:
+    feature = alert("Special Weather Statement", "Moderate")
+    feature["properties"]["ends"] = None
+    [out] = weather.parse_alerts({"features": [feature]}, (38.9, -77.03))
+    assert out["ends"] is None
+
+
+def test_an_alert_ahead_that_ends_before_the_rider_gets_there_is_left_out() -> None:
+    moment = datetime.fromtimestamp(NOW, UTC)
+    # Ends at 7 PM; the point is reached at 8 PM: gone. Reached at 7:15 PM: within the slack.
+    ends = {"ends": "2026-10-24T19:00:00-04:00", "onset": None}
+    assert not weather.in_ride(ends, moment, 3 * 3600, at_s=2 * 3600)
+    assert weather.in_ride(ends, moment, 3 * 3600, at_s=75 * 60)
+
+
 def test_an_alert_over_before_the_ride_or_after_it_is_left_out() -> None:
     moment = datetime.fromtimestamp(NOW, UTC)
     assert not weather.in_ride({"ends": "2026-10-24T13:00:00-04:00", "onset": None}, moment, 3600)

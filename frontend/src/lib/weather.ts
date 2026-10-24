@@ -162,17 +162,60 @@ export function rainLine(rain: WeatherRain, alongM: readonly number[], riding: b
   const what = rain.heavy ? "Heavy rain" : "Rain";
   const minutes = Math.round(rain.starts_in_s / 300) * 5;
   const when = rain.starts_in_s < 15 * 60 ? "within 15 min" : `in about ${formatDuration(minutes * 60)}`;
-  const where = rain.index === 0 ? (riding ? "where you are" : "at the start") : `near ${formatMilePost(alongM[rain.index] ?? 0)}`;
+  // Within a tenth of a mile of the first point (Roam sends one place at several times): where the rider is.
+  const here = (alongM[rain.index] ?? 0) - (alongM[0] ?? 0) < 160;
+  const where = here ? (riding ? "where you are" : "at the start") : `near ${formatMilePost(alongM[rain.index] ?? 0)}`;
   return `${what} expected ${when}, ${where}.`;
 }
 
-/** The forecast's credit, beside the rain line (CC BY 4.0). */
+/** The forecast's credit, beside the rain line (CC BY 4.0), and its accessible name. */
 export const RAIN_CREDIT = "Forecast: Open-Meteo";
+export const RAIN_CREDIT_NAME = "Forecast: Open-Meteo (opens in a new tab)";
+export const WEATHER_DISMISS_NAME = "Dismiss weather";
 export const RAIN_CREDIT_URL = "https://open-meteo.com/";
 
-/** The alerts new since the ones already said (by id). */
+/**
+ * An alert's identity for saying and dismissing: its event, end and severity. Every NWS update of a warning has a new
+ * id, so by id a warning updated every 20 minutes would be said again each time; by this, only when it is extended,
+ * cut short or changes severity.
+ */
+export const alertKey = (alert: WeatherAlert) => `${alert.event}|${alert.ends ?? ""}|${alert.severity}`;
+
+/** The alerts not said yet (by alertKey). */
 export function newAlerts(report: WeatherReport | null, said: ReadonlySet<string>): WeatherAlert[] {
-  return (report?.alerts ?? []).filter((a) => !said.has(a.id));
+  return (report?.alerts ?? []).filter((a) => !said.has(alertKey(a)));
+}
+
+/** What a Dismiss hides: the alerts then shown and the rain's stage. */
+export interface WeatherDismissed {
+  alerts: ReadonlySet<string>;
+  rain: string;
+}
+export const NOTHING_DISMISSED: WeatherDismissed = { alerts: new Set(), rain: "" };
+export function dismissWeather(report: WeatherReport | null, before: WeatherDismissed): WeatherDismissed {
+  if (!report) return before;
+  return { alerts: new Set([...before.alerts, ...report.alerts.map(alertKey)]), rain: rainStage(report.rain) || before.rain };
+}
+/** The report to show after a Dismiss: shown again only for an alert not dismissed, or rain at a new stage; else null. */
+export function weatherToShow(report: WeatherReport | null, dismissed: WeatherDismissed): WeatherReport | null {
+  if (!report) return null;
+  const stage = rainStage(report.rain);
+  const fresh = report.alerts.some((a) => !dismissed.alerts.has(alertKey(a))) || (stage !== "" && stage !== dismissed.rain);
+  return fresh ? report : null;
+}
+
+/** Everything in words, for a screen reader's status region before Start ("" with nothing to say). */
+export function weatherSaid(report: WeatherReport | null, now: number): string {
+  if (!report) return "";
+  const lines = report.alerts.map((a) => alertSaid(a, now));
+  if (report.rain) lines.push(rainLine(report.rain, report.alongM, false));
+  return lines.join(" ");
+}
+
+/** Roam's points: the rider's place now and in 15, 30, 45 and 60 minutes, so rain coming there is found too. */
+export function roamPoints(at: readonly number[]): { points: WeatherPoint[]; alongM: number[] } {
+  const offsets = [0, 900, 1800, 2700, 3600];
+  return { points: offsets.map((s) => [at[0], at[1], s] as WeatherPoint), alongM: offsets.map(() => 0) };
 }
 
 /**

@@ -3789,8 +3789,9 @@ export function App() {
     return lightKept.current;
   }, [shown, minute, dials.when]);
   // Weather along the route (lib/weather.ts, Stephen 2026-10-24): the NWS alerts and rain coming, leaving now, shown
-  // with the route's warnings in Go and Plan; checked when the route changes and every 10 minutes while it shows.
-  const weatherKey = shown !== null && !riding && (mode === "plan" || mode === "go") ? lineKey(shown.geometry.coordinates) : null;
+  // with the route's warnings in Go and Plan; checked when the route changes and every 10 minutes while it shows. Not
+  // for a plan set to another time (its When): the forecast is for leaving now.
+  const weatherKey = shown !== null && !riding && (mode === "plan" || mode === "go") && !dials.when ? lineKey(shown.geometry.coordinates) : null;
   const weather = useWeather(
     weatherKey,
     () => (shown && shown.duration_s > 0 ? weatherPoints(shown.geometry.coordinates, 0, shown.distance_m / shown.duration_s) : null),
