@@ -3362,6 +3362,12 @@ def build_handlers(
             sum(1 for way in context.ways if variants.with_speed_units(way.tags) is not way.tags),
         )
         rail_roads, listed_hazards = hazard_inputs()
+        # No U-turn round the end of a median, from one carriageway of a divided road
+        # onto the other (`divided.median_uturns`; the owner, 2026-10-24, Frederick Road
+        # at the Beltway: "Which wasn't possible"). Every variant, as a restriction the
+        # router keeps for bicycles.
+        uturns = divided.median_uturns(context.ways, variants.has_contraflow_tag)
+        logger.info("median ends: %d U-turns between carriageways closed", len(uturns))
         for variant in variants.Variant:
             hazard_ways = 0
             per_way_tags: dict[int, dict[str, str]] = {}
@@ -3559,6 +3565,15 @@ def build_handlers(
                 )
 
             logger.info("%s: ways priced for a known hazard: %d", variant.value, hazard_ways)
+            restrictions = [
+                (
+                    extract.SYNTHETIC_RELATION_ID_FLOOR + i,
+                    [("w", from_way, "from"), ("n", node, "via"), ("w", to_way, "to")],
+                    dict(divided.NO_UTURN_TAGS),
+                )
+                for i, (from_way, node, to_way) in enumerate(uturns)
+                if from_way not in dropped and to_way not in dropped
+            ]
             extract.write_extract(
                 context.source_pbf,
                 context.variant_pbf(variant),
@@ -3567,6 +3582,7 @@ def build_handlers(
                 node_lists,
                 drop_ways=dropped,
                 node_tags=signal_tags,
+                new_relations=restrictions,
             )
 
     def graph_outputs(build_dir: Path, config: dict) -> dict[str, Path]:

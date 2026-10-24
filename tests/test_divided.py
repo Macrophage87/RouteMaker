@@ -237,3 +237,104 @@ def test_the_c4_guard_reads_residential_boulevards_but_not_other_names() -> None
     assert divided.carriageway_pairs(other) == set()
     same_way = [way(1, NORTH), way(2, list(reversed(SOUTH)))]
     assert divided.carriageway_pairs(same_way) == set()
+
+
+# MD 144 (Frederick Road) at the Beltway's ramps in Catonsville, as OSM maps it
+# (2026-10-24): two carriageways round a 130 m island between the ramp signal (W)
+# and the merge (E), with Woodlawn Avenue (N) off the westbound one, and the road
+# two-way either side. Coordinates (lon, lat).
+W = (-76.72374, 39.27373)
+E = (-76.72291, 39.27392)
+N = (-76.72322, 39.27389)
+FREDERICK = {"highway": "primary", "name": "Frederick Road", "oneway": "yes"}
+FREDERICK_WAYS = {
+    # way id: (tags, points)
+    425007805: ({**FREDERICK, "oneway": "no"}, [(-76.72395, 39.27370), W]),
+    425007803: (FREDERICK, [N, (-76.72365, 39.27380), W]),
+    425007808: (
+        FREDERICK,
+        [
+            W,
+            (-76.72363, 39.27369),
+            (-76.72349, 39.27373),
+            (-76.72320, 39.27381),
+            (-76.72305, 39.27386),
+            (-76.72303, 39.27387),
+            E,
+        ],
+    ),
+    425007797: (FREDERICK, [E, N]),
+    425007800: ({**FREDERICK, "oneway": "no"}, [(-76.72230, 39.27405), E]),
+    5318288: ({"highway": "residential", "name": "Woodlawn Avenue"}, [N, (-76.72392, 39.27582)]),
+}
+
+
+def frederick(changes=None):
+    """The ways as `extract.Way`s, one node per distinct point; `changes` maps a way
+    id to tags merged over its own, or to None to leave it out."""
+    from pipeline.extract import Way
+
+    changes = changes or {}
+    nodes: dict[tuple, int] = {}
+    built = []
+    for osm_id, (tags, points) in FREDERICK_WAYS.items():
+        if osm_id in changes and changes[osm_id] is None:
+            continue
+        refs = [nodes.setdefault(p, len(nodes) + 1) for p in points]
+        merged = {**tags, **changes.get(osm_id, {})}
+        built.append(Way(osm_id, merged, refs, list(points), list(range(len(points)))))
+    return built, nodes
+
+
+def test_the_u_turns_round_frederick_roads_island_are_found() -> None:
+    """The owner, 2026-10-24: the route turned across the median. Down Woodlawn
+    Avenue, right onto the westbound carriageway, and round the island's west end
+    onto the eastbound one at the ramp signal; or along the eastbound one and round
+    its east end onto the westbound one to reach Woodlawn. The two noses only."""
+    ways, nodes = frederick()
+    assert divided.median_uturns(ways) == [
+        (425007803, nodes[W], 425007808),
+        (425007808, nodes[E], 425007797),
+    ]
+
+
+def test_a_contraflow_carriageway_has_no_u_turn() -> None:
+    contraflow = lambda tags: tags.get("oneway:bicycle") == "no"  # noqa: E731
+    ways, nodes = frederick({425007797: {"oneway:bicycle": "no"}})
+    assert divided.median_uturns(ways, contraflow) == [(425007803, nodes[W], 425007808)]
+
+
+def test_a_minus_one_carriageway_is_read_in_its_direction() -> None:
+    ways, nodes = frederick({425007797: {"oneway": "-1"}})
+    # Mapped backwards and tagged -1 it is the same carriageway: reversed here.
+    for way in ways:
+        if way.osm_id == 425007797:
+            way.node_ids.reverse()
+            way.coordinates.reverse()
+    assert (425007808, nodes[E], 425007797) in divided.median_uturns(ways)
+
+
+def test_a_median_that_ends_in_a_point_keeps_its_u_turn() -> None:
+    """With no road on beyond the east nose, turning round there is the only way
+    back."""
+    ways, nodes = frederick({425007800: None})
+    assert divided.median_uturns(ways) == [(425007803, nodes[W], 425007808)]
+
+
+def test_other_names_and_classes_and_two_way_roads_are_not_u_turns() -> None:
+    ways, _ = frederick({425007797: {"name": "Woodlawn Avenue"}})
+    assert [u for u in divided.median_uturns(ways) if u[2] == 425007797] == []
+    ways, _ = frederick({425007803: {"highway": "residential"}})
+    assert [u for u in divided.median_uturns(ways) if u[0] == 425007803] == []
+    ways, _ = frederick({425007803: {"oneway": "no"}})
+    assert [u for u in divided.median_uturns(ways) if u[0] == 425007803] == []
+
+
+def test_a_turn_off_a_carriageway_is_not_a_u_turn() -> None:
+    """A carriageway carrying straight on, or turning off to a side road, at the
+    noses and at Woodlawn Avenue: nothing between the two halves of one road
+    within OPPOSITE_COS of head on but the U-turns."""
+    ways, _ = frederick()
+    found = divided.median_uturns(ways)
+    assert all({a, b} <= {425007803, 425007808, 425007797} for a, _, b in found)
+    assert (425007797, frederick()[1][N], 425007803) not in found
