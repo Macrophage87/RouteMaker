@@ -204,6 +204,9 @@ import { SettingRow, SettingSelect } from "./SettingRow.tsx";
 import { shortLabel } from "./lib/shortLabel.ts";
 import { EASE_AT_END, EASE_NAME, EASE_SAME, EASE_SHOWN, easeFinding, eased, sameLine, type Ease } from "./lib/rideEase.ts";
 import { RING, junctionPaths, ringPaths, type JunctionShape } from "./lib/junctionShape.ts";
+import { NOTHING_DISMISSED, RIDE_WEATHER_MS, alertKey, alertSaid, alertUrgent, dismissWeather, newAlerts, rainLine, rainSays, rainStage, weatherPoints, weatherToShow } from "./lib/weather.ts";
+import { useWeather } from "./useWeather.ts";
+import { WeatherLines } from "./WeatherLines.tsx";
 import {
   RIDE_REST,
   RIDE_REST_FINDING,
@@ -1929,6 +1932,41 @@ export function RideMode({
     () => (lightStep === null || ride.arrived ? null : rideLightCorner(model, lightStep * 160, togoS, minute * 60_000)),
     [model, lightStep, togoS === null ? null : Math.round(togoS / 60), ride.arrived, minute], // eslint-disable-line react-hooks/exhaustive-deps
   );
+  // Weather along the line still to ride (lib/weather.ts, Stephen 2026-10-24): checked at the start and every 5
+  // minutes; a new NWS alert, or rain coming (first forecast, within 15 minutes, or turning heavy), said through the
+  // rider's outputs and shown in the bottom panel until dismissed. Nothing asks and nothing waits.
+  // Checked from the rider's place on the line, the last one known while off it; the first check waits for one.
+  const weatherProgress = useRef(progress);
+  if (progress !== null) weatherProgress.current = progress;
+  const weatherReady = progress !== null || weatherProgress.current !== null;
+  const weather = useWeather(
+    ride.arrived || !weatherReady ? null : `ride:${model.lengthM}:${model.coordinates.length}`,
+    () => {
+      const from = weatherProgress.current;
+      return from === null || !model.paceMs ? null : weatherPoints(model.coordinates, from, model.paceMs);
+    },
+    RIDE_WEATHER_MS,
+  );
+  const weatherSaid = useRef({ alerts: new Set<string>(), rain: "" });
+  const [weatherDismissed, setWeatherDismissed] = useState(NOTHING_DISMISSED);
+  useEffect(() => {
+    if (!weather) return;
+    const said = weatherSaid.current;
+    const tell = (text: string, urgent: boolean) => {
+      if (urgent) deliver({ text, urgent: true });
+      else announcer.current?.note(text);
+      if (prefsRef.current.output === "neither") setPolite((p) => ({ text, count: p.count + 1 }));
+    };
+    const fresh = newAlerts(weather, said.alerts);
+    for (const alert of fresh) {
+      said.alerts.add(alertKey(alert));
+      tell(alertSaid(alert, Date.now()), alertUrgent(alert));
+    }
+    if (rainSays(said.rain, weather.rain) && weather.rain) tell(rainLine(weather.rain, weather.alongM, true), false);
+    said.rain = rainStage(weather.rain);
+  }, [weather, deliver]);
+  // Shown until dismissed; again only for an alert not dismissed or rain at a new stage.
+  const weatherShown = weatherToShow(weather, weatherDismissed);
   // "Ride mode" is for screen readers only and the two buttons fill the row (the owner, 2026-10-20: "People know it's
   // ride mode anyway"). Near dawn or dusk the light times take the corner while they fit beside the buttons on one
   // line, measured, as a phone's own text size can be larger than the page knows; else they go just under the row.
@@ -1987,7 +2025,7 @@ export function RideMode({
     showToast(replanNote);
     setReplanNote("");
   }, [replanNote, offNow, showToast]);
-  const notesShown = !!((gps && ride.fix) || paused || wakeNote || (ride.off && replanNote) || corridorText);
+  const notesShown = !!((gps && ride.fix) || paused || wakeNote || (ride.off && replanNote) || corridorText || weatherShown);
   const sheetShown = notesShown || ride.off || restShown;
   // The map's scales and credits sit at the bottom of the screen in a ride (the owner, 2026-10-17: "on the bottom
   // of the page in a ride"), just above the bottom panel while it shows (styles.css --ride-sheet-h).
@@ -2545,6 +2583,7 @@ export function RideMode({
             <div className="ride-notes">
               {gps && ride.fix && <p className="hint">{gps}</p>}
               {corridorText && <p className="hint ride-corridor">{corridorText}</p>}
+              {weatherShown && <WeatherLines report={weatherShown} riding now={Date.now()} onDismiss={() => setWeatherDismissed((d) => dismissWeather(weatherShown, d))} />}
               {wakeNote && <p className="hint">{wakeNote}</p>}
               {ride.off && replanNote && <p className="hint">{replanNote}</p>}
               {paused && (
