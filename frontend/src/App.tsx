@@ -253,7 +253,7 @@ import { downloadText, trackGpx, verbatimDownload, verbatimFileName } from "./li
 import { readGpx } from "./lib/gpxImport.ts";
 import { GPX_SAID_OPENED, GPX_SAID_ROUTE, GPX_SAID_TRACK, downloadCourse, downloadGpx, routeGpxFile, sendCourseToGarmin, sendCourseToWahoo, type FileFormat, type Said } from "./GpxPanel.tsx";
 import type { DeviceProfileId } from "./lib/deviceProfiles.ts";
-import { SHARED_GONE, SHARED_INPUTS_ONLY, SHARED_OPENED, SHARED_PATH, SHARED_REVOKED, SHARED_REVOKED_ERROR, SHARE_KEEP_DEFAULT, SHARE_RIDE_WAIT, BROADCAST_NO_LEAD, BROADCAST_SHARE_FAILED, asRideLink, leadKeyFrom, gpxShareFile, keepFields, newSharedId, previewImageOk, readShared, rideLinkFrom, sharedBody, sharedIdFrom, storeShared, withSharedId, type ShareKeep } from "./lib/sharedRoutes.ts";
+import { SHARED_GONE, SHARED_INPUTS_ONLY, SHARED_OPENED, SHARED_PATH, SHARED_REVOKED, SHARED_REVOKED_ERROR, SHARE_KEEP_DEFAULT, SHARE_RIDE_WAIT, BROADCAST_NO_LEAD, BROADCAST_RIDE_FAILED, BROADCAST_RIDE_NO_LEAD, BROADCAST_SHARE_FAILED, asRideLink, leadKeyFrom, gpxShareFile, keepFields, newSharedId, previewImageOk, readShared, rideLinkFrom, sharedBody, sharedIdFrom, storeShared, withSharedId, type ShareKeep } from "./lib/sharedRoutes.ts";
 import { ClosureDialog, type ClosureAsk } from "./ClosureDialog.tsx";
 import { StartOnComputerDialog } from "./StartOnComputerDialog.tsx";
 import { StopNameDialog, type StopNameAsk } from "./StopNameDialog.tsx";
@@ -3364,6 +3364,14 @@ export function App() {
       else if (said) setBroadcastNote((n) => ({ text: said === SHARE_FAILED ? BROADCAST_SHARE_FAILED : said, count: n.count + 1 }));
     });
   };
+  // Broadcast from a ride (Stephen 2026-10-24: "Let people broadcast from a ride"): Share ride's link as Plan's and Go's
+  // Broadcast sends it, the ride already going; the rider leads once it went with its key. Answers what to say.
+  const broadcastFromRide = async (): Promise<string> => {
+    const { led, said } = await shareRoute(true);
+    if (led) return ROAM_BROADCAST_ON;
+    if (said === BROADCAST_NO_LEAD) return BROADCAST_RIDE_NO_LEAD;
+    return said === SHARE_FAILED ? BROADCAST_RIDE_FAILED : said;
+  };
   // Ride the rest (lib/rideTrip.ts): after a transit plan's transit, a ride for its last riding leg, planned
   // as a normal route request from where the rider is (the ride's fix) to the destination, on the leg's
   // ride type; from the trip panel, or with no fix yet, from the leg's own start (no new location look-up).
@@ -5116,6 +5124,10 @@ export function App() {
           trailMiles={trailMiles}
           keepLastRide={isStandalone()}
           fixed={rideStart.fixed}
+          // The plan's own route only (its link is the plan's), not Ride the rest's or a detour from Roam, and never a
+          // ride opened from someone else's link (they lead it).
+          onBroadcast={canShare && !rideStart.roam && rideStart.route === shown && !(onShared && !onShared.own) ? broadcastFromRide : null}
+          broadcasting={rideBroadcast?.leading === true}
         />
       )}
       {roaming && (
