@@ -13,6 +13,7 @@ import { Protocol } from "pmtiles";
 import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import { layers as protomapsLayers, namedFlavor } from "@protomaps/basemaps";
 import { COVERAGE_BBOX, type LonLat } from "./lib/geo.ts";
+import { constrainAbovePanel } from "./lib/coveredConstrain.ts";
 import { AT_ZOOM } from "./lib/planHash.ts";
 import { accuracyRing } from "./lib/geolocation.ts";
 import {
@@ -225,6 +226,8 @@ interface Props {
   when: When;
   /** Screen space the panel covers, so a route is framed in what is left. */
   framePadding: () => Frame;
+  /** The pixels at the map's bottom the panel hides (a phone's sheet), so the area's edge can come up above it. */
+  coveredBelow?: () => number;
   onStressAvailability: (availability: StressAvailability) => void;
   onMapClick: (point: LonLat) => void;
   onMovePoint: (index: number, point: LonLat) => void;
@@ -489,6 +492,8 @@ const INFO_REPEAT_MS = 800;
 /** A right-button press that moved this far rotated the map: its contextmenu is not a request. */
 const RIGHT_DRAG_PX = 5;
 const MAX_BOUNDS_PAD = 0.4;
+/** The map's widest zoom. */
+const MIN_ZOOM = 7;
 /** How long an unanswered stress endpoint is left before it is asked again. */
 const STRESS_RECHECK_MS = 60_000;
 
@@ -668,12 +673,25 @@ export function MapView(props: Props) {
       style: style as maplibregl.StyleSpecification,
       center: props.openAt ?? DC_CENTRE,
       zoom: props.openAt ? AT_ZOOM : OPENING_ZOOM,
-      minZoom: 7,
+      minZoom: MIN_ZOOM,
       maxZoom: MAP_MAX_ZOOM,
       maxBounds: [
         [west - MAX_BOUNDS_PAD, south - MAX_BOUNDS_PAD],
         [east + MAX_BOUNDS_PAD, north + MAX_BOUNDS_PAD],
       ],
+      // The bounds hold the part of the map above a phone's sheet, not the whole box (lib/coveredConstrain.ts).
+      transformConstrain: (center, zoom) => {
+        const box = container.current;
+        const { center: next, zoom: z } = constrainAbovePanel(center, zoom, {
+          bounds: [west - MAX_BOUNDS_PAD, south - MAX_BOUNDS_PAD, east + MAX_BOUNDS_PAD, north + MAX_BOUNDS_PAD],
+          minZoom: MIN_ZOOM,
+          maxZoom: MAP_MAX_ZOOM,
+          width: box?.clientWidth ?? 0,
+          height: box?.clientHeight ?? 0,
+          covered: callbacks.current.coveredBelow?.() ?? 0,
+        });
+        return { center: new maplibregl.LngLat(next.lng, next.lat), zoom: z };
+      },
       // Added below, so it can start collapsed.
       attributionControl: false,
       // The "i" opens the map's info panel (lib/mapInfo.ts), not only the credits: say so. It reads
