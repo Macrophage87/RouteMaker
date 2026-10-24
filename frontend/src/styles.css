@@ -5613,11 +5613,38 @@ details.fold > summary .icon {
   overflow: visible;
 }
 
-.weather-lines a,
-.weather-dismiss {
+.weather-lines a {
   display: inline-block;
   min-height: 24px;
   padding: 2px 0;
+}
+
+/* In a ride, Dismiss is a big button at the lines' side, easy to hit while riding (Stephen 2026-10-24). */
+.weather-riding {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.weather-riding .note-lines {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.ride-notes .weather-dismiss,
+.weather-dismiss {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 88px;
+  min-height: 72px;
+  margin: 6px 0;
+  padding: 8px 12px;
+  font-size: 1.05rem;
+  font-weight: 700;
 }
 
 .weather-credit {
