@@ -4,12 +4,16 @@ import assert from "node:assert/strict";
 import type { LonLat } from "./geo.ts";
 import {
   ALERT_KINDS,
+  ROAM_ALERT_KINDS,
   CONSENT_KEY,
   CONSENT_QUESTION,
   RIDE_ROLES,
   ageWords,
   alertRefusal,
   alertText,
+  awayWords,
+  roamRideId,
+  broadcastRideId as broadcastIdForRoamTest,
   consentFor,
   countText,
   dotName,
@@ -166,11 +170,32 @@ test("sharing stops when turned off, after 10 minutes off the route, or 12 hours
 test("the alert lists are the plan's, and Medical emergency or crash and Crash ask first", () => {
   assert.deepEqual(
     ALERT_KINDS["mass-ride"].map((k) => k.label),
-    ["Extensive rider spread", "Emergency vehicle coming through", "Aggressive person", "Medical emergency or crash", "Rerouting, road closed", "Other"],
+    ["Extensive rider spread", "Emergency vehicle coming through", "Aggressive person", "Medical emergency or crash", "Rerouting, road closed", "Lost, separated from the ride", "Other"],
   );
-  assert.deepEqual(ALERT_KINDS["group-ride"].map((k) => k.label), ["Rider off the back", "Crash", "Mechanical or flat, stopping", "Wrong turn", "Other"]);
+  assert.deepEqual(ALERT_KINDS["group-ride"].map((k) => k.label), ["Rider off the back", "Crash", "Mechanical or flat, stopping", "Wrong turn", "Lost, separated from the group", "Wait up, regroup", "Other"]);
   const asks = [...ALERT_KINDS["mass-ride"], ...ALERT_KINDS["group-ride"]].filter((k) => k.confirm).map((k) => k.id);
   assert.deepEqual(asks, ["medical", "crash"]);
+});
+
+test("Roam's broadcast has its own alerts: no route, so no Wrong turn or Rider off the back (review N3)", () => {
+  assert.deepEqual(ROAM_ALERT_KINDS.map((k) => k.label), ["Lost, separated from the group", "Wait up, regroup", "Mechanical or flat, stopping", "Crash", "Other"]);
+  // The Group Ride's own kinds (the server takes them for that ride type), Crash still asking first and calling 911.
+  for (const kind of ROAM_ALERT_KINDS) assert.ok(ALERT_KINDS["group-ride"].includes(kind));
+  assert.deepEqual(ROAM_ALERT_KINDS.filter((k) => k.call911).map((k) => k.id), ["crash"]);
+  const group = readFileSync(new URL("../RideGroup.tsx", import.meta.url), "utf8");
+  assert.match(group, /\{\(broadcast\?\.roam \? ROAM_ALERT_KINDS : ALERT_KINDS\[type\]\)\.map\(\(kind\) => \(/);
+});
+
+test("Alert's choices and Other's Speak, Send and Cancel are ride-sized, with no list bullets (review S3)", () => {
+  const css = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+  assert.match(css, /\.ride-alert-kinds \{\s*list-style: none;\s*padding: 0;\s*\}/);
+  assert.match(css, /\.ride-alert-panel button \{\s*min-height: 48px;\s*\}/);
+  const group = readFileSync(new URL("../RideGroup.tsx", import.meta.url), "utf8");
+  // Every Alert button is inside the panel: its kinds, the confirm, and Other's form.
+  const panel = group.slice(group.indexOf('className="ride-alert-panel"'), group.indexOf("{alerts.length > 0 && ("));
+  assert.match(panel, /className="secondary ride-speak"/);
+  assert.match(panel, /<button type="submit">Send<\/button>/);
+  assert.match(panel, /className="ride-alert-kinds"/);
 });
 
 test("one alert a minute and ten a ride per device", () => {
@@ -320,12 +345,12 @@ test("the map draws each role's mark by age, the lead line's chevron turned alon
     addImage: (id: string) => void images.add(id),
   };
   showRideDots(map, shown, [alert()], 0, 1);
-  // Pulse, the marks, the chevrons, the alert pin and its faded hole.
-  assert.equal(added.length, 5);
+  // The leader's route, path and ring, the pulse, the marks, the chevrons, the alert pin and its faded hole.
+  assert.equal(added.length, 8);
   assert.equal(images.size, 12);
   assert.ok(images.has(dotImageId("lead", "ring")) && images.has(dotImageId("participant", "fresh")));
   showRideDots(map, shown, [alert()], 0, 1);
-  assert.equal(added.length, 5);
+  assert.equal(added.length, 8);
   showRideDots(map, null);
   assert.equal(added.length, 0);
   assert.equal(sources.size, 0);
@@ -419,7 +444,7 @@ test("the page asks the role in the one question, keeps Go clean and names the k
   assert.match(group, /if \(kept === null\) window\.setTimeout\(\(\) => live && say\(CONSENT_QUESTION\), 150\);/);
   // A role change moves the next post up, and the post sends the consent's (new) role.
   assert.match(group, /const changeRole[\s\S]*?keepConsent\(ride, consent\.answer, Date\.now\(\), undefined, undefined, role\)[\s\S]*?share\.current\.lastPost = postSoonAfter\(share\.current\.lastPost\)/);
-  assert.match(group, /\}, \[fix, now, shareOn, ride, token, consent, line, origin\]\);/);
+  assert.match(group, /\}, \[fix, now, shareOn, ride, token, consent, line, origin, isBroadcast, riding, leading\]\);/);
   assert.match(group, /<\/button>\s*\)\}\s*\{consent && <RolePicker name="ride-role" value=\{consent\.role\} onChange=\{changeRole\} \/>\}\s*<\/div>/);
   assert.match(group, /sendPosition\(origin, ride, token, fix, consent\.role\)/);
   // Go's bar keeps its two buttons.
@@ -490,4 +515,29 @@ test("review: a role change posts as soon as the server takes a position, with t
   }) as unknown as typeof fetch;
   await sendPosition("https://x.test", "f".repeat(64), kept.token, [-77, 38.9], consentFor("r9", 2, store)!.role, fake);
   assert.equal(bodies[0].role, "corker");
+});
+
+test("a broadcast from Roam (no route): straight-line words from you, its own ride id", async () => {
+  const me: LonLat = [-77.04, 38.91];
+  const near: LonLat = [-77.0401, 38.9101];
+  const far: LonLat = [-77.04, 38.92];
+  assert.equal(awayWords(me, near), "beside you");
+  assert.match(awayWords(me, far) ?? "", /^0\.\d mi \(\d\.\d km\) away$/);
+  assert.equal(awayWords(null, far), null);
+  assert.equal(dotName("participant", 0, null, true, awayWords(me, far)), `${dotName("participant", 0, null, true, null)}, ${awayWords(me, far)}`);
+  assert.equal(dotName("participant", 0, null, false, null), "Participant");
+  const alert = { id: "a", kind: "lost", label: "Lost", text: "", lon: far[0], lat: far[1], age_s: 0, count: 1, mine: false, call_911: false };
+  assert.match(alertText(alert, [], null, 0, me), /^Lost, 0\.\d mi \(\d\.\d km\) away, /);
+  // Without your position, no place words at all.
+  assert.equal(alertText(alert, [], null, 0, null), "Lost, just now.");
+  const dots = [
+    { lon: far[0], lat: far[1], age_s: 5, leader: true, role: "participant" as const, freshness: "live" as const, alongM: 0, bearing: 0, pulse: false },
+    { lon: near[0], lat: near[1], age_s: 5, role: "participant" as const, freshness: "live" as const, alongM: 0, bearing: 0, pulse: false },
+  ];
+  const said = ridersSaid(dots, null, { here: me });
+  assert.match(said, /^2 riders\. .*away, seen .*\. Nearest rider beside you, seen /);
+  // Not the id of a shared line's broadcast with the same random id.
+  const id = "0123456789abcdef0123456789abcdef";
+  assert.notEqual(await roamRideId(id), await broadcastIdForRoamTest(id));
+  assert.match(await roamRideId(id), /^[0-9a-f]{64}$/);
 });

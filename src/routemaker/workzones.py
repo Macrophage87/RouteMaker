@@ -815,6 +815,9 @@ def when_text(zone: Zone, now: datetime | None, future: bool, possible: bool = F
     """When the closure applies, as the card says it: "Closed today 4:30 am to 1:30 pm",
     "Permit: road closed until Oct 20", "May still apply: no end time given"."""
     verb = "Bike lane blocked" if zone.kind == LANE else "Closed"
+    if zone.kind == PENALTY:
+        # Rideable (v0.12.0, the map with no route): construction, not a closure.
+        verb = "Construction"
     if zone.source == "dc":
         verb = "Permit: bike lane blocked" if zone.kind == LANE else "Permit: road closed"
     if possible:
