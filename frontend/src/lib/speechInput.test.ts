@@ -34,6 +34,14 @@ test("Speak shows only where the browser turns speech into text", () => {
   assert.equal(listenOnce(() => {}, () => {}, 80, {}), null);
 });
 
+test("Speak is hidden in the phone app, which cannot have the microphone (no RECORD_AUDIO)", () => {
+  assert.equal(speechSupported(env, true), false);
+  assert.equal(speechSupported(env, false), true);
+  const manifest = readFileSync(new URL("../../../mobile/android/app/src/main/AndroidManifest.xml", import.meta.url), "utf8");
+  // Once the app asks for the microphone, Speak can be tried there and this test changed.
+  assert.doesNotMatch(manifest, /RECORD_AUDIO/);
+});
+
 test("the words fill the box as they come, cut to the alert's 80 characters, and a stop ends it", () => {
   const texts: string[] = [];
   const ends: (string | null)[] = [];
@@ -57,7 +65,14 @@ test("a failure says what to do instead", () => {
   listenOnce(() => {}, (f) => ends.push(f), 80, env);
   FakeRecognition.last!.onerror?.({ error: "audio-capture" });
   FakeRecognition.last!.onend?.();
-  assert.deepEqual(ends, [SPEECH_FAILED["not-allowed"], SPEECH_OTHER_FAILED]);
+  listenOnce(() => {}, (f) => ends.push(f), 80, env);
+  FakeRecognition.last!.onerror?.({ error: "service-not-allowed" });
+  FakeRecognition.last!.onend?.();
+  listenOnce(() => {}, (f) => ends.push(f), 80, env);
+  FakeRecognition.last!.onerror?.({ error: "bad-grammar" });
+  FakeRecognition.last!.onend?.();
+  assert.deepEqual(ends, [SPEECH_FAILED["not-allowed"], SPEECH_FAILED["audio-capture"], SPEECH_FAILED["service-not-allowed"], SPEECH_OTHER_FAILED]);
+  for (const said of Object.values(SPEECH_FAILED)) assert.match(said, /type the issue/i, "each says what to do instead");
 });
 
 test("the Speak button sits in Alert > Other only, keeps its name, and nothing is sent until Send", () => {

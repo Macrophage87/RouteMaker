@@ -5,7 +5,11 @@
  * Edge, Safari). The browser's maker turns the clip into text on its servers (Google for Chrome, Apple for
  * Safari), which the privacy page says; nothing is kept
  * here. The button keeps its name; pressed (aria-pressed) while it listens, and a second press stops it.
+ * Not in the phone app (review S2): its manifest has no RECORD_AUDIO, so the WebView's recognition cannot have the
+ * microphone; shown there once the app asks for it and is tried on a device.
  */
+import { nativeBridge } from "./nativeShell.ts";
+
 
 interface Recognition {
   lang: string;
@@ -32,9 +36,9 @@ function ctorOf(env: SpeechEnv | undefined): RecognitionCtor | null {
 
 const browserEnv = (): SpeechEnv | undefined => (typeof window === "undefined" ? undefined : (window as unknown as SpeechEnv));
 
-/** Whether this browser can turn speech into text: the Speak button shows only then. */
-export function speechSupported(env: SpeechEnv | undefined = browserEnv()): boolean {
-  return ctorOf(env) !== null;
+/** Whether this browser can turn speech into text, outside the phone app: the Speak button shows only then. */
+export function speechSupported(env: SpeechEnv | undefined = browserEnv(), native: boolean = nativeBridge() !== null): boolean {
+  return !native && ctorOf(env) !== null;
 }
 
 export const SPEAK_LABEL = "Speak";
@@ -43,6 +47,8 @@ export const SPEECH_FAILED: Record<string, string> = {
   "not-allowed": "The microphone is not allowed; allow it in the browser's settings, or type the issue.",
   "no-speech": "Nothing was heard. Tap Speak and try again, or type the issue.",
   network: "Speech needs a connection here. Type the issue instead.",
+  "service-not-allowed": "Speech is not allowed here. Type the issue instead.",
+  "audio-capture": "No microphone was found. Type the issue instead.",
 };
 export const SPEECH_OTHER_FAILED = "Speech did not work. Type the issue instead.";
 
