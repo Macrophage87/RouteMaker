@@ -229,9 +229,7 @@ class TestCrossingAvoidance:
 
     def test_the_intersection_weight_scales_what_a_crossing_is_worth(self, monkeypatch) -> None:
         original = analysis("o", events=[event(1500.0, 3300.0)])
-        # 800 m longer: 160 s at the default 11.2 mph [18 km/h], within the red allowance
-        # at a weight of 1 (600 s) and past it at 0.05 (30 s), where the score decides.
-        mid = analysis("m", tiers="1" * 48, cost_s=4300.0, events=[])
+        mid = analysis("m", cost_s=4300.0, events=[])
         for weight, taken in ((1.0, "m"), (0.05, "o")):
             World(monkeypatch, {"o": original, "m": mid}, [trip_of("m", 4.5)] * 2)
             kept, _ = refine.refine(trip_of("o", 4.0), context(weight=weight))
@@ -3545,62 +3543,44 @@ for _cls in (TestTheHoldInTheSeek, TestTheHoldLegByLeg, TestTheWorthLegByLeg):
             setattr(_cls, _name, None)
 
 
-class TestFewerReds:
-    """Below the top of the slider a route with fewer red junctions wins before the score,
-    within `RED_DETOUR_S` of riding for each it leaves out (the owner, 2026-10-23, of
-    the unsignalised Kensington crossings: "essentially impassable"; a rider would rather
-    ride 10 minutes more)."""
+class TestRedJunctions:
+    """Below the top of the slider each red junction counts for `RED_DETOUR_S` of quiet
+    riding in the score, on top of its junction cost (the owner, 2026-10-23, of the
+    unsignalised Kensington crossings: "essentially impassable"; a rider would rather ride
+    10 minutes more)."""
 
     def two_reds(self) -> refine.Analysis:
         return analysis("o", events=[event(1500.0, 3300.0), event(2500.0, 3300.0)])
 
-    def test_one_red_fewer_wins_though_it_scores_worse(self) -> None:
-        # The PC's check, 8 AM: one red in place of two, 606 s worse on score for its
-        # orange junctions and delay.
-        one = analysis("c", "1" * 48, events=[event(1500.0, 3300.0)])
-        one.junction_delay_s = 94.0
+    def test_each_red_is_ten_minutes_of_quiet_riding_at_the_weight(self) -> None:
+        none = analysis("n", events=[])
+        for weight in (1.0, 0.25):
+            ctx = context(weight=weight)
+            red_cost = ctx.quiet_cost * weight * model.penalty_m([event(1500.0, 3300.0)])
+            one = analysis("c", events=[event(1500.0, 3300.0)])
+            extra = refine.QUIET_COST_FACTOR * refine.RED_DETOUR_S * weight
+            assert one.score(ctx) - none.score(ctx) == pytest.approx(red_cost + extra)
+
+    def test_one_red_fewer_wins_though_it_has_more_delay_and_oranges(self) -> None:
+        # The PC's check, 8 AM: one red in place of two, 606 s worse on everything else.
+        one = analysis("c", events=[event(1500.0, 3300.0)])
         one.cost_s += 606.0
         ctx = context()
-        assert one.score(ctx) > self.two_reds().score(ctx) + refine.IMPROVEMENT_EPS_S
         assert refine.better(one, self.two_reds(), ctx)
         assert not refine.better(self.two_reds(), one, ctx)
 
-    def test_a_red_free_route_off_peak_wins_by_a_little_too(self) -> None:
-        free = analysis("c", "1" * 30, cost_s=4040.0 + 2000.0, events=[])
-        assert refine.better(free, self.two_reds(), context())
+    def test_a_red_is_not_worth_more_than_ten_minutes(self) -> None:
+        # 1,400 cost seconds more than the 1,320 a red adds, besides its own cost.
+        ctx = context()
+        own = ctx.quiet_cost * model.penalty_m([event(1500.0, 3300.0)])
+        one = analysis("c", events=[event(1500.0, 3300.0)])
+        one.cost_s += own + refine.QUIET_COST_FACTOR * refine.RED_DETOUR_S + 80.0
+        assert not refine.better(one, self.two_reds(), ctx)
 
-    def test_past_the_allowance_the_score_decides(self) -> None:
-        # 4 km longer: 800 s at 11.2 mph [18 km/h], past 600 s for the one red left out.
-        far = analysis("c", "1" * 80, cost_s=9000.0, events=[event(1500.0, 3300.0)])
-        assert refine.ride_s(far, context()) - refine.ride_s(self.two_reds(), context()) > 600
-        assert refine.fewer_reds(far, self.two_reds(), context()) is None
-        assert not refine.better(far, self.two_reds(), context())
-
-    def test_the_allowance_scales_with_the_intersection_weight(self) -> None:
-        # 2 km longer: 400 s, within 600 s for two reds at a weight of 0.25 (300 s) no longer.
-        free = analysis("c", "1" * 60, events=[])
-        assert refine.fewer_reds(free, self.two_reds(), context(weight=1.0)) is True
-        assert refine.fewer_reds(free, self.two_reds(), context(weight=0.25)) is None
-
-    def test_a_red_is_not_left_out_for_more_lts4(self) -> None:
-        busy = analysis("c", "1" * 10 + "4" * 3 + "1" * 27, events=[])
-        assert refine.fewer_reds(busy, self.two_reds(), context()) is None
-
-    def test_as_many_reds_leaves_it_to_the_score(self) -> None:
-        other = analysis("c", events=[event(900.0, 3300.0), event(3000.0, 3300.0)])
-        assert refine.fewer_reds(other, self.two_reds(), context()) is None
-
-    def test_unread_junctions_leave_it_to_the_score(self) -> None:
-        unread = analysis("c", events=None)
-        assert refine.fewer_reds(unread, self.two_reds(), context()) is None
-
-    def test_orange_junctions_are_not_counted(self) -> None:
-        orange = analysis("c", "1" * 48, events=[event(1500.0, 2000.0), event(2500.0, 2000.0)])
+    def test_orange_junctions_are_not_counted_even_with_a_shift(self) -> None:
+        orange = analysis("c", events=[event(1500.0, 2000.0)], shift=0)
+        orange.shift = 1
         assert refine.red_count(orange) == 0 and refine.red_count(self.two_reds()) == 2
 
-    def test_not_at_the_top_of_the_slider(self, monkeypatch) -> None:
-        one = analysis("c", "1" * 48, cost_s=9000.0, events=[event(1500.0, 3300.0)])
-        seen = []
-        monkeypatch.setattr(refine, "fewer_reds", lambda *a: seen.append(a) or True)
-        refine.better(one, self.two_reds(), context(maxcalm=True))
-        assert seen == []
+    def test_unread_junctions_count_none(self) -> None:
+        assert refine.red_count(analysis("c", events=None)) == 0

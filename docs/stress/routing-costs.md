@@ -103,9 +103,9 @@ Every preset sends `alley_penalty` 1,800 s (`presets.py:462`). "Calm search runs
 excluding the red crossings the last round's route took as well, and all of them run even
 when a round finds only the next red crossing along (`CROSSING_ONLY_ROUNDS`); above 0 up to 5 exclusion
 rounds (`REFINE_MAX_ROUNDS`, `:88`), each taking the last route's red crossings too. Below the
-top of the slider a route with fewer red junctions wins before the score is asked, where it
-adds no more than 10 minutes of riding for each red it leaves out (`RED_DETOUR_S`, scaled by the
-intersection weight). The search does not run for Mass Ride, fewer than
+top of the slider each red junction also counts in the score as 10 minutes of quiet riding
+(`RED_DETOUR_S`, scaled by the intersection weight) on top of its junction cost, so a way round
+one is taken where it costs less than that in everything else. The search does not run for Mass Ride, fewer than
 2 points, a long ride, a climb seek, a span over 18.6 mi [30 km] (except
 Trailmaxxing), or too little time (`routing.py:1193-1220`). The exposure weights
 come from `Exposure` (`presets.py:339-355`), chosen per carrying choice on Cargo Bike
@@ -153,7 +153,8 @@ stretches first, and later every LTS 3 stretch of the newest candidate. Each sam
 is one point per edge middle, 131 ft [40 m] apart, at most 60 a round and 150 in
 all, and never within 0.31 mi [500 m] of an end or a via point (`refine.py:112-130`,
 `calm_targets` `:712-737`, worst first `:1535-1536`, `:1554-1556`). In each
-crossing-only round it excludes the approaches to junctions of 3,100 ft [945 m] or more (red),
+round, at every calm rate, it excludes the approaches to junctions of 3,100 ft [945 m] or
+more (red),
 and those junctions themselves (every edge within 49 ft [15 m]), at most 3 junctions a round
 (`crossing_targets`). Mass Ride is skipped (`ctx.group`).
 

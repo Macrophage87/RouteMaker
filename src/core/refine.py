@@ -26,6 +26,7 @@ extra price, in the router's cost seconds, for what the router cannot see:
     router cost + QUIET COST x ( CALM RATE x (LTS 3 metres + 2 x LTS 4 + 3 x Avoid)
                                + INTERSECTION WEIGHT x (the junction events' cost in metres)
                                + HILL - ROUTER'S CLIMB CHARGE )
+                 + 2.2 x 600 s x INTERSECTION WEIGHT x (red junctions)  (`RED_DETOUR_S`)
 
 (The 1, 2 and 3 are the preset's `presets.Exposure`: Trailmaxxing and Cargo with
 passengers weigh LTS 4 at 8 and Avoid at 16, and never take a route with more
@@ -119,9 +120,9 @@ from . import junctions, legsplit, parallel, presets, route_hazards, routing, tr
 
 logger = logging.getLogger(__name__)
 
-# The most rounds of exclusion and re-routing. Crossing avoidance alone gets
-# fewer: it runs for most plans, where the calm search runs only past the old
-# top of the slider. More than one, each excluding the red crossings the last round's
+# The most rounds of exclusion and re-routing, crossing avoidance alone's too (it runs
+# for most plans, where the calm search runs only past the old top of the slider). More
+# than one, each excluding the red crossings the last round's
 # route took on top of those already excluded: a way round one unsignalised crossing of
 # a busy road is often the next unsignalised crossing of the same road, and only a
 # second or third round reaches a signal (PR #409's check, 2026-10-23, rush hour:
@@ -543,8 +544,9 @@ class Analysis:
         return 0.0 if self.flat_exposure_m is None else self.exposure_m - self.flat_exposure_m
 
     def score(self, ctx: Context) -> float:
-        """The router's cost plus the extra price (see the module docstring), and 30
-        minutes for each pass through an Avoid-rated junction (308), with the router's own
+        """The router's cost plus the extra price (see the module docstring), 30
+        minutes for each pass through an Avoid-rated junction (308), `RED_DETOUR_S` of quiet
+        riding for each red junction at the intersection weight, with the router's own
         climbing charge swapped for the rider's (`hill_m`, 2026-10-23). The hill's
         share of the exposure (`hill_exposure_m`, 409) counts at the calm rate where it is
         over 1 and one for one below it, so it counts at every slider position, Default's
@@ -566,6 +568,7 @@ class Analysis:
             + ctx.quiet_cost * extra
             + avoid_model.penalty_s(self.avoid_passages)
             + QUIET_COST_FACTOR * self.junction_delay_s
+            + QUIET_COST_FACTOR * RED_DETOUR_S * ctx.weight * red_count(self)
         )
 
     @property
@@ -819,67 +822,36 @@ def calmer(read: Analysis, best: Analysis, ctx: Context) -> bool:
     return False
 
 
-# Seconds of riding a route may add, below the top of the slider, for each red junction it
-# leaves out, before the score is asked (the owner, 2026-10-23, of the unsignalised
-# crossings of University Blvd and Connecticut Ave in Kensington at rush hour: "essentially
-# impassable", and a rider would rather ride 10 minutes more). The score alone weighed a
-# red as its junction cost, the same as an equal sum of orange ones: on the PC's check of
-# a NoMa to Twinbrook commute at Default, a detour with one red where the router's route
-# had two scored 606 s worse for its oranges and delay, and a red-free one 40 s worse off
-# peak. Scaled by the intersection weight (`intersection_weight`): all of it from Default
-# up, a quarter at the traffic tolerant end.
+# Seconds of quiet riding each red junction counts for in the score, below the top of the
+# slider, on top of its junction cost (the owner, 2026-10-23, of the unsignalised crossings
+# of University Blvd and Connecticut Ave in Kensington at rush hour: "essentially
+# impassable", and a rider would rather ride 10 minutes more). The junction cost alone
+# weighed a red as an equal sum of orange ones: on the PC's check of a NoMa to Twinbrook
+# commute at Default, a detour with one red where the router's route had two scored 606 s
+# worse for its oranges and delay, and a red-free one 40 s worse off peak. Scaled by the
+# intersection weight (`intersection_weight`): all of it from Default up, a quarter at the
+# traffic tolerant end. A price, not a rule ahead of the score, so the order stays total and
+# Avoid-rated junctions, LTS 3 and the oranges still count (review of PR #426). A red now
+# scores about as much as a pass through an Avoid-rated junction (1,800 cost seconds, 308);
+# the approved Avoid list is empty as shipped.
 RED_DETOUR_S = 600.0
 
 
 def red_count(read: Analysis) -> int:
-    """The route's red junctions (with a shift, its orange ones too, as `Analysis.red_m`)."""
-    return sum(
-        1 for e in read.events or () if presets.shifted_severity(e.severity, read.shift) == "red"
-    )
-
-
-def ride_s(read: Analysis, ctx: Context) -> float:
-    """The route's riding time as `RED_DETOUR_S` reads it: its distance and what its
-    climbing is worth in flat metres (`charged_m`) at the request's flat speed, and its
-    junction delay."""
-    return charged_m(read, ctx) / flat_speed_ms(ctx.costing) + read.junction_delay_s
-
-
-def fewer_reds(read: Analysis, best: Analysis, ctx: Context) -> bool | None:
-    """Below the top of the slider, whether red junctions decide between `read` and
-    `best`: True where `read` has fewer and adds no more than `RED_DETOUR_S` for each it
-    leaves out, False where `best` has fewer and does the same; None where they have as
-    many, or the one with fewer adds more than that or rides more LTS 4 and Avoid (by
-    more than `MAXCALM_STEPS`' first step: the score decides, which prices it), or
-    either's junctions could not be read. A red is never left out for busier road: the
-    Traffic-wins guard (`_busier`) holds the LTS 3 a way round may take on."""
-    if read.events is None or best.events is None:
-        return None
-    gap = red_count(best) - red_count(read)
-    if gap == 0:
-        return None
-    allowance = RED_DETOUR_S * ctx.weight * abs(gap)
-    fewer, more = (read, best) if gap > 0 else (best, read)
-    if ride_s(fewer, ctx) - ride_s(more, ctx) > allowance:
-        return None
-    if fewer.lts4_m - more.lts4_m > MAXCALM_STEPS[0]:
-        return None
-    return gap > 0
+    """The route's red junctions as the crossing rounds target them (`REFINE_MIN_EVENT_FT`),
+    never shifted: a ride that reads every road a level up does not make its oranges
+    impassable."""
+    return sum(1 for e in read.events or () if e.cost_ft >= REFINE_MIN_EVENT_FT)
 
 
 def better(read: Analysis, best: Analysis, ctx: Context, rest_m: float = 0.0) -> bool:
-    """Whether `read` is to replace `best`: below the top of the slider, by its red
-    junctions where they decide (`fewer_reds`), else by the score (IMPROVEMENT_EPS_S),
-    a longer route also worth its extra miles (`worth_it`, 435 "One rule"); at the top,
-    by `MAXCALM_STEPS` down `Analysis.key` (`calmer`), with diminishing returns on the
-    distance (`worth_it`): a longer route must be calmer and worth its extra miles, and a
-    shorter one replaces a calmer longer one whose extra miles were not worth it.
-    `rest_m`: see `worth_it`."""
+    """Whether `read` is to replace `best`: below the top of the slider, by the
+    score (IMPROVEMENT_EPS_S), a longer route also worth its extra miles (`worth_it`,
+    435 "One rule"); at the top, by `MAXCALM_STEPS` down `Analysis.key` (`calmer`), with
+    diminishing returns on the distance (`worth_it`): a longer route must be calmer and
+    worth its extra miles, and a shorter one replaces a calmer longer one whose extra miles
+    were not worth it. `rest_m`: see `worth_it`."""
     if not ctx.maxcalm:
-        # Fewer red junctions first, within `RED_DETOUR_S` for each.
-        reds = fewer_reds(read, best, ctx)
-        if reds is not None:
-            return reds
         # Below the top a longer route must also be worth its miles (OWNER-DECISIONS
         # 435, "One rule"; `worth_ratio`), wherever the calm search runs.
         if read.score(ctx) >= best.score(ctx) - IMPROVEMENT_EPS_S:
