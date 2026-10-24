@@ -3819,6 +3819,16 @@ export function App() {
     return { top: 60, bottom: 60, right, left: (panel?.right ?? 0) + 40 };
   }, []);
 
+  // On a phone, the map's bottom under the sheet: the map may move far enough for the area's edge to show above it.
+  const coveredBelow = useCallback((): number => {
+    if (!window.matchMedia(NARROW).matches) return 0;
+    const panel = panelRef.current?.getBoundingClientRect();
+    const map = mapRef.current?.getContainer().getBoundingClientRect();
+    // A hidden panel (a ride) measures 0 and covers nothing.
+    if (!panel || !map || panel.height === 0) return 0;
+    return Math.max(0, map.bottom - Math.max(panel.top, map.top));
+  }, []);
+
   // Copy link keeps full precision; when the rider's location or Home is in the plan it says so (review privacy-2).
   const linkNote = linkLocationNote(points, fromHere, myGo.home?.point ?? null);
 
@@ -4814,6 +4824,7 @@ export function App() {
         stressVisible={stressVisible && stress === "available"}
         when={mapWhen(dials.when ?? null)}
         framePadding={framePadding}
+        coveredBelow={coveredBelow}
         onStressAvailability={setStress}
         onMapClick={onBike || reviewing ? ignore : place}
         onMovePoint={onBike ? ignore : move}
