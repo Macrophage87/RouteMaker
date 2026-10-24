@@ -212,24 +212,39 @@ def test_a_sections_stretch_is_cut_from_the_line_at_its_miles_on_the_routes_own_
 @db
 def test_a_section_with_a_stretch_has_a_small_map_of_it_and_says_where_it_is() -> None:
     post = make_post()
-    RoutePostSection.objects.create(post=post, position=1, heading="No map", body="Words only.")
-    RoutePostSection.objects.create(
-        post=post,
-        position=2,
-        heading="The Mall",
-        body="Wide paths.",
-        start_mi=Decimal("0.5"),
-        end_mi=Decimal("1.0"),
-    )
+    for position, (heading, start, end) in enumerate(
+        [
+            ("First", "0.5", "1.0"),
+            ("No map", None, None),
+            ("Off the end", "3", "4"),
+            ("Last", "1.5", "9"),
+        ]
+    ):
+        RoutePostSection.objects.create(
+            post=post,
+            position=position,
+            heading=heading,
+            body="Wide paths.",
+            start_mi=start and Decimal(start),
+            end_mi=end and Decimal(end),
+        )
     body = Client().get("/routes/mall-loop").content.decode()
-    assert body.count('class="section-map"') == 1
+    assert body.count('class="section-map"') == 2
     assert (
-        '<h3>The Mall</h3><figure class="section-map" data-section="0">'
+        '<h3>First</h3><figure class="section-map" data-section="0">'
         "<figcaption>Mile 0.5 to 1.0 (km 0.8 to 1.6)</figcaption></figure><p>Wide paths.</p>"
     ) in body
-    data = re.search(r'id="post-data"[^>]*>(.*?)</script>', body).group(1)
-    sections = json.loads(data)["sections"]
-    assert [s["heading"] for s in sections] == ["The Mall"] and len(sections[0]["line"]) > 2
+    # A stretch past the finish is said, as it is drawn, to end there.
+    assert (
+        '<h3>Last</h3><figure class="section-map" data-section="1">'
+        "<figcaption>Mile 1.5 to 2.0 (km 2.4 to 3.2)</figcaption></figure>"
+    ) in body
+    assert "<h3>No map</h3><p>" in body and "<h3>Off the end</h3><p>" in body
+    data = json.loads(re.search(r'id="post-data"[^>]*>(.*?)</script>', body).group(1))
+    lines = data["sections"]
+    assert len(lines) == 2
+    assert lines[0][0] == pytest.approx(route_posts.section_line(LINE, 3218.7, 0.5, 1.0)[0])
+    assert lines[1][-1] == pytest.approx(LINE[-1][:2])
     with pytest.raises(ValidationError):
         RoutePostSection(post=post, heading="Half", start_mi=Decimal("1")).full_clean()
     with pytest.raises(ValidationError):
@@ -436,6 +451,15 @@ def test_an_instance_admin_writes_a_post_from_their_saved_route_in_the_admin() -
     post.refresh_from_db()
     assert post.title == "Mall loop, fixed" and post.route_id == kept_route
     assert post.saved_route_id == saved.pk
+    # A section's stretch must start on the route, or it would get no map.
+    past = {
+        **edit,
+        "sections-TOTAL_FORMS": "1",
+        "sections-0-start_mi": "5",
+        "sections-0-end_mi": "6",
+    }
+    refused = second.post(f"/{settings.ADMIN_PATH}core/routepost/{post.pk}/change/", past)
+    assert refused.status_code == 200 and b"The route is 2.0 mi long." in refused.content
 
 
 @db

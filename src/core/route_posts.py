@@ -490,15 +490,18 @@ def section_line(line, distance_m, start_mi, end_mi) -> list[list[float]]:
     return out if len(out) >= 2 else []
 
 
-def stretch_words(section) -> str:
-    """Where a section's stretch is: "Mile 33.4 to 33.8 (km 53.8 to 54.4)"."""
+def stretch_words(section, distance_m=None) -> str:
+    """Where a section's stretch is, as the map shows it (its end held to the route's finish):
+    "Mile 33.4 to 33.8 (km 53.8 to 54.4)"."""
     start, end = float(section.start_mi), float(section.end_mi)
+    if distance_m:
+        end = min(end, distance_m / share_preview.METRES_PER_MILE)
     km = share_preview.METRES_PER_MILE / 1000
     return f"Mile {start:.1f} to {end:.1f} (km {start * km:.1f} to {end * km:.1f})"
 
 
-def _stretches(post) -> list[tuple[object, list[list[float]]]]:
-    """Each section with the line of its stretch (empty without one)."""
+def stretches(post) -> list[tuple[object, list[list[float]]]]:
+    """Each section with the line of its stretch (empty without one), read once per page."""
     distance = (post.stats or {}).get("distance_m")
     return [
         (s, section_line(post.route.line or [], distance, s.start_mi, s.end_mi))
@@ -506,7 +509,7 @@ def _stretches(post) -> list[tuple[object, list[list[float]]]]:
     ]
 
 
-def page_data(request, post) -> dict:
+def page_data(request, post, sections=None) -> dict:
     """What the page's script reads: the exact line, the frozen answer and the plan's points."""
     route = post.route
     data = {
@@ -515,9 +518,8 @@ def page_data(request, post) -> dict:
         "line": route.line,
         "answer": route.answer,
         "points": share_preview.route_points(route),
-        "sections": [
-            {"heading": s.heading, "line": stretch} for s, stretch in _stretches(post) if stretch
-        ],
+        # The line of each stretch, in the order of the page's minimaps (post_html).
+        "sections": [stretch for _, stretch in sections or [] if stretch],
         "admin": is_admin(request),
     }
     if data["admin"]:
@@ -574,7 +576,7 @@ def post_html(request, post) -> str:
     def highlight(s, stretch) -> str:
         minimap = (
             f'<figure class="section-map" data-section="{next(numbers)}">'
-            f"<figcaption>{escape(stretch_words(s))}</figcaption></figure>"
+            f"<figcaption>{escape(stretch_words(s, distance))}</figcaption></figure>"
             if stretch
             else ""
         )
@@ -583,7 +585,9 @@ def post_html(request, post) -> str:
             f"{_paragraphs(s.body)}</section>"
         )
 
-    sections = "".join(highlight(s, stretch) for s, stretch in _stretches(post))
+    distance = (post.stats or {}).get("distance_m")
+    stretched = stretches(post)
+    sections = "".join(highlight(s, stretch) for s, stretch in stretched)
     planned = (post.stats or {}).get("planned_on")
     byline = [f"By {post.byline}" if post.byline else ""]
     if post.published_at:
@@ -623,7 +627,7 @@ def post_html(request, post) -> str:
             else ""
         )
         + f'<p class="byline">{escape(" · ".join(b for b in byline if b))}</p>'
-        f"{admin}</article>" + json_script(page_data(request, post), "post-data")
+        f"{admin}</article>" + json_script(page_data(request, post, stretched), "post-data")
     )
     return _frame(f"{post.title} · {BRAND}", body, head=_tags(request, post), script=True)
 

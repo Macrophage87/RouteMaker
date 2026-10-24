@@ -9,7 +9,8 @@
  * - Send to Garmin and Send to Wahoo, as the app's own (GpxPanel.tsx): to the rider's connected account when there is
  *   one, else the FIT course handed to the phone or saved;
  * - a small map under each highlighted section that names its stretch (From mile, To mile in the admin): the whole
- *   route faint, the stretch drawn over it and filling the map, made only as the reader scrolls to it;
+ *   route faint, the stretch drawn over it and filling the map, made as the reader scrolls near it and let go once
+ *   far past, so a long post never holds more than a few maps;
  * - for an instance admin, "Use this map as the link picture": the post's map drawn at 1200 by 630 with its credits,
  *   sent to the server as the link preview's picture.
  */
@@ -37,6 +38,7 @@ import { stressBarKey, stressBarLabel } from "../lib/quickFigures.ts";
 import { ROUTE_BLUE } from "../lib/routeColours.ts";
 import { handCourseToWahoo, sendCourseToGarmin, sendCourseToWahoo } from "../GpxPanel.tsx";
 import { readWahoo } from "../lib/wahooLink.ts";
+import { MINIMAP_LABEL, showMinimaps } from "./minimaps.ts";
 
 /** What the server puts in the page (route_posts.page_data). */
 export interface PostData {
@@ -48,7 +50,7 @@ export interface PostData {
   admin: boolean;
   csrf?: string;
   /** The line of each highlighted section's stretch, in page order (route_posts.section_line). */
-  sections?: { heading: string; line: number[][] }[];
+  sections?: number[][][];
 }
 
 export const SENDING_SAID = "Sending…";
@@ -168,24 +170,31 @@ function scrubber(map: MapLibreMap | null) {
 const WHOLE_ROUTE_COLOUR = "#64748b";
 
 /** One section's small map: the whole route faint, the stretch over it, fitted to the stretch. Still, so the page
- * scrolls past it; the main map above is the one to explore. */
-function showMinimap(host: HTMLElement, data: PostData, stretch: number[][]): void {
+ * scrolls past it; the main map above is the one to explore. Returns what lets it go. */
+function showMinimap(host: HTMLElement, data: PostData, stretch: number[][]): () => void {
   const box = document.createElement("div");
   box.className = "minimap";
   host.prepend(box);
-  const map = new maplibregl.Map({
-    container: box,
-    style: mapStyle(),
-    bounds: extent(stretch),
-    fitBoundsOptions: { padding: 24, maxZoom: 16 },
-    interactive: false,
-    attributionControl: false,
-    transformRequest: mapGlyphRequest,
-  });
+  let map: MapLibreMap;
+  try {
+    map = new maplibregl.Map({
+      container: box,
+      style: mapStyle(),
+      bounds: extent(stretch),
+      fitBoundsOptions: { padding: 24, maxZoom: 16 },
+      interactive: false,
+      attributionControl: false,
+      transformRequest: mapGlyphRequest,
+    });
+  } catch (error) {
+    // No WebGL: no empty box, the caption on its own.
+    box.remove();
+    throw error;
+  }
   map.addControl(new maplibregl.AttributionControl({ compact: false, customAttribution: MAP_CREDITS[0] }), "bottom-right");
-  const caption = host.querySelector("figcaption")?.textContent ?? "";
+  // The figure's caption says where the stretch is; the label only says what the picture is.
   map.getCanvas().setAttribute("role", "img");
-  map.getCanvas().setAttribute("aria-label", `Map of this stretch of the route${caption ? `, ${caption}` : ""}`);
+  map.getCanvas().setAttribute("aria-label", MINIMAP_LABEL);
   const lineOf = (line: number[][]) => ({ type: "Feature" as const, properties: {}, geometry: { type: "LineString" as const, coordinates: line.map((p) => [p[0], p[1]]) } });
   map.on("load", () => {
     map.addSource("post-whole", { type: "geojson", data: lineOf(data.line) });
@@ -197,34 +206,10 @@ function showMinimap(host: HTMLElement, data: PostData, stretch: number[][]): vo
     map.addSource("post-stretch-ends", { type: "geojson", data: ends });
     map.addLayer({ id: "post-stretch-ends", type: "circle", source: "post-stretch-ends", paint: { "circle-radius": 6, "circle-color": ["match", ["get", "kind"], "start", START_COLOUR, FINISH_COLOUR], "circle-stroke-color": "#ffffff", "circle-stroke-width": 2 } });
   });
-}
-
-/** Each section's small map, made when it nears the screen: a phone keeps only so many maps at once. */
-export function showMinimaps(doc: Document, data: PostData, make = showMinimap): void {
-  const stretches = data.sections ?? [];
-  const hosts = [...doc.querySelectorAll<HTMLElement>(".section-map[data-section]")].filter((host) => (stretches[Number(host.dataset.section)]?.line.length ?? 0) >= 2);
-  const draw = (host: HTMLElement) => {
-    try {
-      make(host, data, stretches[Number(host.dataset.section)].line);
-    } catch {
-      // No WebGL: the caption stays on its own.
-    }
+  return () => {
+    map.remove();
+    box.remove();
   };
-  if (typeof IntersectionObserver === "undefined") {
-    hosts.forEach(draw);
-    return;
-  }
-  const watch = new IntersectionObserver(
-    (seen) => {
-      for (const entry of seen) {
-        if (!entry.isIntersecting) continue;
-        watch.unobserve(entry.target);
-        draw(entry.target as HTMLElement);
-      }
-    },
-    { rootMargin: "400px 0px" },
-  );
-  hosts.forEach((host) => watch.observe(host));
 }
 
 /** The stress bar (as RoutePanel.tsx's StressFigure) and Plan's elevation and stress chart. */
@@ -380,7 +365,7 @@ export function start(doc: Document = document): void {
   }
   const charts = doc.getElementById("post-charts");
   if (charts && data.answer) showCharts(charts, data, map);
-  showMinimaps(doc, data);
+  showMinimaps(doc, data.sections ?? [], (host, line) => showMinimap(host, data, line));
   wireSends(data, doc.getElementById("send-said"));
   wirePicture(data);
 }
