@@ -1161,15 +1161,16 @@ button.secondary {
   background: #b91c1c;
 }
 
-/* A via is a waypoint on the way, not an end: smaller, white with the
-   route's blue ring, so start and end stand out and the line shows through. */
+/* A stop ("pin-via" is its older name) is a numbered stop on the way, not an end: smaller than the ends, filled
+   with the route's blue and a white number, so it stands well apart from a via point's small hollow ring (Stephen
+   2026-10-24: "a greater distinction between stops and via points"). */
 .pin-via {
-  background: #ffffff;
-  color: #1d4ed8;
-  border: 3px solid #1d4ed8;
-  width: 18px;
-  height: 18px;
-  font-size: 10px;
+  background: #1d4ed8;
+  color: #ffffff;
+  border: 2px solid #ffffff;
+  width: 24px;
+  height: 24px;
+  font-size: 13px;
 }
 
 /* A Mass Ride point on federal land (item 239): a square "!" badge at the marker's corner, a shape
@@ -8447,4 +8448,49 @@ details.fold > summary .icon {
   height: 10px;
   border-radius: 3px;
   border: 2px solid transparent;
+}
+
+/* A stop's name (StopNameDialog, 2026-10-24): the label over a full-width box. */
+.stop-name-dialog label {
+  display: block;
+  margin-bottom: 4px;
+}
+.stop-name-dialog input {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  font-size: 1rem;
+  padding: 8px;
+}
+
+/* The ride's stops ahead (2026-10-24: "Stops should appear on the map when riding"): the stop's pin, its name beside
+   it at the ride's street-name size (20 px), in the app's font, haloed to read over any map. Not pressable. */
+.ride-stop {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+}
+.ride-stop .pin {
+  cursor: default;
+  flex: none;
+}
+.ride-stop-name {
+  font: 700 20px/1.2 var(--font);
+  color: #0f172a;
+  text-shadow: 0 0 3px #ffffff, 0 0 3px #ffffff, 0 0 3px #ffffff;
+  white-space: nowrap;
+}
+
+/* The Detour menu's next stop (2026-10-24): its name, and Skip this stop under it. */
+.ride-next-stop {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.ride-next-stop p {
+  margin: 0;
+  font-weight: 700;
 }

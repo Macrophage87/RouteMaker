@@ -211,6 +211,8 @@ export interface Cue {
   tier: number | null;
   /** A stop's number (from 1); null on any other cue. */
   stop: number | null;
+  /** A stop's own name (2026-10-24: the rider's, or a file's), said and shown with its number; absent with none. */
+  stopName?: string;
   /** A jog's first turn: the turn just after it (within JOG_M), said with it. */
   then?: { movement: TurnMovement; street: string | null; exit?: CircleExit };
   /**
@@ -466,7 +468,12 @@ function cueKindOf(entry: DescriptionEntry, before: DescriptionEntry | null, las
 }
 
 /** The ride's model: the line, its measure and its cues, from the route as the API answered it. */
-export function rideModel(route: RouteResponse, vias: readonly number[] = []): RideModel {
+/** A stop cue's words: "Stop 2." or, named, "Stop 2, Union Market." */
+export function stopText(number: number, name: string | undefined): string {
+  return name ? `Stop ${number}, ${name}.` : `Stop ${number}.`;
+}
+
+export function rideModel(route: RouteResponse, vias: readonly number[] = [], names: ReadonlyMap<number, string> = new Map()): RideModel {
   const coordinates = route.geometry.coordinates;
   const along = lineAlong(coordinates);
   const lengthM = along.length ? along[along.length - 1] : 0;
@@ -494,7 +501,8 @@ export function rideModel(route: RouteResponse, vias: readonly number[] = []): R
       // Stops are numbered among themselves: the via points before this one are left out of its number.
       const point = entry.via;
       const number = point - vias.filter((v) => v < point).length;
-      cues.push({ index: cues.length, kind, atM: fromM, text: `Stop ${number}.`, movement: null, street: entry.turn?.onto ?? entry.street ?? null, severity: entry.severity ?? entry.turn?.severity ?? null, tier: entry.tier, stop: number, point, source: entry.kind });
+      const stopName = names.get(point);
+      cues.push({ index: cues.length, kind, atM: fromM, text: stopText(number, stopName), movement: null, street: entry.turn?.onto ?? entry.street ?? null, severity: entry.severity ?? entry.turn?.severity ?? null, tier: entry.tier, stop: number, point, source: entry.kind, ...(stopName ? { stopName } : {}) });
     } else if (kind !== null) {
       cues.push({
         index: cues.length,
@@ -502,7 +510,7 @@ export function rideModel(route: RouteResponse, vias: readonly number[] = []): R
         atM: fromM,
         text:
           kind === "stop"
-            ? `Stop ${entry.via ?? cues.filter((c) => c.kind === "stop").length + 1}.`
+            ? stopText(entry.via ?? cues.filter((c) => c.kind === "stop").length + 1, entry.via != null ? names.get(entry.via) : undefined)
             : kind === "turn" && entry.turn?.cross
               ? crossWords(entry.turn.cross)
               : kind === "turn"
@@ -521,6 +529,7 @@ export function rideModel(route: RouteResponse, vias: readonly number[] = []): R
         severity: entry.severity ?? entry.turn?.severity ?? null,
         tier: entry.tier,
         stop: kind === "stop" ? (entry.via ?? cues.filter((c) => c.kind === "stop").length + 1) : null,
+        ...(kind === "stop" && entry.via != null && names.get(entry.via) ? { stopName: names.get(entry.via) } : {}),
         source: entry.kind,
       });
     }
@@ -756,7 +765,7 @@ export function cueSpoken(cue: Cue, phase: Phase, distanceM: number, first = pha
     const side = cue.text.match(/Destination on your (?:left|right)\.$/)?.[0];
     return side ? `You have arrived at the end of the route. ${side}` : "You have arrived at the end of the route.";
   }
-  if (cue.kind === "stop") return `You have reached stop ${cue.stop}.`;
+  if (cue.kind === "stop") return cue.stopName ? `You have reached stop ${cue.stop}, ${cue.stopName}.` : `You have reached stop ${cue.stop}.`;
   if (phase === "now" && cue.movement) {
     // A jog's "now" is short, the second turn being only seconds on: "Right now, then bear left onto ...".
     const lead = cue.cross ? `Cross ${wayWords(cue.cross)}` : cue.exit ? "Exit" : MOVEMENT_WORDS[cue.movement];
@@ -1184,22 +1193,31 @@ function capital(text: string): string {
  * a loop). `points` are the plan's (the route's own stops in order); the stops' places on the line come
  * from the model's stop cues.
  */
-export function replanPoints(model: RideModel, progressM: number, here: LonLat, points: readonly LonLat[], loop: boolean): LonLat[] {
-  return [here, ...replanKept(model, progressM, points, loop).map((i) => points[i])];
+export function replanPoints(model: RideModel, progressM: number, here: LonLat, points: readonly LonLat[], loop: boolean, guides = false): LonLat[] {
+  return [here, ...replanKept(model, progressM, points, loop, guides).map((i) => points[i])];
 }
 
 /**
- * Which of the plan's points a re-plan keeps, by their index in `points`: the stops not yet passed, then
- * the end (a loop's is its start, index 0). `replanPoints` sends these after the rider's position.
+ * A re-route's via points are guides, its stops mandatory (Stephen 2026-10-24: "If a reroute needs to be done assume
+ * via points are guides and stops are mandatory"): a via point less than this far ahead on the planned line (half a
+ * mile) is dropped, so the rider is never sent back to touch it; one further on still shapes the rest of the ride.
  */
-export function replanKept(model: RideModel, progressM: number, points: readonly LonLat[], loop: boolean): number[] {
+export const VIA_GUIDE_SKIP_M = 800;
+
+/**
+ * Which of the plan's points a re-plan keeps, by their index in `points`: the stops not yet passed, the via points
+ * not yet passed (with `guides`, a re-route's, only those VIA_GUIDE_SKIP_M on or more), then the end (a loop's is
+ * its start, index 0). `replanPoints` sends these after the rider's position.
+ */
+export function replanKept(model: RideModel, progressM: number, points: readonly LonLat[], loop: boolean, guides = false): number[] {
   const last = loop ? points.length : points.length - 1;
   const left: number[] = [];
   for (let i = 1; i < last; i += 1) {
-    // A via point passed is dropped as a stop passed is (v0.7.0); the line's own place for it.
+    // A via point passed is dropped as a stop passed is (v0.7.0); the line's own place for it. A re-route (`guides`)
+    // also drops one close ahead (VIA_GUIDE_SKIP_M): via points are guides; stops are never dropped.
     const pass = model.passes?.find((p) => p.point === i);
     if (pass) {
-      if (pass.atM > progressM + ARRIVE_M) left.push(i);
+      if (pass.atM > progressM + (guides ? VIA_GUIDE_SKIP_M : ARRIVE_M)) left.push(i);
       continue;
     }
     const cue = model.cues.find((c) => c.kind === "stop" && (c.point ?? c.stop) === i);
@@ -1208,6 +1226,21 @@ export function replanKept(model: RideModel, progressM: number, points: readonly
   }
   left.push(loop ? 0 : points.length - 1);
   return left;
+}
+
+/**
+ * The stops still ahead, for the ride's map (2026-10-24: "Stops should appear on the map when riding"): each stop
+ * cue not yet reached, with its place in `points` and its number. Via points are no cues, so none is drawn.
+ */
+export function stopsAhead(model: RideModel, progressM: number, points: readonly LonLat[]): Array<{ point: LonLat; index: number; number: number }> {
+  const out: Array<{ point: LonLat; index: number; number: number }> = [];
+  for (const cue of model.cues) {
+    if (cue.kind !== "stop" || cue.atM <= progressM + ARRIVE_M || cue.stop === null) continue;
+    const index = cue.point ?? cue.stop;
+    const point = points[index];
+    if (point) out.push({ point, index, number: cue.stop });
+  }
+  return out;
 }
 
 /** End ride this far along the line or more is part way: the plan left behind starts where the rider is. */

@@ -90,7 +90,7 @@ import { attachClimbInteraction } from "./climbInteraction.ts";
 import { climbCardAfterClose } from "./lib/climbCard.ts";
 import type { When } from "./lib/dials.ts";
 import { END_GLYPH, START_GLYPH } from "./lib/pointText.ts";
-import { VIA_MARKS, kindSwitchLabel, markerLabels } from "./lib/pointKinds.ts";
+import { VIA_MARKS, kindSwitchLabel, markerLabels, renameLabel, rideStopLabel, type RideStopMark } from "./lib/pointKinds.ts";
 import { LongPress, isInfoKey, liftOpenedInfo, repeatsInfoAsk, type InfoRequest } from "./lib/roadInfo.ts";
 import { fetchMe } from "./lib/stressEditor.ts";
 import { JUNCTION_SUGGEST_TEXT } from "./lib/junctionSuggest.ts";
@@ -248,6 +248,12 @@ interface Props {
   onRemovePoint: (index: number) => void;
   /** The point menu's "Make this a stop / a via point" (v0.7.0, lib/pointKinds.ts), for the point at `index`. */
   onSwitchKind?: (index: number) => void;
+  /** A Ctrl+click (Cmd+click on a Mac) on the map: a stop there, its name asked first (2026-10-24). Absent: a click. */
+  onStopAt?: (point: LonLat) => void;
+  /** A stop's point menu's "Name this stop" or "Rename stop" (2026-10-24), for the point at `index`. */
+  onRenameStop?: (index: number) => void;
+  /** The ride's stops still ahead, drawn while riding with their numbers and names (2026-10-24); null draws none. */
+  rideStops?: readonly RideStopMark[] | null;
   /** Changes when the markers must be put back on the points as they are. */
   markerReset: number;
   /** The accuracy circle of the rider's location while its point is in the plan (OWNER-DECISIONS 395), or null. */
@@ -1170,6 +1176,15 @@ export function MapView(props: Props) {
           return;
         }
       }
+      // A Ctrl+click (Cmd+click on a Mac) off the line and the cards: a stop, its name asked first (Stephen
+      // 2026-10-24: "Control clicking ... should create a stop"; a plain click makes a via point). A Mac's
+      // Ctrl+click is its right-click, the road panel, whose Add as stop asks the same.
+      const modified = (event.originalEvent as MouseEvent).ctrlKey || (event.originalEvent as MouseEvent).metaKey;
+      const stopAt = callbacks.current.onStopAt;
+      if (modified && stopAt && onCanvas && !under.station && !forCard && !anyPopupOpen() && performance.now() >= clickSuppressedUntil) {
+        stopAt(point);
+        return;
+      }
       runClick(under, { popupOpen: anyPopupOpen() || forCard, afterDrag: performance.now() < clickSuppressedUntil, lineTapIsPoint: goPress }, {
         closePopups: () => {
           closePopup(false);
@@ -1708,6 +1723,19 @@ export function MapView(props: Props) {
           });
           items.push(switcher);
         }
+        // A stop's name (2026-10-24): given or changed here; a via point has none.
+        if (kind === "via" && callbacks.current.onRenameStop) {
+          const renamer = document.createElement("button");
+          renamer.type = "button";
+          renamer.className = "via-remove point-kind";
+          renamer.textContent = renameLabel(VIA_MARKS.nameOf(point) !== undefined);
+          renamer.addEventListener("click", (clicked) => {
+            clicked.stopPropagation();
+            closePopup(true);
+            callbacks.current.onRenameStop?.(index);
+          });
+          items.push(renamer);
+        }
         // A real menu (a screen reader hears "menu, 2 items"): the arrows move between its items.
         const menu = document.createElement("div");
         menu.className = "point-menu";
@@ -1782,6 +1810,39 @@ export function MapView(props: Props) {
       return marker;
     });
   }, markerDeps(props.points, props.markerReset, props.loopVias, props.pointWarnings));
+
+  // The ride's stops still ahead (2026-10-24): each stop's numbered pin and its name, anchored at the pin; via points
+  // only shape the route, so they are not drawn. Said by name to a screen reader as an image.
+  const rideStopMarkers = useRef<Marker[]>([]);
+  const rideStopsKey = (props.rideStops ?? []).map((s) => `${s.point.join(",")}|${s.number}|${s.name ?? ""}`).join(";");
+  useEffect(() => {
+    const map = mapRef.current;
+    rideStopMarkers.current.forEach((m) => m.remove());
+    rideStopMarkers.current = [];
+    if (!map || !props.rideStops) return;
+    rideStopMarkers.current = props.rideStops.map((stop) => {
+      const { text, said } = rideStopLabel(stop);
+      const element = document.createElement("div");
+      element.className = "ride-stop";
+      element.setAttribute("role", "img");
+      element.setAttribute("aria-label", `${said}.`);
+      const pin = document.createElement("span");
+      pin.className = "pin pin-via";
+      pin.textContent = text;
+      pin.setAttribute("aria-hidden", "true");
+      element.append(pin);
+      if (stop.name) {
+        const label = document.createElement("span");
+        label.className = "ride-stop-name";
+        label.textContent = stop.name;
+        label.setAttribute("aria-hidden", "true");
+        element.append(label);
+      }
+      // Anchored at the pin's centre: the name hangs to its right.
+      return new maplibregl.Marker({ element, anchor: "left", offset: [-12, 0] }).setLngLat(stop.point).addTo(map);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rideStopsKey]);
 
   // The route line.
   useEffect(() => {
