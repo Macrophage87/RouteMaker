@@ -224,6 +224,26 @@ def test_a_service_down_is_said_not_failed() -> None:
     assert out == {"alerts": [], "rain": None, "unchecked": ["alerts", "rain"]}
 
 
+def test_a_service_down_is_not_asked_again_for_a_minute() -> None:
+    clock = [NOW]
+    fake = Fake(fail=("alerts", "rain"))
+    w = weather.Weather(fetch=fake, clock=lambda: clock[0])
+    w.check([(-77.0, 38.9, 0)])
+    asked = len(fake.asked)
+    # Inside the minute: neither service is asked, and both are said unchecked.
+    clock[0] += weather.DOWN_S - 1
+    out = w.check([(-77.0, 38.9, 0), (-76.6, 39.3, 600)])
+    assert len(fake.asked) == asked
+    assert out["unchecked"] == ["alerts", "rain"]
+    # Back up after the minute: asked again.
+    fake.fail.clear()
+    fake.rain = rain_doc([[0.0] * 8])
+    clock[0] += 1
+    out = w.check([(-77.0, 38.9, 0)])
+    assert len(fake.asked) == asked + 2
+    assert out["unchecked"] == []
+
+
 @pytest.mark.parametrize(
     "points, ok",
     [
