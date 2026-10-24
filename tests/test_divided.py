@@ -374,3 +374,51 @@ def test_a_variant_that_drops_the_way_on_keeps_the_u_turn() -> None:
         )
     ]
     assert len(run.median_restrictions(ways)) == 2
+
+
+def test_the_rebuild_writes_the_restrictions_into_every_graph(tmp_path) -> None:
+    """The rebuild's extract stage (`pipeline.run`, INJECT_TAGS) hands the median ends'
+    restrictions to `write_extract`, so each variant's extract carries them."""
+    import osmium
+    from rebuild_fixtures import write_reference_data
+    from test_tile_build_median_uturns import POINTS, WAYS
+
+    from pipeline.extract import read_ways
+    from pipeline.rebuild import Stage
+    from pipeline.run import RebuildContext, ReferenceData, build_handlers
+    from pipeline.variants import Variant
+
+    source_pbf = tmp_path / "source.osm.pbf"
+    writer = osmium.SimpleWriter(str(source_pbf))
+    try:
+        for node_id, location in sorted(POINTS.items()):
+            writer.add_node(osmium.osm.mutable.Node(id=node_id, location=location, version=1))
+        for way_id, refs, tags in sorted(WAYS):
+            writer.add_way(osmium.osm.mutable.Way(id=way_id, nodes=refs, tags=tags, version=1))
+    finally:
+        writer.close()
+    reference_dir = write_reference_data(tmp_path)
+    context = RebuildContext(
+        source_pbf=source_pbf,
+        work_dir=tmp_path / "work",
+        reference_dir=reference_dir,
+        tiles_dir=tmp_path / "tiles",
+    )
+    context.ways = read_ways(source_pbf)
+    context.ways_by_id = {w.osm_id: w for w in context.ways}
+    context.reference = ReferenceData.load(reference_dir, context.ways)
+    handlers = build_handlers(context, load_overrides=lambda: [])
+    handlers[Stage.APPLY_OVERRIDES]()
+    handlers[Stage.INJECT_TAGS]()
+
+    for variant in Variant:
+        found = [
+            (tuple((m.type, m.ref, m.role) for m in r.members), dict(r.tags))
+            for r in osmium.FileProcessor(str(context.variant_pbf(variant)), osmium.osm.RELATION)
+        ]
+        assert found == [
+            ((("w", 425007803, "from"), ("n", 2, "via"), ("w", 425007808, "to")),
+             {"type": "restriction", "restriction": "no_u_turn"}),
+            ((("w", 425007808, "from"), ("n", 9, "via"), ("w", 425007797, "to")),
+             {"type": "restriction", "restriction": "no_u_turn"}),
+        ], variant  # fmt: skip

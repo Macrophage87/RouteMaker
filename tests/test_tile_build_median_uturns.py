@@ -11,17 +11,18 @@ eastbound one: with the restrictions it must find another way than the U-turn.
 
 Like tests/test_tile_build_signals.py it needs `valhalla_build_tiles`,
 `valhalla_service` and `osmium` on PATH and skips without them
-(ROUTEMAKER_REQUIRE_TILE_BUILD=1 makes a missing binary a failure).
+(ROUTEMAKER_REQUIRE_TILE_BUILD=1 makes a missing binary a failure). It also runs as a
+script, without pytest, in the pipeline image: scripts/check_tile_build_access.sh.
 """
 
 from __future__ import annotations
 
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from xml.sax.saxutils import quoteattr
 
-import pytest
 import test_tile_build_access as tiles_test
 
 REPO = Path(__file__).resolve().parents[1]
@@ -140,5 +141,21 @@ def test_the_router_no_longer_u_turns_round_the_median(tmp_path) -> None:
     assert with_them > U_TURN_KM, f"the route is {with_them} km: it still U-turns at W"
 
 
+def main() -> int:
+    """The test without pytest (the pipeline image has none): exit 0 held, 1 failed, 2 missing."""
+    missing = tiles_test.missing_binaries()
+    if missing:
+        print(f"no {', '.join(missing)} on PATH")
+        return 2
+    with tempfile.TemporaryDirectory() as work:
+        try:
+            test_the_router_no_longer_u_turns_round_the_median(Path(work))
+        except AssertionError as error:
+            print(f"FAIL median U-turn: {error}")
+            return 1
+    print("ok   median U-turn: the bicycle route goes round, not across the median's end")
+    return 0
+
+
 if __name__ == "__main__":
-    pytest.main([__file__, "-q"])
+    sys.exit(main())

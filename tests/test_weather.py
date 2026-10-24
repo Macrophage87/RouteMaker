@@ -218,6 +218,27 @@ def test_an_alert_over_before_the_ride_or_after_it_is_left_out() -> None:
     assert weather.in_ride({"onset": "2026-10-24T14:30:00-04:00", "ends": None}, moment, 3600)
 
 
+def test_the_check_leaves_out_alerts_outside_the_ride() -> None:
+    # Leaving at 6 PM, at the second point at 8 PM, which is the ride's end.
+    fake = Fake(
+        alerts={
+            "38.90,-77.00": [
+                alert("Heat Advisory", "Moderate", "now"),
+                alert("Flash Flood Watch", ident="later", onset="2026-10-24T21:00:00-04:00"),
+            ],
+            "39.29,-76.61": [
+                alert(
+                    "Severe Thunderstorm Warning", ident="ended", ends="2026-10-24T19:00:00-04:00"
+                )
+            ],
+        },
+        rain=rain_doc([[0.0] * 8, [0.0] * 8]),
+    )
+    w = weather.Weather(fetch=fake, clock=lambda: NOW)
+    out = w.check([(-77.0, 38.9, 0), (-76.61, 39.29, 2 * 3600)])
+    assert [a["id"] for a in out["alerts"]] == ["now"]
+
+
 def test_a_service_down_is_said_not_failed() -> None:
     w = weather.Weather(fetch=Fake(fail=("alerts", "rain")), clock=lambda: NOW)
     out = w.check([(-77.0, 38.9, 0)])
