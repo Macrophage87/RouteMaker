@@ -22,8 +22,8 @@ test("no panel, or a panel off the map, leaves the plain centre", () => {
 test("Go's you dot is a marker of its own: the ride's rider prop (which stops route framing) stays the ride's only", async () => {
   const { readFileSync } = await import("node:fs");
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
-  assert.match(app, /rider=\{riding && rideView\?\.rider \? rideView\.rider : null\}/);
-  assert.match(app, /youDot=\{!riding && mode === "go" && points\.length === 0 && goStart\.kind === "here" \? goStart\.point : null\}/);
+  assert.match(app, /rider=\{riding && rideView\?\.rider \? rideView\.rider : roaming \? roamRider : null\}/);
+  assert.match(app, /youDot=\{!onBike && mode === "go" && points\.length === 0 && goStart\.kind === "here" \? goStart\.point : null\}/);
   const map = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
   // The route is framed unless riding; the you dot has no say in it.
   assert.match(map, /if \(!route \|\| stale \|\| route\.geometry\.coordinates\.length < 2 \|\| props\.rider\) return;/);

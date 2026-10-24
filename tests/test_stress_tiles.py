@@ -1083,8 +1083,8 @@ class TestProbes:
         # mountain-bike trails at z12-13 (v0.7.0); 10 draws every street from z12 (the owner,
         # 2026-10-17: "Both from 12"); 11 carries a major trail's name (`trail_name`); 12 is
         # v0.10.2's `dense`; 13 carries `popular` and keeps the popular corridors and long calm
-        # roads at z10-11, with the long trails' names.
-        assert stress_tiles.FORMAT_VERSION == 13
+        # roads at z10-11, with the long trails' names; 14 names a major corridor's ways.
+        assert stress_tiles.FORMAT_VERSION == 14
 
     def test_a_format_bump_changes_the_etag(self, client, live, monkeypatch) -> None:
         path = url(*tile_of(*CENTRE, 14))
@@ -1270,7 +1270,7 @@ class TestCarFree:
 
     def test_the_etag_names_the_column(self, client, roads) -> None:
         etag = client.get(url(*tile_of(*CENTRE, 14)))["ETag"]
-        assert "+pcfarmwovshbtl-v" in etag
+        assert "+pcfarmwoxivszhbtl-v" in etag
 
     def test_one_tile_serves_every_ride_time(self, client, roads) -> None:
         """No ride time in the address or the ETag: the pre-draw draws each
@@ -1581,12 +1581,12 @@ class TestLongTrails:
         for z in (10, 11):
             response = client.get(url(*tile_of(*CENTRE, z)))
             assert lines_in(response.content) == 1
-            assert "+cfarmwovshbtl-v" not in response["ETag"]
+            assert "+cfarmwoxivszhbtl-v" not in response["ETag"]
 
     def test_the_etag_names_the_columns(self, client, segment_schemas) -> None:
         live, _ = segment_schemas
         insert_trail(live, True, 3, None)
-        assert "+pcfarmwovshbtl-v" in client.get(url(*tile_of(*CENTRE, 10)))["ETag"]
+        assert "+pcfarmwoxivszhbtl-v" in client.get(url(*tile_of(*CENTRE, 10)))["ETag"]
 
     def test_the_overview_index_still_serves_the_long_trails_query(self, live) -> None:
         optional = frozenset({"facility", "car_free_when", *stress_tiles.LONG_TRAIL_COLUMNS})
@@ -1744,7 +1744,7 @@ class TestEveryStreetFromZ12:
     def test_the_etag_names_the_column_and_the_format_is_bumped(self, client, ride) -> None:
         insert_ride(ride, run_mi=1.0)
         etag = client.get(url(*tile_of(*CENTRE, 12)))["ETag"]
-        assert "+pkcfarmwovshbtl-v13" in etag, etag
+        assert "+pkcfarmwoxivszhbtl-v14" in etag, etag
         assert stress_tiles.ETAG_LETTERS[stress_tiles.CALM_RUN_COLUMN] == "k"
         assert len(set(stress_tiles.ETAG_LETTERS.values())) == len(stress_tiles.ETAG_LETTERS)
         assert len(etag) < 64
@@ -1809,7 +1809,7 @@ class TestRoadside:
     def test_the_etag_names_the_column(self, client, beside) -> None:
         self.put(beside, True)
         etag = client.get(url(*tile_of(*CENTRE, 14)))["ETag"]
-        assert "+pcfarmwoevshbtl-v13" in etag, etag
+        assert "+pcfarmwoxievszhbtl-v14" in etag, etag
         assert stress_tiles.ETAG_LETTERS[stress_tiles.ROADSIDE_COLUMN] == "e"
         assert len(set(stress_tiles.ETAG_LETTERS.values())) == len(stress_tiles.ETAG_LETTERS)
 
@@ -1881,7 +1881,7 @@ class TestMtbLevel:
     def test_the_etag_names_the_column(self, client, levelled) -> None:
         self.put(levelled, 3400, 2, 0)
         etag = client.get(url(*tile_of(*CENTRE, 14)))["ETag"]
-        assert "+pcfarmwdovshbtl-v13" in etag, etag
+        assert "+pcfarmwdoxivszhbtl-v14" in etag, etag
         assert stress_tiles.ETAG_LETTERS[stress_tiles.MTB_LEVEL_COLUMN] == "d"
         assert len(set(stress_tiles.ETAG_LETTERS.values())) == len(stress_tiles.ETAG_LETTERS)
         assert stress_tiles.OPTIONAL_PROPERTIES["mtb_level"] == "mtb_level"
@@ -1942,7 +1942,7 @@ class TestMtbName:
     def test_the_etag_names_the_column(self, client, named) -> None:
         self.put(named, 3602, "Fairland Loop", 0)
         etag = client.get(url(*tile_of(*CENTRE, 14)))["ETag"]
-        assert "+pcfarmwnovshbtl-v13" in etag, etag
+        assert "+pcfarmwnoxivszhbtl-v14" in etag, etag
         assert stress_tiles.ETAG_LETTERS[stress_tiles.MTB_NAME_COLUMN] == "n"
         assert len(set(stress_tiles.ETAG_LETTERS.values())) == len(stress_tiles.ETAG_LETTERS)
         assert stress_tiles.OPTIONAL_PROPERTIES["name"] == "mtb_name"
@@ -2018,6 +2018,24 @@ class TestTrailName:
             )
         assert self.names(client, 14) == [None]
 
+    @pytest.mark.parametrize(("popular", "named"), [(3, True), (2, False), (None, False)])
+    @pytest.mark.parametrize("z", [10, 11, 12, 14])
+    def test_a_major_corridor_is_named(self, client, segment_schemas, z, popular, named) -> None:
+        """The owner, 2026-10-23: "the trails should be lableled at this zoom" ... "and the
+        major corridors". A street of the top popular class carries its name at z10-11; from
+        z12 the base map names it."""
+        named = named and z < 12
+        live, _ = segment_schemas
+        insert_trail(live, False, 3, 10.0)
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"UPDATE {live}.segment SET facility = 'none', is_trail_class = false, "
+                "trail_name = 'Q Street Northwest', bike_popular = %s",
+                [popular or 0],
+            )
+        names = self.names(client, z)
+        assert names == (["Q Street Northwest"] if named else [None] if names else [])
+
     def test_a_table_without_the_long_trail_columns_names_nothing(
         self, client, segment_schemas
     ) -> None:
@@ -2073,12 +2091,12 @@ class TestMassCapacity:
         live, _ = segment_schemas
         self.insert_roads(live, [99])
         before = client.get(url(*tile_of(*CENTRE, 14)))
-        assert "+pcfarmwovshbtl-v" in before["ETag"]
+        assert "+pcfarmwoxivszhbtl-v" in before["ETag"]
         with connection.cursor() as cursor:
             cursor.execute(f"ALTER TABLE {live}.segment DROP COLUMN mass_usable_width_m")
         after = client.get(url(*tile_of(*CENTRE, 14)))
         assert self.rpms(client, 14) == [-1]
-        assert "+pcfarmovshbtl-v" in after["ETag"]
+        assert "+pcfarmoxivszhbtl-v" in after["ETag"]
 
     def test_the_etag_letter_and_the_property_come_from_the_column(self) -> None:
         # `w` for width: `r` is the rough surface's (`is_rough`), one letter a column.
@@ -2098,6 +2116,7 @@ RPM_PER_METRE_BY_FORMAT = {
     (10, 2): "29.526",
     (11, 2): "29.526",
     (13, 2): "29.526",
+    (14, 2): "29.526",
 }
 
 
@@ -2155,7 +2174,7 @@ def insert_streets(schema, count: int, *, length_m=500.0, first_way=1000) -> tup
 class TestCityGrid:
     """A z12-13 feature carries `dense` where its ways lie in a square of at least
     DENSE_ROAD_M of road; elsewhere (a rural road, a suburb's loops) it carries nothing, and
-    the map keeps the street at full width."""
+    the map draws the street at every zoom (the city ladder waits only on a dense one)."""
 
     @pytest.mark.parametrize("z", [12, 13])
     def test_a_city_grid_is_dense(self, client, segment_schemas, z) -> None:
@@ -2240,6 +2259,27 @@ class TestCityGrid:
 
 
 @db
+class TestRoadLink:
+    """A slip road (`road_link`; the owner, 2026-10-23: "the various onramps and offramps
+    aren't needed at this level") carries `link`, which the map waits on until z14."""
+
+    @pytest.mark.parametrize("z", [12, 14])
+    @pytest.mark.parametrize("link", [False, True])
+    def test_a_ramp_carries_link(self, client, segment_schemas, z, link) -> None:
+        live, _ = segment_schemas
+        lon, lat = CENTRE[0] - 0.001, CENTRE[1]
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"INSERT INTO {live}.segment (osm_way_id, ordinal, geometry, stress_tier, "
+                "stress_rule, road_link) VALUES "
+                "(9, 0, ST_MakeLine(ST_MakePoint(%s, %s), ST_MakePoint(%s, %s)), 4, 'x', %s)",
+                [lon, lat, lon + 0.002, lat, link],
+            )
+        layers = decode(client.get(url(*tile_of(*CENTRE, z))).content)
+        assert [f.properties.get("link") for f in layers["stress"].features] == [link or None]
+
+
+@db
 class TestPopularCorridors:
     """The popular bike corridors (the owner, 2026-10-21: "make those streets show more
     pronounced than other roads"; `bike_popular`): every tile carries the class as `popular`,
@@ -2318,7 +2358,7 @@ class TestPopularCorridors:
         live, _ = segment_schemas
         self.put(live, popular=1)
         etag = client.get(url(*tile_of(*CENTRE, 14)))["ETag"]
-        assert "+pcfarmwovshbtl-v13" in etag, etag
+        assert "+pcfarmwoxivszhbtl-v14" in etag, etag
         assert len(etag) < 64
 
     @pytest.mark.parametrize("calm", [False, True])

@@ -105,7 +105,7 @@ test("the words name both ends and the middle of each slider", () => {
   assert.equal(new Set(ends).size, 3);
   const hills = [hillsWords(HILLS_MIN, false), hillsWords(0, false), hillsWords(HILLS_MAX, false)];
   assert.equal(new Set(hills).size, 3);
-  assert.match(hillsWords(0, false), /fastest/i);
+  assert.equal(hillsWords(0, false), "Easy up to 8%");
 });
 
 test("Mass Ride's traffic slider is locked at the most direct roadway", () => {
@@ -164,20 +164,19 @@ test("each word's range starts where the next one ends", () => {
   assert.equal(stressWords(STRESS_MAX - 1), "Calmest: detours many times the straight line to avoid busy roads");
   // The top is the least stressful route, aiming at the target distance (OWNER-DECISIONS 256, 271).
   assert.equal(stressWords(STRESS_MAX), "Calmest: the least stressful route, aiming at your target distance");
+  // The words are the LT1 grade the slider sets: 1% at full avoid, 8% at the detent, 15% at the far end.
   for (const climbs of [true, false]) {
-    assert.equal(hillsWords(-80, climbs), "Avoids hills");
-    assert.equal(hillsWords(-79, climbs), "Gentler grades");
-    assert.equal(hillsWords(-11, climbs), "Gentler grades");
-    assert.equal(hillsWords(-10, climbs), "Fastest time");
-    assert.equal(hillsWords(10, climbs), "Fastest time");
+    assert.equal(hillsWords(HILLS_MIN, climbs), "Easy up to 1%");
+    assert.equal(hillsWords(-50, climbs), "Easy up to 5%");
+    assert.equal(hillsWords(0, climbs), "Easy up to 8%");
+    assert.equal(hillsWords(10, climbs), "Easy up to 9%");
   }
-  // Mountain Goat seeks climbs; every other ride type is fine with hills (OWNER-DECISIONS 242).
+  // Mountain Goat seeks climbs; every other ride type names its grade (OWNER-DECISIONS 242).
   assert.equal(hillsWords(11, true), "Some extra climbing");
   assert.equal(hillsWords(79, true), "Some extra climbing");
   assert.equal(hillsWords(80, true), "Seeks hills");
-  assert.equal(hillsWords(11, false), "Hills matter less");
-  assert.equal(hillsWords(79, false), "Hills matter less");
-  assert.equal(hillsWords(80, false), "Fine with hills");
+  assert.equal(hillsWords(40, false), "Easy up to 11%");
+  assert.equal(hillsWords(HILLS_MAX, false), "Easy up to 15%");
   assert.ok(seeksClimbs("mountain-goat"));
   assert.ok(!seeksClimbs("default") && !seeksClimbs("ebike") && !seeksClimbs("trailmaxxing"));
 });

@@ -154,7 +154,7 @@ def test_the_calm_search_scores_a_pass_at_30_minutes_and_ranks_it_above_red() ->
     ctx = refine.Context(
         variant="standard", request={}, costing={}, when="weekend",
         deadline=routing.Deadline(0, 1), traces={}, points=[], roadway_only=False,
-        with_facility=False, group=False, rate=0.0, weight=1.0, climb_weight=0.0,
+        with_facility=False, group=False, rate=0.0, weight=1.0,
         quiet_cost=0.44,
     )  # fmt: skip
     plain = refine.Analysis(
@@ -696,7 +696,7 @@ def plain_ctx(**changes):
         variant="standard", request={}, costing={}, when="weekend",
         deadline=routing.Deadline(routing.clock() + 60, 10), traces={}, points=[],
         roadway_only=False, with_facility=False, group=False, rate=1.0, weight=1.0,
-        climb_weight=0.0, quiet_cost=0.44,
+        quiet_cost=0.44,
     )  # fmt: skip
     for key, value in changes.items():
         setattr(ctx, key, value)
