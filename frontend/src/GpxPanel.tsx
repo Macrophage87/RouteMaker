@@ -282,6 +282,11 @@ function lineWithHeights(route: RouteResponse): ([number, number] | [number, num
  */
 let sendingWahoo = false;
 
+/** The route as a FIT course for a Wahoo, with its stops named. */
+function wahooCourse(route: RouteResponse, routedPoints: LonLat[]) {
+  return compileCourse(route, deviceProfile("wahoo"), "fit", viaIndices(routedPoints, VIA_MARKS.isVia), stopNames(routedPoints, VIA_MARKS.nameOf, VIA_MARKS.isVia, route.loop != null));
+}
+
 export async function sendCourseToWahoo(
   route: RouteResponse,
   routedPoints: LonLat[],
@@ -291,7 +296,7 @@ export async function sendCourseToWahoo(
   if (sendingWahoo) return WAHOO_SENDING;
   sendingWahoo = true;
   try {
-    const course = compileCourse(route, deviceProfile("wahoo"), "fit", viaIndices(routedPoints, VIA_MARKS.isVia), stopNames(routedPoints, VIA_MARKS.nameOf, VIA_MARKS.isVia, route.loop != null));
+    const course = wahooCourse(route, routedPoints);
     if (course.trim.protectedOver) return courseLine(course);
     const bytes = writeFit(course);
     const outcome = await sendToWahoo(origin, { name: savedRoute?.name ?? exportName(route), line: lineWithHeights(route), fit: toBase64(bytes), saved_route: savedRoute?.id ?? null });
@@ -303,6 +308,17 @@ export async function sendCourseToWahoo(
   } finally {
     sendingWahoo = false;
   }
+}
+
+/**
+ * The Wahoo FIT course handed on as a file alone: a Featured routes post's Send to Wahoo (src/post/postPage.tsx) when
+ * no Wahoo account is connected, where sendCourseToWahoo would first ask Wahoo and fail.
+ */
+export async function handCourseToWahoo(route: RouteResponse, routedPoints: LonLat[]): Promise<string> {
+  const course = wahooCourse(route, routedPoints);
+  if (course.trim.protectedOver) return courseLine(course);
+  const line = await handWahooFile(writeFit(course), courseFileName(route, "fit"), browserSendEnv((b, type, name) => saveFile(b, type, name)));
+  return courseTrimmed(course) ? `${line} ${courseLine(course)}` : line;
 }
 
 export type ExportFormat = "gpx" | FileFormat;

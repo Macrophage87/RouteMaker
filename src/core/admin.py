@@ -35,6 +35,7 @@ from django.utils import timezone
 from django.views.decorators.cache import never_cache
 from django.views.decorators.csrf import csrf_protect
 
+from . import route_posts
 from .audit import record as record_audit
 from .models import (
     AuditLogEntry,
@@ -53,6 +54,9 @@ from .models import (
     Override,
     PendingInstanceAdminRemoval,
     RoleMapping,
+    RoutePost,
+    RoutePostSection,
+    SavedRoute,
     Session,
     StressEdit,
     StressSuggestion,
@@ -1745,6 +1749,138 @@ class DriftReportAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None) -> bool:
         return False
+
+
+class RoutePostForm(forms.ModelForm):
+    """A Featured routes post (core.route_posts). The route is picked from the author's own saved
+    routes and copied at the save that picks it; the checks are route_posts.route_problem's."""
+
+    class Meta:
+        model = RoutePost
+        fields = (
+            "title",
+            "slug",
+            "status",
+            "saved_route",
+            "abstract",
+            "audience",
+            "byline",
+            "season_label",
+            "season_start",
+            "season_end",
+            "sort_weight",
+        )
+        labels = {
+            "saved_route": "Route, from your saved routes",
+            "abstract": "About this ride",
+            "audience": "Who it's for",
+        }
+        help_texts = {
+            "saved_route": "Picking a route copies it as it is now. Pick again to replace it.",
+            "season_start": 'Month and day, as "03-20". Leave both blank for all year.',
+            "season_end": 'Month and day, as "04-15". May run past New Year.',
+            "season_label": 'Shown as a badge in season, as "Cherry blossoms".',
+        }
+
+    author = None
+    picked = False
+
+    def clean(self):
+        cleaned = super().clean()
+        # Left empty on an existing post (another admin's saved route is not in this admin's
+        # list), the post keeps its route.
+        picked = self.instance.route_id is None or (
+            "saved_route" in self.changed_data and cleaned.get("saved_route") is not None
+        )
+        self.picked = picked
+        if picked:
+            problem = route_posts.route_problem(cleaned.get("saved_route"), self.author)
+            if problem:
+                self.add_error("saved_route", problem)
+        start, end = cleaned.get("season_start") or "", cleaned.get("season_end") or ""
+        for field, value in (("season_start", start), ("season_end", end)):
+            if value and route_posts.season_day(value) is None:
+                self.add_error(field, 'A month and day, as "03-20".')
+        if bool(start) != bool(end):
+            self.add_error("season_end" if start else "season_start", "Give both days, or neither.")
+        return cleaned
+
+
+class RoutePostSectionInline(admin.StackedInline):
+    """The post's highlighted sections, in order."""
+
+    model = RoutePostSection
+    extra = 1
+    fields = ("position", "heading", "body")
+
+    def _is_instance_admin(self, request) -> bool:
+        return bool(getattr(request.user, "is_instance_admin", False))
+
+    def has_view_permission(self, request, obj=None) -> bool:
+        return self._is_instance_admin(request)
+
+    def has_add_permission(self, request, obj=None) -> bool:
+        return self._is_instance_admin(request)
+
+    def has_change_permission(self, request, obj=None) -> bool:
+        return self._is_instance_admin(request)
+
+    def has_delete_permission(self, request, obj=None) -> bool:
+        return self._is_instance_admin(request)
+
+
+@admin.register(RoutePost, site=site)
+class RoutePostAdmin(InstanceAdminOnly):
+    """Featured routes (core.route_posts): instance admins only, the owner's choice of
+    2026-10-19 ("admins only for now"). "View on site" opens the post's page, where the link
+    picture is made from its map."""
+
+    form = RoutePostForm
+    inlines = (RoutePostSectionInline,)
+    list_display = ("title", "status", "season_label", "published_at", "updated_at")
+    list_filter = ("status",)
+    search_fields = ("title", "slug")
+    prepopulated_fields = {"slug": ("title",)}
+    readonly_fields = ("figures", "has_picture", "published_at", "updated_at")
+
+    def has_view_permission(self, request, obj=None) -> bool:
+        return self._is_instance_admin(request)
+
+    @admin.display(description="Figures, as published")
+    def figures(self, obj) -> str:
+        if obj is None or not obj.route_id:
+            return "None yet: pick a saved route."
+        return " · ".join(f"{name}: {value}" for name, value in route_posts.figures(obj))
+
+    @admin.display(description="Link picture")
+    def has_picture(self, obj) -> str:
+        if obj is not None and obj.thumbnail_key:
+            return "The post's map."
+        return (
+            "The route's line for now. On the post's page, press "
+            f'"{route_posts.THUMBNAIL_LABEL}".'
+        )
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "saved_route":
+            kwargs["queryset"] = SavedRoute.objects.filter(user=request.user).order_by("-id")
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+    def get_form(self, request, obj=None, change=False, **kwargs):
+        form = super().get_form(request, obj, change, **kwargs)
+        form.author = request.user
+        return form
+
+    def save_model(self, request, obj, form, change) -> None:
+        if not change:
+            obj.author = request.user
+        if form.picked:
+            route_posts.freeze(obj, form.cleaned_data["saved_route"])
+        elif change and obj.saved_route_id is None:
+            obj.saved_route_id = form.initial.get("saved_route")
+        if obj.status in (RoutePost.Status.PUBLISHED, RoutePost.Status.UNLISTED):
+            obj.published_at = obj.published_at or timezone.now()
+        super().save_model(request, obj, form, change)
 
 
 from . import admin_operations  # noqa: E402,F401  - the operations page registers on import
