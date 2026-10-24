@@ -110,6 +110,7 @@ import { FEDERAL_POINTS_NONE, type FederalStatus } from "./lib/federalLegend.ts"
 import { federalAreaAt, federalRouteLines, pointAreas, stopWarningShort } from "./lib/federalStops.ts";
 import { addCoverageMask, fetchCoverage, watchForCapacity, watchForFacilities, watchCentre, watchZoom } from "./lib/mapGlue.ts";
 import { STILL_RIDING_SAID, forgetStaleRideEntry, holdBackDuringRide } from "./lib/rideBack.ts";
+import { RIDE_PANEL_OPEN, watchIdleRecentre } from "./lib/idleRecentre.ts";
 import { afterHistoryStep } from "./lib/rideFocus.ts";
 import { isMassRide, massBandsChangeSaid, massBandsSaid } from "./lib/massCapacity.ts";
 import { movePoint, planEdits, travelSaid, type Snapshot as PlanSnapshot } from "./lib/planEdits.ts";
@@ -887,6 +888,12 @@ export function App() {
   } | null>(null);
   const [rideView, setRideView] = useState<RideView | null>(null);
   const [follow, setFollow] = useState(true);
+  // A screen left alone 30 s with no panel open goes back to the ride's own view (lib/idleRecentre.ts, the owner,
+  // 2026-10-24): `movedByHand` marks a pan, pinch or turn since, and `followReset` takes the zoom back too.
+  const followNow = useRef(follow);
+  followNow.current = follow;
+  const movedByHand = useRef(false);
+  const [followReset, setFollowReset] = useState(0);
   // Track-up by default in a ride (v0.7.0, "Go riding fixes" item 1); the ride settings' switch is the
   // option, kept on this device. Turning the map never moves the keyboard focus.
   const [headingUp, setHeadingUpState] = useState(() => readHeadingUp());
@@ -3545,6 +3552,19 @@ export function App() {
   // A back gesture during a ride does nothing; End ride is the way out (lib/rideBack.ts, review RIDE-2).
   // Each held back is told, politely, once (review RIDE-2).
   useEffect(() => (onBike ? holdBackDuringRide(window, () => announce(roaming ? STILL_ROAMING_SAID : STILL_RIDING_SAID)) : undefined), [onBike, roaming, announce]);
+  useEffect(() => {
+    if (!onBike) return undefined;
+    movedByHand.current = false;
+    return watchIdleRecentre(window, {
+      away: () => !followNow.current || movedByHand.current,
+      panelOpen: () => document.querySelector(RIDE_PANEL_OPEN) !== null,
+      recentre: () => {
+        movedByHand.current = false;
+        setFollow(true);
+        setFollowReset((n) => n + 1);
+      },
+    });
+  }, [onBike]);
   // No ride is on at load: a ride's entry left by a reload is the page's own again.
   useEffect(() => forgetStaleRideEntry(window), []);
   const undoEndRide = () => {
@@ -4696,6 +4716,8 @@ export function App() {
         screenReaderRide={onBike && ridePrefs.output === "screen-reader"}
         headingUp={headingUp}
         onFollowBroken={() => setFollow(false)}
+        onRiderMoved={() => (movedByHand.current = true)}
+        followReset={followReset}
         junctionFocus={junctionFocus}
         scrubPoint={scrubPoint}
         lettered={riding ? null : lettered}
