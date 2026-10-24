@@ -273,12 +273,17 @@ def _boxes(cursor, schema: str, sql: str, margin: float):
         x += BOX_DEG
 
 
-# A busy block on a street the map draws on both sides of it (the owner, 2026-10-23, of the
-# streets near NoMa at z13: "So much are broken up"; a street at LTS 1-2 but for one block
-# rated LTS 3, such as E Street NE, broke at that block): one way of BRIDGE_MAX_M or less whose
-# both ends meet a drawn way running on in the same direction (BRIDGE_TURN_DEG) is a link.
+# A busy run on a street the map draws on both sides of it (the owner, 2026-10-23, of the
+# streets near NoMa at z13: "So much are broken up"; a street at LTS 1-2 but for a block or two
+# rated LTS 3, such as E Street NE, broke there): a run of busy ways, BRIDGE_MAX_M or less in
+# all and running on straight (BRIDGE_TURN_DEG), that leaves a drawn way going on in the same
+# direction and comes to another, or to a drawn street it meets in a T where no road goes on
+# straight (13th Street NE into Florida Avenue), is a link. A drawn way's end up to
+# BRIDGE_JOG_M on along the run counts as met (an offset junction, E Street NE at 9th).
 BRIDGE_MAX_M = 250.0  # about 820 ft
 BRIDGE_TURN_DEG = 30.0
+BRIDGE_JOG_M = 25.0  # about 80 ft
+BRIDGE_JOG_DEG = 0.0004  # more than BRIDGE_JOG_M east-west at 40 degrees north
 # Drawn at z12-13 in a city grid, near enough (frontend `cityShown`): the network, calm or a
 # corridor of class 2 or more.
 _DRAWN_SQL = (
@@ -286,32 +291,106 @@ _DRAWN_SQL = (
     f" OR s.{BIKE_POPULAR_COLUMN} >= 2 OR s.{OVERVIEW_COLUMN} <> 0))"
 )
 
+# Each busy way that could be in a run, with what each of its ends meets: 2 a drawn way going
+# on straight, 1 a drawn way at any angle where no road goes on straight (a T), 0 neither.
+# Directions are taken away from the end: a way lying back alongside is not going on.
 _BRIDGE = """
 WITH cand AS (
-    SELECT s.id, s.geometry, degrees(ST_Azimuth(ST_StartPoint(s.geometry),
-                                                ST_EndPoint(s.geometry))) AS bearing
+    SELECT s.id, s.geometry, ST_Length(s.geometry::geography) AS m,
+           degrees(ST_Azimuth(ST_StartPoint(s.geometry), ST_EndPoint(s.geometry))) AS bearing
     FROM {schema}.segment AS s
     WHERE s.map_class = 'road' AND s.stress_tier > {calm} AND s.{overview} = 0
       AND NOT s.is_trail_class AND NOT ({drawn})
       AND ST_Length(s.geometry::geography) <= %(bridge_max)s
+      AND NOT ST_DWithin(ST_StartPoint(s.geometry), ST_EndPoint(s.geometry), %(touch)s)
 ), ends AS (
-    SELECT c.id, e.n, bool_or(abs(mod((degrees(ST_Azimuth(ST_StartPoint(s.geometry),
-                                                         ST_EndPoint(s.geometry)))
-                                      - c.bearing + 360)::numeric, 180) - 90)
-                              >= 90 - %(turn)s) AS straight
+    SELECT c.id, e.n, e.p, CASE e.n WHEN 0 THEN c.bearing + 180 ELSE c.bearing END AS outward
     FROM cand AS c
     CROSS JOIN LATERAL (VALUES (0, ST_StartPoint(c.geometry)), (1, ST_EndPoint(c.geometry)))
         AS e (n, p)
+), near AS (
+    -- Each road way's ends near a candidate's end, with its direction away from that end.
+    SELECT e.id, e.n, s.id AS other, ({drawn}) AS drawn,
+           ST_DWithin(s.geometry, e.p, %(touch)s) AS touches,
+           ST_DWithin(q.q, e.p, %(touch)s) AS at_end,
+           ST_DWithin(q.q::geography, e.p::geography, %(jog)s)
+               AND abs(mod((degrees(ST_Azimuth(e.p, q.q)) - e.outward + 540)::numeric, 360)
+                       - 180) <= %(turn)s AS ahead,
+           abs(mod((degrees(ST_Azimuth(q.q, q.r)) - e.outward + 540)::numeric, 360) - 180)
+               <= %(turn)s AS on
+    FROM ends AS e
     JOIN {schema}.segment AS s
-      ON s.id <> c.id AND s.geometry && ST_Expand(e.p, %(touch)s)
-         AND ST_DWithin(ST_Boundary(s.geometry), e.p, %(touch)s)
-         AND s.map_class = 'road' AND {drawn}
-    GROUP BY c.id, e.n
+      ON s.geometry && ST_Expand(e.p, %(jog_deg)s) AND s.map_class = 'road' AND s.id <> e.id
+    CROSS JOIN LATERAL (VALUES (ST_StartPoint(s.geometry), ST_EndPoint(s.geometry)),
+                               (ST_EndPoint(s.geometry), ST_StartPoint(s.geometry))) AS q (q, r)
+), meets AS (
+    SELECT e.id, e.n, CASE
+        WHEN bool_or(n.drawn AND n.on AND (n.at_end OR n.ahead)) THEN 2
+        WHEN bool_or(n.drawn AND n.touches) AND NOT bool_or(n.at_end AND n.on) THEN 1
+        ELSE 0 END AS meets
+    FROM ends AS e
+    LEFT JOIN near AS n ON n.id = e.id AND n.n = e.n
+    GROUP BY e.id, e.n
 )
-UPDATE {schema}.segment AS s SET {overview} = {link}
-FROM (SELECT id FROM ends GROUP BY id HAVING count(*) FILTER (WHERE straight) = 2) AS b
-WHERE s.id = b.id
+SELECT c.id, c.m, c.bearing,
+       round(ST_X(ST_StartPoint(c.geometry)) * {grid})::bigint,
+       round(ST_Y(ST_StartPoint(c.geometry)) * {grid})::bigint,
+       round(ST_X(ST_EndPoint(c.geometry)) * {grid})::bigint,
+       round(ST_Y(ST_EndPoint(c.geometry)) * {grid})::bigint,
+       m0.meets, m1.meets
+FROM cand AS c
+JOIN meets AS m0 ON m0.id = c.id AND m0.n = 0
+JOIN meets AS m1 ON m1.id = c.id AND m1.n = 1
 """
+
+
+def _turn(a: float, b: float) -> float:
+    """The turn in degrees from heading a to heading b, 0 to 180."""
+    return abs((b - a + 180) % 360 - 180)
+
+
+def _bridges(rows) -> set[int]:
+    """The busy ways in runs that join the drawn network up (`_BRIDGE`'s rows)."""
+    ways = {}
+    at = defaultdict(list)
+    for way, metres, bearing, x0, y0, x1, y1, meets0, meets1 in rows:
+        ways[way] = (metres, float(bearing), ((x0, y0), (x1, y1)), (meets0, meets1))
+        at[(x0, y0)].append(way)
+        at[(x1, y1)].append(way)
+
+    def heading(way: int, entered: int) -> float:
+        """The way's direction, ridden in from end `entered`."""
+        return ways[way][1] + (180 if entered else 0)
+
+    found: set[int] = set()
+    for first, (_, _, _, meets) in ways.items():
+        for start in (0, 1):
+            if meets[start] != 2:
+                continue
+            setting_off = heading(first, start)
+            run, total, way, entered = [first], ways[first][0], first, start
+            while True:
+                _, _, points, meets = ways[way]
+                if meets[1 - entered]:
+                    found.update(run)
+                    break
+                point, now = points[1 - entered], heading(way, entered)
+                after = []
+                for other in at[point]:
+                    if other in run or total + ways[other][0] > BRIDGE_MAX_M:
+                        continue
+                    into = 0 if ways[other][2][0] == point else 1
+                    turn = _turn(now, heading(other, into))
+                    if turn <= BRIDGE_TURN_DEG and (
+                        _turn(setting_off, heading(other, into)) <= BRIDGE_TURN_DEG
+                    ):
+                        after.append((turn, other, into))
+                if not after:
+                    break
+                _, way, entered = min(after)
+                run.append(way)
+                total += ways[way][0]
+    return found
 
 
 def mark(schema: str) -> dict[str, int]:
@@ -339,12 +418,23 @@ def mark(schema: str) -> dict[str, int]:
                 schema=schema,
                 calm=CALM_ROAD_MAX_TIER,
                 overview=OVERVIEW_COLUMN,
-                link=OVERVIEW_LINK,
                 drawn=_DRAWN_SQL,
+                grid=_GRID,
             ),
-            {"bridge_max": BRIDGE_MAX_M, "turn": BRIDGE_TURN_DEG, "touch": TOUCH_DEG},
+            {
+                "bridge_max": BRIDGE_MAX_M,
+                "turn": BRIDGE_TURN_DEG,
+                "touch": TOUCH_DEG,
+                "jog": BRIDGE_JOG_M,
+                "jog_deg": BRIDGE_JOG_DEG,
+            },
         )
-        bridges = cursor.rowcount
+        bridges = _bridges(cursor.fetchall())
+        cursor.execute(
+            f"UPDATE {schema}.segment SET {OVERVIEW_COLUMN} = %s "
+            f"WHERE id = ANY(%s::bigint[]) AND {OVERVIEW_COLUMN} = 0",
+            [OVERVIEW_LINK, sorted(bridges)],
+        )
         for graph in _graphs(cursor, schema, sql):
             found = _box(graph)
             links |= found[0]
@@ -363,7 +453,7 @@ def mark(schema: str) -> dict[str, int]:
                 [value, sorted(ids), over],
             )
     return {
-        "busy blocks bridged": bridges,
+        "busy blocks bridged": len(bridges),
         "links": len(links),
         "orphans": len(orphans),
         "spurs": len(spurs),
