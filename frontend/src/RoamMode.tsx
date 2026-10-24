@@ -497,11 +497,18 @@ export function RoamMode({
                 <div className="nearest-list">
                   <h4 id={`${detourId}-found`}>{found.kind === "food" ? "Nearest places to eat" : `Nearest ${NEAREST_KINDS.find((k) => k.kind === found.kind)?.noun ?? ""}`}</h4>
                   <ol role="list" aria-labelledby={`${detourId}-found`}>
-                    {found.items.map((item) => (
+                    {found.items.map((item, i) => (
                       <li key={item.place.id}>
-                        <span>{nearbyShort(item)}</span>
+                        {/* The row's words describe its Ride here, so three waters are told apart by how far each is. */}
+                        <span id={`${detourId}-place-${i}`}>{nearbyShort(item)}</span>
                         <span className="actions">
-                          <button type="button" className="secondary" aria-label={`Ride here: ${item.place.title}`} onClick={() => void rideThere(item)}>
+                          <button
+                            type="button"
+                            className="secondary"
+                            aria-label={`Ride here: ${item.place.title}`}
+                            aria-describedby={`${detourId}-place-${i}`}
+                            onClick={() => void rideThere(item)}
+                          >
                             Ride here
                           </button>
                         </span>
