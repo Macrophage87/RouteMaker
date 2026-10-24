@@ -129,7 +129,7 @@ You stay responsible for riding safely; the route can be wrong.
   early and again close to it), Stoker (each turn once ahead and as it happens, busy crossings and
   stops: for the rider behind on a tandem) or Quiet (only arrival). Until you change them,
   RouteMaker's voice says every turn. Both choices stay on this device; change them in
-  "Ride settings" during a ride, or in Settings.
+  the ride's More panel (the last side button) during a ride, or in Settings.
 - "Where am I?" (it also re-centres the map on you) says the street you are on, the next turn and the distance to the next stop
   and the end. On a long trail away from roads it says the trail and a distance from its last
   junction, for example "On the Capital Crescent Trail, about 1.2 miles northwest of ...".

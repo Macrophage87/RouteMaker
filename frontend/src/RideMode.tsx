@@ -2225,7 +2225,7 @@ export function RideMode({
                 type="button"
                 ref={detourButton}
                 className="ride-round"
-                aria-label={detourButtonName(DETOUR_SUMMARY, nextStop)}
+                aria-label={detourButtonName(DETOUR_SUMMARY, fixed ? null : nextStop)}
                 title="Detour"
                 aria-expanded={detourOpen}
                 aria-controls={detourId}
