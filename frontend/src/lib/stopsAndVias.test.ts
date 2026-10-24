@@ -168,7 +168,7 @@ test("a named stop is cued, said and drawn by its name; the stops ahead are draw
   assert.equal(nextStopLine(mark), "Next stop: Stop 1, Union Market");
   assert.equal(skippingSaid(mark), "Skipping Stop 1, Union Market. Finding a new route.");
   assert.equal(insteadName("Water fountain", mark), "Go to Water fountain instead of stop 1, Union Market");
-  assert.equal(detourButtonName("Water or restroom", mark), "Detour: water or restroom, or skip or change stop 1");
+  assert.equal(detourButtonName("Water or restroom", mark), "Detour: water or restroom, or change stop 1");
   assert.equal(detourButtonName("Water or restroom", null), "Detour: water or restroom");
   // A course names the stop on the unit.
   const course = compileCourse(route, deviceProfile("garmin-edge"), "fit", vias, new Map([[2, "Union Market"]]));

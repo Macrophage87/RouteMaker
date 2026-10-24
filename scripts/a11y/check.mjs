@@ -2885,7 +2885,7 @@ const levelSlider = `${EDITOR} input[type=range]`;
   const ax311 = await axNode(p, ".ride-311-button");
   check("ride 311 button: a round button of about 60 px at the right edge, in the lower half (thumb height), named Log for 311 with its visible 311, closed",
     !!b311 && b311.w >= 56 && b311.w <= 72 && b311.h >= 56 && b311.round && b311.right <= 24 && b311.mid >= 45 && b311.mid <= 96 && b311.text === "311" && b311.expanded === "false" && ax311?.role === "button" && ax311?.name === "Log for 311" &&
-      JSON.stringify(rail.map((x) => x.name)) === JSON.stringify(["Where am I?", "Large text", "Calmer: less traffic, plan again from here", "Flatter: fewer hills, plan again from here", "Detour: water or restroom", "Log for 311", "Settings"]) && rail.every((x) => x.round && x.w >= 44),
+      JSON.stringify(rail.map((x) => x.name).filter((n) => !/^Broadcast/.test(n))) === JSON.stringify(["Where am I?", "Large text", "Detour: water or restroom", "Log for 311", "More: change the route, and ride settings"]) && rail.every((x) => x.round && x.w >= 44),
     JSON.stringify({ b311, ax311, rail }));
   // The top row (the owner, 2026-10-19: "switch end ride and road closed"): End ride, then Road closed ahead with its
   // words (2026-10-20), one line.
@@ -3031,9 +3031,10 @@ const levelSlider = `${EDITOR} input[type=range]`;
   // The gear (the owner, 2026-10-18): it opens the panel under the top row and the focus goes into it; at 320 px
   // the top row is End ride and Road closed's icon (still named in full), on one line.
   const gear = await p.eval(`(() => { const g = document.querySelector('.ride .ride-settings-button'); const panel = document.querySelector('.ride-mode-settings'); const c = document.querySelector('.ride-top .ride-road-closed'); const e = document.querySelector('.ride-top .ride-end'); const a = c.getBoundingClientRect(); const b = e.getBoundingClientRect();
-    return { expanded: g.getAttribute('aria-expanded'), shown: !panel.hidden, focusIn: panel.contains(document.activeElement), width: innerWidth, name: c.getAttribute('aria-label'), oneLine: Math.abs(a.top - b.top) <= 2, w: Math.round(a.width), h: Math.round(a.height) }; })()`);
-  check("ride: the Settings gear opens the ride's settings with the focus in them; at 320 px Road closed is its icon, named in full, beside End ride",
-    gear.expanded === "true" && gear.shown && gear.focusIn && gear.width <= 379 && gear.name === "Road closed ahead" && gear.oneLine && gear.w >= 44 && gear.h >= 44, JSON.stringify(gear));
+    const change = [...panel.querySelectorAll('.ride-change button')].map((x) => [x.getAttribute('aria-label') ?? x.textContent, x.textContent, Math.round(x.getBoundingClientRect().height)]);
+    return { expanded: g.getAttribute('aria-expanded'), shown: !panel.hidden, focusIn: panel.contains(document.activeElement), width: innerWidth, change, name: c.getAttribute('aria-label'), oneLine: Math.abs(a.top - b.top) <= 2, w: Math.round(a.width), h: Math.round(a.height) }; })()`);
+  check("ride: More (the owner, 2026-10-24) opens Less traffic and Fewer hills (each 44 px or taller, its words within its name) above the ride's settings, with the focus in them; at 320 px Road closed is its icon, named in full, beside End ride",
+    gear.expanded === "true" && gear.shown && gear.focusIn && JSON.stringify(gear.change.map((x) => x[1])) === JSON.stringify(["Less traffic", "Fewer hills"]) && gear.change.every(([name, text, h]) => name.toLowerCase().includes(text.toLowerCase()) && h >= 44) && gear.width <= 379 && gear.name === "Road closed ahead" && gear.oneLine && gear.w >= 44 && gear.h >= 44, JSON.stringify(gear));
   await p.eval("document.querySelector('.ride .ride-settings-button').click(); true");
   await sleep(200);
   // Large text (the owner, 2026-10-20; it replaced Big text): a side button, pressed while on; the card half the screen,

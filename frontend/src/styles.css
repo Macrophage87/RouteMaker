@@ -4114,11 +4114,37 @@ details.zoom-notes {
   margin-top: 16px;
 }
 
-/* The ride's settings, opened by the side buttons' gear, just under the top row. */
+/* The ride's settings, opened by the side buttons' More, just under the top row. */
 .ride-mode-settings {
   margin: 4px 0 10px;
   padding-bottom: 8px;
   border-bottom: 1px solid var(--border);
+}
+
+/* More's own headings: the route's changes, then the settings. */
+.ride-mode-settings h3 {
+  margin: 6px 0;
+  font-size: 1rem;
+}
+
+/* Less traffic and Fewer hills (2026-10-24): large enough to press riding, the symbol beside the words. */
+.ride-change {
+  padding-bottom: 8px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+.ride-change .actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.ride-change .ride-ease {
+  min-height: 48px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
 }
 
 /* Larger than the panel's buttons, at every text size (the owner, 2026-10-20: "End ride and road closed could have larger font in general"). */
@@ -8482,7 +8508,7 @@ details.fold > summary .icon {
   white-space: nowrap;
 }
 
-/* The Detour menu's next stop (2026-10-24): its name, and Skip this stop under it. */
+/* The next stop in the ride's More panel (2026-10-24): its name, and Skip this stop beside it. */
 .ride-next-stop {
   display: flex;
   flex-wrap: wrap;

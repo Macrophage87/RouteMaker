@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { startDials, stressWords, hillsWords, type Dials } from "./dials.ts";
-import { CALMER_STEPS, EASE_AT_END, EASE_NAME, EASE_SAME, FLATTER_STEPS, easeFinding, eased, sameLine } from "./rideEase.ts";
+import { CALMER_STEPS, EASE_AT_END, EASE_NAME, EASE_SAME, EASE_SHOWN, FLATTER_STEPS, easeFinding, eased, sameLine } from "./rideEase.ts";
 
 const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
 const dials = (stress: number, hills: number): Dials => ({ ...startDials("default"), stress, hills });
@@ -79,8 +79,14 @@ test("ride: the buttons re-plan from here with the ride's own dials, kept only w
   // Not counted as riding past a U-turn; the same line is said as such.
   assert.match(ride, /stopped: \(heading === null && !turnRound\) \|\| press !== null/);
   assert.match(ride, /sameLine\(found\.geometry\.coordinates, press\.before\.geometry\.coordinates\)\) note = EASE_SAME\[press\.which\];/);
-  // Not on a route everyone shares, nor once arrived; named in full, the symbol alone shown.
-  assert.match(ride, /\{!fixed && !ride\.arrived &&\n\s*\(\["calmer", "flatter"\] as const\)\.map/);
-  assert.match(ride, /aria-label=\{EASE_NAME\[which\]\}/);
-  assert.match(ride, /<Icon name=\{which === "calmer" \? "traffic-down" : "hills-down"\} size=\{30\} \/>\n\s*<\/button>/);
+  // In More's panel (Stephen 2026-10-24), not the side buttons; not on a route everyone shares, nor once arrived;
+  // named in full, the symbol and short words shown (each within the name, so a voice user can say what they see).
+  const panel = ride.slice(ride.indexOf('className="ride-mode-settings"'), ride.indexOf("<RideSettingsFields prefs={prefs}"));
+  const rail = ride.slice(ride.indexOf('<div className="ride-rail"'), ride.indexOf("{/* The bottom panel"));
+  assert.match(panel, /\{!fixed && !ride\.arrived && \(\s*<div className="ride-change"/);
+  assert.match(panel, /\(\["calmer", "flatter"\] as const\)\.map/);
+  assert.match(panel, /onClick=\{\(\) => fromMore\(\(\) => void ease\(which\)\)\}\s+aria-label=\{EASE_NAME\[which\]\}/);
+  assert.match(panel, /<Icon name=\{which === "calmer" \? "traffic-down" : "hills-down"\} size=\{26\} \/>\s*\{EASE_SHOWN\[which\]\}/);
+  assert.doesNotMatch(rail, /ease\(which\)/);
+  for (const which of ["calmer", "flatter"] as const) assert.ok(EASE_NAME[which].toLowerCase().includes(EASE_SHOWN[which].toLowerCase()));
 });

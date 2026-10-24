@@ -14,6 +14,8 @@
  *   ride with only gentle climbs a flatter step may change nothing (the hill cost prices grades past the rider's
  *   LT1 grade only, the "Hill stress above LT1" proposal).
  * - A press is not counted as riding past a U-turn (lib/navigate.ts uturnStep): presses come close together.
+ * - Since 2026-10-24 the two are in the ride's More panel with Skip this stop and the settings (Stephen: "Let's put
+ *   options like skip a stop, lower traffic and hills in an expansion with settings"), not round side buttons.
  *
  * Plain data in, plain data out, so node --test runs all of it.
  */
@@ -34,6 +36,11 @@ export const FLATTER_STEPS: readonly number[] = [50, 0, -40, HILLS_MIN];
 export const EASE_NAME: Record<Ease, string> = {
   calmer: "Calmer: less traffic, plan again from here",
   flatter: "Flatter: fewer hills, plan again from here",
+};
+/** Their words in the ride's More panel (Stephen 2026-10-24: "lower traffic and hills"), each within its name above. */
+export const EASE_SHOWN: Record<Ease, string> = {
+  calmer: "Less traffic",
+  flatter: "Fewer hills",
 };
 /** Said when the slider is already at its last step: nothing is planned. */
 export const EASE_AT_END: Record<Ease, string> = {

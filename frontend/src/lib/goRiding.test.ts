@@ -117,7 +117,7 @@ test("F1. Start unlocks the voice synchronously in the press, before the closure
   assert.match(ride, /export const CHECKING_CLOSURES = "Checking closures…";/);
 });
 
-test("Ride settings in reach: a gear at the end of the side buttons opens them just under the top row (the owner, 2026-10-18)", () => {
+test("Ride settings in reach: More at the end of the side buttons opens them just under the top row (the owner, 2026-10-18; More 2026-10-24)", () => {
   const top = ride.slice(ride.indexOf('className={light && cornerFits ? "ride-top"'), ride.indexOf("{ride.arrived ? (\n          <>"));
   // The top row: End ride, then Road closed ahead (the owner, 2026-10-19: "switch end ride and road closed"); Settings is no longer there.
   assert.doesNotMatch(top, /RIDE_SETTINGS_TEXT/);
@@ -133,10 +133,11 @@ test("Ride settings in reach: a gear at the end of the side buttons opens them j
   assert.match(ride, /settingsPanel\.current\?\.focus\(\{ preventScroll: true \}\);/);
   assert.match(top, /if \(event\.key === "Escape"\) \{\s*event\.preventDefault\(\);\s*setSettingsOpen\(false\);\s*settingsButton\.current\?\.focus\(\);/);
   assert.match(top, /<RideSettingsFields prefs=\{prefs\} onChange=\{onPrefs\}/);
-  // The gear: the last side button, a disclosure of that panel, named Settings.
+  // More: the last side button, a disclosure of that panel, named for what it holds.
   const rail = ride.slice(ride.indexOf('<div className="ride-rail"'), ride.indexOf("{/* The bottom panel"));
-  assert.match(rail, /ref=\{settingsButton\}\s+className="ride-round ride-settings-button"\s+aria-label=\{RIDE_SETTINGS_TEXT\}\s+title=\{RIDE_SETTINGS_TEXT\}\s+aria-expanded=\{settingsOpen\}\s+aria-controls=\{`\$\{settingsId\}-settings`\}/);
-  assert.match(rail, /<Icon name="gear" size=\{24\} \/>\s*<\/button>\s*<\/div>\s*<\/div>\s*$/);
+  assert.match(rail, /ref=\{settingsButton\}\s+className="ride-round ride-settings-button"\s+aria-label=\{RIDE_MORE_NAME\}\s+title=\{RIDE_SETTINGS_TEXT\}\s+aria-expanded=\{settingsOpen\}\s+aria-controls=\{`\$\{settingsId\}-settings`\}/);
+  assert.match(rail, /<Icon name="more" size=\{24\} \/>\s*<\/button>\s*<\/div>\s*<\/div>\s*$/);
+  assert.match(ride, /export const RIDE_SETTINGS_TEXT = "More";/);
   assert.doesNotMatch(rail, /ride-round ride-road-closed/);
   // Opened, it is scrolled into view.
   assert.match(ride, /if \(!settingsOpen\) return;\s*settingsPanel\.current\?\.scrollIntoView\?\.\(\{ block: "nearest" \}\);/);
@@ -205,4 +206,35 @@ test("ride card: fewer words on screen, the whole of them for screen readers (th
   assert.match(ride, /<span className="visually-hidden">In <\/span>/, "\"In\" before the distance stays for screen readers");
   assert.equal((ride.match(/<span className="visually-hidden">about <\/span>/g) ?? []).length, 2, "\"about\" before both to-go times stays for screen readers");
   assert.match(ride, /<span aria-hidden="true">\{cueShown\.head\.replace\(\/\\\.\$\/, ""\)\}<\/span>\s*<span className="visually-hidden">\{cue\.rideText \?\? cue\.text\}<\/span>/, "the full stop goes from the shown head only; the whole sentence is read");
+});
+
+test("Broadcast from a ride (Stephen 2026-10-24: \"Let people broadcast from a ride\"): a side button, Share ride's link, the ride going on", () => {
+  const rail = ride.slice(ride.indexOf('<div className="ride-rail"'), ride.indexOf("{/* The bottom panel"));
+  // A round side button as Roam's, on while this rider leads; not once arrived.
+  assert.match(rail, /\{onBroadcast && !ride\.arrived && \(\s*<button\s+type="button"\s+className=\{`ride-round\$\{broadcasting \? " ride-round-on" : ""\}`\}\s+onClick=\{\(\) => void broadcast\(\)\}/);
+  assert.match(rail, /<Icon name="broadcast" size=\{24\} \/>/);
+  // The share sheet opens inside the press: nothing awaited before onBroadcast.
+  assert.match(ride, /broadcastBusy\.current = true;\s*try \{\s*const said = await onBroadcast\(\);/);
+  // App: Share ride's link (shareRoute(true)), the rider its leader; no new ride started.
+  const fromRide = app.slice(app.indexOf("const broadcastFromRide = async"), app.indexOf("// Ride the rest (lib/rideTrip.ts)"));
+  assert.match(fromRide, /await shareRoute\(true\)/);
+  assert.doesNotMatch(fromRide, /startRide/);
+  // Only the plan's own route, never Ride the rest's, a detour from Roam, or a ride opened from another's link.
+  assert.match(app, /onBroadcast=\{canShare && !rideStart\.roam && rideStart\.route === shown && !\(onShared && !onShared\.own\) \? broadcastFromRide : null\}/);
+  assert.match(app, /broadcasting=\{rideBroadcast\?\.leading === true\}/);
+});
+
+test("More on the ride screen (Stephen 2026-10-24): the route's changes above the settings; the side buttons lose Calmer and Flatter", () => {
+  const panel = ride.slice(ride.indexOf('className="ride-mode-settings"'), ride.indexOf("<RideSettingsFields prefs={prefs}"));
+  const rail = ride.slice(ride.indexOf('<div className="ride-rail"'), ride.indexOf("{/* The bottom panel"));
+  // Skip this stop moved from Detour into More; Instead of stop N stays with the nearest places.
+  assert.match(panel, /fromMore\(\(\) => changeStop\(nextStop\)\)/);
+  assert.doesNotMatch(rail, /\{SKIP_STOP\}/);
+  assert.match(rail, /onClick=\{\(\) => changeStop\(nextStop, item\.place\)\}/);
+  // Each press closes the panel (the map back in view) and the focus goes to More.
+  assert.match(ride, /const fromMore = \(press: \(\) => void\) => \{\s*setSettingsOpen\(false\);\s*settingsButton\.current\?\.focus\(\);\s*press\(\);/);
+  // More is a disclosure (aria-expanded), so an open panel holds the 30 s idle recentre (lib/idleRecentre.ts).
+  assert.match(rail, /aria-expanded=\{settingsOpen\}/);
+  // Side buttons: Where am I?, Large text, Broadcast, Detour, dock, 311, More; no Calmer or Flatter there.
+  assert.doesNotMatch(rail, /ride-ease/);
 });
