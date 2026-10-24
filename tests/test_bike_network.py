@@ -102,6 +102,73 @@ class TestMark:
         assert marks[4] != bn.OVERVIEW_LINK
         assert stats["busy blocks bridged"] == 1
 
+    def test_two_busy_blocks_in_a_row_are_bridged_and_three_are_too_long(
+        self, segment_schemas
+    ) -> None:
+        """8th Street NE and K Street NE broke at two busy blocks in a row."""
+        _, staging = segment_schemas
+        lane(staging, 1, (0, 0), (6, 0))
+        insert(staging, 2, (6, 0), (7, 0), tier=3)  # 87 m each
+        insert(staging, 3, (7, 0), (8, 0), tier=4)
+        lane(staging, 4, (8, 0), (14, 0))
+        lane(staging, 5, (0, 10), (6, 10))
+        for way, x in ((6, 6), (7, 7), (8, 8)):  # 261 m in all: over BRIDGE_MAX_M
+            insert(staging, way, (x, 10), (x + 1, 10), tier=3)
+        lane(staging, 9, (9, 10), (15, 10))
+        stats = bn.mark(staging)
+        marks = found(staging)
+        assert marks[2] == marks[3] == bn.OVERVIEW_LINK
+        assert {marks[way] for way in (6, 7, 8)} == {0}
+        assert stats["busy blocks bridged"] == 2
+
+    def test_a_busy_block_into_a_t_and_across_an_offset_junction_is_bridged(
+        self, segment_schemas
+    ) -> None:
+        """13th Street NE meets Florida Avenue in a T; E Street NE jogs at 9th Street."""
+        _, staging = segment_schemas
+        lane(staging, 1, (0, 0), (6, 0))
+        insert(staging, 2, (6, 0), (8, 0), tier=3)
+        lane(staging, 3, (8, -3), (8, 0))  # the cross street
+        lane(staging, 10, (8, 0), (8, 3))
+        lane(staging, 4, (-4, 10), (6, 10))  # each side long enough not to be an orphan
+        insert(staging, 5, (6, 10), (8, 10), tier=3)
+        lane(staging, 6, (8.2, 10.05), (20, 10))  # 18 m on across the junction
+        lane(staging, 7, (0, 20), (6, 20))
+        insert(staging, 8, (6, 20), (8, 20), tier=3)
+        lane(staging, 9, (8, 20.18), (14, 20.18))  # 20 m to the side: a parallel street
+        bn.mark(staging)
+        marks = found(staging)
+        assert marks[2] == marks[5] == bn.OVERVIEW_LINK
+        assert marks[8] != bn.OVERVIEW_LINK
+
+    def test_a_busy_street_carrying_on_past_a_crossing_is_not_bridged_and_no_turn_back(
+        self, segment_schemas
+    ) -> None:
+        """The first busy block where a calm street becomes an arterial, crossing a lane, stays
+        busy; a run never doubles back, and a loop is no run."""
+        _, staging = segment_schemas
+        lane(staging, 1, (0, 0), (6, 0))
+        insert(staging, 2, (6, 0), (8, 0), tier=3)
+        lane(staging, 3, (8, -3), (8, 0))  # a drawn cross street ...
+        lane(staging, 4, (8, 0), (8, 3))
+        insert(staging, 5, (8, 0), (20, 0), tier=3)  # ... and the busy road carrying on
+        lane(staging, 6, (0, 10), (6, 10))
+        insert(staging, 7, (6, 10), (8, 10), tier=3)
+        insert(staging, 8, (8, 10), (6.5, 10.05), tier=3)  # back alongside: no
+        lane(staging, 9, (6.5, 10.05), (0, 10.3))
+        insert(staging, 10, (0, 20), (2, 20), tier=3)
+        with connection.cursor() as cursor:  # a loop, its two ends on one point
+            cursor.execute(
+                f"UPDATE {staging}.segment SET geometry = ST_SetSRID(ST_MakeLine(ARRAY["
+                f"ST_MakePoint(%s, %s), ST_MakePoint(%s, %s), ST_MakePoint(%s, %s)]), 4326) "
+                f"WHERE osm_way_id = 10",
+                [LON + 6 * STEP, LAT + 10 * STEP, LON + 6 * STEP, LAT + 11 * STEP,
+                 LON + 6 * STEP, LAT + 10 * STEP],
+            )  # fmt: skip
+        bn.mark(staging)
+        marks = found(staging)
+        assert {marks[way] for way in (2, 5, 7, 8, 10)} <= {0, bn.OVERVIEW_ORPHAN, bn.OVERVIEW_SPUR}
+
     def test_a_join_inside_a_bit_that_joins_nothing_is_an_orphan(self, segment_schemas) -> None:
         _, staging = segment_schemas
         lane(staging, 1, (0, 0), (2, 0))
