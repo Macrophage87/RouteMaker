@@ -227,6 +227,8 @@ export interface Cue {
   exit?: CircleExit;
   /** A short path across a road between two turns: the road, said in place of the turn ("Cross Redland Road."), drawn straight on. */
   cross?: string;
+  /** A turn onto a path just across a road (describe._far_side_turns): the road, said first ("Cross Saint Paul Street, then right onto ..."), drawn across it. */
+  across?: string;
   /** A closure's source and until when (v0.8.2): shown in small print on the card, never said. */
   citation?: string;
   /** The description entry's kind it came from (a course export keeps Avoid and work-zone hazards); absent on the end. */
@@ -513,6 +515,8 @@ export function rideModel(route: RouteResponse, vias: readonly number[] = [], na
             ? stopText(entry.via ?? cues.filter((c) => c.kind === "stop").length + 1, entry.via != null ? names.get(entry.via) : undefined)
             : kind === "turn" && entry.turn?.cross
               ? crossWords(entry.turn.cross)
+              : kind === "turn" && entry.turn?.across
+              ? acrossWords(entry.turn.across, entry.turn.movement as TurnMovement, entry.turn.onto ?? entry.street ?? null)
               : kind === "turn"
               ? turnWords(entry.turn?.movement as TurnMovement, entry.turn?.onto ?? entry.street ?? null, entry.turn?.stay === true, entry.turn?.exit ?? null)
               : kind === "onto"
@@ -523,6 +527,7 @@ export function rideModel(route: RouteResponse, vias: readonly number[] = [], na
         ...(entry.citation ? { citation: entry.citation } : {}),
         ...(kind === "turn" && entry.turn?.shape && !entry.turn.cross ? { junction: entry.turn.shape } : {}),
         ...(kind === "turn" && entry.turn?.cross ? { cross: entry.turn.cross } : {}),
+        ...(kind === "turn" && entry.turn?.across && !entry.turn.cross ? { across: entry.turn.across } : {}),
         ...(kind === "turn" && entry.turn?.exit ? { exit: entry.turn.exit } : {}),
         movement: kind === "turn" ? (entry.turn?.movement as TurnMovement) : null,
         street: entry.turn?.onto ?? entry.street ?? null,
@@ -556,6 +561,24 @@ export function crossWords(road: string): string {
 }
 
 /**
+ * The ride card's arrow across a road, then the turn on its far side (the owner, 2026-10-24: "make it clear both from
+ * the arrow and directions to cross the road then turn right"): for a crossing between two turns (crossWords) with the
+ * turn after it, or a turn onto a path just across a road (acrossWords). A crossing on its own is "cross", straight
+ * over the road; null for any other cue.
+ */
+export function crossArrow(cue: Pick<Cue, "cross" | "across" | "then" | "movement">): "cross" | "cross_left" | "cross_right" | null {
+  const after = cue.cross ? cue.then?.movement : cue.across ? cue.movement : undefined;
+  if (after === "left" || after === "bear_left") return "cross_left";
+  if (after === "right" || after === "bear_right") return "cross_right";
+  return cue.cross ? "cross" : null;
+}
+
+/** "Cross Saint Paul Street, then right onto Saint Paul Street bike lane.": a turn onto a path just across a road (describe._far_side_turns). */
+export function acrossWords(road: string, movement: TurnMovement, street: string | null): string {
+  return `Cross ${wayWords(road)}, then ${lowerFirst(turnWords(movement, street))}`;
+}
+
+/**
  * ", then immediately bear left onto Rhode Island Avenue.": a jog's second turn, after the first; after a crossing
  * only ", then left onto ..." (the owner, 2026-10-20: "cross the street and turn left").
  */
@@ -573,8 +596,9 @@ function joinJogs(cues: Cue[]): void {
     const first = cues[i];
     const second = cues[i + 1];
     if (first.kind !== "turn" || second.kind !== "turn" || first.joined || !first.movement || !second.movement) continue;
-    // A crossing is never said as a turn after another: it leads its own cue, with the turn after it.
-    if (second.cross) continue;
+    // A crossing is never said as a turn after another: it leads its own cue, with the turn after it. A turn across a
+    // road already says two things: the turn after it keeps its own cue.
+    if (second.cross || second.across || first.across) continue;
     if (second.atM - first.atM > JOG_M) continue;
     first.then = { movement: second.movement, street: second.street, ...(second.exit ? { exit: second.exit } : {}) };
     first.text = first.text.replace(/\.$/, "") + thenWords(first.then, first.cross !== undefined);
@@ -771,6 +795,7 @@ export function cueSpoken(cue: Cue, phase: Phase, distanceM: number, first = pha
     const lead = cue.cross ? `Cross ${wayWords(cue.cross)}` : cue.exit ? "Exit" : MOVEMENT_WORDS[cue.movement];
     if (cue.then) return `${lead} now, then ${lowerFirst(turnWords(cue.then.movement, cue.then.street, false, cue.then.exit ?? null))}`;
     if (cue.cross) return `Cross ${wayWords(cue.cross)} now.`;
+    if (cue.across && cue.movement !== "uturn") return `Cross ${wayWords(cue.across)} now, then ${lowerFirst(turnWords(cue.movement, cue.street))}`;
     if (cue.movement === "uturn") return "Make a U-turn now.";
     if (cue.exit) return `Exit now${cue.street && !isUnnamed(cue.street) ? ` onto ${wayWords(cue.street)}` : ""}.`;
     return `${MOVEMENT_WORDS[cue.movement]} now${cue.street ? ` onto ${wayWords(cue.street)}` : ""}.`;

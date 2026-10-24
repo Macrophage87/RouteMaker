@@ -167,6 +167,21 @@ CROSS_NEAR_M = 10.0
 CROSS_KINDS = frozenset({"crossing", "left_across", "along"})
 CROSSING_USE = "pedestrian_crossing"
 CROSS_UNNAMED = "the road"
+# A turn onto a path that begins on the far side of a road the route has just gone
+# straight across is said with the crossing: "Cross Saint Paul Street, then right onto
+# Saint Paul Street bike lane" (the owner, 2026-10-24, in Baltimore: "Sometimes the bike
+# lane to turn on is on the other side of the road, make it clear both from the arrow and
+# directions to cross the road then turn right"). The road is crossed at a node at least
+# FAR_SIDE_MIN_M and at most FAR_SIDE_M short of the turn, within FAR_SIDE_SQUARE_DEG of
+# square to the route, and runs within FAR_SIDE_PARALLEL_DEG of the path turned onto; the
+# route bends no more than FAR_SIDE_STRAIGHT_DEG between (`_far_side_turns`).
+FAR_SIDE_M = 35.0
+FAR_SIDE_MIN_M = 4.0
+FAR_SIDE_SQUARE_DEG = 30.0
+FAR_SIDE_PARALLEL_DEG = 45.0
+FAR_SIDE_STRAIGHT_DEG = 30.0
+# The ways at a node that are a road crossed: the street a car drives on.
+FAR_SIDE_ROAD_USES = frozenset({"road", "living_street"})
 # Other ways at a node that never look like the way on: a driveway or a parking
 # aisle off a road, steps, a lift.
 FORK_IGNORED_USES = frozenset(
@@ -848,6 +863,10 @@ class _Turn:
     # A short path across a road between two turns: the road crossed, said in place of
     # the turn ("Cross Redland Road"; CROSS_UNNAMED where the road has no name).
     cross: str | None = None
+    # A turn onto a path on the far side of a road the route goes straight across just
+    # before it (`_far_side_turns`): the road, said before the turn ("Cross Saint Paul
+    # Street, then right onto ..."; CROSS_UNNAMED where the road has no name).
+    across: str | None = None
 
 
 def _turn_deg(heading_in: float, heading_out: float) -> float:
@@ -1166,6 +1185,8 @@ def _stretch_sentence(
             lead = exit_words(turn.exit["number"], _in_sentence(street), turn.exit["circle"])
         elif turn.cross is not None:
             lead = f"Cross {turn.cross}"
+        elif turn.across is not None and movement in TURN_WORDS:
+            lead = f"Cross {turn.across}"
         elif movement in TURN_WORDS and turn.stay:
             lead = f"{TURN_WORDS[movement]} to stay on {_in_sentence(street)}"
         elif movement in TURN_WORDS:
@@ -1175,6 +1196,13 @@ def _stretch_sentence(
         if event is not None:
             lead += _control_words(event.control, event.flagged, getattr(event, "beacon", False))
             lead += _severity_suffix(event.severity if event.flagged else None)
+        if (
+            turn.across is not None
+            and movement in TURN_WORDS
+            and turn.exit is None
+            and turn.cross is None
+        ):
+            lead += f", then {TURN_WORDS[movement].lower()} onto {_in_sentence(street)}"
     elif same_street_continues:
         lead = f"Continue on {_in_sentence(street)}"
     else:
@@ -1371,6 +1399,85 @@ def _crossing(
     return None
 
 
+def _far_side_turns(atoms: list[Atom]) -> list[tuple[float, float, str]]:
+    """Where a leg turns onto a path on the far side of a road it has just gone straight
+    across (FAR_SIDE_M): (where the road is crossed, where the route turns, "left" or
+    "right"), in metres from the leg's start. The road is another way at a node of the
+    route (`Atom.others`), a street a car may drive (FAR_SIDE_ROAD_USES), square to the
+    route there (FAR_SIDE_SQUARE_DEG) and running alongside the path turned onto
+    (FAR_SIDE_PARALLEL_DEG); the turn is past ALONG_TURN_DEG, read from the route's line
+    where it was (`Atom.turn`), and the route bends no more than FAR_SIDE_STRAIGHT_DEG at
+    any node between."""
+    at: list[float] = []
+    walked = 0.0
+    for atom in atoms:
+        at.append(walked)
+        walked += max(atom.metres, 0.0)
+
+    def bend(i: int) -> float | None:
+        atom = atoms[i]
+        if atom.turn is not None:
+            return atom.turn
+        return turn_between(atoms[i - 1], atom) if i > 0 else None
+
+    found: list[tuple[float, float, str]] = []
+    for j, atom in enumerate(atoms):
+        if j == 0 or atom.others is None or atom.use not in PATH_USES or atom.roundabout:
+            continue
+        turn = bend(j)
+        if turn is None or abs(turn) <= ALONG_TURN_DEG or abs(turn) >= HAIRPIN_DEG:
+            continue
+        path_heading = atom.heading_in
+        if path_heading is None:
+            continue
+        for k in range(j - 1, 0, -1):
+            gap = at[j] - at[k]
+            if gap > FAR_SIDE_M:
+                break
+            node = atoms[k]
+            if node.others is None:
+                continue
+            bent = bend(k)
+            if bent is not None and abs(bent) > FAR_SIDE_STRAIGHT_DEG:
+                break
+            if gap < FAR_SIDE_MIN_M or node.heading_in is None:
+                continue
+            if any(
+                heading is not None
+                and use in FAR_SIDE_ROAD_USES
+                and (rest[1] if len(rest) > 1 else None) != "none"
+                and abs(abs(_turn_deg(node.heading_in, heading)) - 90.0) <= FAR_SIDE_SQUARE_DEG
+                and min(
+                    abs(_turn_deg(path_heading, heading)),
+                    180.0 - abs(_turn_deg(path_heading, heading)),
+                )
+                <= FAR_SIDE_PARALLEL_DEG
+                for heading, use, *rest in node.others
+            ):
+                found.append((at[k], at[j], "right" if turn > 0 else "left"))
+                break
+    return found
+
+
+def _road_crossed(events: list, at_m: float, run: _Run) -> str:
+    """The road crossed at `at_m` (`_far_side_turns`), as `_crossing` names it: the
+    nearest junction event across a road (CROSS_KINDS) within CROSS_NEAR_M, else the
+    street a path named for it is beside ("Saint Paul Street bike lane"), else
+    CROSS_UNNAMED."""
+    near = [
+        event
+        for event in events
+        if event.kind in CROSS_KINDS and abs(event.m - at_m) <= CROSS_NEAR_M and _event_name(event)
+    ]
+    if near:
+        return _event_name(min(near, key=lambda event: abs(event.m - at_m)))
+    label = run.label or ""
+    for words in (" protected bike lane", " bike lane"):
+        if label.endswith(words):
+            return label[: -len(words)]
+    return CROSS_UNNAMED
+
+
 def _nearest_event(events: list, at_m: float, used: set[int]):
     best, best_gap = None, MATCH_M + 1e-9
     for index, event in enumerate(events):
@@ -1436,9 +1543,14 @@ def describe_both(
     runs: list[_Run] = []
     # The ways off circles, by the atom the way off begins with (`_circle_exits`).
     exits: dict[int, dict] = {}
+    # Turns onto a path across a road just crossed (`_far_side_turns`): (where the road
+    # is crossed, where the route turns, the side, the leg), in the pieces' measure.
+    far_side: list[tuple[float, float, str, int]] = []
+    leg_at = 0.0
     for leg, content in enumerate(legs):
         if isinstance(content, (int, float)):
             if content > 0:
+                leg_at += float(content)
                 runs.append(
                     _Run(
                         float(content),
@@ -1457,6 +1569,11 @@ def describe_both(
         # The ways off circles are read from the marked atoms: the runs begin with them.
         content = _said_turns(content)
         exits.update(_circle_exits(content))
+        far_side.extend(
+            (leg_at + cross_at, leg_at + turn_at, side, leg)
+            for cross_at, turn_at, side in _far_side_turns(content)
+        )
+        leg_at += sum(atom.metres for atom in content if atom.metres > 0)
         leg_runs = _coalesce(_runs_of(content, leg))
         runs.extend(_absorb_tiny(leg_runs))
     traced = sum(run.metres for run in runs)
@@ -1525,6 +1642,44 @@ def describe_both(
         if crossed is not None:
             turn.cross = crossed
             turn.shape = None
+    for cross_at, turn_at, side, leg in far_side:
+        # The turn the stretch onto the path begins with: at the node turned at, or, where a
+        # short piece across the road was folded into the path's stretch, where that begins.
+        candidates = [
+            i
+            for i, turn in turns.items()
+            if runs[i].leg == leg
+            and cross_at - FAR_SIDE_M <= starts[i] <= turn_at + JUNCTION_M
+            and runs[i].path
+            and turn.cross is None
+            and turn.exit is None
+            and not turn.stay
+            and not (i - 1 in turns and turns[i - 1].cross is not None)
+        ]
+        if not candidates:
+            continue
+        i = min(candidates, key=lambda i: abs(starts[i] - turn_at))
+        turn = turns[i]
+        if turn.movement in TURN_WORDS and turn.movement.endswith("left") != (side == "left"):
+            continue
+        if turn.movement not in TURN_WORDS:
+            turn.movement = side
+        turn.across = _road_crossed(events, cross_at, runs[i])
+        turn.shape = None
+        # The crossing's own junction, where the turn has none, is said with it ("Cross Saint
+        # Paul Street at a signal, then right onto ...") rather than as an entry of its own.
+        if turn.event is None:
+            near = [
+                index
+                for index, event in enumerate(events)
+                if index not in used
+                and event.kind in CROSS_KINDS
+                and abs(event.m - cross_at) <= CROSS_NEAR_M
+            ]
+            if near:
+                found = min(near, key=lambda index: abs(events[index].m - cross_at))
+                used.add(found)
+                turn.event = events[found]
 
     entries: list[tuple[tuple[float, int, int], dict]] = []
     shared: list[tuple[tuple[float, int, int], dict]] = []
@@ -1582,6 +1737,7 @@ def describe_both(
                         **({"shape": turn.shape} if turn.shape else {}),
                         **({"exit": turn.exit} if turn.exit else {}),
                         **({"cross": turn.cross} if turn.cross else {}),
+                        **({"across": turn.across} if turn.across else {}),
                     },
                     severity=severity,
                 ),
@@ -1700,6 +1856,7 @@ def describe_both(
                         **({"shape": turn.shape} if turn.shape else {}),
                         **({"exit": turn.exit} if turn.exit else {}),
                         **({"cross": turn.cross} if turn.cross else {}),
+                        **({"across": turn.across} if turn.across else {}),
                     },
                     severity=severity,
                 ),

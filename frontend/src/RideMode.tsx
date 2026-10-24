@@ -102,6 +102,7 @@ import {
   REPLAN_STILL_WAITING,
   ReplanGate,
   VERBOSITY_LABELS,
+  crossArrow,
   cueSpoken,
   nextAction,
   planAfterEnd,
@@ -344,12 +345,15 @@ export interface RideView {
   stops?: RideStopMark[];
 }
 
-function arrowFor(cue: Cue | null): "left" | "right" | "bear_left" | "bear_right" | "uturn" | "straight" | "stop" | "end" | "warn" {
+function arrowFor(
+  cue: Cue | null,
+): "left" | "right" | "bear_left" | "bear_right" | "uturn" | "straight" | "stop" | "end" | "warn" | NonNullable<ReturnType<typeof crossArrow>> {
   if (!cue) return "straight";
   if (cue.kind === "end") return "end";
   if (cue.kind === "stop") return "stop";
-  // A crossing between two turns (lib/navigate.ts crossWords): straight across.
-  if (cue.cross) return "straight";
+  // Across a road, then the turn (lib/navigate.ts crossArrow).
+  const across = crossArrow(cue);
+  if (across) return across;
   if (cue.movement) return cue.movement;
   if (cue.kind === "hazard" || cue.kind === "walk") return "warn";
   return "straight";
@@ -396,16 +400,25 @@ function CueShape({ shape, junction, exit }: { shape: ReturnType<typeof arrowFor
     bear_right: "M18 52 V30 L34 14 M22 14 H34 V26",
     uturn: "M32 52 V22 A10 10 0 0 0 12 22 V38 M4 30 L12 40 L20 30",
     straight: "M24 52 V10 M14 20 L24 10 L34 20",
+    // Across the road drawn between ROAD_EDGES, then the turn on its far side.
+    cross: "M24 52 V10 M14 20 L24 10 L34 20",
+    cross_left: "M32 52 V12 H10 M18 4 L10 12 L18 20",
+    cross_right: "M16 52 V12 H38 M30 4 L38 12 L30 20",
     stop: "M14 10 V52 M14 12 H38 L32 20 L38 28 H14",
     end: "M14 10 V52 M14 12 H38 V28 H14 M26 12 V28 M14 20 H38",
     warn: "M24 8 L44 46 H4 Z M24 20 V32 M24 38 V40",
   };
+  const across = shape === "cross" || shape === "cross_left" || shape === "cross_right";
   return (
     <svg className="cue-shape" viewBox="0 0 48 56" aria-hidden="true" focusable="false">
+      {across ? <path d={ROAD_EDGES} fill="none" stroke="currentColor" strokeWidth="1.5" /> : null}
       <path d={paths[shape]} fill="none" stroke="currentColor" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
+
+/** The road a "cross" arrow goes over: its two edges, thin, across the arrow's stem below the turn. */
+const ROAD_EDGES = "M4 26 H44 M4 40 H44";
 
 /**
  * End ride as a slide (the owner, 2026-10-19), so a bump while riding does not end it: a range from 0 to

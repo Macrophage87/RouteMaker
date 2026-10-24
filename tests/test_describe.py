@@ -2222,3 +2222,111 @@ class TestCueCheckOnRealRoutes:
         # beside a rideable leg further that side (a Y of two right-leaning legs).
         assert d.fork_movement(0, 25, [(40, "path", "both")], trail=True) == "bear_left"
         assert d.fork_movement(0, 50, [(58, "cycleway", "both")], trail=True) == "bear_left"
+
+
+class TestFarSideTurns:
+    """The owner, 2026-10-24, riding in Baltimore: "Sometimes the bike lane to turn on is on
+    the other side of the road, make it clear both from the arrow and directions to cross
+    the road then turn right". A turn onto a path that begins just across a road the route
+    goes straight over is said with the crossing."""
+
+    CROSS_ROAD = ((90.0, "road", "secondary", "both"), (270.0, "road", "secondary", "both"))
+
+    @classmethod
+    def route(
+        cls,
+        events=None,
+        gap=20.0,
+        onto="Saint Paul Street bike lane",
+        turn=90.0,
+        others=None,
+        path_heading=None,
+        use="road",
+    ):
+        heading = path_heading if path_heading is not None else turn % 360
+        before = road("Guilford Avenue", 2, 400, 0, 0, use=use)
+        across = replace(
+            road("Guilford Avenue", 2, gap, 0, 0, use=use)[0],
+            others=cls.CROSS_ROAD if others is None else others,
+            turn=0.0,
+        )
+        after = road(onto, 1, 400, heading, heading, "protected", "cycleway")
+        after[0] = replace(after[0], others=(), turn=turn)
+        return d.describe([flat(before, [across], after)], events)
+
+    def test_a_path_across_the_road_is_cross_then_turn(self):
+        entries = self.route()
+        turn = entries[1]["turn"]
+        assert turn["movement"] == "right"
+        assert turn["across"] == "Saint Paul Street"
+        assert (
+            "Cross Saint Paul Street, then right onto Saint Paul Street bike lane,"
+            in entries[1]["text"]
+        )
+        assert "shape" not in turn
+
+    def test_a_left_is_said_the_same_way(self):
+        entries = self.route(onto="Saint Paul Street bike lane", turn=-90.0)
+        assert entries[1]["turn"]["movement"] == "left"
+        assert "Cross Saint Paul Street, then left onto" in entries[1]["text"]
+
+    def test_the_crossing_event_names_the_road_and_is_said_with_the_turn(self):
+        crossing = event(400, "straight", kind="crossing", names=("east mount royal avenue",))
+        entries = self.route([crossing], onto="Maryland Avenue Cycle Track")
+        assert entries[1]["turn"]["across"] == "East Mount Royal Avenue"
+        said = entries[1]["text"].split(": ", 1)[1]
+        assert said.startswith(
+            "Cross East Mount Royal Avenue at a signal (Higher stress junction),"
+        )
+        assert ", then right onto Maryland Avenue Cycle Track," in said
+        # No entry of its own for the crossing.
+        assert [e["kind"] for e in entries] == ["stretch", "stretch"]
+
+    def test_a_path_with_no_street_name_crosses_the_road(self):
+        assert self.route(onto="Jones Falls Trail")[1]["turn"]["across"] == "the road"
+
+    def test_a_path_on_the_near_side_is_the_plain_turn(self):
+        # The road is met at the turn itself, not crossed before it.
+        entries = self.route(gap=2.0)
+        assert "across" not in entries[1]["turn"]
+        assert "Right onto Saint Paul Street bike lane" in entries[1]["text"]
+
+    def test_too_far_past_the_road_is_the_plain_turn(self):
+        assert "across" not in self.route(gap=60.0)[1]["turn"]
+
+    def test_a_road_not_alongside_the_path_is_no_crossing(self):
+        # A road crossed at a slant, the path square off the route: not the path's road.
+        slant = ((50.0, "road", "secondary", "both"), (230.0, "road", "secondary", "both"))
+        assert "across" not in self.route(others=slant)[1]["turn"]
+
+    def test_a_footway_crossed_is_no_road(self):
+        footway = ((90.0, "footway", None, "none"), (270.0, "footway", None, "none"))
+        assert "across" not in self.route(others=footway)[1]["turn"]
+
+    def test_a_turn_onto_a_road_is_not_changed(self):
+        before = road("Guilford Avenue", 2, 400, 0, 0)
+        across = replace(road("Guilford Avenue", 2, 20, 0, 0)[0], others=self.CROSS_ROAD, turn=0.0)
+        after = road("Saint Paul Street", 2, 400, 90, 90)
+        after[0] = replace(after[0], others=(), turn=90.0)
+        entries = d.describe([flat(before, [across], after)])
+        assert "across" not in entries[1]["turn"]
+
+    def test_from_a_path_across_the_road(self):
+        # On the avenue's own side path, over the crossing, then right onto the far one.
+        entries = self.route(use="cycleway")
+        assert entries[1]["turn"]["across"] == "Saint Paul Street"
+
+    def test_over_a_crosswalk_folded_into_the_turn(self):
+        # Off the avenue onto its crosswalk, over the road at its middle, then right onto the
+        # far side path: the crosswalk is a stretch too short to say, folded either way.
+        before = road("Guilford Avenue", 2, 400, 0, 0)
+        walk_on = replace(
+            d.Atom(10.0, "1", "none", (), "pedestrian_crossing", 0, 0), others=(), turn=0.0
+        )
+        middle = replace(walk_on, others=self.CROSS_ROAD)
+        after = road("Saint Paul Street bike lane", 1, 600, 90, 90, "protected", "cycleway")
+        after[0] = replace(after[0], others=(), turn=90.0)
+        entries = d.describe([flat(before, [walk_on, middle], after)])
+        turned_entry = next(e for e in entries if e.get("turn"))
+        assert turned_entry["turn"]["across"] == "Saint Paul Street"
+        assert turned_entry["turn"]["movement"] == "right"
