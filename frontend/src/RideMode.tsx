@@ -18,15 +18,17 @@
  *   own route, held here and in App's ride state only.
  * - Large text (the owner, 2026-10-20; it replaced Big text): the card half the screen, the turn as big as fits, the map
  *   below; its side button (and the T key) and Settings' switch are the one choice; heading-up (track-up by default since v0.7.0); and
- *   Road closed ahead and End ride always in view at the top of the card (since v0.9.0; Settings is a gear in the
- *   side buttons, opening the ride's settings under that row), with Undo after End ride. End ride part way leaves the plan starting where the rider is.
+ *   Road closed ahead and End ride always in view at the top of the card (since v0.9.0; More, the last side button,
+ *   opens the ride's settings under that row), with Undo after End ride. End ride part way leaves the plan starting where the rider is.
  * - The map along the route, kept for dead spots (lib/corridor.ts, N5), and Log for 311 with the place in
  *   the route's street names (lib/report311.ts, lib/report311Log.ts; N6; OWNER-DECISIONS 369, 465).
  * - The side buttons (the owner, 2026-10-17: "Remove that bottom part when routing by default. instead put
- *   these as circle icons on the side"): Where am I? (re-centring too), Large text, Calmer and Flatter (one step down
- *   the traffic or hills slider and a new route from here, lib/rideEase.ts; 2026-10-23), Detour (water or restroom), on a
- *   share bike the dock button with the time undocked (lib/rideDock.ts), 311 anywhere on the route, and the Settings gear; each a round
- *   icon with its name for screen readers, its menu opening beside it. The bottom panel shows only when it
+ *   these as circle icons on the side"): Where am I? (re-centring too), Large text, Broadcast (2026-10-24: "Let people
+ *   broadcast from a ride"), Detour (water or restroom), on a share bike the dock button with the time undocked
+ *   (lib/rideDock.ts), 311 anywhere on the route, and More; each a round icon with its name for screen readers, its menu
+ *   opening beside it. More opens, under the top row, the route's changes (Less traffic and Fewer hills, one step down
+ *   the traffic or hills slider and a new route from here, lib/rideEase.ts; Skip this stop, lib/rideStops.ts) above the
+ *   ride's settings (2026-10-24: "put options like skip a stop, lower traffic and hills in an expansion with settings"). The bottom panel shows only when it
  *   has something to say or ask: GPS and screen notes, off route, Ride the rest.
  *   Answers asked for (Where am I?, a detour's progress) show for a few seconds by the buttons.
  *
@@ -178,7 +180,7 @@ import { NextVehicleLine } from "./NextVehicleLine.tsx";
 import type { VehicleMark } from "./lib/nextVehicle.ts";
 import { SettingRow, SettingSelect } from "./SettingRow.tsx";
 import { shortLabel } from "./lib/shortLabel.ts";
-import { EASE_AT_END, EASE_NAME, EASE_SAME, easeFinding, eased, sameLine, type Ease } from "./lib/rideEase.ts";
+import { EASE_AT_END, EASE_NAME, EASE_SAME, EASE_SHOWN, easeFinding, eased, sameLine, type Ease } from "./lib/rideEase.ts";
 import { RING, junctionPaths, ringPaths, type JunctionShape } from "./lib/junctionShape.ts";
 import {
   RIDE_REST,
@@ -211,9 +213,17 @@ const SLIDE_KEYS = new Set(["ArrowRight", "ArrowUp", "ArrowLeft", "ArrowDown", "
 const SLIDE_BACK_MS = 4_000;
 /** Said and shown when End ride is tapped rather than slid. */
 export const SLIDE_TO_END_HINT = "Slide End ride to the right to end the ride.";
-/** The side buttons' gear opens these, under the top row (the owner, 2026-10-16: "the buttons to change the settings seem hidden"; a gear in the rack since v0.9.0). */
-export const RIDE_SETTINGS_TEXT = "Settings";
-export const RIDE_SETTINGS_TITLE = "Ride settings";
+/**
+ * The last side button opens these, under the top row (the owner, 2026-10-16: "the buttons to change the settings seem
+ * hidden"; a gear in the rack since v0.9.0): since 2026-10-24 More, the route's changes above the settings (Stephen:
+ * "put options like skip a stop, lower traffic and hills in an expansion with settings").
+ */
+export const RIDE_SETTINGS_TEXT = "More";
+export const RIDE_MORE_NAME = "More: change the route, and ride settings";
+export const RIDE_SETTINGS_TITLE = "More: change the route, and ride settings";
+export const RIDE_CHANGE_TITLE = "Change the route";
+/** Broadcast on the ride screen (Stephen 2026-10-24: "Let people broadcast from a ride"): Plan's and Go's Broadcast, the ride already going. */
+export const RIDE_BROADCAST_NAME = "Broadcast";
 /** What End ride leaves behind (lib/navigate.ts planAfterEnd): the plan from here, or as it was. */
 export type EndedPlan = ReturnType<typeof planAfterEnd>;
 /** How long the 311 line ("Logged for 311: Pothole.") stays (review F4); held the same way. */
@@ -563,6 +573,8 @@ export function RideMode({
   trip = null,
   onRideRest,
   fixed = false,
+  onBroadcast = null,
+  broadcasting = false,
 }: {
   route: RouteResponse;
   /** The points the route was planned with, and whether it is a loop: what a re-plan builds on. */
@@ -614,6 +626,14 @@ export function RideMode({
    * closed ahead. Read once, at Start ride.
    */
   fixed?: boolean;
+  /**
+   * Broadcast from the ride (Stephen 2026-10-24: "Let people broadcast from a ride"): the share sheet with Share ride's
+   * link, the rider its leader; answers what to say. Null where the ride cannot be shared as a ride (no share sheet,
+   * a ride opened from someone else's link, Ride the rest).
+   */
+  onBroadcast?: (() => Promise<string>) | null;
+  /** This ride is broadcast, led by this rider: Broadcast shows on, and a press shares the same link again. */
+  broadcasting?: boolean;
 }) {
   const [route, setRoute] = useState(plannedRoute);
   const routeRef = useRef(route);
@@ -711,12 +731,12 @@ export function RideMode({
   // Each re-plan's ticket: "Keep the planned route" or a newer re-plan voids an older one's answer.
   const replanTicket = useRef(0);
   const settingsId = useId();
-  // The ride's settings, opened from the side buttons' gear (closed at Start).
+  // The ride's More panel, the route's changes and the settings, opened from the last side button (closed at Start).
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsPanel = useRef<HTMLDivElement>(null);
   const settingsButton = useRef<HTMLButtonElement>(null);
   // Opened, the panel is brought into view (the row above it is sticky; the card may be scrolled) and the focus
-  // goes into it: the gear is the last side button, after the panel, so Tab alone would never reach it.
+  // goes into it: More is the last side button, after the panel, so Tab alone would never reach it.
   useEffect(() => {
     if (!settingsOpen) return;
     settingsPanel.current?.scrollIntoView?.({ block: "nearest" });
@@ -1499,13 +1519,34 @@ export function RideMode({
 
   // Calmer and Flatter (lib/rideEase.ts; the owner, 2026-10-23): one step down the traffic or hills slider, then
   // planned again from here as Re-plan from here is. A step that finds no new route is undone.
+  // An answer to a side button or More's press: said in full; shown in its first sentence alone (fewer words on
+  // screen, the owner, 2026-10-20).
+  const answer = (text: string) => {
+    announcer.current?.answer(text);
+    if (prefsRef.current.output === "neither") setPolite((s) => ({ text, count: s.count + 1 }));
+    showToast(text.replace(/(?<=\.) .*$/, ""));
+  };
+  // Broadcast (App's broadcastFromRide): the share sheet opens inside the press; a second press while one is open is
+  // left alone.
+  const broadcastBusy = useRef(false);
+  const broadcast = async () => {
+    if (!onBroadcast || broadcastBusy.current) return;
+    broadcastBusy.current = true;
+    try {
+      const said = await onBroadcast();
+      if (said && !ended.current) answer(said);
+    } finally {
+      broadcastBusy.current = false;
+    }
+  };
+  // More's own presses (Less traffic, Fewer hills, Skip this stop): the panel closes, the map back in view, and the
+  // focus goes to More.
+  const fromMore = (press: () => void) => {
+    setSettingsOpen(false);
+    settingsButton.current?.focus();
+    press();
+  };
   const ease = async (which: Ease) => {
-    // Said in full; shown in its first sentence alone (fewer words on screen, the owner, 2026-10-20).
-    const answer = (text: string) => {
-      announcer.current?.answer(text);
-      if (prefsRef.current.output === "neither") setPolite((s) => ({ text, count: s.count + 1 }));
-      showToast(text.replace(/(?<=\.) .*$/, ""));
-    };
     const was = dialsRef.current;
     const next = eased(preset, was, which);
     if (!next) {
@@ -1597,10 +1638,11 @@ export function RideMode({
     void replan(here, VIA_MARKS.named([item.place.point[0], item.place.point[1]], item.place.title));
   };
 
-  // The next stop's two options (2026-10-24: "add the option to skip a stop or go to a different one"): from the
-  // Detour menu, so the ride screen gains no button. Each is the rider's own ask, as Detour here is.
+  // The next stop's two options (2026-10-24: "add the option to skip a stop or go to a different one"): Skip this stop
+  // in More, Instead of stop N in the Detour menu, so the ride screen gains no button. Each is the rider's own ask, as
+  // Detour here is. From More the focus stays on More (`fromMore`); from Detour it goes to Where am I?.
   const stopIndex = (stop: RideStopMark) => plan.current.points.indexOf(stop.point);
-  const changeStop = (stop: RideStopMark, place?: { point: LonLat; title: string }) => {
+  const changeStop = (stop: RideStopMark, place?: { point: LonLat; title: string }, keepFocus = false) => {
     const here = rideRef.current.goodFix?.point ?? rideRef.current.fix?.point;
     const skip = stopIndex(stop);
     if (!here || skip < 0) {
@@ -1615,7 +1657,7 @@ export function RideMode({
     gate.online();
     setDetourList(null);
     setDetourOpen(false);
-    whereRef.current?.focus();
+    if (!keepFocus) whereRef.current?.focus();
     sayDetour(place ? insteadSaid(place.title, stop) : skippingSaid(stop));
     void replan(here, place ? VIA_MARKS.named([place.point[0], place.point[1]], place.title) : undefined, true, false, false, skip);
   };
@@ -1914,7 +1956,7 @@ export function RideMode({
       <div ref={cardRef} className="cue-card">
         {/* End ride (v0.7.0, "Go riding fixes" item 6): always in view, at the top of the card, which stays at
             every size and in Large text; one slide ends the ride (a tap once arrived), and the page shows the ride's summary
-            with Done and Undo (RideSummaryCard). The ride's settings open just under the row, from the side buttons' gear. */}
+            with Done and Undo (RideSummaryCard). The ride's settings open just under the row, from the side buttons' More. */}
         <div ref={topRef} className={light && cornerFits ? "ride-top" : "ride-top ride-corner-tight"}>
           {/* The heading, "Ride mode", for screen readers; near dawn or dusk the light times shown in the corner
               (the owner, 2026-10-19) where they fit beside the buttons, else just under the row. */}
@@ -1970,7 +2012,7 @@ export function RideMode({
           hidden={!settingsOpen}
           tabIndex={-1}
           onKeyDown={(event) => {
-            // Escape closes it, back to the gear.
+            // Escape closes it, back to More.
             if (event.key === "Escape") {
               event.preventDefault();
               setSettingsOpen(false);
@@ -1978,6 +2020,36 @@ export function RideMode({
             }
           }}
         >
+          {/* The route's changes first (Stephen 2026-10-24): each one press, a new route from here; not on a route everyone
+              shares (`fixed`), nor once arrived. The symbols as the side buttons had them (2026-10-23), the words beside. */}
+          {!fixed && !ride.arrived && (
+            <div className="ride-change" role="group" aria-labelledby={`${settingsId}-change`}>
+              <h3 id={`${settingsId}-change`}>{RIDE_CHANGE_TITLE}</h3>
+              <div className="actions">
+                {(["calmer", "flatter"] as const).map((which) => (
+                  <button
+                    key={which}
+                    type="button"
+                    className={`secondary ride-ease ride-${which}`}
+                    onClick={() => fromMore(() => void ease(which))}
+                    aria-label={EASE_NAME[which]}
+                  >
+                    <Icon name={which === "calmer" ? "traffic-down" : "hills-down"} size={26} />
+                    {EASE_SHOWN[which]}
+                  </button>
+                ))}
+              </div>
+              {nextStop && (
+                <div className="ride-next-stop">
+                  <p>{nextStopLine(nextStop)}</p>
+                  <button type="button" className="secondary" onClick={() => fromMore(() => changeStop(nextStop, undefined, true))}>
+                    {SKIP_STOP}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+          <h3 className="ride-settings-title">Settings</h3>
           <RideSettingsFields prefs={prefs} onChange={onPrefs} idBase={settingsId} />
           <p className="hint">{RIDE_SAFETY}</p>
           <label className="toggle ride-toggle">
@@ -2126,21 +2198,18 @@ export function RideMode({
           >
             <Icon name="textsize" size={24} />
           </button>
-          {/* Calmer and Flatter (lib/rideEase.ts; the owner, 2026-10-23): one press, a step down the slider and a new
-              route from here. A symbol alone on screen (the owner, 2026-10-23: "Take the words out. Symbol should be clear"), the words in the name. Not on a route everyone shares (`fixed`). */}
-          {!fixed && !ride.arrived &&
-            (["calmer", "flatter"] as const).map((which) => (
-              <button
-                key={which}
-                type="button"
-                className={`ride-round ride-ease ride-${which}`}
-                onClick={() => void ease(which)}
-                aria-label={EASE_NAME[which]}
-                title={EASE_NAME[which]}
-              >
-                <Icon name={which === "calmer" ? "traffic-down" : "hills-down"} size={30} />
-              </button>
-            ))}
+          {/* Broadcast (Stephen 2026-10-24: "Let people broadcast from a ride"): as Roam's, shown on while this rider leads. */}
+          {onBroadcast && !ride.arrived && (
+            <button
+              type="button"
+              className={`ride-round${broadcasting ? " ride-round-on" : ""}`}
+              onClick={() => void broadcast()}
+              aria-label={broadcasting ? `${RIDE_BROADCAST_NAME}: on. Share the link again` : `${RIDE_BROADCAST_NAME}: share a link others follow you with`}
+              title={RIDE_BROADCAST_NAME}
+            >
+              <Icon name="broadcast" size={24} />
+            </button>
+          )}
           {water && (
             <div
               className="ride-pop ride-detour"
@@ -2180,14 +2249,6 @@ export function RideMode({
                     Close
                   </button>
                 </div>
-                {nextStop && !fixed && (
-                  <div className="ride-next-stop">
-                    <p>{nextStopLine(nextStop)}</p>
-                    <button type="button" className="secondary" onClick={() => changeStop(nextStop)}>
-                      {SKIP_STOP}
-                    </button>
-                  </div>
-                )}
                 <div className="actions nearest-kinds">
                   {NEAREST_KINDS.filter((k) => DETOUR_KINDS.includes(k.kind)).map(({ kind, label }) => (
                     <button key={kind} type="button" className="secondary" onClick={() => void findDetour(kind)}>
@@ -2344,19 +2405,20 @@ export function RideMode({
               )}
             </div>
           )}
-          {/* Settings, a gear at the end of the side buttons since v0.9.0 (the owner, 2026-10-18: "Move settings to
-              a gear icon in the rack"); it opens the ride's settings under the top row. */}
+          {/* More, at the end of the side buttons (a gear for the settings since v0.9.0, the owner, 2026-10-18: "Move
+              settings to a gear icon in the rack"; More since 2026-10-24); it opens the route's changes and the ride's
+              settings under the top row. */}
           <button
             type="button"
             ref={settingsButton}
             className="ride-round ride-settings-button"
-            aria-label={RIDE_SETTINGS_TEXT}
+            aria-label={RIDE_MORE_NAME}
             title={RIDE_SETTINGS_TEXT}
             aria-expanded={settingsOpen}
             aria-controls={`${settingsId}-settings`}
             onClick={() => setSettingsOpen(!settingsOpen)}
           >
-            <Icon name="gear" size={24} />
+            <Icon name="more" size={24} />
           </button>
         </div>
       </div>

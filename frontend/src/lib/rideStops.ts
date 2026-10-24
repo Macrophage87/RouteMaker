@@ -1,13 +1,13 @@
 /**
  * A ride's stops (Stephen 2026-10-24): "If a reroute needs to be done assume via points are guides and stops are
  * mandatory, though add the option to skip a stop or go to a different one. Stops should appear on the map when
- * riding." The Detour menu (RideMode.tsx) holds both options for the next stop, so the ride screen gains no button:
- * Skip this stop re-plans from here without it; a nearest place's "Instead" re-plans to that place in its stead.
+ * riding." Neither adds a ride button: Skip this stop, in the ride's More panel with the settings (Stephen 2026-10-24),
+ * re-plans from here without it; a nearest place's "Instead", in the Detour menu, re-plans to that place in its stead.
  */
 import type { LonLat } from "./geo.ts";
 import type { RideStopMark } from "./pointKinds.ts";
 
-/** The next stop's line in the Detour menu: "Next stop: Stop 2, Union Market". */
+/** The next stop's line in the More panel: "Next stop: Stop 2, Union Market". */
 export function nextStopLine(stop: RideStopMark): string {
   return `Next stop: ${stopWords(stop)}`;
 }
@@ -39,7 +39,7 @@ export function insteadSaid(place: string, stop: RideStopMark): string {
 
 /** The Detour button's name: what it offers, the next stop's options too while one is ahead. */
 export function detourButtonName(summary: string, stop: RideStopMark | null): string {
-  return stop ? `Detour: ${summary.toLowerCase()}, or skip or change stop ${stop.number}` : `Detour: ${summary.toLowerCase()}`;
+  return stop ? `Detour: ${summary.toLowerCase()}, or change stop ${stop.number}` : `Detour: ${summary.toLowerCase()}`;
 }
 
 /** The re-plan's points without the stop at `skip` (its index in the plan): the rider's place stays first. */
