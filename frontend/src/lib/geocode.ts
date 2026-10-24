@@ -351,6 +351,8 @@ export class PlaceNamer {
     debounceMs?: number;
     /** Milliseconds now; Date.now by default. */
     now?: () => number;
+    /** A name the rider gave the point (a stop's own name, lib/pointKinds.ts): shown before any looked up. */
+    own?: (point: LonLat) => string | undefined;
   };
 
   constructor(options: PlaceNamer["options"]) {
@@ -363,6 +365,8 @@ export class PlaceNamer {
 
   /** The name to show for `point`, or undefined to show its coordinates. */
   name(point: LonLat): { name: string; label: string } | undefined {
+    const own = this.options.own?.(point);
+    if (own) return { name: own, label: own };
     const named = this.cache.get(placeKey(point));
     return named?.state === "named" ? { name: named.name, label: named.label } : undefined;
   }
@@ -391,6 +395,7 @@ export class PlaceNamer {
 
   /** Whether `point` should be looked up: never asked, or failed long enough ago. */
   private due(point: LonLat): boolean {
+    if (this.options.own?.(point)) return false;
     const named = this.cache.get(placeKey(point));
     return (
       named === undefined ||

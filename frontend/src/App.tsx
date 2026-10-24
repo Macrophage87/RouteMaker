@@ -82,12 +82,14 @@ import {
   isMiddle,
   kindSaid,
   kindSwitchedSaid,
+  cleanStopName,
+  stopNamedSaid,
   namePoints,
   stopAddedSaid,
   stopsOnly,
   withVias,
   viaIndices,
-  viaPointsNamed,
+  importedKinds,
 } from "./lib/pointKinds.ts";
 import { MANUAL_BADGE, planLegEdit } from "./lib/planLegs.ts";
 import { insertedSaid, loopChangeSaid,reversedSaid, reverseUnavailableHint, stationSaid } from "./lib/pointText.ts";
@@ -254,6 +256,7 @@ import type { DeviceProfileId } from "./lib/deviceProfiles.ts";
 import { SHARED_GONE, SHARED_INPUTS_ONLY, SHARED_OPENED, SHARED_PATH, SHARED_REVOKED, SHARED_REVOKED_ERROR, SHARE_KEEP_DEFAULT, SHARE_RIDE_WAIT, BROADCAST_NO_LEAD, BROADCAST_SHARE_FAILED, asRideLink, leadKeyFrom, gpxShareFile, keepFields, newSharedId, previewImageOk, readShared, rideLinkFrom, sharedBody, sharedIdFrom, storeShared, withSharedId, type ShareKeep } from "./lib/sharedRoutes.ts";
 import { ClosureDialog, type ClosureAsk } from "./ClosureDialog.tsx";
 import { StartOnComputerDialog } from "./StartOnComputerDialog.tsx";
+import { StopNameDialog, type StopNameAsk } from "./StopNameDialog.tsx";
 import { LoadRouteDialog } from "./LoadRouteDialog.tsx";
 import { withGpxChoice, type GpxChoice } from "./lib/loadRoute.ts";
 import { askBeforeStart, looksLikePhone, rememberStartAnyway } from "./lib/startOnComputer.ts";
@@ -306,6 +309,8 @@ const initialPlan = decodePlan(planToOpen(tabSession(), window.location.hash));
 VIA_MARKS.markAt(initialPlan.points, initialPlan.vias);
 // And its legs drawn in Plan's manual mode (v0.9.1); an older link has none.
 VIA_MARKS.markDrawn(initialPlan.points, initialPlan.drawn);
+// And its stops' own names (2026-10-24); an older link has none.
+VIA_MARKS.nameAt(initialPlan.points, initialPlan.names);
 
 // Go or Plan (lib/appMode.ts; the owner's choices 1 and 2 of 2026-10-11): the tab's own view, else Plan for a
 // link with a plan in it on a wide screen, else by screen size: Plan on a computer, Go on a phone.
@@ -955,6 +960,10 @@ export function App() {
   const focusAfterRemove = useRef<number | null>(null);
   const writtenHash = useRef<string>("");
   const { gate: geoGate, namer } = usePlaceNames(points);
+  // A ride's stop names (2026-10-24): one function for the ride, so its stops on the map are worked out only as it moves.
+  // A stop renamed in place (its pair unchanged): the link is written again for it.
+  const [namesVersion, setNamesVersion] = useState(0);
+  const rideStopName = useCallback((point: LonLat) => namer.name(point)?.name, [namer]);
   // A route's own name (a save, a shared line, a GPX file) never carries the Home's label (review privacy-2).
   const fileNamed = nameWithoutHome((point) => namer.name(point)?.name, myGo.home?.point ?? null);
 
@@ -1158,7 +1167,7 @@ export function App() {
     linkPresses.current += 1;
     setLinkSaid("");
     setLinkSpoken("");
-  }, [points, preset, dials]);
+  }, [points, preset, dials, namesVersion]);
 
   // A link pasted into this tab, or the back button, changes the fragment
   // without a reload: open the plan it names.
@@ -1183,7 +1192,7 @@ export function App() {
       // A plan opened from a link opens drawn, in Plan as in Go (v0.7.0), and is not compared with the last one.
       forgetDrawn();
       setRouteAsk((n) => n + 1);
-      setPoints(VIA_MARKS.markDrawn(VIA_MARKS.markAt(plan.points, plan.vias), plan.drawn));
+      setPoints(VIA_MARKS.nameAt(VIA_MARKS.markDrawn(VIA_MARKS.markAt(plan.points, plan.vias), plan.drawn), plan.names));
       setPreset(plan.preset);
       setDials(plan.dials);
     };
@@ -1864,9 +1873,10 @@ export function App() {
   // The road panel's Set as start / Set as end / Add as stop (OWNER-DECISIONS 441n): the spot
   // right-clicked or held (or the map's center by keyboard), as the search's choice places a
   // place: the coverage check, the cap, the loop; an edit like any other, undone and redone.
-  const placeSpot = useCallback((choice: PlaceChoice, spot: LonLat, asVia = false) => {
-    // A tapped trail's Route through this trail: a via point, which shapes the route and is never a stop.
-    const point: LonLat = asVia ? VIA_MARKS.via([spot[0], spot[1]]) : spot;
+  const placeSpot = useCallback((choice: PlaceChoice, spot: LonLat, asVia = false, name?: string) => {
+    // A tapped trail's Route through this trail: a via point, which shapes the route and is never a stop. A stop
+    // with a name (the rider's, or the place's it was picked from) keeps it on its own pair (2026-10-24).
+    const point: LonLat = asVia ? VIA_MARKS.via([spot[0], spot[1]]) : cleanStopName(name) ? VIA_MARKS.named([spot[0], spot[1]], name) : spot;
     cancelLocateNotice();
     if (!insideCoverage(point)) {
       setNotice(OUTSIDE_NOTICE);
@@ -2011,7 +2021,7 @@ export function App() {
   };
   const addNearestStop = (item: Nearby) => {
     namer.remember(item.place.point, item.place.title);
-    placeSpot("via", item.place.point);
+    placeSpot("via", item.place.point, false, item.place.title);
   };
 
   // A place picked from search: the start, the destination or a stop, as chosen
@@ -2028,7 +2038,11 @@ export function App() {
       current: () => pointsRef.current,
       commit: commitPick,
       loop: loopVias,
-      remember: (p, name, label) => namer.remember(p, name, label),
+      remember: (p, name, label) => {
+        namer.remember(p, name, label);
+        // Add a stop: the stop keeps the place's name as its own (2026-10-24).
+        if (choice === "via") VIA_MARKS.named(p, name);
+      },
       entrance: (place) => entranceForPlace(place, choice),
     });
     if (point === null) return;
@@ -2350,7 +2364,8 @@ export function App() {
       return;
     }
     const loop = loopStops(ride.preset, ride.dials.loop);
-    const added = addStopWhereShortest(current, point, loop);
+    // The stop keeps the place's name as its own (2026-10-24), for the files, the courses and the cues.
+    const added = addStopWhereShortest(current, VIA_MARKS.named([point[0], point[1]], name), loop);
     setNotice(null);
     commit(added.points);
     announce(stopAddedSaid(added.points, added.index, VIA_MARKS.isVia, loop, name));
@@ -2486,6 +2501,42 @@ export function App() {
     },
     [commit, announce, loopVias, namer],
   );
+  // A stop's own name (Stephen 2026-10-24: a new stop "should also ask for a name"): a Ctrl+click on the map, or the
+  // road panel's Add as stop (a long press), asks for one before the stop is added; a stop's point menu names it
+  // again. The name is optional: none leaves the map's name for the spot, as before.
+  const [stopAsk, setStopAsk] = useState<(StopNameAsk & { point?: LonLat; index?: number }) | null>(null);
+  const askStopAt = useCallback((point: LonLat) => {
+    if (!insideCoverage(point)) {
+      setNotice(OUTSIDE_NOTICE);
+      return;
+    }
+    if (pointsRef.current.length >= MAX_POINTS) {
+      setNotice(maxPointsNotice());
+      return;
+    }
+    setStopAsk({ mode: "add", name: "", point });
+  }, []);
+  const renameStop = useCallback((index: number) => {
+    const point = pointsRef.current[index];
+    if (!point || namePoints(pointsRef.current, VIA_MARKS.isVia, loopVias)[index]?.role !== "stop") return;
+    setStopAsk({ mode: "rename", name: VIA_MARKS.nameOf(point) ?? "", index });
+  }, [loopVias]);
+  const stopNamed = (name: string) => {
+    const ask = stopAsk;
+    setStopAsk(null);
+    if (!ask) return;
+    if (ask.mode === "add" && ask.point) {
+      placeSpot("via", ask.point, false, name);
+      return;
+    }
+    const current = pointsRef.current;
+    const point = ask.index === undefined ? undefined : current[ask.index];
+    if (!point || cleanStopName(name) === VIA_MARKS.nameOf(point)) return;
+    // In place: only a label changes, so no new route is asked for; the link is written again (namesVersion).
+    VIA_MARKS.rename(point, name);
+    setNamesVersion((v) => v + 1);
+    announce(stopNamedSaid(cleanStopName(name)));
+  };
   // Reverse: in a loop the start stays and the stops go the other way around
   // (OWNER-DECISIONS 374); with a start and one stop that is no change, so a
   // press says why and changes nothing.
@@ -2602,9 +2653,11 @@ export function App() {
     setConfirmedKm(null);
     setNotice(null);
     for (const [point, name] of namesToKeep(plan)) namer.remember(point, name);
-    // A file's points are stops (v0.7.0), but for those a RouteMaker file names "Via point" (lib/gpx.ts).
+    // A file's named points are stops, its unnamed ones (and those a RouteMaker file names "Via point") via points
+    // (Stephen 2026-10-24); a stop keeps the file's name for it as its own.
     const opened = plan.points.slice(0, MAX_POINTS);
-    VIA_MARKS.markAt(opened, viaPointsNamed(plan.pointNames, opened.length));
+    const kinds = importedKinds(plan.pointNames, opened.length);
+    VIA_MARKS.nameAt(VIA_MARKS.markAt(opened, kinds.vias), kinds.names);
     commit(opened, { ...rideAfterImport(plan, rideRef.current), imported: plan });
     // An opened file is a saved route: it opens drawn (v0.7.0), and is not compared with the plan before it.
     forgetDrawn();
@@ -2614,6 +2667,11 @@ export function App() {
   // A fitting round for an opened track: part of the same edit as the import
   // (the rider did not make it), so it is not an undo step of its own.
   const refineImported = useCallback((next: LonLat[]) => {
+    // The points a fitting round adds have no names: via points, as a file's unnamed points are (2026-10-24).
+    const had = new Set(pointsRef.current);
+    next.forEach((point, i) => {
+      if (!had.has(point) && i > 0 && i < next.length - 1) VIA_MARKS.via(point);
+    });
     if (importBase.current) importBase.current = { ...importBase.current, points: next };
     pointsRef.current = next;
     setPoints(next);
@@ -3020,7 +3078,7 @@ export function App() {
     showPlanner(true);
     // The kept key leaves Mass Ride's ride size out (keptPlanKey); the size set now stays.
     const plan = decodePlan(kept.plan);
-    const hash = dials.rideSize && plan.preset === preset ? encodePlan(plan.points, plan.preset, { ...plan.dials, rideSize: dials.rideSize }, plan.vias, plan.drawn) : kept.plan;
+    const hash = dials.rideSize && plan.preset === preset ? encodePlan(plan.points, plan.preset, { ...plan.dials, rideSize: dials.rideSize }, plan.vias, plan.drawn, plan.names) : kept.plan;
     if (window.location.hash !== hash) window.location.hash = hash;
     announce(`Opening ${kept.title}.`);
   };
@@ -3961,7 +4019,7 @@ export function App() {
   const addFoodStop = (result: FoodResult) => {
     const point: LonLat = [result.place.lon, result.place.lat];
     namer.remember(point, result.place.name);
-    placeSpot("via", point);
+    placeSpot("via", point, false, result.place.name);
   };
   // v0.7.0's place sheets (app/PlacesSheets.tsx): Go's Repair and Sights behind More, Plan's Places to see.
   // Both list from the rider's location where the app has one (the owner, 2026-10-18: "The default for search
@@ -4034,7 +4092,7 @@ export function App() {
   const addSightStop = (r: SightResult) => {
     const point: LonLat = [r.place.lon, r.place.lat];
     namer.remember(point, r.place.name);
-    placeSpot("via", point);
+    placeSpot("via", point, false, r.place.name);
   };
   // The nearest finder (Plan's Water chip, Go's Water and Restroom chips): its own sheet now.
   const nearestProps = {
@@ -4138,7 +4196,7 @@ export function App() {
       text: ADD_AS_STOP,
       run: () => {
         namer.remember(point, name);
-        placeSpot("via", point);
+        placeSpot("via", point, false, name);
       },
     };
   };
@@ -4255,7 +4313,7 @@ export function App() {
   const addWaterStop = (item: WaterAlong) => {
     const point: LonLat = [item.point.lon, item.point.lat];
     namer.remember(point, waterTitle(item.point));
-    placeSpot("via", point);
+    placeSpot("via", point, false, waterTitle(item.point));
   };
   // The line can be dragged when it is the route of the points as they are:
   // not while a new one is being planned, when its legs are the old list's.
@@ -4703,6 +4761,10 @@ export function App() {
         pressSetsEnd={goTapSetsEnd(mode)}
         onRemovePoint={riding ? ignore : removeFromMap}
         onSwitchKind={riding ? ignore : switchKind}
+        // A Ctrl+click is a stop, its name asked first (2026-10-24); in Go only once there is a route to add it to.
+        onStopAt={onBike || reviewing || (goTapSetsEnd(mode) && points.length < 2) ? undefined : askStopAt}
+        onRenameStop={onBike || reviewing ? undefined : renameStop}
+        rideStops={riding ? (rideView?.stops ?? null) : null}
         markerReset={markerReset}
         accuracy={riding ? rideCircle : roaming ? (roamRider ? { centre: roamRider.point, radiusM: roamRider.accuracyM } : null) : hereCircle}
         rider={riding && rideView?.rider ? rideView.rider : roaming ? roamRider : null}
@@ -4841,6 +4903,7 @@ export function App() {
           openKept(route);
         }}
       />
+      <StopNameDialog ask={stopAsk} onDone={stopNamed} onCancel={() => setStopAsk(null)} />
       <StartOnComputerDialog
         open={computerAsk !== null}
         onBack={() => setComputerAsk(null)}
@@ -4884,7 +4947,8 @@ export function App() {
           if (map) refreshStressTiles(map, window.location.origin, generation);
         }}
         plan={{ count: points.length, loop: loopVias }}
-        onPlace={placeSpot}
+        // Its Add as stop (after a long press or a right-click) asks for the stop's name first (2026-10-24).
+        onPlace={(choice, point, asVia) => (choice === "via" && !asVia ? askStopAt(point) : placeSpot(choice, point, asVia))}
         trailRider={trailRider}
         onSetHome={(point) => void setHomeAt(point)}
       />
@@ -5048,6 +5112,7 @@ export function App() {
           onEnd={endRide}
           resumeStats={resumeStats}
           water={ensureWater}
+          stopName={rideStopName}
           trailMiles={trailMiles}
           keepLastRide={isStandalone()}
           fixed={rideStart.fixed}

@@ -275,5 +275,5 @@ test("the planner renders Find food right after the nearest finder, and fetches 
   assert.match(app, /import foodUrl from "\.\/amenity-data\/food\.json\?url&no-inline";/);
   assert.match(app, /loadFood\(foodUrl\)/);
   // Add as stop is the road panel's own: the coverage check, the cap, an edit like any other.
-  assert.match(app, /placeSpot\("via", point\)/);
+  assert.match(app, /placeSpot\("via", point, false, result\.place\.name\)/);
 });

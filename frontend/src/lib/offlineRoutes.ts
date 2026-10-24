@@ -85,7 +85,8 @@ export function keepOffered(standalone: boolean, inTab: boolean = KEEP_IN_BROWSE
 export function keptPlanKey(points: readonly LonLat[], preset: PresetId, dials: Dials, vias: readonly number[] = []): string {
   const { rideSize: _unsent, ...sent } = dials;
   // The via points too (v0.7.0): a kept route opens with each point's kind.
-  return encodePlan(points, preset, sent, vias);
+  // Never a stop's own name: renaming a stop asks for no new route.
+  return encodePlan(points, preset, sent, vias, undefined, new Map());
 }
 
 /** The kept answer for a plan with no network: a kept route of that plan first, else the last ride's. */
