@@ -167,7 +167,7 @@ def author_zone(author):
     return share_preview.home_zone((go.home_lon, go.home_lat), share_preview.zone_jitter(author.pk))
 
 
-def stats_of(answer: dict, line: list, preset: str) -> dict:
+def stats_of(answer: dict, preset: str, planned_on: date) -> dict:
     """The figures the page shows, read once from the route as published."""
 
     def number(key):
@@ -180,7 +180,7 @@ def stats_of(answer: dict, line: list, preset: str) -> dict:
         "descent_m": number("descent_m"),
         "duration_s": number("duration_s"),
         "preset": preset,
-        "planned_on": timezone.localdate().isoformat(),
+        "planned_on": planned_on.isoformat(),
     }
 
 
@@ -192,6 +192,10 @@ def freeze(post, saved) -> None:
     now = timezone.now()
     answer = shared_routes.public_answer(saved.answer)
     inputs = dict(saved.inputs or {})
+    # The rider's weight never leaves their account (shared_routes.public_answer does the same for
+    # the answer): an older saved route's dials may still carry it.
+    if isinstance(inputs.get("dials"), dict):
+        inputs["dials"] = {k: v for k, v in inputs["dials"].items() if "weight" not in k.lower()}
     row = SharedRoute.objects.create(
         id=secrets.token_hex(16),
         name=post.title[:120],
@@ -208,9 +212,11 @@ def freeze(post, saved) -> None:
         preview_image=True,
     )
     post.route = row
-    post.stats = stats_of(
-        answer, saved.line, str(inputs.get("preset") or answer.get("preset") or "")
-    )
+    preset = str(inputs.get("preset") or answer.get("preset") or "")
+    planned = saved.updated_at or timezone.now()
+    post.stats = stats_of(answer, preset, timezone.localdate(planned))
+    # A new route is a new map: the old link picture no longer shows it.
+    post.thumbnail, post.thumbnail_key = None, ""
     first = saved.line[0]
     post.start_lon, post.start_lat = float(first[0]), float(first[1])
 
@@ -315,8 +321,8 @@ def listed(today: date):
 STYLE = (
     ":root{color-scheme:light dark;--ink:#1f2933;--muted:#52606d;--bg:#fff;--card:#f5f7f4;"
     "--rule:#d6dcd4;--accent:#1d4ed8;--accent-ink:#fff;--badge:#fef3c7;--badge-ink:#713f12}"
-    "@media (prefers-color-scheme:dark){:root{--ink:#e6e9ec;--muted:#aab4bf;--bg:#121417;"
-    "--card:#1c2025;--rule:#323942;--accent:#93b4ff;--accent-ink:#0b1220;--badge:#3f3210;"
+    "@media (prefers-color-scheme:dark){:root{--ink:#e6e9ec;--muted:#aab4bf;--bg:#1b1e24;"
+    "--card:#1c2025;--rule:#323942;--accent:#8ab4ff;--accent-ink:#0b1733;--badge:#3f3210;"
     "--badge-ink:#fde68a}}"
     "*{box-sizing:border-box}"
     "body{margin:0;font:17px/1.55 'Atkinson Hyperlegible',system-ui,sans-serif;color:var(--ink);"
@@ -524,7 +530,7 @@ def post_html(request, post) -> str:
         f'<dl class="figures">{row}</dl>'
         f'<figure class="post-map" id="post-map"><img src="{image}" alt="{map_alt}" '
         f'width="{THUMBNAIL_WIDTH}" height="{THUMBNAIL_HEIGHT}"></figure>'
-        f'<nav class="post-actions" aria-label="Use this route">{actions}</nav>'
+        f'<div class="post-actions" role="group" aria-label="Use this route">{actions}</div>'
         f'<p class="said" id="send-said" role="status">'
         f"<noscript>{escape(NO_SCRIPT_SEND)}</noscript></p>"
         '<section id="post-charts" aria-labelledby="charts-h">'
@@ -571,10 +577,9 @@ def index(request):
             if post.season_label and in_season(post, today)
             else ""
         )
-        alt = escape(f"Map of {post.title}")
         return (
             f'<li class="card"><a href="/routes/{escape(post.slug)}">'
-            f'<img src="{escape(image_path(post))}" alt="{alt}" loading="lazy" '
+            f'<img src="{escape(image_path(post))}" alt="" loading="lazy" '
             f'width="{THUMBNAIL_WIDTH}" height="{THUMBNAIL_HEIGHT}">'
             f"<div><h2>{escape(post.title)}</h2><p>{badge}{escape(summary_line(post))}</p>"
             f"<p>{escape(ride_name(post))}</p></div></a></li>"
@@ -675,7 +680,9 @@ def thumbnail(request, slug: str):
     if post is None or not visible(post, request) or not post.thumbnail:
         return HttpResponse(status=404)
     response = HttpResponse(bytes(post.thumbnail), content_type=THUMBNAIL_TYPE)
-    response["Cache-Control"] = "public, max-age=3600"
+    # Public once anyone may see the post; a draft's picture is the admin's alone.
+    shown = post.status in ("published", "unlisted")
+    response["Cache-Control"] = "public, max-age=3600" if shown else "private, no-store"
     response["X-Content-Type-Options"] = "nosniff"
     return response
 

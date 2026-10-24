@@ -369,6 +369,48 @@ def test_an_instance_admin_writes_a_post_from_their_saved_route_in_the_admin() -
     assert post.author == admin and post.route.line == LINE and post.published_at
     assert post.sections.get().heading == "The Mall"
     assert Client().get("/routes/mall-loop").status_code == 200
+    # Another admin edits it: their list lacks the author's saved route, and the post keeps it.
+    second = signed_in(make_user(is_instance_admin=True))
+    shown = second.get(f"/{settings.ADMIN_PATH}core/routepost/{post.pk}/change/")
+    assert shown.status_code == 200, shown.content[:300]
+    edit = {
+        **fields,
+        "csrfmiddlewaretoken": second.cookies["csrftoken"].value,
+        "season_start": "",
+        "title": "Mall loop, fixed",
+        "saved_route": "",
+        "sections-TOTAL_FORMS": "0",
+    }
+    kept_route = post.route_id
+    assert (
+        second.post(f"/{settings.ADMIN_PATH}core/routepost/{post.pk}/change/", edit).status_code
+        == 302
+    )
+    post.refresh_from_db()
+    assert post.title == "Mall loop, fixed" and post.route_id == kept_route
+    assert post.saved_route_id == saved.pk
+
+
+@db
+def test_a_new_route_drops_the_old_picture_and_no_weight_comes_with_the_plan() -> None:
+    author = make_user(is_instance_admin=True)
+    post = make_post(author, thumbnail=jpeg(1200, 630), thumbnail_key="abc")
+    assert post.thumbnail is None and post.thumbnail_key == ""
+    heavy = saved_route(author, inputs={**INPUTS, "dials": {"stress": 50, "systemWeightKg": 90}})
+    route_posts.freeze(post, heavy)
+    assert post.route.inputs["dials"] == {"stress": 50}
+
+
+@db
+def test_a_drafts_picture_is_never_kept_by_a_shared_cache() -> None:
+    admin = make_user(is_instance_admin=True)
+    post = make_post(admin, status=RoutePost.Status.DRAFT)
+    RoutePost.objects.filter(pk=post.pk).update(thumbnail=jpeg(1200, 630), thumbnail_key="k")
+    client = signed_in(admin)
+    assert client.get("/routes/mall-loop/thumbnail.jpg")["Cache-Control"] == "private, no-store"
+    RoutePost.objects.filter(pk=post.pk).update(status=RoutePost.Status.WITHDRAWN)
+    for path in ("/routes/mall-loop/thumbnail.jpg", "/routes/mall-loop/route.gpx"):
+        assert Client().get(path).status_code == 404
 
 
 @db

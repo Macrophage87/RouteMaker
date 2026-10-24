@@ -22,3 +22,8 @@ body {
 .post-charts {
   margin-top: 0.5rem;
 }
+
+/* The credits in one short line on a small map. */
+.post-map .maplibregl-ctrl-bottom-right .maplibregl-ctrl {
+  margin: 0;
+}

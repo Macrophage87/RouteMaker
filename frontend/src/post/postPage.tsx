@@ -24,10 +24,9 @@ import { Protocol } from "pmtiles";
 import { layers as protomapsLayers, namedFlavor } from "@protomaps/basemaps";
 import type { RouteResponse } from "../lib/api.ts";
 import type { LonLat } from "../lib/geo.ts";
-import { BASEMAP_SOURCE_ID, MAP_ATTRIBUTION, buildStyle } from "../lib/mapStyle.ts";
+import { ACKNOWLEDGEMENTS_LINK, BASEMAP_SOURCE_ID, MAP_CREDITS, buildStyle } from "../lib/mapStyle.ts";
 import { mapGlyphRequest } from "../lib/mapGlyphAssets.ts";
 import { withClearRoadLabels } from "../stressStyle.js";
-import { collapseCredits } from "../lib/junctionCard.ts";
 import { ElevationChart } from "../ElevationChart.tsx";
 import { tripRoute } from "../lib/tripRides.ts";
 import { usableProfile } from "../lib/profileChart.ts";
@@ -50,7 +49,7 @@ export interface PostData {
 
 export const SENDING_SAID = "Sending…";
 export const WAHOO_NOT_CONNECTED =
-  "Wahoo is not connected, so the FIT course went as a file. To send routes straight to your Wahoo app, connect Wahoo in RouteMaker's Settings.";
+  "Wahoo isn't connected in RouteMaker's Settings.";
 export const SEND_FAILED = "The course could not be sent. Try again.";
 export const PICTURE_MAKING = "Drawing the map…";
 export const PICTURE_DONE = "Done. This map is now the link picture. Chat apps may show the old one for a while.";
@@ -141,9 +140,9 @@ function showMap(host: HTMLElement, data: PostData): MapLibreMap {
     transformRequest: mapGlyphRequest,
   });
   map.addControl(new maplibregl.NavigationControl({ visualizePitch: false, showCompass: false }), "top-right");
-  map.addControl(new maplibregl.AttributionControl({ compact: true, customAttribution: MAP_ATTRIBUTION }), "bottom-right");
-  // Shut, as the app's map starts (lib/junctionCard.ts): opened, the credits cover a small map.
-  collapseCredits(box.querySelector<HTMLElement>(".maplibregl-ctrl-attrib"));
+  // One short line (the base map's own credit, OpenStreetMap first), with the full credits a link away: the app's
+  // credits panel (lib/mapInfo.ts) would cover a map this small.
+  map.addControl(new maplibregl.AttributionControl({ compact: false, customAttribution: `${MAP_CREDITS[0]} | ${ACKNOWLEDGEMENTS_LINK}` }), "bottom-right");
   map.getCanvas().setAttribute("aria-label", host.querySelector("img")?.alt ?? "Map of the route");
   map.on("load", () => {
     addRoute(map, data);

@@ -1783,10 +1783,16 @@ class RoutePostForm(forms.ModelForm):
         }
 
     author = None
+    picked = False
 
     def clean(self):
         cleaned = super().clean()
-        picked = "saved_route" in self.changed_data or self.instance.route_id is None
+        # Left empty on an existing post (another admin's saved route is not in this admin's
+        # list), the post keeps its route.
+        picked = self.instance.route_id is None or (
+            "saved_route" in self.changed_data and cleaned.get("saved_route") is not None
+        )
+        self.picked = picked
         if picked:
             problem = route_posts.route_problem(cleaned.get("saved_route"), self.author)
             if problem:
@@ -1868,8 +1874,10 @@ class RoutePostAdmin(InstanceAdminOnly):
     def save_model(self, request, obj, form, change) -> None:
         if not change:
             obj.author = request.user
-        if "saved_route" in form.changed_data or obj.route_id is None:
+        if form.picked:
             route_posts.freeze(obj, form.cleaned_data["saved_route"])
+        elif change and obj.saved_route_id is None:
+            obj.saved_route_id = form.initial.get("saved_route")
         if obj.status in (RoutePost.Status.PUBLISHED, RoutePost.Status.UNLISTED):
             obj.published_at = obj.published_at or timezone.now()
         super().save_model(request, obj, form, change)
