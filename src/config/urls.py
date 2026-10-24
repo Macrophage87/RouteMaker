@@ -20,11 +20,13 @@ from core import (
     account_deletion,
     auth_views,
     connector,
+    garmin_views,
     health,
     mass_tiles,
     privacy_policy,
     share_preview,
     stress_tiles,
+    wahoo_views,
 )
 from core.admin import site
 from core.api import api
@@ -44,6 +46,13 @@ urlpatterns = [
     path("auth/login", auth_views.login_start, name="login"),
     path("auth/callback", auth_views.login_callback, name="login-callback"),
     path("auth/logout", auth_views.logout_view, name="logout"),
+    # Connecting a rider's Garmin account, for Send to Garmin (core.garmin_views).
+    path("auth/garmin/start", garmin_views.connect_start, name="garmin-start"),
+    path("auth/garmin/callback", garmin_views.connect_callback, name="garmin-callback"),
+    path("garmin/deregistrations", garmin_views.deregistrations, name="garmin-deregistrations"),
+    # Connecting a rider's Wahoo account, for Send to Wahoo (core.wahoo_views).
+    path("auth/wahoo/start", wahoo_views.connect_start, name="wahoo-start"),
+    path("auth/wahoo/callback", wahoo_views.connect_callback, name="wahoo-callback"),
     # The site's own MCP connector and its sign-in (core.connector; v0.10.0).
     path("mcp", connector.mcp_endpoint, name="mcp"),
     path("mcp/gpx/<str:token>", connector.draft_gpx, name="mcp-gpx"),

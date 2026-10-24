@@ -39,12 +39,15 @@ function siteUrl(env) {
 function buildConfig(env = process.env) {
   const site = siteUrl(env);
   const server = {
-    // Sign-in (/auth/login) is a round trip through Discord's authorize page: kept in the app, so the
-    // session cookie lands in the app's WebView. Any other site opens in the phone's browser. The
+    // Sign-in (/auth/login) is a round trip through Discord's authorize page, and Connect Garmin
+    // (/auth/garmin/start) one through Garmin's sign-in (sso.garmin.com) and consent page
+    // (connect.garmin.com), and Connect Wahoo (/auth/wahoo/start) one through Wahoo's sign-in and
+    // consent pages (api.wahooligan.com): kept in the app, so the session cookie is the app's WebView's both ways
+    // and the return lands signed in. Any other site opens in the phone's browser. The
     // compatibility script is injected for the site's own origin only (RideCompatPlugin.java); the
     // native bridge reaches every page the WebView shows, Discord's too, so GuardedBridge.java passes
     // its calls to the plugins only while the top-level page is the kept site.
-    allowNavigation: ["discord.com"],
+    allowNavigation: ["discord.com", "sso.garmin.com", "connect.garmin.com", "api.wahooligan.com"],
     // Shown when the site cannot be reached at launch (no signal).
     errorPath: "offline.html",
   };

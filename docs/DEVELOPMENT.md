@@ -1438,11 +1438,14 @@ curl -s -X POST http://localhost:8000/api/route -H 'Content-Type: application/js
   `lua/routemaker_remap.lua`), and Valhalla weighs that `3 * (1 - use_roads)`,
   so one graph serves every position. LTS 4 and up cost more again ("Graded
   stress", below).
-- `hills`, integer -100-100, detent at 0: below it `use_hills = 1 + hills/100`
-  (0 is `use_hills` 1.0, no grade penalty, the fastest time). Above it, on every
+- `hills`, integer -100-100, detent at 0: it sets the rider's LT1 grade, 1% at
+  -100, 8% at 0 and 15% at 100 in a straight line (`hill_cost.lt1_grade_for`;
+  "Hill cost past LT1", below). Below the detent `use_hills = 1 + hills/100` still
+  shapes what the router offers, but every route is scored with the rider's own
+  hill cost in place of the router's climbing charge. Above it, on every
   ride type but Mountain Goat, "fine with hills" (FOLLOWUP-HILLS-TOLERATE,
-  OWNER-DECISIONS 242; "Fine with hills", below): `hills/100` of the router's own
-  climbing charge comes off each of its `alternates`, and `hills_tolerate` says
+  OWNER-DECISIONS 242): the same scoring at a steeper LT1 grade, and `hills_tolerate`
+  says
   what was compared and chosen. On Mountain Goat above it a climb
   search among the router's `alternates` (3), choosing the one that climbs most
   within `1 + 0.5 * hills/100` of the direct route's length, with routes through
@@ -1742,6 +1745,108 @@ ride type but Mountain Goat): `candidates`, `chosen` (0 is the router's own),
 `extra_climb_m` and `extra_distance_m` (the kept route against the router's own,
 negative where shorter), and `limited` (`two_points`, `long_ride`, `timed_out`,
 `calm_first`).
+
+**Hill cost past LT1** (v0.12.0; this replaces the sustained-grade price and the
+"fine with hills" discount above as the hills slider's weighing, which are kept as
+the record of how it got here). The owner, 2026-10-23: "I'm thinking for hill stress
+to always assume time equivalent, but the slider should determine a further penalty
+for steepness. We could have the penalty start around the max steepness someone can
+ride an extended period without labored breating ( LT1 threshold essentially)";
+"Below LT1 you can basically downshift and chill, so it's essentially the same as a
+slightly longer flat piece. Above that, fatigue can set in. Above FTP, fatigue is
+even higher, so a higher penalty. Let's mainly try to focus on one metric and
+extrapolate. Simplicity is better."; "Just do a standard model ... nobody wants to
+put in 50 parameters"; "You can use the slider standards for the levels ... or
+1-15"; "The curve should probably start around 65% of FTP as thats a casual
+endurance pace"; "then go much more rapidly after FTP. look at a stanard power
+curve"; "In general it's more long term stamina than short term."; "Just make it clear
+that while we're using an FTP model, were just basing it on a comfortable climb grade.
+It's unlikely that a precise number would change routing much. Weight should only really
+affect the extra time component, as heavily loaded touring bikes tend to have good
+climbing gears. Penalty is by slider."; "mostly a hidden calculation, less so for the
+actual time. Basically if you are having to push a bike up a hill it's going to be a
+last resort"; and "Can the slider positions just be percent?"
+
+The one metric is the rider's **LT1 grade**: the steepest grade they can climb for
+several minutes in their lowest gear without labored breathing. The hills slider shows
+it in whole percent, 1% at full avoid, 8% at the detent and 15% at the far end, in a
+straight line (`hill_cost.lt1_grade_for`; the front end's `hillsGradePosition` and
+`hillsAtGrade` map the slider's percent to the API's `hills`, -100 to 100, which is
+unchanged); each ride type's start is its standard rider (Cargo -60 is 4%, Fast 40 is
+11%). Mountain Goat keeps its old slider, whose right half seeks climbs. FTP is only
+the shape of the curve: the rider sets nothing but the grade. The effort is worked out
+for a standard rider and bike of 198 lb (90 kg, `effort.MASS_KG`) with the effort
+model's forces (`routemaker.effort`, Martin et al. 1998: rolling resistance 0.006, CdA
+0.4 m², air 1.225 kg/m³), 95% drivetrain, so the penalty follows the slider alone:
+
+- **LT1 power** is what holds 5 mph (8 km/h), a hybrid's lowest gear at an easy
+  cadence, on the LT1 grade. It is the top of Zone 2, 75% of FTP (Allen and Coggan,
+  "Training and Racing with a Power Meter"; LT1 is the first ventilatory threshold,
+  the talk-test intensity, Foster and Porcari, ACE 2010). So FTP = LT1 power / 0.75.
+- **Endurance pace**, 65% of FTP and never less than what holds the ride's flat speed
+  on the flat, is the power the rider climbs at.
+- **Time, always.** Over each of the effort model's rising windows (at least 984 ft
+  (300 m), so a short kick averages out) the standard rider climbs at the endurance
+  pace, never faster than the flat speed and never slower than 5 mph. The request's
+  system weight moves at that same power, so a loaded bike climbs slower, down to
+  pushing pace in its low gears; the steepness penalty never changes with weight (the
+  calm search's effort blend and Mountain Goat's effort tiebreak still weigh it). The extra
+  seconds over the flat cost what the same seconds of flat riding do.
+- **Past the endurance pace**, where holding 5 mph takes more, the penalty is the
+  window's seconds times `(e^(d / 0.2) - 1) / (e^(0.35 / 0.2) - 1)`
+  (`hill_cost.steepness_rate`), with `d` the power past the endurance pace as a share of
+  FTP: 0.06 s a second at 70%, 0.24 at 80%, 0.52 at 90%, 1 at FTP, 1.8 at 110%, 3.1 at
+  120%. It sits close to the table the owner approved ("That table looks about right":
+  0.08, 0.33, 0.66, 1, 2.4 at 110%).
+- **How long the climb lasts.** A climb is the rising windows around a window, until
+  the road drops more than 10 ft (3 m, `climbs.DIP_M`) below the climb's top or goes
+  two windows without rising; elevation noise and via points do not split it. Each
+  window's effort is weighed as the sustained effort it equals over the whole climb's
+  riding time `t` (the standard rider's, at the pace above): the power needed divided
+  by `1 + W'/t`, with W' = 70 s of FTP. The whole effort is scaled, so the endurance
+  pace and LT1 move with it: the slider's own grade, held for the several minutes the
+  slider's help asks about (up to about 7.5 minutes, where LT1 power over `1 + W'/t`
+  reaches the endurance pace), costs nothing past its time, and a little more on longer
+  climbs (about 49 s over 1.2 mi (2 km), 105 s over 1.9 mi (3 km)) (`hill_cost.W_PRIME_S`; the power-duration curve
+  FTP x (1 + W'/t), Monod and Scherrer 1965, Skiba et al. 2012; cyclists' W' of 18 to
+  23 kJ, Weigend et al. 2021, arXiv 2108.04510). The owner: "10% can be done for 100m
+  of riding, people would just sprint before it" and "more long term stamina than short
+  term". A 2-minute pitch weighs a little over a third less, a 20-minute climb about 5% less. Added
+  after the PC check of 2026-10-23, where at 3% Georgetown to Tenleytown took 0.75 mi
+  more, Reno Rd and a busier junction to save 10 ft (3 m) of climb: without it a 1,000
+  ft (300 m) pitch at 6% cost a quarter of an hour of penalty at 3%; now it costs a
+  minute.
+- **Pushing is a last resort.** Where riding a window would cost more than pushing it,
+  it is pushed, at Tobler's hiking speed (Tobler 1993, NCGIA 93-1:
+  `6 e^(-3.5 |grade + 0.05|)` km/h) times 0.75 for the bike (`hill_cost.push_ms`; the
+  owner: "2.5 mph is probably fast"): 1.9 mph (3.1 km/h) at 6%, 1.7 mph (2.7 km/h) at
+  10%, 1.4 mph (2.2 km/h) at 15%. It costs its time plus 4 s of penalty a second pushed
+  (`WALK_PENALTY`), so a route that needs pushing loses to almost any ridable one.
+
+The penalty is for choosing routes only: no time shown to riders includes it. Descents
+add nothing here; riding the brakes is still priced from the ride type's brake grade
+(the table above). At 198 lb (90 kg) and 11 mph (18 km/h), 0.6 mi (1 km) costs, in
+minutes of time plus penalty: at the detent (8%), 4.2 + 0 at 8%, 4.2 + 1.7 at 10% and
+4.2 + 5.2 at 12%; at Cargo's start, -60 (3.8%, shown as 4%), 4.2 + 0.2 at 4%, 4.2 + 6.0
+at 6% and, pushed, 19.2 + 90.2 at 10%; at Fast's start, 40 (10.8%, shown as 11%), 4.2 +
+0.6 at 12%. At 3% (-71), 1,000 ft (300 m) at 6% costs 1.2 + 1.0.
+
+Where it is used. Valhalla's own climbing charge (the router's cost per metre climbed
+at the request's `use_hills`, the table above, read between its 1.0, 0.4 and 0.0 rows:
+`climbs.router_climb_m`) is taken off each route and the rider's hill cost
+(`hill_cost.hill_cost_m`, metres of flat riding at the ride's speed) put in its place:
+
+- the router's alternatives, on both halves of the slider for every ride type but
+  Mountain Goat (`routing.choose_by_hills`, `routing.hill_s`; an alternative must save
+  5 cost seconds, `HILLS_EPS_S`), still never a busier route (`routing.calmer_or_own`)
+  and with the same limits (two points, up to 16 mi (25 km) apart);
+- the calm search's score (`refine.Analysis.score`: `hill_m - router_climb_m`) and its
+  distance level (`refine.level3`: length plus `hill_m`), so at the top of the stress
+  slider climbing counts as the time it takes and the penalty past LT1.
+
+`hills_avoid.grade_cost_s` and `direct_grade_cost_s` are now the rider's hill cost in
+cost seconds (`routing.rider_hill_s`); `hills_tolerate.discount_s` is the climbing cost
+the kept route saves against the detent. Scoring only: nothing is rebuilt.
 
 **The climb card** (v0.6.0; the owner, 2026-10-12). A press on a climb's summit marker (in Go,
 its dashed line too) opens its card (`climbInteraction.ts`, `lib/climbCard.ts`): MapView's click asks
@@ -2329,7 +2434,7 @@ avoid, though rare").
 | `MAX_CROSSING_FT` | 4,500 | 10,560 | 2.00 [3.22] |
 | `ORANGE_MIN_FT` | 600 | 800 | 0.15 [0.24] |
 | `RED_MIN_FT` (and the search trigger `REFINE_MIN_EVENT_FT`) | 2,000 | 3,100 (2,900 in 468; raised 2026-10-10, below) | 0.59 [0.94] (was 0.55 [0.88]) |
-| `TIME_FACTORS`, `NIGHT_URBAN_FACTOR`, `NIGHT_RURAL_FACTOR` (468a, 469c-469e) | none | weekday rush x1.25, weekday off-peak (to 9 PM) x1.0, weekend daytime x0.85, night (9 PM-7 AM, any day) x0.5 in a Census urban area and x0.85 outside one | on busy-road junctions only; the crossed road's `road_urban` decides, and where a table has no such column, x0.85 |
+| `TIME_FACTORS`, `NIGHT_URBAN_FACTOR`, `NIGHT_RURAL_FACTOR` (468a, 469c-469e) | none | weekday rush x1.25 (x2, `UNSIGNALISED_RUSH_FACTOR`, giving way to an LTS 4 or Avoid road no signal stops, and a crossing, join or left there never under 1.86 calm mi [3.0 km], ten minutes' riding, `UNSIGNALISED_RUSH_MIN_FT`: 2026-10-23), weekday off-peak (to 9 PM) x1.0, weekend daytime x0.85, night (9 PM-7 AM, any day) x0.5 in a Census urban area and x0.85 outside one | on busy-road junctions only; the crossed road's `road_urban` decides, and where a table has no such column, x0.85 |
 
 The ride time is the plan's `when` (`weekday_rush`, `weekday_offpeak`, `weekend`, `night`).
 The owner's words: "Put some more intersection stress during rush hour too and a little less
@@ -2602,7 +2707,16 @@ never one that is busier than the router's own route ("Traffic wins", OWNER-DECI
 cent and 50 m more LTS 3, 4 and Avoid exposure (`EXPOSURE_TOLERANCE`,
 `EXPOSURE_SLACK_M`) is not taken however many crossings it avoids (measured on
 the live router, before the guard: Rockville to Silver Spring at the old top of the
-slider traded 1.6 mi more LTS 3-4 for fewer crossings). It stops after two rounds that do not improve it, when no route is left (every way
+slider traded 1.6 mi more LTS 3-4 for fewer crossings). The guard counts the red
+junctions' cost (`Analysis.red_m`, quiet metres) as exposure on both sides, one for
+one, as it counts an Avoid-rated junction's penalty (2026-10-23, the owner of an
+unsignalised crossing of Connecticut Ave at Decatur Ave at rush hour: "essentially
+impassable"): on beta the search had excluded both red crossings there and the router
+found the way by the Plyers Mill Rd signal, 0.3 mi (0.5 km) longer with 0.2 mi
+(0.3 km) more LTS 3 and no red junction, which the guard refused for its LTS 3 alone.
+A metre of a red junction's cost is a metre of LTS 3 and, at the standard weights,
+half a metre of LTS 4 (weight 2; 8 on a stress-averse ride), so one 4,500 ft (1,372 m)
+red crossing still never buys 0.6 mi (1 km) of LTS 4. It stops after two rounds that do not improve it, when no route is left (every way
 out excluded: asked again once with only the LTS 4 stretches), when a round
 cannot be started with five seconds left, and never excludes within 500 m of the
 route's ends or of a via point (a trailhead's only way out is often the one busy
@@ -4771,9 +4885,11 @@ puts it, at most two presses away.
   box, four place chips, the commute ride types, then the route's time, stress bar, one
   alert and Start), and Plan, the full panel. Same state, same link. Which one opens:
   the tab's own (sessionStorage, so a reload stays), else Plan for a link with a plan in
-  it, else My Go's Open in, else a phone (`NARROW`) opens in Go and a wider screen in Plan.
+  it on a wider screen, else a phone (`NARROW`) opens in Go and a wider screen in Plan. My Go's
+  Open in was dropped on 2026-10-22 (the owner: "It should open in plan on a computer and go on
+  a phone"); a saved `open_in` is kept in the data but never read to choose a view.
   The switch (`app/Go.tsx` `ModeSwitch`: `aria-pressed` buttons in a named group, Go and Plan, plus
-  Review for an admin) is in Go's bar over the map and Plan's header; a press is remembered as My Go's Open in.
+  Review for an admin) is in Go's bar over the map and Plan's header; a press is remembered for the tab only.
 - **Go** (`app/Go.tsx`): `GoTopBar` (Menu, the switch, Layers, Locate, and the destination
   with a clear button) is before the map in the page, as it is at the top of the screen.
   `GoSheet` (inside the panel, `peek`/`half`/`full` by its handle) holds `PlaceSearch
@@ -4858,9 +4974,9 @@ puts it, at most two presses away.
   (`lib/pointText.ts` `START_GLYPH`, `END_GLYPH`, hidden; the pins' names stay "Start", "End" and
   "Start and finish"), so A, B, C are only the offered places; stops keep their numbers.
 - **My Go** (`lib/myGo.ts`; `core.models.MyGo`, migration 0019; GET/POST `/api/me/go`):
-  Open in, Go's ride type and, signed in, Home. Signed in it is the account's (saved only
+  Go's ride type and Home (`open_in` stays in the saved shape, unused). Signed in it is the account's (saved only
   after it has been read, so an early save never clears a Home), with a copy on the device
-  (without Home) so the next visit opens in the right view at once; signed out it is the
+  (without Home) so the next visit has the ride type at once; signed out it is the
   device's. The POST needs the CSRF cookie the GET sets, a JSON body and a same-site
   request; Home must be in the coverage box and is rounded to 5 places; the row goes with the
   account and is deleted when the account is marked deleted; `my_go` never ships to the beta
@@ -4879,9 +4995,9 @@ puts it, at most two presses away.
 - **Sheets** (`app/Sheets.tsx`, `lib/sidebar.ts` `PanelView`): the bar is Plan, Layers,
   Suggest, GPX and Settings. Layers holds the switches only, with a Legend button that opens
   the Legend sheet one step in; Suggest says how to suggest from the road panel and opens it
-  at the map's center, with DC 311 and an admin's Review; Settings is My Go (Home, Go's ride
-  type, Open in), Riding, Display (High contrast, Accessibility mode, Announcements) and Account,
-  most used first, one row per setting; on a phone it takes the panel's whole height.
+  at the map's center, with DC 311 and an admin's Review; Settings is My Go (Home, one line with
+  Change, and Go's ride type), Riding (cues, large text, rider and bike weight), Display (High
+  contrast, Accessibility mode, Announcements) and Account, most used first, one row per setting; on a phone it takes the panel's whole height.
   Plan's map has Food and Water chips (`PlanMapChips`), which open the Find food and Nearest
   sheets. `openOnto`/`backFrom` keep the way back through nested sheets; Back returns the
   focus to what opened the sheet, and a sheet's heading takes it on the way in.
@@ -4991,11 +5107,31 @@ Tests: `lib/sidebar.test.ts`.
   app's own names (mountain-bike trails, scenic spots, waypoints, route choices at 15 px; mile
   markers and contour heights at 12-13 px) are SemiBold on a white halo too, in dark shades of
   their colours (7:1 or more); counts inside icons (climbs, docks, Review badges) keep their
-  sizes. At z12 and z13 a plain street (facility "none", not a trail, paved, open to cars) that
-  the tiles mark `dense` (a city grid: its 1 km square of EPSG:3857 holds 12 km or more of drawn
-  road, `core.stress_tiles.DENSE_RULE`, tile format 12; unmarked, as a rural road or an older tile, it is full width) is
-  drawn thinner (`STREET_THIN_SCALE`: line x0.4 and x0.6, casing extra x0.5 and x0.75, a full
-  pixel a side with the accessibility switch), so a city grid is a mesh, not a carpet; lanes,
+  sizes. In a city grid (a feature the tiles mark `dense`: its 1 km square of EPSG:3857 holds
+  8 km or more of drawn road, `core.stress_tiles.DENSE_RULE`, tile format 12; unmarked, as a
+  rural road or an older tile, it is always drawn) the map climbs a bike ladder (`CITY_LADDER`,
+  the owner 2026-10-23: "Kind of like how you'd see interstate highways at highest zoom, then
+  arterial roads ... For bikes, we want something similar"): from z12 paths, protected lanes,
+  popular class 2-3 corridors, long calm streets and named trails; from z13 painted lanes and
+  class 1; from z14 every
+  other street and sidewalk, so a city grid is a mesh, not a carpet. An on- or off-ramp (tile
+  `link`, `segment.road_link`) waits for z14 in a city grid or not, unless it is on the
+  ladder (the owner 2026-10-23: "the various onramps and offramps aren't needed at this
+  level"). The tile `overview` (`segment.overview`, `pipeline.bike_network`, after `tidy` in
+  the rebuild) shapes z12-13 in a city grid or not: 1 a short street or crossing (one or two
+  ways, 650 ft (200 m) or less) between two bike facilities, or an LTS 1-2 way of 1,300 ft
+  (400 m) or less joining a bit of the network under half a mile (800 m) to the rest; 4 the
+  calmest way (cost by LTS: 1, 1.15, 2, 4 times its length; no sidewalks) from a z11 piece to
+  its nearest other piece within a cost of 800 m (half a mile), or 3 km (1.9 mi) between two
+  pieces of a mile or more, plus every off-road path in a joined piece of a mile or more (the
+  owner: "make connections across from the MBT to Rock Creek trail ... Include the minor
+  trails"); both draw from z12, busy or not (a ramp still waits for z14), and 4 also zoomed out with the long trails, from z7 (`popular_and_calm`). The joins found in every box are taken shortest first (Kruskal) and kept only where the pieces they join reach a mile; the search for them passes through smaller pieces and uses a 0.04-degree margin. A run of ways of LTS 3 or more, 820 ft (250 m) or less in all and running straight on (within 30 degrees), is a join too (`overview` 1) when it leaves a drawn way going on in the same direction and comes to another, or to a drawn street it meets in a T (no road going on straight); a drawn way's end up to 80 ft (25 m) on along the run counts as met (an offset junction). So a calm street does not break at a busy block or two. A join inside a bit that joins nothing becomes an orphan with it. 2 a bit of
+  the network under 800 m that could not be joined ("If it doesn't connect to anything, don't
+  include it") and 3 a dead end of 800 m or less off it, sidewalks not counted ("all these
+  cul-de-sacs") wait for z14; 3 only where the ladder would not draw the way anyway. Zoomed out,
+  `segment.stray_zoom` (10 or 11, `bike_network.mark_strays`) leaves out of the z10 or z11 tiles
+  a piece of what they draw under a mile long ("These bits too"). The graph is worked in
+  0.05-degree boxes with a 0.02-degree margin, cut at shared vertices. Lanes,
   paths, trails and unpaved roads keep their widths (the owner, 2026-10-21). MapLibre
   draws text from glyph files, not web fonts, and the style has one glyph URL template (the
   base map's `/basemap/fonts/`), so the three Latin ranges (`corridor.ts` `GLYPH_RANGES`) of
@@ -5203,7 +5339,7 @@ is not in control of the ride is stress-averse.
   `calm.added_cost`, over `QUIET_COST_FACTOR`; about 4 at 80). So at 80 a metre of LTS 2
   costs about 1 quiet metre more, a quarter of LTS 3's added cost, as 240 (A) asks. The
   slider does not move, the calm search does not turn on, and the router's requests are
-  unchanged: only the choice among the routes it returns (the crossing round's) changes.
+  unchanged: only the choice among the routes it returns (the crossing rounds') changes.
   Default, Bikeshare and carrying cargo weigh LTS 2 at 0, so their scores are unchanged.
   The term follows the ride, not the preset's start: Trailmaxxing (0.25) and Riding with
   kids (0.5) get it too when the rider moves their slider down to 80 or below. It fades
@@ -6889,7 +7025,7 @@ target, the graph and `refine.quiet_cost_per_m`):
   a protected lane `(1 + (0.15 + 0.6u) x 1.2) / 2.2`, a painted lane
   `(1 + (0.9 + 0.05u) x 1.2) / 2.2`, a quiet street 1 (all 1 on the no-trail graph).
 - Every junction the model charges for, flagged or not, adds what the ranking charges for
-  it, at its point: its cost (`cost_ft`, after the ride-time factor: rush hour x1.25,
+  it, at its point: its cost (`cost_ft`, after the ride-time factor: rush hour x1.25 (x2, and at least 1.86 calm mi [3.0 km], unsignalised on LTS 4 or Avoid),
   weekend x0.85, night x0.5 in town and x0.85 outside; "Intersection costs", option C)
   times `refine.intersection_weight` at the slider
   position (461d: "times its factors and the preset's intersection weight"; 0.25 at 0,

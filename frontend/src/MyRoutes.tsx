@@ -63,6 +63,9 @@ export function MyRoutes({ version, onOpen, onExport, announce, versions = false
   const [renaming, setRenaming] = useState<number | null>(null);
   const [name, setName] = useState("");
   const [deleting, setDeleting] = useState<number | null>(null);
+  // The row whose GPX, Rename, Versions and Delete are shown: one More per row keeps the list to names (the owner,
+  // 2026-10-22: "Saved routes need a less cluttered and more intuitive interface").
+  const [more, setMore] = useState<number | null>(null);
   const [reload, setReload] = useState(0);
   // The row whose versions are shown, and them (null while read, or when they could not be).
   const [showing, setShowing] = useState<{ id: number; list: SavedVersion[] | null; failed: boolean } | null>(null);
@@ -160,7 +163,21 @@ export function MyRoutes({ version, onOpen, onExport, announce, versions = false
                       {/* A closure in force on the saved line (v0.7.0 closures): one line, read with the route's name. */}
                       {alertLine(r.closure_alerts) && <span className="my-route-closure"> {alertLine(r.closure_alerts)}</span>}
                     </span>
-                    <span className="my-route-actions">
+                    <button
+                      type="button"
+                      className="secondary my-route-more"
+                      aria-label={`More for ${r.name}`}
+                      aria-expanded={more === r.id}
+                      aria-controls={`my-route-actions-${r.id}`}
+                      onClick={() => {
+                        setMore(more === r.id ? null : r.id);
+                        setDeleting(null);
+                        setShowing(null);
+                      }}
+                    >
+                      More
+                    </button>
+                    <span className="my-route-actions" id={`my-route-actions-${r.id}`} hidden={more !== r.id}>
                       <button type="button" className="secondary icon-button" aria-label={`Export ${r.name} as GPX`} onClick={() => void full(r.id).then((route) => route && onExport(route))}>
                         <Icon name="download" />
                         <span aria-hidden="true">GPX</span>

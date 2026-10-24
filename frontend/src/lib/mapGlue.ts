@@ -16,8 +16,6 @@ import {
   stressFilters,
   stressLayers,
   drawPriority,
-  popularBandLayers,
-  POPULAR_BAND_LAYER_ID,
   BUSY_MIN_TIER,
   stressOverlayLayers,
   mtbTrailPaint,
@@ -229,10 +227,6 @@ export function setStressPalette(
     for (const id of [facilityLayerId(facility.facility), facilityLayerId(facility.facility, true)]) {
       if (map.getLayer(id)) map.setPaintProperty(id, "line-width", facilityWidthAt(facility, when));
     }
-  }
-  // The popular corridors' band: stronger with the accessibility switch.
-  for (const layer of popularBandLayers(STRESS_SOURCE_ID, when, tiers) as Array<{ id: string; paint: Record<string, unknown> }>) {
-    if (map.getLayer(layer.id)) map.setPaintProperty(layer.id, "line-opacity", layer.paint["line-opacity"]);
   }
   // The unrated mountain-bike trails' line (452a): wider and darker with the accessibility switch, and its white edge wider.
   if (map.getLayer(MTB_TRAIL_LAYER_ID)) {
@@ -468,11 +462,10 @@ export function setOverlayFade(map: Pick<RouteSectionsMap, "getLayer" | "setPain
 
 /**
  * In a ride the map is for the route and finding the way (the owner, 2026-10-21: "A similar pass should
- * happen when in a ride. Prioritize the path and wayfinding."): the popular corridors' band, a planning
- * aid, is not drawn, and the busy roads (LTS 3, LTS 4, Avoid) and their rails fade by RIDE_BUSY_FADE on
+ * happen when in a ride. Prioritize the path and wayfinding."): the busy roads (LTS 3, LTS 4, Avoid) and their rails fade by RIDE_BUSY_FADE on
  * top of the route's own fade, so the calm ways a rider might turn onto stand out. Street and station
  * names, the route, closures and hazards are untouched. The busy roads keep full strength with the High contrast switch, whose
- * edges are measured at it (routeOverlayFade); the band goes with or without it.
+ * edges are measured at it (routeOverlayFade).
  */
 export const RIDE_BUSY_FADE = 0.5;
 let rideFocus = false;
@@ -480,7 +473,6 @@ let rideFocus = false;
 /** The extra fade a layer takes in a ride (1 outside one). */
 export function rideFocusFade(id: string, riding: boolean = rideFocus): number {
   if (!riding) return 1;
-  if (id === POPULAR_BAND_LAYER_ID) return 0;
   if (accessibilityOn() || id.startsWith("mtb-")) return 1;
   const tier = Number(id.match(/-(\d)$/)?.[1] ?? 0);
   return id.endsWith("-busy") || tier >= BUSY_MIN_TIER ? RIDE_BUSY_FADE : 1;

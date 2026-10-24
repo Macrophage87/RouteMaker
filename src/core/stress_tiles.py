@@ -107,11 +107,15 @@ from pipeline.schema import (
     MTB_LEVEL_COLUMN,
     MTB_NAME_COLUMN,
     MTB_ONLY_COLUMN,
+    OVERVIEW_COLUMN,
+    OVERVIEW_CONNECTOR,
     RIDE_ROAD_RUN_MI,
+    ROAD_LINK_COLUMN,
     ROADSIDE_COLUMN,
     ROUGH_COLUMN,
     SCENIC_COLUMN,
     SEPARATE_BIKEWAY_COLUMN,
+    STRAY_ZOOM_COLUMN,
     STRESS_HALF_COLUMN,
     TRAIL_BRIDGE_COLUMN,
     TRAIL_NAME_COLUMN,
@@ -178,8 +182,10 @@ CONTENT_TYPE = "application/vnd.mapbox-vector-tile"
 # layer (the owner, 2026-10-17: "Both from 12"). 11: a major trail's name, `trail_name`
 # (TRAIL_NAME_RULE). 12: a z12-13 feature in a city grid carries `dense` (DENSE_RULE; v0.10.2).
 # 13: the popular bike corridors' `popular`, z10-11 keep them and the long calm roads
-# (`popular_and_calm`), and a long trail's name from z10.
-FORMAT_VERSION = 13
+# (`popular_and_calm`), and a long trail's name from z10. 14: a major corridor's name,
+# `trail_name` on a way of the top popular class (POPULAR_NAMED_MIN_CLASS), and `dense` from
+# 8 km a square (DENSE_ROAD_M), and a slip road's `link`.
+FORMAT_VERSION = 14
 
 # Five minutes (OWNER-DECISIONS 460.6, "5 min sounds good"): an instance admin's change in
 # the road panel (core.stress_edits) is in the tiles at once, and other riders' browsers
@@ -252,6 +258,10 @@ def popular_and_calm(level: Level, optional: frozenset[str]) -> list[str]:
     terms = []
     if level.popular_min is not None and BIKE_POPULAR_COLUMN in optional:
         terms.append(f"s.{BIKE_POPULAR_COLUMN} >= {level.popular_min}")
+    # The minor trails that join them and the calmest ways between them (`pipeline.
+    # bike_network.connect`; "make connections across from the MBT to Rock Creek trail").
+    if level.popular_min is not None and OVERVIEW_COLUMN in optional:
+        terms.append(f"s.{OVERVIEW_COLUMN} = {OVERVIEW_CONNECTOR}")
     # Only on a table built with `bike_popular`, which has the index the term reads through
     # (`pipeline.schema.ZOOMED_OUT_INDEX_PREDICATE`); a table from before has `calm_run_m`
     # and no such index, and its z10-11 tiles stay the long trails.
@@ -404,8 +414,18 @@ OPTIONAL_PROPERTIES = {
     "contraflow": FACILITY_SHOWN_COLUMN,
     # The popular bike corridors (the owner, 2026-10-21: "make those streets show more
     # pronounced than other roads"): 1 to 3, or left out (`bike_popular`,
-    # `pipeline.bikeshare_corridors`). The map draws a wider band under the way for it.
+    # `pipeline.bikeshare_corridors`). The map keeps a class 2-3 street's full width in a city
+    # grid and sorts every class over its stress level's other lines.
     "popular": BIKE_POPULAR_COLUMN,
+    # A slip road, an on- or off-ramp (`road_link`): true, or left out. The map leaves it out
+    # until the city ladder's street zoom (the owner, 2026-10-23: "the various onramps and
+    # offramps aren't needed at this level"; frontend/src/stressStyle.js, `cityShown`).
+    "link": ROAD_LINK_COLUMN,
+    # The zoomed-out map's network marks (`pipeline.bike_network`): 1 a link the city ladder
+    # draws with the main bike ways from z12, 2 a piece of the network that joins nothing and 3
+    # a dead end, both left out until z14, 4 a way joining the trails, kept zoomed out with the
+    # long trails and drawn from z12; or left out (frontend/src/stressStyle.js, `cityShown`).
+    "overview": OVERVIEW_COLUMN,
 }
 
 # The tile property `rpm` is rounded down to a multiple of this (OPTIONAL_EXPRESSIONS).
@@ -438,6 +458,8 @@ OPTIONAL_EXPRESSIONS = {
     "scenic": f"CASE WHEN s.{SCENIC_COLUMN} IS NOT NULL THEN true END",
     "contraflow": f"CASE WHEN s.{FACILITY_SHOWN_COLUMN} IS NOT NULL THEN true END",
     "popular": f"NULLIF(s.{BIKE_POPULAR_COLUMN}, 0)",
+    "link": f"NULLIF(s.{ROAD_LINK_COLUMN}, false)",
+    "overview": f"NULLIF(s.{OVERVIEW_COLUMN}, 0)",
     # `rpm`: the Mass Ride capacity, riders a minute, rounded DOWN to a multiple of
     # RPM_STEP. The Mass Ride bands (60, 120, 200) are multiples of it, so a
     # feature never moves band; and the zoomed-out levels, which collect every
@@ -491,10 +513,26 @@ LONG_TRAIL_COLUMNS = (TRAIL_ROUTE_COLUMN, TRAIL_RUN_COLUMN, TRAIL_BRIDGE_COLUMN)
 # long-trail columns, which the same rebuild writes `trail_name` with. The map draws it
 # along the line (frontend/src/stressStyle.js, TRAIL_LABEL). A mountain-bike trail's
 # name is `name` (MTB_NAME_COLUMN), not this.
-def trail_name_rule(has_facility: bool) -> str:
+#
+# And a major corridor's (the owner, 2026-10-23: "the trails should be lableled at this zoom"
+# ... "and the major corridors"): a way of the top popular class carries its `trail_name`
+# too, which the rebuild gives a named corridor's ways (`pipeline.major_corridors.apply`)
+# and a long calm road already has, so Q Street or the 15th Street lane is named where the
+# zoomed-out map draws it: at z10-11 only, as from z12 the base map names the street itself
+# (a second name, in the off-road paths' purple, would read as a trail). Only on a table with
+# `bike_popular`.
+POPULAR_NAMED_MIN_CLASS = 3
+
+
+def trail_name_rule(has_facility: bool, has_popular: bool = False) -> str:
+    corridor = (
+        f" WHEN s.{BIKE_POPULAR_COLUMN} >= {POPULAR_NAMED_MIN_CLASS} THEN s.{TRAIL_NAME_COLUMN}"
+        if has_popular
+        else ""
+    )
     return (
         f"CASE WHEN {trails_predicate(has_facility)} AND "
-        f"{long_trails_predicate(Z11_LONG_TRAILS)} THEN s.{TRAIL_NAME_COLUMN} END"
+        f"{long_trails_predicate(Z11_LONG_TRAILS)} THEN s.{TRAIL_NAME_COLUMN}{corridor} END"
     )
 
 
@@ -530,23 +568,26 @@ SELECT '{table}'::regclass::oid,
        (SELECT ST_AsMVT(features.*, '{layer}', %(extent)s, 'geom') FROM features)
 """
 
-# THE CITY GRID. The owner, 2026-10-21: "lts colored roads look very crowded at the nax
-# zoom they show up in urban areas, but it's needed for rural ones", then, of thinner
-# streets everywhere or only in the city: "City only, via a server flag". At z12-13 a
-# feature carries `dense` (true, else nothing) where its ways lie in a square of
-# DENSE_CELL_M a side, in EPSG:3857 metres, holding at least DENSE_ROAD_M of drawn road,
-# counted where each way starts; the map draws a plain street there thinner
-# (frontend/src/stressStyle.js, STREET_THIN_SCALE). The squares are fixed on the
-# projection's grid, and every way that starts in a square the tile touches is counted
-# (any way within DENSE_CELL_M of the tile, whatever the coverage clip), so a square reads
-# the same from each tile it is drawn in. A way starting further out than that is judged
-# by a square counted in part; the segments are split at every junction, so in a grid
-# none is that long. 12 km in a
-# kilometre square (about 15 km of road a square kilometre on the ground at DC's
-# latitude) is a downtown or rowhouse grid of 100-150 m blocks, where a suburb of loops
-# and cul-de-sacs is about half that and a rural road a tenth; tune it on the real map.
+# THE CITY GRID. The owner, 2026-10-21: "lts colored roads look very crowded at the nax zoom
+# they show up in urban areas, but it's needed for rural ones", then, of thinner streets
+# everywhere or only in the city: "City only, via a server flag". At z12-13 a feature
+# carries `dense` (true, else nothing) where its ways lie in a square of DENSE_CELL_M a
+# side, in EPSG:3857 metres, holding at least DENSE_ROAD_M of drawn road, counted where each
+# way starts; there the map draws the main bike routes first and the plain streets from z14
+# (frontend/src/stressStyle.js, CITY_LADDER). The squares are
+# fixed on the projection's grid, and every way that starts in a square the tile touches is
+# counted (any way within DENSE_CELL_M of the tile, whatever the coverage clip), so a square
+# reads the same from each tile it is drawn in. A way starting further out than that is
+# judged by a square counted in part; the segments are split at every junction, so in a grid
+# none is that long. 12 km in a kilometre square (about 15 km of road a square kilometre on
+# the ground at DC's latitude) is a downtown or rowhouse grid of 100-150 m blocks, where a
+# suburb of loops and cul-de-sacs is about half that and a rural road a tenth. Tuned on the
+# real map (2026-10-23, the live tiles of 2026-10-22 at z12.3): at 12 km only 36% of the squares
+# in a view of central DC qualified, so most of Northwest, Northeast, Capitol Hill and
+# Arlington kept every street ("There's still a lot of clutter"); at 8 km 64% of DC's squares
+# do, against 31% around Gaithersburg, whose country roads still keep their lines.
 DENSE_CELL_M = 1000
-DENSE_ROAD_M = 12_000
+DENSE_ROAD_M = 8_000
 DENSE_RULE = f"CASE WHEN cells.road_m >= {DENSE_ROAD_M} THEN true END"
 
 _MERGED_DENSE = """
@@ -609,6 +650,20 @@ def _table() -> str:
 _COVERAGE_BOX = "ST_MakeEnvelope(%(c_west)s, %(c_south)s, %(c_east)s, %(c_north)s, 4326)"
 
 
+def zoomed_out_where(level: Level, optional: frozenset[str]) -> tuple[str, list[str]]:
+    """The ways a zoomed-out level (one with a predicate) draws, over the segment table as
+    `s`, and its popular and calm terms; `pipeline.bike_network` finds their stray bits."""
+    has_car_free = CAR_FREE_COLUMN in optional
+    where = level.predicate(FACILITY_COLUMN in optional, has_car_free)
+    if level.long_trails is not None and all(c in optional for c in LONG_TRAIL_COLUMNS):
+        rule = long_trails_predicate(level.long_trails, has_car_free)
+        where = f"({where}) AND {rule}"
+    extra = popular_and_calm(level, optional)
+    if extra:
+        where = " OR ".join([f"({where})", *extra])
+    return where, extra
+
+
 def tile_sql(level: Level, optional: frozenset[str] = frozenset(), clip: bool = False) -> str:
     """The level's query, carrying the optional columns in `optional` too, and
     with `clip`, drawing only what lies inside the coverage box."""
@@ -629,17 +684,17 @@ def tile_sql(level: Level, optional: frozenset[str] = frozenset(), clip: bool = 
     # ... "Basically anything long"): a z10-11 tile's trails are the long ones, so a name
     # splits its merged features by trail and no further.
     if all(c in optional for c in LONG_TRAIL_COLUMNS):
-        carried["trail_name"] = trail_name_rule(has_facility)
+        # A corridor's name only at z10-11 (the levels that keep the popular corridors): from
+        # z12 the base map names every street itself (PR #383 review).
+        named = level.popular_min is not None and BIKE_POPULAR_COLUMN in optional
+        carried["trail_name"] = trail_name_rule(has_facility, named)
     if CALM_RUN_COLUMN in optional:
         carried["calm"] = CALM_STREET_RULE
     if level.predicate is not None:
-        where = level.predicate(has_facility, has_car_free)
-        if level.long_trails is not None and all(c in optional for c in LONG_TRAIL_COLUMNS):
-            rule = long_trails_predicate(level.long_trails, has_car_free)
-            where = f"({where}) AND {rule}"
-        extra = popular_and_calm(level, optional)
-        if extra:
-            where = " OR ".join([f"({where})", *extra])
+        where, extra = zoomed_out_where(level, optional)
+        if STRAY_ZOOM_COLUMN in optional:
+            # A stray bit of what this zoom draws ("These bits too": `pipeline.bike_network`).
+            where = f"({where}) AND s.{STRAY_ZOOM_COLUMN} < {level.min_zoom}"
         if has_car_free:
             # A road closed to cars at set times is in a zoomed-out tile that
             # would not otherwise hold it only for those times: it carries them
@@ -742,7 +797,15 @@ def live_state() -> tuple[int | None, frozenset[str], int]:
             "COALESCE((SELECT g.generation FROM live_edit_generation g "
             "WHERE g.table_oid = t.oid), 0) "
             "FROM (SELECT to_regclass(%s)::oid AS oid) AS t",
-            [[*OPTIONAL_PROPERTIES.values(), *LONG_TRAIL_COLUMNS, CALM_RUN_COLUMN], _table()],
+            [
+                [
+                    *OPTIONAL_PROPERTIES.values(),
+                    *LONG_TRAIL_COLUMNS,
+                    CALM_RUN_COLUMN,
+                    STRAY_ZOOM_COLUMN,
+                ],
+                _table(),
+            ],
         )
         oid, columns, generation = cursor.fetchone()
     return oid, frozenset(columns or ()), int(generation)
@@ -781,6 +844,11 @@ ETAG_LETTERS = {
     FACILITY_SHOWN_COLUMN: "a",
     # `p` for popular.
     BIKE_POPULAR_COLUMN: "p",
+    # `i` for an interchange's ramp: `l` is the trail run's.
+    ROAD_LINK_COLUMN: "i",
+    # `x` for the network marks, `z` for the zoomed-out stray bits.
+    OVERVIEW_COLUMN: "x",
+    STRAY_ZOOM_COLUMN: "z",
 }
 
 
@@ -792,14 +860,14 @@ def etag_for(oid: int, optional: frozenset[str] = frozenset(), generation: int =
     # optional columns are in it because a column added to the live table in
     # place (the facility, by hand) changes the tiles but not the table's oid.
     # Each column by a letter of its own, so the tag fits the cache's 64-character
-    # key with all of them (a `+` and one letter each, eighteen in all: `W/"stress-` and a
-    # ten-digit oid, `+` and eighteen letters, `-v13"`, 44 characters), in the order of the
+    # key with all of them (a `+` and one letter each, twenty-one in all: `W/"stress-` and a
+    # ten-digit oid, `+` and twenty-one letters, `-v14"`, 47 characters), in the order of the
     # column names.
     carried = "".join(ETAG_LETTERS[column] for column in sorted(optional))
     # And the table's edit generation (`core.stress_edits`), once it has had one: an edit
     # updates rows in place, which changes the tiles and not the oid, so without it a
     # browser's revalidation would be answered 304 for the old tile. `-e` and up to six
-    # digits makes the longest tag 52 characters, inside the cache's 64.
+    # digits makes the longest tag 55 characters, inside the cache's 64.
     edited = f"-e{generation}" if generation else ""
     return f'W/"stress-{oid}{"+" + carried if carried else ""}{edited}-v{FORMAT_VERSION}"'
 

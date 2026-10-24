@@ -737,7 +737,6 @@ class TestPastTheTarget:
             group=False,
             rate=10.0,
             weight=1.0,
-            climb_weight=0.0,
             quiet_cost=1.0,
             maxcalm=True,
             ceiling_m=presets.target_ceiling_m(target),
@@ -847,7 +846,7 @@ class TestPastTheTarget:
             variant="standard", request={}, costing={}, when="weekday_offpeak",
             deadline=routing.Deadline(routing.clock() + 40, 35), traces={}, points=[],
             roadway_only=False, with_facility=False, group=False, rate=10.0, weight=1.0,
-            climb_weight=0.0, quiet_cost=1.0, maxcalm=True, target_m=50_000.0,
+            quiet_cost=1.0, maxcalm=True, target_m=50_000.0,
         )  # fmt: skip
         routing._past_target(None, [own, r40], presets.target_ceiling_m(50_000.0), ctx)
         assert seen and all(d.at == ctx.deadline.at - refine.REFINE_TRACE_RESERVE_S for d in seen)
@@ -957,8 +956,9 @@ class TestSeekingHillsAtTheTop:
 
 class TestFineWithHillsAtTheTop:
     """FOLLOWUP-HILLS-TOLERATE (242): at the top of the stress slider "fine with hills" plans
-    as the detent does. The stress order decides and its third level is the actual
-    distance, which counts no climbing already; no climb is preferred and none is sought."""
+    by the stress order, whose third level counts each climb's time and the steepness past
+    the LT1 grade the slider sets (`routemaker.hill_cost`); no climb is preferred, none is
+    sought and nothing is said to be discounted."""
 
     def test_the_search_runs_with_no_climb_preference(
         self, client, segments, router, monkeypatch
@@ -967,13 +967,13 @@ class TestFineWithHillsAtTheTop:
         real = refine.refine
 
         def spy(trip, ctx):
-            seen.append((ctx.hills_seek_weight, ctx.hills_weight, ctx.hills_tolerate_weight))
+            seen.append((ctx.hills_seek_weight, ctx.hills))
             return real(trip, ctx)
 
         monkeypatch.setattr(refine, "refine", spy)
         fake = router(standard_router())
         body = post(client, top_body(hills=50)).json()
-        assert seen == [(0.0, 0.0, 0.0)], "the detent's ranking"
+        assert seen == [(0.0, 50)], "no climb preference; the slider's LT1 grade"
         assert body["hills_seek"] is None
         assert body["hills_tolerate"]["limited"] == "calm_first"
         assert body["hills_tolerate"]["chosen"] == 0

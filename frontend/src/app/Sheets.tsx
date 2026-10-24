@@ -17,6 +17,7 @@ import { toggleFromPicker, useFavoriteRides } from "../lib/favoriteRides.ts";
 import { DELETE_ACCOUNT_PAGE, PRIVACY_PAGE, isPlainClick, rememberPlanForPage, rememberPlanForSignIn, tabSession } from "../lib/signIn.ts";
 import { SignOutForm } from "../SignOut.tsx";
 import { AssistantKeySetting } from "../AssistantKey.tsx";
+import { GarminSetting, WahooSetting } from "../ConnectionSetting.tsx";
 import { pointName } from "../lib/summary.ts";
 import { accessibilityOn, accessibilitySource, paletteSetByAddress, setAccessibility, setHighStressLanes, setMtbTrails } from "../stressStyle.js";
 import { HighStressLanesSwitch } from "../lib/highStressLanesSwitch.ts";
@@ -56,9 +57,9 @@ import { InstallOffer } from "../InstallableApp.tsx";
 import type { Split, StoredWeight } from "../lib/weight.ts";
 import { WeightSetting } from "../lib/weightDialog.ts";
 import { Report311Log } from "../Report311Log.tsx";
-import { OPEN_IN_HINT, OPEN_IN_LABEL, type AppMode, type OpenIn } from "../lib/appMode.ts";
+import type { AppMode } from "../lib/appMode.ts";
 import type { Home, MyGo } from "../lib/myGo.ts";
-import { homeFromPlace } from "../lib/homeSet.ts";
+import { homeFromPlace, homeName } from "../lib/homeSet.ts";
 import { HomeSetter } from "./Go.tsx";
 import { SIGN_IN_LINE } from "../lib/accountSettings.ts";
 import type { GeoGate, Place } from "../lib/geocode.ts";
@@ -261,6 +262,10 @@ export interface GpxSheetProps {
   status: Status;
   imported: ImportedPlan | null;
   openImported: (plan: ImportedPlan) => void;
+  /** Load route's popup opens the panel's file picker (GpxPanel); a file it cannot open opens this sheet to say why. */
+  fileInput?: (input: HTMLInputElement | null) => void;
+  onOpenFailed?: () => void;
+  onPick?: () => void;
   refineImported: (next: LonLat[]) => void;
   getMap: () => MapLibreMap | null;
   /** Download GPX: the page checks closures first, and an unedited opened file downloads as it came. */
@@ -269,6 +274,8 @@ export interface GpxSheetProps {
   downloadCourse?: (format: FileFormat, profile: DeviceProfileId, said: Said) => void;
   /** Send to Garmin: the route shown as a FIT course, handed to the phone for Garmin Connect (GpxPanel). */
   sendToGarmin?: (said: Said) => void;
+  /** Send to Wahoo: the route shown as a FIT course, added to the rider's Wahoo app (GpxPanel; once connected). */
+  sendToWahoo?: (said: Said) => void;
   /** Plan only: snap an opened track to the map's ways (GpxPanel, lib/gpxMatch.ts); absent in Go. */
   match?: GpxPanelProps["match"];
   /** Save route (signed in) and Share, for the route shown or the file opened (RoutePanel.tsx ShareControls); null with neither. */
@@ -279,7 +286,7 @@ export interface GpxSheetProps {
 
 /** The GPX sheet. */
 export function GpxSheet(props: GpxSheetProps) {
-  const { nav, shown, routedPoints, routedLoop, federalRoute, points, status, imported, openImported, refineImported, getMap, downloadRoute, downloadCourse, sendToGarmin, match, shareControls, routes } = props;
+  const { nav, shown, routedPoints, routedLoop, federalRoute, points, status, imported, openImported, fileInput, onOpenFailed, onPick, refineImported, getMap, downloadRoute, downloadCourse, sendToGarmin, sendToWahoo, match, shareControls, routes } = props;
   return (
     <SheetFrame id="sheet-gpx" title={SHEET_TITLES.gpx} open={nav.view === "gpx"} onBack={nav.back} backLabel={nav.backLabel("gpx")}>
       {/* Save and Share first, then your routes to load (in Go, the way to start a saved route), then the files. */}
@@ -294,11 +301,15 @@ export function GpxSheet(props: GpxSheetProps) {
         planStatus={status.kind}
         imported={imported}
         onImport={openImported}
+        fileInput={fileInput}
+        onOpenFailed={onOpenFailed}
+        onPick={onPick}
         onRefine={refineImported}
         getMap={getMap}
         onDownload={downloadRoute}
         onDownloadCourse={downloadCourse}
         onSendToGarmin={sendToGarmin}
+        onSendToWahoo={sendToWahoo}
         match={match}
       />
     </SheetFrame>
@@ -318,29 +329,45 @@ export interface MyGoControls {
   searchBias: () => LonLat | undefined;
 }
 
-/** "Open in": By screen size, Go or Plan, as a picker, with what "By screen size" means behind an (i). */
-function OpenInChoice({ value, onChange, idBase, hint }: { value: OpenIn; onChange: (next: OpenIn) => void; idBase: string; hint?: string }) {
-  return (
-    <SettingRow infoId={`${idBase}-open-in-info`} about="open in" info={hint} className="open-in">
-      <SettingSelect
-        label="Open in"
-        value={value}
-        options={(["", "go", "plan"] as OpenIn[]).map((option) => [option, OPEN_IN_LABEL[option]] as const)}
-        onChange={onChange}
-        describedBy={hint ? `${idBase}-open-in-info` : undefined}
-      />
-    </SettingRow>
-  );
-}
-
 /**
- * My Go (the owner's choice 2): the Home that Go's Home chip rides to, Go's ride type and where the app opens,
- * saved to the account when signed in and on this device when not. First in Settings: Home is what a rider
- * comes here to set (Settings tidy, Stephen 2026-10-19: "still very clunky").
+ * My Go (the owner's choice 2): the Home that Go's Home chip rides to and Go's ride type, saved to the account
+ * when signed in and on this device when not. First
+ * in Settings: Home is what a rider comes here to set (Settings tidy, Stephen 2026-10-19: "still very clunky").
  */
-function MyGoSection({ controls }: { controls: MyGoControls }) {
+function MyGoSection({ controls, open }: { controls: MyGoControls; open: boolean }) {
   const { myGo, signedIn, save, setHome, said, geoGate, searchBias } = controls;
   const [infoOpen, setInfoOpen] = useState(false);
+  // A Home set is one line with Change (Settings scrolling, Stephen 2026-10-22: "still a lot of scrolling"); the search
+  // and Clear Home open under Change, and stay open while no Home is set.
+  const [changing, setChanging] = useState(false);
+  const changeRef = useRef<HTMLButtonElement>(null);
+  const homeBox = useRef<HTMLDivElement>(null);
+  // The Home's place and name, not the object: an account's answer to any save brings a new copy of the same Home.
+  const homeKey = myGo.home ? `${myGo.home.point[0]},${myGo.home.point[1]},${myGo.home.label}` : "";
+  const homeWas = useRef(homeKey);
+  useEffect(() => {
+    if (homeWas.current === homeKey) return;
+    homeWas.current = homeKey;
+    if (!homeKey) return;
+    // A Home picked (the first, or under Change): back to its line. The search the focus was in is gone, so the
+    // focus goes to Change; a Home that arrives (the account's) while the focus is elsewhere leaves it there.
+    const active = document.activeElement;
+    const lost = !active || active === document.body || !!homeBox.current?.contains(active);
+    setChanging(false);
+    if (lost) requestAnimationFrame(() => changeRef.current?.focus());
+  }, [homeKey]);
+  // Leaving Settings closes an open Change (the sheet stays mounted), so the next visit opens on the Home's line.
+  useEffect(() => {
+    if (!open) setChanging(false);
+  }, [open]);
+  const openChange = () => {
+    setChanging(true);
+    requestAnimationFrame(() => homeBox.current?.querySelector<HTMLInputElement>("input")?.focus());
+  };
+  const keepHome = () => {
+    setChanging(false);
+    requestAnimationFrame(() => changeRef.current?.focus());
+  };
   return (
     <section aria-labelledby="settings-my-go-heading" className="settings-group my-go">
       <div className="setting-line">
@@ -351,13 +378,34 @@ function MyGoSection({ controls }: { controls: MyGoControls }) {
         {signedIn ? "Kept with your Discord account, on every device you sign in on." : "Kept on this device. Sign in to keep it with your account."}
       </p>
       {/* The same Home sheet as Go's (lib/homeSet.ts), without the map way: the map is behind Settings. */}
-      <div className="my-go-home">
-        {!myGo.home && (
-          <p>
-            <strong>Home: </strong>not set
-          </p>
+      <div className="my-go-home" ref={homeBox}>
+        {myGo.home && !changing ? (
+          <div className="setting-line home-line">
+            <p className="home-now" id="settings-home-now">
+              <strong>Home: </strong>
+              {homeName(myGo.home)}
+            </p>
+            <button type="button" ref={changeRef} className="secondary" aria-label="Change Home" aria-describedby="settings-home-now" onClick={openChange}>
+              Change
+            </button>
+            <span className="info-spacer" aria-hidden="true" />
+          </div>
+        ) : (
+          <>
+            {!myGo.home && (
+              <p>
+                <strong>Home: </strong>not set
+              </p>
+            )}
+            <HomeSetter home={myGo.home} geoGate={geoGate} searchBias={searchBias} onPlace={(place: Place) => setHome(homeFromPlace(place))} onClear={() => setHome(null)} />
+            {/* Change pressed by mistake: Cancel keeps the Home and goes back to its line. */}
+            {myGo.home && (
+              <button type="button" className="secondary home-cancel" onClick={keepHome}>
+                Cancel
+              </button>
+            )}
+          </>
         )}
-        <HomeSetter home={myGo.home} geoGate={geoGate} searchBias={searchBias} onPlace={(place: Place) => setHome(homeFromPlace(place))} onClear={() => setHome(null)} />
       </div>
       <SettingRow infoId="settings-go-ride-info" about="Go's ride type">
         <SettingSelect
@@ -367,7 +415,6 @@ function MyGoSection({ controls }: { controls: MyGoControls }) {
           onChange={(ride) => save({ ...myGo, ride: ride === "default" ? null : ride })}
         />
       </SettingRow>
-      <OpenInChoice value={myGo.openIn} onChange={(openIn) => save({ ...myGo, openIn })} idBase="my-go" hint={OPEN_IN_HINT} />
       <p className="hint my-go-said" role="status">
         {said}
       </p>
@@ -377,6 +424,10 @@ function MyGoSection({ controls }: { controls: MyGoControls }) {
 
 export interface SettingsSheetProps {
   nav: SheetNav;
+  /** What Garmin's return said (lib/garminLink.ts garminReturnFrom), once, or null. */
+  garminReturned?: string | null;
+  /** What Wahoo's return said (lib/wahooLink.ts wahooReturnFrom), once, or null. */
+  wahooReturned?: string | null;
   settingsHeadingRef: RefObject<HTMLHeadingElement | null>;
   ridePrefs: RidePrefs;
   changeRidePrefs: (next: RidePrefs) => void;
@@ -418,7 +469,7 @@ function ContrastRow() {
 
 /** The Settings sheet (Go's Menu): My Go, Riding, Display and Account, most used first. */
 export function SettingsSheet(props: SettingsSheetProps) {
-  const { nav, settingsHeadingRef, ridePrefs, changeRidePrefs, announce, linkNote, accessMode, toggleAccessMode, myGo, mode, menu, announcements, signInAvailable } = props;
+  const { nav, settingsHeadingRef, ridePrefs, changeRidePrefs, announce, linkNote, accessMode, toggleAccessMode, myGo, mode, menu, announcements, signInAvailable, garminReturned, wahooReturned } = props;
   const go = mode === "go";
   return (
     <SheetFrame
@@ -452,7 +503,7 @@ export function SettingsSheet(props: SettingsSheetProps) {
         </nav>
       )}
       {/* Most used first (Settings tidy, Stephen 2026-10-19): My Go with Home, then Riding, Display and Account. */}
-      <MyGoSection controls={myGo} />
+      <MyGoSection controls={myGo} open={nav.view === "settings"} />
       {/* Ride mode's choices (WEB-NAV-plan.md section 3): the same ones the first Start ride asks, kept on this device. */}
       <section aria-labelledby="settings-ride-heading" className="settings-group">
         <h3 id="settings-ride-heading">Riding</h3>
@@ -558,6 +609,10 @@ export function SettingsSheet(props: SettingsSheetProps) {
           ) : null}
           {/* The save-only key an AI assistant's MCP server saves routes with (the owner, 2026-10-18). */}
           {myGo.signedIn && <AssistantKeySetting />}
+          {/* Send to Garmin straight into Garmin Connect (the owner, 2026-10-23); shown only where the server can. */}
+          {myGo.signedIn && <GarminSetting returned={garminReturned ?? null} />}
+          {/* Send to Wahoo straight into the Wahoo app (the owner, 2026-10-23); shown only where the server can. */}
+          {myGo.signedIn && <WahooSetting returned={wahooReturned ?? null} />}
           {/* A page of its own (core.account_deletion), the same one the web offers without the app: it says what goes
               and what is kept, and asks once. Last: nobody needs it often. */}
           {myGo.signedIn && (
@@ -570,13 +625,16 @@ export function SettingsSheet(props: SettingsSheetProps) {
       {/* The documentation (the owner, 2026-10-19): one link, last, under its own heading. */}
       <section aria-labelledby="settings-about-heading" className="settings-group">
         <h3 id="settings-about-heading">About</h3>
-        <DocsPageLink />
-        {/* The privacy policy (core.privacy_policy): here, where it shows signed in or out and on any server. */}
-        <p className="privacy-link">
-          <a href={PRIVACY_PAGE} onClick={(e) => isPlainClick(e) && rememberPlanForPage(tabSession(), window.location.hash)}>
-            Privacy policy
-          </a>
-        </p>
+        {/* Side by side when they fit: two short links, one line. */}
+        <div className="about-links">
+          <DocsPageLink />
+          {/* The privacy policy (core.privacy_policy): here, where it shows signed in or out and on any server. */}
+          <p className="privacy-link">
+            <a href={PRIVACY_PAGE} onClick={(e) => isPlainClick(e) && rememberPlanForPage(tabSession(), window.location.hash)}>
+              Privacy policy
+            </a>
+          </p>
+        </div>
       </section>
     </SheetFrame>
   );

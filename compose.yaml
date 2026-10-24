@@ -203,6 +203,15 @@ services:
       DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID}
       DISCORD_REDIRECT_URI: ${DISCORD_REDIRECT_URI}
       DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET}
+      # Garmin Connect (core.garmin): unset, Settings offers no Garmin connection. The secret
+      # goes to this service alone; the worker never calls Garmin.
+      GARMIN_CLIENT_ID: ${GARMIN_CLIENT_ID:-}
+      GARMIN_CLIENT_SECRET: ${GARMIN_CLIENT_SECRET:-}
+      GARMIN_REDIRECT_URI: ${GARMIN_REDIRECT_URI:-}
+      # Wahoo (core.wahoo): likewise, the api alone.
+      WAHOO_CLIENT_ID: ${WAHOO_CLIENT_ID:-}
+      WAHOO_CLIENT_SECRET: ${WAHOO_CLIENT_SECRET:-}
+      WAHOO_REDIRECT_URI: ${WAHOO_REDIRECT_URI:-}
       # The one bootstrap Discord id. It grants standing only while the
       # instance-admin list is empty, and the first admin request under it
       # writes the id into the list and disables this path for good. The admin

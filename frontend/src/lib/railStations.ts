@@ -507,6 +507,20 @@ export const ALERT_BADGE_ICON = "rail-badge-alert";
 export const ELEVATOR_OUT_ICON = "rail-badge-elevator-out";
 export const BADGE_OFFSET_PX = 10;
 
+/**
+ * The name a station is labelled with on the map, where it is not DC Open Data's: the name a rider in the area says (the
+ * owner, 2026-10-23: "in DC the more common name is National Airport (DCA)"). The popup, the links and the route's
+ * words keep the full name, which is what WMATA's signs and pages say.
+ */
+export const STATION_MAP_NAMES: Readonly<Record<string, string>> = {
+  "Ronald Reagan Washington National Airport": "National Airport (DCA)",
+};
+
+/** A station's name on the map (STATION_MAP_NAMES). */
+export function stationMapName(station: Station): string {
+  return Object.hasOwn(STATION_MAP_NAMES, station.name) ? STATION_MAP_NAMES[station.name] : station.name;
+}
+
 /** What the map's rail source holds for the toggles as they are. */
 export function railFeatures(
   stations: readonly Station[],
@@ -526,7 +540,7 @@ export function railFeatures(
         kind: "station",
         id: station.id,
         // Words as well as grey: "Union Station (closed)" (railClosures.ts).
-        name: closed ? `${station.name} (closed)` : station.name,
+        name: closed ? `${stationMapName(station)} (closed)` : stationMapName(station),
         icon: closed ? closedIconId(iconShape(lines)) : iconId(lines),
         // An open station is drawn over a closed one beside it.
         sort: closed ? 0 : lines.length,
