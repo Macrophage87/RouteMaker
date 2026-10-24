@@ -5448,6 +5448,11 @@ details.zoom-notes {
   border-radius: 999px;
 }
 
+/* A chip that goes to a page of its own (Go's More > Featured routes) looks like the rest. */
+a.chip {
+  text-decoration: none;
+}
+
 .chip[aria-pressed="true"],
 .panel .chip[aria-pressed="true"] {
   background: var(--accent);
