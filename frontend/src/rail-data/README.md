@@ -34,6 +34,10 @@ The two OSM-derived fixtures were generated from the extract of 2026-09-25
 `1ac5490cc417d557a338dba868c4d039fbbbaf40d034e6c17e9ef1b1ef40577a`); a
 regeneration on 2026-09-28 gave `marc-penn-stations.geojson` byte for byte
 (sha256 `683c32d275ad6a51201d4e38301662d952a8e00dd4a6b9dbe5c8e479104d008a`).
+On 2026-10-24 the script gained Baltimore Penn Station's reported front doors
+(below), which every regeneration adds while OSM tags no way in there; the
+fixture now ends with that one entrance (sha256
+`ab87902fe7179fe852acfb8b479d585ee38754b3740e1c1df3fc4cef3352bdd3`).
 `metro-osm-elevators.geojson` is sha256
 `80e60ff87c593b2f431ea3e57ab32941c9b4594d47e13a6f97cc5c2c3b9c9145`.
 
@@ -115,9 +119,15 @@ entrance** (`bikeEntrance`, `src/lib/railStations.ts`):
 2. where DC lists none, OpenStreetMap's (owner decision 2026-09-28, "OSM
    elevator, else entrance") - Franconia-Springfield, Wheaton, Union Station,
    Silver Spring, Potomac Yard, West Falls Church, Forest Glen;
-3. where neither has one, DC's nearest other entrance - the other 27;
-4. the station point only when nothing is known - six of the seven MARC-only
-   stations (all but BWI), and none of the Metro stations.
+3. where neither has one, DC's nearest other entrance - the other 27 - or for
+   a MARC station OSM's `railway=train_station_entrance`;
+   where OSM tags none, a way in a rider reported from the spot
+   (`REPORTED_ENTRANCES` in the script): Baltimore Penn Station's front doors
+   on the drop-off loop off N Charles St (owner, riding there on 2026-10-24:
+   "the main entrance to Baltimore Penn Station was missed" - the station node
+   is by the tracks, and routes went on past the doors to reach it);
+4. the station point only when nothing is known - five of the seven MARC-only
+   stations (all but BWI and Baltimore Penn), and none of the Metro stations.
 
 The station's card says which (`entranceNote`).
 
