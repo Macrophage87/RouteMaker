@@ -1576,7 +1576,7 @@ class TestAReadingTheClockCutsShort:
             variant="standard", request={}, costing={}, when="weekday_offpeak",
             deadline=routing.Deadline(routing.clock() + 40, 35), traces={}, points=[],
             roadway_only=False, with_facility=False, group=False, rate=10.0, weight=1.0,
-            climb_weight=0.0, quiet_cost=1.0,
+            quiet_cost=1.0,
         )  # fmt: skip
         with pytest.raises(routing.DeadlineExceeded):
             refine.events_of_raws([], ctx, ctx.deadline)
@@ -1595,7 +1595,7 @@ class TestAReadingTheClockCutsShort:
             variant="standard", request={}, costing={}, when="weekday_offpeak",
             deadline=routing.Deadline(routing.clock() + 40, 35), traces={}, points=[],
             roadway_only=False, with_facility=False, group=False, rate=10.0, weight=1.0,
-            climb_weight=0.0, quiet_cost=1.0,
+            quiet_cost=1.0,
         )  # fmt: skip
         assert refine.events_of_raws([], ctx, ctx.deadline) == []
         assert seen["cut_short"] == (routing.DeadlineExceeded,)

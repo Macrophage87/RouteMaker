@@ -63,7 +63,7 @@ test("the export carries the sliders the route was planned with, and says them",
   assert.deepEqual(out.dials, { stress: 50, hills: -50, when: "weekend", carrying: null, assist: false });
   assert.equal(
     rideText({ preset: "group-ride", dials }),
-    "Ride type: Group Ride. Traffic slider 50 of 100 (Balanced); hills slider -50 (Gentler grades); ride time weekend.",
+    "Ride type: Group Ride. Traffic slider 50 of 100 (Balanced); hills slider -50 (Easy up to 5%); ride time weekend.",
   );
   assert.match(
     rideText({ preset: "cargo", dials: { stress: 100, hills: -60, when: "weekday_rush", carrying: "people", assist: true } }),

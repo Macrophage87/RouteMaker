@@ -326,6 +326,25 @@ kept with your account when you are signed in.</li>
 RouteMaker as the destination.</li>
 </ul>
 
+<h3 id="roam">Roam</h3>
+<p>With nothing planned in Go (no start or destination), on any ride type but Mass Ride, the big
+button is <strong>Roam</strong>: a ride with nowhere set.</p>
+<ul>
+<li>The map follows you, and the card names the road you are on and, once you are moving, up to three roads ahead, within
+about half a mile [800 m], each with how far it is in a straight line and its stress level. They are
+read from the map already on your phone, so nothing is sent.</li>
+<li><strong>Detour</strong> finds the three nearest <strong>Water</strong>, <strong>Restroom</strong>
+or <strong>Food</strong> places by bike. <strong>Ride here</strong> starts an ordinary ride there, and
+ending that ride brings you back to roaming.</li>
+<li><strong>Broadcast</strong>, a round button, shares a link others can follow your dot and the way you
+ride with, while your app is open (see <a href="#suggest">ride links</a>).</li>
+<li>The next sunrise and sunset show in the corner, with the minutes left once it is within the
+hour.</li>
+<li><strong>End roam</strong> is slid, like End ride, so a bump does not end it.</li>
+<li>Your position stays on your phone, except when you search for a Detour or ride to one, and while
+you broadcast, when the server keeps it for 2 minutes.</li>
+</ul>
+
 </div></details>
 <h2 id="plan">Plan</h2>
 <p>Plan is the full planner: build the route point by point, choose how it should ride, and read its
@@ -468,7 +487,7 @@ which isn't asked again in that tab.</p>
 <div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 760 316" role="img" aria-labelledby="fig-use-ride-t fig-use-ride-d" focusable="false" style="min-width:547px">
 <title id="fig-use-ride-t">The ride screen</title>
-<desc id="fig-use-ride-d">The ride screen has End ride and Road closed across the top; End ride is a slider so a stray tap won&#x27;t end it. Below them is the turn card with the next turn and how far it is. Round buttons on the map&#x27;s right edge are Where am I?, Large text, Detour, 311 and a Settings gear. Near sunrise or sunset, a line gives the time and how long until it.</desc>
+<desc id="fig-use-ride-d">The ride screen has End ride and Road closed across the top; End ride is a slider so a stray tap won&#x27;t end it. Below them is the turn card with the next turn and how far it is. Round buttons on the map&#x27;s right edge are Where am I?, Large text, Calmer, Flatter, Detour, 311 and a Settings gear. Near sunrise or sunset, a line gives the time and how long until it.</desc>
 <defs><marker id="ah-use-ride" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
 <rect x="250" y="8" width="260" height="300" rx="18" class="bx"/>
 <rect class="bxa" x="262" y="20" width="236" height="30" rx="6"/>
@@ -477,19 +496,25 @@ which isn't asked again in that tab.</p>
 <text class="tb" x="380.0" y="82.5" text-anchor="middle">Next turn</text>
 <text class="ts" x="380.0" y="98.5" text-anchor="middle">0.2 mi, Left onto R St NW</text>
 <text class="ts" x="380" y="170" text-anchor="middle">the map, along your route</text>
-<circle cx="480" cy="132" r="14" class="fillacc"/>
+<circle cx="480" cy="132" r="10" class="fillacc"/>
 <text class="t" x="530" y="137" text-anchor="start">Where am I?</text>
 <path class="ar" d="M524,132 L498,132" marker-end="url(#ah-use-ride)"/>
-<circle cx="480" cy="168" r="14" class="fillacc"/>
-<text class="t" x="530" y="173" text-anchor="start">Large text</text>
-<path class="ar" d="M524,168 L498,168" marker-end="url(#ah-use-ride)"/>
-<circle cx="480" cy="204" r="14" class="fillacc"/>
-<text class="t" x="530" y="209" text-anchor="start">Detour</text>
+<circle cx="480" cy="156" r="10" class="fillacc"/>
+<text class="t" x="530" y="161" text-anchor="start">Large text</text>
+<path class="ar" d="M524,156 L498,156" marker-end="url(#ah-use-ride)"/>
+<circle cx="480" cy="180" r="10" class="fillacc"/>
+<text class="t" x="530" y="185" text-anchor="start">Calmer</text>
+<path class="ar" d="M524,180 L498,180" marker-end="url(#ah-use-ride)"/>
+<circle cx="480" cy="204" r="10" class="fillacc"/>
+<text class="t" x="530" y="209" text-anchor="start">Flatter</text>
 <path class="ar" d="M524,204 L498,204" marker-end="url(#ah-use-ride)"/>
-<circle cx="480" cy="240" r="14" class="fillacc"/>
-<text class="t" x="530" y="245" text-anchor="start">311</text>
-<path class="ar" d="M524,240 L498,240" marker-end="url(#ah-use-ride)"/>
-<circle cx="480" cy="276" r="14" class="fillacc"/>
+<circle cx="480" cy="228" r="10" class="fillacc"/>
+<text class="t" x="530" y="233" text-anchor="start">Detour</text>
+<path class="ar" d="M524,228 L498,228" marker-end="url(#ah-use-ride)"/>
+<circle cx="480" cy="252" r="10" class="fillacc"/>
+<text class="t" x="530" y="257" text-anchor="start">311</text>
+<path class="ar" d="M524,252 L498,252" marker-end="url(#ah-use-ride)"/>
+<circle cx="480" cy="276" r="10" class="fillacc"/>
 <text class="t" x="530" y="281" text-anchor="start">Settings (gear)</text>
 <path class="ar" d="M524,276 L498,276" marker-end="url(#ah-use-ride)"/>
 <text class="tb" x="10" y="32" text-anchor="start">Top: two big buttons</text>
@@ -503,7 +528,7 @@ which isn't asked again in that tab.</p>
 <div class="fig-narrow">
 <svg viewBox="0 0 320 542" role="img" aria-labelledby="fig-use-ride-n-t fig-use-ride-n-d" focusable="false">
 <title id="fig-use-ride-n-t">The ride screen</title>
-<desc id="fig-use-ride-n-d">The ride screen has End ride and Road closed across the top; End ride is a slider so a stray tap won&#x27;t end it. Below them is the turn card with the next turn and how far it is. Round buttons on the map&#x27;s right edge are Where am I?, Large text, Detour, 311 and a Settings gear. Near sunrise or sunset, a line gives the time and how long until it.</desc>
+<desc id="fig-use-ride-n-d">The ride screen has End ride and Road closed across the top; End ride is a slider so a stray tap won&#x27;t end it. Below them is the turn card with the next turn and how far it is. Round buttons on the map&#x27;s right edge are Where am I?, Large text, Calmer, Flatter, Detour, 311 and a Settings gear. Near sunrise or sunset, a line gives the time and how long until it.</desc>
 <defs><marker id="ah-use-ride-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
 <rect x="10" y="8" width="300" height="370" rx="18" class="bx"/>
 <rect class="bxa" x="22" y="22" width="276" height="38" rx="6"/>
@@ -511,21 +536,27 @@ which isn't asked again in that tab.</p>
 <rect class="bx" x="22" y="68" width="276" height="56" rx="6"/>
 <text class="tb" x="160.0" y="91.5" text-anchor="middle">Next turn</text>
 <text class="ts" x="160.0" y="111.5" text-anchor="middle">0.2 mi, Left onto R St NW</text>
-<circle cx="282" cy="160" r="14" class="fillacc"/>
-<text class="t" x="238" y="165" text-anchor="end">Where am I?</text>
-<path class="ar" d="M244,160 L264,160" marker-end="url(#ah-use-ride-n)"/>
-<circle cx="282" cy="200" r="14" class="fillacc"/>
-<text class="t" x="238" y="205" text-anchor="end">Large text</text>
-<path class="ar" d="M244,200 L264,200" marker-end="url(#ah-use-ride-n)"/>
-<circle cx="282" cy="240" r="14" class="fillacc"/>
-<text class="t" x="238" y="245" text-anchor="end">Detour</text>
+<circle cx="282" cy="150" r="10" class="fillacc"/>
+<text class="t" x="238" y="155" text-anchor="end">Where am I?</text>
+<path class="ar" d="M244,150 L264,150" marker-end="url(#ah-use-ride-n)"/>
+<circle cx="282" cy="180" r="10" class="fillacc"/>
+<text class="t" x="238" y="185" text-anchor="end">Large text</text>
+<path class="ar" d="M244,180 L264,180" marker-end="url(#ah-use-ride-n)"/>
+<circle cx="282" cy="210" r="10" class="fillacc"/>
+<text class="t" x="238" y="215" text-anchor="end">Calmer</text>
+<path class="ar" d="M244,210 L264,210" marker-end="url(#ah-use-ride-n)"/>
+<circle cx="282" cy="240" r="10" class="fillacc"/>
+<text class="t" x="238" y="245" text-anchor="end">Flatter</text>
 <path class="ar" d="M244,240 L264,240" marker-end="url(#ah-use-ride-n)"/>
-<circle cx="282" cy="280" r="14" class="fillacc"/>
-<text class="t" x="238" y="285" text-anchor="end">311</text>
-<path class="ar" d="M244,280 L264,280" marker-end="url(#ah-use-ride-n)"/>
-<circle cx="282" cy="320" r="14" class="fillacc"/>
-<text class="t" x="238" y="325" text-anchor="end">Settings (gear)</text>
-<path class="ar" d="M244,320 L264,320" marker-end="url(#ah-use-ride-n)"/>
+<circle cx="282" cy="270" r="10" class="fillacc"/>
+<text class="t" x="238" y="275" text-anchor="end">Detour</text>
+<path class="ar" d="M244,270 L264,270" marker-end="url(#ah-use-ride-n)"/>
+<circle cx="282" cy="300" r="10" class="fillacc"/>
+<text class="t" x="238" y="305" text-anchor="end">311</text>
+<path class="ar" d="M244,300 L264,300" marker-end="url(#ah-use-ride-n)"/>
+<circle cx="282" cy="330" r="10" class="fillacc"/>
+<text class="t" x="238" y="335" text-anchor="end">Settings (gear)</text>
+<path class="ar" d="M244,330 L264,330" marker-end="url(#ah-use-ride-n)"/>
 <text class="ts" x="160.0" y="362" text-anchor="middle">the map, along your route</text>
 <text class="tb" x="10" y="410" text-anchor="start">Top: two big buttons</text>
 <text class="ts" x="10" y="434" text-anchor="start">End ride is a slider,</text>
@@ -559,6 +590,15 @@ arrow.</li>
 curling up onto a bridge, is said on the side you actually turn.</li>
 <li><strong>Where am I?</strong> says where you are and centers the map on you again.
 <strong>Large text</strong> makes the next turn as big as it fits.</li>
+<li><strong>Calmer</strong> (a car with a down arrow) and <strong>Flatter</strong> (a mountain with a down
+arrow) plan again from where you are, with the way ahead first: Calmer moves the ride's traffic slider one step toward Calmest, Flatter its hills slider one step
+toward avoiding hills. If the new route keeps to your line, you hear "Same route: no calmer way from
+here." (or "no less steep way"). Press again for the next step; at the last one you hear "Already the calmest
+route." or "Already the flattest route." (On a Mass Ride, whose traffic level is set, Calmer always
+says so.) The steps last for this ride only, Plan's sliders stay as they
+were, and a step that finds no route, or only one leading back to the old line, is undone. They are hidden on a shared or fixed route and once you
+have arrived. A screen reader hears each one in full, such as "Calmer: less traffic, plan again from
+here".</li>
 <li><strong>Detour</strong> lists the nearest <strong>Water</strong> or <strong>Restroom</strong>;
 choosing one re-plans the ride through it and on along the rest of the route.</li>
 <li><strong>Road closed</strong> plans a way round from where you are: "Road closed. Finding a way
@@ -672,10 +712,20 @@ junction markers and, from the next map update, the route's hazard marks. The le
 ratings</a>. At zoom 11 and further out, the stress map draws only the long trails, such as
 the Capital Crescent, the Metropolitan Branch Trail and the W&amp;OD, and roads closed to cars at set
 times. They show from the map's widest zoom, drawn above its main roads. From the next map update the
-busiest bike corridors and long calm streets show there too, and the long trails are named from zoom 10.
-From zoom 12 the other paths and roads join them. A soft cyan band marks the
-<a href="/about/stress.html#popular">popular bike corridors</a>, and where lines cross the calmer way is
-drawn on top.</li>
+busiest bike corridors and long calm streets show there too, the long trails are named from zoom 10,
+and the well-known corridors at zoom 10 and 11. From zoom 12 the other paths and roads join them, with busy roads drawn faint until zoom 14.
+In a city the map builds up as a road map does for cars. Off-road paths, protected lanes, the busier
+<a href="/about/stress.html#popular">popular bike corridors</a> and long calm streets come first, at zoom 12.
+Painted lanes and the other corridors follow at zoom 13. Every other street, sidewalk and busy road waits for
+zoom 14, and the base map still shows the streets until then.
+From the next map update the network also joins up. At zoom 10 and 11 the calmest streets between the
+trails, and the minor trails that join them, show with the long trails, and stray bits under a mile long that
+join nothing are left off at zoom 11 and below. From zoom 12 a short street or two (up to about 650 ft [200 m]) linking two bike
+lanes or paths, a calm street joining a short bit of lane or path to the rest, and a single busy block (up to
+about 820 ft [250 m]) in a street drawn at zoom 12 or 13 show from zoom 12, while a short bit that joins
+nothing and a dead end such as a cul-de-sac wait for zoom 14. On- and off-ramps wait for zoom 14 everywhere
+unless they have a bike lane or path or are a popular corridor.
+Where lines cross, the calmer way is drawn on top.</li>
 <li><strong>Water and restrooms</strong>: drinking fountains and taps (with untreated water marked),
 flush and portable restrooms, and bike repair stands, from street zoom. Where they would crowd each other, as downtown, some wait until you zoom in. The route's
 list names all the water and restrooms near your route, and Repair, in Go's More, lists the nearest
@@ -690,6 +740,10 @@ on.</li>
 <a href="/about/trails.html">Mountain Bike, Mountain Goat and Gravel</a>.</li>
 <li>In Plan, also <strong>Scenic</strong> and <strong>DC permits</strong>, both off by default. Neither
 changes the route.</li>
+<li><strong>Closures</strong> in force now show on the map from zoom 11 even with no route (a route's own
+closures show at any zoom): red where a road or path is closed, orange where a bike lane is blocked or construction can be ridden past. Each leaves the map
+once it ends. DDOT's permits show only with DC permits on. More:
+<a href="/about/routing.html#closures">Closures</a>.</li>
 </ul>
 <h3>Finding things on the map</h3>
 <ul>
@@ -714,42 +768,46 @@ OSM</strong> to fix the map itself.</li>
 <p>Save and load, on Plan's bottom bar or in Go's Menu, keeps, shares and exports routes, and opens files from other apps.</p>
 <figure id="fig-use-save" class="has-narrow">
 <div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
-<svg viewBox="0 0 760 240" role="img" aria-labelledby="fig-use-save-t fig-use-save-d" focusable="false" style="min-width:547px">
+<svg viewBox="0 0 760 286" role="img" aria-labelledby="fig-use-save-t fig-use-save-d" focusable="false" style="min-width:547px">
 <title id="fig-use-save-t">Where a route can go</title>
-<desc id="fig-use-save-d">From a route you can: Save route, to My routes, up to 200 with versions; Keep for offline, up to 10 on this device; Share it as a link, a ride link or an image; Export it as GPX, FIT, TCX, a PDF or a lock-screen image; or Send to Garmin.</desc>
+<desc id="fig-use-save-d">From a route you can: Save route, to My routes, up to 200 with versions; Keep for offline, up to 10 on this device; Share it as a link, a ride link or an image; Export it as GPX, FIT, TCX, a PDF or a lock-screen image; or Send to Garmin or Send to Wahoo.</desc>
 <defs><marker id="ah-use-save" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
-<rect class="bxa" x="10" y="92" width="150" height="50" rx="6"/>
-<text class="tb" x="85.0" y="121.5" text-anchor="middle">Your route</text>
-<path class="ar" d="M162,117 L238,27" marker-end="url(#ah-use-save)"/>
+<rect class="bxa" x="10" y="115" width="150" height="50" rx="6"/>
+<text class="tb" x="85.0" y="144.5" text-anchor="middle">Your route</text>
+<path class="ar" d="M162,140 L238,27" marker-end="url(#ah-use-save)"/>
 <rect class="bx" x="240" y="8" width="170" height="38" rx="6"/>
 <text class="tb" x="325.0" y="31.5" text-anchor="middle">Save route</text>
 <text class="ts" x="422" y="32" text-anchor="start">My routes, up to 200, with versions</text>
-<path class="ar" d="M162,117 L238,73" marker-end="url(#ah-use-save)"/>
+<path class="ar" d="M162,140 L238,73" marker-end="url(#ah-use-save)"/>
 <rect class="bx" x="240" y="54" width="170" height="38" rx="6"/>
 <text class="tb" x="325.0" y="77.5" text-anchor="middle">Keep for offline</text>
 <text class="ts" x="422" y="78" text-anchor="start">up to 10, on this device</text>
-<path class="ar" d="M162,117 L238,119" marker-end="url(#ah-use-save)"/>
+<path class="ar" d="M162,140 L238,119" marker-end="url(#ah-use-save)"/>
 <rect class="bx" x="240" y="100" width="170" height="38" rx="6"/>
 <text class="tb" x="325.0" y="123.5" text-anchor="middle">Share</text>
 <text class="ts" x="422" y="124" text-anchor="start">a link, a ride link, or an image</text>
-<path class="ar" d="M162,117 L238,165" marker-end="url(#ah-use-save)"/>
+<path class="ar" d="M162,140 L238,165" marker-end="url(#ah-use-save)"/>
 <rect class="bx" x="240" y="146" width="170" height="38" rx="6"/>
 <text class="tb" x="325.0" y="169.5" text-anchor="middle">Export</text>
 <text class="ts" x="422" y="170" text-anchor="start">GPX, FIT, TCX, PDF, lock-screen image</text>
-<path class="ar" d="M162,117 L238,211" marker-end="url(#ah-use-save)"/>
+<path class="ar" d="M162,140 L238,211" marker-end="url(#ah-use-save)"/>
 <rect class="bx" x="240" y="192" width="170" height="38" rx="6"/>
 <text class="tb" x="325.0" y="215.5" text-anchor="middle">Send to Garmin</text>
 <text class="ts" x="422" y="216" text-anchor="start">straight to Garmin Connect</text>
+<path class="ar" d="M162,140 L238,257" marker-end="url(#ah-use-save)"/>
+<rect class="bx" x="240" y="238" width="170" height="38" rx="6"/>
+<text class="tb" x="325.0" y="261.5" text-anchor="middle">Send to Wahoo</text>
+<text class="ts" x="422" y="262" text-anchor="start">straight to your Wahoo app</text>
 </svg>
 </div>
 <div class="fig-narrow">
-<svg viewBox="0 0 320 480" role="img" aria-labelledby="fig-use-save-n-t fig-use-save-n-d" focusable="false">
+<svg viewBox="0 0 320 562" role="img" aria-labelledby="fig-use-save-n-t fig-use-save-n-d" focusable="false">
 <title id="fig-use-save-n-t">Where a route can go</title>
-<desc id="fig-use-save-n-d">From a route you can: Save route, to My routes, up to 200 with versions; Keep for offline, up to 10 on this device; Share it as a link, a ride link or an image; Export it as GPX, FIT, TCX, a PDF or a lock-screen image; or Send to Garmin.</desc>
+<desc id="fig-use-save-n-d">From a route you can: Save route, to My routes, up to 200 with versions; Keep for offline, up to 10 on this device; Share it as a link, a ride link or an image; Export it as GPX, FIT, TCX, a PDF or a lock-screen image; or Send to Garmin or Send to Wahoo.</desc>
 <defs><marker id="ah-use-save-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
 <rect class="bxa" x="10" y="8" width="300" height="40" rx="6"/>
 <text class="tb" x="160.0" y="33.5" text-anchor="middle">Your route</text>
-<path class="ar" d="M24,48 L24,435"/>
+<path class="ar" d="M24,48 L24,517"/>
 <rect class="bx" x="42" y="70" width="268" height="74" rx="6"/>
 <text class="tb" x="176.0" y="92.5" text-anchor="middle">Save route</text>
 <text class="ts" x="176.0" y="112.5" text-anchor="middle">My routes, up to 200,</text>
@@ -772,6 +830,10 @@ OSM</strong> to fix the map itself.</li>
 <text class="tb" x="176.0" y="430.5" text-anchor="middle">Send to Garmin</text>
 <text class="ts" x="176.0" y="450.5" text-anchor="middle">straight to Garmin Connect</text>
 <path class="ar" d="M24,435 L40,435" marker-end="url(#ah-use-save-n)"/>
+<rect class="bx" x="42" y="480" width="268" height="74" rx="6"/>
+<text class="tb" x="176.0" y="512.5" text-anchor="middle">Send to Wahoo</text>
+<text class="ts" x="176.0" y="532.5" text-anchor="middle">straight to your Wahoo app</text>
+<path class="ar" d="M24,517 L40,517" marker-end="url(#ah-use-save-n)"/>
 </svg>
 </div>
 <figcaption>All of these are in Save and load, and Share is under the route too.</figcaption>
@@ -783,13 +845,17 @@ OSM</strong> to fix the map itself.</li>
 <h3>Keep</h3>
 <ul>
 <li><strong>Save route</strong> (signed in) puts the route in <strong>My routes</strong>, up to 200,
-each with Rename, Versions, GPX and Delete. A search box finds a route by name. In Plan, once the route is up to date and you've picked it (when there is more than one line
+each with a <strong>More</strong> button that opens its GPX, Rename, Versions (in Plan) and Delete. A search box finds a route by name. In Plan, once the route is up to date and you've picked it (when there is more than one line
 to choose from), the big button at the top of the map, where <strong>Update route</strong> sits, becomes <strong>Save route</strong>, with <strong>Start ride</strong>
 beside it (on a phone they read Save and Start). That Save also has <strong>Download GPX</strong>, and not
 signed in it offers <strong>Sign in with Discord</strong> (where available; your plan is kept) or
 Download GPX. A route someone sent you by link can be saved the same way. Any change to the plan brings
 Update route back. With nothing planned yet, that button is <strong>Load route</strong>, which
-opens Save and load.</li>
+opens a short list. Not signed in, <strong>Sign in with Discord</strong> comes first (where
+available). Then <strong>Open GPX file</strong> asks the ride type and whether to <strong>Snap to roads</strong>
+(streets and paths bikes may ride; the default) or keep it <strong>Exactly as drawn</strong> (even where bikes may not ride), then
+<strong>Choose file</strong>. Below are your saved routes, then the routes kept on this device; one tap opens one.
+A search box appears once there are more than six.</li>
 <li><strong>Keep for offline</strong> keeps a planned route on this device, up to 10, so it opens
 without signal, in the installed app or a browser tab. The last ride is kept too.</li>
 <li>Before a route is exported or kept, RouteMaker warns if it goes through a closure.</li>
@@ -814,14 +880,25 @@ with turn cues<sup class="cite"><a href="#ref-4" aria-label="source 4">[4]</a></
 print; and a <strong>cue sheet image</strong> for a phone's lock screen.</li>
 <li>Choose your bike computer (Any, Garmin Edge, Wahoo ELEMNT or Hammerhead Karoo) so the cues and the
 course fit what it can hold.</li>
-<li><strong>Send to Garmin</strong> sends the course to Garmin Connect.</li>
+<li><strong>Send to Garmin</strong> sends the course to Garmin Connect. With
+<a href="#settings">Garmin connected in Settings</a> it adds the course to Garmin Connect directly, under the
+route's saved name (or its file name when it is not saved), and sending a saved route again updates that course
+instead of adding a copy; your Garmin picks it up at its next sync. Without a connection the course goes as a FIT
+file, as before, and so it does if Garmin turns the course down or cannot be reached: the line under the button
+gives the reason first.</li>
+<li><strong>Send to Wahoo</strong> appears once you are signed in and <a href="#settings">Wahoo is connected
+in Settings</a>. It adds
+the route to your Wahoo app as a FIT course with turn cues, fitted to a Wahoo ELEMNT, and the app sends it to
+your ELEMNT. Sending a saved route again updates it. If Wahoo turns it down, cannot be reached or is no longer
+connected, the FIT course is saved instead, for the Wahoo app to open, and the line under the button gives the
+reason first.</li>
 </ul>
 <h3>Open a file</h3>
 <ul>
 <li><strong>Open GPX…</strong> reads a file in your browser; it is never uploaded. Up to 20 MB and
 100,000 points.</li>
 <li>In Plan, <strong>Snap to the map's streets</strong> turns the track into a plan you can change, or
-<strong>Follow the file exactly</strong> rides it as drawn, for a road closed for an event.</li>
+<strong>Follow the file exactly</strong> rides it as drawn, for a road closed for an event. Load route's <strong>Snap to roads</strong> and <strong>Exactly as drawn</strong> are the same choice, made before the file opens.</li>
 </ul>
 
 </div></details>
@@ -832,10 +909,10 @@ keep your settings and routes on every device.</p>
 <div class="more-body">
 
 <ul>
-<li><strong>My Go:</strong> <strong>Home</strong>, <strong>Go's ride type</strong>, and <strong>Open
-in</strong> (Go, Plan, or by screen size: a phone opens in Go, even from a shared link, which it shows
-in Go; a wider screen opens in Plan). Kept with your account when you are signed in, otherwise on
-this device.</li>
+<li><strong>My Go:</strong> <strong>Home</strong> (once set, one line with <strong>Change</strong>) and
+<strong>Go's ride type</strong>. Kept with your account when you are signed in, otherwise on
+this device. The app opens in Go on a phone and in Plan on a computer, a shared route
+included; a tab keeps the view it was last in, and pressing Go or Plan counts for that tab only.</li>
 <li><strong>Riding</strong> and <strong>Display:</strong> cues, large text, rider and bike weight, high
 contrast and the rest, on <a href="/about/accessibility.html">Accessibility</a>.</li>
 <li><strong>Install RouteMaker</strong> adds it to your home screen when the browser offers it. When a
@@ -845,6 +922,18 @@ saved routes with your account. <strong>Delete account</strong> says what is del
 and asks once.</li>
 <li><strong>AI assistant</strong> keys and connected apps: <a href="/about/assistants.html">AI
 assistants</a>.</li>
+<li><strong>Garmin</strong> (signed in, where offered): <strong>Connect Garmin</strong> takes
+you to Garmin's page to allow it and brings you back to Settings, which says whether it worked. RouteMaker only
+sends the courses you choose and reads nothing from Garmin but your account number. It keeps Garmin's sign-in
+token, encrypted, that number, which course each saved route was sent as, and when you connected and last sent
+one. <strong>Disconnect</strong> asks first, and Send to Garmin then goes back to
+the file. More: the <a href="/privacy">privacy page</a>.</li>
+<li><strong>Wahoo</strong> (signed in, where offered): <strong>Connect Wahoo</strong> works as Connect Garmin
+does, through Wahoo's page. RouteMaker only sends the routes you choose and reads nothing from Wahoo but your
+account number. It keeps Wahoo's sign-in token, encrypted, that number, which routes it sent, and when you
+connected and last sent one. <strong>Disconnect</strong> asks first, and the routes already sent stay in your
+Wahoo app. Deleting your account also removes from Wahoo up to 100 routes sent through your current
+connection; any it cannot reach stay in the Wahoo app.</li>
 </ul>
 
 </div></details>
@@ -880,17 +969,38 @@ in Go's Menu and Plan's bottom bar, with an <strong>Open Reports</strong> button
 </ul>
 <h3>Group Ride and Mass Ride links</h3>
 <ul>
-<li>Everyone who opens the same <strong>Share ride</strong> link is on the same ride, and sees the
-others as dots, with no names.</li>
+<li><strong>Broadcast</strong>, a small button beside Start ride in Plan and Go where your browser can
+share, opens your phone's share sheet with a link to the route. Once you send it, your ride starts and
+you are its leader. If the route isn't ready or the share fails, it says so beside the button and nothing
+starts. <strong>Share ride</strong> makes you the leader too; sharing the same route again, without
+leaving the page, keeps you the leader of both links.</li>
+<li>Everyone who opens the same link is on the same ride, and sees the others as dots, with no names.</li>
+<li>Opening a Share ride or Broadcast link <strong>follows the leader</strong>: the map moves with the
+leader's dot, which has a wide ring round it. You see it at once, before you answer whether to show
+yourself. A link opened in Plan follows the leader too, so someone at home can watch the ride.</li>
+<li>While the leader rides with the app open, their phone sends the route it is riding (dashed, so a
+re-route shows) and the path it has taken so far (solid), about every 2 minutes and whenever the route
+changes, so someone who opens the link late sees where the ride has been. The start of the path is left
+out until it is 650 ft [200 m] from where it began, as rides often start at home.</li>
+<li>Moving or zooming the map stops following. Tap the riders count and turn on <strong>Follow the
+leader</strong> to follow again. While you ride yourself, the map follows you instead.</li>
 <li>When the link opens, it asks once whether to <strong>show me as a dot</strong>, and your role:
 <strong>Participant</strong>, <strong>Lead line</strong>, <strong>Sweep</strong> or
-<strong>Corker</strong>. Your dot is sent only while the app is open and you are within a quarter mile
-[400 m] of the route, and stops when you turn it off, close the app, are off the route for 10 minutes,
-or 12 hours after the start. The server keeps a dot for 2 minutes, in memory only.</li>
+<strong>Corker</strong>. Your dot is sent only while the app is open, and only within a quarter mile
+[400 m] of the route. On a Share ride or Broadcast link, while you ride, it is shown on or off the
+route, so the leader and riders who get separated can find each other. It stops when you turn it off
+(tap the riders count), close the app, are off the route for 10 minutes (not counted while you ride a
+Share ride or Broadcast link), or 12 hours after the start.</li>
 <li><strong>Alert</strong> sends one tap to everyone on the link with your location. A Group Ride has
-Rider off the back, Crash, Mechanical or flat, Wrong turn and Other; a Mass Ride has Extensive rider
-spread, Emergency vehicle coming through, Aggressive person, Medical emergency or crash, Rerouting and
-Other. Crash and Medical ask first and offer to call 911.</li>
+Rider off the back; Crash; Mechanical or flat, stopping; Wrong turn; Lost, separated from the group;
+Wait up, regroup; and Other. A Mass Ride has Extensive rider spread; Emergency vehicle coming through;
+Aggressive person; Medical emergency or crash; Rerouting, road closed; Lost, separated from the ride;
+and Other. Crash and Medical ask first and offer to call 911.</li>
+<li>In Alert, Other, on the website where your browser supports it (it does not work in the Android app),
+<strong>Speak</strong> fills the box from what you say; check it, then tap Send. It needs a connection: your browser's maker (such as Google for Chrome or
+Apple for Safari) turns the recording into text.</li>
+<li>The server keeps dots, the leader's route and path, and alerts in memory only, for 2 minutes. A
+phone's random ride code and its alert counts are forgotten 2 minutes after it last checked in.</li>
 <li>Planning a Mass Ride: <a href="/about/mass-ride.html">Mass Ride</a>.</li>
 </ul>
 
@@ -903,7 +1013,11 @@ Other. Crash and Medical ask first and offer to call 911.</li>
 <ul>
 <li>On first launch it asks for the site's address.</li>
 <li>RouteMaker links shared to the app open in it.</li>
-<li><strong>Send to Garmin</strong> hands the course to Garmin Connect.</li>
+<li><strong>Send to Garmin</strong> hands the course to the Garmin Connect app, or adds it to
+Garmin Connect directly once Garmin is connected. Connecting works in the app from its next update; until
+then, connect on the website and the connection works in the app too.</li>
+<li><strong>Send to Wahoo</strong> works the same way once Wahoo is connected; connecting it in the app works
+from the app's next update.</li>
 <li>Locked-screen cues, the ride notification and the buzzes: <a href="/about/accessibility.html#android">Accessibility</a>.</li>
 </ul>
 
@@ -920,7 +1034,7 @@ Other. Crash and Medical ask first and offer to call 911.</li>
 <p class="next">Next: <a href="/about/accessibility.html">Accessibility</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.11.0. The code is
+  <p>Part of RouteMaker's documentation. It describes version 0.12.0. The code is
   open source under the MIT licence:
   <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
   <p><a href="/">Back to the map</a></p>
