@@ -14,6 +14,8 @@ import { presetLabel, presetSaid, type PresetId } from "../lib/presets.ts";
 import { NOVICE_TRANSIT_CHOICES, noviceOfferText, noviceTripLine, noviceTripShort, type NoviceTrip } from "../lib/noviceOffer.ts";
 import { stressSegments, type StressSegment } from "../lib/stressBar.ts";
 import { lightLine, type LightMark } from "../lib/lightTimes.ts";
+import { weatherSaid, type WeatherReport } from "../lib/weather.ts";
+import { WeatherLines } from "../WeatherLines.tsx";
 import { calmSearchNote, detourView, paceText, stillPlanningSaid, movedPointsNote, noviceWalksNote, walkInNote } from "../lib/summary.ts";
 import { isCancelKey } from "../lib/sheet.ts";
 import { useStressStyle } from "../useStressStyle.ts";
@@ -252,6 +254,8 @@ export interface RouteSectionProps {
   transitControls: TransitControls;
   /** The light times on the route near dawn or dusk (lib/lightTimes.ts), leaving now; empty otherwise. */
   light: readonly LightMark[];
+  /** Weather along the route, leaving now (lib/weather.ts), once checked; else null. */
+  weather: WeatherReport | null;
 }
 
 /** A transit plan's controls: plan another option, and the departure's milestones and a miss. */
@@ -265,7 +269,7 @@ export interface TransitControls {
 
 /** The planner's Route section: planning, the long-ride question, errors, the route summary and Start ride. */
 export function RouteSection(props: RouteSectionProps) {
-  const { stale, routeHeadingRef, status, announcement, slow, preset, dials, points, cancelLong, planButtonRef, confirmLong, errorRef, retry, shown, answer, choice, aroundAvoid, setAroundAvoid, routedPoints, federalRoute, narrow, setJunctionFocus, setScrubPoint, choose, startRide, broadcastRide, startRideRef, rideSize, setDials, waterStatus, waterAlong, addWaterStop, climbsOn, climbsStatus, climbsAlong, mode, actions, stations, go, transitControls, light } = props;
+  const { stale, routeHeadingRef, status, announcement, slow, preset, dials, points, cancelLong, planButtonRef, confirmLong, errorRef, retry, shown, answer, choice, aroundAvoid, setAroundAvoid, routedPoints, federalRoute, narrow, setJunctionFocus, setScrubPoint, choose, startRide, broadcastRide, startRideRef, rideSize, setDials, waterStatus, waterAlong, addWaterStop, climbsOn, climbsStatus, climbsAlong, mode, actions, stations, go, transitControls, light, weather } = props;
   const goMode = mode === "go";
   return (
     <section key="route" aria-labelledby="route-heading" aria-busy={stale} className={goMode ? "route-section go-route" : "route-section"}>
@@ -351,6 +355,7 @@ export function RouteSection(props: RouteSectionProps) {
           go={go}
           transitControls={{ ...transitControls, busy: stale }}
           light={light}
+          weather={weather}
         />
       )}
     </section>
@@ -651,6 +656,7 @@ export function RouteSummary({
   go,
   transitControls,
   light = [],
+  weather = null,
 }: {
   route: RouteResponse;
   answer: RouteResponse | null;
@@ -683,6 +689,8 @@ export function RouteSummary({
   go: GoRouteControls;
   /** The light times on the route near dawn or dusk (lib/lightTimes.ts): one line, the map marks' accessible form. */
   light?: readonly LightMark[];
+  /** Weather along the route (lib/weather.ts): the NWS alerts and rain coming, with the warnings. */
+  weather?: WeatherReport | null;
 }) {
   useStressStyle();
   const [info, setInfo] = useState(false);
@@ -761,9 +769,16 @@ export function RouteSummary({
     <>
       <RouteAlerts route={route} answer={answer} choice={choice} around={around} onAround={onAround} />
       <NoviceTransitOffer route={route} preset={preset} onTake={go.onNoviceTransit} trips={go.noviceTrips} />
+      {/* Weather along the route (Stephen 2026-10-24): the NWS alerts, each linked to its notice, and rain coming. A
+          notice only: Start never waits for it. */}
+      <WeatherLines report={weather} riding={false} now={Date.now()} />
+      {/* The same in words for a screen reader as it arrives, after the route (the region is always there). */}
+      <p className="visually-hidden weather-status" role="status">
+        {weatherSaid(weather, Date.now())}
+      </p>
     </>
   );
-  const alertCount = (avoidNoticeFor(answer, choice) ? 1 : 0) + facilityNoticeCount(route);
+  const alertCount = (avoidNoticeFor(answer, choice) ? 1 : 0) + facilityNoticeCount(route) + (weather?.alerts.length ?? 0);
   // What Info holds: the pace, the notes in full, how to reshape the line and the route's sources (the owner's choice 5).
   const infoBody = (
     <div id={infoId} className="route-info" hidden={!info}>

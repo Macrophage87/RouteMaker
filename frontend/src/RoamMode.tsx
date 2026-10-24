@@ -15,6 +15,9 @@
  * (POST /api/nearest) and the ride it starts send where the rider is, in a POST body, as Ride mode's detours do; and
  * while the rider broadcasts, the position and trail go to /api/rides as any broadcast's do, kept 2 minutes there.
  */
+import { NOTHING_DISMISSED, RIDE_WEATHER_MS, alertKey, alertSaid, alertUrgent, dismissWeather, newAlerts, rainLine, rainSays, rainStage, roamPoints, weatherToShow } from "./lib/weather.ts";
+import { useWeather } from "./useWeather.ts";
+import { WeatherLines } from "./WeatherLines.tsx";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Icon } from "./Icon.tsx";
 import { LiveRegion, SlideToEnd, rideVoice } from "./RideMode.tsx";
@@ -150,11 +153,12 @@ export function RoamMode({
   const [toast, setToast] = useState("");
 
   // Said through the rider's outputs (Settings > Ride mode): the screen reader's region, the voice, or both.
-  const say = useCallback((text: string) => {
+  // `urgent` interrupts the voice (an Extreme or Severe weather warning).
+  const say = useCallback((text: string, urgent = false) => {
     if (!text) return;
     const output = prefsRef.current.output;
     if (toScreenReader(output) || output === "neither") setPolite((s) => ({ text, count: s.count + 1 }));
-    if (speaksAloud(output, document.visibilityState === "hidden")) rideVoice.speak(text, false);
+    if (speaksAloud(output, document.visibilityState === "hidden")) rideVoice.speak(text, urgent);
   }, []);
   const answer = useCallback(
     (text: string) => {
@@ -319,6 +323,28 @@ export function RoamMode({
     return roamLight(minute * 60_000, [lon, lat]);
   }, [lightAt, minute]);
 
+  // Weather where the rider is (lib/weather.ts, Stephen 2026-10-24), as a ride checks it: every 5 minutes, a new NWS
+  // alert or rain coming said and shown under the roads ahead until dismissed.
+  const weather = useWeather(
+    fix ? "roam" : null,
+    () => (fixRef.current ? roamPoints(fixRef.current.point) : null),
+    RIDE_WEATHER_MS,
+  );
+  const weatherSaid = useRef({ alerts: new Set<string>(), rain: "" });
+  const [weatherDismissed, setWeatherDismissed] = useState(NOTHING_DISMISSED);
+  useEffect(() => {
+    if (!weather) return;
+    const said = weatherSaid.current;
+    const fresh = newAlerts(weather, said.alerts);
+    for (const alert of fresh) {
+      said.alerts.add(alertKey(alert));
+      say(alertSaid(alert, Date.now()), alertUrgent(alert));
+    }
+    if (rainSays(said.rain, weather.rain) && weather.rain) say(rainLine(weather.rain, weather.alongM, true));
+    said.rain = rainStage(weather.rain);
+  }, [weather, say]);
+  const weatherShown = weatherToShow(weather, weatherDismissed);
+
   const broadcastBusy = useRef(false);
   const broadcast = async () => {
     if (!onBroadcast || broadcastBusy.current) return;
@@ -392,6 +418,7 @@ export function RoamMode({
             </ol>
           )}
           {roads !== null && heading === null && <p className="cue-more">Start riding to see the roads ahead.</p>}
+          <WeatherLines report={weatherShown} riding now={Date.now()} onDismiss={() => setWeatherDismissed((d) => dismissWeather(weatherShown, d))} />
         </div>
       </div>
       <div className="ride-middle">

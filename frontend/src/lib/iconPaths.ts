@@ -80,6 +80,8 @@ export const ICON_PATHS = {
   "grip": "<circle cx=\"9\" cy=\"6\" r=\"1.4\" fill=\"currentColor\"/><circle cx=\"15\" cy=\"6\" r=\"1.4\" fill=\"currentColor\"/><circle cx=\"9\" cy=\"12\" r=\"1.4\" fill=\"currentColor\"/><circle cx=\"15\" cy=\"12\" r=\"1.4\" fill=\"currentColor\"/><circle cx=\"9\" cy=\"18\" r=\"1.4\" fill=\"currentColor\"/><circle cx=\"15\" cy=\"18\" r=\"1.4\" fill=\"currentColor\"/>",
   "camera": "<path d=\"M4 7h3l2-3h6l2 3h3v13H4z\"/><circle cx=\"12\" cy=\"13\" r=\"3.5\"/>",
   "elevator-out": "<rect x=\"5\" y=\"3\" width=\"14\" height=\"18\" rx=\"2\"/><path d=\"M9.5 10 12 7l2.5 3M9.5 14l2.5 3 2.5-3M3 21 21 3\"/>",
+  // A rain cloud (weather along the route, Stephen 2026-10-24).
+  "rain": "<path d=\"M7 15a4 4 0 0 1-.6-8 5.5 5.5 0 0 1 10.6 1.5A3.3 3.3 0 0 1 17 15z\"/><path d=\"M8 18l-1 2.5M12 18l-1 2.5M16 18l-1 2.5\"/>",
 } as const;
 
 export type IconName = keyof typeof ICON_PATHS;

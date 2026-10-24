@@ -5599,6 +5599,27 @@ details.fold > summary .icon {
   white-space: nowrap;
 }
 
+/* Weather along the route (lib/weather.ts): the whole line wraps, so the NWS link is never cut off. */
+.weather-lines .note-line {
+  align-items: flex-start;
+}
+
+.weather-lines .note-line .note-text {
+  white-space: normal;
+  overflow: visible;
+}
+
+.weather-lines a,
+.weather-dismiss {
+  display: inline-block;
+  min-height: 24px;
+  padding: 2px 0;
+}
+
+.weather-credit {
+  font-size: 0.85em;
+}
+
 .alert-line {
   display: flex;
   flex-wrap: wrap;
