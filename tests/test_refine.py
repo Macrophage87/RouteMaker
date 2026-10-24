@@ -3584,3 +3584,57 @@ class TestRedJunctions:
 
     def test_unread_junctions_count_none(self) -> None:
         assert refine.red_count(analysis("c", events=None)) == 0
+
+    def test_a_later_round_the_time_does_not_reach_is_said_while_a_red_is_left(
+        self, monkeypatch
+    ) -> None:
+        """The PC's check, 2026-10-23: a cold first plan stopped after its rounds' time ran
+        out with reds left and said nothing, so the answer was kept as the search's whole."""
+        shapes = {"o": self.two_reds(), "a": analysis("a", events=[event(2700.0, 3300.0)])}
+        world = World(monkeypatch, shapes, [trip_of("a", 4.1)])
+        now = [routing.clock()]
+        monkeypatch.setattr(routing, "clock", lambda: now[0])
+        call = world.call
+
+        def slow(*args):
+            now[0] += 30.0
+            return call(*args)
+
+        monkeypatch.setattr(routing, "_call", slow)
+        ctx = context()
+        ctx.deadline = routing.Deadline(now[0] + 40, 35)
+        kept, info = refine.refine(trip_of("o", 4.0), ctx)
+        assert kept["legs"][0]["shape"] == "a" and info["rounds"] == 1
+        assert info["limited"] == "time"
+
+    def test_no_red_left_says_nothing_of_the_rounds_not_run(self, monkeypatch) -> None:
+        shapes = {"o": self.two_reds(), "a": analysis("a", events=[])}
+        world = World(monkeypatch, shapes, [trip_of("a", 4.1)])
+        now = [routing.clock()]
+        monkeypatch.setattr(routing, "clock", lambda: now[0])
+        call = world.call
+
+        def slow(*args):
+            now[0] += 30.0
+            return call(*args)
+
+        monkeypatch.setattr(routing, "_call", slow)
+        ctx = context()
+        ctx.deadline = routing.Deadline(now[0] + 40, 35)
+        kept, info = refine.refine(trip_of("o", 4.0), ctx)
+        assert kept["legs"][0]["shape"] == "a" and info["limited"] is None
+
+    def test_the_calm_rounds_go_on_while_a_red_is_left(self, monkeypatch) -> None:
+        """At 90 the search gave up two rounds in with a stop sign left (the PC's check,
+        2026-10-23): patience waits until the best route has no red."""
+        shapes = {"o": analysis("o", "1" * 10 + "3" * 5 + "1" * 25, events=[event(1500.0)])}
+        for n in range(1, 6):
+            shapes[f"a{n}"] = analysis(
+                f"a{n}",
+                "1" * 10 + "3" * 6 + "1" * 24,
+                cost_s=9000.0,
+                events=[event(1500.0 + 200 * n)],
+            )
+        world = World(monkeypatch, shapes, [trip_of(f"a{n}", 4.1) for n in range(1, 6)] * 3)
+        refine.refine(trip_of("o", 4.0), context(rate=10.0))
+        assert len(world.requests) > refine.REFINE_PATIENCE

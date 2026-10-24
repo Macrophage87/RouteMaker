@@ -838,10 +838,9 @@ RED_DETOUR_S = 600.0
 
 
 def red_count(read: Analysis) -> int:
-    """The route's red junctions as the crossing rounds target them (`REFINE_MIN_EVENT_FT`),
-    never shifted: a ride that reads every road a level up does not make its oranges
-    impassable."""
-    return sum(1 for e in read.events or () if e.cost_ft >= REFINE_MIN_EVENT_FT)
+    """The route's red junctions as the map draws them, never shifted: a ride that reads
+    every road a level up does not make its oranges impassable."""
+    return sum(1 for e in read.events or () if e.severity == model.RED)
 
 
 def better(read: Analysis, best: Analysis, ctx: Context, rest_m: float = 0.0) -> bool:
@@ -2174,7 +2173,11 @@ def _search(trip, best, first_exposure, stop_at, ctx: Context, info: dict):
             break
         new = new[:room]
         if stop_at - routing.clock() < REFINE_ROUND_MIN_S:
-            if said:
+            # A later crossing round the time does not reach, with a red still on the best
+            # route, is said too, so the answer is not kept as if it were the search's
+            # whole (the PC's check, 2026-10-23: a cold first plan stopped after two rounds
+            # with both Kensington reds).
+            if said or red_count(best):
                 info["limited"] = "time"
             break
         round_deadline = routing.Deadline(
@@ -2255,8 +2258,10 @@ def _search(trip, best, first_exposure, stop_at, ctx: Context, info: dict):
             stale += 1
             # A crossing-only round that was not better is often one that found the next
             # red crossing along the same road: the next round, excluding both, is the
-            # one that can reach a signal, so the crossing rounds all run.
-            if stale >= REFINE_PATIENCE and ctx.rate > 0:
+            # one that can reach a signal, so the crossing rounds all run; so do the calm
+            # rounds while the best route still has a red (the PC's check, 2026-10-23: at
+            # 90 the search gave up two rounds in with a 16th St NW stop sign).
+            if stale >= REFINE_PATIENCE and ctx.rate > 0 and not red_count(best):
                 break
     return best, best_trip
 
