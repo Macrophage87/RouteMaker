@@ -2327,7 +2327,9 @@ not already remembered. With under 4 s left the way round is not asked, and the 
 `pg_dump -Fc` to `<DATA_ROOT>/backups/routemaker-<UTC instant>.dump`, excluding
 the data of every table in `BACKUP_EXCLUDED_TABLES` (`config/procrastinate.py`):
 `cached_membership`, `app_session`, `django_session`, `rate_limit_window`,
-`stress_tile_cache`, `bikeshare_feed_cache` and `signed_out_send`. Verified by reading the
+`stress_tile_cache`, `bikeshare_feed_cache`, `signed_out_send`, `garmin_link` and
+`wahoo_link` (riders' encrypted Garmin and Wahoo tokens: a restore asks them to connect
+again). Verified by reading the
 archive's own table of contents back with `pg_restore --list` — an archive with
 no table data at all is a dump of nothing, which is what a wrong database name
 produces while `pg_dump` exits zero.
@@ -5150,8 +5152,21 @@ server flag, and a layer nobody turns on draws nothing.
 ## Popular bike corridors (v0.11.0)
 
 The owner, 2026-10-21: "use the Cabi heatmap if you can, and make those streets show more
-pronounced than other roads". The map draws a soft cyan band under each street's corridor
-class (`segment.bike_popular`, 1 to 3), from two inputs:
+pronounced than other roads". Each street has a corridor class (`segment.bike_popular`, 1 to
+3). Since v0.12.0 the map draws no band for it (the owner, 2026-10-23: "The blue just makes
+things look busy / just prioritize those streets in view"): in a city grid a class 2 or 3
+street is drawn from z12 and a class 1 street from z13 (the city ladder, frontend
+`CITY_LADDER`), and every class sorts over the lines of its stress level. After the classes
+are set the rebuild links bike lanes, protected lanes and paths across gaps of one or two
+ways up to 200 m (650 ft) (marked a join, `overview` 1, drawn from z12), joins a class's short gaps and drops its stray bits
+(`bikeshare_corridors.tidy`; the log line "popular corridors joined up and trimmed"). Then
+`pipeline.bike_network` joins the zoomed-out trails along the calmest streets and marks the
+minor trails between them (log line "trails joined up for the zoomed-out map"), links or
+hides the short bits of the network and marks the dead ends left to z14 ("bike network for
+the zoomed-out map (links, orphans, dead ends)"), and leaves stray bits under a mile out of
+the z10-11 tiles ("zoomed-out stray bits left out (rows by zoom)"); docs/DEVELOPMENT.md,
+the city ladder, has the rules. A class 3 way carries its corridor's name for the
+map's labels (`trail_name`; tile format 14). The class comes from two inputs:
 
 - **The owner's named corridors** (`fixtures/bike-corridors/`, `pipeline.major_corridors`):
   always class 3. Read from the repository; nothing to install. Corridors that match no way
@@ -6076,6 +6091,15 @@ override row stands over either rating. The route's stress, the rolling stress c
 hides sidewalks (OWNER-DECISIONS 82). The rebuild log's facility line counts them
 ("footways ridden as a last resort"). The stress change report shows the sidewalks moving
 from LTS 1 to 3 or 4.
+
+**Short informal connectors (v0.12.0, with the next map update).** A worn path or footway
+(`informal=yes`, no bicycle tag, the whole way within 160 ft (50 m)) that would make a
+link as above, and that nothing but its informality closes, is walked, not ridden (the
+owner reported it after Glen Haven Park's paved path in Silver Spring was
+reachable only from Windham Lane because its 36 to 64 ft (11 to 20 m) links to Glenhaven
+Drive, Francis Drive and Huntley Avenue are all mapped `informal=yes`): its `informal`
+closure comes off and it gets `rm:walk_link`, `bicycle=dismount`, as a station's footway
+does, so the route says to walk the bike.
 
 **NPS units.** Tag rules only. A per-park "paved and designated only" rule goes
 in `pipeline.trail_closures.PARK_RULES` after that park's compendium has been

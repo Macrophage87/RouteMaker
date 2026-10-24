@@ -23,7 +23,8 @@
  * - The map along the route, kept for dead spots (lib/corridor.ts, N5), and Log for 311 with the place in
  *   the route's street names (lib/report311.ts, lib/report311Log.ts; N6; OWNER-DECISIONS 369, 465).
  * - The side buttons (the owner, 2026-10-17: "Remove that bottom part when routing by default. instead put
- *   these as circle icons on the side"): Where am I? (re-centring too), Large text, Detour (water or restroom), on a
+ *   these as circle icons on the side"): Where am I? (re-centring too), Large text, Calmer and Flatter (one step down
+ *   the traffic or hills slider and a new route from here, lib/rideEase.ts; 2026-10-23), Detour (water or restroom), on a
  *   share bike the dock button with the time undocked (lib/rideDock.ts), 311 anywhere on the route, and the Settings gear; each a round
  *   icon with its name for screen readers, its menu opening beside it. The bottom panel shows only when it
  *   has something to say or ask: GPS and screen notes, off route, Ride the rest.
@@ -176,6 +177,7 @@ import { NextVehicleLine } from "./NextVehicleLine.tsx";
 import type { VehicleMark } from "./lib/nextVehicle.ts";
 import { SettingRow, SettingSelect } from "./SettingRow.tsx";
 import { shortLabel } from "./lib/shortLabel.ts";
+import { EASE_AT_END, EASE_NAME, EASE_SAME, easeFinding, eased, sameLine, type Ease } from "./lib/rideEase.ts";
 import { RING, junctionPaths, ringPaths, type JunctionShape } from "./lib/junctionShape.ts";
 import {
   RIDE_REST,
@@ -373,7 +375,7 @@ function CueShape({ shape, junction, exit }: { shape: ReturnType<typeof arrowFor
  * screen reader's adjust gestures move it too. A tap on the track that jumps it more than half way is a
  * tap, not a slide: it springs back and says how. Let go short of the end, or left part way, it springs back.
  */
-function SlideToEnd({ onEnd, onTap }: { onEnd: () => void; onTap: () => void }) {
+export function SlideToEnd({ onEnd, onTap, name = END_RIDE_NAME }: { onEnd: () => void; onTap: () => void; name?: string }) {
   const [value, setValue] = useState(0);
   const last = useRef(0);
   const key = useRef(false);
@@ -391,7 +393,7 @@ function SlideToEnd({ onEnd, onTap }: { onEnd: () => void; onTap: () => void }) 
   return (
     <div className="ride-end ride-slide">
       <span className="ride-slide-text" aria-hidden="true">
-        {END_RIDE_NAME}
+        {name}
         <span className="ride-slide-arrows">››</span>
       </span>
       <input
@@ -401,7 +403,7 @@ function SlideToEnd({ onEnd, onTap }: { onEnd: () => void; onTap: () => void }) 
         max={100}
         step={25}
         value={value}
-        aria-label={END_RIDE_NAME}
+        aria-label={name}
         aria-valuetext={value === 0 ? SLIDE_TO_END : `${value}%`}
         onKeyDown={(event) => {
           // Only the keys that move a range count as a step, so a stray key never lets a tap through.
@@ -436,7 +438,7 @@ function SlideToEnd({ onEnd, onTap }: { onEnd: () => void; onTap: () => void }) 
 }
 
 /** A live region that says the same sentence twice when it is set twice (App's count trick). */
-function LiveRegion({ said, urgent }: { said: { text: string; count: number }; urgent: boolean }) {
+export function LiveRegion({ said, urgent }: { said: { text: string; count: number }; urgent: boolean }) {
   return (
     <p className="visually-hidden" role={urgent ? "alert" : "status"} aria-live={urgent ? "assertive" : "polite"}>
       {said.text}
@@ -616,6 +618,11 @@ export function RideMode({
   // back in"): no re-plan of the ride rides one, even once that stretch has dropped out of the ones sent.
   const dirtClosed = useRef(false);
   routeRef.current = route;
+  // The dials every re-plan and detour of this ride asks with: the plan's at first, then a step calmer or flatter
+  // for each Calmer or Flatter press that found a route (lib/rideEase.ts); Plan's own sliders are left as they were.
+  const dialsRef = useRef(dials);
+  // A Calmer or Flatter press under way: its re-plan's ticket, the route before it, and how it came out.
+  const easing = useRef<{ which: Ease; ticket: number; before: RouteResponse; outcome: "pending" | "found" | "rejoin" } | null>(null);
   // What a re-plan builds on: the plan's points at first, then the last re-plan's (never a loop: its end is sent).
   const plan = useRef({ points: plannedPoints, loop: plannedLoop });
   // The via points are not announced (v0.7.0): the model leaves them out of its cues.
@@ -908,8 +915,8 @@ export function RideMode({
   // With `via`, a detour: from here to that place first, then on through what was left (the nearest water
   // or restroom, below). A detour's place becomes a stop of the new route, so it is cued and arrived at.
   const replan = useCallback(
-    async (here: LonLat, via?: LonLat, asked = false, turnRound = false, check = false) => {
-      if (ended.current) return;
+    async (here: LonLat, via?: LonLat, asked = false, turnRound = false, check = false): Promise<boolean> => {
+      if (ended.current) return false;
       const current = rideRef.current;
       // The way the rider is going (the owner, 2026-10-18: "Penalize U turns", "For rerouting"): the new route sets
       // off ahead unless turning round saves half a mile. Not after Road closed, where turning round is the point.
@@ -920,14 +927,14 @@ export function RideMode({
       const points = via ? detourPoints(left, via) : left;
       if (!points) {
         sayDetour(DETOUR_FULL);
-        return;
+        return false;
       }
       // A held U-turn's silent check does not take the gate, so the rider's own asks are never held up by it; one of
       // theirs voids it (the ticket).
       if (check ? gate.busy || checking.current : !gate.begin(Date.now())) {
         // Only a detour is the rider's own ask; an automatic re-plan held back by the gate says nothing.
         if (via) sayDetour(DETOUR_BUSY);
-        return;
+        return false;
       }
       const ticket = (replanTicket.current += 1);
       if (check) checking.current = true;
@@ -962,7 +969,7 @@ export function RideMode({
       // The rider is riding a plan already made: a long one is not asked to be confirmed again (a signed-out
       // rider's re-plan of a long ride was refused for want of it).
       const ask = (to: LonLat[]) =>
-        requestRoute(to, preset, { dials: { ...dials, loop: false }, vias: viaIndices(to, VIA_MARKS.isVia), straight: drawnLegs(to), routeOnly: true, confirmLong: true, blocked: blockedRef.current, heading, aheadOnly, rideReplan: true, dirtRidden: dirtRidden.current, dirtClosed: dirtClosed.current });
+        requestRoute(to, preset, { dials: { ...dialsRef.current, loop: false }, vias: viaIndices(to, VIA_MARKS.isVia), straight: drawnLegs(to), routeOnly: true, confirmLong: true, blocked: blockedRef.current, heading, aheadOnly, rideReplan: true, dirtRidden: dirtRidden.current, dirtClosed: dirtClosed.current });
       const result = await ask(points);
       // No new route to the end: the way back to the planned route, which goes on from there (lib/rejoin.ts;
       // the owner, 2026-10-17). Not for a detour, whose place the planned route does not pass. The no-signal
@@ -989,17 +996,17 @@ export function RideMode({
         closedPending.current = false;
         gate.online();
         void replanRef.current(rideRef.current.goodFix?.point ?? here, undefined, true, true);
-        return;
+        return false;
       }
-      if (voided()) return;
+      if (voided()) return false;
       // Still no way ahead: the held route stays as it is, and nothing is said.
-      if (check && (!found || heading === null || setsOffBack(found.geometry.coordinates, heading))) return;
+      if (check && (!found || heading === null || setsOffBack(found.geometry.coordinates, heading))) return false;
       setReplanning(false);
       if (!found) {
         const said = failed === "network" ? REPLAN_NO_SIGNAL : REPLAN_FAILED;
         setReplanNote(said);
         tell(said);
-        return;
+        return false;
       }
       plan.current = { points, loop: false };
       // The first route, without the picker, during a ride (plan section 4).
@@ -1009,9 +1016,15 @@ export function RideMode({
       uturnRoute.current = turned ? found : null;
       // Counted, said and held there; a way back that turns round is not held (the rider was told to follow it), and
       // a re-route made while stopped (no heading; not Road closed) leaves the count as it is.
-      const counted = uturnStep(uturns.current, { kind: "rerouted", turned, aheadOnly, stopped: heading === null && !turnRound, note, now: Date.now() });
+      // A Calmer or Flatter press is not riding past a U-turn either: it leaves the count as it is (lib/rideEase.ts).
+      const press = easing.current?.ticket === ticket ? easing.current : null;
+      const counted = uturnStep(uturns.current, { kind: "rerouted", turned, aheadOnly, stopped: (heading === null && !turnRound) || press !== null, note, now: Date.now() });
       uturns.current = counted.state;
       note = counted.note ?? note;
+      if (press) {
+        press.outcome = note === REPLAN_REJOIN ? "rejoin" : "found";
+        if (press.outcome === "found" && !turned && sameLine(found.geometry.coordinates, press.before.geometry.coordinates)) note = EASE_SAME[press.which];
+      }
       const model = modelOf(found, points);
       modelRef.current = model;
       if (found.dirt_trails) dirtRidden.current = true;
@@ -1029,8 +1042,9 @@ export function RideMode({
       setKeepPlanned(false);
       setReplanNote(note);
       tell(note);
+      return true;
     },
-    [dials, preset, gate, sayDetour],
+    [preset, gate, sayDetour],
   );
   const replanRef = useRef(replan);
   replanRef.current = replan;
@@ -1460,6 +1474,47 @@ export function RideMode({
     void replan(here, undefined, true);
   };
 
+  // Calmer and Flatter (lib/rideEase.ts; the owner, 2026-10-23): one step down the traffic or hills slider, then
+  // planned again from here as Re-plan from here is. A step that finds no new route is undone.
+  const ease = async (which: Ease) => {
+    // Said in full; shown in its first sentence alone (fewer words on screen, the owner, 2026-10-20).
+    const answer = (text: string) => {
+      announcer.current?.answer(text);
+      if (prefsRef.current.output === "neither") setPolite((s) => ({ text, count: s.count + 1 }));
+      showToast(text.replace(/(?<=\.) .*$/, ""));
+    };
+    const was = dialsRef.current;
+    const next = eased(preset, was, which);
+    if (!next) {
+      answer(EASE_AT_END[which]);
+      return;
+    }
+    if (tripRef.current.walking && approach) {
+      answer(approachWords(approach, rideRef.current.fix?.point ?? null).spoken);
+      return;
+    }
+    if (replanning || gate.busy) {
+      answer(REPLAN_STILL_WAITING);
+      return;
+    }
+    const here = rideRef.current.goodFix?.point ?? rideRef.current.fix?.point;
+    if (!here) {
+      answer(NO_FIX_YET);
+      return;
+    }
+    dialsRef.current = next;
+    setKeepPlanned(false);
+    gate.online();
+    answer(easeFinding(preset, next, which));
+    const press = { which, ticket: replanTicket.current + 1, before: routeRef.current, outcome: "pending" as "pending" | "found" | "rejoin" };
+    easing.current = press;
+    await replan(here, undefined, true);
+    if (easing.current === press) easing.current = null;
+    // Undone when no route came, or only the way back to the old line; kept when a newer press, Road closed or Keep
+    // the planned route took over (the ticket moved on): what comes next is planned with it.
+    if (press.outcome !== "found" && replanTicket.current === press.ticket && dialsRef.current === next) dialsRef.current = was;
+  };
+
   // Water or restroom on the way (the owner, 2026-10-10: "If navigating, water sources and restrooms can be
   // detours"): the three nearest by bike from the rider's position, on the ride's own settings; Detour here
   // re-plans through the chosen one. The position is the ride's own fix; nothing new is looked up.
@@ -1488,7 +1543,7 @@ export function RideMode({
         inside: insideCoverage,
         water,
         stations: [],
-        request: (from, places) => requestNearest(from, places, preset, { ...dials, loop: false }),
+        request: (from, places) => requestNearest(from, places, preset, { ...dialsRef.current, loop: false }),
       });
       if (ended.current) return;
       if (outcome.found) setDetourList(outcome.found);
@@ -1549,7 +1604,7 @@ export function RideMode({
           end,
           remainingM: left.end.metres,
           docks: fetchDocks,
-          request: (from, places) => requestNearest(from, places, preset, { ...dials, loop: false }),
+          request: (from, places) => requestNearest(from, places, preset, { ...dialsRef.current, loop: false }),
         },
         way,
       );
@@ -1730,6 +1785,21 @@ export function RideMode({
     for (const button of actions.children) watch.observe(button);
     return () => watch.disconnect();
   }, [lightKey, ride.arrived, walking, textSize]);
+  // The riders and Alert chips sit just under the card, never over the turn's arrow and distance (as in Roam; the card's
+  // height changes with the turn, the text size and the lines in it).
+  useEffect(() => {
+    const card = cardRef.current;
+    const app = card?.closest<HTMLElement>(".app");
+    if (!card || !app || typeof ResizeObserver === "undefined") return;
+    const place = () => app.style.setProperty("--ride-card-bottom", `${Math.round(card.getBoundingClientRect().bottom - app.getBoundingClientRect().top)}px`);
+    const watch = new ResizeObserver(place);
+    watch.observe(card);
+    place();
+    return () => {
+      watch.disconnect();
+      app.style.removeProperty("--ride-card-bottom");
+    };
+  }, []);
   const back = ride.off ? wayBack(model, ride) : null;
   const shape = arrowFor(cue);
   const show311 = ride311Shown({ off: ride.off, progressM: progress });
@@ -2009,6 +2079,21 @@ export function RideMode({
           >
             <Icon name="textsize" size={24} />
           </button>
+          {/* Calmer and Flatter (lib/rideEase.ts; the owner, 2026-10-23): one press, a step down the slider and a new
+              route from here. A symbol alone on screen (the owner, 2026-10-23: "Take the words out. Symbol should be clear"), the words in the name. Not on a route everyone shares (`fixed`). */}
+          {!fixed && !ride.arrived &&
+            (["calmer", "flatter"] as const).map((which) => (
+              <button
+                key={which}
+                type="button"
+                className={`ride-round ride-ease ride-${which}`}
+                onClick={() => void ease(which)}
+                aria-label={EASE_NAME[which]}
+                title={EASE_NAME[which]}
+              >
+                <Icon name={which === "calmer" ? "traffic-down" : "hills-down"} size={30} />
+              </button>
+            ))}
           {water && (
             <div
               className="ride-pop ride-detour"

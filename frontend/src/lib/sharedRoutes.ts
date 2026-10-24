@@ -60,12 +60,35 @@ export const SHARED_REVOKED_ERROR: RouteError = { kind: "no-route", status: 410,
 export const RIDE_PARAM = "ride";
 /** What each Share button does, said by the info beside them (the owner: "Make that clear in a tooltip"). */
 export const SHARE_ROUTE_ABOUT = "Share route: others can look it over, change it or ride it on their own.";
+/** Broadcast's link went without the leader's key (the page could not make it): nothing starts. */
+export const BROADCAST_NO_LEAD = "The link went without you as its leader, so the ride did not start. Press Start to ride.";
+/** Broadcast's own line when the share sheet failed: Copy link would not start a broadcast, and Go has none on screen. */
+export const BROADCAST_SHARE_FAILED = "Could not open the share sheet, so the ride did not start.";
 export const SHARE_RIDE_WAIT = "Share ride needs the route ready. Try again once it shows.";
-export const SHARE_RIDE_ABOUT = "Share ride: everyone rides this exact route, never re-routed, and each can choose to show where they are.";
+export const SHARE_RIDE_ABOUT =
+  "Share ride: you lead. Everyone rides this exact route, never re-routed; those who open it follow your dot and the path you take, and each can choose to show where they are.";
+/**
+ * A ride link's leader (Stephen 2026-10-22: "the ride leader is the person who shared. Opening the link will follow
+ * the leader and share the path"): `lead=` carries the leader key (lib/rideGroup.ts leaderKey), which marks the
+ * sharer's dot and nothing else.
+ */
+export const LEAD_PARAM = "lead";
+const LEAD_RE = /^[0-9a-f]{32}$/;
 
-/** The link, shared as a ride. */
-export function asRideLink(link: string): string {
-  return `${link}${link.includes("#") ? "&" : "#"}${RIDE_PARAM}=1`;
+/** The link, shared as a ride; with the sharer's leader key, a ride they lead. */
+export function asRideLink(link: string, lead: string | null = null): string {
+  const leader = lead && LEAD_RE.test(lead) ? `&${LEAD_PARAM}=${lead}` : "";
+  return `${link}${link.includes("#") ? "&" : "#"}${RIDE_PARAM}=1${leader}`;
+}
+
+/** The leader key of a link shared as a ride (its fragment, or its query sent on from `/s/<id>`), or null. */
+export function leadKeyFrom(hash: string, search = ""): string | null {
+  for (const part of [hash.replace(/^#/, ""), search.replace(/^\?/, "")]) {
+    const params = new URLSearchParams(part);
+    const lead = params.get(LEAD_PARAM);
+    if (params.get(RIDE_PARAM) === "1" && lead && LEAD_RE.test(lead)) return lead;
+  }
+  return null;
 }
 
 /** Whether the page was opened from a link shared as a ride (its fragment, or its query sent on from `/s/<id>`). */
