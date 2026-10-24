@@ -1,6 +1,6 @@
 /**
  * The one-line summary of the ride settings, for the sidebar's "Ride" button
- * (OWNER-DECISIONS 312, mockup v3): "Default · quiet streets · balanced hills ·
+ * (OWNER-DECISIONS 312, mockup v3): "Default · quiet streets · hills up to 8% ·
  * now". It names the ride type, what the Traffic and Hills sliders are set to,
  * and when; a target distance ("about 20 mi (32.2 km)", miles first), a loop or
  * "avoid gravel" is added only when it is set. It never
@@ -10,7 +10,7 @@
  * The same parts are shown joined with a middle dot and read joined with
  * commas (`rideSummarySpoken`), so a screen reader does not say "middle dot".
  */
-import { CARRYINGS, WHENS, fitTarget, seeksClimbs, stressMax, trailsOffLocked, whenInSentence, type Dials } from "./dials.ts";
+import { CARRYINGS, WHENS, fitTarget, hillsGradePosition, seeksClimbs, stressMax, trailsOffLocked, whenInSentence, type Dials } from "./dials.ts";
 import { formatDistance } from "./format.ts";
 import { presetLabel, presetSaid, type PresetId } from "./presets.ts";
 import { isCustom } from "./rideTypeDialog.ts";
@@ -26,14 +26,13 @@ export function trafficShort(stress: number): string {
   return "calmest";
 }
 
-/** The hills slider's position in two words; right of the middle, by ride type (242, `hillsWords`). */
+/**
+ * The hills slider's position, as the slider says it (`hillsWords`, review N1): the grade it sets, "hills up to 8%";
+ * Mountain Goat's right half, "some extra climbing" or "seeks hills".
+ */
 export function hillsShort(hills: number, climbs: boolean): string {
-  if (hills <= -80) return "avoids hills";
-  if (hills < -10) return "gentler hills";
-  if (hills <= 10) return "balanced hills";
-  if (!climbs) return hills < 80 ? "hills matter less" : "fine with hills";
-  if (hills < 80) return "some climbing";
-  return "seeks hills";
+  if (climbs && hills > 10) return hills < 80 ? "some extra climbing" : "seeks hills";
+  return `hills up to ${hillsGradePosition(hills)}%`;
 }
 
 /** The ride time: "now" for "when I'm planning", else the option's own words, first letter lowered. */
@@ -75,7 +74,7 @@ export function rideSummaryParts(preset: PresetId, dials: Dials, name: (id: Pres
   ];
 }
 
-/** What is shown: "Default · quiet streets · balanced hills · now". */
+/** What is shown: "Default · quiet streets · hills up to 8% · now". */
 export function rideSummary(preset: PresetId, dials: Dials): string {
   return rideSummaryParts(preset, dials).join(" · ");
 }
@@ -87,7 +86,7 @@ export function rideSummarySpoken(preset: PresetId, dials: Dials): string {
 
 /**
  * The Ride settings line's words (edit-route redesign, Stephen 2026-10-18): the summary without the ride type, which
- * has its own button above it ("quiet streets · balanced hills · now").
+ * has its own button above it ("quiet streets · hills up to 8% · now").
  */
 export function settingsSummary(preset: PresetId, dials: Dials): string {
   return rideSummaryParts(preset, dials).slice(1).join(" · ");

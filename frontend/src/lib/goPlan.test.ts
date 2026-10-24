@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { GO_START_SAID, GO_START_UNAVAILABLE, GO_START_MAX_AGE_MS, GO_PICK_MOVED_M, goPickStart, goHereStart, goStartStale, MODE_LABEL, goDestinationLocating, goDestinationNeedsStart, goPickAction, goTapSetsEnd, goDestinationSet, goPressLocatingSaid, goPressNeedsStartSaid, GO_PRESS_LOCATING_SAY_MS, goStartFailedReason, goDestinationNeedsStartBecause, goPressNeedsStartBecause, goTapRoutedSaid, goPlaceName, OPEN_IN_LABEL, TAB_MODE_KEY, goRouteStart, goStartLine, hasPlanLink, shouldAskGoStart, laterMyGoApplies, modeSaid, openingMode, readTabMode, writeTabMode } from "./appMode.ts";
+import { GO_START_SAID, GO_START_UNAVAILABLE, GO_START_MAX_AGE_MS, GO_PICK_MOVED_M, goPickStart, goHereStart, goStartStale, MODE_LABEL, goDestinationLocating, goDestinationNeedsStart, goPickAction, goTapSetsEnd, goDestinationSet, goPressLocatingSaid, goPressNeedsStartSaid, GO_PRESS_LOCATING_SAY_MS, goStartFailedReason, goDestinationNeedsStartBecause, goPressNeedsStartBecause, goTapRoutedSaid, goPlaceName, TAB_MODE_KEY, goRouteStart, goStartLine, hasPlanLink, shouldAskGoStart, laterMyGoApplies, modeSaid, openingMode, readTabMode, writeTabMode } from "./appMode.ts";
 import {
   ACCOUNT_COPY_KEY,
   DEVICE_KEY,
@@ -53,26 +53,22 @@ function store(initial: Record<string, string> = {}, refuse = false) {
 
 // ---- which view the app opens in (the owner's choice 1) ------------------------------------------
 
-test("a phone opens in Go and a wide screen in Plan; a shared link opens in Plan on a wide screen only; My Go's choice wins over the screen; the tab's own view wins over all", () => {
-  const base = { tab: null, planLink: false, openIn: "" as const };
+test("a phone opens in Go and a wide screen in Plan; a shared link opens in Plan on a wide screen only; the tab's own view wins over all; there is no Open in (the owner, 2026-10-22)", () => {
+  const base = { tab: null, planLink: false };
   assert.deepEqual(openingMode({ ...base, wide: false }), { mode: "go", by: "screen" });
   assert.deepEqual(openingMode({ ...base, wide: true }), { mode: "plan", by: "screen" });
   // A phone opens in Go even with a link (the owner, 2026-10-19), as the app's own #preset=… address is one.
   assert.deepEqual(openingMode({ ...base, planLink: true, wide: false }), { mode: "go", by: "screen" });
-  assert.deepEqual(openingMode({ ...base, planLink: true, openIn: "plan", wide: false }), { mode: "plan", by: "my-go" }, "My Go's Plan still wins");
   assert.deepEqual(openingMode({ ...base, planLink: true, wide: true }), { mode: "plan", by: "link" });
-  assert.deepEqual(openingMode({ ...base, planLink: true, openIn: "go", wide: true }), { mode: "plan", by: "link" }, "a shared link opens in Plan on a wide screen");
-  assert.deepEqual(openingMode({ ...base, openIn: "go", wide: true }), { mode: "go", by: "my-go" });
-  assert.deepEqual(openingMode({ ...base, openIn: "plan", wide: false }), { mode: "plan", by: "my-go" });
-  assert.deepEqual(openingMode({ tab: "go", planLink: true, openIn: "plan", wide: true }), { mode: "go", by: "tab" }, "a reload keeps the tab's view");
-  // The account's My Go, read after the page opened, moves only a guess, and never after a switch.
+  assert.deepEqual(openingMode({ tab: "go", planLink: true, wide: true }), { mode: "go", by: "tab" }, "a reload keeps the tab's view");
+  // A saved open_in is not read to open the app.
+  assert.doesNotMatch(appFile, /openingMode\(\{[^}]*openIn/);
+  // The account's My Go, read after the page opened, sets Go's ride only while the view is the screen's guess, never after a switch.
   assert.equal(laterMyGoApplies("screen", false), true);
-  assert.equal(laterMyGoApplies("my-go", false), true);
   assert.equal(laterMyGoApplies("link", false), false);
   assert.equal(laterMyGoApplies("tab", false), false);
   assert.equal(laterMyGoApplies("screen", true), false);
   assert.deepEqual(MODE_LABEL, { go: "Go", plan: "Plan", review: "Review" }, "Review: offered to an admin only (lib/review.test.ts)");
-  assert.deepEqual(OPEN_IN_LABEL, { "": "By screen size", go: "Go", plan: "Plan" });
   assert.match(modeSaid("go"), /^Go/);
   assert.match(modeSaid("plan"), /^Plan/);
 });
@@ -230,7 +226,7 @@ test("the Go/Plan switch: toggle buttons in a named group (Review too for an adm
   const change = appFile.slice(appFile.indexOf("const changeMode = "), appFile.indexOf("// \"Copy link\""));
   assert.match(change, /writeTabMode\(next\);/);
   assert.match(change, /announceExtra\(modeSaid\(next\)\);/, "extra narration: said at Full, not at Brief");
-  assert.match(change, /saveMyGoNow\(\{ \.\.\.myGoRef\.current, openIn: next \}, false\);/);
+  assert.doesNotMatch(change, /openIn/, "a switch is kept for the tab only, not saved as an Open in");
   // A save waits for the account's My Go to be read, so a Home is never overwritten by an early save.
   // (Since "Setting Home simply" the early return also tells a Home save it was not kept, so it can say so.)
   assert.match(appFile, /if \(meRef\.current\.signed_in\) \{\s*if \(!accountMyGoRead\.current\) \{\s*onSaved\?\.\(false\);\s*return;/);
@@ -404,11 +400,11 @@ test("go tap: a press on the map in Go is the destination, routed as a picked on
   assert.match(appFile, /const clearGoPending = \(\) => \{\s*goPending\.current = null;\s*goAwaiting\.current = false;\s*\};/);
   assert.equal((appFile.match(/goPending\.current = null;/g) ?? []).length, 1, "every other clear goes through clearGoPending");
   assert.match(appFile, /if \(action\.kind === "route"\) \{\s*clearGoPending\(\);/);
-  // Leaving Go drops the destination it kept, and its notice with it (re-check of #128), from the switch and from
-  // the account's Open in once it is read.
+  // Leaving Go drops the destination it kept, and its notice with it (re-check of #128), from the switch (the
+  // account's Open in, which could also leave Go, was dropped on 2026-10-22).
   assert.match(appFile, /const leaveGo = \(\) => \{\s*if \(goPending\.current\) setNotice\(null\);\s*clearGoPending\(\);\s*\};/);
   assert.match(appFile, /setModeState\(next\);\s*if \(next !== "go"\) leaveGo\(\);/, "the Go/Plan switch");
-  assert.match(appFile, /setModeState\(\(now\) => \(now === later \? now : later\)\);\s*if \(later !== "go"\) leaveGo\(\);/, "the account's Open in");
+  assert.doesNotMatch(appFile, /now === later/, "an account read never moves the view");
   // Locate's answer to a waiting destination keeps its reason (review of #128).
   assert.match(appFile, /if \(goWaiting\(\)\) \{\s*settleGoWaiting\(result, true\);\s*return;\s*\}/);
   assert.equal(goStartFailedReason("denied"), "Your location is blocked for this site. Allow location in the browser's site settings, or type a start.");

@@ -85,23 +85,27 @@ every preset except Mass Ride, which is locked at 0 (`stress_max=0`, `presets.py
 
 | Preset | Graph | Slider start | `use_roads` | Calm rate | Junction weight | Exposure weights (LTS 3/4/Avoid; LTS 2 where set) | LTS 4 hold | Bike type, planning speed | Calm search runs |
 |---|---|---|---|---|---|---|---|---|---|
-| Default | standard | 70 | 0.10 | 0 | 1.0 | 1 / 2 / 3 | no | Hybrid, 11.2 mph [18 km/h] | yes, one crossing round |
+| Default | standard | 70 | 0.10 | 0 | 1.0 | 1 / 2 / 3 | no | Hybrid, 11.2 mph [18 km/h] | yes, crossing rounds |
 | Trailmaxxing | standard | 100 | 0.0 | 10 (strict order) | 1.0 | 1 / 8 / 16, LTS 2 0.25 | yes | Cross, 12.4 mph [20 km/h] | yes, leg by leg (`long_calm`) |
-| Group Ride | standard | 40 | 0.486 | 0 | 0.679 | 1 / 2 / 3 | no | Cross, 12.4 mph [20 km/h] | yes, one crossing round |
+| Group Ride | standard | 40 | 0.486 | 0 | 0.679 | 1 / 2 / 3 | no | Cross, 12.4 mph [20 km/h] | yes, crossing rounds |
 | Mass Ride | no-trail | 0, locked | 1.0 | 0 | (0.25; not used) | 1 / 2 / 3 | no | Hybrid, 6 mph [9.7 km/h] | **no** (`routing._refine_limit`, `routing.py:1208-1209`) |
-| Mountain Goat | off-road | 40 | 0.486 | 0 | 0.679 | 1 / 2 / 3 | no | Cross, 12.4 mph [20 km/h] | no while the climb seek runs (hills start at 100), else one crossing round |
-| Gravel | off-road | 40 | 0.486 | 0 | 0.679 | 1 / 2 / 3 | no | Cross, 12.4 mph [20 km/h] | yes, one crossing round |
-| Fast | standard | 10 | 0.871 | 0 | 0.357 | 1 / 2 / 3 | no | Hybrid, 11.2 mph [18 km/h] | yes, one crossing round |
-| Cargo Bike, carrying cargo | standard (e-bike with assist) | 70 | 0.10 | 0 | 1.0 | 1 / 2 / 3 | no | Hybrid, 8.7 mph [14 km/h] (11.2 mph [18 km/h] with assist) | yes, one crossing round |
-| Cargo Bike, with passengers | standard (e-bike with assist) | 80 | 0.0 | 0 | 1.0 | 1 / 8 / 16, LTS 2 0.25 | yes | Hybrid, 8.7 mph [14 km/h] (11.2 mph [18 km/h] with assist) | yes, one crossing round |
-| E-bike | e-bike | 70 | 0.10 | 0 | 1.0 | 1 / 2 / 3 | no | Hybrid, 14.9 mph [24 km/h] | yes, one crossing round |
-| Bikeshare | standard (e-bike graph for the e-bike) | 80 | 0.0 | 0 | 1.0 | 1 / 8 / 16 | yes | Hybrid, 8.1 mph [13 km/h] (12.4 mph [20 km/h] on the e-bike) | yes, one crossing round |
+| Mountain Goat | off-road | 40 | 0.486 | 0 | 0.679 | 1 / 2 / 3 | no | Cross, 12.4 mph [20 km/h] | no while the climb seek runs (hills start at 100), else crossing rounds |
+| Gravel | off-road | 40 | 0.486 | 0 | 0.679 | 1 / 2 / 3 | no | Cross, 12.4 mph [20 km/h] | yes, crossing rounds |
+| Fast | standard | 10 | 0.871 | 0 | 0.357 | 1 / 2 / 3 | no | Hybrid, 11.2 mph [18 km/h] | yes, crossing rounds |
+| Cargo Bike, carrying cargo | standard (e-bike with assist) | 70 | 0.10 | 0 | 1.0 | 1 / 2 / 3 | no | Hybrid, 8.7 mph [14 km/h] (11.2 mph [18 km/h] with assist) | yes, crossing rounds |
+| Cargo Bike, with passengers | standard (e-bike with assist) | 80 | 0.0 | 0 | 1.0 | 1 / 8 / 16, LTS 2 0.25 | yes | Hybrid, 8.7 mph [14 km/h] (11.2 mph [18 km/h] with assist) | yes, crossing rounds |
+| E-bike | e-bike | 70 | 0.10 | 0 | 1.0 | 1 / 2 / 3 | no | Hybrid, 14.9 mph [24 km/h] | yes, crossing rounds |
+| Bikeshare | standard (e-bike graph for the e-bike) | 80 | 0.0 | 0 | 1.0 | 1 / 8 / 16 | yes | Hybrid, 8.1 mph [13 km/h] (12.4 mph [20 km/h] on the e-bike) | yes, crossing rounds |
 | Riding with kids | standard | 100 | 0.0 | 10 (strict order) | 1.0 | 1 / 8 / 16, LTS 2 0.5 | yes | Hybrid, 6.2 mph [10 km/h] | yes, except past 18.6 mi [30 km] of straight line |
 
 Every preset sends `alley_penalty` 1,800 s (`presets.py:462`). "Calm search runs" means
-`refine.refine` is called: at a calm rate of 0 it makes one crossing-only round
-(`CROSSING_ONLY_ROUNDS`, `refine.py:89`, `:1526`), and above 0 up to 5 exclusion
-rounds (`REFINE_MAX_ROUNDS`, `:88`). The search does not run for Mass Ride, fewer than
+`refine.refine` is called: at a calm rate of 0 it makes up to five crossing-only rounds, each
+excluding the red crossings the last round's route took as well, and all of them run even
+when a round finds only the next red crossing along (`CROSSING_ONLY_ROUNDS`); above 0 up to 5 exclusion
+rounds (`REFINE_MAX_ROUNDS`, `:88`), each taking the last route's red crossings too. Below the
+top of the slider each red junction also counts in the score as 10 minutes of quiet riding
+(`RED_DETOUR_S`, scaled by the intersection weight) on top of its junction cost, so a way round
+one is taken where it costs less than that in everything else. The search does not run for Mass Ride, fewer than
 2 points, a long ride, a climb seek, a span over 18.6 mi [30 km] (except
 Trailmaxxing), or too little time (`routing.py:1193-1220`). The exposure weights
 come from `Exposure` (`presets.py:339-355`), chosen per carrying choice on Cargo Bike
@@ -148,15 +152,19 @@ It reads the router's route, then excludes (`exclude_locations`) the LTS 4 and A
 stretches first, and later every LTS 3 stretch of the newest candidate. Each sample
 is one point per edge middle, 131 ft [40 m] apart, at most 60 a round and 150 in
 all, and never within 0.31 mi [500 m] of an end or a via point (`refine.py:112-130`,
-`calm_targets` `:712-737`, worst first `:1535-1536`, `:1554-1556`). In the
-crossing-only round it excludes the approaches to junctions of 3,100 ft [945 m] or more (red),
-at most 3 (`crossing_targets`, `:740-752`). Mass Ride is skipped (`ctx.group`).
+`calm_targets` `:712-737`, worst first `:1535-1536`, `:1554-1556`). In each
+round, at every calm rate, it excludes the approaches to junctions of 3,100 ft [945 m] or
+more (red),
+and those junctions themselves (every edge within 49 ft [15 m]), at most 3 junctions a round
+(`crossing_targets`). Mass Ride is skipped (`ctx.group`).
 
 ### The guards
 
 - **Traffic wins**: a candidate whose exposure is more than 2% plus 164 ft [50 m] over
   the router's first route's is not taken (`EXPOSURE_TOLERANCE`, `EXPOSURE_SLACK_M`,
-  `refine.py:131-138`, `_allowance` `:1446-1449`).
+  `refine.py`, `_allowance`, `_busier`). Avoid-rated junctions' penalties and
+  red junctions' costs count as exposure on both sides, one for one (`_busier`), so a
+  way round a red crossing is not refused for the LTS 3 it rides instead (2026-10-23).
 - **`calmer_or_own`**: an alternative the hills slider picked is kept only if its
   exposure is no worse than the router's own route (`routing.py:1009-1044`).
 - **LTS 4 hold** (stress-averse rides only): refuse a candidate whose top figure (LTS 4

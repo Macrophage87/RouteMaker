@@ -511,6 +511,31 @@ MASS_WIDTH_COLUMN = "mass_usable_width_m"
 # the class as `popular` and the map draws those streets wider.
 BIKE_TRIPS_COLUMN = "bike_trips"
 BIKE_POPULAR_COLUMN = "bike_popular"
+# A slip road, an on- or off-ramp (`highway=*_link`; `routemaker.agency_roads.is_link`), which
+# the map leaves out until the city ladder's street zoom (the owner, 2026-10-23: "the various
+# onramps and offramps aren't needed at this level"). The stress tiles carry it as `link`.
+ROAD_LINK_COLUMN = "road_link"
+# What the zoomed-out map leaves out of the bike network and how it joins it up
+# (`pipeline.bike_network`; the owner, 2026-10-23: "If it doesn't connect to anything, don't
+# include it", "try to see if you can make a connection through <LTS3 roads", "all these
+# cul-de-sacs. They aren't useful for transportation"): 0, or OVERVIEW_LINK (drawn with the
+# network's main ways from z12), OVERVIEW_ORPHAN (left out until z14) or OVERVIEW_SPUR (a dead
+# end, left out until z14). The stress tiles carry it as `overview`.
+OVERVIEW_COLUMN = "overview"
+OVERVIEW_LINK = 1
+OVERVIEW_ORPHAN = 2
+OVERVIEW_SPUR = 3
+# A way the zoomed-out tiles (z7-11) keep beside their own rule: a minor trail that joins the
+# trails they draw, or the calmest way between two of them (`pipeline.bike_network.connect`;
+# the owner, 2026-10-23: "we'd want to make connections across from the MBT to Rock Creek trail
+# and to the anactostia riverwalk trail system. Include the minor trails and connections to
+# them."). From z12 it is drawn as OVERVIEW_LINK is.
+OVERVIEW_CONNECTOR = 4
+# The zoomed-out tiles' stray bits (`pipeline.bike_network.mark_strays`; "These bits too"):
+# the highest zoom, 10 or 11, whose tile leaves the way out because what that tile draws
+# of it joins nothing longer than STRAY_MIN_M; 0 for every other way. Read by the tile
+# query, not carried.
+STRAY_ZOOM_COLUMN = "stray_zoom"
 # The zoomed-out tiles keep them beside the long trails, with the calm roads in a run as long
 # as the long trails' paved bar ("Where it's out further, we can mostly focus on the longer
 # low-stress routes too."; `core.stress_tiles.popular_and_calm`); this partial index holds
@@ -518,6 +543,7 @@ BIKE_POPULAR_COLUMN = "bike_popular"
 # so the planner reads the column's statistics.
 ZOOMED_OUT_INDEX_PREDICATE = (
     f"{BIKE_POPULAR_COLUMN} > 0 OR {CALM_RUN_COLUMN} >= {round(Z11_PAVED_RUN_MI * METRES_PER_MILE)}"
+    f" OR {OVERVIEW_COLUMN} = {OVERVIEW_CONNECTOR}"
 )
 
 # On a table from before those columns, the public roads a bicycle may not
@@ -765,6 +791,12 @@ CREATE TABLE {schema}.segment (
     -- off every named corridor.
     bike_trips      integer     CHECK (bike_trips >= 0),
     bike_popular    smallint    NOT NULL DEFAULT 0 CHECK (bike_popular BETWEEN 0 AND 3),
+    -- A slip road (ROAD_LINK_COLUMN; `pipeline.writers.mark_links`). Display only.
+    road_link       boolean     NOT NULL DEFAULT false,
+    -- The zoomed-out map's network marks (OVERVIEW_COLUMN, STRAY_ZOOM_COLUMN;
+    -- `pipeline.bike_network`). Display only.
+    overview        smallint    NOT NULL DEFAULT 0 CHECK (overview BETWEEN 0 AND 4),
+    stray_zoom      smallint    NOT NULL DEFAULT 0 CHECK (stray_zoom IN (0, 10, 11)),
     CONSTRAINT segment_key UNIQUE (osm_way_id, ordinal)
 );
 

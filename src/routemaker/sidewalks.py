@@ -39,7 +39,17 @@ count them as the router prices them, not as a quiet trail.
   - the gap is at most `GAP_M` (about 160 ft) along the footways;
   - each footway it opens is at most `WAY_MAX_M` (about 1,000 ft) long, since a tag opens
     the whole way and a router could ride any of it;
-  - never one barred to pedestrians, an informal one, an area, or indoors.
+  - never one barred to pedestrians, an area, or indoors.
+- An informal connector (`is_informal_connector`, `informal=yes`, no bicycle tag) is a
+  link only where the whole way is a short hop (`INFORMAL_WAY_MAX_M`), and it is walked,
+  not ridden: the pipeline drops its `informal` closure and opens it as walk your bike
+  (`pipeline.trail_closures.add_sidewalk_rides`). The owner reported, of Glen Haven Park
+  in Silver Spring: "Some paths that have short sidewalk connections aren't
+  available for routing". The park's paved path (OSM 597953361, `bicycle=yes`) meets
+  Glenhaven Drive, Francis Drive and Huntley Avenue only through worn connectors of 36 to
+  64 ft (11 to 20 m), every one `highway=path` + `informal=yes`, which the trail rules
+  close (`trailaccess.INFORMAL`), so its one way in was Windham Lane and routes passed it
+  by. Walking a bicycle is walking, so this widens nothing a pedestrian may not do.
 
 Neither opens a footway something closes for a reason (`closed`: the CBD's sidewalks, a
 military or secured area, the Zoo, an agency prohibition). Mass Ride's graph rides none of
@@ -81,8 +91,12 @@ SIDEWALK_KINDS = frozenset({"sidewalk", "crossing"})
 GAP_M = 50.0
 # The longest footway a link may open (about 1,000 ft).
 WAY_MAX_M = 300.0
+# The longest informal connector a link may open, walked (about 160 ft): the whole way,
+# not just the part the gap uses, lies within the gap.
+INFORMAL_WAY_MAX_M = GAP_M
 
 LINK_HIGHWAY = frozenset({"footway", "pedestrian"})
+INFORMAL_HIGHWAY = frozenset({"footway", "path"})
 TRAIL_HIGHWAY = frozenset({"cycleway", "path", "footway", "pedestrian", "bridleway"})
 # Classes upstream's transform opens to bicycles by default (lua/vendor/graph_upstream.lua);
 # `steps` is left out: a flight of steps is no way to reach a bike lane.
@@ -151,6 +165,25 @@ def is_link_candidate(tags: dict[str, str]) -> bool:
     if _closed_by_its_tags(tags):
         return False
     return trailaccess.upstream_open(tags) is False
+
+
+def is_informal_connector(tags: dict[str, str]) -> bool:
+    """A worn path or footway (`informal=yes`) no bicycle tag speaks for or against, open
+    on foot: a link candidate where it is short, walked (see the module's note)."""
+    if tags.get("highway") not in INFORMAL_HIGHWAY or tags.get("informal") != "yes":
+        return False
+    if any(key == "bicycle" or key.startswith("bicycle:") for key in tags):
+        return False
+    if tags.get("area") == "yes" or tags.get("indoor") not in (None, "no"):
+        return False
+    if tags.get("foot") in CLOSING_FOOT:
+        return False
+    return not _closed_by_its_tags(tags)
+
+
+def takes_part(tags: dict[str, str]) -> bool:
+    """A way `links` may open: its coordinates are read."""
+    return is_link_candidate(tags) or is_informal_connector(tags)
 
 
 def _closed_by_its_tags(tags: dict[str, str]) -> bool:
@@ -251,18 +284,28 @@ def _length(coords: Sequence[tuple[float, float] | None]) -> float:
 MANY = -1
 
 
-def links(ways: Sequence[Placed], closed: Set[int] = frozenset()) -> dict[int, float]:
+def links(
+    ways: Sequence[Placed], closed: Set[int] = frozenset(), walkable: Set[int] = frozenset()
+) -> dict[int, float]:
     """The footways to open as links, each with the shortest gap (in
     metres) of a link it is part of. `ways` is (id, tags, node ids, a coordinate per
     node id, None where the extract has none; only a link candidate's are read, so
-    other ways may carry none); `closed` the ways a closure rule closes.
+    other ways may carry none); `closed` the ways a closure rule closes; `walkable` the
+    informal connectors (`is_informal_connector`) closed only for being informal, which
+    take part as footways, never as bicycle-open ways, and only when the whole way is
+    within INFORMAL_WAY_MAX_M. The caller walks those it finds.
 
     Two passes, so a region's million ways cost little: the footway network first, then
     the bicycle-open ways only at the nodes it reaches."""
     adjacent: dict[int, list[tuple[int, float, int]]] = defaultdict(list)
     lengths: dict[int, float] = {}
+    informal: set[int] = set()
     for osm_id, tags, node_ids, coords in ways:
-        if osm_id in closed or len(node_ids) < 2 or not is_link_candidate(tags):
+        if osm_id in closed or len(node_ids) < 2:
+            continue
+        if osm_id in walkable:
+            informal.add(osm_id)
+        elif not is_link_candidate(tags):
             continue
         lengths[osm_id] = _length(coords)
         for i in range(len(node_ids) - 1):
@@ -279,7 +322,7 @@ def links(ways: Sequence[Placed], closed: Set[int] = frozenset()) -> dict[int, f
     ends: list[tuple[int, int]] = []
     trail_ways: set[int] = set()
     for osm_id, tags, node_ids, _coords in ways:
-        if osm_id in closed or len(node_ids) < 2 or not bicycle_open(tags):
+        if osm_id in closed or osm_id in walkable or len(node_ids) < 2 or not bicycle_open(tags):
             continue
         trail = tags.get("highway") in TRAIL_HIGHWAY
         if trail:
@@ -304,6 +347,8 @@ def links(ways: Sequence[Placed], closed: Set[int] = frozenset()) -> dict[int, f
         if osm_id not in trail_ways and reached not in trail_at:
             continue  # neither end is a trail: not a link (a parking lot, a driveway)
         if any(lengths[way] > WAY_MAX_M for way in used):
+            continue
+        if any(lengths[way] > INFORMAL_WAY_MAX_M for way in used if way in informal):
             continue
         for way in used:
             found[way] = min(metres, found.get(way, metres))
