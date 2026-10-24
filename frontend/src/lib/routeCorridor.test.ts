@@ -148,12 +148,13 @@ test("setRouteSections: a default route gets the corridor too and fades the stre
   assert.equal(paint[`${ROUTE_BAND_LAYER_ID}.line-opacity`], 1);
   const stress2 = LAYERS.find((l) => l.id === "stress-2")!;
   assert.deepEqual(paint["stress-2.line-opacity"], fadedOpacity(stress2.paint?.["line-opacity"], ROUTE_OVERLAY_FADE));
-  assert.equal(paint["facility-protected.line-opacity"], ROUTE_OVERLAY_FADE);
+  const rails = LAYERS.find((l) => l.id === "facility-protected")!;
+  assert.deepEqual(paint["facility-protected.line-opacity"], fadedOpacity(rails.paint?.["line-opacity"], ROUTE_OVERLAY_FADE));
   const stress5 = LAYERS.find((l) => l.id === "stress-5")!;
   assert.deepEqual(paint["stress-5.line-opacity"], fadedOpacity(stress5.paint?.["line-opacity"], ROUTE_OVERLAY_FADE), "Avoid roads fade too");
   setRouteSections(map as never, null, false);
   assert.deepEqual(paint["stress-2.line-opacity"], stress2.paint?.["line-opacity"]);
-  assert.equal(paint["facility-protected.line-opacity"], 1);
+  assert.deepEqual(paint["facility-protected.line-opacity"], rails.paint?.["line-opacity"]);
   assert.equal(paint["route-casing.line-width"], ROUTE_CASING_WIDTH);
   assert.equal(paint[`${ROUTE_BAND_LAYER_ID}.line-opacity`], 0);
 });
@@ -173,7 +174,7 @@ test("with High contrast on the map is not faded under a route, and the corridor
     assert.equal(routeOverlayFade(MASS_ROUTE as never), 1);
     const { map, paint } = recordingMap();
     setRouteSections(map as never, STRESS_ROUTE as never, false);
-    assert.equal(paint["facility-protected.line-opacity"], 1);
+    assert.deepEqual(paint["facility-protected.line-opacity"], LAYERS.find((l) => l.id === "facility-protected")!.paint?.["line-opacity"]);
     assert.equal(paint[`${ROUTE_BAND_LAYER_ID}.line-opacity`], 1);
   } finally {
     setAccessibility(false, { remember: false });

@@ -1446,6 +1446,51 @@ class TestTimeOfDay:
         assert rush.cost_ft < m.RED_MIN_FT
         assert rush.severity == m.ORANGE
 
+    def test_an_unsignalised_lts4_crossing_doubles_at_rush_hour(self) -> None:
+        """2026-10-23 (Connecticut Ave at Decatur Ave, 7:42 AM): "Raise their rush hour
+        weight." A stop sign or nothing mapped against an LTS 4 or Avoid road is x2 at
+        rush hour, not x1.25; off-peak, weekends and nights are unchanged."""
+        for control in (Control.STOP, Control.NONE):
+            j = junction(crossed=(Road(4, speed_mph=30, lanes=1),), control=control)
+            base = m.assess(j).cost_ft
+            rush = m.assess(j, when="weekday_rush")
+            assert base * m.UNSIGNALISED_RUSH_FACTOR == pytest.approx(7200.0)
+            # Raised to the ten-minute floor (1.86 calm mi).
+            assert rush.cost_ft == m.UNSIGNALISED_RUSH_MIN_FT
+            assert rush.time_factor == 2.0 and rush.severity == m.RED
+            assert m.assess(j, when="weekend").cost_ft == pytest.approx(base * 0.85)
+        avoid = junction(crossed=(Road(5, speed_mph=30, lanes=1),), control=Control.STOP)
+        assert m.assess(avoid, when="weekday_rush").time_factor == 2.0
+
+    def test_signals_all_way_stops_and_lts3_keep_the_plain_rush_factor(self) -> None:
+        for crossed, control in (
+            (Road(4), Control.SIGNAL),
+            (Road(4), Control.ALL_STOP),
+            (Road(3), Control.STOP),
+            (Road(3, half=True), Control.NONE),
+        ):
+            j = junction(crossed=(crossed,), control=control)
+            assert m.assess(j, when="weekday_rush").time_factor == 1.25, (crossed, control)
+
+    def test_ten_minutes_of_riding_is_the_least_such_a_crossing_costs(self) -> None:
+        """2026-10-23: "Most people would rather bike 10 minutes than wait 5 minutes at a
+        busy crossing for an opening." Even a slow two-lane LTS 4 road from a trail."""
+        slow = Road(4, speed_mph=25, lanes=1)
+        for j in (
+            junction(crossed=(slow,), control=Control.STOP),
+            junction(crossed=(slow,), path_crossing=True),
+            junction(movement=Movement.LEFT, outgoing=slow),
+        ):
+            assert m.assess(j, when="weekday_rush").cost_ft >= m.UNSIGNALISED_RUSH_MIN_FT
+            assert m.assess(j).cost_ft < m.UNSIGNALISED_RUSH_MIN_FT
+        right = junction(movement=Movement.RIGHT, outgoing=slow)
+        assert m.assess(right, when="weekday_rush").cost_ft < m.ORANGE_MIN_FT
+
+    def test_the_doubled_rush_cost_still_stops_at_the_cap(self) -> None:
+        big = junction(crossed=(Road(4, speed_mph=40, lanes=3),), control=Control.NONE)
+        assert m.assess(big).cost_ft < m.MAX_CROSSING_FT
+        assert m.assess(big, when="weekday_rush").cost_ft == m.MAX_CROSSING_FT
+
     def test_quiet_street_stops_are_unchanged_and_never_flagged(self) -> None:
         j = junction(crossed=(QUIET,), control=Control.STOP)
         assert m.assess(j, when="weekday_rush") is None

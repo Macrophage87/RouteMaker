@@ -741,7 +741,7 @@ def test_the_access_log_never_records_a_query_string() -> None:
 QUERY_PATHS = (
     "reverse|geocode|segment-info|street-photo|junction-suggestions/at"
     "|stress-suggestions/ticket|stress-suggestions/mine|transit/station-times|transit/next-vehicle"
-    "|bikeshare/docks"
+    "|bikeshare/docks|closures/map"
     "|review/items|review/map|review/next|review/road/[0-9]+|review/street-photo"
 )
 
@@ -784,6 +784,7 @@ def test_reverse_and_geocode_log_errors_at_crit_only_with_the_api_proxy_settings
         "/api/transit/station-times",
         "/api/transit/next-vehicle",
         "/api/bikeshare/docks",
+        "/api/closures/map",
         # Review (an instance admin's): a way, an area's name, a point on a road
         "/api/review/items",
         "/api/review/map",
@@ -823,6 +824,8 @@ def test_basic_auth_is_on_for_the_whole_https_server_and_off_only_for_robots_and
             "= /delete-account",
             # The privacy policy (core.privacy_policy), for Google Play's listing.
             "= /privacy",
+            # Garmin's deregistration notice (core.garmin_views), posted by Garmin's servers.
+            "= /garmin/deregistrations",
             # Link previews (core.share_preview; tests/test_link_preview.py): a shared route's
             # link and image, the app's own preview, and the icons a chat app shows.
             "~ ^/s/[^/]+(/preview\\.png)?$",
@@ -836,6 +839,8 @@ def test_basic_auth_is_on_for_the_whole_https_server_and_off_only_for_robots_and
     deletion = dict(locations(full))["= /delete-account"]
     assert "proxy_pass http://rmbeta_api;" in deletion
     assert "proxy_pass http://rmbeta_api;" in dict(locations(full))["= /privacy"]
+    garmin_notice = dict(locations(full))["= /garmin/deregistrations"]
+    assert "proxy_pass http://rmbeta_api;" in garmin_notice
     assert not any(p.startswith(("^~ /auth", "= /auth")) for p in exempt)
     # the sign-in page is reachable only as the 401's error page, never directly
     page = dict(locations(full))["= /rmbeta-401.html"]
