@@ -49,7 +49,8 @@ import {
   withClosed,
 } from "./lib/roadClosed.ts";
 import { requestRoute, type RouteResponse } from "./lib/api.ts";
-import { VIA_MARKS, drawnLegs, viaIndices } from "./lib/pointKinds.ts";
+import { VIA_MARKS, drawnLegs, stopNames, viaIndices, type RideStopMark } from "./lib/pointKinds.ts";
+import { SKIP_STOP, detourButtonName, insteadLabel, insteadName, insteadSaid, nextStopLine, skippingSaid, withoutStop } from "./lib/rideStops.ts";
 import type { Dials } from "./lib/dials.ts";
 import { haversineM, insideCoverage, type LonLat } from "./lib/geo.ts";
 import type { PresetId } from "./lib/presets.ts";
@@ -86,10 +87,10 @@ import {
   nextAction,
   planAfterEnd,
   replanKept,
-  replanPoints,
   replanTold,
   rideModel,
   startState,
+  stopsAhead,
   toGo,
   wayBack,
   whereAmI,
@@ -304,6 +305,8 @@ export interface RideView {
   rider: { point: LonLat; headingDeg: number | null; accuracyM: number } | null;
   /** Where the next train or bus is while the rider waits at a Metro or Metrobus boarding (v0.9.0). */
   vehicle?: VehicleMark | null;
+  /** The stops still ahead, drawn on the ride's map with their names (2026-10-24). */
+  stops?: RideStopMark[];
 }
 
 function arrowFor(cue: Cue | null): "left" | "right" | "bear_left" | "bear_right" | "uturn" | "straight" | "stop" | "end" | "warn" {
@@ -553,6 +556,7 @@ export function RideMode({
   onEnd,
   resumeStats = null,
   water,
+  stopName,
   trailMiles = null,
   geoEnv,
   keepLastRide = false,
@@ -583,6 +587,8 @@ export function RideMode({
   resumeStats?: RideStats | null;
   /** The water layer's points, loaded if they are not yet (App's ensureWater); for the detours. */
   water?: () => Promise<WaterPoint[] | null>;
+  /** A stop's name to show and say: its own (lib/pointKinds.ts), else the map's name for the spot. */
+  stopName?: (point: LonLat) => string | undefined;
   /**
    * The trail mile markers (lib/trailMiles.ts; OWNER-DECISIONS 465), once App has them: the 311 report and
    * "Where am I?" name a trail's mile with them, on the device. Null before, or with none.
@@ -633,7 +639,8 @@ export function RideMode({
   const uturns = useRef<UTurnState>(UTURN_START);
   const checking = useRef(false);
   const modelOf = (r: RouteResponse, points: readonly LonLat[]) => {
-    const built = rideModel(r, viaIndices(points, VIA_MARKS.isVia));
+    // A stop's own name (2026-10-24) is said and shown with its number.
+    const built = rideModel(r, viaIndices(points, VIA_MARKS.isVia), stopNames(points, VIA_MARKS.nameOf, VIA_MARKS.isVia));
     return r === uturnRoute.current ? withUTurn(built) : built;
   };
   const model = useMemo(() => modelOf(route, plan.current.points), [route]);
@@ -644,7 +651,10 @@ export function RideMode({
   const [other, setOther] = useState<RouteResponse | null>(plannedRoute.closure_through ?? null);
   const otherRef = useRef(other);
   otherRef.current = other;
-  const otherModel = useMemo(() => (other ? rideModel(other, viaIndices(plan.current.points, VIA_MARKS.isVia)) : null), [other]);
+  const otherModel = useMemo(
+    () => (other ? rideModel(other, viaIndices(plan.current.points, VIA_MARKS.isVia), stopNames(plan.current.points, VIA_MARKS.nameOf, VIA_MARKS.isVia)) : null),
+    [other],
+  );
   const otherModelRef = useRef(otherModel);
   otherModelRef.current = otherModel;
   const onStandard = useRef(false);
@@ -915,7 +925,7 @@ export function RideMode({
   // With `via`, a detour: from here to that place first, then on through what was left (the nearest water
   // or restroom, below). A detour's place becomes a stop of the new route, so it is cued and arrived at.
   const replan = useCallback(
-    async (here: LonLat, via?: LonLat, asked = false, turnRound = false, check = false): Promise<boolean> => {
+    async (here: LonLat, via?: LonLat, asked = false, turnRound = false, check = false, skip?: number): Promise<boolean> => {
       if (ended.current) return false;
       const current = rideRef.current;
       // The way the rider is going (the owner, 2026-10-18: "Penalize U turns", "For rerouting"): the new route sets
@@ -923,7 +933,11 @@ export function RideMode({
       const heading = turnRound ? null : (current.goodFix?.headingDeg ?? null);
       // Two U-turns ridden past: the rider means to stay on this way, so this one sets off ahead whatever turning saves.
       const aheadOnly = uturnAheadOnly(uturns.current, heading);
-      const left = replanPoints(modelRef.current, current.progressM ?? 0, here, plan.current.points, plan.current.loop);
+      // A re-route: via points close ahead are guides and dropped, stops kept (2026-10-24); the stop the rider
+      // skipped (Skip this stop, or a place chosen instead of it) is left out.
+      // The same kept points for the way back below, so its stops keep their numbers in the new plan.
+      const keptPoints = replanKept(modelRef.current, current.progressM ?? 0, plan.current.points, plan.current.loop, true).filter((i) => i !== skip);
+      const left = withoutStop(plan.current.points, keptPoints, here, skip ?? -1);
       const points = via ? detourPoints(left, via) : left;
       if (!points) {
         sayDetour(DETOUR_FULL);
@@ -979,7 +993,7 @@ export function RideMode({
       let note = REPLAN_FOUND;
       const voided = () => ended.current || ticket !== replanTicket.current;
       if (!result.ok && !via && !check && startsWayBack(result.error.kind) && !voided()) {
-        const kept = replanKept(modelRef.current, current.progressM ?? 0, plan.current.points, plan.current.loop);
+        const kept = keptPoints;
         // Never back onto a road the rider marked closed: the way back joins the route past it.
         const closed = blockedUntil.current?.model === modelRef.current ? blockedUntil.current.untilM : -Infinity;
         const back = await wayBackRoute(routeRef.current, modelRef.current, current.progressM ?? 0, here, kept, ask, voided, closed);
@@ -1285,14 +1299,23 @@ export function RideMode({
   const fix = ride.fix;
   // Where the next train or bus is, while the rider waits at the boarding (NextVehicleLine).
   const [vehicle, setVehicle] = useState<VehicleMark | null>(null);
+  // The stops still ahead (2026-10-24): on the map with their names, and the next one's Skip and Instead.
+  const aheadKey = ride.progressM === null ? null : Math.floor(ride.progressM / 10);
+  const stops = useMemo(
+    () => stopsAhead(model, ride.progressM ?? 0, plan.current.points).map(({ point, number }): RideStopMark => ({ point, number, name: stopName?.(point) })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [model, aheadKey, stopName],
+  );
+  const nextStop = ride.arrived ? null : (stops[0] ?? null);
   useEffect(() => {
     onView({
       route,
       other: other?.geometry.coordinates ?? null,
       rider: fix ? { point: fix.point, headingDeg: fix.headingDeg, accuracyM: fix.accuracyM } : null,
       vehicle,
+      stops,
     });
-  }, [route, other, fix, onView, vehicle]);
+  }, [route, other, fix, onView, vehicle, stops]);
 
   // The map along the route, kept for dead spots (lib/corridor.ts, plan section 6): fetched at Start ride
   // and again for a re-plan's new route (only the tiles the first did not cover), cleared at End ride.
@@ -1570,7 +1593,31 @@ export function RideMode({
     // The list (and the pressed button) goes: the focus moves to Where am I?, not to the page's top.
     whereRef.current?.focus();
     sayDetour(`Finding a way to ${item.place.title}.`);
-    void replan(here, item.place.point);
+    // The place is a stop of the new route, under its own name on the map and in the cues (2026-10-24).
+    void replan(here, VIA_MARKS.named([item.place.point[0], item.place.point[1]], item.place.title));
+  };
+
+  // The next stop's two options (2026-10-24: "add the option to skip a stop or go to a different one"): from the
+  // Detour menu, so the ride screen gains no button. Each is the rider's own ask, as Detour here is.
+  const stopIndex = (stop: RideStopMark) => plan.current.points.indexOf(stop.point);
+  const changeStop = (stop: RideStopMark, place?: { point: LonLat; title: string }) => {
+    const here = rideRef.current.goodFix?.point ?? rideRef.current.fix?.point;
+    const skip = stopIndex(stop);
+    if (!here || skip < 0) {
+      sayDetour(NO_FIX_YET);
+      return;
+    }
+    if (gate.busy) {
+      sayDetour(DETOUR_BUSY);
+      return;
+    }
+    setKeepPlanned(false);
+    gate.online();
+    setDetourList(null);
+    setDetourOpen(false);
+    whereRef.current?.focus();
+    sayDetour(place ? insteadSaid(place.title, stop) : skippingSaid(stop));
+    void replan(here, place ? VIA_MARKS.named([place.point[0], place.point[1]], place.title) : undefined, true, false, false, skip);
   };
 
   // The dock button's two ways (lib/rideDock.ts): the closest dock, or the one that adds least; the pick is a
@@ -2109,7 +2156,7 @@ export function RideMode({
                 type="button"
                 ref={detourButton}
                 className="ride-round"
-                aria-label={`Detour: ${DETOUR_SUMMARY.toLowerCase()}`}
+                aria-label={detourButtonName(DETOUR_SUMMARY, nextStop)}
                 title="Detour"
                 aria-expanded={detourOpen}
                 aria-controls={detourId}
@@ -2133,6 +2180,14 @@ export function RideMode({
                     Close
                   </button>
                 </div>
+                {nextStop && !fixed && (
+                  <div className="ride-next-stop">
+                    <p>{nextStopLine(nextStop)}</p>
+                    <button type="button" className="secondary" onClick={() => changeStop(nextStop)}>
+                      {SKIP_STOP}
+                    </button>
+                  </div>
+                )}
                 <div className="actions nearest-kinds">
                   {NEAREST_KINDS.filter((k) => DETOUR_KINDS.includes(k.kind)).map(({ kind, label }) => (
                     <button key={kind} type="button" className="secondary" onClick={() => void findDetour(kind)}>
@@ -2159,6 +2214,16 @@ export function RideMode({
                             >
                               Detour here
                             </button>
+                            {nextStop && !fixed && (
+                              <button
+                                type="button"
+                                className="secondary"
+                                aria-label={insteadName(item.place.title, nextStop)}
+                                onClick={() => changeStop(nextStop, item.place)}
+                              >
+                                {insteadLabel(nextStop)}
+                              </button>
+                            )}
                           </span>
                         </li>
                       ))}

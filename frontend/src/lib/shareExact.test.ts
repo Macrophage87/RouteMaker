@@ -81,11 +81,12 @@ test("a kept file opens on its kept plan: points, ride type, sliders, and Follow
   assert.deepEqual(opened.pointNames, ["Lincoln Memorial", undefined]);
   // By the rules: not exact.
   assert.equal(asKept(file(), at, followed(false)).exact, false);
-  // Fitted points (not the file's): its names, index for index, would name the wrong points, so they go.
+  // Fitted points (not the file's): its names, index for index, would name the wrong points, so they go; the kept
+  // plan's link names them instead (2026-10-24: each point's kind and a stop's own name), here all stops.
   const fitted = decodePlan(encodePlan([FILE_POINTS[0], [-77.033, 38.899], FILE_POINTS[1]], "mass-ride", dials));
   const moved = asKept(file(), fitted, followed(false));
   assert.equal(moved.points.length, 3);
-  assert.equal(moved.pointNames, undefined);
+  assert.deepEqual(moved.pointNames, ["Stop 0", "Stop 1", "Stop 2"]);
   // Without a kept route (a link or save from before), the file opens as it always did.
   assert.deepEqual(asKept(file(), at, null), file());
   assert.deepEqual(asKept(file(), null, followed(true)), file());
