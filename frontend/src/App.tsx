@@ -2038,7 +2038,11 @@ export function App() {
       current: () => pointsRef.current,
       commit: commitPick,
       loop: loopVias,
-      remember: (p, name, label) => namer.remember(p, name, label),
+      remember: (p, name, label) => {
+        namer.remember(p, name, label);
+        // Add a stop: the stop keeps the place's name as its own (2026-10-24).
+        if (choice === "via") VIA_MARKS.named(p, name);
+      },
       entrance: (place) => entranceForPlace(place, choice),
     });
     if (point === null) return;
@@ -2360,7 +2364,8 @@ export function App() {
       return;
     }
     const loop = loopStops(ride.preset, ride.dials.loop);
-    const added = addStopWhereShortest(current, point, loop);
+    // The stop keeps the place's name as its own (2026-10-24), for the files, the courses and the cues.
+    const added = addStopWhereShortest(current, VIA_MARKS.named([point[0], point[1]], name), loop);
     setNotice(null);
     commit(added.points);
     announce(stopAddedSaid(added.points, added.index, VIA_MARKS.isVia, loop, name));
