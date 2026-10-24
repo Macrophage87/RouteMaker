@@ -25,7 +25,7 @@ psycopg2-binary==2.9.13
 psycopg==3.3.6
 # The worker. Its Django integration ships the job schema as migrations, which
 # is why `migrate` is the only step that creates and upgrades it.
-procrastinate==3.9.0
+procrastinate==3.10.0
 # routemaker.gpx reads GPX tracks (the reference fixtures today). GPX is XML from
 # outside this repository, so it is parsed with defusedxml only: no fallback.
 defusedxml==0.7.1
