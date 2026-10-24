@@ -9,6 +9,7 @@ import {
   IDLE_TOUCH_EVENTS,
   RIDE_PANEL_OPEN,
   followZoom,
+  closeIdlePanels,
   typingIn,
   watchIdleRecentre,
   type IdleWindow,
@@ -236,4 +237,105 @@ test("a map card's X is a finger's size", () => {
   assert.ok(rule);
   assert.match(rule[1], /width: 44px;/);
   assert.match(rule[1], /height: 44px;/);
+});
+
+/** A fake page element: children, attributes, and what a press or close does. */
+class FakeEl {
+  children: FakeEl[] = [];
+  parent: FakeEl | null = null;
+  attrs: Record<string, string> = {};
+  value?: string;
+  textContent = "";
+  presses = 0;
+  closes = 0;
+  focused = 0;
+  tag: string;
+  cls: string[];
+  onPress?: (el: FakeEl) => void;
+  constructor(tag: string, cls: string[] = [], attrs: Record<string, string> = {}, onPress?: (el: FakeEl) => void) {
+    this.tag = tag;
+    this.cls = cls;
+    this.attrs = attrs;
+    this.onPress = onPress;
+  }
+  add(...kids: FakeEl[]) {
+    for (const kid of kids) (kid.parent = this), this.children.push(kid);
+    return this;
+  }
+  all(): FakeEl[] {
+    return this.children.flatMap((kid) => [kid, ...kid.all()]);
+  }
+  contains(other: unknown): boolean {
+    return other === this || this.all().includes(other as FakeEl);
+  }
+  closest(sel: string): FakeEl | null {
+    for (let at: FakeEl | null = this; at; at = at.parent) if (at.cls.includes(sel.slice(1))) return at;
+    return null;
+  }
+  getAttribute(name: string) {
+    return this.attrs[name] ?? null;
+  }
+  querySelector(sel: string) {
+    return this.querySelectorAll(sel)[0] ?? null;
+  }
+  querySelectorAll(sel: string): FakeEl[] {
+    const els = this.all();
+    if (sel === MAP_CARD) return els.filter((e) => e.cls.includes("maplibregl-popup-close-button") && e.closest(".maplibregl-popup"));
+    if (sel === `[${IDLE_HOLD_ATTR}]`) return els.filter((e) => IDLE_HOLD_ATTR in e.attrs);
+    if (sel === `[${IDLE_CLOSE_ATTR}][aria-expanded="true"]`) return els.filter((e) => IDLE_CLOSE_ATTR in e.attrs && e.attrs["aria-expanded"] === "true");
+    if (sel === `dialog[open][${IDLE_CLOSE_ATTR}]`) return els.filter((e) => e.tag === "dialog" && "open" in e.attrs && IDLE_CLOSE_ATTR in e.attrs);
+    if (sel.startsWith("input")) return els.filter((e) => e.tag === "input");
+    return [];
+  }
+  click() {
+    this.presses += 1;
+    this.onPress?.(this);
+  }
+  close() {
+    this.closes += 1;
+    delete this.attrs.open;
+  }
+  focus() {
+    this.focused += 1;
+  }
+}
+const MAP_CARD = ".maplibregl-popup .maplibregl-popup-close-button";
+
+test("closeIdlePanels: each card, menu and dialog closes by its own close; typed words, a hold and unmarked questions stay", () => {
+  const body = new FakeEl("body");
+  const canvas = new FakeEl("canvas", ["maplibregl-canvas"]);
+  const cardX = new FakeEl("button", ["maplibregl-popup-close-button"], {}, (x) => x.parent!.parent!.children.splice(0));
+  const card = new FakeEl("div", ["maplibregl-popup"]).add(new FakeEl("div", ["maplibregl-popup-content"]).add(cardX));
+  const detourPanel = new FakeEl("div", [], { id: "detour" }).add(new FakeEl("button"), Object.assign(new FakeEl("input"), { value: "" }));
+  const detour = new FakeEl("button", [], { [IDLE_CLOSE_ATTR]: "", "aria-expanded": "true", "aria-controls": "detour" }, (t) => (t.attrs["aria-expanded"] = "false"));
+  const alertPanel = new FakeEl("div", [], { id: "alert" }).add(Object.assign(new FakeEl("input"), { value: "flat tyre" }));
+  const alert = new FakeEl("button", [], { [IDLE_CLOSE_ATTR]: "", "aria-expanded": "true", "aria-controls": "alert" });
+  const ridersPanel = new FakeEl("div", [], { id: "riders" }).add(new FakeEl("div", [], { [IDLE_HOLD_ATTR]: "" }));
+  const riders = new FakeEl("button", [], { [IDLE_CLOSE_ATTR]: "", "aria-expanded": "true", "aria-controls": "riders" });
+  const info = new FakeEl("dialog", [], { open: "", [IDLE_CLOSE_ATTR]: "" });
+  const question = new FakeEl("dialog", [], { open: "" });
+  body.add(canvas, card, detour, detourPanel, alert, alertPanel, riders, ridersPanel, info, question);
+  const inDetour = detourPanel.children[0];
+  let active: FakeEl = inDetour;
+  const doc = {
+    body,
+    get activeElement() {
+      return active;
+    },
+    querySelector: (sel: string) => (sel === ".maplibregl-canvas" ? canvas : body.querySelector(sel)),
+    querySelectorAll: (sel: string) => body.querySelectorAll(sel),
+    getElementById: (id: string) => body.all().find((e) => e.attrs.id === id) ?? null,
+  } as unknown as Document;
+  assert.equal(closeIdlePanels(doc), true);
+  assert.equal(cardX.presses, 1);
+  assert.equal(detour.presses, 1);
+  assert.equal(detour.focused, 1, "the focus was in Detour: it goes to Detour's toggle");
+  assert.equal(alert.presses, 0, "words typed keep Alert open");
+  assert.equal(riders.presses, 0, "a hold keeps the menu open");
+  assert.equal(info.closes, 1);
+  assert.equal(question.closes, 0);
+  assert.equal(canvas.focused, 0);
+  // Nothing left to close: says so, and a second look closes nothing more.
+  active = body;
+  assert.equal(closeIdlePanels(doc), false);
 });

@@ -2571,7 +2571,7 @@ export function RideMode({
             title={RIDE_SETTINGS_TEXT}
             aria-expanded={settingsOpen}
             aria-controls={`${settingsId}-settings`}
-                data-idle-close
+            data-idle-close
             onClick={() => setSettingsOpen(!settingsOpen)}
           >
             <Icon name="more" size={24} />

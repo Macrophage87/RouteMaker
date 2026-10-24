@@ -133,8 +133,9 @@ You stay responsible for riding safely; the route can be wrong.
 - "Where am I?" (it also re-centres the map on you) says the street you are on, the next turn and the distance to the next stop
   and the end. On a long trail away from roads it says the trail and a distance from its last
   junction, for example "On the Capital Crescent Trail, about 1.2 miles northwest of ...".
-- Moved the map by hand? Leave the screen alone for 30 seconds with no menu or panel open and the map
-  goes back to following you, at the ride's usual zoom.
+- Moved the map by hand? Leave the screen alone for 30 seconds and the map goes back to following
+  you, at the ride's usual zoom. Map cards, road info and the side menus close on their own after
+  the same 30 seconds, unless you are typing in one or accessibility mode is on.
 - End ride is a slide: slide it to the right to end the ride, so a bump doesn't end it. Once you
   have arrived it is a plain button. End ride and Road closed share the top row; Road closed
   always shows its words. Near sunrise or sunset, a small line under them gives the sunrise or

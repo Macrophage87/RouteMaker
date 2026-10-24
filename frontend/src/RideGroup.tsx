@@ -554,7 +554,7 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
           {ALERT_NOTE}.
         </p>
         {confirming ? (
-          <div role="group" aria-label={CONFIRM_QUESTION}>
+          <div role="group" aria-label={CONFIRM_QUESTION} data-idle-hold>
             <p>
               <strong>{CONFIRM_QUESTION}</strong> {confirming.label}
             </p>

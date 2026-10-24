@@ -10,9 +10,10 @@
  * during a ride have very small x's. Maybe auto close after 30 seconds without a screen touch?"): 30 s untouched closes
  * a map card (a stop, a place, a station, a closure, a climb), the road info, and the side menus (Detour, More, the
  * dock, 311, the riders, Alert), so the map then goes back to the rider. Kept open: a menu with words typed or being
- * typed (a Detour search, Alert's Other, its microphone listening), and anything asking (Already done?, a stop's name, the group's question,
- * Resume). Accessibility mode closes nothing on its own: a screen reader's reading touches nothing. A card closed
- * with the focus in it hands the focus to its opener, or the map.
+ * typed (a Detour search, Alert's Other, its microphone listening), and anything asking (Alert's Send to everyone?, Already
+ * done?, a stop's name, the group's question, Resume). Accessibility mode closes nothing on its own: a screen
+ * reader's reading touches nothing. A menu closed with the focus in it hands the focus to its toggle; a map card, to
+ * the map.
  */
 
 /** How long the screen is left alone before the map goes back to the rider. */
