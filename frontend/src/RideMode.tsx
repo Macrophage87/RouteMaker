@@ -731,12 +731,12 @@ export function RideMode({
   // Each re-plan's ticket: "Keep the planned route" or a newer re-plan voids an older one's answer.
   const replanTicket = useRef(0);
   const settingsId = useId();
-  // The ride's settings, opened from the side buttons' gear (closed at Start).
+  // The ride's More panel, the route's changes and the settings, opened from the last side button (closed at Start).
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsPanel = useRef<HTMLDivElement>(null);
   const settingsButton = useRef<HTMLButtonElement>(null);
   // Opened, the panel is brought into view (the row above it is sticky; the card may be scrolled) and the focus
-  // goes into it: the gear is the last side button, after the panel, so Tab alone would never reach it.
+  // goes into it: More is the last side button, after the panel, so Tab alone would never reach it.
   useEffect(() => {
     if (!settingsOpen) return;
     settingsPanel.current?.scrollIntoView?.({ block: "nearest" });
@@ -1638,10 +1638,11 @@ export function RideMode({
     void replan(here, VIA_MARKS.named([item.place.point[0], item.place.point[1]], item.place.title));
   };
 
-  // The next stop's two options (2026-10-24: "add the option to skip a stop or go to a different one"): from the
-  // Detour menu, so the ride screen gains no button. Each is the rider's own ask, as Detour here is.
+  // The next stop's two options (2026-10-24: "add the option to skip a stop or go to a different one"): Skip this stop
+  // in More, Instead of stop N in the Detour menu, so the ride screen gains no button. Each is the rider's own ask, as
+  // Detour here is. From More the focus stays on More (`fromMore`); from Detour it goes to Where am I?.
   const stopIndex = (stop: RideStopMark) => plan.current.points.indexOf(stop.point);
-  const changeStop = (stop: RideStopMark, place?: { point: LonLat; title: string }) => {
+  const changeStop = (stop: RideStopMark, place?: { point: LonLat; title: string }, keepFocus = false) => {
     const here = rideRef.current.goodFix?.point ?? rideRef.current.fix?.point;
     const skip = stopIndex(stop);
     if (!here || skip < 0) {
@@ -1656,7 +1657,7 @@ export function RideMode({
     gate.online();
     setDetourList(null);
     setDetourOpen(false);
-    whereRef.current?.focus();
+    if (!keepFocus) whereRef.current?.focus();
     sayDetour(place ? insteadSaid(place.title, stop) : skippingSaid(stop));
     void replan(here, place ? VIA_MARKS.named([place.point[0], place.point[1]], place.title) : undefined, true, false, false, skip);
   };
@@ -1955,7 +1956,7 @@ export function RideMode({
       <div ref={cardRef} className="cue-card">
         {/* End ride (v0.7.0, "Go riding fixes" item 6): always in view, at the top of the card, which stays at
             every size and in Large text; one slide ends the ride (a tap once arrived), and the page shows the ride's summary
-            with Done and Undo (RideSummaryCard). The ride's settings open just under the row, from the side buttons' gear. */}
+            with Done and Undo (RideSummaryCard). The ride's settings open just under the row, from the side buttons' More. */}
         <div ref={topRef} className={light && cornerFits ? "ride-top" : "ride-top ride-corner-tight"}>
           {/* The heading, "Ride mode", for screen readers; near dawn or dusk the light times shown in the corner
               (the owner, 2026-10-19) where they fit beside the buttons, else just under the row. */}
@@ -2011,7 +2012,7 @@ export function RideMode({
           hidden={!settingsOpen}
           tabIndex={-1}
           onKeyDown={(event) => {
-            // Escape closes it, back to the gear.
+            // Escape closes it, back to More.
             if (event.key === "Escape") {
               event.preventDefault();
               setSettingsOpen(false);
@@ -2041,7 +2042,7 @@ export function RideMode({
               {nextStop && (
                 <div className="ride-next-stop">
                   <p>{nextStopLine(nextStop)}</p>
-                  <button type="button" className="secondary" onClick={() => fromMore(() => changeStop(nextStop))}>
+                  <button type="button" className="secondary" onClick={() => fromMore(() => changeStop(nextStop, undefined, true))}>
                     {SKIP_STOP}
                   </button>
                 </div>

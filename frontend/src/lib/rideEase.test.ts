@@ -62,8 +62,8 @@ test("same line: a new route made of the old line's own points is the same route
 });
 
 test("the words: in the name and said, the symbol alone on screen", () => {
-  assert.match(EASE_NAME.calmer, /^Calmer: less traffic/);
-  assert.match(EASE_NAME.flatter, /^Flatter: fewer hills/);
+  assert.match(EASE_NAME.calmer, /^Less traffic: plan again/);
+  assert.match(EASE_NAME.flatter, /^Fewer hills: plan again/);
   assert.equal(EASE_AT_END.calmer, "Already the calmest route.");
   assert.equal(easeFinding("default", dials(80, 0), "calmer"), `Finding a calmer route. ${stressWords(80)}.`);
   assert.equal(easeFinding("default", dials(70, -40), "flatter"), "Finding a flatter route. Easy up to 5%.");
@@ -88,5 +88,5 @@ test("ride: the buttons re-plan from here with the ride's own dials, kept only w
   assert.match(panel, /onClick=\{\(\) => fromMore\(\(\) => void ease\(which\)\)\}\s+aria-label=\{EASE_NAME\[which\]\}/);
   assert.match(panel, /<Icon name=\{which === "calmer" \? "traffic-down" : "hills-down"\} size=\{26\} \/>\s*\{EASE_SHOWN\[which\]\}/);
   assert.doesNotMatch(rail, /ease\(which\)/);
-  for (const which of ["calmer", "flatter"] as const) assert.ok(EASE_NAME[which].toLowerCase().includes(EASE_SHOWN[which].toLowerCase()));
+  for (const which of ["calmer", "flatter"] as const) assert.ok(EASE_NAME[which].startsWith(EASE_SHOWN[which]));
 });

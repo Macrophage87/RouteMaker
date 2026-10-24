@@ -3028,7 +3028,7 @@ const levelSlider = `${EDITOR} input[type=range]`;
   await p.shot(`${SHOTS}/ride_corner_320.png`);
   await p.eval("document.querySelector('.ride .ride-settings-button').click(); true");
   await sleep(200);
-  // The gear (the owner, 2026-10-18): it opens the panel under the top row and the focus goes into it; at 320 px
+  // More (the gear, the owner, 2026-10-18; More 2026-10-24): it opens the panel under the top row and the focus goes into it; at 320 px
   // the top row is End ride and Road closed's icon (still named in full), on one line.
   const gear = await p.eval(`(() => { const g = document.querySelector('.ride .ride-settings-button'); const panel = document.querySelector('.ride-mode-settings'); const c = document.querySelector('.ride-top .ride-road-closed'); const e = document.querySelector('.ride-top .ride-end'); const a = c.getBoundingClientRect(); const b = e.getBoundingClientRect();
     const change = [...panel.querySelectorAll('.ride-change button')].map((x) => [x.getAttribute('aria-label') ?? x.textContent, x.textContent, Math.round(x.getBoundingClientRect().height)]);

@@ -129,7 +129,7 @@ test("Ride settings in reach: More at the end of the side buttons opens them jus
   assert.doesNotMatch(css, /\.ride-top-label \{\s*position: absolute;/);
   assert.deepEqual([...css.matchAll(/@container[^{]*\{([^@]*)/g)].map((m) => /ride-/.test(m[1])), [false]);
   assert.match(top, /ref=\{settingsPanel\}\s+id=\{`\$\{settingsId\}-settings`\}\s+className="ride-mode-settings"\s+role="group"\s+aria-label=\{RIDE_SETTINGS_TITLE\}\s+hidden=\{!settingsOpen\}\s+tabIndex=\{-1\}/);
-  // The gear comes after the panel: opened, the focus goes into it; Escape there closes it, back to the gear.
+  // More comes after the panel: opened, the focus goes into it; Escape there closes it, back to the gear.
   assert.match(ride, /settingsPanel\.current\?\.focus\(\{ preventScroll: true \}\);/);
   assert.match(top, /if \(event\.key === "Escape"\) \{\s*event\.preventDefault\(\);\s*setSettingsOpen\(false\);\s*settingsButton\.current\?\.focus\(\);/);
   assert.match(top, /<RideSettingsFields prefs=\{prefs\} onChange=\{onPrefs\}/);
@@ -228,7 +228,8 @@ test("More on the ride screen (Stephen 2026-10-24): the route's changes above th
   const panel = ride.slice(ride.indexOf('className="ride-mode-settings"'), ride.indexOf("<RideSettingsFields prefs={prefs}"));
   const rail = ride.slice(ride.indexOf('<div className="ride-rail"'), ride.indexOf("{/* The bottom panel"));
   // Skip this stop moved from Detour into More; Instead of stop N stays with the nearest places.
-  assert.match(panel, /fromMore\(\(\) => changeStop\(nextStop\)\)/);
+  assert.match(panel, /fromMore\(\(\) => changeStop\(nextStop, undefined, true\)\)/);
+  assert.match(ride, /if \(!keepFocus\) whereRef\.current\?\.focus\(\);/);
   assert.doesNotMatch(rail, /\{SKIP_STOP\}/);
   assert.match(rail, /onClick=\{\(\) => changeStop\(nextStop, item\.place\)\}/);
   // Each press closes the panel (the map back in view) and the focus goes to More.
