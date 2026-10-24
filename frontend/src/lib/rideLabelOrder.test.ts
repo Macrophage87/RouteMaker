@@ -82,6 +82,29 @@ test("after the ride every name is back where the base map put it", () => {
   assert.equal(homes.size, 0);
 });
 
+test("a label that comes during the ride (the overlay's trail names, late) is lifted and put home too", () => {
+  const late = MAP.filter((id) => id !== "trail-name");
+  const map = fakeMap(late);
+  const homes: LabelHomes = new Map();
+  setRideLabelOrder(map, true, homes);
+  map.layers.splice(map.layers.indexOf("roads_oneway"), 0, "trail-name");
+  setRideLabelOrder(map, true, homes);
+  assert.equal(map.layers[map.layers.indexOf("rail-station-names") - 3], "trail-name");
+  assert.equal(setRideLabelOrder(map, false, homes), true);
+  assert.deepEqual(map.layers, MAP);
+});
+
+test("a home gone by the ride's end leaves that label where it is and the rest go home", () => {
+  const map = fakeMap(MAP);
+  const homes: LabelHomes = new Map();
+  setRideLabelOrder(map, true, homes);
+  map.layers.splice(map.layers.indexOf("pois"), 1);
+  setRideLabelOrder(map, false, homes);
+  assert.equal(map.layers[map.layers.indexOf("water_label_ocean") - 1], "roads_labels_minor");
+  assert.equal(map.layers[map.layers.indexOf("roads_oneway") - 1], "trail-name");
+  assert.equal(homes.size, 0);
+});
+
 test("outside a ride nothing is lifted", () => {
   const map = fakeMap(MAP);
   setRideLabelOrder(map, false, new Map());
@@ -100,6 +123,6 @@ test("a home is the next layer up; the names only lifted are left out", () => {
 
 test("MapView lifts the names with the ride's labels and keeps the climbs under the route", () => {
   const mapView = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
-  assert.match(mapView, /setRideLabelOrder\(map, riding, labelHomes\.current\)/);
-  assert.match(mapView, /at < routeAt/);
+  assert.match(mapView, /if \(setRideLabelOrder\(map, riding, labelHomes\.current\)\) climbsUnder\(map, TRAIL_LABEL_LAYER_ID\)/);
+  assert.match(mapView, /\(!lifted && layerIds\.find\(.*\)\) \|\| ROUTE_BOTTOM_LAYER/);
 });

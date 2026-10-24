@@ -57,18 +57,20 @@ export interface LabelOrderMap {
 }
 
 /**
- * Lift the labels for a ride, or put them home after one. `homes` is filled on the first lift (from the order the
- * map had then) and emptied when they are home; a home that is gone (a style reload) leaves the label where it is.
+ * Lift the labels for a ride, or put them home after one. `homes` takes each label's home before its first lift (from
+ * the order the map had then) and is emptied when they are home; a home that is gone (a style reload) leaves the label
+ * where it is. Returns whether any label was put home.
  */
-export function setRideLabelOrder(map: LabelOrderMap, riding: boolean, homes: LabelHomes): void {
+export function setRideLabelOrder(map: LabelOrderMap, riding: boolean, homes: LabelHomes): boolean {
   if (riding) {
     const move = rideLabelsTarget(map.getLayersOrder());
-    if (!move) return;
-    if (homes.size === 0) for (const [id, home] of labelHomes(map.getLayersOrder())) homes.set(id, home);
+    if (!move) return false;
+    // A label that comes after the first lift (the overlay's trail names, late) gets its home then.
+    for (const [id, home] of labelHomes(map.getLayersOrder())) if (!homes.has(id)) homes.set(id, home);
     for (const id of RIDE_LABEL_LAYERS) if (map.getLayer(id)) map.moveLayer(id, move.before);
-    return;
+    return false;
   }
-  if (homes.size === 0) return;
+  if (homes.size === 0) return false;
   // Top first, so each label's home is in place when the one under it goes back.
   for (const id of RIDE_LABEL_LAYERS.slice().reverse()) {
     const home = homes.get(id);
@@ -76,4 +78,5 @@ export function setRideLabelOrder(map: LabelOrderMap, riding: boolean, homes: La
     map.moveLayer(id, home);
   }
   homes.clear();
+  return true;
 }
