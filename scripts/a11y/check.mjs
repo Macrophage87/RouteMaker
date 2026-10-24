@@ -4226,7 +4226,7 @@ const JUNCTION_BUTTON = "Suggest a junction change";
   const line = await axNode(p, ".ride-line-button");
   const typeButton = await axNode(p, ".ride-type-current button");
   check("kids: the ride type's button says Novice and Nervous, and the Ride settings line where the sliders are",
-    /^Novice and Nervous\b[\s\S]*Change$/.test(typeButton?.name ?? "") && /^Ride settings\s*:\s*calmest, gentler hills\b/.test(line?.name ?? ""), JSON.stringify({ type: typeButton?.name, line: line?.name }));
+    /^Novice and Nervous\b[\s\S]*Change$/.test(typeButton?.name ?? "") && /^Ride settings\s*:\s*calmest, hills up to 4%/.test(line?.name ?? ""), JSON.stringify({ type: typeButton?.name, line: line?.name }));
   check("kids: the target distance is offered, as at the top of the traffic slider", (await p.eval("document.querySelectorAll('input[placeholder=Default]').length")) === 1);
   await p.eval("document.querySelector('.ride-type-current button').focus(); true");
   await p.enter();
