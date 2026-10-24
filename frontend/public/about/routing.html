@@ -600,6 +600,9 @@ route:</p>
 </tbody>
 </table>
 </div>
+<p>From the next map update, a route never U-turns round the end of a median. Where a road with
+a median is mapped as two one-way carriageways meeting at the median's nose, the router once took the U-turn from
+one onto the other as an ordinary turn, across the oncoming lanes; each such U-turn is now closed to it.</p>
 <p>Junctions a few yards apart, such as the two halves of a divided road, count once, at the dearest.
 A flashing light is priced by who gives way, not as a signal, so crossing a busier road at one costs the
 wait for a gap, 12, 20 or 30 seconds by how busy that road is, rather than the 15 seconds of a signal. This is time, not
@@ -1074,7 +1077,9 @@ on a route through the park, never as closures.</li>
 <div class="more-body">
 <ul>
 <li><strong>Cues.</strong> The first cue comes about 27 seconds before a turn, the second about 10
-seconds before, and "now" at the turn. Cues say only the turn and the street. You choose screen
+seconds before, and "now" at the turn. Cues say only the turn and the street. Where the path you turn onto starts on the far side of a road you go straight across just before, the
+cue says the crossing first: "Cross Saint Paul Street, then right onto Saint Paul Street bike lane", with the
+crossing's signal or stop sign where it has one. You choose screen
 reader, RouteMaker's voice, both or neither.</li>
 <li><strong>Off route.</strong> You are off route when you are more than 100 ft [30 m] from the line
 (more when GPS is poor, up to 330 ft [100 m]) for three readings over 8 seconds. Readings less accurate
