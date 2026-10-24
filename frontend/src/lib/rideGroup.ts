@@ -405,9 +405,13 @@ export function shownDots(line: readonly LonLat[], dots: readonly Dot[], sinceS 
   return out;
 }
 
-/** The map's key: the roles on this ride now, in RIDE_ROLES order, each with how many. None shown, none listed. */
+/**
+ * The map's key: the roles on this ride now, in RIDE_ROLES order, each with how many. None shown, none listed.
+ * The ride leader is counted under "Ride leader" only (its own row in RideGroup), never under its role too.
+ */
 export function roleKey(dots: readonly ShownDot[]): { role: RideRole; label: string; count: number }[] {
-  return RIDE_ROLES.map((r) => ({ role: r.id, label: r.label, count: dots.filter((d) => d.role === r.id).length })).filter((r) => r.count > 0);
+  const others = dots.filter((d) => !d.leader);
+  return RIDE_ROLES.map((r) => ({ role: r.id, label: r.label, count: others.filter((d) => d.role === r.id).length })).filter((r) => r.count > 0);
 }
 
 /** "23 riders on the route", "1 rider on the route", "No other riders on the route yet". */
@@ -421,6 +425,8 @@ export function countText(n: number, onRoute = true): string {
 /**
  * Said on request: the count, the nearest rider ahead (else behind) with its age, then the nearest of each
  * other role on the ride by name: "Lead line, 1.2 mi (1.9 km) ahead. Sweep, 0.5 mi (0.8 km) behind."
+ * The ride leader is said once, first, and left out of the nearest rider and the roles (review S4: a screen reader
+ * said the one leader dot three times).
  */
 export function ridersSaid(dots: readonly ShownDot[], myAlongM: number | null, around: { here: LonLat | null } | null = null): string {
   const count = `${countText(dots.length, around === null)}.`;
@@ -440,18 +446,20 @@ export function ridersSaid(dots: readonly ShownDot[], myAlongM: number | null, a
     const leader = dots.find((d) => d.leader);
     return leader ? `${count} ${dotName(leader.role, leader.alongM, null, true)}, seen ${ageWords(leader.age_s)}.` : count;
   }
-  const ahead = dots.filter((d) => d.alongM >= myAlongM).sort((a, b) => a.alongM - b.alongM)[0];
-  const behind = dots.filter((d) => d.alongM < myAlongM).sort((a, b) => b.alongM - a.alongM)[0];
-  const nearest = ahead ?? behind;
-  const which = ahead ? "ahead" : "behind";
   const leader = dots.find((d) => d.leader);
   const lead = leader ? ` ${dotName(leader.role, leader.alongM, myAlongM, true)}, seen ${ageWords(leader.age_s)}.` : "";
+  const others = dots.filter((d) => !d.leader);
+  const ahead = others.filter((d) => d.alongM >= myAlongM).sort((a, b) => a.alongM - b.alongM)[0];
+  const behind = others.filter((d) => d.alongM < myAlongM).sort((a, b) => b.alongM - a.alongM)[0];
+  const nearest = ahead ?? behind;
+  const which = ahead ? "ahead" : "behind";
+  const near = nearest ? ` Nearest rider ${which}, ${formatDistance(Math.abs(nearest.alongM - myAlongM))}, seen ${ageWords(nearest.age_s)}.` : "";
   const roles = RIDE_ROLES.filter((r) => r.id !== DEFAULT_ROLE)
-    .map((r) => dots.filter((d) => d.role === r.id).sort((a, b) => Math.abs(a.alongM - myAlongM) - Math.abs(b.alongM - myAlongM))[0])
+    .map((r) => others.filter((d) => d.role === r.id).sort((a, b) => Math.abs(a.alongM - myAlongM) - Math.abs(b.alongM - myAlongM))[0])
     .filter((d): d is ShownDot => d !== undefined)
     .map((d) => ` ${dotName(d.role, d.alongM, myAlongM)}.`)
     .join("");
-  return `${count}${lead} Nearest rider ${which}, ${formatDistance(Math.abs(nearest.alongM - myAlongM))}, seen ${ageWords(nearest.age_s)}.${roles}`;
+  return `${count}${lead}${near}${roles}`;
 }
 
 // ---- following the leader -------------------------------------------------------------------------
@@ -536,6 +544,14 @@ export const ALERT_KINDS: Record<RideLinkType, readonly AlertKind[]> = {
     { id: "other", label: "Other" },
   ],
 };
+
+/**
+ * Roam's broadcast (a Group Ride on the server, review N3): no route, so no Wrong turn or Rider off the back; the
+ * Group Ride's own ids, so the server takes them.
+ */
+export const ROAM_ALERT_KINDS: readonly AlertKind[] = ["lost", "wait", "mechanical", "crash", "other"].map(
+  (id) => ALERT_KINDS["group-ride"].find((k) => k.id === id) as AlertKind,
+);
 
 export const ALERT_LABEL = "Alert";
 export const ALERT_NOTE = "Sends your location with the alert";
