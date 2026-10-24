@@ -456,6 +456,29 @@ def _cell(point) -> tuple[int, int]:
     return (math.floor(point[0] / CELL), math.floor(point[1] / CELL))
 
 
+_PLATFORM_WAY = re.compile(r"\s+(?:nb|sb|eb|wb)$")
+# All-capital words kept as written (up to three letters: "BWI", "MD", "W VA") but these.
+_SMALL_WORDS = {"OF": "of", "ST": "St", "NEW": "New"}
+
+
+def station_name(name: str, system: str) -> str:
+    """A rail stop's name as a card says it: MDOT MTA's MARC feed writes "PENN STATION MARC sb"
+    and "UNION STATION MARC Washington", said "Penn Station MARC" and "Union Station MARC" (the
+    platform's way dropped, the words after the system's name too, capitals as a name has them)."""
+    name = _PLATFORM_WAY.sub("", name.strip())
+    cut = name.find(f" {system} ")
+    if cut >= 0:
+        name = name[: cut + len(system) + 1]
+    words = name.split()
+    plain = [w for w in words if w != system]
+    if not plain or any(w != w.upper() for w in plain):
+        return name
+    return " ".join(
+        w if w == system else _SMALL_WORDS.get(w, w if len(w) <= 3 else w.capitalize())
+        for w in words
+    )
+
+
 def parse(doc: dict) -> Schedule:
     if not isinstance(doc, dict) or doc.get("schema") != SCHEMA:
         raise Unavailable(f"the transit schedule is not schema {SCHEMA}")
@@ -480,7 +503,11 @@ def parse(doc: dict) -> Schedule:
     stops = [
         Stop(
             i,
-            s["name"],
+            (
+                s["name"]
+                if systems[int(s["system"])].mode == BUS
+                else station_name(s["name"], systems[int(s["system"])].name)
+            ),
             tuple(s["point"]),
             tuple(s.get("bike_entrance") or s["point"]),
             # Every station takes a bike (`EVERY_STATION_TAKES_A_BIKE`); a bus stop, at the curb.
@@ -2071,6 +2098,10 @@ def closed_stations(schedule: Schedule, moment: Moment) -> list[Closed]:
 # transit time is (`SCHEDULED`); Metro on its typical timetable where no WMATA GTFS is installed.
 
 STATION_NEAR_M = 400.0  # a stop this close to the map's station is at it (railClosures' MATCH_M)
+# A system's stops this close to its nearest one are the same station's platforms: MDOT MTA's
+# MARC feed lists each station once per direction ("PENN STATION MARC nb" and "... sb", 6 m
+# apart) with no parent station, and the card needs both to say each way's next train.
+PLATFORM_M = 200.0
 FREQUENT_MODES = (METRO, LIGHT_RAIL, SUBWAY)
 EVERY_SEEN_MIN = 60  # a frequent line's interval is read from its trains within this
 EVERY_SEEN = 3  # and only from at least this many of them: fewer are said one by one
@@ -2153,29 +2184,39 @@ def station_times(schedule: Schedule, point, when: datetime) -> list[LineTime]:
     morning = None
     if moment.service_day != moment.date and schedule.covers(moment.date):
         morning = (schedule.active(moment.date), moment.date)
+    nearby = [stop for _distance_m, stop in schedule.near(point, STATION_NEAR_M) if stop.rail]
     nearest: dict[int, Stop] = {}
-    for _distance_m, stop in schedule.near(point, STATION_NEAR_M):
-        if stop.rail and stop.system not in nearest:
-            nearest[stop.system] = stop
+    for stop in nearby:
+        nearest.setdefault(stop.system, stop)
     out: list[LineTime] = []
     for system_index in sorted(nearest):
         stop = nearest[system_index]
         system = schedule.systems[system_index]
+        platforms = [
+            s
+            for s in nearby
+            if s.system == system_index and _distance(s.point, stop.point) <= PLATFORM_M
+        ]
+        leaving = sorted(
+            (p_index, pos)
+            for platform in platforms
+            for p_index, pos in schedule.at_stop.get(platform.index, ())
+            # it ends here: nothing leaves on it
+            if pos < len(schedule.patterns[p_index].stops) - 1
+        )
+        # Each route's ways are read against its longest pattern through this station, not the
+        # system's: MARC's feed names all three lines "MARC", and against the Brunswick Line's
+        # ends both of Penn Station's ways head the same way.
+        references: dict[str, Pattern] = {}
+        for p_index, _pos in leaving:
+            pattern = schedule.patterns[p_index]
+            best = references.get(pattern.route)
+            references[pattern.route] = pattern if best is None else _longest((best, pattern))
         # route -> direction -> [(pattern, pos)], in the order the routes first appear
         routes: dict[str, dict[int, list[tuple[Pattern, int]]]] = {}
-        references: dict[str, Pattern] = {}
-        for p_index, pos in sorted(schedule.at_stop.get(stop.index, ())):
+        for p_index, pos in leaving:
             pattern = schedule.patterns[p_index]
-            if pos == len(pattern.stops) - 1:
-                continue  # it ends here: nothing leaves on it
-            if pattern.route not in references:
-                references[pattern.route] = _longest(
-                    p
-                    for p in schedule.patterns
-                    if p.system == system_index and p.route == pattern.route
-                )
-            reference = references[pattern.route]
-            direction = _direction(schedule, pattern, reference)
+            direction = _direction(schedule, pattern, references[pattern.route])
             routes.setdefault(pattern.route, {}).setdefault(direction, []).append((pattern, pos))
         for route, ways in routes.items():
             out.extend(_line_times(schedule, active, moment, morning, stop, system, route, ways))

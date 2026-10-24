@@ -792,6 +792,114 @@ def test_a_station_says_each_frequent_lines_interval_and_each_commuter_lines_nex
     ]
 
 
+def _mta_style_marc(path: Path) -> Path:
+    """A MARC feed written as MDOT MTA writes it: every route's short name "MARC" and its long
+    name "PENN - WASHINGTON", each station once per way with no parent ("PENN STATION MARC sb"
+    and "... nb", 6 m apart), and the Brunswick Line the longest. Saturday trains: the Penn Line
+    from Baltimore to Washington at 18:00, on to Martin Airport at 22:34; Brunswick at 17:00."""
+
+    def write(name: str, rows: list[str]) -> None:
+        (path / name).write_text("\n".join(rows) + "\n")
+
+    path.mkdir()
+    write(
+        "calendar.txt",
+        [
+            "service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date",
+            "SA,0,0,0,0,0,1,0,20260901,20271231",
+        ],
+    )
+    write("calendar_dates.txt", ["service_id,date,exception_type"])
+    write(
+        "routes.txt",
+        [
+            "route_id,route_short_name,route_long_name,route_type",
+            "11704,MARC,BRUNSWICK - WASHINGTON,2",
+            "11705,MARC,PENN - WASHINGTON,2",
+        ],
+    )
+    write(
+        "stops.txt",
+        [
+            "stop_id,stop_name,stop_lat,stop_lon,location_type,parent_station",
+            "U,UNION STATION MARC Washington,38.899036,-77.006795,,",
+            "PS,PENN STATION MARC sb,39.307198,-76.615715,,",
+            "PN,PENN STATION MARC nb,39.307223,-76.615769,,",
+            "MN,MARTIN AIRPORT MARC nb,39.338478,-76.419377,,",
+            "RW,ROCKVILLE MARC wb,39.084,-77.146,,",
+            "FW,FREDERICK MARC wb,39.411,-77.410,,",
+            "MW,MARTINSBURG W VA MARC,39.458534,-77.960739,,",
+        ],
+    )
+    write(
+        "trips.txt",
+        [
+            "route_id,service_id,trip_id,direction_id",
+            "11705,SA,S1,0",
+            "11705,SA,N1,1",
+            "11704,SA,B1,1",
+        ],
+    )
+    write(
+        "stop_times.txt",
+        [
+            "trip_id,arrival_time,departure_time,stop_id,stop_sequence",
+            "S1,18:00:00,18:00:00,PS,1",
+            "S1,19:00:00,19:00:00,U,2",
+            "N1,22:34:00,22:34:00,PN,1",
+            "N1,23:00:00,23:00:00,MN,2",
+            "B1,17:00:00,17:00:00,U,1",
+            "B1,17:40:00,17:40:00,RW,2",
+            "B1,18:30:00,18:30:00,FW,3",
+            "B1,19:40:00,19:40:00,MW,4",
+        ],
+    )
+    return path
+
+
+def test_a_marc_station_listed_once_per_way_says_its_next_train_each_way(
+    tmp_path, monkeypatch
+) -> None:
+    """Stephen, 2026-10-24, Baltimore Penn Station on a Saturday at 5:39 pm: the card said only
+    the train to Martin Airport. Both ways are said, named as a rider says them."""
+    feed = _mta_style_marc(tmp_path / "marc")
+    saturday = at(2026, 10, 24, 17, 39)
+    expected = [
+        ("MARC", "Penn Line", "next", None, "Martin Airport MARC", 22 * 60 + 34, True),
+        ("MARC", "Penn Line", "next", None, "Union Station MARC", 18 * 60, True),
+    ]
+    built_doc, _report = build.build({"marc": feed}, date(2026, 10, 20))
+    marc = transit.parse(built_doc)
+    # One station for both platforms, named without its way; the line named from its long name.
+    assert [s.name for s in marc.stops if "Penn" in s.name] == ["Penn Station MARC"]
+    assert {p.route for p in marc.patterns} == {"Penn Line", "Brunswick Line"}
+    for point in ([-76.615715, 39.307198], [-76.615769, 39.307223], PENN_STATION):
+        assert times_at(marc, point, saturday) == expected
+
+    # A file built before the platforms were joined (the one installed on 2026-10-24): the card
+    # reads every platform of the station, and each line's ways against its own trains here.
+    monkeypatch.setattr(build, "PLATFORM_M", 0.0)
+    monkeypatch.setattr(
+        build, "route_names", lambda feed, metro, **_kw: {"11704": "MARC", "11705": "MARC"}
+    )
+    old_doc, _report = build.build({"marc": feed}, date(2026, 10, 20))
+    old = transit.parse(old_doc)
+    assert len([s for s in old.stops if "Penn" in s.name]) == 2
+    assert [
+        (t.kind, t.toward, t.depart) for t in transit.station_times(old, PENN_STATION, saturday)
+    ] == [(kind, toward, depart) for _s, _r, kind, _e, toward, depart, _t in expected]
+
+
+def test_a_rail_stops_name_is_said_as_a_rider_says_it() -> None:
+    assert transit.station_name("PENN STATION MARC nb", "MARC") == "Penn Station MARC"
+    assert transit.station_name("UNION STATION MARC Washington", "MARC") == "Union Station MARC"
+    assert transit.station_name("BWI RAIL STATION MARC sb", "MARC") == "BWI Rail Station MARC"
+    assert transit.station_name("POINT OF ROCKS MARC eb", "MARC") == "Point of Rocks MARC"
+    assert transit.station_name("HARPERS FERRY W VA MARC wb", "MARC") == "Harpers Ferry W VA MARC"
+    assert transit.station_name("Baltimore Penn Station", "MARC") == "Baltimore Penn Station"
+    assert transit.station_name("Union Station VRE", "VRE") == "Union Station VRE"
+
+
 def test_a_station_says_plainly_when_no_more_trains_run_today(schedule) -> None:
     late = times_at(schedule, UNION_STATION, at(2026, 9, 30, 23, 30))
     assert ("MARC", "Penn Line", "none", None, "Baltimore Penn Station", None, True) in late
