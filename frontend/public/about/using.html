@@ -740,6 +740,10 @@ on.</li>
 <a href="/about/trails.html">Mountain Bike, Mountain Goat and Gravel</a>.</li>
 <li>In Plan, also <strong>Scenic</strong> and <strong>DC permits</strong>, both off by default. Neither
 changes the route.</li>
+<li><strong>Closures</strong> show on the map from zoom 11, with or without a route: red where a road or
+path is closed, orange where a bike lane is blocked or construction can be ridden past. Each leaves the map
+once it ends. DDOT's permits show only with DC permits on. More:
+<a href="/about/routing.html#closures">Closures</a>.</li>
 </ul>
 <h3>Finding things on the map</h3>
 <ul>
@@ -764,42 +768,46 @@ OSM</strong> to fix the map itself.</li>
 <p>Save and load, on Plan's bottom bar or in Go's Menu, keeps, shares and exports routes, and opens files from other apps.</p>
 <figure id="fig-use-save" class="has-narrow">
 <div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
-<svg viewBox="0 0 760 240" role="img" aria-labelledby="fig-use-save-t fig-use-save-d" focusable="false" style="min-width:547px">
+<svg viewBox="0 0 760 286" role="img" aria-labelledby="fig-use-save-t fig-use-save-d" focusable="false" style="min-width:547px">
 <title id="fig-use-save-t">Where a route can go</title>
-<desc id="fig-use-save-d">From a route you can: Save route, to My routes, up to 200 with versions; Keep for offline, up to 10 on this device; Share it as a link, a ride link or an image; Export it as GPX, FIT, TCX, a PDF or a lock-screen image; or Send to Garmin.</desc>
+<desc id="fig-use-save-d">From a route you can: Save route, to My routes, up to 200 with versions; Keep for offline, up to 10 on this device; Share it as a link, a ride link or an image; Export it as GPX, FIT, TCX, a PDF or a lock-screen image; or Send to Garmin or Send to Wahoo.</desc>
 <defs><marker id="ah-use-save" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
-<rect class="bxa" x="10" y="92" width="150" height="50" rx="6"/>
-<text class="tb" x="85.0" y="121.5" text-anchor="middle">Your route</text>
-<path class="ar" d="M162,117 L238,27" marker-end="url(#ah-use-save)"/>
+<rect class="bxa" x="10" y="115" width="150" height="50" rx="6"/>
+<text class="tb" x="85.0" y="144.5" text-anchor="middle">Your route</text>
+<path class="ar" d="M162,140 L238,27" marker-end="url(#ah-use-save)"/>
 <rect class="bx" x="240" y="8" width="170" height="38" rx="6"/>
 <text class="tb" x="325.0" y="31.5" text-anchor="middle">Save route</text>
 <text class="ts" x="422" y="32" text-anchor="start">My routes, up to 200, with versions</text>
-<path class="ar" d="M162,117 L238,73" marker-end="url(#ah-use-save)"/>
+<path class="ar" d="M162,140 L238,73" marker-end="url(#ah-use-save)"/>
 <rect class="bx" x="240" y="54" width="170" height="38" rx="6"/>
 <text class="tb" x="325.0" y="77.5" text-anchor="middle">Keep for offline</text>
 <text class="ts" x="422" y="78" text-anchor="start">up to 10, on this device</text>
-<path class="ar" d="M162,117 L238,119" marker-end="url(#ah-use-save)"/>
+<path class="ar" d="M162,140 L238,119" marker-end="url(#ah-use-save)"/>
 <rect class="bx" x="240" y="100" width="170" height="38" rx="6"/>
 <text class="tb" x="325.0" y="123.5" text-anchor="middle">Share</text>
 <text class="ts" x="422" y="124" text-anchor="start">a link, a ride link, or an image</text>
-<path class="ar" d="M162,117 L238,165" marker-end="url(#ah-use-save)"/>
+<path class="ar" d="M162,140 L238,165" marker-end="url(#ah-use-save)"/>
 <rect class="bx" x="240" y="146" width="170" height="38" rx="6"/>
 <text class="tb" x="325.0" y="169.5" text-anchor="middle">Export</text>
 <text class="ts" x="422" y="170" text-anchor="start">GPX, FIT, TCX, PDF, lock-screen image</text>
-<path class="ar" d="M162,117 L238,211" marker-end="url(#ah-use-save)"/>
+<path class="ar" d="M162,140 L238,211" marker-end="url(#ah-use-save)"/>
 <rect class="bx" x="240" y="192" width="170" height="38" rx="6"/>
 <text class="tb" x="325.0" y="215.5" text-anchor="middle">Send to Garmin</text>
 <text class="ts" x="422" y="216" text-anchor="start">straight to Garmin Connect</text>
+<path class="ar" d="M162,140 L238,257" marker-end="url(#ah-use-save)"/>
+<rect class="bx" x="240" y="238" width="170" height="38" rx="6"/>
+<text class="tb" x="325.0" y="261.5" text-anchor="middle">Send to Wahoo</text>
+<text class="ts" x="422" y="262" text-anchor="start">straight to your Wahoo app</text>
 </svg>
 </div>
 <div class="fig-narrow">
-<svg viewBox="0 0 320 480" role="img" aria-labelledby="fig-use-save-n-t fig-use-save-n-d" focusable="false">
+<svg viewBox="0 0 320 562" role="img" aria-labelledby="fig-use-save-n-t fig-use-save-n-d" focusable="false">
 <title id="fig-use-save-n-t">Where a route can go</title>
-<desc id="fig-use-save-n-d">From a route you can: Save route, to My routes, up to 200 with versions; Keep for offline, up to 10 on this device; Share it as a link, a ride link or an image; Export it as GPX, FIT, TCX, a PDF or a lock-screen image; or Send to Garmin.</desc>
+<desc id="fig-use-save-n-d">From a route you can: Save route, to My routes, up to 200 with versions; Keep for offline, up to 10 on this device; Share it as a link, a ride link or an image; Export it as GPX, FIT, TCX, a PDF or a lock-screen image; or Send to Garmin or Send to Wahoo.</desc>
 <defs><marker id="ah-use-save-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
 <rect class="bxa" x="10" y="8" width="300" height="40" rx="6"/>
 <text class="tb" x="160.0" y="33.5" text-anchor="middle">Your route</text>
-<path class="ar" d="M24,48 L24,435"/>
+<path class="ar" d="M24,48 L24,517"/>
 <rect class="bx" x="42" y="70" width="268" height="74" rx="6"/>
 <text class="tb" x="176.0" y="92.5" text-anchor="middle">Save route</text>
 <text class="ts" x="176.0" y="112.5" text-anchor="middle">My routes, up to 200,</text>
@@ -822,6 +830,10 @@ OSM</strong> to fix the map itself.</li>
 <text class="tb" x="176.0" y="430.5" text-anchor="middle">Send to Garmin</text>
 <text class="ts" x="176.0" y="450.5" text-anchor="middle">straight to Garmin Connect</text>
 <path class="ar" d="M24,435 L40,435" marker-end="url(#ah-use-save-n)"/>
+<rect class="bx" x="42" y="480" width="268" height="74" rx="6"/>
+<text class="tb" x="176.0" y="512.5" text-anchor="middle">Send to Wahoo</text>
+<text class="ts" x="176.0" y="532.5" text-anchor="middle">straight to your Wahoo app</text>
+<path class="ar" d="M24,517 L40,517" marker-end="url(#ah-use-save-n)"/>
 </svg>
 </div>
 <figcaption>All of these are in Save and load, and Share is under the route too.</figcaption>
@@ -984,8 +996,8 @@ Rider off the back; Crash; Mechanical or flat, stopping; Wrong turn; Lost, separ
 Wait up, regroup; and Other. A Mass Ride has Extensive rider spread; Emergency vehicle coming through;
 Aggressive person; Medical emergency or crash; Rerouting, road closed; Lost, separated from the ride;
 and Other. Crash and Medical ask first and offer to call 911.</li>
-<li>In Alert, Other, where your browser supports it, <strong>Speak</strong> fills the box from what you
-say; check it, then tap Send. It needs a connection: your browser's maker (such as Google for Chrome or
+<li>In Alert, Other, on the website where your browser supports it (not in the Android app),
+<strong>Speak</strong> fills the box from what you say; check it, then tap Send. It needs a connection: your browser's maker (such as Google for Chrome or
 Apple for Safari) turns the recording into text.</li>
 <li>The server keeps dots, the leader's route and path, and alerts in memory only, for 2 minutes. A
 phone's random ride code and its alert counts are forgotten 2 minutes after it last checked in.</li>
