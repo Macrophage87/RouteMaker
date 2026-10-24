@@ -671,8 +671,6 @@ details.how summary {
 
 .rail-popup .maplibregl-popup-close-button {
   color: var(--text-muted);
-  font-size: 18px;
-  padding: 0 6px;
 }
 
 .station-name {
@@ -1688,6 +1686,12 @@ dialog.road-info::backdrop {
   gap: 12px;
 }
 
+/* Close, a finger's size, as the ride's side menus' are. */
+.road-info-body header button {
+  min-height: 44px;
+  min-width: 44px;
+}
+
 .road-info-body h2 {
   margin: 0;
   font-size: 1.2rem;
@@ -2239,7 +2243,7 @@ ul.station-links {
   border-radius: 4px;
 }
 .junction-popup .maplibregl-popup-content {
-  padding: 8px 28px 8px 10px;
+  padding: 8px 10px;
   max-width: 260px;
   background: var(--bg);
   color: var(--text);
@@ -8617,4 +8621,25 @@ details.fold > summary .icon {
 .ride-next-stop p {
   margin: 0;
   font-weight: 700;
+}
+
+/* A map card's X, a finger's size (the owner, 2026-10-24: "Some of the various popups that you click on during a ride
+   have very small x's"): 44 px square in the card's top corner. maplibre puts the X after the card's words, so a
+   space floated first keeps the words from running under it. */
+.maplibregl-popup .maplibregl-popup-close-button {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  font-size: 30px;
+  line-height: 1;
+  border-radius: 0 8px 0 8px;
+}
+.maplibregl-popup-content {
+  display: flow-root;
+}
+.maplibregl-popup-content:has(> .maplibregl-popup-close-button)::before {
+  content: "";
+  float: right;
+  width: 34px;
+  height: 36px;
 }

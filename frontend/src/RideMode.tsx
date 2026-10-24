@@ -2353,6 +2353,7 @@ export function RideMode({
                 title="Detour"
                 aria-expanded={detourOpen}
                 aria-controls={detourId}
+                data-idle-close
                 onClick={() => openMenu(detourOpen ? null : "detour")}
               >
                 <Icon name="detour" size={24} />
@@ -2468,6 +2469,7 @@ export function RideMode({
                 title={DOCK_NAME}
                 aria-expanded={dockOpen}
                 aria-controls={dockId}
+                data-idle-close
                 onClick={() => openMenu(dockOpen ? null : "dock")}
               >
                 <Icon name="bikeshare" size={20} />
@@ -2536,6 +2538,7 @@ export function RideMode({
                 aria-label={RIDE_311_NAME}
                 aria-expanded={menu311}
                 aria-controls={menu311Id}
+                data-idle-close
                 onClick={() => openMenu(menu311 ? null : "311")}
               >
                 <Icon name="flag" size={18} />
@@ -2568,6 +2571,7 @@ export function RideMode({
             title={RIDE_SETTINGS_TEXT}
             aria-expanded={settingsOpen}
             aria-controls={`${settingsId}-settings`}
+            data-idle-close
             onClick={() => setSettingsOpen(!settingsOpen)}
           >
             <Icon name="more" size={24} />

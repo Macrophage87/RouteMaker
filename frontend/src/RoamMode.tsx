@@ -473,6 +473,7 @@ export function RoamMode({
               title="Detour"
               aria-expanded={detourOpen}
               aria-controls={detourId}
+              data-idle-close
               onClick={() => setDetourOpen(!detourOpen)}
             >
               <Icon name="detour" size={24} />

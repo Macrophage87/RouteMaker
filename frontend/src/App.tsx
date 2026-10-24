@@ -112,7 +112,7 @@ import { FEDERAL_POINTS_NONE, type FederalStatus } from "./lib/federalLegend.ts"
 import { federalAreaAt, federalRouteLines, pointAreas, stopWarningShort } from "./lib/federalStops.ts";
 import { addCoverageMask, fetchCoverage, watchForCapacity, watchForFacilities, watchCentre, watchZoom } from "./lib/mapGlue.ts";
 import { STILL_RIDING_SAID, forgetStaleRideEntry, holdBackDuringRide } from "./lib/rideBack.ts";
-import { RIDE_PANEL_OPEN, watchIdleRecentre } from "./lib/idleRecentre.ts";
+import { RIDE_PANEL_OPEN, closeIdlePanels, watchIdleRecentre } from "./lib/idleRecentre.ts";
 import { afterHistoryStep } from "./lib/rideFocus.ts";
 import { isMassRide, massBandsChangeSaid, massBandsSaid } from "./lib/massCapacity.ts";
 import { movePoint, planEdits, travelSaid, type Snapshot as PlanSnapshot } from "./lib/planEdits.ts";
@@ -790,6 +790,8 @@ export function App() {
   // Accessibility mode (OWNER-DECISIONS 455; lib/accessMode.ts): off unless turned on, kept on this device.
   // Map tools is on the page only while it is on.
   const [accessMode, setAccessMode] = useState(() => readAccessMode());
+  const accessModeNow = useRef(accessMode);
+  accessModeNow.current = accessMode;
   const toolsToggleRef = useRef<HTMLButtonElement>(null);
   const focusToolsNext = useRef(false);
   const focusAtPress = useRef<Element | null>(null);
@@ -3645,6 +3647,8 @@ export function App() {
     return watchIdleRecentre(window, {
       away: () => !followNow.current || movedByHand.current,
       panelOpen: () => document.querySelector(RIDE_PANEL_OPEN) !== null,
+      // The cards and side menus close first, but never in accessibility mode (lib/idleRecentre.ts).
+      closePanels: () => !accessModeNow.current && closeIdlePanels(document),
       recentre: () => {
         movedByHand.current = false;
         setFollow(true);
