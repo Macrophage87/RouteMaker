@@ -124,10 +124,11 @@ You stay responsible for riding safely; the route can be wrong.
 - Plan a route, then press "Start ride", on the bar at the top of the map (once you've picked a
   route), under the route's figures or in Directions. The
   browser asks to use your location.
-- The first time, it asks how to say the cues: with your screen reader, RouteMaker's voice,
-  both, or neither (on screen only), and how much: Full (every turn, early and again close to
-  it), Stoker (each turn once ahead and as it happens, busy crossings and stops: for the rider
-  behind on a tandem) or Quiet (only arrival). Both choices stay on this device; change them in
+- The ride starts at once. The cues use your Settings (Riding): who says them, your screen
+  reader, RouteMaker's voice, both, or neither (on screen only), and how much: Full (every turn,
+  early and again close to it), Stoker (each turn once ahead and as it happens, busy crossings and
+  stops: for the rider behind on a tandem) or Quiet (only arrival). Until you change them,
+  RouteMaker's voice says every turn. Both choices stay on this device; change them in
   "Ride settings" during a ride, or in Settings.
 - "Where am I?" (it also re-centres the map on you) says the street you are on, the next turn and the distance to the next stop
   and the end. On a long trail away from roads it says the trail and a distance from its last

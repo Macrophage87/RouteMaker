@@ -885,7 +885,6 @@ export function App() {
     roam?: boolean;
     n: number;
   } | null>(null);
-  const [rideAsk, setRideAsk] = useState(false);
   const [rideView, setRideView] = useState<RideView | null>(null);
   const [follow, setFollow] = useState(true);
   // Track-up by default in a ride (v0.7.0, "Go riding fixes" item 1); the ride settings' switch is the
@@ -903,7 +902,6 @@ export function App() {
     setRideTextState(size);
   }, []);
   const startRideRef = useRef<HTMLButtonElement>(null);
-  const rideStartFirstRef = useRef<HTMLButtonElement>(null);
   // The Start ride button pressed (under the figures or in Directions): where the focus goes back to.
   const rideOpener = useRef<HTMLElement | null>(null);
   const rideCircle = rideView?.rider ? { centre: rideView.rider.point, radiusM: rideView.rider.accuracyM } : null;
@@ -973,13 +971,12 @@ export function App() {
   // Go's first route, then a better one (v0.7.0, "Faster routing"; lib/progressive.ts): what the full plan reads when
   // it comes (the route shown, and whether the rider has pressed Start), and the route sentence held while a full
   // plan replaces its first route, so the swap is said once, by its own line.
-  const shownNow = useRef<{ answer: RouteResponse | null; riding: boolean; startAsked: boolean; choice: number }>({
+  const shownNow = useRef<{ answer: RouteResponse | null; riding: boolean; choice: number }>({
     answer: null,
     riding: false,
-    startAsked: false,
     choice: 0,
   });
-  shownNow.current = { answer, riding, startAsked: rideAsk, choice };
+  shownNow.current = { answer, riding, choice };
   const routeSaidNow = useRef("");
   const [refinedHeld, setRefinedHeld] = useState<{ route: RouteResponse; said: string } | null>(null);
   // Go's early start (step 4): a request made before the tap, kept for the tap that makes the same request.
@@ -1096,7 +1093,7 @@ export function App() {
       // focus stays where it is, and the route's own sentence is not said again.
       onRefined: (plan: Plan, result: RouteResult) => {
         const now = shownNow.current;
-        if (!result.ok || !takesRefined(now.answer, now.riding, now.startAsked) || !now.answer) return;
+        if (!result.ok || !takesRefined(now.answer, now.riding) || !now.answer) return;
         // A first route not yet said (it stood less than a moment) is not held: the full plan's sentence is the one said.
         const heard = routeSaidNow.current;
         const line = heard ? betterRouteSaid(now.answer, result.route) : null;
@@ -1112,7 +1109,7 @@ export function App() {
       // pressed or a ride is on, not for a long ride, and not on a ride type that offers neither.
       after: (plan: Plan, final: RouteResult) => {
         const now = shownNow.current;
-        if (!final.ok || final.route.provisional || modeRef.current !== "go" || now.riding || now.startAsked) return null;
+        if (!final.ok || final.route.provisional || modeRef.current !== "go" || now.riding) return null;
         // Nor for a plan with legs drawn in Plan's manual mode: the rider drew that way on purpose.
         if (!offersNeighbours(plan.preset) || plan.confirmLong || drawnLegs(plan.points).length) return null;
         // Bikeshare keeps the plan's own docks: only the ride between them changes.
@@ -2955,7 +2952,7 @@ export function App() {
     return { led, said: unled ? BROADCAST_NO_LEAD : said };
   };
 
-  // Start ride (plan Q1, Q3): the first ride asks how to say the cues; later rides start at once. The
+  // Start ride (plan Q1, Q3): the ride starts at once, with the cues as Settings > Ride mode has them. The
   // voice is unlocked inside this press (iOS speaks only after a gesture).
   // unlocked: Start's own press has already unlocked the voice (startRideChecked), before its closure check.
   // `rest`: Ride the rest's own route (rideRest, below), ridden in place of the plan's.
@@ -2983,7 +2980,6 @@ export function App() {
         .then(() => setKeptVersion((v) => v + 1))
         .catch(() => undefined);
     }
-    setRideAsk(false);
     setFollow(true);
     setRideView(null);
     setRiding(true);
@@ -3024,12 +3020,9 @@ export function App() {
   const startRide = (unlocked = false) => {
     const opener = document.activeElement;
     rideOpener.current = opener instanceof HTMLElement && opener.closest(".start-ride, .description-actions") ? opener : startRideRef.current;
-    // Go goes straight to the ride (the owner, 2026-10-11 20:23 UTC: "just ... find a destination and go"):
-    // no first-ride question; the cues are Settings > Ride mode's (the defaults until changed there). Plan asks once.
-    if (!ridePrefs.chosen && mode !== "go") {
-      setRideAsk(true);
-      return;
-    }
+    // Straight to the ride, from Go (the owner, 2026-10-11 20:23 UTC: "just ... find a destination and go") and from
+    // Plan (2026-10-24: "When you start the ride in plan it should just start"): no first-ride question; the cues are
+    // Settings > Ride mode's (the defaults until changed there).
     beginRide(ridePrefs, unlocked);
   };
   // ---- v0.7.0: saved routes, the verbatim GPX and the closure check ----
@@ -3273,13 +3266,12 @@ export function App() {
       setComputerAsk("start");
       return;
     }
-    const unlocked = ridePrefs.chosen || mode === "go";
     if (!shown) return startRide(false);
     // A second press while the first one's check runs is ignored (checkThen).
     if (closureChecking.current) return;
     // Unlocked silently inside the press; "Ride started." is said once the ride starts, after the
     // check or "Ride it anyway" (review F1: never before a closure is found).
-    if (unlocked) primeRideVoice(ridePrefs);
+    primeRideVoice(ridePrefs);
     // A slow check is said politely.
     const slow = window.setTimeout(() => announce(CHECKING_CLOSURES), CLOSURE_SLOW_MS);
     void checkThen("ride", shown.geometry.coordinates, false, () => {
@@ -3300,7 +3292,7 @@ export function App() {
       setComputerAsk("broadcast");
       return;
     }
-    if (ridePrefs.chosen || mode === "go") primeRideVoice(ridePrefs);
+    primeRideVoice(ridePrefs);
     setBroadcastNote((n) => ({ text: "", count: n.count }));
     void shareRoute(true).then(({ led, said }) => {
       if (led) startRideChecked();
@@ -3679,11 +3671,6 @@ export function App() {
     endedRide.current = null;
     setRideEnded(null);
   }, [planEnd, riding, rideEnded]);
-  // The first ride's question takes the focus to its heading, so its safety note is read before the
-  // choices (VoiceOver skips a dialog's description when the focus lands inside it).
-  useEffect(() => {
-    if (rideAsk) document.getElementById("ride-ask-title")?.focus();
-  }, [rideAsk]);
 
   // The map frames a route in the part the panel does not cover.
   const framePadding = useCallback((): Frame => {
@@ -4603,8 +4590,7 @@ export function App() {
         stale, routeHeadingRef, status, announcement, slow, preset, dials, points, cancelLong, planButtonRef,
         confirmLong, errorRef, retry, shown, answer: picked, choice, aroundAvoid, setAroundAvoid, routedPoints, federalRoute,
         narrow, setJunctionFocus, setScrubPoint, choose, startRide: startRideChecked, broadcastRide: canShare ? { onPress: broadcastRide, note: broadcastNote } : null, startRideRef, rideSize, setDials,
-        waterStatus, waterAlong, addWaterStop, rideAsk, setRideAsk, backToRideOpener, ridePrefs, changeRidePrefs,
-        rideStartFirstRef, beginRide, climbsOn, climbsStatus, climbsAlong, light,
+        waterStatus, waterAlong, addWaterStop, climbsOn, climbsStatus, climbsAlong, light,
       }}
     />
   );

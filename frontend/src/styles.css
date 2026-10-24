@@ -4578,17 +4578,6 @@ details.zoom-notes {
   min-height: 44px;
 }
 
-.ride-ask {
-  border: 2px solid var(--accent);
-  border-radius: 8px;
-  padding: 8px 12px;
-  margin: 10px 0;
-}
-
-.ride-ask h3 {
-  margin: 0 0 4px;
-}
-
 .start-ride {
   align-items: center;
 }

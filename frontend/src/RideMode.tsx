@@ -456,7 +456,7 @@ export function RideSettingsFields({
   prefs: RidePrefs;
   onChange: (prefs: RidePrefs) => void;
   idBase: string;
-  /** Settings: two pickers, with what each level says behind an (i) (the first Start ride keeps the radios). */
+  /** Settings: two pickers, with what each level says behind an (i); the ride's own settings keep the radios. */
   compact?: boolean;
 }) {
   if (compact) {

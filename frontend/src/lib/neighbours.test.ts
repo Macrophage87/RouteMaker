@@ -399,7 +399,7 @@ test("App: asked for in Go only, before Start, on the ride types that offer them
   const start = app.indexOf("after: (plan: Plan, final: RouteResult) => {");
   const body = app.slice(start, app.indexOf("onAfter:", start));
   assert.ok(start > 0);
-  assert.match(body, /modeRef\.current !== "go" \|\| now\.riding \|\| now\.startAsked/);
+  assert.match(body, /modeRef\.current !== "go" \|\| now\.riding\)/);
   assert.match(body, /!offersNeighbours\(plan\.preset\) \|\| plan\.confirmLong/);
   assert.match(app, /announce\(neighboursSaid\(kept, displacedBy\(answer, picked, kept\)\)\)/);
   // The routes kept in place are the answer's own: the rider's choice, held to their count, and kept for the same answer.

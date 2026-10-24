@@ -285,16 +285,16 @@ for (const [label, size] of [["phone", { width: 390, height: 844, mobile: true }
   await p.eval("document.querySelector('.plan-map-bar .plan-bar-start').focus(); true");
   await p.enter();
   await sleep(500);
-  const asked = await p.eval("(() => { const d = document.querySelector('.start-computer-dialog'); return { open: !!d?.open, focus: document.activeElement?.textContent.trim(), riding: !!document.querySelector('section.ride, .ride-ask:not([hidden])') }; })()");
+  const asked = await p.eval("(() => { const d = document.querySelector('.start-computer-dialog'); return { open: !!d?.open, focus: document.activeElement?.textContent.trim(), riding: !!document.querySelector('section.ride') }; })()");
   const dialog = await axNode(p, ".start-computer-dialog");
   await p.escape();
   await sleep(300);
-  const back = await p.eval("({ closed: !document.querySelector('.start-computer-dialog').open, focus: document.activeElement === document.querySelector('.plan-map-bar .plan-bar-start'), riding: !!document.querySelector('section.ride, .ride-ask:not([hidden])') })");
+  const back = await p.eval("({ closed: !document.querySelector('.start-computer-dialog').open, focus: document.activeElement === document.querySelector('.plan-map-bar .plan-bar-start'), riding: !!document.querySelector('section.ride') })");
   await p.eval("document.querySelector('.plan-map-bar .plan-bar-start').click(); true");
   await sleep(400);
   await p.eval("[...document.querySelectorAll('.start-computer-dialog button')].find((b) => b.textContent.trim() === 'Start anyway').click(); true");
-  // Start anyway goes on as Start ride does: to the ride, or first to how the ride is told (Plan's first ride).
-  const rode = await p.waitFor("!!document.querySelector('section.ride') || !!document.querySelector('.ride-ask:not([hidden])')", 8000);
+  // Start anyway goes on as Start ride does: straight to the ride.
+  const rode = await p.waitFor("!!document.querySelector('section.ride')", 8000);
   check("start ride on a computer: a dialog named 'This looks like a computer' asks first, Go back focused; Escape goes back to Start ride, and Start anyway goes on to the ride",
     asked.open && asked.focus === "Go back" && !asked.riding && dialog?.role === "dialog" && dialog?.name === "This looks like a computer" && back.closed && back.focus && !back.riding && rode,
     JSON.stringify({ asked, dialog: [dialog?.role, dialog?.name], back, rode }));
@@ -2774,6 +2774,8 @@ const levelSlider = `${EDITOR} input[type=range]`;
   const hash = hashFor("default", 70);
   // Ridden from Plan's Start ride: a phone opens a link in Go now (the owner, 2026-10-19), so the tab is in Plan.
   await p.s("Page.addScriptToEvaluateOnNewDocument", { source: "try { sessionStorage.setItem('routemaker.tab-mode', 'plan'); } catch {}" });
+  // The cues as Settings > Ride mode would have them (Both, Full): Plan's Start ride asks nothing and uses them.
+  await p.s("Page.addScriptToEvaluateOnNewDocument", { source: `try { localStorage.setItem('routemaker.ride', '{"output":"both","verbosity":"full","chosen":true}'); } catch {}` });
   await p.s("Page.navigate", { url: `${ORIGIN}/${hash}` });
   if (!(await p.waitFor("!!document.querySelector('.start-ride button')", 40000))) throw new Error("no Start ride button");
   await sleep(800);
@@ -2781,17 +2783,14 @@ const levelSlider = `${EDITOR} input[type=range]`;
   // Every sentence the ride's regions take, in order (each change counts, as a screen reader hears it).
   await p.eval("(() => { window.__heard = []; const last = new WeakMap(); new MutationObserver(() => { for (const e of document.querySelectorAll('.ride [role=status], .ride [role=alert]')) { const t = e.textContent.trim(); if (t && last.get(e) !== e.textContent) { last.set(e, e.textContent); window.__heard.push((e.getAttribute('role') === 'alert' ? '!' : '') + t); } } }).observe(document.body, { subtree: true, childList: true, characterData: true }); return true; })()");
 
-  // The first ride asks how to say the cues; its heading takes the focus, so the safety note is read first.
+  // Start ride in Plan starts the ride at once (the owner, 2026-10-24: "When you start the ride in plan it should just
+  // start"): no question between, as in Go.
   await p.eval("document.querySelector('.start-ride button').click(); true");
-  await sleep(300);
-  const ask = await p.eval("(() => { const d = document.querySelector('.ride-ask'); return { shown: !!d, role: d?.getAttribute('role'), focus: document.activeElement?.id === 'ride-ask-title' && document.activeElement.closest('.ride-ask') === d, safety: d?.textContent.includes('you stay responsible') }; })()");
-  check("ride: the first Start ride asks how to say the cues, with the safety note, and takes the focus", ask.shown && ask.role === "dialog" && ask.focus && ask.safety, JSON.stringify(ask));
-  await p.eval("(() => { const labels = [...document.querySelectorAll('.ride-ask label')]; labels.find((l) => l.textContent === 'Both')?.querySelector('input').click(); labels.find((l) => l.textContent.startsWith('Full'))?.querySelector('input').click(); [...document.querySelectorAll('.ride-ask button')].find((b) => b.textContent === 'Start').click(); return true; })()");
   await sleep(800);
-  const started = await p.eval("(() => ({ ride: !!document.querySelector('section.ride'), planner: getComputedStyle(document.querySelector('#route-planner')).display === 'none', focus: document.activeElement?.id, speech: window.__speech.slice(), wake: window.__wake.slice(), kept: localStorage.getItem('routemaker.ride') }))()");
+  const started = await p.eval("(() => ({ ride: !!document.querySelector('section.ride'), planner: getComputedStyle(document.querySelector('#route-planner')).display === 'none', focus: document.activeElement?.id, speech: window.__speech.slice(), wake: window.__wake.slice(), kept: localStorage.getItem('routemaker.ride'), ask: !!document.querySelector('.ride-ask') }))()");
   check("ride: Start hides the planner, focuses the ride's heading, unlocks the voice and holds the screen on",
     started.ride && started.planner === true && started.focus === "ride-heading" && started.speech.includes("Ride started.") && started.speech[started.speech.indexOf("Ride started.") + 1] !== "<cancel>" && started.wake.filter((w) => w === "request").length === 1, JSON.stringify(started));
-  check("ride: the choices are kept on this device, and nothing else", started.kept === JSON.stringify({ output: "both", verbosity: "full", chosen: true }), started.kept);
+  check("ride: Plan's Start ride starts at once, with no question between, and the cues as Settings has them", started.ride && !started.ask && started.kept === JSON.stringify({ output: "both", verbosity: "full", chosen: true }), JSON.stringify(started));
   await p.shot(`${SHOTS}/ride_start.png`);
 
   // Along the line towards the turn, a fix every 400 ms (the override's change fires the watch).

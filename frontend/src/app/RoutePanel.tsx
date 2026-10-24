@@ -3,7 +3,7 @@
 // totals in one line with Info beside them, the stress bar, one warning line with its count, one line for
 // each note, Start with GPX, Link and More beside it, then one closed line for each fold. Go shows the same
 // route in a few lines: the time, the distance, the stress bar, the warning line and Start. App.tsx keeps
-// the state and the effects; the questions, the errors and Start ride's question are as they were.
+// the state and the effects; the questions, the errors and Start ride are as they were.
 import { choiceColours } from "../lib/routeChoice.ts";
 import { useId, useState, type Dispatch, type ReactNode, type RefObject, type SetStateAction } from "react";
 import type { BikeshareOption, RouteError, RouteResponse } from "../lib/api.ts";
@@ -29,8 +29,6 @@ import { ElevationChart } from "../ElevationChart.tsx";
 import { tripRoute } from "../lib/tripRides.ts";
 import { chartKind, corkerFigure, foldName, usableProfile } from "../lib/profileChart.ts";
 import { RouteDescription } from "../RouteDescription.tsx";
-import { RIDE_SAFETY, RideSettingsFields } from "../RideMode.tsx";
-import type { RidePrefs } from "../lib/rideOutput.ts";
 import { RIDE_TOO_LONG } from "../lib/navigate.ts";
 import { ridesHidden } from "../lib/nativeShell.ts";
 import { restOffered, rideTripOf, rideable as rideableRoute, ridesLine } from "../lib/rideTrip.ts";
@@ -239,13 +237,6 @@ export interface RouteSectionProps {
   waterStatus: WaterStatus;
   waterAlong: WaterAlong[] | null;
   addWaterStop: (item: WaterAlong) => void;
-  rideAsk: boolean;
-  setRideAsk: (on: boolean) => void;
-  backToRideOpener: () => void;
-  ridePrefs: RidePrefs;
-  changeRidePrefs: (next: RidePrefs) => void;
-  rideStartFirstRef: RefObject<HTMLButtonElement | null>;
-  beginRide: (prefs: RidePrefs) => void;
   /** The Climbs layer (lib/climbs.ts): the switch, its data's status and the climbs the route rides. */
   climbsOn: boolean;
   climbsStatus: ClimbsStatus;
@@ -272,9 +263,9 @@ export interface TransitControls {
   onRideRest: () => void;
 }
 
-/** The planner's Route section: planning, the long-ride question, errors, the route summary and Start ride's question. */
+/** The planner's Route section: planning, the long-ride question, errors, the route summary and Start ride. */
 export function RouteSection(props: RouteSectionProps) {
-  const { stale, routeHeadingRef, status, announcement, slow, preset, dials, points, cancelLong, planButtonRef, confirmLong, errorRef, retry, shown, answer, choice, aroundAvoid, setAroundAvoid, routedPoints, federalRoute, narrow, setJunctionFocus, setScrubPoint, choose, startRide, broadcastRide, startRideRef, rideSize, setDials, waterStatus, waterAlong, addWaterStop, rideAsk, setRideAsk, backToRideOpener, ridePrefs, changeRidePrefs, rideStartFirstRef, beginRide, climbsOn, climbsStatus, climbsAlong, mode, actions, stations, go, transitControls, light } = props;
+  const { stale, routeHeadingRef, status, announcement, slow, preset, dials, points, cancelLong, planButtonRef, confirmLong, errorRef, retry, shown, answer, choice, aroundAvoid, setAroundAvoid, routedPoints, federalRoute, narrow, setJunctionFocus, setScrubPoint, choose, startRide, broadcastRide, startRideRef, rideSize, setDials, waterStatus, waterAlong, addWaterStop, climbsOn, climbsStatus, climbsAlong, mode, actions, stations, go, transitControls, light } = props;
   const goMode = mode === "go";
   return (
     <section key="route" aria-labelledby="route-heading" aria-busy={stale} className={goMode ? "route-section go-route" : "route-section"}>
@@ -361,48 +352,6 @@ export function RouteSection(props: RouteSectionProps) {
           transitControls={{ ...transitControls, busy: stale }}
           light={light}
         />
-      )}
-      {shown && rideAsk && (
-        <div className="ride-ask" role="dialog" aria-labelledby="ride-ask-title" aria-describedby="ride-ask-safety"
-          onKeyDown={(event) => {
-            if (isCancelKey(event.key)) {
-              event.preventDefault();
-              setRideAsk(false);
-              backToRideOpener();
-            }
-          }}
-        >
-          <h3 id="ride-ask-title" tabIndex={-1}>
-            Start ride
-          </h3>
-          <p id="ride-ask-safety" className="hint">
-            {RIDE_SAFETY}
-          </p>
-          <RideSettingsFields prefs={ridePrefs} onChange={changeRidePrefs} idBase="ride-ask" />
-          <div className="actions">
-            <button
-              type="button"
-              ref={rideStartFirstRef}
-              onClick={() => {
-                const prefs = { ...ridePrefs, chosen: true };
-                changeRidePrefs(prefs);
-                beginRide(prefs);
-              }}
-            >
-              Start
-            </button>
-            <button
-              type="button"
-              className="secondary"
-              onClick={() => {
-                setRideAsk(false);
-                backToRideOpener();
-              }}
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
       )}
     </section>
   );
