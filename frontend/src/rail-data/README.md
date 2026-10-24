@@ -17,7 +17,7 @@ licence, URL and refresh procedure; these are those records.
 | `metro-stations.geojson` | 98 Metrorail stations, `NAME`, `LINE`, `ADDRESS`, `GIS_ID` | Open Data DC, "Metro Stations Regional", <https://opendata.dc.gov/datasets/metro-stations-regional>; ArcGIS layer `DCGIS_DATA/Transportation_Rail_Bus_WebMercator/MapServer/51` | **CC BY 4.0** | "DC Open Data (CC BY 4.0, adapted)", the map's one credit for the District's layers |
 | `metro-entrances.geojson` | 260 station entrances, 86 of them elevators (`DESCRIPTION` "Metro Station Elevator" / "Metro Station Entrance"), `NAME`, `EXIT_TO_ST`, `LINE`, `CAPTUREYEAR`, `GIS_ID` | Open Data DC, "Metro Station Entrances (Regional)"; layer `.../MapServer/111` | **CC BY 4.0** | the same line |
 | `metro-line-corrections.json` | lines added to `LINE` for two service changes the layer predates (below) | WMATA's own announcements, cited per change | this project's (facts, with sources) | - |
-| `marc-penn-stations.geojson` | the MARC Penn Line's 9 stations from Washington Union Station to Baltimore Penn Station inclusive, and the elevators OSM maps at them | OpenStreetMap, via the project's own extract, by `scripts/build_marc_penn_stations.py` | **ODbL 1.0** (a produced work of the extract) | the map's existing "© OpenStreetMap contributors (ODbL)" |
+| `marc-penn-stations.geojson` | the MARC Penn Line's 9 stations from Washington Union Station to Baltimore Penn Station inclusive, the entrances and elevators OSM maps at them, and one entrance reported from the spot (`osm: "reported"`, below) | OpenStreetMap, via the project's own extract, by `scripts/build_marc_penn_stations.py`; the reported entrance is this project's | **ODbL 1.0** (a produced work of the extract) | the map's existing "© OpenStreetMap contributors (ODbL)" |
 | `wmata-station-slugs.json` | each Metro station's WMATA station page slug, keyed by `NAME` above (OWNER-DECISIONS 441b) | this project's, each slug checked read-only against <https://www.wmata.com/ridertools/station/> on 2026-10-07 (441f); below | this project's (facts: a link, not WMATA's data) | - (the station card's link names WMATA in text) |
 | `metro-osm-elevators.geojson` | 15 OSM elevators at the 7 Metro stations DC lists no elevator for | OpenStreetMap, via the same extract, by `scripts/check_metro_elevators.py --write` | **ODbL 1.0** (as above) | as above |
 
@@ -34,6 +34,10 @@ The two OSM-derived fixtures were generated from the extract of 2026-09-25
 `1ac5490cc417d557a338dba868c4d039fbbbaf40d034e6c17e9ef1b1ef40577a`); a
 regeneration on 2026-09-28 gave `marc-penn-stations.geojson` byte for byte
 (sha256 `683c32d275ad6a51201d4e38301662d952a8e00dd4a6b9dbe5c8e479104d008a`).
+On 2026-10-24 the script gained Baltimore Penn Station's reported front doors
+(below), which every regeneration adds while OSM tags no way in there; the
+fixture now ends with that one entrance (sha256
+`ab87902fe7179fe852acfb8b479d585ee38754b3740e1c1df3fc4cef3352bdd3`).
 `metro-osm-elevators.geojson` is sha256
 `80e60ff87c593b2f431ea3e57ab32941c9b4594d47e13a6f97cc5c2c3b9c9145`.
 
@@ -115,9 +119,16 @@ entrance** (`bikeEntrance`, `src/lib/railStations.ts`):
 2. where DC lists none, OpenStreetMap's (owner decision 2026-09-28, "OSM
    elevator, else entrance") - Franconia-Springfield, Wheaton, Union Station,
    Silver Spring, Potomac Yard, West Falls Church, Forest Glen;
-3. where neither has one, DC's nearest other entrance - the other 27;
-4. the station point only when nothing is known - six of the seven MARC-only
-   stations (all but BWI), and none of the Metro stations.
+3. where neither has one, DC's nearest other entrance - the other 27 - or for
+   a MARC station OSM's `railway=train_station_entrance`;
+   where OSM tags none, a way in a rider reported from the spot
+   (`REPORTED_ENTRANCES` in the script): Baltimore Penn Station's front doors
+   on the drop-off loop off N Charles St (the station node is by the tracks,
+   and routes went on past the doors to reach it). Any OSM entrance or
+   elevator at the station replaces it, so after a regeneration check that a
+   newly mapped one is not a rear or platform door;
+4. the station point only when nothing is known - five of the seven MARC-only
+   stations (all but BWI and Baltimore Penn), and none of the Metro stations.
 
 The station's card says which (`entranceNote`).
 

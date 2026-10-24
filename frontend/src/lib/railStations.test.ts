@@ -356,9 +356,17 @@ test("how many stations route to each kind of bike entrance (README.md's counts)
     const { kind } = bikeEntrance(station);
     counts[kind] = (counts[kind] ?? 0) + 1;
   }
-  // 64 with DC's elevator; 7 Metro stations with OSM's, and BWI; 27 with an entrance;
-  // the six MARC-only stations OSM tags nothing at.
-  assert.deepEqual(counts, { elevator: 64, "osm-elevator": 8, entrance: 27, station: 6 });
+  // 64 with DC's elevator; 7 Metro stations with OSM's, and BWI; 27 with an entrance, and
+  // Baltimore Penn's front doors (reported from the spot); the five MARC-only stations OSM tags nothing at.
+  assert.deepEqual(counts, { elevator: 64, "osm-elevator": 8, entrance: 28, station: 5 });
+});
+
+test("a ride to Baltimore Penn Station ends at its front doors, not by the tracks", () => {
+  const penn = stations.find((s) => s.name === "Baltimore Penn Station")!;
+  // Coming from the south (Charles St) or the north-east (St Paul St): the same front doors.
+  for (const from of [[-76.6165, 39.3], [-76.612, 39.312]] as LonLat[]) {
+    assert.deepEqual(bikeEntrance(penn, from), { point: [-76.6155, 39.30712], kind: "entrance" });
+  }
 });
 
 test("a corrected station's lines stay in drawing order", () => {

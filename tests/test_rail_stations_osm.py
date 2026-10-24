@@ -139,7 +139,29 @@ def test_elevators_and_entrances_go_to_their_station_within_reach() -> None:
         "node/5001": (1, "elevator"),
         "node/5004": (2, "entrance"),
         "node/5005": (0, "elevator"),
+        # Baltimore Penn has none in OSM: the way in reported from the spot.
+        "reported": (3, "entrance"),
     }
+
+
+def test_a_mapped_way_in_replaces_the_reported_one() -> None:
+    data = _world()
+    stations, _ = marc.penn_stations(data)
+    # 50 m from Baltimore Penn's station node: its front doors, mapped.
+    data.nodes[5006] = ({"railway": "train_station_entrance"}, -77.0, 38.93045)
+    found = {e.osm: (e.station, e.kind) for e in marc.station_entrances(data, stations)}
+    assert found == {"node/5006": (3, "entrance")}
+
+
+def test_the_reported_way_in_is_beside_baltimore_penn() -> None:
+    ((lon, lat),) = marc.REPORTED_ENTRANCES["Baltimore Penn Station"]
+    doc = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    penn = next(f for f in doc["features"] if f["properties"].get("name") == marc.NORTH_END)
+    station = tuple(penn["geometry"]["coordinates"])
+    assert marc.distance_m((lon, lat), station) < marc.ENTRANCE_RADIUS_M
+    reported = [f for f in doc["features"] if f["properties"].get("osm") == "reported"]
+    assert [f["geometry"]["coordinates"] for f in reported] == [[lon, lat]]
+    assert reported[0]["properties"]["station"] == penn["properties"]["order"]
 
 
 def test_the_geojson_numbers_stations_in_line_order_and_ties_entrances_to_them() -> None:
@@ -148,7 +170,7 @@ def test_the_geojson_numbers_stations_in_line_order_and_ties_entrances_to_them()
     data.nodes[5001] = ({"highway": "elevator"}, -77.0, 38.91045)
     doc = marc.geojson(stations, marc.station_entrances(data, stations), route, "#BDBADC")
     kinds = [f["properties"]["kind"] for f in doc["features"]]
-    assert kinds == ["station"] * 4 + ["elevator"]
+    assert kinds == ["station"] * 4 + ["elevator", "entrance"]
     assert [f["properties"]["order"] for f in doc["features"][:4]] == [0, 1, 2, 3]
     assert doc["features"][4]["properties"]["station"] == 1
     assert str(route) in doc["source"] and "OpenStreetMap" in doc["source"]
