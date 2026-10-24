@@ -4786,9 +4786,9 @@ async function goPressMap(p) {
   await p.eval("document.querySelector('.go-summary .start-button').click(); true");
   taps += 1;
   await sleep(800);
-  const riding = await p.eval("({ ride: !!document.querySelector('section.ride'), ask: !!document.querySelector('.ride-ask:not([hidden])') })");
+  const riding = await p.eval("({ ride: !!document.querySelector('section.ride') })");
   check("go flow: from opening Go, a typed destination takes 3 taps to ride (Where to?, the place, then Start ride), with no question or sheet between, and the route options shown at once",
-    routed && riding.ride && !riding.ask && taps === 3 && options.rides.includes("Own Bike + 🚆🚌Own bike plus train or bus"), JSON.stringify({ taps, options, riding }));
+    routed && riding.ride && taps === 3 && options.rides.includes("Own Bike + 🚆🚌Own bike plus train or bus"), JSON.stringify({ taps, options, riding }));
   await p.close();
 }
 

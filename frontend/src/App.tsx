@@ -3255,7 +3255,7 @@ export function App() {
   };
   // Start ride: the line about to be ridden, checked first ("Ride it anyway" goes on to the ride).
   // The voice is unlocked first, synchronously inside the press (iOS speaks only in a gesture; after the
-  // check's await it would be too late). A press that asks the first-ride question unlocks in that dialog.
+  // check's await it would be too late).
   // Which press asked: Start ride, or Broadcast (asked before its share sheet, so Go back sends nothing).
   const [computerAsk, setComputerAsk] = useState<"start" | "broadcast" | null>(null);
   // Start anyway, kept in memory too: a tab that cannot store it (a private window) still starts.
