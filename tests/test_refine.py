@@ -271,7 +271,7 @@ class TestCrossingAvoidance:
         world = World(monkeypatch, shapes, routes)
         kept, info = refine.refine(trip_of("o", 4.0), context())
         assert kept["legs"][0]["shape"] == "s"
-        assert len(world.requests) == info["rounds"] == refine.CROSSING_ONLY_ROUNDS == 3
+        assert len(world.requests) == info["rounds"] == 3
 
     def test_a_later_crossing_round_that_fails_says_nothing(self, monkeypatch) -> None:
         """The first round's route is the answer, as it was with one round, and is cached:
@@ -286,15 +286,15 @@ class TestCrossingAvoidance:
         assert kept["legs"][0]["shape"] == "a1"
         assert info["limited"] is None and info["rounds"] == 1
 
-    def test_crossing_avoidance_alone_is_at_most_three_rounds(self, monkeypatch) -> None:
+    def test_crossing_avoidance_alone_is_at_most_five_rounds(self, monkeypatch) -> None:
         shapes = {"o": analysis("o", events=[event(1500.0, 3300.0)])}
-        for n in range(1, 6):
+        for n in range(1, 8):
             shapes[f"a{n}"] = analysis(
                 f"a{n}", cost_s=4000.0 + 100 * n, events=[event(1500.0 + 200 * n, 3300.0)]
             )
-        world = World(monkeypatch, shapes, [trip_of(f"a{n}", 4.1) for n in range(1, 6)])
+        world = World(monkeypatch, shapes, [trip_of(f"a{n}", 4.1) for n in range(1, 8)])
         refine.refine(trip_of("o", 4.0), context())
-        assert len(world.requests) == refine.CROSSING_ONLY_ROUNDS == 3
+        assert len(world.requests) == refine.CROSSING_ONLY_ROUNDS == 5
 
     def test_the_same_junction_by_another_street_is_excluded_too(self, monkeypatch) -> None:
         """The junction itself is excluded with its approach: a route back through it by
@@ -587,9 +587,10 @@ class TestStopping:
         assert sent[0] == refine.CALM_POINTS_PER_ROUND
         assert sent[2] == refine.MAX_EXCLUDES < 3 * refine.CALM_POINTS_PER_ROUND
 
-    def test_later_rounds_exclude_stretches_not_crossings(self, monkeypatch) -> None:
-        """Crossing avoidance is the first round's: after it the search is about
-        the busy stretches alone."""
+    def test_later_rounds_exclude_the_crossings_too(self, monkeypatch) -> None:
+        """Every round takes the red crossings of the route before it, past the first
+        too (the PC's check, 2026-10-23: above Default, crossings in the first round only
+        kept a 16th St stop sign)."""
         later = (BASE[0] + 0.0009, BASE[1] + 1e-5)
         orig = analysis("o", "1" * 5 + "4" * 4 + "1" * 31, cost_s=4000.0, events=[event(1500.0)])
         step = analysis(
@@ -601,7 +602,7 @@ class TestStopping:
         world = World(monkeypatch, {"o": orig, "s": step}, [trip_of("s", 4.3)] * 3)
         refine.refine(trip_of("o", 4.0), context(rate=10.0))
         assert len(world.requests) >= 2
-        assert later not in set(world.excluded(1)) - set(world.excluded(0))
+        assert later in set(world.excluded(1)) - set(world.excluded(0))
 
     def test_a_round_is_not_started_without_the_time_for_it(self, monkeypatch) -> None:
         orig = analysis("o", TestCalmDetour().stretch())
@@ -3540,3 +3541,100 @@ for _cls in (TestTheHoldInTheSeek, TestTheHoldLegByLeg, TestTheWorthLegByLeg):
     for _name in dir(_cls):
         if _name.startswith("test_") and _name not in vars(_cls):
             setattr(_cls, _name, None)
+
+
+class TestRedJunctions:
+    """Below the top of the slider each red junction counts for `RED_DETOUR_S` of quiet
+    riding in the score, on top of its junction cost (the owner, 2026-10-23, of the
+    unsignalised Kensington crossings: "essentially impassable"; a rider would rather ride
+    10 minutes more)."""
+
+    def two_reds(self) -> refine.Analysis:
+        return analysis("o", events=[event(1500.0, 3300.0), event(2500.0, 3300.0)])
+
+    def test_each_red_is_ten_minutes_of_quiet_riding_at_the_weight(self) -> None:
+        none = analysis("n", events=[])
+        for weight in (1.0, 0.25):
+            ctx = context(weight=weight)
+            red_cost = ctx.quiet_cost * weight * model.penalty_m([event(1500.0, 3300.0)])
+            one = analysis("c", events=[event(1500.0, 3300.0)])
+            extra = refine.QUIET_COST_FACTOR * refine.RED_DETOUR_S * weight
+            assert one.score(ctx) - none.score(ctx) == pytest.approx(red_cost + extra)
+
+    def test_one_red_fewer_wins_though_it_has_more_delay_and_oranges(self) -> None:
+        # The PC's check, 8 AM: one red in place of two, 606 s worse on everything else.
+        one = analysis("c", events=[event(1500.0, 3300.0)])
+        one.cost_s += 606.0
+        ctx = context()
+        assert refine.better(one, self.two_reds(), ctx)
+        assert not refine.better(self.two_reds(), one, ctx)
+
+    def test_a_red_is_not_worth_more_than_ten_minutes(self) -> None:
+        # 1,400 cost seconds more than the 1,320 a red adds, besides its own cost.
+        ctx = context()
+        own = ctx.quiet_cost * model.penalty_m([event(1500.0, 3300.0)])
+        one = analysis("c", events=[event(1500.0, 3300.0)])
+        one.cost_s += own + refine.QUIET_COST_FACTOR * refine.RED_DETOUR_S + 80.0
+        assert not refine.better(one, self.two_reds(), ctx)
+
+    def test_orange_junctions_are_not_counted_even_with_a_shift(self) -> None:
+        orange = analysis("c", events=[event(1500.0, 2000.0)], shift=0)
+        orange.shift = 1
+        assert refine.red_count(orange) == 0 and refine.red_count(self.two_reds()) == 2
+
+    def test_unread_junctions_count_none(self) -> None:
+        assert refine.red_count(analysis("c", events=None)) == 0
+
+    def test_a_later_round_the_time_does_not_reach_is_said_while_a_red_is_left(
+        self, monkeypatch
+    ) -> None:
+        """The PC's check, 2026-10-23: a cold first plan stopped after its rounds' time ran
+        out with reds left and said nothing, so the answer was kept as the search's whole."""
+        shapes = {"o": self.two_reds(), "a": analysis("a", events=[event(2700.0, 3300.0)])}
+        world = World(monkeypatch, shapes, [trip_of("a", 4.1)])
+        now = [routing.clock()]
+        monkeypatch.setattr(routing, "clock", lambda: now[0])
+        call = world.call
+
+        def slow(*args):
+            now[0] += 30.0
+            return call(*args)
+
+        monkeypatch.setattr(routing, "_call", slow)
+        ctx = context()
+        ctx.deadline = routing.Deadline(now[0] + 40, 35)
+        kept, info = refine.refine(trip_of("o", 4.0), ctx)
+        assert kept["legs"][0]["shape"] == "a" and info["rounds"] == 1
+        assert info["limited"] == "time"
+
+    def test_no_red_left_says_nothing_of_the_rounds_not_run(self, monkeypatch) -> None:
+        shapes = {"o": self.two_reds(), "a": analysis("a", events=[])}
+        world = World(monkeypatch, shapes, [trip_of("a", 4.1)])
+        now = [routing.clock()]
+        monkeypatch.setattr(routing, "clock", lambda: now[0])
+        call = world.call
+
+        def slow(*args):
+            now[0] += 30.0
+            return call(*args)
+
+        monkeypatch.setattr(routing, "_call", slow)
+        ctx = context()
+        ctx.deadline = routing.Deadline(now[0] + 40, 35)
+        kept, info = refine.refine(trip_of("o", 4.0), ctx)
+        assert kept["legs"][0]["shape"] == "a" and info["limited"] is None
+
+    def test_the_calm_rounds_go_on_while_a_red_is_left(self, monkeypatch) -> None:
+        """At 90 the search gave up two rounds in with a stop sign left (the PC's check,
+        2026-10-23): patience waits until the best route has no red."""
+        shapes = {"o": analysis("o", "1" * 10 + "3" * 5 + "1" * 25, events=[event(1500.0)])}
+        for n in range(1, 6):
+            shapes[f"a{n}"] = analysis(
+                f"a{n}",
+                "1" * 10 + "3" * 6 + "1" * 24,
+                cost_s=9000.0,
+                events=[event(1500.0 + 200 * n)],
+            )
+        world = World(monkeypatch, shapes, [trip_of(f"a{n}", 4.1) for n in range(1, 6)] * 3)
+        refine.refine(trip_of("o", 4.0), context(rate=10.0))
+        assert len(world.requests) > refine.REFINE_PATIENCE
