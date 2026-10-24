@@ -24,7 +24,7 @@ export function usePlaceNames(points: readonly LonLat[]) {
       send: nameSender(g),
       onChange: () => setVersion((v) => v + 1),
       // A stop's own name (Stephen 2026-10-24) before the map's name for the spot.
-      own: VIA_MARKS.nameOf,
+      own: (point) => (VIA_MARKS.isVia(point) ? undefined : VIA_MARKS.nameOf(point)),
     });
   }
   useEffect(() => {

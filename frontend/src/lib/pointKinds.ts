@@ -70,12 +70,14 @@ export class ViaMarks {
     return kind === "via" ? this.via(copy) : copy;
   }
 
-  /** A new pair at the same place and of the same kind, named `name` (blank takes its name away). */
-  withName(point: LonLat, name: string): LonLat {
-    const copy: LonLat = [point[0], point[1]];
-    if (this.isDrawn(point)) this.drawn(copy);
-    if (this.isVia(point)) this.via(copy);
-    return this.named(copy, name);
+  /**
+   * Names the stop in place (blank takes its name away): only a label changes, so the plan's points stay the same
+   * pairs and no new route is asked for.
+   */
+  rename(point: LonLat, name: string): void {
+    const clean = cleanStopName(name);
+    if (clean) this.names.set(point, clean);
+    else this.names.delete(point);
   }
 
   /** Names the pairs a link or a saved route names (`names`: index to name), and gives the list back. */
@@ -336,12 +338,16 @@ export function cleanStopName(name: string | undefined | null): string | undefin
   return clean || undefined;
 }
 
-/** The stops' own names by index, for a link and a saved route (`sn`): stops between the ends only. */
-export function stopNames(points: readonly LonLat[], nameOf: (p: LonLat) => string | undefined, isVia: (p: LonLat) => boolean): Map<number, string> {
+/**
+ * The stops' own names by index, for a link and a saved route (`sn`): stops between the ends only, a loop's last
+ * point included (it is a stop: namePoints).
+ */
+export function stopNames(points: readonly LonLat[], nameOf: (p: LonLat) => string | undefined, isVia: (p: LonLat) => boolean, loop = false): Map<number, string> {
   const out = new Map<number, string>();
   points.forEach((point, i) => {
     const name = nameOf(point);
-    if (name && i > 0 && i < points.length - 1 && !isVia(point)) out.set(i, name);
+    const last = i === points.length - 1;
+    if (name && isMiddle(i, points.length, loop) && (last || !isVia(point))) out.set(i, name);
   });
   return out;
 }
@@ -351,14 +357,14 @@ export function encodeStopNames(names: ReadonlyMap<number, string>): string[] {
   return [...names].sort(([a], [b]) => a - b).map(([i, name]) => `${i}:${name}`);
 }
 
-/** The `sn` values read back: the names of points that fit a plan of `count` points (between its ends). */
+/** The `sn` values read back: the names of points that fit a plan of `count` points (after its start; a loop's last is a stop). */
 export function decodeStopNames(values: readonly string[], count: number): Map<number, string> {
   const out = new Map<number, string>();
   for (const value of values) {
     const at = value.indexOf(":");
     const i = Number(value.slice(0, at));
     const name = cleanStopName(value.slice(at + 1));
-    if (at > 0 && Number.isInteger(i) && i > 0 && i < count - 1 && name) out.set(i, name);
+    if (at > 0 && Number.isInteger(i) && i > 0 && i < count && name) out.set(i, name);
   }
   return out;
 }
@@ -405,16 +411,16 @@ export function importedKinds(names: ReadonlyArray<string | undefined> | undefin
   const own = new Map<number, string>();
   for (let i = 1; i < count - 1; i += 1) {
     const name = cleanStopName(names?.[i]);
-    if (!name || name === VIA_POINT_NAME) vias.push(i);
+    if (!name || name === VIA_POINT_NAME || VIA_ROLE_NAME.test(name)) vias.push(i);
     else if (!ROLE_NAME.test(name)) own.set(i, name);
   }
   return { vias, names: own };
 }
 
 /** A name that only says a point's role, as a file of ours (or an older one) names its points. */
-const ROLE_NAME = new RegExp(`^(?:Start|End|${LOOP_START_NAME}|(?:Stop|Via|Point) \\d+)$`);
+const ROLE_NAME = new RegExp(`^(?:Start|End|${LOOP_START_NAME}|(?:Stop|Point) \\d+)$`);
+/** An older file's name for a via point ("Via 3"; lib/gpxEdit.ts isRoleName). */
+const VIA_ROLE_NAME = /^Via \d+$/;
 
 /** The tips' sentence on what a click makes (lib/pointText.ts editingTips). */
-export const CLICK_KINDS_TIP =
-  "A click adds a via point, which only shapes the route; Ctrl+click (Cmd+click on a Mac) adds a stop and asks its" +
-  " name, as Add as stop does after a right-click or a press and hold.";
+export const CLICK_KINDS_TIP = "A click adds a via point; Ctrl+click (Cmd+click on a Mac) adds a named stop.";

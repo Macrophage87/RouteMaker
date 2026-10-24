@@ -8,6 +8,8 @@ import type { LonLat } from "./geo.ts";
 import { planPointNames, writeGpx } from "./gpx.ts";
 import { VIA_GUIDE_SKIP_M, cueSpoken, replanKept, rideModel, stopsAhead } from "./navigate.ts";
 import { decodePlan, encodePlan } from "./planHash.ts";
+import { asKept } from "./gpxEdit.ts";
+import type { ImportedPlan } from "./gpxPlan.ts";
 import { compileCourse } from "./course.ts";
 import { deviceProfile } from "./deviceProfiles.ts";
 import {
@@ -36,10 +38,15 @@ test("a stop's name is kept on its pair: through a move, a switch of kind and ba
   assert.equal(marks.isVia(via), true);
   // A via point shows no name, but switched back it is the same stop again.
   assert.equal(marks.nameOf(marks.withKind(via, "stop")), "Union Market");
-  const renamed = marks.withName(stop, "Coffee");
-  assert.notEqual(renamed, stop, "a rename is a new pair, an edit Undo takes back");
-  assert.equal(marks.nameOf(renamed), "Coffee");
-  assert.equal(marks.nameOf(marks.withName(stop, "   ")), undefined, "a blank name takes it away");
+  // A rename is in place: the same pair, so no new route is asked for.
+  marks.rename(stop, "Coffee");
+  assert.equal(marks.nameOf(stop), "Coffee");
+  marks.rename(stop, "   ");
+  assert.equal(marks.nameOf(stop), undefined, "a blank name takes it away");
+  assert.match(src("../App.tsx"), /VIA_MARKS\.rename\(point, name\);\s*setNamesVersion\(\(v\) => v \+ 1\);/);
+  assert.match(src("../App.tsx"), /\}, \[points, preset, dials, namesVersion\]\);/);
+  // A via point never shows a stop name it had before it was switched.
+  assert.match(src("../usePlaceNames.ts"), /own: \(point\) => \(VIA_MARKS\.isVia\(point\) \? undefined : VIA_MARKS\.nameOf\(point\)\)/);
   assert.equal(cleanStopName("x".repeat(STOP_NAME_MAX + 9))?.length, STOP_NAME_MAX);
   assert.equal(renameLabel(false), "Name this stop");
   assert.equal(renameLabel(true), "Rename stop");
@@ -57,18 +64,21 @@ test("a link and a saved route carry each stop's name, and only stops between th
   assert.deepEqual([...plan.names], [[1, "Café: A & B"]]);
   // An older link has none; a name for an end or past the points is dropped.
   assert.equal(decodePlan(encodePlan(points, "default")).names.size, 0);
-  assert.deepEqual([...decodeStopNames(["0:Start", "3:End", "2:Ok", "junk", "1:"], 4)], [[2, "Ok"]]);
+  assert.deepEqual([...decodeStopNames(["0:Start", "4:Past", "2:Ok", "junk", "1:"], 4)], [[2, "Ok"]]);
+  // A loop's last point is a stop: its name is kept, a via mark or not.
+  const loop = [p(-77.0), marks.via(p(-77.01)), marks.named(p(-77.02), "Back")];
+  assert.deepEqual([...stopNames(loop, marks.nameOf, marks.isVia, true)], [[2, "Back"]]);
+  assert.deepEqual([...stopNames(loop, marks.nameOf, marks.isVia, false)], []);
+  assert.deepEqual([...decodeStopNames(["2:Back"], 3)], [[2, "Back"]]);
 });
 
 test("the page's link, its saved routes and its kept routes: names in the first two, never in a kept route's key", () => {
   const saved = src("./savedRoutes.ts");
   assert.equal(saved.match(/hash: encodePlan\(points, preset, dials, viaIndices\(points, VIA_MARKS\.isVia\)\)/g)?.length, 2);
-  assert.match(src("./planHash.ts"), /names: ReadonlyMap<number, string> = stopNames\(points, VIA_MARKS\.nameOf, VIA_MARKS\.isVia\)/);
+  assert.match(src("./planHash.ts"), /names: ReadonlyMap<number, string> = stopNames\(points, VIA_MARKS\.nameOf, VIA_MARKS\.isVia, dials\?\.loop === true\)/);
   assert.match(src("./offlineRoutes.ts"), /encodePlan\(points, preset, sent, vias, undefined, new Map\(\)\)/);
   const app = src("../App.tsx");
   assert.match(app, /VIA_MARKS\.nameAt\(initialPlan\.points, initialPlan\.names\)/);
-  // The map's place names give way to a stop's own name.
-  assert.match(src("../usePlaceNames.ts"), /own: VIA_MARKS\.nameOf/);
 });
 
 test("a file's unnamed points are via points, its named ones stops with their names (a track's points are vias)", () => {
@@ -77,6 +87,7 @@ test("a file's unnamed points are via points, its named ones stops with their na
   // "Stop 4" only says its role: a stop, but not a name of its own.
   assert.deepEqual([...kinds.names], [[2, "Union Market"]]);
   assert.deepEqual(importedKinds(undefined, 4).vias, [1, 2]);
+  assert.deepEqual(importedKinds(["Start", "Via 3", "End"], 3).vias, [1], "an older file's via name");
   assert.match(src("../App.tsx"), /const kinds = importedKinds\(plan\.pointNames, opened\.length\);\s*VIA_MARKS\.nameAt\(VIA_MARKS\.markAt\(opened, kinds\.vias\), kinds\.names\);/);
 });
 
@@ -138,7 +149,10 @@ test("a re-route keeps the stops and the far via points, and drops a via point c
   // Skip this stop: the re-plan's points without it.
   const here = at(950);
   assert.deepEqual(withoutStop(points, replanKept(model, 900, points, false, true), here, 2), [here, points[3], points[4]]);
-  assert.match(src("../RideMode.tsx"), /replanPoints\(modelRef\.current, current\.progressM \?\? 0, here, plan\.current\.points, plan\.current\.loop, true\)/);
+  // The re-route and its way back use the same kept points (guides dropped, the skipped stop left out).
+  const rideSrc = src("../RideMode.tsx");
+  assert.match(rideSrc, /const keptPoints = replanKept\(modelRef\.current, current\.progressM \?\? 0, plan\.current\.points, plan\.current\.loop, true\)\.filter\(\(i\) => i !== skip\);/);
+  assert.match(rideSrc, /const kept = keptPoints;/);
 });
 
 test("a named stop is cued, said and drawn by its name; the stops ahead are drawn while riding, via points never", () => {
@@ -179,4 +193,15 @@ test("the page's marks: a place picked as a stop keeps its name", () => {
   const stop = VIA_MARKS.named([-77.01, 38.9], "Water fountain");
   assert.equal(VIA_MARKS.nameOf(stop), "Water fountain");
   assert.match(src("../App.tsx"), /placeSpot\("via", point, false, waterTitle\(item\.point\)\)/);
+});
+
+test("a saved file reopened on its kept points keeps their stops, vias and names", () => {
+  const filePoints = [p(-77.0), p(-77.01), p(-77.03)];
+  const keptPoints = [p(-77.0), p(-77.01), p(-77.02), p(-77.03)];
+  const plan = { points: filePoints, pointNames: ["Start", "A", "End"], preset: null, notes: [], reference: [], referenceM: 0, source: "route" } as unknown as ImportedPlan;
+  const answer = { follows_exactly: false } as unknown as RouteResponse;
+  const kept = asKept(plan, { points: keptPoints, preset: "default", dials: decodePlan("#preset=default").dials, vias: [1], names: new Map([[2, "Bakery"]]) }, answer);
+  const kinds = importedKinds(kept.pointNames, keptPoints.length);
+  assert.deepEqual(kinds.vias, [1]);
+  assert.deepEqual([...kinds.names], [[2, "Bakery"]]);
 });

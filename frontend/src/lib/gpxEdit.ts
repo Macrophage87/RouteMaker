@@ -15,6 +15,7 @@ import { fitDials, type Dials } from "./dials.ts";
 import type { LonLat } from "./geo.ts";
 import type { ImportedPlan } from "./gpxPlan.ts";
 import { LOOP_START_NAME } from "./loop.ts";
+import { VIA_POINT_NAME } from "./pointKinds.ts";
 import type { PresetId } from "./presets.ts";
 import { choose } from "./rideTypeDialog.ts";
 
@@ -63,8 +64,15 @@ export function namesToKeep(plan: Pick<ImportedPlan, "points" | "pointNames">): 
  * sliders, and "Follow the file exactly" as the route was followed. The file's names for its points stay only where
  * the points are the file's own. Without a kept route, the file as it opens.
  */
-export function asKept(plan: ImportedPlan, at: { points: LonLat[]; preset: PresetId; dials: Dials } | null, answer: RouteResponse | null): ImportedPlan {
+export function asKept(
+  plan: ImportedPlan,
+  at: { points: LonLat[]; preset: PresetId; dials: Dials; vias?: readonly number[]; names?: ReadonlyMap<number, string> } | null,
+  answer: RouteResponse | null,
+): ImportedPlan {
   if (!at || !answer || at.points.length < 2) return plan;
   const same = at.points.length === plan.points.length && at.points.every((p, i) => p[0] === plan.points[i][0] && p[1] === plan.points[i][1]);
-  return { ...plan, points: at.points, pointNames: same ? plan.pointNames : undefined, preset: at.preset, dials: at.dials, exact: answer.follows_exactly === true };
+  // Other points than the file's: named as the kept plan's link names them (2026-10-24), so its stops and via points
+  // open as they were kept (a named point opens as a stop, an unnamed one as a via point: pointKinds.ts importedKinds).
+  const kept = at.points.map((_, i) => (at.vias?.includes(i) ? VIA_POINT_NAME : (at.names?.get(i) ?? `Stop ${i}`)));
+  return { ...plan, points: at.points, pointNames: same ? plan.pointNames : kept, preset: at.preset, dials: at.dials, exact: answer.follows_exactly === true };
 }

@@ -55,7 +55,7 @@ export function encodePlan(
   // The page's marks unless given, so every link, saved route and kept route's key carries the drawn legs.
   drawn: readonly number[] = drawnLegs(points),
   // The stops' own names, likewise from the page's marks unless given.
-  names: ReadonlyMap<number, string> = stopNames(points, VIA_MARKS.nameOf, VIA_MARKS.isVia),
+  names: ReadonlyMap<number, string> = stopNames(points, VIA_MARKS.nameOf, VIA_MARKS.isVia, dials?.loop === true),
 ): string {
   const params = new URLSearchParams();
   if (points.length) params.set("p", points.map(([lon, lat]) => `${lon.toFixed(5)},${lat.toFixed(5)}`).join(";"));

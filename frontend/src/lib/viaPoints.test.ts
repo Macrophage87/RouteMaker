@@ -123,7 +123,7 @@ test("the map's point menu is a real menu with Remove and the one switch between
   assert.match(css, /\.pin-via\.pin-through \{\s+background: transparent;/);
   const app = source("../App.tsx");
   // Taps between the ends and line drags are via points; a drag keeps the kind; the switch is one undoable edit.
-  assert.match(app, /if \(isMiddle\(index, next\.length, loopVias\)\) VIA_MARKS\.via\(point\);/);
+  assert.match(app, /if \(isMiddle\(index, next\.length, loopVias\) && index < next\.length - 1\) VIA_MARKS\.via\(point\);/);
   assert.match(app, /commit\(current\.map\(\(p, i\) => \(i === index \? VIA_MARKS\.withKind\(p, to\) : p\)\)\);/);
   assert.match(app, /onSwitchKind=\{riding \? ignore : switchKind\}/);
 });

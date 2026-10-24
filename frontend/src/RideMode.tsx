@@ -87,7 +87,6 @@ import {
   nextAction,
   planAfterEnd,
   replanKept,
-  replanPoints,
   replanTold,
   rideModel,
   startState,
@@ -936,10 +935,9 @@ export function RideMode({
       const aheadOnly = uturnAheadOnly(uturns.current, heading);
       // A re-route: via points close ahead are guides and dropped, stops kept (2026-10-24); the stop the rider
       // skipped (Skip this stop, or a place chosen instead of it) is left out.
-      const left =
-        skip === undefined
-          ? replanPoints(modelRef.current, current.progressM ?? 0, here, plan.current.points, plan.current.loop, true)
-          : withoutStop(plan.current.points, replanKept(modelRef.current, current.progressM ?? 0, plan.current.points, plan.current.loop, true), here, skip);
+      // The same kept points for the way back below, so its stops keep their numbers in the new plan.
+      const keptPoints = replanKept(modelRef.current, current.progressM ?? 0, plan.current.points, plan.current.loop, true).filter((i) => i !== skip);
+      const left = withoutStop(plan.current.points, keptPoints, here, skip ?? -1);
       const points = via ? detourPoints(left, via) : left;
       if (!points) {
         sayDetour(DETOUR_FULL);
@@ -995,7 +993,7 @@ export function RideMode({
       let note = REPLAN_FOUND;
       const voided = () => ended.current || ticket !== replanTicket.current;
       if (!result.ok && !via && !check && startsWayBack(result.error.kind) && !voided()) {
-        const kept = replanKept(modelRef.current, current.progressM ?? 0, plan.current.points, plan.current.loop);
+        const kept = keptPoints;
         // Never back onto a road the rider marked closed: the way back joins the route past it.
         const closed = blockedUntil.current?.model === modelRef.current ? blockedUntil.current.untilM : -Infinity;
         const back = await wayBackRoute(routeRef.current, modelRef.current, current.progressM ?? 0, here, kept, ask, voided, closed);

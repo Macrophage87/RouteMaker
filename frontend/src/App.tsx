@@ -954,6 +954,8 @@ export function App() {
   const writtenHash = useRef<string>("");
   const { gate: geoGate, namer } = usePlaceNames(points);
   // A ride's stop names (2026-10-24): one function for the ride, so its stops on the map are worked out only as it moves.
+  // A stop renamed in place (its pair unchanged): the link is written again for it.
+  const [namesVersion, setNamesVersion] = useState(0);
   const rideStopName = useCallback((point: LonLat) => namer.name(point)?.name, [namer]);
   // A route's own name (a save, a shared line, a GPX file) never carries the Home's label (review privacy-2).
   const fileNamed = nameWithoutHome((point) => namer.name(point)?.name, myGo.home?.point ?? null);
@@ -1158,7 +1160,7 @@ export function App() {
     linkPresses.current += 1;
     setLinkSaid("");
     setLinkSpoken("");
-  }, [points, preset, dials]);
+  }, [points, preset, dials, namesVersion]);
 
   // A link pasted into this tab, or the back button, changes the fragment
   // without a reload: open the plan it names.
@@ -1684,11 +1686,9 @@ export function App() {
       manualRef.current && current.length >= 1
         ? [...current.slice(0, -1), ...current.slice(-1).map((end) => (current.length > 1 && VIA_MARKS.isDrawn(end) ? VIA_MARKS.withKind(end, "via") : end)), point]
         : addPoint(current, point, loopVias);
-    // A point tapped in between the ends is a via point (v0.7.0, "Via points vs stops"); its menu makes it a stop. A
-    // loop's last point is a stop while it is last (namePoints), and a via point once another tap follows it (Stephen
-    // 2026-10-24: "we should probably make via points the default").
+    // A point tapped in between the ends is a via point (v0.7.0, "Via points vs stops"); its menu makes it a stop.
     const index = next.indexOf(point);
-    if (isMiddle(index, next.length, loopVias)) VIA_MARKS.via(point);
+    if (isMiddle(index, next.length, loopVias) && index < next.length - 1) VIA_MARKS.via(point);
     commit(next);
     const said = kindSaid(next, index, VIA_MARKS.isVia, loopVias, "added");
     announce(index > 0 && VIA_MARKS.isDrawn(point) ? `${said} ${DRAWN_SAID}` : said);
@@ -2506,9 +2506,9 @@ export function App() {
   }, []);
   const renameStop = useCallback((index: number) => {
     const point = pointsRef.current[index];
-    if (!point || VIA_MARKS.isVia(point)) return;
+    if (!point || namePoints(pointsRef.current, VIA_MARKS.isVia, loopVias)[index]?.role !== "stop") return;
     setStopAsk({ mode: "rename", name: VIA_MARKS.nameOf(point) ?? "", index });
-  }, []);
+  }, [loopVias]);
   const stopNamed = (name: string) => {
     const ask = stopAsk;
     setStopAsk(null);
@@ -2520,7 +2520,9 @@ export function App() {
     const current = pointsRef.current;
     const point = ask.index === undefined ? undefined : current[ask.index];
     if (!point || cleanStopName(name) === VIA_MARKS.nameOf(point)) return;
-    commit(current.map((p, i) => (i === ask.index ? VIA_MARKS.withName(p, name) : p)));
+    // In place: only a label changes, so no new route is asked for; the link is written again (namesVersion).
+    VIA_MARKS.rename(point, name);
+    setNamesVersion((v) => v + 1);
     announce(stopNamedSaid(cleanStopName(name)));
   };
   // Reverse: in a loop the start stays and the stops go the other way around

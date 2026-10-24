@@ -605,7 +605,7 @@ test("Start, GPX, Link and More are one row under the route's figures (UI-CLEANU
 });
 
 test("App writes exactly encodePlan's fragment to the address bar, and a new plan clears 'Link copied.'", () => {
-  const writer = app.slice(app.indexOf("// Keep the link in step with the plan"), app.indexOf("}, [points, preset, dials]);"));
+  const writer = app.slice(app.indexOf("// Keep the link in step with the plan"), app.indexOf("}, [points, preset, dials, namesVersion]);"));
   assert.match(writer, /const hash = encodePlan\(points, preset, dials, viaIndices\(points, VIA_MARKS\.isVia\)\);\s*writtenHash\.current = hash;\s*window\.history\.replaceState\(null, "", hash\);/);
   assert.equal((writer.match(/replaceState/g) ?? []).length, 1);
   assert.match(writer, /linkPresses\.current \+= 1;\s*setLinkSaid\(""\);/);
