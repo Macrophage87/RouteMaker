@@ -75,6 +75,7 @@ import { dragPreview, legOfSegment, nearestOnPath } from "./lib/lineEdit.ts";
 import { LineGesture } from "./lib/lineGesture.ts";
 import { PENN_COLOUR, RAIL_STATIONS, stationById } from "./lib/railData.ts";
 import { addRailStations, LABEL_FONT, RAIL_LAYERS, RIDE_STATION_NAME_SIZE, ROUTE_BOTTOM_LAYER, STATION_NAME_SIZE, setRailVisibility, stationNamesTarget } from "./lib/railLayer.ts";
+import { setRideLabelOrder, type LabelHomes } from "./lib/rideLabelOrder.ts";
 import { ROUTE_HAZARD_ICON, ROUTE_HAZARD_SOURCE, routeHazardFeatures, routeHazardIcon, routeHazardLayer, routeHazardRepeatLayer } from "./lib/routeHazards.ts";
 import type { RailVisibility, Station, StationBadges, StationRole } from "./lib/railStations.ts";
 import { attachRailInteraction, type StationFound } from "./railInteraction.ts";
@@ -535,6 +536,8 @@ export function MapView(props: Props) {
   // The map control App's Map tools is drawn into, once the map has made it.
   const [toolsHost, setToolsHost] = useState<HTMLElement | null>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
+  /** The street and trail names' homes while a ride has them lifted (lib/rideLabelOrder.ts); empty otherwise. */
+  const labelHomes = useRef<LabelHomes>(new Map());
   const markers = useRef<Marker[]>([]);
   const popup = useRef<Popup | null>(null);
   // The route's junction markers (OWNER-DECISIONS 172) and the card one of them has open.
@@ -763,8 +766,10 @@ export function MapView(props: Props) {
       // "The climb dots go over the road name"): the names are placed first and a summit gives way to one, as two
       // summits give way to each other. Under the route, the water and the stations too. Without the names, the route.
       const layerIds = map.getStyle().layers.map((layer) => layer.id);
-      // The major trails' names too (stressStyle.js, TRAIL_LABEL), the lowest of them all.
-      const underNames = layerIds.find((id) => id === TRAIL_LABEL_LAYER_ID || ROAD_LABEL_LAYER_IDS.includes(id)) ?? ROUTE_BOTTOM_LAYER;
+      // The major trails' names too (stressStyle.js, TRAIL_LABEL), the lowest of them all. In a ride the names are
+      // lifted over the route (lib/rideLabelOrder.ts): the climbs go under the route, and under the names once home.
+      const lifted = labelHomes.current.size > 0;
+      const underNames = (!lifted && layerIds.find((id) => id === TRAIL_LABEL_LAYER_ID || ROAD_LABEL_LAYER_IDS.includes(id))) || ROUTE_BOTTOM_LAYER;
       addClimbs(map as unknown as ClimbsMap, data, on, iconPixelRatio(), underNames, callbacks.current.climbsFrom ?? CLIMBS_FROM_DEFAULT);
     };
     const anyPopupOpen = () => popupsOpen(popup.current, rail);
@@ -2520,6 +2525,24 @@ export function MapView(props: Props) {
       if (move) map.moveLayer(RAIL_LAYERS.names, move.before);
     };
     apply();
+    map.on("styledata", apply);
+    return () => {
+      map.off("styledata", apply);
+    };
+  }, [props.rideLabels]);
+  // In a ride every street is named: the street and trail names go up under the station names, so a shop's name or
+  // icon, a place name or a water icon gives way to them, and back after (lib/rideLabelOrder.ts). Layers come and go
+  // (the route, water, a style reload), so this listens throughout, as the station names do.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const riding = Boolean(props.rideLabels);
+    const apply = () => {
+      // Climbs added during the ride went under the route: home, they go back under the names, as syncClimbs puts them.
+      if (setRideLabelOrder(map, riding, labelHomes.current)) climbsUnder(map, TRAIL_LABEL_LAYER_ID);
+    };
+    apply();
+    if (!riding) return;
     map.on("styledata", apply);
     return () => {
       map.off("styledata", apply);
