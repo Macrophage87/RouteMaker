@@ -252,13 +252,12 @@ def _entrance_kind(tags: dict[str, str]) -> str | None:
     return None
 
 
-# Ways in a rider reported from the spot where OSM tags none, used only while
-# OSM has no entrance or elevator at that station, so a mapped one replaces it.
-# (A building's entrance=main is not read: within reach of a city station it is
-# as often an office block's door.) Baltimore Penn Station (owner, riding there
-# on 2026-10-24: "the main entrance to Baltimore Penn Station was missed"): with
-# nothing tagged, routes went for the station node by the tracks and on past the
-# front doors, which face the drop-off loop off N Charles St.
+# Ways in reported from the spot where OSM tags none, used only while OSM has
+# no entrance or elevator at that station, so a mapped one replaces it. (A
+# building's entrance=main is not read: within reach of a city station it is as
+# often an office block's door.) Baltimore Penn Station: with nothing tagged,
+# routes went for the station node by the tracks and on past the front doors,
+# which face the drop-off loop off N Charles St.
 REPORTED_ENTRANCES: dict[str, list[tuple[float, float]]] = {
     "Baltimore Penn Station": [(-76.6155, 39.30712)],
 }
