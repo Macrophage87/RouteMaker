@@ -22,6 +22,7 @@ path that removes one is: there is no login that could restore an admin.
 
 from __future__ import annotations
 
+import time
 from html import escape
 
 from django.contrib.auth import logout as django_logout
@@ -39,6 +40,9 @@ PATH = "/delete-account"
 CONFIRM_FIELD = "confirm"
 # The privacy policy (core.privacy_policy), linked from this page.
 PRIVACY_PATH = "/privacy"
+# The most the Garmin and Wahoo calls of one deletion take, all told (the api's workers time out
+# at 60 s).
+DEADLINE_S = 45.0
 
 TITLE = "Delete your RouteMaker account"
 DELETED = [
@@ -107,6 +111,14 @@ def delete_account(user) -> None:
         check_last_instance_admin,
     )
 
+    # Every call to Garmin and Wahoo, before the deletion and after, ends by DEADLINE_S from here,
+    # so the request finishes inside the api's 60 s worker timeout (docker/api-entrypoint.sh)
+    # with the account deleted and Wahoo's access revoked (v0.12.0 end review).
+    end = time.monotonic() + DEADLINE_S
+
+    def time_for_a_call() -> bool:
+        return time.monotonic() + max(garmin.TIMEOUT_S, wahoo.TIMEOUT_S) <= end
+
     # A Garmin connection is read before the account goes (its row goes by CASCADE) and Garmin is
     # told after, so a refused deletion leaves it connected.
     garmin_transport = garmin.Transport()
@@ -173,11 +185,15 @@ def delete_account(user) -> None:
         # request), My Go, settings, saved routes and versions, the assistant key, the Garmin and
         # Wahoo links.
         user.delete()
-    if garmin_access is not None:
+    if garmin_access is not None and time_for_a_call():
         garmin.deregister(garmin_access, garmin_transport)
     if wahoo_access is not None:
-        wahoo_views.remove_routes(wahoo_access, wahoo_routes, wahoo_transport)
-        wahoo.revoke(wahoo_access, wahoo_transport)
+        # The routes first, with time kept for the revoke, which matters more: it ends access.
+        wahoo_views.remove_routes(
+            wahoo_access, wahoo_routes, wahoo_transport, end=end - wahoo.TIMEOUT_S
+        )
+        if time_for_a_call():
+            wahoo.revoke(wahoo_access, wahoo_transport)
 
 
 def _page(

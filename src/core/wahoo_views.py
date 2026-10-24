@@ -147,14 +147,20 @@ def sent_route_ids(user) -> list:
 
 
 def remove_routes(
-    access: str, route_ids: list, transport: wahoo.Transport, clock=time.monotonic
+    access: str,
+    route_ids: list,
+    transport: wahoo.Transport,
+    clock=time.monotonic,
+    end: float | None = None,
 ) -> int:
     """Delete these routes from the rider's Wahoo library (account deletion), best effort: stops at
     the first call that does not reach Wahoo, at Wahoo refusing the token or asking to slow down
-    (401, 429), and at the deadline. Returns how many went."""
-    removed, end = 0, clock() + REMOVE_DEADLINE_S
+    (401, 429), and before a call that could run past the deadline (`end` on `clock`, at most
+    REMOVE_DEADLINE_S from now). Returns how many went."""
+    soonest = clock() + REMOVE_DEADLINE_S
+    removed, end = 0, soonest if end is None else min(end, soonest)
     for route_id in route_ids[:MAX_ROUTES_REMOVED]:
-        if clock() >= end:
+        if clock() + wahoo.TIMEOUT_S > end:
             break
         try:
             status, _ = transport.delete(f"{wahoo.ROUTES_URL}/{route_id}", access)

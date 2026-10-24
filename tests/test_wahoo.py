@@ -278,6 +278,19 @@ class TestUsingAndEnding:
         many = FakeWahoo()
         wahoo_views.remove_routes("a", list(range(150)), many)
         assert len(many.calls) == wahoo_views.MAX_ROUTES_REMOVED == wahoo_routes.MAX_REMEMBERED
+        # A call is started only if it would end by the deadline the deletion gives (the v0.12.0
+        # end review: the calls must all fit inside the api's 60 s worker timeout).
+        ticks = iter([0.0, 0.0, 3.0, 99.0])
+        short = FakeWahoo()
+        assert (
+            wahoo_views.remove_routes("a", [1, 2, 3], short, clock=lambda: next(ticks), end=12.0)
+            == 1
+        )
+        assert len(short.calls) == 1
+        ticks = iter([0.0, 0.0, 3.0, 99.0])
+        assert (
+            wahoo_views.remove_routes("a", [1, 2, 3], FakeWahoo(), clock=lambda: next(ticks)) == 2
+        )
 
     def test_a_refused_account_deletion_keeps_everything(self, fake) -> None:
         mine, user, _ = self._linked(fake)

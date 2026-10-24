@@ -25,6 +25,7 @@ import type { LonLat } from "./lib/geo.ts";
 import { LEADER_RING, RIDER_LAYERS, ROLE_COLOURS, roleSwatchPoints, showRideDots } from "./lib/rideDotsLayer.ts";
 import {
   ALERT_KINDS,
+  ROAM_ALERT_KINDS,
   ALERT_LABEL,
   ALERT_NOTE,
   BROADCAST_CONSENT_NOTE,
@@ -344,7 +345,9 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
   previousDots.current = dots;
   // An alert lasts 2 minutes (core.ride_presence.ALERT_TTL_S: nothing stays on the server longer).
   const alerts = read.alerts.filter((a) => a.age_s + sinceS <= 120);
+  // The key: the ride leader under "Ride leader" only, the others by role (lib/rideGroup.ts roleKey).
   const roleRows = roleKey(dots);
+  const leaderInKey = dots.some((d) => d.leader);
 
   // Following the leader: the leader's dot, the path it has taken since this page opened, and the map kept on it.
   const leaderDot = followKey ? (dots.find((d) => d.leader) ?? null) : null;
@@ -507,9 +510,9 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
             </span>
           </button>
         )}
-        {roleRows.length > 0 && (
+        {(leaderInKey || roleRows.length > 0) && (
           <ul role="list" className="ride-role-key" aria-label="Roles on this ride">
-            {leaderDot && (
+            {leaderInKey && (
               <li>
                 <LeaderSwatch />
                 {LEADER_LABEL}
@@ -586,7 +589,7 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
           </form>
         ) : (
           <ul role="list" className="ride-alert-kinds">
-            {ALERT_KINDS[type].map((kind) => (
+            {(broadcast?.roam ? ROAM_ALERT_KINDS : ALERT_KINDS[type]).map((kind) => (
               <li key={kind.id}>
                 <button type="button" className="secondary" onClick={() => pick(kind)}>
                   {kind.label}

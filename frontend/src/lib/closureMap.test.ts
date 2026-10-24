@@ -221,7 +221,7 @@ test("DDOT's permits are flagged only: drawn behind Plan's DC permits switch, of
 });
 
 
-// v0.12.0 (the owner, 2026-10-23, Lake Frank): closures on the map with no route, red closed and orange construction.
+// v0.12.0 (the owner's Lake Frank report): closures on the map with no route, red closed and orange construction.
 test("the view's closures are asked for zoomed in only, cut to the server's largest view, permits only when on", () => {
   const view = { west: -77.2, south: 39.0, east: -77.0, north: 39.2 };
   assert.equal(areaClosuresPath(view, 10.9), null);

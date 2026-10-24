@@ -271,7 +271,8 @@ def test_alerts_last_10_minutes_or_until_the_sender_clears_them(clock) -> None:
     assert rp.read(RIDE, THEM, now=clock)["alerts"] == []
 
 
-def test_a_directory_not_on_a_tmpfs_is_never_used(tmp_path, settings) -> None:
+def test_a_directory_not_on_a_tmpfs_is_never_used(tmp_path, settings, monkeypatch) -> None:
+    monkeypatch.setattr(rp, "_start_sweeper", lambda _store: None)
     settings.RIDE_PRESENCE_DIR = str(tmp_path)
     rp._store = None
     store = rp.store()
@@ -510,3 +511,48 @@ def test_nothing_about_a_ride_stays_past_2_minutes(clock) -> None:
     rp.read(RIDE, YOU, now=clock)  # a read prunes
     with rp.store().ride(RIDE, create=False) as state:
         assert state == {"riders": {}, "alerts": []}
+
+
+def _left_behind(clock) -> None:
+    """A leader's dot, path and alert, then 2 minutes in which nobody opens the ride."""
+    rp.post_position(RIDE, ME, *SPOT, now=clock)
+    rp.post_path(RIDE, ME, ROUTE, [list(SPOT)], now=clock)
+    rp.send_alert(RIDE, ME, rp.GROUP_RIDE, "lost", "", *SPOT, now=clock)
+
+
+def test_a_ride_nobody_opens_again_is_swept_after_2_minutes(clock) -> None:
+    # The v0.12.0 end review: a prune only on a read left a ride whose phones had all closed
+    # the link in memory until someone opened it again.
+    _left_behind(clock)
+    rp.post_position(_ride(1), YOU, *SPOT, now=clock)
+    rp.store().sweep(clock.t + rp.KEEP_S - 1)
+    assert set(rp.store()._rides) == {RIDE, _ride(1)}
+    rp.store().sweep(clock.t + rp.KEEP_S + 1)
+    assert rp.store()._rides == {}
+
+
+def test_the_tmpfs_store_sweeps_every_ride_too(tmp_path, clock, monkeypatch) -> None:
+    store = rp.TmpfsStore(str(tmp_path))
+    monkeypatch.setattr(rp, "store", lambda: store)
+    _left_behind(clock)
+    rp.post_position(_ride(1), YOU, *SPOT, now=clock)
+    # A dot past 2 minutes is written out of the file while its token's counts still count.
+    clock.t += rp.DOT_TTL_S + 1
+    rp.post_position(_ride(1), THEM, *SPOT, now=clock)
+    store.sweep(clock.t)
+    assert sorted(p.name for p in tmp_path.iterdir()) == [f"{_ride(1)}.json"]
+    kept = json.loads((tmp_path / f"{_ride(1)}.json").read_text())
+    assert "lon" not in kept["riders"].get(YOU, {}) and "lon" in kept["riders"][THEM]
+    store.sweep(clock.t + rp.KEEP_S + 1)
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_the_deployed_store_starts_its_sweeper(tmp_path, settings, monkeypatch) -> None:
+    started = []
+    monkeypatch.setattr(rp, "_start_sweeper", started.append)
+    rp._store = None
+    rp.store()
+    assert started == []  # the suite's store, with no directory, is swept by hand
+    settings.RIDE_PRESENCE_DIR = str(tmp_path)
+    chosen = rp.store()
+    assert started == [chosen]

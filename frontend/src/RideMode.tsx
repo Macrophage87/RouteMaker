@@ -1785,6 +1785,21 @@ export function RideMode({
     for (const button of actions.children) watch.observe(button);
     return () => watch.disconnect();
   }, [lightKey, ride.arrived, walking, textSize]);
+  // The riders and Alert chips sit just under the card, never over the turn's arrow and distance (as in Roam; the card's
+  // height changes with the turn, the text size and the lines in it).
+  useEffect(() => {
+    const card = cardRef.current;
+    const app = card?.closest<HTMLElement>(".app");
+    if (!card || !app || typeof ResizeObserver === "undefined") return;
+    const place = () => app.style.setProperty("--ride-card-bottom", `${Math.round(card.getBoundingClientRect().bottom - app.getBoundingClientRect().top)}px`);
+    const watch = new ResizeObserver(place);
+    watch.observe(card);
+    place();
+    return () => {
+      watch.disconnect();
+      app.style.removeProperty("--ride-card-bottom");
+    };
+  }, []);
   const back = ride.off ? wayBack(model, ride) : null;
   const shape = arrowFor(cue);
   const show311 = ride311Shown({ off: ride.off, progressM: progress });

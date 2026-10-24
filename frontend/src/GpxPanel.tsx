@@ -29,7 +29,7 @@ import { writeFit } from "./lib/fit.ts";
 import { writeTcx } from "./lib/tcx.ts";
 import { SEND_LABEL, browserSendEnv, canSendToGarmin, courseTrimmed, sendCourse, toBase64 } from "./lib/sendToGarmin.ts";
 import { SENDING, readGarmin, sendDirect } from "./lib/garminLink.ts";
-import { AS_FILE as WAHOO_AS_FILE, SENDING as WAHOO_SENDING, SEND_LABEL as WAHOO_SEND_LABEL, readWahoo, sendToWahoo } from "./lib/wahooLink.ts";
+import { SENDING as WAHOO_SENDING, SEND_LABEL as WAHOO_SEND_LABEL, handWahooFile, readWahoo, sendToWahoo } from "./lib/wahooLink.ts";
 import { cueSheetDocument, cueSheetFileName, cueSheetLine, type CueSheetKind } from "./lib/cueSheetPdf.ts";
 import { lockCancelledLine, lockPartButton, lockPartLine, lockScreenFileNames, lockScreenLine, lockSharedLine } from "./lib/lockScreen.ts";
 import { renderLockScreens } from "./app/lockScreenRender.ts";
@@ -275,8 +275,8 @@ function lineWithHeights(route: RouteResponse): ([number, number] | [number, num
  * Send to Wahoo (lib/wahooLink.ts), offered once Wahoo is connected: the route as a FIT course fitted to the Wahoo
  * profile, with its turn cues, added to the rider's Wahoo app, named as saved; a saved route sent again updates
  * it. Where Wahoo refuses it, cannot be reached, or is no longer connected, the FIT course is saved instead, after
- * the reason, for the Wahoo app to open. A course with more cues it must keep than the unit shows is not sent: its
- * line says to split the route.
+ * the reason, for the Wahoo app to open (in the phone app, handed to Android's "Open with" list). A course with more
+ * cues it must keep than the unit shows is not sent: its line says to split the route.
  */
 let sendingWahoo = false;
 
@@ -295,8 +295,9 @@ export async function sendCourseToWahoo(
     const outcome = await sendToWahoo(origin, { name: savedRoute?.name ?? exportName(route), line: lineWithHeights(route), fit: toBase64(bytes), saved_route: savedRoute?.id ?? null });
     const trimmed = courseTrimmed(course) ? ` ${courseLine(course)}` : "";
     if ("said" in outcome) return outcome.said + trimmed;
-    saveFile(bytes, "application/vnd.ant.fit", courseFileName(route, "fit"));
-    return `${outcome.asFile} ${WAHOO_AS_FILE}${trimmed}`;
+    // Saved in a browser; in the phone app, handed to Android's "Open with" list (a WebView downloads nothing).
+    const asFile = await handWahooFile(bytes, courseFileName(route, "fit"), browserSendEnv((b, type, name) => saveFile(b, type, name)));
+    return `${outcome.asFile} ${asFile}${trimmed}`;
   } finally {
     sendingWahoo = false;
   }

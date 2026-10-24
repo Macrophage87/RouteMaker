@@ -151,7 +151,7 @@ import {
   type PanelView,
   type ViewCause,
 } from "./lib/sidebar.ts";
-import { canShareLink, shareContent, shareLink, shareSaidFor, withGpxFile } from "./lib/share.ts";
+import { SHARE_FAILED, canShareLink, shareContent, shareLink, shareSaidFor, withGpxFile } from "./lib/share.ts";
 import type { ImportedPlan } from "./lib/gpxPlan.ts";
 import { loadWaterRestrooms, readWaterPrefs, saveWaterPrefs, waterAlongRoute, waterTitle, waterVisible, type WaterAlong, type WaterPoint, type WaterPrefs, type WaterStatus } from "./lib/waterRestrooms.ts";
 import waterRestroomsUrl from "./amenity-data/water-restrooms.json?url";
@@ -250,7 +250,7 @@ import { downloadText, trackGpx, verbatimDownload, verbatimFileName } from "./li
 import { readGpx } from "./lib/gpxImport.ts";
 import { GPX_SAID_OPENED, GPX_SAID_ROUTE, GPX_SAID_TRACK, downloadCourse, downloadGpx, routeGpxFile, sendCourseToGarmin, sendCourseToWahoo, type FileFormat, type Said } from "./GpxPanel.tsx";
 import type { DeviceProfileId } from "./lib/deviceProfiles.ts";
-import { SHARED_GONE, SHARED_INPUTS_ONLY, SHARED_OPENED, SHARED_PATH, SHARED_REVOKED, SHARED_REVOKED_ERROR, SHARE_KEEP_DEFAULT, SHARE_RIDE_WAIT, BROADCAST_NO_LEAD, asRideLink, leadKeyFrom, gpxShareFile, keepFields, newSharedId, previewImageOk, readShared, rideLinkFrom, sharedBody, sharedIdFrom, storeShared, withSharedId, type ShareKeep } from "./lib/sharedRoutes.ts";
+import { SHARED_GONE, SHARED_INPUTS_ONLY, SHARED_OPENED, SHARED_PATH, SHARED_REVOKED, SHARED_REVOKED_ERROR, SHARE_KEEP_DEFAULT, SHARE_RIDE_WAIT, BROADCAST_NO_LEAD, BROADCAST_SHARE_FAILED, asRideLink, leadKeyFrom, gpxShareFile, keepFields, newSharedId, previewImageOk, readShared, rideLinkFrom, sharedBody, sharedIdFrom, storeShared, withSharedId, type ShareKeep } from "./lib/sharedRoutes.ts";
 import { ClosureDialog, type ClosureAsk } from "./ClosureDialog.tsx";
 import { StartOnComputerDialog } from "./StartOnComputerDialog.tsx";
 import { LoadRouteDialog } from "./LoadRouteDialog.tsx";
@@ -3263,13 +3263,14 @@ export function App() {
   // Start ride: the line about to be ridden, checked first ("Ride it anyway" goes on to the ride).
   // The voice is unlocked first, synchronously inside the press (iOS speaks only in a gesture; after the
   // check's await it would be too late). A press that asks the first-ride question unlocks in that dialog.
-  const [computerAsk, setComputerAsk] = useState(false);
+  // Which press asked: Start ride, or Broadcast (asked before its share sheet, so Go back sends nothing).
+  const [computerAsk, setComputerAsk] = useState<"start" | "broadcast" | null>(null);
   // Start anyway, kept in memory too: a tab that cannot store it (a private window) still starts.
   const computerOk = useRef(false);
   const startRideChecked = () => {
     // On a computer, asked first (lib/startOnComputer.ts): Go back, or Start anyway, which presses again.
     if (!computerOk.current && askBeforeStart(looksLikePhone(), tabSession())) {
-      setComputerAsk(true);
+      setComputerAsk("start");
       return;
     }
     const unlocked = ridePrefs.chosen || mode === "go";
@@ -3292,13 +3293,18 @@ export function App() {
   // ride's link, led by the sharer, then the ride starts as Start's does. The voice is unlocked inside the press, as
   // the share sheet's own wait would spend it; nothing starts where the link was not sent or its line not kept.
   // What went wrong is said beside the button (Go's Route file sheet, where Share says it, is usually closed).
+  // On a computer it asks first, before the link goes (review S1): Go back shares nothing, Start anyway presses again.
   const [broadcastNote, setBroadcastNote] = useState({ text: "", count: 0 });
   const broadcastRide = () => {
+    if (!computerOk.current && askBeforeStart(looksLikePhone(), tabSession())) {
+      setComputerAsk("broadcast");
+      return;
+    }
     if (ridePrefs.chosen || mode === "go") primeRideVoice(ridePrefs);
     setBroadcastNote((n) => ({ text: "", count: n.count }));
     void shareRoute(true).then(({ led, said }) => {
       if (led) startRideChecked();
-      else if (said) setBroadcastNote((n) => ({ text: said, count: n.count + 1 }));
+      else if (said) setBroadcastNote((n) => ({ text: said === SHARE_FAILED ? BROADCAST_SHARE_FAILED : said, count: n.count + 1 }));
     });
   };
   // Ride the rest (lib/rideTrip.ts): after a transit plan's transit, a ride for its last riding leg, planned
@@ -4828,13 +4834,16 @@ export function App() {
         }}
       />
       <StartOnComputerDialog
-        open={computerAsk}
-        onBack={() => setComputerAsk(false)}
+        open={computerAsk !== null}
+        onBack={() => setComputerAsk(null)}
         onAnyway={() => {
+          const asked = computerAsk;
           computerOk.current = true;
           rememberStartAnyway(tabSession());
-          setComputerAsk(false);
-          startRideChecked();
+          setComputerAsk(null);
+          // Still inside the press, so Broadcast's share sheet may open.
+          if (asked === "broadcast") broadcastRide();
+          else startRideChecked();
         }}
       />
       <ClosureDialog ask={closureAsk} onReroute={() => void closureReroute()} onAnyway={closureAnyway} onCancel={closureCancel} />

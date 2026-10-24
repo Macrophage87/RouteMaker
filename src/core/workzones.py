@@ -858,9 +858,29 @@ def parse_area(text: str) -> tuple[float, float, float, float]:
     return west, south, east, north
 
 
+def _meets_box(a, b, box) -> bool:
+    """Whether the segment a-b has any point in `box` (Liang-Barsky clipping): a closure fed as
+    only its two ends still shows when the view is zoomed in on its middle (v0.12.0 review)."""
+    west, south, east, north = box
+    (x0, y0), (x1, y1) = a, b
+    dx, dy = x1 - x0, y1 - y0
+    low, high = 0.0, 1.0
+    for p, q in ((-dx, x0 - west), (dx, east - x0), (-dy, y0 - south), (dy, north - y0)):
+        if p == 0:
+            if q < 0:
+                return False
+        elif p < 0:
+            low = max(low, q / p)
+        else:
+            high = min(high, q / p)
+        if low > high:
+            return False
+    return True
+
+
 def area_rows(box, permits: bool = False, now: datetime | None = None) -> list[dict]:
-    """The closures in force now with any point in `box`, as the map and its card show them
-    (`closure_row`, effect "none", with words for the map instead of a route's)."""
+    """The closures in force now with any part of their line in `box`, as the map and its card
+    show them (`closure_row`, effect "none", with words for the map instead of a route's)."""
     now = now or _now()
     west, south, east, north = box
     cx, cy = (west + east) / 2, (south + north) / 2
@@ -875,7 +895,7 @@ def area_rows(box, permits: bool = False, now: datetime | None = None) -> list[d
         lats = [lat for _lon, lat in zone.line]
         if max(lons) < west or min(lons) > east or max(lats) < south or min(lats) > north:
             continue
-        if not any(west <= lon <= east and south <= lat <= north for lon, lat in zone.line):
+        if not any(_meets_box(a, b, box) for a, b in zip(zone.line, zone.line[1:], strict=False)):
             continue
         effect = rules.POSSIBLE if possible else rules.NO_EFFECT
         row = closure_row(zone, effect, None, now, False)

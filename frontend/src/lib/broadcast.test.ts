@@ -21,12 +21,13 @@ import {
   readRide,
   rideId,
   ridersSaid,
+  roleKey,
   routeKeyOf,
   shownDots,
   thinLine,
   withoutStart,
 } from "./rideGroup.ts";
-import { asRideLink, leadKeyFrom, rideLinkFrom } from "./sharedRoutes.ts";
+import { BROADCAST_SHARE_FAILED, asRideLink, leadKeyFrom, rideLinkFrom } from "./sharedRoutes.ts";
 import { BROADCAST_LABEL } from "./share.ts";
 
 const LINE: LonLat[] = Array.from({ length: 21 }, (_, i) => [-77.04 + i * 0.002, 38.9] as LonLat);
@@ -226,4 +227,49 @@ test("the ridden path goes without its first 650 ft (200 m): rides often start a
   assert.deepEqual(withoutStart([start, near]), []);
   assert.deepEqual(withoutStart([start, near, away, [-77.004, 38.9]]), [away, [-77.004, 38.9]]);
   assert.equal(PRIVATE_START_M, 200);
+});
+
+test("on a computer Broadcast asks before the share sheet: Go back sends nothing, Start anyway shares then rides", () => {
+  const app = read("../App.tsx");
+  const fn = app.slice(app.indexOf("const broadcastRide = () => {"), app.indexOf("\n  };\n", app.indexOf("const broadcastRide = () => {")));
+  // The question comes first, before the voice and the share sheet (review S1).
+  assert.match(fn, /^const broadcastRide = \(\) => \{\s*if \(!computerOk\.current && askBeforeStart\(looksLikePhone\(\), tabSession\(\)\)\) \{\s*setComputerAsk\("broadcast"\);\s*return;\s*\}/);
+  assert.ok(fn.indexOf('setComputerAsk("broadcast")') < fn.indexOf("shareRoute(true)"));
+  const dialog = app.slice(app.indexOf("<StartOnComputerDialog"), app.indexOf("<ClosureDialog"));
+  assert.match(dialog, /onBack=\{\(\) => setComputerAsk\(null\)\}/);
+  assert.match(dialog, /if \(asked === "broadcast"\) broadcastRide\(\);\s*else startRideChecked\(\);/);
+});
+
+test("Broadcast's own share-sheet failure: the ride did not start, with no Copy link it cannot use", () => {
+  assert.equal(BROADCAST_SHARE_FAILED, "Could not open the share sheet, so the ride did not start.");
+  const app = read("../App.tsx");
+  assert.match(app, /setBroadcastNote\(\(n\) => \(\{ text: said === SHARE_FAILED \? BROADCAST_SHARE_FAILED : said, count: n\.count \+ 1 \}\)\)/);
+});
+
+test("the ride leader is said once: not again as the nearest rider or as its role (review S4)", () => {
+  const leaderOnly = shownDots(LINE, [{ lon: -77.03, lat: 38.9, age_s: 5, role: "lead", leader: true }]);
+  assert.match(ridersSaid(leaderOnly, 0), /^1 rider on the route\. Ride leader, [\d.]+ mi \([\d.]+ km\) ahead, seen just now\.$/);
+  const withSweep = shownDots(LINE, [
+    { lon: -77.03, lat: 38.9, age_s: 5, role: "lead", leader: true },
+    { lon: -77.02, lat: 38.9, age_s: 5, role: "lead" },
+    { lon: -77.035, lat: 38.9, age_s: 5, role: "sweep" },
+  ]);
+  const said = ridersSaid(withSweep, 0);
+  assert.equal((said.match(/Ride leader/g) ?? []).length, 1);
+  // The nearest other rider ahead is the sweep, not the leader; the other Lead line rider is still said.
+  assert.match(said, /^3 riders on the route\. Ride leader, [\d.]+ mi \([\d.]+ km\) ahead, seen just now\. Nearest rider ahead, [\d.]+ mi \([\d.]+ km\), seen just now\. Lead line, [\d.]+ mi \([\d.]+ km\) ahead\. Sweep, /);
+  assert.equal(said.match(/Nearest rider ahead, ([\d.]+ mi)/)?.[1], said.match(/Sweep, ([\d.]+ mi)/)?.[1]);
+  // The key: the leader under Ride leader only.
+  assert.deepEqual(roleKey(leaderOnly), []);
+  assert.deepEqual(roleKey(withSweep).map((k) => [k.role, k.count]), [["lead", 1], ["sweep", 1]]);
+  const group = read("../RideGroup.tsx");
+  assert.match(group, /\{\(leaderInKey \|\| roleRows\.length > 0\) && \(\s*<ul role="list" className="ride-role-key"/);
+});
+
+test("a ride's riders and Alert sit just under the cue card, never over the turn's arrow and distance (review B1)", () => {
+  const css = read("../styles.css");
+  assert.match(css, /\.app\.riding \.ride-group \{\s*top: calc\(var\(--ride-card-bottom, 64px\) \+ 8px\);\s*\}/);
+  const ride = read("../RideMode.tsx");
+  assert.match(ride, /app\.style\.setProperty\("--ride-card-bottom", `\$\{Math\.round\(card\.getBoundingClientRect\(\)\.bottom - app\.getBoundingClientRect\(\)\.top\)\}px`\)/);
+  assert.match(ride, /watch\.observe\(card\);\s*place\(\);\s*return \(\) => \{\s*watch\.disconnect\(\);\s*app\.style\.removeProperty\("--ride-card-bottom"\);/);
 });
