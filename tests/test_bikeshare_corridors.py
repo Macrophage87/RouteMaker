@@ -243,6 +243,13 @@ class TestMajorCorridors:
         assert ids == {1: "Kenyon Street Northwest", 830423224: "Irving Street Northwest"}
         assert counts["irving-street-bikeway"] == 2
 
+    def test_the_carl_henn_millennium_trail_in_rockville(self) -> None:
+        ways = [
+            (1, {"name": "Carl Henn Millennium Trail", "highway": "cycleway"}, [(-77.16, 39.08)])
+        ]
+        ids, _ = mc.way_ids(ways, {}, {}, mc.load())
+        assert ids == {1: "Carl Henn Millennium Trail"}
+
     def test_a_corridor_matching_nothing_is_warned_about(self, caplog) -> None:
         mc.way_ids([], {}, {}, mc.load())
         assert "matched no way" in caplog.text and "rock-creek-trail" in caplog.text

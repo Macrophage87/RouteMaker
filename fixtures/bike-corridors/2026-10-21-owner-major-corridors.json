@@ -3,7 +3,7 @@
   "decided": "2026-10-21",
   "decided_by": "the deployment owner",
   "status": "Read by the rebuild from its image (pipeline.major_corridors); nothing is loaded into the database. Every way it names is drawn as a top-class popular corridor (bike_popular 3), whatever the Capital Bikeshare model gives it.",
-  "reason": "The owner, 2026-10-21: \"Let's focus on the major cycling corridors, which are well known\" ... \"The major routes are rock creek trail, the CCT, the MBT, the Q and R street corridors, Pennsylvania avenue, washington and old dominion trail, the mount vernon trail, etc.\" and \"K street too\". and \"Sligo Creek trail, etc.\" Proposed for the \"etc.\" and confirmed (\"All work\"): the Anacostia River Trail, the Custis Trail, Four Mile Run Trail, the Northwest Branch Trail and the 15th Street NW protected bike lane. Then: \"C&O Canal Towpath\". Then: \"And futher out obviously label the long ones, like the WB&A, the B&A, the BWI trail,\". Then: \"THe major baltimore trails\": the Gwynns Falls Trail, the Jones Falls Trail, the Herring Run Trail, the Inner Harbor (Waterfront) Promenade, the Torrey C. Brown (NCR) Trail and the Grist Mill Trail. Then: \"Irving street bikeway\". Then: \"Carl HEin Millenium Trail, Mattthew Henson trail, ICC trail, Gwyns Falls Trail, Jones Fall Trail\", \"Ohio Drive (Haines Point)\" and \"North Central Railway Trail\". Then: \"Add the broadneck peninsula trail to the major ones\". Then, of the Fairfax County Parkway trail drawn under the parkway: \"There are cases where the avoid road is mapped over the long trail\", and \"Cross County Trail is another major one, though it's a mountain bike trail for parts\" (its mountain-bike parts keep their own look: the band is drawn on routable ways only). Then, 2026-10-23: \"Add the Irving and Kenyon bikeway to the map\": Kenyon Street NW's two-way cycle track (11th Street NW to Irving) and Irving's unnamed track east of 1st Street NW (way 830423224) join the Irving Street corridor.",
+  "reason": "The owner, 2026-10-21: \"Let's focus on the major cycling corridors, which are well known\" ... \"The major routes are rock creek trail, the CCT, the MBT, the Q and R street corridors, Pennsylvania avenue, washington and old dominion trail, the mount vernon trail, etc.\" and \"K street too\". and \"Sligo Creek trail, etc.\" Proposed for the \"etc.\" and confirmed (\"All work\"): the Anacostia River Trail, the Custis Trail, Four Mile Run Trail, the Northwest Branch Trail and the 15th Street NW protected bike lane. Then: \"C&O Canal Towpath\". Then: \"And futher out obviously label the long ones, like the WB&A, the B&A, the BWI trail,\". Then: \"THe major baltimore trails\": the Gwynns Falls Trail, the Jones Falls Trail, the Herring Run Trail, the Inner Harbor (Waterfront) Promenade, the Torrey C. Brown (NCR) Trail and the Grist Mill Trail. Then: \"Irving street bikeway\". Then: \"Carl HEin Millenium Trail, Mattthew Henson trail, ICC trail, Gwyns Falls Trail, Jones Fall Trail\", \"Ohio Drive (Haines Point)\" and \"North Central Railway Trail\". Then: \"Add the broadneck peninsula trail to the major ones\". Then, of the Fairfax County Parkway trail drawn under the parkway: \"There are cases where the avoid road is mapped over the long trail\", and \"Cross County Trail is another major one, though it's a mountain bike trail for parts\" (its mountain-bike parts keep their own look: the band is drawn on routable ways only). Then, 2026-10-23: \"Add the Irving and Kenyon bikeway to the map\": Kenyon Street NW's two-way cycle track (11th Street NW to Irving) and Irving's unnamed track east of 1st Street NW (way 830423224) join the Irving Street corridor. The owner's \"Carl HEin Millenium Trail\" is the Carl Henn Millennium Trail in Rockville (OSM route relation 2413852); the first entry looked for it in Anne Arundel County and matched nothing (rebuild warning, 2026-10-23).",
   "corridors": [
     {
       "id": "rock-creek-trail",
@@ -334,14 +334,15 @@
     {
       "id": "millennium-trail",
       "names": [
-        "(Carl A\\.? Hein )?(Anne Arundel County )?Millenn?ium Trail"
+        "(Carl Henn )?Millenn?ium Trail"
       ],
       "box": [
-        -76.72,
-        39.05,
-        -76.52,
-        39.2
-      ]
+        -77.2,
+        39.06,
+        -77.12,
+        39.11
+      ],
+      "bike_ways_only": true
     },
     {
       "id": "matthew-henson-trail",
