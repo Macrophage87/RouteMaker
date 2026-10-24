@@ -47,7 +47,7 @@ import { SaveRoute, type SaveRouteProps } from "../SaveRoute.tsx";
 import { SAVE_ROUTE, SAVE_SHORT } from "../lib/savedRoutes.ts";
 import { Fold, QuickFigures } from "../Sidebar.tsx";
 import { COPY_LINK, ROUTE_FOLDS, ROUTE_FOLD_GROUP, chartFoldOpen } from "../lib/sidebar.ts";
-import { SHARE_LABEL, SHARE_RIDE_LABEL } from "../lib/share.ts";
+import { BROADCAST_ABOUT, BROADCAST_LABEL, SHARE_LABEL, SHARE_RIDE_LABEL } from "../lib/share.ts";
 import { SHARE_IMAGE_LABEL } from "../lib/shareCard.ts";
 import {
   SHARE_DELETE_AFTER_LABEL,
@@ -231,6 +231,8 @@ export interface RouteSectionProps {
   setScrubPoint: (point: LonLat | null) => void;
   choose: (index: number) => void;
   startRide: () => void;
+  /** Broadcast, beside Start: Share ride's link (the sharer leads), then the ride. Null without a share sheet. */
+  broadcastRide: { onPress: () => void; note: { text: string; count: number } } | null;
   startRideRef: RefObject<HTMLButtonElement | null>;
   rideSize: number | undefined;
   setDials: Dispatch<SetStateAction<Dials>>;
@@ -272,7 +274,7 @@ export interface TransitControls {
 
 /** The planner's Route section: planning, the long-ride question, errors, the route summary and Start ride's question. */
 export function RouteSection(props: RouteSectionProps) {
-  const { stale, routeHeadingRef, status, announcement, slow, preset, dials, points, cancelLong, planButtonRef, confirmLong, errorRef, retry, shown, answer, choice, aroundAvoid, setAroundAvoid, routedPoints, federalRoute, narrow, setJunctionFocus, setScrubPoint, choose, startRide, startRideRef, rideSize, setDials, waterStatus, waterAlong, addWaterStop, rideAsk, setRideAsk, backToRideOpener, ridePrefs, changeRidePrefs, rideStartFirstRef, beginRide, climbsOn, climbsStatus, climbsAlong, mode, actions, stations, go, transitControls, light } = props;
+  const { stale, routeHeadingRef, status, announcement, slow, preset, dials, points, cancelLong, planButtonRef, confirmLong, errorRef, retry, shown, answer, choice, aroundAvoid, setAroundAvoid, routedPoints, federalRoute, narrow, setJunctionFocus, setScrubPoint, choose, startRide, broadcastRide, startRideRef, rideSize, setDials, waterStatus, waterAlong, addWaterStop, rideAsk, setRideAsk, backToRideOpener, ridePrefs, changeRidePrefs, rideStartFirstRef, beginRide, climbsOn, climbsStatus, climbsAlong, mode, actions, stations, go, transitControls, light } = props;
   const goMode = mode === "go";
   return (
     <section key="route" aria-labelledby="route-heading" aria-busy={stale} className={goMode ? "route-section go-route" : "route-section"}>
@@ -347,7 +349,7 @@ export function RouteSection(props: RouteSectionProps) {
             )
           }
           pickerCount={candidateRows(answer)?.length ?? 0}
-          ride={{ onStart: startRide, startRef: startRideRef }}
+          ride={{ onStart: startRide, onBroadcast: broadcastRide?.onPress ?? null, broadcastNote: broadcastRide?.note, startRef: startRideRef }}
           rideSize={rideSizeOf({ rideSize })}
           onEnding={(ending) => setDials((d) => ({ ...d, ending }))}
           water={waterStatus === "ready" ? { items: waterAlong, onAddStop: addWaterStop } : null}
@@ -711,7 +713,7 @@ export function RouteSummary({
   federal: readonly string[];
   narrow: boolean;
   /** Ride mode's Start ride (WEB-NAV-plan.md Q1): offered beside the totals and with the directions. */
-  ride: { onStart: () => void; startRef: RefObject<HTMLButtonElement | null> };
+  ride: { onStart: () => void; onBroadcast?: (() => void) | null; broadcastNote?: { text: string; count: number }; startRef: RefObject<HTMLButtonElement | null> };
   onSelectJunction: (index: number) => void;
   /** The chart's scrub: the map point it reads, or null. */
   onScrub: (point: LonLat | null) => void;
@@ -771,10 +773,32 @@ export function RouteSummary({
   const elevationTitle = profile && chartKind(route) === "mass" ? foldName("mass") : ROUTE_FOLDS.elevation.title;
   // Start: the big button (Go), or the first of its row (Plan). In a browser, short rides only; a longer one goes to a bike computer (OD 255). The phone app rides any length.
   const start = rideable ? (
-    <button type="button" className="start-button" ref={ride.startRef} onClick={ride.onStart} aria-describedby="start-ride-hint">
-      <Icon name="play" />
-      Start<span className={goMode ? undefined : "visually-hidden"}> ride</span>
-    </button>
+    <>
+      <button type="button" className="start-button" ref={ride.startRef} onClick={ride.onStart} aria-describedby="start-ride-hint">
+        <Icon name="play" />
+        Start<span className={goMode ? undefined : "visually-hidden"}> ride</span>
+      </button>
+      {/* Broadcast (Stephen 2026-10-22: "a small button next to start"): Go's one control for it; the share sheet
+          opens, and the ride starts once the link is sent, with the sharer as its leader. */}
+      {ride.onBroadcast && (
+        <button type="button" className="secondary broadcast-button" onClick={ride.onBroadcast} title={BROADCAST_ABOUT} aria-describedby="broadcast-about">
+          <Icon name="broadcast" size={18} />
+          {BROADCAST_LABEL}
+        </button>
+      )}
+      {ride.onBroadcast && (
+        <span id="broadcast-about" className="visually-hidden">
+          {BROADCAST_ABOUT}
+        </span>
+      )}
+      {/* What went wrong (the route not ready, the sheet failed, the link without its leader), shown and said. */}
+      {ride.onBroadcast && (
+        <p className="hint broadcast-note" role="status">
+          {ride.broadcastNote?.text}
+          {(ride.broadcastNote?.count ?? 0) % 2 ? " " : ""}
+        </p>
+      )}
+    </>
   ) : null;
   const startHint = rideable ? (
     // Plan says it with Start, not under it (Stephen 2026-10-20: "it needs to be simpler, still a wall of text").

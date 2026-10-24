@@ -335,6 +335,15 @@ export const WATER_MIN_ZOOM = 12;
  * exact zoom in a rural area. Here it looks fine"). The route's list names them all at any zoom.
  */
 export const WATER_ICON_PADDING_PX = 6;
+/**
+ * Wider below zoom 14 (the owner, 2026-10-23, of central DC at zoom 12: "There's still a lot of clutter" ... "At
+ * this zoom, the goal is to see the major cycling corridors"): downtown keeps one icon in a few blocks there; a
+ * rural one, miles from the next, still shows. From zoom 14 the padding is WATER_ICON_PADDING_PX.
+ */
+export const WATER_ICON_CITY_PADDING_PX = 18;
+export const WATER_ICON_PADDING_ZOOM = 14;
+/** The icon padding by zoom, for the water, restroom and repair layers. */
+export const WATER_ICON_PADDING = ["step", ["zoom"], WATER_ICON_CITY_PADDING_PX, WATER_ICON_PADDING_ZOOM, WATER_ICON_PADDING_PX];
 export const WATER_ICON_PX = 18;
 
 /** One icon per kind the map draws: water alone by source, a restroom by type, with a drop when it has drinking water. */
@@ -472,7 +481,7 @@ export function waterLayer(prefs: WaterPrefs = WATER_PREFS_DEFAULT, sourceId = W
       // Thinned where crowded (WATER_ICON_PADDING_PX), never where sparse: each icon takes its room in the
       // collision index, so two crowding icons keep one; a name over one wins its spot.
       "icon-allow-overlap": false,
-      "icon-padding": WATER_ICON_PADDING_PX,
+      "icon-padding": WATER_ICON_PADDING,
       "icon-ignore-placement": false,
       // Where two crowd, the drinking water is kept over the restroom beside it.
       "symbol-sort-key": ["case", ["has", "t"], 1, 0],

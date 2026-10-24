@@ -160,12 +160,12 @@ def grade_cost_s(profile: Sequence[tuple[float, float | None]], brake_grade: flo
     )
 
 
-# What the router itself charges for climbing at the hills detent (`use_hills` 1.0,
-# where only Valhalla's slower uphill speed, `kGradeBasedSpeedFactor`, prices a
-# grade): the extra cost per metre climbed over flat riding on a quiet street, in
-# metres of flat riding, by grade. Measured on the live router (docs/DEVELOPMENT.md,
-# "Sustained grades", the `use_hills` 1.0 row), with 0 at the flat; read between the
-# points in a straight line and held past the last.
+# What the router itself charges for climbing, by `use_hills`: the extra cost per metre
+# climbed over flat riding on a quiet street, in metres of flat riding, by grade. At 1.0 (the
+# detent and the right half) only Valhalla's slower uphill speed (`kGradeBasedSpeedFactor`)
+# prices a grade; below it `kAvoidHillsStrength` adds on. Measured on the live router
+# (docs/DEVELOPMENT.md, "Sustained grades"), with 0 at the flat; read between the points in a
+# straight line, held past the last, and between the rows in a straight line in `use_hills`.
 ROUTER_CLIMB_FLAT_M = (
     (0.0, 0.0),
     (0.03, 12.0),
@@ -176,29 +176,46 @@ ROUTER_CLIMB_FLAT_M = (
     (0.13, 23.0),
     (0.15, 31.0),
 )
+ROUTER_CLIMB_FLAT_M_BY_USE_HILLS = (
+    (0.0, ((0.0, 0.0), (0.03, 22.0), (0.05, 34.0), (0.065, 63.0), (0.08, 88.0),
+           (0.10, 109.0), (0.13, 215.0), (0.15, 297.0))),
+    (0.4, ((0.0, 0.0), (0.03, 18.0), (0.05, 26.0), (0.065, 45.0), (0.08, 61.0),
+           (0.10, 74.0), (0.13, 138.0), (0.15, 191.0))),
+    (1.0, ROUTER_CLIMB_FLAT_M),
+)  # fmt: skip
 
 
-def router_climb_factor(grade: float) -> float:
-    """`ROUTER_CLIMB_FLAT_M` at a grade (rise over run): flat metres per metre climbed;
-    0 on the flat and downhill."""
-    if grade <= 0:
-        return 0.0
-    for (g0, f0), (g1, f1) in zip(ROUTER_CLIMB_FLAT_M, ROUTER_CLIMB_FLAT_M[1:], strict=False):
+def _read(table: Sequence[tuple[float, float]], grade: float) -> float:
+    for (g0, f0), (g1, f1) in zip(table, table[1:], strict=False):
         if grade <= g1:
             return f0 + (f1 - f0) * (grade - g0) / (g1 - g0)
-    return ROUTER_CLIMB_FLAT_M[-1][1]
+    return table[-1][1]
 
 
-def router_climb_m(profile: Sequence[tuple[float, float | None]]) -> float:
-    """What the router's own route cost charges for a profile's climbing at the hills
-    detent, in metres of quiet flat riding (`ROUTER_CLIMB_FLAT_M`): each rising window
-    of the effort model's (`routemaker.effort`, at least 300 m, so a 2 m sample error
-    is not read as a steep pitch) at its rise times the factor for its grade. Descents
-    add nothing. "Fine with hills" (FOLLOWUP-HILLS-TOLERATE, OWNER-DECISIONS 242) takes
-    a share of this off a route's cost (`core.routing.choose_direct`); it never takes
-    more than the router charged, so a climb never earns a route a credit."""
+def router_climb_factor(grade: float, use_hills: float = 1.0) -> float:
+    """The router's climbing charge at a grade (rise over run) and `use_hills`
+    (`ROUTER_CLIMB_FLAT_M_BY_USE_HILLS`): flat metres per metre climbed; 0 on the flat and
+    downhill."""
+    if grade <= 0:
+        return 0.0
+    rows = ROUTER_CLIMB_FLAT_M_BY_USE_HILLS
+    use_hills = min(max(use_hills, rows[0][0]), rows[-1][0])
+    for (u0, t0), (u1, t1) in zip(rows, rows[1:], strict=False):
+        if use_hills <= u1:
+            w = (use_hills - u0) / (u1 - u0)
+            return (1 - w) * _read(t0, grade) + w * _read(t1, grade)
+    return _read(rows[-1][1], grade)
+
+
+def router_climb_m(profile: Sequence[tuple[float, float | None]], use_hills: float = 1.0) -> float:
+    """What the router's own route cost charges for a profile's climbing at `use_hills`, in
+    metres of quiet flat riding (`router_climb_factor`): each rising window of the effort
+    model's (`routemaker.effort`, at least 300 m, so a 2 m sample error is not read as a
+    steep pitch) at its rise times the factor for its grade. Descents add nothing. The route
+    choice takes this off and prices the climbing itself (`routemaker.hill_cost`, the
+    owner's "always assume time equivalent", 2026-10-23)."""
     return sum(
-        rise * router_climb_factor(rise / run)
+        rise * router_climb_factor(rise / run, use_hills)
         for run, rise in effort.windows(profile)
         if run > 0 and rise > 0
     )

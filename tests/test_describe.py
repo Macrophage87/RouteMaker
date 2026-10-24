@@ -2088,3 +2088,137 @@ class TestCrossings:
             410, "straight", kind="crossing", names=("needwood road bike lane",), flagged=False
         )
         assert "cross" not in self.needwood([crossing])[1]["turn"]
+
+
+def turned(atoms, turn, choice=True):
+    """`atoms` with the first beginning a traced edge whose line turns `turn` degrees
+    there (`Atom.turn`), another rideable way meeting the node where `choice`."""
+    return [replace(atoms[0], turn=turn, choice=choice), *atoms[1:]]
+
+
+class TestClearTurns:
+    """The owner, 2026-10-23, on one ride: north on the Metropolitan Branch Trail, where it
+    turns left onto its side path along a road, "It missed a clear left turn"; in Takoma,
+    a turnaround off the trail onto a short path, "Another sharp turnaround missed". A
+    clear turn is said even where the street's name does not change."""
+
+    def test_a_clear_turn_along_one_trail_is_said(self):
+        legs = [
+            flat(
+                road("Metropolitan Branch Trail", 1, 600, 0, 0, "path", "cycleway"),
+                turned(
+                    road("Metropolitan Branch Trail", 1, 300, 270, 270, "path", "cycleway"),
+                    -88,
+                ),
+            )
+        ]
+        entries = d.describe(legs)
+        assert len(entries) == 2
+        assert entries[1]["turn"]["movement"] == "left"
+        assert entries[1]["turn"]["stay"] is True
+        assert "Left to stay on Metropolitan Branch Trail," in entries[1]["text"]
+
+    def test_a_clear_bear_along_one_trail_is_a_bear(self):
+        legs = [
+            flat(
+                road("A Trail", 1, 600, 0, 0, "path", "cycleway"),
+                turned(road("A Trail", 1, 300, 50, 50, "path", "cycleway"), 50),
+            )
+        ]
+        assert d.describe(legs)[1]["turn"]["movement"] == "bear_right"
+
+    def test_a_short_stretch_after_a_clear_turn_is_kept(self):
+        legs = [
+            flat(
+                road("Metropolitan Branch Trail", 1, 600, 0, 0, "path", "cycleway"),
+                turned(road("Metropolitan Branch Trail", 1, 60, 270, 270, "path", "cycleway"), -90),
+                forked(
+                    road("Metropolitan Branch Trail", 1, 400, 0, 0, "path", "cycleway"), "right"
+                ),
+            )
+        ]
+        movements = [e["turn"]["movement"] if e["turn"] else None for e in d.describe(legs)]
+        assert movements == [None, "left", "right"]
+
+    def test_a_gentle_bend_along_one_trail_is_not_said(self):
+        legs = [
+            flat(
+                road("Sligo Creek Trail", 1, 600, 340, 340, "path", "cycleway"),
+                turned(road("Sligo Creek Trail", 1, 300, 305, 305, "path", "cycleway"), -35),
+            )
+        ]
+        assert len(d.describe(legs)) == 1
+
+    def test_a_clear_bend_with_nothing_to_choose_is_not_said(self):
+        legs = [
+            flat(
+                road("A Trail", 1, 600, 0, 0, "path", "cycleway"),
+                turned(road("A Trail", 1, 300, 270, 270, "path", "cycleway"), -90, choice=False),
+            )
+        ]
+        assert len(d.describe(legs)) == 1
+
+    def test_a_turnaround_onto_a_short_path_is_said(self):
+        # Off the trail, back sharply onto a short path, then right onto a service road.
+        legs = [
+            flat(
+                road("Metropolitan Branch Trail", 1, 800, 225, 225, "path", "cycleway"),
+                turned(road(None, 1, 40, 20, 20, "path", "footway"), 155, choice=False),
+                road(None, 1, 100, 110, 110, use="service_road"),
+                road("Maple Street Northwest", 1, 400, 20, 20),
+            )
+        ]
+        entries = d.describe(legs)
+        assert entries[1]["turn"]["movement"] == "right"
+        assert entries[1]["street"] == "path"
+        assert [e["street"] for e in entries[2:]] == ["service road", "Maple Street Northwest"]
+
+    def test_a_turnaround_along_one_trail_is_said_without_another_way(self):
+        legs = [
+            flat(
+                road("A Trail", 1, 600, 0, 0, "path", "cycleway"),
+                turned(road("A Trail", 1, 300, 170, 170, "path", "cycleway"), -165, choice=False),
+            )
+        ]
+        entries = d.describe(legs)
+        assert entries[1]["turn"]["movement"] == "left"
+        assert "Left to stay on A Trail," in entries[1]["text"]
+
+    def test_a_turn_already_a_fork_keeps_its_movement(self):
+        legs = [
+            flat(
+                road("A Trail", 1, 600, 0, 0, "path", "cycleway"),
+                turned(
+                    forked(road("A Trail", 1, 300, 330, 330, "path", "cycleway"), "bear_left"),
+                    -50,
+                ),
+            )
+        ]
+        assert d.describe(legs)[1]["turn"]["movement"] == "bear_left"
+
+
+class TestClearTurnsOffCircles:
+    def test_a_marked_way_off_a_circle_keeps_its_exit(self):
+        legs = [
+            flat(
+                road("A Street", 1, 300, 0, 0),
+                [replace(a, roundabout=True) for a in road(None, 1, 40, 90, 270)],
+                turned(road("B Street", 1, 300, 230, 230), -130),
+            )
+        ]
+        turn = d.describe(legs)[-1]["turn"]
+        assert turn["exit"]["number"] >= 1, turn
+
+
+class TestCueCheckOnRealRoutes:
+    """From the 2026-10-23 check of the clear-turn cues on real routes."""
+
+    def test_a_clear_bend_is_a_bear_to_its_own_side_past_a_sharper_branch(self):
+        # Capital Crescent Trail onto the Georgetown Branch Trail: the line bends 50
+        # right, a footway goes off 65 right.
+        assert d.fork_movement(0, 50, [(65, "footway", "both")], trail=True) == "bear_right"
+        assert d.fork_movement(0, 310, [(295, "footway", "both")], trail=True) == "bear_left"
+        # A gentler lean is still said against the other branch, and so is a clear one
+        # beside a rideable leg further that side (a Y of two right-leaning legs).
+        assert d.fork_movement(0, 25, [(40, "path", "both")], trail=True) == "bear_left"
+        assert d.fork_movement(0, 50, [(58, "cycleway", "both")], trail=True) == "bear_left"

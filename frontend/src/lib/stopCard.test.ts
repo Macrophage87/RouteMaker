@@ -58,9 +58,9 @@ test("a press on a lettered pin, its key or a Go row opens the card; the map's s
   assert.match(app, /onPick=\{\(item\) => pickLettered\(/);
   assert.match(app, /onGoPick=\{\(r\) => pickLettered\(/);
   // Nothing while riding; Route here before a route, Add as stop with one.
-  assert.match(app, /stopActionNow\.current = \(point, name\) => \{\s*if \(riding\) return null;/);
+  assert.match(app, /stopActionNow\.current = \(point, name\) => \{\s*if \(onBike\) return null;/);
   // A card's action is for the state it opened in: a ride or a mode switch closes it.
-  assert.match(app, /useEffect\(\(\) => closeStopCard\(\), \[riding, mode\]\);/);
+  assert.match(app, /useEffect\(\(\) => closeStopCard\(\), \[onBike, mode\]\);/);
   const overlay = readFileSync(new URL("../app/mapOverlay.ts", import.meta.url), "utf8");
   // Escape on the whole card (its close button too); the focus goes back after a keyboard pick; a layer's redraw
   // closes only its own card.

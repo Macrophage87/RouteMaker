@@ -79,7 +79,7 @@ def test_every_link_resolves_and_leaves_the_site_only_over_https(name: str) -> N
             if frag:
                 assert f'id="{frag}"' in target.read_text(encoding="utf-8"), href
         elif href.startswith("/"):
-            assert href in ("/", "/favicon.svg", "/licenses.txt"), href
+            assert href in ("/", "/favicon.svg", "/licenses.txt", "/privacy"), href
         else:
             assert href.startswith("https://"), f"{name}: {href}"
 

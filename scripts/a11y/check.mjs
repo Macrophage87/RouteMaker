@@ -303,16 +303,39 @@ for (const [label, size] of [["phone", { width: 390, height: 844, mobile: true }
 for (const [label, size] of [["phone", { width: 390, height: 844, mobile: true }], ["computer", { width: 1280, height: 900 }]]) {
   const p = await newPage(b, size);
   if (size.mobile) await p.s("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
-  await mock(p, S_DEFAULT, {});
+  await mock(p, S_DEFAULT, { signIn: true });
   await media(p, {});
   await p.s("Page.addScriptToEvaluateOnNewDocument", { source: "try { sessionStorage.setItem('routemaker.tab-mode', 'plan'); } catch {}" });
   await p.s("Page.navigate", { url: `http://127.0.0.1:${PORT}/` });
   await p.waitFor("!!document.querySelector('.plan-map-bar .plan-bar-load')", 30000);
   const load = await p.eval("(() => { const b = document.querySelector('.plan-map-bar .plan-bar-load'); const r = b.getBoundingClientRect(); return { name: b.textContent.trim(), h: Math.round(r.height) }; })()");
-  await p.eval("document.querySelector('.plan-map-bar .plan-bar-load').click(); true");
+  // Once the server has said it signs riders in (Settings' Account shows), as a rider's press comes after.
+  await p.waitFor("!!document.getElementById('settings-signin-heading')", 10000);
+  await p.eval("document.querySelector('.plan-map-bar .plan-bar-load').focus(); true");
+  await p.enter();
   await sleep(500);
-  const sheet = await p.eval("(() => { const s = document.getElementById('sheet-gpx'); return !!s && !s.hidden && !!s.offsetParent; })()");
-  check(`plan bar (${label}): an empty plan offers Load route big at the top of the map, and it opens Save & load`, load.name === "Load route" && load.h >= 52 && sheet, JSON.stringify({ load, sheet }));
+  // Load route's popup (the owner, 2026-10-22): signed out, Sign in with Discord (its logo) first, then Open GPX file.
+  const popup = await p.eval("(() => { const d = document.querySelector('.load-route-dialog'); const s = document.getElementById('sheet-gpx'); const tall = [...d.querySelectorAll('.load-route-top a, .load-route-top button')].map((x) => Math.round(x.getBoundingClientRect().height)); return { open: !!d?.open, items: [...d.querySelectorAll('.load-route-top a, .load-route-top button')].map((x) => x.textContent.trim()), logo: !!d.querySelector('.load-route-sign-in svg.discord-logo'), href: d.querySelector('.load-route-sign-in')?.getAttribute('href'), focus: document.activeElement?.textContent.trim(), tall, sheet: !!s && !s.hidden }; })()");
+  const named = await axNode(p, ".load-route-dialog");
+  await p.eval("document.querySelector('.load-route-dialog .load-route-gpx').click(); true");
+  await sleep(300);
+  // Open GPX file asks the ride type and how the file is followed first, the ride type focused.
+  const ask = await p.eval("(() => { const d = document.querySelector('.load-route-dialog'); return { heading: d.querySelector('h2')?.textContent.trim(), focus: document.activeElement?.tagName, options: d.querySelectorAll('select option').length, transit: !!d.querySelector('select option[value=bike-transit]'), radios: [...d.querySelectorAll('input[type=radio]')].map((r) => [r.parentElement.querySelector('.load-route-name').textContent.trim(), r.checked]), choose: d.querySelector('button[type=submit]')?.textContent.trim() }; })()");
+  await p.escape();
+  await sleep(300);
+  const stepBack = await p.eval("({ open: document.querySelector('.load-route-dialog').open, focus: document.activeElement === document.querySelector('.load-route-dialog .load-route-gpx') })");
+  await p.escape();
+  await sleep(300);
+  const closed = await p.eval("({ closed: !document.querySelector('.load-route-dialog').open, focus: document.activeElement === document.querySelector('.plan-map-bar .plan-bar-load') })");
+  check(`plan bar (${label}): an empty plan offers Load route big at the top of the map, and it opens a popup named Load route (not Save & load) with Sign in with Discord (logo, focused) and Open GPX file, big`,
+    load.name === "Load route" && load.h >= 52 && popup.open && !popup.sheet && named?.role === "dialog" && named?.name === "Load route" &&
+      JSON.stringify(popup.items) === JSON.stringify(["Sign in with Discord", "Open GPX file"]) && popup.logo && popup.href === "/auth/login" && popup.focus === "Sign in with Discord" && popup.tall.every((h) => h >= 52),
+    JSON.stringify({ load, popup, named: [named?.role, named?.name] }));
+  check(`load route (${label}): Open GPX file asks the ride type (no transit types) and Snap to roads or Exactly as drawn first; Escape steps back, then closes to Load route`,
+    ask.heading === "Open GPX file" && ask.focus === "SELECT" && ask.options > 3 && !ask.transit &&
+      JSON.stringify(ask.radios) === JSON.stringify([["Snap to roads", true], ["Exactly as drawn", false]]) && ask.choose === "Choose file" &&
+      stepBack.open && stepBack.focus && closed.closed && closed.focus,
+    JSON.stringify({ ask, stepBack, closed }));
   await p.close();
 }
 {
@@ -2863,7 +2886,7 @@ const levelSlider = `${EDITOR} input[type=range]`;
   const ax311 = await axNode(p, ".ride-311-button");
   check("ride 311 button: a round button of about 60 px at the right edge, in the lower half (thumb height), named Log for 311 with its visible 311, closed",
     !!b311 && b311.w >= 56 && b311.w <= 72 && b311.h >= 56 && b311.round && b311.right <= 24 && b311.mid >= 45 && b311.mid <= 96 && b311.text === "311" && b311.expanded === "false" && ax311?.role === "button" && ax311?.name === "Log for 311" &&
-      JSON.stringify(rail.map((x) => x.name)) === JSON.stringify(["Where am I?", "Large text", "Detour: water or restroom", "Log for 311", "Settings"]) && rail.every((x) => x.round && x.w >= 44),
+      JSON.stringify(rail.map((x) => x.name)) === JSON.stringify(["Where am I?", "Large text", "Calmer: less traffic, plan again from here", "Flatter: fewer hills, plan again from here", "Detour: water or restroom", "Log for 311", "Settings"]) && rail.every((x) => x.round && x.w >= 44),
     JSON.stringify({ b311, ax311, rail }));
   // The top row (the owner, 2026-10-19: "switch end ride and road closed"): End ride, then Road closed ahead with its
   // words (2026-10-20), one line.
@@ -4197,13 +4220,13 @@ const JUNCTION_BUTTON = "Suggest a junction change";
   const traffic = await axNode(p, ".dials input[type=range]");
   const sliders = await p.eval("[...document.querySelectorAll('.dials input[type=range]')].slice(0, 2).map((e) => ({ value: Number(e.value), words: e.getAttribute('aria-valuetext') }))");
   check("kids: the sliders moved to its start and say so in words",
-    sliders[0]?.value === 100 && sliders[1]?.value === -60 && traffic?.name === "Traffic" && /^Calmest: /.test(traffic?.valuetext ?? "") && sliders[1]?.words === "Gentler grades" /* -60, Novice's start */,
+    sliders[0]?.value === 100 && sliders[1]?.value === 4 && traffic?.name === "Traffic" && /^Calmest: /.test(traffic?.valuetext ?? "") && sliders[1]?.words === "Easy up to 4%" /* -60, Novice's start, on the slider's grade percent */,
     JSON.stringify({ sliders, traffic }));
   // Edit-route redesign (2026-10-18): the ride type's own button says the type; the Ride settings line, the sliders.
   const line = await axNode(p, ".ride-line-button");
   const typeButton = await axNode(p, ".ride-type-current button");
   check("kids: the ride type's button says Novice and Nervous, and the Ride settings line where the sliders are",
-    /^Novice and Nervous\b[\s\S]*Change$/.test(typeButton?.name ?? "") && /^Ride settings\s*:\s*calmest, gentler hills\b/.test(line?.name ?? ""), JSON.stringify({ type: typeButton?.name, line: line?.name }));
+    /^Novice and Nervous\b[\s\S]*Change$/.test(typeButton?.name ?? "") && /^Ride settings\s*:\s*calmest, hills up to 4%/.test(line?.name ?? ""), JSON.stringify({ type: typeButton?.name, line: line?.name }));
   check("kids: the target distance is offered, as at the top of the traffic slider", (await p.eval("document.querySelectorAll('input[placeholder=Default]').length")) === 1);
   await p.eval("document.querySelector('.ride-type-current button').focus(); true");
   await p.enter();
@@ -4373,8 +4396,8 @@ const SHARE_STUB = `window.__shared = []; window.__shareMode = "ok"; window.__no
   await sleep(600);
   const sent = await p.eval("({ shared: window.__shared, noActivation: window.__noActivation })");
   const url = sent.shared[0]?.url ?? "";
-  check("share ride: Enter hands the sheet the kept line's link, marked as a ride, within the press",
-    sent.noActivation === 0 && sent.shared.length === 1 && /\/s\/[0-9a-f]{32}#.*&route=[0-9a-f]{32}&ride=1$/.test(url), JSON.stringify(sent));
+  check("share ride: Enter hands the sheet the kept line's link, marked as a ride with the sharer as leader, within the press",
+    sent.noActivation === 0 && sent.shared.length === 1 && /\/s\/[0-9a-f]{32}#.*&route=[0-9a-f]{32}&ride=1&lead=[0-9a-f]{32}$/.test(url), JSON.stringify(sent));
   await p.close();
 }
 // MARK_SHARE marks the Save & load sheet's Share (open it first: openSheet(p, "Save & load")).
@@ -4470,8 +4493,9 @@ const modeNow = "(() => [...document.querySelectorAll('.mode-switch')].filter((g
       chips: names('.go-places .place-chip'), rides: names('.go-sheet .ride-chips button'), search: !!document.querySelector('.go-sheet input[type=search], .go-sheet input[role=combobox], .go-sheet input'),
       small: [...document.querySelectorAll('.go-top button, .go-sheet button, .go-sheet input')].filter((e) => e.getClientRects().length && (e.getBoundingClientRect().height < 44 || e.getBoundingClientRect().width < 44)).map((e) => e.className + ':' + e.textContent.trim()),
       scroll: document.documentElement.scrollWidth > innerWidth }; })()`);
-  check("go: a phone with no link opens in Go: Menu, the Go/Plan switch (Go pressed), Layers and Locate over the map, and no bottom bar",
-    go.mode === "Go" && go.top && !go.bar && JSON.stringify(go.topButtons) === JSON.stringify(["Menu", "Go", "Plan", "Layers", "Locate"]), JSON.stringify(go));
+  // With no destination, the bar under them holds Roam (a ride with no destination; the owner, 2026-10-22).
+  check("go: a phone with no link opens in Go: Menu, the Go/Plan switch (Go pressed), Layers and Locate over the map, Roam under them, and no bottom bar",
+    go.mode === "Go" && go.top && !go.bar && JSON.stringify(go.topButtons) === JSON.stringify(["Menu", "Go", "Plan", "Layers", "Locate", "Roam"]), JSON.stringify(go));
   // The owner, 2026-10-12: the rider's own ride type first (My Go; Default until set), then the two transit types.
   // More, with Repair and Sights behind it, follow the four since 2b38bf1c ("Go: Repair and Sights behind More"),
   // and Metro first behind it since Stephen 2026-10-19 ("Metro stops should be on the list in more").
@@ -5013,8 +5037,8 @@ async function goPressMap(p) {
       pins.end?.text === "" && pins.end.rect && pins.end.hidden === "true" && /^End\.( |$)/.test(pins.end.name ?? "") /* the drag hint is the title's alone since 7120fdb7 */, JSON.stringify(pins));
   await p.close();
 }
-/** My Go's Open in picker set to Go, as a rider's pick fires it. */
-const PICK_OPEN_IN_GO = "(() => { const s = document.querySelector('#sheet-settings .open-in select'); s.value = 'go'; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()";
+/** My Go's ride type picker set to Cargo Bike, as a rider's pick fires it. */
+const PICK_GO_RIDE = "(() => { const s = [...document.querySelectorAll('#sheet-settings .my-go select')].find((x) => x.closest('label').querySelector('.setting-name').textContent === \"Go's ride type\"); s.value = 'cargo'; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()";
 {
   // Announcements (Settings > Display): Brief in Go unless chosen; Full is kept on this device.
   const p = await bare();
@@ -5085,29 +5109,59 @@ const PICK_OPEN_IN_GO = "(() => { const s = document.querySelector('#sheet-setti
   await q.close();
 }
 {
-  // My Go signed out: kept on this device.
-  const p = await bare({ width: 1280, height: 900, mobile: false });
+  // My Go signed out: kept on this device. There is no Open in (the owner, 2026-10-22: "It should open in plan on a
+  // computer and go on a phone"): a wide screen opens in Plan even with an old saved open_in of Go.
+  const p = await bare({ width: 1280, height: 900, mobile: false, init: "try { localStorage.setItem('routemaker.my-go', JSON.stringify({ open_in: 'go', ride: '', home: null })); } catch {}" });
+  const opened = await p.eval(modeNow);
   await openSheet(p, "Settings");
-  const section = await p.eval("(() => { const s = document.querySelector('#sheet-settings .my-go'); return s ? { heading: s.querySelector('h3')?.textContent, options: [...s.querySelectorAll('.open-in select option')].map((o) => o.textContent), status: s.querySelector('.my-go-said')?.getAttribute('role') } : null; })()");
-  const openInAx = await axNode(p, "#sheet-settings .open-in select");
-  await p.eval(PICK_OPEN_IN_GO);
+  const section = await p.eval("(() => { const s = document.querySelector('#sheet-settings .my-go'); return s ? { heading: s.querySelector('h3')?.textContent, status: s.querySelector('.my-go-said')?.getAttribute('role'), openIn: !!document.querySelector('#sheet-settings .open-in'), names: [...document.querySelectorAll('#sheet-settings .setting-name')].map((n) => n.textContent) } : null; })()");
+  await p.eval(PICK_GO_RIDE);
   await sleep(500);
   const saved = await p.eval("({ kept: localStorage.getItem('routemaker.my-go'), said: document.querySelector('.my-go-said')?.textContent })");
-  check("my go: signed out, Open in (By screen size, Go, Plan) is a picker in Settings, described by what By screen size means; a choice is kept on this device and said politely",
-    !!section && /^My Go/.test(section.heading) && JSON.stringify(section.options) === JSON.stringify(["By screen size", "Go", "Plan"]) && openInAx?.name === "Open in" && /^By screen size: a phone opens in Go/.test(openInAx?.description ?? "") && section.status === "status" && /"open_in":"go"/.test(saved.kept ?? "") && saved.said === "My Go saved on this device." && !(p.myGoRequests ?? []).some((r) => r.method === "POST"), JSON.stringify({ section, openInAx, saved }));
+  check("my go: a wide screen opens in Plan even with an old saved Open in of Go, and Settings has no Open in; signed out, Go's ride type is kept on this device and said politely",
+    opened === "Plan" && !!section && /^My Go/.test(section.heading) && !section.openIn && !section.names.includes("Open in") && section.status === "status" && /"ride":"cargo"/.test(saved.kept ?? "") && saved.said === "My Go saved on this device." && !(p.myGoRequests ?? []).some((r) => r.method === "POST"), JSON.stringify({ opened, section, saved }));
   await p.close();
 }
 {
-  // My Go signed in: saved to the Discord account, with the CSRF header; it then opens the app in Go on a wide screen.
+  // My Go signed in: saved to the Discord account, with the CSRF header.
   const p = await bare({ width: 1280, height: 900, mobile: false, suggester: true, init: "document.cookie = 'csrftoken=layout-check-token; path=/';" });
   await openSheet(p, "Settings");
-  await p.eval(PICK_OPEN_IN_GO);
+  await p.eval(PICK_GO_RIDE);
   await p.waitFor("/saved to your account/.test(document.querySelector('.my-go-said')?.textContent ?? '')", 8000);
   const post = (p.myGoRequests ?? []).find((r) => r.method === "POST");
   const csrf = post && Object.entries(post.headers).find(([k]) => k.toLowerCase() === "x-csrftoken")?.[1];
   const homeSearch = await p.eval("!!document.querySelector('#sheet-settings .my-go-home input')");
-  check("my go: signed in, a choice is saved to the account (POST /api/me/go with the CSRF header, open_in go), said politely, and Home can be set there",
-    !!post && post.body?.open_in === "go" && csrf === "layout-check-token" && homeSearch && (await p.eval("document.querySelector('.my-go-said').textContent")) === "My Go saved to your account.", JSON.stringify({ post: post?.body, csrf: csrf !== undefined, homeSearch }));
+  check("my go: signed in, a choice is saved to the account (POST /api/me/go with the CSRF header, ride cargo), said politely, and Home can be set there",
+    !!post && post.body?.ride === "cargo" && csrf === "layout-check-token" && homeSearch && (await p.eval("document.querySelector('.my-go-said').textContent")) === "My Go saved to your account.", JSON.stringify({ post: post?.body, csrf: csrf !== undefined, homeSearch }));
+  await p.close();
+}
+{
+  // Settings scrolling (Stephen 2026-10-22: "still a lot of scrolling"): a Home set is one line with Change, which opens
+  // the search with the focus in it; Cancel, or leaving Settings, goes back to the line.
+  const home = JSON.stringify({ open_in: "", ride: "", home: { lon: -77.04, lat: 38.91, label: "Home" } });
+  const p = await bare({ width: 1280, height: 900, mobile: false, init: `try { localStorage.setItem('routemaker.my-go', ${JSON.stringify(home)}); } catch {}` });
+  await openSheet(p, "Settings");
+  const read = () => p.eval(`(() => { const s = document.querySelector('#sheet-settings'); const c = s.querySelector('.my-go .home-line button');
+    return { line: s.querySelector('.my-go .home-line .home-now')?.textContent, change: c && { name: c.getAttribute('aria-label'), h: Math.round(c.getBoundingClientRect().height) }, search: !!s.querySelector('.my-go-home input'),
+      weightInRiding: s.querySelector('.weight-row')?.closest('section')?.querySelector('h3')?.textContent === 'Riding',
+      focus: document.activeElement?.tagName }; })()`);
+  const before = await read();
+  await p.eval("document.querySelector('#sheet-settings .my-go .home-line button').click(); true");
+  await sleep(300);
+  const after = await read();
+  await p.eval("document.querySelector('#sheet-settings .home-cancel').click(); true");
+  await sleep(300);
+  const cancelled = { ...(await read()), onChange: await p.eval("document.activeElement === document.querySelector('#sheet-settings .home-line button')") };
+  // Leaving Settings with Change open closes it: the next visit opens on the Home's line.
+  await p.eval("document.querySelector('#sheet-settings .home-line button').click(); true");
+  await sleep(300);
+  await p.eval("document.querySelector('#sheet-settings .sheet-back').click(); true");
+  await sleep(300);
+  await openSheet(p, "Settings");
+  const reopened = await read();
+  check("settings: a Home set is one line with Change (44 px), which opens the search with the focus in it; Cancel goes back with the focus on Change, and so does leaving Settings; the weight is the last row of Riding",
+    before.line === "Home: Home" && before.change?.name === "Change Home" && before.change.h >= 44 && !before.search && before.weightInRiding &&
+      after.search && after.focus === "INPUT" && !after.change && !cancelled.search && cancelled.onChange && !reopened.search && !!reopened.change, JSON.stringify({ before, after, cancelled, reopened }));
   await p.close();
 }
 {
@@ -5208,7 +5262,9 @@ const failed = results.filter((r) => !r.ok);
 // A lettered pin's card (no auto route, 2026-10-19) adds two: the card a tap opens, and the card the B key opens.
 // The map's info panel adds two at 1280 px: the i named for it, and what it opens.
 // Plan starting as a loop (2026-10-20) adds one: the loop box unticked and ticked again.
-const EXPECTED = 682;
+// Load route's popup (#370) adds one. Settings scrolling (2026-10-22) adds one: Home's one line with Change,
+// Cancel, and leaving Settings.
+const EXPECTED = 685;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);
