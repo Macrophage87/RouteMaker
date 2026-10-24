@@ -24,7 +24,18 @@ import {
   rideStopLabel,
   stopNames,
 } from "./pointKinds.ts";
-import { detourButtonName, insteadName, nextStopLine, skippingSaid, withoutStop } from "./rideStops.ts";
+import {
+  detourButtonName,
+  insteadName,
+  nextStopLine,
+  restartKept,
+  restartReplanSaid,
+  restartSaid,
+  restartStops,
+  restartUnchanged,
+  skippingSaid,
+  withoutStop,
+} from "./rideStops.ts";
 
 const p = (lon: number, lat = 38.9): LonLat => [lon, lat];
 const src = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
@@ -151,7 +162,7 @@ test("a re-route keeps the stops and the far via points, and drops a via point c
   assert.deepEqual(withoutStop(points, replanKept(model, 900, points, false, true), here, 2), [here, points[3], points[4]]);
   // The re-route and its way back use the same kept points (guides dropped, the skipped stop left out).
   const rideSrc = src("../RideMode.tsx");
-  assert.match(rideSrc, /const keptPoints = replanKept\(modelRef\.current, current\.progressM \?\? 0, plan\.current\.points, plan\.current\.loop, true\)\.filter\(\(i\) => i !== skip\);/);
+  assert.match(rideSrc, /: replanKept\(modelRef\.current, current\.progressM \?\? 0, plan\.current\.points, plan\.current\.loop, true\)\.filter\(\(i\) => i !== skip\);/);
   assert.match(rideSrc, /const kept = keptPoints;/);
 });
 
@@ -217,4 +228,62 @@ test("a stop added by search keeps the place's name; a loop's last stop keeps it
   assert.equal(ride.match(/VIA_MARKS\.isVia, plan\.current\.loop\)/g)?.length, 2);
   // A route everyone shares offers no Skip or Instead, so its Detour button does not name them.
   assert.match(ride, /detourButtonName\(DETOUR_SUMMARY, fixed \? null : nextStop\)/);
+});
+
+// ---- Restarting part way (Stephen 2026-10-24: "let people pick the stops that are already done, with the logical
+// defaults selected and continue the rest") ----------------------------------------------------------------------
+
+/** Start, stop 1 at 1,000 m, a via at 1,500 m, stop 2 at 2,000 m, end at 3,000 m, due east. */
+function twoStops(): { route: RouteResponse; points: LonLat[]; vias: number[] } {
+  const points = [at(0), at(1000), at(1500), at(2000), at(3000)];
+  const route = {
+    ...ride().route,
+    description: [stretch(0, 3000, "A Street"), point(1000, 1), point(1500, 2), point(2000, 3)],
+  } as unknown as RouteResponse;
+  return { route, points, vias: [2] };
+}
+
+test("restarting part way lists every stop, the ones behind ticked; none behind asks nothing", () => {
+  const { route, vias } = twoStops();
+  const model = rideModel(route, vias, new Map([[1, "Union Market"]]));
+  assert.equal(restartStops(model, 0), null, "at the start: nothing to ask");
+  assert.equal(restartStops(model, 900), null, "short of stop 1");
+  const stops = restartStops(model, 1600);
+  assert.deepEqual(stops, [
+    { index: 1, number: 1, name: "Union Market", passed: true },
+    { index: 3, number: 2, passed: false },
+  ]);
+  assert.equal(restartSaid(stops!), "You are part way along. 1 stop is marked done. Continue to ride the rest.");
+  // The defaults ride on unchanged; untick stop 1 and it is planned again, back to it.
+  assert.equal(restartUnchanged(stops!, new Set([1])), true);
+  assert.equal(restartUnchanged(stops!, new Set()), false);
+  assert.equal(restartReplanSaid(stops!, new Set()), "Finding a route back to Stop 1, Union Market.");
+  assert.equal(restartReplanSaid(stops!, new Set([1, 3])), "Finding a new route for the stops left.");
+});
+
+test("a restart's re-plan keeps the unticked stops, behind or not, and only the via points ahead", () => {
+  const { route, points, vias } = twoStops();
+  const model = rideModel(route, vias);
+  // 1,600 m along, past the via at 1,500 m: stop 1 unticked is gone back to; the passed via is dropped.
+  assert.deepEqual(restartKept(model, 1600, points, false, new Set()), [1, 3, 4]);
+  assert.deepEqual(restartKept(model, 1600, points, false, new Set([1])), [3, 4]);
+  // A stop ahead ticked as done is skipped too.
+  assert.deepEqual(restartKept(model, 1600, points, false, new Set([1, 3])), [4]);
+  // Short of the via, it stays.
+  assert.deepEqual(restartKept(model, 1200, points, false, new Set([1])), [2, 3, 4]);
+  // A loop ends at its start.
+  assert.deepEqual(restartKept(model, 1600, points, true, new Set([1])), [3, 4, 0]);
+});
+
+test("the ride asks once, at its first place on the line, never after Undo or on a trip's leg; picks re-plan from here", () => {
+  const rideSrc = src("../RideMode.tsx");
+  assert.match(rideSrc, /const restartAsked = useRef\(resumeStats !== null \|\| trip !== null\);/);
+  assert.match(rideSrc, /if \(!restartAsked\.current && out\.state\.progressM !== null\) \{\s*restartAsked\.current = true;/);
+  assert.match(rideSrc, /if \(!stops \|\| restartUnchanged\(stops, done\)\) return;/);
+  assert.match(rideSrc, /void replan\(here, undefined, true, back, false, undefined, done\);/);
+  assert.match(rideSrc, /<RestartStopsDialog stops=\{restart\} onContinue=\{continueRestart\} \/>/);
+  // Escape keeps the ticks as they are; Continue has the focus.
+  const dialogSrc = src("../RestartStopsDialog.tsx");
+  assert.match(dialogSrc, /onCancel=\{\(event\) => \{\s*event\.preventDefault\(\);\s*onContinue\(done\);/);
+  assert.match(dialogSrc, /continueRef\.current\?\.focus\(\);/);
 });
