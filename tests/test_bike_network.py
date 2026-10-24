@@ -141,6 +141,34 @@ class TestMark:
         assert marks[2] == marks[5] == bn.OVERVIEW_LINK
         assert marks[8] != bn.OVERVIEW_LINK
 
+    def test_a_busy_street_carrying_on_past_a_crossing_is_not_bridged_and_no_turn_back(
+        self, segment_schemas
+    ) -> None:
+        """The first busy block where a calm street becomes an arterial, crossing a lane, stays
+        busy; a run never doubles back, and a loop is no run."""
+        _, staging = segment_schemas
+        lane(staging, 1, (0, 0), (6, 0))
+        insert(staging, 2, (6, 0), (8, 0), tier=3)
+        lane(staging, 3, (8, -3), (8, 0))  # a drawn cross street ...
+        lane(staging, 4, (8, 0), (8, 3))
+        insert(staging, 5, (8, 0), (20, 0), tier=3)  # ... and the busy road carrying on
+        lane(staging, 6, (0, 10), (6, 10))
+        insert(staging, 7, (6, 10), (8, 10), tier=3)
+        insert(staging, 8, (8, 10), (6.5, 10.05), tier=3)  # back alongside: no
+        lane(staging, 9, (6.5, 10.05), (0, 10.3))
+        insert(staging, 10, (0, 20), (2, 20), tier=3)
+        with connection.cursor() as cursor:  # a loop, its two ends on one point
+            cursor.execute(
+                f"UPDATE {staging}.segment SET geometry = ST_SetSRID(ST_MakeLine(ARRAY["
+                f"ST_MakePoint(%s, %s), ST_MakePoint(%s, %s), ST_MakePoint(%s, %s)]), 4326) "
+                f"WHERE osm_way_id = 10",
+                [LON + 6 * STEP, LAT + 10 * STEP, LON + 6 * STEP, LAT + 11 * STEP,
+                 LON + 6 * STEP, LAT + 10 * STEP],
+            )  # fmt: skip
+        bn.mark(staging)
+        marks = found(staging)
+        assert {marks[way] for way in (2, 5, 7, 8, 10)} <= {0, bn.OVERVIEW_ORPHAN, bn.OVERVIEW_SPUR}
+
     def test_a_join_inside_a_bit_that_joins_nothing_is_an_orphan(self, segment_schemas) -> None:
         _, staging = segment_schemas
         lane(staging, 1, (0, 0), (2, 0))

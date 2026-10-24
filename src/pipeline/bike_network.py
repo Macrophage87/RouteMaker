@@ -277,9 +277,9 @@ def _boxes(cursor, schema: str, sql: str, margin: float):
 # streets near NoMa at z13: "So much are broken up"; a street at LTS 1-2 but for a block or two
 # rated LTS 3, such as E Street NE, broke there): a run of busy ways, BRIDGE_MAX_M or less in
 # all and running on straight (BRIDGE_TURN_DEG), that leaves a drawn way going on in the same
-# direction and comes to another, or to a drawn street it meets in a T (13th Street NE into
-# Florida Avenue), is a link. A drawn way's end up to BRIDGE_JOG_M on along the run counts as
-# met (an offset junction, E Street NE at 9th).
+# direction and comes to another, or to a drawn street it meets in a T where no road goes on
+# straight (13th Street NE into Florida Avenue), is a link. A drawn way's end up to
+# BRIDGE_JOG_M on along the run counts as met (an offset junction, E Street NE at 9th).
 BRIDGE_MAX_M = 250.0  # about 820 ft
 BRIDGE_TURN_DEG = 30.0
 BRIDGE_JOG_M = 25.0  # about 80 ft
@@ -292,7 +292,8 @@ _DRAWN_SQL = (
 )
 
 # Each busy way that could be in a run, with what each of its ends meets: 2 a drawn way going
-# on straight, 1 a drawn way at any angle, 0 none.
+# on straight, 1 a drawn way at any angle where no road goes on straight (a T), 0 neither.
+# Directions are taken away from the end: a way lying back alongside is not going on.
 _BRIDGE = """
 WITH cand AS (
     SELECT s.id, s.geometry, ST_Length(s.geometry::geography) AS m,
@@ -301,29 +302,34 @@ WITH cand AS (
     WHERE s.map_class = 'road' AND s.stress_tier > {calm} AND s.{overview} = 0
       AND NOT s.is_trail_class AND NOT ({drawn})
       AND ST_Length(s.geometry::geography) <= %(bridge_max)s
+      AND NOT ST_DWithin(ST_StartPoint(s.geometry), ST_EndPoint(s.geometry), %(touch)s)
 ), ends AS (
-    SELECT c.id, e.n, e.p, CASE e.n WHEN 0 THEN c.bearing + 180 ELSE c.bearing END AS outward,
-           c.bearing
+    SELECT c.id, e.n, e.p, CASE e.n WHEN 0 THEN c.bearing + 180 ELSE c.bearing END AS outward
     FROM cand AS c
     CROSS JOIN LATERAL (VALUES (0, ST_StartPoint(c.geometry)), (1, ST_EndPoint(c.geometry)))
         AS e (n, p)
-), meets AS (
-    SELECT e.id, e.n, COALESCE(max(CASE
-        WHEN abs(mod((degrees(ST_Azimuth(ST_StartPoint(s.geometry), ST_EndPoint(s.geometry)))
-                      - e.bearing + 360)::numeric, 180) - 90) >= 90 - %(turn)s
-             AND EXISTS (
-                 SELECT 1 FROM (VALUES (ST_StartPoint(s.geometry)),
-                                       (ST_EndPoint(s.geometry))) AS q (q)
-                 WHERE ST_DWithin(q.q, e.p, %(touch)s)
-                    OR (ST_DWithin(q.q::geography, e.p::geography, %(jog)s)
-                        AND abs(mod((degrees(ST_Azimuth(e.p, q.q)) - e.outward + 540)::numeric,
-                                    360) - 180) <= %(turn)s))
-             THEN 2
-        WHEN ST_DWithin(s.geometry, e.p, %(touch)s) THEN 1
-        END), 0) AS meets
+), near AS (
+    -- Each road way's ends near a candidate's end, with its direction away from that end.
+    SELECT e.id, e.n, s.id AS other, ({drawn}) AS drawn,
+           ST_DWithin(s.geometry, e.p, %(touch)s) AS touches,
+           ST_DWithin(q.q, e.p, %(touch)s) AS at_end,
+           ST_DWithin(q.q::geography, e.p::geography, %(jog)s)
+               AND abs(mod((degrees(ST_Azimuth(e.p, q.q)) - e.outward + 540)::numeric, 360)
+                       - 180) <= %(turn)s AS ahead,
+           abs(mod((degrees(ST_Azimuth(q.q, q.r)) - e.outward + 540)::numeric, 360) - 180)
+               <= %(turn)s AS on
     FROM ends AS e
-    LEFT JOIN {schema}.segment AS s
-      ON s.geometry && ST_Expand(e.p, %(jog_deg)s) AND s.map_class = 'road' AND {drawn}
+    JOIN {schema}.segment AS s
+      ON s.geometry && ST_Expand(e.p, %(jog_deg)s) AND s.map_class = 'road' AND s.id <> e.id
+    CROSS JOIN LATERAL (VALUES (ST_StartPoint(s.geometry), ST_EndPoint(s.geometry)),
+                               (ST_EndPoint(s.geometry), ST_StartPoint(s.geometry))) AS q (q, r)
+), meets AS (
+    SELECT e.id, e.n, CASE
+        WHEN bool_or(n.drawn AND n.on AND (n.at_end OR n.ahead)) THEN 2
+        WHEN bool_or(n.drawn AND n.touches) AND NOT bool_or(n.at_end AND n.on) THEN 1
+        ELSE 0 END AS meets
+    FROM ends AS e
+    LEFT JOIN near AS n ON n.id = e.id AND n.n = e.n
     GROUP BY e.id, e.n
 )
 SELECT c.id, c.m, c.bearing,
@@ -338,9 +344,9 @@ JOIN meets AS m1 ON m1.id = c.id AND m1.n = 1
 """
 
 
-def _straight(a: float, b: float) -> bool:
-    """Two bearings in degrees within BRIDGE_TURN_DEG of each other, either way along."""
-    return abs((a - b) % 180 - 90) >= 90 - BRIDGE_TURN_DEG
+def _turn(a: float, b: float) -> float:
+    """The turn in degrees from heading a to heading b, 0 to 180."""
+    return abs((b - a + 180) % 360 - 180)
 
 
 def _bridges(rows) -> set[int]:
@@ -348,34 +354,42 @@ def _bridges(rows) -> set[int]:
     ways = {}
     at = defaultdict(list)
     for way, metres, bearing, x0, y0, x1, y1, meets0, meets1 in rows:
-        ways[way] = (metres, bearing, ((x0, y0), (x1, y1)), (meets0, meets1))
+        ways[way] = (metres, float(bearing), ((x0, y0), (x1, y1)), (meets0, meets1))
         at[(x0, y0)].append(way)
         at[(x1, y1)].append(way)
+
+    def heading(way: int, entered: int) -> float:
+        """The way's direction, ridden in from end `entered`."""
+        return ways[way][1] + (180 if entered else 0)
+
     found: set[int] = set()
     for first, (_, _, _, meets) in ways.items():
         for start in (0, 1):
             if meets[start] != 2:
                 continue
-            run, total, way, free = [first], ways[first][0], first, 1 - start
+            setting_off = heading(first, start)
+            run, total, way, entered = [first], ways[first][0], first, start
             while True:
-                metres, bearing, points, meets = ways[way]
-                if meets[free]:
+                _, _, points, meets = ways[way]
+                if meets[1 - entered]:
                     found.update(run)
                     break
-                point = points[free]
-                after = [
-                    other
-                    for other in at[point]
-                    if other not in run
-                    and total + ways[other][0] <= BRIDGE_MAX_M
-                    and _straight(bearing, ways[other][1])
-                ]
+                point, now = points[1 - entered], heading(way, entered)
+                after = []
+                for other in at[point]:
+                    if other in run or total + ways[other][0] > BRIDGE_MAX_M:
+                        continue
+                    into = 0 if ways[other][2][0] == point else 1
+                    turn = _turn(now, heading(other, into))
+                    if turn <= BRIDGE_TURN_DEG and (
+                        _turn(setting_off, heading(other, into)) <= BRIDGE_TURN_DEG
+                    ):
+                        after.append((turn, other, into))
                 if not after:
                     break
-                way = max(after, key=lambda o: abs((ways[o][1] - bearing) % 180 - 90))
+                _, way, entered = min(after)
                 run.append(way)
                 total += ways[way][0]
-                free = 1 if ways[way][2][0] == point else 0
     return found
 
 
