@@ -4,12 +4,13 @@ import { alertLine, nwsLinkName, NWS_LINK, RAIN_CREDIT, RAIN_CREDIT_NAME, RAIN_C
 /**
  * Weather along the route (lib/weather.ts), one line each: the NWS alerts first, each with its link to the NWS's
  * page, then the rain coming. Nothing when there is nothing to say. Before Start in the route's warnings; in a ride
- * in the bottom panel, with Dismiss.
+ * in the bottom panel, with Dismiss as a big button at its side (Stephen 2026-10-24: "Make dismiss a big button on the
+ * side. People will see this riding").
  */
 export function WeatherLines({ report, riding, now, onDismiss }: { report: WeatherReport | null; riding: boolean; now: number; onDismiss?: () => void }) {
   if (!report || (report.alerts.length === 0 && !report.rain)) return null;
   return (
-    <div className="weather-lines">
+    <div className={onDismiss ? "weather-lines weather-riding" : "weather-lines"}>
       <ul className="note-lines" role="list">
         {report.alerts.map((alert) => (
           <li key={alert.id} className={`note-line notice weather-alert weather-${alert.severity.toLowerCase()}`}>
@@ -35,7 +36,8 @@ export function WeatherLines({ report, riding, now, onDismiss }: { report: Weath
         )}
       </ul>
       {onDismiss && (
-        <button type="button" className="link weather-dismiss" onClick={onDismiss} aria-label={WEATHER_DISMISS_NAME}>
+        <button type="button" className="secondary weather-dismiss" onClick={onDismiss} aria-label={WEATHER_DISMISS_NAME}>
+          <Icon name="x" size={26} />
           Dismiss
         </button>
       )}

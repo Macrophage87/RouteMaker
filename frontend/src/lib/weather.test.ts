@@ -159,4 +159,10 @@ test("wired into Go and Plan (with the warnings), Ride mode and Roam; never in S
   // The NWS link opens a new tab, named for a screen reader.
   const lines = readFileSync(new URL("../WeatherLines.tsx", import.meta.url), "utf8");
   assert.match(lines, /target="_blank" rel="noopener noreferrer" aria-label=\{nwsLinkName\(alert\)\}/);
+  // In a ride Dismiss is a big button at the side (Stephen 2026-10-24: "Make dismiss a big button on the side").
+  assert.match(lines, /className="secondary weather-dismiss"/);
+  const css = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+  const rule = css.slice(css.indexOf(".ride-notes .weather-dismiss,"));
+  assert.match(rule.slice(0, rule.indexOf("}")), /min-height: 72px/);
+  assert.match(css, /\.weather-riding \{\s*display: flex;/);
 });
