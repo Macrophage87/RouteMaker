@@ -39,10 +39,13 @@ def with_(read: refine.Analysis, **fields) -> refine.Analysis:
     return dataclasses.replace(read, **fields)
 
 
-def reading(lts4=0.0, lts3=0.0, red=(), orange=(), effort=None, length=10_000.0) -> refine.Analysis:
+def reading(
+    lts4=0.0, lts3=0.0, red=(), orange=(), effort=None, length=10_000.0, hill=0.0
+) -> refine.Analysis:
     """A reading with these figures: metres of LTS 4 and of LTS 3, the cost in feet
     of each red and orange junction, the effort-equivalent distance (the length where
-    none is given: a flat route) and the length."""
+    none is given: a flat route), the length, and what its climbing is worth in flat
+    metres (`Analysis.hill_m`)."""
     events = [event(1000.0 + 10 * i, cost) for i, cost in enumerate([*red, *orange])]
     return with_(
         analysis("r", events=events),
@@ -50,6 +53,7 @@ def reading(lts4=0.0, lts3=0.0, red=(), orange=(), effort=None, length=10_000.0)
         lts3_m=lts3,
         effort_m=length if effort is None else effort,
         length_m=length,
+        hill_m=hill,
     )
 
 
@@ -72,13 +76,13 @@ class TestTheFigures:
         a = with_(analysis("r", events=None), lts4_m=50.0)
         assert a.red_m == a.orange_m == 0.0 and a.top_m == 50.0
 
-    def test_the_key_is_top_second_and_the_blended_distance(self) -> None:
+    def test_the_key_is_top_second_and_the_distance_with_its_climbing(self) -> None:
+        """The third level is the distance plus what its climbing is worth in flat metres
+        (`Analysis.hill_m`; the owner, 2026-10-23: "always assume time equivalent")."""
         ctx = top_context()
-        ctx.hills_weight = 0.5
-        a = reading(lts4=10.0, lts3=20.0, effort=20_000.0, length=10_000.0)
+        a = reading(lts4=10.0, lts3=20.0, hill=5_000.0, length=10_000.0)
         assert a.key(ctx) == (10.0, 20.0, 15_000.0)
-        ctx.hills_weight = 0.0
-        assert a.key(ctx) == (10.0, 20.0, 10_000.0)
+        assert reading(lts4=10.0, lts3=20.0, length=10_000.0).key(ctx) == (10.0, 20.0, 10_000.0)
 
 
 class TestTheOrder:
@@ -228,15 +232,15 @@ class TestDiminishingReturns:
         assert refine.better(reading(length=10_000.0 + 1500.0), orange, ctx)
         assert not refine.better(reading(length=10_000.0 + 1600.0), orange, ctx)
 
-    def test_the_charge_is_on_the_distance_the_hills_slider_weighs(self) -> None:
-        """A longer route that is less effort (Hills set to avoid) is not charged."""
+    def test_the_charge_is_on_the_distance_with_its_climbing(self) -> None:
+        """A longer route that is quicker once the other's climbing is counted is not
+        charged for its miles."""
         ctx = top_context()
-        ctx.hills_weight = 1.0
-        hilly = with_(reading(lts3=100.0, length=9_000.0, effort=30_000.0), exposure_m=100.0)
-        flat = with_(reading(length=20_000.0, effort=20_000.0), exposure_m=0.0)
+        flat = with_(reading(length=20_000.0), exposure_m=0.0)
+        hilly = with_(reading(lts3=100.0, length=9_000.0, hill=21_000.0), exposure_m=100.0)
         assert refine.better(flat, hilly, ctx)
-        ctx.hills_weight = 0.0
-        assert not refine.better(flat, hilly, ctx)
+        level = with_(reading(lts3=100.0, length=9_000.0), exposure_m=100.0)
+        assert not refine.better(flat, level, ctx)
 
     def test_the_rule_can_be_off(self) -> None:
         ctx = dataclasses.replace(top_context(), worth_rule=False)
@@ -306,10 +310,10 @@ class TestDiminishingReturns:
     def test_below_the_top_a_shorter_route_needs_only_the_score(self) -> None:
         """No longer, a lower score is enough below the top: a route as long but more
         effort (Hills set to avoid) is never charged for its effort (mutation r2)."""
-        ctx = dataclasses.replace(context(rate=5.0), hills_weight=1.0)
+        ctx = context(rate=5.0)
         base = with_(reading(length=10_000.0), cost_s=9_000.0)
         for length in (10_000.0, 9_000.0):
-            hilly = with_(reading(lts3=100.0, effort=14_000.0, length=length), cost_s=1_000.0)
+            hilly = with_(reading(lts3=100.0, hill=4_000.0, length=length), cost_s=1_000.0)
             assert refine.better(hilly, base, ctx), length
 
     def test_the_ratio_stays_in_its_range(self) -> None:
@@ -384,42 +388,32 @@ class TestTheTargetDistance:
 
 
 class TestTheHillsLevel:
-    """OWNER-DECISIONS 262, 263: the third level is the effort-equivalent distance,
-    blended with the actual distance by the Hills slider (261's lexicographic hills
-    level is superseded)."""
+    """OWNER-DECISIONS 262, 263, made the climb's time and steepness on 2026-10-23: the third
+    level is the distance plus what its climbing is worth in flat metres (`Analysis.hill_m`,
+    `routemaker.hill_cost`), at every slider position."""
 
-    def avoid(self, weight: float = 1.0) -> refine.Context:
-        ctx = top_context()
-        ctx.hills_weight = weight
-        return ctx
+    flat = dict(length=12_000.0, hill=100.0)
+    hilly = dict(length=9_000.0, hill=21_000.0)
 
-    flat = dict(length=12_000.0, effort=12_100.0)
-    hilly = dict(length=9_000.0, effort=30_000.0)
-
-    def test_with_hills_set_to_avoid_the_flatter_route_wins_even_if_longer(self) -> None:
+    def test_the_flatter_route_wins_where_the_climb_costs_more_than_its_miles(self) -> None:
         flat, hilly = reading(**self.flat), reading(**self.hilly)
-        assert refine.better(flat, hilly, self.avoid())
-        assert not refine.better(hilly, flat, self.avoid())
+        assert refine.better(flat, hilly, top_context())
+        assert not refine.better(hilly, flat, top_context())
 
-    def test_at_the_detent_the_shorter_actual_route_wins(self) -> None:
-        flat, hilly = reading(**self.flat), reading(**self.hilly)
-        detent = self.avoid(0.0)
-        assert refine.better(hilly, flat, detent)
-        assert not refine.better(flat, hilly, detent)
+    def test_a_climb_worth_less_than_the_miles_keeps_the_shorter_route(self) -> None:
+        flat, hilly = reading(**self.flat), reading(length=9_000.0, hill=2_000.0)
+        assert refine.better(hilly, flat, top_context())
+        assert not refine.better(flat, hilly, top_context())
 
-    def test_the_slider_blends_actual_and_effort_distance(self) -> None:
+    def test_the_level_is_the_distance_plus_the_climbing(self) -> None:
         flat, hilly = reading(**self.flat), reading(**self.hilly)
-        ctx = self.avoid(0.25)
-        assert refine.level3(flat, ctx) == pytest.approx(0.75 * 12_000 + 0.25 * 12_100)
-        assert refine.level3(hilly, ctx) == pytest.approx(0.75 * 9_000 + 0.25 * 30_000)
-        assert refine.better(flat, hilly, ctx)
-        # A touch toward avoid still prefers the shorter route.
-        assert refine.better(hilly, flat, self.avoid(0.05))
+        assert refine.level3(flat, top_context()) == pytest.approx(12_100.0)
+        assert refine.level3(hilly, top_context()) == pytest.approx(30_000.0)
 
     def test_it_comes_after_the_second_figure(self) -> None:
-        calm = reading(lts3=0.0, effort=90_000.0)
-        flat = reading(lts3=500.0, effort=10_000.0)
-        assert refine.better(calm, flat, self.avoid())
+        calm = reading(lts3=0.0, hill=80_000.0)
+        flat = reading(lts3=500.0)
+        assert refine.better(calm, flat, top_context())
 
     def test_the_ceiling_is_in_actual_metres_not_effort_miles(self) -> None:
         ctx = top_context(ceiling_m=10_000.0)
@@ -1319,18 +1313,16 @@ class TestChoosingOptions:
 
     def test_a_free_upgrade_is_taken_though_it_saves_no_stress(self) -> None:
         """The `charge > 0.0` guard (the mutation re-check's N4): with no target, a longer
-        option that is less effort on the distance the Hills slider weighs (much flatter,
-        Hills set to avoid) is charged nothing, so it is taken though it carries 10 m
-        more LTS 3. Under a target its miles cost half (435, "One rule") and it is not."""
+        option that is shorter once the other's climbing is counted (`Analysis.hill_m`) is
+        charged nothing, so it is taken though it carries 10 m more LTS 3. Under a target
+        its miles cost half (435, "One rule") and it is not."""
         ctx = top_context()
-        ctx.hills_weight = 1.0
-        hilly = reading(length=10_000.0, effort=30_000.0, lts3=100.0)
-        flat = reading(length=11_000.0, effort=11_000.0, lts3=110.0)
+        hilly = reading(length=10_000.0, hill=20_000.0, lts3=100.0)
+        flat = reading(length=11_000.0, lts3=110.0)
         assert refine.stress_saved_m(hilly, flat, ctx) < 0, "the premise: no stress saved"
         chain = [({"legs": [{"shape": "h"}]}, hilly), ({"legs": [{"shape": "f"}]}, flat)]
         assert refine.choose_options([chain], [10_000.0], None, ctx) == [1]
         under = top_context(target_m=20_000.0)
-        under.hills_weight = 1.0
         assert refine.choose_options([chain], [10_000.0], None, under) == [0]
 
     def test_the_total_is_never_past_the_limit(self) -> None:

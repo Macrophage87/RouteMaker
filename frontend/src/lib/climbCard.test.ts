@@ -161,7 +161,7 @@ test("App: Go plans from its start to the top through the bottom; Plan takes the
   assert.match(app, /void goTo\(top, climbEndName\(climb, "the top"\), false, \[bottom\]\)/);
   assert.match(app, /commit\(\[start, \.\.\.vias, dest\]/);
   assert.match(app, /rideClimbEdit\(pointsRef\.current, \{ bottom, top \}, loopVias\)/);
-  assert.match(app, /onRideClimb=\{riding \? ignore : rideClimb\}/);
+  assert.match(app, /onRideClimb=\{onBike \? ignore : rideClimb\}/);
 });
 
 // --- The map's press and the keyboard's way --------------------------------------------
