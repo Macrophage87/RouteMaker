@@ -479,6 +479,8 @@ export function RoamMode({
                 role="search"
                 onSubmit={(event) => {
                   event.preventDefault();
+                    // The focus moves to Find, so a phone's keyboard goes and does not cover the list that comes.
+                    event.currentTarget.querySelector<HTMLButtonElement>("button[type=submit]")?.focus();
                   void find({ query });
                 }}
               >
@@ -523,6 +525,7 @@ export function RoamMode({
                     ))}
                   </ol>
                   {found.kind === "water" && <p className="hint">{WATER_CAUTION}</p>}
+                    {found.attribution && <p className="hint">Search: {found.attribution.join("; ")}</p>}
                 </div>
               )}
               <p className="hint">{ROAM_DETOUR_HELP}</p>

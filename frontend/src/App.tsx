@@ -965,7 +965,7 @@ export function App() {
   const { gate: geoGate, namer } = usePlaceNames(points);
   // A ride's Detour search box (lib/detourSearch.ts): through the page's one gate, ahead of names, as Where to?'s.
   const detourGeocode = useCallback(
-    (query: string, near: LonLat) => geoGate.run(() => fetchPlaces(searchUrl(query, near, MAX_DETOUR_SEARCH)), true),
+    (query: string, near: LonLat | undefined) => geoGate.run(() => fetchPlaces(searchUrl(query, near, MAX_DETOUR_SEARCH)), true),
     [geoGate],
   );
   // A ride's stop names (2026-10-24): one function for the ride, so its stops on the map are worked out only as it moves.

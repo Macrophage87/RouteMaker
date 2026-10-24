@@ -2283,6 +2283,8 @@ export function RideMode({
                   role="search"
                   onSubmit={(event) => {
                     event.preventDefault();
+                    // The focus moves to Find, so a phone's keyboard goes and does not cover the list that comes.
+                    event.currentTarget.querySelector<HTMLButtonElement>("button[type=submit]")?.focus();
                     void findDetour({ query: detourQuery });
                   }}
                 >
@@ -2336,6 +2338,7 @@ export function RideMode({
                       ))}
                     </ol>
                     {(detourList.kind === "water" || detourList.kind === "restroom") && <p className="hint">{WATER_CAUTION}</p>}
+                    {detourList.attribution && <p className="hint">Search: {detourList.attribution.join("; ")}</p>}
                   </div>
                 )}
                 <p className="hint">{DETOUR_HELP}</p>

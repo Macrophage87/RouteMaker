@@ -48,7 +48,7 @@ const geoPlace = (name: string, east: number, extra: Partial<Place> = {}): Place
 
 /** Stand-ins: the riding distance is the straight one east, times 1.2; every call is kept. */
 function deps(over: Partial<DetourDeps> = {}) {
-  const asked: { geocode: Array<{ query: string; near: LonLat }>; request: NearestPlace[][] } = { geocode: [], request: [] };
+  const asked: { geocode: Array<{ query: string; near: LonLat | undefined }>; request: NearestPlace[][] } = { geocode: [], request: [] };
   const d: DetourDeps = {
     here: HERE,
     water: async () => WATER,
@@ -176,6 +176,24 @@ test("a place search that fails says why when nothing else matched, and is not n
     out.found?.items.map((i) => i.place.title),
     ["Bean"],
   );
+});
+
+test("the place search's credit shows when its places are listed; 'anything' is not every food place", async () => {
+  const { d } = deps({
+    geocode: async () => ({ ok: true, places: [geoPlace("Safeway", 400)], attribution: ["Photon, OpenStreetMap"] }),
+  });
+  const out = await findDetour(d, { query: "anything" });
+  assert.deepEqual(
+    out.found?.items.map((i) => i.place.title),
+    ["Safeway"],
+  );
+  assert.deepEqual(out.found?.attribution, ["Photon, OpenStreetMap"]);
+  const { d: onlyFood } = deps({ geocode: async () => ({ ok: true, places: [], attribution: ["Photon, OpenStreetMap"] }) });
+  assert.equal((await findDetour(onlyFood, { query: "coffee" })).found?.attribution, undefined);
+});
+
+test("a rounded point outside the map's area is not sent", () => {
+  assert.equal(roundedBias([-100, 40]), undefined);
 });
 
 test("nothing matching says so", async () => {

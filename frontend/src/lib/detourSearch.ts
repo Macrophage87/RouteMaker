@@ -153,9 +153,11 @@ export function mergeCandidates(food: readonly NearestPlace[], searched: readonl
 }
 
 /** The place search's point for a ride: the rider's, rounded as Where to?'s bias is (geocode.ts searchBiasPoint). */
-export function roundedBias([lon, lat]: LonLat): LonLat {
+export function roundedBias([lon, lat]: LonLat): LonLat | undefined {
   const round = (v: number) => Number((Math.round(v / BIAS_ROUNDING_DEG) * BIAS_ROUNDING_DEG).toFixed(2));
-  return [round(lon), round(lat)];
+  const near: LonLat = [round(lon), round(lat)];
+  // At the area's edge the rounded point can fall just outside it, where the API refuses a bias: then none, as Where to?.
+  return insideCoverage(near) ? near : undefined;
 }
 
 /** What a detour search needs from the page; each is a function so a test runs it with stand-ins. */
@@ -166,7 +168,7 @@ export interface DetourDeps {
   food: () => Promise<FoodPlace[] | null>;
   repair: () => Promise<RepairPlace[] | null>;
   /** The place search (through the page's one geocoding gate), near the rounded point given. */
-  geocode: (query: string, near: LonLat) => Promise<GeoResult>;
+  geocode: (query: string, near: LonLat | undefined) => Promise<GeoResult>;
   /** How far each place is to ride (requestNearest, on the ride's own settings). */
   request: (from: LonLat, places: readonly NearestPlace[]) => Promise<NearestResult>;
   now?: () => Date;
@@ -179,6 +181,8 @@ export interface DetourFound {
   kind: DetourKind | "search";
   heading: string;
   items: Nearby[];
+  /** The place search's credit, when its answers are in the list (shown under it, as Where to?'s). */
+  attribution?: string[];
 }
 
 export interface DetourOutcome {
@@ -276,10 +280,13 @@ export async function findDetour(deps: DetourDeps, ask: DetourAsk): Promise<Deto
     deps.food().catch(() => null),
     deps.geocode(query, roundedBias(deps.here)).catch((): GeoResult => ({ ok: false, status: 0 })),
   ]);
-  const foodMatches = food ? foodNearestPlaces(food.filter((p) => matchesFood(p, terms))) : [];
+  // A word that means every place ("anything") is not a food search here: only the place search answers it.
+  const foodMatches = food && !terms.all ? foodNearestPlaces(food.filter((p) => matchesFood(p, terms))) : [];
   const found = searched.ok ? searchedPlaces(searched.places) : [];
   const places = mergeCandidates(foodMatches, found);
   // Neither answered: say why the place search did not, rather than that nothing matches.
   if (places.length === 0 && !searched.ok) return { said: geocodeFailed(searched) };
-  return rank(deps, "search", places, query);
+  const outcome = await rank(deps, "search", places, query);
+  const credited = searched.ok && searched.attribution.length > 0 && outcome.found?.items.some((i) => i.place.id.startsWith("geo-"));
+  return credited && outcome.found ? { ...outcome, found: { ...outcome.found, attribution: searched.attribution } } : outcome;
 }
