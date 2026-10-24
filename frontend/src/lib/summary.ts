@@ -375,13 +375,13 @@ function climbSeekNote(seek: NonNullable<RouteResponse["hills_seek"]>): string {
 /**
  * What the route summary says of "fine with hills" (FOLLOWUP-HILLS-TOLERATE, OWNER-DECISIONS 242),
  * or null where the slider was not there. "calm_first": at the top of the traffic slider the
- * stress order decides and climbing is not counted against a route.
+ * stress order decides and climbing counts only as the time it takes.
  */
 export function tolerateNote(tolerate: RouteResponse["hills_tolerate"]): string | null {
   if (!tolerate) return null;
   switch (tolerate.limited) {
     case "calm_first":
-      return "At this Traffic setting the calmest route decides, and climbing is not counted against it.";
+      return "At this Traffic setting the calmest route decides; climbing counts as the time it takes.";
     case "two_points":
       return "Fine with hills compares routes with just a start and an end; this one has stops, so it is the usual route.";
     case "long_ride":

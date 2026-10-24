@@ -20,7 +20,8 @@ opens the live site in a WebView and gives Ride mode three native things while a
 One more native thing, outside a ride: **Send to Garmin** (the site's GPX sheet, v0.9.0 site and app). The
 site makes the FIT course and hands it to `FilesPlugin.java` ("RouteMakerFiles"), which writes it to the app's
 cache and hands it to Garmin Connect when Connect takes it (the manifest's one `<queries>` entry names it),
-otherwise to Android's "Open with" list. A WebView can neither share nor download a file a page makes, so an
+otherwise to Android's "Open with" list. Send to Wahoo's file, where Wahoo did not take the route, goes the same way
+but always to the list, for the Wahoo app. A WebView can neither share nor download a file a page makes, so an
 older app without the plugin shows no Send to Garmin button.
 
 **Opening a RouteMaker link in the app** (v0.9.0 app): in any app, Share the link and pick RouteMaker.

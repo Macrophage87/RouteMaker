@@ -1,6 +1,6 @@
 // The panel's icons: the approved UI mockup's own line icons (reports/v0.5.0/ui-mockup.html, 2026-10-11),
 // plus a cargo bike, a bikeshare dock, a downed tree, a text-size "Aa" (the owner's choice 11; the ride's Large text button since 2026-10-20; before that unused once Big text
-// moved to Settings, 2026-10-17), and Plan's map bar's undo, redo and clear, and the points list's grip (drag to reorder, 2026-10-18), and a struck-through elevator for a transit trip through a Metro station whose elevators are out (2026-10-21). Each is drawn with currentColor and hidden from assistive technology: every control that
+// moved to Settings, 2026-10-17), and Plan's map bar's undo, redo and clear, and the points list's grip (drag to reorder, 2026-10-18), and a struck-through elevator for a transit trip through a Metro station whose elevators are out (2026-10-21), and a mountain and a car each with a down arrow for the ride's Flatter and Calmer buttons (the owner, 2026-10-23: "More intuitive"). Each is drawn with currentColor and hidden from assistive technology: every control that
 // shows one also shows its words.
 
 export const ICON_PATHS = {
@@ -23,6 +23,8 @@ export const ICON_PATHS = {
   "routes": "<circle cx=\"6\" cy=\"19\" r=\"2\"/><circle cx=\"18\" cy=\"5\" r=\"2\"/><path d=\"M6 17V10a4 4 0 0 1 4-4h6M18 7v7a4 4 0 0 1-4 4H8\"/>",
   "download": "<path d=\"M12 3v12M7 10l5 5 5-5M4 20h16\"/>",
   "link": "<path d=\"M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1\"/>",
+  "mic": "<rect x=\"9\" y=\"3\" width=\"6\" height=\"11\" rx=\"3\"/><path d=\"M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M8.5 21h7\"/>",
+  "broadcast": "<circle cx=\"12\" cy=\"12\" r=\"2\" fill=\"currentColor\"/><path d=\"M8.5 15.5a5 5 0 0 1 0-7M15.5 8.5a5 5 0 0 1 0 7M5.6 18.4a9 9 0 0 1 0-12.8M18.4 5.6a9 9 0 0 1 0 12.8\"/>",
   "more": "<circle cx=\"5\" cy=\"12\" r=\"1.4\" fill=\"currentColor\"/><circle cx=\"12\" cy=\"12\" r=\"1.4\" fill=\"currentColor\"/><circle cx=\"19\" cy=\"12\" r=\"1.4\" fill=\"currentColor\"/>",
   "sun": "<circle cx=\"12\" cy=\"12\" r=\"4\"/><path d=\"M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8\"/>",
   "mountain": "<path d=\"M2 20 9 8l4 6 3-4 6 10z\"/>",
@@ -63,6 +65,8 @@ export const ICON_PATHS = {
   "cargo": "<circle cx=\"5\" cy=\"17\" r=\"3\"/><circle cx=\"19\" cy=\"17\" r=\"3\"/><path d=\"M5 17h7l3-7h-3M15 10l4 7M8 9h5v5H8z\"/>",
   "textsize": "<path d=\"M2.5 19 8 5h1.2l5.5 14M4.6 14h8.1\"/><path d=\"M14.5 19l3.6-8.5h.9L22.5 19M15.8 16h5.5\"/>",
   "tree": "<path d=\"M12 21v-6M12 3l6 8h-3l4 5H5l4-5H6z\"/>",
+  "hills-down": "<path d=\"M1.5 20 7.5 9l3.5 6 2-3 4 8z\" fill=\"currentColor\"/><path d=\"M20 3.5v11M17 11.5l3 3 3-3\"/>",
+  "traffic-down": "<path d=\"M4.6 6.3c.2-.6.8-1 1.4-1h5c.6 0 1.2.4 1.4 1l1.6 4.7v6.5c0 .4-.4.8-.8.8h-.9c-.4 0-.8-.4-.8-.8v-.9H5.5v.9c0 .4-.4.8-.8.8h-.9c-.4 0-.8-.4-.8-.8V11zM5.3 10.2l.95-2.75h4.5l.95 2.75zM4.2 13.4a1.1 1.1 0 1 0 2.2 0a1.1 1.1 0 1 0-2.2 0zM10.6 13.4a1.1 1.1 0 1 0 2.2 0a1.1 1.1 0 1 0-2.2 0z\" fill=\"currentColor\" fill-rule=\"evenodd\" stroke=\"none\"/><path d=\"M20 3.5v11M17 11.5l3 3 3-3\"/>",
   "bikeshare": "<rect x=\"3\" y=\"3\" width=\"7\" height=\"18\" rx=\"1.5\"/><circle cx=\"15\" cy=\"17\" r=\"3\"/><path d=\"M15 17l2.5-6H21M13 11h4\"/>",
   // v0.7.0: farm stands and markets (an apple), repair stands (a wrench), bike shops (a shop front), sights
   // (a camera); "More" is the mockup's own.

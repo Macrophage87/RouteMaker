@@ -3,6 +3,7 @@
  * in only. It asks for a name only (offered as "Start to End") and says what happened politely.
  */
 import { useEffect, useId, useRef, useState, type MouseEvent } from "react";
+import { DiscordLogo } from "./DiscordLogo.tsx";
 import { Icon } from "./Icon.tsx";
 import { NAME_MAX } from "./lib/savedRoutes.ts";
 
@@ -112,6 +113,7 @@ export function SaveRoute({ label, defaultName, onSave, chip = false, shown, bar
             </>
           ) : signIn ? (
             <a className="button save-route-sign-in" href="/auth/login" onClick={signIn} ref={signInRef}>
+              <DiscordLogo />
               Sign in with Discord
             </a>
           ) : null}
