@@ -256,6 +256,11 @@ def test_a_service_down_is_not_asked_again_for_a_minute() -> None:
     out = w.check([(-77.0, 38.9, 0), (-76.6, 39.3, 600)])
     assert len(fake.asked) == asked
     assert out["unchecked"] == ["alerts", "rain"]
+    # A cell kept from before the outage does not make the rest of a new route checked.
+    w._alerts[weather.cell(-77.0, 38.9)] = (clock[0], [])
+    out = w.check([(-77.0, 38.9, 0), (-76.6, 39.3, 600)])
+    assert "alerts" in out["unchecked"] and len(fake.asked) == asked
+    w._alerts.clear()
     # Back up after the minute: asked again.
     fake.fail.clear()
     fake.rain = rain_doc([[0.0] * 8])

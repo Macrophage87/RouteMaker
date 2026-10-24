@@ -367,7 +367,8 @@ class Weather:
                 with self._lock:
                     self._alerts[c] = (now, found)
                     self._schedule()
-        if alerts_down and not alerts_kept:
+        if alerts_down and len(alerts_kept) < len(unique):
+            # Some of the route was not asked: said unchecked, as rain is.
             unchecked.append("alerts")
         elif alerts_failed == len(unique):
             unchecked.append("alerts")
