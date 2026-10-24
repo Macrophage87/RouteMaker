@@ -1,7 +1,18 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { IDLE_RECENTRE_MS, IDLE_TOUCH_EVENTS, RIDE_PANEL_OPEN, followZoom, watchIdleRecentre, type IdleWindow } from "./idleRecentre.ts";
+import {
+  IDLE_CLOSE_ATTR,
+  IDLE_CLOSE_SETTLE_MS,
+  IDLE_HOLD_ATTR,
+  IDLE_RECENTRE_MS,
+  IDLE_TOUCH_EVENTS,
+  RIDE_PANEL_OPEN,
+  followZoom,
+  typingIn,
+  watchIdleRecentre,
+  type IdleWindow,
+} from "./idleRecentre.ts";
 
 /** A window with a clock that moves only when told. */
 function fakeWindow() {
@@ -127,4 +138,102 @@ test("the follow camera's zoom: back to the ride's own after a reset, a pinch ke
 
 test("the map's Help panel open counts as a panel", () => {
   assert.match(RIDE_PANEL_OPEN, /\.maplibregl-ctrl-attrib\[open\]/);
+});
+
+test("the screen left alone 30 s: the cards and side menus close, then the map goes back to the rider", () => {
+  const w = fakeWindow();
+  const steps: string[] = [];
+  let open = true;
+  watchIdleRecentre(w.win, {
+    away: () => true,
+    panelOpen: () => open,
+    closePanels: () => {
+      if (!open) return false;
+      steps.push("closed");
+      open = false;
+      return true;
+    },
+    recentre: () => steps.push("recentred"),
+  });
+  w.advance(29_999);
+  assert.deepEqual(steps, []);
+  w.advance(1);
+  assert.deepEqual(steps, ["closed"]);
+  // The menu is given a moment to leave the page, then the map is put back.
+  w.advance(IDLE_CLOSE_SETTLE_MS);
+  assert.deepEqual(steps, ["closed", "recentred"]);
+});
+
+test("a touch while a card is open starts its 30 s again", () => {
+  const w = fakeWindow();
+  let closed = 0;
+  watchIdleRecentre(w.win, { away: () => false, panelOpen: () => true, closePanels: () => ((closed += 1), true), recentre: () => undefined });
+  w.advance(25_000);
+  w.touch("pointerup");
+  w.advance(25_000);
+  assert.equal(closed, 0);
+  w.advance(5_000);
+  assert.equal(closed, 1);
+});
+
+test("a menu kept open (words typed): nothing closes and the map stays held, looked at again each 30 s", () => {
+  const w = fakeWindow();
+  let asked = 0;
+  let recentred = 0;
+  watchIdleRecentre(w.win, { away: () => true, panelOpen: () => true, closePanels: () => ((asked += 1), false), recentre: () => (recentred += 1) });
+  w.advance(90_000);
+  assert.equal(asked, 3);
+  assert.equal(recentred, 0);
+});
+
+test("following, nothing open: closing is still asked, and the map is left alone", () => {
+  const w = fakeWindow();
+  let recentred = 0;
+  watchIdleRecentre(w.win, { away: () => false, panelOpen: () => false, closePanels: () => false, recentre: () => (recentred += 1) });
+  w.advance(60_000);
+  assert.equal(recentred, 0);
+});
+
+/** An element with only what typingIn reads. */
+function box(fields: { value?: string; text?: string }[], hold = false) {
+  const made = fields.map((f) => (f.value !== undefined ? { value: f.value } : { textContent: f.text ?? "" }));
+  return {
+    made,
+    el: {
+      querySelector: (sel: string) => (sel === `[${IDLE_HOLD_ATTR}]` && hold ? {} : null),
+      querySelectorAll: () => made,
+    } as unknown as Element,
+  };
+}
+
+test("words typed, being typed, or the microphone listening keep a menu open", () => {
+  assert.equal(typingIn(box([]).el, null), false);
+  assert.equal(typingIn(box([{ value: "" }, { value: "  " }]).el, null), false);
+  assert.equal(typingIn(box([{ value: "coffee" }]).el, null), true);
+  const empty = box([{ value: "" }]);
+  assert.equal(typingIn(empty.el, empty.made[0] as unknown as Element), true);
+  assert.equal(typingIn(box([{ text: "note" }]).el, null), true);
+  assert.equal(typingIn(box([], true).el, null), true);
+});
+
+test("wired: the ride's side menus, the group's, Roam's Detour and the road info are marked to close; accessibility mode closes nothing", () => {
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  assert.match(app, /closePanels: \(\) => !accessModeNow\.current && closeIdlePanels\(document\)/);
+  const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
+  for (const open of ["detourOpen", "dockOpen", "menu311", "settingsOpen"]) assert.match(ride, new RegExp(`aria-expanded=\\{${open}\\}\\s+aria-controls=\\{[^\\n]+\\}\\s+${IDLE_CLOSE_ATTR}`));
+  const roam = readFileSync(new URL("../RoamMode.tsx", import.meta.url), "utf8");
+  assert.match(roam, new RegExp(`aria-expanded=\\{detourOpen\\}\\s+aria-controls=\\{detourId\\}\\s+${IDLE_CLOSE_ATTR}`));
+  const group = readFileSync(new URL("../RideGroup.tsx", import.meta.url), "utf8");
+  for (const open of ["ridersOpen", "alertOpen"]) assert.match(group, new RegExp(`aria-expanded=\\{${open}\\} ${IDLE_CLOSE_ATTR}`));
+  assert.match(group, new RegExp(`aria-pressed=\\{listening\\} onClick=\\{speak\\} ${IDLE_HOLD_ATTR}=\\{listening \\|\\| undefined\\}`));
+  const info = readFileSync(new URL("../RoadInfoDialog.tsx", import.meta.url), "utf8");
+  assert.match(info, new RegExp(`${IDLE_CLOSE_ATTR}=\\{editing \\|\\| suggesting \\|\\| suggestingJunction \\|\\| reporting \\|\\| closing \\? undefined : ""\\}`));
+});
+
+test("a map card's X is a finger's size", () => {
+  const css = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+  const rule = css.match(/\.maplibregl-popup \.maplibregl-popup-close-button \{([^}]*)\}/);
+  assert.ok(rule);
+  assert.match(rule[1], /width: 44px;/);
+  assert.match(rule[1], /height: 44px;/);
 });
