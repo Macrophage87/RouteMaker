@@ -1811,7 +1811,7 @@ class RoutePostSectionInline(admin.StackedInline):
 
     model = RoutePostSection
     extra = 1
-    fields = ("position", "heading", "body")
+    fields = ("position", "heading", ("start_mi", "end_mi"), "body")
 
     def _is_instance_admin(self, request) -> bool:
         return bool(getattr(request.user, "is_instance_admin", False))

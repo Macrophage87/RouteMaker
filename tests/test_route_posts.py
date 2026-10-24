@@ -11,14 +11,17 @@ so, and seasonal posts lead the list in season and wait in a fold out of it.
 
 from __future__ import annotations
 
+import json
 import re
 import struct
 from datetime import date
+from decimal import Decimal
 from itertools import count
 from pathlib import Path
 
 import pytest
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.test import Client
 from django.utils import timezone
 
@@ -189,6 +192,50 @@ def test_the_page_is_laid_out_as_the_owner_asked() -> None:
     assert '<script type="module" src="/post.js"></script>' in body
     assert response["Content-Security-Policy"].startswith("default-src 'self'; script-src 'self'")
     assert 'system_weight_kg": 92' not in body
+
+
+def test_a_sections_stretch_is_cut_from_the_line_at_its_miles_on_the_routes_own_distance() -> None:
+    # 2.0 mi of route over a line of 59 equal steps: mile 0.5 to 1.0 is the line's second quarter.
+    stretch = route_posts.section_line(LINE, 2 * 1609.344, 0.5, 1.0)
+    assert stretch[0] == pytest.approx([LINE[0][0] + 59 * 0.0004 / 4, LINE[0][1] + 59 * 0.0003 / 4])
+    assert stretch[-1] == pytest.approx(
+        [LINE[0][0] + 59 * 0.0004 / 2, LINE[0][1] + 59 * 0.0003 / 2]
+    )
+    assert all(len(p) == 2 for p in stretch) and len(stretch) > 10
+    # Past the end it stops at the finish; wholly past it, or backwards, there is none.
+    assert route_posts.section_line(LINE, 2 * 1609.344, 1.5, 9.0)[-1] == pytest.approx(LINE[-1][:2])
+    assert route_posts.section_line(LINE, 2 * 1609.344, 3.0, 4.0) == []
+    assert route_posts.section_line(LINE, 2 * 1609.344, 1.0, 0.5) == []
+    assert route_posts.section_line(LINE, 2 * 1609.344, None, None) == []
+
+
+@db
+def test_a_section_with_a_stretch_has_a_small_map_of_it_and_says_where_it_is() -> None:
+    post = make_post()
+    RoutePostSection.objects.create(post=post, position=1, heading="No map", body="Words only.")
+    RoutePostSection.objects.create(
+        post=post,
+        position=2,
+        heading="The Mall",
+        body="Wide paths.",
+        start_mi=Decimal("0.5"),
+        end_mi=Decimal("1.0"),
+    )
+    body = Client().get("/routes/mall-loop").content.decode()
+    assert body.count('class="section-map"') == 1
+    assert (
+        '<h3>The Mall</h3><figure class="section-map" data-section="0">'
+        "<figcaption>Mile 0.5 to 1.0 (km 0.8 to 1.6)</figcaption></figure><p>Wide paths.</p>"
+    ) in body
+    data = re.search(r'id="post-data"[^>]*>(.*?)</script>', body).group(1)
+    sections = json.loads(data)["sections"]
+    assert [s["heading"] for s in sections] == ["The Mall"] and len(sections[0]["line"]) > 2
+    with pytest.raises(ValidationError):
+        RoutePostSection(post=post, heading="Half", start_mi=Decimal("1")).full_clean()
+    with pytest.raises(ValidationError):
+        RoutePostSection(
+            post=post, heading="Back", start_mi=Decimal("2"), end_mi=Decimal("1")
+        ).full_clean()
 
 
 @db

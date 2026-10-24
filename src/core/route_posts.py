@@ -10,7 +10,9 @@ Each post is a page of its own, `/routes/<slug>`, laid out as the owner asked on
 3. the map of the route;
 4. one row of four buttons: Open in RouteMaker, Download GPX, Send to Garmin and Send to Wahoo;
 5. the elevation and traffic stress profiles;
-6. the description of the ride, who it is for, and the highlighted sections.
+6. the description of the ride, who it is for, and the highlighted sections; a section given a
+   stretch (From mile, To mile) has a small map of it (the owner, 2026-10-24: "Show a minimap of
+   each of the sections highlighted"), with the stretch in words for readers without the map.
 
 The page is made here, whole, so it reads without JavaScript and a link fetcher sees its tags
 (no fetcher test as /s/ needs: the page is the same for both). `/post.js` (frontend/src/post/)
@@ -40,6 +42,7 @@ reader is read or kept: the list is the same for everyone.
 from __future__ import annotations
 
 import hashlib
+import itertools
 import re
 import secrets
 from datetime import date
@@ -356,6 +359,9 @@ STYLE = (
     ".said{min-height:1.5em;margin:.25rem 0}"
     ".chart-text{color:var(--muted)}"
     ".highlight{border-left:4px solid var(--accent);padding:.1rem 0 .1rem 1rem;margin:1rem 0}"
+    ".section-map{margin:.5rem 0}.section-map figcaption{color:var(--muted);font-size:.95rem}"
+    ".minimap{position:relative;width:100%;aspect-ratio:16/9;border-radius:8px;overflow:hidden;background:var(--card);"
+    "margin-bottom:.25rem}"
     ".byline{color:var(--muted);font-size:.95rem;margin-top:2rem}"
     ".admin{margin-top:2rem;padding:1rem;border:1px dashed var(--rule);border-radius:8px}"
     ".admin button{font:inherit;padding:.5rem 1rem;min-height:44px;border-radius:6px;"
@@ -448,6 +454,58 @@ def open_link(post) -> str:
     return shared_routes.link_of(post.route, "")
 
 
+def _point_at(a, b, fraction: float) -> list[float]:
+    return [a[0] + (b[0] - a[0]) * fraction, a[1] + (b[1] - a[1]) * fraction]
+
+
+def section_line(line, distance_m, start_mi, end_mi) -> list[list[float]]:
+    """The part of the route's line from `start_mi` to `end_mi` along it, as [lon, lat] points,
+    cut where those miles fall. Miles are counted on the route's own distance (the figures row),
+    the line's length scaled to it, so the mileages an author reads off the app's charts land
+    where the charts put them. Empty when the stretch is off the end of the route or the line
+    has no length."""
+    points = [p for p in line if len(p) >= 2]
+    if len(points) < 2 or start_mi is None or end_mi is None:
+        return []
+    steps = [share_preview._haversine(a, b) for a, b in itertools.pairwise(points)]
+    length = sum(steps)
+    if length <= 0:
+        return []
+    scale = (distance_m or length) / length
+    start = float(start_mi) * share_preview.METRES_PER_MILE / scale
+    end = min(float(end_mi) * share_preview.METRES_PER_MILE / scale, length)
+    if not 0 <= start < end:
+        return []
+    out: list[list[float]] = []
+    walked = 0.0
+    for (a, b), step in zip(itertools.pairwise(points), steps, strict=True):
+        if walked + step >= start and walked <= end and step > 0:
+            if not out:
+                out.append(_point_at(a, b, max(0.0, start - walked) / step))
+            if walked + step >= end:
+                out.append(_point_at(a, b, (end - walked) / step))
+                break
+            out.append([b[0], b[1]])
+        walked += step
+    return out if len(out) >= 2 else []
+
+
+def stretch_words(section) -> str:
+    """Where a section's stretch is: "Mile 33.4 to 33.8 (km 53.8 to 54.4)"."""
+    start, end = float(section.start_mi), float(section.end_mi)
+    km = share_preview.METRES_PER_MILE / 1000
+    return f"Mile {start:.1f} to {end:.1f} (km {start * km:.1f} to {end * km:.1f})"
+
+
+def _stretches(post) -> list[tuple[object, list[list[float]]]]:
+    """Each section with the line of its stretch (empty without one)."""
+    distance = (post.stats or {}).get("distance_m")
+    return [
+        (s, section_line(post.route.line or [], distance, s.start_mi, s.end_mi))
+        for s in post.sections.all()
+    ]
+
+
 def page_data(request, post) -> dict:
     """What the page's script reads: the exact line, the frozen answer and the plan's points."""
     route = post.route
@@ -457,6 +515,9 @@ def page_data(request, post) -> dict:
         "line": route.line,
         "answer": route.answer,
         "points": share_preview.route_points(route),
+        "sections": [
+            {"heading": s.heading, "line": stretch} for s, stretch in _stretches(post) if stretch
+        ],
         "admin": is_admin(request),
     }
     if data["admin"]:
@@ -507,10 +568,22 @@ def post_html(request, post) -> str:
         f'<button type="button" class="action" data-send="wahoo" disabled>{_icon("device")}'
         f"{WAHOO_LABEL}</button>"
     )
-    sections = "".join(
-        f'<section class="highlight"><h3>{escape(s.heading)}</h3>{_paragraphs(s.body)}</section>'
-        for s in post.sections.all()
-    )
+    # The page's script finds each stretch's line by its place among the sections that have one.
+    numbers = itertools.count()
+
+    def highlight(s, stretch) -> str:
+        minimap = (
+            f'<figure class="section-map" data-section="{next(numbers)}">'
+            f"<figcaption>{escape(stretch_words(s))}</figcaption></figure>"
+            if stretch
+            else ""
+        )
+        return (
+            f'<section class="highlight"><h3>{escape(s.heading)}</h3>{minimap}'
+            f"{_paragraphs(s.body)}</section>"
+        )
+
+    sections = "".join(highlight(s, stretch) for s, stretch in _stretches(post))
     planned = (post.stats or {}).get("planned_on")
     byline = [f"By {post.byline}" if post.byline else ""]
     if post.published_at:
