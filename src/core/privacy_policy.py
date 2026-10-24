@@ -145,7 +145,8 @@ SECTIONS: list[tuple[str, str]] = [
                 "As leader, your phone also sends the route you are riding and the path you have "
                 "ridden (rounded the same way, without its first 650 ft (200 m), as rides often "
                 "start at home) about every 2 minutes; the server keeps each only in memory and "
-                "drops it after 2 minutes. Only those with your link see it.",
+                "drops it after 2 minutes. Only those with your link see it. The link itself, "
+                "like any shared route, shows where the route starts.",
                 "Speak, in an alert's Other box, uses your browser's speech recognition: the "
                 "browser's maker (Google for Chrome, Apple for Safari) turns the recording into "
                 "text. The words go only into the box until you tap Send.",
