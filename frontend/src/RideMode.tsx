@@ -640,7 +640,7 @@ export function RideMode({
   const checking = useRef(false);
   const modelOf = (r: RouteResponse, points: readonly LonLat[]) => {
     // A stop's own name (2026-10-24) is said and shown with its number.
-    const built = rideModel(r, viaIndices(points, VIA_MARKS.isVia), stopNames(points, VIA_MARKS.nameOf, VIA_MARKS.isVia));
+    const built = rideModel(r, viaIndices(points, VIA_MARKS.isVia), stopNames(points, VIA_MARKS.nameOf, VIA_MARKS.isVia, plan.current.loop));
     return r === uturnRoute.current ? withUTurn(built) : built;
   };
   const model = useMemo(() => modelOf(route, plan.current.points), [route]);
@@ -652,7 +652,7 @@ export function RideMode({
   const otherRef = useRef(other);
   otherRef.current = other;
   const otherModel = useMemo(
-    () => (other ? rideModel(other, viaIndices(plan.current.points, VIA_MARKS.isVia), stopNames(plan.current.points, VIA_MARKS.nameOf, VIA_MARKS.isVia)) : null),
+    () => (other ? rideModel(other, viaIndices(plan.current.points, VIA_MARKS.isVia), stopNames(plan.current.points, VIA_MARKS.nameOf, VIA_MARKS.isVia, plan.current.loop)) : null),
     [other],
   );
   const otherModelRef = useRef(otherModel);
@@ -2156,7 +2156,7 @@ export function RideMode({
                 type="button"
                 ref={detourButton}
                 className="ride-round"
-                aria-label={detourButtonName(DETOUR_SUMMARY, nextStop)}
+                aria-label={detourButtonName(DETOUR_SUMMARY, fixed ? null : nextStop)}
                 title="Detour"
                 aria-expanded={detourOpen}
                 aria-controls={detourId}

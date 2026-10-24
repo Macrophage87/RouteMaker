@@ -114,7 +114,7 @@ function bounds(line: readonly LonLat[]): [number, number, number, number] {
  */
 export function routeGpxFile(route: RouteResponse, routedPoints: LonLat[], loop: boolean, federal: readonly string[] = []): FileDownload {
   const vias = viaIndices(routedPoints, VIA_MARKS.isVia);
-  const names = stopNames(routedPoints, VIA_MARKS.nameOf, VIA_MARKS.isVia);
+  const names = stopNames(routedPoints, VIA_MARKS.nameOf, VIA_MARKS.isVia, loop);
   return { text: writeGpx(exportOf(route, routedPoints, loop, federal, vias, names)), fileName: exportFileName(route) };
 }
 
@@ -217,7 +217,7 @@ export function downloadCourse(route: RouteResponse, routedPoints: LonLat[], for
     saveFile(made.bytes, "application/pdf", cueSheetFileName(route, kind));
     return cueSheetLine(route, kind, vias, made.pages);
   }
-  const course = compileCourse(route, deviceProfile(profile), format, vias, stopNames(routedPoints, VIA_MARKS.nameOf, VIA_MARKS.isVia));
+  const course = compileCourse(route, deviceProfile(profile), format, vias, stopNames(routedPoints, VIA_MARKS.nameOf, VIA_MARKS.isVia, route.loop != null));
   const fileName = courseFileName(route, format);
   if (format === "fit") saveFile(writeFit(course), "application/vnd.ant.fit", fileName);
   else saveFile(writeTcx(course), "application/vnd.garmin.tcx+xml", fileName);
@@ -257,7 +257,7 @@ async function sendOnce(route: RouteResponse, routedPoints: LonLat[], savedRoute
     if ("said" in outcome) return outcome.said;
     ended = `${outcome.asFile} `;
   }
-  const course = compileCourse(route, deviceProfile("garmin-edge"), "fit", viaIndices(routedPoints, VIA_MARKS.isVia), stopNames(routedPoints, VIA_MARKS.nameOf, VIA_MARKS.isVia));
+  const course = compileCourse(route, deviceProfile("garmin-edge"), "fit", viaIndices(routedPoints, VIA_MARKS.isVia), stopNames(routedPoints, VIA_MARKS.nameOf, VIA_MARKS.isVia, route.loop != null));
   // Not handed on: the line says to split the route, and nothing claims a file went.
   if (course.trim.protectedOver) return courseLine(course);
   const line = await sendCourse(writeFit(course), courseFileName(route, "fit"), browserSendEnv((bytes, type, name) => saveFile(bytes, type, name)));
@@ -291,7 +291,7 @@ export async function sendCourseToWahoo(
   if (sendingWahoo) return WAHOO_SENDING;
   sendingWahoo = true;
   try {
-    const course = compileCourse(route, deviceProfile("wahoo"), "fit", viaIndices(routedPoints, VIA_MARKS.isVia), stopNames(routedPoints, VIA_MARKS.nameOf, VIA_MARKS.isVia));
+    const course = compileCourse(route, deviceProfile("wahoo"), "fit", viaIndices(routedPoints, VIA_MARKS.isVia), stopNames(routedPoints, VIA_MARKS.nameOf, VIA_MARKS.isVia, route.loop != null));
     if (course.trim.protectedOver) return courseLine(course);
     const bytes = writeFit(course);
     const outcome = await sendToWahoo(origin, { name: savedRoute?.name ?? exportName(route), line: lineWithHeights(route), fit: toBase64(bytes), saved_route: savedRoute?.id ?? null });

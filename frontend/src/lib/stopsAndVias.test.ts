@@ -205,3 +205,16 @@ test("a saved file reopened on its kept points keeps their stops, vias and names
   assert.deepEqual(kinds.vias, [1]);
   assert.deepEqual([...kinds.names], [[2, "Bakery"]]);
 });
+
+test("a stop added by search keeps the place's name; a loop's last stop keeps its name in files and courses", () => {
+  const app = src("../App.tsx");
+  assert.match(app, /addStopWhereShortest\(current, VIA_MARKS\.named\(\[point\[0\], point\[1\]\], name\), loop\)/);
+  assert.match(app, /if \(choice === "via"\) VIA_MARKS\.named\(p, name\);/);
+  const panel = src("../GpxPanel.tsx");
+  assert.match(panel, /stopNames\(routedPoints, VIA_MARKS\.nameOf, VIA_MARKS\.isVia, loop\)/);
+  assert.equal(panel.match(/VIA_MARKS\.isVia, route\.loop != null\)/g)?.length, 3);
+  const ride = src("../RideMode.tsx");
+  assert.equal(ride.match(/VIA_MARKS\.isVia, plan\.current\.loop\)/g)?.length, 2);
+  // A route everyone shares offers no Skip or Instead, so its Detour button does not name them.
+  assert.match(ride, /detourButtonName\(DETOUR_SUMMARY, fixed \? null : nextStop\)/);
+});

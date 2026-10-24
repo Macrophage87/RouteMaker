@@ -166,6 +166,6 @@ test("PlaceSearch, MapView, the rail cards and the GPX panel pass the toggle on"
   const gpx = source("../GpxPanel.tsx");
   // A Mass Ride's federal-land lines (item 239) ride along into the file's description.
   assert.match(gpx, /loop = false, federal = \[\] \} = props;/);
-  assert.match(gpx, /const vias = viaIndices\(routedPoints, VIA_MARKS\.isVia\);\s*const names = stopNames\(routedPoints, VIA_MARKS\.nameOf, VIA_MARKS\.isVia\);\s*return \{ text: writeGpx\(exportOf\(route, routedPoints, loop, federal, vias, names\)\)/);
+  assert.match(gpx, /const vias = viaIndices\(routedPoints, VIA_MARKS\.isVia\);\s*const names = stopNames\(routedPoints, VIA_MARKS\.nameOf, VIA_MARKS\.isVia, loop\);\s*return \{ text: writeGpx\(exportOf\(route, routedPoints, loop, federal, vias, names\)\)/);
   assert.equal(count(gpx, /exportOf\(/g), 1, "one export, of the routed points");
 });
