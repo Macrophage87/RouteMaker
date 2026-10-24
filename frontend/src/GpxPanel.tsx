@@ -4,9 +4,11 @@ import type { RouteResponse } from "./lib/api.ts";
 import type { LonLat } from "./lib/geo.ts";
 import { writeGpx } from "./lib/gpx.ts";
 import { REFINE_ROUNDS, nextFitStep, prunedCount, startFit, type Fit, type ImportedPlan } from "./lib/gpxPlan.ts";
-import { gpxWorker, importGpx } from "./lib/gpxImport.ts";
+import { gpxAccept, gpxWorker, importGpx } from "./lib/gpxImport.ts";
 import {
   againstTrafficNotice,
+  elevationsAlong,
+  exportName,
   exportFileName,
   exportOf,
   fidelityNotice,
@@ -25,7 +27,9 @@ import { compileCourse, courseFileName, courseLine, type CourseFormat } from "./
 import { DEFAULT_PROFILE, DEVICE_PROFILES, deviceProfile, type DeviceProfileId } from "./lib/deviceProfiles.ts";
 import { writeFit } from "./lib/fit.ts";
 import { writeTcx } from "./lib/tcx.ts";
-import { SEND_LABEL, browserSendEnv, canSendToGarmin, courseTrimmed, sendCourse } from "./lib/sendToGarmin.ts";
+import { SEND_LABEL, browserSendEnv, canSendToGarmin, courseTrimmed, sendCourse, toBase64 } from "./lib/sendToGarmin.ts";
+import { SENDING, readGarmin, sendDirect } from "./lib/garminLink.ts";
+import { SENDING as WAHOO_SENDING, SEND_LABEL as WAHOO_SEND_LABEL, handWahooFile, readWahoo, sendToWahoo } from "./lib/wahooLink.ts";
 import { cueSheetDocument, cueSheetFileName, cueSheetLine, type CueSheetKind } from "./lib/cueSheetPdf.ts";
 import { lockCancelledLine, lockPartButton, lockPartLine, lockScreenFileNames, lockScreenLine, lockSharedLine } from "./lib/lockScreen.ts";
 import { renderLockScreens } from "./app/lockScreenRender.ts";
@@ -50,6 +54,11 @@ interface Props {
   /** The file opened last, until the plan is cleared. */
   imported: ImportedPlan | null;
   onImport: (plan: ImportedPlan) => void;
+  /** Load route's popup (LoadRouteDialog.tsx) opens this panel's file picker; a file it cannot open shows here. */
+  fileInput?: (input: HTMLInputElement | null) => void;
+  onOpenFailed?: () => void;
+  /** This panel's own Open GPX… pressed: a choice made in Load route's popup is not this file's. */
+  onPick?: () => void;
   /** Replace the plan's points with a closer fit to the opened track. */
   onRefine: (points: LonLat[]) => void;
   getMap: () => MapLibreMap | null;
@@ -67,6 +76,8 @@ interface Props {
   onDownloadCourse?: (format: FileFormat, profile: DeviceProfileId, said: Said) => void;
   /** Send to Garmin (sendCourseToGarmin), closures checked first; in Go and Plan alike. */
   onSendToGarmin?: (said: Said) => void;
+  /** Send to Wahoo (sendCourseToWahoo), closures checked first; shown only once the rider has connected Wahoo. */
+  onSendToWahoo?: (said: Said) => void;
   /**
    * Plan only: snap an opened track to the map's ways (lib/gpxMatch.ts) on the ride type now chosen, and open
    * the plan that follows the snapped line (`onMatched`, one edit). Without it (Go) the action is not offered.
@@ -212,15 +223,84 @@ export function downloadCourse(route: RouteResponse, routedPoints: LonLat[], for
 }
 
 /**
- * Send to Garmin (lib/sendToGarmin.ts): the route shown as a FIT course for a Garmin Edge, handed to the phone for
- * Garmin Connect; the line says what happened, with what fitting it left out, if anything. A course with more cues
- * it must keep than the unit shows is not sent: its line says to split the route.
+ * Send to Garmin. With Garmin connected in Settings (lib/garminLink.ts), the route's line goes to Garmin Connect
+ * directly as a course, named as saved, and a saved route sent again updates its course; where Garmin refuses it,
+ * cannot be reached, or is no longer connected, the file goes as below, after the reason. A second press while one send runs is ignored. Otherwise (lib/sendToGarmin.ts) it is a
+ * FIT course for a Garmin Edge, handed to the phone for Garmin Connect; the line says what happened, with what
+ * fitting it left out, if anything. A course with more cues it must keep than the unit shows is not handed on: its
+ * line says to split the route.
  */
-export async function sendCourseToGarmin(route: RouteResponse, routedPoints: LonLat[]): Promise<string> {
+let sending = false;
+
+export async function sendCourseToGarmin(
+  route: RouteResponse,
+  routedPoints: LonLat[],
+  savedRoute: { id: number; name: string } | null = null,
+  origin = window.location.origin,
+): Promise<string> {
+  if (sending) return SENDING;
+  sending = true;
+  try {
+    return await sendOnce(route, routedPoints, savedRoute, origin);
+  } finally {
+    sending = false;
+  }
+}
+
+async function sendOnce(route: RouteResponse, routedPoints: LonLat[], savedRoute: { id: number; name: string } | null, origin: string): Promise<string> {
+  const state = await readGarmin(origin);
+  let ended = "";
+  if (state?.connected) {
+    const outcome = await sendDirect(origin, { name: savedRoute?.name ?? exportName(route), preset: route.preset, line: lineWithHeights(route), saved_route: savedRoute?.id ?? null });
+    if ("said" in outcome) return outcome.said;
+    ended = `${outcome.asFile} `;
+  }
   const course = compileCourse(route, deviceProfile("garmin-edge"), "fit", viaIndices(routedPoints, VIA_MARKS.isVia));
+  // Not handed on: the line says to split the route, and nothing claims a file went.
   if (course.trim.protectedOver) return courseLine(course);
   const line = await sendCourse(writeFit(course), courseFileName(route, "fit"), browserSendEnv((bytes, type, name) => saveFile(bytes, type, name)));
-  return courseTrimmed(course) ? `${line} ${courseLine(course)}` : line;
+  return ended + (courseTrimmed(course) ? `${line} ${courseLine(course)}` : line);
+}
+
+/** The route's line as [lon, lat, ele] where its height is known: what Garmin and Wahoo are sent beside the course. */
+function lineWithHeights(route: RouteResponse): ([number, number] | [number, number, number])[] {
+  const elevations = elevationsAlong(route.geometry.coordinates, route.profile);
+  return route.geometry.coordinates.map(([lon, lat], i) => {
+    const ele = elevations[i];
+    return typeof ele === "number" && Number.isFinite(ele) ? [lon, lat, ele] : [lon, lat];
+  });
+}
+
+/**
+ * Send to Wahoo (lib/wahooLink.ts), offered once Wahoo is connected: the route as a FIT course fitted to the Wahoo
+ * profile, with its turn cues, added to the rider's Wahoo app, named as saved; a saved route sent again updates
+ * it. Where Wahoo refuses it, cannot be reached, or is no longer connected, the FIT course is saved instead, after
+ * the reason, for the Wahoo app to open (in the phone app, handed to Android's "Open with" list). A course with more
+ * cues it must keep than the unit shows is not sent: its line says to split the route.
+ */
+let sendingWahoo = false;
+
+export async function sendCourseToWahoo(
+  route: RouteResponse,
+  routedPoints: LonLat[],
+  savedRoute: { id: number; name: string } | null = null,
+  origin = window.location.origin,
+): Promise<string> {
+  if (sendingWahoo) return WAHOO_SENDING;
+  sendingWahoo = true;
+  try {
+    const course = compileCourse(route, deviceProfile("wahoo"), "fit", viaIndices(routedPoints, VIA_MARKS.isVia));
+    if (course.trim.protectedOver) return courseLine(course);
+    const bytes = writeFit(course);
+    const outcome = await sendToWahoo(origin, { name: savedRoute?.name ?? exportName(route), line: lineWithHeights(route), fit: toBase64(bytes), saved_route: savedRoute?.id ?? null });
+    const trimmed = courseTrimmed(course) ? ` ${courseLine(course)}` : "";
+    if ("said" in outcome) return outcome.said + trimmed;
+    // Saved in a browser; in the phone app, handed to Android's "Open with" list (a WebView downloads nothing).
+    const asFile = await handWahooFile(bytes, courseFileName(route, "fit"), browserSendEnv((b, type, name) => saveFile(b, type, name)));
+    return `${outcome.asFile} ${asFile}${trimmed}`;
+  } finally {
+    sendingWahoo = false;
+  }
 }
 
 export type ExportFormat = "gpx" | FileFormat;
@@ -273,7 +353,18 @@ type Reading = { kind: "idle" } | { kind: "reading"; name: string } | { kind: "e
  * route on screen (gpx.ts). Nothing is sent or saved.
  */
 export function GpxPanel(props: Props) {
-  const { route, routedPoints, points, planStatus, imported, onImport, onRefine, getMap, onDownload, onDownloadCourse, onSendToGarmin, loop = false, federal = [] } = props;
+  const { route, routedPoints, points, planStatus, imported, onImport, fileInput, onOpenFailed, onPick, onRefine, getMap, onDownload, onDownloadCourse, onSendToGarmin, onSendToWahoo, loop = false, federal = [] } = props;
+  // Send to Wahoo is shown only to a rider who connected Wahoo (Settings > Account): nobody else sees a new control.
+  const [wahooOn, setWahooOn] = useState(false);
+  const wahooOffered = onSendToWahoo !== undefined;
+  useEffect(() => {
+    if (!wahooOffered) return;
+    let live = true;
+    void readWahoo(window.location.origin).then((state) => live && setWahooOn(state?.connected === true));
+    return () => {
+      live = false;
+    };
+  }, [wahooOffered]);
   const [kept, setChoice] = useState(readChoice);
   // Go adds no control (the owner's rule): there, the file type is GPX and no choice is shown.
   const courses = onDownloadCourse !== undefined;
@@ -403,6 +494,7 @@ export function GpxPanel(props: Props) {
       frame(outcome.plan);
     } else {
       setReading({ kind: "error", message: outcome.message });
+      onOpenFailed?.();
     }
   };
 
@@ -483,6 +575,7 @@ export function GpxPanel(props: Props) {
         <button
           type="button"
           onClick={() => {
+            if (reading.kind !== "reading") onPick?.();
             if (reading.kind !== "reading") input.current?.click();
           }}
           aria-disabled={reading.kind === "reading" || undefined}
@@ -497,11 +590,19 @@ export function GpxPanel(props: Props) {
             {SEND_LABEL}
           </button>
         )}
+        {onSendToWahoo && wahooOn && (
+          <button type="button" onClick={() => onSendToWahoo(sayCourse)} disabled={!route}>
+            {WAHOO_SEND_LABEL}
+          </button>
+        )}
       </div>
       <input
-        ref={input}
+        ref={(el) => {
+          input.current = el;
+          fileInput?.(el);
+        }}
         type="file"
-        accept=".gpx,application/gpx+xml"
+        accept={gpxAccept()}
         hidden
         onChange={(event) => {
           const file = event.target.files?.[0];

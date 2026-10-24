@@ -557,7 +557,10 @@ The WZDx registry has no DC feed, so DC's closures come from four sources (v0.7.
 closures source"), read by the worker (`core.closure_sources`, `routemaker.dc_closures`) and
 kept as one shared latest copy, never as history. They feed the same closure model as the work
 zones: on the route's map (a red closed stretch, amber for a blocked bike lane, a park marker),
-in the route's words, and in the closure check (`POST /api/closures/check`). None of the four
+in the route's words, and in the closure check (`POST /api/closures/check`). From v0.12.0 the map
+also shows the closures in force now in its view with no route (`GET /api/closures/map`: red
+closed, orange for a blocked bike lane or a rideable work zone, gone once past their end), and
+DDOT's permits there only with Plan's DC permits switch on. None of the four
 hosts was reachable from the cloud container this was built in; the readers were built on saved
 sample pages (`tests/data/closures`), and docs/OPERATIONS.md, "DC closures", has the first check.
 

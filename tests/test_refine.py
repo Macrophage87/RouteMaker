@@ -64,7 +64,7 @@ def analysis(
 def event(m: float, cost_ft: float = 3300.0, approach=None) -> Event:
     return Event(
         m=m,
-        lon=BASE[0],
+        lon=BASE[0] + m * 1e-5,
         lat=BASE[1],
         kind="crossing",
         movement=Movement.STRAIGHT,
@@ -85,7 +85,6 @@ def trip_of(name: str, km: float, cost: float = 0.0) -> dict:
 def context(
     rate=0.0,
     weight=1.0,
-    climb_weight=0.0,
     group=False,
     maxcalm=False,
     ceiling_m=None,
@@ -109,7 +108,6 @@ def context(
         group=group,
         rate=rate,
         weight=weight,
-        climb_weight=climb_weight,
         quiet_cost=QUIET_COST,
         maxcalm=maxcalm,
         ceiling_m=ceiling_m,
@@ -145,10 +143,12 @@ class World:
 
 class TestScore:
     def test_the_routers_cost_plus_the_extra_price_in_its_own_units(self) -> None:
-        a = analysis("a", "1133", cost_s=1000.0, events=[event(0, 1000.0)], climb_m=10.0)
-        ctx = context(rate=2.0, weight=0.5, climb_weight=3.0)
+        a = analysis("a", "1133", cost_s=1000.0, events=[event(0, 1000.0)])
+        a = dataclasses.replace(a, hill_m=300.0, router_climb_m=120.0)
+        ctx = context(rate=2.0, weight=0.5)
         penalty_m = 1000.0 / model.FEET_PER_METRE
-        extra = 2.0 * a.exposure_m + 0.5 * penalty_m + 3.0 * 10.0
+        # The router's own climbing charge is swapped for the rider's (`hill_m`, 2026-10-23).
+        extra = 2.0 * a.exposure_m + 0.5 * penalty_m + 300.0 - 120.0
         assert a.score(ctx) == pytest.approx(1000.0 + QUIET_COST * extra)
 
     def test_a_route_with_no_events_costs_no_penalty(self) -> None:
@@ -210,8 +210,11 @@ class TestCrossingAvoidance:
         assert info["rounds"] == 1 and info["limited"] is None
         # The two red events (3,100 ft and up since 2026-10-10; 2,900 from 468, 2,000
         # before); an orange one is not worth a second route.
-        assert len(world.requests[0]["exclude_locations"]) == 2
+        # Each red junction's approach and the junction itself (every edge within 15 m).
+        assert len(world.requests[0]["exclude_locations"]) == 4
         assert world.excluded(0)[0] == pytest.approx((BASE[0] + 1500.0 * 1e-5, BASE[1] + 1e-5))
+        assert world.excluded(0)[1] == pytest.approx((BASE[0] + 1500.0 * 1e-5, BASE[1]))
+        assert world.requests[0]["exclude_locations"][1]["radius"] == 15
         assert "alternates" not in world.requests[0], "one route, not alternatives"
         assert world.requests[0]["elevation_interval"] == 30
         assert info["extra_distance_m"] == 0.0 or info["extra_distance_m"] == pytest.approx(0.0)
@@ -238,12 +241,71 @@ class TestCrossingAvoidance:
         assert kept == trip_of("o", 4.0) and world.requests == []
         assert info["rounds"] == 0 and info["limited"] is None
 
-    def test_crossing_avoidance_alone_is_one_round(self, monkeypatch) -> None:
+    def test_crossing_avoidance_alone_goes_on_past_the_next_red_crossing(self, monkeypatch) -> None:
+        """PR #409's check (2026-10-23, rush hour): the way round one unsignalised
+        crossing of a busy road was the next one along; a second round, excluding both,
+        reaches the signal."""
         original = analysis("o", events=[event(1500.0, 3300.0)])
-        again = analysis("a", cost_s=4100.0, events=[event(1700.0, 3300.0)])
-        world = World(monkeypatch, {"o": original, "a": again}, [trip_of("a", 4.1)] * 3)
+        next_one = analysis("a", cost_s=4100.0, events=[event(1700.0, 3300.0)])
+        signal = analysis("s", cost_s=4300.0, events=[])
+        world = World(
+            monkeypatch,
+            {"o": original, "a": next_one, "s": signal},
+            [trip_of("a", 4.1), trip_of("s", 4.3)],
+        )
+        kept, info = refine.refine(trip_of("o", 4.0), context())
+        assert kept["legs"][0]["shape"] == "s"
+        assert len(world.requests) == info["rounds"] == 2
+        assert len(world.excluded(1)) == 4 and set(world.excluded(0)) < set(world.excluded(1))
+
+    def test_two_next_red_crossings_in_a_row_still_reach_the_signal(self, monkeypatch) -> None:
+        """Rounds that only found the next red crossing along are not better, but the
+        search's patience does not stop the crossing rounds (review of PR #421)."""
+        shapes = {
+            "o": analysis("o", events=[event(1500.0, 3300.0)]),
+            "a1": analysis("a1", cost_s=4100.0, events=[event(1700.0, 3300.0)]),
+            "a2": analysis("a2", cost_s=4200.0, events=[event(1900.0, 3300.0)]),
+            "s": analysis("s", cost_s=4300.0, events=[]),
+        }
+        routes = [trip_of(n, 4.1) for n in ("a1", "a2", "s")]
+        world = World(monkeypatch, shapes, routes)
+        kept, info = refine.refine(trip_of("o", 4.0), context())
+        assert kept["legs"][0]["shape"] == "s"
+        assert len(world.requests) == info["rounds"] == 3
+
+    def test_a_later_crossing_round_that_fails_says_nothing(self, monkeypatch) -> None:
+        """The first round's route is the answer, as it was with one round, and is cached:
+        a second round the router does not answer leaves `limited` unset (review of PR
+        #421)."""
+        shapes = {
+            "o": analysis("o", events=[event(1500.0, 3300.0), event(2500.0, 3300.0)]),
+            "a1": analysis("a1", cost_s=3900.0, events=[event(2700.0, 3300.0)]),
+        }
+        World(monkeypatch, shapes, [trip_of("a1", 4.1), routing.RouterUnavailable("gone")])
+        kept, info = refine.refine(trip_of("o", 4.0), context())
+        assert kept["legs"][0]["shape"] == "a1"
+        assert info["limited"] is None and info["rounds"] == 1
+
+    def test_crossing_avoidance_alone_is_at_most_five_rounds(self, monkeypatch) -> None:
+        shapes = {"o": analysis("o", events=[event(1500.0, 3300.0)])}
+        for n in range(1, 8):
+            shapes[f"a{n}"] = analysis(
+                f"a{n}", cost_s=4000.0 + 100 * n, events=[event(1500.0 + 200 * n, 3300.0)]
+            )
+        world = World(monkeypatch, shapes, [trip_of(f"a{n}", 4.1) for n in range(1, 8)])
         refine.refine(trip_of("o", 4.0), context())
-        assert len(world.requests) == refine.CROSSING_ONLY_ROUNDS == 1
+        assert len(world.requests) == refine.CROSSING_ONLY_ROUNDS == 5
+
+    def test_the_same_junction_by_another_street_is_excluded_too(self, monkeypatch) -> None:
+        """The junction itself is excluded with its approach: a route back through it by
+        another street is not what the next round has to clear (review of PR #421)."""
+        original = analysis("o", events=[event(1500.0, 3300.0)])
+        world = World(monkeypatch, {"o": original}, [])
+        ctx = context()
+        targets = refine.crossing_targets(original, ctx)
+        assert [t.radius for t in targets] == [None, 15]
+        assert targets[1].point == pytest.approx((BASE[0] + 1500.0 * 1e-5, BASE[1]))
+        assert world.requests == []
 
     def test_only_red_junctions_are_worth_a_second_route(self) -> None:
         assert refine.REFINE_MIN_EVENT_FT == model.RED_MIN_FT
@@ -330,14 +392,16 @@ class TestCalmDetour:
         assert info["original_m"] == 4000.0 and info["excluded"] > 0
 
     def test_a_calm_route_with_a_climb_is_not_free(self, monkeypatch) -> None:
+        """A calm detour that climbs pays the climb's cost (`Analysis.hill_m`), so a big
+        enough climb keeps the original."""
         orig = analysis("o", self.stretch(), cost_s=4000.0)
-        flat = analysis("f", "1" * 40, cost_s=4200.0, climb_m=0.0)
-        hilly = analysis("h", "1" * 40, cost_s=4200.0, climb_m=600.0)
-        for climb_weight, shape in ((0.0, "h"), (12.0, "o")):
+        for hill_m, shape in ((0.0, "h"), (4000.0, "o")):
+            hilly = dataclasses.replace(
+                analysis("h", "1" * 40, cost_s=4200.0, climb_m=600.0), hill_m=hill_m
+            )
             World(monkeypatch, {"o": orig, "h": hilly}, [trip_of("h", 4.0)] * 5)
-            kept, _ = refine.refine(trip_of("o", 4.0), context(rate=1.0, climb_weight=climb_weight))
-            assert kept["legs"][0]["shape"] == shape, climb_weight
-        assert flat.climb_m == 0
+            kept, _ = refine.refine(trip_of("o", 4.0), context(rate=1.0))
+            assert kept["legs"][0]["shape"] == shape, hill_m
 
 
 class TestNoRoute:
@@ -404,19 +468,31 @@ class TestTrafficWins:
         return kept["legs"][0]["shape"]
 
     def test_fewer_crossings_do_not_buy_more_busy_road(self, monkeypatch) -> None:
+        # 1 km of LTS 4 is 2,000 m of exposure, past 500 m and the 4,500 ft (1,372 m)
+        # crossing's cost, which the guard counts one for one.
         busier = analysis("c", "1" * 10 + "4" * 10 + "1" * 20, cost_s=4000.0, events=[])
         assert busier.score(context()) < analysis(
             "o", "1" * 10 + "3" * 5 + "1" * 25, cost_s=4000.0, events=[event(1500.0, 4500.0)]
         ).score(context()), "it would win on score alone"
         assert self.routes(monkeypatch, busier) == "o"
 
+    def test_a_way_round_a_red_crossing_may_ride_more_lts3(self, monkeypatch) -> None:
+        """The red crossing's cost counts as exposure on both sides (2026-10-23, an
+        unsignalised Connecticut Ave crossing at rush hour: "essentially impassable"): 300 m
+        more LTS 3 in place of a 4,500 ft crossing is not busier."""
+        round_it = analysis("c", "1" * 10 + "3" * 8 + "1" * 22, cost_s=4000.0, events=[])
+        assert round_it.exposure_m > refine._allowance(500.0), "busier on its roads alone"
+        assert self.routes(monkeypatch, round_it) == "c"
+
     def test_the_same_exposure_is_fine(self, monkeypatch) -> None:
         same = analysis("c", "1" * 20 + "3" * 5 + "1" * 15, cost_s=4000.0, events=[])
         assert self.routes(monkeypatch, same) == "c"
 
     def test_a_little_more_is_within_the_tolerance(self, monkeypatch) -> None:
-        # 5 pieces of LTS 3 is 500 weighted metres; a sixth piece is 20 per cent more.
-        a_bit = 500.0 * (1 + refine.EXPOSURE_TOLERANCE) + refine.EXPOSURE_SLACK_M
+        # 5 pieces of LTS 3 is 500 weighted metres; a sixth piece is 20 per cent more. The
+        # original's red crossing (4,500 ft) counts too, one for one, untolerated.
+        red_m = 4500.0 / model.FEET_PER_METRE
+        a_bit = 500.0 * (1 + refine.EXPOSURE_TOLERANCE) + refine.EXPOSURE_SLACK_M + red_m
         assert a_bit > 500.0
         within = analysis("c", "1" * 20 + "3" * 5 + "1" * 15, cost_s=4000.0, events=[])
         within.exposure_m = a_bit
@@ -511,9 +587,10 @@ class TestStopping:
         assert sent[0] == refine.CALM_POINTS_PER_ROUND
         assert sent[2] == refine.MAX_EXCLUDES < 3 * refine.CALM_POINTS_PER_ROUND
 
-    def test_later_rounds_exclude_stretches_not_crossings(self, monkeypatch) -> None:
-        """Crossing avoidance is the first round's: after it the search is about
-        the busy stretches alone."""
+    def test_later_rounds_exclude_the_crossings_too(self, monkeypatch) -> None:
+        """Every round takes the red crossings of the route before it, past the first
+        too (the PC's check, 2026-10-23: above Default, crossings in the first round only
+        kept a 16th St stop sign)."""
         later = (BASE[0] + 0.0009, BASE[1] + 1e-5)
         orig = analysis("o", "1" * 5 + "4" * 4 + "1" * 31, cost_s=4000.0, events=[event(1500.0)])
         step = analysis(
@@ -525,7 +602,7 @@ class TestStopping:
         world = World(monkeypatch, {"o": orig, "s": step}, [trip_of("s", 4.3)] * 3)
         refine.refine(trip_of("o", 4.0), context(rate=10.0))
         assert len(world.requests) >= 2
-        assert later not in set(world.excluded(1)) - set(world.excluded(0))
+        assert later in set(world.excluded(1)) - set(world.excluded(0))
 
     def test_a_round_is_not_started_without_the_time_for_it(self, monkeypatch) -> None:
         orig = analysis("o", TestCalmDetour().stretch())
@@ -3464,3 +3541,100 @@ for _cls in (TestTheHoldInTheSeek, TestTheHoldLegByLeg, TestTheWorthLegByLeg):
     for _name in dir(_cls):
         if _name.startswith("test_") and _name not in vars(_cls):
             setattr(_cls, _name, None)
+
+
+class TestRedJunctions:
+    """Below the top of the slider each red junction counts for `RED_DETOUR_S` of quiet
+    riding in the score, on top of its junction cost (the owner, 2026-10-23, of the
+    unsignalised Kensington crossings: "essentially impassable"; a rider would rather ride
+    10 minutes more)."""
+
+    def two_reds(self) -> refine.Analysis:
+        return analysis("o", events=[event(1500.0, 3300.0), event(2500.0, 3300.0)])
+
+    def test_each_red_is_ten_minutes_of_quiet_riding_at_the_weight(self) -> None:
+        none = analysis("n", events=[])
+        for weight in (1.0, 0.25):
+            ctx = context(weight=weight)
+            red_cost = ctx.quiet_cost * weight * model.penalty_m([event(1500.0, 3300.0)])
+            one = analysis("c", events=[event(1500.0, 3300.0)])
+            extra = refine.QUIET_COST_FACTOR * refine.RED_DETOUR_S * weight
+            assert one.score(ctx) - none.score(ctx) == pytest.approx(red_cost + extra)
+
+    def test_one_red_fewer_wins_though_it_has_more_delay_and_oranges(self) -> None:
+        # The PC's check, 8 AM: one red in place of two, 606 s worse on everything else.
+        one = analysis("c", events=[event(1500.0, 3300.0)])
+        one.cost_s += 606.0
+        ctx = context()
+        assert refine.better(one, self.two_reds(), ctx)
+        assert not refine.better(self.two_reds(), one, ctx)
+
+    def test_a_red_is_not_worth_more_than_ten_minutes(self) -> None:
+        # 1,400 cost seconds more than the 1,320 a red adds, besides its own cost.
+        ctx = context()
+        own = ctx.quiet_cost * model.penalty_m([event(1500.0, 3300.0)])
+        one = analysis("c", events=[event(1500.0, 3300.0)])
+        one.cost_s += own + refine.QUIET_COST_FACTOR * refine.RED_DETOUR_S + 80.0
+        assert not refine.better(one, self.two_reds(), ctx)
+
+    def test_orange_junctions_are_not_counted_even_with_a_shift(self) -> None:
+        orange = analysis("c", events=[event(1500.0, 2000.0)], shift=0)
+        orange.shift = 1
+        assert refine.red_count(orange) == 0 and refine.red_count(self.two_reds()) == 2
+
+    def test_unread_junctions_count_none(self) -> None:
+        assert refine.red_count(analysis("c", events=None)) == 0
+
+    def test_a_later_round_the_time_does_not_reach_is_said_while_a_red_is_left(
+        self, monkeypatch
+    ) -> None:
+        """The PC's check, 2026-10-23: a cold first plan stopped after its rounds' time ran
+        out with reds left and said nothing, so the answer was kept as the search's whole."""
+        shapes = {"o": self.two_reds(), "a": analysis("a", events=[event(2700.0, 3300.0)])}
+        world = World(monkeypatch, shapes, [trip_of("a", 4.1)])
+        now = [routing.clock()]
+        monkeypatch.setattr(routing, "clock", lambda: now[0])
+        call = world.call
+
+        def slow(*args):
+            now[0] += 30.0
+            return call(*args)
+
+        monkeypatch.setattr(routing, "_call", slow)
+        ctx = context()
+        ctx.deadline = routing.Deadline(now[0] + 40, 35)
+        kept, info = refine.refine(trip_of("o", 4.0), ctx)
+        assert kept["legs"][0]["shape"] == "a" and info["rounds"] == 1
+        assert info["limited"] == "time"
+
+    def test_no_red_left_says_nothing_of_the_rounds_not_run(self, monkeypatch) -> None:
+        shapes = {"o": self.two_reds(), "a": analysis("a", events=[])}
+        world = World(monkeypatch, shapes, [trip_of("a", 4.1)])
+        now = [routing.clock()]
+        monkeypatch.setattr(routing, "clock", lambda: now[0])
+        call = world.call
+
+        def slow(*args):
+            now[0] += 30.0
+            return call(*args)
+
+        monkeypatch.setattr(routing, "_call", slow)
+        ctx = context()
+        ctx.deadline = routing.Deadline(now[0] + 40, 35)
+        kept, info = refine.refine(trip_of("o", 4.0), ctx)
+        assert kept["legs"][0]["shape"] == "a" and info["limited"] is None
+
+    def test_the_calm_rounds_go_on_while_a_red_is_left(self, monkeypatch) -> None:
+        """At 90 the search gave up two rounds in with a stop sign left (the PC's check,
+        2026-10-23): patience waits until the best route has no red."""
+        shapes = {"o": analysis("o", "1" * 10 + "3" * 5 + "1" * 25, events=[event(1500.0)])}
+        for n in range(1, 6):
+            shapes[f"a{n}"] = analysis(
+                f"a{n}",
+                "1" * 10 + "3" * 6 + "1" * 24,
+                cost_s=9000.0,
+                events=[event(1500.0 + 200 * n)],
+            )
+        world = World(monkeypatch, shapes, [trip_of(f"a{n}", 4.1) for n in range(1, 6)] * 3)
+        refine.refine(trip_of("o", 4.0), context(rate=10.0))
+        assert len(world.requests) > refine.REFINE_PATIENCE

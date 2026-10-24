@@ -118,6 +118,10 @@ BIKESHARE_STATIONS = Limit(scope="bikeshare-stations", requests=60, window_s=60)
 # minute of panning asks for several; each reads the shared copies, never the feeds themselves.
 BIKESHARE_DOCKS = Limit(scope="bikeshare-docks", requests=120, window_s=60)
 
+# The closures in the map's view (GET /api/closures/map, v0.12.0): after each move and every
+# few minutes, like the docks.
+CLOSURES_MAP = Limit(scope="closures-map", requests=120, window_s=60)
+
 # A short map link followed (POST /api/share/resolve, v0.7.0): one per link shared or pasted.
 SHARE_RESOLVE = Limit(scope="share-resolve", requests=30, window_s=60)
 

@@ -11,6 +11,7 @@ pytest-django
 ruff
 pyyaml
 osmium
+cryptography
 shapely
 
 # Used by the worker-schedule tests to derive each alert window from its cron

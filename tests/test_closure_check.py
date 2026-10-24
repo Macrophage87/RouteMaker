@@ -76,3 +76,19 @@ def test_the_endpoint(client, zones) -> None:
         **headers,
     )
     assert bad.status_code == 400
+
+
+@pytest.mark.parametrize(
+    "a,b,meets",
+    [
+        ((-77.10, 38.90), (-76.90, 38.90), True),  # both ends outside, the middle crosses the view
+        ((-77.01, 38.90), (-77.30, 38.90), True),  # one end inside
+        ((-77.10, 38.80), (-76.90, 38.80), False),  # passes south of the view
+        ((-77.10, 38.95), (-77.04, 38.85), False),  # runs west of the view
+        ((-77.00, 38.90), (-77.00, 38.90), True),  # a point in the view
+    ],
+)
+def test_a_closure_shows_where_its_line_crosses_the_view(a, b, meets) -> None:
+    # The v0.12.0 end review: a closure fed as only its two ends was dropped from a view zoomed
+    # in on its middle, as no point of its line was in it.
+    assert workzones._meets_box(a, b, (-77.02, 38.88, -76.98, 38.92)) is meets

@@ -6,10 +6,9 @@
  *
  * Which view the app opens in (the owner's choices 1 and 2 of 2026-10-11, approving the mockup):
  * - a tab keeps the view it was in (a reload of a Go route stays in Go);
- * - a link with a plan in it (a shared route) opens in Plan;
- * - else My Go's "Open in" (lib/myGo.ts): the account's when signed in, this device's when not. A
- *   press of Go or Plan is that choice, so it is remembered;
- * - else a phone opens in Go and a wider screen in Plan.
+ * - a link with a plan in it (a shared route) opens in Plan on a wider screen;
+ * - else a phone opens in Go and a wider screen in Plan. My Go's "Open in" was dropped (the owner, 2026-10-22:
+ *   "It should open in plan on a computer and go on a phone"); a press of Go or Plan is kept for the tab only.
  *
  * Pure, so the order is tested without a browser; App reads and writes the two stores.
  */
@@ -25,7 +24,7 @@ import { haversineM, insideCoverage, type LonLat } from "./geo.ts";
  */
 export type AppMode = "go" | "plan" | "review";
 
-/** My Go's "Open in": Go or Plan, or "" for by screen size (Review is remembered on the device: readLastReview). */
+/** My Go's old "Open in" (still in the saved shape, /api/me/go's open_in; no longer read to choose a view). */
 export type OpenIn = "" | "go" | "plan";
 
 /** The tab's own view (sessionStorage): kept across a reload, forgotten with the tab. */
@@ -45,15 +44,6 @@ export function switchModes(canReview: boolean): AppMode[] {
 
 /** The switch's landmark-free group name. */
 export const MODE_SWITCH_NAME = "View";
-
-export const OPEN_IN_LABEL: Record<OpenIn, string> = {
-  "": "By screen size",
-  go: "Go",
-  plan: "Plan",
-};
-
-/** A line under "Open in" saying what by screen size does. */
-export const OPEN_IN_HINT = "By screen size: a phone opens in Go, a wider screen in Plan. A shared link opens in Plan on a wider screen.";
 
 export function isMode(value: unknown): value is AppMode {
   return value === "go" || value === "plan" || value === "review";
@@ -152,8 +142,6 @@ export interface OpeningInputs {
   tab: AppMode | null;
   /** The address carries a plan. */
   planLink: boolean;
-  /** My Go's Open in (the account's or this device's). */
-  openIn: OpenIn;
   /** The screen is wide (not the phone layout). */
   wide: boolean;
 }
@@ -162,21 +150,21 @@ export interface OpeningInputs {
  * The view to open in, and why (the why decides whether a later My Go may still change it). A link opens
  * in Plan only on a wide screen: a phone opens in Go (the owner, 2026-10-19: "Have go open by default on
  * phones"), with the link's points, which Go shows and rides. The app writes its own ride type into the
- * address, so a phone that reloaded the app with it went to Plan.
+ * address, so a phone that reloaded the app with it went to Plan. There is no Open in setting any more (the
+ * owner, 2026-10-22: "It should open in plan on a computer and go on a phone"): a saved open_in is ignored.
  */
-export function openingMode(inputs: OpeningInputs): { mode: AppMode; by: "tab" | "link" | "my-go" | "screen" } {
+export function openingMode(inputs: OpeningInputs): { mode: AppMode; by: "tab" | "link" | "screen" } {
   if (inputs.tab) return { mode: inputs.tab, by: "tab" };
   if (inputs.planLink && inputs.wide) return { mode: "plan", by: "link" };
-  if (inputs.openIn) return { mode: inputs.openIn, by: "my-go" };
   return { mode: inputs.wide ? "plan" : "go", by: "screen" };
 }
 
 /**
- * Whether the account's My Go, arriving after the app opened, should move it to that view: only when
- * the view was the screen's or this device's guess, and the rider has not switched since.
+ * Whether the account's My Go, arriving after the app opened, may still set Go's ride type: only when the
+ * view was the screen's guess and the rider has not switched since.
  */
-export function laterMyGoApplies(by: "tab" | "link" | "my-go" | "screen", switched: boolean): boolean {
-  return !switched && (by === "screen" || by === "my-go");
+export function laterMyGoApplies(by: "tab" | "link" | "screen", switched: boolean): boolean {
+  return !switched && by === "screen";
 }
 
 /** What a switch says, politely, once the view has changed. */

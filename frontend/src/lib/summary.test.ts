@@ -305,7 +305,7 @@ test("the fine-with-hills note says what was compared and chosen (FOLLOWUP-HILLS
     ({ candidates: 3, chosen: 1, weight: 1, discount_s: 400, extra_climb_m: 30, extra_distance_m: -800, limited: null, ...over }) as never;
   assert.equal(tolerateNote(null), null);
   assert.equal(tolerateNote(undefined), null);
-  assert.match(tolerateNote(tolerate({ limited: "calm_first" })) ?? "", /calmest route decides, and climbing is not counted against it/);
+  assert.match(tolerateNote(tolerate({ limited: "calm_first" })) ?? "", /calmest route decides; climbing counts as the time it takes/);
   assert.match(tolerateNote(tolerate({ limited: "two_points" })) ?? "", /just a start and an end; this one has stops/);
   assert.match(tolerateNote(tolerate({ limited: "long_ride" })) ?? "", /within 16 mi \(25 km\) of each other/);
   assert.match(tolerateNote(tolerate({ limited: "timed_out" })) ?? "", /took too long/);

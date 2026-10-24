@@ -45,6 +45,8 @@ def judged(tags, area=QUARRY, osm_id=1, **kwargs):
         ({"landuse": "quarry"}, ra.WORKS),
         ({"landuse": "landfill"}, ra.WORKS),
         ({"landuse": "industrial"}, ra.WORKS),
+        ({"aeroway": "aerodrome", "iata": "DCA"}, ra.WORKS),
+        ({"aeroway": "runway"}, None),
         ({"landuse": "commercial"}, None),
         ({"landuse": "residential"}, None),
         # The kinds before it keep their areas: a military quarry is a base's.
@@ -292,3 +294,26 @@ def test_a_track_that_only_touches_the_pit_stays_out_of_the_rule():
 )
 def test_only_a_bare_track_mostly_outside_closes(tags):
     assert judged_line(tags, MOSTLY_OUT) is None
+
+
+AIRPORT = ra.named_area(square(-77.14, 39.07), "Test National Airport", "w4", "aerodrome")
+
+
+@pytest.mark.parametrize(
+    "tags, closed",
+    [
+        # Airside: a service road or a track (the owner, 2026-10-23: "or some service roads").
+        ({"highway": "service"}, True),
+        ({"highway": "service", "name": "Perimeter Road"}, True),
+        ({"highway": "track"}, True),
+        # The public streets and the trail past the runways stay.
+        ({"highway": "primary", "name": "Smith Boulevard"}, False),
+        ({"highway": "cycleway", "name": "Mount Vernon Trail"}, False),
+        ({"highway": "path", "bicycle": "designated"}, False),
+        ({"highway": "footway", "footway": "sidewalk"}, False),
+    ],
+)
+def test_an_airport_is_read_as_an_industrial_area(tags, closed):
+    found = ra.works_closures([(1, tags, inside(AIRPORT))], [*AREAS, AIRPORT])
+    assert found[0].closed is closed
+    assert "(aerodrome)" in found[0].installation

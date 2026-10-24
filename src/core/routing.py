@@ -95,6 +95,7 @@ from routemaker import (
     describe,
     flow,
     grade_stress,
+    hill_cost,
     intersections,
     junction_delay,
     mdot_aadt,
@@ -469,6 +470,14 @@ class Piece:
     # difference between two pieces' is the way the route really turned between them
     # (`describe.turn_between`: a hairpin right reads +190, never a left of -170).
     bearing: float | None = field(default=None, compare=False)
+    # The turn the route's own line makes at the node the piece's edge begins at, clockwise
+    # positive, each side a chord over up to `describe.LINE_SPAN_M` (`_line_headings`); None
+    # on every piece of an edge but its first, and where the line runs out within
+    # `describe.JUNCTION_M` of the node.
+    turn: float | None = field(default=None, compare=False)
+    # Whether another way a bicycle may ride away on meets that node (`_choice_of`); None
+    # where `turn` is.
+    choice: bool | None = field(default=None, compare=False)
 
 
 def _heading(value) -> float | None:
@@ -486,6 +495,16 @@ def pieces_of_trace(trace: dict) -> list[Piece]:
     kept: list[tuple[dict, float]] = []
     # The last stretch's bearing, unwrapped (`Piece.bearing`).
     unwrapped: float | None = None
+    # How far along the route's line each piece begins, on the line's own measure
+    # (`_one_turn_per_junction`).
+    along: list[float] = []
+    walked = 0.0
+    # The vertices the trace's edges begin at: its nodes (`_line_point`).
+    nodes = frozenset(
+        e["begin_shape_index"]
+        for e in trace.get("edges", [])
+        if isinstance(e.get("begin_shape_index"), int)
+    )
     for edge in trace.get("edges", []):
         length = float(edge.get("length") or 0.0) * to_metres
         begin, end = edge.get("begin_shape_index"), edge.get("end_shape_index")
@@ -505,7 +524,17 @@ def pieces_of_trace(trace: dict) -> list[Piece]:
             "heading_out": _heading(edge.get("end_heading")),
             "road": calm.road_of_edge(edge, miles=trace.get("units") == "miles"),
         }
-        fork = _fork_of(before, edge)
+        line_in = line_out = turn = None
+        choice = None
+        if before is not None:
+            line_in, line_out, first, last = _line_headings(shape, begin, nodes)
+            turn = _line_turn(shape, line_in, line_out, first, last)
+            choice = _choice_of(
+                before,
+                line_in if line_in is not None else _heading(before.get("end_heading")),
+                line_out if line_out is not None else info["heading_in"],
+            )
+        fork = _fork_of(before, edge, line_in, line_out)
         others = _others_of(before)
         prior = _behind_of(kept)
         before = edge
@@ -517,12 +546,26 @@ def pieces_of_trace(trace: dict) -> list[Piece]:
         if ground <= 0:
             # A degenerate edge: all its length on its first vertex.
             (lon, lat) = shape[begin]
+            along.append(walked)
             pieces.append(
-                Piece(way_id, lon, lat, length, **info, fork=fork, others=others, prior=prior)
+                Piece(
+                    way_id,
+                    lon,
+                    lat,
+                    length,
+                    **info,
+                    fork=fork,
+                    others=others,
+                    prior=prior,
+                    turn=turn,
+                    choice=choice,
+                )
             )
             continue
         for a, b, d in stretches:
             if d > 0:
+                along.append(walked)
+                walked += d
                 compass = bearing(Point(*a), Point(*b))
                 unwrapped = (
                     compass
@@ -540,17 +583,156 @@ def pieces_of_trace(trace: dict) -> list[Piece]:
                         others=others,
                         prior=prior,
                         bearing=unwrapped,
+                        turn=turn,
+                        choice=choice,
                     )
                 )
                 fork = None
                 others = None
                 prior = None
-    return pieces
+                turn = None
+                choice = None
+    return _one_turn_per_junction(pieces, along)
 
 
-def _fork_of(before: dict | None, edge: dict) -> str | None:
+def _one_turn_per_junction(pieces: list[Piece], along: list[float]) -> list[Piece]:
+    """`pieces` with each junction's turn read once. Nodes nearer one another than
+    `describe.JUNCTION_M` along the line (`along`: where each piece begins, on the line's
+    own measure, never the trace's lengths, so the two always agree) are one junction,
+    and the line is read through them all (`_line_point`), so each reads the same turn:
+    it is left on one of them, the one where the way changes (the turn is onto it) or
+    else the sharpest, and the others are straight on, with no fork of their own. Nodes
+    further apart each read their own turn, the line stopping at the other."""
+    nodes = [i for i, p in enumerate(pieces) if p.turn is not None]
+    clusters: list[list[int]] = []
+    for i in nodes:
+        if clusters and along[i] - along[clusters[-1][-1]] < describe.JUNCTION_M:
+            clusters[-1].append(i)
+        else:
+            clusters.append([i])
+    out = list(pieces)
+    for cluster in clusters:
+        if len(cluster) < 2:
+            continue
+        changes = [
+            i
+            for i in cluster
+            if i > 0
+            and (pieces[i].names, pieces[i].use) != (pieces[i - 1].names, pieces[i - 1].use)
+        ]
+        keep = max(changes or cluster, key=lambda i: abs(pieces[i].turn))
+        for i in cluster:
+            if i != keep:
+                out[i] = dataclasses.replace(pieces[i], turn=0.0, fork=None)
+    return out
+
+
+def _line_point(shape: list, at: int, step: int, nodes: frozenset[int]) -> tuple:
+    """Where the route's line is `describe.LINE_SPAN_M` from vertex `at`, walking `step`
+    (1 on, -1 back): (the point, the last vertex walked to). It stops short at another
+    node at least `describe.JUNCTION_M` away, so a turn at the next junction never tilts
+    this one, and goes on past a nearer one, as part of the same junction. The point is
+    None where the line runs out within JUNCTION_M."""
+    here = shape[at]
+    gone = 0.0
+    j = at
+    while 0 <= j + step < len(shape):
+        if j != at and j in nodes and gone >= describe.JUNCTION_M:
+            return here, j
+        nxt = shape[j + step]
+        d = haversine(Point(*here), Point(*nxt))
+        if d > 0 and gone + d >= describe.LINE_SPAN_M:
+            f = (describe.LINE_SPAN_M - gone) / d
+            return (here[0] + (nxt[0] - here[0]) * f, here[1] + (nxt[1] - here[1]) * f), j + step
+        gone += d
+        here = nxt
+        j += step
+    return (here if gone >= describe.JUNCTION_M else None), j
+
+
+def _line_headings(shape: list, at: int, nodes: frozenset[int]) -> tuple:
+    """The compass headings the route's own line arrives at shape vertex `at` on and
+    leaves it on, each a chord to `_line_point`, and the first and last vertices they
+    span. Valhalla's headings are the edge's own, so a tiny edge at a junction (a kerb
+    or crossing node a few metres on) can tilt them far off the way the rider goes (the
+    owner, 2026-10-23, on Sligo Creek Trail: "Left to stay on" a gentle bend)."""
+    if not 0 <= at < len(shape):
+        return None, None, at, at
+    node = Point(*shape[at])
+    back, first = _line_point(shape, at, -1, nodes)
+    ahead, last = _line_point(shape, at, 1, nodes)
+    return (
+        bearing(Point(*back), node) if back is not None else None,
+        bearing(node, Point(*ahead)) if ahead is not None else None,
+        first,
+        last,
+    )
+
+
+def _line_turn(
+    shape: list, line_in: float | None, line_out: float | None, first: int, last: int
+) -> float | None:
+    """The turn the route's line makes at a node (`Piece.turn`), clockwise positive: from
+    its chords (`_line_headings`), but past `describe.HAIRPIN_DEG` on the side the line
+    itself winds between vertices `first` and `last` (its segments' turns added up), so a
+    turnaround right a little past straight back reads +190, never -170."""
+    if line_in is None or line_out is None:
+        return None
+    turn = (line_out - line_in + 540.0) % 360.0 - 180.0
+    if abs(turn) < describe.HAIRPIN_DEG:
+        return turn
+    wound = 0.0
+    previous = None
+    for a, b in zip(shape[first:last], shape[first + 1 : last + 1], strict=True):
+        if haversine(Point(*a), Point(*b)) <= 0:
+            continue
+        compass = bearing(Point(*a), Point(*b))
+        if previous is not None:
+            wound += (compass - previous + 540.0) % 360.0 - 180.0
+        previous = compass
+    sides = [
+        t for t in (turn, turn - 360.0, turn + 360.0) if abs(t) <= 360.0 - describe.HAIRPIN_DEG
+    ]
+    return min(sides, key=lambda t: abs(t - wound))
+
+
+def _choice_of(before: dict, heading_in: float | None, heading_out: float | None) -> bool:
+    """Whether another way a bicycle may ride away on meets the node `before` ends at
+    (`Piece.choice`): not one of `describe.FORK_IGNORED_USES`, nor a sidewalk, nor one
+    that runs back nearly the way the rider came (`describe.CHOICE_BACK_DEG`) and lies
+    well off the route's own way out (`describe.CHOICE_BACK_CLEAR_DEG`), which no one
+    takes for the way on (Rock Creek Trail, the Mount Vernon and Custis Trails)."""
+
+    def apart(a: float, b: float) -> float:
+        return abs((a - b + 540.0) % 360.0 - 180.0)
+
+    return any(
+        (heading := _heading(other.get("begin_heading"))) is not None
+        and (
+            heading_in is None
+            or apart(heading, heading_in) <= describe.CHOICE_BACK_DEG
+            or (
+                heading_out is not None
+                and apart(heading, heading_out) <= describe.CHOICE_BACK_CLEAR_DEG
+            )
+        )
+        and other.get("use") not in describe.FORK_IGNORED_USES
+        and other.get("use") not in describe.SHAPE_IGNORED_USES
+        and other.get("cyclability") not in ("none", "backward")
+        for other in (before.get("end_node") or {}).get("intersecting_edges") or []
+    )
+
+
+def _fork_of(
+    before: dict | None,
+    edge: dict,
+    line_in: float | None = None,
+    line_out: float | None = None,
+) -> str | None:
     """`describe.fork_movement` at the node between two traced edges: the other
-    ways there are the first edge's `end_node.intersecting_edges`."""
+    ways there are the first edge's `end_node.intersecting_edges`. The route's own
+    way is read from its line (`_line_headings`) where it is known, else from
+    Valhalla's headings of the two edges."""
     if before is None:
         return None
     others = [
@@ -558,8 +740,8 @@ def _fork_of(before: dict | None, edge: dict) -> str | None:
         for other in (before.get("end_node") or {}).get("intersecting_edges") or []
     ]
     return describe.fork_movement(
-        _heading(before.get("end_heading")),
-        _heading(edge.get("begin_heading")),
+        line_in if line_in is not None else _heading(before.get("end_heading")),
+        line_out if line_out is not None else _heading(edge.get("begin_heading")),
         others,
         trail=edge.get("use") in describe.TRAIL_USES,
     )
@@ -1416,6 +1598,13 @@ def grade_profile(trip: dict) -> list[tuple[float, float | None]]:
     return profile
 
 
+def refine_flat_speed_ms(costing: dict) -> float:
+    """`refine.flat_speed_ms`: the request's flat riding speed, metres a second."""
+    from . import refine
+
+    return refine.flat_speed_ms(costing)
+
+
 def _quiet_cost(costing: dict) -> float:
     """`refine.quiet_cost_per_m`: the router's cost of a quiet metre at this costing."""
     from . import refine
@@ -1432,24 +1621,67 @@ def _router_cost(trip: dict) -> float:
     return float(summary.get("cost", summary.get("time", 0.0)))
 
 
-def choose_gentlest(trips: list[dict], weight: float, brake_grade: float | None) -> int:
-    """The index of the trip whose router cost plus weighted sustained-grade
-    cost is least (routemaker.climbs): the avoid half of the hills slider.
+@dataclass(frozen=True)
+class HillPrice:
+    """What the route choice needs to price a trip's climbing (`hill_s`): the rider's system
+    weight and flat speed, the hills slider's position (which sets the LT1 grade,
+    `hill_cost.lt1_grade_for`), the request's `use_hills` (whose router charge is taken off),
+    and, on the avoid half, the weight of the sustained-descent cost past the ride type's
+    brake grade (`climbs.descent_cost_s`)."""
 
-    The first trip is the router's own best route, already the cheapest by
-    Valhalla's own cost, which carries the stress, tier-5 and per-edge grade
-    penalties; an alternative wins only where what that cost cannot see - how
-    long each climb and descent goes on - saves more than it costs. Ranked by
-    time, as it first was, a faster alternative won on time alone and traded
-    calm roads for busy ones (correctness review, 2026-09-28: Mass Ride at -95
-    over the Frederick Douglass roadway).
+    mass_kg: float
+    flat_ms: float
+    hills: int
+    use_hills: float
+    descent_weight: float = 0.0
+    brake_grade: float | None = None
+
+
+def rider_hill_s(trip: dict, price: HillPrice, quiet_cost: float) -> float:
+    """What a trip's climbing and steep descents cost the rider, in the router's cost
+    seconds: the climbs' extra time plus their steepness penalty past the LT1 grade the
+    slider sets (`hill_cost.hill_cost_m`, the owner, 2026-10-23: "always assume time
+    equivalent, but the slider should determine a further penalty for steepness"), plus the
+    avoid half's descent cost."""
+    profile = grade_profile(trip)
+    rider_m = hill_cost.hill_cost_m(profile, price.mass_kg, price.flat_ms, price.hills)
+    descents = sum(
+        climbs.descent_cost_s(run, price.brake_grade)
+        for run in climbs.runs(profile)
+        if run.rise_m < 0
+    )
+    return quiet_cost * rider_m + price.descent_weight * descents
+
+
+def hill_s(trip: dict, price: HillPrice, quiet_cost: float) -> float:
+    """What a trip's climbing adds to its router cost once the router's own climbing charge
+    (`climbs.router_climb_m`) is swapped for the rider's (`rider_hill_s`): negative where
+    the router charged more than the rider pays."""
+    charge_m = climbs.router_climb_m(grade_profile(trip), price.use_hills)
+    return rider_hill_s(trip, price, quiet_cost) - quiet_cost * charge_m
+
+
+def choose_by_hills(trips: list[dict], price: HillPrice, quiet_cost: float) -> int:
+    """The index of the trip whose router cost, with its climbing priced as the rider pays
+    it (`hill_s`), is least: both halves of the hills slider on every ride type but
+    Mountain Goat (whose right half seeks climbs, `choose_climb`). Toward "fine with hills"
+    the LT1 grade rises, so a climb costs little more than its time and the shorter or more
+    direct route wins where it is about as quick; toward avoid the grade falls and the
+    steepness penalty grows. The stress, turn and gate
+    prices stay. The first trip, the router's own best, is kept unless another saves more
+    than HILLS_EPS_S (the elevation samples' noise).
     """
     best, best_score = 0, None
     for index, trip in enumerate(trips):
-        score = _router_cost(trip) + weight * climbs.grade_cost_s(grade_profile(trip), brake_grade)
-        if best_score is None or score < best_score:
+        score = _router_cost(trip) + hill_s(trip, price, quiet_cost)
+        if best_score is None or score < best_score - HILLS_EPS_S:
             best, best_score = index, score
     return best
+
+
+# What an alternative must save, in the router's cost seconds, for the hills choice to take
+# it over the router's own route: a few seconds is the elevation samples' noise.
+HILLS_EPS_S = 5.0
 
 
 def _trace(
@@ -1666,37 +1898,6 @@ def no_busier_than_middle(
     if _hold_refuses(calmer, own, exposure):
         return trip, False
     return middle, True
-
-
-def tolerated_climb_s(trip: dict, weight: float, quiet_cost: float) -> float:
-    """The share `weight` of what the router's cost charged for a trip's climbing, in
-    the router's cost seconds (`climbs.router_climb_m` metres of quiet riding, at
-    `quiet_cost` seconds a metre): what "fine with hills" takes off its cost."""
-    return weight * quiet_cost * climbs.router_climb_m(grade_profile(trip))
-
-
-def choose_direct(trips: list[dict], weight: float, quiet_cost: float) -> int:
-    """The index of the trip whose router cost, less `weight` of its climbing charge
-    (`tolerated_climb_s`), is least: the right half of the hills slider on every ride
-    type but Mountain Goat, "fine with hills" (FOLLOWUP-HILLS-TOLERATE, OWNER-DECISIONS
-    242). `weight` is the slider's position over 100 (`presets.tolerate_weight`): at the
-    top a climb costs what the same distance on the flat would, so the shorter or more
-    direct route wins even where it climbs more. Only the router's own climbing charge
-    is taken off, never more, so climbing never earns a route a credit (that is Mountain
-    Goat's climb search, `choose_climb`), and the stress, turn and gate prices stay. The
-    first trip, the router's own best, is kept on a tie.
-    """
-    best, best_score = 0, None
-    for index, trip in enumerate(trips):
-        score = _router_cost(trip) - tolerated_climb_s(trip, weight, quiet_cost)
-        if best_score is None or score < best_score - TOLERATE_EPS_S:
-            best, best_score = index, score
-    return best
-
-
-# What an alternative must save, in the router's cost seconds, for "fine with hills" to
-# take it over the router's own route: a few seconds is the elevation samples' noise.
-TOLERATE_EPS_S = 5.0
 
 
 def choose_climb(trips: list[dict], ratio: float) -> int:
@@ -2636,6 +2837,8 @@ def describe_route(
                             pieces[i].others,
                             pieces[i].prior,
                             bearing=pieces[i].bearing,
+                            turn=pieces[i].turn,
+                            choice=bool(pieces[i].choice),
                         )
                         for i in range(run[0], run[1])
                     ]
@@ -3331,9 +3534,9 @@ def _plan(
     calm_seek = seeking and maxcalm
     climb_seek = seeking and not maxcalm
     # "Fine with hills" below the top of the stress slider weighs the router's own
-    # alternatives with their climbing charge discounted (`choose_direct`). At the top
-    # the stress order decides and its third level is the actual distance, which counts
-    # no climbing already: the detent's plan, said as "calm_first".
+    # alternatives with each climb at its time and no steepness penalty (`choose_by_hills`).
+    # At the top the stress order decides and its third level counts each climb's time
+    # (`refine.level3`): said as "calm_first".
     calm_tolerate = tolerating and maxcalm
     direct_tolerate = tolerating and not maxcalm
     tolerate_weight = presets.tolerate_weight(hills_dial) if tolerating else 0.0
@@ -3631,6 +3834,16 @@ def _plan(
         (alternate or {}).get("trip") or {} for alternate in answer.get("alternates") or []
     ]
     avoid_weight = -hills_dial / 100 if avoiding else 0.0
+    # How the route choice prices climbing (`HillPrice`): the rider's weight and speed, the
+    # slider's steepness scale, the router's own charge to take off, the avoid half's descents.
+    hill_price = HillPrice(
+        mass_kg=presets.system_weight_for(preset_name, dials.carrying, dials.system_weight_kg),
+        flat_ms=refine_flat_speed_ms(costing),
+        hills=hills_dial,
+        use_hills=float((costing.get("bicycle") or {}).get("use_hills", 1.0)),
+        descent_weight=avoid_weight,
+        brake_grade=preset.brake_grade,
+    )
     # This plan's traces, so a route the guards traced is not traced again.
     traces: dict = {}
     # The hill seek (FOLLOWUP-HILL-SEEK, 205): routes through the climbs near the line
@@ -3658,22 +3871,11 @@ def _plan(
         chosen = 0
     elif climb_seek:
         chosen = choose_climb(trips, presets.seek_distance_ratio(hills_dial))
-    elif direct_tolerate:
-        # Never a busier route for it: the same guard as the avoid half's.
+    elif direct_tolerate or avoiding:
+        # Never a busier route for it (`calmer_or_own`, "Traffic wins").
         chosen = calmer_or_own(
             trips,
-            choose_direct(trips, tolerate_weight, _quiet_cost(costing)),
-            variant,
-            costing,
-            when,
-            deadline,
-            traces,
-            exposure,
-        )
-    elif avoiding:
-        chosen = calmer_or_own(
-            trips,
-            choose_gentlest(trips, avoid_weight, preset.brake_grade),
+            choose_by_hills(trips, hill_price, _quiet_cost(costing)),
             variant,
             costing,
             when,
@@ -3741,10 +3943,8 @@ def _plan(
         group=preset_name == "mass-ride",
         rate=presets.calm_rate_for(stress_dial),
         weight=refine.intersection_weight(stress_dial),
-        climb_weight=avoid_weight * refine.CLIMB_EQUIVALENT_M,
-        hills_weight=avoid_weight,
         hills_seek_weight=hills_dial / 100 if calm_seek else 0.0,
-        hills_tolerate_weight=tolerate_weight if direct_tolerate else 0.0,
+        hills=hills_dial,
         # The hill factor's coefficient is the hills slider's (409; the owner: "The sliders
         # control the various coefficients for each component"), 0 at "fine with hills".
         hill_coefficient=grade_stress.coefficient_for(hills_dial),
@@ -4186,13 +4386,25 @@ def _plan(
         hills_tolerate = None
         if tolerating and not alternate and not fixed:
             direct = trips[0].get("summary") or {}
-            # Nothing is discounted at the top of the stress slider (`calm_first`).
-            discount = tolerate_weight if direct_tolerate else 0.0
+            # The climbing cost not charged, in the router's cost seconds: what the detent's
+            # LT1 grade would charge the kept route over what this position's does.
+            # None at the top of the stress slider, where the stress order decides
+            # (`calm_first`).
+            kept_profile = grade_profile(trip)
+            at = {
+                h: sum(
+                    hill_cost.profile_cost_s(
+                        kept_profile, hill_price.mass_kg, hill_price.flat_ms, h
+                    )
+                )
+                for h in (0, hills_dial)
+            }
+            discount_m = (at[0] - at[hills_dial]) * hill_price.flat_ms if direct_tolerate else 0.0
             hills_tolerate = {
                 "candidates": len(trips) if direct_tolerate else 1,
                 "chosen": chosen if direct_tolerate else 0,
                 "weight": round(tolerate_weight, 2),
-                "discount_s": round(tolerated_climb_s(trip, discount, _quiet_cost(costing)), 1),
+                "discount_s": round(discount_m * _quiet_cost(costing), 1),
                 "extra_climb_m": round(climb - _climb_of(trips[0]), 1),
                 "extra_distance_m": round(
                     (float(summary.get("length", 0.0)) - float(direct.get("length", 0.0))) * 1000.0,
@@ -4208,11 +4420,9 @@ def _plan(
                 "chosen": chosen,
                 "weight": round(avoid_weight, 2),
                 "brake_grade": preset.brake_grade,
-                "grade_cost_s": round(
-                    climbs.grade_cost_s(grade_profile(trip), preset.brake_grade), 1
-                ),
+                "grade_cost_s": round(rider_hill_s(trip, hill_price, _quiet_cost(costing)), 1),
                 "direct_grade_cost_s": round(
-                    climbs.grade_cost_s(grade_profile(trips[0]), preset.brake_grade), 1
+                    rider_hill_s(trips[0], hill_price, _quiet_cost(costing)), 1
                 ),
                 "extra_distance_m": round(
                     (float(summary.get("length", 0.0)) - float(direct.get("length", 0.0))) * 1000.0,
