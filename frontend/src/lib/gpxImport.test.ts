@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { GPX_NS_11, MAX_GPX_BYTES } from "./gpx.ts";
-import { importGpx, readGpx, type ImportOutcome } from "./gpxImport.ts";
+import { GPX_ACCEPT, gpxAccept, importGpx, readGpx, type ImportOutcome } from "./gpxImport.ts";
 
 const GOOD = new Blob([
   `<gpx xmlns="${GPX_NS_11}" version="1.1" creator="t"><trk><trkseg>` +
@@ -79,4 +79,12 @@ test("a worker that fails, or cannot be made, falls back to reading on the page"
   });
   assert.ok(unmade.ok);
   assert.ok((await importGpx(GOOD, null)).ok);
+});
+
+test("Android's picker gets no filter, so a GPX file labelled application/octet-stream can be picked", () => {
+  const phone = "Mozilla/5.0 (Linux; Android 14; SM-S921U; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/130.0 Mobile Safari/537.36";
+  assert.equal(gpxAccept(phone), undefined);
+  assert.equal(gpxAccept("Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36"), undefined);
+  assert.equal(gpxAccept("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36"), GPX_ACCEPT);
+  assert.equal(gpxAccept("Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148"), GPX_ACCEPT);
 });

@@ -146,6 +146,9 @@ EBIKE_PLANNING_SPEED_KMH = 24.0
 # battery and the rider's nerve, as Bikeshare's e-bike start says). The
 # implementation's figure, for the owner to confirm.
 EBIKE_HILLS = 50
+# Where Fast's hills slider starts: a strong rider's LT1 grade, about 11% (the owner,
+# 2026-10-23: "More for fast, less for cargo").
+FAST_HILLS = 40
 HIGH_MANEUVER_PENALTY_S = 30
 HIGH_GATE_COST_S = 120
 
@@ -205,17 +208,21 @@ _LIVING_STREETS = MID
 # factor. The graph carries the tiers and the request carries the weight, so
 # one graph serves every position.
 #
-# Hills, -100 to 100, with its detent at 0. Below 0 it is `use_hills`, 1.0 at
-# the detent and 0.0 at -100. `use_hills` 1.0 adds no grade penalty at all, so
-# an edge costs its time as Valhalla's grade-speed model has it - the owner's
-# "fastest time for most people". Above 0 Valhalla has nothing to offer
-# (`use_hills` stops at indifferent), and what the right half means depends on
-# the ride type (FOLLOWUP-HILLS-TOLERATE, OWNER-DECISIONS 242):
+# Hills, -100 to 100, with its detent at 0. Every climb costs the time it takes; the
+# slider sets the rider's LT1 grade, past which a steepness penalty adds on: 1% at -100,
+# 8% at the detent, 15% at 100 (`routemaker.hill_cost`, the owner, 2026-10-23: "You can use
+# the slider standards for the levels. Maybe 0-15% ... More for fast, less for cargo").
+# Below 0 it is also `use_hills`, 1.0 at the detent and 0.0 at -100, which shapes the
+# routes the router offers. `use_hills` 1.0 adds no grade penalty at all, so an edge
+# costs its time as Valhalla's grade-speed model has it - the owner's "fastest time for
+# most people". Above 0 Valhalla has nothing to offer (`use_hills` stops at indifferent),
+# and what the right half means depends on the ride type (FOLLOWUP-HILLS-TOLERATE,
+# OWNER-DECISIONS 242):
 #
-# - on every ride type but Mountain Goat it is "fine with hills": the climbing
-#   time the router charges is discounted, by the slider's position over 100
-#   (`tolerate_weight`), so the shorter or more direct of the router's routes wins
-#   even where it climbs more (`core.routing.choose_direct`). The owner, 2026-09-27
+# - on every ride type but Mountain Goat it is "fine with hills": the rider's LT1 grade
+#   rises from the detent's 8% to 15% (`routemaker.hill_cost.lt1_grade_for`), so a climb
+#   costs little more than its time and the shorter or more direct of the router's routes
+#   wins where it is about as quick (`core.routing.choose_by_hills`). The owner, 2026-09-27
 #   (242): "it wouldn't make sense for the hill slider, outside mountain goat to not
 #   nessicarily perfer hills, but mostly tolerate them. For instance lighter
 #   individuals would probably move the slider to more hilly as it's faster than
@@ -465,8 +472,8 @@ def use_hills_for(hills: int) -> float:
 
 
 def tolerate_weight(hills: int) -> float:
-    """How much of the router's own climbing charge a "fine with hills" ride takes off:
-    0 at the detent, 1 at the top of the slider (`core.routing.choose_direct`)."""
+    """The "fine with hills" share of the slider's right half: 0 at the detent, 1 at the
+    top (the answer's `hills_tolerate.weight`)."""
     return max(hills, 0) / 100
 
 
@@ -843,7 +850,9 @@ PRESETS: MappingProxyType = MappingProxyType(
                 # (review r1; 8 would give 0.897 but is not a step), and plans
                 # a little less directly than before.
                 stress=10,
-                hills=0,
+                # A strong rider: LT1 at about 11% (`routemaker.hill_cost.lt1_grade_for`;
+                # the owner, 2026-10-23: "More for fast, less for cargo").
+                hills=FAST_HILLS,
                 bicycle_type="Hybrid",
                 avoid_bad_surfaces=HIGH_SURFACE_AVOIDANCE,
                 use_living_streets=0.2,
