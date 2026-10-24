@@ -719,6 +719,11 @@ RouteMaker exchanges the sign-in code once and keeps no Discord token.</li>
 keeps that service's sign-in token, encrypted under a key that is never in the database. It contacts
 Garmin (diauth.garmin.com to sign in and renew the token, apis.garmin.com for the rest) or api.wahooligan.com only to send the routes you choose, read your account number once, and end the
 connection when you disconnect or delete your account. Deleting your account also removes from Wahoo up to 100 routes RouteMaker sent there.</li>
+<li><strong>Weather.</strong> For the weather along a route, your browser sends this server a few points on the
+line still to ride. The server rounds each to 0.01 degree, about 0.7 mi [1.1 km], and asks api.weather.gov (the
+National Weather Service's alerts) and api.open-meteo.com (Open-Meteo's rain forecast) about the rounded points,
+so they see this server, never you. It keeps the answers 2 minutes in memory, logs no point and writes
+nothing.</li>
 <li><strong>Sharing.</strong> A shared route stores the exact line under a random link, kept for a year
 after it was last opened. Its preview image hides the area around Home.</li>
 <li><strong>AI assistants.</strong> RouteMaker has a Model Context Protocol<sup class="cite"><a href="#ref-16" aria-label="source 16">[16]</a></sup> server, so an AI
