@@ -24,6 +24,7 @@ from test_refine import (
 
 from core import legsplit, presets, refine, routing, trailseek
 from routemaker import intersections as model
+from routemaker.geo import Point, haversine
 
 FT = model.FEET_PER_METRE
 AVERSE = presets.EXPOSURE_STRESS_AVERSE
@@ -1207,6 +1208,135 @@ class TestJoinedTrip:
         out = refine._joined([a, b], like)
         assert out["summary"] == {"length": 3.0, "time": 15.0, "cost": 26.0, "min_lon": 5.0}
         assert [leg["shape"] for leg in out["legs"]] == ["a", "b"] and out["x"] == 1
+
+
+# --- The out-and-back at a cut (the owner, 2026-10-24: "keeps adding a bunch of out
+# and backs") ---------------------------------------------------------------------------
+
+# About 11 m of longitude per 0.0001 degree at 39 N, 11 m of latitude likewise.
+LAT = 39.0
+
+
+def east(lon0: float, lon1: float, lat: float = LAT, step: float = 0.0001) -> list:
+    n = round(abs(lon1 - lon0) / step)
+    sign = 1 if lon1 >= lon0 else -1
+    return [(round(lon0 + sign * i * step, 6), lat) for i in range(n + 1)]
+
+
+def north(lon: float, lat0: float, lat1: float, step: float = 0.0001) -> list:
+    n = round(abs(lat1 - lat0) / step)
+    sign = 1 if lat1 >= lat0 else -1
+    return [(lon, round(lat0 + sign * i * step, 6)) for i in range(n + 1)]
+
+
+def leg_on(line: list, heights: bool = True) -> dict:
+    from core.dedodge import encode_polyline6
+
+    metres = legsplit.line_m(line)
+    leg = {
+        "shape": encode_polyline6(line),
+        "summary": {"length": metres / 1000.0, "time": metres / 5.0, "cost": metres / 2.5},
+    }
+    if heights:
+        leg["elevation"] = [
+            float(i) for i in range(round(metres / routing.ELEVATION_INTERVAL_M) + 1)
+        ]
+    return leg
+
+
+def one(line: list, **kw) -> dict:
+    leg = leg_on(line, **kw)
+    return {"legs": [leg], "summary": dict(leg["summary"])}
+
+
+def spur_trips(spur_deg: float = 0.002) -> tuple[list, list, list]:
+    """Two legs on a trail at LAT + 0.003 that each ride south down a link to the cut,
+    on the road at LAT: the first west to east along the trail then down to the cut,
+    the second back up the same link and on east."""
+    top = LAT + spur_deg
+    before = [*east(0.0, 0.01, top), *north(0.01, top, LAT)[1:]]
+    after = [*north(0.01, LAT, top), *east(0.01, 0.02, top)[1:]]
+    return before, after, [one(before), one(after)]
+
+
+class TestTheSpurAtACut:
+    def test_the_link_ridden_both_ways_is_measured(self) -> None:
+        before, after, _ = spur_trips()
+        link = haversine(Point(0.01, LAT), Point(0.01, LAT + 0.002))
+        assert legsplit.spur_m(before, after) == pytest.approx(link, abs=legsplit.SPUR_STEP_M)
+
+    def test_a_route_that_runs_on_through_the_cut_has_none(self) -> None:
+        assert legsplit.spur_m(east(0.0, 0.01), east(0.01, 0.02)) == 0.0
+
+    def test_a_turn_at_the_cut_is_no_spur(self) -> None:
+        assert legsplit.spur_m(east(0.0, 0.01), north(0.01, LAT, LAT + 0.01)) == 0.0
+
+    def test_legs_that_do_not_meet_have_none(self) -> None:
+        before, after, _ = spur_trips()
+        assert legsplit.spur_m(before, [(x + 0.001, y) for x, y in after]) == 0.0
+
+    def test_a_snap_shorter_than_the_least_is_left(self) -> None:
+        before, after, _ = spur_trips(spur_deg=0.00005)
+        assert legsplit.spur_m(before, after) == 0.0
+
+    def test_each_leg_keeps_some_of_its_own(self) -> None:
+        """A leg that is all spur (out to the cut and nothing else) is not emptied."""
+        link = north(0.01, LAT + 0.002, LAT)
+        back = north(0.01, LAT, LAT + 0.002)
+        got = legsplit.spur_m(link, back)
+        assert 0 < got <= legsplit.line_m(link) - legsplit.KEEP_M
+
+    def test_the_cut_line_has_its_ends_on_the_line(self) -> None:
+        line = east(0.0, 0.01)
+        total = legsplit.line_m(line)
+        part = legsplit.cut_line(line, 100.0, total - 50.0)
+        assert legsplit.line_m(part) == pytest.approx(total - 150.0, abs=0.5)
+        assert part[0][1] == pytest.approx(LAT) and part[-1][1] == pytest.approx(LAT)
+
+
+class TestTrimJoints:
+    def test_the_out_and_back_is_taken_out_at_a_cut(self) -> None:
+        before, after, trips = spur_trips()
+        spur = legsplit.spur_m(before, after)
+        out, taken = refine.trim_joints(trips, [True])
+        assert taken == pytest.approx(2 * spur)
+        a = routing.decode_polyline6(out[0]["legs"][0]["shape"])
+        b = routing.decode_polyline6(out[1]["legs"][0]["shape"])
+        # Both now meet on the trail, where the link left it.
+        assert a[-1][1] == pytest.approx(LAT + 0.002, abs=2e-5)
+        assert haversine(Point(*a[-1]), Point(*b[0])) < 1.0
+        assert legsplit.spur_m(a, b) == 0.0
+        # The lengths, times and summaries follow.
+        for trip, line in ((out[0], before), (out[1], after)):
+            leg = trip["legs"][0]
+            kept = legsplit.line_m(line) - spur
+            assert leg["summary"]["length"] == pytest.approx(kept / 1000.0, abs=1e-3)
+            assert leg["summary"]["time"] == pytest.approx(kept / 5.0, rel=1e-3)
+            assert trip["summary"]["length"] == pytest.approx(leg["summary"]["length"])
+            assert len(leg["elevation"]) == pytest.approx(
+                kept / routing.ELEVATION_INTERVAL_M + 1, abs=1
+            )
+
+    def test_the_second_legs_heights_start_where_it_now_starts(self) -> None:
+        _before, _after, trips = spur_trips()
+        out, _ = refine.trim_joints(trips, [True])
+        heights = out[1]["legs"][0]["elevation"]
+        assert heights[0] > 0.0, "the heights of the link ridden back are gone"
+
+    def test_a_stop_the_rider_placed_is_kept(self) -> None:
+        _before, _after, trips = spur_trips()
+        out, taken = refine.trim_joints(trips, [False])
+        assert taken == 0.0 and out == trips
+
+    def test_legs_with_no_spur_are_untouched(self) -> None:
+        trips = [one(east(0.0, 0.01)), one(east(0.01, 0.02))]
+        out, taken = refine.trim_joints(trips, [True])
+        assert taken == 0.0 and out == trips
+
+    def test_a_shape_that_is_not_a_line_is_left(self) -> None:
+        trips = [{"legs": [{"shape": "a"}]}, {"legs": [{"shape": "b"}]}]
+        out, taken = refine.trim_joints(trips, [True])
+        assert taken == 0.0 and out == trips
 
 
 class TestTheLegsOfTheAnswer:

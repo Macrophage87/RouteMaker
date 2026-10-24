@@ -2321,6 +2321,77 @@ def _joined(trips: list[dict], like: dict) -> dict:
     return {**like, "legs": [leg for t in trips for leg in t.get("legs") or []], "summary": summary}
 
 
+def _trimmed_leg(leg: dict, line: list, from_m: float, to_m: float) -> dict:
+    """`leg` cut to the stretch from `from_m` to `to_m` metres along its shape (`line`):
+    its length less what is cut, its time and cost by the share kept, and its heights
+    (one every `routing.ELEVATION_INTERVAL_M`) the kept stretch's. The turns are left
+    as they were, as `dedodge.splice_leg` leaves them."""
+    from .dedodge import encode_polyline6
+
+    total = legsplit.line_m(line)
+    kept = max(0.0, min(to_m, total) - max(0.0, from_m))
+    share = kept / total if total > 0 else 1.0
+    summary = dict(leg.get("summary") or {})
+    if "length" in summary:
+        summary["length"] = max(0.0, summary["length"] - (total - kept) / 1000.0)
+    for key in ("time", "cost"):
+        if key in summary:
+            summary[key] = summary[key] * share
+    new = {
+        **leg,
+        "shape": encode_polyline6(legsplit.cut_line(line, from_m, to_m)),
+        "summary": summary,
+    }
+    heights = leg.get("elevation")
+    if heights:
+        interval = routing.ELEVATION_INTERVAL_M
+        first = max(0, round(from_m / interval))
+        last = min(len(heights) - 1, round(min(to_m, total) / interval))
+        new["elevation"] = heights[first : last + 1]
+    return new
+
+
+def _with_leg(trip: dict, number: int, leg: dict) -> dict:
+    """The trip with its `number`th leg replaced by `leg`, its summary's sums mended."""
+    return _splice(trip, number, {"legs": [leg]})
+
+
+def trim_joints(trips: list[dict], cuts: list[bool]) -> tuple[list[dict], float]:
+    """The legs of a long plan (`refine_long`) with the out-and-back at each cut taken
+    out (`legsplit.spur_m`): where the leg before a cut and the leg after it both left
+    the router's road, the route no longer rides out to the cut and back. `cuts[i]`
+    says whether the joint after `trips[i]` is a cut (a stop the rider placed is kept:
+    a stop down a dead end is theirs to ride to). Returns the trips and the metres taken
+    off. Only metres ridden twice go: the route is shorter and passes nothing new."""
+    out = list(trips)
+    taken = 0.0
+    for i, is_cut in enumerate(cuts):
+        if not is_cut or i + 1 >= len(out):
+            continue
+        legs_a = out[i].get("legs") or []
+        legs_b = out[i + 1].get("legs") or []
+        if not legs_a or not legs_b:
+            continue
+        leg_a, leg_b = legs_a[-1], legs_b[0]
+        try:
+            line_a = routing.decode_polyline6(str(leg_a.get("shape") or ""))
+            line_b = routing.decode_polyline6(str(leg_b.get("shape") or ""))
+        except (IndexError, ValueError):
+            continue
+        spur = legsplit.spur_m(line_a, line_b)
+        if spur <= 0.0:
+            continue
+        total_a = legsplit.line_m(line_a)
+        out[i] = _with_leg(
+            out[i], len(legs_a) - 1, _trimmed_leg(leg_a, line_a, 0.0, total_a - spur)
+        )
+        out[i + 1] = _with_leg(
+            out[i + 1], 0, _trimmed_leg(leg_b, line_b, spur, legsplit.line_m(line_b))
+        )
+        taken += 2 * spur
+    return out, taken
+
+
 def _merge_seek(seeks: list[tuple[int, dict]]) -> dict | None:
     """The legs' seek reports as one: the counts added, the rows named by leg."""
     if not seeks:
@@ -2958,7 +3029,7 @@ def choose_options(
 
 
 def _long_candidates(
-    ctx, trip, joined, results, finals, reads, offered, first_tops, searched, chosen, chains
+    ctx, trip, joined, results, finals, reads, offered, first_tops, searched, chosen, chains, cuts
 ) -> list:
     """The routes a long plan offers (OWNER-DECISIONS 265): the answer, and the answer
     with one leg's route swapped for another the search read (a different corridor over
@@ -2974,6 +3045,7 @@ def _long_candidates(
             trips = list(results)
             reads_now = list(finals)
             trips[j], reads_now[j] = option_trip, option_read
+            trips, _spurs = trim_joints(trips, cuts)
             pool.append((_joined(trips, trip), combine(reads_now)))
     reference = [
         sum(
@@ -3192,10 +3264,26 @@ def refine_long(trip: dict, ctx: Context) -> tuple[dict, dict]:
             info["seek"] = {**info["seek"], "taken": False}
         return trip, info
     long["answered"] = "legs"
+    # No out-and-back to a cut the search left behind (`trim_joints`).
+    cuts = [legs[j]["user"] == legs[j + 1]["user"] for j in range(len(legs) - 1)]
+    results, spurs_m = trim_joints(results, cuts)
+    long["joint_spurs_m"] = round(spurs_m, 1)
+    length -= spurs_m
     joined = _joined(results, trip)
     if ctx.alternates > 1:
         ctx.candidates = _long_candidates(
-            ctx, trip, joined, results, finals, reads, offered, first_tops, searched, chosen, chains
+            ctx,
+            trip,
+            joined,
+            results,
+            finals,
+            reads,
+            offered,
+            first_tops,
+            searched,
+            chosen,
+            chains,
+            cuts,
         )
     info["extra_distance_m"] = round(length - whole.length_m, 1)
     info["exposure_after_m"] = round(sum(a.exposure_m for a in finals), 1)

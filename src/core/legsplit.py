@@ -15,12 +15,21 @@ busy stretch would put that stretch out of reach. Each is the middle of a traced
 edge, at least CLEAR_M from any LTS 3, 4 or Avoid stretch where there is such a
 place within a window of the even split, and otherwise the place with the most
 room. Pure: no database and no router.
+
+A cut stays where it was put, so when the search moves both legs either side of it
+off the router's road (onto a trail beside it, say), the route rides out to the cut
+and back the way it came: an out-and-back at every cut, which no later pass sees,
+since each works leg by leg (the owner, 2026-10-24, of Trailmaxxing from DC to
+Baltimore: "keeps adding a bunch of out and backs"). `spur_m` measures one, and
+`cut_line` gives the line without it (`core.refine.trim_joints`).
 """
 
 from __future__ import annotations
 
 import bisect
 import math
+
+from routemaker.geo import Point, haversine
 
 # The straight-line span a leg is cut to (metres): about 7.5 mi, which the calm
 # search plans in a few seconds (docs/DEVELOPMENT.md, "Long Trailmaxxing trips").
@@ -116,3 +125,86 @@ def split_points(
         cuts.append(best)
         previous = best[0]
     return cuts
+
+
+# --- The out-and-back at a cut ----------------------------------------------
+#
+# The way to a cut and the way from it are one out-and-back where the line from the
+# cut back along the leg before and the line on along the leg after stay within
+# SPUR_MATCH_M of each other, measured every SPUR_STEP_M: the same edges, ridden both
+# ways. The two legs' ends must meet within JOINT_SNAP_M (they are the one cut), a
+# spur shorter than SPUR_MIN_M is the router's snap, not a ride, and each leg keeps at
+# least KEEP_M of its own. Where the two part, the spur ends where they are still within
+# SPUR_JOIN_M, found SPUR_BACK_STEP_M at a time.
+SPUR_MATCH_M = 4.0
+SPUR_STEP_M = 2.0
+SPUR_JOIN_M = 1.0
+SPUR_BACK_STEP_M = 0.25
+JOINT_SNAP_M = 15.0
+SPUR_MIN_M = 10.0
+KEEP_M = 10.0
+
+
+def _metres_along(line: list) -> list[float]:
+    out = [0.0]
+    for a, b in zip(line, line[1:], strict=False):
+        out.append(out[-1] + haversine(Point(*a[:2]), Point(*b[:2])))
+    return out
+
+
+def _point_at(line: list, along: list[float], at: float) -> tuple[float, float]:
+    """The point `at` metres along `line` (`along` its `_metres_along`)."""
+    if at <= 0.0:
+        return (line[0][0], line[0][1])
+    i = bisect.bisect_left(along, at)
+    if i >= len(line):
+        return (line[-1][0], line[-1][1])
+    a, b = line[i - 1], line[i]
+    span = along[i] - along[i - 1]
+    t = 0.0 if span <= 0 else (at - along[i - 1]) / span
+    return (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t)
+
+
+def spur_m(before: list, after: list) -> float:
+    """How far the line `after` rides back over the end of the line `before`, from
+    the cut where they meet: the length of the out-and-back to the cut (0 where there
+    is none, or it is shorter than SPUR_MIN_M)."""
+    if len(before) < 2 or len(after) < 2:
+        return 0.0
+    if haversine(Point(*before[-1][:2]), Point(*after[0][:2])) > JOINT_SNAP_M:
+        return 0.0
+    back = before[::-1]
+    along_back, along_on = _metres_along(back), _metres_along(after)
+    limit = min(along_back[-1], along_on[-1]) - KEEP_M
+    good = 0.0
+    at = SPUR_STEP_M
+    while at <= limit:
+        a = _point_at(back, along_back, at)
+        b = _point_at(after, along_on, at)
+        if haversine(Point(*a), Point(*b)) > SPUR_MATCH_M:
+            break
+        good = at
+        at += SPUR_STEP_M
+    # Where the two part, each runs a little way along its own side within the match:
+    # back to where they still meet within SPUR_JOIN_M, so the legs join up.
+    while good > 0.0:
+        a = _point_at(back, along_back, good)
+        b = _point_at(after, along_on, good)
+        if haversine(Point(*a), Point(*b)) <= SPUR_JOIN_M:
+            break
+        good = max(0.0, good - SPUR_BACK_STEP_M)
+    return good if good >= SPUR_MIN_M else 0.0
+
+
+def cut_line(line: list, from_m: float, to_m: float) -> list[tuple[float, float]]:
+    """The stretch of `line` from `from_m` to `to_m` metres along it, its ends
+    placed on the line between its vertices."""
+    along = _metres_along(line)
+    from_m, to_m = max(0.0, from_m), min(along[-1], to_m)
+    inside = [(p[0], p[1]) for p, m in zip(line, along, strict=True) if from_m < m < to_m]
+    return [_point_at(line, along, from_m), *inside, _point_at(line, along, to_m)]
+
+
+def line_m(line: list) -> float:
+    """The length of `line` (metres)."""
+    return _metres_along(line)[-1] if len(line) > 1 else 0.0
