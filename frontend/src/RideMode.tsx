@@ -69,6 +69,7 @@ import {
   type RestartStop,
 } from "./lib/rideStops.ts";
 import { RestartStopsDialog } from "./RestartStopsDialog.tsx";
+import { keepLeftRide } from "./lib/rideResume.ts";
 import type { Dials } from "./lib/dials.ts";
 import { haversineM, insideCoverage, type LonLat } from "./lib/geo.ts";
 import type { PresetId } from "./lib/presets.ts";
@@ -591,6 +592,7 @@ export function RideMode({
   fixed = false,
   onBroadcast = null,
   broadcasting = false,
+  keepLeft = false,
 }: {
   route: RouteResponse;
   /** The points the route was planned with, and whether it is a loop: what a re-plan builds on. */
@@ -650,6 +652,8 @@ export function RideMode({
   onBroadcast?: (() => Promise<string>) | null;
   /** This ride is broadcast, led by this rider: Broadcast shows on, and a press shares the same link again. */
   broadcasting?: boolean;
+  /** The ride is kept on this device to resume (lib/rideResume.ts): each new route is kept in its place. */
+  keepLeft?: boolean;
 }) {
   const [route, setRoute] = useState(plannedRoute);
   const routeRef = useRef(route);
@@ -1083,6 +1087,8 @@ export function RideMode({
       if (found.dirt_trails) dirtRidden.current = true;
       if (found.dirt_closed) dirtClosed.current = true;
       setRoute(found);
+      // The ride as it now stands is what a page closed mid-ride resumes (lib/rideResume.ts); never a trip's leg.
+      if (!trip && keepLeft) keepLeftRide({ route: found, points, loop: false, preset, dials: dialsRef.current, fixed: fixedRef.current }, VIA_MARKS, Date.now());
       // The new route's own standard way through a closure it goes round, if any (none past a road marked closed).
       const through = blockedRef.current.length ? null : (found.closure_through ?? null);
       otherRef.current = through;
@@ -1097,7 +1103,7 @@ export function RideMode({
       tell(note);
       return true;
     },
-    [preset, gate, sayDetour],
+    [preset, gate, sayDetour, trip, keepLeft],
   );
   const replanRef = useRef(replan);
   replanRef.current = replan;
@@ -1151,6 +1157,9 @@ export function RideMode({
   // walk to the dock comes first). The defaults ride on as the ride is; other picks plan again from here.
   const restartAsked = useRef(resumeStats !== null || trip !== null);
   const [restart, setRestart] = useState<RestartStop[] | null>(null);
+  // While it is asked, no re-route of its own: the stops it lists are the plan's as it stands (review of #444).
+  const restartOpen = useRef(false);
+  restartOpen.current = restart !== null;
   const onFix = useCallback(
     (fix: RideFix) => {
       if (ended.current) return;
@@ -1162,7 +1171,7 @@ export function RideMode({
       if (weighed.sayNow) notify(GPS_WEAK_SAID);
       setGps(weighed.weak ? GPS_WEAK_SAID : "");
       checkCueSheet(lastFixAt.current);
-      const auto = !keepRef.current && !fixedRef.current;
+      const auto = !keepRef.current && !fixedRef.current && !restartOpen.current;
       // Walking to the dock, nothing is placed on the line or taken as off route (lib/rideTrip.ts).
       const wasWalking = tripRef.current.walking;
       // Held after "No route found ahead": off route says no "finding a new way", as none is looked for out loud.
@@ -1213,6 +1222,7 @@ export function RideMode({
         const stops = restartStops(modelRef.current, out.state.progressM);
         if (stops) {
           const named = stops.map((s) => (s.name ? s : { ...s, name: stopName?.(plan.current.points[s.index]) }));
+          restartOpen.current = true;
           setRestart(named);
           notify(restartSaid(named));
         }
@@ -1342,7 +1352,7 @@ export function RideMode({
     const onOnline = () => {
       gate.online();
       const state = rideRef.current;
-      if (state.off && !keepRef.current && !fixedRef.current && !uturns.current.held && state.goodFix) void replan(state.goodFix.point);
+      if (state.off && !keepRef.current && !fixedRef.current && !restartOpen.current && !uturns.current.held && state.goodFix) void replan(state.goodFix.point);
     };
     window.addEventListener("online", onOnline);
     return () => window.removeEventListener("online", onOnline);
@@ -1678,6 +1688,7 @@ export function RideMode({
   // Restarting part way: the defaults ride on as the ride is; other picks plan again from here.
   const continueRestart = (done: ReadonlySet<number>) => {
     const stops = restart;
+    restartOpen.current = false;
     setRestart(null);
     if (!stops || restartUnchanged(stops, done)) return;
     const here = rideRef.current.goodFix?.point ?? rideRef.current.fix?.point;

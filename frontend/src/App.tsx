@@ -891,6 +891,8 @@ export function App() {
     fixed: boolean;
     /** A detour from Roam: ending it goes back to roaming, with no summary. */
     roam?: boolean;
+    /** Kept on this device to resume if the page closes (lib/rideResume.ts). */
+    kept?: boolean;
     n: number;
   } | null>(null);
   const [rideView, setRideView] = useState<RideView | null>(null);
@@ -3038,10 +3040,11 @@ export function App() {
     const fixed = fixedRide(leg, opened, !!rest);
     setResumeStats(null);
     const rideDialsNow = rideDials({ ...planDials, closuresNow: true }, rest ? null : route);
-    setRideStart((before) => ({ route, ...leg, dials: rideDialsNow, fixed, roam: rest?.roam === true, n: (before?.n ?? 0) + 1 }));
     // Kept on this device so a page closed mid-ride can resume it (lib/rideResume.ts); a trip's leg, Ride the rest
     // and a detour from Roam are not.
-    if (!rest && !leg.trip) keepLeftRide({ route, points: leg.points, loop: leg.loop, preset: leg.preset, dials: rideDialsNow, fixed }, VIA_MARKS, Date.now());
+    const kept = !rest && !leg.trip;
+    setRideStart((before) => ({ route, ...leg, dials: rideDialsNow, fixed, roam: rest?.roam === true, kept, n: (before?.n ?? 0) + 1 }));
+    if (kept) keepLeftRide({ route, points: leg.points, loop: leg.loop, preset: leg.preset, dials: rideDialsNow, fixed }, VIA_MARKS, Date.now());
     else forgetLeftRide();
     // The installed app keeps the ride's route as the last ride (OWNER-DECISIONS 465a); End ride gives it
     // the map the ride kept. A browser tab keeps nothing unless the rider presses Keep for offline.
@@ -3652,7 +3655,7 @@ export function App() {
     endedRide.current = null;
     setRideEnded(null);
     setResumeStats(null);
-    setRideStart((before) => ({ ...left, trip: null, n: (before?.n ?? 0) + 1 }));
+    setRideStart((before) => ({ ...left, trip: null, kept: true, n: (before?.n ?? 0) + 1 }));
     keepLeftRide(left, VIA_MARKS, Date.now());
     setFollow(true);
     setRideView(null);
@@ -3672,7 +3675,7 @@ export function App() {
     startRideGesture(ridePrefs);
     setResumeStats(ended.stats);
     setRideStart(ended.start);
-    if (!ended.start.roam && !ended.start.trip) keepLeftRide(ended.start, VIA_MARKS, Date.now());
+    if (ended.start.kept) keepLeftRide(ended.start, VIA_MARKS, Date.now());
     setFollow(true);
     setRideView(null);
     setRiding(true);
@@ -5159,6 +5162,7 @@ export function App() {
           // ride opened from someone else's link (they lead it).
           onBroadcast={canShare && !rideStart.roam && rideStart.route === shown && !(onShared && !onShared.own) ? broadcastFromRide : null}
           broadcasting={rideBroadcast?.leading === true}
+          keepLeft={rideStart.kept === true}
         />
       )}
       {roaming && (

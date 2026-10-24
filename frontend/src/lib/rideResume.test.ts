@@ -58,9 +58,20 @@ test("a ride left too long ago, or unreadable, is not offered and is forgotten; 
 
 test("the page keeps the ride at Start, forgets it at End, and asks at load; nothing goes to the server", () => {
   const app = src("../App.tsx");
-  assert.match(app, /if \(!rest && !leg\.trip\) keepLeftRide\(/);
+  assert.match(app, /if \(kept\) keepLeftRide\(/);
   assert.match(app, /const endRide = useCallback\(\(after: EndedPlan, stats: RideStats\) => \{\s*const \{ start, mode: endedIn \} = rideNow\.current;\s*forgetLeftRide\(\);/);
   assert.match(app, /const \[leftAsk, setLeftAsk\] = useState\(\(\) => leftRide\(VIA_MARKS, Date\.now\(\)\)\);/);
   assert.match(app, /<ResumeRideDialog open=\{leftAsk !== null && !riding && !roaming\}/);
   assert.doesNotMatch(src("./rideResume.ts"), /fetch\(|origin/);
+});
+
+test("each new route of the ride is kept in its place, and the question holds the ride's own re-routes", () => {
+  const ride = src("../RideMode.tsx");
+  assert.match(ride, /if \(!trip && keepLeft\) keepLeftRide\(\{ route: found, points, loop: false, preset, dials: dialsRef\.current, fixed: fixedRef\.current \}, VIA_MARKS, Date\.now\(\)\);/);
+  assert.match(ride, /const auto = !keepRef\.current && !fixedRef\.current && !restartOpen\.current;/);
+  assert.match(ride, /!fixedRef\.current && !restartOpen\.current && !uturns\.current\.held && state\.goodFix\) void replan/);
+  const app = src("../App.tsx");
+  assert.match(app, /const kept = !rest && !leg\.trip;/);
+  assert.match(app, /keepLeft=\{rideStart\.kept === true\}/);
+  assert.match(app, /if \(ended\.start\.kept\) keepLeftRide\(ended\.start, VIA_MARKS, Date\.now\(\)\);/);
 });
