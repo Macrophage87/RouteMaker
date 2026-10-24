@@ -434,10 +434,21 @@ map's credits. It starts closed. With no points yet, <strong>Start at current lo
 <strong>Route</strong> button's place) sets your start where you are.</li>
 <li>Type places into <strong>From</strong>, <strong>To</strong> and <strong>Add a stop</strong>, or tap
 the map. Up to 25 points in all.</li>
+<li>Once there is a start and an end, a tap or click on the map adds a <strong>via point</strong>, a small
+hollow ring that only shapes the route: it has no number and is never a cue on the ride.
+<strong>Ctrl+click</strong> (Cmd+click on a Mac), or <strong>Add as stop</strong> in the road panel, adds a
+<strong>stop</strong>, a numbered blue pin, and asks for a name, which you can leave blank. Add as stop on a
+food, water, sight or station card names the stop after the place without asking, and a place you pick in
+Add a stop is a stop too. A stop's menu has <strong>Name this stop</strong> (<strong>Rename stop</strong> once
+it has one), and the menu of any point between the start and the end turns a via point into a stop or
+back.</li>
+<li>A stop's name, the one you gave it or the place's from Add as stop, goes with it: in links and saved
+routes, in GPX route points, in FIT and TCX course points, to Garmin and Wahoo, and in the ride's cues
+("You have reached stop 2, Union Market.").</li>
 <li>Drag a stop's grip to move it, or use <strong>Best order</strong> to put the stops in the order that
 rides best; the start and the finish stay where they are.</li>
 <li>On most ride types, Plan starts as a <strong>loop</strong>: the first point is the start and finish, each later tap is a
-stop, and the ride comes back. Untick <strong>Loop</strong> for a ride that ends somewhere else, or
+via point once you tap again (the newest is a stop until then), and the ride comes back. Untick <strong>Loop</strong> for a ride that ends somewhere else, or
 right-click the map (press and hold on a phone) and choose <strong>Set as end</strong>, choose
 <strong>Make this the destination</strong> on a search result, or <strong>End here</strong> on a station's card.
 Each ends the ride there and turns the loop off.
@@ -600,14 +611,21 @@ were, and a step that finds no route, or only one leading back to the old line, 
 have arrived. A screen reader hears each one in full, such as "Calmer: less traffic, plan again from
 here".</li>
 <li><strong>Detour</strong> lists the nearest <strong>Water</strong> or <strong>Restroom</strong>;
-choosing one re-plans the ride through it and on along the rest of the route.</li>
+choosing one re-plans the ride through it and on along the rest of the route. With a stop ahead, Detour also shows <strong>Next stop</strong>
+with <strong>Skip this stop</strong>, and each place it lists has <strong>Instead of stop 2</strong> (with
+that stop's number) to go there in its place. Not on a shared or fixed route.</li>
 <li><strong>Road closed</strong> plans a way round from where you are: "Road closed. Finding a way
 round."</li>
 <li><strong>311</strong> logs a problem where you are, for reporting later; see
 <a href="#suggest">below</a>.</li>
 <li>The <strong>Settings</strong> gear opens Ride settings: who says the cues and how much, and
 <strong>Turn the map to my heading</strong>.</li>
-<li><strong>Off the route</strong>, RouteMaker plans again from where you are. <strong>Keep the planned
+<li>The stops still ahead are drawn on the ride's map with their numbers and names; via
+points are not.</li>
+<li><strong>Off the route</strong>, RouteMaker plans again from where you are. Whenever the ride plans again (off the route,
+Re-plan from here, Road closed, Calmer, Flatter or a Detour), it keeps every stop still ahead but treats via
+points as guides: one less than half a mile [800 m] ahead is dropped, so you are never sent back to touch
+it. <strong>Keep the planned
 route</strong> stops that until you are back on it, and shows the way back instead.</li>
 <li><strong>No signal:</strong> at Start ride, the map within about 1,000 ft [300 m] either side of the
 route is kept on your device, so dead spots still show the stress lines. It is cleared when the ride
@@ -757,7 +775,7 @@ panel and in Where am I?.</li>
 <h3>The road panel</h3>
 <ul>
 <li>The road's name, its stress level and why, in words.</li>
-<li><strong>Use this spot:</strong> start, stop or finish here, or <strong>Set as Home</strong>.</li>
+<li><strong>Use this spot:</strong> <strong>Set as start</strong>, <strong>Add as stop</strong> (it asks for a name) or <strong>Set as end</strong>, or <strong>Set as Home</strong>.</li>
 <li><strong>Street View</strong>, the newest Mapillary photo facing along the road where there is one, and <strong>Edit in
 OSM</strong> to fix the map itself.</li>
 <li><strong>Suggest a change…</strong>: a road's level, a junction, or a hazard on a Mass Ride.</li>
@@ -896,7 +914,10 @@ reason first.</li>
 <h3>Open a file</h3>
 <ul>
 <li><strong>Open GPX…</strong> reads a file in your browser; it is never uploaded. Up to 20 MB and
-100,000 points.</li>
+100,000 points. A file's points without a name, and the points added to fit a track,
+become via points. Named points become stops and keep their names; a name that only says what the point is,
+such as Stop 2 or Start, is dropped, and a point named Via point, as RouteMaker writes them, stays a via
+point.</li>
 <li>In Plan, <strong>Snap to the map's streets</strong> turns the track into a plan you can change, or
 <strong>Follow the file exactly</strong> rides it as drawn, for a road closed for an event. Load route's <strong>Snap to roads</strong> and <strong>Exactly as drawn</strong> are the same choice, made before the file opens.</li>
 </ul>
