@@ -3,7 +3,7 @@
  * touched the screen while riding, go back to the default tracking view", "for 30 seconds"). After the rider moves
  * the map by hand (a pan, a pinch, a turn), 30 s with no touch, wheel or key and no panel open puts the map back on
  * the rider: following again, at the ride's zoom, track-up as chosen. Any touch starts the 30 s again; a panel open
- * when they run out (a side menu, the settings, the riders, an alert, a question, a dialog) holds it for another 30 s.
+ * when they run out (a side menu, the settings, the riders, an alert, a question, a dialog, the map's Help) holds it for another 30 s.
  * No button: Where am I? still does it at once.
  */
 
@@ -17,7 +17,17 @@ export const IDLE_TOUCH_EVENTS = ["pointerdown", "pointerup", "wheel", "keydown"
  * An open panel during a ride or Roam: a toggle shown expanded within the ride's screen or the group bar, the group's
  * question, or an open dialog.
  */
-export const RIDE_PANEL_OPEN = '.ride [aria-expanded="true"], .ride-group [aria-expanded="true"], .ride-consent, dialog[open]';
+export const RIDE_PANEL_OPEN =
+  '.ride [aria-expanded="true"], .ride-group [aria-expanded="true"], .ride-consent, dialog[open], .maplibregl-ctrl-attrib[open]';
+
+/**
+ * The follow camera's zoom at a fix: the ride's own after the screen was left alone (`reset`); kept while following
+ * (a pinch out stays); closed in to the ride's own at least as following starts.
+ */
+export function followZoom(reset: boolean, following: boolean, current: number, rideZoom: number): number {
+  if (reset) return rideZoom;
+  return following ? current : Math.max(current, rideZoom);
+}
 
 /** The parts of `window` the watch uses. */
 export interface IdleWindow {

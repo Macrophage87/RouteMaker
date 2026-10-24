@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { vehicleBadge, type VehicleMark } from "./lib/nextVehicle.ts";
+import { followZoom } from "./lib/idleRecentre.ts";
 import { createPortal } from "react-dom";
 import { attachFeatureHover } from "./featureHoverCard.ts";
 import { climbHoverChart, climbHoverWords, trailHoverChart, trailHoverWords } from "./lib/featureHover.ts";
@@ -2427,6 +2428,8 @@ export function MapView(props: Props) {
       // The ride over: a map turned to the rider's heading (track-up, the default) is north-up again.
       if (following.current && map.getBearing() !== 0) map.easeTo({ bearing: 0, padding: NO_PADDING, duration: 0 });
       following.current = false;
+      // A reset still waiting for a fix ends with the ride; the next starts as rides do.
+      resetSeen.current = props.followReset;
       return;
     }
     if (!riderMarker.current) {
@@ -2455,7 +2458,7 @@ export function MapView(props: Props) {
     // rider after the screen was left alone (followReset), the ride's own zoom.
     const reset = props.followReset !== resetSeen.current;
     resetSeen.current = props.followReset;
-    const zoom = reset ? FOLLOW_ZOOM : following.current ? map.getZoom() : Math.max(map.getZoom(), FOLLOW_ZOOM);
+    const zoom = followZoom(reset, following.current, map.getZoom(), FOLLOW_ZOOM);
     following.current = true;
     // A moving map once a second is too much for some: with reduced motion asked for, it jumps.
     const still = reducedMotion();

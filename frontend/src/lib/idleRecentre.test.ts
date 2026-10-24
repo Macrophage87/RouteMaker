@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { IDLE_RECENTRE_MS, IDLE_TOUCH_EVENTS, RIDE_PANEL_OPEN, watchIdleRecentre, type IdleWindow } from "./idleRecentre.ts";
+import { IDLE_RECENTRE_MS, IDLE_TOUCH_EVENTS, RIDE_PANEL_OPEN, followZoom, watchIdleRecentre, type IdleWindow } from "./idleRecentre.ts";
 
 /** A window with a clock that moves only when told. */
 function fakeWindow() {
@@ -103,7 +103,7 @@ test("wired: a ride or Roam watches, a move by hand marks the map away, and the 
   assert.match(app, /panelOpen: \(\) => document\.querySelector\(RIDE_PANEL_OPEN\) !== null/);
   assert.match(app, /onRiderMoved=\{\(\) => \(movedByHand\.current = true\)\}\s+followReset=\{followReset\}/);
   const map = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
-  assert.match(map, /const zoom = reset \? FOLLOW_ZOOM : following\.current \? map\.getZoom\(\) : Math\.max\(map\.getZoom\(\), FOLLOW_ZOOM\);/);
+  assert.match(map, /followZoom\(reset, following\.current, map\.getZoom\(\), FOLLOW_ZOOM\)/);
   assert.match(map, /map\.on\("movestart", moved\);/);
   // The panels the ride's screen opens all show as expanded toggles there or in the group bar.
   const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
@@ -112,4 +112,19 @@ test("wired: a ride or Roam watches, a move by hand marks the map away, and the 
   for (const open of ["ridersOpen", "alertOpen"]) assert.match(group, new RegExp(`aria-expanded=\\{${open}\\}`));
   assert.match(RIDE_PANEL_OPEN, /\.ride \[aria-expanded="true"\]/);
   assert.match(RIDE_PANEL_OPEN, /\.ride-group \[aria-expanded="true"\]/);
+});
+
+test("the follow camera's zoom: back to the ride's own after a reset, a pinch kept while following, closed in as it starts", () => {
+  // A pinch out to 13 while following, then the screen left alone: back to 16; a pinch in to 18 too.
+  assert.equal(followZoom(true, true, 13, 16), 16);
+  assert.equal(followZoom(true, false, 18, 16), 16);
+  // Following, no reset: the rider's pinch is kept.
+  assert.equal(followZoom(false, true, 13, 16), 13);
+  // Following starts (Where am I?): closed in to at least 16, a closer view kept.
+  assert.equal(followZoom(false, false, 12, 16), 16);
+  assert.equal(followZoom(false, false, 17.5, 16), 17.5);
+});
+
+test("the map's Help panel open counts as a panel", () => {
+  assert.match(RIDE_PANEL_OPEN, /\.maplibregl-ctrl-attrib\[open\]/);
 });
