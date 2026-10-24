@@ -57,6 +57,10 @@ MAX_POINTS = 12
 PLACES = 2
 # Seconds an answer is kept for a cell (the 2-minute rule).
 KEEP_S = 120.0
+# After a service fails to answer, it is not asked again for this long: an outage would otherwise
+# hold every check for a timeout and re-ask every point (each one counts against Open-Meteo's
+# daily calls).
+DOWN_S = 60.0
 # The 15-minute steps asked for: 4 hours. Rain after that is not looked for.
 RAIN_STEPS = 16
 STEP_S = 15 * 60
@@ -285,6 +289,7 @@ class Weather:
         self._lock = threading.Lock()
         self._alerts: dict[tuple[float, float], tuple[float, list[dict]]] = {}
         self._rain: dict[tuple[float, float], tuple[float, list[tuple[float, float]]]] = {}
+        self._down_until = {"alerts": 0.0, "rain": 0.0}
 
     def _sweep(self) -> None:
         with self._lock:
@@ -333,10 +338,12 @@ class Weather:
             self._prune(now)
             alerts_kept = {c: self._alerts[c][1] for c in unique if c in self._alerts}
             rain_kept = {c: self._rain[c][1] for c in unique if c in self._rain}
+            alerts_down = now < self._down_until["alerts"]
+            rain_down = now < self._down_until["rain"]
         unchecked: list[str] = []
 
-        missing = [c for c in unique if c not in alerts_kept]
-        need = [c for c in unique if c not in rain_kept]
+        missing = [] if alerts_down else [c for c in unique if c not in alerts_kept]
+        need = [] if rain_down else [c for c in unique if c not in rain_kept]
         alerts_failed = 0
         answers: list[list[dict] | None] = []
         rain_steps: list[list[tuple[float, float]]] | None = None
@@ -347,15 +354,23 @@ class Weather:
                 rain_job = pool.submit(self._try_rain, need) if need else None
                 answers = list(pool.map(self._try_alerts, missing))
                 rain_steps = rain_job.result() if rain_job else None
+            if need and rain_steps is None:
+                with self._lock:
+                    self._down_until["rain"] = now + DOWN_S
             for c, found in zip(missing, answers, strict=True):
                 if found is None:
                     alerts_failed += 1
+                    with self._lock:
+                        self._down_until["alerts"] = now + DOWN_S
                     continue
                 alerts_kept[c] = found
                 with self._lock:
                     self._alerts[c] = (now, found)
                     self._schedule()
-        if alerts_failed == len(unique):
+        if alerts_down and len(alerts_kept) < len(unique):
+            # Some of the route was not asked: said unchecked, as rain is.
+            unchecked.append("alerts")
+        elif alerts_failed == len(unique):
             unchecked.append("alerts")
         if rain_steps is not None:
             for c, steps in zip(need, rain_steps, strict=True):

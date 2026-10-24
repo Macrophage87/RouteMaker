@@ -118,8 +118,10 @@ SECTIONS: list[tuple[str, str]] = [
         + _p(
             "Your positions stay on your device. One is sent to the server only as part of "
             "something you use: planning or re-planning a route from where you are, naming "
-            "a place, finding the nearest water, restroom or bikeshare docks, finding which 311 "
-            "website covers a problem you log, and Group or Mass Ride sharing. The server answers "
+            "a place, finding the nearest water, restroom, food, repair or bikeshare docks, "
+            "a Detour search, checking the weather along your route or, in Roam, where you are "
+            "(every 5 minutes), finding which 311 website covers a problem you log, and Group or "
+            "Mass Ride sharing. The server answers "
             "and does not store it, except places you choose to save or share and ride sharing "
             "(below)."
         )

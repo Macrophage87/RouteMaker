@@ -6874,8 +6874,8 @@ details.fold > summary .icon {
   gap: 8px;
   margin-top: 12px;
 }
-/* Start ride on a computer (StartOnComputerDialog): the closure warning's frame, in the plain border. */
-.start-computer-dialog {
+/* Ask dialogs (Start ride on a computer, stop name, Resume, Already done?): the closure warning's frame, in the plain border. */
+.ask-dialog {
   max-width: min(440px, calc(100vw - 32px));
   background: var(--bg);
   color: var(--text);
@@ -6884,10 +6884,10 @@ details.fold > summary .icon {
   box-shadow: var(--shadow);
   padding: 16px;
 }
-.start-computer-dialog::backdrop {
+.ask-dialog::backdrop {
   background: rgba(0, 0, 0, 0.45);
 }
-.start-computer-dialog h2 {
+.ask-dialog h2 {
   margin-top: 0;
 }
 

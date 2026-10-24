@@ -418,7 +418,7 @@ export function RoamMode({
             </ol>
           )}
           {roads !== null && heading === null && <p className="cue-more">Start riding to see the roads ahead.</p>}
-          <WeatherLines report={weatherShown} riding now={Date.now()} onDismiss={() => setWeatherDismissed((d) => dismissWeather(weatherShown, d))} />
+          <WeatherLines report={weatherShown} riding now={Date.now()} onDismiss={() => { setWeatherDismissed((d) => dismissWeather(weatherShown, d)); headingRef.current?.focus({ preventScroll: true }); }} />
         </div>
       </div>
       <div className="ride-middle">

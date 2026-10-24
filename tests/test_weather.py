@@ -218,10 +218,56 @@ def test_an_alert_over_before_the_ride_or_after_it_is_left_out() -> None:
     assert weather.in_ride({"onset": "2026-10-24T14:30:00-04:00", "ends": None}, moment, 3600)
 
 
+def test_the_check_leaves_out_alerts_outside_the_ride() -> None:
+    # Leaving at 6 PM, at the second point at 8 PM, which is the ride's end.
+    fake = Fake(
+        alerts={
+            "38.90,-77.00": [
+                alert("Heat Advisory", "Moderate", "now"),
+                alert("Flash Flood Watch", ident="later", onset="2026-10-24T21:00:00-04:00"),
+            ],
+            "39.29,-76.61": [
+                alert(
+                    "Severe Thunderstorm Warning", ident="ended", ends="2026-10-24T19:00:00-04:00"
+                )
+            ],
+        },
+        rain=rain_doc([[0.0] * 8, [0.0] * 8]),
+    )
+    w = weather.Weather(fetch=fake, clock=lambda: NOW)
+    out = w.check([(-77.0, 38.9, 0), (-76.61, 39.29, 2 * 3600)])
+    assert [a["id"] for a in out["alerts"]] == ["now"]
+
+
 def test_a_service_down_is_said_not_failed() -> None:
     w = weather.Weather(fetch=Fake(fail=("alerts", "rain")), clock=lambda: NOW)
     out = w.check([(-77.0, 38.9, 0)])
     assert out == {"alerts": [], "rain": None, "unchecked": ["alerts", "rain"]}
+
+
+def test_a_service_down_is_not_asked_again_for_a_minute() -> None:
+    clock = [NOW]
+    fake = Fake(fail=("alerts", "rain"))
+    w = weather.Weather(fetch=fake, clock=lambda: clock[0])
+    w.check([(-77.0, 38.9, 0)])
+    asked = len(fake.asked)
+    # Inside the minute: neither service is asked, and both are said unchecked.
+    clock[0] += weather.DOWN_S - 1
+    out = w.check([(-77.0, 38.9, 0), (-76.6, 39.3, 600)])
+    assert len(fake.asked) == asked
+    assert out["unchecked"] == ["alerts", "rain"]
+    # A cell kept from before the outage does not make the rest of a new route checked.
+    w._alerts[weather.cell(-77.0, 38.9)] = (clock[0], [])
+    out = w.check([(-77.0, 38.9, 0), (-76.6, 39.3, 600)])
+    assert "alerts" in out["unchecked"] and len(fake.asked) == asked
+    w._alerts.clear()
+    # Back up after the minute: asked again.
+    fake.fail.clear()
+    fake.rain = rain_doc([[0.0] * 8])
+    clock[0] += 1
+    out = w.check([(-77.0, 38.9, 0)])
+    assert len(fake.asked) == asked + 2
+    assert out["unchecked"] == []
 
 
 @pytest.mark.parametrize(

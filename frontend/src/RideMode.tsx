@@ -2600,7 +2600,7 @@ export function RideMode({
             <div className="ride-notes">
               {gps && ride.fix && <p className="hint">{gps}</p>}
               {corridorText && <p className="hint ride-corridor">{corridorText}</p>}
-              {weatherShown && <WeatherLines report={weatherShown} riding now={Date.now()} onDismiss={() => setWeatherDismissed((d) => dismissWeather(weatherShown, d))} />}
+              {weatherShown && <WeatherLines report={weatherShown} riding now={Date.now()} onDismiss={() => { setWeatherDismissed((d) => dismissWeather(weatherShown, d)); headingRef.current?.focus({ preventScroll: true }); }} />}
               {wakeNote && <p className="hint">{wakeNote}</p>}
               {ride.off && replanNote && <p className="hint">{replanNote}</p>}
               {paused && (
