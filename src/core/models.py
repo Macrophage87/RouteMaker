@@ -2052,11 +2052,12 @@ class GarminLink(models.Model):
     """A rider's Garmin Connect connection (core.garmin; the owner, 2026-10-23, "Keep it,
     encrypted"): what Send to Garmin uses to add a course to their Garmin Connect account.
 
-    The one third-party credential the deployment keeps, so narrow: one per account, made only by
-    the rider in Settings, for the Courses API alone. Both tokens are AES-GCM encrypted under a key
-    derived from KEY_ENCRYPTION_KEY and bound to this account (`garmin.seal`), and the table is
-    left out of the nightly backup. Garmin's user id is kept to match Garmin's deregistration
-    notice; it is not unique, since one Garmin account may be connected to two RouteMaker accounts.
+    One of the two third-party credentials the deployment keeps (WahooLink the other), so narrow:
+    one per account, made only by the rider in Settings, for the Courses API alone. Both tokens are
+    AES-GCM encrypted under a key derived from KEY_ENCRYPTION_KEY and bound to this account
+    (`garmin.seal`), and the table is left out of the nightly backup. Garmin's user id is kept to
+    match Garmin's deregistration notice; it is not unique, since one Garmin account may be
+    connected to two RouteMaker accounts.
 
     `courses` maps a saved route's id (as text) to the Garmin course it was sent as, so sending
     that route again updates the course in place instead of adding another (core.garmin_courses).

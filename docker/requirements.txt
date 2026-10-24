@@ -34,6 +34,6 @@ defusedxml==0.7.1
 # `pipeline.retention`, so `pipeline` is an importable package in that image and
 # an import that reaches `pipeline.extract` must not die on a missing module.
 osmium==4.3.1
-# core.garmin encrypts riders' Garmin tokens with AES-GCM (the one kept third-party
-# credential). Ships as a binary wheel, so the image build compiles nothing.
+# core.garmin and core.wahoo encrypt riders' Garmin and Wahoo tokens with AES-GCM (the kept
+# third-party credentials). Ships as a binary wheel, so the image build compiles nothing.
 cryptography==46.0.3

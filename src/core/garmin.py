@@ -6,7 +6,8 @@ The protocol, and no views: the OAuth 2.0 PKCE sign-in Garmin's developer progra
 deregistration call, and the encryption the tokens are kept under. `core.garmin_views` is the half
 that touches requests; `core.models.GarminLink` is the row.
 
-This is the deployment's one kept third-party credential, so it is narrow on purpose:
+This is one of the deployment's two kept third-party credentials (core.wahoo is the other), so it
+is narrow on purpose:
 
 - Courses only. The app is registered with Garmin for the Courses API alone, so a token reads no
   activity, health or other data; this module calls nothing that would.
