@@ -296,7 +296,7 @@ def test_a_last_resort_sidewalk_is_rated_lts_4():
     assert ratings[2].rule == sw.LAST_RESORT_RULE
 
 
-# Glen Haven Park, Silver Spring (the owner, 2026-10-23: "Some paths that have short sidewalk
+# Glen Haven Park, Silver Spring (the owner reported: "Some paths that have short sidewalk
 # connections aren't available for routing"): the park's paved path meets the streets beside
 # it only through worn connectors, `highway=path` + `informal=yes`, 11 to 20 m long. In metres:
 # the park path runs east along y=0; Glenhaven Drive ends 20 m west of its west end, and

@@ -299,7 +299,7 @@ def add_sidewalk_rides(result: TrailClosures, ways: Iterable[Way]) -> None:
     ways = list(ways)
     # An informal connector closed only for being informal, by the trail rules
     # (`trailaccess.INFORMAL`) or by upstream (a footway with no bicycle tag): `links` may
-    # open it, walked (the owner, 2026-10-23, Glen Haven Park). One the rules leave open
+    # open it, walked (Glen Haven Park, as the owner reported). One the rules leave open
     # (on a national bicycle route) is ridden already and left alone.
     walkable = {
         way.osm_id

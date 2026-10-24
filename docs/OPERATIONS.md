@@ -6095,7 +6095,7 @@ from LTS 1 to 3 or 4.
 **Short informal connectors (v0.12.0, with the next map update).** A worn path or footway
 (`informal=yes`, no bicycle tag, the whole way within 160 ft (50 m)) that would make a
 link as above, and that nothing but its informality closes, is walked, not ridden (the
-owner, 2026-10-23, after Glen Haven Park's paved path in Silver Spring was
+owner reported it after Glen Haven Park's paved path in Silver Spring was
 reachable only from Windham Lane because its 36 to 64 ft (11 to 20 m) links to Glenhaven
 Drive, Francis Drive and Huntley Avenue are all mapped `informal=yes`): its `informal`
 closure comes off and it gets `rm:walk_link`, `bicycle=dismount`, as a station's footway

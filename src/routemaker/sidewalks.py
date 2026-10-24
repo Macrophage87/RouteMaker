@@ -43,8 +43,8 @@ count them as the router prices them, not as a quiet trail.
 - An informal connector (`is_informal_connector`, `informal=yes`, no bicycle tag) is a
   link only where the whole way is a short hop (`INFORMAL_WAY_MAX_M`), and it is walked,
   not ridden: the pipeline drops its `informal` closure and opens it as walk your bike
-  (`pipeline.trail_closures.add_sidewalk_rides`). The owner, riding past Glen Haven Park
-  in Silver Spring on 2026-10-23: "Some paths that have short sidewalk connections aren't
+  (`pipeline.trail_closures.add_sidewalk_rides`). The owner reported, of Glen Haven Park
+  in Silver Spring: "Some paths that have short sidewalk connections aren't
   available for routing". The park's paved path (OSM 597953361, `bicycle=yes`) meets
   Glenhaven Drive, Francis Drive and Huntley Avenue only through worn connectors of 36 to
   64 ft (11 to 20 m), every one `highway=path` + `informal=yes`, which the trail rules
