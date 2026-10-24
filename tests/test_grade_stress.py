@@ -119,7 +119,7 @@ def analysed(
     """The real `refine.analyse` of a route of (metres, tier) stretches on a steady grade,
     the router and the traces stubbed. Without `climb_time` the climb's own price (its time
     and steepness, `Analysis.hill_m`, in place of the router's charge) is left out, so these
-    tests read the hill factor alone; test_route_dials.py price
+    tests read the hill factor alone; test_route_dials.py prices
     the climb."""
     pieces = [SimpleNamespace(metres=m) for m, _tier in tiers]
     classes = [routing.PieceClass(tier, "none") for _m, tier in tiers]

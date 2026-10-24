@@ -271,7 +271,8 @@ def test_alerts_last_10_minutes_or_until_the_sender_clears_them(clock) -> None:
     assert rp.read(RIDE, THEM, now=clock)["alerts"] == []
 
 
-def test_a_directory_not_on_a_tmpfs_is_never_used(tmp_path, settings) -> None:
+def test_a_directory_not_on_a_tmpfs_is_never_used(tmp_path, settings, monkeypatch) -> None:
+    monkeypatch.setattr(rp, "_start_sweeper", lambda _store: None)
     settings.RIDE_PRESENCE_DIR = str(tmp_path)
     rp._store = None
     store = rp.store()
