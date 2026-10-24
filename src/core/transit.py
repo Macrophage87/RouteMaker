@@ -471,7 +471,8 @@ def station_name(name: str, system: str) -> str:
         name = name[: cut + len(system) + 1]
     words = name.split()
     plain = [w for w in words if w != system]
-    if not plain or any(w != w.upper() for w in plain):
+    # Only a name in MARC's form, ending in its system's name, all in capitals.
+    if words[-1:] != [system] or not plain or any(w != w.upper() for w in plain):
         return name
     return " ".join(
         w if w == system else _SMALL_WORDS.get(w, w if len(w) <= 3 else w.capitalize())
@@ -2098,9 +2099,10 @@ def closed_stations(schedule: Schedule, moment: Moment) -> list[Closed]:
 # transit time is (`SCHEDULED`); Metro on its typical timetable where no WMATA GTFS is installed.
 
 STATION_NEAR_M = 400.0  # a stop this close to the map's station is at it (railClosures' MATCH_M)
-# A system's stops this close to its nearest one are the same station's platforms: MDOT MTA's
-# MARC feed lists each station once per direction ("PENN STATION MARC nb" and "... sb", 6 m
-# apart) with no parent station, and the card needs both to say each way's next train.
+# A system's stops of the nearest one's name this close to it are one station's platforms: MDOT
+# MTA's MARC feed lists each station once per direction ("PENN STATION MARC nb" and "... sb",
+# 6 m apart, both "Penn Station MARC" by `station_name`) with no parent station, and the card
+# needs both to say each way's next train.
 PLATFORM_M = 200.0
 FREQUENT_MODES = (METRO, LIGHT_RAIL, SUBWAY)
 EVERY_SEEN_MIN = 60  # a frequent line's interval is read from its trains within this
@@ -2195,7 +2197,9 @@ def station_times(schedule: Schedule, point, when: datetime) -> list[LineTime]:
         platforms = [
             s
             for s in nearby
-            if s.system == system_index and _distance(s.point, stop.point) <= PLATFORM_M
+            if s.system == system_index
+            and s.name == stop.name
+            and _distance(s.point, stop.point) <= PLATFORM_M
         ]
         leaving = sorted(
             (p_index, pos)

@@ -898,6 +898,9 @@ def test_a_rail_stops_name_is_said_as_a_rider_says_it() -> None:
     assert transit.station_name("HARPERS FERRY W VA MARC wb", "MARC") == "Harpers Ferry W VA MARC"
     assert transit.station_name("Baltimore Penn Station", "MARC") == "Baltimore Penn Station"
     assert transit.station_name("Union Station VRE", "VRE") == "Union Station VRE"
+    assert transit.station_name("CROMWELL STATION/GLEN BURNIE", "Light RailLink") == (
+        "CROMWELL STATION/GLEN BURNIE"
+    )
 
 
 def test_a_station_says_plainly_when_no_more_trains_run_today(schedule) -> None:
