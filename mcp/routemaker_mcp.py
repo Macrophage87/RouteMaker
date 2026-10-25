@@ -1137,6 +1137,263 @@ def via_spurs(plan: Plan) -> list[dict]:
     return out
 
 
+# --- Interval training: where an effort can run unbroken ------------------------------------
+#
+# The owner, 2026-10-25: "Are there any good routes for doing sets of 5 minutes on, 3
+# minutes off, in repeat 5 times. We'd need to find places with limited needs to turn, go
+# downhill, or stop during the on sets." An effort is broken by a stop or signal, a busy road
+# to cross without one, a sharp turn, a descent or an LTS 4 road; recovery can be anywhere.
+
+INTERVAL_PAD_MI = 0.05  # slowing before, and getting going after, a stop or a turn
+DESCENT_PCT = -2.0  # a grade this steep downhill breaks an effort
+DESCENT_MIN_M = 150.0  # held this far (one steep sample is noise)
+STOP_CONTROLS = ("signal", "stop", "all_stop")
+SHARP_TURNS = ("left", "right")
+MAX_LAPS = 10
+
+
+def _breaks(answer: dict) -> tuple[list[tuple[float, float, str]], dict]:
+    """The spans (from_mi, to_mi, why) an effort cannot run through, and how many of each."""
+    scale = _traced_scale(answer) / METRES_PER_MILE
+    distance_mi = (answer.get("distance_m") or 0.0) / METRES_PER_MILE
+    spans: list[tuple[float, float, str]] = []
+    counts: dict[str, int] = {}
+
+    def point(mile: float, why: str) -> None:
+        spans.append((mile - INTERVAL_PAD_MI, mile + INTERVAL_PAD_MI, why))
+        counts[why] = counts.get(why, 0) + 1
+
+    events = answer.get("junctions_debug")
+    if events is None:  # only the flagged ones: a quiet stop sign goes unseen
+        events = answer.get("intersections") or []
+    for event in events:
+        control, tier = event.get("control"), event.get("crossed_tier")
+        if control in STOP_CONTROLS:
+            point(event.get("m", 0) * scale, "signal" if control == "signal" else "stop sign")
+        elif control == "none" and tier is not None and tier >= 3:
+            point(event.get("m", 0) * scale, "busy road to cross")
+    for entry in answer.get("description") or []:
+        turn = entry.get("turn") or {}
+        if entry.get("kind") == "stretch" and turn.get("movement") in SHARP_TURNS:
+            point(entry["from_mi"], "sharp turn")
+        if entry.get("kind") == "stretch" and (entry.get("tier") or 0) >= 4:
+            spans.append((entry["from_mi"], entry["to_mi"], "LTS 4 road"))
+            counts["LTS 4 road"] = counts.get("LTS 4 road", 0) + 1
+    profile = answer.get("profile") or {}
+    run = None
+    for m, grade in zip(profile.get("m") or [], profile.get("grade_pct") or [], strict=False):
+        if grade is not None and grade <= DESCENT_PCT:
+            run = run or [m, m]
+            run[1] = m
+            continue
+        if run and run[1] - run[0] >= DESCENT_MIN_M:
+            spans.append((run[0] * scale, run[1] * scale, "descent"))
+            counts["descent"] = counts.get("descent", 0) + 1
+        run = None
+    if run and run[1] - run[0] >= DESCENT_MIN_M:
+        spans.append((run[0] * scale, run[1] * scale, "descent"))
+        counts["descent"] = counts.get("descent", 0) + 1
+    clipped = [(max(0.0, a), min(distance_mi, b), why) for a, b, why in spans if b > 0]
+    return sorted(clipped), counts
+
+
+def _clear(spans: list[tuple[float, float, str]], distance_mi: float) -> list[tuple[float, float]]:
+    """The stretches between the breaks."""
+    out, at = [], 0.0
+    for a, b, _ in spans:
+        if a > at:
+            out.append((at, a))
+        at = max(at, b)
+    if distance_mi > at:
+        out.append((at, distance_mi))
+    return out
+
+
+# Speed on a climb at the effort's pace: pace / (1 + CLIMB_SLOWING * grade%), so 18 mph on
+# the flat is about 11 mph at 5% (a rough fit; only the minutes an effort takes need it).
+CLIMB_SLOWING = 0.12
+# Recovery rides slower than the effort: it covers this share of the effort's ground a minute.
+RECOVERY_SHARE = 0.7
+# A route whose ends are this close is ridden again from the start (a loop, an out-and-back).
+SAME_END_MI = 0.1
+
+
+def _minutes_along(answer: dict, pace: float):
+    """minutes(mile): the effort's minutes from the start to `mile`, slower up the climbs."""
+    scale = _traced_scale(answer) / METRES_PER_MILE
+    profile = answer.get("profile") or {}
+    marks, total, last_mi = [(0.0, 0.0)], 0.0, 0.0
+    for m, grade in zip(profile.get("m") or [], profile.get("grade_pct") or [], strict=False):
+        mile = m * scale
+        if mile <= last_mi:
+            continue
+        speed = pace / (1 + CLIMB_SLOWING * grade) if grade and grade > 0 else pace
+        total += (mile - last_mi) / speed * 60
+        marks.append((mile, total))
+        last_mi = mile
+    miles = [m for m, _ in marks]
+
+    def minutes(mile: float) -> float:
+        if mile >= last_mi:
+            return total + (mile - last_mi) / pace * 60
+        k = max(1, bisect.bisect_left(miles, mile))
+        (m0, t0), (m1, t1) = marks[k - 1], marks[k]
+        return t0 + (t1 - t0) * ((mile - m0) / (m1 - m0) if m1 > m0 else 0.0)
+
+    return minutes
+
+
+def _mile_after(minutes, start: float, wanted: float, end: float) -> float | None:
+    """The mile `wanted` minutes on from `start`, or None past `end`."""
+    goal = minutes(start) + wanted
+    if minutes(end) < goal:
+        return None
+    lo, hi = start, end
+    for _ in range(40):
+        mid = (lo + hi) / 2
+        lo, hi = (mid, hi) if minutes(mid) < goal else (lo, mid)
+    return hi
+
+
+def _gain_ft(answer: dict, a: float, b: float) -> float:
+    """The climbing, feet, between miles `a` and `b` (the profile's rises, summed)."""
+    scale = _traced_scale(answer) / METRES_PER_MILE
+    profile = answer.get("profile") or {}
+    gain, last = 0.0, None
+    for m, height in zip(profile.get("m") or [], profile.get("elevation_m") or [], strict=False):
+        if height is None or not a <= m * scale <= b:
+            continue
+        if last is not None and height > last:
+            gain += height - last
+        last = height
+    return gain * FEET_PER_METRE
+
+
+def interval_check(answer: dict, ask: dict, roads_at=None) -> dict:
+    """Whether the route holds the asked sets (`ask`: on_minutes, off_minutes, sets,
+    pace_mph on the flat), riding it again from the start where it ends where it began (a
+    loop, an out-and-back: efforts up the climb, recovery down it): where each effort goes,
+    the longest clear stretches, and what breaks the rest."""
+    on_min = float(ask.get("on_minutes") or 5)
+    off_min = float(ask.get("off_minutes") or 3)
+    sets = int(ask.get("sets") or 5)
+    pace = float(ask.get("pace_mph") or 18)
+    distance_mi = (answer.get("distance_m") or 0.0) / METRES_PER_MILE
+    minutes = _minutes_along(answer, pace)
+    spans, counts = _breaks(answer)
+    clear = [c for c in _clear(spans, distance_mi) if c[1] - c[0] > 0.01]
+    line = (answer.get("geometry") or {}).get("coordinates") or []
+    again = bool(answer.get("loop")) or (
+        len(line) > 1 and haversine_mi(tuple(line[0][:2]), tuple(line[-1][:2])) <= SAME_END_MI
+    )
+    efforts: list[dict] = []
+    at, lap = 0.0, 0
+    while len(efforts) < sets and lap < (MAX_LAPS if again else 1):
+        fit = None
+        for a, b in clear:
+            begin = max(a, at)
+            if begin >= b:
+                continue
+            finish = _mile_after(minutes, begin, on_min, b)
+            if finish is not None:
+                fit = (begin, finish)
+                break
+        if fit is None:
+            lap, at = lap + 1, 0.0
+            continue
+        efforts.append(
+            {
+                "set": len(efforts) + 1,
+                "lap": lap + 1,
+                "from_mi": round(fit[0], 2),
+                "to_mi": round(fit[1], 2),
+            }
+        )
+        # Recovery: off_min at the slower pace, past the lap's end onto the next lap.
+        at = fit[1] + pace * RECOVERY_SHARE * off_min / 60
+        if again and at >= distance_mi:
+            lap, at = lap + 1, at - distance_mi
+    longest = sorted(clear, key=lambda c: c[1] - c[0], reverse=True)[:5]
+    # Repeats (the owner, 2026-10-25: "ride up the hill for a workout, ride down it for a
+    # rest"): one clear stretch, ridden this way for each effort and back the other way to
+    # recover, so only this direction needs to be clear. Each one long enough, the most
+    # climbing first.
+    repeats = []
+    for a, b in clear:
+        finish = _mile_after(minutes, a, on_min, b)
+        if finish is None:
+            continue
+        gain = _gain_ft(answer, a, finish)
+        length_m = (finish - a) * METRES_PER_MILE
+        repeats.append(
+            {
+                "from_mi": round(a, 2),
+                "to_mi": round(finish, 2),
+                "climb_ft": round(gain),
+                "avg_grade_pct": round(gain / FEET_PER_METRE / length_m * 100, 1),
+                **({"roads": roads_at(a, finish)} if roads_at else {}),
+            }
+        )
+    repeats.sort(key=lambda r: -r["climb_ft"])
+    out = {
+        "asked": f"{sets} x {on_min:g} min on, {off_min:g} min off, {pace:g} mph on the flat",
+        "sets_fit": len(efforts),
+        "efforts": efforts,
+        "repeats": repeats[:3],
+        "longest_clear": [
+            {
+                "from_mi": round(a, 2),
+                "to_mi": round(b, 2),
+                "effort_minutes": round(minutes(b) - minutes(a), 1),
+                **({"roads": roads_at(a, b)} if roads_at else {}),
+            }
+            for a, b in sorted(longest)
+        ],
+        "breaks": counts,
+        "ridden_again_from_start": again,
+    }
+    if again and efforts:
+        out["laps"] = efforts[-1]["lap"]
+    if answer.get("junctions_debug") is None:
+        out["note"] = "only flagged junctions were read: a quiet stop sign may be missing"
+    return out
+
+
+def _intervals_asked(value) -> dict | None:
+    """The interval set asked for, checked, or None."""
+    if not value:
+        return None
+    if not isinstance(value, dict):
+        raise ToolError("intervals is {on_minutes, off_minutes, sets, pace_mph}")
+    asked = {}
+    for key, low, high in (
+        ("on_minutes", 0.5, 60),
+        ("off_minutes", 0, 60),
+        ("sets", 1, 30),
+        ("pace_mph", 4, 35),
+    ):
+        if value.get(key) is not None:
+            number = float(value[key])
+            if not low <= number <= high:
+                raise ToolError(f"intervals.{key} is {low:g} to {high:g}")
+            asked[key] = number
+    return asked or {"on_minutes": 5}
+
+
+def _roads_between(answer: dict):
+    stretches = _stretches(answer)
+
+    def roads_at(a: float, b: float) -> list[str]:
+        names = [
+            _street(e)
+            for e in stretches
+            if min(e["to_mi"], b) - max(e["from_mi"], a) >= 0.1 and _street(e) not in NAMELESS
+        ]
+        return list(dict.fromkeys(names))[:4]
+
+    return roads_at
+
+
 def route_details(plan: Plan) -> dict:
     """What the route rides, for the answer: its roads, busy stretches, very-high-stress
     junctions, scenic roads and small detours."""
@@ -1190,6 +1447,7 @@ class Draft:
     limit: float | None
     name: str
     trim_spurs: bool = True
+    intervals: dict | None = None
 
 
 @dataclass
@@ -1492,6 +1750,30 @@ RIDE_OPTIONS = {
     },
 }
 
+INTERVALS = {
+    "type": "object",
+    "description": (
+        "Check the route for interval training: where an effort of on_minutes can run"
+        " without a stop sign, signal, busy road to cross, sharp turn, descent or LTS 4"
+        " road (climbs are fine and slow the effort's pace). The answer's `intervals` says"
+        " how many sets fit riding the route through (again from the start where it ends"
+        " where it began), the `repeats`: clear stretches to ride up for each effort and"
+        " back down to recover (one direction only needs to be clear), the longest clear"
+        " stretches and what breaks the rest. For a repeat, plan just the stretch, in the"
+        " effort's direction."
+    ),
+    "properties": {
+        "on_minutes": {"type": "number", "default": 5},
+        "off_minutes": {"type": "number", "default": 3},
+        "sets": {"type": "integer", "default": 5},
+        "pace_mph": {
+            "type": "number",
+            "default": 18,
+            "description": "The effort's pace on the flat; climbs are slower.",
+        },
+    },
+}
+
 TRIM_SPURS = {
     "type": "boolean",
     "default": True,
@@ -1628,6 +1910,7 @@ TOOLS = [
                 },
                 "fix_metro_rounds": {"type": "integer", "minimum": 0, "maximum": 4, "default": 0},
                 "trim_spurs": TRIM_SPURS,
+                "intervals": INTERVALS,
                 **RIDE_OPTIONS,
             },
             "required": ["points"],
@@ -1760,6 +2043,7 @@ TOOLS = [
                 "loop": {"type": "boolean"},
                 "fix_metro_rounds": {"type": "integer", "minimum": 0, "maximum": 4},
                 "trim_spurs": TRIM_SPURS,
+                "intervals": INTERVALS,
                 **{
                     k: {kk: vv for kk, vv in v.items() if kk != "default"}
                     for k, v in RIDE_OPTIONS.items()
@@ -2190,9 +2474,10 @@ class Server:
         revised_from=None,
         taken: list[dict] | None = None,
         trim_spurs: bool = True,
+        intervals: dict | None = None,
     ) -> dict:
         """Keep the plan as a draft and describe it: nothing is saved or written."""
-        draft_id = self.drafts.put(Draft(plan, dict(options), limit, name, trim_spurs))
+        draft_id = self.drafts.put(Draft(plan, dict(options), limit, name, trim_spurs, intervals))
         dials = self._dials(plan)
         fragment = plan_fragment(plan.points, plan.vias, plan.preset, dials, plan.sent)
         notes = list(notes)
@@ -2233,6 +2518,8 @@ class Server:
             out["points_taken_as"] = taken
         if revised_from:
             out["revised_from"] = revised_from
+        if intervals:
+            out["intervals"] = interval_check(plan.answer, intervals, _roads_between(plan.answer))
         if plan.check is not None:
             out["metro_check"] = plan.check
         if notes:
@@ -2515,6 +2802,12 @@ class Server:
                 limit = None
             else:
                 options.pop(key, None)
+        intervals = draft.intervals
+        if "intervals" in args:
+            intervals = _intervals_asked(args.get("intervals"))
+        options.pop("debug_junctions", None)
+        if intervals:
+            options["debug_junctions"] = True
         rounds = int(args.get("fix_metro_rounds") or 0)
         trim = bool(args.get("trim_spurs", draft.trim_spurs))
         revised, notes = self._plan_and_fix(
@@ -2529,6 +2822,7 @@ class Server:
             revised_from=draft_id,
             taken=taken,
             trim_spurs=trim,
+            intervals=intervals,
         )
 
     # plan_route
@@ -2539,11 +2833,22 @@ class Server:
         preset = args.get("preset") or "default"
         limit = args.get("max_miles_from_metro")
         options = self._options(args)
+        intervals = _intervals_asked(args.get("intervals"))
+        if intervals:
+            # Every junction, quiet stop signs too, for where an effort must stop.
+            options["debug_junctions"] = True
         rounds = int(args.get("fix_metro_rounds") or 0)
         trim = bool(args.get("trim_spurs", True))
         plan, notes = self._plan_and_fix(call, points, vias, preset, options, limit, rounds, trim)
         return self._draft(
-            plan, options, limit, notes, "RouteMaker route", taken=taken, trim_spurs=trim
+            plan,
+            options,
+            limit,
+            notes,
+            "RouteMaker route",
+            taken=taken,
+            trim_spurs=trim,
+            intervals=intervals,
         )
 
     # plan_metro_loop

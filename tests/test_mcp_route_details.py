@@ -385,3 +385,92 @@ def test_scenic_roads_near_asks_the_site_within_its_reach() -> None:
     )
     assert asked == [(LEWIS_ORCHARDS, 15.0, "rustic")]
     assert [r["road"] for r in out["roads"]] == ["Moore Road"]
+
+
+# --- Interval training ------------------------------------------------------------------------
+
+
+def _interval_answer(miles, events=(), grades=None, entries=None, loop=False):
+    """A straight east route `miles` long, with junction events and a profile every 0.1 mi."""
+    samples = [round(k * 0.1 * MI) for k in range(int(miles * 10) + 1)]
+    grades = grades or (lambda mile: 0.0)
+    heights, height = [], 100.0
+    for k, m in enumerate(samples):
+        if k:
+            height += grades(m / MI) / 100 * 0.1 * MI
+        heights.append(height)
+    answer = answer_of(entries or [stretch("Beach Drive", 0.0, miles, 1)])
+    answer["junctions_debug"] = [
+        {"m": round(mile * MI), "control": control, "crossed_tier": tier}
+        for mile, control, tier in events
+    ]
+    answer["profile"] = {
+        "m": samples,
+        "grade_pct": [grades(m / MI) for m in samples],
+        "elevation_m": heights,
+    }
+    end = at(0.0) if loop else at(miles)
+    answer["geometry"] = {"coordinates": [at(0.0), at(miles / 2, 0.5), end]}
+    return answer
+
+
+def test_efforts_go_where_nothing_breaks_them() -> None:
+    # 6 mi: a stop sign at 1.0, a signal at 4.0. At 18 mph an effort is 1.5 mi.
+    answer = _interval_answer(6.0, [(1.0, "stop", 2), (4.0, "signal", 3), (2.0, "cross_stop", 2)])
+    ask = {"on_minutes": 5, "off_minutes": 3, "sets": 5}
+    out = mcp.interval_check(answer, ask, mcp._roads_between(answer))
+    assert out["breaks"] == {"stop sign": 1, "signal": 1}
+    efforts = [(e["from_mi"], e["to_mi"]) for e in out["efforts"]]
+    assert efforts[0] == (pytest.approx(1.05, abs=0.01), pytest.approx(2.55, abs=0.01))
+    # The cross street's stop sign is theirs, not the rider's: the effort runs through it.
+    assert out["sets_fit"] == 2 and not out["ridden_again_from_start"]
+    assert out["longest_clear"][0]["roads"] == ["Beach Drive"]
+
+
+def test_a_loop_is_ridden_again_until_the_sets_fit() -> None:
+    answer = _interval_answer(3.3, loop=True)  # Hains Point: one long clear loop
+    out = mcp.interval_check(answer, {"on_minutes": 5, "off_minutes": 3, "sets": 5})
+    assert out["sets_fit"] == 5 and out["ridden_again_from_start"]
+    assert out["laps"] >= 3
+
+
+def test_descents_sharp_turns_and_lts_4_break_an_effort() -> None:
+    entries = [
+        stretch("Klingle Valley Trail", 0.0, 1.0, 1, "path"),
+        {**stretch("Porter Street", 1.0, 1.5, 4), "turn": {"movement": "left"}},
+        stretch("Quiet Street", 1.5, 3.0, 2),
+    ]
+    answer = _interval_answer(3.0, grades=lambda mile: -4.0 if mile > 2.0 else 0.0, entries=entries)
+    out = mcp.interval_check(answer, {"on_minutes": 5})
+    assert {"LTS 4 road", "sharp turn", "descent"} <= set(out["breaks"])
+    assert out["sets_fit"] == 0
+
+
+def test_a_climb_is_a_repeat_ridden_up_for_the_effort_and_down_to_recover() -> None:
+    # A 5% climb is slower: 5 minutes covers less than a mile, so a short hill holds it.
+    answer = _interval_answer(1.2, grades=lambda mile: 5.0)
+    out = mcp.interval_check(answer, {"on_minutes": 5, "off_minutes": 3, "sets": 5})
+    repeat = out["repeats"][0]
+    assert repeat["to_mi"] - repeat["from_mi"] < 1.0
+    assert repeat["avg_grade_pct"] == pytest.approx(5.0, abs=0.5) and repeat["climb_ft"] > 200
+    flat = mcp.interval_check(_interval_answer(1.2), {"on_minutes": 5})
+    assert flat["repeats"] == []
+
+
+def test_plan_route_reads_every_junction_for_intervals_and_a_revise_keeps_them() -> None:
+    places = _Places()
+    server = mcp.Server(lambda: places, [], out_dir=Path("."))
+    out = server.call(
+        "plan_route",
+        {"points": [[-77.4, 39.1], [-77.3, 39.1]], "intervals": {"on_minutes": 5, "sets": 5}},
+    )
+    assert places.routes[-1]["debug_junctions"] is True
+    assert out["intervals"]["asked"].startswith("5 x 5 min on")
+    revised = server.call("revise_route", {"draft_id": out["draft_id"], "stress": 90})
+    assert places.routes[-1]["debug_junctions"] is True and "intervals" in revised
+    plain = server.call("revise_route", {"draft_id": out["draft_id"], "intervals": None})
+    assert "debug_junctions" not in places.routes[-1] and "intervals" not in plain
+    with pytest.raises(mcp.ToolError, match="intervals.sets"):
+        server.call(
+            "plan_route", {"points": [[-77.4, 39.1], [-77.3, 39.1]], "intervals": {"sets": 99}}
+        )
