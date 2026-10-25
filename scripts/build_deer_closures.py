@@ -57,10 +57,11 @@ ROCK_CREEK_WAYS = {
 }
 
 # Montgomery Parks' park codes (the Park Units layer's PARK_CODE) for each area of
-# core.deer_closures.MOCO_PARKS.
+# routemaker.deer_closures.SHARPSHOOTING and FIREARMS_PARKS.
 MOCO_CODES = (
     "K01", "P55", "P56", "F06", "H02", "G08", "P35", "D57", "P37", "L07", "P39", "P40", "K08",
-    "P61", "B75", "G12", "K03", "S15", "S20", "L14", "G09", "G07", "S12", "S21", "G06",
+    "P61", "B75", "G12", "K03", "B43", "D88", "B55", "L05", "S15", "S20", "L14", "G09", "G07",
+    "S12", "S21", "G06",
 )  # fmt: skip
 PATHS = frozenset({"path", "footway", "cycleway", "bridleway", "track", "pedestrian"})
 TILE_DEG = 0.02

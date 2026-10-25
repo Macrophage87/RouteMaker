@@ -2131,7 +2131,10 @@ class ClosureNoticeOut(Schema):
     title: str
     text: str
     url: str | None
-    area: str = Field(description='An NPS park code ("rocr"), or "dc".')
+    area: str = Field(
+        description='An NPS park code ("rocr"), "dc", or a deer-management closure\'s area'
+        ' ("rocr-deer", "moco-G12").'
+    )
     area_name: str | None
     point: LonLat | None = Field(description="The park's marker; null for a District-wide notice.")
     category: str | None

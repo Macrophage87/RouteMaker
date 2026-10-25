@@ -75,7 +75,8 @@ ROCK_CREEK_HOURS = (time(18, 45), time(4, 0))
 
 SHARPSHOOTING_SEASON = (date(2027, 1, 15), date(2027, 3, 31))
 
-# area key: the park's name, as Montgomery Parks lists it. The keys are the geodata file's
+# area key: the park's name, as Montgomery Parks lists it (Northwest Golf Course is left out: its
+# cart paths are closed to bicycles all year, #351). The keys are the geodata file's
 # (`moco-` and the park's code in Montgomery Parks' Park Units layer).
 SHARPSHOOTING = {
     "moco-K01": "Agricultural History Farm Park",
@@ -90,6 +91,11 @@ SHARPSHOOTING = {
     "moco-L07": "Ovid Hazen Wells Recreational Park",
     "moco-P39": "Paint Branch Stream Valley Park Unit 5",
     "moco-P40": "Paint Branch Stream Valley Park Unit 6",
+    # "with attached neighborhood, local, and special parks"
+    "moco-B43": "Paint Branch Neighborhood Park",
+    "moco-D88": "Pilgrim Hill Local Park",
+    "moco-B55": "Tamarack Neighborhood Park",
+    "moco-L05": "Valley Mill Special Park",
     "moco-K08": "Red Door Store Historical Cultural Park",
     "moco-P61": "Sligo Creek Stream Valley Park Unit 5",
     "moco-B75": "Colt Terrace Neighborhood Park",
@@ -197,6 +203,25 @@ def windows(first: date, last: date) -> list[Window]:
                 for area in areas if isinstance(areas, tuple) else (areas,):
                     found.append(Window(area, MOCO, start, end))
     return found
+
+
+def first_each(notices: list[dc.Notice]) -> list[dc.Notice]:
+    """One notice an area: the earliest, so back-to-back hunt days are not said twice."""
+    kept: dict[str, dc.Notice] = {}
+    for n in sorted(notices, key=lambda n: n.start or datetime.min.replace(tzinfo=UTC)):
+        kept.setdefault(n.area, n)
+    return list(kept.values())
+
+
+def moments(notices) -> set[datetime]:
+    """When a deer notice starts or stops being in force for a ride now: a route cached
+    across one of these must be planned again (`core.route_cache`)."""
+    return {
+        m
+        for n in notices
+        if n.source in SOURCES and n.start is not None and n.end is not None
+        for m in (n.start - LEAD, n.end)
+    }
 
 
 def in_force(notice: dc.Notice, at: datetime) -> bool:
@@ -368,7 +393,9 @@ __all__ = [
     "SOURCES",
     "Window",
     "areas",
+    "first_each",
     "in_force",
+    "moments",
     "notice",
     "notices",
     "runs_along",

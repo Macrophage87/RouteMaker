@@ -190,21 +190,22 @@ def notices_along(
     along the roads or trails it closes."""
     from . import deer_closures
 
-    found = []
+    found, deer = [], []
     for notice in notices:
         area = area_of(notice.area)
         if area is None:
             continue
         if notice.source in deer_closures.SOURCES:
-            if deer_closures.in_force(notice, at) and deer_closures.runs_along(
-                notice.area, coordinates
-            ):
-                found.append(notice)
+            if deer_closures.in_force(notice, at):
+                deer.append(notice)
             continue
         if not notice_active(notice, at):
             continue
         if any(_in_boxes(c[0], c[1], area.boxes) for c in coordinates):
             found.append(notice)
+    found += [
+        n for n in deer_closures.first_each(deer) if deer_closures.runs_along(n.area, coordinates)
+    ]
     return sorted(found, key=lambda n: (n.area == DC_AREA, n.source, n.notice_id))
 
 

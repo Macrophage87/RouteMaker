@@ -169,3 +169,40 @@ def test_a_route_answer_carries_the_notice_on_its_map_and_in_its_description() -
         "description": [],
     }
     assert core_zones.with_work_zones(body, plan, now=noon)["work_zones"]["notices"] == []
+
+
+def test_the_last_night_and_the_night_the_clocks_change() -> None:
+    assert found(along(BEACH_DRIVE), local(2027, 3, 31, 23, 0))
+    assert found(along(BEACH_DRIVE), local(2027, 4, 1, 3, 30))
+    assert not found(along(BEACH_DRIVE), local(2027, 4, 1, 20, 0))
+    # Mar 14, 2027 springs forward at 2 am: the window still opens at 6:45 pm local.
+    [notice] = found(along(BEACH_DRIVE), local(2027, 3, 14, 19, 0))
+    assert notice.start == local(2027, 3, 14, 18, 45) and notice.end == local(2027, 3, 15, 4, 0)
+
+
+def test_sunday_nights_are_not_sharpshooting_nights() -> None:
+    assert found(along(SLIGO), local(2027, 1, 24, 21, 0)) == []  # a Sunday
+    assert found(along(SLIGO), local(2027, 1, 22, 21, 0))  # a Friday
+
+
+def test_back_to_back_hunt_days_are_said_once() -> None:
+    # 11:30 pm on Dec 8: the Dec 9 hunt's window is within its hour's lead.
+    assert len(found(along(LITTLE_BENNETT), local(2026, 12, 8, 23, 30))) == 1
+
+
+def test_the_route_cache_turns_over_when_a_notice_comes_in() -> None:
+    made = deer.notices(local(2026, 12, 1, 12, 0))
+    assert local(2026, 12, 1, 17, 45) in deer.moments(made)
+    assert local(2026, 12, 2, 4, 0) in deer.moments(made)
+
+
+def test_the_api_takes_the_new_sources() -> None:
+    from core import workzones as core_zones
+    from core.api import ClosureNoticeOut
+
+    at = local(2026, 12, 8, 13, 0)
+    for notice in (
+        *found(along(BEACH_DRIVE), local(2026, 12, 1, 20, 0)),
+        *found(along(LITTLE_BENNETT), at),
+    ):
+        ClosureNoticeOut(**core_zones.notice_row(notice, at, False))
