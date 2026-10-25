@@ -215,6 +215,7 @@ button.access-link {
 
 .panel-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-start;
   justify-content: space-between;
   gap: 8px;
@@ -228,11 +229,13 @@ button.access-link {
 }
 
 /* The heading with the version under it (lib/appVersion.ts): small and muted, and within the height of
-   the Go/Plan switch beside them, so the header grows no taller and fits a 320 px phone. */
+   the Go/Plan switch beside them. The name is never squeezed: where it, the switch and Hide planner do
+   not fit on one line (a phone with large text cut it to "RouteM", 2026-10-25), the switch and Hide
+   planner (.panel-actions) wrap to a second line under it. */
 .panel-title {
   display: flex;
   flex-direction: column;
-  min-width: 0;
+  flex: 0 0 auto;
 }
 
 .panel-header .app-version {
@@ -5198,7 +5201,13 @@ details.zoom-notes {
   align-items: center;
 }
 
-.panel-header .panel-mode {
+/* The switch and Hide planner as one unit, on the right; it wraps under the name as a whole. */
+.panel-actions {
+  display: flex;
+  flex: 0 1 auto;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
   margin-left: auto;
 }
 
