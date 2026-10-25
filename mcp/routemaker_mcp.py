@@ -3,9 +3,11 @@
 2026-10-18: "Make me a 100 mile route that goes around DC using low stress roads and doesn't stray
 more than 5 miles from a metro station"; "other users might use different models").
 
-A thin client of a RouteMaker site's own HTTP API: it plans with POST /api/route, finds places
-with GET /api/geocode, and saves to the owner's My routes with POST /api/keyed/routes and a
-save-only key from Settings. It never talks to the router directly, so every route it answers
+A thin client of a RouteMaker site's own HTTP API: it plans with POST /api/route and finds places
+with GET /api/geocode. On a rider's own computer it keeps a route as a GPX file; saving to My
+routes is the site's own connector's (core.connector, /mcp), which signs the rider in (the owner,
+2026-10-25, retiring the save-only key: "the old method with the random token, we should take it
+out"). It never talks to the router directly, so every route it answers
 is one the site would plan. Metro distances are read from the station file the map bundles
 (frontend/src/rail-data/metro-stations.geojson, DC Open Data, CC BY 4.0) and are straight-line.
 
@@ -15,8 +17,6 @@ both launch as a local server. See mcp/README.md.
 
 Configuration, all from the environment:
 - ROUTEMAKER_BASE_URL: the site, e.g. http://localhost for a local stack. Required.
-- ROUTEMAKER_SAVE_KEY: the save-only key from Settings > AI assistant key. Optional; without it
-  routes are planned and linked but not saved.
 - ROUTEMAKER_ROUTES_DIR: where GPX files are written. Default ~/RouteMaker-routes.
 - ROUTEMAKER_METRO_STATIONS: the station file. Default: the one in this checkout.
 """
@@ -267,7 +267,7 @@ def metro_check(line: list[list[float]], limit_mi: float, stations: list[Station
 
 
 class Api:
-    def __init__(self, base_url: str | None = None, save_key: str | None = None):
+    def __init__(self, base_url: str | None = None):
         base = (base_url or os.environ.get("ROUTEMAKER_BASE_URL") or "").strip().rstrip("/")
         if not base:
             raise ToolError(
@@ -277,7 +277,6 @@ class Api:
         if not re.match(r"^https?://", base):
             raise ToolError("ROUTEMAKER_BASE_URL must start with http:// or https://")
         self.base = base
-        self.save_key = save_key if save_key is not None else os.environ.get("ROUTEMAKER_SAVE_KEY")
         # A site behind a password (the beta's nginx gate): "user:password", sent on every request.
         basic = os.environ.get("ROUTEMAKER_BASIC_AUTH", "")
         self.basic = "Basic " + base64.b64encode(basic.encode()).decode() if ":" in basic else None
@@ -368,24 +367,6 @@ class Api:
             message = payload.get("error") if isinstance(payload, dict) else payload
             raise ToolError(f"the exact route was not kept ({status}): {message}")
         return body["id"]
-
-    def save(self, body: dict) -> dict:
-        if not self.save_key:
-            raise ToolError(
-                "no save key: create one in RouteMaker's Settings > AI assistant key and set it as"
-                " ROUTEMAKER_SAVE_KEY in the MCP server's config (mcp/README.md)."
-            )
-        status, payload, _ = self._request(
-            "POST",
-            "/api/keyed/routes",
-            body,
-            # Its own header: Authorization may be the site's password gate's.
-            headers={"X-RouteMaker-Key": self.save_key},
-        )
-        if status == 201 and isinstance(payload, dict):
-            return payload
-        message = payload.get("error") if isinstance(payload, dict) else payload
-        raise ToolError(f"the site did not save the route ({status}): {message}")
 
 
 # --- Points, links and files ----------------------------------------------------------------
@@ -1246,8 +1227,8 @@ TOOLS = [
     {
         "name": "save_route",
         "description": (
-            "Keep a draft once the rider has said to: save it to their My routes on the site"
-            " (needs the save key) under a name, and/or write it as a GPX file. Only on the"
+            "Keep a draft once the rider has said to, under a name: on the site's own connector,"
+            " in their My routes; on the rider's own computer, as a GPX file. Only on the"
             " rider's word."
         ),
         "inputSchema": {
@@ -1255,8 +1236,6 @@ TOOLS = [
             "properties": {
                 "draft_id": {"type": "string"},
                 "name": {"type": "string", "minLength": 1, "maxLength": 120},
-                "my_routes": {"type": "boolean", "default": True},
-                "gpx_file": {"type": "boolean", "default": False},
             },
             "required": ["draft_id", "name"],
         },
@@ -1280,7 +1259,117 @@ TOOLS = [
         },
         "annotations": {"readOnlyHint": True, "openWorldHint": False},
     },
+    {
+        "name": "draft_route_post",
+        "description": (
+            "Write a Featured routes post (a page at /routes/<slug> around one exact route) as a"
+            " DRAFT, for the site's admin to read and publish in the admin. Offered only to an"
+            " instance admin on the site's own connector. The route is a draft_id from"
+            " plan_route, open_link or revise_route, or a line to follow (an encoded polyline at"
+            " precision 6, as from a GPX file), planned here as the app plans an opened file."
+            " To revise it, send the same slug with replace: true (sections are replaced); a"
+            " post that has left draft is refused. Refused too if the route starts, ends or"
+            " stops in the admin's Home circle. Answers the draft page's link and its figures."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "minLength": 1, "maxLength": 120},
+                "slug": {
+                    "type": "string",
+                    "maxLength": 80,
+                    "description": "The page's address; made from the title when left out.",
+                },
+                "abstract": {"type": "string", "minLength": 1, "description": "About this ride."},
+                "audience": {"type": "string", "description": "Who it's for."},
+                "byline": {"type": "string", "maxLength": 60, "default": "RouteMaker"},
+                "season_label": {"type": "string", "maxLength": 40},
+                "season_start": {"type": "string", "description": 'Month and day, as "03-20".'},
+                "season_end": {"type": "string", "description": 'Month and day, as "04-15".'},
+                "sections": {
+                    "type": "array",
+                    "maxItems": 12,
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "heading": {"type": "string", "minLength": 1, "maxLength": 120},
+                            "body": {"type": "string"},
+                            "from_mile": {"type": "number", "minimum": 0},
+                            "to_mile": {"type": "number", "exclusiveMinimum": 0},
+                        },
+                        "required": ["heading"],
+                    },
+                    "description": (
+                        "Highlighted sections in order; with both miles (along the route) the"
+                        " page draws a small map of that stretch."
+                    ),
+                },
+                "replace": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Rewrite the draft already at this slug.",
+                },
+                "draft_id": {"type": "string"},
+                "follow": {
+                    "type": "object",
+                    "properties": {
+                        "polyline": {"type": "string", "minLength": 4},
+                        "preset": RIDE_OPTIONS["preset"],
+                        "exact": {
+                            "type": "boolean",
+                            "default": False,
+                            "description": "Follow the line as ridden, against one-way streets.",
+                        },
+                    },
+                    "required": ["polyline"],
+                },
+            },
+            "required": ["title", "abstract"],
+        },
+        "annotations": {"readOnlyHint": False, "destructiveHint": False, "openWorldHint": False},
+    },
 ]
+
+# Offered only where the site says the rider may write posts (`Server(posts=True)`).
+POST_TOOLS = {"draft_route_post"}
+POST_FIELDS = (
+    "title",
+    "slug",
+    "abstract",
+    "audience",
+    "byline",
+    "season_label",
+    "season_start",
+    "season_end",
+    "sections",
+    "replace",
+)
+
+
+def decode_polyline(encoded: str, precision: int = 6) -> list[list[float]]:
+    """An encoded polyline (Valhalla's, precision 6) as [[lon, lat], ...]."""
+    factor = 10**precision
+    points, index, lat, lon = [], 0, 0, 0
+    while index < len(encoded):
+        deltas = []
+        for _ in range(2):
+            shift = result = 0
+            while True:
+                if index >= len(encoded):
+                    raise ToolError("follow.polyline is cut short")
+                byte = ord(encoded[index]) - 63
+                index += 1
+                if not 0 <= byte < 64:
+                    raise ToolError("follow.polyline is not an encoded polyline")
+                result |= (byte & 0x1F) << shift
+                shift += 5
+                if byte < 0x20:
+                    break
+            deltas.append(~(result >> 1) if result & 1 else result >> 1)
+        lat += deltas[0]
+        lon += deltas[1]
+        points.append([lon / factor, lat / factor])
+    return points
 
 
 class Call:
@@ -1382,6 +1471,7 @@ class Server:
         drafts=None,
         files: bool = True,
         gpx_link=None,
+        posts: bool = False,
     ):
         self._api_factory = api_factory
         self._api: Api | None = None
@@ -1394,15 +1484,13 @@ class Server:
         self.files = files
         # On the site: function(draft_id, name) -> a download link for the draft's GPX.
         self.gpx_link = gpx_link
+        # Whether draft_route_post is offered: on the site's connector, for an instance admin.
+        self.posts = posts
 
     def tools(self) -> list[dict]:
-        """The tools, as tools/list gives them: without the GPX file where none can be written."""
-        if self.files:
-            return TOOLS
-        listed = json.loads(json.dumps(TOOLS))
-        for tool in listed:
-            tool["inputSchema"]["properties"].pop("gpx_file", None)
-        return listed
+        """The tools, as tools/list gives them: without the post tool unless posts may be
+        written."""
+        return [t for t in TOOLS if self.posts or t["name"] not in POST_TOOLS]
 
     @property
     def api(self) -> Api:
@@ -1601,40 +1689,24 @@ class Server:
         if not name:
             raise ToolError("give the route a name")
         plan = draft.plan
-        dials = self._dials(plan)
-        fragment = plan_fragment(plan.points, plan.vias, plan.preset, dials, plan.sent)
         out: dict = {"draft_id": args["draft_id"], "name": name}
         notes: list[str] = []
         call.check()
-        if args.get("gpx_file") and not self.files:
-            notes.append("no GPX file here: gpx_route gives a download link")
-        elif args.get("gpx_file"):
+        if self.files:
+            # On the rider's own computer: a GPX file. My routes is the site connector's, which
+            # signs the rider in.
             try:
                 out["gpx_file"] = str(write_gpx(name, plan.line, self.out_dir))
             except OSError as error:
-                notes.append(f"GPX not written: {error}")
-        if args.get("my_routes", True):
-            call.check()
-            saved = self.api.save(
-                {
-                    "name": name,
-                    "source": "plan",
-                    "line": [list(v[:2]) for v in plan.line],
-                    "distance_m": plan.answer["distance_m"],
-                    "inputs": {
-                        "hash": fragment,
-                        "points": [list(p) for p in plan.points],
-                        "preset": plan.preset,
-                        "dials": page_dials(dials, plan.sent),
-                    },
-                    "answer": {
-                        **plan.answer,
-                        "candidates": None,
-                        "avoid_alternate": None,
-                        "closure_through": None,
-                    },
-                }
+                raise ToolError(f"GPX not written: {error}") from None
+            notes.append(
+                "to keep it in My routes, open the link and press Save in the app, or use"
+                " RouteMaker's own connector (mcp/README.md)"
             )
+        else:
+            dials = self._dials(plan)
+            fragment = plan_fragment(plan.points, plan.vias, plan.preset, dials, plan.sent)
+            saved = self.api.save(kept_route(plan, name, fragment, dials))
             out["saved"] = {
                 "id": saved.get("id"),
                 "name": saved.get("name"),
@@ -1647,6 +1719,60 @@ class Server:
                 )
         if notes:
             out["notes"] = notes
+        return out
+
+    # draft_route_post
+    def draft_route_post(self, args: dict, call: Call) -> dict:
+        if bool(args.get("draft_id")) == bool(args.get("follow")):
+            raise ToolError("give the route as draft_id or as follow, one of the two")
+        call.check()
+        if args.get("draft_id"):
+            draft = self.drafts.get(str(args["draft_id"]))
+            if draft is None:
+                raise ToolError(
+                    f"no draft {args['draft_id']} (drafts last only a while; plan it again)"
+                )
+            plan = draft.plan
+            dials = self._dials(plan)
+            fragment = plan_fragment(plan.points, plan.vias, plan.preset, dials, plan.sent)
+            route = kept_route(plan, draft.name, fragment, dials)
+        else:
+            follow = args["follow"]
+            if not isinstance(follow, dict) or not isinstance(follow.get("polyline"), str):
+                raise ToolError("follow: an object with the line as polyline")
+            line = decode_polyline(follow["polyline"])
+            if len(line) < 2:
+                raise ToolError("follow.polyline has fewer than two points")
+            preset = str(follow.get("preset") or "default")
+            ends = [line[0], line[-1]]
+            body = {
+                "preset": preset,
+                "points": ends,
+                "follow": follow["polyline"],
+                "follow_exact": bool(follow.get("exact")),
+                "candidates": False,
+            }
+            call.report(0, 1, "planning the line")
+            answer = self.api.route(body)
+            geometry = (answer.get("geometry") or {}).get("coordinates") or []
+            route = {
+                "source": "gpx",
+                "line": [list(v[:3]) for v in geometry],
+                "distance_m": answer.get("distance_m"),
+                "inputs": {"points": ends, "preset": preset},
+                "answer": {
+                    **answer,
+                    "candidates": None,
+                    "avoid_alternate": None,
+                    "closure_through": None,
+                },
+            }
+        fields = {k: args[k] for k in POST_FIELDS if k in args}
+        call.check()
+        out = self.api.draft_post(fields, route)
+        out["notes"] = [
+            "a draft: only admins can see the page until it is published in the admin",
+        ]
         return out
 
     # open_link
@@ -1875,6 +2001,8 @@ class Server:
         return self._draft(best, options, limit, notes, f"{target:.0f} mi Metro loop", taken=taken)
 
     def handler(self, name: str):
+        if name in POST_TOOLS and not self.posts:
+            return None
         return {
             "find_place": self.find_place,
             "metro_stations": self.metro_stations,
@@ -1884,6 +2012,7 @@ class Server:
             "revise_route": self.revise_route,
             "save_route": self.save_route,
             "gpx_route": self.gpx_route,
+            "draft_route_post": self.draft_route_post,
         }.get(name)
 
     def call(self, name: str, args: dict, call: Call | None = None) -> dict:

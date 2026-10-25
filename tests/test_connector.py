@@ -13,14 +13,17 @@ import urllib.parse
 import pytest
 from django.test import Client
 from test_accounts import addr, make_user, send, signed_in
-from test_mcp_server import straight_answer
+from test_mcp_server import encode_polyline, straight_answer
 from test_route_api import VERTICES, router, segments, standard_router
 
 from core import connector
 from core.models import (
+    AuditLogEntry,
     ConnectorClient,
     ConnectorDraft,
     ConnectorGrant,
+    MyGo,
+    RoutePost,
     SavedRoute,
     SharedRoute,
 )
@@ -334,6 +337,167 @@ class TestConnector:
         assert store.get(ids[0]).plan.points == [(-77.03, 38.9), (-77.02, 38.91)]
         assert ConnectorDraft.objects.filter(user=user).count() == 3
         assert store.get("dnothere") is None
+
+
+@db
+class TestRoutePostDrafts:
+    """The owner, 2026-10-25: "Enable a mechanism for me to have the blog posts sent directly
+    from claude." An instance admin's grant may write Featured routes posts, as drafts only."""
+
+    POINTS = [[-77.03, 38.9], [-77.02, 38.91]]
+    POST = {
+        "title": "Rock Creek to the river",
+        "abstract": "A calm ride.",
+        "audience": "Everyone.",
+        "sections": [{"heading": "The trail", "body": "Shady.", "from_mile": 0, "to_mile": 0.5}],
+    }
+
+    def admin_token(self):
+        from test_accounts import make_user
+
+        user, tokens, _ = tokens_for(make_user(is_instance_admin=True))
+        return user, tokens["access_token"]
+
+    def test_only_an_instance_admin_is_offered_the_tool(self, planner) -> None:
+        _user, tokens, _ = tokens_for()
+        token = tokens["access_token"]
+        names = [t["name"] for t in mcp(token, "tools/list").json()["result"]["tools"]]
+        assert "draft_route_post" not in names
+        r = mcp(token, "tools/call", {"name": "draft_route_post", "arguments": self.POST})
+        assert r.json()["error"]["code"] == -32602
+        assert not RoutePost.objects.exists()
+        _admin, admin_token = self.admin_token()
+        names = [t["name"] for t in mcp(admin_token, "tools/list").json()["result"]["tools"]]
+        assert "draft_route_post" in names
+
+    def test_the_consent_page_says_so_to_an_admin_only(self) -> None:
+        from test_accounts import make_user
+
+        for admin in (False, True):
+            client_id = register().json()["client_id"]
+            _verifier, challenge = pkce()
+            browser, _user, _csrf = signed_in(make_user(is_instance_admin=admin))
+            page = browser.get("/oauth/authorize", authorize_params(client_id, challenge), **addr())
+            assert (b"Featured routes posts as drafts" in page.content) is admin
+
+    def test_a_planned_draft_becomes_a_draft_post(self, planner) -> None:
+        user, token = self.admin_token()
+        planned = call(token, "plan_route", {"points": self.POINTS})
+        out = call(
+            token,
+            "draft_route_post",
+            {**self.POST, "draft_id": planned["structuredContent"]["draft_id"]},
+        )
+        assert not out["isError"], out
+        answer = out["structuredContent"]
+        assert answer["slug"] == "rock-creek-to-the-river" and answer["status"] == "draft"
+        assert answer["page"] == "http://testserver/routes/rock-creek-to-the-river"
+        post = RoutePost.objects.get()
+        assert post.status == RoutePost.Status.DRAFT and post.author_id == user.pk
+        assert post.saved_route_id is None and post.stats["distance_m"] > 0
+        assert post.route.keep == "forever" and post.route.owner_id is None
+        assert [(s.heading, float(s.end_mi)) for s in post.sections.all()] == [("The trail", 0.5)]
+        assert AuditLogEntry.objects.filter(action="route_post.draft").count() == 1
+        # A draft: nobody but an admin sees the page.
+        assert Client().get("/routes/rock-creek-to-the-river", **addr()).status_code == 404
+        # Nothing went to the admin's My routes.
+        assert not SavedRoute.objects.filter(user=user).exists()
+
+    def test_sending_the_slug_again_rewrites_the_draft_until_it_is_published(self, planner) -> None:
+        _user, token = self.admin_token()
+        draft_id = call(token, "plan_route", {"points": self.POINTS})["structuredContent"][
+            "draft_id"
+        ]
+        call(token, "draft_route_post", {**self.POST, "draft_id": draft_id})
+        # Without replace, a draft at the slug (one written in the admin, say) is left alone.
+        taken = call(token, "draft_route_post", {**self.POST, "draft_id": draft_id})
+        assert taken["isError"] and "send replace" in taken["content"][0]["text"]
+        again = call(
+            token,
+            "draft_route_post",
+            {
+                **self.POST,
+                "abstract": "Calmer.",
+                "sections": [],
+                "draft_id": draft_id,
+                "replace": True,
+            },
+        )
+        assert not again["isError"], again
+        post = RoutePost.objects.get()
+        assert post.abstract == "Calmer." and not post.sections.exists()
+        # The copy it was rewritten from had no public link, so it went.
+        assert SharedRoute.objects.filter(keep="forever").count() == 1
+        for status in ("published", "unlisted", "withdrawn"):
+            RoutePost.objects.filter(pk=post.pk).update(status=status)
+            refused = call(
+                token, "draft_route_post", {**self.POST, "draft_id": draft_id, "replace": True}
+            )
+            assert refused["isError"] and "no longer a draft" in refused["content"][0]["text"]
+        assert RoutePost.objects.get().abstract == "Calmer."
+
+    def test_a_line_to_follow_is_planned_as_an_opened_file(self, planner) -> None:
+        _user, token = self.admin_token()
+        line = [[-77.03, 38.9], [-77.025, 38.905], [-77.02, 38.91]]
+        out = call(
+            token,
+            "draft_route_post",
+            {
+                **self.POST,
+                "follow": {"polyline": encode_polyline(line), "preset": "trailmaxxing"},
+            },
+        )
+        assert not out["isError"], out
+        sent = planner[-1]
+        assert sent["follow"] == encode_polyline(line) and sent["preset"] == "trailmaxxing"
+        assert sent["points"] == [line[0], line[-1]]
+        post = RoutePost.objects.get()
+        assert post.route.source == "gpx" and post.stats["preset"] == "trailmaxxing"
+
+    def test_the_route_is_one_or_the_other(self, planner) -> None:
+        _user, token = self.admin_token()
+        out = call(token, "draft_route_post", self.POST)
+        assert out["isError"] and "one of the two" in out["content"][0]["text"]
+
+    def test_a_route_from_home_is_refused(self, planner) -> None:
+        user, token = self.admin_token()
+        MyGo.objects.create(user=user, home_lon=self.POINTS[0][0], home_lat=self.POINTS[0][1])
+        draft_id = call(token, "plan_route", {"points": self.POINTS})["structuredContent"][
+            "draft_id"
+        ]
+        out = call(token, "draft_route_post", {**self.POST, "draft_id": draft_id})
+        assert out["isError"] and "Home" in out["content"][0]["text"]
+        assert not RoutePost.objects.exists()
+
+    def test_a_stretch_past_the_route_s_end_is_refused(self, planner) -> None:
+        _user, token = self.admin_token()
+        draft_id = call(token, "plan_route", {"points": self.POINTS})["structuredContent"][
+            "draft_id"
+        ]
+        # An end past the route is held to its length; a start past it is refused.
+        held = {"heading": "Whole", "from_mile": 0, "to_mile": 1e6}
+        out = call(
+            token, "draft_route_post", {**self.POST, "sections": [held], "draft_id": draft_id}
+        )
+        assert not out["isError"], out
+        assert 0 < float(RoutePost.objects.get().sections.get().end_mi) < 5
+        long = {"heading": "Far", "from_mile": 50, "to_mile": 60}
+        out = call(
+            token,
+            "draft_route_post",
+            {**self.POST, "sections": [long], "draft_id": draft_id, "replace": True},
+        )
+        assert out["isError"] and "mi long" in out["content"][0]["text"]
+
+    def test_an_admin_no_longer_is_offered_nothing(self, planner) -> None:
+        from test_accounts import make_user
+
+        user, token = self.admin_token()
+        make_user(is_instance_admin=True)  # the site always keeps one
+        user.is_instance_admin = False
+        user.save()
+        names = [t["name"] for t in mcp(token, "tools/list").json()["result"]["tools"]]
+        assert "draft_route_post" not in names
 
 
 @db
