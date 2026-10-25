@@ -26,6 +26,8 @@ KEY = "not-a-real-key-0123"
 @pytest.fixture(autouse=True)
 def _fresh(monkeypatch):
     monkeypatch.delenv(workzones.TOKEN_ENV, raising=False)
+    # No router here: a line given by its ends stays as the feed gave it (TestRoadLines fakes one).
+    monkeypatch.setattr(workzones, "road_line", lambda a, b, roads: None)
     workzones.forget()
     yield
     workzones.forget()
