@@ -808,6 +808,9 @@ CONNECTOR_PATHS = (
 )
 
 
+FAVICONS = r"~ ^/favicon\.(svg|ico)$"
+
+
 def test_basic_auth_is_on_for_the_whole_https_server_and_off_only_for_robots_and_acme() -> None:
     full = stage("full")
     https = full[full.index("listen 443") :]
@@ -832,7 +835,7 @@ def test_basic_auth_is_on_for_the_whole_https_server_and_off_only_for_robots_and
             "~ ^/s/[^/]+(/preview\\.png)?$",
             "= /link-preview",
             "^~ /icons/",
-            "= /favicon.svg",
+            FAVICONS,
         ]
     ), exempt
     # Google Play's deletion link (core.account_deletion): that exact path, to the api, and not
@@ -911,7 +914,11 @@ def test_the_sign_in_page_is_small_plain_and_names_no_channel() -> None:
 def test_robots_txt_disallows_everything_and_the_noindex_header_is_everywhere() -> None:
     full = stage("full")
     robots = dict(locations(full))["= /robots.txt"]
-    assert 'return 200 "User-agent: *\\nDisallow: /\\n";' in robots
+    # Only the home page and the icons, for Google's favicon service (the connector's icon).
+    assert (
+        'return 200 "User-agent: *\\nAllow: /$\\nAllow: /favicon.ico\\nAllow: /favicon.svg'
+        '\\nAllow: /icons/\\nDisallow: /\\n";'
+    ) in robots
     assert re.search(
         r'^\s*add_header X-Robots-Tag "noindex, nofollow" always;',
         full[full.index("listen 443") :],
@@ -921,13 +928,24 @@ def test_robots_txt_disallows_everything_and_the_noindex_header_is_everywhere() 
     for block_name in ("acme", "full"):
         for path, body in locations(stage(block_name)):
             if "add_header" in body:
-                assert 'X-Robots-Tag "noindex, nofollow"' in body, (block_name, path)
+                # The app's logo goes without, for the connector's icon (robots.txt above).
+                if path in (FAVICONS, "^~ /icons/"):
+                    assert "X-Robots-Tag" not in body, path
+                else:
+                    assert 'X-Robots-Tag "noindex, nofollow"' in body, (block_name, path)
                 if (
                     block_name == "full"
                     and "return 403" not in body
                     and "acme-challenge" not in path
                 ):
                     assert "Strict-Transport-Security" in body, path
+
+
+def test_the_favicon_location_serves_both_favicons_and_nothing_else() -> None:
+    covered = re.compile(FAVICONS.removeprefix("~ "))
+    assert covered.fullmatch("/favicon.svg") and covered.fullmatch("/favicon.ico")
+    for path in ("/favicon.png", "/favicon.svg/x", "/x/favicon.ico", "/favicon.icon"):
+        assert not covered.fullmatch(path), path
 
 
 def test_the_proxy_timeouts_are_at_least_sixty_seconds() -> None:
@@ -992,7 +1010,7 @@ def test_the_template_serves_what_the_caddyfile_serves() -> None:
     for expected in (
         "= /",
         "= /index.html",
-        "= /favicon.svg",
+        FAVICONS,
         "= /licenses.txt",
         ABOUT_LOCATION,
         "= /sw.js",

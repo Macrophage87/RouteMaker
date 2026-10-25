@@ -245,7 +245,7 @@
 
 	@stress-page path /about/stress /about/stress/
 	redir @stress-page /about/stress.html 302
-	@frontend path / /index.html /favicon.svg /licenses.txt /about/stress.html /about/how-it-works.html /about/using.html /about/accessibility.html /about/routing.html /about/ride-types.html /about/mass-ride.html /about/trails.html /about/architecture.html /about/assistants.html /about/acknowledgements.html /about/route-example.webp /assets/* /sw.js /manifest.webmanifest /icons/* /post.js
+	@frontend path / /index.html /favicon.svg /favicon.ico /licenses.txt /about/stress.html /about/how-it-works.html /about/using.html /about/accessibility.html /about/routing.html /about/ride-types.html /about/mass-ride.html /about/trails.html /about/architecture.html /about/assistants.html /about/acknowledgements.html /about/route-example.webp /assets/* /sw.js /manifest.webmanifest /icons/* /post.js
 	handle @frontend {
 		encode zstd gzip
 		header Referrer-Policy "same-origin"
@@ -262,6 +262,7 @@
 		header /licenses.txt Cache-Control "no-cache"
 		header /about/* Cache-Control "no-cache"
 		header /favicon.svg Cache-Control "public, max-age=86400"
+		header /favicon.ico Cache-Control "public, max-age=86400"
 		header /sw.js Cache-Control "no-cache"
 		# A Featured routes post's script under a fixed name (core/route_posts.py names it): checked on every load.
 		header /post.js Cache-Control "no-cache"
