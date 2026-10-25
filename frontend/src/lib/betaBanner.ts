@@ -6,10 +6,12 @@
  * VITE_BETA=1 (scripts/beta/ship-data.sh --build-frontend sets it); the local site is
  * byte-for-byte unchanged without it.
  *
- * Where to report (382): the notice names no channel, it says to tell the person
- * who gave you access. A "Report a problem" link appears only when the build was
- * given VITE_BETA_REPORT_URL (ship-data.sh --report-url), an https address such as
- * a future Discord invite, so adding one later needs no code change.
+ * Where to report: the owner, 2026-10-25, "For reports in that box, also give the discord.
+ * I'm not trying to gatekeep the discord." So the note links the public Discord invite
+ * (replacing 382's "tell the person who gave you access"). A build given VITE_BETA_REPORT_URL
+ * (ship-data.sh --report-url) still adds a "Report a problem" link to that address, unless it
+ * is the Discord invite again. Below it, in small print, "Sign up to test here!" links the
+ * public beta sign-up form (owner, 2026-10-25).
  *
  * The owner found the old banner in the planner obtrusive (2026-10-12), so it is a corner
  * chip now: a disclosure button ("Beta notice", aria-expanded) that shows and hides the note,
@@ -21,7 +23,15 @@
 import { createElement as h, useId, useRef, useState, type ReactElement } from "react";
 
 export const BETA_BANNER_TEXT =
-  "Beta: routes may still use some paths where bikes aren't allowed until the next map update. If anything looks wrong, tell the person who gave you access.";
+  "Beta: routes may still use some paths where bikes aren't allowed until the next map update. If anything looks wrong, tell us on";
+
+export const BETA_DISCORD_TEXT = "Discord";
+
+export const BETA_DISCORD_URL = "https://discord.gg/Qwz6BEt6gc";
+
+export const BETA_SIGNUP_TEXT = "Sign up to test here!";
+
+export const BETA_SIGNUP_URL = "https://forms.gle/dipMsGpheyF3oQA59";
 
 export const BETA_REPORT_LINK_TEXT = "Report a problem";
 
@@ -66,14 +76,14 @@ export function BetaChip(props: Props): ReactElement | null {
   const chip = useRef<HTMLButtonElement>(null);
   const noteId = `beta-note-${useId().replace(/:/g, "")}`;
   if (!props.enabled) return null;
-  const report = props.reportUrl
-    ? h(
-        "a",
-        { href: props.reportUrl, target: "_blank", rel: "noopener noreferrer" },
-        BETA_REPORT_LINK_TEXT,
-        h("span", { className: "visually-hidden" }, " (opens in a new tab)"),
-      )
-    : null;
+  const link = (href: string, text: string) =>
+    h(
+      "a",
+      { href, target: "_blank", rel: "noopener noreferrer" },
+      text,
+      h("span", { className: "visually-hidden" }, " (opens in a new tab)"),
+    );
+  const report = props.reportUrl && props.reportUrl !== BETA_DISCORD_URL ? link(props.reportUrl, BETA_REPORT_LINK_TEXT) : null;
   return h(
     "div",
     {
@@ -103,7 +113,8 @@ export function BetaChip(props: Props): ReactElement | null {
     h(
       "section",
       { id: noteId, className: "beta-chip-note", "aria-label": BETA_NOTICE_NAME, hidden: !open },
-      h("p", null, BETA_BANNER_TEXT, report ? " " : null, report),
+      h("p", null, BETA_BANNER_TEXT, " ", link(BETA_DISCORD_URL, BETA_DISCORD_TEXT), ".", report ? " " : null, report),
+      h("p", { className: "beta-chip-signup" }, link(BETA_SIGNUP_URL, BETA_SIGNUP_TEXT)),
     ),
   );
 }

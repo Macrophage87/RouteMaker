@@ -161,6 +161,8 @@ def _closures_part(now: datetime) -> tuple[str, datetime | None]:
     """A digest of the closures the planner reads, and the next moment after `now` at
     which one of them starts or ends (None: none does)."""
     global _closures_memo
+    from routemaker import deer_closures
+
     from . import workzones
 
     found = workzones.snapshot()
@@ -186,6 +188,8 @@ def _closures_part(now: datetime) -> tuple[str, datetime | None]:
                     for moment in (zone.start, zone.end)
                     if isinstance(moment, datetime)
                 }
+                # A deer-management notice comes in an hour before its window (v0.12.3).
+                | deer_closures.moments(found.notices)
             )
         )
         _closures_memo = (found, digest, moments)
