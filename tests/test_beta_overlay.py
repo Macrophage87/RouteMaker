@@ -949,7 +949,10 @@ def test_the_body_size_caps_agree_at_every_layer() -> None:
     from config import settings as config
     from core import accounts, shared_routes
 
-    pattern = "^/api/(shared-routes|me)(/|$)"
+    # /api/keyed is retired (v0.12.2) but stays in both patterns for one release: a change under
+    # deploy/ would hold the release for a hand ship (scripts/beta/cd_logic.py), and the extra
+    # path only 404s. Drop it from both with the next nginx template change.
+    pattern = "^/api/(shared-routes|me|keyed)(/|$)"
     big = dict(locations(stage("full")))[f"~ {pattern}"]
     assert "client_max_body_size 5m;" in big
     assert re.search(r"^\s*client_max_body_size 1m;", stage("full"), re.M)
