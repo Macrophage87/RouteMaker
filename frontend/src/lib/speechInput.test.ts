@@ -78,7 +78,7 @@ test("a failure says what to do instead", () => {
 test("the Speak button sits in Alert > Other only, keeps its name, and nothing is sent until Send", () => {
   const group = readFileSync(new URL("../RideGroup.tsx", import.meta.url), "utf8");
   const other = group.slice(group.indexOf(") : otherOpen ? ("), group.indexOf('<ul role="list" className="ride-alert-kinds">'));
-  assert.match(other, /\{canSpeak && \(\s*<button type="button" className="secondary ride-speak" aria-pressed=\{listening\} onClick=\{speak\}>[\s\S]*?\{SPEAK_LABEL\}/);
+  assert.match(other, /\{canSpeak && \(\s*<button type="button" className="secondary ride-speak" aria-pressed=\{listening\} onClick=\{speak\}[^>]*>[\s\S]*?\{SPEAK_LABEL\}/);
   // Said words go after typed ones; closing the box aborts (no late words in a closed box).
   assert.match(group, /\(text\) => setOtherText\(typed \? `\$\{typed\} \$\{text\}`\.slice\(0, OTHER_MAX\) : text\)/);
   assert.match(group, /if \(!otherOpen\) abortListening\.current\?\.\(\);/);

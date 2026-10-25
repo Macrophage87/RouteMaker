@@ -24,6 +24,7 @@ from core import (
     health,
     mass_tiles,
     privacy_policy,
+    route_posts,
     share_preview,
     stress_tiles,
     wahoo_views,
@@ -66,4 +67,10 @@ urlpatterns = [
     path("delete-account", account_deletion.page, name="delete-account"),
     # The privacy policy, public, for Google Play's listing and Settings (core.privacy_policy).
     path("privacy", privacy_policy.page, name="privacy"),
+    # Featured routes: blog-style posts around one exact route (core.route_posts; v0.12.1).
+    path("routes/", route_posts.index, name="route-posts"),
+    path("routes/<slug:slug>", route_posts.page, name="route-post"),
+    path("routes/<slug:slug>/route.gpx", route_posts.gpx, name="route-post-gpx"),
+    path("routes/<slug:slug>/thumbnail.jpg", route_posts.thumbnail, name="route-post-thumbnail"),
+    path("routes/<slug:slug>/thumbnail", route_posts.thumbnail_upload, name="route-post-picture"),
 ]

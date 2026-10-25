@@ -6,7 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import type { LonLat } from "./geo.ts";
-import { ViaMarks, markerLabels, viaIndices, viaPointsNamed, kindSaid } from "./pointKinds.ts";
+import { ViaMarks, markerLabels, viaIndices, importedKinds, kindSaid } from "./pointKinds.ts";
 import { decodePlan, encodePlan } from "./planHash.ts";
 import { requestRoute } from "./api.ts";
 import { applyAnswer, type StopOrder } from "./stopOrder.ts";
@@ -90,9 +90,8 @@ test("a GPX file names a via point 'Via point', numbers the stops among themselv
   // No <wpt> for a via point (the file has none for any point).
   assert.doesNotMatch(gpx, /<wpt/);
   // Opened again: the named via point, and never an end.
-  assert.deepEqual(viaPointsNamed(named, 4), [2]);
-  assert.deepEqual(viaPointsNamed(["Via point", "Stop 1", "Via point"], 3), []);
-  assert.deepEqual(viaPointsNamed(undefined, 3), []);
+  assert.deepEqual(importedKinds(named, 4).vias, [2]);
+  assert.deepEqual(importedKinds(["Via point", "Stop 1", "Via point"], 3).vias, []);
 });
 
 test("the list, the markers and the announcements name a via point and number the stops among themselves", () => {
