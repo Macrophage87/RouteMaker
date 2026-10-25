@@ -912,3 +912,38 @@ def test_a_link_still_comes_back_when_the_exact_route_is_not_kept(tools, monkeyp
     out = tools.call("plan_route", {"points": ["Union Market", "Takoma"]})
     assert out["link"].startswith(tools.api.base + "/#p=")
     assert "plans the route again" in out["notes"][-1]
+
+
+# --- Featured routes posts ------------------------------------------------------------------
+
+
+def encode_polyline(line, precision: int = 6) -> str:
+    """[[lon, lat], ...] as an encoded polyline, the way Valhalla writes one."""
+    factor, out, last = 10**precision, [], (0, 0)
+    for lon, lat in line:
+        here = (round(lat * factor), round(lon * factor))
+        for delta in (here[0] - last[0], here[1] - last[1]):
+            value = ~(delta << 1) if delta < 0 else delta << 1
+            while value >= 0x20:
+                out.append(chr((0x20 | (value & 0x1F)) + 63))
+                value >>= 5
+            out.append(chr(value + 63))
+        last = here
+    return "".join(out)
+
+
+def test_a_line_to_follow_decodes_as_it_was_encoded() -> None:
+    line = [[-77.00636, 38.89645], [-76.9, 39.0], [-76.6155, 39.30712]]
+    assert mcp.decode_polyline(encode_polyline(line)) == line
+    with pytest.raises(mcp.ToolError):
+        mcp.decode_polyline(encode_polyline(line)[:-1])
+
+
+def test_the_post_tool_is_offered_only_where_posts_may_be_written(tools) -> None:
+    # On a rider's own computer (and on the site for anyone but an instance admin) it is no tool.
+    names = [t["name"] for t in tools.tools()]
+    assert "draft_route_post" not in names
+    out = rpc(tools, "tools/call", {"name": "draft_route_post", "arguments": {}})
+    assert out["error"]["code"] == -32602
+    admin = mcp.Server(lambda: None, stations=STATIONS, posts=True)
+    assert "draft_route_post" in [t["name"] for t in admin.tools()]

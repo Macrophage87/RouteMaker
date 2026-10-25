@@ -30,7 +30,9 @@ saved route copies it (`freeze`) into a SharedRoute kept permanently and owned b
 with the figures read then, so the post never changes under a map rebuild or an edit of the saved
 route. Two checks refuse a route there (`route_problem`): one with no planned answer (an opened
 GPX file not planned again has no stress figures for the charts), and one that starts, ends or
-stops in the author's Home circle (core.share_preview), since posts are public.
+stops in the author's Home circle (core.share_preview), since posts are public. An instance
+admin's assistant can also send a post through the site's connector (`write_draft`): it lands as a
+draft, with the same two checks, for the admin to publish.
 
 States: draft (admins only, marked as a draft), published (listed and linked), unlisted (link
 only) and withdrawn (410, one plain line). Every save and every new picture is in the audit log.
@@ -146,13 +148,17 @@ def route_problem(saved, author) -> str | None:
     """Why a saved route cannot be a post's route, or None."""
     if saved is None:
         return "Pick one of your saved routes."
-    if not isinstance(saved.answer, dict) or not saved.answer.get("geometry"):
+    return line_problem(saved.answer, saved.line, share_preview.route_points(saved), author)
+
+
+def line_problem(answer, line, points, author) -> str | None:
+    """Why a route (its planned answer, line and stops) cannot be a post's route, or None."""
+    if not isinstance(answer, dict) or not answer.get("geometry"):
         return "Plan this route in RouteMaker and save it again: a post needs its stress figures."
-    line = saved.line or []
+    line = line or []
     if len(line) < 2:
         return "This saved route has no line."
     zone = author_zone(author)
-    points = share_preview.route_points(saved)
     if zone is not None and share_preview.at_home(line, points, zone):
         return "This route starts, ends or stops at your Home. Posts are public, so pick another."
     return None
@@ -190,11 +196,25 @@ def stats_of(answer: dict, preset: str, planned_on: date) -> dict:
 def freeze(post, saved) -> None:
     """Copy the saved route into a SharedRoute of the post's own and read its figures (not saved
     here). The copy is kept permanently and owned by no account."""
+    freeze_route(
+        post,
+        source=saved.source,
+        line=saved.line,
+        distance_m=saved.distance_m,
+        inputs=saved.inputs,
+        answer=saved.answer,
+        planned=saved.updated_at,
+    )
+
+
+def freeze_route(post, *, source, line, distance_m, inputs, answer, planned=None) -> None:
+    """`freeze`, from a route's parts: a saved route's, or a route an assistant sends
+    (`write_draft`)."""
     from .models import SharedRoute
 
     now = timezone.now()
-    answer = shared_routes.public_answer(saved.answer)
-    inputs = dict(saved.inputs or {})
+    answer = shared_routes.public_answer(answer)
+    inputs = dict(inputs or {})
     # The rider's weight never leaves their account (shared_routes.public_answer does the same for
     # the answer): an older saved route's dials may still carry it.
     if isinstance(inputs.get("dials"), dict):
@@ -202,9 +222,9 @@ def freeze(post, saved) -> None:
     row = SharedRoute.objects.create(
         id=secrets.token_hex(16),
         name=post.title[:120],
-        source=saved.source,
-        line=saved.line,
-        distance_m=saved.distance_m,
+        source=source,
+        line=line,
+        distance_m=distance_m,
         inputs=inputs,
         answer=answer,
         gpx="",
@@ -216,12 +236,185 @@ def freeze(post, saved) -> None:
     )
     post.route = row
     preset = str(inputs.get("preset") or answer.get("preset") or "")
-    planned = saved.updated_at or timezone.now()
-    post.stats = stats_of(answer, preset, timezone.localdate(planned))
+    post.stats = stats_of(answer, preset, timezone.localdate(planned or now))
     # A new route is a new map: the old link picture no longer shows it.
     post.thumbnail, post.thumbnail_key = None, ""
-    first = saved.line[0]
+    first = line[0]
     post.start_lon, post.start_lat = float(first[0]), float(first[1])
+
+
+# ---- Drafts sent by an assistant ----
+
+# The owner, 2026-10-25: "Enable a mechanism for me to have the blog posts sent directly from
+# claude." The site's own connector (core.connector) offers an instance admin's assistant one
+# tool, draft_route_post, which lands here. It writes drafts only: publishing stays a press in
+# the admin. Sending the same slug again rewrites that draft, so an assistant can revise it; a
+# post that has left draft is the admin's to change.
+SECTIONS_MAX = 12
+NOT_A_DRAFT = "That post is no longer a draft: change it in the admin."
+SLUG_RE = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
+
+
+def _text(fields: dict, key: str, limit: int, *, required: bool = False, default: str = ""):
+    value = fields.get(key, default)
+    if value is None:
+        value = default
+    if not isinstance(value, str):
+        return None, f"{key}: a string."
+    value = value.strip()
+    if required and not value:
+        return None, f"{key}: required."
+    if limit and len(value) > limit:
+        return None, f"{key}: at most {limit} characters."
+    return value, None
+
+
+def _sections(raw, distance_m) -> tuple[list[dict], str | None]:
+    if raw is None:
+        return [], None
+    if not isinstance(raw, list) or len(raw) > SECTIONS_MAX:
+        return [], f"sections: a list of at most {SECTIONS_MAX}."
+    miles = (distance_m or 0) / share_preview.METRES_PER_MILE
+    out = []
+    for n, item in enumerate(raw, 1):
+        if not isinstance(item, dict):
+            return [], f"section {n}: an object."
+        heading, problem = _text(item, "heading", 120, required=True)
+        if problem:
+            return [], f"section {n}, {problem}"
+        body, problem = _text(item, "body", 0)
+        if problem:
+            return [], f"section {n}, {problem}"
+        start, end = item.get("from_mile"), item.get("to_mile")
+        if (start is None) != (end is None):
+            return [], f"section {n}: give both miles for a map of the stretch, or neither."
+        if start is not None:
+            if not all(
+                isinstance(v, int | float) and not isinstance(v, bool) for v in (start, end)
+            ):
+                return [], f"section {n}: the miles are numbers."
+            if not 0 <= start < end:
+                return [], f"section {n}: the stretch must end after it starts."
+            if start >= miles:
+                return [], f"section {n}: the route is {miles:.1f} mi long."
+            start, end = round(float(start), 2), round(float(end), 2)
+        out.append({"heading": heading, "body": body, "start_mi": start, "end_mi": end})
+    return out, None
+
+
+def write_draft(author, fields: dict, route: dict):
+    """Make or rewrite a draft post from what an assistant sent: (post, None) or (None, why).
+
+    `fields`: title, abstract, and optionally slug (else made from the title), audience, byline,
+    season_label, season_start, season_end and sections ([{heading, body, from_mile, to_mile}]).
+    `route`: the route as the site keeps it (source, line, distance_m, inputs, answer), checked
+    as the admin checks a picked saved route (`line_problem`, the author's Home circle).
+    """
+    from decimal import Decimal
+
+    from django.db import transaction
+    from django.utils.text import slugify
+
+    from . import accounts
+    from .audit import record
+    from .models import RoutePost, RoutePostSection, SharedRoute
+
+    if not getattr(author, "is_instance_admin", False):
+        return None, "Only an instance admin can write Featured routes posts."
+    if not isinstance(fields, dict) or not isinstance(route, dict):
+        return None, "Send the post and its route as objects."
+    title, problem = _text(fields, "title", 120, required=True)
+    if problem:
+        return None, problem
+    values = {"title": title}
+    for key, limit, required, default in (
+        ("abstract", 0, True, ""),
+        ("audience", 0, False, ""),
+        ("byline", 60, False, "RouteMaker"),
+        ("season_label", 40, False, ""),
+        ("season_start", 5, False, ""),
+        ("season_end", 5, False, ""),
+    ):
+        values[key], problem = _text(fields, key, limit, required=required, default=default)
+        if problem:
+            return None, problem
+    values["byline"] = values["byline"] or "RouteMaker"
+    for key in ("season_start", "season_end"):
+        if values[key] and season_day(values[key]) is None:
+            return None, f'{key}: a month and day, as "03-20".'
+    if bool(values["season_start"]) != bool(values["season_end"]):
+        return None, "Give both season days, or neither."
+    slug, problem = _text(fields, "slug", 80, default="")
+    if problem:
+        return None, problem
+    slug = slug or slugify(title)[:80].strip("-")
+    if not SLUG_RE.fullmatch(slug):
+        return None, "slug: lower-case letters, digits and hyphens."
+    line, answer = route.get("line"), route.get("answer")
+    inputs = route.get("inputs") if isinstance(route.get("inputs"), dict) else {}
+    points = [
+        p for p in (inputs.get("points") or []) if isinstance(p, list | tuple) and len(p) >= 2
+    ]
+    source = route.get("source") or "plan"
+    if source not in ("plan", "gpx"):
+        return None, "Not a kind of route this planner keeps."
+    problem = accounts.line_problem(line) or line_problem(answer, line, points, author)
+    if problem:
+        return None, problem
+    distance = route.get("distance_m")
+    if not isinstance(distance, int | float) or isinstance(distance, bool) or distance <= 0:
+        return None, "The route's distance is missing."
+    sections, problem = _sections(fields.get("sections"), float(distance))
+    if problem:
+        return None, problem
+    with transaction.atomic():
+        post = RoutePost.objects.select_for_update().filter(slug=slug).first()
+        if post is not None and post.status != RoutePost.Status.DRAFT:
+            return None, NOT_A_DRAFT
+        made = post is None
+        if made:
+            post = RoutePost(slug=slug, author=author, status=RoutePost.Status.DRAFT)
+        replaced = post.route_id
+        for key, value in values.items():
+            setattr(post, key, value)
+        freeze_route(
+            post,
+            source=source,
+            line=line,
+            distance_m=float(distance),
+            inputs=inputs,
+            answer=answer,
+        )
+        post.saved_route = None
+        post.save()
+        # A draft never published has had no public link: the copy it is rewritten from goes.
+        if (
+            replaced
+            and post.published_at is None
+            and not RoutePost.objects.filter(route_id=replaced).exists()
+        ):
+            SharedRoute.objects.filter(pk=replaced).delete()
+        post.sections.all().delete()
+        RoutePostSection.objects.bulk_create(
+            RoutePostSection(
+                post=post,
+                position=n,
+                heading=item["heading"],
+                body=item["body"],
+                start_mi=None if item["start_mi"] is None else Decimal(str(item["start_mi"])),
+                end_mi=None if item["end_mi"] is None else Decimal(str(item["end_mi"])),
+            )
+            for n, item in enumerate(sections, 1)
+        )
+        record(
+            author,
+            "route_post.draft",
+            "RoutePost",
+            post.pk,
+            "allowed",
+            "made by an assistant" if made else "rewritten by an assistant",
+        )
+    return post, None
 
 
 # ---- Words ----
