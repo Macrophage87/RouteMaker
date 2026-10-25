@@ -26,3 +26,12 @@ test("the build puts package.json's version in, and the page shows it by the hea
   const info = readFileSync(new URL("./mapInfo.ts", here), "utf8");
   assert.match(info, /versionSaid\(\)/);
 });
+
+test("the name is never squeezed: the switch and Hide planner wrap under it as one row (phone, large text, 2026-10-25)", () => {
+  const app = readFileSync(new URL("../App.tsx", here), "utf8");
+  assert.match(app, /<div className="panel-actions">\s*\{!goMode && <ModeSwitch [^\n]*\/>\}\s*<button\s+type="button"\s+hidden=\{goMode\}\s+className="panel-toggle"/);
+  const css = readFileSync(new URL("../styles.css", here), "utf8");
+  assert.match(css, /\.panel-header \{\s*display: flex;\s*flex-wrap: wrap;/);
+  assert.match(css, /\.panel-title \{[^}]*flex: 0 0 auto;/);
+  assert.doesNotMatch(css.match(/\.panel-title \{[^}]*\}/)![0], /min-width: 0/);
+});
