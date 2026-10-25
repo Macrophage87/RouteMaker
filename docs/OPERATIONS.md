@@ -5816,7 +5816,7 @@ front-end release" (below). No new settings: live Metrobus and train positions r
   `discord.com:443` must be allowed for the host itself. Install them and re-run
   `auto-release.sh install` as BETA-RUNBOOK.md's "Alerts" says, so the agent's installed copy
   can post too.
-- **AI assistant key** (`assistant_key` table, `core.models.AssistantKey`): one per account, only
+- **AI assistant key** (retired in v0.12.2: assistants connect through the site's connector; `assistant_key` table, `core.models.AssistantKey`): one per account, only
   its SHA-256 kept. An assistant's MCP server (mcp/README.md) sends it in `X-RouteMaker-Key` to
   `POST /api/keyed/routes`, which only adds a route to that account's My routes, under the
   address limit, then the account's write limit. The rider removes it in Settings > Account;
@@ -7034,7 +7034,7 @@ that table. The planner reads it at most once a minute a process. Nothing needs 
    zones (WZDx, CC0).", and the answer's `work_zones.status` should be `{"md": "current"}`.
 3. On the map, a Maryland zone given by its ends (Georgia Ave, MD 97, if still listed) follows the
    road, and no I-97 or I-495 zone is listed (one also named otherwise, "Capital Beltway", is
-   dropped only once it is on the road):
+   dropped only once it is on the road) (on the beta, `scripts/beta/beta-compose.sh exec` in place of `docker compose exec`):
 
    ```sh
    docker compose exec -T postgis psql -U routemaker -d routemaker -c \
