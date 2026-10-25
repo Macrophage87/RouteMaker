@@ -8653,3 +8653,40 @@ details.fold > summary .icon {
   width: 34px;
   height: 36px;
 }
+
+/* The crash screen (CrashScreen.tsx): in place of the whole page when an error stops it. */
+.crash-screen {
+  max-width: 34rem;
+  margin: 0 auto;
+  padding: 48px 16px;
+  color: var(--text);
+}
+.crash-screen h1 {
+  font-size: 1.5rem;
+  margin: 0 0 8px;
+}
+.crash-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 16px 0 4px;
+}
+.crash-actions button {
+  min-height: 44px;
+  padding: 8px 16px;
+}
+.crash-said {
+  min-height: 1.4em;
+  color: var(--text-muted);
+}
+.crash-details textarea {
+  box-sizing: border-box;
+  width: 100%;
+  margin-top: 8px;
+  font: 0.8rem/1.4 ui-monospace, monospace;
+  color: var(--text);
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+}
