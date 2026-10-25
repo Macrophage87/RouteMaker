@@ -799,7 +799,7 @@ export function MapView(props: Props) {
       const underNames = (!lifted && layerIds.find((id) => id === TRAIL_LABEL_LAYER_ID || ROAD_LABEL_LAYER_IDS.includes(id))) || ROUTE_BOTTOM_LAYER;
       addClimbs(map as unknown as ClimbsMap, data, on, iconPixelRatio(), underNames, callbacks.current.climbsFrom ?? CLIMBS_FROM_DEFAULT);
     };
-    const anyPopupOpen = () => popupsOpen(popup.current, rail);
+    const anyPopupOpen = () => popupsOpen(popup.current, rail, map.getContainer());
     /** Bring the federal-land layers in line with props.federalVisible, loading the data the first time. */
     const syncFederal = () => {
       const visible = callbacks.current.federalVisible;
