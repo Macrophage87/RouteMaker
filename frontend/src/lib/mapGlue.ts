@@ -582,9 +582,17 @@ function stateOf(under: Under<unknown, unknown>, popupOpen: boolean): PointerSta
   return { popupOpen, onStation: under.station !== null, onLine: under.line !== null };
 }
 
-/** Whether a popup is open: a via's Remove (null when none), or a station's card. */
-export function popupsOpen(viaPopup: unknown, cards: { cardOpen(): boolean } | null): boolean {
-  return viaPopup !== null || (cards?.cardOpen() ?? false);
+/**
+ * A map card open in `map` (MapLibre's container): any MapLibre popup but a hover card. The closure, junction, dock,
+ * scenic and trail-mile cards close themselves on a map click, after the main click has run; a click that only
+ * closed one also chose another route or moved a point (Stephen 2026-10-25: "when map popups do close, they can open
+ * the last route, even if not the intended route").
+ */
+export const OPEN_CARD_SELECTOR = ".maplibregl-popup:not(.rail-hover)";
+
+/** Whether a popup is open: a via's Remove (null when none), a station's card, or any card in `map`. */
+export function popupsOpen(viaPopup: unknown, cards: { cardOpen(): boolean } | null, map: { querySelector(selector: string): unknown } | null = null): boolean {
+  return viaPopup !== null || (cards?.cardOpen() ?? false) || (map?.querySelector(OPEN_CARD_SELECTOR) ?? null) !== null;
 }
 
 /** The line a press at `under` picks up (provisionally), or null: the press is the map's. */
