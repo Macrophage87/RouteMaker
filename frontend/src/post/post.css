@@ -1,0 +1,29 @@
+/* A Featured routes post's page (core/route_posts.py draws it; postPage.tsx adds the map and charts). The app's
+   stylesheet comes with the charts; these undo the parts of it made for the app's full-screen map. */
+html,
+body {
+  height: auto;
+}
+
+body {
+  font-family: var(--font);
+}
+
+.post-map .map {
+  position: absolute;
+  inset: 0;
+}
+
+/* The picture stays under the map until the map has loaded, then goes: it is the map's stand-in. */
+.post-map.map-ready img {
+  visibility: hidden;
+}
+
+.post-charts {
+  margin-top: 0.5rem;
+}
+
+/* The credits in one short line on a small map. */
+.post-map .maplibregl-ctrl-bottom-right .maplibregl-ctrl {
+  margin: 0;
+}

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Build a tiny extract with the real valhalla_build_tiles and check that every
-# bicycle closure reaches the tiles (tests/test_tile_build_access.py).
+# bicycle closure reaches the tiles (tests/test_tile_build_access.py), and that the
+# median ends' no-U-turn restrictions hold for a bicycle (tests/test_tile_build_median_uturns.py).
 #
 # Runs inside the pipeline image, which has Valhalla and osmium but no pytest,
 # using a local image only (--pull never), with no network, a memory cap and a
@@ -15,7 +16,8 @@
 # Run it before deploying any change to lua/, valhalla/ or the image's Valhalla
 # (docs/OPERATIONS.md, "Bicycle closures in the tiles"). About 2 s.
 #
-# Exit 0: every closure held. 1: at least one case failed. 2: missing binaries.
+# Exit 0: every closure and the median restrictions held. 1: at least one case failed.
+# 2: missing binaries.
 set -euo pipefail
 
 IMAGE="${1:-ghcr.io/macrophage87/routemaker-pipeline:dev}"
@@ -23,10 +25,20 @@ REPO="$(cd "$(dirname "$0")/.." && pwd)"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/tile-build-access.XXXXXX")"
 trap 'rm -rf "$WORK"' EXIT
 
-MSYS_NO_PATHCONV=1 timeout 600 docker run --rm --pull never \
-  --memory=1g --memory-swap=1g --network none \
-  --user "$(id -u):$(id -g)" \
-  -v "$REPO:/repo:ro" -v "$WORK:/work" \
-  -e TMPDIR=/work -e ROUTEMAKER_REQUIRE_TILE_BUILD=1 \
-  --entrypoint /opt/venv/bin/python3 \
-  "$IMAGE" /repo/tests/test_tile_build_access.py </dev/null
+check() {
+  MSYS_NO_PATHCONV=1 timeout 600 docker run --rm --pull never \
+    --memory=1g --memory-swap=1g --network none \
+    --user "$(id -u):$(id -g)" \
+    -v "$REPO:/repo:ro" -v "$WORK:/work" \
+    -e TMPDIR=/work -e ROUTEMAKER_REQUIRE_TILE_BUILD=1 \
+    --entrypoint /opt/venv/bin/python3 \
+    "$IMAGE" "/repo/tests/$1" </dev/null
+}
+
+# The closures, then the median ends' no-U-turn restrictions (v0.12.1); the worse exit wins.
+status=0
+check test_tile_build_access.py || status=$?
+median=0
+check test_tile_build_median_uturns.py || median=$?
+if [ "$median" -gt "$status" ]; then status=$median; fi
+exit "$status"

@@ -6848,6 +6848,33 @@ def closures_check(request):
     return JsonResponse(work_zones.closures_on(line, when=when, bypass=bypass, now_only=now_only))
 
 
+WEATHER_BODY_MAX_BYTES = 4096
+
+
+@api.post("/weather/check", summary="NWS alerts and rain forecast along the line still to ride")
+@decorate_view(
+    same_site_only,
+    ratelimit.rate_limited(ratelimit.WEATHER_CHECK),
+    errors_as_json,
+)
+def weather_check(request):
+    """Stephen 2026-10-24 (core.weather): a few points along the line still to ride, each with
+    the seconds until the rider gets there; the NWS alerts in force there during the ride and
+    the first point where rain is forecast. The points are rounded, never logged or kept."""
+    from . import weather
+
+    body, refusal = _json_body(request, WEATHER_BODY_MAX_BYTES)
+    if refusal is not None:
+        return refusal
+    points = body.get("points") if isinstance(body, dict) else None
+    problem = weather.points_problem(points)
+    if problem:
+        return _error(400, problem)
+    out = JsonResponse(weather.shared().check([tuple(p) for p in points]))
+    out["Cache-Control"] = "no-store"
+    return out
+
+
 # Ride mode's 311 (v0.7.0 "Go riding fixes" item 3; core.dc311): whether the server sends a
 # report to DC 311 itself (only with DC311_API_KEY set), and the sending. Off, the page opens
 # the phone's text app to 311 instead. The position and the words go to DC only, never a log.
