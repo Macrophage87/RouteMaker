@@ -813,6 +813,9 @@ CREATE INDEX segment_overview_geom_idx ON {schema}.segment USING gist (geometry)
 -- time; this index holds just those rows (core.trailseek.corridor_segments).
 CREATE INDEX segment_seek_geom_idx ON {schema}.segment USING gist (geometry)
     WHERE {seek};
+-- The scenic roads near a point (core.scenic_near): only the designated ways.
+CREATE INDEX segment_scenic_geom_idx ON {schema}.segment USING gist (geometry)
+    WHERE scenic IS NOT NULL;
 -- The z12-13 ride layer's tiles (RIDE_INDEX_PREDICATE).
 CREATE INDEX segment_ride_geom_idx ON {schema}.segment USING gist (geometry)
     WHERE {ride};
