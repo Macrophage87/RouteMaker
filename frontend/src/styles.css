@@ -5201,9 +5201,12 @@ details.zoom-notes {
   align-items: center;
 }
 
-/* The switch and Hide planner as one unit, on the right; it wraps under the name as a whole. */
+/* The switch and Hide planner as one unit, on the right; it wraps under the name as a whole, and at the
+   largest text Hide planner wraps under the switch rather than off the screen. */
 .panel-actions {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   flex: 0 1 auto;
   min-width: 0;
   align-items: center;
