@@ -39,6 +39,7 @@ import { ROUTE_BLUE } from "../lib/routeColours.ts";
 import { handCourseToWahoo, sendCourseToGarmin, sendCourseToWahoo } from "../GpxPanel.tsx";
 import { readWahoo } from "../lib/wahooLink.ts";
 import { MINIMAP_LABEL, showMinimaps } from "./minimaps.ts";
+import { wireSends } from "./sends.ts";
 
 /** What the server puts in the page (route_posts.page_data). */
 export interface PostData {
@@ -53,10 +54,8 @@ export interface PostData {
   sections?: number[][][];
 }
 
-export const SENDING_SAID = "Sending…";
 export const WAHOO_NOT_CONNECTED =
   "Wahoo isn't connected in RouteMaker's Settings.";
-export const SEND_FAILED = "The course could not be sent. Try again.";
 export const PICTURE_MAKING = "Drawing the map…";
 export const PICTURE_DONE = "Done. This map is now the link picture. Chat apps may show the old one for a while.";
 export const PICTURE_FAILED = "The picture could not be made or sent. Try again.";
@@ -259,29 +258,6 @@ function showCharts(host: HTMLElement, data: PostData, map: MapLibreMap | null):
   fallback?.remove();
 }
 
-function wireSends(data: PostData, said: HTMLElement | null): void {
-  const say = (words: string) => {
-    if (said) said.textContent = words;
-  };
-  const sends: Record<string, () => Promise<string>> = {
-    garmin: () => sendCourseToGarmin(data.answer, data.points),
-    wahoo: async () => {
-      const state = await readWahoo(window.location.origin);
-      if (state?.connected) return sendCourseToWahoo(data.answer, data.points);
-      return `${WAHOO_NOT_CONNECTED} ${await handCourseToWahoo(data.answer, data.points)}`;
-    },
-  };
-  for (const button of document.querySelectorAll<HTMLButtonElement>("button[data-send]")) {
-    const send = sends[button.dataset.send ?? ""];
-    if (!send) continue;
-    button.disabled = false;
-    button.addEventListener("click", () => {
-      say(SENDING_SAID);
-      send().then(say, () => say(SEND_FAILED));
-    });
-  }
-}
-
 /** The post's map drawn at the link picture's size, with its credits, as a JPEG. */
 async function drawPicture(data: PostData): Promise<Blob> {
   const box = document.createElement("div");
@@ -366,6 +342,13 @@ export function start(doc: Document = document): void {
   const charts = doc.getElementById("post-charts");
   if (charts && data.answer) showCharts(charts, data, map);
   showMinimaps(doc, data.sections ?? [], (host, line) => showMinimap(host, data, line));
-  wireSends(data, doc.getElementById("send-said"));
+  wireSends(doc, doc.getElementById("send-said"), {
+    garmin: () => sendCourseToGarmin(data.answer, data.points),
+    wahoo: async () => {
+      const state = await readWahoo(window.location.origin);
+      if (state?.connected) return sendCourseToWahoo(data.answer, data.points);
+      return `${WAHOO_NOT_CONNECTED} ${await handCourseToWahoo(data.answer, data.points)}`;
+    },
+  });
   wirePicture(data);
 }
