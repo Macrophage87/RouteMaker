@@ -498,8 +498,8 @@ server {
     # /api/bikeshare/docks?bbox=.., /api/closures/map?bbox=.. (v0.12.0), and Review's
     # /api/review/items?way=.., /api/review/map?west=.., /api/review/next?way=..,
     # /api/review/road/<way> and /api/review/street-photo?lon=..&lat=.., and the connector's
-    # /api/scenic-roads?lat=..&lon=.. and /api/climbs-near?lat=..&lon=.. (v0.12.3) (a way, a point
-    # or the area viewed). An upstream error line (a
+    # /api/scenic-roads?lat=..&lon=.. and /api/climbs-near?lat=..&lon=.. from v0.12.3: each holds
+    # a way, a point or the area viewed. An upstream error line (a
     # 502 while the api restarts on a deploy, a 504, a worker gunicorn killed) records the
     # request with its query, so these log only `crit` errors, to their own file
     # (OWNER-DECISIONS 395). This loses their upstream diagnostics; the api's own log still
