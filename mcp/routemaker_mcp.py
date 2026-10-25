@@ -1472,6 +1472,7 @@ class Server:
         files: bool = True,
         gpx_link=None,
         posts: bool = False,
+        icons: list[dict] | None = None,
     ):
         self._api_factory = api_factory
         self._api: Api | None = None
@@ -1486,6 +1487,9 @@ class Server:
         self.gpx_link = gpx_link
         # Whether draft_route_post is offered: on the site's connector, for an instance admin.
         self.posts = posts
+        # On the site: the app's icons, for serverInfo (MCP 2025-11-25), so an assistant app
+        # that shows them draws RouteMaker's logo beside the connector.
+        self.icons = icons or []
 
     def tools(self) -> list[dict]:
         """The tools, as tools/list gives them: without the post tool unless posts may be
@@ -2077,7 +2081,12 @@ def handle(server: Server, message, send=_send, calls: dict | None = None) -> di
         result = {
             "protocolVersion": version,
             "capabilities": {"tools": {"listChanged": False}},
-            "serverInfo": {"name": SERVER_NAME, "version": SERVER_VERSION},
+            "serverInfo": {
+                "name": SERVER_NAME,
+                "title": "RouteMaker",
+                "version": SERVER_VERSION,
+                **({"icons": server.icons} if server.icons else {}),
+            },
             "instructions": (
                 "RouteMaker plans bike routes from DC to Baltimore, rated by traffic stress (LTS 1"
                 " calmest to 4, plus Avoid). Pick the ride type and settings that fit the ask."

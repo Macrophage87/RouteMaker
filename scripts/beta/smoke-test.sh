@@ -105,7 +105,8 @@ if [ "$mode" = public ]; then
 	fi
 	AUTH=
 	check_status "robots.txt is public" 200 "$base/robots.txt"
-	check_body "robots.txt disallows everything" 'Disallow: /' "$base/robots.txt"
+	check_body "robots.txt disallows everything else" 'Disallow: /' "$base/robots.txt"
+	check_body "robots.txt lets Google read the favicon (the connector's icon)" 'Allow: /favicon.ico' "$base/robots.txt"
 	check_status "the account-deletion page is public" 200 "$base/delete-account"
 	check_status "the privacy policy is public" 200 "$base/privacy"
 	# POST only, so a GET reaching the api without a password is refused by the api (405), not 401.

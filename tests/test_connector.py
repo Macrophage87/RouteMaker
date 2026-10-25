@@ -256,7 +256,15 @@ class TestConnector:
         _user, tokens, _client_id = tokens_for()
         token = tokens["access_token"]
         hello = mcp(token, "initialize", {"protocolVersion": "2025-06-18"}).json()
-        assert hello["result"]["serverInfo"]["name"] == "routemaker"
+        info = hello["result"]["serverInfo"]
+        assert info["name"] == "routemaker" and info["title"] == "RouteMaker"
+        # The app's logo, from this site's own address (the connector list's icon).
+        assert [(i["src"].split("/", 3)[3], i["mimeType"]) for i in info["icons"]] == [
+            ("favicon.svg", "image/svg+xml"),
+            ("icons/icon-192.png", "image/png"),
+            ("icons/icon-512.png", "image/png"),
+        ]
+        assert all(i["src"].startswith("http://testserver/") for i in info["icons"])
         assert mcp(token, "notifications/initialized", msg_id=None).status_code == 202
         tools = mcp(token, "tools/list").json()["result"]["tools"]
         save = next(t for t in tools if t["name"] == "save_route")

@@ -8030,7 +8030,8 @@ on a real phone with a tandem captain and a blind stoker, and a dead-spot ride, 
 
 **Manifest and icons (P1).** `frontend/public/manifest.webmanifest` names the app RouteMaker, opens `/`
 standalone (Q8, 465) with scope `/`, and lists four icons: 192 and 512 px, `any` and `maskable`.
-The icons, and the 180 px `apple-touch-icon.png`, are drawn from `frontend/public/favicon.svg` (Q10,
+The icons, the 180 px `apple-touch-icon.png` and `favicon.ico` (16, 32 and 48 px, for Google's favicon
+service: OPERATIONS.md, "The connector's icon"), are drawn from `frontend/public/favicon.svg` (Q10,
 465b) by `python3 scripts/make_app_icons.py`, which renders the SVG with Chromium's headless shell
 (full Chrome's `--headless=new` crops the bottom of a small window) and is run again only when the
 favicon changes; the PNGs are committed. The maskable icons draw the glyph at 75 % on full-bleed blue,
