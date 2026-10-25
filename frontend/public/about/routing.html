@@ -229,6 +229,7 @@ This page lists those costs and how each ride type changes them. How a road gets
 <li><a href="#ride-types">How a ride type changes the costs</a></li>
 <li><a href="#example">A worked example</a></li>
 <li><a href="#closures">Closures</a></li>
+<li><a href="#sensitive-areas">Routing near sensitive areas</a></li>
 <li><a href="#riding">While you ride</a></li>
 <li><a href="#sources">Sources</a></li>
 </ul>
@@ -1061,6 +1062,129 @@ sheet's warnings, in the Check before you go dialog at Start and in an AI assist
 </ul>
 
 </div></details>
+<h2 id="sensitive-areas">Routing near sensitive areas</h2>
+<p>Some places can be reached by bike but should not be ridden across. RouteMaker sorts them four ways:
+<strong>closed</strong> where bikes are barred from all of it or access is unclear; <strong>walk in</strong> where the
+rule is to walk your bike; <strong>into, not through</strong> where riding across would be disrespectful
+or riders should go no further than an entrance; and <strong>ridden through</strong> where the land manager allows riding,
+or posts no rule against it and riding there is common.</p>
+<figure id="fig-sensitive" class="has-narrow">
+<div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
+<svg viewBox="0 0 770 360" role="img" aria-labelledby="fig-sensitive-t fig-sensitive-d" focusable="false" style="min-width:554px">
+<title id="fig-sensitive-t">Routing near sensitive areas</title>
+<desc id="fig-sensitive-d">Three questions in turn. Are bikes barred from all of it, or is access unclear? If so the place is closed: bases, quarries, airfields, golf courses. If not, does the rule say walk your bike? If so a route takes you to the edge and you walk the last bit: memorials, the Tidal Basin walks. If not, would riding across be disrespectful, or go past an entrance? If so the place is routed into but not through, only to a point inside: cemeteries, the Zoo. Otherwise it is ridden through: the circle parks, the Capitol grounds and the Mall grounds&#x27; walks.</desc>
+<defs><marker id="ah-sensitive" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<rect class="bx" x="440" y="14" width="320" height="66" rx="6"/>
+<text class="tb" x="600.0" y="43.5" text-anchor="middle">Closed</text>
+<text class="ts" x="600.0" y="59.5" text-anchor="middle">bases, quarries, airfields, golf courses</text>
+<rect class="bx" x="10" y="18" width="300" height="58" rx="6"/>
+<text class="t" x="160.0" y="43.5" text-anchor="middle">Are bikes barred from all of it,</text>
+<text class="t" x="160.0" y="59.5" text-anchor="middle">or is access unclear?</text>
+<path class="ar" d="M312,47 L437,47" marker-end="url(#ah-sensitive)"/><text class="ts" x="374.5" y="43.0" text-anchor="middle">Yes</text>
+<path class="ar" d="M160,77 L160,103" marker-end="url(#ah-sensitive)"/><text class="ts" x="176" y="94" text-anchor="middle">No</text>
+<rect class="bx" x="440" y="100" width="320" height="66" rx="6"/>
+<text class="tb" x="600.0" y="121.5" text-anchor="middle">Walk in</text>
+<text class="ts" x="600.0" y="137.5" text-anchor="middle">route to the edge, walk the last bit:</text>
+<text class="ts" x="600.0" y="153.5" text-anchor="middle">memorials, Tidal Basin walks</text>
+<rect class="bx" x="10" y="104" width="300" height="58" rx="6"/>
+<text class="t" x="160.0" y="129.5" text-anchor="middle">Does the rule say</text>
+<text class="t" x="160.0" y="145.5" text-anchor="middle">walk your bike?</text>
+<path class="ar" d="M312,133 L437,133" marker-end="url(#ah-sensitive)"/><text class="ts" x="374.5" y="129.0" text-anchor="middle">Yes</text>
+<path class="ar" d="M160,163 L160,189" marker-end="url(#ah-sensitive)"/><text class="ts" x="176" y="180" text-anchor="middle">No</text>
+<rect class="bx" x="440" y="186" width="320" height="66" rx="6"/>
+<text class="tb" x="600.0" y="207.5" text-anchor="middle">Into, not through</text>
+<text class="ts" x="600.0" y="223.5" text-anchor="middle">routed only to a point inside:</text>
+<text class="ts" x="600.0" y="239.5" text-anchor="middle">cemeteries, the Zoo</text>
+<rect class="bx" x="10" y="190" width="300" height="58" rx="6"/>
+<text class="t" x="160.0" y="207.5" text-anchor="middle">Would riding across be</text>
+<text class="t" x="160.0" y="223.5" text-anchor="middle">disrespectful, or go</text>
+<text class="t" x="160.0" y="239.5" text-anchor="middle">past an entrance?</text>
+<path class="ar" d="M312,219 L437,219" marker-end="url(#ah-sensitive)"/><text class="ts" x="374.5" y="215.0" text-anchor="middle">Yes</text>
+<path class="ar" d="M160,249 L160,305 L437,305" marker-end="url(#ah-sensitive)"/>
+<text class="ts" x="176" y="266" text-anchor="start">No</text>
+<rect class="bxa" x="440" y="272" width="320" height="66" rx="6"/>
+<text class="tb" x="600.0" y="293.5" text-anchor="middle">Ridden through</text>
+<text class="ts" x="600.0" y="309.5" text-anchor="middle">circle parks, Capitol grounds,</text>
+<text class="ts" x="600.0" y="325.5" text-anchor="middle">the Mall grounds&#x27; walks</text>
+</svg>
+</div>
+<div class="fig-narrow">
+<svg viewBox="0 0 320 520" role="img" aria-labelledby="fig-sensitive-n-t fig-sensitive-n-d" focusable="false">
+<title id="fig-sensitive-n-t">Routing near sensitive areas</title>
+<desc id="fig-sensitive-n-d">Three questions in turn. Are bikes barred from all of it, or is access unclear? If so the place is closed: bases, quarries, airfields, golf courses. If not, does the rule say walk your bike? If so a route takes you to the edge and you walk the last bit: memorials, the Tidal Basin walks. If not, would riding across be disrespectful, or go past an entrance? If so the place is routed into but not through, only to a point inside: cemeteries, the Zoo. Otherwise it is ridden through: the circle parks, the Capitol grounds and the Mall grounds&#x27; walks.</desc>
+<defs><marker id="ah-sensitive-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<rect class="bx" x="10" y="8" width="300" height="100" rx="6"/>
+<text class="tb" x="160.0" y="33" text-anchor="middle">Closed</text>
+<text class="ts" x="160.0" y="53" text-anchor="middle">When bikes are barred from all of it, or</text>
+<text class="ts" x="160.0" y="73" text-anchor="middle">access is unclear.</text>
+<text class="ts" x="160.0" y="93" text-anchor="middle">Bases, quarries, airfields, golf courses</text>
+<path class="ar" d="M160,110 L160,133" marker-end="url(#ah-sensitive-n)"/><text class="ts" x="196" y="126" text-anchor="middle">If not</text>
+<rect class="bx" x="10" y="136" width="300" height="100" rx="6"/>
+<text class="tb" x="160.0" y="161" text-anchor="middle">Walk in</text>
+<text class="ts" x="160.0" y="181" text-anchor="middle">When the rule says walk your bike.</text>
+<text class="ts" x="160.0" y="201" text-anchor="middle">Route to the edge, walk the last bit:</text>
+<text class="ts" x="160.0" y="221" text-anchor="middle">memorials, Tidal Basin walks</text>
+<path class="ar" d="M160,238 L160,261" marker-end="url(#ah-sensitive-n)"/><text class="ts" x="196" y="254" text-anchor="middle">If not</text>
+<rect class="bx" x="10" y="264" width="300" height="120" rx="6"/>
+<text class="tb" x="160.0" y="289" text-anchor="middle">Into, not through</text>
+<text class="ts" x="160.0" y="309" text-anchor="middle">When riding across would be</text>
+<text class="ts" x="160.0" y="329" text-anchor="middle">disrespectful, or go past an entrance.</text>
+<text class="ts" x="160.0" y="349" text-anchor="middle">Routed only to a point inside:</text>
+<text class="ts" x="160.0" y="369" text-anchor="middle">cemeteries, the Zoo</text>
+<path class="ar" d="M160,386 L160,409" marker-end="url(#ah-sensitive-n)"/><text class="ts" x="196" y="402" text-anchor="middle">If not</text>
+<rect class="bxa" x="10" y="412" width="300" height="100" rx="6"/>
+<text class="tb" x="160.0" y="437" text-anchor="middle">Ridden through</text>
+<text class="ts" x="160.0" y="457" text-anchor="middle">Otherwise.</text>
+<text class="ts" x="160.0" y="477" text-anchor="middle">Circle parks, Capitol grounds, the Mall</text>
+<text class="ts" x="160.0" y="497" text-anchor="middle">grounds&#x27; walks</text>
+</svg>
+</div>
+<figcaption>Each place gets the first answer that fits. Where a rule is posted it decides; where none is, the call is RouteMaker's owner's.</figcaption>
+</figure>
+<details class="more"><summary>More: Routing near sensitive areas</summary>
+<div class="more-body">
+
+
+<h3>Closed</h3>
+<p>Where bike access is unclear, RouteMaker takes the way as closed. Every road and path on a military
+base or a secured federal compound, such as Joint Base Anacostia-Bolling, the Pentagon or the Secret Service's
+training center, is closed and
+left off the map. Numbered public roads through a base stay open, such as US 1 through Fort Belvoir and
+MD 198 at Fort Meade, as do ways signed for bikes and the Pentagon's public streets and walkways.
+Quarries, landfills and the service roads of industrial sites close the same way, and from the next map
+update so do an airport's airfield roads; public streets and the trails past them stay open. From the
+next map update, on a golf course the cart paths, walkways and drives close; public streets and their sidewalks,
+numbered roads, bike routes and named trails through the course stay open.</p>
+<h3>Walk in</h3>
+<p>The National Mall's rules have riders walk their bikes through the memorials and along the Tidal
+Basin walks, bar bikes from the steps, colonnades and chambers of the DC War Memorial, the Lincoln and
+Jefferson Memorials and the Washington Monument, and ask that bikes be parked in each memorial's
+racks<sup class="cite"><a href="#ref-27" aria-label="source 27">[27]</a></sup>. So a route takes you to a memorial by its paths and you walk in. From the next map
+update, the Washington Monument's plaza, the Vietnam Veterans Memorial wall, the Three Soldiers, the
+Vietnam Women's Memorial, the 56 Signers' island, a band along the Tidal Basin's shore and any walk that
+runs into one of them stay closed, while the paths that only lead to them open.</p>
+<p>Where the start or destination you put can't be ridden to the door, as at the Martin Luther King Jr.
+and Franklin Delano Roosevelt memorials, the ride starts or ends as near as it can, and when that is
+200 ft to half a mile [60 to 800 m] away the walk is drawn on the map beside the route.</p>
+<h3>Into, not through</h3>
+<p>Roads and paths inside a cemetery, such as Arlington National, Congressional or Rock Creek Cemetery,
+are left off the map and used only by a route that starts or ends inside it. Many could be ridden, but
+RouteMaker's owner decided against encouraging a cut-through, as disrespectful; this is the owner's
+decision, not a cemetery's posted rule. A trail signed for bikes keeps its place, and a trail that runs
+along a cemetery outside its grounds is not affected.</p>
+<p>Nothing routes through the National Zoo. The streets along its edge, the Rock Creek Trail's edge
+pieces and the Zoo Loop Trail stay open, and a route to the Zoo ends at its bike racks by a short spur
+from the Harvard Street NW entrance that no route passes over. This too is the owner's decision.</p>
+<h3>Ridden through</h3>
+<p>Paths in DC's circle parks, such as Dupont and Logan, are open: no rule clearly bars bikes, and
+riding there is common. From the next map update, the walks, paths and plazas on the US Capitol grounds are open as the Capitol
+Police Board's rules allow<sup class="cite"><a href="#ref-28" aria-label="source 28">[28]</a></sup>, and so do the walks on the Washington Monument grounds and
+in Constitution Gardens: the National Mall's rules allow bikes on sidewalks
+beside roads and on multi-use trails, and name no ban on the grounds' other walks<sup class="cite"><a href="#ref-27" aria-label="source 27">[27]</a></sup>, so
+opening them is the owner's call. <a href="/about/stress.html#special">Stress ratings</a> has the full list of DC
+park paths.</p>
+
+</div></details>
 <h2 id="riding">While you ride</h2>
 <figure id="fig-uturn" class="has-narrow">
 <div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
@@ -1125,7 +1249,7 @@ as a ride starts and every 5 minutes during it, the app sends points along the l
 [8 km] apart and at most 10, each with when you will reach it at the route's pace if you go now (a plan set for another time is not checked
 before Start); Roam sends where you are, for now and every 15 minutes up to an hour. The server rounds each
 point to 0.01 degree, about 0.7 mi [1.1 km], before it asks the National Weather Service for the alerts in force
-there<sup class="cite"><a href="#ref-27" aria-label="source 27">[27]</a></sup> and Open-Meteo for the 15-minute rain forecast<sup class="cite"><a href="#ref-28" aria-label="source 28">[28]</a></sup>, so neither learns where you are; it
+there<sup class="cite"><a href="#ref-29" aria-label="source 29">[29]</a></sup> and Open-Meteo for the 15-minute rain forecast<sup class="cite"><a href="#ref-30" aria-label="source 30">[30]</a></sup>, so neither learns where you are; it
 keeps the answers 2 minutes in memory, logs no point and writes nothing, and your browser talks only to RouteMaker.
 Shown: every alert the NWS rates Extreme or Severe, and the heat, wind, fog and smoke, winter, ice and cold, flood,
 air-quality and blowing-dust advisories and Special Weather Statements, while they overlap that time; never marine,
@@ -1171,8 +1295,10 @@ climbing.</li>
   <li id="ref-24">District Department of Transportation, TOPS occupancy permits (CC BY 4.0). <a href="https://maps2.dcgis.dc.gov/dcgis/rest/services/DDOT/TOPS/MapServer/1">DC GIS</a>; <a href="https://catalog.data.gov/dataset/occupancy-permits-via-ddot-tops">catalog.data.gov</a></li>
   <li id="ref-25">National Park Service, "Record of Determination for the Temporary Closure of Certain Park Roads and Park Areas for the 2025-2026 Implementation of the Rock Creek Park White-tailed Deer Management Plan", read 2026-10-25. <a href="https://www.nps.gov/rocr/learn/management/record-of-determination-for-the-temporary-closure-of-certain-park-roads-and-park-areas-for-the-2025-2026-implementation-of-the-rock-creek-park-white-tailed-deer-management-plan.htm">nps.gov/rocr</a></li>
   <li id="ref-26">Montgomery Parks, "Deer Population Management Schedule &amp; Locations", Fall 2026 to Winter 2027, read 2026-10-25. <a href="https://montgomeryparks.org/deer-population-management-schedule-locations/">montgomeryparks.org</a></li>
-  <li id="ref-27">National Weather Service, API Web Service: active alerts for a point (api.weather.gov), U.S. government data. <a href="https://www.weather.gov/documentation/services-web-api">weather.gov/documentation/services-web-api</a></li>
-  <li id="ref-28">Open-Meteo forecast API, 15-minute precipitation (in North America from NOAA's HRRR model, updated hourly), data CC BY 4.0. <a href="https://open-meteo.com/en/docs">open-meteo.com/en/docs</a></li>
+  <li id="ref-27">National Park Service, National Mall and Memorial Parks Superintendent's Compendium (approved September 11, 2026), 36 CFR 4.30: bicyclists walk their bicycles through the memorials and along the Tidal Basin walks. <a href="https://home.nps.gov/nama/learn/management/superintendent-s-compendium.htm">nps.gov</a></li>
+  <li id="ref-28">Capitol Police Board, US Capitol Grounds Traffic Regulations: no prohibition on riding a bicycle on the grounds' walks so long as the rider creates no hazard. <a href="https://www.uscp.gov/sites/evo-subsites/www.uscp.gov/files/documents/Capitol%20Police%20Board%20US%20Capitol%20Grounds%20Traffic%20Regulations%20-%20For%20Public%20Release.pdf">uscp.gov (PDF)</a></li>
+  <li id="ref-29">National Weather Service, API Web Service: active alerts for a point (api.weather.gov), U.S. government data. <a href="https://www.weather.gov/documentation/services-web-api">weather.gov/documentation/services-web-api</a></li>
+  <li id="ref-30">Open-Meteo forecast API, 15-minute precipitation (in North America from NOAA's HRRR model, updated hourly), data CC BY 4.0. <a href="https://open-meteo.com/en/docs">open-meteo.com/en/docs</a></li>
 </ol>
 <p class="next">Next: <a href="/about/trails.html">Mountain Bike, Mountain Goat and Gravel</a></p>
 </main>
