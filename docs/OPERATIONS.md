@@ -7002,12 +7002,15 @@ that table. The planner reads it at most once a minute a process. Nothing needs 
   worker asks the `standard` router for the way by car and keeps it only when it is at most
   1.25x the straight line + 200 m [660 ft] and mostly on a road the feed names. Each place is
   remembered in the row (`feeds.md.placed`), so a refresh routes only new zones, at most 50 in 2
-  minutes; a miss is retried after 6 hours, the router down at the next refresh. A zone over 400 m
-  [1,300 ft] that could not be placed is shown as a marker at its first end, with no line, and is
-  matched by routing against the straight line as before.
+  minutes; a miss is retried after 6 hours, a router failure at the next refresh (two in a row
+  stop that refresh's look-ups). A zone over 400 m [1,300 ft] that could not be placed is shown as
+  a marker at its first end, with no line, and is matched by routing against the straight line as
+  before.
 - Zones on roads bicycles may not use are not kept (the owner, 2026-10-25: "not worth mentioning
-  closures on roads bikes can't use"): an Interstate by the feed's road name, or a line at least
-  60% of whose samples lie within 15 m [50 ft] of a road the live map bars (`map_class` barred).
+  closures on roads bikes can't use"): one every road name of which is an Interstate ("I-97",
+  never "I-70 Business"), dropped before it is placed; or one at least 60% of whose samples have,
+  as their nearest road within 15 m [50 ft], one the live map bars (`map_class` barred), checked
+  in one query a refresh once it is on the road.
 
 **After the release is deployed** (no rebuild needed):
 
@@ -7030,8 +7033,13 @@ that table. The planner reads it at most once a minute a process. Nothing needs 
    shows them). The description should carry "Work zone ahead at ... Source: Maryland DOT SHA work
    zones (WZDx, CC0).", and the answer's `work_zones.status` should be `{"md": "current"}`.
 3. On the map, a Maryland zone given by its ends (Georgia Ave, MD 97, if still listed) follows the
-   road. `SELECT jsonb_object_keys(payload->'feeds'->'md'->'placed') FROM bikeshare_feed_cache
-   WHERE key = 'workzones';` lists the places looked up; no I-97 or I-495 zone is listed.
+   road, and no I-97 or I-495 zone is listed (one also named otherwise, "Capital Beltway", is
+   dropped only once it is on the road):
+
+   ```sh
+   docker compose exec -T postgis psql -U routemaker -d routemaker -c \
+     "SELECT z->>'road' FROM bikeshare_feed_cache, jsonb_array_elements(payload->'feeds'->'md'->'zones') z WHERE key = 'workzones' ORDER BY 1;"
+   ```
 4. The operations page lists `refresh_work_zones` as stale if no refresh has succeeded for 30
    minutes.
 

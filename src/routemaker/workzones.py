@@ -129,9 +129,13 @@ PLACED_TOLERANCE_M = 4.0
 
 # Roads a bicycle may not use (the owner, 2026-10-25: "It's not worth mentioning closures on
 # roads bikes can't use", of construction on I-97): an Interstate by the feed's name, or a
-# line at least `BARRED_SHARE` of whose samples lie within `BARRED_NEAR_M` of a road the map
-# bars (`core.workzones.on_barred_road`). Such a zone is not kept.
-INTERSTATE = re.compile(r"^\s*(i|ih|is|interstate)[\s-]*\d+\b", re.IGNORECASE)
+# line at least `BARRED_SHARE` of whose samples have, as their nearest road within
+# `BARRED_NEAR_M`, one the map bars (`core.workzones.barred_zones`). Such a zone is not kept.
+# "I-97", "I 495", "Interstate 95", "I-97A", any dash; never "I-70 Business", a town street.
+INTERSTATE = re.compile(
+    r"^\s*(i|ih|is|interstate)[\s\-\u2010-\u2015]*\d+[a-z]?\b(?!.*\bbus(iness)?\b)",
+    re.IGNORECASE,
+)
 BARRED_NEAR_M = 15.0
 BARRED_SHARE = 0.6
 BARRED_SAMPLES = 20
@@ -578,8 +582,9 @@ def road_named(found: str, roads: Iterable[str]) -> bool:
 
 
 def on_interstate(zone: Zone) -> bool:
-    """Whether the feed names the zone's road as an Interstate, which no bicycle may use."""
-    return any(INTERSTATE.match(road) for road in zone.roads)
+    """Whether the feed names the zone's road as an Interstate, which no bicycle may use. Every
+    name it gives must be one: a zone named "MD 32" and "I-95" may be work on MD 32."""
+    return bool(zone.roads) and all(INTERSTATE.match(road) for road in zone.roads)
 
 
 def samples(line: Sequence[Sequence[float]], most: int = BARRED_SAMPLES) -> list[tuple]:
@@ -590,6 +595,7 @@ def samples(line: Sequence[Sequence[float]], most: int = BARRED_SAMPLES) -> list
     if total <= 0:
         return [tuple(line[0])]
     out, run, k = [], 0.0, 0
+    most = max(most, 2)
     targets = [total * i / (most - 1) for i in range(most)]
     for a, b in zip(xy, xy[1:], strict=False):
         seg = math.dist(a, b)
