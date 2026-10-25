@@ -56,7 +56,7 @@
 #                        offline, with VITE_BETA=1 (the preferred way)
 #   --report-url URL     with --build-frontend: an https address the beta notice links to as
 #                        "Report a problem" (VITE_BETA_REPORT_URL; OWNER-DECISIONS 382). Without
-#                        it the notice names no channel and shows no link.
+#                        it the notice shows only its built-in Discord and sign-up links.
 #   --dist DIR           use an already-built front end instead (must contain index.html)
 #                        Unless --without frontend, one of --build-frontend or --dist is required.
 #   --node-modules DIR   node_modules for --build-frontend [<repo>/frontend/node_modules], installed
