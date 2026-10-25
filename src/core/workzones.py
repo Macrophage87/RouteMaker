@@ -222,9 +222,9 @@ def place(zones, kept: dict | None, now: datetime, out_of_time=lambda: False, fi
     return out, places.used
 
 
-def barred_zones(zones, schema: str | None = None) -> set[str]:
-    """The ids of the zones at least `rules.BARRED_SHARE` of whose samples have, as their
-    nearest road within `rules.BARRED_NEAR_M`, one the map bars to bicycles (the live segment
+def barred_zones(zones, schema: str | None = None) -> set[int]:
+    """The positions in `zones` of those at least `rules.BARRED_SHARE` of whose samples have,
+    as their nearest road within `rules.BARRED_NEAR_M`, one the map bars to bicycles (the live segment
     table's map_class 'barred': a motorway or its ramp, or a road tagged bicycle=no). Nearest,
     so a street through an interchange or a frontage road beside a motorway is not barred.
     One query for all of them; none where the table cannot be read."""
@@ -255,7 +255,7 @@ def barred_zones(zones, schema: str | None = None) -> set[str]:
                     SELECT s.map_class FROM {schema}.segment AS s
                     WHERE s.geometry && ST_Expand(p.g, 0.0003)
                       AND ST_DWithin(s.geometry::geography, p.g::geography, %s)
-                    ORDER BY s.geometry <-> p.g LIMIT 1
+                    ORDER BY ST_Distance(s.geometry::geography, p.g::geography) LIMIT 1
                 ) AS near ON true
                 GROUP BY p.z
                 """,
@@ -267,7 +267,7 @@ def barred_zones(zones, schema: str | None = None) -> set[str]:
             "work zones: the map's barred roads could not be read (%s)", type(error).__name__
         )
         return set()
-    return {zones[z].zone_id for z, n, barred in rows if barred >= rules.BARRED_SHARE * n}
+    return {z for z, n, barred in rows if barred >= rules.BARRED_SHARE * n}
 
 
 def refresh(fetch: Fetch = http_get, sleep=time.sleep, now: Callable[[], datetime] = _now) -> str:
@@ -307,7 +307,7 @@ def refresh(fetch: Fetch = http_get, sleep=time.sleep, now: Callable[[], datetim
         zones = [zone for zone in zones if not rules.on_interstate(zone)]
         zones, placed = place(zones, (feeds.get(source) or {}).get("placed"), now(), out_of_time)
         barred = barred_zones(zones)
-        zones = [zone for zone in zones if zone.zone_id not in barred]
+        zones = [zone for i, zone in enumerate(zones) if i not in barred]
         feeds[source] = {
             "read_at": now().isoformat(),
             "failed_at": None,

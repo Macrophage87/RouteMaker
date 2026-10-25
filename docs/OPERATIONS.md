@@ -7033,7 +7033,8 @@ that table. The planner reads it at most once a minute a process. Nothing needs 
    shows them). The description should carry "Work zone ahead at ... Source: Maryland DOT SHA work
    zones (WZDx, CC0).", and the answer's `work_zones.status` should be `{"md": "current"}`.
 3. On the map, a Maryland zone given by its ends (Georgia Ave, MD 97, if still listed) follows the
-   road, and no I-97 or I-495 zone is listed:
+   road, and no I-97 or I-495 zone is listed (one also named otherwise, "Capital Beltway", is
+   dropped only once it is on the road):
 
    ```sh
    docker compose exec -T postgis psql -U routemaker -d routemaker -c \

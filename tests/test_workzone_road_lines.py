@@ -293,7 +293,7 @@ class TestBarred:
                 f"INSERT INTO {table}.segment VALUES ('road', ST_GeomFromText(%s, 4326))",
                 ["LINESTRING(" + ", ".join(f"{x} {y}" for x, y in frontage) + ")"],
             )
-        assert workzones.barred_zones(zones, table) == {"z0"}
+        assert workzones.barred_zones(zones, table) == {0}
 
     def test_no_table_no_verdict(self) -> None:
         assert workzones.barred_zones([zone(line=ROAD)], "no_such_schema_here") == set()
@@ -340,7 +340,7 @@ def test_a_refresh_stores_the_road_and_the_place(monkeypatch) -> None:
     # A zone along a road the map bars is dropped once it is on the road.
     feed["features"][0]["properties"]["core_details"]["road_names"] = ["MD 97"]
     body = json.dumps(feed).encode()
-    monkeypatch.setattr(workzones, "barred_zones", lambda zones: {z.zone_id for z in zones})
+    monkeypatch.setattr(workzones, "barred_zones", lambda zones: set(range(len(zones))))
     line = workzones.refresh(lambda url, timeout: body, lambda s: None, lambda: NOW)
     assert line == "work zones: md 0 zones"
     workzones.forget()
