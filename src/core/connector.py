@@ -179,6 +179,15 @@ class InProcessApi:
     def geocode(self, query, near=None):
         return self._module.Api.geocode(self, query, near)
 
+    def scenic_roads(self, near, miles, designation=""):
+        return self._module.Api.scenic_roads(self, near, miles, designation)
+
+    def climbs_near(self, near, miles, **filters):
+        return self._module.Api.climbs_near(self, near, miles, **filters)
+
+    def closures_map(self, box, permits):
+        return self._module.Api.closures_map(self, box, permits)
+
     def shared_fragment(self, route_id):
         return self._module.Api.shared_fragment(self, route_id)
 
@@ -278,7 +287,15 @@ class DatabaseDrafts:
             check=data["plan"]["check"],
             sent=data["plan"]["sent"],
         )
-        return module.Draft(plan, data["options"], data["limit"], data["name"])
+        return module.Draft(
+            plan,
+            data["options"],
+            data["limit"],
+            data["name"],
+            # Drafts kept before v0.12.3 have neither: the module's defaults.
+            trim_spurs=data.get("trim_spurs", True),
+            intervals=data.get("intervals"),
+        )
 
     def put(self, draft) -> str:
         plan = draft.plan
@@ -295,6 +312,8 @@ class DatabaseDrafts:
             "options": draft.options,
             "limit": draft.limit,
             "name": draft.name,
+            "trim_spurs": draft.trim_spurs,
+            "intervals": draft.intervals,
         }
         draft_id = f"d{secrets.token_hex(4)}"
         with transaction.atomic():
@@ -374,6 +393,7 @@ def mcp_endpoint(request):
         files=False,
         gpx_link=lambda draft_id, name: gpx_link(request, user, draft_id, name),
         posts=bool(getattr(user, "is_instance_admin", False)),
+        icons=server_icons(request),
     )
     msg_id = message.get("id") if isinstance(message, dict) else None
     if msg_id is not None and (isinstance(msg_id, bool) or not isinstance(msg_id, (str, int))):
@@ -392,6 +412,18 @@ def mcp_endpoint(request):
 
 
 mcp_endpoint.limits = ratelimit.CONNECTOR_CALLS
+
+
+def server_icons(request) -> list[dict]:
+    """The app's icons (frontend/public), as serverInfo names them. claude.ai's connector list
+    does not read them yet: it shows the favicon Google's favicon service has for the domain
+    (docs/OPERATIONS.md, "The connector's icon"). Other apps, and claude.ai later, may."""
+    origin = _origin(request)
+    return [
+        {"src": f"{origin}/favicon.svg", "mimeType": "image/svg+xml", "sizes": ["any"]},
+        {"src": f"{origin}/icons/icon-192.png", "mimeType": "image/png", "sizes": ["192x192"]},
+        {"src": f"{origin}/icons/icon-512.png", "mimeType": "image/png", "sizes": ["512x512"]},
+    ]
 
 
 # --- A draft's GPX ------------------------------------------------------------------------------

@@ -1,13 +1,22 @@
 // The private-beta notice (lib/betaBanner.ts): off unless the build says VITE_BETA=1,
 // a "Beta" chip in the map's bottom-left corner that shows and hides a labelled region
-// (not a dialog), never trapping focus, naming no channel, with a report link only when
-// one is configured.
+// (not a dialog), never trapping focus, linking the Discord for reports and, in small print,
+// the sign-up form, with a further report link only when one is configured.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { BETA_BANNER_TEXT, BETA_REPORT_LINK_TEXT, BetaChip, betaReportUrl, isBetaBuild } from "./betaBanner.ts";
+import {
+  BETA_BANNER_TEXT,
+  BETA_DISCORD_URL,
+  BETA_REPORT_LINK_TEXT,
+  BETA_SIGNUP_TEXT,
+  BETA_SIGNUP_URL,
+  BetaChip,
+  betaReportUrl,
+  isBetaBuild,
+} from "./betaBanner.ts";
 import { appSource } from "../testSupport/appSource.mjs";
 
 const render = (props: Parameters<typeof BetaChip>[0]) => renderToStaticMarkup(createElement(BetaChip, props));
@@ -50,12 +59,30 @@ test("Escape or the chip again closes it, and the focus goes back to the chip", 
   assert.doesNotMatch(source, /sessionStorage|localStorage|getElementById/, "no dismissal to remember");
 });
 
-test("the text names no channel: it says to tell the person who gave you access (OWNER-DECISIONS 382)", () => {
+test("for reports it links the public Discord, and in small print the sign-up form (owner, 2026-10-25)", () => {
   assert.equal(
     BETA_BANNER_TEXT,
-    "Beta: routes may still use some paths where bikes aren't allowed until the next map update. If anything looks wrong, tell the person who gave you access.",
+    "Beta: routes may still use some paths where bikes aren't allowed until the next map update. If anything looks wrong, tell us on",
   );
-  assert.doesNotMatch(BETA_BANNER_TEXT, /discord|e-?mail|@|https?:/i);
+  assert.equal(BETA_DISCORD_URL, "https://discord.gg/Qwz6BEt6gc");
+  assert.equal(BETA_SIGNUP_URL, "https://forms.gle/dipMsGpheyF3oQA59");
+  assert.equal(BETA_SIGNUP_TEXT, "Sign up to test here!");
+  const html = render({ enabled: true, initiallyOpen: true });
+  const newTab = '<span class="visually-hidden"> (opens in a new tab)</span>';
+  assert.ok(
+    html.includes(
+      `tell us on <a href="${BETA_DISCORD_URL}" target="_blank" rel="noopener noreferrer">Discord${newTab}</a>.</p>`,
+    ),
+    html,
+  );
+  assert.ok(
+    html.includes(
+      `<p class="beta-chip-signup"><a href="${BETA_SIGNUP_URL}" target="_blank" rel="noopener noreferrer">Sign up to test here!${newTab}</a></p>`,
+    ),
+    html,
+  );
+  const css = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+  assert.match(css, /\.beta-chip-note \.beta-chip-signup \{[^}]*font-size: 0\.75rem;/, "small print, in rem");
 });
 
 test("the report link is an https address only; anything else gives no link", () => {
@@ -79,16 +106,19 @@ test("the report link is an https address only; anything else gives no link", ()
   }
 });
 
-test("with no report link there is no link at all; with one, it opens in a new tab and says so", () => {
-  assert.doesNotMatch(render({ enabled: true }), /<a /);
-  assert.doesNotMatch(render({ enabled: true, reportUrl: null }), /<a /);
-  const html = render({ enabled: true, initiallyOpen: true, reportUrl: "https://discord.gg/abc123" });
+test("with no report link there is no Report a problem link; with one, it opens in a new tab and says so", () => {
+  for (const reportUrl of [undefined, null, BETA_DISCORD_URL]) {
+    const html = render({ enabled: true, initiallyOpen: true, reportUrl });
+    assert.doesNotMatch(html, /Report a problem/, String(reportUrl));
+    assert.equal(html.match(/<a /g)?.length, 2, "Discord and sign-up only");
+  }
+  const html = render({ enabled: true, initiallyOpen: true, reportUrl: "https://example.org/report" });
   assert.match(
     html,
-    /<a href="https:\/\/discord\.gg\/abc123" target="_blank" rel="noopener noreferrer">Report a problem<span class="visually-hidden"> \(opens in a new tab\)<\/span><\/a>/,
+    /<a href="https:\/\/example\.org\/report" target="_blank" rel="noopener noreferrer">Report a problem<span class="visually-hidden"> \(opens in a new tab\)<\/span><\/a>/,
   );
   assert.equal(BETA_REPORT_LINK_TEXT, "Report a problem");
-  assert.equal(html.match(/<a /g)?.length, 1);
+  assert.equal(html.match(/<a /g)?.length, 3);
 });
 
 test("App wires it to the build flags and nothing else, so the local site is unchanged", () => {
