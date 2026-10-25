@@ -26,6 +26,7 @@ century".
 | `revise_route` | Changes a draft (add, move or remove points; any ride type or setting) and plans it again as a new draft; the old one stays to go back to. |
 | `save_route` | Keeps a draft, only when you say so: in your My routes on the site, and/or as a GPX file. |
 | `gpx_route` | A draft as a GPX track: a `.gpx` file on your own computer, or a download link on the site. |
+| `draft_route_post` | Site connector, instance admins only: writes a Featured routes post as a draft (title, about, who it's for, season, highlighted sections with their miles) around a draft route or a line to follow, for an admin to publish in the admin. Sending the same slug again with `replace` rewrites the draft. |
 | `plan_metro_loop` | Builds a loop of about the target length around DC (or another centre) through waypoints at or just beyond Metro stations, rescales it once towards the target, and repairs stretches past the Metro limit. |
 
 The assistant picks the ride type and settings that fit what you ask: every ride type the app
@@ -61,6 +62,19 @@ planned once per request: the answer says when it stopped early, and asking Clau
 the draft can still fix where it strays from Metro or move its points. Drafts are kept on the site for a week. There is no GPX
 file on the server: `gpx_route` gives a download link instead, which works while the draft is kept
 (on the beta, behind its password).
+
+### Featured routes posts, for instance admins
+
+Signed in as an instance admin, the connector also offers `draft_route_post`, so you can ask
+Claude to write a Featured routes post and send it straight to the site. The post always lands
+as a **draft**: only admins see its page (`/routes/<slug>`), and publishing is still your press
+of Status > Published in the admin, where you can also change anything first. The route is either
+a draft Claude planned (or opened from a link) or a line to follow, such as a ride's GPX track,
+planned the way the app plans an opened file. The same checks as the admin apply: the route needs
+its planned figures, and one that starts, ends or stops in your Home circle is refused. Sending
+the same slug again with `replace` rewrites that draft (without it, a draft already at that slug,
+such as one you started in the admin, is left alone); once a post has left draft, the connector cannot change
+it. Disconnecting the app in Settings ends it.
 
 ## Set it up on your own computer
 
