@@ -25,10 +25,11 @@ What is kept, and nothing else (core.transit's docstring has the method):
 - **stops:** WMATA's Metro stations are the map's 98 (each platform matched to the nearest within
   `MATCH_M`), each with its bike entrance as the map picks it (DC's elevator, else
   OpenStreetMap's, else an entrance; `bike` says whether it is an elevator). Other rail systems'
-  stations are their GTFS stations (a platform's parent), `bike` true at every one (the owner,
-  2026-10-12: every station has a ramp or an elevator, and stairs will do in a pinch; GTFS
-  `wheelchair_boarding` is not read). Bus stops are kept as
-  they are, `bike` true (the rack is at the curb).
+  stations are their GTFS stations (a platform's parent; with no parent, the platforms of one
+  name but for their way, "nb" and "sb", within `PLATFORM_M`: MARC's), `bike` true at every
+  one (the owner, 2026-10-12: every station has a ramp or an elevator, and stairs will do in a
+  pinch; GTFS `wheelchair_boarding` is not read). Bus stops are kept as they are, `bike` true
+  (the rack is at the curb).
 - **patterns:** per stop order of each route, the median run time from its first stop to each
   later one per band of the service day (core.transit.BANDS), and every trip's departure from the
   first stop by service id, with whether the trip takes a bike (systems.json `bike.vehicle`;
@@ -72,6 +73,9 @@ BANDS = (
 # The calendar window kept, in days from --date: a fortnight's refresh with room to spare.
 DAYS = 45
 MATCH_M = 400.0
+# Parentless platforms of one name, but for their way, this close are one station.
+PLATFORM_M = 200.0
+PLATFORM_WAYS = ("nb", "sb", "eb", "wb")
 LINES = ("Red", "Blue", "Orange", "Silver", "Green", "Yellow")
 WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
 
@@ -228,9 +232,20 @@ def last_service_day(feed) -> date | None:
     return datetime.strptime(max(ends), "%Y%m%d").date() if ends else None
 
 
-def route_names(feed, metro: bool, long_first: bool = False) -> dict[str, str]:
+def line_name(long: str) -> str:
+    """MDOT MTA's MARC long name, "PENN - WASHINGTON", as the line's name: "Penn Line"; a long
+    name already a line's ("Penn Line") stays."""
+    if " - " not in long:
+        return long
+    first = long.split(" - ")[0].strip()
+    return f"{first.title()} Line" if first else long
+
+
+def route_names(feed, metro: bool, long_first: bool = False, line: bool = False) -> dict[str, str]:
     """Each route's name as a step says it. `long_first` (systems.json `route_name` long): the
-    GTFS long name before the short one, for a system whose short names are numbers (VRE)."""
+    GTFS long name before the short one, for a system whose short names are numbers (VRE).
+    `line` (`route_name` line): the line named from the long name's first part, for a system
+    whose short name is the same for every route (MARC's is "MARC")."""
     out = {}
     for row in _rows(feed, "routes.txt"):
         short = (row.get("route_short_name") or "").strip()
@@ -241,6 +256,8 @@ def route_names(feed, metro: bool, long_first: bool = False) -> dict[str, str]:
             out[row["route_id"]] = (
                 f"{colour} Line" if colour else (long or short or row["route_id"])
             )
+        elif line and line_name(long):
+            out[row["route_id"]] = line_name(long)
         elif long_first:
             out[row["route_id"]] = long or short or row["route_id"]
         else:
@@ -412,11 +429,21 @@ def metro_stop_key(feed, stops: _Stops, system: int, report: list[str], data: Pa
     return keys.get
 
 
+def _platform_station(name: str) -> str:
+    """A platform's station when the feed has no parent: "PENN STATION MARC nb" -> "PENN STATION
+    MARC" (MDOT MTA's MARC feed lists each station once per way)."""
+    words = name.strip().split()
+    return " ".join(words[:-1]) if len(words) > 1 and words[-1] in PLATFORM_WAYS else name.strip()
+
+
 def station_stop_key(feed, stops: _Stops, system: int):
-    """A rail system's stations: each platform goes to its parent station."""
+    """A rail system's stations: each platform goes to its parent station, or with no parent, to
+    the station of its name without its way ("nb", "sb") within `PLATFORM_M`."""
     rows = _stops(feed)
     keys: dict[str, int] = {}
     entrances: dict[str, list] = {}
+    # A parentless platform's station name -> the first such platform's id (its station)
+    sides: dict[str, str] = {}
     for row in rows.values():
         if row.get("location_type") == "2" and row.get("parent_station"):
             entrances.setdefault(row["parent_station"], []).append(_round(_point(row)))
@@ -426,12 +453,21 @@ def station_stop_key(feed, stops: _Stops, system: int):
         parent_id = row.get("parent_station") or ""
         parent = rows.get(parent_id)
         station_id = parent_id if parent else stop_id
+        if not parent:
+            base = _platform_station(row.get("stop_name") or "")
+            first = sides.setdefault(base, stop_id)
+            if distance_m(_point(rows[first]), _point(row)) <= PLATFORM_M:
+                station_id = first
         if station_id not in keys:
             place = parent or row
             point = _round(_point(place))
             keys[station_id] = stops.add(
                 {
-                    "name": (place.get("stop_name") or "").strip(),
+                    "name": (
+                        (place.get("stop_name") or "").strip()
+                        if parent
+                        else _platform_station(place.get("stop_name") or "")
+                    ),
                     "point": point,
                     "bike_entrance": point,
                     # Every station takes a bike (the owner, 2026-10-12: "I believe all
@@ -527,6 +563,7 @@ def build(
                     feed,
                     metro=config.get("stations") == "wmata-map",
                     long_first=config.get("route_name") == "long",
+                    line=config.get("route_name") == "line",
                 ),
                 key,
                 config["bike"]["vehicle"],
