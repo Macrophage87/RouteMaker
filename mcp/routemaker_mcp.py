@@ -1689,8 +1689,6 @@ class Server:
         if not name:
             raise ToolError("give the route a name")
         plan = draft.plan
-        dials = self._dials(plan)
-        fragment = plan_fragment(plan.points, plan.vias, plan.preset, dials, plan.sent)
         out: dict = {"draft_id": args["draft_id"], "name": name}
         notes: list[str] = []
         call.check()
@@ -1706,6 +1704,8 @@ class Server:
                 " RouteMaker's own connector (mcp/README.md)"
             )
         else:
+            dials = self._dials(plan)
+            fragment = plan_fragment(plan.points, plan.vias, plan.preset, dials, plan.sent)
             saved = self.api.save(kept_route(plan, name, fragment, dials))
             out["saved"] = {
                 "id": saved.get("id"),

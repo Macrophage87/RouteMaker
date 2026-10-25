@@ -182,8 +182,7 @@ def delete_account(user) -> None:
             detail="deleted by the account holder",
         )
         # The rest goes by CASCADE: the sessions (so every device is signed out at its next
-        # request), My Go, settings, saved routes and versions, the assistant key, the Garmin and
-        # Wahoo links.
+        # request), My Go, settings, saved routes and versions, the Garmin and Wahoo links.
         user.delete()
     if garmin_access is not None and time_for_a_call():
         garmin.deregister(garmin_access, garmin_transport)
