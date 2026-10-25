@@ -11,6 +11,7 @@ so, and seasonal posts lead the list in season and wait in a fold out of it.
 
 from __future__ import annotations
 
+import importlib
 import json
 import re
 import struct
@@ -26,7 +27,16 @@ from django.test import Client
 from django.utils import timezone
 
 from core import route_posts
-from core.models import AuditLogEntry, MyGo, RoutePost, RoutePostSection, SavedRoute, Session, User
+from core.models import (
+    AuditLogEntry,
+    MyGo,
+    RoutePost,
+    RoutePostSection,
+    SavedRoute,
+    Session,
+    SharedRoute,
+    User,
+)
 
 REPO = Path(__file__).resolve().parents[1]
 db = pytest.mark.django_db(transaction=True)
@@ -482,6 +492,40 @@ def test_a_drafts_picture_is_never_kept_by_a_shared_cache() -> None:
     RoutePost.objects.filter(pk=post.pk).update(status=RoutePost.Status.WITHDRAWN)
     for path in ("/routes/mall-loop/thumbnail.jpg", "/routes/mall-loop/route.gpx"):
         assert Client().get(path).status_code == 404
+
+
+@db
+def test_open_in_routemaker_opens_the_route_kept_before_with_no_plan_link() -> None:
+    # The owner, 2026-10-25: "It just opens RouteMaker". An assistant's followed line was kept
+    # with no plan link and no file; the app takes neither (frontend/src/lib/sharedRoutes.ts
+    # isRoute) and opened empty. The migration mends the posts' routes kept so.
+    from django.apps import apps
+
+    post = make_post(status=RoutePost.Status.DRAFT, published_at=None)
+    SharedRoute.objects.filter(pk=post.route_id).update(
+        source="gpx", inputs={"points": [LINE[0], LINE[-1]], "preset": "trailmaxxing"}, gpx=""
+    )
+    plain = make_post(slug="mall-loop-2")
+    kept = SharedRoute.objects.get(pk=plain.route_id)
+    step = importlib.import_module("core.migrations.0047_route_post_openable_routes")
+    step.mend(apps, None)
+    row = SharedRoute.objects.get(pk=post.route_id)
+    ends = ";".join(f"{p[0]:.5f},{p[1]:.5f}" for p in (LINE[0], LINE[-1]))
+    assert row.inputs["hash"] == f"p={ends}&preset=trailmaxxing"
+    assert row.gpx == route_posts.line_gpx(post.title, LINE)
+    # A route that opened already is left as it was.
+    again = SharedRoute.objects.get(pk=plain.route_id)
+    assert (again.inputs, again.gpx) == (kept.inputs, kept.gpx) and again.gpx == ""
+
+
+@db
+def test_a_saved_files_post_opens_its_line_never_the_riders_own_file() -> None:
+    author = make_user(is_instance_admin=True)
+    saved = saved_route(author, source="gpx", gpx="<gpx><!-- the rider's own file --></gpx>")
+    post = RoutePost(slug="mall-file", title="Mall file", abstract="x", author=author)
+    route_posts.freeze(post, saved)
+    assert post.route.gpx == route_posts.line_gpx("Mall file", LINE)
+    assert "rider's own" not in post.route.gpx
 
 
 @db

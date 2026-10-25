@@ -220,6 +220,12 @@ def freeze_route(post, *, source, line, distance_m, inputs, answer, planned=None
     # the answer): an older saved route's dials may still carry it.
     if isinstance(inputs.get("dials"), dict):
         inputs["dials"] = {k: v for k, v in inputs["dials"].items() if "weight" not in k.lower()}
+    # Open in RouteMaker opens the copy as the app opens any shared link (frontend/src/App.tsx
+    # openSaved): a plan from its link (`hash`), a followed line from its file. An assistant's
+    # followed line came with neither, and the app opened empty (the owner, 2026-10-25: "It just
+    # opens RouteMaker"). The file is written from the line, never a rider's own file.
+    if not isinstance(inputs.get("hash"), str):
+        inputs["hash"] = plan_hash(inputs, line, answer)
     row = SharedRoute.objects.create(
         id=secrets.token_hex(16),
         name=post.title[:120],
@@ -228,7 +234,7 @@ def freeze_route(post, *, source, line, distance_m, inputs, answer, planned=None
         distance_m=distance_m,
         inputs=inputs,
         answer=answer,
-        gpx="",
+        gpx=line_gpx(post.title, line) if source == "gpx" else "",
         created_at=now,
         last_opened_at=now,
         keep="forever",
@@ -242,6 +248,19 @@ def freeze_route(post, *, source, line, distance_m, inputs, answer, planned=None
     post.thumbnail, post.thumbnail_key = None, ""
     first = line[0]
     post.start_lon, post.start_lat = float(first[0]), float(first[1])
+
+
+def plan_hash(inputs: dict, line, answer: dict) -> str:
+    """The plan link a route kept without one opens on (frontend/src/lib/planHash.ts
+    `encodePlan`): its points, or the line's two ends, and its ride type."""
+    points = [
+        p for p in (inputs.get("points") or []) if isinstance(p, list | tuple) and len(p) >= 2
+    ]
+    if len(points) < 2:
+        points = [line[0], line[-1]]
+    hash_ = "p=" + ";".join(f"{float(p[0]):.5f},{float(p[1]):.5f}" for p in points)
+    preset = str(inputs.get("preset") or answer.get("preset") or "")
+    return f"{hash_}&preset={preset}" if preset else hash_
 
 
 # ---- Drafts sent by an assistant ----
@@ -902,10 +921,15 @@ def page(request, slug: str):
 
 
 def gpx_text(post) -> str:
-    """The route as a GPX 1.1 track with its credits (frontend/src/lib/gpx.ts writeGpx)."""
-    name = escape(post.title, quote=True)
+    """The post's route as a GPX 1.1 track with its credits."""
+    return line_gpx(post.title, post.route.line)
+
+
+def line_gpx(title: str, line) -> str:
+    """A line as a GPX 1.1 track with its credits (frontend/src/lib/gpx.ts writeGpx)."""
+    name = escape(title, quote=True)
     points = []
-    for p in post.route.line:
+    for p in line:
         ele = p[2] if len(p) > 2 and isinstance(p[2], int | float) else None
         at = f'lat="{float(p[1]):.6f}" lon="{float(p[0]):.6f}"'
         points.append(
