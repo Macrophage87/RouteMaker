@@ -7018,6 +7018,11 @@ details.fold > summary .icon {
   outline: 3px solid #1d4ed8;
   outline-offset: 2px;
 }
+/* Every card over every marker (the owner, 2026-10-25: "Closure popup goes under markers"): the closure,
+   junction and Avoid markers carry z-index 3-4 among the map's markers, and maplibre's popups none. */
+.maplibregl-popup {
+  z-index: 5;
+}
 /* In the panel's theme, as the station cards are: maplibre's own white card left dark-theme text unreadable. */
 .closure-popup .maplibregl-popup-content {
   background: var(--bg);
