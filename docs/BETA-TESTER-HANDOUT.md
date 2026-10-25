@@ -124,14 +124,18 @@ You stay responsible for riding safely; the route can be wrong.
 - Plan a route, then press "Start ride", on the bar at the top of the map (once you've picked a
   route), under the route's figures or in Directions. The
   browser asks to use your location.
-- The first time, it asks how to say the cues: with your screen reader, RouteMaker's voice,
-  both, or neither (on screen only), and how much: Full (every turn, early and again close to
-  it), Stoker (each turn once ahead and as it happens, busy crossings and stops: for the rider
-  behind on a tandem) or Quiet (only arrival). Both choices stay on this device; change them in
-  "Ride settings" during a ride, or in Settings.
+- The ride starts at once. The cues use your Settings (Riding): who says them, your screen
+  reader, RouteMaker's voice, both, or neither (on screen only), and how much: Full (every turn,
+  early and again close to it), Stoker (each turn once ahead and as it happens, busy crossings and
+  stops: for the rider behind on a tandem) or Quiet (only arrival). Until you change them,
+  RouteMaker's voice says every turn. Both choices stay on this device; change them in
+  the ride's More panel (the last side button) during a ride, or in Settings.
 - "Where am I?" (it also re-centres the map on you) says the street you are on, the next turn and the distance to the next stop
   and the end. On a long trail away from roads it says the trail and a distance from its last
   junction, for example "On the Capital Crescent Trail, about 1.2 miles northwest of ...".
+- Moved the map by hand? Leave the screen alone for 30 seconds and the map goes back to following
+  you, at the ride's usual zoom. Map cards, road info and the side menus close on their own after
+  the same 30 seconds, unless you are typing in one or accessibility mode is on.
 - End ride is a slide: slide it to the right to end the ride, so a bump doesn't end it. Once you
   have arrived it is a plain button. End ride and Road closed share the top row; Road closed
   always shows its words. Near sunrise or sunset, a small line under them gives the sunrise or
@@ -173,7 +177,7 @@ You stay responsible for riding safely; the route can be wrong.
 - Keep the screen on. If the browser cannot keep it on, Ride mode says so; on an iPhone set
   Settings, Display and Brightness, Auto-Lock to Never for the ride. In the background for more
   than 10 minutes, the ride pauses; press Resume.
-- In a ride the map's street names are larger and shortened ("R St NW"), and the turn card uses fewer words ("0.2 mi", not "In 0.2 mi") so its type can be larger; a screen reader still hears the whole sentence.
+- In a ride the map's street names are larger and shortened ("R St NW") and come before shop names, place names and the water, restroom and repair icons (station names and hazard marks still come first), so far more of the streets near you keep their names (drawn over the route too), and the turn card uses fewer words ("0.2 mi", not "In 0.2 mi") so its type can be larger; a screen reader still hears the whole sentence.
 - The Large text button on the ride's side (the "Aa") puts the next turn as big as it fits on the top half of the screen, with the map below, for bright sun or near sight; press it again for the normal card. "Large text during a ride" in Settings is the same switch. Ending the ride goes back to the planner.
 
 

@@ -307,6 +307,21 @@ def _smallint(value: float | None) -> int | None:
     return None if value is None else round(value)
 
 
+def median_restrictions(ways) -> list[tuple[int, list[tuple[str, int, str]], dict[str, str]]]:
+    """The no-U-turn restrictions at medians' ends among `ways` (one variant's, after
+    its drops; `divided.median_uturns`), as `extract.write_extract`'s `new_relations`."""
+    return [
+        (
+            extract.SYNTHETIC_RELATION_ID_FLOOR + i,
+            [("w", from_way, "from"), ("n", node, "via"), ("w", to_way, "to")],
+            dict(divided.NO_UTURN_TAGS),
+        )
+        for i, (from_way, node, to_way) in enumerate(
+            divided.median_uturns(ways, variants.has_contraflow_tag)
+        )
+    ]
+
+
 def lit_value(tags: dict) -> bool | None:
     """Whether a way is lit, by upstream's own reading of its `lit` tag.
 
@@ -3559,6 +3574,15 @@ def build_handlers(
                 )
 
             logger.info("%s: ways priced for a known hazard: %d", variant.value, hazard_ways)
+            # No U-turn round the end of a median, from one carriageway of a divided
+            # road onto the other (`divided.median_uturns`; the owner, 2026-10-24,
+            # Frederick Road at the Beltway: "Which wasn't possible"), as a restriction
+            # the router keeps for bicycles. Read on the ways this variant keeps, so a
+            # nose whose only way on it drops stays a dead end with its U-turn.
+            restrictions = median_restrictions(
+                [way for way in context.ways if way.osm_id not in dropped]
+            )
+            logger.info("%s: U-turns at median ends closed: %d", variant.value, len(restrictions))
             extract.write_extract(
                 context.source_pbf,
                 context.variant_pbf(variant),
@@ -3567,6 +3591,7 @@ def build_handlers(
                 node_lists,
                 drop_ways=dropped,
                 node_tags=signal_tags,
+                new_relations=restrictions,
             )
 
     def graph_outputs(build_dir: Path, config: dict) -> dict[str, Path]:

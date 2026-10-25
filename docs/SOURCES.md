@@ -1103,6 +1103,36 @@ needs no bike access.
 - Code: `src/core/street_photo.py`, `frontend/src/lib/streetPhoto.ts`; fixture
   `tests/data/mapillary/`.
 
+## Weather along the route (v0.12.1: NWS alerts, Open-Meteo rain)
+
+Stephen, 2026-10-24: warn of any relevant NWS alert before a ride and during it, linked to the
+notice, and say when rain is coming.
+
+- **Alerts:** the National Weather Service's API, `GET https://api.weather.gov/alerts/active?point=lat,lon`
+  (<https://www.weather.gov/documentation/services-web-api>): U.S. government open data, "free
+  to use for any purpose", no key; the API asks for a User-Agent naming the app. Only the alerts
+  that matter on a bike are kept (every Extreme or Severe one, and the heat, wind, fog, ice,
+  flood, air-quality advisories and Special Weather Statements; never marine, beach or frost
+  ones). Each links to the NWS's page for the place (`forecast.weather.gov/MapClick.php`), its
+  hazards at the top.
+- **Rain:** Open-Meteo's forecast API, `GET https://api.open-meteo.com/v1/forecast` with
+  `minutely_15=precipitation` (<https://open-meteo.com/en/docs>): in North America NOAA's HRRR
+  model at 15-minute steps, updated hourly (<https://openmeteo.substack.com/p/sub-hourly-15-minutely-weather-forecasts>).
+  Data CC BY 4.0; the free API is for non-commercial apps with no ads or subscriptions, 10,000
+  calls a day (<https://open-meteo.com/en/terms>, read 2026-10-24). NOAA's own forecast gives
+  rain chances by the hour only, so cannot say "in about 30 minutes".
+- Credit: Forecast: Open-Meteo, linked, beside the rain line; the NWS named in each alert's link.
+- **Checked, not used:** Pirate Weather (minutely precipitation, needs a key:
+  <https://pirateweather.readthedocs.io/en/latest/API/>); Google's minute forecast (experimental,
+  paid key: <https://developers.google.com/maps/documentation/weather/minute-forecast>); Weatherbit
+  minutely (paid: <https://www.weatherbit.io/api/weather-forecast-minutely>).
+- **Privacy:** the browser asks this site only (the CSP's `connect-src 'self'` stays). The points
+  go in a POST body; the server rounds each to 0.01 degree (about 0.7 mi, 1.1 km) before asking
+  either service, so they see this server and a rounded point, never the rider. Answers are kept
+  2 minutes in the api's memory by rounded point; nothing is written. Open-Meteo keeps its
+  server logs, which can hold the rounded point, for 90 days (its terms).
+- Code: `src/core/weather.py`, `frontend/src/lib/weather.ts`.
+
 ## Known road hazards (v0.10.0: cobblestones, rails in the road)
 
 Read from OpenStreetMap (credited there): `surface=sett`, `cobblestone`,

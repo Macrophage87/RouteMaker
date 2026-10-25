@@ -504,7 +504,7 @@ export function SettingsSheet(props: SettingsSheetProps) {
       )}
       {/* Most used first (Settings tidy, Stephen 2026-10-19): My Go with Home, then Riding, Display and Account. */}
       <MyGoSection controls={myGo} open={nav.view === "settings"} />
-      {/* Ride mode's choices (WEB-NAV-plan.md section 3): the same ones the first Start ride asks, kept on this device. */}
+      {/* Ride mode's choices (WEB-NAV-plan.md section 3): kept on this device. */}
       <section aria-labelledby="settings-ride-heading" className="settings-group">
         <h3 id="settings-ride-heading">Riding</h3>
         <RideSettingsFields prefs={ridePrefs} onChange={changeRidePrefs} idBase="settings-ride" compact />
