@@ -31,7 +31,8 @@
 	header Strict-Transport-Security "max-age=31536000"
 
 	# Request bodies (v0.7.0): 1 MiB, but 5 MiB for a saved or shared route and the rest of
-	# the account's own paths (/api/me/...) and an AI assistant's saves (/api/keyed/...), whose routes are up to 4 MB
+	# the account's own paths (/api/me/...), whose routes are up to 4 MB. /api/keyed is retired (v0.12.2) and
+	# stays in the pattern until the next change to the beta's nginx template, which holds a release
 	# (core.accounts.ROUTE_MAX_BYTES; Django reads at most 5 MiB, DATA_UPLOAD_MAX_MEMORY_SIZE).
 	# The beta's nginx template sets the same two sizes on the same paths
 	# (tests/test_beta_overlay.py holds them equal).
