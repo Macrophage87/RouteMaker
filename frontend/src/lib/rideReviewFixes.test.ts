@@ -103,10 +103,11 @@ test("RIDE-5: the outcome of a re-plan the rider asked for is answered at every 
   assert.equal(replanTold(false, "stoker", REPLAN_FAILED), "quiet");
   assert.equal(replanTold(false, "quiet", REPLAN_FOUND), "quiet");
   // The page: Re-plan from here asks; the automatic re-plans do not.
-  assert.match(ride, /async \(here: LonLat, via\?: LonLat, asked = false, turnRound = false, check = false\): Promise<boolean> => \{/);
+  assert.match(ride, /async \(here: LonLat, via\?: LonLat, asked = false, turnRound = false, check = false, skip\?: number, done\?: ReadonlySet<number>\): Promise<boolean> => \{/);
   assert.match(ride, /const told = replanTold\(asked, prefsRef\.current\.verbosity, note\);/);
-  // Re-plan from here, and Road closed (v0.8.2); not the held U-turn's silent check (asked false, check true).
-  assert.equal(ride.match(/void replan\([^)]*\)\)?;/g)?.filter((call) => call.includes("true") && !call.includes("false, false, true")).length, 2);
+  // Re-plan from here, Road closed (v0.8.2) and a restart's picks (2026-10-24); not the held U-turn's silent check
+  // (asked false, check true).
+  assert.equal(ride.match(/void replan\([^)]*\)\)?;/g)?.filter((call) => call.includes("true") && !call.includes("false, false, true")).length, 3);
 });
 
 test("a re-plan after Road closed turns round freely: both of its calls leave the heading out", () => {

@@ -297,9 +297,7 @@ export const NEAREST_STALE = "The ride or where to search from changed during th
 
 // --- While riding (Ride mode, RideMode.tsx) ---
 
-/** What Ride mode offers as a detour: water and restrooms (the owner: "If navigating, water sources and restrooms can be detours"). */
-export const DETOUR_KINDS: readonly NearestKind[] = ["water", "restroom"];
-export const DETOUR_SUMMARY = "Water or restroom";
+// What a ride's Detour menu offers (water, restrooms, food, repair and a search box) is lib/detourSearch.ts.
 export const DETOUR_HELP =
   "Detour here re-plans the ride from where you are through that place and on along the rest of the ride.";
 export const NO_FIX_YET = "Your position is not known yet; wait for GPS and try again.";

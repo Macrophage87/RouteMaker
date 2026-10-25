@@ -275,7 +275,8 @@ CD agent's and the host's own, is kept outside this repository, with the owner):
   (with `DC311_API_KEY`); the short map links a shared place is followed through
   (`core/share_links.py`): `maps.app.goo.gl`, `goo.gl`, `maps.apple`, `www.google.com`,
   `google.com`, `maps.google.com`, `consent.google.com`, `maps.apple.com`; `discord.com` only
-  with Discord sign-in.
+  with Discord sign-in; `api.weather.gov` and `api.open-meteo.com` (v0.12.1, weather along the
+  route, `core/weather.py`: rounded points, no key).
 - **worker** (`refresh_dc_closures`, every 15 minutes): `maps2.dcgis.dc.gov`, `mpdc.dc.gov`,
   `trainingtrack.hsema.dc.gov`, and `developer.nps.gov` (with `NPS_API_KEY`); and
   (`refresh_work_zones`, every 5 minutes) `filter.ritis.org` (Maryland) and

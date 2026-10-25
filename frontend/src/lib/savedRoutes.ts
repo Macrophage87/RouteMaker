@@ -16,6 +16,7 @@ import type { Dials } from "./dials.ts";
 import { formatDistance } from "./format.ts";
 import type { LonLat } from "./geo.ts";
 import { encodePlan } from "./planHash.ts";
+import { VIA_MARKS, viaIndices } from "./pointKinds.ts";
 import type { PresetId } from "./presets.ts";
 import type { ClosureAlert } from "./closureReview.ts";
 import { csrfFromCookie } from "./stressEditor.ts";
@@ -77,7 +78,10 @@ export function keptAnswer(route: RouteResponse): RouteResponse {
   return { ...route, candidates: null, avoid_alternate: null, closure_through: null };
 }
 
-/** A planned route's save: the line exactly as on screen, its answer without the other candidates. */
+/**
+ * A planned route's save: the line exactly as on screen, its answer without the other candidates. Its link keeps
+ * each point's kind and each stop's own name (2026-10-24), from the page's marks, so it reopens as it was planned.
+ */
 export function planSave(name: string, route: RouteResponse, points: readonly LonLat[], preset: PresetId, dials: Dials): SaveBody {
   const answer = keptAnswer(route);
   return {
@@ -85,7 +89,7 @@ export function planSave(name: string, route: RouteResponse, points: readonly Lo
     source: "plan",
     line: route.geometry.coordinates.map(([lon, lat]) => [lon, lat] as SavedVertex),
     distance_m: route.distance_m,
-    inputs: { hash: encodePlan(points, preset, dials), points: points.map(([lon, lat]) => [lon, lat] as LonLat), preset, dials },
+    inputs: { hash: encodePlan(points, preset, dials, viaIndices(points, VIA_MARKS.isVia)), points: points.map(([lon, lat]) => [lon, lat] as LonLat), preset, dials },
     answer,
   };
 }
@@ -103,7 +107,7 @@ export function gpxSave(name: string, text: string, track: readonly SavedVertex[
     source: "gpx",
     line: track.map((v) => [...v] as SavedVertex),
     distance_m: m,
-    inputs: { hash: encodePlan(points, preset, dials), points: points.map(([lon, lat]) => [lon, lat] as LonLat), preset, dials },
+    inputs: { hash: encodePlan(points, preset, dials, viaIndices(points, VIA_MARKS.isVia)), points: points.map(([lon, lat]) => [lon, lat] as LonLat), preset, dials },
     gpx: text,
     ...(shown ? { answer: keptAnswer(shown) } : {}),
   };
