@@ -27,7 +27,8 @@ must walk their bicycles through the memorials and along Tidal Basin walks"): a 
 whose midpoint is inside fixtures/mall_grounds/walk-only.geojson (the Monument's plaza,
 the Vietnam Veterans Memorial's wall, The Three Soldiers, the Vietnam Women's Memorial,
 the 56 Signers' island and a 25 m band along the Tidal Basin's shore) is not opened, so a
-route reaches a memorial by its paths and the rider walks in. The grounds are
+route reaches a memorial by its paths and the rider walks in. A walk that runs into one
+(any vertex but its ends inside) stays closed too. The grounds are
 fixtures/mall_grounds/grounds.geojson: the Washington Monument Grounds and Constitution
 Gardens with the Vietnam Veterans Memorial's grounds, from OpenStreetMap. A way is
 inside when the midpoint of its length is.
@@ -70,7 +71,15 @@ def opens(
     grounds, walk_only = areas if areas is not None else polygons()
     if not capitolgrounds.opens(tags, coords, grounds):
         return False
-    return not in_polygons(midpoint(coords), walk_only)
+    return not enters(coords, walk_only)
+
+
+def enters(coords: Sequence[tuple[float, float]], walk_only: list[Polygon]) -> bool:
+    """Whether the way goes into a walk-only place: its midpoint or any vertex but its
+    two ends is inside one, so a long walk whose midpoint lies outside the wall's
+    polygon still stays closed, while a path that only ends at a memorial's edge opens."""
+    points = [midpoint(coords), *coords[1:-1]]
+    return any(in_polygons(point, walk_only) for point in points)
 
 
 def open_ways(ways: Iterable, areas: Areas | None = None) -> set[int]:

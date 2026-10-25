@@ -444,6 +444,7 @@ CAPITOL_WALK_ID = 1103
 CAPITOL_SIDEWALK_ID = 1104
 MALL_WALK_ID = 1105
 MALL_MEMORIAL_ID = 1106
+MALL_OFF_GROUNDS_ID = 1107
 BESIDE_TRAIL_ID = 701
 
 
@@ -508,6 +509,9 @@ def build_dials_extract(path: Path, singletrack_tags: dict[str, str] | None = No
             33: (-77.03632, 38.89092),
             34: (-77.04759, 38.89123),
             35: (-77.04739, 38.89123),
+            # An untagged walk off the grounds, north of Constitution Avenue.
+            36: (-77.0420, 38.8935),
+            37: (-77.0415, 38.8935),
         }
         for node_id, (lon, lat) in nodes.items():
             writer.add_node(
@@ -587,6 +591,7 @@ def build_dials_extract(path: Path, singletrack_tags: dict[str, str] | None = No
             CAPITOL_SIDEWALK_ID: ([30, 31], {"highway": "footway", "footway": "sidewalk"}),
             MALL_WALK_ID: ([32, 33], {"highway": "footway"}),
             MALL_MEMORIAL_ID: ([34, 35], {"highway": "footway"}),
+            MALL_OFF_GROUNDS_ID: ([36, 37], {"highway": "footway"}),
         }
         for way_id in sorted(ways):
             node_ids, tags = ways[way_id]

@@ -4092,9 +4092,10 @@ things beyond the tags, and none of them comes from the reference install:
 - **`fixtures/mall_grounds/`** (OpenStreetMap, ODbL): the walks on the Washington
   Monument grounds and in Constitution Gardens open to bicycles
   (`routemaker.mallgrounds`; the owner, 2026-10-25), logged as "N walks and crossings of
-  the Monument grounds and Constitution Gardens opened to bicycles" (107 in the
-  2026-10-25 OSM data). The memorials, the Monument's plaza and the Tidal Basin's walks
-  (`walk-only.geojson`, the NPS compendium's walk-your-bike places) stay closed.
+  the Monument grounds and Constitution Gardens opened to bicycles" (106 on OSM data
+  read from the OSM API on 2026-10-25). The memorials, the Monument's plaza and the
+  Tidal Basin's walks (`walk-only.geojson`, the NPS compendium's walk-your-bike places)
+  stay closed.
 
 The rebuild refuses, terminally (not retried), when the District, Maryland or
 Virginia has no closed boundary in the merged extract, or holds no way:
