@@ -117,7 +117,7 @@ test("a home is the next layer up; the names only lifted are left out", () => {
   assert.equal(homes.get("trail-name"), "roads_oneway");
   assert.equal(homes.get("roads_labels_minor"), "water_label_ocean");
   assert.equal(homes.get("roads_labels_major"), "pois");
-  assert.deepEqual(RIDE_LABEL_LAYERS, ["trail-name", "roads_labels_minor", "roads_labels_major"]);
+  assert.deepEqual(RIDE_LABEL_LAYERS, ["trail-name", "roads_labels_minor", "roads_labels_major", "route-name"]);
   assert.equal(rideLabelsTarget(["a", "b"]), null);
 });
 
@@ -125,4 +125,14 @@ test("MapView lifts the names with the ride's labels and keeps the climbs under 
   const mapView = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
   assert.match(mapView, /if \(setRideLabelOrder\(map, riding, labelHomes\.current\)\) climbsUnder\(map, TRAIL_LABEL_LAYER_ID\)/);
   assert.match(mapView, /\(!lifted && layerIds\.find\(.*\)\) \|\| ROUTE_BOTTOM_LAYER/);
+});
+
+test("the route's own names (lib/routeNames.ts) go up on top of the street names, and back over the route after", () => {
+  const start = ["roads_labels_minor", "roads_labels_major", "pois", "route-line", "route-name", "rail-station-names", "route-hazard-marks"];
+  const map = fakeMap(start);
+  const homes: LabelHomes = new Map();
+  setRideLabelOrder(map, true, homes);
+  assert.deepEqual(map.layers, ["pois", "route-line", "roads_labels_minor", "roads_labels_major", "route-name", "rail-station-names", "route-hazard-marks"]);
+  setRideLabelOrder(map, false, homes);
+  assert.deepEqual(map.layers, start);
 });

@@ -75,6 +75,7 @@ import {
 import { dragPreview, legOfSegment, nearestOnPath } from "./lib/lineEdit.ts";
 import { LineGesture } from "./lib/lineGesture.ts";
 import { PENN_COLOUR, RAIL_STATIONS, stationById } from "./lib/railData.ts";
+import { ROUTE_NAME_LAYER_ID, ROUTE_NAME_SOURCE_ID, routeNameField, routeNameFeatures, routeNameLayer } from "./lib/routeNames.ts";
 import { addRailStations, LABEL_FONT, RAIL_LAYERS, RIDE_STATION_NAME_SIZE, ROUTE_BOTTOM_LAYER, STATION_NAME_SIZE, setRailVisibility, stationNamesTarget } from "./lib/railLayer.ts";
 import { setRideLabelOrder, type LabelHomes } from "./lib/rideLabelOrder.ts";
 import { ROUTE_HAZARD_ICON, ROUTE_HAZARD_SOURCE, routeHazardFeatures, routeHazardIcon, routeHazardLayer, routeHazardRepeatLayer } from "./lib/routeHazards.ts";
@@ -1414,6 +1415,9 @@ export function MapView(props: Props) {
         layout: { "line-join": "round", "line-cap": "butt" },
         paint: { "line-color": "#ffffff", "line-width": ROUTE_LINE_WIDTH + 1, "line-dasharray": [1.2, 1.2] },
       });
+      // The route's own street and path names, along its line (lib/routeNames.ts; the owner, 2026-10-25).
+      map.addSource(ROUTE_NAME_SOURCE_ID, { type: "geojson", data: routeNameFeatures(callbacks.current.stale ? null : (callbacks.current.route ?? null)) as never });
+      map.addLayer(routeNameLayer(ROUTE_NAME_SOURCE_ID, Boolean(callbacks.current.rideLabels)) as never);
       // The known hazards the route rides (v0.10.0, lib/routeHazards.ts): dark circles over the route only.
       if (!map.hasImage(ROUTE_HAZARD_ICON)) {
         const { pixelRatio: ratio, ...icon } = routeHazardIcon(iconPixelRatio());
@@ -2585,6 +2589,11 @@ export function MapView(props: Props) {
         map.setLayoutProperty(TRAIL_LABEL_LAYER_ID, "text-size", ride ? ROAD_LABEL.rideSize : ROAD_LABEL.size);
         map.setLayoutProperty(TRAIL_LABEL_LAYER_ID, "text-field", (ride ? rideTrailLabelField() : ["get", "trail_name"]) as LabelField);
       }
+      // The route's own names alike (lib/routeNames.ts).
+      if (map.getLayer(ROUTE_NAME_LAYER_ID)) {
+        map.setLayoutProperty(ROUTE_NAME_LAYER_ID, "text-size", ride ? ROAD_LABEL.rideSize : ROAD_LABEL.size);
+        map.setLayoutProperty(ROUTE_NAME_LAYER_ID, "text-field", routeNameField(ride) as LabelField);
+      }
       // The trail names come with the stress overlay, after the base map's: keep listening until both are set.
       return ids.length > 0 && Boolean(map.getLayer(TRAIL_LABEL_LAYER_ID));
     };
@@ -2955,6 +2964,7 @@ function syncRoute(map: MapLibreMap, props: Props, fitted: { current: boolean })
   setRouteSections(map, route, stale, props.routeColour ?? undefined);
   (map.getSource(ROUTE_DRAWN_SOURCE) as GeoJSONSource | undefined)?.setData(routeDrawnLines(stale ? null : route, props.points.length) as never);
   (map.getSource(ROUTE_HAZARD_SOURCE) as GeoJSONSource | undefined)?.setData(routeHazardFeatures(stale ? null : route) as never);
+  (map.getSource(ROUTE_NAME_SOURCE_ID) as GeoJSONSource | undefined)?.setData(routeNameFeatures(stale ? null : route) as never);
   // A ride's camera follows the rider; a re-planned route is not framed over it.
   if (!route || stale || route.geometry.coordinates.length < 2 || props.rider) return;
   const padding = props.framePadding();
