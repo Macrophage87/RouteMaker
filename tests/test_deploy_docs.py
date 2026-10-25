@@ -78,7 +78,8 @@ def test_the_services_this_file_reasons_about_still_mount_what_it_says() -> None
     `rebuild` writes the five directories under `/data`. `api` holds two of
     them and neither makes it a place to run a data command: `static`, which is
     the `collectstatic` target, and `tiles` **read-only**, which exists for the
-    operations page's `statvfs`. A stack that gave the api `extracts` or
+    operations page's `statvfs`. Its third bind, `basemap`, is read-only too and
+    none of the rebuild's: the link preview's picture reads the base map. A stack that gave the api `extracts` or
     `reference` would make the table of which command runs where wrong rather
     than failing.
     """
@@ -90,6 +91,7 @@ def test_the_services_this_file_reasons_about_still_mount_what_it_says() -> None
     assert api_volumes == {
         "${DATA_ROOT}/static:/data/static",
         "${DATA_ROOT}/tiles:/data/tiles:ro",
+        "${DATA_ROOT}/basemap:/data/basemap:ro",
     }, (
         f"the api mounts {sorted(api_volumes)}; docs/DEPLOYMENT.md's table of what it "
         "binds, and the rule about where data commands run, both follow from this set"

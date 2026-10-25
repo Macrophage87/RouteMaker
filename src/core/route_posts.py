@@ -22,7 +22,7 @@ no script the two Send buttons stay off and say why.
 
 The link preview's picture is the map (`thumbnail`): on the page, an instance admin presses
 "Use this map as the link picture" and their browser draws the post's map at 1200 by 630 and
-sends it here (`thumbnail_upload`), credits drawn in. Until then the route's line drawing
+sends it here (`thumbnail_upload`), credits drawn in. Until then the route's preview picture
 (core.share_preview) stands in.
 
 Posts are written in the admin (core.admin RoutePostAdmin), by instance admins only. Picking a
@@ -635,7 +635,8 @@ def _plain(status: int, words: str) -> HttpResponse:
 
 
 def image_path(post) -> str:
-    """The link picture: the map once an admin made it, else the route's line drawing."""
+    """The link picture: the map once an admin made it, else the route's preview picture (its line
+    over core.preview_basemap's base map)."""
     if post.thumbnail_key:
         return f"/routes/{post.slug}/thumbnail.jpg?v={post.thumbnail_key}"
     return f"/s/{post.route_id}/preview.png"

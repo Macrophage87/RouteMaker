@@ -178,6 +178,10 @@ TILES_DIR = DATA_ROOT / "tiles"
 # folder, which the API already mounts read-only, so no new mount (and no missing bind source).
 TRANSIT_SCHEDULE_PATH = TILES_DIR / "transit" / "transit-schedule.json"
 ELEVATION_DIR = DATA_ROOT / "elevation"
+# The base map (scripts/fetch_basemap.sh), which the link preview's picture draws behind the route
+# (core.preview_basemap). Mounted read-only into the API; absent, the picture has a plain
+# background.
+BASEMAP_PMTILES = DATA_ROOT / "basemap" / "region.pmtiles"
 # The checked-in serving configs the rebuild derives its build configs from.
 # Read from inside the image (BASE_DIR), while the transform those configs name
 # is the working tree's, bind-mounted at /conf/lua, so a `TAG` rollback moves

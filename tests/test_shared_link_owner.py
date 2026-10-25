@@ -389,18 +389,8 @@ class TestPreview:
 
 def _pixel_of(drawn):
     """The image's own placing of a point (share_preview.render_png's projection)."""
-    every = [p for piece in drawn["pieces"] for p in piece]
-    kx = math.cos(math.radians(sum(p[1] for p in every) / len(every)))
-    xs, ys = [p[0] * kx for p in every], [p[1] for p in every]
-    scale = min(
-        (share_preview.WIDTH - 2 * share_preview.PAD) / (max(xs) - min(xs)),
-        (share_preview.MAP_H - 2 * share_preview.PAD) / (max(ys) - min(ys)),
-    )
-    mx, my = (max(xs) + min(xs)) / 2, (max(ys) + min(ys)) / 2
-    return scale, lambda p: (
-        share_preview.WIDTH / 2 + (p[0] * kx - mx) * scale,
-        share_preview.MAP_H / 2 - (p[1] - my) * scale,
-    )
+    _centre, scale, at = share_preview.view(drawn)
+    return scale, at
 
 
 @db
@@ -418,7 +408,7 @@ class TestHomeFollowUps:
         width, _, px = png_pixels(png)
         scale, at = _pixel_of(drawn)
         cx, cy = at(zone[0])
-        r = zone[1] / share_preview.M_PER_DEG * scale
+        r = share_preview.zone_radius_px(zone, scale)
         background = share_preview.BACKGROUND
         inside = 0
         for y in range(int(cy - r), int(cy + r) + 1):
