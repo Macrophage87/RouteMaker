@@ -477,3 +477,9 @@ in the database still names it: delete that row in the admin when loading the fi
   `bicycle=designated` side path in Derwood, opened with a `bicycle=yes` access row.
   The owner, 2026-10-21: "that short redland road sidewalk is intended to be ridden on
   and isn't illegal". With a fingerprint. Load it in step H.
+
+- `2026-10-25-owner-aspen-street-nw.json`: Aspen Street NW, 16th Street NW to Georgia
+  Avenue NW, five ways (2,640 ft, 805 m), two lanes at 25 mph, rated LTS 4 on beta. The
+  owner, 2026-10-25: "It's not a 4" and "Probably a 2.5". Stress rows at tier 2 with
+  `half` (LTS 2.5), hidden, with fingerprints. Load like the others; takes effect on the
+  next rebuild.
