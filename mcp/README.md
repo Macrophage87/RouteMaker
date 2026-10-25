@@ -19,9 +19,9 @@ century".
 
 | Tool | What it does |
 | --- | --- |
-| `find_place` | Searches RouteMaker's place search for a place, address or street. |
+| `find_place` | Searches RouteMaker's place search for a place, address or street, around a point if given (`near`). |
 | `metro_stations` | Lists the 98 Metrorail stations, or those near a point, with miles and bearing. |
-| `plan_route` | Plans through 2 to 25 points (places, station names or `[lon, lat]`), on any ride type with any of its settings, as a loop if asked; reports distance, time, climbing and the share on each traffic-stress level (and the bikeshare or transit plan on those ride types); checks the distance from Metro; can add stations as via points where it strays. |
+| `plan_route` | Plans through 2 to 25 points (places, station names or `[lon, lat]`), on any ride type with any of its settings, as a loop if asked; reports distance, time, climbing and the share on each traffic-stress level (and the bikeshare or transit plan on those ride types); checks the distance from Metro; can add stations as via points where it strays. Also lists what the route rides: its roads in order with miles, LTS and any scenic designation (Montgomery County Rustic Roads, scenic byways, the East Coast Greenway, US Bicycle Routes), where it rides LTS 3 and up, its very-high-stress junctions, and small detours (where it leaves a road and comes back to it). A via point reached by an out-and-back is moved to where the spur leaves the road (`trim_spurs`, on by default). A place name is searched near the route's other points; one that matches places far apart and none near the route is asked back. |
 | `open_link` | Picks up a route from a RouteMaker link you paste: the page's address after you changed the route in the app, one of your saved routes opened in the app, or a shared route's link. |
 | `revise_route` | Changes a draft (add, move or remove points; any ride type or setting) and plans it again as a new draft; the old one stays to go back to. |
 | `save_route` | Keeps a draft, only when you say so: in your My routes on the site's own connector, or as a GPX file on your own computer. |

@@ -410,9 +410,62 @@ def find_station(text: str, stations: list[Station]) -> Station | None:
     return None
 
 
-def as_point(value, api: Api | None, stations: list[Station]) -> tuple[tuple[float, float], str]:
+# Matches of one place search farther apart than this are different places.
+SAME_PLACE_MI = 5.0
+
+
+def pick_place(text: str, found: list[dict], neighbours: list[tuple[float, float]]) -> tuple:
+    """The match of a place search to take for `text`, and the other places it could have
+    been ([] where it could be nothing else). One place, wherever it is, is taken. Where the
+    matches are different places (Moore Road in Boyds, MD and in Centreville, VA), the first
+    within NEAR_PLACE_MI of one of the route's other points (`neighbours`) is taken, and where
+    none is the answer is a question back; with no other points to go by, the first match."""
+    if not found:
+        raise ToolError(f"no place found for {text!r}")
+    first = (found[0]["lon"], found[0]["lat"])
+    if all(haversine_mi(first, (r["lon"], r["lat"])) <= SAME_PLACE_MI for r in found):
+        return found[0], []
+
+    if not neighbours:
+        # Nothing to go by (the first of the route's names): the search's own first match,
+        # with the others said.
+        return found[0], [
+            r for r in found if haversine_mi(first, (r["lon"], r["lat"])) > SAME_PLACE_MI
+        ]
+
+    def away(r) -> float:
+        here = (r["lon"], r["lat"])
+        return min(haversine_mi(here, n) for n in neighbours) if neighbours else math.inf
+
+    near = [r for r in found if away(r) <= NEAR_PLACE_MI]
+    if near:
+        chosen = near[0]
+        here = (chosen["lon"], chosen["lat"])
+        others = [r for r in found if haversine_mi(here, (r["lon"], r["lat"])) > SAME_PLACE_MI]
+        return chosen, others
+    listed = "; ".join(
+        f"{r['label']} [{r['lon']:.5f}, {r['lat']:.5f}]"
+        + f", {away(r):.0f} mi from the route's other points"
+        for r in found
+    )
+    raise ToolError(
+        f"{text!r} matches more than one place and none is near the route's other points:"
+        f" {listed}. Ask the rider which one they mean (or add the town to the name), then"
+        " send it as [lon, lat]."
+    )
+
+
+def as_point(
+    value,
+    api: Api | None,
+    stations: list[Station],
+    neighbours: list[tuple[float, float]] | None = None,
+    others: list | None = None,
+) -> tuple[tuple[float, float], str]:
     """A point from [lon, lat], {"lon", "lat"}, a Metro station's name or a place to search
-    for, with a label saying what it was taken as."""
+    for, with a label saying what it was taken as. A place name is searched near the route's
+    other points (`neighbours`), and taken as `pick_place` says; the other places it could have
+    been go in `others`."""
     if isinstance(value, dict) and "lon" in value and "lat" in value:
         value = [value["lon"], value["lat"]]
     if isinstance(value, (list, tuple)) and len(value) == 2:
@@ -433,10 +486,13 @@ def as_point(value, api: Api | None, stations: list[Station]) -> tuple[tuple[flo
             return station.point, f"{station.name} Metro"
         if api is None:
             raise ToolError(f"cannot search for {text!r} without the site")
-        found = [r for r in api.geocode(text) if inside_coverage((r["lon"], r["lat"]))]
-        if not found:
-            raise ToolError(f"no place found for {text!r}")
-        return (round(found[0]["lon"], 5), round(found[0]["lat"], 5)), found[0]["label"]
+        neighbours = list(neighbours or [])
+        near = neighbours[0] if neighbours else None
+        found = [r for r in api.geocode(text, near) if inside_coverage((r["lon"], r["lat"]))]
+        chosen, elsewhere = pick_place(text, found, neighbours)
+        if others is not None:
+            others.extend(elsewhere)
+        return (round(chosen["lon"], 5), round(chosen["lat"], 5)), chosen["label"]
     raise ToolError(f"not a point: {value!r}")
 
 
@@ -683,6 +739,424 @@ def summary(answer: dict) -> dict:
             {k: o.get(k) for k in ("key", "label", "minutes", "chosen")}
             for o in transit.get("options") or []
         ]
+    return out
+
+
+# --- What the route rides, for an assistant to reason about ---------------------------------
+#
+# The owner, 2026-10-25, after a towpath and rustic-roads ride the connector could build but
+# not find: "The goal would be for a new user to be able to make routes like this." The
+# percentages alone hide which roads a route takes, where its busy stretches are and where it
+# doubles back; these say it, short enough to read in one answer.
+
+# The road list aims at no more than this many rows, grouping short links to keep to it.
+MAX_ROAD_ROWS = 50
+ROAD_ROW_MIN_MI = 0.2  # a row shorter than this is a short link, grouped with its neighbours
+ROAD_ROW_MAX_MIN_MI = 1.0  # past this a long list stays long: a mile of road is worth its row
+# A break in one road shorter than this (a nameless path: BRIDGE_NAMELESS_MI) is no new row.
+BRIDGE_MI = 0.15
+BRIDGE_NAMELESS_MI = 0.3
+# A busy stretch (LTS 3 and up) shorter than this is left out of the list unless it is LTS 4
+# or Avoid; pieces of one this close together are one stretch.
+BUSY_MIN_MI = 0.1
+BUSY_JOIN_MI = 0.05
+MAX_BUSY_ROWS = 20
+# Small detours (the owner, 2026-10-25: "these small excursions aren't worth including"): a
+# span of the route at least twice as long as the straight line between its ends, with its
+# ends within DETOUR_GAP_MI of each other and at least DETOUR_MIN_EXTRA_MI of extra riding,
+# and no longer than DETOUR_MAX_MI, that leaves a road and comes back to the same road. A
+# calm route winds (a trail's hairpin, a neighbourhood's curves) without leaving its way, so
+# where the streets are not known only a tight loop counts: ends within DETOUR_BLIND_GAP_MI
+# and three times the straight line.
+DETOUR_GAP_MI = 0.37  # 600 m
+DETOUR_BLIND_GAP_MI = 0.06  # 100 m
+DETOUR_MIN_EXTRA_MI = 0.1
+DETOUR_MAX_MI = 3.0
+DETOUR_STEP_MI = 0.025  # the line is read every 40 m
+MAX_DETOURS = 8
+# A place name searched near the route's other points is taken only this close to them;
+# farther, the server asks which was meant (Moore Road went to Centreville, VA: 2026-10-25).
+NEAR_PLACE_MI = 15.0
+NAMELESS = ("path", "unnamed road")
+
+
+def _stretches(answer: dict) -> list[dict]:
+    """The full description's stretches, in route order (the overview merges short ones)."""
+    entries = answer.get("description") or answer.get("description_overview") or []
+    return [e for e in entries if e.get("kind") == "stretch" and e.get("to_mi") is not None]
+
+
+def _traced_scale(answer: dict) -> float:
+    """Metres along the route (`distance_m`) per traced metre (`stress_spans`, junctions)."""
+    spans = answer.get("stress_spans") or []
+    traced = spans[-1]["to_m"] if spans else 0
+    distance = answer.get("distance_m") or 0.0
+    return distance / traced if traced and distance else 1.0
+
+
+def _scenic_rows(answer: dict) -> list[dict]:
+    scale = _traced_scale(answer) / METRES_PER_MILE
+    return [
+        {**s, "from_mi": s["from_m"] * scale, "to_mi": s["to_m"] * scale}
+        for s in answer.get("scenic_roads") or []
+    ]
+
+
+def _street(entry: dict) -> str:
+    return str(entry.get("street") or "unnamed road")
+
+
+def _bridged(rows: list[dict]) -> list[dict]:
+    """The rows with a short break in one road (a nameless path, a junction's few metres of
+    another street) folded into it: road, BRIDGE_MI of something else, the same road again
+    is one row of that road."""
+    out: list[dict] = []
+    for row in rows:
+        if (
+            len(out) >= 2
+            and out[-2]["road"].casefold() == row["road"].casefold()
+            and out[-1]["to_mi"] - out[-1]["from_mi"]
+            < (BRIDGE_NAMELESS_MI if out[-1]["road"] in NAMELESS else BRIDGE_MI)
+        ):
+            gap, before = out.pop(), out[-1]
+            for part in (gap, row):
+                for table in ("tiers", "facility"):
+                    for key, miles in part[table].items():
+                        before[table][key] = before[table].get(key, 0.0) + miles
+            before["to_mi"] = row["to_mi"]
+            continue
+        out.append(row)
+    return out
+
+
+def road_list(answer: dict) -> dict | None:
+    """The roads the route takes, in order: each with its miles, its main and worst LTS, its
+    miles at LTS 3 and up, and its scenic designation (a rustic road, a byway); rows under
+    ROAD_ROW_MIN_MI are counted as short links. None where the site sent no description."""
+    stretches = _stretches(answer)
+    if not stretches:
+        return None
+    rows: list[dict] = []
+    for entry in stretches:
+        street = _street(entry)
+        miles = max(0.0, entry["to_mi"] - entry["from_mi"])
+        tier = entry.get("tier")
+        last = rows[-1] if rows else None
+        if last is None or last["road"].casefold() != street.casefold():
+            last = {"road": street, "from_mi": entry["from_mi"], "tiers": {}, "facility": {}}
+            rows.append(last)
+        last["to_mi"] = entry["to_mi"]
+        last["tiers"][tier] = last["tiers"].get(tier, 0.0) + miles
+        kind = entry.get("facility") or "street"
+        last["facility"][kind] = last["facility"].get(kind, 0.0) + miles
+    rows = _bridged(rows)
+    scenic = _scenic_rows(answer)
+    minimum = ROAD_ROW_MIN_MI
+    while True:
+        grouped = _grouped(rows, minimum)
+        if len(grouped) <= MAX_ROAD_ROWS or minimum * 1.25 > ROAD_ROW_MAX_MIN_MI:
+            break
+        minimum *= 1.25
+    out = []
+    for group in grouped:
+        first, last = group[0], group[-1]
+        miles = last["to_mi"] - first["from_mi"]
+        if miles < 0.05:
+            continue  # a few metres between two listed roads
+        tiers: dict = {}
+        facilities: dict = {}
+        for row in group:
+            for key, value in row["tiers"].items():
+                tiers[key] = tiers.get(key, 0.0) + value
+            for key, value in row["facility"].items():
+                facilities[key] = facilities.get(key, 0.0) + value
+        rated = {t: m for t, m in tiers.items() if t is not None}
+        if len(group) == 1:
+            road = first["road"]
+        else:
+            names = list(dict.fromkeys(r["road"] for r in group if r["road"] not in NAMELESS))
+            road = f"{len(group)} short links: " + (
+                ", ".join(names[:4]) + (f" and {len(names) - 4} more" if len(names) > 4 else "")
+                if names
+                else "paths and unnamed ways"
+            )
+        item = {
+            "road": road,
+            "from_mi": round(first["from_mi"], 1),
+            "miles": round(miles, 1),
+            "lts": max(rated, key=rated.get) if rated else None,
+        }
+        worst = max((t for t, m in rated.items() if m >= 0.02), default=None)
+        if worst is not None and worst != item["lts"]:
+            item["worst_lts"] = worst
+        busy = sum(m for t, m in rated.items() if t >= 3)
+        if busy >= 0.05 and item["lts"] is not None and item["lts"] < 3:
+            item["miles_lts_3_up"] = round(busy, 1)
+        facility = max(facilities, key=facilities.get)
+        if facility != "street":
+            item["facility"] = facility
+        designations = {
+            s["designation"]
+            for s in scenic
+            if min(s["to_mi"], last["to_mi"]) - max(s["from_mi"], first["from_mi"])
+            >= min(0.1, miles / 2)
+        }
+        if designations:
+            item["scenic"] = " · ".join(sorted(designations))
+        out.append(item)
+    return {"roads": out}
+
+
+def _grouped(rows: list[dict], minimum: float) -> list[list[dict]]:
+    """The rows in route order, each run of rows shorter than `minimum` miles one group."""
+    groups: list[list[dict]] = []
+    for row in rows:
+        short = row["to_mi"] - row["from_mi"] < minimum
+        if short and groups and groups[-1][-1]["to_mi"] - groups[-1][-1]["from_mi"] < minimum:
+            groups[-1].append(row)
+        else:
+            groups.append([row])
+    return groups
+
+
+def busy_stretches(answer: dict) -> list[dict]:
+    """Where the route rides LTS 3 and up, in route order: from and to (miles), the roads and
+    the worst LTS (5 is Avoid). The longest MAX_BUSY_ROWS where there are more."""
+    spans: list[dict] = []
+    for entry in _stretches(answer):
+        tier = entry.get("tier")
+        if tier is None or tier < 3:
+            continue
+        last = spans[-1] if spans else None
+        if last is not None and entry["from_mi"] - last["to_mi"] <= BUSY_JOIN_MI:
+            last["to_mi"] = entry["to_mi"]
+            last["lts"] = max(last["lts"], tier)
+            if _street(entry) not in last["roads"]:
+                last["roads"].append(_street(entry))
+            continue
+        spans.append(
+            {
+                "from_mi": entry["from_mi"],
+                "to_mi": entry["to_mi"],
+                "roads": [_street(entry)],
+                "lts": tier,
+            }
+        )
+    kept = [s for s in spans if s["to_mi"] - s["from_mi"] >= BUSY_MIN_MI or s["lts"] >= 4]
+    if len(kept) > MAX_BUSY_ROWS:
+        longest = sorted(kept, key=lambda s: s["to_mi"] - s["from_mi"], reverse=True)
+        keep = {id(s) for s in longest[:MAX_BUSY_ROWS]}
+        kept = [s for s in kept if id(s) in keep]
+    return [
+        {
+            "from_mi": round(s["from_mi"], 1),
+            "to_mi": round(s["to_mi"], 1),
+            "miles": round(s["to_mi"] - s["from_mi"], 2),
+            "lts": s["lts"],
+            "roads": [r for r in s["roads"] if r not in NAMELESS] or s["roads"][:1],
+        }
+        for s in kept
+    ]
+
+
+def risky_junctions(answer: dict) -> dict:
+    """The very-high-stress (red) junctions, each with its mile, road and reason, and how
+    many higher-stress (orange) ones there are besides."""
+    found = answer.get("intersections") or []
+    scale = _traced_scale(answer) / METRES_PER_MILE
+    stretches = _stretches(answer)
+    red = []
+    for junction in found:
+        if junction.get("severity") != "red":
+            continue
+        mile = junction.get("m", 0) * scale
+        on = next((e for e in stretches if e["from_mi"] <= mile <= e["to_mi"]), None)
+        red.append(
+            {
+                "at_mi": round(mile, 1),
+                "road": _street(on) if on else None,
+                "reason": junction.get("reason"),
+                "lon_lat": [junction.get("lon"), junction.get("lat")],
+            }
+        )
+    return {
+        "very_high": red,
+        "higher_count": sum(1 for j in found if j.get("severity") == "orange"),
+    }
+
+
+def _flat(origin: tuple[float, float]):
+    """Miles east and north of `origin`, flat: enough within a few miles."""
+    per_lon = EARTH_RADIUS_MI * math.radians(1) * math.cos(math.radians(origin[1]))
+    per_lat = EARTH_RADIUS_MI * math.radians(1)
+    return lambda p: ((p[0] - origin[0]) * per_lon, (p[1] - origin[1]) * per_lat)
+
+
+def _resampled(line: list[list[float]], step: float) -> list[tuple[float, float]]:
+    """The line's points every `step` miles along it, as flat miles from its start."""
+    if len(line) < 2:
+        return []
+    flat = _flat((line[0][0], line[0][1]))
+    xy = [flat((v[0], v[1])) for v in line]
+    out = [xy[0]]
+    need = step  # miles from here to the next sample
+    for a, b in zip(xy, xy[1:], strict=False):
+        seg, at = math.dist(a, b), 0.0
+        while seg - at >= need:
+            at += need
+            t = at / seg
+            out.append((a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t))
+            need = step
+        need -= seg - at
+    return out
+
+
+def small_detours(
+    line: list[list[float]],
+    keep_at: list[tuple[float, float]] = (),
+    street_at=None,
+    distance_mi: float | None = None,
+) -> list[dict]:
+    """Spans where the route leaves its road and comes back to it close to where it left (a
+    loop through a side lane, an out-and-back to a point off the road): at least twice the
+    straight line between their ends, ends within DETOUR_GAP_MI, at least DETOUR_MIN_EXTRA_MI
+    extra. `street_at(mile)` names the street at a mile along the route (`distance_mi` long):
+    a span counts only where it starts and ends on one street and leaves it between; without
+    it, only a tight loop counts (DETOUR_BLIND_GAP_MI). A span holding one of `keep_at` (a
+    stop: the point of the trip) is left out. The biggest MAX_DETOURS, in route order."""
+    step = DETOUR_STEP_MI
+    pts = _resampled(line, step)
+    n = len(pts)
+    if n < 4:
+        return []
+    total = (n - 1) * step
+    longest = min(int(DETOUR_MAX_MI / step), int(total / 2 / step))
+    scale = (distance_mi / total) if distance_mi and total else 1.0
+    named = street_at is not None
+    gap2 = (DETOUR_GAP_MI if named else DETOUR_BLIND_GAP_MI) ** 2
+    ratio = 2 if named else 3
+
+    def same_road_left_between(i: int, j: int) -> bool:
+        if not named:
+            return True
+        road = street_at(i * step * scale)
+        if road is None or road != street_at(j * step * scale):
+            return False
+        return any(street_at(k * step * scale) != road for k in range(i + 1, j, 2))
+
+    found = []
+    for i in range(n):
+        xi, yi = pts[i]
+        best = None
+        for j in range(i + 3, min(n, i + longest + 1)):
+            dx, dy = pts[j][0] - xi, pts[j][1] - yi
+            d2 = dx * dx + dy * dy
+            if d2 > gap2:
+                continue
+            path = (j - i) * step
+            gap = math.sqrt(d2)
+            extra = path - gap
+            if path >= ratio * gap and extra >= DETOUR_MIN_EXTRA_MI:
+                if (best is None or extra > best[2] + step) and same_road_left_between(i, j):
+                    best = (i, j, extra)
+        if best:
+            found.append(best)
+    # The biggest first, each span once; a span wider than a bigger one it overlaps is the same
+    # detour read from further along the road.
+    found.sort(key=lambda f: (-f[2], f[1] - f[0]))
+    flat = _flat((line[0][0], line[0][1]))
+    kept_xy = [flat(p) for p in keep_at]
+    chosen: list[tuple[int, int, float]] = []
+    for i, j, extra in found:
+        if any(i < cj and ci < j for ci, cj, _ in chosen):
+            continue
+        if any(min(math.dist(p, k) for p in pts[i : j + 1]) < 0.05 for k in kept_xy):
+            continue
+        chosen.append((i, j, extra))
+        if len(chosen) == MAX_DETOURS:
+            break
+    origin = (line[0][0], line[0][1])
+    per_lon = EARTH_RADIUS_MI * math.radians(1) * math.cos(math.radians(origin[1]))
+    per_lat = EARTH_RADIUS_MI * math.radians(1)
+
+    def lon_lat(p):
+        return [round(origin[0] + p[0] / per_lon, 5), round(origin[1] + p[1] / per_lat, 5)]
+
+    out = []
+    for i, j, extra in sorted(chosen):
+        apex = max(pts[i : j + 1], key=lambda p: math.dist(p, pts[i]))
+        out.append(
+            {
+                "from_mi": round(i * step, 1),
+                "to_mi": round(j * step, 1),
+                "extra_mi": round(extra, 2),
+                "leaves_at": lon_lat(pts[i]),
+                "rejoins_at": lon_lat(pts[j]),
+                "farthest_point": lon_lat(apex),
+            }
+        )
+    return out
+
+
+def _street_finder(answer: dict):
+    """street_at(mile) over the description's stretches (casefolded), or None without one."""
+    stretches = _stretches(answer)
+    if not stretches:
+        return None
+    starts = [e["from_mi"] for e in stretches]
+
+    def street_at(mile: float) -> str | None:
+        k = bisect.bisect_right(starts, mile) - 1
+        return _street(stretches[max(0, k)]).casefold()
+
+    return street_at
+
+
+def via_spurs(plan: Plan) -> list[dict]:
+    """The via points the route reaches by an out-and-back of SPUR_MI or more."""
+    out = []
+    for i in plan.vias:
+        length, junction = spur_at(plan.line, plan.points[i])
+        if length >= SPUR_MI:
+            out.append({"point": i, "spur_mi": round(length, 2), "leaves_at": list(junction)})
+    return out
+
+
+def route_details(plan: Plan) -> dict:
+    """What the route rides, for the answer: its roads, busy stretches, very-high-stress
+    junctions, scenic roads and small detours."""
+    answer = plan.answer
+    out: dict = {}
+    roads = road_list(answer)
+    if roads:
+        out.update(roads)
+    if answer.get("description") or answer.get("description_overview"):
+        out["busy_stretches"] = busy_stretches(answer)
+    if answer.get("intersections") is not None:
+        out["junctions"] = risky_junctions(answer)
+    scenic: dict[tuple[str, str], float] = {}
+    for s in _scenic_rows(answer):
+        key = (s["road"], s["designation"])
+        scenic[key] = scenic.get(key, 0.0) + s["to_mi"] - s["from_mi"]
+    if scenic:
+        out["scenic_roads"] = [
+            {"road": road, "designation": what, "miles": round(miles, 1)}
+            for (road, what), miles in scenic.items()
+            if miles >= 0.05
+        ]
+    stops = [plan.points[i] for i in range(1, len(plan.points) - 1) if i not in set(plan.vias)]
+    if not answer.get("loop"):
+        detours = small_detours(
+            plan.line,
+            stops,
+            _street_finder(answer),
+            (answer.get("distance_m") or 0.0) / METRES_PER_MILE,
+        )
+        if detours:
+            out["small_detours"] = detours
+    spurs = via_spurs(plan)
+    if spurs:
+        out["via_spurs"] = spurs
     return out
 
 
@@ -996,6 +1470,16 @@ RIDE_OPTIONS = {
     },
 }
 
+TRIM_SPURS = {
+    "type": "boolean",
+    "default": True,
+    "description": (
+        "Where the route reaches a via point by an out-and-back of 0.2 mi or more, move the"
+        " point to where the spur leaves the road and plan again (kept when shorter). False"
+        " keeps the via points where they are."
+    ),
+}
+
 # The plan tools' options, as POST /api/route names them (all optional).
 PASSED_OPTIONS = (
     "stress",
@@ -1020,11 +1504,12 @@ TOOLS = [
         "name": "find_place",
         "description": (
             "Search RouteMaker's place search (DC to Baltimore) for a place, address or street;"
-            " returns up to five matches with [lon, lat]."
+            " returns up to five matches with [lon, lat]. Give near (a point of the route) to"
+            " search around it: a road name such as 'Moore Road' exists in several counties."
         ),
         "inputSchema": {
             "type": "object",
-            "properties": {"query": {"type": "string", "minLength": 2}},
+            "properties": {"query": {"type": "string", "minLength": 2}, "near": POINT_SCHEMA},
             "required": ["query"],
         },
         "annotations": {"readOnlyHint": True, "openWorldHint": False},
@@ -1053,6 +1538,16 @@ TOOLS = [
             " it comes back with a draft_id and a link that opens this exact route in the app"
             " (a shared link, as the app's Share makes), and nothing is saved to My routes."
             " Revise it with revise_route; keep it with save_route once the rider is happy."
+            " The answer also says what the route rides: `roads` in order (miles, main and"
+            " worst LTS, facility, and `scenic` for a rustic road, scenic byway, the East Coast"
+            " Greenway or a US Bicycle Route), `busy_stretches` (where it rides LTS 3 and up),"
+            " `junctions` (very-high-stress crossings and turns), `scenic_roads`, and"
+            " `small_detours` / `via_spurs` (where it leaves a road and comes back to it, or"
+            " goes out and back to a via point; riders rarely want these: move or drop the"
+            " point with revise_route). To shape a route onto roads the router does not pick"
+            " on its own (a rustic road, a trail), add via points ON those roads, by [lon, lat]"
+            " or by name: a name is searched near the route's other points, and an ambiguous"
+            " one is asked back. Read these before sending the link, and say the busy parts."
             " With max_miles_from_metro it checks the distance from Metro and, with"
             " fix_metro_rounds, adds the nearest station as a via point where the route strays."
         ),
@@ -1079,6 +1574,7 @@ TOOLS = [
                     "description": "Come back to the start by a different way.",
                 },
                 "fix_metro_rounds": {"type": "integer", "minimum": 0, "maximum": 4, "default": 0},
+                "trim_spurs": TRIM_SPURS,
                 **RIDE_OPTIONS,
             },
             "required": ["points"],
@@ -1210,6 +1706,7 @@ TOOLS = [
                 },
                 "loop": {"type": "boolean"},
                 "fix_metro_rounds": {"type": "integer", "minimum": 0, "maximum": 4},
+                "trim_spurs": TRIM_SPURS,
                 **{
                     k: {kk: vv for kk, vv in v.items() if kk != "default"}
                     for k, v in RIDE_OPTIONS.items()
@@ -1462,6 +1959,14 @@ def kept_route(plan: Plan, name: str, fragment: str, dials: dict) -> dict:
     }
 
 
+def _neighbours(points: list, i: int) -> list[tuple[float, float]]:
+    """The points already found, nearest in the list to place `i` first."""
+    order = sorted(
+        (k for k, p in enumerate(points) if p is not None and k != i), key=lambda k: abs(k - i)
+    )
+    return [points[k] for k in order]
+
+
 class Server:
     def __init__(
         self,
@@ -1508,18 +2013,21 @@ class Server:
 
     # find_place
     def find_place(self, args: dict, call: Call) -> dict:
-        results = self.api.geocode(str(args["query"]))
-        return {
-            "results": [
-                {
-                    "name": r["name"],
-                    "label": r["label"],
-                    "lon_lat": [r["lon"], r["lat"]],
-                    "kind": r.get("kind"),
-                }
-                for r in results
-            ]
-        }
+        near = None
+        if args.get("near") is not None:
+            near, _ = as_point(args["near"], self.api, self.stations)
+        rows = []
+        for r in self.api.geocode(str(args["query"]), near):
+            row = {
+                "name": r["name"],
+                "label": r["label"],
+                "lon_lat": [r["lon"], r["lat"]],
+                "kind": r.get("kind"),
+            }
+            if near:
+                row["miles_from_near"] = round(haversine_mi(near, (r["lon"], r["lat"])), 1)
+            rows.append(row)
+        return {"results": rows}
 
     # metro_stations
     def metro_stations(self, args: dict, call: Call) -> dict:
@@ -1570,12 +2078,34 @@ class Server:
             },
         }
 
-    def _point(self, value, taken: list[dict]) -> tuple[float, float]:
-        """as_point, noting what a named point was taken as so the answer can say."""
-        point, label = as_point(value, self.api, self.stations)
+    def _point(self, value, taken: list[dict], neighbours=None) -> tuple[float, float]:
+        """as_point, noting what a named point was taken as so the answer can say, and the
+        other places the name could have meant."""
+        others: list[dict] = []
+        point, label = as_point(value, self.api, self.stations, neighbours, others)
         if isinstance(value, str):
-            taken.append({"asked": value, "taken_as": label, "at": list(point)})
+            row = {"asked": value, "taken_as": label, "at": list(point)}
+            if others:
+                row["also_matches"] = [
+                    {"label": r["label"], "lon_lat": [r["lon"], r["lat"]]} for r in others[:4]
+                ]
+                row["why"] = "the match nearest the route's other points"
+            taken.append(row)
         return point
+
+    def _points(self, values: list, taken: list[dict]) -> list[tuple[float, float]]:
+        """Every point, [lon, lat] and station names first, then each place name searched near
+        the points already found, those beside it in the list first."""
+        found: list = [None] * len(values)
+        named = []
+        for i, value in enumerate(values):
+            if isinstance(value, str) and find_station(value.strip(), self.stations) is None:
+                named.append(i)
+            else:
+                found[i] = self._point(value, taken)
+        for i in named:
+            found[i] = self._point(values[i], taken, _neighbours(found, i))
+        return found
 
     def _draft(
         self,
@@ -1608,6 +2138,7 @@ class Server:
         out = {
             "draft_id": draft_id,
             "summary": summary(plan.answer),
+            **route_details(plan),
             "points": [list(p) for p in plan.points],
             "via_points": plan.vias,
             "preset": plan.preset,
@@ -1635,7 +2166,9 @@ class Server:
         out["credit"] = plan.answer.get("attribution", [])
         return out
 
-    def _plan_and_fix(self, call: Call, points, vias, preset, options, limit, rounds):
+    def _plan_and_fix(
+        self, call: Call, points, vias, preset, options, limit, rounds, trim_spurs=True
+    ):
         notes: list[str] = []
         call.report(0, rounds + 1, "planning the route")
         plan = self._plan(call, points, vias, preset, options, limit)
@@ -1654,6 +2187,25 @@ class Server:
                 f"{again.check['miles_over_limit']} mi over the limit"
             )
             if again.check["miles_over_limit"] <= plan.check["miles_over_limit"]:
+                plan = again
+        pruned = without_spurs(plan) if trim_spurs else None
+        if pruned is not None and call.time_for_another_plan():
+            # A via point off the road through (a pier's end, a landmark beside a trail) is
+            # reached by an out-and-back (the owner, 2026-10-24: "Avoid pointless out and backs
+            # and short spurs"): it moves to where the spur leaves the road and is planned again.
+            new_points, new_vias, moved = pruned
+            call.report(rounds + 1, rounds + 2, "planning again without out-and-backs")
+            again = self._plan(call, new_points, new_vias, preset, options, limit)
+            if again.answer["distance_m"] < plan.answer["distance_m"] and (
+                again.check is None
+                or again.check["miles_over_limit"] <= plan.check["miles_over_limit"]
+            ):
+                notes.append(
+                    f"moved {moved} via point{'s' if moved > 1 else ''} the route reached by an"
+                    " out-and-back to where the spur leaves the road"
+                    f" ({miles_text(plan.answer['distance_m'] - again.answer['distance_m'])}"
+                    " shorter)"
+                )
                 plan = again
         return plan, notes
 
@@ -1834,7 +2386,7 @@ class Server:
         vias = set(plan.vias)
         taken: list[dict] = []
         if args.get("points"):
-            points = [self._point(p, taken) for p in args["points"]]
+            points = self._points(list(args["points"]), taken)
             vias = set()
         # Moves, additions and removals all name points by their place in the draft (or in
         # `points` when given): each point keeps its first index until the new list is built.
@@ -1844,7 +2396,7 @@ class Server:
             index = int(move["index"])
             if not 0 <= index < count:
                 raise ToolError(f"no point {index} to move")
-            rows[index][1] = self._point(move["to"], taken)
+            rows[index][1] = self._point(move["to"], taken, _neighbours(points, index))
         removed = {int(i) for i in args.get("remove_points") or []}
         for index in removed:
             if not 0 <= index < count:
@@ -1854,7 +2406,7 @@ class Server:
             after = int(add["after"])
             if not 0 <= after < count:
                 raise ToolError(f"no point {after} to add after")
-            point = self._point(add["point"], taken)
+            point = self._point(add["point"], taken, [points[after], *_neighbours(points, after)])
             added.setdefault(after, []).append([None, point, add.get("via", True)])
         built = []
         for row in rows:
@@ -1885,7 +2437,9 @@ class Server:
             else:
                 options.pop(key, None)
         rounds = int(args.get("fix_metro_rounds") or 0)
-        revised, notes = self._plan_and_fix(call, points, vias, preset, options, limit, rounds)
+        revised, notes = self._plan_and_fix(
+            call, points, vias, preset, options, limit, rounds, args.get("trim_spurs", True)
+        )
         return self._draft(
             revised, options, limit, notes, draft.name, revised_from=draft_id, taken=taken
         )
@@ -1893,13 +2447,15 @@ class Server:
     # plan_route
     def plan_route(self, args: dict, call: Call) -> dict:
         taken: list[dict] = []
-        points = [self._point(p, taken) for p in args["points"]]
+        points = self._points(list(args["points"]), taken)
         vias = [int(i) for i in args.get("via_points") or []]
         preset = args.get("preset") or "default"
         limit = args.get("max_miles_from_metro")
         options = self._options(args)
         rounds = int(args.get("fix_metro_rounds") or 0)
-        plan, notes = self._plan_and_fix(call, points, vias, preset, options, limit, rounds)
+        plan, notes = self._plan_and_fix(
+            call, points, vias, preset, options, limit, rounds, args.get("trim_spurs", True)
+        )
         return self._draft(plan, options, limit, notes, "RouteMaker route", taken=taken)
 
     # plan_metro_loop

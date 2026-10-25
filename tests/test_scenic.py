@@ -484,3 +484,53 @@ def test_no_designation_no_row():
         assert all(r["id"] != "scenic" for r in segment_info.summary_rows(row, {}, True))
         assert segment_info.scenic_rows(row) == []
     assert "scenic" in segment_info.OPTIONAL_COLUMNS
+
+
+# --- The scenic roads a route rides (v0.12.3, core.route_scenic) ------------------------------
+
+
+def _piece(way_id, metres, name=None):
+    from core.routing import Piece
+
+    return Piece(way_id, -77.4, 39.17, metres, names=(name,) if name else ())
+
+
+def test_the_route_says_each_scenic_stretch_once_in_riding_order():
+    from core import route_scenic
+
+    pieces = [
+        _piece(1, 1000.0, "C&O Canal Towpath"),
+        _piece(2, 400.0, "Peach Tree Road"),
+        _piece(2, 600.0, "Peach Tree Road"),
+        _piece(3, 30.0, "Peach Tree Road"),  # a bridge the layer does not cover
+        _piece(4, 500.0, "Peach Tree Road"),
+        _piece(5, 800.0, "Moore Road"),
+        _piece(6, 200.0, "Darnestown Road"),
+    ]
+    found = route_scenic.along(
+        [(0, 7)],
+        pieces,
+        [scenic.EAST_COAST_GREENWAY, scenic.MOCO_RUSTIC, scenic.MOCO_RUSTIC, None]
+        + [scenic.MOCO_RUSTIC, scenic.MOCO_EXCEPTIONAL, None],
+    )
+    assert [(f["from_m"], f["to_m"], f["road"], f["designation"]) for f in found] == [
+        (0, 1000, "C&O Canal Towpath", scenic.EAST_COAST_GREENWAY),
+        (1000, 2530, "Peach Tree Road", scenic.MOCO_RUSTIC),
+        (2530, 3330, "Moore Road", scenic.MOCO_EXCEPTIONAL),
+    ]
+    assert route_scenic.along([(0, 7)], pieces, [None] * 7) == []
+
+
+def test_a_walk_between_legs_counts_toward_a_scenic_stretch_s_place():
+    from core import route_scenic
+
+    pieces = [_piece(1, 100.0), _piece(2, 100.0, "Moore Road")]
+    found = route_scenic.along([(0, 1), 500.0, (1, 2)], pieces, [None, scenic.MOCO_RUSTIC])
+    assert (found[0]["from_m"], found[0]["to_m"], found[0]["road"]) == (600, 700, "Moore Road")
+
+
+def test_no_scenic_column_no_scenic_roads(monkeypatch):
+    from core import route_scenic, segment_info
+
+    monkeypatch.setattr(segment_info, "has_columns", lambda *a: False)
+    assert route_scenic.designations_of([_piece(1, 10.0)]) == [None]

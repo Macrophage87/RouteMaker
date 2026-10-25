@@ -1953,6 +1953,19 @@ class RoadHazardSpanOut(Schema):
     text: str = Field(description="One plain sentence, US units first with the metric once.")
 
 
+class ScenicSpanOut(Schema):
+    """A stretch of the route with a scenic designation (v0.12.3; `core.route_scenic`), in
+    whole metres along the traced route as `stress_spans` are measured."""
+
+    from_m: int
+    to_m: int
+    road: str
+    designation: str = Field(
+        description='As the road panel says it: "Rustic Road (Montgomery County)", several'
+        ' joined by " · ".'
+    )
+
+
 class MtbOut(Schema):
     """A Mountain Bike plan's reading of its route (docs/MTB-TOPO-PLAN.md, slice 6;
     `core.mtb`)."""
@@ -2230,6 +2243,9 @@ class RouteBody(Schema):
     # The known hazards it rides (v0.10.0; cobbles, rails), in riding order. Additive: empty
     # where it rides none or the table predates them.
     road_hazards: list[RoadHazardSpanOut] | None = None
+    # The scenic designations it rides (v0.12.3; rustic roads, byways, the East Coast
+    # Greenway, US Bicycle Routes), in riding order. Additive: empty where it rides none.
+    scenic_roads: list[ScenicSpanOut] | None = None
     # The Mountain Bike ride type's reading of the route (slice 6). Additive: null on every
     # other ride type.
     mtb: MtbOut | None = None
