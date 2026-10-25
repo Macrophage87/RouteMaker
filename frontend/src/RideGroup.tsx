@@ -477,14 +477,14 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
         </div>
       )}
       <div className="ride-group-bar">
-        <button type="button" className="chip ride-riders" aria-expanded={ridersOpen} aria-controls={ridersPanel} onClick={() => {
+        <button type="button" className="chip ride-riders" aria-expanded={ridersOpen} data-idle-close aria-controls={ridersPanel} onClick={() => {
           setRidersOpen(!ridersOpen);
           if (!ridersOpen) setRidersSaidText(ridersSaid(dots, myAlong, noLine ? { here: me } : null));
         }}>
           <Icon name="user" size={18} />
           {countText(dots.length, !noLine)}
         </button>
-        <button type="button" className="chip ride-alert-button" aria-expanded={alertOpen} aria-controls={alertPanel} aria-describedby={`${alertPanel}-note`} onClick={() => setAlertOpen(!alertOpen)}>
+        <button type="button" className="chip ride-alert-button" aria-expanded={alertOpen} data-idle-close aria-controls={alertPanel} aria-describedby={`${alertPanel}-note`} onClick={() => setAlertOpen(!alertOpen)}>
           <Icon name="warn" size={18} />
           {ALERT_LABEL}
         </button>
@@ -554,7 +554,7 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
           {ALERT_NOTE}.
         </p>
         {confirming ? (
-          <div role="group" aria-label={CONFIRM_QUESTION}>
+          <div role="group" aria-label={CONFIRM_QUESTION} data-idle-hold>
             <p>
               <strong>{CONFIRM_QUESTION}</strong> {confirming.label}
             </p>
@@ -577,7 +577,7 @@ export function RideGroup({ type, points, line, getMap, here, broadcast = null, 
               <input type="text" maxLength={OTHER_MAX} value={otherText} onChange={(e) => setOtherText(e.target.value)} autoFocus />
             </label>
             {canSpeak && (
-              <button type="button" className="secondary ride-speak" aria-pressed={listening} onClick={speak}>
+              <button type="button" className="secondary ride-speak" aria-pressed={listening} onClick={speak} data-idle-hold={listening || undefined}>
                 <Icon name="mic" size={18} />
                 {SPEAK_LABEL}
               </button>

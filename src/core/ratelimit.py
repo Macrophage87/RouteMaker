@@ -234,6 +234,9 @@ SHARE_PREVIEWS = Limit(scope="share-preview", requests=120, window_s=60)
 # A kept line checked against the closures in force (POST /api/closures/check): asked when a
 # saved or shared route opens, on Start ride and before a download, so a few a minute at most.
 CLOSURE_CHECK = Limit(scope="closure-check", requests=30, window_s=60)
+# Weather along a route (POST /api/weather/check, core.weather): asked when a route shows, on Start
+# and every 5 minutes in a ride, so 20 a minute is a cap on a script.
+WEATHER_CHECK = Limit(scope="weather-check", requests=20, window_s=60)
 # A report sent to DC 311 from Ride mode (POST /api/report311, core.dc311; v0.7.0 "Go riding
 # fixes" item 3): a rider reports a pothole or two on a ride, so 10 an hour is a cap on a script.
 REPORT_311 = Limit(scope="report-311", requests=10, window_s=3600)

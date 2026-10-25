@@ -62,10 +62,10 @@ export function betterRouteSaid(
 
 /**
  * Whether a full plan may replace the route shown: only for a first route (`provisional`), and only before Start
- * (no ride on, and the Start question not open): "never mid-ride without asking".
+ * (no ride on): "never mid-ride without asking".
  */
-export function takesRefined(shown: Pick<RouteResponse, "provisional"> | null, riding: boolean, startAsked: boolean): boolean {
-  return shown?.provisional === true && !riding && !startAsked;
+export function takesRefined(shown: Pick<RouteResponse, "provisional"> | null, riding: boolean): boolean {
+  return shown?.provisional === true && !riding;
 }
 
 export interface EarlyStartOptions {
