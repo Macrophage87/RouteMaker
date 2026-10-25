@@ -245,23 +245,55 @@ def test_a_new_base_map_draws_the_pictures_again(basemap) -> None:
     assert preview_basemap.stamp() != before
 
 
-def test_homes_circle_hides_the_base_map_too(basemap) -> None:
-    home = LINE[0]
+def test_homes_circle_hides_the_route_but_keeps_the_map(basemap) -> None:
+    # Home at the line's start, on the road: the circle keeps the road and the land round it
+    # (a blank disc would mark Home) and has nothing of the line or the pins.
+    home = (LINE[0][0], ROAD[0][1])
+    line = [home, *LINE]
     zone = share_preview.home_zone(home, (0.0, 0.0))
-    drawn = share_preview.drawn_route(LINE, [LINE[0], LINE[-1]], zone)
-    assert drawn is not None and drawn["zone"] == zone
-    px = _pixels(share_preview.render_png(drawn, "x"))
+    drawn = share_preview.drawn_route(line, [line[0], line[-1]], zone)
+    assert drawn is not None and drawn["zone"] == zone and drawn["start"] is None
+    with_route = _pixels(share_preview.render_png(drawn, "x"))
     _centre, scale, at = share_preview.view(drawn)
+    # The same view with nothing drawn on it: the bare map.
+    bare = bytearray(share_preview.WIDTH * share_preview.MAP_H * 3)
+    places = preview_basemap.paint(bare, share_preview.WIDTH, share_preview.MAP_H, _centre, scale)
+    assert places is not None
     cx, cy = at(zone[0])
     r = share_preview.zone_radius_px(zone, scale)
-    inside = 0
+    route_colours = {
+        share_preview.LINE_COLOUR,
+        share_preview.START_COLOUR,
+        share_preview.STOP_COLOUR,
+    }
+    inside = kept = 0
     for y in range(int(cy - r), int(cy + r) + 1):
         for x in range(int(cx - r), int(cx + r) + 1):
             if 0 <= x < share_preview.WIDTH and 0 <= y < share_preview.MAP_H:
                 if (x + 0.5 - cx) ** 2 + (y + 0.5 - cy) ** 2 <= r * r:
                     inside += 1
-                    assert _at(px, x, y) == share_preview.BACKGROUND
+                    pixel = _at(with_route, x, y)
+                    assert pixel not in route_colours, (x, y)
+                    assert pixel != share_preview.BACKGROUND, (x, y)
+                    kept += pixel == _at(bare, x, y)
     assert inside > 100
+    # Only a town name's halo may differ from the bare map: everything else is the map itself.
+    assert kept > inside * 0.95
+    road_x, road_y = at(home)
+    assert _at(with_route, road_x, road_y) == preview_basemap.ROAD
+
+
+def test_a_broken_tile_is_no_base_map_never_a_failed_preview(basemap) -> None:
+    # A roads feature whose geometry is a number, not a list: the decoder trips on it.
+    write_archive(basemap, _tile() + _field(3, _field(1, b"roads") + _field(2, _uint(4, 5))))
+    preview_basemap._archive.cache_clear()
+    px = bytearray(b"\x07" * (share_preview.WIDTH * share_preview.MAP_H * 3))
+    assert (
+        preview_basemap.paint(px, share_preview.WIDTH, share_preview.MAP_H, (0.3, 0.4), 1e7) is None
+    )
+    assert set(px) == {7}
+    drawn = share_preview.drawn_route(LINE, [], None)
+    assert _at(_pixels(share_preview.render_png(drawn, "x")), 5, 5) == share_preview.BACKGROUND
 
 
 def test_a_long_route_over_the_base_map_is_drawn_in_bounded_time(basemap) -> None:

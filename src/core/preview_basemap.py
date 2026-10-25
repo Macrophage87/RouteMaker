@@ -21,15 +21,17 @@ carry": OpenStreetMap's and Protomaps') are drawn on the picture by share_previe
 from __future__ import annotations
 
 import gzip
+import logging
 import math
 import os
 import struct
-import zlib
 from functools import lru_cache
 
 from django.conf import settings
 
-# What the picture owes the base map, drawn on it (stressStyle.js BASEMAP.attribution).
+logger = logging.getLogger(__name__)
+
+# What the picture owes the base map, drawn on it: the two credits docs/OPERATIONS.md names.
 CREDIT = "© OpenStreetMap contributors · © Protomaps"
 TILE_PX = 512
 MAX_TILES = 16
@@ -346,7 +348,7 @@ def layers(tile: bytes) -> dict[str, list[tuple[int, dict, list]]]:
                 values.append(v)
             elif f == 5:
                 extent = v
-        if name not in WANTED:
+        if name not in WANTED or not isinstance(extent, int) or extent <= 0:
             continue
         decoded = [_value(v) for v in values]
         rows = []
@@ -490,6 +492,20 @@ def view_zoom(scale: float, max_zoom: int, min_zoom: int = 0) -> int:
 def paint(
     px: bytearray, width: int, height: int, centre: tuple[float, float], scale: float
 ) -> list | None:
+    """`_paint`, with anything going wrong reading or drawing the base map leaving `px` as it was
+    and returning None: a broken archive or tile is no base map, never a failed preview."""
+    before = bytes(px)
+    try:
+        return _paint(px, width, height, centre, scale)
+    except Exception:
+        logger.exception("link preview: the base map could not be drawn")
+        px[:] = before
+        return None
+
+
+def _paint(
+    px: bytearray, width: int, height: int, centre: tuple[float, float], scale: float
+) -> list | None:
     """The base map drawn into `px` (RGB rows of `width`, the first `height` rows drawn), the
     view centred on `centre` (world_xy) at `scale` pixels across the world. Returns the town names
     to draw over the route, as (x, y, name), or None when there was no base map to draw (and `px`
@@ -507,23 +523,11 @@ def paint(
     if (tx1 - tx0 + 1) * (ty1 - ty0 + 1) > MAX_TILES:
         return None
     tiles = []
-    try:
-        for ty in range(ty0, ty1 + 1):
-            for tx in range(tx0, tx1 + 1):
-                raw = arc.tile(z, tx, ty)
-                if raw:
-                    tiles.append((tx, ty, layers(raw)))
-    except (
-        OSError,
-        ValueError,
-        IndexError,
-        KeyError,
-        struct.error,
-        EOFError,
-        zlib.error,
-        UnicodeDecodeError,
-    ):
-        return None
+    for ty in range(ty0, ty1 + 1):
+        for tx in range(tx0, tx1 + 1):
+            raw = arc.tile(z, tx, ty)
+            if raw:
+                tiles.append((tx, ty, layers(raw)))
     if not tiles:
         return None
 

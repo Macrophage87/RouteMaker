@@ -43,7 +43,8 @@ stops in the owner's Home circle keeps that circle on the row (`preview_zone`), 
 later never uncovers it. The circle's radius is the same for every account (`ZONE_RADIUS_M`), so
 the gap's size says nothing of how far its centre was moved.
 
-Home's circle is left blank over the base map too: the streets in it would point at Home.
+Over the base map, the circle keeps the map and loses only the route: a blank disc on a map would
+mark Home, where on the plain background it shows nothing.
 
 The image is cached on the row under a key of the line, Home's circle and the base map's archive
 (`image_key`; the archive by its size and time, preview_basemap.stamp, so a new base map draws
@@ -620,6 +621,9 @@ def render_png(drawn: dict, stats: str) -> bytes | None:
                 x, y = at(p)
                 taken.append((x - 16, y - 16, x + 16, y + 16))
         _place_labels(canvas, places, taken, casing)
+    # The map as it is before the route: Home's circle shows it again below.
+    under = bytes(canvas.px)
+    if places is not None:
         for i, c in enumerate(casing):
             if c:
                 canvas.blend(i % WIDTH, i // WIDTH, BAND_COLOUR, c / 255)
@@ -638,14 +642,16 @@ def render_png(drawn: dict, stats: str) -> bytes | None:
             canvas.disc(x, y, 10, colour)
     zone = drawn.get("zone")
     if zone:
-        # Nothing inside Home's circle, not even a round line end, a pin's edge or the base map:
-        # the map would show the streets round Home.
+        # Nothing of the route inside Home's circle, not even a round line end or a pin's edge.
+        # The base map stays, as Share as image keeps it (shareCard.ts): its streets are anyone's,
+        # and a blank disc on it would mark where Home is.
         cx, cy = at(zone[0])
         r = zone_radius_px(zone, scale)
         for y in range(max(0, int(cy - r - 1)), min(MAP_H, int(cy + r + 2))):
             for x in range(max(0, int(cx - r - 1)), min(WIDTH, int(cx + r + 2))):
                 if (x + 0.5 - cx) ** 2 + (y + 0.5 - cy) ** 2 <= r * r:
-                    canvas.blend(x, y, BACKGROUND, 1)
+                    i = (y * WIDTH + x) * 3
+                    canvas.px[i : i + 3] = under[i : i + 3]
     for x in range(WIDTH):
         canvas.blend(x, MAP_H, RULE, 1)
     baseline = MAP_H + (BAND + 24) // 2

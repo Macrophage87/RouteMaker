@@ -2035,8 +2035,9 @@ phone whose share sheet takes files, the GPX file Download GPX would give goes w
   imaging package; glyphs from `scripts/make_preview_glyphs.py`), cached on the row. The line is
   drawn over the base map (`core.preview_basemap`: land, parks, water, roads and paths, rail and a
   few town names, read from `${DATA_ROOT}/basemap/region.pmtiles`, which compose mounts read-only
-  into the API at `/data/basemap`) with "© OpenStreetMap contributors · © Protomaps" on it; with
-  no archive there the picture has a plain background, as before. A new `region.pmtiles` (another
+  into the API at `/data/basemap`) with "© OpenStreetMap contributors · © Protomaps" on it; Home's circle loses the route but keeps the
+  map. With no `region.pmtiles` in the directory, or one that cannot be read, the picture has a
+  plain background, as before (the directory itself must exist: the beta's bind will not create it). A new `region.pmtiles` (another
   size or time) draws every picture again on its next fetch. Where the
   route starts, ends or stops at the owner's Home, the image leaves a circle of at least 0.2 mi
   (322 m) round Home blank, its centre moved 60 to 150 m per account by a keyed hash of the
