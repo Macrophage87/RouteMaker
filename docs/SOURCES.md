@@ -612,6 +612,30 @@ sample pages (`tests/data/closures`), and docs/OPERATIONS.md, "DC closures", has
 - Publisher: U.S. National Park Service.
 - Terms: NPS API terms of service (public domain U.S. government data). Not legal advice.
 
+### Deer-management closures (v0.12.3)
+
+Not a map credit: each notice names its agency and links its page (`routemaker.deer_closures`),
+and the ways are OpenStreetMap's (credited above). Shown as "Check before you go" notices on a
+route that runs along the closed roads or trails, only at a ride time inside a closure window;
+never routed round.
+
+- **Rock Creek Park (NPS).** "Record of Determination for the Temporary Closure of Certain Park
+  Roads and Park Areas for the 2025-2026 Implementation of the Rock Creek Park White-tailed Deer
+  Management Plan", <https://www.nps.gov/rocr/learn/management/record-of-determination-for-the-temporary-closure-of-certain-park-roads-and-park-areas-for-the-2025-2026-implementation-of-the-rock-creek-park-white-tailed-deer-management-plan.htm>,
+  read 2026-10-25: Nov 10, 2025 to Mar 31, 2026; Bingham Drive, Sherrill Drive and three
+  car-free stretches of Beach Drive "may also [be] closed to pedestrians, bicyclists and
+  non-motorized recreation from 6:45 p.m. to 4 a.m.". The 2026-27 dates are assumed the same
+  (the owner, 2026-10-25) and said as expected until NPS posts them. Public domain U.S.
+  government information.
+- **Montgomery Parks.** "Deer Population Management Schedule & Locations", Fall 2026 to Winter
+  2027, <https://montgomeryparks.org/deer-population-management-schedule-locations/>, read
+  2026-10-25: Park Police sharpshooting ("Parks and Trails Closed, January 15 - March 31 from
+  Sunset - Sunrise, Monday-Friday") and the firearms hunt dates ("Parks are CLOSED for 24 hours
+  on each scheduled date"). Public notice. The parks' boundaries, from Montgomery Parks' Park
+  Units layer (ArcGIS `ParkUnitsPlus_Py`, item `2c3ae81e2c494d1f8c40f8e7a57c553f`; it states
+  no licence), are used only when the file is built, to choose OpenStreetMap's paths inside
+  each park; no boundary is stored or shown. Not legal advice.
+
 ## Atkinson Hyperlegible (the panel's font; not a map credit)
 
 This is a bundled asset, like maplibre-gl and Noto Sans, not a data source: it has no

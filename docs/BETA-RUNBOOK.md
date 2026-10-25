@@ -389,9 +389,10 @@ the checkout's sha and prints the two lines above to send it.
 Windows npm and installs Windows bindings, which `--build-frontend` refuses; install it in the pinned
 node image instead (`scripts/beta/frontend-build.sh --print-image` names it), as the refusal shows.
 `--build-frontend` runs the front-end tests and builds it with the beta notice; `ship-data.sh` stops if
-neither it nor `--dist` is given. To add a "Report a problem" link to the notice (OWNER-DECISIONS 382,
-for example a Discord invite once there is one), the owner adds `--report-url https://...`; without it
-the notice says only to tell the person who gave you access. The link is built into the front end, so
+neither it nor `--dist` is given. The notice always links the public Discord invite for reports and,
+in small print, the beta sign-up form ("Sign up to test here!"; owner, 2026-10-25). To add a further
+"Report a problem" link (OWNER-DECISIONS 382), the owner adds `--report-url https://...`; the Discord
+invite itself adds nothing. The link is built into the front end, so
 repeat the same `--report-url` on every later ship that carries the front end (data updates and
 releases included), or the next `files` installs a notice without it.
 
@@ -697,7 +698,8 @@ then `sudo rm -f /var/log/nginx/rmbeta-access.log* /var/log/nginx/rmbeta-error.l
 
 What the site does, so you can explain it to the owner: only `robots.txt`, `/delete-account`
 (Google Play's account-deletion page), `/privacy` (the privacy policy) and the port-80 ACME challenge path are public; everything else, including `/healthz`, `/auth/` and the admin path, asks for
-a password. Every response carries `X-Robots-Tag: noindex, nofollow`. `/api` has 75-second timeouts
+a password. Every response but the favicons and `/icons/` carries `X-Robots-Tag: noindex, nofollow`
+(those go without, for the connector's icon: OPERATIONS.md, "The connector's icon"). `/api` has 75-second timeouts
 (a plan takes up to 47 seconds). JSON and vector tiles are gzipped. The base map answers only this
 site's own pages.
 
@@ -719,7 +721,7 @@ scripts/beta/smoke-test.sh --public https://beta.example.org --passwords-file ~/
 
 (It signs in as the first tester in the file, reading the password itself and passing it to curl on
 standard input; no password is in the command line, the output or your transcript.) Every line must
-say `PASS`. It checks: robots.txt is public and disallows everything; `/` and `/healthz` return 401
+say `PASS`. It checks: robots.txt is public and disallows everything but the home page and the icons; `/` and `/healthz` return 401
 without credentials and a wrong password is refused; the 401 still asks for a password
 (`WWW-Authenticate: Basic`) and its page says how to get in; noindex and the content security policy are
 present; http redirects to https; the front end loads; a preset link redirects; the base map answers
@@ -753,7 +755,7 @@ every other line must PASS.
 Then check by eye, once, in a browser the owner can use: the page loads behind the password prompt,
 the map draws, a two-point route appears, and a small **Beta** chip is in the map's bottom-left
 corner (beside the planner on a computer, above the sheet on a phone); pressing it opens the beta
-note over the map (it appears only in the front end built with `VITE_BETA=1`, which
+note over the map, with its Discord link and the small-print sign-up link (it appears only in the front end built with `VITE_BETA=1`, which
 `ship-data.sh --build-frontend` does). And one screen-reader pass (VoiceOver or NVDA): the password
 prompt is read and can be filled; the "Beta notice" button is reached by Tab after the map's
 controls and says collapsed or expanded; opened, the "Beta notice" region is read next, and Escape
@@ -1458,7 +1460,7 @@ secret like the webhooks: never in chat, the repo or a command line.
   with no query string, no client address and no tester name. The paths whose queries hold a place (`/api/reverse`,
   `/api/geocode`, `/api/segment-info`, `/api/street-photo`, `/api/junction-suggestions/at`,
   `/api/stress-suggestions/ticket`, `/api/stress-suggestions/mine`, `/api/transit/station-times`, `/api/transit/next-vehicle`, `/api/bikeshare/docks`, `/api/closures/map`,
-  and Review's `/api/review/items`, `/api/review/map`, `/api/review/next`, `/api/review/road/<way>` and `/api/review/street-photo`) log nginx errors at `crit` only, to `/var/log/nginx/rmbeta-error.log`, so
+  and Review's `/api/review/items`, `/api/review/map`, `/api/review/next`, `/api/review/road/<way>` and `/api/review/street-photo`, and the connector's `/api/scenic-roads` and `/api/climbs-near`) log nginx errors at `crit` only, to `/var/log/nginx/rmbeta-error.log`, so
   a 502 or 504 there leaves no error-log line; `rmbeta-access.log` still shows the status and the time (about 0 s:
   the api was down; about 75 s: it timed out), and for a 502 the api's own log usually has nothing, because the
   request never reached it. The time in the nginx and gunicorn logs is the whole request's, not one router call's. Upstream errors on every other path still go to the
