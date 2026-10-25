@@ -118,6 +118,46 @@ class TestScenicRoads:
         roads = get(client).json()["roads"]
         assert [r["road"] for r in roads] == [None]
 
+    def test_a_slow_read_is_a_503_and_a_read_puts_the_caller_s_limit_back(
+        self, client, segment_schemas, names, monkeypatch
+    ) -> None:
+        from django.db import connection, transaction
+
+        from core import scenic_near
+
+        # A real cancelled statement (sqlstate 57014), not a stand-in exception.
+        monkeypatch.setattr(scenic_near, "TIMEOUT_MS", 50)
+        monkeypatch.setattr(scenic_near, "_QUERY", "SELECT pg_sleep(1)")
+        response = get(client)
+        assert response.status_code == 503
+        assert "too long" in response.json()["error"]
+        # A read that finishes inside an outer transaction puts the caller's limit back.
+        monkeypatch.setattr(scenic_near, "_QUERY", "SELECT 1")
+        with transaction.atomic(), connection.cursor() as cursor:
+            cursor.execute("SET LOCAL statement_timeout = '7s'")
+            scenic_near._read("public", *SPOT, 100.0, "")
+            cursor.execute("SELECT current_setting('statement_timeout')")
+            assert cursor.fetchone() == ("7s",)
+
+    def test_a_rider_asking_too_often_is_told_to_wait(self, client, segment_schemas, names) -> None:
+        from test_ratelimit import in_one_window
+
+        from core import ratelimit
+
+        burst = ratelimit.SCENIC_ROADS_BURST
+
+        def attempt(n):
+            address = f"203.0.113.{120 + n}"
+            key = ratelimit.client_key(address)
+            for _ in range(burst.requests):
+                ratelimit.hit(burst, key)
+            query = {"lon": SPOT[0], "lat": SPOT[1], "miles": 1}
+            return client.get(URL, query, HTTP_X_FORWARDED_FOR=address)
+
+        refused = in_one_window(burst.window_s, attempt)
+        assert refused.status_code == 429
+        assert 1 <= int(refused["Retry-After"]) <= burst.window_s
+
     def test_a_point_outside_the_map_and_a_wide_ask_are_refused(
         self, client, segment_schemas, names
     ) -> None:

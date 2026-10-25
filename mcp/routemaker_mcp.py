@@ -2852,7 +2852,10 @@ class Server:
     # scenic_roads_near
     def scenic_roads_near(self, args: dict, call: Call) -> dict:
         near, _ = as_point(args["near"], self.api, self.stations)
-        miles = min(15.0, max(0.5, float(args.get("within_miles") or 5)))
+        try:
+            miles = min(15.0, max(0.5, float(args.get("within_miles") or 5)))
+        except (TypeError, ValueError):
+            raise ToolError("within_miles is a number") from None
         roads = self.api.scenic_roads(near, miles, str(args.get("designation") or "").strip())
         return {
             "roads": roads,
