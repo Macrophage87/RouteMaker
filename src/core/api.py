@@ -90,6 +90,7 @@ from . import (
     audit,
     bikeshare,
     climbprofile,
+    climbs_near,
     follow,
     gbfs,
     geocode,
@@ -101,6 +102,7 @@ from . import (
     ratelimit,
     route_cache,
     routing,
+    scenic_near,
     segment_info,
     share_links,
     stoporder,
@@ -1953,6 +1955,19 @@ class RoadHazardSpanOut(Schema):
     text: str = Field(description="One plain sentence, US units first with the metric once.")
 
 
+class ScenicSpanOut(Schema):
+    """A stretch of the route with a scenic designation (v0.12.3; `core.route_scenic`), in
+    whole metres along the traced route as `stress_spans` are measured."""
+
+    from_m: int
+    to_m: int
+    road: str
+    designation: str = Field(
+        description='As the road panel says it: "Rustic Road (Montgomery County)", several'
+        ' joined by " · ".'
+    )
+
+
 class MtbOut(Schema):
     """A Mountain Bike plan's reading of its route (docs/MTB-TOPO-PLAN.md, slice 6;
     `core.mtb`)."""
@@ -2230,6 +2245,9 @@ class RouteBody(Schema):
     # The known hazards it rides (v0.10.0; cobbles, rails), in riding order. Additive: empty
     # where it rides none or the table predates them.
     road_hazards: list[RoadHazardSpanOut] | None = None
+    # The scenic designations it rides (v0.12.3; rustic roads, byways, the East Coast
+    # Greenway, US Bicycle Routes), in riding order. Additive: empty where it rides none.
+    scenic_roads: list[ScenicSpanOut] | None = None
     # The Mountain Bike ride type's reading of the route (slice 6). Additive: null on every
     # other ride type.
     mtb: MtbOut | None = None
@@ -5089,6 +5107,173 @@ def road_info(request, params: Query[SegmentInfoIn], response: HttpResponse):
     found = segment_info.segment_info(params.lat, params.lon, params.trail)
     response["Cache-Control"] = f"private, max-age={SEGMENT_INFO_MAX_AGE_S}"
     return Status(200, {**found, "attribution": list(SEGMENT_INFO_ATTRIBUTION)})
+
+
+# --- The scenic roads near a point (v0.12.3; core.scenic_near) --------------------------------
+#
+# GET /api/scenic-roads: the rustic roads, scenic byways, East Coast Greenway and US Bicycle
+# Routes near a point, for the assistant connector's `scenic_roads_near` (the owner,
+# 2026-10-25: "The goal would be for a new user to be able to make routes like this"). Read
+# only, signed out, counted and limited as the road panel is.
+
+
+class ScenicRoadsIn(Schema):
+    lat: Coordinate
+    lon: Coordinate
+    miles: float = Field(
+        default=5.0, gt=0, le=scenic_near.MAX_RADIUS_MI, description="How far to look, miles."
+    )
+    designation: str = Field(
+        default="",
+        max_length=40,
+        description="Only roads whose designation holds this word: 'rustic', 'byway'.",
+    )
+
+    @model_validator(mode="after")
+    def point_inside(self):
+        _check_inside(self.lat, self.lon)
+        return self
+
+
+class ScenicRoadOut(Schema):
+    road: str | None = Field(description="Its name, from the router; null where none is mapped.")
+    designation: str = Field(description='As the road panel says it, several joined by " · ".')
+    miles: float = Field(description="Its miles within reach.")
+    lts_miles: dict[str, float] = Field(description='Miles at each stress: {"LTS 2": 1.4}.')
+    lon_lat: list[float] = Field(description="A point on it: where a via point puts a route on it.")
+    nearest: list[float] = Field(description="Its point nearest the one asked about.")
+    away_mi: float
+
+
+class ScenicRoadsOut(Schema):
+    roads: list[ScenicRoadOut] = Field(description="Nearest first, at most 25.")
+    attribution: list[str]
+
+
+SCENIC_ROADS_ATTRIBUTION = (
+    "© OpenStreetMap contributors (ODbL)",
+    "Montgomery County Planning",
+    "MDOT SHA",
+)
+
+
+@api.get(
+    "/scenic-roads",
+    response={
+        200: ScenicRoadsOut,
+        400: ErrorOut,
+        403: ErrorOut,
+        429: ErrorOut,
+        500: ErrorOut,
+        503: ErrorOut,
+    },
+    summary="The rustic roads, scenic byways and named bike routes near a point",
+)
+@decorate_view(
+    ratelimit.in_flight_limited(ratelimit.GEOCODE_IN_FLIGHT, ratelimit.name_slots),
+    ratelimit.rate_limited(ratelimit.SCENIC_ROADS),
+    ratelimit.rate_limited(ratelimit.SCENIC_ROADS_BURST),
+    same_site_only,
+    errors_as_json,
+)
+def scenic_roads(request, params: Query[ScenicRoadsIn], response: HttpResponse):
+    try:
+        found = scenic_near.near(params.lon, params.lat, params.miles, params.designation)
+    except scenic_near.TimedOut:
+        return Status(503, {"error": "the scenic road search took too long; try a smaller area"})
+    response["Cache-Control"] = f"private, max-age={SEGMENT_INFO_MAX_AGE_S}"
+    return Status(200, {"roads": found, "attribution": list(SCENIC_ROADS_ATTRIBUTION)})
+
+
+# --- Climbs near a point (v0.12.3; core.climbs_near) ----------------------------------------
+#
+# GET /api/climbs-near: the categorised climbs within reach of a point, from the Climbs layer's
+# file, for the assistant connector's `climbs_near` (the owner, 2026-10-25, of hill repeats for
+# intervals: "Yep, add that"). Read only, signed out, counted and limited.
+
+
+class ClimbsNearIn(Schema):
+    lat: Coordinate
+    lon: Coordinate
+    miles: float = Field(
+        default=5.0, gt=0, le=climbs_near.MAX_RADIUS_MI, description="How far to look, miles."
+    )
+    min_grade: float = Field(
+        default=0.0, ge=0, le=30, description="Only climbs at least this steep on average, %."
+    )
+    on_minutes: float = Field(
+        default=0.0, ge=0, le=60, description="Only climbs an effort this long fits up."
+    )
+    pace_mph: float = Field(default=18.0, ge=4, le=35, description="The effort's flat pace.")
+    paved_only: bool = Field(default=False, description="Leave out gravel and MTB climbs.")
+    quiet_only: bool = Field(default=False, description="Leave out climbs mostly on LTS 3+.")
+    steepest: bool = Field(default=False, description="Steepest first, not nearest first.")
+
+    @model_validator(mode="after")
+    def point_inside(self):
+        _check_inside(self.lat, self.lon)
+        return self
+
+
+class ClimbNearOut(Schema):
+    id: str = Field(description="The climb's id in the Climbs layer's file.")
+    name: str | None = Field(description="From its roads and the hill it runs up; null if none.")
+    category: str = Field(description='"5" to "1" or "HC".')
+    miles: float
+    gain_ft: int
+    grade_pct: float = Field(description="Average grade, %.")
+    foot: list[float] = Field(description="Where it starts, [lon, lat].")
+    summit: list[float] = Field(description="Where it tops out, [lon, lat].")
+    through: list[list[float]] = Field(
+        description="Points up it, near the foot to near the summit: via points that keep a"
+        " plan on the climb."
+    )
+    surface: str = Field(description='"road", "path", "gravel" or "mountain-bike trail".')
+    busy: bool | None = Field(
+        description="Most of its roads are LTS 3 or higher; null where the file does not say."
+    )
+    away_mi: float
+
+
+class ClimbsNearOut(Schema):
+    climbs: list[ClimbNearOut] = Field(description="Nearest (or steepest) first, at most 25.")
+    attribution: list[str]
+
+
+CLIMBS_NEAR_ATTRIBUTION = (
+    "© OpenStreetMap contributors (ODbL)",
+    "USGS 3D Elevation Program",
+)
+
+
+@api.get(
+    "/climbs-near",
+    response={200: ClimbsNearOut, 400: ErrorOut, 403: ErrorOut, 429: ErrorOut, 503: ErrorOut},
+    summary="The categorised climbs near a point",
+)
+@decorate_view(
+    ratelimit.rate_limited(ratelimit.CLIMBS_NEAR),
+    ratelimit.rate_limited(ratelimit.CLIMBS_NEAR_BURST),
+    same_site_only,
+    errors_as_json,
+)
+def climbs_near_point(request, params: Query[ClimbsNearIn], response: HttpResponse):
+    try:
+        found = climbs_near.near(
+            params.lon,
+            params.lat,
+            params.miles,
+            min_grade=params.min_grade,
+            on_minutes=params.on_minutes,
+            pace_mph=params.pace_mph,
+            paved_only=params.paved_only,
+            quiet_only=params.quiet_only,
+            steepest=params.steepest,
+        )
+    except climbs_near.Unavailable:
+        return Status(503, {"error": "this server has no climbs file"})
+    response["Cache-Control"] = f"private, max-age={SEGMENT_INFO_MAX_AGE_S}"
+    return Status(200, {"climbs": found, "attribution": list(CLIMBS_NEAR_ATTRIBUTION)})
 
 
 # --- The road panel's street photo (v0.7.0; core.street_photo) ------------------------------

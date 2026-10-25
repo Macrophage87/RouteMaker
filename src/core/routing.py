@@ -120,6 +120,7 @@ from . import (
     parallel,
     presets,
     route_hazards,
+    route_scenic,
     segment_info,
     timing,
     trail_touch,
@@ -4318,6 +4319,8 @@ def _plan(
         hazards_ridden = route_hazards.along(leg_runs, pieces)
         described_full = route_hazards.with_entries(described_full, hazards_ridden)
         described_overview = route_hazards.with_entries(described_overview, hazards_ridden)
+        # Its rustic roads, byways and named bike routes (v0.12.3): for the connector's road list.
+        scenic_ridden = [] if over_budget else route_scenic.along(leg_runs, pieces)
         # The climbs the route rides uphill, where the hill seek ran (205): each named in
         # `hills_seek.climbs` and as an entry of the description.
         climbs_ridden = []
@@ -4562,6 +4565,8 @@ def _plan(
             "avoid_notice": avoid_rules.notice(avoid_found),
             # The known hazards the route rides (v0.10.0): cobbles, rails; [] where none.
             "road_hazards": hazards_ridden,
+            # The scenic designations it rides (v0.12.3): rustic roads, byways; [] where none.
+            "scenic_roads": scenic_ridden,
             # A Mass Ride's approved hazards in riding order (325); null on other ride types.
             "mass_hazards": (
                 mass_hazards.along(leg_runs, pieces, classes, hazard_list)
