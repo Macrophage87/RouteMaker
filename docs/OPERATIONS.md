@@ -4782,6 +4782,29 @@ read; Plan's DC permits layer (off by default) is the only place they show. A ri
 through anyway" is per plan and session only (`closure_bypass` on `/api/route`, `bypass`
 on `/api/closures/check`); nothing about it is stored.
 
+## Deer-management closures (v0.12.3)
+
+Rock Creek Park (NPS) and Montgomery Parks close parts of their parks at night, or for whole
+days, each winter to manage the deer. These are published schedules, not feeds: the windows are
+in `src/routemaker/deer_closures.py` and the ways they close in
+`src/core/geodata/deer-closures.geojson`. Each window is a "Check before you go" notice
+(sources `nps_deer` and `mcparks`), never a closure: a route that runs along at least 100 m
+(330 ft) of the closed roads or trails, at a ride time inside the window (or up to an hour
+before it opens), shows it in its notices, on its map and in the connector's
+`check_before_you_go`. Nothing is shown outside the windows.
+
+**Each autumn:**
+
+1. When NPS posts Rock Creek's record of determination for the new winter, set its dates in
+   `ROCK_CREEK_SEASONS` with `posted` True (the notice stops saying "expected"), and its hours
+   in `ROCK_CREEK_HOURS`. Check its list of roads closed to bicycles against `ROCK_CREEK_WAYS` in
+   `scripts/build_deer_closures.py`.
+2. When Montgomery Parks posts the new schedule, set `SHARPSHOOTING_SEASON`, `SHARPSHOOTING`
+   (the parks) and `FIREARMS` (the dates). A park new to the list needs its Park Units code in
+   `MOCO_CODES`.
+3. Rebuild the file: `python scripts/build_deer_closures.py` (OSM API and the Park Units
+   layer; about five minutes). A park with no path inside it is left out: nothing to ride.
+
 ## DC pavement condition (DC-PCI)
 
 DDOT's Pavement Condition Index is the smoothness reading of District streets from

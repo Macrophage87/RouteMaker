@@ -2126,12 +2126,15 @@ class ClosureNoticeOut(Schema):
     placed on the map (v0.7.0). Text and a link; never routed round."""
 
     id: str
-    source: Literal["nps", "mpd", "alertdc"]
+    source: Literal["nps", "mpd", "alertdc", "nps_deer", "mcparks"]
     source_name: str
     title: str
     text: str
     url: str | None
-    area: str = Field(description='An NPS park code ("rocr"), or "dc".')
+    area: str = Field(
+        description='An NPS park code ("rocr"), "dc", or a deer-management closure\'s area'
+        ' ("rocr-deer", "moco-G12").'
+    )
     area_name: str | None
     point: LonLat | None = Field(description="The park's marker; null for a District-wide notice.")
     category: str | None

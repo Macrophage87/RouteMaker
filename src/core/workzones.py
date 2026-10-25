@@ -354,6 +354,8 @@ def forget() -> None:
 
 
 def _load(now: datetime) -> Snapshot:
+    from routemaker import deer_closures
+
     from . import closure_sources, reviewed_closures
     from .models import BikeshareFeedCache
 
@@ -406,6 +408,9 @@ def _load(now: datetime) -> Snapshot:
         zones.extend(reviewed)
         status[reviewed_closures.SOURCE] = CURRENT
         read_at[reviewed_closures.SOURCE] = (changed or now).isoformat()
+    # The parks' deer-management closures (v0.12.3; routemaker.deer_closures): published
+    # schedules, so notices made from the clock, with no feed to read.
+    notices = [*notices, *deer_closures.notices(now)]
     return Snapshot(tuple(zones), status, read_at, tuple(notices))
 
 
@@ -1093,7 +1098,7 @@ def notice_row(notice, now: datetime | None, future: bool) -> dict:
     """One "Check before you go" notice (the API's `ClosureNoticeOut`)."""
     from routemaker import dc_closures as dc
 
-    area = dc.AREAS.get(notice.area)
+    area = dc.area_of(notice.area)
     return {
         "id": notice.notice_id,
         "source": notice.source,
