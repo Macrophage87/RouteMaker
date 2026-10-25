@@ -258,8 +258,8 @@ def notice(window: Window) -> dc.Notice:
     else:
         title = f"{_name(window.area)} closed at night for deer management"
         text = (
-            "Montgomery Parks closes the park and its trails sunset to sunrise on weeknights, "
-            "Jan 15 to Mar 31."
+            "Montgomery Parks closes the park and its trails sunset to sunrise, Monday to Friday "
+            "nights, Jan 15 to Mar 31."
         )
         url = MOCO_URL
     return dc.Notice(
