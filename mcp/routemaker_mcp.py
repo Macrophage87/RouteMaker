@@ -3348,9 +3348,11 @@ class Server:
                 f" the ring was kept to {fitted:.1f} mi out"
             )
         radius = fitted
+        timed_out = False
         for attempt in range(max_plans):
             if best is not None and not call.time_for_another_plan():
                 notes.append(OUT_OF_TIME)
+                timed_out = True
                 break
             call.report(attempt, max_plans, f"planning loop {attempt + 1} ({len(points)} points)")
             try:
@@ -3389,10 +3391,18 @@ class Server:
             notes.append(f"adding {station} where the loop strayed")
         miles = best.answer["distance_m"] / METRES_PER_MILE
         if not 0.85 <= miles / target <= 1.15:
-            notes.append(
-                f"the loop is {miles:.0f} mi against a target of {target:.0f}: within"
-                f" {limit:g} mi of Metro, the ring could not be made closer"
-            )
+            if timed_out:
+                # Not tried, so not a limit of the ring: say what is left to do.
+                notes.append(
+                    f"the loop is {miles:.0f} mi against a target of {target:.0f}: there was no"
+                    " time to plan it again closer; move its farthest points in with"
+                    " revise_route, or plan a ring of via points on trails with plan_route"
+                )
+            else:
+                notes.append(
+                    f"the loop is {miles:.0f} mi against a target of {target:.0f}: within"
+                    f" {limit:g} mi of Metro, the ring could not be made closer"
+                )
         if start is None:
             begin = tuple(best.points[0])
             near = min(self.stations, key=lambda s: haversine_mi(begin, s.point))
