@@ -805,6 +805,31 @@ def test_no_closures_said_when_none_touch_the_route() -> None:
     assert mcp.route_closures(plan) == {}
 
 
+def test_a_park_notice_on_the_route_is_said_with_no_closure() -> None:
+    # A deer-management closure at the ride's time (v0.12.3): a notice, never routed round.
+    plan = _closure_plan([], via_mi=1.0)
+    plan.answer["work_zones"]["notices"] = [
+        {
+            "id": "deer-rocr-deer-2026-12-01",
+            "source": "nps_deer",
+            "source_name": "NPS, Rock Creek Park deer management",
+            "title": "Beach Dr, Bingham Dr and Sherrill Dr may close to bikes at night",
+            "text": "Deer management: these car-free roads may be closed to bikes and walkers.",
+            "url": "https://www.nps.gov/rocr/",
+            "area": "rocr-deer",
+            "area_name": "Rock Creek Park",
+            "point": at(0.5),
+            "category": "Deer management",
+            "when_text": "today 6:45 pm to tomorrow 4 am",
+        }
+    ]
+    out = mcp.route_closures(plan)
+    [said] = out["check_before_you_go"]
+    assert said["where"] == "Rock Creek Park" and said["when"] == "today 6:45 pm to tomorrow 4 am"
+    assert said["url"] == "https://www.nps.gov/rocr/"
+    assert out["closures"] == [] and "closure_warning" not in out
+
+
 def test_closures_near_lists_each_closure_once_nearest_first() -> None:
     asked = []
 
