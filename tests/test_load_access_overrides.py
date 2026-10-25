@@ -1232,7 +1232,11 @@ class TestTheAspenStreetFile:
         load(str(ASPEN_STREET), "--actor", actor, "--confirm")
         rows = Override.objects.filter(approved=True)
         assert {r.osm_way_id for r in rows} == {
-            1212569754, 120378962, 1444493181, 1481126430, 346681298
+            1212569754,
+            120378962,
+            1444493181,
+            1481126430,
+            346681298,
         }
         for row in rows:
             assert row.kind == "stress"
