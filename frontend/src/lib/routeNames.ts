@@ -25,8 +25,13 @@ export const ROUTE_NAME_LAYER_ID = "route-name";
 export const ROUTE_NAME_SPACING = 320;
 /** A stretch shorter than this (m) is left unnamed: too short to hold its name at any zoom the route is ridden at. */
 export const ROUTE_NAME_MIN_M = 40;
-/** Two stretches of one name with no more than this (m) between them are named as one (a short unnamed link). */
+/** Two stretches of one name that meet (within this, m, of rounding) are named as one. */
 const JOIN_GAP_M = 1;
+/**
+ * The names show from this zoom: zoomed further out a long route's names would cover the town and neighbourhood
+ * names along it (the base map names its minor streets from 15 and the major trails from 10).
+ */
+export const ROUTE_NAME_MIN_ZOOM = 12;
 
 type NameRoute = Pick<RouteResponse, "geometry" | "distance_m" | "leg_ends" | "description">;
 
@@ -45,9 +50,9 @@ export function namedStretches(route: NameRoute | null | undefined): { fromM: nu
     const toM = toLine(entry.to_m);
     if (!(toM > fromM)) continue;
     const last = out[out.length - 1];
-    if (last && last.name === name && fromM - last.toM <= JOIN_GAP_M) {
+    // A street that is a path for part of its way keeps the two parts apart, each in its own colour.
+    if (last && last.name === name && last.path === (entry.facility === "path") && fromM - last.toM <= JOIN_GAP_M) {
       last.toM = toM;
-      last.path ||= entry.facility === "path";
       continue;
     }
     out.push({ fromM, toM, name, path: entry.facility === "path" });
@@ -107,6 +112,7 @@ export function routeNameLayer(sourceId: string = ROUTE_NAME_SOURCE_ID, ride = f
     id: ROUTE_NAME_LAYER_ID,
     type: "symbol" as const,
     source: sourceId,
+    minzoom: ROUTE_NAME_MIN_ZOOM,
     layout: {
       "symbol-placement": "line" as const,
       "symbol-spacing": ROUTE_NAME_SPACING,
