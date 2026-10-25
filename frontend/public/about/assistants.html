@@ -374,11 +374,19 @@ miles from a Metro station."</li>
 <p>Every ride type the app has is available, bikeshare and bike plus transit included, with every
 setting: traffic stress, hills, target distance, ride time, gravel and trails, rider weight, cargo,
 trail levels, the bikeshare bike and where to end, and departure time. Each answer gives the distance,
-time, climbing and how much of the route is on each stress level, and a link, kept for a week, that opens
+time, climbing and how much of the route is on each stress level, the roads it takes in order (with miles, stress
+level and designations such as Montgomery County Rustic Roads, scenic byways, the East Coast Greenway
+and US Bicycle Routes), the busy stretches on stress level 3 and above, the very-high-stress junctions
+and any small detours, so the assistant can tell you the busy parts before you open the route, and a link, kept for a week, that opens
 that exact route in the app. You can change the route in the app yourself and paste the
 page's address back: the assistant picks it up as a new draft. On the traffic slider, 70 is the app's
 Default and 80 keeps to low-stress ways unless avoiding them takes much longer; above 80 the calm
 search runs, which is slower on a long ride.</p>
+<p>A place you name is looked for near the route's other points, so "Moore Road" means the one near
+your ride. If a name matches places far apart and none near the route, the assistant asks you which
+one you mean. Where the route would reach a via point by riding out and back 0.2 mi [0.3 km] or more,
+the point is moved to where that spur leaves the road and the route is planned again, and kept if it
+comes out shorter; you can ask to keep the points where they are.</p>
 
 </div></details>
 <h2 id="tools">What an assistant can do</h2>
@@ -391,9 +399,9 @@ search runs, which is slower on a long ride.</p>
 <caption>What an assistant can do</caption>
 <thead><tr><th scope="col">Tool</th><th scope="col">What it does</th></tr></thead>
 <tbody>
-<tr><th scope="row"><code>find_place</code></th><td>Searches RouteMaker's place search for a place, address or street.</td></tr>
+<tr><th scope="row"><code>find_place</code></th><td>Searches RouteMaker's place search for a place, address or street, around a point if given.</td></tr>
 <tr><th scope="row"><code>metro_stations</code></th><td>Lists the 98 Metrorail stations, or those near a point, with miles and direction.</td></tr>
-<tr><th scope="row"><code>plan_route</code></th><td>Plans through 2 to 25 points (places, station names or coordinates) on any ride type and setting, as a loop if asked. Reports distance, time, climbing and the share on each stress level, and the bikeshare or transit plan on those ride types. Can check the distance from Metro and add stations where the route strays.</td></tr>
+<tr><th scope="row"><code>plan_route</code></th><td>Plans through 2 to 25 points (places, station names or coordinates) on any ride type and setting, as a loop if asked. Reports distance, time, climbing and the share on each stress level, and the bikeshare or transit plan on those ride types. Can check the distance from Metro and add stations where the route strays. Also lists what the route rides: its roads in order with miles, stress level and any scenic designation, where it is on stress level 3 or above, its very-high-stress junctions, and small detours where it leaves a road and comes back to it.</td></tr>
 <tr><th scope="row"><code>revise_route</code></th><td>Changes a draft (add, move or remove points; another ride type or setting) and plans it again as a new draft. The old one stays.</td></tr>
 <tr><th scope="row"><code>open_link</code></th><td>Picks up a route from a RouteMaker link you paste: the app's address after you changed a route, a saved route opened in the app, or a shared route's link.</td></tr>
 <tr><th scope="row"><code>save_route</code></th><td>On the web, saves a draft to My routes; on your own computer, writes it as a GPX file. Only when you say so.</td></tr>
@@ -663,7 +671,7 @@ planned.</li>
 <p class="next">Next: <a href="/about/architecture.html">Architecture</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.12.2. The code is
+  <p>Part of RouteMaker's documentation. It describes version 0.12.3. The code is
   open source under the MIT licence:
   <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
   <p><a href="/">Back to the map</a></p>
