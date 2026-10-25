@@ -365,3 +365,24 @@ def test_when_every_point_is_a_name_the_first_is_searched_again_near_the_others(
     assert moore["taken_as"] == "Moore Road, Boyds, MD"
     assert moore["why"] == "the match nearest the route's other points"
     assert len(out["points_taken_as"]) == 2
+
+
+def test_scenic_roads_near_asks_the_site_and_filters_by_designation() -> None:
+    places = _Places()
+    asked = []
+
+    def scenic_roads(near, miles):
+        asked.append((near, miles))
+        return [
+            {"road": "Moore Road", "designation": "Exceptional Rustic Road (Montgomery County)"},
+            {"road": "River Road", "designation": "Potomac Heritage Scenic Byway"},
+        ]
+
+    places.scenic_roads = scenic_roads
+    server = mcp.Server(lambda: places, [], out_dir=Path("."))
+    out = server.call(
+        "scenic_roads_near",
+        {"near": list(LEWIS_ORCHARDS), "within_miles": 40, "designation": "rustic"},
+    )
+    assert asked == [(LEWIS_ORCHARDS, 15.0)]
+    assert [r["road"] for r in out["roads"]] == ["Moore Road"]

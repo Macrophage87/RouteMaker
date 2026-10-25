@@ -341,6 +341,17 @@ class Api:
             raise ToolError(f"place search failed ({status}): {message}")
         return payload.get("results", [])
 
+    def scenic_roads(self, near: tuple[float, float], miles: float) -> list[dict]:
+        """GET /api/scenic-roads: the designated roads near a point, nearest first."""
+        params = {"lon": near[0], "lat": near[1], "miles": miles}
+        status, payload, _ = self._request(
+            "GET", "/api/scenic-roads?" + urllib.parse.urlencode(params)
+        )
+        if status != 200 or not isinstance(payload, dict):
+            message = payload.get("error") if isinstance(payload, dict) else payload
+            raise ToolError(f"the scenic road search failed ({status}): {message}")
+        return payload.get("roads", [])
+
     def shared_route(self, route_id: str) -> dict:
         """A shared route as it was shared: its exact line, answer and plan inputs (GET
         /api/shared-routes/{id}, public)."""
@@ -1537,6 +1548,36 @@ TOOLS = [
         "annotations": {"readOnlyHint": True, "openWorldHint": False},
     },
     {
+        "name": "scenic_roads_near",
+        "description": (
+            "List the designated scenic roads near a point (nearest first, up to 25):"
+            " Montgomery County Rustic and Exceptional Rustic Roads, Maryland Scenic Byways,"
+            " the East Coast Greenway and US Bicycle Routes, each with its name, miles in"
+            " reach, miles at each traffic-stress level, and a [lon, lat] on it. Use it when a"
+            " rider asks for rustic, scenic or country roads: put via points on the ones that"
+            " fit (lower LTS first) and plan. Several rustic roads rate LTS 3 or 4, and the"
+            " router will not pick them on its own."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "near": POINT_SCHEMA,
+                "within_miles": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 15,
+                    "default": 5,
+                },
+                "designation": {
+                    "type": "string",
+                    "description": "Only these, by a word of the designation: 'rustic', 'byway'.",
+                },
+            },
+            "required": ["near"],
+        },
+        "annotations": {"readOnlyHint": True, "openWorldHint": False},
+    },
+    {
         "name": "plan_route",
         "description": (
             "Plan a bike route on RouteMaker through 2 to 25 points (start, stops or via points,"
@@ -1552,7 +1593,8 @@ TOOLS = [
             " `small_detours` / `via_spurs` (where it leaves a road and comes back to it, or"
             " goes out and back to a via point; riders rarely want these: move or drop the"
             " point with revise_route). To shape a route onto roads the router does not pick"
-            " on its own (a rustic road, a trail), add via points ON those roads, by [lon, lat]"
+            " on its own (a rustic road, a trail; scenic_roads_near lists them), add via points"
+            " ON those roads, by [lon, lat]"
             " or by name: a name is searched near the route's other points, and an ambiguous"
             " one is asked back. Read these before sending the link, and say the busy parts."
             " With max_miles_from_metro it checks the distance from Metro and, with"
@@ -2035,6 +2077,20 @@ class Server:
                 row["miles_from_near"] = round(haversine_mi(near, (r["lon"], r["lat"])), 1)
             rows.append(row)
         return {"results": rows}
+
+    # scenic_roads_near
+    def scenic_roads_near(self, args: dict, call: Call) -> dict:
+        near, _ = as_point(args["near"], self.api, self.stations)
+        miles = min(15.0, max(0.5, float(args.get("within_miles") or 5)))
+        roads = self.api.scenic_roads(near, miles)
+        kind = str(args.get("designation") or "").strip().casefold()
+        if kind:
+            roads = [r for r in roads if kind in str(r.get("designation", "")).casefold()]
+        return {
+            "roads": roads,
+            "source": "Montgomery County Planning (Rustic Roads), MDOT SHA (Scenic Byways),"
+            " OpenStreetMap (East Coast Greenway, US Bicycle Routes)",
+        }
 
     # metro_stations
     def metro_stations(self, args: dict, call: Call) -> dict:
@@ -2593,6 +2649,7 @@ class Server:
         return {
             "find_place": self.find_place,
             "metro_stations": self.metro_stations,
+            "scenic_roads_near": self.scenic_roads_near,
             "plan_route": self.plan_route,
             "plan_metro_loop": self.plan_metro_loop,
             "open_link": self.open_link,
