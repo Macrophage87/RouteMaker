@@ -389,9 +389,10 @@ the checkout's sha and prints the two lines above to send it.
 Windows npm and installs Windows bindings, which `--build-frontend` refuses; install it in the pinned
 node image instead (`scripts/beta/frontend-build.sh --print-image` names it), as the refusal shows.
 `--build-frontend` runs the front-end tests and builds it with the beta notice; `ship-data.sh` stops if
-neither it nor `--dist` is given. To add a "Report a problem" link to the notice (OWNER-DECISIONS 382,
-for example a Discord invite once there is one), the owner adds `--report-url https://...`; without it
-the notice says only to tell the person who gave you access. The link is built into the front end, so
+neither it nor `--dist` is given. The notice always links the public Discord invite for reports and,
+in small print, the beta sign-up form ("Sign up to test here!"; owner, 2026-10-25). To add a further
+"Report a problem" link (OWNER-DECISIONS 382), the owner adds `--report-url https://...`; the Discord
+invite itself adds nothing. The link is built into the front end, so
 repeat the same `--report-url` on every later ship that carries the front end (data updates and
 releases included), or the next `files` installs a notice without it.
 
@@ -753,7 +754,7 @@ every other line must PASS.
 Then check by eye, once, in a browser the owner can use: the page loads behind the password prompt,
 the map draws, a two-point route appears, and a small **Beta** chip is in the map's bottom-left
 corner (beside the planner on a computer, above the sheet on a phone); pressing it opens the beta
-note over the map (it appears only in the front end built with `VITE_BETA=1`, which
+note over the map, with its Discord link and the small-print sign-up link (it appears only in the front end built with `VITE_BETA=1`, which
 `ship-data.sh --build-frontend` does). And one screen-reader pass (VoiceOver or NVDA): the password
 prompt is read and can be filled; the "Beta notice" button is reached by Tab after the map's
 controls and says collapsed or expanded; opened, the "Beta notice" region is read next, and Escape

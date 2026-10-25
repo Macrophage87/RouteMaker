@@ -2601,6 +2601,12 @@ dialog.weight-dialog h2 {
   margin: 0;
 }
 
+/* The sign-up link, in small print under the note. */
+.beta-chip-note .beta-chip-signup {
+  margin-top: 6px;
+  font-size: 0.75rem;
+}
+
 @media (max-width: 720px) {
   .beta-chip {
     left: 10px;
