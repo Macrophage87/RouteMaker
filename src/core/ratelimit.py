@@ -173,6 +173,8 @@ SEGMENT_INFO = Limit(scope="segment-info", requests=60, window_s=60)
 # while it shapes a ride, each a wider read than the road panel's, so a budget of their own.
 SCENIC_ROADS_BURST = Limit(scope="scenic-roads-10s", requests=5, window_s=10)
 SCENIC_ROADS = Limit(scope="scenic-roads", requests=20, window_s=60)
+CLIMBS_NEAR_BURST = Limit(scope="climbs-near-10s", requests=5, window_s=10)
+CLIMBS_NEAR = Limit(scope="climbs-near", requests=20, window_s=60)
 # The road panel's street photo (GET /api/street-photo, v0.7.0): one per panel opened, as above.
 STREET_PHOTO = Limit(scope="street-photo", requests=60, window_s=60)
 # The rider's own latest suggestion for the road (GET /api/stress-suggestions/mine): one per

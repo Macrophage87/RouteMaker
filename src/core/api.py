@@ -90,6 +90,7 @@ from . import (
     audit,
     bikeshare,
     climbprofile,
+    climbs_near,
     follow,
     gbfs,
     geocode,
@@ -5182,6 +5183,77 @@ def scenic_roads(request, params: Query[ScenicRoadsIn], response: HttpResponse):
         return Status(503, {"error": "the scenic road search took too long; try a smaller area"})
     response["Cache-Control"] = f"private, max-age={SEGMENT_INFO_MAX_AGE_S}"
     return Status(200, {"roads": found, "attribution": list(SCENIC_ROADS_ATTRIBUTION)})
+
+
+# --- Climbs near a point (v0.12.3; core.climbs_near) ----------------------------------------
+#
+# GET /api/climbs-near: the categorised climbs within reach of a point, from the Climbs layer's
+# file, for the assistant connector's `climbs_near` (the owner, 2026-10-25, of hill repeats for
+# intervals: "Yep, add that"). Read only, signed out, counted and limited.
+
+
+class ClimbsNearIn(Schema):
+    lat: Coordinate
+    lon: Coordinate
+    miles: float = Field(
+        default=5.0, gt=0, le=climbs_near.MAX_RADIUS_MI, description="How far to look, miles."
+    )
+    min_grade: float = Field(
+        default=0.0, ge=0, le=30, description="Only climbs at least this steep on average, %."
+    )
+
+    @model_validator(mode="after")
+    def point_inside(self):
+        _check_inside(self.lat, self.lon)
+        return self
+
+
+class ClimbNearOut(Schema):
+    id: str = Field(description="The climb's id in the Climbs layer's file.")
+    name: str | None = Field(description="From its roads and the hill it runs up; null if none.")
+    category: str = Field(description='"5" to "1" or "HC".')
+    miles: float
+    gain_ft: int
+    grade_pct: float = Field(description="Average grade, %.")
+    foot: list[float] = Field(description="Where it starts, [lon, lat].")
+    summit: list[float] = Field(description="Where it tops out, [lon, lat].")
+    through: list[list[float]] = Field(
+        description="Points up it, foot to summit: via points that keep a plan on the climb."
+    )
+    surface: str = Field(description='"road", "path", "gravel" or "mountain-bike trail".')
+    busy: bool = Field(description="Most of its roads are LTS 3 or higher.")
+    away_mi: float
+
+
+class ClimbsNearOut(Schema):
+    climbs: list[ClimbNearOut] = Field(description="Nearest first, at most 25.")
+    attribution: list[str]
+
+
+CLIMBS_NEAR_ATTRIBUTION = (
+    "© OpenStreetMap contributors (ODbL)",
+    "USGS 3D Elevation Program",
+)
+
+
+@api.get(
+    "/climbs-near",
+    response={200: ClimbsNearOut, 400: ErrorOut, 403: ErrorOut, 429: ErrorOut, 503: ErrorOut},
+    summary="The categorised climbs near a point",
+)
+@decorate_view(
+    ratelimit.rate_limited(ratelimit.CLIMBS_NEAR),
+    ratelimit.rate_limited(ratelimit.CLIMBS_NEAR_BURST),
+    same_site_only,
+    errors_as_json,
+)
+def climbs_near_point(request, params: Query[ClimbsNearIn], response: HttpResponse):
+    try:
+        found = climbs_near.near(params.lon, params.lat, params.miles, params.min_grade)
+    except climbs_near.Unavailable:
+        return Status(503, {"error": "this server has no climbs file"})
+    response["Cache-Control"] = f"private, max-age={SEGMENT_INFO_MAX_AGE_S}"
+    return Status(200, {"climbs": found, "attribution": list(CLIMBS_NEAR_ATTRIBUTION)})
 
 
 # --- The road panel's street photo (v0.7.0; core.street_photo) ------------------------------

@@ -357,6 +357,17 @@ class Api:
             raise ToolError(f"the scenic road search failed ({status}): {message}")
         return payload.get("roads", [])
 
+    def climbs_near(self, near: tuple[float, float], miles: float, min_grade: float) -> list[dict]:
+        """GET /api/climbs-near: the categorised climbs near a point, nearest first."""
+        params = {"lon": near[0], "lat": near[1], "miles": miles, "min_grade": min_grade}
+        status, payload, _ = self._request(
+            "GET", "/api/climbs-near?" + urllib.parse.urlencode(params)
+        )
+        if status != 200 or not isinstance(payload, dict):
+            message = payload.get("error") if isinstance(payload, dict) else payload
+            raise ToolError(f"the climb search failed ({status}): {message}")
+        return payload.get("climbs", [])
+
     def shared_route(self, route_id: str) -> dict:
         """A shared route as it was shared: its exact line, answer and plan inputs (GET
         /api/shared-routes/{id}, public)."""
@@ -1170,6 +1181,16 @@ REPEAT_STEP_MI = 0.05
 SESSION_STEP_MI = 0.05
 # Ends this close on two sides of the start, ridden on from it, make a loop, not a turn back.
 SEAM_MI = 0.1
+
+
+# The climbs climbs_near rides up to check for stops and turns (one route call each).
+CLIMB_CHECKS = 4
+
+
+def climb_minutes(miles: float, grade_pct: float, pace: float) -> float:
+    """The minutes up a climb of that length and grade at an effort `pace` mph on the flat."""
+    speed = pace / (1 + CLIMB_SLOWING * max(0.0, grade_pct))
+    return round(miles / speed * 60, 1)
 
 
 def _grades(answer: dict) -> list[tuple[float, float, float]]:
@@ -2011,6 +2032,40 @@ TOOLS = [
         "annotations": {"readOnlyHint": True, "openWorldHint": False},
     },
     {
+        "name": "climbs_near",
+        "description": (
+            "List the categorised climbs near a point (Cat 5 to HC, from the Climbs map"
+            " layer): name, miles, gain, average grade, surface, its foot and summit and"
+            " `through` points up it, and `effort_minutes`, the time up it at pace_mph."
+            " For hill repeats in an interval session (ride up for each effort, back down to"
+            " recover; a steep climb needs the least road), pass on_minutes: only climbs"
+            " long enough are listed, steepest first, and the first few are planned up and"
+            " checked (`clear`): whether an effort fits with no stop, signal, busy crossing"
+            " or sharp turn. Plan a repeat with plan_route from its foot through its"
+            " `through` points (as via points) to its summit. Climbs mostly on LTS 3+ roads"
+            " and unpaved ones are left out unless asked."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "near": POINT_SCHEMA,
+                "within_miles": {"type": "number", "exclusiveMinimum": 0, "default": 3},
+                "min_grade": {"type": "number", "minimum": 0, "description": "%"},
+                "on_minutes": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "description": "An effort's minutes: list climbs that hold one, checked.",
+                },
+                "pace_mph": {"type": "number", "default": 18},
+                "check": {"type": "boolean", "default": True},
+                "include_busy": {"type": "boolean", "default": False},
+                "include_unpaved": {"type": "boolean", "default": False},
+            },
+            "required": ["near"],
+        },
+        "annotations": {"readOnlyHint": True, "openWorldHint": False},
+    },
+    {
         "name": "plan_route",
         "description": (
             "Plan a bike route on RouteMaker through 2 to 25 points (start, stops or via points,"
@@ -2522,6 +2577,69 @@ class Server:
             "roads": roads,
             "source": "Montgomery County Planning (Rustic Roads), MDOT SHA (Scenic Byways),"
             " OpenStreetMap (East Coast Greenway, US Bicycle Routes)",
+        }
+
+    # climbs_near
+    def climbs_near(self, args: dict, call: Call) -> dict:
+        near, _ = as_point(args["near"], self.api, self.stations)
+        miles = min(15.0, max(0.5, float(args.get("within_miles") or 3)))
+        try:
+            min_grade = float(args.get("min_grade") or 0)
+            on_min = float(args.get("on_minutes") or 0)
+            pace = float(args.get("pace_mph") or 18)
+        except (TypeError, ValueError):
+            raise ToolError("min_grade, on_minutes and pace_mph are numbers") from None
+        found = self.api.climbs_near(near, miles, min_grade)
+        if not args.get("include_busy"):
+            found = [c for c in found if not c.get("busy")]
+        if not args.get("include_unpaved"):
+            found = [c for c in found if c.get("surface") in ("road", "path")]
+        for climb in found:
+            climb["effort_minutes"] = climb_minutes(climb["miles"], climb["grade_pct"], pace)
+        if on_min:
+            # Long enough for one effort up it, steepest first: the least road for the work.
+            found = [c for c in found if c["effort_minutes"] >= on_min]
+            found.sort(key=lambda c: (-c["grade_pct"], c["away_mi"]))
+        checked = 0
+        if on_min and args.get("check", True):
+            for climb in found[:CLIMB_CHECKS]:
+                call.check()
+                climb["clear"] = self._climb_clear(climb, on_min, pace)
+                checked += 1
+        return {
+            "climbs": found,
+            "checked": checked,
+            "source": "Climbs layer: OpenStreetMap (ODbL) and USGS 3DEP elevation",
+        }
+
+    def _climb_clear(self, climb: dict, on_min: float, pace: float) -> dict:
+        """Whether an effort of on_min fits up the climb unbroken: its plan foot to summit
+        through its points, read by `interval_check`."""
+        points = [climb["foot"], *climb.get("through", []), climb["summit"]]
+        vias = list(range(1, len(points) - 1))
+        try:
+            plan = plan_once(
+                self.api,
+                self.stations,
+                points,
+                vias,
+                "default",
+                {"debug_junctions": True, "stress": 100},
+                None,
+            )
+        except ToolError as error:
+            return {"checked": False, "why": str(error)}
+        out = interval_check(
+            plan.answer,
+            {"on_minutes": on_min, "sets": 1, "pace_mph": pace},
+            _roads_between(plan.answer),
+        )
+        longest = max(out["longest_clear"], key=lambda c: c["effort_minutes"], default=None)
+        return {
+            "checked": True,
+            "effort_fits": bool(out["efforts"]),
+            "longest_clear_minutes": longest["effort_minutes"] if longest else 0.0,
+            "breaks": out["breaks"],
         }
 
     # metro_stations
@@ -3103,6 +3221,7 @@ class Server:
             "find_place": self.find_place,
             "metro_stations": self.metro_stations,
             "scenic_roads_near": self.scenic_roads_near,
+            "climbs_near": self.climbs_near,
             "plan_route": self.plan_route,
             "plan_metro_loop": self.plan_metro_loop,
             "open_link": self.open_link,

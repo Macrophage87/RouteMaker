@@ -123,3 +123,25 @@ class TestScenicRoads:
     ) -> None:
         assert get(client, point=(-80.0, 40.0)).status_code == 400
         assert get(client, miles=40).status_code == 400
+
+
+@db
+class TestClimbsNear:
+    def test_climbs_near_a_point_are_listed_and_a_missing_file_is_503(
+        self, client, monkeypatch
+    ) -> None:
+        from core import hillseek
+
+        line = ((-77.3855, 39.178), (-77.39, 39.18))
+        found = hillseek.Climb(
+            id="ab", category="4", length_m=1600.0, gain_m=80.0, grade_pct=5.0, line=line
+        )
+        monkeypatch.setattr(hillseek, "load", lambda: (found,))
+        query = {"lon": SPOT[0], "lat": SPOT[1], "miles": 2}
+        response = client.get("/api/climbs-near", query, **fresh_client())
+        assert response.status_code == 200
+        (climb,) = response.json()["climbs"]
+        assert climb["id"] == "ab" and climb["surface"] == "road" and climb["through"]
+        monkeypatch.setattr(hillseek, "load", lambda: None)
+        assert client.get("/api/climbs-near", query, **fresh_client()).status_code == 503
+        assert client.get("/api/climbs-near", {**query, "miles": 40}).status_code == 400

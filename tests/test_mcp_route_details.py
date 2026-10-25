@@ -572,3 +572,54 @@ def test_rolling_ground_is_no_hill_repeat() -> None:
         100.0 + 4.0 * (k % 2) for k in range(len(answer["profile"]["m"]))
     ]
     assert mcp.interval_check(answer, {"on_minutes": 5})["repeats"] == []
+
+
+# --- Climbs near a point -----------------------------------------------------------------------
+
+
+def _climb(name, miles, grade, **extra):
+    return {
+        "id": name[:4],
+        "name": name,
+        "category": "5",
+        "miles": miles,
+        "gain_ft": round(miles * grade / 100 * 5280),
+        "grade_pct": grade,
+        "foot": at(0.0),
+        "summit": at(miles),
+        "through": [at(miles / 2)],
+        "surface": "road",
+        "busy": False,
+        "away_mi": 0.5,
+        **extra,
+    }
+
+
+def test_climbs_near_lists_the_steep_ones_long_enough_and_checks_them() -> None:
+    places = _Places()
+    places.climbs_near = lambda near, miles, grade: [
+        _climb("Gentle Road", 2.0, 2.0),
+        _climb("Short Street", 0.2, 9.0),
+        _climb("Steep Hill", 0.9, 7.0),
+        _climb("Busy Avenue", 1.5, 6.0, busy=True),
+        _climb("Gravel Lane", 1.5, 6.0, surface="gravel"),
+    ]
+    stretch_answer = answer_of([stretch("Steep Hill", 0.0, 2.0, 2)])
+    places.route = lambda body: (places.routes.append(body), stretch_answer)[1]
+    server = mcp.Server(lambda: places, [], out_dir=Path("."))
+    out = server.call("climbs_near", {"near": [-77.05, 38.94], "on_minutes": 5})
+    # The short one cannot hold 5 minutes; busy and gravel are left out; steepest first.
+    assert [c["name"] for c in out["climbs"]] == ["Steep Hill", "Gentle Road"]
+    assert out["climbs"][0]["effort_minutes"] > 5 and out["checked"] == 2
+    # Planned up the climb through its points, every junction read.
+    body = places.routes[0]
+    assert body["points"][0] == at(0.0) and body["via_points"] == [1]
+    assert body["debug_junctions"] is True
+    assert out["climbs"][0]["clear"]["checked"] is True
+    listed = server.call("climbs_near", {"near": [-77.05, 38.94], "include_busy": True})
+    assert "Busy Avenue" in [c["name"] for c in listed["climbs"]] and listed["checked"] == 0
+
+
+def test_climb_minutes_slow_with_the_grade() -> None:
+    assert mcp.climb_minutes(1.5, 0.0, 18) == pytest.approx(5.0)
+    assert mcp.climb_minutes(0.75, 5.0, 18) == pytest.approx(4.0, abs=0.1)
