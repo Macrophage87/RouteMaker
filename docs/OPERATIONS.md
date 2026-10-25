@@ -262,6 +262,18 @@ The counts are rows in the same `rate_limit_window` table as routing's, under
 the scopes `geocode-s`, `geocode`, `reverse-10s` and `reverse`, and are cleared
 the same way (below).
 
+The connector's searches near a point (`GET /api/scenic-roads` and `GET /api/climbs-near`,
+v0.12.3; read only, signed out) have their own counts: 5 per fixed 10 s window, then 20 per
+60 s, each (scopes `scenic-roads-10s`, `scenic-roads`, `climbs-near-10s`, `climbs-near`; 429
+with `Retry-After`). The scenic search also counts as a place-name lookup in the geocoding
+limits above (the names slot, and the 1 in flight per client it shares with search), so it can
+get those 429s and 503s too. Its map read has 2 s (`scenic_near.TIMEOUT_MS`), past which the
+answer is 503 "took too long; try a smaller area"; the roads' names then come from the router's
+locate, up to 6 s more (`scenic_near.LOCATE_TIMEOUT_S`; on failure the roads come back
+unnamed), so one search can hold the names slot for about 8 s. The climbs search reads the climbs file in memory, and answers 503 when the server has
+none. The radius defaults to 5 mi (8 km), at most 15 mi (24 km). Their queries hold a point, so
+the beta's nginx logs their errors at `crit` only.
+
 The content type is checked before the count on purpose: a page on any site
 can make a visitor's browser send a `text/plain` or form POST here without a
 preflight, and counting those would let it spend that visitor's budget.

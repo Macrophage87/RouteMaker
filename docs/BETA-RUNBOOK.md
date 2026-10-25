@@ -1460,7 +1460,7 @@ secret like the webhooks: never in chat, the repo or a command line.
   with no query string, no client address and no tester name. The paths whose queries hold a place (`/api/reverse`,
   `/api/geocode`, `/api/segment-info`, `/api/street-photo`, `/api/junction-suggestions/at`,
   `/api/stress-suggestions/ticket`, `/api/stress-suggestions/mine`, `/api/transit/station-times`, `/api/transit/next-vehicle`, `/api/bikeshare/docks`, `/api/closures/map`,
-  and Review's `/api/review/items`, `/api/review/map`, `/api/review/next`, `/api/review/road/<way>` and `/api/review/street-photo`) log nginx errors at `crit` only, to `/var/log/nginx/rmbeta-error.log`, so
+  and Review's `/api/review/items`, `/api/review/map`, `/api/review/next`, `/api/review/road/<way>` and `/api/review/street-photo`, and the connector's `/api/scenic-roads` and `/api/climbs-near`) log nginx errors at `crit` only, to `/var/log/nginx/rmbeta-error.log`, so
   a 502 or 504 there leaves no error-log line; `rmbeta-access.log` still shows the status and the time (about 0 s:
   the api was down; about 75 s: it timed out), and for a 502 the api's own log usually has nothing, because the
   request never reached it. The time in the nginx and gunicorn logs is the whole request's, not one router call's. Upstream errors on every other path still go to the

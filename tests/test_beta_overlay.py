@@ -744,6 +744,7 @@ QUERY_PATHS = (
     "|stress-suggestions/ticket|stress-suggestions/mine|transit/station-times|transit/next-vehicle"
     "|bikeshare/docks|closures/map"
     "|review/items|review/map|review/next|review/road/[0-9]+|review/street-photo"
+    "|scenic-roads|climbs-near"
 )
 
 
@@ -800,6 +801,12 @@ def test_reverse_and_geocode_log_errors_at_crit_only_with_the_api_proxy_settings
     assert covered.fullmatch("/api/review/road/123")
     assert not covered.fullmatch("/api/review/road/123/x")
     assert not covered.fullmatch("/api/review/rulings")
+    # The local connector (mcp/routemaker_mcp.py) sends a rider's point in the query too.
+    mcp = (REPO / "mcp" / "routemaker_mcp.py").read_text()
+    mcp_queried = set(re.findall(r"[\"'](/api/[a-z/-]+)\?", mcp))
+    assert {"/api/scenic-roads", "/api/climbs-near"} <= mcp_queried, mcp_queried
+    for path in mcp_queried:
+        assert covered.fullmatch(path), path
 
 
 CONNECTOR_PATHS = (
