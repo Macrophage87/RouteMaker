@@ -39,10 +39,18 @@ export class CrashBoundary extends Component<{ children: ReactNode }, { error: u
 export function CrashScreen({ report }: { report: string }) {
   const heading = useRef<HTMLHeadingElement>(null);
   const [said, setSaid] = useState("");
+  const details = useRef<HTMLDetailsElement>(null);
+  const box = useRef<HTMLTextAreaElement>(null);
   useEffect(() => heading.current?.focus(), []);
   const copy = async () => {
     const done = await copyText(report, navigator.clipboard, selectionCopy);
     setSaid(done ? "Error report copied. Paste it into your bug report." : "Could not copy. Copy it from the report below.");
+    if (!done && details.current) {
+      // The report is opened and selected, so the rider can copy it by hand.
+      details.current.open = true;
+      box.current?.focus();
+      box.current?.select();
+    }
   };
   return (
     <main className="crash-screen">
@@ -61,9 +69,9 @@ export function CrashScreen({ report }: { report: string }) {
       <p className="crash-said" role="status">
         {said}
       </p>
-      <details className="crash-details">
+      <details className="crash-details" ref={details}>
         <summary>Show the report</summary>
-        <textarea readOnly value={report} aria-label="Error report" rows={12} />
+        <textarea ref={box} readOnly value={report} aria-label="Error report" rows={12} />
       </details>
     </main>
   );

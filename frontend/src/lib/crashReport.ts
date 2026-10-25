@@ -25,11 +25,16 @@ export interface LoggedError {
 const kept: LoggedError[] = [];
 
 /**
- * An error's text with any place in it left out: a coordinate pair ("-77.01203,38.89853") or a map tile's z/x/y
- * (a failed tile's URL names the area it was for).
+ * An error's text with any place in it left out: a coordinate pair ("-77.01203,38.89853", "LngLat(-77.04, 38.91)",
+ * "-77.04%2C38.91"), a number given as a lat or lon ("lat 38.90123"), a URL's query (a search's `q=` is the place
+ * searched for) or a map tile's z/x/y (a failed tile's URL names the area it was for).
  */
 export function withoutPlaces(text: string): string {
-  return text.replace(/-?\d{1,3}\.\d{3,}\s*,\s*-?\d{1,3}\.\d{3,}/g, "(place left out)").replace(/\/\d{1,2}\/\d+\/\d+(?=[/.?]|$)/g, "/(tile left out)");
+  return text
+    .replace(/(https?:\/\/[^\s?#"'`<>]+)\?[^\s#"'`<>)]*/g, "$1?(query left out)")
+    .replace(/-?\d{1,3}\.\d{2,}\s*(?:,|%2C)\s*-?\d{1,3}\.\d{2,}/gi, "(place left out)")
+    .replace(/\b(lat|lon|lng|latitude|longitude)\b(["']?\s*[:=]?\s*)-?\d{1,3}\.\d+/gi, "$1$2(left out)")
+    .replace(/\/\d{1,2}\/\d+\/\d+(?=[/.?]|$)/g, "/(tile left out)");
 }
 
 /** One error's text: its message and stack, or what it was turned into a string, without places. */

@@ -49,4 +49,9 @@ test("coordinates and tile numbers in an error's own text are left out", () => {
   assert.equal(withoutPlaces("AJAXError: Not Found (404): https://x/tiles/stress/14/4686/6267.pbf"), "AJAXError: Not Found (404): https://x/tiles/stress/(tile left out).pbf");
   assert.equal(withoutPlaces("at index-C5wyiE6K.js:267:35304"), "at index-C5wyiE6K.js:267:35304", "a stack's line and column stay");
   assert.equal(errorText({ url: "/basemap/12/1171/1566.mvt" }), '{"url":"/basemap/(tile left out).mvt"}');
+  assert.equal(withoutPlaces("Invalid LngLat(-77.04, 38.91)"), "Invalid LngLat((place left out))");
+  assert.equal(withoutPlaces("bad point -77.04%2C38.91"), "bad point (place left out)");
+  assert.equal(withoutPlaces('near lat 38.90123 lon -77.03456, {"lng":-77.1}'), 'near lat (left out) lon (left out), {"lng":(left out)}');
+  assert.equal(withoutPlaces("Failed to fetch https://x/api/geocode?q=Union+Market&near=1 (500)"), "Failed to fetch https://x/api/geocode?(query left out) (500)");
+  assert.equal(withoutPlaces("RouteMaker 0.12.2, maplibre 6.14.0"), "RouteMaker 0.12.2, maplibre 6.14.0", "version numbers stay");
 });
