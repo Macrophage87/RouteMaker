@@ -974,7 +974,7 @@ def risky_junctions(answer: dict) -> dict:
         red.append(
             {
                 "at_mi": round(mile, 1),
-                "road": _street(on) if on else None,
+                "road": _street(on) if on and _street(on) not in NAMELESS else None,
                 "reason": junction.get("reason"),
                 "lon_lat": [junction.get("lon"), junction.get("lat")],
             }
@@ -1087,8 +1087,8 @@ def small_detours(
         apex = max(pts[i : j + 1], key=lambda p: math.dist(p, pts[i]))
         out.append(
             {
-                "from_mi": round(i * step, 1),
-                "to_mi": round(j * step, 1),
+                "from_mi": round(i * step * scale, 1),
+                "to_mi": round(j * step * scale, 1),
                 "extra_mi": round(extra, 2),
                 "leaves_at": lon_lat(pts[i]),
                 "rejoins_at": lon_lat(pts[j]),
@@ -1132,6 +1132,12 @@ def route_details(plan: Plan) -> dict:
         out.update(roads)
     if answer.get("description") or answer.get("description_overview"):
         out["busy_stretches"] = busy_stretches(answer)
+        # What the list leaves out (short LTS 3 bits, past MAX_BUSY_ROWS), so it adds up.
+        stress = answer.get("stress_m") or {}
+        total = sum(stress.get(k, 0.0) or 0.0 for k in ("3", "4", "5")) / METRES_PER_MILE
+        unlisted = total - sum(b["miles"] for b in out["busy_stretches"])
+        if unlisted >= 0.1:
+            out["busy_unlisted_mi"] = round(unlisted, 1)
     if answer.get("intersections") is not None:
         out["junctions"] = risky_junctions(answer)
     scenic: dict[tuple[str, str], float] = {}
@@ -1168,6 +1174,7 @@ class Draft:
     options: dict
     limit: float | None
     name: str
+    trim_spurs: bool = True
 
 
 @dataclass
@@ -1474,8 +1481,8 @@ TRIM_SPURS = {
     "type": "boolean",
     "default": True,
     "description": (
-        "Where the route reaches a via point by an out-and-back of 0.2 mi or more, move the"
-        " point to where the spur leaves the road and plan again (kept when shorter). False"
+        f"Where the route reaches a via point by an out-and-back of {SPUR_MI:g} mi or more, move"
+        " the point to where the spur leaves the road and plan again (kept when shorter). False"
         " keeps the via points where they are."
     ),
 }
@@ -2089,7 +2096,11 @@ class Server:
                 row["also_matches"] = [
                     {"label": r["label"], "lon_lat": [r["lon"], r["lat"]]} for r in others[:4]
                 ]
-                row["why"] = "the match nearest the route's other points"
+                row["why"] = (
+                    "the match nearest the route's other points"
+                    if neighbours
+                    else "the place search's first match"
+                )
             taken.append(row)
         return point
 
@@ -2105,6 +2116,11 @@ class Server:
                 found[i] = self._point(value, taken)
         for i in named:
             found[i] = self._point(values[i], taken, _neighbours(found, i))
+        if named and len(named) == len(values) and taken and taken[0].get("also_matches"):
+            # Every point a name: the first was taken with nothing to go by, so it is searched
+            # again near the others.
+            taken.pop(0)
+            found[named[0]] = self._point(values[named[0]], taken, _neighbours(found, named[0]))
         return found
 
     def _draft(
@@ -2116,9 +2132,10 @@ class Server:
         name: str,
         revised_from=None,
         taken: list[dict] | None = None,
+        trim_spurs: bool = True,
     ) -> dict:
         """Keep the plan as a draft and describe it: nothing is saved or written."""
-        draft_id = self.drafts.put(Draft(plan, dict(options), limit, name))
+        draft_id = self.drafts.put(Draft(plan, dict(options), limit, name, trim_spurs))
         dials = self._dials(plan)
         fragment = plan_fragment(plan.points, plan.vias, plan.preset, dials, plan.sent)
         notes = list(notes)
@@ -2200,11 +2217,16 @@ class Server:
                 again.check is None
                 or again.check["miles_over_limit"] <= plan.check["miles_over_limit"]
             ):
+                which = "; ".join(
+                    f"point {i} from {list(a)} to {list(b)}"
+                    for i, (a, b) in enumerate(zip(plan.points, new_points, strict=True))
+                    if a != b
+                )
                 notes.append(
                     f"moved {moved} via point{'s' if moved > 1 else ''} the route reached by an"
-                    " out-and-back to where the spur leaves the road"
-                    f" ({miles_text(plan.answer['distance_m'] - again.answer['distance_m'])}"
-                    " shorter)"
+                    f" out-and-back to where the spur leaves the road ({which};"
+                    f" {miles_text(plan.answer['distance_m'] - again.answer['distance_m'])}"
+                    " shorter). Plan again with trim_spurs false to keep them where they were."
                 )
                 plan = again
         return plan, notes
@@ -2437,11 +2459,19 @@ class Server:
             else:
                 options.pop(key, None)
         rounds = int(args.get("fix_metro_rounds") or 0)
+        trim = bool(args.get("trim_spurs", draft.trim_spurs))
         revised, notes = self._plan_and_fix(
-            call, points, vias, preset, options, limit, rounds, args.get("trim_spurs", True)
+            call, points, vias, preset, options, limit, rounds, trim
         )
         return self._draft(
-            revised, options, limit, notes, draft.name, revised_from=draft_id, taken=taken
+            revised,
+            options,
+            limit,
+            notes,
+            draft.name,
+            revised_from=draft_id,
+            taken=taken,
+            trim_spurs=trim,
         )
 
     # plan_route
@@ -2453,10 +2483,11 @@ class Server:
         limit = args.get("max_miles_from_metro")
         options = self._options(args)
         rounds = int(args.get("fix_metro_rounds") or 0)
-        plan, notes = self._plan_and_fix(
-            call, points, vias, preset, options, limit, rounds, args.get("trim_spurs", True)
+        trim = bool(args.get("trim_spurs", True))
+        plan, notes = self._plan_and_fix(call, points, vias, preset, options, limit, rounds, trim)
+        return self._draft(
+            plan, options, limit, notes, "RouteMaker route", taken=taken, trim_spurs=trim
         )
-        return self._draft(plan, options, limit, notes, "RouteMaker route", taken=taken)
 
     # plan_metro_loop
     def plan_metro_loop(self, args: dict, call: Call) -> dict:

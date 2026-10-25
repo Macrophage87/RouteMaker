@@ -323,3 +323,45 @@ def test_a_via_reached_by_an_out_and_back_is_moved_and_planned_again(monkeypatch
         },
     )
     assert out["points"][1] == [-77.3, 39.2]
+
+
+def test_a_draft_planned_without_trimming_is_revised_without_it(monkeypatch) -> None:
+    places = _Places()
+    places.route = lambda body: {
+        "geometry": {"coordinates": [list(p) for p in body["points"]]},
+        "distance_m": 2000.0 if body["points"][1] == [-77.3, 39.2] else 1500.0,
+    }
+    server = mcp.Server(lambda: places, [], out_dir=Path("."))
+    monkeypatch.setattr(
+        mcp,
+        "without_spurs",
+        lambda plan: ([plan.points[0], (-77.3, 39.1), plan.points[-1]], [1], 1),
+    )
+    first = server.call(
+        "plan_route",
+        {
+            "points": [[-77.4, 39.1], [-77.3, 39.2], [-77.2, 39.1]],
+            "via_points": [1],
+            "trim_spurs": False,
+        },
+    )
+    revised = server.call("revise_route", {"draft_id": first["draft_id"], "stress": 90})
+    assert revised["points"][1] == [-77.3, 39.2]
+    trimmed = server.call("revise_route", {"draft_id": first["draft_id"], "trim_spurs": True})
+    assert trimmed["points"][1] == [-77.3, 39.1]
+    assert any("point 1 from [-77.3, 39.2] to [-77.3, 39.1]" in n for n in trimmed["notes"])
+
+
+def test_when_every_point_is_a_name_the_first_is_searched_again_near_the_others() -> None:
+    places = _Places()
+    server = mcp.Server(lambda: places, [], out_dir=Path("."))
+    lewis = {"name": "Lewis Orchards", "label": "Lewis Orchards, Dickerson, MD"}
+    lewis.update(lon=LEWIS_ORCHARDS[0], lat=LEWIS_ORCHARDS[1])
+    places.geocode = lambda query, near=None: (
+        [CENTREVILLE, BOYDS] if query == "Moore Road" else [lewis]
+    )
+    out = server.call("plan_route", {"points": ["Moore Road", "Lewis Orchards"]})
+    moore = next(t for t in out["points_taken_as"] if t["asked"] == "Moore Road")
+    assert moore["taken_as"] == "Moore Road, Boyds, MD"
+    assert moore["why"] == "the match nearest the route's other points"
+    assert len(out["points_taken_as"]) == 2
