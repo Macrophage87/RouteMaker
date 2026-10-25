@@ -986,7 +986,9 @@ anything can run `migrate` (rollback C restores that snapshot), and the app star
 9. **Only if `git diff --stat <old sha>..<new sha> -- deploy/beta` lists the nginx template** (owner steps, because
    they use sudo): re-render it with the same command and flags as step 9c of the install into `$RM_STATE`, install it
    over the site file (`sudo install -m 644 "$RM_STATE/routemaker-beta.full.conf" "$NGINX_SITE"`), then
-   `sudo nginx -t && sudo nginx -s reload`, and run the 401 `curl` check from step 9c. Without this the beta keeps
+   `sudo nginx -t && sudo nginx -s reload`, and run the `curl` check from step 9c. The beta has been open since
+   2026-10-22, so the render takes `--no-password` (plus `--no-401-page` if the installed file used it) and the
+   check expects 200; a render without `--no-password` puts the password back. Without this the beta keeps
    the old log settings, and any other template change, until it is next installed.
 10. The front end comes in the bundle (`frontend/`), so `files` installs it; the new `index.html` goes in last.
 
