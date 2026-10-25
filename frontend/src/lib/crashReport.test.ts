@@ -53,5 +53,8 @@ test("coordinates and tile numbers in an error's own text are left out", () => {
   assert.equal(withoutPlaces("bad point -77.04%2C38.91"), "bad point (place left out)");
   assert.equal(withoutPlaces('near lat 38.90123 lon -77.03456, {"lng":-77.1}'), 'near lat (left out) lon (left out), {"lng":(left out)}');
   assert.equal(withoutPlaces("Failed to fetch https://x/api/geocode?q=Union+Market&near=1 (500)"), "Failed to fetch https://x/api/geocode?(query left out) (500)");
+  assert.equal(withoutPlaces("fetch /api/geocode?q=Union+Market failed"), "fetch /api/geocode?(query left out) failed");
+  assert.equal(withoutPlaces("at https://x/index.js?v=abc:12:345"), "at https://x/index.js?(query left out):12:345", "a stack's line and column stay");
   assert.equal(withoutPlaces("RouteMaker 0.12.2, maplibre 6.14.0"), "RouteMaker 0.12.2, maplibre 6.14.0", "version numbers stay");
+  assert.equal(withoutPlaces("maplibre 3.10.11, 2.15.3; zoom 14.25, 15.50"), "maplibre 3.10.11, 2.15.3; zoom 14.25, 15.50");
 });

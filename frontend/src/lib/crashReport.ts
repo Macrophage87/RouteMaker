@@ -31,8 +31,10 @@ const kept: LoggedError[] = [];
  */
 export function withoutPlaces(text: string): string {
   return text
-    .replace(/(https?:\/\/[^\s?#"'`<>]+)\?[^\s#"'`<>)]*/g, "$1?(query left out)")
-    .replace(/-?\d{1,3}\.\d{2,}\s*(?:,|%2C)\s*-?\d{1,3}\.\d{2,}/gi, "(place left out)")
+    .replace(/((?:https?:\/\/|\/)[^\s?#"'`<>]+)\?[^\s#"'`<>):]*/g, "$1?(query left out)")
+    .replace(/LngLat\(\s*-?\d{1,3}(?:\.\d+)?\s*,\s*-?\d{1,3}(?:\.\d+)?\s*\)/g, "LngLat((place left out))")
+    .replace(/-?\d{1,3}\.\d{2,}%2C-?\d{1,3}\.\d{2,}/gi, "(place left out)")
+    .replace(/-?\d{1,3}\.\d{3,}\s*,\s*-?\d{1,3}\.\d{3,}/g, "(place left out)")
     .replace(/\b(lat|lon|lng|latitude|longitude)\b(["']?\s*[:=]?\s*)-?\d{1,3}\.\d+/gi, "$1$2(left out)")
     .replace(/\/\d{1,2}\/\d+\/\d+(?=[/.?]|$)/g, "/(tile left out)");
 }
