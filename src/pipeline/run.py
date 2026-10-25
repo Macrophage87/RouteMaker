@@ -47,6 +47,7 @@ from routemaker import (
     facility,
     hazards,
     lane_overrides,
+    mallgrounds,
     massflow,
     mdot_aadt,
     mtbmode,
@@ -919,6 +920,9 @@ class RebuildContext:
     circle_park_ways: set[int] = field(default_factory=set)
     # The Capitol grounds' walks opened to bicycles (`routemaker.capitolgrounds`).
     capitol_ways: set[int] = field(default_factory=set)
+    # The Washington Monument grounds' and Constitution Gardens' walks opened to
+    # bicycles (`routemaker.mallgrounds`).
+    mall_ways: set[int] = field(default_factory=set)
     # Open networks inside a base that meet the outside network at two or more points
     # for no listed reason (`restricted_areas.through_networks`); VALIDATE_SEGMENTS
     # refuses any.
@@ -2880,6 +2884,14 @@ def build_handlers(
             logger.info(
                 "%d walks and crossings of the Capitol grounds opened to bicycles",
                 len(context.capitol_ways),
+            )
+            # The Monument grounds' and Constitution Gardens' walks, not the memorials
+            # (`routemaker.mallgrounds`, owner 2026-10-25).
+            context.mall_ways = mallgrounds.open_ways(context.ways)
+            logger.info(
+                "%d walks and crossings of the Monument grounds and Constitution Gardens "
+                "opened to bicycles",
+                len(context.mall_ways),
             )
         except overrides.OverrideRefused as refused:
             # The same door as the unhandled kind above and it has to close the

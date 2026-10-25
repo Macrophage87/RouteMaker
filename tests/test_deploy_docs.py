@@ -79,9 +79,9 @@ def test_the_services_this_file_reasons_about_still_mount_what_it_says() -> None
     them and neither makes it a place to run a data command: `static`, which is
     the `collectstatic` target, and `tiles` **read-only**, which exists for the
     operations page's `statvfs`. Its third bind, `basemap`, is read-only too and
-    none of the rebuild's: the link preview's picture reads the base map. A stack
-    that gave the api `extracts` or `reference` would make the table of which
-    command runs where wrong rather than failing.
+    none of the rebuild's: the link preview's picture reads the base map. A
+    stack that gave the api `extracts` or `reference` would make the table of
+    which command runs where wrong rather than failing.
     """
     rebuild_volumes = SERVICES["rebuild"]["volumes"]
     assert "${DATA_ROOT}/tiles:/data/tiles" in rebuild_volumes

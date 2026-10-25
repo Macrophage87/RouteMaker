@@ -122,9 +122,15 @@ def _read(schema: str, lon: float, lat: float, radius_m: float, kind: str) -> li
     }
     try:
         with transaction.atomic(), connection.cursor() as cursor:
+            # Inside an outer transaction this block is a savepoint, whose release keeps a
+            # local setting: put the caller's limit back, as routing.plan_cursor does.
+            cursor.execute("SELECT current_setting('statement_timeout')")
+            (before,) = cursor.fetchone()
             cursor.execute("SELECT set_config('statement_timeout', %s, true)", [str(TIMEOUT_MS)])
             cursor.execute(_QUERY.format(schema=schema, column=SCENIC_COLUMN), params)
-            return cursor.fetchall()
+            rows = cursor.fetchall()
+            cursor.execute("SELECT set_config('statement_timeout', %s, true)", [before])
+            return rows
     except OperationalError as error:
         if getattr(error.__cause__, "sqlstate", None) == "57014":  # query_canceled
             raise TimedOut(f"the scenic road read ran past {TIMEOUT_MS} ms") from error
