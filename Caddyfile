@@ -31,16 +31,15 @@
 	header Strict-Transport-Security "max-age=31536000"
 
 	# Request bodies (v0.7.0): 1 MiB, but 5 MiB for a saved or shared route and the rest of
-	# the account's own paths (/api/me/...), whose routes are up to 4 MB. /api/keyed is retired (v0.12.2) and
-	# stays in the pattern until the next change to the beta's nginx template, which holds a release
+	# the account's own paths (/api/me/...), whose routes are up to 4 MB
 	# (core.accounts.ROUTE_MAX_BYTES; Django reads at most 5 MiB, DATA_UPLOAD_MAX_MEMORY_SIZE).
 	# The beta's nginx template sets the same two sizes on the same paths
 	# (tests/test_beta_overlay.py holds them equal).
-	@routes_body path_regexp ^/api/(shared-routes|me|keyed)(/|$)
+	@routes_body path_regexp ^/api/(shared-routes|me)(/|$)
 	request_body @routes_body {
 		max_size 5MiB
 	}
-	@other_body not path_regexp ^/api/(shared-routes|me|keyed)(/|$)
+	@other_body not path_regexp ^/api/(shared-routes|me)(/|$)
 	request_body @other_body {
 		max_size 1MiB
 	}
@@ -246,7 +245,7 @@
 
 	@stress-page path /about/stress /about/stress/
 	redir @stress-page /about/stress.html 302
-	@frontend path / /index.html /favicon.svg /licenses.txt /about/stress.html /about/how-it-works.html /about/using.html /about/accessibility.html /about/routing.html /about/ride-types.html /about/mass-ride.html /about/trails.html /about/architecture.html /about/assistants.html /about/acknowledgements.html /about/route-example.webp /assets/* /sw.js /manifest.webmanifest /icons/* /post.js
+	@frontend path / /index.html /favicon.svg /favicon.ico /licenses.txt /about/stress.html /about/how-it-works.html /about/using.html /about/accessibility.html /about/routing.html /about/ride-types.html /about/mass-ride.html /about/trails.html /about/architecture.html /about/assistants.html /about/acknowledgements.html /about/route-example.webp /assets/* /sw.js /manifest.webmanifest /icons/* /post.js
 	handle @frontend {
 		encode zstd gzip
 		header Referrer-Policy "same-origin"
@@ -263,6 +262,7 @@
 		header /licenses.txt Cache-Control "no-cache"
 		header /about/* Cache-Control "no-cache"
 		header /favicon.svg Cache-Control "public, max-age=86400"
+		header /favicon.ico Cache-Control "public, max-age=86400"
 		header /sw.js Cache-Control "no-cache"
 		# A Featured routes post's script under a fixed name (core/route_posts.py names it): checked on every load.
 		header /post.js Cache-Control "no-cache"

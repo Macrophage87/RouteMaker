@@ -262,6 +262,18 @@ The counts are rows in the same `rate_limit_window` table as routing's, under
 the scopes `geocode-s`, `geocode`, `reverse-10s` and `reverse`, and are cleared
 the same way (below).
 
+The connector's searches near a point (`GET /api/scenic-roads` and `GET /api/climbs-near`,
+v0.12.3; read only, signed out) have their own counts: 5 per fixed 10 s window, then 20 per
+60 s, each (scopes `scenic-roads-10s`, `scenic-roads`, `climbs-near-10s`, `climbs-near`; 429
+with `Retry-After`). The scenic search also counts as a place-name lookup in the geocoding
+limits above (the names slot, and the 1 in flight per client it shares with search), so it can
+get those 429s and 503s too. Its map read has 2 s (`scenic_near.TIMEOUT_MS`), past which the
+answer is 503 "took too long; try a smaller area"; the roads' names then come from the router's
+locate, up to 6 s more (`scenic_near.LOCATE_TIMEOUT_S`; on failure the roads come back
+unnamed), so one search can hold the names slot for about 8 s. The climbs search reads the climbs file in memory, and answers 503 when the server has
+none. The radius defaults to 5 mi (8 km), at most 15 mi (24 km). Their queries hold a point, so
+the beta's nginx logs their errors at `crit` only.
+
 The content type is checked before the count on purpose: a page on any site
 can make a visitor's browser send a `text/plain` or form POST here without a
 preflight, and counting those would let it spend that visitor's budget.
@@ -3472,7 +3484,7 @@ places, held equal by `tests/test_link_preview.py`: `share_preview.FETCHER_RE`, 
 Caddyfile's `@link_fetcher` and the beta nginx map `$rmbeta_link_fetcher`.
 
 **The beta's password.** A fetcher has no password, so on the beta these paths are outside it:
-`/s/<id>` and `/s/<id>/preview.png`, `/link-preview`, `/icons/` and `/favicon.svg`. Nothing
+`/s/<id>` and `/s/<id>/preview.png`, `/link-preview`, `/icons/`, `/favicon.svg` and `/favicon.ico`. Nothing
 else is: a browser following a shared link is redirected into the app and still meets the
 password, and `/index.html`, the API and the map stay behind it. Re-render and install the
 template as BETA-RUNBOOK.md, "Shipping an update later", step 9 says, then check without the
@@ -3491,6 +3503,33 @@ Chat apps keep a preview for a while (Discord about a day; Messages and iMessage
 link already posted keeps its old blank preview: try a link not shared before, or add `?v=2`.
 Redraw the card and the route image's icon when the icon changes:
 `python3 scripts/make_share_images.py`.
+
+## The connector's icon (v0.12.3)
+
+claude.ai's connector list does not read the icon a connector names. It shows whatever Google's
+favicon service (`https://www.google.com/s2/favicons?domain=<site>`) has for the connector's
+domain, and a globe while Google has none. The site gives Google what it needs, and the MCP
+answer names the icons too, for apps that read them:
+
+- `/favicon.ico` (16, 32 and 48 px, drawn by `scripts/make_app_icons.py`) beside `/favicon.svg`.
+  Googlebot asking for the home page gets the link preview (`/link-preview`), which links both and
+  `icons/icon-192.png`; the app's own index.html links only the SVG, so browser tabs keep it.
+- On the beta, robots.txt lets a crawler read the home page, the favicons and `/icons/`, and
+  nothing else. The favicons and `/icons/` carry no `X-Robots-Tag: noindex`; the home page still
+  does, so it stays out of search results.
+- The connector's `initialize` answer has `serverInfo.title` "RouteMaker" and `serverInfo.icons`
+  (MCP 2025-11-25): the SVG favicon and the 192 and 512 px PNGs (`core.connector.server_icons`).
+
+Google picks a new favicon up on its own crawl, which can take days to weeks, and claude.ai keeps
+the icon it last saw for a domain. If Google still has nothing a few weeks after a release with
+this is on the beta, the home page's noindex is the next thing to try dropping (the owner's call:
+the home page would then show in search results). With a site password back on, Google's favicon
+fetcher (user agent "Google Favicon") meets the password at `/` and only `/favicon.ico` works.
+Check what Google has (a 404 is the globe):
+
+```sh
+curl -s -o /dev/null -w '%{http_code}\n' 'https://www.google.com/s2/favicons?domain=<site>&sz=64' -L
+```
 
 ## Featured routes: writing a post (v0.12.1)
 
@@ -4754,6 +4793,29 @@ around anywhere and give no warning or cue, not even when the TOPS source cannot
 read; Plan's DC permits layer (off by default) is the only place they show. A rider's "Route
 through anyway" is per plan and session only (`closure_bypass` on `/api/route`, `bypass`
 on `/api/closures/check`); nothing about it is stored.
+
+## Deer-management closures (v0.12.3)
+
+Rock Creek Park (NPS) and Montgomery Parks close parts of their parks at night, or for whole
+days, each winter to manage the deer. These are published schedules, not feeds: the windows are
+in `src/routemaker/deer_closures.py` and the ways they close in
+`src/core/geodata/deer-closures.geojson`. Each window is a "Check before you go" notice
+(sources `nps_deer` and `mcparks`), never a closure: a route that runs along at least 100 m
+(330 ft) of the closed roads or trails, at a ride time inside the window (or up to an hour
+before it opens), shows it in its notices, on its map and in the connector's
+`check_before_you_go`. Nothing is shown outside the windows.
+
+**Each autumn:**
+
+1. When NPS posts Rock Creek's record of determination for the new winter, set its dates in
+   `ROCK_CREEK_SEASONS` with `posted` True (the notice stops saying "expected"), and its hours
+   in `ROCK_CREEK_HOURS`. Check its list of roads closed to bicycles against `ROCK_CREEK_WAYS` in
+   `scripts/build_deer_closures.py`.
+2. When Montgomery Parks posts the new schedule, set `SHARPSHOOTING_SEASON`, `SHARPSHOOTING`
+   (the parks) and `FIREARMS` (the dates). A park new to the list needs its Park Units code in
+   `MOCO_CODES`.
+3. Rebuild the file: `python scripts/build_deer_closures.py` (OSM API and the Park Units
+   layer; about five minutes). A park with no path inside it is left out: nothing to ride.
 
 ## DC pavement condition (DC-PCI)
 
