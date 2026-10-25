@@ -2305,10 +2305,13 @@ export function MapView(props: Props) {
         if (item) callbacks.current.onClosureBypass?.(item, bypass);
       });
       closurePopup.current = popup;
+      // Held now: MapLibre drops the card's element before it says "close", so getElement() is undefined there,
+      // and a throw from this handler in the effect's clean-up above blanked the whole page.
+      const element = popup.getElement();
       popup.on("close", () => {
         if (closurePopup.current === popup) closurePopup.current = null;
         const active = document.activeElement;
-        if (opener.isConnected && (!active || active === document.body || popup.getElement().contains(active))) opener.focus();
+        if (opener.isConnected && (!active || active === document.body || element.contains(active))) opener.focus();
       });
     };
     const button = (className: string, name: string, svg: string) => {
