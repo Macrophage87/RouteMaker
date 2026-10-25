@@ -305,7 +305,7 @@ Tapping the empty box lists the places you picked recently, once there are some.
 <li><strong>Place buttons:</strong> <strong>Home</strong>, <strong>Food</strong>,
 <strong>Water</strong> and <strong>Restroom</strong>; <strong>More</strong> adds
 <strong>Metro</strong> (the three nearest stations, closed ones marked), <strong>Repair</strong>,
-<strong>Sights</strong> and Change home. The first press of Home asks where home is: search for it or
+<strong>Sights</strong>, <strong>Featured routes</strong> and Change home. The first press of Home asks where home is: search for it or
 tap the map.</li>
 <li><strong>The route card</strong> shows the start, the number of stops and the destination; Edit
 opens the points. <strong>Add a stop</strong> under it puts a place where it adds the least distance,
@@ -324,6 +324,15 @@ types</strong> lists every type in groups, with a search box. A star puts a type
 kept with your account when you are signed in.</li>
 <li><strong>Shared places:</strong> a location shared from another app (a map pin or a link) opens in
 RouteMaker as the destination.</li>
+<li><strong>Featured routes</strong>, behind <strong>More</strong>, opens the list of featured routes: rides
+written up around one exact route, those in season first, and those out of season in a closed <strong>Out of
+season</strong> fold. Each is a page of its own you can share, with, where the post has them, the title and its
+season, a row of figures (distance, climbing, descent, riding time and ride type), the map, <strong>Open in
+RouteMaker</strong>, <strong>Download GPX</strong>, <strong>Send to Garmin</strong> and <strong>Send to
+Wahoo</strong>, Plan's elevation and traffic stress charts, then <strong>About this ride</strong>, <strong>Who it's
+for</strong> and <strong>Highlights</strong>; a highlight whose stretch the post marks has a small map of it. The route is a copy kept as it was when the post was written, so a
+map update or an edit of the saved route does not change it. Only the site's admins write them. A link to a post
+shows its map as the picture once an admin has set it, and the route's line until then.</li>
 </ul>
 
 <h3 id="roam">Roam</h3>
@@ -333,15 +342,22 @@ button is <strong>Roam</strong>: a ride with nowhere set.</p>
 <li>The map follows you, and the card names the road you are on and, once you are moving, up to three roads ahead, within
 about half a mile [800 m], each with how far it is in a straight line and its stress level. They are
 read from the map already on your phone, so nothing is sent.</li>
-<li><strong>Detour</strong> finds the three nearest <strong>Water</strong>, <strong>Restroom</strong>
-or <strong>Food</strong> places by bike. <strong>Ride here</strong> starts an ordinary ride there, and
+<li><strong>Detour</strong> has four buttons, <strong>Water</strong>, <strong>Restroom</strong>, <strong>Food</strong> and
+<strong>Repair</strong> (repair stands and bike shops), each listing the three nearest by bike, and a
+<strong>Search</strong> box for anything else. What you type there, at least 3 letters, is matched against Find
+food's places to eat by cuisine or name ("pizza", "coffee"), and is also sent to the place search, as Where to? does,
+for any name, shop or address ("grocery", "bike shop"), with your position rounded to a grid about 0.6 mile [1 km]
+across. The matches from both are measured by bike together and the three nearest are listed. A word for one of the
+buttons ("bathroom", "pump", "lunch") does that button's search instead. <strong>Ride here</strong> starts an ordinary ride there, and
 ending that ride brings you back to roaming.</li>
+<li><strong>Weather</strong> where you are is checked every 5 minutes, for alerts and for rain in the next hour
+("Rain expected in about 45 min, where you are."), said and shown as in a ride.</li>
 <li><strong>Broadcast</strong>, a round button, shares a link others can follow your dot and the way you
 ride with, while your app is open (see <a href="#suggest">ride links</a>).</li>
 <li>The next sunrise and sunset show in the corner, with the minutes left once it is within the
 hour.</li>
 <li><strong>End roam</strong> is slid, like End ride, so a bump does not end it.</li>
-<li>Your position stays on your phone, except when you search for a Detour or ride to one, and while
+<li>Your position stays on your phone, except when you search for a Detour or ride to one (a typed search also sends your words, with the rounded position, to the place search), for the weather check every 5 minutes (rounded on the server to about 0.7 mi [1.1 km] before anyone else is asked), and while
 you broadcast, when the server keeps it for 2 minutes.</li>
 </ul>
 
@@ -434,6 +450,17 @@ map's credits. It starts closed. With no points yet, <strong>Start at current lo
 <strong>Route</strong> button's place) sets your start where you are.</li>
 <li>Type places into <strong>From</strong>, <strong>To</strong> and <strong>Add a stop</strong>, or tap
 the map. Up to 25 points in all.</li>
+<li>Once there is a start and an end, a tap or click on the map adds a <strong>via point</strong> (in a loop, a tap adds a stop), a small
+hollow ring that only shapes the route: it has no number and is never a cue on the ride.
+<strong>Ctrl+click</strong> (Cmd+click on a Mac), or <strong>Add as stop</strong> in the road panel, adds a
+<strong>stop</strong>, a numbered blue pin, and asks for a name, which you can leave blank. Add as stop on a
+food, water, sight or station card names the stop after the place without asking, and a place you pick in
+Add a stop is a stop too. A stop's menu has <strong>Name this stop</strong> (<strong>Rename stop</strong> once
+it has one), and the menu of any point between the start and the end turns a via point into a stop or
+back.</li>
+<li>A stop's name, the one you gave it or the place's when you added it from a search, a card or a list, goes with it: in links and saved
+routes, in GPX route points, in FIT and TCX course points, to Garmin and Wahoo, and in the ride's cues
+("You have reached stop 2, Union Market.").</li>
 <li>Drag a stop's grip to move it, or use <strong>Best order</strong> to put the stops in the order that
 rides best; the start and the finish stay where they are.</li>
 <li>On most ride types, Plan starts as a <strong>loop</strong>: the first point is the start and finish, each later tap is a
@@ -476,6 +503,12 @@ about an hour of arriving, worked out on your device<sup class="cite"><a href="#
 On a screen at least 1200 px wide, the route's results (its totals, Start ride, GPX, Link and these folds)
 sit in their own card on the right of the map, and the planner on the left keeps the points, the ride type,
 its settings and the Route button.</p>
+<p><strong>Weather.</strong> In Go and Plan, the route's warnings include any National
+Weather Service alert in force along it while you would ride it, leaving now (a plan set for another time is
+not checked), each with an <strong>NWS notice</strong> link to the
+NWS's page for the place, and a rain line such as "Rain expected in about 20 min, near mile 5.0 (8.0 km)." with
+<strong>Forecast: Open-Meteo</strong> beside it. Start ride never waits for this. See
+<a href="/about/routing.html#weather">Weather</a> for which alerts are shown.</p>
 
 </div></details>
 <h2 id="ride">On the ride screen</h2>
@@ -487,7 +520,7 @@ which isn't asked again in that tab.</p>
 <div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 760 316" role="img" aria-labelledby="fig-use-ride-t fig-use-ride-d" focusable="false" style="min-width:547px">
 <title id="fig-use-ride-t">The ride screen</title>
-<desc id="fig-use-ride-d">The ride screen has End ride and Road closed across the top; End ride is a slider so a stray tap won&#x27;t end it. Below them is the turn card with the next turn and how far it is. Round buttons on the map&#x27;s right edge are Where am I?, Large text, Calmer, Flatter, Detour, 311 and a Settings gear. Near sunrise or sunset, a line gives the time and how long until it.</desc>
+<desc id="fig-use-ride-d">The ride screen has End ride and Road closed across the top; End ride is a slider so a stray tap won&#x27;t end it. Below them is the turn card with the next turn and how far it is. Round buttons on the map&#x27;s right edge are Where am I?, Large text, Broadcast, Detour, 311 and More. Near sunrise or sunset, a line gives the time and how long until it.</desc>
 <defs><marker id="ah-use-ride" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
 <rect x="250" y="8" width="260" height="300" rx="18" class="bx"/>
 <rect class="bxa" x="262" y="20" width="236" height="30" rx="6"/>
@@ -503,20 +536,17 @@ which isn't asked again in that tab.</p>
 <text class="t" x="530" y="161" text-anchor="start">Large text</text>
 <path class="ar" d="M524,156 L498,156" marker-end="url(#ah-use-ride)"/>
 <circle cx="480" cy="180" r="10" class="fillacc"/>
-<text class="t" x="530" y="185" text-anchor="start">Calmer</text>
+<text class="t" x="530" y="185" text-anchor="start">Broadcast</text>
 <path class="ar" d="M524,180 L498,180" marker-end="url(#ah-use-ride)"/>
 <circle cx="480" cy="204" r="10" class="fillacc"/>
-<text class="t" x="530" y="209" text-anchor="start">Flatter</text>
+<text class="t" x="530" y="209" text-anchor="start">Detour</text>
 <path class="ar" d="M524,204 L498,204" marker-end="url(#ah-use-ride)"/>
 <circle cx="480" cy="228" r="10" class="fillacc"/>
-<text class="t" x="530" y="233" text-anchor="start">Detour</text>
+<text class="t" x="530" y="233" text-anchor="start">311</text>
 <path class="ar" d="M524,228 L498,228" marker-end="url(#ah-use-ride)"/>
 <circle cx="480" cy="252" r="10" class="fillacc"/>
-<text class="t" x="530" y="257" text-anchor="start">311</text>
+<text class="t" x="530" y="257" text-anchor="start">More</text>
 <path class="ar" d="M524,252 L498,252" marker-end="url(#ah-use-ride)"/>
-<circle cx="480" cy="276" r="10" class="fillacc"/>
-<text class="t" x="530" y="281" text-anchor="start">Settings (gear)</text>
-<path class="ar" d="M524,276 L498,276" marker-end="url(#ah-use-ride)"/>
 <text class="tb" x="10" y="32" text-anchor="start">Top: two big buttons</text>
 <text class="ts" x="10" y="52" text-anchor="start">End ride is a slider,</text>
 <text class="ts" x="10" y="70" text-anchor="start">so a stray tap won&#x27;t end it.</text>
@@ -528,7 +558,7 @@ which isn't asked again in that tab.</p>
 <div class="fig-narrow">
 <svg viewBox="0 0 320 542" role="img" aria-labelledby="fig-use-ride-n-t fig-use-ride-n-d" focusable="false">
 <title id="fig-use-ride-n-t">The ride screen</title>
-<desc id="fig-use-ride-n-d">The ride screen has End ride and Road closed across the top; End ride is a slider so a stray tap won&#x27;t end it. Below them is the turn card with the next turn and how far it is. Round buttons on the map&#x27;s right edge are Where am I?, Large text, Calmer, Flatter, Detour, 311 and a Settings gear. Near sunrise or sunset, a line gives the time and how long until it.</desc>
+<desc id="fig-use-ride-n-d">The ride screen has End ride and Road closed across the top; End ride is a slider so a stray tap won&#x27;t end it. Below them is the turn card with the next turn and how far it is. Round buttons on the map&#x27;s right edge are Where am I?, Large text, Broadcast, Detour, 311 and More. Near sunrise or sunset, a line gives the time and how long until it.</desc>
 <defs><marker id="ah-use-ride-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>
 <rect x="10" y="8" width="300" height="370" rx="18" class="bx"/>
 <rect class="bxa" x="22" y="22" width="276" height="38" rx="6"/>
@@ -543,20 +573,17 @@ which isn't asked again in that tab.</p>
 <text class="t" x="238" y="185" text-anchor="end">Large text</text>
 <path class="ar" d="M244,180 L264,180" marker-end="url(#ah-use-ride-n)"/>
 <circle cx="282" cy="210" r="10" class="fillacc"/>
-<text class="t" x="238" y="215" text-anchor="end">Calmer</text>
+<text class="t" x="238" y="215" text-anchor="end">Broadcast</text>
 <path class="ar" d="M244,210 L264,210" marker-end="url(#ah-use-ride-n)"/>
 <circle cx="282" cy="240" r="10" class="fillacc"/>
-<text class="t" x="238" y="245" text-anchor="end">Flatter</text>
+<text class="t" x="238" y="245" text-anchor="end">Detour</text>
 <path class="ar" d="M244,240 L264,240" marker-end="url(#ah-use-ride-n)"/>
 <circle cx="282" cy="270" r="10" class="fillacc"/>
-<text class="t" x="238" y="275" text-anchor="end">Detour</text>
+<text class="t" x="238" y="275" text-anchor="end">311</text>
 <path class="ar" d="M244,270 L264,270" marker-end="url(#ah-use-ride-n)"/>
 <circle cx="282" cy="300" r="10" class="fillacc"/>
-<text class="t" x="238" y="305" text-anchor="end">311</text>
+<text class="t" x="238" y="305" text-anchor="end">More</text>
 <path class="ar" d="M244,300 L264,300" marker-end="url(#ah-use-ride-n)"/>
-<circle cx="282" cy="330" r="10" class="fillacc"/>
-<text class="t" x="238" y="335" text-anchor="end">Settings (gear)</text>
-<path class="ar" d="M244,330 L264,330" marker-end="url(#ah-use-ride-n)"/>
 <text class="ts" x="160.0" y="362" text-anchor="middle">the map, along your route</text>
 <text class="tb" x="10" y="410" text-anchor="start">Top: two big buttons</text>
 <text class="ts" x="10" y="434" text-anchor="start">End ride is a slider,</text>
@@ -573,8 +600,8 @@ which isn't asked again in that tab.</p>
 
 
 <ul>
-<li><strong>Before the first ride from Plan</strong> RouteMaker asks who says the cues and how much (Go
-never asks; it uses your Settings); see
+<li><strong>Start ride starts at once</strong>, in Plan as in Go, with the cues set in Settings,
+Riding (RouteMaker's voice, saying every turn, until you change them); see
 <a href="/about/accessibility.html#riding">Accessibility</a>. The screen is kept on while you
 ride.</li>
 <li>At an unusual junction, such as a five-way or a left onto a service road, the turn card draws the
@@ -590,24 +617,64 @@ arrow.</li>
 curling up onto a bridge, is said on the side you actually turn.</li>
 <li><strong>Where am I?</strong> says where you are and centers the map on you again.
 <strong>Large text</strong> makes the next turn as big as it fits.</li>
-<li><strong>Calmer</strong> (a car with a down arrow) and <strong>Flatter</strong> (a mountain with a down
-arrow) plan again from where you are, with the way ahead first: Calmer moves the ride's traffic slider one step toward Calmest, Flatter its hills slider one step
-toward avoiding hills. If the new route keeps to your line, you hear "Same route: no calmer way from
-here." (or "no less steep way"). Press again for the next step; at the last one you hear "Already the calmest
-route." or "Already the flattest route." (On a Mass Ride, whose traffic level is set, Calmer always
-says so.) The steps last for this ride only, Plan's sliders stay as they
-were, and a step that finds no route, or only one leading back to the old line, is undone. They are hidden on a shared or fixed route and once you
-have arrived. A screen reader hears each one in full, such as "Calmer: less traffic, plan again from
-here".</li>
-<li><strong>Detour</strong> lists the nearest <strong>Water</strong> or <strong>Restroom</strong>;
-choosing one re-plans the ride through it and on along the rest of the route.</li>
+<li><strong>Broadcast</strong>, where your device has a share sheet, sends a <strong>Share ride</strong> link, as
+Broadcast beside Start does, and once it has gone makes you the ride's leader; your ride carries on. It is not on
+Ride the rest, a Roam detour, a ride you opened from someone else's link, or once you have arrived.</li>
+<li><strong>Detour</strong> has four buttons, <strong>Water</strong>, <strong>Restroom</strong>, <strong>Food</strong> and
+<strong>Repair</strong> (repair stands and bike shops), each listing the three nearest by bike, and a
+<strong>Search</strong> box for anything else. What you type there, at least 3 letters, is matched against Find
+food's places to eat by cuisine or name ("pizza", "coffee"), and is also sent to the place search, as Where to? does,
+for any name, shop or address ("grocery", "bike shop"), with your position rounded to a grid about 0.6 mile [1 km]
+across. The matches from both are measured by bike together and the three nearest are listed. A word for one of the
+buttons ("bathroom", "pump", "lunch") does that button's search instead. <strong>Detour here</strong> on a place it lists re-plans the ride through it and on along the rest of the route. With a stop ahead, except on a shared or fixed route, each place it
+lists has <strong>Instead of stop 2</strong> (with that stop's number) to go there in its place, and a screen reader
+hears the button as Detour with "or change stop 2" at the end; <strong>Skip this stop</strong> is in More.</li>
 <li><strong>Road closed</strong> plans a way round from where you are: "Road closed. Finding a way
 round."</li>
 <li><strong>311</strong> logs a problem where you are, for reporting later; see
 <a href="#suggest">below</a>.</li>
-<li>The <strong>Settings</strong> gear opens Ride settings: who says the cues and how much, and
-<strong>Turn the map to my heading</strong>.</li>
-<li><strong>Off the route</strong>, RouteMaker plans again from where you are. <strong>Keep the planned
+<li><strong>More</strong> opens, under the top row, <strong>Change the route</strong>: <strong>Less traffic</strong>
+(a car with a down arrow) and <strong>Fewer hills</strong> (a mountain with a down arrow) plan again from where you
+are, with the way ahead first. Less traffic moves the ride's traffic slider one step toward Calmest, Fewer hills its
+hills slider one step toward avoiding hills. If the new route keeps to your line, you hear "Same route: no calmer way
+from here." (or "no less steep way"). Press again for the next step; at the last one you hear "Already the calmest
+route." or "Already the flattest route." (On a Mass Ride, whose traffic level is set, Less traffic always says so.)
+The steps last for this ride only, Plan's sliders stay as they were, and a step that finds no route, or only one
+leading back to the old line, is undone. With a stop ahead, a line names it (such as "Next stop: Stop 2, Union
+Market") above <strong>Skip this stop</strong>. These are hidden on a shared or fixed route and once you have
+arrived, and pressing one closes the panel. Below them are the ride's settings: who says the cues and how much, and
+<strong>Turn the map to my heading</strong>. Escape also closes the panel. A screen reader hears each in full, such as "Less traffic: plan again from here", and the button as "More: change the route, and ride
+settings".</li>
+<li>The stops still ahead are drawn on the ride's map with their numbers and names; via
+points are not.</li>
+<li><strong>Already done?</strong> If the ride finds you already past one of its stops, as when you
+start again part way along or resume a ride, it lists the route's stops with the ones behind you ticked ("Ticked stops
+are skipped. Untick one to go back to it."). <strong>Continue</strong> rides the rest. Untick a stop and the ride plans
+a way back to it; tick one ahead to skip it. Escape is Continue with the ticks as they are. It is not asked after Undo
+on the ride summary or on a Bikeshare or transit leg.</li>
+<li><strong>Resume your ride?</strong> Start ride keeps the ride's route and stops on this device only, never on the
+server: no track, times or distances, only what was planned. Each new plan during the ride replaces it, and End ride
+removes it. If the app closes during a ride, opening it again within 12 hours of the route's last change offers
+<strong>Resume ride</strong>, which starts the ride again from where you are, or <strong>Not now</strong>, which
+forgets it; Escape only puts the question off until the app next opens. Roam, Ride the rest, a Roam detour and
+Bikeshare or transit legs cannot be resumed yet.</li>
+<li><strong>Weather</strong> is checked once the ride knows where you are on the route, and every 5 minutes, along the rest of
+the route. A new alert is said once ("Weather alert: Severe Thunderstorm Warning until 6:45 PM.", with "until" only where
+the NWS gives the end time), and again only if the NWS changes its end time or severity, interrupting
+for an Extreme alert or a Severe warning; rain is said when it is first forecast, when it comes within 15 minutes,
+and when it turns heavy. Both stay in the bottom panel until you press the big <strong>Dismiss</strong> button (an X) beside them; an alert you have not dismissed, or rain
+coming within 15 minutes or turning heavy, brings them back.</li>
+<li><strong>Left alone.</strong> During a ride or Roam, if you have moved the map by hand, 30 seconds
+with no touch, wheel or key and nothing open puts it back on you, following at the ride's zoom (<strong>Where am
+I?</strong> does it at once). The same 30 seconds closes a map card (a stop, place, station, closure or climb), the
+road info and the side menus (Detour, More, the dock, 311, Riders, Alert), and the map then goes back to you. Kept
+open: a menu you are typing or speaking in (a Detour search, Alert's Other, its microphone) and anything asking you
+something (Alert's Send to everyone?, Already done?, a stop's name, the group's question, Resume your ride?). In
+accessibility mode nothing closes on its own. A map card's close button (X) is 44 px across.</li>
+<li><strong>Off the route</strong>, RouteMaker plans again from where you are. Whenever the ride plans again (off the route,
+Re-plan from here, Road closed, Less traffic, Fewer hills or a Detour), it keeps every stop still ahead but treats via
+points as guides: one less than half a mile [800 m] ahead is dropped, so you are never sent back to touch
+it. <strong>Keep the planned
 route</strong> stops that until you are back on it, and shows the way back instead.</li>
 <li><strong>No signal:</strong> at Start ride, the map within about 1,000 ft [300 m] either side of the
 route is kept on your device, so dead spots still show the stress lines. It is cleared when the ride
@@ -731,7 +798,8 @@ flush and portable restrooms, and bike repair stands, from street zoom. Where th
 list names all the water and restrooms near your route, and Repair, in Go's More, lists the nearest
 stands.</li>
 <li><strong>Rail stations</strong>: Metro and MARC, with closed stations struck through and elevator
-outages on the station icons.</li>
+outages on the station icons. A MARC station's card gives the next scheduled train each way, and from the next timetable update
+names its line, such as Penn Line.</li>
 <li><strong>Bikeshare and e-bikes</strong>: Capital Bikeshare docks, with the bikes, e-bikes and room
 at each.</li>
 <li><strong>Places to see</strong>: museums, gardens, viewpoints and more. Off unless you turn it
@@ -757,7 +825,7 @@ panel and in Where am I?.</li>
 <h3>The road panel</h3>
 <ul>
 <li>The road's name, its stress level and why, in words.</li>
-<li><strong>Use this spot:</strong> start, stop or finish here, or <strong>Set as Home</strong>.</li>
+<li><strong>Use this spot:</strong> <strong>Set as start</strong>, <strong>Add as stop</strong> (it asks for a name) or <strong>Set as end</strong>, or <strong>Set as Home</strong>.</li>
 <li><strong>Street View</strong>, the newest Mapillary photo facing along the road where there is one, and <strong>Edit in
 OSM</strong> to fix the map itself.</li>
 <li><strong>Suggest a change…</strong>: a road's level, a junction, or a hazard on a Mass Ride.</li>
@@ -896,7 +964,10 @@ reason first.</li>
 <h3>Open a file</h3>
 <ul>
 <li><strong>Open GPX…</strong> reads a file in your browser; it is never uploaded. Up to 20 MB and
-100,000 points.</li>
+100,000 points. A file's points without a name, and the points added to fit a track,
+become via points. Named points become stops and keep their names; a name that only says what the point is,
+such as Stop 2 or Start, is dropped, and a point named Via point, as RouteMaker writes them, stays a via
+point.</li>
 <li>In Plan, <strong>Snap to the map's streets</strong> turns the track into a plan you can change, or
 <strong>Follow the file exactly</strong> rides it as drawn, for a road closed for an event. Load route's <strong>Snap to roads</strong> and <strong>Exactly as drawn</strong> are the same choice, made before the file opens.</li>
 </ul>
@@ -1034,7 +1105,7 @@ from the app's next update.</li>
 <p class="next">Next: <a href="/about/accessibility.html">Accessibility</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.12.0. The code is
+  <p>Part of RouteMaker's documentation. It describes version 0.12.1. The code is
   open source under the MIT licence:
   <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
   <p><a href="/">Back to the map</a></p>

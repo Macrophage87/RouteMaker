@@ -12,7 +12,7 @@ sees them.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -20,6 +20,11 @@ from pathlib import Path
 import osmium
 
 DERIVED_PREFIX = "rm:"
+
+# Relations this pipeline mints (`write_extract`'s `new_relations`), as
+# `borders.SYNTHETIC_NODE_ID_FLOOR` for nodes: OSM's relation ids are still under
+# 2**25, and the floor is far below the 2**53 a JSON round trip keeps exactly.
+SYNTHETIC_RELATION_ID_FLOOR = 2**40
 
 # Keys the pipeline writes onto a `Way` for its own use, which must never be
 # written into an extract. `_jurisdictions` is the only one today: it is an
@@ -180,12 +185,19 @@ def write_extract(
     way_node_ids: dict[int, list[int]],
     drop_ways: set[int] | None = None,
     node_tags: dict[int, dict[str, str]] | None = None,
+    new_relations: Sequence[tuple[int, list[tuple[str, int, str]], dict[str, str]]] = (),
 ) -> None:
     """Write a new extract with derived tags, inserted nodes, and ways dropped.
 
     `node_tags` adds derived tags to source nodes by id (`pipeline.signals`'
     `rm:crossing_signal`), merged over the node's own; its ids and location are
     untouched.
+
+    `new_relations` are (id, members as (type "n"/"w", ref, role), tags), the
+    no-U-turn restrictions at medians' ends (`routemaker.divided.median_uturns`),
+    written after every source relation: their ids come from
+    SYNTHETIC_RELATION_ID_FLOOR up, above every relation id OSM has issued, and
+    the file stays sorted only while that holds, as for the minted nodes.
 
     Way ids are never minted or altered here, which is what keeps the segment
     key, the trace join and anchor reconciliation pointing at the same things
@@ -215,6 +227,7 @@ def write_extract(
                 super().__init__()
                 self.flushed = False
                 self.highest_source_node_id = 0
+                self.highest_source_relation_id = 0
 
             def flush_new_nodes(self) -> None:
                 """Append the minted nodes to the end of the node block."""
@@ -262,6 +275,7 @@ def write_extract(
 
             def relation(self, r) -> None:  # noqa: N802
                 self.flush_new_nodes()
+                self.highest_source_relation_id = max(self.highest_source_relation_id, r.id)
                 writer.add_relation(r)
 
         copier = Copier()
@@ -269,6 +283,16 @@ def write_extract(
         # An extract with no ways and no relations never reaches either flush
         # point. Unreachable for a real region and cheap to be right about.
         copier.flush_new_nodes()
+        for relation_id, members, tags in sorted(new_relations):
+            if relation_id <= copier.highest_source_relation_id:
+                raise ValueError(
+                    f"minted relation {relation_id} is not above the highest source relation "
+                    f"id {copier.highest_source_relation_id}; SYNTHETIC_RELATION_ID_FLOOR "
+                    "needs raising"
+                )
+            writer.add_relation(
+                osmium.osm.mutable.Relation(id=relation_id, members=members, tags=tags, version=1)
+            )
     finally:
         writer.close()
 

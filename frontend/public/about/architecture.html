@@ -719,6 +719,17 @@ RouteMaker exchanges the sign-in code once and keeps no Discord token.</li>
 keeps that service's sign-in token, encrypted under a key that is never in the database. It contacts
 Garmin (diauth.garmin.com to sign in and renew the token, apis.garmin.com for the rest) or api.wahooligan.com only to send the routes you choose, read your account number once, and end the
 connection when you disconnect or delete your account. Deleting your account also removes from Wahoo up to 100 routes RouteMaker sent there.</li>
+<li><strong>Weather.</strong> For the weather along a route, your browser sends this server a few points on the
+line still to ride or, in Roam, where you are. The server rounds each to 0.01 degree, about 0.7 mi [1.1 km], and asks api.weather.gov (the
+National Weather Service's alerts) and api.open-meteo.com (Open-Meteo's rain forecast) about the rounded points,
+so they see this server, never you. It keeps the answers 2 minutes in memory, logs no point and writes
+nothing.</li>
+<li><strong>Featured routes.</strong> Each post, at /routes/ and its name, is a page the server makes whole, so it
+reads without JavaScript and link previews see it; a script, /post.js, then draws the live map and charts and turns on
+Send to Garmin and Send to Wahoo. A post's route is copied when it is written and kept permanently, owned by no
+account; a route that starts, ends or stops near its author's Home is refused. For a post's link picture, an admin's
+browser draws the post's map at 1200 by 630 pixels and sends it to the server. Nothing about the reader is kept:
+the pages are the same for every reader.</li>
 <li><strong>Sharing.</strong> A shared route stores the exact line under a random link, kept for a year
 after it was last opened. Its preview image hides the area around Home.</li>
 <li><strong>AI assistants.</strong> RouteMaker has a Model Context Protocol<sup class="cite"><a href="#ref-16" aria-label="source 16">[16]</a></sup> server, so an AI
@@ -772,7 +783,7 @@ release has short rider-facing notes.</li>
 <p class="next">Next: <a href="/about/acknowledgements.html">Acknowledgements</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.12.0. The code is
+  <p>Part of RouteMaker's documentation. It describes version 0.12.1. The code is
   open source under the MIT licence:
   <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
   <p><a href="/">Back to the map</a></p>

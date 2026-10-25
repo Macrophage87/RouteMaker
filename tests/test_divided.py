@@ -237,3 +237,188 @@ def test_the_c4_guard_reads_residential_boulevards_but_not_other_names() -> None
     assert divided.carriageway_pairs(other) == set()
     same_way = [way(1, NORTH), way(2, list(reversed(SOUTH)))]
     assert divided.carriageway_pairs(same_way) == set()
+
+
+# MD 144 (Frederick Road) at the Beltway's ramps in Catonsville, as OSM maps it
+# (2026-10-24): two carriageways round a 130 m island between the ramp signal (W)
+# and the merge (E), with Woodlawn Avenue (N) off the westbound one, and the road
+# two-way either side. Coordinates (lon, lat).
+W = (-76.72374, 39.27373)
+E = (-76.72291, 39.27392)
+N = (-76.72322, 39.27389)
+FREDERICK = {"highway": "primary", "name": "Frederick Road", "oneway": "yes"}
+FREDERICK_WAYS = {
+    # way id: (tags, points)
+    425007805: ({**FREDERICK, "oneway": "no"}, [(-76.72395, 39.27370), W]),
+    425007803: (FREDERICK, [N, (-76.72365, 39.27380), W]),
+    425007808: (
+        FREDERICK,
+        [
+            W,
+            (-76.72363, 39.27369),
+            (-76.72349, 39.27373),
+            (-76.72320, 39.27381),
+            (-76.72305, 39.27386),
+            (-76.72303, 39.27387),
+            E,
+        ],
+    ),
+    425007797: (FREDERICK, [E, N]),
+    425007800: ({**FREDERICK, "oneway": "no"}, [(-76.72230, 39.27405), E]),
+    5318288: ({"highway": "residential", "name": "Woodlawn Avenue"}, [N, (-76.72392, 39.27582)]),
+}
+
+
+def frederick(changes=None):
+    """The ways as `extract.Way`s, one node per distinct point; `changes` maps a way
+    id to tags merged over its own, or to None to leave it out."""
+    from pipeline.extract import Way
+
+    changes = changes or {}
+    nodes: dict[tuple, int] = {}
+    built = []
+    for osm_id, (tags, points) in FREDERICK_WAYS.items():
+        if osm_id in changes and changes[osm_id] is None:
+            continue
+        refs = [nodes.setdefault(p, len(nodes) + 1) for p in points]
+        merged = {**tags, **changes.get(osm_id, {})}
+        built.append(Way(osm_id, merged, refs, list(points), list(range(len(points)))))
+    return built, nodes
+
+
+def test_the_u_turns_round_frederick_roads_island_are_found() -> None:
+    """The owner, 2026-10-24: the route turned across the median. Down Woodlawn
+    Avenue, right onto the westbound carriageway, and round the island's west end
+    onto the eastbound one at the ramp signal; or along the eastbound one and round
+    its east end onto the westbound one to reach Woodlawn. The two noses only."""
+    ways, nodes = frederick()
+    assert divided.median_uturns(ways) == [
+        (425007803, nodes[W], 425007808),
+        (425007808, nodes[E], 425007797),
+    ]
+
+
+def test_a_contraflow_carriageway_has_no_u_turn() -> None:
+    contraflow = lambda tags: tags.get("oneway:bicycle") == "no"  # noqa: E731
+    ways, nodes = frederick({425007797: {"oneway:bicycle": "no"}})
+    assert divided.median_uturns(ways, contraflow) == [(425007803, nodes[W], 425007808)]
+
+
+def test_a_minus_one_carriageway_is_read_in_its_direction() -> None:
+    ways, nodes = frederick({425007797: {"oneway": "-1"}})
+    # Mapped backwards and tagged -1 it is the same carriageway: reversed here.
+    for way in ways:
+        if way.osm_id == 425007797:
+            way.node_ids.reverse()
+            way.coordinates.reverse()
+    assert (425007808, nodes[E], 425007797) in divided.median_uturns(ways)
+
+
+def test_a_median_that_ends_in_a_point_keeps_its_u_turn() -> None:
+    """With no road on beyond the east nose, turning round there is the only way
+    back."""
+    ways, nodes = frederick({425007800: None})
+    assert divided.median_uturns(ways) == [(425007803, nodes[W], 425007808)]
+
+
+def test_other_names_and_classes_and_two_way_roads_are_not_u_turns() -> None:
+    ways, _ = frederick({425007797: {"name": "Woodlawn Avenue"}})
+    assert [u for u in divided.median_uturns(ways) if u[2] == 425007797] == []
+    ways, _ = frederick({425007803: {"highway": "residential"}})
+    assert [u for u in divided.median_uturns(ways) if u[0] == 425007803] == []
+    ways, _ = frederick({425007803: {"oneway": "no"}})
+    assert [u for u in divided.median_uturns(ways) if u[0] == 425007803] == []
+
+
+def test_a_turn_off_a_carriageway_is_not_a_u_turn() -> None:
+    """A carriageway carrying straight on, or turning off to a side road, at the
+    noses and at Woodlawn Avenue: nothing between the two halves of one road
+    within OPPOSITE_COS of head on but the U-turns."""
+    ways, _ = frederick()
+    found = divided.median_uturns(ways)
+    assert all({a, b} <= {425007803, 425007808, 425007797} for a, _, b in found)
+    assert (425007797, frederick()[1][N], 425007803) not in found
+
+
+@pytest.mark.parametrize(
+    "beyond",
+    [
+        {"highway": "proposed"},
+        {"highway": "construction"},
+        {"highway": "motorway_link"},
+        {"highway": "footway"},
+        {"highway": "primary", "access": "private"},
+        {"highway": "primary", "bicycle": "no"},
+    ],
+)
+def test_a_way_on_no_bicycle_can_take_leaves_the_nose_a_dead_end(beyond) -> None:
+    """Review of #450: a nose with only a proposed road, a ramp, a footway or a
+    closed road beyond it is a dead end, and keeps its U-turn."""
+    ways, nodes = frederick({425007800: {**beyond, "oneway": "no", "name": "Beyond"}})
+    assert divided.median_uturns(ways) == [(425007803, nodes[W], 425007808)]
+
+
+def test_a_variant_that_drops_the_way_on_keeps_the_u_turn() -> None:
+    """`pipeline.run.median_restrictions` reads one variant's ways after its drops:
+    without the road beyond the east nose, only the west nose is restricted, and
+    each restriction is from, via, to with the plain no-U-turn tags."""
+    from pipeline import extract, run
+
+    ways, nodes = frederick()
+    kept = [way for way in ways if way.osm_id != 425007800]
+    assert run.median_restrictions(kept) == [
+        (
+            extract.SYNTHETIC_RELATION_ID_FLOOR,
+            [("w", 425007803, "from"), ("n", nodes[W], "via"), ("w", 425007808, "to")],
+            {"type": "restriction", "restriction": "no_u_turn"},
+        )
+    ]
+    assert len(run.median_restrictions(ways)) == 2
+
+
+def test_the_rebuild_writes_the_restrictions_into_every_graph(tmp_path) -> None:
+    """The rebuild's extract stage (`pipeline.run`, INJECT_TAGS) hands the median ends'
+    restrictions to `write_extract`, so each variant's extract carries them."""
+    import osmium
+    from rebuild_fixtures import write_reference_data
+    from test_tile_build_median_uturns import POINTS, WAYS
+
+    from pipeline.extract import read_ways
+    from pipeline.rebuild import Stage
+    from pipeline.run import RebuildContext, ReferenceData, build_handlers
+    from pipeline.variants import Variant
+
+    source_pbf = tmp_path / "source.osm.pbf"
+    writer = osmium.SimpleWriter(str(source_pbf))
+    try:
+        for node_id, location in sorted(POINTS.items()):
+            writer.add_node(osmium.osm.mutable.Node(id=node_id, location=location, version=1))
+        for way_id, refs, tags in sorted(WAYS):
+            writer.add_way(osmium.osm.mutable.Way(id=way_id, nodes=refs, tags=tags, version=1))
+    finally:
+        writer.close()
+    reference_dir = write_reference_data(tmp_path)
+    context = RebuildContext(
+        source_pbf=source_pbf,
+        work_dir=tmp_path / "work",
+        reference_dir=reference_dir,
+        tiles_dir=tmp_path / "tiles",
+    )
+    context.ways = read_ways(source_pbf)
+    context.ways_by_id = {w.osm_id: w for w in context.ways}
+    context.reference = ReferenceData.load(reference_dir, context.ways)
+    handlers = build_handlers(context, load_overrides=lambda: [])
+    handlers[Stage.APPLY_OVERRIDES]()
+    handlers[Stage.INJECT_TAGS]()
+
+    for variant in Variant:
+        found = [
+            (tuple((m.type, m.ref, m.role) for m in r.members), dict(r.tags))
+            for r in osmium.FileProcessor(str(context.variant_pbf(variant)), osmium.osm.RELATION)
+        ]
+        assert found == [
+            ((("w", 425007803, "from"), ("n", 2, "via"), ("w", 425007808, "to")),
+             {"type": "restriction", "restriction": "no_u_turn"}),
+            ((("w", 425007808, "from"), ("n", 9, "via"), ("w", 425007797, "to")),
+             {"type": "restriction", "restriction": "no_u_turn"}),
+        ], variant  # fmt: skip

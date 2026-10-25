@@ -16,7 +16,6 @@ import {
   nearbyText,
   nearestInStraightLine,
   DETOUR_FULL,
-  DETOUR_KINDS,
   LOCATION_BUSY,
   detourPoints,
   rideLocate,
@@ -364,10 +363,6 @@ test("riding: the ride's own fix is the search's position, and none yet is said,
   assert.equal(outcome.found?.kind, "restroom");
 });
 
-test("riding: only water and restrooms are offered as detours", () => {
-  assert.deepEqual([...DETOUR_KINDS], ["water", "restroom"]);
-});
-
 test("a detour goes from here to the place, then on through the stops left and the end", () => {
   const here: LonLat = [-77.05, 38.9];
   const stop: LonLat = [-77.0, 38.92];
@@ -389,9 +384,9 @@ test("a detour is refused, not cut short, when the route already has as many poi
 test("Ride mode wires the detour: the ride's fix, the ride's settings without the loop, and a re-plan through the place", () => {
   const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
   assert.match(ride, /const points = via \? detourPoints\(left, via\) : left;/);
-  assert.match(ride, /locate: async \(\) => rideLocate\(fix\)/);
+  assert.match(ride, /here: fix\.point,/);
   assert.match(ride, /requestNearest\(from, places, preset, \{ \.\.\.dialsRef\.current, loop: false \}\)/);
-  assert.match(ride, /void replan\(here, item\.place\.point\);/);
+  assert.match(ride, /void replan\(here, VIA_MARKS\.named\(\[item\.place\.point\[0\], item\.place\.point\[1\]\], item\.place\.title\)\);/);
   // The rider's own ask is never dropped in silence: a full route, a busy gate and the outcome are said
   // through sayDetour (an answer, whatever the verbosity), and the focus goes to Where am I?.
   assert.match(ride, /if \(!points\) \{\s*sayDetour\(DETOUR_FULL\);/);
