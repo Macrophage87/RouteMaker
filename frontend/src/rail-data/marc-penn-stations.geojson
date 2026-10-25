@@ -221,6 +221,21 @@
     "station": 5,
     "osm": "node/8587341052"
    }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -76.6155,
+     39.30703
+    ]
+   },
+   "properties": {
+    "kind": "entrance",
+    "station": 8,
+    "osm": "reported"
+   }
   }
  ]
 }

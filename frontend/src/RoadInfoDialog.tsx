@@ -572,6 +572,8 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
     <dialog
       ref={dialogRef}
       className="road-info"
+      // Closed by a ride's screen left alone 30 s, unless a change, a report or a closure is being written (lib/idleRecentre.ts).
+      data-idle-close={editing || suggesting || suggestingJunction || reporting || closing ? undefined : ""}
       aria-labelledby={id("title")}
       aria-describedby={avoid ? `${id("avoid")} ${id("where")}` : id("where")}
       aria-busy={state.kind === "loading" ? true : undefined}

@@ -53,6 +53,12 @@ export default defineConfig({
     // from the map's credits. Completed by licenceNotices above: the text for
     // packages that ship none, and the packages inside maplibre-gl's bundle.
     license: { fileName: "licenses.txt" },
+    rollupOptions: {
+      // The app, and a Featured routes post's script (src/post/; core/route_posts.py), which the server's page names
+      // as /post.js: a fixed name, revalidated on every load (Caddyfile @frontend), since the page cannot know a hash.
+      input: { index: `${frontendRoot}index.html`, post: `${frontendRoot}src/post/main.ts` },
+      output: { entryFileNames: (chunk) => (chunk.name === "post" ? "post.js" : "assets/[name]-[hash].js") },
+    },
   },
   server: { proxy: { "/api": toStack, "/tiles": toStack, "/basemap": toStack } },
 });

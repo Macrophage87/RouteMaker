@@ -460,8 +460,9 @@ test("announcements: the essentials are always said; only the narration is extra
   // The start Go found, and when it could not, are essentials.
   assert.match(app, /announce\(GO_START_SAID\)/);
   assert.match(app, /setNotice\(pending \? goDestinationNeedsStart\(pending\.name\) : GO_START_UNAVAILABLE\)/);
-  // Go starts the ride at once; Plan asks the first time.
-  assert.match(app, /if \(!ridePrefs\.chosen && mode !== "go"\) \{/);
+  // Go and Plan both start the ride at once (the owner, 2026-10-24): no first-ride question.
+  assert.match(app, /const startRide = \(unlocked = false\) => \{[^}]*beginRide\(ridePrefs, unlocked\);\s*\};/);
+  assert.doesNotMatch(app, /setRideAsk|ride-ask/);
 });
 
 test("go start: a location found long ago is looked up again before a destination routes from it (the owner, 2026-10-19)", () => {

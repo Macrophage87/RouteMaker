@@ -48,12 +48,11 @@ test("a quicker route, and otherwise a better one", () => {
 });
 
 test("only a first route is replaced, and never once Start is pressed", () => {
-  assert.equal(takesRefined({ provisional: true }, false, false), true);
-  assert.equal(takesRefined({ provisional: false }, false, false), false);
-  assert.equal(takesRefined({}, false, false), false);
-  assert.equal(takesRefined(null, false, false), false);
-  assert.equal(takesRefined({ provisional: true }, true, false), false, "riding");
-  assert.equal(takesRefined({ provisional: true }, false, true), false, "the Start question is open");
+  assert.equal(takesRefined({ provisional: true }, false), true);
+  assert.equal(takesRefined({ provisional: false }, false), false);
+  assert.equal(takesRefined({}, false), false);
+  assert.equal(takesRefined(null, false), false);
+  assert.equal(takesRefined({ provisional: true }, true), false, "riding");
 });
 
 test("Novice and Nervous's offer waits for the full plan", () => {
@@ -310,7 +309,7 @@ test("App: the better route is taken before Start only, said once, and moves no 
   const end = app.indexOf("    });\n  }", start);
   const body = app.slice(start, end);
   assert.ok(start > 0 && end > start);
-  assert.match(body, /takesRefined\(now\.answer, now\.riding, now\.startAsked\)/);
+  assert.match(body, /takesRefined\(now\.answer, now\.riding\)/);
   assert.match(body, /betterRouteSaid\(now\.answer, result\.route\)/);
   assert.match(body, /setNoticeSaying\(line, line\)/);
   assert.doesNotMatch(body, /focus\(/);
