@@ -156,7 +156,10 @@ export function RideTypePicker({ preset, dials, onChoose }: Props) {
               <h3 id={`ride-types-${group.id}`}>{group.label}</h3>
               <ul className="ride-type-cards">
                 {group.ids.map((id) => PRESETS.find((p) => p.id === id)!).map((option) => (
-                  <li key={option.id} className={option.id === preset ? "ride-type-card has-fav current" : "ride-type-card has-fav"}>
+                  <li
+                    key={option.id}
+                    className={["ride-type-card", "has-fav", option.id === preset && "current", carries(option.id) && "with-loads"].filter(Boolean).join(" ")}
+                  >
                     <button
                       type="button"
                       ref={(el) => {
@@ -192,7 +195,16 @@ export function RideTypePicker({ preset, dials, onChoose }: Props) {
                             onClick={() => pick(option.id, load.id)}
                           >
                             {load.label}
-                            <span className="hint">{load.hint}</span>
+                            {full ? (
+                              <span className="hint">{load.hint}</span>
+                            ) : (
+                              <>
+                                <span className="hint" aria-hidden="true">
+                                  {load.summary}
+                                </span>
+                                <span className="visually-hidden">{load.hint}</span>
+                              </>
+                            )}
                           </button>
                         ))}
                       </div>
