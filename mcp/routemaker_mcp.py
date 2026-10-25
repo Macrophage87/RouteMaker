@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import base64
 import bisect
+import itertools
 import json
 import math
 import os
@@ -341,6 +342,45 @@ class Api:
             raise ToolError(f"place search failed ({status}): {message}")
         return payload.get("results", [])
 
+    def scenic_roads(
+        self, near: tuple[float, float], miles: float, designation: str = ""
+    ) -> list[dict]:
+        """GET /api/scenic-roads: the designated roads near a point, nearest first."""
+        params = {"lon": near[0], "lat": near[1], "miles": miles}
+        if designation:
+            params["designation"] = designation
+        status, payload, _ = self._request(
+            "GET", "/api/scenic-roads?" + urllib.parse.urlencode(params)
+        )
+        if status != 200 or not isinstance(payload, dict):
+            message = payload.get("error") if isinstance(payload, dict) else payload
+            raise ToolError(f"the scenic road search failed ({status}): {message}")
+        return payload.get("roads", [])
+
+    def climbs_near(self, near: tuple[float, float], miles: float, **filters) -> list[dict]:
+        """GET /api/climbs-near: the categorised climbs near a point, nearest first, or
+        steepest first with `steepest`; `filters` as the endpoint takes them."""
+        params = {"lon": near[0], "lat": near[1], "miles": miles}
+        params.update({k: str(v).lower() if isinstance(v, bool) else v for k, v in filters.items()})
+        status, payload, _ = self._request(
+            "GET", "/api/climbs-near?" + urllib.parse.urlencode(params)
+        )
+        if status != 200 or not isinstance(payload, dict):
+            message = payload.get("error") if isinstance(payload, dict) else payload
+            raise ToolError(f"the climb search failed ({status}): {message}")
+        return payload.get("climbs", [])
+
+    def closures_map(self, box: tuple[float, float, float, float], permits: bool) -> list[dict]:
+        """GET /api/closures/map: the closures in force now with any part in the box."""
+        params = {"bbox": ",".join(f"{v:.5f}" for v in box), "permits": str(permits).lower()}
+        status, payload, _ = self._request(
+            "GET", "/api/closures/map?" + urllib.parse.urlencode(params)
+        )
+        if status != 200 or not isinstance(payload, dict):
+            message = payload.get("error") if isinstance(payload, dict) else payload
+            raise ToolError(f"the closure search failed ({status}): {message}")
+        return payload.get("closures", [])
+
     def shared_route(self, route_id: str) -> dict:
         """A shared route as it was shared: its exact line, answer and plan inputs (GET
         /api/shared-routes/{id}, public)."""
@@ -410,9 +450,62 @@ def find_station(text: str, stations: list[Station]) -> Station | None:
     return None
 
 
-def as_point(value, api: Api | None, stations: list[Station]) -> tuple[tuple[float, float], str]:
+# Matches of one place search farther apart than this are different places.
+SAME_PLACE_MI = 5.0
+
+
+def pick_place(text: str, found: list[dict], neighbours: list[tuple[float, float]]) -> tuple:
+    """The match of a place search to take for `text`, and the other places it could have
+    been ([] where it could be nothing else). One place, wherever it is, is taken. Where the
+    matches are different places (Moore Road in Boyds, MD and in Centreville, VA), the first
+    within NEAR_PLACE_MI of one of the route's other points (`neighbours`) is taken, and where
+    none is the answer is a question back; with no other points to go by, the first match."""
+    if not found:
+        raise ToolError(f"no place found for {text!r}")
+    first = (found[0]["lon"], found[0]["lat"])
+    if all(haversine_mi(first, (r["lon"], r["lat"])) <= SAME_PLACE_MI for r in found):
+        return found[0], []
+
+    if not neighbours:
+        # Nothing to go by (the first of the route's names): the search's own first match,
+        # with the others said.
+        return found[0], [
+            r for r in found if haversine_mi(first, (r["lon"], r["lat"])) > SAME_PLACE_MI
+        ]
+
+    def away(r) -> float:
+        here = (r["lon"], r["lat"])
+        return min(haversine_mi(here, n) for n in neighbours) if neighbours else math.inf
+
+    near = [r for r in found if away(r) <= NEAR_PLACE_MI]
+    if near:
+        chosen = near[0]
+        here = (chosen["lon"], chosen["lat"])
+        others = [r for r in found if haversine_mi(here, (r["lon"], r["lat"])) > SAME_PLACE_MI]
+        return chosen, others
+    listed = "; ".join(
+        f"{r['label']} [{r['lon']:.5f}, {r['lat']:.5f}]"
+        + f", {away(r):.0f} mi from the route's other points"
+        for r in found
+    )
+    raise ToolError(
+        f"{text!r} matches more than one place and none is near the route's other points:"
+        f" {listed}. Ask the rider which one they mean (or add the town to the name), then"
+        " send it as [lon, lat]."
+    )
+
+
+def as_point(
+    value,
+    api: Api | None,
+    stations: list[Station],
+    neighbours: list[tuple[float, float]] | None = None,
+    others: list | None = None,
+) -> tuple[tuple[float, float], str]:
     """A point from [lon, lat], {"lon", "lat"}, a Metro station's name or a place to search
-    for, with a label saying what it was taken as."""
+    for, with a label saying what it was taken as. A place name is searched near the route's
+    other points (`neighbours`), and taken as `pick_place` says; the other places it could have
+    been go in `others`."""
     if isinstance(value, dict) and "lon" in value and "lat" in value:
         value = [value["lon"], value["lat"]]
     if isinstance(value, (list, tuple)) and len(value) == 2:
@@ -433,10 +526,13 @@ def as_point(value, api: Api | None, stations: list[Station]) -> tuple[tuple[flo
             return station.point, f"{station.name} Metro"
         if api is None:
             raise ToolError(f"cannot search for {text!r} without the site")
-        found = [r for r in api.geocode(text) if inside_coverage((r["lon"], r["lat"]))]
-        if not found:
-            raise ToolError(f"no place found for {text!r}")
-        return (round(found[0]["lon"], 5), round(found[0]["lat"], 5)), found[0]["label"]
+        neighbours = list(neighbours or [])
+        near = neighbours[0] if neighbours else None
+        found = [r for r in api.geocode(text, near) if inside_coverage((r["lon"], r["lat"]))]
+        chosen, elsewhere = pick_place(text, found, neighbours)
+        if others is not None:
+            others.extend(elsewhere)
+        return (round(chosen["lon"], 5), round(chosen["lat"], 5)), chosen["label"]
     raise ToolError(f"not a point: {value!r}")
 
 
@@ -686,6 +782,1063 @@ def summary(answer: dict) -> dict:
     return out
 
 
+# --- What the route rides, for an assistant to reason about ---------------------------------
+#
+# The owner, 2026-10-25, after a towpath and rustic-roads ride the connector could build but
+# not find: "The goal would be for a new user to be able to make routes like this." The
+# percentages alone hide which roads a route takes, where its busy stretches are and where it
+# doubles back; these say it, short enough to read in one answer.
+
+# The road list aims at no more than this many rows, grouping short links to keep to it.
+MAX_ROAD_ROWS = 50
+ROAD_ROW_MIN_MI = 0.2  # a row shorter than this is a short link, grouped with its neighbours
+ROAD_ROW_MAX_MIN_MI = 1.0  # past this a long list stays long: a mile of road is worth its row
+# A break in one road shorter than this (a nameless path: BRIDGE_NAMELESS_MI) is no new row.
+BRIDGE_MI = 0.15
+BRIDGE_NAMELESS_MI = 0.3
+# A busy stretch (LTS 3 and up) shorter than this is left out of the list unless it is LTS 4
+# or Avoid; pieces of one this close together are one stretch.
+BUSY_MIN_MI = 0.1
+BUSY_JOIN_MI = 0.05
+MAX_BUSY_ROWS = 20
+# Small detours (the owner, 2026-10-25: "these small excursions aren't worth including"): a
+# span of the route at least twice as long as the straight line between its ends, with its
+# ends within DETOUR_GAP_MI of each other and at least DETOUR_MIN_EXTRA_MI of extra riding,
+# and no longer than DETOUR_MAX_MI, that leaves a road and comes back to the same road. A
+# calm route winds (a trail's hairpin, a neighbourhood's curves) without leaving its way, so
+# where the streets are not known only a tight loop counts: ends within DETOUR_BLIND_GAP_MI
+# and three times the straight line.
+DETOUR_GAP_MI = 0.37  # 600 m
+DETOUR_BLIND_GAP_MI = 0.06  # 100 m
+DETOUR_MIN_EXTRA_MI = 0.1
+DETOUR_MAX_MI = 3.0
+DETOUR_STEP_MI = 0.025  # the line is read every 40 m
+MAX_DETOURS = 8
+# A place name searched near the route's other points is taken only this close to them;
+# farther, the server asks which was meant (Moore Road went to Centreville, VA: 2026-10-25).
+NEAR_PLACE_MI = 15.0
+NAMELESS = ("path", "unnamed road")
+
+
+def _stretches(answer: dict) -> list[dict]:
+    """The full description's stretches, in route order (the overview merges short ones)."""
+    entries = answer.get("description") or answer.get("description_overview") or []
+    return [e for e in entries if e.get("kind") == "stretch" and e.get("to_mi") is not None]
+
+
+def _traced_scale(answer: dict) -> float:
+    """Metres along the route (`distance_m`) per traced metre (`stress_spans`, junctions)."""
+    spans = answer.get("stress_spans") or []
+    traced = spans[-1]["to_m"] if spans else 0
+    distance = answer.get("distance_m") or 0.0
+    return distance / traced if traced and distance else 1.0
+
+
+def _scenic_rows(answer: dict) -> list[dict]:
+    scale = _traced_scale(answer) / METRES_PER_MILE
+    return [
+        {**s, "from_mi": s["from_m"] * scale, "to_mi": s["to_m"] * scale}
+        for s in answer.get("scenic_roads") or []
+    ]
+
+
+def _street(entry: dict) -> str:
+    return str(entry.get("street") or "unnamed road")
+
+
+def _bridged(rows: list[dict]) -> list[dict]:
+    """The rows with a short break in one road (a nameless path, a junction's few metres of
+    another street) folded into it: road, BRIDGE_MI of something else, the same road again
+    is one row of that road."""
+    out: list[dict] = []
+    for row in rows:
+        if (
+            len(out) >= 2
+            and out[-2]["road"].casefold() == row["road"].casefold()
+            and out[-1]["to_mi"] - out[-1]["from_mi"]
+            < (BRIDGE_NAMELESS_MI if out[-1]["road"] in NAMELESS else BRIDGE_MI)
+        ):
+            gap, before = out.pop(), out[-1]
+            for part in (gap, row):
+                for table in ("tiers", "facility"):
+                    for key, miles in part[table].items():
+                        before[table][key] = before[table].get(key, 0.0) + miles
+            before["to_mi"] = row["to_mi"]
+            continue
+        out.append(row)
+    return out
+
+
+def road_list(answer: dict) -> dict | None:
+    """The roads the route takes, in order: each with its miles, its main and worst LTS, its
+    miles at LTS 3 and up, and its scenic designation (a rustic road, a byway); rows under
+    ROAD_ROW_MIN_MI are counted as short links. None where the site sent no description."""
+    stretches = _stretches(answer)
+    if not stretches:
+        return None
+    rows: list[dict] = []
+    for entry in stretches:
+        street = _street(entry)
+        miles = max(0.0, entry["to_mi"] - entry["from_mi"])
+        tier = entry.get("tier")
+        last = rows[-1] if rows else None
+        if last is None or last["road"].casefold() != street.casefold():
+            last = {"road": street, "from_mi": entry["from_mi"], "tiers": {}, "facility": {}}
+            rows.append(last)
+        last["to_mi"] = entry["to_mi"]
+        last["tiers"][tier] = last["tiers"].get(tier, 0.0) + miles
+        kind = entry.get("facility") or "street"
+        last["facility"][kind] = last["facility"].get(kind, 0.0) + miles
+    rows = _bridged(rows)
+    scenic = _scenic_rows(answer)
+    minimum = ROAD_ROW_MIN_MI
+    while True:
+        grouped = _grouped(rows, minimum)
+        if len(grouped) <= MAX_ROAD_ROWS or minimum * 1.25 > ROAD_ROW_MAX_MIN_MI:
+            break
+        minimum *= 1.25
+    out = []
+    for group in grouped:
+        first, last = group[0], group[-1]
+        miles = last["to_mi"] - first["from_mi"]
+        if miles < 0.05:
+            continue  # a few metres between two listed roads
+        tiers: dict = {}
+        facilities: dict = {}
+        for row in group:
+            for key, value in row["tiers"].items():
+                tiers[key] = tiers.get(key, 0.0) + value
+            for key, value in row["facility"].items():
+                facilities[key] = facilities.get(key, 0.0) + value
+        rated = {t: m for t, m in tiers.items() if t is not None}
+        if len(group) == 1:
+            road = first["road"]
+        else:
+            names = list(dict.fromkeys(r["road"] for r in group if r["road"] not in NAMELESS))
+            road = f"{len(group)} short links: " + (
+                ", ".join(names[:4]) + (f" and {len(names) - 4} more" if len(names) > 4 else "")
+                if names
+                else "paths and unnamed ways"
+            )
+        item = {
+            "road": road,
+            "from_mi": round(first["from_mi"], 1),
+            "miles": round(miles, 1),
+            "lts": max(rated, key=rated.get) if rated else None,
+        }
+        worst = max((t for t, m in rated.items() if m >= 0.02), default=None)
+        if worst is not None and worst != item["lts"]:
+            item["worst_lts"] = worst
+        busy = sum(m for t, m in rated.items() if t >= 3)
+        if busy >= 0.05 and item["lts"] is not None and item["lts"] < 3:
+            item["miles_lts_3_up"] = round(busy, 1)
+        facility = max(facilities, key=facilities.get)
+        if facility != "street":
+            item["facility"] = facility
+        designations = {
+            s["designation"]
+            for s in scenic
+            if min(s["to_mi"], last["to_mi"]) - max(s["from_mi"], first["from_mi"])
+            >= min(0.1, miles / 2)
+        }
+        if designations:
+            item["scenic"] = " · ".join(sorted(designations))
+        out.append(item)
+    return {"roads": out}
+
+
+def _grouped(rows: list[dict], minimum: float) -> list[list[dict]]:
+    """The rows in route order, each run of rows shorter than `minimum` miles one group."""
+    groups: list[list[dict]] = []
+    for row in rows:
+        short = row["to_mi"] - row["from_mi"] < minimum
+        if short and groups and groups[-1][-1]["to_mi"] - groups[-1][-1]["from_mi"] < minimum:
+            groups[-1].append(row)
+        else:
+            groups.append([row])
+    return groups
+
+
+def busy_stretches(answer: dict) -> list[dict]:
+    """Where the route rides LTS 3 and up, in route order: from and to (miles), the roads and
+    the worst LTS (5 is Avoid). The longest MAX_BUSY_ROWS where there are more."""
+    spans: list[dict] = []
+    for entry in _stretches(answer):
+        tier = entry.get("tier")
+        if tier is None or tier < 3:
+            continue
+        last = spans[-1] if spans else None
+        if last is not None and entry["from_mi"] - last["to_mi"] <= BUSY_JOIN_MI:
+            last["to_mi"] = entry["to_mi"]
+            last["lts"] = max(last["lts"], tier)
+            if _street(entry) not in last["roads"]:
+                last["roads"].append(_street(entry))
+            continue
+        spans.append(
+            {
+                "from_mi": entry["from_mi"],
+                "to_mi": entry["to_mi"],
+                "roads": [_street(entry)],
+                "lts": tier,
+            }
+        )
+    kept = [s for s in spans if s["to_mi"] - s["from_mi"] >= BUSY_MIN_MI or s["lts"] >= 4]
+    if len(kept) > MAX_BUSY_ROWS:
+        longest = sorted(kept, key=lambda s: s["to_mi"] - s["from_mi"], reverse=True)
+        keep = {id(s) for s in longest[:MAX_BUSY_ROWS]}
+        kept = [s for s in kept if id(s) in keep]
+    return [
+        {
+            "from_mi": round(s["from_mi"], 1),
+            "to_mi": round(s["to_mi"], 1),
+            "miles": round(s["to_mi"] - s["from_mi"], 2),
+            "lts": s["lts"],
+            "roads": [r for r in s["roads"] if r not in NAMELESS] or s["roads"][:1],
+        }
+        for s in kept
+    ]
+
+
+def risky_junctions(answer: dict) -> dict:
+    """The very-high-stress (red) junctions, each with its mile, road and reason, and how
+    many higher-stress (orange) ones there are besides."""
+    found = answer.get("intersections") or []
+    scale = _traced_scale(answer) / METRES_PER_MILE
+    stretches = _stretches(answer)
+    red = []
+    for junction in found:
+        if junction.get("severity") != "red":
+            continue
+        mile = junction.get("m", 0) * scale
+        on = next((e for e in stretches if e["from_mi"] <= mile <= e["to_mi"]), None)
+        red.append(
+            {
+                "at_mi": round(mile, 1),
+                "road": _street(on) if on and _street(on) not in NAMELESS else None,
+                "reason": junction.get("reason"),
+                "lon_lat": [junction.get("lon"), junction.get("lat")],
+            }
+        )
+    return {
+        "very_high": red,
+        "higher_count": sum(1 for j in found if j.get("severity") == "orange"),
+    }
+
+
+def _flat(origin: tuple[float, float]):
+    """Miles east and north of `origin`, flat: enough within a few miles."""
+    per_lon = EARTH_RADIUS_MI * math.radians(1) * math.cos(math.radians(origin[1]))
+    per_lat = EARTH_RADIUS_MI * math.radians(1)
+    return lambda p: ((p[0] - origin[0]) * per_lon, (p[1] - origin[1]) * per_lat)
+
+
+def _resampled(line: list[list[float]], step: float) -> list[tuple[float, float]]:
+    """The line's points every `step` miles along it, as flat miles from its start."""
+    if len(line) < 2:
+        return []
+    flat = _flat((line[0][0], line[0][1]))
+    xy = [flat((v[0], v[1])) for v in line]
+    out = [xy[0]]
+    need = step  # miles from here to the next sample
+    for a, b in zip(xy, xy[1:], strict=False):
+        seg, at = math.dist(a, b), 0.0
+        while seg - at >= need:
+            at += need
+            t = at / seg
+            out.append((a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t))
+            need = step
+        need -= seg - at
+    return out
+
+
+def small_detours(
+    line: list[list[float]],
+    keep_at: list[tuple[float, float]] = (),
+    street_at=None,
+    distance_mi: float | None = None,
+) -> list[dict]:
+    """Spans where the route leaves its road and comes back to it close to where it left (a
+    loop through a side lane, an out-and-back to a point off the road): at least twice the
+    straight line between their ends, ends within DETOUR_GAP_MI, at least DETOUR_MIN_EXTRA_MI
+    extra. `street_at(mile)` names the street at a mile along the route (`distance_mi` long):
+    a span counts only where it starts and ends on one street and leaves it between; without
+    it, only a tight loop counts (DETOUR_BLIND_GAP_MI). A span holding one of `keep_at` (a
+    stop: the point of the trip) is left out. The biggest MAX_DETOURS, in route order."""
+    step = DETOUR_STEP_MI
+    pts = _resampled(line, step)
+    n = len(pts)
+    if n < 4:
+        return []
+    total = (n - 1) * step
+    longest = min(int(DETOUR_MAX_MI / step), int(total / 2 / step))
+    scale = (distance_mi / total) if distance_mi and total else 1.0
+    named = street_at is not None
+    gap2 = (DETOUR_GAP_MI if named else DETOUR_BLIND_GAP_MI) ** 2
+    ratio = 2 if named else 3
+
+    def same_road_left_between(i: int, j: int) -> bool:
+        if not named:
+            return True
+        road = street_at(i * step * scale)
+        if road is None or road != street_at(j * step * scale):
+            return False
+        return any(street_at(k * step * scale) != road for k in range(i + 1, j, 2))
+
+    found = []
+    for i in range(n):
+        xi, yi = pts[i]
+        best = None
+        for j in range(i + 3, min(n, i + longest + 1)):
+            dx, dy = pts[j][0] - xi, pts[j][1] - yi
+            d2 = dx * dx + dy * dy
+            if d2 > gap2:
+                continue
+            path = (j - i) * step
+            gap = math.sqrt(d2)
+            extra = path - gap
+            if path >= ratio * gap and extra >= DETOUR_MIN_EXTRA_MI:
+                if (best is None or extra > best[2] + step) and same_road_left_between(i, j):
+                    best = (i, j, extra)
+        if best:
+            found.append(best)
+    # The biggest first, each span once; a span wider than a bigger one it overlaps is the same
+    # detour read from further along the road.
+    found.sort(key=lambda f: (-f[2], f[1] - f[0]))
+    flat = _flat((line[0][0], line[0][1]))
+    kept_xy = [flat(p) for p in keep_at]
+    chosen: list[tuple[int, int, float]] = []
+    for i, j, extra in found:
+        if any(i < cj and ci < j for ci, cj, _ in chosen):
+            continue
+        if any(min(math.dist(p, k) for p in pts[i : j + 1]) < 0.05 for k in kept_xy):
+            continue
+        chosen.append((i, j, extra))
+        if len(chosen) == MAX_DETOURS:
+            break
+    origin = (line[0][0], line[0][1])
+    per_lon = EARTH_RADIUS_MI * math.radians(1) * math.cos(math.radians(origin[1]))
+    per_lat = EARTH_RADIUS_MI * math.radians(1)
+
+    def lon_lat(p):
+        return [round(origin[0] + p[0] / per_lon, 5), round(origin[1] + p[1] / per_lat, 5)]
+
+    out = []
+    for i, j, extra in sorted(chosen):
+        apex = max(pts[i : j + 1], key=lambda p: math.dist(p, pts[i]))
+        out.append(
+            {
+                "from_mi": round(i * step * scale, 1),
+                "to_mi": round(j * step * scale, 1),
+                "extra_mi": round(extra, 2),
+                "leaves_at": lon_lat(pts[i]),
+                "rejoins_at": lon_lat(pts[j]),
+                "farthest_point": lon_lat(apex),
+            }
+        )
+    return out
+
+
+def _street_finder(answer: dict):
+    """street_at(mile) over the description's stretches (casefolded), or None without one."""
+    stretches = _stretches(answer)
+    if not stretches:
+        return None
+    starts = [e["from_mi"] for e in stretches]
+
+    def street_at(mile: float) -> str | None:
+        k = bisect.bisect_right(starts, mile) - 1
+        return _street(stretches[max(0, k)]).casefold()
+
+    return street_at
+
+
+def via_spurs(plan: Plan) -> list[dict]:
+    """The via points the route reaches by an out-and-back of SPUR_MI or more."""
+    out = []
+    for i in plan.vias:
+        length, junction = spur_at(plan.line, plan.points[i])
+        if length >= SPUR_MI:
+            out.append({"point": i, "spur_mi": round(length, 2), "leaves_at": list(junction)})
+    return out
+
+
+# --- Checkpoint order: an alleycat's best way round ------------------------------------------
+#
+# The owner, 2026-10-25: "Another common usage would be something for alleycat racing,
+# basically if I scanned a sheet that would provide a number of points, and would find the
+# best route around them." With `best_order`, plan_route keeps the start and the finish and
+# rides the checkpoints between in the order that is quickest: the shortest orders by straight
+# line (exact up to EXACT_MAX checkpoints, Held and Karp's dynamic programme; nearest
+# neighbour and 2-opt beyond), then the first ORDER_TRIES of them planned, the quickest kept.
+
+EXACT_MAX = 13
+ORDER_TRIES = 3
+
+
+def _round_mi(points: list, order: list[int]) -> float:
+    return sum(haversine_mi(points[a], points[b]) for a, b in itertools.pairwise(order))
+
+
+def _exact_order(points: list) -> list[int]:
+    """The shortest order through points[1:-1] from points[0] to points[-1], by straight line."""
+    n = len(points) - 2
+    far = [
+        [haversine_mi(points[i], points[j]) for j in range(len(points))] for i in range(len(points))
+    ]
+    best: dict[tuple[int, int], tuple[float, int]] = {
+        (1 << i, i): (far[0][i + 1], -1) for i in range(n)
+    }
+    for size in range(2, n + 1):
+        for subset in itertools.combinations(range(n), size):
+            mask = sum(1 << i for i in subset)
+            for j in subset:
+                before = mask & ~(1 << j)
+                best[(mask, j)] = min(
+                    (best[(before, k)][0] + far[k + 1][j + 1], k) for k in subset if k != j
+                )
+    full = (1 << n) - 1
+    _, last = min((best[(full, j)][0] + far[j + 1][n + 1], j) for j in range(n))
+    order, mask = [], full
+    while last != -1:
+        order.append(last + 1)
+        mask, last = mask & ~(1 << last), best[(mask, last)][1]
+    return [0, *reversed(order), n + 1]
+
+
+def _two_opt(points: list, order: list[int]) -> list[int]:
+    """`order` bettered by reversing stretches of it while any reversal shortens it."""
+    better = True
+    while better:
+        better = False
+        for i in range(1, len(order) - 2):
+            for j in range(i + 1, len(order) - 1):
+                tried = order[:i] + order[i : j + 1][::-1] + order[j + 1 :]
+                if _round_mi(points, tried) < _round_mi(points, order) - 1e-9:
+                    order, better = tried, True
+    return order
+
+
+def best_orders(points: list, tries: int = ORDER_TRIES) -> list[list[int]]:
+    """Up to `tries` orders of all the points (indices; the first and last fixed), shortest by
+    straight line first: the best, then the best of its one-move changes (a stretch reversed,
+    a checkpoint moved), which riding may favour where a river or a highway is in the way."""
+    n = len(points) - 2
+    if n <= 1:
+        return [list(range(len(points)))]
+    if n <= EXACT_MAX:
+        best = _exact_order(points)
+    else:
+        left, order = set(range(1, n + 1)), [0]
+        while left:
+            nearest = min(left, key=lambda k: haversine_mi(points[order[-1]], points[k]))
+            order.append(nearest)
+            left.remove(nearest)
+        best = _two_opt(points, [*order, n + 1])
+    near: dict[tuple, float] = {}
+    for i in range(1, n + 1):
+        for j in range(i + 1, n + 1):
+            flipped = best[:i] + best[i : j + 1][::-1] + best[j + 1 :]
+            near[tuple(flipped)] = _round_mi(points, flipped)
+        for j in range(1, n + 1):
+            if j != i:
+                moved = best[:i] + best[i + 1 :]
+                moved.insert(j, best[i])
+                near[tuple(moved)] = _round_mi(points, moved)
+    near.pop(tuple(best), None)
+    others = sorted(near, key=near.get)[: max(0, tries - 1)]
+    return [best, *(list(o) for o in others)]
+
+
+# --- Interval training: where an effort can run unbroken ------------------------------------
+#
+# The owner, 2026-10-25: "Are there any good routes for doing sets of 5 minutes on, 3
+# minutes off, in repeat 5 times. We'd need to find places with limited needs to turn, go
+# downhill, or stop during the on sets." Then: "the off set can be in the reverse direction.
+# So ride up the hill for a workout, ride down it for a rest." An effort is broken by a stop
+# or signal, a busy road to cross or join without one, a sharp turn, a descent or an LTS 4
+# road; recovery can be anywhere.
+
+INTERVAL_PAD_MI = 0.05  # slowing before, and getting going after, a stop or a turn
+DESCENT_PCT = -2.0  # a grade this steep downhill breaks an effort
+DESCENT_MIN_M = 150.0  # held this far (a few metres of dip is nothing)
+STOP_CONTROLS = ("signal", "stop", "all_stop")
+SHARP_TURN_DEG = 60  # a turn this sharp slows an effort
+MAX_LAPS = 10
+# Speed on a climb at the effort's pace: pace / (1 + CLIMB_SLOWING * grade%), so 18 mph on
+# the flat is about 11 mph at 5% (a rough fit; only the minutes an effort takes need it).
+CLIMB_SLOWING = 0.12
+# Recovery rides slower than the effort: it covers this share of the effort's ground a minute.
+RECOVERY_SHARE = 0.7
+# The next effort may start up to this many times the asked rest later (waiting for a clear
+# stretch); later than that the sets are no longer one session.
+REST_SLACK = 1.5
+# A route whose ends are this close is ridden again from the start (a loop, an out-and-back).
+SAME_END_MI = 0.1
+# A hill repeat climbs at least this on average; windows are tried every REPEAT_STEP_MI.
+REPEAT_MIN_GRADE = 2.0
+REPEAT_STEP_MI = 0.05
+# A session's first effort is tried every this far along each clear stretch.
+SESSION_STEP_MI = 0.05
+# Ends this close on two sides of the start, ridden on from it, make a loop, not a turn back.
+SEAM_MI = 0.1
+
+
+# The climbs climbs_near rides up to check for stops and turns (one route call each).
+CLIMB_CHECKS = 4
+# A plan up a climb rides it when its length is within these shares of the climb's (the
+# front end's rule for a climb ridden, `hillseek.RIDDEN_MIN`/`RIDDEN_MAX`).
+CLIMB_RIDDEN = (0.8, 1.3)
+
+
+def climb_minutes(miles: float, grade_pct: float, pace: float) -> float:
+    """The minutes up a climb of that length and grade at an effort `pace` mph on the flat."""
+    speed = pace / (1 + CLIMB_SLOWING * max(0.0, grade_pct))
+    return round(miles / speed * 60, 1)
+
+
+def _grades(answer: dict) -> list[tuple[float, float, float]]:
+    """(from_mi, to_mi, grade %) between the profile's samples, from the heights themselves
+    (a thinned profile keeps each window's steepest sample grade, which overstates a dip).
+    The profile's `m` is along the route as `distance_m` measures it."""
+    profile = answer.get("profile") or {}
+    out, last = [], None
+    for m, height in zip(profile.get("m") or [], profile.get("elevation_m") or [], strict=False):
+        if height is None:
+            last = None
+            continue
+        if last is not None and m > last[0]:
+            out.append(
+                (
+                    last[0] / METRES_PER_MILE,
+                    m / METRES_PER_MILE,
+                    (height - last[1]) / (m - last[0]) * 100,
+                )
+            )
+        last = (m, height)
+    return out
+
+
+def _breaks(answer: dict) -> tuple[list[tuple[float, float, str]], dict]:
+    """The spans (from_mi, to_mi, why) an effort cannot run through, and how many of each."""
+    scale = _traced_scale(answer) / METRES_PER_MILE
+    distance_mi = (answer.get("distance_m") or 0.0) / METRES_PER_MILE
+    spans: list[tuple[float, float, str]] = []
+    counts: dict[str, int] = {}
+
+    def add(a: float, b: float, why: str) -> None:
+        spans.append((a, b, why))
+        counts[why] = counts.get(why, 0) + 1
+
+    events = answer.get("junctions_debug")
+    if events is None:  # only the flagged ones: a quiet stop sign goes unseen
+        events = answer.get("intersections") or []
+    for event in events:
+        control, tier = event.get("control"), event.get("crossed_tier")
+        mile = event.get("m", 0) * scale
+        if control in STOP_CONTROLS:
+            why = "signal" if control == "signal" else "stop sign"
+            add(mile - INTERVAL_PAD_MI, mile + INTERVAL_PAD_MI, why)
+        elif control == "none" and tier is not None and tier >= 3:
+            add(mile - INTERVAL_PAD_MI, mile + INTERVAL_PAD_MI, "busy road to cross or join")
+    before = None
+    for entry in answer.get("description") or []:
+        if entry.get("kind") != "stretch":
+            continue
+        turn = entry.get("turn") or {}
+        out = (turn.get("shape") or {}).get("out")
+        if out is not None:  # the angle itself, where the answer has it
+            sharp = abs(out) >= SHARP_TURN_DEG
+        else:
+            # A named trail or street going on under its own name is no turn to slow for.
+            same_way = (
+                before is not None
+                and entry.get("street") not in (None, "path")
+                and before.get("street") == entry.get("street")
+            )
+            sharp = turn.get("movement") in ("left", "right") and not same_way
+        if sharp:
+            add(
+                entry["from_mi"] - INTERVAL_PAD_MI, entry["from_mi"] + INTERVAL_PAD_MI, "sharp turn"
+            )
+        if (entry.get("tier") or 0) >= 4:
+            add(entry["from_mi"], entry["to_mi"], "LTS 4 road")
+        before = entry
+    run = None
+    for a, b, grade in _grades(answer):
+        if grade <= DESCENT_PCT:
+            run = [run[0] if run else a, b]
+            continue
+        if run and (run[1] - run[0]) * METRES_PER_MILE >= DESCENT_MIN_M:
+            add(run[0], run[1], "descent")
+        run = None
+    if run and (run[1] - run[0]) * METRES_PER_MILE >= DESCENT_MIN_M:
+        add(run[0], run[1], "descent")
+    clipped = [(max(0.0, a), min(distance_mi, b), why) for a, b, why in spans if b > 0]
+    return sorted(clipped), counts
+
+
+def _clear(spans: list[tuple[float, float, str]], distance_mi: float) -> list[tuple[float, float]]:
+    """The stretches between the breaks."""
+    out, at = [], 0.0
+    for a, b, _ in spans:
+        if a > at:
+            out.append((at, a))
+        at = max(at, b)
+    if distance_mi > at:
+        out.append((at, distance_mi))
+    return out
+
+
+def _minutes_along(answer: dict, pace: float):
+    """minutes(mile): the effort's minutes from the start to `mile`, slower up the climbs."""
+    marks, total, last_mi = [(0.0, 0.0)], 0.0, 0.0
+    for a, b, grade in _grades(answer):
+        if b <= last_mi:
+            continue
+        if a > last_mi:  # a gap in the heights: flat
+            total += (a - last_mi) / pace * 60
+            marks.append((a, total))
+        speed = pace / (1 + CLIMB_SLOWING * grade) if grade > 0 else pace
+        total += (b - max(a, last_mi)) / speed * 60
+        marks.append((b, total))
+        last_mi = b
+    miles = [m for m, _ in marks]
+
+    def minutes(mile: float) -> float:
+        if mile >= last_mi:
+            return total + (mile - last_mi) / pace * 60
+        k = max(1, bisect.bisect_left(miles, mile))
+        (m0, t0), (m1, t1) = marks[k - 1], marks[k]
+        return t0 + (t1 - t0) * ((mile - m0) / (m1 - m0) if m1 > m0 else 0.0)
+
+    return minutes
+
+
+def _mile_after(minutes, start: float, wanted: float, end: float) -> float | None:
+    """The mile `wanted` minutes on from `start`, or None past `end`."""
+    goal = minutes(start) + wanted
+    if minutes(end) < goal:
+        return None
+    lo, hi = start, end
+    for _ in range(40):
+        mid = (lo + hi) / 2
+        lo, hi = (mid, hi) if minutes(mid) < goal else (lo, mid)
+    return hi
+
+
+def _rise_ft(answer: dict, a: float, b: float) -> float:
+    """The height gained, feet, from mile `a` to mile `b` (net: rolling ground is none)."""
+    rise = 0.0
+    for x, y, grade in _grades(answer):
+        overlap = min(y, b) - max(x, a)
+        if overlap > 0:
+            rise += grade / 100 * overlap * METRES_PER_MILE
+    return rise * FEET_PER_METRE
+
+
+def _along_line(line: list, mi: float) -> tuple:
+    """The point `mi` along the line from its first point."""
+    done = 0.0
+    for p, q in itertools.pairwise(line):
+        step = haversine_mi(tuple(p[:2]), tuple(q[:2]))
+        if done + step >= mi and step > 0:
+            f = (mi - done) / step
+            return (p[0] + (q[0] - p[0]) * f, p[1] + (q[1] - p[1]) * f)
+        done += step
+    return tuple(line[-1][:2])
+
+
+def _seamless(line: list) -> bool:
+    """Whether a route that ends where it began rides on through its start (a loop) rather
+    than turning back there (an out-and-back): the line SEAM_MI after the start and SEAM_MI
+    before the end are apart."""
+    if len(line) < 3:
+        return True  # no line to tell by: the answer said loop
+    return haversine_mi(_along_line(line, SEAM_MI), _along_line(line[::-1], SEAM_MI)) > SEAM_MI / 2
+
+
+def _session(clear, minutes, start, on_min, rest_mi, sets):
+    """The efforts (from_mi, to_mi, extra rest miles) of one session from `start`: each next
+    one begins after rest_mi of recovery, or up to REST_SLACK times that later where it must
+    wait for a clear stretch."""
+    efforts, at = [], start
+    while len(efforts) < sets:
+        latest = at + rest_mi * (REST_SLACK - 1) if efforts else at
+        fit = None
+        for a, b in clear:
+            begin = max(a, at)
+            if begin > min(b, latest):
+                continue
+            finish = _mile_after(minutes, begin, on_min, b)
+            if finish is not None:
+                fit = (begin, finish)
+                break
+        if fit is None:
+            break
+        efforts.append((fit[0], fit[1], fit[0] - at))
+        at = fit[1] + rest_mi
+    return efforts
+
+
+def _laps(clear, minutes, distance_mi: float, seamless: bool):
+    """The clear stretches and minutes(mile) over MAX_LAPS laps of a route ridden again from
+    the start; a loop's stretches either side of the start join where `seamless` (no U-turn)."""
+    lap_min = minutes(distance_mi)
+    out: list[list[float]] = []
+    for lap in range(MAX_LAPS):
+        for a, b in clear:
+            a, b = a + lap * distance_mi, b + lap * distance_mi
+            if seamless and out and abs(out[-1][1] - a) < 1e-6:
+                out[-1][1] = b
+            else:
+                out.append([a, b])
+
+    def lapped(mile: float) -> float:
+        lap = min(int(mile // distance_mi), MAX_LAPS - 1) if distance_mi else 0
+        return lap * lap_min + minutes(mile - lap * distance_mi)
+
+    return [tuple(c) for c in out], lapped
+
+
+def interval_check(answer: dict, ask: dict, roads_at=None) -> dict:
+    """Whether the route holds the asked sets in one session (`ask`: on_minutes, off_minutes,
+    sets, pace_mph on the flat), riding it again from the start where it ends where it began:
+    the best session's efforts, its rests, the hill repeats (a clear climb ridden up for each
+    effort and back down to recover), the longest clear stretches and what breaks the rest."""
+
+    def asked(key: str, default: float) -> float:
+        return float(default if ask.get(key) is None else ask[key])
+
+    on_min, off_min = asked("on_minutes", 5), asked("off_minutes", 3)
+    sets, pace = int(asked("sets", 5)), asked("pace_mph", 18)
+    distance_mi = (answer.get("distance_m") or 0.0) / METRES_PER_MILE
+    minutes = _minutes_along(answer, pace)
+    spans, counts = _breaks(answer)
+    clear = [c for c in _clear(spans, distance_mi) if c[1] - c[0] > 0.01]
+    line = (answer.get("geometry") or {}).get("coordinates") or []
+    again = bool(answer.get("loop")) or (
+        len(line) > 1 and haversine_mi(tuple(line[0][:2]), tuple(line[-1][:2])) <= SAME_END_MI
+    )
+    rest_mi = pace * RECOVERY_SHARE * off_min / 60
+    ridden, along = clear, minutes
+    if again and distance_mi > 0:
+        # Ridden round: the start is no break on a loop, but is the turn of an out-and-back.
+        seamless = bool(answer.get("loop")) or _seamless(line)
+        ridden, along = _laps(clear, minutes, distance_mi, seamless)
+    best: list = []
+    for a, b in clear:  # a session's first effort, tried all along each clear stretch
+        start = a
+        while start < b and len(best) < sets:
+            found = _session(ridden, along, start, on_min, rest_mi, sets)
+            if len(found) > len(best):
+                best = found
+            start += SESSION_STEP_MI
+        if len(best) >= sets:
+            break
+    per_mi = 60 / (pace * RECOVERY_SHARE)
+
+    def on_route(mile: float) -> tuple[int, float]:
+        """(lap, mile on the route) of a mile ridden round, rounding clear of a lap's edge."""
+        if not (again and distance_mi):
+            return 0, mile
+        lap = int((mile + 1e-6) // distance_mi)
+        return lap, max(0.0, mile - lap * distance_mi)
+
+    def roads_round(start: float, finish: float) -> list:
+        if finish <= distance_mi or not again:
+            return roads_at(start, min(finish, distance_mi))
+        rest = [
+            r for r in roads_at(0.0, finish - distance_mi) if r not in roads_at(start, distance_mi)
+        ]
+        return roads_at(start, distance_mi) + rest
+
+    efforts = []
+    for k, (a, b, extra) in enumerate(best):
+        lap, start = on_route(a)
+        finish = b - lap * distance_mi if again and distance_mi else b
+        through = again and finish > distance_mi + 1e-6  # on through the start
+        efforts.append(
+            {
+                "set": k + 1,
+                **({"lap": lap + 1} if again else {}),
+                "from_mi": round(start, 2),
+                "to_mi": round(finish - distance_mi if through else finish, 2),
+                **({"through_start": True} if through else {}),
+                **({"rest_min": round(off_min + extra * per_mi, 1)} if k else {}),
+                **({"roads": roads_round(start, finish)} if roads_at else {}),
+            }
+        )
+    # Repeats: the climbiest on_min window of each clear stretch, ridden this way for each
+    # effort and back the other way to recover (only this direction needs to be clear).
+    repeats = []
+    for a, b in clear:
+        top = None
+        start = a
+        while True:
+            finish = _mile_after(minutes, start, on_min, b)
+            if finish is None:
+                break
+            rise = _rise_ft(answer, start, finish)
+            if top is None or rise > top[2]:
+                top = (start, finish, rise)
+            start += REPEAT_STEP_MI
+        if top is None:
+            continue
+        start, finish, gain = top
+        grade = gain / FEET_PER_METRE / ((finish - start) * METRES_PER_MILE) * 100
+        if grade < REPEAT_MIN_GRADE:
+            continue
+        repeats.append(
+            {
+                "from_mi": round(start, 2),
+                "to_mi": round(finish, 2),
+                "climb_ft": round(gain),
+                "avg_grade_pct": round(grade, 1),
+                **({"roads": roads_at(start, finish)} if roads_at else {}),
+            }
+        )
+    repeats.sort(key=lambda r: -r["climb_ft"])
+    longest = sorted(clear, key=lambda c: c[1] - c[0], reverse=True)[:5]
+    out = {
+        "asked": f"{sets} x {on_min:g} min on, {off_min:g} min off, {pace:g} mph on the flat",
+        "sets_in_one_session": len(efforts),
+        "efforts": efforts,
+        "repeats": repeats[:3],
+        "longest_clear": [
+            {
+                "from_mi": round(a, 2),
+                "to_mi": round(b, 2),
+                "effort_minutes": round(minutes(b) - minutes(a), 1),
+                **({"roads": roads_at(a, b)} if roads_at else {}),
+            }
+            for a, b in sorted(longest)
+        ],
+        "breaks": counts,
+    }
+    if repeats:
+        out["repeat_note"] = (
+            f"a repeat holds all {sets} sets: ride it up for each effort, back down to recover"
+        )
+    if answer.get("junctions_debug") is None:
+        out["note"] = "only flagged junctions were read: a quiet stop sign may be missing"
+    return out
+
+
+def _intervals_asked(value) -> dict | None:
+    """The interval set asked for, checked, or None."""
+    if value is None or value is False:
+        return None
+    if value is True:
+        value = {}
+    if not isinstance(value, dict):
+        raise ToolError("intervals is {on_minutes, off_minutes, sets, pace_mph}")
+    asked = {}
+    for key, low, high in (
+        ("on_minutes", 0.5, 60),
+        ("off_minutes", 0, 60),
+        ("sets", 1, 30),
+        ("pace_mph", 4, 35),
+    ):
+        if value.get(key) is not None:
+            try:
+                number = float(value[key])
+            except (TypeError, ValueError):
+                raise ToolError(f"intervals.{key} is a number") from None
+            if not low <= number <= high:
+                raise ToolError(f"intervals.{key} is {low:g} to {high:g}")
+            asked[key] = number
+    return asked or {"on_minutes": 5}
+
+
+def _roads_between(answer: dict):
+    stretches = _stretches(answer)
+
+    def roads_at(a: float, b: float) -> list[str]:
+        names = [
+            _street(e)
+            for e in stretches
+            if min(e["to_mi"], b) - max(e["from_mi"], a) >= 0.1 and _street(e) not in NAMELESS
+        ]
+        return list(dict.fromkeys(names))[:4]
+
+    return roads_at
+
+
+def route_details(plan: Plan) -> dict:
+    """What the route rides, for the answer: its roads, busy stretches, very-high-stress
+    junctions, scenic roads and small detours."""
+    answer = plan.answer
+    out: dict = {}
+    roads = road_list(answer)
+    if roads:
+        out.update(roads)
+    if answer.get("description") or answer.get("description_overview"):
+        out["busy_stretches"] = busy_stretches(answer)
+        # What the list leaves out (short LTS 3 bits, past MAX_BUSY_ROWS), so it adds up.
+        stress = answer.get("stress_m") or {}
+        total = sum(stress.get(k, 0.0) or 0.0 for k in ("3", "4", "5")) / METRES_PER_MILE
+        unlisted = total - sum(b["miles"] for b in out["busy_stretches"])
+        if unlisted >= 0.1:
+            out["busy_unlisted_mi"] = round(unlisted, 1)
+    if answer.get("intersections") is not None:
+        out["junctions"] = risky_junctions(answer)
+    scenic: dict[tuple[str, str], float] = {}
+    for s in _scenic_rows(answer):
+        key = (s["road"], s["designation"])
+        scenic[key] = scenic.get(key, 0.0) + s["to_mi"] - s["from_mi"]
+    if scenic:
+        out["scenic_roads"] = [
+            {"road": road, "designation": what, "miles": round(miles, 1)}
+            for (road, what), miles in scenic.items()
+            if miles >= 0.05
+        ]
+    stops = [plan.points[i] for i in range(1, len(plan.points) - 1) if i not in set(plan.vias)]
+    if not answer.get("loop"):
+        detours = small_detours(
+            plan.line,
+            stops,
+            _street_finder(answer),
+            (answer.get("distance_m") or 0.0) / METRES_PER_MILE,
+        )
+        if detours:
+            out["small_detours"] = detours
+    spurs = via_spurs(plan)
+    if spurs:
+        out["via_spurs"] = spurs
+    out.update(route_closures(plan))
+    return out
+
+
+# --- Closures, for an assistant to say ---------------------------------------------------------
+#
+# The owner, 2026-10-25, after a connector route ran along Lake Frank's closed Lakeside Trail
+# ("make sure that the MCP server has access to the closure list"): the site's answer said the
+# route went through, but the summary left it out. A route's closures and a place's are said.
+
+# A closure's effect on the route, as the site names it (`routemaker.workzones`), and the ones
+# worth saying: "none" is no effect, "possible" a DDOT permit that is never routed round.
+CLOSURE_SAID = ("on_route", "may_still_apply", "routed_round", "bypassed")
+# A stop or via point reached this close to a closed stretch is on it (metres along the route).
+ON_CLOSURE_M = 30.0
+CLOSURES_NEAR_MAX_MI = 10.0  # the site's map view is at most 0.4 by 0.3 degrees
+
+
+def _resampled_lonlat(line: list, step_mi: float = 0.02) -> list[tuple[float, float]]:
+    """The line's points, with more between any two further apart than `step_mi`."""
+    out = [(line[0][0], line[0][1])]
+    for p, q in zip(line, line[1:], strict=False):
+        n = max(1, math.ceil(haversine_mi((p[0], p[1]), (q[0], q[1])) / step_mi))
+        out.extend(
+            (p[0] + (q[0] - p[0]) * k / n, p[1] + (q[1] - p[1]) * k / n) for k in range(1, n + 1)
+        )
+    return out
+
+
+def _points_along(plan: Plan) -> list[tuple[int, float]]:
+    """Each stop or via point and the metres along the route where it is reached (the end of
+    its leg, `leg_ends`), on the answer's own scale."""
+    ends = plan.answer.get("leg_ends") or []
+    line = plan.line
+    if len(ends) != len(plan.points) - 1 or len(line) < 2:
+        return []
+    cum = [0.0]
+    for p, q in zip(line, line[1:], strict=False):
+        cum.append(cum[-1] + haversine_mi((p[0], p[1]), (q[0], q[1])) * METRES_PER_MILE)
+    scale = (plan.answer.get("distance_m") or cum[-1]) / (cum[-1] or 1.0)
+    return [(i + 1, cum[min(end, len(cum) - 1)] * scale) for i, end in enumerate(ends[:-1])]
+
+
+def _closure_id(row: dict) -> str:
+    """The closure a row is part of: a reviewer's closure comes as a row for each of its ways,
+    `reviewer-{closure}-{way}`."""
+    zone_id = str(row.get("id") or "")
+    if row.get("source") == "reviewer":
+        return re.sub(r"-\d+$", "", zone_id)
+    return zone_id or str((row.get("title"), row.get("when_text")))
+
+
+def _closure_row(row: dict) -> dict:
+    """One closure as an assistant tells it: what, until when, what it does, and who says so."""
+    out = {
+        "what": row.get("title") or row.get("road") or "closure",
+        "when": row.get("when_text"),
+        "effect": row.get("effect"),
+        "says": row.get("effect_text"),
+        "source": row.get("source_name"),
+        "url": row.get("url"),
+    }
+    if row.get("delay_s"):
+        out["detour_minutes"] = round(row["delay_s"] / 60)
+    return {k: v for k, v in out.items() if v is not None}
+
+
+def _notice_row(row: dict) -> dict:
+    """A "Check before you go" notice on the route (an NPS park alert, or a park's deer-
+    management closure at the ride's time, v0.12.3): a warning, never routed round."""
+    out = {
+        "where": row.get("area_name"),
+        "what": row.get("title"),
+        "when": row.get("when_text"),
+        "says": row.get("text"),
+        "source": row.get("source_name"),
+        "url": row.get("url"),
+    }
+    return {k: v for k, v in out.items() if v}
+
+
+def route_closures(plan: Plan) -> dict:
+    """The closures the site found on or round the route, one row per closure (a reviewer's
+    closure comes as a row for each of its ways), and the points that sit on one."""
+    zones = plan.answer.get("work_zones")
+    if not isinstance(zones, dict):
+        return {}
+    rows: dict[tuple, dict] = {}
+    spans: list[tuple[float, float, tuple]] = []  # where the route rides through one, metres
+    for row in zones.get("closures") or []:
+        if row.get("effect") not in CLOSURE_SAID:
+            continue
+        key = (_closure_id(row), row.get("effect"))
+        kept = rows.setdefault(key, _closure_row(row))
+        if row.get("from_m") is not None and row.get("to_m") is not None:
+            a = round(row["from_m"] / METRES_PER_MILE, 1)
+            b = round(row["to_m"] / METRES_PER_MILE, 1)
+            kept["from_mi"] = min(kept.get("from_mi", a), a)
+            kept["to_mi"] = max(kept.get("to_mi", b), b)
+            # A blocked bike lane leaves the road open: listed, not warned about.
+            if row["effect"] == "on_route" and row.get("kind") != "lane":
+                spans.append((row["from_m"], row["to_m"], key))
+    notices = [_notice_row(n) for n in zones.get("notices") or [] if isinstance(n, dict)]
+    if not rows and not notices:
+        return {}
+    said = sorted(rows.values(), key=lambda r: (r["effect"] != "on_route", r.get("from_mi", 0)))
+    out: dict = {"closures": said}
+    if notices:
+        out["check_before_you_go"] = notices
+    if zones.get("ride_at"):
+        # A shared route's answer (open_link) is as it was planned: say for when.
+        out["closures_checked_for"] = zones["ride_at"]
+    if spans:
+        # A point reached on a closed stretch makes the router ride it (a landmark only the
+        # closed path goes past): the likeliest reason it found no way round.
+        on = []
+        for i, metres in _points_along(plan):
+            key = next(
+                (k for a, b, k in spans if a - ON_CLOSURE_M <= metres <= b + ON_CLOSURE_M), None
+            )
+            if key is not None:
+                on.append(f"point {i} ({rows[key]['what']}, {rows[key]['when']})")
+        words = "The route goes through a closure: tell the rider."
+        if on:
+            words += (
+                f" Reached on a closed stretch: {'; '.join(on)}. Move it off the closed path"
+                " and plan again."
+            )
+        else:
+            words += " The router found no way round from these points: try others."
+        out["closure_warning"] = words
+    return out
+
+
 @dataclass
 class Draft:
     """A planned route the rider has not kept yet, with what it was planned with."""
@@ -694,6 +1847,8 @@ class Draft:
     options: dict
     limit: float | None
     name: str
+    trim_spurs: bool = True
+    intervals: dict | None = None
 
 
 @dataclass
@@ -996,6 +2151,41 @@ RIDE_OPTIONS = {
     },
 }
 
+INTERVALS = {
+    "type": "object",
+    "description": (
+        "Check the route for interval training: where an effort of on_minutes can run"
+        " without a stop sign, signal, busy road to cross, sharp turn, descent or LTS 4"
+        " road (climbs are fine and slow the effort's pace). The answer's `intervals` says"
+        " `sets_in_one_session`: how many sets fit riding the route through with each rest"
+        " near off_minutes (lap after lap where it ends where it began), each effort's"
+        " miles, roads and rest; the `repeats`: clear climbs to ride up for each effort and"
+        " back down to recover (one direction only needs to be clear), the longest clear"
+        " stretches and what breaks the rest. For a repeat, plan just the stretch, in the"
+        " effort's direction."
+    ),
+    "properties": {
+        "on_minutes": {"type": "number", "default": 5},
+        "off_minutes": {"type": "number", "default": 3},
+        "sets": {"type": "integer", "default": 5},
+        "pace_mph": {
+            "type": "number",
+            "default": 18,
+            "description": "The effort's pace on the flat; climbs are slower.",
+        },
+    },
+}
+
+TRIM_SPURS = {
+    "type": "boolean",
+    "default": True,
+    "description": (
+        f"Where the route reaches a via point by an out-and-back of {SPUR_MI:g} mi or more, move"
+        " the point to where the spur leaves the road and plan again (kept when shorter). False"
+        " keeps the via points where they are."
+    ),
+}
+
 # The plan tools' options, as POST /api/route names them (all optional).
 PASSED_OPTIONS = (
     "stress",
@@ -1020,11 +2210,12 @@ TOOLS = [
         "name": "find_place",
         "description": (
             "Search RouteMaker's place search (DC to Baltimore) for a place, address or street;"
-            " returns up to five matches with [lon, lat]."
+            " returns up to five matches with [lon, lat]. Give near (a point of the route) to"
+            " search around it: a road name such as 'Moore Road' exists in several counties."
         ),
         "inputSchema": {
             "type": "object",
-            "properties": {"query": {"type": "string", "minLength": 2}},
+            "properties": {"query": {"type": "string", "minLength": 2}, "near": POINT_SCHEMA},
             "required": ["query"],
         },
         "annotations": {"readOnlyHint": True, "openWorldHint": False},
@@ -1045,6 +2236,97 @@ TOOLS = [
         "annotations": {"readOnlyHint": True, "openWorldHint": False},
     },
     {
+        "name": "scenic_roads_near",
+        "description": (
+            "List the designated scenic roads near a point (nearest first, up to 25):"
+            " Montgomery County Rustic and Exceptional Rustic Roads, Maryland Scenic Byways,"
+            " the East Coast Greenway and US Bicycle Routes, each with its name, miles in"
+            " reach, miles at each traffic-stress level, and a [lon, lat] on it. Use it when a"
+            " rider asks for rustic, scenic or country roads: put via points on the ones that"
+            " fit (lower LTS first) and plan. Several rustic roads rate LTS 3 or 4, and the"
+            " router will not pick them on its own."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "near": POINT_SCHEMA,
+                "within_miles": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 15,
+                    "default": 5,
+                },
+                "designation": {
+                    "type": "string",
+                    "description": "Only these, by a word of the designation: 'rustic', 'byway'.",
+                },
+            },
+            "required": ["near"],
+        },
+        "annotations": {"readOnlyHint": True, "openWorldHint": False},
+    },
+    {
+        "name": "climbs_near",
+        "description": (
+            "List the categorised climbs near a point (Cat 5 to HC, from the Climbs map"
+            " layer): name, miles, gain, average grade, surface, its foot and summit and"
+            " `through` points up it, and `effort_minutes`, the time up it at pace_mph."
+            " For hill repeats in an interval session (ride up for each effort, back down to"
+            " recover; a steep climb needs the least road), pass on_minutes: only climbs"
+            " long enough are listed, steepest first, and the first few are planned up and"
+            " checked (`clear`): whether an effort fits with no stop, signal, busy crossing"
+            " or sharp turn. Plan a repeat with plan_route from its foot through its"
+            " `through` points (as via points) to its summit. Climbs mostly on LTS 3+ roads"
+            " and unpaved ones are left out unless asked."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "near": POINT_SCHEMA,
+                "within_miles": {"type": "number", "exclusiveMinimum": 0, "default": 3},
+                "min_grade": {"type": "number", "minimum": 0, "description": "%"},
+                "on_minutes": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "description": "An effort's minutes: list climbs that hold one, checked.",
+                },
+                "pace_mph": {"type": "number", "default": 18},
+                "check": {"type": "boolean", "default": True},
+                "include_busy": {"type": "boolean", "default": False},
+                "include_unpaved": {"type": "boolean", "default": False},
+            },
+            "required": ["near"],
+        },
+        "annotations": {"readOnlyHint": True, "openWorldHint": False},
+    },
+    {
+        "name": "closures_near",
+        "description": (
+            "List the closures and construction in force now near a point, nearest first: trail"
+            " and road closures from Maryland SHA, NPS, MPD and RouteMaker's reviewers (Lake"
+            " Frank's Lakeside Trail, say), blocked bike lanes and rideable work zones, each"
+            " with what is closed, until when, the source and its link. Use it before"
+            " suggesting a park, trail or place to ride, and say the closures. plan_route"
+            " already routes round closures and lists those on or round its route; DDOT's"
+            " permits (which may never close anything) only with include_permits."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "near": POINT_SCHEMA,
+                "within_miles": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": CLOSURES_NEAR_MAX_MI,
+                    "default": 2,
+                },
+                "include_permits": {"type": "boolean", "default": False},
+            },
+            "required": ["near"],
+        },
+        "annotations": {"readOnlyHint": True, "openWorldHint": False},
+    },
+    {
         "name": "plan_route",
         "description": (
             "Plan a bike route on RouteMaker through 2 to 25 points (start, stops or via points,"
@@ -1053,6 +2335,22 @@ TOOLS = [
             " it comes back with a draft_id and a link that opens this exact route in the app"
             " (a shared link, as the app's Share makes), and nothing is saved to My routes."
             " Revise it with revise_route; keep it with save_route once the rider is happy."
+            " The answer also says what the route rides: `roads` in order (miles, main and"
+            " worst LTS, facility, and `scenic` for a rustic road, scenic byway, the East Coast"
+            " Greenway or a US Bicycle Route), `busy_stretches` (where it rides LTS 3 and up),"
+            " `junctions` (very-high-stress crossings and turns), `scenic_roads`, and"
+            " `small_detours` / `via_spurs` (where it leaves a road and comes back to it, or"
+            " goes out and back to a via point; riders rarely want these: move or drop the"
+            " point with revise_route). To shape a route onto roads the router does not pick"
+            " on its own (a rustic road, a trail; scenic_roads_near lists them), add via points"
+            " ON those roads, by [lon, lat]"
+            " or by name: a name is searched near the route's other points, and an ambiguous"
+            " one is asked back. `closures` lists the closures it goes through or round, and"
+            " `closure_warning` says when one is on the route (often a via point only a closed"
+            " path reaches: move it); `check_before_you_go` lists park notices for the ride's"
+            " time, such as a deer-management closure at night (warnings, not routed round)."
+            " Read these before sending the link, and say the busy parts, any closure and any"
+            " notice."
             " With max_miles_from_metro it checks the distance from Metro and, with"
             " fix_metro_rounds, adds the nearest station as a via point where the route strays."
         ),
@@ -1064,6 +2362,17 @@ TOOLS = [
                     "items": POINT_SCHEMA,
                     "minItems": 2,
                     "maxItems": MAX_POINTS,
+                },
+                "best_order": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": (
+                        "Alleycat or errand checkpoints: keep the first point (start) and the"
+                        " last (finish) and visit the points between in the quickest order."
+                        " The shortest orders by straight line are planned and the quickest"
+                        " ridden one kept; `checkpoint_order` says the order. Not with"
+                        " via_points or loop."
+                    ),
                 },
                 "via_points": {
                     "type": "array",
@@ -1079,6 +2388,8 @@ TOOLS = [
                     "description": "Come back to the start by a different way.",
                 },
                 "fix_metro_rounds": {"type": "integer", "minimum": 0, "maximum": 4, "default": 0},
+                "trim_spurs": TRIM_SPURS,
+                "intervals": INTERVALS,
                 **RIDE_OPTIONS,
             },
             "required": ["points"],
@@ -1210,6 +2521,8 @@ TOOLS = [
                 },
                 "loop": {"type": "boolean"},
                 "fix_metro_rounds": {"type": "integer", "minimum": 0, "maximum": 4},
+                "trim_spurs": TRIM_SPURS,
+                "intervals": INTERVALS,
                 **{
                     k: {kk: vv for kk, vv in v.items() if kk != "default"}
                     for k, v in RIDE_OPTIONS.items()
@@ -1462,6 +2775,14 @@ def kept_route(plan: Plan, name: str, fragment: str, dials: dict) -> dict:
     }
 
 
+def _neighbours(points: list, i: int) -> list[tuple[float, float]]:
+    """The points already found, nearest in the list to place `i` first."""
+    order = sorted(
+        (k for k, p in enumerate(points) if p is not None and k != i), key=lambda k: abs(k - i)
+    )
+    return [points[k] for k in order]
+
+
 class Server:
     def __init__(
         self,
@@ -1472,6 +2793,7 @@ class Server:
         files: bool = True,
         gpx_link=None,
         posts: bool = False,
+        icons: list[dict] | None = None,
     ):
         self._api_factory = api_factory
         self._api: Api | None = None
@@ -1486,6 +2808,9 @@ class Server:
         self.gpx_link = gpx_link
         # Whether draft_route_post is offered: on the site's connector, for an instance admin.
         self.posts = posts
+        # On the site: the app's icons, for serverInfo (MCP 2025-11-25), so an assistant app
+        # that shows them draws RouteMaker's logo beside the connector.
+        self.icons = icons or []
 
     def tools(self) -> list[dict]:
         """The tools, as tools/list gives them: without the post tool unless posts may be
@@ -1508,17 +2833,151 @@ class Server:
 
     # find_place
     def find_place(self, args: dict, call: Call) -> dict:
-        results = self.api.geocode(str(args["query"]))
+        near = None
+        if args.get("near") is not None:
+            near, _ = as_point(args["near"], self.api, self.stations)
+        rows = []
+        for r in self.api.geocode(str(args["query"]), near):
+            row = {
+                "name": r["name"],
+                "label": r["label"],
+                "lon_lat": [r["lon"], r["lat"]],
+                "kind": r.get("kind"),
+            }
+            if near:
+                row["miles_from_near"] = round(haversine_mi(near, (r["lon"], r["lat"])), 1)
+            rows.append(row)
+        return {"results": rows}
+
+    # scenic_roads_near
+    def scenic_roads_near(self, args: dict, call: Call) -> dict:
+        near, _ = as_point(args["near"], self.api, self.stations)
+        try:
+            miles = min(15.0, max(0.5, float(args.get("within_miles") or 5)))
+        except (TypeError, ValueError):
+            raise ToolError("within_miles is a number") from None
+        roads = self.api.scenic_roads(near, miles, str(args.get("designation") or "").strip())
         return {
-            "results": [
-                {
-                    "name": r["name"],
-                    "label": r["label"],
-                    "lon_lat": [r["lon"], r["lat"]],
-                    "kind": r.get("kind"),
-                }
-                for r in results
-            ]
+            "roads": roads,
+            "source": "Montgomery County Planning (Rustic Roads), MDOT SHA (Scenic Byways),"
+            " OpenStreetMap (East Coast Greenway, US Bicycle Routes)",
+        }
+
+    # climbs_near
+    def climbs_near(self, args: dict, call: Call) -> dict:
+        near, _ = as_point(args["near"], self.api, self.stations)
+        try:
+            miles = min(15.0, max(0.5, float(args.get("within_miles") or 3)))
+            min_grade = min(30.0, max(0.0, float(args.get("min_grade") or 0)))
+            on_min = float(args.get("on_minutes") or 0)
+            pace = float(args.get("pace_mph") or 18)
+        except (TypeError, ValueError):
+            raise ToolError(
+                "within_miles, min_grade, on_minutes and pace_mph are numbers"
+            ) from None
+        if not 4 <= pace <= 35:
+            raise ToolError("pace_mph is 4 to 35")
+        if not 0 <= on_min <= 60:
+            raise ToolError("on_minutes is 0 to 60")
+        filters = {
+            "min_grade": min_grade,
+            "paved_only": not args.get("include_unpaved"),
+            "quiet_only": not args.get("include_busy"),
+        }
+        if on_min:
+            filters.update(on_minutes=on_min, pace_mph=pace, steepest=True)
+        found = self.api.climbs_near(near, miles, **filters)
+        for climb in found:
+            climb["effort_minutes"] = climb_minutes(climb["miles"], climb["grade_pct"], pace)
+        if on_min:
+            # Long enough for one effort up it, steepest first: the least road for the work.
+            found = [c for c in found if c["effort_minutes"] >= on_min]
+            found.sort(key=lambda c: (-c["grade_pct"], c["away_mi"]))
+        checked = 0
+        if on_min and args.get("check", True):
+            for climb in found[:CLIMB_CHECKS]:
+                call.check()
+                if not call.time_for_another_plan():
+                    break
+                climb["clear"] = self._climb_clear(climb, on_min, pace)
+                checked += 1
+        out = {
+            "climbs": found,
+            "checked": checked,
+            "source": "Climbs layer: OpenStreetMap (ODbL) and USGS 3DEP elevation",
+        }
+        if any(c.get("busy") is None for c in found):
+            out["note"] = "this map's climbs file does not mark busy roads: check each one's LTS"
+        return out
+
+    def _climb_clear(self, climb: dict, on_min: float, pace: float) -> dict:
+        """Whether an effort of on_min fits up the climb unbroken: its plan from the foot
+        through its points to the summit, read by `interval_check`, if the plan rides it."""
+        points = [climb["foot"], *climb.get("through", []), climb["summit"]]
+        vias = list(range(1, len(points) - 1))
+        try:
+            plan = plan_once(
+                self.api, self.stations, points, vias, "default", {"debug_junctions": True}, None
+            )
+        except ToolError as error:
+            return {"checked": False, "why": str(error)}
+        planned_mi = (plan.answer.get("distance_m") or 0.0) / METRES_PER_MILE
+        if not CLIMB_RIDDEN[0] <= planned_mi / max(climb["miles"], 0.01) <= CLIMB_RIDDEN[1]:
+            return {
+                "checked": False,
+                "why": f"the plan up it ran {planned_mi:.2f} mi, off the climb",
+            }
+        out = interval_check(
+            plan.answer,
+            {"on_minutes": on_min, "sets": 1, "pace_mph": pace},
+            _roads_between(plan.answer),
+        )
+        longest = max(out["longest_clear"], key=lambda c: c["effort_minutes"], default=None)
+        return {
+            "checked": True,
+            "effort_fits": bool(out["efforts"]),
+            "longest_clear_minutes": longest["effort_minutes"] if longest else 0.0,
+            "breaks": out["breaks"],
+        }
+
+    # closures_near
+    def closures_near(self, args: dict, call: Call) -> dict:
+        near, _ = as_point(args["near"], self.api, self.stations)
+        try:
+            miles = min(CLOSURES_NEAR_MAX_MI, max(0.25, float(args.get("within_miles") or 2)))
+        except (TypeError, ValueError):
+            raise ToolError("within_miles is a number") from None
+        lat_deg = miles / (EARTH_RADIUS_MI * math.radians(1))
+        lon_deg = lat_deg / math.cos(math.radians(near[1]))
+        box = (near[0] - lon_deg, near[1] - lat_deg, near[0] + lon_deg, near[1] + lat_deg)
+        # One row per closure: a reviewer's comes as a row for each of its ways.
+        found: dict[tuple, dict] = {}
+        for row in self.api.closures_map(box, bool(args.get("include_permits"))):
+            line = row.get("line") or [row.get("point")]
+            dense = _resampled_lonlat(line)
+            away, at = min((haversine_mi(near, p), p) for p in dense)
+            if away > miles:
+                continue
+            said = _closure_row(row)
+            said.pop("effect", None)
+            said["kind"] = row.get("kind")
+            key = _closure_id(row)
+            length = sum(haversine_mi(p, q) for p, q in zip(dense, dense[1:], strict=False))
+            kept = found.get(key)
+            if kept is None:
+                found[key] = kept = {**said, "miles": 0.0, "away_mi": away, "lon_lat": at}
+            kept["miles"] += length
+            if away < kept["away_mi"]:
+                kept["away_mi"], kept["lon_lat"] = away, at
+        rows = sorted(found.values(), key=lambda r: r["away_mi"])
+        for r in rows:
+            r["miles"] = round(r["miles"], 1)
+            r["away_mi"] = round(r["away_mi"], 1)
+            r["lon_lat"] = [round(r["lon_lat"][0], 6), round(r["lon_lat"][1], 6)]
+        return {
+            "closures": rows,
+            "within_miles": round(miles, 1),
+            "note": "in force now; plan_route also checks the ride's own day",
         }
 
     # metro_stations
@@ -1570,12 +3029,43 @@ class Server:
             },
         }
 
-    def _point(self, value, taken: list[dict]) -> tuple[float, float]:
-        """as_point, noting what a named point was taken as so the answer can say."""
-        point, label = as_point(value, self.api, self.stations)
+    def _point(self, value, taken: list[dict], neighbours=None) -> tuple[float, float]:
+        """as_point, noting what a named point was taken as so the answer can say, and the
+        other places the name could have meant."""
+        others: list[dict] = []
+        point, label = as_point(value, self.api, self.stations, neighbours, others)
         if isinstance(value, str):
-            taken.append({"asked": value, "taken_as": label, "at": list(point)})
+            row = {"asked": value, "taken_as": label, "at": list(point)}
+            if others:
+                row["also_matches"] = [
+                    {"label": r["label"], "lon_lat": [r["lon"], r["lat"]]} for r in others[:4]
+                ]
+                row["why"] = (
+                    "the match nearest the route's other points"
+                    if neighbours
+                    else "the place search's first match"
+                )
+            taken.append(row)
         return point
+
+    def _points(self, values: list, taken: list[dict]) -> list[tuple[float, float]]:
+        """Every point, [lon, lat] and station names first, then each place name searched near
+        the points already found, those beside it in the list first."""
+        found: list = [None] * len(values)
+        named = []
+        for i, value in enumerate(values):
+            if isinstance(value, str) and find_station(value.strip(), self.stations) is None:
+                named.append(i)
+            else:
+                found[i] = self._point(value, taken)
+        for i in named:
+            found[i] = self._point(values[i], taken, _neighbours(found, i))
+        if named and len(named) == len(values) and taken and taken[0].get("also_matches"):
+            # Every point a name: the first was taken with nothing to go by, so it is searched
+            # again near the others.
+            taken.pop(0)
+            found[named[0]] = self._point(values[named[0]], taken, _neighbours(found, named[0]))
+        return found
 
     def _draft(
         self,
@@ -1586,9 +3076,11 @@ class Server:
         name: str,
         revised_from=None,
         taken: list[dict] | None = None,
+        trim_spurs: bool = True,
+        intervals: dict | None = None,
     ) -> dict:
         """Keep the plan as a draft and describe it: nothing is saved or written."""
-        draft_id = self.drafts.put(Draft(plan, dict(options), limit, name))
+        draft_id = self.drafts.put(Draft(plan, dict(options), limit, name, trim_spurs, intervals))
         dials = self._dials(plan)
         fragment = plan_fragment(plan.points, plan.vias, plan.preset, dials, plan.sent)
         notes = list(notes)
@@ -1608,6 +3100,7 @@ class Server:
         out = {
             "draft_id": draft_id,
             "summary": summary(plan.answer),
+            **route_details(plan),
             "points": [list(p) for p in plan.points],
             "via_points": plan.vias,
             "preset": plan.preset,
@@ -1628,6 +3121,8 @@ class Server:
             out["points_taken_as"] = taken
         if revised_from:
             out["revised_from"] = revised_from
+        if intervals:
+            out["intervals"] = interval_check(plan.answer, intervals, _roads_between(plan.answer))
         if plan.check is not None:
             out["metro_check"] = plan.check
         if notes:
@@ -1635,10 +3130,14 @@ class Server:
         out["credit"] = plan.answer.get("attribution", [])
         return out
 
-    def _plan_and_fix(self, call: Call, points, vias, preset, options, limit, rounds):
+    def _plan_and_fix(
+        self, call: Call, points, vias, preset, options, limit, rounds, trim_spurs=True, first=None
+    ):
+        """The plan through the points (or `first`, one already planned through them), with
+        Metro fixes and spurs trimmed as asked, and notes on what was done."""
         notes: list[str] = []
         call.report(0, rounds + 1, "planning the route")
-        plan = self._plan(call, points, vias, preset, options, limit)
+        plan = first or self._plan(call, points, vias, preset, options, limit)
         for done in range(rounds if limit else 0):
             fix = with_metro_fix(plan, self.stations)
             if fix is None:
@@ -1654,6 +3153,30 @@ class Server:
                 f"{again.check['miles_over_limit']} mi over the limit"
             )
             if again.check["miles_over_limit"] <= plan.check["miles_over_limit"]:
+                plan = again
+        pruned = without_spurs(plan) if trim_spurs else None
+        if pruned is not None and call.time_for_another_plan():
+            # A via point off the road through (a pier's end, a landmark beside a trail) is
+            # reached by an out-and-back (the owner, 2026-10-24: "Avoid pointless out and backs
+            # and short spurs"): it moves to where the spur leaves the road and is planned again.
+            new_points, new_vias, moved = pruned
+            call.report(rounds + 1, rounds + 2, "planning again without out-and-backs")
+            again = self._plan(call, new_points, new_vias, preset, options, limit)
+            if again.answer["distance_m"] < plan.answer["distance_m"] and (
+                again.check is None
+                or again.check["miles_over_limit"] <= plan.check["miles_over_limit"]
+            ):
+                which = "; ".join(
+                    f"point {i} from {list(a)} to {list(b)}"
+                    for i, (a, b) in enumerate(zip(plan.points, new_points, strict=True))
+                    if a != b
+                )
+                notes.append(
+                    f"moved {moved} via point{'s' if moved > 1 else ''} the route reached by an"
+                    f" out-and-back to where the spur leaves the road ({which};"
+                    f" {miles_text(plan.answer['distance_m'] - again.answer['distance_m'])}"
+                    " shorter). Plan again with trim_spurs false to keep them where they were."
+                )
                 plan = again
         return plan, notes
 
@@ -1834,7 +3357,7 @@ class Server:
         vias = set(plan.vias)
         taken: list[dict] = []
         if args.get("points"):
-            points = [self._point(p, taken) for p in args["points"]]
+            points = self._points(list(args["points"]), taken)
             vias = set()
         # Moves, additions and removals all name points by their place in the draft (or in
         # `points` when given): each point keeps its first index until the new list is built.
@@ -1844,7 +3367,7 @@ class Server:
             index = int(move["index"])
             if not 0 <= index < count:
                 raise ToolError(f"no point {index} to move")
-            rows[index][1] = self._point(move["to"], taken)
+            rows[index][1] = self._point(move["to"], taken, _neighbours(points, index))
         removed = {int(i) for i in args.get("remove_points") or []}
         for index in removed:
             if not 0 <= index < count:
@@ -1854,7 +3377,7 @@ class Server:
             after = int(add["after"])
             if not 0 <= after < count:
                 raise ToolError(f"no point {after} to add after")
-            point = self._point(add["point"], taken)
+            point = self._point(add["point"], taken, [points[after], *_neighbours(points, after)])
             added.setdefault(after, []).append([None, point, add.get("via", True)])
         built = []
         for row in rows:
@@ -1884,23 +3407,125 @@ class Server:
                 limit = None
             else:
                 options.pop(key, None)
+        intervals = draft.intervals
+        if "intervals" in args:
+            intervals = _intervals_asked(args.get("intervals"))
+        options.pop("debug_junctions", None)
+        if intervals:
+            options["debug_junctions"] = True
         rounds = int(args.get("fix_metro_rounds") or 0)
-        revised, notes = self._plan_and_fix(call, points, vias, preset, options, limit, rounds)
+        trim = bool(args.get("trim_spurs", draft.trim_spurs))
+        revised, notes = self._plan_and_fix(
+            call, points, vias, preset, options, limit, rounds, trim
+        )
         return self._draft(
-            revised, options, limit, notes, draft.name, revised_from=draft_id, taken=taken
+            revised,
+            options,
+            limit,
+            notes,
+            draft.name,
+            revised_from=draft_id,
+            taken=taken,
+            trim_spurs=trim,
+            intervals=intervals,
         )
 
     # plan_route
     def plan_route(self, args: dict, call: Call) -> dict:
         taken: list[dict] = []
-        points = [self._point(p, taken) for p in args["points"]]
+        points = self._points(list(args["points"]), taken)
         vias = [int(i) for i in args.get("via_points") or []]
         preset = args.get("preset") or "default"
         limit = args.get("max_miles_from_metro")
         options = self._options(args)
+        intervals = _intervals_asked(args.get("intervals"))
+        if intervals:
+            # Every junction, quiet stop signs too, for where an effort must stop.
+            options["debug_junctions"] = True
         rounds = int(args.get("fix_metro_rounds") or 0)
-        plan, notes = self._plan_and_fix(call, points, vias, preset, options, limit, rounds)
-        return self._draft(plan, options, limit, notes, "RouteMaker route", taken=taken)
+        trim = bool(args.get("trim_spurs", True))
+        ordered = first = None
+        if args.get("best_order"):
+            first, ordered = self._best_order(call, points, vias, preset, options, limit, taken)
+            points = first.points
+        plan, notes = self._plan_and_fix(
+            call, points, vias, preset, options, limit, rounds, trim, first=first
+        )
+        if ordered:
+            notes.insert(0, ordered["note"])
+            # Numbered as the draft's points are, after any Metro station put in.
+            at = {tuple(p): k for k, p in enumerate(plan.points)}
+            for row in ordered["order"]:
+                row["stop"] = at.get(tuple(row["lon_lat"]), row["stop"])
+        out = self._draft(
+            plan,
+            options,
+            limit,
+            notes,
+            "RouteMaker route",
+            taken=taken,
+            trim_spurs=trim,
+            intervals=intervals,
+        )
+        if ordered:
+            out["checkpoint_order"] = ordered["order"]
+        return out
+
+    def _best_order(self, call: Call, points, vias, preset, options, limit, taken):
+        """The plan through the points with the checkpoints between the first and last in
+        their quickest order (`best_orders`, up to ORDER_TRIES planned while time allows; a
+        try that fails after the first is passed over), and what was done."""
+        if vias:
+            raise ToolError("best_order puts the stops in order: leave via_points out")
+        if options.get("loop"):
+            raise ToolError(
+                "best_order keeps the start and the finish: for a ride back to the start,"
+                " give the start again as the last point, without loop"
+            )
+        if preset in TWO_POINT_PRESETS:
+            raise ToolError(f"{preset} plans from a start and an end only")
+        orders = best_orders(points)
+        tried: list[tuple[float, Plan, list[int]]] = []
+        failed = 0
+        took = 0.0
+        for k, order in enumerate(orders):
+            if tried and call.deadline is not None:
+                # Another try only while one more as long as the last still fits.
+                if time.monotonic() + 1.5 * took + 5 > call.deadline:
+                    break
+            call.check()
+            call.report(k, len(orders), f"trying checkpoint order {k + 1} of {len(orders)}")
+            began = time.monotonic()
+            try:
+                plan = self._plan(call, [points[i] for i in order], [], preset, options, limit)
+            except Cancelled:
+                raise
+            except ToolError:
+                if not tried:
+                    raise
+                failed += 1
+                break
+            took = time.monotonic() - began
+            tried.append((plan.answer.get("duration_s") or math.inf, plan, order))
+        _, plan, order = min(tried, key=lambda row: row[0])
+        asked: dict[tuple, list[str]] = {}
+        for t in taken:
+            if t.get("at"):
+                asked.setdefault(tuple(t["at"]), []).append(t["asked"])
+        named = []
+        for k, i in enumerate(order):
+            row = {"stop": k, "point_given": i, "lon_lat": list(points[i])}
+            if tuple(points[i]) in asked:
+                row["asked"] = " / ".join(asked[tuple(points[i])])
+            named.append(row)
+        minutes = [round(t / 60) for t, _, _ in tried if t != math.inf]
+        count = f"{len(tried)} order{'s' if len(tried) > 1 else ''}"
+        note = f"checkpoints put in order: {count} planned"
+        if minutes:
+            note += f" ({', '.join(f'{m} min' for m in minutes)}), the quickest kept"
+        if len(tried) < len(orders):
+            note += "; " + ("a later try failed" if failed else "no time to try more")
+        return plan, {"order": named, "note": note}
 
     # plan_metro_loop
     def plan_metro_loop(self, args: dict, call: Call) -> dict:
@@ -1944,9 +3569,11 @@ class Server:
                 f" the ring was kept to {fitted:.1f} mi out"
             )
         radius = fitted
+        timed_out = False
         for attempt in range(max_plans):
             if best is not None and not call.time_for_another_plan():
                 notes.append(OUT_OF_TIME)
+                timed_out = True
                 break
             call.report(attempt, max_plans, f"planning loop {attempt + 1} ({len(points)} points)")
             try:
@@ -1985,10 +3612,18 @@ class Server:
             notes.append(f"adding {station} where the loop strayed")
         miles = best.answer["distance_m"] / METRES_PER_MILE
         if not 0.85 <= miles / target <= 1.15:
-            notes.append(
-                f"the loop is {miles:.0f} mi against a target of {target:.0f}: within"
-                f" {limit:g} mi of Metro, the ring could not be made closer"
-            )
+            if timed_out:
+                # Not tried, so not a limit of the ring: say what is left to do.
+                notes.append(
+                    f"the loop is {miles:.0f} mi against a target of {target:.0f}: there was no"
+                    " time to plan it again closer; move its farthest points in with"
+                    " revise_route, or plan a ring of via points on trails with plan_route"
+                )
+            else:
+                notes.append(
+                    f"the loop is {miles:.0f} mi against a target of {target:.0f}: within"
+                    f" {limit:g} mi of Metro, the ring could not be made closer"
+                )
         if start is None:
             begin = tuple(best.points[0])
             near = min(self.stations, key=lambda s: haversine_mi(begin, s.point))
@@ -2006,6 +3641,9 @@ class Server:
         return {
             "find_place": self.find_place,
             "metro_stations": self.metro_stations,
+            "scenic_roads_near": self.scenic_roads_near,
+            "climbs_near": self.climbs_near,
+            "closures_near": self.closures_near,
             "plan_route": self.plan_route,
             "plan_metro_loop": self.plan_metro_loop,
             "open_link": self.open_link,
@@ -2077,7 +3715,12 @@ def handle(server: Server, message, send=_send, calls: dict | None = None) -> di
         result = {
             "protocolVersion": version,
             "capabilities": {"tools": {"listChanged": False}},
-            "serverInfo": {"name": SERVER_NAME, "version": SERVER_VERSION},
+            "serverInfo": {
+                "name": SERVER_NAME,
+                "title": "RouteMaker",
+                "version": SERVER_VERSION,
+                **({"icons": server.icons} if server.icons else {}),
+            },
             "instructions": (
                 "RouteMaker plans bike routes from DC to Baltimore, rated by traffic stress (LTS 1"
                 " calmest to 4, plus Avoid). Pick the ride type and settings that fit the ask."
