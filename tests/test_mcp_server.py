@@ -1,5 +1,6 @@
 """The MCP server (mcp/routemaker_mcp.py; the owner, 2026-10-18): its protocol, its Metro check and
-loop builder against a stand-in planner, and its save against the site's real keyed endpoint."""
+loop builder against a stand-in planner. Saving to My routes is the site connector's
+(tests/test_connector.py); on a rider's own computer save_route writes a GPX file."""
 
 from __future__ import annotations
 
@@ -16,9 +17,6 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 import pytest
-from test_accounts import send, signed_in
-
-from core.models import SavedRoute, SharedRoute
 
 _spec = importlib.util.spec_from_file_location(
     "routemaker_mcp", Path(__file__).resolve().parents[1] / "mcp" / "routemaker_mcp.py"
@@ -141,7 +139,7 @@ def stand_in():
 
 @pytest.fixture
 def tools(stand_in, tmp_path):
-    return mcp.Server(lambda: mcp.Api(stand_in, save_key=""), STATIONS, out_dir=tmp_path)
+    return mcp.Server(lambda: mcp.Api(stand_in), STATIONS, out_dir=tmp_path)
 
 
 def rpc(server, method, params=None, msg_id=1):
@@ -361,7 +359,7 @@ def test_plan_route_answers_a_draft_and_keeps_nothing(tools, stand_in, tmp_path)
     assert not list(tmp_path.iterdir())
     kept = tools.call(
         "save_route",
-        {"draft_id": out["draft_id"], "name": "Takoma", "my_routes": False, "gpx_file": True},
+        {"draft_id": out["draft_id"], "name": "Takoma"},
     )
     gpx = Path(kept["gpx_file"])
     assert gpx.parent == tmp_path and "<trkpt" in gpx.read_text() and "saved" not in kept
@@ -447,64 +445,15 @@ def test_progress_is_reported_when_the_client_asks(tools) -> None:
     assert sent[0]["params"]["progressToken"] == "p1"
 
 
-def test_saving_without_a_key_says_how_to_get_one(tools) -> None:
-    out = rpc(
-        tools,
-        "tools/call",
-        {
-            "name": "save_route",
-            "arguments": {
-                "draft_id": tools.call("plan_route", {"points": [[-77.03, 38.9], [-77.02, 38.91]]})[
-                    "draft_id"
-                ],
-                "name": "Lunch ride",
-            },
-        },
-    )
-    assert out["result"]["isError"] is True
-    assert "Settings > AI assistant key" in out["result"]["content"][0]["text"]
-
-
-# --- Saving, end to end against the site ----------------------------------------------------
-
-
-@pytest.mark.django_db(transaction=True)
-def test_a_planned_route_lands_in_my_routes(live_server, stand_in, tmp_path) -> None:
-    client, user, csrf = signed_in()
-    secret = send(client, "post", "/api/me/assistant-key", {}, csrf).json()["secret"]
-
-    class Both(mcp.Api):
-        """Plans on the stand-in and saves on the live site."""
-
-        def __init__(self):
-            super().__init__(live_server.url, save_key=secret)
-
-        def route(self, body):
-            return mcp.Api(stand_in, save_key="").route(body)
-
-    server = mcp.Server(Both, STATIONS, out_dir=tmp_path)
-    draft = server.call(
-        "plan_route",
-        {"points": [[-77.0365, 38.8977], [-77.0091, 38.8899]], "loop": True, "stress": 75},
-    )
-    assert not SavedRoute.objects.exists()
-    out = server.call("revise_route", {"draft_id": draft["draft_id"], "stress": 80})
-    assert not SavedRoute.objects.exists()
-    saved = server.call("save_route", {"draft_id": out["draft_id"], "name": "MCP loop"})
-    assert saved["saved"]["name"] == "MCP loop"
-    row = SavedRoute.objects.get(user=user)
-    assert row.name == "MCP loop" and row.source == "plan"
-    assert row.inputs["hash"] + "&route=" in out["link"]
-    # The link opens the exact route: the site keeps its line under the link's id.
-    route_id = out["link"].rsplit("route=", 1)[1]
-    shared = SharedRoute.objects.get(pk=route_id)
-    assert out["link"].startswith(f"{live_server.url}/s/{route_id}#p=")
-    assert [v[:2] for v in shared.line] == [v[:2] for v in row.line]
-    assert row.inputs["dials"]["stress"] == 80 and row.inputs["dials"]["loop"] is True
-    assert row.answer["candidates"] is None
-    # The rider sees it in My routes, and opens it as the page opens any saved route.
-    listed = client.get("/api/me/routes").json()["routes"]
-    assert [r["name"] for r in listed] == ["MCP loop"]
+def test_saving_on_the_rider_s_computer_writes_a_file_and_says_where_my_routes_is(
+    tools, tmp_path
+) -> None:
+    draft = tools.call("plan_route", {"points": [[-77.03, 38.9], [-77.02, 38.91]]})
+    out = tools.call("save_route", {"draft_id": draft["draft_id"], "name": "Lunch ride"})
+    assert Path(out["gpx_file"]).parent == tmp_path and "saved" not in out
+    assert "connector" in out["notes"][0]
+    save = next(t for t in tools.tools() if t["name"] == "save_route")
+    assert set(save["inputSchema"]["properties"]) == {"draft_id", "name"}
 
 
 def test_the_assistant_picks_the_ride_type_and_any_setting(tools) -> None:
@@ -563,12 +512,7 @@ def test_a_loop_whose_first_plan_fails_says_why(tools) -> None:
 
 
 def test_a_cancelled_call_is_not_answered_and_saves_nothing(tools, tmp_path) -> None:
-    class Saving(mcp.Api):
-        def save(self, body):  # pragma: no cover - must not be reached
-            raise AssertionError("saved after the client gave up")
-
     draft = tools.call("plan_route", {"points": [[-77.03, 38.9], [-77.02, 38.91]]})
-    tools._api = Saving(tools.api.base, save_key="rmk_x")
     # main() registers the call before its thread starts, so a cancellation read straight
     # after it still reaches it.
     calls = {9: mcp.Call()}
@@ -585,7 +529,7 @@ def test_a_cancelled_call_is_not_answered_and_saves_nothing(tools, tmp_path) -> 
             "method": "tools/call",
             "params": {
                 "name": "save_route",
-                "arguments": {"draft_id": draft["draft_id"], "name": "x", "gpx_file": True},
+                "arguments": {"draft_id": draft["draft_id"], "name": "x"},
             },
         },
         calls=calls,
@@ -605,18 +549,12 @@ def test_a_cancellation_reaches_the_call_it_names(tools) -> None:
     assert running.cancelled.is_set()
 
 
-def test_a_password_gated_site_gets_its_password_and_the_key_its_own_header(
-    tools, stand_in, monkeypatch
-) -> None:
+def test_a_password_gated_site_gets_its_password(tools, stand_in, monkeypatch) -> None:
     monkeypatch.setenv("ROUTEMAKER_BASIC_AUTH", "rider:secret")
-    api = mcp.Api(stand_in, save_key="rmk_abc")
-    with pytest.raises(mcp.ToolError):
-        api.save({"name": "x"})  # the stand-in has no save endpoint
+    api = mcp.Api(stand_in)
     api.route({"points": [[-77.03, 38.9], [-77.02, 38.91]], "preset": "default"})
     for seen in StandIn.headers_seen:
         assert seen["authorization"] == "Basic cmlkZXI6c2VjcmV0"
-    assert StandIn.headers_seen[0]["x-routemaker-key"] == "rmk_abc"
-    assert "x-routemaker-key" not in StandIn.headers_seen[1]
 
 
 # --- Drafts: revise, open from a link, save ------------------------------------------------

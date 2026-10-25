@@ -16,7 +16,7 @@ comes from:
 - Discord sign-in: core.discord_oauth (identify scope, no token kept) and core.models.User (the
   Discord id and dates only); the bot's role cache: core.membership.
 - What an account keeps: core.models MyGo, AccountSettings (frontend/src/lib/accountSettings.ts,
-  weight included), Report311Log, SavedRoute and SavedRouteVersion, AssistantKey (a digest), and
+  weight included), Report311Log, SavedRoute and SavedRouteVersion, and
   ConnectorGrant and ConnectorDraft (core.connector).
 - Shared links: core.shared_routes (keeping, no weight, owner only) and core.share_preview (Home
   left out of the preview).
@@ -182,8 +182,7 @@ SECTIONS: list[tuple[str, str]] = [
                 "My Go: the view the app opens in, your ride type, and Home (one point and its "
                 "label).",
                 "Your 311 log (below).",
-                "An AI assistant key, kept only as a one-way code, and the assistant apps you "
-                "connected, with the routes they drafted for a week.",
+                "The assistant apps you connected, with the routes they drafted for a week.",
             ]
         )
         + _p(

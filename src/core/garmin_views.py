@@ -11,7 +11,7 @@
   already knows (Garmin's are opaque).
 
 `disconnect` (Settings and account deletion) and `access_for` (sending a course) are the account
-actions; the Settings endpoints are in core.api beside the AI assistant key.
+actions; the Settings endpoints are in core.api beside the connected assistant apps.
 """
 
 from __future__ import annotations

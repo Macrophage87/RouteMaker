@@ -7,7 +7,7 @@ Settings > Account links to it, so the app and the web share one confirmation an
 
 The account row itself is deleted, not flagged. What is the rider's own goes with it, by the models'
 CASCADE (sessions, My Go with Home, synced settings, the 311 log, saved routes and their versions,
-the AI assistant key, the Garmin and Wahoo connections), or here, before it (shared links,
+the Garmin and Wahoo connections), or here, before it (shared links,
 suggestions still waiting, agree or disagree on others' suggestions, the bot's cached Discord
 roles). What is the
 map's record is kept with the link to the account cleared (SET_NULL): a decided suggestion, and
@@ -50,7 +50,7 @@ DELETED = [
     "Your settings kept with the account, and My Go, including Home",
     "Your 311 log",
     "Links you shared while signed in: they stop working",
-    "Your AI assistant key, the apps connected to your account, and the routes they drafted",
+    "The apps connected to your account, and the routes they drafted",
     "Your suggestions and hazard reports still waiting for review, and your agree or disagree "
     "on other riders' suggestions",
 ]

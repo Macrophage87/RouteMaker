@@ -7577,8 +7577,7 @@ details.fold > summary .icon {
   margin-left: 0.4em;
   font-weight: normal;
 }
-/* The AI assistant key (the owner, 2026-10-18): the new key on one line with Copy, then Make or Replace, and Remove. */
-.assistant-key-secret,
+/* A connection setting's buttons (ConnectionSetting.tsx: Garmin, Wahoo). */
 .assistant-key-actions {
   display: flex;
   flex-wrap: wrap;
@@ -7586,10 +7585,6 @@ details.fold > summary .icon {
   margin: 6px 0;
 }
 /* Connected assistant apps (the owner, 2026-10-19): one row each, its line then Disconnect. */
-.assistant-apps-heading {
-  margin: 1rem 0 0.25rem;
-  font-size: 1rem;
-}
 .assistant-apps {
   list-style: none;
   margin: 0;
@@ -7602,11 +7597,6 @@ details.fold > summary .icon {
   justify-content: space-between;
   gap: 0.5rem;
   padding: 0.25rem 0;
-}
-.assistant-key-secret input {
-  flex: 1 1 12em;
-  min-width: 0;
-  font-family: monospace;
 }
 .settings-group > h3 {
   margin-bottom: 6px;
