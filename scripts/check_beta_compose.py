@@ -290,7 +290,7 @@ def check_budget(services: dict) -> list[str]:
     if resident_gb > MAX_RESIDENT_GB:
         problems.append(
             f"resident total {resident_gb:.2f} GiB exceeds the beta's "
-            f"{MAX_RESIDENT_GB:.1f} GiB ceiling (the host has about {HOST_AVAILABLE_GB} GiB "
+            f"{MAX_RESIDENT_GB:g} GiB ceiling (the host has about {HOST_AVAILABLE_GB} GiB "
             "available); lower another cap before adding a service"
         )
     peak_gb = peak_bytes(services) / 1024**3

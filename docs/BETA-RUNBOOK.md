@@ -301,7 +301,7 @@ from `.env` (the rendered config holds every secret), only the table and any pro
 prints a problem, stop and report it. It checks: no caddy or rebuild; a memory cap, CPU cap and
 `memswap_limit` on every container; `cpu_shares` below 1024 and `oom_score_adj` at least 500 on
 every container; only the api publishing a port and only on `127.0.0.1`; the resident total under
-7.1 GiB (the two trail routers always counted) and the startup peak (plus the largest one-shot) leaving 1 GiB of the host's 8.6; at most
+7.35 GiB (the two trail routers always counted) and the startup peak (plus the largest one-shot) leaving 1 GiB of the host's 8.6; at most
 six gunicorn workers with one left free beside the routing, geocoding and tile pools; Photon's heap
 plus capped direct buffers inside its cap; the weekly rebuild paused; every long-running service
 restarting `unless-stopped` and Django debug off; and in `.env`, no `COMPOSE_PROFILES` or
