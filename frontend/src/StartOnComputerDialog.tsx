@@ -26,7 +26,7 @@ export function StartOnComputerDialog({ open, onBack, onAnyway }: { open: boolea
   return (
     <dialog
       ref={dialogRef}
-      className="start-computer-dialog"
+      className="ask-dialog start-computer-dialog"
       aria-labelledby={headingId}
       aria-describedby={leadId}
       onCancel={(event) => {

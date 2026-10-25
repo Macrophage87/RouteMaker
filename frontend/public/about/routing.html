@@ -600,6 +600,10 @@ route:</p>
 </tbody>
 </table>
 </div>
+<p>From the next map update, a route no longer U-turns round the end of a median. Where a road with
+a median is mapped as two one-way carriageways of the same name meeting at the median's nose, the router once took
+the U-turn from one onto the other as an ordinary turn, across the oncoming lanes; each such U-turn is now closed
+to it, except where it is the only way on, or where a carriageway is open to bikes both ways.</p>
 <p>Junctions a few yards apart, such as the two halves of a divided road, count once, at the dearest.
 A flashing light is priced by who gives way, not as a signal, so crossing a busier road at one costs the
 wait for a gap, 12, 20 or 30 seconds by how busy that road is, rather than the 15 seconds of a signal. This is time, not
@@ -1074,7 +1078,9 @@ on a route through the park, never as closures.</li>
 <div class="more-body">
 <ul>
 <li><strong>Cues.</strong> The first cue comes about 27 seconds before a turn, the second about 10
-seconds before, and "now" at the turn. Cues say only the turn and the street. You choose screen
+seconds before, and "now" at the turn. Cues say only the turn and the street. Where the path you turn onto starts on the far side of a road you go straight across just before, the
+cue says the crossing first: "Cross Saint Paul Street, then right onto Saint Paul Street bike lane"; the
+directions also name the crossing's control, such as "at a signal". You choose screen
 reader, RouteMaker's voice, both or neither.</li>
 <li><strong>Off route.</strong> You are off route when you are more than 100 ft [30 m] from the line
 (more when GPS is poor, up to 330 ft [100 m]) for three readings over 8 seconds. Readings less accurate
@@ -1089,6 +1095,17 @@ a re-route without a U-turn, starts the count again.</li>
 with what is there, whether it is open now (where its mapped hours can be read), how far it is or the
 detour, and a Website link when one is mapped. A tap never changes the route: only Route here or Add as
 stop does. Stops come from OpenStreetMap, so check a repair stand works before you count on it.</li>
+<li id="weather"><strong>Weather.</strong> With a route on screen (checked again every 10 minutes), and
+as a ride starts and every 5 minutes during it, the app sends points along the line still to ride, at least 5 mi
+[8 km] apart and at most 10, each with when you will reach it at the route's pace if you go now (a plan set for another time is not checked
+before Start); Roam sends where you are, for now and every 15 minutes up to an hour. The server rounds each
+point to 0.01 degree, about 0.7 mi [1.1 km], before it asks the National Weather Service for the alerts in force
+there<sup class="cite"><a href="#ref-25" aria-label="source 25">[25]</a></sup> and Open-Meteo for the 15-minute rain forecast<sup class="cite"><a href="#ref-26" aria-label="source 26">[26]</a></sup>, so neither learns where you are; it
+keeps the answers 2 minutes in memory, logs no point and writes nothing, and your browser talks only to RouteMaker.
+Shown: every alert the NWS rates Extreme or Severe, and the heat, wind, fog and smoke, winter, ice and cold, flood,
+air-quality and blowing-dust advisories and Special Weather Statements, while they overlap that time; never marine,
+beach, frost or freeze alerts. Rain is the first point where at least 0.01 in [0.25 mm] is forecast in the 15 minutes
+you reach it, up to 4 hours ahead; 0.1 in [2.5 mm] or more in 15 minutes is heavy.</li>
 <li><strong>End of a ride.</strong> When you end a ride you see its summary: distance, moving time,
 average speed, total time, climbing, an elevation chart, and the share of the ride on each traffic
 stress level. Done clears Go for your next trip; in Plan the plan stays so you can adjust it. Undo picks
@@ -1127,11 +1144,13 @@ climbing.</li>
   <li id="ref-22">Work Zone Data Exchange feeds: Maryland DOT SHA (CC0, <a href="https://filter.ritis.org/wzdx_v4.1/mdot.geojson">RITIS</a>) and VDOT through SmarterRoads; specification at <a href="https://github.com/usdot-jpo-ode/wzdx">github.com/usdot-jpo-ode/wzdx</a></li>
   <li id="ref-23">Metropolitan Police Department traffic advisories (<a href="https://mpdc.dc.gov/newsroom">mpdc.dc.gov/newsroom</a>), AlertDC from DC HSEMA, and the National Park Service alerts API (<a href="https://www.nps.gov/subjects/developer/api-documentation.htm">nps.gov developer</a>)</li>
   <li id="ref-24">District Department of Transportation, TOPS occupancy permits (CC BY 4.0). <a href="https://maps2.dcgis.dc.gov/dcgis/rest/services/DDOT/TOPS/MapServer/1">DC GIS</a>; <a href="https://catalog.data.gov/dataset/occupancy-permits-via-ddot-tops">catalog.data.gov</a></li>
+  <li id="ref-25">National Weather Service, API Web Service: active alerts for a point (api.weather.gov), U.S. government data. <a href="https://www.weather.gov/documentation/services-web-api">weather.gov/documentation/services-web-api</a></li>
+  <li id="ref-26">Open-Meteo forecast API, 15-minute precipitation (in North America from NOAA's HRRR model, updated hourly), data CC BY 4.0. <a href="https://open-meteo.com/en/docs">open-meteo.com/en/docs</a></li>
 </ol>
 <p class="next">Next: <a href="/about/trails.html">Mountain Bike, Mountain Goat and Gravel</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.12.0. The code is
+  <p>Part of RouteMaker's documentation. It describes version 0.12.1. The code is
   open source under the MIT licence:
   <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
   <p><a href="/">Back to the map</a></p>

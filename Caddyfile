@@ -221,6 +221,9 @@
 	# below already permits it (worker-src 'self'; manifest-src falls back to
 	# default-src 'self'). sw-kill.js, the kill switch, is deliberately not
 	# served: it is copied over sw.js on disk when needed.
+	# /post.js is a Featured routes post's script (core/route_posts.py, frontend/src/post/): the
+	# server's page names it, so it has no hash in its name and revalidates like the worker. The
+	# posts themselves, /routes/*, are the API's, like every path not listed here.
 	# A link preview of the app's own address (the owner, 2026-10-20: "Is there a way to have
 	# the icon when shared?"): a chat app, social site or search engine fetching / is given the
 	# api's page of preview tags (core.share_preview.site_page: the name, a line on what the app
@@ -242,7 +245,7 @@
 
 	@stress-page path /about/stress /about/stress/
 	redir @stress-page /about/stress.html 302
-	@frontend path / /index.html /favicon.svg /licenses.txt /about/stress.html /about/how-it-works.html /about/using.html /about/accessibility.html /about/routing.html /about/ride-types.html /about/mass-ride.html /about/trails.html /about/architecture.html /about/assistants.html /about/acknowledgements.html /about/route-example.webp /assets/* /sw.js /manifest.webmanifest /icons/*
+	@frontend path / /index.html /favicon.svg /licenses.txt /about/stress.html /about/how-it-works.html /about/using.html /about/accessibility.html /about/routing.html /about/ride-types.html /about/mass-ride.html /about/trails.html /about/architecture.html /about/assistants.html /about/acknowledgements.html /about/route-example.webp /assets/* /sw.js /manifest.webmanifest /icons/* /post.js
 	handle @frontend {
 		encode zstd gzip
 		header Referrer-Policy "same-origin"
@@ -260,6 +263,8 @@
 		header /about/* Cache-Control "no-cache"
 		header /favicon.svg Cache-Control "public, max-age=86400"
 		header /sw.js Cache-Control "no-cache"
+		# A Featured routes post's script under a fixed name (core/route_posts.py names it): checked on every load.
+		header /post.js Cache-Control "no-cache"
 		header /manifest.webmanifest Cache-Control "no-cache"
 		header /manifest.webmanifest Content-Type "application/manifest+json"
 		# Only the icons that exist, as for /assets/ above: a missing one is not kept a day.

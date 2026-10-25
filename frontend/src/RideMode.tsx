@@ -18,15 +18,17 @@
  *   own route, held here and in App's ride state only.
  * - Large text (the owner, 2026-10-20; it replaced Big text): the card half the screen, the turn as big as fits, the map
  *   below; its side button (and the T key) and Settings' switch are the one choice; heading-up (track-up by default since v0.7.0); and
- *   Road closed ahead and End ride always in view at the top of the card (since v0.9.0; Settings is a gear in the
- *   side buttons, opening the ride's settings under that row), with Undo after End ride. End ride part way leaves the plan starting where the rider is.
+ *   Road closed ahead and End ride always in view at the top of the card (since v0.9.0; More, the last side button,
+ *   opens the ride's settings under that row), with Undo after End ride. End ride part way leaves the plan starting where the rider is.
  * - The map along the route, kept for dead spots (lib/corridor.ts, N5), and Log for 311 with the place in
  *   the route's street names (lib/report311.ts, lib/report311Log.ts; N6; OWNER-DECISIONS 369, 465).
  * - The side buttons (the owner, 2026-10-17: "Remove that bottom part when routing by default. instead put
- *   these as circle icons on the side"): Where am I? (re-centring too), Large text, Calmer and Flatter (one step down
- *   the traffic or hills slider and a new route from here, lib/rideEase.ts; 2026-10-23), Detour (water or restroom), on a
- *   share bike the dock button with the time undocked (lib/rideDock.ts), 311 anywhere on the route, and the Settings gear; each a round
- *   icon with its name for screen readers, its menu opening beside it. The bottom panel shows only when it
+ *   these as circle icons on the side"): Where am I? (re-centring too), Large text, Broadcast (2026-10-24: "Let people
+ *   broadcast from a ride"), Detour (water, restroom, food, repair or a search, lib/detourSearch.ts), on a share bike the dock button with the time undocked
+ *   (lib/rideDock.ts), 311 anywhere on the route, and More; each a round icon with its name for screen readers, its menu
+ *   opening beside it. More opens, under the top row, the route's changes (Less traffic and Fewer hills, one step down
+ *   the traffic or hills slider and a new route from here, lib/rideEase.ts; Skip this stop, lib/rideStops.ts) above the
+ *   ride's settings (2026-10-24: "put options like skip a stop, lower traffic and hills in an expansion with settings"). The bottom panel shows only when it
  *   has something to say or ask: GPS and screen notes, off route, Ride the rest.
  *   Answers asked for (Where am I?, a detour's progress) show for a few seconds by the buttons.
  *
@@ -49,9 +51,27 @@ import {
   withClosed,
 } from "./lib/roadClosed.ts";
 import { requestRoute, type RouteResponse } from "./lib/api.ts";
-import { VIA_MARKS, drawnLegs, viaIndices } from "./lib/pointKinds.ts";
+import { VIA_MARKS, drawnLegs, stopNames, viaIndices, type RideStopMark } from "./lib/pointKinds.ts";
+import {
+  SKIP_STOP,
+  detourButtonName,
+  insteadLabel,
+  insteadName,
+  insteadSaid,
+  nextStopLine,
+  restartKept,
+  restartReplanSaid,
+  restartSaid,
+  restartStops,
+  restartUnchanged,
+  skippingSaid,
+  withoutStop,
+  type RestartStop,
+} from "./lib/rideStops.ts";
+import { RestartStopsDialog } from "./RestartStopsDialog.tsx";
+import { keepLeftRide } from "./lib/rideResume.ts";
 import type { Dials } from "./lib/dials.ts";
-import { haversineM, insideCoverage, type LonLat } from "./lib/geo.ts";
+import { haversineM, type LonLat } from "./lib/geo.ts";
 import type { PresetId } from "./lib/presets.ts";
 import { formatDistance, formatDuration, spokenDistance } from "./lib/format.ts";
 import { cueParts } from "./lib/cueShown.ts";
@@ -82,14 +102,15 @@ import {
   REPLAN_STILL_WAITING,
   ReplanGate,
   VERBOSITY_LABELS,
+  crossArrow,
   cueSpoken,
   nextAction,
   planAfterEnd,
   replanKept,
-  replanPoints,
   replanTold,
   rideModel,
   startState,
+  stopsAhead,
   toGo,
   wayBack,
   whereAmI,
@@ -120,22 +141,27 @@ import {
   DETOUR_BUSY,
   DETOUR_FULL,
   DETOUR_HELP,
-  DETOUR_KINDS,
-  DETOUR_SUMMARY,
-  NEAREST_KINDS,
   NO_FIX_YET,
   STILL_SEARCHING,
   detourPoints,
-  findingSaid,
   nearbyText,
-  nounOf,
   requestNearest,
-  rideLocate,
-  searchNearest,
-  type Found,
   type Nearby,
-  type NearestKind,
 } from "./lib/nearest.ts";
+import {
+  DETOUR_CHOICES,
+  DETOUR_SEARCH_BUTTON,
+  DETOUR_SEARCH_HINT,
+  DETOUR_SEARCH_LABEL,
+  DETOUR_SUMMARY,
+  detourFindingSaid,
+  findDetour as searchDetour,
+  type DetourAsk,
+  type DetourDeps,
+  type DetourFound,
+} from "./lib/detourSearch.ts";
+import type { FoodPlace } from "./lib/food.ts";
+import type { RepairPlace } from "./lib/repair.ts";
 import type { WaterPoint } from "./lib/waterRestrooms.ts";
 import type { TrailMiles } from "./lib/trailMiles.ts";
 import { WATER_CAUTION } from "./lib/waterRestrooms.ts";
@@ -177,8 +203,11 @@ import { NextVehicleLine } from "./NextVehicleLine.tsx";
 import type { VehicleMark } from "./lib/nextVehicle.ts";
 import { SettingRow, SettingSelect } from "./SettingRow.tsx";
 import { shortLabel } from "./lib/shortLabel.ts";
-import { EASE_AT_END, EASE_NAME, EASE_SAME, easeFinding, eased, sameLine, type Ease } from "./lib/rideEase.ts";
+import { EASE_AT_END, EASE_NAME, EASE_SAME, EASE_SHOWN, easeFinding, eased, sameLine, type Ease } from "./lib/rideEase.ts";
 import { RING, junctionPaths, ringPaths, type JunctionShape } from "./lib/junctionShape.ts";
+import { NOTHING_DISMISSED, RIDE_WEATHER_MS, alertKey, alertSaid, alertUrgent, dismissWeather, newAlerts, rainLine, rainSays, rainStage, weatherPoints, weatherToShow } from "./lib/weather.ts";
+import { useWeather } from "./useWeather.ts";
+import { WeatherLines } from "./WeatherLines.tsx";
 import {
   RIDE_REST,
   RIDE_REST_FINDING,
@@ -210,9 +239,17 @@ const SLIDE_KEYS = new Set(["ArrowRight", "ArrowUp", "ArrowLeft", "ArrowDown", "
 const SLIDE_BACK_MS = 4_000;
 /** Said and shown when End ride is tapped rather than slid. */
 export const SLIDE_TO_END_HINT = "Slide End ride to the right to end the ride.";
-/** The side buttons' gear opens these, under the top row (the owner, 2026-10-16: "the buttons to change the settings seem hidden"; a gear in the rack since v0.9.0). */
-export const RIDE_SETTINGS_TEXT = "Settings";
-export const RIDE_SETTINGS_TITLE = "Ride settings";
+/**
+ * The last side button opens these, under the top row (the owner, 2026-10-16: "the buttons to change the settings seem
+ * hidden"; a gear in the rack since v0.9.0): since 2026-10-24 More, the route's changes above the settings (Stephen:
+ * "put options like skip a stop, lower traffic and hills in an expansion with settings").
+ */
+export const RIDE_SETTINGS_TEXT = "More";
+export const RIDE_MORE_NAME = "More: change the route, and ride settings";
+export const RIDE_SETTINGS_TITLE = "More: change the route, and ride settings";
+export const RIDE_CHANGE_TITLE = "Change the route";
+/** Broadcast on the ride screen (Stephen 2026-10-24: "Let people broadcast from a ride"): Plan's and Go's Broadcast, the ride already going. */
+export const RIDE_BROADCAST_NAME = "Broadcast";
 /** What End ride leaves behind (lib/navigate.ts planAfterEnd): the plan from here, or as it was. */
 export type EndedPlan = ReturnType<typeof planAfterEnd>;
 /** How long the 311 line ("Logged for 311: Pothole.") stays (review F4); held the same way. */
@@ -266,7 +303,7 @@ export const REPLAN_TIMEOUT_MS = 25_000;
 export const GPS_LOST_MS = 30_000;
 export const GPS_LOST_SAID = "No GPS signal: the cues are paused until it comes back.";
 
-/** The rider's responsibility and the battery, said before the first ride (plan sections 5 and 10). */
+/** The rider's responsibility and the battery, in the ride's settings (plan sections 5 and 10). */
 export const RIDE_SAFETY_BROWSER =
   "Ride mode guides you along the planned route; you stay responsible for riding safely and obeying the rules of the road, and the route can be wrong. It needs the screen on and this page in front, and GPS with a lit screen drains the battery quickly.";
 /** In the phone app (v0.8.0) the cues go on with the screen locked, so the screen sentence is not said. */
@@ -304,14 +341,19 @@ export interface RideView {
   rider: { point: LonLat; headingDeg: number | null; accuracyM: number } | null;
   /** Where the next train or bus is while the rider waits at a Metro or Metrobus boarding (v0.9.0). */
   vehicle?: VehicleMark | null;
+  /** The stops still ahead, drawn on the ride's map with their names (2026-10-24). */
+  stops?: RideStopMark[];
 }
 
-function arrowFor(cue: Cue | null): "left" | "right" | "bear_left" | "bear_right" | "uturn" | "straight" | "stop" | "end" | "warn" {
+function arrowFor(
+  cue: Cue | null,
+): "left" | "right" | "bear_left" | "bear_right" | "uturn" | "straight" | "stop" | "end" | "warn" | NonNullable<ReturnType<typeof crossArrow>> {
   if (!cue) return "straight";
   if (cue.kind === "end") return "end";
   if (cue.kind === "stop") return "stop";
-  // A crossing between two turns (lib/navigate.ts crossWords): straight across.
-  if (cue.cross) return "straight";
+  // Across a road, then the turn (lib/navigate.ts crossArrow).
+  const across = crossArrow(cue);
+  if (across) return across;
   if (cue.movement) return cue.movement;
   if (cue.kind === "hazard" || cue.kind === "walk") return "warn";
   return "straight";
@@ -358,16 +400,25 @@ function CueShape({ shape, junction, exit }: { shape: ReturnType<typeof arrowFor
     bear_right: "M18 52 V30 L34 14 M22 14 H34 V26",
     uturn: "M32 52 V22 A10 10 0 0 0 12 22 V38 M4 30 L12 40 L20 30",
     straight: "M24 52 V10 M14 20 L24 10 L34 20",
+    // Across the road drawn between ROAD_EDGES, then the turn on its far side.
+    cross: "M24 52 V10 M14 20 L24 10 L34 20",
+    cross_left: "M32 52 V12 H10 M18 4 L10 12 L18 20",
+    cross_right: "M16 52 V12 H38 M30 4 L38 12 L30 20",
     stop: "M14 10 V52 M14 12 H38 L32 20 L38 28 H14",
     end: "M14 10 V52 M14 12 H38 V28 H14 M26 12 V28 M14 20 H38",
     warn: "M24 8 L44 46 H4 Z M24 20 V32 M24 38 V40",
   };
+  const across = shape === "cross" || shape === "cross_left" || shape === "cross_right";
   return (
     <svg className="cue-shape" viewBox="0 0 48 56" aria-hidden="true" focusable="false">
+      {across ? <path d={ROAD_EDGES} fill="none" stroke="currentColor" strokeWidth="1.5" /> : null}
       <path d={paths[shape]} fill="none" stroke="currentColor" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
+
+/** The road a "cross" arrow goes over: its two edges, thin, across the arrow's stem below the turn. */
+const ROAD_EDGES = "M4 26 H44 M4 40 H44";
 
 /**
  * End ride as a slide (the owner, 2026-10-19), so a bump while riding does not end it: a range from 0 to
@@ -456,7 +507,7 @@ export function RideSettingsFields({
   prefs: RidePrefs;
   onChange: (prefs: RidePrefs) => void;
   idBase: string;
-  /** Settings: two pickers, with what each level says behind an (i) (the first Start ride keeps the radios). */
+  /** Settings: two pickers, with what each level says behind an (i); the ride's own settings keep the radios. */
   compact?: boolean;
 }) {
   if (compact) {
@@ -535,6 +586,10 @@ function wayBackSaid(back: { metres: number; direction: string }): string {
   return `The planned route is ${spokenDistance(back.metres)} to the ${back.direction}.`;
 }
 
+/** No food, repair or place search given (a test's ride): those detours say they are unavailable. */
+const noPlaces = async () => null;
+const noSearch: DetourDeps["geocode"] = async () => ({ ok: false, status: 0 });
+
 export function RideMode({
   route: plannedRoute,
   points: plannedPoints,
@@ -553,12 +608,19 @@ export function RideMode({
   onEnd,
   resumeStats = null,
   water,
+  food = noPlaces,
+  repair = noPlaces,
+  geocode = noSearch,
+  stopName,
   trailMiles = null,
   geoEnv,
   keepLastRide = false,
   trip = null,
   onRideRest,
   fixed = false,
+  onBroadcast = null,
+  broadcasting = false,
+  keepLeft = false,
 }: {
   route: RouteResponse;
   /** The points the route was planned with, and whether it is a loop: what a re-plan builds on. */
@@ -583,6 +645,14 @@ export function RideMode({
   resumeStats?: RideStats | null;
   /** The water layer's points, loaded if they are not yet (App's ensureWater); for the detours. */
   water?: () => Promise<WaterPoint[] | null>;
+  /** Find food's places, loaded if they are not yet (App's ensureFood); for the detours (Stephen 2026-10-24). */
+  food?: () => Promise<FoodPlace[] | null>;
+  /** The repair stands and bike shops, loaded if they are not yet; for the detours. */
+  repair?: () => Promise<RepairPlace[] | null>;
+  /** The place search, through the page's one geocoding gate; for Detour's search box. */
+  geocode?: DetourDeps["geocode"];
+  /** A stop's name to show and say: its own (lib/pointKinds.ts), else the map's name for the spot. */
+  stopName?: (point: LonLat) => string | undefined;
   /**
    * The trail mile markers (lib/trailMiles.ts; OWNER-DECISIONS 465), once App has them: the 311 report and
    * "Where am I?" name a trail's mile with them, on the device. Null before, or with none.
@@ -608,6 +678,16 @@ export function RideMode({
    * closed ahead. Read once, at Start ride.
    */
   fixed?: boolean;
+  /**
+   * Broadcast from the ride (Stephen 2026-10-24: "Let people broadcast from a ride"): the share sheet with Share ride's
+   * link, the rider its leader; answers what to say. Null where the ride cannot be shared as a ride (no share sheet,
+   * a ride opened from someone else's link, Ride the rest).
+   */
+  onBroadcast?: (() => Promise<string>) | null;
+  /** This ride is broadcast, led by this rider: Broadcast shows on, and a press shares the same link again. */
+  broadcasting?: boolean;
+  /** The ride is kept on this device to resume (lib/rideResume.ts): each new route is kept in its place. */
+  keepLeft?: boolean;
 }) {
   const [route, setRoute] = useState(plannedRoute);
   const routeRef = useRef(route);
@@ -633,7 +713,8 @@ export function RideMode({
   const uturns = useRef<UTurnState>(UTURN_START);
   const checking = useRef(false);
   const modelOf = (r: RouteResponse, points: readonly LonLat[]) => {
-    const built = rideModel(r, viaIndices(points, VIA_MARKS.isVia));
+    // A stop's own name (2026-10-24) is said and shown with its number.
+    const built = rideModel(r, viaIndices(points, VIA_MARKS.isVia), stopNames(points, VIA_MARKS.nameOf, VIA_MARKS.isVia, plan.current.loop));
     return r === uturnRoute.current ? withUTurn(built) : built;
   };
   const model = useMemo(() => modelOf(route, plan.current.points), [route]);
@@ -644,7 +725,10 @@ export function RideMode({
   const [other, setOther] = useState<RouteResponse | null>(plannedRoute.closure_through ?? null);
   const otherRef = useRef(other);
   otherRef.current = other;
-  const otherModel = useMemo(() => (other ? rideModel(other, viaIndices(plan.current.points, VIA_MARKS.isVia)) : null), [other]);
+  const otherModel = useMemo(
+    () => (other ? rideModel(other, viaIndices(plan.current.points, VIA_MARKS.isVia), stopNames(plan.current.points, VIA_MARKS.nameOf, VIA_MARKS.isVia, plan.current.loop)) : null),
+    [other],
+  );
   const otherModelRef = useRef(otherModel);
   otherModelRef.current = otherModel;
   const onStandard = useRef(false);
@@ -701,12 +785,12 @@ export function RideMode({
   // Each re-plan's ticket: "Keep the planned route" or a newer re-plan voids an older one's answer.
   const replanTicket = useRef(0);
   const settingsId = useId();
-  // The ride's settings, opened from the side buttons' gear (closed at Start).
+  // The ride's More panel, the route's changes and the settings, opened from the last side button (closed at Start).
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsPanel = useRef<HTMLDivElement>(null);
   const settingsButton = useRef<HTMLButtonElement>(null);
   // Opened, the panel is brought into view (the row above it is sticky; the card may be scrolled) and the focus
-  // goes into it: the gear is the last side button, after the panel, so Tab alone would never reach it.
+  // goes into it: More is the last side button, after the panel, so Tab alone would never reach it.
   useEffect(() => {
     if (!settingsOpen) return;
     settingsPanel.current?.scrollIntoView?.({ block: "nearest" });
@@ -902,7 +986,8 @@ export function RideMode({
 
   // The detour's own status (below): said like an answer, since the rider asked for it.
   const [detourStatus, setDetourStatus] = useState("");
-  const [detourList, setDetourList] = useState<Found | null>(null);
+  const [detourList, setDetourList] = useState<DetourFound | null>(null);
+  const [detourQuery, setDetourQuery] = useState("");
   const sayDetour = useCallback((text: string) => {
     setDetourStatus(text);
     // Shown in the detour's menu while it is open; by the side buttons otherwise (the dock's, a re-plan's outcome).
@@ -915,7 +1000,7 @@ export function RideMode({
   // With `via`, a detour: from here to that place first, then on through what was left (the nearest water
   // or restroom, below). A detour's place becomes a stop of the new route, so it is cued and arrived at.
   const replan = useCallback(
-    async (here: LonLat, via?: LonLat, asked = false, turnRound = false, check = false): Promise<boolean> => {
+    async (here: LonLat, via?: LonLat, asked = false, turnRound = false, check = false, skip?: number, done?: ReadonlySet<number>): Promise<boolean> => {
       if (ended.current) return false;
       const current = rideRef.current;
       // The way the rider is going (the owner, 2026-10-18: "Penalize U turns", "For rerouting"): the new route sets
@@ -923,7 +1008,14 @@ export function RideMode({
       const heading = turnRound ? null : (current.goodFix?.headingDeg ?? null);
       // Two U-turns ridden past: the rider means to stay on this way, so this one sets off ahead whatever turning saves.
       const aheadOnly = uturnAheadOnly(uturns.current, heading);
-      const left = replanPoints(modelRef.current, current.progressM ?? 0, here, plan.current.points, plan.current.loop);
+      // A re-route: via points close ahead are guides and dropped, stops kept (2026-10-24); the stop the rider
+      // skipped (Skip this stop, or a place chosen instead of it) is left out.
+      // The same kept points for the way back below, so its stops keep their numbers in the new plan.
+      // A restart part way (`done`, RestartStopsDialog): the stops the rider left unticked, behind or not.
+      const keptPoints = done
+        ? restartKept(modelRef.current, current.progressM ?? 0, plan.current.points, plan.current.loop, done)
+        : replanKept(modelRef.current, current.progressM ?? 0, plan.current.points, plan.current.loop, true).filter((i) => i !== skip);
+      const left = withoutStop(plan.current.points, keptPoints, here, skip ?? -1);
       const points = via ? detourPoints(left, via) : left;
       if (!points) {
         sayDetour(DETOUR_FULL);
@@ -979,7 +1071,7 @@ export function RideMode({
       let note = REPLAN_FOUND;
       const voided = () => ended.current || ticket !== replanTicket.current;
       if (!result.ok && !via && !check && startsWayBack(result.error.kind) && !voided()) {
-        const kept = replanKept(modelRef.current, current.progressM ?? 0, plan.current.points, plan.current.loop);
+        const kept = keptPoints;
         // Never back onto a road the rider marked closed: the way back joins the route past it.
         const closed = blockedUntil.current?.model === modelRef.current ? blockedUntil.current.untilM : -Infinity;
         const back = await wayBackRoute(routeRef.current, modelRef.current, current.progressM ?? 0, here, kept, ask, voided, closed);
@@ -1030,6 +1122,8 @@ export function RideMode({
       if (found.dirt_trails) dirtRidden.current = true;
       if (found.dirt_closed) dirtClosed.current = true;
       setRoute(found);
+      // The ride as it now stands is what a page closed mid-ride resumes (lib/rideResume.ts); never a trip's leg.
+      if (!trip && keepLeft) keepLeftRide({ route: found, points, loop: false, preset, dials: dialsRef.current, fixed: fixedRef.current }, VIA_MARKS, Date.now());
       // The new route's own standard way through a closure it goes round, if any (none past a road marked closed).
       const through = blockedRef.current.length ? null : (found.closure_through ?? null);
       otherRef.current = through;
@@ -1044,7 +1138,7 @@ export function RideMode({
       tell(note);
       return true;
     },
-    [preset, gate, sayDetour],
+    [preset, gate, sayDetour, trip, keepLeft],
   );
   const replanRef = useRef(replan);
   replanRef.current = replan;
@@ -1094,6 +1188,13 @@ export function RideMode({
     return () => window.clearInterval(timer);
   }, [checkCueSheet]);
 
+  // Restarting part way: asked at the first fix past a stop, never after Undo (it carries on) or on a trip's leg (its
+  // walk to the dock comes first). The defaults ride on as the ride is; other picks plan again from here.
+  const restartAsked = useRef(resumeStats !== null || trip !== null);
+  const [restart, setRestart] = useState<RestartStop[] | null>(null);
+  // While it is asked, no re-route of its own: the stops it lists are the plan's as it stands (review of #444).
+  const restartOpen = useRef(false);
+  restartOpen.current = restart !== null;
   const onFix = useCallback(
     (fix: RideFix) => {
       if (ended.current) return;
@@ -1105,7 +1206,7 @@ export function RideMode({
       if (weighed.sayNow) notify(GPS_WEAK_SAID);
       setGps(weighed.weak ? GPS_WEAK_SAID : "");
       checkCueSheet(lastFixAt.current);
-      const auto = !keepRef.current && !fixedRef.current;
+      const auto = !keepRef.current && !fixedRef.current && !restartOpen.current;
       // Walking to the dock, nothing is placed on the line or taken as off route (lib/rideTrip.ts).
       const wasWalking = tripRef.current.walking;
       // Held after "No route found ahead": off route says no "finding a new way", as none is looked for out loud.
@@ -1150,6 +1251,17 @@ export function RideMode({
         ? statsPause(statsRef.current)
         : statsStep(statsRef.current, fix, out.state, modelRef.current, routeRef.current.profile);
       if (stepped.state.walking) return;
+      // Restarted part way (Stephen 2026-10-24): the first place on the line past a stop asks, once, which are done.
+      if (!restartAsked.current && out.state.progressM !== null) {
+        restartAsked.current = true;
+        const stops = restartStops(modelRef.current, out.state.progressM);
+        if (stops) {
+          const named = stops.map((s) => (s.name ? s : { ...s, name: stopName?.(plan.current.points[s.index]) }));
+          restartOpen.current = true;
+          setRestart(named);
+          notify(restartSaid(named));
+        }
+      }
       // Off this line but on the other one (the standard way, or the detour): followed there, not re-planned.
       if (out.state.off && fix.accuracyM <= POOR_FIX_M) {
         const at = onOtherLine(otherModelRef.current, fix.point, fix.accuracyM, out.state.progressM ?? -Infinity);
@@ -1182,7 +1294,7 @@ export function RideMode({
         announcer.current?.answer(whereAmI(modelRef.current, out.state, false, milesRef.current));
       }
     },
-    [gate, replan, say, notify, checkCueSheet, approach, trip, takeOther],
+    [gate, replan, say, notify, checkCueSheet, approach, trip, takeOther, stopName],
   );
   const onFixRef = useRef(onFix);
   onFixRef.current = onFix;
@@ -1275,7 +1387,7 @@ export function RideMode({
     const onOnline = () => {
       gate.online();
       const state = rideRef.current;
-      if (state.off && !keepRef.current && !fixedRef.current && !uturns.current.held && state.goodFix) void replan(state.goodFix.point);
+      if (state.off && !keepRef.current && !fixedRef.current && !restartOpen.current && !uturns.current.held && state.goodFix) void replan(state.goodFix.point);
     };
     window.addEventListener("online", onOnline);
     return () => window.removeEventListener("online", onOnline);
@@ -1285,14 +1397,23 @@ export function RideMode({
   const fix = ride.fix;
   // Where the next train or bus is, while the rider waits at the boarding (NextVehicleLine).
   const [vehicle, setVehicle] = useState<VehicleMark | null>(null);
+  // The stops still ahead (2026-10-24): on the map with their names, and the next one's Skip and Instead.
+  const aheadKey = ride.progressM === null ? null : Math.floor(ride.progressM / 10);
+  const stops = useMemo(
+    () => stopsAhead(model, ride.progressM ?? 0, plan.current.points).map(({ point, number }): RideStopMark => ({ point, number, name: stopName?.(point) })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [model, aheadKey, stopName],
+  );
+  const nextStop = ride.arrived ? null : (stops[0] ?? null);
   useEffect(() => {
     onView({
       route,
       other: other?.geometry.coordinates ?? null,
       rider: fix ? { point: fix.point, headingDeg: fix.headingDeg, accuracyM: fix.accuracyM } : null,
       vehicle,
+      stops,
     });
-  }, [route, other, fix, onView, vehicle]);
+  }, [route, other, fix, onView, vehicle, stops]);
 
   // The map along the route, kept for dead spots (lib/corridor.ts, plan section 6): fetched at Start ride
   // and again for a re-plan's new route (only the tiles the first did not cover), cleared at End ride.
@@ -1476,13 +1597,34 @@ export function RideMode({
 
   // Calmer and Flatter (lib/rideEase.ts; the owner, 2026-10-23): one step down the traffic or hills slider, then
   // planned again from here as Re-plan from here is. A step that finds no new route is undone.
+  // An answer to a side button or More's press: said in full; shown in its first sentence alone (fewer words on
+  // screen, the owner, 2026-10-20).
+  const answer = (text: string) => {
+    announcer.current?.answer(text);
+    if (prefsRef.current.output === "neither") setPolite((s) => ({ text, count: s.count + 1 }));
+    showToast(text.replace(/(?<=\.) .*$/, ""));
+  };
+  // Broadcast (App's broadcastFromRide): the share sheet opens inside the press; a second press while one is open is
+  // left alone.
+  const broadcastBusy = useRef(false);
+  const broadcast = async () => {
+    if (!onBroadcast || broadcastBusy.current) return;
+    broadcastBusy.current = true;
+    try {
+      const said = await onBroadcast();
+      if (said && !ended.current) answer(said);
+    } finally {
+      broadcastBusy.current = false;
+    }
+  };
+  // More's own presses (Less traffic, Fewer hills, Skip this stop): the panel closes, the map back in view, and the
+  // focus goes to More.
+  const fromMore = (press: () => void) => {
+    setSettingsOpen(false);
+    settingsButton.current?.focus();
+    press();
+  };
   const ease = async (which: Ease) => {
-    // Said in full; shown in its first sentence alone (fewer words on screen, the owner, 2026-10-20).
-    const answer = (text: string) => {
-      announcer.current?.answer(text);
-      if (prefsRef.current.output === "neither") setPolite((s) => ({ text, count: s.count + 1 }));
-      showToast(text.replace(/(?<=\.) .*$/, ""));
-    };
     const was = dialsRef.current;
     const next = eased(preset, was, which);
     if (!next) {
@@ -1519,7 +1661,9 @@ export function RideMode({
   // detours"): the three nearest by bike from the rider's position, on the ride's own settings; Detour here
   // re-plans through the chosen one. The position is the ride's own fix; nothing new is looked up.
   const detourBusy = useRef(false);
-  const findDetour = async (kind: NearestKind) => {
+  // Stephen 2026-10-24: "Detours should include food too and anything that a user would search for", "repair stands
+  // too": Food and Repair beside them, and a search box for anything else (lib/detourSearch.ts).
+  const findDetour = async (ask: DetourAsk) => {
     if (detourBusy.current) {
       sayDetour(STILL_SEARCHING);
       return;
@@ -1527,24 +1671,24 @@ export function RideMode({
     if (!water) return;
     detourBusy.current = true;
     setDetourList(null);
-    sayDetour(findingSaid(kind));
+    sayDetour(detourFindingSaid(ask));
     try {
       const fix = rideRef.current.goodFix ?? rideRef.current.fix;
       if (!fix) {
         sayDetour(NO_FIX_YET);
         return;
       }
-      const outcome = await searchNearest({
-        kind,
-        from: "location",
-        locate: async () => rideLocate(fix),
-        start: () => null,
-        centre: () => null,
-        inside: insideCoverage,
-        water,
-        stations: [],
-        request: (from, places) => requestNearest(from, places, preset, { ...dialsRef.current, loop: false }),
-      });
+      const outcome = await searchDetour(
+        {
+          here: fix.point,
+          water,
+          food,
+          repair,
+          geocode,
+          request: (from, places) => requestNearest(from, places, preset, { ...dialsRef.current, loop: false }),
+        },
+        ask,
+      );
       if (ended.current) return;
       if (outcome.found) setDetourList(outcome.found);
       sayDetour(outcome.said);
@@ -1570,7 +1714,54 @@ export function RideMode({
     // The list (and the pressed button) goes: the focus moves to Where am I?, not to the page's top.
     whereRef.current?.focus();
     sayDetour(`Finding a way to ${item.place.title}.`);
-    void replan(here, item.place.point);
+    // The place is a stop of the new route, under its own name on the map and in the cues (2026-10-24).
+    void replan(here, VIA_MARKS.named([item.place.point[0], item.place.point[1]], item.place.title));
+  };
+
+  // The next stop's two options (2026-10-24: "add the option to skip a stop or go to a different one"): Skip this stop
+  // in More, Instead of stop N in the Detour menu, so the ride screen gains no button. Each is the rider's own ask, as
+  // Detour here is. From More the focus stays on More (`fromMore`); from Detour it goes to Where am I?.
+  const stopIndex = (stop: RideStopMark) => plan.current.points.indexOf(stop.point);
+  // Restarting part way: the defaults ride on as the ride is; other picks plan again from here.
+  const continueRestart = (done: ReadonlySet<number>) => {
+    const stops = restart;
+    restartOpen.current = false;
+    setRestart(null);
+    if (!stops || restartUnchanged(stops, done)) return;
+    const here = rideRef.current.goodFix?.point ?? rideRef.current.fix?.point;
+    if (!here) {
+      sayDetour(NO_FIX_YET);
+      return;
+    }
+    if (gate.busy) {
+      sayDetour(DETOUR_BUSY);
+      return;
+    }
+    setKeepPlanned(false);
+    gate.online();
+    sayDetour(restartReplanSaid(stops, done));
+    // Back to a stop behind: turning round is the point, as after Road closed.
+    const back = stops.some((s) => s.passed && !done.has(s.index));
+    void replan(here, undefined, true, back, false, undefined, done);
+  };
+  const changeStop = (stop: RideStopMark, place?: { point: LonLat; title: string }, keepFocus = false) => {
+    const here = rideRef.current.goodFix?.point ?? rideRef.current.fix?.point;
+    const skip = stopIndex(stop);
+    if (!here || skip < 0) {
+      sayDetour(NO_FIX_YET);
+      return;
+    }
+    if (gate.busy) {
+      sayDetour(DETOUR_BUSY);
+      return;
+    }
+    setKeepPlanned(false);
+    gate.online();
+    setDetourList(null);
+    setDetourOpen(false);
+    if (!keepFocus) whereRef.current?.focus();
+    sayDetour(place ? insteadSaid(place.title, stop) : skippingSaid(stop));
+    void replan(here, place ? VIA_MARKS.named([place.point[0], place.point[1]], place.title) : undefined, true, false, false, skip);
   };
 
   // The dock button's two ways (lib/rideDock.ts): the closest dock, or the one that adds least; the pick is a
@@ -1754,6 +1945,41 @@ export function RideMode({
     () => (lightStep === null || ride.arrived ? null : rideLightCorner(model, lightStep * 160, togoS, minute * 60_000)),
     [model, lightStep, togoS === null ? null : Math.round(togoS / 60), ride.arrived, minute], // eslint-disable-line react-hooks/exhaustive-deps
   );
+  // Weather along the line still to ride (lib/weather.ts, Stephen 2026-10-24): checked at the start and every 5
+  // minutes; a new NWS alert, or rain coming (first forecast, within 15 minutes, or turning heavy), said through the
+  // rider's outputs and shown in the bottom panel until dismissed. Nothing asks and nothing waits.
+  // Checked from the rider's place on the line, the last one known while off it; the first check waits for one.
+  const weatherProgress = useRef(progress);
+  if (progress !== null) weatherProgress.current = progress;
+  const weatherReady = progress !== null || weatherProgress.current !== null;
+  const weather = useWeather(
+    ride.arrived || !weatherReady ? null : `ride:${model.lengthM}:${model.coordinates.length}`,
+    () => {
+      const from = weatherProgress.current;
+      return from === null || !model.paceMs ? null : weatherPoints(model.coordinates, from, model.paceMs);
+    },
+    RIDE_WEATHER_MS,
+  );
+  const weatherSaid = useRef({ alerts: new Set<string>(), rain: "" });
+  const [weatherDismissed, setWeatherDismissed] = useState(NOTHING_DISMISSED);
+  useEffect(() => {
+    if (!weather) return;
+    const said = weatherSaid.current;
+    const tell = (text: string, urgent: boolean) => {
+      if (urgent) deliver({ text, urgent: true });
+      else announcer.current?.note(text);
+      if (prefsRef.current.output === "neither") setPolite((p) => ({ text, count: p.count + 1 }));
+    };
+    const fresh = newAlerts(weather, said.alerts);
+    for (const alert of fresh) {
+      said.alerts.add(alertKey(alert));
+      tell(alertSaid(alert, Date.now()), alertUrgent(alert));
+    }
+    if (rainSays(said.rain, weather.rain) && weather.rain) tell(rainLine(weather.rain, weather.alongM, true), false);
+    said.rain = rainStage(weather.rain);
+  }, [weather, deliver]);
+  // Shown until dismissed; again only for an alert not dismissed or rain at a new stage.
+  const weatherShown = weatherToShow(weather, weatherDismissed);
   // "Ride mode" is for screen readers only and the two buttons fill the row (the owner, 2026-10-20: "People know it's
   // ride mode anyway"). Near dawn or dusk the light times take the corner while they fit beside the buttons on one
   // line, measured, as a phone's own text size can be larger than the page knows; else they go just under the row.
@@ -1812,7 +2038,7 @@ export function RideMode({
     showToast(replanNote);
     setReplanNote("");
   }, [replanNote, offNow, showToast]);
-  const notesShown = !!((gps && ride.fix) || paused || wakeNote || (ride.off && replanNote) || corridorText);
+  const notesShown = !!((gps && ride.fix) || paused || wakeNote || (ride.off && replanNote) || corridorText || weatherShown);
   const sheetShown = notesShown || ride.off || restShown;
   // The map's scales and credits sit at the bottom of the screen in a ride (the owner, 2026-10-17: "on the bottom
   // of the page in a ride"), just above the bottom panel while it shows (styles.css --ride-sheet-h).
@@ -1867,7 +2093,7 @@ export function RideMode({
       <div ref={cardRef} className="cue-card">
         {/* End ride (v0.7.0, "Go riding fixes" item 6): always in view, at the top of the card, which stays at
             every size and in Large text; one slide ends the ride (a tap once arrived), and the page shows the ride's summary
-            with Done and Undo (RideSummaryCard). The ride's settings open just under the row, from the side buttons' gear. */}
+            with Done and Undo (RideSummaryCard). The ride's settings open just under the row, from the side buttons' More. */}
         <div ref={topRef} className={light && cornerFits ? "ride-top" : "ride-top ride-corner-tight"}>
           {/* The heading, "Ride mode", for screen readers; near dawn or dusk the light times shown in the corner
               (the owner, 2026-10-19) where they fit beside the buttons, else just under the row. */}
@@ -1923,7 +2149,7 @@ export function RideMode({
           hidden={!settingsOpen}
           tabIndex={-1}
           onKeyDown={(event) => {
-            // Escape closes it, back to the gear.
+            // Escape closes it, back to More.
             if (event.key === "Escape") {
               event.preventDefault();
               setSettingsOpen(false);
@@ -1931,6 +2157,36 @@ export function RideMode({
             }
           }}
         >
+          {/* The route's changes first (Stephen 2026-10-24): each one press, a new route from here; not on a route everyone
+              shares (`fixed`), nor once arrived. The symbols as the side buttons had them (2026-10-23), the words beside. */}
+          {!fixed && !ride.arrived && (
+            <div className="ride-change" role="group" aria-labelledby={`${settingsId}-change`}>
+              <h3 id={`${settingsId}-change`}>{RIDE_CHANGE_TITLE}</h3>
+              <div className="actions">
+                {(["calmer", "flatter"] as const).map((which) => (
+                  <button
+                    key={which}
+                    type="button"
+                    className={`secondary ride-ease ride-${which}`}
+                    onClick={() => fromMore(() => void ease(which))}
+                    aria-label={EASE_NAME[which]}
+                  >
+                    <Icon name={which === "calmer" ? "traffic-down" : "hills-down"} size={26} />
+                    {EASE_SHOWN[which]}
+                  </button>
+                ))}
+              </div>
+              {nextStop && (
+                <div className="ride-next-stop">
+                  <p>{nextStopLine(nextStop)}</p>
+                  <button type="button" className="secondary" onClick={() => fromMore(() => changeStop(nextStop, undefined, true))}>
+                    {SKIP_STOP}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+          <h3 className="ride-settings-title">Settings</h3>
           <RideSettingsFields prefs={prefs} onChange={onPrefs} idBase={settingsId} />
           <p className="hint">{RIDE_SAFETY}</p>
           <label className="toggle ride-toggle">
@@ -2079,21 +2335,18 @@ export function RideMode({
           >
             <Icon name="textsize" size={24} />
           </button>
-          {/* Calmer and Flatter (lib/rideEase.ts; the owner, 2026-10-23): one press, a step down the slider and a new
-              route from here. A symbol alone on screen (the owner, 2026-10-23: "Take the words out. Symbol should be clear"), the words in the name. Not on a route everyone shares (`fixed`). */}
-          {!fixed && !ride.arrived &&
-            (["calmer", "flatter"] as const).map((which) => (
-              <button
-                key={which}
-                type="button"
-                className={`ride-round ride-ease ride-${which}`}
-                onClick={() => void ease(which)}
-                aria-label={EASE_NAME[which]}
-                title={EASE_NAME[which]}
-              >
-                <Icon name={which === "calmer" ? "traffic-down" : "hills-down"} size={30} />
-              </button>
-            ))}
+          {/* Broadcast (Stephen 2026-10-24: "Let people broadcast from a ride"): as Roam's, shown on while this rider leads. */}
+          {onBroadcast && !ride.arrived && (
+            <button
+              type="button"
+              className={`ride-round${broadcasting ? " ride-round-on" : ""}`}
+              onClick={() => void broadcast()}
+              aria-label={broadcasting ? `${RIDE_BROADCAST_NAME}: on. Share the link again` : `${RIDE_BROADCAST_NAME}: share a link others follow you with`}
+              title={RIDE_BROADCAST_NAME}
+            >
+              <Icon name="broadcast" size={24} />
+            </button>
+          )}
           {water && (
             <div
               className="ride-pop ride-detour"
@@ -2109,10 +2362,11 @@ export function RideMode({
                 type="button"
                 ref={detourButton}
                 className="ride-round"
-                aria-label={`Detour: ${DETOUR_SUMMARY.toLowerCase()}`}
+                aria-label={detourButtonName(DETOUR_SUMMARY, fixed ? null : nextStop)}
                 title="Detour"
                 aria-expanded={detourOpen}
                 aria-controls={detourId}
+                data-idle-close
                 onClick={() => openMenu(detourOpen ? null : "detour")}
               >
                 <Icon name="detour" size={24} />
@@ -2134,18 +2388,45 @@ export function RideMode({
                   </button>
                 </div>
                 <div className="actions nearest-kinds">
-                  {NEAREST_KINDS.filter((k) => DETOUR_KINDS.includes(k.kind)).map(({ kind, label }) => (
-                    <button key={kind} type="button" className="secondary" onClick={() => void findDetour(kind)}>
-                      <Icon name={kind === "water" ? "water" : "wc"} size={20} />
+                  {DETOUR_CHOICES.map(({ kind, label, icon }) => (
+                    <button key={kind} type="button" className="secondary" onClick={() => void findDetour({ kind })}>
+                      <Icon name={icon} size={20} />
                       {label}
                     </button>
                   ))}
                 </div>
+                <form
+                  className="detour-search"
+                  role="search"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    // The focus moves to Find, so a phone's keyboard goes and does not cover the list that comes.
+                    event.currentTarget.querySelector<HTMLButtonElement>("button[type=submit]")?.focus();
+                    void findDetour({ query: detourQuery });
+                  }}
+                >
+                  <label htmlFor={`${detourId}-search`}>{DETOUR_SEARCH_LABEL}</label>
+                  <span className="detour-search-row">
+                    <input
+                      id={`${detourId}-search`}
+                      type="search"
+                      enterKeyHint="search"
+                      autoComplete="off"
+                      placeholder={DETOUR_SEARCH_HINT}
+                      value={detourQuery}
+                      onChange={(event) => setDetourQuery(event.target.value)}
+                    />
+                    <button type="submit" className="secondary">
+                      <Icon name="search" size={20} />
+                      {DETOUR_SEARCH_BUTTON}
+                    </button>
+                  </span>
+                </form>
                 {/* Shown, not a live region: what it says is said through the ride's own outputs (sayDetour). */}
                 <p className="hint nearest-status">{detourStatus}</p>
                 {detourList && detourList.items.length > 0 && (
                   <div className="nearest-list">
-                    <h4 id={`${settingsId}-detour`}>{`Nearest ${nounOf(detourList.kind)}`}</h4>
+                    <h4 id={`${settingsId}-detour`}>{detourList.heading}</h4>
                     <ol role="list" aria-labelledby={`${settingsId}-detour`}>
                       {detourList.items.map((item) => (
                         <li key={item.place.id}>
@@ -2159,11 +2440,22 @@ export function RideMode({
                             >
                               Detour here
                             </button>
+                            {nextStop && !fixed && (
+                              <button
+                                type="button"
+                                className="secondary"
+                                aria-label={insteadName(item.place.title, nextStop)}
+                                onClick={() => changeStop(nextStop, item.place)}
+                              >
+                                {insteadLabel(nextStop)}
+                              </button>
+                            )}
                           </span>
                         </li>
                       ))}
                     </ol>
-                    <p className="hint">{WATER_CAUTION}</p>
+                    {(detourList.kind === "water" || detourList.kind === "restroom") && <p className="hint">{WATER_CAUTION}</p>}
+                    {detourList.attribution && <p className="hint">Search: {detourList.attribution.join("; ")}</p>}
                   </div>
                 )}
                 <p className="hint">{DETOUR_HELP}</p>
@@ -2190,6 +2482,7 @@ export function RideMode({
                 title={DOCK_NAME}
                 aria-expanded={dockOpen}
                 aria-controls={dockId}
+                data-idle-close
                 onClick={() => openMenu(dockOpen ? null : "dock")}
               >
                 <Icon name="bikeshare" size={20} />
@@ -2258,6 +2551,7 @@ export function RideMode({
                 aria-label={RIDE_311_NAME}
                 aria-expanded={menu311}
                 aria-controls={menu311Id}
+                data-idle-close
                 onClick={() => openMenu(menu311 ? null : "311")}
               >
                 <Icon name="flag" size={18} />
@@ -2279,19 +2573,21 @@ export function RideMode({
               )}
             </div>
           )}
-          {/* Settings, a gear at the end of the side buttons since v0.9.0 (the owner, 2026-10-18: "Move settings to
-              a gear icon in the rack"); it opens the ride's settings under the top row. */}
+          {/* More, at the end of the side buttons (a gear for the settings since v0.9.0, the owner, 2026-10-18: "Move
+              settings to a gear icon in the rack"; More since 2026-10-24); it opens the route's changes and the ride's
+              settings under the top row. */}
           <button
             type="button"
             ref={settingsButton}
             className="ride-round ride-settings-button"
-            aria-label={RIDE_SETTINGS_TEXT}
+            aria-label={RIDE_MORE_NAME}
             title={RIDE_SETTINGS_TEXT}
             aria-expanded={settingsOpen}
             aria-controls={`${settingsId}-settings`}
+            data-idle-close
             onClick={() => setSettingsOpen(!settingsOpen)}
           >
-            <Icon name="gear" size={24} />
+            <Icon name="more" size={24} />
           </button>
         </div>
       </div>
@@ -2304,6 +2600,7 @@ export function RideMode({
             <div className="ride-notes">
               {gps && ride.fix && <p className="hint">{gps}</p>}
               {corridorText && <p className="hint ride-corridor">{corridorText}</p>}
+              {weatherShown && <WeatherLines report={weatherShown} riding now={Date.now()} onDismiss={() => { setWeatherDismissed((d) => dismissWeather(weatherShown, d)); headingRef.current?.focus({ preventScroll: true }); }} />}
               {wakeNote && <p className="hint">{wakeNote}</p>}
               {ride.off && replanNote && <p className="hint">{replanNote}</p>}
               {paused && (
@@ -2341,6 +2638,7 @@ export function RideMode({
           )}
         </div>
       )}
+      <RestartStopsDialog stops={restart} onContinue={continueRestart} />
     </section>
   );
 }
