@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { vehicleBadge, type VehicleMark } from "./lib/nextVehicle.ts";
+import { followZoom } from "./lib/idleRecentre.ts";
 import { createPortal } from "react-dom";
 import { attachFeatureHover } from "./featureHoverCard.ts";
 import { climbHoverChart, climbHoverWords, trailHoverChart, trailHoverWords } from "./lib/featureHover.ts";
@@ -12,6 +13,7 @@ import { Protocol } from "pmtiles";
 import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import { layers as protomapsLayers, namedFlavor } from "@protomaps/basemaps";
 import { COVERAGE_BBOX, type LonLat } from "./lib/geo.ts";
+import { constrainAbovePanel } from "./lib/coveredConstrain.ts";
 import { AT_ZOOM } from "./lib/planHash.ts";
 import { accuracyRing } from "./lib/geolocation.ts";
 import {
@@ -74,6 +76,7 @@ import { dragPreview, legOfSegment, nearestOnPath } from "./lib/lineEdit.ts";
 import { LineGesture } from "./lib/lineGesture.ts";
 import { PENN_COLOUR, RAIL_STATIONS, stationById } from "./lib/railData.ts";
 import { addRailStations, LABEL_FONT, RAIL_LAYERS, RIDE_STATION_NAME_SIZE, ROUTE_BOTTOM_LAYER, STATION_NAME_SIZE, setRailVisibility, stationNamesTarget } from "./lib/railLayer.ts";
+import { setRideLabelOrder, type LabelHomes } from "./lib/rideLabelOrder.ts";
 import { ROUTE_HAZARD_ICON, ROUTE_HAZARD_SOURCE, routeHazardFeatures, routeHazardIcon, routeHazardLayer, routeHazardRepeatLayer } from "./lib/routeHazards.ts";
 import type { RailVisibility, Station, StationBadges, StationRole } from "./lib/railStations.ts";
 import { attachRailInteraction, type StationFound } from "./railInteraction.ts";
@@ -90,7 +93,7 @@ import { attachClimbInteraction } from "./climbInteraction.ts";
 import { climbCardAfterClose } from "./lib/climbCard.ts";
 import type { When } from "./lib/dials.ts";
 import { END_GLYPH, START_GLYPH } from "./lib/pointText.ts";
-import { VIA_MARKS, kindSwitchLabel, markerLabels } from "./lib/pointKinds.ts";
+import { VIA_MARKS, kindSwitchLabel, markerLabels, renameLabel, rideStopLabel, type RideStopMark } from "./lib/pointKinds.ts";
 import { LongPress, isInfoKey, liftOpenedInfo, repeatsInfoAsk, type InfoRequest } from "./lib/roadInfo.ts";
 import { fetchMe } from "./lib/stressEditor.ts";
 import { JUNCTION_SUGGEST_TEXT } from "./lib/junctionSuggest.ts";
@@ -223,6 +226,8 @@ interface Props {
   when: When;
   /** Screen space the panel covers, so a route is framed in what is left. */
   framePadding: () => Frame;
+  /** The pixels at the map's bottom the panel hides (a phone's sheet), so the area's edge can come up above it. */
+  coveredBelow?: () => number;
   onStressAvailability: (availability: StressAvailability) => void;
   onMapClick: (point: LonLat) => void;
   onMovePoint: (index: number, point: LonLat) => void;
@@ -248,6 +253,12 @@ interface Props {
   onRemovePoint: (index: number) => void;
   /** The point menu's "Make this a stop / a via point" (v0.7.0, lib/pointKinds.ts), for the point at `index`. */
   onSwitchKind?: (index: number) => void;
+  /** A Ctrl+click (Cmd+click on a Mac) on the map: a stop there, its name asked first (2026-10-24). Absent: a click. */
+  onStopAt?: (point: LonLat) => void;
+  /** A stop's point menu's "Name this stop" or "Rename stop" (2026-10-24), for the point at `index`. */
+  onRenameStop?: (index: number) => void;
+  /** The ride's stops still ahead, drawn while riding with their numbers and names (2026-10-24); null draws none. */
+  rideStops?: readonly RideStopMark[] | null;
   /** Changes when the markers must be put back on the points as they are. */
   markerReset: number;
   /** The accuracy circle of the rider's location while its point is in the plan (OWNER-DECISIONS 395), or null. */
@@ -279,6 +290,10 @@ interface Props {
   /** A ride whose cues go to the screen reader alone: the map is out of its reach (inert), so swiping goes cue card to side buttons. */
   screenReaderRide?: boolean;
   onFollowBroken?: () => void;
+  /** The rider moved the map by hand during a ride (a pan, a pinch, a turn): the view is off the ride's own (lib/idleRecentre.ts). */
+  onRiderMoved?: () => void;
+  /** Changed: the follow camera goes back to the ride's own zoom at the next fix, as at a ride's start (lib/idleRecentre.ts). */
+  followReset?: number;
   onReady: (map: MapLibreMap) => void;
   onCanvasFocus: (focused: boolean) => void;
   /** Which rail stations show (the panel's toggles). */
@@ -430,6 +445,8 @@ const ACCURACY_SOURCE = "location-accuracy";
 /** Where a ride holds the rider while following track-up: two thirds of the way down the map the rider can see,
  *  between the cue card and the bottom panel or the screen's foot (v0.9.0, the owner, 2026-10-17). */
 export const RIDER_AT = 2 / 3;
+/** The ride's own zoom: the follow camera closes in to it as following starts, and goes back to it after the screen is left alone. */
+export const FOLLOW_ZOOM = 16;
 const NO_PADDING = { top: 0, bottom: 0, left: 0, right: 0 };
 const reducedMotion = () => typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -475,6 +492,8 @@ const INFO_REPEAT_MS = 800;
 /** A right-button press that moved this far rotated the map: its contextmenu is not a request. */
 const RIGHT_DRAG_PX = 5;
 const MAX_BOUNDS_PAD = 0.4;
+/** The map's widest zoom. */
+const MIN_ZOOM = 7;
 /** How long an unanswered stress endpoint is left before it is asked again. */
 const STRESS_RECHECK_MS = 60_000;
 
@@ -528,6 +547,8 @@ export function MapView(props: Props) {
   // The map control App's Map tools is drawn into, once the map has made it.
   const [toolsHost, setToolsHost] = useState<HTMLElement | null>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
+  /** The street and trail names' homes while a ride has them lifted (lib/rideLabelOrder.ts); empty otherwise. */
+  const labelHomes = useRef<LabelHomes>(new Map());
   const markers = useRef<Marker[]>([]);
   const popup = useRef<Popup | null>(null);
   // The route's junction markers (OWNER-DECISIONS 172) and the card one of them has open.
@@ -652,12 +673,28 @@ export function MapView(props: Props) {
       style: style as maplibregl.StyleSpecification,
       center: props.openAt ?? DC_CENTRE,
       zoom: props.openAt ? AT_ZOOM : OPENING_ZOOM,
-      minZoom: 7,
+      minZoom: MIN_ZOOM,
       maxZoom: MAP_MAX_ZOOM,
       maxBounds: [
         [west - MAX_BOUNDS_PAD, south - MAX_BOUNDS_PAD],
         [east + MAX_BOUNDS_PAD, north + MAX_BOUNDS_PAD],
       ],
+      // The bounds hold the part of the map above a phone's sheet, not the whole box (lib/coveredConstrain.ts).
+      transformConstrain: (center, zoom) => {
+        const box = container.current;
+        const { center: next, zoom: z } = constrainAbovePanel(center, zoom, {
+          bounds: [west - MAX_BOUNDS_PAD, south - MAX_BOUNDS_PAD, east + MAX_BOUNDS_PAD, north + MAX_BOUNDS_PAD],
+          minZoom: MIN_ZOOM,
+          maxZoom: MAP_MAX_ZOOM,
+          width: box?.clientWidth ?? 0,
+          height: box?.clientHeight ?? 0,
+          covered: callbacks.current.coveredBelow?.() ?? 0,
+          // Not yet set while the map is made: no padding, north up.
+          padding: mapRef.current?.getPadding(),
+          bearing: mapRef.current?.getBearing(),
+        });
+        return { center: new maplibregl.LngLat(next.lng, next.lat), zoom: z };
+      },
       // Added below, so it can start collapsed.
       attributionControl: false,
       // The "i" opens the map's info panel (lib/mapInfo.ts), not only the credits: say so. It reads
@@ -756,8 +793,10 @@ export function MapView(props: Props) {
       // "The climb dots go over the road name"): the names are placed first and a summit gives way to one, as two
       // summits give way to each other. Under the route, the water and the stations too. Without the names, the route.
       const layerIds = map.getStyle().layers.map((layer) => layer.id);
-      // The major trails' names too (stressStyle.js, TRAIL_LABEL), the lowest of them all.
-      const underNames = layerIds.find((id) => id === TRAIL_LABEL_LAYER_ID || ROAD_LABEL_LAYER_IDS.includes(id)) ?? ROUTE_BOTTOM_LAYER;
+      // The major trails' names too (stressStyle.js, TRAIL_LABEL), the lowest of them all. In a ride the names are
+      // lifted over the route (lib/rideLabelOrder.ts): the climbs go under the route, and under the names once home.
+      const lifted = labelHomes.current.size > 0;
+      const underNames = (!lifted && layerIds.find((id) => id === TRAIL_LABEL_LAYER_ID || ROAD_LABEL_LAYER_IDS.includes(id))) || ROUTE_BOTTOM_LAYER;
       addClimbs(map as unknown as ClimbsMap, data, on, iconPixelRatio(), underNames, callbacks.current.climbsFrom ?? CLIMBS_FROM_DEFAULT);
     };
     const anyPopupOpen = () => popupsOpen(popup.current, rail);
@@ -1169,6 +1208,15 @@ export function MapView(props: Props) {
           pick(index);
           return;
         }
+      }
+      // A Ctrl+click (Cmd+click on a Mac) off the line and the cards: a stop, its name asked first (Stephen
+      // 2026-10-24: "Control clicking ... should create a stop"; a plain click makes a via point). A Mac's
+      // Ctrl+click is its right-click, the road panel, whose Add as stop asks the same.
+      const modified = (event.originalEvent as MouseEvent).ctrlKey || (event.originalEvent as MouseEvent).metaKey;
+      const stopAt = callbacks.current.onStopAt;
+      if (modified && stopAt && onCanvas && !under.station && !forCard && !anyPopupOpen() && performance.now() >= clickSuppressedUntil) {
+        stopAt(point);
+        return;
       }
       runClick(under, { popupOpen: anyPopupOpen() || forCard, afterDrag: performance.now() < clickSuppressedUntil, lineTapIsPoint: goPress }, {
         closePopups: () => {
@@ -1708,6 +1756,19 @@ export function MapView(props: Props) {
           });
           items.push(switcher);
         }
+        // A stop's name (2026-10-24): given or changed here; a via point has none.
+        if (kind === "via" && callbacks.current.onRenameStop) {
+          const renamer = document.createElement("button");
+          renamer.type = "button";
+          renamer.className = "via-remove point-kind";
+          renamer.textContent = renameLabel(VIA_MARKS.nameOf(point) !== undefined);
+          renamer.addEventListener("click", (clicked) => {
+            clicked.stopPropagation();
+            closePopup(true);
+            callbacks.current.onRenameStop?.(index);
+          });
+          items.push(renamer);
+        }
         // A real menu (a screen reader hears "menu, 2 items"): the arrows move between its items.
         const menu = document.createElement("div");
         menu.className = "point-menu";
@@ -1782,6 +1843,39 @@ export function MapView(props: Props) {
       return marker;
     });
   }, markerDeps(props.points, props.markerReset, props.loopVias, props.pointWarnings));
+
+  // The ride's stops still ahead (2026-10-24): each stop's numbered pin and its name, anchored at the pin; via points
+  // only shape the route, so they are not drawn. Said by name to a screen reader as an image.
+  const rideStopMarkers = useRef<Marker[]>([]);
+  const rideStopsKey = (props.rideStops ?? []).map((s) => `${s.point.join(",")}|${s.number}|${s.name ?? ""}`).join(";");
+  useEffect(() => {
+    const map = mapRef.current;
+    rideStopMarkers.current.forEach((m) => m.remove());
+    rideStopMarkers.current = [];
+    if (!map || !props.rideStops) return;
+    rideStopMarkers.current = props.rideStops.map((stop) => {
+      const { text, said } = rideStopLabel(stop);
+      const element = document.createElement("div");
+      element.className = "ride-stop";
+      element.setAttribute("role", "img");
+      element.setAttribute("aria-label", `${said}.`);
+      const pin = document.createElement("span");
+      pin.className = "pin pin-via";
+      pin.textContent = text;
+      pin.setAttribute("aria-hidden", "true");
+      element.append(pin);
+      if (stop.name) {
+        const label = document.createElement("span");
+        label.className = "ride-stop-name";
+        label.textContent = stop.name;
+        label.setAttribute("aria-hidden", "true");
+        element.append(label);
+      }
+      // Anchored at the pin's centre: the name hangs to its right.
+      return new maplibregl.Marker({ element, anchor: "left", offset: [-12, 0] }).setLngLat(stop.point).addTo(map);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rideStopsKey]);
 
   // The route line.
   useEffect(() => {
@@ -2410,6 +2504,7 @@ export function MapView(props: Props) {
   // Ride mode's "you" marker and the follow camera.
   const riderMarker = useRef<Marker | null>(null);
   const following = useRef(false);
+  const resetSeen = useRef(props.followReset);
   useEffect(() => {
     const map = mapRef.current;
     const rider = props.rider ?? null;
@@ -2420,6 +2515,8 @@ export function MapView(props: Props) {
       // The ride over: a map turned to the rider's heading (track-up, the default) is north-up again.
       if (following.current && map.getBearing() !== 0) map.easeTo({ bearing: 0, padding: NO_PADDING, duration: 0 });
       following.current = false;
+      // A reset still waiting for a fix ends with the ride; the next starts as rides do.
+      resetSeen.current = props.followReset;
       return;
     }
     if (!riderMarker.current) {
@@ -2444,8 +2541,11 @@ export function MapView(props: Props) {
     // Track-up: the rider's heading; with none yet, north-up, and with none for now (stopped at a light),
     // the bearing the map has, so it does not swing north and back.
     const bearing = props.headingUp && rider.headingDeg !== null ? rider.headingDeg : props.headingUp && following.current ? map.getBearing() : 0;
-    // Close in once as following starts; a pinch out after that is kept (it does not stop following).
-    const zoom = following.current ? map.getZoom() : Math.max(map.getZoom(), 16);
+    // Close in once as following starts; a pinch out after that is kept (it does not stop following). Back on the
+    // rider after the screen was left alone (followReset), the ride's own zoom.
+    const reset = props.followReset !== resetSeen.current;
+    resetSeen.current = props.followReset;
+    const zoom = followZoom(reset, following.current, map.getZoom(), FOLLOW_ZOOM);
     following.current = true;
     // A moving map once a second is too much for some: with reduced motion asked for, it jumps.
     const still = reducedMotion();
@@ -2455,7 +2555,7 @@ export function MapView(props: Props) {
     // Padding left by the planner's framing (a junction or the chart's scrub) is cleared, so the offset is from the middle.
     const ahead = riderOffset(map.getContainer(), props.headingUp ? RIDER_AT : 1 / 2);
     map.easeTo({ center: rider.point, bearing, zoom, offset: [0, ahead], padding: NO_PADDING, duration: still ? 0 : 400 });
-  }, [props.rider, props.follow, props.headingUp]);
+  }, [props.rider, props.follow, props.headingUp, props.followReset]);
 
   // In a ride the street names are larger and shortened ("R St NW"), to be read at a glance (the owner, 2026-10-20),
   // and go back after.
@@ -2512,6 +2612,24 @@ export function MapView(props: Props) {
       map.off("styledata", apply);
     };
   }, [props.rideLabels]);
+  // In a ride every street is named: the street and trail names go up under the station names, so a shop's name or
+  // icon, a place name or a water icon gives way to them, and back after (lib/rideLabelOrder.ts). Layers come and go
+  // (the route, water, a style reload), so this listens throughout, as the station names do.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const riding = Boolean(props.rideLabels);
+    const apply = () => {
+      // Climbs added during the ride went under the route: home, they go back under the names, as syncClimbs puts them.
+      if (setRideLabelOrder(map, riding, labelHomes.current)) climbsUnder(map, TRAIL_LABEL_LAYER_ID);
+    };
+    apply();
+    if (!riding) return;
+    map.on("styledata", apply);
+    return () => {
+      map.off("styledata", apply);
+    };
+  }, [props.rideLabels]);
   // In a ride the route and the way come first (lib/mapGlue.ts, setRideFocus): busy roads fade.
   useEffect(() => {
     const map = mapRef.current;
@@ -2558,6 +2676,24 @@ export function MapView(props: Props) {
       map.off("rotatestart", broken);
     };
   }, [props.follow]);
+
+  // Any move by hand during a ride, a pinch too, is heard, so a screen left alone goes back to the rider (lib/idleRecentre.ts).
+  const onRide = !!props.rider;
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !onRide) return;
+    const moved = (event: { originalEvent?: unknown }) => {
+      if (event.originalEvent) callbacks.current.onRiderMoved?.();
+    };
+    map.on("movestart", moved);
+    map.on("rotatestart", moved);
+    map.on("pitchstart", moved);
+    return () => {
+      map.off("movestart", moved);
+      map.off("rotatestart", moved);
+      map.off("pitchstart", moved);
+    };
+  }, [onRide]);
 
   // The rail stations' toggles.
   useEffect(() => {

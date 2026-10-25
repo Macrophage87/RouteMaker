@@ -285,16 +285,16 @@ for (const [label, size] of [["phone", { width: 390, height: 844, mobile: true }
   await p.eval("document.querySelector('.plan-map-bar .plan-bar-start').focus(); true");
   await p.enter();
   await sleep(500);
-  const asked = await p.eval("(() => { const d = document.querySelector('.start-computer-dialog'); return { open: !!d?.open, focus: document.activeElement?.textContent.trim(), riding: !!document.querySelector('section.ride, .ride-ask:not([hidden])') }; })()");
+  const asked = await p.eval("(() => { const d = document.querySelector('.start-computer-dialog'); return { open: !!d?.open, focus: document.activeElement?.textContent.trim(), riding: !!document.querySelector('section.ride') }; })()");
   const dialog = await axNode(p, ".start-computer-dialog");
   await p.escape();
   await sleep(300);
-  const back = await p.eval("({ closed: !document.querySelector('.start-computer-dialog').open, focus: document.activeElement === document.querySelector('.plan-map-bar .plan-bar-start'), riding: !!document.querySelector('section.ride, .ride-ask:not([hidden])') })");
+  const back = await p.eval("({ closed: !document.querySelector('.start-computer-dialog').open, focus: document.activeElement === document.querySelector('.plan-map-bar .plan-bar-start'), riding: !!document.querySelector('section.ride') })");
   await p.eval("document.querySelector('.plan-map-bar .plan-bar-start').click(); true");
   await sleep(400);
   await p.eval("[...document.querySelectorAll('.start-computer-dialog button')].find((b) => b.textContent.trim() === 'Start anyway').click(); true");
-  // Start anyway goes on as Start ride does: to the ride, or first to how the ride is told (Plan's first ride).
-  const rode = await p.waitFor("!!document.querySelector('section.ride') || !!document.querySelector('.ride-ask:not([hidden])')", 8000);
+  // Start anyway goes on as Start ride does: straight to the ride.
+  const rode = await p.waitFor("!!document.querySelector('section.ride')", 8000);
   check("start ride on a computer: a dialog named 'This looks like a computer' asks first, Go back focused; Escape goes back to Start ride, and Start anyway goes on to the ride",
     asked.open && asked.focus === "Go back" && !asked.riding && dialog?.role === "dialog" && dialog?.name === "This looks like a computer" && back.closed && back.focus && !back.riding && rode,
     JSON.stringify({ asked, dialog: [dialog?.role, dialog?.name], back, rode }));
@@ -2291,11 +2291,18 @@ async function saidInDialog(p, text) {
   await p.eval("[...document.querySelectorAll('dialog.road-info .road-info-place button')].find((b) => b.textContent === 'Add as stop')?.focus(); true");
   await armInfoClose(p);
   await p.enter();
-  await infoClosed(p, "document.activeElement?.textContent === 'Map tools'");
+  // Add as stop asks for the stop's name first (stops vs via points, 2026-10-24): the box is focused,
+  // and Enter with it left empty adds the stop.
+  await infoClosed(p, "!!document.activeElement?.closest('dialog.stop-name-dialog[open]')");
+  const named = await axNode(p, ".stop-name-dialog");
+  const askName = await p.eval("({ focus: document.activeElement?.labels?.[0]?.textContent, pins: document.querySelectorAll('.pin').length })");
+  await p.enter();
+  await p.waitFor("!document.querySelector('dialog.stop-name-dialog[open]') && document.activeElement?.textContent === 'Map tools'", 8000);
   const placed = await p.eval(`({ closed: !document.querySelector('dialog.road-info[open]'), pins: document.querySelectorAll('.pin').length,
     focus: document.activeElement?.textContent ?? '', said: [...document.querySelectorAll('.visually-hidden[role=status]')].map((x) => x.textContent.trim()).find((t) => / set here\.$/.test(t)) ?? '' })`);
-  check("road panel: Add as stop puts the spot in the plan as a stop, says so, closes, and gives the focus back",
-    placed.closed && placed.pins === top.pins + 1 && /^Stop \d set here\.$/.test(placed.said) && placed.focus === "Map tools", JSON.stringify(placed));
+  check("road panel: Add as stop asks the stop's name (Name this stop, the box focused), then puts the spot in the plan as a stop, says so, closes, and gives the focus back",
+    named?.role === "dialog" && named?.name === "Name this stop" && askName.focus === "Name (optional)" && askName.pins === top.pins &&
+      placed.closed && placed.pins === top.pins + 1 && /^Stop \d set here\.$/.test(placed.said) && placed.focus === "Map tools", JSON.stringify({ named, askName, placed }));
   const tip = await p.eval("(() => { const t = document.querySelector('.tips-toggle'); if (t && t.getAttribute('aria-expanded') !== 'true') t.click(); return [...document.querySelectorAll('.tips-body .hint')].map((h) => h.textContent).join(' | '); })()");
   check("road panel: the help says how to reach it by mouse, by touch and by keyboard (I and Map tools, and browse mode), and where the details are",
     /Right-click the map \(or press and hold on a phone\) for a short summary/.test(tip) && /Details and sources/.test(tip) && /press I for the road at the center/.test(tip) &&
@@ -2774,6 +2781,8 @@ const levelSlider = `${EDITOR} input[type=range]`;
   const hash = hashFor("default", 70);
   // Ridden from Plan's Start ride: a phone opens a link in Go now (the owner, 2026-10-19), so the tab is in Plan.
   await p.s("Page.addScriptToEvaluateOnNewDocument", { source: "try { sessionStorage.setItem('routemaker.tab-mode', 'plan'); } catch {}" });
+  // The cues as Settings > Ride mode would have them (Both, Full): Plan's Start ride asks nothing and uses them.
+  await p.s("Page.addScriptToEvaluateOnNewDocument", { source: `try { localStorage.setItem('routemaker.ride', '{"output":"both","verbosity":"full","chosen":true}'); } catch {}` });
   await p.s("Page.navigate", { url: `${ORIGIN}/${hash}` });
   if (!(await p.waitFor("!!document.querySelector('.start-ride button')", 40000))) throw new Error("no Start ride button");
   await sleep(800);
@@ -2781,17 +2790,14 @@ const levelSlider = `${EDITOR} input[type=range]`;
   // Every sentence the ride's regions take, in order (each change counts, as a screen reader hears it).
   await p.eval("(() => { window.__heard = []; const last = new WeakMap(); new MutationObserver(() => { for (const e of document.querySelectorAll('.ride [role=status], .ride [role=alert]')) { const t = e.textContent.trim(); if (t && last.get(e) !== e.textContent) { last.set(e, e.textContent); window.__heard.push((e.getAttribute('role') === 'alert' ? '!' : '') + t); } } }).observe(document.body, { subtree: true, childList: true, characterData: true }); return true; })()");
 
-  // The first ride asks how to say the cues; its heading takes the focus, so the safety note is read first.
+  // Start ride in Plan starts the ride at once (the owner, 2026-10-24: "When you start the ride in plan it should just
+  // start"): no question between, as in Go.
   await p.eval("document.querySelector('.start-ride button').click(); true");
-  await sleep(300);
-  const ask = await p.eval("(() => { const d = document.querySelector('.ride-ask'); return { shown: !!d, role: d?.getAttribute('role'), focus: document.activeElement?.id === 'ride-ask-title' && document.activeElement.closest('.ride-ask') === d, safety: d?.textContent.includes('you stay responsible') }; })()");
-  check("ride: the first Start ride asks how to say the cues, with the safety note, and takes the focus", ask.shown && ask.role === "dialog" && ask.focus && ask.safety, JSON.stringify(ask));
-  await p.eval("(() => { const labels = [...document.querySelectorAll('.ride-ask label')]; labels.find((l) => l.textContent === 'Both')?.querySelector('input').click(); labels.find((l) => l.textContent.startsWith('Full'))?.querySelector('input').click(); [...document.querySelectorAll('.ride-ask button')].find((b) => b.textContent === 'Start').click(); return true; })()");
   await sleep(800);
-  const started = await p.eval("(() => ({ ride: !!document.querySelector('section.ride'), planner: getComputedStyle(document.querySelector('#route-planner')).display === 'none', focus: document.activeElement?.id, speech: window.__speech.slice(), wake: window.__wake.slice(), kept: localStorage.getItem('routemaker.ride') }))()");
+  const started = await p.eval("(() => ({ ride: !!document.querySelector('section.ride'), planner: getComputedStyle(document.querySelector('#route-planner')).display === 'none', focus: document.activeElement?.id, speech: window.__speech.slice(), wake: window.__wake.slice(), kept: localStorage.getItem('routemaker.ride'), ask: !!document.querySelector('.ride-ask') }))()");
   check("ride: Start hides the planner, focuses the ride's heading, unlocks the voice and holds the screen on",
     started.ride && started.planner === true && started.focus === "ride-heading" && started.speech.includes("Ride started.") && started.speech[started.speech.indexOf("Ride started.") + 1] !== "<cancel>" && started.wake.filter((w) => w === "request").length === 1, JSON.stringify(started));
-  check("ride: the choices are kept on this device, and nothing else", started.kept === JSON.stringify({ output: "both", verbosity: "full", chosen: true }), started.kept);
+  check("ride: Plan's Start ride starts at once, with no question between, and the cues as Settings has them", started.ride && !started.ask && started.kept === JSON.stringify({ output: "both", verbosity: "full", chosen: true }), JSON.stringify(started));
   await p.shot(`${SHOTS}/ride_start.png`);
 
   // Along the line towards the turn, a fix every 400 ms (the override's change fires the watch).
@@ -2886,7 +2892,7 @@ const levelSlider = `${EDITOR} input[type=range]`;
   const ax311 = await axNode(p, ".ride-311-button");
   check("ride 311 button: a round button of about 60 px at the right edge, in the lower half (thumb height), named Log for 311 with its visible 311, closed",
     !!b311 && b311.w >= 56 && b311.w <= 72 && b311.h >= 56 && b311.round && b311.right <= 24 && b311.mid >= 45 && b311.mid <= 96 && b311.text === "311" && b311.expanded === "false" && ax311?.role === "button" && ax311?.name === "Log for 311" &&
-      JSON.stringify(rail.map((x) => x.name)) === JSON.stringify(["Where am I?", "Large text", "Calmer: less traffic, plan again from here", "Flatter: fewer hills, plan again from here", "Detour: water or restroom", "Log for 311", "Settings"]) && rail.every((x) => x.round && x.w >= 44),
+      JSON.stringify(rail.map((x) => x.name).filter((n) => !/^Broadcast/.test(n))) === JSON.stringify(["Where am I?", "Large text", "Detour: water, restroom, food, repair or search", "Log for 311", "More: change the route, and ride settings"]) && rail.every((x) => x.round && x.w >= 44),
     JSON.stringify({ b311, ax311, rail }));
   // The top row (the owner, 2026-10-19: "switch end ride and road closed"): End ride, then Road closed ahead with its
   // words (2026-10-20), one line.
@@ -3029,12 +3035,13 @@ const levelSlider = `${EDITOR} input[type=range]`;
   await p.shot(`${SHOTS}/ride_corner_320.png`);
   await p.eval("document.querySelector('.ride .ride-settings-button').click(); true");
   await sleep(200);
-  // The gear (the owner, 2026-10-18): it opens the panel under the top row and the focus goes into it; at 320 px
+  // More (the gear, the owner, 2026-10-18; More 2026-10-24): it opens the panel under the top row and the focus goes into it; at 320 px
   // the top row is End ride and Road closed's icon (still named in full), on one line.
   const gear = await p.eval(`(() => { const g = document.querySelector('.ride .ride-settings-button'); const panel = document.querySelector('.ride-mode-settings'); const c = document.querySelector('.ride-top .ride-road-closed'); const e = document.querySelector('.ride-top .ride-end'); const a = c.getBoundingClientRect(); const b = e.getBoundingClientRect();
-    return { expanded: g.getAttribute('aria-expanded'), shown: !panel.hidden, focusIn: panel.contains(document.activeElement), width: innerWidth, name: c.getAttribute('aria-label'), oneLine: Math.abs(a.top - b.top) <= 2, w: Math.round(a.width), h: Math.round(a.height) }; })()`);
-  check("ride: the Settings gear opens the ride's settings with the focus in them; at 320 px Road closed is its icon, named in full, beside End ride",
-    gear.expanded === "true" && gear.shown && gear.focusIn && gear.width <= 379 && gear.name === "Road closed ahead" && gear.oneLine && gear.w >= 44 && gear.h >= 44, JSON.stringify(gear));
+    const change = [...panel.querySelectorAll('.ride-change button')].map((x) => [x.getAttribute('aria-label') ?? x.textContent, x.textContent, Math.round(x.getBoundingClientRect().height)]);
+    return { expanded: g.getAttribute('aria-expanded'), shown: !panel.hidden, focusIn: panel.contains(document.activeElement), width: innerWidth, change, name: c.getAttribute('aria-label'), oneLine: Math.abs(a.top - b.top) <= 2, w: Math.round(a.width), h: Math.round(a.height) }; })()`);
+  check("ride: More (the owner, 2026-10-24) opens Less traffic and Fewer hills (each 44 px or taller, its words within its name) above the ride's settings, with the focus in them; at 320 px Road closed is its icon, named in full, beside End ride",
+    gear.expanded === "true" && gear.shown && gear.focusIn && JSON.stringify(gear.change.map((x) => x[1])) === JSON.stringify(["Less traffic", "Fewer hills"]) && gear.change.every(([name, text, h]) => name.toLowerCase().includes(text.toLowerCase()) && h >= 44) && gear.width <= 379 && gear.name === "Road closed ahead" && gear.oneLine && gear.w >= 44 && gear.h >= 44, JSON.stringify(gear));
   await p.eval("document.querySelector('.ride .ride-settings-button').click(); true");
   await sleep(200);
   // Large text (the owner, 2026-10-20; it replaced Big text): a side button, pressed while on; the card half the screen,
@@ -4499,8 +4506,9 @@ const modeNow = "(() => [...document.querySelectorAll('.mode-switch')].filter((g
   // The owner, 2026-10-12: the rider's own ride type first (My Go; Default until set), then the two transit types.
   // More, with Repair and Sights behind it, follow the four since 2b38bf1c ("Go: Repair and Sights behind More"),
   // and Metro first behind it since Stephen 2026-10-19 ("Metro stops should be on the list in more").
-  check("go: the sheet has Where to?, the place chips Home, Food, Water and Restroom (no Work), then More with Metro, Repair and Sights, and the ride types Default, Own Bike + 🚆🚌, Bikeshare + 🚶🚆🚌 and More ride types",
-    go.search && JSON.stringify(go.chips) === JSON.stringify(["Home", "Food", "Water", "Restroom", "More", "Metro", "Repair", "Sights"]) && JSON.stringify(go.rides) === JSON.stringify(["Default", "Own Bike + 🚆🚌Own bike plus train or bus", "Bikeshare + 🚶🚆🚌Bikeshare plus walk, train or bus", "More ride types"]), JSON.stringify(go));
+// Featured routes joined them last in v0.12.1 (#456).
+  check("go: the sheet has Where to?, the place chips Home, Food, Water and Restroom (no Work), then More with Metro, Repair, Sights and Featured routes, and the ride types Default, Own Bike + 🚆🚌, Bikeshare + 🚶🚆🚌 and More ride types",
+    go.search && JSON.stringify(go.chips) === JSON.stringify(["Home", "Food", "Water", "Restroom", "More", "Metro", "Repair", "Sights", "Featured routes"]) && JSON.stringify(go.rides) === JSON.stringify(["Default", "Own Bike + 🚆🚌Own bike plus train or bus", "Bikeshare + 🚶🚆🚌Bikeshare plus walk, train or bus", "More ride types"]), JSON.stringify(go));
   const own = await axNode(p, ".go-sheet .ride-chips .ride-type-chip");
   check("go: the first ride type is described as the rider's own, set in Settings", own?.name === "Default" && /^Your ride type\. Change it in Settings, under My Go\.$/.test(own?.description ?? ""), JSON.stringify(own));
   check("go: every control in the top bar and the sheet is 44 px or more each way, and nothing scrolls sideways at 390 px", go.small.length === 0 && !go.scroll, JSON.stringify(go.small));
@@ -4787,9 +4795,9 @@ async function goPressMap(p) {
   await p.eval("document.querySelector('.go-summary .start-button').click(); true");
   taps += 1;
   await sleep(800);
-  const riding = await p.eval("({ ride: !!document.querySelector('section.ride'), ask: !!document.querySelector('.ride-ask:not([hidden])') })");
+  const riding = await p.eval("({ ride: !!document.querySelector('section.ride') })");
   check("go flow: from opening Go, a typed destination takes 3 taps to ride (Where to?, the place, then Start ride), with no question or sheet between, and the route options shown at once",
-    routed && riding.ride && !riding.ask && taps === 3 && options.rides.includes("Own Bike + 🚆🚌Own bike plus train or bus"), JSON.stringify({ taps, options, riding }));
+    routed && riding.ride && taps === 3 && options.rides.includes("Own Bike + 🚆🚌Own bike plus train or bus"), JSON.stringify({ taps, options, riding }));
   await p.close();
 }
 
@@ -5264,7 +5272,8 @@ const failed = results.filter((r) => !r.ok);
 // Plan starting as a loop (2026-10-20) adds one: the loop box unticked and ticked again.
 // Load route's popup (#370) adds one. Settings scrolling (2026-10-22) adds one: Home's one line with Change,
 // Cancel, and leaving Settings.
-const EXPECTED = 685;
+// Plan's Start ride no longer asks first (2026-10-24) takes one away.
+const EXPECTED = 684;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

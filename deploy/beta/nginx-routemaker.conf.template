@@ -366,6 +366,16 @@ server {
         add_header Cache-Control "no-cache" always;
     }
 
+    # A Featured routes post's script (Caddyfile @frontend; core/route_posts.py names it): a fixed name,
+    # so it revalidates on every load. The posts themselves, /routes/*, go to the app below.
+    location = /post.js {
+        root @DATA_ROOT@/frontend;
+        add_header X-Robots-Tag "noindex, nofollow" always;
+        add_header Strict-Transport-Security "max-age=86400" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Cache-Control "no-cache" always;
+    }
+
     location = /manifest.webmanifest {
         root @DATA_ROOT@/frontend;
         # An older nginx's mime.types has no webmanifest line.
