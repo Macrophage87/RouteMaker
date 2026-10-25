@@ -1528,6 +1528,8 @@ The amendments are in date order, then by OWNER-DECISIONS item number (the recor
 
   Implemented as: the notice says "If anything looks wrong, tell the person who gave you access." `ship-data.sh --report-url https://...` sets VITE_BETA_REPORT_URL, and only then does the notice show a "Report a problem" link (https only, `betaReportUrl` in `frontend/src/lib/betaBanner.ts`). The handout is `docs/BETA-TESTER-HANDOUT.md`; `scripts/beta/make-htpasswd.sh` writes passwords of lowercase letters and digits without look-alikes, in four dash-separated groups of five.
 
+  Superseded 2026-10-25 (owner: "For reports in that box, also give the discord. I'm not trying to gatekeep the discord."): the notice now ends "tell us on Discord." with the public invite linked, and a small-print "Sign up to test here!" links the beta sign-up form (`BETA_DISCORD_URL`, `BETA_SIGNUP_URL` in `betaBanner.ts`). A `--report-url` link still shows as "Report a problem" unless it is the Discord invite again.
+
 - 384, Owner 2026-10-05, the sidebar's open questions (312): "1 system, 2 settings, 3 off, 4. call it high contrast, 5 yes".
   1. Theme: follow the system's light or dark setting (as built).
   2. The fourth bottom-bar button is "Settings", not "About" (the bar has five buttons since 392/393, which put Plan first). It holds the sign-in note and the display options.

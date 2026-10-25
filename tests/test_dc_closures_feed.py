@@ -12,6 +12,7 @@ import pytest
 from core import closure_sources as sources
 from core import workzones
 from core.models import BikeshareFeedCache
+from routemaker import deer_closures
 from routemaker import workzones as wz
 
 db = pytest.mark.django_db(transaction=True)
@@ -190,7 +191,11 @@ def test_the_snapshot_holds_the_work_zones_and_the_dc_closures_side_by_side(monk
     found = workzones.snapshot()
     assert found.status == {"alertdc": "current", "dc": "current", "mpd": "current"}
     assert {z.source for z in found.zones} == {"dc", "mpd", "alertdc"}
-    assert {n.source for n in found.notices} == {"mpd", "alertdc"}
+    # The parks' deer-management notices (routemaker.deer_closures) come from the clock, not a feed.
+    assert {n.source for n in found.notices if n.source not in deer_closures.SOURCES} == {
+        "mpd",
+        "alertdc",
+    }
     workzones.forget()
     status = sources.load(
         BikeshareFeedCache.objects.get(key=sources.KEY).payload, NOW + timedelta(hours=7)
