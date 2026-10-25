@@ -163,6 +163,9 @@ def test_it_introduces_itself_and_lists_its_tools(tools) -> None:
     )
     assert hello["result"]["protocolVersion"] == "2025-03-26"
     assert hello["result"]["capabilities"] == {"tools": {"listChanged": False}}
+    # On a rider's own computer it has no site address to name icons from.
+    assert hello["result"]["serverInfo"]["title"] == "RouteMaker"
+    assert "icons" not in hello["result"]["serverInfo"]
     # An unknown version is answered with the newest it speaks, for the client to decide.
     assert (
         rpc(tools, "initialize", {"protocolVersion": "1999-01-01"})["result"]["protocolVersion"]

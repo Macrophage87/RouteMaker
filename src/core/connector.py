@@ -380,6 +380,7 @@ def mcp_endpoint(request):
         files=False,
         gpx_link=lambda draft_id, name: gpx_link(request, user, draft_id, name),
         posts=bool(getattr(user, "is_instance_admin", False)),
+        icons=server_icons(request),
     )
     msg_id = message.get("id") if isinstance(message, dict) else None
     if msg_id is not None and (isinstance(msg_id, bool) or not isinstance(msg_id, (str, int))):
@@ -398,6 +399,18 @@ def mcp_endpoint(request):
 
 
 mcp_endpoint.limits = ratelimit.CONNECTOR_CALLS
+
+
+def server_icons(request) -> list[dict]:
+    """The app's icons (frontend/public), as serverInfo names them. claude.ai's connector list
+    does not read them yet: it shows the favicon Google's favicon service has for the domain
+    (docs/OPERATIONS.md, "The connector's icon"). Other apps, and claude.ai later, may."""
+    origin = _origin(request)
+    return [
+        {"src": f"{origin}/favicon.svg", "mimeType": "image/svg+xml", "sizes": ["any"]},
+        {"src": f"{origin}/icons/icon-192.png", "mimeType": "image/png", "sizes": ["192x192"]},
+        {"src": f"{origin}/icons/icon-512.png", "mimeType": "image/png", "sizes": ["512x512"]},
+    ]
 
 
 # --- A draft's GPX ------------------------------------------------------------------------------
