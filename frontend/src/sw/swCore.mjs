@@ -13,7 +13,7 @@
  * | any other navigation                      | not intercepted (sign-in, the admin, /static, presets)|
  * | /assets/{food,climbs}-*.json (LAZY_ASSET)  | cache first; else fetched and kept on first use       |
  * | /assets/*                                 | precached at install; cache first                     |
- * | /favicon.svg, /icons/*, /licenses.txt     | stale-while-revalidate                                |
+ * | /favicon.*, /icons/*, /licenses.txt       | stale-while-revalidate                                |
  * | /basemap/fonts/*, /basemap/sprites/*      | the kept routes' bucket first, else the network       |
  * | /basemap/region.pmtiles, /tiles/*         | not intercepted (the page keeps them: corridor.ts)    |
  * | /api/*, /auth/*, /healthz, any non-GET    | not intercepted, never cached                         |
@@ -81,7 +81,7 @@ export function ruleFor(request, origin) {
   if (request.mode === "navigate") return path === "/" || path === "/index.html" || SHARED_LINK.test(path) ? "shell" : "pass";
   if (LAZY_ASSET.test(path)) return "lazy";
   if (path.startsWith("/assets/")) return "precache";
-  if (path === "/favicon.svg" || path === "/licenses.txt" || path.startsWith("/icons/")) return "static";
+  if (path === "/favicon.svg" || path === "/favicon.ico" || path === "/licenses.txt" || path.startsWith("/icons/")) return "static";
   if (path.startsWith("/basemap/fonts/") || path.startsWith("/basemap/sprites/")) return "kept";
   return "pass";
 }
