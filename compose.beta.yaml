@@ -51,14 +51,19 @@
 #                                                          until the trail routers came (2026-10-20)
 #   valhalla x2 trails  320M    1.0   (new)                valhalla-offroad and valhalla-mtb, 1 worker
 #                                                          each; the tiles.tar is paged in as asked
-#   worker              256M    0.5   0.07 GB              nightly pg_dump (streamed) and sweeps only
+#   worker              512M    0.5   0.07 GB              nightly pg_dump (streamed), sweeps, and the
+#                                                          map update's stress-tile pre-draw (`exec worker
+#                                                          manage.py predraw_stress_tiles`, a second Django
+#                                                          process in this cgroup). 256M until 2026-10-25:
+#                                                          the pre-draw was OOM-killed at that cap
 #   migrate (one-shot)  256M    0.5   exits before api starts, not counted as resident
 #
-#   resident total: 1024 + 1450 + 1300 + 4*640 + 2*320 + 256 = 7230 MiB = 7.06 GiB, against
-#   about 8.6 GiB available, so a spike in every container at once still leaves 1.54 GiB.
-#   The startup peak adds the largest one-shot (migrate, 256M): 7486 MiB = 7.31 GiB.
-#   The ceiling is 7.1 GiB since the owner's choice of 2026-10-20 ("Both, raise limit to
-#   7.1 GB"), which made room for the two trail routers (it was 7.0 GiB, at 6.94 without them).
+#   resident total: 1024 + 1450 + 1300 + 4*640 + 2*320 + 512 = 7486 MiB = 7.31 GiB, against
+#   about 8.6 GiB available, so a spike in every container at once still leaves 1.29 GiB.
+#   The startup peak adds the largest one-shot (migrate, 256M): 7742 MiB = 7.56 GiB.
+#   The ceiling is 7.35 GiB since 2026-10-25, for the worker's pre-draw; it was 7.1 GiB from
+#   the owner's choice of 2026-10-20 ("Both, raise limit to 7.1 GB"), which made room for the
+#   two trail routers (it was 7.0 GiB, at 6.94 without them).
 #   One-shot management commands go through `exec api ...` (inside the api's own cap) or
 #   `run --rm --no-deps migrate ...` (256M), never `run --rm api ...`, which would start a
 #   second container with the api's 1450M cap beside the running one.
@@ -167,10 +172,10 @@ services:
         target: /data/tiles
         read_only: true
         bind: { create_host_path: false }
-    memswap_limit: 256M
+    memswap_limit: 512M
     deploy:
       resources:
-        limits: { memory: 256M, cpus: "0.5" }
+        limits: { memory: 512M, cpus: "0.5" }
 
   migrate:
     <<: *beta-yield

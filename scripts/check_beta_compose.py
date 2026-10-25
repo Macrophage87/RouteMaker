@@ -88,10 +88,12 @@ ONE_SHOT = {"migrate"}
 # The host: 15 GiB total, about 8.6 GiB available at the owner's measurement
 # (OWNER-DECISIONS 361). The resident ceiling is the owner's "about 6 GB"
 # widened to what the measured per-container needs add up to (compose.beta.yaml
-# header), and then to 7.1 GiB for the two trail routers (the owner, 2026-10-20: "Both,
-# raise limit to 7.1 GB"); it still leaves the host 1.5 GiB of the 8.6 for its own growth.
+# header), then to 7.1 GiB for the two trail routers (the owner, 2026-10-20: "Both,
+# raise limit to 7.1 GB"), and then to 7.35 GiB for the worker's 512M (2026-10-25: the
+# map update's stress-tile pre-draw runs in the worker and was OOM-killed at 256M); it
+# still leaves the host 1.25 GiB of the 8.6 for its own growth.
 HOST_AVAILABLE_GB = 8.6
-MAX_RESIDENT_GB = 7.1
+MAX_RESIDENT_GB = 7.35
 # The startup peak (resident plus the largest one-shot) must leave the host at least this much.
 PEAK_MARGIN_GB = 1.0
 
