@@ -24,6 +24,10 @@ Web, under frontend/public/icons/:
 - apple-touch-icon.png (180): full bleed like the maskable one (iOS rounds the corners
   itself and fills any transparency with black), the drawing a little larger.
 
+And frontend/public/favicon.ico: the favicon at 16, 32 and 48 px (its thick strokes), each a PNG
+inside the .ico. Google's favicon service, which is where claude.ai's connector list gets a
+connector's icon, looks for a raster favicon at the domain's root.
+
 Android, under mobile/android/app/src/main/res/:
 - drawable/ic_launcher_foreground.xml: the drawing as a vector, white on transparent,
   scaled to ADAPTIVE of the 108 dp canvas so it stays inside the 66 dp safe circle. The
@@ -112,6 +116,23 @@ def render(chrome: str, svg: str, width: int, height: int, out: Path) -> None:
     got = struct.unpack(">II", head[16:24])
     if head[:8] != b"\x89PNG\r\n\x1a\n" or got != (width, height):
         raise SystemExit(f"{out}: expected a {width}x{height} PNG, got {got[0]}x{got[1]}")
+
+
+ICO_SIZES = (16, 32, 48)
+
+
+def ico(pngs: list[bytes]) -> bytes:
+    """An .ico holding each PNG as it is (Windows Vista's PNG frames, which every browser reads)."""
+    head = struct.pack("<HHH", 0, 1, len(pngs))
+    offset = len(head) + 16 * len(pngs)
+    entries, data = b"", b""
+    for png in pngs:
+        width, height = struct.unpack(">II", png[16:24])
+        entries += struct.pack(
+            "<BBBBHHII", width % 256, height % 256, 0, 0, 1, 32, len(png), offset + len(data)
+        )
+        data += png
+    return head + entries + data
 
 
 def vector(svg: str) -> str:
@@ -218,6 +239,13 @@ def main() -> None:
         draw(svg, size, size, OUT / f"icon-{size}.png")
         draw(placed(svg, size, size, MASKABLE), size, size, OUT / f"icon-maskable-{size}.png")
     draw(placed(svg, 180, 180, APPLE), 180, 180, OUT / "apple-touch-icon.png")
+    with tempfile.TemporaryDirectory() as work:
+        frames = []
+        for size in ICO_SIZES:
+            render(chrome, svg, size, size, Path(work) / f"{size}.png")
+            frames.append((Path(work) / f"{size}.png").read_bytes())
+    (PUBLIC / "favicon.ico").write_bytes(ico(frames))
+    made.append(PUBLIC / "favicon.ico")
 
     write(RES / "drawable" / "ic_launcher_foreground.xml", vector(svg))
     write(

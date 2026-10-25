@@ -102,6 +102,7 @@ def edge(tmp_path_factory):
     (frontend / "assets").mkdir(parents=True)
     (frontend / "index.html").write_bytes(INDEX)
     (frontend / "favicon.svg").write_bytes(b"<svg/>")
+    (frontend / "favicon.ico").write_bytes(b"ico")
     (frontend / "assets" / "index-abc123.js").write_bytes(SCRIPT)
     (frontend / "licenses.txt").write_bytes(LICENCES)
     (frontend / "about").mkdir()
@@ -176,6 +177,9 @@ def test_the_app_is_served_at_the_root(edge) -> None:
 def test_the_favicon_and_the_licence_notices_are_the_apps(edge) -> None:
     status, _, body = get(edge, "/favicon.svg")
     assert (status, body) == (200, b"<svg/>")
+    status, headers, body = get(edge, "/favicon.ico")
+    assert (status, body) == (200, b"ico")
+    assert "max-age=86400" in headers.get("Cache-Control", ""), headers
     status, headers, body = get(edge, "/licenses.txt")
     assert (status, body) == (200, LICENCES)
     assert "no-cache" in headers.get("Cache-Control", ""), headers

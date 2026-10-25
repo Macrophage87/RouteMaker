@@ -68,6 +68,9 @@ SOURCES = {
     "mpd": "MPD traffic advisory",
     "alertdc": "AlertDC (HSEMA)",
     "nps": "NPS alerts",
+    # The parks' deer-management closures (v0.12.3; `routemaker.deer_closures`), notices only.
+    "nps_deer": "NPS, Rock Creek Park deer management",
+    "mcparks": "Montgomery Parks deer management schedule",
     # Entered or confirmed by a reviewer (v0.7.0; `core.reviewed_closures`).
     "reviewer": "Confirmed by a RouteMaker reviewer",
 }

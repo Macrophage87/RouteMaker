@@ -67,6 +67,8 @@ def test_a_fetcher_gets_the_apps_name_description_and_card(ua: str) -> None:
     assert tags["twitter:card"] == "summary_large_image"
     assert tags["og:image:alt"]
     assert '<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">' in body
+    # Googlebot gets this page at /: the favicons Google's favicon service takes.
+    assert '<link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48">' in body
     assert response["Cache-Control"] == "no-store"
     assert "User-Agent" in response["Vary"]
 
@@ -148,7 +150,7 @@ def test_on_the_beta_only_the_previews_paths_skip_the_password() -> None:
         "location ~ ^/s/[^/]+(/preview\\.png)?$ {",
         "location = /link-preview {",
         "location ^~ /icons/ {",
-        "location = /favicon.svg {",
+        "location ~ ^/favicon\\.(svg|ico)$ {",
     ):
         body = NGINX[NGINX.index(loc) :].split("\n    }", 1)[0]
         assert "auth_basic off;" in body, loc
@@ -163,3 +165,21 @@ def test_no_host_name_is_written_into_the_preview() -> None:
     source = (REPO / "src" / "core" / "share_preview.py").read_text()
     assert "routemakerdc" not in source.lower()
     assert not re.search(r"https?://[a-z]", share_preview.SITE_CARD + share_preview.ICON_LINKS)
+
+
+def test_the_favicon_ico_is_the_favicon_at_16_32_and_48_px() -> None:
+    """scripts/make_app_icons.py's PNG frames, which Google's favicon service and old browsers
+    read at the site's root. frontend/index.html links only the SVG, so a browser tab keeps it."""
+    data = (REPO / "frontend" / "public" / "favicon.ico").read_bytes()
+    reserved, kind, count = struct.unpack("<HHH", data[:6])
+    assert (reserved, kind, count) == (0, 1, 3)
+    sizes = []
+    for n in range(count):
+        width, height, _, _, _, _, length, offset = struct.unpack(
+            "<BBBBHHII", data[6 + 16 * n : 22 + 16 * n]
+        )
+        frame = data[offset : offset + length]
+        assert frame[:8] == b"\x89PNG\r\n\x1a\n"
+        assert struct.unpack(">II", frame[16:24]) == (width, height)
+        sizes.append(width)
+    assert sizes == [16, 32, 48]

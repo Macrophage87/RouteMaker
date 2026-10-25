@@ -54,7 +54,7 @@ test("/assets/* is precached, cache first", () => {
 });
 
 test("the favicon, the icons and the licence notices are stale-while-revalidate", () => {
-  for (const path of ["/favicon.svg", "/icons/icon-192.png", "/icons/apple-touch-icon.png", "/licenses.txt"]) {
+  for (const path of ["/favicon.svg", "/favicon.ico", "/icons/icon-192.png", "/icons/apple-touch-icon.png", "/licenses.txt"]) {
     assert.equal(ruleFor(get(path, "no-cors"), ORIGIN), "static", path);
   }
 });
