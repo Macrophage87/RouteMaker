@@ -176,6 +176,8 @@ def test_it_introduces_itself_and_lists_its_tools(tools) -> None:
     assert names == [
         "find_place",
         "metro_stations",
+        "scenic_roads_near",
+        "climbs_near",
         "plan_route",
         "plan_metro_loop",
         "open_link",
@@ -572,6 +574,8 @@ def test_a_draft_is_revised_point_by_point_and_setting_by_setting(tools) -> None
             "stress": 70,
             "when": "weekend",
             "loop": True,
+            # The stand-in's straight lines make a sharp V at a via point look like a spur.
+            "trim_spurs": False,
         },
     )
     out = tools.call(
@@ -582,6 +586,7 @@ def test_a_draft_is_revised_point_by_point_and_setting_by_setting(tools) -> None
             "move_points": [{"index": 2, "to": [-77.01, 38.96]}],
             "stress": 90,
             "clear_settings": ["when"],
+            "trim_spurs": False,
         },
     )
     sent = StandIn.routes[-1]
