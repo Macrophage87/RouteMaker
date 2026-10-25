@@ -1585,6 +1585,7 @@ dialog.ride-types::backdrop {
 
 .ride-type-loads button {
   display: grid;
+  align-content: start;
   gap: 2px;
   text-align: left;
   min-height: 44px;
@@ -2804,6 +2805,20 @@ button.secondary,
 
 .ride-types .ride-type-card > button:not(.ride-fav) {
   padding: 10px 12px;
+}
+
+/* Cargo Bike's two choices (Stephen 2026-10-25, "Fill this space"): the card takes two rows of the grid, its
+   own card in the first and the choices in the second, so the next ride type moves up beside the choices
+   instead of leaving that cell empty. Reading and Tab order stay as listed. */
+.ride-types .ride-type-card.with-loads {
+  grid-row: span 2;
+  display: grid;
+  grid-template-rows: subgrid;
+  row-gap: 8px;
+}
+
+.ride-types .ride-type-card.with-loads .ride-type-loads {
+  margin-top: 0;
 }
 
 .ride-types .ride-type-card.has-fav > button:first-child {
