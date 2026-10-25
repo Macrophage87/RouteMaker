@@ -511,11 +511,11 @@ server {
         proxy_read_timeout 75s;
     }
 
-    # --- saved and shared routes and the account's own paths: larger bodies -------------------------
+    # --- saved and shared routes, the account's own paths and keyed saves: larger bodies ------------
     # A saved route is up to 4 MB (core.accounts.ROUTE_MAX_BYTES), a shared one 2 MB; the
     # server's 1m would refuse them with nginx's own 413. 5m, as the Caddyfile's @routes_body
     # and Django's DATA_UPLOAD_MAX_MEMORY_SIZE. The proxy settings are location /'s below.
-    location ~ ^/api/(shared-routes|me)(/|$) {
+    location ~ ^/api/(shared-routes|me|keyed)(/|$) {
         client_max_body_size 5m;
         proxy_pass http://rmbeta_api;
         proxy_http_version 1.1;
