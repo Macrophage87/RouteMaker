@@ -112,7 +112,7 @@ def test_the_only_published_port_is_the_apis_on_loopback(rendered: dict) -> None
 
 
 @needs_docker
-def test_the_resident_total_is_about_seven_point_three_gib_and_the_peak_counts_the_one_shot() -> None:
+def test_the_resident_total_is_about_7_3_gib_and_the_peak_counts_the_one_shot() -> None:
     # With the two trail routers (the owner, 2026-10-20: "Both, raise limit to 7.1 GB") and the
     # worker at 512M for the pre-draw (2026-10-25, ceiling 7.35 GiB).
     services = beta.render(offroad=True)["services"]
