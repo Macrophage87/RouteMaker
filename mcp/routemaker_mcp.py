@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import base64
 import bisect
+import itertools
 import json
 import math
 import os
@@ -1165,6 +1166,10 @@ SAME_END_MI = 0.1
 # A hill repeat climbs at least this on average; windows are tried every REPEAT_STEP_MI.
 REPEAT_MIN_GRADE = 2.0
 REPEAT_STEP_MI = 0.05
+# A session's first effort is tried every this far along each clear stretch.
+SESSION_STEP_MI = 0.05
+# Ends this close on two sides of the start, ridden on from it, make a loop, not a turn back.
+SEAM_MI = 0.1
 
 
 def _grades(answer: dict) -> list[tuple[float, float, float]]:
@@ -1217,18 +1222,17 @@ def _breaks(answer: dict) -> tuple[list[tuple[float, float, str]], dict]:
             continue
         turn = entry.get("turn") or {}
         out = (turn.get("shape") or {}).get("out")
-        sharp = (
-            abs(out) >= SHARP_TURN_DEG
-            if out is not None
-            else turn.get("movement")
-            in (
-                "left",
-                "right",
+        if out is not None:  # the angle itself, where the answer has it
+            sharp = abs(out) >= SHARP_TURN_DEG
+        else:
+            # A named trail or street going on under its own name is no turn to slow for.
+            same_way = (
+                before is not None
+                and entry.get("street") not in (None, "path")
+                and before.get("street") == entry.get("street")
             )
-        )
-        # A trail or street going on under another name is no turn to slow for.
-        same_way = before is not None and _street(before) == _street(entry)
-        if sharp and not same_way:
+            sharp = turn.get("movement") in ("left", "right") and not same_way
+        if sharp:
             add(
                 entry["from_mi"] - INTERVAL_PAD_MI, entry["from_mi"] + INTERVAL_PAD_MI, "sharp turn"
             )
@@ -1298,14 +1302,35 @@ def _mile_after(minutes, start: float, wanted: float, end: float) -> float | Non
     return hi
 
 
-def _gain_ft(answer: dict, a: float, b: float) -> float:
-    """The climbing, feet, between miles `a` and `b`."""
-    gain = 0.0
+def _rise_ft(answer: dict, a: float, b: float) -> float:
+    """The height gained, feet, from mile `a` to mile `b` (net: rolling ground is none)."""
+    rise = 0.0
     for x, y, grade in _grades(answer):
         overlap = min(y, b) - max(x, a)
-        if overlap > 0 and grade > 0:
-            gain += grade / 100 * overlap * METRES_PER_MILE
-    return gain * FEET_PER_METRE
+        if overlap > 0:
+            rise += grade / 100 * overlap * METRES_PER_MILE
+    return rise * FEET_PER_METRE
+
+
+def _along_line(line: list, mi: float) -> tuple:
+    """The point `mi` along the line from its first point."""
+    done = 0.0
+    for p, q in itertools.pairwise(line):
+        step = haversine_mi(tuple(p[:2]), tuple(q[:2]))
+        if done + step >= mi and step > 0:
+            f = (mi - done) / step
+            return (p[0] + (q[0] - p[0]) * f, p[1] + (q[1] - p[1]) * f)
+        done += step
+    return tuple(line[-1][:2])
+
+
+def _seamless(line: list) -> bool:
+    """Whether a route that ends where it began rides on through its start (a loop) rather
+    than turning back there (an out-and-back): the line SEAM_MI after the start and SEAM_MI
+    before the end are apart."""
+    if len(line) < 3:
+        return True  # no line to tell by: the answer said loop
+    return haversine_mi(_along_line(line, SEAM_MI), _along_line(line[::-1], SEAM_MI)) > SEAM_MI / 2
 
 
 def _session(clear, minutes, start, on_min, rest_mi, sets):
@@ -1374,32 +1399,49 @@ def interval_check(answer: dict, ask: dict, roads_at=None) -> dict:
     ridden, along = clear, minutes
     if again and distance_mi > 0:
         # Ridden round: the start is no break on a loop, but is the turn of an out-and-back.
-        seamless = len(line) > 3 and haversine_mi(tuple(line[1][:2]), tuple(line[-2][:2])) > 0.05
+        seamless = bool(answer.get("loop")) or _seamless(line)
         ridden, along = _laps(clear, minutes, distance_mi, seamless)
     best: list = []
-    for a, _ in clear:  # each clear stretch's start is a session's possible first effort
-        found = _session(ridden, along, a, on_min, rest_mi, sets)
-        if len(found) > len(best):
-            best = found
+    for a, b in clear:  # a session's first effort, tried all along each clear stretch
+        start = a
+        while start < b and len(best) < sets:
+            found = _session(ridden, along, start, on_min, rest_mi, sets)
+            if len(found) > len(best):
+                best = found
+            start += SESSION_STEP_MI
         if len(best) >= sets:
             break
     per_mi = 60 / (pace * RECOVERY_SHARE)
 
-    def on_route(mile: float) -> float:
-        return mile - int(mile // distance_mi) * distance_mi if again and distance_mi else mile
+    def on_route(mile: float) -> tuple[int, float]:
+        """(lap, mile on the route) of a mile ridden round, rounding clear of a lap's edge."""
+        if not (again and distance_mi):
+            return 0, mile
+        lap = int((mile + 1e-6) // distance_mi)
+        return lap, max(0.0, mile - lap * distance_mi)
+
+    def roads_round(start: float, finish: float) -> list:
+        if finish <= distance_mi or not again:
+            return roads_at(start, min(finish, distance_mi))
+        rest = [
+            r for r in roads_at(0.0, finish - distance_mi) if r not in roads_at(start, distance_mi)
+        ]
+        return roads_at(start, distance_mi) + rest
 
     efforts = []
     for k, (a, b, extra) in enumerate(best):
-        lap = int(a // distance_mi) if again and distance_mi else 0
-        start, finish = on_route(a), b - lap * distance_mi
+        lap, start = on_route(a)
+        finish = b - lap * distance_mi if again and distance_mi else b
+        through = again and finish > distance_mi + 1e-6  # on through the start
         efforts.append(
             {
                 "set": k + 1,
                 **({"lap": lap + 1} if again else {}),
                 "from_mi": round(start, 2),
-                "to_mi": round(finish, 2),
+                "to_mi": round(finish - distance_mi if through else finish, 2),
+                **({"through_start": True} if through else {}),
                 **({"rest_min": round(off_min + extra * per_mi, 1)} if k else {}),
-                **({"roads": roads_at(start, min(finish, distance_mi))} if roads_at else {}),
+                **({"roads": roads_round(start, finish)} if roads_at else {}),
             }
         )
     # Repeats: the climbiest on_min window of each clear stretch, ridden this way for each
@@ -1412,9 +1454,9 @@ def interval_check(answer: dict, ask: dict, roads_at=None) -> dict:
             finish = _mile_after(minutes, start, on_min, b)
             if finish is None:
                 break
-            gain = _gain_ft(answer, start, finish)
-            if top is None or gain > top[2]:
-                top = (start, finish, gain)
+            rise = _rise_ft(answer, start, finish)
+            if top is None or rise > top[2]:
+                top = (start, finish, rise)
             start += REPEAT_STEP_MI
         if top is None:
             continue

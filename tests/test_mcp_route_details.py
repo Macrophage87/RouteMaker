@@ -6,6 +6,7 @@ detours, and place names searched near the route's other points."""
 from __future__ import annotations
 
 import importlib.util
+import itertools
 import sys
 from pathlib import Path
 
@@ -421,10 +422,11 @@ def test_efforts_go_where_nothing_breaks_them() -> None:
     out = mcp.interval_check(answer, ask, mcp._roads_between(answer))
     assert out["breaks"] == {"stop sign": 1, "signal": 1}
     efforts = [(e["from_mi"], e["to_mi"]) for e in out["efforts"]]
-    assert efforts[0] == (pytest.approx(1.05, abs=0.01), pytest.approx(2.55, abs=0.01))
-    # The cross street's stop sign is theirs, not the rider's: the effort runs through it. The
-    # stretch after the signal is too far on for a 3-minute rest: one set in one session.
-    assert out["sets_in_one_session"] == 1 and "lap" not in out["efforts"][0]
+    # The cross street's stop sign is theirs, not the rider's: the effort runs through it.
+    # Started late enough, the first effort's rest ends just past the signal for a second.
+    assert efforts[0][1] <= 3.95 and efforts[1][0] == pytest.approx(4.05, abs=0.01)
+    assert out["sets_in_one_session"] == 2 and "lap" not in out["efforts"][0]
+    assert out["efforts"][1]["rest_min"] <= 3 * mcp.REST_SLACK
     assert out["longest_clear"][0]["roads"] == ["Beach Drive"]
 
 
@@ -434,10 +436,31 @@ def test_a_loop_is_ridden_again_until_the_sets_fit() -> None:
     assert out["sets_in_one_session"] == 5
     assert out["efforts"][-1]["lap"] >= 3
     # Ridden out and back, the turn at the start breaks an effort that would run through it.
-    answer["geometry"]["coordinates"] = [at(0.0), at(1.65), at(0.0)]
-    there_and_back = mcp.interval_check(answer, {"on_minutes": 5, "off_minutes": 3, "sets": 5})
-    assert all(e["to_mi"] > e["from_mi"] for e in there_and_back["efforts"])
     assert all(e["rest_min"] == pytest.approx(3.0, abs=0.1) for e in out["efforts"][1:])
+    through = [e for e in out["efforts"] if e.get("through_start")]
+    assert through and all(e["to_mi"] < e["from_mi"] for e in through)
+    assert all(0 <= e["from_mi"] < 3.3 and 0 < e["to_mi"] <= 3.3 for e in out["efforts"])
+    # The same with a point every 10 m, as a real line has: still a loop.
+    dense = []
+    for p, q in itertools.pairwise(answer["geometry"]["coordinates"]):
+        dense += [
+            [p[0] + (q[0] - p[0]) * k / 180, p[1] + (q[1] - p[1]) * k / 180] for k in range(180)
+        ]
+    answer["geometry"]["coordinates"] = dense + [answer["geometry"]["coordinates"][-1]]
+    assert mcp.interval_check(answer, {"sets": 5})["sets_in_one_session"] == 5
+    assert (
+        mcp.interval_check({"distance_m": 5000, "loop": True}, {"sets": 3})["sets_in_one_session"]
+        == 3
+    )
+
+
+def test_an_out_and_back_s_turn_breaks_an_effort_and_each_lap_starts_at_its_start() -> None:
+    answer = _interval_answer(2.15)
+    answer["geometry"]["coordinates"] = [at(0.0), at(1.075), at(0.0)]
+    out = mcp.interval_check(answer, {"sets": 5})
+    assert out["sets_in_one_session"] == 5
+    for e in out["efforts"]:
+        assert 0 <= e["from_mi"] < e["to_mi"] <= 2.15 and "through_start" not in e
 
 
 def test_descents_sharp_turns_and_lts_4_break_an_effort() -> None:
@@ -525,3 +548,27 @@ def test_intervals_asked_takes_defaults_and_refuses_words() -> None:
     assert mcp._intervals_asked(None) is None
     with pytest.raises(mcp.ToolError, match="intervals.sets"):
         mcp._intervals_asked({"sets": "five"})
+
+
+def test_a_sharp_angle_on_one_trail_is_a_turn_and_starts_line_up_with_the_rests() -> None:
+    entries = [
+        stretch("Paint Branch Trail", 0.0, 1.5, 1, "path"),
+        {
+            **stretch("Paint Branch Trail", 1.5, 3.0, 1, "path"),
+            "turn": {"movement": "left", "shape": {"out": -96}},
+        },
+    ]
+    out = mcp.interval_check(_interval_answer(3.0, entries=entries), {"on_minutes": 5})
+    assert out["breaks"] == {"sharp turn": 1}
+    # Starting late in the first stretch lines the second effort up after a 3-minute rest.
+    signals = [(m, "signal", 3) for m in (3.1, 3.3, 3.5, 3.7)]
+    two = mcp.interval_check(_interval_answer(6.0, signals), {"sets": 2})
+    assert two["sets_in_one_session"] == 2
+
+
+def test_rolling_ground_is_no_hill_repeat() -> None:
+    answer = _interval_answer(3.0)
+    answer["profile"]["elevation_m"] = [
+        100.0 + 4.0 * (k % 2) for k in range(len(answer["profile"]["m"]))
+    ]
+    assert mcp.interval_check(answer, {"on_minutes": 5})["repeats"] == []
