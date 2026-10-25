@@ -6,7 +6,8 @@
  * settings, as plain text to copy into a bug report.
  *
  * Privacy: nothing leaves the device unless the rider pastes it somewhere. The link's places (its points, and
- * anything else not on SAFE_KEYS) are left out, so a report never says where someone rides.
+ * anything else not on SAFE_KEYS) are left out, and coordinates and tile numbers in the errors' own text, so a report
+ * never says where someone rides.
  */
 import { APP_VERSION } from "./appVersion.ts";
 
@@ -23,16 +24,24 @@ export interface LoggedError {
 
 const kept: LoggedError[] = [];
 
-/** One error's text: its message and stack, or what it was turned into a string. */
+/**
+ * An error's text with any place in it left out: a coordinate pair ("-77.01203,38.89853") or a map tile's z/x/y
+ * (a failed tile's URL names the area it was for).
+ */
+export function withoutPlaces(text: string): string {
+  return text.replace(/-?\d{1,3}\.\d{3,}\s*,\s*-?\d{1,3}\.\d{3,}/g, "(place left out)").replace(/\/\d{1,2}\/\d+\/\d+(?=[/.?]|$)/g, "/(tile left out)");
+}
+
+/** One error's text: its message and stack, or what it was turned into a string, without places. */
 export function errorText(error: unknown): string {
   if (error instanceof Error) {
     const stack = error.stack ?? "";
-    return stack.includes(error.message) ? stack : `${error.name}: ${error.message}\n${stack}`.trim();
+    return withoutPlaces(stack.includes(error.message) ? stack : `${error.name}: ${error.message}\n${stack}`.trim());
   }
   try {
-    return typeof error === "string" ? error : JSON.stringify(error) ?? String(error);
+    return withoutPlaces(typeof error === "string" ? error : JSON.stringify(error) ?? String(error));
   } catch {
-    return String(error);
+    return withoutPlaces(String(error));
   }
 }
 

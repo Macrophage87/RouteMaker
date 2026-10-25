@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { crashReport, errorText, KEPT_ERRORS, logError, safeFragment, type LoggedError } from "./crashReport.ts";
+import { crashReport, errorText, KEPT_ERRORS, logError, safeFragment, withoutPlaces, type LoggedError } from "./crashReport.ts";
 
 test("the link's places are left out of the report, its settings kept", () => {
   assert.equal(
@@ -42,4 +42,11 @@ test("an error that is not an Error is still written down", () => {
   assert.equal(errorText("plain"), "plain");
   assert.equal(errorText({ code: 3 }), '{"code":3}');
   assert.equal(errorText(undefined), "undefined");
+});
+
+test("coordinates and tile numbers in an error's own text are left out", () => {
+  assert.equal(withoutPlaces("no route near -77.01203,38.89853 today"), "no route near (place left out) today");
+  assert.equal(withoutPlaces("AJAXError: Not Found (404): https://x/tiles/stress/14/4686/6267.pbf"), "AJAXError: Not Found (404): https://x/tiles/stress/(tile left out).pbf");
+  assert.equal(withoutPlaces("at index-C5wyiE6K.js:267:35304"), "at index-C5wyiE6K.js:267:35304", "a stack's line and column stay");
+  assert.equal(errorText({ url: "/basemap/12/1171/1566.mvt" }), '{"url":"/basemap/(tile left out).mvt"}');
 });

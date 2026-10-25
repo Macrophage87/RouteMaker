@@ -15,8 +15,8 @@ export class CrashBoundary extends Component<{ children: ReactNode }, { error: u
     return { error: error ?? new Error("Unknown error"), componentStack: null, at: Date.now() };
   }
 
-  componentDidCatch(error: unknown, info: ErrorInfo) {
-    this.setState({ error: error ?? new Error("Unknown error"), componentStack: info.componentStack ?? null, at: Date.now() });
+  componentDidCatch(_error: unknown, info: ErrorInfo) {
+    this.setState((state) => (state.error === null ? state : { ...state, componentStack: info.componentStack ?? null }));
   }
 
   render() {
@@ -42,7 +42,7 @@ export function CrashScreen({ report }: { report: string }) {
   useEffect(() => heading.current?.focus(), []);
   const copy = async () => {
     const done = await copyText(report, navigator.clipboard, selectionCopy);
-    setSaid(done ? "Error report copied. Paste it into your bug report." : "Could not copy. Open Show the report and copy it from there.");
+    setSaid(done ? "Error report copied. Paste it into your bug report." : "Could not copy. Copy it from the report below.");
   };
   return (
     <main className="crash-screen">
