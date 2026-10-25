@@ -7,7 +7,7 @@
  * - The card: the road the rider is on and the next roads ahead, each with its stress level as the map colours it,
  *   read from the map's own tiles on the phone. Fewer words on screen; a screen reader and the voice hear the road
  *   as it changes, in whole words.
- * - The side buttons: Where am I? (re-centring), Detour (water, restroom, food: the three nearest by bike, each with
+ * - The side buttons: Where am I? (re-centring), Detour (water, restroom, food, repair or a search: the three nearest by bike, each with
  *   Ride here, which starts an ordinary ride there; ending that ride comes back to Roam), and the compass.
  * - End roam, slid as End ride is, so a bump does not end it.
  *
@@ -15,12 +15,15 @@
  * (POST /api/nearest) and the ride it starts send where the rider is, in a POST body, as Ride mode's detours do; and
  * while the rider broadcasts, the position and trail go to /api/rides as any broadcast's do, kept 2 minutes there.
  */
+import { NOTHING_DISMISSED, RIDE_WEATHER_MS, alertKey, alertSaid, alertUrgent, dismissWeather, newAlerts, rainLine, rainSays, rainStage, roamPoints, weatherToShow } from "./lib/weather.ts";
+import { useWeather } from "./useWeather.ts";
+import { WeatherLines } from "./WeatherLines.tsx";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Icon } from "./Icon.tsx";
 import { LiveRegion, SlideToEnd, rideVoice } from "./RideMode.tsx";
 import { currentTiers } from "./stressStyle.js";
 import { useStressStyle } from "./useStressStyle.ts";
-import { insideCoverage, haversineM, type LonLat } from "./lib/geo.ts";
+import { haversineM, type LonLat } from "./lib/geo.ts";
 import type { FoodPlace } from "./lib/food.ts";
 import type { Dials } from "./lib/dials.ts";
 import type { PresetId } from "./lib/presets.ts";
@@ -31,21 +34,20 @@ import type { RideFix } from "./lib/navigate.ts";
 import { ScreenWake, toScreenReader, type RidePrefs } from "./lib/rideOutput.ts";
 import { WAITING_FOR_GPS, watchRide, type RideGeoEnv } from "./lib/rideWatch.ts";
 import { rideGeoEnv, rideWake, speaksAloud } from "./lib/nativeShell.ts";
+import { NO_FIX_YET, STILL_SEARCHING, nearbyShort, requestNearest, type Nearby, type NearestPlace } from "./lib/nearest.ts";
 import {
-  NEAREST_KINDS,
-  NO_FIX_YET,
-  STILL_SEARCHING,
-  findingSaid,
-  nearbyShort,
-  nearestInStraightLine,
-  rankNearest,
-  requestNearest,
-  rideLocate,
-  searchNearest,
-  type Nearby,
-  type NearestKind,
-  type NearestPlace,
-} from "./lib/nearest.ts";
+  DETOUR_CHOICES,
+  DETOUR_SEARCH_BUTTON,
+  DETOUR_SEARCH_HINT,
+  DETOUR_SEARCH_LABEL,
+  DETOUR_SUMMARY,
+  detourFindingSaid,
+  findDetour,
+  type DetourAsk,
+  type DetourDeps,
+  type DetourFound,
+} from "./lib/detourSearch.ts";
+import type { RepairPlace } from "./lib/repair.ts";
 import {
   END_ROAM_NAME,
   NO_NAMED_ROAD,
@@ -55,7 +57,6 @@ import {
   ROAM_NAME,
   aheadSaid,
   aheadShown,
-  foodNearestPlaces,
   HeadingTrack,
   mapLines,
   onRoadSaid,
@@ -66,14 +67,9 @@ import {
   type RoamMap,
 } from "./lib/roam.ts";
 
-/** What Roam's Detour searches: Ride mode's two, and food (the owner: "bathroom food water"). */
-type RoamKind = "water" | "restroom" | "food";
-const ROAM_KINDS: ReadonlyArray<{ kind: RoamKind; label: string; icon: "water" | "wc" | "food" }> = [
-  { kind: "water", label: "Water", icon: "water" },
-  { kind: "restroom", label: "Restroom", icon: "wc" },
-  { kind: "food", label: "Food", icon: "food" },
-];
-const FOOD_NOT_READY = "The places to eat are unavailable for now; try again shortly.";
+/** No repair stands or place search given (a test's roam): those detours say they are unavailable. */
+const noPlaces = async () => null;
+const noSearch: DetourDeps["geocode"] = async () => ({ ok: false, status: 0 });
 
 /** How often the card is worked out again at most, and how far the rider moves before it is anyway. */
 const AHEAD_EVERY_MS = 2_000;
@@ -106,6 +102,8 @@ export function RoamMode({
   dials,
   water,
   food,
+  repair = noPlaces,
+  geocode = noSearch,
   onView,
   onDetour,
   onEnd,
@@ -124,6 +122,10 @@ export function RoamMode({
   dials: Dials;
   water: () => Promise<WaterPoint[] | null>;
   food: () => Promise<FoodPlace[] | null>;
+  /** The repair stands and bike shops, loaded if they are not yet; for the detours. */
+  repair?: () => Promise<RepairPlace[] | null>;
+  /** The place search, through the page's one geocoding gate; for Detour's search box. */
+  geocode?: DetourDeps["geocode"];
   /** The rider, for the map's arrow, accuracy circle and follow camera. */
   onView: (rider: { point: LonLat; headingDeg: number | null; accuracyM: number } | null) => void;
   /** Ride here: a ride from `here` to the place starts; null, else the words to say why not. */
@@ -151,11 +153,12 @@ export function RoamMode({
   const [toast, setToast] = useState("");
 
   // Said through the rider's outputs (Settings > Ride mode): the screen reader's region, the voice, or both.
-  const say = useCallback((text: string) => {
+  // `urgent` interrupts the voice (an Extreme or Severe weather warning).
+  const say = useCallback((text: string, urgent = false) => {
     if (!text) return;
     const output = prefsRef.current.output;
     if (toScreenReader(output) || output === "neither") setPolite((s) => ({ text, count: s.count + 1 }));
-    if (speaksAloud(output, document.visibilityState === "hidden")) rideVoice.speak(text, false);
+    if (speaksAloud(output, document.visibilityState === "hidden")) rideVoice.speak(text, urgent);
   }, []);
   const answer = useCallback(
     (text: string) => {
@@ -228,7 +231,8 @@ export function RoamMode({
     answer([onRoadSaid(roads?.on ?? null), aheadSaid(roads?.ahead ?? [])].filter(Boolean).join(" "));
   };
 
-  // Detour (Ride mode's, with food too): the three nearest by bike, then Ride here.
+  // Detour (Ride mode's: water, restroom, food, repair and a search box, lib/detourSearch.ts): the three nearest by
+  // bike, then Ride here.
   const detourId = useId();
   const [detourOpen, setDetourOpen] = useState(false);
   const detourButton = useRef<HTMLButtonElement>(null);
@@ -237,7 +241,8 @@ export function RoamMode({
     if (detourOpen) detourHeading.current?.focus();
   }, [detourOpen]);
   const [detourStatus, setDetourStatus] = useState("");
-  const [found, setFound] = useState<{ kind: RoamKind; items: Nearby[] } | null>(null);
+  const [found, setFound] = useState<DetourFound | null>(null);
+  const [query, setQuery] = useState("");
   const busy = useRef(false);
   // Ended (End roam, or a detour's ride started): a search answering late says and shows nothing.
   const gone = useRef(false);
@@ -252,7 +257,7 @@ export function RoamMode({
     setDetourStatus(text);
     say(text);
   };
-  const find = async (kind: RoamKind) => {
+  const find = async (ask: DetourAsk) => {
     if (busy.current) {
       sayDetour(STILL_SEARCHING);
       return;
@@ -264,40 +269,21 @@ export function RoamMode({
     }
     busy.current = true;
     setFound(null);
-    sayDetour(kind === "food" ? "Finding the nearest places to eat." : findingSaid(kind));
+    sayDetour(detourFindingSaid(ask));
     try {
-      const request = (from: LonLat, places: readonly NearestPlace[]) => requestNearest(from, places, preset, { ...dials, loop: false });
-      if (kind === "food") {
-        const data = await food();
-        if (!data || data.length === 0) {
-          sayDetour(FOOD_NOT_READY);
-          return;
-        }
-        const candidates = nearestInStraightLine(here.point, foodNearestPlaces(data));
-        const result = await request(here.point, candidates);
-        if (!result.ok) {
-          sayDetour(`The search failed. ${result.message}`);
-          return;
-        }
-        const items = rankNearest(candidates, result.answer);
-        if (gone.current) return;
-        setFound({ kind, items });
-        sayDetour(items.length > 0 ? `${items.length} nearest places to eat. ${items.map(nearbyShort).join(" ")}` : "No places to eat found nearby.");
-        return;
-      }
-      const outcome = await searchNearest({
-        kind: kind as NearestKind,
-        from: "location",
-        locate: async () => rideLocate(here),
-        start: () => null,
-        centre: () => null,
-        inside: insideCoverage,
-        water,
-        stations: [],
-        request,
-      });
+      const outcome = await findDetour(
+        {
+          here: here.point,
+          water,
+          food,
+          repair,
+          geocode,
+          request: (from: LonLat, places: readonly NearestPlace[]) => requestNearest(from, places, preset, { ...dials, loop: false }),
+        },
+        ask,
+      );
       if (gone.current) return;
-      if (outcome.found) setFound({ kind, items: outcome.found.items });
+      if (outcome.found) setFound(outcome.found);
       sayDetour(outcome.said);
     } finally {
       busy.current = false;
@@ -336,6 +322,28 @@ export function RoamMode({
     const [lon, lat] = lightAt.split(",").map(Number);
     return roamLight(minute * 60_000, [lon, lat]);
   }, [lightAt, minute]);
+
+  // Weather where the rider is (lib/weather.ts, Stephen 2026-10-24), as a ride checks it: every 5 minutes, a new NWS
+  // alert or rain coming said and shown under the roads ahead until dismissed.
+  const weather = useWeather(
+    fix ? "roam" : null,
+    () => (fixRef.current ? roamPoints(fixRef.current.point) : null),
+    RIDE_WEATHER_MS,
+  );
+  const weatherSaid = useRef({ alerts: new Set<string>(), rain: "" });
+  const [weatherDismissed, setWeatherDismissed] = useState(NOTHING_DISMISSED);
+  useEffect(() => {
+    if (!weather) return;
+    const said = weatherSaid.current;
+    const fresh = newAlerts(weather, said.alerts);
+    for (const alert of fresh) {
+      said.alerts.add(alertKey(alert));
+      say(alertSaid(alert, Date.now()), alertUrgent(alert));
+    }
+    if (rainSays(said.rain, weather.rain) && weather.rain) say(rainLine(weather.rain, weather.alongM, true));
+    said.rain = rainStage(weather.rain);
+  }, [weather, say]);
+  const weatherShown = weatherToShow(weather, weatherDismissed);
 
   const broadcastBusy = useRef(false);
   const broadcast = async () => {
@@ -410,6 +418,7 @@ export function RoamMode({
             </ol>
           )}
           {roads !== null && heading === null && <p className="cue-more">Start riding to see the roads ahead.</p>}
+          <WeatherLines report={weatherShown} riding now={Date.now()} onDismiss={() => { setWeatherDismissed((d) => dismissWeather(weatherShown, d)); headingRef.current?.focus({ preventScroll: true }); }} />
         </div>
       </div>
       <div className="ride-middle">
@@ -460,10 +469,11 @@ export function RoamMode({
               type="button"
               ref={detourButton}
               className="ride-round"
-              aria-label="Detour: water, restroom or food"
+              aria-label={`Detour: ${DETOUR_SUMMARY.toLowerCase()}`}
               title="Detour"
               aria-expanded={detourOpen}
               aria-controls={detourId}
+              data-idle-close
               onClick={() => setDetourOpen(!detourOpen)}
             >
               <Icon name="detour" size={24} />
@@ -485,17 +495,44 @@ export function RoamMode({
                 </button>
               </div>
               <div className="actions nearest-kinds">
-                {ROAM_KINDS.map(({ kind, label, icon }) => (
-                  <button key={kind} type="button" className="secondary" onClick={() => void find(kind)}>
+                {DETOUR_CHOICES.map(({ kind, label, icon }) => (
+                  <button key={kind} type="button" className="secondary" onClick={() => void find({ kind })}>
                     <Icon name={icon} size={20} />
                     {label}
                   </button>
                 ))}
               </div>
+              <form
+                className="detour-search"
+                role="search"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                    // The focus moves to Find, so a phone's keyboard goes and does not cover the list that comes.
+                    event.currentTarget.querySelector<HTMLButtonElement>("button[type=submit]")?.focus();
+                  void find({ query });
+                }}
+              >
+                <label htmlFor={`${detourId}-search`}>{DETOUR_SEARCH_LABEL}</label>
+                <span className="detour-search-row">
+                  <input
+                    id={`${detourId}-search`}
+                    type="search"
+                    enterKeyHint="search"
+                    autoComplete="off"
+                    placeholder={DETOUR_SEARCH_HINT}
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                  />
+                  <button type="submit" className="secondary">
+                    <Icon name="search" size={20} />
+                    {DETOUR_SEARCH_BUTTON}
+                  </button>
+                </span>
+              </form>
               <p className="hint nearest-status">{detourStatus}</p>
               {found && found.items.length > 0 && (
                 <div className="nearest-list">
-                  <h4 id={`${detourId}-found`}>{found.kind === "food" ? "Nearest places to eat" : `Nearest ${NEAREST_KINDS.find((k) => k.kind === found.kind)?.noun ?? ""}`}</h4>
+                  <h4 id={`${detourId}-found`}>{found.heading}</h4>
                   <ol role="list" aria-labelledby={`${detourId}-found`}>
                     {found.items.map((item, i) => (
                       <li key={item.place.id}>
@@ -516,6 +553,7 @@ export function RoamMode({
                     ))}
                   </ol>
                   {found.kind === "water" && <p className="hint">{WATER_CAUTION}</p>}
+                    {found.attribution && <p className="hint">Search: {found.attribution.join("; ")}</p>}
                 </div>
               )}
               <p className="hint">{ROAM_DETOUR_HELP}</p>

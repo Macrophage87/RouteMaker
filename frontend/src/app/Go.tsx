@@ -16,6 +16,7 @@ import { MODE_LABEL, MODE_SWITCH_HINT, MODE_SWITCH_HINT_REVIEW, MODE_SWITCH_NAME
 import { HOME_NOT_SET, type Home } from "../lib/myGo.ts";
 import { BEST_ORDER_LABEL } from "../lib/stopOrder.ts";
 import { CHANGE_HOME_TEXT, CLEAR_HOME_TEXT, HOME_PICK_LINE, PICK_ON_MAP_TEXT, homeClosesSheet, homeName, homeSetKey } from "../lib/homeSet.ts";
+import { FEATURED_ROUTES_LABEL, FEATURED_ROUTES_PATH } from "../lib/featuredRoutes.ts";
 
 export type GoSheetSize = "peek" | "half" | "full";
 
@@ -440,6 +441,11 @@ export function GoSheet({
             <Icon name="camera" size={18} />
             Sights
           </button>
+          {/* Featured routes (the owner, 2026-10-19: "one item behind More"): the posts' list, a page of its own (core/route_posts.py). */}
+          <a className="chip place-chip" href={FEATURED_ROUTES_PATH}>
+            <Icon name="star" size={18} />
+            {FEATURED_ROUTES_LABEL}
+          </a>
           {places.homeReady && (
             <button type="button" className="chip place-chip" aria-expanded={homeShown} aria-controls={homeSheetId} onClick={() => setHomeOpen(!homeOpen)}>
               <Icon name="home" size={18} />

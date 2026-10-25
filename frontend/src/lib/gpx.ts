@@ -431,6 +431,8 @@ export interface GpxExport {
    * "Via point", never a numbered stop, so a file opened again keeps each point's kind.
    */
   vias?: readonly number[];
+  /** The stops' own names by index (2026-10-24): a named stop's route point carries its name, as a file opens it. */
+  stopNames?: ReadonlyMap<number, string>;
   /** A loop the rider chose (OWNER-DECISIONS 374): the first point is "Start and finish" and the rest are stops. */
   loop?: boolean;
   /** The route line. */
@@ -463,14 +465,17 @@ export function planPointName(index: number, count: number, loop = false): strin
   return `Stop ${index}`;
 }
 
-/** Every plan point's name in a file: stops numbered among themselves, via points named VIA_POINT_NAME. */
-export function planPointNames(count: number, loop = false, vias: readonly number[] = []): string[] {
+/**
+ * Every plan point's name in a file: stops numbered among themselves (or by their own names, 2026-10-24), via points
+ * named VIA_POINT_NAME.
+ */
+export function planPointNames(count: number, loop = false, vias: readonly number[] = [], names: ReadonlyMap<number, string> = new Map()): string[] {
   let stops = 0;
   return Array.from({ length: count }, (_, index) => {
     if (index === 0 || (!loop && index === count - 1)) return planPointName(index, count, loop);
     if (vias.includes(index)) return VIA_POINT_NAME;
     stops += 1;
-    return `Stop ${stops}`;
+    return names.get(index) ?? `Stop ${stops}`;
   });
 }
 
@@ -508,10 +513,10 @@ export function writeGpx(input: GpxExport): string {
     const routeDesc = [input.rideText, input.routeText].filter((part) => part).join("\n\n");
     if (routeDesc) lines.push(`    <desc>${escapeXml(routeDesc)}</desc>`);
     lines.push(`    <type>${escapeXml(PLAN_TYPE_PREFIX + input.preset)}</type>`);
-    const names = planPointNames(input.planPoints.length, input.loop === true, input.vias);
+    const names = planPointNames(input.planPoints.length, input.loop === true, input.vias, input.stopNames);
     input.planPoints.forEach((p, index) => {
       lines.push(`    <rtept ${position(p)}>`);
-      lines.push(`      <name>${names[index]}</name>`);
+      lines.push(`      <name>${escapeXml(names[index])}</name>`);
       lines.push("    </rtept>");
     });
     lines.push("  </rte>");

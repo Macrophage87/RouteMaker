@@ -11,6 +11,7 @@
 import { useEffect, useRef, useState } from "react";
 import { GeoGate, PlaceNamer, nameSender } from "./lib/geocode.ts";
 import type { LonLat } from "./lib/geo.ts";
+import { VIA_MARKS } from "./lib/pointKinds.ts";
 
 export function usePlaceNames(points: readonly LonLat[]) {
   const gate = useRef<GeoGate | null>(null);
@@ -22,6 +23,8 @@ export function usePlaceNames(points: readonly LonLat[]) {
     namer.current = new PlaceNamer({
       send: nameSender(g),
       onChange: () => setVersion((v) => v + 1),
+      // A stop's own name (Stephen 2026-10-24) before the map's name for the spot.
+      own: (point) => (VIA_MARKS.isVia(point) ? undefined : VIA_MARKS.nameOf(point)),
     });
   }
   useEffect(() => {

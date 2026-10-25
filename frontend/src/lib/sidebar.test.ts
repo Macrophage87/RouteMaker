@@ -284,7 +284,7 @@ test("with a route shown Plan's search and point tools stay in view (v0.7.0), an
   assert.match(app, /<div id="points-edit" ref=\{pointsEditRef\} hidden=\{compactPoints\}>/);
   // Clear, a plan from a link, or fewer than two points: the next route opens compact again (N1).
   assert.match(app, /const clearAll = \(\) => \{\s*setConfirmedKm\(null\);\s*setEditPoints\(false\);/);
-  assert.match(app, /setEditPoints\(false\);\s*\/\/ A plan opened from a link opens drawn[^\n]*\n\s*forgetDrawn\(\);\s*setRouteAsk\(\(n\) => n \+ 1\);\s*setPoints\(VIA_MARKS\.markDrawn\(VIA_MARKS\.markAt\(plan\.points, plan\.vias\), plan\.drawn\)\);/);
+  assert.match(app, /setEditPoints\(false\);\s*\/\/ A plan opened from a link opens drawn[^\n]*\n\s*forgetDrawn\(\);\s*setRouteAsk\(\(n\) => n \+ 1\);\s*setPoints\(VIA_MARKS\.nameAt\(VIA_MARKS\.markDrawn\(VIA_MARKS\.markAt\(plan\.points, plan\.vias\), plan\.drawn\), plan\.names\)\);/);
   assert.match(app, /setStatus\(\{ kind: "idle" \}\);\s*\/\/ The next route opens compact again[^\n]*\n\s*setEditPoints\(false\);/);
 });
 
@@ -605,7 +605,7 @@ test("Start, GPX, Link and More are one row under the route's figures (UI-CLEANU
 });
 
 test("App writes exactly encodePlan's fragment to the address bar, and a new plan clears 'Link copied.'", () => {
-  const writer = app.slice(app.indexOf("// Keep the link in step with the plan"), app.indexOf("}, [points, preset, dials]);"));
+  const writer = app.slice(app.indexOf("// Keep the link in step with the plan"), app.indexOf("}, [points, preset, dials, namesVersion]);"));
   assert.match(writer, /const hash = encodePlan\(points, preset, dials, viaIndices\(points, VIA_MARKS\.isVia\)\);\s*writtenHash\.current = hash;\s*window\.history\.replaceState\(null, "", hash\);/);
   assert.equal((writer.match(/replaceState/g) ?? []).length, 1);
   assert.match(writer, /linkPresses\.current \+= 1;\s*setLinkSaid\(""\);/);
