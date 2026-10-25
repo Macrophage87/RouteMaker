@@ -597,27 +597,40 @@ def _climb(name, miles, grade, **extra):
 
 def test_climbs_near_lists_the_steep_ones_long_enough_and_checks_them() -> None:
     places = _Places()
-    places.climbs_near = lambda near, miles, grade: [
-        _climb("Gentle Road", 2.0, 2.0),
-        _climb("Short Street", 0.2, 9.0),
-        _climb("Steep Hill", 0.9, 7.0),
-        _climb("Busy Avenue", 1.5, 6.0, busy=True),
-        _climb("Gravel Lane", 1.5, 6.0, surface="gravel"),
-    ]
-    stretch_answer = answer_of([stretch("Steep Hill", 0.0, 2.0, 2)])
-    places.route = lambda body: (places.routes.append(body), stretch_answer)[1]
+    asked = []
+
+    def climbs_near(near, miles, **filters):
+        asked.append(filters)
+        return [
+            _climb("Gentle Road", 2.0, 2.0),
+            _climb("Short Street", 0.2, 9.0),
+            _climb("Steep Hill", 0.9, 7.0),
+        ]
+
+    places.climbs_near = climbs_near
+    # Up Steep Hill: a stop sign 0.2 mi up leaves 0.65 mi clear, under 5 minutes at 7%.
+    up = _interval_answer(0.9, [(0.2, "stop", 2)], grades=lambda mile: 7.0)
+    places.route = lambda body: (places.routes.append(body), up)[1]
     server = mcp.Server(lambda: places, [], out_dir=Path("."))
     out = server.call("climbs_near", {"near": [-77.05, 38.94], "on_minutes": 5})
-    # The short one cannot hold 5 minutes; busy and gravel are left out; steepest first.
+    # The site is asked for paved, quiet climbs long enough, steepest first, before its cut.
+    assert asked[0]["paved_only"] and asked[0]["quiet_only"] and asked[0]["steepest"]
+    assert asked[0]["on_minutes"] == 5 and asked[0]["pace_mph"] == 18
+    # The short one cannot hold 5 minutes; steepest first.
     assert [c["name"] for c in out["climbs"]] == ["Steep Hill", "Gentle Road"]
     assert out["climbs"][0]["effort_minutes"] > 5 and out["checked"] == 2
-    # Planned up the climb through its points, every junction read.
     body = places.routes[0]
     assert body["points"][0] == at(0.0) and body["via_points"] == [1]
-    assert body["debug_junctions"] is True
-    assert out["climbs"][0]["clear"]["checked"] is True
+    assert body["debug_junctions"] is True and "stress" not in body
+    steep = out["climbs"][0]["clear"]
+    assert steep["checked"] and not steep["effort_fits"] and steep["breaks"] == {"stop sign": 1}
+    assert steep["longest_clear_minutes"] < 5
+    # Gentle Road's plan (0.9 mi) is not its 2 mi: off the climb, said so.
+    assert out["climbs"][1]["clear"]["checked"] is False
     listed = server.call("climbs_near", {"near": [-77.05, 38.94], "include_busy": True})
-    assert "Busy Avenue" in [c["name"] for c in listed["climbs"]] and listed["checked"] == 0
+    assert asked[-1]["quiet_only"] is False and listed["checked"] == 0
+    with pytest.raises(mcp.ToolError, match="pace_mph"):
+        server.call("climbs_near", {"near": [-77.05, 38.94], "pace_mph": -10})
 
 
 def test_climb_minutes_slow_with_the_grade() -> None:

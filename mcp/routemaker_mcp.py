@@ -357,9 +357,11 @@ class Api:
             raise ToolError(f"the scenic road search failed ({status}): {message}")
         return payload.get("roads", [])
 
-    def climbs_near(self, near: tuple[float, float], miles: float, min_grade: float) -> list[dict]:
-        """GET /api/climbs-near: the categorised climbs near a point, nearest first."""
-        params = {"lon": near[0], "lat": near[1], "miles": miles, "min_grade": min_grade}
+    def climbs_near(self, near: tuple[float, float], miles: float, **filters) -> list[dict]:
+        """GET /api/climbs-near: the categorised climbs near a point, nearest first, or
+        steepest first with `steepest`; `filters` as the endpoint takes them."""
+        params = {"lon": near[0], "lat": near[1], "miles": miles}
+        params.update({k: str(v).lower() if isinstance(v, bool) else v for k, v in filters.items()})
         status, payload, _ = self._request(
             "GET", "/api/climbs-near?" + urllib.parse.urlencode(params)
         )
@@ -1185,6 +1187,9 @@ SEAM_MI = 0.1
 
 # The climbs climbs_near rides up to check for stops and turns (one route call each).
 CLIMB_CHECKS = 4
+# A plan up a climb rides it when its length is within these shares of the climb's (the
+# front end's rule for a climb ridden, `hillseek.RIDDEN_MIN`/`RIDDEN_MAX`).
+CLIMB_RIDDEN = (0.8, 1.3)
 
 
 def climb_minutes(miles: float, grade_pct: float, pace: float) -> float:
@@ -2582,18 +2587,27 @@ class Server:
     # climbs_near
     def climbs_near(self, args: dict, call: Call) -> dict:
         near, _ = as_point(args["near"], self.api, self.stations)
-        miles = min(15.0, max(0.5, float(args.get("within_miles") or 3)))
         try:
-            min_grade = float(args.get("min_grade") or 0)
+            miles = min(15.0, max(0.5, float(args.get("within_miles") or 3)))
+            min_grade = min(30.0, max(0.0, float(args.get("min_grade") or 0)))
             on_min = float(args.get("on_minutes") or 0)
             pace = float(args.get("pace_mph") or 18)
         except (TypeError, ValueError):
-            raise ToolError("min_grade, on_minutes and pace_mph are numbers") from None
-        found = self.api.climbs_near(near, miles, min_grade)
-        if not args.get("include_busy"):
-            found = [c for c in found if not c.get("busy")]
-        if not args.get("include_unpaved"):
-            found = [c for c in found if c.get("surface") in ("road", "path")]
+            raise ToolError(
+                "within_miles, min_grade, on_minutes and pace_mph are numbers"
+            ) from None
+        if not 4 <= pace <= 35:
+            raise ToolError("pace_mph is 4 to 35")
+        if not 0 <= on_min <= 60:
+            raise ToolError("on_minutes is 0 to 60")
+        filters = {
+            "min_grade": min_grade,
+            "paved_only": not args.get("include_unpaved"),
+            "quiet_only": not args.get("include_busy"),
+        }
+        if on_min:
+            filters.update(on_minutes=on_min, pace_mph=pace, steepest=True)
+        found = self.api.climbs_near(near, miles, **filters)
         for climb in found:
             climb["effort_minutes"] = climb_minutes(climb["miles"], climb["grade_pct"], pace)
         if on_min:
@@ -2604,31 +2618,36 @@ class Server:
         if on_min and args.get("check", True):
             for climb in found[:CLIMB_CHECKS]:
                 call.check()
+                if not call.time_for_another_plan():
+                    break
                 climb["clear"] = self._climb_clear(climb, on_min, pace)
                 checked += 1
-        return {
+        out = {
             "climbs": found,
             "checked": checked,
             "source": "Climbs layer: OpenStreetMap (ODbL) and USGS 3DEP elevation",
         }
+        if any(c.get("busy") is None for c in found):
+            out["note"] = "this map's climbs file does not mark busy roads: check each one's LTS"
+        return out
 
     def _climb_clear(self, climb: dict, on_min: float, pace: float) -> dict:
-        """Whether an effort of on_min fits up the climb unbroken: its plan foot to summit
-        through its points, read by `interval_check`."""
+        """Whether an effort of on_min fits up the climb unbroken: its plan from the foot
+        through its points to the summit, read by `interval_check`, if the plan rides it."""
         points = [climb["foot"], *climb.get("through", []), climb["summit"]]
         vias = list(range(1, len(points) - 1))
         try:
             plan = plan_once(
-                self.api,
-                self.stations,
-                points,
-                vias,
-                "default",
-                {"debug_junctions": True, "stress": 100},
-                None,
+                self.api, self.stations, points, vias, "default", {"debug_junctions": True}, None
             )
         except ToolError as error:
             return {"checked": False, "why": str(error)}
+        planned_mi = (plan.answer.get("distance_m") or 0.0) / METRES_PER_MILE
+        if not CLIMB_RIDDEN[0] <= planned_mi / max(climb["miles"], 0.01) <= CLIMB_RIDDEN[1]:
+            return {
+                "checked": False,
+                "why": f"the plan up it ran {planned_mi:.2f} mi, off the climb",
+            }
         out = interval_check(
             plan.answer,
             {"on_minutes": on_min, "sets": 1, "pace_mph": pace},

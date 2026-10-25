@@ -5201,6 +5201,13 @@ class ClimbsNearIn(Schema):
     min_grade: float = Field(
         default=0.0, ge=0, le=30, description="Only climbs at least this steep on average, %."
     )
+    on_minutes: float = Field(
+        default=0.0, ge=0, le=60, description="Only climbs an effort this long fits up."
+    )
+    pace_mph: float = Field(default=18.0, ge=4, le=35, description="The effort's flat pace.")
+    paved_only: bool = Field(default=False, description="Leave out gravel and MTB climbs.")
+    quiet_only: bool = Field(default=False, description="Leave out climbs mostly on LTS 3+.")
+    steepest: bool = Field(default=False, description="Steepest first, not nearest first.")
 
     @model_validator(mode="after")
     def point_inside(self):
@@ -5218,15 +5225,18 @@ class ClimbNearOut(Schema):
     foot: list[float] = Field(description="Where it starts, [lon, lat].")
     summit: list[float] = Field(description="Where it tops out, [lon, lat].")
     through: list[list[float]] = Field(
-        description="Points up it, foot to summit: via points that keep a plan on the climb."
+        description="Points up it, near the foot to near the summit: via points that keep a"
+        " plan on the climb."
     )
     surface: str = Field(description='"road", "path", "gravel" or "mountain-bike trail".')
-    busy: bool = Field(description="Most of its roads are LTS 3 or higher.")
+    busy: bool | None = Field(
+        description="Most of its roads are LTS 3 or higher; null where the file does not say."
+    )
     away_mi: float
 
 
 class ClimbsNearOut(Schema):
-    climbs: list[ClimbNearOut] = Field(description="Nearest first, at most 25.")
+    climbs: list[ClimbNearOut] = Field(description="Nearest (or steepest) first, at most 25.")
     attribution: list[str]
 
 
@@ -5249,7 +5259,17 @@ CLIMBS_NEAR_ATTRIBUTION = (
 )
 def climbs_near_point(request, params: Query[ClimbsNearIn], response: HttpResponse):
     try:
-        found = climbs_near.near(params.lon, params.lat, params.miles, params.min_grade)
+        found = climbs_near.near(
+            params.lon,
+            params.lat,
+            params.miles,
+            min_grade=params.min_grade,
+            on_minutes=params.on_minutes,
+            pace_mph=params.pace_mph,
+            paved_only=params.paved_only,
+            quiet_only=params.quiet_only,
+            steepest=params.steepest,
+        )
     except climbs_near.Unavailable:
         return Status(503, {"error": "this server has no climbs file"})
     response["Cache-Control"] = f"private, max-age={SEGMENT_INFO_MAX_AGE_S}"

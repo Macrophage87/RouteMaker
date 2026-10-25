@@ -179,6 +179,12 @@ class InProcessApi:
     def geocode(self, query, near=None):
         return self._module.Api.geocode(self, query, near)
 
+    def scenic_roads(self, near, miles, designation=""):
+        return self._module.Api.scenic_roads(self, near, miles, designation)
+
+    def climbs_near(self, near, miles, **filters):
+        return self._module.Api.climbs_near(self, near, miles, **filters)
+
     def shared_fragment(self, route_id):
         return self._module.Api.shared_fragment(self, route_id)
 
