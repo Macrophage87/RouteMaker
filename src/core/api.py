@@ -2098,8 +2098,14 @@ class ClosureOut(Schema):
     bypassed: bool
     from_m: int | None = Field(description="Where the route meets it; null where it does not.")
     to_m: int | None
-    point: LonLat = Field(description="Where its marker goes: the middle of its stretch.")
-    line: list[LonLat]
+    point: LonLat = Field(
+        description="Where its marker goes: the middle of its stretch, or its first point "
+        "where the stretch could not be put on the road."
+    )
+    line: list[LonLat] = Field(
+        description="Its stretch along the road; empty where the source gave only its ends "
+        "and they could not be put on the road (never drawn as a straight line)."
+    )
 
 
 class ClosureNoticeOut(Schema):
