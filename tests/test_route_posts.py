@@ -519,6 +519,16 @@ def test_open_in_routemaker_opens_the_route_kept_before_with_no_plan_link() -> N
 
 
 @db
+def test_a_saved_files_post_opens_its_line_never_the_riders_own_file() -> None:
+    author = make_user(is_instance_admin=True)
+    saved = saved_route(author, source="gpx", gpx="<gpx><!-- the rider's own file --></gpx>")
+    post = RoutePost(slug="mall-file", title="Mall file", abstract="x", author=author)
+    route_posts.freeze(post, saved)
+    assert post.route.gpx == route_posts.line_gpx("Mall file", LINE)
+    assert "rider's own" not in post.route.gpx
+
+
+@db
 def test_a_rider_cannot_reach_the_posts_admin() -> None:
     client = signed_in(make_user())
     assert client.get(f"/{settings.ADMIN_PATH}core/routepost/").status_code == 404
