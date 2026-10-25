@@ -32,6 +32,17 @@ District's quadrant (South Capitol Street is "Southwest" on one carriageway and
 apart and H Street NW's 52 m, past PAIR_M; combined correctness review). It is
 not the stress reading: item 109's divided-road flag keeps PAIR_M and the
 names as mapped.
+
+A third reading closes the U-turn where a median ends (`median_uturns`). Where
+the two carriageways meet at the median's nose, the router saw one carriageway
+end and the other begin at the same node, and turned from one onto the other as
+it would at any junction: a U-turn across the oncoming lanes, around the end of
+a raised median. On Frederick Road (MD 144) at the Beltway in Catonsville the
+route came down Woodlawn Avenue, turned right onto the westbound carriageway and
+U-turned at the ramp signal onto the eastbound one, to reach the side path a few
+metres along (the owner, 2026-10-24: "There were some left turns on my route
+across a median", "Which wasn't possible"). Each such U-turn becomes a
+`no_u_turn` restriction in the graph's extract (`pipeline.run`, INJECT_TAGS).
 """
 
 from __future__ import annotations
@@ -240,3 +251,102 @@ def _alongside(osm_id, name, lon, lat, ux, uy, cells, pair_m: float = PAIR_M) ->
                 if MIN_LATERAL_M <= lateral <= pair_m and along <= STEP_M:
                     return True
     return False
+
+
+# The U-turn at a median's end (`median_uturns`). Each carriageway's direction
+# there is read over this much of it: the last few metres of a nose curve round
+# towards the other carriageway (MD 144's eastbound one leaves the Beltway ramp
+# signal heading east-south-east, the westbound one arrives south-west).
+UTURN_CHORD_M = STEP_M
+# The restriction each is written as: a plain `restriction`, which the router
+# applies to bicycles as to every vehicle (an `except=bicycle` would not).
+NO_UTURN_TAGS = {"type": "restriction", "restriction": "no_u_turn"}
+
+
+def median_uturns(
+    ways: Iterable, two_way_for_bicycles=lambda tags: False
+) -> list[tuple[int, int, int]]:
+    """(from way, via node, to way): a U-turn from one carriageway of a divided
+    road onto its opposite carriageway at a node they share, the end of a median.
+
+    Read on `extract.Way`s (`node_ids` and `located_points`). Both ways are
+    one-way, named, of a divided class (`_candidate`), and the same street, and
+    their directions at the node are within OPPOSITE_COS of head on (each read
+    over UTURN_CHORD_M). Not `carriageways`: a split as short as MD 144's at
+    Woodlawn Avenue (about 130 m round its island, with a left-turn lane in it)
+    closes into a ring that reads as a traffic island there, and its U-turn is
+    across the island all the same. The rider has another way on from the node: a
+    divided road that ends in a point, with no road beyond, keeps its U-turn,
+    which is its only way back (`_way_on` says what a way on is; run per variant,
+    on the ways the variant keeps). A carriageway open to bicycles both ways
+    (`two_way_for_bicycles`, a contraflow lane) is no U-turn at all and is left
+    out."""
+    ways = [w for w in ways if len(w.coordinates) >= 2]
+    touching: dict[int, set[int]] = defaultdict(set)
+    for way in ways:
+        if _way_on(way.tags):
+            for node in way.node_ids:
+                touching[node].add(way.osm_id)
+    arriving: dict[int, list[tuple]] = defaultdict(list)
+    leaving: dict[int, list[tuple]] = defaultdict(list)
+    for way in ways:
+        if not _candidate(way.tags) or two_way_for_bicycles(way.tags):
+            continue
+        points = way.located_points()
+        if way.tags.get("oneway") == "-1":
+            points.reverse()
+        name = way.tags["name"]
+        for i, (index, _, _) in enumerate(points):
+            node = way.node_ids[index]
+            onward = i < len(points) - 1
+            if i > 0:
+                arriving[node].append((way.osm_id, name, _chord(points, i, -1), onward))
+            if onward:
+                leaving[node].append((way.osm_id, name, _chord(points, i, 1)))
+    found = []
+    for node, ins in arriving.items():
+        for from_id, name, (ax, ay), onward in ins:
+            for to_id, other, (bx, by) in leaving.get(node, ()):
+                if to_id == from_id or other != name:
+                    continue
+                if ax * bx + ay * by > OPPOSITE_COS:
+                    continue
+                if onward or touching[node] - {from_id, to_id}:
+                    found.append((from_id, node, to_id))
+    return sorted(found)
+
+
+# The ways that count as a way on from a median's end: roads and cycle tracks a
+# bicycle may use. Not a footway or path (closed to bicycles unless the rebuild
+# opens it, which differs by variant), a motorway, or a road proposed or under
+# construction: a nose with only those beyond it is a dead end, and keeps its
+# U-turn.
+WAY_ON_HIGHWAY = DIVIDED_HIGHWAY | {"residential", "living_street", "service", "cycleway"}
+CLOSED_ACCESS = frozenset({"no", "private"})
+
+
+def _way_on(tags) -> bool:
+    return (
+        tags.get("highway") in WAY_ON_HIGHWAY
+        and tags.get("bicycle") not in CLOSED_ACCESS
+        and (tags.get("access") not in CLOSED_ACCESS or tags.get("bicycle") is not None)
+    )
+
+
+def _chord(points, i: int, step: int) -> tuple[float, float]:
+    """The unit direction of travel at point `i` of `points` ((index, lon, lat) in
+    the direction of travel), over UTURN_CHORD_M of the way before it (`step` -1)
+    or after it (1), or as much of the way as there is."""
+    _, lon, lat = points[i]
+    k = math.cos(math.radians(lat)) * M_PER_DEG_LAT
+    j, dx, dy = i, 0.0, 0.0
+    while 0 <= j + step < len(points):
+        j += step
+        _, olon, olat = points[j]
+        dx, dy = (olon - lon) * k, (olat - lat) * M_PER_DEG_LAT
+        if math.hypot(dx, dy) >= UTURN_CHORD_M:
+            break
+    if step < 0:
+        dx, dy = -dx, -dy
+    norm = math.hypot(dx, dy) or 1.0
+    return dx / norm, dy / norm

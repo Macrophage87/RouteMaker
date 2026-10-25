@@ -7,7 +7,12 @@
  * - A stop is a real stop: numbered, announced, listed, a <wpt>, a "break" for the router.
  *
  * Defaults, so nobody has to choose: dragging the route line or tapping the map makes a via point; a searched
- * place, a chip (Home, Food, Water, Restroom) or a GPX waypoint makes a stop. The point's menu switches them.
+ * place, a chip (Home, Food, Water, Restroom), a Ctrl+click (Cmd+click on a Mac) or the road panel's Add as stop (a
+ * long press) makes a stop. The point's menu switches them. A file's named points are stops, its unnamed ones vias.
+ *
+ * Stephen 2026-10-24: "via points the default", a stop asks for a name, a re-route treats "via points as guides and
+ * stops as mandatory" (lib/navigate.ts replanKept), and stops show on the map while riding. A stop's own name, the
+ * one the rider typed (or a file gave it), is kept on its pair as its kind is (`named`, `nameOf`).
  *
  * How a point's kind is kept: the plan's points are immutable [lon, lat] pairs, and the history (undo, redo,
  * Reset) keeps the same pair objects, so a kind is kept on the pair itself, by identity, in a WeakSet. A pair's
@@ -25,12 +30,24 @@ export class ViaMarks {
   private readonly vias = new WeakSet<LonLat>();
   // Plan's manual mode (v0.9.1): the pairs the line to which was drawn, straight, not routed. Kept the same way.
   private readonly drawnTo = new WeakSet<LonLat>();
+  // A stop's own name (the rider's, or a file's), on its pair; a via point has none.
+  private readonly names = new WeakMap<LonLat, string>();
 
   /** Whether this pair was made as a via point. */
   isVia = (point: LonLat): boolean => this.vias.has(point);
 
   /** Whether the leg that ends at this pair was drawn as a straight line (Plan's manual mode). */
   isDrawn = (point: LonLat): boolean => this.drawnTo.has(point);
+
+  /** A stop's own name, or undefined: none given (the map's place name is shown then). */
+  nameOf = (point: LonLat): string | undefined => this.names.get(point);
+
+  /** Names a pair just made (trimmed, at most STOP_NAME_MAX; blank is no name), and gives it back. */
+  named(point: LonLat, name: string | undefined): LonLat {
+    const clean = cleanStopName(name);
+    if (clean) this.names.set(point, clean);
+    return point;
+  }
 
   /** Marks a pair just made as a via point, and gives it back. */
   via(point: LonLat): LonLat {
@@ -48,7 +65,25 @@ export class ViaMarks {
   withKind(point: LonLat, kind: PointKind): LonLat {
     const copy: LonLat = [point[0], point[1]];
     if (this.isDrawn(point)) this.drawn(copy);
+    // A stop made a via point and back keeps its name for the round trip; a via point never shows one.
+    this.named(copy, this.nameOf(point));
     return kind === "via" ? this.via(copy) : copy;
+  }
+
+  /**
+   * Names the stop in place (blank takes its name away): only a label changes, so the plan's points stay the same
+   * pairs and no new route is asked for.
+   */
+  rename(point: LonLat, name: string): void {
+    const clean = cleanStopName(name);
+    if (clean) this.names.set(point, clean);
+    else this.names.delete(point);
+  }
+
+  /** Names the pairs a link or a saved route names (`names`: index to name), and gives the list back. */
+  nameAt<T extends LonLat[]>(points: T, names: ReadonlyMap<number, string>): T {
+    for (const [i, name] of names) if (points[i]) this.named(points[i], name);
+    return points;
   }
 
   /** Marks the pairs at `indices` (a link's or a saved route's `via` field) as via points; the list back. */
@@ -73,6 +108,7 @@ export class ViaMarks {
       if (i === 0 || wanted.has(i - 1) === this.isDrawn(point)) return point;
       const copy: LonLat = [point[0], point[1]];
       if (this.isVia(point)) this.via(copy);
+      this.named(copy, this.nameOf(point));
       return wanted.has(i - 1) ? this.drawn(copy) : copy;
     });
   }
@@ -96,6 +132,7 @@ export class ViaMarks {
   /** A pair moved to `to` (a dragged marker): the same kind as the one it replaces, its leg drawn as it was. */
   moved(from: LonLat, to: LonLat): LonLat {
     if (this.isDrawn(from)) this.drawn(to);
+    this.named(to, this.nameOf(from));
     return this.isVia(from) ? this.via(to) : to;
   }
 }
@@ -245,15 +282,6 @@ export function stopAddedSaid(points: readonly LonLat[], index: number, isVia: (
 /** A via point's name: its markers, list rows and its route point in a GPX file (lib/gpx.ts planPointNames). */
 export const VIA_POINT_NAME = "Via point";
 
-/** The points a file names "Via point" (a RouteMaker export), between its ends: via points again on opening. */
-export function viaPointsNamed(names: ReadonlyArray<string | undefined> | undefined, count: number): number[] {
-  const out: number[] = [];
-  names?.forEach((name, i) => {
-    if (name?.trim() === VIA_POINT_NAME && i > 0 && i < count - 1) out.push(i);
-  });
-  return out;
-}
-
 /** The link's field for the via points: "1,3", or null with none. Old links have none: every point is a stop. */
 export function encodeVias(points: readonly LonLat[], isVia: (p: LonLat) => boolean): string | null {
   const vias = viaIndices(points, isVia);
@@ -298,3 +326,101 @@ export function decodeVias(value: string | null, count: number): number[] {
   }
   return [...out].sort((a, b) => a - b);
 }
+
+// ---- A stop's own name (Stephen 2026-10-24: a new stop "should also ask for a name") ----------------------
+
+/** The longest name a stop keeps: a street sign's worth, so it fits a marker and a cue. */
+export const STOP_NAME_MAX = 40;
+
+/** A name as kept: spaces squeezed, trimmed, at most STOP_NAME_MAX; undefined when nothing is left. */
+export function cleanStopName(name: string | undefined | null): string | undefined {
+  const clean = (name ?? "").replace(/\s+/g, " ").trim().slice(0, STOP_NAME_MAX).trim();
+  return clean || undefined;
+}
+
+/**
+ * The stops' own names by index, for a link and a saved route (`sn`): stops between the ends only, a loop's last
+ * point included (it is a stop: namePoints).
+ */
+export function stopNames(points: readonly LonLat[], nameOf: (p: LonLat) => string | undefined, isVia: (p: LonLat) => boolean, loop = false): Map<number, string> {
+  const out = new Map<number, string>();
+  points.forEach((point, i) => {
+    const name = nameOf(point);
+    const last = i === points.length - 1;
+    if (name && isMiddle(i, points.length, loop) && (last || !isVia(point))) out.set(i, name);
+  });
+  return out;
+}
+
+/** The link's `sn` values: "2:Union Market", one per named stop. */
+export function encodeStopNames(names: ReadonlyMap<number, string>): string[] {
+  return [...names].sort(([a], [b]) => a - b).map(([i, name]) => `${i}:${name}`);
+}
+
+/** The `sn` values read back: the names of points that fit a plan of `count` points (after its start; a loop's last is a stop). */
+export function decodeStopNames(values: readonly string[], count: number): Map<number, string> {
+  const out = new Map<number, string>();
+  for (const value of values) {
+    const at = value.indexOf(":");
+    const i = Number(value.slice(0, at));
+    const name = cleanStopName(value.slice(at + 1));
+    if (at > 0 && Number.isInteger(i) && i > 0 && i < count && name) out.set(i, name);
+  }
+  return out;
+}
+
+/** Said once a stop is named, or its name taken away. */
+export function stopNamedSaid(name: string | undefined): string {
+  return name ? `Stop named ${name}.` : "Stop name removed.";
+}
+
+/** The name dialog's words (StopNameDialog.tsx). */
+export const STOP_NAME_HEADING = "Name this stop";
+export const STOP_NAME_LABEL = "Name (optional)";
+export const STOP_NAME_ADD = "Add stop";
+export const STOP_NAME_SAVE = "Save name";
+export const STOP_NAME_CANCEL = "Cancel";
+
+/** A point menu's way to name or rename a stop. */
+export function renameLabel(named: boolean): string {
+  return named ? "Rename stop" : "Name this stop";
+}
+
+/** A stop drawn on the ride's map (2026-10-24: "Stops should appear on the map when riding"). */
+export interface RideStopMark {
+  point: LonLat;
+  /** The stop's number among the stops. */
+  number: number;
+  /** Its own name, else the map's name for the spot; undefined with neither. */
+  name?: string;
+}
+
+/** What a ride stop's marker shows and says: "2" and "Stop 2, Union Market". */
+export function rideStopLabel(stop: RideStopMark): { text: string; said: string } {
+  return { text: String(stop.number), said: stop.name ? `Stop ${stop.number}, ${stop.name}` : `Stop ${stop.number}` };
+}
+
+/**
+ * An opened file's points, by Stephen's rule (2026-10-24: "When importing any waypoint without a name is a via, any
+ * with one is assumed to be a stop"): between the ends, a point with no name (or a RouteMaker file's "Via point") is a
+ * via point, and a named one a stop, its name its own unless it only says its role ("Stop 2", "Start"). A track's
+ * points, which have no names, are via points.
+ */
+export function importedKinds(names: ReadonlyArray<string | undefined> | undefined, count: number): { vias: number[]; names: Map<number, string> } {
+  const vias: number[] = [];
+  const own = new Map<number, string>();
+  for (let i = 1; i < count - 1; i += 1) {
+    const name = cleanStopName(names?.[i]);
+    if (!name || name === VIA_POINT_NAME || VIA_ROLE_NAME.test(name)) vias.push(i);
+    else if (!ROLE_NAME.test(name)) own.set(i, name);
+  }
+  return { vias, names: own };
+}
+
+/** A name that only says a point's role, as a file of ours (or an older one) names its points. */
+const ROLE_NAME = new RegExp(`^(?:Start|End|${LOOP_START_NAME}|(?:Stop|Point) \\d+)$`);
+/** An older file's name for a via point ("Via 3"; lib/gpxEdit.ts isRoleName). */
+const VIA_ROLE_NAME = /^Via \d+$/;
+
+/** The tips' sentence on what a click makes (lib/pointText.ts editingTips). */
+export const CLICK_KINDS_TIP = "A click adds a via point; Ctrl+click (Cmd+click on a Mac) adds a named stop.";
