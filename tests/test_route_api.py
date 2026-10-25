@@ -82,6 +82,8 @@ CONTRACT_KEYS = {
     # hazards along a Mass Ride; null on other ride types.
     "mass_hazards",
     "road_hazards",
+    # Additive, v0.12.3: the rustic roads, byways and named bike routes it rides.
+    "scenic_roads",
     "calm_search",
     "detour",
     # Additive, ROUTE-DESCRIPTION (OWNER-DECISIONS item 220): the route in words.
@@ -287,10 +289,26 @@ class TestAnswer:
         said = [e for e in body["description"] if e["kind"] == "hazard"]
         assert len(said) == 1 and said[0]["text"] == body["road_hazards"][0]["text"]
 
+    def test_a_scenic_road_ridden_is_listed(self, client, segments, router) -> None:
+        """v0.12.3 (the owner, 2026-10-25: "The goal would be for a new user to be able to
+        make routes like this"): a rustic road the route rides is in `scenic_roads`."""
+        router(standard_router())
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"UPDATE {segments}.segment SET scenic = 'Rustic Road (Montgomery County)'"
+                " WHERE osm_way_id = 101"
+            )
+        body = post(client, good_body()).json()
+        assert [s["designation"] for s in body["scenic_roads"]] == [
+            "Rustic Road (Montgomery County)"
+        ]
+        assert body["scenic_roads"][0]["to_m"] > body["scenic_roads"][0]["from_m"]
+
     def test_no_hazard_no_mark(self, client, segments, router) -> None:
         router(standard_router())
         body = post(client, good_body()).json()
         assert body["road_hazards"] == []
+        assert body["scenic_roads"] == []
         assert not [e for e in body["description"] if e["kind"] == "hazard"]
 
     def test_the_destination_side_is_the_routers_destination_maneuver(

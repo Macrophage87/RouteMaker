@@ -256,7 +256,15 @@ class TestConnector:
         _user, tokens, _client_id = tokens_for()
         token = tokens["access_token"]
         hello = mcp(token, "initialize", {"protocolVersion": "2025-06-18"}).json()
-        assert hello["result"]["serverInfo"]["name"] == "routemaker"
+        info = hello["result"]["serverInfo"]
+        assert info["name"] == "routemaker" and info["title"] == "RouteMaker"
+        # The app's logo, from this site's own address (the connector list's icon).
+        assert [(i["src"].split("/", 3)[3], i["mimeType"]) for i in info["icons"]] == [
+            ("favicon.svg", "image/svg+xml"),
+            ("icons/icon-192.png", "image/png"),
+            ("icons/icon-512.png", "image/png"),
+        ]
+        assert all(i["src"].startswith("http://testserver/") for i in info["icons"])
         assert mcp(token, "notifications/initialized", msg_id=None).status_code == 202
         tools = mcp(token, "tools/list").json()["result"]["tools"]
         save = next(t for t in tools if t["name"] == "save_route")
@@ -337,6 +345,26 @@ class TestConnector:
         assert store.get(ids[0]).plan.points == [(-77.03, 38.9), (-77.02, 38.91)]
         assert ConnectorDraft.objects.filter(user=user).count() == 3
         assert store.get("dnothere") is None
+
+    def test_a_draft_keeps_its_spur_choice_and_intervals(self) -> None:
+        # revise_route reads both back: losing them dropped the interval check and trimmed a
+        # spur the rider had asked to keep.
+        store = connector.DatabaseDrafts(make_user())
+        module = connector.mcp_module()
+        plan = module.Plan([(-77.03, 38.9), (-77.02, 38.91)], [], "default", {"a": 1}, None, {})
+        intervals = {"on_minutes": 5, "sets": 4}
+        draft_id = store.put(
+            module.Draft(plan, {}, None, "x", trim_spurs=False, intervals=intervals)
+        )
+        kept = store.get(draft_id)
+        assert kept.trim_spurs is False
+        assert kept.intervals == intervals
+        # A draft kept before v0.12.3 has neither key: the module's defaults.
+        row = ConnectorDraft.objects.get(draft_id=draft_id)
+        row.data = {k: v for k, v in row.data.items() if k not in ("trim_spurs", "intervals")}
+        row.save()
+        older = store.get(draft_id)
+        assert older.trim_spurs is True and older.intervals is None
 
 
 @db
