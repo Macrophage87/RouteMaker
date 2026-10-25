@@ -3591,8 +3591,10 @@ def test_the_tester_handout_covers_what_the_sign_in_box_cannot_say() -> None:
         "Route planner",
         "Tell the person who gave you access",
         "Report a problem",
+        "tell us on Discord",
     ):
         assert needed in handout, needed
+    # The invite itself lives in the notice (betaBanner.ts), not in a handout that may be forwarded.
     assert "discord.gg" not in handout.lower() and "@gmail" not in handout
     assert "docs/BETA-TESTER-HANDOUT.md" in RUNBOOK
     nine_a = RUNBOOK[RUNBOOK.index("### 9a.") : RUNBOOK.index("### 9b.")]

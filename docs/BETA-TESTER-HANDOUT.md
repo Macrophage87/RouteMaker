@@ -101,8 +101,8 @@ Tell the person who gave you access. It helps to include:
 - what you expected, and what happened instead;
 - the browser and device, and the screen reader if you use one.
 
-If the beta notice (the "Beta" button in the map's corner) shows a "Report a problem" link,
-you can use that instead.
+Or tell us on Discord: the beta notice (the "Beta" button in the map's corner) links the
+invite. If it also shows a "Report a problem" link, you can use that instead.
 
 4. Updates
 ----------
