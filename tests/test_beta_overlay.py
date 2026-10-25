@@ -744,6 +744,7 @@ QUERY_PATHS = (
     "|stress-suggestions/ticket|stress-suggestions/mine|transit/station-times|transit/next-vehicle"
     "|bikeshare/docks|closures/map"
     "|review/items|review/map|review/next|review/road/[0-9]+|review/street-photo"
+    "|scenic-roads|climbs-near"
 )
 
 
@@ -800,12 +801,21 @@ def test_reverse_and_geocode_log_errors_at_crit_only_with_the_api_proxy_settings
     assert covered.fullmatch("/api/review/road/123")
     assert not covered.fullmatch("/api/review/road/123/x")
     assert not covered.fullmatch("/api/review/rulings")
+    # The local connector (mcp/routemaker_mcp.py) sends a rider's point in the query too.
+    mcp = (REPO / "mcp" / "routemaker_mcp.py").read_text()
+    mcp_queried = set(re.findall(r"[\"'](/api/[a-z/-]+)\?", mcp))
+    assert {"/api/scenic-roads", "/api/climbs-near"} <= mcp_queried, mcp_queried
+    for path in mcp_queried:
+        assert covered.fullmatch(path), path
 
 
 CONNECTOR_PATHS = (
     r"~ ^/(mcp|oauth/(register|token)|\.well-known/oauth-(protected-resource(/mcp)?"
     r"|authorization-server))$"
 )
+
+
+FAVICONS = r"~ ^/favicon\.(svg|ico)$"
 
 
 def test_basic_auth_is_on_for_the_whole_https_server_and_off_only_for_robots_and_acme() -> None:
@@ -832,7 +842,7 @@ def test_basic_auth_is_on_for_the_whole_https_server_and_off_only_for_robots_and
             "~ ^/s/[^/]+(/preview\\.png)?$",
             "= /link-preview",
             "^~ /icons/",
-            "= /favicon.svg",
+            FAVICONS,
         ]
     ), exempt
     # Google Play's deletion link (core.account_deletion): that exact path, to the api, and not
@@ -908,10 +918,14 @@ def test_the_sign_in_page_is_small_plain_and_names_no_channel() -> None:
     assert len(page) < 2000
 
 
-def test_robots_txt_disallows_everything_and_the_noindex_header_is_everywhere() -> None:
+def test_robots_txt_allows_only_the_home_page_and_icons_and_noindex_is_on_the_rest() -> None:
     full = stage("full")
     robots = dict(locations(full))["= /robots.txt"]
-    assert 'return 200 "User-agent: *\\nDisallow: /\\n";' in robots
+    # Only the home page and the icons, for Google's favicon service (the connector's icon).
+    assert (
+        'return 200 "User-agent: *\\nAllow: /$\\nAllow: /favicon.ico\\nAllow: /favicon.svg'
+        '\\nAllow: /icons/\\nDisallow: /\\n";'
+    ) in robots
     assert re.search(
         r'^\s*add_header X-Robots-Tag "noindex, nofollow" always;',
         full[full.index("listen 443") :],
@@ -921,13 +935,24 @@ def test_robots_txt_disallows_everything_and_the_noindex_header_is_everywhere() 
     for block_name in ("acme", "full"):
         for path, body in locations(stage(block_name)):
             if "add_header" in body:
-                assert 'X-Robots-Tag "noindex, nofollow"' in body, (block_name, path)
+                # The app's logo goes without, for the connector's icon (robots.txt above).
+                if path in (FAVICONS, "^~ /icons/"):
+                    assert "X-Robots-Tag" not in body, path
+                else:
+                    assert 'X-Robots-Tag "noindex, nofollow"' in body, (block_name, path)
                 if (
                     block_name == "full"
                     and "return 403" not in body
                     and "acme-challenge" not in path
                 ):
                     assert "Strict-Transport-Security" in body, path
+
+
+def test_the_favicon_location_serves_both_favicons_and_nothing_else() -> None:
+    covered = re.compile(FAVICONS.removeprefix("~ "))
+    assert covered.fullmatch("/favicon.svg") and covered.fullmatch("/favicon.ico")
+    for path in ("/favicon.png", "/favicon.svg/x", "/x/favicon.ico", "/favicon.icon"):
+        assert not covered.fullmatch(path), path
 
 
 def test_the_proxy_timeouts_are_at_least_sixty_seconds() -> None:
@@ -949,10 +974,7 @@ def test_the_body_size_caps_agree_at_every_layer() -> None:
     from config import settings as config
     from core import accounts, shared_routes
 
-    # /api/keyed is retired (v0.12.2) but stays in both patterns for one release: a change under
-    # deploy/ would hold the release for a hand ship (scripts/beta/cd_logic.py), and the extra
-    # path only 404s. Drop it from both with the next nginx template change.
-    pattern = "^/api/(shared-routes|me|keyed)(/|$)"
+    pattern = "^/api/(shared-routes|me)(/|$)"
     big = dict(locations(stage("full")))[f"~ {pattern}"]
     assert "client_max_body_size 5m;" in big
     assert re.search(r"^\s*client_max_body_size 1m;", stage("full"), re.M)
@@ -995,7 +1017,7 @@ def test_the_template_serves_what_the_caddyfile_serves() -> None:
     for expected in (
         "= /",
         "= /index.html",
-        "= /favicon.svg",
+        FAVICONS,
         "= /licenses.txt",
         ABOUT_LOCATION,
         "= /sw.js",
@@ -3594,8 +3616,10 @@ def test_the_tester_handout_covers_what_the_sign_in_box_cannot_say() -> None:
         "Route planner",
         "Tell the person who gave you access",
         "Report a problem",
+        "tell us on Discord",
     ):
         assert needed in handout, needed
+    # The invite itself lives in the notice (betaBanner.ts), not in a handout that may be forwarded.
     assert "discord.gg" not in handout.lower() and "@gmail" not in handout
     assert "docs/BETA-TESTER-HANDOUT.md" in RUNBOOK
     nine_a = RUNBOOK[RUNBOOK.index("### 9a.") : RUNBOOK.index("### 9b.")]
