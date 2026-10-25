@@ -312,3 +312,72 @@ def test_node_tags_are_merged_onto_source_nodes_and_nothing_else_moves(tmp_path)
         1: ({"highway": "crossing", "rm:crossing_signal": "yes"}, -77.0, 38.9),
         2: ({}, -77.01, 38.9),
     }
+
+
+def test_minted_relations_follow_every_source_relation(tmp_path) -> None:
+    """The no-U-turn restrictions at medians' ends (`divided.median_uturns`) are
+    written after the source's own relations, ascending, with their members and
+    tags; an id that is not above the source's is refused."""
+    from pipeline.extract import SYNTHETIC_RELATION_ID_FLOOR
+
+    source = tmp_path / "source.osm.pbf"
+    writer = osmium.SimpleWriter(str(source))
+    try:
+        for node_id in (1, 2, 3):
+            writer.add_node(
+                osmium.osm.mutable.Node(id=node_id, location=(-77.0 + node_id / 1000, 38.9))
+            )
+        writer.add_way(osmium.osm.mutable.Way(id=100, nodes=[1, 2], tags={"highway": "primary"}))
+        writer.add_way(osmium.osm.mutable.Way(id=101, nodes=[2, 3], tags={"highway": "primary"}))
+        writer.add_relation(
+            osmium.osm.mutable.Relation(
+                id=7, members=[("w", 100, "")], tags={"type": "route", "route": "bicycle"}
+            )
+        )
+    finally:
+        writer.close()
+
+    restriction = {"type": "restriction", "restriction": "no_u_turn"}
+    members = [("w", 100, "from"), ("n", 2, "via"), ("w", 101, "to")]
+    destination = tmp_path / "written.osm.pbf"
+    write_extract(
+        source,
+        destination,
+        way_tags={},
+        new_nodes=[],
+        way_node_ids={},
+        new_relations=[
+            (SYNTHETIC_RELATION_ID_FLOOR + 1, members, restriction),
+            (SYNTHETIC_RELATION_ID_FLOOR, members, restriction),
+        ],
+    )
+
+    seen: list[tuple] = []
+
+    class Relations(osmium.SimpleHandler):
+        def relation(self, r) -> None:  # noqa: N802
+            seen.append(
+                (
+                    r.id,
+                    [(m.type, m.ref, m.role) for m in r.members],
+                    {tag.k: tag.v for tag in r.tags},
+                )
+            )
+
+    Relations().apply_file(str(destination))
+    assert [entry[0] for entry in seen] == [
+        7,
+        SYNTHETIC_RELATION_ID_FLOOR,
+        SYNTHETIC_RELATION_ID_FLOOR + 1,
+    ]
+    assert seen[1][1:] == (members, restriction)
+
+    with pytest.raises(ValueError, match="needs raising"):
+        write_extract(
+            source,
+            tmp_path / "refused.osm.pbf",
+            way_tags={},
+            new_nodes=[],
+            way_node_ids={},
+            new_relations=[(7, members, restriction)],
+        )

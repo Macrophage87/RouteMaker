@@ -8,7 +8,7 @@
  */
 import { MAX_POINTS, insideCoverage, type LonLat } from "./geo.ts";
 import { PRESET_ALIASES, parsePreset, type PresetId } from "./presets.ts";
-import { decodeDrawn, decodeVias, drawnLegs } from "./pointKinds.ts";
+import { VIA_MARKS, decodeDrawn, decodeStopNames, decodeVias, drawnLegs, encodeStopNames, stopNames } from "./pointKinds.ts";
 import { STRESS_DEFAULT_AT, fitDials, isBike, isCarrying, isWhen, type Dials } from "./dials.ts";
 import { METRES_PER_MILE } from "./format.ts";
 
@@ -40,6 +40,8 @@ export interface Plan {
   vias: number[];
   /** The legs drawn in Plan's manual mode (`line=0,2`: leg i runs from point i to i + 1); empty for an older link. */
   drawn: number[];
+  /** The stops' own names by index (`sn=2:Union Market`, Stephen 2026-10-24); empty for an older link. */
+  names: Map<number, string>;
   preset: PresetId;
   /** The sliders, the ride time and Cargo Bike's load (dials.ts). */
   dials: Dials;
@@ -52,6 +54,8 @@ export function encodePlan(
   vias: readonly number[] = [],
   // The page's marks unless given, so every link, saved route and kept route's key carries the drawn legs.
   drawn: readonly number[] = drawnLegs(points),
+  // The stops' own names, likewise from the page's marks unless given.
+  names: ReadonlyMap<number, string> = stopNames(points, VIA_MARKS.nameOf, VIA_MARKS.isVia, dials?.loop === true),
 ): string {
   const params = new URLSearchParams();
   if (points.length) params.set("p", points.map(([lon, lat]) => `${lon.toFixed(5)},${lat.toFixed(5)}`).join(";"));
@@ -59,6 +63,8 @@ export function encodePlan(
   if (vias.length) params.set("via", vias.join(","));
   // The legs drawn in Plan's manual mode (v0.9.1): a new field an older link does not have, and means none.
   if (drawn.length) params.set("line", drawn.join(","));
+  // The stops' own names (2026-10-24): a new field an older link does not have, and means none.
+  for (const value of encodeStopNames(names)) params.append("sn", value);
   params.set("preset", preset);
   if (dials) {
     params.set("v", PLAN_VERSION);
@@ -154,5 +160,5 @@ export function decodePlan(hash: string): Plan {
     mtbLevel: numberOrUndefined(params.get("level")),
     mtbPreferred: numberOrUndefined(params.get("prefer")),
   });
-  return { points, vias: decodeVias(params.get("via"), points.length), drawn: decodeDrawn(params.get("line"), points.length), preset, dials };
+  return { points, vias: decodeVias(params.get("via"), points.length), drawn: decodeDrawn(params.get("line"), points.length), names: decodeStopNames(params.getAll("sn"), points.length), preset, dials };
 }

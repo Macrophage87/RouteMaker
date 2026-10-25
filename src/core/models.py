@@ -2483,3 +2483,97 @@ class ConnectorDraft(models.Model):
 
     def __str__(self) -> str:
         return f"draft {self.draft_id} of account {self.user_id}"
+
+
+class RoutePost(models.Model):
+    """A Featured routes post (core.route_posts; the owner, 2026-10-19 and 2026-10-24): a short
+    write-up around one exact route, as a page of its own at /routes/<slug> whose link preview is
+    a picture of the map.
+
+    Instance admins write them in the admin. The route is picked from the author's own saved
+    routes (`saved_route`) and copied, at the save that picks it, into a `SharedRoute` of the
+    post's own (`route`): kept permanently, owned by no account (so no rider's My routes can turn
+    it off and deleting the author's account leaves it), the rider's weight left out, with the
+    figures read from it then (`stats`), so editing the saved route or rebuilding the map never
+    changes a published post. Picking another saved route makes a new copy; the old one stays, so
+    links already opened from the post keep working.
+
+    `thumbnail` is the link preview's picture: the post's own map as an admin's browser drew it
+    (a JPEG, 1200 by 630), or none, when the route's line drawing stands in. `season_start` and
+    `season_end` are month and day ("03-20"); the window may run past New Year.
+    """
+
+    class Status(models.TextChoices):
+        DRAFT = "draft", "Draft: admins only"
+        PUBLISHED = "published", "Published: listed, anyone with the link"
+        UNLISTED = "unlisted", "Unlisted: anyone with the link, not in the list"
+        WITHDRAWN = "withdrawn", "Withdrawn: the link says so"
+
+    slug = models.SlugField(max_length=80, unique=True)
+    title = models.CharField(max_length=120)
+    abstract = models.TextField(help_text="A brief description of the ride.")
+    audience = models.TextField(blank=True, default="", help_text="Who the ride is for.")
+    byline = models.CharField(max_length=60, default="RouteMaker")
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.DRAFT)
+    saved_route = models.ForeignKey(
+        "SavedRoute", null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    route = models.ForeignKey(
+        "SharedRoute", null=True, blank=True, on_delete=models.PROTECT, related_name="+"
+    )
+    stats = models.JSONField(default=dict, blank=True)
+    start_lon = models.FloatField(null=True, blank=True)
+    start_lat = models.FloatField(null=True, blank=True)
+    season_label = models.CharField(max_length=40, blank=True, default="")
+    season_start = models.CharField(max_length=5, blank=True, default="")
+    season_end = models.CharField(max_length=5, blank=True, default="")
+    sort_weight = models.IntegerField(default=0, help_text="Higher comes first in the list.")
+    thumbnail = models.BinaryField(null=True, blank=True)
+    thumbnail_key = models.CharField(max_length=16, blank=True, default="")
+    author = models.ForeignKey(
+        "User", null=True, blank=True, on_delete=models.SET_NULL, related_name="route_posts"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    published_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "route_post"
+        ordering = ("-sort_weight", "-published_at", "-created_at")
+
+    def __str__(self) -> str:
+        return self.title
+
+    def get_absolute_url(self) -> str:
+        return f"/routes/{self.slug}"
+
+
+class RoutePostSection(models.Model):
+    """One highlighted section of a post, under the post's description and who it is for: a
+    heading and a few paragraphs, in `position` order."""
+
+    post = models.ForeignKey("RoutePost", on_delete=models.CASCADE, related_name="sections")
+    position = models.PositiveSmallIntegerField(default=0)
+    heading = models.CharField(max_length=120)
+    body = models.TextField(blank=True, default="")
+    # The stretch the section is about, in miles along the post's route from its start: with
+    # both set, the post page draws a small map of just that stretch (route_posts.section_line).
+    start_mi = models.DecimalField(
+        "From mile", max_digits=6, decimal_places=2, null=True, blank=True
+    )
+    end_mi = models.DecimalField("To mile", max_digits=6, decimal_places=2, null=True, blank=True)
+
+    class Meta:
+        db_table = "route_post_section"
+        ordering = ("position", "id")
+
+    def clean(self) -> None:
+        from django.core.exceptions import ValidationError
+
+        if (self.start_mi is None) != (self.end_mi is None):
+            raise ValidationError("Give both miles for a map of the stretch, or neither.")
+        if self.start_mi is not None and not 0 <= self.start_mi < self.end_mi:
+            raise ValidationError({"end_mi": "The stretch must end after it starts."})
+
+    def __str__(self) -> str:
+        return self.heading
