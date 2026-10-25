@@ -684,9 +684,50 @@ def test_plan_route_rides_the_checkpoints_in_the_quickest_order() -> None:
     places.route = route
     server = mcp.Server(lambda: places, [], out_dir=Path("."))
     out = server.call("plan_route", {"points": points, "best_order": True, "trim_spurs": False})
-    assert timed[0] is True and len(timed) >= 4  # three orders tried, then the plan itself
+    assert timed[0] is True and len(timed) == 3  # three orders tried, the quickest kept as is
     kept = places.routes[-1]["points"]
     assert kept[0] == at(0.0) and kept[-1] == at(4.0) and kept != places.routes[0]["points"]
     assert [row["point_given"] for row in out["checkpoint_order"]][0] == 0
     with pytest.raises(mcp.ToolError, match="via_points"):
         server.call("plan_route", {"points": points, "best_order": True, "via_points": [1]})
+    with pytest.raises(mcp.ToolError, match="start again as the last point"):
+        server.call("plan_route", {"points": points, "best_order": True, "loop": True})
+
+
+def test_a_failed_later_try_keeps_the_orders_already_planned() -> None:
+    places = _Places()
+    points = [at(0.0), at(3.0), at(1.0), at(2.0), at(4.0)]
+    calls = []
+
+    def route(body):
+        calls.append(body)
+        if len(calls) == 2:
+            raise mcp.ToolError("the site is busy")
+        line = [list(p) for p in body["points"]]
+        return {"geometry": {"coordinates": line}, "distance_m": 6000.0, "duration_s": 1500.0}
+
+    places.route = route
+    server = mcp.Server(lambda: places, [], out_dir=Path("."))
+    out = server.call("plan_route", {"points": points, "best_order": True, "trim_spurs": False})
+    assert len(calls) == 2 and out["draft_id"]
+    assert any("a later try failed" in note for note in out.get("notes", []))
+
+
+def test_no_more_orders_are_tried_than_time_allows(monkeypatch) -> None:
+    places = _Places()
+    points = [at(0.0), at(3.0), at(1.0), at(2.0), at(4.0)]
+    clock = {"now": 0.0}
+    monkeypatch.setattr(mcp.time, "monotonic", lambda: clock["now"])
+
+    def route(body):
+        clock["now"] += 30.0  # each plan takes 30 s
+        places.routes.append(body)
+        line = [list(p) for p in body["points"]]
+        return {"geometry": {"coordinates": line}, "distance_m": 6000.0, "duration_s": 1500.0}
+
+    places.route = route
+    server = mcp.Server(lambda: places, [], out_dir=Path("."))
+    call = mcp.Call(deadline=55.0)
+    plan, ordered = server._best_order(call, points, [], "default", {}, None, [])
+    assert len(places.routes) == 1 and "no time to try more" in ordered["note"]
+    assert plan.answer["duration_s"] == 1500.0

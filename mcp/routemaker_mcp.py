@@ -1160,7 +1160,7 @@ def via_spurs(plan: Plan) -> list[dict]:
 # line (exact up to EXACT_MAX checkpoints, Held and Karp's dynamic programme; nearest
 # neighbour and 2-opt beyond), then the first ORDER_TRIES of them planned, the quickest kept.
 
-EXACT_MAX = 12
+EXACT_MAX = 13
 ORDER_TRIES = 3
 
 
@@ -2910,11 +2910,13 @@ class Server:
         return out
 
     def _plan_and_fix(
-        self, call: Call, points, vias, preset, options, limit, rounds, trim_spurs=True
+        self, call: Call, points, vias, preset, options, limit, rounds, trim_spurs=True, first=None
     ):
+        """The plan through the points (or `first`, one already planned through them), with
+        Metro fixes and spurs trimmed as asked, and notes on what was done."""
         notes: list[str] = []
         call.report(0, rounds + 1, "planning the route")
-        plan = self._plan(call, points, vias, preset, options, limit)
+        plan = first or self._plan(call, points, vias, preset, options, limit)
         for done in range(rounds if limit else 0):
             fix = with_metro_fix(plan, self.stations)
             if fix is None:
@@ -3221,12 +3223,19 @@ class Server:
             options["debug_junctions"] = True
         rounds = int(args.get("fix_metro_rounds") or 0)
         trim = bool(args.get("trim_spurs", True))
-        ordered = None
+        ordered = first = None
         if args.get("best_order"):
-            points, ordered = self._best_order(call, points, vias, preset, options, taken)
-        plan, notes = self._plan_and_fix(call, points, vias, preset, options, limit, rounds, trim)
+            first, ordered = self._best_order(call, points, vias, preset, options, limit, taken)
+            points = first.points
+        plan, notes = self._plan_and_fix(
+            call, points, vias, preset, options, limit, rounds, trim, first=first
+        )
         if ordered:
             notes.insert(0, ordered["note"])
+            # Numbered as the draft's points are, after any Metro station put in.
+            at = {tuple(p): k for k, p in enumerate(plan.points)}
+            for row in ordered["order"]:
+                row["stop"] = at.get(tuple(row["lon_lat"]), row["stop"])
         out = self._draft(
             plan,
             options,
@@ -3241,37 +3250,61 @@ class Server:
             out["checkpoint_order"] = ordered["order"]
         return out
 
-    def _best_order(self, call: Call, points, vias, preset, options, taken):
-        """The points with the checkpoints between the first and last in their quickest
-        order (`best_orders`, the first ORDER_TRIES planned), and what was done."""
+    def _best_order(self, call: Call, points, vias, preset, options, limit, taken):
+        """The plan through the points with the checkpoints between the first and last in
+        their quickest order (`best_orders`, up to ORDER_TRIES planned while time allows; a
+        try that fails after the first is passed over), and what was done."""
         if vias:
             raise ToolError("best_order puts the stops in order: leave via_points out")
         if options.get("loop"):
-            raise ToolError("best_order keeps the start and the finish: plan it without loop")
+            raise ToolError(
+                "best_order keeps the start and the finish: for a ride back to the start,"
+                " give the start again as the last point, without loop"
+            )
         if preset in TWO_POINT_PRESETS:
             raise ToolError(f"{preset} plans from a start and an end only")
-        tried = []
-        for order in best_orders(points):
-            if tried and not call.time_for_another_plan():
-                break
+        orders = best_orders(points)
+        tried: list[tuple[float, Plan, list[int]]] = []
+        failed = 0
+        took = 0.0
+        for k, order in enumerate(orders):
+            if tried and call.deadline is not None:
+                # Another try only while one more as long as the last still fits.
+                if time.monotonic() + 1.5 * took + 5 > call.deadline:
+                    break
             call.check()
-            call.report(len(tried), ORDER_TRIES, f"trying checkpoint order {len(tried) + 1}")
-            answer = self.api.route(request_body([points[i] for i in order], [], preset, options))
-            tried.append((answer.get("duration_s") or math.inf, order))
-        _, order = min(tried, key=lambda pair: pair[0])
-        asked = {tuple(t["at"]): t["asked"] for t in taken if t.get("at")}
+            call.report(k, len(orders), f"trying checkpoint order {k + 1} of {len(orders)}")
+            began = time.monotonic()
+            try:
+                plan = self._plan(call, [points[i] for i in order], [], preset, options, limit)
+            except Cancelled:
+                raise
+            except ToolError:
+                if not tried:
+                    raise
+                failed += 1
+                break
+            took = time.monotonic() - began
+            tried.append((plan.answer.get("duration_s") or math.inf, plan, order))
+        _, plan, order = min(tried, key=lambda row: row[0])
+        asked: dict[tuple, list[str]] = {}
+        for t in taken:
+            if t.get("at"):
+                asked.setdefault(tuple(t["at"]), []).append(t["asked"])
         named = []
         for k, i in enumerate(order):
             row = {"stop": k, "point_given": i, "lon_lat": list(points[i])}
             if tuple(points[i]) in asked:
-                row["asked"] = asked[tuple(points[i])]
+                row["asked"] = " / ".join(asked[tuple(points[i])])
             named.append(row)
-        minutes = [round(t / 60) for t, _ in tried if t != math.inf]
-        note = (
-            f"checkpoints put in order: {len(tried)} orders planned"
-            f" ({', '.join(f'{m} min' for m in minutes)}), the quickest kept"
-        )
-        return [points[i] for i in order], {"order": named, "note": note}
+        minutes = [round(t / 60) for t, _, _ in tried if t != math.inf]
+        count = f"{len(tried)} order{'s' if len(tried) > 1 else ''}"
+        note = f"checkpoints put in order: {count} planned"
+        if minutes:
+            note += f" ({', '.join(f'{m} min' for m in minutes)}), the quickest kept"
+        if len(tried) < len(orders):
+            note += "; " + ("a later try failed" if failed else "no time to try more")
+        return plan, {"order": named, "note": note}
 
     # plan_metro_loop
     def plan_metro_loop(self, args: dict, call: Call) -> dict:
