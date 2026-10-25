@@ -367,15 +367,14 @@ def test_when_every_point_is_a_name_the_first_is_searched_again_near_the_others(
     assert len(out["points_taken_as"]) == 2
 
 
-def test_scenic_roads_near_asks_the_site_and_filters_by_designation() -> None:
+def test_scenic_roads_near_asks_the_site_within_its_reach() -> None:
     places = _Places()
     asked = []
 
-    def scenic_roads(near, miles):
-        asked.append((near, miles))
+    def scenic_roads(near, miles, designation=""):
+        asked.append((near, miles, designation))
         return [
-            {"road": "Moore Road", "designation": "Exceptional Rustic Road (Montgomery County)"},
-            {"road": "River Road", "designation": "Potomac Heritage Scenic Byway"},
+            {"road": "Moore Road", "designation": "Exceptional Rustic Road (Montgomery County)"}
         ]
 
     places.scenic_roads = scenic_roads
@@ -384,5 +383,5 @@ def test_scenic_roads_near_asks_the_site_and_filters_by_designation() -> None:
         "scenic_roads_near",
         {"near": list(LEWIS_ORCHARDS), "within_miles": 40, "designation": "rustic"},
     )
-    assert asked == [(LEWIS_ORCHARDS, 15.0)]
+    assert asked == [(LEWIS_ORCHARDS, 15.0, "rustic")]
     assert [r["road"] for r in out["roads"]] == ["Moore Road"]

@@ -341,9 +341,13 @@ class Api:
             raise ToolError(f"place search failed ({status}): {message}")
         return payload.get("results", [])
 
-    def scenic_roads(self, near: tuple[float, float], miles: float) -> list[dict]:
+    def scenic_roads(
+        self, near: tuple[float, float], miles: float, designation: str = ""
+    ) -> list[dict]:
         """GET /api/scenic-roads: the designated roads near a point, nearest first."""
         params = {"lon": near[0], "lat": near[1], "miles": miles}
+        if designation:
+            params["designation"] = designation
         status, payload, _ = self._request(
             "GET", "/api/scenic-roads?" + urllib.parse.urlencode(params)
         )
@@ -2082,10 +2086,7 @@ class Server:
     def scenic_roads_near(self, args: dict, call: Call) -> dict:
         near, _ = as_point(args["near"], self.api, self.stations)
         miles = min(15.0, max(0.5, float(args.get("within_miles") or 5)))
-        roads = self.api.scenic_roads(near, miles)
-        kind = str(args.get("designation") or "").strip().casefold()
-        if kind:
-            roads = [r for r in roads if kind in str(r.get("designation", "")).casefold()]
+        roads = self.api.scenic_roads(near, miles, str(args.get("designation") or "").strip())
         return {
             "roads": roads,
             "source": "Montgomery County Planning (Rustic Roads), MDOT SHA (Scenic Byways),"

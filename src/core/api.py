@@ -5122,6 +5122,11 @@ class ScenicRoadsIn(Schema):
     miles: float = Field(
         default=5.0, gt=0, le=scenic_near.MAX_RADIUS_MI, description="How far to look, miles."
     )
+    designation: str = Field(
+        default="",
+        max_length=40,
+        description="Only roads whose designation holds this word: 'rustic', 'byway'.",
+    )
 
     @model_validator(mode="after")
     def point_inside(self):
@@ -5153,18 +5158,28 @@ SCENIC_ROADS_ATTRIBUTION = (
 
 @api.get(
     "/scenic-roads",
-    response={200: ScenicRoadsOut, 400: ErrorOut, 403: ErrorOut, 429: ErrorOut, 500: ErrorOut},
+    response={
+        200: ScenicRoadsOut,
+        400: ErrorOut,
+        403: ErrorOut,
+        429: ErrorOut,
+        500: ErrorOut,
+        503: ErrorOut,
+    },
     summary="The rustic roads, scenic byways and named bike routes near a point",
 )
 @decorate_view(
     ratelimit.in_flight_limited(ratelimit.GEOCODE_IN_FLIGHT, ratelimit.name_slots),
-    ratelimit.rate_limited(ratelimit.SEGMENT_INFO),
-    ratelimit.rate_limited(ratelimit.SEGMENT_INFO_BURST),
+    ratelimit.rate_limited(ratelimit.SCENIC_ROADS),
+    ratelimit.rate_limited(ratelimit.SCENIC_ROADS_BURST),
     same_site_only,
     errors_as_json,
 )
 def scenic_roads(request, params: Query[ScenicRoadsIn], response: HttpResponse):
-    found = scenic_near.near(params.lon, params.lat, params.miles)
+    try:
+        found = scenic_near.near(params.lon, params.lat, params.miles, params.designation)
+    except scenic_near.TimedOut:
+        return Status(503, {"error": "the scenic road search took too long; try a smaller area"})
     response["Cache-Control"] = f"private, max-age={SEGMENT_INFO_MAX_AGE_S}"
     return Status(200, {"roads": found, "attribution": list(SCENIC_ROADS_ATTRIBUTION)})
 
