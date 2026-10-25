@@ -2032,7 +2032,12 @@ phone whose share sheet takes files, the GPX file Download GPX would give goes w
   over), a link fetcher (chat apps, social sites; `core.share_preview.is_fetcher`) gets
   OpenGraph and Twitter card tags: the ride type and distance, the distance and climb, and
   `/s/<id>/preview.png`, a 1200 x 630 PNG drawn by the server with the standard library (no
-  imaging package; glyphs from `scripts/make_preview_glyphs.py`), cached on the row. Where the
+  imaging package; glyphs from `scripts/make_preview_glyphs.py`), cached on the row. The line is
+  drawn over the base map (`core.preview_basemap`: land, parks, water, roads and paths, rail and a
+  few town names, read from `${DATA_ROOT}/basemap/region.pmtiles`, which compose mounts read-only
+  into the API at `/data/basemap`) with "© OpenStreetMap contributors · © Protomaps" on it; with
+  no archive there the picture has a plain background, as before. A new `region.pmtiles` (another
+  size or time) draws every picture again on its next fetch. Where the
   route starts, ends or stops at the owner's Home, the image leaves a circle of at least 0.2 mi
   (322 m) round Home blank, its centre moved 60 to 150 m per account by a keyed hash of the
   account id (the key derived from `DJANGO_SECRET_KEY`: rotating it moves the circles of links
@@ -3116,6 +3121,10 @@ procedure. For the base map:
 | `sprites/v4/`: icons | **MIT**: basemaps-assets' README at the pinned commit (installed as `sprites/README.md`) says the sprites are derived from MIT-licensed tangrams/icons, <https://github.com/tangrams/icons/blob/master/LICENSE.md> | none required | with `ASSETS_COMMIT` |
 | go-pmtiles 1.31.2, the build tool (not served) | **BSD-3-Clause**, © Protomaps LLC, <https://github.com/protomaps/go-pmtiles> | n/a | with `PMTILES_VERSION` |
 
+The link preview's picture (`core.preview_basemap`, drawn by the server from
+`region.pmtiles`) carries both credits drawn into the image, as
+`preview_basemap.CREDIT`: the picture travels without any page round it.
+
 The archive's own metadata attribution credits OpenStreetMap only, not
 Protomaps, so a style that shows the archive's attribution field shows half of
 what is owed. The front end has to set both credits itself, and does:
@@ -3548,7 +3557,7 @@ at `/routes/` and from Go's More > Featured routes. Instance admins write them:
 3. Save as **Draft** first and press **View on site**: the page shows only to instance admins.
    Press **Use this map as the link picture** under the post; the browser draws the map at
    1200 x 630 with its credits and sends it, and chat apps then show the map. Until then they show
-   the route's line drawing.
+   the shared route's preview picture: the line over the server's plainer drawing of the base map.
 4. Set **Published** (listed) or **Unlisted** (link only). **Withdrawn** makes the link say so
    (410). Saving is refused when the route starts, ends or stops at your Home, since posts are
    public.
