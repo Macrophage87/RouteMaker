@@ -46,6 +46,7 @@ import {
   setMassRide,
 } from "../stressStyle.js";
 import { HAZARD_SOURCE_ID, massLayerIds, massLayers } from "../massStyle.js";
+import { ROUTE_NAME_LAYER_ID, routeNamePaint } from "./routeNames.ts";
 
 /** The hazards' source before any are given (or on a page that is not a Mass Ride's). */
 export const EMPTY_HAZARDS = { type: "FeatureCollection", features: [] } as const;
@@ -260,6 +261,10 @@ export function setStressPalette(
   // The trail names likewise (stressStyle.js, TRAIL_LABEL).
   if (map.getLayer(TRAIL_LABEL_LAYER_ID)) {
     for (const [name, value] of Object.entries(trailLabelPaint())) map.setPaintProperty(TRAIL_LABEL_LAYER_ID, name, value);
+  }
+  // The route's own street names likewise (lib/routeNames.ts).
+  if (map.getLayer(ROUTE_NAME_LAYER_ID)) {
+    for (const [name, value] of Object.entries(routeNamePaint())) map.setPaintProperty(ROUTE_NAME_LAYER_ID, name, value);
   }
 }
 
@@ -582,9 +587,17 @@ function stateOf(under: Under<unknown, unknown>, popupOpen: boolean): PointerSta
   return { popupOpen, onStation: under.station !== null, onLine: under.line !== null };
 }
 
-/** Whether a popup is open: a via's Remove (null when none), or a station's card. */
-export function popupsOpen(viaPopup: unknown, cards: { cardOpen(): boolean } | null): boolean {
-  return viaPopup !== null || (cards?.cardOpen() ?? false);
+/**
+ * A map card open in `map` (MapLibre's container): any MapLibre popup but a hover card. The closure, junction, dock,
+ * scenic and trail-mile cards close themselves on a map click, after the main click has run; a click that only
+ * closed one also chose another route or moved a point (Stephen 2026-10-25: "when map popups do close, they can open
+ * the last route, even if not the intended route").
+ */
+export const OPEN_CARD_SELECTOR = ".maplibregl-popup:not(.rail-hover)";
+
+/** Whether a popup is open: a via's Remove (null when none), a station's card, or any card in `map`. */
+export function popupsOpen(viaPopup: unknown, cards: { cardOpen(): boolean } | null, map: { querySelector(selector: string): unknown } | null = null): boolean {
+  return viaPopup !== null || (cards?.cardOpen() ?? false) || (map?.querySelector(OPEN_CARD_SELECTOR) ?? null) !== null;
 }
 
 /** The line a press at `under` picks up (provisionally), or null: the press is the map's. */

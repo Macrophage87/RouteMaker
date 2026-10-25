@@ -4,9 +4,13 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import "./styles.css";
 import "./fonts/fonts.css";
 import { App } from "./App.tsx";
+import { CrashBoundary } from "./CrashScreen.tsx";
+import { watchErrors } from "./lib/crashReport.ts";
 import { followAccessibility } from "./lib/accessibilitySwitch.ts";
 import { watchInstall } from "./lib/installOffer.ts";
 
+// The page's uncaught errors, kept for the crash screen's error report (lib/crashReport.ts).
+watchErrors(window);
 // The browser's install prompt can come before the first render: held for the install offer (P4).
 watchInstall(window);
 
@@ -16,6 +20,8 @@ if (!root) throw new Error("index.html has no #root");
 followAccessibility(document.documentElement);
 createRoot(root).render(
   <StrictMode>
-    <App />
+    <CrashBoundary>
+      <App />
+    </CrashBoundary>
   </StrictMode>,
 );

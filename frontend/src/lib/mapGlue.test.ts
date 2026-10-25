@@ -22,6 +22,7 @@ import {
   onLaneSwitch,
   pointerTarget,
   popupsOpen,
+  OPEN_CARD_SELECTOR,
   pressGrab,
   runClick,
   runHover,
@@ -245,6 +246,13 @@ test("a popup counts as open while a via's Remove or a station's card is", () =>
   assert.equal(popupsOpen({}, card(false)), true, "a via's Remove");
   assert.equal(popupsOpen(null, card(true)), true, "a station's card");
   assert.equal(popupsOpen({}, null), true);
+});
+
+test("any map card but a hover card counts as open, so the click that closes it does nothing else", () => {
+  const map = (found: boolean) => ({ querySelector: (selector: string) => (selector === OPEN_CARD_SELECTOR && found ? {} : null) });
+  assert.equal(popupsOpen(null, null, map(false)), false);
+  assert.equal(popupsOpen(null, null, map(true)), true, "a closure or junction card");
+  assert.equal(OPEN_CARD_SELECTOR, ".maplibregl-popup:not(.rail-hover)");
 });
 
 const STATION = { id: "st" };
