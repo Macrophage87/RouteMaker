@@ -105,5 +105,5 @@ test("App asks names for the plan's own points and renders the rows from pointRo
   assert.match(app, /pointRows\(points, names, loopVias, VIA_MARKS\.isVia\)/);
   assert.match(app, /located\.includes\(point\) \? \{ name: YOUR_LOCATION, label: YOUR_LOCATION \} : namer\.name\(point\)/);
   assert.match(app, /pickIntoPlan\(found, choice, \{\s*current: \(\) => pointsRef\.current,\s*commit: commitPick,/);
-  assert.match(app, /remember: \(p, name, label\) => namer\.remember\(p, name, label\)/);
+  assert.match(app, /remember: \(p, name, label\) => \{\s*namer\.remember\(p, name, label\);/);
 });

@@ -24,7 +24,8 @@ comes from:
   the account for the admin only), core.suggestion_post (the Discord poll names nobody),
   core.signed_out_suggestions (a salted daily hash, 24 hours); 311: core.report_log and core.dc311.
 - What the browser and the server contact: the Content-Security-Policy (Caddyfile, `connect-src
-  'self'`), core.street_photo, core.gbfs, core.wmata_live, core.closure_sources, core.dc311.
+  'self'`), core.street_photo, core.gbfs, core.wmata_live, core.closure_sources, core.dc311,
+  core.weather (points rounded to 0.01 degree, answers 2 minutes in memory).
 - Logs, limits and backups: docker/api-entrypoint.sh (the access log's format), core.ratelimit,
   config.procrastinate (BACKUP_KEEP, BACKUP_EXCLUDED_TABLES); sessions: core.revocation.
 - Garmin: core.garmin (the encrypted token, offered only with core.garmin.COURSES_WIRED),
@@ -54,7 +55,7 @@ from . import account_deletion
 PATH = account_deletion.PRIVACY_PATH
 TITLE = "RouteMaker privacy policy"
 # Change with the text: the date a rider reads as when this page last said something new.
-LAST_UPDATED = ("2026-10-23", "October 23, 2026")
+LAST_UPDATED = ("2026-10-24", "October 24, 2026")
 # Unless the deployment sets PRIVACY_CONTACT (an e-mail address or a web address).
 CONTACT = "Questions, or a request about your data: ask the site's owner on Discord."
 CONTACT_LEAD = "Questions, or a request about your data: "
@@ -117,8 +118,10 @@ SECTIONS: list[tuple[str, str]] = [
         + _p(
             "Your positions stay on your device. One is sent to the server only as part of "
             "something you use: planning or re-planning a route from where you are, naming "
-            "a place, finding the nearest water, restroom or bikeshare docks, finding which 311 "
-            "website covers a problem you log, and Group or Mass Ride sharing. The server answers "
+            "a place, finding the nearest water, restroom, food, repair or bikeshare docks, "
+            "a Detour search, checking the weather along your route or, in Roam, where you are "
+            "(every 5 minutes), finding which 311 website covers a problem you log, and Group or "
+            "Mass Ride sharing. The server answers "
             "and does not store it, except places you choose to save or share and ride sharing "
             "(below)."
         )
@@ -288,6 +291,9 @@ SECTIONS: list[tuple[str, str]] = [
                 "Mapillary, for a street photo: a small box around a point on the road, never "
                 "your position.",
                 "WMATA, for live trains, buses and elevator outages.",
+                "The National Weather Service and Open-Meteo, for weather alerts and rain along "
+                "your route: points on it rounded to about 0.7 mi (1.1 km), never your exact "
+                "position. The answers are kept 2 minutes, by the rounded point only.",
                 "The bikeshare operator’s public feeds, for docks and bikes.",
                 "The National Park Service and DC’s road-closure notices, for closures.",
                 "DC 311, as above.",

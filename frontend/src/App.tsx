@@ -82,12 +82,14 @@ import {
   isMiddle,
   kindSaid,
   kindSwitchedSaid,
+  cleanStopName,
+  stopNamedSaid,
   namePoints,
   stopAddedSaid,
   stopsOnly,
   withVias,
   viaIndices,
-  viaPointsNamed,
+  importedKinds,
 } from "./lib/pointKinds.ts";
 import { MANUAL_BADGE, planLegEdit } from "./lib/planLegs.ts";
 import { insertedSaid, loopChangeSaid,reversedSaid, reverseUnavailableHint, stationSaid } from "./lib/pointText.ts";
@@ -110,6 +112,7 @@ import { FEDERAL_POINTS_NONE, type FederalStatus } from "./lib/federalLegend.ts"
 import { federalAreaAt, federalRouteLines, pointAreas, stopWarningShort } from "./lib/federalStops.ts";
 import { addCoverageMask, fetchCoverage, watchForCapacity, watchForFacilities, watchCentre, watchZoom } from "./lib/mapGlue.ts";
 import { STILL_RIDING_SAID, forgetStaleRideEntry, holdBackDuringRide } from "./lib/rideBack.ts";
+import { RIDE_PANEL_OPEN, closeIdlePanels, watchIdleRecentre } from "./lib/idleRecentre.ts";
 import { afterHistoryStep } from "./lib/rideFocus.ts";
 import { isMassRide, massBandsChangeSaid, massBandsSaid } from "./lib/massCapacity.ts";
 import { movePoint, planEdits, travelSaid, type Snapshot as PlanSnapshot } from "./lib/planEdits.ts";
@@ -134,7 +137,7 @@ import {
   type LocateResult,
 } from "./lib/geolocation.ts";
 import { usePlaceNames } from "./usePlaceNames.ts";
-import { fetchPlaces, pickIntoPlan, placeFromSearch, reverseUrl, searchBiasPoint, type Place, type ViewBounds, type PlaceChoice } from "./lib/geocode.ts";
+import { MAX_DETOUR_SEARCH, fetchPlaces, pickIntoPlan, placeFromSearch, reverseUrl, searchBiasPoint, searchUrl, type Place, type ViewBounds, type PlaceChoice } from "./lib/geocode.ts";
 import { HOME_CLEARED, HOME_PICK_CANCELLED, HOME_PICK_LINE, homeAtSpot, homeFromPlace, homeSetSaid, nameWithoutHome } from "./lib/homeSet.ts";
 import { BottomBar } from "./Sidebar.tsx";
 import {
@@ -246,13 +249,18 @@ import { ACCOUNT_SETTINGS_USED, applyToDevice, deviceSettings, fetchSettings, on
 import { HOME_KEPT, HOME_MOVED, answerHomeOffer, deviceHome, homeOffer, type HomeOffer } from "./lib/homeMove.ts";
 import { OPENED_SAID, SAVED_SAID, SAVE_FAILED, UNCHANGED_SAID, UPDATE_ROUTE, VERSION_SAID, defaultRouteName, differenceLine, differsTooMuch, gpxSave, afterDelete, afterRename, planSave, saveAsVersion, savedAnswer, versionOf, type OpenSaved, type SavedRoute } from "./lib/savedRoutes.ts";
 import { checkClosures, closedStretches, reroutedSaid, spliceDetours, type Closure, type CheckFor } from "./lib/closureCheck.ts";
+import { ROUTE_WEATHER_MS, weatherPoints } from "./lib/weather.ts";
+import { useWeather } from "./useWeather.ts";
 import { downloadText, trackGpx, verbatimDownload, verbatimFileName } from "./lib/gpxVerbatim.ts";
 import { readGpx } from "./lib/gpxImport.ts";
 import { GPX_SAID_OPENED, GPX_SAID_ROUTE, GPX_SAID_TRACK, downloadCourse, downloadGpx, routeGpxFile, sendCourseToGarmin, sendCourseToWahoo, type FileFormat, type Said } from "./GpxPanel.tsx";
 import type { DeviceProfileId } from "./lib/deviceProfiles.ts";
-import { SHARED_GONE, SHARED_INPUTS_ONLY, SHARED_OPENED, SHARED_PATH, SHARED_REVOKED, SHARED_REVOKED_ERROR, SHARE_KEEP_DEFAULT, SHARE_RIDE_WAIT, BROADCAST_NO_LEAD, BROADCAST_SHARE_FAILED, asRideLink, leadKeyFrom, gpxShareFile, keepFields, newSharedId, previewImageOk, readShared, rideLinkFrom, sharedBody, sharedIdFrom, storeShared, withSharedId, type ShareKeep } from "./lib/sharedRoutes.ts";
+import { SHARED_GONE, SHARED_INPUTS_ONLY, SHARED_OPENED, SHARED_PATH, SHARED_REVOKED, SHARED_REVOKED_ERROR, SHARE_KEEP_DEFAULT, SHARE_RIDE_WAIT, BROADCAST_NO_LEAD, BROADCAST_RIDE_FAILED, BROADCAST_RIDE_NO_LEAD, BROADCAST_SHARE_FAILED, asRideLink, leadKeyFrom, gpxShareFile, keepFields, newSharedId, previewImageOk, readShared, rideLinkFrom, sharedBody, sharedIdFrom, storeShared, withSharedId, type ShareKeep } from "./lib/sharedRoutes.ts";
 import { ClosureDialog, type ClosureAsk } from "./ClosureDialog.tsx";
 import { StartOnComputerDialog } from "./StartOnComputerDialog.tsx";
+import { ResumeRideDialog } from "./ResumeRideDialog.tsx";
+import { forgetLeftRide, keepLeftRide, leftRide } from "./lib/rideResume.ts";
+import { StopNameDialog, type StopNameAsk } from "./StopNameDialog.tsx";
 import { LoadRouteDialog } from "./LoadRouteDialog.tsx";
 import { withGpxChoice, type GpxChoice } from "./lib/loadRoute.ts";
 import { askBeforeStart, looksLikePhone, rememberStartAnyway } from "./lib/startOnComputer.ts";
@@ -305,6 +313,8 @@ const initialPlan = decodePlan(planToOpen(tabSession(), window.location.hash));
 VIA_MARKS.markAt(initialPlan.points, initialPlan.vias);
 // And its legs drawn in Plan's manual mode (v0.9.1); an older link has none.
 VIA_MARKS.markDrawn(initialPlan.points, initialPlan.drawn);
+// And its stops' own names (2026-10-24); an older link has none.
+VIA_MARKS.nameAt(initialPlan.points, initialPlan.names);
 
 // Go or Plan (lib/appMode.ts; the owner's choices 1 and 2 of 2026-10-11): the tab's own view, else Plan for a
 // link with a plan in it on a wide screen, else by screen size: Plan on a computer, Go on a phone.
@@ -606,17 +616,20 @@ export function App() {
   // and the places to see (their own layer, off by default, kept on this device). Each loaded when first needed;
   // a load that failed is asked again next time.
   const [repairData, setRepairData] = useState<RepairPlace[] | "unavailable" | null>(null);
-  const repairLoad = useRef(false);
+  // One load at a time, shared by the layer, Go's Repair list and a ride's Detour (which waits on it).
+  const repairLoad = useRef<Promise<RepairPlace[] | null> | null>(null);
   const ensureRepair = useCallback(() => {
-    if (repairLoad.current) return;
-    repairLoad.current = true;
-    void loadRepair(waterRestroomsUrl).then((data) => {
-      if (!data) repairLoad.current = false;
-      setRepairData(data ?? "unavailable");
-    });
+    if (!repairLoad.current) {
+      repairLoad.current = loadRepair(waterRestroomsUrl).then((data) => {
+        if (!data) repairLoad.current = null;
+        setRepairData(data ?? "unavailable");
+        return data;
+      });
+    }
+    return repairLoad.current;
   }, []);
   useEffect(() => {
-    if (waterOn) ensureRepair();
+    if (waterOn) void ensureRepair();
   }, [waterOn, ensureRepair]);
   // Bikeshare docks and free e-bikes (v0.7.0; BikeshareDocks.tsx): shown while Capital Bikeshare's switch in
   // Layers is on. It is on by default in the bikeshare ride types and off in the others (the owner, 2026-10-17),
@@ -777,6 +790,8 @@ export function App() {
   // Accessibility mode (OWNER-DECISIONS 455; lib/accessMode.ts): off unless turned on, kept on this device.
   // Map tools is on the page only while it is on.
   const [accessMode, setAccessMode] = useState(() => readAccessMode());
+  const accessModeNow = useRef(accessMode);
+  accessModeNow.current = accessMode;
   const toolsToggleRef = useRef<HTMLButtonElement>(null);
   const focusToolsNext = useRef(false);
   const focusAtPress = useRef<Element | null>(null);
@@ -883,11 +898,18 @@ export function App() {
     fixed: boolean;
     /** A detour from Roam: ending it goes back to roaming, with no summary. */
     roam?: boolean;
+    /** Kept on this device to resume if the page closes (lib/rideResume.ts). */
+    kept?: boolean;
     n: number;
   } | null>(null);
-  const [rideAsk, setRideAsk] = useState(false);
   const [rideView, setRideView] = useState<RideView | null>(null);
   const [follow, setFollow] = useState(true);
+  // A screen left alone 30 s with no panel open goes back to the ride's own view (lib/idleRecentre.ts, the owner,
+  // 2026-10-24): `movedByHand` marks a pan, pinch or turn since, and `followReset` takes the zoom back too.
+  const followNow = useRef(follow);
+  followNow.current = follow;
+  const movedByHand = useRef(false);
+  const [followReset, setFollowReset] = useState(0);
   // Track-up by default in a ride (v0.7.0, "Go riding fixes" item 1); the ride settings' switch is the
   // option, kept on this device. Turning the map never moves the keyboard focus.
   const [headingUp, setHeadingUpState] = useState(() => readHeadingUp());
@@ -903,7 +925,6 @@ export function App() {
     setRideTextState(size);
   }, []);
   const startRideRef = useRef<HTMLButtonElement>(null);
-  const rideStartFirstRef = useRef<HTMLButtonElement>(null);
   // The Start ride button pressed (under the figures or in Directions): where the focus goes back to.
   const rideOpener = useRef<HTMLElement | null>(null);
   const rideCircle = rideView?.rider ? { centre: rideView.rider.point, radiusM: rideView.rider.accuracyM } : null;
@@ -950,6 +971,15 @@ export function App() {
   const focusAfterRemove = useRef<number | null>(null);
   const writtenHash = useRef<string>("");
   const { gate: geoGate, namer } = usePlaceNames(points);
+  // A ride's Detour search box (lib/detourSearch.ts): through the page's one gate, ahead of names, as Where to?'s.
+  const detourGeocode = useCallback(
+    (query: string, near: LonLat | undefined) => geoGate.run(() => fetchPlaces(searchUrl(query, near, MAX_DETOUR_SEARCH)), true),
+    [geoGate],
+  );
+  // A ride's stop names (2026-10-24): one function for the ride, so its stops on the map are worked out only as it moves.
+  // A stop renamed in place (its pair unchanged): the link is written again for it.
+  const [namesVersion, setNamesVersion] = useState(0);
+  const rideStopName = useCallback((point: LonLat) => namer.name(point)?.name, [namer]);
   // A route's own name (a save, a shared line, a GPX file) never carries the Home's label (review privacy-2).
   const fileNamed = nameWithoutHome((point) => namer.name(point)?.name, myGo.home?.point ?? null);
 
@@ -973,13 +1003,12 @@ export function App() {
   // Go's first route, then a better one (v0.7.0, "Faster routing"; lib/progressive.ts): what the full plan reads when
   // it comes (the route shown, and whether the rider has pressed Start), and the route sentence held while a full
   // plan replaces its first route, so the swap is said once, by its own line.
-  const shownNow = useRef<{ answer: RouteResponse | null; riding: boolean; startAsked: boolean; choice: number }>({
+  const shownNow = useRef<{ answer: RouteResponse | null; riding: boolean; choice: number }>({
     answer: null,
     riding: false,
-    startAsked: false,
     choice: 0,
   });
-  shownNow.current = { answer, riding, startAsked: rideAsk, choice };
+  shownNow.current = { answer, riding, choice };
   const routeSaidNow = useRef("");
   const [refinedHeld, setRefinedHeld] = useState<{ route: RouteResponse; said: string } | null>(null);
   // Go's early start (step 4): a request made before the tap, kept for the tap that makes the same request.
@@ -1096,7 +1125,7 @@ export function App() {
       // focus stays where it is, and the route's own sentence is not said again.
       onRefined: (plan: Plan, result: RouteResult) => {
         const now = shownNow.current;
-        if (!result.ok || !takesRefined(now.answer, now.riding, now.startAsked) || !now.answer) return;
+        if (!result.ok || !takesRefined(now.answer, now.riding) || !now.answer) return;
         // A first route not yet said (it stood less than a moment) is not held: the full plan's sentence is the one said.
         const heard = routeSaidNow.current;
         const line = heard ? betterRouteSaid(now.answer, result.route) : null;
@@ -1112,7 +1141,7 @@ export function App() {
       // pressed or a ride is on, not for a long ride, and not on a ride type that offers neither.
       after: (plan: Plan, final: RouteResult) => {
         const now = shownNow.current;
-        if (!final.ok || final.route.provisional || modeRef.current !== "go" || now.riding || now.startAsked) return null;
+        if (!final.ok || final.route.provisional || modeRef.current !== "go" || now.riding) return null;
         // Nor for a plan with legs drawn in Plan's manual mode: the rider drew that way on purpose.
         if (!offersNeighbours(plan.preset) || plan.confirmLong || drawnLegs(plan.points).length) return null;
         // Bikeshare keeps the plan's own docks: only the ride between them changes.
@@ -1154,7 +1183,7 @@ export function App() {
     linkPresses.current += 1;
     setLinkSaid("");
     setLinkSpoken("");
-  }, [points, preset, dials]);
+  }, [points, preset, dials, namesVersion]);
 
   // A link pasted into this tab, or the back button, changes the fragment
   // without a reload: open the plan it names.
@@ -1179,7 +1208,7 @@ export function App() {
       // A plan opened from a link opens drawn, in Plan as in Go (v0.7.0), and is not compared with the last one.
       forgetDrawn();
       setRouteAsk((n) => n + 1);
-      setPoints(VIA_MARKS.markDrawn(VIA_MARKS.markAt(plan.points, plan.vias), plan.drawn));
+      setPoints(VIA_MARKS.nameAt(VIA_MARKS.markDrawn(VIA_MARKS.markAt(plan.points, plan.vias), plan.drawn), plan.names));
       setPreset(plan.preset);
       setDials(plan.dials);
     };
@@ -1860,9 +1889,10 @@ export function App() {
   // The road panel's Set as start / Set as end / Add as stop (OWNER-DECISIONS 441n): the spot
   // right-clicked or held (or the map's center by keyboard), as the search's choice places a
   // place: the coverage check, the cap, the loop; an edit like any other, undone and redone.
-  const placeSpot = useCallback((choice: PlaceChoice, spot: LonLat, asVia = false) => {
-    // A tapped trail's Route through this trail: a via point, which shapes the route and is never a stop.
-    const point: LonLat = asVia ? VIA_MARKS.via([spot[0], spot[1]]) : spot;
+  const placeSpot = useCallback((choice: PlaceChoice, spot: LonLat, asVia = false, name?: string) => {
+    // A tapped trail's Route through this trail: a via point, which shapes the route and is never a stop. A stop
+    // with a name (the rider's, or the place's it was picked from) keeps it on its own pair (2026-10-24).
+    const point: LonLat = asVia ? VIA_MARKS.via([spot[0], spot[1]]) : cleanStopName(name) ? VIA_MARKS.named([spot[0], spot[1]], name) : spot;
     cancelLocateNotice();
     if (!insideCoverage(point)) {
       setNotice(OUTSIDE_NOTICE);
@@ -2007,7 +2037,7 @@ export function App() {
   };
   const addNearestStop = (item: Nearby) => {
     namer.remember(item.place.point, item.place.title);
-    placeSpot("via", item.place.point);
+    placeSpot("via", item.place.point, false, item.place.title);
   };
 
   // A place picked from search: the start, the destination or a stop, as chosen
@@ -2024,7 +2054,11 @@ export function App() {
       current: () => pointsRef.current,
       commit: commitPick,
       loop: loopVias,
-      remember: (p, name, label) => namer.remember(p, name, label),
+      remember: (p, name, label) => {
+        namer.remember(p, name, label);
+        // Add a stop: the stop keeps the place's name as its own (2026-10-24).
+        if (choice === "via") VIA_MARKS.named(p, name);
+      },
       entrance: (place) => entranceForPlace(place, choice),
     });
     if (point === null) return;
@@ -2346,7 +2380,8 @@ export function App() {
       return;
     }
     const loop = loopStops(ride.preset, ride.dials.loop);
-    const added = addStopWhereShortest(current, point, loop);
+    // The stop keeps the place's name as its own (2026-10-24), for the files, the courses and the cues.
+    const added = addStopWhereShortest(current, VIA_MARKS.named([point[0], point[1]], name), loop);
     setNotice(null);
     commit(added.points);
     announce(stopAddedSaid(added.points, added.index, VIA_MARKS.isVia, loop, name));
@@ -2482,6 +2517,42 @@ export function App() {
     },
     [commit, announce, loopVias, namer],
   );
+  // A stop's own name (Stephen 2026-10-24: a new stop "should also ask for a name"): a Ctrl+click on the map, or the
+  // road panel's Add as stop (a long press), asks for one before the stop is added; a stop's point menu names it
+  // again. The name is optional: none leaves the map's name for the spot, as before.
+  const [stopAsk, setStopAsk] = useState<(StopNameAsk & { point?: LonLat; index?: number }) | null>(null);
+  const askStopAt = useCallback((point: LonLat) => {
+    if (!insideCoverage(point)) {
+      setNotice(OUTSIDE_NOTICE);
+      return;
+    }
+    if (pointsRef.current.length >= MAX_POINTS) {
+      setNotice(maxPointsNotice());
+      return;
+    }
+    setStopAsk({ mode: "add", name: "", point });
+  }, []);
+  const renameStop = useCallback((index: number) => {
+    const point = pointsRef.current[index];
+    if (!point || namePoints(pointsRef.current, VIA_MARKS.isVia, loopVias)[index]?.role !== "stop") return;
+    setStopAsk({ mode: "rename", name: VIA_MARKS.nameOf(point) ?? "", index });
+  }, [loopVias]);
+  const stopNamed = (name: string) => {
+    const ask = stopAsk;
+    setStopAsk(null);
+    if (!ask) return;
+    if (ask.mode === "add" && ask.point) {
+      placeSpot("via", ask.point, false, name);
+      return;
+    }
+    const current = pointsRef.current;
+    const point = ask.index === undefined ? undefined : current[ask.index];
+    if (!point || cleanStopName(name) === VIA_MARKS.nameOf(point)) return;
+    // In place: only a label changes, so no new route is asked for; the link is written again (namesVersion).
+    VIA_MARKS.rename(point, name);
+    setNamesVersion((v) => v + 1);
+    announce(stopNamedSaid(cleanStopName(name)));
+  };
   // Reverse: in a loop the start stays and the stops go the other way around
   // (OWNER-DECISIONS 374); with a start and one stop that is no change, so a
   // press says why and changes nothing.
@@ -2598,9 +2669,11 @@ export function App() {
     setConfirmedKm(null);
     setNotice(null);
     for (const [point, name] of namesToKeep(plan)) namer.remember(point, name);
-    // A file's points are stops (v0.7.0), but for those a RouteMaker file names "Via point" (lib/gpx.ts).
+    // A file's named points are stops, its unnamed ones (and those a RouteMaker file names "Via point") via points
+    // (Stephen 2026-10-24); a stop keeps the file's name for it as its own.
     const opened = plan.points.slice(0, MAX_POINTS);
-    VIA_MARKS.markAt(opened, viaPointsNamed(plan.pointNames, opened.length));
+    const kinds = importedKinds(plan.pointNames, opened.length);
+    VIA_MARKS.nameAt(VIA_MARKS.markAt(opened, kinds.vias), kinds.names);
     commit(opened, { ...rideAfterImport(plan, rideRef.current), imported: plan });
     // An opened file is a saved route: it opens drawn (v0.7.0), and is not compared with the plan before it.
     forgetDrawn();
@@ -2610,6 +2683,11 @@ export function App() {
   // A fitting round for an opened track: part of the same edit as the import
   // (the rider did not make it), so it is not an undo step of its own.
   const refineImported = useCallback((next: LonLat[]) => {
+    // The points a fitting round adds have no names: via points, as a file's unnamed points are (2026-10-24).
+    const had = new Set(pointsRef.current);
+    next.forEach((point, i) => {
+      if (!had.has(point) && i > 0 && i < next.length - 1) VIA_MARKS.via(point);
+    });
     if (importBase.current) importBase.current = { ...importBase.current, points: next };
     pointsRef.current = next;
     setPoints(next);
@@ -2955,7 +3033,7 @@ export function App() {
     return { led, said: unled ? BROADCAST_NO_LEAD : said };
   };
 
-  // Start ride (plan Q1, Q3): the first ride asks how to say the cues; later rides start at once. The
+  // Start ride (plan Q1, Q3): the ride starts at once, with the cues as Settings > Ride mode has them. The
   // voice is unlocked inside this press (iOS speaks only after a gesture).
   // unlocked: Start's own press has already unlocked the voice (startRideChecked), before its closure check.
   // `rest`: Ride the rest's own route (rideRest, below), ridden in place of the plan's.
@@ -2973,7 +3051,13 @@ export function App() {
     const opened = sharedOpenNow.current?.answer === route ? sharedOpenNow.current : null;
     const fixed = fixedRide(leg, opened, !!rest);
     setResumeStats(null);
-    setRideStart((before) => ({ route, ...leg, dials: rideDials({ ...planDials, closuresNow: true }, rest ? null : route), fixed, roam: rest?.roam === true, n: (before?.n ?? 0) + 1 }));
+    const rideDialsNow = rideDials({ ...planDials, closuresNow: true }, rest ? null : route);
+    // Kept on this device so a page closed mid-ride can resume it (lib/rideResume.ts); a trip's leg, Ride the rest
+    // and a detour from Roam are not.
+    const kept = !rest && !leg.trip;
+    setRideStart((before) => ({ route, ...leg, dials: rideDialsNow, fixed, roam: rest?.roam === true, kept, n: (before?.n ?? 0) + 1 }));
+    if (kept) keepLeftRide({ route, points: leg.points, loop: leg.loop, preset: leg.preset, dials: rideDialsNow, fixed }, VIA_MARKS, Date.now());
+    else forgetLeftRide();
     // The installed app keeps the ride's route as the last ride (OWNER-DECISIONS 465a); End ride gives it
     // the map the ride kept. A browser tab keeps nothing unless the rider presses Keep for offline.
     // A Keep for offline still fetching stops: the ride keeps its own corridor, and two walks would share the page's queue.
@@ -2983,7 +3067,6 @@ export function App() {
         .then(() => setKeptVersion((v) => v + 1))
         .catch(() => undefined);
     }
-    setRideAsk(false);
     setFollow(true);
     setRideView(null);
     setRiding(true);
@@ -3017,19 +3100,16 @@ export function App() {
     showPlanner(true);
     // The kept key leaves Mass Ride's ride size out (keptPlanKey); the size set now stays.
     const plan = decodePlan(kept.plan);
-    const hash = dials.rideSize && plan.preset === preset ? encodePlan(plan.points, plan.preset, { ...plan.dials, rideSize: dials.rideSize }, plan.vias, plan.drawn) : kept.plan;
+    const hash = dials.rideSize && plan.preset === preset ? encodePlan(plan.points, plan.preset, { ...plan.dials, rideSize: dials.rideSize }, plan.vias, plan.drawn, plan.names) : kept.plan;
     if (window.location.hash !== hash) window.location.hash = hash;
     announce(`Opening ${kept.title}.`);
   };
   const startRide = (unlocked = false) => {
     const opener = document.activeElement;
     rideOpener.current = opener instanceof HTMLElement && opener.closest(".start-ride, .description-actions") ? opener : startRideRef.current;
-    // Go goes straight to the ride (the owner, 2026-10-11 20:23 UTC: "just ... find a destination and go"):
-    // no first-ride question; the cues are Settings > Ride mode's (the defaults until changed there). Plan asks once.
-    if (!ridePrefs.chosen && mode !== "go") {
-      setRideAsk(true);
-      return;
-    }
+    // Straight to the ride, from Go (the owner, 2026-10-11 20:23 UTC: "just ... find a destination and go") and from
+    // Plan (2026-10-24: "When you start the ride in plan it should just start"): no first-ride question; the cues are
+    // Settings > Ride mode's (the defaults until changed there).
     beginRide(ridePrefs, unlocked);
   };
   // ---- v0.7.0: saved routes, the verbatim GPX and the closure check ----
@@ -3262,7 +3342,7 @@ export function App() {
   };
   // Start ride: the line about to be ridden, checked first ("Ride it anyway" goes on to the ride).
   // The voice is unlocked first, synchronously inside the press (iOS speaks only in a gesture; after the
-  // check's await it would be too late). A press that asks the first-ride question unlocks in that dialog.
+  // check's await it would be too late).
   // Which press asked: Start ride, or Broadcast (asked before its share sheet, so Go back sends nothing).
   const [computerAsk, setComputerAsk] = useState<"start" | "broadcast" | null>(null);
   // Start anyway, kept in memory too: a tab that cannot store it (a private window) still starts.
@@ -3273,13 +3353,12 @@ export function App() {
       setComputerAsk("start");
       return;
     }
-    const unlocked = ridePrefs.chosen || mode === "go";
     if (!shown) return startRide(false);
     // A second press while the first one's check runs is ignored (checkThen).
     if (closureChecking.current) return;
     // Unlocked silently inside the press; "Ride started." is said once the ride starts, after the
     // check or "Ride it anyway" (review F1: never before a closure is found).
-    if (unlocked) primeRideVoice(ridePrefs);
+    primeRideVoice(ridePrefs);
     // A slow check is said politely.
     const slow = window.setTimeout(() => announce(CHECKING_CLOSURES), CLOSURE_SLOW_MS);
     void checkThen("ride", shown.geometry.coordinates, false, () => {
@@ -3300,12 +3379,20 @@ export function App() {
       setComputerAsk("broadcast");
       return;
     }
-    if (ridePrefs.chosen || mode === "go") primeRideVoice(ridePrefs);
+    primeRideVoice(ridePrefs);
     setBroadcastNote((n) => ({ text: "", count: n.count }));
     void shareRoute(true).then(({ led, said }) => {
       if (led) startRideChecked();
       else if (said) setBroadcastNote((n) => ({ text: said === SHARE_FAILED ? BROADCAST_SHARE_FAILED : said, count: n.count + 1 }));
     });
+  };
+  // Broadcast from a ride (Stephen 2026-10-24: "Let people broadcast from a ride"): Share ride's link as Plan's and Go's
+  // Broadcast sends it, the ride already going; the rider leads once it went with its key. Answers what to say.
+  const broadcastFromRide = async (): Promise<string> => {
+    const { led, said } = await shareRoute(true);
+    if (led) return ROAM_BROADCAST_ON;
+    if (said === BROADCAST_NO_LEAD) return BROADCAST_RIDE_NO_LEAD;
+    return said === SHARE_FAILED ? BROADCAST_RIDE_FAILED : said;
   };
   // Ride the rest (lib/rideTrip.ts): after a transit plan's transit, a ride for its last riding leg, planned
   // as a normal route request from where the rider is (the ride's fix) to the destination, on the leg's
@@ -3516,6 +3603,7 @@ export function App() {
   rideNow.current = { start: rideStart, mode };
   const endRide = useCallback((after: EndedPlan, stats: RideStats) => {
     const { start, mode: endedIn } = rideNow.current;
+    forgetLeftRide();
     // A detour from Roam: back to roaming, with no summary (the ride was a short way to water, a restroom or food).
     if (start?.roam) {
       setRiding(false);
@@ -3553,8 +3641,44 @@ export function App() {
   // A back gesture during a ride does nothing; End ride is the way out (lib/rideBack.ts, review RIDE-2).
   // Each held back is told, politely, once (review RIDE-2).
   useEffect(() => (onBike ? holdBackDuringRide(window, () => announce(roaming ? STILL_ROAMING_SAID : STILL_RIDING_SAID)) : undefined), [onBike, roaming, announce]);
+  useEffect(() => {
+    if (!onBike) return undefined;
+    movedByHand.current = false;
+    return watchIdleRecentre(window, {
+      away: () => !followNow.current || movedByHand.current,
+      panelOpen: () => document.querySelector(RIDE_PANEL_OPEN) !== null,
+      // The cards and side menus close first, but never in accessibility mode (lib/idleRecentre.ts).
+      closePanels: () => !accessModeNow.current && closeIdlePanels(document),
+      recentre: () => {
+        movedByHand.current = false;
+        setFollow(true);
+        setFollowReset((n) => n + 1);
+      },
+    });
+  }, [onBike]);
   // No ride is on at load: a ride's entry left by a reload is the page's own again.
   useEffect(() => forgetStaleRideEntry(window), []);
+  // A ride left going when the page closed (lib/rideResume.ts): asked once at load. Resume starts it again from where
+  // the rider is (the voice unlocked inside the press); its first fix past a stop asks which are done.
+  const [leftAsk, setLeftAsk] = useState(() => leftRide(VIA_MARKS, Date.now()));
+  const resumeLeft = () => {
+    const left = leftAsk;
+    setLeftAsk(null);
+    if (!left) return;
+    startRideGesture(ridePrefs);
+    endedRide.current = null;
+    setRideEnded(null);
+    setResumeStats(null);
+    setRideStart((before) => ({ ...left, trip: null, kept: true, n: (before?.n ?? 0) + 1 }));
+    keepLeftRide(left, VIA_MARKS, Date.now());
+    setFollow(true);
+    setRideView(null);
+    setRiding(true);
+  };
+  const dropLeft = () => {
+    setLeftAsk(null);
+    forgetLeftRide();
+  };
   const undoEndRide = () => {
     const ended = endedRide.current;
     endedRide.current = null;
@@ -3565,6 +3689,7 @@ export function App() {
     startRideGesture(ridePrefs);
     setResumeStats(ended.stats);
     setRideStart(ended.start);
+    if (ended.start.kept) keepLeftRide(ended.start, VIA_MARKS, Date.now());
     setFollow(true);
     setRideView(null);
     setRiding(true);
@@ -3679,11 +3804,6 @@ export function App() {
     endedRide.current = null;
     setRideEnded(null);
   }, [planEnd, riding, rideEnded]);
-  // The first ride's question takes the focus to its heading, so its safety note is read before the
-  // choices (VoiceOver skips a dialog's description when the focus lands inside it).
-  useEffect(() => {
-    if (rideAsk) document.getElementById("ride-ask-title")?.focus();
-  }, [rideAsk]);
 
   // The map frames a route in the part the panel does not cover.
   const framePadding = useCallback((): Frame => {
@@ -3697,6 +3817,16 @@ export function App() {
     const card = out && getComputedStyle(out).position === "fixed" ? out.getBoundingClientRect() : null;
     const right = card && card.width > 0 ? window.innerWidth - card.left + 40 : 60;
     return { top: 60, bottom: 60, right, left: (panel?.right ?? 0) + 40 };
+  }, []);
+
+  // On a phone, the map's bottom under the sheet: the map may move far enough for the area's edge to show above it.
+  const coveredBelow = useCallback((): number => {
+    if (!window.matchMedia(NARROW).matches) return 0;
+    const panel = panelRef.current?.getBoundingClientRect();
+    const map = mapRef.current?.getContainer().getBoundingClientRect();
+    // A hidden panel (a ride) measures 0 and covers nothing.
+    if (!panel || !map || panel.height === 0) return 0;
+    return Math.max(0, map.bottom - Math.max(panel.top, map.top));
   }, []);
 
   // Copy link keeps full precision; when the rider's location or Home is in the plan it says so (review privacy-2).
@@ -3713,6 +3843,15 @@ export function App() {
     if (!sameLightMarks(lightKept.current, next)) lightKept.current = next;
     return lightKept.current;
   }, [shown, minute, dials.when]);
+  // Weather along the route (lib/weather.ts, Stephen 2026-10-24): the NWS alerts and rain coming, leaving now, shown
+  // with the route's warnings in Go and Plan; checked when the route changes and every 10 minutes while it shows. Not
+  // for a plan set to another time (its When): the forecast is for leaving now.
+  const weatherKey = shown !== null && !riding && (mode === "plan" || mode === "go") && !dials.when ? lineKey(shown.geometry.coordinates) : null;
+  const weather = useWeather(
+    weatherKey,
+    () => (shown && shown.duration_s > 0 ? weatherPoints(shown.geometry.coordinates, 0, shown.distance_m / shown.duration_s) : null),
+    ROUTE_WEATHER_MS,
+  );
   // Share as image (ShareCardDialog, lib/shareCard.ts), beside Share in Plan's More: the route shown, the rider's
   // Home (an end or stop there is cut out of the image unless the rider unchecks it), and an opened file's own name.
   const [shareCardOpen, setShareCardOpen] = useState(false);
@@ -3954,7 +4093,7 @@ export function App() {
   const addFoodStop = (result: FoodResult) => {
     const point: LonLat = [result.place.lon, result.place.lat];
     namer.remember(point, result.place.name);
-    placeSpot("via", point);
+    placeSpot("via", point, false, result.place.name);
   };
   // v0.7.0's place sheets (app/PlacesSheets.tsx): Go's Repair and Sights behind More, Plan's Places to see.
   // Both list from the rider's location where the app has one (the owner, 2026-10-18: "The default for search
@@ -4006,7 +4145,7 @@ export function App() {
     });
   };
   const openRepair = (chip: HTMLElement) => {
-    ensureRepair();
+    void ensureRepair();
     setPlacesAsked((n) => n + 1);
     openView("repair", chip);
     placesFromNow();
@@ -4027,7 +4166,7 @@ export function App() {
   const addSightStop = (r: SightResult) => {
     const point: LonLat = [r.place.lon, r.place.lat];
     namer.remember(point, r.place.name);
-    placeSpot("via", point);
+    placeSpot("via", point, false, r.place.name);
   };
   // The nearest finder (Plan's Water chip, Go's Water and Restroom chips): its own sheet now.
   const nearestProps = {
@@ -4131,7 +4270,7 @@ export function App() {
       text: ADD_AS_STOP,
       run: () => {
         namer.remember(point, name);
-        placeSpot("via", point);
+        placeSpot("via", point, false, name);
       },
     };
   };
@@ -4248,7 +4387,7 @@ export function App() {
   const addWaterStop = (item: WaterAlong) => {
     const point: LonLat = [item.point.lon, item.point.lat];
     namer.remember(point, waterTitle(item.point));
-    placeSpot("via", point);
+    placeSpot("via", point, false, waterTitle(item.point));
   };
   // The line can be dragged when it is the route of the points as they are:
   // not while a new one is being planned, when its legs are the old list's.
@@ -4603,8 +4742,7 @@ export function App() {
         stale, routeHeadingRef, status, announcement, slow, preset, dials, points, cancelLong, planButtonRef,
         confirmLong, errorRef, retry, shown, answer: picked, choice, aroundAvoid, setAroundAvoid, routedPoints, federalRoute,
         narrow, setJunctionFocus, setScrubPoint, choose, startRide: startRideChecked, broadcastRide: canShare ? { onPress: broadcastRide, note: broadcastNote } : null, startRideRef, rideSize, setDials,
-        waterStatus, waterAlong, addWaterStop, rideAsk, setRideAsk, backToRideOpener, ridePrefs, changeRidePrefs,
-        rideStartFirstRef, beginRide, climbsOn, climbsStatus, climbsAlong, light,
+        waterStatus, waterAlong, addWaterStop, climbsOn, climbsStatus, climbsAlong, light, weather,
       }}
     />
   );
@@ -4686,6 +4824,7 @@ export function App() {
         stressVisible={stressVisible && stress === "available"}
         when={mapWhen(dials.when ?? null)}
         framePadding={framePadding}
+        coveredBelow={coveredBelow}
         onStressAvailability={setStress}
         onMapClick={onBike || reviewing ? ignore : place}
         onMovePoint={onBike ? ignore : move}
@@ -4697,6 +4836,10 @@ export function App() {
         pressSetsEnd={goTapSetsEnd(mode)}
         onRemovePoint={riding ? ignore : removeFromMap}
         onSwitchKind={riding ? ignore : switchKind}
+        // A Ctrl+click is a stop, its name asked first (2026-10-24); in Go only once there is a route to add it to.
+        onStopAt={onBike || reviewing || (goTapSetsEnd(mode) && points.length < 2) ? undefined : askStopAt}
+        onRenameStop={onBike || reviewing ? undefined : renameStop}
+        rideStops={riding ? (rideView?.stops ?? null) : null}
         markerReset={markerReset}
         accuracy={riding ? rideCircle : roaming ? (roamRider ? { centre: roamRider.point, radiusM: roamRider.accuracyM } : null) : hereCircle}
         rider={riding && rideView?.rider ? rideView.rider : roaming ? roamRider : null}
@@ -4710,6 +4853,8 @@ export function App() {
         screenReaderRide={onBike && ridePrefs.output === "screen-reader"}
         headingUp={headingUp}
         onFollowBroken={() => setFollow(false)}
+        onRiderMoved={() => (movedByHand.current = true)}
+        followReset={followReset}
         junctionFocus={junctionFocus}
         scrubPoint={scrubPoint}
         lettered={riding ? null : lettered}
@@ -4833,6 +4978,8 @@ export function App() {
           openKept(route);
         }}
       />
+      <StopNameDialog ask={stopAsk} onDone={stopNamed} onCancel={() => setStopAsk(null)} />
+      <ResumeRideDialog open={leftAsk !== null && !riding && !roaming} onResume={resumeLeft} onNotNow={dropLeft} onLater={() => setLeftAsk(null)} />
       <StartOnComputerDialog
         open={computerAsk !== null}
         onBack={() => setComputerAsk(null)}
@@ -4876,7 +5023,8 @@ export function App() {
           if (map) refreshStressTiles(map, window.location.origin, generation);
         }}
         plan={{ count: points.length, loop: loopVias }}
-        onPlace={placeSpot}
+        // Its Add as stop (after a long press or a right-click) asks for the stop's name first (2026-10-24).
+        onPlace={(choice, point, asVia) => (choice === "via" && !asVia ? askStopAt(point) : placeSpot(choice, point, asVia))}
         trailRider={trailRider}
         onSetHome={(point) => void setHomeAt(point)}
       />
@@ -5040,9 +5188,18 @@ export function App() {
           onEnd={endRide}
           resumeStats={resumeStats}
           water={ensureWater}
+          food={ensureFood}
+          repair={ensureRepair}
+          geocode={detourGeocode}
+          stopName={rideStopName}
           trailMiles={trailMiles}
           keepLastRide={isStandalone()}
           fixed={rideStart.fixed}
+          // The plan's own route only (its link is the plan's), not Ride the rest's or a detour from Roam, and never a
+          // ride opened from someone else's link (they lead it).
+          onBroadcast={canShare && !rideStart.roam && rideStart.route === shown && !(onShared && !onShared.own) ? broadcastFromRide : null}
+          broadcasting={rideBroadcast?.leading === true}
+          keepLeft={rideStart.kept === true}
         />
       )}
       {roaming && (
@@ -5057,6 +5214,8 @@ export function App() {
           dials={planDials}
           water={ensureWater}
           food={ensureFood}
+          repair={ensureRepair}
+          geocode={detourGeocode}
           onView={setRoamRider}
           onDetour={roamDetour}
           onEnd={endRoam}

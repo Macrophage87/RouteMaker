@@ -11,6 +11,7 @@ import { LOOP_FIRST_HINT, LOOP_LABEL, canReverse, loopStops } from "./loop.ts";
 import type { LonLat } from "./geo.ts";
 import type { PresetId } from "./presets.ts";
 import { pointName } from "./summary.ts";
+import { CLICK_KINDS_TIP } from "./pointKinds.ts";
 
 /** A marker's label: its visible text (a stop's number; none for the start and end), its spoken name, and its kind (the pin's style and glyph). */
 export interface PointLabel {
@@ -147,7 +148,7 @@ export function emptyPlanHint(preset: PresetId, loop: boolean, accessMode = fals
 export function editingTips(accessMode = false): string {
   return (
     "Drag any marker to move it, or drag the route line to pull it through somewhere else" +
-    " (on a phone, press and hold the line first). Click a stop for Remove. From the keyboard," +
+    ` (on a phone, press and hold the line first). ${CLICK_KINDS_TIP} Click a stop for Remove. From the keyboard,` +
     ` move the map with the arrow keys and ${mapToolsWays(accessMode).addPoint}; Ctrl+Z undoes the` +
     " last change and Ctrl+Shift+Z redoes it. With two or more stops, Best order puts them in the" +
     " order that rides best, weighing riding time, traffic stress and hills as the route does."

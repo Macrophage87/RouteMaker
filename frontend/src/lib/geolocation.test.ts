@@ -718,7 +718,7 @@ test("App: the look-up's answer is placed with the ride read after the wait and 
     /if \("refuse" in placed\) \{\s*setNotice\(null\);\s*locateNoticeTimer\.current = window\.setTimeout\(\(\) => \{\s*if \(gate\.latest\(press\)\) setNotice\(placed\.refuse\);\s*\}, 150\);\s*return;/,
   );
   // The spoken Copy link text goes with the plan it was about (L4).
-  assert.match(app, /linkPresses\.current \+= 1;\s*setLinkSaid\(""\);\s*setLinkSpoken\(""\);\s*\}, \[points, preset, dials\]\);/);
+  assert.match(app, /linkPresses\.current \+= 1;\s*setLinkSaid\(""\);\s*setLinkSpoken\(""\);\s*\}, \[points, preset, dials, namesVersion\]\);/);
 });
 
 test("App: a drag reads the old point before the commit, and moves by movePoint (R1, A15b)", () => {

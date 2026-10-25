@@ -188,7 +188,8 @@ function fromRide(cue: Cue): { type: CourseCueType; name: string; priority: numb
     case "unpaved":
       return { type: "note", name: "Unpaved", priority: 0 };
     case "stop":
-      return { type: "stop", name: `Stop ${cue.stop ?? ""}`.trim(), priority: PROTECTED };
+      // A named stop (2026-10-24) is named on the unit, as its number is otherwise.
+      return { type: "stop", name: cue.stopName ?? `Stop ${cue.stop ?? ""}`.trim(), priority: PROTECTED };
     case "end":
       return { type: "finish", name: "Finish", priority: PROTECTED };
   }
@@ -288,10 +289,11 @@ export interface RouteCue {
 
 /**
  * Ride's cues for the route, in order, with the start first: the one list the FIT and TCX courses and the PDF cue
- * sheets (cueSheetPdf.ts) are made from. `vias` are the plan's via points by index, which are not cues, as in Ride.
+ * sheets (cueSheetPdf.ts) are made from. `vias` are the plan's via points by index, which are not cues, as in Ride;
+ * `names`, the stops' own names by index (lib/pointKinds.ts stopNames).
  */
-export function routeCues(route: CompiledRoute, vias: readonly number[] = []): RouteCue[] {
-  const model = rideModel(route as RouteResponse, vias);
+export function routeCues(route: CompiledRoute, vias: readonly number[] = [], names: ReadonlyMap<number, string> = new Map()): RouteCue[] {
+  const model = rideModel(route as RouteResponse, vias, names);
   const all: RouteCue[] = [{ type: "start", name: "Start", text: "Start.", atM: 0, street: named(model.stretches[0]?.street ?? null), priority: PROTECTED, kind: "start" }];
   for (const cue of model.cues) {
     const made = fromRide(cue);
@@ -317,7 +319,7 @@ export function routeCues(route: CompiledRoute, vias: readonly number[] = []): R
  * The route shown as a course for `profile`. `vias` are the plan's via points by index (pointKinds.ts), which are
  * not cues, as in Ride.
  */
-export function compileCourse(route: CompiledRoute, profile: DeviceProfile, format: CourseFormat, vias: readonly number[] = []): Course {
+export function compileCourse(route: CompiledRoute, profile: DeviceProfile, format: CourseFormat, vias: readonly number[] = [], names: ReadonlyMap<number, string> = new Map()): Course {
   const line = route.geometry.coordinates;
   const along: number[] = [0];
   for (let i = 1; i < line.length; i += 1) along.push(along[i - 1] + haversineM(line[i - 1], line[i]));
@@ -328,7 +330,7 @@ export function compileCourse(route: CompiledRoute, profile: DeviceProfile, form
 
   // The cues, Ride's, in order, with the start first.
   const nameChars = format === "tcx" ? Math.min(TCX_CUE_NAME_CHARS, profile.cueNameChars) : profile.cueNameChars;
-  const all: (CourseCue & { priority: number })[] = routeCues(route, vias).map((cue) => ({
+  const all: (CourseCue & { priority: number })[] = routeCues(route, vias, names).map((cue) => ({
     type: cue.type,
     vertex: cue.type === "start" ? 0 : cue.type === "finish" ? line.length - 1 : nearestVertex(along, cue.atM),
     name: clip(cue.name, nameChars),
