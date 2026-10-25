@@ -1772,6 +1772,20 @@ def _closure_row(row: dict) -> dict:
     return {k: v for k, v in out.items() if v is not None}
 
 
+def _notice_row(row: dict) -> dict:
+    """A "Check before you go" notice on the route (an NPS park alert, or a park's deer-
+    management closure at the ride's time, v0.12.3): a warning, never routed round."""
+    out = {
+        "where": row.get("area_name"),
+        "what": row.get("title"),
+        "when": row.get("when_text"),
+        "says": row.get("text"),
+        "source": row.get("source_name"),
+        "url": row.get("url"),
+    }
+    return {k: v for k, v in out.items() if v}
+
+
 def route_closures(plan: Plan) -> dict:
     """The closures the site found on or round the route, one row per closure (a reviewer's
     closure comes as a row for each of its ways), and the points that sit on one."""
@@ -1793,10 +1807,13 @@ def route_closures(plan: Plan) -> dict:
             # A blocked bike lane leaves the road open: listed, not warned about.
             if row["effect"] == "on_route" and row.get("kind") != "lane":
                 spans.append((row["from_m"], row["to_m"], key))
-    if not rows:
+    notices = [_notice_row(n) for n in zones.get("notices") or [] if isinstance(n, dict)]
+    if not rows and not notices:
         return {}
     said = sorted(rows.values(), key=lambda r: (r["effect"] != "on_route", r.get("from_mi", 0)))
     out: dict = {"closures": said}
+    if notices:
+        out["check_before_you_go"] = notices
     if zones.get("ride_at"):
         # A shared route's answer (open_link) is as it was planned: say for when.
         out["closures_checked_for"] = zones["ride_at"]
@@ -2330,8 +2347,10 @@ TOOLS = [
             " or by name: a name is searched near the route's other points, and an ambiguous"
             " one is asked back. `closures` lists the closures it goes through or round, and"
             " `closure_warning` says when one is on the route (often a via point only a closed"
-            " path reaches: move it). Read these before sending the link, and say the busy"
-            " parts and any closure."
+            " path reaches: move it); `check_before_you_go` lists park notices for the ride's"
+            " time, such as a deer-management closure at night (warnings, not routed round)."
+            " Read these before sending the link, and say the busy parts, any closure and any"
+            " notice."
             " With max_miles_from_metro it checks the distance from Metro and, with"
             " fix_metro_rounds, adds the nearest station as a via point where the route strays."
         ),
