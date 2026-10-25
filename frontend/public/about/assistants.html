@@ -382,11 +382,14 @@ that exact route in the app. You can change the route in the app yourself and pa
 page's address back: the assistant picks it up as a new draft. On the traffic slider, 70 is the app's
 Default and 80 keeps to low-stress ways unless avoiding them takes much longer; above 80 the calm
 search runs, which is slower on a long ride.</p>
-<p>A place you name is looked for near the route's other points, so "Moore Road" means the one near
-your ride. If a name matches places far apart and none near the route, the assistant asks you which
-one you mean. Where the route would reach a via point by riding out and back 0.2 mi [0.3 km] or more,
-the point is moved to where that spur leaves the road and the route is planned again, and kept if it
-comes out shorter; you can ask to keep the points where they are.</p>
+<p>A place you name is looked for near the route's points that are already known (coordinates, Metro
+stations or places found before it), so "Moore Road" means the one near your ride. If a name matches
+places far apart and none is near those points, the assistant asks you which one you mean; with
+nothing yet to go by, it takes the search's first match and says what else the name could have been.
+Where the route would reach a via point by riding out and back 0.2 mi [0.3 km] or more, the point is
+moved to where that spur leaves the road and the route is planned again, and the new plan is kept if
+it comes out shorter (and no farther from Metro when you set a Metro limit). When planning or revising
+a route you can ask to keep the points where they are.</p>
 
 </div></details>
 <h2 id="tools">What an assistant can do</h2>
@@ -401,7 +404,7 @@ comes out shorter; you can ask to keep the points where they are.</p>
 <tbody>
 <tr><th scope="row"><code>find_place</code></th><td>Searches RouteMaker's place search for a place, address or street, around a point if given.</td></tr>
 <tr><th scope="row"><code>metro_stations</code></th><td>Lists the 98 Metrorail stations, or those near a point, with miles and direction.</td></tr>
-<tr><th scope="row"><code>plan_route</code></th><td>Plans through 2 to 25 points (places, station names or coordinates) on any ride type and setting, as a loop if asked. Reports distance, time, climbing and the share on each stress level, and the bikeshare or transit plan on those ride types. Can check the distance from Metro and add stations where the route strays. Also lists what the route rides: its roads in order with miles, stress level and any scenic designation, where it is on stress level 3 or above, its very-high-stress junctions, and small detours where it leaves a road and comes back to it.</td></tr>
+<tr><th scope="row"><code>plan_route</code></th><td>Plans through 2 to 25 points (places, station names or coordinates) on any ride type and setting, as a loop if asked. Reports distance, time, climbing and the share on each stress level, and the bikeshare or transit plan on those ride types. Can check the distance from Metro and add stations where the route strays. Its answer, like every other plan's, also lists what the route rides: its roads in order with miles, stress level and any scenic designation, where it is on stress level 3 or above, its very-high-stress junctions, and small detours where it leaves a road and comes back to it.</td></tr>
 <tr><th scope="row"><code>revise_route</code></th><td>Changes a draft (add, move or remove points; another ride type or setting) and plans it again as a new draft. The old one stays.</td></tr>
 <tr><th scope="row"><code>open_link</code></th><td>Picks up a route from a RouteMaker link you paste: the app's address after you changed a route, a saved route opened in the app, or a shared route's link.</td></tr>
 <tr><th scope="row"><code>save_route</code></th><td>On the web, saves a draft to My routes; on your own computer, writes it as a GPX file. Only when you say so.</td></tr>
