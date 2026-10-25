@@ -61,7 +61,8 @@
 #   resident total: 1024 + 1450 + 1300 + 4*640 + 2*320 + 512 = 7486 MiB = 7.31 GiB, against
 #   about 8.6 GiB available, so a spike in every container at once still leaves 1.29 GiB.
 #   The startup peak adds the largest one-shot (migrate, 256M): 7742 MiB = 7.56 GiB.
-#   The ceiling is 7.35 GiB since 2026-10-25, for the worker's pre-draw; it was 7.1 GiB from
+#   The ceiling is 7.35 GiB since the owner's choice of 2026-10-25 ("Raise ceiling to 7.35 GB"),
+#   for the worker's pre-draw; it was 7.1 GiB from
 #   the owner's choice of 2026-10-20 ("Both, raise limit to 7.1 GB"), which made room for the
 #   two trail routers (it was 7.0 GiB, at 6.94 without them).
 #   One-shot management commands go through `exec api ...` (inside the api's own cap) or
