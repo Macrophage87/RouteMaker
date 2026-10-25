@@ -5245,26 +5245,29 @@ export function App() {
               </p>
             )}
           </div>
-          {!goMode && <ModeSwitch mode={mode} onChange={changeMode} className="panel-mode" modes={switchModes(canReview)} />}
-          <button
-            type="button"
-            hidden={goMode}
-            className="panel-toggle"
-            aria-expanded={panelOpen}
-            aria-controls="panel-body"
-            onClick={() => {
-              // Hiding the panel only hides it; showing it always shows the planner, even if a sheet was
-              // open when it was hidden (OWNER-DECISIONS 392).
-              if (panelOpen) setPanelOpen(false);
-              else {
-                setPanelOpen(true);
-                // The focus stays on this toggle; the heading focus is the Plan button's.
-                showPlanner(false);
-              }
-            }}
-          >
-            {panelOpen ? "Hide planner" : "Show planner"}
-          </button>
+          {/* The switch and Hide planner stay together: where they do not fit beside the name, they wrap as one row under it. */}
+          <div className="panel-actions">
+            {!goMode && <ModeSwitch mode={mode} onChange={changeMode} className="panel-mode" modes={switchModes(canReview)} />}
+            <button
+              type="button"
+              hidden={goMode}
+              className="panel-toggle"
+              aria-expanded={panelOpen}
+              aria-controls="panel-body"
+              onClick={() => {
+                // Hiding the panel only hides it; showing it always shows the planner, even if a sheet was
+                // open when it was hidden (OWNER-DECISIONS 392).
+                if (panelOpen) setPanelOpen(false);
+                else {
+                  setPanelOpen(true);
+                  // The focus stays on this toggle; the heading focus is the Plan button's.
+                  showPlanner(false);
+                }
+              }}
+            >
+              {panelOpen ? "Hide planner" : "Show planner"}
+            </button>
+          </div>
         </header>
         <div id="panel-body" className="panel-body" hidden={!panelOpen}>
           <AppStatusBar status={appStatus} />
