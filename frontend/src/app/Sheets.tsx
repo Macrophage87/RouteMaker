@@ -16,7 +16,7 @@ import { RideTypeCards } from "../lib/rideTypeCards.ts";
 import { toggleFromPicker, useFavoriteRides } from "../lib/favoriteRides.ts";
 import { DELETE_ACCOUNT_PAGE, PRIVACY_PAGE, isPlainClick, rememberPlanForPage, rememberPlanForSignIn, tabSession } from "../lib/signIn.ts";
 import { SignOutForm } from "../SignOut.tsx";
-import { AssistantKeySetting } from "../AssistantKey.tsx";
+import { AssistantAppsSetting } from "../AssistantApps.tsx";
 import { GarminSetting, WahooSetting } from "../ConnectionSetting.tsx";
 import { pointName } from "../lib/summary.ts";
 import { accessibilityOn, accessibilitySource, paletteSetByAddress, setAccessibility, setHighStressLanes, setMtbTrails } from "../stressStyle.js";
@@ -607,8 +607,8 @@ export function SettingsSheet(props: SettingsSheetProps) {
               {SIGN_IN_LINE.slice("Sign in with Discord".length)}
             </p>
           ) : null}
-          {/* The save-only key an AI assistant's MCP server saves routes with (the owner, 2026-10-18). */}
-          {myGo.signedIn && <AssistantKeySetting />}
+          {/* Assistant apps connected through the site's MCP connector, and how to connect one (the owner, 2026-10-25). */}
+          {myGo.signedIn && <AssistantAppsSetting />}
           {/* Send to Garmin straight into Garmin Connect (the owner, 2026-10-23); shown only where the server can. */}
           {myGo.signedIn && <GarminSetting returned={garminReturned ?? null} />}
           {/* Send to Wahoo straight into the Wahoo app (the owner, 2026-10-23); shown only where the server can. */}
