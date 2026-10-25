@@ -19,7 +19,6 @@ from test_accounts import addr, make_user, route_body, send, signed_in
 from core import account_deletion
 from core.models import (
     AccountSettings,
-    AssistantKey,
     AuditLogEntry,
     CachedMembership,
     ConfiguredGuild,
@@ -62,7 +61,6 @@ def a_full_account():
     client, user, csrf = signed_in()
     assert send(client, "post", "/api/me/settings", {"settings": {"v": 1, "topo": True}}, csrf)
     assert send(client, "post", "/api/me/routes", route_body(), csrf).status_code == 201
-    assert send(client, "post", "/api/me/assistant-key", {}, csrf).status_code == 201
     MyGo.objects.create(user=user, home_lat=38.9, home_lon=-77.0, home_label="Home")
     SharedRoute.objects.create(id="c" * 32, owner=user, line=[[0, 0], [1, 1]], distance_m=1.0)
     return client, user
@@ -126,7 +124,7 @@ class TestDeletion:
         r = delete(client, page_csrf(client))
         assert r.status_code == 200 and account_deletion.DONE in r.content.decode()
         assert not User.objects.filter(pk=user.pk).exists()
-        for model in (AccountSettings, SavedRoute, AssistantKey, MyGo, Session):
+        for model in (AccountSettings, SavedRoute, MyGo, Session):
             assert not model.objects.filter(user_id=user.pk).exists(), model
         # Signed out here and on the other device.
         assert client.get("/api/me/settings", **addr()).status_code == 401
