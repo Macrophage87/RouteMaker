@@ -136,6 +136,10 @@ class Climb:
     line: tuple[LonLat, ...]
     unpaved: bool = False
     name: str | None = None
+    # What most of it is ridden on ("p" path, "g" gravel, "m" mountain-bike trail, "" road)
+    # and whether most of its roads are LTS 3 or higher (the file's `s` and `b`).
+    surface: str = ""
+    busy: bool = False
 
     @property
     def foot(self) -> LonLat:
@@ -179,6 +183,8 @@ def parse(doc: object) -> tuple[Climb, ...] | None:
                 line=line,
                 unpaved=bool(row.get("u")),
                 name=row.get("n") or None,
+                surface=str(row.get("s") or ""),
+                busy=bool(row.get("b")),
             )
         except (KeyError, TypeError, ValueError):
             continue

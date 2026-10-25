@@ -1214,3 +1214,30 @@ class TestTheRedlandSidewalkFile:
         load(str(REDLAND_SIDEWALK), "--actor", actor, "--confirm")
         (row,) = Override.objects.filter(approved=True)
         assert (row.kind, row.osm_way_id, row.value) == ("access", 448386707, {"bicycle": "yes"})
+
+
+ASPEN_STREET = REPO / "fixtures" / "overrides" / "2026-10-25-owner-aspen-street-nw.json"
+
+
+class TestTheAspenStreetFile:
+    """The owner, 2026-10-25, of Aspen Street NW: "It's not a 4" and "Probably a 2.5":
+    its five ways, 16th Street to Georgia Avenue, set to tier 2 with the half step."""
+
+    def test_it_sets_the_five_ways_to_lts_2_5(self, admin):
+        from core.models import Override
+
+        actor = str(admin.discord_user_id)
+        dry = load(str(ASPEN_STREET), "--actor", actor)
+        assert dry.count("create: way ") == 5 and "disagrees" not in dry
+        load(str(ASPEN_STREET), "--actor", actor, "--confirm")
+        rows = Override.objects.filter(approved=True)
+        assert {r.osm_way_id for r in rows} == {
+            1212569754,
+            120378962,
+            1444493181,
+            1481126430,
+            346681298,
+        }
+        for row in rows:
+            assert row.kind == "stress"
+            assert (row.value["tier"], row.value["half"]) == (2, True)

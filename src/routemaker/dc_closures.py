@@ -40,7 +40,7 @@ import math
 import re
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from email.utils import parsedate_to_datetime
 from html.parser import HTMLParser
 from urllib.parse import urlencode
@@ -174,17 +174,38 @@ def _in_boxes(lon: float, lat: float, boxes) -> bool:
     return any(w <= lon <= e and s <= lat <= n for w, s, e, n in boxes)
 
 
+def area_of(key: str) -> Area | None:
+    """A notice's area: a park, the District, or a deer-management closure's
+    (`routemaker.deer_closures`)."""
+    from . import deer_closures
+
+    return AREAS.get(key) or deer_closures.areas().get(key)
+
+
 def notices_along(
     notices: Iterable[Notice], coordinates: Sequence[Sequence[float]], at: datetime
 ) -> list[Notice]:
-    """The notices in force at `at` whose area the line passes through, parks first."""
-    found = []
+    """The notices in force at `at` whose area the line passes through, parks first. A
+    deer-management closure's (v0.12.3) counts only inside its window and where the line runs
+    along the roads or trails it closes."""
+    from . import deer_closures
+
+    found, deer = [], []
     for notice in notices:
-        area = AREAS.get(notice.area)
-        if area is None or not notice_active(notice, at):
+        area = area_of(notice.area)
+        if area is None:
+            continue
+        if notice.source in deer_closures.SOURCES:
+            if deer_closures.in_force(notice, at):
+                deer.append(notice)
+            continue
+        if not notice_active(notice, at):
             continue
         if any(_in_boxes(c[0], c[1], area.boxes) for c in coordinates):
             found.append(notice)
+    found += [
+        n for n in deer_closures.first_each(deer) if deer_closures.runs_along(n.area, coordinates)
+    ]
     return sorted(found, key=lambda n: (n.area == DC_AREA, n.source, n.notice_id))
 
 
@@ -194,6 +215,15 @@ def notice_when_text(notice: Notice, now: datetime | None, future: bool) -> str:
             return (
                 f"{wz.day_text(notice.start, now)} {wz.clock_text(notice.start)} to "
                 f"{wz.clock_text(notice.end)}"
+            )
+        # A whole day ("All day Sat, Nov 14"), or a night ("today 6:45 pm to tomorrow 4 am").
+        start, end = _local(notice.start), _local(notice.end)
+        if start.time() == end.time() == time(0) and end.date() - start.date() == timedelta(days=1):
+            return f"All day {wz.day_text(notice.start, now)}"
+        if (notice.end - notice.start) < timedelta(hours=36):
+            return (
+                f"{wz.day_text(notice.start, now)} {wz.clock_text(notice.start)} to "
+                f"{wz.day_text(notice.end, now)} {wz.clock_text(notice.end)}"
             )
         return f"{wz.date_text(notice.start)} to {wz.date_text(notice.end)}"
     posted = f"Posted {wz.date_text(notice.published)}" if notice.published else "No dates given"
@@ -1322,6 +1352,7 @@ def parse_nps(document: Mapping) -> list[Notice]:
 
 __all__ = [
     "AREAS",
+    "area_of",
     "Advisory",
     "Notice",
     "PARKS",
