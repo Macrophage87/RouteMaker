@@ -135,8 +135,9 @@ API_IMAGE="ghcr.io/macrophage87/routemaker-api"
 #   stress_suggestion_review          reviewers' agree and disagree on home's waiting suggestions
 #                                     (v0.7.0; core.suggestions.review): suggestion_id ->
 #                                     stress_suggestion, reviewer_id -> app_user. Never shipped.
-#   assistant_key                     user_id -> app_user: a rider's AI assistant key digest (the
-#                                     owner, 2026-10-18; core.models.AssistantKey). Never shipped.
+#   assistant_key                     user_id -> app_user: a rider's AI assistant key digest. The
+#                                     table is dropped by migration 0046 (v0.12.2); kept here while a
+#                                     home not yet migrated could still dump it. Never shipped.
 #   connector_client connector_grant  the MCP connector's apps, riders' grants to them (token
 #   connector_draft                   digests) and unsaved drafts (v0.10.0; core.connector):
 #                                     user_id -> app_user. Never shipped.

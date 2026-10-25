@@ -136,6 +136,11 @@ def _now() -> datetime:
 # --- Placing ---------------------------------------------------------------------------
 
 
+class PlaceLater(Exception):
+    """Raised by a look-up that could not be made now (the router down): the place is neither
+    found nor remembered as not found, so a later refresh looks for it again."""
+
+
 class Places:
     """One source's remembered places: key -> {"line": [[lon, lat], ...] or None, "at"}."""
 
@@ -167,6 +172,8 @@ class Places:
         self.left -= 1
         try:
             line = find()
+        except PlaceLater:
+            return None
         except Exception:  # noqa: BLE001 - a place not found is text, never a failed refresh
             logger.info("closures: a place could not be looked up", exc_info=True)
             line = None
