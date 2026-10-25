@@ -7,6 +7,7 @@ import { readFileSync } from "node:fs";
 import type { DescriptionEntry, RouteResponse } from "./api.ts";
 import type { LonLat } from "./geo.ts";
 import { spokenDistance } from "./format.ts";
+import { cueParts } from "./cueShown.ts";
 import {
   ADVANCE_MIN_M,
   END_FIX_MAX_AGE_MS,
@@ -34,6 +35,7 @@ import {
   arrivalSideWords,
   compassWord,
   crossingWords,
+  crossArrow,
   cueSpoken,
   exitWords,
   ordinal,
@@ -1761,4 +1763,51 @@ test("crossing: a turn just before a crossing is not joined to it; the crossing 
   assert.equal(left.text, "Left onto Needwood Road bike lane.");
   assert.equal(crossing.text, "Cross Redland Road, then left onto Redland Road bike lane.");
   assert.ok(!crossing.joined);
+});
+
+// ---- A turn onto a path on the far side of a road (the owner, 2026-10-24: "make it clear both from the arrow and directions to cross the road then turn right") ----
+
+test("across: a turn onto a path just across a road says the road first, drawn across it then turning", () => {
+  const model = rideModel(
+    straightRoute([
+      stretch(0, 900, "Guilford Avenue.", { street: "Guilford Avenue" }),
+      stretch(900, 2200, "Cross Saint Paul Street, then right onto Saint Paul Street bike lane.", {
+        street: "Saint Paul Street bike lane",
+        turn: { ...turning("right", "Saint Paul Street bike lane"), across: "Saint Paul Street" },
+      }),
+    ]),
+  );
+  const [turn] = model.cues;
+  assert.equal(turn.across, "Saint Paul Street");
+  assert.equal(turn.text, "Cross Saint Paul Street, then right onto Saint Paul Street bike lane.");
+  assert.equal(cueSpoken(turn, "now", 0), "Cross Saint Paul Street now, then right onto Saint Paul Street bike lane.");
+  assert.equal(cueSpoken(turn, "advance", 152.4), `In ${spokenDistance(152.4)}, cross Saint Paul Street, then right onto Saint Paul Street bike lane.`);
+  assert.equal(crossArrow(turn), "cross_right");
+  // The card: the crossing large, the turn under it in small print.
+  assert.deepEqual(cueParts(turn.text), { head: "Cross Saint Paul St", rest: "Then right onto Saint Paul Street bike lane." });
+});
+
+test("across: a turn soon after is not joined to it", () => {
+  const model = rideModel(
+    straightRoute([
+      stretch(0, 900, "Guilford Avenue.", { street: "Guilford Avenue" }),
+      stretch(900, 950, "Cross Saint Paul Street, then left onto Saint Paul Street bike lane.", {
+        street: "Saint Paul Street bike lane",
+        turn: { ...turning("left", "Saint Paul Street bike lane"), across: "Saint Paul Street" },
+      }),
+      stretch(950, 2200, "Right onto Charles Street.", { street: "Charles Street", turn: turning("right", "Charles Street") }),
+    ]),
+  );
+  const [turn, next] = model.cues;
+  assert.equal(turn.text, "Cross Saint Paul Street, then left onto Saint Paul Street bike lane.");
+  assert.equal(crossArrow(turn), "cross_left");
+  assert.ok(!next.joined);
+});
+
+test("crossArrow: a crossing between two turns turns the way the turn after it does; alone, straight over the road", () => {
+  assert.equal(crossArrow({ cross: "Redland Road", then: { movement: "left", street: null }, movement: "bear_right" }), "cross_left");
+  assert.equal(crossArrow({ cross: "Redland Road", movement: "bear_right" }), "cross");
+  assert.equal(crossArrow({ movement: "right" }), null);
+  const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
+  assert.match(ride, /const across = crossArrow\(cue\);/);
 });

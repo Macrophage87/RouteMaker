@@ -234,7 +234,8 @@ test("choosing one rides it and changes no setting: the plan's dials and the sav
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   const choose = app.slice(app.indexOf("const choose = useCallback("), app.indexOf("}, []);", app.indexOf("const choose = useCallback(")));
   assert.doesNotMatch(choose, /setDials|saveSettings|setDefault/);
-  assert.match(app, /dials: rideDials\(\{ \.\.\.planDials, closuresNow: true \}, rest \? null : route\)/);
+  assert.match(app, /const rideDialsNow = rideDials\(\{ \.\.\.planDials, closuresNow: true \}, rest \? null : route\);/);
+  assert.match(app, /setRideStart\(\(before\) => \(\{ route, \.\.\.leg, dials: rideDialsNow,/);
 });
 
 test("one request for both, with the plan's own body (so the route cache and one count of the limit serve it)", async () => {
@@ -399,7 +400,7 @@ test("App: asked for in Go only, before Start, on the ride types that offer them
   const start = app.indexOf("after: (plan: Plan, final: RouteResult) => {");
   const body = app.slice(start, app.indexOf("onAfter:", start));
   assert.ok(start > 0);
-  assert.match(body, /modeRef\.current !== "go" \|\| now\.riding \|\| now\.startAsked/);
+  assert.match(body, /modeRef\.current !== "go" \|\| now\.riding\)/);
   assert.match(body, /!offersNeighbours\(plan\.preset\) \|\| plan\.confirmLong/);
   assert.match(app, /announce\(neighboursSaid\(kept, displacedBy\(answer, picked, kept\)\)\)/);
   // The routes kept in place are the answer's own: the rider's choice, held to their count, and kept for the same answer.

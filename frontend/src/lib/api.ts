@@ -286,6 +286,12 @@ export interface DescriptionEntry {
      * me to cross the street and turn left"): the road crossed, said in place of the turn ("Cross Redland Road").
      */
     cross?: string | null;
+    /**
+     * A turn onto a path on the far side of a road the route goes straight across just before it (describe._far_side_turns;
+     * the owner, 2026-10-24: "make it clear both from the arrow and directions to cross the road then turn right"): the
+     * road, said before the turn ("Cross Saint Paul Street, then right onto ...").
+     */
+    across?: string | null;
   } | null;
   severity?: "orange" | "red" | "avoid" | null;
   via?: number | null;
