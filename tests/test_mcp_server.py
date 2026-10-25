@@ -178,6 +178,7 @@ def test_it_introduces_itself_and_lists_its_tools(tools) -> None:
         "metro_stations",
         "scenic_roads_near",
         "climbs_near",
+        "closures_near",
         "plan_route",
         "plan_metro_loop",
         "open_link",

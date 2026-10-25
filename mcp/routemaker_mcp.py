@@ -370,6 +370,17 @@ class Api:
             raise ToolError(f"the climb search failed ({status}): {message}")
         return payload.get("climbs", [])
 
+    def closures_map(self, box: tuple[float, float, float, float], permits: bool) -> list[dict]:
+        """GET /api/closures/map: the closures in force now with any part in the box."""
+        params = {"bbox": ",".join(f"{v:.5f}" for v in box), "permits": str(permits).lower()}
+        status, payload, _ = self._request(
+            "GET", "/api/closures/map?" + urllib.parse.urlencode(params)
+        )
+        if status != 200 or not isinstance(payload, dict):
+            message = payload.get("error") if isinstance(payload, dict) else payload
+            raise ToolError(f"the closure search failed ({status}): {message}")
+        return payload.get("closures", [])
+
     def shared_route(self, route_id: str) -> dict:
         """A shared route as it was shared: its exact line, answer and plan inputs (GET
         /api/shared-routes/{id}, public)."""
@@ -1694,6 +1705,107 @@ def route_details(plan: Plan) -> dict:
     spurs = via_spurs(plan)
     if spurs:
         out["via_spurs"] = spurs
+    out.update(route_closures(plan))
+    return out
+
+
+# --- Closures, for an assistant to say ---------------------------------------------------------
+#
+# The owner, 2026-10-25, after a connector route ran along Lake Frank's closed Lakeside Trail
+# ("make sure that the MCP server has access to the closure list"): the site's answer said the
+# route went through, but the summary left it out. A route's closures and a place's are said.
+
+# A closure's effect on the route, as the site names it (`routemaker.workzones`), and the ones
+# worth saying: "none" is no effect, "possible" a DDOT permit that is never routed round.
+CLOSURE_SAID = ("on_route", "may_still_apply", "routed_round", "bypassed")
+# A stop or via point reached this close to a closed stretch is on it (metres along the route).
+ON_CLOSURE_M = 30.0
+CLOSURES_NEAR_MAX_MI = 10.0  # the site's map view is at most 0.4 by 0.3 degrees
+
+
+def _resampled_lonlat(line: list, step_mi: float = 0.02) -> list[tuple[float, float]]:
+    """The line's points, with more between any two further apart than `step_mi`."""
+    out = [(line[0][0], line[0][1])]
+    for p, q in zip(line, line[1:], strict=False):
+        n = max(1, math.ceil(haversine_mi((p[0], p[1]), (q[0], q[1])) / step_mi))
+        out.extend(
+            (p[0] + (q[0] - p[0]) * k / n, p[1] + (q[1] - p[1]) * k / n) for k in range(1, n + 1)
+        )
+    return out
+
+
+def _points_along(plan: Plan) -> list[tuple[int, float]]:
+    """Each stop or via point and the metres along the route where it is reached (the end of
+    its leg, `leg_ends`), on the answer's own scale."""
+    ends = plan.answer.get("leg_ends") or []
+    line = plan.line
+    if len(ends) != len(plan.points) - 1 or len(line) < 2:
+        return []
+    cum = [0.0]
+    for p, q in zip(line, line[1:], strict=False):
+        cum.append(cum[-1] + haversine_mi((p[0], p[1]), (q[0], q[1])) * METRES_PER_MILE)
+    scale = (plan.answer.get("distance_m") or cum[-1]) / (cum[-1] or 1.0)
+    return [(i + 1, cum[min(end, len(cum) - 1)] * scale) for i, end in enumerate(ends[:-1])]
+
+
+def _closure_row(row: dict) -> dict:
+    """One closure as an assistant tells it: what, until when, what it does, and who says so."""
+    out = {
+        "what": row.get("title") or row.get("road") or "closure",
+        "when": row.get("when_text"),
+        "effect": row.get("effect"),
+        "says": row.get("effect_text"),
+        "source": row.get("source_name"),
+        "url": row.get("url"),
+    }
+    if row.get("delay_s"):
+        out["detour_minutes"] = round(row["delay_s"] / 60)
+    return {k: v for k, v in out.items() if v is not None}
+
+
+def route_closures(plan: Plan) -> dict:
+    """The closures the site found on or round the route, one row per closure (a reviewer's
+    closure comes as a row for each of its ways), and the points that sit on one."""
+    zones = plan.answer.get("work_zones")
+    if not isinstance(zones, dict):
+        return {}
+    rows: dict[tuple, dict] = {}
+    spans: list[tuple[float, float, tuple]] = []  # where the route rides through one, metres
+    for row in zones.get("closures") or []:
+        if row.get("effect") not in CLOSURE_SAID:
+            continue
+        key = (row.get("title"), row.get("when_text"), row.get("effect"), row.get("url"))
+        kept = rows.setdefault(key, _closure_row(row))
+        if row.get("from_m") is not None and row.get("to_m") is not None:
+            a = round(row["from_m"] / METRES_PER_MILE, 1)
+            b = round(row["to_m"] / METRES_PER_MILE, 1)
+            kept["from_mi"] = min(kept.get("from_mi", a), a)
+            kept["to_mi"] = max(kept.get("to_mi", b), b)
+            if row["effect"] == "on_route":
+                spans.append((row["from_m"], row["to_m"], key))
+    if not rows:
+        return {}
+    said = sorted(rows.values(), key=lambda r: (r["effect"] != "on_route", r.get("from_mi", 0)))
+    out: dict = {"closures": said}
+    if spans:
+        # A point reached on a closed stretch makes the router ride it (a landmark only the
+        # closed path goes past): the likeliest reason it found no way round.
+        on = []
+        for i, metres in _points_along(plan):
+            key = next(
+                (k for a, b, k in spans if a - ON_CLOSURE_M <= metres <= b + ON_CLOSURE_M), None
+            )
+            if key is not None:
+                on.append(f"point {i} ({rows[key]['what']}, {rows[key]['when']})")
+        words = "The route goes through a closure: tell the rider."
+        if on:
+            words += (
+                f" Reached on a closed stretch: {'; '.join(on)}. Move it off the closed path"
+                " and plan again."
+            )
+        else:
+            words += " The router found no way round from these points: try others."
+        out["closure_warning"] = words
     return out
 
 
@@ -2158,6 +2270,33 @@ TOOLS = [
         "annotations": {"readOnlyHint": True, "openWorldHint": False},
     },
     {
+        "name": "closures_near",
+        "description": (
+            "List the closures and construction in force now near a point, nearest first: trail"
+            " and road closures from Maryland SHA, NPS, MPD and RouteMaker's reviewers (Lake"
+            " Frank's Lakeside Trail, say), blocked bike lanes and rideable work zones, each"
+            " with what is closed, until when, the source and its link. Use it before"
+            " suggesting a park, trail or place to ride, and say the closures. plan_route"
+            " already routes round closures and lists those on or round its route; DDOT's"
+            " permits (which may never close anything) only with include_permits."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "near": POINT_SCHEMA,
+                "within_miles": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": CLOSURES_NEAR_MAX_MI,
+                    "default": 2,
+                },
+                "include_permits": {"type": "boolean", "default": False},
+            },
+            "required": ["near"],
+        },
+        "annotations": {"readOnlyHint": True, "openWorldHint": False},
+    },
+    {
         "name": "plan_route",
         "description": (
             "Plan a bike route on RouteMaker through 2 to 25 points (start, stops or via points,"
@@ -2176,7 +2315,10 @@ TOOLS = [
             " on its own (a rustic road, a trail; scenic_roads_near lists them), add via points"
             " ON those roads, by [lon, lat]"
             " or by name: a name is searched near the route's other points, and an ambiguous"
-            " one is asked back. Read these before sending the link, and say the busy parts."
+            " one is asked back. `closures` lists the closures it goes through or round, and"
+            " `closure_warning` says when one is on the route (often a via point only a closed"
+            " path reaches: move it). Read these before sending the link, and say the busy"
+            " parts and any closure."
             " With max_miles_from_metro it checks the distance from Metro and, with"
             " fix_metro_rounds, adds the nearest station as a via point where the route strays."
         ),
@@ -2761,6 +2903,46 @@ class Server:
             "effort_fits": bool(out["efforts"]),
             "longest_clear_minutes": longest["effort_minutes"] if longest else 0.0,
             "breaks": out["breaks"],
+        }
+
+    # closures_near
+    def closures_near(self, args: dict, call: Call) -> dict:
+        near, _ = as_point(args["near"], self.api, self.stations)
+        try:
+            miles = min(CLOSURES_NEAR_MAX_MI, max(0.25, float(args.get("within_miles") or 2)))
+        except (TypeError, ValueError):
+            raise ToolError("within_miles is a number") from None
+        lat_deg = miles / (EARTH_RADIUS_MI * math.radians(1))
+        lon_deg = lat_deg / math.cos(math.radians(near[1]))
+        box = (near[0] - lon_deg, near[1] - lat_deg, near[0] + lon_deg, near[1] + lat_deg)
+        # One row per closure: a reviewer's comes as a row for each of its ways.
+        found: dict[tuple, dict] = {}
+        for row in self.api.closures_map(box, bool(args.get("include_permits"))):
+            line = row.get("line") or [row.get("point")]
+            dense = _resampled_lonlat(line)
+            away, at = min((haversine_mi(near, p), p) for p in dense)
+            if away > miles:
+                continue
+            said = _closure_row(row)
+            said.pop("effect", None)
+            said["kind"] = row.get("kind")
+            key = (said["what"], said.get("when"), said.get("url"), said["kind"])
+            length = sum(haversine_mi(p, q) for p, q in zip(dense, dense[1:], strict=False))
+            kept = found.get(key)
+            if kept is None:
+                found[key] = kept = {**said, "miles": 0.0, "away_mi": away, "lon_lat": at}
+            kept["miles"] += length
+            if away < kept["away_mi"]:
+                kept["away_mi"], kept["lon_lat"] = away, at
+        rows = sorted(found.values(), key=lambda r: r["away_mi"])
+        for r in rows:
+            r["miles"] = round(r["miles"], 1)
+            r["away_mi"] = round(r["away_mi"], 1)
+            r["lon_lat"] = [round(r["lon_lat"][0], 6), round(r["lon_lat"][1], 6)]
+        return {
+            "closures": rows,
+            "within_miles": round(miles, 1),
+            "note": "in force now; plan_route also checks the ride's own day",
         }
 
     # metro_stations
@@ -3426,6 +3608,7 @@ class Server:
             "metro_stations": self.metro_stations,
             "scenic_roads_near": self.scenic_roads_near,
             "climbs_near": self.climbs_near,
+            "closures_near": self.closures_near,
             "plan_route": self.plan_route,
             "plan_metro_loop": self.plan_metro_loop,
             "open_link": self.open_link,
