@@ -24,8 +24,9 @@ century".
 | `plan_route` | Plans through 2 to 25 points (places, station names or `[lon, lat]`), on any ride type with any of its settings, as a loop if asked; reports distance, time, climbing and the share on each traffic-stress level (and the bikeshare or transit plan on those ride types); checks the distance from Metro; can add stations as via points where it strays. |
 | `open_link` | Picks up a route from a RouteMaker link you paste: the page's address after you changed the route in the app, one of your saved routes opened in the app, or a shared route's link. |
 | `revise_route` | Changes a draft (add, move or remove points; any ride type or setting) and plans it again as a new draft; the old one stays to go back to. |
-| `save_route` | Keeps a draft, only when you say so: in your My routes on the site, and/or as a GPX file. |
+| `save_route` | Keeps a draft, only when you say so: in your My routes on the site's own connector, or as a GPX file on your own computer. |
 | `gpx_route` | A draft as a GPX track: a `.gpx` file on your own computer, or a download link on the site. |
+| `draft_route_post` | Site connector, instance admins only: writes a Featured routes post as a draft (title, about, who it's for, season, highlighted sections with their miles) around a draft route or a line to follow, for an admin to publish in the admin. Sending the same slug again with `replace` rewrites the draft. |
 | `plan_metro_loop` | Builds a loop of about the target length around DC (or another centre) through waypoints at or just beyond Metro stations, rescales it once towards the target, and repairs stretches past the Metro limit. |
 
 The assistant picks the ride type and settings that fit what you ask: every ride type the app
@@ -35,9 +36,10 @@ bikeshare bike and ending, departure time).
 
 Every planned route is a draft: it comes back with a link, kept for a week, that opens that
 exact route in the app, like a link from the app's Share, so the map, Start ride and the app's own GPX are the
-route the assistant described. Nothing is saved to My routes. Drafts last while the assistant's session does. `save_route` (with a key,
-below) puts one in My routes, where it opens like any route you saved yourself; you can also
-open the link and press Save in the app.
+route the assistant described. Nothing is saved to My routes. Drafts last while the assistant's session does. On the site's connector
+(below), `save_route` puts one in My routes, where it opens like any route you saved yourself; on
+your own computer it writes a GPX file. Either way you can also open the link and press Save in
+the app.
 
 It plans through the site's own API (`POST /api/route`), so a route is exactly what the app would
 plan. It changes nothing on the site except adding the routes you ask it to save. Metro distances
@@ -62,29 +64,39 @@ the draft can still fix where it strays from Metro or move its points. Drafts ar
 file on the server: `gpx_route` gives a download link instead, which works while the draft is kept
 (on the beta, behind its password).
 
+### Featured routes posts, for instance admins
+
+Signed in as an instance admin, the connector also offers `draft_route_post`, so you can ask
+Claude to write a Featured routes post and send it straight to the site. The post always lands
+as a **draft**: only admins see its page (`/routes/<slug>`), and publishing is still your press
+of Status > Published in the admin, where you can also change anything first. The route is either
+a draft Claude planned (or opened from a link) or a line to follow, such as a ride's GPX track,
+planned the way the app plans an opened file. The same checks as the admin apply: the route needs
+its planned figures, and one that starts, ends or stops in your Home circle is refused. Sending
+the same slug again with `replace` rewrites that draft (without it, a draft already at that slug,
+such as one you started in the admin, is left alone); once a post has left draft, the connector cannot change
+it. Disconnecting the app in Settings ends it.
+
 ## Set it up on your own computer
 
-You need Python 3.11 or later and this repository checked out. Nothing to install: it uses the
-standard library only.
+Most riders want the connector above: it signs you in and saves to My routes. Running the
+server yourself suits a local stack or another assistant app; it plans the same routes and keeps
+them as GPX files, but it does not sign in, so it cannot save to My routes (open a route's link
+and press Save in the app instead). The save-only key it once used is retired (2026-10-25).
 
-1. **Make a key (only to save routes).** On the site, sign in, open Settings, and under Account
-   choose **AI assistant key > Make a key**. Copy it: it is shown once. The key can only add
-   routes to your My routes. It cannot sign in, read your routes or change anything else, and
-   you can remove or replace it there at any time.
-2. **Add the server to your assistant** with these settings:
-   - `ROUTEMAKER_BASE_URL`: the address you open RouteMaker at, for example `http://localhost`
-     for a local stack. Route links are built from it, so `http://localhost` links open only on
-     that computer; use the site's public address to open them on your phone.
-   - `ROUTEMAKER_SAVE_KEY`: the key from step 1 (leave it out to plan without saving).
-   - `ROUTEMAKER_ROUTES_DIR` (optional): where GPX files go; default `~/RouteMaker-routes`.
-   - `ROUTEMAKER_BASIC_AUTH` (optional): `user:password` for a site behind a password, such as
-     a beta. The key travels in its own header, so both work together.
+You need Python 3.11 or later and this repository checked out. Nothing to install: it uses the
+standard library only. Add the server to your assistant with these settings:
+
+- `ROUTEMAKER_BASE_URL`: the address you open RouteMaker at, for example `http://localhost` for a
+  local stack. Route links are built from it, so `http://localhost` links open only on that
+  computer; use the site's public address to open them on your phone.
+- `ROUTEMAKER_ROUTES_DIR` (optional): where GPX files go; default `~/RouteMaker-routes`.
+- `ROUTEMAKER_BASIC_AUTH` (optional): `user:password` for a site behind a password.
 
 ### Claude Desktop on Windows, with the checkout in WSL
 
 Settings > Developer > Edit Config opens `claude_desktop_config.json`. Add (with your own WSL
-distribution, path, address and key). `WSLENV` passes the settings from Windows into WSL, and
-keeps the key off the command line:
+distribution, path and address). `WSLENV` passes the settings from Windows into WSL:
 
 ```json
 {
@@ -94,15 +106,14 @@ keeps the key off the command line:
       "args": ["-d", "Ubuntu", "--", "python3", "/home/you/src/RouteMaker/mcp/routemaker_mcp.py"],
       "env": {
         "ROUTEMAKER_BASE_URL": "http://localhost",
-        "ROUTEMAKER_SAVE_KEY": "rmk_your_key_here",
-        "WSLENV": "ROUTEMAKER_BASE_URL:ROUTEMAKER_SAVE_KEY"
+        "WSLENV": "ROUTEMAKER_BASE_URL"
       }
     }
   }
 }
 ```
 
-For a site behind a password (a beta), add `"ROUTEMAKER_BASIC_AUTH": "user:password"` to `env`
+For a site behind a password, add `"ROUTEMAKER_BASIC_AUTH": "user:password"` to `env`
 and `:ROUTEMAKER_BASIC_AUTH` to the end of `WSLENV`: a setting `WSLENV` does not name never
 reaches WSL.
 
@@ -113,21 +124,19 @@ Restart Claude Desktop. RouteMaker's tools appear under the tools button in a ne
 ```sh
 claude mcp add routemaker \
   -e ROUTEMAKER_BASE_URL=http://localhost \
-  -e ROUTEMAKER_SAVE_KEY=rmk_your_key_here \
   -- python3 /path/to/RouteMaker/mcp/routemaker_mcp.py
 ```
 
 A long loop can take a few minutes to plan (each plan of a long ride can take up to a minute,
-and `plan_metro_loop` makes up to three by default). If the client gives up first, raise its tool
+and `plan_metro_loop` makes up to four by default). If the client gives up first, raise its tool
 timeout (Claude Code: `MCP_TOOL_TIMEOUT=600000`; other clients have their own setting) or ask for
-fewer plans (`max_plans`). A call the client gives up on stops at its next step and saves
-nothing, unless the save was already under way.
+fewer plans (`max_plans`). A call the client gives up on stops at its next step and keeps
+nothing.
 
 ### Other assistants
 
 Any MCP client that runs local (stdio) servers works the same way: the command is `python3`, the
-argument is the path to `routemaker_mcp.py`, and the three settings above are environment
-variables.
+argument is the path to `routemaker_mcp.py`, and the settings above are environment variables.
 
 ## Notes
 
@@ -138,4 +147,4 @@ variables.
 - A route planned for the first time in the app may differ a little from the one saved here if
   live closures or the map change in between: the saved route keeps the line exactly as planned.
 - Tests: `tests/test_mcp_server.py` (the protocol, the Metro check, the loop builder against a
-  stand-in planner, and a save end to end) and `tests/test_assistant_key.py` (the key).
+  stand-in planner) and `tests/test_connector.py` (the site's connector, saving and posts).

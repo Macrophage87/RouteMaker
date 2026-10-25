@@ -11,6 +11,13 @@ feeds; this module is the part that touches the network and the database.
   `SMARTERROADS_TOKEN` on the worker only (346: "the key stays server-side only");
   without it Virginia is off and nothing is asked of VDOT. The key is never logged:
   every message names the feed, not its URL.
+- **Placing.** A line the feed gives only by its ends (Maryland's MultiPoint) is put on the
+  road between them (`place`): the router's way by car from one end to the other, kept only
+  when it is the road the feed names (`rules.road_fits`). Each place is remembered with the
+  feed's copy, so a refresh routes only what is new, and at most `MAX_NEW_PLACES` of them in
+  `PLACE_BUDGET_S`; what is not yet placed (or met the router down) is placed at a later
+  refresh. A zone on a road no bicycle may use (an Interstate, or a road the map bars:
+  `barred_zones`) is not kept at all.
 - **Keeping.** One row of `core.models.BikeshareFeedCache` under the key `KEY`
   (`BikeshareFeedCache.WORKZONES`; the model says why it shares that table), replaced
   at each refresh: the zones as parsed (not the raw feed), when each feed was last
@@ -52,6 +59,11 @@ STALE_AFTER_S = 20 * 60.0
 DROP_AFTER_S = 2 * 60 * 60.0
 READ_TTL_S = 60.0
 USER_AGENT = "RouteMaker-work-zones"
+# Putting the feeds' end-to-end lines on the road (`place`): at most this many router calls a
+# refresh, inside this much of it, each with this timeout.
+MAX_NEW_PLACES = 50
+PLACE_BUDGET_S = 2 * 60.0
+PLACE_TIMEOUT_S = 10.0
 TOKEN_ENV = "SMARTERROADS_TOKEN"
 
 # The WZDx Feed Registry's entries (datahub.transportation.gov, read 2026-10-11):
@@ -129,6 +141,135 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
+def road_line(a, b, roads) -> list | None:
+    """The road from `a` to `b` (lon, lat): the router's way by car, asked both ways round for
+    a one-way road, kept only when it is the road the feed means (`rules.road_fits`), thinned
+    to `rules.PLACED_TOLERANCE_M`; None where there is none such. RouterUnavailable where the
+    router could not be asked."""
+    from django.conf import settings
+
+    from . import routing
+
+    url = f"{settings.VALHALLA_UPSTREAMS['standard'].rstrip('/')}/route"
+    chord = rules.line_m([a, b])
+    for start, end in ((a, b), (b, a)):
+        payload = {
+            "locations": [{"lon": start[0], "lat": start[1]}, {"lon": end[0], "lat": end[1]}],
+            "costing": "auto",
+            "directions_type": "maneuvers",
+            "units": "kilometers",
+        }
+        try:
+            answer = routing._transport(url, payload, PLACE_TIMEOUT_S)
+        except routing.RouterRefused:
+            continue  # no way that direction (a one-way road): RouterUnavailable is raised
+        legs = (answer.get("trip") or {}).get("legs") or []
+        if len(legs) != 1:
+            continue
+        shape = [list(p) for p in routing.decode_polyline6(legs[0].get("shape", ""))]
+        if len(shape) < 2:
+            continue
+        maneuvers = legs[0].get("maneuvers") or []
+        routed = float((legs[0].get("summary") or {}).get("length") or 0.0) * 1000
+        named = sum(
+            float(m.get("length") or 0.0) * 1000
+            for m in maneuvers
+            if any(rules.road_named(str(n), roads) for n in m.get("street_names") or [])
+        )
+        names_known = bool(roads) and any(m.get("street_names") for m in maneuvers)
+        if rules.road_fits(chord, routed, named, names_known):
+            shape = shape if start == a else shape[::-1]
+            return rules.simplify_m(shape, rules.PLACED_TOLERANCE_M)
+    return None
+
+
+def place(zones, kept: dict | None, now: datetime, out_of_time=lambda: False, find=None):
+    """`zones` with each line the feed gave only by its ends (`from_ends`) put on the road
+    (`road_line`), and the places used, to keep with the feed's copy. A line not put on the
+    road stays the feed's straight line; one longer than `rules.DRAW_STRAIGHT_M` marks the zone
+    `approximate`, and the map does not draw it. A router failure is not remembered; two in a
+    row stop the look-ups for this refresh."""
+    from dataclasses import replace
+
+    from . import routing
+    from .closure_sources import PlaceLater, Places
+
+    find = find or road_line
+    failed = 0  # router failures in a row: two stop the look-ups for this refresh
+
+    def look(a, b, roads):
+        nonlocal failed
+        try:
+            line = find(a, b, roads)
+        except routing.RouterUnavailable:
+            failed += 1
+            raise PlaceLater from None
+        failed = 0
+        return line
+
+    places = Places(kept, now, MAX_NEW_PLACES, lambda: failed >= 2 or out_of_time())
+    out = []
+    for zone in zones:
+        if zone.from_ends and len(zone.line) == 2 and rules.gaps(zone.line):
+            a, b = zone.line
+            key = "road:{:.6f},{:.6f}:{:.6f},{:.6f}:{}".format(*a, *b, "|".join(zone.roads))
+            piece = places.get(key, lambda a=a, b=b, roads=zone.roads: look(a, b, roads))
+            if piece:
+                zone = replace(zone, line=rules.join_pieces(zone.line, {0: piece}))
+            else:
+                zone = replace(zone, approximate=rules.line_m(zone.line) > rules.DRAW_STRAIGHT_M)
+        out.append(zone)
+    return out, places.used
+
+
+def barred_zones(zones, schema: str | None = None) -> set[int]:
+    """The positions in `zones` of those at least `rules.BARRED_SHARE` of whose samples have,
+    as their nearest road within `rules.BARRED_NEAR_M`, one the map bars to bicycles (the live
+    segment table's map_class 'barred': a motorway or its ramp, or a road tagged bicycle=no).
+    Nearest, so a street through an interchange or a frontage road beside a motorway is not
+    barred. One query for all of them; none where the table cannot be read."""
+    from django.conf import settings
+    from django.db import DatabaseError, connection, transaction
+
+    from pipeline.schema import validate_schema_name
+
+    ids, lons, lats = [], [], []
+    for index, zone in enumerate(zones):
+        for p in rules.samples(zone.line):
+            ids.append(index)
+            lons.append(p[0])
+            lats.append(p[1])
+    if not ids:
+        return set()
+    try:
+        schema = validate_schema_name(schema or settings.SEGMENT_SCHEMA_LIVE)
+        with transaction.atomic(), connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                WITH p AS (
+                    SELECT z, ST_SetSRID(ST_MakePoint(x, y), 4326) AS g
+                    FROM unnest(%s::int[], %s::float8[], %s::float8[]) AS t(z, x, y)
+                )
+                SELECT p.z, count(*) AS n, count(*) FILTER (WHERE near.map_class = 'barred')
+                FROM p LEFT JOIN LATERAL (
+                    SELECT s.map_class FROM {schema}.segment AS s
+                    WHERE s.geometry && ST_Expand(p.g, 0.0003)
+                      AND ST_DWithin(s.geometry::geography, p.g::geography, %s)
+                    ORDER BY ST_Distance(s.geometry::geography, p.g::geography) LIMIT 1
+                ) AS near ON true
+                GROUP BY p.z
+                """,
+                [ids, lons, lats, rules.BARRED_NEAR_M],
+            )
+            rows = cursor.fetchall()
+    except (DatabaseError, ValueError) as error:
+        logger.info(
+            "work zones: the map's barred roads could not be read (%s)", type(error).__name__
+        )
+        return set()
+    return {z for z, n, barred in rows if barred >= rules.BARRED_SHARE * n}
+
+
 def refresh(fetch: Fetch = http_get, sleep=time.sleep, now: Callable[[], datetime] = _now) -> str:
     """Read every configured feed and replace the shared copy. A feed that fails keeps
     its last good zones and the time they were read. Returns a line for the run row.
@@ -147,6 +288,11 @@ def refresh(fetch: Fetch = http_get, sleep=time.sleep, now: Callable[[], datetim
     for source in list(feeds):
         if source not in wanted:
             del feeds[source]  # Virginia's key removed: its zones go with it
+    end = time.monotonic() + PLACE_BUDGET_S
+
+    def out_of_time() -> bool:
+        return time.monotonic() >= end
+
     for source, url in wanted.items():
         try:
             zones = read_feed(source, url, fetch, sleep)
@@ -156,10 +302,17 @@ def refresh(fetch: Fetch = http_get, sleep=time.sleep, now: Callable[[], datetim
             feeds[source] = {**kept, "failed_at": now().isoformat()}
             said.append(f"{source} failed")
             continue
+        # Roads bicycles may not use (the owner, 2026-10-25): an Interstate by name before it is
+        # placed, a road the map bars once it is on the road.
+        zones = [zone for zone in zones if not rules.on_interstate(zone)]
+        zones, placed = place(zones, (feeds.get(source) or {}).get("placed"), now(), out_of_time)
+        barred = barred_zones(zones)
+        zones = [zone for i, zone in enumerate(zones) if i not in barred]
         feeds[source] = {
             "read_at": now().isoformat(),
             "failed_at": None,
             "zones": [zone.to_json() for zone in zones],
+            "placed": placed,
         }
         said.append(f"{source} {len(zones)} zones")
     BikeshareFeedCache.objects.update_or_create(
@@ -785,10 +938,12 @@ def closure_row(
     passage: rules.Passage | None = None,
     scale: float = 1.0,
 ) -> dict:
-    """One closure as the map and its card show it (the API's `ClosureOut`)."""
+    """One closure as the map and its card show it (the API's `ClosureOut`). One whose line is
+    still a long straight line between the feed's points (`approximate`) is given no line, and
+    its marker stands at the first of them, not in the blocks between."""
     a = zone.line[(len(zone.line) - 1) // 2]
     b = zone.line[len(zone.line) // 2]
-    middle = ((a[0] + b[0]) / 2, (a[1] + b[1]) / 2)
+    middle = zone.line[0] if zone.approximate else ((a[0] + b[0]) / 2, (a[1] + b[1]) / 2)
     return {
         "id": zone.zone_id,
         "source": zone.source,
@@ -809,7 +964,7 @@ def closure_row(
         "from_m": None if passage is None else round(passage.from_m * scale),
         "to_m": None if passage is None else round(passage.to_m * scale),
         "point": [round(middle[0], 6), round(middle[1], 6)],
-        "line": [[round(p[0], 6), round(p[1], 6)] for p in zone.line],
+        "line": [] if zone.approximate else [[round(p[0], 6), round(p[1], 6)] for p in zone.line],
     }
 
 
