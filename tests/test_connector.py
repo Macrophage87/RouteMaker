@@ -359,8 +359,12 @@ class TestConnector:
         kept = store.get(draft_id)
         assert kept.trim_spurs is False
         assert kept.intervals == intervals
-        plain = store.get(store.put(module.Draft(plan, {}, None, "y")))
-        assert plain.trim_spurs is True and plain.intervals is None
+        # A draft kept before v0.12.3 has neither key: the module's defaults.
+        row = ConnectorDraft.objects.get(draft_id=draft_id)
+        row.data = {k: v for k, v in row.data.items() if k not in ("trim_spurs", "intervals")}
+        row.save()
+        older = store.get(draft_id)
+        assert older.trim_spurs is True and older.intervals is None
 
 
 @db

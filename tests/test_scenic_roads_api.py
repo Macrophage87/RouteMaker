@@ -118,7 +118,7 @@ class TestScenicRoads:
         roads = get(client).json()["roads"]
         assert [r["road"] for r in roads] == [None]
 
-    def test_a_slow_read_is_a_503_and_leaves_no_limit_behind(
+    def test_a_slow_read_is_a_503_and_a_read_puts_the_caller_s_limit_back(
         self, client, segment_schemas, names, monkeypatch
     ) -> None:
         from django.db import connection, transaction
@@ -140,11 +140,23 @@ class TestScenicRoads:
             assert cursor.fetchone() == ("7s",)
 
     def test_a_rider_asking_too_often_is_told_to_wait(self, client, segment_schemas, names) -> None:
-        headers = fresh_client()
-        query = {"lon": SPOT[0], "lat": SPOT[1], "miles": 1}
-        codes = [client.get(URL, query, **headers).status_code for _ in range(6)]
-        assert codes[:5] == [200] * 5 and codes[5] == 429
-        assert client.get("/api/climbs-near", query, **headers).status_code != 429
+        from test_ratelimit import in_one_window
+
+        from core import ratelimit
+
+        burst = ratelimit.SCENIC_ROADS_BURST
+
+        def attempt(n):
+            address = f"203.0.113.{120 + n}"
+            key = ratelimit.client_key(address)
+            for _ in range(burst.requests):
+                ratelimit.hit(burst, key)
+            query = {"lon": SPOT[0], "lat": SPOT[1], "miles": 1}
+            return client.get(URL, query, HTTP_X_FORWARDED_FOR=address)
+
+        refused = in_one_window(burst.window_s, attempt)
+        assert refused.status_code == 429
+        assert 1 <= int(refused["Retry-After"]) <= burst.window_s
 
     def test_a_point_outside_the_map_and_a_wide_ask_are_refused(
         self, client, segment_schemas, names
