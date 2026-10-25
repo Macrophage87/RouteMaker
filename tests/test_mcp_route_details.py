@@ -636,3 +636,57 @@ def test_climbs_near_lists_the_steep_ones_long_enough_and_checks_them() -> None:
 def test_climb_minutes_slow_with_the_grade() -> None:
     assert mcp.climb_minutes(1.5, 0.0, 18) == pytest.approx(5.0)
     assert mcp.climb_minutes(0.75, 5.0, 18) == pytest.approx(4.0, abs=0.1)
+
+
+# --- Checkpoint order ----------------------------------------------------------------------------
+
+
+def test_the_best_order_is_the_shortest_round_the_checkpoints() -> None:
+    import random
+
+    rng = random.Random(7)
+    points = [at(rng.uniform(0, 5), rng.uniform(0, 5)) for _ in range(9)]
+    best = mcp.best_orders(points, tries=1)[0]
+    middle = range(1, len(points) - 1)
+    shortest = min(
+        ([0, *p, len(points) - 1] for p in itertools.permutations(middle)),
+        key=lambda order: mcp._round_mi(points, order),
+    )
+    assert mcp._round_mi(points, best) == pytest.approx(mcp._round_mi(points, shortest))
+    orders = mcp.best_orders(points)
+    assert len(orders) == 3 and len({tuple(o) for o in orders}) == 3
+    assert all(o[0] == 0 and o[-1] == len(points) - 1 for o in orders)
+    assert all(sorted(o) == list(range(len(points))) for o in orders)
+    # Past the exact search: nearest neighbour and 2-opt, still every checkpoint once.
+    many = [at(rng.uniform(0, 5), rng.uniform(0, 5)) for _ in range(20)]
+    (order,) = mcp.best_orders(many, tries=1)
+    assert sorted(order) == list(range(20)) and order[0] == 0 and order[-1] == 19
+
+
+def test_plan_route_rides_the_checkpoints_in_the_quickest_order() -> None:
+    places = _Places()
+    # A row east: the start at 0, the finish at 4, checkpoints given 3, 1, 2.
+    points = [at(0.0), at(3.0), at(1.0), at(2.0), at(4.0)]
+    timed = []
+
+    def route(body):
+        places.routes.append(body)
+        line = [list(p) for p in body["points"]]
+        # The straight-line best (1, 2, 3) is slow (a river, say); the next is quicker.
+        slow = line == [at(0.0), at(1.0), at(2.0), at(3.0), at(4.0)]
+        timed.append(slow)
+        return {
+            "geometry": {"coordinates": line},
+            "distance_m": 6000.0,
+            "duration_s": 3000.0 if slow else 1500.0,
+        }
+
+    places.route = route
+    server = mcp.Server(lambda: places, [], out_dir=Path("."))
+    out = server.call("plan_route", {"points": points, "best_order": True, "trim_spurs": False})
+    assert timed[0] is True and len(timed) >= 4  # three orders tried, then the plan itself
+    kept = places.routes[-1]["points"]
+    assert kept[0] == at(0.0) and kept[-1] == at(4.0) and kept != places.routes[0]["points"]
+    assert [row["point_given"] for row in out["checkpoint_order"]][0] == 0
+    with pytest.raises(mcp.ToolError, match="via_points"):
+        server.call("plan_route", {"points": points, "best_order": True, "via_points": [1]})

@@ -1151,6 +1151,93 @@ def via_spurs(plan: Plan) -> list[dict]:
     return out
 
 
+# --- Checkpoint order: an alleycat's best way round ------------------------------------------
+#
+# The owner, 2026-10-25: "Another common usage would be something for alleycat racing,
+# basically if I scanned a sheet that would provide a number of points, and would find the
+# best route around them." With `best_order`, plan_route keeps the start and the finish and
+# rides the checkpoints between in the order that is quickest: the shortest orders by straight
+# line (exact up to EXACT_MAX checkpoints, Held and Karp's dynamic programme; nearest
+# neighbour and 2-opt beyond), then the first ORDER_TRIES of them planned, the quickest kept.
+
+EXACT_MAX = 12
+ORDER_TRIES = 3
+
+
+def _round_mi(points: list, order: list[int]) -> float:
+    return sum(haversine_mi(points[a], points[b]) for a, b in itertools.pairwise(order))
+
+
+def _exact_order(points: list) -> list[int]:
+    """The shortest order through points[1:-1] from points[0] to points[-1], by straight line."""
+    n = len(points) - 2
+    far = [
+        [haversine_mi(points[i], points[j]) for j in range(len(points))] for i in range(len(points))
+    ]
+    best: dict[tuple[int, int], tuple[float, int]] = {
+        (1 << i, i): (far[0][i + 1], -1) for i in range(n)
+    }
+    for size in range(2, n + 1):
+        for subset in itertools.combinations(range(n), size):
+            mask = sum(1 << i for i in subset)
+            for j in subset:
+                before = mask & ~(1 << j)
+                best[(mask, j)] = min(
+                    (best[(before, k)][0] + far[k + 1][j + 1], k) for k in subset if k != j
+                )
+    full = (1 << n) - 1
+    _, last = min((best[(full, j)][0] + far[j + 1][n + 1], j) for j in range(n))
+    order, mask = [], full
+    while last != -1:
+        order.append(last + 1)
+        mask, last = mask & ~(1 << last), best[(mask, last)][1]
+    return [0, *reversed(order), n + 1]
+
+
+def _two_opt(points: list, order: list[int]) -> list[int]:
+    """`order` bettered by reversing stretches of it while any reversal shortens it."""
+    better = True
+    while better:
+        better = False
+        for i in range(1, len(order) - 2):
+            for j in range(i + 1, len(order) - 1):
+                tried = order[:i] + order[i : j + 1][::-1] + order[j + 1 :]
+                if _round_mi(points, tried) < _round_mi(points, order) - 1e-9:
+                    order, better = tried, True
+    return order
+
+
+def best_orders(points: list, tries: int = ORDER_TRIES) -> list[list[int]]:
+    """Up to `tries` orders of all the points (indices; the first and last fixed), shortest by
+    straight line first: the best, then the best of its one-move changes (a stretch reversed,
+    a checkpoint moved), which riding may favour where a river or a highway is in the way."""
+    n = len(points) - 2
+    if n <= 1:
+        return [list(range(len(points)))]
+    if n <= EXACT_MAX:
+        best = _exact_order(points)
+    else:
+        left, order = set(range(1, n + 1)), [0]
+        while left:
+            nearest = min(left, key=lambda k: haversine_mi(points[order[-1]], points[k]))
+            order.append(nearest)
+            left.remove(nearest)
+        best = _two_opt(points, [*order, n + 1])
+    near: dict[tuple, float] = {}
+    for i in range(1, n + 1):
+        for j in range(i + 1, n + 1):
+            flipped = best[:i] + best[i : j + 1][::-1] + best[j + 1 :]
+            near[tuple(flipped)] = _round_mi(points, flipped)
+        for j in range(1, n + 1):
+            if j != i:
+                moved = best[:i] + best[i + 1 :]
+                moved.insert(j, best[i])
+                near[tuple(moved)] = _round_mi(points, moved)
+    near.pop(tuple(best), None)
+    others = sorted(near, key=near.get)[: max(0, tries - 1)]
+    return [best, *(list(o) for o in others)]
+
+
 # --- Interval training: where an effort can run unbroken ------------------------------------
 #
 # The owner, 2026-10-25: "Are there any good routes for doing sets of 5 minutes on, 3
@@ -2101,6 +2188,17 @@ TOOLS = [
                     "items": POINT_SCHEMA,
                     "minItems": 2,
                     "maxItems": MAX_POINTS,
+                },
+                "best_order": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": (
+                        "Alleycat or errand checkpoints: keep the first point (start) and the"
+                        " last (finish) and visit the points between in the quickest order."
+                        " The shortest orders by straight line are planned and the quickest"
+                        " ridden one kept; `checkpoint_order` says the order. Not with"
+                        " via_points or loop."
+                    ),
                 },
                 "via_points": {
                     "type": "array",
@@ -3123,8 +3221,13 @@ class Server:
             options["debug_junctions"] = True
         rounds = int(args.get("fix_metro_rounds") or 0)
         trim = bool(args.get("trim_spurs", True))
+        ordered = None
+        if args.get("best_order"):
+            points, ordered = self._best_order(call, points, vias, preset, options, taken)
         plan, notes = self._plan_and_fix(call, points, vias, preset, options, limit, rounds, trim)
-        return self._draft(
+        if ordered:
+            notes.insert(0, ordered["note"])
+        out = self._draft(
             plan,
             options,
             limit,
@@ -3134,6 +3237,41 @@ class Server:
             trim_spurs=trim,
             intervals=intervals,
         )
+        if ordered:
+            out["checkpoint_order"] = ordered["order"]
+        return out
+
+    def _best_order(self, call: Call, points, vias, preset, options, taken):
+        """The points with the checkpoints between the first and last in their quickest
+        order (`best_orders`, the first ORDER_TRIES planned), and what was done."""
+        if vias:
+            raise ToolError("best_order puts the stops in order: leave via_points out")
+        if options.get("loop"):
+            raise ToolError("best_order keeps the start and the finish: plan it without loop")
+        if preset in TWO_POINT_PRESETS:
+            raise ToolError(f"{preset} plans from a start and an end only")
+        tried = []
+        for order in best_orders(points):
+            if tried and not call.time_for_another_plan():
+                break
+            call.check()
+            call.report(len(tried), ORDER_TRIES, f"trying checkpoint order {len(tried) + 1}")
+            answer = self.api.route(request_body([points[i] for i in order], [], preset, options))
+            tried.append((answer.get("duration_s") or math.inf, order))
+        _, order = min(tried, key=lambda pair: pair[0])
+        asked = {tuple(t["at"]): t["asked"] for t in taken if t.get("at")}
+        named = []
+        for k, i in enumerate(order):
+            row = {"stop": k, "point_given": i, "lon_lat": list(points[i])}
+            if tuple(points[i]) in asked:
+                row["asked"] = asked[tuple(points[i])]
+            named.append(row)
+        minutes = [round(t / 60) for t, _ in tried if t != math.inf]
+        note = (
+            f"checkpoints put in order: {len(tried)} orders planned"
+            f" ({', '.join(f'{m} min' for m in minutes)}), the quickest kept"
+        )
+        return [points[i] for i in order], {"order": named, "note": note}
 
     # plan_metro_loop
     def plan_metro_loop(self, args: dict, call: Call) -> dict:
