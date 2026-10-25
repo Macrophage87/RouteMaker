@@ -135,8 +135,6 @@ API_IMAGE="ghcr.io/macrophage87/routemaker-api"
 #   stress_suggestion_review          reviewers' agree and disagree on home's waiting suggestions
 #                                     (v0.7.0; core.suggestions.review): suggestion_id ->
 #                                     stress_suggestion, reviewer_id -> app_user. Never shipped.
-#   assistant_key                     user_id -> app_user: a rider's AI assistant key digest (the
-#                                     owner, 2026-10-18; core.models.AssistantKey). Never shipped.
 #   connector_client connector_grant  the MCP connector's apps, riders' grants to them (token
 #   connector_draft                   digests) and unsaved drafts (v0.10.0; core.connector):
 #                                     user_id -> app_user. Never shipped.
@@ -159,7 +157,7 @@ EXCLUDED_TABLE_DATA=(
 	configured_guild role_mapping stress_suggestion mass_hazard junction_suggestion stress_edit
 	my_go account_settings saved_route saved_route_version signed_out_send shared_route reviewed_closure
 	review_item review_ruling review_queue_state
-	stress_suggestion_review assistant_key connector_client connector_grant connector_draft
+	stress_suggestion_review connector_client connector_grant connector_draft
 	report311_log garmin_link wahoo_link route_post route_post_section
 )
 # Tables the beta needs from home that also name a person or carry a rider's words: shipped with

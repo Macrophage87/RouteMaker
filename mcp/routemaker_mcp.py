@@ -3,9 +3,11 @@
 2026-10-18: "Make me a 100 mile route that goes around DC using low stress roads and doesn't stray
 more than 5 miles from a metro station"; "other users might use different models").
 
-A thin client of a RouteMaker site's own HTTP API: it plans with POST /api/route, finds places
-with GET /api/geocode, and saves to the owner's My routes with POST /api/keyed/routes and a
-save-only key from Settings. It never talks to the router directly, so every route it answers
+A thin client of a RouteMaker site's own HTTP API: it plans with POST /api/route and finds places
+with GET /api/geocode. On a rider's own computer it keeps a route as a GPX file; saving to My
+routes is the site's own connector's (core.connector, /mcp), which signs the rider in (the owner,
+2026-10-25, retiring the save-only key: "the old method with the random token, we should take it
+out"). It never talks to the router directly, so every route it answers
 is one the site would plan. Metro distances are read from the station file the map bundles
 (frontend/src/rail-data/metro-stations.geojson, DC Open Data, CC BY 4.0) and are straight-line.
 
@@ -15,8 +17,6 @@ both launch as a local server. See mcp/README.md.
 
 Configuration, all from the environment:
 - ROUTEMAKER_BASE_URL: the site, e.g. http://localhost for a local stack. Required.
-- ROUTEMAKER_SAVE_KEY: the save-only key from Settings > AI assistant key. Optional; without it
-  routes are planned and linked but not saved.
 - ROUTEMAKER_ROUTES_DIR: where GPX files are written. Default ~/RouteMaker-routes.
 - ROUTEMAKER_METRO_STATIONS: the station file. Default: the one in this checkout.
 """
@@ -267,7 +267,7 @@ def metro_check(line: list[list[float]], limit_mi: float, stations: list[Station
 
 
 class Api:
-    def __init__(self, base_url: str | None = None, save_key: str | None = None):
+    def __init__(self, base_url: str | None = None):
         base = (base_url or os.environ.get("ROUTEMAKER_BASE_URL") or "").strip().rstrip("/")
         if not base:
             raise ToolError(
@@ -277,7 +277,6 @@ class Api:
         if not re.match(r"^https?://", base):
             raise ToolError("ROUTEMAKER_BASE_URL must start with http:// or https://")
         self.base = base
-        self.save_key = save_key if save_key is not None else os.environ.get("ROUTEMAKER_SAVE_KEY")
         # A site behind a password (the beta's nginx gate): "user:password", sent on every request.
         basic = os.environ.get("ROUTEMAKER_BASIC_AUTH", "")
         self.basic = "Basic " + base64.b64encode(basic.encode()).decode() if ":" in basic else None
@@ -368,24 +367,6 @@ class Api:
             message = payload.get("error") if isinstance(payload, dict) else payload
             raise ToolError(f"the exact route was not kept ({status}): {message}")
         return body["id"]
-
-    def save(self, body: dict) -> dict:
-        if not self.save_key:
-            raise ToolError(
-                "no save key: create one in RouteMaker's Settings > AI assistant key and set it as"
-                " ROUTEMAKER_SAVE_KEY in the MCP server's config (mcp/README.md)."
-            )
-        status, payload, _ = self._request(
-            "POST",
-            "/api/keyed/routes",
-            body,
-            # Its own header: Authorization may be the site's password gate's.
-            headers={"X-RouteMaker-Key": self.save_key},
-        )
-        if status == 201 and isinstance(payload, dict):
-            return payload
-        message = payload.get("error") if isinstance(payload, dict) else payload
-        raise ToolError(f"the site did not save the route ({status}): {message}")
 
 
 # --- Points, links and files ----------------------------------------------------------------
@@ -1246,8 +1227,8 @@ TOOLS = [
     {
         "name": "save_route",
         "description": (
-            "Keep a draft once the rider has said to: save it to their My routes on the site"
-            " (needs the save key) under a name, and/or write it as a GPX file. Only on the"
+            "Keep a draft once the rider has said to, under a name: on the site's own connector,"
+            " in their My routes; on the rider's own computer, as a GPX file. Only on the"
             " rider's word."
         ),
         "inputSchema": {
@@ -1255,8 +1236,6 @@ TOOLS = [
             "properties": {
                 "draft_id": {"type": "string"},
                 "name": {"type": "string", "minLength": 1, "maxLength": 120},
-                "my_routes": {"type": "boolean", "default": True},
-                "gpx_file": {"type": "boolean", "default": False},
             },
             "required": ["draft_id", "name"],
         },
@@ -1509,15 +1488,9 @@ class Server:
         self.posts = posts
 
     def tools(self) -> list[dict]:
-        """The tools, as tools/list gives them: without the GPX file where none can be written,
-        and without the post tool unless posts may be written."""
-        offered = [t for t in TOOLS if self.posts or t["name"] not in POST_TOOLS]
-        if self.files:
-            return offered
-        listed = json.loads(json.dumps(offered))
-        for tool in listed:
-            tool["inputSchema"]["properties"].pop("gpx_file", None)
-        return listed
+        """The tools, as tools/list gives them: without the post tool unless posts may be
+        written."""
+        return [t for t in TOOLS if self.posts or t["name"] not in POST_TOOLS]
 
     @property
     def api(self) -> Api:
@@ -1716,40 +1689,24 @@ class Server:
         if not name:
             raise ToolError("give the route a name")
         plan = draft.plan
-        dials = self._dials(plan)
-        fragment = plan_fragment(plan.points, plan.vias, plan.preset, dials, plan.sent)
         out: dict = {"draft_id": args["draft_id"], "name": name}
         notes: list[str] = []
         call.check()
-        if args.get("gpx_file") and not self.files:
-            notes.append("no GPX file here: gpx_route gives a download link")
-        elif args.get("gpx_file"):
+        if self.files:
+            # On the rider's own computer: a GPX file. My routes is the site connector's, which
+            # signs the rider in.
             try:
                 out["gpx_file"] = str(write_gpx(name, plan.line, self.out_dir))
             except OSError as error:
-                notes.append(f"GPX not written: {error}")
-        if args.get("my_routes", True):
-            call.check()
-            saved = self.api.save(
-                {
-                    "name": name,
-                    "source": "plan",
-                    "line": [list(v[:2]) for v in plan.line],
-                    "distance_m": plan.answer["distance_m"],
-                    "inputs": {
-                        "hash": fragment,
-                        "points": [list(p) for p in plan.points],
-                        "preset": plan.preset,
-                        "dials": page_dials(dials, plan.sent),
-                    },
-                    "answer": {
-                        **plan.answer,
-                        "candidates": None,
-                        "avoid_alternate": None,
-                        "closure_through": None,
-                    },
-                }
+                raise ToolError(f"GPX not written: {error}") from None
+            notes.append(
+                "to keep it in My routes, open the link and press Save in the app, or use"
+                " RouteMaker's own connector (mcp/README.md)"
             )
+        else:
+            dials = self._dials(plan)
+            fragment = plan_fragment(plan.points, plan.vias, plan.preset, dials, plan.sent)
+            saved = self.api.save(kept_route(plan, name, fragment, dials))
             out["saved"] = {
                 "id": saved.get("id"),
                 "name": saved.get("name"),

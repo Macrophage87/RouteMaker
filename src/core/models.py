@@ -331,9 +331,8 @@ class User(AbstractBaseUser):
                 or (self.is_deleted and not previous.is_deleted)
             ):
                 self.session_epoch += 1
-                # A ban or deletion ends the AI assistant key and the connector's grants (and
-                # drops its unsaved drafts) as it ends the sessions: an unban brings none back.
-                AssistantKey.objects.filter(user_id=self.pk).delete()
+                # A ban or deletion ends the connector's grants (and drops its unsaved drafts)
+                # as it ends the sessions: an unban brings none back.
                 ConnectorGrant.objects.filter(user_id=self.pk).delete()
                 ConnectorDraft.objects.filter(user_id=self.pk).delete()
                 update_fields = kwargs.get("update_fields")
@@ -2024,30 +2023,6 @@ class SavedRoute(models.Model):
         return f"Saved route {self.pk} for account {self.user_id}"
 
 
-class AssistantKey(models.Model):
-    """A rider's AI assistant key (the owner, 2026-10-18: the MCP server "should take the created
-    route and have it saved as one of the users saved routes"; the save-only key, chosen over a
-    pasted session cookie). It does one thing: POST /api/keyed/routes adds a route to the
-    account's My routes. It signs nobody in and reads nothing, so it is not the second credential
-    `User` keeps out: a leaked key can add routes to one account until the rider removes it.
-
-    One per account; making a new one replaces it. Only the key's SHA-256 is kept (a 256-bit
-    random key needs no slow hash), with its last four characters so Settings can name it.
-    """
-
-    user = models.OneToOneField("User", on_delete=models.CASCADE, related_name="assistant_key")
-    digest = models.CharField(max_length=64, unique=True)
-    hint = models.CharField(max_length=8)
-    created_at = models.DateTimeField(auto_now_add=True)
-    last_used_at = models.DateTimeField(null=True, blank=True)
-
-    class Meta:
-        db_table = "assistant_key"
-
-    def __str__(self) -> str:
-        return f"AI assistant key for account {self.user_id}"
-
-
 class GarminLink(models.Model):
     """A rider's Garmin Connect connection (core.garmin; the owner, 2026-10-23, "Keep it,
     encrypted"): what Send to Garmin uses to add a course to their Garmin Connect account.
@@ -2433,9 +2408,9 @@ class ConnectorClient(models.Model):
 
 class ConnectorGrant(models.Model):
     """One rider's consent to one app: the short-lived code (only its SHA-256), then the tokens
-    the app trades it for (only their SHA-256s). Like the AI assistant key it can only plan and
-    add routes to My routes: it signs nobody in and reads none of the account's routes. A ban or
-    deletion ends every grant (User.save)."""
+    the app trades it for (only their SHA-256s). It can only plan and add routes to My routes
+    (and, for an instance admin, write draft posts): it signs nobody in and reads none of the
+    account's routes. A ban or deletion ends every grant (User.save)."""
 
     user = models.ForeignKey("User", on_delete=models.CASCADE, related_name="connector_grants")
     client = models.ForeignKey(ConnectorClient, on_delete=models.CASCADE, related_name="grants")

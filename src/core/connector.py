@@ -18,10 +18,10 @@ Sign-in is OAuth 2.1 with PKCE, which is what an assistant app speaks: the app r
 (RFC 7591), sends the rider to /oauth/authorize, where the rider signs in with Discord as usual
 and allows it on a page of this site, and trades the code for tokens at /oauth/token. Only
 SHA-256 digests of the code and the tokens are kept. A grant can plan and add routes to My
-routes, like the AI assistant key: it signs nobody in to the site and reads none of the account's
-saved routes. An instance admin's grant can also write Featured routes posts as drafts
-(draft_route_post, core.route_posts.write_draft; the owner, 2026-10-25: "Enable a mechanism for me
-to have the blog posts sent directly from claude"); publishing stays theirs, in the admin.
+routes: it signs nobody in to the site and reads none of the account's saved routes. An instance
+admin's grant can also write Featured routes posts as drafts (draft_route_post,
+core.route_posts.write_draft; the owner, 2026-10-25: "Enable a mechanism for me to have the blog
+posts sent directly from claude"); publishing stays theirs, in the admin.
 
 The endpoint speaks MCP's Streamable HTTP transport in its plainest form: each POST carries one
 JSON-RPC message and is answered with one JSON body, with no stream and no session.
@@ -118,7 +118,6 @@ class InProcessApi:
         self._host = request.get_host()
         self._secure = request.is_secure()
         self.user = user
-        self.save_key = "in-process"  # saving needs no key here: the grant is the rider's word
 
     def _request(self, method: str, path: str, body=None, headers=None, timeout=30):
         factory = RequestFactory()
@@ -192,13 +191,14 @@ class InProcessApi:
         return self._module.Api.share(self, body)
 
     def save(self, body: dict) -> dict:
-        """Add to the rider's My routes through the keyed save's own checks and limits."""
+        """Add to the rider's My routes through My routes' own checks and limits (adding only:
+        never a new version of a route already saved)."""
         from .api import _add_saved_route, errors_as_json
 
         factory = RequestFactory()
         address = rider_address(self.user)
         request = factory.post(
-            "/api/keyed/routes",
+            "/api/me/routes",
             data=json.dumps(body),
             content_type="application/json",
             HTTP_HOST=self._host,

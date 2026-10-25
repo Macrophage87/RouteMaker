@@ -57,10 +57,8 @@ A malformed JSON body is counted, because only a script can send one.
 from __future__ import annotations
 
 import dataclasses
-import hashlib
 import json
 import logging
-import secrets
 import time
 from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -2828,7 +2826,6 @@ def unexpected(request, exc: Exception):
 GEOCODE_PATHS = ("/api/geocode", "/api/reverse")
 # The road panel's stress editor, whose answers are private and name the form field.
 STRESS_EDIT_PATHS = (
-    "/api/keyed",
     "/api/stress-edits",
     "/api/stress-suggestions",
     "/api/junction-suggestions",
@@ -5828,7 +5825,8 @@ def saved_routes_add(request):
 
 
 def _add_saved_route(request, versions: bool = True):
-    """POST /api/me/routes, and /api/keyed/routes with `versions` False (a key only adds)."""
+    """POST /api/me/routes, and the site's MCP connector's save with `versions` False (it only
+    adds; core.connector)."""
     from django.db import transaction
 
     from . import accounts
@@ -5872,7 +5870,7 @@ def _add_saved_route(request, versions: bool = True):
         return _stress_error(400, "Only an opened GPX file keeps its text.", field="gpx")
     version_of = body.get("version_of")
     if version_of is not None and not versions:
-        return _stress_error(400, "An AI assistant key only adds routes.", field="version_of")
+        return _stress_error(400, "An assistant only adds routes.", field="version_of")
     if version_of is not None:
         # Saved again: a new latest version of that route, not another route (so not counted
         # toward the account's cap).
@@ -5911,89 +5909,6 @@ def _add_saved_route(request, versions: bool = True):
 
     saved_route_alerts.check(row)
     return _private(JsonResponse(_route_summary(row), status=201))
-
-
-# The AI assistant key (core.models.AssistantKey; the owner, 2026-10-18): Settings makes,
-# shows once and removes the account's one key, and an assistant's MCP server (mcp/) sends it in
-# X-RouteMaker-Key to POST /api/keyed/routes, which adds a route to the account's My routes and does
-# nothing else. The key never signs in: the endpoint reads no session, and the session endpoints
-# read no key.
-ASSISTANT_KEY_PREFIX = "rmk_"
-ASSISTANT_KEY_HEADER = "HTTP_X_ROUTEMAKER_KEY"
-ASSISTANT_KEY_REFUSED = "That AI assistant key is not valid. Make a new one in Settings."
-
-
-def _key_digest(key: str) -> str:
-    return hashlib.sha256(key.encode()).hexdigest()
-
-
-def _assistant_key_out(row) -> dict:
-    return {
-        "key": None
-        if row is None
-        else {
-            "hint": row.hint,
-            "created_at": row.created_at.isoformat(),
-            "last_used_at": row.last_used_at.isoformat() if row.last_used_at else None,
-        }
-    }
-
-
-@api.get("/me/assistant-key", summary="The signed-in rider's AI assistant key, without the key")
-@decorate_view(
-    signed_in_only,
-    same_site_editor,
-    ratelimit.rate_limited(ratelimit.ME),
-    errors_as_json,
-)
-def assistant_key_read(request):
-    from .models import AssistantKey
-
-    return _private(
-        JsonResponse(_assistant_key_out(AssistantKey.objects.filter(user=request.user).first()))
-    )
-
-
-@api.post("/me/assistant-key", summary="Make the rider's AI assistant key, replacing any other")
-@decorate_view(
-    ratelimit.user_rate_limited(ratelimit.ACCOUNT_WRITES),
-    csrf_protected,
-    signed_in_only,
-    same_site_editor,
-    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
-    errors_as_json,
-)
-def assistant_key_make(request):
-    from django.db import transaction
-
-    from .models import AssistantKey, User
-
-    key = ASSISTANT_KEY_PREFIX + secrets.token_urlsafe(32)
-    with transaction.atomic():
-        # Taken in turn per account, so two presses at once leave one key, not an error.
-        User.objects.select_for_update().filter(pk=request.user.pk).first()
-        AssistantKey.objects.filter(user=request.user).delete()
-        row = AssistantKey.objects.create(user=request.user, digest=_key_digest(key), hint=key[-4:])
-    body = _assistant_key_out(row)
-    # The key itself, this once: only its digest is kept.
-    body["secret"] = key
-    return _private(JsonResponse(body, status=201))
-
-
-@api.post("/me/assistant-key/delete", summary="Remove the rider's AI assistant key")
-@decorate_view(
-    ratelimit.user_rate_limited(ratelimit.ACCOUNT_WRITES),
-    csrf_protected,
-    signed_in_only,
-    same_site_editor,
-    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
-    errors_as_json,
-)
-def assistant_key_delete(request):
-    from .models import AssistantKey
-
-    AssistantKey.objects.filter(user=request.user).delete()
-    return _private(JsonResponse(_assistant_key_out(None)))
 
 
 # The rider's Garmin connection (core.garmin_views; the owner, 2026-10-23): Settings shows it and
@@ -6169,8 +6084,8 @@ def wahoo_route_send(request):
 
 
 # Assistant apps the rider connected through the site's own MCP connector (core.connector; the
-# owner, 2026-10-19: "Sure, add that in"): listed beside the AI assistant key, each with
-# Disconnect, which ends that app's access at once.
+# owner, 2026-10-19: "Sure, add that in"): listed in Settings, each with Disconnect, which ends
+# that app's access at once.
 
 
 def _connected_app_out(grant) -> dict:
@@ -6218,42 +6133,6 @@ def connected_app_delete(request, grant_id: int):
 
     ConnectorGrant.objects.filter(user=request.user, pk=grant_id).delete()
     return _private(JsonResponse({"apps": _connected_apps(request.user)}))
-
-
-def keyed_account(view):
-    """The account the AI assistant key in `X-RouteMaker-Key` names, as `request.user`, or 401.
-    Its own header, not `Authorization`, which the beta's password gate already uses. Whatever
-    session cookie came with the request is set aside: only the key counts."""
-
-    @wraps(view)
-    def wrapped(request, *args, **kwargs):
-        from .models import AssistantKey
-
-        key = request.META.get(ASSISTANT_KEY_HEADER, "").strip()
-        row = None
-        if key.startswith(ASSISTANT_KEY_PREFIX) and len(key) < 100:
-            row = (
-                AssistantKey.objects.select_related("user").filter(digest=_key_digest(key)).first()
-            )
-        if row is None or not getattr(row.user, "is_active", False):
-            return _stress_error(401, ASSISTANT_KEY_REFUSED, code="bad_key")
-        AssistantKey.objects.filter(pk=row.pk).update(last_used_at=timezone.now())
-        request.user = row.user
-        return view(request, *args, **kwargs)
-
-    return wrapped
-
-
-@api.post("/keyed/routes", summary="Add a route to My routes with an AI assistant key")
-# Run from the bottom up, as above: the address's own limit, the key, then the account's writes.
-@decorate_view(
-    ratelimit.user_rate_limited(ratelimit.ACCOUNT_WRITES),
-    keyed_account,
-    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
-    errors_as_json,
-)
-def keyed_routes_add(request):
-    return _add_saved_route(request, versions=False)
 
 
 # Saved-route versions (core.models.SavedRouteVersion): a save naming `version_of` replaces that
