@@ -1,0 +1,114 @@
+{
+ "version": 1,
+ "decided": "2026-10-25",
+ "decided_by": "the deployment owner",
+ "status": "approved by the owner on 2026-10-25 (17:32 UTC). Load with load_access_overrides (dry run first); takes effect on the next rebuild.",
+ "annotations": "Aspen Street NW, 16th Street NW to Georgia Avenue NW, Washington DC: 5 ways, 2,640 ft (805 m), two lanes at 25 mph, set to LTS 2.5 (tier 2 with half). Hidden, category other, no public note.",
+ "rows": [
+  {
+   "kind": "stress",
+   "osm_way_id": 1212569754,
+   "value": {
+    "tier": 2,
+    "half": true,
+    "adjustment_id": "aspen-street-nw-lts2-5",
+    "category": "other",
+    "visibility": "hidden",
+    "annotation_status": "approved",
+    "display": "route_only"
+   },
+   "reason": "The owner, 2026-10-25 17:32 UTC, of Aspen Street NW: \"I feel that aspen street is overrated. It's not a 4\" and \"Probably a 2.5\". His own rating ranks above every other source (the order of 2026-10-13: \"Ratings from Community Input (including my judgment) win over everything\").",
+   "evidence": "OSM, 2026-10-25: way 1212569754 (Aspen Street Northwest, highway=tertiary, lanes=2, maxspeed=25 mph, HFCS Minor Arterial, 229 ft); rated LTS 4 on beta on 2026-10-25. Ridden by the owner, 2026-10-25.",
+   "fingerprint": {
+    "name": "Aspen Street Northwest",
+    "highway": "tertiary",
+    "length_m": 69.7,
+    "line": "-77.027038,38.972304 -77.027183,38.972274 -77.027838,38.972268"
+   }
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 120378962,
+   "value": {
+    "tier": 2,
+    "half": true,
+    "adjustment_id": "aspen-street-nw-lts2-5",
+    "category": "other",
+    "visibility": "hidden",
+    "annotation_status": "approved",
+    "display": "route_only"
+   },
+   "reason": "The owner, 2026-10-25 17:32 UTC, of Aspen Street NW: \"I feel that aspen street is overrated. It's not a 4\" and \"Probably a 2.5\". His own rating ranks above every other source (the order of 2026-10-13: \"Ratings from Community Input (including my judgment) win over everything\").",
+   "evidence": "OSM, 2026-10-25: way 120378962 (Aspen Street Northwest, highway=tertiary, lanes=2, maxspeed=25 mph, HFCS Minor Arterial, 1020 ft); rated LTS 4 on beta on 2026-10-25. Ridden by the owner, 2026-10-25.",
+   "fingerprint": {
+    "name": "Aspen Street Northwest",
+    "highway": "tertiary",
+    "length_m": 310.8,
+    "line": "-77.027838,38.972268 -77.028386,38.972264 -77.028470,38.972263 -77.029004,38.972263 -77.029692,38.972263 -77.030961,38.972263 -77.031044,38.972263 -77.031422,38.972263"
+   }
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 1444493181,
+   "value": {
+    "tier": 2,
+    "half": true,
+    "adjustment_id": "aspen-street-nw-lts2-5",
+    "category": "other",
+    "visibility": "hidden",
+    "annotation_status": "approved",
+    "display": "route_only"
+   },
+   "reason": "The owner, 2026-10-25 17:32 UTC, of Aspen Street NW: \"I feel that aspen street is overrated. It's not a 4\" and \"Probably a 2.5\". His own rating ranks above every other source (the order of 2026-10-13: \"Ratings from Community Input (including my judgment) win over everything\").",
+   "evidence": "OSM, 2026-10-25: way 1444493181 (Aspen Street Northwest, highway=tertiary, lanes=2, maxspeed=25 mph, HFCS Minor Arterial, 278 ft); rated LTS 4 on beta on 2026-10-25. Ridden by the owner, 2026-10-25.",
+   "fingerprint": {
+    "name": "Aspen Street Northwest",
+    "highway": "tertiary",
+    "length_m": 84.8,
+    "line": "-77.031422,38.972263 -77.031862,38.972263 -77.032307,38.972263 -77.032400,38.972263"
+   }
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 1481126430,
+   "value": {
+    "tier": 2,
+    "half": true,
+    "adjustment_id": "aspen-street-nw-lts2-5",
+    "category": "other",
+    "visibility": "hidden",
+    "annotation_status": "approved",
+    "display": "route_only"
+   },
+   "reason": "The owner, 2026-10-25 17:32 UTC, of Aspen Street NW: \"I feel that aspen street is overrated. It's not a 4\" and \"Probably a 2.5\". His own rating ranks above every other source (the order of 2026-10-13: \"Ratings from Community Input (including my judgment) win over everything\").",
+   "evidence": "OSM, 2026-10-25: way 1481126430 (Aspen Street Northwest, highway=tertiary, lanes=2, maxspeed=25 mph, HFCS Minor Arterial, 289 ft); rated LTS 4 on beta on 2026-10-25. Ridden by the owner, 2026-10-25.",
+   "fingerprint": {
+    "name": "Aspen Street Northwest",
+    "highway": "tertiary",
+    "length_m": 88.0,
+    "line": "-77.032400,38.972263 -77.032764,38.972263 -77.032902,38.972263 -77.033334,38.972263 -77.033416,38.972263"
+   }
+  },
+  {
+   "kind": "stress",
+   "osm_way_id": 346681298,
+   "value": {
+    "tier": 2,
+    "half": true,
+    "adjustment_id": "aspen-street-nw-lts2-5",
+    "category": "other",
+    "visibility": "hidden",
+    "annotation_status": "approved",
+    "display": "route_only"
+   },
+   "reason": "The owner, 2026-10-25 17:32 UTC, of Aspen Street NW: \"I feel that aspen street is overrated. It's not a 4\" and \"Probably a 2.5\". His own rating ranks above every other source (the order of 2026-10-13: \"Ratings from Community Input (including my judgment) win over everything\").",
+   "evidence": "OSM, 2026-10-25: way 346681298 (Aspen Street Northwest, highway=tertiary, lanes=2, maxspeed=25 mph, HFCS Minor Arterial, 824 ft); rated LTS 4 on beta on 2026-10-25. Ridden by the owner, 2026-10-25.",
+   "fingerprint": {
+    "name": "Aspen Street Northwest",
+    "highway": "tertiary",
+    "length_m": 251.2,
+    "line": "-77.033416,38.972263 -77.033541,38.972263 -77.034078,38.972264 -77.036237,38.972270 -77.036313,38.972270"
+   }
+  }
+ ]
+}
