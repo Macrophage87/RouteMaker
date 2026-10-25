@@ -46,6 +46,7 @@ import {
   setMassRide,
 } from "../stressStyle.js";
 import { HAZARD_SOURCE_ID, massLayerIds, massLayers } from "../massStyle.js";
+import { ROUTE_NAME_LAYER_ID, routeNamePaint } from "./routeNames.ts";
 
 /** The hazards' source before any are given (or on a page that is not a Mass Ride's). */
 export const EMPTY_HAZARDS = { type: "FeatureCollection", features: [] } as const;
@@ -260,6 +261,10 @@ export function setStressPalette(
   // The trail names likewise (stressStyle.js, TRAIL_LABEL).
   if (map.getLayer(TRAIL_LABEL_LAYER_ID)) {
     for (const [name, value] of Object.entries(trailLabelPaint())) map.setPaintProperty(TRAIL_LABEL_LAYER_ID, name, value);
+  }
+  // The route's own street names likewise (lib/routeNames.ts).
+  if (map.getLayer(ROUTE_NAME_LAYER_ID)) {
+    for (const [name, value] of Object.entries(routeNamePaint())) map.setPaintProperty(ROUTE_NAME_LAYER_ID, name, value);
   }
 }
 
