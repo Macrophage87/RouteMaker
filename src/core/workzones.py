@@ -224,10 +224,10 @@ def place(zones, kept: dict | None, now: datetime, out_of_time=lambda: False, fi
 
 def barred_zones(zones, schema: str | None = None) -> set[int]:
     """The positions in `zones` of those at least `rules.BARRED_SHARE` of whose samples have,
-    as their nearest road within `rules.BARRED_NEAR_M`, one the map bars to bicycles (the live segment
-    table's map_class 'barred': a motorway or its ramp, or a road tagged bicycle=no). Nearest,
-    so a street through an interchange or a frontage road beside a motorway is not barred.
-    One query for all of them; none where the table cannot be read."""
+    as their nearest road within `rules.BARRED_NEAR_M`, one the map bars to bicycles (the live
+    segment table's map_class 'barred': a motorway or its ramp, or a road tagged bicycle=no).
+    Nearest, so a street through an interchange or a frontage road beside a motorway is not
+    barred. One query for all of them; none where the table cannot be read."""
     from django.conf import settings
     from django.db import DatabaseError, connection, transaction
 
