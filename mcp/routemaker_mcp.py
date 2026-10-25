@@ -1748,6 +1748,15 @@ def _points_along(plan: Plan) -> list[tuple[int, float]]:
     return [(i + 1, cum[min(end, len(cum) - 1)] * scale) for i, end in enumerate(ends[:-1])]
 
 
+def _closure_id(row: dict) -> str:
+    """The closure a row is part of: a reviewer's closure comes as a row for each of its ways,
+    `reviewer-{closure}-{way}`."""
+    zone_id = str(row.get("id") or "")
+    if row.get("source") == "reviewer":
+        return re.sub(r"-\d+$", "", zone_id)
+    return zone_id or str((row.get("title"), row.get("when_text")))
+
+
 def _closure_row(row: dict) -> dict:
     """One closure as an assistant tells it: what, until when, what it does, and who says so."""
     out = {
@@ -1774,19 +1783,23 @@ def route_closures(plan: Plan) -> dict:
     for row in zones.get("closures") or []:
         if row.get("effect") not in CLOSURE_SAID:
             continue
-        key = (row.get("title"), row.get("when_text"), row.get("effect"), row.get("url"))
+        key = (_closure_id(row), row.get("effect"))
         kept = rows.setdefault(key, _closure_row(row))
         if row.get("from_m") is not None and row.get("to_m") is not None:
             a = round(row["from_m"] / METRES_PER_MILE, 1)
             b = round(row["to_m"] / METRES_PER_MILE, 1)
             kept["from_mi"] = min(kept.get("from_mi", a), a)
             kept["to_mi"] = max(kept.get("to_mi", b), b)
-            if row["effect"] == "on_route":
+            # A blocked bike lane leaves the road open: listed, not warned about.
+            if row["effect"] == "on_route" and row.get("kind") != "lane":
                 spans.append((row["from_m"], row["to_m"], key))
     if not rows:
         return {}
     said = sorted(rows.values(), key=lambda r: (r["effect"] != "on_route", r.get("from_mi", 0)))
     out: dict = {"closures": said}
+    if zones.get("ride_at"):
+        # A shared route's answer (open_link) is as it was planned: say for when.
+        out["closures_checked_for"] = zones["ride_at"]
     if spans:
         # A point reached on a closed stretch makes the router ride it (a landmark only the
         # closed path goes past): the likeliest reason it found no way round.
@@ -2926,7 +2939,7 @@ class Server:
             said = _closure_row(row)
             said.pop("effect", None)
             said["kind"] = row.get("kind")
-            key = (said["what"], said.get("when"), said.get("url"), said["kind"])
+            key = _closure_id(row)
             length = sum(haversine_mi(p, q) for p, q in zip(dense, dense[1:], strict=False))
             kept = found.get(key)
             if kept is None:

@@ -742,9 +742,11 @@ def test_no_more_orders_are_tried_than_time_allows(monkeypatch) -> None:
 LAKE_FRANK = "https://montgomeryparks.org/lake-frank"
 
 
-def closure(part, effect, from_mi=None, to_mi=None, title="Lakeside Trail: closed", line=None):
+def closure(
+    part, effect, from_mi=None, to_mi=None, title="Lakeside Trail: closed", line=None, pk=4
+):
     return {
-        "id": f"reviewer-4-{part}",
+        "id": f"reviewer-{pk}-{part}",
         "source": "reviewer",
         "source_name": "Confirmed by a RouteMaker reviewer",
         "url": LAKE_FRANK,
@@ -779,7 +781,7 @@ def test_closures_on_the_route_are_said_one_row_each() -> None:
         closure(0, "on_route", 1.0, 1.4),
         closure(1, "on_route", 1.4, 1.8),
         closure(2, "none"),
-        closure(3, "routed_round", title="Connector: closed"),
+        closure(0, "routed_round", title="Connector: closed", pk=3),
     ]
     out = mcp.route_details(_closure_plan(rows, via_mi=1.5))
     # The two ways of one closure are one row, from its first mile to its last.
@@ -814,8 +816,10 @@ def test_closures_near_lists_each_closure_once_nearest_first() -> None:
             return [
                 closure(0, "none", line=[at(0.5), at(0.6)]),
                 closure(1, "none", line=[at(0.6), at(0.8)]),
-                closure(2, "none", title="Connector: closed", line=[at(0.0, 0.2), at(0.0, 0.3)]),
-                closure(3, "none", title="Far away: closed", line=[at(5.0), at(5.1)]),
+                closure(
+                    0, "none", title="Connector: closed", line=[at(0.0, 0.2), at(0.0, 0.3)], pk=3
+                ),
+                closure(0, "none", title="Far away: closed", line=[at(5.0), at(5.1)], pk=5),
             ]
 
     server = mcp.Server(lambda: Site(), [], out_dir=Path("."))
@@ -828,3 +832,26 @@ def test_closures_near_lists_each_closure_once_nearest_first() -> None:
     assert lakeside["url"] == LAKE_FRANK and "effect" not in lakeside
     server.call("closures_near", {"near": at(0.0), "include_permits": True})
     assert asked[-1][1] is True
+
+
+def test_a_blocked_bike_lane_is_listed_but_not_warned_about() -> None:
+    lane = {**closure(0, "on_route", 1.0, 1.2), "kind": "lane", "title": "Bike lane blocked"}
+    out = mcp.route_closures(_closure_plan([lane], via_mi=1.1))
+    assert out["closures"][0]["what"] == "Bike lane blocked" and "closure_warning" not in out
+
+
+def test_closures_near_asks_for_a_view_the_site_takes() -> None:
+    boxes = []
+
+    class Site:
+        base = "http://stand-in"
+
+        def closures_map(self, box, permits):
+            boxes.append(box)
+            return []
+
+    server = mcp.Server(lambda: Site(), [], out_dir=Path("."))
+    for lat in (38.2, 39.72):
+        server.call("closures_near", {"near": [-77.0, lat], "within_miles": 50})
+    for west, south, east, north in boxes:
+        assert east - west <= 0.4 and north - south <= 0.3
