@@ -442,6 +442,8 @@ CIRCLE_CROSSING_ID = 1101
 SUBURBAN_SIDEWALK_ID = 1102
 CAPITOL_WALK_ID = 1103
 CAPITOL_SIDEWALK_ID = 1104
+MALL_WALK_ID = 1105
+MALL_MEMORIAL_ID = 1106
 BESIDE_TRAIL_ID = 701
 
 
@@ -500,6 +502,12 @@ def build_dials_extract(path: Path, singletrack_tags: dict[str, str] | None = No
             29: (-77.0112, 38.8895),
             30: (-77.0118, 38.8899),
             31: (-77.0112, 38.8899),
+            # A walk on the Washington Monument grounds and the walk along the Vietnam
+            # Veterans Memorial's wall (`routemaker.mallgrounds`).
+            32: (-77.03652, 38.89092),
+            33: (-77.03632, 38.89092),
+            34: (-77.04759, 38.89123),
+            35: (-77.04739, 38.89123),
         }
         for node_id, (lon, lat) in nodes.items():
             writer.add_node(
@@ -577,6 +585,8 @@ def build_dials_extract(path: Path, singletrack_tags: dict[str, str] | None = No
             SUBURBAN_SIDEWALK_ID: ([26, 27], {"highway": "footway", "footway": "sidewalk"}),
             CAPITOL_WALK_ID: ([28, 29], {"highway": "footway", "foot": "yes"}),
             CAPITOL_SIDEWALK_ID: ([30, 31], {"highway": "footway", "footway": "sidewalk"}),
+            MALL_WALK_ID: ([32, 33], {"highway": "footway"}),
+            MALL_MEMORIAL_ID: ([34, 35], {"highway": "footway"}),
         }
         for way_id in sorted(ways):
             node_ids, tags = ways[way_id]
