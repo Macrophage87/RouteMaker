@@ -4804,6 +4804,46 @@ read; Plan's DC permits layer (off by default) is the only place they show. A ri
 through anyway" is per plan and session only (`closure_bypass` on `/api/route`, `bypass`
 on `/api/closures/check`); nothing about it is stored.
 
+## DDOT project advisories (v0.12.4)
+
+DDOT's big projects (the Connecticut Avenue deckover, bridge rehabilitations, streetscapes)
+post their closures as press releases on each project's ArcGIS Hub site, on a page titled
+"Traffic Advisories" or "Construction Updates". These closures rarely reach TOPS, MPD or
+AlertDC (the owner, 2026-10-25: "somehow the conneticut avenue deckover was missed"). There is
+no feed and no geometry, so they are read by hand into
+`src/core/geodata/ddot-advisories.json` (`routemaker.ddot_advisories`). Each one is a real
+closure, source `ddot_advisory` ("DDOT project traffic advisory"): routed round, red on the
+map, named in the closure check and saved-route alerts, and gone after its last day. Unlike a
+TOPS permit it is never only "may close". The release decides it: a full closure of the block
+or lane a bicycle uses goes in, and so does one where bicycle access is unclear ("deliveries
+only"). Lane closures that leave a lane open, and closures on roads bicycles may not use, stay
+out.
+
+**Each week (or when the owner reports a missed closure):**
+
+1. `python scripts/ddot_advisories.py watch --days 45` lists the dated advisories on every
+   DDOT advisories page changed in that time whose link is not yet in the file's `seen`.
+2. Read each one (the link is the release, PDF or Word). For a closure, add an entry:
+   `id`, `project`, `page` (the advisories page, which the card links), `advisory` (the
+   release), `posted`, `road` (as the card says it), `reason`, `first_day`, `last_day` (whole
+   days in the region's time; "about eight weeks" counted to its end, "the duration of the
+   project" to the project's stated end), `ways` (OpenStreetMap way ids) and `lines`
+   (`python scripts/ddot_advisories.py lines WAY ...` prints them).
+3. Add the advisory's link to `seen` either way, set `updated` to today, and ship it in the
+   next release. A later advisory that extends or ends a closure changes its `last_day`.
+
+The first entries (2026-10-25): the Connecticut Avenue NW service lanes from Dupont Circle to
+Q Street (both directions, closed since 2025-09-23 for the deckover; OSM already maps them as
+`highway=construction`, so the entry only puts them on the map) and the northbound service
+lane in the 1600 block, Q Street to R Street (from 2026-08-31, about eight weeks: through
+2026-11-03); and the Theodore Roosevelt Bridge trail, closed from 2026-09-21 and expected to
+reopen in September 2027 (through 2027-09-30; detours by Key Bridge and Memorial Bridge). That
+project's own advisories page is not public, so the watcher finds its advisories on the site's
+home page. The entries' lines were checked to lie more than 6 m (20 ft) from any road or trail
+open to bicycles away from their trimmed ends, so the strip the router excludes takes nothing
+else (the Mount Vernon Trail runs beside the bridge trail's Virginia ramps, which is why only
+the river span is in the entry).
+
 ## Deer-management closures (v0.12.3)
 
 Rock Creek Park (NPS) and Montgomery Parks close parts of their parks at night, or for whole

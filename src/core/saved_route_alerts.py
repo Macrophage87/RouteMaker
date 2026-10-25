@@ -58,7 +58,7 @@ def alerts_for(line, now: datetime | None = None) -> list[dict]:
     out = []
     for row in found["closures"][:MOST]:
         where = row["road"] or row["title"]
-        until = _until(row["end"], row.get("source_key") == "reviewer")
+        until = _until(row["end"], row.get("source_key") == "reviewer", row.get("source_key"))
         out.append(
             {
                 "id": row["id"],
@@ -72,7 +72,7 @@ def alerts_for(line, now: datetime | None = None) -> list[dict]:
     return out
 
 
-def _until(end: str | None, reviewer: bool = False) -> str:
+def _until(end: str | None, reviewer: bool = False, source: str | None = None) -> str:
     from routemaker import ridetime
 
     if not end:
@@ -80,7 +80,7 @@ def _until(end: str | None, reviewer: bool = False) -> str:
     from routemaker import workzones as rules
 
     moment = datetime.fromisoformat(end)
-    last = rules.last_day("reviewer", moment) if reviewer else None
+    last = rules.last_day("reviewer" if reviewer else source or "", moment)
     local = (last or moment).astimezone(ridetime.ZONE)
     word = "through" if last is not None else "until"
     return f"{word} {local.strftime('%b')} {local.day}, {local.year}"

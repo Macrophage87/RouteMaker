@@ -551,7 +551,7 @@ do not allow display stays out.
   with v0.7.0 (below, "DC closures").
 - Records: docs/OPERATIONS.md, "Work zones".
 
-## DC closures (v0.7.0: DDOT TOPS permits, MPD, AlertDC, NPS)
+## DC closures (v0.7.0: DDOT TOPS permits, MPD, AlertDC, NPS; v0.12.4: DDOT project advisories)
 
 The WZDx registry has no DC feed, so DC's closures come from four sources (v0.7.0 plan, "DC
 closures source"), read by the worker (`core.closure_sources`, `routemaker.dc_closures`) and
@@ -563,6 +563,19 @@ closed, orange for a blocked bike lane or a rideable work zone, gone once past t
 DDOT's permits there only with Plan's DC permits switch on. None of the four
 hosts was reachable from the cloud container this was built in; the readers were built on saved
 sample pages (`tests/data/closures`), and docs/OPERATIONS.md, "DC closures", has the first check.
+
+### DDOT project traffic advisories (v0.12.4)
+
+- Credit: `DDOT project traffic advisory`
+- Pages: each DDOT project's "Traffic Advisories" or "Construction Updates" page on its ArcGIS
+  Hub site (for example
+  <https://connave-streetscape.ddot.dc.gov/pages/78fb1314de114494be3228f97b1eddc6>), found
+  through ArcGIS Online's public search (`scripts/ddot_advisories.py watch`). The releases are
+  read by a person; what a release closes to bicycles is kept as dates, a reason and links in
+  `src/core/geodata/ddot-advisories.json`, its lines OpenStreetMap's (ODbL).
+- Use: closures routed round, whole days, gone after the last day (`routemaker.ddot_advisories`).
+- Publisher: District Department of Transportation. The facts of a press release (which block,
+  which days) are used with a link to the release; no release text is republished.
 
 ### DDOT occupancy permits (TOPS)
 

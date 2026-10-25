@@ -120,6 +120,18 @@ def _no_bikeshare_network(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_ddot_advisories(monkeypatch):
+    """DDOT's project advisory closures (`routemaker.ddot_advisories`, v0.12.4) are real places
+    in a checked-in file, in force by the clock: no test's snapshot holds them unless it asks
+    for them. tests/test_ddot_advisories.py puts the real ones back (`real_zones`)."""
+    from routemaker import ddot_advisories
+
+    real = ddot_advisories.zones
+    monkeypatch.setattr(ddot_advisories, "zones", lambda now, closures=None: [])
+    monkeypatch.setattr(ddot_advisories, "real_zones", real, raising=False)
+
+
+@pytest.fixture(autouse=True)
 def _no_live_data_keys(settings):
     """No test reads WMATA's live API or Mapillary's (v0.7.0): their keys are never set in a
     test, so nothing is fetched. A test that wants live data installs its own fake
