@@ -1288,9 +1288,9 @@ TOOLS = [
             " instance admin on the site's own connector. The route is a draft_id from"
             " plan_route, open_link or revise_route, or a line to follow (an encoded polyline at"
             " precision 6, as from a GPX file), planned here as the app plans an opened file."
-            " Sending the same slug again rewrites that draft (sections are replaced); a post"
-            " that has left draft is refused. Refused too if the route starts, ends or stops in"
-            " the admin's Home circle. Answers the draft page's link and its figures."
+            " To revise it, send the same slug with replace: true (sections are replaced); a"
+            " post that has left draft is refused. Refused too if the route starts, ends or"
+            " stops in the admin's Home circle. Answers the draft page's link and its figures."
         ),
         "inputSchema": {
             "type": "object",
@@ -1325,6 +1325,11 @@ TOOLS = [
                         " page draws a small map of that stretch."
                     ),
                 },
+                "replace": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Rewrite the draft already at this slug.",
+                },
                 "draft_id": {"type": "string"},
                 "follow": {
                     "type": "object",
@@ -1358,6 +1363,7 @@ POST_FIELDS = (
     "season_start",
     "season_end",
     "sections",
+    "replace",
 )
 
 

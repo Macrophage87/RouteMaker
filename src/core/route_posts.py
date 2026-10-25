@@ -45,6 +45,7 @@ from __future__ import annotations
 
 import hashlib
 import itertools
+import math
 import re
 import secrets
 from datetime import date
@@ -248,10 +249,12 @@ def freeze_route(post, *, source, line, distance_m, inputs, answer, planned=None
 # The owner, 2026-10-25: "Enable a mechanism for me to have the blog posts sent directly from
 # claude." The site's own connector (core.connector) offers an instance admin's assistant one
 # tool, draft_route_post, which lands here. It writes drafts only: publishing stays a press in
-# the admin. Sending the same slug again rewrites that draft, so an assistant can revise it; a
-# post that has left draft is the admin's to change.
+# the admin. Sending the same slug again with `replace` rewrites that draft, so an assistant can
+# revise it (never by accident: one written in the admin is not lost to a matching title); a post
+# that has left draft is the admin's to change.
 SECTIONS_MAX = 12
 NOT_A_DRAFT = "That post is no longer a draft: change it in the admin."
+SLUG_TAKEN = "A draft already has that slug: send replace to rewrite it, or another slug."
 SLUG_RE = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
 
 
@@ -290,14 +293,16 @@ def _sections(raw, distance_m) -> tuple[list[dict], str | None]:
             return [], f"section {n}: give both miles for a map of the stretch, or neither."
         if start is not None:
             if not all(
-                isinstance(v, int | float) and not isinstance(v, bool) for v in (start, end)
+                isinstance(v, int | float) and not isinstance(v, bool) and math.isfinite(v)
+                for v in (start, end)
             ):
                 return [], f"section {n}: the miles are numbers."
-            if not 0 <= start < end:
-                return [], f"section {n}: the stretch must end after it starts."
+            # Rounded as kept, and the end held to the route's own length (as the page draws it).
+            start, end = round(float(start), 2), round(min(float(end), miles), 2)
             if start >= miles:
                 return [], f"section {n}: the route is {miles:.1f} mi long."
-            start, end = round(float(start), 2), round(float(end), 2)
+            if not 0 <= start < end:
+                return [], f"section {n}: the stretch must end after it starts."
         out.append({"heading": heading, "body": body, "start_mi": start, "end_mi": end})
     return out, None
 
@@ -306,7 +311,8 @@ def write_draft(author, fields: dict, route: dict):
     """Make or rewrite a draft post from what an assistant sent: (post, None) or (None, why).
 
     `fields`: title, abstract, and optionally slug (else made from the title), audience, byline,
-    season_label, season_start, season_end and sections ([{heading, body, from_mile, to_mile}]).
+    season_label, season_start, season_end, sections ([{heading, body, from_mile, to_mile}]) and
+    replace (true to rewrite the draft already at the slug).
     `route`: the route as the site keeps it (source, line, distance_m, inputs, answer), checked
     as the admin checks a picked saved route (`line_problem`, the author's Home circle).
     """
@@ -371,6 +377,8 @@ def write_draft(author, fields: dict, route: dict):
         post = RoutePost.objects.select_for_update().filter(slug=slug).first()
         if post is not None and post.status != RoutePost.Status.DRAFT:
             return None, NOT_A_DRAFT
+        if post is not None and fields.get("replace") is not True:
+            return None, SLUG_TAKEN
         made = post is None
         if made:
             post = RoutePost(slug=slug, author=author, status=RoutePost.Status.DRAFT)

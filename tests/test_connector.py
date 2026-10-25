@@ -409,19 +409,31 @@ class TestRoutePostDrafts:
             "draft_id"
         ]
         call(token, "draft_route_post", {**self.POST, "draft_id": draft_id})
+        # Without replace, a draft at the slug (one written in the admin, say) is left alone.
+        taken = call(token, "draft_route_post", {**self.POST, "draft_id": draft_id})
+        assert taken["isError"] and "send replace" in taken["content"][0]["text"]
         again = call(
             token,
             "draft_route_post",
-            {**self.POST, "abstract": "Calmer.", "sections": [], "draft_id": draft_id},
+            {
+                **self.POST,
+                "abstract": "Calmer.",
+                "sections": [],
+                "draft_id": draft_id,
+                "replace": True,
+            },
         )
         assert not again["isError"], again
         post = RoutePost.objects.get()
         assert post.abstract == "Calmer." and not post.sections.exists()
         # The copy it was rewritten from had no public link, so it went.
         assert SharedRoute.objects.filter(keep="forever").count() == 1
-        RoutePost.objects.filter(pk=post.pk).update(status=RoutePost.Status.PUBLISHED)
-        refused = call(token, "draft_route_post", {**self.POST, "draft_id": draft_id})
-        assert refused["isError"] and "no longer a draft" in refused["content"][0]["text"]
+        for status in ("published", "unlisted", "withdrawn"):
+            RoutePost.objects.filter(pk=post.pk).update(status=status)
+            refused = call(
+                token, "draft_route_post", {**self.POST, "draft_id": draft_id, "replace": True}
+            )
+            assert refused["isError"] and "no longer a draft" in refused["content"][0]["text"]
         assert RoutePost.objects.get().abstract == "Calmer."
 
     def test_a_line_to_follow_is_planned_as_an_opened_file(self, planner) -> None:
@@ -462,9 +474,18 @@ class TestRoutePostDrafts:
         draft_id = call(token, "plan_route", {"points": self.POINTS})["structuredContent"][
             "draft_id"
         ]
+        # An end past the route is held to its length; a start past it is refused.
+        held = {"heading": "Whole", "from_mile": 0, "to_mile": 1e6}
+        out = call(
+            token, "draft_route_post", {**self.POST, "sections": [held], "draft_id": draft_id}
+        )
+        assert not out["isError"], out
+        assert 0 < float(RoutePost.objects.get().sections.get().end_mi) < 5
         long = {"heading": "Far", "from_mile": 50, "to_mile": 60}
         out = call(
-            token, "draft_route_post", {**self.POST, "sections": [long], "draft_id": draft_id}
+            token,
+            "draft_route_post",
+            {**self.POST, "sections": [long], "draft_id": draft_id, "replace": True},
         )
         assert out["isError"] and "mi long" in out["content"][0]["text"]
 
