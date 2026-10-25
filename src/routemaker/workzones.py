@@ -106,6 +106,23 @@ NEAR_POINT_M = 50.0
 # How far beyond the box of the rider's points a closure may lie and still matter.
 BOX_MARGIN_M = 5_000.0
 
+# Lines a feed gives as only their ends (Maryland's MultiPoint: WZDx's start and end points)
+# are put on the road between them (`core.workzones.place`), so the map draws the road and
+# the planner matches the route against it, not a straight line across the blocks (the
+# owner, 2026-10-25, Georgia Ave from Wheaton to Silver Spring: "This should follow the
+# road, not be a straight line"). A gap longer than this between two of a line's points is
+# routed.
+SNAP_GAP_M = 100.0
+# The router's way between two ends is taken as the road only when it is at most this much
+# longer than the straight line, and, where the feed and the router both name the roads,
+# at least `SNAP_NAMED_SHARE` of it is on a road the feed names.
+SNAP_RATIO = 1.25
+SNAP_SLACK_M = 200.0
+SNAP_NAMED_SHARE = 0.5
+# A gap that could not be put on its road and is longer than this is not drawn as a straight
+# line: the closure's marker stands at the first point the feed gives (`approximate`).
+DRAW_STRAIGHT_M = 400.0
+
 
 @dataclass(frozen=True)
 class Zone:
@@ -127,6 +144,10 @@ class Zone:
     title: str | None = None
     url: str | None = None
     published: datetime | None = None
+    # The road names the feed gives (WZDx `road_names`), for putting its line on the road.
+    roads: tuple[str, ...] = ()
+    # Its line is still a long straight line between points the feed gives, not the road.
+    approximate: bool = False
 
     @property
     def firm_end(self) -> bool:
@@ -150,6 +171,8 @@ class Zone:
             "title": self.title,
             "url": self.url,
             "published": None if self.published is None else self.published.isoformat(),
+            "roads": list(self.roads),
+            "approximate": self.approximate,
         }
 
     @classmethod
@@ -169,6 +192,8 @@ class Zone:
             title=row.get("title"),
             url=row.get("url"),
             published=_when(row.get("published")),
+            roads=tuple(str(r) for r in row.get("roads") or ()),
+            approximate=bool(row.get("approximate")),
         )
 
 
@@ -267,6 +292,7 @@ def parse_feature(feature: Mapping, source: str) -> Zone | None:
         end=_when(properties.get("end_date")),
         impact=properties.get("vehicle_impact"),
         reason=why,
+        roads=tuple(roads),
     )
 
 
@@ -496,6 +522,71 @@ def along(coordinates: Sequence[Sequence[float]], zones: Iterable[Zone]) -> list
         if near and len(near) >= ALONG_SHARE * len(samples):
             found.append(Passage(zone, min(near), max(near)))
     return sorted(found, key=lambda p: (p.from_m, p.zone.zone_id))
+
+
+# --- Putting a line given by its ends on the road ---------------------------------
+
+
+def line_m(line: Sequence[Sequence[float]]) -> float:
+    """A line of [lon, lat] pairs' length, metres."""
+    if len(line) < 2:
+        return 0.0
+    lat0 = line[0][1]
+    return _length([_xy(p[0], p[1], lat0) for p in line])
+
+
+def gaps(line: Sequence[Sequence[float]]) -> list[int]:
+    """The indices i where the line runs more than `SNAP_GAP_M` straight from point i to i+1."""
+    return [i for i in range(len(line) - 1) if line_m(line[i : i + 2]) > SNAP_GAP_M]
+
+
+_ROAD_WORDS = {"maryland": "md", "virginia": "va", "interstate": "i", "route": "", "rte": ""}
+
+
+def _road_key(name: str) -> str:
+    """A road's name as the feed and the map must share it: "Georgia Ave" and "Georgia
+    Avenue" alike, "MD 97", "MD-97" and "Maryland Route 97" alike."""
+    from . import dc_closures as dc
+
+    words = (_ROAD_WORDS.get(w, w) for w in dc.street_key(name, quadrant=False).split())
+    return " ".join(w for w in words if w)
+
+
+def road_named(found: str, roads: Iterable[str]) -> bool:
+    """Whether a name the router gives a stretch is one of the feed's road names."""
+    key = _road_key(found)
+    return bool(key) and any(key == _road_key(road) for road in roads)
+
+
+def road_fits(chord_m: float, routed_m: float, named_m: float, names_known: bool) -> bool:
+    """Whether the router's way between a gap's ends (`routed_m` long, `named_m` of it on a
+    road the feed names) is the road the feed means: not much longer than the straight
+    line, and mostly on that road where the names can be compared."""
+    if routed_m > SNAP_RATIO * chord_m + SNAP_SLACK_M:
+        return False
+    return not names_known or named_m >= SNAP_NAMED_SHARE * routed_m
+
+
+def join_pieces(
+    line: Sequence[Sequence[float]], pieces: Mapping[int, Sequence[Sequence[float]]]
+) -> tuple[tuple[float, float], ...]:
+    """The line with the gap after point i replaced by `pieces[i]`, the road between the two
+    points from the first to the second. A piece starts and ends on the road, so it stands in
+    for the feed's own points at its ends."""
+    out: list[tuple[float, float]] = []
+
+    def add(p) -> None:
+        step = (float(p[0]), float(p[1]))
+        if not out or out[-1] != step:
+            out.append(step)
+
+    for i, point in enumerate(line):
+        if i in pieces:
+            for p in pieces[i]:
+                add(p)
+        elif i - 1 not in pieces:
+            add(point)
+    return tuple(out)
 
 
 # --- What a plan does with them ------------------------------------------------

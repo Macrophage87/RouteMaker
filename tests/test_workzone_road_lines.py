@@ -1,0 +1,217 @@
+"""Work zones a feed gives only by their ends, put on the road between them (core.workzones.place,
+routemaker.workzones.road_fits). The owner, 2026-10-25, of a Maryland zone on Georgia Ave from
+Wheaton to Silver Spring drawn as one straight line: "This should follow the road, not be a
+straight line". The router is a fake."""
+
+from __future__ import annotations
+
+import json
+from datetime import UTC, datetime, timedelta
+
+import pytest
+from test_route_api import encode_polyline6
+
+from core import routing, workzones
+from core.models import BikeshareFeedCache
+from routemaker import workzones as wz
+
+NOW = datetime(2026, 10, 25, 14, 0, tzinfo=UTC)
+db = pytest.mark.django_db(transaction=True)
+
+# A road that bends east of the straight line between its ends (about 4.5 km end to end, the
+# bend about 400 m off it), as Georgia Ave does between Wheaton and Silver Spring.
+A, B = (-77.050, 38.990), (-77.030, 38.950)
+ROAD = [A, (-77.046, 38.980), (-77.040, 38.970), (-77.033, 38.960), B]
+
+
+def zone(line=(A, B), roads=("MD 97",), kind=wz.PENALTY) -> wz.Zone:
+    return wz.Zone(
+        "md-georgia",
+        "md",
+        kind,
+        wz.LANE_PENALTY_S,
+        tuple(line),
+        "MD 97 southbound",
+        None,
+        None,
+        None,
+        roads=tuple(roads),
+    )
+
+
+def answer(shape, names=("MD 97", "Georgia Avenue"), length_m=None) -> dict:
+    length_km = (length_m if length_m is not None else wz.line_m(shape)) / 1000
+    return {
+        "trip": {
+            "legs": [
+                {
+                    "shape": encode_polyline6(shape),
+                    "summary": {"length": length_km},
+                    "maneuvers": [
+                        {"type": 1, "length": length_km, "street_names": list(names)},
+                        {"type": 4, "length": 0.0},
+                    ],
+                }
+            ]
+        }
+    }
+
+
+class TestRules:
+    def test_only_long_gaps_are_routed(self) -> None:
+        assert wz.gaps([A, B]) == [0]
+        dense = [(-77.0, 38.9), (-77.0, 38.9005), (-77.0, 38.901)]  # 55 m apart
+        assert wz.gaps(dense) == []
+
+    def test_the_feeds_road_names_match_the_maps(self) -> None:
+        assert wz.road_named("MD 97", ["MD-97"])
+        assert wz.road_named("MD 97", ["Maryland Route 97"])
+        assert wz.road_named("Georgia Avenue", ["GEORGIA AVE"])
+        assert not wz.road_named("MD 390", ["MD 97"])
+        assert not wz.road_named("Georgia Avenue", [])
+
+    def test_a_way_much_longer_than_the_line_or_on_other_roads_is_not_the_road(self) -> None:
+        assert wz.road_fits(4500, 4900, 4900, True)
+        assert not wz.road_fits(4500, 6500, 6500, True)  # a detour, not the road
+        assert not wz.road_fits(4500, 4900, 1000, True)  # mostly another road
+        assert wz.road_fits(4500, 4900, 0, False)  # no names to go by: the length alone
+
+    def test_pieces_stand_in_for_the_gaps(self) -> None:
+        assert wz.join_pieces([A, B], {0: ROAD}) == tuple(ROAD)
+        near = (B[0], B[1] - 0.0003)  # a short step past B, not a gap
+        assert wz.join_pieces([A, B, near], {0: ROAD}) == (*ROAD, near)
+
+    def test_roads_and_approximate_survive_the_stored_copy(self) -> None:
+        z = zone()
+        again = wz.Zone.from_json(json.loads(json.dumps({**z.to_json(), "approximate": True})))
+        assert again.roads == ("MD 97",) and again.approximate
+        assert not wz.Zone.from_json({k: v for k, v in z.to_json().items() if k != "roads"}).roads
+
+    def test_parse_keeps_the_road_names(self) -> None:
+        feature = {
+            "id": "x",
+            "properties": {"core_details": {"road_names": ["MD 97"]}, "vehicle_impact": "x"},
+            "geometry": {"type": "MultiPoint", "coordinates": [list(A), list(B)]},
+        }
+        assert wz.parse_feature(feature, "md").roads == ("MD 97",)
+
+
+class TestRouting:
+    def test_a_route_along_the_road_meets_the_placed_zone_not_the_straight_line(self) -> None:
+        # The straight line is up to 400 m off the road, so a ride along the road missed its
+        # heads-up and penalty; on the road, the route runs along it.
+        assert wz.along(ROAD, [zone()]) == []
+        placed = zone(line=ROAD)
+        assert [p.zone.zone_id for p in wz.along(ROAD, [placed])] == ["md-georgia"]
+
+
+class TestRoadLine:
+    def ask(self, monkeypatch, answers):
+        asked = []
+
+        def transport(url, payload, timeout):
+            asked.append(payload["locations"])
+            reply = answers.pop(0)
+            if isinstance(reply, Exception):
+                raise reply
+            return reply
+
+        monkeypatch.setattr(routing, "_transport", transport)
+        return asked
+
+    def test_the_road_named_by_the_feed(self, monkeypatch) -> None:
+        self.ask(monkeypatch, [answer(ROAD)])
+        line = workzones.road_line(A, B, ("MD 97",))
+        assert [tuple(p) for p in line] == ROAD
+
+    def test_a_one_way_road_is_asked_the_other_way_and_turned_round(self, monkeypatch) -> None:
+        asked = self.ask(
+            monkeypatch, [routing.RouterRefused(400, 442, "no path"), answer(ROAD[::-1])]
+        )
+        line = workzones.road_line(A, B, ("MD 97",))
+        assert [tuple(p) for p in line] == ROAD
+        assert asked[1][0] == {"lon": B[0], "lat": B[1]}
+
+    def test_another_road_or_a_detour_is_not_taken(self, monkeypatch) -> None:
+        self.ask(monkeypatch, [answer(ROAD, names=("MD 390",))] * 2)
+        assert workzones.road_line(A, B, ("MD 97",)) is None
+        self.ask(monkeypatch, [answer(ROAD, length_m=9000)] * 2)
+        assert workzones.road_line(A, B, ("MD 97",)) is None
+
+    def test_no_router_no_line(self, monkeypatch) -> None:
+        self.ask(monkeypatch, [routing.RouterUnavailable("down")] * 2)
+        assert workzones.road_line(A, B, ("MD 97",)) is None
+
+
+class TestPlace:
+    def test_a_zone_given_by_its_ends_is_put_on_the_road_once(self) -> None:
+        calls = []
+
+        def find(a, b, roads):
+            calls.append((a, b, roads))
+            return [list(p) for p in ROAD]
+
+        [placed], kept = workzones.place([zone()], None, NOW, find=find)
+        assert placed.line == tuple(ROAD) and not placed.approximate
+        assert calls == [(A, B, ("MD 97",))]
+        # The next refresh reuses the place, asking the router nothing.
+        [again], _ = workzones.place([zone()], kept, NOW + timedelta(minutes=5), find=find)
+        assert again.line == tuple(ROAD) and len(calls) == 1
+
+    def test_a_long_line_not_found_on_the_road_is_not_drawn(self) -> None:
+        [placed], kept = workzones.place([zone()], None, NOW, find=lambda a, b, r: None)
+        assert placed.line == (A, B) and placed.approximate
+        row = workzones.closure_row(placed, wz.NO_EFFECT, None, NOW, False)
+        assert row["line"] == [] and row["point"] == [A[0], A[1]]
+        # Looked for again only after a while.
+        assert list(kept.values())[0]["line"] is None
+
+    def test_a_short_one_not_found_is_drawn_as_given(self) -> None:
+        short = ((-77.0, 38.9), (-77.0, 38.9025))  # about 280 m
+        [placed], _ = workzones.place([zone(line=short)], None, NOW, find=lambda a, b, r: None)
+        assert placed.line == short and not placed.approximate
+        assert workzones.closure_row(placed, wz.NO_EFFECT, None, NOW, False)["line"]
+
+    def test_a_dense_line_is_left_alone(self) -> None:
+        dense = zone(line=ROAD[:1] + [(A[0], A[1] - 0.0005)])
+        [placed], kept = workzones.place([dense], None, NOW, find=lambda a, b, r: 1 / 0)
+        assert placed is dense and kept == {}
+
+    def test_past_the_budget_nothing_is_asked_or_remembered(self) -> None:
+        [placed], kept = workzones.place(
+            [zone()], None, NOW, out_of_time=lambda: True, find=lambda a, b, r: 1 / 0
+        )
+        assert placed.approximate and kept == {}
+
+
+@db
+def test_a_refresh_stores_the_road_and_the_place(monkeypatch) -> None:
+    feed = {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "id": "georgia",
+                "type": "Feature",
+                "properties": {
+                    "core_details": {"event_type": "work-zone", "road_names": ["MD 97"]},
+                    "vehicle_impact": "some-lanes-closed",
+                },
+                "geometry": {"type": "MultiPoint", "coordinates": [list(A), list(B)]},
+            }
+        ],
+    }
+    calls = []
+
+    def find(a, b, roads):
+        calls.append(roads)
+        return [list(p) for p in ROAD]
+
+    monkeypatch.delenv(workzones.TOKEN_ENV, raising=False)
+    monkeypatch.setattr(workzones, "road_line", find)
+    body = json.dumps(feed).encode()
+    workzones.refresh(lambda url, timeout: body, lambda s: None, lambda: NOW)
+    workzones.refresh(lambda url, timeout: body, lambda s: None, lambda: NOW + timedelta(minutes=5))
+    stored = BikeshareFeedCache.objects.get(key=workzones.KEY).payload["feeds"]["md"]
+    assert [tuple(p) for p in stored["zones"][0]["line"]] == ROAD
+    assert len(stored["placed"]) == 1 and calls == [("MD 97",)]
+    workzones.forget()
