@@ -409,8 +409,8 @@ def _interval_answer(miles, events=(), grades=None, entries=None, loop=False):
         "grade_pct": [grades(m / MI) for m in samples],
         "elevation_m": heights,
     }
-    end = at(0.0) if loop else at(miles)
-    answer["geometry"] = {"coordinates": [at(0.0), at(miles / 2, 0.5), end]}
+    line = [at(0.0), at(miles / 3), at(miles / 6, miles / 3), at(0.0)]  # round a triangle
+    answer["geometry"] = {"coordinates": line if loop else [at(0.0), at(miles / 2), at(miles)]}
     return answer
 
 
@@ -422,16 +422,22 @@ def test_efforts_go_where_nothing_breaks_them() -> None:
     assert out["breaks"] == {"stop sign": 1, "signal": 1}
     efforts = [(e["from_mi"], e["to_mi"]) for e in out["efforts"]]
     assert efforts[0] == (pytest.approx(1.05, abs=0.01), pytest.approx(2.55, abs=0.01))
-    # The cross street's stop sign is theirs, not the rider's: the effort runs through it.
-    assert out["sets_fit"] == 2 and not out["ridden_again_from_start"]
+    # The cross street's stop sign is theirs, not the rider's: the effort runs through it. The
+    # stretch after the signal is too far on for a 3-minute rest: one set in one session.
+    assert out["sets_in_one_session"] == 1 and "lap" not in out["efforts"][0]
     assert out["longest_clear"][0]["roads"] == ["Beach Drive"]
 
 
 def test_a_loop_is_ridden_again_until_the_sets_fit() -> None:
     answer = _interval_answer(3.3, loop=True)  # Hains Point: one long clear loop
     out = mcp.interval_check(answer, {"on_minutes": 5, "off_minutes": 3, "sets": 5})
-    assert out["sets_fit"] == 5 and out["ridden_again_from_start"]
-    assert out["laps"] >= 3
+    assert out["sets_in_one_session"] == 5
+    assert out["efforts"][-1]["lap"] >= 3
+    # Ridden out and back, the turn at the start breaks an effort that would run through it.
+    answer["geometry"]["coordinates"] = [at(0.0), at(1.65), at(0.0)]
+    there_and_back = mcp.interval_check(answer, {"on_minutes": 5, "off_minutes": 3, "sets": 5})
+    assert all(e["to_mi"] > e["from_mi"] for e in there_and_back["efforts"])
+    assert all(e["rest_min"] == pytest.approx(3.0, abs=0.1) for e in out["efforts"][1:])
 
 
 def test_descents_sharp_turns_and_lts_4_break_an_effort() -> None:
@@ -443,7 +449,7 @@ def test_descents_sharp_turns_and_lts_4_break_an_effort() -> None:
     answer = _interval_answer(3.0, grades=lambda mile: -4.0 if mile > 2.0 else 0.0, entries=entries)
     out = mcp.interval_check(answer, {"on_minutes": 5})
     assert {"LTS 4 road", "sharp turn", "descent"} <= set(out["breaks"])
-    assert out["sets_fit"] == 0
+    assert out["sets_in_one_session"] == 0
 
 
 def test_a_climb_is_a_repeat_ridden_up_for_the_effort_and_down_to_recover() -> None:
@@ -474,3 +480,48 @@ def test_plan_route_reads_every_junction_for_intervals_and_a_revise_keeps_them()
         server.call(
             "plan_route", {"points": [[-77.4, 39.1], [-77.3, 39.1]], "intervals": {"sets": 99}}
         )
+
+
+def test_sets_far_apart_are_not_one_session() -> None:
+    # Clear 2 mi stretches 8 mi apart, signals every half mile between: an effort fits in
+    # each, but the rest between them would be half an hour.
+    events = [(k / 2, "signal", 3) for k in range(60) if (k / 2) % 8 > 2.0]
+    out = mcp.interval_check(_interval_answer(30.0, events), {"sets": 5})
+    assert out["sets_in_one_session"] == 1
+    assert out["longest_clear"][0]["effort_minutes"] > 5
+
+
+def test_a_repeat_is_the_climbiest_window_and_needs_a_real_grade() -> None:
+    # Flat for a mile, then 6% for a mile: the repeat starts on the climb, not the flat.
+    answer = _interval_answer(2.0, grades=lambda mile: 6.0 if mile > 1.0 else 0.0)
+    repeat = mcp.interval_check(answer, {"on_minutes": 5})["repeats"][0]
+    assert repeat["from_mi"] >= 0.9 and repeat["avg_grade_pct"] > 4.5
+    gentle = _interval_answer(2.0, grades=lambda mile: 1.0)
+    assert mcp.interval_check(gentle, {"on_minutes": 5})["repeats"] == []
+
+
+def test_a_trail_going_on_under_its_name_is_no_turn_and_a_bend_is_none() -> None:
+    entries = [
+        stretch("Metropolitan Branch Trail", 0.0, 1.0, 1, "path"),
+        {
+            **stretch("Metropolitan Branch Trail", 1.0, 2.0, 1, "path"),
+            "turn": {"movement": "left"},
+        },
+        {**stretch("Fort Totten Trail", 2.0, 3.0, 1, "path"), "turn": {"shape": {"out": 30}}},
+    ]
+    out = mcp.interval_check(_interval_answer(3.0, entries=entries), {"on_minutes": 5})
+    assert "sharp turn" not in out["breaks"]
+
+
+def test_a_descent_is_read_from_the_heights_not_a_thinned_sample_grade() -> None:
+    answer = _interval_answer(3.0)
+    # A thinned profile keeps a window's steepest grade: one -8% sample on level ground.
+    answer["profile"]["grade_pct"] = [-8.0] * len(answer["profile"]["m"])
+    assert "descent" not in mcp.interval_check(answer, {"on_minutes": 5})["breaks"]
+
+
+def test_intervals_asked_takes_defaults_and_refuses_words() -> None:
+    assert mcp._intervals_asked({}) is not None
+    assert mcp._intervals_asked(None) is None
+    with pytest.raises(mcp.ToolError, match="intervals.sets"):
+        mcp._intervals_asked({"sets": "five"})
