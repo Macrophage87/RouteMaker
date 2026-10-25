@@ -36,6 +36,7 @@ against a live download: docs/OPERATIONS.md has the check to run once it is live
 from __future__ import annotations
 
 import math
+import re
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, time, timedelta
@@ -122,6 +123,18 @@ SNAP_NAMED_SHARE = 0.5
 # A gap that could not be put on its road and is longer than this is not drawn as a straight
 # line: the closure's marker stands at the first point the feed gives (`approximate`).
 DRAW_STRAIGHT_M = 400.0
+# A placed road is kept to within this of the router's shape (Douglas-Peucker), so a long
+# zone stays a few dozen points in the stored copy and the map's answer.
+PLACED_TOLERANCE_M = 4.0
+
+# Roads a bicycle may not use (the owner, 2026-10-25: "It's not worth mentioning closures on
+# roads bikes can't use", of construction on I-97): an Interstate by the feed's name, or a
+# line at least `BARRED_SHARE` of whose samples lie within `BARRED_NEAR_M` of a road the map
+# bars (`core.workzones.on_barred_road`). Such a zone is not kept.
+INTERSTATE = re.compile(r"^\s*(i|ih|is|interstate)[\s-]*\d+\b", re.IGNORECASE)
+BARRED_NEAR_M = 15.0
+BARRED_SHARE = 0.6
+BARRED_SAMPLES = 20
 
 
 @dataclass(frozen=True)
@@ -148,6 +161,9 @@ class Zone:
     roads: tuple[str, ...] = ()
     # Its line is still a long straight line between points the feed gives, not the road.
     approximate: bool = False
+    # The feed gave only its two ends (a MultiPoint, or a line of two points): its line is
+    # put on the road between them (`core.workzones.place`).
+    from_ends: bool = False
 
     @property
     def firm_end(self) -> bool:
@@ -173,6 +189,7 @@ class Zone:
             "published": None if self.published is None else self.published.isoformat(),
             "roads": list(self.roads),
             "approximate": self.approximate,
+            "from_ends": self.from_ends,
         }
 
     @classmethod
@@ -194,6 +211,7 @@ class Zone:
             published=_when(row.get("published")),
             roads=tuple(str(r) for r in row.get("roads") or ()),
             approximate=bool(row.get("approximate")),
+            from_ends=bool(row.get("from_ends")),
         )
 
 
@@ -293,6 +311,7 @@ def parse_feature(feature: Mapping, source: str) -> Zone | None:
         impact=properties.get("vehicle_impact"),
         reason=why,
         roads=tuple(roads),
+        from_ends=len(line) == 2,
     )
 
 
@@ -556,6 +575,52 @@ def road_named(found: str, roads: Iterable[str]) -> bool:
     """Whether a name the router gives a stretch is one of the feed's road names."""
     key = _road_key(found)
     return bool(key) and any(key == _road_key(road) for road in roads)
+
+
+def on_interstate(zone: Zone) -> bool:
+    """Whether the feed names the zone's road as an Interstate, which no bicycle may use."""
+    return any(INTERSTATE.match(road) for road in zone.roads)
+
+
+def samples(line: Sequence[Sequence[float]], most: int = BARRED_SAMPLES) -> list[tuple]:
+    """Up to `most` points spread evenly along a line of [lon, lat] pairs, its ends included."""
+    lat0 = line[0][1]
+    xy = [_xy(p[0], p[1], lat0) for p in line]
+    total = _length(xy)
+    if total <= 0:
+        return [tuple(line[0])]
+    out, run, k = [], 0.0, 0
+    targets = [total * i / (most - 1) for i in range(most)]
+    for a, b in zip(xy, xy[1:], strict=False):
+        seg = math.dist(a, b)
+        while k < len(targets) and targets[k] <= run + seg + 1e-9:
+            t = 0.0 if seg == 0 else (targets[k] - run) / seg
+            out.append(_lonlat(a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1]), lat0))
+            k += 1
+        run += seg
+    return out
+
+
+def simplify_m(line: Sequence[Sequence[float]], tolerance_m: float) -> list[list[float]]:
+    """A line of [lon, lat] pairs with every point within `tolerance_m` of it dropped
+    (Douglas-Peucker); its ends kept."""
+    if len(line) < 3:
+        return [list(p) for p in line]
+    lat0 = line[0][1]
+    xy = [_xy(p[0], p[1], lat0) for p in line]
+    keep = {0, len(xy) - 1}
+    stack = [(0, len(xy) - 1)]
+    while stack:
+        i, j = stack.pop()
+        best, index = -1.0, None
+        for k in range(i + 1, j):
+            d = _to_segment(xy[k], xy[i], xy[j])
+            if d > best:
+                best, index = d, k
+        if index is not None and best > tolerance_m:
+            keep.add(index)
+            stack += [(i, index), (index, j)]
+    return [list(line[k]) for k in sorted(keep)]
 
 
 def road_fits(chord_m: float, routed_m: float, named_m: float, names_known: bool) -> bool:

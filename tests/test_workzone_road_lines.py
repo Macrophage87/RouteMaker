@@ -24,7 +24,7 @@ A, B = (-77.050, 38.990), (-77.030, 38.950)
 ROAD = [A, (-77.046, 38.980), (-77.040, 38.970), (-77.033, 38.960), B]
 
 
-def zone(line=(A, B), roads=("MD 97",), kind=wz.PENALTY) -> wz.Zone:
+def zone(line=(A, B), roads=("MD 97",), kind=wz.PENALTY, from_ends=True) -> wz.Zone:
     return wz.Zone(
         "md-georgia",
         "md",
@@ -36,6 +36,7 @@ def zone(line=(A, B), roads=("MD 97",), kind=wz.PENALTY) -> wz.Zone:
         None,
         None,
         roads=tuple(roads),
+        from_ends=from_ends,
     )
 
 
@@ -93,7 +94,26 @@ class TestRules:
             "properties": {"core_details": {"road_names": ["MD 97"]}, "vehicle_impact": "x"},
             "geometry": {"type": "MultiPoint", "coordinates": [list(A), list(B)]},
         }
-        assert wz.parse_feature(feature, "md").roads == ("MD 97",)
+        parsed = wz.parse_feature(feature, "md")
+        assert parsed.roads == ("MD 97",) and parsed.from_ends
+        feature["geometry"] = {"type": "LineString", "coordinates": [list(p) for p in ROAD]}
+        assert not wz.parse_feature(feature, "md").from_ends
+
+    def test_a_placed_road_is_thinned(self) -> None:
+        dense = [(A[0], A[1] - i * 0.0001) for i in range(200)]  # a straight 2.2 km, every 11 m
+        assert wz.simplify_m(dense, 4.0) == [list(dense[0]), list(dense[-1])]
+        assert wz.simplify_m(ROAD, 4.0) == [list(p) for p in ROAD]
+
+    def test_interstates_by_name(self) -> None:
+        for name in ("I-97", "I 495", "Interstate 95", "IS 270"):
+            assert wz.on_interstate(zone(roads=(name,))), name
+        for name in ("MD 97", "Ingleside Rd", "US 29", "Indian Head Hwy"):
+            assert not wz.on_interstate(zone(roads=(name,))), name
+
+    def test_samples_spread_along_the_line(self) -> None:
+        points = wz.samples(ROAD, 5)
+        assert len(points) == 5
+        assert points[0] == pytest.approx(A) and points[-1] == pytest.approx(B)
 
 
 class TestRouting:
@@ -138,9 +158,10 @@ class TestRoadLine:
         self.ask(monkeypatch, [answer(ROAD, length_m=9000)] * 2)
         assert workzones.road_line(A, B, ("MD 97",)) is None
 
-    def test_no_router_no_line(self, monkeypatch) -> None:
+    def test_the_router_down_is_said_not_taken_for_no_road(self, monkeypatch) -> None:
         self.ask(monkeypatch, [routing.RouterUnavailable("down")] * 2)
-        assert workzones.road_line(A, B, ("MD 97",)) is None
+        with pytest.raises(routing.RouterUnavailable):
+            workzones.road_line(A, B, ("MD 97",))
 
 
 class TestPlace:
@@ -177,11 +198,71 @@ class TestPlace:
         [placed], kept = workzones.place([dense], None, NOW, find=lambda a, b, r: 1 / 0)
         assert placed is dense and kept == {}
 
+    def test_a_line_the_feed_drew_is_left_as_drawn(self) -> None:
+        drawn = zone(from_ends=False)  # a LineString of its own, however sparse
+        [placed], kept = workzones.place([drawn], None, NOW, find=lambda a, b, r: 1 / 0)
+        assert placed is drawn and not placed.approximate and kept == {}
+
+    def test_the_router_down_stops_the_lookups_and_remembers_nothing(self) -> None:
+        calls = []
+
+        def find(a, b, roads):
+            calls.append(a)
+            raise routing.RouterUnavailable("down")
+
+        other = zone(line=((A[0] + 0.1, A[1]), (B[0] + 0.1, B[1])))
+        placed, kept = workzones.place([zone(), other], None, NOW, find=find)
+        assert len(calls) == 1 and kept == {}
+        assert all(z.approximate for z in placed)
+
     def test_past_the_budget_nothing_is_asked_or_remembered(self) -> None:
         [placed], kept = workzones.place(
             [zone()], None, NOW, out_of_time=lambda: True, find=lambda a, b, r: 1 / 0
         )
         assert placed.approximate and kept == {}
+
+
+@db
+class TestBarred:
+    SCHEMA = "barred_wz_test"
+
+    @pytest.fixture
+    def table(self):
+        from django.db import connection
+
+        with connection.cursor() as cursor:
+            cursor.execute(f"DROP SCHEMA IF EXISTS {self.SCHEMA} CASCADE")
+            cursor.execute(f"CREATE SCHEMA {self.SCHEMA}")
+            cursor.execute(
+                f"CREATE TABLE {self.SCHEMA}.segment "
+                "(map_class text NOT NULL, geometry geometry(LineString, 4326) NOT NULL)"
+            )
+            # The motorway along the road; a street crossing it, open to bicycles.
+            cursor.execute(
+                f"INSERT INTO {self.SCHEMA}.segment VALUES "
+                "('barred', ST_GeomFromText(%s, 4326)), ('road', ST_GeomFromText(%s, 4326))",
+                [
+                    "LINESTRING(" + ", ".join(f"{x} {y}" for x, y in ROAD) + ")",
+                    "LINESTRING(-77.06 38.97, -77.02 38.97)",
+                ],
+            )
+        yield self.SCHEMA
+        with connection.cursor() as cursor:
+            cursor.execute(f"DROP SCHEMA {self.SCHEMA} CASCADE")
+
+    def test_a_zone_along_a_barred_road_is_not_for_bikes(self, table) -> None:
+        assert workzones.on_barred_road(ROAD, table)
+        # The straight line only crosses it at its ends: not along it.
+        assert not workzones.on_barred_road([A, B], table)
+        assert not workzones.on_barred_road([(-77.06, 38.97), (-77.02, 38.97)], table)
+
+    def test_no_table_no_verdict(self) -> None:
+        assert not workzones.on_barred_road(ROAD, "no_such_schema_here")
+
+    def test_bikes_may_use(self) -> None:
+        assert workzones.bikes_may_use(zone(), barred=lambda line: False)
+        assert not workzones.bikes_may_use(zone(), barred=lambda line: True)
+        assert not workzones.bikes_may_use(zone(roads=("I-97",)), barred=lambda line: False)
 
 
 @db
@@ -214,4 +295,9 @@ def test_a_refresh_stores_the_road_and_the_place(monkeypatch) -> None:
     stored = BikeshareFeedCache.objects.get(key=workzones.KEY).payload["feeds"]["md"]
     assert [tuple(p) for p in stored["zones"][0]["line"]] == ROAD
     assert len(stored["placed"]) == 1 and calls == [("MD 97",)]
+    # An Interstate's work zone is not kept (the owner, 2026-10-25, of I-97).
+    feed["features"][0]["properties"]["core_details"]["road_names"] = ["I-97"]
+    body = json.dumps(feed).encode()
+    line = workzones.refresh(lambda url, timeout: body, lambda s: None, lambda: NOW)
+    assert line == "work zones: md 0 zones"
     workzones.forget()
