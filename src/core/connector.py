@@ -287,7 +287,15 @@ class DatabaseDrafts:
             check=data["plan"]["check"],
             sent=data["plan"]["sent"],
         )
-        return module.Draft(plan, data["options"], data["limit"], data["name"])
+        return module.Draft(
+            plan,
+            data["options"],
+            data["limit"],
+            data["name"],
+            # Drafts kept before v0.12.3 have neither: the module's defaults.
+            trim_spurs=data.get("trim_spurs", True),
+            intervals=data.get("intervals"),
+        )
 
     def put(self, draft) -> str:
         plan = draft.plan
@@ -304,6 +312,8 @@ class DatabaseDrafts:
             "options": draft.options,
             "limit": draft.limit,
             "name": draft.name,
+            "trim_spurs": draft.trim_spurs,
+            "intervals": draft.intervals,
         }
         draft_id = f"d{secrets.token_hex(4)}"
         with transaction.atomic():
