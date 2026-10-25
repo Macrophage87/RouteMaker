@@ -577,11 +577,12 @@ STYLE = (
     ".action.primary{background:var(--accent);color:var(--accent-ink)}"
     ".action:disabled{opacity:.55;cursor:not-allowed}"
     ".said{min-height:1.5em;margin:.25rem 0}"
-    # A send's outcome (frontend/src/post/postPage.tsx wireSends), over the page where it is seen.
-    ".said.popup{position:fixed;left:50%;bottom:1rem;transform:translateX(-50%);z-index:10;"
-    "width:max-content;max-width:calc(100% - 2rem);margin:0;padding:.75rem 1rem;border-radius:8px;"
+    # A send's outcome over the page (frontend/src/post/sends.ts), where it is seen.
+    ".send-popup{position:fixed;left:50%;bottom:1rem;transform:translateX(-50%);z-index:10;"
+    "width:max-content;max-width:calc(100% - 2rem);padding:.75rem 1rem;border-radius:8px;"
     "background:var(--ink);color:var(--bg);font-weight:700;box-shadow:0 4px 16px #0006;"
-    "cursor:pointer}"
+    "cursor:pointer}.send-popup[hidden]{display:none}"
+    '.action[aria-disabled="true"]{opacity:.55;cursor:progress}'
     ".chart-text{color:var(--muted)}"
     ".highlight{border-left:4px solid var(--accent);padding:.1rem 0 .1rem 1rem;margin:1rem 0}"
     ".section-map{margin:.5rem 0}.section-map figcaption{color:var(--muted);font-size:.95rem}"
