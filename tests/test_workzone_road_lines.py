@@ -6,9 +6,11 @@ straight line". The router is a fake."""
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from django.db import connection
 from test_route_api import encode_polyline6
 
 from core import routing, workzones
@@ -105,14 +107,18 @@ class TestRules:
         assert wz.simplify_m(ROAD, 4.0) == [list(p) for p in ROAD]
 
     def test_interstates_by_name(self) -> None:
-        for name in ("I-97", "I 495", "Interstate 95", "IS 270"):
+        for name in ("I-97", "I 495", "Interstate 95", "IS 270", "I\u201197", "I-97A", "I-95 NB"):
             assert wz.on_interstate(zone(roads=(name,))), name
-        for name in ("MD 97", "Ingleside Rd", "US 29", "Indian Head Hwy"):
+        for name in ("MD 97", "Ingleside Rd", "US 29", "Indian Head Hwy", "I-70 Business"):
             assert not wz.on_interstate(zone(roads=(name,))), name
+        # Named for a road bikes may use as well: the work may be on it.
+        assert not wz.on_interstate(zone(roads=("MD 32", "I-95")))
+        assert not wz.on_interstate(zone(roads=()))
 
     def test_samples_spread_along_the_line(self) -> None:
         points = wz.samples(ROAD, 5)
         assert len(points) == 5
+        assert len(wz.samples(ROAD, 1)) == 2
         assert points[0] == pytest.approx(A) and points[-1] == pytest.approx(B)
 
 
@@ -143,6 +149,16 @@ class TestRoadLine:
         self.ask(monkeypatch, [answer(ROAD)])
         line = workzones.road_line(A, B, ("MD 97",))
         assert [tuple(p) for p in line] == ROAD
+
+    def test_the_routers_shape_is_thinned(self, monkeypatch) -> None:
+        # The router's shape every few metres along the same bends: thinned back to the bends.
+        dense = []
+        for (x0, y0), (x1, y1) in zip(ROAD, ROAD[1:], strict=False):
+            dense += [(x0 + (x1 - x0) * k / 50, y0 + (y1 - y0) * k / 50) for k in range(50)]
+        dense.append(B)
+        self.ask(monkeypatch, [answer(dense)])
+        line = workzones.road_line(A, B, ("MD 97",))
+        assert [tuple(p) for p in line] == pytest.approx(ROAD)
 
     def test_a_one_way_road_is_asked_the_other_way_and_turned_round(self, monkeypatch) -> None:
         asked = self.ask(
@@ -210,10 +226,23 @@ class TestPlace:
             calls.append(a)
             raise routing.RouterUnavailable("down")
 
-        other = zone(line=((A[0] + 0.1, A[1]), (B[0] + 0.1, B[1])))
-        placed, kept = workzones.place([zone(), other], None, NOW, find=find)
-        assert len(calls) == 1 and kept == {}
+        others = [zone(line=((A[0] + d, A[1]), (B[0] + d, B[1]))) for d in (0.1, 0.2)]
+        placed, kept = workzones.place([zone(), *others], None, NOW, find=find)
+        assert len(calls) == 2 and kept == {}  # two failures in a row stop it
         assert all(z.approximate for z in placed)
+
+    def test_one_router_failure_does_not_stop_the_rest(self) -> None:
+        answers = [routing.RouterUnavailable("timeout"), [list(p) for p in ROAD]]
+
+        def find(a, b, roads):
+            reply = answers.pop(0)
+            if isinstance(reply, Exception):
+                raise reply
+            return reply
+
+        other = zone(line=((A[0] + 0.1, A[1]), (B[0] + 0.1, B[1])))
+        [first, second], kept = workzones.place([zone(), other], None, NOW, find=find)
+        assert first.approximate and second.line == tuple(ROAD) and len(kept) == 1
 
     def test_past_the_budget_nothing_is_asked_or_remembered(self) -> None:
         [placed], kept = workzones.place(
@@ -251,18 +280,24 @@ class TestBarred:
             cursor.execute(f"DROP SCHEMA {self.SCHEMA} CASCADE")
 
     def test_a_zone_along_a_barred_road_is_not_for_bikes(self, table) -> None:
-        assert workzones.on_barred_road(ROAD, table)
-        # The straight line only crosses it at its ends: not along it.
-        assert not workzones.on_barred_road([A, B], table)
-        assert not workzones.on_barred_road([(-77.06, 38.97), (-77.02, 38.97)], table)
+        frontage = [(x + 0.0001, y) for x, y in ROAD]  # about 9 m beside the motorway
+        zones = [
+            zone(line=ROAD),
+            zone(line=(A, B)),  # the straight line only meets it at its ends
+            zone(line=((-77.06, 38.97), (-77.02, 38.97))),  # the street crossing it
+            zone(line=frontage),
+        ]
+        zones = [replace(z, zone_id=f"z{i}") for i, z in enumerate(zones)]
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"INSERT INTO {table}.segment VALUES ('road', ST_GeomFromText(%s, 4326))",
+                ["LINESTRING(" + ", ".join(f"{x} {y}" for x, y in frontage) + ")"],
+            )
+        assert workzones.barred_zones(zones, table) == {"z0"}
 
     def test_no_table_no_verdict(self) -> None:
-        assert not workzones.on_barred_road(ROAD, "no_such_schema_here")
-
-    def test_bikes_may_use(self) -> None:
-        assert workzones.bikes_may_use(zone(), barred=lambda line: False)
-        assert not workzones.bikes_may_use(zone(), barred=lambda line: True)
-        assert not workzones.bikes_may_use(zone(roads=("I-97",)), barred=lambda line: False)
+        assert workzones.barred_zones([zone(line=ROAD)], "no_such_schema_here") == set()
+        assert workzones.barred_zones([], "no_such_schema_here") == set()
 
 
 @db
@@ -295,9 +330,17 @@ def test_a_refresh_stores_the_road_and_the_place(monkeypatch) -> None:
     stored = BikeshareFeedCache.objects.get(key=workzones.KEY).payload["feeds"]["md"]
     assert [tuple(p) for p in stored["zones"][0]["line"]] == ROAD
     assert len(stored["placed"]) == 1 and calls == [("MD 97",)]
-    # An Interstate's work zone is not kept (the owner, 2026-10-25, of I-97).
+    # An Interstate's work zone is not kept (the owner, 2026-10-25, of I-97), nor looked up.
     feed["features"][0]["properties"]["core_details"]["road_names"] = ["I-97"]
     body = json.dumps(feed).encode()
+    line = workzones.refresh(lambda url, timeout: body, lambda s: None, lambda: NOW)
+    assert line == "work zones: md 0 zones" and len(calls) == 1
+    stored = BikeshareFeedCache.objects.get(key=workzones.KEY).payload["feeds"]["md"]
+    assert stored["placed"] == {}
+    # A zone along a road the map bars is dropped once it is on the road.
+    feed["features"][0]["properties"]["core_details"]["road_names"] = ["MD 97"]
+    body = json.dumps(feed).encode()
+    monkeypatch.setattr(workzones, "barred_zones", lambda zones: {z.zone_id for z in zones})
     line = workzones.refresh(lambda url, timeout: body, lambda s: None, lambda: NOW)
     assert line == "work zones: md 0 zones"
     workzones.forget()
