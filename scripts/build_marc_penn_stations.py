@@ -252,6 +252,29 @@ def _entrance_kind(tags: dict[str, str]) -> str | None:
     return None
 
 
+# Ways in reported from the spot where OSM tags none, used only while OSM has
+# no entrance or elevator at that station, so a mapped one replaces it. (A
+# building's entrance=main is not read: within reach of a city station it is as
+# often an office block's door.) Baltimore Penn Station: with nothing tagged,
+# routes went for the station node by the tracks and on past the front doors,
+# which face the drop-off loop off N Charles St (placed where the reporter stood
+# at the doors).
+REPORTED_ENTRANCES: dict[str, list[tuple[float, float]]] = {
+    "Baltimore Penn Station": [(-76.6155, 39.30703)],
+}
+
+
+def reported_entrances(stations: list[Station], found: list[Entrance]) -> list[Entrance]:
+    """REPORTED_ENTRANCES for the stations OSM gives no way in."""
+    have = {e.station for e in found}
+    return [
+        Entrance(index, "entrance", lon, lat, "reported")
+        for index, station in enumerate(stations)
+        if index not in have
+        for lon, lat in REPORTED_ENTRANCES.get(station.name, [])
+    ]
+
+
 def station_entrances(data: OsmData, stations: list[Station]) -> list[Entrance]:
     """The elevators and entrances OSM has at or beside each station, each given to one station."""
     members: dict[int, int] = {}
@@ -272,7 +295,7 @@ def station_entrances(data: OsmData, stations: list[Station]) -> list[Entrance]:
             found.append(Entrance(members[node], kind, lon, lat, f"node/{node}"))
         elif distances[nearest] <= radius:
             found.append(Entrance(nearest, kind, lon, lat, f"node/{node}"))
-    return found
+    return found + reported_entrances(stations, found)
 
 
 def _point(lon: float, lat: float) -> dict:

@@ -671,8 +671,6 @@ details.how summary {
 
 .rail-popup .maplibregl-popup-close-button {
   color: var(--text-muted);
-  font-size: 18px;
-  padding: 0 6px;
 }
 
 .station-name {
@@ -1161,15 +1159,16 @@ button.secondary {
   background: #b91c1c;
 }
 
-/* A via is a waypoint on the way, not an end: smaller, white with the
-   route's blue ring, so start and end stand out and the line shows through. */
+/* A stop ("pin-via" is its older name) is a numbered stop on the way, not an end: smaller than the ends, filled
+   with the route's blue and a white number, so it stands well apart from a via point's small hollow ring (Stephen
+   2026-10-24: "a greater distinction between stops and via points"). */
 .pin-via {
-  background: #ffffff;
-  color: #1d4ed8;
-  border: 3px solid #1d4ed8;
-  width: 18px;
-  height: 18px;
-  font-size: 10px;
+  background: #1d4ed8;
+  color: #ffffff;
+  border: 2px solid #ffffff;
+  width: 24px;
+  height: 24px;
+  font-size: 13px;
 }
 
 /* A Mass Ride point on federal land (item 239): a square "!" badge at the marker's corner, a shape
@@ -1685,6 +1684,12 @@ dialog.road-info::backdrop {
   justify-content: space-between;
   align-items: flex-start;
   gap: 12px;
+}
+
+/* Close, a finger's size, as the ride's side menus' are. */
+.road-info-body header button {
+  min-height: 44px;
+  min-width: 44px;
 }
 
 .road-info-body h2 {
@@ -2238,7 +2243,7 @@ ul.station-links {
   border-radius: 4px;
 }
 .junction-popup .maplibregl-popup-content {
-  padding: 8px 28px 8px 10px;
+  padding: 8px 10px;
   max-width: 260px;
   background: var(--bg);
   color: var(--text);
@@ -4113,11 +4118,37 @@ details.zoom-notes {
   margin-top: 16px;
 }
 
-/* The ride's settings, opened by the side buttons' gear, just under the top row. */
+/* The ride's settings, opened by the side buttons' More, just under the top row. */
 .ride-mode-settings {
   margin: 4px 0 10px;
   padding-bottom: 8px;
   border-bottom: 1px solid var(--border);
+}
+
+/* More's own headings: the route's changes, then the settings. */
+.ride-mode-settings h3 {
+  margin: 6px 0;
+  font-size: 1rem;
+}
+
+/* Less traffic and Fewer hills (2026-10-24): large enough to press riding, the symbol beside the words. */
+.ride-change {
+  padding-bottom: 8px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+.ride-change .actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.ride-change .ride-ease {
+  min-height: 48px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
 }
 
 /* Larger than the panel's buttons, at every text size (the owner, 2026-10-20: "End ride and road closed could have larger font in general"). */
@@ -4576,17 +4607,6 @@ details.zoom-notes {
   gap: 8px;
   align-items: center;
   min-height: 44px;
-}
-
-.ride-ask {
-  border: 2px solid var(--accent);
-  border-radius: 8px;
-  padding: 8px 12px;
-  margin: 10px 0;
-}
-
-.ride-ask h3 {
-  margin: 0 0 4px;
 }
 
 .start-ride {
@@ -5428,6 +5448,11 @@ details.zoom-notes {
   border-radius: 999px;
 }
 
+/* A chip that goes to a page of its own (Go's More > Featured routes) looks like the rest. */
+a.chip {
+  text-decoration: none;
+}
+
 .chip[aria-pressed="true"],
 .panel .chip[aria-pressed="true"] {
   background: var(--accent);
@@ -5581,6 +5606,54 @@ details.fold > summary .icon {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Weather along the route (lib/weather.ts): the whole line wraps, so the NWS link is never cut off. */
+.weather-lines .note-line {
+  align-items: flex-start;
+}
+
+.weather-lines .note-line .note-text {
+  white-space: normal;
+  overflow: visible;
+}
+
+.weather-lines a {
+  display: inline-block;
+  min-height: 24px;
+  padding: 2px 0;
+}
+
+/* In a ride, Dismiss is a big button at the lines' side, easy to hit while riding (Stephen 2026-10-24). */
+.weather-riding {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.weather-riding .note-lines {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.ride-notes .weather-dismiss,
+.weather-dismiss {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 88px;
+  min-height: 72px;
+  margin: 6px 0;
+  padding: 8px 12px;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.weather-credit {
+  font-size: 0.85em;
 }
 
 .alert-line {
@@ -5952,6 +6025,36 @@ details.fold > summary .icon {
 }
 
 .ride-menu .nearest-kinds button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Detour's search box (lib/detourSearch.ts): a label over the box and its Find, each a full-size target. */
+.ride-menu .detour-search {
+  margin-top: 8px;
+}
+
+.ride-menu .detour-search label {
+  display: block;
+  font-weight: 700;
+}
+
+.ride-menu .detour-search-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.ride-menu .detour-search input {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  font-size: 1rem;
+}
+
+.ride-menu .detour-search button {
+  min-height: 44px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -6771,8 +6874,8 @@ details.fold > summary .icon {
   gap: 8px;
   margin-top: 12px;
 }
-/* Start ride on a computer (StartOnComputerDialog): the closure warning's frame, in the plain border. */
-.start-computer-dialog {
+/* Ask dialogs (Start ride on a computer, stop name, Resume, Already done?): the closure warning's frame, in the plain border. */
+.ask-dialog {
   max-width: min(440px, calc(100vw - 32px));
   background: var(--bg);
   color: var(--text);
@@ -6781,10 +6884,10 @@ details.fold > summary .icon {
   box-shadow: var(--shadow);
   padding: 16px;
 }
-.start-computer-dialog::backdrop {
+.ask-dialog::backdrop {
   background: rgba(0, 0, 0, 0.45);
 }
-.start-computer-dialog h2 {
+.ask-dialog h2 {
   margin-top: 0;
 }
 
@@ -8458,4 +8561,90 @@ details.fold > summary .icon {
   height: 10px;
   border-radius: 3px;
   border: 2px solid transparent;
+}
+
+/* A stop's name (StopNameDialog, 2026-10-24): the label over a full-width box. */
+.stop-name-dialog label {
+  display: block;
+  margin-bottom: 4px;
+}
+.stop-name-dialog input {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  font-size: 1rem;
+  padding: 8px;
+}
+
+/* Restarting part way (2026-10-24): one stop a row, big enough to tick on the bike; the list scrolls past a screenful. */
+.restart-stops {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+.restart-stops label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  font-size: 1.125rem;
+}
+.restart-stops input {
+  width: 24px;
+  height: 24px;
+}
+
+/* The ride's stops ahead (2026-10-24: "Stops should appear on the map when riding"): the stop's pin, its name beside
+   it at the ride's street-name size (20 px), in the app's font, haloed to read over any map. Not pressable. */
+.ride-stop {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+}
+.ride-stop .pin {
+  cursor: default;
+  flex: none;
+}
+.ride-stop-name {
+  font: 700 20px/1.2 var(--font);
+  color: #0f172a;
+  text-shadow: 0 0 3px #ffffff, 0 0 3px #ffffff, 0 0 3px #ffffff;
+  white-space: nowrap;
+}
+
+/* The next stop in the ride's More panel (2026-10-24): its name, and Skip this stop beside it. */
+.ride-next-stop {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.ride-next-stop p {
+  margin: 0;
+  font-weight: 700;
+}
+
+/* A map card's X, a finger's size (the owner, 2026-10-24: "Some of the various popups that you click on during a ride
+   have very small x's"): 44 px square in the card's top corner. maplibre puts the X after the card's words, so a
+   space floated first keeps the words from running under it. */
+.maplibregl-popup .maplibregl-popup-close-button {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  font-size: 30px;
+  line-height: 1;
+  border-radius: 0 8px 0 8px;
+}
+.maplibregl-popup-content {
+  display: flow-root;
+}
+.maplibregl-popup-content:has(> .maplibregl-popup-close-button)::before {
+  content: "";
+  float: right;
+  width: 34px;
+  height: 36px;
 }
