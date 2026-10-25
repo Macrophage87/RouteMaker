@@ -731,3 +731,127 @@ def test_no_more_orders_are_tried_than_time_allows(monkeypatch) -> None:
     plan, ordered = server._best_order(call, points, [], "default", {}, None, [])
     assert len(places.routes) == 1 and "no time to try more" in ordered["note"]
     assert plan.answer["duration_s"] == 1500.0
+
+
+# --- Closures --------------------------------------------------------------------------------
+#
+# The owner, 2026-10-25 (Lake Frank): "make sure that the MCP server has access to the closure
+# list". A connector route ran along the closed Lakeside Trail to reach a via point only that
+# trail goes past; the site's answer said so, the summary did not.
+
+LAKE_FRANK = "https://montgomeryparks.org/lake-frank"
+
+
+def closure(
+    part, effect, from_mi=None, to_mi=None, title="Lakeside Trail: closed", line=None, pk=4
+):
+    return {
+        "id": f"reviewer-{pk}-{part}",
+        "source": "reviewer",
+        "source_name": "Confirmed by a RouteMaker reviewer",
+        "url": LAKE_FRANK,
+        "kind": "closed",
+        "title": title,
+        "when_text": "Closed through Dec 20",
+        "effect": effect,
+        "effect_text": "On your route" if effect == "on_route" else "No effect on your route",
+        "delay_s": None,
+        "from_m": None if from_mi is None else round(from_mi * MI),
+        "to_m": None if to_mi is None else round(to_mi * MI),
+        "point": at(0.0),
+        "line": line or [at(0.0), at(0.1)],
+    }
+
+
+def _closure_plan(rows, via_mi):
+    line = [at(x / 10) for x in range(31)]
+    answer = {
+        "distance_m": 3.0 * MI,
+        "geometry": {"coordinates": line},
+        "leg_ends": [round(via_mi * 10), 30],
+        "work_zones": {"closures": rows},
+    }
+    return mcp.Plan(
+        [tuple(line[0]), tuple(at(via_mi, 0.1)), tuple(line[-1])], [1], "default", answer, None, {}
+    )
+
+
+def test_closures_on_the_route_are_said_one_row_each() -> None:
+    rows = [
+        closure(0, "on_route", 1.0, 1.4),
+        closure(1, "on_route", 1.4, 1.8),
+        closure(2, "none"),
+        closure(0, "routed_round", title="Connector: closed", pk=3),
+    ]
+    out = mcp.route_details(_closure_plan(rows, via_mi=1.5))
+    # The two ways of one closure are one row, from its first mile to its last.
+    on, round_ = out["closures"]
+    assert on["what"] == "Lakeside Trail: closed" and on["effect"] == "on_route"
+    assert (on["from_mi"], on["to_mi"]) == (1.0, 1.8) and on["url"] == LAKE_FRANK
+    assert round_["effect"] == "routed_round"
+    # The via point is reached on the closed stretch: named, so it can be moved.
+    assert "point 1 (Lakeside Trail: closed, Closed through Dec 20)" in out["closure_warning"]
+
+
+def test_a_route_through_a_closure_with_no_point_on_it_still_warns() -> None:
+    out = mcp.route_closures(_closure_plan([closure(0, "on_route", 2.0, 2.5)], via_mi=1.0))
+    assert "no way round" in out["closure_warning"] and "point 1" not in out["closure_warning"]
+
+
+def test_no_closures_said_when_none_touch_the_route() -> None:
+    assert mcp.route_closures(_closure_plan([closure(0, "none")], via_mi=1.0)) == {}
+    plan = _closure_plan([], via_mi=1.0)
+    plan.answer.pop("work_zones")
+    assert mcp.route_closures(plan) == {}
+
+
+def test_closures_near_lists_each_closure_once_nearest_first() -> None:
+    asked = []
+
+    class Site:
+        base = "http://stand-in"
+
+        def closures_map(self, box, permits):
+            asked.append((box, permits))
+            return [
+                closure(0, "none", line=[at(0.5), at(0.6)]),
+                closure(1, "none", line=[at(0.6), at(0.8)]),
+                closure(
+                    0, "none", title="Connector: closed", line=[at(0.0, 0.2), at(0.0, 0.3)], pk=3
+                ),
+                closure(0, "none", title="Far away: closed", line=[at(5.0), at(5.1)], pk=5),
+            ]
+
+    server = mcp.Server(lambda: Site(), [], out_dir=Path("."))
+    out = server.call("closures_near", {"near": at(0.0), "within_miles": 1})
+    (west, south, east, north), permits = asked[0]
+    assert west < ORIGIN[0] < east and south < ORIGIN[1] < north and permits is False
+    assert [c["what"] for c in out["closures"]] == ["Connector: closed", "Lakeside Trail: closed"]
+    lakeside = out["closures"][1]
+    assert lakeside["away_mi"] == 0.5 and lakeside["miles"] == pytest.approx(0.3, abs=0.05)
+    assert lakeside["url"] == LAKE_FRANK and "effect" not in lakeside
+    server.call("closures_near", {"near": at(0.0), "include_permits": True})
+    assert asked[-1][1] is True
+
+
+def test_a_blocked_bike_lane_is_listed_but_not_warned_about() -> None:
+    lane = {**closure(0, "on_route", 1.0, 1.2), "kind": "lane", "title": "Bike lane blocked"}
+    out = mcp.route_closures(_closure_plan([lane], via_mi=1.1))
+    assert out["closures"][0]["what"] == "Bike lane blocked" and "closure_warning" not in out
+
+
+def test_closures_near_asks_for_a_view_the_site_takes() -> None:
+    boxes = []
+
+    class Site:
+        base = "http://stand-in"
+
+        def closures_map(self, box, permits):
+            boxes.append(box)
+            return []
+
+    server = mcp.Server(lambda: Site(), [], out_dir=Path("."))
+    for lat in (38.2, 39.72):
+        server.call("closures_near", {"near": [-77.0, lat], "within_miles": 50})
+    for west, south, east, north in boxes:
+        assert east - west <= 0.4 and north - south <= 0.3
