@@ -564,15 +564,27 @@ def gaps(line: Sequence[Sequence[float]]) -> list[int]:
 
 
 _ROAD_WORDS = {"maryland": "md", "virginia": "va", "interstate": "i", "route": "", "rte": ""}
+_BOUND = {"nb", "sb", "eb", "wb", "northbound", "southbound", "eastbound", "westbound"}
+_POINTS = {"north", "south", "east", "west"}
+_NUMBERED = re.compile(r"^(md|va|us|i|sr)(\d+[a-z]?)$")
 
 
 def _road_key(name: str) -> str:
     """A road's name as the feed and the map must share it: "Georgia Ave" and "Georgia
-    Avenue" alike, "MD 97", "MD-97" and "Maryland Route 97" alike."""
+    Avenue" alike, "MD 97", "MD-97", "MD97", "MD 97 NB" and "Maryland Route 97" alike. A
+    direction after a route number is the side of the road the work is on, not its name."""
     from . import dc_closures as dc
 
-    words = (_ROAD_WORDS.get(w, w) for w in dc.street_key(name, quadrant=False).split())
-    return " ".join(w for w in words if w)
+    words: list[str] = []
+    for w in dc.street_key(name, quadrant=False).split():
+        w = _ROAD_WORDS.get(w, w)
+        numbered = _NUMBERED.match(w)
+        words.extend(numbered.groups() if numbered else [w] if w else [])
+    while words and (
+        words[-1] in _BOUND or (words[-1] in _POINTS and len(words) > 1 and words[-2][:1].isdigit())
+    ):
+        words.pop()
+    return " ".join(words)
 
 
 def road_named(found: str, roads: Iterable[str]) -> bool:

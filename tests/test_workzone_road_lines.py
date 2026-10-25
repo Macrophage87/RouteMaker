@@ -72,6 +72,14 @@ class TestRules:
         assert wz.road_named("Georgia Avenue", ["GEORGIA AVE"])
         assert not wz.road_named("MD 390", ["MD 97"])
         assert not wz.road_named("Georgia Avenue", [])
+        # the side of the road the work is on, and a route number run together, still match
+        assert wz.road_named("MD 97", ["MD 97 NB"])
+        assert wz.road_named("MD 97", ["MD-97 Southbound"])
+        assert wz.road_named("MD 97", ["MD97"])
+        assert wz.road_named("US 1", ["US 1 S"])
+        # a direction that is part of a street's name stays in it
+        assert not wz.road_named("Georgia Avenue", ["Georgia Ave N"])
+        assert not wz.road_named("Avenue", ["North Ave"])
 
     def test_a_way_much_longer_than_the_line_or_on_other_roads_is_not_the_road(self) -> None:
         assert wz.road_fits(4500, 4900, 4900, True)
