@@ -318,7 +318,7 @@ test("the legend passes the zoom and whether the overlay is on to the zoom notes
 test("the trails' key has a row for their line, in words, at every zoom, while their layer is on, and the stress list does not repeat it (OWNER-DECISIONS 452a, 454; the owner, 2026-10-19)", () => {
   assert.deepEqual(MTB_LEGEND, {
     short: "Mountain-bike trail",
-    label: "Only off-road ride types route on these (Gravel, Mountain Goat and Mountain Bike): brown dashes on a white edge with dark ticks for an unrated trail. Rated ones show by level below; Gravel and Mountain Goat ride green (level 1) too.",
+    label: "Only off-road ride types route on these (Gravel, Mountain Goat and Mountain Bike): brown dashes on a white edge with dark ticks for an unrated trail. Rated ones show by level below; Gravel and Mountain Goat also ride green (level 1) trails.",
   });
   for (const strong of [false, true]) {
     withSwitches(strong, false, () => {

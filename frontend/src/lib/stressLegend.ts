@@ -70,7 +70,7 @@ export const PAVED_RUN_MI = { 11: 2.5, 10: 5 };
  */
 export const MTB_LEGEND: { short: string; label: string } | null = MTB_TRAILS_ROUTABLE
   ? null
-  : { short: "Mountain-bike trail", label: "Only off-road ride types route on these (Gravel, Mountain Goat and Mountain Bike): brown dashes on a white edge with dark ticks for an unrated trail. Rated ones show by level below; Gravel and Mountain Goat ride green (level 1) too." };
+  : { short: "Mountain-bike trail", label: "Only off-road ride types route on these (Gravel, Mountain Goat and Mountain Bike): brown dashes on a white edge with dark ticks for an unrated trail. Rated ones show by level below; Gravel and Mountain Goat also ride green (level 1) trails." };
 
 type MtbLevel = (typeof MTB_LEVELS)[number];
 
