@@ -346,6 +346,22 @@ class TestConnector:
         assert ConnectorDraft.objects.filter(user=user).count() == 3
         assert store.get("dnothere") is None
 
+    def test_a_draft_keeps_its_spur_choice_and_intervals(self) -> None:
+        # revise_route reads both back: losing them dropped the interval check and trimmed a
+        # spur the rider had asked to keep.
+        store = connector.DatabaseDrafts(make_user())
+        module = connector.mcp_module()
+        plan = module.Plan([(-77.03, 38.9), (-77.02, 38.91)], [], "default", {"a": 1}, None, {})
+        intervals = {"on_minutes": 5, "sets": 4}
+        draft_id = store.put(
+            module.Draft(plan, {}, None, "x", trim_spurs=False, intervals=intervals)
+        )
+        kept = store.get(draft_id)
+        assert kept.trim_spurs is False
+        assert kept.intervals == intervals
+        plain = store.get(store.put(module.Draft(plan, {}, None, "y")))
+        assert plain.trim_spurs is True and plain.intervals is None
+
 
 @db
 class TestRoutePostDrafts:

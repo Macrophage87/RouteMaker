@@ -118,6 +118,34 @@ class TestScenicRoads:
         roads = get(client).json()["roads"]
         assert [r["road"] for r in roads] == [None]
 
+    def test_a_slow_read_is_a_503_and_leaves_no_limit_behind(
+        self, client, segment_schemas, names, monkeypatch
+    ) -> None:
+        from django.db import connection, transaction
+
+        from core import scenic_near
+
+        # A real cancelled statement (sqlstate 57014), not a stand-in exception.
+        monkeypatch.setattr(scenic_near, "TIMEOUT_MS", 50)
+        monkeypatch.setattr(scenic_near, "_QUERY", "SELECT pg_sleep(1)")
+        response = get(client)
+        assert response.status_code == 503
+        assert "too long" in response.json()["error"]
+        # A read that finishes inside an outer transaction puts the caller's limit back.
+        monkeypatch.setattr(scenic_near, "_QUERY", "SELECT 1")
+        with transaction.atomic(), connection.cursor() as cursor:
+            cursor.execute("SET LOCAL statement_timeout = '7s'")
+            scenic_near._read("public", *SPOT, 100.0, "")
+            cursor.execute("SELECT current_setting('statement_timeout')")
+            assert cursor.fetchone() == ("7s",)
+
+    def test_a_rider_asking_too_often_is_told_to_wait(self, client, segment_schemas, names) -> None:
+        headers = fresh_client()
+        query = {"lon": SPOT[0], "lat": SPOT[1], "miles": 1}
+        codes = [client.get(URL, query, **headers).status_code for _ in range(6)]
+        assert codes[:5] == [200] * 5 and codes[5] == 429
+        assert client.get("/api/climbs-near", query, **headers).status_code != 429
+
     def test_a_point_outside_the_map_and_a_wide_ask_are_refused(
         self, client, segment_schemas, names
     ) -> None:
