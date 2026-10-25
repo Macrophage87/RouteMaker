@@ -18,8 +18,10 @@ Sign-in is OAuth 2.1 with PKCE, which is what an assistant app speaks: the app r
 (RFC 7591), sends the rider to /oauth/authorize, where the rider signs in with Discord as usual
 and allows it on a page of this site, and trades the code for tokens at /oauth/token. Only
 SHA-256 digests of the code and the tokens are kept. A grant can plan and add routes to My
-routes, like the AI assistant key: it signs nobody in to the site and reads none of the account's
-saved routes.
+routes: it signs nobody in to the site and reads none of the account's saved routes. An instance
+admin's grant can also write Featured routes posts as drafts (draft_route_post,
+core.route_posts.write_draft; the owner, 2026-10-25: "Enable a mechanism for me to have the blog
+posts sent directly from claude"); publishing stays theirs, in the admin.
 
 The endpoint speaks MCP's Streamable HTTP transport in its plainest form: each POST carries one
 JSON-RPC message and is answered with one JSON body, with no stream and no session.
@@ -46,9 +48,10 @@ from django.core import signing
 from django.db import transaction
 from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
 from django.test import RequestFactory
-from django.urls import resolve
+from django.urls import resolve, reverse
 from django.utils import timezone
 from django.utils.html import format_html, format_html_join
+from django.utils.safestring import mark_safe
 from django.views.decorators.csrf import csrf_exempt
 
 from . import ratelimit
@@ -115,7 +118,6 @@ class InProcessApi:
         self._host = request.get_host()
         self._secure = request.is_secure()
         self.user = user
-        self.save_key = "in-process"  # saving needs no key here: the grant is the rider's word
 
     def _request(self, method: str, path: str, body=None, headers=None, timeout=30):
         factory = RequestFactory()
@@ -189,13 +191,14 @@ class InProcessApi:
         return self._module.Api.share(self, body)
 
     def save(self, body: dict) -> dict:
-        """Add to the rider's My routes through the keyed save's own checks and limits."""
+        """Add to the rider's My routes through My routes' own checks and limits (adding only:
+        never a new version of a route already saved)."""
         from .api import _add_saved_route, errors_as_json
 
         factory = RequestFactory()
         address = rider_address(self.user)
         request = factory.post(
-            "/api/keyed/routes",
+            "/api/me/routes",
             data=json.dumps(body),
             content_type="application/json",
             HTTP_HOST=self._host,
@@ -219,6 +222,30 @@ class InProcessApi:
         raise self._module.ToolError(
             f"the site did not save it ({response.status_code}): {message}"
         )
+
+    def draft_post(self, fields: dict, route: dict) -> dict:
+        """Write a Featured routes post as a draft (core.route_posts.write_draft), counted
+        against the rider's account writes."""
+        from . import route_posts
+
+        decision = ratelimit.hit(
+            ratelimit.ACCOUNT_WRITES, ratelimit.client_key(f"user:{self.user.pk}")
+        )
+        if not decision.allowed:
+            raise self._module.ToolError(
+                f"too many changes just now; wait {decision.retry_after_s} seconds"
+            )
+        post, problem = route_posts.write_draft(self.user, fields, route)
+        if problem:
+            raise self._module.ToolError(f"the site did not keep the post: {problem}")
+        return {
+            "slug": post.slug,
+            "status": post.status,
+            "page": f"{self.base}{post.get_absolute_url()}",
+            "admin": self.base + reverse("routemaker_admin:core_routepost_change", args=[post.pk]),
+            "figures": dict(route_posts.figures(post)),
+            "sections": post.sections.count(),
+        }
 
 
 class DatabaseDrafts:
@@ -346,6 +373,7 @@ def mcp_endpoint(request):
         drafts=DatabaseDrafts(user),
         files=False,
         gpx_link=lambda draft_id, name: gpx_link(request, user, draft_id, name),
+        posts=bool(getattr(user, "is_instance_admin", False)),
     )
     msg_id = message.get("id") if isinstance(message, dict) else None
     if msg_id is not None and (isinstance(msg_id, bool) or not isinstance(msg_id, (str, int))):
@@ -684,7 +712,7 @@ If you allow it, it can:</p>
 <ul>
 <li>plan routes with RouteMaker's routing, each with a link to it that lasts a week</li>
 <li>add routes to your My routes, when you ask it to</li>
-</ul>
+{posts}</ul>
 <p>It can't read your saved routes, sign in to the site as you, or change anything else.</p>
 <p>After you answer you'll go back to <strong>{host}</strong>.</p>
 <form method="post" action="/oauth/authorize">
@@ -696,6 +724,11 @@ If you allow it, it can:</p>
 </div>
 </form>""",
         app=client.name or "An assistant app",
+        posts=mark_safe(
+            "<li>write Featured routes posts as drafts, for you to publish in the admin</li>\n"
+        )
+        if getattr(user, "is_instance_admin", False)
+        else "",
         host=target.hostname,
         csrf=get_token(request),
         hidden=hidden,
