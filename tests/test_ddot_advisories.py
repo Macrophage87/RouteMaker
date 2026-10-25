@@ -153,6 +153,4 @@ class TestTheSnapshot:
         found = workzones.closures_on(line, at=now, now=now)
         (row,) = [r for r in found["closures"] if r["source_key"] == advisories.SOURCE]
         assert row["road"] == BY_ID["connave-1600-nb"].road
-        assert saved_route_alerts._until(row["end"], False, row["source_key"]) == (
-            "through Nov 3, 2026"
-        )
+        assert saved_route_alerts._until(row["end"], row["source_key"]) == ("through Nov 3, 2026")
