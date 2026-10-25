@@ -47,7 +47,8 @@ routes and keeping your 311 checklist on your other devices.
 - In the map's bottom-left corner is a small button, "Beta notice" (it shows the word "Beta"),
   after the map's own controls. It says whether it is collapsed or expanded. Press it to open a
   region, also called "Beta notice", right after it: it says that routes may still use some
-  paths where bikes are not allowed until the next map update. Press the button again, or
+  paths where bikes are not allowed until the next map update, then links our Discord for
+  reports and has a small "Sign up to test here!" link. Press the button again, or
   Escape, to close it; the focus stays on the button. It is not shown in Ride mode.
 - The "Layers" page (a button in the bar at the bottom of the planner) has one row per section:
   Traffic stress, Water and restrooms, Rail stations, Bikeshare and e-bikes, Places to see and
