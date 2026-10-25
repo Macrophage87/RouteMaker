@@ -169,7 +169,7 @@ def test_no_host_name_is_written_into_the_preview() -> None:
 
 def test_the_favicon_ico_is_the_favicon_at_16_32_and_48_px() -> None:
     """scripts/make_app_icons.py's PNG frames, which Google's favicon service and old browsers
-    read; frontend/index.html links it beside the SVG."""
+    read at the site's root. frontend/index.html links only the SVG, so a browser tab keeps it."""
     data = (REPO / "frontend" / "public" / "favicon.ico").read_bytes()
     reserved, kind, count = struct.unpack("<HHH", data[:6])
     assert (reserved, kind, count) == (0, 1, 3)
@@ -183,5 +183,3 @@ def test_the_favicon_ico_is_the_favicon_at_16_32_and_48_px() -> None:
         assert struct.unpack(">II", frame[16:24]) == (width, height)
         sizes.append(width)
     assert sizes == [16, 32, 48]
-    index = (REPO / "frontend" / "index.html").read_text()
-    assert '<link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48" />' in index

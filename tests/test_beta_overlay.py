@@ -911,7 +911,7 @@ def test_the_sign_in_page_is_small_plain_and_names_no_channel() -> None:
     assert len(page) < 2000
 
 
-def test_robots_txt_disallows_everything_and_the_noindex_header_is_everywhere() -> None:
+def test_robots_txt_allows_only_the_home_page_and_icons_and_noindex_is_on_the_rest() -> None:
     full = stage("full")
     robots = dict(locations(full))["= /robots.txt"]
     # Only the home page and the icons, for Google's favicon service (the connector's icon).

@@ -698,7 +698,8 @@ then `sudo rm -f /var/log/nginx/rmbeta-access.log* /var/log/nginx/rmbeta-error.l
 
 What the site does, so you can explain it to the owner: only `robots.txt`, `/delete-account`
 (Google Play's account-deletion page), `/privacy` (the privacy policy) and the port-80 ACME challenge path are public; everything else, including `/healthz`, `/auth/` and the admin path, asks for
-a password. Every response carries `X-Robots-Tag: noindex, nofollow`. `/api` has 75-second timeouts
+a password. Every response but the favicons and `/icons/` carries `X-Robots-Tag: noindex, nofollow`
+(those go without, for the connector's icon: OPERATIONS.md, "The connector's icon"). `/api` has 75-second timeouts
 (a plan takes up to 47 seconds). JSON and vector tiles are gzipped. The base map answers only this
 site's own pages.
 
@@ -720,7 +721,7 @@ scripts/beta/smoke-test.sh --public https://beta.example.org --passwords-file ~/
 
 (It signs in as the first tester in the file, reading the password itself and passing it to curl on
 standard input; no password is in the command line, the output or your transcript.) Every line must
-say `PASS`. It checks: robots.txt is public and disallows everything; `/` and `/healthz` return 401
+say `PASS`. It checks: robots.txt is public and disallows everything but the home page and the icons; `/` and `/healthz` return 401
 without credentials and a wrong password is refused; the 401 still asks for a password
 (`WWW-Authenticate: Basic`) and its page says how to get in; noindex and the content security policy are
 present; http redirects to https; the front end loads; a preset link redirects; the base map answers

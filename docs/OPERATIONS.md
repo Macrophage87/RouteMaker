@@ -3499,8 +3499,9 @@ favicon service (`https://www.google.com/s2/favicons?domain=<site>`) has for the
 domain, and a globe while Google has none. The site gives Google what it needs, and the MCP
 answer names the icons too, for apps that read them:
 
-- `/favicon.ico` (16, 32 and 48 px, drawn by `scripts/make_app_icons.py`) beside `/favicon.svg`,
-  and the home page (and the preview a fetcher gets there) links both and `icons/icon-192.png`.
+- `/favicon.ico` (16, 32 and 48 px, drawn by `scripts/make_app_icons.py`) beside `/favicon.svg`.
+  Googlebot asking for the home page gets the link preview (`/link-preview`), which links both and
+  `icons/icon-192.png`; the app's own index.html links only the SVG, so browser tabs keep it.
 - On the beta, robots.txt lets a crawler read the home page, the favicons and `/icons/`, and
   nothing else. The favicons and `/icons/` carry no `X-Robots-Tag: noindex`; the home page still
   does, so it stays out of search results.
@@ -3508,7 +3509,11 @@ answer names the icons too, for apps that read them:
   (MCP 2025-11-25): the SVG favicon and the 192 and 512 px PNGs (`core.connector.server_icons`).
 
 Google picks a new favicon up on its own crawl, which can take days to weeks, and claude.ai keeps
-the icon it last saw for a domain. Check what Google has (a 404 is the globe):
+the icon it last saw for a domain. If Google still has nothing a few weeks after a release with
+this is on the beta, the home page's noindex is the next thing to try dropping (the owner's call:
+the home page would then show in search results). With a site password back on, Google's favicon
+fetcher (user agent "Google Favicon") meets the password at `/` and only `/favicon.ico` works.
+Check what Google has (a 404 is the globe):
 
 ```sh
 curl -s -o /dev/null -w '%{http_code}\n' 'https://www.google.com/s2/favicons?domain=<site>&sz=64' -L
