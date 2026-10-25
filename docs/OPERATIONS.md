@@ -6997,6 +6997,20 @@ that table. The planner reads it at most once a minute a process. Nothing needs 
   or never read well, its zones are dropped and the description says "Work zones could not be
   checked for this route: ... not available". Before the first refresh is stored nothing is said
   at all (`work_zones` is null).
+- Lines given only by their ends (Maryland's MultiPoint, or a line of two points) are put on the
+  road between them (2026-10-25, Georgia Ave drawn straight from Wheaton to Silver Spring): the
+  worker asks the `standard` router for the way by car and keeps it only when it is at most
+  1.25x the straight line + 200 m [660 ft] and mostly on a road the feed names. Each place is
+  remembered in the row (`feeds.md.placed`), so a refresh routes only new zones, at most 50 in 2
+  minutes; a miss is retried after 6 hours, a router failure at the next refresh (two in a row
+  stop that refresh's look-ups). A zone over 400 m [1,300 ft] that could not be placed is shown as
+  a marker at its first end, with no line, and is matched by routing against the straight line as
+  before.
+- Zones on roads bicycles may not use are not kept (the owner, 2026-10-25: "not worth mentioning
+  closures on roads bikes can't use"): one every road name of which is an Interstate ("I-97",
+  never "I-70 Business"), dropped before it is placed; or one at least 60% of whose samples have,
+  as their nearest road within 15 m [50 ft], one the live map bars (`map_class` barred), checked
+  in one query a refresh once it is on the road.
 
 **After the release is deployed** (no rebuild needed):
 
@@ -7018,7 +7032,15 @@ that table. The planner reads it at most once a minute a process. Nothing needs 
 2. Plan a route along a road you know has a lane closure listed in the feed (the Maryland 511 map
    shows them). The description should carry "Work zone ahead at ... Source: Maryland DOT SHA work
    zones (WZDx, CC0).", and the answer's `work_zones.status` should be `{"md": "current"}`.
-3. The operations page lists `refresh_work_zones` as stale if no refresh has succeeded for 30
+3. On the map, a Maryland zone given by its ends (Georgia Ave, MD 97, if still listed) follows the
+   road, and no I-97 or I-495 zone is listed (one also named otherwise, "Capital Beltway", is
+   dropped only once it is on the road):
+
+   ```sh
+   docker compose exec -T postgis psql -U routemaker -d routemaker -c \
+     "SELECT z->>'road' FROM bikeshare_feed_cache, jsonb_array_elements(payload->'feeds'->'md'->'zones') z WHERE key = 'workzones' ORDER BY 1;"
+   ```
+4. The operations page lists `refresh_work_zones` as stale if no refresh has succeeded for 30
    minutes.
 
 **Dropping Virginia** needs no code change: empty `SMARTERROADS_TOKEN` and `docker compose up -d

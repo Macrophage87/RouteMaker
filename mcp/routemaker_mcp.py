@@ -1280,7 +1280,117 @@ TOOLS = [
         },
         "annotations": {"readOnlyHint": True, "openWorldHint": False},
     },
+    {
+        "name": "draft_route_post",
+        "description": (
+            "Write a Featured routes post (a page at /routes/<slug> around one exact route) as a"
+            " DRAFT, for the site's admin to read and publish in the admin. Offered only to an"
+            " instance admin on the site's own connector. The route is a draft_id from"
+            " plan_route, open_link or revise_route, or a line to follow (an encoded polyline at"
+            " precision 6, as from a GPX file), planned here as the app plans an opened file."
+            " To revise it, send the same slug with replace: true (sections are replaced); a"
+            " post that has left draft is refused. Refused too if the route starts, ends or"
+            " stops in the admin's Home circle. Answers the draft page's link and its figures."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "minLength": 1, "maxLength": 120},
+                "slug": {
+                    "type": "string",
+                    "maxLength": 80,
+                    "description": "The page's address; made from the title when left out.",
+                },
+                "abstract": {"type": "string", "minLength": 1, "description": "About this ride."},
+                "audience": {"type": "string", "description": "Who it's for."},
+                "byline": {"type": "string", "maxLength": 60, "default": "RouteMaker"},
+                "season_label": {"type": "string", "maxLength": 40},
+                "season_start": {"type": "string", "description": 'Month and day, as "03-20".'},
+                "season_end": {"type": "string", "description": 'Month and day, as "04-15".'},
+                "sections": {
+                    "type": "array",
+                    "maxItems": 12,
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "heading": {"type": "string", "minLength": 1, "maxLength": 120},
+                            "body": {"type": "string"},
+                            "from_mile": {"type": "number", "minimum": 0},
+                            "to_mile": {"type": "number", "exclusiveMinimum": 0},
+                        },
+                        "required": ["heading"],
+                    },
+                    "description": (
+                        "Highlighted sections in order; with both miles (along the route) the"
+                        " page draws a small map of that stretch."
+                    ),
+                },
+                "replace": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Rewrite the draft already at this slug.",
+                },
+                "draft_id": {"type": "string"},
+                "follow": {
+                    "type": "object",
+                    "properties": {
+                        "polyline": {"type": "string", "minLength": 4},
+                        "preset": RIDE_OPTIONS["preset"],
+                        "exact": {
+                            "type": "boolean",
+                            "default": False,
+                            "description": "Follow the line as ridden, against one-way streets.",
+                        },
+                    },
+                    "required": ["polyline"],
+                },
+            },
+            "required": ["title", "abstract"],
+        },
+        "annotations": {"readOnlyHint": False, "destructiveHint": False, "openWorldHint": False},
+    },
 ]
+
+# Offered only where the site says the rider may write posts (`Server(posts=True)`).
+POST_TOOLS = {"draft_route_post"}
+POST_FIELDS = (
+    "title",
+    "slug",
+    "abstract",
+    "audience",
+    "byline",
+    "season_label",
+    "season_start",
+    "season_end",
+    "sections",
+    "replace",
+)
+
+
+def decode_polyline(encoded: str, precision: int = 6) -> list[list[float]]:
+    """An encoded polyline (Valhalla's, precision 6) as [[lon, lat], ...]."""
+    factor = 10**precision
+    points, index, lat, lon = [], 0, 0, 0
+    while index < len(encoded):
+        deltas = []
+        for _ in range(2):
+            shift = result = 0
+            while True:
+                if index >= len(encoded):
+                    raise ToolError("follow.polyline is cut short")
+                byte = ord(encoded[index]) - 63
+                index += 1
+                if not 0 <= byte < 64:
+                    raise ToolError("follow.polyline is not an encoded polyline")
+                result |= (byte & 0x1F) << shift
+                shift += 5
+                if byte < 0x20:
+                    break
+            deltas.append(~(result >> 1) if result & 1 else result >> 1)
+        lat += deltas[0]
+        lon += deltas[1]
+        points.append([lon / factor, lat / factor])
+    return points
 
 
 class Call:
@@ -1382,6 +1492,7 @@ class Server:
         drafts=None,
         files: bool = True,
         gpx_link=None,
+        posts: bool = False,
     ):
         self._api_factory = api_factory
         self._api: Api | None = None
@@ -1394,12 +1505,16 @@ class Server:
         self.files = files
         # On the site: function(draft_id, name) -> a download link for the draft's GPX.
         self.gpx_link = gpx_link
+        # Whether draft_route_post is offered: on the site's connector, for an instance admin.
+        self.posts = posts
 
     def tools(self) -> list[dict]:
-        """The tools, as tools/list gives them: without the GPX file where none can be written."""
+        """The tools, as tools/list gives them: without the GPX file where none can be written,
+        and without the post tool unless posts may be written."""
+        offered = [t for t in TOOLS if self.posts or t["name"] not in POST_TOOLS]
         if self.files:
-            return TOOLS
-        listed = json.loads(json.dumps(TOOLS))
+            return offered
+        listed = json.loads(json.dumps(offered))
         for tool in listed:
             tool["inputSchema"]["properties"].pop("gpx_file", None)
         return listed
@@ -1649,6 +1764,60 @@ class Server:
             out["notes"] = notes
         return out
 
+    # draft_route_post
+    def draft_route_post(self, args: dict, call: Call) -> dict:
+        if bool(args.get("draft_id")) == bool(args.get("follow")):
+            raise ToolError("give the route as draft_id or as follow, one of the two")
+        call.check()
+        if args.get("draft_id"):
+            draft = self.drafts.get(str(args["draft_id"]))
+            if draft is None:
+                raise ToolError(
+                    f"no draft {args['draft_id']} (drafts last only a while; plan it again)"
+                )
+            plan = draft.plan
+            dials = self._dials(plan)
+            fragment = plan_fragment(plan.points, plan.vias, plan.preset, dials, plan.sent)
+            route = kept_route(plan, draft.name, fragment, dials)
+        else:
+            follow = args["follow"]
+            if not isinstance(follow, dict) or not isinstance(follow.get("polyline"), str):
+                raise ToolError("follow: an object with the line as polyline")
+            line = decode_polyline(follow["polyline"])
+            if len(line) < 2:
+                raise ToolError("follow.polyline has fewer than two points")
+            preset = str(follow.get("preset") or "default")
+            ends = [line[0], line[-1]]
+            body = {
+                "preset": preset,
+                "points": ends,
+                "follow": follow["polyline"],
+                "follow_exact": bool(follow.get("exact")),
+                "candidates": False,
+            }
+            call.report(0, 1, "planning the line")
+            answer = self.api.route(body)
+            geometry = (answer.get("geometry") or {}).get("coordinates") or []
+            route = {
+                "source": "gpx",
+                "line": [list(v[:3]) for v in geometry],
+                "distance_m": answer.get("distance_m"),
+                "inputs": {"points": ends, "preset": preset},
+                "answer": {
+                    **answer,
+                    "candidates": None,
+                    "avoid_alternate": None,
+                    "closure_through": None,
+                },
+            }
+        fields = {k: args[k] for k in POST_FIELDS if k in args}
+        call.check()
+        out = self.api.draft_post(fields, route)
+        out["notes"] = [
+            "a draft: only admins can see the page until it is published in the admin",
+        ]
+        return out
+
     # open_link
     def open_link(self, args: dict, call: Call) -> dict:
         link = str(args["link"]).strip()
@@ -1875,6 +2044,8 @@ class Server:
         return self._draft(best, options, limit, notes, f"{target:.0f} mi Metro loop", taken=taken)
 
     def handler(self, name: str):
+        if name in POST_TOOLS and not self.posts:
+            return None
         return {
             "find_place": self.find_place,
             "metro_stations": self.metro_stations,
@@ -1884,6 +2055,7 @@ class Server:
             "revise_route": self.revise_route,
             "save_route": self.save_route,
             "gpx_route": self.gpx_route,
+            "draft_route_post": self.draft_route_post,
         }.get(name)
 
     def call(self, name: str, args: dict, call: Call | None = None) -> dict:
