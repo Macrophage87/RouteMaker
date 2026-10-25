@@ -3472,7 +3472,7 @@ places, held equal by `tests/test_link_preview.py`: `share_preview.FETCHER_RE`, 
 Caddyfile's `@link_fetcher` and the beta nginx map `$rmbeta_link_fetcher`.
 
 **The beta's password.** A fetcher has no password, so on the beta these paths are outside it:
-`/s/<id>` and `/s/<id>/preview.png`, `/link-preview`, `/icons/` and `/favicon.svg`. Nothing
+`/s/<id>` and `/s/<id>/preview.png`, `/link-preview`, `/icons/`, `/favicon.svg` and `/favicon.ico`. Nothing
 else is: a browser following a shared link is redirected into the app and still meets the
 password, and `/index.html`, the API and the map stay behind it. Re-render and install the
 template as BETA-RUNBOOK.md, "Shipping an update later", step 9 says, then check without the
@@ -3491,6 +3491,33 @@ Chat apps keep a preview for a while (Discord about a day; Messages and iMessage
 link already posted keeps its old blank preview: try a link not shared before, or add `?v=2`.
 Redraw the card and the route image's icon when the icon changes:
 `python3 scripts/make_share_images.py`.
+
+## The connector's icon (v0.12.3)
+
+claude.ai's connector list does not read the icon a connector names. It shows whatever Google's
+favicon service (`https://www.google.com/s2/favicons?domain=<site>`) has for the connector's
+domain, and a globe while Google has none. The site gives Google what it needs, and the MCP
+answer names the icons too, for apps that read them:
+
+- `/favicon.ico` (16, 32 and 48 px, drawn by `scripts/make_app_icons.py`) beside `/favicon.svg`.
+  Googlebot asking for the home page gets the link preview (`/link-preview`), which links both and
+  `icons/icon-192.png`; the app's own index.html links only the SVG, so browser tabs keep it.
+- On the beta, robots.txt lets a crawler read the home page, the favicons and `/icons/`, and
+  nothing else. The favicons and `/icons/` carry no `X-Robots-Tag: noindex`; the home page still
+  does, so it stays out of search results.
+- The connector's `initialize` answer has `serverInfo.title` "RouteMaker" and `serverInfo.icons`
+  (MCP 2025-11-25): the SVG favicon and the 192 and 512 px PNGs (`core.connector.server_icons`).
+
+Google picks a new favicon up on its own crawl, which can take days to weeks, and claude.ai keeps
+the icon it last saw for a domain. If Google still has nothing a few weeks after a release with
+this is on the beta, the home page's noindex is the next thing to try dropping (the owner's call:
+the home page would then show in search results). With a site password back on, Google's favicon
+fetcher (user agent "Google Favicon") meets the password at `/` and only `/favicon.ico` works.
+Check what Google has (a 404 is the globe):
+
+```sh
+curl -s -o /dev/null -w '%{http_code}\n' 'https://www.google.com/s2/favicons?domain=<site>&sz=64' -L
+```
 
 ## Featured routes: writing a post (v0.12.1)
 

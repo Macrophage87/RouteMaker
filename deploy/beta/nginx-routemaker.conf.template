@@ -45,7 +45,8 @@
 # the browser sends the same credentials on the redirect back from Discord.
 #
 # add_header does not inherit into a location that has its own add_header, so every
-# location that sets one repeats X-Robots-Tag and Strict-Transport-Security;
+# location that sets one repeats X-Robots-Tag (all but the favicons and /icons/, for the
+# connector's icon) and Strict-Transport-Security;
 # tests/test_beta_overlay.py fails if one is missed.
 #
 # IPv6: the `listen [::]:...` lines are kept only if the host's other sites listen on IPv6
@@ -171,12 +172,16 @@ server {
                application/javascript text/javascript image/svg+xml;
 
     # --- public: robots.txt ------------------------------------------------------
+    # A crawler may read the home page and the icons, and nothing else: Google's favicon service,
+    # which claude.ai's connector list takes a connector's icon from, needs both (docs/
+    # OPERATIONS.md, "The connector's icon"). The home page still says noindex, so it stays out
+    # of search results.
     location = /robots.txt {
         auth_basic off;
         default_type text/plain;
         add_header X-Robots-Tag "noindex, nofollow" always;
         add_header Strict-Transport-Security "max-age=86400" always;
-        return 200 "User-agent: *\nDisallow: /\n";
+        return 200 "User-agent: *\nAllow: /$\nAllow: /favicon.ico\nAllow: /favicon.svg\nAllow: /icons/\nDisallow: /\n";
     }
 
     # --- the sign-in page (error_page 401 above): internal only, so never served directly, and
@@ -343,10 +348,11 @@ server {
         return 302 /about/stress.html;
     }
 
-    location = /favicon.svg {
+    # The favicons and the icons carry no noindex: they are the app's logo, and Google's favicon
+    # service (the connector's icon, robots.txt above) may skip an image marked noindex.
+    location ~ ^/favicon\.(svg|ico)$ {
         auth_basic off;
         root @DATA_ROOT@/frontend;
-        add_header X-Robots-Tag "noindex, nofollow" always;
         add_header Strict-Transport-Security "max-age=86400" always;
         add_header Cache-Control "public, max-age=86400" always;
     }
@@ -390,7 +396,6 @@ server {
     location ^~ /icons/ {
         auth_basic off;
         root @DATA_ROOT@/frontend;
-        add_header X-Robots-Tag "noindex, nofollow" always;
         add_header Strict-Transport-Security "max-age=86400" always;
         add_header Cache-Control "public, max-age=86400" always;
     }
