@@ -25,7 +25,7 @@ export const OUTPUT_LABELS: Record<CueOutput, string> = {
 export interface RidePrefs {
   output: CueOutput;
   verbosity: Verbosity;
-  /** Whether the rider has chosen yet: the first Start ride asks (plan Q3). */
+  /** Whether the rider has picked in Settings or the ride's settings (no Start ride asks any more: the owner, 2026-10-24). */
   chosen: boolean;
 }
 
