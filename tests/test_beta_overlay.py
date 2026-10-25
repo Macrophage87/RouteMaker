@@ -112,11 +112,12 @@ def test_the_only_published_port_is_the_apis_on_loopback(rendered: dict) -> None
 
 
 @needs_docker
-def test_the_resident_total_is_about_seven_point_one_gib_and_the_peak_counts_the_one_shot() -> None:
-    # With the two trail routers (the owner, 2026-10-20: "Both, raise limit to 7.1 GB").
+def test_the_resident_total_is_about_7_3_gib_and_the_peak_counts_the_one_shot() -> None:
+    # With the two trail routers (the owner, 2026-10-20: "Both, raise limit to 7.1 GB") and the
+    # worker at 512M for the pre-draw (2026-10-25, ceiling 7.35 GiB).
     services = beta.render(offroad=True)["services"]
-    assert beta.resident_bytes(services) == 7230 * 1024**2  # compose.beta.yaml's header
-    assert beta.peak_bytes(services) == (7230 + 256) * 1024**2  # plus migrate, the largest one-shot
+    assert beta.resident_bytes(services) == 7486 * 1024**2  # compose.beta.yaml's header
+    assert beta.peak_bytes(services) == (7486 + 256) * 1024**2  # plus migrate, the largest one-shot
     assert beta.resident_bytes(services) / 1024**3 <= beta.MAX_RESIDENT_GB
     assert not any(
         "resident total" in p or "startup peak" in p for p in beta.check({"services": services})
@@ -437,7 +438,7 @@ def test_the_checker_refuses_renderer_and_bot() -> None:
 
 def test_the_memory_constants_are_the_reviewed_figures() -> None:
     assert beta.HOST_AVAILABLE_GB == 8.6
-    assert beta.MAX_RESIDENT_GB == 7.1
+    assert beta.MAX_RESIDENT_GB == 7.35
     assert beta.PEAK_MARGIN_GB == 1.0
     assert beta.PHOTON_OTHER_NATIVE_MB == 192
     assert beta.POSTGRES_MAX_SHARED_BUFFERS_FRACTION == 0.30
@@ -450,9 +451,9 @@ def _cap(service: dict, mb: int) -> None:
     service["memswap_limit"] = f"{mb}M"
 
 
-@pytest.mark.parametrize(("api_mb", "ok"), [(1618, True), (1619, False)])
-def test_the_resident_ceiling_is_exactly_seven_point_one_gib(api_mb: int, ok: bool) -> None:
-    # good() is 7102 MiB resident with a 1450M api; 7270.4 MiB is 7.1 GiB exactly
+@pytest.mark.parametrize(("api_mb", "ok"), [(1874, True), (1875, False)])
+def test_the_resident_ceiling_is_exactly_seven_point_three_five_gib(api_mb: int, ok: bool) -> None:
+    # good() is 7102 MiB resident with a 1450M api; 7526.4 MiB is 7.35 GiB exactly
     found = problems_for(lambda s: _cap(s["api"], api_mb))
     assert (not any("resident total" in p for p in found)) is ok, found
 
@@ -948,6 +949,9 @@ def test_the_body_size_caps_agree_at_every_layer() -> None:
     from config import settings as config
     from core import accounts, shared_routes
 
+    # /api/keyed is retired (v0.12.2) but stays in both patterns for one release: a change under
+    # deploy/ would hold the release for a hand ship (scripts/beta/cd_logic.py), and the extra
+    # path only 404s. Drop it from both with the next nginx template change.
     pattern = "^/api/(shared-routes|me|keyed)(/|$)"
     big = dict(locations(stage("full")))[f"~ {pattern}"]
     assert "client_max_body_size 5m;" in big
@@ -968,7 +972,6 @@ def test_the_body_size_caps_agree_at_every_layer() -> None:
         "/api/shared-routes/ab",
         "/api/me/routes",
         "/api/me",
-        "/api/keyed/routes",
     ):
         assert re.match(pattern, path), path
     assert not re.match(pattern, "/api/meta") and not re.match(pattern, "/api/route")
@@ -2753,7 +2756,7 @@ def test_the_runbook_records_the_servers_facts_and_checks_them_read_only() -> No
     a variable and its address is checked live, never written down."""
     step1 = RUNBOOK[RUNBOOK.index("## 1. Prerequisites") : RUNBOOK.index("## 2. Get the code")]
     assert "export RM_SSH_HOST=<" in RUNBOOK[: RUNBOOK.index("## 1. Prerequisites")]
-    for fact in ('ssh "$RM_SSH_HOST"', "`nofail`", "root disk", "8510 MiB", "x86_64"):
+    for fact in ('ssh "$RM_SSH_HOST"', "`nofail`", "root disk", "8766 MiB", "x86_64"):
         assert fact in step1, fact
     assert "https://api.ipify.org" in step1 and "getent ahostsv4 beta.example.org" in step1
     assert '[ -n "$dns" ] && [ -n "$me" ] && [ "$dns" = "$me" ]' in step1  # re-check ops SF-A
@@ -3030,9 +3033,9 @@ def test_the_certificate_paths_and_the_checkout_come_from_the_vars_file() -> Non
 
 
 def test_the_runbook_states_the_budget_in_both_units() -> None:
-    """Re-check 2 ops NIT-5: 7230 MiB is 7.06 GiB, and the two are written together."""
-    assert round(7230 / 1024, 2) == 7.06 and round(7486 / 1024, 2) == 7.31
-    assert "7230 MiB = 7.06 GiB" in RUNBOOK and "7486 MiB = 7.31 GiB" in RUNBOOK
+    """Re-check 2 ops NIT-5: 7486 MiB is 7.31 GiB, and the two are written together."""
+    assert round(7486 / 1024, 2) == 7.31 and round(7742 / 1024, 2) == 7.56
+    assert "7486 MiB = 7.31 GiB" in RUNBOOK and "7742 MiB = 7.56 GiB" in RUNBOOK
 
 
 @needs_sh

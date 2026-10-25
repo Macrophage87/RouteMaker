@@ -16,7 +16,7 @@ comes from:
 - Discord sign-in: core.discord_oauth (identify scope, no token kept) and core.models.User (the
   Discord id and dates only); the bot's role cache: core.membership.
 - What an account keeps: core.models MyGo, AccountSettings (frontend/src/lib/accountSettings.ts,
-  weight included), Report311Log, SavedRoute and SavedRouteVersion, AssistantKey (a digest), and
+  weight included), Report311Log, SavedRoute and SavedRouteVersion, and
   ConnectorGrant and ConnectorDraft (core.connector).
 - Shared links: core.shared_routes (keeping, no weight, owner only) and core.share_preview (Home
   left out of the preview).
@@ -55,7 +55,7 @@ from . import account_deletion
 PATH = account_deletion.PRIVACY_PATH
 TITLE = "RouteMaker privacy policy"
 # Change with the text: the date a rider reads as when this page last said something new.
-LAST_UPDATED = ("2026-10-24", "October 24, 2026")
+LAST_UPDATED = ("2026-10-25", "October 25, 2026")
 # Unless the deployment sets PRIVACY_CONTACT (an e-mail address or a web address).
 CONTACT = "Questions, or a request about your data: ask the site's owner on Discord."
 CONTACT_LEAD = "Questions, or a request about your data: "
@@ -182,8 +182,7 @@ SECTIONS: list[tuple[str, str]] = [
                 "My Go: the view the app opens in, your ride type, and Home (one point and its "
                 "label).",
                 "Your 311 log (below).",
-                "An AI assistant key, kept only as a one-way code, and the assistant apps you "
-                "connected, with the routes they drafted for a week.",
+                "The assistant apps you connected, with the routes they drafted for a week.",
             ]
         )
         + _p(

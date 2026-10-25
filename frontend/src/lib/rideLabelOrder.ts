@@ -14,9 +14,13 @@
  */
 import { OVER_STATION_NAMES, RAIL_LAYERS } from "./railLayer.ts";
 import { ROAD_LABEL_LAYER_IDS, TRAIL_LABEL_LAYER_ID } from "../stressStyle.js";
+import { ROUTE_NAME_LAYER_ID } from "./routeNames.ts";
 
-/** The ride's lifted labels, bottom first: the trails' names under the minor streets', under the major roads'. */
-export const RIDE_LABEL_LAYERS: readonly string[] = [TRAIL_LABEL_LAYER_ID, ...ROAD_LABEL_LAYER_IDS.slice().reverse()];
+/**
+ * The ride's lifted labels, bottom first: the trails' names under the minor streets', under the major roads', under
+ * the route's own (lib/routeNames.ts), so the street the route takes is named before any other.
+ */
+export const RIDE_LABEL_LAYERS: readonly string[] = [TRAIL_LABEL_LAYER_ID, ...ROAD_LABEL_LAYER_IDS.slice().reverse(), ROUTE_NAME_LAYER_ID];
 
 /**
  * Where the ride's labels go in `order` (the map's layers, bottom first): together, in RIDE_LABEL_LAYERS' order,
