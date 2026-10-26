@@ -134,9 +134,15 @@ jobs:
           ./gradlew --no-daemon processReleaseMainManifest
           merged="$(find app/build/intermediates -path '*release*' -name AndroidManifest.xml | xargs grep -l 'routes.example.org' | head -1)"
           [ -n "$merged" ] || { echo "::error::The release manifest did not take the site's links (src/links/AndroidManifest.xml)."; exit 1; }
-          grep -q 'android:autoVerify="true"' "$merged"
-          # The stand-in must not reach the debug APK built next.
-          ./gradlew --no-daemon clean
+          # Merged into main's SetupActivity, beside the launcher and Share filters, not in place of them.
+          node -e '
+            const m = require("fs").readFileSync(process.argv[1], "utf8");
+            const setup = m.slice(m.search(/android:name="(org\.routemaker\.phone)?\.?SetupActivity"/));
+            const own = setup.slice(0, setup.indexOf("</activity>"));
+            for (const want of ["android.intent.category.LAUNCHER", "android.intent.action.SEND", "android.intent.action.VIEW", "android:autoVerify=\"true\"", "routes.example.org"]) {
+              if (!own.includes(want)) { console.error(`::error::SetupActivity in the merged release manifest lacks ${want}.`); process.exit(1); }
+            }
+          ' "$merged"
       - name: Debug APK
         if: env.BUILD == 'debug'
         working-directory: mobile/android
