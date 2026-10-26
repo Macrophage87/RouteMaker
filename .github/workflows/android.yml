@@ -125,6 +125,18 @@ jobs:
       - name: Java unit tests
         working-directory: mobile/android
         run: ./gradlew --no-daemon testDebugUnitTest
+      - name: The store build's tapped links merge (a stand-in site, nothing built or kept)
+        if: env.BUILD == 'debug'
+        working-directory: mobile/android
+        env:
+          ROUTEMAKER_LINK_SITE: https://routes.example.org
+        run: |
+          ./gradlew --no-daemon processReleaseMainManifest
+          merged="$(find app/build/intermediates -path '*release*' -name AndroidManifest.xml | xargs grep -l 'routes.example.org' | head -1)"
+          [ -n "$merged" ] || { echo "::error::The release manifest did not take the site's links (src/links/AndroidManifest.xml)."; exit 1; }
+          grep -q 'android:autoVerify="true"' "$merged"
+          # The stand-in must not reach the debug APK built next.
+          ./gradlew --no-daemon clean
       - name: Debug APK
         if: env.BUILD == 'debug'
         working-directory: mobile/android
@@ -148,6 +160,8 @@ jobs:
           ROUTEMAKER_KEYSTORE_PASSWORD: ${{ secrets.ROUTEMAKER_KEYSTORE_PASSWORD }}
           ROUTEMAKER_KEY_ALIAS: ${{ secrets.ROUTEMAKER_KEY_ALIAS }}
           ROUTEMAKER_KEY_PASSWORD: ${{ secrets.ROUTEMAKER_KEY_PASSWORD }}
+          # Links to the site open in the store app (mobile/README.md, "Links open in the app").
+          ROUTEMAKER_LINK_SITE: ${{ secrets.ROUTEMAKER_SITE_URL }}
         run: |
           if [ -z "$KEYSTORE_BASE64" ] || [ -z "$ROUTEMAKER_KEYSTORE_PASSWORD" ] || [ -z "$ROUTEMAKER_KEY_ALIAS" ] || [ -z "$ROUTEMAKER_KEY_PASSWORD" ]; then
             echo "::error::A release build needs the secrets ROUTEMAKER_KEYSTORE_BASE64, ROUTEMAKER_KEYSTORE_PASSWORD, ROUTEMAKER_KEY_ALIAS and ROUTEMAKER_KEY_PASSWORD (mobile/README.md)."
