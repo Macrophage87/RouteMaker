@@ -1029,7 +1029,12 @@ class IntersectionOut(Schema):
         description='What a click shows, US units first: "Left turn across a 4-lane 35 mph '
         '(56 km/h) road, no signal".'
     )
-    crossed_tier: int | None = Field(description="The busy road's LTS, 3-5; null if unknown.")
+    crossed_tier: int | None = Field(
+        description=(
+            "The crossed road's LTS on the map, 1-5; null if unknown. Below 3 only where"
+            " the junction read a multi-lane road by its traffic, not its bike lane."
+        )
+    )
     movement: Literal["left", "straight", "right"]
     control: Literal["signal", "stop", "cross_stop", "all_stop", "none"]
     kind: str
