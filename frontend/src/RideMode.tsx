@@ -28,8 +28,8 @@
  *   (lib/rideDock.ts), 311 anywhere on the route, and More; each a round icon with its name for screen readers, its menu
  *   opening beside it. More opens a row of bubbles beside it (2026-10-26: "just expanded as more bubble buttons, not in
  *   settings"): the route's changes (Less traffic and Fewer hills, one step down the traffic or hills slider and a new
- *   route from here, lib/rideEase.ts; Skip this stop, lib/rideStops.ts) and Settings, the ride's settings opening under
- *   the top row. The bottom panel shows only when it
+ *   route from here, lib/rideEase.ts; Skip this stop, lib/rideStops.ts), Topo lines on or off (lib/topoLines.ts) and
+ *   Settings, the ride's settings opening under the top row. The bottom panel shows only when it
  *   has something to say or ask: GPS and screen notes, off route, Ride the rest.
  *   Answers asked for (Where am I?, a detour's progress) show for a few seconds by the buttons.
  *
@@ -201,6 +201,8 @@ import {
   type Still,
 } from "./lib/rideDock.ts";
 import { Icon } from "./Icon.tsx";
+import { TOPO_LINES_LABEL, setTopoLines, topoAvailable, useTopoLines } from "./lib/topoLines.ts";
+import { TOPO_LINES_ROW_UNAVAILABLE } from "./lib/terrainSection.ts";
 import { DepartureTimer } from "./DepartureTimer.tsx";
 import { NextVehicleLine } from "./NextVehicleLine.tsx";
 import type { VehicleMark } from "./lib/nextVehicle.ts";
@@ -267,7 +269,10 @@ export const SLIDE_TO_END_HINT = "Slide End ride to the right to end the ride.";
  * "put options like skip a stop, lower traffic and hills in an expansion with settings").
  */
 export const RIDE_SETTINGS_TEXT = "More";
-export const RIDE_MORE_NAME = "More: change the route, and ride settings";
+export const RIDE_MORE_NAME = "More: change the route or the map, and ride settings";
+/** Topo lines from More (Stephen 2026-10-26: "In the ... section allow topo lines to be toggled on and off during a ride"): Map layers' own switch (lib/topoLines.ts). */
+export const RIDE_TOPO_ON = `${TOPO_LINES_LABEL} on.`;
+export const RIDE_TOPO_OFF = `${TOPO_LINES_LABEL} off.`;
 export const RIDE_SETTINGS_TITLE = "Ride settings";
 export const RIDE_CHANGE_TITLE = "Change the route";
 /** Broadcast on the ride screen (Stephen 2026-10-24: "Let people broadcast from a ride"): Plan's and Go's Broadcast, the ride already going. */
@@ -1694,6 +1699,25 @@ export function RideMode({
     settingsButton.current?.focus();
     press();
   };
+  // Topo lines (Stephen 2026-10-26): the same switch as Map layers' Topo lines, kept per browser. Turned on only once
+  // the server is found to have the contours (lib/topoLines.ts topoAvailable, asked once a ride); otherwise said so.
+  const topoOn = useTopoLines();
+  const topoReady = useRef<Promise<boolean> | null>(null);
+  const toggleTopo = async () => {
+    if (topoOn) {
+      setTopoLines(false);
+      answer(RIDE_TOPO_OFF);
+      return;
+    }
+    topoReady.current ??= topoAvailable();
+    if (!(await topoReady.current)) {
+      topoReady.current = null;
+      answer(TOPO_LINES_ROW_UNAVAILABLE);
+      return;
+    }
+    setTopoLines(true);
+    answer(RIDE_TOPO_ON);
+  };
   const ease = async (which: Ease) => {
     const was = dialsRef.current;
     const next = eased(preset, was, which);
@@ -2618,7 +2642,8 @@ export function RideMode({
               settings to a gear icon in the rack"; More since 2026-10-24). It opens a row of bubbles to its left
               (Stephen 2026-10-26): the route's changes, each one press, a new route from here (not on a route everyone
               shares, `fixed`, nor once arrived), the symbols alone on screen (2026-10-23: "Symbol should be clear"),
-              and Settings, opening the ride's settings under the top row. */}
+              Topo lines on or off (2026-10-26, always there: it changes the map, not the route), and Settings, opening
+              the ride's settings under the top row. */}
           <div
             className="ride-pop ride-more"
             onKeyDown={(event) => {
@@ -2671,6 +2696,16 @@ export function RideMode({
                   <span aria-hidden="true">{nextStop.number}</span>
                 </button>
               )}
+              <button
+                type="button"
+                className={`ride-round ride-topo${topoOn ? " ride-round-on" : ""}`}
+                onClick={() => fromMore(() => void toggleTopo())}
+                aria-label={TOPO_LINES_LABEL}
+                aria-pressed={topoOn}
+                title={TOPO_LINES_LABEL}
+              >
+                <Icon name="topo" size={24} />
+              </button>
               <button
                 type="button"
                 ref={settingsBubble}
