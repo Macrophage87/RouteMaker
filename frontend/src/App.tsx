@@ -3305,6 +3305,8 @@ export function App() {
   // A press's check under way (Start ride, a download, a save): another press waits for it, ignored (v0.7.0 end
   // review). The check gives up after CHECK_TIMEOUT_MS and the press goes ahead unchecked.
   const closureChecking = useRef(false);
+  // The closure check a shared or saved route's open runs: a broadcast's Ride mode starts after it (opensIntoRide).
+  const openCheck = useRef<Promise<void> | null>(null);
   const checkThen = async (why: CheckFor, line: readonly (readonly number[])[], gpx: boolean, proceed: () => void, afterGpx?: (track: number[][]) => void, onAsk?: () => void) => {
     if (line.length < 2 || closureLetGo.current === lineKey(line)) {
       proceed();
@@ -3632,7 +3634,7 @@ export function App() {
     if (window.location.hash !== saved.inputs.hash) window.location.hash = saved.inputs.hash;
     else retry();
     announce(said);
-    void checkThen("open", saved.line, false, () => {});
+    openCheck.current = checkThen("open", saved.line, false, () => {});
     // Today's map, asked quietly: more than 5% apart in distance offers Update route; nothing changes without it.
     void requestRoute(plan.points, plan.preset, { dials: plan.dials, straight: plan.drawn }).then((today) => {
       if (today.ok && savedShown.current?.key === key && differsTooMuch(saved.distance_m, today.route.distance_m))
@@ -3953,19 +3955,27 @@ export function App() {
   const stale = status.kind === "loading" || status.kind === "waiting";
   const shown = status.kind === "error" || status.kind === "confirm" ? null : route;
   // A broadcast link opened on a phone goes straight into Ride mode, the leader's dot on its map (lib/rideGroup.ts
-  // opensIntoRide): a route's broadcast starts its ride, as Start's press does (its closure check too); a Roam
-  // broadcast starts Roam. Started without a press, so the voice is unlocked by the first tap after (iOS).
+  // opensIntoRide): a route's broadcast starts its ride as Start's press does, once the open's own closure check has
+  // found nothing (closures found: its question stays, and Start is the rider's); a Roam broadcast starts Roam. Judged
+  // once, when the link is first ready: a ride already going or the Resume question then, and it never starts later.
+  // Started without a press, so the voice is unlocked by the first tap after (iOS), unless it is already speaking.
   const autoRode = useRef(false);
-  const followingLink = (sharedOpen?.ride === true && !!sharedOpen.lead && !sharedOpen.own) || (roamBroadcast !== null && !roamBroadcast.leading);
-  const linkReady = sharedOpen?.ride && sharedOpen.lead ? shown === sharedOpen.answer : roamBroadcast !== null;
+  const sharedFollow = sharedOpen?.ride === true && !!sharedOpen.lead && !sharedOpen.own && shown === sharedOpen.answer && !stale && rideableRoute(shown);
+  const roamFollow = roamBroadcast !== null && !roamBroadcast.leading;
   useEffect(() => {
-    if (!opensIntoRide({ phone: looksLikePhone(), following: followingLink, ready: linkReady, onBike, resumeAsked: leftAsk !== null, done: autoRode.current })) return;
+    const ready = sharedFollow || roamFollow;
+    if (!ready || autoRode.current) return;
     autoRode.current = true;
-    if (sharedOpen?.ride && sharedOpen.lead) startRideNoted("");
-    else startRoam();
-    const unlock = () => primeRideVoice(ridePrefs);
-    document.addEventListener("pointerdown", unlock, { once: true, capture: true });
-  }, [followingLink, linkReady, onBike, leftAsk]);
+    if (!opensIntoRide({ phone: looksLikePhone(), onBike, resumeAsked: leftAsk !== null })) return;
+    const unlock = () => {
+      if ((ridingNow.current || roamingNow.current) && !window.speechSynthesis?.speaking) primeRideVoice(ridePrefsNow.current);
+    };
+    document.addEventListener("click", unlock, { once: true, capture: true });
+    if (!sharedFollow) return startRoam();
+    void (openCheck.current ?? Promise.resolve()).then(() => {
+      if (!closurePending.current && !ridingNow.current) startRideNoted("");
+    });
+  }, [sharedFollow, roamFollow]);
   // Light times on the route (lib/lightTimes.ts): near dawn or dusk, where the rider will be at each, leaving now.
   // The clock runs only with a route shown, outside a ride; the same marks are kept while nothing they say changed.
   const minute = useMinute(shown !== null && !riding && (mode === "plan" || mode === "go"));

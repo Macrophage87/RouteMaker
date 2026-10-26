@@ -201,13 +201,13 @@ export const CONSENT_QUESTION = "Show me as a dot to others on this ride?";
 export const CONSENT_NOTE = `Only while the app is open and you are within ${QUARTER_MILE} of the route. No name; positions are rounded and gone after 2 minutes.`;
 /** On a broadcast: shown on or off the route, so the leader and the riders can find each other. */
 /**
- * Whether a broadcast link, opened, goes straight into Ride mode (Stephen 2026-10-26: "Opening the broadcast mode
- * should enter ride mode with the leader's dot shown"): on a phone only (a computer opening it watches the leader, as
- * before), once per page, for one following (not the sharer), once its route is the one shown (a Roam broadcast has
- * none), and not over a ride already going or a left ride's Resume question.
+ * Whether a broadcast link one follows, once ready (its route shown, or a Roam broadcast's leader named), goes straight
+ * into Ride mode (Stephen 2026-10-26: "Opening the broadcast mode should enter ride mode with the leader's dot shown"):
+ * on a phone only (a computer opening it watches the leader, as before), and not over a ride already going or a left
+ * ride's Resume question. Judged once per page (App.tsx).
  */
-export function opensIntoRide(at: { phone: boolean; following: boolean; ready: boolean; onBike: boolean; resumeAsked: boolean; done: boolean }): boolean {
-  return at.phone && at.following && at.ready && !at.onBike && !at.resumeAsked && !at.done;
+export function opensIntoRide(at: { phone: boolean; onBike: boolean; resumeAsked: boolean }): boolean {
+  return at.phone && !at.onBike && !at.resumeAsked;
 }
 
 export const BROADCAST_CONSENT_NOTE = "Only while the app is open, on or off the route, so the leader and riders can find each other. No name; positions are rounded and gone after 2 minutes.";

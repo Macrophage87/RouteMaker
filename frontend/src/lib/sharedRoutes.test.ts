@@ -209,7 +209,7 @@ test("App: a shared link's line opens as a saved route does, before the link's f
   assert.match(open, /setSharedNote\(SHARED_GONE\);/);
   // openSaved runs the closure check on the line as kept, and keeps the inputs for Update route.
   const opened = app.slice(app.indexOf("const openSaved = ("), app.indexOf("const exportSaved = "));
-  assert.match(opened, /void checkThen\("open", saved\.line, false, \(\) => \{\}\);/);
+  assert.match(opened, /(?:void|openCheck\.current =) checkThen\("open", saved\.line, false, \(\) => \{\}\);/);
   assert.match(opened, /differsTooMuch\(saved\.distance_m, today\.route\.distance_m\)/);
   // Start ride checks the line about to be ridden.
   // Review F1: through a callback that carries on the voice the press unlocked.

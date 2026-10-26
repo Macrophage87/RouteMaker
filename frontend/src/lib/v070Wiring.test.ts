@@ -17,7 +17,7 @@ test("a route opened, Start ride and Download GPX are each checked against the c
   assert.match(app, /openImported: openImportedChecked/);
   assert.match(app, /if \(plan\.verbatim\) void checkThen\("open", plan\.verbatim\.track, true/);
   // A saved planned route, against its saved line; a plan link, once its first route is on screen.
-  assert.match(app, /void checkThen\("open", saved\.line, false/);
+  assert.match(app, /(?:void|openCheck\.current =) checkThen\("open", saved\.line, false/);
   assert.match(app, /const checkFirstAnswer = useRef\(PLAN_LINK\)/);
   // Download, the secondary case.
   assert.match(app, /checkThen\("download"/);
