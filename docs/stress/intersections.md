@@ -42,6 +42,24 @@ sign when it is safe. Tier 5 (Avoid) is priced as tier 4: every table gives tier
 tier 4 value (`:70`, `:76`, `:216`, `:233`, `:238`), and the severe tier of section 3
 takes both (`SEVERE_MIN_TIER = 4`, `:151`).
 
+**A road the rider gives way to is read by its traffic** (`by_traffic`, `traffic_tier`).
+A road's tier is the stress of riding along it, and a painted lane lowers it; a rider
+waiting at a stop sign to cross it, or to turn onto it, gets nothing from that lane, only
+gaps in its through lanes. The owner, 2026-10-26, of Sheridan St NW across Piney Branch
+Rd NW (a stop on Sheridan, none on Piney Branch, which is LTS 2 for its bike lanes): "a
+busy 2 lane each way road ... this intersection should be weighted much more highly." So
+where the rider gives way (a stop sign on their side, or nothing mapped and the rider's
+road no busier on the map), a multi-lane road (two or more through lanes each way, or three
+or more on a one-way) is read at the tier its traffic alone gives it, when that is higher:
+Furth's mixed-traffic multi-lane row, LTS 3 above 20 mph and LTS 4 from 30 mph [48 km/h],
+or LTS 3 where a count shows 8,000 vehicles a day or fewer (the classifier's busy-street
+figure). It never lowers a road. Signals, all-way stops, a road closed to cars at the
+ride's time, a divided road's two-lane carriageways and the Mass Ride reading are left
+alone. The event still names the road's tier on the map; its words give the lanes and
+speed ("Crossing a 4-lane 30 mph (48 km/h) road, stop sign on your side"). Piney Branch
+at Sheridan is now red: 0.85 calm mi [1.37 km; 4,500 ft], and at weekday rush hour 1.86
+calm mi [3.0 km; 9,840 ft], the floor for any unsignalized LTS 4 crossing (section 7).
+
 ## 3. Crossing a busy road, from the stopped side
 
 The big cost is waiting at a stop sign, or at no control at all, to cross free-flowing
