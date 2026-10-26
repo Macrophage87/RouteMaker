@@ -42,6 +42,8 @@ export interface CapacitorBridge {
 export const GEO_PLUGIN = "BackgroundGeolocation";
 export const SPEECH_PLUGIN = "TextToSpeech";
 export const NOTICE_PLUGIN = "LocalNotifications";
+/** The app's share sheet (mobile/android/.../SharePlugin.java): Android's WebView has no navigator.share. */
+export const SHARE_PLUGIN = "RouteMakerShare";
 
 /** The shell's bridge, or null in a browser (or a page whose `Capacitor` object is not a native one). */
 export function nativeBridge(scope: unknown = globalThis): CapacitorBridge | null {
@@ -70,6 +72,25 @@ function platform(bridge: CapacitorBridge): string {
   } catch {
     return "";
   }
+}
+
+// ---- The share sheet ------------------------------------------------------------------------------
+
+/**
+ * The phone app's share sheet, in navigator.share's shape (lib/share.ts ShareNavigator), or null in a browser or an
+ * app built before it had one (Stephen 2026-10-26: "I don't seem to be able to broadcast rides", in the app). The
+ * title, text and link only: no files, and no canShare (so Share's GPX file is not offered). Android's chooser does
+ * not say whether the rider sent the link or backed out, so an opened sheet counts as sent.
+ */
+export function nativeShareNavigator(scope: unknown = globalThis): { share: (data: { title: string; text: string; url: string }) => Promise<void> } | null {
+  const bridge = nativeBridge(scope);
+  if (!bridge || !has(bridge, SHARE_PLUGIN)) return null;
+  // An older bridge without isPluginAvailable is not assumed to have it (unlike the three ride plugins, which every
+  // build ships): the button would show and then fail.
+  if (typeof bridge.isPluginAvailable !== "function") return null;
+  return {
+    share: ({ title, text, url }) => bridge.nativePromise(SHARE_PLUGIN, "share", { title, text, url }).then(() => undefined),
+  };
 }
 
 // ---- The latest cue, on Android's notification shade ---------------------------------------------
