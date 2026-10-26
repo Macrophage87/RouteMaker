@@ -129,12 +129,13 @@ AT_START, AT_END = 0.001, 0.999
 
 _ROADS_BY_WAY = """
 SELECT j.idx, j.way, seg.tier, seg.aadt, seg.speed, seg.lanes, seg.oneway,
-       seg.default_speed, seg.urban, seg.half
+       seg.default_speed, seg.urban, seg.half, seg.car_free
 FROM unnest(%s::int[], %s::bigint[], %s::float8[], %s::float8[]) AS j(idx, way, lon, lat)
 CROSS JOIN LATERAL (
     SELECT {tier} AS tier, s.volume_aadt AS aadt, {speed} AS speed,
            {lanes} AS lanes, {oneway} AS oneway,
-           {default_speed} AS default_speed, {urban} AS urban, {half} AS half
+           {default_speed} AS default_speed, {urban} AS urban, {half} AS half,
+           {car_free} AS car_free
     FROM {schema}.segment AS s
     WHERE s.osm_way_id = j.way
     ORDER BY s.geometry <-> ST_SetSRID(ST_MakePoint(j.lon, j.lat), 4326)
@@ -829,6 +830,8 @@ def roads_by_way(
             else link_tier
         ),
         half=half,
+        # Closed to cars at the ride's time: no traffic to read it by (`intersections.by_traffic`).
+        car_free="(%s = ANY(s.car_free_when))" if with_facility else "false",
         speed="s.road_speed_mph" if traits else "NULL::smallint",
         lanes="s.road_lanes" if traits else "NULL::smallint",
         oneway="s.road_oneway" if traits else "NULL::boolean",
@@ -836,7 +839,12 @@ def roads_by_way(
         urban="s.road_urban" if costs else "NULL::boolean",
     )
     arrays = [list(column) for column in zip(*wanted_ways, strict=True)]
-    params = [*arrays, *([when] if with_facility else []), *([when] if "%s" in half else [])]
+    params = [
+        *arrays,
+        *([when] if with_facility else []),
+        *([when] if "%s" in half else []),
+        *([when] if with_facility else []),
+    ]
     found: dict[tuple[int, int], Road] = {}
     from .routing import plan_cursor
 
@@ -854,6 +862,7 @@ def roads_by_way(
             default,
             urban,
             half_step,
+            car_free,
         ) in cursor.fetchall():
             found[(idx, way_id)] = Road(
                 tier=int(tier) if tier is not None else None,
@@ -864,6 +873,7 @@ def roads_by_way(
                 default_speed_mph=float(default) if default is not None else None,
                 urban=urban,
                 half=half_step is True,
+                car_free=car_free is True,
             )
     return found
 

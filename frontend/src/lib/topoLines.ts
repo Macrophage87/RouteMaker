@@ -214,14 +214,21 @@ export function syncTopoLines(map: TopoMap, on: boolean): void {
   }
 }
 
-/** Whether the server has the archive: a HEAD of it (the edge's same-site guard is met by the page's own Referer). */
-export async function topoAvailable(fetcher: typeof fetch = fetch): Promise<boolean> {
+/**
+ * Whether the server has the archive: a HEAD of it (the edge's same-site guard is met by the page's own Referer).
+ * "offline" when the request itself failed (no signal), so a ride can say so rather than "not on this server".
+ */
+export async function topoArchive(fetcher: typeof fetch = fetch): Promise<"yes" | "no" | "offline"> {
   try {
     const response = await fetcher(TOPO_PATH, { method: "HEAD" });
-    return response.ok;
+    return response.ok ? "yes" : "no";
   } catch {
-    return false;
+    return "offline";
   }
+}
+
+export async function topoAvailable(fetcher: typeof fetch = fetch): Promise<boolean> {
+  return (await topoArchive(fetcher)) === "yes";
 }
 
 // ---- the switch's state: per browser, shared by the sheet and the map ------------------
