@@ -218,7 +218,8 @@ permission list.
 ## Building
 
 **Workflow** (`.github/workflows/android.yml`): on a pull request that touches `mobile/` or the
-workflow, a debug build only; by hand (Run workflow), debug or release; never on a push. Node 22, JDK
+workflow, a debug build only; by hand (Run workflow), debug or release; on a release tag (`vX.Y.Z`)
+whose `mobile/` changed since the tag before, the release build, uploaded to Play (below); no other push. Node 22, JDK
 21, the runner's Android SDK; `npm ci`, `npm test`, `npx cap sync android`, a check that the synced
 config names no site, `./gradlew testDebugUnitTest`, then the APK. The checkout keeps no token
 (`persist-credentials: false`); actions are pinned by commit. A pull request's debug APK names no site,
@@ -236,6 +237,7 @@ other). Without the secret (a fork's pull request) it is `org.routemaker.phone`,
 | `ROUTEMAKER_DEBUG_KEYSTORE_BASE64` | secret | optional: a steady key for debug builds only, `base64 -w0 debug.keystore` |
 | `ROUTEMAKER_APP_ID` | secret | the application id, such as `com.example.app`; permanent once on Play |
 | `ROUTEMAKER_SITE_URL` | secret | the site's https origin, baked into the release (store) build only |
+| `ROUTEMAKER_PLAY_SERVICE_ACCOUNT` | secret | optional: a Google service account's JSON key, for the upload to Play on a release tag |
 
 The debug key uses Android's standard debug passwords (`android`) and alias (`androiddebugkey`), so it
 is one secret. Make it once with
@@ -254,6 +256,23 @@ directory only, and uploads a signed APK and an `.aab` for Play, kept 3 days. De
 its passwords safe (losing it means a new Play listing):
 `keytool -genkeypair -v -keystore release.jks -alias routemaker -keyalg RSA -keysize 4096 -validity 10000`.
 Never commit it (`mobile/.gitignore` refuses `*.jks` and `*.keystore`).
+
+**On a release tag** the same store build runs by itself, but only when `mobile/` changed since the
+tag before (the app loads the site, so a site-only release needs no new app). With the
+`ROUTEMAKER_PLAY_SERVICE_ACCOUNT` secret set, `scripts/play-upload.sh` then uploads the `.aab` to
+Play's **internal testing** track, with release notes linking `docs/releases/<tag>.md`; it uses only
+curl, openssl and jq, and the key stays in the runner's temporary directory. Without the secret the
+bundle is in the run's artifact as before. If Play refuses the upload (a reused version code, or a
+release Play wants done by hand first), the run goes red with Google's reason in its log, and the
+bundle is still in the artifact to upload in Play Console. Moving a build on to the closed test or production stays
+a click in Play Console. Setting up the account, once:
+
+1. Google Cloud console: create a project (or use one), turn on the **Google Play Android Developer
+   API**, create a service account, and add a **JSON key** to it.
+2. Play Console, **Users and permissions**: invite the service account's email, give it access to the
+   app with **Release to testing tracks**.
+3. GitHub: add the JSON file's whole contents as the `ROUTEMAKER_PLAY_SERVICE_ACCOUNT` secret, then
+   delete the downloaded file.
 
 **Locally** (Android Studio or the SDK installed, JDK 21):
 

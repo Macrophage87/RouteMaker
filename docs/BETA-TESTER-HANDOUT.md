@@ -129,11 +129,12 @@ You stay responsible for riding safely; the route can be wrong.
   reader, RouteMaker's voice, both, or neither (on screen only), and how much: Full (every turn,
   early and again close to it), Stoker (each turn once ahead and as it happens, busy crossings and
   stops: for the rider behind on a tandem) or Quiet (only arrival). Until you change them,
-  RouteMaker's voice says every turn. Both choices stay on this device; change them in
-  the ride's More panel (the last side button) during a ride, or in Settings.
+  RouteMaker's voice says every turn. Both choices stay on this device; change them during a
+  ride under More (the last side button), then the Settings gear, or in Settings.
 - Under the turn, the ride shows the distance and time to the next stop and to the end, and the clock time you
-  should get there ("8 min · 6:42 AM"). Once you have ridden about half a mile the times follow your own pace, not
-  only the route's; a long stop on the way does not count against you.
+  should get there ("8 min · 6:42 AM"). The times count the climbs and the waits at junctions still ahead where they
+  are. Once you have ridden about half a mile they follow your own pace, not only the route's; a long stop on the
+  way does not count against you.
 - "Where am I?" (it also re-centres the map on you) says the street you are on, the next turn and the distance to the next stop
   and the end, with the time you should arrive at each. On a long trail away from roads it says the trail and a distance from its last
   junction, for example "On the Capital Crescent Trail, about 1.2 miles northwest of ...".

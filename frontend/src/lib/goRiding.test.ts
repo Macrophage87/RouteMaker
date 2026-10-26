@@ -236,7 +236,7 @@ test("More on the ride screen (Stephen 2026-10-26): the route's changes and Sett
   assert.doesNotMatch(panel, /ride-change|ease\(which\)|SKIP_STOP/);
   assert.match(bubbles, /role="group" aria-label=\{RIDE_MORE_NAME\} hidden=\{!moreOpen\}/);
   // Skip this stop is a bubble, named with the stop, its number shown; Instead of stop N stays with the nearest places.
-  assert.match(bubbles, /\{!fixed && nextStop && \(\s*<button[^>]*className="ride-round ride-skip-stop"\s+onClick=\{\(\) => fromMore\(\(\) => changeStop\(nextStop, undefined, true\)\)\}\s+aria-label=\{skipStopName\(nextStop\)\}/);
+  assert.match(bubbles, /\{!fixed && !ride\.arrived && nextStop && \(\s*<button[^>]*className="ride-round ride-skip-stop"\s+onClick=\{\(\) => fromMore\(\(\) => changeStop\(nextStop, undefined, true\)\)\}\s+aria-label=\{skipStopName\(nextStop\)\}/);
   assert.match(ride, /if \(!keepFocus\) whereRef\.current\?\.focus\(\);/);
   assert.match(rail, /onClick=\{\(\) => changeStop\(nextStop, item\.place\)\}/);
   // Each press closes the bubbles and the settings (the map back in view) and the focus goes to More.

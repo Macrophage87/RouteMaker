@@ -111,6 +111,7 @@ import {
   replanKept,
   replanTold,
   rideModel,
+  secondsBetween,
   startState,
   stopsAhead,
   toGo,
@@ -1306,6 +1307,7 @@ export function RideMode({
         progressM: out.state.progressM,
         line: `${line.lengthM}:${line.coordinates.length}`,
         paceMs: line.paceMs,
+        plan: (fromM, toM) => secondsBetween(line, fromM, toM),
         riding: !stepped.state.walking && !pausedRef.current && !out.state.off && !out.state.arrived && fix.accuracyM <= POOR_FIX_M,
       });
       if (stepped.state.walking) return;
@@ -2657,7 +2659,7 @@ export function RideMode({
                     <Icon name={which === "calmer" ? "traffic-down" : "hills-down"} size={26} />
                   </button>
                 ))}
-              {!fixed && nextStop && (
+              {!fixed && !ride.arrived && nextStop && (
                 <button
                   type="button"
                   className="ride-round ride-skip-stop"

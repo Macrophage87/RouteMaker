@@ -93,6 +93,14 @@ test("a gap in fixes, a new line, off route and going back are not counted", () 
   assert.equal(back.metres, t.metres);
 });
 
+test("the plan's own seconds for a stretch (a climb, a junction wait) are what the rider is measured against", () => {
+  // The plan takes twice the even pace's time on this stretch (a climb): a rider at the even pace is half as fast.
+  let t = paceStart();
+  t = paceStep(t, { atMs: 0, progressM: 0, line: "a", paceMs: PACE, plan: (a, b) => (2 * (b - a)) / PACE, riding: true });
+  for (let s = 1; s <= 2000; s++) t = paceStep(t, { atMs: s * 1000, progressM: s * PACE, line: "a", paceMs: PACE, plan: (a, b) => (2 * (b - a)) / PACE, riding: true });
+  assert.ok(Math.abs(paceFactor(t) - 2) < 0.01, String(paceFactor(t)));
+});
+
 test("the clock is the device's own: 12 hour in en-US, 24 hour in en-GB, rounded to the minute", () => {
   const now = new Date(2026, 9, 26, 6, 30, 0).getTime();
   // Newer ICU puts a narrow no-break space before AM.
