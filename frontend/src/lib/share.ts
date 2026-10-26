@@ -35,6 +35,35 @@ export interface ShareNavigator {
   canShare?: (data: { url?: string; files?: File[] }) => boolean;
 }
 
+/**
+ * The share sheet to use (Stephen 2026-10-26: "I don't seem to be able to broadcast rides", in the phone app): the
+ * browser's where it has one; else the phone app's own (lib/nativeShell.ts nativeShareNavigator), since Android's
+ * WebView has no navigator.share; else none.
+ */
+export function pickShareNavigator(nav: ShareNavigator | undefined, native: ShareNavigator | null): ShareNavigator | undefined {
+  return typeof nav?.share === "function" ? nav : (native ?? nav);
+}
+
+/** Broadcast where there is no share sheet at all (an older phone app, most computers): the link is copied. */
+export const BROADCAST_COPIED = "Broadcast link copied. Paste it to your riders: they follow you once they open it.";
+/** The copy failed: beside Plan's and Go's Broadcast (nothing started), and on the ride and Roam screens. */
+export const BROADCAST_COPY_FAILED = "Could not copy the link, so the ride did not start.";
+export const BROADCAST_RIDE_COPY_FAILED = "Could not copy the link. Press Broadcast to try again.";
+
+/**
+ * Broadcast's stand-in for a share sheet: "sharing" copies the link (`copy`, Copy link's own method). It is called
+ * inside the press, as a sheet is, so the clipboard is written while the press's activation holds. A copy that fails
+ * is a failure ("CopyFailed"), so nothing starts.
+ */
+export function copyShareNavigator(copy: (text: string) => Promise<boolean>): ShareNavigator {
+  return {
+    share: (data) =>
+      copy(data.url).then((done) => {
+        if (!done) throw Object.assign(new Error("The link could not be copied"), { name: "CopyFailed" });
+      }),
+  };
+}
+
 /** Whether to show Share: the browser has navigator.share and, where it can say, can share a link. */
 export function canShareLink(nav: ShareNavigator | undefined, url: string): boolean {
   if (typeof nav?.share !== "function") return false;

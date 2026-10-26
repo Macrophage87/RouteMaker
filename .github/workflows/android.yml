@@ -4,19 +4,23 @@ name: Android app
 # Java unit tests and a debug APK (a debug build only; of the secrets it uses only the debug key, and a fork gets none). By hand
 # (Actions, "Android app", Run workflow): a debug or a release build. A debug build is debug-signed and
 # installs by sideloading; a release build needs the four ROUTEMAKER_KEYSTORE/KEY secrets
-# (mobile/README.md). Never on a push. A debug build is signed with ROUTEMAKER_DEBUG_KEYSTORE_BASE64
+# (mobile/README.md). On a release tag (vX.Y.Z) whose app code (mobile/) changed since the tag before:
+# the store build, uploaded to Play's internal testing track when the ROUTEMAKER_PLAY_SERVICE_ACCOUNT
+# secret is set (scripts/play-upload.sh). Never on any other push. A debug build is signed with ROUTEMAKER_DEBUG_KEYSTORE_BASE64
 # when that secret is set, so each test build installs over the last one; that key only ever signs
 # debug builds, never a release.
 #
 # No build carries a site address: this repository is public, and so are its Actions artifacts (any
 # signed-in GitHub user can download them), so nothing here may name a server. The app asks for the
-# address on first launch and keeps it on the phone. The one exception is the by-hand release (store)
-# build: it bakes in the ROUTEMAKER_SITE_URL secret (the owner OK'd the address being public there,
+# address on first launch and keeps it on the phone. The one exception is the release (store)
+# build, by hand or on a tag: it bakes in the ROUTEMAKER_SITE_URL secret (the owner OK'd the address being public there,
 # 2026-10-21) and keeps its artifact for 3 days only. site-config.js refuses ROUTEMAKER_URL in CI
 # otherwise, and the step after `cap sync` checks that a test build names no site. The store id comes
 # from the ROUTEMAKER_APP_ID secret; a debug build adds ".debug" to it, so a test build sits beside
 # the store app instead of clashing with it (the two are signed with different keys).
 on:
+  push:
+    tags: ["v*"]
   pull_request:
     paths:
       - "mobile/**"
@@ -37,15 +41,38 @@ permissions:
   contents: read
 
 jobs:
+  # On a tag: is there new app code since the tag before? A site-only release needs no new app.
+  changes:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    outputs:
+      app: ${{ steps.diff.outputs.app }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: diff
+        run: |
+          prev="$(git describe --tags --abbrev=0 --match 'v*' "$GITHUB_SHA^" 2>/dev/null || true)"
+          if [ -z "$prev" ] || ! git diff --quiet "$prev" "$GITHUB_SHA" -- mobile/; then
+            echo "app=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No app changes since $prev: no new store build."
+            echo "app=false" >> "$GITHUB_OUTPUT"
+          fi
+
   apk:
+    needs: changes
+    if: ${{ !cancelled() && (github.event_name != 'push' || needs.changes.outputs.app == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     defaults:
       run:
         working-directory: mobile
     env:
-      # A pull request always builds debug, without the inspector; release only by hand.
-      BUILD: ${{ github.event_name == 'workflow_dispatch' && inputs.build || 'debug' }}
+      # A pull request always builds debug, without the inspector; release by hand or on a tag.
+      BUILD: ${{ github.event_name == 'push' && 'release' || github.event_name == 'workflow_dispatch' && inputs.build || 'debug' }}
       ROUTEMAKER_VERSION_CODE: ${{ github.run_number }}
       # Never in a store (release) build.
       ROUTEMAKER_DEBUG: ${{ github.event_name == 'workflow_dispatch' && inputs.inspector && inputs.build != 'release' && '1' || '0' }}
@@ -70,7 +97,7 @@ jobs:
       # Writes the resolved config and the plugin projects into android/; none of it is committed.
       - name: Sync (a test build names no site; the store build bakes in ROUTEMAKER_SITE_URL)
         env:
-          STORE_SITE: ${{ env.BUILD == 'release' && github.event_name == 'workflow_dispatch' && secrets.ROUTEMAKER_SITE_URL || '' }}
+          STORE_SITE: ${{ env.BUILD == 'release' && github.event_name != 'pull_request' && secrets.ROUTEMAKER_SITE_URL || '' }}
         run: |
           if [ "$BUILD" = release ]; then
             if [ -z "$STORE_SITE" ]; then
@@ -114,7 +141,7 @@ jobs:
           fi
           ./gradlew --no-daemon assembleDebug
       - name: Release APK and bundle
-        if: env.BUILD == 'release' && github.event_name == 'workflow_dispatch'
+        if: env.BUILD == 'release' && github.event_name != 'pull_request'
         working-directory: mobile/android
         env:
           KEYSTORE_BASE64: ${{ secrets.ROUTEMAKER_KEYSTORE_BASE64 }}
@@ -137,5 +164,18 @@ jobs:
             mobile/android/app/build/outputs/apk/${{ env.BUILD }}/*.apk
             mobile/android/app/build/outputs/bundle/release/*.aab
           if-no-files-found: error
+          # Before the Play upload, so a refused upload still leaves the bundle to upload by hand.
           # The store build names the site: kept just long enough to upload to Play.
           retention-days: ${{ env.BUILD == 'release' && 3 || 30 }}
+      - name: Upload to Play internal testing (a release tag only)
+        if: github.event_name == 'push'
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.ROUTEMAKER_PLAY_SERVICE_ACCOUNT }}
+          PLAY_PACKAGE: ${{ secrets.ROUTEMAKER_APP_ID }}
+          PLAY_NOTES: "RouteMaker ${{ github.ref_name }}. What's new: https://github.com/${{ github.repository }}/blob/${{ github.ref_name }}/docs/releases/${{ github.ref_name }}.md"
+        run: |
+          if [ -z "$PLAY_SERVICE_ACCOUNT_JSON" ]; then
+            echo "::warning::No ROUTEMAKER_PLAY_SERVICE_ACCOUNT secret: the bundle is in this run's artifact; upload it by hand (mobile/README.md)."
+            exit 0
+          fi
+          scripts/play-upload.sh android/app/build/outputs/bundle/release/*.aab
