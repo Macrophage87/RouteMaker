@@ -1750,9 +1750,10 @@ def _points_along(plan: Plan) -> list[tuple[int, float]]:
 
 def _closure_id(row: dict) -> str:
     """The closure a row is part of: a reviewer's closure comes as a row for each of its ways,
-    `reviewer-{closure}-{way}`."""
+    `reviewer-{closure}-{way}`, and a DDOT project advisory's for each of its lines,
+    `ddot_advisory-{closure}-{line}`."""
     zone_id = str(row.get("id") or "")
-    if row.get("source") == "reviewer":
+    if row.get("source") in ("reviewer", "ddot_advisory"):
         return re.sub(r"-\d+$", "", zone_id)
     return zone_id or str((row.get("title"), row.get("when_text")))
 

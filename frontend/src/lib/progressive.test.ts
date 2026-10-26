@@ -341,6 +341,9 @@ test("App: Go's controls are unchanged: no new button or field for any of it", (
   // the ride"): three more, Undo, Redo and the big Start ride / Route, beside the Clear that was the destination's X.
   // Metro behind More (Stephen 2026-10-19: "Metro stops should be on the list in more"): one more, still behind More.
   // Plan's map chips behind one Find chip (Stephen 2026-10-21: "It's more room"): one more, Find, in Plan only.
-  assert.equal((go.match(/<button/g) ?? []).length, 27, "the same buttons as before, the Home sheet's, the route card's, Go's bar, More's Metro and Plan's Find");
-  assert.equal((go.match(/<PlaceSearch/g) ?? []).length, 4, "the same search fields as before, and the Home sheet's");
+  // Favorite places (Stephen 2026-10-26, lib/favoritePlaces.ts): signed in, the Favorites chip in the Home chip's place
+  // (one more tag, never both shown) and its popout's ten buttons (Home, Work and a place, each with its Edit button;
+  // the two Set rows; Add a place and Edit) and one search field, none on Go until the chip is tapped.
+  assert.equal((go.match(/<button/g) ?? []).length, 38, "the same buttons as before, the Home sheet's, the route card's, Go's bar, More's Metro, Plan's Find and Favorites'");
+  assert.equal((go.match(/<PlaceSearch/g) ?? []).length, 5, "the same search fields as before, the Home sheet's and Favorites'");
 });
