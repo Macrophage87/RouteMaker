@@ -819,7 +819,9 @@ change it.</li>
       are Avoid only where the side path is actually mapped beside them; otherwise they are rated like
       any other road.</li>
       <li><strong>Parking aisles and driveways open to bikes</strong> are treated as ordinary service
-      roads and usable for routing, and drawn on the map.</li>
+      roads and usable for routing, and drawn on the map. From the next map update, a public parking aisle with no bicycle tag, at most 500 ft
+      [150 m] long, that joins the dead end of a trail to a road or path within 260 ft [80 m] is routed the
+      same way, so a trail that starts in a parking lot is joined to the road beside it.</li>
       <li><strong>DC park paths.</strong> Paths in DC's circle parks (Dupont, Logan and others) are open
       to bikes, and sidewalks on National Park Service land in the Central Business District and on the
       Capitol grounds are exempt from the District's sidewalk ban. At memorials where you must walk, such
@@ -1023,6 +1025,11 @@ change it.</li>
     
     <p>Where no speed limit is mapped, junction costs use the legal default limit of
     the District, Maryland or Virginia (see <a href="#sources">Sources</a>).</p>
+    <p>A road you give way to (at a stop sign on your side, or where nothing is mapped and your road is
+    no busier) with two or more through lanes each way, or three or more on a one-way, is priced by its
+    traffic rather than its bike lane where that is higher: LTS 3 above 20 mph [32 km/h], and LTS 4 from 30
+    mph [48 km/h] unless a count shows 8,000 vehicles a day or fewer and it is under 35 mph [56 km/h]. Its color on the map does not change,
+    and the warning still names the map's level (see <a href="/about/routing.html#junctions">Routing</a>).</p>
     <ul>
       <li><strong>Higher stress junction</strong> (orange marker): a cost of 0.15 calm
       miles [0.24 km; 800 ft] or more.</li>
@@ -1237,7 +1244,7 @@ change it.</li>
 <p class="next">Next: <a href="/about/routing.html">Routing</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.12.4.</p>
+  <p>Part of RouteMaker's documentation. It describes version 0.12.5.</p>
   <p><a href="/">Back to the map</a></p>
 </footer>
 </body>

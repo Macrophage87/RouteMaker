@@ -165,7 +165,11 @@ def main() -> int:
         after_match = dict(before_match)
         # The rebuild's own wiring (`pipeline.run`'s volume-conflation stage).
         agg, result = conflation.road_facts_by_way(
-            ways, entries, region_blocks, withheld=withheld.by_block
+            ways,
+            entries,
+            region_blocks,
+            withheld=withheld.by_block,
+            directions=withheld.directions,
         )
         print(
             region,
