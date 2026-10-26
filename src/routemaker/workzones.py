@@ -73,6 +73,8 @@ SOURCES = {
     "mcparks": "Montgomery Parks deer management schedule",
     # Entered or confirmed by a reviewer (v0.7.0; `core.reviewed_closures`).
     "reviewer": "Confirmed by a RouteMaker reviewer",
+    # DDOT's project traffic advisories, read by hand (v0.12.4; `routemaker.ddot_advisories`).
+    "ddot_advisory": "DDOT project traffic advisory",
 }
 
 # Where a rider reads more, for a zone that carries no link of its own.
@@ -83,6 +85,7 @@ SOURCE_LINKS = {
     "mpd": "https://mpdc.dc.gov/newsroom",
     "alertdc": "https://alertdc.dc.gov/",
     "nps": "https://www.nps.gov/",
+    "ddot_advisory": "https://projects.ddot.dc.gov/",
 }
 
 DISCLAIMER = (
@@ -930,7 +933,7 @@ def split_words(zone: Zone | None) -> str:
 
 
 # The sources whose zones are DC's closures and blocked lanes, not work zones (v0.7.0).
-DC_SOURCES = frozenset({"dc", "mpd", "alertdc"})
+DC_SOURCES = frozenset({"dc", "mpd", "alertdc", "ddot_advisory"})
 # The sources whose closed zones are said as a road closed, not a work zone: DC's, and the
 # closures a reviewer confirmed.
 CLOSURE_SOURCES = DC_SOURCES | {"reviewer"}
@@ -966,12 +969,18 @@ def date_text(moment: datetime) -> str:
     return f"{_MONTHS[local.month - 1]} {local.day}"
 
 
+# The sources whose windows are whole days: a reviewer's, and a DDOT project advisory's
+# (`routemaker.ddot_advisories`).
+WHOLE_DAY_SOURCES = frozenset({"reviewer", "ddot_advisory"})
+
+
 def last_day(source: str, end: datetime) -> datetime | None:
-    """A reviewer's closure ends at the midnight after its last day
-    (`core.reviewed_closures.window`): that last day, to say "through Feb 28" rather than
-    "until Mar 1". None for any other end. The day is taken off in the region's time, so a
-    last day that starts or ends daylight saving is not 23 or 25 hours long."""
-    if source == "reviewer" and _local(end).time() == time(0):
+    """A reviewer's closure, or a DDOT project advisory's, ends at the midnight after its last
+    day (`core.reviewed_closures.window`, `routemaker.ddot_advisories`): that last day, to say
+    "through Feb 28" rather than "until Mar 1". None for any other end. The day is taken off in
+    the region's time, so a last day that starts or ends daylight saving is not 23 or 25 hours
+    long."""
+    if source in WHOLE_DAY_SOURCES and _local(end).time() == time(0):
         return _local(end) - timedelta(days=1)
     return None
 
@@ -1035,7 +1044,7 @@ def source_text(zone: Zone) -> str:
     name = SOURCES.get(zone.source, zone.source)
     if zone.source == "dc":
         name = "DDOT occupancy permit (TOPS)"
-    if zone.published is not None and zone.source in ("mpd", "alertdc"):
+    if zone.published is not None and zone.source in ("mpd", "alertdc", "ddot_advisory"):
         return f"{name}, {date_text(zone.published)}"
     return name
 
@@ -1099,6 +1108,7 @@ __all__ = [
     "BYPASSED",
     "CLOSED",
     "DC_SOURCES",
+    "WHOLE_DAY_SOURCES",
     "DISCLAIMER",
     "FLAGGER_PENALTY_S",
     "FUTURE_AFTER_S",

@@ -509,7 +509,7 @@ def test_every_bind_the_beta_runs_refuses_to_create_a_missing_source(offroad: bo
                 volume,
             )
     counts = {name: len(volumes) for name, volumes in binds.items() if volumes}
-    expected = {"api": 2, "worker": 2, "postgis": 1, "photon": 1}
+    expected = {"api": 3, "worker": 2, "postgis": 1, "photon": 1}
     expected.update({f"valhalla-{g}": 4 for g in ("standard", "no-trail", "ebike", "weekend")})
     if offroad:
         expected["valhalla-offroad"] = 4
@@ -693,7 +693,9 @@ def test_every_http_level_name_is_prefixed_so_it_cannot_collide_with_the_hosts_o
     None
 ):
     full = stage("full")
-    names = re.findall(r"^(?:upstream\s+(\S+)|map\s+\S+\s+(\$\S+)|log_format\s+(\S+))", full, re.M)
+    names = re.findall(
+        r"^(?:upstream\s+(\S+)|map\s+\S+\s+(\$\S+)|log_format\s+(\S+)|geo\s+(\$\S+))", full, re.M
+    )
     flat = [n for pair in names for n in pair if n]
     assert flat and all(n.lstrip("$").startswith("rmbeta_") for n in flat), flat
     assert (
@@ -923,8 +925,8 @@ def test_robots_txt_allows_only_the_home_page_and_icons_and_noindex_is_on_the_re
     robots = dict(locations(full))["= /robots.txt"]
     # Only the home page and the icons, for Google's favicon service (the connector's icon).
     assert (
-        'return 200 "User-agent: *\\nAllow: /$\\nAllow: /favicon.ico\\nAllow: /favicon.svg'
-        '\\nAllow: /icons/\\nDisallow: /\\n";'
+        'return 200 "User-agent: *\\nAllow: /${rmbeta_dollar}\\nAllow: /favicon.ico'
+        '\\nAllow: /favicon.svg\\nAllow: /icons/\\nDisallow: /\\n";'
     ) in robots
     assert re.search(
         r'^\s*add_header X-Robots-Tag "noindex, nofollow" always;',
