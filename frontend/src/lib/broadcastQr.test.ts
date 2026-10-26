@@ -68,5 +68,5 @@ test("the review's guards: a link turned off, another keeping or a ride ended is
   // Only a broadcast whose link this page opened is passed on; any other ride opened from a link has no Broadcast.
   assert.match(app, /const passesOn = onShared !== null && !onShared\.own && !!onShared\.lead && SHARED_LINK !== null && onShared\.id === SHARED_ID;/);
   // A messaging app's tracking parameters are not passed on.
-  assert.match(app, /return `\$\{at\.origin\}\$\{at\.pathname\}\$\{route \? `\?route=\$\{encodeURIComponent\(route\)\}` : ""\}\$\{at\.hash\}`;/);
+  assert.match(app, /for \(const name of \["route", RIDE_PARAM, LEAD_PARAM\]\) \{/);
 });

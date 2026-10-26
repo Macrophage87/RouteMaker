@@ -272,7 +272,7 @@ import { downloadText, trackGpx, verbatimDownload, verbatimFileName } from "./li
 import { readGpx } from "./lib/gpxImport.ts";
 import { GPX_SAID_OPENED, GPX_SAID_ROUTE, GPX_SAID_TRACK, downloadCourse, downloadGpx, routeGpxFile, sendCourseToGarmin, sendCourseToWahoo, type FileFormat, type Said } from "./GpxPanel.tsx";
 import type { DeviceProfileId } from "./lib/deviceProfiles.ts";
-import { SHARED_GONE, SHARED_INPUTS_ONLY, SHARED_OPENED, SHARED_PATH, SHARED_REVOKED, SHARED_REVOKED_ERROR, SHARE_KEEP_DEFAULT, SHARE_RIDE_WAIT, BROADCAST_NO_LEAD, BROADCAST_RIDE_FAILED, BROADCAST_RIDE_NO_LEAD, BROADCAST_SHARE_FAILED, asRideLink, leadKeyFrom, gpxShareFile, keepFields, newSharedId, previewImageOk, readShared, rideLinkFrom, sharedBody, sharedIdFrom, storeShared, withSharedId, type ShareKeep } from "./lib/sharedRoutes.ts";
+import { LEAD_PARAM, RIDE_PARAM, SHARED_GONE, SHARED_INPUTS_ONLY, SHARED_OPENED, SHARED_PATH, SHARED_REVOKED, SHARED_REVOKED_ERROR, SHARE_KEEP_DEFAULT, SHARE_RIDE_WAIT, BROADCAST_NO_LEAD, BROADCAST_RIDE_FAILED, BROADCAST_RIDE_NO_LEAD, BROADCAST_SHARE_FAILED, asRideLink, leadKeyFrom, gpxShareFile, keepFields, newSharedId, previewImageOk, readShared, rideLinkFrom, sharedBody, sharedIdFrom, storeShared, withSharedId, type ShareKeep } from "./lib/sharedRoutes.ts";
 import { ClosureDialog, type ClosureAsk } from "./ClosureDialog.tsx";
 import { StartOnComputerDialog } from "./StartOnComputerDialog.tsx";
 import { BroadcastQrDialog } from "./BroadcastQrDialog.tsx";
@@ -380,11 +380,16 @@ if (new URLSearchParams(window.location.search).has(WAHOO_RETURN_PARAM)) {
 // A broadcast from Roam (Stephen 2026-10-22): the link names a ride with no route and its leader; one who opens it
 // follows the leader's dot, read once here (the plan's own fragment is written over it later).
 const ROAM_FOLLOW = roamLinkFrom(window.location.hash);
-/** The opened link to pass on: its path, the shared line's id from the query (if there), and its fragment; nothing a
- * messaging app added on the way (its tracking parameters). */
+/** The opened link to pass on: its path, the query's own parameters (the line, ride and leader), and its fragment;
+ * nothing a messaging app added on the way (its tracking parameters). */
 function passedOnLink(at: Pick<Location, "origin" | "pathname" | "search" | "hash">): string {
-  const route = new URLSearchParams(at.search).get("route");
-  return `${at.origin}${at.pathname}${route ? `?route=${encodeURIComponent(route)}` : ""}${at.hash}`;
+  const from = new URLSearchParams(at.search);
+  const kept = new URLSearchParams();
+  for (const name of ["route", RIDE_PARAM, LEAD_PARAM]) {
+    const value = from.get(name);
+    if (value !== null) kept.set(name, value);
+  }
+  return `${at.origin}${at.pathname}${kept.size ? `?${kept}` : ""}${at.hash}`;
 }
 let sharedArrived: () => void = () => {};
 // Its owner turned the link off: the plan it carries is not planned (the first plan after the wait, and that plan
