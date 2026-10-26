@@ -3305,8 +3305,6 @@ export function App() {
   // A press's check under way (Start ride, a download, a save): another press waits for it, ignored (v0.7.0 end
   // review). The check gives up after CHECK_TIMEOUT_MS and the press goes ahead unchecked.
   const closureChecking = useRef(false);
-  // The closure check a shared or saved route's open runs: a broadcast's Ride mode starts after it (opensIntoRide).
-  const openCheck = useRef<Promise<void> | null>(null);
   const checkThen = async (why: CheckFor, line: readonly (readonly number[])[], gpx: boolean, proceed: () => void, afterGpx?: (track: number[][]) => void, onAsk?: () => void) => {
     if (line.length < 2 || closureLetGo.current === lineKey(line)) {
       proceed();
@@ -3458,6 +3456,11 @@ export function App() {
   const [computerAsk, setComputerAsk] = useState<"start" | "broadcast" | null>(null);
   // Start anyway, kept in memory too: a tab that cannot store it (a private window) still starts.
   const computerOk = useRef(false);
+  // A broadcast's route this page follows (opened from its link, not the sharer's own).
+  const followsBroadcast = (route: RouteResponse) => {
+    const open = sharedOpenNow.current;
+    return !!open && open.ride && !!open.lead && !open.own && open.answer === route;
+  };
   const startRideChecked = () => startRideNoted("");
   // `note`: what the ride screen says once up (rideStart.note): Broadcast's link copied, else nothing. Set by each press,
   // so a ride started any other way after a Broadcast that did not start one says nothing.
@@ -3468,7 +3471,8 @@ export function App() {
       setComputerAsk("start");
       return;
     }
-    if (!shown) return startRide(false);
+    // No closure check without a route, or for a broadcast one follows: the leader's to weigh (Stephen 2026-10-26).
+    if (!shown || followsBroadcast(shown)) return startRide(false);
     // A second press while the first one's check runs is ignored (checkThen).
     if (closureChecking.current) return;
     // Unlocked silently inside the press; "Ride started." is said once the ride starts, after the
@@ -3575,7 +3579,8 @@ export function App() {
       });
   };
   // An opened file is checked at once, against its own track.
-  const openImportedChecked = (asOpened: ImportedPlan) => {
+  // `check`: false for a broadcast one follows (its closures are the leader's to weigh, startRideNoted).
+  const openImportedChecked = (asOpened: ImportedPlan, check = true) => {
     // A file chosen from Load route's popup opens on the ride type picked there, followed as chosen there.
     const choice = gpxChoice.current;
     gpxChoice.current = null;
@@ -3583,7 +3588,7 @@ export function App() {
     // Another file is not the saved route on screen (a saved file reopened sets it again, openSaved).
     openSavedRoute.current = null;
     openImported(plan);
-    if (plan.verbatim) openCheck.current = checkThen("open", plan.verbatim.track, true, () => {});
+    if (plan.verbatim && check) void checkThen("open", plan.verbatim.track, true, () => {});
   };
   // A plan link (or a plan left open) is checked once its first route is on screen.
   const checkFirstAnswer = useRef(PLAN_LINK);
@@ -3593,7 +3598,7 @@ export function App() {
     if (!imported) void checkThen("open", route.geometry.coordinates, false, () => {});
   }, [route]);
   // My routes: open as saved (the line unchanged), or export.
-  const openSaved = (saved: Pick<SavedRoute, "name" | "source" | "distance_m" | "line" | "inputs" | "answer" | "gpx"> & { id?: number | string }, said = OPENED_SAID(saved.name)) => {
+  const openSaved = (saved: Pick<SavedRoute, "name" | "source" | "distance_m" | "line" | "inputs" | "answer" | "gpx"> & { id?: number | string }, said = OPENED_SAID(saved.name), check = true) => {
     // A choice from Load route's popup is for a file picked there, not a saved route.
     gpxChoice.current = null;
     showPlanner(true);
@@ -3619,7 +3624,7 @@ export function App() {
           return;
         }
         keepShown();
-        openImportedChecked(asKept({ ...outcome.plan, name: saved.name }, at, answer));
+        openImportedChecked(asKept({ ...outcome.plan, name: saved.name }, at, answer), check);
         openSavedRoute.current = own;
         announce(said);
       });
@@ -3634,7 +3639,7 @@ export function App() {
     if (window.location.hash !== saved.inputs.hash) window.location.hash = saved.inputs.hash;
     else retry();
     announce(said);
-    openCheck.current = checkThen("open", saved.line, false, () => {});
+    if (check) void checkThen("open", saved.line, false, () => {});
     // Today's map, asked quietly: more than 5% apart in distance offers Update route; nothing changes without it.
     void requestRoute(plan.points, plan.preset, { dials: plan.dials, straight: plan.drawn }).then((today) => {
       if (today.ok && savedShown.current?.key === key && differsTooMuch(saved.distance_m, today.route.distance_m))
@@ -3682,7 +3687,9 @@ export function App() {
       } else if (shared) {
         // The open's own check stands for the link's first-answer check.
         checkFirstAnswer.current = false;
-        openSaved(shared, SHARED_OPENED(shared.name));
+        // A broadcast's follower is not asked about closures (Stephen 2026-10-26: "The closure part should be leader
+        // only. In general many of these closures aren't always real").
+        openSaved(shared, SHARED_OPENED(shared.name), !(SHARED_RIDE && SHARED_LEAD && shared.answer));
         if (shared.answer) setSharedOpen({ answer: shared.answer, ride: SHARED_RIDE, id: SHARED_ID, lead: SHARED_LEAD });
       } else {
         setSharedNote(SHARED_GONE);
@@ -3955,32 +3962,27 @@ export function App() {
   const stale = status.kind === "loading" || status.kind === "waiting";
   const shown = status.kind === "error" || status.kind === "confirm" ? null : route;
   // A broadcast link opened on a phone goes straight into Ride mode, the leader's dot on its map (lib/rideGroup.ts
-  // opensIntoRide): a route's broadcast starts its ride as Start's press does, once the open's own closure check has
-  // found nothing (closures found: its question stays, and Start is the rider's); a Roam broadcast starts Roam. Judged
+  // opensIntoRide): a route's broadcast starts its ride as Start's press does (no closure check: the leader's, Stephen
+  // 2026-10-26); a Roam broadcast starts Roam. Judged
   // once, when the link is first ready: a ride already going or the Resume question then, and it never starts later.
   // Started without a press, so the voice is unlocked by the first tap after (iOS), unless it is already speaking.
   const autoRode = useRef(false);
   const sharedFollow = sharedOpen?.ride === true && !!sharedOpen.lead && !sharedOpen.own && shown === sharedOpen.answer && !stale && rideableRoute(shown);
   const roamFollow = roamBroadcast !== null && !roamBroadcast.leading;
-  const sharedFollowNow = useRef(sharedFollow);
-  sharedFollowNow.current = sharedFollow;
   useEffect(() => {
     const ready = sharedFollow || roamFollow;
     if (!ready || autoRode.current) return;
     autoRode.current = true;
     if (!opensIntoRide({ phone: looksLikePhone(), onBike, resumeAsked: leftAsk !== null })) return;
-    // Kept until a click while riding unlocks it (a tap during the closure check is before the ride).
+    // Kept until a click while riding or roaming unlocks it.
     const unlock = () => {
       if (!ridingNow.current && !roamingNow.current) return;
       document.removeEventListener("click", unlock, true);
       if (!window.speechSynthesis?.speaking) primeRideVoice(ridePrefsNow.current);
     };
     document.addEventListener("click", unlock, true);
-    if (!sharedFollow) return startRoam();
-    void (openCheck.current ?? Promise.resolve()).then(() => {
-      // Still the link's route on screen, and nothing started meanwhile (the rider's own Start, or Roam).
-      if (!closurePending.current && !ridingNow.current && !roamingNow.current && sharedFollowNow.current) startRideChecked();
-    });
+    if (sharedFollow) startRideChecked();
+    else startRoam();
   }, [sharedFollow, roamFollow]);
   // Light times on the route (lib/lightTimes.ts): near dawn or dusk, where the rider will be at each, leaving now.
   // The clock runs only with a route shown, outside a ride; the same marks are kept while nothing they say changed.

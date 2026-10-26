@@ -111,7 +111,7 @@ test("App: Share, Copy link and Save route send a file with its settled route; t
   assert.match(app, /verbatim\.track, points, preset, dials, fileShown\(\)\)/);
   const open = app.slice(app.indexOf("const openSaved = ("), app.indexOf("const exportSaved = "));
   assert.match(open, /savedShown\.current = \{ key: keptPlanKey\(at\.points, at\.preset, at\.dials\), answer \};/);
-  assert.match(open, /openImportedChecked\(asKept\(\{ \.\.\.outcome\.plan, name: saved\.name \}, at, answer\)\);/);
+  assert.match(open, /openImportedChecked\(asKept\(\{ \.\.\.outcome\.plan, name: saved\.name \}, at, answer\), check\);/);
   // The importBase starts in the kept mode; switching it plans the file again rather than replaying the kept line.
   assert.match(app, /importBase\.current = \{ imported, points, preset, exact: imported\.exact === true \};/);
   assert.match(app, /exact: on, unfollowed: false \};\s*\/\/[^\n]*\n\s*savedShown\.current = null;/);
