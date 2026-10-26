@@ -9,12 +9,15 @@ fetcher (`is_fetcher`) gets a page of tags only:
 - og:title, the ride type and the distance ("Group Ride, 12.4 mi (20.0 km)"), never the route's
   name, which can hold Home's label or a place;
 - og:description, the distance and the climb, US units first with metric in brackets;
-- og:image, a 1200 x 630 PNG drawn here (`render_png`): the route's line on a plain background,
-  its start, finish and stops, the same stats line, and the app's icon beside "RouteMaker". No
-  map tiles, and no imaging package (none is a dependency): the line and pins are drawn into a
-  byte buffer and written with zlib, the text from glyph coverage made once from the page's own
-  font (core.preview_glyphs, scripts/make_preview_glyphs.py) and the icon from
-  core.preview_icon (scripts/make_share_images.py).
+- og:image, a 1200 x 630 PNG drawn here (`render_png`): the route's line over the base map (the
+  owner, 2026-10-25: "Is it possible to add the base map to the route preview?"; core.
+  preview_basemap draws it from the app's own archive, with its credits, and the picture is on a
+  plain background when there is none), its start, finish and stops, the same stats line, and the
+  app's icon beside "RouteMaker". No imaging package (none is a dependency): the map, line and
+  pins are drawn into a byte buffer and written with zlib, the text from glyph coverage made once
+  from the page's own font (core.preview_glyphs and core.preview_glyphs_small, scripts/
+  make_preview_glyphs.py) and the icon from core.preview_icon (scripts/make_share_images.py). The
+  view is Web Mercator, as the base map's tiles are.
 
 The app's own address (the owner, 2026-10-20: "Is there a way to have the icon when shared?"):
 a link fetcher asking for `/` is handed `site_page` by the edge (the Caddyfile's @link_fetcher,
@@ -40,12 +43,18 @@ stops in the owner's Home circle keeps that circle on the row (`preview_zone`), 
 later never uncovers it. The circle's radius is the same for every account (`ZONE_RADIUS_M`), so
 the gap's size says nothing of how far its centre was moved.
 
-The image is cached on the row under a key of the line and Home's circle (`image_key`), and so is
-"no image" (an empty `preview_png`), so a route that cannot be drawn is not tried again. Drawing
-is bounded: the line is thinned to `MAX_DRAWN_POINTS` and a stroke longer than `MAX_STROKE_PX` is
-no image. A turned-off link (410) or an expired one (404) has no preview. The image is served with
-an hour's public cache, so a link turned off can show its old image in a chat app for up to an
-hour; the page with the tags is never cached.
+Over the base map, the circle keeps the map and loses only the route: a blank disc on a map would
+mark Home, where on the plain background it shows nothing.
+
+The image is cached on the row under a key of the line, Home's circle and the base map's archive
+(`image_key`; the archive by its size and time, preview_basemap.stamp, so a new base map draws
+the picture again), and so is "no image" (an empty `preview_png`), so a route that cannot be
+drawn is not tried again. Drawing is bounded: the line is thinned to `MAX_DRAWN_POINTS` and a
+stroke longer than `MAX_STROKE_PX` is no image; the base map is at most
+preview_basemap.MAX_TILES tiles, its points less than a pixel apart dropped. A turned-off link
+(410) or an expired one (404) has no preview. The image is served with an hour's public cache,
+so a link turned off can show its old image in a chat app for up to an hour; the page with the
+tags is never cached.
 """
 
 from __future__ import annotations
@@ -66,7 +75,7 @@ from django.utils import timezone
 from django.utils.cache import patch_vary_headers
 from django.views.decorators.http import require_safe
 
-from . import ratelimit, shared_routes
+from . import preview_basemap, ratelimit, shared_routes
 
 METRES_PER_MILE = 1609.344
 FEET_PER_METRE = 3.28084
@@ -83,7 +92,7 @@ ZONE_RADIUS_M = HOME_TRIM_M + ZONE_SHIFT_MAX_M + 1
 MIN_DRAWN_M = HOME_TRIM_M / 2
 HOME_ZONE_LABEL = b"routemaker/home-zone/v1"
 # Bumped when the drawing changes, so cached images are drawn again.
-IMAGE_VERSION = "3"
+IMAGE_VERSION = "4"
 # The most points drawn, and the longest stroke in pixels: past it, no image (a fair route of a
 # hundred miles is a few thousand pixels long; this bounds the drawing's time).
 MAX_DRAWN_POINTS = 1500
@@ -103,6 +112,11 @@ START_COLOUR = (21, 128, 61)
 FINISH_COLOUR = (185, 28, 28)
 STOP_COLOUR = (31, 41, 51)
 BRAND = "RouteMaker"
+# The base map's town names (preview_basemap.paint).
+PLACE_TEXT = (60, 60, 60)
+PLACE_HALO = (255, 255, 255)
+# A route of one point: the scale (pixels across the world) of a 512 px tile at zoom 15.
+SINGLE_POINT_SCALE = 512.0 * 2**15
 # The icon beside it (core.preview_icon, scripts/make_share_images.py).
 ICON_SIZE = 56
 # The parameter naming the shared line on the page (sharedRoutes.ts SHARED_PARAM).
@@ -352,7 +366,15 @@ def route_points(row) -> list:
 def image_key(row, zone) -> str:
     """What the cached image was drawn from: the line, the stops and Home's circle."""
     body = json.dumps(
-        [IMAGE_VERSION, row.line, route_points(row), stats_line(row), zone], separators=(",", ":")
+        [
+            IMAGE_VERSION,
+            preview_basemap.stamp(),
+            row.line,
+            route_points(row),
+            stats_line(row),
+            zone,
+        ],
+        separators=(",", ":"),
     )
     return hashlib.sha256(body.encode()).hexdigest()
 
@@ -360,13 +382,12 @@ def image_key(row, zone) -> str:
 # ---- Drawing ----
 
 
-@lru_cache(maxsize=1)
-def _glyph_data() -> bytes:
+@lru_cache(maxsize=2)
+def _glyph_data(module: str) -> bytes:
     import base64
+    import importlib
 
-    from . import preview_glyphs
-
-    return zlib.decompress(base64.b64decode("".join(preview_glyphs.DATA)))
+    return zlib.decompress(base64.b64decode("".join(importlib.import_module(module).DATA)))
 
 
 @lru_cache(maxsize=1)
@@ -402,10 +423,11 @@ class _Canvas:
                 d = math.hypot(x + 0.5 - cx, y + 0.5 - cy)
                 self.blend(x, y, colour, min(1.0, r + 0.5 - d))
 
-    def text(self, x: int, baseline: int, words: str, colour) -> None:
-        from . import preview_glyphs as g
+    def text(self, x: int, baseline: int, words: str, colour, g=None) -> None:
+        from . import preview_glyphs
 
-        data = _glyph_data()
+        g = g or preview_glyphs
+        data = _glyph_data(g.__name__)
         top = baseline - g.ASCENT
         for ch in words:
             glyph = g.GLYPHS.get(ch) or g.GLYPHS["?"]
@@ -444,9 +466,10 @@ class _Canvas:
         )
 
 
-def text_width(words: str) -> int:
-    from . import preview_glyphs as g
+def text_width(words: str, g=None) -> int:
+    from . import preview_glyphs
 
+    g = g or preview_glyphs
     return sum((g.GLYPHS.get(ch) or g.GLYPHS["?"])[0] for ch in words)
 
 
@@ -496,13 +519,12 @@ def _thinned(pieces: list[list[tuple[float, float]]]) -> list[list[tuple[float, 
     return [piece[::step] + ([piece[-1]] if (len(piece) - 1) % step else []) for piece in pieces]
 
 
-def render_png(drawn: dict, stats: str) -> bytes | None:
-    """The preview: the drawn route on a plain background, its pins, and the stats and credit;
-    None when its stroke is too long to draw (MAX_STROKE_PX)."""
-    everything = [p for piece in drawn["pieces"] for p in piece]
-    lat0 = sum(p[1] for p in everything) / len(everything)
-    kx = math.cos(math.radians(lat0))
-    xs = [p[0] * kx for p in everything]
+def view(drawn: dict):
+    """The picture's view of the drawn route, in Web Mercator as the base map's tiles are: its
+    centre (preview_basemap.world_xy), its scale in pixels across the world, and `at`, a point's
+    place on the picture."""
+    everything = [preview_basemap.world_xy(*p) for piece in drawn["pieces"] for p in piece]
+    xs = [p[0] for p in everything]
     ys = [p[1] for p in everything]
     span_x, span_y = max(xs) - min(xs), max(ys) - min(ys)
     scale = min(
@@ -510,12 +532,56 @@ def render_png(drawn: dict, stats: str) -> bytes | None:
         (MAP_H - 2 * PAD) / span_y if span_y > 0 else math.inf,
     )
     if not math.isfinite(scale):
-        scale = 1.0
-    mid_x, mid_y = (max(xs) + min(xs)) / 2, (max(ys) + min(ys)) / 2
+        scale = SINGLE_POINT_SCALE
+    centre = (max(xs) + min(xs)) / 2, (max(ys) + min(ys)) / 2
 
     def at(p):
-        return WIDTH / 2 + (p[0] * kx - mid_x) * scale, MAP_H / 2 - (p[1] - mid_y) * scale
+        x, y = preview_basemap.world_xy(p[0], p[1])
+        return WIDTH / 2 + (x - centre[0]) * scale, MAP_H / 2 + (y - centre[1]) * scale
 
+    return centre, scale, at
+
+
+def _place_labels(canvas: _Canvas, places, taken: list, line: bytearray) -> None:
+    """The base map's town names, each with a white halo, none over another, a box in `taken`
+    or the line (its coverage)."""
+    from . import preview_glyphs_small as small
+
+    for x, y, name in places:
+        w = text_width(name, small)
+        # On the place, else just above or below it (clear of a pin there).
+        for at_y in (y, y - 24, y + 30):
+            box = (
+                x - w / 2 - 4,
+                at_y - small.ASCENT - 2,
+                x + w / 2 + 4,
+                at_y + small.HEIGHT - small.ASCENT + 2,
+            )
+            if box[0] < 4 or box[2] > WIDTH - 4 or box[1] < 4 or box[3] > MAP_H - 4:
+                continue
+            if any(
+                box[0] < t[2] and t[0] < box[2] and box[1] < t[3] and t[1] < box[3] for t in taken
+            ):
+                continue
+            x0, x1 = int(box[0]), int(box[2]) + 1
+            if any(
+                any(line[k * WIDTH + x0 : k * WIDTH + x1])
+                for k in range(int(box[1]), int(box[3]) + 1)
+            ):
+                continue
+            taken.append(box)
+            left = round(x - w / 2)
+            for dx, dy in ((-2, 0), (2, 0), (0, -2), (0, 2), (-1, -1), (1, 1), (-1, 1), (1, -1)):
+                canvas.text(left + dx, round(at_y) + dy, name, PLACE_HALO, small)
+            canvas.text(left, round(at_y), name, PLACE_TEXT, small)
+            break
+
+
+def render_png(drawn: dict, stats: str) -> bytes | None:
+    """The preview: the drawn route over the base map (on a plain background when there is
+    none), its pins, and the stats and credit; None when its stroke is too long to draw
+    (MAX_STROKE_PX)."""
+    centre, scale, at = view(drawn)
     paths = []
     for piece in drawn["pieces"]:
         path = []
@@ -535,6 +601,32 @@ def render_png(drawn: dict, stats: str) -> bytes | None:
     if stroke > MAX_STROKE_PX:
         return None
     canvas = _Canvas()
+    places = preview_basemap.paint(canvas.px, WIDTH, MAP_H, centre, scale)
+    if places is not None:
+        from . import preview_glyphs_small as small
+
+        # The credit the base map owes, at the map's foot (docs/OPERATIONS.md).
+        credit_w = text_width(preview_basemap.CREDIT, small)
+        x0, y0 = WIDTH - credit_w - 16, MAP_H - small.HEIGHT - 6
+        for y in range(y0, MAP_H):
+            for x in range(x0, WIDTH):
+                canvas.blend(x, y, BAND_COLOUR, 0.85)
+        canvas.text(x0 + 8, y0 + 3 + small.ASCENT, preview_basemap.CREDIT, TEXT, small)
+        # A white edge round the line, as the app's map draws it, so it stands off the roads.
+        casing = _line_coverage(paths, LINE_RADIUS + 2.5)
+        # No name over the line, a pin or the credit.
+        taken = [(x0, y0, WIDTH, MAP_H)]
+        for p in [drawn["start"], drawn["finish"], *drawn["stops"]]:
+            if p is not None:
+                x, y = at(p)
+                taken.append((x - 16, y - 16, x + 16, y + 16))
+        _place_labels(canvas, places, taken, casing)
+    # The map as it is before the route: Home's circle shows it again below.
+    under = bytes(canvas.px)
+    if places is not None:
+        for i, c in enumerate(casing):
+            if c:
+                canvas.blend(i % WIDTH, i // WIDTH, BAND_COLOUR, c / 255)
     cover = _line_coverage(paths, LINE_RADIUS)
     for i, c in enumerate(cover):
         if c:
@@ -550,13 +642,16 @@ def render_png(drawn: dict, stats: str) -> bytes | None:
             canvas.disc(x, y, 10, colour)
     zone = drawn.get("zone")
     if zone:
-        # Nothing inside Home's circle, not even a round line end or a pin's edge reaching in.
+        # Nothing of the route inside Home's circle, not even a round line end or a pin's edge.
+        # The base map stays, as Share as image keeps it (shareCard.ts): its streets are anyone's,
+        # and a blank disc on it would mark where Home is.
         cx, cy = at(zone[0])
-        r = zone[1] / M_PER_DEG * scale
+        r = zone_radius_px(zone, scale)
         for y in range(max(0, int(cy - r - 1)), min(MAP_H, int(cy + r + 2))):
             for x in range(max(0, int(cx - r - 1)), min(WIDTH, int(cx + r + 2))):
                 if (x + 0.5 - cx) ** 2 + (y + 0.5 - cy) ** 2 <= r * r:
-                    canvas.blend(x, y, BACKGROUND, 1)
+                    i = (y * WIDTH + x) * 3
+                    canvas.px[i : i + 3] = under[i : i + 3]
     for x in range(WIDTH):
         canvas.blend(x, MAP_H, RULE, 1)
     baseline = MAP_H + (BAND + 24) // 2
@@ -566,6 +661,13 @@ def render_png(drawn: dict, stats: str) -> bytes | None:
     size = ICON_SIZE
     canvas.image(brand_x - 14 - size, MAP_H + (BAND - size) // 2, size, _icon_data())
     return canvas.png()
+
+
+def zone_radius_px(zone, scale: float) -> float:
+    """Home's circle's radius on the picture: metres to world units at the circle's latitude
+    (Mercator stretches a metre by 1 / cos(latitude))."""
+    lat = zone[0][1]
+    return zone[1] / (2 * math.pi * EARTH_RADIUS_M * math.cos(math.radians(lat))) * scale
 
 
 # ---- The row's preview ----

@@ -2552,3 +2552,39 @@ class RoutePostSection(models.Model):
 
     def __str__(self) -> str:
         return self.heading
+
+
+class RoutePostPhoto(models.Model):
+    """A photo in a post (core.route_posts; the owner, 2026-10-25: "Allow images to be included in
+    the blog posts"), shown under About this ride (`place` 0) or under the highlighted section of
+    that number, in `position` order.
+
+    `image` is a JPEG kept with nothing but what draws it (route_posts.clean_jpeg): the admin's
+    browser makes it smaller and draws it again, and the server takes out any Exif, GPS, XMP or
+    comment left, so no photo says where or when it was taken. A photo an assistant described
+    with no file yet (route_posts.write_draft) has no `image` and is not shown until an admin adds
+    its file on the post's page."""
+
+    post = models.ForeignKey("RoutePost", on_delete=models.CASCADE, related_name="photos")
+    place = models.PositiveSmallIntegerField(
+        "Where",
+        default=0,
+        help_text="0 under About this ride; 1, 2 and on under that highlighted section.",
+    )
+    position = models.PositiveSmallIntegerField(default=0)
+    alt_text = models.CharField(
+        "Alt text", max_length=300, help_text="What the photo shows, for people who cannot see it."
+    )
+    caption = models.CharField(max_length=200, blank=True, default="")
+    image = models.BinaryField(null=True, blank=True)
+    key = models.CharField(max_length=16, blank=True, default="")
+    width = models.PositiveIntegerField(null=True, blank=True)
+    height = models.PositiveIntegerField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "route_post_photo"
+        ordering = ("place", "position", "id")
+
+    def __str__(self) -> str:
+        return self.alt_text

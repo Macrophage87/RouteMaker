@@ -310,10 +310,10 @@ not in your account, so set them once on each phone or computer you use<sup clas
 <tr><th scope="row">High contrast</th><td>Settings, Display</td><td>Bolder map lines, stronger borders and text, darker street names, and map colors that don't rely on red and green. Off unless your device asks for more contrast.</td><td>On this device</td></tr>
 <tr><th scope="row">Accessibility mode</th><td>Settings, Display; also the first button on every page</td><td>Adds Map tools by the map's zoom buttons, to add a point, set a destination or get road info at the map center.</td><td>On this device</td></tr>
 <tr><th scope="row">Announcements</th><td>Settings, Display</td><td>Brief: the route, guidance and errors. Full: also what the app is doing. Unset, Go is brief and Plan is full.</td><td>On this device</td></tr>
-<tr><th scope="row">Say cues with</th><td>Settings, Riding; More, during a ride</td><td>My screen reader, RouteMaker's voice, Both, or Neither (on screen only). RouteMaker's voice unless you choose.</td><td>On this device</td></tr>
-<tr><th scope="row">How much to say</th><td>Settings, Riding; More, during a ride</td><td>Full, Stoker or Quiet (below). Full unless you choose.</td><td>On this device</td></tr>
+<tr><th scope="row">Say cues with</th><td>Settings, Riding; More, then the Settings gear, during a ride</td><td>My screen reader, RouteMaker's voice, Both, or Neither (on screen only). RouteMaker's voice unless you choose.</td><td>On this device</td></tr>
+<tr><th scope="row">How much to say</th><td>Settings, Riding; More, then the Settings gear, during a ride</td><td>Full, Stoker or Quiet (below). Full unless you choose.</td><td>On this device</td></tr>
 <tr><th scope="row">Large text during a ride</th><td>Settings, Riding; the Large text button during a ride</td><td>The next turn as big as it fits on the top half of the screen, with the map below and larger street names, for bright sun or near sight. Off unless you turn it on.</td><td>On this device</td></tr>
-<tr><th scope="row">Turn the map to my heading</th><td>More, during a ride</td><td>The map turns with you during a ride. On unless you turn it off.</td><td>On this device</td></tr>
+<tr><th scope="row">Turn the map to my heading</th><td>More, then the Settings gear, during a ride</td><td>The map turns with you during a ride. On unless you turn it off.</td><td>On this device</td></tr>
 </tbody>
 </table>
 </div>
@@ -526,7 +526,7 @@ says it is on.</li>
 </div></details>
 <h2 id="riding">During a ride</h2>
 <p>Choose who says the cues and how much they say. Start ride starts at once, in Plan and Go, with RouteMaker's
-voice saying every turn until you change them in Settings, Riding, or in More during a ride.</p>
+voice saying every turn until you change them in Settings, Riding, or in More, then the Settings gear, during a ride.</p>
 <figure id="fig-a11y-cues" class="has-narrow">
 <div class="fig-scroll fig-wide" tabindex="0" role="group" aria-label="Diagram, scrolls sideways on a narrow screen">
 <svg viewBox="0 0 760 176" role="img" aria-labelledby="fig-a11y-cues-t fig-a11y-cues-d" focusable="false" style="min-width:547px">
@@ -598,8 +598,10 @@ focus.</li>
 <li><strong>How much to say</strong>: <strong>Full</strong>, every turn, early and again close to it;
 <strong>Stoker</strong>, each turn once ahead and as it happens, with busy crossings and stops, made for
 a blind stoker on a tandem; <strong>Quiet</strong>, only arrival.</li>
-<li><strong>Where am I?</strong> says where you are at any time and centers the map on you again; on a
-keyboard, press W or C while focus is in the ride panel.</li>
+<li><strong>Where am I?</strong> says where you are at any time and centers the map on you again, and how far the next stop and the end are and when you should reach them: "1.2 miles
+to stop 2, arriving about 6:42 AM"; on a
+keyboard, press W or C while focus is in the ride panel. The to-go line under the turn is read in full: "To stop 2, 1.2 mi (1.9 km), about 8 min,
+arriving about 6:42 AM".</li>
 <li>Cues say when the route goes onto a <strong>service road</strong>, alley or parking aisle, and name
 the main road beside it: "Left onto the service road beside East-West Highway."</li>
 <li>At a <strong>traffic circle</strong> the cue counts the exits: "Take the 3rd exit onto P Street NW
@@ -615,7 +617,7 @@ hears it, such as "Runs north to south."</li>
 reader hears whether it is pressed, and each press says "Large text on" or "off".</li>
 <li>With <strong>Say cues with</strong> set to <strong>My screen reader</strong>, the map is hidden from
 the screen reader during a ride, so swiping goes from the next turn straight to the ride's buttons.</li>
-<li><strong>Turn the map to my heading</strong>, in More, during a ride, turns the map with you; turn it off
+<li><strong>Turn the map to my heading</strong>, in More, then the Settings gear, during a ride, turns the map with you; turn it off
 to keep north up.</li>
 <li>In a ride the map's street names are larger and shortened (R St NW), and the turn card uses fewer
 words (0.2 mi, not In 0.2 mi; 20 min, not about 20 min) so its type and arrow can be larger. A screen
@@ -676,7 +678,7 @@ and screen reader names.</p>
 <p class="next">Next: <a href="/about/ride-types.html">Ride types</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.12.3. The code is
+  <p>Part of RouteMaker's documentation. It describes version 0.12.4. The code is
   open source under the MIT licence:
   <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
   <p><a href="/">Back to the map</a></p>

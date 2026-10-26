@@ -252,6 +252,11 @@ export interface RideModel {
   /** Metres per second at the route's own pace (distance over moving time), for time to go. */
   paceMs: number | null;
   /**
+   * The route's time along the line (the API's time_marks scaled to its duration): metres and the seconds from the
+   * start there, hills and junction waits in place. Absent where the API sent none; the time is then spread evenly.
+   */
+  timeline?: { m: Float64Array; s: Float64Array };
+  /**
    * The via points (v0.7.0, "Via points vs stops"): where the line passes each, by its place in the plan's
    * points. Never a cue: a via point is not announced; the re-plan drops the ones passed.
    */
@@ -549,7 +554,58 @@ export function rideModel(route: RouteResponse, vias: readonly number[] = [], na
   joinJogs(cues);
   cues.push({ index: cues.length, kind: "end", atM: lengthM, text: endWords(route.arrival_side), movement: null, street: null, severity: null, tier: null, stop: null });
   const paceMs = route.distance_m > 0 && route.duration_s > 0 ? route.distance_m / route.duration_s : null;
-  return { coordinates, along, lengthM, cues, stretches, paceMs, ...(vias.length ? { passes } : {}) };
+  const timeline = timelineOf(route.time_marks, lengthM, route.duration_s);
+  return { coordinates, along, lengthM, cues, stretches, paceMs, ...(timeline ? { timeline } : {}), ...(vias.length ? { passes } : {}) };
+}
+
+/**
+ * The API's time marks ([fraction, seconds], routemaker.time_marks) as metres and seconds along a line of `lengthM`,
+ * scaled so the end is `durationS` (the route's time also holds a walked stretch, or Mountain bike's singletrack
+ * pace, which the marks leave out). Null where they are missing, out of order or carry no time.
+ */
+export function timelineOf(marks: readonly (readonly number[])[] | null | undefined, lengthM: number, durationS: number): { m: Float64Array; s: Float64Array } | null {
+  if (!marks || marks.length < 2 || !(lengthM > 0) || !(durationS > 0)) return null;
+  const last = marks[marks.length - 1][1];
+  if (!(last > 0)) return null;
+  const m = new Float64Array(marks.length);
+  const s = new Float64Array(marks.length);
+  for (let i = 0; i < marks.length; i++) {
+    const [f, t] = marks[i];
+    if (!Number.isFinite(f) || !Number.isFinite(t) || (i && (f < marks[i - 1][0] || t < marks[i - 1][1]))) return null;
+    m[i] = Math.min(1, Math.max(0, f)) * lengthM;
+    s[i] = (t / last) * durationS;
+  }
+  return { m, s };
+}
+
+/**
+ * The route's seconds from its start to `atM` along the line: from its timeline (hills and junction waits where they
+ * are, the owner 2026-10-26: "make sure intersection waits are considered too"), else at its own even pace; null
+ * with neither. A junction's wait counts once the place is reached.
+ */
+export function secondsAt(model: RideModel, atM: number): number | null {
+  const line = model.timeline;
+  if (!line) return model.paceMs ? Math.max(0, atM) / model.paceMs : null;
+  const { m, s } = line;
+  if (atM <= m[0]) return s[0];
+  if (atM >= m[m.length - 1]) return s[s.length - 1];
+  // The last mark at or before atM (a wait's two marks share a place: the later one, past the wait).
+  let lo = 0;
+  let hi = m.length - 1;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (m[mid] <= atM) lo = mid;
+    else hi = mid;
+  }
+  const span = m[hi] - m[lo];
+  return span > 0 ? s[lo] + ((s[hi] - s[lo]) * (atM - m[lo])) / span : s[lo];
+}
+
+/** The route's seconds from `fromM` to `toM` along the line (secondsAt), or null. */
+export function secondsBetween(model: RideModel, fromM: number, toM: number): number | null {
+  const a = secondsAt(model, fromM);
+  const b = secondsAt(model, toM);
+  return a === null || b === null ? null : Math.max(0, b - a);
 }
 
 /** The road crossed where it has no name (describe.CROSS_UNNAMED). */
@@ -1005,14 +1061,13 @@ export interface ToGo {
   end: { metres: number; seconds: number | null };
 }
 
-/** Distance and time to the next stop and to the end, at the route's own pace. */
+/** Distance and time to the next stop and to the end, at the route's own time along the line (secondsBetween). */
 export function toGo(model: RideModel, progressM: number): ToGo {
-  const seconds = (m: number) => (model.paceMs ? m / model.paceMs : null);
   const stop = nextStop(model, progressM);
   const endM = Math.max(0, model.lengthM - progressM);
   return {
-    stop: stop ? { number: stop.stop ?? 0, metres: stop.atM - progressM, seconds: seconds(stop.atM - progressM) } : null,
-    end: { metres: endM, seconds: seconds(endM) },
+    stop: stop ? { number: stop.stop ?? 0, metres: stop.atM - progressM, seconds: secondsBetween(model, progressM, stop.atM) } : null,
+    end: { metres: endM, seconds: secondsBetween(model, progressM, model.lengthM) },
   };
 }
 
@@ -1168,7 +1223,13 @@ export function otherStreet(junction: RouteJunction, trail: string): string {
  * ("On the Capital Crescent Trail, at mile marker 3." or "at about mile 3.2."), else the distance from a
  * junction of it. An unnamed way is said plainly ("On an unnamed path."), with no distance from anywhere.
  */
-export function whereAmI(model: RideModel, state: RideState, metric = false, miles: TrailMiles | null = null): string {
+export function whereAmI(
+  model: RideModel,
+  state: RideState,
+  metric = false,
+  miles: TrailMiles | null = null,
+  arriving: ((seconds: number) => string) | null = null,
+): string {
   const dist = (m: number) => (metric ? formatDistance(m) : spokenDistance(m));
   if (state.arrived) return "You have arrived at the end of the route.";
   if (state.progressM === null) return "Finding your place on the route.";
@@ -1201,8 +1262,10 @@ export function whereAmI(model: RideModel, state: RideState, metric = false, mil
     sentences.push(`Next, in ${dist(cue.atM - state.progressM)}: ${lowerFirst(text)}`);
   }
   const togo = toGo(model, state.progressM);
-  if (togo.stop) sentences.push(`${capital(dist(togo.stop.metres))} to stop ${togo.stop.number}.`);
-  sentences.push(`${capital(dist(togo.end.metres))} to the end.`);
+  // ", arriving about 6:42 AM" where the caller gives the clock (lib/arrival.ts).
+  const at = (seconds: number | null) => (arriving && seconds !== null ? `, arriving about ${arriving(seconds)}` : "");
+  if (togo.stop) sentences.push(`${capital(dist(togo.stop.metres))} to stop ${togo.stop.number}${at(togo.stop.seconds)}.`);
+  sentences.push(`${capital(dist(togo.end.metres))} to the end${at(togo.end.seconds)}.`);
   return sentences.join(" ");
 }
 
