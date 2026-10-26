@@ -290,6 +290,30 @@ class TestNeverInTheWay:
         response = post(client, body_for(stress=70))
         assert response.status_code == 200
         assert response.json()["options"]
+        assert our_advisory_locks() == 0
+
+    @override_settings(ROUTING_CONCURRENCY=2)
+    def test_a_plan_while_the_options_hold_their_slot_is_planned_on_betas_pool(
+        self,
+        client,
+        segments,  # noqa: F811
+        router,  # noqa: F811
+    ) -> None:
+        """The review's blocker on beta's pool of two: the rider's own re-plan or ride
+        re-route sent while their options compute takes the slot left beside them."""
+        router(standard_router())
+        address = "198.51.100.72"
+        other = hold_slots([neighbours_client_slot(address), routing_slots(2)[-1]])
+        try:
+            response = client.post(
+                "/api/route",
+                data=json.dumps(body_for(stress=70)),
+                content_type="application/json",
+                HTTP_X_FORWARDED_FOR=address,
+            )
+        finally:
+            other.close()
+        assert response.status_code == 200
 
     @override_settings(ROUTING_CONCURRENCY=2)
     def test_refused_on_betas_pool_of_two_while_a_plan_runs(

@@ -478,7 +478,9 @@ ROOM_FOR_OTHERS = 2
 ROUTING_IN_FLIGHT = InFlight(scope_id=1, per_client=2, total_setting="ROUTING_CONCURRENCY")
 
 # Go's More direct and Calmer (POST /api/route/neighbours): routing's own deployment slots,
-# at the lowest priority, so they never delay or refuse a plan or a ride's re-route. One per
+# at the lowest priority, so they never delay or refuse a plan or a ride's re-route (on a
+# pool of two, beta's, only the rider's own: another rider's plan meanwhile can be held
+# back up to its Retry-After). One per
 # client, in a client class of their own (a route from the same rider is not refused for
 # them). A slot is taken only while the pool is idle enough that ROOM_FOR_OTHERS slots stay
 # free beside it (on a pool of two, beta's, one: `_free_beside`), last slot first, and the
