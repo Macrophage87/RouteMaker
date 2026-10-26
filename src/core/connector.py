@@ -254,6 +254,7 @@ class InProcessApi:
             "admin": self.base + reverse("routemaker_admin:core_routepost_change", args=[post.pk]),
             "figures": dict(route_posts.figures(post)),
             "sections": post.sections.count(),
+            "photos_waiting": post.photos.filter(image__isnull=True).count(),
         }
 
 

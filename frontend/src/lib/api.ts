@@ -939,6 +939,11 @@ export interface RouteResponse {
   geometry: { type: "LineString"; coordinates: LonLat[] };
   distance_m: number;
   duration_s: number;
+  /**
+   * Where along the line duration_s falls, as [fraction of the length, seconds], hills and junction waits in place
+   * (routemaker.time_marks), for a ride's arrival times (lib/navigate.ts secondsAt). Null or absent: spread evenly.
+   */
+  time_marks?: number[][] | null;
   climb_m: number;
   descent_m: number;
   stress_m: StressMetres;
