@@ -16,6 +16,7 @@ from dataclasses import replace
 import pytest
 
 from routemaker import intersections as m
+from routemaker import ridetime
 from routemaker.intersections import Control, Junction, Movement, Road
 
 QUIET = Road(2)
@@ -249,6 +250,122 @@ class TestControl:
         event = m.assess(junction(incoming=LTS4, outgoing=LTS4, crossed=(LTS3,)))
         assert event.cost_ft == m.PRIORITY_SIDE_FT
         assert event.kind == "along"
+
+
+class TestByTraffic:
+    """The owner, 2026-10-26, of Sheridan St NW across Piney Branch Rd NW: "a busy 2 lane
+    each way road. It's only LTS2 because it also has a bike lane. Given that there's a
+    stop sign and no cross stop, this intersection should be weighted much more highly."
+    A road the rider gives way to is read by its traffic, not its bike lane."""
+
+    # Piney Branch Rd NW at Sheridan St (OSM ways 6054706 and 1111094169): lanes=4,
+    # two-way, 30 mph, cycleway:both=lane; LTS 2 on the map. Sheridan St: 20 mph.
+    PINEY_BRANCH = Road(
+        2, speed_mph=30, lanes=2, oneway=False, display=("Piney Branch Road Northwest",)
+    )
+    SHERIDAN = Road(2, speed_mph=20, lanes=1, oneway=False)
+
+    def crossing(self, road: Road = PINEY_BRANCH, **fields) -> Junction:
+        return junction(
+            **({"incoming": self.SHERIDAN, "crossed": (road,), "control": Control.STOP} | fields)
+        )
+
+    @pytest.mark.parametrize("control", [Control.STOP, Control.NONE])
+    def test_a_multilane_bike_lane_road_crossed_from_a_stop_is_red(self, control) -> None:
+        event = m.assess(self.crossing(control=control))
+        assert event is not None
+        assert event.severity == m.RED
+        # Read as an LTS 4 road's crossing: 4,000 ft, 0.9 at 30 mph, 1.25 for two lanes.
+        assert event.cost_ft == pytest.approx(m.STOPPED_CROSSING_FT[4] * 0.9 * 1.25)
+        # The event still names the road's tier on the map, and says what it is.
+        assert event.crossed_tier == 2
+        assert event.reason.startswith("Crossing a 4-lane 30 mph (48 km/h) road")
+
+    def test_at_rush_hour_it_waits_for_a_gap_like_any_lts_4_crossing(self) -> None:
+        event = m.assess(self.crossing(), when=ridetime.WEEKDAY_RUSH)
+        assert event.cost_ft == pytest.approx(m.UNSIGNALISED_RUSH_MIN_FT)
+
+    def test_turning_onto_it_from_the_stop_is_read_the_same_way(self) -> None:
+        onto = junction(
+            incoming=self.SHERIDAN,
+            outgoing=self.PINEY_BRANCH,
+            movement=Movement.LEFT,
+            control=Control.STOP,
+        )
+        assert m.assess(onto).severity == m.RED
+
+    @pytest.mark.parametrize(
+        "road",
+        [
+            replace(PINEY_BRANCH, speed_mph=25),  # Furth: 25 mph multi-lane is LTS 3
+            replace(PINEY_BRANCH, aadt=8_000),  # a count at or under the busy-street figure
+        ],
+    )
+    def test_a_slower_or_counted_quiet_road_is_read_as_lts_3(self, road) -> None:
+        assert m.traffic_tier(road) == 3
+        assert m.assess(self.crossing(road)).severity == m.ORANGE
+
+    @pytest.mark.parametrize(
+        "road",
+        [
+            replace(PINEY_BRANCH, lanes=1),  # one lane each way
+            replace(PINEY_BRANCH, lanes=2, oneway=True),  # a two-lane one-way, or carriageway
+            replace(PINEY_BRANCH, speed_mph=20),  # Furth: 20 mph multi-lane is LTS 2
+            replace(PINEY_BRANCH, lanes=None),  # lanes not known
+            replace(PINEY_BRANCH, car_free=True),  # closed to cars at the ride's time
+        ],
+    )
+    def test_a_road_its_traffic_does_not_make_busy_is_left_alone(self, road) -> None:
+        assert m.by_traffic(self.crossing(road)) == self.crossing(road)
+        assert m.assess(self.crossing(road)) is None
+
+    @pytest.mark.parametrize(
+        ("road", "tier"),
+        [
+            (replace(PINEY_BRANCH, aadt=8_001), 4),  # just over the busy-street figure
+            (replace(PINEY_BRANCH, speed_mph=35, aadt=6_000), 4),  # 35 mph: any count
+            (replace(PINEY_BRANCH, speed_mph=None, default_speed_mph=25.0), 3),  # statutory
+        ],
+    )
+    def test_the_count_only_lowers_the_30_mph_step(self, road, tier) -> None:
+        assert m.traffic_tier(road) == tier
+
+    def test_straight_on_from_one_multilane_road_into_the_next_is_not_joining(self) -> None:
+        # A name change at the node (`continues` is False), nothing mapped or a stop.
+        other = replace(self.PINEY_BRANCH, names=frozenset({"other"}))
+        for control in (Control.NONE, Control.STOP):
+            j = junction(incoming=self.PINEY_BRANCH, outgoing=other, control=control)
+            assert m.by_traffic(j) == j
+            assert m.assess(j) is None
+
+    def test_a_half_step_at_or_above_its_traffic_is_left_alone(self) -> None:
+        road = Road(3, speed_mph=25, lanes=2, oneway=False, half=True)  # 3.5 against 3
+        assert m.by_traffic(self.crossing(road)).crossed == (road,)
+
+    def test_a_rated_junction_still_names_the_map_tier(self) -> None:
+        event = m.assess(replace(self.crossing(), rating=4))
+        assert event.rating == 4
+        assert event.crossed_tier == 2
+
+    def test_a_three_lane_one_way_is_multilane(self) -> None:
+        assert m.traffic_tier(replace(self.PINEY_BRANCH, lanes=3, oneway=True)) == 4
+
+    @pytest.mark.parametrize("control", [Control.SIGNAL, Control.ALL_STOP, Control.CROSS_STOP])
+    def test_where_the_traffic_stops_it_is_left_alone(self, control) -> None:
+        assert m.assess(self.crossing(control=control)) is None
+
+    def test_a_rider_with_the_right_of_way_is_not_waiting_for_its_gaps(self) -> None:
+        # Nothing mapped, and the rider's road is the busier on the map (`crossing_ft`).
+        j = self.crossing(incoming=Road(3, speed_mph=35, lanes=1), control=Control.NONE)
+        assert m.by_traffic(j) == j
+
+    def test_it_never_lowers_a_road(self) -> None:
+        avoid = Road(5, speed_mph=30, lanes=2, oneway=False)
+        assert m.by_traffic(self.crossing(avoid)).crossed == (avoid,)
+
+    def test_a_mass_ride_keeps_the_roads_own_tier(self) -> None:
+        """396: a Mass Ride's junctions go by the roads' stress ratings."""
+        assert m.assess(self.crossing(), group=True) is None
 
 
 class TestMovementCosts:

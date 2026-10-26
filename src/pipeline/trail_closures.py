@@ -22,7 +22,16 @@ from collections import Counter
 from collections.abc import Collection, Iterable, Mapping, Set
 from dataclasses import dataclass, field
 
-from routemaker import cbd, facility, sidewalks, singletrack, station_links, trailaccess, zoo
+from routemaker import (
+    aisle_links,
+    cbd,
+    facility,
+    sidewalks,
+    singletrack,
+    station_links,
+    trailaccess,
+    zoo,
+)
 from routemaker.cbd import Polygon
 
 from .extract import Way
@@ -141,6 +150,9 @@ class TrailClosures:
     walk_links: set[int] = field(default_factory=set)
     # the Zoo spur: open, destination-only
     destination_only: set[int] = field(default_factory=set)
+    # parking aisles where a trail ends, routed as plain service roads
+    # (`routemaker.aisle_links`; the owner, 2026-10-26)
+    aisle_links: set[int] = field(default_factory=set)
     # rated singletrack that nothing but the rating closes: the map draws it on the
     # mountain-bike trail layer, in its level's colour (OWNER-DECISIONS 456; `drawn_singletrack`)
     drawn_singletrack: set[int] = field(default_factory=set)
@@ -362,6 +374,24 @@ def add_station_links(
     # Walked, not ridden: a station's footway is no last-resort sidewalk.
     result.sidewalk_rides -= set(found)
     result.sidewalk_links -= set(found)
+
+
+def add_aisle_links(result: TrailClosures, ways: Iterable[Way]) -> None:
+    """Find the parking aisles that join a trail's dead end to another
+    bicycle-open way (`routemaker.aisle_links`), after every closure is in `result.reasons`,
+    so a link never leads onto a way something closes."""
+    result.aisle_links = aisle_links.links(
+        [
+            (
+                way.osm_id,
+                way.tags,
+                way.node_ids,
+                node_coordinates(way) if aisle_links.is_candidate(way.tags) else (),
+            )
+            for way in ways
+        ],
+        closed=set(result.reasons) | result.destination_only,
+    )
 
 
 def node_coordinates(way: Way) -> list[tuple[float, float] | None]:
