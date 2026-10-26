@@ -178,11 +178,14 @@ test("Go's ride types: the rider's own (My Go, Default until set), then Own Bike
   assert.match(src("../app/Sheets.tsx"), /className="chip ride-type-chip"\s+aria-pressed=\{preset === id\}/);
 });
 
-test("Go's places are Home, Food, Water and Restroom (no Work); Home works signed out", () => {
-  const chips = [...go.matchAll(/<Icon name="(\w+)" size=\{18\} \/>\s*(\w+)\s*<\/button>/g)].map((m) => m[2]);
+test("Go's places are Home, Food, Water and Restroom (Work only in Favorites); Home works signed out", () => {
+  // Signed in, Favorites takes Home's place (lib/favoritePlaces.test.ts), and Work is its second row, not a chip.
+  const row = go.slice(go.indexOf('aria-label="Places"'), go.indexOf('aria-label="More places"'));
+  const chips = [...row.matchAll(/<Icon name="(\w+)" size=\{18\} \/>\s*(\w+)\s*<\/button>/g)].map((m) => m[2]);
   assert.deepEqual(chips.slice(0, 4), ["Home", "Food", "Water", "Restroom"]);
-  assert.doesNotMatch(go, /Work/);
-  assert.ok(!("work" in ICON_PATHS), "the mockup's Work icon is gone with the chip");
+  assert.match(row, /\{FAVORITES_TEXT\}/);
+  assert.doesNotMatch(row, /Work/);
+  assert.ok("work" in ICON_PATHS, "Work's icon, in the Favorites popout");
   // The hint is the chip's description only while the Home sheet is shut (lib/homeSet.ts: the sheet replaces it).
   assert.match(go, /aria-describedby=\{places\.homeReady \|\| homeShown \? undefined : homeHint\}/);
   assert.match(go, /\{HOME_NOT_SET\}/);

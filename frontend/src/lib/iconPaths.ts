@@ -20,6 +20,8 @@ export const ICON_PATHS = {
   "chev": "<path d=\"M9 6l6 6-6 6\"/>",
   "down": "<path d=\"M6 9l6 6 6-6\"/>",
   "plus": "<path d=\"M12 5v14M5 12h14\"/>",
+  // Work, the second of the Favorites popout's rows (lib/favoritePlaces.ts): a briefcase.
+  "work": "<rect x=\"3\" y=\"7\" width=\"18\" height=\"13\" rx=\"2\"/><path d=\"M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M3 13h18\"/>",
   "routes": "<circle cx=\"6\" cy=\"19\" r=\"2\"/><circle cx=\"18\" cy=\"5\" r=\"2\"/><path d=\"M6 17V10a4 4 0 0 1 4-4h6M18 7v7a4 4 0 0 1-4 4H8\"/>",
   "download": "<path d=\"M12 3v12M7 10l5 5 5-5M4 20h16\"/>",
   "link": "<path d=\"M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1\"/>",

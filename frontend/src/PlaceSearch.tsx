@@ -61,6 +61,8 @@ export interface LocateControl {
 const SINGLE_HINT = {
   go: "The place you pick is where the route goes, from the start above.",
   home: "The place you pick is kept as your Home.",
+  work: "The place you pick is kept as your Work, in Favorites.",
+  favorite: "The place you pick is saved to Favorites.",
   start: "The place you pick is where the route starts, in place of your location.",
   stop: "The place you pick is a stop, where it adds the least distance.",
   from: "The place you pick becomes the start.",
@@ -117,8 +119,9 @@ export function PlaceSearch({
   /**
    * "plan": the Points search, with Start / Destination / Stop. "go" (UI-CLEANUP): Go's one Where to? box,
    * whose place is the destination, from the rider's location. "home": My Go's Home, a place and no more.
+   * "work" and "favorite": Go's Favorites popout (lib/favoritePlaces.ts), Work or another favorite place.
    */
-  variant?: "plan" | "go" | "home" | "start" | "stop" | PlanBox;
+  variant?: "plan" | "go" | "home" | "work" | "favorite" | "start" | "stop" | PlanBox;
   /** Absent: no "Use my location" (a test or a build without it). */
   locate?: LocateControl;
   /** "Make it a loop" is on: a place is the start or a stop, never a destination (OWNER-DECISIONS 374). */
@@ -265,7 +268,8 @@ export function PlaceSearch({
     sharedTurn.current += 1;
     setShared(null);
     // A Home is not a recent place: it would outlast Clear Home and sign-out on a shared phone (review privacy-1).
-    if (variant !== "home") setRecent(rememberRecentPlace(place));
+    // Nor is Work, or a favorite: they are the account's.
+    if (variant !== "home" && variant !== "work" && variant !== "favorite") setRecent(rememberRecentPlace(place));
     setQuery("");
     setResult(null);
     setOpen(false);
@@ -318,7 +322,7 @@ export function PlaceSearch({
   return (
     <div className={variant === "go" ? "place-search go-search" : "place-search"}>
       <label htmlFor={`${id}-input`} className={variant === "go" ? "place-search-label visually-hidden" : "place-search-label"}>
-        {variant === "go" ? "Where to?" : variant === "home" ? "Find your Home" : variant === "start" ? "Start from" : variant === "stop" || variant === "add" ? "Add a stop" : variant === "from" ? "From" : variant === "to" ? "To" : "Find a place"}
+        {variant === "go" ? "Where to?" : variant === "home" ? "Find your Home" : variant === "work" ? "Find your Work" : variant === "favorite" ? "Find a place to save" : variant === "start" ? "Start from" : variant === "stop" || variant === "add" ? "Add a stop" : variant === "from" ? "From" : variant === "to" ? "To" : "Find a place"}
         {current && <span className="place-search-current">{` (now ${current})`}</span>}
       </label>
       <div className={(locate && !locate.listOnly) || variant === "go" ? "place-search-row" : undefined}>

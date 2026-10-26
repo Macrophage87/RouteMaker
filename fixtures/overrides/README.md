@@ -409,6 +409,35 @@ so step 7 of "First rebuild on a fresh host" can still be given every file. It
 takes effect at the next rebuild after the image carrying it is deployed. The
 discrepancy report lists the ways as not applied, "owner override".
 
+An entry may instead (or as well) give the block's direction, `"direction":
+"OB"`, `"IB"` or `"BD"` in DC's own labels: `OB` one-way in the direction the
+block's line is drawn (FROMSTREET toward TOSTREET on DC's layer; check the line),
+`IB` the other way, `BD` two-way. A one-way direction also counts DC's lane each
+way as one lane, the traffic's. `withhold` may
+then be left out. The owner's direction is read in place of DC's on every way
+matched to the block, through the same rows as DC's own record (OWNER-DECISIONS
+190, rows B and C4, with their exceptions), and one thing more: where every block
+of a way has the owner's direction and OSM has the way one-way the other way, the
+owner's direction wins, except on a junction stub
+(`routemaker.agency_roads.overlay`; DC's own record never overrides an opposite
+OSM one-way). That last case is not one of item 190's rows, so it is not counted
+in the overlay's `precedence`, and the discrepancy report reads the owner's
+direction as DC's (it compares one-way against two-way, not direction). So a street reversed before either source caught up is right on our
+map before the OSM edit, and still right after it. Two entries giving one block
+two directions refuse the rebuild's matching. Remove the entry only once DC's
+layer records the change **and** OSM agrees: DC's own one-way never overrides an
+opposite OSM one-way, so removing it while OSM is still wrong sends the route
+against traffic again.
+
+- `2026-10-26-owner-sheridan-st-nw.json` (the owner, 2026-10-26: "Sheridan street
+  between 3rd and 5th streets are 1 way in the opposite direction. That change
+  isn't even on Google maps yet"; asked which way: "Eastbound now, both
+  blocks"): the 300 and 400 blocks of Sheridan St NW, 3rd St to 5th St, one-way
+  eastbound (`IB` on both; DC draws both lines westward). DC still records both
+  two-way, which made the 400 block two-way on our map (row C4); OSM has it
+  one-way eastbound already (way 1044281798) and the 300 block two-way (way
+  1044479731). No sign excepting bicycles was reported and DC records no
+  contraflow lane.
 - `2026-10-02-owner-canal-whitehurst.json` (OWNER-DECISIONS 197, verbatim: "DC
   records of 20 mph on Canal Rd NW (block dc-4633425-0) and the Whitehurst Fwy
   (dc-4636053-0), owner 2026-10-02: "Override: keep LTS 4 (Recommended)". A
