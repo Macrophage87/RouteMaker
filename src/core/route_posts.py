@@ -45,6 +45,7 @@ from __future__ import annotations
 
 import hashlib
 import itertools
+import json
 import math
 import re
 import secrets
@@ -75,6 +76,12 @@ GPX_LABEL = "Download GPX"
 GARMIN_LABEL = "Send to Garmin"
 WAHOO_LABEL = "Send to Wahoo"
 THUMBNAIL_LABEL = "Use this map as the link picture"
+PHOTO_ADD_LABEL = "Add photo"
+PHOTO_NOTE = (
+    "Your browser makes each photo smaller and draws it again before sending it, so it keeps no "
+    "location, date or camera details. Change or remove photos in the admin."
+)
+ABOUT_HEADING = "About this ride"
 
 # The thumbnail as the page's script sends it: a JPEG of the preview's size, at most this big.
 THUMBNAIL_MAX_BYTES = 1024 * 1024
@@ -276,6 +283,17 @@ NOT_A_DRAFT = "That post is no longer a draft: change it in the admin."
 SLUG_TAKEN = "A draft already has that slug: send replace to rewrite it, or another slug."
 SLUG_RE = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
 
+# Photos (RoutePostPhoto). The admin's browser makes each one at most PHOTO_EDGE pixels on its
+# longer side and sends it as a JPEG, well under the 1 MB the edges let a request carry
+# (Caddyfile, the beta's nginx); the server takes no photo bigger than these.
+PHOTOS_MAX = 20
+PHOTO_EDGE = 1600
+PHOTO_MAX_EDGE = 2048
+PHOTO_MAX_BYTES = 900 * 1024
+PHOTO_TYPE = "image/jpeg"
+ALT_MAX, CAPTION_MAX = 300, 200
+PHOTO_KEY_RE = re.compile(r"[0-9a-f]{16}")
+
 
 def _text(fields: dict, key: str, limit: int, *, required: bool = False, default: str = ""):
     value = fields.get(key, default)
@@ -326,12 +344,37 @@ def _sections(raw, distance_m) -> tuple[list[dict], str | None]:
     return out, None
 
 
+def _photos(raw, sections: int) -> tuple[list[dict], str | None]:
+    """The photos an assistant described ([{alt_text, caption, section}]), each waiting for its
+    file: an assistant sends no picture, an admin adds each on the post's page."""
+    if raw is None:
+        return [], None
+    if not isinstance(raw, list) or len(raw) > PHOTOS_MAX:
+        return [], f"photos: a list of at most {PHOTOS_MAX}."
+    out = []
+    for n, item in enumerate(raw, 1):
+        if not isinstance(item, dict):
+            return [], f"photo {n}: an object."
+        alt, problem = _text(item, "alt_text", ALT_MAX, required=True)
+        if problem:
+            return [], f"photo {n}, {problem}"
+        caption, problem = _text(item, "caption", CAPTION_MAX)
+        if problem:
+            return [], f"photo {n}, {problem}"
+        place = item.get("section", 0)
+        if not isinstance(place, int) or isinstance(place, bool) or not 0 <= place <= sections:
+            return [], f"photo {n}: section is 0 (About this ride) or 1 to {sections}."
+        out.append({"alt_text": alt, "caption": caption, "place": place})
+    return out, None
+
+
 def write_draft(author, fields: dict, route: dict):
     """Make or rewrite a draft post from what an assistant sent: (post, None) or (None, why).
 
     `fields`: title, abstract, and optionally slug (else made from the title), audience, byline,
-    season_label, season_start, season_end, sections ([{heading, body, from_mile, to_mile}]) and
-    replace (true to rewrite the draft already at the slug).
+    season_label, season_start, season_end, sections ([{heading, body, from_mile, to_mile}]),
+    photos ([{alt_text, caption, section}], each waiting for an admin to add its file) and replace
+    (true to rewrite the draft already at the slug; photos already given their file stay).
     `route`: the route as the site keeps it (source, line, distance_m, inputs, answer), checked
     as the admin checks a picked saved route (`line_problem`, the author's Home circle).
     """
@@ -342,7 +385,7 @@ def write_draft(author, fields: dict, route: dict):
 
     from . import accounts
     from .audit import record
-    from .models import RoutePost, RoutePostSection, SharedRoute
+    from .models import RoutePost, RoutePostPhoto, RoutePostSection, SharedRoute
 
     if not getattr(author, "is_instance_admin", False):
         return None, "Only an instance admin can write Featured routes posts."
@@ -392,12 +435,18 @@ def write_draft(author, fields: dict, route: dict):
     sections, problem = _sections(fields.get("sections"), float(distance))
     if problem:
         return None, problem
+    photos, problem = _photos(fields.get("photos"), len(sections))
+    if problem:
+        return None, problem
     with transaction.atomic():
         post = RoutePost.objects.select_for_update().filter(slug=slug).first()
         if post is not None and post.status != RoutePost.Status.DRAFT:
             return None, NOT_A_DRAFT
         if post is not None and fields.get("replace") is not True:
             return None, SLUG_TAKEN
+        kept = post.photos.filter(image__isnull=False).count() if post is not None else 0
+        if fields.get("photos") is not None and kept + len(photos) > PHOTOS_MAX:
+            return None, f"A post has at most {PHOTOS_MAX} photos; this one has {kept} already."
         made = post is None
         if made:
             post = RoutePost(slug=slug, author=author, status=RoutePost.Status.DRAFT)
@@ -433,6 +482,12 @@ def write_draft(author, fields: dict, route: dict):
             )
             for n, item in enumerate(sections, 1)
         )
+        if fields.get("photos") is not None:
+            # Described again: those still waiting for a file go, those with one stay.
+            post.photos.filter(image__isnull=True).delete()
+            RoutePostPhoto.objects.bulk_create(
+                RoutePostPhoto(post=post, position=n, **item) for n, item in enumerate(photos, 1)
+            )
         record(
             author,
             "route_post.draft",
@@ -588,6 +643,12 @@ STYLE = (
     ".section-map{margin:.5rem 0}.section-map figcaption{color:var(--muted);font-size:.95rem}"
     ".minimap{position:relative;width:100%;aspect-ratio:16/9;border-radius:8px;overflow:hidden;background:var(--card);"
     "margin-bottom:.25rem}"
+    ".photo{margin:1rem 0}.photo img{display:block;width:100%;height:auto;border-radius:8px;"
+    "background:var(--card)}.photo figcaption{color:var(--muted);font-size:.95rem;"
+    "margin-top:.25rem}"
+    ".photo-form{display:grid;gap:.5rem;margin:1rem 0;padding-top:1rem;border-top:1px solid "
+    "var(--rule)}.photo-form label{display:grid;gap:.25rem}.photo-form input,.photo-form select"
+    "{font:inherit;min-height:44px}.photo-form p{margin:0}"
     ".byline{color:var(--muted);font-size:.95rem;margin-top:2rem}"
     ".admin{margin-top:2rem;padding:1rem;border:1px dashed var(--rule);border-radius:8px}"
     ".admin button{font:inherit;padding:.5rem 1rem;min-height:44px;border-radius:6px;"
@@ -764,6 +825,53 @@ def _chart_text(post) -> str:
     return f'<p class="chart-text">{escape(words)}. The charts need JavaScript.</p>'
 
 
+def photo_path(post, photo) -> str:
+    return f"/routes/{post.slug}/photos/{photo.key}.jpg"
+
+
+def _figure(post, photo) -> str:
+    caption = f"<figcaption>{escape(photo.caption)}</figcaption>" if photo.caption else ""
+    return (
+        f'<figure class="photo"><img src="{escape(photo_path(post, photo))}" '
+        f'alt="{escape(photo.alt_text)}" width="{photo.width}" height="{photo.height}" '
+        f'loading="lazy" decoding="async">{caption}</figure>'
+    )
+
+
+def photos_by_place(post, sections: int) -> dict[int, str]:
+    """The post's photos with their files, as figures by place: 0 under About this ride, n under
+    the nth highlighted section; a photo whose section has gone shows under About this ride."""
+    out: dict[int, str] = {}
+    for photo in post.photos.filter(image__isnull=False).defer("image"):
+        place = photo.place if photo.place <= sections else 0
+        out[place] = out.get(place, "") + _figure(post, photo)
+    return out
+
+
+def _admin_photos(post, headings: list[str]) -> str:
+    """For an admin on the page: add a photo, or the file of one an assistant described."""
+    places = [ABOUT_HEADING, *(f"Highlight: {h}" for h in headings)]
+    waiting = "".join(
+        f'<form class="photo-form" data-photo="{photo.pk}"><p><strong>Waiting for its photo:'
+        f"</strong> {escape(photo.alt_text)} ({escape(places[min(photo.place, len(headings))])})"
+        f'</p><label>Photo <input type="file" name="photo" accept="image/*" required></label> '
+        f'<button type="submit" disabled>{PHOTO_ADD_LABEL}</button></form>'
+        for photo in post.photos.filter(image__isnull=True)
+    )
+    options = "".join(
+        f'<option value="{n}">{escape(name)}</option>' for n, name in enumerate(places)
+    )
+    return (
+        f"<h3>Photos</h3><p>{escape(PHOTO_NOTE)}</p>{waiting}"
+        '<form class="photo-form"><label>Photo <input type="file" name="photo" accept="image/*" '
+        'required></label><label>Alt text: what the photo shows <input name="alt_text" '
+        f'maxlength="{ALT_MAX}" required></label><label>Caption (optional) <input '
+        f'name="caption" maxlength="{CAPTION_MAX}"></label><label>Where <select name="place">'
+        f'{options}</select></label><button type="submit" disabled>{PHOTO_ADD_LABEL}</button>'
+        '</form><p class="said" id="photo-said" role="status"></p>'
+    )
+
+
 def post_html(request, post) -> str:
     from .models import RoutePost
 
@@ -800,7 +908,7 @@ def post_html(request, post) -> str:
     # The page's script finds each stretch's line by its place among the sections that have one.
     numbers = itertools.count()
 
-    def highlight(s, stretch) -> str:
+    def highlight(n, s, stretch) -> str:
         minimap = (
             f'<figure class="section-map" data-section="{next(numbers)}">'
             f"<figcaption>{escape(stretch_words(s, distance))}</figcaption></figure>"
@@ -809,12 +917,13 @@ def post_html(request, post) -> str:
         )
         return (
             f'<section class="highlight"><h3>{escape(s.heading)}</h3>{minimap}'
-            f"{_paragraphs(s.body)}</section>"
+            f"{_paragraphs(s.body)}{photos.get(n, '')}</section>"
         )
 
     distance = (post.stats or {}).get("distance_m")
     stretched = stretches(post)
-    sections = "".join(highlight(s, stretch) for s, stretch in stretched)
+    photos = photos_by_place(post, len(stretched))
+    sections = "".join(highlight(n, s, stretch) for n, (s, stretch) in enumerate(stretched, 1))
     planned = (post.stats or {}).get("planned_on")
     byline = [f"By {post.byline}" if post.byline else ""]
     if post.published_at:
@@ -827,7 +936,8 @@ def post_html(request, post) -> str:
             '<section class="admin" aria-labelledby="admin-h"><h2 id="admin-h">For admins</h2>'
             "<p>The link picture is the map as it shows above, at the size chat apps use.</p>"
             f'<button type="button" id="make-thumbnail" disabled>{THUMBNAIL_LABEL}</button>'
-            '<p class="said" id="thumbnail-said" role="status"></p></section>'
+            '<p class="said" id="thumbnail-said" role="status"></p>'
+            f"{_admin_photos(post, [sec.heading for sec, _ in stretched])}</section>"
         )
     body = (
         f"<article>{notes}<h1>{escape(post.title)}</h1>{season}"
@@ -839,8 +949,8 @@ def post_html(request, post) -> str:
         f"<noscript>{escape(NO_SCRIPT_SEND)}</noscript></p>"
         '<section id="post-charts" aria-labelledby="charts-h">'
         f'<h2 id="charts-h">Elevation and traffic stress</h2>{_chart_text(post)}</section>'
-        f'<section aria-labelledby="about-h"><h2 id="about-h">About this ride</h2>'
-        f"{_paragraphs(post.abstract)}</section>"
+        f'<section aria-labelledby="about-h"><h2 id="about-h">{ABOUT_HEADING}</h2>'
+        f"{_paragraphs(post.abstract)}{photos.get(0, '')}</section>"
         + (
             f'<section aria-labelledby="who-h"><h2 id="who-h">Who it\'s for</h2>'
             f"{_paragraphs(post.audience)}</section>"
@@ -1044,4 +1154,133 @@ def thumbnail_upload(request, slug: str):
     record(request.user, "route_post.thumbnail", "RoutePost", post.pk, "allowed")
     response = HttpResponse(status=204)
     response["Cache-Control"] = "no-store"
+    return response
+
+
+# ---- Photos ----
+
+
+def clean_jpeg(data: bytes) -> bytes | None:
+    """The JPEG with only what draws it, or None when it is not one whole JPEG: every APPn segment
+    but JFIF's (APP0) and Adobe's colour flags (APP14) goes, and every comment, so no Exif, GPS,
+    XMP, maker notes or embedded thumbnail stays; so does anything after its end."""
+    if not data.startswith(b"\xff\xd8"):
+        return None
+    out, i, n = [b"\xff\xd8"], 2, len(data)
+    while i + 1 < n:
+        if data[i] != 0xFF:
+            return None
+        marker = data[i + 1]
+        if marker == 0xFF:
+            i += 1
+            continue
+        if marker == 0xD9:
+            out.append(b"\xff\xd9")
+            return b"".join(out)
+        if 0xD0 <= marker <= 0xD7 or marker in (0x01, 0xD8):
+            return None
+        if i + 4 > n:
+            return None
+        length = int.from_bytes(data[i + 2 : i + 4], "big")
+        end = i + 2 + length
+        if length < 2 or end > n:
+            return None
+        if not (0xE1 <= marker <= 0xEF and marker != 0xEE) and marker != 0xFE:
+            out.append(data[i:end])
+        i = end
+        if marker == 0xDA:
+            # The scan's coded data runs to the next marker that is not a stuffed byte or a restart.
+            j = i
+            while j + 1 < n and not (
+                data[j] == 0xFF and data[j + 1] != 0 and not 0xD0 <= data[j + 1] <= 0xD7
+            ):
+                j += 1
+            if j + 1 >= n:
+                return None
+            out.append(data[i:j])
+            i = j
+    return None
+
+
+@require_http_methods(["POST"])
+@ratelimit.rate_limited(ratelimit.SHARE_PREVIEWS)
+def photo_upload(request, slug: str):
+    """POST /routes/<slug>/photos: an instance admin's browser adds a photo to the post (a form:
+    the photo as a JPEG, alt_text, caption and place), or the file of one an assistant described
+    (photo, its id). CSRF-checked like every form."""
+    from .audit import record
+    from .models import RoutePostPhoto
+
+    if not is_admin(request):
+        return HttpResponse(status=404)
+    post = _post(slug)
+    if post is None or post.route_id is None:
+        return HttpResponse(status=404)
+
+    def refuse(words: str) -> HttpResponse:
+        record(request.user, "route_post.photo", "RoutePost", post.pk, "refused", words)
+        return HttpResponse(words, status=400, content_type="text/plain")
+
+    upload = request.FILES.get("photo")
+    data = upload.read(PHOTO_MAX_BYTES + 1) if upload is not None else b""
+    cleaned = clean_jpeg(data) if 0 < len(data) <= PHOTO_MAX_BYTES else None
+    size = jpeg_size(cleaned) if cleaned else None
+    if size is None or not all(0 < side <= PHOTO_MAX_EDGE for side in size):
+        return refuse(f"Send the photo as a JPEG of at most {PHOTO_MAX_EDGE} pixels a side.")
+    waiting = request.POST.get("photo_id", "")
+    if waiting:
+        photo = (
+            post.photos.filter(pk=int(waiting), image__isnull=True).first()
+            if waiting.isdigit()
+            else None
+        )
+        if photo is None:
+            return refuse("That photo is not waiting for its file.")
+    else:
+        if post.photos.count() >= PHOTOS_MAX:
+            return refuse(f"A post has at most {PHOTOS_MAX} photos.")
+        alt, problem = _text(request.POST, "alt_text", ALT_MAX, required=True)
+        caption, said = _text(request.POST, "caption", CAPTION_MAX)
+        problem = problem or said
+        place = request.POST.get("place", "0")
+        if problem is None and not (place.isdigit() and int(place) <= post.sections.count()):
+            problem = "place: a section of this post."
+        if problem:
+            return refuse(problem)
+        last = post.photos.filter(place=int(place)).order_by("-position").first()
+        photo = RoutePostPhoto(
+            post=post,
+            place=int(place),
+            position=(last.position + 1) if last else 1,
+            alt_text=alt,
+            caption=caption,
+        )
+    photo.image, photo.key = cleaned, hashlib.sha256(cleaned).hexdigest()[:16]
+    photo.width, photo.height = size
+    photo.save()
+    record(request.user, "route_post.photo", "RoutePost", post.pk, "allowed", photo.key)
+    response = HttpResponse(
+        json.dumps({"key": photo.key, "url": photo_path(post, photo)}),
+        status=201,
+        content_type="application/json",
+    )
+    response["Cache-Control"] = "no-store"
+    return response
+
+
+@require_safe
+@ratelimit.rate_limited(ratelimit.SHARE_PREVIEWS)
+def photo(request, slug: str, key: str):
+    """GET /routes/<slug>/photos/<key>.jpg: one of the post's photos."""
+    post = _post(slug)
+    if post is None or not visible(post, request) or not PHOTO_KEY_RE.fullmatch(key):
+        return HttpResponse(status=404)
+    found = post.photos.filter(key=key, image__isnull=False).first()
+    if found is None:
+        return HttpResponse(status=404)
+    response = HttpResponse(bytes(found.image), content_type=PHOTO_TYPE)
+    # The address changes with the picture, so a shown post's photo may be kept; a draft's not.
+    shown = post.status in ("published", "unlisted")
+    response["Cache-Control"] = "public, max-age=86400" if shown else "private, no-store"
+    response["X-Content-Type-Options"] = "nosniff"
     return response

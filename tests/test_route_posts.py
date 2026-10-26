@@ -31,6 +31,7 @@ from core.models import (
     AuditLogEntry,
     MyGo,
     RoutePost,
+    RoutePostPhoto,
     RoutePostSection,
     SavedRoute,
     Session,
@@ -430,6 +431,10 @@ def test_an_instance_admin_writes_a_post_from_their_saved_route_in_the_admin() -
         "sections-0-position": "1",
         "sections-0-heading": "The Mall",
         "sections-0-body": "Wide paths.",
+        "photos-TOTAL_FORMS": "0",
+        "photos-INITIAL_FORMS": "0",
+        "photos-MIN_NUM_FORMS": "0",
+        "photos-MAX_NUM_FORMS": "1000",
     }
     refused = client.post(url, {**fields, "saved_route": str(other.pk)})
     assert refused.status_code == 200 and not RoutePost.objects.exists()
@@ -552,3 +557,197 @@ def test_the_edges_serve_the_posts_script_and_the_build_writes_it() -> None:
     assert 'header /post.js Cache-Control "no-cache"' in caddy
     assert re.search(r"location = /post\.js \{[^}]*no-cache", nginx)
     assert 'chunk.name === "post" ? "post.js"' in vite
+
+
+# ---- Photos ----
+
+
+def segment(marker: int, payload: bytes) -> bytes:
+    return bytes((0xFF, marker)) + struct.pack(">H", len(payload) + 2) + payload
+
+
+def phone_jpeg(width: int = 4, height: int = 3) -> bytes:
+    """A JPEG as a phone writes one: Exif with a GPS position, XMP, a colour profile and a comment
+    around the picture's own segments, a scan with stuffed bytes and a restart, and junk after."""
+    sof = struct.pack(">BHHB", 8, height, width, 1) + b"\x01\x11\x00"
+    return (
+        b"\xff\xd8"
+        + segment(0xE0, b"JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00")
+        + segment(0xE1, b"Exif\x00\x00GPSLatitude 38.8977 GPSLongitude -77.0365")
+        + segment(0xE1, b"http://ns.adobe.com/xap/1.0/\x00<x:xmpmeta>DateTimeOriginal")
+        + segment(0xE2, b"ICC_PROFILE\x00 iPhone camera")
+        + segment(0xFE, b"Shot at home")
+        + segment(0xDB, b"\x00" + bytes(range(64)))
+        + segment(0xC0, sof)
+        + segment(0xDA, b"\x01\x01\x00\x00\x3f\x00")
+        + b"\x12\xff\x00\x34\xff\xd0\x56"
+        + b"\xff\xd9"
+        + b"PK\x03\x04 a hidden archive"
+    )
+
+
+def test_a_photo_keeps_only_what_draws_it() -> None:
+    raw = phone_jpeg()
+    cleaned = route_posts.clean_jpeg(raw)
+    assert cleaned is not None and route_posts.jpeg_size(cleaned) == (4, 3)
+    for gone in (b"Exif", b"GPS", b"xmpmeta", b"ICC_PROFILE", b"Shot at home", b"PK"):
+        assert gone not in cleaned
+    assert b"JFIF" in cleaned and b"\x12\xff\x00\x34\xff\xd0\x56\xff\xd9" in cleaned
+    assert cleaned.endswith(b"\xff\xd9")
+    assert route_posts.clean_jpeg(b"\x89PNG\r\n\x1a\n") is None
+    assert route_posts.clean_jpeg(raw[:40]) is None
+    assert route_posts.clean_jpeg(raw[: raw.index(b"\xff\xd9")]) is None
+
+
+def test_a_real_photo_cleaned_still_opens_with_no_exif() -> None:
+    image = pytest.importorskip("PIL.Image")
+    import io
+
+    picture = image.new("RGB", (64, 48), (200, 30, 30))
+    exif = image.Exif()
+    exif[0x010F] = "PhoneMaker"
+    exif.get_ifd(0x8825)[2] = (38.0, 53.0, 51.7)
+    out = io.BytesIO()
+    picture.save(out, "JPEG", exif=exif.tobytes(), comment=b"at home", progressive=True)
+    assert b"PhoneMaker" in out.getvalue()
+    cleaned = route_posts.clean_jpeg(out.getvalue())
+    assert cleaned is not None and b"PhoneMaker" not in cleaned and b"at home" not in cleaned
+    opened = image.open(io.BytesIO(cleaned))
+    opened.load()
+    assert opened.size == (64, 48) and not opened.getexif()
+
+
+def admin_client(admin: User):
+    client = signed_in(admin)
+    client.get("/routes/mall-loop")
+    token = client.cookies["csrftoken"].value
+    return client, lambda data: client.post(  # noqa: E731
+        "/routes/mall-loop/photos", data, HTTP_X_CSRFTOKEN=token
+    )
+
+
+def upload(data: bytes = b"", name: str = "photo.jpg"):
+    from django.core.files.uploadedfile import SimpleUploadedFile
+
+    return SimpleUploadedFile(name, data or phone_jpeg(), content_type="image/jpeg")
+
+
+@db
+def test_an_admin_adds_a_photo_on_the_page_with_its_alt_text_and_readers_see_it() -> None:
+    admin = make_user(is_instance_admin=True)
+    post = make_post(admin)
+    RoutePostSection.objects.create(post=post, position=1, heading="The Mall", body="Wide.")
+    page = signed_in(admin).get("/routes/mall-loop").content.decode()
+    assert route_posts.PHOTO_ADD_LABEL in page and '<option value="1">Highlight: The Mall' in page
+    assert route_posts.PHOTO_ADD_LABEL not in Client().get("/routes/mall-loop").content.decode()
+    rider = signed_in(make_user())
+    rider.cookies["csrftoken"] = "b" * 32
+    refused = rider.post(
+        "/routes/mall-loop/photos",
+        {"photo": upload(), "alt_text": "x"},
+        HTTP_X_CSRFTOKEN="b" * 32,
+    )
+    assert refused.status_code == 404
+    client, send = admin_client(admin)
+    assert client.post("/routes/mall-loop/photos", {"photo": upload()}).status_code == 403
+    assert send({"photo": upload(), "alt_text": ""}).status_code == 400
+    assert send({"photo": upload(b"\x89PNG\r\n\x1a\n"), "alt_text": "A path"}).status_code == 400
+    big = phone_jpeg(route_posts.PHOTO_MAX_EDGE + 1, 10)
+    assert send({"photo": upload(big), "alt_text": "A path"}).status_code == 400
+    assert send({"photo": upload(), "alt_text": "A path", "place": "2"}).status_code == 400
+    made = send(
+        {"photo": upload(), "alt_text": "The path by the Reflecting Pool", "caption": "Early"}
+    )
+    assert made.status_code == 201
+    under = send({"photo": upload(), "alt_text": "Cherry trees & a bench", "place": "1"})
+    assert under.status_code == 201
+    first, second = RoutePostPhoto.objects.order_by("id")
+    assert b"GPS" not in bytes(first.image) and b"Exif" not in bytes(first.image)
+    assert (first.width, first.height, first.place, second.place) == (4, 3, 0, 1)
+    body = Client().get("/routes/mall-loop").content.decode()
+    about = body[body.index('id="about-h"') : body.index('id="highlights-h"')]
+    assert (
+        f'<figure class="photo"><img src="/routes/mall-loop/photos/{first.key}.jpg" '
+        'alt="The path by the Reflecting Pool" width="4" height="3" loading="lazy" '
+        'decoding="async"><figcaption>Early</figcaption></figure>'
+    ) in about
+    highlight = body[body.index("<h3>The Mall</h3>") :]
+    assert 'alt="Cherry trees &amp; a bench"' in highlight
+    served = Client().get(made.json()["url"])
+    assert served.status_code == 200 and served["Content-Type"] == "image/jpeg"
+    assert served["Cache-Control"] == "public, max-age=86400"
+    assert bytes(served.content) == bytes(first.image)
+    assert Client().get("/routes/mall-loop/photos/0123456789abcdef.jpg").status_code == 404
+    rows = AuditLogEntry.objects.filter(action="route_post.photo")
+    assert {r.outcome for r in rows} == {"refused", "allowed"}
+    # A draft's photos are the admin's alone, never kept by a shared cache.
+    post.status = RoutePost.Status.DRAFT
+    post.save()
+    assert Client().get(made.json()["url"]).status_code == 404
+    assert client.get(made.json()["url"])["Cache-Control"] == "private, no-store"
+
+
+@db
+def test_an_assistant_describes_photos_and_the_admin_adds_their_files() -> None:
+    admin = make_user(is_instance_admin=True)
+    route = {"source": "plan", "line": LINE, "distance_m": 3218.7, "inputs": INPUTS}
+    route["answer"] = ANSWER
+    fields = {
+        "title": "A loop round the Mall",
+        "slug": "mall-loop",
+        "abstract": "Flat.",
+        "sections": [{"heading": "The Mall"}],
+        "photos": [
+            {"alt_text": "The Capitol from the west", "caption": "Morning"},
+            {"alt_text": "Cherry trees", "section": 1},
+        ],
+    }
+    bad = {**fields, "photos": [{"alt_text": "x", "section": 2}]}
+    assert route_posts.write_draft(admin, bad, route)[1] == (
+        "photo 1: section is 0 (About this ride) or 1 to 1."
+    )
+    assert (
+        "alt_text: required"
+        in route_posts.write_draft(admin, {**fields, "photos": [{"caption": "c"}]}, route)[1]
+    )
+    post, problem = route_posts.write_draft(admin, fields, route)
+    assert problem is None and post.photos.filter(image__isnull=True).count() == 2
+    page = signed_in(admin).get("/routes/mall-loop").content.decode()
+    assert "Waiting for its photo:</strong> The Capitol from the west (About this ride)" in page
+    assert "Cherry trees (Highlight: The Mall)" in page
+    assert 'class="photo"' not in page
+    capitol = post.photos.get(alt_text="The Capitol from the west")
+    _client, send = admin_client(admin)
+    assert send({"photo": upload(), "photo_id": "999999"}).status_code == 400
+    assert send({"photo": upload(), "photo_id": str(capitol.pk)}).status_code == 201
+    capitol.refresh_from_db()
+    assert capitol.key and capitol.caption == "Morning"
+    assert send({"photo": upload(), "photo_id": str(capitol.pk)}).status_code == 400
+    page = signed_in(admin).get("/routes/mall-loop").content.decode()
+    assert page.count('class="photo"') == 1 and "Waiting for its photo" in page
+    # Sent again: the photo with its file stays, the one still waiting is described again.
+    again = {**fields, "replace": True, "photos": [{"alt_text": "Trees in bloom", "section": 1}]}
+    post, problem = route_posts.write_draft(admin, again, route)
+    assert problem is None
+    assert sorted(post.photos.values_list("alt_text", flat=True)) == [
+        "The Capitol from the west",
+        "Trees in bloom",
+    ]
+    # Sent without photos: all stay.
+    post, _ = route_posts.write_draft(admin, {**fields, "replace": True, "photos": None}, route)
+    del fields["photos"]
+    post, _ = route_posts.write_draft(admin, {**fields, "replace": True}, route)
+    assert post.photos.count() == 2
+    many = [{"alt_text": f"{n}"} for n in range(route_posts.PHOTOS_MAX)]
+    _, problem = route_posts.write_draft(admin, {**fields, "replace": True, "photos": many}, route)
+    assert problem == f"A post has at most {route_posts.PHOTOS_MAX} photos; this one has 1 already."
+
+
+@db
+def test_the_admin_lists_a_posts_photos_to_describe_again_or_delete() -> None:
+    admin = make_user(is_instance_admin=True)
+    post = make_post(admin)
+    RoutePostPhoto.objects.create(post=post, alt_text="Waiting one")
+    shown = signed_in(admin).get(f"/{settings.ADMIN_PATH}core/routepost/{post.pk}/change/")
+    assert shown.status_code == 200
+    assert b"Waiting for its file: add it on the post&#x27;s page." in shown.content
