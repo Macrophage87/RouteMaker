@@ -50,6 +50,8 @@ CONTRACT_KEYS = {
     "climb_m",
     "descent_m",
     "junction_delay_s",
+    # Additive, the ride's arrival times (2026-10-26): where along the line the time falls.
+    "time_marks",
     "stress_m",
     "attribution",
     # Additive, PUBLIC-DIALS (tests/test_route_dials.py).
@@ -276,6 +278,19 @@ class TestAnswer:
         assert body["geometry"]["type"] == "LineString"
         assert body["preset"] == "default"
         assert body["variant"] == presets.variant_for_ride("default", routing.default_when())
+
+    def test_the_time_marks_run_from_the_start_to_the_routes_whole_time(
+        self, client, segments, router
+    ) -> None:
+        """The ride's arrival times (2026-10-26, "make sure intersection waits are considered
+        too"): the marks go from the start to the end, the router's time and the junctions'
+        waits together, never falling (`routemaker.time_marks`)."""
+        router(standard_router())
+        body = post(client, good_body()).json()
+        marks = body["time_marks"]
+        assert marks[0] == [0.0, 0.0] and marks[-1][0] == 1.0
+        assert all(a[0] <= b[0] and a[1] <= b[1] for a, b in zip(marks, marks[1:]))
+        assert marks[-1][1] == pytest.approx(body["duration_s"], abs=0.2)
 
     def test_a_known_hazard_ridden_is_marked_and_said(self, client, segments, router) -> None:
         """v0.10.0 (the owner, 2026-10-19: "You only need to show it if it's routed on"): a
