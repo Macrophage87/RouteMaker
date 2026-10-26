@@ -229,6 +229,8 @@ export const rideVoice = new Voice(rideSpeech());
 
 /** Said as the ride starts, inside the Start press, so the voice is unlocked by it. */
 export const RIDE_STARTED = "Ride started.";
+/** How long after the start its note (startNote) is said: after "Ride started.". */
+export const START_NOTE_MS = 1_500;
 /** The always-visible End ride button's words (the owner, 2026-10-16: "add a method of ending navigation"). */
 export const END_RIDE_NAME = "End ride";
 /** End ride is a slide to end until the rider has arrived (the owner, 2026-10-19: "Add a swipe confirmation on ending the ride unless at the destination"). */
@@ -621,6 +623,7 @@ export function RideMode({
   onBroadcast = null,
   broadcasting = false,
   keepLeft = false,
+  startNote = "",
 }: {
   route: RouteResponse;
   /** The points the route was planned with, and whether it is a loop: what a re-plan builds on. */
@@ -688,6 +691,8 @@ export function RideMode({
   broadcasting?: boolean;
   /** The ride is kept on this device to resume (lib/rideResume.ts): each new route is kept in its place. */
   keepLeft?: boolean;
+  /** Said once, as an answer, just after the ride starts: Broadcast's link copied where there was no share sheet. */
+  startNote?: string;
 }) {
   const [route, setRoute] = useState(plannedRoute);
   const routeRef = useRef(route);
@@ -1604,6 +1609,15 @@ export function RideMode({
     if (prefsRef.current.output === "neither") setPolite((s) => ({ text, count: s.count + 1 }));
     showToast(text.replace(/(?<=\.) .*$/, ""));
   };
+  // The start's own note, after "Ride started." (read once, at Start ride).
+  const startNoteRef = useRef(startNote);
+  useEffect(() => {
+    const text = startNoteRef.current;
+    if (!text) return;
+    const timer = window.setTimeout(() => answer(text), START_NOTE_MS);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, at Start ride
+  }, []);
   // Broadcast (App's broadcastFromRide): the share sheet opens inside the press; a second press while one is open is
   // left alone.
   const broadcastBusy = useRef(false);

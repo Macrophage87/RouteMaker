@@ -217,10 +217,10 @@ test("Broadcast from a ride (Stephen 2026-10-24: \"Let people broadcast from a r
   assert.match(ride, /broadcastBusy\.current = true;\s*try \{\s*const said = await onBroadcast\(\);/);
   // App: Share ride's link (shareRoute(true)), the rider its leader; no new ride started.
   const fromRide = app.slice(app.indexOf("const broadcastFromRide = async"), app.indexOf("// Ride the rest (lib/rideTrip.ts)"));
-  assert.match(fromRide, /await shareRoute\(true\)/);
+  assert.match(fromRide, /await shareRoute\(true, broadcastNav\)/);
   assert.doesNotMatch(fromRide, /startRide/);
   // Only the plan's own route, never Ride the rest's, a detour from Roam, or a ride opened from another's link.
-  assert.match(app, /onBroadcast=\{canShare && !rideStart\.roam && rideStart\.route === shown && !\(onShared && !onShared\.own\) \? broadcastFromRide : null\}/);
+  assert.match(app, /onBroadcast=\{!rideStart\.roam && rideStart\.route === shown && !\(onShared && !onShared\.own\) \? broadcastFromRide : null\}/);
   assert.match(app, /broadcasting=\{rideBroadcast\?\.leading === true\}/);
 });
 

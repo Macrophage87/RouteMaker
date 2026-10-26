@@ -24,6 +24,12 @@ otherwise to Android's "Open with" list. Send to Wahoo's file, where Wahoo did n
 but always to the list, for the Wahoo app. A WebView can neither share nor download a file a page makes, so an
 older app without the plugin shows no Send to Garmin button.
 
+**The share sheet** (v0.12.4 site and app): Android's WebView has no `navigator.share`, so the site hands Share
+route, Share ride and Broadcast's title, text and link to `SharePlugin.java` ("RouteMakerShare"), which opens
+Android's chooser with them as plain text (never to RouteMaker itself). The chooser does not say whether the link
+was sent, so an opened sheet counts as sent. An older app without the plugin shows no Share route or Share ride,
+and its Broadcast copies the link instead, for the rider to paste.
+
 **Opening a RouteMaker link in the app** (v0.9.0 app): in any app, Share the link and pick RouteMaker.
 `SharedLink.java` takes the first https link in the shared text and opens it only when it is on the site kept
 on this phone; any other link is refused with a short message. A tapped link still opens the browser:
