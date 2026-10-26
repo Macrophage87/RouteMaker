@@ -3564,7 +3564,9 @@ at `/routes/` and from Go's More > Featured routes. Instance admins write them:
    shrinks each and saves it again as a JPEG, so its Exif (location, date, camera) does not go with
    it, and the server strips anything left. A photo the browser can't open (some phone formats,
    such as HEIC) must be saved as a JPEG or PNG first. Change alt text, caption, section or order,
-   or delete a photo, in the admin; a photo whose highlight is removed moves under About this ride.
+   or delete a photo, in the admin. A photo's Where is a highlight's number, so after deleting or
+   reordering highlights check each photo's place; one numbered past the last highlight shows under
+   About this ride.
 4. Set **Published** (listed) or **Unlisted** (link only). **Withdrawn** makes the link say so
    (410). Saving is refused when the route starts, ends or stops at your Home, since posts are
    public.
