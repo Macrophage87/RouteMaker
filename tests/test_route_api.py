@@ -289,7 +289,7 @@ class TestAnswer:
         body = post(client, good_body()).json()
         marks = body["time_marks"]
         assert marks[0] == [0.0, 0.0] and marks[-1][0] == 1.0
-        assert all(a[0] <= b[0] and a[1] <= b[1] for a, b in zip(marks, marks[1:]))
+        assert all(a[0] <= b[0] and a[1] <= b[1] for a, b in zip(marks, marks[1:], strict=False))
         assert marks[-1][1] == pytest.approx(body["duration_s"], abs=0.2)
 
     def test_a_known_hazard_ridden_is_marked_and_said(self, client, segments, router) -> None:
