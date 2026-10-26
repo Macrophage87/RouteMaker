@@ -1060,12 +1060,13 @@ the command reported the files it copied and the volume stayed empty.
 
 ### What the api mounts, and why it is still not where data commands run
 
-The api binds two directories and writes one of them:
+The api binds three directories and writes one of them:
 
 | Path | Mode | Who reads it |
 | --- | --- | --- |
 | `${DATA_ROOT}/static` → `/data/static` | read-write | `collectstatic`, as the deploy step above. Caddy mounts the same directory `:ro` and serves it. |
 | `${DATA_ROOT}/tiles` → `/data/tiles` | **read-only** | the operations page's free-space line, which is a `statvfs` on `settings.TILES_DIR`. |
+| `${DATA_ROOT}/basemap` → `/data/basemap` | **read-only** | the link preview's picture, which draws the base map behind a shared route (`core.preview_basemap`, `settings.BASEMAP_PMTILES`). |
 
 The tiles bind is read-only and it is there for one reader. The operations page
 is rendered by the `api` service, and its free-space block measures
@@ -1117,10 +1118,11 @@ build, pinned by digest:
 #    read files beside frontend/ (../../../src and ../../../scripts from a test):
 #    the API's wording in src/routemaker/avoid_junctions.py, and the topo layers
 #    in scripts/build_contours.py; fixtures/ likewise, for a reference GPX
-#    track, and docs/ for docs/SOURCES.md (the map glyphs test).
+#    track, docs/ for docs/SOURCES.md (the map glyphs test), and mobile/ for
+#    the phone app's manifest and plugin (the speech input and Wahoo tests).
 #    scripts/beta/frontend-build.sh mounts the
 #    whole tree read-only for the same reason.
-docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD/frontend:/app" -v "$PWD/src:/src:ro" -v "$PWD/scripts:/scripts:ro" -v "$PWD/fixtures:/fixtures:ro" -v "$PWD/docs:/docs:ro" -w /app \
+docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD/frontend:/app" -v "$PWD/src:/src:ro" -v "$PWD/scripts:/scripts:ro" -v "$PWD/fixtures:/fixtures:ro" -v "$PWD/docs:/docs:ro" -v "$PWD/mobile:/mobile:ro" -w /app \
   docker.io/library/node@sha256:363e1587494626837fa7f9a23bdb453d13b0ff3c67c705c2805cfc69c2d2fad7 \
   sh -c 'npm ci && npm test && npm run build'
 
@@ -1128,7 +1130,7 @@ docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD/frontend:/app" -v "
 docker run --rm -u 10001:10001 \
   -v "$PWD/frontend/dist:/dist:ro" -v <DATA_ROOT>/frontend:/out \
   docker.io/library/busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662 \
-  sh -c 'mkdir -p /out/assets && cp -n /dist/assets/* /out/assets/ && cp /dist/favicon.svg /dist/licenses.txt /out/ && cp /dist/favicon.ico /out/ && cp /dist/manifest.webmanifest /out/ && cp /dist/sw-kill.js /out/ && mkdir -p /out/icons && cp /dist/icons/apple-touch-icon.png /out/icons/ && cp /dist/icons/icon-192.png /out/icons/ && cp /dist/icons/icon-512.png /out/icons/ && cp /dist/icons/icon-maskable-192.png /out/icons/ && cp /dist/icons/icon-maskable-512.png /out/icons/ && cp /dist/icons/share-card.png /out/icons/ && mkdir -p /out/about && cp /dist/about/stress.html /out/about/.stress.html.new && mv /out/about/.stress.html.new /out/about/stress.html && cp /dist/about/route-example.webp /out/about/ && cp /dist/about/how-it-works.html /out/about/.how-it-works.html.new && mv /out/about/.how-it-works.html.new /out/about/how-it-works.html && cp /dist/about/using.html /out/about/.using.html.new && mv /out/about/.using.html.new /out/about/using.html && cp /dist/about/accessibility.html /out/about/.accessibility.html.new && mv /out/about/.accessibility.html.new /out/about/accessibility.html && cp /dist/about/routing.html /out/about/.routing.html.new && mv /out/about/.routing.html.new /out/about/routing.html && cp /dist/about/mass-ride.html /out/about/.mass-ride.html.new && mv /out/about/.mass-ride.html.new /out/about/mass-ride.html && cp /dist/about/trails.html /out/about/.trails.html.new && mv /out/about/.trails.html.new /out/about/trails.html && cp /dist/about/ride-types.html /out/about/.ride-types.html.new && mv /out/about/.ride-types.html.new /out/about/ride-types.html && cp /dist/about/architecture.html /out/about/.architecture.html.new && mv /out/about/.architecture.html.new /out/about/architecture.html && cp /dist/about/assistants.html /out/about/.assistants.html.new && mv /out/about/.assistants.html.new /out/about/assistants.html && cp /dist/about/acknowledgements.html /out/about/.acknowledgements.html.new && mv /out/about/.acknowledgements.html.new /out/about/acknowledgements.html && cp /dist/sw.js /out/.sw.js.new && mv /out/.sw.js.new /out/sw.js && cp /dist/index.html /out/.index.html.new && mv /out/.index.html.new /out/index.html'
+  sh -c 'mkdir -p /out/assets && cp -n /dist/assets/* /out/assets/ && cp /dist/favicon.svg /dist/licenses.txt /out/ && cp /dist/favicon.ico /out/ && cp /dist/manifest.webmanifest /out/ && cp /dist/sw-kill.js /out/ && mkdir -p /out/icons && cp /dist/icons/apple-touch-icon.png /out/icons/ && cp /dist/icons/icon-192.png /out/icons/ && cp /dist/icons/icon-512.png /out/icons/ && cp /dist/icons/icon-maskable-192.png /out/icons/ && cp /dist/icons/icon-maskable-512.png /out/icons/ && cp /dist/icons/share-card.png /out/icons/ && mkdir -p /out/about && cp /dist/about/stress.html /out/about/.stress.html.new && mv /out/about/.stress.html.new /out/about/stress.html && cp /dist/about/route-example.webp /out/about/ && cp /dist/about/how-it-works.html /out/about/.how-it-works.html.new && mv /out/about/.how-it-works.html.new /out/about/how-it-works.html && cp /dist/about/using.html /out/about/.using.html.new && mv /out/about/.using.html.new /out/about/using.html && cp /dist/about/accessibility.html /out/about/.accessibility.html.new && mv /out/about/.accessibility.html.new /out/about/accessibility.html && cp /dist/about/routing.html /out/about/.routing.html.new && mv /out/about/.routing.html.new /out/about/routing.html && cp /dist/about/mass-ride.html /out/about/.mass-ride.html.new && mv /out/about/.mass-ride.html.new /out/about/mass-ride.html && cp /dist/about/trails.html /out/about/.trails.html.new && mv /out/about/.trails.html.new /out/about/trails.html && cp /dist/about/ride-types.html /out/about/.ride-types.html.new && mv /out/about/.ride-types.html.new /out/about/ride-types.html && cp /dist/about/architecture.html /out/about/.architecture.html.new && mv /out/about/.architecture.html.new /out/about/architecture.html && cp /dist/about/assistants.html /out/about/.assistants.html.new && mv /out/about/.assistants.html.new /out/about/assistants.html && cp /dist/about/acknowledgements.html /out/about/.acknowledgements.html.new && mv /out/about/.acknowledgements.html.new /out/about/acknowledgements.html && cp /dist/sw.js /out/.sw.js.new && mv /out/.sw.js.new /out/sw.js && cp /dist/post.js /out/.post.js.new && mv /out/.post.js.new /out/post.js && cp /dist/index.html /out/.index.html.new && mv /out/.index.html.new /out/index.html'
 ```
 
 `npm ci` installs exactly what `frontend/package-lock.json` names (every direct
@@ -1139,7 +1141,9 @@ one and never an `index.html` naming files that are not there yet. The page
 on how stress ratings work, `about/stress.html`, and the other documentation
 pages under `about/` are replaced by a rename too,
 so nobody reads it half written, and so is the installable app's service
-worker, `sw.js` (docs/DEVELOPMENT.md, "The installable app"); the app's
+worker, `sw.js` (docs/DEVELOPMENT.md, "The installable app"), and a Featured
+routes post's script, `post.js` (a fixed name, not hashed; without it a post
+page is a 404 for its script); the app's
 manifest, its icons under `icons/` and the worker's kill switch `sw-kill.js`
 (docs/OPERATIONS.md, "The app's service worker") are copied beside them. The
 worker is copied before `index.html` is renamed, and that is safe: a browser

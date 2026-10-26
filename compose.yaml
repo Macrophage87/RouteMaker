@@ -276,6 +276,8 @@ services:
     volumes:
       - ${DATA_ROOT}/tiles:/data/tiles:ro
       - ${DATA_ROOT}/static:/data/static
+      # The base map, read by the link preview's picture (core.preview_basemap).
+      - ${DATA_ROOT}/basemap:/data/basemap:ro
     # Liveness, against the view that does the cheapest thing that proves this
     # process can still answer: `/healthz` runs `SELECT 1` and returns 200 with
     # no body details.

@@ -481,6 +481,14 @@ class TestRoutePostDrafts:
         assert sent["points"] == [line[0], line[-1]]
         post = RoutePost.objects.get()
         assert post.route.source == "gpx" and post.stats["preset"] == "trailmaxxing"
+        # Open in RouteMaker opens it (the owner, 2026-10-25: "It just opens RouteMaker"): the app
+        # takes a shared line with a plan link (frontend/src/lib/sharedRoutes.ts isRoute) and
+        # opens a followed line from its file (App.tsx openSaved).
+        shared = Client().get(f"/api/shared-routes/{post.route_id}", **addr()).json()
+        ends = "p=-77.03000,38.90000;-77.02000,38.91000"
+        assert shared["inputs"]["hash"] == f"{ends}&preset=trailmaxxing"
+        assert shared["gpx"].count("<trkpt") == len(line)
+        assert "<name>Rock Creek to the river</name>" in shared["gpx"]
 
     def test_the_route_is_one_or_the_other(self, planner) -> None:
         _user, token = self.admin_token()
