@@ -26,8 +26,8 @@ the remap drops their service value as it does for #197's. Bounds, so a link sta
 A dead end is read from the ways' own tags and the closures, before the rebuild opens
 any footway (`sidewalks`) or reopens singletrack on the off-road graph, so a trail end
 those join may still count as one; that only routes a few more aisles as plain service
-roads (accepted, review of PR #536). Nothing is widened: an aisle with no bicycle tag is already open to bicycles; only the
-price of entering it changes.
+roads (accepted, review of PR #536). Nothing is widened: an aisle with no bicycle tag is
+already open to bicycles; only the price of entering it changes.
 
 Pure: `pipeline.trail_closures.add_aisle_links` calls `links` with the rebuild's ways.
 """
