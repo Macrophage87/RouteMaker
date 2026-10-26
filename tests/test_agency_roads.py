@@ -12,6 +12,7 @@ import json
 
 import pytest
 
+from pipeline import variants as V
 from routemaker import agency_roads as A
 from routemaker import massflow
 from routemaker.stress import Stress, classify
@@ -2048,6 +2049,8 @@ def test_one_block_named_two_ways_is_refused(tmp_path) -> None:
         ({"withhold": "speed"}, "withhold must"),
         ({"reason": " "}, "reason is required"),
         ({"evidence": None}, "evidence is required"),
+        ({"direction": "EB"}, "direction must be one of"),
+        ({"withhold": [], "direction": None}, "withhold must"),
     ],
 )
 def test_a_malformed_withheld_block_is_refused(tmp_path, change, message) -> None:
@@ -2071,7 +2074,8 @@ def test_the_owner_s_canal_road_and_whitehurst_file() -> None:
         "override holds them at the OSM speeds and LTS 4, and they stay listed in the "
         "discrepancy report."
     ) in document["annotations"]
-    held = A.withheld_blocks()
+    keys = {entry["blockkey"] for entry in document["agency_blocks"]}
+    held = {key: block for key, block in A.withheld_blocks().items() if key in keys}
     # Gate review, should-fix 1: named by DC's BLOCKKEY, not the OBJECTID the
     # installed ids are built from.
     assert held == {
@@ -2113,6 +2117,77 @@ def test_the_withheld_blocks_are_found_by_the_layer_s_key() -> None:
         "block k-moved is K ST NW in the installed blocks, not M ST NW",
     )
     assert A.resolve_withheld({}, [("dc-1-0", canal)]) == A.WithheldResolution({}, ())
+
+
+def test_the_owner_s_direction_is_read_and_found_by_the_layer_s_key(tmp_path) -> None:
+    """Owner 2026-10-26, Sheridan St NW: an entry may give the block's direction
+    alone, and two entries may not give one block two directions."""
+    entry = {**_ENTRY, "direction": "OB"}
+    del entry["withhold"]
+    _override_file(tmp_path, [entry])
+    held = A.withheld_blocks(tmp_path)
+    assert held == {"k1": A.WithheldBlock("CANAL RD NW", frozenset(), "OB")}
+    canal = A.RoadFacts(agency=A.DC_AGENCY, name="CANAL RD NW", block_key="k1")
+    found = A.resolve_withheld(held, [("dc-1-0", canal)])
+    assert (found.by_block, found.directions) == ({"dc-1-0": frozenset()}, {"dc-1-0": "OB"})
+    _override_file(tmp_path, [{**_ENTRY, "direction": "IB"}], name="y.json")
+    with pytest.raises(A.WithheldBlockRefused, match="given direction IB here and OB before"):
+        A.withheld_blocks(tmp_path)
+
+
+def test_the_owner_s_direction_overrides_osm_s_one_way_the_other_way() -> None:
+    """A street reversed before either source caught up (the mechanism added for
+    Sheridan St NW, owner 2026-10-26): DC records it two-way and OSM one-way the
+    old way. The owner's direction (OB, the block's line, which runs against the
+    OSM way here) wins on every graph, and stands unchanged once OSM agrees."""
+    two_way = facts(lanes={"ib": 1, "ob": 1}, way="both", speed_mph={"ib": 20, "ob": 15})
+    tags = {"highway": "tertiary", "name": "Sheridan Street Northwest", "oneway": "yes"}
+    # Without the owner's direction, DC's two-way record undoes OSM's one-way (C4).
+    before = A.aggregate([("b", two_way, False)], True)
+    assert A.overlay(tags, before, length_m=161.0).routing == {"oneway": "no"}
+    owned = A.aggregate([("b", two_way, False)], True, directions={"b": "OB"})
+    assert (owned.one_way, owned.oneway_forward, owned.owner_direction) == (True, False, True)
+    # One lane, the traffic's, not DC's lane each way.
+    assert owned.lanes_by_direction == {"ob": 1}
+    result = A.overlay(tags, owned, length_m=161.0)
+    assert result.routing == {"oneway": "-1"} and result.tags["oneway"] == "-1"
+    assert result.sources["oneway"] == A.OWNER_OVERRIDE
+    # Once OSM's edit is in, the two agree and OSM's tag stands.
+    fixed = A.overlay({**tags, "oneway": "-1"}, owned, length_m=161.0)
+    assert fixed.routing == {} and fixed.tags["oneway"] == "-1"
+    # The 300 block, two-way in OSM and drawn along the block: one-way forward.
+    plain = {k: v for k, v in tags.items() if k != "oneway"}
+    along = A.aggregate([("c", two_way, True)], True, directions={"c": "OB"})
+    assert A.overlay(plain, along, length_m=162.0).routing == {"oneway": "yes"}
+    # An agency's own one-way against OSM's is still left to OSM, and a
+    # junction stub keeps OSM's direction.
+    agency = A.aggregate([("d", facts(way="one", oneway_with=True), False)], True)
+    assert "oneway" not in A.overlay(tags, agency, length_m=161.0).routing
+    assert A.overlay(tags, owned, length_m=12.0).routing == {}
+    # A way only partly on owner blocks keeps OSM's opposite one-way.
+    partly = A.aggregate(
+        [("b", two_way, False), ("e", facts(way="one", oneway_with=True), False)],
+        True,
+        directions={"b": "OB"},
+    )
+    assert not partly.owner_direction
+    assert A.overlay(tags, partly, length_m=161.0).routing == {}
+    # Every graph, the no-trail one too, takes the owner's one-way.
+    routed = V.agency_routing_tags(tags, result.routing)
+    assert routed == {"oneway": "-1"}
+    assert V.routing_for(V.Variant.NO_TRAIL, tags, routed) == routed
+
+
+def test_the_owner_s_sheridan_street_file() -> None:
+    """Both blocks of Sheridan St NW, 3rd to 5th, one-way from TOSTREET to
+    FROMSTREET (eastbound); nothing withheld, nothing for the loader to load."""
+    path = A.OVERRIDES_DIR / "2026-10-26-owner-sheridan-st-nw.json"
+    document = json.loads(path.read_text())
+    assert document["version"] == 1 and document["rows"] == []
+    held = A.withheld_blocks()
+    for entry in document["agency_blocks"]:
+        assert held[entry["blockkey"]] == A.WithheldBlock("SHERIDAN ST NW", frozenset(), "IB")
+    assert len(document["agency_blocks"]) == 2
 
 
 def test_the_dc_parser_keeps_the_block_s_key() -> None:

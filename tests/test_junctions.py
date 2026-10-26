@@ -1147,6 +1147,10 @@ class TestRoadsByWay:
         asked = [(0, 20, LON, LAT)]
         assert junctions.roads_by_way(asked, "weekend", with_facility=True)[(0, 20)].tier == 1
         assert junctions.roads_by_way(asked, "weekday_rush", with_facility=True)[(0, 20)].tier == 4
+        # And says so, so the junction does not read it by its lanes (`by_traffic`).
+        assert junctions.roads_by_way(asked, "weekend", with_facility=True)[(0, 20)].car_free
+        assert not junctions.roads_by_way(asked, "weekday_rush", True)[(0, 20)].car_free
+        assert not junctions.roads_by_way(asked, "weekend", False)[(0, 20)].car_free
 
 
 class TestBuild:

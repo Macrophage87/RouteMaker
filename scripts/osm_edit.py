@@ -85,6 +85,7 @@ ALLOWED_KEYS = frozenset(
         "bicycle:forward",
         "bicycle:backward",
         "oneway:bicycle",
+        "oneway",
         "surface",
         "smoothness",
         "mtb:scale",
@@ -92,6 +93,9 @@ ALLOWED_KEYS = frozenset(
     }
 )
 NODE_HIGHWAY_VALUES = frozenset({"traffic_signals", "stop", "give_way", "crossing"})
+# A street's direction, on a way only, in OSM's plain values (owner 2026-10-26,
+# Sheridan St NW: a one-way reversed on the street before either map caught up).
+ONEWAY_VALUES = frozenset({"yes", "-1", "no"})
 MAX_KEYS = 4
 
 
@@ -177,6 +181,11 @@ def edit_problem(edit: object) -> str | None:
             return "highway may only change on a node (a way's highway is its road class)"
         if changes["highway"] is not None and changes["highway"] not in NODE_HIGHWAY_VALUES:
             return f"a node's highway may only be set to one of {sorted(NODE_HIGHWAY_VALUES)}"
+    if "oneway" in changes:
+        if edit["element"] != "way":
+            return "oneway may only change on a way"
+        if changes["oneway"] is not None and changes["oneway"] not in ONEWAY_VALUES:
+            return f"a way's oneway may only be set to one of {sorted(ONEWAY_VALUES)}"
     comment = edit.get("comment")
     if not isinstance(comment, str) or not comment.strip() or len(comment) > 255:
         return "comment is the changeset note: 1 to 255 characters"
