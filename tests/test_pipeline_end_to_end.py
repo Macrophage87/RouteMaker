@@ -58,6 +58,9 @@ from rebuild_fixtures import (
     INDUSTRIAL_DRIVE_ID,
     INDUSTRIAL_STREET_ID,
     LUA_LOADED_LOG,
+    MALL_MEMORIAL_ID,
+    MALL_OFF_GROUNDS_ID,
+    MALL_WALK_ID,
     MOUNTAIN_BIKE_ID,
     NAMED_ROAD_ON_ID,
     NAMED_STREET_EAST_ID,
@@ -662,6 +665,32 @@ def test_a_capitol_grounds_walk_opens_and_its_sidewalk_keeps_the_sidewalk_rule(
             assert tags[CAPITOL_WALK_ID].get("rm:no_bicycle") is None, variant.value
         if CAPITOL_SIDEWALK_ID in tags:
             assert tags[CAPITOL_SIDEWALK_ID].get("bicycle") is None, variant.value
+    assert seen
+
+
+def test_a_monument_grounds_walk_opens_and_a_memorial_walk_stays_closed(
+    tmp_path, segment_schemas, states
+) -> None:
+    """The owner, 2026-10-25: the Washington Monument grounds' paths "are available for
+    bicycling", and at the Vietnam Veterans Memorial "Some parts here are closed, such
+    as the memorial itself, but not the path to it." An untagged walk on the grounds
+    carries bicycle=yes into every graph that keeps footways; the walk along the wall,
+    and a walk off the grounds, get nothing written."""
+    from pipeline.extract import read_ways
+
+    context, _stored = run_dials_extract(tmp_path)
+    assert context.mall_ways == {MALL_WALK_ID}
+    assert MALL_WALK_ID not in context.no_bicycle
+    seen = 0
+    for variant in Variant:
+        tags = {w.osm_id: w.tags for w in read_ways(context.variant_pbf(variant))}
+        if MALL_WALK_ID in tags:
+            seen += 1
+            assert tags[MALL_WALK_ID].get("bicycle") == "yes", variant.value
+            assert tags[MALL_WALK_ID].get("rm:no_bicycle") is None, variant.value
+        for closed in (MALL_MEMORIAL_ID, MALL_OFF_GROUNDS_ID):
+            if closed in tags:
+                assert tags[closed].get("bicycle") is None, (variant.value, closed)
     assert seen
 
 

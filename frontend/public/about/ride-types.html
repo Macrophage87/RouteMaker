@@ -359,27 +359,29 @@ transit.</li>
 <div class="table-wrap" tabindex="0" role="region" aria-label="Ride types compared">
 <table>
 <caption>Ride types compared</caption>
-<thead><tr><th scope="col">Ride type</th><th scope="col">Traffic slider starts</th><th scope="col">Hills slider starts</th><th scope="col">Surfaces</th><th scope="col">Pace (for times)</th><th scope="col">Map used</th></tr></thead>
+<thead><tr><th scope="col">Ride type</th><th scope="col">Traffic slider starts</th><th scope="col">Hills slider starts</th><th scope="col">Surfaces</th><th scope="col">Flat-road pace (for times)</th><th scope="col">Map used</th></tr></thead>
 <tbody>
-<tr><th scope="row">Default</th><td>70</td><td>8%</td><td>Prefers pavement a little</td><td>Valhalla's hybrid bike, 11 mph [18 km/h]</td><td>Standard</td></tr>
-<tr><th scope="row">Novice and Nervous</th><td>100, every road read one level busier</td><td>4%</td><td>Prefers pavement a little</td><td>11 mph [18 km/h]</td><td>Standard</td></tr>
+<tr><th scope="row">Default</th><td>70</td><td>8%</td><td>Prefers pavement a little</td><td>11.2 mph [18 km/h], Valhalla's hybrid bike</td><td>Standard</td></tr>
+<tr><th scope="row">Novice and Nervous</th><td>100, every road read one level busier</td><td>4%</td><td>Prefers pavement a little</td><td>11.2 mph [18 km/h]</td><td>Standard</td></tr>
 <tr><th scope="row">E-bike</th><td>70</td><td>12%</td><td>Prefers pavement a little</td><td>15 mph [24 km/h]</td><td>E-bike (leaves out ways closed to e-bikes)</td></tr>
-<tr><th scope="row">Cargo Bike</th><td>70 carrying cargo, 80 with passengers</td><td>4%</td><td>Avoids rough surfaces</td><td>8.7 mph [14 km/h]; assist 11 mph [18 km/h]</td><td>Standard (e-bike with assist)</td></tr>
-<tr><th scope="row">Fast</th><td>10</td><td>11%</td><td>Strongly prefers pavement</td><td>11 mph [18 km/h]</td><td>Standard</td></tr>
+<tr><th scope="row">Cargo Bike</th><td>70 carrying cargo, 80 with passengers</td><td>4%</td><td>Avoids rough surfaces</td><td>8.7 mph [14 km/h]; assist 11.2 mph [18 km/h]</td><td>Standard (e-bike with assist)</td></tr>
+<tr><th scope="row">Fast</th><td>10</td><td>11%</td><td>Strongly prefers pavement</td><td>11.2 mph [18 km/h]</td><td>Standard</td></tr>
 <tr><th scope="row">Group Ride</th><td>40</td><td>5%</td><td>Prefers pavement a little</td><td>12.4 mph [20 km/h]</td><td>Standard</td></tr>
 <tr><th scope="row">Mass Ride</th><td>0, locked</td><td>1%</td><td>Prefers pavement a little</td><td>6 mph [9.7 km/h]</td><td>Roads only, no trails</td></tr>
 <tr><th scope="row">Trailmaxxing</th><td>100</td><td>8%</td><td>Gravel is fine</td><td>12.4 mph [20 km/h]</td><td>Standard</td></tr>
 <tr><th scope="row">Gravel</th><td>40</td><td>8%</td><td>Unpaved costs nothing extra</td><td>12.4 mph [20 km/h]</td><td>Off-road</td></tr>
 <tr><th scope="row">Mountain Goat</th><td>40</td><td>Seeks climbs</td><td>Gravel is fine</td><td>12.4 mph [20 km/h]</td><td>Off-road</td></tr>
-<tr><th scope="row">Mountain Bike</th><td>80</td><td>12%</td><td>Unpaved costs nothing extra</td><td>10 mph [16 km/h]; 6.2 mph [10 km/h] on singletrack</td><td>Mountain-bike trails</td></tr>
-<tr><th scope="row">Bikeshare</th><td>80</td><td>4% classic bike, 7% e-bike</td><td>Avoids rough surfaces</td><td>8 mph [13 km/h] classic; 12.4 mph [20 km/h] e-bike</td><td>Standard</td></tr>
+<tr><th scope="row">Mountain Bike</th><td>80</td><td>12%</td><td>Unpaved costs nothing extra</td><td>9.9 mph [16 km/h]; 6.2 mph [10 km/h] on singletrack</td><td>Mountain-bike trails</td></tr>
+<tr><th scope="row">Bikeshare</th><td>80</td><td>4% classic bike, 7% e-bike</td><td>Avoids rough surfaces</td><td>8.1 mph [13 km/h] classic; 12.4 mph [20 km/h] e-bike</td><td>Standard</td></tr>
 <tr><th scope="row">Rebalance Ride</th><td>80</td><td>4%</td><td>Avoids rough surfaces</td><td>As Bikeshare</td><td>Standard</td></tr>
-<tr><th scope="row">Own Bike + transit</th><td>70</td><td>8%</td><td>Prefers pavement a little</td><td>11 mph [18 km/h]</td><td>Standard</td></tr>
-<tr><th scope="row">Bikeshare + transit</th><td>80</td><td>4%</td><td>Avoids rough surfaces</td><td>8 mph [13 km/h]</td><td>Standard</td></tr>
+<tr><th scope="row">Own Bike + transit</th><td>70</td><td>8%</td><td>Prefers pavement a little</td><td>11.2 mph [18 km/h]</td><td>Standard</td></tr>
+<tr><th scope="row">Bikeshare + transit</th><td>80</td><td>4%</td><td>Avoids rough surfaces</td><td>8.1 mph [13 km/h]</td><td>Standard</td></tr>
 </tbody>
 </table>
 </div>
-<p>Paces are only for estimating times. The Hills column is the grade the Hills slider starts at: the steepest you climb
+<p>Paces are speeds on smooth, flat roads, only for estimating times. A whole ride averages
+slower: climbs, rough surfaces and waits at junctions all add time (<a href="/about/routing.html#route-time">How
+a route's time is worked out</a>). The Hills column is the grade the Hills slider starts at: the steepest you climb
 comfortably (<a href="/about/routing.html#hills">Hills</a>). "Surfaces" describes Valhalla's bike costing
 settings<sup class="cite"><a href="#ref-1" aria-label="source 1">[1]</a></sup> that each ride type sends<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup>.</p>
 
@@ -470,7 +472,7 @@ Metro is not used on days when bikes are not allowed on trains, such as July 4.<
 <li>With a bike, a start, stop or end you put at a Metro or MARC station moves to the station's elevator, or where none is known its entrance,
 quickest to ride to from where that leg comes from, not the far side of the tracks. If that moves your
 point, the app says so, and Undo puts it back. An elevator you tap on the map stays where you put it.</li>
-<li>From the next map update, routes walk into Metro and MARC stations: the walking tunnels and the last
+<li>Routes walk into Metro and MARC stations: the walking tunnels and the last
 footways between a station's entrances or elevator and the nearest road or bike path are walk-your-bike
 links, at most about 800 ft [250 m], and the directions say "walk your bike here", and, from the same update,
 escalators are closed to bikes.</li>
@@ -784,7 +786,7 @@ riding. Press a line or its row to ride it; your own setting stays as it was.</l
 <p class="next">Next: <a href="/about/stress.html">Stress ratings</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.12.3. The code is
+  <p>Part of RouteMaker's documentation. It describes version 0.12.4. The code is
   open source under the MIT licence:
   <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
   <p><a href="/">Back to the map</a></p>

@@ -154,7 +154,7 @@ import {
   type PanelView,
   type ViewCause,
 } from "./lib/sidebar.ts";
-import { SHARE_FAILED, canShareLink, shareContent, shareLink, shareSaidFor, withGpxFile } from "./lib/share.ts";
+import { BROADCAST_COPIED, BROADCAST_COPY_FAILED, BROADCAST_RIDE_COPY_FAILED, SHARE_FAILED, canShareLink, copyShareNavigator, pickShareNavigator, shareContent, shareLink, shareSaidFor, withGpxFile, type ShareNavigator } from "./lib/share.ts";
 import type { ImportedPlan } from "./lib/gpxPlan.ts";
 import { loadWaterRestrooms, readWaterPrefs, saveWaterPrefs, waterAlongRoute, waterTitle, waterVisible, type WaterAlong, type WaterPoint, type WaterPrefs, type WaterStatus } from "./lib/waterRestrooms.ts";
 import waterRestroomsUrl from "./amenity-data/water-restrooms.json?url";
@@ -241,6 +241,7 @@ import { ReviewMode } from "./ReviewMode.tsx";
 import type { ListKey } from "./lib/review.ts";
 import { MY_GO_NOT_SAVED, MY_GO_SAVED, MY_GO_SAVED_DEVICE, fetchMyGo, goRideChips, OWN_RIDE_HINT, readStartMyGo, saveAccountCopy, saveDeviceMyGo, saveMyGo, type Home, type MyGo } from "./lib/myGo.ts";
 import { optionChosenSaid, transitOf, withTransitOption, type TransitPick } from "./lib/transit.ts";
+import { nativeShareNavigator } from "./lib/nativeShell.ts";
 import { REST_ANYWAY_MS, RIDE_REST_FINDING, fixedRide, restClosedSaid, restRequest, rideLegOf, rideTripOf, rideable as rideableRoute, type RideTrip } from "./lib/rideTrip.ts";
 import { RIDE_TOO_LONG } from "./lib/navigate.ts";
 import { fetchMe, NO_ME, type Me } from "./lib/stressEditor.ts";
@@ -773,8 +774,13 @@ export function App() {
   const [linkSaid, setLinkSaid] = useState("");
   const [linkSpoken, setLinkSpoken] = useState("");
   const linkPresses = useRef(0);
-  // Share (owner, 2026-10-10; lib/share.ts): on the page only where the browser has a share sheet.
-  const [canShare] = useState(() => canShareLink(navigator, window.location.href));
+  // Share (owner, 2026-10-10; lib/share.ts): on the page only where there is a share sheet, the browser's or the phone
+  // app's (Android's WebView has none: lib/nativeShell.ts nativeShareNavigator).
+  const [shareNav] = useState(() => pickShareNavigator(navigator, nativeShareNavigator()));
+  const [canShare] = useState(() => canShareLink(shareNav, window.location.href));
+  // Broadcast is on the page everywhere (Stephen 2026-10-26: "I don't seem to be able to broadcast rides"; in the app
+  // it was hidden): with no share sheet, its link is copied instead (lib/share.ts copyShareNavigator).
+  const broadcastNav = useMemo<ShareNavigator | undefined>(() => (canShare ? shareNav : copyShareNavigator((text) => copyText(text, navigator.clipboard, selectionCopy))), [canShare, shareNav]);
   // The span, in km, the rider has said yes to planning (longRide.ts).
   const [confirmedKm, setConfirmedKm] = useState<number | null>(null);
   const [crosshair, setCrosshair] = useState({ button: false, canvas: false });
@@ -900,8 +906,12 @@ export function App() {
     roam?: boolean;
     /** Kept on this device to resume if the page closes (lib/rideResume.ts). */
     kept?: boolean;
+    /** Said once the ride screen is up: Broadcast's link copied, where there was no share sheet. */
+    note?: string;
     n: number;
   } | null>(null);
+  // What the next ride screen says once it is up (rideStart.note); a ride started any other way says nothing.
+  const rideNote = useRef("");
   const [rideView, setRideView] = useState<RideView | null>(null);
   const [follow, setFollow] = useState(true);
   // A screen left alone 30 s with no panel open goes back to the ride's own view (lib/idleRecentre.ts, the owner,
@@ -2975,7 +2985,8 @@ export function App() {
   // Share ride: the same link marked as a ride (lib/sharedRoutes.ts RIDE_PARAM), opened fixed with location sharing,
   // and led by the sharer (LEAD_PARAM). Answers whether it was shared as a ride the sharer leads (Broadcast starts it),
   // and what was said.
-  const shareRoute = async (ride = false): Promise<{ led: boolean; said: string }> => {
+  // `nav`: the sheet to open; Broadcast passes broadcastNav, which copies the link where there is no sheet.
+  const shareRoute = async (ride = false, nav: ShareNavigator | undefined = shareNav): Promise<{ led: boolean; said: string }> => {
     if (!shown || sharing.current) return { led: false, said: "" };
     const press = ++sharePresses.current;
     // A ride only with its exact line, kept with the route shown for it: while the route is still being planned the
@@ -2996,8 +3007,8 @@ export function App() {
     const lead = ride && kept ? ((sharedId ? leads.current.get(sharedId) : undefined) ?? leadPrep.current) : null;
     const link = ride && kept ? asRideLink(now.link, lead?.key ?? null) : now.link;
     const file = exact?.file ? gpxShareFile(exact.file.text, exact.file.fileName) : null;
-    const content = withGpxFile(navigator, shareContent(link, distanceM, presetSaid(preset)), file);
-    const outcome = shareLink(navigator, content);
+    const content = withGpxFile(nav, shareContent(link, distanceM, presetSaid(preset)), file);
+    const outcome = shareLink(nav, content);
     let said: string;
     try {
       const done = await outcome;
@@ -3055,7 +3066,9 @@ export function App() {
     // Kept on this device so a page closed mid-ride can resume it (lib/rideResume.ts); a trip's leg, Ride the rest
     // and a detour from Roam are not.
     const kept = !rest && !leg.trip;
-    setRideStart((before) => ({ route, ...leg, dials: rideDialsNow, fixed, roam: rest?.roam === true, kept, n: (before?.n ?? 0) + 1 }));
+    const note = rideNote.current;
+    rideNote.current = "";
+    setRideStart((before) => ({ route, ...leg, dials: rideDialsNow, fixed, roam: rest?.roam === true, kept, note, n: (before?.n ?? 0) + 1 }));
     if (kept) keepLeftRide({ route, points: leg.points, loop: leg.loop, preset: leg.preset, dials: rideDialsNow, fixed }, VIA_MARKS, Date.now());
     else forgetLeftRide();
     // The installed app keeps the ride's route as the last ride (OWNER-DECISIONS 465a); End ride gives it
@@ -3230,6 +3243,7 @@ export function App() {
   };
   const closureCancel = () => {
     closurePending.current = null;
+    rideNote.current = "";
     setClosureAsk(null);
   };
   // Reroute around them: an opened file keeps every point but the closed stretches, each replaced by a way round
@@ -3238,6 +3252,7 @@ export function App() {
   const closureReroute = async () => {
     const pending = closurePending.current;
     closurePending.current = null;
+    rideNote.current = "";
     setClosureAsk(null);
     if (!pending) return;
     const file = rideRef.current.imported;
@@ -3347,7 +3362,11 @@ export function App() {
   const [computerAsk, setComputerAsk] = useState<"start" | "broadcast" | null>(null);
   // Start anyway, kept in memory too: a tab that cannot store it (a private window) still starts.
   const computerOk = useRef(false);
-  const startRideChecked = () => {
+  const startRideChecked = () => startRideNoted("");
+  // `note`: what the ride screen says once up (rideStart.note): Broadcast's link copied, else nothing. Set by each press,
+  // so a ride started any other way after a Broadcast that did not start one says nothing.
+  const startRideNoted = (note: string) => {
+    rideNote.current = note;
     // On a computer, asked first (lib/startOnComputer.ts): Go back, or Start anyway, which presses again.
     if (!computerOk.current && askBeforeStart(looksLikePhone(), tabSession())) {
       setComputerAsk("start");
@@ -3381,18 +3400,20 @@ export function App() {
     }
     primeRideVoice(ridePrefs);
     setBroadcastNote((n) => ({ text: "", count: n.count }));
-    void shareRoute(true).then(({ led, said }) => {
-      if (led) startRideChecked();
-      else if (said) setBroadcastNote((n) => ({ text: said === SHARE_FAILED ? BROADCAST_SHARE_FAILED : said, count: n.count + 1 }));
+    void shareRoute(true, broadcastNav).then(({ led, said }) => {
+      if (led) {
+        // With no share sheet the link was copied: the ride screen says so, for the rider to paste it.
+        startRideNoted(canShare ? "" : BROADCAST_COPIED);
+      } else if (said) setBroadcastNote((n) => ({ text: said === SHARE_FAILED ? (canShare ? BROADCAST_SHARE_FAILED : BROADCAST_COPY_FAILED) : said, count: n.count + 1 }));
     });
   };
   // Broadcast from a ride (Stephen 2026-10-24: "Let people broadcast from a ride"): Share ride's link as Plan's and Go's
   // Broadcast sends it, the ride already going; the rider leads once it went with its key. Answers what to say.
   const broadcastFromRide = async (): Promise<string> => {
-    const { led, said } = await shareRoute(true);
-    if (led) return ROAM_BROADCAST_ON;
+    const { led, said } = await shareRoute(true, broadcastNav);
+    if (led) return canShare ? ROAM_BROADCAST_ON : BROADCAST_COPIED;
     if (said === BROADCAST_NO_LEAD) return BROADCAST_RIDE_NO_LEAD;
-    return said === SHARE_FAILED ? BROADCAST_RIDE_FAILED : said;
+    return said === SHARE_FAILED ? (canShare ? BROADCAST_RIDE_FAILED : BROADCAST_RIDE_COPY_FAILED) : said;
   };
   // Ride the rest (lib/rideTrip.ts): after a transit plan's transit, a ride for its last riding leg, planned
   // as a normal route request from where the rider is (the ride's fix) to the destination, on the leg's
@@ -3723,15 +3744,16 @@ export function App() {
     const lead = mine ? leads.current.get(`roam|${mine.id}`) : leadPrep.current;
     if (!lead) return ROAM_BROADCAST_NOT_READY;
     const id = mine?.id ?? newSharedId();
-    const done = await shareLink(navigator, { title: ROAM_BROADCAST_TITLE, text: ROAM_BROADCAST_TEXT, url: roamLink(window.location.origin, id, lead.key) });
-    if (done !== "shared") return shareSaidFor(done);
-    if (mine) return "";
+    const done = await shareLink(broadcastNav, { title: ROAM_BROADCAST_TITLE, text: ROAM_BROADCAST_TEXT, url: roamLink(window.location.origin, id, lead.key) });
+    if (done !== "shared") return done === "failed" && !canShare ? BROADCAST_RIDE_COPY_FAILED : shareSaidFor(done);
+    // Again while leading: the sheet was the answer; a copy is said.
+    if (mine) return canShare ? "" : BROADCAST_COPIED;
     if (!roamingNow.current) return "";
     leadConsent(await roamRideId(id), lead.token);
     leads.current.set(`roam|${id}`, lead);
     prepareLead();
     setRoamBroadcast({ id, lead: lead.key, leading: true });
-    return ROAM_BROADCAST_ON;
+    return canShare ? ROAM_BROADCAST_ON : BROADCAST_COPIED;
   };
   const endRoam = () => {
     // The broadcast ends with the roam: its followers see the leader's dot go within two minutes.
@@ -4741,7 +4763,7 @@ export function App() {
         mode, actions, stations, go, transitControls,
         stale, routeHeadingRef, status, announcement, slow, preset, dials, points, cancelLong, planButtonRef,
         confirmLong, errorRef, retry, shown, answer: picked, choice, aroundAvoid, setAroundAvoid, routedPoints, federalRoute,
-        narrow, setJunctionFocus, setScrubPoint, choose, startRide: startRideChecked, broadcastRide: canShare ? { onPress: broadcastRide, note: broadcastNote } : null, startRideRef, rideSize, setDials,
+        narrow, setJunctionFocus, setScrubPoint, choose, startRide: startRideChecked, broadcastRide: { onPress: broadcastRide, note: broadcastNote }, startRideRef, rideSize, setDials,
         waterStatus, waterAlong, addWaterStop, climbsOn, climbsStatus, climbsAlong, light, weather,
       }}
     />
@@ -5197,9 +5219,10 @@ export function App() {
           fixed={rideStart.fixed}
           // The plan's own route only (its link is the plan's), not Ride the rest's or a detour from Roam, and never a
           // ride opened from someone else's link (they lead it).
-          onBroadcast={canShare && !rideStart.roam && rideStart.route === shown && !(onShared && !onShared.own) ? broadcastFromRide : null}
+          onBroadcast={!rideStart.roam && rideStart.route === shown && !(onShared && !onShared.own) ? broadcastFromRide : null}
           broadcasting={rideBroadcast?.leading === true}
           keepLeft={rideStart.kept === true}
+          startNote={rideStart.note}
         />
       )}
       {roaming && (
@@ -5219,7 +5242,7 @@ export function App() {
           onView={setRoamRider}
           onDetour={roamDetour}
           onEnd={endRoam}
-          onBroadcast={canShare ? broadcastRoam : null}
+          onBroadcast={broadcastRoam}
           broadcasting={roamBroadcast?.leading === true}
         />
       )}
