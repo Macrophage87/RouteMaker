@@ -244,6 +244,9 @@ test("More on the ride screen (Stephen 2026-10-26): the route's changes and Sett
   // is closed by the idle close, so the Settings bubble is not pressed again after More shut it.
   assert.match(rail, /aria-expanded=\{moreOpen\}/);
   assert.equal(bubbles.match(/data-idle-close/g), null);
+  // One side menu at a time: Detour, dock or 311 opened closes More's bubbles, and More opened closes them.
+  assert.match(ride, /setMenu311\(which === "311"\);\s*if \(which\) \{\s*setMoreOpen\(false\);\s*setSettingsOpen\(false\);/);
+  assert.match(ride, /if \(!moreOpen\) \{\s*openMenu\(null\);\s*setMoreOpen\(true\);/);
   // Bubbles hidden by the attribute even with their own display.
   assert.match(css, /\.ride-more-bubbles\[hidden\] \{\s*display: none;/);
 });

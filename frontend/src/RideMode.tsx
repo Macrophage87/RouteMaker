@@ -794,9 +794,11 @@ export function RideMode({
   const settingsPanel = useRef<HTMLDivElement>(null);
   const settingsButton = useRef<HTMLButtonElement>(null);
   const settingsBubble = useRef<HTMLButtonElement>(null);
-  // More closed closes the settings too; the focus, if it was in them, back to More.
+  // More closed closes the settings too; the focus, if it was in them, back to More. (The idle close looks for typing
+  // in the bubbles alone, More's aria-controls: the settings have no text field.)
   const toggleMore = () => {
     if (!moreOpen) {
+      openMenu(null);
       setMoreOpen(true);
       return;
     }
@@ -900,10 +902,15 @@ export function RideMode({
   useEffect(() => {
     if (dockOpen) dockHeading.current?.focus();
   }, [dockOpen]);
+  // One side menu open at a time: each opens to the buttons' left, More's bubbles too.
   const openMenu = (which: "detour" | "dock" | "311" | null) => {
     setDetourOpen(which === "detour");
     setDockOpen(which === "dock");
     setMenu311(which === "311");
+    if (which) {
+      setMoreOpen(false);
+      setSettingsOpen(false);
+    }
   };
   // A share bike (lib/rideDock.ts): the undock is taken as reaching the first dock, or the start where there is
   // no walk to it; reaching a dock ridden to with the dock button starts the time again.
