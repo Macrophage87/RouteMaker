@@ -135,11 +135,18 @@ test("release signing and the store id come from the environment; no key in the 
   assert.match(gradle, /System\.getenv\("ROUTEMAKER_DEBUG_KEYSTORE_FILE"\)/);
   assert.match(gradle, /if \(debugKeystore\) \{\s*debug \{/, "the fixed passwords sit only in the debug signing config");
   const workflow = readFileSync(here("../../.github/workflows/android.yml"), "utf8");
-  // Pull requests touching the app: tests and a debug APK only; release by hand only; never on a push.
-  assert.match(workflow, /^on:\s*\n\s+pull_request:\s*\n\s+paths:\s*\n\s+- "mobile\/\*\*"\s*\n\s+- "\.github\/workflows\/android\.yml"\s*\n\s+workflow_dispatch:/m);
-  assert.doesNotMatch(workflow, /^\s+push:/m);
-  assert.match(workflow, /BUILD: \$\{\{ github\.event_name == 'workflow_dispatch' && inputs\.build \|\| 'debug' \}\}/);
-  assert.match(workflow, /if: env\.BUILD == 'release' && github\.event_name == 'workflow_dispatch'/);
+  // Pull requests touching the app: tests and a debug APK only. Release by hand, or on a release tag
+  // (only when mobile/ changed since the tag before); no other push.
+  assert.match(workflow, /^on:\s*\n\s+push:\s*\n\s+tags: \["v\*"\]\s*\n\s+pull_request:\s*\n\s+paths:\s*\n\s+- "mobile\/\*\*"\s*\n\s+- "\.github\/workflows\/android\.yml"\s*\n\s+workflow_dispatch:/m);
+  assert.doesNotMatch(workflow, /^\s+branches:/m);
+  assert.match(workflow, /BUILD: \$\{\{ github\.event_name == 'push' && 'release' \|\| github\.event_name == 'workflow_dispatch' && inputs\.build \|\| 'debug' \}\}/);
+  assert.match(workflow, /if: env\.BUILD == 'release' && github\.event_name != 'pull_request'/);
+  assert.match(workflow, /git diff --quiet "\$prev" "\$GITHUB_SHA" -- mobile\//);
+  assert.match(workflow, /needs\.changes\.outputs\.app == 'true'/);
+  // The Play upload runs on a tag only, through the repository's own script.
+  assert.match(workflow, /Upload to Play internal testing \(a release tag only\)\s*\n\s+if: github\.event_name == 'push'/);
+  assert.match(workflow, /PLAY_SERVICE_ACCOUNT_JSON: \$\{\{ secrets\.ROUTEMAKER_PLAY_SERVICE_ACCOUNT \}\}/);
+  assert.match(workflow, /scripts\/play-upload\.sh android\/app\/build\/outputs\/bundle\/release\/\*\.aab/);
   assert.match(workflow, /\.\/gradlew --no-daemon testDebugUnitTest/);
   assert.match(workflow, /- run: npm test/);
   assert.match(workflow, /persist-credentials: false/);
@@ -148,8 +155,9 @@ test("release signing and the store id come from the environment; no key in the 
   assert.doesNotMatch(workflow, /vars\./);
   assert.doesNotMatch(workflow, /^\s+ROUTEMAKER_URL:/m);
   assert.match(workflow, /No site address in the build/);
-  // Only the by-hand release run reads the site secret and bakes it in; its artifact is short-lived.
-  assert.match(workflow, /STORE_SITE: \$\{\{ env\.BUILD == 'release' && github\.event_name == 'workflow_dispatch' && secrets\.ROUTEMAKER_SITE_URL \|\| '' \}\}/);
+  // Only the release (store) build reads the site secret and bakes it in, never a pull request; its
+  // artifact is short-lived.
+  assert.match(workflow, /STORE_SITE: \$\{\{ env\.BUILD == 'release' && github\.event_name != 'pull_request' && secrets\.ROUTEMAKER_SITE_URL \|\| '' \}\}/);
   assert.equal(workflow.match(/ROUTEMAKER_SITE_URL \|\|/g).length, 1, "the site secret is read in one place");
   assert.match(workflow, /ROUTEMAKER_STORE_BUILD=1 ROUTEMAKER_URL="\$STORE_SITE" npx cap sync android/);
   assert.match(workflow, /retention-days: \$\{\{ env\.BUILD == 'release' && 3 \|\| 30 \}\}/);
