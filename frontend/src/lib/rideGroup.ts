@@ -199,7 +199,6 @@ export function leadConsent(ride: string, token: string, now = Date.now(), store
 
 export const CONSENT_QUESTION = "Show me as a dot to others on this ride?";
 export const CONSENT_NOTE = `Only while the app is open and you are within ${QUARTER_MILE} of the route. No name; positions are rounded and gone after 2 minutes.`;
-/** On a broadcast: shown on or off the route, so the leader and the riders can find each other. */
 /**
  * Whether a broadcast link one follows, once ready (its route shown, or a Roam broadcast's leader named), goes straight
  * into Ride mode (Stephen 2026-10-26: "Opening the broadcast mode should enter ride mode with the leader's dot shown"):
@@ -210,6 +209,11 @@ export function opensIntoRide(at: { phone: boolean; onBike: boolean; resumeAsked
   return at.phone && !at.onBike && !at.resumeAsked;
 }
 
+/** Said once a followed broadcast has started the ride or Roam on its own (opensIntoRide): no press started it, so a
+ * phone may keep the voice quiet until the first tap. Shown, only its first sentence; said, all of it. */
+export const BROADCAST_FOLLOWING = "Following the leader's broadcast. If you hear no directions, tap the screen once.";
+
+/** On a broadcast: shown on or off the route, so the leader and the riders can find each other. */
 export const BROADCAST_CONSENT_NOTE = "Only while the app is open, on or off the route, so the leader and riders can find each other. No name; positions are rounded and gone after 2 minutes.";
 export const CONSENT_YES = "Yes";
 export const CONSENT_NO = "No";

@@ -95,7 +95,7 @@ import { MANUAL_BADGE, planLegEdit } from "./lib/planLegs.ts";
 import { insertedSaid, loopChangeSaid,reversedSaid, reverseUnavailableHint, stationSaid } from "./lib/pointText.ts";
 import { avoidNearSpot, shownRoute } from "./lib/avoidJunctions.ts";
 import { shownNear } from "./lib/junctionSuggest.ts";
-import { CHECKING_CLOSURES, CLOSURE_SLOW_MS, RIDE_ENDED_FROM_HERE_NOTE, RIDE_ENDED_NO_FIX_NOTE, RIDE_ENDED_SAID, RideMode, primeRideVoice, startRideGesture, voiceTurnedOn, type EndedPlan, type RideView } from "./RideMode.tsx";
+import { CHECKING_CLOSURES, CLOSURE_SLOW_MS, START_NOTE_MS, RIDE_ENDED_FROM_HERE_NOTE, RIDE_ENDED_NO_FIX_NOTE, RIDE_ENDED_SAID, RideMode, primeRideVoice, startRideGesture, voiceTurnedOn, type EndedPlan, type RideView } from "./RideMode.tsx";
 import { Icon } from "./Icon.tsx";
 import { RideSummaryCard } from "./RideSummaryCard.tsx";
 import type { RideStats } from "./lib/rideStats.ts";
@@ -293,7 +293,7 @@ import { BikeshareDocksOverlay, type DocksReport } from "./BikeshareDocks.tsx";
 import { KNOWN_OPERATORS, docksStatus, mergeOperators, operatorsToAsk, readOperatorChoices, saveOperatorChoices, type OperatorInfo } from "./lib/bikeshareDocks.ts";
 import { SaveRoute } from "./SaveRoute.tsx";
 import { SAVE_ROUTE } from "./lib/savedRoutes.ts";
-import { broadcastRideId, isRideLink, leadConsent, leaderKey, newToken, opensIntoRide, roamRideId, type RideLinkType } from "./lib/rideGroup.ts";
+import { BROADCAST_FOLLOWING, broadcastRideId, isRideLink, leadConsent, leaderKey, newToken, opensIntoRide, roamRideId, type RideLinkType } from "./lib/rideGroup.ts";
 
 // Before the map adds the stress source (MapView, after its first probe).
 // With Ride mode's kept tiles behind the network, for dead spots (lib/corridorStore.ts).
@@ -4084,8 +4084,12 @@ export function App() {
       if (!window.speechSynthesis?.speaking) primeRideVoice(ridePrefsNow.current);
     };
     document.addEventListener("click", unlock, true);
-    if (sharedFollow) startRideChecked();
-    else startRoam();
+    if (sharedFollow) startRideNoted(BROADCAST_FOLLOWING);
+    else {
+      startRoam();
+      // After "Roaming.", as the ride screen says its start note.
+      window.setTimeout(() => announce(BROADCAST_FOLLOWING), START_NOTE_MS);
+    }
   }, [sharedFollow, roamFollow]);
   // Light times on the route (lib/lightTimes.ts): near dawn or dusk, where the rider will be at each, leaving now.
   // The clock runs only with a route shown, outside a ride; the same marks are kept while nothing they say changed.
