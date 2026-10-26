@@ -580,7 +580,7 @@ test("Start, GPX, Link and More are one row under the route's figures (UI-CLEANU
   const summary = app.slice(app.indexOf("export function RouteSummary"));
   assert.ok(summary.indexOf("<StressFigure") < summary.indexOf("<RouteActions {...actions} start={start} />"));
   assert.match(app, /<div className="route-actions-row">\s*\{start\}\s*<button type="button" className="secondary icon-button gpx-download" onClick=\{\(\) => downloadRoute\(\)\} aria-label="Download GPX">/);
-  assert.match(app, /<span role="status" className="visually-hidden link-said">\s*\{linkSpoken\}/);
+  assert.match(app, /<span role="status" className="visually-hidden link-spoken">\s*\{linkSpoken\}/);
   // The spoken confirmation carries the location note (OWNER-DECISIONS 395), and the button is described by it.
   assert.equal(linkSpokenFor(true, ""), COPY_LINK_DONE);
   assert.equal(

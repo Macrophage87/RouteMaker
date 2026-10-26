@@ -511,7 +511,7 @@ function RouteActions(props: RouteActionsProps & { start: ReactNode }) {
           </button>
         )}
       </div>
-      <span role="status" className="visually-hidden link-said">
+      <span role="status" className="visually-hidden link-spoken">
         {linkSpoken}
       </span>
       {keepShown && (
