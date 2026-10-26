@@ -1955,6 +1955,19 @@ class RoadHazardSpanOut(Schema):
     text: str = Field(description="One plain sentence, US units first with the metric once.")
 
 
+class SteepGradeOut(Schema):
+    """A steep stretch on a Mass Ride or a Novice and Nervous ride (v0.12.5;
+    `routemaker.steep_grades`): past 5% either way ("steep", an orange marker) or 8% ("very_steep",
+    red), read in the riding direction, in whole metres along the router's elevation profile."""
+
+    from_m: int
+    to_m: int
+    direction: Literal["up", "down"]
+    level: Literal["steep", "very_steep"]
+    grade_pct: int = Field(description="The steepest grade along it, a whole percent, unsigned.")
+    text: str = Field(description="One plain sentence, US units first with the metric once.")
+
+
 class ScenicSpanOut(Schema):
     """A stretch of the route with a scenic designation (v0.12.3; `core.route_scenic`), in
     whole metres along the traced route as `stress_spans` are measured."""
@@ -2255,6 +2268,9 @@ class RouteBody(Schema):
     # The scenic designations it rides (v0.12.3; rustic roads, byways, the East Coast
     # Greenway, US Bicycle Routes), in riding order. Additive: empty where it rides none.
     scenic_roads: list[ScenicSpanOut] | None = None
+    # Steep grades either way (v0.12.5), in riding order, on a Mass Ride or a Novice and
+    # Nervous ride. Additive: null on every other ride type, empty where there are none.
+    steep_grades: list[SteepGradeOut] | None = None
     # The Mountain Bike ride type's reading of the route (slice 6). Additive: null on every
     # other ride type.
     mtb: MtbOut | None = None

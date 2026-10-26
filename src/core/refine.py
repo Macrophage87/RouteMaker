@@ -111,6 +111,7 @@ from routemaker import (
     grade_stress,
     hill_cost,
     junction_delay,
+    steep_grades,
     trace_junctions,
 )
 from routemaker import intersections as model
@@ -406,6 +407,9 @@ class Context:
     # The known flashing beacons at junctions the map has a signal at
     # (`core.flashing_signals.active`), priced with no signal.
     beacons: tuple = ()
+    # A Mass Ride or a Novice and Nervous ride: steep grades either way are priced
+    # (`routemaker.steep_grades`, the owner, 2026-10-26), in `Analysis.hill_m`.
+    steep_grades: bool = False
 
 
 def shift_classes(classes: list, shift: int) -> list:
@@ -1012,6 +1016,11 @@ def analyse(
             ctx.mass_kg,
             flat_speed_ms(ctx.costing),
             ctx.hills,
+        )
+        + (
+            steep_grades.penalty_s(routing.grade_profile(trip)) * flat_speed_ms(ctx.costing)
+            if ctx.steep_grades
+            else 0.0
         ),
         hill=hill,
         flat_exposure_m=flat_exposure_m(pieces, classes, weights),

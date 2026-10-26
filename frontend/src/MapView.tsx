@@ -79,6 +79,7 @@ import { ROUTE_NAME_LAYER_ID, ROUTE_NAME_SOURCE_ID, routeNameField, routeNameFea
 import { addRailStations, LABEL_FONT, RAIL_LAYERS, RIDE_STATION_NAME_SIZE, ROUTE_BOTTOM_LAYER, STATION_NAME_SIZE, setRailVisibility, stationNamesTarget } from "./lib/railLayer.ts";
 import { setRideLabelOrder, type LabelHomes } from "./lib/rideLabelOrder.ts";
 import { ROUTE_HAZARD_ICON, ROUTE_HAZARD_SOURCE, routeHazardFeatures, routeHazardIcon, routeHazardLayer, routeHazardRepeatLayer } from "./lib/routeHazards.ts";
+import { STEEP_GRADE_SOURCE, STEEP_ICONS, steepGradeFeatures, steepGradeIcon, steepGradeLayer, steepGradeRepeatLayer, steepIconName } from "./lib/steepGrades.ts";
 import type { RailVisibility, Station, StationBadges, StationRole } from "./lib/railStations.ts";
 import { attachRailInteraction, type StationFound } from "./railInteraction.ts";
 import { stressProbe } from "./lib/stressProtocol.ts";
@@ -1426,6 +1427,17 @@ export function MapView(props: Props) {
       map.addSource(ROUTE_HAZARD_SOURCE, { type: "geojson", data: routeHazardFeatures(callbacks.current.route ?? null) });
       map.addLayer(routeHazardLayer() as never);
       map.addLayer(routeHazardRepeatLayer() as never);
+      // Steep grades on a Mass Ride or a Novice ride (v0.12.5, lib/steepGrades.ts): orange and red squares, the ramp
+      // rising or falling as the rider meets it, over the route only.
+      for (const { level, direction } of STEEP_ICONS) {
+        const name = steepIconName(level, direction);
+        if (map.hasImage(name)) continue;
+        const { pixelRatio: ratio, ...icon } = steepGradeIcon(level, direction, iconPixelRatio());
+        map.addImage(name, icon, { pixelRatio: ratio });
+      }
+      map.addSource(STEEP_GRADE_SOURCE, { type: "geojson", data: steepGradeFeatures(callbacks.current.stale ? null : (callbacks.current.route ?? null)) as never });
+      map.addLayer(steepGradeLayer() as never);
+      map.addLayer(steepGradeRepeatLayer() as never);
       // The other routes' names, over the route so a name where they part is not hidden under it.
       map.addLayer({
         id: "route-choice-name",
@@ -2964,6 +2976,7 @@ function syncRoute(map: MapLibreMap, props: Props, fitted: { current: boolean })
   setRouteSections(map, route, stale, props.routeColour ?? undefined);
   (map.getSource(ROUTE_DRAWN_SOURCE) as GeoJSONSource | undefined)?.setData(routeDrawnLines(stale ? null : route, props.points.length) as never);
   (map.getSource(ROUTE_HAZARD_SOURCE) as GeoJSONSource | undefined)?.setData(routeHazardFeatures(stale ? null : route) as never);
+  (map.getSource(STEEP_GRADE_SOURCE) as GeoJSONSource | undefined)?.setData(steepGradeFeatures(stale ? null : route) as never);
   (map.getSource(ROUTE_NAME_SOURCE_ID) as GeoJSONSource | undefined)?.setData(routeNameFeatures(stale ? null : route) as never);
   // A ride's camera follows the rider; a re-planned route is not framed over it.
   if (!route || stale || route.geometry.coordinates.length < 2 || props.rider) return;
