@@ -87,3 +87,26 @@ def test_delay_runs_sum_to_delay_s_and_sit_where_the_runs_begin():
     assert runs[0][1] == junction_delay.SIGNAL_DELAY_S
     assert junction_delay.delay_s([stop_again, signal, stop]) == sum(s for _m, s in runs)
     assert junction_delay.delay_runs([]) == []
+
+
+def test_legs_of_uneven_vertex_counts_index_their_own_shapes():
+    # Leg one is a single edge (vertices 0-1), leg two three (1-4): its indices start at the joint.
+    line = [(-77.0 + i * 0.00115, 38.9) for i in range(5)]
+    legs = [
+        leg([{"time": 10, "begin_shape_index": 0}, {"time": 0, "begin_shape_index": 1}]),
+        leg(
+            [
+                {"time": 10, "begin_shape_index": 0},
+                {"time": 50, "begin_shape_index": 2},
+                {"time": 0, "begin_shape_index": 3},
+            ]
+        ),
+    ]
+    marks = time_marks.router_marks(legs, line, [1, 4])
+    at = sorted({(round(f, 2), s) for f, s in marks})
+    assert at == [(0.0, 0.0), (0.25, 10.0), (0.75, 20.0), (1.0, 70.0)]
+
+
+def test_a_wait_on_a_maneuver_mark_comes_after_the_router_time_there():
+    marks = time_marks.time_marks([(0.0, 0.0), (0.5, 30.0), (1.0, 60.0)], [(150.0, 15.0)], 300.0)
+    assert marks == [[0.0, 0.0], [0.5, 30.0], [0.5, 45.0], [1.0, 75.0]]
