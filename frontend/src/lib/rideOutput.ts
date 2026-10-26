@@ -136,6 +136,8 @@ export const POLITE_GAP_MS = 8_000;
 export interface Said {
   text: string;
   urgent: boolean;
+  /** An urgent sentence that waits for the one being said instead of cutting it off (a jog's next turn). */
+  after?: boolean;
 }
 
 /**
@@ -164,11 +166,11 @@ export class Announcer {
     this.unschedule = unschedule;
   }
 
-  say(text: string, urgent: boolean): void {
+  say(text: string, urgent: boolean, after = false): void {
     if (!text) return;
     if (urgent) {
       this.drop();
-      this.deliver({ text, urgent: true });
+      this.deliver(after ? { text, urgent: true, after: true } : { text, urgent: true });
       return;
     }
     const now = this.now();
@@ -269,9 +271,14 @@ export class Voice {
     this.speak(text, true);
   }
 
-  speak(text: string, urgent: boolean): void {
+  speak(text: string, urgent: boolean, after = false): void {
     const synth = this.env.synth;
     if (!synth || !text) return;
+    if (urgent && after && synth.speaking) {
+      // A jog's next turn: straight after the turn being said, not over it.
+      this.waiting = text;
+      return;
+    }
     if (urgent) {
       this.waiting = null;
       synth.cancel();

@@ -469,6 +469,12 @@ M.CEMETERY_ACCESS = "destination"
 -- service road it is, priced by `service_penalty`. Only where its own `access`
 -- and `vehicle` leave it open, so a private lot's aisle keeps upstream's flag
 -- (and a `motor_vehicle=private` one keeps it through upstream's own `private`).
+--
+-- And the same where the way carries no bicycle tag but the rebuild found it is where a
+-- trail ends (`rm:aisle_link`, routemaker.aisle_links): the Rock Creek Trail starts in
+-- the lot where Beach Drive crosses into Maryland, joined to the road only by two aisles
+-- of about 60 ft, and a ride north stayed half a mile on the stretch open to cars beside
+-- it (owner report, 2026-10-26).
 M.BICYCLE_LINK_SERVICES = { parking_aisle = true, driveway = true, ["drive-through"] = true }
 M.BICYCLE_LINK_GRANTS = { yes = true, designated = true, permissive = true }
 
@@ -479,6 +485,21 @@ function M.bicycle_link_service(tags)
   if not M.BICYCLE_LINK_GRANTS[tags.bicycle] then
     return false
   end
+  for _, key in ipairs({ "access", "vehicle" }) do
+    if tags[key] ~= nil and not M.PERMISSIVE_ACCESS[tags[key]] then
+      return false
+    end
+  end
+  return true
+end
+
+--- A parking aisle the rebuild names a trail's link (`rm:aisle_link`), whose own
+-- `access` and `vehicle` leave it open.
+function M.aisle_link(tags, derived)
+  if not derived.aisle_link or tags.highway ~= "service" or tags.service ~= "parking_aisle" then
+    return false
+  end
+  if tags.bicycle ~= nil then return false end
   for _, key in ipairs({ "access", "vehicle" }) do
     if tags[key] ~= nil and not M.PERMISSIVE_ACCESS[tags[key]] then
       return false
@@ -815,7 +836,7 @@ function M.remap_way(tags, derived)
     out.service = M.AVOID_SERVICE
   elseif tags.service == M.AVOID_SERVICE and tags.highway == "service" then
     out.service = M.REMOVE
-  elseif M.bicycle_link_service(tags) then
+  elseif M.bicycle_link_service(tags) or M.aisle_link(tags, derived) then
     out.service = M.REMOVE
   end
 
