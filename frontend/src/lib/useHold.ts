@@ -53,12 +53,18 @@ export function useHold(onHold: (() => void) | null | undefined, ms = HOLD_MS): 
       event.preventDefault();
       event.stopPropagation();
     },
-    // A key press is its own press (a held pointer press before it is over); Shift+F10 holds.
+    // A key press is its own press (a held pointer press before it is over); Shift+F10 holds, once however long it is
+    // held, and the context menu some browsers still send after it is not a second hold.
     onKeyDown: (event) => {
-      held.current = false;
-      if (event.key !== "F10" || !event.shiftKey) return;
+      if (event.key !== "F10" || !event.shiftKey) {
+        held.current = false;
+        return;
+      }
       event.preventDefault();
-      onHold();
+      if (event.repeat) return;
+      held.current = false;
+      fire();
+      window.setTimeout(() => (held.current = false), 400);
     },
     "aria-keyshortcuts": HOLD_KEY,
   };

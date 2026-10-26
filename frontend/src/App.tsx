@@ -4088,7 +4088,7 @@ export function App() {
     else {
       startRoam();
       // After "Roaming.", as the ride screen says its start note.
-      window.setTimeout(() => announce(BROADCAST_FOLLOWING), START_NOTE_MS);
+      window.setTimeout(() => roamingNow.current && announce(BROADCAST_FOLLOWING), START_NOTE_MS);
     }
   }, [sharedFollow, roamFollow]);
   // Light times on the route (lib/lightTimes.ts): near dawn or dusk, where the rider will be at each, leaving now.
