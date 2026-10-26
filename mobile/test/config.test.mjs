@@ -143,6 +143,10 @@ test("release signing and the store id come from the environment; no key in the 
   assert.match(workflow, /if: env\.BUILD == 'release' && github\.event_name != 'pull_request'/);
   assert.match(workflow, /git diff --quiet "\$prev" "\$GITHUB_SHA" -- mobile\//);
   assert.match(workflow, /needs\.changes\.outputs\.app == 'true'/);
+  // A skipped `changes` (pull requests, by hand) must not skip the build.
+  assert.match(workflow, /if: \$\{\{ !cancelled\(\) && /);
+  // The bundle is kept before the Play upload, so a refused upload leaves it to upload by hand.
+  assert.ok(workflow.indexOf("actions/upload-artifact") < workflow.indexOf("Upload to Play internal testing"));
   // The Play upload runs on a tag only, through the repository's own script.
   assert.match(workflow, /Upload to Play internal testing \(a release tag only\)\s*\n\s+if: github\.event_name == 'push'/);
   assert.match(workflow, /PLAY_SERVICE_ACCOUNT_JSON: \$\{\{ secrets\.ROUTEMAKER_PLAY_SERVICE_ACCOUNT \}\}/);

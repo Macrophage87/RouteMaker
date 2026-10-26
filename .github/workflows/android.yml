@@ -157,6 +157,16 @@ jobs:
           printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.jks"
           ROUTEMAKER_KEYSTORE_FILE="$RUNNER_TEMP/release.jks" ./gradlew --no-daemon assembleRelease bundleRelease
           rm -f "$RUNNER_TEMP/release.jks"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: routemaker-android-${{ env.BUILD }}-${{ github.run_number }}
+          path: |
+            mobile/android/app/build/outputs/apk/${{ env.BUILD }}/*.apk
+            mobile/android/app/build/outputs/bundle/release/*.aab
+          if-no-files-found: error
+          # Before the Play upload, so a refused upload still leaves the bundle to upload by hand.
+          # The store build names the site: kept just long enough to upload to Play.
+          retention-days: ${{ env.BUILD == 'release' && 3 || 30 }}
       - name: Upload to Play internal testing (a release tag only)
         if: github.event_name == 'push'
         env:
@@ -169,12 +179,3 @@ jobs:
             exit 0
           fi
           scripts/play-upload.sh android/app/build/outputs/bundle/release/*.aab
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: routemaker-android-${{ env.BUILD }}-${{ github.run_number }}
-          path: |
-            mobile/android/app/build/outputs/apk/${{ env.BUILD }}/*.apk
-            mobile/android/app/build/outputs/bundle/release/*.aab
-          if-no-files-found: error
-          # The store build names the site: kept just long enough to upload to Play.
-          retention-days: ${{ env.BUILD == 'release' && 3 || 30 }}

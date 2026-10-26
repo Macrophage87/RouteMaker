@@ -7652,7 +7652,7 @@ keep its log and read the dry run before `--swap`.
 ## Phone app (v0.8.0)
 
 The Android app's test builds (`mobile/`) name no site: the repository is public, and so are its
-Actions artifacts, so a server's address must not be in one. The store build (`release`, by hand)
+Actions artifacts, so a server's address must not be in one. The store build (`release`, by hand or on a release tag)
 bakes in the `ROUTEMAKER_SITE_URL` secret, the owner's choice for the Play listing. On first launch the app asks for the
 site's address (https only), checks it against `/healthz`, and keeps it in the app's preferences on
 that phone; touching and holding the app's icon and choosing "Site address", or clearing the app's
@@ -7664,7 +7664,9 @@ if its synced config names a site.
 Builds: Actions, "Android app" (`.github/workflows/android.yml`). A pull request that touches
 `mobile/` or the workflow runs the app's tests and builds a debug APK (no secrets, no site address);
 by hand (`workflow_dispatch`), `debug` for a sideloaded test APK or `release` for a signed APK and
-Play bundle. The workflow uses
+Play bundle; a release tag (`vX.Y.Z`) whose `mobile/` changed since the tag before runs the `release`
+build and, with the optional `ROUTEMAKER_PLAY_SERVICE_ACCOUNT` secret, uploads the bundle to Play's
+internal testing track (`mobile/scripts/play-upload.sh`; setup in `mobile/README.md`). The workflow uses
 no repository variables. The release key is four repository secrets the owner adds:
 `ROUTEMAKER_KEYSTORE_BASE64`, `ROUTEMAKER_KEYSTORE_PASSWORD`, `ROUTEMAKER_KEY_ALIAS`,
 `ROUTEMAKER_KEY_PASSWORD`; never a file in the repository. The Play id comes from the
