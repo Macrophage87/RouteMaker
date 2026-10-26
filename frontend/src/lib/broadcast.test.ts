@@ -291,7 +291,7 @@ test("App judges a followed broadcast once, when ready, and starts its ride with
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   assert.match(app, /const sharedFollow = sharedOpen\?\.ride === true && !!sharedOpen\.lead && !sharedOpen\.own && shown === sharedOpen\.answer && !stale && rideableRoute\(shown\);/);
   assert.match(app, /if \(!ready \|\| autoRode\.current\) return;\n\s+autoRode\.current = true;\n\s+if \(!opensIntoRide\(\{ phone: looksLikePhone\(\), onBike, resumeAsked: leftAsk !== null \}\)\) return;/);
-  assert.match(app, /openSaved\(shared, SHARED_OPENED\(shared\.name\), !\(SHARED_RIDE && SHARED_LEAD\)\);/);
+  assert.match(app, /openSaved\(shared, SHARED_OPENED\(shared\.name\), !\(SHARED_RIDE && SHARED_LEAD && shared\.answer\)\);/);
   assert.match(app, /if \(check\) void checkThen\("open", saved\.line, false, \(\) => \{\}\);/);
   assert.match(app, /if \(!shown \|\| followsBroadcast\(shown\)\) return startRide\(false\);/);
   assert.match(app, /return !!open && open\.ride && !!open\.lead && !open\.own && open\.answer === route;/);

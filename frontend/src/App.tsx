@@ -3689,7 +3689,7 @@ export function App() {
         checkFirstAnswer.current = false;
         // A broadcast's follower is not asked about closures (Stephen 2026-10-26: "The closure part should be leader
         // only. In general many of these closures aren't always real").
-        openSaved(shared, SHARED_OPENED(shared.name), !(SHARED_RIDE && SHARED_LEAD));
+        openSaved(shared, SHARED_OPENED(shared.name), !(SHARED_RIDE && SHARED_LEAD && shared.answer));
         if (shared.answer) setSharedOpen({ answer: shared.answer, ride: SHARED_RIDE, id: SHARED_ID, lead: SHARED_LEAD });
       } else {
         setSharedNote(SHARED_GONE);
@@ -3974,7 +3974,7 @@ export function App() {
     if (!ready || autoRode.current) return;
     autoRode.current = true;
     if (!opensIntoRide({ phone: looksLikePhone(), onBike, resumeAsked: leftAsk !== null })) return;
-    // Kept until a click while riding unlocks it (a tap during the closure check is before the ride).
+    // Kept until a click while riding or roaming unlocks it.
     const unlock = () => {
       if (!ridingNow.current && !roamingNow.current) return;
       document.removeEventListener("click", unlock, true);
