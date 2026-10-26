@@ -18,17 +18,18 @@
  *   own route, held here and in App's ride state only.
  * - Large text (the owner, 2026-10-20; it replaced Big text): the card half the screen, the turn as big as fits, the map
  *   below; its side button (and the T key) and Settings' switch are the one choice; heading-up (track-up by default since v0.7.0); and
- *   Road closed ahead and End ride always in view at the top of the card (since v0.9.0; More, the last side button,
- *   opens the ride's settings under that row), with Undo after End ride. End ride part way leaves the plan starting where the rider is.
+ *   Road closed ahead and End ride always in view at the top of the card (since v0.9.0; the Settings bubble beside More,
+ *   the last side button, opens the ride's settings under that row), with Undo after End ride. End ride part way leaves the plan starting where the rider is.
  * - The map along the route, kept for dead spots (lib/corridor.ts, N5), and Log for 311 with the place in
  *   the route's street names (lib/report311.ts, lib/report311Log.ts; N6; OWNER-DECISIONS 369, 465).
  * - The side buttons (the owner, 2026-10-17: "Remove that bottom part when routing by default. instead put
  *   these as circle icons on the side"): Where am I? (re-centring too), Large text, Broadcast (2026-10-24: "Let people
  *   broadcast from a ride"), Detour (water, restroom, food, repair or a search, lib/detourSearch.ts), on a share bike the dock button with the time undocked
  *   (lib/rideDock.ts), 311 anywhere on the route, and More; each a round icon with its name for screen readers, its menu
- *   opening beside it. More opens, under the top row, the route's changes (Less traffic and Fewer hills, one step down
- *   the traffic or hills slider and a new route from here, lib/rideEase.ts; Skip this stop, lib/rideStops.ts) above the
- *   ride's settings (2026-10-24: "put options like skip a stop, lower traffic and hills in an expansion with settings"). The bottom panel shows only when it
+ *   opening beside it. More opens a row of bubbles beside it (2026-10-26: "just expanded as more bubble buttons, not in
+ *   settings"): the route's changes (Less traffic and Fewer hills, one step down the traffic or hills slider and a new
+ *   route from here, lib/rideEase.ts; Skip this stop, lib/rideStops.ts) and Settings, the ride's settings opening under
+ *   the top row. The bottom panel shows only when it
  *   has something to say or ask: GPS and screen notes, off route, Ride the rest.
  *   Answers asked for (Where am I?, a detour's progress) show for a few seconds by the buttons.
  *
@@ -58,7 +59,7 @@ import {
   insteadLabel,
   insteadName,
   insteadSaid,
-  nextStopLine,
+  skipStopName,
   restartKept,
   restartReplanSaid,
   restartSaid,
@@ -264,7 +265,7 @@ export const SLIDE_TO_END_HINT = "Slide End ride to the right to end the ride.";
  */
 export const RIDE_SETTINGS_TEXT = "More";
 export const RIDE_MORE_NAME = "More: change the route, and ride settings";
-export const RIDE_SETTINGS_TITLE = "More: change the route, and ride settings";
+export const RIDE_SETTINGS_TITLE = "Ride settings";
 export const RIDE_CHANGE_TITLE = "Change the route";
 /** Broadcast on the ride screen (Stephen 2026-10-24: "Let people broadcast from a ride"): Plan's and Go's Broadcast, the ride already going. */
 export const RIDE_BROADCAST_NAME = "Broadcast";
@@ -806,12 +807,29 @@ export function RideMode({
   // Each re-plan's ticket: "Keep the planned route" or a newer re-plan voids an older one's answer.
   const replanTicket = useRef(0);
   const settingsId = useId();
-  // The ride's More panel, the route's changes and the settings, opened from the last side button (closed at Start).
+  // More, the last side button (closed at Start): it opens a row of bubbles beside it (Stephen 2026-10-26: "Have many
+  // of those options just expanded as more bubble buttons, not in settings"): Less traffic, Fewer hills, Skip this stop
+  // and Settings, the last opening the ride's settings under the top row.
+  const [moreOpen, setMoreOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsPanel = useRef<HTMLDivElement>(null);
   const settingsButton = useRef<HTMLButtonElement>(null);
-  // Opened, the panel is brought into view (the row above it is sticky; the card may be scrolled) and the focus
-  // goes into it: More is the last side button, after the panel, so Tab alone would never reach it.
+  const settingsBubble = useRef<HTMLButtonElement>(null);
+  // More closed closes the settings too; the focus, if it was in them, back to More. (The idle close looks for typing
+  // in the bubbles alone, More's aria-controls: the settings have no text field.)
+  const toggleMore = () => {
+    if (!moreOpen) {
+      openMenu(null);
+      setMoreOpen(true);
+      return;
+    }
+    const held = settingsPanel.current?.contains(document.activeElement) ?? false;
+    setMoreOpen(false);
+    setSettingsOpen(false);
+    if (held) settingsButton.current?.focus();
+  };
+  // Opened, the settings are brought into view (the row above them is sticky; the card may be scrolled) and the focus
+  // goes into them: the bubbles come after them, so Tab alone would never reach them.
   useEffect(() => {
     if (!settingsOpen) return;
     settingsPanel.current?.scrollIntoView?.({ block: "nearest" });
@@ -905,10 +923,15 @@ export function RideMode({
   useEffect(() => {
     if (dockOpen) dockHeading.current?.focus();
   }, [dockOpen]);
+  // One side menu open at a time: each opens to the buttons' left, More's bubbles too.
   const openMenu = (which: "detour" | "dock" | "311" | null) => {
     setDetourOpen(which === "detour");
     setDockOpen(which === "dock");
     setMenu311(which === "311");
+    if (which) {
+      setMoreOpen(false);
+      setSettingsOpen(false);
+    }
   };
   // A share bike (lib/rideDock.ts): the undock is taken as reaching the first dock, or the start where there is
   // no walk to it; reaching a dock ridden to with the dock button starts the time again.
@@ -1647,9 +1670,10 @@ export function RideMode({
       broadcastBusy.current = false;
     }
   };
-  // More's own presses (Less traffic, Fewer hills, Skip this stop): the panel closes, the map back in view, and the
+  // More's own presses (Less traffic, Fewer hills, Skip this stop): the bubbles close, the map back in view, and the
   // focus goes to More.
   const fromMore = (press: () => void) => {
+    setMoreOpen(false);
     setSettingsOpen(false);
     settingsButton.current?.focus();
     press();
@@ -2191,43 +2215,14 @@ export function RideMode({
           hidden={!settingsOpen}
           tabIndex={-1}
           onKeyDown={(event) => {
-            // Escape closes it, back to More.
+            // Escape closes it, back to the Settings bubble.
             if (event.key === "Escape") {
               event.preventDefault();
               setSettingsOpen(false);
-              settingsButton.current?.focus();
+              settingsBubble.current?.focus();
             }
           }}
         >
-          {/* The route's changes first (Stephen 2026-10-24): each one press, a new route from here; not on a route everyone
-              shares (`fixed`), nor once arrived. The symbols as the side buttons had them (2026-10-23), the words beside. */}
-          {!fixed && !ride.arrived && (
-            <div className="ride-change" role="group" aria-labelledby={`${settingsId}-change`}>
-              <h3 id={`${settingsId}-change`}>{RIDE_CHANGE_TITLE}</h3>
-              <div className="actions">
-                {(["calmer", "flatter"] as const).map((which) => (
-                  <button
-                    key={which}
-                    type="button"
-                    className={`secondary ride-ease ride-${which}`}
-                    onClick={() => fromMore(() => void ease(which))}
-                    aria-label={EASE_NAME[which]}
-                  >
-                    <Icon name={which === "calmer" ? "traffic-down" : "hills-down"} size={26} />
-                    {EASE_SHOWN[which]}
-                  </button>
-                ))}
-              </div>
-              {nextStop && (
-                <div className="ride-next-stop">
-                  <p>{nextStopLine(nextStop)}</p>
-                  <button type="button" className="secondary" onClick={() => fromMore(() => changeStop(nextStop, undefined, true))}>
-                    {SKIP_STOP}
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
           <h3 className="ride-settings-title">Settings</h3>
           <RideSettingsFields prefs={prefs} onChange={onPrefs} idBase={settingsId} />
           <p className="hint">{RIDE_SAFETY}</p>
@@ -2334,7 +2329,7 @@ export function RideMode({
             <path d="M20 35 L15 20 L20 23 L25 20 Z" className="ride-compass-south" />
           </svg>
         </button>
-        {toast.text && !detourOpen && !dockOpen && !menu311 && (
+        {toast.text && !detourOpen && !dockOpen && !menu311 && !moreOpen && (
           <div className="ride-toast" {...toastTimer.hold}>
             {/* Shown, not a live region: it is said through the rider's own outputs. */}
             <p key={toast.n}>{toast.text}</p>
@@ -2604,21 +2599,76 @@ export function RideMode({
             </div>
           )}
           {/* More, at the end of the side buttons (a gear for the settings since v0.9.0, the owner, 2026-10-18: "Move
-              settings to a gear icon in the rack"; More since 2026-10-24); it opens the route's changes and the ride's
-              settings under the top row. */}
-          <button
-            type="button"
-            ref={settingsButton}
-            className="ride-round ride-settings-button"
-            aria-label={RIDE_MORE_NAME}
-            title={RIDE_SETTINGS_TEXT}
-            aria-expanded={settingsOpen}
-            aria-controls={`${settingsId}-settings`}
-            data-idle-close
-            onClick={() => setSettingsOpen(!settingsOpen)}
+              settings to a gear icon in the rack"; More since 2026-10-24). It opens a row of bubbles to its left
+              (Stephen 2026-10-26): the route's changes, each one press, a new route from here (not on a route everyone
+              shares, `fixed`, nor once arrived), the symbols alone on screen (2026-10-23: "Symbol should be clear"),
+              and Settings, opening the ride's settings under the top row. */}
+          <div
+            className="ride-pop ride-more"
+            onKeyDown={(event) => {
+              // Escape in the bubbles closes them, back to More.
+              if (event.key === "Escape" && moreOpen) {
+                event.preventDefault();
+                setMoreOpen(false);
+                setSettingsOpen(false);
+                settingsButton.current?.focus();
+              }
+            }}
           >
-            <Icon name="more" size={24} />
-          </button>
+            <button
+              type="button"
+              ref={settingsButton}
+              className="ride-round ride-settings-button"
+              aria-label={RIDE_MORE_NAME}
+              title={RIDE_SETTINGS_TEXT}
+              aria-expanded={moreOpen}
+              aria-controls={`${settingsId}-more`}
+              data-idle-close
+              onClick={toggleMore}
+            >
+              <Icon name="more" size={24} />
+            </button>
+            <div id={`${settingsId}-more`} className="ride-more-bubbles" role="group" aria-label={RIDE_MORE_NAME} hidden={!moreOpen}>
+              {!fixed &&
+                !ride.arrived &&
+                (["calmer", "flatter"] as const).map((which) => (
+                  <button
+                    key={which}
+                    type="button"
+                    className={`ride-round ride-ease ride-${which}`}
+                    onClick={() => fromMore(() => void ease(which))}
+                    aria-label={EASE_NAME[which]}
+                    title={EASE_SHOWN[which]}
+                  >
+                    <Icon name={which === "calmer" ? "traffic-down" : "hills-down"} size={26} />
+                  </button>
+                ))}
+              {!fixed && nextStop && (
+                <button
+                  type="button"
+                  className="ride-round ride-skip-stop"
+                  onClick={() => fromMore(() => changeStop(nextStop, undefined, true))}
+                  aria-label={skipStopName(nextStop)}
+                  title={SKIP_STOP}
+                >
+                  <Icon name="skip" size={22} />
+                  <span aria-hidden="true">{nextStop.number}</span>
+                </button>
+              )}
+              <button
+                type="button"
+                ref={settingsBubble}
+                className="ride-round ride-settings-bubble"
+                aria-label={RIDE_SETTINGS_TITLE}
+                title={RIDE_SETTINGS_TITLE}
+                aria-expanded={settingsOpen}
+                aria-controls={`${settingsId}-settings`}
+                onClick={() => setSettingsOpen(!settingsOpen)}
+              >
+                <Icon name="gear" size={24} />
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
