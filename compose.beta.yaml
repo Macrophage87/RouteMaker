@@ -153,6 +153,12 @@ services:
         source: ${DATA_ROOT}/static
         target: /data/static
         bind: { create_host_path: false }
+      # The base map, read by the link preview's picture (core.preview_basemap).
+      - type: bind
+        source: ${DATA_ROOT}/basemap
+        target: /data/basemap
+        read_only: true
+        bind: { create_host_path: false }
     memswap_limit: 1450M
     deploy:
       resources:

@@ -34,6 +34,8 @@ test("the credits are short source names, exactly these, OpenStreetMap first (OW
       // DC's closures (v0.7.0 plan, "DC closures source"), the DDOT credit in the words the plan gives it.
       "Road closures: DDOT (TOPS permits), CC BY 4.0",
       "MPD traffic advisories",
+      // v0.12.4: DDOT project traffic advisories, read by hand (routemaker.ddot_advisories).
+      "DDOT project traffic advisory",
       "NPS alerts",
       "AlertDC (HSEMA)",
     ],

@@ -106,6 +106,13 @@ map "$http_sec_fetch_mode|$http_user_agent" $rmbeta_link_fetcher {
     "~*^[^|]*\|.*(bot\b|bot/|crawler|spider|facebookexternalhit|facebot|slack|whatsapp|telegram|skypeuripreview|embedly|iframely|mastodon|pleroma|pinterest|vkshare|googlemessages|preview)" 1;
 }
 
+# A literal "$" for strings: nginx reads a bare $ in a string as a variable, and has no escape
+# for it. robots.txt's "Allow: /$" (the home page only) uses it. geo, not map: geo's default is
+# a plain literal, never interpolated.
+geo $rmbeta_dollar {
+    default "$";
+}
+
 # Port 80: ACME challenges stay answerable (renewals), everything else goes to https.
 server {
     listen 80;
@@ -181,7 +188,7 @@ server {
         default_type text/plain;
         add_header X-Robots-Tag "noindex, nofollow" always;
         add_header Strict-Transport-Security "max-age=86400" always;
-        return 200 "User-agent: *\nAllow: /$\nAllow: /favicon.ico\nAllow: /favicon.svg\nAllow: /icons/\nDisallow: /\n";
+        return 200 "User-agent: *\nAllow: /${rmbeta_dollar}\nAllow: /favicon.ico\nAllow: /favicon.svg\nAllow: /icons/\nDisallow: /\n";
     }
 
     # --- the sign-in page (error_page 401 above): internal only, so never served directly, and

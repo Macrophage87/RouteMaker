@@ -173,6 +173,8 @@ export function joinRoutes(leg: RouteResponse, planned: RouteResponse, atM: numb
     description_overview: null,
     stress_spans: spans,
     profile: null,
+    // The planned route's marks are fractions of its own line: spread evenly over the joined one instead.
+    time_marks: null,
     candidates: null,
     avoid_alternate: null,
     closure_through: null,
