@@ -140,6 +140,7 @@ import {
   type Said,
 } from "./lib/rideOutput.ts";
 import { WAITING_FOR_GPS, watchRide, type RideGeoEnv } from "./lib/rideWatch.ts";
+import { askCompass } from "./lib/compassHeading.ts";
 import { rideGeoEnv, rideSpeech, rideWake, ridesHidden, showCue, speaksAloud } from "./lib/nativeShell.ts";
 import {
   DETOUR_BUSY,
@@ -343,12 +344,15 @@ export const RIDE_SAFETY = ridesHidden() ? RIDE_SAFETY_APP : RIDE_SAFETY_BROWSER
 /** Called inside the Start ride press: unlock the voice with the first sentence, where the rider chose it. */
 export function startRideGesture(prefs: RidePrefs): void {
   if (toVoice(prefs.output)) rideVoice.unlock(RIDE_STARTED);
+  // iPhones give the compass for the map's first heading only once allowed, asked inside this press (lib/compassHeading.ts).
+  askCompass();
 }
 
 /** Start's press, before its closure check: unlocks the voice silently (iOS speaks only after a
  * gesture has spoken once), so "Ride started." is said only when the ride does start. */
 export function primeRideVoice(prefs: RidePrefs): void {
   if (toVoice(prefs.output)) rideVoice.unlock(" ");
+  askCompass();
 }
 
 export const VOICE_ON = "Voice on.";
