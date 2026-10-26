@@ -360,7 +360,7 @@ const SHARED_RIDE = SHARED_ID !== null && rideLinkFrom(window.location.hash, win
 const SHARED_LEAD = SHARED_RIDE ? leadKeyFrom(window.location.hash, window.location.search) : null;
 // That link itself, as opened (before the address becomes the page's own): those following pass it on, by Broadcast or
 // its QR code, so all who open it follow the same leader (Stephen 2026-10-26: "allow participants to share that same code").
-const SHARED_LINK = SHARED_RIDE && SHARED_LEAD ? window.location.href : null;
+const SHARED_LINK = SHARED_RIDE && SHARED_LEAD ? passedOnLink(window.location) : null;
 if (SHARED_ID && (window.location.pathname.startsWith(SHARED_PATH) || new URLSearchParams(window.location.search).has("route"))) {
   const query = new URLSearchParams(window.location.search);
   query.delete("route");
@@ -380,6 +380,12 @@ if (new URLSearchParams(window.location.search).has(WAHOO_RETURN_PARAM)) {
 // A broadcast from Roam (Stephen 2026-10-22): the link names a ride with no route and its leader; one who opens it
 // follows the leader's dot, read once here (the plan's own fragment is written over it later).
 const ROAM_FOLLOW = roamLinkFrom(window.location.hash);
+/** The opened link to pass on: its path, the shared line's id from the query (if there), and its fragment; nothing a
+ * messaging app added on the way (its tracking parameters). */
+function passedOnLink(at: Pick<Location, "origin" | "pathname" | "search" | "hash">): string {
+  const route = new URLSearchParams(at.search).get("route");
+  return `${at.origin}${at.pathname}${route ? `?route=${encodeURIComponent(route)}` : ""}${at.hash}`;
+}
 let sharedArrived: () => void = () => {};
 // Its owner turned the link off: the plan it carries is not planned (the first plan after the wait, and that plan
 // again on Try again); the page says so plainly (SHARED_REVOKED).
@@ -3021,6 +3027,7 @@ export function App() {
   // A link turned off or replaced in My routes: Share makes a new one rather than hand out its id again.
   const forgetSharedLine = () => {
     sharedLine.current = null;
+    rideLinkSent.current = null;
   };
   const shareExact = () => {
     const verbatim = imported?.verbatim;
@@ -3083,7 +3090,13 @@ export function App() {
   // The ride link last sent, and the route it was sent for: shared again for that route (the ride started on it, a
   // re-route or a plan made again since), it is that same link (Stephen 2026-10-26: "if you press and share multiple
   // times in the same ride, it's the same link").
-  const rideLinkSent = useRef<{ route: RouteResponse; link: string; lead: { token: string; key: string } | null; id: string | null } | null>(null);
+  const rideLinkSent = useRef<{ route: RouteResponse; keep: ShareKeep; link: string; lead: { token: string; key: string } | null; id: string | null } | null>(null);
+  // A ride ended: its link is not the next ride's.
+  const rodeBefore = useRef(riding);
+  useEffect(() => {
+    if (rodeBefore.current && !riding) rideLinkSent.current = null;
+    rodeBefore.current = riding;
+  }, [riding]);
   // Share ride: the same link marked as a ride (lib/sharedRoutes.ts RIDE_PARAM), opened fixed with location sharing,
   // and led by the sharer (LEAD_PARAM). Answers whether it was shared as a ride the sharer leads (Broadcast starts it),
   // and what was said.
@@ -3105,7 +3118,7 @@ export function App() {
     const distanceM = !stale && routedPoints === points ? shown.distance_m : null;
     // The ride's own route while riding (the plan's may have been made again since), else the one shown.
     const rideRoute = riding && rideStart ? rideStart.route : shown;
-    const again = ride && rideLinkSent.current?.route === rideRoute ? rideLinkSent.current : null;
+    const again = ride && rideLinkSent.current?.route === rideRoute && rideLinkSent.current.keep === shareKeep ? rideLinkSent.current : null;
     const now = again ? null : sharedLinkNow();
     const kept = again ? Promise.resolve(true) : now!.kept;
     const exact = again ? null : now!.exact;
@@ -3136,7 +3149,7 @@ export function App() {
           }
           led = true;
         } else unled = true;
-        if (led) rideLinkSent.current = { route: rideRoute, link, lead, id: sharedId };
+        if (led) rideLinkSent.current = { route: rideRoute, keep: shareKeep, link, lead, id: sharedId };
         const open = { answer: rideRoute, ride: true, own: true, id: sharedId ?? undefined, lead: lead && sharedId ? lead.key : null };
         sharedOpenNow.current = open;
         setSharedOpen(open);
@@ -3466,7 +3479,7 @@ export function App() {
   // The voice is unlocked first, synchronously inside the press (iOS speaks only in a gesture; after the
   // check's await it would be too late).
   // Which press asked: Start ride, or Broadcast (asked before its share sheet, so Go back sends nothing).
-  const [computerAsk, setComputerAsk] = useState<"start" | "broadcast" | null>(null);
+  const [computerAsk, setComputerAsk] = useState<"start" | "broadcast" | "qr" | null>(null);
   // Start anyway, kept in memory too: a tab that cannot store it (a private window) still starts.
   const computerOk = useRef(false);
   // A broadcast's route this page follows (opened from its link, not the sharer's own).
@@ -3557,6 +3570,11 @@ export function App() {
   };
   // Broadcast held beside Start: its link as a QR code, with Start ride; the sharer leads, as Broadcast's sheet does.
   const broadcastQr = () => {
+    // On a computer, asked first, as Broadcast is: Go back makes no link.
+    if (!riding && !computerOk.current && askBeforeStart(looksLikePhone(), tabSession())) {
+      setComputerAsk("qr");
+      return;
+    }
     const start = riding ? null : () => startRideNoted("");
     const followed = followedLink();
     if (followed) return setQrAsk({ link: followed, start });
@@ -5003,6 +5021,8 @@ export function App() {
     onShared && !onShared.ride ? null : isRideLink(preset, rideGroupPoints) ? preset : onShared && rideGroupPoints.length >= 2 ? "group-ride" : null;
   // A broadcast (a ride link with its leader): the sharer leads it, and one who opened it follows the leader, in Plan
   // too (watching from a computer), not only in Go or riding.
+  // Following a broadcast whose link this page opened: Broadcast passes that link on (followedLink).
+  const passesOn = onShared !== null && !onShared.own && !!onShared.lead && SHARED_LINK !== null && onShared.id === SHARED_ID;
   const rideBroadcast = onShared?.ride && onShared.id && onShared.lead ? { id: onShared.id, lead: onShared.lead, leading: onShared.own === true } : null;
   // While leading a broadcast from Roam, its own riders' group is the only one (a Group Ride detour starts none).
   const rideGroupLine =
@@ -5224,6 +5244,7 @@ export function App() {
           setComputerAsk(null);
           // Still inside the press, so Broadcast's share sheet may open.
           if (asked === "broadcast") broadcastRide();
+          else if (asked === "qr") broadcastQr();
           else startRideChecked();
         }}
       />
@@ -5432,11 +5453,11 @@ export function App() {
           trailMiles={trailMiles}
           keepLastRide={isStandalone()}
           fixed={rideStart.fixed}
-          // The plan's own route only (its link is the plan's), not Ride the rest's or a detour from Roam, and never a
-          // ride opened from someone else's link (they lead it).
-          onBroadcast={!rideStart.roam && rideStart.route === shown ? broadcastFromRide : null}
-          onBroadcastHold={!rideStart.roam && rideStart.route === shown ? broadcastQrFromRide : null}
-          passingOn={onShared !== null && !onShared.own && !!onShared.lead}
+          // The plan's own route only (its link is the plan's), not Ride the rest's or a detour from Roam; a ride opened
+          // from someone else's link only where it is their broadcast, passed on as it is (Stephen 2026-10-26).
+          onBroadcast={!rideStart.roam && rideStart.route === shown && (!(onShared && !onShared.own) || passesOn) ? broadcastFromRide : null}
+          onBroadcastHold={!rideStart.roam && rideStart.route === shown && (!(onShared && !onShared.own) || passesOn) ? broadcastQrFromRide : null}
+          passingOn={passesOn}
           broadcasting={rideBroadcast?.leading === true}
           keepLeft={rideStart.kept === true}
           startNote={rideStart.note}

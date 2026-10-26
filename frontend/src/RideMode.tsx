@@ -726,8 +726,8 @@ export function RideMode({
   fixed?: boolean;
   /**
    * Broadcast from the ride (Stephen 2026-10-24: "Let people broadcast from a ride"): the share sheet with Share ride's
-   * link, the rider its leader; answers what to say. Null where the ride cannot be shared as a ride (no share sheet,
-   * a ride opened from someone else's link, Ride the rest).
+   * link, the rider its leader; answers what to say. Null where the ride cannot be shared as a ride (a ride opened from
+   * someone else's link that is not their broadcast, Ride the rest). Following a broadcast, it passes its link on.
    */
   onBroadcast?: (() => Promise<string>) | null;
   /** Broadcast held (or right-clicked): its link as a QR code (lib/broadcastQr.ts); answers what to say. */

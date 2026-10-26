@@ -36,6 +36,10 @@ export function BroadcastQrDialog({ ask, onClose }: { ask: { link: string; start
         event.preventDefault();
         onClose();
       }}
+      // Closed by the platform without a cancel (a phone's back gesture, say): the page closes it too.
+      onClose={() => {
+        if (open) onClose();
+      }}
     >
       {ask && code && (
         <>

@@ -298,7 +298,7 @@ test("the owner's links: listed, turned off and replaced with the CSRF token, in
   const appFile = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   assert.match(appFile, /sharedLinks: mode === "plan", onSharedChange: forgetSharedLine/);
   // After Turn off or New link, Share forgets the id it gave, so it never hands out a dead link.
-  assert.match(appFile, /const forgetSharedLine = \(\) => \{\s*sharedLine\.current = null;\s*\};/);
+  assert.match(appFile, /const forgetSharedLine = \(\) => \{\s*sharedLine\.current = null;\s*rideLinkSent\.current = null;\s*\};/);
   const mine = readFileSync(new URL("../MyRoutes.tsx", import.meta.url), "utf8");
   assert.match(mine, /\{sharedLinks && <SharedLinks version=\{version\} announce=\{announce\} onChange=\{onSharedChange\} \/>\}/);
   assert.match(mine, /if \(turningOff !== l\.id\) \{\s*setTurningOff\(l\.id\);\s*return;/);

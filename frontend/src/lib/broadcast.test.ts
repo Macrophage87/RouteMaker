@@ -238,7 +238,7 @@ test("on a computer Broadcast asks before the share sheet: Go back sends nothing
   assert.ok(fn.indexOf('setComputerAsk("broadcast")') < fn.indexOf("shareRoute(true, broadcastNav)"));
   const dialog = app.slice(app.indexOf("<StartOnComputerDialog"), app.indexOf("<ClosureDialog"));
   assert.match(dialog, /onBack=\{\(\) => setComputerAsk\(null\)\}/);
-  assert.match(dialog, /if \(asked === "broadcast"\) broadcastRide\(\);\s*else startRideChecked\(\);/);
+  assert.match(dialog, /if \(asked === "broadcast"\) broadcastRide\(\);\s*else if \(asked === "qr"\) broadcastQr\(\);\s*else startRideChecked\(\);/);
 });
 
 test("Broadcast's own share-sheet failure: the ride did not start, with no Copy link it cannot use", () => {

@@ -225,7 +225,7 @@ test("Broadcast from a ride (Stephen 2026-10-24: \"Let people broadcast from a r
   assert.doesNotMatch(fromRide, /startRide/);
   // Only the plan's own route, never Ride the rest's or a detour from Roam; one following another's link passes theirs
   // on (Stephen 2026-10-26: "allow participants to share that same code as well").
-  assert.match(app, /onBroadcast=\{!rideStart\.roam && rideStart\.route === shown \? broadcastFromRide : null\}/);
+  assert.match(app, /onBroadcast=\{!rideStart\.roam && rideStart\.route === shown && \(!\(onShared && !onShared\.own\) \|\| passesOn\) \? broadcastFromRide : null\}/);
   assert.match(fromRide, /const followed = followedLink\(\);\s*if \(followed\) return \(await passOn\(followed, broadcastNav\)\)\.said;/);
   assert.match(app, /broadcasting=\{rideBroadcast\?\.leading === true\}/);
 });

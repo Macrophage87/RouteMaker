@@ -35,7 +35,11 @@ export function useHold(onHold: (() => void) | null | undefined, ms = HOLD_MS): 
       clear();
       if (event.button === 0) timer.current = window.setTimeout(fire, ms);
     },
-    onPointerUp: clear,
+    // A held press's click comes at once, if at all (none after a phone's long press): after that, a click is a press.
+    onPointerUp: () => {
+      clear();
+      if (held.current) window.setTimeout(() => (held.current = false), 400);
+    },
     onPointerLeave: clear,
     onPointerCancel: clear,
     onContextMenu: (event) => {
