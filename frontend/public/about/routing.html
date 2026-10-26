@@ -250,44 +250,48 @@ whole ride averages slower.</p>
 <details class="more"><summary>More: How a route&#x27;s time is worked out</summary>
 <div class="more-body">
 
-<ul>
-<li><strong>Grade.</strong> The engine multiplies the flat pace by a fixed factor for each stretch's
-grade<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup>: slower up, faster down. On Default:</li>
-</ul>
+<p><strong>Grade.</strong> The engine multiplies the flat pace by a fixed factor for each stretch's
+grade<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup>: slower up, faster down. On Default:</p>
 <div class="table-wrap" tabindex="0" role="region" aria-label="Speed by grade on Default">
 <table>
 <caption>Speed by grade on Default</caption>
 <thead><tr><th scope="col">Grade</th><th scope="col" class="num">Factor</th><th scope="col" class="num">Speed</th></tr></thead>
 <tbody>
-<tr><th scope="row">10% down</th><td class="num">2.2</td><td class="num">24.6 mph [40 km/h]</td></tr>
-<tr><th scope="row">8% down</th><td class="num">2</td><td class="num">22.4 mph [36 km/h]</td></tr>
-<tr><th scope="row">5% down</th><td class="num">1.7</td><td class="num">19.0 mph [31 km/h]</td></tr>
-<tr><th scope="row">3% down</th><td class="num">1.4</td><td class="num">15.7 mph [25 km/h]</td></tr>
-<tr><th scope="row">Flat</th><td class="num">1</td><td class="num">11.2 mph [18 km/h]</td></tr>
-<tr><th scope="row">3% up</th><td class="num">0.85</td><td class="num">9.5 mph [15 km/h]</td></tr>
-<tr><th scope="row">5% up</th><td class="num">0.75</td><td class="num">8.4 mph [14 km/h]</td></tr>
+<tr><th scope="row">10% down or steeper</th><td class="num">2.2</td><td class="num">24.9 mph [40 km/h]</td></tr>
+<tr><th scope="row">8% down</th><td class="num">2.0</td><td class="num">22.4 mph [36 km/h]</td></tr>
+<tr><th scope="row">5% down</th><td class="num">1.7</td><td class="num">19.3 mph [31 km/h]</td></tr>
+<tr><th scope="row">3% down</th><td class="num">1.4</td><td class="num">15.5 mph [25 km/h]</td></tr>
+<tr><th scope="row">Flat</th><td class="num">1.0</td><td class="num">11.2 mph [18 km/h]</td></tr>
+<tr><th scope="row">3% up</th><td class="num">0.85</td><td class="num">9.3 mph [15 km/h]</td></tr>
+<tr><th scope="row">5% up</th><td class="num">0.75</td><td class="num">8.7 mph [14 km/h]</td></tr>
 <tr><th scope="row">8% up</th><td class="num">0.55</td><td class="num">6.2 mph [10 km/h]</td></tr>
 <tr><th scope="row">10% up</th><td class="num">0.5</td><td class="num">5.6 mph [9 km/h]</td></tr>
-<tr><th scope="row">15% up</th><td class="num">0.3</td><td class="num">3.4 mph [5 km/h]</td></tr>
+<tr><th scope="row">15% up or steeper</th><td class="num">0.3</td><td class="num">3.1 mph [5 km/h]</td></tr>
 </tbody>
 </table>
 </div>
 <ul>
 <li><strong>Surface.</strong> Rough surfaces are slower, by how much depending on the bike the ride type
 asks the engine for<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup>. Default's hybrid bike rides compacted gravel at 80% of its pace,
-dirt at 60% and loose gravel at 40%; the cross bike of Group Ride, Trailmaxxing, Gravel and Mountain Goat loses less.</li>
-<li><strong>Junctions.</strong> Each junction adds its wait, 4 seconds at a District stop sign
+dirt at 60% and loose gravel at 40%. The cross bike of Group Ride, Trailmaxxing, Gravel and Mountain Goat
+is as quick on compacted gravel and loses less on dirt (70%) and loose gravel (50%). Mountain Bike's
+mountain bike keeps its full pace on compacted gravel, 90% on dirt and 75% on loose gravel. With Avoid
+gravel on, the engine is asked for a road bike at the same pace, which is also slower on rough pavement
+(90%) and on any gravel.</li>
+<li><strong>Junctions.</strong> Each junction adds its wait: 4 seconds at a District stop sign
 ridden as a yield, 8 at other stops, 15 at a signal and 12 to 30 waiting for a gap in a busier road
 (<a href="#junctions">Junctions</a>).</li>
-<li><strong>Walking.</strong> Where a way is marked walk your bike, the engine times it at 3.2 mph
-[5.1 km/h]<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup>. A Novice and Nervous walk on the sidewalk beside a busy road counts at
-walking pace.</li>
+<li><strong>Gates.</strong> The engine adds a wait at a gate whose access isn't marked<sup class="cite"><a href="#ref-1" aria-label="source 1">[1]</a></sup>:
+30 seconds, 2 minutes on Group Ride, and 5 minutes on Cargo Bike and the bikeshare ride types.</li>
+<li><strong>Walking.</strong> Where a way is marked walk your bike, the engine times it at walking
+pace, 3.1 mph [5 km/h]<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup>. Where Novice and Nervous suggests walking on the sidewalk past a
+busy road, that stretch is timed at walking pace.</li>
 <li><strong>Singletrack.</strong> Mountain Bike times singletrack at no more than 6.2 mph [10 km/h].</li>
 </ul>
-<p>You can't set your own speed. The one switch is electric assist on Cargo Bike and Bikeshare, which
-times the trip at the assisted pace. Your weight in Settings and the Hills slider change which route is
-chosen, never the time shown: the climbing time in <a href="#hills">Hills</a> is used only to compare
-routes.</p>
+<p>You can't set your own speed. Cargo Bike's Electric assist switch times the trip at 11.2 mph
+[18 km/h]; on Bikeshare, choosing an e-bike times it at 12.4 mph [20 km/h]. Your weight in Settings and
+the Hills slider change which route is chosen, never the time shown: the climbing time in
+<a href="#hills">Hills</a> is used only to compare routes.</p>
 
 </div></details>
 <h2 id="costs">What each level costs</h2>
