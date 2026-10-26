@@ -1,0 +1,64 @@
+{
+ "updated": "2026-10-25",
+ "closures": [
+{
+ "id": "connave-1600-nb",
+ "project": "Connecticut Ave Streetscape and Deckover",
+ "page": "https://connave-streetscape.ddot.dc.gov/pages/78fb1314de114494be3228f97b1eddc6",
+ "advisory": "https://app.box.com/s/o8lsvn311o6o8mcac9rxl9q6guaognny",
+ "posted": "2026-09-08",
+ "road": "Connecticut Ave NW northbound service lane, Q St to R St",
+ "reason": "Closed for the Connecticut Avenue Streetscape and Deckover Project: deliveries and USPS only, protected walkway for pedestrians.",
+ "first_day": "2026-08-31",
+ "last_day": "2026-11-03",
+ "ways": [425103385],
+ "lines": [
+  [[-77.04417, 38.91114], [-77.04421, 38.91121], [-77.04475, 38.91214], [-77.04481, 38.91222], [-77.04491, 38.9123]]
+ ]
+},
+{
+ "id": "connave-deckover",
+ "project": "Connecticut Ave Streetscape and Deckover",
+ "page": "https://connave-streetscape.ddot.dc.gov/pages/78fb1314de114494be3228f97b1eddc6",
+ "advisory": "https://dcgis.maps.arcgis.com/sharing/rest/content/items/8ce0f26f7e9a4a159d9425409aa9d132/data",
+ "posted": "2025-09-08",
+ "road": "Connecticut Ave NW service lanes, Dupont Circle to Q St",
+ "reason": "Both service lanes closed for the Dupont Circle deckover, for the length of the project.",
+ "first_day": "2025-09-23",
+ "last_day": "2027-08-31",
+ "ways": [49887379, 49887381, 1460812580],
+ "lines": [
+  [[-77.04446, 38.91114], [-77.04442, 38.91107], [-77.04397, 38.91032], [-77.04394, 38.91025], [-77.04393, 38.91019], [-77.04394, 38.91016], [-77.04397, 38.91011]],
+  [[-77.04342, 38.91027], [-77.0435, 38.91029], [-77.04357, 38.91031], [-77.04361, 38.91032], [-77.04366, 38.91034], [-77.04369, 38.91035], [-77.04374, 38.91039], [-77.04413, 38.91107], [-77.04417, 38.91114]]
+ ]
+},
+{
+ "id": "tr-bridge-trail",
+ "project": "Theodore Roosevelt Bridge Rehabilitation",
+ "page": "https://trbridge.ddot.dc.gov/",
+ "advisory": "https://dcdatahub.maps.arcgis.com/sharing/rest/content/items/87e8621498d5468e916fda47946a8ed2/data",
+ "posted": "2026-09-14",
+ "road": "Theodore Roosevelt Bridge trail",
+ "reason": "The walking and biking trail across the bridge is closed for the bridge rehabilitation. Signed detours use Key Bridge and Arlington Memorial Bridge.",
+ "first_day": "2026-09-21",
+ "last_day": "2027-09-30",
+ "ways": [619876895],
+ "lines": [
+  [[-77.06364, 38.89197], [-77.06349, 38.89195], [-77.06337, 38.89194], [-77.06327, 38.89193], [-77.06313, 38.89193], [-77.06302, 38.89193], [-77.06284, 38.89194], [-77.06229, 38.89203], [-77.06203, 38.89208], [-77.06175, 38.89212], [-77.06141, 38.89216], [-77.0612, 38.89219], [-77.06013, 38.89237], [-77.05892, 38.89257], [-77.05804, 38.89272], [-77.05649, 38.89298], [-77.05593, 38.89308]]
+ ]
+}
+ ],
+ "seen": [
+  "https://app.box.com/s/o8lsvn311o6o8mcac9rxl9q6guaognny",
+  "https://app.box.com/s/le57ppfyfjwcredwc7sau91tk4c37u23",
+  "https://app.box.com/s/de7thjrp724wvxfdksxgbrvz7s5clo3f",
+  "https://app.box.com/s/y08vfvwt5559edbtjktsf4ctrilzaw7j",
+  "https://dcgis.maps.arcgis.com/sharing/rest/content/items/8ce0f26f7e9a4a159d9425409aa9d132/data",
+  "https://dcgis.maps.arcgis.com/sharing/rest/content/items/d9ed6a7847e64685b8637714d0a9ef1e/data",
+  "https://dcgis.maps.arcgis.com/sharing/rest/content/items/024c6499c1a244e9bd7c9939ca85b533/data",
+  "https://dcdatahub.maps.arcgis.com/sharing/rest/content/items/2a775cbb16234ffca8854a77512f272d/data",
+  "https://dcdatahub.maps.arcgis.com/sharing/rest/content/items/fbb3fef2b74c414db982e8520038dbfa/data",
+  "https://dcdatahub.maps.arcgis.com/sharing/rest/content/items/87e8621498d5468e916fda47946a8ed2/data",
+  "https://dcdatahub.maps.arcgis.com/sharing/rest/content/items/573ce24253214f53bc761ccbdea8e2e8/data"
+ ]
+}

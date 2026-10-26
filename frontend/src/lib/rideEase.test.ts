@@ -79,14 +79,13 @@ test("ride: the buttons re-plan from here with the ride's own dials, kept only w
   // Not counted as riding past a U-turn; the same line is said as such.
   assert.match(ride, /stopped: \(heading === null && !turnRound\) \|\| press !== null/);
   assert.match(ride, /sameLine\(found\.geometry\.coordinates, press\.before\.geometry\.coordinates\)\) note = EASE_SAME\[press\.which\];/);
-  // In More's panel (Stephen 2026-10-24), not the side buttons; not on a route everyone shares, nor once arrived;
-  // named in full, the symbol and short words shown (each within the name, so a voice user can say what they see).
+  // Bubbles beside More (Stephen 2026-10-26), not in the settings; not on a route everyone shares, nor once arrived;
+  // the symbol alone on screen, named in full, the short words as its title.
   const panel = ride.slice(ride.indexOf('className="ride-mode-settings"'), ride.indexOf("<RideSettingsFields prefs={prefs}"));
-  const rail = ride.slice(ride.indexOf('<div className="ride-rail"'), ride.indexOf("{/* The bottom panel"));
-  assert.match(panel, /\{!fixed && !ride\.arrived && \(\s*<div className="ride-change"/);
-  assert.match(panel, /\(\["calmer", "flatter"\] as const\)\.map/);
-  assert.match(panel, /onClick=\{\(\) => fromMore\(\(\) => void ease\(which\)\)\}\s+aria-label=\{EASE_NAME\[which\]\}/);
-  assert.match(panel, /<Icon name=\{which === "calmer" \? "traffic-down" : "hills-down"\} size=\{26\} \/>\s*\{EASE_SHOWN\[which\]\}/);
-  assert.doesNotMatch(rail, /ease\(which\)/);
+  const bubbles = ride.slice(ride.indexOf('className="ride-more-bubbles"'), ride.indexOf("{/* The bottom panel"));
+  assert.match(bubbles, /\{!fixed &&\s+!ride\.arrived &&\s+\(\["calmer", "flatter"\] as const\)\.map/);
+  assert.match(bubbles, /className=\{`ride-round ride-ease ride-\$\{which\}`\}\s+onClick=\{\(\) => fromMore\(\(\) => void ease\(which\)\)\}\s+aria-label=\{EASE_NAME\[which\]\}\s+title=\{EASE_SHOWN\[which\]\}/);
+  assert.match(bubbles, /<Icon name=\{which === "calmer" \? "traffic-down" : "hills-down"\} size=\{26\} \/>\s*<\/button>/);
+  assert.doesNotMatch(panel, /ease\(which\)/);
   for (const which of ["calmer", "flatter"] as const) assert.ok(EASE_NAME[which].startsWith(EASE_SHOWN[which]));
 });

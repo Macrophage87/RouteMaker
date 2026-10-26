@@ -24,6 +24,7 @@ public class MainActivity extends BridgeActivity {
         // Before super.onCreate: the bridge loads its plugins, then the site.
         registerPlugin(RideCompatPlugin.class);
         registerPlugin(FilesPlugin.class);
+        registerPlugin(SharePlugin.class);
         JSONObject json = SiteStore.readConfig(this);
         String address = SiteStore.address(this, json);
         if (json == null) {

@@ -877,6 +877,8 @@ PIPELINE_ONLY_PATHS = {
     "fixtures/hazards": "the hazard list is read by the rebuild (v0.10.0); the api reads only "
     "the segment table's hazard column, never routemaker.hazards.load",
     "fixtures/corridors": "named corridors are applied by the rebuild's classifier",
+    "fixtures/mall_grounds": "the Monument grounds' and Constitution Gardens' walks are "
+    "opened by the rebuild (routemaker.mallgrounds); the api never imports it",
     "fixtures/bike_lanes": "curated bike lanes are applied by the rebuild's classifier (433)",
     "fixtures/pavement/overrides.json": (
         "the owner's PCI corrections are read by the rebuild (DC-PCI); "

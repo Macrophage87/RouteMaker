@@ -77,6 +77,14 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
   `src/core/geodata/dc-boundary.geojson` (the tiles), are the same bytes
   (`tests/test_mass_tiles.py`). Credit: the line above, on the map, and "District of Columbia
   boundary: © OpenStreetMap contributors (ODbL)." under the Mass Ride legend.
+- Also: **the Washington Monument grounds and Constitution Gardens** (v0.12.4,
+  `src/routemaker/mallgrounds.py`): the grounds' two outlines and the six walk-only places
+  (the Monument's plaza, the Vietnam Veterans Memorial, the Three Soldiers, the Vietnam Women's
+  Memorial, Signers Island and a band along the Tidal Basin), drawn from OSM ways and a relation read
+  from the API 0.6 on 2026-10-25. Why the walk-only places close: National Mall and Memorial Parks'
+  superintendent's compendium, 36 CFR 4.30
+  (<https://home.nps.gov/nama/learn/management/superintendent-s-compendium.htm>, read 2026-10-25).
+  Records, ids and sha256: `fixtures/mall_grounds/README.md`. Credit: the OpenStreetMap credit above.
 
 ## Protomaps base map
 
@@ -551,18 +559,32 @@ do not allow display stays out.
   with v0.7.0 (below, "DC closures").
 - Records: docs/OPERATIONS.md, "Work zones".
 
-## DC closures (v0.7.0: DDOT TOPS permits, MPD, AlertDC, NPS)
+## DC closures (v0.7.0: DDOT TOPS permits, MPD, AlertDC, NPS; v0.12.4: DDOT project advisories)
 
 The WZDx registry has no DC feed, so DC's closures come from four sources (v0.7.0 plan, "DC
 closures source"), read by the worker (`core.closure_sources`, `routemaker.dc_closures`) and
-kept as one shared latest copy, never as history. They feed the same closure model as the work
+kept as one shared latest copy, never as history; from v0.12.4 a fifth, DDOT's project
+advisories, is read by hand (below). They feed the same closure model as the work
 zones: on the route's map (a red closed stretch, amber for a blocked bike lane, a park marker),
 in the route's words, and in the closure check (`POST /api/closures/check`). From v0.12.0 the map
 also shows the closures in force now in its view with no route (`GET /api/closures/map`: red
 closed, orange for a blocked bike lane or a rideable work zone, gone once past their end), and
-DDOT's permits there only with Plan's DC permits switch on. None of the four
+DDOT's permits there only with Plan's DC permits switch on. None of the four fed
 hosts was reachable from the cloud container this was built in; the readers were built on saved
 sample pages (`tests/data/closures`), and docs/OPERATIONS.md, "DC closures", has the first check.
+
+### DDOT project traffic advisories (v0.12.4)
+
+- Credit: `DDOT project traffic advisory`
+- Pages: each DDOT project's "Traffic Advisories" or "Construction Updates" page on its ArcGIS
+  Hub site (for example
+  <https://connave-streetscape.ddot.dc.gov/pages/78fb1314de114494be3228f97b1eddc6>), found
+  through ArcGIS Online's public search (`scripts/ddot_advisories.py watch`). The releases are
+  read by a person; what a release closes to bicycles is kept as dates, a reason and links in
+  `src/core/geodata/ddot-advisories.json`, its lines OpenStreetMap's (ODbL).
+- Use: closures routed round, whole days, gone after the last day (`routemaker.ddot_advisories`).
+- Publisher: District Department of Transportation. The facts of a press release (which block,
+  which days) are used with a link to the release; no release text is republished.
 
 ### DDOT occupancy permits (TOPS)
 

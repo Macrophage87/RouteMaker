@@ -27,7 +27,7 @@ import {
 import {
   detourButtonName,
   insteadName,
-  nextStopLine,
+  skipStopName,
   restartKept,
   restartReplanSaid,
   restartSaid,
@@ -176,7 +176,7 @@ test("a named stop is cued, said and drawn by its name; the stops ahead are draw
   assert.deepEqual(stopsAhead(model, 1000, points), [], "reached, it is no longer drawn");
   const mark = { point: points[2], number: 1, name: "Union Market" };
   assert.deepEqual(rideStopLabel(mark), { text: "1", said: "Stop 1, Union Market" });
-  assert.equal(nextStopLine(mark), "Next stop: Stop 1, Union Market");
+  assert.equal(skipStopName(mark), "Skip stop 1, Union Market");
   assert.equal(skippingSaid(mark), "Skipping Stop 1, Union Market. Finding a new route.");
   assert.equal(insteadName("Water fountain", mark), "Go to Water fountain instead of stop 1, Union Market");
   assert.equal(detourButtonName("Water or restroom", mark), "Detour: water or restroom, or change stop 1");
