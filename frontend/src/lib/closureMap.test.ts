@@ -311,5 +311,37 @@ test("the closed stretches' lines go under the street names, so a name reads ove
   assert.equal(closuresUnderNames({ getLayersOrder: () => ["closure-casing"], moveLayer: () => assert.fail() }, names), false, "no names yet");
   const view = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
   for (const id of CLOSURE_LINE_LAYERS) assert.match(view, new RegExp(`id: "${id}"`));
-  assert.equal(view.match(/closuresUnderNames\(map, CLOSURE_NAME_LAYERS\)/g)?.length, 2, "when the lines are added and when the trail names come");
+  assert.match(view, /if \(added\) closuresUnder\(map, labelHomes\.current\.size > 0\);/, "when the trail names come");
+  assert.match(view, /closuresUnder\(map, labelHomes\.current\.size > 0\);\n\s+\/\/ Under the route \(before its casing\)/, "when the lines are added");
+  assert.match(view, /climbsUnder\(map, TRAIL_LABEL_LAYER_ID\);\n\s+closuresUnder\(map, false\);/, "after a ride, with the names home");
+});
+
+test("the Mass Ride map's lines stay under the closures, though they come over the trail names", () => {
+  const order = ["stress-lts4", "trail-name", "mtb-name", "mass-line-good", "mass-avoid", "mass-avoid-label", "roads_labels_minor", "route-casing", ...CLOSURE_LINE_LAYERS];
+  const map = {
+    getLayersOrder: () => [...order],
+    moveLayer(id: string, before?: string) {
+      order.splice(order.indexOf(id), 1);
+      order.splice(before ? order.indexOf(before) : order.length, 0, id);
+    },
+  };
+  const names = ["trail-name", "roads_labels_minor"];
+  const over = ["mass-line-good", "mass-avoid", "mass-hazard-not-here"];
+  assert.equal(closuresUnderNames(map, names, over), true);
+  assert.deepEqual(order, ["stress-lts4", "mass-line-good", "mass-avoid", ...CLOSURE_LINE_LAYERS, "trail-name", "mtb-name", "mass-avoid-label", "roads_labels_minor", "route-casing"]);
+  assert.equal(closuresUnderNames(map, names, over), false, "already there");
+});
+
+test("after a ride, closures added during it go under the names that came home", () => {
+  // A resumed ride: the names were lifted over the route when the closures were added, at the top.
+  const order = ["stress-lts4", "roads_labels_minor", "route-casing", "roads_labels_major", "station-names", ...CLOSURE_LINE_LAYERS];
+  const map = {
+    getLayersOrder: () => [...order],
+    moveLayer(id: string, before?: string) {
+      order.splice(order.indexOf(id), 1);
+      order.splice(before ? order.indexOf(before) : order.length, 0, id);
+    },
+  };
+  assert.equal(closuresUnderNames(map, ["roads_labels_major", "roads_labels_minor"]), true);
+  assert.deepEqual(order.slice(0, 5), ["stress-lts4", ...CLOSURE_LINE_LAYERS, "roads_labels_minor"]);
 });

@@ -217,20 +217,27 @@ export const CLOSURE_LINE_LAYERS = ["closure-casing", "closure-line", "closure-l
  * whose street name was hidden under its amber line: "Have the text go over the construction tag." The names
  * (`labelIds`: the base map's street names and the major trails' names) are drawn over the line on their white halo,
  * as they are over the stress colours; the line stays over the stress colours and the base map's roads, and its marker
- * (a button, over every layer) still opens the card. The lowest of the names present is the one they go under; false
- * when there are no names yet or the lines are already there.
+ * (a button, over every layer) still opens the card. The lowest of the names present is the one they go under.
+ *
+ * `overLines`: lines the closures stay over though they sit above that name in the stack (the Mass Ride map's own
+ * lines, over the trail names, which are hidden in that mode); each goes down under the closures, in its order.
+ * False when there are no names yet or nothing moved.
  */
 export function closuresUnderNames(
   map: { getLayersOrder(): string[]; moveLayer(id: string, beforeId?: string): void },
   labelIds: readonly string[],
+  overLines: readonly string[] = [],
 ): boolean {
   const order = map.getLayersOrder();
   const lowest = order.find((id) => labelIds.includes(id));
   if (!lowest || !CLOSURE_LINE_LAYERS.every((id) => order.includes(id))) return false;
+  const lifted = order.slice(order.indexOf(lowest)).filter((id) => overLines.includes(id));
   const at = order.indexOf(lowest);
-  if (CLOSURE_LINE_LAYERS.every((id, i) => order[at - CLOSURE_LINE_LAYERS.length + i] === id)) return false;
-  // Bottom first, each under the name, so they keep their order.
+  const inPlace = CLOSURE_LINE_LAYERS.every((id, i) => order[at - CLOSURE_LINE_LAYERS.length + i] === id);
+  if (inPlace && lifted.length === 0) return false;
+  // Bottom first, each under the name, so they keep their order; then the lines they stay over, under them.
   for (const id of CLOSURE_LINE_LAYERS) map.moveLayer(id, lowest);
+  for (const id of lifted) map.moveLayer(id, CLOSURE_LINE_LAYERS[0]);
   return true;
 }
 
