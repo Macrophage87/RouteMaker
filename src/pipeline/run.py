@@ -892,6 +892,9 @@ class RebuildContext:
     # Footways into rail stations opened as walk-your-bike links
     # (`routemaker.station_links`), all of them in `walk_bike` too.
     walk_links: set[int] = field(default_factory=set)
+    # Parking aisles and driveways where a trail ends, routed as plain service roads
+    # (`routemaker.aisle_links`).
+    aisle_links: set[int] = field(default_factory=set)
     destination_only: set[int] = field(default_factory=set)
     mtb_only: set[int] = field(default_factory=set)
     # Ways classified at a curated speed limit (`routemaker.speed_corrections`).
@@ -3209,6 +3212,8 @@ def build_handlers(
         # After the agency prohibitions, so a link never leads onto a road they close.
         trail_closures.add_sidewalk_rides(nobike, context.ways)
         trail_closures.add_station_links(nobike, context.ways, context.station_ways_in)
+        trail_closures.add_aisle_links(nobike, context.ways)
+        context.aisle_links = nobike.aisle_links
         context.walk_bike = nobike.walk_bike
         context.sidewalk_rides = nobike.sidewalk_rides
         context.sidewalk_last_resort = last_resort_sidewalks(
@@ -3259,7 +3264,8 @@ def build_handlers(
             "(tier 1), %d beside a road that maps its facility separately, %d CBD sidewalks "
             "barred to bicycles, %d singletrack ways avoided; no-bicycle reasons %s, %d "
             "walk-your-bike connectors kept, %d footways ridden as a last resort (sidewalks, "
-            "crosswalks, links), %d destination-only",
+            "crosswalks, links), %d destination-only, %d parking aisles or driveways routed "
+            "as links where a trail ends",
             dict(sorted(Counter(context.facility_by_way.values()).items())),
             len(context.car_free_by_way),
             car_free_for_good,
@@ -3270,6 +3276,7 @@ def build_handlers(
             len(nobike.walk_bike),
             len(nobike.sidewalk_rides),
             len(nobike.destination_only),
+            len(nobike.aisle_links),
         )
 
     def write_bike_bans(placed, parks) -> None:
@@ -3550,6 +3557,10 @@ def build_handlers(
                 # lua/routemaker_remap.lua opens it as `bicycle=dismount`, walk your bike.
                 if way.osm_id in context.walk_links:
                     derived["walk_link"] = True
+                # A parking aisle or driveway where a trail ends (`routemaker.aisle_links`):
+                # lua/routemaker_remap.lua routes it as a plain service road.
+                if way.osm_id in context.aisle_links:
+                    derived["aisle_link"] = True
                 # A sidewalk ridden as a last resort (`routemaker.sidewalks`), priced so by
                 # lua/routemaker_remap.lua; never on Mass Ride's graph, a crowd on a sidewalk.
                 if (
