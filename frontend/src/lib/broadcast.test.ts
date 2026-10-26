@@ -277,6 +277,7 @@ test("a ride's riders and Alert sit just under the cue card, never over the turn
 
 // Opening a broadcast goes into Ride mode (Stephen 2026-10-26: "Opening the broadcast mode should enter ride mode with
 // the leader's dot shown").
+// Closures are the leader's (Stephen 2026-10-26: "The closure part should be leader only").
 test("opensIntoRide: a phone, not over a ride or the Resume question", async () => {
   const { opensIntoRide } = await import("./rideGroup.ts");
   const at = { phone: true, onBike: false, resumeAsked: false };
@@ -286,14 +287,16 @@ test("opensIntoRide: a phone, not over a ride or the Resume question", async () 
   assert.equal(opensIntoRide({ ...at, resumeAsked: true }), false);
 });
 
-test("App judges a followed broadcast once, when ready, and starts its ride after the open's closure check (or Roam)", () => {
+test("App judges a followed broadcast once, when ready, and starts its ride with no closure check (the leader's), or Roam", () => {
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   assert.match(app, /const sharedFollow = sharedOpen\?\.ride === true && !!sharedOpen\.lead && !sharedOpen\.own && shown === sharedOpen\.answer && !stale && rideableRoute\(shown\);/);
   assert.match(app, /if \(!ready \|\| autoRode\.current\) return;\n\s+autoRode\.current = true;\n\s+if \(!opensIntoRide\(\{ phone: looksLikePhone\(\), onBike, resumeAsked: leftAsk !== null \}\)\) return;/);
-  assert.match(app, /openCheck\.current = checkThen\("open", saved\.line, false, \(\) => \{\}\);/);
-  assert.match(app, /if \(!closurePending\.current && !ridingNow\.current && !roamingNow\.current && sharedFollowNow\.current\) startRideChecked\(\);/);
-  assert.match(app, /if \(plan\.verbatim\) openCheck\.current = checkThen\("open", plan\.verbatim\.track, true/);
-  assert.match(app, /if \(!sharedFollow\) return startRoam\(\);/);
+  assert.match(app, /openSaved\(shared, SHARED_OPENED\(shared\.name\), !\(SHARED_RIDE && SHARED_LEAD\)\);/);
+  assert.match(app, /if \(check\) void checkThen\("open", saved\.line, false, \(\) => \{\}\);/);
+  assert.match(app, /if \(!shown \|\| followsBroadcast\(shown\)\) return startRide\(false\);/);
+  assert.match(app, /return !!open && open\.ride && !!open\.lead && !open\.own && open\.answer === route;/);
+  assert.match(app, /if \(sharedFollow\) startRideChecked\(\);\n\s+else startRoam\(\);/);
+  assert.match(app, /if \(plan\.verbatim && check\) void checkThen\("open", plan\.verbatim\.track, true/);
   assert.match(app, /if \(!ridingNow\.current && !roamingNow\.current\) return;\n\s+document\.removeEventListener\("click", unlock, true\);\n\s+if \(!window\.speechSynthesis\?\.speaking\) primeRideVoice\(ridePrefsNow\.current\);/);
   assert.match(app, /document\.addEventListener\("click", unlock, true\);/);
 });
