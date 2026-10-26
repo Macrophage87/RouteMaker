@@ -1,7 +1,7 @@
-// Holding a button (lib/broadcastQr.ts): a press held HOLD_MS, a right-click, or the keyboard's menu key does the hold,
-// and the click that ends a held press does nothing.
+// Holding a button (lib/broadcastQr.ts): a press held HOLD_MS, a right-click, the keyboard's menu key or Shift+F10 (a
+// Mac has no menu key) does the hold, and the click that ends a held press does nothing.
 import { useRef, type KeyboardEvent, type MouseEvent, type PointerEvent } from "react";
-import { HOLD_MS } from "./broadcastQr.ts";
+import { HOLD_KEY, HOLD_MS } from "./broadcastQr.ts";
 
 export interface HoldHandlers {
   onPointerDown?: (event: PointerEvent) => void;
@@ -11,6 +11,7 @@ export interface HoldHandlers {
   onContextMenu?: (event: MouseEvent) => void;
   onClickCapture?: (event: MouseEvent) => void;
   onKeyDown?: (event: KeyboardEvent) => void;
+  "aria-keyshortcuts"?: string;
 }
 
 /** The button's handlers for `onHold`; none without one. */
@@ -52,9 +53,19 @@ export function useHold(onHold: (() => void) | null | undefined, ms = HOLD_MS): 
       event.preventDefault();
       event.stopPropagation();
     },
-    // A key press is its own press (a held pointer press before it is over).
-    onKeyDown: () => {
+    // A key press is its own press (a held pointer press before it is over); Shift+F10 holds, once however long it is
+    // held, and the context menu some browsers still send after it is not a second hold.
+    onKeyDown: (event) => {
+      if (event.key !== "F10" || !event.shiftKey) {
+        held.current = false;
+        return;
+      }
+      event.preventDefault();
+      if (event.repeat) return;
       held.current = false;
+      fire();
+      window.setTimeout(() => (held.current = false), 400);
     },
+    "aria-keyshortcuts": HOLD_KEY,
   };
 }

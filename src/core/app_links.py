@@ -21,11 +21,15 @@ from django.views.decorators.http import require_safe
 
 # Play Console shows a fingerprint as 32 hex pairs joined by colons.
 _FINGERPRINT = re.compile(r"^[0-9A-F]{2}(:[0-9A-F]{2}){31}$")
+# An Android application id: two or more dot-separated names, each starting with a letter.
+_APP_ID = re.compile(r"^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$")
 
 
 def statements() -> list[dict]:
     """The Digital Asset Links statements, or [] when the app is not configured."""
     app_id = settings.ANDROID_APP_ID
+    if app_id and not _APP_ID.match(app_id):
+        return []
     prints = [p.strip().upper() for p in settings.ANDROID_CERT_SHA256.split(",") if p.strip()]
     if not app_id or not prints or not all(_FINGERPRINT.match(p) for p in prints):
         return []

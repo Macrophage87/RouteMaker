@@ -46,6 +46,11 @@ def test_it_names_the_app_and_its_signing_keys(client) -> None:
         # Not a SHA-256 fingerprint (a SHA-1 one, a typo): no file rather than one Android refuses.
         ("org.example.app", ":".join(["AB"] * 20)),
         ("org.example.app", PRINT + "Z"),
+        # One good fingerprint does not carry a bad one.
+        ("org.example.app", f"{PRINT}, {PRINT}Z"),
+        # Not an application id (a stray space, one name only).
+        ("org.example .app", PRINT),
+        ("routemaker", PRINT),
     ],
 )
 def test_without_a_whole_setting_there_is_no_file(client, app_id, prints) -> None:
