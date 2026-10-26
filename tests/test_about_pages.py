@@ -147,6 +147,7 @@ def test_the_acknowledgements_credit_every_source_the_map_credits() -> None:
         "Capital Bikeshare",
         "TOPS",
         "Metropolitan Police",
+        "DDOT project traffic advisories",
         "AlertDC",
         "National Park Service",
     )

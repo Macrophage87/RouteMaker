@@ -115,6 +115,12 @@ test("joined: the way back, its turn onto the route, then the planned route from
   assert.equal(model.cues[model.cues.length - 1].kind, "end");
 });
 
+test("joined: the planned route's time marks are not stretched over the joined line; its time is spread evenly", () => {
+  const joined = joinRoutes(leg(700), { ...planned(), time_marks: [[0, 0], [0.5, 100], [0.5, 115], [1, 300]] }, 700, new Map());
+  assert.equal(joined.time_marks, null);
+  assert.equal(rideModel(joined).timeline, undefined);
+});
+
 test("joined: the stress sections meet end to end over the whole line, the way back's then the planned route's", () => {
   const joined = joinRoutes(leg(700), planned(), 700, new Map());
   assert.ok(usableSpans(joined.stress_spans));

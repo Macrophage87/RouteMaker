@@ -1,16 +1,16 @@
 /**
  * A ride's stops (Stephen 2026-10-24): "If a reroute needs to be done assume via points are guides and stops are
  * mandatory, though add the option to skip a stop or go to a different one. Stops should appear on the map when
- * riding." Neither adds a ride button: Skip this stop, in the ride's More panel with the settings (Stephen 2026-10-24),
+ * riding." Neither adds a side button: Skip this stop, a bubble More opens (Stephen 2026-10-24; a bubble since 2026-10-26),
  * re-plans from here without it; a nearest place's "Instead", in the Detour menu, re-plans to that place in its stead.
  */
 import type { LonLat } from "./geo.ts";
 import { ARRIVE_M, type RideModel } from "./navigate.ts";
 import type { RideStopMark } from "./pointKinds.ts";
 
-/** The next stop's line in the More panel: "Next stop: Stop 2, Union Market". */
-export function nextStopLine(stop: RideStopMark): string {
-  return `Next stop: ${stopWords(stop)}`;
+/** The Skip bubble's name beside More: "Skip stop 2, Union Market"; on screen its symbol and the stop's number. */
+export function skipStopName(stop: Pick<RideStopMark, "number" | "name">): string {
+  return `Skip ${stopWords(stop).replace(/^Stop/, "stop")}`;
 }
 
 /** "Stop 2, Union Market", or "Stop 2" with no name. */

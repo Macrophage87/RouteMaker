@@ -176,18 +176,19 @@ def _stop(busiest_rank: int, rolls: bool) -> float:
     return YIELD_DELAY_S if rolls and busiest_rank >= ROLL_MAX_BUSY_RANK else STOP_DELAY_S
 
 
-def delay_s(
+def delay_runs(
     junctions: Iterable[RawJunction],
     rolls: Callable[[float, float], bool] | None = None,
     beacon: Callable[[float, float], bool] | None = None,
-) -> float:
-    """The route's junction delay in seconds: each junction's `delay_at`, the costing
-    junctions within MERGE_M of the first of a run counted once, at the dearest or, where
-    one of them is a signal, at the signal's wait.
+) -> list[tuple[float, float]]:
+    """Each run's wait as (metres along the traced route where it begins, seconds): each
+    junction's `delay_at`, the costing junctions within MERGE_M of the first of a run counted
+    once, at the dearest or, where one of them is a signal, at the signal's wait.
     `rolls(lon, lat)` says where a stop sign may be taken as a yield, `beacon(lon, lat)`
     where a mapped signal is a known flashing beacon (the junction model's beacon list);
-    None: nowhere. Each is asked only where its answer can change the cost."""
-    total = 0.0
+    None: nowhere. Each is asked only where its answer can change the cost. The ride's
+    arrival times place each wait where it is (`routemaker.time_marks`)."""
+    runs: list[tuple[float, float]] = []
     run_start: float | None = None
     run_cost = 0.0
     run_signal = False
@@ -204,6 +205,18 @@ def delay_s(
             run_signal = run_signal or signal
             run_cost = SIGNAL_DELAY_S if run_signal else max(run_cost, cost)
         else:
-            total += run_cost
+            if run_start is not None:
+                runs.append((run_start, run_cost))
             run_start, run_cost, run_signal = junction.m, cost, signal
-    return total + run_cost
+    if run_start is not None:
+        runs.append((run_start, run_cost))
+    return runs
+
+
+def delay_s(
+    junctions: Iterable[RawJunction],
+    rolls: Callable[[float, float], bool] | None = None,
+    beacon: Callable[[float, float], bool] | None = None,
+) -> float:
+    """The route's junction delay in seconds: the sum of its runs' waits (`delay_runs`)."""
+    return float(sum(cost for _m, cost in delay_runs(junctions, rolls, beacon)))
