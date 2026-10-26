@@ -630,8 +630,11 @@ there is one, and to the end, and the clock time you should get there, in the us
 language and region (6:42 AM or 18:42): "To stop 2: 1.2 mi (1.9 km), 8 min · 6:42 AM". A screen reader
 hears "To stop 2, 1.2 mi (1.9 km), about 8 min, arriving about 6:42 AM". With Large text, To the end may
 give way on a crowded screen; a screen reader still reads it. The times start from the route's own time
-(<a href="/about/routing.html#route-time">How a route's time is worked out</a>). From half a mile
-[800 m] they shift toward your own pace against the plan, fully by 3.1 mi [5 km], and never more than
+(<a href="/about/routing.html#route-time">How a route's time is worked out</a>), taken where it falls along
+the route: a climb or a run of traffic signals still ahead counts where it is, not spread over the whole
+ride. A route saved before v0.12.4 and the way back to a route you left spread the time evenly instead.
+From half a mile [800 m] they shift toward your own pace against the plan for the same stretch, so a climb
+taken at the pace the plan expects is not counted against you, fully by 3.1 mi [5 km], and never more than
 twice as fast or as slow. A stop counts as at most 90 seconds, so a long stop doesn't slow your estimate,
 and time off the route, paused or walking is left out.</li>
 <li><strong>Where am I?</strong> says where you are and centers the map on you again. It also says how far the next stop and the end are and when you should
