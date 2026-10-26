@@ -1005,9 +1005,10 @@ export function RideMode({
   // The outputs: the screen reader's regions and the voice, as the rider chose; through the throttle.
   const deliver = useCallback((said: Said) => {
     const output = prefsRef.current.output;
-    if (toScreenReader(output)) (said.urgent ? setAssertive : setPolite)((s) => ({ text: said.text, count: s.count + 1 }));
+    // A jog's next turn (`after`) in the polite region, so it is read after the turn before rather than in place of it.
+    if (toScreenReader(output)) (said.urgent && !said.after ? setAssertive : setPolite)((s) => ({ text: said.text, count: s.count + 1 }));
     // The voice as chosen; in the phone app also "my screen reader" while the page is hidden (nativeShell.ts).
-    if (speaksAloud(output, document.visibilityState === "hidden")) rideVoice.speak(said.text, said.urgent);
+    if (speaksAloud(output, document.visibilityState === "hidden")) rideVoice.speak(said.text, said.urgent, said.after);
     // The phone app's cue notification on Android (nothing in a browser).
     showCue(said.text);
   }, []);
@@ -1017,7 +1018,7 @@ export function RideMode({
   // After the page comes back from the background: say where the rider is once, on the next fix.
   const sayWhereNext = useRef(false);
   const say = useCallback((events: RideEvent[]) => {
-    for (const event of events) announcer.current?.say(event.spoken, event.urgent);
+    for (const event of events) announcer.current?.say(event.spoken, event.urgent, event.after);
   }, []);
   // A note about the ride itself (no GPS, the screen may sleep, paused): said once, politely, through the
   // rider's outputs, and through the polite region with "neither" chosen, since it changes what the rider

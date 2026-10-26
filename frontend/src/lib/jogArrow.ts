@@ -18,12 +18,15 @@ const MAX_SCALE = 1.4;
 
 /**
  * The SVG path of a jog's arrow, for the card's 48 x 56 viewBox: up from the foot, a leg after each turn, the
- * arrowhead on the last. Null where the cue is no jog's (no turns after it) or a turn in it is a U-turn.
+ * arrowhead on the last. Null, for the card's own picture of the first turn, where the cue is no jog's (no turns
+ * after it), a turn in it is a U-turn or a circle's exit (its ring and number say more), or the turns wind back
+ * past a U (the legs would cross).
  */
-export function jogArrowPath(cue: Pick<Cue, "movement" | "then">): string | null {
-  if (!cue.then?.length || !cue.movement) return null;
+export function jogArrowPath(cue: Pick<Cue, "movement" | "then" | "exit">): string | null {
+  if (!cue.then?.length || !cue.movement || cue.exit || cue.then.some((t) => t.exit)) return null;
   const moves = [cue.movement, ...cue.then.map((t) => t.movement)];
   if (moves.some((m) => m === "uturn")) return null;
+  if (Math.abs(moves.reduce((sum, m) => sum + TURN_DEG[m as Exclude<TurnMovement, "uturn">], 0)) > 180) return null;
   let x = 0;
   let y = 0;
   let heading = -90;

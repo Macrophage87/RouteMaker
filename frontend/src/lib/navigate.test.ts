@@ -1401,7 +1401,7 @@ test("jog: a right then a bear left 30 m on is one cue, said early for both; at 
   const before = ride(close, "full", 0, 895, 5);
   assert.ok(!before.events.some((e) => e.cue?.index === 1));
   const past = ride(close, "full", 900, 904, 2, before.state);
-  assert.deepEqual(past.events.map((e) => [e.cue?.index, e.phase]), [[1, "now"]]);
+  assert.deepEqual(past.events.map((e) => [e.cue?.index, e.phase, e.after]), [[1, "now", true]]);
   // Turns farther apart than JOG_M are each their own.
   const apart = rideModel(
     straightRoute([

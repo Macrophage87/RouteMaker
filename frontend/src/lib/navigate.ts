@@ -812,6 +812,8 @@ export interface RideEvent {
   spoken: string;
   /** "now" cues and leaving the route interrupt (an assertive region; the voice drops what was queued). */
   urgent: boolean;
+  /** A jog's later turn at "now": urgent, but after the turn before is said, not over it (lib/rideOutput.ts). */
+  after?: boolean;
   cue?: Cue;
   phase?: Phase;
 }
@@ -1037,6 +1039,7 @@ export function step(
         kind: "cue",
         spoken: cueSpoken(cue, phase.phase, distance, done.length === 0),
         urgent: phase.phase === "now" || phase.phase === "arrive",
+        ...(cue.joined ? { after: true } : {}),
         cue,
         phase: phase.phase,
       });

@@ -21,8 +21,19 @@ test("jogArrowPath: one arrow through every turn, inside the card's 48 x 56 box,
   assert.equal(bear[0], foot[0]); // the stem goes straight up
   assert.ok(left[0] > bear[0] && left[1] < bear[1]); // bears right
   assert.ok(tip[0] < left[0] && tip[1] < left[1]); // then turns left, up and to the left
-  // Three turns: a leg for each.
-  assert.equal(points(jogArrowPath({ movement: "left", then: [{ movement: "right", street: null }, { movement: "left", street: null }] })!).length, 5 + 3);
+  // Three turns: a leg for each, all in the box.
+  const three = points(jogArrowPath({ movement: "left", then: [{ movement: "right", street: null }, { movement: "left", street: null }] })!);
+  assert.equal(three.length, 5 + 3);
+  for (const [x, y] of three) assert.ok(x >= 2 && x <= 46 && y >= 2 && y <= 54, `${x} ${y}`);
+});
+
+test("jogArrowPath: none through a circle (its ring and exit number say more), nor where the legs would cross", () => {
+  const exit = { number: 2, circle: "Dupont Circle Northwest" };
+  assert.equal(jogArrowPath({ movement: "bear_right", then: [{ movement: "left", street: "P Street Northwest", exit }] }), null);
+  assert.equal(jogArrowPath({ movement: "right", exit, then: [{ movement: "left", street: null }] }), null);
+  const right = { movement: "right" as const, street: null };
+  assert.equal(jogArrowPath({ movement: "right", then: [right, right] }), null);
+  assert.ok(jogArrowPath({ movement: "right", then: [right] }));
 });
 
 test("jogArrowPath: none for a single turn or a U-turn in the jog", () => {
