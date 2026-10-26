@@ -162,6 +162,18 @@ test("App: Broadcast shows everywhere; with no share sheet it copies, and the ri
   assert.ok(app.includes("const broadcastNav = useMemo<ShareNavigator | undefined>(() => (canShare ? shareNav : copyShareNavigator((text) => copyText(text, navigator.clipboard, selectionCopy))), [canShare, shareNav]);"));
   assert.match(app, /if \(led\) return canShare \? ROAM_BROADCAST_ON : BROADCAST_COPIED;/);
   assert.match(app, /return canShare \? ROAM_BROADCAST_ON : BROADCAST_COPIED;\n  \};/);
+  // Roam pressed again while leading: a copy is said (a sheet is its own answer).
+  assert.match(app, /if \(mine\) return canShare \? "" : BROADCAST_COPIED;/);
+  // A failed copy says so, not "share sheet".
+  assert.match(app, /said === SHARE_FAILED \? \(canShare \? BROADCAST_SHARE_FAILED : BROADCAST_COPY_FAILED\) : said/);
+  assert.match(app, /said === SHARE_FAILED \? \(canShare \? BROADCAST_RIDE_FAILED : BROADCAST_RIDE_COPY_FAILED\) : said/);
+  // Each Start ride press sets the note (plain Start: none), and Go back or Reroute at a closure drops it, so a later
+  // ride never says a copy it did not make.
+  assert.match(app, /const startRideChecked = \(\) => startRideNoted\(""\);/);
+  assert.match(app, /const startRideNoted = \(note: string\) => \{\s*rideNote\.current = note;/);
+  assert.match(app, /const closureCancel = \(\) => \{\s*closurePending\.current = null;\s*rideNote\.current = "";/);
+  assert.match(app, /const closureReroute = async \(\) => \{\s*const pending = closurePending\.current;\s*closurePending\.current = null;\s*rideNote\.current = "";/);
+  assert.equal((app.match(/rideNote\.current = /g) ?? []).length, 4, "set only by a press, and cleared where no ride starts or one does");
   // The note is taken once by the next ride and handed to the ride screen.
   assert.match(app, /const note = rideNote\.current;\s*rideNote\.current = "";\s*setRideStart\(\(before\) => \(\{[^\n]*note, n:/);
   assert.match(app, /startNote=\{rideStart\.note\}/);

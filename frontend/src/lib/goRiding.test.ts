@@ -98,10 +98,11 @@ test("3. 311: one tap logs the pick (and sends it where the server has DC's key)
 });
 
 test("F1. Start unlocks the voice synchronously in the press, before the closure check's await", () => {
-  const start = app.slice(app.indexOf("const startRideChecked = () => {"), app.indexOf("// An opened file is checked at once"));
+  const start = app.slice(app.indexOf("const startRideNoted = (note: string) => {"), app.indexOf("// An opened file is checked at once"));
   assert.ok(start.length > 100);
   // The handler itself is not async: nothing it does before the unlock can yield the gesture.
-  assert.doesNotMatch(start, /const startRideChecked = async/);
+  assert.doesNotMatch(start, /const startRideNoted = async/);
+  assert.match(app, /const startRideChecked = \(\) => startRideNoted\(""\);/);
   const prime = start.indexOf("primeRideVoice(ridePrefs)");
   assert.ok(prime > 0, "Start unlocks the voice itself");
   assert.ok(prime < start.indexOf("checkThen("), "the unlock comes before the check");

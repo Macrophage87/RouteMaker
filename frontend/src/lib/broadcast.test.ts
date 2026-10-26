@@ -151,7 +151,7 @@ test("Broadcast is one small button beside Start, in Plan and Go: the share shee
   assert.match(app, /broadcastRide: \{ onPress: broadcastRide, note: broadcastNote \},/);
   // The voice unlocked within the press; the ride starts only once the link was sent and its line kept.
   const fn = app.slice(app.indexOf("const broadcastRide = () => {"), app.indexOf("\n  };\n", app.indexOf("const broadcastRide = () => {")));
-  assert.match(fn, /\}\s*primeRideVoice\(ridePrefs\);[\s\S]*void shareRoute\(true, broadcastNav\)\.then\(\(\{ led, said \}\) => \{\s*if \(led\) \{[^}]*rideNote\.current = canShare \? "" : BROADCAST_COPIED;\s*startRideChecked\(\);\s*\} else if \(said\) setBroadcastNote/);
+  assert.match(fn, /\}\s*primeRideVoice\(ridePrefs\);[\s\S]*void shareRoute\(true, broadcastNav\)\.then\(\(\{ led, said \}\) => \{\s*if \(led\) \{[^}]*startRideNoted\(canShare \? "" : BROADCAST_COPIED\);\s*\} else if \(said\) setBroadcastNote/);
   // What went wrong is shown and said beside the button.
   assert.match(panel, /<p className="hint broadcast-note" role="status">/);
   // The same line shared again goes with the same leader key; the ride starts with the sharer free to re-route.
@@ -244,7 +244,7 @@ test("on a computer Broadcast asks before the share sheet: Go back sends nothing
 test("Broadcast's own share-sheet failure: the ride did not start, with no Copy link it cannot use", () => {
   assert.equal(BROADCAST_SHARE_FAILED, "Could not open the share sheet, so the ride did not start.");
   const app = read("../App.tsx");
-  assert.match(app, /setBroadcastNote\(\(n\) => \(\{ text: said === SHARE_FAILED \? BROADCAST_SHARE_FAILED : said, count: n\.count \+ 1 \}\)\)/);
+  assert.match(app, /setBroadcastNote\(\(n\) => \(\{ text: said === SHARE_FAILED \? \(canShare \? BROADCAST_SHARE_FAILED : BROADCAST_COPY_FAILED\) : said, count: n\.count \+ 1 \}\)\)/);
 });
 
 test("the ride leader is said once: not again as the nearest rider or as its role (review S4)", () => {

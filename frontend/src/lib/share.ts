@@ -46,6 +46,9 @@ export function pickShareNavigator(nav: ShareNavigator | undefined, native: Shar
 
 /** Broadcast where there is no share sheet at all (an older phone app, most computers): the link is copied. */
 export const BROADCAST_COPIED = "Broadcast link copied. Paste it to your riders: they follow you once they open it.";
+/** The copy failed: beside Plan's and Go's Broadcast (nothing started), and on the ride and Roam screens. */
+export const BROADCAST_COPY_FAILED = "Could not copy the link, so the ride did not start.";
+export const BROADCAST_RIDE_COPY_FAILED = "Could not copy the link. Press Broadcast to try again.";
 
 /**
  * Broadcast's stand-in for a share sheet: "sharing" copies the link (`copy`, Copy link's own method). It is called

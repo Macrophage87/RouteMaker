@@ -154,7 +154,7 @@ import {
   type PanelView,
   type ViewCause,
 } from "./lib/sidebar.ts";
-import { BROADCAST_COPIED, SHARE_FAILED, canShareLink, copyShareNavigator, pickShareNavigator, shareContent, shareLink, shareSaidFor, withGpxFile, type ShareNavigator } from "./lib/share.ts";
+import { BROADCAST_COPIED, BROADCAST_COPY_FAILED, BROADCAST_RIDE_COPY_FAILED, SHARE_FAILED, canShareLink, copyShareNavigator, pickShareNavigator, shareContent, shareLink, shareSaidFor, withGpxFile, type ShareNavigator } from "./lib/share.ts";
 import type { ImportedPlan } from "./lib/gpxPlan.ts";
 import { loadWaterRestrooms, readWaterPrefs, saveWaterPrefs, waterAlongRoute, waterTitle, waterVisible, type WaterAlong, type WaterPoint, type WaterPrefs, type WaterStatus } from "./lib/waterRestrooms.ts";
 import waterRestroomsUrl from "./amenity-data/water-restrooms.json?url";
@@ -3243,6 +3243,7 @@ export function App() {
   };
   const closureCancel = () => {
     closurePending.current = null;
+    rideNote.current = "";
     setClosureAsk(null);
   };
   // Reroute around them: an opened file keeps every point but the closed stretches, each replaced by a way round
@@ -3251,6 +3252,7 @@ export function App() {
   const closureReroute = async () => {
     const pending = closurePending.current;
     closurePending.current = null;
+    rideNote.current = "";
     setClosureAsk(null);
     if (!pending) return;
     const file = rideRef.current.imported;
@@ -3360,7 +3362,11 @@ export function App() {
   const [computerAsk, setComputerAsk] = useState<"start" | "broadcast" | null>(null);
   // Start anyway, kept in memory too: a tab that cannot store it (a private window) still starts.
   const computerOk = useRef(false);
-  const startRideChecked = () => {
+  const startRideChecked = () => startRideNoted("");
+  // `note`: what the ride screen says once up (rideStart.note): Broadcast's link copied, else nothing. Set by each press,
+  // so a ride started any other way after a Broadcast that did not start one says nothing.
+  const startRideNoted = (note: string) => {
+    rideNote.current = note;
     // On a computer, asked first (lib/startOnComputer.ts): Go back, or Start anyway, which presses again.
     if (!computerOk.current && askBeforeStart(looksLikePhone(), tabSession())) {
       setComputerAsk("start");
@@ -3397,9 +3403,8 @@ export function App() {
     void shareRoute(true, broadcastNav).then(({ led, said }) => {
       if (led) {
         // With no share sheet the link was copied: the ride screen says so, for the rider to paste it.
-        rideNote.current = canShare ? "" : BROADCAST_COPIED;
-        startRideChecked();
-      } else if (said) setBroadcastNote((n) => ({ text: said === SHARE_FAILED ? BROADCAST_SHARE_FAILED : said, count: n.count + 1 }));
+        startRideNoted(canShare ? "" : BROADCAST_COPIED);
+      } else if (said) setBroadcastNote((n) => ({ text: said === SHARE_FAILED ? (canShare ? BROADCAST_SHARE_FAILED : BROADCAST_COPY_FAILED) : said, count: n.count + 1 }));
     });
   };
   // Broadcast from a ride (Stephen 2026-10-24: "Let people broadcast from a ride"): Share ride's link as Plan's and Go's
@@ -3408,7 +3413,7 @@ export function App() {
     const { led, said } = await shareRoute(true, broadcastNav);
     if (led) return canShare ? ROAM_BROADCAST_ON : BROADCAST_COPIED;
     if (said === BROADCAST_NO_LEAD) return BROADCAST_RIDE_NO_LEAD;
-    return said === SHARE_FAILED ? BROADCAST_RIDE_FAILED : said;
+    return said === SHARE_FAILED ? (canShare ? BROADCAST_RIDE_FAILED : BROADCAST_RIDE_COPY_FAILED) : said;
   };
   // Ride the rest (lib/rideTrip.ts): after a transit plan's transit, a ride for its last riding leg, planned
   // as a normal route request from where the rider is (the ride's fix) to the destination, on the leg's
@@ -3740,8 +3745,9 @@ export function App() {
     if (!lead) return ROAM_BROADCAST_NOT_READY;
     const id = mine?.id ?? newSharedId();
     const done = await shareLink(broadcastNav, { title: ROAM_BROADCAST_TITLE, text: ROAM_BROADCAST_TEXT, url: roamLink(window.location.origin, id, lead.key) });
-    if (done !== "shared") return shareSaidFor(done);
-    if (mine) return "";
+    if (done !== "shared") return done === "failed" && !canShare ? BROADCAST_RIDE_COPY_FAILED : shareSaidFor(done);
+    // Again while leading: the sheet was the answer; a copy is said.
+    if (mine) return canShare ? "" : BROADCAST_COPIED;
     if (!roamingNow.current) return "";
     leadConsent(await roamRideId(id), lead.token);
     leads.current.set(`roam|${id}`, lead);
