@@ -222,6 +222,7 @@ This page lists those costs and how each ride type changes them. How a road gets
 <p><strong>On this page</strong></p>
 <ul>
 <li><a href="#engine">The routing engine</a></li>
+<li><a href="#route-time">How a route's time is worked out</a></li>
 <li><a href="#costs">What each level costs</a></li>
 <li><a href="#penalties">Everything a route pays for</a></li>
 <li><a href="#junctions">Junctions</a></li>
@@ -241,6 +242,54 @@ copy of Valhalla's road graph each week with the stress levels written in, then 
 costing for each ride type. On top of that sits RouteMaker's own search, which asks Valhalla for
 alternatives, excludes busy stretches and bad crossings, and asks again, up to five rounds.</p>
 
+<h2 id="route-time">How a route's time is worked out</h2>
+<p>A route's time is the routing engine's time<sup class="cite"><a href="#ref-1" aria-label="source 1">[1]</a></sup> for the ride type's pace, plus the waits at
+its junctions. The pace in <a href="/about/ride-types.html#compare">Ride types compared</a> is a speed on
+smooth, flat roads<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup>, not an average for a ride: on Default, 11.2 mph [18 km/h]. A
+whole ride averages slower.</p>
+<details class="more"><summary>More: How a route&#x27;s time is worked out</summary>
+<div class="more-body">
+
+<ul>
+<li><strong>Grade.</strong> The engine multiplies the flat pace by a fixed factor for each stretch's
+grade<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup>: slower up, faster down. On Default:</li>
+</ul>
+<div class="table-wrap" tabindex="0" role="region" aria-label="Speed by grade on Default">
+<table>
+<caption>Speed by grade on Default</caption>
+<thead><tr><th scope="col">Grade</th><th scope="col" class="num">Factor</th><th scope="col" class="num">Speed</th></tr></thead>
+<tbody>
+<tr><th scope="row">10% down</th><td class="num">2.2</td><td class="num">24.6 mph [40 km/h]</td></tr>
+<tr><th scope="row">8% down</th><td class="num">2</td><td class="num">22.4 mph [36 km/h]</td></tr>
+<tr><th scope="row">5% down</th><td class="num">1.7</td><td class="num">19.0 mph [31 km/h]</td></tr>
+<tr><th scope="row">3% down</th><td class="num">1.4</td><td class="num">15.7 mph [25 km/h]</td></tr>
+<tr><th scope="row">Flat</th><td class="num">1</td><td class="num">11.2 mph [18 km/h]</td></tr>
+<tr><th scope="row">3% up</th><td class="num">0.85</td><td class="num">9.5 mph [15 km/h]</td></tr>
+<tr><th scope="row">5% up</th><td class="num">0.75</td><td class="num">8.4 mph [14 km/h]</td></tr>
+<tr><th scope="row">8% up</th><td class="num">0.55</td><td class="num">6.2 mph [10 km/h]</td></tr>
+<tr><th scope="row">10% up</th><td class="num">0.5</td><td class="num">5.6 mph [9 km/h]</td></tr>
+<tr><th scope="row">15% up</th><td class="num">0.3</td><td class="num">3.4 mph [5 km/h]</td></tr>
+</tbody>
+</table>
+</div>
+<ul>
+<li><strong>Surface.</strong> Rough surfaces are slower, by how much depending on the bike the ride type
+asks the engine for<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup>. Default's hybrid bike rides compacted gravel at 80% of its pace,
+dirt at 60% and loose gravel at 40%; the cross bike of Group Ride, Trailmaxxing, Gravel and Mountain Goat loses less.</li>
+<li><strong>Junctions.</strong> Each junction adds its wait, 4 seconds at a District stop sign
+ridden as a yield, 8 at other stops, 15 at a signal and 12 to 30 waiting for a gap in a busier road
+(<a href="#junctions">Junctions</a>).</li>
+<li><strong>Walking.</strong> Where a way is marked walk your bike, the engine times it at 3.2 mph
+[5.1 km/h]<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup>. A Novice and Nervous walk on the sidewalk beside a busy road counts at
+walking pace.</li>
+<li><strong>Singletrack.</strong> Mountain Bike times singletrack at no more than 6.2 mph [10 km/h].</li>
+</ul>
+<p>You can't set your own speed. The one switch is electric assist on Cargo Bike and Bikeshare, which
+times the trip at the assisted pace. Your weight in Settings and the Hills slider change which route is
+chosen, never the time shown: the climbing time in <a href="#hills">Hills</a> is used only to compare
+routes.</p>
+
+</div></details>
 <h2 id="costs">What each level costs</h2>
 <p>A route is chosen by adding up the cost of every stretch it rides, in <strong>calm miles</strong>. A
 mile of quiet street counts as 1. A busier stretch costs more, as if it were longer. On the Default ride
@@ -344,7 +393,7 @@ wider roads of the same level cost more.</p>
 <text class="ts" x="160.0" y="532" text-anchor="middle">(a quiet street = 1)</text>
 </svg>
 </div>
-<figcaption>Each bar is a range because faster and wider roads of the same level cost more. LTS 1 and 2 cost 1 (except on the ride types below that lean toward LTS 1). Trailmaxxing and Novice and Nervous also rank LTS 4 and Avoid ahead of everything else, so these figures understate how hard they avoid them.<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup></figcaption>
+<figcaption>Each bar is a range because faster and wider roads of the same level cost more. LTS 1 and 2 cost 1 (except on the ride types below that lean toward LTS 1). Trailmaxxing and Novice and Nervous also rank LTS 4 and Avoid ahead of everything else, so these figures understate how hard they avoid them.<sup class="cite"><a href="#ref-3" aria-label="source 3">[3]</a></sup></figcaption>
 </figure>
 <details class="more"><summary>More: What each level costs</summary>
 <div class="more-body">
@@ -487,7 +536,7 @@ way round is as bad. Not on Mass Ride, and not on paths. See
 <li><strong>Riding the same road twice</strong>: a repeated stretch counts 1.5 times, but never at the
 price of more busy road.</li>
 <li><strong>Hills</strong>, by the Hills slider (see <a href="#hills">Hills</a>), and <strong>surface</strong>, by the ride type: rough DC
-pavement<sup class="cite"><a href="#ref-3" aria-label="source 3">[3]</a></sup> costs a little more, and each ride type has its own view of gravel and trails.</li>
+pavement<sup class="cite"><a href="#ref-4" aria-label="source 4">[4]</a></sup> costs a little more, and each ride type has its own view of gravel and trails.</li>
 <li><strong>Turns</strong>: each change of street costs time, 5 seconds on Default and 30 on Group Ride.</li>
 <li><strong>Stops and signals</strong>: the time a rider loses at each junction they give way at or wait
 at, counted as that much quiet riding: see <a href="#junction-time">Time lost at junctions</a>.</li>
@@ -562,7 +611,7 @@ Quiet streets meeting quiet streets cost almost nothing.</p>
 <line class="axis" x1="10" y1="4" x2="10" y2="498"/>
 </svg>
 </div>
-<figcaption>Base costs, then multiplied by the crossed road's speed, lanes and traffic, and by the time of day (rush hour 1.25 times, or 2 times where you give way to an LTS 4 or Avoid road that no signal stops, and then crossing, joining or turning left across it costs at least 1.86 calm mi [3.0 km], ten minutes of riding; weekends 0.85, night 0.5 in towns). A median refuge cuts a crossing to 0.75 times and a marked trail crossing to half. No junction costs more than 2 calm miles [3.2 km]. Derived from the crossing tables of Oregon DOT and the Mineta report<sup class="cite"><a href="#ref-4" aria-label="source 4">[4]</a><a href="#ref-5" aria-label="source 5">[5]</a></sup> and the route-choice studies<sup class="cite"><a href="#ref-6" aria-label="source 6">[6]</a><a href="#ref-7" aria-label="source 7">[7]</a><a href="#ref-8" aria-label="source 8">[8]</a><a href="#ref-9" aria-label="source 9">[9]</a></sup>.</figcaption>
+<figcaption>Base costs, then multiplied by the crossed road's speed, lanes and traffic, and by the time of day (rush hour 1.25 times, or 2 times where you give way to an LTS 4 or Avoid road that no signal stops, and then crossing, joining or turning left across it costs at least 1.86 calm mi [3.0 km], ten minutes of riding; weekends 0.85, night 0.5 in towns). A median refuge cuts a crossing to 0.75 times and a marked trail crossing to half. No junction costs more than 2 calm miles [3.2 km]. Derived from the crossing tables of Oregon DOT and the Mineta report<sup class="cite"><a href="#ref-5" aria-label="source 5">[5]</a><a href="#ref-6" aria-label="source 6">[6]</a></sup> and the route-choice studies<sup class="cite"><a href="#ref-7" aria-label="source 7">[7]</a><a href="#ref-8" aria-label="source 8">[8]</a><a href="#ref-9" aria-label="source 9">[9]</a><a href="#ref-10" aria-label="source 10">[10]</a></sup>.</figcaption>
 </figure>
 <details class="more"><summary>More: Junctions</summary>
 <div class="more-body">
@@ -571,7 +620,7 @@ Quiet streets meeting quiet streets cost almost nothing.</p>
 <p>Junctions costing at least 800 ft [244 m] are marked orange in the route description, and
 those costing at least 3,100 ft [945 m] are marked red. Each warning describes the road, the
 movement and the control in words.</p>
-<p>The control at a junction (a signal, a stop sign or none) comes from OpenStreetMap<sup class="cite"><a href="#ref-10" aria-label="source 10">[10]</a></sup>.
+<p>The control at a junction (a signal, a stop sign or none) comes from OpenStreetMap<sup class="cite"><a href="#ref-11" aria-label="source 11">[11]</a></sup>.
 The traffic signal lists of the District, Maryland's State Highway
 Administration and Alexandria fill the gaps: a junction where the agency lists a signal and
 OpenStreetMap maps none is treated as signalled. Virginia's DOT list, a snapshot from October 2023, is
@@ -594,9 +643,9 @@ route:</p>
 <thead><tr><th scope="col">At the junction</th><th scope="col">Time added</th></tr></thead>
 <tbody>
 <tr><th scope="row">A traffic signal</th><td>15 seconds, an average wait plus half a stop; inferred</td></tr>
-<tr><th scope="row">Giving way to a neighborhood street: crossing one as busy as yours, turning onto one, or coming off a path</th><td>8 seconds, one stop and back up to speed<sup class="cite"><a href="#ref-11" aria-label="source 11">[11]</a></sup></td></tr>
-<tr><th scope="row">The same in the District</th><td>4 seconds: DC lets a rider take a stop sign as a yield<sup class="cite"><a href="#ref-12" aria-label="source 12">[12]</a></sup>, so it is a slow-and-roll; inferred</td></tr>
-<tr><th scope="row">Giving way to a busier road that does not stop</th><td>12, 20 or 30 seconds, waiting for a gap, by how busy the road is<sup class="cite"><a href="#ref-13" aria-label="source 13">[13]</a></sup>; inferred</td></tr>
+<tr><th scope="row">Giving way to a neighborhood street: crossing one as busy as yours, turning onto one, or coming off a path</th><td>8 seconds, one stop and back up to speed<sup class="cite"><a href="#ref-12" aria-label="source 12">[12]</a></sup></td></tr>
+<tr><th scope="row">The same in the District</th><td>4 seconds: DC lets a rider take a stop sign as a yield<sup class="cite"><a href="#ref-13" aria-label="source 13">[13]</a></sup>, so it is a slow-and-roll; inferred</td></tr>
+<tr><th scope="row">Giving way to a busier road that does not stop</th><td>12, 20 or 30 seconds, waiting for a gap, by how busy the road is<sup class="cite"><a href="#ref-14" aria-label="source 14">[14]</a></sup>; inferred</td></tr>
 <tr><th scope="row">You are on the busier road, turn off onto a quieter street, or only pass driveways, alleys and side streets</th><td>Nothing</td></tr>
 </tbody>
 </table>
@@ -711,17 +760,18 @@ where your ride type starts it: a rough guess plans much the same routes.</p>
 
 
 <h3>Time, always</h3>
-<p>RouteMaker works a climb out with the standard cycling power model<sup class="cite"><a href="#ref-14" aria-label="source 14">[14]</a></sup><sup class="cite"><a href="#ref-15" aria-label="source 15">[15]</a></sup>. Grades are read over at least 1,000 ft [300 m], because the
-elevation data<sup class="cite"><a href="#ref-16" aria-label="source 16">[16]</a></sup>, sampled every 98 ft [30 m], is too noisy for steeper pitches over a shorter
+<p>RouteMaker works a climb out with the standard cycling power model<sup class="cite"><a href="#ref-15" aria-label="source 15">[15]</a></sup><sup class="cite"><a href="#ref-16" aria-label="source 16">[16]</a></sup>. Grades are read over at least 1,000 ft [300 m], because the
+elevation data<sup class="cite"><a href="#ref-17" aria-label="source 17">[17]</a></sup>, sampled every 98 ft [30 m], is too noisy for steeper pitches over a shorter
 distance to be trusted, and a short kick averages out. On each rise a standard rider and bike of 198 lb
 [90 kg] climb at an easy endurance pace, 65% of FTP, never faster than the ride's speed on the flat and never
 slower than 5 mph [8 km/h]. The extra seconds over the flat cost what the same seconds of flat riding do.
 Your weight in Settings moves at that same power, so a loaded bike climbs slower, down to walking pace; the
-penalty below does not change with weight, since loaded bikes usually have low gears.</p>
+penalty below does not change with weight, since loaded bikes usually have low gears. This climbing time is used only to choose between routes. The time a route
+shows on a climb is the engine's (<a href="#route-time">How a route's time is worked out</a>).</p>
 <h3>Past your grade</h3>
 <p>The penalty follows a power curve, though you set only the grade: your grade is where holding 5 mph
-[8 km/h] in a low gear takes the top of Zone 2, 75% of FTP<sup class="cite"><a href="#ref-17" aria-label="source 17">[17]</a></sup>, about where breathing starts to
-get harder<sup class="cite"><a href="#ref-18" aria-label="source 18">[18]</a></sup>. Where a climb's effort, weighed by how long it lasts (below), is more than the endurance pace, each second of it adds a
+[8 km/h] in a low gear takes the top of Zone 2, 75% of FTP<sup class="cite"><a href="#ref-18" aria-label="source 18">[18]</a></sup>, about where breathing starts to
+get harder<sup class="cite"><a href="#ref-19" aria-label="source 19">[19]</a></sup>. Where a climb's effort, weighed by how long it lasts (below), is more than the endurance pace, each second of it adds a
 penalty that grows quickly with the power past that pace:</p>
 <div class="table-wrap" tabindex="0" role="region" aria-label="The steepness penalty, past the endurance pace">
 <table>
@@ -739,7 +789,7 @@ penalty that grows quickly with the power past that pace:</p>
 </div>
 <p><strong>How long a climb lasts.</strong> You can hold more power for two minutes than for twenty,
 so each stretch is weighed as the steady effort it equals over the whole climb, by the critical power
-model<sup class="cite"><a href="#ref-19" aria-label="source 19">[19]</a></sup>, with FTP taken as critical power: the power it takes divided by 1 plus (70 seconds ÷
+model<sup class="cite"><a href="#ref-20" aria-label="source 20">[20]</a></sup>, with FTP taken as critical power: the power it takes divided by 1 plus (70 seconds ÷
 the climb's riding time). A 2-minute pitch weighs a little over a third less, a 20-minute climb about 5%
 less. Your own grade costs nothing past its time for up to about 7 minutes, 0.62 mi [1 km], and only a
 little more on a longer climb: about 1 minute over 1.2 mi [2 km]. A climb runs until the road drops more
@@ -747,7 +797,7 @@ than 10 ft [3 m] below its top or runs level for about 2,000 ft [600 m], so smal
 do not split it into short pitches. At 3%, a 1,000 ft [300 m] pitch at 6% costs 1.2 minutes of extra
 time and 1.0 minute of penalty.</p>
 <p><strong>Pushing.</strong> Where riding a stretch would cost more than pushing the bike up it, it is
-pushed, at three quarters of the standard hiking speed<sup class="cite"><a href="#ref-20" aria-label="source 20">[20]</a></sup>: 1.9 mph [3.1 km/h] at 6%, 1.7 mph
+pushed, at three quarters of the standard hiking speed<sup class="cite"><a href="#ref-21" aria-label="source 21">[21]</a></sup>: 1.9 mph [3.1 km/h] at 6%, 1.7 mph
 [2.7 km/h] at 10% and 1.4 mph [2.2 km/h] at 15%. Each second pushed costs its time plus 4 seconds of
 penalty, so a route you would have to push loses to almost any you can ride.</p>
 <div class="table-wrap" tabindex="0" role="region" aria-label="What a climb of 0.62 mi [1 km], on its own, costs a rider and bike of 198 lb [90 kg] at 11 mph [18 km/h]">
@@ -823,7 +873,7 @@ is kept. Every ride type starts the slider somewhere, and you can move it:</p>
 <h2 id="ride-types">How a ride type changes the costs</h2>
 <p>Choosing a ride type changes these numbers, not the ratings. It sets where the traffic slider
 starts, how much each level costs per mile, how fast you are assumed to ride, how hills and surfaces
-count, and for some types which ways are left out<sup class="cite"><a href="#ref-2" aria-label="source 2">[2]</a></sup>. Novice and Nervous reads every road and
+count, and for some types which ways are left out<sup class="cite"><a href="#ref-3" aria-label="source 3">[3]</a></sup>. Novice and Nervous reads every road and
 junction one level busier. Fast, at the other end of the slider, prices a mile of LTS 4 at only about
 2.1 to 2.3 calm miles against Default's 13 to 16, so where a shorter way runs on busy roads, Fast takes it
 and Default does not. <a href="/about/ride-types.html">Ride types</a> has every ride type, and three of
@@ -907,7 +957,7 @@ them work quite differently: <a href="/about/mass-ride.html">Mass Ride</a> and
 <ul>
 <li><strong>The block.</strong> The shorter route starts down 18th Street NW from Massachusetts Avenue
 to N Street: about 400 ft [120 m] of three-lane road with no bike lane, which DDOT rates
-LTS 4<sup class="cite"><a href="#ref-21" aria-label="source 21">[21]</a></sup>. RouteMaker keeps the agency's rating, since an agency's data outranks the formula and a
+LTS 4<sup class="cite"><a href="#ref-22" aria-label="source 22">[22]</a></sup>. RouteMaker keeps the agency's rating, since an agency's data outranks the formula and a
 rating is lowered only with a clear reason.</li>
 <li><strong>What it costs.</strong> In the routing engine's own cost, that one block counts for about
 1,000 seconds of riding, under Default's costs and Trailmaxxing's alike. That is far more than the shorter
@@ -922,9 +972,9 @@ busy road can be worth a detour of a third of a mile [half a kilometre] or more.
 </div></details>
 <h2 id="closures">Closures</h2>
 <p>Only Maryland and Virginia publish work-zone feeds in the national Work Zone Data Exchange
-format<sup class="cite"><a href="#ref-22" aria-label="source 22">[22]</a></sup>: dated, mapped closures in force, with whether bikes can pass. The District publishes
+format<sup class="cite"><a href="#ref-23" aria-label="source 23">[23]</a></sup>: dated, mapped closures in force, with whether bikes can pass. The District publishes
 no such feed. What it has instead is a mix: police traffic advisories and AlertDC emergency
-closures<sup class="cite"><a href="#ref-23" aria-label="source 23">[23]</a></sup>, which name streets in words and are matched to the map; DDOT's TOPS permits<sup class="cite"><a href="#ref-24" aria-label="source 24">[24]</a></sup>,
+closures<sup class="cite"><a href="#ref-24" aria-label="source 24">[24]</a></sup>, which name streets in words and are matched to the map; DDOT's TOPS permits<sup class="cite"><a href="#ref-25" aria-label="source 25">[25]</a></sup>,
 which say a street may be occupied some time in the coming month, not that it is closed now; and
 National Park Service alerts for the parks. So a closure in the District is usually known from an
 advisory or a reviewer, not from an official work-zone record, and planned roadwork in the District
@@ -1018,14 +1068,14 @@ where one is set up.</p>
 <text class="ts" x="10" y="790" text-anchor="start">at a ride time in the window</text>
 </svg>
 </div>
-<figcaption>DDOT permits<sup class="cite"><a href="#ref-24" aria-label="source 24">[24]</a></sup> are listed apart because they are not closures in force. The other feeds describe closures in force<sup class="cite"><a href="#ref-22" aria-label="source 22">[22]</a><a href="#ref-23" aria-label="source 23">[23]</a></sup>.</figcaption>
+<figcaption>DDOT permits<sup class="cite"><a href="#ref-25" aria-label="source 25">[25]</a></sup> are listed apart because they are not closures in force. The other feeds describe closures in force<sup class="cite"><a href="#ref-23" aria-label="source 23">[23]</a><a href="#ref-24" aria-label="source 24">[24]</a></sup>.</figcaption>
 </figure>
 <details class="more"><summary>More: Closures</summary>
 <div class="more-body">
 
 
 <ul>
-<li><strong>State work zones</strong> from Maryland's and Virginia's feeds<sup class="cite"><a href="#ref-22" aria-label="source 22">[22]</a></sup>: a road closed to
+<li><strong>State work zones</strong> from Maryland's and Virginia's feeds<sup class="cite"><a href="#ref-23" aria-label="source 23">[23]</a></sup>: a road closed to
 bikes is left out; a closure that does not mention bikes costs about 10 minutes and gets a warning;
 lane and shoulder work cost a little. A zone the feed gives only by its two ends is drawn along the road between
 them, kept only when that way is close to the straight line and at least half on the road the feed
@@ -1033,7 +1083,7 @@ names. One that cannot be placed is drawn straight if under a quarter mile [400 
 on the map as a marker at its first end, with no line. Zones on roads bikes may not use are dropped:
 those the feed names only as Interstates, and those that lie mostly along roads the map bars to
 bikes.</li>
-<li><strong>Police and city alerts</strong> (MPD traffic advisories and AlertDC)<sup class="cite"><a href="#ref-23" aria-label="source 23">[23]</a></sup> are
+<li><strong>Police and city alerts</strong> (MPD traffic advisories and AlertDC)<sup class="cite"><a href="#ref-24" aria-label="source 24">[24]</a></sup> are
 matched to the streets they name and routed around.</li>
 <li><strong>Reviewed closures</strong>, entered or confirmed by a RouteMaker reviewer, are routed
 around and credited to the reviewer. Saved routes get an alert when one affects them.</li>
@@ -1045,17 +1095,17 @@ and a new plan opts back in. A road that only crosses a dirt trail does not coun
 <li><strong>On the map</strong>, from zoom 11, the closures in force now show even with no route (a
 route's own closures show at any zoom): red where a way is closed, orange where a bike lane is blocked or a work zone can be ridden past. Each
 leaves the map once past its end.</li>
-<li><strong>DDOT TOPS permits</strong><sup class="cite"><a href="#ref-24" aria-label="source 24">[24]</a></sup> are permission to occupy a street some time in the
+<li><strong>DDOT TOPS permits</strong><sup class="cite"><a href="#ref-25" aria-label="source 25">[25]</a></sup> are permission to occupy a street some time in the
 coming month. They never move a route, in Go, Plan or anywhere else, and they raise no warnings. Plan
 has a DC permits layer, off by default, for anyone who wants to look.</li>
-<li><strong>National Park Service alerts</strong><sup class="cite"><a href="#ref-23" aria-label="source 23">[23]</a></sup> are park-wide notices, shown as a note
+<li><strong>National Park Service alerts</strong><sup class="cite"><a href="#ref-24" aria-label="source 24">[24]</a></sup> are park-wide notices, shown as a note
 on a route through the park, never as closures.</li>
 <li><strong>Deer-management closures</strong> are shown as a <strong>Check before you go</strong> notice,
 never routed round. In Rock Creek Park, Bingham Drive, Sherrill Drive and three car-free stretches of
-Beach Drive may be closed to bikes from 6:45 pm to 4 am, November 10 to March 31<sup class="cite"><a href="#ref-25" aria-label="source 25">[25]</a></sup>; the
+Beach Drive may be closed to bikes from 6:45 pm to 4 am, November 10 to March 31<sup class="cite"><a href="#ref-26" aria-label="source 26">[26]</a></sup>; the
 2026-27 dates are taken to be the same and said as expected until the Park Service posts them.
 Montgomery Parks closes its sharpshooting parks from sunset to sunrise, Monday to Friday nights, January
-15 to March 31, and its firearms-hunt parks all day on each hunt date<sup class="cite"><a href="#ref-26" aria-label="source 26">[26]</a></sup>. A notice shows only
+15 to March 31, and its firearms-hunt parks all day on each hunt date<sup class="cite"><a href="#ref-27" aria-label="source 27">[27]</a></sup>. A notice shows only
 when the route runs along at least 330 ft [100 m] of the closed roads or trails and the ride time
 falls inside the window or up to an hour before it opens: as a marker on the route's map, in the PDF cue
 sheet's warnings, in the Check before you go dialog at Start and in an AI assistant's answer.</li>
@@ -1159,7 +1209,7 @@ numbered roads, bike routes and named trails through the course stay open.</p>
 <p>The National Mall's rules have riders walk their bikes through the memorials and along the Tidal
 Basin walks, bar bikes from the steps, colonnades and chambers of the DC War Memorial, the Lincoln and
 Jefferson Memorials and the Washington Monument, and ask that bikes be parked in each memorial's
-racks<sup class="cite"><a href="#ref-27" aria-label="source 27">[27]</a></sup>. So a route takes you to a memorial by its paths and you walk in. From the next map
+racks<sup class="cite"><a href="#ref-28" aria-label="source 28">[28]</a></sup>. So a route takes you to a memorial by its paths and you walk in. From the next map
 update, the Washington Monument's plaza, the Vietnam Veterans Memorial wall, the Three Soldiers, the
 Vietnam Women's Memorial, the 56 Signers' island, a band along the Tidal Basin's shore and any walk that
 runs into one of them stay closed, while the paths that only lead to them open.</p>
@@ -1178,9 +1228,9 @@ from the Harvard Street NW entrance that no route passes over. This too is the o
 <h3>Ridden through</h3>
 <p>Paths in DC's circle parks, such as Dupont and Logan, are open: no rule clearly bars bikes, and
 riding there is common. The walks, paths and plazas on the US Capitol grounds are open as the Capitol
-Police Board's rules allow<sup class="cite"><a href="#ref-28" aria-label="source 28">[28]</a></sup>, and so do the walks on the Washington Monument grounds and
+Police Board's rules allow<sup class="cite"><a href="#ref-29" aria-label="source 29">[29]</a></sup>, and so do the walks on the Washington Monument grounds and
 in Constitution Gardens: the National Mall's rules allow bikes on sidewalks
-beside roads and on multi-use trails, and name no ban on the grounds' other walks<sup class="cite"><a href="#ref-27" aria-label="source 27">[27]</a></sup>, so
+beside roads and on multi-use trails, and name no ban on the grounds' other walks<sup class="cite"><a href="#ref-28" aria-label="source 28">[28]</a></sup>, so
 opening them is the owner's call. <a href="/about/stress.html#special">Stress ratings</a> has the full list of DC
 park paths.</p>
 
@@ -1249,7 +1299,7 @@ as a ride starts and every 5 minutes during it, the app sends points along the l
 [8 km] apart and at most 10, each with when you will reach it at the route's pace if you go now (a plan set for another time is not checked
 before Start); Roam sends where you are, for now and every 15 minutes up to an hour. The server rounds each
 point to 0.01 degree, about 0.7 mi [1.1 km], before it asks the National Weather Service for the alerts in force
-there<sup class="cite"><a href="#ref-29" aria-label="source 29">[29]</a></sup> and Open-Meteo for the 15-minute rain forecast<sup class="cite"><a href="#ref-30" aria-label="source 30">[30]</a></sup>, so neither learns where you are; it
+there<sup class="cite"><a href="#ref-30" aria-label="source 30">[30]</a></sup> and Open-Meteo for the 15-minute rain forecast<sup class="cite"><a href="#ref-31" aria-label="source 31">[31]</a></sup>, so neither learns where you are; it
 keeps the answers 2 minutes in memory, logs no point and writes nothing, and your browser talks only to RouteMaker.
 Shown: every alert the NWS rates Extreme or Severe, and the heat, wind, fog and smoke, winter, ice and cold, flood,
 air-quality and blowing-dust advisories and Special Weather Statements, while they overlap that time; never marine,
@@ -1270,35 +1320,36 @@ climbing.</li>
 <h2 id="sources">Sources</h2>
 <ol class="refs">
   <li id="ref-1">Valhalla, open source routing engine (MIT), bicycle costing. <a href="https://github.com/valhalla/valhalla">github.com/valhalla/valhalla</a>; <a href="https://valhalla.github.io/valhalla/api/turn-by-turn/api-reference/#bicycle-costing-options">bicycle costing options</a></li>
-  <li id="ref-2">RouteMaker's ride type settings, in the code: <a href="https://github.com/Macrophage87/RouteMaker/blob/main/src/core/presets.py">src/core/presets.py</a>; the cost figures and how they are derived: <a href="https://github.com/Macrophage87/RouteMaker/blob/main/docs/stress/stress-number.md">docs/stress/stress-number.md</a></li>
-  <li id="ref-3">DDOT Pavement Condition Index, FY 2025. <a href="https://rh.dcgis.dc.gov/dcgis/rest/services/DDOT/PavementConditionIndex/FeatureServer/5">DC GIS</a></li>
-  <li id="ref-4">Oregon Department of Transportation, Analysis Procedures Manual, version 2, chapter 14 (crossings and left turns). <a href="https://www.oregon.gov/odot/Planning/Documents/APMv2_Ch14.pdf">oregon.gov (PDF)</a></li>
-  <li id="ref-5">Mekuria, Furth and Nixon, "Low-Stress Bicycling and Network Connectivity", Mineta Transportation Institute Report 11-19 (2012). <a href="https://transweb.sjsu.edu/sites/default/files/1005-low-stress-bicycling-network-connectivity.pdf">transweb.sjsu.edu</a></li>
-  <li id="ref-6">Broach, Dill and Gliebe, "Where do cyclists ride? A route choice model developed with revealed preference GPS data", Transportation Research Part A 46 (2012). <a href="https://ppms.trec.pdx.edu/media/1307553839HIVYEAW.pdf">trec.pdx.edu (PDF)</a></li>
-  <li id="ref-7">Zimmermann, Mai and Frejinger, "Bike route choice modeling using GPS data without choice sets of paths", Transportation Research Part C 75 (2017). <a href="https://doi.org/10.1016/j.trc.2016.12.009">doi.org/10.1016/j.trc.2016.12.009</a></li>
-  <li id="ref-8">Skov-Petersen, Barkow, Lundhede and Jacobsen, "How do cyclists make their way? A GPS-based revealed preference study in Copenhagen", International Journal of Geographical Information Science (2018). <a href="https://repository.up.ac.za/bitstream/handle/2263/65159/SkovPetersen_How_2018.pdf?sequence=1">PDF</a></li>
-  <li id="ref-9">Caviedes and Figliozzi, "Modeling the impact of traffic conditions and bicycle facilities on cyclists' on-road stress levels", Transportation Research Part F 58 (2018). <a href="https://doi.org/10.1016/j.trf.2018.06.032">doi.org/10.1016/j.trf.2018.06.032</a></li>
-  <li id="ref-10">OpenStreetMap contributors, map data under the Open Database License 1.0. <a href="https://www.openstreetmap.org/copyright">openstreetmap.org/copyright</a></li>
-  <li id="ref-11">Fajans and Curry, "Why Bicyclists Hate Stop Signs", ACCESS 18 (2001). <a href="https://www.accessmagazine.org/spring-2001/bicyclists-hate-stop-signs">accessmagazine.org</a></li>
-  <li id="ref-12">Washington Area Bicyclist Association, "Bicycle Stop as Yield Arrives in DC", on the District's Safer Streets Amendment Act of 2022. <a href="https://waba.org/?p=54522">waba.org</a></li>
-  <li id="ref-13">Transportation Research Board, Highway Capacity Manual, 6th edition (2016), Exhibit 20-2: levels of service at two-way stop-controlled intersections. <a href="https://www.trb.org/Main/Blurbs/175169.aspx">trb.org</a></li>
-  <li id="ref-14">Martin, Milliken, Cobb, McCole and Coggan, "Validation of a mathematical model for road cycling power", Journal of Applied Biomechanics 14 (1998). <a href="https://doi.org/10.1123/jab.14.3.276">doi.org/10.1123/jab.14.3.276</a></li>
-  <li id="ref-15">RouteMaker's hill costs, in the code: <a href="https://github.com/Macrophage87/RouteMaker/blob/main/src/routemaker/effort.py">effort.py</a>, <a href="https://github.com/Macrophage87/RouteMaker/blob/main/src/routemaker/climbs.py">climbs.py</a>, <a href="https://github.com/Macrophage87/RouteMaker/blob/main/src/routemaker/grade_stress.py">grade_stress.py</a>, <a href="https://github.com/Macrophage87/RouteMaker/blob/main/src/routemaker/hill_cost.py">hill_cost.py</a></li>
-  <li id="ref-16">U.S. Geological Survey, 3D Elevation Program, 1 arc-second elevation. <a href="https://www.usgs.gov/3d-elevation-program">usgs.gov/3d-elevation-program</a></li>
-  <li id="ref-17">Allen, Coggan and McGregor, Training and Racing with a Power Meter, 3rd edition (VeloPress, 2019): power training levels, Zone 2 up to 75% of FTP. <a href="https://www.simonandschuster.net/books/Training-and-Racing-with-a-Power-Meter/Hunter-Allen/9781948006101">simonandschuster.net</a></li>
-  <li id="ref-18">American Council on Exercise, "ACE-sponsored research: validating the talk test as a measure of exercise intensity": the talk test and the ventilatory threshold. <a href="https://acefitness.org/certifiednewsarticle/888/ace-sponsored-research-validating-the-talk-test-as-a-measure-of-exercise-intensity">acefitness.org</a></li>
-  <li id="ref-19">Skiba, Chidnok, Vanhatalo and Jones, "Modeling the expenditure and reconstitution of work capacity above critical power", Medicine and Science in Sports and Exercise 44 (2012): critical power and W′, the work capacity above it. <a href="https://pubmed.ncbi.nlm.nih.gov/22382171/">pubmed.ncbi.nlm.nih.gov</a></li>
-  <li id="ref-20">Tobler, "Three Presentations on Geographical Analysis and Modeling", NCGIA Technical Report 93-1 (1993): the hiking function. <a href="https://escholarship.org/uc/item/05r820mz">escholarship.org</a></li>
-  <li id="ref-21">District Department of Transportation, Bicycle Level of Traffic Stress (2020) and Roadway Block (item 6fcba8618ae744949630da3ea12d90eb), Open Data DC, CC BY 4.0. <a href="https://opendata.dc.gov/">opendata.dc.gov</a></li>
-  <li id="ref-22">Work Zone Data Exchange feeds: Maryland DOT SHA (CC0, <a href="https://filter.ritis.org/wzdx_v4.1/mdot.geojson">RITIS</a>) and VDOT through SmarterRoads; specification at <a href="https://github.com/usdot-jpo-ode/wzdx">github.com/usdot-jpo-ode/wzdx</a></li>
-  <li id="ref-23">Metropolitan Police Department traffic advisories (<a href="https://mpdc.dc.gov/newsroom">mpdc.dc.gov/newsroom</a>), AlertDC from DC HSEMA, and the National Park Service alerts API (<a href="https://www.nps.gov/subjects/developer/api-documentation.htm">nps.gov developer</a>)</li>
-  <li id="ref-24">District Department of Transportation, TOPS occupancy permits (CC BY 4.0). <a href="https://maps2.dcgis.dc.gov/dcgis/rest/services/DDOT/TOPS/MapServer/1">DC GIS</a>; <a href="https://catalog.data.gov/dataset/occupancy-permits-via-ddot-tops">catalog.data.gov</a></li>
-  <li id="ref-25">National Park Service, "Record of Determination for the Temporary Closure of Certain Park Roads and Park Areas for the 2025-2026 Implementation of the Rock Creek Park White-tailed Deer Management Plan", read 2026-10-25. <a href="https://www.nps.gov/rocr/learn/management/record-of-determination-for-the-temporary-closure-of-certain-park-roads-and-park-areas-for-the-2025-2026-implementation-of-the-rock-creek-park-white-tailed-deer-management-plan.htm">nps.gov/rocr</a></li>
-  <li id="ref-26">Montgomery Parks, "Deer Population Management Schedule &amp; Locations", Fall 2026 to Winter 2027, read 2026-10-25. <a href="https://montgomeryparks.org/deer-population-management-schedule-locations/">montgomeryparks.org</a></li>
-  <li id="ref-27">National Park Service, National Mall and Memorial Parks Superintendent's Compendium (approved September 11, 2026), 36 CFR 4.30: bicyclists walk their bicycles through the memorials and along the Tidal Basin walks. <a href="https://home.nps.gov/nama/learn/management/superintendent-s-compendium.htm">nps.gov</a></li>
-  <li id="ref-28">Capitol Police Board, US Capitol Grounds Traffic Regulations: no prohibition on riding a bicycle on the grounds' walks so long as the rider creates no hazard. <a href="https://www.uscp.gov/sites/evo-subsites/www.uscp.gov/files/documents/Capitol%20Police%20Board%20US%20Capitol%20Grounds%20Traffic%20Regulations%20-%20For%20Public%20Release.pdf">uscp.gov (PDF)</a></li>
-  <li id="ref-29">National Weather Service, API Web Service: active alerts for a point (api.weather.gov), U.S. government data. <a href="https://www.weather.gov/documentation/services-web-api">weather.gov/documentation/services-web-api</a></li>
-  <li id="ref-30">Open-Meteo forecast API, 15-minute precipitation (in North America from NOAA's HRRR model, updated hourly), data CC BY 4.0. <a href="https://open-meteo.com/en/docs">open-meteo.com/en/docs</a></li>
+  <li id="ref-2">Valhalla 3.9.1, <code>src/sif/bicyclecost.cc</code>: cycling_speed, the "average speed (kph) on smooth, flat roads", and the grade and surface speed factors. <a href="https://github.com/valhalla/valhalla/blob/3.9.1/src/sif/bicyclecost.cc">github.com/valhalla/valhalla</a></li>
+  <li id="ref-3">RouteMaker's ride type settings, in the code: <a href="https://github.com/Macrophage87/RouteMaker/blob/main/src/core/presets.py">src/core/presets.py</a>; the cost figures and how they are derived: <a href="https://github.com/Macrophage87/RouteMaker/blob/main/docs/stress/stress-number.md">docs/stress/stress-number.md</a></li>
+  <li id="ref-4">DDOT Pavement Condition Index, FY 2025. <a href="https://rh.dcgis.dc.gov/dcgis/rest/services/DDOT/PavementConditionIndex/FeatureServer/5">DC GIS</a></li>
+  <li id="ref-5">Oregon Department of Transportation, Analysis Procedures Manual, version 2, chapter 14 (crossings and left turns). <a href="https://www.oregon.gov/odot/Planning/Documents/APMv2_Ch14.pdf">oregon.gov (PDF)</a></li>
+  <li id="ref-6">Mekuria, Furth and Nixon, "Low-Stress Bicycling and Network Connectivity", Mineta Transportation Institute Report 11-19 (2012). <a href="https://transweb.sjsu.edu/sites/default/files/1005-low-stress-bicycling-network-connectivity.pdf">transweb.sjsu.edu</a></li>
+  <li id="ref-7">Broach, Dill and Gliebe, "Where do cyclists ride? A route choice model developed with revealed preference GPS data", Transportation Research Part A 46 (2012). <a href="https://ppms.trec.pdx.edu/media/1307553839HIVYEAW.pdf">trec.pdx.edu (PDF)</a></li>
+  <li id="ref-8">Zimmermann, Mai and Frejinger, "Bike route choice modeling using GPS data without choice sets of paths", Transportation Research Part C 75 (2017). <a href="https://doi.org/10.1016/j.trc.2016.12.009">doi.org/10.1016/j.trc.2016.12.009</a></li>
+  <li id="ref-9">Skov-Petersen, Barkow, Lundhede and Jacobsen, "How do cyclists make their way? A GPS-based revealed preference study in Copenhagen", International Journal of Geographical Information Science (2018). <a href="https://repository.up.ac.za/bitstream/handle/2263/65159/SkovPetersen_How_2018.pdf?sequence=1">PDF</a></li>
+  <li id="ref-10">Caviedes and Figliozzi, "Modeling the impact of traffic conditions and bicycle facilities on cyclists' on-road stress levels", Transportation Research Part F 58 (2018). <a href="https://doi.org/10.1016/j.trf.2018.06.032">doi.org/10.1016/j.trf.2018.06.032</a></li>
+  <li id="ref-11">OpenStreetMap contributors, map data under the Open Database License 1.0. <a href="https://www.openstreetmap.org/copyright">openstreetmap.org/copyright</a></li>
+  <li id="ref-12">Fajans and Curry, "Why Bicyclists Hate Stop Signs", ACCESS 18 (2001). <a href="https://www.accessmagazine.org/spring-2001/bicyclists-hate-stop-signs">accessmagazine.org</a></li>
+  <li id="ref-13">Washington Area Bicyclist Association, "Bicycle Stop as Yield Arrives in DC", on the District's Safer Streets Amendment Act of 2022. <a href="https://waba.org/?p=54522">waba.org</a></li>
+  <li id="ref-14">Transportation Research Board, Highway Capacity Manual, 6th edition (2016), Exhibit 20-2: levels of service at two-way stop-controlled intersections. <a href="https://www.trb.org/Main/Blurbs/175169.aspx">trb.org</a></li>
+  <li id="ref-15">Martin, Milliken, Cobb, McCole and Coggan, "Validation of a mathematical model for road cycling power", Journal of Applied Biomechanics 14 (1998). <a href="https://doi.org/10.1123/jab.14.3.276">doi.org/10.1123/jab.14.3.276</a></li>
+  <li id="ref-16">RouteMaker's hill costs, in the code: <a href="https://github.com/Macrophage87/RouteMaker/blob/main/src/routemaker/effort.py">effort.py</a>, <a href="https://github.com/Macrophage87/RouteMaker/blob/main/src/routemaker/climbs.py">climbs.py</a>, <a href="https://github.com/Macrophage87/RouteMaker/blob/main/src/routemaker/grade_stress.py">grade_stress.py</a>, <a href="https://github.com/Macrophage87/RouteMaker/blob/main/src/routemaker/hill_cost.py">hill_cost.py</a></li>
+  <li id="ref-17">U.S. Geological Survey, 3D Elevation Program, 1 arc-second elevation. <a href="https://www.usgs.gov/3d-elevation-program">usgs.gov/3d-elevation-program</a></li>
+  <li id="ref-18">Allen, Coggan and McGregor, Training and Racing with a Power Meter, 3rd edition (VeloPress, 2019): power training levels, Zone 2 up to 75% of FTP. <a href="https://www.simonandschuster.net/books/Training-and-Racing-with-a-Power-Meter/Hunter-Allen/9781948006101">simonandschuster.net</a></li>
+  <li id="ref-19">American Council on Exercise, "ACE-sponsored research: validating the talk test as a measure of exercise intensity": the talk test and the ventilatory threshold. <a href="https://acefitness.org/certifiednewsarticle/888/ace-sponsored-research-validating-the-talk-test-as-a-measure-of-exercise-intensity">acefitness.org</a></li>
+  <li id="ref-20">Skiba, Chidnok, Vanhatalo and Jones, "Modeling the expenditure and reconstitution of work capacity above critical power", Medicine and Science in Sports and Exercise 44 (2012): critical power and W′, the work capacity above it. <a href="https://pubmed.ncbi.nlm.nih.gov/22382171/">pubmed.ncbi.nlm.nih.gov</a></li>
+  <li id="ref-21">Tobler, "Three Presentations on Geographical Analysis and Modeling", NCGIA Technical Report 93-1 (1993): the hiking function. <a href="https://escholarship.org/uc/item/05r820mz">escholarship.org</a></li>
+  <li id="ref-22">District Department of Transportation, Bicycle Level of Traffic Stress (2020) and Roadway Block (item 6fcba8618ae744949630da3ea12d90eb), Open Data DC, CC BY 4.0. <a href="https://opendata.dc.gov/">opendata.dc.gov</a></li>
+  <li id="ref-23">Work Zone Data Exchange feeds: Maryland DOT SHA (CC0, <a href="https://filter.ritis.org/wzdx_v4.1/mdot.geojson">RITIS</a>) and VDOT through SmarterRoads; specification at <a href="https://github.com/usdot-jpo-ode/wzdx">github.com/usdot-jpo-ode/wzdx</a></li>
+  <li id="ref-24">Metropolitan Police Department traffic advisories (<a href="https://mpdc.dc.gov/newsroom">mpdc.dc.gov/newsroom</a>), AlertDC from DC HSEMA, and the National Park Service alerts API (<a href="https://www.nps.gov/subjects/developer/api-documentation.htm">nps.gov developer</a>)</li>
+  <li id="ref-25">District Department of Transportation, TOPS occupancy permits (CC BY 4.0). <a href="https://maps2.dcgis.dc.gov/dcgis/rest/services/DDOT/TOPS/MapServer/1">DC GIS</a>; <a href="https://catalog.data.gov/dataset/occupancy-permits-via-ddot-tops">catalog.data.gov</a></li>
+  <li id="ref-26">National Park Service, "Record of Determination for the Temporary Closure of Certain Park Roads and Park Areas for the 2025-2026 Implementation of the Rock Creek Park White-tailed Deer Management Plan", read 2026-10-25. <a href="https://www.nps.gov/rocr/learn/management/record-of-determination-for-the-temporary-closure-of-certain-park-roads-and-park-areas-for-the-2025-2026-implementation-of-the-rock-creek-park-white-tailed-deer-management-plan.htm">nps.gov/rocr</a></li>
+  <li id="ref-27">Montgomery Parks, "Deer Population Management Schedule &amp; Locations", Fall 2026 to Winter 2027, read 2026-10-25. <a href="https://montgomeryparks.org/deer-population-management-schedule-locations/">montgomeryparks.org</a></li>
+  <li id="ref-28">National Park Service, National Mall and Memorial Parks Superintendent's Compendium (approved September 11, 2026), 36 CFR 4.30: bicyclists walk their bicycles through the memorials and along the Tidal Basin walks. <a href="https://home.nps.gov/nama/learn/management/superintendent-s-compendium.htm">nps.gov</a></li>
+  <li id="ref-29">Capitol Police Board, US Capitol Grounds Traffic Regulations: no prohibition on riding a bicycle on the grounds' walks so long as the rider creates no hazard. <a href="https://www.uscp.gov/sites/evo-subsites/www.uscp.gov/files/documents/Capitol%20Police%20Board%20US%20Capitol%20Grounds%20Traffic%20Regulations%20-%20For%20Public%20Release.pdf">uscp.gov (PDF)</a></li>
+  <li id="ref-30">National Weather Service, API Web Service: active alerts for a point (api.weather.gov), U.S. government data. <a href="https://www.weather.gov/documentation/services-web-api">weather.gov/documentation/services-web-api</a></li>
+  <li id="ref-31">Open-Meteo forecast API, 15-minute precipitation (in North America from NOAA's HRRR model, updated hourly), data CC BY 4.0. <a href="https://open-meteo.com/en/docs">open-meteo.com/en/docs</a></li>
 </ol>
 <p class="next">Next: <a href="/about/trails.html">Mountain Bike, Mountain Goat and Gravel</a></p>
 </main>
