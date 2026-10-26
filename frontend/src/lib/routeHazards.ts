@@ -136,7 +136,7 @@ export function roadHazardsSaid(route: Partial<Pick<RouteResponse, "road_hazards
 export const ROUTE_HAZARD_KEY_NAME = "Road hazard";
 export const ROUTE_HAZARD_KEY_SHAPE = "dark circle";
 export const ROUTE_HAZARD_KEY_TEXT =
-  "Cobblestones or rails in the road, marked on a route only. From the next map update, routes avoid them where they can and the directions name each.";
+  "Cobblestones or rails in the road, marked on a route only. Routes avoid them where they can and the directions name each.";
 
 /** The mark as a small inline picture: the key's swatch and the directions' symbol. Seen, not heard. */
 export function RouteHazardSwatch({ size = 16 }: { size?: number }): ReactElement {

@@ -692,6 +692,7 @@ points; very long plans over 93 mi [150 km] ask for confirmation when signed out
 <tr><th scope="row">WMATA<sup class="cite"><a href="#ref-18" aria-label="source 18">[18]</a></sup></th><td>Every 45 seconds, when asked</td><td>Live departures in transit plans; next trains and buses, incidents, elevator outages</td></tr>
 <tr><th scope="row">Maryland and Virginia work zones (WZDx)</th><td>Every 5 minutes</td><td>Closures and lane closures</td></tr>
 <tr><th scope="row">MPD and AlertDC</th><td>Every 15 minutes</td><td>Closures in the District</td></tr>
+<tr><th scope="row">DDOT project advisories</th><td>By hand: each week a script lists new advisories, a reviewer reads each one, and its closures ship in the next release</td><td>Closures on DDOT's big projects</td></tr>
 <tr><th scope="row">DDOT TOPS permits</th><td>Every hour</td><td>Plan's DC permits layer only</td></tr>
 <tr><th scope="row">National Park Service alerts</th><td>Every 30 minutes</td><td>Park notes</td></tr>
 <tr><th scope="row">Transit timetables (GTFS)</th><td>Refreshed about every 45 days</td><td>Scheduled transit times</td></tr>
@@ -712,7 +713,7 @@ key keep it on the server. Street photos from Mapillary are fetched through the 
 own files for offline starts but never caches routes, tiles or account data unless you choose Keep for
 offline on a planned route (up to 10).</li>
 <li><strong>Android app.</strong> A thin Capacitor<sup class="cite"><a href="#ref-15" aria-label="source 15">[15]</a></sup> shell around the site that adds
-background location, a screen wake lock and spoken cues during a ride.</li>
+background location, a screen wake lock and spoken cues during a ride, and, from its next update, Android's own share sheet for sharing a route or ride.</li>
 <li><strong>Accounts.</strong> Sign-in uses Discord with the narrowest permission (your user id).
 RouteMaker exchanges the sign-in code once and keeps no Discord token.</li>
 <li><strong>Garmin and Wahoo.</strong> When you connect Garmin or Wahoo in Settings, the server
@@ -731,7 +732,7 @@ account; a route that starts, ends or stops near its author's Home is refused. F
 browser draws the post's map at 1200 by 630 pixels and sends it to the server. Nothing about the reader is kept:
 the pages are the same for every reader.</li>
 <li><strong>Sharing.</strong> A shared route stores the exact line under a random link, kept for a year
-after it was last opened. Its preview image hides the area around Home.</li>
+after it was last opened. Where the route starts, ends or stops near Home, its preview image leaves out the route and pins inside Home's circle and keeps the map there.</li>
 <li><strong>AI assistants.</strong> RouteMaker has a Model Context Protocol<sup class="cite"><a href="#ref-16" aria-label="source 16">[16]</a></sup> server, so an AI
 assistant can find places and plan and revise routes. Through the site's connector, after you sign
 in, it can save routes to your account, and Settings lists each connected assistant with a Disconnect
@@ -784,7 +785,7 @@ release has short rider-facing notes.</li>
 <p class="next">Next: <a href="/about/acknowledgements.html">Acknowledgements</a></p>
 </main>
 <footer>
-  <p>Part of RouteMaker's documentation. It describes version 0.12.3. The code is
+  <p>Part of RouteMaker's documentation. It describes version 0.12.4. The code is
   open source under the MIT licence:
   <a href="https://github.com/Macrophage87/RouteMaker">github.com/Macrophage87/RouteMaker</a>.</p>
   <p><a href="/">Back to the map</a></p>

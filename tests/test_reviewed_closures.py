@@ -477,7 +477,7 @@ class TestRouteAnswer:
         assert wz.when_text(later, now, True) == "Closed from Oct 24 through Oct 30"
         assert wz.when_text(closure(1, 31), now, False) == "Closed through Oct 30"
         assert core_wz._until_words(closure(1, 31)) == "through Oct 30, 2026"
-        assert saved_route_alerts._until(closure(1, 31).end.isoformat(), True) == (
+        assert saved_route_alerts._until(closure(1, 31).end.isoformat(), "reviewer") == (
             "through Oct 30, 2026"
         )
         # A last day on which daylight saving starts is still that day (end-review fix).

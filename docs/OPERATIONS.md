@@ -2032,7 +2032,13 @@ phone whose share sheet takes files, the GPX file Download GPX would give goes w
   over), a link fetcher (chat apps, social sites; `core.share_preview.is_fetcher`) gets
   OpenGraph and Twitter card tags: the ride type and distance, the distance and climb, and
   `/s/<id>/preview.png`, a 1200 x 630 PNG drawn by the server with the standard library (no
-  imaging package; glyphs from `scripts/make_preview_glyphs.py`), cached on the row. Where the
+  imaging package; glyphs from `scripts/make_preview_glyphs.py`), cached on the row. The line is
+  drawn over the base map (`core.preview_basemap`: land, parks, water, roads and paths, rail and a
+  few town names, read from `${DATA_ROOT}/basemap/region.pmtiles`, which compose mounts read-only
+  into the API at `/data/basemap`) with "© OpenStreetMap contributors · © Protomaps" on it; Home's circle loses the route but keeps the
+  map. With no `region.pmtiles` in the directory, or one that cannot be read, the picture has a
+  plain background, as before (the directory itself must exist: the beta's bind will not create it). A new `region.pmtiles` (another
+  size or time) draws every picture again on its next fetch. Where the
   route starts, ends or stops at the owner's Home, the image leaves a circle of at least 0.2 mi
   (322 m) round Home blank, its centre moved 60 to 150 m per account by a keyed hash of the
   account id (the key derived from `DJANGO_SECRET_KEY`: rotating it moves the circles of links
@@ -3116,6 +3122,10 @@ procedure. For the base map:
 | `sprites/v4/`: icons | **MIT**: basemaps-assets' README at the pinned commit (installed as `sprites/README.md`) says the sprites are derived from MIT-licensed tangrams/icons, <https://github.com/tangrams/icons/blob/master/LICENSE.md> | none required | with `ASSETS_COMMIT` |
 | go-pmtiles 1.31.2, the build tool (not served) | **BSD-3-Clause**, © Protomaps LLC, <https://github.com/protomaps/go-pmtiles> | n/a | with `PMTILES_VERSION` |
 
+The link preview's picture (`core.preview_basemap`, drawn by the server from
+`region.pmtiles`) carries both credits drawn into the image, as
+`preview_basemap.CREDIT`: the picture travels without any page round it.
+
 The archive's own metadata attribution credits OpenStreetMap only, not
 Protomaps, so a style that shows the archive's attribution field shows half of
 what is owed. The front end has to set both credits itself, and does:
@@ -3548,7 +3558,15 @@ at `/routes/` and from Go's More > Featured routes. Instance admins write them:
 3. Save as **Draft** first and press **View on site**: the page shows only to instance admins.
    Press **Use this map as the link picture** under the post; the browser draws the map at
    1200 x 630 with its credits and sends it, and chat apps then show the map. Until then they show
-   the route's line drawing.
+   the shared route's preview picture: the line over the server's plainer drawing of the base map.
+   Photos (v0.12.4): on the same page, **For admins > Photos** adds up to 20, each with alt text
+   (required), a caption (optional) and **Where** (About this ride or one highlight). The browser
+   shrinks each and saves it again as a JPEG, so its Exif (location, date, camera) does not go with
+   it, and the server strips anything left. A photo the browser can't open (some phone formats,
+   such as HEIC) must be saved as a JPEG or PNG first. Change alt text, caption, section or order,
+   or delete a photo, in the admin. A photo's Where is a highlight's number, so after deleting or
+   reordering highlights check each photo's place; one numbered past the last highlight shows under
+   About this ride.
 4. Set **Published** (listed) or **Unlisted** (link only). **Withdrawn** makes the link say so
    (410). Saving is refused when the route starts, ends or stops at your Home, since posts are
    public.
@@ -4079,6 +4097,13 @@ things beyond the tags, and none of them comes from the reference install:
   (`routemaker.capitolgrounds`; the owner, 2026-10-21), logged as "N walks and crossings
   of the Capitol grounds opened to bicycles" (513 in the 2026-10-20 extract). Roadside
   sidewalks there keep the sidewalk rule's price instead.
+- **`fixtures/mall_grounds/`** (OpenStreetMap, ODbL): the walks on the Washington
+  Monument grounds and in Constitution Gardens open to bicycles
+  (`routemaker.mallgrounds`; the owner, 2026-10-25), logged as "N walks and crossings of
+  the Monument grounds and Constitution Gardens opened to bicycles" (106 on OSM data
+  read from the OSM API on 2026-10-25). The memorials, the Monument's plaza and the
+  Tidal Basin's walks (`walk-only.geojson`, the NPS compendium's walk-your-bike places)
+  stay closed.
 
 The rebuild refuses, terminally (not retried), when the District, Maryland or
 Virginia has no closed boundary in the merged extract, or holds no way:
@@ -4793,6 +4818,46 @@ around anywhere and give no warning or cue, not even when the TOPS source cannot
 read; Plan's DC permits layer (off by default) is the only place they show. A rider's "Route
 through anyway" is per plan and session only (`closure_bypass` on `/api/route`, `bypass`
 on `/api/closures/check`); nothing about it is stored.
+
+## DDOT project advisories (v0.12.4)
+
+DDOT's big projects (the Connecticut Avenue deckover, bridge rehabilitations, streetscapes)
+post their closures as press releases on each project's ArcGIS Hub site, on a page titled
+"Traffic Advisories" or "Construction Updates". These closures rarely reach TOPS, MPD or
+AlertDC (the owner, 2026-10-25: "somehow the conneticut avenue deckover was missed"). There is
+no feed and no geometry, so they are read by hand into
+`src/core/geodata/ddot-advisories.json` (`routemaker.ddot_advisories`). Each one is a real
+closure, source `ddot_advisory` ("DDOT project traffic advisory"): routed round, red on the
+map, named in the closure check and saved-route alerts, and gone after its last day. Unlike a
+TOPS permit it is never only "may close". The release decides it: a full closure of the block
+or lane a bicycle uses goes in, and so does one where bicycle access is unclear ("deliveries
+only"). Lane closures that leave a lane open, and closures on roads bicycles may not use, stay
+out.
+
+**Each week (or when the owner reports a missed closure):**
+
+1. `python scripts/ddot_advisories.py watch --days 45` lists the dated advisories on every
+   DDOT advisories page changed in that time whose link is not yet in the file's `seen`.
+2. Read each one (the link is the release, PDF or Word). For a closure, add an entry:
+   `id`, `project`, `page` (the advisories page, which the card links), `advisory` (the
+   release), `posted`, `road` (as the card says it), `reason`, `first_day`, `last_day` (whole
+   days in the region's time; "about eight weeks" counted to its end, "the duration of the
+   project" to the project's stated end), `ways` (OpenStreetMap way ids) and `lines`
+   (`python scripts/ddot_advisories.py lines WAY ...` prints them).
+3. Add the advisory's link to `seen` either way, set `updated` to today, and ship it in the
+   next release. A later advisory that extends or ends a closure changes its `last_day`.
+
+The first entries (2026-10-25): the Connecticut Avenue NW service lanes from Dupont Circle to
+Q Street (both directions, closed since 2025-09-23 for the deckover; OSM already maps them as
+`highway=construction`, so the entry only puts them on the map) and the northbound service
+lane in the 1600 block, Q Street to R Street (from 2026-08-31, about eight weeks: through
+2026-11-03); and the Theodore Roosevelt Bridge trail, closed from 2026-09-21 and expected to
+reopen in September 2027 (through 2027-09-30; detours by Key Bridge and Memorial Bridge). That
+project's own advisories page is not public, so the watcher finds its advisories on the site's
+home page. The entries' lines were checked to lie more than 6 m (20 ft) from any road or trail
+open to bicycles away from their trimmed ends, so the strip the router excludes takes nothing
+else (the Mount Vernon Trail runs beside the bridge trail's Virginia ramps, which is why only
+the river span is in the entry).
 
 ## Deer-management closures (v0.12.3)
 
@@ -7635,7 +7700,7 @@ keep its log and read the dry run before `--swap`.
 ## Phone app (v0.8.0)
 
 The Android app's test builds (`mobile/`) name no site: the repository is public, and so are its
-Actions artifacts, so a server's address must not be in one. The store build (`release`, by hand)
+Actions artifacts, so a server's address must not be in one. The store build (`release`, by hand or on a release tag)
 bakes in the `ROUTEMAKER_SITE_URL` secret, the owner's choice for the Play listing. On first launch the app asks for the
 site's address (https only), checks it against `/healthz`, and keeps it in the app's preferences on
 that phone; touching and holding the app's icon and choosing "Site address", or clearing the app's
@@ -7647,7 +7712,9 @@ if its synced config names a site.
 Builds: Actions, "Android app" (`.github/workflows/android.yml`). A pull request that touches
 `mobile/` or the workflow runs the app's tests and builds a debug APK (no secrets, no site address);
 by hand (`workflow_dispatch`), `debug` for a sideloaded test APK or `release` for a signed APK and
-Play bundle. The workflow uses
+Play bundle; a release tag (`vX.Y.Z`) whose `mobile/` changed since the tag before runs the `release`
+build and, with the optional `ROUTEMAKER_PLAY_SERVICE_ACCOUNT` secret, uploads the bundle to Play's
+internal testing track (`mobile/scripts/play-upload.sh`; setup in `mobile/README.md`). The workflow uses
 no repository variables. The release key is four repository secrets the owner adds:
 `ROUTEMAKER_KEYSTORE_BASE64`, `ROUTEMAKER_KEYSTORE_PASSWORD`, `ROUTEMAKER_KEY_ALIAS`,
 `ROUTEMAKER_KEY_PASSWORD`; never a file in the repository. The Play id comes from the
