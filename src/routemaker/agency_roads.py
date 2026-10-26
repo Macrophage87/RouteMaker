@@ -241,8 +241,8 @@ DIRECTION_AND_LANES_IGNORED = frozenset({BALTIMORE_AGENCY})
 OVERRIDES_DIR = Path(__file__).resolve().parents[2] / "fixtures" / "overrides"
 WITHHOLDABLE = frozenset({"speed"})
 # The directions an owner's block correction may give, in DC's own labels against
-# the block's line: `OB` one-way from FROMSTREET to TOSTREET (the line's own
-# direction), `IB` one-way the other way, `BD` both ways.
+# the block's line: `OB` one-way in the direction the block's line is drawn (for
+# DC, FROMSTREET toward TOSTREET; check the line), `IB` the other way, `BD` both.
 OWNER_DIRECTIONS = frozenset({"OB", "IB", "BD"})
 # How the report names a value the owner withheld (dc-osm-discrepancies).
 OWNER_OVERRIDE = "owner override"
@@ -898,7 +898,7 @@ class WayFacts:
     # On an agency one-way, whether its traffic runs the way's digitising
     # direction (True) or against it (False); None where unknown or mixed.
     oneway_forward: bool | None = None
-    # Whether the owner gave the direction of any of the way's blocks
+    # Whether the owner gave the direction of every one of the way's blocks
     # (`withheld_blocks`' `direction`), which then also overrides an OSM one-way
     # running the other way (`overlay`).
     owner_direction: bool = False
@@ -1060,10 +1060,17 @@ def _owner_direction(facts: RoadFacts, direction: str | None) -> RoadFacts:
     the agency's; unchanged where the owner gives none."""
     if direction is None:
         return facts
+    lanes = dict(facts.lanes)
+    if direction != "BD" and ("ib" in lanes or "ob" in lanes):
+        # A two-way record's lane each way is one lane the traffic now has, not
+        # two (the Mass Ride's width adds a one-way block's `ib` and `ob`).
+        own, other = ("ob", "ib") if direction == "OB" else ("ib", "ob")
+        lanes[own] = max(lanes.get(own, 0), lanes.pop(other, 0))
     return replace(
         facts,
         way="both" if direction == "BD" else "one",
         oneway_with={"OB": True, "IB": False}.get(direction),
+        lanes=lanes,
     )
 
 
@@ -1186,7 +1193,7 @@ def aggregate(
         one_way=one_way,
         two_way_throughout=ways == {"both"},
         oneway_forward=oneway_forward,
-        owner_direction=any(entry[0] in corrected for entry in blocks),
+        owner_direction=all(entry[0] in corrected for entry in blocks),
         bike=bike,
         bike_forward=bike_forward,
         bike_backward=bike_backward,

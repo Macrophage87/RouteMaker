@@ -12,6 +12,7 @@ import json
 
 import pytest
 
+from pipeline import variants as V
 from routemaker import agency_roads as A
 from routemaker import massflow
 from routemaker.stress import Stress, classify
@@ -2146,6 +2147,8 @@ def test_the_owner_s_direction_overrides_osm_s_one_way_the_other_way() -> None:
     assert A.overlay(tags, before, length_m=161.0).routing == {"oneway": "no"}
     owned = A.aggregate([("b", two_way, False)], True, directions={"b": "OB"})
     assert (owned.one_way, owned.oneway_forward, owned.owner_direction) == (True, False, True)
+    # One lane, the traffic's, not DC's lane each way.
+    assert owned.lanes_by_direction == {"ob": 1}
     result = A.overlay(tags, owned, length_m=161.0)
     assert result.routing == {"oneway": "-1"} and result.tags["oneway"] == "-1"
     assert result.sources["oneway"] == A.OWNER_OVERRIDE
@@ -2161,6 +2164,18 @@ def test_the_owner_s_direction_overrides_osm_s_one_way_the_other_way() -> None:
     agency = A.aggregate([("d", facts(way="one", oneway_with=True), False)], True)
     assert "oneway" not in A.overlay(tags, agency, length_m=161.0).routing
     assert A.overlay(tags, owned, length_m=12.0).routing == {}
+    # A way only partly on owner blocks keeps OSM's opposite one-way.
+    partly = A.aggregate(
+        [("b", two_way, False), ("e", facts(way="one", oneway_with=True), False)],
+        True,
+        directions={"b": "OB"},
+    )
+    assert not partly.owner_direction
+    assert A.overlay(tags, partly, length_m=161.0).routing == {}
+    # Every graph, the no-trail one too, takes the owner's one-way.
+    routed = V.agency_routing_tags(tags, result.routing)
+    assert routed == {"oneway": "-1"}
+    assert V.routing_for(V.Variant.NO_TRAIL, tags, routed) == routed
 
 
 def test_the_owner_s_sheridan_street_file() -> None:

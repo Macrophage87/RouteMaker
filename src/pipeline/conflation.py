@@ -949,7 +949,8 @@ def road_facts_by_way(
             agency_roads.withheld_blocks(), ((block.feature_id, block.facts) for block in blocks)
         )
         withheld = resolved.by_block
-        directions = resolved.directions if directions is None else directions
+        if directions is None:
+            directions = resolved.directions
     unbuilt = {
         way.osm_id for way in ways if way.tags.get("highway") in agency_roads.UNBUILT_HIGHWAYS
     }

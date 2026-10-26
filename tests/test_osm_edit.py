@@ -308,6 +308,11 @@ def test_removing_a_tag(osm, tmp_path):
     assert "bicycle" not in {t.get("k") for t in node.iter("tag")}
 
 
+def test_a_way_s_oneway_may_be_reversed(osm, tmp_path, capsys):
+    path = _edit(tmp_path, element="way", expect={"oneway": "yes"}, set={"oneway": "-1"})
+    assert osm_edit.edit_problem(json.loads(path.read_text())) is None
+
+
 def test_show_prints_the_diff_and_flags_a_stale_draft(osm, tmp_path, capsys):
     assert osm_edit.main(["show", str(_edit(tmp_path))]) == 0
     assert "highway: None -> 'traffic_signals'" in capsys.readouterr().out

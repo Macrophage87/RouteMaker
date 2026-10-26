@@ -410,17 +410,24 @@ takes effect at the next rebuild after the image carrying it is deployed. The
 discrepancy report lists the ways as not applied, "owner override".
 
 An entry may instead (or as well) give the block's direction, `"direction":
-"OB"`, `"IB"` or `"BD"` in DC's own labels: `OB` one-way from the block's
-FROMSTREET toward its TOSTREET, `IB` the other way, `BD` two-way. `withhold` may
+"OB"`, `"IB"` or `"BD"` in DC's own labels: `OB` one-way in the direction the
+block's line is drawn (FROMSTREET toward TOSTREET on DC's layer; check the line),
+`IB` the other way, `BD` two-way. A one-way direction also counts DC's lane each
+way as one lane, the traffic's. `withhold` may
 then be left out. The owner's direction is read in place of DC's on every way
 matched to the block, through the same rows as DC's own record (OWNER-DECISIONS
-190, rows B and C4, with their exceptions), and one thing more: where OSM has the
-way one-way the other way, the owner's direction wins
+190, rows B and C4, with their exceptions), and one thing more: where every block
+of a way has the owner's direction and OSM has the way one-way the other way, the
+owner's direction wins, except on a junction stub
 (`routemaker.agency_roads.overlay`; DC's own record never overrides an opposite
-OSM one-way). So a street reversed before either source caught up is right on our
+OSM one-way). That last case is not one of item 190's rows, so it is not counted
+in the overlay's `precedence`, and the discrepancy report reads the owner's
+direction as DC's (it compares one-way against two-way, not direction). So a street reversed before either source caught up is right on our
 map before the OSM edit, and still right after it. Two entries giving one block
-two directions refuse the rebuild's matching. Remove the entry once DC's layer
-records the change.
+two directions refuse the rebuild's matching. Remove the entry only once DC's
+layer records the change **and** OSM agrees: DC's own one-way never overrides an
+opposite OSM one-way, so removing it while OSM is still wrong sends the route
+against traffic again.
 
 - `2026-10-26-owner-sheridan-st-nw.json` (the owner, 2026-10-26: "Sheridan street
   between 3rd and 5th streets are 1 way in the opposite direction. That change
