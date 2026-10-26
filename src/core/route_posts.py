@@ -851,11 +851,17 @@ def photos_by_place(post, sections: int) -> dict[int, str]:
 def _admin_photos(post, headings: list[str]) -> str:
     """For an admin on the page: add a photo, or the file of one an assistant described."""
     places = [ABOUT_HEADING, *(f"Highlight: {h}" for h in headings)]
+
+    def where(photo) -> str:
+        return places[photo.place if photo.place <= len(headings) else 0]
+
     waiting = "".join(
-        f'<form class="photo-form" data-photo="{photo.pk}"><p><strong>Waiting for its photo:'
-        f"</strong> {escape(photo.alt_text)} ({escape(places[min(photo.place, len(headings))])})"
-        f'</p><label>Photo <input type="file" name="photo" accept="image/*" required></label> '
-        f'<button type="submit" disabled>{PHOTO_ADD_LABEL}</button></form>'
+        f'<form class="photo-form" data-photo="{photo.pk}"><p id="photo-{photo.pk}-h">'
+        f"<strong>Waiting for its photo:</strong> {escape(photo.alt_text)} "
+        f'({escape(where(photo))})</p><label>Photo <input type="file" name="photo" '
+        f'accept="image/*" required aria-describedby="photo-{photo.pk}-h"></label> '
+        f'<button type="submit" disabled aria-describedby="photo-{photo.pk}-h">'
+        f"{PHOTO_ADD_LABEL}</button></form>"
         for photo in post.photos.filter(image__isnull=True)
     )
     options = "".join(
@@ -1160,10 +1166,17 @@ def thumbnail_upload(request, slug: str):
 # ---- Photos ----
 
 
+# The segments that draw a JPEG: frame headers (SOFn), Huffman and arithmetic tables (DHT, DAC),
+# quantisation tables (DQT), the restart interval (DRI) and the scans (SOS).
+DRAWING_MARKERS = frozenset({*range(0xC0, 0xD0), 0xDA, 0xDB, 0xDD} - {0xC8})
+
+
 def clean_jpeg(data: bytes) -> bytes | None:
-    """The JPEG with only what draws it, or None when it is not one whole JPEG: every APPn segment
-    but JFIF's (APP0) and Adobe's colour flags (APP14) goes, and every comment, so no Exif, GPS,
-    XMP, maker notes or embedded thumbnail stays; so does anything after its end."""
+    """The JPEG with only what draws it, or None when it is not one whole JPEG. Only the segments
+    that draw the picture are kept (DRAWING_MARKERS), with JFIF's header (APP0, its thumbnail
+    left out) and Adobe's colour flags (APP14) cut to their fixed size; every other segment goes,
+    so no Exif, GPS, XMP, colour profile, comment, maker notes or embedded thumbnail stays, and
+    nothing after the picture's end."""
     if not data.startswith(b"\xff\xd8"):
         return None
     out, i, n = [b"\xff\xd8"], 2, len(data)
@@ -1185,8 +1198,14 @@ def clean_jpeg(data: bytes) -> bytes | None:
         end = i + 2 + length
         if length < 2 or end > n:
             return None
-        if not (0xE1 <= marker <= 0xEF and marker != 0xEE) and marker != 0xFE:
+        payload = data[i + 4 : end]
+        if marker in DRAWING_MARKERS:
             out.append(data[i:end])
+        elif marker == 0xE0 and payload[:5] == b"JFIF\x00" and len(payload) >= 14:
+            # Version, units and density; no thumbnail (its width and height 0).
+            out.append(b"\xff\xe0\x00\x10" + payload[:12] + b"\x00\x00")
+        elif marker == 0xEE and payload[:5] == b"Adobe" and len(payload) >= 12:
+            out.append(b"\xff\xee\x00\x0e" + payload[:12])
         i = end
         if marker == 0xDA:
             # The scan's coded data runs to the next marker that is not a stuffed byte or a restart.
@@ -1231,7 +1250,7 @@ def photo_upload(request, slug: str):
     if waiting:
         photo = (
             post.photos.filter(pk=int(waiting), image__isnull=True).first()
-            if waiting.isdigit()
+            if re.fullmatch(r"[0-9]{1,9}", waiting)
             else None
         )
         if photo is None:
@@ -1243,7 +1262,9 @@ def photo_upload(request, slug: str):
         caption, said = _text(request.POST, "caption", CAPTION_MAX)
         problem = problem or said
         place = request.POST.get("place", "0")
-        if problem is None and not (place.isdigit() and int(place) <= post.sections.count()):
+        if problem is None and not (
+            re.fullmatch(r"[0-9]{1,2}", place) and int(place) <= post.sections.count()
+        ):
             problem = "place: a section of this post."
         if problem:
             return refuse(problem)
@@ -1281,6 +1302,6 @@ def photo(request, slug: str, key: str):
     response = HttpResponse(bytes(found.image), content_type=PHOTO_TYPE)
     # The address changes with the picture, so a shown post's photo may be kept; a draft's not.
     shown = post.status in ("published", "unlisted")
-    response["Cache-Control"] = "public, max-age=86400" if shown else "private, no-store"
+    response["Cache-Control"] = "public, max-age=3600" if shown else "private, no-store"
     response["X-Content-Type-Options"] = "nosniff"
     return response

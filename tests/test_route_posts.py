@@ -11,6 +11,7 @@ so, and seasonal posts lead the list in season and wait in a fold out of it.
 
 from __future__ import annotations
 
+import base64
 import importlib
 import json
 import re
@@ -599,22 +600,53 @@ def test_a_photo_keeps_only_what_draws_it() -> None:
     assert route_posts.clean_jpeg(raw[: raw.index(b"\xff\xd9")]) is None
 
 
-def test_a_real_photo_cleaned_still_opens_with_no_exif() -> None:
-    image = pytest.importorskip("PIL.Image")
-    import io
+# A 16 by 12 photo as Pillow writes it with Exif (camera, date) and a comment, and the same
+# photo written without them: what clean_jpeg makes of the first must be the second, byte for byte.
+CAMERA_JPEG = base64.b64decode(
+    "/9j/4AAQSkZJRgABAQAAAQABAAD/4QBORXhpZgAATU0AKgAAAAgAAgEPAAIAAAALAAAAJgEyAAIAAAAUAAAAMgAAAA"
+    "BQaG9uZU1ha2VyAAAyMDI2OjEwOjI1IDA3OjAwOjAwAP/+AAthIGNvbW1lbnT/2wBDAAYEBQYFBAYGBQYHBwYIChAK"
+    "CgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKC"
+    "goKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAAMABADASIAAhEBAxEB"
+    "/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1"
+    "FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlq"
+    "c3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5u"
+    "fo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3"
+    "AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1"
+    "RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK"
+    "0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwCp/wAhf/sJ/wDpV/8AbP8A0P8A3vv1bK7+z7"
+    "45U821lx5sWcZx0YHswycH3IOQSDVrU1H/AEnTLTUJebqWaWGVv+emxYyGP+0d5ye+ATzkn62dONJxoNXhN2S/laTe"
+    "nlpddYu1tLcvx6k5Xmt1+PT+u/5//9k="
+)
+PLAIN_JPEG = base64.b64decode(
+    "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHB"
+    "YWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgo"
+    "KCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAAMABADASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAw"
+    "QFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkK"
+    "FhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmq"
+    "KjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEB"
+    "AQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRob"
+    "HBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOE"
+    "hYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+P"
+    "n6/9oADAMBAAIRAxEAPwCp/wAhf/sJ/wDpV/8AbP8A0P8A3vv1bK7+z745U821lx5sWcZx0YHswycH3IOQSDVrU1H/"
+    "AEnTLTUJebqWaWGVv+emxYyGP+0d5ye+ATzkn62dONJxoNXhN2S/laTenlpddYu1tLcvx6k5Xmt1+PT+u/5//9k="
+)
 
-    picture = image.new("RGB", (64, 48), (200, 30, 30))
-    exif = image.Exif()
-    exif[0x010F] = "PhoneMaker"
-    exif.get_ifd(0x8825)[2] = (38.0, 53.0, 51.7)
-    out = io.BytesIO()
-    picture.save(out, "JPEG", exif=exif.tobytes(), comment=b"at home", progressive=True)
-    assert b"PhoneMaker" in out.getvalue()
-    cleaned = route_posts.clean_jpeg(out.getvalue())
-    assert cleaned is not None and b"PhoneMaker" not in cleaned and b"at home" not in cleaned
-    opened = image.open(io.BytesIO(cleaned))
-    opened.load()
-    assert opened.size == (64, 48) and not opened.getexif()
+
+def test_a_real_photo_cleaned_is_the_same_photo_written_with_nothing_else() -> None:
+    assert b"PhoneMaker" in CAMERA_JPEG and b"a comment" in CAMERA_JPEG
+    assert route_posts.clean_jpeg(CAMERA_JPEG) == PLAIN_JPEG
+    assert route_posts.clean_jpeg(PLAIN_JPEG) == PLAIN_JPEG
+
+
+def test_only_the_segments_that_draw_a_photo_are_kept() -> None:
+    raw = phone_jpeg()
+    jfif_with_words = segment(0xE0, b"JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x02\x01" + b"GPS 38.88")
+    unknown = segment(0xF0, b"GPS 38.889,-77.035")
+    adobe = segment(0xEE, b"Adobe\x00\x64\x00\x00\x00\x00\x01" + b"GPS 38.88")
+    cleaned = route_posts.clean_jpeg(raw[:2] + jfif_with_words + unknown + adobe + raw[2:])
+    assert cleaned is not None and b"GPS" not in cleaned
+    assert b"\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00" in cleaned
+    assert b"\xff\xee\x00\x0eAdobe" in cleaned
 
 
 def admin_client(admin: User):
@@ -654,7 +686,8 @@ def test_an_admin_adds_a_photo_on_the_page_with_its_alt_text_and_readers_see_it(
     assert send({"photo": upload(b"\x89PNG\r\n\x1a\n"), "alt_text": "A path"}).status_code == 400
     big = phone_jpeg(route_posts.PHOTO_MAX_EDGE + 1, 10)
     assert send({"photo": upload(big), "alt_text": "A path"}).status_code == 400
-    assert send({"photo": upload(), "alt_text": "A path", "place": "2"}).status_code == 400
+    for place in ("2", "²", "9" * 30):
+        assert send({"photo": upload(), "alt_text": "A path", "place": place}).status_code == 400
     made = send(
         {"photo": upload(), "alt_text": "The path by the Reflecting Pool", "caption": "Early"}
     )
@@ -675,7 +708,7 @@ def test_an_admin_adds_a_photo_on_the_page_with_its_alt_text_and_readers_see_it(
     assert 'alt="Cherry trees &amp; a bench"' in highlight
     served = Client().get(made.json()["url"])
     assert served.status_code == 200 and served["Content-Type"] == "image/jpeg"
-    assert served["Cache-Control"] == "public, max-age=86400"
+    assert served["Cache-Control"] == "public, max-age=3600"
     assert bytes(served.content) == bytes(first.image)
     assert Client().get("/routes/mall-loop/photos/0123456789abcdef.jpg").status_code == 404
     rows = AuditLogEntry.objects.filter(action="route_post.photo")
@@ -718,7 +751,8 @@ def test_an_assistant_describes_photos_and_the_admin_adds_their_files() -> None:
     assert 'class="photo"' not in page
     capitol = post.photos.get(alt_text="The Capitol from the west")
     _client, send = admin_client(admin)
-    assert send({"photo": upload(), "photo_id": "999999"}).status_code == 400
+    for wrong in ("999999", "²", "9" * 30):
+        assert send({"photo": upload(), "photo_id": wrong}).status_code == 400
     assert send({"photo": upload(), "photo_id": str(capitol.pk)}).status_code == 201
     capitol.refresh_from_db()
     assert capitol.key and capitol.caption == "Morning"
