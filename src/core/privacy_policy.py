@@ -55,7 +55,7 @@ from . import account_deletion
 PATH = account_deletion.PRIVACY_PATH
 TITLE = "RouteMaker privacy policy"
 # Change with the text: the date a rider reads as when this page last said something new.
-LAST_UPDATED = ("2026-10-25", "October 25, 2026")
+LAST_UPDATED = ("2026-10-26", "October 26, 2026")
 # Unless the deployment sets PRIVACY_CONTACT (an e-mail address or a web address).
 CONTACT = "Questions, or a request about your data: ask the site's owner on Discord."
 CONTACT_LEAD = "Questions, or a request about your data: "
@@ -71,9 +71,9 @@ GARMIN_NO_AI = "Nothing from Garmin is sold, shared, given to AI services, or us
 WAHOO_NO_AI = "Nothing from Wahoo is sold, shared, given to AI services, or used to train AI."
 WHERE_YOU_ARE = (
     "Your location is used on your phone or computer to plan and guide your ride. The server "
-    "keeps no record of where you are, only places you choose to save or share (Home, saved and "
-    "shared routes, a 311 problem’s spot) and, while you share on a Group or Mass Ride, your "
-    "rounded dot for 2 minutes and an alert’s spot for 2 minutes."
+    "keeps no record of where you are, only places you choose to save or share (Home, favorite "
+    "places, saved and shared routes, a 311 problem’s spot) and, while you share on a Group or "
+    "Mass Ride, your rounded dot for 2 minutes and an alert’s spot for 2 minutes."
 )
 
 
@@ -181,6 +181,7 @@ SECTIONS: list[tuple[str, str]] = [
                 "and bike weight.",
                 "My Go: the view the app opens in, your ride type, and Home (one point and its "
                 "label).",
+                "Favorites: the places you save, Work among them (each one point and its name).",
                 "Your 311 log (below).",
                 "The assistant apps you connected, with the routes they drafted for a week.",
             ]

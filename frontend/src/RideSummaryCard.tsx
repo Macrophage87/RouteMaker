@@ -11,6 +11,7 @@ import { stressBarKey, stressBarLabel } from "./lib/quickFigures.ts";
 import { stressSegments } from "./lib/stressBar.ts";
 import { elevationSpan, summaryRows, type RideStats } from "./lib/rideStats.ts";
 import { METRES_PER_MILE, formatClimb } from "./lib/format.ts";
+import { SAVE_SPOT_TEXT, SAVED_TO_FAVORITES } from "./lib/favoritePlaces.ts";
 import { OPEN_REPORTS, REPORTS_WHERE, openCount, outstandingSaid, useReport311Log } from "./lib/report311Log.ts";
 
 export const RIDE_SUMMARY_TITLE = "Ride ended";
@@ -53,6 +54,7 @@ export function RideSummaryCard({
   stats,
   endedAt,
   note,
+  favorite = null,
   onDone,
   onUndo,
   onReports,
@@ -61,6 +63,11 @@ export function RideSummaryCard({
   endedAt: number;
   /** A line under the title where the plan changed (Plan: "The route now starts where you are."). */
   note?: string | null;
+  /**
+   * Signed in, the ride's destination, to save to Favorites (lib/favoritePlaces.ts; Stephen 2026-10-26); null for a
+   * loop, Home, or signed out. Once saved, the button gives way to a line that says so.
+   */
+  favorite?: { name: string; saved: boolean; onSave: () => void } | null;
   onDone: () => void;
   onUndo: () => void;
   /** Closes the summary, as Done does, and opens Reports at the 311 checklist. */
@@ -107,6 +114,16 @@ export function RideSummaryCard({
         tabIndex={scrolls ? 0 : undefined}
       >
         {note && <p className="hint">{note}</p>}
+        {favorite && (
+          <div className="ride-summary-favorite">
+            <p>{favorite.saved ? SAVED_TO_FAVORITES(favorite.name) : favorite.name}</p>
+            {!favorite.saved && (
+              <button type="button" className="secondary" onClick={favorite.onSave}>
+                {SAVE_SPOT_TEXT}
+              </button>
+            )}
+          </div>
+        )}
         {owes && (
           <div className="ride-summary-311">
             <p>
