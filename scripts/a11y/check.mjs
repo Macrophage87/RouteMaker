@@ -1439,7 +1439,7 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
     }
     await p.eval("document.getElementById('__copy').click(); true");
     await sleep(900);
-    const copied = await p.eval("document.querySelector('.route-actions [role=status]')?.textContent ?? ''");
+    const copied = await p.eval("document.querySelector('.route-actions .link-spoken')?.textContent ?? ''");
     check("locate: pressing Copy link says the note with the confirmation", copied === `Link copied. ${START_NOTE}`, copied);
     const stored = await p.eval("JSON.stringify([localStorage, sessionStorage]).includes('38.88') || JSON.stringify(Object.entries(localStorage)).includes('location')");
     check("locate: nothing about the position is in localStorage or sessionStorage", stored === false, String(stored));
@@ -2844,7 +2844,7 @@ const levelSlider = `${EDITOR} input[type=range]`;
   await p.eval("document.querySelector('.ride-rail button[aria-label=\"Where am I?\"]').click(); true");
   await sleep(300);
   const where = await p.eval(regions);
-  check("ride: Where am I? says the street, the next cue and the miles to the end", /On R Street Northwest\..* to the end\./.test(where.polite), JSON.stringify(where));
+  check("ride: Where am I? says the street, the next cue, the miles to the end and the arrival time (#513)", /On R Street Northwest\..* to the end, arriving about \d{1,2}:\d{2}(?:\s?[AP]M)?\./.test(where.polite), JSON.stringify(where));
 
   // N5: the map along the route, kept for dead spots (lib/corridor.ts): the stress tiles at z12-14 in
   // the ride's own Cache Storage bucket (the mocked base map is not served, so its part stops), said on
@@ -3035,15 +3035,27 @@ const levelSlider = `${EDITOR} input[type=range]`;
   await p.shot(`${SHOTS}/ride_corner_320.png`);
   await p.eval("document.querySelector('.ride .ride-settings-button').click(); true");
   await sleep(200);
-  // More (the gear, the owner, 2026-10-18; More 2026-10-24): it opens the panel under the top row and the focus goes into it; at 320 px
-  // the top row is End ride and Road closed's icon (still named in full), on one line.
-  const gear = await p.eval(`(() => { const g = document.querySelector('.ride .ride-settings-button'); const panel = document.querySelector('.ride-mode-settings'); const c = document.querySelector('.ride-top .ride-road-closed'); const e = document.querySelector('.ride-top .ride-end'); const a = c.getBoundingClientRect(); const b = e.getBoundingClientRect();
-    const change = [...panel.querySelectorAll('.ride-change button')].map((x) => [x.getAttribute('aria-label') ?? x.textContent, x.textContent, Math.round(x.getBoundingClientRect().height)]);
-    return { expanded: g.getAttribute('aria-expanded'), shown: !panel.hidden, focusIn: panel.contains(document.activeElement), width: innerWidth, change, name: c.getAttribute('aria-label'), oneLine: Math.abs(a.top - b.top) <= 2, w: Math.round(a.width), h: Math.round(a.height) }; })()`);
-  check("ride: More (the owner, 2026-10-24) opens Less traffic and Fewer hills (each 44 px or taller, its words within its name) above the ride's settings, with the focus in them; at 320 px Road closed is its icon, named in full, beside End ride",
-    gear.expanded === "true" && gear.shown && gear.focusIn && JSON.stringify(gear.change.map((x) => x[1])) === JSON.stringify(["Less traffic", "Fewer hills"]) && gear.change.every(([name, text, h]) => name.toLowerCase().includes(text.toLowerCase()) && h >= 44) && gear.width <= 379 && gear.name === "Road closed ahead" && gear.oneLine && gear.w >= 44 && gear.h >= 44, JSON.stringify(gear));
+  // More (the gear, the owner, 2026-10-18; More 2026-10-24; bubbles 2026-10-26: "Have many of those options just expanded
+  // as more bubble buttons, not in settings"): a row of round bubbles to its left, Less traffic and Fewer hills (each a
+  // symbol named in full, 48 px or more) and Settings, the last opening the settings under the top row, the focus in them.
+  const bubbles = await p.eval(`(() => { const g = document.querySelector('.ride .ride-settings-button'); const row = document.getElementById(g.getAttribute('aria-controls')); const m = g.getBoundingClientRect();
+    const list = [...row.querySelectorAll('button')].filter((b) => b.getClientRects().length > 0).map((b) => { const r = b.getBoundingClientRect(); return { name: b.getAttribute('aria-label'), w: Math.round(r.width), h: Math.round(r.height), round: parseFloat(getComputedStyle(b).borderRadius) >= r.width / 2 - 1, left: r.right <= m.left + 1, onScreen: r.left >= 0 && r.top >= 0 }; });
+    return { expanded: g.getAttribute('aria-expanded'), shown: !row.hidden, panelShown: !document.querySelector('.ride-mode-settings').hidden, list }; })()`);
+  check("ride: More (Stephen 2026-10-26) opens round bubbles to its left: Less traffic, Fewer hills and Ride settings, each 48 px or more and on screen; the settings stay closed",
+    bubbles.expanded === "true" && bubbles.shown && !bubbles.panelShown && JSON.stringify(bubbles.list.map((x) => x.name)) === JSON.stringify(["Less traffic: plan again from here", "Fewer hills: plan again from here", "Ride settings"]) && bubbles.list.every((x) => x.round && x.w >= 48 && x.h >= 48 && x.left && x.onScreen), JSON.stringify(bubbles));
+  await p.shot(`${SHOTS}/ride_more_320.png`);
+  await p.eval("document.querySelector('.ride .ride-settings-bubble').click(); true");
+  await sleep(200);
+  // At 320 px the top row is End ride and Road closed's icon (still named in full), on one line.
+  const gear = await p.eval(`(() => { const g = document.querySelector('.ride .ride-settings-bubble'); const panel = document.querySelector('.ride-mode-settings'); const c = document.querySelector('.ride-top .ride-road-closed'); const e = document.querySelector('.ride-top .ride-end'); const a = c.getBoundingClientRect(); const b = e.getBoundingClientRect();
+    return { expanded: g.getAttribute('aria-expanded'), shown: !panel.hidden, focusIn: panel.contains(document.activeElement), change: panel.querySelectorAll('.ride-change, .ride-ease').length, width: innerWidth, name: c.getAttribute('aria-label'), oneLine: Math.abs(a.top - b.top) <= 2, w: Math.round(a.width), h: Math.round(a.height) }; })()`);
+  check("ride: the Settings bubble opens the ride's settings alone (no route changes in them), with the focus in them; at 320 px Road closed is its icon, named in full, beside End ride",
+    gear.expanded === "true" && gear.shown && gear.focusIn && gear.change === 0 && gear.width <= 379 && gear.name === "Road closed ahead" && gear.oneLine && gear.w >= 44 && gear.h >= 44, JSON.stringify(gear));
+  // More again closes the bubbles and the settings.
   await p.eval("document.querySelector('.ride .ride-settings-button').click(); true");
   await sleep(200);
+  const shut = await p.eval("({ more: document.querySelector('.ride .ride-settings-button').getAttribute('aria-expanded'), panel: document.querySelector('.ride-mode-settings').hidden, row: document.querySelector('.ride-more-bubbles').hidden })");
+  check("ride: More pressed again closes its bubbles and the settings", shut.more === "false" && shut.panel && shut.row, JSON.stringify(shut));
   // Large text (the owner, 2026-10-20; it replaced Big text): a side button, pressed while on; the card half the screen,
   // the map below; the change said; kept on this device. A press again goes back.
   const sizeButton = ".ride-rail .ride-text-size";
@@ -3060,7 +3072,7 @@ const levelSlider = `${EDITOR} input[type=range]`;
     large.name === "Large text" && large.pressed === "true" && large.map !== "none" && large.card >= 45 && large.card <= 55 && large.distancePx > 28 && large.kept === "large" && /Large text on/.test(large.heard ?? ""), JSON.stringify(large));
   // Cues to the screen reader alone: the map is out of its reach in a ride (the owner, 2026-10-20), so a swipe goes from
   // the card to the side buttons; with the voice as well it stays.
-  const outputTo = (label) => p.eval(`(() => { document.querySelector('.ride .ride-settings-button').click(); const l = [...document.querySelectorAll('.ride-mode-settings label')].find((x) => x.textContent === ${JSON.stringify(label)}); l?.querySelector('input').click(); document.querySelector('.ride .ride-settings-button').click(); return !!l; })()`);
+  const outputTo = (label) => p.eval(`(() => { document.querySelector('.ride .ride-settings-button').click(); document.querySelector('.ride .ride-settings-bubble').click(); const l = [...document.querySelectorAll('.ride-mode-settings label')].find((x) => x.textContent === ${JSON.stringify(label)}); l?.querySelector('input').click(); document.querySelector('.ride .ride-settings-button').click(); return !!l; })()`);
   const srPicked = await outputTo("My screen reader");
   await sleep(300);
   const srOnly = await p.eval("({ inert: document.querySelector('.map').inert, zoom: !!document.querySelector('.maplibregl-ctrl-zoom-in') })");
@@ -5273,7 +5285,8 @@ const failed = results.filter((r) => !r.ok);
 // Load route's popup (#370) adds one. Settings scrolling (2026-10-22) adds one: Home's one line with Change,
 // Cancel, and leaving Settings.
 // Plan's Start ride no longer asks first (2026-10-24) takes one away.
-const EXPECTED = 684;
+// Ride's More bubbles (#515, 2026-10-26) turn one check into three: two more.
+const EXPECTED = 686;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);
