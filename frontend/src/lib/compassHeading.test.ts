@@ -113,4 +113,6 @@ test("the compass is asked for in Start ride's and Roam's press, and the map han
   const map = readFileSync(`${here}../MapView.tsx`, "utf8");
   assert.match(map, /watchCompass\(browserCompassEnv\(\)/);
   assert.match(map, /gpsHeadingSeen\.current = true;\s*stopCompass\.current\?\.\(\)/);
+  // The compass never cuts short the follow camera's own move (its close-in zoom) or turns the map under a pinch.
+  assert.match(map, /if \(map\.isMoving\(\)\) return;/);
 });

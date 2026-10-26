@@ -2530,6 +2530,7 @@ export function MapView(props: Props) {
   const compassDeg = useRef<number | null>(null);
   const gpsHeadingSeen = useRef(false);
   const stopCompass = useRef<(() => void) | null>(null);
+  const compassMovedAt = useRef(0);
   const riding = !!props.rider;
   useEffect(() => {
     if (!riding || !props.headingUp || gpsHeadingSeen.current) return;
@@ -2540,8 +2541,15 @@ export function MapView(props: Props) {
       const rider = now.rider ?? null;
       // Only while the camera follows track-up; a map moved by hand stays where the rider put it.
       if (!map || !rider || !now.follow || !now.headingUp || !following.current || gpsHeadingSeen.current) return;
+      // Not over the follow camera's own move (its close-in zoom would stop part way) nor under a pinch; the next fix
+      // takes the compass's heading then. With reduced motion asked for, a jump at most once a second.
+      if (map.isMoving()) return;
+      const still = reducedMotion();
+      const at = Date.now();
+      if (still && at - compassMovedAt.current < 1_000) return;
+      compassMovedAt.current = at;
       const ahead = riderOffset(map.getContainer(), RIDER_AT);
-      map.easeTo({ center: rider.point, bearing: deg, offset: [0, ahead], padding: NO_PADDING, duration: reducedMotion() ? 0 : 200 });
+      map.easeTo({ center: rider.point, bearing: deg, offset: [0, ahead], padding: NO_PADDING, duration: still ? 0 : 200 });
     });
     return () => {
       stopCompass.current?.();

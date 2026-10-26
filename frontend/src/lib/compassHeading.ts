@@ -55,7 +55,7 @@ export function headingOf(event: CompassEvent, screenAngle = 0): number | null {
   const vz = -1;
   const east = (cZ * cY - sZ * sX * sY) * vx - cX * sZ * vy + (cY * sZ * sX + cZ * sY) * vz;
   const north = (cY * sZ + cZ * sX * sY) * vx + cZ * cX * vy + (sZ * sY - cZ * cY * sX) * vz;
-  // Pointing straight up or down (held face down past upright): no way ahead to tell.
+  // Pointing straight up or down (the top tipped back about 135° from flat, past upright): no way ahead to tell.
   if (Math.hypot(east, north) < 0.2) return null;
   return norm(Math.atan2(east, north) / RAD);
 }
