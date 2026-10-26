@@ -4149,37 +4149,17 @@ details.zoom-notes {
   margin-top: 16px;
 }
 
-/* The ride's settings, opened by the side buttons' More, just under the top row. */
+/* The ride's settings, opened by the Settings bubble beside More, just under the top row. */
 .ride-mode-settings {
   margin: 4px 0 10px;
   padding-bottom: 8px;
   border-bottom: 1px solid var(--border);
 }
 
-/* More's own headings: the route's changes, then the settings. */
+/* The settings' own heading. */
 .ride-mode-settings h3 {
   margin: 6px 0;
   font-size: 1rem;
-}
-
-/* Less traffic and Fewer hills (2026-10-24): large enough to press riding, the symbol beside the words. */
-.ride-change {
-  padding-bottom: 8px;
-  margin-bottom: 4px;
-  border-bottom: 1px solid var(--border);
-}
-.ride-change .actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-.ride-change .ride-ease {
-  min-height: 48px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-weight: 700;
 }
 
 /* Larger than the panel's buttons, at every text size (the owner, 2026-10-20: "End ride and road closed could have larger font in general"). */
@@ -5987,6 +5967,31 @@ details.fold > summary .icon {
   background: var(--accent);
   color: var(--accent-text);
   border-color: var(--bg);
+}
+
+/* More's bubbles (Stephen 2026-10-26: "just expanded as more bubble buttons"): a row to its left, at its foot, the
+   first nearest; short of room, a second row above. */
+.ride-more-bubbles {
+  position: absolute;
+  right: calc(100% + 10px);
+  bottom: 0;
+  display: flex;
+  flex-direction: row-reverse;
+  flex-wrap: wrap-reverse;
+  gap: 10px;
+  width: max-content;
+  max-width: calc(100vw - 96px);
+}
+
+.ride-more-bubbles[hidden] {
+  display: none;
+}
+
+/* Skip this stop: the stop's number under the skip mark. */
+.ride .ride-skip-stop {
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1.1;
 }
 
 /* The dock button: the time undocked under the dock sign, in figures that do not jump. */
@@ -8648,19 +8653,6 @@ details.fold > summary .icon {
   color: #0f172a;
   text-shadow: 0 0 3px #ffffff, 0 0 3px #ffffff, 0 0 3px #ffffff;
   white-space: nowrap;
-}
-
-/* The next stop in the ride's More panel (2026-10-24): its name, and Skip this stop beside it. */
-.ride-next-stop {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-.ride-next-stop p {
-  margin: 0;
-  font-weight: 700;
 }
 
 /* A map card's X, a finger's size (the owner, 2026-10-24: "Some of the various popups that you click on during a ride
