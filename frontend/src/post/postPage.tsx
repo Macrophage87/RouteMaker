@@ -12,7 +12,8 @@
  *   route faint, the stretch drawn over it and filling the map, made as the reader scrolls near it and let go once
  *   far past, so a long post never holds more than a few maps;
  * - for an instance admin, "Use this map as the link picture": the post's map drawn at 1200 by 630 with its credits,
- *   sent to the server as the link preview's picture.
+ *   sent to the server as the link preview's picture, and Add photo, which draws a photo again smaller, with no
+ *   location or camera details, and sends it (photos.ts).
  */
 import "maplibre-gl/dist/maplibre-gl.css";
 import "../styles.css";
@@ -40,6 +41,7 @@ import { handCourseToWahoo, sendCourseToGarmin, sendCourseToWahoo } from "../Gpx
 import { readWahoo } from "../lib/wahooLink.ts";
 import { MINIMAP_LABEL, showMinimaps } from "./minimaps.ts";
 import { wireSends } from "./sends.ts";
+import { wirePhotos } from "./photos.ts";
 
 /** What the server puts in the page (route_posts.page_data). */
 export interface PostData {
@@ -351,4 +353,5 @@ export function start(doc: Document = document): void {
     },
   });
   wirePicture(data);
+  if (data.admin) wirePhotos(doc, data.slug, data.csrf);
 }
