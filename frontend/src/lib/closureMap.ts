@@ -209,6 +209,31 @@ export function parkNoticesOf(route: WithClosures | null | undefined): ClosureNo
 export const CLOSED_RED = "#c62828";
 export const LANE_AMBER = "#b26a00";
 
+/** The closed stretches' line layers (MapView.tsx), bottom first: the white casing, then the solid and dashed lines. */
+export const CLOSURE_LINE_LAYERS = ["closure-casing", "closure-line", "closure-line-maybe"] as const;
+
+/**
+ * Put the closed stretches' lines directly under the street names. The owner, 2026-10-26, of a construction stretch
+ * whose street name was hidden under its amber line: "Have the text go over the construction tag." The names
+ * (`labelIds`: the base map's street names and the major trails' names) are drawn over the line on their white halo,
+ * as they are over the stress colours; the line stays over the stress colours and the base map's roads, and its marker
+ * (a button, over every layer) still opens the card. The lowest of the names present is the one they go under; false
+ * when there are no names yet or the lines are already there.
+ */
+export function closuresUnderNames(
+  map: { getLayersOrder(): string[]; moveLayer(id: string, beforeId?: string): void },
+  labelIds: readonly string[],
+): boolean {
+  const order = map.getLayersOrder();
+  const lowest = order.find((id) => labelIds.includes(id));
+  if (!lowest || !CLOSURE_LINE_LAYERS.every((id) => order.includes(id))) return false;
+  const at = order.indexOf(lowest);
+  if (CLOSURE_LINE_LAYERS.every((id, i) => order[at - CLOSURE_LINE_LAYERS.length + i] === id)) return false;
+  // Bottom first, each under the name, so they keep their order.
+  for (const id of CLOSURE_LINE_LAYERS) map.moveLayer(id, lowest);
+  return true;
+}
+
 /** The closed stretches as map data: a line each, coloured by severity, dashed where it "may still apply". */
 export function closureFeatures(items: readonly ClosureItem[]) {
   return {

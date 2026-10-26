@@ -162,6 +162,7 @@ import {
   closureFeatures,
   closureMarkerName,
   closuresOf,
+  closuresUnderNames,
   AREA_POLL_MS,
   areaClosuresAsk,
   closuresKey,
@@ -462,6 +463,8 @@ function riderOffset(container: HTMLElement, at: number): number {
 }
 /** The closures in force at the ride (v0.7.0, lib/closureMap.ts). */
 const CLOSURE_SOURCE = "closures";
+/** The names the closed stretches' lines go under: the major trails' and the streets'. */
+const CLOSURE_NAME_LAYERS: readonly string[] = [TRAIL_LABEL_LAYER_ID, ...ROAD_LABEL_LAYER_IDS];
 // Bikeshare's walk legs (lib/bikeshare.ts): dotted, with the operator's source citation as the
 // source's attribution, so the attribution control shows it exactly while a bikeshare plan's
 // layer is visible and never otherwise (OWNER-DECISIONS 301).
@@ -1244,6 +1247,8 @@ export function MapView(props: Props) {
       if (added) setOverlayFade(map, routeOverlayFade(callbacks.current.route));
       // Climbs that came first are under the trail names it brings, as syncClimbs puts them when the names are there.
       if (added) climbsUnder(map, TRAIL_LABEL_LAYER_ID);
+      // Closures drawn first go under the trail names it brings, as they went under the street names.
+      if (added && labelHomes.current.size === 0) closuresUnderNames(map, CLOSURE_NAME_LAYERS);
       return added;
     };
 
@@ -1457,9 +1462,10 @@ export function MapView(props: Props) {
         },
         paint: { "text-color": ["get", "color"], "text-halo-color": "#ffffff", "text-halo-width": 3.5 },
       });
-      // Closures in force at the ride (v0.7.0, lib/closureMap.ts): over the route, so a closed stretch on it shows.
-      // A white casing, then red (closed) or amber (bike lane blocked); dashed where it "may still apply". Their
-      // markers (buttons) carry the names and open the cards.
+      // Closures in force at the ride (v0.7.0, lib/closureMap.ts). A white casing, then red (closed) or amber (bike
+      // lane blocked); dashed where it "may still apply". Their markers (buttons) carry the names and open the cards.
+      // The lines go under the street names (closuresUnderNames, 2026-10-26), so a name is read over the amber; that is
+      // under the route too, whose own line shows where it goes through, with the closure's marker over it.
       map.addSource(CLOSURE_SOURCE, {
         type: "geojson",
         data: closureFeatures(
@@ -1493,6 +1499,7 @@ export function MapView(props: Props) {
         layout: { "line-join": "round", "line-cap": "butt" },
         paint: { "line-color": ["match", ["get", "severity"], "amber", LANE_AMBER, CLOSED_RED], "line-width": 5, "line-dasharray": [2, 1.2] },
       });
+      if (labelHomes.current.size === 0) closuresUnderNames(map, CLOSURE_NAME_LAYERS);
       // Under the route (before its casing), so the circle's tint never covers the line.
       map.addSource(ACCURACY_SOURCE, { type: "geojson", data: accuracyData(callbacks.current.accuracy) });
       map.addLayer({

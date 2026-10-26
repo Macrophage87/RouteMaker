@@ -18,6 +18,8 @@ import {
   closureFeatures,
   closureMarkerName,
   closuresOf,
+  closuresUnderNames,
+  CLOSURE_LINE_LAYERS,
   noticeCard,
   noticeMarkerName,
   parkNoticesOf,
@@ -287,4 +289,27 @@ test("the same answer again leaves the map alone; a changed end or wording redra
   assert.equal(closuresKey(a), closuresKey([{ ...a[0] }]));
   assert.notEqual(closuresKey(a), closuresKey([{ ...a[0], end: "2027-03-02T05:00:00Z" }]));
   assert.notEqual(closuresKey(a), closuresKey([]));
+});
+
+test("the closed stretches' lines go under the street names, so a name reads over the amber", () => {
+  const order = ["roads", "stress-lts4", "roads_labels_minor", "roads_labels_major", "route-casing", "route-line", "closure-casing", "closure-line", "closure-line-maybe", "station-names"];
+  const map = {
+    getLayersOrder: () => [...order],
+    moveLayer(id: string, before?: string) {
+      order.splice(order.indexOf(id), 1);
+      order.splice(before ? order.indexOf(before) : order.length, 0, id);
+    },
+  };
+  const names = ["trail-name", "roads_labels_major", "roads_labels_minor"];
+  assert.equal(closuresUnderNames(map, names), true);
+  assert.deepEqual(order, ["roads", "stress-lts4", ...CLOSURE_LINE_LAYERS, "roads_labels_minor", "roads_labels_major", "route-casing", "route-line", "station-names"]);
+  assert.equal(closuresUnderNames(map, names), false, "already there");
+  // The overlay's trail names, come later and lower: the lines go under them too.
+  order.splice(2, 0, "trail-name");
+  assert.equal(closuresUnderNames(map, names), true);
+  assert.deepEqual(order.slice(0, 6), ["roads", "stress-lts4", ...CLOSURE_LINE_LAYERS, "trail-name"]);
+  assert.equal(closuresUnderNames({ getLayersOrder: () => ["closure-casing"], moveLayer: () => assert.fail() }, names), false, "no names yet");
+  const view = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
+  for (const id of CLOSURE_LINE_LAYERS) assert.match(view, new RegExp(`id: "${id}"`));
+  assert.equal(view.match(/closuresUnderNames\(map, CLOSURE_NAME_LAYERS\)/g)?.length, 2, "when the lines are added and when the trail names come");
 });
