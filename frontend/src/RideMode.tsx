@@ -6,7 +6,7 @@
  *
  * - The cue card: the next turn, flagged junction or stop, its distance (US units first, metric in
  *   brackets) and the API's sentence for it. Not a live region: it changes with every fix.
- *   To go: distance, time and arrival clock time to the next stop and to the end, at the rider's pace against the route's (lib/arrival.ts).
+ * - To go: distance, time and arrival clock time to the next stop and to the end, at the rider's pace against the route's (lib/arrival.ts).
  * - Two live regions of its own, polite for advance cues and assertive for "now", leaving the route
  *   and arrival; each repeats the count trick so the same sentence twice is said twice. A cue never
  *   moves the focus.
