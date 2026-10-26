@@ -220,19 +220,24 @@ GAP_WAIT_KINDS = frozenset({"crossing", "left_onto", "straight_onto", "left_acro
 # the rider gives way (`GIVE_WAY_CONTROLS`) to a multi-lane road, the junction reads the
 # road at the tier its traffic alone gives it, if that is higher: Furth's mixed-traffic
 # table on its multi-lane row (`routemaker.stress._mixed_traffic_tier`), LTS 3 above 20
-# mph and LTS 4 from 30 mph, without the urban relief the map takes for riding along such
-# a street (OWNER-DECISIONS 87, 101), and LTS 3 where a count shows no more than the
-# classifier's own busy-street figure (`stress.URBAN_TWO_WAY_BUSY_AADT`). Multi-lane is
-# two or more through lanes each way, or three or more on a one-way (a one-way of two is
-# read on the single-lane row, `stress.URBAN_ONEWAY_MAX_LANES`). A divided road's
-# carriageways are one-way roads of their own, with a refuge between them, and are read
-# so. Signals and all-way stops stop the traffic and are left alone, as are a road closed
-# to cars and the Mass Ride reading (the road's own tier, 396).
+# mph and LTS 4 from 30 mph, without the urban relief the map takes for riding along a
+# two-way street (OWNER-DECISIONS 87, 101), and LTS 3 at 30 mph where a count shows no
+# more than the classifier's own busy-street figure (`stress.URBAN_TWO_WAY_BUSY_AADT`,
+# which `stress.urban_two_way_floor` reads only for that step: from 35 mph mixed traffic
+# is LTS 4 whatever the count). Multi-lane is two or more through lanes each way, or three
+# or more on a one-way. A rider crosses a one-way of two lanes in one gap of one
+# direction's traffic, so it is left alone (as `stress.URBAN_ONEWAY_MAX_LANES` reads it
+# for riding along), and so is each two-lane carriageway of a divided road, with a refuge
+# between them: deliberately, not the classifier's reading of a divided road as two-way.
+# Signals and all-way stops stop the traffic and are left alone, as are a road closed to
+# cars and the Mass Ride reading (the road's own tier, 396). A rider going straight on
+# from one multi-lane road into the next is not joining it (`Junction.continues`).
 TRAFFIC_MULTILANE_EACH_WAY = 2
 TRAFFIC_MULTILANE_ONEWAY = 3
 TRAFFIC_BUSY_MPH = 20.0  # above this, multi-lane mixed traffic is LTS 3
 TRAFFIC_HEAVY_MPH = 30.0  # from this, LTS 4
 TRAFFIC_QUIET_AADT = 8_000  # `stress.URBAN_TWO_WAY_BUSY_AADT`
+TRAFFIC_ANY_COUNT_MPH = 35.0  # from this, LTS 4 whatever the count
 
 
 def traffic_tier(road: Road) -> int | None:
@@ -245,9 +250,10 @@ def traffic_tier(road: Road) -> int | None:
     speed = cost_speed(road)
     if speed is None or speed <= TRAFFIC_BUSY_MPH:
         return None
-    if speed < TRAFFIC_HEAVY_MPH or (road.aadt is not None and road.aadt <= TRAFFIC_QUIET_AADT):
+    if speed < TRAFFIC_HEAVY_MPH:
         return 3
-    return 4
+    quiet = road.aadt is not None and road.aadt <= TRAFFIC_QUIET_AADT
+    return 3 if quiet and speed < TRAFFIC_ANY_COUNT_MPH else 4
 
 
 def _by_traffic(road: Road, junction: Junction) -> Road:
@@ -269,7 +275,14 @@ def by_traffic(junction: Junction) -> Junction:
     if junction.control not in GIVE_WAY_CONTROLS:
         return junction
     crossed = tuple(_by_traffic(r, junction) for r in junction.crossed)
-    outgoing = junction.outgoing if junction.continues else _by_traffic(junction.outgoing, junction)
+    # Straight on from a multi-lane road into the next (a name change, two unnamed ways)
+    # is riding along, not joining: as an LTS 3 road into the next is (`cost_of`).
+    along = junction.movement is Movement.STRAIGHT and traffic_tier(junction.incoming)
+    outgoing = (
+        junction.outgoing
+        if junction.continues or along
+        else _by_traffic(junction.outgoing, junction)
+    )
     if crossed == junction.crossed and outgoing == junction.outgoing:
         return junction
     return replace(junction, crossed=crossed, outgoing=outgoing)

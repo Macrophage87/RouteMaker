@@ -298,7 +298,7 @@ class TestByTraffic:
         "road",
         [
             replace(PINEY_BRANCH, speed_mph=25),  # Furth: 25 mph multi-lane is LTS 3
-            replace(PINEY_BRANCH, aadt=6_000),  # a count at or under the busy-street figure
+            replace(PINEY_BRANCH, aadt=8_000),  # a count at or under the busy-street figure
         ],
     )
     def test_a_slower_or_counted_quiet_road_is_read_as_lts_3(self, road) -> None:
@@ -318,6 +318,34 @@ class TestByTraffic:
     def test_a_road_its_traffic_does_not_make_busy_is_left_alone(self, road) -> None:
         assert m.by_traffic(self.crossing(road)) == self.crossing(road)
         assert m.assess(self.crossing(road)) is None
+
+    @pytest.mark.parametrize(
+        ("road", "tier"),
+        [
+            (replace(PINEY_BRANCH, aadt=8_001), 4),  # just over the busy-street figure
+            (replace(PINEY_BRANCH, speed_mph=35, aadt=6_000), 4),  # 35 mph: any count
+            (replace(PINEY_BRANCH, speed_mph=None, default_speed_mph=25.0), 3),  # statutory
+        ],
+    )
+    def test_the_count_only_lowers_the_30_mph_step(self, road, tier) -> None:
+        assert m.traffic_tier(road) == tier
+
+    def test_straight_on_from_one_multilane_road_into_the_next_is_not_joining(self) -> None:
+        # A name change at the node (`continues` is False), nothing mapped or a stop.
+        other = replace(self.PINEY_BRANCH, names=frozenset({"other"}))
+        for control in (Control.NONE, Control.STOP):
+            j = junction(incoming=self.PINEY_BRANCH, outgoing=other, control=control)
+            assert m.by_traffic(j) == j
+            assert m.assess(j) is None
+
+    def test_a_half_step_at_or_above_its_traffic_is_left_alone(self) -> None:
+        road = Road(3, speed_mph=25, lanes=2, oneway=False, half=True)  # 3.5 against 3
+        assert m.by_traffic(self.crossing(road)).crossed == (road,)
+
+    def test_a_rated_junction_still_names_the_map_tier(self) -> None:
+        event = m.assess(replace(self.crossing(), rating=4))
+        assert event.rating == 4
+        assert event.crossed_tier == 2
 
     def test_a_three_lane_one_way_is_multilane(self) -> None:
         assert m.traffic_tier(replace(self.PINEY_BRANCH, lanes=3, oneway=True)) == 4
