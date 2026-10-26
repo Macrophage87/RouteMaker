@@ -674,7 +674,11 @@ export function GoSheet({
             searchBias={searchBias}
             homeSheetOpen={homeShown}
             onHomeSheet={setHomeOpen}
-            onRide={() => setFavoritesOpen(false)}
+            onRide={() => {
+              // The row pressed goes with the popout: the focus goes back to the Favorites chip, not the page.
+              setFavoritesOpen(false);
+              homeChip.current?.focus();
+            }}
           />
         )}
         <div id={homeSheetId} className="go-home-sheet" role="group" aria-label="Home" hidden={!homeShown}>

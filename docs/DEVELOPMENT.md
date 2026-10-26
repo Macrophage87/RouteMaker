@@ -4982,7 +4982,7 @@ puts it, at most two presses away.
   request; Home must be in the coverage box and is rounded to 5 places; the row goes with the
   account and is deleted when the account is marked deleted; `my_go` never ships to the beta
   (`scripts/beta/ship-data.sh` `EXCLUDED_TABLE_DATA`). `tests/test_my_go.py`.
-- **Favorite places** (`lib/favoritePlaces.ts`; `MyGo.places`, migration 0049; GET/POST
+- **Favorite places** (`lib/favoritePlaces.ts`; `MyGo.places`, migrations 0049-0050; GET/POST
   `/api/me/places`; Stephen 2026-10-26): signed in, Go's Home chip is a Favorites chip whose
   popout lists Home (or Set Home), Work (or Set Work), then the rest; a tap rides there. Add a
   place and Set Work search; Edit shows Change Home and Remove. A held map spot and the ride

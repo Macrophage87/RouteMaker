@@ -2171,8 +2171,10 @@ of the beta's data shipment (`scripts/beta/ship-data.sh` `EXCLUDED_TABLE_DATA`),
 `/api/me/places`): Work and the rider's other saved places, at most 20, each one point rounded to
 5 decimal places and its name. They follow the same rules as Home: never logged, deleted with the
 row, and left out of the beta's data shipment with `my_go`. The migration is
-`core/migrations/0049_my_go_places.py` (one column with a default of `[]`; it reverses cleanly
-with `migrate core 0048`).
+`core/migrations/0049_my_go_places.py` (one column with a default of `[]`), and
+`0050_my_go_places_db_default.py` keeps that default in the database, so the v0.12.4 api still
+saves a rider's first My Go between migrate and its recreation, and after an image rollback. Both
+reverse cleanly with `migrate core 0048`.
 
 **The migration** is `core/migrations/0019_my_go.py` (one new table; nothing else changed), after
 `0018_junction_suggestions`, so the chain stays linear with one leaf. It reverses cleanly
