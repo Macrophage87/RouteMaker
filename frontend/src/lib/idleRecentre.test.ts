@@ -119,7 +119,7 @@ test("wired: a ride or Roam watches, a move by hand marks the map away, and the 
   assert.match(map, /map\.on\("movestart", moved\);/);
   // The panels the ride's screen opens all show as expanded toggles there or in the group bar.
   const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
-  for (const open of ["detourOpen", "dockOpen", "menu311", "settingsOpen"]) assert.match(ride, new RegExp(`aria-expanded=\\{${open}\\}`));
+  for (const open of ["detourOpen", "dockOpen", "menu311", "moreOpen", "settingsOpen"]) assert.match(ride, new RegExp(`aria-expanded=\\{${open}\\}`));
   const group = readFileSync(new URL("../RideGroup.tsx", import.meta.url), "utf8");
   for (const open of ["ridersOpen", "alertOpen"]) assert.match(group, new RegExp(`aria-expanded=\\{${open}\\}`));
   assert.match(RIDE_PANEL_OPEN, /\.ride \[aria-expanded="true"\]/);
@@ -221,7 +221,7 @@ test("wired: the ride's side menus, the group's, Roam's Detour and the road info
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   assert.match(app, /closePanels: \(\) => !accessModeNow\.current && closeIdlePanels\(document\)/);
   const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
-  for (const open of ["detourOpen", "dockOpen", "menu311", "settingsOpen"]) assert.match(ride, new RegExp(`aria-expanded=\\{${open}\\}\\s+aria-controls=\\{[^\\n]+\\}\\s+${IDLE_CLOSE_ATTR}`));
+  for (const open of ["detourOpen", "dockOpen", "menu311", "moreOpen"]) assert.match(ride, new RegExp(`aria-expanded=\\{${open}\\}\\s+aria-controls=\\{[^\\n]+\\}\\s+${IDLE_CLOSE_ATTR}`));
   const roam = readFileSync(new URL("../RoamMode.tsx", import.meta.url), "utf8");
   assert.match(roam, new RegExp(`aria-expanded=\\{detourOpen\\}\\s+aria-controls=\\{detourId\\}\\s+${IDLE_CLOSE_ATTR}`));
   const group = readFileSync(new URL("../RideGroup.tsx", import.meta.url), "utf8");

@@ -146,11 +146,12 @@ test("Broadcast is one small button beside Start, in Plan and Go: the share shee
   assert.match(panel, /<RouteActions \{\.\.\.actions\} start=\{start\} \/>/);
   assert.match(panel, /<div className="actions start-ride go-start">\s*\{start\}/);
   const app = read("../App.tsx");
-  // Only where the browser has a share sheet, as Share ride.
-  assert.match(app, /broadcastRide: canShare \? \{ onPress: broadcastRide, note: broadcastNote \} : null/);
+  // Everywhere (Stephen 2026-10-26, in the phone app: "I don't seem to be able to broadcast rides"): with no share
+  // sheet, the link is copied (broadcastNav).
+  assert.match(app, /broadcastRide: \{ onPress: broadcastRide, note: broadcastNote \},/);
   // The voice unlocked within the press; the ride starts only once the link was sent and its line kept.
   const fn = app.slice(app.indexOf("const broadcastRide = () => {"), app.indexOf("\n  };\n", app.indexOf("const broadcastRide = () => {")));
-  assert.match(fn, /\}\s*primeRideVoice\(ridePrefs\);[\s\S]*void shareRoute\(true\)\.then\(\(\{ led, said \}\) => \{\s*if \(led\) startRideChecked\(\);\s*else if \(said\) setBroadcastNote/);
+  assert.match(fn, /\}\s*primeRideVoice\(ridePrefs\);[\s\S]*void shareRoute\(true, broadcastNav\)\.then\(\(\{ led, said \}\) => \{\s*if \(led\) \{[^}]*startRideNoted\(canShare \? "" : BROADCAST_COPIED\);\s*\} else if \(said\) setBroadcastNote/);
   // What went wrong is shown and said beside the button.
   assert.match(panel, /<p className="hint broadcast-note" role="status">/);
   // The same line shared again goes with the same leader key; the ride starts with the sharer free to re-route.
@@ -234,7 +235,7 @@ test("on a computer Broadcast asks before the share sheet: Go back sends nothing
   const fn = app.slice(app.indexOf("const broadcastRide = () => {"), app.indexOf("\n  };\n", app.indexOf("const broadcastRide = () => {")));
   // The question comes first, before the voice and the share sheet (review S1).
   assert.match(fn, /^const broadcastRide = \(\) => \{\s*if \(!computerOk\.current && askBeforeStart\(looksLikePhone\(\), tabSession\(\)\)\) \{\s*setComputerAsk\("broadcast"\);\s*return;\s*\}/);
-  assert.ok(fn.indexOf('setComputerAsk("broadcast")') < fn.indexOf("shareRoute(true)"));
+  assert.ok(fn.indexOf('setComputerAsk("broadcast")') < fn.indexOf("shareRoute(true, broadcastNav)"));
   const dialog = app.slice(app.indexOf("<StartOnComputerDialog"), app.indexOf("<ClosureDialog"));
   assert.match(dialog, /onBack=\{\(\) => setComputerAsk\(null\)\}/);
   assert.match(dialog, /if \(asked === "broadcast"\) broadcastRide\(\);\s*else startRideChecked\(\);/);
@@ -243,7 +244,7 @@ test("on a computer Broadcast asks before the share sheet: Go back sends nothing
 test("Broadcast's own share-sheet failure: the ride did not start, with no Copy link it cannot use", () => {
   assert.equal(BROADCAST_SHARE_FAILED, "Could not open the share sheet, so the ride did not start.");
   const app = read("../App.tsx");
-  assert.match(app, /setBroadcastNote\(\(n\) => \(\{ text: said === SHARE_FAILED \? BROADCAST_SHARE_FAILED : said, count: n\.count \+ 1 \}\)\)/);
+  assert.match(app, /setBroadcastNote\(\(n\) => \(\{ text: said === SHARE_FAILED \? \(canShare \? BROADCAST_SHARE_FAILED : BROADCAST_COPY_FAILED\) : said, count: n\.count \+ 1 \}\)\)/);
 });
 
 test("the ride leader is said once: not again as the nearest rider or as its role (review S4)", () => {

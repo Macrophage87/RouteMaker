@@ -107,6 +107,8 @@ if [ "$mode" = public ]; then
 	check_status "robots.txt is public" 200 "$base/robots.txt"
 	check_body "robots.txt disallows everything else" 'Disallow: /' "$base/robots.txt"
 	check_body "robots.txt lets Google read the favicon (the connector's icon)" 'Allow: /favicon.ico' "$base/robots.txt"
+	# The home page only: "Allow: /" (a "$" lost in nginx's string, say) would allow everything.
+	check_body "robots.txt allows the home page only" '^Allow: /\$$' "$base/robots.txt"
 	check_status "the account-deletion page is public" 200 "$base/delete-account"
 	check_status "the privacy policy is public" 200 "$base/privacy"
 	# POST only, so a GET reaching the api without a password is refused by the api (405), not 401.
