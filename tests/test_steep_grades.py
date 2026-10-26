@@ -72,9 +72,19 @@ def test_a_red_pitch_inside_an_orange_climb_is_split_out():
 
 
 def test_a_gap_in_the_heights_ends_a_stretch():
-    climb = _profile([0.06] * 3)
-    profile = climb + [(climb[-1][0], None)] + [(m + climb[-1][0], h) for m, h in climb]
-    assert steep_grades.stretches(profile) == []
+    climb = _profile([0.06] * 8)
+    end = climb[-1][0]
+    profile = climb + [(end, None)] + [(m + end, h) for m, h in climb]
+    found = steep_grades.stretches(profile)
+    assert len(found) == 2, "one stretch each side of the gap, not one across it"
+    assert found[0].to_m <= end <= found[1].from_m
+
+
+def test_a_short_red_pitch_in_an_orange_climb_reads_at_most_eight_percent():
+    pitch = FLAT + [0.06] * 6 + [0.12] * 3 + [0.06] * 6 + FLAT
+    (stretch,) = steep_grades.stretches(_profile(pitch))
+    assert stretch.level == steep_grades.LEVEL_STEEP
+    assert stretch.grade <= steep_grades.VERY_STEEP
 
 
 def test_very_steep_costs_much_more_than_steep():
@@ -112,6 +122,17 @@ def test_the_route_choice_prices_them_only_where_asked():
     assert priced - without == pytest.approx(
         steep_grades.penalty_s(routing.grade_profile(trip)) * 5.0
     )
+
+
+def test_the_steep_choice_takes_the_dearer_route_round_a_steep_drop():
+    steep = _trip(FLAT + [-0.10] * 10 + FLAT)
+    flat = _trip(FLAT * 4)
+    steep["summary"] = {"cost": 600.0}
+    flat["summary"] = {"cost": 700.0}
+    # A quiet metre costs the router about its riding time at 5 m/s.
+    assert routing.choose_by_steep([steep, flat], _price(True), 0.2) == 1
+    flat["summary"] = {"cost": 5000.0}
+    assert routing.choose_by_steep([steep, flat], _price(True), 0.2) == 0
 
 
 def test_only_mass_ride_and_novice():

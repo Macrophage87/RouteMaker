@@ -8,7 +8,7 @@
  * and repeated along a long one from zoom 14. The mark is a rounded square, the road sign's ramp in it rising left to
  * right for uphill and falling for downhill, as the rider meets it. Not a circle (the hazards), a triangle or a
  * diamond (the junctions). Orange with a dark ramp past 5%, red with a white ramp past 8%: told apart by lightness as
- * well as hue, and each mark carries its grade as words from zoom 13 ("+9%", "-6%"). Never the mark alone: the
+ * the ramp's lightness as well as hue, and each mark carries its grade as words from zoom 13 ("+9%", "-6%"). Never the mark alone: the
  * route's announcement counts them (`steepGradesSaid`) and the elevation chart shows each grade.
  */
 import { createElement as h, type ReactElement } from "react";
@@ -24,7 +24,8 @@ export const STEEP_GRADE_ICON_PX = 18;
 export const STEEP_GRADE_SPACING_PX = 110;
 export const STEEP_GRADE_LABEL_ZOOM = 13;
 
-/** Orange past 5% (a dark ramp on it, 7.7:1), red past 8% (a white ramp, 6.5:1); a white rim parts each from the line. */
+/** Orange past 5% (a dark ramp on it, 6.3:1), red past 8% (a white ramp, 6.5:1); a white rim parts each from the line. The
+ * two fills are close in lightness: the dark against white ramp and the signed grade label tell them apart. */
 export const STEEP_COLOURS = {
   steep: { fill: "#f97316", mark: "#111827" },
   very_steep: { fill: "#b91c1c", mark: "#ffffff" },

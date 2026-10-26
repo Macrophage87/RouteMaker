@@ -146,6 +146,9 @@ def _split(
     out = []
     for a, b, very in merged:
         steepest = max(abs(grade_at[run[k]] or 0.0) for k in range(a, b + 1))
+        if not very:
+            # A very steep pitch too short to mark stays orange, said as at most 8%.
+            steepest = min(steepest, VERY_STEEP)
         out.append(
             Stretch(
                 from_m=m[a],

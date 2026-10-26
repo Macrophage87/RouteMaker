@@ -810,7 +810,6 @@ export interface MassHazardSpan {
   road: string;
 }
 
-/** core.api RoadHazardSpanOut: a known hazard the route rides (v0.10.0; core/route_hazards.py). */
 /** A steep stretch on a Mass Ride or a Novice and Nervous ride (v0.12.5; core.api.SteepGradeOut), past 5% or 8% either way, in the riding direction; metres along the router's elevation profile. */
 export interface SteepGradeSpan {
   from_m: number;
@@ -823,6 +822,7 @@ export interface SteepGradeSpan {
   text: string;
 }
 
+/** core.api RoadHazardSpanOut: a known hazard the route rides (v0.10.0; core/route_hazards.py). */
 export interface RoadHazardSpan {
   from_m: number;
   to_m: number;

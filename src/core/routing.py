@@ -1688,6 +1688,20 @@ def choose_by_hills(trips: list[dict], price: HillPrice, quiet_cost: float) -> i
     return best
 
 
+def choose_by_steep(trips: list[dict], price: HillPrice, quiet_cost: float) -> int:
+    """The index of the trip whose router cost plus its steep grades' price
+    (`routemaker.steep_grades`) is least: a Mass Ride or Novice ride where the hills slider
+    does not price climbing itself. The router's own route is kept unless another saves more
+    than HILLS_EPS_S."""
+    best, best_score = 0, None
+    for index, trip in enumerate(trips):
+        steep_m = steep_grades.penalty_s(grade_profile(trip)) * price.flat_ms
+        score = _router_cost(trip) + quiet_cost * steep_m
+        if best_score is None or score < best_score - HILLS_EPS_S:
+            best, best_score = index, score
+    return best
+
+
 # What an alternative must save, in the router's cost seconds, for the hills choice to take
 # it over the router's own route: a few seconds is the elevation samples' noise.
 HILLS_EPS_S = 5.0
@@ -3884,11 +3898,24 @@ def _plan(
         chosen = 0
     elif climb_seek:
         chosen = choose_climb(trips, presets.seek_distance_ratio(hills_dial))
-    elif direct_tolerate or avoiding or steep_ride:
+    elif direct_tolerate or avoiding:
         # Never a busier route for it (`calmer_or_own`, "Traffic wins").
         chosen = calmer_or_own(
             trips,
             choose_by_hills(trips, hill_price, _quiet_cost(costing)),
+            variant,
+            costing,
+            when,
+            deadline,
+            traces,
+            exposure,
+        )
+    elif steep_ride and not calm_tolerate:
+        # Elsewhere on the slider a Mass Ride or Novice ride still weighs its steep grades
+        # alone (`choose_by_steep`), never a busier route for it.
+        chosen = calmer_or_own(
+            trips,
+            choose_by_steep(trips, hill_price, _quiet_cost(costing)),
             variant,
             costing,
             when,
